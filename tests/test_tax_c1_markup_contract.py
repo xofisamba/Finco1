@@ -108,16 +108,21 @@ class TestTaxMarkupContract:
             assert " " not in addr, addr
 
     def test_known_address_examples_present(self, tax_html_audit):
+        # Product Gap PR9: the "Convention" badge (a static "AUDIT-ONLY"
+        # literal with no real binding) and the audit-only G20/R99/R102
+        # governance cells (internal jargon, not user-facing tax data)
+        # were removed from the Tax sheet as part of the UX-honesty
+        # cleanup -- see docs/PRODUCT_GAP_PR9_TAX_REALITY_CHECK.md.
+        # Only the two real project-assumption cells remain.
         cells = _fc_cells(tax_html_audit)
         addrs = {attrs["data-fc-addr"] for attrs in cells}
         for expected in (
             "tax!cit_rate",
             "tax!loss_carryforward",
-            "tax!convention",
-            "tax!g20_status",
-            "tax!r99_r102_status",
         ):
             assert expected in addrs, f"{expected} missing from {sorted(addrs)}"
+        for removed in ("tax!convention", "tax!g20_status", "tax!r99_r102_status"):
+            assert removed not in addrs, f"{removed} should have been removed by PR9"
 
     def test_all_cells_are_non_editable(self, tax_html_audit):
         """The production Tax sheet has no <input> anywhere -- every
@@ -130,20 +135,19 @@ class TestTaxMarkupContract:
     def test_no_real_input_elements_anywhere(self, tax_html_audit):
         assert "<input" not in tax_html_audit
 
-    def test_audit_only_fields_present_in_audit_mode(self, tax_html_audit):
-        cells = _fc_cells(tax_html_audit)
-        addrs = {a["data-fc-addr"] for a in cells}
-        assert "tax!g20_status" in addrs
-        assert "tax!r99_r102_status" in addrs
-
-    def test_audit_only_fields_absent_in_normal_mode(self, tax_html_normal):
-        cells = _fc_cells(tax_html_normal)
-        addrs = {a["data-fc-addr"] for a in cells}
-        assert "tax!g20_status" not in addrs
-        assert "tax!r99_r102_status" not in addrs
-        # the always-present fields remain
-        assert "tax!cit_rate" in addrs
-        assert "tax!loss_carryforward" in addrs
+    def test_audit_only_fields_absent_in_both_modes(self, tax_html_audit, tax_html_normal):
+        """Product Gap PR9: the G20/R99/R102 audit-only governance
+        cells were removed from the Tax sheet entirely (internal
+        jargon, not real tax data) -- they no longer appear in either
+        audit_mode=True or audit_mode=False rendering."""
+        for html in (tax_html_audit, tax_html_normal):
+            cells = _fc_cells(html)
+            addrs = {a["data-fc-addr"] for a in cells}
+            assert "tax!g20_status" not in addrs
+            assert "tax!r99_r102_status" not in addrs
+            # the always-present real assumption fields remain
+            assert "tax!cit_rate" in addrs
+            assert "tax!loss_carryforward" in addrs
 
     def test_deterministic_ordering_across_renders(self):
         html_a = _render_sheet_tax()
