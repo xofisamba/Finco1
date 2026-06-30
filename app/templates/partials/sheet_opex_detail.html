@@ -23,16 +23,20 @@
 </div>
 {% endif %}
 
-{# ── C2-PR18: preview-only governance note ──────────────────────────────────────────────
-   Plain-language note: clarifies that OPEX line edits only update the
-   live preview and are not saved yet. Appears ONLY on this sheet (OPEX
-   detail), not on CAPEX/Revenue/Overview. See
-   docs/C2_PR18_OPEX_PREVIEW_ONLY_GOVERNANCE.md. #}
+{# ── Preview-only governance note (originally C2-PR18; copy simplified by
+   Product Gap PR4 for Save/Preview consistency clarity) ──────────────────
+   Plain-language note: clarifies that OPEX line edits update the totals
+   on this sheet and the live preview immediately, but Save and Run use
+   the saved model inputs, not these on-screen edits. Appears ONLY on
+   this sheet (OPEX detail), not on CAPEX/Revenue/Overview. See
+   docs/C2_PR18_OPEX_PREVIEW_ONLY_GOVERNANCE.md and
+   docs/PRODUCT_GAP_PR2_OPEX_EXCEL_EDITING.md. #}
 <div class="opex-preview-only-note" id="opex-preview-only-note" role="note">
   <span class="opex-preview-only-note__icon" aria-hidden="true">ℹ️</span>
   <span class="opex-preview-only-note__text">
-    OPEX line edits are preview-only for now. They update the live preview,
-    but are not saved yet. Run uses the saved model inputs.
+    OPEX line edits are preview-only for now: they update the totals on this
+    sheet and the live preview right away, but are not saved yet.
+    Run uses the saved model inputs.
   </span>
 </div>
 
