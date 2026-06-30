@@ -730,41 +730,25 @@
   </div>
 
   <!-- ----------------------------------------------- DISTRIBUTIONS -- -->
+  <!-- Product Gap PR7: initial full-page render of this tab now includes
+       the same partial used for the post-Run OOB refresh
+       (_sheet_distributions_partial.html), so the two paths cannot
+       drift apart and both show the same honest unavailable-state
+       panel until real distribution-account Run output exists. -->
   <div class="tab-panel" id="panel-distributions">
     {% include "partials/shared_runtime_block.html" %}
-    <div class="panel-header">
-      <div class="panel-title">Distributions</div>
-      <div class="panel-desc">Equity distribution schedule, lockup periods, and distribution constraints.</div>
-    </div>
-    <div class="placeholder-panel">
-      <div class="placeholder-icon">Cash</div>
-      <div class="placeholder-title">Equity Distributions</div>
-      <div class="placeholder-desc">Distribution schedule with lockup, sweep, and constraints will appear after a model run.</div>
-      {% if audit_mode %}
-      <div class="placeholder-note">R99/R102 runtime flags NOT APPROVED for production promotion. TUHO/Oborovo frozen-template path is validated; generic projects remain unvalidated.</div>
-      {% else %}
-      <div class="placeholder-note">Internal-use model — results are indicative. See the Audit tab for the reviewer notes.</div>
-      {% endif %}
-    </div>
+    {% include "partials/_sheet_distributions_partial.html" %}
   </div>
 
   <!-- ----------------------------------------------- SPONSOR / EQUITY -- -->
+  <!-- Product Gap PR7: initial full-page render of this tab now includes
+       the same partial used for the post-Run OOB refresh
+       (_sheet_sponsor_partial.html), so the two paths cannot drift
+       apart and both show the same honest unavailable-state panel
+       until real sponsor/waterfall Run output exists. -->
   <div class="tab-panel" id="panel-sponsor">
     {% include "partials/shared_runtime_block.html" %}
-    <div class="panel-header">
-      <div class="panel-title">Sponsor / Equity</div>
-      <div class="panel-desc">Equity contribution schedule, return metrics (IRR, MoM), and sponsor waterfall.</div>
-    </div>
-    <div class="placeholder-panel">
-      <div class="placeholder-icon">User</div>
-      <div class="placeholder-title">Sponsor / Equity Returns</div>
-      <div class="placeholder-desc">Equity contribution, return metrics, and sponsor waterfall will appear after a model run.</div>
-      {% if audit_mode %}
-      <div class="placeholder-note">R99/R102 runtime flags NOT APPROVED for production promotion. Backend remains source of truth.</div>
-      {% else %}
-      <div class="placeholder-note">Internal-use model — results are indicative. See the Audit tab for the reviewer notes.</div>
-      {% endif %}
-    </div>
+    {% include "partials/_sheet_sponsor_partial.html" %}
   </div>
 
   <!-- ----------------------------------------------- AUDIT / PARITY -- -->
