@@ -174,8 +174,11 @@
                 hx-post="/scenarios/save"
                 hx-include="#main-form"
                 hx-target="#saved-scenario-panel"
-                hx-swap="outerHTML">
+                hx-swap="outerHTML"
+                hx-indicator="#save-spinner"
+                hx-disabled-elt="this">
           <span class="ps-action-icon">💾</span> Save
+          <span id="save-spinner" class="htmx-indicator save-spinner">…</span>
         </button>
       </div>
     </div>
