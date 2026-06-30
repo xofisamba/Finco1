@@ -43,72 +43,42 @@ def compare_template():
 # ─── Financial Statement Rendering Tests ──────────────────────────────────────
 
 class TestFinancialStatementsRendering:
-    """Test that financial statement tables render with fc-grid design."""
+    """Test that the financial statements sheet renders honestly.
+
+    Product Gap PR6 (Financial Statements Reality Check) removed the
+    static "TUHO factory snapshot" Income Statement / Cash Flow /
+    Balance Sheet tables that used to render unconditionally here --
+    they were never bound to real run output -- the Balance Sheet was a
+    canned static snapshot, not an active-project accounting output.
+    They are replaced by a single honest unavailable-state
+    panel. These assertions are updated narrowly to reflect that; the
+    runtime KPI block (genuinely Run-backed) is unchanged and still
+    covered below.
+    """
 
     def test_financials_template_exists(self, financials_template):
         """sheet_financials.html exists and is non-empty."""
-        assert len(financials_template) > 5000
+        assert len(financials_template) > 2000
 
-    def test_pnl_renders(self, financials_template):
-        """P&L statement renders."""
-        assert "Income Statement" in financials_template or "P&amp;L" in financials_template
-        assert "PPA Revenue" in financials_template
-        assert "Total Revenue" in financials_template
+    def test_static_statement_tables_removed(self, financials_template):
+        """The old static/example P&L, Cash Flow, and Balance Sheet
+        grids no longer render -- they were never Run-backed."""
+        assert "fs-pnl-grid" not in financials_template
+        assert "fs-cf-grid" not in financials_template
+        assert "fs-bs-grid" not in financials_template
 
-    def test_cashflow_renders(self, financials_template):
-        """Cash Flow statement renders."""
-        assert "Cash Flow" in financials_template
-        assert "EBITDA" in financials_template
-        assert "CFADS" in financials_template
-        assert "Ending Cash" in financials_template
+    def test_unavailable_state_panel_present(self, financials_template):
+        """A clear, honest unavailable-state panel replaces the static
+        statement tables."""
+        assert "fs-unavailable-panel" in financials_template
+        assert "not connected to Run outputs yet" in financials_template
 
-    def test_balance_sheet_renders(self, financials_template):
-        """Balance Sheet renders."""
-        assert "Balance Sheet" in financials_template
-        assert "Net PP" in financials_template  # PP&E
-        assert "Senior Debt" in financials_template
-        assert "Total Equity" in financials_template
-
-    def test_fc_grid_present(self, financials_template):
-        """fc-grid class is used for statement tables."""
-        assert 'class="fc-grid' in financials_template
-
-    def test_sticky_header_row(self, financials_template):
-        """Sticky header row (fc-grid-header) renders in financial tables."""
-        assert "fc-grid-header" in financials_template
-
-    def test_sticky_first_column_class(self, financials_template):
-        """Sticky first column class (fc-grid-col-label) renders."""
-        assert "fc-grid-col-label" in financials_template
-
-    def test_section_bands_render(self, financials_template):
-        """Section bands (fc-section-band) render for P&L groups."""
-        assert "fc-section-band" in financials_template
-        assert "Revenue" in financials_template
-        assert "Operating Expenses" in financials_template
-        assert "Assets" in financials_template
-        assert "Liabilities" in financials_template
-        assert "Equity" in financials_template
-
-    def test_subtotal_rows_render(self, financials_template):
-        """Subtotal rows (fc-subtotal-row) render for key metrics."""
-        assert "fc-subtotal-row" in financials_template
-
-    def test_grand_total_rows_render(self, financials_template):
-        """Grand total rows (fc-grand-total) render for Net Income, Ending Cash, Total Equity."""
-        assert "fc-grand-total" in financials_template
-        assert "Net Income" in financials_template
-        assert "Ending Cash" in financials_template
-        assert "Total Equity" in financials_template
-
-    def test_numeric_alignment_cells(self, financials_template):
-        """Numeric amount cells use right-aligned fc-cell--amount class."""
-        assert "fc-cell--amount" in financials_template
-
-    def test_preview_badges_present(self, financials_template):
-        """Preview badges clearly label static tables."""
-        assert 'badge-preview' in financials_template
-        assert "Preview" in financials_template
+    def test_no_internal_jargon_in_unavailable_copy(self, financials_template):
+        """User-facing unavailable-state copy must not leak internal
+        jargon (PR6 requirement)."""
+        banned = ["C1", "C2", "Preview Architecture", "Runtime Pipeline", "stub", "placeholder architecture"]
+        for term in banned:
+            assert term not in financials_template, f"banned jargon {term!r} found in financials template"
 
     def test_no_inline_style_blocks(self, financials_template):
         """No inline <style> blocks in the financials template."""
@@ -117,15 +87,10 @@ class TestFinancialStatementsRendering:
         assert not inline_styles
 
     def test_session_storage_js_present(self, financials_template):
-        """sessionStorage runtime binding JS is present."""
+        """sessionStorage runtime binding JS (real Run-backed KPI
+        block) is still present and unchanged in scope."""
         assert "lastRuntimeSummary" in financials_template
         assert "_populateFSRuntimeBlock" in financials_template
-
-    def test_three_statement_tables_present(self, financials_template):
-        """All three statement tables are present."""
-        assert "fs-pnl-grid" in financials_template
-        assert "fs-cf-grid" in financials_template
-        assert "fs-bs-grid" in financials_template
 
 
 # ─── Runtime Summary Rendering Tests ─────────────────────────────────────────
