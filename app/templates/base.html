@@ -63,6 +63,15 @@
      adds no new /model/preview payload fields. See
      docs/PRODUCT_GAP_PR1_CAPEX_EXCEL_EDITING.md #}
   <script src="/static/modelling/capex-sheet-live-totals.js" defer></script>
+  {# Product Gap PR2/PR3/PR4: OPEX Real Excel Editing + Live Operating
+     Totals — OPEX-sheet-specific direct-typing + live in-sheet
+     Category Subtotal / Operating Subtotal / Total OPEX rendering
+     (Y1 column only — see the module's own doc comment for why).
+     Scoped entirely to the "opex" grid; does not modify the generic
+     C1 layer above or the C2 preview pipeline below, and adds no new
+     /model/preview payload fields. See
+     docs/PRODUCT_GAP_PR2_OPEX_EXCEL_EDITING.md #}
+  <script src="/static/modelling/opex-sheet-live-totals.js" defer></script>
   <script src="/static/modelling/dependency-graph.js" defer></script>
   {# C2-PR6: Incremental Recalculation Preview Boundary — builds a
      deterministic preview-request payload from a recalc snapshot +
