@@ -178,7 +178,7 @@ def create_default_oborovo() -> ProjectInputs:
     financing = FinancingParams(
         share_capital_keur=500.0,
         share_premium_keur=0.0,
-        shl_amount_keur=14621.0,  # Excel SHL draw: 14,621 kEUR (from construction template shl_keur=14,620.774)
+        shl_amount_keur=13547.2,  # Excel SHL draw: 13,547.2 kEUR (from oborovo_baseline.json fixture; prior value 14,621 had ~1,074 kEUR calibration gap vs Excel)
         shl_rate=0.08,  # Oborovo: 8% SHL rate (different from TUHO 5.95%)
         gearing_ratio=0.7524,  # Excel: 75.24%
         senior_tenor_years=14,
