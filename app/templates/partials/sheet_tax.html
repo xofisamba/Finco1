@@ -55,22 +55,46 @@
 
 <div class="section-divider"></div>
 
-<!-- Tax Output: no Run-backed CIT/depreciation/loss-carryforward/WHT
-     output exists in last_runtime_summary -- replaced with an
-     honest unavailable-state panel (PR6/PR7/PR8 pattern), reusing
-     the empty-state-notice / empty-state-notice--warn classes
-     already defined in static/styles.css. No tax schedule data is
-     invented or recomputed here. -->
+<!-- Phase F3/F4: Tax Output
+     Pre-Run: tax-unavailable-panel shown (fallback, hidden by JS after Run).
+     Post-Run: tax-schedule-block populated from sessionStorage["lastTaxSchedule"].
+     Source: WaterfallResult.periods (per-period engine output).
+     No financial calculations performed here. Read-only display only. -->
 <div class="sheet-card">
-  <div class="section-header">Tax Output</div>
+  <div class="section-header">Tax Output
+    <span class="badge badge-runtime" style="float:right;margin-top:2px;" title="Source: WaterfallResult.periods (per-period engine output)">Engine Output</span>
+  </div>
+
+  {# Pre-Run fallback — shown when no lastTaxSchedule in sessionStorage.
+     JS hides this and shows tax-schedule-block once a Run has been executed. #}
   <div class="empty-state-notice empty-state-notice--warn tax-unavailable-panel"
-       role="status" aria-label="Tax output not yet available">
+       id="tax-unavailable-panel"
+       role="status" aria-label="Tax output not yet available"
+       style="display:none;">
     <div class="esn-icon" aria-hidden="true">📋</div>
     <div class="esn-title">Tax output is not available yet</div>
     <div class="esn-desc">
       Run-backed taxable income, depreciation, loss carryforward, CIT,
-      and withholding tax results will be shown here once this
-      section is connected to the model engine.
+      and withholding tax results will be shown here once you execute a Run.
+      Values are sourced directly from <code>WaterfallResult.periods</code> —
+      the same engine output used by the XLSX export. No values are hardcoded
+      or computed client-side.
+    </div>
+  </div>
+
+  {# Post-Run: tax schedule table, populated from sessionStorage by JS. #}
+  <div id="tax-schedule-block" style="display:none;">
+    <div class="fc-table-wrapper" id="tax-schedule-table-wrapper">
+      <table class="fc-grid fs-statement-table" id="tax-schedule-table">
+        <thead><tr id="tax-schedule-header"></tr></thead>
+        <tbody id="tax-schedule-body"></tbody>
+      </table>
+    </div>
+    <div class="fs-statements-footer">
+      <span class="fs-footer-note">
+        Values in kEUR. Source: <code>WaterfallResult.periods</code> per-period
+        engine output — identical to XLSX export. Read-only.
+      </span>
     </div>
   </div>
 </div>
@@ -82,6 +106,104 @@
 <script>
 (function() {
   "use strict";
+
+  // ── Tax Schedule row definitions (label, field key) ──────────────────────
+  // Phase F3: read-only display of per-period engine fields from
+  // WaterfallResult.periods. No JS calculations. No aggregations.
+  var TX_ROWS = [
+    { label: "Taxable Profit (pre-losses)",    key: "taxable_income_before_losses_audit_keur" },
+    { label: "Tax Loss Opening",               key: "tax_loss_opening_audit_keur" },
+    { label: "Tax Loss Used",                  key: "tax_loss_used_audit_keur" },
+    { label: "Tax Loss Closing",               key: "tax_loss_closing_audit_keur" },
+    { label: "Taxable Profit (after losses)",  key: "taxable_profit_after_losses_audit_keur", bold: true },
+    { label: "CIT Accrual",                    key: "cit_accrual_audit_keur",                 bold: true },
+    { label: "Cash Tax (current period)",      key: "cash_tax_current_period_audit_keur" },
+    { label: "Corporate Tax Cash",             key: "corporate_tax_cash_keur" },
+    { label: "Tax Depreciation (fiscal)",      key: "tax_depreciation_audit_keur" },
+    { label: "CF After Tax",                   key: "cf_after_tax_keur" },
+  ];
+
+  function _fmtTx(v) {
+    if (v === null || v === undefined) return "—";
+    return Number(v).toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+  }
+
+  function _buildTxHeader(headRow, periods) {
+    var th = document.createElement("th");
+    th.className = "fc-header-cell fc-label-cell";
+    th.textContent = "Line Item";
+    headRow.appendChild(th);
+    for (var i = 0; i < periods.length; i++) {
+      var p = periods[i];
+      var label = p.date ? p.date.substring(0, 7) : ("P" + i);
+      var col = document.createElement("th");
+      col.className = "fc-header-cell fc-period-cell";
+      col.textContent = label;
+      headRow.appendChild(col);
+    }
+  }
+
+  function _buildTxBody(tbody, rowDefs, periods) {
+    for (var r = 0; r < rowDefs.length; r++) {
+      var def = rowDefs[r];
+      var tr = document.createElement("tr");
+      if (def.bold) tr.className = "fc-row-subtotal";
+      var tdLabel = document.createElement("td");
+      tdLabel.className = "fc-cell fc-label-cell";
+      tdLabel.textContent = def.label;
+      tr.appendChild(tdLabel);
+      for (var i = 0; i < periods.length; i++) {
+        var td = document.createElement("td");
+        td.className = "fc-cell fc-value-cell";
+        td.setAttribute("data-readonly", "true");
+        td.textContent = _fmtTx(periods[i][def.key]);
+        tr.appendChild(td);
+      }
+      tbody.appendChild(tr);
+    }
+  }
+
+  function _renderTaxSchedule(ts) {
+    // Show only operation periods for the tax schedule table.
+    var allPeriods = (ts && ts.periods) ? ts.periods : [];
+    var opPeriods = [];
+    for (var i = 0; i < allPeriods.length; i++) {
+      if (allPeriods[i].is_operation) opPeriods.push(allPeriods[i]);
+    }
+
+    var schedHead = document.getElementById("tax-schedule-header");
+    var schedBody = document.getElementById("tax-schedule-body");
+    if (schedHead && schedBody && opPeriods.length > 0) {
+      _buildTxHeader(schedHead, opPeriods);
+      _buildTxBody(schedBody, TX_ROWS, opPeriods);
+    }
+
+    // Show schedule block, hide unavailable panel
+    var schedBlock = document.getElementById("tax-schedule-block");
+    if (schedBlock) schedBlock.style.display = "";
+    var unavail = document.getElementById("tax-unavailable-panel");
+    if (unavail) unavail.style.display = "none";
+  }
+
+  // Phase F4: pre-Run fallback — show unavailable panel when no data.
+  function _populateTaxSchedule() {
+    var rawTs = sessionStorage.getItem("lastTaxSchedule");
+    if (rawTs) {
+      try {
+        var ts = JSON.parse(rawTs);
+        _renderTaxSchedule(ts);
+      } catch(e) {
+        // Malformed data: show unavailable panel
+        var unavail = document.getElementById("tax-unavailable-panel");
+        if (unavail) unavail.style.display = "";
+      }
+    } else {
+      // No run yet: show unavailable panel (pre-Run state)
+      var unavail2 = document.getElementById("tax-unavailable-panel");
+      if (unavail2) unavail2.style.display = "";
+    }
+  }
+
   function _populateTaxRuntimeBlock() {
     var raw = sessionStorage.getItem("lastRuntimeSummary");
     if (!raw) return;
@@ -118,12 +240,17 @@
   document.addEventListener("htmx:afterSwap", function(e) {
     if (e.target && (e.target.id === "model-output-area" || e.target.closest("#panel-tax"))) {
       _populateTaxRuntimeBlock();
+      _populateTaxSchedule();
     }
   });
   if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", _populateTaxRuntimeBlock);
+    document.addEventListener("DOMContentLoaded", function() {
+      _populateTaxRuntimeBlock();
+      _populateTaxSchedule();
+    });
   } else {
     _populateTaxRuntimeBlock();
+    _populateTaxSchedule();
   }
 })();
 </script>

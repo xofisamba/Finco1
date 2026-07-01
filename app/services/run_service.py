@@ -468,6 +468,7 @@ async def _execute_user_created_path(
             runtime_snapshot_id=runtime_snapshot_id,
             financial_statements=result.get("financial_statements"),
             debt_schedule=result.get("debt_schedule"),
+            tax_schedule=result.get("tax_schedule"),
         )
         return RunRouteOutcome(
             template_name="partials/runtime_summary.html",
@@ -587,6 +588,7 @@ async def _execute_template_seeded_path(
             runtime_snapshot_id=runtime_snapshot_id,
             financial_statements=result.get("financial_statements"),
             debt_schedule=result.get("debt_schedule"),
+            tax_schedule=result.get("tax_schedule"),
         )
         return RunRouteOutcome(
             template_name="partials/runtime_summary.html",
@@ -719,6 +721,7 @@ async def _execute_generic_path(
             runtime_snapshot_id=runtime_snapshot_id,
             financial_statements=result.get("financial_statements"),
             debt_schedule=result.get("debt_schedule"),
+            tax_schedule=result.get("tax_schedule"),
         )
         return RunRouteOutcome(
             template_name="partials/kpis.html",
@@ -770,6 +773,7 @@ def _build_sessionstorage_save_tag(
     runtime_snapshot_id: str,
     financial_statements: "dict | None" = None,
     debt_schedule: "dict | None" = None,
+    tax_schedule: "dict | None" = None,
 ) -> str:
     """Return the sessionStorage save ``<script>`` block.
 
@@ -824,10 +828,26 @@ def _build_sessionstorage_save_tag(
         # Clear stale debt schedule data when a run produces none.
         ds_script = 'sessionStorage.removeItem("lastDebtSchedule");'
 
+    # Phase F2: persist tax schedule payload to sessionStorage so
+    # sheet_tax.html can render real engine output without a
+    # separate HTTP round-trip. Data is read-only engine output from
+    # _serialize_tax_schedule(WaterfallResult).
+    ts_script = ""
+    if tax_schedule is not None:
+        ts_script = (
+            'sessionStorage.setItem("lastTaxSchedule", '
+            + json.dumps(json.dumps(tax_schedule))
+            + ');'
+        )
+    else:
+        # Clear stale tax schedule data when a run produces none.
+        ts_script = 'sessionStorage.removeItem("lastTaxSchedule");'
+
     return (
         '<script>'
         + fs_script
         + ds_script
+        + ts_script
         + 'sessionStorage.setItem("lastRuntimeSummary", ' + json.dumps(json.dumps(runtime_summary)) + ');'
         'window.applyWorkspaceStateMeta && window.applyWorkspaceStateMeta(' + json.dumps({
             "dirty": False if is_clean else True,
