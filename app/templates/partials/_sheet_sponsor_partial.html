@@ -1,13 +1,22 @@
 <!-- UX-2: Sponsor/Equity panel body (shared_runtime_block is prepended separately by OOB assembly).
 
-     Product Gap PR7 finding: every value previously shown below this
-     header (icon, title, description, and the audit-mode note quoting
-     "R99/R102") was a hardcoded literal with no Jinja variable binding to
-     `project_ctx`, `runtime_summary`, or `last_runtime_summary`. There
-     is no sponsor/waterfall runtime output wired to this panel, so it
-     is replaced with a single honest unavailable-state panel below.
-     No LP/GP economics, IRR, or MOIC values are invented or computed
-     here. -->
+     Phase G2 audit finding: WaterfallResult carries only one sponsor-level scalar:
+       - sponsor_irr (float) — computed inside waterfall_engine.py run_waterfall_v3_core()
+
+     The domain/sponsor/ module (SponsorCashflowResult, SponsorIrrResult, SponsorMoicResult,
+     SponsorCapitalAccount, etc.) contains rich per-period sponsor cashflow structures, but
+     these are NOT attached to WaterfallResult or WaterfallPeriod. They are computed separately
+     by domain/sponsor/sponsor_cashflow_runner.py and domain/sponsor/sponsor_irr_runner.py and
+     have no wiring back onto the WaterfallResult object tree.
+
+     G2 wiring is therefore NOT implemented in Stack G. The sponsor_irr scalar is already
+     exposed in the KPIs block (project_runner.py return dict["kpis"]) and in sessionStorage
+     via lastRuntimeSummary. A dedicated _serialize_sponsor_schedule() serializer would require
+     the sponsor runner to be called from project_runner.py and its result attached to the
+     return dict — that is new intermediate architecture, which is explicitly forbidden by
+     the Stack G guardrails.
+
+     The unavailable-panel is kept honest: it documents the gap rather than papering over it. -->
 <div class="panel-header">
   <div class="panel-title">Sponsor / Equity</div>
   <div class="panel-desc">Equity contribution schedule, return metrics (IRR, MoM), and sponsor waterfall.</div>
@@ -19,5 +28,10 @@
   <div class="esn-desc">
     Run-backed sponsor cash flows and investor returns will be shown
     here once this section is connected to the model engine.
+    The <code>sponsor_irr</code> scalar is already available in the
+    Runtime Summary KPI block. Per-period sponsor cashflows
+    (<code>domain/sponsor/SponsorCashflowResult</code>) are not yet
+    wired onto <code>WaterfallResult</code> — this is documented as a
+    parity gap, not papered over.
   </div>
 </div>

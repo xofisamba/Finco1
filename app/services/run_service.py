@@ -469,6 +469,7 @@ async def _execute_user_created_path(
             financial_statements=result.get("financial_statements"),
             debt_schedule=result.get("debt_schedule"),
             tax_schedule=result.get("tax_schedule"),
+            distribution_schedule=result.get("distribution_schedule"),
         )
         return RunRouteOutcome(
             template_name="partials/runtime_summary.html",
@@ -589,6 +590,7 @@ async def _execute_template_seeded_path(
             financial_statements=result.get("financial_statements"),
             debt_schedule=result.get("debt_schedule"),
             tax_schedule=result.get("tax_schedule"),
+            distribution_schedule=result.get("distribution_schedule"),
         )
         return RunRouteOutcome(
             template_name="partials/runtime_summary.html",
@@ -722,6 +724,7 @@ async def _execute_generic_path(
             financial_statements=result.get("financial_statements"),
             debt_schedule=result.get("debt_schedule"),
             tax_schedule=result.get("tax_schedule"),
+            distribution_schedule=result.get("distribution_schedule"),
         )
         return RunRouteOutcome(
             template_name="partials/kpis.html",
@@ -774,6 +777,7 @@ def _build_sessionstorage_save_tag(
     financial_statements: "dict | None" = None,
     debt_schedule: "dict | None" = None,
     tax_schedule: "dict | None" = None,
+    distribution_schedule: "dict | None" = None,
 ) -> str:
     """Return the sessionStorage save ``<script>`` block.
 
@@ -843,11 +847,27 @@ def _build_sessionstorage_save_tag(
         # Clear stale tax schedule data when a run produces none.
         ts_script = 'sessionStorage.removeItem("lastTaxSchedule");'
 
+    # Phase G1: persist distribution schedule payload to sessionStorage so
+    # _sheet_distributions_partial.html can render real engine output without
+    # a separate HTTP round-trip. Data is read-only engine output from
+    # _serialize_distribution_schedule(WaterfallResult).
+    dist_script = ""
+    if distribution_schedule is not None:
+        dist_script = (
+            'sessionStorage.setItem("lastDistributionSchedule", '
+            + json.dumps(json.dumps(distribution_schedule))
+            + ');'
+        )
+    else:
+        # Clear stale distribution schedule data when a run produces none.
+        dist_script = 'sessionStorage.removeItem("lastDistributionSchedule");'
+
     return (
         '<script>'
         + fs_script
         + ds_script
         + ts_script
+        + dist_script
         + 'sessionStorage.setItem("lastRuntimeSummary", ' + json.dumps(json.dumps(runtime_summary)) + ');'
         'window.applyWorkspaceStateMeta && window.applyWorkspaceStateMeta(' + json.dumps({
             "dirty": False if is_clean else True,

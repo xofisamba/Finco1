@@ -208,6 +208,16 @@ def run_project(project_type: str, scenario: str, period_view: str = "Semiannual
         # Tax schedule serialization failure must never break the run path.
         tax_schedule_payload = None
 
+    # Phase G1: assemble distribution schedule from the already-computed waterfall result.
+    # _serialize_distribution_schedule() reads per-period fields already computed by the
+    # waterfall engine. No new financial calculations are performed here.
+    distribution_schedule_payload = None
+    try:
+        distribution_schedule_payload = _serialize_distribution_schedule(result)
+    except Exception:
+        # Distribution schedule serialization failure must never break the run path.
+        distribution_schedule_payload = None
+
     return {
         "project_type": project_type,
         "scenario": scenario,
@@ -217,6 +227,7 @@ def run_project(project_type: str, scenario: str, period_view: str = "Semiannual
         "messages": getattr(demo, 'messages', []),
         "debt_schedule": debt_schedule_payload,
         "tax_schedule": tax_schedule_payload,
+        "distribution_schedule": distribution_schedule_payload,
         "kpis": {
             "total_capex_keur": getattr(getattr(demo, "project_inputs", None), "capex", None).total_capex if getattr(getattr(demo, "project_inputs", None), "capex", None) is not None else None,
             "total_revenue_keur": result.total_revenue_keur,
@@ -485,6 +496,69 @@ def _serialize_tax_schedule(result) -> dict:
         "periods": periods_out,
         "summary": {
             "total_tax_keur": _f(getattr(result, "total_tax_keur", None)),
+        },
+        "source": "WaterfallResult.periods (per-period engine output)",
+    }
+
+
+def _serialize_distribution_schedule(result) -> dict:
+    """Serialize the distribution schedule from WaterfallResult to a JSON-safe dict.
+
+    Phase G1: read-only serialization of already-computed engine output.
+    No financial calculations are performed here — only reads fields already
+    set by the waterfall engine on each WaterfallPeriod.
+
+    Structure returned:
+      {
+        "periods": [...],
+        "summary": {...},
+        "source": "WaterfallResult.periods (per-period engine output)",
+      }
+    """
+    def _fmt_date(d):
+        return d.isoformat() if d else None
+
+    def _f(v):
+        """Round to 2dp for display; handle non-finite values."""
+        try:
+            f = float(v)
+            if f != f or abs(f) == float("inf"):
+                return None
+            return round(f, 2)
+        except (TypeError, ValueError):
+            return None
+
+    periods_out = []
+    for p in getattr(result, "periods", []):
+        periods_out.append({
+            "period": getattr(p, "period", None),
+            "date": _fmt_date(getattr(p, "date", None)),
+            "year_index": getattr(p, "year_index", None),
+            "period_in_year": getattr(p, "period_in_year", None),
+            "is_operation": bool(getattr(p, "is_operation", False)),
+            "distribution_keur": _f(getattr(p, "distribution_keur", None)),
+            "cash_sweep_keur": _f(getattr(p, "cash_sweep_keur", None)),
+            "cum_distribution_keur": _f(getattr(p, "cum_distribution_keur", None)),
+            "lockup_active": bool(getattr(p, "lockup_active", False)),
+            "cf_after_reserves_keur": _f(getattr(p, "cf_after_reserves_keur", None)),
+            "dsra_balance_keur": _f(getattr(p, "dsra_balance_keur", None)),
+            "dsra_contribution_keur": _f(getattr(p, "dsra_contribution_keur", None)),
+            "mra_balance_keur": _f(getattr(p, "mra_balance_keur", None)),
+            "mra_contribution_keur": _f(getattr(p, "mra_contribution_keur", None)),
+            "legacy_distribution_keur": _f(getattr(p, "legacy_distribution_keur", None)),
+            "da_paid_distribution_keur": _f(getattr(p, "da_paid_distribution_keur", None)),
+            "distribution_source": getattr(p, "distribution_source", "") or "",
+            "distribution_wiring_delta_keur": _f(getattr(p, "distribution_wiring_delta_keur", None)),
+        })
+
+    return {
+        "periods": periods_out,
+        "summary": {
+            "total_distribution_keur": _f(getattr(result, "total_distribution_keur", None)),
+            "legacy_distribution_keur": _f(getattr(result, "legacy_distribution_keur", None)),
+            "da_paid_distribution_keur": _f(getattr(result, "da_paid_distribution_keur", None)),
+            "distribution_source": getattr(result, "distribution_source", "") or "",
+            "distribution_wiring_delta_keur": _f(getattr(result, "distribution_wiring_delta_keur", None)),
         },
         "source": "WaterfallResult.periods (per-period engine output)",
     }
