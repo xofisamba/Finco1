@@ -470,6 +470,7 @@ async def _execute_user_created_path(
             debt_schedule=result.get("debt_schedule"),
             tax_schedule=result.get("tax_schedule"),
             distribution_schedule=result.get("distribution_schedule"),
+            sponsor_schedule=result.get("sponsor_schedule"),
         )
         return RunRouteOutcome(
             template_name="partials/runtime_summary.html",
@@ -591,6 +592,7 @@ async def _execute_template_seeded_path(
             debt_schedule=result.get("debt_schedule"),
             tax_schedule=result.get("tax_schedule"),
             distribution_schedule=result.get("distribution_schedule"),
+            sponsor_schedule=result.get("sponsor_schedule"),
         )
         return RunRouteOutcome(
             template_name="partials/runtime_summary.html",
@@ -725,6 +727,7 @@ async def _execute_generic_path(
             debt_schedule=result.get("debt_schedule"),
             tax_schedule=result.get("tax_schedule"),
             distribution_schedule=result.get("distribution_schedule"),
+            sponsor_schedule=result.get("sponsor_schedule"),
         )
         return RunRouteOutcome(
             template_name="partials/kpis.html",
@@ -778,6 +781,7 @@ def _build_sessionstorage_save_tag(
     debt_schedule: "dict | None" = None,
     tax_schedule: "dict | None" = None,
     distribution_schedule: "dict | None" = None,
+    sponsor_schedule: "dict | None" = None,
 ) -> str:
     """Return the sessionStorage save ``<script>`` block.
 
@@ -862,12 +866,28 @@ def _build_sessionstorage_save_tag(
         # Clear stale distribution schedule data when a run produces none.
         dist_script = 'sessionStorage.removeItem("lastDistributionSchedule");'
 
+    # Phase H3: persist sponsor schedule payload to sessionStorage so
+    # _sheet_sponsor_partial.html can render real engine output without a
+    # separate HTTP round-trip. Data is read-only engine output from
+    # _serialize_sponsor_schedule(SponsorCashflowResult, SponsorIrrResult, SponsorMoicResult).
+    sponsor_script = ""
+    if sponsor_schedule is not None:
+        sponsor_script = (
+            'sessionStorage.setItem("lastSponsorSchedule", '
+            + json.dumps(json.dumps(sponsor_schedule))
+            + ');'
+        )
+    else:
+        # Clear stale sponsor schedule data when a run produces none.
+        sponsor_script = 'sessionStorage.removeItem("lastSponsorSchedule");'
+
     return (
         '<script>'
         + fs_script
         + ds_script
         + ts_script
         + dist_script
+        + sponsor_script
         + 'sessionStorage.setItem("lastRuntimeSummary", ' + json.dumps(json.dumps(runtime_summary)) + ');'
         'window.applyWorkspaceStateMeta && window.applyWorkspaceStateMeta(' + json.dumps({
             "dirty": False if is_clean else True,
