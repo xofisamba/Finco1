@@ -188,6 +188,16 @@ def run_project(project_type: str, scenario: str, period_view: str = "Semiannual
         # FS assembly failure must never break the run path; degrade gracefully.
         financial_statements_payload = None
 
+    # Phase E2: assemble senior debt schedule from the already-computed waterfall result.
+    # _serialize_debt_schedule() reads per-period fields already computed by the waterfall
+    # engine. No new financial calculations are performed here.
+    debt_schedule_payload = None
+    try:
+        debt_schedule_payload = _serialize_debt_schedule(result)
+    except Exception:
+        # Debt schedule serialization failure must never break the run path.
+        debt_schedule_payload = None
+
     return {
         "project_type": project_type,
         "scenario": scenario,
@@ -195,6 +205,7 @@ def run_project(project_type: str, scenario: str, period_view: str = "Semiannual
         "integration_status": getattr(demo, 'integration_status', 'full'),
         "integration_note": getattr(demo, 'integration_note', None),
         "messages": getattr(demo, 'messages', []),
+        "debt_schedule": debt_schedule_payload,
         "kpis": {
             "total_capex_keur": getattr(getattr(demo, "project_inputs", None), "capex", None).total_capex if getattr(getattr(demo, "project_inputs", None), "capex", None) is not None else None,
             "total_revenue_keur": result.total_revenue_keur,
@@ -307,4 +318,81 @@ def _serialize_financial_statements(fs) -> dict:
         "balance_sheet": {"periods": bs_periods},
         "pf_cash_waterfall": {"periods": pf_periods},
         "source": "assemble_financial_statements(WaterfallResult)",
+    }
+
+
+def _serialize_debt_schedule(result) -> dict:
+    """Serialize the senior debt schedule from WaterfallResult to a JSON-safe dict.
+
+    Phase E2/E5: read-only serialization of already-computed engine output.
+    No financial calculations are performed here — only reads fields already
+    set by the waterfall engine on each WaterfallPeriod.
+
+    Structure returned:
+      {
+        "periods": [
+          {
+            "period": int,
+            "date": str (ISO),
+            "year_index": int,
+            "period_in_year": int,
+            "is_operation": bool,
+            "senior_balance_keur": float | None,
+            "senior_principal_keur": float | None,
+            "senior_interest_keur": float | None,
+            "senior_ds_keur": float | None,
+            "dscr": float | None,
+            "dsra_balance_keur": float | None,
+            "dsra_contribution_keur": float | None,
+          },
+          ...
+        ],
+        "summary": {
+          "total_senior_ds_keur": float | None,
+          "actual_min_dscr": float | None,
+          "actual_avg_dscr": float | None,
+          "target_dscr": float | None,
+        },
+        "source": "WaterfallResult.periods (per-period engine output)",
+      }
+    """
+    def _fmt_date(d):
+        return d.isoformat() if d else None
+
+    def _f(v):
+        """Round to 2dp for display; handle non-finite values."""
+        try:
+            f = float(v)
+            if f != f or abs(f) == float("inf"):
+                return None
+            return round(f, 2)
+        except (TypeError, ValueError):
+            return None
+
+    periods_out = []
+    for p in getattr(result, "periods", []):
+        periods_out.append({
+            "period": getattr(p, "period", None),
+            "date": _fmt_date(getattr(p, "date", None)),
+            "year_index": getattr(p, "year_index", None),
+            "period_in_year": getattr(p, "period_in_year", None),
+            "is_operation": bool(getattr(p, "is_operation", False)),
+            "senior_balance_keur": _f(getattr(p, "senior_balance_keur", None)),
+            "senior_principal_keur": _f(getattr(p, "senior_principal_keur", None)),
+            "senior_interest_keur": _f(getattr(p, "senior_interest_keur", None)),
+            "senior_ds_keur": _f(getattr(p, "senior_ds_keur", None)),
+            "dscr": _f(getattr(p, "dscr", None)),
+            "dsra_balance_keur": _f(getattr(p, "dsra_balance_keur", None)),
+            "dsra_contribution_keur": _f(getattr(p, "dsra_contribution_keur", None)),
+        })
+
+    return {
+        "periods": periods_out,
+        "summary": {
+            "total_senior_ds_keur": _f(getattr(result, "total_senior_ds_keur", None)),
+            "actual_min_dscr": _f(getattr(result, "actual_min_dscr", None)),
+            "actual_avg_dscr": _f(getattr(result, "actual_avg_dscr", None)),
+            "target_dscr": _f(getattr(result, "target_dscr", None)),
+        },
+        "source": "WaterfallResult.periods (per-period engine output)",
     }

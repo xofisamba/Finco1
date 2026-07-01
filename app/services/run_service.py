@@ -467,6 +467,7 @@ async def _execute_user_created_path(
             workspace_state=workspace_state,
             runtime_snapshot_id=runtime_snapshot_id,
             financial_statements=result.get("financial_statements"),
+            debt_schedule=result.get("debt_schedule"),
         )
         return RunRouteOutcome(
             template_name="partials/runtime_summary.html",
@@ -585,6 +586,7 @@ async def _execute_template_seeded_path(
             workspace_state=workspace_state,
             runtime_snapshot_id=runtime_snapshot_id,
             financial_statements=result.get("financial_statements"),
+            debt_schedule=result.get("debt_schedule"),
         )
         return RunRouteOutcome(
             template_name="partials/runtime_summary.html",
@@ -716,6 +718,7 @@ async def _execute_generic_path(
             workspace_state=workspace_state,
             runtime_snapshot_id=runtime_snapshot_id,
             financial_statements=result.get("financial_statements"),
+            debt_schedule=result.get("debt_schedule"),
         )
         return RunRouteOutcome(
             template_name="partials/kpis.html",
@@ -766,6 +769,7 @@ def _build_sessionstorage_save_tag(
     workspace_state,
     runtime_snapshot_id: str,
     financial_statements: "dict | None" = None,
+    debt_schedule: "dict | None" = None,
 ) -> str:
     """Return the sessionStorage save ``<script>`` block.
 
@@ -805,9 +809,25 @@ def _build_sessionstorage_save_tag(
         # Clear stale FS data when a run produces no FS (degrade gracefully).
         fs_script = 'sessionStorage.removeItem("lastFinancialStatements");'
 
+    # Phase E2: persist debt schedule payload to sessionStorage so
+    # sheet_senior_debt.html can render real engine output without a
+    # separate HTTP round-trip. Data is read-only engine output from
+    # _serialize_debt_schedule(WaterfallResult).
+    ds_script = ""
+    if debt_schedule is not None:
+        ds_script = (
+            'sessionStorage.setItem("lastDebtSchedule", '
+            + json.dumps(json.dumps(debt_schedule))
+            + ');'
+        )
+    else:
+        # Clear stale debt schedule data when a run produces none.
+        ds_script = 'sessionStorage.removeItem("lastDebtSchedule");'
+
     return (
         '<script>'
         + fs_script
+        + ds_script
         + 'sessionStorage.setItem("lastRuntimeSummary", ' + json.dumps(json.dumps(runtime_summary)) + ');'
         'window.applyWorkspaceStateMeta && window.applyWorkspaceStateMeta(' + json.dumps({
             "dirty": False if is_clean else True,
