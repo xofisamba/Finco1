@@ -77,10 +77,13 @@ PARITY_CORE_FILES: dict[str, str] = {
         "d8ab56fdb5c01847be605f68a3710c14ddf91f097db86a107e2073eebff21a63"
     ),
     "app/project_factories.py": (
-        # Refreshed for FINAL-PILOT-CLEANUP-A: current hash reflects the
-        # already-merged, approved G1H change (afd340b — Generic Solar/Wind
-        # equity/SHL funding fix to match 75% gearing complement).
-        "117895c1fd5563c641f5c40385f4250ba8ba185721ad06b381bb89dc2bea0eac"
+        # Refreshed for Excel Parity Stack D — Phase D0 (Oborovo SHL calibration):
+        # shl_amount_keur corrected from 14,621.0 → 13,547.2 kEUR in
+        # create_default_oborovo() to close the ~1,074 kEUR gap vs
+        # oborovo_baseline.json. Factory input value only — no financial
+        # formulas, engine logic, or domain modules changed.
+        # Previous hash: 117895c1fd5563c641f5c40385f4250ba8ba185721ad06b381bb89dc2bea0eac
+        "f147d7e350ce21f0c5d1e9f788488e92e6013c8fd92909418d66112e9ca4506c"
     ),
     "reports/phase7_tuho_senior_debt_sizing_extraction.csv": (
         "80e79977f039310158b084e2613ae17251a86916b970d4fda1985467bbde3442"
