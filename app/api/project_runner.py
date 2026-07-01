@@ -198,6 +198,16 @@ def run_project(project_type: str, scenario: str, period_view: str = "Semiannual
         # Debt schedule serialization failure must never break the run path.
         debt_schedule_payload = None
 
+    # Phase F2: assemble tax schedule from the already-computed waterfall result.
+    # _serialize_tax_schedule() reads per-period fields already computed by the waterfall
+    # engine. No new financial calculations are performed here.
+    tax_schedule_payload = None
+    try:
+        tax_schedule_payload = _serialize_tax_schedule(result)
+    except Exception:
+        # Tax schedule serialization failure must never break the run path.
+        tax_schedule_payload = None
+
     return {
         "project_type": project_type,
         "scenario": scenario,
@@ -206,6 +216,7 @@ def run_project(project_type: str, scenario: str, period_view: str = "Semiannual
         "integration_note": getattr(demo, 'integration_note', None),
         "messages": getattr(demo, 'messages', []),
         "debt_schedule": debt_schedule_payload,
+        "tax_schedule": tax_schedule_payload,
         "kpis": {
             "total_capex_keur": getattr(getattr(demo, "project_inputs", None), "capex", None).total_capex if getattr(getattr(demo, "project_inputs", None), "capex", None) is not None else None,
             "total_revenue_keur": result.total_revenue_keur,
@@ -393,6 +404,87 @@ def _serialize_debt_schedule(result) -> dict:
             "actual_min_dscr": _f(getattr(result, "actual_min_dscr", None)),
             "actual_avg_dscr": _f(getattr(result, "actual_avg_dscr", None)),
             "target_dscr": _f(getattr(result, "target_dscr", None)),
+        },
+        "source": "WaterfallResult.periods (per-period engine output)",
+    }
+
+
+def _serialize_tax_schedule(result) -> dict:
+    """Serialize the tax schedule from WaterfallResult to a JSON-safe dict.
+
+    Phase F2: read-only serialization of already-computed engine output.
+    No financial calculations are performed here — only reads fields already
+    set by the waterfall engine on each WaterfallPeriod.
+
+    Structure returned:
+      {
+        "periods": [
+          {
+            "period": int,
+            "date": str (ISO),
+            "year_index": int,
+            "period_in_year": int,
+            "is_operation": bool,
+            "taxable_profit_keur": float | None,
+            "tax_keur": float | None,
+            "cf_after_tax_keur": float | None,
+            "corporate_tax_cash_keur": float | None,
+            "tax_depreciation_audit_keur": float | None,
+            "taxable_income_before_losses_audit_keur": float | None,
+            "tax_loss_opening_audit_keur": float | None,
+            "tax_loss_used_audit_keur": float | None,
+            "tax_loss_closing_audit_keur": float | None,
+            "taxable_profit_after_losses_audit_keur": float | None,
+            "cit_accrual_audit_keur": float | None,
+            "cash_tax_current_period_audit_keur": float | None,
+          },
+          ...
+        ],
+        "summary": {
+          "total_tax_keur": float | None,
+        },
+        "source": "WaterfallResult.periods (per-period engine output)",
+      }
+    """
+    def _fmt_date(d):
+        return d.isoformat() if d else None
+
+    def _f(v):
+        """Round to 2dp for display; handle non-finite values."""
+        try:
+            f = float(v)
+            if f != f or abs(f) == float("inf"):
+                return None
+            return round(f, 2)
+        except (TypeError, ValueError):
+            return None
+
+    periods_out = []
+    for p in getattr(result, "periods", []):
+        periods_out.append({
+            "period": getattr(p, "period", None),
+            "date": _fmt_date(getattr(p, "date", None)),
+            "year_index": getattr(p, "year_index", None),
+            "period_in_year": getattr(p, "period_in_year", None),
+            "is_operation": bool(getattr(p, "is_operation", False)),
+            "taxable_profit_keur": _f(getattr(p, "taxable_profit_keur", None)),
+            "tax_keur": _f(getattr(p, "tax_keur", None)),
+            "cf_after_tax_keur": _f(getattr(p, "cf_after_tax_keur", None)),
+            "corporate_tax_cash_keur": _f(getattr(p, "corporate_tax_cash_keur", None)),
+            "tax_depreciation_audit_keur": _f(getattr(p, "tax_depreciation_audit_keur", None)),
+            "taxable_income_before_losses_audit_keur": _f(getattr(p, "taxable_income_before_losses_audit_keur", None)),
+            "tax_loss_opening_audit_keur": _f(getattr(p, "tax_loss_opening_audit_keur", None)),
+            "tax_loss_used_audit_keur": _f(getattr(p, "tax_loss_used_audit_keur", None)),
+            "tax_loss_closing_audit_keur": _f(getattr(p, "tax_loss_closing_audit_keur", None)),
+            "taxable_profit_after_losses_audit_keur": _f(getattr(p, "taxable_profit_after_losses_audit_keur", None)),
+            "cit_accrual_audit_keur": _f(getattr(p, "cit_accrual_audit_keur", None)),
+            "cash_tax_current_period_audit_keur": _f(getattr(p, "cash_tax_current_period_audit_keur", None)),
+        })
+
+    return {
+        "periods": periods_out,
+        "summary": {
+            "total_tax_keur": _f(getattr(result, "total_tax_keur", None)),
         },
         "source": "WaterfallResult.periods (per-period engine output)",
     }
