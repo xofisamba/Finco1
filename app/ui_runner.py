@@ -11,32 +11,8 @@ PARTIAL_NOTE = "BESS/hybrid waterfall integration is in progress. Revenue-only s
 PORTFOLIO_NOTE = "Portfolio IRR and pooling are experimental."
 
 PROJECT_CONFIGS = {
-    "Solar": {
-        "factory": "create_default_solar_project",
-        "status": "full",
-        "note": None,
-    },
-    "Wind": {
-        "factory": "create_default_wind_project",
-        "status": "full",
-        "note": None,
-    },
-    "BESS": {
-        "factory": "create_default_bess_project",
-        "status": "partial",
-        "note": PARTIAL_NOTE,
-    },
-    "Solar+BESS": {
-        "factory": "create_default_solar_bess_project",
-        "status": "partial",
-        "note": PARTIAL_NOTE,
-    },
-    "Wind+BESS": {
-        "factory": "create_default_wind_bess_project",
-        "status": "partial",
-        "note": PARTIAL_NOTE,
-    },
-    # Phase 9.5 — named project bindings
+    # Stack J: catalogue reduced to four registered projects only.
+    # BESS/hybrid entries removed from UI catalogue (factories still exist for tests).
     "TUHO": {
         "factory": "create_default_tuho_wind1",
         "status": "full",
@@ -44,6 +20,16 @@ PROJECT_CONFIGS = {
     },
     "Oborovo": {
         "factory": "create_default_oborovo",
+        "status": "full",
+        "note": None,
+    },
+    "Test 1": {
+        "factory": "create_default_solar_project",
+        "status": "full",
+        "note": None,
+    },
+    "Test 2": {
+        "factory": "create_default_wind_project",
         "status": "full",
         "note": None,
     },
@@ -130,9 +116,6 @@ def run_demo_project(project_type: str, scenario: str = "Base",
     from app.project_factories import (
         create_default_solar_project,
         create_default_wind_project,
-        create_default_bess_project,
-        create_default_solar_bess_project,
-        create_default_wind_bess_project,
         create_default_tuho_wind1,
         create_default_oborovo,
     )
@@ -140,15 +123,17 @@ def run_demo_project(project_type: str, scenario: str = "Base",
     from domain.portfolio.inputs import PortfolioInputs
     from domain.inputs import FinancingParams
 
+    # Stack J: UI catalogue reduced to four registered projects (PROJECT_CONFIGS).
+    # "Solar" and "Wind" aliases kept here for programmatic backward-compat
+    # (engine tests call run_demo_project("Solar"/"Wind") directly).
     FACTORY_MAP = {
-        "Solar": create_default_solar_project,
-        "Wind": create_default_wind_project,
-        "BESS": create_default_bess_project,
-        "Solar+BESS": create_default_solar_bess_project,
-        "Wind+BESS": create_default_wind_bess_project,
-        # Phase 9.5 — named project bindings
         "TUHO": create_default_tuho_wind1,
         "Oborovo": create_default_oborovo,
+        "Test 1": create_default_solar_project,
+        "Test 2": create_default_wind_project,
+        # Backward-compat aliases for test code — not shown in UI (not in PROJECT_CONFIGS)
+        "Solar": create_default_solar_project,
+        "Wind": create_default_wind_project,
     }
 
     result = DemoResult(project_type=project_type)

@@ -28,18 +28,18 @@ class TestProjectFactories:
         assert p.financing.shl_idc_keur > 0
 
     def test_create_default_solar_project(self):
-        """Generic solar factory produces valid inputs."""
+        """Test 1 — Solar factory produces valid inputs."""
         p = create_default_solar_project()
-        assert p.info.name == "Generic Solar PV"
+        assert p.info.name == "Test 1 — Solar"
         assert p.technical.capacity_mw == 50.0
         assert p.technical.operating_hours_p50 == 1500.0
         assert p.technical.bess_enabled is False
 
     def test_create_default_wind_project(self):
-        """Generic wind factory produces valid inputs."""
+        """Test 2 — Wind factory produces valid inputs."""
         p = create_default_wind_project()
-        assert p.info.name == "Generic Wind Farm"
-        assert p.technical.capacity_mw == 50.0
+        assert p.info.name == "Test 2 — Wind"
+        assert p.technical.capacity_mw == 40.0
         assert p.technical.operating_hours_p50 == 3000.0
         assert p.technical.pv_degradation == 0.0
 

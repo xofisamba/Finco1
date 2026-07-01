@@ -4,7 +4,7 @@ Factories here contain hard-coded project values (Oborovo, TUHO) that were
 extracted from domain/inputs.py to keep the domain layer generic.
 
 For generic industry engine defaults, see create_default_solar_project()
-and create_default_wind_project().
+(Test 1 — Solar) and create_default_wind_project() (Test 2 — Wind).
 """
 from __future__ import annotations
 
@@ -459,10 +459,14 @@ def create_default_tuho_wind1() -> ProjectInputs:
 
 def create_default_solar_project(
     capacity_mw: float = 50.0,
-    horizon_years: int = 25,
+    horizon_years: int = 20,
     construction_months: int = 12,
 ) -> ProjectInputs:
-    """Generic solar project — round numbers for tests/examples, not Excel calibration."""
+    """Test 1 — Solar: fictional utility-scale solar project for demos and tests.
+
+    50 MW solar PV, EUR 50/MWh PPA, 20-year horizon. Entirely fictional —
+    no real company, no real project, no Excel calibration data.
+    """
     z = CapexItem(name="Unused", amount_keur=0.0, asset_class=AssetClass.CIVIL_GRID)
     modules = CapexItem(name="Solar Modules", amount_keur=20_000.0, y0_share=0.0,
                         spending_profile=(0.5, 0.5), asset_class=AssetClass.SOLAR_PANELS)
@@ -491,7 +495,7 @@ def create_default_solar_project(
         OpexItem(name="Maintenance", y1_amount_keur=80.0, annual_inflation=0.02),
         OpexItem(name="Lease & Tax", y1_amount_keur=50.0, annual_inflation=0.02),
     ]
-    info = ProjectInfo(name="Generic Solar PV", company="SolarCo", code="SOLAR-001",
+    info = ProjectInfo(name="Test 1 — Solar", company="Fictional Solar SpA", code="TEST-SOLAR-1",
         country_iso="DE", financial_close=date(2030, 1, 1),
         construction_months=construction_months, cod_date=date(2031, 1, 1),
         horizon_years=horizon_years, period_frequency=PeriodFrequency.SEMESTRIAL)
@@ -508,7 +512,7 @@ def create_default_solar_project(
     # G1C: the G1A reference workbook has no PV-revenue-based balancing
     # deduction (only the flat EUR/MWh row, zero for Solar), so the domain
     # default balancing_cost_pv=0.025 must be zeroed here to match the spec.
-    revenue = RevenueParams(ppa_base_tariff=55.0, ppa_term_years=10, ppa_index=0.02,
+    revenue = RevenueParams(ppa_base_tariff=50.0, ppa_term_years=10, ppa_index=0.02,
         market_scenario="Central", market_prices_curve=solar_market_curve,
         market_inflation=0.02, co2_enabled=False, balancing_cost_pv=0.0)
     # G1H: share_capital_keur + shl_amount_keur must fund the full
@@ -530,11 +534,15 @@ def create_default_solar_project(
 
 
 def create_default_wind_project(
-    capacity_mw: float = 50.0,
+    capacity_mw: float = 40.0,
     horizon_years: int = 25,
     construction_months: int = 18,
 ) -> ProjectInputs:
-    """Generic wind project — round numbers for tests/examples, not Excel calibration."""
+    """Test 2 — Wind: fictional utility-scale wind project for demos and tests.
+
+    40 MW onshore wind, EUR 60/MWh PPA, 25-year horizon. Entirely fictional —
+    no real company, no real project, no Excel calibration data.
+    """
     z = CapexItem(name="Unused", amount_keur=0.0, asset_class=AssetClass.CIVIL_GRID)
     turbines = CapexItem(name="Wind Turbines", amount_keur=30_000.0, y0_share=0.4,
                          spending_profile=(0.6,), asset_class=AssetClass.WIND_TURBINES)
@@ -561,7 +569,7 @@ def create_default_wind_project(
         OpexItem(name="Maintenance", y1_amount_keur=120.0, annual_inflation=0.02),
         OpexItem(name="Lease & Tax", y1_amount_keur=80.0, annual_inflation=0.02),
     ]
-    info = ProjectInfo(name="Generic Wind Farm", company="WindCo", code="WIND-001",
+    info = ProjectInfo(name="Test 2 — Wind", company="Fictional Wind GmbH", code="TEST-WIND-1",
         country_iso="DE", financial_close=date(2030, 1, 1),
         construction_months=construction_months, cod_date=date(2031, 7, 1),
         horizon_years=horizon_years, period_frequency=PeriodFrequency.SEMESTRIAL)
@@ -582,7 +590,7 @@ def create_default_wind_project(
     revenue = RevenueParams(ppa_base_tariff=60.0, ppa_term_years=12, ppa_index=0.02,
         market_scenario="Central", market_prices_curve=wind_market_curve,
         market_inflation=0.02, balancing_cost_wind_eur_mwh=8.0,
-        co2_enabled=True, co2_price_eur=5.0, balancing_cost_pv=0.0)
+        co2_enabled=False, co2_price_eur=0.0, balancing_cost_pv=0.0)
     # G1H: share_capital_keur + shl_amount_keur must fund the full
     # non-senior-debt share implied by gearing_ratio=0.75, i.e.
     # 43,000 kEUR total_capex * 0.25 = 10,750 kEUR. Previously only
@@ -817,10 +825,14 @@ def create_default_wind_bess_project(
 
 
 __all__ = [
+    # Golden Excel parity projects — do not modify
     "create_default_oborovo",
     "create_default_tuho_wind1",
-    "create_default_solar_project",
-    "create_default_wind_project",
+    # Demo/test projects (Test 1 and Test 2)
+    "create_default_solar_project",  # Test 1 — Solar
+    "create_default_wind_project",   # Test 2 — Wind
+    # Legacy factories — kept for test backward-compatibility only
+    # Not registered in the UI catalogue (removed from PROJECT_CONFIGS in Stack J)
     "create_default_bess_project",
     "create_default_solar_bess_project",
     "create_default_wind_bess_project",

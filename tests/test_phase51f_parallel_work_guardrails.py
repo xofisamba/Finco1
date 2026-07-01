@@ -77,13 +77,13 @@ PARITY_CORE_FILES: dict[str, str] = {
         "d8ab56fdb5c01847be605f68a3710c14ddf91f097db86a107e2073eebff21a63"
     ),
     "app/project_factories.py": (
-        # Refreshed for Excel Parity Stack D — Phase D0 (Oborovo SHL calibration):
-        # shl_amount_keur corrected from 14,621.0 → 13,547.2 kEUR in
-        # create_default_oborovo() to close the ~1,074 kEUR gap vs
-        # oborovo_baseline.json. Factory input value only — no financial
-        # formulas, engine logic, or domain modules changed.
-        # Previous hash: 117895c1fd5563c641f5c40385f4250ba8ba185721ad06b381bb89dc2bea0eac
-        "f147d7e350ce21f0c5d1e9f788488e92e6013c8fd92909418d66112e9ca4506c"
+        # Stack J: Demo project catalogue cleanup.
+        # create_default_solar_project renamed to "Test 1 — Solar" (TEST-SOLAR-1, 50 MW, 20yr).
+        # create_default_wind_project renamed to "Test 2 — Wind" (TEST-WIND-1, 40 MW, 25yr).
+        # BESS/hybrid factories retained for test backward-compatibility but removed from UI catalogue.
+        # TUHO and Oborovo factory functions are UNCHANGED — not a single value was modified.
+        # Previous hash (Stack D): f147d7e350ce21f0c5d1e9f788488e92e6013c8fd92909418d66112e9ca4506c
+        "379bca772013891e0c9018d14cba2cfa0df6c30b9b076dfde6c39ea35a927c60"
     ),
     "reports/phase7_tuho_senior_debt_sizing_extraction.csv": (
         "80e79977f039310158b084e2613ae17251a86916b970d4fda1985467bbde3442"
