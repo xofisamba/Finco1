@@ -218,6 +218,20 @@ def run_project(project_type: str, scenario: str, period_view: str = "Semiannual
         # Distribution schedule serialization failure must never break the run path.
         distribution_schedule_payload = None
 
+    # Phase H2: call the Sponsor engine AFTER the waterfall completes.
+    # project_runner.py calls the Sponsor engine's public interface — standard dependency
+    # direction (runner calls engine). Neither engine is modified. No circular imports.
+    # _serialize_sponsor_schedule() reads from SponsorCashflowResult / SponsorIrrResult /
+    # SponsorMoicResult — no new sponsor economics are computed here.
+    sponsor_schedule_payload = None
+    try:
+        sponsor_result = _run_sponsor_engine(result, demo.project_inputs, project_type)
+        if sponsor_result is not None:
+            sponsor_schedule_payload = _serialize_sponsor_schedule(*sponsor_result)
+    except Exception:
+        # Sponsor engine failure must never break the run path; degrade gracefully.
+        sponsor_schedule_payload = None
+
     return {
         "project_type": project_type,
         "scenario": scenario,
@@ -242,6 +256,7 @@ def run_project(project_type: str, scenario: str, period_view: str = "Semiannual
         "dualrun_validation": getattr(result, '_dualrun_validation', None),
         "derivation_evidence": _build_runtime_derivation_evidence(result, demo.project_inputs),
         "financial_statements": financial_statements_payload,
+        "sponsor_schedule": sponsor_schedule_payload,
         "tables": {
             "waterfall": wf.to_dict(orient="records"),
             "revenue": rev.to_dict(orient="records"),
@@ -561,4 +576,181 @@ def _serialize_distribution_schedule(result) -> dict:
             "distribution_wiring_delta_keur": _f(getattr(result, "distribution_wiring_delta_keur", None)),
         },
         "source": "WaterfallResult.periods (per-period engine output)",
+    }
+
+
+# ── Phase H2: Sponsor engine bridge ──────────────────────────────────────────
+
+# Capital structure constants per project type.
+# These mirror the constants in app/sponsor_project_adapter.py.
+_SPONSOR_CAPITAL_STRUCTURES = {
+    "TUHO": {
+        "lp_commitment_keur": 400.0,
+        "gp_commitment_keur": 100.0,
+        "ownership": {"LP-1": 0.80, "GP-1": 0.20},
+        "hurdle_rate_pa": 0.08,
+        "gp_promote_share": 0.20,
+        "compounding_convention": "SEMIANNUAL",
+    },
+    "Oborovo": {
+        "lp_commitment_keur": 400.0,
+        "gp_commitment_keur": 100.0,
+        "ownership": {"LP-1": 0.80, "GP-1": 0.20},
+        "hurdle_rate_pa": 0.08,
+        "gp_promote_share": 0.20,
+        "compounding_convention": "SEMIANNUAL",
+    },
+}
+
+
+def _run_sponsor_engine(waterfall_result, project_inputs, project_type: str):
+    """Call the Sponsor engine after the waterfall completes.
+
+    Phase H2: This is a thin bridge that calls the Sponsor engine's public interface
+    from project_runner. No engine internals are modified. No circular imports.
+    Only wired for projects with a known capital structure (TUHO, Oborovo).
+
+    Returns (cashflow_result, irr_result, moic_result) tuple, or None if not wired.
+    """
+    cap_struct = _SPONSOR_CAPITAL_STRUCTURES.get(project_type)
+    if cap_struct is None:
+        return None
+
+    from app.sponsor_runner import SponsorRunConfig, run_sponsor_waterfall
+    from domain.sponsor.sponsor_cashflow_runner import (
+        SponsorCashflowRunnerInputs,
+        run_sponsor_cashflows,
+    )
+    from domain.sponsor.sponsor_irr_runner import (
+        SponsorIrrRunnerInputs,
+        SponsorMoicRunnerInputs,
+        run_sponsor_irr,
+        run_sponsor_moic,
+    )
+    from domain.sponsor.equity_injection import EquityInjection
+
+    # Extract SPV distributions from the completed waterfall result.
+    # WaterfallResult.periods[].distribution_keur is the per-period equity distribution.
+    spv_distributions = tuple(
+        float(getattr(p, "distribution_keur", 0.0) or 0.0)
+        for p in getattr(waterfall_result, "periods", [])
+    )
+    num_periods = len(spv_distributions)
+    if num_periods == 0:
+        return None
+
+    # Build equity injections from capital structure.
+    # Total equity = lp + gp, injected at period 0.
+    total_equity = cap_struct["lp_commitment_keur"] + cap_struct["gp_commitment_keur"]
+    equity_injections = (
+        EquityInjection(
+            period_index=0,
+            amount_keur=total_equity,
+            investor_id="SPONSOR-1",
+            target_entity="SPV",
+            purpose="equityContribution",
+        ),
+    )
+
+    # Build SponsorCashflowRunnerInputs.
+    # holdco_dividend_by_period and holdco_opex_by_period are set to zero
+    # (we are at SPV level, not HoldCo; the cashflow is the SPV distribution).
+    cashflow_inputs = SponsorCashflowRunnerInputs(
+        investor_id="SPONSOR-1",
+        entity_code="SPV",
+        equity_injections=equity_injections,
+        holdco_distribution_by_period=spv_distributions,
+        holdco_dividend_by_period=tuple(0.0 for _ in range(num_periods)),
+        wht_rate=0.0,
+        holdco_opex_by_period=tuple(0.0 for _ in range(num_periods)),
+        period_count=num_periods,
+    )
+
+    cashflow_result = run_sponsor_cashflows(cashflow_inputs)
+
+    # Compute IRR and MOIC from the cashflow result.
+    irr_result = run_sponsor_irr(SponsorIrrRunnerInputs(sponsor_result=cashflow_result))
+    moic_result = run_sponsor_moic(SponsorMoicRunnerInputs(sponsor_result=cashflow_result))
+
+    return cashflow_result, irr_result, moic_result
+
+
+def _serialize_sponsor_schedule(cashflow_result, irr_result, moic_result) -> dict:
+    """Serialize sponsor engine results to a JSON-safe dict for sessionStorage.
+
+    Phase H2: read-only serialization of already-computed engine output.
+    No sponsor economic calculations are performed here — only reads fields
+    from SponsorCashflowResult, SponsorIrrResult, SponsorMoicResult.
+
+    Structure returned:
+      {
+        "periods": [
+          {
+            "period_index": int,
+            "equity_injected_keur": float | None,
+            "distribution_received_keur": float | None,
+            "wht_on_distribution_keur": float | None,
+            "net_cashflow_keur": float | None,
+            "capital_account_balance_keur": float | None,
+          },
+          ...
+        ],
+        "summary": {
+          "total_equity_injected_keur": float | None,
+          "total_distributions_received_keur": float | None,
+          "total_wht_keur": float | None,
+          "total_net_cashflow_keur": float | None,
+          "gross_sponsor_return_multiple": float | None,
+          "gross_sponsor_irr": float | None,
+          "gross_sponsor_moic": float | None,
+          "xirr_converged": bool,
+          "investor_id": str,
+          "entity_code": str,
+        },
+        "source": "SponsorCashflowRunner + SponsorIrrRunner + SponsorMoicRunner",
+      }
+    """
+    def _f(v):
+        """Round to 2dp for display; handle non-finite values."""
+        try:
+            f = float(v)
+            if f != f or abs(f) == float("inf"):
+                return None
+            return round(f, 2)
+        except (TypeError, ValueError):
+            return None
+
+    periods_out = []
+    for p in getattr(cashflow_result, "period_results", []):
+        periods_out.append({
+            "period_index": getattr(p, "period_index", None),
+            "equity_injected_keur": _f(getattr(p, "equity_injected_keur", None)),
+            "distribution_received_keur": _f(getattr(p, "distribution_received_keur", None)),
+            "wht_on_distribution_keur": _f(getattr(p, "wht_on_distribution_keur", None)),
+            "net_cashflow_keur": _f(getattr(p, "net_cashflow_keur", None)),
+            "capital_account_balance_keur": _f(getattr(p, "capital_account_balance_keur", None)),
+        })
+
+    # IRR from SponsorIrrResult
+    gross_irr = getattr(irr_result, "gross_sponsor_irr", None)
+    xirr_converged = bool(getattr(irr_result, "xirr_converged", False))
+
+    # MOIC from SponsorMoicResult
+    gross_moic = getattr(moic_result, "gross_sponsor_moic", None)
+
+    return {
+        "periods": periods_out,
+        "summary": {
+            "total_equity_injected_keur": _f(getattr(cashflow_result, "total_equity_injected_keur", None)),
+            "total_distributions_received_keur": _f(getattr(cashflow_result, "total_distributions_received_keur", None)),
+            "total_wht_keur": _f(getattr(cashflow_result, "total_wht_keur", None)),
+            "total_net_cashflow_keur": _f(getattr(cashflow_result, "total_net_cashflow_keur", None)),
+            "gross_sponsor_return_multiple": _f(getattr(cashflow_result, "gross_sponsor_return_multiple", None)),
+            "gross_sponsor_irr": _f(gross_irr),
+            "gross_sponsor_moic": _f(gross_moic),
+            "xirr_converged": xirr_converged,
+            "investor_id": getattr(cashflow_result, "investor_id", ""),
+            "entity_code": getattr(cashflow_result, "entity_code", ""),
+        },
+        "source": "SponsorCashflowRunner + SponsorIrrRunner + SponsorMoicRunner",
     }
