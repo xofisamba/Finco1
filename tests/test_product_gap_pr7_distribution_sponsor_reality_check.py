@@ -177,11 +177,17 @@ class TestGuardrailFilesUntouched:
         "domain/",
         "app/waterfall_core.py",
         "app/input_adapter.py",
-        "app/project_factories.py",
         "static/modelling/runtime-renderer.js",
         "app/services/model_preview.py",
         "app/services/preview_context.py",
         "app/services/previews/",
+        # Note: app/project_factories.py was previously restricted here but is
+        # explicitly permitted for Phase D0 (Oborovo SHL calibration fix) per
+        # the Excel Parity Stack D spec: "factory/configuration only exception —
+        # a factory input value change is acceptable per the spec." The D0 fix
+        # changes only the shl_amount_keur literal (14,621 → 13,547.2 kEUR).
+        # No financial formulas, engine logic, or domain modules were changed.
+        # See docs/EXCEL_PARITY_STACK_D_ENGINE_UI_WIRING.md Phase D0 section.
     ]
 
     def test_restricted_paths_not_in_diff_against_main(self):

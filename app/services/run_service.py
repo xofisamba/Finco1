@@ -466,6 +466,7 @@ async def _execute_user_created_path(
             runtime_origin=runtime_origin,
             workspace_state=workspace_state,
             runtime_snapshot_id=runtime_snapshot_id,
+            financial_statements=result.get("financial_statements"),
         )
         return RunRouteOutcome(
             template_name="partials/runtime_summary.html",
@@ -583,6 +584,7 @@ async def _execute_template_seeded_path(
             runtime_origin=runtime_origin,
             workspace_state=workspace_state,
             runtime_snapshot_id=runtime_snapshot_id,
+            financial_statements=result.get("financial_statements"),
         )
         return RunRouteOutcome(
             template_name="partials/runtime_summary.html",
@@ -713,6 +715,7 @@ async def _execute_generic_path(
             runtime_origin=runtime_origin,
             workspace_state=workspace_state,
             runtime_snapshot_id=runtime_snapshot_id,
+            financial_statements=result.get("financial_statements"),
         )
         return RunRouteOutcome(
             template_name="partials/kpis.html",
@@ -762,6 +765,7 @@ def _build_sessionstorage_save_tag(
     runtime_origin: str,
     workspace_state,
     runtime_snapshot_id: str,
+    financial_statements: "dict | None" = None,
 ) -> str:
     """Return the sessionStorage save ``<script>`` block.
 
@@ -787,9 +791,24 @@ def _build_sessionstorage_save_tag(
         last_origin_label = "Runtime bound to clean workspace base"
     else:
         last_origin_label = "Runtime bound to clean workspace base"
+    # Phase D1: persist FS payload to sessionStorage so sheet_financials.html
+    # can render real engine output without a separate HTTP round-trip.
+    # FS data is read-only engine output from assemble_financial_statements().
+    fs_script = ""
+    if financial_statements is not None:
+        fs_script = (
+            'sessionStorage.setItem("lastFinancialStatements", '
+            + json.dumps(json.dumps(financial_statements))
+            + ');'
+        )
+    else:
+        # Clear stale FS data when a run produces no FS (degrade gracefully).
+        fs_script = 'sessionStorage.removeItem("lastFinancialStatements");'
+
     return (
         '<script>'
-        'sessionStorage.setItem("lastRuntimeSummary", ' + json.dumps(json.dumps(runtime_summary)) + ');'
+        + fs_script
+        + 'sessionStorage.setItem("lastRuntimeSummary", ' + json.dumps(json.dumps(runtime_summary)) + ');'
         'window.applyWorkspaceStateMeta && window.applyWorkspaceStateMeta(' + json.dumps({
             "dirty": False if is_clean else True,
             "dirty_label": dirty_label,

@@ -72,28 +72,80 @@
 <div class="section-divider"></div>
 
 {# ══════════════════════════════════════════════════════════════════════
-   UNAVAILABLE STATE — Income Statement / Cash Flow / Balance Sheet
-   ══════════════════════════════════════════════════════════════════════
-   Product Gap PR6: the three statement tables previously rendered here
-   were static example figures, not real Run output, and were not a
-   real accounting identity tied to the active project. Per the PR6
-   "do not show a misleading Balance Sheet" / "show only trustworthy
-   sections" rules, all three
-   tables are replaced with a single honest unavailable-state panel.
-   No financial-statement values are invented or recomputed here. #}
+   UNAVAILABLE STATE — shown only when no Run has been executed yet
+   (pre-Run state: lastFinancialStatements not in sessionStorage).
+   When a Run has been executed, the financial statement tables below
+   replace this panel. No financial values are invented here.
+   ══════════════════════════════════════════════════════════════════════ #}
 <div class="empty-state-notice empty-state-notice--warn fs-unavailable-panel"
-     role="status" aria-label="Financial statements not yet available">
+     id="fs-unavailable-panel"
+     role="status" aria-label="Financial statements not yet available"
+     style="display:none;">
   <div class="esn-icon" aria-hidden="true">📄</div>
   <div class="esn-title">Financial statements are not connected to Run outputs yet</div>
   <div class="esn-desc">
-    The Income Statement, Cash Flow, and Balance Sheet tables are not
-    yet backed by real model run results, so they are hidden here
-    rather than shown as example or placeholder figures. You can
-    continue modelling this project through the Inputs, Revenue,
-    OPEX, CAPEX, Senior Debt, SHL, and Tax sheets — those use real
-    project data. The runtime summary above already reflects your
-    last model run; full Run-backed financial statements will appear
-    here once the statement engine is connected.
+    Run the model to see the Income Statement, Cash Flow, and Balance
+    Sheet tables. Once you click Run, these tables are populated from
+    <code>assemble_financial_statements()</code> — the same engine
+    output used by the XLSX export — so the values are identical to
+    the institutional workbook. No values are hardcoded or computed
+    client-side.
+  </div>
+</div>
+
+{# ══════════════════════════════════════════════════════════════════════
+   FINANCIAL STATEMENTS — populated from sessionStorage after Run
+   Phase D1: Engine → UI wiring. Read-only display of engine output.
+   Source: assemble_financial_statements(WaterfallResult) via run_project().
+   No financial calculations are performed here.
+   ══════════════════════════════════════════════════════════════════════ #}
+<div id="fs-statements-block" style="display:none;">
+
+  {# ── Income Statement (P&L) ── #}
+  <div class="fc-section-header">
+    <span class="fc-section-title">Income Statement (P&amp;L)</span>
+    <span class="badge badge-runtime fs-source-badge" title="Source: assemble_financial_statements(WaterfallResult)">Engine Output</span>
+  </div>
+  <div class="fc-table-wrapper" id="fs-pnl-table-wrapper">
+    <table class="fc-grid fs-statement-table" id="fs-pnl-table">
+      <thead><tr id="fs-pnl-header"></tr></thead>
+      <tbody id="fs-pnl-body"></tbody>
+    </table>
+  </div>
+
+  <div class="section-divider"></div>
+
+  {# ── Balance Sheet ── #}
+  <div class="fc-section-header">
+    <span class="fc-section-title">Balance Sheet</span>
+    <span class="badge badge-runtime fs-source-badge" title="Source: assemble_financial_statements(WaterfallResult)">Engine Output</span>
+  </div>
+  <div class="fc-table-wrapper" id="fs-bs-table-wrapper">
+    <table class="fc-grid fs-statement-table" id="fs-bs-table">
+      <thead><tr id="fs-bs-header"></tr></thead>
+      <tbody id="fs-bs-body"></tbody>
+    </table>
+  </div>
+
+  <div class="section-divider"></div>
+
+  {# ── PF Cash Waterfall ── #}
+  <div class="fc-section-header">
+    <span class="fc-section-title">PF Cash Waterfall</span>
+    <span class="badge badge-runtime fs-source-badge" title="Source: assemble_financial_statements(WaterfallResult)">Engine Output</span>
+  </div>
+  <div class="fc-table-wrapper" id="fs-pf-table-wrapper">
+    <table class="fc-grid fs-statement-table" id="fs-pf-table">
+      <thead><tr id="fs-pf-header"></tr></thead>
+      <tbody id="fs-pf-body"></tbody>
+    </table>
+  </div>
+
+  <div class="fs-statements-footer">
+    <span class="fs-footer-note">
+      Values in kEUR. Source: <code>assemble_financial_statements(WaterfallResult)</code>
+      — identical to XLSX institutional workbook export. Read-only.
+    </span>
   </div>
 </div>
 
@@ -104,6 +156,142 @@
 <script>
 (function() {
   "use strict";
+
+  // ── P&L row definitions (label, field key) ───────────────────────────────
+  var PNL_ROWS = [
+    { label: "Revenue",                  key: "revenues_keur" },
+    { label: "Operating Expenses",       key: "operating_expenses_keur" },
+    { label: "Depreciation",             key: "depreciation_keur" },
+    { label: "EBIT",                     key: "ebit_keur",               bold: true },
+    { label: "Senior Interest Expense",  key: "senior_interest_expense_keur" },
+    { label: "SHL Interest Expense",     key: "shl_interest_expense_keur" },
+    { label: "Earnings Before Tax",      key: "earnings_before_tax_keur", bold: true },
+    { label: "CIT Accrual",              key: "cit_accrual_keur" },
+    { label: "Net Income",               key: "net_income_keur",          bold: true },
+    { label: "Retained Earnings",        key: "retained_earnings_keur" },
+    { label: "Net Dividends",            key: "net_dividends_keur" },
+  ];
+
+  // ── Balance Sheet row definitions ────────────────────────────────────────
+  var BS_ROWS = [
+    { label: "Net Fixed Assets",         key: "net_fixed_assets_keur" },
+    { label: "DSRA Balance",             key: "dsra_balance_keur" },
+    { label: "Cash",                     key: "cash_keur" },
+    { label: "Total Assets",             key: "total_assets_keur",        bold: true },
+    { label: "Share Capital",            key: "share_capital_keur" },
+    { label: "Retained Earnings",        key: "retained_earnings_keur" },
+    { label: "SHL Balance",              key: "shl_balance_keur" },
+    { label: "Senior Debt Balance",      key: "senior_balance_keur" },
+    { label: "Total Liabilities+Equity", key: "total_liabilities_equity_keur", bold: true },
+    { label: "Balance Check",            key: "balance_check_keur",       note: "Should be ~0" },
+  ];
+
+  // ── PF Cash Waterfall row definitions ────────────────────────────────────
+  var PF_ROWS = [
+    { label: "Revenue (Cash)",           key: "revenue_cash_keur" },
+    { label: "OPEX (Cash)",              key: "opex_cash_keur" },
+    { label: "EBITDA (Cash)",            key: "ebitda_cash_keur",          bold: true },
+    { label: "Cash Tax",                 key: "cash_tax_keur" },
+    { label: "FCF for Banks",            key: "fcf_banks_keur",            bold: true },
+    { label: "Senior Debt Service",      key: "senior_total_ds_keur" },
+    { label: "DSRA Funding",             key: "dsra_funding_keur" },
+    { label: "DSRA Release",             key: "dsra_release_keur" },
+    { label: "FCF for Junior",           key: "fcf_junior_keur",           bold: true },
+    { label: "FCF for Distribution",     key: "fcf_for_distribution_keur", bold: true },
+    { label: "Net Dividends",            key: "net_dividends_keur" },
+  ];
+
+  function _fmt(v) {
+    if (v === null || v === undefined) return "—";
+    return Number(v).toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+  }
+
+  // Build column headers from periods (Y1-H1, Y1-H2, …)
+  function _buildHeader(headRow, periods) {
+    var th = document.createElement("th");
+    th.className = "fc-header-cell fc-label-cell";
+    th.textContent = "Line Item";
+    headRow.appendChild(th);
+    for (var i = 0; i < periods.length; i++) {
+      var p = periods[i];
+      var label = p.date ? p.date.substring(0, 7) : ("P" + i);
+      var col = document.createElement("th");
+      col.className = "fc-header-cell fc-period-cell";
+      col.textContent = label;
+      headRow.appendChild(col);
+    }
+  }
+
+  // Build table body rows from row definitions + periods
+  function _buildBody(tbody, rowDefs, periods) {
+    for (var r = 0; r < rowDefs.length; r++) {
+      var def = rowDefs[r];
+      var tr = document.createElement("tr");
+      if (def.bold) tr.className = "fc-row-subtotal";
+      var tdLabel = document.createElement("td");
+      tdLabel.className = "fc-cell fc-label-cell";
+      tdLabel.textContent = def.label + (def.note ? " (" + def.note + ")" : "");
+      tr.appendChild(tdLabel);
+      for (var i = 0; i < periods.length; i++) {
+        var td = document.createElement("td");
+        td.className = "fc-cell fc-value-cell";
+        td.setAttribute("data-readonly", "true");
+        td.textContent = _fmt(periods[i][def.key]);
+        tr.appendChild(td);
+      }
+      tbody.appendChild(tr);
+    }
+  }
+
+  function _renderStatements(fs) {
+    // P&L
+    var pnlHead = document.getElementById("fs-pnl-header");
+    var pnlBody = document.getElementById("fs-pnl-body");
+    if (pnlHead && pnlBody && fs.pnl && fs.pnl.periods) {
+      _buildHeader(pnlHead, fs.pnl.periods);
+      _buildBody(pnlBody, PNL_ROWS, fs.pnl.periods);
+    }
+
+    // Balance Sheet
+    var bsHead = document.getElementById("fs-bs-header");
+    var bsBody = document.getElementById("fs-bs-body");
+    if (bsHead && bsBody && fs.balance_sheet && fs.balance_sheet.periods) {
+      _buildHeader(bsHead, fs.balance_sheet.periods);
+      _buildBody(bsBody, BS_ROWS, fs.balance_sheet.periods);
+    }
+
+    // PF Cash Waterfall
+    var pfHead = document.getElementById("fs-pf-header");
+    var pfBody = document.getElementById("fs-pf-body");
+    if (pfHead && pfBody && fs.pf_cash_waterfall && fs.pf_cash_waterfall.periods) {
+      _buildHeader(pfHead, fs.pf_cash_waterfall.periods);
+      _buildBody(pfBody, PF_ROWS, fs.pf_cash_waterfall.periods);
+    }
+
+    // Show statements block, hide unavailable panel
+    var stmtBlock = document.getElementById("fs-statements-block");
+    if (stmtBlock) stmtBlock.style.display = "";
+    var unavail = document.getElementById("fs-unavailable-panel");
+    if (unavail) unavail.style.display = "none";
+  }
+
+  function _populateFSStatements() {
+    var rawFs = sessionStorage.getItem("lastFinancialStatements");
+    if (rawFs) {
+      try {
+        var fs = JSON.parse(rawFs);
+        _renderStatements(fs);
+      } catch(e) {
+        // Malformed FS data: show unavailable panel
+        var unavail = document.getElementById("fs-unavailable-panel");
+        if (unavail) unavail.style.display = "";
+      }
+    } else {
+      // No run yet: show unavailable panel
+      var unavail2 = document.getElementById("fs-unavailable-panel");
+      if (unavail2) unavail2.style.display = "";
+    }
+  }
 
   function _populateFSRuntimeBlock() {
     var raw = sessionStorage.getItem("lastRuntimeSummary");
@@ -160,7 +348,13 @@
     }
   }
 
+  function _populateAll() {
+    _populateFSRuntimeBlock();
+    _populateFSStatements();
+  }
+
   window._populateFSRuntimeBlock = _populateFSRuntimeBlock;
+  window._populateFSStatements = _populateFSStatements;
 
   document.addEventListener("htmx:afterSwap", function(e) {
     if (e.target && (
@@ -169,14 +363,14 @@
       e.target.closest("#panel-cashflow") ||
       e.target.closest("#panel-balance")
     )) {
-      _populateFSRuntimeBlock();
+      _populateAll();
     }
   });
 
   if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", _populateFSRuntimeBlock);
+    document.addEventListener("DOMContentLoaded", _populateAll);
   } else {
-    _populateFSRuntimeBlock();
+    _populateAll();
   }
 })();
 </script>

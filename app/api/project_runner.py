@@ -174,6 +174,20 @@ def run_project(project_type: str, scenario: str, period_view: str = "Semiannual
     debt = _sanitize_df(debt)
     returns = _sanitize_df(returns)
 
+    # Phase D1: assemble financial statements from the already-computed waterfall result.
+    # assemble_financial_statements() is an offline assembly step — no new financial
+    # calculations are performed here; it reads from WaterfallResult.periods fields that
+    # run_waterfall() already computed. waterfall_core.py does NOT import this module
+    # (separation of concerns verified by test_excel_parity_characterization.py C8).
+    financial_statements_payload = None
+    try:
+        from domain.financial_statements import assemble_financial_statements
+        fs = assemble_financial_statements(result)
+        financial_statements_payload = _serialize_financial_statements(fs)
+    except Exception:
+        # FS assembly failure must never break the run path; degrade gracefully.
+        financial_statements_payload = None
+
     return {
         "project_type": project_type,
         "scenario": scenario,
@@ -194,10 +208,103 @@ def run_project(project_type: str, scenario: str, period_view: str = "Semiannual
         },
         "dualrun_validation": getattr(result, '_dualrun_validation', None),
         "derivation_evidence": _build_runtime_derivation_evidence(result, demo.project_inputs),
+        "financial_statements": financial_statements_payload,
         "tables": {
             "waterfall": wf.to_dict(orient="records"),
             "revenue": rev.to_dict(orient="records"),
             "debt": debt.to_dict(orient="records"),
             "returns": returns.to_dict(orient="records"),
         }
+    }
+
+
+def _serialize_financial_statements(fs) -> dict:
+    """Serialize FinancialStatementsResult to a JSON-safe dict for sessionStorage.
+
+    Phase D1: read-only serialization of already-assembled engine output.
+    No financial calculations are performed here.
+
+    Structure returned:
+      {
+        "pnl": {"periods": [...], "row_labels": {...}},
+        "balance_sheet": {"periods": [...]},
+        "pf_cash_waterfall": {"periods": [...]},
+      }
+    """
+    def _fmt_date(d):
+        return d.isoformat() if d else None
+
+    def _f(v):
+        """Round to 2dp for display; handle non-finite values."""
+        try:
+            f = float(v)
+            if f != f or abs(f) == float("inf"):
+                return None
+            return round(f, 2)
+        except (TypeError, ValueError):
+            return None
+
+    # P&L periods — subset of fields for UI display
+    pnl_periods = []
+    for p in fs.pnl.periods:
+        pnl_periods.append({
+            "period": p.period,
+            "date": _fmt_date(p.date),
+            "year_index": p.year_index,
+            "period_in_year": p.period_in_year,
+            "revenues_keur": _f(p.revenues_keur),
+            "operating_expenses_keur": _f(p.operating_expenses_keur),
+            "depreciation_keur": _f(p.depreciation_keur),
+            "ebit_keur": _f(p.ebit_keur),
+            "senior_interest_expense_keur": _f(p.senior_interest_expense_keur),
+            "shl_interest_expense_keur": _f(p.shl_interest_expense_keur),
+            "earnings_before_tax_keur": _f(p.earnings_before_tax_keur),
+            "cit_accrual_keur": _f(p.cit_accrual_keur),
+            "net_income_keur": _f(p.net_income_keur),
+            "retained_earnings_keur": _f(p.retained_earnings_keur),
+            "net_dividends_keur": _f(p.net_dividends_keur),
+        })
+
+    # Balance sheet periods
+    bs_periods = []
+    for p in fs.balance_sheet.periods:
+        bs_periods.append({
+            "period_index": p.period_index,
+            "date": _fmt_date(p.date),
+            "net_fixed_assets_keur": _f(p.net_fixed_assets_keur),
+            "dsra_balance_keur": _f(p.dsra_balance_keur),
+            "cash_keur": _f(p.cash_keur),
+            "total_assets_keur": _f(p.total_assets_keur),
+            "share_capital_keur": _f(p.share_capital_keur),
+            "retained_earnings_keur": _f(p.retained_earnings_keur),
+            "shl_balance_keur": _f(p.shl_balance_keur),
+            "senior_balance_keur": _f(p.senior_balance_keur),
+            "total_liabilities_equity_keur": _f(p.total_liabilities_equity_keur),
+            "balance_check_keur": _f(p.balance_check_keur),
+        })
+
+    # PF Cash Waterfall periods
+    pf_periods = []
+    for p in fs.pf_cash_waterfall.periods:
+        pf_periods.append({
+            "period_index": p.period_index,
+            "date": _fmt_date(p.date),
+            "revenue_cash_keur": _f(p.revenue_cash_keur),
+            "opex_cash_keur": _f(p.opex_cash_keur),
+            "ebitda_cash_keur": _f(p.ebitda_cash_keur),
+            "cash_tax_keur": _f(p.cash_tax_keur),
+            "fcf_banks_keur": _f(p.fcf_banks_keur),
+            "senior_total_ds_keur": _f(p.senior_total_ds_keur),
+            "dsra_funding_keur": _f(p.dsra_funding_keur),
+            "dsra_release_keur": _f(p.dsra_release_keur),
+            "fcf_junior_keur": _f(p.fcf_junior_keur),
+            "fcf_for_distribution_keur": _f(p.fcf_for_distribution_keur),
+            "net_dividends_keur": _f(p.net_dividends_keur),
+        })
+
+    return {
+        "pnl": {"periods": pnl_periods},
+        "balance_sheet": {"periods": bs_periods},
+        "pf_cash_waterfall": {"periods": pf_periods},
+        "source": "assemble_financial_statements(WaterfallResult)",
     }
