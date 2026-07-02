@@ -367,7 +367,7 @@ def _build_opex_items(project_inputs, horizon_years: int = 25) -> tuple[dict[str
                 "code": code,
                 "name": item.name,
                 "y1_keur": item.y1_amount_keur,
-                "inflation_pct": item.annual_inflation,
+                "inflation_pct": item.annual_inflation or 0.0,
                 "group": _infer_opex_group(item.name),
                 "unit": "kEUR",
                 "fixed_variable": "Fixed",
