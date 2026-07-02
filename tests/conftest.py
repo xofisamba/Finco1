@@ -51,12 +51,9 @@ OPENPYXL_TEST_FILES = {
     "test_fid_deck_excel.py",
 }
 
-# Stack P: pre-existing SyntaxError in f-string (Python 3.11 backslash restriction).
-# test_phase24g3_capex_sheet_readability.py line 392 uses backslash inside f-string,
-# invalid in Python < 3.12. Excluded from collection to unblock full suite run.
-SYNTAX_ERROR_FILES = {
-    "test_phase24g3_capex_sheet_readability.py",
-}
+# Stack Q: f-string syntax fix applied directly in test_phase24g3_capex_sheet_readability.py.
+# The Stack P temporary exclusion is removed.
+SYNTAX_ERROR_FILES: set = set()
 
 _CALIBRATION_DISABLED_FILES = frozenset([
     "test_debt_dscr_schedule_policy.py",

@@ -385,10 +385,11 @@ class TestCapexTotalUnchanged:
         end = text.find("</div>\n</div>\n\n{#", idx)
         block = text[idx:end] if end > 0 else text[idx:]
         # All four value fields use "{:,.1f}" format
-        assert block.count('"{:,.1f}".format(') == 4, (
+        _fmt_marker = '"{:,.1f}".format('
+        assert block.count(_fmt_marker) == 4, (
             f"summary strip should still use {{:,.1f}} "
             f"format on all 4 cards (got "
-            f"{block.count('\"{:,.1f}\".format(')})"
+            f"{block.count(_fmt_marker)})"
         )
 
     def test_cap_per_mw_label_visible(self):
