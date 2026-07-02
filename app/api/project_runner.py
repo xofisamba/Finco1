@@ -243,15 +243,32 @@ def run_project(project_type: str, scenario: str, period_view: str = "Semiannual
         "tax_schedule": tax_schedule_payload,
         "distribution_schedule": distribution_schedule_payload,
         "kpis": {
+            # CapEx and debt
             "total_capex_keur": getattr(getattr(demo, "project_inputs", None), "capex", None).total_capex if getattr(getattr(demo, "project_inputs", None), "capex", None) is not None else None,
+            # Revenue / EBITDA / OpEx
             "total_revenue_keur": result.total_revenue_keur,
             "total_ebitda_keur": result.total_ebitda_keur,
             "total_opex_keur": getattr(result, 'total_opex_keur', None),
+            # Distributions
             "total_distributions_keur": getattr(result, 'total_distribution_keur', None),
+            # Returns
             "project_irr": result.project_irr,
             "equity_irr": result.equity_irr,
+            "sponsor_irr": getattr(result, 'sponsor_irr', None),
+            "project_npv_keur": getattr(result, 'project_npv', None),
+            "equity_npv_keur": getattr(result, 'equity_npv', None),
+            # Debt service
+            "total_senior_ds_keur": getattr(result, 'total_senior_ds_keur', None),
+            "total_shl_service_keur": getattr(result, 'total_shl_service_keur', None),
+            # Tax
+            "total_tax_keur": getattr(result, 'total_tax_keur', None),
+            # DSCR / LLCR
+            "target_dscr": getattr(result, 'target_dscr', None),
             "min_dscr": result.actual_min_dscr,
             "avg_dscr": result.actual_avg_dscr,
+            "min_llcr": getattr(result, 'min_llcr', None),
+            # Lockup
+            "periods_in_lockup": getattr(result, 'periods_in_lockup', None),
         },
         "dualrun_validation": getattr(result, '_dualrun_validation', None),
         "derivation_evidence": _build_runtime_derivation_evidence(result, demo.project_inputs),
@@ -430,6 +447,8 @@ def _serialize_debt_schedule(result) -> dict:
             "actual_min_dscr": _f(getattr(result, "actual_min_dscr", None)),
             "actual_avg_dscr": _f(getattr(result, "actual_avg_dscr", None)),
             "target_dscr": _f(getattr(result, "target_dscr", None)),
+            "min_llcr": _f(getattr(result, "min_llcr", None)),
+            "periods_in_lockup": getattr(result, "periods_in_lockup", None),
         },
         "source": "WaterfallResult.periods (per-period engine output)",
     }
@@ -566,13 +585,19 @@ def _serialize_distribution_schedule(result) -> dict:
             "distribution_wiring_delta_keur": _f(getattr(p, "distribution_wiring_delta_keur", None)),
         })
 
+    total_dist = getattr(result, "total_distribution_keur", None)
+    raw_source = getattr(result, "distribution_source", "") or ""
+    # Normalise empty distribution_source to a meaningful label
+    distribution_source_label = raw_source if raw_source else (
+        "waterfall" if (total_dist and total_dist > 0) else "none"
+    )
     return {
         "periods": periods_out,
         "summary": {
-            "total_distribution_keur": _f(getattr(result, "total_distribution_keur", None)),
+            "total_distribution_keur": _f(total_dist),
             "legacy_distribution_keur": _f(getattr(result, "legacy_distribution_keur", None)),
             "da_paid_distribution_keur": _f(getattr(result, "da_paid_distribution_keur", None)),
-            "distribution_source": getattr(result, "distribution_source", "") or "",
+            "distribution_source": distribution_source_label,
             "distribution_wiring_delta_keur": _f(getattr(result, "distribution_wiring_delta_keur", None)),
         },
         "source": "WaterfallResult.periods (per-period engine output)",
