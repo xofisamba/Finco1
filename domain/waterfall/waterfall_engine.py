@@ -1163,7 +1163,14 @@ def run_waterfall(
             # R21 Total = R17 + R20 (dividends start ~Y20 when SHL repaid)
             # SHL principal is NOT returned as cash flow in equity IRR stream
             if shl_balance > 0:
-                equity_cf_for_period = shi  # Net interest ONLY - no principal in equity CF
+                # Disbursement period: shi=0 by design (SHL just drawn, no interest sweep).
+                # Excel records FCF-available (_cf_for_shl) as the P1 equity cash flow
+                # rather than the swept SHL interest. Use _cf_for_shl to match Excel
+                # golden methodology for parity. All other SHL-outstanding periods use shi.
+                if is_shl_disbursement_period:
+                    equity_cf_for_period = max(0.0, _cf_for_shl)
+                else:
+                    equity_cf_for_period = shi  # Net interest ONLY - no principal in equity CF
             else:
                 equity_cf_for_period = dist  # Dividends after SHL fully repaid
         else:
