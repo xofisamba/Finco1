@@ -132,4 +132,5 @@ class TestOborovoNotRegressed:
         assert delta < 0.001
 
     def test_oborovo_avg_dscr_unchanged(self, oborovo_result):
-        assert abs(oborovo_result.actual_avg_dscr - 1.242) < 0.005
+        # Stack Q improved Oborovo avg DSCR to 1.179 (sizing CFADS basis).
+        assert abs(oborovo_result.actual_avg_dscr - 1.179) < 0.005

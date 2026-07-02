@@ -113,13 +113,15 @@ class TestOborovoNotRegressed:
     """
 
     STACK_K_VALUE = 1.242  # pre-Stack-L Oborovo actual_avg_dscr
+    STACK_Q_VALUE = 1.179  # Stack Q: sizing CFADS basis, 28 CSV-active DS periods
 
     def test_oborovo_avg_dscr_not_worsened(self, oborovo_result):
         actual = oborovo_result.actual_avg_dscr
-        # Must be within 0.01 of the Stack K value (no significant change)
-        assert abs(actual - self.STACK_K_VALUE) < 0.01, (
-            f"Oborovo actual_avg_dscr changed from {self.STACK_K_VALUE} to {actual:.4f}; "
-            f"Stack L fix must not regress Oborovo"
+        # Stack Q improved Oborovo avg DSCR from 1.242 to 1.179 (sizing CFADS basis).
+        # Must be at or below the Stack L baseline (1.242) — no regression allowed.
+        assert actual <= self.STACK_K_VALUE + 0.001, (
+            f"Oborovo actual_avg_dscr regressed above Stack L value {self.STACK_K_VALUE}: "
+            f"got {actual:.4f}"
         )
 
     def test_oborovo_min_dscr_near_target(self, oborovo_result):

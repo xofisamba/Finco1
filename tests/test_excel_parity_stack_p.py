@@ -176,10 +176,10 @@ class TestOborovoDebt:
         assert active_ds == 43, f"Oborovo active_ds={active_ds}, expected 43"
 
     def test_oborovo_avg_dscr_documented_gap(self, oborovo):
-        """Avg DSCR gap of +0.095 is documented (G-OBR-DSCR-AVG). Model: 1.242, golden: 1.147."""
-        assert abs(oborovo.actual_avg_dscr - 1.242) < 0.005, (
+        """Stack Q closed Oborovo avg DSCR gap from 1.242 to 1.179 (golden 1.147, delta +0.032)."""
+        assert abs(oborovo.actual_avg_dscr - 1.179) < 0.005, (
             f"Oborovo avg_dscr={oborovo.actual_avg_dscr:.3f}, "
-            f"expected ~1.242 (gap vs golden 1.147 is documented, see G-OBR-DSCR-AVG)"
+            f"expected ~1.179 (Stack Q: sizing CFADS basis; golden 1.147, see G-OBR-DSCR-AVG)"
         )
 
 

@@ -74,12 +74,12 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 # model-change PR.
 PARITY_CORE_FILES: dict[str, str] = {
     "app/waterfall_core.py": (
-        # Stack L: DSCR denominator calibration.
-        # actual_avg_dscr recomputed post frozen-DS override to use only active
-        # debt service periods (matching Excel golden methodology for TUHO).
-        # Guard prevents regression for Oborovo (merchant-phase numerator gap).
-        # Previous hash (Stack K): d8ab56fdb5c01847be605f68a3710c14ddf91f097db86a107e2073eebff21a63
-        "76ec579cbafc0ea9d3e692d1715b8888d39614be8b5eee7723b475b1dccfa1d7"
+        # Stack Q: Oborovo DSCR CFADS basis fix.
+        # actual_avg_dscr now uses sizing CFADS (Golden Excel FCF for banks) over
+        # the 28 CSV-active DS periods (ds_r57 > 0) instead of actual EBITDA over
+        # all canonical-DS periods. Closes gap from 1.242 to 1.179 (golden 1.147).
+        # Previous hash (Stack L): 76ec579cbafc0ea9d3e692d1715b8888d39614be8b5eee7723b475b1dccfa1d7
+        "55d1e54756f489b04776ffffe06f45e5b7c23bfd22261699d4f4f62122dbfecc"
     ),
     "app/project_factories.py": (
         # Stack O: Oborovo equity IRR method calibration.
