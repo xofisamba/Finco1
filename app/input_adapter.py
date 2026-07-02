@@ -171,6 +171,7 @@ def _resolve_user_inputs(
     interest_rate_pct: float = None,
     tenor_years: int = None,
     target_dscr: float = None,
+    base_inputs: "ProjectInputs" = None,
 ) -> "ProjectInputs":
     """Phase S1: shared resolver. Both the form path and the
     snapshot path route through this function. Identical
@@ -181,13 +182,20 @@ def _resolve_user_inputs(
     the factory default for the project type".
 
     The resolver:
-    1. Starts from the Generic factory default (DSCR_SCULPT).
+    1. Starts from the Generic factory default (DSCR_SCULPT),
+       or from ``base_inputs`` when provided (Stack R: project-
+       specific seeded path for TUHO / Oborovo templates).
     2. Applies identity / info overrides.
     3. Applies technical overrides.
     4. Applies revenue overrides.
     5. Zeros the financial capex sub-fields and scales
        the epc_contract to hit a user-supplied total.
-    6. Applies opex as a single user-supplied Y1 line.
+       When ``base_inputs`` is provided, zeroing is skipped
+       unless the caller also supplies ``total_capex_keur``,
+       preserving the factory's calibrated IDC / bank-fee
+       structure.
+    6. Applies opex as a single user-supplied Y1 line (only
+       when ``opex_y1_keur`` is not None).
     7. Applies financing overrides via the same
        _set_financing_* helpers used by the form path.
     """
@@ -197,11 +205,14 @@ def _resolve_user_inputs(
     )
     from domain.inputs import OpexItem, TechnicalParams
 
-    factory_map = {
-        "Solar": create_default_solar_project,
-        "Wind": create_default_wind_project,
-    }
-    proj: "ProjectInputs" = factory_map[project_type]()
+    if base_inputs is not None:
+        proj: "ProjectInputs" = base_inputs
+    else:
+        factory_map = {
+            "Solar": create_default_solar_project,
+            "Wind": create_default_wind_project,
+        }
+        proj: "ProjectInputs" = factory_map[project_type]()
 
     # ── Identity / Info ──────────────────────────────────────
     if country_iso is not None or construction_months is not None or cod_date is not None or horizon_years is not None:
@@ -267,9 +278,17 @@ def _resolve_user_inputs(
         proj = _set_revenue_ppa_term(proj, ppa_term_years)
 
     # ── CAPEX (shared resolver) ──────────────────────────────
-    proj = _zero_financial_capex_subfields(proj)
-    if total_capex_keur is not None:
-        proj = _apply_capex_total(proj, total_capex_keur)
+    # When using a seeded base (TUHO / Oborovo factory), only zero
+    # financial sub-fields if the caller explicitly supplies a new
+    # total_capex_keur, preserving calibrated IDC / bank-fee values.
+    if base_inputs is not None:
+        if total_capex_keur is not None:
+            proj = _zero_financial_capex_subfields(proj)
+            proj = _apply_capex_total(proj, total_capex_keur)
+    else:
+        proj = _zero_financial_capex_subfields(proj)
+        if total_capex_keur is not None:
+            proj = _apply_capex_total(proj, total_capex_keur)
 
     # ── OPEX (single user-supplied Y1 line) ──────────────────
     if opex_y1_keur is not None:
@@ -430,6 +449,24 @@ def build_projectinputs(schema: ProjectInputsSchema) -> "ProjectInputs":
     exactly equal KPIs.
     """
     return _resolve_user_inputs(**_schema_to_dict(schema))
+
+
+def build_projectinputs_seeded(
+    schema: ProjectInputsSchema,
+    base_inputs: "ProjectInputs",
+) -> "ProjectInputs":
+    """Stack R: build ProjectInputs using a project-specific factory base.
+
+    Identical to build_projectinputs except it starts from
+    ``base_inputs`` (e.g. create_default_tuho_wind1() or
+    create_default_oborovo()) rather than the generic Wind/Solar
+    factory.  Only the scalar fields present in the schema are
+    applied on top; all calibrated configuration on base_inputs
+    (SHL mechanics, equity_irr_method, merchant curve, tax params,
+    frozen DS schedule, etc.) is preserved unless the user
+    explicitly overrides it via the schema.
+    """
+    return _resolve_user_inputs(base_inputs=base_inputs, **_schema_to_dict(schema))
 
 
 REQUIRED_USER_PROJECT_SNAPSHOT_FIELDS = (
