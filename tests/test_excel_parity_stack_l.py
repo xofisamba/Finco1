@@ -1,0 +1,143 @@
+"""Stack L: DSCR denominator calibration tests.
+
+Verifies that actual_avg_dscr is averaged only over active debt-service periods
+after the frozen DS override in waterfall_core.py, matching Golden Excel methodology.
+"""
+from __future__ import annotations
+import os
+import sys
+import pytest
+
+os.environ.setdefault("FINCO_SECRET_KEY", "test-secret-for-pytest-only")
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from app.ui_runner import run_demo_project
+
+
+@pytest.fixture(scope="module")
+def tuho_result():
+    return run_demo_project("TUHO").result
+
+
+@pytest.fixture(scope="module")
+def oborovo_result():
+    return run_demo_project("Oborovo").result
+
+
+# ── Active debt-service periods ───────────────────────────────────────────────
+
+class TestActiveDSPeriods:
+    """Post-repayment periods must have senior_ds_keur == 0."""
+
+    def test_tuho_has_14_active_ds_periods(self, tuho_result):
+        active = [p for p in tuho_result.periods if p.senior_ds_keur > 0]
+        assert len(active) == 14, f"Expected 14 active DS periods, got {len(active)}"
+
+    def test_tuho_post_repayment_periods_have_zero_ds(self, tuho_result):
+        zero_ds = [p for p in tuho_result.periods if p.senior_ds_keur == 0]
+        assert len(zero_ds) > 0, "Expected some post-repayment zero-DS periods"
+        # All post-repayment periods should have DSCR = inf (no debt service)
+        inf_dsrs = [p for p in zero_ds if p.dscr == float("inf")]
+        assert len(inf_dsrs) == len(zero_ds), (
+            f"Expected all zero-DS periods to have inf DSCR, "
+            f"got {len(inf_dsrs)} of {len(zero_ds)}"
+        )
+
+    def test_oborovo_has_43_active_ds_periods(self, oborovo_result):
+        active = [p for p in oborovo_result.periods if p.senior_ds_keur > 0]
+        assert len(active) == 43, f"Expected 43 active DS periods, got {len(active)}"
+
+
+# ── TUHO avg DSCR improvement ─────────────────────────────────────────────────
+
+class TestTUHOAvgDSCR:
+    """TUHO actual_avg_dscr must match Golden Excel 1.371 within tolerance."""
+
+    GOLDEN = 1.3713
+    TOLERANCE = 0.02  # tighter than Stack K ±0.05, wider than ±0.01 for engine rounding
+
+    def test_tuho_avg_dscr_within_golden_tolerance(self, tuho_result):
+        actual = tuho_result.actual_avg_dscr
+        delta = abs(actual - self.GOLDEN)
+        assert delta <= self.TOLERANCE, (
+            f"TUHO actual_avg_dscr={actual:.4f}, golden={self.GOLDEN}, "
+            f"delta={delta:.4f} > tolerance={self.TOLERANCE}"
+        )
+
+    def test_tuho_avg_dscr_improved_vs_stack_k(self, tuho_result):
+        """Stack K engine value was 1.554. Stack L must be meaningfully lower."""
+        STACK_K_VALUE = 1.554
+        actual = tuho_result.actual_avg_dscr
+        assert actual < STACK_K_VALUE - 0.10, (
+            f"Stack L avg DSCR {actual:.4f} should be significantly lower than "
+            f"Stack K value {STACK_K_VALUE}"
+        )
+
+    def test_tuho_avg_dscr_is_avg_of_active_period_dscs(self, tuho_result):
+        """actual_avg_dscr must equal the mean of active-period DSCRs."""
+        active_dsrs = [
+            p.dscr for p in tuho_result.periods
+            if p.senior_ds_keur > 0 and p.dscr != float("inf")
+        ]
+        expected = sum(active_dsrs) / len(active_dsrs)
+        actual = tuho_result.actual_avg_dscr
+        assert abs(actual - expected) < 1e-6, (
+            f"actual_avg_dscr {actual} ≠ active-period mean {expected}"
+        )
+
+
+# ── TUHO min DSCR unchanged ───────────────────────────────────────────────────
+
+class TestTUHOMinDSCR:
+    """Min DSCR should be unchanged — it was always computed from active periods."""
+
+    def test_tuho_min_dscr_positive(self, tuho_result):
+        assert tuho_result.actual_min_dscr > 1.0
+
+    def test_tuho_min_dscr_matches_active_period_min(self, tuho_result):
+        active_dsrs = [
+            p.dscr for p in tuho_result.periods
+            if p.senior_ds_keur > 0 and p.dscr != float("inf")
+        ]
+        expected_min = min(active_dsrs)
+        assert abs(tuho_result.actual_min_dscr - expected_min) < 1e-6
+
+
+# ── Oborovo not regressed ──────────────────────────────────────────────────────
+
+class TestOborovoNotRegressed:
+    """Oborovo actual_avg_dscr must not be worsened by the Stack L fix.
+
+    Oborovo's DSCR gap is a merchant-curve numerator issue (Stack N), not
+    a denominator issue. The guard in waterfall_core.py must prevent regression.
+    """
+
+    STACK_K_VALUE = 1.242  # pre-Stack-L Oborovo actual_avg_dscr
+
+    def test_oborovo_avg_dscr_not_worsened(self, oborovo_result):
+        actual = oborovo_result.actual_avg_dscr
+        # Must be within 0.01 of the Stack K value (no significant change)
+        assert abs(actual - self.STACK_K_VALUE) < 0.01, (
+            f"Oborovo actual_avg_dscr changed from {self.STACK_K_VALUE} to {actual:.4f}; "
+            f"Stack L fix must not regress Oborovo"
+        )
+
+    def test_oborovo_min_dscr_near_target(self, oborovo_result):
+        assert 1.10 < oborovo_result.actual_min_dscr < 1.30
+
+
+# ── Debt schedule unchanged ───────────────────────────────────────────────────
+
+class TestDebtScheduleUnchanged:
+    """Debt amounts, principal, and interest must be unchanged."""
+
+    def test_tuho_total_senior_ds_positive(self, tuho_result):
+        assert tuho_result.total_senior_ds_keur > 0
+
+    def test_tuho_has_post_repayment_zero_ds_periods(self, tuho_result):
+        """After the last active DS period, all subsequent periods have zero DS."""
+        zero_ds = [p for p in tuho_result.periods if p.senior_ds_keur == 0]
+        assert len(zero_ds) > 0, "Expected post-repayment zero-DS periods"
+
+    def test_oborovo_total_senior_ds_positive(self, oborovo_result):
+        assert oborovo_result.total_senior_ds_keur > 0

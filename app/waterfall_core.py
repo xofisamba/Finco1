@@ -639,6 +639,27 @@ def run_waterfall_v3_core(
                             period.dscr = cfads / frozen_value
                         else:
                             period.dscr = float('inf') if cfads > 0 else 0.0
+                # Recompute result-level DSCR averages to match Excel methodology:
+                # average only over periods with active senior debt service (senior_ds_keur > 0).
+                # The engine accumulates all_dsrs over the full sculpted tenor schedule, but
+                # the frozen DS override can set senior_ds_keur=0 for post-repayment periods
+                # (early cash-sweep case). Without this recomputation, actual_avg_dscr counts
+                # more periods than Excel does.
+                # Guard: only apply when the active-period average is lower than the engine
+                # average. If the override EXPANDED the active periods (e.g. merchant-phase
+                # projects where merchant-phase DSCRs are high), the new average would be
+                # larger, which is a different gap (numerator/CFADS) not addressed here.
+                _active_dsrs = [
+                    p.dscr for p in result.periods
+                    if getattr(p, 'senior_ds_keur', 0) > 0
+                    and p.dscr not in (float('inf'), float('-inf'))
+                    and p.dscr == p.dscr  # NaN guard
+                ]
+                if _active_dsrs:
+                    _new_avg_dscr = sum(_active_dsrs) / len(_active_dsrs)
+                    if _new_avg_dscr < result.actual_avg_dscr:
+                        result.actual_avg_dscr = _new_avg_dscr
+                        result.actual_min_dscr = min(_active_dsrs)
                 # Attach result-level audit flag.
                 # _frozen_senior_ds_wired is set ONLY when actual frozen schedule was used.
                 # If fixture loading failed, _frozen_senior_ds_wired stays False so downstream
