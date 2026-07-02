@@ -114,11 +114,12 @@ GOLDEN_TUHO: dict[str, dict] = {
         ),
     },
     "first_distribution_op_idx": {
-        "value": 35,
+        "value": 34,
         "tolerance_abs": 0,        # exact integer
         "description": (
             "First operating period index with positive distribution_keur. "
-            "TUHO has 35 construction/lockup periods before first distribution."
+            "Stack N: SHL repayment starts earlier (P29 vs P30), so SHL is fully "
+            "repaid one period sooner and first distribution moves from op_idx 35 to 34."
         ),
     },
     "total_operating_periods": {

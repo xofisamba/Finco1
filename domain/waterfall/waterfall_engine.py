@@ -590,6 +590,11 @@ def run_waterfall(
     fiscal_reintegration_applied = True  # Already accounted for in prior_tax_loss
     loss_carryforward_cap = 1.0  # ATAD: loss cap at 100% of EBITDA
     op_period_counter = 0  # BUG-3 fix: counter for operation periods (not year_index)
+    # Stack N: actual post-sweep senior balance for pik_then_sweep tier switch.
+    # balance_schedule stays non-zero for all sculpted tenor periods even after cash
+    # sweeps pre-pay the actual debt; using it causes the SHL repayment tier to
+    # activate too late (P30 vs Excel P26). running_senior_balance tracks reality.
+    running_senior_balance = balance_schedule[0] if balance_schedule else 0.0
 
     # For returns calculation
     # "combined": equity_investment = sculpt_capex - debt, equity_cfs = distributions only
@@ -786,8 +791,10 @@ def run_waterfall(
         dsra_contrib = 0.0
         if shl_repayment_method == "pik_then_sweep":
             # Available SHL cash is reduced by senior debt service and DSRA funding.
-            # Negative DSRA contribution represents reserve release.
-            _cf_for_shl = max(0.0, cf_after_tax - senior_ds - dsra_contrib)
+            # Stack N: once running_senior_balance hits 0 (actual debt fully repaid),
+            # do not deduct sculpted senior_ds — it's a phantom payment on zero balance.
+            _senior_ds_for_shl = senior_ds if running_senior_balance > 0 else 0.0
+            _cf_for_shl = max(0.0, cf_after_tax - _senior_ds_for_shl - dsra_contrib)
         else:
             _cf_for_shl = cf_after_tax
 
@@ -927,7 +934,7 @@ def run_waterfall(
             if lockup:
                 dist = 0
                 sweep_amount = 0.0
-            elif remaining_senior_balance > 0:
+            elif running_senior_balance > 0:
                 # Senior debt still outstanding: sweep to senior first
                 if dscr > sweep_dscr_threshold:
                     dist, sweep_amount = cash_sweep(
@@ -1033,6 +1040,10 @@ def run_waterfall(
                 else:
                     dist = max(0, cf_after_reserves)
                 sweep_amount = 0.0
+
+        # Stack N: update actual running senior balance after principal repayment and sweeps
+        if shl_repayment_method == "pik_then_sweep":
+            running_senior_balance = max(0.0, running_senior_balance - sp - sweep_amount)
 
         cum_distribution += dist  # jednom, na kraju svih logika
 
