@@ -521,7 +521,7 @@ def _write_dashboard_sheet(writer, result, portfolio_result, status, note, scena
                 # Format IRR values as decimals → Excel will show as %
                 if "irr" in k.lower():
                     try:
-                        rows.append((label, float(v) / 100))  # Store as decimal for 0.0% format
+                        rows.append((label, float(v)))  # Engine returns decimal fraction; Excel "0.0%" format multiplies by 100
                     except (TypeError, ValueError):
                         rows.append((label, v))
                 else:

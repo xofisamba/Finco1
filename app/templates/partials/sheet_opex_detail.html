@@ -44,7 +44,7 @@
 <div class="opex-summary-strip" id="opex-summary-strip">
   <div class="opex-summary-card">
     <div class="opex-summary-card__label">Total OPEX Y1</div>
-    <div class="opex-summary-card__value">{{ "%.1f"|format(project_ctx.opex_y1_total_keur|default(0)) }}</div>
+    <div class="opex-summary-card__value">{{ "%.1f"|format(project_ctx.opex_y1_total_keur or 0) }}</div>
     <div class="opex-summary-card__unit">kEUR</div>
   </div>
   {% set final_y = project_ctx.horizon_years if project_ctx.horizon_years else 25 %}
@@ -256,7 +256,7 @@
             data-fc-kind="amount"
             data-fc-editable="false"
             data-fc-raw="{{ child.inflation_pct or 0 }}">
-          {% if child.inflation_pct == 0 %}
+          {% if not child.inflation_pct %}
             <span class="fc-cell--muted">flat</span>
           {% else %}
             <span class="fc-cell-runtime">{{ "%.1f"|format(child.inflation_pct) }}%</span>
@@ -424,7 +424,7 @@
             <td class="fc-cell">{{ item.unit }}</td>
             <td class="fc-cell">{{ item.fixed_variable }}</td>
             <td class="fc-cell">{{ item.recurring_oneoff }}</td>
-            <td class="fc-cell fc-cell--amount">{{ "%.1f"|format(item.escalation_pct) }}%</td>
+            <td class="fc-cell fc-cell--amount">{{ "%.1f"|format(item.escalation_pct or 0) }}%</td>
             <td class="fc-cell fc-cell--num">{{ item.start_year }}</td>
             <td class="fc-cell fc-cell--num">{{ item.end_year }}</td>
             <td class="fc-cell fc-cell--notes">{{ item.notes }}</td>
