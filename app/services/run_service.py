@@ -525,7 +525,17 @@ async def _execute_template_seeded_path(
                 total_capex_keur, opex_y1_keur, gearing_pct, target_dscr,
                 interest_rate_pct, tenor_years,
             )
-            override = deps.build_projectinputs(schema)
+            # Stack R: use the project-specific factory as the base for
+            # TUHO and Oborovo seeds, so all calibrated configuration
+            # (SHL mechanics, equity_irr_method, merchant curve, frozen DS
+            # schedule, tax params, etc.) is preserved.  Generic projects
+            # continue to use the original generic-factory path.
+            _seed_base = _get_seed_base_inputs(runtime_seed)
+            if _seed_base is not None:
+                from app.input_adapter import build_projectinputs_seeded as _build_seeded
+                override = _build_seeded(schema, _seed_base)
+            else:
+                override = deps.build_projectinputs(schema)
         result = deps.run_project(project_key, scenario_name, project_inputs_override=override)
         kpis = deps.format_kpis(result["kpis"])
         runtime_summary = deps.runtime_summary_to_dict(result, project_record.project_code, project_record.project_name)
@@ -757,6 +767,20 @@ async def _execute_generic_path(
 # ─────────────────────────────────────────────────────────────────────────────
 # Internal helpers (NOT part of public API)
 # ─────────────────────────────────────────────────────────────────────────────
+
+
+def _get_seed_base_inputs(runtime_seed: str):
+    """Stack R: return a calibrated ProjectInputs for TUHO/Oborovo seeds.
+
+    Returns None for any other seed so the generic factory path is used.
+    """
+    if runtime_seed == "tuho":
+        from app.project_factories import create_default_tuho_wind1
+        return create_default_tuho_wind1()
+    if runtime_seed == "oborovo":
+        from app.project_factories import create_default_oborovo
+        return create_default_oborovo()
+    return None
 
 
 def _utc_now_iso_compact() -> str:
