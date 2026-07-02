@@ -194,7 +194,7 @@ def create_default_oborovo() -> ProjectInputs:
         lockup_dscr=1.10,
         min_llcr=1.15,
         dsra_months=6,
-        equity_irr_method="combined",  # Oborovo uses combined SHL+equity method
+        equity_irr_method="shl_plus_dividends",  # Stack O: Golden Excel equity IRR = SHL interest while SHL outstanding + dividends after; "combined" (capex-debt base, distributions only) gave 6.24% vs golden 10.60%
         debt_sizing_method="gearing_cap",  # Oborovo: gearing-based sizing (not DSCR-sculpted)
         fixed_debt_keur=42852.26672602787,  # Excel senior debt anchor, Outputs!H11
         shl_idc_keur=1169.0,  # IDC from construction — opening SHL balance = 14,621 + 1,169 = 15,790

@@ -82,13 +82,14 @@ PARITY_CORE_FILES: dict[str, str] = {
         "76ec579cbafc0ea9d3e692d1715b8888d39614be8b5eee7723b475b1dccfa1d7"
     ),
     "app/project_factories.py": (
-        # Stack J: Demo project catalogue cleanup.
-        # create_default_solar_project renamed to "Test 1 — Solar" (TEST-SOLAR-1, 50 MW, 20yr).
-        # create_default_wind_project renamed to "Test 2 — Wind" (TEST-WIND-1, 40 MW, 25yr).
-        # BESS/hybrid factories retained for test backward-compatibility but removed from UI catalogue.
-        # TUHO and Oborovo factory functions are UNCHANGED — not a single value was modified.
-        # Previous hash (Stack D): f147d7e350ce21f0c5d1e9f788488e92e6013c8fd92909418d66112e9ca4506c
-        "379bca772013891e0c9018d14cba2cfa0df6c30b9b076dfde6c39ea35a927c60"
+        # Stack O: Oborovo equity IRR method calibration.
+        # equity_irr_method changed from "combined" to "shl_plus_dividends" in create_default_oborovo().
+        # "combined" (capex-debt investment, distributions only) gave 6.24% vs golden 10.60%.
+        # "shl_plus_dividends" (SHL+share_capital investment, SHL interest while outstanding,
+        # then dividends) gives 10.66% vs golden 10.60% — delta −6 bps, PASS.
+        # TUHO factory function unchanged.
+        # Previous hash (Stack J): 379bca772013891e0c9018d14cba2cfa0df6c30b9b076dfde6c39ea35a927c60
+        "ba608b209d673b25b8add50ceeffd29aab32f63a43c0444116cb8e2cd8e27603"
     ),
     "reports/phase7_tuho_senior_debt_sizing_extraction.csv": (
         "80e79977f039310158b084e2613ae17251a86916b970d4fda1985467bbde3442"
