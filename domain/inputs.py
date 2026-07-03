@@ -456,6 +456,11 @@ class FinancingParams:
     # IMPORTANT: Only TUHO and Oborovo should set this to True, and only after
     # confirming frozen schedule data is present and parity is validated.
     use_frozen_excel_senior_debt_schedule: bool = False
+    # Stack AC: fixture path for frozen senior DS schedule.
+    # When set, the frozen DS loader reads from this path (relative to repo root or absolute)
+    # instead of dispatching on project code. None = no fixture (ebitda-derived sizing only).
+    # Populated by project factories; must not be derived from project name or code.
+    frozen_senior_ds_fixture_path: str | None = None
     fixed_debt_keur: float | None = None
     dscr_schedule: list[float] | None = None
     senior_debt_interest_config: SeniorDebtInterestConfig = field(default_factory=SeniorDebtInterestConfig)

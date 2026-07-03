@@ -200,6 +200,7 @@ def create_default_oborovo() -> ProjectInputs:
         shl_idc_keur=1169.0,  # IDC from construction — opening SHL balance = 14,621 + 1,169 = 15,790
         shl_tenor_years=20,  # Oborovo Excel: SHL is a 20-year bullet (Excel BS clears at 2050-06-30); previously fell back to senior_tenor_years=14, firing 6 years early
         use_frozen_excel_senior_debt_schedule=True,  # Phase 23R: fixture-backed frozen senior DS opt-in after Phase 23Q parity proof
+        frozen_senior_ds_fixture_path="reports/phase23q_oborovo_senior_debt_sizing_extraction.csv",  # Stack AC: capability-driven fixture path
     )
 
     tax = TaxParams(
@@ -421,6 +422,7 @@ def create_default_tuho_wind1() -> ProjectInputs:
         shl_idc_keur=3568.69,  # Construction IDC from Excel — opening SHL balance = 29,135 + 3,569 = 32,704
         use_senior_sweep_cash_cap_for_shl=False,  # TUHO: SHL cap DISABLED — PR B2 uses fcf_waterfall approach
         use_frozen_excel_senior_debt_schedule=True,  # Phase 23F: frozen senior DS schedule from fixture (CSV)
+        frozen_senior_ds_fixture_path="reports/phase7_tuho_senior_debt_sizing_extraction.csv",  # Stack AC: capability-driven fixture path
         # Phase 23F: frozen Excel senior debt service schedule opt-in.
         # TUHO has frozen schedule data from Excel calibration (Macro!R50 / DS!R19).
         # Phase 23D/23E confirmed: no lock-up breach with fixture-backed frozen senior DS.

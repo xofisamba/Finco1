@@ -416,24 +416,28 @@ def run_waterfall_v3_core(
         # This makes frozen=ON differ from frozen=OFF (which uses ebitda-derivation).
         # Oborovo has no fixture — it uses the ebitda-derivation path unconditionally.
         #
+        # Stack AC: fixture selection is driven by frozen_senior_ds_fixture_path (config field),
+        # not by project code. Identity dispatch (code == 'TUHO-WIND-1') is eliminated here.
+        # The TUHO fixture is identified by the 'phase7_tuho' stem in the configured path.
+        #
         # Path: anchored to this module's location (app/), not cwd-dependent.
         # Columns used:
         #   operating_period_index → op_idx (0-based) as dict key
         #   macro_r50_sizing_cfads_keur → sizing CFADS
         #   ds_r19_target_dscr     → per-period DSCR target
         #   ds_r20_debt_service_capacity_keur → canonical capacity (= sizing_cfads / dscr)
+        _configured_fixture_path = getattr(inputs.financing, 'frozen_senior_ds_fixture_path', None)
         use_fixture = (
             use_frozen_excel_senior_debt_schedule
-            and getattr(inputs.info, 'code', '') == 'TUHO-WIND-1'
+            and _configured_fixture_path is not None
+            and 'phase7_tuho' in _configured_fixture_path
         )
         explicit_sizing_cfads = None
         explicit_dscr_schedule = None
         if use_fixture:
             try:
                 csv_path = (
-                    Path(__file__).resolve().parents[1]
-                    / "reports"
-                    / "phase7_tuho_senior_debt_sizing_extraction.csv"
+                    Path(__file__).resolve().parents[1] / _configured_fixture_path
                 )
                 by_op = {}  # op_idx (from CSV operating_period_index) → {sizing_cfads, dscr}
                 with open(csv_path, newline="") as f:
@@ -496,6 +500,10 @@ def run_waterfall_v3_core(
         # ------------------------------------------------------------------
         # Phase 23Q: Oborovo frozen senior DS fixture (use_frozen_excel_senior_debt_schedule)
         #
+        # Stack AC: fixture selection is driven by frozen_senior_ds_fixture_path (config field),
+        # not by project code. Identity dispatch (code == 'OBR-001') is eliminated here.
+        # The Oborovo fixture is identified by the 'phase23q_oborovo' stem in the configured path.
+        #
         # Path: anchored to this module's location (app/), not cwd-dependent.
         # Columns used:
         #   operating_period_index → op_idx (0-based, matches waterfall op_idx)
@@ -505,18 +513,15 @@ def run_waterfall_v3_core(
         #
         # Canonical sizing computes: debt_service_capacity = sizing_cfads / dscr
         #   = fcf / dscr = ds_r57  (exact match to DS!R57, the source of truth)
-        #
-        # Project code: OBR-001 (Oborovo Solar)
         use_oborovo_fixture = (
             use_frozen_excel_senior_debt_schedule
-            and getattr(inputs.info, 'code', '') == 'OBR-001'
+            and _configured_fixture_path is not None
+            and 'phase23q_oborovo' in _configured_fixture_path
         )
         if use_oborovo_fixture:
             try:
                 csv_path = (
-                    Path(__file__).resolve().parents[1]
-                    / "reports"
-                    / "phase23q_oborovo_senior_debt_sizing_extraction.csv"
+                    Path(__file__).resolve().parents[1] / _configured_fixture_path
                 )
                 by_op = {}  # op_idx (0-based from CSV) → {sizing_cfads, dscr}
                 # Stack Q: track which op indices have active Excel DS (ds_r57 > 0).

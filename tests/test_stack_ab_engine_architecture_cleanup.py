@@ -104,38 +104,29 @@ class TestConfigDrivenBehaviour:
         assert r_orig.total_distribution_keur == pytest.approx(r_renamed.total_distribution_keur, abs=1e-6)
         assert r_orig.total_tax_keur == pytest.approx(r_renamed.total_tax_keur, abs=1e-6)
 
-    @pytest.mark.xfail(
-        reason=(
-            "AB finding: frozen senior DS fixture is loaded by project code string. "
-            "TUHO renamed to 'WPA-001' loses frozen DS wiring (_frozen_senior_ds_wired=False), "
-            "causing DSCR to differ (1.3786 vs 1.5004). "
-            "Root fix: frozen fixture lookup must be driven by a config path, not project code. "
-            "Tracked for Stack AC/AE."
-        ),
-        strict=True,
-    )
-    def test_tuho_full_output_identical_after_rename_xfail(self):
-        """Full TUHO with frozen DS wiring: rename changes DSCR — expected AB xfail.
+    def test_tuho_full_output_identical_after_rename(self):
+        """Stack AC fix: frozen DS fixture is now loaded from configured path, not project code.
 
-        This test documents the identity-dispatch bug found by Stack AB.
-        The frozen senior DS schedule is loaded by looking up project code
-        in the fixture registry. Renaming from 'TUHO-WIND-1' to 'WPA-001'
-        prevents fixture load and changes actual_avg_dscr.
+        Before Stack AC, renaming TUHO-WIND-1 to WPA-001 caused the frozen senior DS
+        fixture to not load (identity dispatch on project code), changing actual_avg_dscr
+        from 1.3786 to 1.5004 (AB finding).
+
+        After Stack AC, the fixture path is in FinancingParams.frozen_senior_ds_fixture_path.
+        A renamed project retains the same fixture path → same DSCR.
         """
-        original = create_default_tuho_wind1()
+        original = _strip_identity_dispatched_features(create_default_tuho_wind1())
+        # Re-enable frozen DS on both — the AC fix makes it config-driven
+        original = replace(original, financing=replace(original.financing,
+            use_frozen_excel_senior_debt_schedule=True))
         renamed = _rename_project(original, new_name="Wind Alpha", new_code="WPA-001")
-        # Note: renamed will also fail on tax bridge guard (code != TUHO-WIND-1)
-        # stripping that too for a clean isolation:
-        renamed = replace(renamed, info=replace(renamed.info, use_tax_bridge_engine=False,
-                                                use_shl_gross_accrued_for_pnl=False))
 
-        r_orig = _strip_identity_dispatched_features(create_default_tuho_wind1())
-        r_orig_result = _run(r_orig)
-        r_renamed_result = _run(renamed)
+        r_orig = _run(original)
+        r_renamed = _run(renamed)
 
-        # This assertion FAILS because frozen DS wiring is identity-dispatched.
-        # When it stops failing, the identity dispatch has been fixed (xfail strict).
-        assert r_orig_result.actual_avg_dscr == pytest.approx(r_renamed_result.actual_avg_dscr, abs=1e-10)
+        # Stack AC: fixture path is in config, not code — identical DSCR after rename
+        assert r_orig.actual_avg_dscr == pytest.approx(r_renamed.actual_avg_dscr, abs=1e-10)
+        assert r_orig._frozen_senior_ds_wired is True, "Original must have frozen DS wired"
+        assert r_renamed._frozen_senior_ds_wired is True, "Renamed must also have frozen DS wired"
 
     def test_waterfallrunconfig_does_not_store_project_code(self):
         """WaterfallRunConfig carries capability flags, not project identity.
@@ -296,16 +287,18 @@ class TestArchitectureInvariants:
         assert tuho_config.use_tax_bridge_engine is True
         assert obo_config.use_tax_bridge_engine is False
 
-    def test_frozen_ds_identity_dispatch_is_documented_ab_finding(self):
-        """Document that frozen DS wiring uses project code for fixture lookup.
+    def test_frozen_ds_fixture_path_is_config_driven(self):
+        """Stack AC fix: frozen DS fixture is now loaded from configured path, not project code.
 
-        This is the AB identity-dispatch finding for the frozen senior DS schedule.
-        When code='TUHO-WIND-1', the fixture is loaded (_frozen_senior_ds_wired=True).
-        When code is anything else, the fixture is not found.
+        The AB finding was: when TUHO is renamed to WPA-001, the code-based identity dispatch
+        prevented fixture loading, so _frozen_senior_ds_wired was False and DSCR changed.
+
+        Stack AC fix: frozen_senior_ds_fixture_path in FinancingParams replaces code dispatch.
+        A renamed project retains the same fixture path and _frozen_senior_ds_wired=True.
         """
         original = create_default_tuho_wind1()
         renamed = replace(original, info=replace(original.info, code="WPA-001"))
-        # Disable features that would raise before reaching frozen DS logic
+        # Disable features that would raise on the other identity guards
         renamed = replace(renamed, info=replace(renamed.info,
             use_tax_bridge_engine=False,
             use_shl_gross_accrued_for_pnl=False,
@@ -314,14 +307,14 @@ class TestArchitectureInvariants:
         r_orig = _run(original)
         r_renamed = _run(renamed)
 
-        # AB finding: frozen DS fixture is identity-dispatched
+        # Stack AC: fixture path in config → renamed project still loads fixture
         assert getattr(r_orig, "_frozen_senior_ds_wired", False) is True, (
             "Original TUHO should have frozen DS wired"
         )
-        assert getattr(r_renamed, "_frozen_senior_ds_wired", None) is not True, (
-            "Renamed project should NOT have frozen DS wired — identity dispatch confirmed"
+        assert getattr(r_renamed, "_frozen_senior_ds_wired", False) is True, (
+            "Renamed project MUST also have frozen DS wired — identity dispatch fixed (Stack AC)"
         )
-        # And therefore DSCRs differ — this is the concrete impact
-        assert r_orig.actual_avg_dscr != pytest.approx(r_renamed.actual_avg_dscr, abs=0.01), (
-            "DSCR must differ when frozen DS is identity-dispatched — confirms AB finding"
+        # And therefore DSCRs are now identical
+        assert r_orig.actual_avg_dscr == pytest.approx(r_renamed.actual_avg_dscr, abs=1e-10), (
+            "DSCR must be identical after rename — config-driven fixture path confirmed"
         )
