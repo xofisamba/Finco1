@@ -228,8 +228,7 @@ class WaterfallRunConfig:
                 )
 
         use_tax_bridge_engine = getattr(inputs.info, "use_tax_bridge_engine", False)
-        if use_tax_bridge_engine and getattr(inputs.info, "code", "") != "TUHO-WIND-1":
-            raise ValueError("Tax bridge runtime engine is currently supported only for TUHO-WIND-1")
+        # Stack AB: duplicate identity guard removed — waterfall_core enforces same guard at line 115.
         tuho_cit_cash_tax_start_operating_index = getattr(
             inputs.tax, "cit_cash_tax_start_operating_index", None
         ) if use_tax_bridge_engine else None
@@ -238,15 +237,13 @@ class WaterfallRunConfig:
             "use_shl_gross_accrued_for_pnl",
             False,
         )
-        if use_shl_gross_accrued_for_pnl and getattr(inputs.info, "code", "") != "TUHO-WIND-1":
-            raise ValueError("Gross accrued SHL P&L bridge is currently supported only for TUHO-WIND-1")
+        # Stack AB: duplicate identity guard removed — waterfall_core enforces same guard at line 117.
         use_tuho_shl_repayment_alignment = getattr(
             fin,
             "use_tuho_shl_repayment_alignment",
             False,
         )
-        if use_tuho_shl_repayment_alignment and getattr(inputs.info, "code", "") != "TUHO-WIND-1":
-            raise ValueError("TUHO SHL repayment alignment is currently supported only for TUHO-WIND-1")
+        # Stack AB: duplicate identity guard removed — waterfall_core enforces same guard at line 119.
 
         use_shl_canonical_engine = getattr(
             inputs.info,
