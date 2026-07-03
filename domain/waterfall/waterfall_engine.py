@@ -129,6 +129,7 @@ class WaterfallPeriod:
     taxable_profit_after_losses_audit_keur: float = 0.0
     cit_accrual_audit_keur: float = 0.0
     cash_tax_current_period_audit_keur: float = 0.0
+    cash_tax_bridge_reconciliation_keur: float = 0.0
     cash_tax_excel_style_h2_diagnostic_keur: float = 0.0
     r69_fcf_banks_keur: float = 0.0
     r84_fcf_junior_keur: float = 0.0

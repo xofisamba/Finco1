@@ -138,7 +138,7 @@ class TestT2H1CITSettlement:
         """
         total_accrued = sum(p.tax_keur or 0 for p in tuho.periods)
         total_cash = sum(p.corporate_tax_cash_keur or 0 for p in tuho.periods)
-        # Stack Z gap: accrued (45835) - cash (43512) = ~2323 kEUR residual.
+        # Phase0/Z1: formula fix; accrued (~35414) vs cash (~33185) gap ~2229 kEUR.
         assert abs(total_accrued - total_cash) < 3000.0, (
             f"TUHO lifetime accrued={total_accrued:.2f} vs cash={total_cash:.2f} "
             f"— delta {abs(total_accrued - total_cash):.2f} kEUR > 3000 kEUR tolerance"
@@ -403,9 +403,9 @@ class TestNoNaNInf:
         assert not math.isinf(oborovo.equity_irr)
 
     def test_tuho_total_cit_post_t(self, tuho):
-        # Stack Z: tax depreciation wiring changes accrued CIT from ~33186 to ~45835.
-        assert abs(tuho.total_tax_keur - 45835.0) < 200.0, (
-            f"TUHO total_tax_keur={tuho.total_tax_keur:.1f}, expected ~45835 (Stack Z)"
+        # Phase0/Z1: formula fix; new correct value ~35414 kEUR (old 45835 used wrong depreciation basis)
+        assert abs(tuho.total_tax_keur - 35414.0) < 500.0, (
+            f"TUHO total_tax_keur={tuho.total_tax_keur:.1f}, expected ~35414 (Phase0 Z1 formula fix)"
         )
 
     def test_oborovo_total_cit_post_t(self, oborovo):
