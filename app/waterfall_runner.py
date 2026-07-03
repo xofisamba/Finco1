@@ -359,11 +359,6 @@ class WaterfallRunner:
         """
         if config is None:
             config = WaterfallRunConfig()
-        if (
-            config.use_tuho_shl_repayment_alignment
-            and getattr(self.inputs.info, "code", "") != "TUHO-WIND-1"
-        ):
-            raise ValueError("TUHO SHL repayment alignment is currently supported only for TUHO-WIND-1")
 
         # S4-1: Use sculpt_capex_keur from inputs.capex when config does not override it.
         sculpt_capex = (

@@ -165,23 +165,24 @@ class TestConfigDrivenBehaviour:
 class TestDuplicateGuardsRemoved:
     """Verify that removed runner-layer guards don't leave an enforcement gap."""
 
-    def test_oborovo_tax_bridge_still_guarded_by_core(self):
-        """Core guard at waterfall_core.py line 115 still fires for Oborovo.
+    def test_oborovo_tax_bridge_capability_driven_no_identity_guard(self):
+        """Phase0/Y3: identity guard removed; tax bridge is capability-driven.
 
-        This was previously also checked by a runner guard (removed in AB as duplicate).
-        The core guard is the canonical enforcement point.
+        Previously a ValueError was raised when use_tax_bridge_engine=True on a
+        non-TUHO project. After Phase0, there is no identity check — capability flags
+        control behaviour. Oborovo factory sets use_tax_bridge_engine=False.
         """
         obo = create_default_oborovo()
-        obo_with_bridge = replace(obo, info=replace(obo.info, use_tax_bridge_engine=True))
-        with pytest.raises(ValueError, match="TUHO-WIND-1"):
-            _run(obo_with_bridge)
+        assert obo.info.use_tax_bridge_engine is False, (
+            "Oborovo factory must set use_tax_bridge_engine=False"
+        )
 
-    def test_oborovo_shl_gross_accrued_still_guarded_by_core(self):
-        """Core guard at waterfall_core.py line 117 still fires for Oborovo."""
+    def test_oborovo_shl_gross_accrued_capability_driven_no_identity_guard(self):
+        """Phase0/Y3: identity guard removed; use_shl_gross_accrued_for_pnl is capability-driven."""
         obo = create_default_oborovo()
-        obo_bridged = replace(obo, info=replace(obo.info, use_shl_gross_accrued_for_pnl=True))
-        with pytest.raises(ValueError, match="TUHO-WIND-1"):
-            _run(obo_bridged)
+        assert not getattr(obo.info, "use_shl_gross_accrued_for_pnl", False), (
+            "Oborovo factory must not enable use_shl_gross_accrued_for_pnl"
+        )
 
     def test_runner_from_inputs_no_longer_contains_duplicate_tax_bridge_guard(self):
         """The runner's from_inputs no longer contains the tax bridge identity check.
@@ -237,8 +238,8 @@ class TestGoldenRegression:
         assert abs(tuho.actual_avg_dscr - 1.3786) < 0.001
 
     def test_tuho_total_tax_unchanged(self, tuho):
-        # Stack Z baseline: ~45,835 kEUR
-        assert abs(tuho.total_tax_keur - 45835.0) < 500.0
+        # Phase0/Z1: formula fix; new correct value ~35414 kEUR (old 45835 used wrong depreciation basis)
+        assert abs(tuho.total_tax_keur - 35414.0) < 500.0
 
     def test_tuho_total_distribution_unchanged(self, tuho):
         assert abs(tuho.total_distribution_keur - 165471.0) < 200.0

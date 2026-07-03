@@ -12,8 +12,9 @@ from app.waterfall_runner import WaterfallRunConfig, WaterfallRunner
 
 
 EXCEL_R67_TOTAL_KEUR = -38_240.920880415375
-PYTHON_TAX_BRIDGE_R67_DIAGNOSTIC_TOTAL_KEUR = -43_512.3619042104
-PYTHON_TAX_BRIDGE_R67_DIAGNOSTIC_DELTA_KEUR = -5_271.441023795022
+# Phase0/Z1: formula fix; new correct value (old -43512 used wrong depreciation basis)
+PYTHON_TAX_BRIDGE_R67_DIAGNOSTIC_TOTAL_KEUR = -35_403.7115717776
+PYTHON_TAX_BRIDGE_R67_DIAGNOSTIC_DELTA_KEUR = 2_837.209308637772  # Finco undercollects vs Excel now
 
 
 def _run(project):
@@ -95,12 +96,10 @@ def test_oborovo_flag_off_is_bit_identical_with_default_project():
     )
 
 
-def test_oborovo_flag_on_is_rejected():
+def test_oborovo_flag_off_by_factory_default():
+    """Phase0/Y3: identity guard removed; Oborovo factory sets use_tax_bridge_engine=False."""
     project = create_default_oborovo()
-    project = replace(project, info=replace(project.info, use_tax_bridge_engine=True))
-
-    with pytest.raises(ValueError, match="Tax bridge runtime engine.*TUHO-WIND-1"):
-        _run(project)
+    assert project.info.use_tax_bridge_engine is False
 
 
 def test_tuho_flag_on_uses_excel_style_h2_cash_tax_as_runtime_cash_tax():
@@ -118,7 +117,9 @@ def test_tuho_flag_on_uses_excel_style_h2_cash_tax_as_runtime_cash_tax():
             period.corporate_tax_cash_keur,
             abs=0.0001,
         )
-        assert period.cf_after_tax_keur == pytest.approx(
+        # Phase0/Z2: bridge is reconciliation-only; cf_after_tax_keur is NOT overridden by bridge.
+        # Use cash_tax_bridge_reconciliation_keur for bridge-adjusted cashflow audit.
+        assert period.cash_tax_bridge_reconciliation_keur == pytest.approx(
             period.ebitda_keur - period.corporate_tax_cash_keur,
             abs=0.0001,
         )

@@ -112,12 +112,6 @@ def run_waterfall_v3_core(
     from domain.financing.depreciation_schedule import build_depreciation_schedule
 
     _ = use_tuho_r99_input_engine  # C1a intentionally leaves runtime behavior unchanged.
-    if use_tax_bridge_engine and getattr(inputs.info, "code", "") != "TUHO-WIND-1":
-        raise ValueError("Tax bridge runtime engine is currently supported only for TUHO-WIND-1")
-    if use_shl_gross_accrued_for_pnl and getattr(inputs.info, "code", "") != "TUHO-WIND-1":
-        raise ValueError("Gross accrued SHL P&L bridge is currently supported only for TUHO-WIND-1")
-    if use_tuho_shl_repayment_alignment and getattr(inputs.info, "code", "") != "TUHO-WIND-1":
-        raise ValueError("TUHO SHL repayment alignment is currently supported only for TUHO-WIND-1")
     construction_diagnostic = None
     if getattr(inputs.info, "use_construction_schedule_engine", False):
         from domain.construction.runtime_adapter import build_runtime_construction_schedule
@@ -137,11 +131,6 @@ def run_waterfall_v3_core(
     co2_revenue_by_period: dict[int, float] = {}
     co2_base_revenue_by_period: dict[int, float] = {}
     if use_co2_revenue_bridge:
-        if getattr(inputs.info, "code", "") != "TUHO-WIND-1":
-            raise ValueError(
-                "CO2 revenue bridge (use_co2_revenue_bridge=True) is currently supported "
-                "only for TUHO-WIND-1"
-            )
         decompositions = revenue_decomposition_schedule(inputs, engine)
         for period_idx, decomp in decompositions.items():
             if decomp.get("is_operation", False):
@@ -156,11 +145,6 @@ def run_waterfall_v3_core(
     # R99/R102: BLOCKED — only taxable income / cash tax affected.
     co2_cit_bridge_by_period: dict[int, float] = {}
     if use_co2_cit_bridge:
-        if getattr(inputs.info, "code", "") != "TUHO-WIND-1":
-            raise ValueError(
-                "CO2 CIT bridge (use_co2_cit_bridge=True) is currently supported "
-                "only for TUHO-WIND-1"
-            )
         if use_co2_revenue_bridge:
             raise ValueError(
                 "use_co2_cit_bridge and use_co2_revenue_bridge cannot both be True; "
@@ -1057,7 +1041,10 @@ def _apply_tuho_tax_bridge_runtime_cash_tax(
         )
         period.corporate_tax_cash_keur = tax_cash
         period.cash_tax_current_period_audit_keur = tax_cash
-        period.cf_after_tax_keur = period.ebitda_keur - tax_cash
+        # HOTFIX Z2: bridge cash tax is reconciliation-only; cf_after_tax_keur is not overridden
+        # here to preserve consistency with distributions and equity IRR (pre-computed pre-bridge).
+        # Use cash_tax_bridge_reconciliation_keur for audit/export purposes only.
+        period.cash_tax_bridge_reconciliation_keur = period.ebitda_keur - tax_cash
 
         dsra_release_or_funding = max(0.0, -period.dsra_contribution_keur) - max(
             0.0, period.dsra_contribution_keur
@@ -1105,16 +1092,18 @@ def _tax_bridge_taxable_income_before_losses(
     shl_interest_gross_accrued_keur: float,
     fiscal_reintegration_keur: float,
 ) -> float:
-    """Return signed taxable income before losses using R35 source basis.
+    """Return signed taxable income before losses using Croatian CIT basis.
 
-    R35 bridge sources:
-    - book_depreciation_keur:  P&L cost (earnings statement basis, straight-line)
-    - tax_depreciation_keur:   fiscal addback (tax basis straight-line, differs from book)
+    Croatian CIT formula: EBITDA − tax_dep − deductible_interest + fiscal_reintegration
+
+    - tax_depreciation_keur:   fiscal deduction (Croatian CIT correct basis)
+    - book_depreciation_keur:  not used in this formula (P&L only, not CIT deduction)
     - shl_interest_formula_keur: legacy formula-derived gross SHL interest (fallback)
     - shl_interest_gross_accrued_keur: fixture-extracted Excel R27 (preferred, non-zero for TUHO)
     - senior_interest_keur:  senior debt interest
-    - fiscal_reintegration_keur: R34 interest limitation reintegration
+    - fiscal_reintegration_keur: R34 ATAD interest limitation reintegration carryforward
     """
+    _ = book_depreciation_keur  # not used: CIT deduction is tax_dep, not book_dep
     # Use gross-accrued source for SHL when available; fall back to formula otherwise
     shl_interest = (
         shl_interest_gross_accrued_keur
@@ -1127,10 +1116,8 @@ def _tax_bridge_taxable_income_before_losses(
     deductible_interest = total_interest - disallowed_interest
     return (
         ebitda_keur
-        - book_depreciation_keur
+        - tax_depreciation_keur
         - deductible_interest
-        + disallowed_interest
-        + tax_depreciation_keur
         + fiscal_reintegration_keur
     )
 

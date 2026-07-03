@@ -192,7 +192,8 @@ class TestGoldenRegression:
         assert abs(tuho.actual_avg_dscr - 1.3786) < 0.001
 
     def test_tuho_total_tax_unchanged(self, tuho):
-        assert abs(tuho.total_tax_keur - 45835.0) < 500.0
+        # Phase0/Z1: formula fix; new correct value ~35414 kEUR (old 45835 used wrong depreciation basis)
+        assert abs(tuho.total_tax_keur - 35414.0) < 500.0
 
     def test_tuho_total_distribution_unchanged(self, tuho):
         assert abs(tuho.total_distribution_keur - 165471.0) < 200.0

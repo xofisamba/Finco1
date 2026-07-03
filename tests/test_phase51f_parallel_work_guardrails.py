@@ -79,12 +79,14 @@ PARITY_CORE_FILES: dict[str, str] = {
         # fixture sizing capacity; stores it in _frozen_senior_ds_capacity_keur.
         # DSCR only overridden for fixture-active (frozen_value > 0) periods.
         # _frozen_active_op_indices used for avg_dscr recomputation.
-        # Stack AC: Phase 23D/23Q dispatch uses _configured_fixture_path from
-        # FinancingParams.frozen_senior_ds_fixture_path instead of project code.
-        # csv_path also reads from configured path. No financial logic changed.
+        # Phase0/Y3: identity guards (lines 115-120, CO2 guards) removed — capability flags enforce.
+        # Phase0/Z1: _tax_bridge_taxable_income_before_losses formula corrected to Croatian CIT basis
+        #   (EBITDA - tax_dep - deductible + fiscal). TUHO total_tax changes ~45835→~35414 kEUR.
+        # Phase0/Z2: cf_after_tax_keur override removed; bridge values are reconciliation-only.
         # Previous hash (Stack Q): 55d1e54756f489b04776ffffe06f45e5b7c23bfd22261699d4f4f62122dbfecc
         # Previous hash (Stack AB): ca320b47d476f5fc097705ec2a01d72d44090e78a8147dce1b2064d5e5873b17
-        "effae3ea5e8cf3fe9cd36fe9b959211ebf137fd7ff94d3d380730c9b21ef895d"
+        # Previous hash (Stack AC): effae3ea5e8cf3fe9cd36fe9b959211ebf137fd7ff94d3d380730c9b21ef895d
+        "b839df14a697be51102015bae0b45c589dec0d9f89515b240ed683cfa1373079"
     ),
     "app/project_factories.py": (
         # Stack O: Oborovo equity IRR method calibration.
