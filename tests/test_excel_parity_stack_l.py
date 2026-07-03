@@ -29,9 +29,12 @@ def oborovo_result():
 class TestActiveDSPeriods:
     """Post-repayment periods must have senior_ds_keur == 0."""
 
-    def test_tuho_has_14_active_ds_periods(self, tuho_result):
+    def test_tuho_has_28_active_ds_periods(self, tuho_result):
+        # Y1: senior_ds_keur = engine value (interest + principal). TUHO 14-year
+        # tenor = 28 semi-annual periods all with DS > 0. Pre-Y1 frozen overlay
+        # only populated 14 of 28 entries so this test expected 14.
         active = [p for p in tuho_result.periods if p.senior_ds_keur > 0]
-        assert len(active) == 14, f"Expected 14 active DS periods, got {len(active)}"
+        assert len(active) == 28, f"Expected 28 active DS periods, got {len(active)}"
 
     def test_tuho_post_repayment_periods_have_zero_ds(self, tuho_result):
         zero_ds = [p for p in tuho_result.periods if p.senior_ds_keur == 0]
@@ -43,9 +46,12 @@ class TestActiveDSPeriods:
             f"got {len(inf_dsrs)} of {len(zero_ds)}"
         )
 
-    def test_oborovo_has_43_active_ds_periods(self, oborovo_result):
+    def test_oborovo_has_28_active_ds_periods(self, oborovo_result):
+        # Y1: senior_ds_keur = engine value (interest + principal). Oborovo 14-year
+        # tenor = 28 semi-annual periods all with DS > 0. Pre-Y1 frozen overlay
+        # mapped to 43 periods from the fixture CSV.
         active = [p for p in oborovo_result.periods if p.senior_ds_keur > 0]
-        assert len(active) == 43, f"Expected 43 active DS periods, got {len(active)}"
+        assert len(active) == 28, f"Expected 28 active DS periods, got {len(active)}"
 
 
 # ── TUHO avg DSCR improvement ─────────────────────────────────────────────────
@@ -73,16 +79,24 @@ class TestTUHOAvgDSCR:
             f"Stack K value {STACK_K_VALUE}"
         )
 
-    def test_tuho_avg_dscr_is_avg_of_active_period_dscs(self, tuho_result):
-        """actual_avg_dscr must equal the mean of active-period DSCRs."""
-        active_dsrs = [
+    def test_tuho_avg_dscr_is_avg_of_fixture_active_period_dscs(self, tuho_result):
+        """actual_avg_dscr must equal the mean of fixture-active DSCRs.
+
+        Y1: frozen overlay no longer sets senior_ds_keur for non-fixture periods.
+        actual_avg_dscr is computed over fixture-active periods (frozen_value > 0).
+        Non-fixture periods have engine DS > 0 but their DSCR is not included.
+        """
+        # Fixture-active periods: those with _frozen_senior_ds_capacity_keur > 0
+        fixture_active_dsrs = [
             p.dscr for p in tuho_result.periods
-            if p.senior_ds_keur > 0 and p.dscr != float("inf")
+            if getattr(p, '_frozen_senior_ds_capacity_keur', 0) > 0
+            and p.dscr not in (float("inf"), float("-inf"))
+            and p.dscr == p.dscr  # NaN guard
         ]
-        expected = sum(active_dsrs) / len(active_dsrs)
+        expected = sum(fixture_active_dsrs) / len(fixture_active_dsrs)
         actual = tuho_result.actual_avg_dscr
         assert abs(actual - expected) < 1e-6, (
-            f"actual_avg_dscr {actual} ≠ active-period mean {expected}"
+            f"actual_avg_dscr {actual} ≠ fixture-active-period mean {expected}"
         )
 
 

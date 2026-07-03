@@ -422,9 +422,11 @@ def _snapshot_to_dict(snapshot: dict) -> dict:
             if str(snapshot.get("gearing_pct", "") or "").strip()
             else None
         ),
+        # Y3: snapshot stores interest_rate_pct as decimal (0.0575 = 5.75%).
+        # _set_financing_interest_rate expects percentage, so multiply by 100.
         "interest_rate_pct": _snapshot_float(
             snapshot, "interest_rate_pct", non_negative=True
-        ),
+        ) * 100.0,
         "tenor_years": _snapshot_int(
             snapshot, "tenor_years", positive=True
         ),
