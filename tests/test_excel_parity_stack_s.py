@@ -131,19 +131,17 @@ class TestDSRepresentationInvariants:
     def test_oborovo_total_senior_ds_is_engine_total(self, oborovo):
         assert abs(oborovo.total_senior_ds_keur - 63522.0) < 5.0
 
-    def test_tuho_frozen_ds_sum_differs_from_total(self, tuho_rows):
-        """Post-overlay sum of senior_ds_keur is NOT equal to total_senior_ds_keur.
+    def test_tuho_period_ds_sum_equals_total(self, tuho_rows):
+        """Stack Y1: sum(period.senior_ds_keur) == result.total_senior_ds_keur.
 
-        This is expected: the TUHO fixture CSV has DS values for operating
-        periods 1-14 only; the engine schedules all 28 semi-annual periods.
-        Recalculating the total from period values would give ~32,853 kEUR,
-        which is financially wrong (correct total is 65,826 kEUR).
+        Y1 fix: the Phase 23A overlay no longer overrides senior_ds_keur with
+        the frozen sizing capacity.  senior_ds_keur = senior_interest + senior_principal
+        so the period sum now equals the engine total (65,826 kEUR).
         """
         op_rows = [r for r in tuho_rows if r.get("is_operation") == "True"]
-        frozen_sum = sum(float(r["senior_ds_keur"]) for r in op_rows)
-        # Sum from frozen overlay is ~32,853, NOT the engine total ~65,826
-        assert frozen_sum < 40_000.0, (
-            f"If frozen sum jumped above 40k the fixture mapping changed: {frozen_sum:.0f}"
+        ds_sum = sum(float(r["senior_ds_keur"]) for r in op_rows)
+        assert abs(ds_sum - 65826.0) < 10.0, (
+            f"period sum={ds_sum:.0f} should equal engine total ~65826"
         )
 
     def test_tuho_engine_components_non_zero_in_op_periods(self, tuho_rows):

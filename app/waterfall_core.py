@@ -635,18 +635,23 @@ def run_waterfall_v3_core(
                 _sizing_cfads = getattr(result, '_oborovo_sizing_cfads', None)
                 _csv_ds_active = getattr(result, '_oborovo_csv_ds_active_op_indices', None)
 
+                # Y1: track which op-period indices have frozen_value > 0 so
+                # DSCR averaging uses only fixture-active periods (same basis as Golden Excel).
+                _frozen_active_op_indices: set = set()
                 for op_idx, (period_idx, period) in enumerate(op_periods):
                     if op_idx < len(frozen_ds):
                         frozen_value = frozen_ds[op_idx]
-                        legacy_ds = period.senior_ds_keur
-                        period.senior_ds_keur = frozen_value
+                        # Y1: Do NOT override period.senior_ds_keur.
+                        # Keep senior_ds_keur = senior_interest_keur + senior_principal_keur
+                        # so that sum(period.senior_ds_keur) == result.total_senior_ds_keur.
+                        # The frozen capacity is used only for DSCR computation below.
+                        period._frozen_senior_ds_capacity_keur = frozen_value
                         # Attach audit metadata
                         period._frozen_senior_ds_override = True
                         period._frozen_senior_ds_source = getattr(
                             inputs.financing, 'frozen_schedule_note',
                             'canonical_sizing_capacity'
                         )
-                        period._legacy_senior_ds_keur = legacy_ds
                         # Recompute DSCR using frozen service.
                         # Stack Q: prefer sizing CFADS from fixture (Golden Excel FCF for banks)
                         # over actual EBITDA. Sizing CFADS = Excel DS!R20 (FCF for banks),
@@ -657,10 +662,11 @@ def run_waterfall_v3_core(
                             cfads = getattr(period, 'cfads_keur', None)
                             if cfads is None:
                                 cfads = getattr(period, 'revenue_keur', 0.0) - getattr(period, 'opex_keur', 0.0)
+                        # Y1: only override DSCR when the fixture has a non-zero
+                        # DS value; preserve engine DSCR for zero-fixture periods.
                         if frozen_value > 0:
                             period.dscr = cfads / frozen_value
-                        else:
-                            period.dscr = float('inf') if cfads > 0 else 0.0
+                            _frozen_active_op_indices.add(op_idx)
                 # Recompute result-level DSCR averages to match Excel methodology.
                 # Stack Q: for Oborovo, filter to CSV-active DS periods only (ds_r57 > 0)
                 # to exclude canonical-only DS periods (where Excel DS=0 but canonical
@@ -676,14 +682,13 @@ def run_waterfall_v3_core(
                         and p.dscr == p.dscr  # NaN guard
                     ]
                 else:
-                    # Default path: include all periods with active senior DS.
-                    # Guard: only apply when the active-period average is lower than the
-                    # engine average. If the override expanded active periods (e.g. via
-                    # merchant-phase high DSCRs), the new average would be larger — a
-                    # separate gap not addressed in this block.
+                    # Y1: use fixture-active op-period indices for DSCR averaging.
+                    # Only periods where frozen_value > 0 (fixture has DS) are included,
+                    # matching the Golden Excel DSCR computation basis.
                     _active_dsrs = [
-                        p.dscr for p in result.periods
-                        if getattr(p, 'senior_ds_keur', 0) > 0
+                        p.dscr
+                        for op_i, (_, p) in enumerate(op_periods)
+                        if op_i in _frozen_active_op_indices
                         and p.dscr not in (float('inf'), float('-inf'))
                         and p.dscr == p.dscr  # NaN guard
                     ]

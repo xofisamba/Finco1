@@ -184,7 +184,7 @@
         {% elif y <= 24 %} {% set yr_class = "yr-late" %}
         {% else %} {% set yr_class = "yr-end" %}
         {% endif %}
-        {% set y_val = cat.yearly_totals[y-1] if cat.yearly_totals else 0 %}
+        {% set y_val = (cat.yearly_totals[y-1] if cat.yearly_totals else 0) or 0 %}
         <td class="fc-cell fc-cell--amount fc-cell--cat-total {{ yr_class }}
                    {% if cat.is_contingency %}fc-cell--contingency{% endif %}
                    {% if y <= 8 %}yr-show{% else %}yr-hide{% endif %}"
@@ -285,7 +285,7 @@
           {% else %} {% set yr_class = "yr-end" %}
           {% endif %}
           {% set active = child.active_flags[y-1] if child.active_flags else 1 %}
-          {% set y_val = child.yearly_values[y-1] if child.yearly_values else 0 %}
+          {% set y_val = (child.yearly_values[y-1] if child.yearly_values else 0) or 0 %}
           <td class="fc-cell fc-cell--year {{ yr_class }}
                      fc-cell--val {% if y <= 8 %}yr-show{% else %}yr-hide{% endif %}"
               data-yr="{{ y }}"

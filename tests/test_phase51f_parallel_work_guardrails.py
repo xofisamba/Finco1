@@ -74,12 +74,13 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 # model-change PR.
 PARITY_CORE_FILES: dict[str, str] = {
     "app/waterfall_core.py": (
-        # Stack Q: Oborovo DSCR CFADS basis fix.
-        # actual_avg_dscr now uses sizing CFADS (Golden Excel FCF for banks) over
-        # the 28 CSV-active DS periods (ds_r57 > 0) instead of actual EBITDA over
-        # all canonical-DS periods. Closes gap from 1.242 to 1.179 (golden 1.147).
-        # Previous hash (Stack L): 76ec579cbafc0ea9d3e692d1715b8888d39614be8b5eee7723b475b1dccfa1d7
-        "55d1e54756f489b04776ffffe06f45e5b7c23bfd22261699d4f4f62122dbfecc"
+        # Stack Y1: DS overlay reconciliation.
+        # Phase 23A overlay no longer overrides period.senior_ds_keur with the
+        # fixture sizing capacity; stores it in _frozen_senior_ds_capacity_keur.
+        # DSCR only overridden for fixture-active (frozen_value > 0) periods.
+        # _frozen_active_op_indices used for avg_dscr recomputation.
+        # Previous hash (Stack Q): 55d1e54756f489b04776ffffe06f45e5b7c23bfd22261699d4f4f62122dbfecc
+        "ca320b47d476f5fc097705ec2a01d72d44090e78a8147dce1b2064d5e5873b17"
     ),
     "app/project_factories.py": (
         # Stack O: Oborovo equity IRR method calibration.

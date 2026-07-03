@@ -88,9 +88,11 @@ class TestTUHODebt:
         assert tuho.min_llcr > 1.15
 
     def test_tuho_active_ds_periods(self, tuho):
+        # Y1: senior_ds_keur = engine value (interest + principal).
+        # TUHO 14-year tenor = 28 semi-annual periods all with DS > 0.
         op_periods = [p for p in tuho.periods if p.is_operation]
         active_ds = sum(1 for p in op_periods if p.senior_ds_keur > 0)
-        assert active_ds == 14, f"TUHO active_ds={active_ds}, expected 14"
+        assert active_ds == 28, f"TUHO active_ds={active_ds}, expected 28"
 
 
 # ── P1.1 TUHO: Tax & OpEx ────────────────────────────────────────────────────
@@ -171,9 +173,11 @@ class TestOborovoDebt:
         assert oborovo.min_llcr > 1.15
 
     def test_oborovo_active_ds_periods(self, oborovo):
+        # Y1: senior_ds_keur = engine value (interest + principal).
+        # Oborovo 14-year tenor = 28 semi-annual periods all with DS > 0.
         op_periods = [p for p in oborovo.periods if p.is_operation]
         active_ds = sum(1 for p in op_periods if p.senior_ds_keur > 0)
-        assert active_ds == 43, f"Oborovo active_ds={active_ds}, expected 43"
+        assert active_ds == 28, f"Oborovo active_ds={active_ds}, expected 28"
 
     def test_oborovo_avg_dscr_documented_gap(self, oborovo):
         """Stack Q closed Oborovo avg DSCR gap from 1.242 to 1.179 (golden 1.147, delta +0.032)."""
