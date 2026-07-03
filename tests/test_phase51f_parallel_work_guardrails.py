@@ -88,9 +88,9 @@ PARITY_CORE_FILES: dict[str, str] = {
         # "combined" (capex-debt investment, distributions only) gave 6.24% vs golden 10.60%.
         # "shl_plus_dividends" (SHL+share_capital investment, SHL interest while outstanding,
         # then dividends) gives 10.66% vs golden 10.60% — delta −6 bps, PASS.
-        # TUHO factory function unchanged.
-        # Previous hash (Stack J): 379bca772013891e0c9018d14cba2cfa0df6c30b9b076dfde6c39ea35a927c60
-        "ba608b209d673b25b8add50ceeffd29aab32f63a43c0444116cb8e2cd8e27603"
+        # Stack Z: TUHO factory opts in to use_tax_bridge_engine=True.
+        # Previous hash (Stack O): ba608b209d673b25b8add50ceeffd29aab32f63a43c0444116cb8e2cd8e27603
+        "e9d184119961f58ef55ed480391b98c9b8ec8396687a3b94ec5546792efbbddc"
     ),
     "reports/phase7_tuho_senior_debt_sizing_extraction.csv": (
         "80e79977f039310158b084e2613ae17251a86916b970d4fda1985467bbde3442"

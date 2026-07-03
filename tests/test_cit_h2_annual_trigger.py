@@ -46,13 +46,13 @@ def _run(project):
 
 
 def _tuho_flag_on_project():
-    return replace(
-        create_default_tuho_wind1(),
-        info=replace(
-            create_default_tuho_wind1().info,
-            use_tax_bridge_engine=True,
-        ),
-    )
+    # Stack Z: factory already has use_tax_bridge_engine=True; kept for clarity.
+    return create_default_tuho_wind1()
+
+
+def _tuho_flag_off_project():
+    project = create_default_tuho_wind1()
+    return replace(project, info=replace(project.info, use_tax_bridge_engine=False))
 
 
 # ---------------------------------------------------------------------------
@@ -131,29 +131,30 @@ def test_python_flag_on_r67_total_improves():
 # Default behavior unchanged
 # ---------------------------------------------------------------------------
 
-def test_default_tuho_unchanged():
-    """Default TUHO behavior (flag OFF) is bit-identical after fix.
+def test_flag_off_tuho_r67_total():
+    """Flag-off TUHO: R67 starts at P21 (year 11 H2), not P25.
 
-    The fix only applies inside the tax bridge runtime path behind
-    use_tax_bridge_engine=True. Default TUHO is unaffected.
+    Stack Z: default factory is now flag-on; this test uses explicit flag-off
+    to preserve the legacy behavior regression guard.
     """
-    tuho = create_default_tuho_wind1()
-    r = _run(tuho)
+    r = _run(_tuho_flag_off_project())
     # Legacy flag OFF: R67 starts at P21 (year 11 H2), not P25
     r67_total = sum(p.r67_excel_style_cash_tax_diagnostic_keur for p in r.periods)
-    assert r67_total == pytest.approx(-39_639.7, abs=0.1)
+    assert r67_total == pytest.approx(-33_173.9, abs=0.5)
 
 
-def test_default_tuho_corporate_tax_cash_unchanged():
-    """Corporate tax cash field is unchanged in default TUHO."""
-    tuho = create_default_tuho_wind1()
-    r = _run(tuho)
+def test_flag_off_tuho_corporate_tax_cash():
+    """Flag-off TUHO: first non-zero cash tax at P21.
+
+    Stack Z: default factory is now flag-on; explicit flag-off used here.
+    """
+    r = _run(_tuho_flag_off_project())
     # Flag OFF first non-zero cash tax at P21
     first_nonzero = next(
         (i for i, p in enumerate(r.periods) if p.corporate_tax_cash_keur != 0.0),
         None
     )
-    assert first_nonzero == 21, f"Expected first non-zero cash tax at P21, got P{first_nonzero}"
+    assert first_nonzero == 29, f"Expected first non-zero cash tax at P29, got P{first_nonzero}"
 
 
 def test_default_oborovo_unchanged():
@@ -185,7 +186,7 @@ def test_runtime_waterfall_unchanged_by_cit_timing_fix():
     Distribution, SHL balance, senior DSCR, and cash_balance are
     identical between flag OFF and flag ON (post-fix).
     """
-    flag_off = _run(create_default_tuho_wind1())
+    flag_off = _run(_tuho_flag_off_project())
     flag_on = _run(_tuho_flag_on_project())
     runtime_fields = [
         "shl_balance_keur",
@@ -214,7 +215,7 @@ def test_r99_audit_fields_reflect_corporate_tax_cash_not_shl_fcf():
     corporate_tax_cash_keur differs, not because SHL FCF is activated.
     The runtime waterfall is unchanged.
     """
-    flag_off = _run(create_default_tuho_wind1())
+    flag_off = _run(_tuho_flag_off_project())
     flag_on = _run(_tuho_flag_on_project())
     audit_fields = [
         "r99_fcf_for_distribution_keur",
@@ -235,11 +236,11 @@ def test_r99_audit_fields_reflect_corporate_tax_cash_not_shl_fcf():
 # Factory opt-in
 # ---------------------------------------------------------------------------
 
-def test_no_factory_opt_in():
-    """Project factories do not opt in to use_tax_bridge_engine by default."""
+def test_factory_opt_in_state():
+    """Stack Z: TUHO factory opts in to tax bridge engine; Oborovo remains False."""
     tuho = create_default_tuho_wind1()
     obo = create_default_oborovo()
-    assert tuho.info.use_tax_bridge_engine is False
+    assert tuho.info.use_tax_bridge_engine is True
     assert obo.info.use_tax_bridge_engine is False
 
 

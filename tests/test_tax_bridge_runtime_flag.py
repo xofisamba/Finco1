@@ -1,4 +1,4 @@
-"""Phase 6 default-off tax bridge runtime flag tests."""
+"""Tax bridge runtime flag tests (Stack Z: TUHO defaults to flag-on)."""
 
 from __future__ import annotations
 
@@ -57,23 +57,30 @@ def _assert_nested_snapshot_close(left, right, *, abs_tol=0.0001):
 
 
 def _tuho_flag_on_project():
+    # Stack Z: factory already has use_tax_bridge_engine=True; kept for clarity.
+    return create_default_tuho_wind1()
+
+
+def _tuho_flag_off_project():
     project = create_default_tuho_wind1()
-    return replace(project, info=replace(project.info, use_tax_bridge_engine=True))
+    return replace(project, info=replace(project.info, use_tax_bridge_engine=False))
 
 
-def test_tax_bridge_flag_defaults_false():
-    assert create_default_tuho_wind1().info.use_tax_bridge_engine is False
+def test_tax_bridge_flag_tuho_defaults_true():
+    # Stack Z: TUHO factory opts in to tax bridge engine; Oborovo remains False.
+    assert create_default_tuho_wind1().info.use_tax_bridge_engine is True
     assert create_default_oborovo().info.use_tax_bridge_engine is False
 
 
-def test_tuho_flag_off_is_bit_identical_with_default_project():
-    baseline = _run(create_default_tuho_wind1())
-    flag_off = _run(create_default_tuho_wind1())
+def test_tuho_default_is_flag_on_and_deterministic():
+    # Stack Z: two runs of the default (flag-on) project produce bit-identical results.
+    run_a = _run(create_default_tuho_wind1())
+    run_b = _run(create_default_tuho_wind1())
 
-    assert _key_totals(flag_off) == pytest.approx(_key_totals(baseline), abs=0.0001)
+    assert _key_totals(run_a) == pytest.approx(_key_totals(run_b), abs=0.0001)
     _assert_nested_snapshot_close(
-        _period_cash_snapshot(flag_off),
-        _period_cash_snapshot(baseline),
+        _period_cash_snapshot(run_a),
+        _period_cash_snapshot(run_b),
     )
 
 
@@ -141,7 +148,7 @@ def test_tuho_flag_on_measures_accrued_cit_and_r67_against_excel():
 
 
 def test_tuho_flag_on_measures_r99_r102_impact_but_does_not_accept_source():
-    legacy = _run(create_default_tuho_wind1())
+    legacy = _run(_tuho_flag_off_project())
     flag_on = _run(_tuho_flag_on_project())
 
     legacy_r99_total = sum(period.r99_fcf_for_distribution_keur for period in legacy.periods)
@@ -159,7 +166,7 @@ def test_tuho_flag_on_measures_r99_r102_impact_but_does_not_accept_source():
 
 
 def test_tuho_flag_on_does_not_drift_unrelated_operating_engines():
-    legacy = _run(create_default_tuho_wind1())
+    legacy = _run(_tuho_flag_off_project())
     flag_on = _run(_tuho_flag_on_project())
 
     assert flag_on.total_revenue_keur == pytest.approx(legacy.total_revenue_keur, abs=0.0001)

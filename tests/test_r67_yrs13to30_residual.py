@@ -62,11 +62,12 @@ def _tuho_flag_on_project():
 # Default behavior unchanged
 # -----------------------------------------------------------------------
 
-def test_default_tuho_unchanged():
-    """Default TUHO (flag OFF) R67 is unchanged — PR #71 regression guard."""
+def test_default_tuho_r67_total():
+    """Default TUHO (Stack Z: flag ON) R67 total regression guard."""
     r = _run(create_default_tuho_wind1())
     r67 = sum(p.r67_excel_style_cash_tax_diagnostic_keur for p in r.periods)
-    assert r67 == pytest.approx(-39_639.7, abs=0.1)
+    # Stack Z: factory now opts in to flag ON — value matches tax-bridge R67.
+    assert r67 == pytest.approx(-43_512.4, abs=0.5)
 
 
 def test_default_oborovo_unchanged():
@@ -76,11 +77,11 @@ def test_default_oborovo_unchanged():
         assert p.corporate_tax_cash_keur >= 0.0
 
 
-def test_no_factory_opt_in():
-    """Neither TUHO nor Oborovo factory opts into tax bridge engine."""
+def test_factory_opt_in_state():
+    """Stack Z: TUHO factory opts in to tax bridge engine; Oborovo remains False."""
     tuho = create_default_tuho_wind1()
     obo = create_default_oborovo()
-    assert tuho.info.use_tax_bridge_engine is False
+    assert tuho.info.use_tax_bridge_engine is True
     assert obo.info.use_tax_bridge_engine is False
 
 
