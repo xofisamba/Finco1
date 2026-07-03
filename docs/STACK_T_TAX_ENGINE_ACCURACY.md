@@ -49,17 +49,31 @@ Replaced single-pass tax computation with a **two-pass within-period** approach:
 - Updates `prior_tax_loss` only from Pass 2 result
 - `cf_after_tax = ebitda - tax_this_period` uses Pass 2 tax
 
-Two passes are exact because `compute_shl_period` depends on `_cf_for_shl` but NOT
-on the tax result. Pass 1's `_cf_for_shl` is computed from provisional tax; this is
-the same cash flow the SHL sweep uses to determine principal availability.
+**SHL re-pass** — update SHL principal from final `cf_after_tax`:
+- Recomputes `_cf_for_shl_final = max(0, cf_after_tax - senior_ds)` from Pass 2
+- Re-calls `compute_shl_period(_cf_for_shl_final)` → corrected `shp`, `shl_balance`
+- Guards that `shi` is unchanged (raises `RuntimeError` if it moves > 0.01 kEUR)
+- Updates `shp`, `shl_pik`, `shl_balance` to reflect the final post-tax cashflow
 
-### Why Two Passes Are Sufficient
+### Why Three Computations Are Sufficient
 
-The dependency graph contains no further circularity:
-- `_cf_for_shl` depends on `ebitda` and `_tax_this_period_p1` (both known in Pass 1)
-- `compute_shl_period` depends only on `_cf_for_shl` and SHL balance mechanics
-- `compute_period_tax` in Pass 2 uses `shi` from `compute_shl_period` — no feedback
-  from tax result back into SHL computation
+`shi` (SHL cash interest paid) equals `min(net_interest, cf_available)`.  In all
+sweep-phase periods for TUHO and Oborovo, `cf_available >> net_interest`, so
+`shi = net_interest` is unchanged by the re-pass.  The guard confirms this period
+by period and raises `RuntimeError` if it ever fails — requiring explicit three-pass
+iteration.
+
+`shp` (principal) depends on `cf_available - interest_paid`, so it can differ
+between Pass 1 and the re-pass.  For TUHO, two periods (P31 and P33) have
+`|shp_p1 - shp_final| > 0.01 kEUR`.  The re-pass corrects these, giving an
+internally consistent `shl_balance` sequence.
+
+All three computations can be summarised as:
+```
+Pass 1:   compute_period_tax(shi=0)    → _cf_for_shl_p1 → SHL block → shi, shp_p1
+Pass 2:   compute_period_tax(shi=shi)  → cf_after_tax_final → _cf_for_shl_final
+Repass:   compute_shl_period(_cf_for_shl_final) → shi (unchanged), shp_final, bal_final
+```
 
 ---
 
@@ -181,8 +195,9 @@ conditions are clear.
 | `TestStackUExportIRRScalingPreserved` | 2 | Stack U /100 fix not reverted |
 | `TestStackRSeededPathParity` | 1 | Stack R determinism preserved |
 | `TestStackSExportColumnNaming` | 1 | Stack S DS column rename preserved |
+| `TestSHLRepassConsistency` | 6 | SHL re-pass guard never fires; shi ≤ gross interest; SHL fully repaid |
 | `TestPostTKPISanity` | 6 | Post-T TUHO+Oborovo KPI re-baseline |
 | `TestNoNaNInf` | 4 | No NaN/inf in tax, DSCR, distributions; CIT totals |
 
-All 28 Stack T tests pass.
-All 286 Stack K–U parity + guardrail tests pass.
+All 34 Stack T tests pass.
+All 286 Stack K–U parity + guardrail tests pass (320 total).

@@ -749,12 +749,14 @@ def run_waterfall(
         # Cash tax is paid in the second period of each fiscal year.
         is_tax_period = period.period_in_year == 2
 
-        # ── Stack T1: Two-pass tax/SHL — resolves the circular dependency ───────
+        # ── Stack T1: Two-pass tax + SHL re-pass — resolves the circular dependency ─
         # Dependency chain: tax → cf_after_tax → _cf_for_shl → shi → tax
-        # Pass 1: provisional tax with shi=0 → _cf_for_shl → real shi (via SHL block)
-        # Pass 2: final tax with real shi → correct SHL interest deductibility
-        # Two passes are exact for this dependency because compute_shl_period does
-        # not depend on the tax result — only on _cf_for_shl (post-tax cashflow).
+        # Pass 1: provisional tax with shi=0 → _cf_for_shl_p1 → SHL block → real shi
+        # Pass 2: final tax with real shi → cf_after_tax_final → _cf_for_shl_final
+        # SHL re-pass: recompute SHL with _cf_for_shl_final → correct shp/shl_balance
+        # shi is verified unchanged in the re-pass (guard raises RuntimeError if it moves).
+        # Two tax passes are sufficient because shi does not change between passes
+        # (cf_available >> net_interest in all sweep-phase periods).
 
         # ── Pass 1: provisional tax (shl_interest = 0) ──────────────────────────
         _tax_result_p1: TaxPeriodResult = compute_period_tax(
@@ -918,6 +920,50 @@ def run_waterfall(
 
         # CF after tax (final, from Pass 2 tax and T2 cash timing)
         cf_after_tax = ebitda - tax_this_period
+
+        # ── Stack T1: SHL re-pass — update shp/shl_balance from final cf_after_tax ──
+        # Pass 1 computed _cf_for_shl from _cf_after_tax_p1 (provisional tax).
+        # Pass 2 corrected tax; now cf_after_tax may differ → _cf_for_shl changes.
+        # shi (interest paid) must stay the same (it drives the tax already computed);
+        # shp (principal) and shl_balance are updated to reflect the correct cashflow.
+        # If shi were to change, three-pass iteration would be required — guarded below.
+        _SHL_REPASS_TOL = 0.01  # kEUR
+        if (
+            not is_shl_disbursement_period
+            and shl_repayment_method not in ("fcf_waterfall", "accrued")
+            and shl_opening_balance > 0
+        ):
+            if shl_repayment_method == "pik_then_sweep":
+                _cf_for_shl = max(0.0, cf_after_tax - _senior_ds_for_shl)
+            else:
+                _cf_for_shl = cf_after_tax
+            _pik_trig_r = _cf_for_shl > shl_opening_balance * shl_rate
+            if (
+                use_tuho_shl_repayment_alignment
+                and shl_repayment_method == "pik_then_sweep"
+                and tuho_shl_principal_eligibility_start_period is not None
+                and op_period_counter >= tuho_shl_principal_eligibility_start_period
+                and _cf_for_shl >= max(0.0, shl_opening_balance * shl_rate_per)
+            ):
+                _pik_trig_r = True
+            _shi_r, _shp_r, _shl_pik_r, _shl_bal_r = compute_shl_period(
+                shl_balance=shl_opening_balance,
+                shl_rate_per_period=shl_rate_per,
+                cf_after_senior_ds=_cf_for_shl,
+                method=shl_repayment_method,
+                wht_rate=shl_wht_rate,
+                pik_switch_triggered=_pik_trig_r,
+                is_final_shl_period=is_final_shl_period,
+            )
+            if abs(_shi_r - shi) > _SHL_REPASS_TOL:
+                raise RuntimeError(
+                    f"SHL re-pass: shi changed by {abs(_shi_r - shi):.4f} kEUR at "
+                    f"period {getattr(period, 'period', '?')} — three-pass iteration required."
+                )
+            shp = _shp_r
+            shl_pik = _shl_pik_r
+            shl_balance = _shl_bal_r
+            shl_svc = shi + shp
 
         # CF after senior and SHL debt service
         cf_after_ds = cf_after_tax - senior_ds - shi  # SHL principal repayment reduces the balance sheet, not P&L cash flow.

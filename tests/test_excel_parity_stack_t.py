@@ -251,6 +251,79 @@ class TestStackSExportColumnNaming:
             os.unlink(tmp)
 
 
+# ── T3e2: SHL re-pass consistency ────────────────────────────────────────────
+
+class TestSHLRepassConsistency:
+    """T1 SHL re-pass: verify that shi is the same after the re-pass (guard holds)
+    and that SHL outcomes are internally consistent with the final cf_after_tax.
+
+    The engine's SHL re-pass raises RuntimeError if shi changes; these tests
+    indirectly prove the guard never fires (they would fail with RuntimeError if it did).
+    """
+
+    def test_tuho_shl_interest_never_negative(self, tuho):
+        """SHL cash interest must be non-negative in every period."""
+        for p in tuho.periods:
+            assert (p.shl_interest_keur or 0) >= 0.0, (
+                f"TUHO P{p.period}: shl_interest_keur={p.shl_interest_keur} is negative"
+            )
+
+    def test_tuho_shl_balance_fully_repaid(self, tuho):
+        """TUHO SHL must reach zero balance (fully repaid) before model end."""
+        shl_active = [p for p in tuho.periods if (p.shl_balance_keur or 0) > 0.01]
+        assert shl_active, "No SHL balance found — TUHO should have SHL"
+        last_active = shl_active[-1]
+        assert last_active.period < len(tuho.periods) - 1, (
+            f"TUHO SHL balance never reaches zero (last balance at P{last_active.period})"
+        )
+
+    def test_tuho_cf_after_tax_positive_in_operating_periods(self, tuho):
+        """cf_after_tax must be positive in TUHO operating periods (healthy CFADS)."""
+        op = [p for p in tuho.periods if p.is_operation]
+        # Allow a few early periods near zero; focus on middle periods
+        mid_ops = op[5:20]
+        for p in mid_ops:
+            assert (p.cf_after_tax_keur or 0) > 0, (
+                f"TUHO P{p.period}: cf_after_tax_keur={p.cf_after_tax_keur:.2f} ≤ 0"
+            )
+
+    def test_tuho_shl_interest_within_gross_interest_cap(self, tuho):
+        """SHL cash interest must not exceed gross accrued interest (no overpayment)."""
+        for p in tuho.periods:
+            if not p.is_operation:
+                continue
+            shi = p.shl_interest_keur or 0
+            gross = p.shl_gross_accrued_interest_keur or 0
+            if gross > 0:
+                assert shi <= gross + 0.01, (
+                    f"TUHO P{p.period}: shl_interest {shi:.4f} > gross_accrued {gross:.4f}"
+                )
+
+    def test_tuho_shl_repass_does_not_fire_runtime_error(self):
+        """Running TUHO must not raise RuntimeError from the SHL re-pass guard.
+        This proves shi is identical in the re-pass (two passes are exact for shi)."""
+        try:
+            demo = run_demo_project("TUHO")
+            _ = demo.result.equity_irr
+        except RuntimeError as e:
+            if "SHL re-pass" in str(e):
+                pytest.fail(
+                    f"SHL re-pass guard fired: {e}. "
+                    "shi changed between passes — three-pass iteration required."
+                )
+            raise
+
+    def test_oborovo_shl_repass_does_not_fire_runtime_error(self):
+        """Running Oborovo must not raise RuntimeError from the SHL re-pass guard."""
+        try:
+            demo = run_demo_project("Oborovo")
+            _ = demo.result.equity_irr
+        except RuntimeError as e:
+            if "SHL re-pass" in str(e):
+                pytest.fail(f"Oborovo SHL re-pass guard fired: {e}")
+            raise
+
+
 # ── T3f: Post-T KPI sanity (finite, in range) ────────────────────────────────
 
 class TestPostTKPISanity:
