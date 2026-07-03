@@ -147,13 +147,13 @@ class TestTUHOFrozenDownstream:
         assert result is not None
         assert len(result.periods) > 0
 
-    def test_tuho_senior_ds_differs_when_frozen_on(self):
-        """Frozen schedule flag now produces DIFFERENT senior DS (Phase 23D fixture wired).
+    def test_tuho_dscr_differs_when_frozen_on(self):
+        """Frozen schedule flag produces DIFFERENT DSCR at P4 (Stack Y1).
 
-        Phase 23D: The TUHO CSV fixture is now loaded and used as explicit sizing CFADS
-        when frozen=ON. This makes frozen=ON differ from frozen=OFF (ebitda-derived).
-        The previous test `test_tuho_senior_ds_unchanged_when_frozen_on` documented
-        the BLOCKER state; this test confirms the fix.
+        Stack Y1: senior_ds_keur is now the engine value in both modes.
+        The frozen overlay sets _frozen_senior_ds_capacity_keur and overrides
+        DSCR (period.dscr = sizing_cfads / frozen_capacity) when frozen=ON.
+        So DSCR differs between frozen OFF (engine-derived) and ON (fixture-derived).
         """
         config_off = WaterfallRunConfig(
             use_senior_debt_sizing_engine=False,
@@ -165,22 +165,23 @@ class TestTUHOFrozenDownstream:
         )
         r_off = _run_tuho(config_off)
         r_on = _run_tuho(config_on)
-        # Phase 23D: fixture is now wired, so frozen ON differs from OFF
-        p4_off = r_off.periods[3].senior_ds_keur
-        p4_on = r_on.periods[3].senior_ds_keur
-        assert abs(p4_off - p4_on) > 1.0, (
-            f"senior_ds_keur at P4 should differ: OFF={p4_off:.4f}, ON={p4_on:.4f}. "
-            f"Phase 23D fixture wiring confirmed."
+        # Stack Y1: DSCR is overridden by fixture when frozen=ON
+        p4_off = r_off.periods[3].dscr
+        p4_on = r_on.periods[3].dscr
+        assert abs(p4_off - p4_on) > 0.01, (
+            f"DSCR at P4 should differ: OFF={p4_off:.4f}, ON={p4_on:.4f}. "
+            f"Stack Y1: frozen overlay sets DSCR from fixture, not engine DS."
         )
 
-    def test_tuho_frozen_path_is_fixture_backed(self):
-        """Phase 23D RESOLVES BLOCKER: frozen=ON now differs from frozen=OFF (fixture wired).
+    def test_tuho_frozen_path_sets_capacity_field(self):
+        """Stack Y1: frozen=ON sets _frozen_senior_ds_capacity_keur on periods.
 
-        PR #300 documented: frozen=ON produced IDENTICAL senior_ds_keur to frozen=OFF
-        because the CSV fixture was not wired into canonical sizing.
+        Stack Y1 changed the Phase 23A overlay: senior_ds_keur is no longer
+        overridden (it remains the engine value = interest + principal in both modes).
+        Instead, the fixture sizing capacity is stored in _frozen_senior_ds_capacity_keur,
+        and DSCR is overridden using fixture CFADS / fixture capacity when frozen=ON.
 
-        Phase 23D (this branch): fixture is now loaded and used as explicit sizing CFADS.
-        Factory opt-in remains BLOCKED (flags still default False in factory).
+        This test verifies the audit field is set when frozen=ON and absent when OFF.
         """
         config_off = WaterfallRunConfig(
             use_senior_debt_sizing_engine=False,
@@ -194,12 +195,14 @@ class TestTUHOFrozenDownstream:
         r_on = _run_tuho(config_on)
         check_periods = [1, 2, 3, 4, 5, 11]  # P2, P3, P4, P5, P6, P12
         for idx in check_periods:
-            ds_off = r_off.periods[idx].senior_ds_keur
-            ds_on = r_on.periods[idx].senior_ds_keur
-            diff = abs(ds_off - ds_on)
-            assert diff > 1.0, (
-                f"Period {idx}: senior_ds should differ (Phase 23D fixture wired): "
-                f"OFF={ds_off:.4f}, ON={ds_on:.4f}, diff={diff:.4f}"
+            cap_off = getattr(r_off.periods[idx], '_frozen_senior_ds_capacity_keur', None)
+            cap_on = getattr(r_on.periods[idx], '_frozen_senior_ds_capacity_keur', None)
+            assert cap_off is None, (
+                f"Period {idx}: _frozen_senior_ds_capacity_keur should be absent when frozen=OFF, "
+                f"got {cap_off}"
+            )
+            assert cap_on is not None, (
+                f"Period {idx}: _frozen_senior_ds_capacity_keur should be set when frozen=ON"
             )
 
     def test_tuho_revenue_unchanged_when_frozen_on(self):
