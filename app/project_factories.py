@@ -330,6 +330,7 @@ def create_default_tuho_wind1() -> ProjectInputs:
         horizon_years=30,
         period_frequency=PeriodFrequency.SEMESTRIAL,
         use_senior_debt_sizing_engine=True,  # Phase 23F: canonical SeniorDebtSizing path enabled
+        use_tax_bridge_engine=True,  # Stack Z: tax depreciation runtime wiring
     )
 
     technical = TechnicalParams(

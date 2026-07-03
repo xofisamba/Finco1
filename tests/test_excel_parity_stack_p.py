@@ -109,7 +109,8 @@ class TestTUHOTaxOpex:
         assert tuho.total_tax_keur > 0.0
 
     def test_tuho_total_cit_value(self, tuho):
-        assert abs(tuho.total_tax_keur - 33186.0) < 100.0  # Stack T re-baseline (was 39650)
+        # Stack Z: tax depreciation wiring changes accrued CIT from ~33186 to ~45835.
+        assert abs(tuho.total_tax_keur - 45835.0) < 200.0  # Stack Z re-baseline
 
 
 # ── P1.1 TUHO: Distribution ──────────────────────────────────────────────────
