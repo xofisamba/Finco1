@@ -79,8 +79,12 @@ PARITY_CORE_FILES: dict[str, str] = {
         # fixture sizing capacity; stores it in _frozen_senior_ds_capacity_keur.
         # DSCR only overridden for fixture-active (frozen_value > 0) periods.
         # _frozen_active_op_indices used for avg_dscr recomputation.
+        # Stack AC: Phase 23D/23Q dispatch uses _configured_fixture_path from
+        # FinancingParams.frozen_senior_ds_fixture_path instead of project code.
+        # csv_path also reads from configured path. No financial logic changed.
         # Previous hash (Stack Q): 55d1e54756f489b04776ffffe06f45e5b7c23bfd22261699d4f4f62122dbfecc
-        "ca320b47d476f5fc097705ec2a01d72d44090e78a8147dce1b2064d5e5873b17"
+        # Previous hash (Stack AB): ca320b47d476f5fc097705ec2a01d72d44090e78a8147dce1b2064d5e5873b17
+        "effae3ea5e8cf3fe9cd36fe9b959211ebf137fd7ff94d3d380730c9b21ef895d"
     ),
     "app/project_factories.py": (
         # Stack O: Oborovo equity IRR method calibration.
@@ -89,8 +93,10 @@ PARITY_CORE_FILES: dict[str, str] = {
         # "shl_plus_dividends" (SHL+share_capital investment, SHL interest while outstanding,
         # then dividends) gives 10.66% vs golden 10.60% — delta −6 bps, PASS.
         # Stack Z: TUHO factory opts in to use_tax_bridge_engine=True.
-        # Previous hash (Stack O): ba608b209d673b25b8add50ceeffd29aab32f63a43c0444116cb8e2cd8e27603
-        "e9d184119961f58ef55ed480391b98c9b8ec8396687a3b94ec5546792efbbddc"
+        # Stack AC: TUHO and Oborovo factories set frozen_senior_ds_fixture_path.
+        # No parity-sensitive values changed.
+        # Previous hash (Stack Z/AB): e9d184119961f58ef55ed480391b98c9b8ec8396687a3b94ec5546792efbbddc
+        "e0000033641902aa8948e3871c5f8d0aad8b7d46e612b2a9b1b5c337b035a914"
     ),
     "reports/phase7_tuho_senior_debt_sizing_extraction.csv": (
         "80e79977f039310158b084e2613ae17251a86916b970d4fda1985467bbde3442"
