@@ -4,6 +4,8 @@ Provides functions to export:
 - Waterfall period data (CSV)
 - Summary metrics (CSV)
 - Financial statements (CSV)
+- Tax audit bridge (CSV)
+- Formula source documentation (CSV)
 
 Usage:
     from utils.export import export_waterfall_csv
@@ -14,6 +16,78 @@ from pathlib import Path
 from typing import Optional
 
 from domain.waterfall.waterfall_engine import WaterfallResult
+
+# ---------------------------------------------------------------------------
+# V2 — Formula source documentation
+# Maps each CSV column to a short description of where it originates.
+# ---------------------------------------------------------------------------
+_FORMULA_SOURCES: dict[str, str] = {
+    # Core period identification
+    "period": "waterfall_engine.py — period counter (0-based)",
+    "year_index": "waterfall_engine.py — calendar year of this half-period",
+    "period_in_year": "waterfall_engine.py — 1=H1, 2=H2",
+    "is_operation": "waterfall_engine.py — True once commercial operation date passed",
+    # Revenue / OPEX
+    "generation_mwh": "waterfall_engine.py — net generation after degradation curve",
+    "revenue_keur": "waterfall_engine.py — generation × blended price (PPA + merchant)",
+    "opex_keur": "waterfall_engine.py — opex_params.total_opex_keur half-period",
+    "ebitda_keur": "waterfall_engine.py — revenue − opex",
+    # P&L items
+    "depreciation_keur": "waterfall_engine.py — book depreciation (IFRS straight-line)",
+    "interest_senior_keur": "waterfall_engine.py — senior debt interest this half-period",
+    "interest_shl_keur": "waterfall_engine.py — SHL PIK interest this half-period",
+    "tax_keur": "waterfall_engine.py — accrued CIT this period (Pass-2 result)",
+    "cf_after_tax_keur": "waterfall_engine.py — EBITDA − tax_keur (cash basis)",
+    # Senior debt service
+    "senior_ds_keur": "waterfall_engine.py — total senior debt service (interest + principal)",
+    "senior_interest_keur_engine": "waterfall_engine.py — senior interest component",
+    "senior_principal_keur_engine": "waterfall_engine.py — senior principal repayment",
+    # SHL service
+    "shl_service_keur": "domain/shl/canonical_wiring.py — total SHL cash service",
+    "shl_interest_keur": "domain/shl/canonical_wiring.py — SHL interest paid",
+    "shl_principal_keur": "domain/shl/canonical_wiring.py — SHL principal repaid",
+    # Reserves / covenants
+    "dsra_contribution_keur": "waterfall_engine.py — DSRA top-up contribution",
+    "dsra_balance_keur": "waterfall_engine.py — DSRA closing balance",
+    "cf_after_reserves_keur": "waterfall_engine.py — CFADS after DSRA movement",
+    "dscr": "waterfall_engine.py — CFADS / senior DS (floor=0, cap=999)",
+    "llcr": "waterfall_engine.py — NPV(future CFADS) / senior debt balance",
+    "plcr": "waterfall_engine.py — NPV(all CFADS) / senior debt balance",
+    # Distribution
+    "lockup_active": "waterfall_engine.py — True when any covenant in breach",
+    "distribution_keur": "waterfall_engine.py — equity distribution released",
+    "cash_sweep_keur": "waterfall_engine.py — excess cash swept to debt prepayment",
+    "cum_distribution_keur": "waterfall_engine.py — cumulative equity distributions",
+    "cash_balance_keur": "waterfall_engine.py — project cash account closing balance",
+    # ── Tax audit fields (V1 additions) ───────────────────────────────────
+    "corporate_tax_cash_keur": "waterfall_engine.py — cash CIT paid this period (Pass-2)",
+    "cit_accrual_audit_keur": "waterfall_engine.py — H1 CIT carry-forward to H2 settlement",
+    "taxable_profit_keur": "waterfall_engine.py — taxable income display field (Pass-2)",
+    "taxable_income_before_losses_audit_keur": (
+        "domain/tax/ — EBITDA − depr − interest − fiscal_reint (before loss c/f)"
+    ),
+    "taxable_profit_after_losses_audit_keur": (
+        "domain/tax/ — taxable income after loss carryforward consumed"
+    ),
+    "tax_loss_opening_audit_keur": "waterfall_engine.py — loss c/f opening balance this period",
+    "tax_loss_used_audit_keur": "waterfall_engine.py — losses consumed this period",
+    "tax_loss_closing_audit_keur": "waterfall_engine.py — losses remaining after this period",
+    "fiscal_reintegration_audit_keur": (
+        "waterfall_engine.py — IDC/fees reintegrated into taxable base (year 1 only)"
+    ),
+    "tax_depreciation_audit_keur": (
+        "domain/depreciation/canonical_wiring.py — tax depreciation used in CIT calc"
+    ),
+    "cash_tax_current_period_audit_keur": (
+        "waterfall_engine.py — cash CIT attributable to current period only"
+    ),
+    "cash_tax_excel_style_h2_diagnostic_keur": (
+        "waterfall_engine.py — H2 diagnostic: prior H1 accrual + current period tax"
+    ),
+    "r67_excel_style_cash_tax_diagnostic_keur": (
+        "waterfall_engine.py — R67 Excel-style diagnostic cross-check"
+    ),
+}
 
 
 def export_waterfall_csv(result: WaterfallResult, filepath: str) -> None:
@@ -27,7 +101,23 @@ def export_waterfall_csv(result: WaterfallResult, filepath: str) -> None:
         "period", "year_index", "period_in_year", "is_operation",
         "generation_mwh", "revenue_keur", "opex_keur", "ebitda_keur",
         "depreciation_keur", "interest_senior_keur", "interest_shl_keur",
-        "tax_keur", "cf_after_tax_keur",
+        # ── tax column + audit detail (V1) ──
+        "tax_keur",
+        "corporate_tax_cash_keur",
+        "cit_accrual_audit_keur",
+        "taxable_profit_keur",
+        "taxable_income_before_losses_audit_keur",
+        "taxable_profit_after_losses_audit_keur",
+        "tax_loss_opening_audit_keur",
+        "tax_loss_used_audit_keur",
+        "tax_loss_closing_audit_keur",
+        "fiscal_reintegration_audit_keur",
+        "tax_depreciation_audit_keur",
+        "cash_tax_current_period_audit_keur",
+        "cash_tax_excel_style_h2_diagnostic_keur",
+        "r67_excel_style_cash_tax_diagnostic_keur",
+        # ── remaining cash-flow columns ──
+        "cf_after_tax_keur",
         "senior_ds_keur", "senior_interest_keur_engine", "senior_principal_keur_engine",
         "shl_service_keur", "shl_interest_keur", "shl_principal_keur",
         "dsra_contribution_keur", "dsra_balance_keur",
@@ -54,6 +144,19 @@ def export_waterfall_csv(result: WaterfallResult, filepath: str) -> None:
                 "interest_senior_keur": round(p.interest_senior_keur, 2),
                 "interest_shl_keur": round(p.interest_shl_keur, 2),
                 "tax_keur": round(p.tax_keur, 2),
+                "corporate_tax_cash_keur": round(getattr(p, "corporate_tax_cash_keur", 0.0), 2),
+                "cit_accrual_audit_keur": round(getattr(p, "cit_accrual_audit_keur", 0.0), 2),
+                "taxable_profit_keur": round(getattr(p, "taxable_profit_keur", 0.0), 2),
+                "taxable_income_before_losses_audit_keur": round(getattr(p, "taxable_income_before_losses_audit_keur", 0.0), 2),
+                "taxable_profit_after_losses_audit_keur": round(getattr(p, "taxable_profit_after_losses_audit_keur", 0.0), 2),
+                "tax_loss_opening_audit_keur": round(getattr(p, "tax_loss_opening_audit_keur", 0.0), 2),
+                "tax_loss_used_audit_keur": round(getattr(p, "tax_loss_used_audit_keur", 0.0), 2),
+                "tax_loss_closing_audit_keur": round(getattr(p, "tax_loss_closing_audit_keur", 0.0), 2),
+                "fiscal_reintegration_audit_keur": round(getattr(p, "fiscal_reintegration_audit_keur", 0.0), 2),
+                "tax_depreciation_audit_keur": round(getattr(p, "tax_depreciation_audit_keur", 0.0), 2),
+                "cash_tax_current_period_audit_keur": round(getattr(p, "cash_tax_current_period_audit_keur", 0.0), 2),
+                "cash_tax_excel_style_h2_diagnostic_keur": round(getattr(p, "cash_tax_excel_style_h2_diagnostic_keur", 0.0), 2),
+                "r67_excel_style_cash_tax_diagnostic_keur": round(getattr(p, "r67_excel_style_cash_tax_diagnostic_keur", 0.0), 2),
                 "cf_after_tax_keur": round(p.cf_after_tax_keur, 2),
                 "senior_ds_keur": round(p.senior_ds_keur, 2),
                 "senior_interest_keur_engine": round(p.senior_interest_keur, 2),
@@ -72,6 +175,83 @@ def export_waterfall_csv(result: WaterfallResult, filepath: str) -> None:
                 "cash_sweep_keur": round(p.cash_sweep_keur, 2),
                 "cum_distribution_keur": round(p.cum_distribution_keur, 2),
                 "cash_balance_keur": round(p.cash_balance_keur, 2),
+            })
+
+
+def export_formula_sources_csv(filepath: str) -> None:
+    """V2 — Write a two-column CSV mapping column names to their formula/source.
+
+    Args:
+        filepath: Output CSV file path
+    """
+    with open(filepath, "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["column_name", "source"])
+        for col, source in _FORMULA_SOURCES.items():
+            writer.writerow([col, source])
+
+
+# Tax audit column order for export_tax_audit_csv (logical bridge order)
+_TAX_AUDIT_COLUMNS = [
+    "period",
+    "year_index",
+    "ebitda_keur",
+    "fiscal_reintegration_audit_keur",
+    "taxable_income_before_losses_audit_keur",
+    "tax_loss_opening_audit_keur",
+    "tax_loss_used_audit_keur",
+    "tax_loss_closing_audit_keur",
+    "taxable_profit_after_losses_audit_keur",
+    "tax_depreciation_audit_keur",
+    "tax_rate_pct",
+    "tax_accrued_keur",
+    "cit_accrual_audit_keur",
+    "corporate_tax_cash_keur",
+]
+
+
+def export_tax_audit_csv(result: WaterfallResult, filepath: str) -> None:
+    """V3 — Write a complete tax calculation bridge CSV.
+
+    One row per operating period, columns in logical audit order:
+    period, year, ebitda, fiscal_reint, taxable_before_losses, losses_used,
+    losses_remaining, taxable_after_losses, tax_rate, tax_accrued, h1_carry,
+    cash_paid.
+
+    Args:
+        result: WaterfallResult from run_waterfall
+        filepath: Output CSV file path
+    """
+    with open(filepath, "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=_TAX_AUDIT_COLUMNS)
+        writer.writeheader()
+
+        for p in result.periods:
+            if not p.is_operation:
+                continue
+            taxable_after = getattr(p, "taxable_profit_after_losses_audit_keur", 0.0)
+            tax_accrued = p.tax_keur
+            # Derive implied rate (avoid div-by-zero)
+            if taxable_after and taxable_after > 0:
+                tax_rate_pct = round(abs(tax_accrued) / taxable_after * 100, 4)
+            else:
+                tax_rate_pct = 0.0
+
+            writer.writerow({
+                "period": p.period,
+                "year_index": p.year_index,
+                "ebitda_keur": round(p.ebitda_keur, 2),
+                "fiscal_reintegration_audit_keur": round(getattr(p, "fiscal_reintegration_audit_keur", 0.0), 2),
+                "taxable_income_before_losses_audit_keur": round(getattr(p, "taxable_income_before_losses_audit_keur", 0.0), 2),
+                "tax_loss_opening_audit_keur": round(getattr(p, "tax_loss_opening_audit_keur", 0.0), 2),
+                "tax_loss_used_audit_keur": round(getattr(p, "tax_loss_used_audit_keur", 0.0), 2),
+                "tax_loss_closing_audit_keur": round(getattr(p, "tax_loss_closing_audit_keur", 0.0), 2),
+                "taxable_profit_after_losses_audit_keur": round(taxable_after, 2),
+                "tax_depreciation_audit_keur": round(getattr(p, "tax_depreciation_audit_keur", 0.0), 2),
+                "tax_rate_pct": tax_rate_pct,
+                "tax_accrued_keur": round(tax_accrued, 2),
+                "cit_accrual_audit_keur": round(getattr(p, "cit_accrual_audit_keur", 0.0), 2),
+                "corporate_tax_cash_keur": round(getattr(p, "corporate_tax_cash_keur", 0.0), 2),
             })
 
 
