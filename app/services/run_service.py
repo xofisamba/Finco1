@@ -250,6 +250,7 @@ async def execute_run_route(
             runtime_snapshot=runtime_snapshot, active_scenario_record=active_scenario_record,
             runtime_warning=runtime_warning,
             runtime_origin=runtime_origin, effective_runtime_origin=effective_runtime_origin,
+            runtime_seed=runtime_seed,
             deps=deps,
         )
 
@@ -350,6 +351,7 @@ async def _execute_user_created_path(
     runtime_warning: Optional[str],
     runtime_origin: str,
     effective_runtime_origin: str,
+    runtime_seed: str = "",
     deps: RunRouteDeps,
 ) -> RunRouteOutcome:
     """User-created project run path (Phase 17C snapshot binding).
@@ -359,7 +361,19 @@ async def _execute_user_created_path(
     no longer contains this code.
     """
     try:
-        override = deps.build_projectinputs_from_snapshot(runtime_snapshot)
+        # Y3: when a user-created project was seeded from TUHO/Oborovo, start
+        # from the factory base so calibrated configuration (SHL mechanics,
+        # equity_irr_method, frozen DS schedule, tax params) is preserved.
+        # Snapshot scalar values are applied on top via _resolve_user_inputs.
+        _seed_base_uc = (
+            _get_seed_base_inputs(runtime_seed)
+            if runtime_seed in {"tuho", "oborovo"} else None
+        )
+        if _seed_base_uc is not None and runtime_snapshot is not None:
+            from app.input_adapter import _resolve_user_inputs as _rui, _snapshot_to_dict as _s2d
+            override = _rui(base_inputs=_seed_base_uc, **_s2d(runtime_snapshot))
+        else:
+            override = deps.build_projectinputs_from_snapshot(runtime_snapshot)
 
         # Phase 57A-9D: fold persisted user-added CAPEX
         # sub-lines into the input CapexStructure. This
