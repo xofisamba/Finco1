@@ -47,7 +47,7 @@ class TestTUHOReturns:
         )
 
     def test_tuho_equity_irr_value(self, tuho):
-        assert abs(tuho.equity_irr - 0.1159) < 0.0005
+        assert abs(tuho.equity_irr - 0.1132) < 0.0005  # Stack T re-baseline (was 0.1159)
 
     def test_tuho_project_irr_within_15bps(self, tuho):
         delta = abs(tuho.project_irr - self.GOLDEN_PROJECT_IRR)
@@ -107,7 +107,7 @@ class TestTUHOTaxOpex:
         assert tuho.total_tax_keur > 0.0
 
     def test_tuho_total_cit_value(self, tuho):
-        assert abs(tuho.total_tax_keur - 39650.0) < 100.0
+        assert abs(tuho.total_tax_keur - 33186.0) < 100.0  # Stack T re-baseline (was 39650)
 
 
 # ── P1.1 TUHO: Distribution ──────────────────────────────────────────────────
@@ -116,7 +116,7 @@ class TestTUHODistribution:
     """TUHO distribution metrics."""
 
     def test_tuho_total_distributions(self, tuho):
-        assert abs(tuho.total_distribution_keur - 180089.0) < 200.0
+        assert abs(tuho.total_distribution_keur - 165511.0) < 200.0  # Stack T re-baseline (was 180089)
 
     def test_tuho_periods_in_lockup(self, tuho):
         assert tuho.periods_in_lockup == 0
@@ -139,7 +139,7 @@ class TestOborovoReturns:
         )
 
     def test_oborovo_equity_irr_value(self, oborovo):
-        assert abs(oborovo.equity_irr - 0.1066) < 0.0005
+        assert abs(oborovo.equity_irr - 0.1054) < 0.0005  # Stack T re-baseline (was 0.1066)
 
     def test_oborovo_project_irr_within_15bps(self, oborovo):
         delta = abs(oborovo.project_irr - self.GOLDEN_PROJECT_IRR)
@@ -197,7 +197,7 @@ class TestOborovoTaxOpex:
         assert oborovo.total_tax_keur > 0.0
 
     def test_oborovo_total_cit_value(self, oborovo):
-        assert abs(oborovo.total_tax_keur - 11128.0) < 100.0
+        assert abs(oborovo.total_tax_keur - 8874.0) < 100.0  # Stack T re-baseline (was 11128)
 
 
 # ── P1.2 Oborovo: Distribution ───────────────────────────────────────────────
@@ -206,7 +206,7 @@ class TestOborovoDistribution:
     """Oborovo distribution metrics."""
 
     def test_oborovo_total_distributions(self, oborovo):
-        assert abs(oborovo.total_distribution_keur - 71598.0) < 200.0
+        assert abs(oborovo.total_distribution_keur - 68775.0) < 200.0  # Stack T re-baseline (was 71598)
 
     def test_oborovo_periods_in_lockup(self, oborovo):
         assert oborovo.periods_in_lockup == 0

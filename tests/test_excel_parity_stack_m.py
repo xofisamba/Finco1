@@ -118,7 +118,7 @@ class TestNoRegression:
 class TestOborovoNotRegressed:
     """Oborovo must not change — it does not use shl_plus_dividends / pik_then_sweep."""
 
-    STACK_L_EQUITY_IRR = 0.1066  # Stack O: equity_irr_method changed to shl_plus_dividends
+    STACK_L_EQUITY_IRR = 0.1054  # Stack T: SHL deduction fix + H1 CIT settlement (was 0.1066)
     STACK_L_PROJECT_IRR = 0.0809
 
     def test_oborovo_equity_irr_unchanged(self, oborovo_result):
