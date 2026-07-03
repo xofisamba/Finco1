@@ -1,4 +1,29 @@
-"""Pytest configuration and fixtures for Oborovo model tests."""
+"""Pytest configuration and shared fixtures.
+
+# Stack AA — Test Suite Rationalization
+#
+# Test categories (see docs/TEST_SUITE_RATIONALIZATION.md for full census):
+#
+#   Core engine        ~200 files  High-value unit tests; partially in CI
+#   Parity / golden      21 files  Stack baselines; covered by parity_guardrails.yml
+#   Phase development   459 files  Historical characterization; not in CI
+#   Browser / Playwright 39 files  Self-skip via pytest.importorskip when absent
+#   UI component (non-browser) 32  Markup contract tests
+#   Integration           5 files  End-to-end; partially skipped (see below)
+#   Legacy / disabled    29 files  Skipped via CORE_LEGACY_TEST_FILES / _CALIBRATION_DISABLED_FILES
+#
+# Skip categories managed here:
+#
+#   CORE_LEGACY_TEST_FILES       — require 'core' package (not present in active engine)
+#   _CALIBRATION_DISABLED_FILES  — require app.calibration (disabled; raises ImportError)
+#   integration/test_fid_deck_excel.py — requires app.calibration (oborovo shim)
+#   OPENPYXL_TEST_FILES          — require openpyxl (optional)
+#
+# Quarantined (managed in-file, not here):
+#   test_persistence.py          — pytest.skip(allow_module_level=True)
+#   test_repository.py           — pytest.skip(allow_module_level=True)
+#   Enforcement: tests/test_phase57f_legacy_quarantine.py (in CI)
+"""
 import importlib.util
 import sys
 import types
@@ -30,6 +55,9 @@ def _install_test_bcrypt_stub() -> None:
 _install_test_bcrypt_stub()
 
 
+# AA3-Group1: Require the 'core' package (pre-refactor engine). Skipped when absent.
+# These 12 files cover the historical waterfall engine. Retained for reference;
+# they will never run until core/ is restored.
 CORE_LEGACY_TEST_FILES = {
     "test_hybrid_clipping.py",
     "test_wind1_fixture.py",
@@ -55,6 +83,8 @@ OPENPYXL_TEST_FILES = {
 # The Stack P temporary exclusion is removed.
 SYNTAX_ERROR_FILES: set = set()
 
+# AA3-Group2: Require app.calibration (disabled via ImportError guard in app/calibration.py).
+# These 16 files are skipped in the active engine. Retained for when calibration is re-enabled.
 _CALIBRATION_DISABLED_FILES = frozenset([
     "test_debt_dscr_schedule_policy.py",
     "test_debt_excel_alignment.py",
@@ -107,8 +137,10 @@ def reset_auth_rate_limit():
     app.auth._rate_limit_store.clear()
 
 def pytest_ignore_collect(collection_path, config):
-    """Skip optional legacy test modules when their runtime package is absent,
-    or when app.calibration is disabled in industry-engine-refactor."""
+    """Skip legacy/disabled test modules when their required runtime is absent.
+
+    See docs/TEST_SUITE_RATIONALIZATION.md §AA3 for the full category breakdown.
+    """
     path = Path(str(collection_path))
     name = path.name
     full_path = str(path)
