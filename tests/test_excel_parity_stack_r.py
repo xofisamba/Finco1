@@ -357,7 +357,7 @@ class TestGoldenParityUnchanged:
         return oborovo_factory.result
 
     def test_tuho_equity_irr(self, tuho):
-        assert abs(tuho.equity_irr - 0.1159) < 0.0005
+        assert abs(tuho.equity_irr - 0.1132) < 0.0005  # Stack T re-baseline (was 0.1159)
 
     def test_tuho_project_irr(self, tuho):
         assert abs(tuho.project_irr - 0.0941) < 0.0005
@@ -369,7 +369,7 @@ class TestGoldenParityUnchanged:
         assert abs(tuho.sculpting_result.debt_keur - 43359.0) < 1.0
 
     def test_oborovo_equity_irr(self, oborovo):
-        assert abs(oborovo.equity_irr - 0.1066) < 0.0005
+        assert abs(oborovo.equity_irr - 0.1054) < 0.0005  # Stack T re-baseline (was 0.1066)
 
     def test_oborovo_project_irr(self, oborovo):
         assert abs(oborovo.project_irr - 0.0809) < 0.0005

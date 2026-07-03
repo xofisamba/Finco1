@@ -630,6 +630,7 @@ def run_waterfall(
     lockup_count = 0
     audit_previous_r100 = 0.0
     previous_operating_tax_keur = 0.0
+    _h1_cit_accrual_keur = 0.0  # Stack T2: carry H1 accrual to H2 cash settlement
 
     for i, period in enumerate(periods):
         if not period.is_operation:
@@ -726,16 +727,8 @@ def run_waterfall(
         if period_in_tenor >= tenor_periods:
             remaining_senior_balance = 0.0
 
-        # SHL service placeholder (will be computed after tax)
-        # SHL PIK logic moved to after cf_after_tax computation
-        shi = 0; shp = 0; shl_svc = 0; shl_interest_pik = 0.0
-
-        # ATAD-based tax calculation with fiscal reintegration
-        # Interest deductibility limited to 30% of EBITDA (ATAD directive)
-        # NOTE: atad_min_interest_keur=3000 keeps all interest deductible for this project
-        # (interest < 3000 kEUR per period). .
-        # ATAD-based tax calculation using domain tax engine
-        total_interest = si + shi
+        # SHL placeholders — shp/svc/pik will be set below; shi set in Pass 1 or SHL block
+        shp = 0; shl_svc = 0; shl_interest_pik = 0.0
 
         # Fiscal reintegration: IDC + bank fees + commitment fees capitalized during
         # construction, added back to taxable profit in first year of operation
@@ -748,17 +741,29 @@ def run_waterfall(
 
         tax_loss_opening = prior_tax_loss
 
-        # compute_period_tax now owns: ATAD, loss carryforward, fiscal reintegration
-        # waterfall_engine just reads the result
         # Phase 9 CO2→CIT bridge: extract CO2 for this period from bridge dict
         co2_cit_bridge_keur = (
             co2_cit_bridge_by_period.get(i, 0.0) if co2_cit_bridge_by_period else 0.0
         )
-        tax_result: TaxPeriodResult = compute_period_tax(
+
+        # Cash tax is paid in the second period of each fiscal year.
+        is_tax_period = period.period_in_year == 2
+
+        # ── Stack T1: Two-pass tax + SHL re-pass — resolves the circular dependency ─
+        # Dependency chain: tax → cf_after_tax → _cf_for_shl → shi → tax
+        # Pass 1: provisional tax with shi=0 → _cf_for_shl_p1 → SHL block → real shi
+        # Pass 2: final tax with real shi → cf_after_tax_final → _cf_for_shl_final
+        # SHL re-pass: recompute SHL with _cf_for_shl_final → correct shp/shl_balance
+        # shi is verified unchanged in the re-pass (guard raises RuntimeError if it moves).
+        # Two tax passes are sufficient because shi does not change between passes
+        # (cf_available >> net_interest in all sweep-phase periods).
+
+        # ── Pass 1: provisional tax (shl_interest = 0) ──────────────────────────
+        _tax_result_p1: TaxPeriodResult = compute_period_tax(
             ebitda_keur=ebitda,
             depreciation_keur=dep,
             senior_interest_keur=si,
-            shl_interest_keur=shi,
+            shl_interest_keur=0.0,
             loss_carryforward_keur=prior_tax_loss,
             tax_rate=tax_rate,
             fiscal_reintegration_keur=fiscal_reintegration,
@@ -768,23 +773,12 @@ def run_waterfall(
             loss_carryforward_cap=loss_carryforward_cap,
             co2_revenue_keur=co2_cit_bridge_keur,
         )
+        _tax_p1 = _tax_result_p1.tax_keur
+        # NOTE: prior_tax_loss is NOT updated from Pass 1 — Pass 2 owns the update
+        _tax_this_period_p1 = _tax_p1 if is_tax_period else 0.0
+        _cf_after_tax_p1 = ebitda - _tax_this_period_p1
 
-        # Use result directly — no manual recompute
-        taxable_profit = tax_result.taxable_income_keur
-        tax = tax_result.tax_keur
-        prior_tax_loss = tax_result.loss_carryforward_remaining_keur
-
-        # Cash tax is paid in the second period of each fiscal year.
-        is_tax_period = period.period_in_year == 2
-        tax_this_period = tax if is_tax_period else 0.0
-        r67_excel_style_cash_tax_diagnostic = (
-            -(previous_operating_tax_keur + tax) if is_tax_period else 0.0
-        )
-
-        # CF after tax
-        cf_after_tax = ebitda - tax_this_period
-
-        # Determine cash available for SHL service.
+        # Determine cash available for SHL service using provisional post-tax CF.
         # For pik_then_sweep, use post-tax cash after senior debt service and reserves.
         # Other methods use post-tax cash before senior debt service.
         # dsra_contrib is initialized here (updated later in DSRA block)
@@ -794,9 +788,9 @@ def run_waterfall(
             # Stack N: once running_senior_balance hits 0 (actual debt fully repaid),
             # do not deduct sculpted senior_ds — it's a phantom payment on zero balance.
             _senior_ds_for_shl = senior_ds if running_senior_balance > 0 else 0.0
-            _cf_for_shl = max(0.0, cf_after_tax - _senior_ds_for_shl - dsra_contrib)
+            _cf_for_shl = max(0.0, _cf_after_tax_p1 - _senior_ds_for_shl - dsra_contrib)
         else:
-            _cf_for_shl = cf_after_tax
+            _cf_for_shl = _cf_after_tax_p1
 
         # Pik switch triggers when available CF exceeds annual SHL interest threshold.
         # This is cash-based (not senior-balance-based) — transitions from PIK phase
@@ -883,6 +877,93 @@ def run_waterfall(
                 is_final_shl_period=is_final_shl_period,
             )
         shl_svc = shi + shp  # Total SHL service = interest + principal (for records)
+
+        # ── Pass 2: final tax with real shl_interest_keur ───────────────────────
+        # prior_tax_loss is the same as Pass 1 input (not updated from Pass 1).
+        # fiscal_reintegration and co2_cit_bridge_keur are unchanged from above.
+        total_interest = si + shi
+        tax_result: TaxPeriodResult = compute_period_tax(
+            ebitda_keur=ebitda,
+            depreciation_keur=dep,
+            senior_interest_keur=si,
+            shl_interest_keur=shi,
+            loss_carryforward_keur=prior_tax_loss,
+            tax_rate=tax_rate,
+            fiscal_reintegration_keur=fiscal_reintegration,
+            atad_applies=True,
+            atad_ebitda_limit=0.30,
+            atad_min_threshold_keur=3000.0,
+            loss_carryforward_cap=loss_carryforward_cap,
+            co2_revenue_keur=co2_cit_bridge_keur,
+        )
+
+        # Use Pass 2 result — SHL interest is now correctly deductible
+        taxable_profit = tax_result.taxable_income_keur
+        tax = tax_result.tax_keur
+        prior_tax_loss = tax_result.loss_carryforward_remaining_keur
+
+        # ── Stack T2: H1 CIT cash settlement ────────────────────────────────────
+        # Pre-T: H2 paid only its own tax; H1 accrual evaporated each year.
+        # Post-T2: H1 accrual is carried and settled in the same year's H2.
+        if is_tax_period:
+            # H2: settle H1 accrual + H2 tax
+            tax_this_period = _h1_cit_accrual_keur + tax
+            _h1_cit_accrual_keur = 0.0
+        else:
+            # H1: accrue only — carry forward to H2 settlement
+            tax_this_period = 0.0
+            _h1_cit_accrual_keur = tax
+
+        r67_excel_style_cash_tax_diagnostic = (
+            -(previous_operating_tax_keur + tax) if is_tax_period else 0.0
+        )
+
+        # CF after tax (final, from Pass 2 tax and T2 cash timing)
+        cf_after_tax = ebitda - tax_this_period
+
+        # ── Stack T1: SHL re-pass — update shp/shl_balance from final cf_after_tax ──
+        # Pass 1 computed _cf_for_shl from _cf_after_tax_p1 (provisional tax).
+        # Pass 2 corrected tax; now cf_after_tax may differ → _cf_for_shl changes.
+        # shi (interest paid) must stay the same (it drives the tax already computed);
+        # shp (principal) and shl_balance are updated to reflect the correct cashflow.
+        # If shi were to change, three-pass iteration would be required — guarded below.
+        _SHL_REPASS_TOL = 0.01  # kEUR
+        if (
+            not is_shl_disbursement_period
+            and shl_repayment_method not in ("fcf_waterfall", "accrued")
+            and shl_opening_balance > 0
+        ):
+            if shl_repayment_method == "pik_then_sweep":
+                _cf_for_shl = max(0.0, cf_after_tax - _senior_ds_for_shl)
+            else:
+                _cf_for_shl = cf_after_tax
+            _pik_trig_r = _cf_for_shl > shl_opening_balance * shl_rate
+            if (
+                use_tuho_shl_repayment_alignment
+                and shl_repayment_method == "pik_then_sweep"
+                and tuho_shl_principal_eligibility_start_period is not None
+                and op_period_counter >= tuho_shl_principal_eligibility_start_period
+                and _cf_for_shl >= max(0.0, shl_opening_balance * shl_rate_per)
+            ):
+                _pik_trig_r = True
+            _shi_r, _shp_r, _shl_pik_r, _shl_bal_r = compute_shl_period(
+                shl_balance=shl_opening_balance,
+                shl_rate_per_period=shl_rate_per,
+                cf_after_senior_ds=_cf_for_shl,
+                method=shl_repayment_method,
+                wht_rate=shl_wht_rate,
+                pik_switch_triggered=_pik_trig_r,
+                is_final_shl_period=is_final_shl_period,
+            )
+            if abs(_shi_r - shi) > _SHL_REPASS_TOL:
+                raise RuntimeError(
+                    f"SHL re-pass: shi changed by {abs(_shi_r - shi):.4f} kEUR at "
+                    f"period {getattr(period, 'period', '?')} — three-pass iteration required."
+                )
+            shp = _shp_r
+            shl_pik = _shl_pik_r
+            shl_balance = _shl_bal_r
+            shl_svc = shi + shp
 
         # CF after senior and SHL debt service
         cf_after_ds = cf_after_tax - senior_ds - shi  # SHL principal repayment reduces the balance sheet, not P&L cash flow.

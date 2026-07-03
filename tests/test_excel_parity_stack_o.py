@@ -98,7 +98,7 @@ class TestMerchantCurveUnchanged:
 class TestTUHONotRegressed:
     """TUHO must not change — it already uses shl_plus_dividends."""
 
-    TUHO_EQUITY_IRR = 0.1159
+    TUHO_EQUITY_IRR = 0.1132  # Stack T: SHL deduction fix + H1 CIT settlement re-baseline (was 0.1159)
     TUHO_PROJECT_IRR = 0.0941
     TUHO_AVG_DSCR = 1.3786
 
