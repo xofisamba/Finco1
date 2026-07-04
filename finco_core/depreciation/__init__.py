@@ -1,6 +1,6 @@
 """finco_core.depreciation — Depreciation engine.
 
-V2-4: Authoritative. domain.depreciation.* are compatibility shims.
+V2-4: Authoritative. finco_core.depreciation.* are compatibility shims.
 
 Covers: book depreciation, tax depreciation, depreciation ledger, tax bridge
 integration. Book and tax schedules are maintained separately; the tax schedule

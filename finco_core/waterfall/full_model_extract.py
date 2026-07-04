@@ -9,7 +9,7 @@ from __future__ import annotations
 from datetime import date
 from typing import Any
 
-from domain.returns.xirr import xirr
+from finco_core.sponsor.xirr import xirr
 
 
 def rows_from_columns(columns: list[str], raw_rows: list[list[Any]]) -> list[dict[str, Any]]:

@@ -5,7 +5,7 @@ All templates are clearly marked as illustrative and not legally binding.
 """
 from __future__ import annotations
 
-from domain.tax.templates.inputs import (
+from finco_core.tax.templates.inputs import (
     CITTier,
     TaxDepreciationRule,
     TaxTemplate,

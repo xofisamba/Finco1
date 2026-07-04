@@ -9,7 +9,7 @@ Phase 6A supports:
 """
 from __future__ import annotations
 
-from domain.tax.templates.inputs import (
+from finco_core.tax.templates.inputs import (
     TaxTemplate,
     TaxTemplateOverride,
     ResolvedTaxConfig,

@@ -33,10 +33,10 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Mapping
 
 if TYPE_CHECKING:
-    from domain.depreciation.engine import DepreciationEngineResult
-    from domain.depreciation.engine import DepreciationAuditRow
-    from domain.depreciation.asset import AssetClassConfig
-    from domain.depreciation.schedule import DepreciationPolicy
+    from finco_core.depreciation.engine import DepreciationEngineResult
+    from finco_core.depreciation.engine import DepreciationAuditRow
+    from finco_core.depreciation.asset import AssetClassConfig
+    from finco_core.depreciation.schedule import DepreciationPolicy
 
 
 # Bosnia/Croatia tax regime: useful lives by CapexItem asset class
@@ -152,9 +152,9 @@ def build_canonical_depreciation_wiring(
     Book lives are horizon-based (straight-line over project life).
     Tax lives use the _TAX_LIFE_YEARS_MAP (Bosnia/Croatia regime).
     """
-    from domain.depreciation.engine import DepreciationEngine, DepreciationEngineInputs
-    from domain.depreciation.asset import AssetClassConfig
-    from domain.depreciation.schedule import DepreciationPolicy
+    from finco_core.depreciation.engine import DepreciationEngine, DepreciationEngineInputs
+    from finco_core.depreciation.asset import AssetClassConfig
+    from finco_core.depreciation.schedule import DepreciationPolicy
 
     # Filter to non-zero capex items
     active_items = [item for item in capex_items if item.amount_keur > 0]
@@ -263,7 +263,7 @@ def wire_canonical_depreciation_into_waterfall(
     CanonicalDepreciationWiringResult
         Aggregated per-period values ready for waterfall runtime.
     """
-    from domain.depreciation.engine import DepreciationAuditRow
+    from finco_core.depreciation.engine import DepreciationAuditRow
 
     # Index audit rows by period_index, accumulating all asset classes per period
     rows_by_period: dict[int, "DepreciationAuditRow"] = {}
@@ -315,7 +315,7 @@ def _accumulate_rows(
     b: "DepreciationAuditRow",
 ) -> "DepreciationAuditRow":
     """Accumulate two audit rows (same period, different asset class)."""
-    from domain.depreciation.engine import DepreciationAuditRow
+    from finco_core.depreciation.engine import DepreciationAuditRow
 
     return DepreciationAuditRow(
         period_index=a.period_index,

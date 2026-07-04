@@ -13,7 +13,7 @@ Za tax: koristi se tax life za tax shield calculation.
 from dataclasses import dataclass
 from typing import Sequence
 
-from domain.period_engine import PeriodMeta
+from finco_core.engine.period_engine import PeriodMeta
 
 
 @dataclass(frozen=True)

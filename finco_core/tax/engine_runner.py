@@ -12,13 +12,13 @@ by a separate integration step (Phase 6B.5+).
 """
 from __future__ import annotations
 
-from domain.tax.engine_inputs import SPVTaxEngineInputs
-from domain.tax.engine_result import SPVTaxResult, SPVTaxPeriodResult
-from domain.tax.templates.schedules import (
+from finco_core.tax.engine_inputs import SPVTaxEngineInputs
+from finco_core.tax.engine_result import SPVTaxResult, SPVTaxPeriodResult
+from finco_core.tax.templates.schedules import (
     build_tax_depreciation_schedule,
     build_tax_loss_carryforward_schedule,
 )
-from domain.tax.templates.calculations import calculate_progressive_cit
+from finco_core.tax.templates.calculations import calculate_progressive_cit
 
 __all__ = ["run_spv_tax_engine"]
 

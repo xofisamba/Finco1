@@ -1,11 +1,11 @@
 """Gate evaluation logic for DistributionAccount."""
 from __future__ import annotations
 
-from domain.distribution_account.result import (
+from finco_core.engine.distribution_account.result import (
     DistributionGateResult,
     BLOCKED_REASONS,
 )
-from domain.distribution_account.inputs import (
+from finco_core.engine.distribution_account.inputs import (
     DistributionAccountPeriodInput,
     R99R102GateInputs,
 )

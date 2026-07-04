@@ -1,6 +1,6 @@
 """finco_core.tax — Tax engine.
 
-V2-4: Authoritative. domain.tax.* are compatibility shims.
+V2-4: Authoritative. finco_core.tax.* are compatibility shims.
 
 Critical invariant: LCF methodology is NOT calibrated to the Excel Golden
 Model where Excel is wrong. Finco intentionally keeps the correct Croatian

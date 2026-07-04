@@ -13,15 +13,15 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import Any
 
-from domain.sponsor.sponsor_cashflow_result import (
+from finco_core.sponsor.sponsor_cashflow_result import (
     SponsorCashflowResult,
     SponsorCashflowPeriodResult,
 )
-from domain.sponsor.sponsor_irr_result import (
+from finco_core.sponsor.sponsor_irr_result import (
     SponsorIrrResult,
     SponsorMoicResult,
 )
-from domain.sponsor.xirr import xirr_with_convergence, SponsorXirrResult
+from finco_core.sponsor.xirr_runner import xirr_with_convergence, SponsorXirrResult
 
 __all__ = [
     "SponsorIrrRunnerInputs",

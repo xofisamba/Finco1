@@ -382,7 +382,7 @@ def calculate_interest_deductibility_limit_keur(
 
     Examples
     --------
-    >>> from domain.tax.holdco_inputs import InterestDeductibilityConfig
+    >>> from finco_core.tax.holdco_inputs import InterestDeductibilityConfig
     >>> cfg = InterestDeductibilityConfig(interest_limitation_pct_ebitda=0.30)
     >>> calculate_interest_deductibility_limit_keur(400.0, 1000.0, cfg)
     (300.0, 100.0)

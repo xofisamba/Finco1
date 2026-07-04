@@ -1,7 +1,7 @@
 """Generic project-finance input models for the runtime engine.
 
 Authoritative location: finco_core.inputs._models (V2-2).
-Legacy location domain.inputs re-exports from here.
+Legacy location finco_core.inputs re-exports from here.
 
 The dataclasses in this module define immutable inputs for project,
 portfolio, and scenario calculations. They intentionally contain schema and

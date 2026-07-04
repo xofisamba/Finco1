@@ -1,6 +1,6 @@
 """finco_core.shl — Shareholder loan engine.
 
-V2-4: Authoritative. domain.shl.* are compatibility shims.
+V2-4: Authoritative. finco_core.shl.* are compatibility shims.
 
 Covers: SHL engine, canonical wiring, interest accrual, repayment alignment,
 audit trail. Capability-driven dispatch only — no identity guards.

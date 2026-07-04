@@ -11,8 +11,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional
 
-from domain.tax.templates.inputs import TaxDepreciationRule
-from domain.tax.templates.calculations import get_tax_depreciation_rate
+from finco_core.tax.templates.inputs import TaxDepreciationRule
+from finco_core.tax.templates.calculations import get_tax_depreciation_rate
 
 
 # ── Tax Depreciation Schedule ───────────────────────────────────────────────

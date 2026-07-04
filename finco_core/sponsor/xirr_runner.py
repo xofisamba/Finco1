@@ -11,8 +11,8 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Sequence
 
-from domain.returns.xirr import xirr as _core_xirr
-from domain.returns.xirr import xirr_bisection as _core_bisection
+from finco_core.sponsor.xirr import xirr as _core_xirr
+from finco_core.sponsor.xirr import xirr_bisection as _core_bisection
 
 __all__ = ["SponsorXirrResult", "xirr_with_convergence"]
 
@@ -57,7 +57,7 @@ def xirr_with_convergence(
 ) -> SponsorXirrResult:
     """Compute XIRR with convergence metadata.
 
-    Wraps the Newton-Raphson XIRR from domain.returns.xirr with iteration
+    Wraps the Newton-Raphson XIRR from finco_core.sponsor.xirr with iteration
     tracking. Falls back to bisection if Newton-Raphson fails to converge.
 
     Parameters

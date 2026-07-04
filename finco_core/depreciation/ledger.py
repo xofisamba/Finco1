@@ -5,9 +5,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Mapping
 
-from domain.depreciation.asset import AssetClassConfig
-from domain.depreciation.result import DepreciationLedgerResult, DepreciationPeriodResult
-from domain.depreciation.schedule import (
+from finco_core.depreciation.asset import AssetClassConfig
+from finco_core.depreciation.result import DepreciationLedgerResult, DepreciationPeriodResult
+from finco_core.depreciation.schedule import (
     DepreciationPolicy,
     straight_line_depreciation_for_period,
 )

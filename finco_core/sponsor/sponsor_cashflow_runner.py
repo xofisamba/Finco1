@@ -8,12 +8,12 @@ from __future__ import annotations
 import math
 from typing import Any
 
-from domain.sponsor.equity_injection import EquityInjection
-from domain.sponsor.sponsor_cashflow_result import (
+from finco_core.sponsor.equity_injection import EquityInjection
+from finco_core.sponsor.sponsor_cashflow_result import (
     SponsorCashflowPeriodResult,
     SponsorCashflowResult,
 )
-from domain.sponsor.sponsor_capital_account import (
+from finco_core.sponsor.sponsor_capital_account import (
     CapitalAccountEntry,
     SponsorCapitalAccount,
 )

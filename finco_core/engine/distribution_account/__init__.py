@@ -1,6 +1,6 @@
 """finco_core.engine.distribution_account — Distribution account engine.
 
-V2-4: Authoritative implementation. domain.distribution_account.* are compatibility shims.
+V2-4: Authoritative implementation. finco_core.engine.distribution_account.* are compatibility shims.
 """
 from finco_core.engine.distribution_account.engine import (
     DistributionAccountEngine,

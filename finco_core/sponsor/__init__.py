@@ -1,6 +1,6 @@
 """finco_core.sponsor — Sponsor cashflow engine.
 
-V2-4: Authoritative. domain.returns.* and domain.sponsor.* are compatibility shims.
+V2-4: Authoritative. finco_core.sponsor.* and domain.sponsor.* are compatibility shims.
 
 Covers: sponsor cashflow, multi-investor waterfall, equity IRR computation (XIRR),
 distribution schedule.
@@ -26,8 +26,8 @@ from finco_core.sponsor.waterfall_allocation_result import (
 )
 # NOTE: SponsorXirrResult and xirr_with_convergence are in finco_core.sponsor.xirr_runner
 # but NOT re-exported here to avoid a circular import:
-#   domain.returns.xirr shim → finco_core.sponsor.xirr (triggers package init)
-#   → xirr_runner → domain.returns.xirr (already being loaded).
+#   finco_core.sponsor.xirr shim → finco_core.sponsor.xirr (triggers package init)
+#   → xirr_runner → finco_core.sponsor.xirr (already being loaded).
 # V2-5 will fix xirr_runner's internal import to use finco_core.sponsor.xirr directly.
 
 __all__ = [

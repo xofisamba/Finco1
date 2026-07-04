@@ -27,11 +27,11 @@ R99/R102 gates remain BLOCKED.
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from domain.shl.engine import ShlEngine
-from domain.shl.inputs import ShlEngineInputs, ShlPeriodInput
+from finco_core.shl.engine import ShlEngine
+from finco_core.shl.inputs import ShlEngineInputs, ShlPeriodInput
 
 if TYPE_CHECKING:
-    from domain.waterfall.waterfall_engine import WaterfallPeriod
+    from finco_core.waterfall.waterfall_engine import WaterfallPeriod
 
 
 @dataclass(frozen=True)
@@ -222,9 +222,9 @@ def run_canonical_shl(
 
 
 # Re-export for convenience
-from domain.shl.engine import ShlEngine
-from domain.shl.inputs import ShlEngineInputs, ShlPeriodInput
-from domain.shl.result import ShlEngineResult, ShlPeriodResult
+from finco_core.shl.engine import ShlEngine
+from finco_core.shl.inputs import ShlEngineInputs, ShlPeriodInput
+from finco_core.shl.result import ShlEngineResult, ShlPeriodResult
 
 __all__ = [
     "ShlRuntimeAdapter",

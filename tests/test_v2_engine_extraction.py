@@ -174,6 +174,57 @@ class TestNoAppDependency:
 
 
 # ---------------------------------------------------------------------------
+# V2-5: No runtime finco_core → domain dependency
+# ---------------------------------------------------------------------------
+
+class TestV25NoDomainRuntimeDependency:
+    """V2-5: finco_core engine modules must not carry runtime domain.* references.
+
+    After the internal import cleanup, every import inside finco_core/ that
+    previously said ``from domain.X import Y`` now says
+    ``from finco_core.X import Y``.  The domain.* shims still exist for
+    backwards-compat callers, but finco_core itself must not depend on them
+    at runtime.
+
+    Exceptions (allowed):
+    - domain.revenue.*  — not yet extracted; only referenced under
+      TYPE_CHECKING in waterfall_engine.py (zero runtime impact)
+    - domain.opex.*     — same
+    """
+
+    CORE_MODULES = [
+        "finco_core.waterfall.waterfall_engine",
+        "finco_core.tax.engine",
+        "finco_core.tax.engine_runner",
+        "finco_core.debt.sculpting_iterative",
+        "finco_core.debt.schedule",
+        "finco_core.depreciation.engine",
+        "finco_core.depreciation.ledger",
+        "finco_core.shl.engine",
+        "finco_core.engine.period_engine",
+        "finco_core.engine.distribution_account.engine",
+        "finco_core.sponsor.xirr",
+        "finco_core.sponsor.xirr_runner",
+        "finco_core.sponsor.sponsor_cashflows",
+    ]
+
+    @pytest.mark.parametrize("module_name", CORE_MODULES)
+    def test_no_domain_runtime_import(self, module_name: str):
+        mod = importlib.import_module(module_name)
+        domain_attrs = [
+            k for k, v in vars(mod).items()
+            if isinstance(v, ModuleType) and hasattr(v, "__name__")
+            and str(getattr(v, "__name__", "")).startswith("domain.")
+            # allow domain.revenue.* and domain.opex.* — not yet extracted
+            and not str(getattr(v, "__name__", "")).startswith("domain.revenue.")
+            and not str(getattr(v, "__name__", "")).startswith("domain.opex.")
+        ]
+        assert domain_attrs == [], (
+            f"{module_name} has runtime domain.* module references: {domain_attrs}"
+        )
+
+
+# ---------------------------------------------------------------------------
 # Legacy domain paths still work
 # ---------------------------------------------------------------------------
 

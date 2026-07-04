@@ -2,10 +2,10 @@
 from dataclasses import dataclass
 from typing import Tuple
 
-from domain.depreciation.asset import AssetClassConfig
-from domain.depreciation.ledger import DepreciationLedgerInput, build_depreciation_ledger
-from domain.depreciation.result import DepreciationLedgerResult, DepreciationPeriodResult
-from domain.depreciation.schedule import DepreciationPolicy
+from finco_core.depreciation.asset import AssetClassConfig
+from finco_core.depreciation.ledger import DepreciationLedgerInput, build_depreciation_ledger
+from finco_core.depreciation.result import DepreciationLedgerResult, DepreciationPeriodResult
+from finco_core.depreciation.schedule import DepreciationPolicy
 
 
 @dataclass(frozen=True)
