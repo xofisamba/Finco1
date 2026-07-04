@@ -1432,11 +1432,9 @@ def cached_run_waterfall(
     Returns:
         WaterfallResult with all computed periods and metrics
     """
-    # V2-6 BLOCKER: these are lazy *runtime* imports (not TYPE_CHECKING guards).
-    # full_revenue_schedule, full_generation_schedule, and opex_schedule_annual
-    # contain Revenue/OPEX financial logic that is out of V2-6 extraction scope.
-    # They will be addressed when Revenue/OPEX engines are extracted (future V2-x).
-    from domain.revenue.generation import full_revenue_schedule, full_generation_schedule
+    # V2-7: generation extracted to finco_core.revenue.
+    # V2-7 BLOCKER remaining: opex_schedule_annual (domain.opex.projections) — deferred.
+    from finco_core.revenue.generation import full_revenue_schedule, full_generation_schedule
     from domain.opex.projections import opex_schedule_annual
 
     # Build schedules

@@ -290,3 +290,59 @@ class TestKeyEntryPoints:
     def test_xirr_accessible(self):
         from finco_core.sponsor import xirr
         assert callable(xirr)
+
+
+# ---------------------------------------------------------------------------
+# V2-7: Revenue engine extraction
+# ---------------------------------------------------------------------------
+
+class TestV27RevenueExtraction:
+    """V2-7: finco_core.revenue.generation is importable and its entry points
+    are the same objects as domain.revenue.generation (shim chain preserved)."""
+
+    @pytest.mark.parametrize("module_name", [
+        "finco_core.revenue",
+        "finco_core.revenue.generation",
+    ])
+    def test_module_importable(self, module_name: str):
+        try:
+            importlib.import_module(module_name)
+        except ImportError as exc:
+            pytest.fail(f"Cannot import {module_name}: {exc}")
+
+    def test_full_revenue_schedule_identity(self):
+        from domain.revenue.generation import full_revenue_schedule as DR
+        from finco_core.revenue.generation import full_revenue_schedule as FR
+        assert DR is FR, "full_revenue_schedule must be the same object in both namespaces"
+
+    def test_full_generation_schedule_identity(self):
+        from domain.revenue.generation import full_generation_schedule as DR
+        from finco_core.revenue.generation import full_generation_schedule as FR
+        assert DR is FR
+
+    def test_revenue_decomposition_schedule_identity(self):
+        from domain.revenue.generation import revenue_decomposition_schedule as DR
+        from finco_core.revenue.generation import revenue_decomposition_schedule as FR
+        assert DR is FR
+
+    def test_period_generation_identity(self):
+        from domain.revenue.generation import period_generation as DR
+        from finco_core.revenue.generation import period_generation as FR
+        assert DR is FR
+
+    def test_legacy_domain_path_importable(self):
+        try:
+            importlib.import_module("domain.revenue.generation")
+        except ImportError as exc:
+            pytest.fail(f"Legacy path broken: domain.revenue.generation: {exc}")
+
+    def test_no_domain_runtime_import_in_revenue_generation(self):
+        mod = importlib.import_module("finco_core.revenue.generation")
+        domain_attrs = [
+            k for k, v in vars(mod).items()
+            if isinstance(v, ModuleType) and hasattr(v, "__name__")
+            and str(getattr(v, "__name__", "")).startswith("domain.")
+        ]
+        assert domain_attrs == [], (
+            f"finco_core.revenue.generation has runtime domain.* references: {domain_attrs}"
+        )
