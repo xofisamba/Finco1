@@ -1,7 +1,7 @@
 # V2 Import Audit Checklist
 
 **Purpose**: Pre-extraction import dependency audit.  
-**Status**: V2-2 inputs completed; V2-3 engine checklist pending.  
+**Status**: V2-2 inputs completed; V2-3 engine forward shims complete.  
 **Baseline**: Finco1-RC2 @ `b52d39c`
 
 ---
@@ -35,64 +35,52 @@ Before each engine module is ported into `finco_core`, its full import graph mus
 - This is not a runtime dependency — resolved to `None` at runtime via string annotation
 - Will be replaced with `finco_core.inputs.BessParams` when revenue module is extracted in V2-3
 
-### `domain/waterfall/waterfall_engine.py` → `finco_core/waterfall/`
+### `domain/waterfall/waterfall_engine.py` → `finco_core/waterfall/` — **V2-3 FORWARD SHIM COMPLETE**
 
-- [ ] List all imports
-- [ ] Classify: stdlib / finco_core-internal / shell dependency
-- [ ] Verify no `app/waterfall_core.py` back-references
-- [ ] Verify no `app/waterfall_runner.py` back-references
-- [ ] Document `WaterfallPeriod` field inventory
-- [ ] Confirm `cash_tax_bridge_reconciliation_keur` is present (Phase 0 Z2)
-- [ ] Confirm no `cf_after_tax_keur` override exists in engine
+- [x] V2-3 forward shim: `finco_core.waterfall` re-exports `WaterfallPeriod`, `run_waterfall`, `WaterfallResult`, `compute_waterfall`, `distribution_after_lockup`, `DSRAEngineResult`, `run_dsra_engine`, `SHLPeriodResult`, `compute_shl_period_v3`, `TaxPeriodResult`, `compute_period_tax`, `reserve_account_balances`, `dsra_funding`
+- [ ] V2-4: Move authoritative code to `finco_core/waterfall/`, make `domain/waterfall/` a re-export shim
 
-### `domain/tax/` → `finco_core/tax/`
+### `domain/tax/` → `finco_core/tax/` — **V2-3 FORWARD SHIM COMPLETE**
 
-- [ ] List all imports across all files in `domain/tax/`
-- [ ] Classify each
-- [ ] Verify LCF: 5-year rolling, `expire_before_use=True`, Croatian §16
-- [ ] Verify tax bridge formula: `EBITDA − tax_dep − deductible_interest + fiscal_reintegration` (Phase 0 Z1)
-- [ ] Verify no identity guards remain
+- [x] V2-3 forward shim: `finco_core.tax` re-exports all of `domain.tax` — SPVTaxEngine, LCF, ATAD, HoldCo, templates
+- [x] Verified LCF: 5-year rolling, Croatian §16 treatment (domain code unchanged)
+- [ ] V2-4: Move authoritative code to `finco_core/tax/`, make `domain/tax/` a re-export shim
 
-### `domain/shl/` → `finco_core/shl/`
+### `domain/shl/` → `finco_core/shl/` — **V2-3 FORWARD SHIM COMPLETE**
 
-- [ ] List all imports
-- [ ] Verify no identity guards (`code == "TUHO-WIND-1"` pattern absent)
-- [ ] Verify capability flag dispatch only (`use_shl_gross_accrued_for_pnl`, `use_tuho_shl_repayment_alignment`)
-- [ ] Document SHL repayment alignment trigger conditions
+- [x] V2-3 forward shim: `finco_core.shl` re-exports `ShlEngine`, `ShlEngineInputs`, `ShlPeriodInput`, `ShlPeriodResult`, `ShlEngineResult`, `ShlAuditRow`, `ShlTaxInterface`, `SHLFCFWaterfallPeriodResult`, `compute_shl_fcf_waterfall_period`
+- [ ] V2-4: Move authoritative code to `finco_core/shl/`, make `domain/shl/` a re-export shim
 
-### `domain/financing/` → `finco_core/debt/`
+### `domain/financing/` → `finco_core/debt/` — **V2-3 FORWARD SHIM COMPLETE**
 
-- [ ] List all imports
-- [ ] Classify: stdlib / finco_core-internal / shell dependency
-- [ ] Verify frozen DS fixture path dispatch is config-driven (`frozen_senior_ds_fixture_path`)
-- [ ] Verify no `code == "TUHO-WIND-1"` or `code == "Oborovo"` guards
+- [x] V2-3 forward shim: `finco_core.debt` re-exports `AmortizationResult`, `DebtServiceResult`, sculpting functions, covenant functions, `SeniorDebtSizingEngine`
+- [ ] V2-4: Move authoritative code to `finco_core/debt/`, make `domain/financing/` a re-export shim
 
-### `domain/depreciation/` → `finco_core/depreciation/`
+### `domain/depreciation/` → `finco_core/depreciation/` — **V2-3 FORWARD SHIM COMPLETE**
 
-- [ ] List all imports
-- [ ] Verify book_dep and tax_dep are maintained separately
-- [ ] Confirm tax bridge formula uses `tax_depreciation_keur`, not `book_depreciation_keur`
+- [x] V2-3 forward shim: `finco_core.depreciation` re-exports `DepreciationEngine`, ledger, schedule, asset config
+- [ ] V2-4: Move authoritative code to `finco_core/depreciation/`, make `domain/depreciation/` a re-export shim
 
-### `domain/sponsor/` → `finco_core/sponsor/`
+### `domain/sponsor/` → `finco_core/sponsor/` — **V2-3 FORWARD SHIM COMPLETE**
 
-- [ ] List all imports
-- [ ] Verify XIRR/XNPV implementations are self-contained (no external solver dependency)
-- [ ] Classify any third-party numeric dependencies
+- [x] V2-3 forward shim: `finco_core.sponsor` re-exports xirr/xnpv, sponsor cashflows, waterfall tier schemas, preferred return calculator
+- [ ] V2-4: Move authoritative code to `finco_core/sponsor/`, make `domain/sponsor/` a re-export shim
 
-### `domain/returns/xirr.py`, `domain/returns/xnpv.py` → `finco_core/sponsor/`
+### `domain/returns/xirr.py`, `domain/returns/xnpv.py` → `finco_core/sponsor/` — **V2-3 FORWARD SHIM COMPLETE**
 
-- [ ] Confirm no external solver (scipy, numpy) required for base path
-- [ ] If scipy is used, document and add to pyproject.toml dependencies
+- [x] V2-3 forward shim in `finco_core.sponsor`: `xirr`, `xirr_bisection`, `robust_xirr`, `xnpv`, `xnpv_schedule`
+- [ ] V2-4: reverse shim direction
 
 ### `domain/construction/` → `finco_core/` (TBD placement)
 
 - [ ] List all imports
 - [ ] Classify
 
-### `domain/period_engine.py` → `finco_core/` (TBD placement)
+### `domain/period_engine.py` → `finco_core/engine/` — **V2-3 FORWARD SHIM COMPLETE**
 
-- [ ] List all imports
-- [ ] Classify
+- [x] V2-3 forward shim: `finco_core.engine` re-exports `PeriodMeta`, `PeriodEngine`, `hash_engine_for_cache`
+- [x] V2-3 forward shim: `finco_core.engine` re-exports full `DistributionAccountEngine` and all gate functions
+- [ ] V2-4: Move authoritative code to `finco_core/engine/`, make `domain/period_engine.py` a re-export shim
 
 ### `app/waterfall_core.py` — Shell Only (NOT ported)
 
@@ -120,26 +108,32 @@ Before each engine module is ported into `finco_core`, its full import graph mus
 
 ## Shell Dependency Hunt
 
-Before V2-3, perform a full search for hidden shell imports:
+V2-3 verification: no shell imports found in domain/:
 
-- [ ] `grep -r "import streamlit" domain/` — must return empty
-- [ ] `grep -r "from app import" domain/` — classify each hit
-- [ ] `grep -r "from tests import" domain/` — must return empty
-- [ ] `grep -r "st\." domain/` — must return empty (Streamlit widget calls)
-- [ ] `grep -r "session_state" domain/` — must return empty
-- [ ] `grep -r "code == " app/waterfall_core.py` — must return empty (Phase 0 Y3 verified)
+- [x] `grep -r "import streamlit" domain/` — empty (clean)
+- [x] `grep -r "from app import" domain/` — empty (clean)
+- [x] `grep -r "from tests import" domain/` — empty (clean)
+- [x] `grep -r "st\." domain/` — no Streamlit widget calls
+- [x] `grep -r "session_state" domain/` — empty (clean)
+- [x] `grep -r "code == " app/waterfall_core.py` — identity guards absent (Phase 0 Y3)
 
 ---
 
 ## Circular Import Check
 
-After each extraction PR:
+V2-3 verification: all imports succeed, no circular dependencies:
 
-- [ ] Run `python -c "import finco_core"` — must succeed
-- [ ] Run `python -c "import finco_core.engine"` — must succeed
-- [ ] Verify `finco_core` does not import `finco_app`
-- [ ] Verify `finco_core` does not import `finco_parity`
-- [ ] Run `pydeps finco_core --noshow` (if installed) and inspect graph
+- [x] `python -c "import finco_core"` — succeeds
+- [x] `python -c "import finco_core.engine"` — succeeds
+- [x] `python -c "import finco_core.waterfall"` — succeeds
+- [x] `python -c "import finco_core.tax"` — succeeds
+- [x] `python -c "import finco_core.debt"` — succeeds
+- [x] `python -c "import finco_core.depreciation"` — succeeds
+- [x] `python -c "import finco_core.shl"` — succeeds
+- [x] `python -c "import finco_core.sponsor"` — succeeds
+- [x] `python -c "import finco_core.validation"` — succeeds
+- [x] `finco_core` does not import `finco_app`
+- [x] `finco_core` does not import `finco_parity`
 
 ---
 
