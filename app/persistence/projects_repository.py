@@ -142,6 +142,7 @@ def save_project(
     last_run_summary: Optional[dict[str, Any]] = None,
     replay_metadata: Optional[dict[str, Any]] = None,
     capex_sub_lines: Optional[list] = None,
+    full_inputs: Optional[dict[str, Any]] = None,  # V3-7: full-fidelity ProjectInputs dict
 ) -> "ProjectRecord":
     now = _now_utc()
     governance_state = governance_state or {}
@@ -153,7 +154,8 @@ def save_project(
     with get_cursor() as cur:
         cur.execute(
             """
-            SELECT project_id, created_at, project_type, project_origin, template_source, baseline_snapshot_json, archived
+            SELECT project_id, created_at, project_type, project_origin, template_source,
+                   baseline_snapshot_json, archived, full_inputs_json
             FROM projects
             WHERE user_id=? AND project_code=?
             """,
@@ -168,6 +170,10 @@ def save_project(
             effective_template_source = effective_template_source or existing["template_source"] or source_project_template
             if not baseline_snapshot:
                 baseline_snapshot = _from_json(existing["baseline_snapshot_json"], {})
+            # Preserve existing full_inputs if caller does not supply a new one
+            if full_inputs is None:
+                _existing_fi = existing["full_inputs_json"] if "full_inputs_json" in existing.keys() else None
+                full_inputs = _from_json(_existing_fi, None) if _existing_fi else None
             archived = bool(existing["archived"]) if archived is None else archived
             replay_metadata.setdefault("project_id", project_id)
             cur.execute(
@@ -175,7 +181,7 @@ def save_project(
                 UPDATE projects
                 SET project_name=?, project_type=?, project_origin=?, source_project_template=?, template_source=?,
                     baseline_snapshot_json=?, archived=?, is_readonly=?, governance_state_json=?, last_run_summary_json=?,
-                    replay_metadata_json=?, updated_at=?
+                    replay_metadata_json=?, full_inputs_json=?, updated_at=?
                 WHERE project_id=? AND user_id=?
                 """,
                 (
@@ -190,6 +196,7 @@ def save_project(
                     _to_json(governance_state),
                     _to_json(last_run_summary),
                     _to_json(replay_metadata),
+                    _to_json(full_inputs) if full_inputs is not None else None,
                     now.isoformat(),
                     project_id,
                     user_id,
@@ -204,8 +211,9 @@ def save_project(
                 INSERT INTO projects (
                     project_id, user_id, project_code, project_name, project_type, project_origin,
                     source_project_template, template_source, baseline_snapshot_json, archived, is_readonly,
-                    governance_state_json, last_run_summary_json, replay_metadata_json, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    governance_state_json, last_run_summary_json, replay_metadata_json,
+                    full_inputs_json, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     project_id,
@@ -222,6 +230,7 @@ def save_project(
                     _to_json(governance_state),
                     _to_json(last_run_summary),
                     _to_json(replay_metadata),
+                    _to_json(full_inputs) if full_inputs is not None else None,
                     created_at.isoformat(),
                     now.isoformat(),
                 ),
