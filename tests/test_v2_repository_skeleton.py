@@ -175,20 +175,105 @@ class TestNoEngineCopiedIntoV2Packages:
                 )
         return files
 
-    # V2-2 update: finco_core/inputs/ now contains real module files extracted in V2-2.
+    # V2-2 and V2-4 update: finco_core/ now contains real module files extracted in V2-2 and V2-4.
     # Non-init files in other packages are still prohibited.
-    V2_2_ALLOWED_NON_INIT = frozenset([
+    V2_4_ALLOWED_NON_INIT = frozenset([
+        # V2-2 files
         "finco_core/inputs/_models.py",
         "finco_core/inputs/senior_rate_schedule.py",
         "finco_core/inputs/senior_sculpting.py",
+        # V2-4 waterfall files
+        "finco_core/waterfall/waterfall_engine.py",
+        "finco_core/waterfall/cash_flow.py",
+        "finco_core/waterfall/dsra_engine.py",
+        "finco_core/waterfall/reserves.py",
+        "finco_core/waterfall/shl_engine.py",
+        "finco_core/waterfall/tax_engine.py",
+        "finco_core/waterfall/full_model_extract.py",
+        # V2-4 tax files
+        "finco_core/tax/engine.py",
+        "finco_core/tax/engine_inputs.py",
+        "finco_core/tax/engine_result.py",
+        "finco_core/tax/engine_runner.py",
+        "finco_core/tax/loss_carryforward.py",
+        "finco_core/tax/interest_limitation.py",
+        "finco_core/tax/reintegration.py",
+        "finco_core/tax/atad_engine.py",
+        "finco_core/tax/assumptions_snapshot.py",
+        "finco_core/tax/tax_params.py",
+        "finco_core/tax/snapshot_builders.py",
+        "finco_core/tax/construction_pl.py",
+        "finco_core/tax/holdco_calculations.py",
+        "finco_core/tax/holdco_inputs.py",
+        "finco_core/tax/holdco_result.py",
+        "finco_core/tax/holdco_runner.py",
+        "finco_core/tax/templates/inputs.py",
+        "finco_core/tax/templates/calculations.py",
+        "finco_core/tax/templates/schedules.py",
+        "finco_core/tax/templates/registry.py",
+        "finco_core/tax/templates/resolver.py",
+        "finco_core/tax/templates/result.py",
+        # V2-4 debt files
+        "finco_core/debt/schedule.py",
+        "finco_core/debt/sculpting_iterative.py",
+        "finco_core/debt/covenants.py",
+        "finco_core/debt/depreciation.py",
+        "finco_core/debt/depreciation_schedule.py",
+        # V2-4 depreciation files
+        "finco_core/depreciation/asset.py",
+        "finco_core/depreciation/schedule.py",
+        "finco_core/depreciation/result.py",
+        "finco_core/depreciation/ledger.py",
+        "finco_core/depreciation/engine.py",
+        "finco_core/depreciation/canonical_wiring.py",
+        "finco_core/depreciation/tax_bridge.py",
+        # V2-4 shl files
+        "finco_core/shl/inputs.py",
+        "finco_core/shl/result.py",
+        "finco_core/shl/engine.py",
+        "finco_core/shl/audit.py",
+        "finco_core/shl/runtime_adapter.py",
+        "finco_core/shl/canonical_wiring.py",
+        "finco_core/shl/fcf_waterfall.py",
+        # V2-4 sponsor files
+        "finco_core/sponsor/xnpv.py",
+        "finco_core/sponsor/xirr.py",
+        "finco_core/sponsor/sponsor_cashflows.py",
+        "finco_core/sponsor/sponsor_waterfall_tier.py",
+        "finco_core/sponsor/preferred_return_result.py",
+        "finco_core/sponsor/preferred_return_calculator.py",
+        "finco_core/sponsor/waterfall_allocation_result.py",
+        "finco_core/sponsor/waterfall_runner.py",
+        "finco_core/sponsor/investor_registry.py",
+        "finco_core/sponsor/capital_stack.py",
+        "finco_core/sponsor/sponsor_capital_account.py",
+        "finco_core/sponsor/equity_injection.py",
+        "finco_core/sponsor/sponsor_cashflow_result.py",
+        "finco_core/sponsor/sponsor_cashflow_runner.py",
+        "finco_core/sponsor/sponsor_irr_result.py",
+        "finco_core/sponsor/sponsor_irr_runner.py",
+        "finco_core/sponsor/xirr_runner.py",
+        "finco_core/sponsor/capital_account_tier_annotation.py",
+        "finco_core/sponsor/sponsor_distribution.py",
+        "finco_core/sponsor/preferred_return_allocation.py",
+        "finco_core/sponsor/multi_investor_waterfall_runner.py",
+        # V2-4 engine files
+        "finco_core/engine/period_engine.py",
+        "finco_core/engine/distribution_account/inputs.py",
+        "finco_core/engine/distribution_account/result.py",
+        "finco_core/engine/distribution_account/gates.py",
+        "finco_core/engine/distribution_account/audit.py",
+        "finco_core/engine/distribution_account/engine.py",
+        # V2-4 validation files
+        "finco_core/validation/validators.py",
     ])
 
     def test_no_non_init_py_files_in_v2_skeleton(self):
-        """Only V2-2 extraction files are allowed as non-__init__.py modules."""
+        """Only V2-2 and V2-4 extraction files are allowed as non-__init__.py modules."""
         non_init_files = self._collect_py_files()
         unexpected = [
             f for f in non_init_files
-            if str(f.relative_to(REPO_ROOT)) not in self.V2_2_ALLOWED_NON_INIT
+            if str(f.relative_to(REPO_ROOT)) not in self.V2_4_ALLOWED_NON_INIT
         ]
         assert unexpected == [], (
             "Unexpected non-__init__.py Python files in v2 packages. "

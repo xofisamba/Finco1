@@ -1,15 +1,12 @@
+"""finco_core.validation — Input validation layer.
+
+V2-4: Authoritative. domain.validation is a compatibility shim.
+
+Covers: boundary validation for ProjectInputs and FinancingParams. Called before
+RunConfiguration is built. Produces typed validation errors; does not raise
+exceptions into engine code.
 """
-finco_core.validation — Input validation layer.
-
-Extraction target (V2-2): boundary validation for ProjectInputs and
-FinancingParams. Called before RunConfiguration is built. Produces
-typed validation errors; does not raise exceptions into engine code.
-
-Source: domain/validation.py
-
-V2-3: Forward shims to domain validation module.
-"""
-from domain.validation import (
+from finco_core.validation.validators import (
     ValidationIssue,
     ModelWarning,
     MODEL_WARNING_CODES,
