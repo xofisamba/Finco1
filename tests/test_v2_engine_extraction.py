@@ -346,3 +346,68 @@ class TestV27RevenueExtraction:
         assert domain_attrs == [], (
             f"finco_core.revenue.generation has runtime domain.* references: {domain_attrs}"
         )
+
+
+# ---------------------------------------------------------------------------
+# V2-8: OPEX engine extraction
+# ---------------------------------------------------------------------------
+
+class TestV28OpexExtraction:
+    """V2-8: finco_core.opex.projections is importable and its entry points
+    are the same objects as domain.opex.projections (shim chain preserved).
+    After V2-8 finco_core has zero remaining runtime domain.* dependencies."""
+
+    @pytest.mark.parametrize("module_name", [
+        "finco_core.opex",
+        "finco_core.opex.projections",
+    ])
+    def test_module_importable(self, module_name: str):
+        try:
+            importlib.import_module(module_name)
+        except ImportError as exc:
+            pytest.fail(f"Cannot import {module_name}: {exc}")
+
+    def test_opex_schedule_annual_identity(self):
+        from domain.opex.projections import opex_schedule_annual as DO
+        from finco_core.opex.projections import opex_schedule_annual as FO
+        assert DO is FO, "opex_schedule_annual must be the same object in both namespaces"
+
+    def test_opex_year_identity(self):
+        from domain.opex.projections import opex_year as DO
+        from finco_core.opex.projections import opex_year as FO
+        assert DO is FO
+
+    def test_opex_item_amount_at_year_identity(self):
+        from domain.opex.projections import opex_item_amount_at_year as DO
+        from finco_core.opex.projections import opex_item_amount_at_year as FO
+        assert DO is FO
+
+    def test_legacy_domain_path_importable(self):
+        try:
+            importlib.import_module("domain.opex.projections")
+        except ImportError as exc:
+            pytest.fail(f"Legacy path broken: domain.opex.projections: {exc}")
+
+    def test_no_domain_runtime_import_in_opex_projections(self):
+        mod = importlib.import_module("finco_core.opex.projections")
+        domain_attrs = [
+            k for k, v in vars(mod).items()
+            if isinstance(v, ModuleType) and hasattr(v, "__name__")
+            and str(getattr(v, "__name__", "")).startswith("domain.")
+        ]
+        assert domain_attrs == [], (
+            f"finco_core.opex.projections has runtime domain.* references: {domain_attrs}"
+        )
+
+    def test_finco_core_has_zero_runtime_domain_dependencies(self):
+        """After V2-8, finco_core.waterfall.waterfall_engine must have no
+        runtime domain.* module attributes (Revenue and OPEX now extracted)."""
+        mod = importlib.import_module("finco_core.waterfall.waterfall_engine")
+        domain_attrs = [
+            k for k, v in vars(mod).items()
+            if isinstance(v, ModuleType) and hasattr(v, "__name__")
+            and str(getattr(v, "__name__", "")).startswith("domain.")
+        ]
+        assert domain_attrs == [], (
+            f"finco_core.waterfall.waterfall_engine still has domain.* references: {domain_attrs}"
+        )
