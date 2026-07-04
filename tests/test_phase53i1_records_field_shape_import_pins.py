@@ -141,6 +141,7 @@ class TestFieldShapes:
         "is_base_case", "parent_scenario_id", "base_input_set", "overrides",
         "schema_version", "snapshot", "governance_state", "last_run_summary",
         "replay_metadata", "created_at", "updated_at",
+        "full_inputs",  # V3-8: full-fidelity ProjectInputs dict (nullable)
     ])
 
     EXPECTED_WORKSPACE_STATE_RECORD_FIELDS = sorted([
@@ -172,8 +173,8 @@ class TestFieldShapes:
 
     def test_scenario_record_field_count(self):
         from app.persistence.repository import ScenarioRecord
-        assert len(_get_field_names(ScenarioRecord)) == 19, \
-            f"ScenarioRecord has 19 fields, got {_get_field_names(ScenarioRecord)}"
+        assert len(_get_field_names(ScenarioRecord)) == 20, \
+            f"ScenarioRecord has 20 fields, got {_get_field_names(ScenarioRecord)}"
 
     def test_workspace_state_record_field_count(self):
         from app.persistence.repository import WorkspaceStateRecord

@@ -43,8 +43,8 @@ class TestBaseCaseSignature:
         from app.persistence.repository import get_or_create_base_case_scenario
         sig = inspect.signature(get_or_create_base_case_scenario)
         params = sig.parameters
-        # 9 params: 8 required + 1 optional
-        assert len(params) == 9
+        # 10 params: 8 required + 2 optional (replay_metadata + full_inputs V3-8)
+        assert len(params) == 10
         for required in ("user_id", "project_id", "project_code", "project_name",
                          "project_type", "source_project_template",
                          "base_input_set", "governance_state"):
