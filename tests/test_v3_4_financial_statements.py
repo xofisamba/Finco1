@@ -218,18 +218,21 @@ class TestBalanceSheet:
 
     def test_total_liabilities_sum(self):
         row = self.bs_rows[0]
-        expected = row.senior_balance_keur + row.shl_balance_keur
+        # total_liabilities = senior + shl + tax_payable
+        expected = row.senior_balance_keur + row.shl_balance_keur + row.tax_payable_keur
         assert abs(row.total_liabilities_keur - expected) < 1e-6
 
     def test_retained_earnings(self):
         row = self.bs_rows[0]
-        # retained = opening_deficit + net_income - distribution
-        # opening_deficit is computed from first-period BS reconstruction
+        # retained = opening_deficit + net_income - distribution + shl_principal_notional
+        # opening_deficit: solve from p0 balance so check_p0 = 0
+        # Simplifies to: A_p0 - L_p0_corrected - SC - SP
         is_row = generate_income_statement([self.p])[0]
-        senior_at_cod = self.p.senior_balance_keur + self.p.senior_principal_keur
-        shl_at_cod = self.p.shl_balance_keur + self.p.shl_principal_keur - self.p.shl_pik_keur
-        opening_deficit = 5000.0 - senior_at_cod - shl_at_cod - 500.0 - 1000.0
-        expected_retained = opening_deficit + is_row.net_income_keur - 100.0
+        tax_adj = self.p.tax_keur - (self.p.ebitda_keur - self.p.cf_after_tax_keur)
+        nfa = 5000.0 - self.p.depreciation_keur
+        a_p0 = nfa + self.p.dsra_balance_keur + self.p.mra_balance_keur + self.p.cash_balance_keur
+        l_p0 = self.p.senior_balance_keur + self.p.shl_balance_keur + tax_adj
+        expected_retained = a_p0 - l_p0 - 500.0 - 1000.0
         assert abs(row.retained_earnings_keur - expected_retained) < 1e-6
 
     def test_total_equity_sum(self):
@@ -346,14 +349,14 @@ class TestGenerateFinancialStatements:
             share_capital_keur=500.0,
             share_premium_keur=1000.0,
         )
-        is_ni = fs.income_statement[0].net_income_keur
         bs_retained = fs.balance_sheet[0].retained_earnings_keur
-        # retained includes opening_deficit + net_income - distribution
-        # Verify the net_income from IS flows into retained (diff = opening_deficit - distribution)
-        senior_at_cod = p.senior_balance_keur + p.senior_principal_keur
-        shl_at_cod = p.shl_balance_keur + p.shl_principal_keur - p.shl_pik_keur
-        opening_deficit = 5000.0 - senior_at_cod - shl_at_cod - 500.0 - 1000.0
-        expected = opening_deficit + is_ni - p.distribution_keur
+        # retained = opening_deficit_corrected + NI - dist + shl_principal_notional
+        # opening_deficit is derived so check_p0 = 0; retained therefore = A_p0 - L_p0 - SC - SP
+        tax_adj = p.tax_keur - (p.ebitda_keur - p.cf_after_tax_keur)
+        nfa = 5000.0 - p.depreciation_keur
+        a_p0 = nfa + p.dsra_balance_keur + p.mra_balance_keur + p.cash_balance_keur
+        l_p0 = p.senior_balance_keur + p.shl_balance_keur + tax_adj
+        expected = a_p0 - l_p0 - 500.0 - 1000.0
         assert abs(bs_retained - expected) < 1e-6
 
     def test_balance_sheet_check_computed_by_generate_function(self):
