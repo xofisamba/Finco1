@@ -444,3 +444,141 @@ class TestValidationFramework:
         assert meta.run_id.startswith("run-")
         assert meta.timestamp != ""
         assert meta.model_version == "industry-engine-refactor"
+
+
+# ── V3-5 Input Validation Layer tests ────────────────────────────────────────
+
+class TestV35ValidationIssueCode:
+    """ValidationIssue now has an optional code field."""
+
+    def test_validation_issue_has_code_field(self):
+        from domain.validation import ValidationIssue
+        issue = ValidationIssue(severity="error", field="x", message="y", code="E_TEST")
+        assert issue.code == "E_TEST"
+
+    def test_validation_issue_code_defaults_to_empty_string(self):
+        from domain.validation import ValidationIssue
+        issue = ValidationIssue(severity="error", field="x", message="y")
+        assert issue.code == ""
+
+
+class TestV35CrossFieldConsistency:
+    """Cross-field validation: lockup_dscr vs target_dscr."""
+
+    def test_lockup_gte_target_is_warning(self):
+        from dataclasses import replace
+        from app.project_factories import create_default_solar_project
+        proj = create_default_solar_project()
+        proj = replace(proj, financing=replace(proj.financing,
+                                               target_dscr=1.20, lockup_dscr=1.20))
+        issues = validate_project_inputs(proj)
+        codes = [i.code for i in issues if i.severity == "warning"]
+        assert "W_LOCKUP_GTE_TARGET" in codes
+
+    def test_lockup_lt_target_is_ok(self):
+        from dataclasses import replace
+        from app.project_factories import create_default_solar_project
+        proj = create_default_solar_project()
+        proj = replace(proj, financing=replace(proj.financing,
+                                               target_dscr=1.20, lockup_dscr=1.10))
+        issues = validate_project_inputs(proj)
+        assert not any(i.code == "W_LOCKUP_GTE_TARGET" for i in issues)
+
+
+class TestV35EnumValidation:
+    """Enum membership validation for string-typed financing fields."""
+
+    def test_invalid_amortization_type_is_error(self):
+        from dataclasses import replace
+        from app.project_factories import create_default_solar_project
+        proj = create_default_solar_project()
+        proj = replace(proj, financing=replace(proj.financing, amortization_type="flat"))
+        issues = validate_project_inputs(proj)
+        assert any(i.field == "amortization_type" and i.severity == "error" for i in issues)
+
+    def test_invalid_equity_irr_method_is_error(self):
+        from dataclasses import replace
+        from app.project_factories import create_default_solar_project
+        proj = create_default_solar_project()
+        proj = replace(proj, financing=replace(proj.financing, equity_irr_method="unknown"))
+        issues = validate_project_inputs(proj)
+        assert any(i.field == "equity_irr_method" and i.severity == "error" for i in issues)
+
+    def test_invalid_debt_sizing_method_is_error(self):
+        from dataclasses import replace
+        from app.project_factories import create_default_solar_project
+        proj = create_default_solar_project()
+        proj = replace(proj, financing=replace(proj.financing, debt_sizing_method="magic"))
+        issues = validate_project_inputs(proj)
+        assert any(i.field == "debt_sizing_method" and i.severity == "error" for i in issues)
+
+    def test_invalid_shl_repayment_method_is_error(self):
+        from dataclasses import replace
+        from app.project_factories import create_default_solar_project
+        proj = create_default_solar_project()
+        proj = replace(proj, financing=replace(proj.financing, shl_repayment_method="quarterly"))
+        issues = validate_project_inputs(proj)
+        assert any(i.field == "shl_repayment_method" and i.severity == "error" for i in issues)
+
+    def test_invalid_yield_scenario_is_error(self):
+        from dataclasses import replace
+        from app.project_factories import create_default_solar_project
+        proj = create_default_solar_project()
+        proj = replace(proj, technical=replace(proj.technical, yield_scenario="P75"))
+        issues = validate_project_inputs(proj)
+        assert any(i.field == "yield_scenario" and i.severity == "error" for i in issues)
+
+    def test_valid_defaults_produce_no_enum_errors(self):
+        from app.project_factories import create_default_solar_project
+        proj = create_default_solar_project()
+        issues = validate_project_inputs(proj)
+        enum_errors = [i for i in issues if i.severity == "error" and i.code == "E_INVALID_ENUM"]
+        assert len(enum_errors) == 0, f"Unexpected enum errors: {enum_errors}"
+
+
+class TestV35TechnicalParamsRanges:
+    """TechnicalParams range checks."""
+
+    def test_pv_degradation_above_1_is_error(self):
+        from dataclasses import replace
+        from app.project_factories import create_default_solar_project
+        proj = create_default_solar_project()
+        proj = replace(proj, technical=replace(proj.technical, pv_degradation=1.5))
+        issues = validate_project_inputs(proj)
+        assert any(i.field == "pv_degradation" and i.severity == "error" for i in issues)
+
+    def test_plant_availability_zero_is_error(self):
+        from dataclasses import replace
+        from app.project_factories import create_default_solar_project
+        proj = create_default_solar_project()
+        proj = replace(proj, technical=replace(proj.technical, plant_availability=0.0))
+        issues = validate_project_inputs(proj)
+        assert any(i.field == "plant_availability" and i.severity == "error" for i in issues)
+
+    def test_grid_availability_above_1_is_error(self):
+        from dataclasses import replace
+        from app.project_factories import create_default_solar_project
+        proj = create_default_solar_project()
+        proj = replace(proj, technical=replace(proj.technical, grid_availability=1.01))
+        issues = validate_project_inputs(proj)
+        assert any(i.field == "grid_availability" and i.severity == "error" for i in issues)
+
+
+class TestV35OpexItemValidation:
+    """OpexItem validation: negative amounts."""
+
+    def test_negative_opex_amount_is_warning(self):
+        from dataclasses import replace
+        from app.project_factories import create_default_solar_project
+        from finco_core.inputs._models import OpexItem
+        proj = create_default_solar_project()
+        bad_item = OpexItem(name="NegOpex", y1_amount_keur=-100.0)
+        proj = replace(proj, opex=(bad_item,) + proj.opex)
+        issues = validate_project_inputs(proj)
+        assert any(i.code == "W_NEGATIVE_OPEX" and i.severity == "warning" for i in issues)
+
+    def test_positive_opex_has_no_opex_warnings(self):
+        from app.project_factories import create_default_solar_project
+        proj = create_default_solar_project()
+        issues = validate_project_inputs(proj)
+        assert not any(i.code == "W_NEGATIVE_OPEX" for i in issues)
