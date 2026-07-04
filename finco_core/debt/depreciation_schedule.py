@@ -1,7 +1,7 @@
 """Asset-class depreciation schedule with configurable useful lives."""
 
 from typing import Optional
-from domain.inputs import CapexItem, AssetClass, ASSET_CLASS_USEFUL_LIFE
+from finco_core.inputs import CapexItem, AssetClass, ASSET_CLASS_USEFUL_LIFE
 
 
 def useful_life_for_item(item: CapexItem) -> int:

@@ -2,7 +2,7 @@
 from pathlib import Path
 from typing import Iterable
 
-from domain.shl.result import ShlEngineResult, ShlAuditRow
+from finco_core.shl.result import ShlEngineResult, ShlAuditRow
 
 
 def to_audit_dataframe(result: ShlEngineResult) -> "pd.DataFrame":

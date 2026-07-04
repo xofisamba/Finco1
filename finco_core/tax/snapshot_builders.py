@@ -9,7 +9,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
-from domain.tax.assumptions_snapshot import (
+from finco_core.tax.assumptions_snapshot import (
     TaxAssumptionSnapshot,
     TaxTemplateSnapshot,
     TaxOverrideSnapshot,
@@ -17,7 +17,7 @@ from domain.tax.assumptions_snapshot import (
 )
 
 if TYPE_CHECKING:
-    from domain.tax.templates.inputs import (
+    from finco_core.tax.templates.inputs import (
         TaxTemplate,
         TaxTemplateOverride,
         ResolvedTaxConfig,

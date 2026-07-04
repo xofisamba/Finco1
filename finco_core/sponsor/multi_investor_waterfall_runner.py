@@ -30,38 +30,38 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from domain.sponsor.investor_registry import (
+from finco_core.sponsor.investor_registry import (
     InvestorRole,
     InvestorEntry,
     InvestorRegistry,
 )
-from domain.sponsor.capital_stack import (
+from finco_core.sponsor.capital_stack import (
     CapitalStack,
     CapitalContributionEntry,
 )
-from domain.sponsor.sponsor_waterfall_tier import (
+from finco_core.sponsor.sponsor_waterfall_tier import (
     TierType,
     CompoundingConvention,
     SponsorShare,
     SponsorWaterfallTier,
 )
-from domain.sponsor.preferred_return_calculator import (
+from finco_core.sponsor.preferred_return_calculator import (
     PreferredReturnCalculatorInputs,
     calculate_preferred_return,
 )
-from domain.sponsor.preferred_return_result import (
+from finco_core.sponsor.preferred_return_result import (
     PreferredReturnResult,
 )
-from domain.sponsor.waterfall_runner import (
+from finco_core.sponsor.waterfall_runner import (
     WaterfallRunnerInputs,
     run_waterfall,
 )
-from domain.sponsor.waterfall_allocation_result import (
+from finco_core.sponsor.waterfall_allocation_result import (
     WaterfallAllocationResult,
     TierAllocationEntry,
     PeriodWaterfallResult,
 )
-from domain.sponsor.capital_account_tier_annotation import (
+from finco_core.sponsor.capital_account_tier_annotation import (
     TierAnnotatedSponsorCapitalAccount,
     from_waterfall_allocation_result,
 )
@@ -376,7 +376,7 @@ def run_multi_investor_waterfall(
     )
 
     # Build PreferredReturnAllocation from per-investor results (for GP catch-up threshold only)
-    from domain.sponsor.preferred_return_allocation import PreferredReturnAllocation
+    from finco_core.sponsor.preferred_return_allocation import PreferredReturnAllocation
     per_investor_pref_results = tuple(
         (inv_id, pref_results_by_investor[inv_id])
         for inv_id in investor_ids_sorted

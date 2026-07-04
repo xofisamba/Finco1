@@ -5,7 +5,7 @@ for logical grouping (result module = outputs of template resolution).
 """
 from __future__ import annotations
 
-from domain.tax.templates.inputs import (
+from finco_core.tax.templates.inputs import (
     CITTier,
     TaxDepreciationRule,
     TaxTemplate,

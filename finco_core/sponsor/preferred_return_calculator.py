@@ -20,12 +20,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 import math
 
-from domain.sponsor.sponsor_waterfall_tier import (
+from finco_core.sponsor.sponsor_waterfall_tier import (
     SponsorWaterfallTier,
     TierType,
     CompoundingConvention,
 )
-from domain.sponsor.preferred_return_result import (
+from finco_core.sponsor.preferred_return_result import (
     PreferredReturnAccrualEntry,
     PreferredReturnResult,
 )

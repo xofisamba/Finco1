@@ -2,7 +2,7 @@
 from datetime import date
 from typing import List, Optional, Sequence
 
-from domain.returns.xnpv import xnpv
+from finco_core.sponsor.xnpv import xnpv
 
 
 def xirr(

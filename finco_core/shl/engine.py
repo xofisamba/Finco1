@@ -1,8 +1,8 @@
 """domain/shl/engine — Canonical SHL Engine."""
 from typing import Tuple
 
-from domain.shl.inputs import ShlEngineInputs, ShlPeriodInput
-from domain.shl.result import ShlEngineResult, ShlPeriodResult, ShlAuditRow
+from finco_core.shl.inputs import ShlEngineInputs, ShlPeriodInput
+from finco_core.shl.result import ShlEngineResult, ShlPeriodResult, ShlAuditRow
 
 
 class ShlEngine:

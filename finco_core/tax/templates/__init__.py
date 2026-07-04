@@ -1,6 +1,6 @@
 """finco_core.tax.templates — Tax template registry (Croatia / HR_SIMPLE_2026 etc.).
 
-V2-4: Authoritative implementation. domain.tax.templates.* are compatibility shims.
+V2-4: Authoritative implementation. finco_core.tax.templates.* are compatibility shims.
 """
 from finco_core.tax.templates.inputs import (
     CITTier, TaxDepreciationRule, TaxTemplate, TaxTemplateOverride, ResolvedTaxConfig,

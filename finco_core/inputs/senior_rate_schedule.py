@@ -1,7 +1,7 @@
 """Senior debt rate and day-count schedule helpers.
 
 Authoritative location: finco_core.inputs.senior_rate_schedule (V2-2).
-Legacy location domain.senior_rate_schedule re-exports from here.
+Legacy location finco_core.inputs.senior_rate_schedule re-exports from here.
 
 This module is deliberately small and independent from the waterfall engine.
 It builds the existing per-period ``rate_schedule`` input used by the senior

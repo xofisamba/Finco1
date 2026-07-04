@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 import math
 from typing import Any
 
-from domain.sponsor.sponsor_waterfall_tier import (
+from finco_core.sponsor.sponsor_waterfall_tier import (
     TierType,
     SponsorShare,
 )

@@ -18,15 +18,15 @@ from dataclasses import dataclass, field
 import math
 from typing import Any
 
-from domain.sponsor.sponsor_waterfall_tier import (
+from finco_core.sponsor.sponsor_waterfall_tier import (
     SponsorWaterfallTier,
     TierType,
     SponsorShare,
 )
-from domain.sponsor.preferred_return_result import (
+from finco_core.sponsor.preferred_return_result import (
     PreferredReturnResult,
 )
-from domain.sponsor.waterfall_allocation_result import (
+from finco_core.sponsor.waterfall_allocation_result import (
     TierAllocationEntry,
     PeriodWaterfallResult,
     WaterfallAllocationResult,

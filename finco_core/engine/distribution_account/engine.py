@@ -7,19 +7,19 @@ or Sponsor. R99/R102 remain BLOCKED per G1/G8 governance rules.
 
 from __future__ import annotations
 
-from domain.distribution_account.inputs import (
+from finco_core.engine.distribution_account.inputs import (
     DistributionAccountInputs,
     DistributionAccountPeriodInput,
     R99R102GateInputs,
 )
-from domain.distribution_account.result import (
+from finco_core.engine.distribution_account.result import (
     DistributionAccountResult,
     DistributionAccountPeriodResult,
     DistributionGateResult,
     R99InputResult,
     BLOCKED_REASONS,
 )
-from domain.distribution_account.gates import (
+from finco_core.engine.distribution_account.gates import (
     evaluate_r99_gate,
     evaluate_r102_gate,
     evaluate_dscr_gate,

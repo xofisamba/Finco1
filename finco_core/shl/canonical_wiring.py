@@ -28,7 +28,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from domain.waterfall.waterfall_engine import WaterfallPeriod, WaterfallResult
+    from finco_core.waterfall.waterfall_engine import WaterfallPeriod, WaterfallResult
 
 
 @dataclass(frozen=True)
@@ -109,8 +109,8 @@ def wire_canonical_shl_into_waterfall(
     Callers must explicitly copy canonical values into WaterfallPeriod fields.
     R99/R102: BLOCKED — only SHL-specific fields are wired.
     """
-    from domain.shl.engine import ShlEngine
-    from domain.shl.inputs import ShlEngineInputs, ShlPeriodInput
+    from finco_core.shl.engine import ShlEngine
+    from finco_core.shl.inputs import ShlEngineInputs, ShlPeriodInput
 
     periods = waterfall_result.periods
 

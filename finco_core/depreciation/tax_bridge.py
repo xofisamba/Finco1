@@ -26,9 +26,9 @@ No deferred tax, no HoldCo tax, no sponsor IRR.
 from dataclasses import dataclass
 from typing import Optional
 
-from domain.depreciation.engine import DepreciationEngine, DepreciationEngineInputs
-from domain.depreciation.asset import AssetClassConfig
-from domain.depreciation.schedule import DepreciationPolicy
+from finco_core.depreciation.engine import DepreciationEngine, DepreciationEngineInputs
+from finco_core.depreciation.asset import AssetClassConfig
+from finco_core.depreciation.schedule import DepreciationPolicy
 
 
 @dataclass(frozen=True)
@@ -239,9 +239,9 @@ class BridgeValidationResult:
 
 
 # Re-export canonical engine for convenience
-from domain.depreciation.engine import DepreciationEngine, DepreciationEngineInputs
-from domain.depreciation.asset import AssetClassConfig
-from domain.depreciation.schedule import DepreciationPolicy
+from finco_core.depreciation.engine import DepreciationEngine, DepreciationEngineInputs
+from finco_core.depreciation.asset import AssetClassConfig
+from finco_core.depreciation.schedule import DepreciationPolicy
 
 __all__ = [
     "DepreciationTaxBridgeResult",

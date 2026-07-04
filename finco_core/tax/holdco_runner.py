@@ -10,9 +10,9 @@ No thin-cap enforcement. No waterfall integration.
 """
 from __future__ import annotations
 
-from domain.tax.holdco_inputs import HoldCoTaxInputs
-from domain.tax.holdco_result import HoldCoTaxPeriodResult, HoldCoTaxResult
-from domain.tax.holdco_calculations import (
+from finco_core.tax.holdco_inputs import HoldCoTaxInputs
+from finco_core.tax.holdco_result import HoldCoTaxPeriodResult, HoldCoTaxResult
+from finco_core.tax.holdco_calculations import (
     calculate_withholding_tax_keur,
     exclude_shl_principal_from_taxable_income,
 )

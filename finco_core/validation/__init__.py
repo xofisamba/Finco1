@@ -1,6 +1,6 @@
 """finco_core.validation — Input validation layer.
 
-V2-4: Authoritative. domain.validation is a compatibility shim.
+V2-4: Authoritative. finco_core.validation.validators is a compatibility shim.
 
 Covers: boundary validation for ProjectInputs and FinancingParams. Called before
 RunConfiguration is built. Produces typed validation errors; does not raise

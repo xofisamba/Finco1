@@ -11,7 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional
 
-from domain.tax.templates.inputs import ResolvedTaxConfig
+from finco_core.tax.templates.inputs import ResolvedTaxConfig
 
 __all__ = [
     "SPVTaxEngineInputs",

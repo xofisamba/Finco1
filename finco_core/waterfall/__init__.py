@@ -1,6 +1,6 @@
 """finco_core.waterfall — Waterfall engine.
 
-V2-4: Authoritative. domain.waterfall.* are compatibility shims.
+V2-4: Authoritative. finco_core.waterfall.* are compatibility shims.
 
 Post-engine mutation is prohibited. cf_after_tax_keur is computed once by
 the waterfall and never overridden. The tax bridge is reconciliation-only

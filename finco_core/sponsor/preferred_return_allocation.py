@@ -18,7 +18,7 @@ import math
 from dataclasses import dataclass, field
 from typing import Optional
 
-from domain.sponsor.preferred_return_result import (
+from finco_core.sponsor.preferred_return_result import (
     PreferredReturnAccrualEntry,
     PreferredReturnResult,
 )

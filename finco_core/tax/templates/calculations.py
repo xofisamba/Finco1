@@ -9,7 +9,7 @@ no withholding tax — those are handled by a future tax engine layer.
 """
 from __future__ import annotations
 
-from domain.tax.templates.inputs import (
+from finco_core.tax.templates.inputs import (
     CITTier,
     TaxDepreciationRule,
 )

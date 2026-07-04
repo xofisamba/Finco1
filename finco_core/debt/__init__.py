@@ -1,6 +1,6 @@
 """finco_core.debt — Senior debt engine.
 
-V2-4: Authoritative. domain.financing.* are compatibility shims.
+V2-4: Authoritative. finco_core.debt.* are compatibility shims.
 
 Covers: senior debt schedule, DSCR sculpting, covenant engine, debt sizing,
 amortisation schedule.

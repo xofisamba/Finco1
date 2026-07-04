@@ -1,7 +1,7 @@
 """Senior debt sculpting configuration.
 
 Authoritative location: finco_core.inputs.senior_sculpting (V2-2).
-Legacy location domain.senior_sculpting re-exports from here.
+Legacy location finco_core.inputs.senior_sculpting re-exports from here.
 
 This module defines a default-off configuration surface for future senior debt
 sculpting alignment. The first runtime-supported mode is intentionally narrow:

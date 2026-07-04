@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 import math
 from typing import Any
 
-from domain.sponsor.investor_registry import (
+from finco_core.sponsor.investor_registry import (
     InvestorRole,
     InvestorEntry,
     InvestorRegistry,

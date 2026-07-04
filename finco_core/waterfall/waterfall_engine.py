@@ -20,25 +20,25 @@ from dataclasses import dataclass, field, replace
 from typing import Optional
 from datetime import date
 
-from domain.financing.sculpting_iterative import (
+from finco_core.debt.sculpting_iterative import (
     iterative_sculpt_debt, IterativeSculptResult,
     closed_form_sculpt, ClosedFormSculptResult,
     dsra_rolling_target, dsra_update,
     cash_sweep,
 )
-from domain.financing.schedule import senior_debt_amount
-from domain.returns.xirr import xirr, xnpv
-from domain.returns.sponsor_cashflows import build_sponsor_cashflows
-from domain.period_engine import hash_engine_for_cache
-from domain.tax.engine import atad_adjustment
-from domain.distribution_account import compute_tuho_r99_input_period
-from domain.shl_fcf_waterfall import compute_shl_fcf_waterfall_period
-from domain.senior_sculpting import (
+from finco_core.debt.schedule import senior_debt_amount
+from finco_core.sponsor.xirr import xirr, xnpv
+from finco_core.sponsor.sponsor_cashflows import build_sponsor_cashflows
+from finco_core.engine.period_engine import hash_engine_for_cache
+from finco_core.tax.engine import atad_adjustment
+from finco_core.engine.distribution_account import compute_tuho_r99_input_period
+from finco_core.shl.fcf_waterfall import compute_shl_fcf_waterfall_period
+from finco_core.inputs.senior_sculpting import (
     SeniorSculptingMode,
     validate_explicit_debt_service_schedule,
 )
-from domain.waterfall.shl_engine import compute_shl_period_v3
-from domain.waterfall.tax_engine import compute_period_tax, TaxPeriodResult
+from finco_core.waterfall.shl_engine import compute_shl_period_v3
+from finco_core.waterfall.tax_engine import compute_period_tax, TaxPeriodResult
 from utils.logging_config import get_logger
 
 _log = get_logger(__name__)  # Module-level logger (defined once, not per-function)

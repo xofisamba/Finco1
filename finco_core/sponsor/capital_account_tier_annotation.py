@@ -18,11 +18,11 @@ from dataclasses import dataclass, field
 import math
 from typing import Any
 
-from domain.sponsor.sponsor_capital_account import (
+from finco_core.sponsor.sponsor_capital_account import (
     CapitalAccountEntry,
     SponsorCapitalAccount,
 )
-from domain.sponsor.sponsor_waterfall_tier import TierType
+from finco_core.sponsor.sponsor_waterfall_tier import TierType
 
 __all__ = [
     "TierAnnotation",
@@ -262,7 +262,7 @@ def from_waterfall_allocation_result(
     TierAnnotatedSponsorCapitalAccount
         Frozen capital account with one entry per tier allocation per period.
     """
-    from domain.sponsor.waterfall_allocation_result import (
+    from finco_core.sponsor.waterfall_allocation_result import (
         WaterfallAllocationResult,
         PeriodWaterfallResult,
     )
