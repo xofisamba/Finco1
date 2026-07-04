@@ -62,9 +62,11 @@ class ProjectRecord:
     replay_metadata: dict[str, Any]
     created_at: datetime
     updated_at: datetime
+    full_inputs: Optional[dict[str, Any]] = None  # V3-7: full-fidelity ProjectInputs dict
 
     @classmethod
     def from_row(cls, row) -> "ProjectRecord":
+        keys = row.keys()
         return cls(
             project_id=row["project_id"],
             user_id=row["user_id"],
@@ -76,12 +78,13 @@ class ProjectRecord:
             template_source=row["template_source"],
             baseline_snapshot=_from_json(row["baseline_snapshot_json"], {}),
             archived=bool(row["archived"]),
-            is_readonly=bool(row["is_readonly"]) if "is_readonly" in row.keys() else False,
+            is_readonly=bool(row["is_readonly"]) if "is_readonly" in keys else False,
             governance_state=_from_json(row["governance_state_json"], {}),
             last_run_summary=_from_json(row["last_run_summary_json"], {}),
             replay_metadata=_from_json(row["replay_metadata_json"], {}),
             created_at=_from_iso(row["created_at"]),
             updated_at=_from_iso(row["updated_at"]),
+            full_inputs=_from_json(row["full_inputs_json"], None) if "full_inputs_json" in keys else None,
         )
 
 
