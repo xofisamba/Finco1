@@ -1433,9 +1433,9 @@ def cached_run_waterfall(
         WaterfallResult with all computed periods and metrics
     """
     # V2-7: generation extracted to finco_core.revenue.
-    # V2-7 BLOCKER remaining: opex_schedule_annual (domain.opex.projections) — deferred.
+    # V2-8: opex extracted to finco_core.opex.
     from finco_core.revenue.generation import full_revenue_schedule, full_generation_schedule
-    from domain.opex.projections import opex_schedule_annual
+    from finco_core.opex.projections import opex_schedule_annual
 
     # Build schedules
     periods_list = list(engine.periods())
