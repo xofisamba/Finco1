@@ -11,8 +11,6 @@ Runtime dependencies:
     finco_core.inputs.senior_rate_schedule  — SeniorDebtInterestConfig
     finco_core.inputs.senior_sculpting      — SeniorSculptingConfig
 
-Remaining external dependency (TYPE_CHECKING only, V2-3 target):
-    domain.revenue.bess                     — BessParams (not yet extracted)
 """
 from dataclasses import dataclass, field
 from datetime import date
@@ -23,9 +21,7 @@ from finco_core.inputs.senior_rate_schedule import SeniorDebtInterestConfig
 from finco_core.inputs.senior_sculpting import SeniorSculptingConfig
 
 if TYPE_CHECKING:
-    # BessParams will be extracted to finco_core in V2-3.
-    # TYPE_CHECKING-only: no runtime dependency.
-    from domain.revenue.bess import BessParams
+    from finco_core.inputs.bess import BessParams
 
 
 class PeriodFrequency(Enum):
