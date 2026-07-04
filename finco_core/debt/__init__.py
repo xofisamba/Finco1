@@ -1,14 +1,11 @@
+"""finco_core.debt — Senior debt engine.
+
+V2-4: Authoritative. domain.financing.* are compatibility shims.
+
+Covers: senior debt schedule, DSCR sculpting, covenant engine, debt sizing,
+amortisation schedule.
 """
-finco_core.debt — Senior debt engine.
-
-Extraction target (V2-3): senior debt schedule, DSCR sculpting,
-covenant engine, debt sizing, amortisation schedule.
-
-Source: domain/financing/, domain/senior_debt_sizing/, domain/senior_sculpting.py
-
-V2-3: Forward shims to domain financing/senior_debt_sizing modules.
-"""
-from domain.financing import (
+from finco_core.debt.schedule import (
     AmortizationResult,
     DebtServiceResult,
     senior_debt_amount,
@@ -16,27 +13,20 @@ from domain.financing import (
     annuity_payment,
     balance_after_n_periods,
     sculpted_amortization,
-    iterative_sculpt_debt,
-    IterativeSculptResult,
-    dscr_at_period,
-    average_dscr,
-    min_dscr,
-    dscr,
-    llcr,
-    plcr,
 )
-from domain.financing.sculpting_iterative import (
+from finco_core.debt.sculpting_iterative import (
+    IterativeSculptResult,
+    ClosedFormSculptResult,
+    iterative_sculpt_debt,
     closed_form_sculpt,
     dsra_rolling_target,
     dsra_update,
     cash_sweep,
+    dscr_at_period,
+    average_dscr,
+    min_dscr,
 )
-from domain.senior_debt_sizing import (
-    SeniorDebtSizingPolicy,
-    SeniorDebtDSCRPolicy,
-    SizingMode,
-    SeniorDebtSizingEngine,
-)
+from finco_core.debt.covenants import dscr, llcr, plcr
 
 __all__ = [
     # Schedule
@@ -48,8 +38,9 @@ __all__ = [
     "balance_after_n_periods",
     "sculpted_amortization",
     # Sculpting
-    "iterative_sculpt_debt",
     "IterativeSculptResult",
+    "ClosedFormSculptResult",
+    "iterative_sculpt_debt",
     "closed_form_sculpt",
     "dsra_rolling_target",
     "dsra_update",
@@ -62,9 +53,4 @@ __all__ = [
     "dscr",
     "llcr",
     "plcr",
-    # Senior debt sizing
-    "SeniorDebtSizingPolicy",
-    "SeniorDebtDSCRPolicy",
-    "SizingMode",
-    "SeniorDebtSizingEngine",
 ]

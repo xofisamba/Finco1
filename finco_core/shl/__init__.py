@@ -1,24 +1,14 @@
+"""finco_core.shl — Shareholder loan engine.
+
+V2-4: Authoritative. domain.shl.* are compatibility shims.
+
+Covers: SHL engine, canonical wiring, interest accrual, repayment alignment,
+audit trail. Capability-driven dispatch only — no identity guards.
 """
-finco_core.shl — Shareholder loan engine.
-
-Extraction target (V2-3): SHL engine, canonical wiring, interest accrual,
-repayment alignment, audit trail. Capability-driven dispatch only —
-no identity guards (eliminated in Stack AC + Phase 0 Y3).
-
-Source: domain/shl/, domain/shl_fcf_waterfall.py
-
-V2-3: Forward shims to domain shl modules.
-"""
-from domain.shl import (
-    ShlEngine,
-    ShlEngineInputs,
-    ShlPeriodInput,
-    ShlPeriodResult,
-    ShlEngineResult,
-    ShlAuditRow,
-    ShlTaxInterface,
-)
-from domain.shl_fcf_waterfall import (
+from finco_core.shl.inputs import ShlEngineInputs, ShlPeriodInput
+from finco_core.shl.result import ShlEngineResult, ShlPeriodResult, ShlAuditRow
+from finco_core.shl.engine import ShlEngine
+from finco_core.shl.fcf_waterfall import (
     SHLFCFWaterfallPeriodResult,
     compute_shl_fcf_waterfall_period,
 )
@@ -26,7 +16,6 @@ from domain.shl_fcf_waterfall import (
 __all__ = [
     "ShlPeriodInput",
     "ShlEngineInputs",
-    "ShlTaxInterface",
     "ShlPeriodResult",
     "ShlEngineResult",
     "ShlAuditRow",

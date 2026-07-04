@@ -1,22 +1,5 @@
-"""Phase 6A — Tax template result types.
+"""Compatibility shim — V2-4.
 
-All result types are defined in inputs.py. This module re-exports them
-for logical grouping (result module = outputs of template resolution).
+Authoritative implementation moved to finco_core.tax.templates.result.
 """
-from __future__ import annotations
-
-from domain.tax.templates.inputs import (
-    CITTier,
-    TaxDepreciationRule,
-    TaxTemplate,
-    TaxTemplateOverride,
-    ResolvedTaxConfig,
-)
-
-__all__ = [
-    "CITTier",
-    "TaxDepreciationRule",
-    "TaxTemplate",
-    "TaxTemplateOverride",
-    "ResolvedTaxConfig",
-]
+from finco_core.tax.templates.result import *  # noqa: F401, F403

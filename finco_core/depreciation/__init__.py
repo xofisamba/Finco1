@@ -1,27 +1,24 @@
+"""finco_core.depreciation — Depreciation engine.
+
+V2-4: Authoritative. domain.depreciation.* are compatibility shims.
+
+Covers: book depreciation, tax depreciation, depreciation ledger, tax bridge
+integration. Book and tax schedules are maintained separately; the tax schedule
+feeds the Croatian CIT taxable income formula.
 """
-finco_core.depreciation — Depreciation engine.
-
-Extraction target (V2-3): book depreciation, tax depreciation, depreciation
-ledger, tax bridge integration. Book and tax schedules are maintained
-separately; the tax schedule feeds the Croatian CIT taxable income formula.
-
-Source: domain/depreciation/, domain/depreciation_offline/
-
-V2-3: Forward shims to domain depreciation modules.
-"""
-from domain.depreciation import (
-    AssetClassConfig,
-    DepreciationLedgerInput,
-    DepreciationLedgerResult,
-    DepreciationPeriodResult,
+from finco_core.depreciation.asset import AssetClassConfig
+from finco_core.depreciation.schedule import (
     DepreciationPolicy,
-    build_depreciation_ledger,
     straight_line_depreciation_for_period,
-    DepreciationEngine,
-    DepreciationEngineInputs,
-    DepreciationEngineResult,
-    DepreciationAuditRow,
 )
+from finco_core.depreciation.result import DepreciationPeriodResult, DepreciationLedgerResult
+from finco_core.depreciation.ledger import DepreciationLedgerInput, build_depreciation_ledger
+from finco_core.depreciation.engine import (
+    DepreciationEngineInputs,
+    DepreciationEngine,
+    DepreciationEngineResult,
+)
+from finco_core.depreciation.audit import DepreciationAuditRow
 
 __all__ = [
     "AssetClassConfig",

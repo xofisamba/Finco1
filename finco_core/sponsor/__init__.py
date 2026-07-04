@@ -1,33 +1,30 @@
+"""finco_core.sponsor — Sponsor cashflow engine.
+
+V2-4: Authoritative. domain.returns.* and domain.sponsor.* are compatibility shims.
+
+Covers: sponsor cashflow, multi-investor waterfall, equity IRR computation (XIRR),
+distribution schedule.
 """
-finco_core.sponsor — Sponsor cashflow engine.
-
-Extraction target (V2-3): sponsor cashflow, multi-investor waterfall,
-equity IRR computation (XIRR), distribution schedule.
-
-Source: domain/sponsor/, domain/returns/xirr.py, domain/returns/xnpv.py
-
-V2-3: Forward shims to domain sponsor/returns modules.
-"""
-from domain.returns.xirr import xirr, xirr_bisection, robust_xirr
-from domain.returns.xnpv import xnpv, xnpv_schedule
-from domain.returns.sponsor_cashflows import build_sponsor_cashflows
-from domain.sponsor.sponsor_waterfall_tier import (
+from finco_core.sponsor.xirr import xirr, xirr_bisection, robust_xirr
+from finco_core.sponsor.xnpv import xnpv, xnpv_schedule
+from finco_core.sponsor.sponsor_cashflows import build_sponsor_cashflows
+from finco_core.sponsor.sponsor_waterfall_tier import (
     TierType,
     CompoundingConvention,
     SponsorShare,
     SponsorWaterfallTier,
     WaterfallTierValidationResult,
 )
-from domain.sponsor.preferred_return_calculator import (
+from finco_core.sponsor.preferred_return_calculator import (
     PreferredReturnCalculatorInputs,
     calculate_preferred_return,
 )
-from domain.sponsor.waterfall_allocation_result import (
+from finco_core.sponsor.waterfall_allocation_result import (
     TierAllocationEntry,
     PeriodWaterfallResult,
     WaterfallAllocationResult,
 )
-from domain.sponsor.xirr import SponsorXirrResult, xirr_with_convergence
+from finco_core.sponsor.xirr_runner import SponsorXirrResult, xirr_with_convergence
 
 __all__ = [
     # Returns
