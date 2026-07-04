@@ -17,6 +17,19 @@ class ValidationIssue:
     severity: str  # "error" | "warning"
     field: str
     message: str
+    code: str = ""  # machine-readable code, e.g. "E_INVALID_ENUM"
+
+
+# ── Valid enum string sets ─────────────────────────────────────────────────────
+_VALID_AMORTIZATION_TYPES = frozenset({"sculpted", "annuity", "straight_line", "bullet"})
+_VALID_EQUITY_IRR_METHODS = frozenset({"equity_only", "combined", "shl_plus_dividends"})
+_VALID_DEBT_SIZING_METHODS = frozenset({"dscr_sculpt", "gearing_cap", "fixed"})
+_VALID_SHL_REPAYMENT_METHODS = frozenset({
+    "bullet", "cash_sweep", "pik", "accrued",
+    "pik_then_sweep", "partial_pay_sweep", "fcf_waterfall",
+})
+_VALID_YIELD_SCENARIOS = frozenset({"P_50", "P90-10y", "P99-1y"})
+_VALID_PERIOD_FREQUENCIES = frozenset({"Semestrial", "Annual", "Quarterly"})
 
 
 @dataclass(frozen=True)
@@ -95,6 +108,93 @@ def validate_project_inputs(inputs) -> tuple[ValidationIssue, ...]:
             issues.append(ValidationIssue("error", "bess.roundtrip_efficiency", "BESS efficiency must be between 0 and 1"))
         if getattr(bess, 'cycles_per_year', 0) < 0:
             issues.append(ValidationIssue("error", "bess.cycles_per_year", "BESS cycles per year cannot be negative"))
+
+    # ── Cross-field consistency ────────────────────────────────────────────────
+    if fin.lockup_dscr >= fin.target_dscr:
+        issues.append(ValidationIssue(
+            "warning", "lockup_dscr",
+            f"Lockup DSCR ({fin.lockup_dscr}) should be less than target DSCR ({fin.target_dscr}) "
+            "— distributions will always be locked if lockup_dscr >= target_dscr",
+            code="W_LOCKUP_GTE_TARGET",
+        ))
+
+    # ── Enum membership ───────────────────────────────────────────────────────
+    if getattr(fin, "amortization_type", None) not in _VALID_AMORTIZATION_TYPES:
+        issues.append(ValidationIssue(
+            "error", "amortization_type",
+            f"Invalid amortization_type '{fin.amortization_type}'; "
+            f"must be one of {sorted(_VALID_AMORTIZATION_TYPES)}",
+            code="E_INVALID_ENUM",
+        ))
+    if getattr(fin, "equity_irr_method", None) not in _VALID_EQUITY_IRR_METHODS:
+        issues.append(ValidationIssue(
+            "error", "equity_irr_method",
+            f"Invalid equity_irr_method '{fin.equity_irr_method}'; "
+            f"must be one of {sorted(_VALID_EQUITY_IRR_METHODS)}",
+            code="E_INVALID_ENUM",
+        ))
+    if getattr(fin, "debt_sizing_method", None) not in _VALID_DEBT_SIZING_METHODS:
+        issues.append(ValidationIssue(
+            "error", "debt_sizing_method",
+            f"Invalid debt_sizing_method '{fin.debt_sizing_method}'; "
+            f"must be one of {sorted(_VALID_DEBT_SIZING_METHODS)}",
+            code="E_INVALID_ENUM",
+        ))
+    if getattr(fin, "shl_repayment_method", None) not in _VALID_SHL_REPAYMENT_METHODS:
+        issues.append(ValidationIssue(
+            "error", "shl_repayment_method",
+            f"Invalid shl_repayment_method '{fin.shl_repayment_method}'; "
+            f"must be one of {sorted(_VALID_SHL_REPAYMENT_METHODS)}",
+            code="E_INVALID_ENUM",
+        ))
+    tech = inputs.technical
+    if getattr(tech, "yield_scenario", None) not in _VALID_YIELD_SCENARIOS:
+        issues.append(ValidationIssue(
+            "error", "yield_scenario",
+            f"Invalid yield_scenario '{tech.yield_scenario}'; "
+            f"must be one of {sorted(_VALID_YIELD_SCENARIOS)}",
+            code="E_INVALID_ENUM",
+        ))
+    # ── TechnicalParams range checks ──────────────────────────────────────────
+    if hasattr(tech, "pv_degradation") and not (0.0 <= tech.pv_degradation <= 1.0):
+        issues.append(ValidationIssue(
+            "error", "pv_degradation",
+            f"pv_degradation ({tech.pv_degradation}) must be between 0 and 1",
+            code="E_OUT_OF_RANGE",
+        ))
+    if hasattr(tech, "bess_degradation") and not (0.0 <= tech.bess_degradation <= 1.0):
+        issues.append(ValidationIssue(
+            "error", "bess_degradation",
+            f"bess_degradation ({tech.bess_degradation}) must be between 0 and 1",
+            code="E_OUT_OF_RANGE",
+        ))
+    if hasattr(tech, "plant_availability") and not (0.0 < tech.plant_availability <= 1.0):
+        issues.append(ValidationIssue(
+            "error", "plant_availability",
+            f"plant_availability ({tech.plant_availability}) must be between 0 (exclusive) and 1",
+            code="E_OUT_OF_RANGE",
+        ))
+    if hasattr(tech, "grid_availability") and not (0.0 < tech.grid_availability <= 1.0):
+        issues.append(ValidationIssue(
+            "error", "grid_availability",
+            f"grid_availability ({tech.grid_availability}) must be between 0 (exclusive) and 1",
+            code="E_OUT_OF_RANGE",
+        ))
+
+    # ── OpexItem validation ───────────────────────────────────────────────────
+    for i, item in enumerate(getattr(inputs, "opex", ())):
+        if hasattr(item, "y1_amount_keur") and item.y1_amount_keur < 0:
+            issues.append(ValidationIssue(
+                "warning", f"opex[{i}].y1_amount_keur",
+                f"OPEX item '{getattr(item, 'name', i)}' has negative y1 amount ({item.y1_amount_keur:.2f} kEUR)",
+                code="W_NEGATIVE_OPEX",
+            ))
+        if hasattr(item, "annual_inflation") and item.annual_inflation < -1.0:
+            issues.append(ValidationIssue(
+                "warning", f"opex[{i}].annual_inflation",
+                f"OPEX item '{getattr(item, 'name', i)}' has extreme negative inflation ({item.annual_inflation:.2%})",
+                code="W_OPEX_INFLATION",
+            ))
 
     # ── Warnings ─────────────────────────────────────────────────────────────
     if rev.ppa_term_years > info.horizon_years:

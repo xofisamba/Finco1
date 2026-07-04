@@ -179,6 +179,23 @@ def run_demo_project(project_type: str, scenario: str = "Base",
             factory = FACTORY_MAP[project_type]
             proj = project_inputs_override if project_inputs_override is not None else factory()
 
+            # Pre-run validation for all projects (including factory-defaults)
+            if project_inputs_override is None:
+                from domain.validation import validate_project_inputs as _vpi
+                _pre_issues = list(_vpi(proj))
+                _pre_errors = [i for i in _pre_issues if i.severity == "error"]
+                if _pre_errors:
+                    return DemoResult(
+                        project_inputs=proj,
+                        result=None,
+                        portfolio_result=None,
+                        messages=["Factory-default inputs contain validation errors; model was not run."]
+                        + [i.message for i in _pre_errors],
+                        integration_status="full",
+                        integration_note=None,
+                        validation_issues=_pre_issues,
+                    )
+
             # BESS scenario guardrail — partial model, block scenarios
             BESS_TYPES = {"BESS", "Solar+BESS", "Wind+BESS"}
             if scenario != "Base" and project_type in BESS_TYPES:
