@@ -203,6 +203,7 @@ def _init_schema(conn):
     _ensure_column(conn, "projects", "baseline_snapshot_json", "TEXT NOT NULL DEFAULT '{}'")
     _ensure_column(conn, "projects", "archived", "INTEGER NOT NULL DEFAULT 0")
     _ensure_column(conn, "projects", "is_readonly", "INTEGER NOT NULL DEFAULT 0")
+    _ensure_column(conn, "projects", "full_inputs_json", "TEXT")
     _ensure_column(conn, "scenarios", "replay_metadata_json", "TEXT NOT NULL DEFAULT '{}'")
     _ensure_column(conn, "scenario_exports", "replay_metadata_json", "TEXT NOT NULL DEFAULT '{}'")
     _ensure_column(conn, "workspace_states", "replay_metadata_json", "TEXT NOT NULL DEFAULT '{}'")
