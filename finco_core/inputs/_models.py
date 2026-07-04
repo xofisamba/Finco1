@@ -81,20 +81,12 @@ class DebtSizingMode(Enum):
         but raise NotImplementedError at resolve time unless their
         corresponding implementation flag is set.
         """
-        if self == DebtSizingMode.FROZEN_EXCEL_SCHEDULE:
+        if self in (
+            DebtSizingMode.FROZEN_EXCEL_SCHEDULE,
+            DebtSizingMode.MINIMUM_DSCR_SCULPTED,
+            DebtSizingMode.FLAT_DSCR_SCULPTED,
+        ):
             return self
-        if self == DebtSizingMode.MINIMUM_DSCR_SCULPTED:
-            raise NotImplementedError(
-                "DebtSizingMode.MINIMUM_DSCR_SCULPTED is not yet implemented. "
-                "This mode requires a new iterative minimum-DSCR solver. "
-                "Use FROZEN_EXCEL_SCHEDULE (default) for now."
-            )
-        if self == DebtSizingMode.FLAT_DSCR_SCULPTED:
-            raise NotImplementedError(
-                "DebtSizingMode.FLAT_DSCR_SCULPTED is not yet implemented. "
-                "This mode requires a flat-DSCR sculpting solver. "
-                "Use FROZEN_EXCEL_SCHEDULE (default) for now."
-            )
         raise ValueError(f"Unknown DebtSizingMode: {self}")
 
 
@@ -480,7 +472,11 @@ class FinancingParams:
         if mode == DebtSizingMode.FROZEN_EXCEL_SCHEDULE:
             note = f" ({self.frozen_schedule_note})" if self.frozen_schedule_note else ""
             return f"FROZEN_EXCEL_SCHEDULE{note} — DSCR is computed from fixed service schedule"
-        return f"{mode.value} — future mode (not yet implemented)"
+        if mode == DebtSizingMode.FLAT_DSCR_SCULPTED:
+            return f"FLAT_DSCR_SCULPTED — closed-form sculpting, uniform DSCR = {self.target_dscr}"
+        if mode == DebtSizingMode.MINIMUM_DSCR_SCULPTED:
+            return "MINIMUM_DSCR_SCULPTED — closed-form sculpting, per-period DSCR schedule"
+        return f"{mode.value}"
 
 
 @dataclass(frozen=True)

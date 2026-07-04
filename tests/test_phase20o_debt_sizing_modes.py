@@ -115,25 +115,21 @@ def test_oborovo_default_outputs_unchanged_equity_irr():
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 4. Guarded future modes — NotImplementedError
+# 4. Mode resolution — V3-3: both sculpted modes now implemented
 # ─────────────────────────────────────────────────────────────────────────────
 
-def test_minimum_dscr_sculpted_raises_not_implemented_error():
-    """Selecting MINIMUM_DSCR_SCULPTED raises NotImplementedError, not silent fallback."""
+def test_minimum_dscr_sculpted_resolves_cleanly():
+    """V3-3: MINIMUM_DSCR_SCULPTED.validate_and_resolve() no longer raises."""
     mode = DebtSizingMode.MINIMUM_DSCR_SCULPTED
-    with pytest.raises(NotImplementedError) as exc_info:
-        mode.validate_and_resolve()
-    assert "minimum_dscr_sculpted" in str(exc_info.value).lower() or \
-           "iterative minimum-DSCR solver" in str(exc_info.value)
+    resolved = mode.validate_and_resolve()
+    assert resolved == DebtSizingMode.MINIMUM_DSCR_SCULPTED
 
 
-def test_flat_dscr_sculpted_raises_not_implemented_error():
-    """Selecting FLAT_DSCR_SCULPTED raises NotImplementedError, not silent fallback."""
+def test_flat_dscr_sculpted_resolves_cleanly():
+    """V3-3: FLAT_DSCR_SCULPTED.validate_and_resolve() no longer raises."""
     mode = DebtSizingMode.FLAT_DSCR_SCULPTED
-    with pytest.raises(NotImplementedError) as exc_info:
-        mode.validate_and_resolve()
-    assert "flat_dscr_sculpted" in str(exc_info.value).lower() or \
-           "flat-DSCR sculpting solver" in str(exc_info.value)
+    resolved = mode.validate_and_resolve()
+    assert resolved == DebtSizingMode.FLAT_DSCR_SCULPTED
 
 
 def test_explicit_frozen_mode_on_financing_params_resolves():
@@ -142,11 +138,10 @@ def test_explicit_frozen_mode_on_financing_params_resolves():
     assert fp.resolved_debt_sizing_mode() == DebtSizingMode.FROZEN_EXCEL_SCHEDULE
 
 
-def test_financing_params_with_future_mode_raises_at_resolve():
-    """Setting debt_sizing_mode=MINIMUM_DSCR_SCULPTED raises at resolve time."""
+def test_financing_params_with_minimum_dscr_mode_resolves():
+    """V3-3: setting debt_sizing_mode=MINIMUM_DSCR_SCULPTED resolves cleanly."""
     fp = FinancingParams(debt_sizing_mode=DebtSizingMode.MINIMUM_DSCR_SCULPTED)
-    with pytest.raises(NotImplementedError):
-        fp.resolved_debt_sizing_mode()
+    assert fp.resolved_debt_sizing_mode() == DebtSizingMode.MINIMUM_DSCR_SCULPTED
 
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -12,7 +12,7 @@ from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Optional
 
 from app.waterfall_core import run_waterfall_v3_core
-from domain.inputs import EquityIRRMethod, DebtSizingMethod, SHLRepaymentMethod
+from domain.inputs import EquityIRRMethod, DebtSizingMethod, DebtSizingMode, SHLRepaymentMethod
 from domain.senior_rate_schedule import SeniorDebtInterestConfig, build_senior_period_rate_schedule
 from domain.senior_sculpting import SeniorSculptingConfig
 
@@ -115,6 +115,7 @@ class WaterfallRunConfig:
 
     # Debt sizing
     debt_sizing_method: DebtSizingMethod = DebtSizingMethod.DSCR_SCULPT
+    debt_sizing_mode: Optional[DebtSizingMode] = None
 
     # Per-period DSCR targets (dual-DSCR sculpting)
     dscr_schedule: Optional[list[float]] = None
@@ -290,6 +291,7 @@ class WaterfallRunConfig:
             share_capital_keur=fin.share_capital_keur,
             sculpt_capex_keur=inputs.capex.sculpt_capex_keur,
             debt_sizing_method=ds_method,
+            debt_sizing_mode=fin.debt_sizing_mode,
             fixed_debt_keur=fin.fixed_debt_keur,
             dscr_schedule=fin.dscr_schedule,
             rate_schedule=rate_schedule,
