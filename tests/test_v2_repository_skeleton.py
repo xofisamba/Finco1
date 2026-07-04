@@ -182,6 +182,8 @@ class TestNoEngineCopiedIntoV2Packages:
         "finco_core/inputs/_models.py",
         "finco_core/inputs/senior_rate_schedule.py",
         "finco_core/inputs/senior_sculpting.py",
+        # V2-6 files
+        "finco_core/inputs/bess.py",
         # V2-4 waterfall files
         "finco_core/waterfall/waterfall_engine.py",
         "finco_core/waterfall/cash_flow.py",

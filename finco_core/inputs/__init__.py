@@ -24,9 +24,10 @@ Public API — re-exported from submodules:
         SeniorReserveTreatment, SeniorSculptingConfig,
         validate_explicit_debt_service_schedule
 
-Remaining external dependency (V2-3 target):
-    domain.revenue.bess.BessParams — TYPE_CHECKING only in _models.py
+    From finco_core.inputs.bess:
+        BessParams
 """
+from finco_core.inputs.bess import BessParams
 from finco_core.inputs._models import (
     PeriodFrequency,
     EquityIRRMethod,
@@ -87,6 +88,8 @@ __all__ = [
     "FinancingParams",
     "TaxParams",
     "ProjectInputs",
+    # BESS input model
+    "BessParams",
     # Functions
     "hash_inputs_for_cache",
     # Senior rate schedule
