@@ -1,7 +1,7 @@
 # V2 Import Audit Checklist
 
-**Purpose**: Pre-extraction import dependency audit. To be completed during V2-3 (Engine extraction).  
-**Status**: Scaffold only — not yet executed.  
+**Purpose**: Pre-extraction import dependency audit.  
+**Status**: V2-2 inputs completed; V2-3 engine checklist pending.  
 **Baseline**: Finco1-RC2 @ `b52d39c`
 
 ---
@@ -18,14 +18,22 @@ Before each engine module is ported into `finco_core`, its full import graph mus
 
 ## Audit Checklist — by Module
 
-### `domain/inputs.py` → `finco_core/inputs/`
+### `domain/inputs.py` → `finco_core/inputs/` — **COMPLETED V2-2**
 
-- [ ] List all imports in `domain/inputs.py`
-- [ ] Classify each import: stdlib / domain-internal / app-shell / third-party
-- [ ] Verify no Streamlit imports
-- [ ] Verify no `app/` imports
-- [ ] Verify no `tests/` imports
-- [ ] Document any third-party dependencies required
+- [x] All imports in `domain/inputs.py` classified
+- [x] `domain.senior_rate_schedule` → moved to `finco_core.inputs.senior_rate_schedule` (stdlib only)
+- [x] `domain.senior_sculpting` → moved to `finco_core.inputs.senior_sculpting` (stdlib only)
+- [x] `domain.revenue.bess.BessParams` → TYPE_CHECKING only; no runtime dep (V2-3 target)
+- [x] No Streamlit imports
+- [x] No `app/` imports
+- [x] No `tests/` imports
+- [x] `domain/inputs.py` is now a re-export shim; `domain.senior_rate_schedule` and `domain.senior_sculpting` are re-export shims
+- [x] 104/104 extraction migration tests passing
+
+**Remaining dependency after V2-2:**
+- `finco_core.inputs._models` has a TYPE_CHECKING-only import of `domain.revenue.bess.BessParams`
+- This is not a runtime dependency — resolved to `None` at runtime via string annotation
+- Will be replaced with `finco_core.inputs.BessParams` when revenue module is extracted in V2-3
 
 ### `domain/waterfall/waterfall_engine.py` → `finco_core/waterfall/`
 

@@ -175,12 +175,24 @@ class TestNoEngineCopiedIntoV2Packages:
                 )
         return files
 
+    # V2-2 update: finco_core/inputs/ now contains real module files extracted in V2-2.
+    # Non-init files in other packages are still prohibited.
+    V2_2_ALLOWED_NON_INIT = frozenset([
+        "finco_core/inputs/_models.py",
+        "finco_core/inputs/senior_rate_schedule.py",
+        "finco_core/inputs/senior_sculpting.py",
+    ])
+
     def test_no_non_init_py_files_in_v2_skeleton(self):
-        """V2-1 packages must contain only __init__.py files — no engine code."""
+        """Only V2-2 extraction files are allowed as non-__init__.py modules."""
         non_init_files = self._collect_py_files()
-        assert non_init_files == [], (
-            "V2-1 skeleton must not contain non-__init__.py Python files. "
-            f"Found: {[str(f.relative_to(REPO_ROOT)) for f in non_init_files]}"
+        unexpected = [
+            f for f in non_init_files
+            if str(f.relative_to(REPO_ROOT)) not in self.V2_2_ALLOWED_NON_INIT
+        ]
+        assert unexpected == [], (
+            "Unexpected non-__init__.py Python files in v2 packages. "
+            f"Found: {[str(f.relative_to(REPO_ROOT)) for f in unexpected]}"
         )
 
     @pytest.mark.parametrize("pkg", V2_PACKAGES)
