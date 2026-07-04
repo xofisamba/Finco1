@@ -17,8 +17,8 @@ from finco_core.depreciation.engine import (
     DepreciationEngineInputs,
     DepreciationEngine,
     DepreciationEngineResult,
+    DepreciationAuditRow,
 )
-from finco_core.depreciation.audit import DepreciationAuditRow
 
 __all__ = [
     "AssetClassConfig",

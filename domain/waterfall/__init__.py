@@ -1,11 +1,9 @@
-"""Waterfall module - full cash flow waterfall with distribution."""
-from domain.waterfall.cash_flow import (
-    compute_waterfall,
-    WaterfallResult,
-    distribution_after_lockup,
-)
-from domain.waterfall.reserves import reserve_account_balances, dsra_funding
-from domain.waterfall.waterfall_engine import run_waterfall, WaterfallResult as WR
+"""domain/waterfall/ — Compatibility shim — V2-4.
+
+Authoritative implementation moved to finco_core.waterfall.
+Uses lazy __getattr__ delegation to avoid circular imports during
+finco_core.waterfall initialization.
+"""
 
 __all__ = [
     "compute_waterfall",
@@ -15,3 +13,11 @@ __all__ = [
     "dsra_funding",
     "run_waterfall",
 ]
+
+
+def __getattr__(name: str):
+    import finco_core.waterfall as _wf
+    try:
+        return getattr(_wf, name)
+    except AttributeError:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

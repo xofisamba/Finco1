@@ -1,21 +1,11 @@
-"""Offline book/tax depreciation ledger."""
+"""domain/depreciation/ — Compatibility shim — V2-4.
 
-from domain.depreciation.asset import AssetClassConfig
-from domain.depreciation.engine import (
-    DepreciationEngine,
-    DepreciationEngineInputs,
-    DepreciationEngineResult,
-    DepreciationAuditRow,
-)
-from domain.depreciation.ledger import DepreciationLedgerInput, build_depreciation_ledger
-from domain.depreciation.result import DepreciationLedgerResult, DepreciationPeriodResult
-from domain.depreciation.schedule import (
-    DepreciationPolicy,
-    straight_line_depreciation_for_period,
-)
+Authoritative implementation moved to finco_core.depreciation.
+Uses lazy __getattr__ delegation to avoid circular imports during
+finco_core.depreciation initialization.
+"""
 
 __all__ = [
-    # Legacy
     "AssetClassConfig",
     "DepreciationLedgerInput",
     "DepreciationLedgerResult",
@@ -23,9 +13,16 @@ __all__ = [
     "DepreciationPolicy",
     "build_depreciation_ledger",
     "straight_line_depreciation_for_period",
-    # Canonical engine (this branch)
     "DepreciationEngine",
     "DepreciationEngineInputs",
     "DepreciationEngineResult",
     "DepreciationAuditRow",
 ]
+
+
+def __getattr__(name: str):
+    import finco_core.depreciation as _dep
+    try:
+        return getattr(_dep, name)
+    except AttributeError:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

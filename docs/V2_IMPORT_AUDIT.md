@@ -142,3 +142,40 @@ V2-3 verification: all imports succeed, no circular dependencies:
 This document is a scaffold. Actual import listings will be populated during V2-3 execution. Each checklist item will be checked off and annotated with findings before the V2-3 PR is opened.
 
 *Do not begin the import audit until V2-2 (Inputs) is merged.*
+
+---
+
+## V2-4 Status Update
+
+**Status**: V2-4 authoritative engine move complete.
+
+All V2-3 "V2-4 target" checklist items are now complete:
+
+- [x] `finco_core/waterfall/` — authoritative (76 files copied from domain; domain shims created)
+- [x] `finco_core/tax/` — authoritative
+- [x] `finco_core/shl/` — authoritative
+- [x] `finco_core/debt/` — authoritative
+- [x] `finco_core/depreciation/` — authoritative
+- [x] `finco_core/sponsor/` — authoritative
+- [x] `finco_core/engine/` — authoritative (period_engine + distribution_account)
+- [x] `finco_core/validation/` — authoritative
+
+### Circular import resolution
+
+Several `domain/` package `__init__.py` files were converted from eager star imports to lazy
+`__getattr__` delegation to prevent circular imports during finco_core initialization:
+- `domain/distribution_account/__init__.py`
+- `domain/shl/__init__.py`
+- `domain/tax/__init__.py`
+- `domain/financing/__init__.py`
+- `domain/depreciation/__init__.py`
+- `domain/returns/__init__.py`
+- `domain/waterfall/__init__.py`
+
+### Remaining V2-5 targets
+
+- `finco_core/` leaf files still import from `domain.*` internally (domain shim layer resolves them)
+- V2-5 will rewrite those internal imports to `finco_core.*` paths, eliminating all domain shim dependencies
+- `BessParams`: still TYPE_CHECKING-only in `finco_core/inputs/_models.py`
+- `SponsorXirrResult`/`xirr_with_convergence`: accessible via `finco_core.sponsor.xirr_runner` (not top-level `finco_core.sponsor` due to circular; V2-5 target)
+- `SeniorDebtSizingPolicy`/`SeniorDebtSizingEngine` etc.: not yet copied to `finco_core/debt/`

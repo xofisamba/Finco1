@@ -24,7 +24,11 @@ from finco_core.sponsor.waterfall_allocation_result import (
     PeriodWaterfallResult,
     WaterfallAllocationResult,
 )
-from finco_core.sponsor.xirr_runner import SponsorXirrResult, xirr_with_convergence
+# NOTE: SponsorXirrResult and xirr_with_convergence are in finco_core.sponsor.xirr_runner
+# but NOT re-exported here to avoid a circular import:
+#   domain.returns.xirr shim → finco_core.sponsor.xirr (triggers package init)
+#   → xirr_runner → domain.returns.xirr (already being loaded).
+# V2-5 will fix xirr_runner's internal import to use finco_core.sponsor.xirr directly.
 
 __all__ = [
     # Returns
@@ -47,7 +51,5 @@ __all__ = [
     "TierAllocationEntry",
     "PeriodWaterfallResult",
     "WaterfallAllocationResult",
-    # Sponsor XIRR
-    "SponsorXirrResult",
-    "xirr_with_convergence",
+    # SponsorXirrResult and xirr_with_convergence: see finco_core.sponsor.xirr_runner (V2-5)
 ]

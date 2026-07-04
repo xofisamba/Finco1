@@ -50,7 +50,10 @@ from finco_core.tax.templates.schedules import (
     TaxLossPeriod,
     TaxLossCarryforwardSchedule,
 )
-from finco_core.tax.templates.calculations import calculate_taxable_income_keur
+from finco_core.tax.templates.calculations import (
+    calculate_taxable_income_keur,
+    calculate_tax_depreciation_keur,
+)
 from finco_core.tax.templates.registry import get_builtin_tax_templates
 
 __all__ = [

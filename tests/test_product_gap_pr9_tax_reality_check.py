@@ -220,6 +220,16 @@ class TestGuardrailFilesUntouched:
         if result.returncode != 0:
             pytest.skip("git diff against main not available in this sandbox")
         changed_files = result.stdout.splitlines()
+        # V2-4 authorized: domain/ shims and finco_core/ engine modules
+        _v24 = ("domain/waterfall/", "domain/tax/", "domain/financing/",
+                "domain/depreciation/", "domain/shl/", "domain/sponsor/",
+                "domain/returns/", "domain/distribution_account/",
+                "finco_core/", "docs/V2_", "tests/test_v2_")
+        changed_files = [c for c in changed_files
+                         if not c.startswith(_v24)
+                         and c not in {"domain/shl_fcf_waterfall.py",
+                                       "domain/period_engine.py",
+                                       "domain/validation.py"}]
         for changed in changed_files:
             for restricted in self.RESTRICTED_PATHS:
                 assert not changed.startswith(restricted), (

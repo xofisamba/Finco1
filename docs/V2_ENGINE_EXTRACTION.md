@@ -114,3 +114,23 @@ Only `__init__.py` files were modified. No new non-init `.py` files were created
 - `finco_core/validation/__init__.py`
 - `docs/V2_ENGINE_EXTRACTION.md` (this file)
 - `docs/V2_IMPORT_AUDIT.md` (status updated)
+
+---
+
+## V2-4 Update: Authoritative Engine Move
+
+**Status**: Complete  
+**Pattern**: Reverse shim — `domain/` re-exports from `finco_core/`
+
+V2-4 reversed the shim direction. `finco_core/*/` packages are now authoritative;
+`domain/*/` are backward-compatibility shims.
+
+- 76 files copied verbatim from `domain/` to `finco_core/`
+- 77 `domain/` shim files created
+- 8 `finco_core/` `__init__.py` files updated to import from `finco_core.*` submodules
+- Several `domain/` package `__init__.py` files converted to lazy `__getattr__` delegation
+  to prevent circular imports during `finco_core.*` initialization
+- `finco_core/` leaf files still contain `from domain.X import Y` internally;
+  these resolve through the shim layer and will be cleaned up in V2-5
+
+See `docs/V2_AUTHORITATIVE_ENGINE_MOVE.md` for full details.

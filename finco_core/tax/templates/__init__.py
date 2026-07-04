@@ -11,13 +11,12 @@ from finco_core.tax.templates.calculations import (
 from finco_core.tax.templates.schedules import (
     build_tax_depreciation_schedule, build_tax_loss_carryforward_schedule,
 )
-from finco_core.tax.templates.registry import TAX_TEMPLATE_REGISTRY
+from finco_core.tax.templates.registry import get_builtin_tax_templates
 from finco_core.tax.templates.resolver import resolve_tax_template
-from finco_core.tax.templates.result import TaxTemplateResult
 
 __all__ = [
     "CITTier", "TaxDepreciationRule", "TaxTemplate", "TaxTemplateOverride", "ResolvedTaxConfig",
     "calculate_progressive_cit", "get_tax_depreciation_rate",
     "build_tax_depreciation_schedule", "build_tax_loss_carryforward_schedule",
-    "TAX_TEMPLATE_REGISTRY", "resolve_tax_template", "TaxTemplateResult",
+    "get_builtin_tax_templates", "resolve_tax_template",
 ]
