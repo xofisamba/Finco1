@@ -42,11 +42,10 @@ class TestDefaultBehaviorPreserved:
         # debt_sizing_mode still resolves to FROZEN_EXCEL_SCHEDULE
         assert fp.resolved_debt_sizing_mode() == DebtSizingMode.FROZEN_EXCEL_SCHEDULE
 
-    def test_future_modes_remain_guarded(self):
-        """flat_dscr_sculpted and minimum_dscr_sculpted remain guarded."""
-        for mode in [DebtSizingMode.FLAT_DSCR_SCULPTED, DebtSizingMode.MINIMUM_DSCR_SCULPTED]:
-            with pytest.raises(NotImplementedError):
-                mode.validate_and_resolve()
+    def test_sculpted_modes_resolve_cleanly(self):
+        """V3-3: flat_dscr_sculpted and minimum_dscr_sculpted are now implemented."""
+        assert DebtSizingMode.FLAT_DSCR_SCULPTED.validate_and_resolve() == DebtSizingMode.FLAT_DSCR_SCULPTED
+        assert DebtSizingMode.MINIMUM_DSCR_SCULPTED.validate_and_resolve() == DebtSizingMode.MINIMUM_DSCR_SCULPTED
 
     def test_r99_r102_not_approved(self):
         """R99/R102 remain not approved — flag defaults to False."""
@@ -147,23 +146,20 @@ class TestNoSculptingSolverPromotion:
     """Verify no sculpting solvers are promoted to default."""
 
     def test_no_flat_dscr_sculpted_promotion(self):
-        """flat_dscr_sculpted is NOT the default mode."""
+        """flat_dscr_sculpted is NOT the default mode — default remains FROZEN_EXCEL_SCHEDULE."""
         fp = FinancingParams()
-        # Default resolved mode must be FROZEN_EXCEL_SCHEDULE
         assert fp.resolved_debt_sizing_mode() == DebtSizingMode.FROZEN_EXCEL_SCHEDULE
-        # Explicitly setting FLAT_DSCR_SCULPTED raises NotImplementedError
+        # V3-3: explicitly setting FLAT_DSCR_SCULPTED now resolves cleanly (implemented)
         fp2 = FinancingParams(debt_sizing_mode=DebtSizingMode.FLAT_DSCR_SCULPTED)
-        with pytest.raises(NotImplementedError):
-            fp2.resolved_debt_sizing_mode()
+        assert fp2.resolved_debt_sizing_mode() == DebtSizingMode.FLAT_DSCR_SCULPTED
 
     def test_no_minimum_dscr_sculpted_promotion(self):
-        """minimum_dscr_sculpted is NOT the default mode."""
+        """minimum_dscr_sculpted is NOT the default mode — default remains FROZEN_EXCEL_SCHEDULE."""
         fp = FinancingParams()
         assert fp.resolved_debt_sizing_mode() == DebtSizingMode.FROZEN_EXCEL_SCHEDULE
-        # Explicitly setting MINIMUM_DSCR_SCULPTED raises NotImplementedError
+        # V3-3: explicitly setting MINIMUM_DSCR_SCULPTED now resolves cleanly (implemented)
         fp2 = FinancingParams(debt_sizing_mode=DebtSizingMode.MINIMUM_DSCR_SCULPTED)
-        with pytest.raises(NotImplementedError):
-            fp2.resolved_debt_sizing_mode()
+        assert fp2.resolved_debt_sizing_mode() == DebtSizingMode.MINIMUM_DSCR_SCULPTED
 
 
 class TestImportSmoke:

@@ -347,8 +347,9 @@ class TestComputedPropertiesUnchanged:
     def test_debt_sizing_mode_resolve(self):
         from finco_core.inputs import DebtSizingMode
         assert DebtSizingMode.FROZEN_EXCEL_SCHEDULE.validate_and_resolve() == DebtSizingMode.FROZEN_EXCEL_SCHEDULE
-        with pytest.raises(NotImplementedError):
-            DebtSizingMode.MINIMUM_DSCR_SCULPTED.validate_and_resolve()
+        # V3-3: both sculpted modes now implemented — resolve cleanly
+        assert DebtSizingMode.MINIMUM_DSCR_SCULPTED.validate_and_resolve() == DebtSizingMode.MINIMUM_DSCR_SCULPTED
+        assert DebtSizingMode.FLAT_DSCR_SCULPTED.validate_and_resolve() == DebtSizingMode.FLAT_DSCR_SCULPTED
 
     def test_capex_item_amount_in_period(self):
         from finco_core.inputs import CapexItem

@@ -662,3 +662,87 @@ def min_dscr(
         if ds > 0
     ]
     return min(dsrs) if dsrs else 0.0
+
+
+# =============================================================================
+# PUBLIC DISPATCHER — sculpt_senior_debt
+# =============================================================================
+
+def sculpt_senior_debt(
+    cfads_schedule: list[float],
+    rate_schedule: list[float],
+    tenor_periods: int,
+    mode: str,
+    target_dscr: float = 1.15,
+    dscr_schedule: list[float] | None = None,
+    gearing_cap_keur: float = float('inf'),
+) -> "ClosedFormSculptResult":
+    """Canonical entry point for senior debt sizing.
+
+    Dispatches to closed_form_sculpt using the requested DebtSizingMode.
+
+    FLAT_DSCR_SCULPTED:
+        Single target_dscr applied uniformly to every repayment period.
+        Allowable debt service[t] = CFADS[t] / target_dscr.
+        Backward pass computes opening debt. O(n), deterministic.
+
+    MINIMUM_DSCR_SCULPTED:
+        Per-period dscr_schedule (e.g. 1.20 during PPA, 1.45 during merchant).
+        Allowable debt service[t] = CFADS[t] / dscr_schedule[t].
+        Same backward-forward pass as FLAT but with time-varying divisor.
+        Produces a schedule where each period's DSCR equals its target.
+
+    FROZEN_EXCEL_SCHEDULE:
+        Not a sculpting mode. Raises ValueError — callers must bypass this
+        function and use pre-computed Excel inputs directly.
+
+    Args:
+        cfads_schedule: Cash Flow Available for Debt Service per repayment period.
+        rate_schedule: Semi-annual interest rate per period.
+        tenor_periods: Number of repayment periods.
+        mode: DebtSizingMode value string ("flat_dscr_sculpted" /
+              "minimum_dscr_sculpted"). Use the .value attribute or pass
+              the string directly.
+        target_dscr: Flat DSCR divisor for FLAT_DSCR_SCULPTED. Ignored
+                     when dscr_schedule is provided.
+        dscr_schedule: Per-period DSCR targets for MINIMUM_DSCR_SCULPTED.
+                       Must have length >= tenor_periods.
+        gearing_cap_keur: Hard upper bound on debt (CAPEX × gearing_ratio).
+
+    Returns:
+        ClosedFormSculptResult with full schedule.
+    """
+    mode_str = mode if isinstance(mode, str) else mode.value
+
+    if mode_str == "frozen_excel_schedule":
+        raise ValueError(
+            "sculpt_senior_debt() is not applicable to FROZEN_EXCEL_SCHEDULE mode. "
+            "Use pre-computed Excel inputs directly."
+        )
+
+    if mode_str == "flat_dscr_sculpted":
+        return closed_form_sculpt(
+            cfads_schedule=cfads_schedule,
+            rate_schedule=rate_schedule,
+            tenor_periods=tenor_periods,
+            target_dscr=target_dscr,
+            gearing_cap_keur=gearing_cap_keur,
+            dscr_schedule=None,
+        )
+
+    if mode_str == "minimum_dscr_sculpted":
+        if dscr_schedule is None:
+            raise ValueError(
+                "MINIMUM_DSCR_SCULPTED requires dscr_schedule — a list of per-period "
+                "DSCR targets (e.g. [1.20] * ppa_periods + [1.45] * merchant_periods)."
+            )
+        return closed_form_sculpt(
+            cfads_schedule=cfads_schedule,
+            rate_schedule=rate_schedule,
+            tenor_periods=tenor_periods,
+            target_dscr=target_dscr,
+            gearing_cap_keur=gearing_cap_keur,
+            dscr_schedule=dscr_schedule,
+        )
+
+    raise ValueError(f"Unknown DebtSizingMode: {mode_str}")
