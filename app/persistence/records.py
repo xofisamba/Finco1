@@ -100,6 +100,7 @@ class ScenarioRecord:
         "is_base_case", "parent_scenario_id", "base_input_set", "overrides",
         "schema_version", "snapshot", "governance_state", "last_run_summary",
         "replay_metadata", "created_at", "updated_at",
+        "full_inputs",  # V3-8: full-fidelity ProjectInputs dict (nullable)
     )
 
     def __init__(
@@ -123,6 +124,7 @@ class ScenarioRecord:
         replay_metadata: Optional[dict] = None,
         created_at: Optional[datetime] = None,
         updated_at: Optional[datetime] = None,
+        full_inputs: Optional[dict] = None,  # V3-8
     ):
         self.scenario_id = scenario_id
         self.project_id = project_id
@@ -143,6 +145,7 @@ class ScenarioRecord:
         self.replay_metadata = replay_metadata or {}
         self.created_at = created_at
         self.updated_at = updated_at
+        self.full_inputs = full_inputs
 
     @classmethod
     def from_row(cls, row) -> "ScenarioRecord":
@@ -190,6 +193,7 @@ class ScenarioRecord:
             replay_metadata=_from_json(row["replay_metadata_json"], {}),
             created_at=_from_iso(row["created_at"]),
             updated_at=_from_iso(row["updated_at"]),
+            full_inputs=_from_json(row["full_inputs_json"], None) if "full_inputs_json" in row.keys() else None,
         )
 
 

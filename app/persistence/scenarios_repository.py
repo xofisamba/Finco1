@@ -398,6 +398,7 @@ def save_scenario(
     last_run_summary: Optional[dict[str, Any]] = None,
     copied_from_scenario_id: Optional[str] = None,
     replay_metadata: Optional[dict[str, Any]] = None,
+    full_inputs: Optional[dict[str, Any]] = None,  # V3-8
 ) -> "ScenarioRecord":
     from app.persistence.records import ScenarioRecord
     scenario_id = uuid.uuid4().hex[:16]
@@ -415,8 +416,8 @@ def save_scenario(
                 scenario_id, project_id, user_id, scenario_name, project_code,
                 source_project_template, copied_from_scenario_id, archived,
                 snapshot_json, governance_state_json, last_run_summary_json, replay_metadata_json,
-                created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?)
+                full_inputs_json, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 scenario_id,
@@ -430,6 +431,7 @@ def save_scenario(
                 _to_json(governance_state),
                 _to_json(last_run_summary),
                 _to_json(replay_metadata),
+                _to_json(full_inputs) if full_inputs is not None else None,
                 now.isoformat(),
                 now.isoformat(),
             ),
@@ -450,6 +452,7 @@ def save_scenario(
         replay_metadata=replay_metadata,
         created_at=now,
         updated_at=now,
+        full_inputs=full_inputs,
     )
 
 
@@ -468,6 +471,7 @@ def add_scenario(
     overrides: Optional[dict[str, Any]] = None,
     governance_state: Optional[dict[str, Any]] = None,
     replay_metadata: Optional[dict[str, Any]] = None,
+    full_inputs: Optional[dict[str, Any]] = None,  # V3-8
 ) -> "Optional[ScenarioRecord]":
     """Add a non-base scenario inheriting from a parent (typically the Base Case).
 
@@ -496,8 +500,8 @@ def add_scenario(
                 base_input_set_json, overrides_json,
                 snapshot_json, governance_state_json,
                 last_run_summary_json, replay_metadata_json,
-                schema_version, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, NULL, 0, 0, ?, ?, ?, ?, ?, ?, ?, '1.0', ?, ?)
+                schema_version, full_inputs_json, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, NULL, 0, 0, ?, ?, ?, ?, ?, ?, ?, '1.0', ?, ?, ?)
             """,
             (
                 scenario_id,
@@ -513,6 +517,7 @@ def add_scenario(
                 _to_json(governance_state),
                 _to_json({}),
                 _to_json(replay_metadata),
+                _to_json(full_inputs) if full_inputs is not None else None,
                 now.isoformat(),
                 now.isoformat(),
             ),
@@ -538,6 +543,7 @@ def add_scenario(
         replay_metadata=replay_metadata,
         created_at=now,
         updated_at=now,
+        full_inputs=full_inputs,
     )
 
 
@@ -655,6 +661,7 @@ def get_or_create_base_case_scenario(
     base_input_set: dict[str, Any],
     governance_state: dict[str, Any],
     replay_metadata: Optional[dict[str, Any]] = None,
+    full_inputs: Optional[dict[str, Any]] = None,  # V3-8
 ) -> "ScenarioRecord":
     """Return the existing Base Case scenario for a project, or create one."""
     from app.persistence.records import ScenarioRecord
@@ -689,8 +696,8 @@ def get_or_create_base_case_scenario(
                 is_base_case, parent_scenario_id,
                 base_input_set_json, overrides_json, schema_version,
                 snapshot_json, governance_state_json, last_run_summary_json,
-                replay_metadata_json, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, NULL, 0, 1, NULL, ?, ?, '1.0', ?, ?, ?, ?, ?, ?)
+                replay_metadata_json, full_inputs_json, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, NULL, 0, 1, NULL, ?, ?, '1.0', ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 scenario_id,
@@ -709,6 +716,7 @@ def get_or_create_base_case_scenario(
                 _to_json(governance_state),  # governance_state_json
                 _to_json({}),  # last_run_summary_json
                 _to_json(rm),
+                _to_json(full_inputs) if full_inputs is not None else None,
                 now.isoformat(),
                 now.isoformat(),
             ),
@@ -734,4 +742,5 @@ def get_or_create_base_case_scenario(
         replay_metadata=rm,
         created_at=now,
         updated_at=now,
+        full_inputs=full_inputs,
     )

@@ -44,10 +44,10 @@ class TestSaveScenarioSignature:
         from app.persistence.repository import save_scenario
         sig = inspect.signature(save_scenario)
         params = sig.parameters
-        # 10 params: user_id, project_id, scenario_name, project_code,
+        # 11 params: user_id, project_id, scenario_name, project_code,
         # source_project_template, snapshot, governance_state, last_run_summary,
-        # copied_from_scenario_id, replay_metadata
-        assert len(params) == 10
+        # copied_from_scenario_id, replay_metadata, full_inputs (V3-8)
+        assert len(params) == 11
         for required in ("user_id", "project_id", "scenario_name",
                          "project_code", "source_project_template", "snapshot"):
             assert required in params

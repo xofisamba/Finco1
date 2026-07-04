@@ -44,8 +44,8 @@ class TestAddScenarioSignature:
         from app.persistence.repository import add_scenario
         sig = inspect.signature(add_scenario)
         params = sig.parameters
-        # 9 params
-        assert len(params) == 9
+        # 10 params (9 original + full_inputs V3-8)
+        assert len(params) == 10
         for required in ("user_id", "project_id", "project_code", "scenario_name",
                          "parent_scenario_id", "base_input_set"):
             assert required in params
