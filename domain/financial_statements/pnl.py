@@ -74,7 +74,7 @@ def _assemble_pnl_period(
     losses_n = -period.tax_loss_closing_audit_keur
     carriable_losses = -period.tax_loss_closing_audit_keur
     taxable_profit_after_losses = period.taxable_profit_after_losses_audit_keur
-    cit_accrual = -period.cit_accrual_audit_keur
+    cit_accrual = -period.tax_keur
     cash_tax_excel_style_h2_diagnostic = period.cash_tax_excel_style_h2_diagnostic_keur
     net_income = earnings_before_tax + cit_accrual
     legal_reserve = 0.0
