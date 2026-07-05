@@ -147,6 +147,38 @@
       — identical to XLSX institutional workbook export. Read-only.
     </span>
   </div>
+
+  {# ── Accounting Conventions (V4-1: explicit transparency) ── #}
+  <div class="fs-conventions-block">
+    <div class="fs-conventions-title">Accounting Conventions</div>
+    <div class="fs-conventions-list">
+      <div class="fs-convention-item">
+        <span class="fs-convention-label">Opening Deficit Reconstruction</span>
+        <span class="fs-convention-desc">
+          The period-0 equity deficit is solved algebraically from Assets − Debt − SHL
+          so the Balance Sheet closes exactly at COD. This avoids understating the opening
+          equity shortfall for projects with pre-funded DSRA / MRA cash at COD (e.g. Oborovo).
+        </span>
+      </div>
+      <div class="fs-convention-item">
+        <span class="fs-convention-label">Tax Payable Timing</span>
+        <span class="fs-convention-desc">
+          CIT is accrued in P&amp;L on an accrual basis (annual) but collected as cash tax in
+          H2 of each operating year (bridge convention). The timing difference accumulates
+          as a tax payable balance embedded in Retained Earnings until settled.
+        </span>
+      </div>
+      <div class="fs-convention-item">
+        <span class="fs-convention-label">SHL Principal — Notional Adjustment</span>
+        <span class="fs-convention-desc">
+          SHL principal repayments reduce the SHL balance in liabilities without a
+          corresponding cash outflow (equity-contribution mechanics). The offsetting credit
+          is carried through Retained Earnings as an equity value accretion, keeping the
+          Balance Sheet closed.
+        </span>
+      </div>
+    </div>
+  </div>
 </div>
 
 

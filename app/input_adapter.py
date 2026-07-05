@@ -281,33 +281,72 @@ def _resolve_user_inputs(
     # When using a seeded base (TUHO / Oborovo factory), only zero
     # financial sub-fields if the caller explicitly supplies a new
     # total_capex_keur, preserving calibrated IDC / bank-fee values.
+    # V4-1: additionally skip restructuring when the supplied total
+    # matches the factory total within 0.01 kEUR — preserves the
+    # calibrated IDC / bank-fee sub-line breakdown and eliminates
+    # UI vs factory CAPEX composition drift.
     if base_inputs is not None:
         if total_capex_keur is not None:
-            proj = _zero_financial_capex_subfields(proj)
-            proj = _apply_capex_total(proj, total_capex_keur)
+            _base_capex_total = getattr(base_inputs.capex, "total_capex", None)
+            _capex_matches_base = (
+                _base_capex_total is not None
+                and abs(float(total_capex_keur) - float(_base_capex_total)) < 0.01
+            )
+            if not _capex_matches_base:
+                proj = _zero_financial_capex_subfields(proj)
+                proj = _apply_capex_total(proj, total_capex_keur)
     else:
         proj = _zero_financial_capex_subfields(proj)
         if total_capex_keur is not None:
             proj = _apply_capex_total(proj, total_capex_keur)
 
     # ── OPEX (single user-supplied Y1 line) ──────────────────
+    # V4-1: when a seeded base is provided, skip the single-item
+    # replacement when the supplied Y1 total matches the factory
+    # sum within 0.01 kEUR. This preserves the factory's calibrated
+    # per-item inflation schedule and eliminates UI vs factory drift.
     if opex_y1_keur is not None:
-        proj = dc_replace(
-            proj,
-            opex=(
-                OpexItem(
-                    name="User provided year 1 operating expense",
-                    y1_amount_keur=float(opex_y1_keur),
-                    annual_inflation=0.02,
+        _skip_opex_replace = False
+        if base_inputs is not None:
+            _base_opex_y1 = sum(
+                getattr(item, "y1_amount_keur", 0.0) for item in base_inputs.opex
+            )
+            _skip_opex_replace = abs(float(opex_y1_keur) - _base_opex_y1) < 0.01
+        if not _skip_opex_replace:
+            proj = dc_replace(
+                proj,
+                opex=(
+                    OpexItem(
+                        name="User provided year 1 operating expense",
+                        y1_amount_keur=float(opex_y1_keur),
+                        annual_inflation=0.02,
+                    ),
                 ),
-            ),
-        )
+            )
 
     # ── Financing (DSCR sculpt semantics) ────────────────────
     if gearing_pct is not None:
         proj = _set_financing_gearing(proj, gearing_pct)
     if interest_rate_pct is not None:
-        proj = _set_financing_interest_rate(proj, interest_rate_pct)
+        # V4-1: when using a seeded base, skip the interest-rate override if
+        # the supplied value matches the factory all-in rate within 0.1 bps.
+        # _set_financing_interest_rate expects a percentage (5.75 for 5.75%)
+        # but the form path sends a decimal (0.0575) — this dual-format check
+        # handles both without altering the existing percentage contract.
+        _skip_rate = False
+        if base_inputs is not None:
+            _base_all_in = (
+                base_inputs.financing.base_rate
+                + base_inputs.financing.margin_bps / 10_000
+            )
+            _v = float(interest_rate_pct)
+            # Accept either percentage (5.75) or decimal (0.0575) form
+            _skip_rate = (
+                abs(_v - _base_all_in) < 0.00001
+                or abs(_v / 100.0 - _base_all_in) < 0.00001
+            )
+        if not _skip_rate:
+            proj = _set_financing_interest_rate(proj, interest_rate_pct)
     if tenor_years is not None:
         proj = _set_financing_tenor(proj, tenor_years)
     if target_dscr is not None:
@@ -598,10 +637,25 @@ def build_projectinputs_from_snapshot(snapshot: dict) -> "ProjectInputs":
             "project_type must be Solar or Wind for user-created project runtime"
         )
 
+    # V4-1: use the project-specific factory base for TUHO / Oborovo
+    # snapshots so that saved-state runs preserve calibrated configuration
+    # (SHL mechanics, merchant curve, tax params, etc.) — same as the
+    # template-seeded fresh-run path (Stack R). Generic templates fall
+    # through to the generic Wind/Solar factory (base_inputs=None).
+    _template_source = str(snapshot.get("template_source") or "").lower()
+    if _template_source == "tuho":
+        from app.project_factories import create_default_tuho_wind1 as _tf
+        _base = _tf()
+    elif _template_source == "oborovo":
+        from app.project_factories import create_default_oborovo as _of
+        _base = _of()
+    else:
+        _base = None
+
     # Delegate to the shared resolver. _snapshot_to_dict
     # applies the snapshot field validation (positive,
     # non_negative, ISO date, whole-number int) for the
     # remaining fields.
-    return _resolve_user_inputs(**_snapshot_to_dict(snapshot))
+    return _resolve_user_inputs(base_inputs=_base, **_snapshot_to_dict(snapshot))
 
 

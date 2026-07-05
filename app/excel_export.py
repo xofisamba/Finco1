@@ -147,6 +147,14 @@ def build_excel_export(
             _write_sheet(writer, "Debt", debt_df,
                          number_format={"kEUR": "#,##0", "DSCR": "0.00x", "LLCR": "0.00x", "PLCR": "0.00x"})
 
+        # ── Financial Statements (canonical — assemble_financial_statements) ───
+        # V4-1: values-only export now includes canonical P&L, Balance Sheet,
+        # and PF Cash Waterfall from domain.financial_statements.  No
+        # duplicate calculations — reads the same WaterfallResult fields that
+        # the institutional workbook uses.
+        if result is not None:
+            _write_financial_statements_sheets(writer, result)
+
         # ── Tax & Depreciation ─────────────────────────────────────────────
         if result is not None:
             tax_df = build_tax_depreciation_table(result)
@@ -282,6 +290,93 @@ def build_excel_export(
 
     output.seek(0)
     return output.read()
+
+
+# ─── Financial Statements Sheets ───────────────────────────────────────────
+
+
+def _write_financial_statements_sheets(writer, result) -> None:
+    """Write P&L, Balance Sheet, and PF Cash Waterfall sheets from canonical engine.
+
+    V4-1: uses domain.financial_statements.assemble_financial_statements —
+    the same engine as the institutional workbook.  No duplicate financial
+    calculations; reads already-computed WaterfallResult fields only.
+    Silently skips if assembly fails so the export never breaks.
+    """
+    try:
+        from domain.financial_statements import assemble_financial_statements
+        fs = assemble_financial_statements(result)
+    except Exception:
+        return
+
+    # ── Income Statement (P&L) ───────────────────────────────────────────
+    try:
+        pnl_rows = []
+        for p in fs.pnl.periods:
+            pnl_rows.append({
+                "Period": p.period,
+                "Date": str(p.date) if p.date else "",
+                "Revenue (kEUR)": round(p.revenues_keur, 2),
+                "OpEx (kEUR)": round(p.operating_expenses_keur, 2),
+                "Depreciation (kEUR)": round(p.depreciation_keur, 2),
+                "EBIT (kEUR)": round(p.ebit_keur, 2),
+                "Senior Interest (kEUR)": round(p.senior_interest_expense_keur, 2),
+                "SHL Interest (kEUR)": round(p.shl_interest_expense_keur, 2),
+                "EBT (kEUR)": round(p.earnings_before_tax_keur, 2),
+                "CIT Accrual (kEUR)": round(p.cit_accrual_keur, 2),
+                "Net Income (kEUR)": round(p.net_income_keur, 2),
+                "Retained Earnings (kEUR)": round(p.retained_earnings_keur, 2),
+                "Net Dividends (kEUR)": round(p.net_dividends_keur, 2),
+            })
+        _write_sheet(writer, "PnL", pd.DataFrame(pnl_rows), number_format={"kEUR": "#,##0"})
+    except Exception:
+        pass
+
+    # ── Balance Sheet ────────────────────────────────────────────────────
+    try:
+        bs_rows = []
+        for p in fs.balance_sheet.periods:
+            bs_rows.append({
+                "Period": p.period_index,
+                "Date": str(p.date) if p.date else "",
+                "Net Fixed Assets (kEUR)": round(p.net_fixed_assets_keur, 2),
+                "DSRA Balance (kEUR)": round(p.dsra_balance_keur, 2),
+                "Cash (kEUR) [residual]": round(p.cash_keur, 2),
+                "Total Assets (kEUR)": round(p.total_assets_keur, 2),
+                "Share Capital (kEUR)": round(p.share_capital_keur, 2),
+                "Retained Earnings (kEUR)": round(p.retained_earnings_keur, 2),
+                "SHL Balance (kEUR)": round(p.shl_balance_keur, 2),
+                "Senior Balance (kEUR)": round(p.senior_balance_keur, 2),
+                "Total L+E (kEUR)": round(p.total_liabilities_equity_keur, 2),
+                "Balance Check (kEUR)": round(p.balance_check_keur, 2),
+            })
+        _write_sheet(writer, "Balance Sheet", pd.DataFrame(bs_rows), number_format={"kEUR": "#,##0"})
+    except Exception:
+        pass
+
+    # ── PF Cash Waterfall ────────────────────────────────────────────────
+    try:
+        pf_rows = []
+        for p in fs.pf_cash_waterfall.periods:
+            pf_rows.append({
+                "Period": p.period_index,
+                "Date": str(p.date) if p.date else "",
+                "Revenue Cash (kEUR)": round(p.revenue_cash_keur, 2),
+                "OpEx Cash (kEUR)": round(p.opex_cash_keur, 2),
+                "EBITDA Cash (kEUR)": round(p.ebitda_cash_keur, 2),
+                "Cash Tax (kEUR)": round(p.cash_tax_keur, 2),
+                "FCF for Banks (kEUR)": round(p.fcf_banks_keur, 2),
+                "Senior DS (kEUR)": round(p.senior_total_ds_keur, 2),
+                "DSRA Funding (kEUR)": round(p.dsra_funding_keur, 2),
+                "DSRA Release (kEUR)": round(p.dsra_release_keur, 2),
+                "FCF for Junior (kEUR)": round(p.fcf_junior_keur, 2),
+                "FCF for Distribution (kEUR)": round(p.fcf_for_distribution_keur, 2),
+                "Net Dividends (kEUR)": round(p.net_dividends_keur, 2),
+                "SHL Principal (kEUR)": round(p.shl_principal_keur, 2),
+            })
+        _write_sheet(writer, "PF Cash Waterfall", pd.DataFrame(pf_rows), number_format={"kEUR": "#,##0"})
+    except Exception:
+        pass
 
 
 # ─── Reconciliation / Audit Sheets ─────────────────────────────────────────
