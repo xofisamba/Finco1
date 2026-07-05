@@ -943,6 +943,8 @@ def _apply_tuho_tax_bridge_runtime_cash_tax(
     TUHO_BOOK_TOTAL = 72_993.7
     TUHO_TAX_TOTAL = 70_691.5
     OPERATING_PERIODS = 60
+    # Excel fiscal depreciation life: 20 years = 40 semiannual periods (zero beyond P39)
+    TAX_DEP_LIFE_PERIODS = 40
 
     from domain.depreciation import (
         AssetClassConfig,
@@ -963,7 +965,7 @@ def _apply_tuho_tax_bridge_runtime_cash_tax(
             ),),
             policies={"tuho_aggregate_fixture": DepreciationPolicy(
                 useful_life_book_periods=OPERATING_PERIODS,
-                useful_life_tax_periods=OPERATING_PERIODS,
+                useful_life_tax_periods=TAX_DEP_LIFE_PERIODS,
                 period_frequency="semiannual",
             )},
             period_count=OPERATING_PERIODS,

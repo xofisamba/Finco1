@@ -32,9 +32,10 @@ from app.waterfall_runner import WaterfallRunConfig, WaterfallRunner
 # Calibration constants (from prior diagnostic work)
 EXCEL_R67_TOTAL_KEUR = -38_240.9
 PYTHON_R67_YEARS_1_TO_12_BEFORE_FIX_KEUR = -2_312.9
-PYTHON_R67_YEARS_13_TO_30_KEUR = -43_512.4
+# C3: useful_life_tax_periods 60→40 (20-year fiscal life)
+PYTHON_R67_YEARS_13_TO_30_KEUR = -36_994.3
 PYTHON_R67_TOTAL_FLAG_ON_BEFORE_FIX_KEUR = -45_825.2
-PYTHON_R67_TOTAL_FLAG_ON_AFTER_FIX_KEUR = -43_512.4
+PYTHON_R67_TOTAL_FLAG_ON_AFTER_FIX_KEUR = -36_994.3
 CIT_CASH_TAX_START_OPERATING_INDEX = 25  # 0-based: first non-zero Excel R67 at P25
 
 
@@ -76,8 +77,9 @@ def test_excel_r67_first_nonzero_period_is_operating_index_25():
          if p.r67_excel_style_cash_tax_diagnostic_keur != 0.0),
         None
     )
-    assert first_nonzero == 25, (
-        f"Expected first non-zero Python R67 at operating_index 25 (year 13 H2), "
+    # C3: higher tax dep in P0-P39 reduces early taxable income; first payment shifts from P25→P27
+    assert first_nonzero == 27, (
+        f"Expected first non-zero Python R67 at operating_index 27 (year 14 H2), "
         f"got operating_index {first_nonzero}"
     )
 
