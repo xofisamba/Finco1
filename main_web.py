@@ -150,6 +150,43 @@ templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "app", "templates")
 templates.env.globals["htmx"] = True
 templates.env.globals["asset_version"] = ASSET_VERSION
 
+
+def _jinja_fmt_kpi(v: Any, fmt: str) -> str:
+    """Format a KPI value for display in the sensitivity table."""
+    if v is None:
+        return "—"
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return str(v)
+    if fmt == "pct":
+        return f"{f:.2%}"
+    if fmt == "x":
+        return f"{f:.4f}x"
+    if fmt == "keur":
+        return f"{f:,.1f}"
+    return f"{f:.4g}"
+
+
+def _jinja_fmt_delta(v: Any, fmt: str) -> str:
+    if v is None:
+        return "—"
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return str(v)
+    if fmt == "pct":
+        return f"{f:+.2%}"
+    if fmt == "x":
+        return f"{f:+.4f}x"
+    if fmt == "keur":
+        return f"{f:+,.1f}"
+    return f"{f:+.4g}"
+
+
+templates.env.globals["_fmt_kpi"] = _jinja_fmt_kpi
+templates.env.globals["_fmt_delta"] = _jinja_fmt_delta
+
 # -- Static files -------------------------------------------------------------
 if os.path.exists(os.path.join(BASE_DIR, "static")):
     app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")
@@ -1826,6 +1863,10 @@ def _render_scenario_workspace(
     # V4-2 Part D
     fs_compare_result: dict | None = None,
     fs_compare_error: str | None = None,
+    # V4-3
+    sensitivity_result: dict | None = None,
+    sensitivity_error: str | None = None,
+    sensitivity_extra: dict | None = None,
 ):
     # Phase 25B-6 — defensive default for runtime_summary
     # (used by project_review_ui when not pre-populated).
@@ -1936,6 +1977,10 @@ def _render_scenario_workspace(
             "input_diff_error": input_diff_error,
             "fs_compare_result": fs_compare_result,
             "fs_compare_error": fs_compare_error,
+            # V4-3: sensitivity
+            "sensitivity_result": sensitivity_result,
+            "sensitivity_error": sensitivity_error,
+            **(sensitivity_extra or {}),
         },
     )
 
@@ -4191,6 +4236,186 @@ async def scenario_fs_compare_endpoint(
         message=error_state or "Financial statements compare ready.",
         fs_compare_result=fs_compare,
         fs_compare_error=error_state,
+    )
+
+
+# ── V4-3 — Sensitivity & Tornado Analysis ────────────────────────────────
+
+_SENSITIVITY_DEFAULT_SHOCKS = [
+    "capex", "opex", "ppa_price", "merchant_price",
+    "yield", "availability", "interest_rate", "tax_rate",
+]
+_SENSITIVITY_DEFAULT_LEVELS = [-15.0, -10.0, -5.0, 5.0, 10.0, 15.0]
+_SENSITIVITY_DEFAULT_TORNADO_KPI = "equity_irr"
+
+
+def _resolve_sensitivity_project(user, project: str, scenario_id: str = "") -> Any:
+    """Resolve ProjectInputs for the sensitivity run.
+
+    Uses the named scenario's snapshot if provided, otherwise uses the
+    factory base for the named project (tuho/oborovo/generic).
+    """
+    if scenario_id:
+        from app.persistence.repository import get_scenario
+        from app.input_adapter import build_projectinputs_from_snapshot
+        rec = get_scenario(scenario_id, user.user_id)
+        if rec is not None and rec.snapshot:
+            return build_projectinputs_from_snapshot(dict(rec.snapshot)), (rec.scenario_name if rec else "Base")
+    # Fall back to factory base
+    p = project.lower()
+    if p == "oborovo":
+        from app.project_factories import create_default_oborovo
+        return create_default_oborovo(), "Oborovo (factory)"
+    from app.project_factories import create_default_tuho_wind1
+    return create_default_tuho_wind1(), "TUHO Wind 1 (factory)"
+
+
+@app.get("/scenarios/sensitivity")
+async def scenario_sensitivity_endpoint(
+    request: Request,
+    project: str = "tuho",
+    scenario_id: str = "",
+    shocks: str = "",
+    levels: str = "",
+    tornado_kpi: str = _SENSITIVITY_DEFAULT_TORNADO_KPI,
+):
+    """Run sensitivity analysis and render results including tornado chart.
+
+    V4-3 Parts A–C. Read-only; no persistence side effects.
+    shocks: comma-separated shock keys (defaults to all 8)
+    levels: comma-separated signed percentages (defaults to ±5/10/15%)
+    """
+    from app.services.sensitivity_service import (
+        run_sensitivity, build_tornado_data, SHOCK_REGISTRY, KPI_DEFS,
+    )
+
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+
+    project_record = _resolve_project_record(user, project)
+    project_record, workspace_state, scenarios, history, exports, export_lineage, scenario_summary_cards = (
+        _current_project_workspace(user, project_record)
+    )
+
+    shock_types = [s.strip() for s in shocks.split(",") if s.strip()] or _SENSITIVITY_DEFAULT_SHOCKS
+    shock_types = [s for s in shock_types if s in SHOCK_REGISTRY]
+    shock_levels = []
+    if levels:
+        for v in levels.split(","):
+            try:
+                shock_levels.append(float(v.strip()))
+            except ValueError:
+                pass
+    if not shock_levels:
+        shock_levels = _SENSITIVITY_DEFAULT_LEVELS
+
+    error_state: str | None = None
+    sens_result = None
+    tornado = None
+    scenario_name = "Base"
+
+    try:
+        proj, scenario_name = _resolve_sensitivity_project(user, project, scenario_id)
+        sens_result = run_sensitivity(proj, shock_types, shock_levels)
+        tornado = build_tornado_data(sens_result, kpi_key=tornado_kpi)
+    except Exception as exc:
+        error_state = f"Sensitivity run failed: {exc}"
+
+    # Tornado KPI label and format hint
+    kpi_label_map = {k: lbl for k, lbl, _ in (sens_result["kpi_defs"] if sens_result else KPI_DEFS)}
+    kpi_fmt_map = {k: fmt for k, _, fmt in (sens_result["kpi_defs"] if sens_result else KPI_DEFS)}
+    tornado_kpi_label = kpi_label_map.get(tornado_kpi, tornado_kpi)
+    tornado_kpi_is_pct = kpi_fmt_map.get(tornado_kpi, "") == "pct"
+
+    # Build export URLs
+    _base_url = f"/scenarios/sensitivity/export?project={project}&scenario_id={scenario_id}&shocks={shocks}&levels={levels}&tornado_kpi={tornado_kpi}"
+    csv_url = _base_url + "&fmt=csv"
+    xlsx_url = _base_url + "&fmt=xlsx"
+
+    extra = {
+        "sensitivity_scenario_name": scenario_name,
+        "sensitivity_shock_types": shock_types,
+        "sensitivity_levels": shock_levels,
+        "tornado_data": tornado or [],
+        "tornado_kpi_label": tornado_kpi_label,
+        "tornado_kpi_is_pct": tornado_kpi_is_pct,
+        "sensitivity_export_csv_url": csv_url,
+        "sensitivity_export_xlsx_url": xlsx_url,
+    }
+
+    return _render_scenario_workspace(
+        request,
+        user,
+        project_record,
+        workspace_state,
+        scenarios,
+        history,
+        exports,
+        export_lineage,
+        scenario_summary_cards,
+        message=error_state or f"Sensitivity analysis complete — {len(sens_result['rows']) if sens_result else 0} scenarios.",
+        sensitivity_result=sens_result,
+        sensitivity_error=error_state,
+        sensitivity_extra=extra,
+    )
+
+
+@app.get("/scenarios/sensitivity/export")
+async def scenario_sensitivity_export_endpoint(
+    request: Request,
+    project: str = "tuho",
+    scenario_id: str = "",
+    shocks: str = "",
+    levels: str = "",
+    tornado_kpi: str = _SENSITIVITY_DEFAULT_TORNADO_KPI,
+    fmt: str = "csv",
+):
+    """Export sensitivity results as CSV or Excel.
+
+    V4-3 Part D. Read-only; no persistence side effects.
+    """
+    from fastapi.responses import Response
+    from app.services.sensitivity_service import (
+        run_sensitivity, export_sensitivity_csv, export_sensitivity_xlsx, SHOCK_REGISTRY,
+    )
+
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+
+    shock_types = [s.strip() for s in shocks.split(",") if s.strip()] or _SENSITIVITY_DEFAULT_SHOCKS
+    shock_types = [s for s in shock_types if s in SHOCK_REGISTRY]
+    shock_levels = []
+    if levels:
+        for v in levels.split(","):
+            try:
+                shock_levels.append(float(v.strip()))
+            except ValueError:
+                pass
+    if not shock_levels:
+        shock_levels = _SENSITIVITY_DEFAULT_LEVELS
+
+    try:
+        proj, _ = _resolve_sensitivity_project(user, project, scenario_id)
+        sens_result = run_sensitivity(proj, shock_types, shock_levels)
+    except Exception as exc:
+        return Response(content=f"Export failed: {exc}", status_code=500, media_type="text/plain")
+
+    if fmt == "xlsx":
+        content = export_sensitivity_xlsx(sens_result)
+        return Response(
+            content=content,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": "attachment; filename=sensitivity.xlsx"},
+        )
+
+    # Default: CSV
+    content = export_sensitivity_csv(sens_result)
+    return Response(
+        content=content,
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=sensitivity.csv"},
     )
 
 

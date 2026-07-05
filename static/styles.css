@@ -6471,6 +6471,110 @@ tr.lig-row--data-tmp td.fc-cell--tmp-remove {
   color: var(--text, #111827);
 }
 
+/* V4-3: Sensitivity workspace */
+.sens-workspace {
+  margin-top: 0.25rem;
+}
+
+.sens-tornado {
+  margin-bottom: 0.75rem;
+}
+
+.sens-table-wrap {
+  margin-bottom: 0.75rem;
+}
+
+.sens-table {
+  border-collapse: collapse;
+  font-size: 0.68rem;
+  width: 100%;
+  min-width: 600px;
+}
+
+.sens-table th {
+  background: var(--bg-subtle, #f3f4f6);
+  font-weight: 700;
+  text-align: right;
+  padding: 0.2rem 0.4rem;
+  border-bottom: 2px solid var(--border, #e5e7eb);
+  white-space: nowrap;
+  font-size: 0.64rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted, #6b7280);
+}
+
+.sens-table th:first-child,
+.sens-table th:nth-child(2) {
+  text-align: left;
+}
+
+.sens-table td {
+  padding: 0.18rem 0.4rem;
+  border-bottom: 1px solid var(--border, #e5e7eb);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.sens-table td:first-child,
+.sens-table td:nth-child(2) {
+  text-align: left;
+}
+
+.sens-row--base td {
+  font-weight: 600;
+  background: var(--bg-subtle, #f3f4f6);
+}
+
+.sens-row--error td {
+  color: #b91c1c;
+  font-style: italic;
+}
+
+.sens-cell-shock {
+  font-weight: 600;
+  color: var(--text, #111827);
+}
+
+.sens-cell-level {
+  color: var(--text-muted, #6b7280);
+}
+
+.sens-cell-err {
+  font-size: 0.65rem;
+}
+
+.sens-export-row {
+  margin-bottom: 0.5rem;
+}
+
+.sens-export-btn {
+  display: inline-block;
+  padding: 0.25rem 0.6rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  border-radius: 4px;
+  background: var(--bg-subtle, #f3f4f6);
+  color: var(--text, #111827);
+  text-decoration: none;
+  border: 1px solid var(--border, #d1d5db);
+}
+
+.sens-export-btn:hover {
+  background: var(--border, #e5e7eb);
+}
+
+.sens-export-btn--xl {
+  background: #1d4ed8;
+  color: #fff;
+  border-color: #1d4ed8;
+}
+
+.sens-export-btn--xl:hover {
+  background: #1e40af;
+}
+
 .scm-multi-soft-note {
   font-size: 0.7rem;
   line-height: 1.4;
