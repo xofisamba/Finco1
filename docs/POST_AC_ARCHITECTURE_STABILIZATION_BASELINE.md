@@ -41,7 +41,7 @@ Both production projects (TUHO Wind 1 and Oborovo Solar) are calibrated against 
 - Senior debt: fixture-backed frozen DS schedule via `phase7_tuho_senior_debt_sizing_extraction.csv`
 - Tax bridge: `use_tax_bridge_engine=True`; applies runtime tax depreciation bridge (Stack Z)
 - SHL: PIK phase Y1–Y14, sweep phase Y15+; gross accrued SHL P&L wired
-- LCF: 5-year rolling Croatian §16 — correct; −5,271 kEUR residual vs Excel (Excel uses perpetual LCF incorrectly; Finco behaviour preserved)
+- LCF: 5-year rolling Croatian §16 — correct; ~1,247 kEUR residual vs Excel (Excel applies apparent 2-year annual LCF — C4 verified model error; Finco behaviour preserved)
 - DSCR: backward-computed from frozen fixture; `_frozen_senior_ds_wired=True`
 
 ### Oborovo Solar PV (Croatian solar, 30-year, semiannual)
@@ -159,10 +159,10 @@ Auth rate limiting exists (`app.auth._rate_limit_store`). Full security audit de
 The following decisions have been made and are recorded as permanent engineering positions:
 
 **Croatian 5-Year Loss Carryforward (Finco Correct; Excel Wrong)**  
-Finco One implements the legally correct Croatian §16 LCF: 5-year rolling window, semiannual periods, `expire_before_use=True`. The Excel Golden Model uses perpetual LCF, which is legally incorrect. Finco intentionally does not replicate the Excel error. The resulting −5,271 kEUR residual in TUHO total tax is authentic and documented. This position must not be reversed.
+Finco One implements the legally correct Croatian §16 LCF: 5-year rolling window, semiannual periods, `expire_before_use=True`. The Excel Golden Model applies an apparent 2-year annual LCF (C4 forensic analysis — RMSE=0 match; NOT perpetual), which is legally incorrect. Finco intentionally does not replicate the Excel error. The resulting ~1,247 kEUR residual in TUHO total cash CIT (post-C3 dep-life fix) is authentic and documented. This position must not be reversed.
 
 **Golden Parity as Calibration Target, Not Bug Reproduction**  
-Golden Parity (Phase 51F) calibrates financial outputs to the Excel Golden Model within defined tolerances. Where Excel is incorrect (e.g. perpetual LCF, certain timing conventions), Finco keeps the correct treatment, documents the known residual, and does not calibrate to the Excel mistake.
+Golden Parity (Phase 51F) calibrates financial outputs to the Excel Golden Model within defined tolerances. Where Excel is incorrect (e.g. 2-year annual LCF — C4 verified, certain timing conventions), Finco keeps the correct treatment, documents the known residual, and does not calibrate to the Excel mistake.
 
 **Configuration Over Identity**  
 Runtime engine behaviour must be controlled by capability flags in `ProjectInfo` and `FinancingParams`, not by project name, project code, or runtime seed. This principle was established during the Stack AB/AC work and applies to all future engine development.

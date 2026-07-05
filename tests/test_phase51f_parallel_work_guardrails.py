@@ -91,9 +91,10 @@ PARITY_CORE_FILES: dict[str, str] = {
         # Previous hash (Stack AC): effae3ea5e8cf3fe9cd36fe9b959211ebf137fd7ff94d3d380730c9b21ef895d
         # Previous hash (Stack AD/Z2): b839df14a697be51102015bae0b45c589dec0d9f89515b240ed683cfa1373079
         # Previous hash (C2): 489f4dfb4d1ebb86808968d9f78f48c9906a51a9e02e281885818e1df954d2d4
-        # C3: useful_life_tax_periods changed from OPERATING_PERIODS (60) to TAX_DEP_LIFE_PERIODS (40)
-        #   to match Excel's 20-year fiscal depreciation life. Gap narrows from 2837 to 1247 kEUR.
-        "ac0007257dd63232b386a8e599035c0b292bd92786a5e57789857282309ad71e"
+        # Previous hash (C3): ac0007257dd63232b386a8e599035c0b292bd92786a5e57789857282309ad71e
+        # C5/Part-A: Added comment explaining why tax_depreciation_audit_keur is not written
+        #   back in bridge (cascade to pnl.py:35 would make it a financial change).
+        "9bee7fb9a5b26a7c25180a165aac81136439790a19d295c900d86d3ff8bc9470"
     ),
     "app/project_factories.py": (
         # Stack O: Oborovo equity IRR method calibration.

@@ -134,7 +134,8 @@ class TestT2H1CITSettlement:
         Stack Z: with use_tax_bridge_engine=True (TUHO factory default), cash CIT
         uses Excel-style H2 settlement (R67 diagnostic). The residual gap between
         accrued CIT and cash CIT is the known LCF-driven difference (~2323 kEUR):
-        Finco uses correct 5-year rolling LCF; Excel uses perpetual LCF.
+        Finco uses correct 5-year rolling LCF (Croatian law §16).
+        Excel applies an apparent 2-year annual LCF (C4 verified, not perpetual).
         """
         total_accrued = sum(p.tax_keur or 0 for p in tuho.periods)
         total_cash = sum(p.corporate_tax_cash_keur or 0 for p in tuho.periods)
@@ -403,9 +404,9 @@ class TestNoNaNInf:
         assert not math.isinf(oborovo.equity_irr)
 
     def test_tuho_total_cit_post_t(self, tuho):
-        # Phase0/Z1: formula fix; new correct value ~35414 kEUR (old 45835 used wrong depreciation basis)
-        assert abs(tuho.total_tax_keur - 35414.0) < 500.0, (
-            f"TUHO total_tax_keur={tuho.total_tax_keur:.1f}, expected ~35414 (Phase0 Z1 formula fix)"
+        # Phase0/Z1: ~35414 kEUR; C3: 40-period fiscal dep life → ~37004 kEUR
+        assert abs(tuho.total_tax_keur - 37004.0) < 500.0, (
+            f"TUHO total_tax_keur={tuho.total_tax_keur:.1f}, expected ~37004 (C3 fiscal dep life fix)"
         )
 
     def test_oborovo_total_cit_post_t(self, oborovo):

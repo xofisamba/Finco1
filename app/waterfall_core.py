@@ -988,6 +988,11 @@ def _apply_tuho_tax_bridge_runtime_cash_tax(
         dep_row = dep_by_period.get(operating_index)
         book_dep = dep_row.book_depreciation_keur if dep_row else period.depreciation_keur
         tax_dep = dep_row.tax_depreciation_keur if dep_row else period.depreciation_keur
+        # NOTE (C5/Part-A): bridge uses tax_dep internally but does NOT write it back to
+        # period.tax_depreciation_audit_keur. That field is set at line 371 from the
+        # book-dep ledger (60-period flat) and is read by pnl.py:35 for PnL depreciation.
+        # Updating it here would cascade to financial statements — a financial change
+        # outside C5 scope. Tracked as a follow-on item (decouple PnL from this field).
         shl_gross = shl_gross_by_period.get(operating_index, 0.0)
 
         taxable_before_losses = _tax_bridge_taxable_income_before_losses(
