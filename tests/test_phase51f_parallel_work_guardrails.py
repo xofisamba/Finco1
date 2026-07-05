@@ -83,10 +83,14 @@ PARITY_CORE_FILES: dict[str, str] = {
         # Phase0/Z1: _tax_bridge_taxable_income_before_losses formula corrected to Croatian CIT basis
         #   (EBITDA - tax_dep - deductible + fiscal). TUHO total_tax changes ~45835→~35414 kEUR.
         # Phase0/Z2: cf_after_tax_keur override removed; bridge values are reconciliation-only.
+        # C2: alias fields (cit_accrual_audit_keur, cash_tax_current_period_audit_keur,
+        #   cash_tax_excel_style_h2_diagnostic_keur) written explicitly after canonical fields.
+        #   Z2 comment updated. No math change; no cf_after_tax_keur change.
         # Previous hash (Stack Q): 55d1e54756f489b04776ffffe06f45e5b7c23bfd22261699d4f4f62122dbfecc
         # Previous hash (Stack AB): ca320b47d476f5fc097705ec2a01d72d44090e78a8147dce1b2064d5e5873b17
         # Previous hash (Stack AC): effae3ea5e8cf3fe9cd36fe9b959211ebf137fd7ff94d3d380730c9b21ef895d
-        "b839df14a697be51102015bae0b45c589dec0d9f89515b240ed683cfa1373079"
+        # Previous hash (Stack AD/Z2): b839df14a697be51102015bae0b45c589dec0d9f89515b240ed683cfa1373079
+        "489f4dfb4d1ebb86808968d9f78f48c9906a51a9e02e281885818e1df954d2d4"
     ),
     "app/project_factories.py": (
         # Stack O: Oborovo equity IRR method calibration.
