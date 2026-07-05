@@ -13,8 +13,9 @@ from app.waterfall_runner import WaterfallRunConfig, WaterfallRunner
 
 EXCEL_R67_TOTAL_KEUR = -38_240.920880415375
 # Phase0/Z1: formula fix; new correct value (old -43512 used wrong depreciation basis)
-PYTHON_TAX_BRIDGE_R67_DIAGNOSTIC_TOTAL_KEUR = -35_403.7115717776
-PYTHON_TAX_BRIDGE_R67_DIAGNOSTIC_DELTA_KEUR = 2_837.209308637772  # Finco undercollects vs Excel now
+# C3: useful_life_tax_periods 60→40 (20-year fiscal life); gap narrows from 2837 to 1247 kEUR
+PYTHON_TAX_BRIDGE_R67_DIAGNOSTIC_TOTAL_KEUR = -36_994.27032177761
+PYTHON_TAX_BRIDGE_R67_DIAGNOSTIC_DELTA_KEUR = 1_246.650558637768  # Finco undercollects vs Excel
 
 
 def _run(project):
