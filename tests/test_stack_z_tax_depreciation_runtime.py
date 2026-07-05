@@ -8,10 +8,11 @@ Covers:
 - Oborovo not regressed
 - No duplicated bridge logic (Oborovo guard preserved)
 
-Known Excel limitation:
-  Finco uses correct 5-year rolling LCF (Croatia tax law).
-  Excel uses perpetual/incorrect LCF. The residual gap (~5271 kEUR between Finco
-  R67 and Excel R67) is intentional — Finco behaviour is preserved.
+Known Excel limitation (C4 verified):
+  Finco uses correct 5-year rolling LCF (Croatia tax law §16 — 5-year carryforward).
+  Excel applies an apparent 2-year annual LCF (NOT perpetual — C4 mathematical proof).
+  Residual gap (~1247 kEUR after C3 dep-life fix) is intentional — Finco is legally correct.
+  Do not calibrate Python to match Excel's 2-year LCF.
 """
 from __future__ import annotations
 
@@ -109,9 +110,9 @@ class TestZ3TaxableIncome:
     def test_tuho_accrued_cit_stack_z_value(self):
         """total_tax_keur at Stack Z baseline."""
         result = run_demo_project("TUHO").result
-        # Phase0/Z1: formula fix; new correct value ~35414 kEUR (old 45835 used wrong depreciation basis)
-        assert abs(result.total_tax_keur - 35414.0) < 500.0, (
-            f"TUHO total_tax_keur={result.total_tax_keur:.1f}, expected ~35414 (Phase0 Z1 formula fix)"
+        # Phase0/Z1: formula fix (~35414 kEUR); C3: 40-period fiscal dep life (~37004 kEUR)
+        assert abs(result.total_tax_keur - 37004.0) < 500.0, (
+            f"TUHO total_tax_keur={result.total_tax_keur:.1f}, expected ~37004 (C3 fiscal dep life fix)"
         )
 
     def test_tuho_h1_cash_tax_zero(self):
@@ -127,17 +128,17 @@ class TestZ3TaxableIncome:
         """Lifetime cash CIT (R67 bridge) at Phase0 Z1 baseline."""
         result = run_demo_project("TUHO").result
         total_cash = sum(p.corporate_tax_cash_keur or 0 for p in result.periods)
-        # Phase0/Z1: formula fix; cash CIT ~35404 kEUR (old 43512 used wrong depreciation basis)
-        assert abs(total_cash - 35404.0) < 200.0, (
-            f"TUHO cash CIT={total_cash:.1f}, expected ~35404 (Phase0 Z1 formula fix)"
+        # Phase0/Z1: formula fix (~35404 kEUR); C3: 40-period fiscal dep life (~36994 kEUR)
+        assert abs(total_cash - 36994.0) < 200.0, (
+            f"TUHO cash CIT={total_cash:.1f}, expected ~36994 (C3 fiscal dep life fix)"
         )
 
     def test_tuho_lcf_gap_is_known_residual(self):
         """Known Finco vs Excel LCF residual is documented and stable.
 
         Finco uses correct 5-year rolling LCF (Croatia tax law §16).
-        Excel uses perpetual LCF (incorrect). The gap is intentionally
-        NOT zeroed — do not calibrate to Excel's mistake.
+        Excel applies an apparent 2-year annual LCF (C4 verified — not perpetual).
+        The gap is intentionally NOT zeroed — do not calibrate to Excel's model error.
 
         Note: After Phase0/Z1 formula fix, the absolute cash CIT values changed
         but the LCF methodology (5-year rolling) and the principle remain intact.
@@ -232,7 +233,7 @@ class TestZ5NoDuplicatedBridge:
         waterfall engine's LCF engine which absorbs the ~25,000 kEUR construction loss.
         The flag-on bridge starts from the operating period taxable income without
         the construction loss (not yet wired — tracked as known residual).
-        Key invariant: LCF is NOT weakened to match Excel's perpetual LCF.
+        Key invariant: LCF is NOT weakened to match Excel's apparent 2-year annual LCF (C4).
         """
         on = run_demo_project("TUHO").result
         off = _run(_flag_off(create_default_tuho_wind1()))

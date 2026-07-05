@@ -589,8 +589,8 @@ The following differences between Finco and Excel are permanent engineering deci
 
 **Croatian 5-year Loss Carryforward (Finco correct; Excel wrong)**
 - Finco: 5-year rolling window, semiannual periods, `expire_before_use=True` (Croatian §16 correct)
-- Excel: perpetual LCF (legally incorrect)
-- Effect: −5,271 kEUR residual in TUHO lifetime cash CIT vs Excel
+- Excel: apparent 2-year annual LCF (C4 verified — NOT perpetual; legally incorrect)
+- Effect: ~1,247 kEUR residual in TUHO lifetime cash CIT vs Excel (post-C3 dep-life fix)
 - Position: Do not calibrate to Excel's mistake. This divergence is documented and intentional.
 
 **Tax Depreciation Basis (corrected in Phase 0 Z1)**
