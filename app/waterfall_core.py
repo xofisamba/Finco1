@@ -1030,20 +1030,20 @@ def _apply_tuho_tax_bridge_runtime_cash_tax(
         period.r67_excel_style_cash_tax_diagnostic_keur = (
             -(previous_tax + tax_keur) if (period.period_in_year == 2 and not suppressed) else 0.0
         )
-        period.cash_tax_excel_style_h2_diagnostic_keur = (
-            period.r67_excel_style_cash_tax_diagnostic_keur
-        )
 
         tax_cash = (
-            -period.cash_tax_excel_style_h2_diagnostic_keur
+            -period.r67_excel_style_cash_tax_diagnostic_keur
             if (period.period_in_year == 2 and not suppressed)
             else 0.0
         )
         period.corporate_tax_cash_keur = tax_cash
         period.cash_tax_current_period_audit_keur = tax_cash
-        # HOTFIX Z2: bridge cash tax is reconciliation-only; cf_after_tax_keur is not overridden
-        # here to preserve consistency with distributions and equity IRR (pre-computed pre-bridge).
-        # Use cash_tax_bridge_reconciliation_keur for audit/export purposes only.
+        period.cash_tax_excel_style_h2_diagnostic_keur = period.r67_excel_style_cash_tax_diagnostic_keur
+        # Z2: cf_after_tax_keur is not updated here. cash_balance_keur is set by the
+        # main waterfall loop (pre-bridge) and the CFS closes against it. Updating
+        # cf_after_tax_keur without updating cash_balance_keur would break CFS closure
+        # and the distribution waterfall. bridge_reconciliation carries the corrected
+        # post-tax CF for audit purposes only.
         period.cash_tax_bridge_reconciliation_keur = period.ebitda_keur - tax_cash
 
         dsra_release_or_funding = max(0.0, -period.dsra_contribution_keur) - max(
