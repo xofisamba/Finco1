@@ -9440,3 +9440,111 @@ tr.fc-grid-header--sub th {
   font-variant-numeric: tabular-nums;
   color: #374151;
 }
+
+/* ── V4-4: Lender Case & Covenant Workspace ─────────────────────────────── */
+
+/* Lender Case */
+.lc-workspace { padding: 0.5rem 0; }
+.lc-adj-chips { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0.5rem 0 0.75rem; }
+.lc-adj-chip {
+  background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 12px;
+  padding: 0.2rem 0.65rem; font-size: 0.74rem; color: #1e40af;
+}
+.lc-kpi-table { margin-top: 0.5rem; }
+
+/* Covenant Dashboard */
+.cv-dashboard { padding: 0.5rem 0; }
+.cv-summary-chips { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 0.75rem; }
+.cv-chip {
+  border-radius: 12px; padding: 0.2rem 0.7rem; font-size: 0.8rem; font-weight: 500;
+  border: 1px solid transparent;
+}
+.cv-chip--breach  { background: #fee2e2; border-color: #fca5a5; color: #991b1b; }
+.cv-chip--warn    { background: #fef3c7; border-color: #fcd34d; color: #92400e; }
+.cv-chip--info    { background: #f0f9ff; border-color: #bae6fd; color: #0369a1; }
+.cv-chip--ok      { background: #f0fdf4; border-color: #86efac; color: #166534; }
+
+.cv-legend { display: flex; flex-wrap: wrap; gap: 0.6rem; margin-bottom: 0.6rem; font-size: 0.73rem; }
+.cv-legend-item { display: flex; align-items: center; gap: 0.25rem; }
+.cv-rag--breach  { color: #ef4444; }
+.cv-rag--warning { color: #f97316; }
+.cv-rag--caution { color: #eab308; }
+.cv-rag--ok      { color: #22c55e; }
+
+.cv-table { border-collapse: collapse; width: 100%; font-size: 0.78rem; white-space: nowrap; }
+.cv-table th {
+  background: #f9fafb; border-bottom: 1px solid #e5e7eb; padding: 0.35rem 0.5rem;
+  font-weight: 600; color: #374151; text-align: left;
+}
+.cv-table td { padding: 0.3rem 0.5rem; border-bottom: 1px solid #f3f4f6; }
+.cv-row.cv-rag--breach  { background: rgba(239,68,68,0.06); }
+.cv-row.cv-rag--warning { background: rgba(249,115,22,0.06); }
+.cv-row.cv-rag--caution { background: rgba(234,179,8,0.06); }
+
+.cv-cell-num    { text-align: right; font-variant-numeric: tabular-nums; }
+.cv-cell-center { text-align: center; }
+.cv-cell--breach { color: #dc2626; font-weight: 600; }
+
+.cv-lockup-badge {
+  background: #fef3c7; border: 1px solid #fcd34d; border-radius: 4px;
+  padding: 0.1rem 0.4rem; font-size: 0.7rem; color: #92400e; font-weight: 600;
+}
+.cv-rag-badge {
+  display: inline-block; border-radius: 4px; padding: 0.1rem 0.4rem;
+  font-size: 0.7rem; font-weight: 700; letter-spacing: 0.03em;
+}
+.cv-rag-badge--breach  { background: #fee2e2; color: #991b1b; }
+.cv-rag-badge--warning { background: #ffedd5; color: #9a3412; }
+.cv-rag-badge--caution { background: #fef9c3; color: #854d0e; }
+.cv-rag-badge--ok      { background: #f0fdf4; color: #166534; }
+
+/* Credit Summary */
+.cs-summary { padding: 0.5rem 0; }
+.cs-print-area { padding: 0.5rem 0; }
+
+.cs-header { margin-bottom: 1rem; border-bottom: 2px solid #e5e7eb; padding-bottom: 0.5rem; }
+.cs-project-name { font-size: 1.15rem; font-weight: 700; color: #111827; }
+.cs-project-meta { font-size: 0.83rem; color: #6b7280; margin-top: 0.15rem; }
+
+.cs-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 1rem; margin-bottom: 1rem;
+}
+.cs-card {
+  border: 1px solid #e5e7eb; border-radius: 6px; padding: 0.75rem 0.9rem;
+  background: #fff;
+}
+.cs-card--lender { border-color: #bfdbfe; background: #eff6ff; }
+.cs-card-title {
+  font-size: 0.75rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.06em; color: #6b7280; margin-bottom: 0.5rem;
+  padding-bottom: 0.3rem; border-bottom: 1px solid #f3f4f6;
+}
+.cs-card--lender .cs-card-title { color: #1e40af; border-color: #dbeafe; }
+
+.cs-row { display: flex; justify-content: space-between; align-items: baseline; padding: 0.18rem 0; gap: 0.5rem; }
+.cs-label { font-size: 0.77rem; color: #6b7280; flex-shrink: 0; }
+.cs-value { font-size: 0.82rem; font-weight: 500; color: #111827; font-variant-numeric: tabular-nums; text-align: right; }
+.cs-delta { font-size: 0.72rem; font-variant-numeric: tabular-nums; min-width: 3rem; text-align: right; }
+.cs-delta.scm-delta--bad  { color: #dc2626; }
+.cs-delta.scm-delta--good { color: #16a34a; }
+
+.cs-footer {
+  font-size: 0.72rem; color: #9ca3af; text-align: right;
+  border-top: 1px solid #e5e7eb; padding-top: 0.4rem; margin-top: 0.5rem;
+}
+
+/* Covenant Timeline */
+.ct-timeline { padding: 0.5rem 0; }
+.ct-legend { display: flex; flex-wrap: wrap; gap: 0.6rem; margin-bottom: 0.5rem; font-size: 0.73rem; }
+.ct-legend-item { display: flex; align-items: center; gap: 0.25rem; }
+.ct-rag--ok      { color: #22c55e; }
+.ct-rag--caution { color: #eab308; }
+.ct-rag--warning { color: #f97316; }
+.ct-rag--breach  { color: #ef4444; }
+.ct-rag--lockup  { color: #f59e0b; }
+
+.ct-summary-row { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-top: 0.5rem; font-size: 0.78rem; }
+.ct-stat { color: #6b7280; }
+.ct-stat--bad  { color: #dc2626; font-weight: 600; }
+.ct-stat--warn { color: #92400e; font-weight: 600; }

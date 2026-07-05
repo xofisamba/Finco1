@@ -111,4 +111,32 @@
   </div>
   {% endif %}
 
+  <!-- V4-4 Part A: Lender Case -->
+  {% if lender_case_result or lender_case_error %}
+  <div class="ps-section" style="margin-top:0.75rem;">
+    {% include "partials/lender_case.html" %}
+  </div>
+  {% endif %}
+
+  <!-- V4-4 Part B: Covenant Dashboard -->
+  {% if covenant_periods or covenant_error %}
+  <div class="ps-section" style="margin-top:0.75rem;">
+    {% include "partials/covenant_dashboard.html" %}
+  </div>
+  {% endif %}
+
+  <!-- V4-4 Part D: Covenant Timeline -->
+  {% if covenant_periods or covenant_error %}
+  <div class="ps-section" style="margin-top:0.75rem;">
+    {% include "partials/covenant_timeline.html" %}
+  </div>
+  {% endif %}
+
+  <!-- V4-4 Part C: Credit Summary -->
+  {% if credit_summary or credit_summary_error %}
+  <div class="ps-section" style="margin-top:0.75rem;">
+    {% include "partials/credit_summary.html" %}
+  </div>
+  {% endif %}
+
 </div>
