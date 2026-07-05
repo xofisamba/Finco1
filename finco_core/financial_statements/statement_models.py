@@ -34,11 +34,12 @@ class BalanceSheetPeriod:
     # Liabilities
     senior_balance_keur: float
     shl_balance_keur: float
+    tax_payable_keur: float  # cumulative accrued tax not yet deducted from cf_after_tax
     total_liabilities_keur: float
     # Equity
     share_capital_keur: float
     share_premium_keur: float
-    retained_earnings_keur: float
+    retained_earnings_keur: float  # includes shl_principal notional equity reserve
     total_equity_keur: float
     # Check
     check_keur: float  # total_assets - total_liabilities - total_equity (should be ~0)
