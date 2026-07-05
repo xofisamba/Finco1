@@ -77,11 +77,14 @@
         <div class="scm-multi-row">
           <span class="scm-multi-metric">{{ row['label'] }}</span>
           {% for v in rv %}
-            <span class="scm-multi-value {% if loop.first %}scm-col-base{% endif %}">
+            {% set is_changed = (not loop.first) and rd[loop.index0] is not none and rd[loop.index0] != 0 %}
+            <span class="scm-multi-value {% if loop.first %}scm-col-base{% endif %} {% if is_changed %}scm-cell--changed{% endif %}">
               {% if v is number %}
                 {{ "{:,.2f}".format(v|float) }}
+              {% elif v is string and v %}
+                {{ v }}
               {% else %}
-                {{ v or "—" }}
+                —
               {% endif %}
             </span>
           {% endfor %}
@@ -92,7 +95,7 @@
                   {% set sc_class = rsc[loop.index0] %}
                   <span class="{{ sc_class }} scm-delta-token">
                     {% if d is not none %}
-                      {{ "{:+.2f}".format(d|float) }}
+                      {{ "{:+.4g}".format(d|float) }}
                     {% else %}
                       —
                     {% endif %}
