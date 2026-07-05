@@ -1867,6 +1867,16 @@ def _render_scenario_workspace(
     sensitivity_result: dict | None = None,
     sensitivity_error: str | None = None,
     sensitivity_extra: dict | None = None,
+    # V4-4
+    lender_case_result: dict | None = None,
+    lender_case_error: str | None = None,
+    lender_base_kpis: dict | None = None,
+    lender_scenario_name: str | None = None,
+    covenant_periods: list | None = None,
+    covenant_error: str | None = None,
+    covenant_thresholds: dict | None = None,
+    credit_summary: dict | None = None,
+    credit_summary_error: str | None = None,
 ):
     # Phase 25B-6 — defensive default for runtime_summary
     # (used by project_review_ui when not pre-populated).
@@ -1981,6 +1991,21 @@ def _render_scenario_workspace(
             "sensitivity_result": sensitivity_result,
             "sensitivity_error": sensitivity_error,
             **(sensitivity_extra or {}),
+            # V4-4: lender case, covenant, credit summary
+            "lender_case_result": lender_case_result,
+            "lender_case_error": lender_case_error,
+            "lender_base_kpis": lender_base_kpis,
+            "lender_scenario_name": lender_scenario_name or "",
+            "covenant_periods": covenant_periods,
+            "covenant_error": covenant_error,
+            "covenant_thresholds": covenant_thresholds or {
+                "event_of_default": 1.05,
+                "lockup": 1.10,
+                "distribution": 1.15,
+                "cash_sweep": 1.20,
+            },
+            "credit_summary": credit_summary,
+            "credit_summary_error": credit_summary_error,
         },
     )
 
@@ -4416,6 +4441,216 @@ async def scenario_sensitivity_export_endpoint(
         content=content,
         media_type="text/csv",
         headers={"Content-Disposition": "attachment; filename=sensitivity.csv"},
+    )
+
+
+# ── V4-4 — Lender Case, Covenant Dashboard, Credit Summary ───────────────
+
+def _resolve_lender_project(user, project: str, scenario_id: str = ""):
+    """Resolve ProjectInputs for lender case / covenant runs."""
+    from app.services.sensitivity_service import _resolve_sensitivity_project as _rsp
+    return _rsp(user, project, scenario_id)
+
+
+@app.get("/scenarios/lender-case")
+async def scenario_lender_case_endpoint(
+    request: Request,
+    project: str = "",
+    scenario_id: str = "",
+    yield_p90: float = 0.0,
+    yield_haircut: float = 0.0,
+    ppa_haircut: float = 0.0,
+    merchant_haircut: float = 0.0,
+    capex_contingency: float = 0.0,
+    opex_contingency: float = 0.0,
+    interest_stress: float = 0.0,
+    inflation_stress: float = 0.0,
+    availability_stress: float = 0.0,
+):
+    """Run engine under lender-stress adjustments, compare vs base.
+
+    V4-4 Part A. Read-only; no persistence side effects.
+    """
+    from app.services.lender_case_service import run_lender_case
+    from app.ui_runner import _build_period_engine
+    from app.waterfall_runner import WaterfallRunner, WaterfallRunConfig
+
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+
+    adjustments = {
+        "yield_p90": yield_p90,
+        "yield_haircut": yield_haircut,
+        "ppa_haircut": ppa_haircut,
+        "merchant_haircut": merchant_haircut,
+        "capex_contingency": capex_contingency,
+        "opex_contingency": opex_contingency,
+        "interest_stress": interest_stress,
+        "inflation_stress": inflation_stress,
+        "availability_stress": availability_stress,
+    }
+
+    lc_result = None
+    lc_error = None
+    base_kpis = None
+    scenario_name = ""
+
+    try:
+        proj, scenario_name = _resolve_lender_project(user, project, scenario_id)
+
+        # Base run for comparison KPIs
+        eng = _build_period_engine(proj)
+        base_result = WaterfallRunner(proj, eng).run(WaterfallRunConfig.from_inputs(proj, eng))
+        base_kpis = {
+            "equity_irr": base_result.equity_irr,
+            "project_irr": base_result.project_irr,
+            "actual_avg_dscr": base_result.actual_avg_dscr,
+            "min_dscr": base_result.min_dscr,
+            "min_llcr": base_result.min_llcr,
+            "total_distribution_keur": base_result.total_distribution_keur,
+            "total_revenue_keur": base_result.total_revenue_keur,
+            "total_ebitda_keur": base_result.total_ebitda_keur,
+            "equity_npv": base_result.equity_npv,
+        }
+
+        lc_result = run_lender_case(proj, adjustments)
+    except Exception as exc:
+        lc_error = str(exc)
+
+    project_record = _resolve_project_record(user, project)
+    project_record, workspace_state, scenarios, history, exports, export_lineage, scenario_summary_cards = (
+        _current_project_workspace(user, project_record)
+    )
+    return _render_scenario_workspace(
+        request, user, project_record, workspace_state,
+        scenarios, history, exports, export_lineage, scenario_summary_cards,
+        lender_case_result=lc_result,
+        lender_case_error=lc_error,
+        lender_base_kpis=base_kpis,
+        lender_scenario_name=scenario_name,
+    )
+
+
+@app.get("/scenarios/covenant")
+async def scenario_covenant_endpoint(
+    request: Request,
+    project: str = "",
+    scenario_id: str = "",
+):
+    """Show per-period DSCR/LLCR/PLCR covenant analytics with RAG status.
+
+    V4-4 Parts B & D. Read-only; no persistence side effects.
+    """
+    from app.services.lender_case_service import (
+        build_covenant_periods,
+        DSCR_EVENT_OF_DEFAULT, DSCR_LOCKUP, DSCR_DISTRIBUTION, DSCR_CASH_SWEEP,
+    )
+    from app.ui_runner import _build_period_engine
+    from app.waterfall_runner import WaterfallRunner, WaterfallRunConfig
+
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+
+    cov_periods = None
+    cov_error = None
+    thresholds = {
+        "event_of_default": DSCR_EVENT_OF_DEFAULT,
+        "lockup": DSCR_LOCKUP,
+        "distribution": DSCR_DISTRIBUTION,
+        "cash_sweep": DSCR_CASH_SWEEP,
+    }
+
+    try:
+        proj, _ = _resolve_lender_project(user, project, scenario_id)
+        eng = _build_period_engine(proj)
+        result = WaterfallRunner(proj, eng).run(WaterfallRunConfig.from_inputs(proj, eng))
+        cov_periods = build_covenant_periods(result)
+    except Exception as exc:
+        cov_error = str(exc)
+
+    project_record = _resolve_project_record(user, project)
+    project_record, workspace_state, scenarios, history, exports, export_lineage, scenario_summary_cards = (
+        _current_project_workspace(user, project_record)
+    )
+    return _render_scenario_workspace(
+        request, user, project_record, workspace_state,
+        scenarios, history, exports, export_lineage, scenario_summary_cards,
+        covenant_periods=cov_periods,
+        covenant_error=cov_error,
+        covenant_thresholds=thresholds,
+    )
+
+
+@app.get("/scenarios/credit-summary")
+async def scenario_credit_summary_endpoint(
+    request: Request,
+    project: str = "",
+    scenario_id: str = "",
+    lender_yield_haircut: float = 0.0,
+    lender_ppa_haircut: float = 0.0,
+    lender_capex_contingency: float = 0.0,
+    lender_opex_contingency: float = 0.0,
+):
+    """Generate one-page printable credit summary for lenders.
+
+    V4-4 Part C. Base + optional lender case side-by-side.
+    Read-only; no persistence side effects.
+    """
+    from app.services.lender_case_service import (
+        build_credit_summary, run_lender_case,
+    )
+    from app.ui_runner import _build_period_engine
+    from app.waterfall_runner import WaterfallRunner, WaterfallRunConfig
+
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+
+    cs = None
+    cs_error = None
+
+    try:
+        proj, _ = _resolve_lender_project(user, project, scenario_id)
+        eng = _build_period_engine(proj)
+        base_result = WaterfallRunner(proj, eng).run(WaterfallRunConfig.from_inputs(proj, eng))
+        base_kpis = {
+            "project_irr": base_result.project_irr,
+            "equity_irr": base_result.equity_irr,
+            "equity_npv": base_result.equity_npv,
+            "actual_avg_dscr": base_result.actual_avg_dscr,
+            "min_dscr": base_result.min_dscr,
+            "min_llcr": base_result.min_llcr,
+            "total_distribution_keur": base_result.total_distribution_keur,
+            "total_tax_keur": base_result.total_tax_keur,
+            "total_senior_ds_keur": base_result.total_senior_ds_keur,
+        }
+
+        lender_kpis = None
+        adjustments = {
+            "yield_haircut": lender_yield_haircut,
+            "ppa_haircut": lender_ppa_haircut,
+            "capex_contingency": lender_capex_contingency,
+            "opex_contingency": lender_opex_contingency,
+        }
+        if any(v != 0.0 for v in adjustments.values()):
+            lc = run_lender_case(proj, adjustments)
+            lender_kpis = lc["kpis"]
+
+        cs = build_credit_summary(proj, base_kpis, lender_kpis)
+    except Exception as exc:
+        cs_error = str(exc)
+
+    project_record = _resolve_project_record(user, project)
+    project_record, workspace_state, scenarios, history, exports, export_lineage, scenario_summary_cards = (
+        _current_project_workspace(user, project_record)
+    )
+    return _render_scenario_workspace(
+        request, user, project_record, workspace_state,
+        scenarios, history, exports, export_lineage, scenario_summary_cards,
+        credit_summary=cs,
+        credit_summary_error=cs_error,
     )
 
 
