@@ -104,4 +104,11 @@
   </div>
   {% endif %}
 
+  <!-- V4-3: Sensitivity & Tornado -->
+  {% if sensitivity_result or sensitivity_error %}
+  <div class="ps-section" style="margin-top:0.75rem;">
+    {% include "partials/scenario_sensitivity.html" %}
+  </div>
+  {% endif %}
+
 </div>
