@@ -11,11 +11,18 @@ from app.ui_runner import _build_period_engine
 from app.waterfall_runner import WaterfallRunConfig, WaterfallRunner
 
 
-EXCEL_R67_TOTAL_KEUR = -38_240.920880415375
-# Phase0/Z1: formula fix; new correct value (old -43512 used wrong depreciation basis)
-# C3: useful_life_tax_periods 60→40 (20-year fiscal life); gap narrows from 2837 to 1247 kEUR
+# Dual parity policy (C4/C5):
+# EXCEL_R67_TOTAL_KEUR         = Excel as-is (2-year annual LCF — Excel model limitation)
+# EXCEL_R67_LEGAL_5YR_KEUR     = Excel restated with Croatian legal 5-year LCF (theoretical)
+# PYTHON_TAX_BRIDGE...         = Finco canonical (5-year LCF, legally correct)
+EXCEL_R67_TOTAL_KEUR = -38_240.920880415375          # Excel as-is (2-yr LCF — model error)
+EXCEL_R67_LEGAL_5YR_KEUR = -36_838.12               # Excel corrected (5-yr LCF, Croatian law)
+# C3: useful_life_tax_periods 60→40; C4: residual = Excel 2yr LCF vs Python 5yr LCF
 PYTHON_TAX_BRIDGE_R67_DIAGNOSTIC_TOTAL_KEUR = -36_994.27032177761
-PYTHON_TAX_BRIDGE_R67_DIAGNOSTIC_DELTA_KEUR = 1_246.650558637768  # Finco undercollects vs Excel
+# Delta vs Excel as-is: Python collects less CIT (5yr LCF defers more losses than Excel 2yr)
+PYTHON_TAX_BRIDGE_R67_DIAGNOSTIC_DELTA_KEUR = 1_246.650558637768
+# Delta vs Excel corrected: Python ~156 kEUR MORE than legal Excel (taxable basis difference)
+PYTHON_VS_EXCEL_LEGAL_DELTA_KEUR = 156.15
 
 
 def _run(project):

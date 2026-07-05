@@ -91,10 +91,10 @@ def test_oborovo_flag_on_remains_guarded():
 def test_tuho_flag_on_r67_calibration():
     """Flag-on R67 calibration guard — Stack Z (post-Stack-Y baseline).
 
-    After Stack Y, the flag-off baseline shifted; flag-on now slightly overshoots
-    Excel in the opposite direction. The remaining gap (-5271 kEUR) is documented
-    as a known residual driven by LCF vintage differences (Finco uses corrected
-    5-year rolling LCF; Excel uses incorrect perpetual LCF).
+    C3 (40-period fiscal dep life) and C4 forensic analysis revised this picture.
+    Remaining gap (~1247 kEUR, per REMAINING_RESIDUAL_KEUR) is a documented Excel
+    model limitation: Excel applies an apparent 2-year annual LCF while Croatian law
+    requires 5 years. Python is legally correct; the residual is intentional.
     No scalar plug: the residual is tracked, not zeroed.
     """
     legacy = _run(_tuho_flag_off_project())
