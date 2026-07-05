@@ -212,25 +212,39 @@ MULTI_COMPARE_METRIC_ORDER = [
     "Revenue",
     "OPEX",
     "EBITDA",
+    "CFADS",
     "CAPEX",
     "Senior Debt",
     "SHL",
-    "DSCR",
+    "Min DSCR",
+    "Avg DSCR",
     "Project IRR",
     "Equity IRR",
     "Distributions",
 ]
 MULTI_COMPARE_METRIC_LABELS = {
-    "Revenue": "Revenue",
-    "OPEX": "OPEX",
-    "EBITDA": "EBITDA",
-    "CAPEX": "CAPEX",
-    "Senior Debt": "Senior Debt",
-    "SHL": "SHL",
+    "Revenue": "Revenue (kEUR)",
+    "OPEX": "OPEX (kEUR)",
+    "EBITDA": "EBITDA (kEUR)",
+    "CFADS": "CFADS (kEUR)",
+    "CAPEX": "CAPEX (kEUR)",
+    "Senior Debt": "Senior Debt (kEUR)",
+    "SHL": "SHL Balance (kEUR)",
+    "Min DSCR": "Min DSCR",
+    "Avg DSCR": "Avg DSCR",
     "DSCR": "Avg DSCR",
     "Project IRR": "Project IRR",
     "Equity IRR": "Equity IRR",
-    "Distributions": "Distributions",
+    "Distributions": "Distributions (kEUR)",
+}
+# Metrics where a higher delta vs Base is favourable (green)
+MULTI_COMPARE_HIGHER_IS_BETTER: set[str] = {
+    "Revenue", "EBITDA", "CFADS", "Min DSCR", "Avg DSCR", "DSCR",
+    "Project IRR", "Equity IRR", "Distributions",
+}
+# Metrics where a lower delta vs Base is favourable (green)
+MULTI_COMPARE_LOWER_IS_BETTER: set[str] = {
+    "OPEX", "CAPEX", "Senior Debt", "SHL",
 }
 
 
@@ -295,16 +309,18 @@ def compare_multi_scenarios(
                 base_num = _safe_number(_metric_value(base_record, metric_key))
                 delta = num - base_num
                 deltas.append(delta)
-                if delta > 0:
-                    sign_classes.append("scm-delta--pos")
-                elif delta < 0:
-                    sign_classes.append("scm-delta--neg")
-                else:
+                if delta == 0:
                     sign_classes.append("scm-delta--zero")
+                elif metric_key in MULTI_COMPARE_HIGHER_IS_BETTER:
+                    sign_classes.append("scm-delta--good" if delta > 0 else "scm-delta--bad")
+                elif metric_key in MULTI_COMPARE_LOWER_IS_BETTER:
+                    sign_classes.append("scm-delta--good" if delta < 0 else "scm-delta--bad")
+                else:
+                    sign_classes.append("scm-delta--pos" if delta > 0 else "scm-delta--neg")
         metrics.append(
             {
                 "metric": metric_key,
-                "label": MULTI_COMPARE_METRIC_LABELS[metric_key],
+                "label": MULTI_COMPARE_METRIC_LABELS.get(metric_key, metric_key),
                 "values": values,
                 "deltas": deltas,
                 "sign_classes": sign_classes,
@@ -326,6 +342,87 @@ def compare_multi_scenarios(
         "base_scenario_id": base_record.scenario_id,
         "metrics": metrics,
         "governance_rows": governance_rows,
+    }
+
+
+# ── V4-2 Part B — Input Difference Viewer ───────────────────────────────
+
+_INPUT_FIELD_META: list[tuple[str, str, str]] = [
+    # (snapshot_key, section, label)
+    ("project_name", "Project", "Project Name"),
+    ("project_type", "Project", "Project Type"),
+    ("country_market", "Project", "Country / Market"),
+    ("cod_date", "Project", "COD Date"),
+    ("construction_months", "Project", "Construction Months"),
+    ("horizon_years", "Project", "Horizon Years"),
+    ("capacity_mw", "Technical", "Capacity (MW)"),
+    ("p50_hours", "Technical", "P50 Hours"),
+    ("total_capex_keur", "CAPEX", "Total CAPEX (kEUR)"),
+    ("opex_y1_keur", "OPEX", "OPEX Y1 (kEUR)"),
+    ("tariff_eur_mwh", "Revenue", "Tariff (EUR/MWh)"),
+    ("ppa_term_years", "Revenue", "PPA Term (yrs)"),
+    ("gearing_pct", "Financing", "Gearing (%)"),
+    ("interest_rate_pct", "Financing", "Interest Rate"),
+    ("tenor_years", "Financing", "Tenor (yrs)"),
+    ("target_dscr", "Financing", "Target DSCR"),
+]
+
+
+def diff_scenario_inputs(
+    user_id: str,
+    base_scenario_id: str,
+    other_scenario_id: str,
+) -> Optional[dict[str, Any]]:
+    """Return input-level differences between two saved scenarios.
+
+    V4-2 Part B. Pure read-only, no model execution.
+    Diffs the ``snapshot`` flat dicts of base vs other scenario.
+
+    Returns a dict with:
+      - base: ScenarioRecord
+      - other: ScenarioRecord
+      - rows: list[dict] — each row has section, field, base_val, other_val, changed (bool), delta_str
+    """
+    from app.persistence.repository import get_scenario
+
+    base = get_scenario(base_scenario_id, user_id)
+    other = get_scenario(other_scenario_id, user_id)
+    if base is None or other is None:
+        return None
+
+    base_snap = base.snapshot or {}
+    other_snap = other.snapshot or {}
+
+    rows: list[dict[str, Any]] = []
+    for key, section, label in _INPUT_FIELD_META:
+        bv = base_snap.get(key, "")
+        ov = other_snap.get(key, "")
+        changed = str(bv) != str(ov)
+        # Compute numeric delta when possible
+        delta_str = ""
+        if changed:
+            try:
+                b_num = float(bv) if bv not in ("", None) else None
+                o_num = float(ov) if ov not in ("", None) else None
+                if b_num is not None and o_num is not None:
+                    delta = o_num - b_num
+                    delta_str = f"{delta:+.4g}"
+            except (ValueError, TypeError):
+                pass
+        rows.append({
+            "section": section,
+            "field": label,
+            "base_val": bv or "—",
+            "other_val": ov or "—",
+            "changed": changed,
+            "delta_str": delta_str,
+        })
+
+    return {
+        "base": base,
+        "other": other,
+        "rows": rows,
+        "changed_count": sum(1 for r in rows if r["changed"]),
     }
 
 

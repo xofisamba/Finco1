@@ -13,7 +13,7 @@ from fastapi import FastAPI, Request, Form, Response, Depends, HTTPException, st
 from fastapi.responses import HTMLResponse, StreamingResponse, RedirectResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from typing import Optional
+from typing import Any, Optional
 
 # Import existing model logic (no changes to these)
 from app.api.project_runner import run_project
@@ -1820,6 +1820,12 @@ def _render_scenario_workspace(
     dirty_state_ui: dict | None = None,
     scenario_workflow_ui: dict | None = None,
     project_review_ui: dict | None = None,
+    # V4-2 Part B
+    input_diff_result: dict | None = None,
+    input_diff_error: str | None = None,
+    # V4-2 Part D
+    fs_compare_result: dict | None = None,
+    fs_compare_error: str | None = None,
 ):
     # Phase 25B-6 — defensive default for runtime_summary
     # (used by project_review_ui when not pre-populated).
@@ -1925,6 +1931,11 @@ def _render_scenario_workspace(
             "project_review_ui": project_review_ui,
             # Phase P2-FIX-2: Audit / reviewer mode flag (default False).
             "audit_mode": False,
+            # V4-2: input diff and FS compare
+            "input_diff_result": input_diff_result,
+            "input_diff_error": input_diff_error,
+            "fs_compare_result": fs_compare_result,
+            "fs_compare_error": fs_compare_error,
         },
     )
 
@@ -3997,6 +4008,189 @@ async def scenario_compare_multi_endpoint(
         multi_compare_result=multi_compare_result,
         multi_compare_error=error_state,
         multi_compare_parsed_ids=parsed_ids,
+    )
+
+
+# ── V4-2 Part B — Input Difference Viewer ────────────────────────────────
+@app.get("/scenarios/input-diff")
+async def scenario_input_diff_endpoint(
+    request: Request,
+    project: str = "tuho",
+    base_id: str = "",
+    other_id: str = "",
+):
+    """Show field-level input differences between two saved scenarios.
+
+    V4-2 Part B. Read-only; no model execution. Diffs the flat snapshot
+    dicts of base vs other scenario and renders changed fields highlighted.
+    """
+    from app.persistence.exports_repository import diff_scenario_inputs
+
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+
+    project_record = _resolve_project_record(user, project)
+    project_record, workspace_state, scenarios, history, exports, export_lineage, scenario_summary_cards = (
+        _current_project_workspace(user, project_record)
+    )
+
+    error_state: str | None = None
+    diff_result = None
+
+    if not base_id or not other_id:
+        error_state = "Provide base_id and other_id query parameters to compare two scenarios."
+    elif base_id == other_id:
+        error_state = "base_id and other_id must be different scenarios."
+    else:
+        diff_result = diff_scenario_inputs(user.user_id, base_id, other_id)
+        if diff_result is None:
+            error_state = "One or both scenario IDs could not be resolved for the current user."
+
+    return _render_scenario_workspace(
+        request,
+        user,
+        project_record,
+        workspace_state,
+        scenarios,
+        history,
+        exports,
+        export_lineage,
+        scenario_summary_cards,
+        message=error_state or f"Input diff: {diff_result['changed_count']} fields changed." if diff_result else error_state,
+        input_diff_result=diff_result,
+        input_diff_error=error_state,
+    )
+
+
+# ── V4-2 Part D — Financial Statements Compare ───────────────────────────
+@app.get("/scenarios/fs-compare")
+async def scenario_fs_compare_endpoint(
+    request: Request,
+    project: str = "tuho",
+    scenario_ids: str = "",
+):
+    """Run canonical engine per scenario and show FS side-by-side.
+
+    V4-2 Part D. Accepts comma-separated list of exactly 2 scenario_ids.
+    Re-runs the engine for each using the saved snapshot (no persistence
+    side effects). Uses assemble_financial_statements() — same formulas
+    as the institutional workbook.
+    """
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+
+    project_record = _resolve_project_record(user, project)
+    project_record, workspace_state, scenarios, history, exports, export_lineage, scenario_summary_cards = (
+        _current_project_workspace(user, project_record)
+    )
+
+    parsed_ids: list[str] = [p.strip() for p in scenario_ids.split(",") if p.strip()]
+    error_state: str | None = None
+    fs_compare = None
+
+    if len(parsed_ids) != 2:
+        error_state = "FS compare requires exactly 2 scenario IDs."
+    else:
+        try:
+            from app.persistence.repository import get_scenario
+            from app.input_adapter import build_projectinputs_from_snapshot
+            from app.ui_runner import _build_period_engine
+            from app.waterfall_runner import WaterfallRunner, WaterfallRunConfig
+            from domain.financial_statements import assemble_financial_statements
+
+            records = []
+            statements_per_scenario: list[Any] = []
+            for sid in parsed_ids:
+                rec = get_scenario(sid, user.user_id)
+                if rec is None:
+                    raise ValueError(f"Scenario {sid} not found.")
+                records.append(rec)
+                snap = dict(rec.snapshot or {})
+                proj = build_projectinputs_from_snapshot(snap)
+                eng = _build_period_engine(proj)
+                result = WaterfallRunner(proj, eng).run(WaterfallRunConfig.from_inputs(proj, eng))
+                fs = assemble_financial_statements(result)
+                statements_per_scenario.append(fs)
+
+            # Build comparison rows for PnL, Balance Sheet, Cash Waterfall
+            def _fs_rows_pnl(fs_list):
+                rows = [{"label": "Income Statement (P&L)", "is_section": True}]
+                fields = [
+                    ("Revenue (kEUR)", "revenues_keur"),
+                    ("OpEx (kEUR)", "operating_expenses_keur"),
+                    ("Depreciation (kEUR)", "depreciation_keur"),
+                    ("EBIT (kEUR)", "ebit_keur"),
+                    ("Senior Interest (kEUR)", "senior_interest_expense_keur"),
+                    ("SHL Interest (kEUR)", "shl_interest_expense_keur"),
+                    ("EBT (kEUR)", "earnings_before_tax_keur"),
+                    ("CIT Accrual (kEUR)", "cit_accrual_keur"),
+                    ("Net Income (kEUR)", "net_income_keur"),
+                ]
+                periods_count = min(len(fs.pnl.periods) for fs in fs_list)
+                for label, attr in fields:
+                    totals = [round(sum(getattr(p, attr, 0.0) for p in fs.pnl.periods[:periods_count]), 1) for fs in fs_list]
+                    rows.append({"label": f"{label} (total)", "values": totals})
+                return rows
+
+            def _fs_rows_bs(fs_list):
+                rows = [{"label": "Balance Sheet (final period)", "is_section": True}]
+                fields = [
+                    ("Net Fixed Assets (kEUR)", "net_fixed_assets_keur"),
+                    ("Cash (kEUR)", "cash_keur"),
+                    ("Total Assets (kEUR)", "total_assets_keur"),
+                    ("Share Capital (kEUR)", "share_capital_keur"),
+                    ("Retained Earnings (kEUR)", "retained_earnings_keur"),
+                    ("SHL Balance (kEUR)", "shl_balance_keur"),
+                    ("Senior Balance (kEUR)", "senior_balance_keur"),
+                    ("Total Liabilities & Equity (kEUR)", "total_liabilities_and_equity_keur"),
+                ]
+                for label, attr in fields:
+                    vals = [round(getattr(fs.balance_sheet.periods[-1], attr, 0.0), 1) if fs.balance_sheet.periods else 0.0 for fs in fs_list]
+                    rows.append({"label": label, "values": vals})
+                return rows
+
+            def _fs_rows_cf(fs_list):
+                rows = [{"label": "Cash Flow Waterfall (total)", "is_section": True}]
+                fields = [
+                    ("EBITDA (kEUR)", "ebitda_cash_keur"),
+                    ("Senior DS (kEUR)", "senior_total_ds_keur"),
+                    ("FCF for Dividends (kEUR)", "fcf_for_dividends_keur"),
+                    ("Net Dividends (kEUR)", "net_dividends_keur"),
+                ]
+                periods_count = min(len(fs.pf_cash_waterfall.periods) for fs in fs_list)
+                for label, attr in fields:
+                    totals = [round(sum(getattr(p, attr, 0.0) for p in fs.pf_cash_waterfall.periods[:periods_count]), 1) for fs in fs_list]
+                    rows.append({"label": label, "values": totals})
+                return rows
+
+            combined_rows = {
+                "Income Statement": _fs_rows_pnl(statements_per_scenario),
+                "Balance Sheet": _fs_rows_bs(statements_per_scenario),
+                "Cash Flow": _fs_rows_cf(statements_per_scenario),
+            }
+            fs_compare = {
+                "scenarios": records,
+                "statements": combined_rows,
+                "sheet_names": ["Income Statement", "Balance Sheet", "Cash Flow"],
+            }
+        except Exception as exc:
+            error_state = f"FS compare failed: {exc}"
+
+    return _render_scenario_workspace(
+        request,
+        user,
+        project_record,
+        workspace_state,
+        scenarios,
+        history,
+        exports,
+        export_lineage,
+        scenario_summary_cards,
+        message=error_state or "Financial statements compare ready.",
+        fs_compare_result=fs_compare,
+        fs_compare_error=error_state,
     )
 
 
