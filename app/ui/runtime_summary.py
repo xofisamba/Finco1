@@ -48,6 +48,10 @@ class RuntimeSummary:
     shl_opening_keur: str = NOT_AVAILABLE
     total_cfads_keur: str = NOT_AVAILABLE
 
+    # E1-2: tax KPIs
+    total_tax_keur: str = NOT_AVAILABLE
+    effective_tax_rate_pct: str = NOT_AVAILABLE
+
     revenue_derivation: dict[str, Any] = field(default_factory=dict)
     dscr_derivation: dict[str, Any] = field(default_factory=dict)
     cfads_derivation: dict[str, Any] = field(default_factory=dict)
@@ -76,6 +80,8 @@ class RuntimeSummary:
             "senior_debt_keur": self.senior_debt_keur,
             "shl_opening_keur": self.shl_opening_keur,
             "total_cfads_keur": self.total_cfads_keur,
+            "total_tax_keur": self.total_tax_keur,
+            "effective_tax_rate_pct": self.effective_tax_rate_pct,
             "revenue_derivation": self.revenue_derivation,
             "dscr_derivation": self.dscr_derivation,
             "cfads_derivation": self.cfads_derivation,
@@ -299,6 +305,19 @@ def build_runtime_summary(
     total_dist = _keur(kpis.get("total_distributions_keur"))
     total_cfads = NOT_AVAILABLE
 
+    # E1-2: tax KPIs from WaterfallResult (via kpis dict)
+    raw_tax = kpis.get("total_tax_keur")
+    raw_ebitda = kpis.get("total_ebitda_keur")
+    total_tax = _keur(raw_tax)
+    eff_tax_rate = NOT_AVAILABLE
+    try:
+        if raw_tax is not None and raw_ebitda is not None:
+            ebitda_f = float(raw_ebitda)
+            if ebitda_f > 0:
+                eff_tax_rate = _fmt(float(raw_tax) / ebitda_f, suffix="%")
+    except (TypeError, ValueError):
+        pass
+
     derivation_evidence = result.get("derivation_evidence", {})
     revenue_derivation = _format_revenue_derivation(derivation_evidence.get("revenue", {}))
     dscr_derivation = _format_dscr_derivation(derivation_evidence.get("dscr", {}))
@@ -344,6 +363,8 @@ def build_runtime_summary(
         senior_debt_keur=senior_debt_str,
         shl_opening_keur=shl_opening_str,
         total_cfads_keur=total_cfads,
+        total_tax_keur=total_tax,
+        effective_tax_rate_pct=eff_tax_rate,
         revenue_derivation=revenue_derivation,
         dscr_derivation=dscr_derivation,
         cfads_derivation=cfads_derivation,
