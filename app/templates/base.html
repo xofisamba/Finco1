@@ -35,6 +35,12 @@
      table semantics. Same isolated .fo-statements-* namespace; only
      --fo-* tokens; no edits to existing stylesheets. #}
   <link rel="stylesheet" href="/static/statements-reporting.css?v={{ asset_version }}" />
+  {# UI-7: Power User Workflow — command palette overlay, keyboard
+     shortcuts overlay, floating jump-to button, recently-edited
+     strip, skeleton loaders, refreshed empty states. Same isolated
+     .fo-power-* namespace; only --fo-* tokens; no edits to existing
+     stylesheets. No new static JS file. #}
+  <link rel="stylesheet" href="/static/power-user.css?v={{ asset_version }}" />
   <script src="/static/vendor/htmx.min.js"></script>
   {# C1-PR1: Spreadsheet Interaction Layer foundation — registry +
      bootstrap only, no behaviour. See docs/C1_INTERACTION_LAYER_DESIGN.md #}

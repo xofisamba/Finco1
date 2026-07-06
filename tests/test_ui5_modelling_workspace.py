@@ -371,6 +371,7 @@ class TestBaseHtmlAdditiveOnly:
                         "/static/chrome.css", "/static/sheet-tabs.css",
                         "/static/workspace.css", "/static/modelling-workspace.css",
                         "/static/statements-reporting.css",
+                        "/static/power-user.css",
                         '<header class="top-header">'):
             assert not any(needle in line for line in removed_lines), (
                 f"UI-5 must not remove existing line containing {needle!r}."
