@@ -9548,3 +9548,162 @@ tr.fc-grid-header--sub th {
 .ct-stat { color: #6b7280; }
 .ct-stat--bad  { color: #dc2626; font-weight: 600; }
 .ct-stat--warn { color: #92400e; font-weight: 600; }
+
+/* ── V4-5: IC / Credit Reporting Pack ─────────────────────────────────────── */
+
+/* Shared report chrome */
+.rp-brand-header {
+  display: flex; justify-content: space-between; align-items: center;
+  border-bottom: 2px solid #1e3a5f; padding-bottom: 0.4rem; margin-bottom: 0.75rem;
+}
+.rp-brand-logo {
+  font-size: 1rem; font-weight: 800; color: #1e3a5f; letter-spacing: 0.04em;
+}
+.rp-brand-meta { font-size: 0.72rem; color: #6b7280; }
+
+.rp-proj-header { margin-bottom: 0.75rem; }
+.rp-proj-name { font-size: 1.1rem; font-weight: 700; color: #111827; }
+.rp-proj-sub { font-size: 0.83rem; color: #6b7280; margin-top: 0.1rem; }
+.rp-scenario-badge {
+  display: inline-block; margin-top: 0.3rem;
+  background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 10px;
+  padding: 0.15rem 0.6rem; font-size: 0.73rem; color: #1e40af;
+}
+
+.rp-scenario-banner {
+  background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 6px;
+  padding: 0.4rem 0.75rem; font-size: 0.82rem; color: #0369a1; margin-bottom: 0.6rem;
+}
+
+/* Traffic-light strip */
+.rp-rag-strip {
+  display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.75rem;
+}
+.rp-rag-item {
+  display: flex; align-items: center; gap: 0.35rem;
+  border-radius: 8px; padding: 0.3rem 0.7rem; font-size: 0.78rem; font-weight: 500;
+  border: 1px solid transparent;
+}
+.rp-rag-item--green  { background: #f0fdf4; border-color: #86efac; }
+.rp-rag-item--amber  { background: #fffbeb; border-color: #fcd34d; }
+.rp-rag-item--red    { background: #fef2f2; border-color: #fca5a5; }
+.rp-rag-dot {
+  width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+}
+.rp-rag-item--green  .rp-rag-dot  { background: #22c55e; }
+.rp-rag-item--amber  .rp-rag-dot  { background: #f59e0b; }
+.rp-rag-item--red    .rp-rag-dot  { background: #ef4444; }
+.rp-rag-label { color: #374151; }
+.rp-rag-status { font-weight: 700; font-size: 0.7rem; letter-spacing: 0.04em; }
+.rp-rag-item--green  .rp-rag-status { color: #166534; }
+.rp-rag-item--amber  .rp-rag-status { color: #92400e; }
+.rp-rag-item--red    .rp-rag-status { color: #991b1b; }
+
+/* KPI grid (exec summary) */
+.rp-kpi-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 0.8rem;
+  margin-bottom: 0.75rem;
+}
+.rp-kpi-card {
+  border: 1px solid #e5e7eb; border-radius: 6px; padding: 0.65rem 0.8rem; background: #fff;
+}
+.rp-kpi-card-title {
+  font-size: 0.72rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.06em; color: #6b7280; margin-bottom: 0.4rem;
+  padding-bottom: 0.25rem; border-bottom: 1px solid #f3f4f6;
+}
+.rp-kpi-row {
+  display: flex; justify-content: space-between; align-items: baseline;
+  padding: 0.15rem 0; gap: 0.4rem;
+}
+.rp-kpi-label { font-size: 0.75rem; color: #6b7280; flex-shrink: 0; }
+.rp-kpi-value {
+  font-size: 0.8rem; font-weight: 500; color: #111827;
+  font-variant-numeric: tabular-nums; text-align: right;
+}
+
+/* Print area */
+.rp-print-area { padding: 0.25rem 0; }
+
+/* Sections (IC / Credit pack) */
+.rp-section {
+  margin-bottom: 1rem; border: 1px solid #e5e7eb; border-radius: 6px;
+  padding: 0.75rem 0.9rem; background: #fff;
+}
+.rp-section-title {
+  font-size: 0.85rem; font-weight: 700; color: #1e3a5f;
+  border-bottom: 1px solid #e5e7eb; padding-bottom: 0.35rem; margin-bottom: 0.5rem;
+}
+
+/* Two-column layout */
+.rp-two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 1.2rem; }
+@media (max-width: 600px) { .rp-two-col { grid-template-columns: 1fr; } }
+
+.rp-kv-group-title {
+  font-size: 0.72rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.06em; color: #6b7280; margin-bottom: 0.35rem;
+}
+.rp-kv-row {
+  display: flex; justify-content: space-between; align-items: baseline;
+  padding: 0.15rem 0; gap: 0.4rem; font-size: 0.8rem;
+  border-bottom: 1px solid #f9fafb;
+}
+.rp-kv-label { color: #6b7280; flex-shrink: 0; }
+.rp-kv-val { font-weight: 500; color: #111827; font-variant-numeric: tabular-nums; }
+
+/* KPI flat table (IC pack sections) */
+.rp-kpi-table { display: flex; flex-direction: column; gap: 0; }
+.rp-kpi-trow {
+  display: flex; gap: 1rem; align-items: baseline;
+  padding: 0.2rem 0.4rem; border-bottom: 1px solid #f3f4f6; font-size: 0.8rem;
+}
+.rp-kpi-trow:hover { background: #f9fafb; }
+.rp-kpi-trow--head { font-weight: 700; font-size: 0.75rem; color: #6b7280; background: #f9fafb; }
+.rp-kpi-trow--breach { background: rgba(239,68,68,0.06); }
+.rp-kpi-tlabel { flex: 1; color: #374151; }
+.rp-kpi-tval { font-variant-numeric: tabular-nums; color: #111827; white-space: nowrap; }
+
+/* Risk table */
+.rp-risk-table { display: flex; flex-direction: column; gap: 0; }
+.rp-risk-row {
+  display: grid; grid-template-columns: 2fr 0.6fr 3fr;
+  gap: 0.75rem; align-items: start; padding: 0.3rem 0.4rem;
+  border-bottom: 1px solid #f3f4f6; font-size: 0.8rem;
+}
+.rp-risk-row--head { font-weight: 700; color: #6b7280; font-size: 0.73rem; background: #f9fafb; }
+.rp-risk-label { color: #111827; font-weight: 500; }
+.rp-risk-note { color: #6b7280; }
+.rp-sev-badge {
+  border-radius: 4px; padding: 0.1rem 0.4rem; font-size: 0.68rem;
+  font-weight: 700; letter-spacing: 0.04em; white-space: nowrap;
+}
+.rp-sev--high   { background: #fee2e2; color: #991b1b; }
+.rp-sev--medium { background: #fef3c7; color: #92400e; }
+.rp-sev--low    { background: #f0fdf4; color: #166534; }
+
+/* Distribution table */
+.rp-dist-table { border-collapse: collapse; width: 100%; font-size: 0.8rem; white-space: nowrap; }
+.rp-dist-table th {
+  background: #f9fafb; border-bottom: 1px solid #e5e7eb;
+  padding: 0.3rem 0.5rem; font-weight: 600; color: #374151; text-align: left;
+}
+.rp-dist-table td { padding: 0.25rem 0.5rem; border-bottom: 1px solid #f3f4f6; }
+.rp-num { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* Footer */
+.rp-footer {
+  font-size: 0.7rem; color: #9ca3af; text-align: right;
+  border-top: 1px solid #e5e7eb; padding-top: 0.4rem; margin-top: 0.5rem;
+}
+
+/* Export row */
+.rp-export-row { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.5rem; }
+.rp-export-btn {
+  display: inline-block; padding: 0.35rem 0.9rem;
+  background: #f3f4f6; border: 1px solid #d1d5db; border-radius: 6px;
+  font-size: 0.78rem; font-weight: 600; color: #374151; text-decoration: none;
+  cursor: pointer;
+}
+.rp-export-btn:hover { background: #e5e7eb; }
+.rp-export-btn--xl { background: #f0fdf4; border-color: #86efac; color: #166534; }
+.rp-export-btn--docx { background: #eff6ff; border-color: #bfdbfe; color: #1e40af; }
