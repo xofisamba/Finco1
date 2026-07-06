@@ -272,32 +272,58 @@ class TestForbiddenPathsUntouched:
 # ---------------------------------------------------------------------------
 
 class TestBaseHtmlAdditiveOnly:
-    """base.html must gain tokens.css link; nothing else may change."""
+    """base.html must continue to load tokens.css; the style additions
+    on the file must follow the additive contract established by UI-1.
+
+    This test enforces:
+    - The tokens.css <link> line is still present in base.html.
+    - The styles.css <link> line is still present in base.html.
+    - tokens.css is loaded BEFORE styles.css.
+    - The diff against origin/main ONLY contains:
+        - <link rel="stylesheet" ...> tags (one per added stylesheet)
+        - {% include "partials/..." %} directives
+        - Jinja {# ... #} comment blocks
+    No other categories of edits may slip in.
+    """
+
+    def test_base_html_has_tokens_and_styles(self):
+        text = BASE_HTML.read_text(encoding="utf-8")
+        assert "/static/tokens.css" in text, (
+            "tokens.css link missing from base.html."
+        )
+        assert "/static/styles.css" in text, (
+            "styles.css link missing from base.html."
+        )
+        # tokens.css MUST come before styles.css.
+        assert text.find("/static/tokens.css") < text.find(
+            "/static/styles.css"
+        ), "tokens.css must load BEFORE styles.css in base.html."
 
     def test_base_html_diff_is_minimal(self, repo_diff):
         assert "app/templates/base.html" in repo_diff.changed_paths, (
-            "Expected base.html to be modified (to add the tokens link)."
+            "Expected base.html to be modified (chrome links, partials, "
+            "etc.)."
         )
-        # Inspect the actual diff hunks — they must contain only the
-        # tokens.css <link> line (and its preceding comment). No other
-        # lines may be added/removed/changed.
+        # Inspect the diff hunks. Each added line must fall into one
+        # of these allowed buckets:
+        #   - <link rel="stylesheet" ...> tag (any stylesheet)
+        #   - {% include "partials/_*.html" %} directive
+        #   - Jinja {# ... #} comment (single or multi-line)
+        # Anything else is a non-additive edit.
         hunks = repo_diff.hunks_for("app/templates/base.html")
         added_lines = [h["content"] for h in hunks if h["op"] == "+"]
         removed_lines = [h["content"] for h in hunks if h["op"] == "-"]
-        # Sanity: at least the tokens.css link line was added.
-        assert any("/static/tokens.css" in line for line in added_lines), (
-            "tokens.css link was not added to base.html"
-        )
-        # Forbidden: any removal that isn't the original styles.css link
-        # — and the original link should remain (we add above it, not
-        # replace it). So removed_lines must NOT contain '/static/styles.css'.
-        assert not any("/static/styles.css" in line for line in removed_lines), (
-            "styles.css link must remain in base.html; UI-1 is additive."
-        )
+        # Forbidden: any removal that affects an existing chrome link
+        # or template marker.
+        for needle in ("/static/styles.css", "/static/tokens.css",
+                        '<header class="top-header">'):
+            assert not any(needle in line for line in removed_lines), (
+                f"base.html diff must not remove existing line "
+                f"containing {needle!r}."
+            )
         # Walk the added lines; track whether we're inside a Jinja
-        # comment block ({# ... #}). Lines that are inside such a block,
-        # or that contain only a <link rel="stylesheet" ...> tag, are
-        # allowed. Anything else is a non-additive edit.
+        # comment block ({# ... #}). Lines inside such a block are
+        # allowed.
         inside_jinja_comment = False
         for line in added_lines:
             stripped = line.strip()
@@ -308,13 +334,13 @@ class TestBaseHtmlAdditiveOnly:
                     inside_jinja_comment = False
                 continue
             if stripped.startswith("{#"):
-                # Comment may be single-line ({# ... #}) or multi-line.
+                # Single-line or first-line of multi-line comment.
                 if "#}" not in stripped:
                     inside_jinja_comment = True
                 continue
             allowed = (
-                "/static/tokens.css" in stripped
-                or stripped.startswith("<link")
+                stripped.startswith("<link")
+                or stripped.startswith('{% include')
             )
             assert allowed, (
                 f"base.html diff contains an unexpected added line: {line!r}"

@@ -10,6 +10,11 @@
      renames; additive only. #}
   <link rel="stylesheet" href="/static/tokens.css?v={{ asset_version }}" />
   <link rel="stylesheet" href="/static/styles.css?v={{ asset_version }}" />
+  {# UI-2: Application chrome (brand bar + command bar + KPI strip) —
+     layered ABOVE the legacy chrome. Uses only --fo-* tokens. No
+     edits to existing styles; chrome.css adds an isolated namespace
+     (.fo-*) that does not collide with any legacy selector. #}
+  <link rel="stylesheet" href="/static/chrome.css?v={{ asset_version }}" />
   <script src="/static/vendor/htmx.min.js"></script>
   {# C1-PR1: Spreadsheet Interaction Layer foundation — registry +
      bootstrap only, no behaviour. See docs/C1_INTERACTION_LAYER_DESIGN.md #}
@@ -111,6 +116,12 @@
   <script src="/static/app.js" defer></script>
 </head>
 <body>
+
+{# UI-2: Application chrome (brand bar + command bar + KPI strip +
+   sheet-tab reserve). Mounted at the very top of the body. The
+   legacy <header class="top-header"> is preserved below it; no
+   existing markup is moved, renamed, or re-skinned. #}
+{% include "partials/_app_chrome.html" %}
 
 <header class="top-header">
   <div class="header-inner">

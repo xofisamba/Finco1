@@ -1,0 +1,82 @@
+{# ── UI-2 Sticky KPI Strip ───────────────────────────────────────────────────
+   56 px row displaying the core result KPIs next to the workbench —
+   the strip gets the same amber Stale treatment as the dirty pill when
+   inputs have changed since the last clean run.
+
+   KPI sources (read-only, no new computation):
+   - dashboard_kpis[project_irr]   — Project IRR (%)
+   - dashboard_kpis[equity_irr]    — Equity IRR (%)
+   - dashboard_kpis[project_npv]   — NPV (kEUR)
+   - dashboard_kpis[min_dscr]      — Minimum DSCR
+   - dashboard_kpis[avg_dscr]      — Average DSCR
+   - LLCR — intentional placeholder (LLCR is not surfaced in the
+     current dashboard; the cell stays visible so the chrome reserves
+     the slot consistently across all screens)
+
+   Strictly additive — no new engine / routing / state changes. #}
+
+{% set _kpis = dashboard_kpis|default({}) %}
+{% set _dirty = dirty|default(false) %}
+
+{% set _strip_classes = 'fo-kpi-strip' %}
+{% if _dirty %}
+  {% set _strip_classes = _strip_classes + ' fo-kpi-strip--stale' %}
+{% endif %}
+
+<div class="{{ _strip_classes }}"
+     role="region"
+     aria-label="Key result KPIs"
+     id="fo-kpi-strip"
+     {%- if _dirty %}
+     data-kpi-stale="true"
+     {%- else %}
+     data-kpi-stale="false"
+     {%- endif %}>
+
+  {# Project IRR #}
+  <div class="fo-kpi">
+    <span class="fo-kpi__label">Project IRR</span>
+    <span class="fo-kpi__value {% if _kpis.project_irr is not defined or _kpis.project_irr.value in (None, '', '—', 'n/a') %}fo-kpi__value--placeholder{% endif %}">
+      {{- _kpis.project_irr.value|default('—') -}}
+    </span>
+  </div>
+
+  {# Equity IRR #}
+  <div class="fo-kpi">
+    <span class="fo-kpi__label">Equity IRR</span>
+    <span class="fo-kpi__value {% if _kpis.equity_irr is not defined or _kpis.equity_irr.value in (None, '', '—', 'n/a') %}fo-kpi__value--placeholder{% endif %}">
+      {{- _kpis.equity_irr.value|default('—') -}}
+    </span>
+  </div>
+
+  {# NPV #}
+  <div class="fo-kpi">
+    <span class="fo-kpi__label">NPV</span>
+    <span class="fo-kpi__value {% if _kpis.project_npv is not defined or _kpis.project_npv.value in (None, '', '—', 'n/a') %}fo-kpi__value--placeholder{% endif %}">
+      {{- _kpis.project_npv.value|default('—') -}}
+    </span>
+  </div>
+
+  {# Min DSCR #}
+  <div class="fo-kpi">
+    <span class="fo-kpi__label">Min DSCR</span>
+    <span class="fo-kpi__value {% if _kpis.min_dscr is not defined or _kpis.min_dscr.value in (None, '', '—', 'n/a') %}fo-kpi__value--placeholder{% endif %}">
+      {{- _kpis.min_dscr.value|default('—') -}}
+    </span>
+  </div>
+
+  {# Avg DSCR #}
+  <div class="fo-kpi">
+    <span class="fo-kpi__label">Avg DSCR</span>
+    <span class="fo-kpi__value {% if _kpis.avg_dscr is not defined or _kpis.avg_dscr.value in (None, '', '—', 'n/a') %}fo-kpi__value--placeholder{% endif %}">
+      {{- _kpis.avg_dscr.value|default('—') -}}
+    </span>
+  </div>
+
+  {# LLCR — placeholder. Not in dashboard_kpis yet; reserved slot. #}
+  <div class="fo-kpi">
+    <span class="fo-kpi__label">LLCR</span>
+    <span class="fo-kpi__value fo-kpi__value--placeholder">—</span>
+  </div>
+
+</div>
