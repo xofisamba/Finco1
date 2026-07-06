@@ -26,14 +26,15 @@
 /*  Token contract                                                           */
 /* ────────────────────────────────────────────────────────────────────────── */
 .fo-modelling-workspace {
-  --fo-mod-nav-w: 200px;
-  --fo-mod-context-w: 240px;
-  --fo-mod-gap: var(--fo-s5);
+  /* UI-8B: narrowed nav+context panels, tightened gap to give grid ≥70% width */
+  --fo-mod-nav-w: 160px;
+  --fo-mod-context-w: 160px;
+  --fo-mod-gap: var(--fo-s3);
 
   display: flex;
   flex-direction: column;
-  gap: var(--fo-s5);
-  padding: var(--fo-s5) 0;
+  gap: var(--fo-s3);
+  padding: var(--fo-s3) 0;
   font-family: var(--fo-font-ui);
   color: var(--fo-ink);
 }
@@ -44,8 +45,8 @@
 .fo-modelling-workspace__header {
   display: flex;
   flex-direction: column;
-  gap: var(--fo-s2);
-  padding-bottom: var(--fo-s3);
+  gap: var(--fo-s1);
+  padding-bottom: var(--fo-s2);
   border-bottom: 1px solid var(--fo-line);
 }
 
@@ -59,7 +60,7 @@
 
 .fo-modelling-workspace__title {
   font-family: var(--fo-font-ui);
-  font-size: var(--fo-text-xl);
+  font-size: var(--fo-text-lg);   /* UI-8B: reduced from xl — saves vertical row space */
   font-weight: var(--fo-weight-semibold);
   letter-spacing: -0.01em;
   color: var(--fo-ink);
@@ -144,10 +145,10 @@
 
 .fo-modelling-workspace__description {
   font-family: var(--fo-font-ui);
-  font-size: var(--fo-text-sm);
-  color: var(--fo-ink-soft);
+  font-size: var(--fo-text-xs);   /* UI-8B: reduced from sm — it's metadata, not content */
+  color: var(--fo-ink-faint);
   margin: 0;
-  line-height: 1.4;
+  line-height: 1.3;
   max-width: 760px;
 }
 
@@ -170,10 +171,10 @@
   background: var(--fo-paper);
   border: 1px solid var(--fo-line);
   border-radius: var(--fo-r-md);
-  padding: var(--fo-s3);
+  padding: var(--fo-s2);   /* UI-8B: reduced from s3 */
   display: flex;
   flex-direction: column;
-  gap: var(--fo-s2);
+  gap: var(--fo-s1);       /* UI-8B: reduced from s2 */
   max-height: calc(100vh - 220px);
   overflow-y: auto;
 }
@@ -200,8 +201,8 @@
 .fo-modelling-workspace__nav-link {
   display: flex;
   align-items: center;
-  gap: var(--fo-s2);
-  padding: 6px var(--fo-s2);
+  gap: var(--fo-s1);
+  padding: 4px var(--fo-s2);   /* UI-8B: reduced vertical from 6px to 4px */
   border-radius: var(--fo-r-md);
   text-decoration: none;
   color: var(--fo-ink);
@@ -258,7 +259,7 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: var(--fo-s4);
+  gap: var(--fo-s3);   /* UI-8B: reduced from s4 (16px) to s3 (12px) */
 }
 
 .fo-modelling-workspace__content > * {
@@ -274,10 +275,10 @@
   background: var(--fo-paper);
   border: 1px solid var(--fo-line);
   border-radius: var(--fo-r-md);
-  padding: var(--fo-s4);
+  padding: var(--fo-s2) var(--fo-s3);   /* UI-8B: reduced from s4 (16px) to s2/s3 */
   display: flex;
   flex-direction: column;
-  gap: var(--fo-s3);
+  gap: var(--fo-s2);                    /* UI-8B: reduced from s3 (12px) to s2 (8px) */
   max-height: calc(100vh - 220px);
   overflow-y: auto;
 }
@@ -303,8 +304,8 @@
 .fo-modelling-workspace__context-row {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  padding-bottom: var(--fo-s2);
+  gap: 1px;
+  padding-bottom: 4px;   /* UI-8B: tighter — was var(--fo-s2) = 8px */
   border-bottom: 1px dashed var(--fo-line);
 }
 
@@ -325,7 +326,7 @@
 
 .fo-modelling-workspace__context-value {
   font-family: var(--fo-font-ui);
-  font-size: var(--fo-text-md);
+  font-size: var(--fo-text-sm);   /* UI-8B: reduced from md to sm — compact KPI strip */
   font-weight: var(--fo-weight-semibold);
   color: var(--fo-ink);
   margin: 0;
@@ -355,7 +356,7 @@
   scroll-margin-top: calc(var(--fo-chrome-brand-h, 28px) + var(--fo-chrome-cmd-h, 44px) + var(--fo-s3));
   display: flex;
   flex-direction: column;
-  gap: var(--fo-s2);
+  gap: var(--fo-s1);   /* UI-8B: tightened from s2 */
 }
 
 .fo-modelling-workspace__section-header {
@@ -363,12 +364,12 @@
   align-items: center;
   gap: var(--fo-s2);
   font-family: var(--fo-font-ui);
-  font-size: var(--fo-text-lg);
+  font-size: var(--fo-text-md);   /* UI-8B: reduced from lg — section headers were outsized */
   font-weight: var(--fo-weight-semibold);
   color: var(--fo-ink);
   margin: 0;
   line-height: 1.2;
-  padding-bottom: var(--fo-s2);
+  padding-bottom: var(--fo-s1);   /* UI-8B: reduced from s2 */
   border-bottom: 1px solid var(--fo-line);
 }
 
@@ -474,7 +475,8 @@
 /* ────────────────────────────────────────────────────────────────────────── */
 /*  Responsive                                                               */
 /* ────────────────────────────────────────────────────────────────────────── */
-@media (max-width: 1280px) {
+/* UI-8B: breakpoints adjusted — narrower panels stay in three-column longer */
+@media (max-width: 1024px) {
   .fo-modelling-workspace__layout {
     grid-template-columns: minmax(0, 1fr) var(--fo-mod-context-w);
   }
@@ -499,7 +501,7 @@
   }
 }
 
-@media (max-width: 1024px) {
+@media (max-width: 800px) {
   .fo-modelling-workspace__layout {
     grid-template-columns: minmax(0, 1fr);
   }

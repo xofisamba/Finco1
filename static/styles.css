@@ -66,8 +66,8 @@
   --tabs-h:     48px;   /* top tabs ribbon height — update if content changes */
   --sidebar-w:   240px;
   --content-max: 1100px;
-  --content-px:  24px;   /* horizontal padding for main content area */
-  --content-py:  24px;   /* vertical padding for main content area */
+  --content-px:  16px;   /* UI-8B: reduced from 24px — give grid more horizontal room */
+  --content-py:  16px;   /* UI-8B: reduced from 24px — tighter vertical rhythm */
   /* Canonical spacing scale — 4px base grid */
   --sp-1:  4px;
   --sp-2:  8px;
@@ -343,9 +343,9 @@ body {
 .content {
   flex: 1;
   min-width: 0;
-  /* padding uses canonical content variables */
+  /* UI-8B: reduced padding and removed max-width cap so modelling grids
+     can fill available horizontal space rather than being capped at 1100px. */
   padding: var(--content-py) var(--content-px);
-  max-width: var(--content-max);
 }
 
 /* ── Form Sections ───────────────────────────────────────────────────────── */
