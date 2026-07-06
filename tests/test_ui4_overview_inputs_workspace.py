@@ -595,7 +595,8 @@ class TestForbiddenPathsUntouched:
 
 class TestBaseHtmlAdditiveOnly:
     """base.html diff may only contain <link> additions and Jinja
-    comments for the UI-4 entry."""
+    comments for the UI-4 / UI-5 entries (subsequent UI-N PRs that
+    extend base.html within the additive envelope are fine)."""
 
     def test_base_html_diff_is_minimal(self, repo_diff):
         if "app/templates/base.html" not in repo_diff.changed_paths:
@@ -603,12 +604,10 @@ class TestBaseHtmlAdditiveOnly:
         hunks = repo_diff.hunks_for("app/templates/base.html")
         added_lines = [h["content"] for h in hunks if h["op"] == "+"]
         removed_lines = [h["content"] for h in hunks if h["op"] == "-"]
-        assert any("/static/workspace.css" in line for line in added_lines), (
-            "workspace.css link was not added to base.html."
-        )
         for needle in (
             "/static/styles.css", "/static/tokens.css",
             "/static/chrome.css", "/static/sheet-tabs.css",
+            "/static/workspace.css", "/static/modelling-workspace.css",
             '<header class="top-header">',
         ):
             assert not any(needle in line for line in removed_lines), (

@@ -534,6 +534,7 @@ class TestBaseHtmlAdditiveOnly:
             "/static/styles.css",
             "/static/sheet-tabs.css",
             "/static/workspace.css",
+            "/static/modelling-workspace.css",
         ):
             assert needle in text, (
                 f"base.html must reference {needle} as a stylesheet."
@@ -549,6 +550,7 @@ class TestBaseHtmlAdditiveOnly:
         for needle in ("/static/styles.css", "/static/tokens.css",
                         "/static/chrome.css", "/static/sheet-tabs.css",
                         "/static/workspace.css",
+                        "/static/modelling-workspace.css",
                         '<header class="top-header">'):
             assert not any(needle in line for line in removed_lines), (
                 f"UI-3 must not remove existing line containing "
