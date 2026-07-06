@@ -515,25 +515,40 @@ class TestForbiddenPathsUntouched:
 # ---------------------------------------------------------------------------
 
 class TestBaseHtmlAdditiveOnly:
-    """base.html diff may only contain <link> additions and a Jinja
-    comment for the UI-3 entry."""
+    """base.html must load chrome.css, tokens.css, styles.css,
+    sheet-tabs.css, and workspace.css; the diff against origin/main
+    must remain strictly additive.
+
+    sheet-tabs.css was added in PR #814 (UI-3 worksheet navigation),
+    so it already lives on main. UI-4 / UI-N PRs that extend base.html
+    (adding more <link> tags or {% include %} directives or Jinja
+    comments) are fine — the test below enforces only the additive
+    envelope, not the exact diff content.
+    """
+
+    def test_base_html_has_chrome_tokens_styles_sheets_workspace(self):
+        text = BASE_HTML.read_text(encoding="utf-8")
+        for needle in (
+            "/static/chrome.css",
+            "/static/tokens.css",
+            "/static/styles.css",
+            "/static/sheet-tabs.css",
+            "/static/workspace.css",
+        ):
+            assert needle in text, (
+                f"base.html must reference {needle} as a stylesheet."
+            )
 
     def test_base_html_diff_is_minimal(self, repo_diff):
-        assert "app/templates/base.html" in repo_diff.changed_paths, (
-            "base.html must be modified (UI-3 sheet-tabs.css link)."
-        )
+        if "app/templates/base.html" not in repo_diff.changed_paths:
+            return
         hunks = repo_diff.hunks_for("app/templates/base.html")
         added_lines = [h["content"] for h in hunks if h["op"] == "+"]
         removed_lines = [h["content"] for h in hunks if h["op"] == "-"]
-        # Required: sheet-tabs.css link line added.
-        assert any(
-            "/static/sheet-tabs.css" in line for line in added_lines
-        ), (
-            "sheet-tabs.css link was not added to base.html."
-        )
         # Forbidden: any removal that affects an existing link / header.
-        for needle in ("/static/chrome.css", "/static/styles.css",
-                        "/static/tokens.css",
+        for needle in ("/static/styles.css", "/static/tokens.css",
+                        "/static/chrome.css", "/static/sheet-tabs.css",
+                        "/static/workspace.css",
                         '<header class="top-header">'):
             assert not any(needle in line for line in removed_lines), (
                 f"UI-3 must not remove existing line containing "
