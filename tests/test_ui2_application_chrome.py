@@ -39,6 +39,7 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[1]
 TOKENS_CSS = REPO_ROOT / "static" / "tokens.css"
 CHROME_CSS = REPO_ROOT / "static" / "chrome.css"
+SHEET_TABS_CSS = REPO_ROOT / "static" / "sheet-tabs.css"
 BASE_HTML = REPO_ROOT / "app" / "templates" / "base.html"
 APP_CHROME_HTML = (
     REPO_ROOT / "app" / "templates" / "partials" / "_app_chrome.html"
@@ -168,16 +169,32 @@ class TestFoClassNamespacing:
             f"Chrome class .{cls} leaked into static/styles.css; "
             f"chrome must own its own stylesheet."
         )
-        # And chrome.css must be staged-or-tracked. UI-2 is a delivered
-        # PR — file is part of the change set.
-        tracked = (
-            "static/chrome.css" in repo_diff.changed_paths
-            or "static/chrome.css" in repo_diff.untracked_paths
+        # And chrome.css must exist on disk — either staged in this PR
+        # (PR delivered the chrome for the first time) or merged on
+        # main from a prior PR. Both states are valid; the file simply
+        # must be present so the chrome class family has a CSS home.
+        assert CHROME_CSS.is_file(), (
+            f"static/chrome.css must exist on disk; "
+            f"chrome.css is the only owner of the .fo-brand-bar*, "
+            f".fo-command-bar*, .fo-kpi* family."
         )
-        assert tracked, (
-            "static/chrome.css must be added to the PR (either staged "
-            "or currently untracked — git-add it)."
-        )
+        # Also: chrome classes must NOT bleed into the UI-3 sheet-tabs
+        # stylesheet. Sheet tabs owns its own .fo-sheet* family; chrome
+        # owns .fo-brand-bar*, .fo-command-bar*, .fo-kpi*. Cross-leakage
+        # would mean one of the two files is overreaching.
+        if SHEET_TABS_CSS.is_file():
+            sheet_text = SHEET_TABS_CSS.read_text(encoding="utf-8")
+            # Strip CSS comments so commentary mentioning the UI-2
+            # reserve placeholder (e.g. "(fo-sheet-tab-reserve)") does
+            # not trip the namespace lint — only declarations count.
+            sheet_text = re.sub(
+                r"/\*.*?\*/", "", sheet_text, flags=re.DOTALL
+            )
+            sheet_pattern = re.compile(rf"\.{re.escape(cls)}\b")
+            assert not sheet_pattern.search(sheet_text), (
+                f"Chrome class .{cls} leaked into static/sheet-tabs.css; "
+                f"sheet-tabs owns its own .fo-sheet* namespace."
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -516,27 +533,44 @@ class TestForbiddenPathsUntouched:
 # ---------------------------------------------------------------------------
 
 class TestBaseHtmlAdditiveOnly:
-    """base.html diff must contain only the chrome additions."""
+    """base.html diff must contain only the chrome additions.
+
+    Cross-arc note: when this test was first written, the only
+    modification on the working tree was the UI-2 chrome additions.
+    Subsequent UI-N PRs (UI-3 sheet tabs, future UI-4 tabs row, etc.)
+    may also extend base.html within the additive envelope. The
+    assertions below are split into two tiers:
+
+      - Tier A (always enforced): base.html must load chrome.css +
+        tokens.css + styles.css in the working tree; no removals.
+      - Tier B (PR-specific): when this PR adds new chrome
+        additions to base.html, the diff must contain ONLY <link>
+        additions or {% include %} additions or Jinja {# ... #}
+        comment blocks.
+    """
+
+    def test_base_html_has_chrome_tokens_and_styles(self):
+        text = BASE_HTML.read_text(encoding="utf-8")
+        for needle in ("/static/chrome.css", "/static/tokens.css",
+                        "/static/styles.css"):
+            assert needle in text, (
+                f"base.html must reference {needle} as a stylesheet."
+            )
 
     def test_base_html_diff_is_minimal(self, repo_diff):
-        assert "app/templates/base.html" in repo_diff.changed_paths, (
-            "base.html must be modified (chrome link + partial include)."
-        )
+        # When this PR does not touch base.html (most UI-N PRs),
+        # there is nothing to enforce at the diff level — the
+        # presence tests above are sufficient.
+        if "app/templates/base.html" not in repo_diff.changed_paths:
+            return
 
         hunks = repo_diff.hunks_for("app/templates/base.html")
         added_lines = [h["content"] for h in hunks if h["op"] == "+"]
         removed_lines = [h["content"] for h in hunks if h["op"] == "-"]
 
-        # Required: at least one chrome.css link line added.
-        assert any("/static/chrome.css" in line for line in added_lines), (
-            "chrome.css link was not added to base.html."
-        )
-        # Required: the chrome partial include was added.
-        assert any("_app_chrome.html" in line for line in added_lines), (
-            "Chrome partial include was not added to base.html."
-        )
         # Forbidden: any removal that affects an existing chrome link.
         for needle in ("/static/tokens.css", "/static/styles.css",
+                        "/static/chrome.css", "/static/sheet-tabs.css",
                         '<header class="top-header">'):
             assert not any(needle in line for line in removed_lines), (
                 f"UI-2 must not remove existing line containing "

@@ -1,10 +1,10 @@
-{# ── UI-2 Application Chrome Wrapper ────────────────────────────────────────
+{# ── UI-2 Application Chrome Wrapper (extended by UI-3) ─────────────────────
    Single include that renders all four chrome rows inside the sticky
    `.fo-chrome` wrapper:
      1. Brand bar        (28 px)        _brand_bar.html
      2. Command bar      (44 px)        _command_bar.html
      3. KPI strip        (56 px)        _kpi_strip.html
-     4. Sheet-tab reserve (36 px)      inline placeholder
+     4. Sheet tabs       (36 px)        _sheet_tabs.html   (UI-3)
 
    Strictly additive. The legacy `.top-header` below this wrapper is
    NOT removed or re-skinned — it coexists with the new chrome so
@@ -20,12 +20,9 @@
   {% include "partials/_command_bar.html" %}
   {% include "partials/_kpi_strip.html" %}
 
-  {# Reserved for the future sheet-tab strip. A real future PR will
-     replace this row with the actual tab component. The placeholder
-     keeps the height stable so subsequent rows do not shift when
-     the tabs land. #}
-  <div class="fo-sheet-tab-reserve" role="presentation" aria-hidden="true">
-    <span class="fo-sheet-tab-reserve__placeholder">Sheet tabs — reserved</span>
-  </div>
+  {# UI-3: Excel-style worksheet navigation. Replaces the UI-2
+     reserved-placeholder row with the actual navigation component.
+     Reads only `dirty` + `request.path` from context. #}
+  {% include "partials/_sheet_tabs.html" %}
 
 </div>
