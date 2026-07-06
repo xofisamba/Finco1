@@ -19,6 +19,10 @@
      sheet-tab reserve row. Same isolated .fo-sheets / .fo-sheet
      namespace; consumes only --fo-* tokens. #}
   <link rel="stylesheet" href="/static/sheet-tabs.css?v={{ asset_version }}" />
+  {# UI-4: Workspace redesign for Overview + Inputs. Same isolated
+     .fo-* namespace; only --fo-* tokens; no edits to existing
+     stylesheets. #}
+  <link rel="stylesheet" href="/static/workspace.css?v={{ asset_version }}" />
   <script src="/static/vendor/htmx.min.js"></script>
   {# C1-PR1: Spreadsheet Interaction Layer foundation — registry +
      bootstrap only, no behaviour. See docs/C1_INTERACTION_LAYER_DESIGN.md #}

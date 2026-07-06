@@ -341,6 +341,13 @@
       <div class="panel-desc">Key performance indicators and governance status for the active project.</div>
     </div>
 
+    {# UI-4: Modern project dashboard mounted at the top of the
+       Overview panel. Reads existing context only (project_ctx,
+       dashboard_kpis, validation_summary, current_context). The
+       legacy inner content (C2 preview indicators, M1 scenario
+       matrix, governance cards, dashboard v1) remains below. #}
+    {% include "partials/_overview_workspace.html" %}
+
     {# Phase P2-min-2: single clear status line per screen
        (Generic disclosure rule). Renders nothing when the
        project is not exploratory. #}
@@ -652,7 +659,12 @@
 
   <!-- ----------------------------------------------- INPUTS -- -->
   <div class="tab-panel" id="panel-inputs">
-    {% include "partials/sheet_inputs.html" %}
+    {# UI-4: Sticky section navigator + collapsible section surface.
+       The wrapper includes sheet_inputs.html unchanged; an inline
+       script at the bottom of _inputs_workspace.html promotes each
+       .inp-card to a <details> collapsible at runtime. The legacy
+       sheet_inputs.html still owns every field + binding. #}
+    {% include "partials/_inputs_workspace.html" %}
   </div>
 
   <!-- ----------------------------------------------- SCENARIO -- -->
