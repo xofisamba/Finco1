@@ -367,12 +367,10 @@ class TestBaseHtmlAdditiveOnly:
         hunks = repo_diff.hunks_for("app/templates/base.html")
         added_lines = [h["content"] for h in hunks if h["op"] == "+"]
         removed_lines = [h["content"] for h in hunks if h["op"] == "-"]
-        assert any("/static/modelling-workspace.css" in line for line in added_lines), (
-            "modelling-workspace.css link was not added to base.html."
-        )
         for needle in ("/static/styles.css", "/static/tokens.css",
                         "/static/chrome.css", "/static/sheet-tabs.css",
-                        "/static/workspace.css",
+                        "/static/workspace.css", "/static/modelling-workspace.css",
+                        "/static/statements-reporting.css",
                         '<header class="top-header">'):
             assert not any(needle in line for line in removed_lines), (
                 f"UI-5 must not remove existing line containing {needle!r}."

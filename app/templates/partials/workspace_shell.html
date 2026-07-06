@@ -833,21 +833,72 @@
   </div>
 
   <!-- ----------------------------------------------- P&L -- -->
+  {# UI-6 — Institutional Financial Statements wrapper (PART A + PART C).
+     The selector + toolbar + notes panel wrap the existing
+     `sheet_financials.html` (canonical content — no engine change). #}
   <div class="tab-panel" id="panel-pl">
+    {% set _title = "Income Statement" %}
+    {% set _available = ["pl", "cf", "bs", "notes"] %}
+    {% set _active_statement = "pl" %}
+    {% set _statement_labels = {"pl": "Income Statement", "cf": "Cash Flow", "bs": "Balance Sheet", "notes": "Notes"} %}
+    {% set _kind = "pl" %}
+    {% set _nav_items = [{"label":"Revenue"},{"label":"Operating Costs"},{"label":"EBITDA"},{"label":"Depreciation"},{"label":"EBIT"},{"label":"Interest"},{"label":"Tax"},{"label":"Net Income"}] %}
+    {% set _context_items = [
+      {"label":"Revenue", "value":"{:,.0f}".format(project_ctx.ppa_tariff_eur_mwh|default(0)) ~ " EUR/MWh", "hint":"PPA tariff (Y1)"},
+      {"label":"Capacity", "value":"{:,.0f}".format(project_ctx.capacity_mw|default(0)) ~ " MW", "hint":"Installed capacity"},
+      {"label":"Lifetime", "value":"{:,.0f}".format(project_ctx.horizon_years|default(0)) ~ " years", "hint":"Project horizon"},
+      {"label":"CIT rate", "value":"{:,.1f}".format(project_ctx.cit_rate_pct|default(0)) ~ "%", "hint":"Corporate income tax"},
+    ] %}
     {% include "partials/shared_runtime_block.html" %}
-    {% include "partials/sheet_financials.html" %}
+    {% include "partials/_statements_workspace_selector.html" %}
+    <div id="fo-stmts-panel-pl" role="tabpanel">
+      {% include "partials/sheet_financials.html" %}
+    </div>
+    {% include "partials/_statements_workspace_notes.html" %}
   </div>
 
   <!-- ----------------------------------------------- CASH FLOW -- -->
   <div class="tab-panel" id="panel-cashflow">
+    {% set _title = "Cash Flow Statement" %}
+    {% set _available = ["pl", "cf", "bs", "notes"] %}
+    {% set _active_statement = "cf" %}
+    {% set _statement_labels = {"pl": "Income Statement", "cf": "Cash Flow", "bs": "Balance Sheet", "notes": "Notes"} %}
+    {% set _kind = "cf" %}
+    {% set _nav_items = [{"label":"Operating Activities"},{"label":"Investing Activities"},{"label":"Financing Activities"},{"label":"Net Change in Cash"},{"label":"Opening Balance"},{"label":"Closing Balance"}] %}
+    {% set _context_items = [
+      {"label":"Senior Debt", "value":"{:,.0f}".format(project_ctx.senior_debt_keur|default(0)) ~ " kEUR", "hint":"Senior debt outstanding"},
+      {"label":"Tenor", "value":"{:,.0f}".format(project_ctx.senior_tenor_years|default(0)) ~ " years", "hint":"Repayment period"},
+      {"label":"CAPEX", "value":"{:,.0f}".format(project_ctx.total_capex_keur|default(project_ctx.hard_capex_total_keur|default(0))) ~ " kEUR", "hint":"Total CAPEX"},
+      {"label":"OPEX Y1", "value":"{:,.0f}".format(project_ctx.opex_y1_total_keur|default(0)) ~ " kEUR", "hint":"Year-1 OPEX"},
+    ] %}
     {% include "partials/shared_runtime_block.html" %}
-    {% include "partials/sheet_financials.html" %}
+    {% include "partials/_statements_workspace_selector.html" %}
+    <div id="fo-stmts-panel-cf" role="tabpanel">
+      {% include "partials/sheet_financials.html" %}
+    </div>
+    {% include "partials/_statements_workspace_notes.html" %}
   </div>
 
   <!-- ----------------------------------------------- BALANCE SHEET -- -->
   <div class="tab-panel" id="panel-balance">
+    {% set _title = "Balance Sheet" %}
+    {% set _available = ["pl", "cf", "bs", "notes"] %}
+    {% set _active_statement = "bs" %}
+    {% set _statement_labels = {"pl": "Income Statement", "cf": "Cash Flow", "bs": "Balance Sheet", "notes": "Notes"} %}
+    {% set _kind = "bs" %}
+    {% set _nav_items = [{"label":"Assets"},{"label":"Liabilities"},{"label":"Equity"},{"label":"Total Assets"},{"label":"Total Liab + Equity"},{"label":"Balance Check"}] %}
+    {% set _context_items = [
+      {"label":"CIT", "value":"{:,.1f}".format(project_ctx.cit_rate_pct|default(0)) ~ "%", "hint":"Corporate income tax rate"},
+      {"label":"Loss CF", "value":"{:,.0f}".format(project_ctx.loss_carryforward_years|default(0)) ~ " years", "hint":"Loss carry-forward"},
+      {"label":"Country", "value":project_ctx.country_iso|default("—"), "hint":"ISO country code"},
+      {"label":"Currency", "value":project_ctx.currency|default("EUR"), "hint":"Reporting currency"},
+    ] %}
     {% include "partials/shared_runtime_block.html" %}
-    {% include "partials/sheet_financials.html" %}
+    {% include "partials/_statements_workspace_selector.html" %}
+    <div id="fo-stmts-panel-bs" role="tabpanel">
+      {% include "partials/sheet_financials.html" %}
+    </div>
+    {% include "partials/_statements_workspace_notes.html" %}
   </div>
 
   <!-- ----------------------------------------------- DISTRIBUTIONS -- -->
