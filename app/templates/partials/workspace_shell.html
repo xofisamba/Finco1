@@ -691,12 +691,53 @@
 
   <!-- ----------------------------------------------- REVENUE -- -->
   <div class="tab-panel" id="panel-revenue">
-    {% include "partials/sheet_revenue.html" %}
+    <section class="fo-modelling-workspace" data-fo-mod-kind="revenue">
+      {% set _title = "Revenue" %}
+      {% set _description = "Tariff structure, merchant exposure, CO2 / certificates, and Y1 revenue summary." %}
+      {% include "partials/_modelling_workspace_header.html" %}
+      <div class="fo-modelling-workspace__layout">
+        {% set _kind = "revenue" %}
+        {% set _nav_title = "Revenue" %}
+        {% set _nav_items = [
+          {"label":"Production"},
+          {"label":"PPA / Tariff"},
+          {"label":"Market / Merchant"},
+          {"label":"CO2 / Certificates"},
+          {"label":"Revenue Summary"},
+        ] %}
+        {% include "partials/_modelling_workspace_nav.html" %}
+        <div class="fo-modelling-workspace__content">
+          {% include "partials/sheet_revenue.html" %}
+        </div>
+        {% include "partials/_modelling_workspace_context_revenue.html" %}
+      </div>
+    </section>
   </div>
 
   <!-- ----------------------------------------------- OPEX -- -->
   <div class="tab-panel" id="panel-opex">
-    {% include "partials/sheet_opex_detail.html" %}
+    <section class="fo-modelling-workspace" data-fo-mod-kind="opex">
+      {% set _title = "OPEX" %}
+      {% set _description = "Operating expenditure schedule, inflation, escalation, and unit OPEX." %}
+      {% include "partials/_modelling_workspace_header.html" %}
+      <div class="fo-modelling-workspace__layout">
+        {% set _kind = "opex" %}
+        {% set _nav_title = "OPEX" %}
+        {% set _nav_items = [
+          {"label":"Fixed OPEX"},
+          {"label":"Variable OPEX"},
+          {"label":"Maintenance"},
+          {"label":"Insurance"},
+          {"label":"Management Fees"},
+          {"label":"Other Costs"},
+        ] %}
+        {% include "partials/_modelling_workspace_nav.html" %}
+        <div class="fo-modelling-workspace__content">
+          {% include "partials/sheet_opex_detail.html" %}
+        </div>
+        {% include "partials/_modelling_workspace_context_opex.html" %}
+      </div>
+    </section>
   </div>
 
   <!-- ----------------------------------------------- CAPEX -- -->
@@ -709,13 +750,54 @@
     tab.
   -->
   <div class="tab-panel" id="panel-capex">
-    {% include "partials/sheet_capex.html" %}
+    <section class="fo-modelling-workspace" data-fo-mod-kind="capex">
+      {% set _title = "CAPEX" %}
+      {% set _description = "Capital expenditure categories C.01–C.18 with sub-lines, construction, IDC, and contingency." %}
+      {% include "partials/_modelling_workspace_header.html" %}
+      <div class="fo-modelling-workspace__layout">
+        {% set _kind = "capex" %}
+        {% set _nav_title = "CAPEX" %}
+        {% set _nav_items = [
+          {"label":"Pre-construction"},
+          {"label":"Construction"},
+          {"label":"Equipment"},
+          {"label":"Installation"},
+          {"label":"Contingency"},
+          {"label":"IDC"},
+        ] %}
+        {% include "partials/_modelling_workspace_nav.html" %}
+        <div class="fo-modelling-workspace__content">
+          {% include "partials/sheet_capex.html" %}
+        </div>
+        {% include "partials/_modelling_workspace_context_capex.html" %}
+      </div>
+    </section>
   </div>
 
   <!-- ----------------------------------------------- SENIOR DEBT -- -->
   <div class="tab-panel" id="panel-senior-debt">
-    {% include "partials/shared_runtime_block.html" %}
-    {% include "partials/sheet_senior_debt.html" %}
+    <section class="fo-modelling-workspace" data-fo-mod-kind="senior-debt">
+      {% set _title = "Senior Debt" %}
+      {% set _description = "Debt sizing mode, target DSCR, tenor, margin, and realized gearing." %}
+      {% include "partials/_modelling_workspace_header.html" %}
+      <div class="fo-modelling-workspace__layout">
+        {% set _kind = "senior-debt" %}
+        {% set _nav_title = "Senior Debt" %}
+        {% set _nav_items = [
+          {"label":"Senior Debt Sizing"},
+          {"label":"Pricing"},
+          {"label":"Repayment"},
+          {"label":"Reserves"},
+          {"label":"Fees"},
+        ] %}
+        {% include "partials/_modelling_workspace_nav.html" %}
+        <div class="fo-modelling-workspace__content">
+          {% include "partials/shared_runtime_block.html" %}
+          {% include "partials/sheet_senior_debt.html" %}
+        </div>
+        {% include "partials/_modelling_workspace_context_debt.html" %}
+      </div>
+    </section>
   </div>
 
   <!-- ----------------------------------------------- SHL -- -->
@@ -726,8 +808,28 @@
 
   <!-- ----------------------------------------------- TAX -- -->
   <div class="tab-panel" id="panel-tax">
-    {% include "partials/shared_runtime_block.html" %}
-    {% include "partials/sheet_tax.html" %}
+    <section class="fo-modelling-workspace" data-fo-mod-kind="tax">
+      {% set _title = "Tax" %}
+      {% set _description = "Tax regime, CIT rate, loss carryforward, depreciation, and country template." %}
+      {% include "partials/_modelling_workspace_header.html" %}
+      <div class="fo-modelling-workspace__layout">
+        {% set _kind = "tax" %}
+        {% set _nav_title = "Tax" %}
+        {% set _nav_items = [
+          {"label":"CIT Rate"},
+          {"label":"Loss Carryforward"},
+          {"label":"WHT"},
+          {"label":"Depreciation"},
+          {"label":"Country Template"},
+        ] %}
+        {% include "partials/_modelling_workspace_nav.html" %}
+        <div class="fo-modelling-workspace__content">
+          {% include "partials/shared_runtime_block.html" %}
+          {% include "partials/sheet_tax.html" %}
+        </div>
+        {% include "partials/_modelling_workspace_context_tax.html" %}
+      </div>
+    </section>
   </div>
 
   <!-- ----------------------------------------------- P&L -- -->
@@ -981,3 +1083,10 @@
   </div>
 
 </div><!-- .workspace-content -->
+
+{# ── UI-5: Progressive-enhancement wrapper that turns each
+   `.fc-section-band` group inside the modelling sheets into a
+   `<section id="fo-mod-section-{kind}-{n}">` block. Wires the
+   section-navigator scrollspy. No new static JS file. Fails
+   silently if the script cannot run (legacy markup still renders). #}
+{% include "partials/_modelling_workspace_init.html" %}

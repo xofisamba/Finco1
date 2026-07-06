@@ -23,6 +23,12 @@
      .fo-* namespace; only --fo-* tokens; no edits to existing
      stylesheets. #}
   <link rel="stylesheet" href="/static/workspace.css?v={{ asset_version }}" />
+  {# UI-5: Unified modelling workspace — applies the same workspace
+     pattern (header + section nav + content + context panel) across
+     Revenue, OPEX, CAPEX, Senior Debt, Tax sheets. Same isolated
+     .fo-modelling-workspace* namespace; only --fo-* tokens; no
+     edits to existing stylesheets. #}
+  <link rel="stylesheet" href="/static/modelling-workspace.css?v={{ asset_version }}" />
   <script src="/static/vendor/htmx.min.js"></script>
   {# C1-PR1: Spreadsheet Interaction Layer foundation — registry +
      bootstrap only, no behaviour. See docs/C1_INTERACTION_LAYER_DESIGN.md #}
