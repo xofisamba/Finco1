@@ -5,6 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>{% block title %}Finco One - Project Finance Platform{% endblock %}</title>
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%231a56db'/><text x='50%25' y='55%25' dominant-baseline='middle' text-anchor='middle' font-size='18' font-weight='700' fill='white'>F</text></svg>" />
+  {# UI-1: Design tokens — load BEFORE styles.css so fo-* variables
+     are available to legacy classes (fc-, ps-, scm-, ...). No class
+     renames; additive only. #}
+  <link rel="stylesheet" href="/static/tokens.css?v={{ asset_version }}" />
   <link rel="stylesheet" href="/static/styles.css?v={{ asset_version }}" />
   <script src="/static/vendor/htmx.min.js"></script>
   {# C1-PR1: Spreadsheet Interaction Layer foundation — registry +
