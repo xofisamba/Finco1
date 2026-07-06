@@ -1141,3 +1141,14 @@
    section-navigator scrollspy. No new static JS file. Fails
    silently if the script cannot run (legacy markup still renders). #}
 {% include "partials/_modelling_workspace_init.html" %}
+
+{# ── UI-7: Power User Workflow — Command Palette (⌘K/Ctrl+K),
+   Keyboard Shortcuts overlay (?), Jump-To floating action, and
+   Recently Edited panel. Fails silently if the script cannot
+   run — the page still works without any of this. No new
+   static JS file. #}
+{% include "partials/_power_user_palette.html" %}
+{% include "partials/_power_user_shortcuts.html" %}
+{% include "partials/_power_user_jump.html" %}
+{% include "partials/_power_user_recent.html" %}
+{% include "partials/_power_user_init.html" %}

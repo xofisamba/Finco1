@@ -536,6 +536,7 @@ class TestBaseHtmlAdditiveOnly:
             "/static/workspace.css",
             "/static/modelling-workspace.css",
             "/static/statements-reporting.css",
+            "/static/power-user.css",
         ):
             assert needle in text, (
                 f"base.html must reference {needle} as a stylesheet."
@@ -553,6 +554,7 @@ class TestBaseHtmlAdditiveOnly:
                         "/static/workspace.css",
                         "/static/modelling-workspace.css",
                         "/static/statements-reporting.css",
+                        "/static/power-user.css",
                         '<header class="top-header">'):
             assert not any(needle in line for line in removed_lines), (
                 f"UI-3 must not remove existing line containing "
