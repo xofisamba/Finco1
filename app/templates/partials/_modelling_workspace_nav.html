@@ -10,13 +10,13 @@
     items  — list of dicts: {id, label}
   =======================================================================
 -->
-<aside class="fo-modelling-workspace__nav" aria-label="{{ title }} sections">
+<aside class="fo-modelling-workspace__nav" aria-label="{{ _nav_title }} sections">
   <h2 class="fo-modelling-workspace__nav-title">Sections</h2>
   <ul class="fo-modelling-workspace__nav-list">
-    {% for item in items %}
+    {% for item in _nav_items %}
     <li>
       <a class="fo-modelling-workspace__nav-link"
-         href="#fo-mod-section-{{ kind }}-{{ loop.index }}">
+         href="#fo-mod-section-{{ _kind }}-{{ loop.index }}">
         <span class="fo-modelling-workspace__nav-dot" aria-hidden="true"></span>
         <span class="fo-modelling-workspace__nav-label">{{ item.label }}</span>
       </a>

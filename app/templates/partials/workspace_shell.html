@@ -692,13 +692,20 @@
   <!-- ----------------------------------------------- REVENUE -- -->
   <div class="tab-panel" id="panel-revenue">
     <section class="fo-modelling-workspace" data-fo-mod-kind="revenue">
-      {% with title="Revenue" description="Tariff structure, merchant exposure, CO2 / certificates, and Y1 revenue summary." %}
-        {% include "partials/_modelling_workspace_header.html" %}
-      {% endwith %}
+      {% set _title = "Revenue" %}
+      {% set _description = "Tariff structure, merchant exposure, CO2 / certificates, and Y1 revenue summary." %}
+      {% include "partials/_modelling_workspace_header.html" %}
       <div class="fo-modelling-workspace__layout">
-        {% with kind="revenue", title="Revenue", items=[{"id":"1","label":"Production"},{"id":"2","label":"PPA / Tariff"},{"id":"3","label":"Market / Merchant"},{"id":"4","label":"CO2 / Certificates"},{"id":"5","label":"Revenue Summary"}] %}
-          {% include "partials/_modelling_workspace_nav.html" %}
-        {% endwith %}
+        {% set _kind = "revenue" %}
+        {% set _nav_title = "Revenue" %}
+        {% set _nav_items = [
+          {"label":"Production"},
+          {"label":"PPA / Tariff"},
+          {"label":"Market / Merchant"},
+          {"label":"CO2 / Certificates"},
+          {"label":"Revenue Summary"},
+        ] %}
+        {% include "partials/_modelling_workspace_nav.html" %}
         <div class="fo-modelling-workspace__content">
           {% include "partials/sheet_revenue.html" %}
         </div>
@@ -710,13 +717,21 @@
   <!-- ----------------------------------------------- OPEX -- -->
   <div class="tab-panel" id="panel-opex">
     <section class="fo-modelling-workspace" data-fo-mod-kind="opex">
-      {% with title="OPEX" description="Operating expenditure schedule, inflation, escalation, and unit OPEX." %}
-        {% include "partials/_modelling_workspace_header.html" %}
-      {% endwith %}
+      {% set _title = "OPEX" %}
+      {% set _description = "Operating expenditure schedule, inflation, escalation, and unit OPEX." %}
+      {% include "partials/_modelling_workspace_header.html" %}
       <div class="fo-modelling-workspace__layout">
-        {% with kind="opex", title="OPEX", items=[{"id":"1","label":"Fixed OPEX"},{"id":"2","label":"Variable OPEX"},{"id":"3","label":"Maintenance"},{"id":"4","label":"Insurance"},{"id":"5","label":"Management Fees"},{"id":"6","label":"Other Costs"}] %}
-          {% include "partials/_modelling_workspace_nav.html" %}
-        {% endwith %}
+        {% set _kind = "opex" %}
+        {% set _nav_title = "OPEX" %}
+        {% set _nav_items = [
+          {"label":"Fixed OPEX"},
+          {"label":"Variable OPEX"},
+          {"label":"Maintenance"},
+          {"label":"Insurance"},
+          {"label":"Management Fees"},
+          {"label":"Other Costs"},
+        ] %}
+        {% include "partials/_modelling_workspace_nav.html" %}
         <div class="fo-modelling-workspace__content">
           {% include "partials/sheet_opex_detail.html" %}
         </div>
@@ -736,13 +751,21 @@
   -->
   <div class="tab-panel" id="panel-capex">
     <section class="fo-modelling-workspace" data-fo-mod-kind="capex">
-      {% with title="CAPEX" description="Capital expenditure categories C.01–C.18 with sub-lines, construction, IDC, and contingency." %}
-        {% include "partials/_modelling_workspace_header.html" %}
-      {% endwith %}
+      {% set _title = "CAPEX" %}
+      {% set _description = "Capital expenditure categories C.01–C.18 with sub-lines, construction, IDC, and contingency." %}
+      {% include "partials/_modelling_workspace_header.html" %}
       <div class="fo-modelling-workspace__layout">
-        {% with kind="capex", title="CAPEX", items=[{"id":"1","label":"Pre-construction"},{"id":"2","label":"Construction"},{"id":"3","label":"Equipment"},{"id":"4","label":"Installation"},{"id":"5","label":"Contingency"},{"id":"6","label":"IDC"}] %}
-          {% include "partials/_modelling_workspace_nav.html" %}
-        {% endwith %}
+        {% set _kind = "capex" %}
+        {% set _nav_title = "CAPEX" %}
+        {% set _nav_items = [
+          {"label":"Pre-construction"},
+          {"label":"Construction"},
+          {"label":"Equipment"},
+          {"label":"Installation"},
+          {"label":"Contingency"},
+          {"label":"IDC"},
+        ] %}
+        {% include "partials/_modelling_workspace_nav.html" %}
         <div class="fo-modelling-workspace__content">
           {% include "partials/sheet_capex.html" %}
         </div>
@@ -754,13 +777,20 @@
   <!-- ----------------------------------------------- SENIOR DEBT -- -->
   <div class="tab-panel" id="panel-senior-debt">
     <section class="fo-modelling-workspace" data-fo-mod-kind="senior-debt">
-      {% with title="Senior Debt" description="Debt sizing mode, target DSCR, tenor, margin, and realized gearing." %}
-        {% include "partials/_modelling_workspace_header.html" %}
-      {% endwith %}
+      {% set _title = "Senior Debt" %}
+      {% set _description = "Debt sizing mode, target DSCR, tenor, margin, and realized gearing." %}
+      {% include "partials/_modelling_workspace_header.html" %}
       <div class="fo-modelling-workspace__layout">
-        {% with kind="senior-debt", title="Senior Debt", items=[{"id":"1","label":"Senior Debt Sizing"},{"id":"2","label":"Pricing"},{"id":"3","label":"Repayment"},{"id":"4","label":"Reserves"},{"id":"5","label":"Fees"}] %}
-          {% include "partials/_modelling_workspace_nav.html" %}
-        {% endwith %}
+        {% set _kind = "senior-debt" %}
+        {% set _nav_title = "Senior Debt" %}
+        {% set _nav_items = [
+          {"label":"Senior Debt Sizing"},
+          {"label":"Pricing"},
+          {"label":"Repayment"},
+          {"label":"Reserves"},
+          {"label":"Fees"},
+        ] %}
+        {% include "partials/_modelling_workspace_nav.html" %}
         <div class="fo-modelling-workspace__content">
           {% include "partials/shared_runtime_block.html" %}
           {% include "partials/sheet_senior_debt.html" %}
@@ -779,13 +809,20 @@
   <!-- ----------------------------------------------- TAX -- -->
   <div class="tab-panel" id="panel-tax">
     <section class="fo-modelling-workspace" data-fo-mod-kind="tax">
-      {% with title="Tax" description="Tax regime, CIT rate, loss carryforward, depreciation, and country template." %}
-        {% include "partials/_modelling_workspace_header.html" %}
-      {% endwith %}
+      {% set _title = "Tax" %}
+      {% set _description = "Tax regime, CIT rate, loss carryforward, depreciation, and country template." %}
+      {% include "partials/_modelling_workspace_header.html" %}
       <div class="fo-modelling-workspace__layout">
-        {% with kind="tax", title="Tax", items=[{"id":"1","label":"CIT Rate"},{"id":"2","label":"Loss Carryforward"},{"id":"3","label":"WHT"},{"id":"4","label":"Depreciation"},{"id":"5","label":"Country Template"}] %}
-          {% include "partials/_modelling_workspace_nav.html" %}
-        {% endwith %}
+        {% set _kind = "tax" %}
+        {% set _nav_title = "Tax" %}
+        {% set _nav_items = [
+          {"label":"CIT Rate"},
+          {"label":"Loss Carryforward"},
+          {"label":"WHT"},
+          {"label":"Depreciation"},
+          {"label":"Country Template"},
+        ] %}
+        {% include "partials/_modelling_workspace_nav.html" %}
         <div class="fo-modelling-workspace__content">
           {% include "partials/shared_runtime_block.html" %}
           {% include "partials/sheet_tax.html" %}

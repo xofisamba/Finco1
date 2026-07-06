@@ -9,17 +9,17 @@
 -->
 <header class="fo-modelling-workspace__header">
   <div class="fo-modelling-workspace__title-row">
-    <h1 class="fo-modelling-workspace__title">{{ title }}</h1>
+    <h1 class="fo-modelling-workspace__title">{{ _title }}</h1>
     <div class="fo-modelling-workspace__status">
       {% if current_context and current_context.dirty %}
         <span class="fo-modelling-workspace__pill fo-modelling-workspace__pill--dirty"
-              data-fo-dirty-indicator="{{ kind }}">
+              data-fo-dirty-indicator="{{ _kind|default('modelling') }}">
           <span class="fo-modelling-workspace__pill-dot" aria-hidden="true"></span>
           Unsaved
         </span>
       {% else %}
         <span class="fo-modelling-workspace__pill fo-modelling-workspace__pill--saved"
-              data-fo-saved-indicator="{{ kind }}">
+              data-fo-saved-indicator="{{ _kind|default('modelling') }}">
           <span class="fo-modelling-workspace__pill-dot" aria-hidden="true"></span>
           Saved
         </span>
@@ -47,7 +47,7 @@
       {% endif %}
     </div>
   </div>
-  {% if description %}
-  <p class="fo-modelling-workspace__description">{{ description }}</p>
+  {% if _description %}
+  <p class="fo-modelling-workspace__description">{{ _description }}</p>
   {% endif %}
 </header>
