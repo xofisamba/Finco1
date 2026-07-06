@@ -106,7 +106,11 @@ PARITY_CORE_FILES: dict[str, str] = {
         # Stack AC: TUHO and Oborovo factories set frozen_senior_ds_fixture_path.
         # No parity-sensitive values changed.
         # Previous hash (Stack Z/AB): e9d184119961f58ef55ed480391b98c9b8ec8396687a3b94ec5546792efbbddc
-        "e0000033641902aa8948e3871c5f8d0aad8b7d46e612b2a9b1b5c337b035a914"
+        # V4-7 (BESS Complete Workflow): create_default_bess_project fixed to attach BessParams
+        # (technical.bess was None, causing BESS service to always return None). No parity-
+        # sensitive values changed — TUHO/Oborovo factories untouched; golden targets intact.
+        # Previous hash (pre-V4-7): e0000033641902aa8948e3871c5f8d0aad8b7d46e612b2a9b1b5c337b035a914
+        "b78cf2e8a9cf9dc134af557ca4a4ccb76cd91c6075a473502ffc613dace00754"
     ),
     "reports/phase7_tuho_senior_debt_sizing_extraction.csv": (
         "80e79977f039310158b084e2613ae17251a86916b970d4fda1985467bbde3442"
