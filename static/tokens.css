@@ -107,7 +107,11 @@
   --fo-row-h-comfort: 34px;    /* density toggle target                    */
   --fo-chrome-brand-h: 28px;   /* brand bar                                */
   --fo-chrome-cmd-h:   44px;   /* command bar                              */
+  --fo-chrome-kpi-h:   56px;   /* KPI strip                                */
   --fo-chrome-tabs-h:  36px;   /* sheet tab strip                          */
+  /* Total stacked chrome height — all sticky content below chrome must use
+     top: var(--fo-sticky-base) to avoid sliding under the chrome block.    */
+  --fo-sticky-base: calc(var(--fo-chrome-brand-h) + var(--fo-chrome-cmd-h) + var(--fo-chrome-kpi-h) + var(--fo-chrome-tabs-h));
   --fo-bp-lg: 1280px;          /* desktop floor                            */
   --fo-bp-xl: 1600px;          /* wide layout                              */
 

@@ -46,6 +46,8 @@
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: thin;
+  /* UI-8A: contain the tab-load indicator pseudo-element */
+  position: relative;
 }
 
 /* Logical group separator (vertical hairline). */
