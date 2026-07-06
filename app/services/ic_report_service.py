@@ -405,6 +405,83 @@ def export_report_xlsx(
         _num(ws5, r_idx, 4, getattr(p, "tax_keur", None), "#,##0.0")
         _num(ws5, r_idx, 5, getattr(p, "r100_carryforward_keur", None), "#,##0.0")
 
+    # ── Sheet 6: P&L Statement ──
+    from domain.financial_statements import assemble_financial_statements
+    try:
+        fs = assemble_financial_statements(result)
+        ws6 = wb.create_sheet("P&L Statement")
+        ws6.column_dimensions["A"].width = 30
+        for col in ["B", "C", "D", "E", "F"]:
+            ws6.column_dimensions[col].width = 16
+        pnl_periods = list(fs.pnl.periods)
+        _hdr_row(ws6, 1, ["Metric"] + [str(p.date)[:7] for p in pnl_periods[:20]])
+        pnl_rows = [
+            ("Revenue (kEUR)",          [p.revenues_keur for p in pnl_periods]),
+            ("OPEX (kEUR)",             [p.operating_expenses_keur for p in pnl_periods]),
+            ("Depreciation (kEUR)",     [p.depreciation_keur for p in pnl_periods]),
+            ("EBIT (kEUR)",             [p.ebit_keur for p in pnl_periods]),
+            ("Senior Interest (kEUR)",  [p.senior_interest_expense_keur for p in pnl_periods]),
+            ("SHL Interest (kEUR)",     [p.shl_interest_expense_keur for p in pnl_periods]),
+            ("EBT (kEUR)",              [p.earnings_before_tax_keur for p in pnl_periods]),
+            ("Taxable Income (kEUR)",   [p.taxable_income_before_losses_keur for p in pnl_periods]),
+            ("Net Income (kEUR)",       [p.net_income_keur for p in pnl_periods]),
+            ("Net Dividends (kEUR)",    [p.net_dividends_keur for p in pnl_periods]),
+        ]
+        for r_idx, (label, vals) in enumerate(pnl_rows, 2):
+            ws6.cell(r_idx, 1, label)
+            for c_idx, v in enumerate(vals[:20], 2):
+                _num(ws6, r_idx, c_idx, v)
+
+        # ── Sheet 7: Balance Sheet ──
+        ws7 = wb.create_sheet("Balance Sheet")
+        ws7.column_dimensions["A"].width = 30
+        for col in ["B", "C", "D", "E", "F"]:
+            ws7.column_dimensions[col].width = 16
+        bs_periods = list(fs.balance_sheet.periods)
+        _hdr_row(ws7, 1, ["Metric"] + [str(p.date)[:7] for p in bs_periods[:20]])
+        bs_rows = [
+            ("Gross Fixed Assets (kEUR)",        [p.gross_fixed_assets_keur for p in bs_periods]),
+            ("Accumulated Depreciation (kEUR)",  [p.accumulated_depreciation_keur for p in bs_periods]),
+            ("Net Fixed Assets (kEUR)",          [p.net_fixed_assets_keur for p in bs_periods]),
+            ("Cash (kEUR)",                      [p.cash_keur for p in bs_periods]),
+            ("Total Assets (kEUR)",              [p.total_assets_keur for p in bs_periods]),
+            ("Senior Debt Balance (kEUR)",       [p.senior_balance_keur for p in bs_periods]),
+            ("SHL Balance (kEUR)",               [p.shl_balance_keur for p in bs_periods]),
+            ("Retained Earnings (kEUR)",         [p.retained_earnings_keur for p in bs_periods]),
+            ("Total Liabilities + Equity (kEUR)",[p.total_liabilities_equity_keur for p in bs_periods]),
+            ("Balance Check (kEUR)",             [p.balance_check_keur for p in bs_periods]),
+        ]
+        for r_idx, (label, vals) in enumerate(bs_rows, 2):
+            ws7.cell(r_idx, 1, label)
+            for c_idx, v in enumerate(vals[:20], 2):
+                _num(ws7, r_idx, c_idx, v)
+
+        # ── Sheet 8: Cash Flow Statement ──
+        ws8 = wb.create_sheet("Cash Flow Statement")
+        ws8.column_dimensions["A"].width = 30
+        for col in ["B", "C", "D", "E", "F"]:
+            ws8.column_dimensions[col].width = 16
+        cf_periods = list(fs.pf_cash_waterfall.periods)
+        _hdr_row(ws8, 1, ["Metric"] + [str(p.date)[:7] for p in cf_periods[:20]])
+        cf_rows = [
+            ("Revenue Cash (kEUR)",       [p.revenue_cash_keur for p in cf_periods]),
+            ("OPEX Cash (kEUR)",          [p.opex_cash_keur for p in cf_periods]),
+            ("EBITDA Cash (kEUR)",        [p.ebitda_cash_keur for p in cf_periods]),
+            ("Cash Tax (kEUR)",           [p.cash_tax_keur for p in cf_periods]),
+            ("FCF Banks (kEUR)",          [p.fcf_banks_keur for p in cf_periods]),
+            ("Senior Debt Service (kEUR)",[p.senior_total_ds_keur for p in cf_periods]),
+            ("FCF for SHL (kEUR)",        [p.fcf_for_shl_keur for p in cf_periods]),
+            ("SHL Cash Interest (kEUR)",  [p.shl_cash_interest_keur for p in cf_periods]),
+            ("SHL Principal (kEUR)",      [p.shl_principal_keur for p in cf_periods]),
+            ("Net Dividends (kEUR)",      [p.net_dividends_keur for p in cf_periods]),
+        ]
+        for r_idx, (label, vals) in enumerate(cf_rows, 2):
+            ws8.cell(r_idx, 1, label)
+            for c_idx, v in enumerate(vals[:20], 2):
+                _num(ws8, r_idx, c_idx, v)
+    except Exception:
+        pass  # FS assembly failure must not break the existing sheets
+
     buf = io.BytesIO()
     wb.save(buf)
     return buf.getvalue()

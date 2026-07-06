@@ -410,6 +410,16 @@
         <div class="rs-kpi-value {% if runtime_summary.total_distributions_keur == 'NOT_AVAILABLE' %}rs-kpi-missing{% endif %}"
              id="kpi-distributions">{{ runtime_summary.total_distributions_keur }}</div>
       </div>
+      <div class="rs-kpi-card">
+        <div class="rs-kpi-label">Total Tax</div>
+        <div class="rs-kpi-value {% if runtime_summary.total_tax_keur == 'NOT_AVAILABLE' %}rs-kpi-missing{% endif %}"
+             id="kpi-total-tax">{{ runtime_summary.total_tax_keur }}</div>
+      </div>
+      <div class="rs-kpi-card">
+        <div class="rs-kpi-label">Effective Tax Rate</div>
+        <div class="rs-kpi-value {% if runtime_summary.effective_tax_rate_pct == 'NOT_AVAILABLE' %}rs-kpi-missing{% endif %}"
+             id="kpi-effective-tax-rate">{{ runtime_summary.effective_tax_rate_pct }}</div>
+      </div>
     </div></div>
     </details>
 
