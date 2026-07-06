@@ -10,29 +10,29 @@
 -->
 {% set _notes = [] %}
 
-{% if project_ctx.country_iso is defined %}
+{% if project_ctx.country_iso is defined and project_ctx.country_iso %}
   {% set _ = _notes.append({
     "level": "ok",
     "title": "Tax policy",
-    "body": "Corporate income tax rate applied: " ~ ("{0:,.1f}".format(project_ctx.cit_rate_pct|default(0)) ~ "%") ~ " (" ~ project_ctx.country_iso ~ " template).",
+    "body": "Corporate income tax rate applied: " ~ ("{0:,.1f}".format(project_ctx.cit_rate_pct or 0) ~ "%") ~ " (" ~ project_ctx.country_iso ~ " template).",
     "disclosure": "CIT template applied via app/ui/project_context.py:project_ctx.",
   }) %}
 {% endif %}
 
-{% if project_ctx.loss_carryforward_years is defined %}
+{% if project_ctx.loss_carryforward_years is defined and project_ctx.loss_carryforward_years is not none %}
   {% set _ = _notes.append({
     "level": "info",
     "title": "Loss carry-forward policy",
-    "body": "Tax losses may be carried forward for up to " ~ project_ctx.loss_carryforward_years ~ " years (per country template).",
+    "body": "Tax losses may be carried forward for up to " ~ (project_ctx.loss_carryforward_years or 0) ~ " years (per country template).",
     "disclosure": "loss_carryforward_years is sourced from the country tax template.",
   }) %}
 {% endif %}
 
-{% if project_ctx.senior_debt_keur is defined and project_ctx.senior_tenor_years is defined %}
+{% if project_ctx.senior_debt_keur is defined and project_ctx.senior_debt_keur is not none %}
   {% set _ = _notes.append({
     "level": "ok",
     "title": "Debt reconciliation",
-    "body": "Senior Debt " ~ ("{0:,.0f}".format(project_ctx.senior_debt_keur|default(0)) ~ " kEUR") ~ " · Tenor " ~ project_ctx.senior_tenor_years ~ " years · Target DSCR " ~ ("{0:,.2f}".format(project_ctx.target_dscr|default(0)) ~ "x") ~ ".",
+    "body": "Senior Debt " ~ ("{0:,.0f}".format(project_ctx.senior_debt_keur or 0) ~ " kEUR") ~ " · Tenor " ~ (project_ctx.senior_tenor_years or 0) ~ " years · Target DSCR " ~ ("{0:,.2f}".format(project_ctx.target_dscr or 0) ~ "x") ~ ".",
     "disclosure": "Reconciles with the debt sizing + DSCR driver in app/excel_export.py.",
   }) %}
 {% endif %}

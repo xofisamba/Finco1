@@ -844,10 +844,10 @@
     {% set _kind = "pl" %}
     {% set _nav_items = [{"label":"Revenue"},{"label":"Operating Costs"},{"label":"EBITDA"},{"label":"Depreciation"},{"label":"EBIT"},{"label":"Interest"},{"label":"Tax"},{"label":"Net Income"}] %}
     {% set _context_items = [
-      {"label":"Revenue", "value":"{:,.0f}".format(project_ctx.ppa_tariff_eur_mwh|default(0)) ~ " EUR/MWh", "hint":"PPA tariff (Y1)"},
-      {"label":"Capacity", "value":"{:,.0f}".format(project_ctx.capacity_mw|default(0)) ~ " MW", "hint":"Installed capacity"},
-      {"label":"Lifetime", "value":"{:,.0f}".format(project_ctx.horizon_years|default(0)) ~ " years", "hint":"Project horizon"},
-      {"label":"CIT rate", "value":"{:,.1f}".format(project_ctx.cit_rate_pct|default(0)) ~ "%", "hint":"Corporate income tax"},
+      {"label":"Revenue", "value":"{:,.0f}".format(project_ctx.ppa_tariff_eur_mwh or 0) ~ " EUR/MWh", "hint":"PPA tariff (Y1)"},
+      {"label":"Capacity", "value":"{:,.0f}".format(project_ctx.capacity_mw or 0) ~ " MW", "hint":"Installed capacity"},
+      {"label":"Lifetime", "value":"{:,.0f}".format(project_ctx.horizon_years or 0) ~ " years", "hint":"Project horizon"},
+      {"label":"CIT rate", "value":"{:,.1f}".format(project_ctx.cit_rate_pct or 0) ~ "%", "hint":"Corporate income tax"},
     ] %}
     {% include "partials/shared_runtime_block.html" %}
     {% include "partials/_statements_workspace_selector.html" %}
@@ -866,10 +866,10 @@
     {% set _kind = "cf" %}
     {% set _nav_items = [{"label":"Operating Activities"},{"label":"Investing Activities"},{"label":"Financing Activities"},{"label":"Net Change in Cash"},{"label":"Opening Balance"},{"label":"Closing Balance"}] %}
     {% set _context_items = [
-      {"label":"Senior Debt", "value":"{:,.0f}".format(project_ctx.senior_debt_keur|default(0)) ~ " kEUR", "hint":"Senior debt outstanding"},
-      {"label":"Tenor", "value":"{:,.0f}".format(project_ctx.senior_tenor_years|default(0)) ~ " years", "hint":"Repayment period"},
-      {"label":"CAPEX", "value":"{:,.0f}".format(project_ctx.total_capex_keur|default(project_ctx.hard_capex_total_keur|default(0))) ~ " kEUR", "hint":"Total CAPEX"},
-      {"label":"OPEX Y1", "value":"{:,.0f}".format(project_ctx.opex_y1_total_keur|default(0)) ~ " kEUR", "hint":"Year-1 OPEX"},
+      {"label":"Senior Debt", "value":"{:,.0f}".format(project_ctx.senior_debt_keur or 0) ~ " kEUR", "hint":"Senior debt outstanding"},
+      {"label":"Tenor", "value":"{:,.0f}".format(project_ctx.senior_tenor_years or 0) ~ " years", "hint":"Repayment period"},
+      {"label":"CAPEX", "value":"{:,.0f}".format(project_ctx.total_capex_keur or project_ctx.hard_capex_total_keur or 0) ~ " kEUR", "hint":"Total CAPEX"},
+      {"label":"OPEX Y1", "value":"{:,.0f}".format(project_ctx.opex_y1_total_keur or 0) ~ " kEUR", "hint":"Year-1 OPEX"},
     ] %}
     {% include "partials/shared_runtime_block.html" %}
     {% include "partials/_statements_workspace_selector.html" %}
@@ -888,8 +888,8 @@
     {% set _kind = "bs" %}
     {% set _nav_items = [{"label":"Assets"},{"label":"Liabilities"},{"label":"Equity"},{"label":"Total Assets"},{"label":"Total Liab + Equity"},{"label":"Balance Check"}] %}
     {% set _context_items = [
-      {"label":"CIT", "value":"{:,.1f}".format(project_ctx.cit_rate_pct|default(0)) ~ "%", "hint":"Corporate income tax rate"},
-      {"label":"Loss CF", "value":"{:,.0f}".format(project_ctx.loss_carryforward_years|default(0)) ~ " years", "hint":"Loss carry-forward"},
+      {"label":"CIT", "value":"{:,.1f}".format(project_ctx.cit_rate_pct or 0) ~ "%", "hint":"Corporate income tax rate"},
+      {"label":"Loss CF", "value":"{:,.0f}".format(project_ctx.loss_carryforward_years or 0) ~ " years", "hint":"Loss carry-forward"},
       {"label":"Country", "value":project_ctx.country_iso|default("—"), "hint":"ISO country code"},
       {"label":"Currency", "value":project_ctx.currency|default("EUR"), "hint":"Reporting currency"},
     ] %}
