@@ -14,6 +14,13 @@ class BessParams:
     ancillary_revenue_eur_mw_year: float = 25000.0
     capacity_revenue_eur_mw_year: float = 0.0
     augmentation_capex_keur: float = 0.0
+    # V4-7 extended fields
+    frequency_regulation_eur_mw_year: float = 0.0
+    reserve_market_eur_mw_year: float = 0.0
+    fixed_contracted_eur_mw_year: float = 0.0
+    depth_of_discharge: float = 0.85
+    cycle_life: int = 4000
+    replacement_year: int = 0
 
 
 def bess_discharged_mwh(params: BessParams, year_index: int, day_fraction: float = 1.0) -> float:
@@ -52,6 +59,31 @@ def bess_augmentation_cost_keur(params: BessParams, year_index: int) -> float:
     return params.augmentation_capex_keur / 10
 
 
+def bess_frequency_regulation_revenue_keur(params: BessParams, day_fraction: float = 1.0) -> float:
+    """Frequency regulation revenue in kEUR for a period."""
+    return params.power_mw * params.frequency_regulation_eur_mw_year * day_fraction / 1000
+
+
+def bess_reserve_market_revenue_keur(params: BessParams, day_fraction: float = 1.0) -> float:
+    """Reserve market revenue in kEUR for a period."""
+    return params.power_mw * params.reserve_market_eur_mw_year * day_fraction / 1000
+
+
+def bess_fixed_contracted_revenue_keur(params: BessParams, day_fraction: float = 1.0) -> float:
+    """Fixed contracted revenue in kEUR for a period."""
+    return params.power_mw * params.fixed_contracted_eur_mw_year * day_fraction / 1000
+
+
+def bess_state_of_health(params: BessParams, year_index: int) -> float:
+    """State of health (SoH) as a fraction at end of year_index."""
+    return max(0.0, (1 - params.annual_degradation) ** max(year_index - 1, 0))
+
+
+def bess_effective_energy_mwh(params: BessParams, year_index: int) -> float:
+    """Effective energy capacity in MWh after degradation."""
+    return params.energy_mwh * bess_state_of_health(params, year_index)
+
+
 @dataclass(frozen=True)
 class BessRevenueBreakdown:
     """Period-level BESS revenue breakdown."""
@@ -59,9 +91,13 @@ class BessRevenueBreakdown:
     arbitrage_revenue_keur: float
     capacity_revenue_keur: float
     ancillary_revenue_keur: float
+    frequency_regulation_keur: float
+    reserve_market_keur: float
+    fixed_contracted_keur: float
     augmentation_cost_keur: float
-    total_revenue_keur: float  # arbitrage + capacity + ancillary (before augmentation)
+    total_revenue_keur: float  # all revenue streams before augmentation
     net_revenue_keur: float   # after augmentation cost deduction
+    state_of_health: float
 
 
 def bess_revenue_breakdown(params: BessParams, year_index: int, day_fraction: float = 1.0) -> BessRevenueBreakdown:
@@ -70,17 +106,25 @@ def bess_revenue_breakdown(params: BessParams, year_index: int, day_fraction: fl
     arbitrage = bess_arbitrage_revenue_keur(params, year_index, day_fraction)
     capacity = bess_capacity_revenue_keur(params, day_fraction)
     ancillary = bess_ancillary_revenue_keur(params, day_fraction)
+    freq_reg = bess_frequency_regulation_revenue_keur(params, day_fraction)
+    reserve = bess_reserve_market_revenue_keur(params, day_fraction)
+    fixed = bess_fixed_contracted_revenue_keur(params, day_fraction)
     augmentation = bess_augmentation_cost_keur(params, year_index)
-    total = arbitrage + capacity + ancillary
+    soh = bess_state_of_health(params, year_index)
+    total = arbitrage + capacity + ancillary + freq_reg + reserve + fixed
     net = total - augmentation
     return BessRevenueBreakdown(
         discharged_mwh=discharged,
         arbitrage_revenue_keur=arbitrage,
         capacity_revenue_keur=capacity,
         ancillary_revenue_keur=ancillary,
+        frequency_regulation_keur=freq_reg,
+        reserve_market_keur=reserve,
+        fixed_contracted_keur=fixed,
         augmentation_cost_keur=augmentation,
         total_revenue_keur=total,
         net_revenue_keur=net,
+        state_of_health=soh,
     )
 
 
@@ -99,7 +143,12 @@ __all__ = [
     "bess_arbitrage_revenue_keur",
     "bess_capacity_revenue_keur",
     "bess_ancillary_revenue_keur",
+    "bess_frequency_regulation_revenue_keur",
+    "bess_reserve_market_revenue_keur",
+    "bess_fixed_contracted_revenue_keur",
     "bess_augmentation_cost_keur",
+    "bess_state_of_health",
+    "bess_effective_energy_mwh",
     "bess_revenue_breakdown",
     "annual_bess_revenue",
 ]

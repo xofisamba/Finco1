@@ -650,10 +650,23 @@ def create_default_bess_project(
         country_iso="DE", financial_close=date(2030, 1, 1),
         construction_months=construction_months, cod_date=date(2031, 1, 1),
         horizon_years=horizon_years, period_frequency=PeriodFrequency.SEMESTRIAL)
+    bess_params = BessParams(
+        power_mw=power_mw,
+        energy_mwh=energy_mwh,
+        cycles_per_year=cycles_per_year,
+        round_trip_efficiency=0.88,
+        availability=0.98,
+        annual_degradation=0.02,
+        arbitrage_spread_eur_mwh=40.0,
+        ancillary_revenue_eur_mw_year=25000.0,
+        capacity_revenue_eur_mw_year=0.0,
+        augmentation_capex_keur=0.0,
+    )
     technical = TechnicalParams(
         capacity_mw=power_mw, yield_scenario="P_50",
         operating_hours_p50=0.0, operating_hours_p90_10y=0.0,
-        pv_degradation=0.0, bess_enabled=True, bess_degradation=0.02)
+        pv_degradation=0.0, bess_enabled=True, bess_degradation=0.02,
+        bess=bess_params)
     revenue = RevenueParams(
         ppa_base_tariff=0.0, ppa_term_years=0, ppa_index=0.0,
         market_scenario="Central",

@@ -20,6 +20,12 @@ SHOCK_REGISTRY: dict[str, tuple[str, str]] = {
     "availability": ("Availability", "%"),
     "interest_rate": ("Interest Rate", "bps"),
     "tax_rate": ("Tax Rate", "%"),
+    # V4-7 BESS shocks
+    "bess_arbitrage_spread": ("BESS Arbitrage Spread", "%"),
+    "bess_cycles": ("BESS Cycles/Year", "%"),
+    "bess_rte": ("BESS Round-Trip Efficiency", "%"),
+    "bess_ancillary_price": ("BESS Ancillary Price", "%"),
+    "bess_capacity_price": ("BESS Capacity Price", "%"),
 }
 
 # Default shock levels (percentage points applied as multipliers for % shocks)
@@ -136,6 +142,26 @@ def _apply_shock(proj: Any, shock_type: str, level_pct: float) -> Any:
             proj,
             tax=replace(proj.tax, corporate_rate=new_rate),
         )
+
+    elif shock_type in ("bess_arbitrage_spread", "bess_cycles", "bess_rte",
+                        "bess_ancillary_price", "bess_capacity_price"):
+        bess = getattr(proj.technical, "bess", None)
+        if bess is None:
+            return proj
+        if shock_type == "bess_arbitrage_spread":
+            new_bess = replace(bess, arbitrage_spread_eur_mwh=bess.arbitrage_spread_eur_mwh * factor)
+        elif shock_type == "bess_cycles":
+            new_bess = replace(bess, cycles_per_year=bess.cycles_per_year * factor)
+        elif shock_type == "bess_rte":
+            new_rte = min(1.0, max(0.0, bess.round_trip_efficiency * factor))
+            new_bess = replace(bess, round_trip_efficiency=new_rte)
+        elif shock_type == "bess_ancillary_price":
+            new_bess = replace(bess, ancillary_revenue_eur_mw_year=bess.ancillary_revenue_eur_mw_year * factor)
+        elif shock_type == "bess_capacity_price":
+            new_bess = replace(bess, capacity_revenue_eur_mw_year=bess.capacity_revenue_eur_mw_year * factor)
+        else:
+            new_bess = bess
+        return replace(proj, technical=replace(proj.technical, bess=new_bess))
 
     return proj
 
