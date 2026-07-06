@@ -95,15 +95,10 @@ body {
 }
 
 /* ── Top Header ─────────────────────────────────────────────────────────── */
+/* UI-8A: hidden — .fo-chrome (sticky, 164 px) replaces the fixed header.
+   The markup is preserved in base.html; only visibility is removed here. */
 .top-header {
-  position: fixed;
-  top: 0; left: 0; right: 0;
-  height: var(--header-h);
-  background: var(--surface);
-  border-bottom: 1px solid var(--border);
-  z-index: 200;
-  display: flex;
-  align-items: center;
+  display: none;
 }
 
 .header-inner {
@@ -193,8 +188,7 @@ body {
 .app-layout {
   display: grid;
   grid-template-columns: var(--sidebar-w) minmax(0, 1fr);  /* col1=sidebar (240px), col2=workspace */
-  /* offset for fixed header only */
-  padding-top: var(--header-h);
+  /* UI-8A: padding-top removed — .fo-chrome is sticky in flow, no fixed header to clear */
   min-height: 100vh;
 }
 
@@ -1433,13 +1427,13 @@ body {
   background: var(--surface);
 }
 
-/* ── Project Sidebar (workspace left panel — sticky, below header) ───────── */
+/* ── Project Sidebar (workspace left panel — sticky, below chrome) ───────── */
 .project-sidebar {
   position: sticky;
   left: 0;
-  top: var(--header-h);           /* sits below fixed header */
+  top: var(--fo-sticky-base);     /* sits below stacked .fo-chrome (164 px) */
   width: var(--sidebar-w);
-  height: calc(100vh - var(--header-h));
+  height: calc(100vh - var(--fo-sticky-base));
   background: var(--sidebar-bg);
   border-right: 1px solid var(--sidebar-border);
   box-shadow: var(--shadow-sidebar);
@@ -8190,9 +8184,10 @@ tr.lig-row--data-tmp td.fc-cell--tmp-remove {
 }
 
 /* ── Phase P2-min-4: Navigation Compression ─────────────────────────── */
+/* UI-8A: hidden — .fo-sheets tab strip in .fo-chrome is the sole nav. */
 
 .nav-compression {
-  display: flex;
+  display: none;
   align-items: center;
   gap: 0.25rem;
   padding: 0.5rem 1rem;

@@ -411,6 +411,35 @@
   color: var(--fo-rag-amber);
 }
 
+/* UI-8A: no-runtime state — single centred message instead of silent dashes */
+.fo-kpi--no-run {
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  border-right: none;
+}
+
+/* UI-8A: tab-load indicator — thin progress bar at bottom of chrome */
+.fo-tab-indicator {
+  display: none;
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--fo-brand);
+  animation: fo-tab-progress 1.2s ease-in-out infinite;
+  z-index: 10;
+}
+.fo-tab-indicator.htmx-request {
+  display: block;
+}
+@keyframes fo-tab-progress {
+  0%   { transform: scaleX(0);    transform-origin: left; }
+  50%  { transform: scaleX(0.7);  transform-origin: left; }
+  100% { transform: scaleX(1);    transform-origin: left; opacity: 0; }
+}
+
 /* ============================================================================
    4.  SHEET-TAB RESERVE  (36 px)  ── row 4  (placeholder only)
    ========================================================================== */

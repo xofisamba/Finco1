@@ -18,9 +18,18 @@
 {% set _kpis = dashboard_kpis|default({}) %}
 {% set _dirty = dirty|default(false) %}
 
+{# UI-8A: detect whether any runtime value is available — used to show
+   "No runtime — Run (F9)" instead of a row of silent em-dashes. #}
+{% set _has_run = _kpis and
+    _kpis.project_irr is defined and
+    _kpis.project_irr.value not in (None, '', '—', 'n/a') %}
+
 {% set _strip_classes = 'fo-kpi-strip' %}
 {% if _dirty %}
   {% set _strip_classes = _strip_classes + ' fo-kpi-strip--stale' %}
+{% endif %}
+{% if not _has_run %}
+  {% set _strip_classes = _strip_classes + ' fo-kpi-strip--no-run' %}
 {% endif %}
 
 <div class="{{ _strip_classes }}"
@@ -32,6 +41,13 @@
      {%- else %}
      data-kpi-stale="false"
      {%- endif %}>
+
+  {% if not _has_run %}
+  {# No-runtime state: communicate clearly instead of showing silent dashes #}
+  <div class="fo-kpi fo-kpi--no-run" aria-label="No results yet">
+    <span class="fo-kpi__value fo-kpi__value--placeholder">No runtime — Run (F9)</span>
+  </div>
+  {% else %}
 
   {# Project IRR #}
   <div class="fo-kpi">
@@ -78,5 +94,7 @@
     <span class="fo-kpi__label">LLCR</span>
     <span class="fo-kpi__value fo-kpi__value--placeholder">—</span>
   </div>
+
+  {% endif %}
 
 </div>

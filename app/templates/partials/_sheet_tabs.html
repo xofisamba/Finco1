@@ -130,7 +130,19 @@
   <span class="fo-sheets__divider" aria-hidden="true"></span>
 
   {# ── Analysis group ──────────────────────────────────────────────────────── #}
+  {# UI-8A: URL tabs converted to HTMX canvas swaps.
+     hx-get fetches the page; hx-select extracts #main-canvas from the
+     full response; hx-swap outerHTML replaces the current #main-canvas
+     without touching the chrome. hx-push-url keeps the address bar in
+     sync. hx-indicator shows the tab-load indicator during fetch.
+     The bare href= remains so the tab works without JS / on direct load. #}
   <a href="/scenarios"
+     hx-get="/scenarios"
+     hx-target="#main-canvas"
+     hx-select="#main-canvas"
+     hx-swap="outerHTML"
+     hx-push-url="true"
+     hx-indicator="#fo-tab-indicator"
      class="fo-sheet{% if _path == '/scenarios' %} fo-sheet--active{% endif %}"
      data-fo-sheet-id="scenarios"
      data-fo-sheet-group="analysis"
@@ -141,6 +153,12 @@
   </a>
 
   <a href="/scenarios/compare"
+     hx-get="/scenarios/compare"
+     hx-target="#main-canvas"
+     hx-select="#main-canvas"
+     hx-swap="outerHTML"
+     hx-push-url="true"
+     hx-indicator="#fo-tab-indicator"
      class="fo-sheet{% if _path.startswith('/scenarios/compare') %} fo-sheet--active{% endif %}"
      data-fo-sheet-id="compare"
      data-fo-sheet-group="analysis"
@@ -151,6 +169,12 @@
   </a>
 
   <a href="/scenarios/sensitivity"
+     hx-get="/scenarios/sensitivity"
+     hx-target="#main-canvas"
+     hx-select="#main-canvas"
+     hx-swap="outerHTML"
+     hx-push-url="true"
+     hx-indicator="#fo-tab-indicator"
      class="fo-sheet{% if _path.startswith('/scenarios/sensitivity') %} fo-sheet--active{% endif %}"
      data-fo-sheet-id="sensitivity"
      data-fo-sheet-group="analysis"
@@ -164,6 +188,12 @@
 
   {# ── Delivery group ─────────────────────────────────────────────────────── #}
   <a href="/scenarios/lender-case"
+     hx-get="/scenarios/lender-case"
+     hx-target="#main-canvas"
+     hx-select="#main-canvas"
+     hx-swap="outerHTML"
+     hx-push-url="true"
+     hx-indicator="#fo-tab-indicator"
      class="fo-sheet{% if _path.startswith('/scenarios/lender') %} fo-sheet--active{% endif %}"
      data-fo-sheet-id="lender"
      data-fo-sheet-group="delivery"
@@ -174,6 +204,12 @@
   </a>
 
   <a href="/scenarios/exec-summary"
+     hx-get="/scenarios/exec-summary"
+     hx-target="#main-canvas"
+     hx-select="#main-canvas"
+     hx-swap="outerHTML"
+     hx-push-url="true"
+     hx-indicator="#fo-tab-indicator"
      class="fo-sheet{% if _path.startswith('/scenarios/exec') or _path.startswith('/scenarios/ic') or _path.startswith('/scenarios/credit') %} fo-sheet--active{% endif %}"
      data-fo-sheet-id="reports"
      data-fo-sheet-group="delivery"
@@ -187,6 +223,12 @@
 
   {# ── Storage group ──────────────────────────────────────────────────────── #}
   <a href="/scenarios/bess-revenue"
+     hx-get="/scenarios/bess-revenue"
+     hx-target="#main-canvas"
+     hx-select="#main-canvas"
+     hx-swap="outerHTML"
+     hx-push-url="true"
+     hx-indicator="#fo-tab-indicator"
      class="fo-sheet{% if _path.startswith('/scenarios/bess') %} fo-sheet--active{% endif %}"
      data-fo-sheet-id="bess"
      data-fo-sheet-group="storage"
@@ -197,6 +239,12 @@
   </a>
 
   <a href="/help"
+     hx-get="/help"
+     hx-target="#main-canvas"
+     hx-select="#main-canvas"
+     hx-swap="outerHTML"
+     hx-push-url="true"
+     hx-indicator="#fo-tab-indicator"
      class="fo-sheet{% if _path == '/help' %} fo-sheet--active{% endif %}"
      data-fo-sheet-id="settings"
      data-fo-sheet-group="storage"
@@ -205,6 +253,9 @@
     <span class="fo-sheet__dot fo-sheet__dot--none" aria-hidden="true"></span>
     <span class="fo-sheet__label">Settings</span>
   </a>
+
+  {# Tab-load indicator — shown by htmx-indicator during canvas swap #}
+  <span id="fo-tab-indicator" class="fo-tab-indicator htmx-indicator" aria-hidden="true"></span>
 
 </nav>
 
@@ -255,8 +306,24 @@
       var t = e.target;
       if (_isTyping(t)) return;
       e.preventDefault();
-      window.location.href = _urlMap[key];
+      // UI-8A: trigger HTMX canvas swap instead of full navigation
+      var tabEl = document.querySelector('[data-fo-sheet-kind="url"][href="' + _urlMap[key] + '"]');
+      if (tabEl && window.htmx) {
+        htmx.trigger(tabEl, 'click');
+      } else {
+        window.location.href = _urlMap[key];
+      }
     }
   }, true);
 })();
+
+// UI-8A: sync active tab highlight after HTMX canvas swap
+document.addEventListener('htmx:pushedIntoHistory', function() {
+  var path = window.location.pathname;
+  document.querySelectorAll('.fo-sheet[data-fo-sheet-kind="url"]').forEach(function(el) {
+    var href = el.getAttribute('href') || '';
+    var active = href && (path === href || (href.length > 1 && path.startsWith(href)));
+    el.classList.toggle('fo-sheet--active', active);
+  });
+});
 </script>
