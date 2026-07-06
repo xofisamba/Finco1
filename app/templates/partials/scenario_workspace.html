@@ -139,4 +139,25 @@
   </div>
   {% endif %}
 
+  <!-- V4-5 Part A: Executive Summary -->
+  {% if exec_summary or exec_summary_error %}
+  <div class="ps-section" style="margin-top:0.75rem;">
+    {% include "partials/exec_summary.html" %}
+  </div>
+  {% endif %}
+
+  <!-- V4-5 Part B: IC Pack -->
+  {% if ic_pack or ic_pack_error %}
+  <div class="ps-section" style="margin-top:0.75rem;">
+    {% include "partials/ic_pack.html" %}
+  </div>
+  {% endif %}
+
+  <!-- V4-5 Part C: Credit Pack -->
+  {% if credit_pack or credit_pack_error %}
+  <div class="ps-section" style="margin-top:0.75rem;">
+    {% include "partials/credit_pack.html" %}
+  </div>
+  {% endif %}
+
 </div>

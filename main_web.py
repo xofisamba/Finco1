@@ -1877,6 +1877,13 @@ def _render_scenario_workspace(
     covenant_thresholds: dict | None = None,
     credit_summary: dict | None = None,
     credit_summary_error: str | None = None,
+    # V4-5
+    exec_summary: dict | None = None,
+    exec_summary_error: str | None = None,
+    ic_pack: dict | None = None,
+    ic_pack_error: str | None = None,
+    credit_pack: dict | None = None,
+    credit_pack_error: str | None = None,
 ):
     # Phase 25B-6 — defensive default for runtime_summary
     # (used by project_review_ui when not pre-populated).
@@ -2006,6 +2013,13 @@ def _render_scenario_workspace(
             },
             "credit_summary": credit_summary,
             "credit_summary_error": credit_summary_error,
+            # V4-5: IC / credit reporting pack
+            "exec_summary": exec_summary,
+            "exec_summary_error": exec_summary_error,
+            "ic_pack": ic_pack,
+            "ic_pack_error": ic_pack_error,
+            "credit_pack": credit_pack,
+            "credit_pack_error": credit_pack_error,
         },
     )
 
@@ -4651,6 +4665,210 @@ async def scenario_credit_summary_endpoint(
         scenarios, history, exports, export_lineage, scenario_summary_cards,
         credit_summary=cs,
         credit_summary_error=cs_error,
+    )
+
+
+# ── V4-5 — IC / Credit Memo Reporting Pack ────────────────────────────────
+
+def _resolve_report_project(user, project: str, scenario_id: str = ""):
+    """Resolve ProjectInputs for IC / credit reporting."""
+    from app.services.sensitivity_service import _resolve_sensitivity_project as _rsp
+    return _rsp(user, project, scenario_id)
+
+
+def _run_base_result(proj):
+    """Run canonical engine for a ProjectInputs and return WaterfallResult."""
+    from app.ui_runner import _build_period_engine
+    from app.waterfall_runner import WaterfallRunner, WaterfallRunConfig
+    eng = _build_period_engine(proj)
+    return WaterfallRunner(proj, eng).run(WaterfallRunConfig.from_inputs(proj, eng))
+
+
+@app.get("/scenarios/exec-summary")
+async def scenario_exec_summary_endpoint(
+    request: Request,
+    project: str = "",
+    scenario_id: str = "",
+):
+    """Generate printable executive summary from canonical engine.
+
+    V4-5 Part A. Read-only; no persistence side effects.
+    """
+    from app.services.ic_report_service import build_exec_summary
+
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+
+    es = None
+    es_error = None
+
+    try:
+        proj, scenario_name = _resolve_report_project(user, project, scenario_id)
+        result = _run_base_result(proj)
+        es = build_exec_summary(proj, result, scenario_name)
+    except Exception as exc:
+        es_error = str(exc)
+
+    project_record = _resolve_project_record(user, project)
+    project_record, workspace_state, scenarios, history, exports, export_lineage, scenario_summary_cards = (
+        _current_project_workspace(user, project_record)
+    )
+    return _render_scenario_workspace(
+        request, user, project_record, workspace_state,
+        scenarios, history, exports, export_lineage, scenario_summary_cards,
+        exec_summary=es,
+        exec_summary_error=es_error,
+    )
+
+
+@app.get("/scenarios/ic-pack")
+async def scenario_ic_pack_endpoint(
+    request: Request,
+    project: str = "",
+    scenario_id: str = "",
+):
+    """Generate Investment Committee Pack from canonical engine.
+
+    V4-5 Part B. Read-only; no persistence side effects.
+    """
+    from app.services.ic_report_service import build_ic_pack
+    from app.services.lender_case_service import build_covenant_periods
+
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+
+    ic = None
+    ic_error = None
+
+    try:
+        proj, scenario_name = _resolve_report_project(user, project, scenario_id)
+        result = _run_base_result(proj)
+        covenant_periods = build_covenant_periods(result)
+        ic = build_ic_pack(proj, result, scenario_name, covenant_periods=covenant_periods)
+    except Exception as exc:
+        ic_error = str(exc)
+
+    project_record = _resolve_project_record(user, project)
+    project_record, workspace_state, scenarios, history, exports, export_lineage, scenario_summary_cards = (
+        _current_project_workspace(user, project_record)
+    )
+    return _render_scenario_workspace(
+        request, user, project_record, workspace_state,
+        scenarios, history, exports, export_lineage, scenario_summary_cards,
+        ic_pack=ic,
+        ic_pack_error=ic_error,
+    )
+
+
+@app.get("/scenarios/credit-pack")
+async def scenario_credit_pack_endpoint(
+    request: Request,
+    project: str = "",
+    scenario_id: str = "",
+):
+    """Generate Credit Committee Pack from canonical engine.
+
+    V4-5 Part C. Read-only; no persistence side effects.
+    """
+    from app.services.ic_report_service import build_credit_pack
+    from app.services.lender_case_service import (
+        build_covenant_periods,
+        DSCR_EVENT_OF_DEFAULT, DSCR_LOCKUP, DSCR_DISTRIBUTION, DSCR_CASH_SWEEP,
+    )
+
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+
+    cp = None
+    cp_error = None
+    thresholds = {
+        "event_of_default": DSCR_EVENT_OF_DEFAULT,
+        "lockup": DSCR_LOCKUP,
+        "distribution": DSCR_DISTRIBUTION,
+        "cash_sweep": DSCR_CASH_SWEEP,
+    }
+
+    try:
+        proj, scenario_name = _resolve_report_project(user, project, scenario_id)
+        result = _run_base_result(proj)
+        cov_periods = build_covenant_periods(result)
+        cp = build_credit_pack(
+            proj, result, scenario_name,
+            covenant_periods=cov_periods,
+            covenant_thresholds=thresholds,
+        )
+    except Exception as exc:
+        cp_error = str(exc)
+
+    project_record = _resolve_project_record(user, project)
+    project_record, workspace_state, scenarios, history, exports, export_lineage, scenario_summary_cards = (
+        _current_project_workspace(user, project_record)
+    )
+    return _render_scenario_workspace(
+        request, user, project_record, workspace_state,
+        scenarios, history, exports, export_lineage, scenario_summary_cards,
+        credit_pack=cp,
+        credit_pack_error=cp_error,
+        covenant_thresholds=thresholds,
+    )
+
+
+@app.get("/scenarios/report/export")
+async def scenario_report_export_endpoint(
+    request: Request,
+    project: str = "",
+    scenario_id: str = "",
+    fmt: str = "xlsx",
+):
+    """Export IC/credit reporting pack.
+
+    V4-5 Part D. Formats: xlsx, docx.
+    Read-only; no persistence side effects.
+    """
+    from app.services.ic_report_service import export_report_xlsx, export_report_docx
+    from app.services.lender_case_service import build_covenant_periods
+    from fastapi.responses import Response
+
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+
+    try:
+        proj, scenario_name = _resolve_report_project(user, project, scenario_id)
+        result = _run_base_result(proj)
+        cov_periods = build_covenant_periods(result)
+    except Exception as exc:
+        return Response(content=f"Export failed: {exc}", status_code=500, media_type="text/plain")
+
+    slug = (getattr(proj.info, "name", project) or project).replace(" ", "_")[:24]
+
+    if fmt == "docx":
+        content = export_report_docx(proj, result, scenario_name, report_type="ic",
+                                     covenant_periods=cov_periods)
+        return Response(
+            content=content,
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            headers={"Content-Disposition": f"attachment; filename={slug}_IC_Pack.docx"},
+        )
+
+    if fmt == "docx_credit":
+        content = export_report_docx(proj, result, scenario_name, report_type="credit",
+                                     covenant_periods=cov_periods)
+        return Response(
+            content=content,
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            headers={"Content-Disposition": f"attachment; filename={slug}_Credit_Pack.docx"},
+        )
+
+    # Default: xlsx
+    content = export_report_xlsx(proj, result, scenario_name, covenant_periods=cov_periods)
+    return Response(
+        content=content,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename={slug}_Report_Pack.xlsx"},
     )
 
 
