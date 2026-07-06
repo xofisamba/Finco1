@@ -18,8 +18,11 @@
 {% set _y1_ppa_k = (_tariff or 0) * (_hrs or 0) * (_cap or 0) * (project_ctx.plant_availability or 0) %}
 {% set _y1_co2_k = (_co2_px or 0) * (_hrs or 0) * (_cap or 0) * (project_ctx.plant_availability or 0) if _co2_on else 0 %}
 
-<aside class="fo-modelling-workspace__context" aria-label="Revenue context">
-  <h2 class="fo-modelling-workspace__context-title">Context</h2>
+<aside class="fo-modelling-workspace__context fo-modelling-workspace__context--collapsed" aria-label="Revenue context" data-fo-context-sheet="revenue">
+  <div class="fo-modelling-workspace__context-header">
+    <h2 class="fo-modelling-workspace__context-title">Context</h2>
+    <button type="button" class="fo-modelling-workspace__context-toggle" aria-label="Toggle context panel" title="Toggle context panel">›</button>
+  </div>
   <dl class="fo-modelling-workspace__context-list">
     <div class="fo-modelling-workspace__context-row">
       <dt class="fo-modelling-workspace__context-label">PPA Tariff</dt>

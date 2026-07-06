@@ -695,7 +695,7 @@
       {% set _title = "Revenue" %}
       {% set _description = "Tariff structure, merchant exposure, CO2 / certificates, and Y1 revenue summary." %}
       {% include "partials/_modelling_workspace_header.html" %}
-      <div class="fo-modelling-workspace__layout">
+      <div class="fo-modelling-workspace__layout fo-modelling-workspace__layout--context-collapsed">
         {% set _kind = "revenue" %}
         {% set _nav_title = "Revenue" %}
         {% set _nav_items = [
@@ -720,7 +720,7 @@
       {% set _title = "OPEX" %}
       {% set _description = "Operating expenditure schedule, inflation, escalation, and unit OPEX." %}
       {% include "partials/_modelling_workspace_header.html" %}
-      <div class="fo-modelling-workspace__layout">
+      <div class="fo-modelling-workspace__layout fo-modelling-workspace__layout--context-collapsed">
         {% set _kind = "opex" %}
         {% set _nav_title = "OPEX" %}
         {% set _nav_items = [
@@ -754,7 +754,7 @@
       {% set _title = "CAPEX" %}
       {% set _description = "Capital expenditure categories C.01–C.18 with sub-lines, construction, IDC, and contingency." %}
       {% include "partials/_modelling_workspace_header.html" %}
-      <div class="fo-modelling-workspace__layout">
+      <div class="fo-modelling-workspace__layout fo-modelling-workspace__layout--context-collapsed">
         {% set _kind = "capex" %}
         {% set _nav_title = "CAPEX" %}
         {% set _nav_items = [
@@ -780,7 +780,7 @@
       {% set _title = "Senior Debt" %}
       {% set _description = "Debt sizing mode, target DSCR, tenor, margin, and realized gearing." %}
       {% include "partials/_modelling_workspace_header.html" %}
-      <div class="fo-modelling-workspace__layout">
+      <div class="fo-modelling-workspace__layout fo-modelling-workspace__layout--context-collapsed">
         {% set _kind = "senior-debt" %}
         {% set _nav_title = "Senior Debt" %}
         {% set _nav_items = [
@@ -812,7 +812,7 @@
       {% set _title = "Tax" %}
       {% set _description = "Tax regime, CIT rate, loss carryforward, depreciation, and country template." %}
       {% include "partials/_modelling_workspace_header.html" %}
-      <div class="fo-modelling-workspace__layout">
+      <div class="fo-modelling-workspace__layout fo-modelling-workspace__layout--context-collapsed">
         {% set _kind = "tax" %}
         {% set _nav_title = "Tax" %}
         {% set _nav_items = [
@@ -1152,3 +1152,51 @@
 {% include "partials/_power_user_jump.html" %}
 {% include "partials/_power_user_recent.html" %}
 {% include "partials/_power_user_init.html" %}
+
+{# UI-8B: Context panel collapse/expand toggle — default collapsed for all 5 modelling sheets.
+   Persistence: one localStorage key per sheet ("fo-ctx-<sheet>": "0"|"1"). #}
+<script>
+(function() {
+  var COLLAPSED_CLASS = 'fo-modelling-workspace__context--collapsed';
+  var LAYOUT_CLASS    = 'fo-modelling-workspace__layout--context-collapsed';
+  var KEY_PREFIX      = 'fo-ctx-';
+
+  function applyState(aside, layout, collapsed) {
+    if (collapsed) {
+      aside.classList.add(COLLAPSED_CLASS);
+      layout.classList.add(LAYOUT_CLASS);
+      aside.querySelector('.fo-modelling-workspace__context-toggle').textContent = '›';
+    } else {
+      aside.classList.remove(COLLAPSED_CLASS);
+      layout.classList.remove(LAYOUT_CLASS);
+      aside.querySelector('.fo-modelling-workspace__context-toggle').textContent = '‹';
+    }
+  }
+
+  function initPanel(aside) {
+    var sheet   = aside.getAttribute('data-fo-context-sheet');
+    var layout  = aside.closest('.fo-modelling-workspace__layout');
+    if (!layout || !sheet) return;
+    var stored  = localStorage.getItem(KEY_PREFIX + sheet);
+    // Default: collapsed (stored === null → treat as collapsed)
+    var collapsed = stored === null ? true : stored === '1';
+    applyState(aside, layout, collapsed);
+
+    aside.querySelector('.fo-modelling-workspace__context-toggle').addEventListener('click', function() {
+      var isCollapsed = aside.classList.contains(COLLAPSED_CLASS);
+      applyState(aside, layout, !isCollapsed);
+      localStorage.setItem(KEY_PREFIX + sheet, !isCollapsed ? '1' : '0');
+    });
+  }
+
+  function init() {
+    document.querySelectorAll('.fo-modelling-workspace__context[data-fo-context-sheet]').forEach(initPanel);
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+})();
+</script>
