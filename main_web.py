@@ -151,6 +151,13 @@ templates.env.globals["htmx"] = True
 templates.env.globals["asset_version"] = ASSET_VERSION
 
 
+def _friendly_error(exc: Exception, context: str = "") -> str:
+    """Return a user-safe error message; log the raw exception server-side."""
+    _logger.exception("Runtime error%s: %s", f" in {context}" if context else "", exc)
+    ctx = f" while running {context}" if context else ""
+    return f"An error occurred{ctx}. Please check your inputs or contact support if the problem persists."
+
+
 def _jinja_fmt_kpi(v: Any, fmt: str) -> str:
     """Format a KPI value for display in the sensitivity table."""
     if v is None:
@@ -165,6 +172,8 @@ def _jinja_fmt_kpi(v: Any, fmt: str) -> str:
         return f"{f:.4f}x"
     if fmt == "keur":
         return f"{f:,.1f}"
+    if fmt == "yrs_f":
+        return f"{f:.1f} yrs"
     return f"{f:.4g}"
 
 
@@ -4359,7 +4368,7 @@ async def scenario_sensitivity_endpoint(
         sens_result = run_sensitivity(proj, shock_types, shock_levels)
         tornado = build_tornado_data(sens_result, kpi_key=tornado_kpi)
     except Exception as exc:
-        error_state = f"Sensitivity run failed: {exc}"
+        error_state = _friendly_error(exc, "sensitivity analysis")
 
     # Tornado KPI label and format hint
     kpi_label_map = {k: lbl for k, lbl, _ in (sens_result["kpi_defs"] if sens_result else KPI_DEFS)}
@@ -4439,7 +4448,8 @@ async def scenario_sensitivity_export_endpoint(
         proj, _ = _resolve_sensitivity_project(user, project, scenario_id)
         sens_result = run_sensitivity(proj, shock_types, shock_levels)
     except Exception as exc:
-        return Response(content=f"Export failed: {exc}", status_code=500, media_type="text/plain")
+        _logger.exception("Sensitivity export failed: %s", exc)
+        return Response(content="Export failed — please check your inputs.", status_code=500, media_type="text/plain")
 
     if fmt == "xlsx":
         content = export_sensitivity_xlsx(sens_result)
@@ -4530,7 +4540,7 @@ async def scenario_lender_case_endpoint(
 
         lc_result = run_lender_case(proj, adjustments)
     except Exception as exc:
-        lc_error = str(exc)
+        lc_error = _friendly_error(exc, "lender case")
 
     project_record = _resolve_project_record(user, project)
     project_record, workspace_state, scenarios, history, exports, export_lineage, scenario_summary_cards = (
@@ -4582,7 +4592,7 @@ async def scenario_covenant_endpoint(
         result = WaterfallRunner(proj, eng).run(WaterfallRunConfig.from_inputs(proj, eng))
         cov_periods = build_covenant_periods(result)
     except Exception as exc:
-        cov_error = str(exc)
+        cov_error = _friendly_error(exc, "covenant analytics")
 
     project_record = _resolve_project_record(user, project)
     project_record, workspace_state, scenarios, history, exports, export_lineage, scenario_summary_cards = (
@@ -4654,7 +4664,7 @@ async def scenario_credit_summary_endpoint(
 
         cs = build_credit_summary(proj, base_kpis, lender_kpis)
     except Exception as exc:
-        cs_error = str(exc)
+        cs_error = _friendly_error(exc, "credit summary")
 
     project_record = _resolve_project_record(user, project)
     project_record, workspace_state, scenarios, history, exports, export_lineage, scenario_summary_cards = (
@@ -4708,7 +4718,7 @@ async def scenario_exec_summary_endpoint(
         result = _run_base_result(proj)
         es = build_exec_summary(proj, result, scenario_name)
     except Exception as exc:
-        es_error = str(exc)
+        es_error = _friendly_error(exc, "executive summary")
 
     project_record = _resolve_project_record(user, project)
     project_record, workspace_state, scenarios, history, exports, export_lineage, scenario_summary_cards = (
@@ -4748,7 +4758,7 @@ async def scenario_ic_pack_endpoint(
         covenant_periods = build_covenant_periods(result)
         ic = build_ic_pack(proj, result, scenario_name, covenant_periods=covenant_periods)
     except Exception as exc:
-        ic_error = str(exc)
+        ic_error = _friendly_error(exc, "IC pack")
 
     project_record = _resolve_project_record(user, project)
     project_record, workspace_state, scenarios, history, exports, export_lineage, scenario_summary_cards = (
@@ -4801,7 +4811,7 @@ async def scenario_credit_pack_endpoint(
             covenant_thresholds=thresholds,
         )
     except Exception as exc:
-        cp_error = str(exc)
+        cp_error = _friendly_error(exc, "credit pack")
 
     project_record = _resolve_project_record(user, project)
     project_record, workspace_state, scenarios, history, exports, export_lineage, scenario_summary_cards = (
@@ -4841,7 +4851,8 @@ async def scenario_report_export_endpoint(
         result = _run_base_result(proj)
         cov_periods = build_covenant_periods(result)
     except Exception as exc:
-        return Response(content=f"Export failed: {exc}", status_code=500, media_type="text/plain")
+        _logger.exception("Report export failed: %s", exc)
+        return Response(content="Export failed — please check your inputs.", status_code=500, media_type="text/plain")
 
     slug = (getattr(proj.info, "name", project) or project).replace(" ", "_")[:24]
 

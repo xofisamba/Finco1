@@ -258,6 +258,14 @@
       </div>
     </div>
 
+    {# Export links #}
+    <div class="rp-export-row" data-testid="ic-pack-exports">
+      <a href="/scenarios/report/export?project={{ request.query_params.get('project','') }}&scenario_id={{ request.query_params.get('scenario_id','') }}&fmt=xlsx"
+         class="rp-export-btn rp-export-btn--xl" download>Excel Bundle</a>
+      <a href="/scenarios/report/export?project={{ request.query_params.get('project','') }}&scenario_id={{ request.query_params.get('scenario_id','') }}&fmt=docx"
+         class="rp-export-btn rp-export-btn--docx" download>Download DOCX</a>
+    </div>
+
     <div class="rp-footer">
       Finco One {{ es['model_version'] }} · Engine {{ es['engine_version'] }} ·
       Scenario: {{ ic['scenario_name'] }} · {{ ic['report_date'] }}
