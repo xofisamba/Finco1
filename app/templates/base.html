@@ -15,6 +15,10 @@
      edits to existing styles; chrome.css adds an isolated namespace
      (.fo-*) that does not collide with any legacy selector. #}
   <link rel="stylesheet" href="/static/chrome.css?v={{ asset_version }}" />
+  {# UI-3: Excel-style worksheet navigation — replaces the UI-2
+     sheet-tab reserve row. Same isolated .fo-sheets / .fo-sheet
+     namespace; consumes only --fo-* tokens. #}
+  <link rel="stylesheet" href="/static/sheet-tabs.css?v={{ asset_version }}" />
   <script src="/static/vendor/htmx.min.js"></script>
   {# C1-PR1: Spreadsheet Interaction Layer foundation — registry +
      bootstrap only, no behaviour. See docs/C1_INTERACTION_LAYER_DESIGN.md #}
