@@ -1,0 +1,31 @@
+{# ── UI-2 Application Chrome Wrapper ────────────────────────────────────────
+   Single include that renders all four chrome rows inside the sticky
+   `.fo-chrome` wrapper:
+     1. Brand bar        (28 px)        _brand_bar.html
+     2. Command bar      (44 px)        _command_bar.html
+     3. KPI strip        (56 px)        _kpi_strip.html
+     4. Sheet-tab reserve (36 px)      inline placeholder
+
+   Strictly additive. The legacy `.top-header` below this wrapper is
+   NOT removed or re-skinned — it coexists with the new chrome so
+   existing pages continue to render unchanged.
+
+   `dirty`, `dashboard_kpis`, `validation_summary`, `runtime_*`,
+   `active_scenario_name`, `project_record` are all already in the
+   index context (see main_web.py). No new context is required. #}
+
+<div class="fo-chrome" id="fo-app-chrome" role="presentation">
+
+  {% include "partials/_brand_bar.html" %}
+  {% include "partials/_command_bar.html" %}
+  {% include "partials/_kpi_strip.html" %}
+
+  {# Reserved for the future sheet-tab strip. A real future PR will
+     replace this row with the actual tab component. The placeholder
+     keeps the height stable so subsequent rows do not shift when
+     the tabs land. #}
+  <div class="fo-sheet-tab-reserve" role="presentation" aria-hidden="true">
+    <span class="fo-sheet-tab-reserve__placeholder">Sheet tabs — reserved</span>
+  </div>
+
+</div>
