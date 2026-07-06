@@ -160,4 +160,18 @@
   </div>
   {% endif %}
 
+  <!-- V4-7 Part C: BESS Revenue Breakdown -->
+  {% if bess_revenue or bess_revenue_error %}
+  <div class="ps-section" style="margin-top:0.75rem;">
+    {% include "partials/bess_revenue_breakdown.html" %}
+  </div>
+  {% endif %}
+
+  <!-- V4-7 Part D: BESS Asset Dashboard -->
+  {% if bess_asset or bess_asset_error %}
+  <div class="ps-section" style="margin-top:0.75rem;">
+    {% include "partials/bess_asset_dashboard.html" %}
+  </div>
+  {% endif %}
+
 </div>

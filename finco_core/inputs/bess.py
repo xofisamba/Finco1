@@ -23,3 +23,10 @@ class BessParams:
     ancillary_revenue_eur_mw_year: float = 25000.0
     capacity_revenue_eur_mw_year: float = 0.0
     augmentation_capex_keur: float = 0.0
+    # V4-7 extended fields
+    frequency_regulation_eur_mw_year: float = 0.0
+    reserve_market_eur_mw_year: float = 0.0
+    fixed_contracted_eur_mw_year: float = 0.0
+    depth_of_discharge: float = 0.85
+    cycle_life: int = 4000
+    replacement_year: int = 0

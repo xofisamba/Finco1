@@ -1893,6 +1893,11 @@ def _render_scenario_workspace(
     ic_pack_error: str | None = None,
     credit_pack: dict | None = None,
     credit_pack_error: str | None = None,
+    # V4-7
+    bess_revenue: dict | None = None,
+    bess_revenue_error: str | None = None,
+    bess_asset: dict | None = None,
+    bess_asset_error: str | None = None,
 ):
     # Phase 25B-6 — defensive default for runtime_summary
     # (used by project_review_ui when not pre-populated).
@@ -2029,6 +2034,10 @@ def _render_scenario_workspace(
             "ic_pack_error": ic_pack_error,
             "credit_pack": credit_pack,
             "credit_pack_error": credit_pack_error,
+            "bess_revenue": bess_revenue,
+            "bess_revenue_error": bess_revenue_error,
+            "bess_asset": bess_asset,
+            "bess_asset_error": bess_asset_error,
         },
     )
 
@@ -4823,6 +4832,78 @@ async def scenario_credit_pack_endpoint(
         credit_pack=cp,
         credit_pack_error=cp_error,
         covenant_thresholds=thresholds,
+    )
+
+
+@app.get("/scenarios/bess-revenue")
+async def scenario_bess_revenue_endpoint(
+    request: Request,
+    project: str = "",
+    scenario_id: str = "",
+):
+    """V4-7 Part C: BESS Revenue Breakdown panel."""
+    from app.services.bess_service import build_bess_revenue_breakdown
+
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+
+    br = None
+    br_error = None
+    try:
+        proj, _scenario_name = _resolve_report_project(user, project, scenario_id)
+        result = _run_base_result(proj)
+        br = build_bess_revenue_breakdown(proj, result)
+        if br is None:
+            br_error = "Project does not have BESS enabled or BessParams not configured."
+    except Exception as exc:
+        br_error = _friendly_error(exc, "BESS revenue breakdown")
+
+    project_record = _resolve_project_record(user, project)
+    project_record, workspace_state, scenarios, history, exports, export_lineage, scenario_summary_cards = (
+        _current_project_workspace(user, project_record)
+    )
+    return _render_scenario_workspace(
+        request, user, project_record, workspace_state,
+        scenarios, history, exports, export_lineage, scenario_summary_cards,
+        bess_revenue=br,
+        bess_revenue_error=br_error,
+    )
+
+
+@app.get("/scenarios/bess-asset")
+async def scenario_bess_asset_endpoint(
+    request: Request,
+    project: str = "",
+    scenario_id: str = "",
+):
+    """V4-7 Part D: Battery Asset Dashboard panel."""
+    from app.services.bess_service import build_bess_asset_dashboard
+
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+
+    ba = None
+    ba_error = None
+    try:
+        proj, _scenario_name = _resolve_report_project(user, project, scenario_id)
+        result = _run_base_result(proj)
+        ba = build_bess_asset_dashboard(proj, result)
+        if ba is None:
+            ba_error = "Project does not have BESS enabled or BessParams not configured."
+    except Exception as exc:
+        ba_error = _friendly_error(exc, "BESS asset dashboard")
+
+    project_record = _resolve_project_record(user, project)
+    project_record, workspace_state, scenarios, history, exports, export_lineage, scenario_summary_cards = (
+        _current_project_workspace(user, project_record)
+    )
+    return _render_scenario_workspace(
+        request, user, project_record, workspace_state,
+        scenarios, history, exports, export_lineage, scenario_summary_cards,
+        bess_asset=ba,
+        bess_asset_error=ba_error,
     )
 
 
