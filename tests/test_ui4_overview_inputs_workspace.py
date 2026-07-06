@@ -608,6 +608,7 @@ class TestBaseHtmlAdditiveOnly:
             "/static/styles.css", "/static/tokens.css",
             "/static/chrome.css", "/static/sheet-tabs.css",
             "/static/workspace.css", "/static/modelling-workspace.css",
+            "/static/statements-reporting.css",
             '<header class="top-header">',
         ):
             assert not any(needle in line for line in removed_lines), (
