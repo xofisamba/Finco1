@@ -207,7 +207,7 @@
   {{ field_row("G20 Status", project_ctx.g20_status or "BLOCKED", badge=project_ctx.g20_status or "BLOCKED", badge_class="badge-warn", section="tax", field_key="g20_status", raw=project_ctx.g20_status) }}
   {{ field_row("R99/R102", project_ctx.r99_r102_status or "NOT_APPROVED", badge=project_ctx.r99_r102_status or "NOT_APPROVED", badge_class="badge-warn", section="tax", field_key="r99_r102_status", raw=project_ctx.r99_r102_status) }}
 {% endset %}
-{% if audit_mode %}
+{% if audit_mode|default(false) %}
   {{ section_card("Tax Summary", tax_rows, section_note="Tax template override not yet configured. Country-specific defaults apply.") }}
 {% else %}
   {# P2-FIX-2: G20 / R99/R102 governance posture is the

@@ -48,6 +48,45 @@ KPI_DEFS: list[tuple[str, str, str]] = [
 ]
 
 
+def _resolve_sensitivity_project(user: Any, project: str, scenario_id: str = "") -> tuple[Any, str]:
+    """Resolve ProjectInputs for read-only sensitivity/reporting routes.
+
+    This helper is intentionally read-only. It mirrors the legacy route
+    contract expected by lender/report endpoints while supporting the
+    current pilot project set: TUHO, Oborovo, Generic Solar, and Generic
+    Wind. If a scenario id is provided, the saved scenario snapshot is
+    authoritative.
+    """
+    if scenario_id:
+        from app.input_adapter import build_projectinputs_from_snapshot
+        from app.persistence.repository import get_scenario
+
+        rec = get_scenario(scenario_id, user.user_id)
+        if rec is not None and rec.snapshot:
+            return (
+                build_projectinputs_from_snapshot(dict(rec.snapshot)),
+                rec.scenario_name or "Saved scenario",
+            )
+
+    key = (project or "tuho").strip().lower()
+    if key == "oborovo":
+        from app.project_factories import create_default_oborovo
+
+        return create_default_oborovo(), "Oborovo (factory)"
+    if key in {"generic_solar", "solar", "test-solar-1"}:
+        from app.project_factories import create_default_solar_project
+
+        return create_default_solar_project(), "Generic Solar (factory)"
+    if key in {"generic_wind", "wind", "test-wind-1"}:
+        from app.project_factories import create_default_wind_project
+
+        return create_default_wind_project(), "Generic Wind (factory)"
+
+    from app.project_factories import create_default_tuho_wind1
+
+    return create_default_tuho_wind1(), "TUHO Wind 1 (factory)"
+
+
 def _extract_kpis(result: Any) -> dict[str, Optional[float]]:
     """Extract all KPIs from a WaterfallResult into a flat dict."""
     kpis: dict[str, Optional[float]] = {}

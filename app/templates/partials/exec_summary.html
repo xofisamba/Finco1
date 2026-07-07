@@ -112,7 +112,7 @@
               <span class="rp-kpi-label">{{ label }}</span>
               <span class="rp-kpi-value">
                 {% if val is number %}
-                  {% if unit == 'kEUR' %}{{ "{:,.0f}"|format(val) }}
+                  {% if unit == 'kEUR' %}{{ "%.0f"|format(val) }}
                   {% elif unit == '%' %}{{ "%.1f"|format(val) }}
                   {% else %}{{ val }}{% endif %}
                 {% else %}{{ val or '—' }}{% endif %}
@@ -139,11 +139,11 @@
               <span class="rp-kpi-label">{{ label }}</span>
               <span class="rp-kpi-value">
                 {% if fmt == 'pct' %}
-                  {{ "%.2f%%"|format(val * 100) if val is not none else '—' }}
+                  {{ "%.2f%%"|format(val * 100) if val is number else (val if val is not none else '-') }}
                 {% elif fmt == 'keur' %}
-                  {{ "{:,.0f}"|format(val) if val is not none else '—' }}
+                  {{ "%.0f"|format(val) if val is number else (val if val is not none else '-') }}
                 {% elif fmt == 'yrs_f' %}
-                  {{ "%.1f yrs"|format(val) if val is not none else '—' }}
+                  {{ "%.1f yrs"|format(val) if val is number else (val if val is not none else '-') }}
                 {% else %}{{ val or '—' }}{% endif %}
               </span>
             </div>
