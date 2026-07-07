@@ -130,12 +130,18 @@
               border-color var(--fo-t-fast) var(--fo-ease);
 }
 
-.fo-brand-bar__action:hover,
+.fo-brand-bar__action:hover {
+  background: var(--fo-surface-alt);
+  color: var(--fo-ink);
+  border-color: var(--fo-line-strong);
+}
+
 .fo-brand-bar__action:focus-visible {
   background: var(--fo-surface-alt);
   color: var(--fo-ink);
   border-color: var(--fo-line-strong);
-  outline: none;
+  outline: 2px solid var(--fo-focus, #2563eb);
+  outline-offset: 2px;
 }
 
 .fo-brand-bar__kbd {

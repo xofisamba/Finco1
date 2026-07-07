@@ -541,7 +541,7 @@
      preview-unavailable). The tooltip explicitly tells the user this
      is a future boundary and Run remains authoritative. The label
      matches the existing five-indicator pattern. #}
-    <div class="runtime-status-indicator tax-preview-indicator" id="tax-preview" role="status" aria-live="polite" aria-label="Tax preview placeholder; not yet computed" aria-busy="false">
+    <div class="runtime-status-indicator tax-preview-indicator" id="tax-preview" role="status" aria-live="polite" aria-label="Tax estimate" aria-busy="false">
       <span class="runtime-status-indicator__label">Tax preview:</span>
       <span class="runtime-status-indicator__value badge badge-preview-only" id="tax-preview-value" data-c2pr30-tax-preview="idle" data-c2pr11-runtime-state="idle" title="Future backend preview. Run remains authoritative.">&mdash;</span>
       <span class="sr-only" id="tax-preview-sr">Tax preview status: Idle</span>
@@ -553,7 +553,7 @@
      is a future boundary and Run remains authoritative. The label
      matches the existing six-indicator pattern.
     #}
-    <div class="runtime-status-indicator irr-preview-indicator" id="irr-preview" role="status" aria-live="polite" aria-label="IRR preview placeholder; not yet computed" aria-busy="false">
+    <div class="runtime-status-indicator irr-preview-indicator" id="irr-preview" role="status" aria-live="polite" aria-label="IRR estimate" aria-busy="false">
       <span class="runtime-status-indicator__label">IRR preview:</span>
       <span class="runtime-status-indicator__value badge badge-preview-only" id="irr-preview-value" data-c2pr31-irr-preview="idle" data-c2pr11-runtime-state="idle" title="Future backend preview. Run remains authoritative.">&mdash;</span>
       <span class="sr-only" id="irr-preview-sr">IRR preview status: Idle</span>
@@ -565,7 +565,7 @@
      is a future boundary and Run remains authoritative. The label
      matches the existing seven-indicator pattern.
     #}
-    <div class="runtime-status-indicator dscr-preview-indicator" id="dscr-preview" role="status" aria-live="polite" aria-label="DSCR preview placeholder; not yet computed" aria-busy="false">
+    <div class="runtime-status-indicator dscr-preview-indicator" id="dscr-preview" role="status" aria-live="polite" aria-label="DSCR estimate" aria-busy="false">
       <span class="runtime-status-indicator__label">DSCR preview:</span>
       <span class="runtime-status-indicator__value badge badge-preview-only" id="dscr-preview-value" data-c2pr32-dscr-preview="idle" data-c2pr11-runtime-state="idle" title="Future backend preview. Run remains authoritative.">&mdash;</span>
       <span class="sr-only" id="dscr-preview-sr">DSCR preview status: Idle</span>
@@ -988,7 +988,7 @@
     <div style="margin-top:1rem;">
       <span class="btn btn-outline" style="width:auto; display:inline-flex; opacity:0.5; cursor:not-allowed;"
             title="Reference Workbook not yet available">
-        Reference Workbook — Coming Soon
+        Reference Workbook
       </span>
     </div>
     {% endif %}
@@ -1078,7 +1078,7 @@
            title="Not yet available — coming in a future release">
         <div class="download-icon" style="opacity:0.4;">Audit</div>
         <div class="download-info">
-          <div class="download-name">Audit Workbook <span class="badge badge-muted" style="font-size:0.65rem; vertical-align:middle;">Coming Soon</span></div>
+          <div class="download-name">Audit Workbook <span class="badge badge-muted fo-badge-soon">Coming Soon</span></div>
           <div class="download-desc">Validated Excel-anchored workbook for TUHO and Oborovo review context.</div>
         </div>
       </div>
@@ -1087,7 +1087,7 @@
            title="Not yet available — coming in a future release">
         <div class="download-icon" style="opacity:0.4;">Review</div>
         <div class="download-info">
-          <div class="download-name">Gap Register <span class="badge badge-muted" style="font-size:0.65rem; vertical-align:middle;">Coming Soon</span></div>
+          <div class="download-name">Gap Register <span class="badge badge-muted fo-badge-soon">Coming Soon</span></div>
           <div class="download-desc">Open gaps, pending items, and out-of-scope rows that still need reviewer judgement.</div>
         </div>
       </div>
@@ -1096,7 +1096,7 @@
            title="Not yet available — coming in a future release">
         <div class="download-icon" style="opacity:0.4;">Source</div>
         <div class="download-info">
-          <div class="download-name">Source Map <span class="badge badge-muted" style="font-size:0.65rem; vertical-align:middle;">Coming Soon</span></div>
+          <div class="download-name">Source Map <span class="badge badge-muted fo-badge-soon">Coming Soon</span></div>
           <div class="download-desc">Column-by-column provenance map showing where reviewed figures came from.</div>
         </div>
       </div>

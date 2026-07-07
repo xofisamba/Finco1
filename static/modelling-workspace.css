@@ -545,7 +545,7 @@
 
 .fo-modelling-workspace__content .fc-grid thead .fc-th {
   position: sticky;
-  top: calc(var(--fo-chrome-brand-h, 28px) + var(--fo-chrome-cmd-h, 44px));
+  top: calc(var(--fo-chrome-brand-h, 28px) + var(--fo-chrome-cmd-h, 44px) + var(--fo-chrome-tabs-h, 36px));
   background: var(--fo-paper);
   z-index: 2;
 }
