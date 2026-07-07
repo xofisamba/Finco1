@@ -494,6 +494,7 @@ async def _execute_user_created_path(
                 "run_data": {"project_type": project_record.project_type, "scenario": scenario_name},
                 "messages": result_messages,
                 "integration_status": result.get("integration_status", "full"),
+                "financial_statements": result.get("financial_statements"),
             },
             prepend_html=prepend_html,
         )
@@ -626,6 +627,7 @@ async def _execute_template_seeded_path(
                 "run_data": {"project_type": project_record.project_type or runtime_seed.title(), "scenario": scenario_name},
                 "messages": result_messages,
                 "integration_status": result.get("integration_status", "full"),
+                "financial_statements": result.get("financial_statements"),
             },
             prepend_html=prepend_html,
         )
@@ -768,6 +770,7 @@ async def _execute_generic_path(
                 },
                 "messages": result_messages,
                 "integration_status": result.get("integration_status", "full"),
+                "financial_statements": result.get("financial_statements"),
             },
             prepend_html=prepend_html,
         )

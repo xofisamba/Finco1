@@ -71,7 +71,8 @@ class TestFinancialStatementsRendering:
         """A clear, honest unavailable-state panel replaces the static
         statement tables."""
         assert "fs-unavailable-panel" in financials_template
-        assert "not connected to Run outputs yet" in financials_template
+        assert "No model results available." in financials_template
+        assert "Run the model to generate financial statements." in financials_template
 
     def test_no_internal_jargon_in_unavailable_copy(self, financials_template):
         """User-facing unavailable-state copy must not leak internal

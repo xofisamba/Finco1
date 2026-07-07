@@ -331,10 +331,10 @@ class TestD1TemplateWiring:
             assert "ebitda" not in script.lower() or "ebitda_cash_keur" in script.lower()
 
     def test_source_attribution_present(self):
-        """Template must attribute FS data source to assemble_financial_statements."""
+        """Template must attribute FS data to canonical runtime output."""
         html = self._load_template()
-        assert "assemble_financial_statements" in html, (
-            "Template must include source attribution to assemble_financial_statements()."
+        assert "canonical-runtime-financial-statements" in html, (
+            "Template must include canonical runtime FS source attribution."
         )
 
     def test_pre_run_unavailable_panel_shown_by_js(self):
