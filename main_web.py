@@ -4523,6 +4523,7 @@ async def scenario_lender_case_endpoint(
     V4-4 Part A. Read-only; no persistence side effects.
     """
     from app.services.lender_case_service import run_lender_case
+    from app.services.reporting_kpi_sources import build_canonical_report_kpis
     from app.ui_runner import _build_period_engine
     from app.waterfall_runner import WaterfallRunner, WaterfallRunConfig
 
@@ -4553,17 +4554,7 @@ async def scenario_lender_case_endpoint(
         # Base run for comparison KPIs
         eng = _build_period_engine(proj)
         base_result = WaterfallRunner(proj, eng).run(WaterfallRunConfig.from_inputs(proj, eng))
-        base_kpis = {
-            "equity_irr": base_result.equity_irr,
-            "project_irr": base_result.project_irr,
-            "actual_avg_dscr": base_result.actual_avg_dscr,
-            "min_dscr": base_result.min_dscr,
-            "min_llcr": base_result.min_llcr,
-            "total_distribution_keur": base_result.total_distribution_keur,
-            "total_revenue_keur": base_result.total_revenue_keur,
-            "total_ebitda_keur": base_result.total_ebitda_keur,
-            "equity_npv": base_result.equity_npv,
-        }
+        base_kpis = build_canonical_report_kpis(base_result)
 
         lc_result = run_lender_case(proj, adjustments)
     except Exception as exc:
@@ -4652,6 +4643,7 @@ async def scenario_credit_summary_endpoint(
     from app.services.lender_case_service import (
         build_credit_summary, run_lender_case,
     )
+    from app.services.reporting_kpi_sources import build_canonical_report_kpis
     from app.ui_runner import _build_period_engine
     from app.waterfall_runner import WaterfallRunner, WaterfallRunConfig
 
@@ -4666,17 +4658,7 @@ async def scenario_credit_summary_endpoint(
         proj, _ = _resolve_lender_project(user, project, scenario_id)
         eng = _build_period_engine(proj)
         base_result = WaterfallRunner(proj, eng).run(WaterfallRunConfig.from_inputs(proj, eng))
-        base_kpis = {
-            "project_irr": base_result.project_irr,
-            "equity_irr": base_result.equity_irr,
-            "equity_npv": base_result.equity_npv,
-            "actual_avg_dscr": base_result.actual_avg_dscr,
-            "min_dscr": base_result.min_dscr,
-            "min_llcr": base_result.min_llcr,
-            "total_distribution_keur": base_result.total_distribution_keur,
-            "total_tax_keur": base_result.total_tax_keur,
-            "total_senior_ds_keur": base_result.total_senior_ds_keur,
-        }
+        base_kpis = build_canonical_report_kpis(base_result)
 
         lender_kpis = None
         adjustments = {

@@ -9,6 +9,8 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import Any, Optional
 
+from app.services.reporting_kpi_sources import build_canonical_report_kpis
+
 
 # ─── Lender adjustment registry ──────────────────────────────────────────────
 
@@ -110,21 +112,7 @@ def run_lender_case(
         WaterfallRunConfig.from_inputs(shocked_proj, eng)
     )
 
-    kpis = {
-        "equity_irr": result.equity_irr,
-        "project_irr": result.project_irr,
-        "actual_avg_dscr": result.actual_avg_dscr,
-        "min_dscr": result.min_dscr,
-        "min_llcr": result.min_llcr,
-        "min_plcr": result.min_plcr,
-        "total_distribution_keur": result.total_distribution_keur,
-        "total_revenue_keur": result.total_revenue_keur,
-        "total_ebitda_keur": result.total_ebitda_keur,
-        "total_tax_keur": result.total_tax_keur,
-        "total_senior_ds_keur": result.total_senior_ds_keur,
-        "equity_npv": result.equity_npv,
-        "periods_in_lockup": result.periods_in_lockup,
-    }
+    kpis = build_canonical_report_kpis(result)
 
     periods = build_covenant_periods(result)
 

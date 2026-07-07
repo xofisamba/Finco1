@@ -9,6 +9,8 @@ import io
 from datetime import date
 from typing import Any, Optional
 
+from app.services.reporting_kpi_sources import build_canonical_report_kpis
+
 # ─── Version constants ────────────────────────────────────────────────────────
 
 ENGINE_VERSION = "V4-5"
@@ -41,14 +43,15 @@ def build_exec_summary(
 
     # Payback: first period where cum_distribution >= equity invested
     payback_years = _calc_payback(result, equity_keur)
+    kpis = build_canonical_report_kpis(result)
 
     # Technology detection
     tech_name = _detect_technology(info)
 
     # Traffic-light RAG for summary
-    avg_dscr = result.actual_avg_dscr
-    min_dscr = result.min_dscr
-    equity_irr = result.equity_irr
+    avg_dscr = kpis["actual_avg_dscr"]
+    min_dscr = kpis["min_dscr"]
+    equity_irr = kpis["equity_irr"]
     rag_financial = "green" if equity_irr and equity_irr >= 0.08 else ("amber" if equity_irr and equity_irr >= 0.05 else "red")
     rag_debt = "green" if min_dscr and min_dscr >= 1.15 else ("amber" if min_dscr and min_dscr >= 1.05 else "red")
     rag_tax = "green" if result.total_tax_keur is not None else "amber"
@@ -76,20 +79,20 @@ def build_exec_summary(
         "senior_tenor_years": getattr(fin, "senior_tenor_years", None),
         "corporate_tax_rate_pct": tax.corporate_rate * 100.0,
         # KPIs
-        "project_irr": result.project_irr,
-        "equity_irr": result.equity_irr,
-        "equity_npv": result.equity_npv,
-        "avg_dscr": result.actual_avg_dscr,
-        "min_dscr": result.min_dscr,
-        "min_llcr": result.min_llcr,
-        "min_plcr": result.min_plcr,
-        "total_distribution_keur": result.total_distribution_keur,
-        "total_tax_keur": result.total_tax_keur,
-        "total_revenue_keur": result.total_revenue_keur,
-        "total_ebitda_keur": result.total_ebitda_keur,
-        "total_opex_keur": getattr(result, "total_opex_keur", None),
-        "total_senior_ds_keur": result.total_senior_ds_keur,
-        "periods_in_lockup": result.periods_in_lockup,
+        "project_irr": kpis["project_irr"],
+        "equity_irr": kpis["equity_irr"],
+        "equity_npv": kpis["equity_npv"],
+        "avg_dscr": kpis["actual_avg_dscr"],
+        "min_dscr": kpis["min_dscr"],
+        "min_llcr": kpis["min_llcr"],
+        "min_plcr": kpis["min_plcr"],
+        "total_distribution_keur": kpis["total_distribution_keur"],
+        "total_tax_keur": kpis["total_tax_keur"],
+        "total_revenue_keur": kpis["total_revenue_keur"],
+        "total_ebitda_keur": kpis["total_ebitda_keur"],
+        "total_opex_keur": kpis["total_opex_keur"],
+        "total_senior_ds_keur": kpis["total_senior_ds_keur"],
+        "periods_in_lockup": kpis["periods_in_lockup"],
         "payback_years": payback_years,
         # PPA
         "ppa_tariff": rev.ppa_base_tariff,
@@ -661,32 +664,35 @@ def _build_debt_summary(result: Any, proj: Any) -> dict[str, Any]:
     fin = proj.financing
     gearing = getattr(fin, "gearing_ratio", 0.0) or 0.0
     total_capex = proj.capex.total_capex
+    kpis = build_canonical_report_kpis(result)
     return {
         "debt_keur": total_capex * gearing,
         "senior_tenor_years": getattr(fin, "senior_tenor_years", None),
-        "total_senior_ds_keur": result.total_senior_ds_keur,
-        "min_dscr": result.min_dscr,
-        "avg_dscr": result.actual_avg_dscr,
-        "min_llcr": result.min_llcr,
-        "min_plcr": result.min_plcr,
-        "periods_in_lockup": result.periods_in_lockup,
+        "total_senior_ds_keur": kpis["total_senior_ds_keur"],
+        "min_dscr": kpis["min_dscr"],
+        "avg_dscr": kpis["actual_avg_dscr"],
+        "min_llcr": kpis["min_llcr"],
+        "min_plcr": kpis["min_plcr"],
+        "periods_in_lockup": kpis["periods_in_lockup"],
     }
 
 
 def _build_tax_summary(result: Any, proj: Any) -> dict[str, Any]:
     tax = proj.tax
+    kpis = build_canonical_report_kpis(result)
     return {
         "corporate_tax_rate_pct": tax.corporate_rate * 100.0,
-        "total_tax_keur": result.total_tax_keur,
-        "total_ebitda_keur": result.total_ebitda_keur,
-        "total_revenue_keur": result.total_revenue_keur,
+        "total_tax_keur": kpis["total_tax_keur"],
+        "total_ebitda_keur": kpis["total_ebitda_keur"],
+        "total_revenue_keur": kpis["total_revenue_keur"],
     }
 
 
 def _build_distribution_summary(result: Any) -> dict[str, Any]:
     annual = _build_annual_distributions(result)
+    kpis = build_canonical_report_kpis(result)
     return {
-        "total_keur": result.total_distribution_keur,
+        "total_keur": kpis["total_distribution_keur"],
         "annual": annual,
         "periods_count": sum(1 for p in result.periods if p.is_operation and getattr(p, "distribution_keur", 0) > 0),
     }
