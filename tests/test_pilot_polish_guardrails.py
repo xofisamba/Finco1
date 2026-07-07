@@ -120,12 +120,42 @@ def test_exec_summary_no_internal_empty_state():
         "exec_summary.html: internal URL hint still in empty state"
 
 
-def test_scenarios_page_template_exists_and_wraps_main_canvas():
+def test_workspace_shell_no_duplicate_create_form():
+    src = _read("app/templates/partials/workspace_shell.html")
+    # panel-new-project must be an empty container — the form is loaded
+    # on demand via hx-get="/projects/new/minimal". A baked-in Form A here
+    # would cause canvas contamination after any HTMX swap into that panel.
+    assert 'hx-post="/projects/create"' not in src, \
+        "workspace_shell.html: duplicate create form (Form A) still present — will contaminate canvas after HTMX swap"
+    assert "location.reload()" not in src, \
+        "workspace_shell.html: location.reload() still present — fights with HX-Redirect"
+
+
+def test_btn_new_project_uses_minimal_endpoint():
+    src = _read("app/templates/partials/project_selector.html")
+    assert 'hx-get="/projects/new/minimal"' in src, \
+        "project_selector.html: btn-new-project still uses /projects/new (full page) instead of /projects/new/minimal (partial)"
+    assert 'hx-get="/projects/new"' not in src, \
+        "project_selector.html: btn-new-project still has the old /projects/new full-page endpoint"
+
+
+def test_scenarios_page_extends_base_no_nested_canvas():
     src = _read("app/templates/scenarios_page.html")
-    assert 'id="main-canvas"' in src, \
-        "scenarios_page.html: #main-canvas element not found — HTMX hx-select will find nothing"
+    # Must extend base.html (which provides the single #main-canvas)
+    assert '{% extends "base.html" %}' in src, \
+        "scenarios_page.html: must extend base.html to get #main-canvas"
+    # Must NOT define its own #main-canvas — that would nest two #main-canvas
+    # elements, breaking hx-select="#main-canvas" (HTMX selects the outer one
+    # which contains wrong content after swap)
+    assert 'id="main-canvas"' not in src, \
+        "scenarios_page.html: defines its own #main-canvas — creates a nested duplicate inside base.html's #main-canvas; hx-select will swap in wrong content"
+    # Must include scenario_workspace.html for /scenarios and /scenarios/compare
     assert "scenario_workspace.html" in src, \
-        "scenarios_page.html: scenario_workspace.html not included"
+        "scenarios_page.html: scenario_workspace.html not included for /scenarios route"
+    # Must route other analysis tabs to their dedicated partials
+    for partial in ("scenario_sensitivity.html", "lender_case.html", "exec_summary.html", "bess_revenue_breakdown.html"):
+        assert partial in src, \
+            f"scenarios_page.html: {partial} not included — that analysis tab will render blank"
 
 
 def test_render_scenario_workspace_uses_full_page():

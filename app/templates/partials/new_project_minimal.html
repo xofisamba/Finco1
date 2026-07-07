@@ -19,7 +19,7 @@
 <form hx-post="/projects/create"
       hx-target="#new-project-result"
       hx-swap="innerHTML"
-      hx-on:after-request="if(event.detail.successful && event.detail.xhr.getResponseHeader('HX-Redirect')) { setTimeout(function(){ window.location.href = event.detail.xhr.getResponseHeader('HX-Redirect') + '#inputs'; }, 600); }"
+      hx-on:after-request=""
       class="create-form"
       id="new-project-minimal-form">
   <label class="create-form-label">

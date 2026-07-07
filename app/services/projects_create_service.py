@@ -437,6 +437,6 @@ async def execute_projects_create_route(
         },
         status_code=200,
         headers={
-            "HX-Redirect": f"/?project={project_record.project_code}"
+            "HX-Redirect": f"/?project={project_record.project_code}#inputs"
         },
     )

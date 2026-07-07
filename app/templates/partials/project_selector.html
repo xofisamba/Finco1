@@ -105,7 +105,8 @@
     <button class="ps-action-btn ps-action-btn--primary"
             id="btn-new-project"
             type="button"
-            hx-get="/projects/new"
+            onclick="showNewProjectPanel()"
+            hx-get="/projects/new/minimal"
             hx-target="#panel-new-project"
             hx-swap="innerHTML">
       <span class="ps-action-icon" aria-hidden="true">+</span>
