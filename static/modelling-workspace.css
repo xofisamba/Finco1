@@ -26,8 +26,7 @@
 /*  Token contract                                                           */
 /* ────────────────────────────────────────────────────────────────────────── */
 .fo-modelling-workspace {
-  /* UI-8B: narrowed nav+context panels, tightened gap to give grid ≥70% width */
-  --fo-mod-nav-w: 160px;
+  /* UI-8C: nav rail removed; only context width token needed */
   --fo-mod-context-w: 160px;
   --fo-mod-gap: var(--fo-s3);
 
@@ -157,7 +156,9 @@
 /* ────────────────────────────────────────────────────────────────────────── */
 .fo-modelling-workspace__layout {
   display: grid;
-  grid-template-columns: var(--fo-mod-nav-w) minmax(0, 1fr) var(--fo-mod-context-w);
+  /* UI-8C: nav rail removed — worksheet tabs are primary navigation.
+     Two columns: content + context (context collapses to 24px strip via modifier). */
+  grid-template-columns: minmax(0, 1fr) var(--fo-mod-context-w);
   gap: var(--fo-mod-gap);
   align-items: start;
 }
@@ -312,7 +313,7 @@
 /*  showing only the toggle arrow.                                           */
 /* ────────────────────────────────────────────────────────────────────────── */
 .fo-modelling-workspace__layout--context-collapsed {
-  grid-template-columns: var(--fo-mod-nav-w) minmax(0, 1fr) 24px;
+  grid-template-columns: minmax(0, 1fr) 24px;
 }
 
 .fo-modelling-workspace__context--collapsed {
@@ -541,34 +542,10 @@
 /* ────────────────────────────────────────────────────────────────────────── */
 /*  Responsive                                                               */
 /* ────────────────────────────────────────────────────────────────────────── */
-/* UI-8B: breakpoints adjusted — narrower panels stay in three-column longer */
-@media (max-width: 1024px) {
-  .fo-modelling-workspace__layout {
-    grid-template-columns: minmax(0, 1fr) var(--fo-mod-context-w);
-  }
-  .fo-modelling-workspace__nav {
-    grid-column: 1 / -1;
-    position: static;
-    max-height: none;
-  }
-  .fo-modelling-workspace__nav-list {
-    flex-direction: row;
-    flex-wrap: wrap;
-    gap: var(--fo-s1);
-  }
-  .fo-modelling-workspace__nav-link {
-    border-left: 1px solid var(--fo-line);
-    border-bottom: 3px solid transparent;
-    padding: 4px var(--fo-s2);
-  }
-  .fo-modelling-workspace__nav-link.is-active {
-    border-left-color: var(--fo-line);
-    border-bottom-color: var(--fo-brand-600);
-  }
-}
-
+/* UI-8C: two-column layout collapses context below 800px */
 @media (max-width: 800px) {
-  .fo-modelling-workspace__layout {
+  .fo-modelling-workspace__layout,
+  .fo-modelling-workspace__layout--context-collapsed {
     grid-template-columns: minmax(0, 1fr);
   }
   .fo-modelling-workspace__context {
