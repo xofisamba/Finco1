@@ -120,6 +120,20 @@ def test_exec_summary_no_internal_empty_state():
         "exec_summary.html: internal URL hint still in empty state"
 
 
+def test_scenarios_page_template_exists_and_wraps_main_canvas():
+    src = _read("app/templates/scenarios_page.html")
+    assert 'id="main-canvas"' in src, \
+        "scenarios_page.html: #main-canvas element not found — HTMX hx-select will find nothing"
+    assert "scenario_workspace.html" in src, \
+        "scenarios_page.html: scenario_workspace.html not included"
+
+
+def test_render_scenario_workspace_uses_full_page():
+    src = _read("main_web.py")
+    assert '"scenarios_page.html"' in src, \
+        "main_web.py: _render_scenario_workspace still uses partial; must use scenarios_page.html"
+
+
 def test_standard_empty_state_copy_present():
     """All analysis tabs must use the standard 'No model results available' copy."""
     for rel in (
