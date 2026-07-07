@@ -260,7 +260,7 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: var(--fo-s3);   /* UI-8B: reduced from s4 (16px) to s3 (12px) */
+  gap: var(--fo-s2);   /* UI-8D: reduced from s3 (12px) to s2 (8px) — tighter between sections */
 }
 
 .fo-modelling-workspace__content > * {
@@ -431,12 +431,14 @@
   align-items: center;
   gap: var(--fo-s2);
   font-family: var(--fo-font-ui);
-  font-size: var(--fo-text-md);   /* UI-8B: reduced from lg — section headers were outsized */
+  font-size: var(--fo-text-sm);   /* UI-8D: reduced from md — headers must not dominate the grid */
   font-weight: var(--fo-weight-semibold);
-  color: var(--fo-ink);
+  color: var(--fo-ink-soft);      /* UI-8D: softer colour — grid rows are the focus */
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
   margin: 0;
   line-height: 1.2;
-  padding-bottom: var(--fo-s1);   /* UI-8B: reduced from s2 */
+  padding-bottom: 2px;
   border-bottom: 1px solid var(--fo-line);
 }
 
@@ -483,6 +485,52 @@
 .fo-modelling-workspace__section-warnings--error {
   background: var(--fo-rag-red-bg);
   border-color: var(--fo-rag-red);
+}
+
+/* ────────────────────────────────────────────────────────────────────────── */
+/*  UI-8D: Compact density — scoped to modelling content only               */
+/*  Override global cell tokens for tighter row height within these sheets. */
+/* ────────────────────────────────────────────────────────────────────────── */
+.fo-modelling-workspace__content {
+  --cell-pad-v: 0.2rem;    /* was 0.4rem — saves ~4px per cell top+bottom */
+  --cell-h:     1.6rem;    /* was 2rem  — input cell min-height ~26px */
+  --font-cell:  0.80rem;   /* was 0.82rem — marginal but consistent */
+  --font-label: 0.76rem;   /* was 0.78rem */
+}
+
+/* Header cells: tighter vertical padding, slightly smaller text */
+.fo-modelling-workspace__content .fc-th {
+  padding-top: 0.25rem;
+  padding-bottom: 0.25rem;   /* was 0.5rem */
+  font-size: 0.70rem;        /* was 0.72rem */
+}
+
+/* Input cells: match compacted --cell-h */
+.fo-modelling-workspace__content .fc-cell-input {
+  padding-top: 0.15rem;
+  padding-bottom: 0.15rem;   /* was 0.3rem */
+  min-height: var(--cell-h);
+}
+
+/* Runtime/calculated cells: match */
+.fo-modelling-workspace__content .fc-cell-runtime {
+  padding-top: 0.15rem;
+  padding-bottom: 0.15rem;   /* was 0.3rem */
+}
+
+/* Native number inputs inside cells */
+.fo-modelling-workspace__content input.fc-input-native,
+.fo-modelling-workspace__content input.fc-cell-input {
+  padding-top: 0.15rem;
+  padding-bottom: 0.15rem;
+  min-height: var(--cell-h);
+}
+
+/* Total/subtotal rows: less generous bottom margin */
+.fo-modelling-workspace__content .fc-total-row .fc-cell,
+.fo-modelling-workspace__content .fc-subtotal-row .fc-cell {
+  padding-top: 0.2rem;
+  padding-bottom: 0.2rem;
 }
 
 /* ────────────────────────────────────────────────────────────────────────── */
