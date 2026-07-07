@@ -78,55 +78,94 @@
       </table>
     </div>
   </div>
-  <div class="assumption-grid">
+  <div class="assumption-grid sd-assumption-grid">
+    {# ── Facility ── #}
     <div class="assumption-item" data-fc-row="true">
       <span class="metric-label">Facility Amount</span>
       <span class="metric-value"
-            data-fc-cell="true"
-            data-fc-addr="seniordebt!facility_amount"
-            data-fc-kind="text"
-            data-fc-editable="false"
-            data-fc-raw="{{ project_ctx.senior_debt_keur }}">{% if project_ctx.senior_debt_keur is not none %}{{ "{:,.0f}".format(project_ctx.senior_debt_keur) }}{% else %}N/A{% endif %} kEUR</span>
+            data-fc-cell="true" data-fc-addr="seniordebt!facility_amount"
+            data-fc-kind="text" data-fc-editable="false"
+            data-fc-raw="{{ project_ctx.senior_debt_keur }}">
+        {% if project_ctx.senior_debt_keur %}{{ "{:,.0f}".format(project_ctx.senior_debt_keur) }}{% else %}N/A{% endif %} kEUR
+      </span>
     </div>
     <div class="assumption-item" data-fc-row="true">
       <span class="metric-label">Tenor</span>
       <span class="metric-value"
-            data-fc-cell="true"
-            data-fc-addr="seniordebt!tenor_summary"
-            data-fc-kind="text"
-            data-fc-editable="false"
-            data-fc-raw="{{ project_ctx.senior_tenor_years }}">{{ project_ctx.senior_tenor_years }} years</span>
+            data-fc-cell="true" data-fc-addr="seniordebt!tenor_summary"
+            data-fc-kind="text" data-fc-editable="false"
+            data-fc-raw="{{ project_ctx.senior_tenor_years }}">
+        {{ project_ctx.senior_tenor_years }} years
+      </span>
     </div>
+
+    {# ── Pricing ── #}
     <div class="assumption-item" data-fc-row="true">
       <span class="metric-label">All-in Rate</span>
       <span class="metric-value"
-            data-fc-cell="true"
-            data-fc-addr="seniordebt!interest_rate_summary"
-            data-fc-kind="text"
-            data-fc-editable="false"
-            data-fc-raw="{{ project_ctx.interest_rate_pct }}">{{ "%.2f"|format(project_ctx.interest_rate_pct * 100) }}% p.a.</span>
+            data-fc-cell="true" data-fc-addr="seniordebt!interest_rate_summary"
+            data-fc-kind="text" data-fc-editable="false"
+            data-fc-raw="{{ project_ctx.interest_rate_pct }}">
+        {{ "%.2f"|format(project_ctx.interest_rate_pct * 100) }}% p.a.
+      </span>
     </div>
+    {% if project_ctx.senior_base_rate_pct or project_ctx.senior_margin_bps %}
+    <div class="assumption-item" data-fc-row="true">
+      <span class="metric-label">Base Rate</span>
+      <span class="metric-value">{{ "%.2f"|format(project_ctx.senior_base_rate_pct * 100) }}% p.a.</span>
+    </div>
+    <div class="assumption-item" data-fc-row="true">
+      <span class="metric-label">Credit Margin</span>
+      <span class="metric-value">{{ project_ctx.senior_margin_bps }} bps</span>
+    </div>
+    {% endif %}
+
+    {# ── Covenants & DSRA ── #}
     <div class="assumption-item" data-fc-row="true">
       <span class="metric-label">Target DSCR</span>
       <span class="metric-value"
-            data-fc-cell="true"
-            data-fc-addr="seniordebt!target_dscr_summary"
-            data-fc-kind="text"
-            data-fc-editable="false"
-            data-fc-raw="{{ project_ctx.target_dscr }}">{{ "%.2f"|format(project_ctx.target_dscr) }}x</span>
+            data-fc-cell="true" data-fc-addr="seniordebt!target_dscr_summary"
+            data-fc-kind="text" data-fc-editable="false"
+            data-fc-raw="{{ project_ctx.target_dscr }}">
+        {{ "%.2f"|format(project_ctx.target_dscr) }}x
+      </span>
     </div>
+    {% if project_ctx.lockup_dscr %}
+    <div class="assumption-item" data-fc-row="true">
+      <span class="metric-label">Cash Lock-up DSCR</span>
+      <span class="metric-value">{{ "%.2f"|format(project_ctx.lockup_dscr) }}x</span>
+    </div>
+    {% endif %}
+    {% if project_ctx.dsra_months %}
+    <div class="assumption-item" data-fc-row="true">
+      <span class="metric-label">DSRA Reserve</span>
+      <span class="metric-value">{{ project_ctx.dsra_months }} months debt service</span>
+    </div>
+    {% endif %}
+
+    {# ── Gearing ── #}
     {% if project_ctx.gearing_pct %}
     <div class="assumption-item" data-fc-row="true">
-      <span class="metric-label">Indicative gearing (input)</span>
+      <span class="metric-label">Indicative Gearing (input)</span>
       <span class="metric-value"
-            data-fc-cell="true"
-            data-fc-addr="seniordebt!gearing_pct_summary"
-            data-fc-kind="text"
-            data-fc-editable="false"
-            data-fc-raw="{{ project_ctx.gearing_pct }}">{{ "%.2f"|format(project_ctx.gearing_pct * 100) }}%</span>
+            data-fc-cell="true" data-fc-addr="seniordebt!gearing_pct_summary"
+            data-fc-kind="text" data-fc-editable="false"
+            data-fc-raw="{{ project_ctx.gearing_pct }}">
+        {{ "%.1f"|format(project_ctx.gearing_pct * 100) }}%
+      </span>
+    </div>
+    {% endif %}
+    {% if project_ctx.realized_gearing_pct %}
+    <div class="assumption-item" data-fc-row="true">
+      <span class="metric-label">Realized Gearing</span>
+      <span class="metric-value">{{ "%.1f"|format(project_ctx.realized_gearing_pct) }}%</span>
     </div>
     {% endif %}
   </div>
+
+  <style>
+    .sd-assumption-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 0.5rem 1rem; }
+  </style>
 </div>
 
 <div class="section-divider"></div>
