@@ -1,4 +1,4 @@
-"""Runtime summary CSV export foundation for Phase 10.
+﻿"""Runtime summary CSV export foundation for Phase 10.
 
 This module reads existing runtime outputs and formats them for review. It does
 not change waterfall, tax, SHL, DistributionAccount, or R99/R102 behavior.
@@ -28,7 +28,7 @@ RUNTIME_SUMMARY_COLUMNS = [
     "metric",
     "value",
     "unit",
-    "runtime_or_preview",
+    "runtime_or_evidence",
     "governance_status",
     "g20_status",
     "r99_r102_status",
@@ -162,7 +162,7 @@ def build_runtime_summary_rows(
                 "metric": metric,
                 "value": str(value),
                 "unit": unit,
-                "runtime_or_preview": "runtime",
+                "runtime_or_evidence": "runtime",
                 "governance_status": governance_status,
                 "g20_status": g20_status,
                 "r99_r102_status": r99_r102_status,
@@ -229,3 +229,4 @@ def write_runtime_summary_csv(
         encoding="utf-8",
     )
     return path
+
