@@ -13,8 +13,11 @@
 {% set _contingency = project_ctx.capex_contingency_pct|default(0) * 100 %}
 {% set _capacity = project_ctx.capacity_mw %}
 
-<aside class="fo-modelling-workspace__context" aria-label="CAPEX context">
-  <h2 class="fo-modelling-workspace__context-title">Context</h2>
+<aside class="fo-modelling-workspace__context fo-modelling-workspace__context--collapsed" aria-label="CAPEX context" data-fo-context-sheet="capex">
+  <div class="fo-modelling-workspace__context-header">
+    <h2 class="fo-modelling-workspace__context-title">Context</h2>
+    <button type="button" class="fo-modelling-workspace__context-toggle" aria-label="Toggle context panel" title="Toggle context panel">›</button>
+  </div>
   <dl class="fo-modelling-workspace__context-list">
     <div class="fo-modelling-workspace__context-row">
       <dt class="fo-modelling-workspace__context-label">Total CAPEX</dt>

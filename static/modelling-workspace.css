@@ -267,6 +267,72 @@
 }
 
 /* ────────────────────────────────────────────────────────────────────────── */
+/*  Context panel collapse toggle button                                     */
+/* ────────────────────────────────────────────────────────────────────────── */
+.fo-modelling-workspace__context-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid var(--fo-line);
+  border-radius: var(--fo-r-sm);
+  background: transparent;
+  color: var(--fo-ink-soft);
+  cursor: pointer;
+  font-size: 10px;
+  line-height: 1;
+  flex: 0 0 auto;
+  align-self: flex-end;
+  transition: background var(--fo-t-fast) var(--fo-ease),
+              color var(--fo-t-fast) var(--fo-ease);
+}
+.fo-modelling-workspace__context-toggle:hover {
+  background: var(--fo-surface-alt);
+  color: var(--fo-ink);
+}
+.fo-modelling-workspace__context-toggle:focus-visible {
+  outline: 2px solid var(--fo-focus);
+  outline-offset: 1px;
+}
+
+/* Header row that holds the title + toggle side by side */
+.fo-modelling-workspace__context-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--fo-s2);
+  min-height: 20px;
+}
+
+/* ────────────────────────────────────────────────────────────────────────── */
+/*  Context panel — collapsed state                                          */
+/*  The layout grid drops its third column; the aside becomes a 24px strip  */
+/*  showing only the toggle arrow.                                           */
+/* ────────────────────────────────────────────────────────────────────────── */
+.fo-modelling-workspace__layout--context-collapsed {
+  grid-template-columns: var(--fo-mod-nav-w) minmax(0, 1fr) 24px;
+}
+
+.fo-modelling-workspace__context--collapsed {
+  padding: var(--fo-s2) 2px;
+  gap: var(--fo-s2);
+  overflow: hidden;
+}
+
+.fo-modelling-workspace__context--collapsed .fo-modelling-workspace__context-header {
+  flex-direction: column;
+  align-items: center;
+  gap: var(--fo-s2);
+}
+
+.fo-modelling-workspace__context--collapsed .fo-modelling-workspace__context-title,
+.fo-modelling-workspace__context--collapsed .fo-modelling-workspace__context-list {
+  display: none;
+}
+
+/* ────────────────────────────────────────────────────────────────────────── */
 /*  Context panel (PART A right side)                                        */
 /* ────────────────────────────────────────────────────────────────────────── */
 .fo-modelling-workspace__context {
