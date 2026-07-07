@@ -408,8 +408,9 @@
   font-weight: var(--fo-weight-regular);
 }
 
-/* When the strip is in stale state — visual mirror of the dirty pill */
-.fo-kpi-strip--stale .fo-kpi__value {
+/* When the strip is in stale state — visual mirror of the dirty pill.
+   Exclude placeholder values (e.g. LLCR showing "—") from amber tint. */
+.fo-kpi-strip--stale .fo-kpi__value:not(.fo-kpi__value--placeholder) {
   color: var(--fo-rag-amber);
 }
 .fo-kpi-strip--stale .fo-kpi__label::after {
