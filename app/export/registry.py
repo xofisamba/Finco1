@@ -1,4 +1,4 @@
-"""Lightweight export artifact registry for Phase 10.
+﻿"""Lightweight export artifact registry for Phase 10.
 
 The registry centralizes artifact names, categories, scope, and governance
 labels. It deliberately avoids recalculating model outputs.
@@ -31,7 +31,7 @@ class ExportArtifact:
     category: ExportCategory
     project_scope: str
     format: str
-    runtime_or_preview: str
+    runtime_or_evidence: str
     governance_sensitive: bool
     current_status: str
     description: str
@@ -44,7 +44,7 @@ class ExportArtifact:
             "category": self.category.value,
             "project_scope": self.project_scope,
             "format": self.format,
-            "runtime_or_preview": self.runtime_or_preview,
+            "runtime_or_evidence": self.runtime_or_evidence,
             "governance_sensitive": "yes" if self.governance_sensitive else "no",
             "current_status": self.current_status,
             "notes": self.notes or self.description,
@@ -79,7 +79,7 @@ def default_export_registry() -> ExportRegistry:
                 category=ExportCategory.PARITY,
                 project_scope="TUHO",
                 format="xlsx",
-                runtime_or_preview="review",
+                runtime_or_evidence="review",
                 governance_sensitive=True,
                 current_status="accepted_with_minor_follow_up",
                 description="Corrected horizontal reviewer workbook from Phase 9.",
@@ -91,7 +91,7 @@ def default_export_registry() -> ExportRegistry:
                 category=ExportCategory.GOVERNANCE,
                 project_scope="TUHO",
                 format="csv",
-                runtime_or_preview="review",
+                runtime_or_evidence="review",
                 governance_sensitive=True,
                 current_status="g20_blocked_pending_stakeholder_acceptance",
                 description="Final TUHO parity closeout status register.",
@@ -103,7 +103,7 @@ def default_export_registry() -> ExportRegistry:
                 category=ExportCategory.RUNTIME,
                 project_scope="TUHO, Oborovo",
                 format="csv",
-                runtime_or_preview="runtime",
+                runtime_or_evidence="runtime",
                 governance_sensitive=True,
                 current_status="foundation",
                 description="Standardized project runtime summary with provenance metadata.",
@@ -115,7 +115,7 @@ def default_export_registry() -> ExportRegistry:
                 category=ExportCategory.WORKBOOK,
                 project_scope="TUHO, Oborovo",
                 format="xlsx",
-                runtime_or_preview="runtime",
+                runtime_or_evidence="runtime",
                 governance_sensitive=True,
                 current_status="runtime_binding_in_progress",
                 description="Runtime workbook foundation for institutional lender, IC, and audit review, with populated runtime sections and explicit unavailable-evidence notes where support is still pending.",
@@ -127,7 +127,7 @@ def default_export_registry() -> ExportRegistry:
                 category=ExportCategory.AUDIT,
                 project_scope="TUHO",
                 format="xlsx",
-                runtime_or_preview="review",
+                runtime_or_evidence="review",
                 governance_sensitive=True,
                 current_status="review_evidence_pack",
                 description="Executive review pack with dashboard, signoff flow, classifications, IRR reconciliation guidance, governance impacts, and next actions.",
@@ -139,7 +139,7 @@ def default_export_registry() -> ExportRegistry:
                 category=ExportCategory.SOURCE_MAP,
                 project_scope="TUHO",
                 format="csv",
-                runtime_or_preview="review",
+                runtime_or_evidence="review",
                 governance_sensitive=True,
                 current_status="evidence_expansion",
                 description="Inventory of runtime-available workbook fields, current binding status, and explicit reasons where coverage still stops short.",
@@ -151,7 +151,7 @@ def default_export_registry() -> ExportRegistry:
                 category=ExportCategory.VALIDATION,
                 project_scope="TUHO",
                 format="csv",
-                runtime_or_preview="review",
+                runtime_or_evidence="review",
                 governance_sensitive=True,
                 current_status="evidence_expansion",
                 description="Coverage metrics for runtime-bound rows, evidence-backed rows, unresolved gaps, and governance blockers.",
@@ -163,7 +163,7 @@ def default_export_registry() -> ExportRegistry:
                 category=ExportCategory.VALIDATION,
                 project_scope="portfolio",
                 format="csv",
-                runtime_or_preview="review",
+                runtime_or_evidence="review",
                 governance_sensitive=False,
                 current_status="foundation",
                 description="Registry of known exports and governance labels.",
@@ -175,7 +175,7 @@ def default_export_registry() -> ExportRegistry:
                 category=ExportCategory.SOURCE_MAP,
                 project_scope="TUHO",
                 format="csv",
-                runtime_or_preview="review",
+                runtime_or_evidence="review",
                 governance_sensitive=True,
                 current_status="available",
                 description="Source map for the corrected TUHO horizontal workbook.",
@@ -187,7 +187,7 @@ def default_export_registry() -> ExportRegistry:
                 category=ExportCategory.AUDIT,
                 project_scope="TUHO",
                 format="csv",
-                runtime_or_preview="review",
+                runtime_or_evidence="review",
                 governance_sensitive=True,
                 current_status="available",
                 description="Gap register backing the corrected TUHO horizontal workbook.",
@@ -199,7 +199,7 @@ def default_export_registry() -> ExportRegistry:
                 category=ExportCategory.WORKBOOK,
                 project_scope="TUHO, Oborovo",
                 format="xlsx",
-                runtime_or_preview="audit",
+                runtime_or_evidence="audit",
                 governance_sensitive=True,
                 current_status="available",
                 description="Offline financial statements audit workbook export.",
@@ -222,7 +222,7 @@ def write_export_registry_csv(path: str | Path) -> Path:
                 "category",
                 "project_scope",
                 "format",
-                "runtime_or_preview",
+                "runtime_or_evidence",
                 "governance_sensitive",
                 "current_status",
                 "notes",
@@ -231,3 +231,4 @@ def write_export_registry_csv(path: str | Path) -> Path:
         writer.writeheader()
         writer.writerows(rows)
     return output_path
+
