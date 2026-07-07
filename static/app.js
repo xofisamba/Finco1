@@ -455,7 +455,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
   var hash = window.location.hash.replace('#', '');
   if (hash) {
-    var hashTab = document.querySelector('.ws-tab[data-tab="' + hash + '"]');
+    // Support both legacy .ws-tab and new UI-3 .fo-sheet DOM tabs
+    var hashTab = document.querySelector('.ws-tab[data-tab="' + hash + '"]') ||
+                  document.querySelector('.fo-sheet[data-fo-sheet-kind="dom"][data-fo-sheet-id="' + hash + '"]');
     if (hashTab) setTimeout(function() { switchTab(hash); }, 0);
   } else {
     var defaultTab = document.querySelector('.ws-tab[data-tab="overview"]');
