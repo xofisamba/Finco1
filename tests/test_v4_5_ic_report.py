@@ -14,7 +14,7 @@ import hashlib
 import pytest
 
 
-WATERFALL_CORE_SHA = "9bee7fb9a5b26a7c25180a165aac81136439790a19d295c900d86d3ff8bc9470"
+WATERFALL_CORE_SHA = "e6097569eecf4f173061bc3d8370b7b2515847c5ab0d9b6093d6401119159ef5"
 
 
 # ─── Fixtures ────────────────────────────────────────────────────────────────
