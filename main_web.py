@@ -1966,14 +1966,30 @@ def _render_scenario_workspace(
             ),
             project_code=getattr(project_record, "project_code", "") or "",
         )
+    # Build lightweight KPI context for the chrome strip.
+    from app.ui.dashboard import build_dashboard_kpis as _build_kpis
+    _last_rs = getattr(workspace_state, "last_runtime_summary", None) if workspace_state else None
+    _dash_kpis = _build_kpis(
+        last_runtime_summary=_last_rs,
+        project_record=project_record,
+        realized_gearing_pct=None,
+    )
+    _ws_meta = _workspace_state_meta(workspace_state)
+
     return templates.TemplateResponse(
         request=request,
-        name="partials/scenario_workspace.html",
+        name="scenarios_page.html",
         context={
             "user": user,
             "project_record": project_record,
             "workspace_state": workspace_state,
-            "workspace_state_meta": _workspace_state_meta(workspace_state),
+            "workspace_state_meta": _ws_meta,
+            # Chrome context — KPI strip and sheet tabs
+            "dashboard_kpis": _dash_kpis,
+            "dirty": _ws_meta.get("dirty", False),
+            "factory_template_projects": FACTORY_TEMPLATE_OPTIONS,
+            "user_project_records": _user_project_selector_items(user),
+            "active_project_code": getattr(project_record, "project_code", ""),
             "scenario_records": scenarios,
             "scenario_history": history,
             "export_records": exports,

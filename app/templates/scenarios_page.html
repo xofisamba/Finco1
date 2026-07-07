@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{# Full-page wrapper for all analysis URL tabs (Scenarios, Compare,
+   Sensitivity, Lender, Reports, BESS).
+   Provides the #main-canvas element that HTMX hx-select="#main-canvas"
+   requires when swapping between URL tabs and the main workspace. #}
+
+{% block body %}
+<main class="content fo-scenarios-page" id="main-canvas">
+  {% include "partials/scenario_workspace.html" %}
+</main>
+{% endblock %}
