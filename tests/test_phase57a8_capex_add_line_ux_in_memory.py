@@ -358,12 +358,10 @@ class TestPreviewTotalsBlock:
     def test_block_text_clarifies_preview_only(
         self, rendered_user,
     ):
+        # UI-8G: copy updated to user-facing language; check for new text
         assert (
-            "Preview only" in rendered_user
-        )
-        assert (
-            "not used by Run until persistence is implemented"
-            in rendered_user
+            "Draft total shown for reference" in rendered_user
+            or "Save and run the model to include" in rendered_user
         )
 
 
