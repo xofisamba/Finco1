@@ -934,3 +934,64 @@
     padding: var(--fo-s1) var(--fo-s2);
   }
 }
+/* ============================================================================
+   UI-8E — Financial statements runtime state
+   ========================================================================== */
+
+/* Professional empty state — shown by default, hidden by JS after Run */
+.fo-fs-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--fo-s3);
+  padding: var(--fo-s8) var(--fo-s4);
+  text-align: center;
+  color: var(--fo-ink-soft);
+}
+
+.fo-fs-empty-state__icon {
+  font-size: 2rem;
+  opacity: 0.25;
+  line-height: 1;
+}
+
+.fo-fs-empty-state__title {
+  font-family: var(--fo-font-ui);
+  font-size: var(--fo-text-lg);
+  font-weight: var(--fo-weight-semibold);
+  color: var(--fo-ink-soft);
+}
+
+.fo-fs-empty-state__body {
+  font-family: var(--fo-font-ui);
+  font-size: var(--fo-text-sm);
+  color: var(--fo-ink-faint);
+  max-width: 360px;
+  line-height: 1.5;
+}
+
+.fo-fs-empty-state__body kbd {
+  font-family: var(--fo-font-mono);
+  font-size: 0.85em;
+  border: 1px solid var(--fo-line-strong);
+  border-radius: 3px;
+  padding: 1px 5px;
+  background: var(--fo-surface-alt);
+  color: var(--fo-ink);
+}
+
+/* Toolbar disabled when no runtime — grey out controls, block interaction */
+.fo-statements-workspace[data-fo-fs-state="no-runtime"] .fo-statements-toolbar__btn,
+.fo-statements-workspace[data-fo-fs-state="no-runtime"] .fo-statements-toolbar__select {
+  opacity: 0.35;
+  pointer-events: none;
+  cursor: not-allowed;
+}
+
+/* Statement selector tabs disabled when no runtime */
+.fo-statements-workspace[data-fo-fs-state="no-runtime"] .fo-statements-selector__btn {
+  opacity: 0.4;
+  pointer-events: none;
+  cursor: not-allowed;
+}

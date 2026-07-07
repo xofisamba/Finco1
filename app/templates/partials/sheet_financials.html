@@ -16,12 +16,7 @@
      is the runtime KPI block above (`fs-runtime-block`), which reads
      real `last_runtime_summary` data and is preserved unchanged.
 -->
-<div class="sheet-banner">
-  <span class="sheet-banner-tag">📈 Financial Statements</span>
-  <span class="sheet-banner-badge">
-    <span class="badge badge-preview">Preview</span>
-  </span>
-</div>
+{# UI-8E: banner removed — the statement selector is the page identity. #}
 
 {# ══════════════════════════════════════════════════════════════════════
    LIVE RUNTIME BLOCK (sessionStorage — shown after model run)
@@ -77,20 +72,14 @@
    When a Run has been executed, the financial statement tables below
    replace this panel. No financial values are invented here.
    ══════════════════════════════════════════════════════════════════════ #}
-<div class="empty-state-notice empty-state-notice--warn fs-unavailable-panel"
+{# UI-8E: default visible — JS hides this when runtime exists.
+   Removed style="display:none;" to avoid FOUC (flash of empty page). #}
+<div class="fo-fs-empty-state"
      id="fs-unavailable-panel"
-     role="status" aria-label="Financial statements not yet available"
-     style="display:none;">
-  <div class="esn-icon" aria-hidden="true">📄</div>
-  <div class="esn-title">Financial statements are not connected to Run outputs yet</div>
-  <div class="esn-desc">
-    Run the model to see the Income Statement, Cash Flow, and Balance
-    Sheet tables. Once you click Run, these tables are populated from
-    <code>assemble_financial_statements()</code> — the same engine
-    output used by the XLSX export — so the values are identical to
-    the institutional workbook. No values are hardcoded or computed
-    client-side.
-  </div>
+     role="status" aria-label="Financial statements not yet available">
+  <div class="fo-fs-empty-state__icon" aria-hidden="true">⬜</div>
+  <div class="fo-fs-empty-state__title">No results yet</div>
+  <div class="fo-fs-empty-state__body">Run the model to populate Income Statement, Balance Sheet, and Cash Flow. Press <kbd>F9</kbd> or click <strong>Run</strong>.</div>
 </div>
 
 {# ══════════════════════════════════════════════════════════════════════
@@ -300,11 +289,14 @@
       _buildBody(pfBody, PF_ROWS, fs.pf_cash_waterfall.periods);
     }
 
-    // Show statements block, hide unavailable panel
+    // Show statements block, hide unavailable panel, mark workspace as runtime-ready
     var stmtBlock = document.getElementById("fs-statements-block");
     if (stmtBlock) stmtBlock.style.display = "";
     var unavail = document.getElementById("fs-unavailable-panel");
     if (unavail) unavail.style.display = "none";
+    // UI-8E: mark workspace so toolbar is enabled
+    var ws = document.querySelector(".fo-statements-workspace");
+    if (ws) ws.setAttribute("data-fo-fs-state", "runtime");
   }
 
   function _populateFSStatements() {
