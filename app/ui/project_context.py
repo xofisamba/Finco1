@@ -116,8 +116,12 @@ class ProjectContext:
     capex_y1_total_keur: float = 0.0
     senior_debt_keur: float = 0.0
     interest_rate_pct: float = 0.0
+    senior_base_rate_pct: float = 0.0   # base rate component (e.g. Euribor)
+    senior_margin_bps: int = 0          # credit margin in bps (all-in = base + margin/10000)
     senior_tenor_years: int = 0
     target_dscr: float = 0.0
+    lockup_dscr: float = 0.0            # cash lock-up DSCR threshold
+    dsra_months: int = 0                # DSRA reserve months of debt service
     gearing_pct: float | None = None
     # Phase PR2 — read-only derived output.
     # realized_gearing_pct = senior_debt / total_capex * 100
@@ -2356,8 +2360,12 @@ def _build_context_from_project_inputs(
             financing.fixed_debt_keur, capex.total_capex
         ),
         interest_rate_pct=financing.base_rate + financing.margin_bps / 10_000,
+        senior_base_rate_pct=financing.base_rate,
+        senior_margin_bps=financing.margin_bps,
         senior_tenor_years=financing.senior_tenor_years,
         target_dscr=financing.target_dscr,
+        lockup_dscr=getattr(financing, "lockup_dscr", 0.0) or 0.0,
+        dsra_months=getattr(financing, "dsra_months", 0) or 0,
         gearing_pct=getattr(financing, "gearing_ratio", None),
         shl_amount_keur=financing.shl_amount_keur,
         shl_rate_pct=financing.shl_rate,

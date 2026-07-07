@@ -2808,6 +2808,34 @@ body {
   border-color: var(--warn-border, #f6c343);
 }
 
+/* Numeric input group: number field + static unit suffix side-by-side */
+.inp-input-group {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  width: 100%;
+}
+.inp-input-group .inp-input--number {
+  flex: 1;
+  min-width: 0;
+  /* Remove browser spinner arrows for a cleaner look */
+  -moz-appearance: textfield;
+}
+.inp-input-group .inp-input--number::-webkit-outer-spin-button,
+.inp-input-group .inp-input--number::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.inp-unit {
+  flex-shrink: 0;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--text-2, #6b7280);
+  white-space: nowrap;
+  padding: 0 0.2rem;
+  user-select: none;
+}
+
 .inp-badge {
   min-width: 24px;
   text-align: right;
@@ -3376,6 +3404,14 @@ body {
 .inp-input.changed {
   background: var(--cell-dirty-bg);
   border-color: #f6c343;
+}
+.inp-input-group .inp-input--number {
+  -moz-appearance: textfield;
+}
+.inp-input-group .inp-input--number::-webkit-outer-spin-button,
+.inp-input-group .inp-input--number::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
 }
 
 /* Inputs sheet grid row */
