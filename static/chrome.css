@@ -408,8 +408,19 @@
   font-weight: var(--fo-weight-regular);
 }
 
-/* When the strip is in stale state — visual mirror of the dirty pill */
-.fo-kpi-strip--stale .fo-kpi__value {
+/* "Run model" sub-label shown below the "—" when no runtime exists */
+.fo-kpi__hint {
+  font-size: 0.62rem;
+  color: var(--fo-ink-faint);
+  font-style: normal;
+  font-weight: var(--fo-weight-regular);
+  margin-top: 1px;
+  line-height: 1;
+}
+
+/* When the strip is in stale state — visual mirror of the dirty pill.
+   Exclude placeholder values (e.g. LLCR showing "—") from amber tint. */
+.fo-kpi-strip--stale .fo-kpi__value:not(.fo-kpi__value--placeholder) {
   color: var(--fo-rag-amber);
 }
 .fo-kpi-strip--stale .fo-kpi__label::after {

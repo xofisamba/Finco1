@@ -42,10 +42,9 @@
       no download cards.
     </p>
     <p class="export-empty-state__hint" data-export-empty-hint="true">
-      Disabled cards below are blocked by governance gates
-      (for example G20) until the underlying review pack is
-      approved. The disabled state is intentional and is not
-      removed by re-running the model.
+      Some exports are blocked by governance gates (for example G20)
+      until the underlying review pack is approved. The blocked state
+      is intentional and is not removed by re-running the model.
     </p>
   </div>
   {% else %}
@@ -58,10 +57,12 @@
   </p>
 
   <div class="export-card-grid">
-    <a href="/exports/institutional-workbook.xlsx?project=tuho" class="export-card" data-artifact="Phase 10 institutional workbook skeleton"
-       data-export-card-enabled="true"
+    <div class="export-card export-card--disabled" data-artifact="Phase 10 institutional workbook skeleton"
+       data-export-card-enabled="false"
        data-export-card-category="workbook"
-       data-export-card-lineage="runtime + audit + signoff">
+       data-export-card-lineage="runtime + audit + signoff"
+       aria-disabled="true"
+       title="Blocked — G20 governance gate not yet cleared">
       <div class="export-card-top">
         <span class="export-category-badge">workbook</span>
         <span class="badge badge-blocked">G20 BLOCKED</span>
@@ -72,7 +73,7 @@
         <strong>Lineage:</strong> runtime snapshot, audit register, signoff matrix.
       </div>
       <div class="export-card-meta">runtime &middot; XLSX &middot; lender / IC / audit ready structure</div>
-    </a>
+    </div>
 
     <div class="export-card export-card--disabled" data-artifact="reconciliation-pack"
          data-export-card-enabled="false"
@@ -88,23 +89,25 @@
       <div class="export-card-meta">review &middot; XLSX &middot; not yet available</div>
     </div>
 
-    <a href="/exports/runtime-summary.csv?project=tuho" class="export-card" data-artifact="Phase 10 runtime summary export"
-       data-export-card-enabled="true"
+    <div class="export-card export-card--disabled" data-artifact="Phase 10 runtime summary export"
+       data-export-card-enabled="false"
        data-export-card-category="runtime"
-       data-export-card-lineage="runtime snapshot + governance labels">
+       data-export-card-lineage="runtime snapshot + governance labels"
+       aria-disabled="true"
+       title="Blocked — G20 governance gate not yet cleared">
       <div class="export-card-top">
         <span class="export-category-badge">runtime</span>
         <span class="badge badge-blocked">G20 BLOCKED</span>
       </div>
-      <div class="export-card-name">TUHO Runtime Summary CSV</div>
+      <div class="export-card-name">Runtime Summary CSV</div>
       <div class="export-card-desc">Project IRR, equity IRR, revenue, EBITDA, OPEX, DSCR, distributions, SHL, and governance labels.</div>
       <div class="export-card-lineage" data-export-card-lineage-text="true">
-        <strong>Lineage:</strong> TUHO last clean run snapshot.
+        <strong>Lineage:</strong> Last clean run snapshot.
       </div>
-      <div class="export-card-meta">runtime &middot; CSV &middot; TUHO</div>
-    </a>
+      <div class="export-card-meta">runtime &middot; CSV &middot; current project</div>
+    </div>
 
-    <a href="/exports/runtime-summary.csv?project=oborovo" class="export-card" data-artifact="Phase 10 runtime summary export"
+    <a href="/exports/runtime-summary.csv?project={{ project_record.project_code if project_record else project_ctx.id if project_ctx else '' }}" class="export-card" data-artifact="Phase 10 runtime summary export"
        data-export-card-enabled="true"
        data-export-card-category="runtime"
        data-export-card-lineage="runtime snapshot + governance labels">
@@ -112,12 +115,12 @@
         <span class="export-category-badge">runtime</span>
         <span class="badge badge-notapproved">R99/R102 NOT APPROVED</span>
       </div>
-      <div class="export-card-name">Oborovo Runtime Summary CSV</div>
-      <div class="export-card-desc">Same runtime summary schema as TUHO, sourced from Oborovo example-project runtime output.</div>
+      <div class="export-card-name">Runtime Summary CSV</div>
+      <div class="export-card-desc">Runtime summary including project IRR, equity IRR, revenue, EBITDA, OPEX, DSCR, distributions, SHL, and governance labels for this project.</div>
       <div class="export-card-lineage" data-export-card-lineage-text="true">
-        <strong>Lineage:</strong> Oborovo example-project runtime output; internal governance workflow not available in standard exports.
+        <strong>Lineage:</strong> Last clean backend run for this project.
       </div>
-      <div class="export-card-meta">runtime &middot; CSV &middot; Oborovo</div>
+      <div class="export-card-meta">runtime &middot; CSV &middot; this project</div>
     </a>
 
     <div class="export-card export-card--disabled" data-artifact="tuho-horizontal-review-workbook"

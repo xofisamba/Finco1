@@ -94,14 +94,13 @@
     {% endif %}
   </div>
 
-  <!-- Quick actions (Phase 56E: clearer "Switch" and "New project" actions) -->
+  <!-- Quick actions -->
   <div class="ps-quick-actions">
-    {# WF-3: Home → canonical / route #}
     <a class="ps-action-btn"
        id="btn-project-home"
-       href="/">
+       href="/projects/browse">
       <span class="ps-action-icon" aria-hidden="true">⌂</span>
-      <span class="ps-action-label">Home</span>
+      <span class="ps-action-label">Projects</span>
     </a>
     <button class="ps-action-btn ps-action-btn--primary"
             id="btn-new-project"
@@ -112,12 +111,6 @@
       <span class="ps-action-icon" aria-hidden="true">+</span>
       <span class="ps-action-label">New project</span>
     </button>
-    <a class="ps-action-btn"
-       id="btn-load-project"
-       href="/projects">
-      <span class="ps-action-icon" aria-hidden="true">⇄</span>
-      <span class="ps-action-label">All projects</span>
-    </a>
   </div>
 
   {# WF-3: Two labelled sidebar nav groups #}

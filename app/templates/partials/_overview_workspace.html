@@ -85,7 +85,7 @@
         <span class="fo-project-summary__label">Status</span>
         <span class="fo-project-summary__value">
           {%- if _dirty -%}
-            Dirty
+            Unsaved changes
           {%- elif runtime_snapshot_id is defined and runtime_snapshot_id != 'unavailable' -%}
             Saved
           {%- else -%}
