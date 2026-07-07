@@ -1,4 +1,6 @@
-<!-- Sheet: Financial Statements (P&L / Cash Flow / Balance Sheet)
+<!doctype html><meta charset="utf-8"><style>
+body{font-family:Arial,sans-serif;margin:24px;background:#f7f8fa;color:#172033}.section-divider{height:12px}.fo-fs-empty-state{padding:24px;border:1px solid #d8dee8;border-radius:8px;background:white}.fo-fs-empty-state__title{font-size:22px;font-weight:700}.fo-fs-empty-state__body{margin-top:8px;color:#526071}.fc-section-header{display:flex;gap:10px;align-items:center;margin:18px 0 8px}.fc-section-title{font-weight:700}.badge{font-size:12px;border:1px solid #aeb8c7;border-radius:999px;padding:3px 8px}.fc-table-wrapper{overflow:auto;background:white;border:1px solid #d8dee8;border-radius:8px}.fc-grid{border-collapse:collapse;width:100%;min-width:760px}.fc-grid th,.fc-grid td{border-bottom:1px solid #e3e8ef;padding:8px 10px;text-align:right}.fc-label-cell{text-align:left!important;font-weight:600}.fc-row-subtotal{background:#f1f5f9}.fs-statements-footer{margin:12px 0;color:#526071}.fs-conventions-block{display:none}
+</style><!-- Sheet: Financial Statements (P&L / Cash Flow / Balance Sheet)
      Phase 20M — Financial Statements Polish
      Product Gap PR6 — Financial Statements Reality Check
      fc-grid design system applied to statement tables
@@ -12,11 +14,9 @@
      retained as a same-run HTMX refresh fallback. No statement values
      are calculated in this template.
 -->
-{# UI-8E: banner removed — the statement selector is the page identity. #}
 
-{# ══════════════════════════════════════════════════════════════════════
-   LIVE RUNTIME BLOCK (sessionStorage — shown after model run)
-   ══════════════════════════════════════════════════════════════════════ #}
+
+
 <div id="fs-runtime-block">
   <div class="fs-runtime-block" id="shared-runtime-block" style="display:none;">
     <div class="fs-runtime-header">
@@ -27,15 +27,13 @@
       </div>
       <div class="fs-runtime-header-right">
         <span class="fs-runtime-time" id="runtime-block-time"></span>
-        {% if runtime_summary is defined and runtime_summary.active_scenario_name %}
-        <span class="badge badge-runtime">{{ runtime_summary.active_scenario_name }}</span>
-        {% endif %}
+        
       </div>
     </div>
     <div class="fs-runtime-kpis" id="runtime-block-kpis"></div>
   </div>
 
-  {# Secondary runtime metrics for financial statements #}
+  
   <div class="fs-secondary-metrics" id="fs-secondary-metrics" style="display:none;">
     <div class="fs-metric">
       <span class="fs-metric-label">Total Distributions</span>
@@ -62,133 +60,70 @@
 
 <div class="section-divider"></div>
 
-{% set _fs = financial_statements|default(None) %}
-{% set _fs_has_runtime = _fs and _fs.pnl and _fs.pnl.periods and _fs.balance_sheet and _fs.balance_sheet.periods and _fs.pf_cash_waterfall and _fs.pf_cash_waterfall.periods %}
 
-{% macro _fs_num(v) -%}
-  {%- if v is number -%}{{ "%.0f"|format(v) }}{%- else -%}-{%- endif -%}
-{%- endmacro %}
 
-{% macro _fs_header(periods) -%}
-  <th class="fc-header-cell fc-label-cell">Line Item</th>
-  {%- for p in periods %}
-    <th class="fc-header-cell fc-period-cell">{{ p.date[:7] if p.date else "P" ~ loop.index0 }}</th>
-  {%- endfor %}
-{%- endmacro %}
 
-{% macro _fs_body(row_defs, periods) -%}
-  {%- for row in row_defs %}
-    <tr{% if row.bold|default(false) %} class="fc-row-subtotal"{% endif %}>
-      <td class="fc-cell fc-label-cell">{{ row.label }}{% if row.note|default("") %} ({{ row.note }}){% endif %}</td>
-      {%- for p in periods %}
-        <td class="fc-cell fc-value-cell" data-readonly="true">{{ _fs_num(p.get(row["key"])) }}</td>
-      {%- endfor %}
-    </tr>
-  {%- endfor %}
-{%- endmacro %}
 
-{% set _pnl_rows = [
-  {"label": "Revenue", "key": "revenues_keur"},
-  {"label": "Operating Expenses", "key": "operating_expenses_keur"},
-  {"label": "Depreciation", "key": "depreciation_keur"},
-  {"label": "EBIT", "key": "ebit_keur", "bold": true},
-  {"label": "Senior Interest Expense", "key": "senior_interest_expense_keur"},
-  {"label": "SHL Interest Expense", "key": "shl_interest_expense_keur"},
-  {"label": "Earnings Before Tax", "key": "earnings_before_tax_keur", "bold": true},
-  {"label": "CIT Accrual", "key": "cit_accrual_keur"},
-  {"label": "Net Income", "key": "net_income_keur", "bold": true},
-  {"label": "Retained Earnings", "key": "retained_earnings_keur"},
-  {"label": "Net Dividends", "key": "net_dividends_keur"},
-] %}
-{% set _bs_rows = [
-  {"label": "Net Fixed Assets", "key": "net_fixed_assets_keur"},
-  {"label": "DSRA Balance", "key": "dsra_balance_keur"},
-  {"label": "Cash", "key": "cash_keur"},
-  {"label": "Total Assets", "key": "total_assets_keur", "bold": true},
-  {"label": "Share Capital", "key": "share_capital_keur"},
-  {"label": "Retained Earnings", "key": "retained_earnings_keur"},
-  {"label": "SHL Balance", "key": "shl_balance_keur"},
-  {"label": "Senior Debt Balance", "key": "senior_balance_keur"},
-  {"label": "Total Liabilities+Equity", "key": "total_liabilities_equity_keur", "bold": true},
-  {"label": "Balance Check", "key": "balance_check_keur", "note": "Should be ~0"},
-] %}
-{% set _pf_rows = [
-  {"label": "Revenue (Cash)", "key": "revenue_cash_keur"},
-  {"label": "OPEX (Cash)", "key": "opex_cash_keur"},
-  {"label": "EBITDA (Cash)", "key": "ebitda_cash_keur", "bold": true},
-  {"label": "Cash Tax", "key": "cash_tax_keur"},
-  {"label": "FCF for Banks", "key": "fcf_banks_keur", "bold": true},
-  {"label": "Senior Debt Service", "key": "senior_total_ds_keur"},
-  {"label": "DSRA Funding", "key": "dsra_funding_keur"},
-  {"label": "DSRA Release", "key": "dsra_release_keur"},
-  {"label": "FCF for Junior", "key": "fcf_junior_keur", "bold": true},
-  {"label": "FCF for Distribution", "key": "fcf_for_distribution_keur", "bold": true},
-  {"label": "Net Dividends", "key": "net_dividends_keur"},
-] %}
 
-{# ══════════════════════════════════════════════════════════════════════
-   UNAVAILABLE STATE — shown only when no Run has been executed yet
-   (pre-Run state: no server financial_statements context and no
-   lastFinancialStatements fallback in sessionStorage).
-   When a Run has been executed, the financial statement tables below
-   replace this panel. No financial values are invented here.
-   ══════════════════════════════════════════════════════════════════════ #}
-{# UI-8E: default visible — JS hides this when runtime exists.
-   Removed style="display:none;" to avoid FOUC (flash of empty page). #}
+
+
+
+
+
+
+
+
+
+
 <div class="fo-fs-empty-state"
      id="fs-unavailable-panel"
-     {% if _fs_has_runtime %}style="display:none;"{% endif %}
+     
      role="status" aria-label="Financial statements not yet available">
   <div class="fo-fs-empty-state__icon" aria-hidden="true">⬜</div>
   <div class="fo-fs-empty-state__title">No model results available.</div>
   <div class="fo-fs-empty-state__body">Run the model to generate financial statements.</div>
 </div>
 
-{# ══════════════════════════════════════════════════════════════════════
-   FINANCIAL STATEMENTS — populated from canonical runtime output
-   after Run. Server-provided context is authoritative; sessionStorage
-   is retained only as a same-run refresh fallback. No financial
-   calculations are performed here.
-   ══════════════════════════════════════════════════════════════════════ #}
-<div id="fs-statements-block"{% if not _fs_has_runtime %} style="display:none;"{% endif %} data-fs-source="{{ 'canonical-runtime-financial-statements' if _fs_has_runtime else 'session-storage-runtime-fallback' }}">
 
-  {# ── Income Statement (P&L) ── #}
+<div id="fs-statements-block" style="display:none;" data-fs-source="session-storage-runtime-fallback">
+
+  
   <div class="fc-section-header">
     <span class="fc-section-title">Income Statement (P&amp;L)</span>
     <span class="badge badge-runtime fs-source-badge" title="Read-only canonical runtime output from the latest model run.">Engine Output</span>
   </div>
   <div class="fc-table-wrapper" id="fs-pnl-table-wrapper">
     <table class="fc-grid fs-statement-table" id="fs-pnl-table">
-      <thead><tr id="fs-pnl-header">{% if _fs_has_runtime %}{{ _fs_header(_fs.pnl.periods) }}{% endif %}</tr></thead>
-      <tbody id="fs-pnl-body">{% if _fs_has_runtime %}{{ _fs_body(_pnl_rows, _fs.pnl.periods) }}{% endif %}</tbody>
+      <thead><tr id="fs-pnl-header"></tr></thead>
+      <tbody id="fs-pnl-body"></tbody>
     </table>
   </div>
 
   <div class="section-divider"></div>
 
-  {# ── Balance Sheet ── #}
+  
   <div class="fc-section-header">
     <span class="fc-section-title">Balance Sheet</span>
     <span class="badge badge-runtime fs-source-badge" title="Read-only canonical runtime output from the latest model run.">Engine Output</span>
   </div>
   <div class="fc-table-wrapper" id="fs-bs-table-wrapper">
     <table class="fc-grid fs-statement-table" id="fs-bs-table">
-      <thead><tr id="fs-bs-header">{% if _fs_has_runtime %}{{ _fs_header(_fs.balance_sheet.periods) }}{% endif %}</tr></thead>
-      <tbody id="fs-bs-body">{% if _fs_has_runtime %}{{ _fs_body(_bs_rows, _fs.balance_sheet.periods) }}{% endif %}</tbody>
+      <thead><tr id="fs-bs-header"></tr></thead>
+      <tbody id="fs-bs-body"></tbody>
     </table>
   </div>
 
   <div class="section-divider"></div>
 
-  {# ── PF Cash Waterfall ── #}
+  
   <div class="fc-section-header">
     <span class="fc-section-title">PF Cash Waterfall</span>
     <span class="badge badge-runtime fs-source-badge" title="Read-only canonical runtime output from the latest model run.">Engine Output</span>
   </div>
   <div class="fc-table-wrapper" id="fs-pf-table-wrapper">
     <table class="fc-grid fs-statement-table" id="fs-pf-table">
-      <thead><tr id="fs-pf-header">{% if _fs_has_runtime %}{{ _fs_header(_fs.pf_cash_waterfall.periods) }}{% endif %}</tr></thead>
-      <tbody id="fs-pf-body">{% if _fs_has_runtime %}{{ _fs_body(_pf_rows, _fs.pf_cash_waterfall.periods) }}{% endif %}</tbody>
+      <thead><tr id="fs-pf-header"></tr></thead>
+      <tbody id="fs-pf-body"></tbody>
     </table>
   </div>
 
@@ -198,7 +133,7 @@
     </span>
   </div>
 
-  {# ── Accounting Conventions (V4-1: explicit transparency) ── #}
+  
   <div class="fs-conventions-block">
     <div class="fs-conventions-title">Accounting Conventions</div>
     <div class="fs-conventions-list">
@@ -232,9 +167,7 @@
 </div>
 
 
-{# ══════════════════════════════════════════════════════════════════════
-   SESSION STORAGE RUNTIME BINDING
-   ══════════════════════════════════════════════════════════════════════ #}
+
 <script>
 (function() {
   "use strict";

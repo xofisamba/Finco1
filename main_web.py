@@ -2885,6 +2885,8 @@ async def run(request: Request):
                             context={
                                 "project_ctx": _get_ctx(_project_rec.project_code),
                                 "audit_mode": False,
+                                "financial_statements": outcome.context.get("financial_statements"),
+                                "runtime_summary": outcome.context.get("runtime_summary"),
                             },
                         )
                         oob_sheet_html = (
