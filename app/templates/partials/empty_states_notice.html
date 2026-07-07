@@ -150,7 +150,7 @@
   display: inline-block;
   padding: 0.18rem 0.55rem;
   border-radius: 4px;
-  background: #b45309;
+  background: var(--fo-rag-amber, #b45309);
   color: #ffffff;
   font-weight: 700;
   letter-spacing: 0.06em;
@@ -172,20 +172,27 @@
   display: inline-block;
   padding: 0.3rem 0.7rem;
   border-radius: 4px;
-  background: #b45309;
+  background: var(--fo-rag-amber, #b45309);
   color: #ffffff;
   text-decoration: none;
   font-weight: 600;
   font-size: 0.78rem;
   line-height: 1.2;
-  border: 1px solid #92400e;
+  border: 1px solid var(--fo-rag-amber-dark, #92400e);
 }
 
-.esn-stale-rerun:hover,
-.esn-stale-rerun:focus {
-  background: #92400e;
+.esn-stale-rerun:hover {
+  background: var(--fo-rag-amber-dark, #92400e);
   color: #ffffff;
   text-decoration: none;
+}
+
+.esn-stale-rerun:focus-visible {
+  background: var(--fo-rag-amber-dark, #92400e);
+  color: #ffffff;
+  text-decoration: none;
+  outline: 2px solid var(--fo-focus, #2563eb);
+  outline-offset: 2px;
 }
 
 .esn-stale-changed {
