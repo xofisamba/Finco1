@@ -494,7 +494,7 @@ class TestNewProjectForm:
     generic_wind as template_source options."""
 
     def test_generic_solar_option_present(self):
-        text = (REPO_ROOT / "app" / "templates" / "partials" / "new_project_form.html").read_text()
+        text = (REPO_ROOT / "app" / "templates" / "partials" / "new_project_form.html").read_text(encoding="utf-8")
         # The options are passed via template_options from
         # NEW_PROJECT_TEMPLATE_OPTIONS in main_web.py. We just
         # confirm the form template iterates over them.

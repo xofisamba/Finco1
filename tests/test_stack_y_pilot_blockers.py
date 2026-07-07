@@ -126,6 +126,28 @@ class TestY1KPIsUnchanged:
 
 # ── Y3: interest_rate_pct unit fix ────────────────────────────────────────────
 
+class TestSprint115DeliveryRoutes:
+    """Sprint 11.5: delivery routes must not fall back due resolver import drift."""
+
+    @pytest.mark.parametrize("project", ["generic_solar", "generic_wind", "tuho", "oborovo"])
+    @pytest.mark.parametrize("route, forbidden", [
+        ("/scenarios/lender-case", "Unable to complete lender case"),
+        ("/scenarios/exec-summary", "Unable to complete executive summary"),
+    ])
+    def test_lender_and_report_routes_resolve_project_inputs(self, project, route, forbidden):
+        from fastapi.testclient import TestClient
+        from main_web import app
+        from app.auth import COOKIE_NAME, create_session_token
+
+        client = TestClient(app)
+        client.cookies.set(COOKIE_NAME, create_session_token())
+        response = client.get(f"{route}?project={project}", follow_redirects=True)
+
+        assert response.status_code == 200
+        assert forbidden not in response.text
+        assert "cannot import name '_resolve_sensitivity_project'" not in response.text
+
+
 class TestY3SnapshotInterestRateUnit:
     """Y3: _snapshot_to_dict must convert decimal interest_rate_pct to percentage."""
 

@@ -1,5 +1,7 @@
 ﻿<div class="export-registry-panel" data-testid="export-registry"
      data-export-registry-phase24g3="true">
+  {% set _project_record = project_record|default(None) %}
+  {% set _project_ctx = project_ctx|default(None) %}
   {# ── Phase 24-H: Exploratory warning (user_created + generic) ──────── #}
   {% if is_exploratory_project|default(false) %}
   <div class="export-explorer-warning"
@@ -107,7 +109,7 @@
       <div class="export-card-meta">runtime &middot; CSV &middot; current project</div>
     </div>
 
-    <a href="/exports/runtime-summary.csv?project={{ project_record.project_code if project_record else project_ctx.id if project_ctx else '' }}" class="export-card" data-artifact="Phase 10 runtime summary export"
+    <a href="/exports/runtime-summary.csv?project={{ _project_record.project_code if _project_record else _project_ctx.id if _project_ctx else '' }}" class="export-card" data-artifact="Phase 10 runtime summary export"
        data-export-card-enabled="true"
        data-export-card-category="runtime"
        data-export-card-lineage="runtime snapshot + governance labels">

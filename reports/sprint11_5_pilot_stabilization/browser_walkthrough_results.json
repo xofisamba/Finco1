@@ -1,0 +1,285 @@
+{
+  "results": [
+    {
+      "project": "Generic Solar",
+      "projectCode": "generic_solar",
+      "sheet": "overview-load"
+    },
+    {
+      "project": "Generic Solar",
+      "projectCode": "generic_solar",
+      "sheet": "overview"
+    },
+    {
+      "project": "Generic Solar",
+      "projectCode": "generic_solar",
+      "sheet": "inputs"
+    },
+    {
+      "project": "Generic Solar",
+      "projectCode": "generic_solar",
+      "sheet": "revenue"
+    },
+    {
+      "project": "Generic Solar",
+      "projectCode": "generic_solar",
+      "sheet": "opex"
+    },
+    {
+      "project": "Generic Solar",
+      "projectCode": "generic_solar",
+      "sheet": "capex"
+    },
+    {
+      "project": "Generic Solar",
+      "projectCode": "generic_solar",
+      "sheet": "senior-debt"
+    },
+    {
+      "project": "Generic Solar",
+      "projectCode": "generic_solar",
+      "sheet": "tax"
+    },
+    {
+      "project": "Generic Solar",
+      "projectCode": "generic_solar",
+      "sheet": "pl"
+    },
+    {
+      "project": "Generic Solar",
+      "projectCode": "generic_solar",
+      "sheet": "scenarios"
+    },
+    {
+      "project": "Generic Solar",
+      "projectCode": "generic_solar",
+      "sheet": "compare"
+    },
+    {
+      "project": "Generic Solar",
+      "projectCode": "generic_solar",
+      "sheet": "sensitivity"
+    },
+    {
+      "project": "Generic Solar",
+      "projectCode": "generic_solar",
+      "sheet": "lender"
+    },
+    {
+      "project": "Generic Solar",
+      "projectCode": "generic_solar",
+      "sheet": "reports"
+    },
+    {
+      "project": "Generic Wind",
+      "projectCode": "generic_wind",
+      "sheet": "overview-load"
+    },
+    {
+      "project": "Generic Wind",
+      "projectCode": "generic_wind",
+      "sheet": "overview"
+    },
+    {
+      "project": "Generic Wind",
+      "projectCode": "generic_wind",
+      "sheet": "inputs"
+    },
+    {
+      "project": "Generic Wind",
+      "projectCode": "generic_wind",
+      "sheet": "revenue"
+    },
+    {
+      "project": "Generic Wind",
+      "projectCode": "generic_wind",
+      "sheet": "opex"
+    },
+    {
+      "project": "Generic Wind",
+      "projectCode": "generic_wind",
+      "sheet": "capex"
+    },
+    {
+      "project": "Generic Wind",
+      "projectCode": "generic_wind",
+      "sheet": "senior-debt"
+    },
+    {
+      "project": "Generic Wind",
+      "projectCode": "generic_wind",
+      "sheet": "tax"
+    },
+    {
+      "project": "Generic Wind",
+      "projectCode": "generic_wind",
+      "sheet": "pl"
+    },
+    {
+      "project": "Generic Wind",
+      "projectCode": "generic_wind",
+      "sheet": "scenarios"
+    },
+    {
+      "project": "Generic Wind",
+      "projectCode": "generic_wind",
+      "sheet": "compare"
+    },
+    {
+      "project": "Generic Wind",
+      "projectCode": "generic_wind",
+      "sheet": "sensitivity"
+    },
+    {
+      "project": "Generic Wind",
+      "projectCode": "generic_wind",
+      "sheet": "lender"
+    },
+    {
+      "project": "Generic Wind",
+      "projectCode": "generic_wind",
+      "sheet": "reports"
+    },
+    {
+      "project": "TUHO",
+      "projectCode": "tuho",
+      "sheet": "overview-load"
+    },
+    {
+      "project": "TUHO",
+      "projectCode": "tuho",
+      "sheet": "overview"
+    },
+    {
+      "project": "TUHO",
+      "projectCode": "tuho",
+      "sheet": "inputs"
+    },
+    {
+      "project": "TUHO",
+      "projectCode": "tuho",
+      "sheet": "revenue"
+    },
+    {
+      "project": "TUHO",
+      "projectCode": "tuho",
+      "sheet": "opex"
+    },
+    {
+      "project": "TUHO",
+      "projectCode": "tuho",
+      "sheet": "capex"
+    },
+    {
+      "project": "TUHO",
+      "projectCode": "tuho",
+      "sheet": "senior-debt"
+    },
+    {
+      "project": "TUHO",
+      "projectCode": "tuho",
+      "sheet": "tax"
+    },
+    {
+      "project": "TUHO",
+      "projectCode": "tuho",
+      "sheet": "pl"
+    },
+    {
+      "project": "TUHO",
+      "projectCode": "tuho",
+      "sheet": "scenarios"
+    },
+    {
+      "project": "TUHO",
+      "projectCode": "tuho",
+      "sheet": "compare"
+    },
+    {
+      "project": "TUHO",
+      "projectCode": "tuho",
+      "sheet": "sensitivity"
+    },
+    {
+      "project": "TUHO",
+      "projectCode": "tuho",
+      "sheet": "lender"
+    },
+    {
+      "project": "TUHO",
+      "projectCode": "tuho",
+      "sheet": "reports"
+    },
+    {
+      "project": "Oborovo",
+      "projectCode": "oborovo",
+      "sheet": "overview-load"
+    },
+    {
+      "project": "Oborovo",
+      "projectCode": "oborovo",
+      "sheet": "overview"
+    },
+    {
+      "project": "Oborovo",
+      "projectCode": "oborovo",
+      "sheet": "inputs"
+    },
+    {
+      "project": "Oborovo",
+      "projectCode": "oborovo",
+      "sheet": "revenue"
+    },
+    {
+      "project": "Oborovo",
+      "projectCode": "oborovo",
+      "sheet": "opex"
+    },
+    {
+      "project": "Oborovo",
+      "projectCode": "oborovo",
+      "sheet": "capex"
+    },
+    {
+      "project": "Oborovo",
+      "projectCode": "oborovo",
+      "sheet": "senior-debt"
+    },
+    {
+      "project": "Oborovo",
+      "projectCode": "oborovo",
+      "sheet": "tax"
+    },
+    {
+      "project": "Oborovo",
+      "projectCode": "oborovo",
+      "sheet": "pl"
+    },
+    {
+      "project": "Oborovo",
+      "projectCode": "oborovo",
+      "sheet": "scenarios"
+    },
+    {
+      "project": "Oborovo",
+      "projectCode": "oborovo",
+      "sheet": "compare"
+    },
+    {
+      "project": "Oborovo",
+      "projectCode": "oborovo",
+      "sheet": "sensitivity"
+    },
+    {
+      "project": "Oborovo",
+      "projectCode": "oborovo",
+      "sheet": "lender"
+    },
+    {
+      "project": "Oborovo",
+      "projectCode": "oborovo",
+      "sheet": "reports"
+    }
+  ],
+  "logs": []
+}
