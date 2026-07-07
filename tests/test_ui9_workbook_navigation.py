@@ -77,9 +77,12 @@ def test_all_dom_panels_present():
 
 
 def test_new_project_form_uses_inputs_hash():
-    src = _read("app/templates/partials/new_project_minimal.html")
+    # The #inputs hash is now appended server-side in the HX-Redirect header
+    # (projects_create_service.py) so the create flow lands on the Inputs tab
+    # without a client-side setTimeout race. Verify the service sets the hash.
+    src = _read("app/services/projects_create_service.py")
     assert "#inputs" in src, \
-        "new_project_minimal.html: redirect after creation doesn't include #inputs hash"
+        "projects_create_service.py: HX-Redirect does not include #inputs hash — post-create won't activate Inputs tab"
 
 
 # ---------------------------------------------------------------------------
