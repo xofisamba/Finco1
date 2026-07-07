@@ -57,6 +57,10 @@ def _login(client, user_id):
     return client
 
 
+def _read_text(path: pathlib.Path) -> str:
+    return path.read_text(encoding="utf-8")
+
+
 # ---------------------------------------------------------------------------
 # 1. Institutional workbook export cell values
 # ---------------------------------------------------------------------------
@@ -115,18 +119,18 @@ class TestInstitutionalWorkbookNoFactoryWording:
 
 class TestCapexOpexTabsNoFactoryWording:
     def test_opex_template_source_no_factory_wording(self):
-        text = (REPO_ROOT / "app/templates/partials/sheet_opex.html").read_text()
+        text = _read_text(REPO_ROOT / "app/templates/partials/sheet_opex.html")
         assert "factory" not in text.lower()
 
     def test_capex_detail_template_source_no_rendered_factory_text(self):
-        text = (REPO_ROOT / "app/templates/partials/sheet_capex_detail.html").read_text()
+        text = _read_text(REPO_ROOT / "app/templates/partials/sheet_capex_detail.html")
         # The badge-factory CSS class name may remain; only rendered text
         # content (between tags) must not say "factory".
         assert ">factory<" not in text
         assert "factory default value" not in text
 
     def test_opex_detail_template_source_no_rendered_factory_text(self):
-        text = (REPO_ROOT / "app/templates/partials/sheet_opex_detail.html").read_text()
+        text = _read_text(REPO_ROOT / "app/templates/partials/sheet_opex_detail.html")
         assert ">factory<" not in text
         assert "factory default value" not in text
 
@@ -138,7 +142,7 @@ class TestCapexOpexTabsNoFactoryWording:
 
 class TestWorkspaceShellAndHomeNoFactoryWording:
     def test_workspace_shell_no_factory_reference_label(self):
-        text = (REPO_ROOT / "app/templates/partials/workspace_shell.html").read_text()
+        text = _read_text(REPO_ROOT / "app/templates/partials/workspace_shell.html")
         assert "Factory reference" not in text
         assert "Factory references are read-only" not in text
 
@@ -156,7 +160,7 @@ class TestWorkspaceShellAndHomeNoFactoryWording:
         assert "Browse factory references" not in resp.text
 
     def test_project_home_partial_source_no_forbidden_terms(self):
-        text = (REPO_ROOT / "app/templates/partials/project_home.html").read_text()
+        text = _read_text(REPO_ROOT / "app/templates/partials/project_home.html")
         assert "Browse factory references" not in text
 
 
@@ -167,9 +171,7 @@ class TestWorkspaceShellAndHomeNoFactoryWording:
 
 class TestExportRegistryNoFactoryWording:
     def _registry_text(self):
-        return (
-            REPO_ROOT / "app/templates/partials/export_registry.html"
-        ).read_text()
+        return _read_text(REPO_ROOT / "app/templates/partials/export_registry.html")
 
     def test_export_registry_template_no_factory_wording(self):
         text = self._registry_text()
@@ -182,11 +184,16 @@ class TestExportRegistryNoFactoryWording:
 
     def test_export_registry_external_friendly_replacement_wording(self):
         text = self._registry_text()
-        assert "Oborovo example-project runtime output" in text
+        assert "Institutional runtime workbook foundation" in text
         assert (
-            "internal governance workflow not available in standard exports"
+            "Unavailable in current reporting package"
             in text
         )
+
+    def test_export_registry_no_sprint13_lender_readiness_terms(self):
+        text = self._registry_text()
+        for term in ("internal sketching", "Coming Soon", "not yet available"):
+            assert term not in text
 
     def test_export_registry_route_no_forbidden_terms(self, client):
         _login(client, "u9_export_registry")

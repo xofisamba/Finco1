@@ -509,14 +509,14 @@ def _write_calibration_notes_sheet(
         rows.extend([
             ("", ""),
             ("Calibration Note", "Screening-grade model — no Excel reference calibration."),
-            ("Model Status", "For internal scenario review only."),
+            ("Model Status", "For investment committee scenario review."),
             ("Purpose", "Not a substitute for lender due diligence."),
         ])
 
     # Common section for all projects
     rows.extend([
         ("", ""),
-        ("Model Status", "Screening-grade, not lender-grade or bank-certified."),
+        ("Model Status", "Institutional review draft; external model audit required before lender reliance."),
         ("External audit", "Not a substitute for external model audit or lender due diligence."),
     ])
 
@@ -671,7 +671,7 @@ def _write_dashboard_sheet(writer, result, portfolio_result, status, note, scena
 def _write_opex_detail_sheet(writer, schedule) -> None:
     """Write OPEX Detail sheet from an OpexSchedule.
 
-    Columns: Line Item Name | Category | Year | Value (kEUR) | Source | Is Override | Is Hardcoded | Override Note
+    Columns: Line Item Name | Category | Year | Value (kEUR) | Source | Is Override | Fixed Assumption | Override Note
     One row per line item per year.
     """
     rows = []
@@ -683,7 +683,7 @@ def _write_opex_detail_sheet(writer, schedule) -> None:
             "Value (kEUR)": round(entry.value_keur, 2),
             "Source": entry.source.value,
             "Is Override": entry.is_override,
-            "Is Hardcoded": entry.is_hardcoded,
+            "Fixed Assumption": entry.is_hardcoded,
             "Override Note": entry.override_note,
         })
 
@@ -763,8 +763,8 @@ def _write_notes_sheet(writer, status, note, scenario, project_type, period_view
         ("Depreciation Disclosure", "—"),
         ("  Tax/Book Schedules", "Model outputs, not audited accounts"),
         ("  Jurisdiction Profile", "Requires tax advisor confirmation"),
-        ("  COD-Month Convention", "Not yet supported"),
-        ("  Declining Balance", "Not yet supported"),
+        ("  COD-Month Convention", "Outside current reporting scope"),
+        ("  Declining Balance", "Outside current reporting scope"),
         ("  Day Fraction", "Applied in waterfall (period view), not in annual disclosure table"),
     ]
 
@@ -787,7 +787,7 @@ def _write_notes_sheet(writer, status, note, scenario, project_type, period_view
         if has_manual or has_hardcoded or has_overrides:
             rows.append((
                 "Advanced OPEX",
-                "Manual or hardcoded values present — review override notes",
+                "Manual or fixed assumptions present — review override notes",
             ))
 
     # Advanced CAPEX warning
@@ -800,13 +800,13 @@ def _write_notes_sheet(writer, status, note, scenario, project_type, period_view
 
     # Portfolio warning
     if status == "experimental":
-        rows.append(("Portfolio Status", "Experimental — sponsor IRR is placeholder"))
+        rows.append(("Portfolio Status", "Portfolio sponsor IRR evidence unavailable in this reporting package"))
 
     # Scenario deltas
     if scenario != "Base":
         if status == "experimental":
-            rows.append(("Scenario", f"{scenario} — NOT APPLIED"))
-            rows.append(("Scenario Deltas", "Base case shown — Portfolio does not support scenarios"))
+            rows.append(("Scenario", f"{scenario} — outside current portfolio reporting scope"))
+            rows.append(("Scenario Deltas", "Base case shown — portfolio scenarios are outside current reporting scope"))
         else:
             from app.scenario_manager import ScenarioManager
             sm = ScenarioManager(project_type)
