@@ -72,7 +72,7 @@
           <tr data-fc-row="true">
             <td>Tenor (years)</td>
             <td data-fc-cell="true" data-fc-addr="seniordebt!tenor_years" data-fc-kind="text" data-fc-editable="true" data-fc-raw="{{ project_ctx.senior_tenor_years }}"><input class="editable-grid-input" type="number" step="1" min="0" data-grid-source="tenor_years" inputmode="numeric" aria-label="Draft senior debt tenor in years" /></td>
-            <td>Preview-only until saved and re-run.</td>
+            <td>Draft-only until saved and re-run.</td>
           </tr>
         </tbody>
       </table>
@@ -184,7 +184,7 @@
      JS hides this and shows sd-schedule-block once a Run has been executed. #}
   <div class="empty-state-notice empty-state-notice--warn sd-unavailable-panel"
        id="sd-unavailable-panel"
-       role="status" aria-label="Senior debt schedule output not yet available"
+       role="status" aria-label="Senior debt schedule output outside current runtime view"
        style="display:none;">
     <div class="esn-icon" aria-hidden="true">📋</div>
     <div class="esn-title">Senior debt schedule output is not available yet</div>

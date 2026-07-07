@@ -178,9 +178,10 @@ class TestScenarioCompareRendering:
         """Compare rows render for metrics."""
         assert "ps-compare-row" in compare_template
 
-    def test_empty_state_has_preview_badge(self, compare_template):
-        """Empty state shows Preview badge."""
-        assert "badge-preview" in compare_template
+    def test_empty_state_has_actionable_guidance(self, compare_template):
+        """Empty state gives production wording instead of a preview badge."""
+        assert "Run at least one scenario to enable comparison." in compare_template
+        assert "badge-preview" not in compare_template
 
     def test_no_inline_style_blocks(self, compare_template):
         """No inline <style> blocks in compare template."""

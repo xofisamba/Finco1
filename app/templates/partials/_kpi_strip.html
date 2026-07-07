@@ -9,7 +9,7 @@
    - dashboard_kpis[project_npv]   — NPV (kEUR)
    - dashboard_kpis[min_dscr]      — Minimum DSCR
    - dashboard_kpis[avg_dscr]      — Average DSCR
-   - LLCR — intentional placeholder (LLCR is not surfaced in the
+   - LLCR — outside current dashboard scope (LLCR is not surfaced in the
      current dashboard; the cell stays visible so the chrome reserves
      the slot consistently across all screens)
 
@@ -87,10 +87,10 @@
     {% if not _has_run %}<span class="fo-kpi__hint">Run model</span>{% endif %}
   </div>
 
-  {# LLCR — reserved slot; not in dashboard_kpis yet. #}
-  <div class="fo-kpi" data-fo-kpi="llcr" title="Loan Life Coverage Ratio — not yet available in this release">
+  {# LLCR — reserved slot outside current dashboard scope. #}
+  <div class="fo-kpi" data-fo-kpi="llcr" title="Loan Life Coverage Ratio — outside current dashboard scope">
     <span class="fo-kpi__label">LLCR</span>
-    <span class="fo-kpi__value fo-kpi__value--placeholder" aria-label="LLCR not yet available">—</span>
+    <span class="fo-kpi__value fo-kpi__value--placeholder" aria-label="LLCR outside current dashboard scope">—</span>
   </div>
 
 </div>

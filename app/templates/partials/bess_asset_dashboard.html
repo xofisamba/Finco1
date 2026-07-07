@@ -60,7 +60,7 @@
         {% for ev in ba['augmentation_events'] %}
           <div class="rp-kpi-trow">
             <span class="rp-kpi-tlabel">{{ ev['label'] }}</span>
-            <span class="rp-kpi-tval">{{ "{:,.0f}"|format(ev['capex_keur']) }} kEUR</span>
+            <span class="rp-kpi-tval">{{ "{:,.0f}".format(ev['capex_keur']) }} kEUR</span>
           </div>
         {% endfor %}
       </div>
