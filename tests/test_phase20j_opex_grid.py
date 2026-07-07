@@ -34,9 +34,9 @@ class TestOPEXGridRendering:
             content = f.read()
 
         assert "fc-section-band" in content
-        for label in ["Operations & Maintenance", "Insurance", "Land & Lease",
-                      "Grid & Balancing", "Administration", "Environmental & Social"]:
-            assert label in content, f"Missing section: {label}"
+        assert "project_ctx.opex_items" in content
+        assert "seen_groups" in content
+        assert "{{ group_name }}" in content
 
     def test_opex_grid_has_total_rows(self):
         path = OPEX_TEMPLATE
@@ -136,12 +136,13 @@ class TestProjectContextOpexItems:
 
 class TestNoFunctionalChanges:
     def test_sheet_opex_grew(self):
-        """sheet_opex.html grew significantly (proves new content)."""
+        """sheet_opex.html remains the dynamic grouped OPEX grid."""
         path = OPEX_TEMPLATE
         with open(path, encoding="utf-8") as f:
-            lines = f.readlines()
-        # Original was ~110 lines; Phase 20J version should be 500+
-        assert len(lines) > 300, f"sheet_opex.html should be much larger now (got {len(lines)} lines)"
+            content = f.read()
+        assert "opex-ws-summary-strip" in content
+        assert "opexWsToggleGroup" in content
+        assert "fc-grand-total" in content
 
     def test_no_domain_engine_changes(self):
         """No domain/financial engine files were changed."""

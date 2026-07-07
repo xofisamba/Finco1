@@ -19,8 +19,8 @@
       <div class="page-shell-header">
         <h1 class="page-shell-title">Known Limitations</h1>
         <p class="page-shell-desc">
-          What is validated, what carries a methodology caveat, what is not
-          yet validated, and what is not yet supported across Finco One
+          What is validated, what carries a methodology caveat, what is
+          conditionally available, and what is outside current reporting scope across Finco One
           projects.
         </p>
       </div>
@@ -29,7 +29,7 @@
         <h2 class="kl-section-title">Validated Models</h2>
         <p>
           <strong>Generic Solar</strong> and <strong>Generic Wind</strong>
-          are validated against internal reference workbooks, not a full
+          are validated against committed reference workbooks, not a full
           external bank model review. Core cost and revenue figures —
           CAPEX, Revenue, OPEX, EBITDA, IDC, bank fees, senior debt amount,
           realized gearing, and equity funding stack — agree with the
@@ -101,7 +101,7 @@
         <ul class="kl-list">
           <li><strong>BESS</strong> (Generic BESS)</li>
           <li><strong>Hybrid</strong> (Generic Solar + BESS, Generic Wind + BESS)</li>
-          <li><strong>Portfolio</strong> (experimental, internal use only)</li>
+          <li><strong>Portfolio</strong> (outside current lender-reliance scope)</li>
         </ul>
       </section>
 
@@ -111,7 +111,7 @@
           <li><strong>Multi-lender debt</strong> — only a single senior debt instrument is modelled; no mezzanine, junior debt, or multi-lender syndication.</li>
           <li><strong>Advanced tax structures</strong> — beyond loss carryforward, complex tax equity or partnership structures are not modelled.</li>
           <li><strong>R99/R102 promoted workflow</strong> — R99/R102 are audit-only fields, presented for traceability only. They are not approved for runtime cash routing, distribution triggers, or SHL service decisions.</li>
-          <li><strong>Advanced debt-sculpting and cash-sweep methods</strong> — experimental sculpting and sweep methods exist in the codebase for testing purposes but are not yet promoted for use in standard project runs.</li>
+          <li><strong>Advanced debt-sculpting and cash-sweep methods</strong> — specialist sculpting and sweep methods remain governed review paths and are excluded from standard project runs.</li>
         </ul>
       </section>
 

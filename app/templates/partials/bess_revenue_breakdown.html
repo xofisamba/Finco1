@@ -53,24 +53,24 @@
     <div class="rp-section" id="bess-lifetime">
       <div class="rp-section-title">Lifetime Revenue Summary</div>
       <div class="cv-summary-chips" style="margin-bottom:0.75rem;">
-        <span class="cv-chip cv-chip--ok">Net Revenue {{ "{:,.0f}"|format(lt['net_revenue_keur']) }} kEUR</span>
-        <span class="cv-chip cv-chip--ok">Arbitrage {{ "{:,.0f}"|format(lt['arbitrage_keur']) }} kEUR</span>
+        <span class="cv-chip cv-chip--ok">Net Revenue {{ "{:,.0f}".format(lt['net_revenue_keur']) }} kEUR</span>
+        <span class="cv-chip cv-chip--ok">Arbitrage {{ "{:,.0f}".format(lt['arbitrage_keur']) }} kEUR</span>
         {% if lt['ancillary_keur'] > 0 %}
-        <span class="cv-chip cv-chip--ok">Ancillary {{ "{:,.0f}"|format(lt['ancillary_keur']) }} kEUR</span>
+        <span class="cv-chip cv-chip--ok">Ancillary {{ "{:,.0f}".format(lt['ancillary_keur']) }} kEUR</span>
         {% endif %}
         {% if lt['capacity_keur'] > 0 %}
-        <span class="cv-chip cv-chip--ok">Capacity {{ "{:,.0f}"|format(lt['capacity_keur']) }} kEUR</span>
+        <span class="cv-chip cv-chip--ok">Capacity {{ "{:,.0f}".format(lt['capacity_keur']) }} kEUR</span>
         {% endif %}
         {% if lt['freq_reg_keur'] > 0 %}
-        <span class="cv-chip cv-chip--ok">Freq Reg {{ "{:,.0f}"|format(lt['freq_reg_keur']) }} kEUR</span>
+        <span class="cv-chip cv-chip--ok">Freq Reg {{ "{:,.0f}".format(lt['freq_reg_keur']) }} kEUR</span>
         {% endif %}
         {% if lt['reserve_keur'] > 0 %}
-        <span class="cv-chip cv-chip--ok">Reserve {{ "{:,.0f}"|format(lt['reserve_keur']) }} kEUR</span>
+        <span class="cv-chip cv-chip--ok">Reserve {{ "{:,.0f}".format(lt['reserve_keur']) }} kEUR</span>
         {% endif %}
         {% if lt['fixed_contracted_keur'] > 0 %}
-        <span class="cv-chip cv-chip--ok">Fixed {{ "{:,.0f}"|format(lt['fixed_contracted_keur']) }} kEUR</span>
+        <span class="cv-chip cv-chip--ok">Fixed {{ "{:,.0f}".format(lt['fixed_contracted_keur']) }} kEUR</span>
         {% endif %}
-        <span class="cv-chip cv-chip--ok">Discharged {{ "{:,.0f}"|format(lt['discharged_mwh']) }} MWh</span>
+        <span class="cv-chip cv-chip--ok">Discharged {{ "{:,.0f}".format(lt['discharged_mwh']) }} MWh</span>
       </div>
     </div>
 
@@ -97,13 +97,13 @@
             {% for row in br['annual'] %}
               <tr>
                 <td>{{ row['year'] }}</td>
-                <td class="cv-cell-num">{{ "{:,.1f}"|format(row['arbitrage_keur']) }}</td>
-                <td class="cv-cell-num">{{ "{:,.1f}"|format(row['capacity_keur']) if row['capacity_keur'] > 0 else '—' }}</td>
-                <td class="cv-cell-num">{{ "{:,.1f}"|format(row['ancillary_keur']) if row['ancillary_keur'] > 0 else '—' }}</td>
-                <td class="cv-cell-num">{{ "{:,.1f}"|format(row['freq_reg_keur']) if row['freq_reg_keur'] > 0 else '—' }}</td>
-                <td class="cv-cell-num">{{ "{:,.1f}"|format(row['reserve_keur']) if row['reserve_keur'] > 0 else '—' }}</td>
-                <td class="cv-cell-num">{{ "{:,.1f}"|format(row['fixed_contracted_keur']) if row['fixed_contracted_keur'] > 0 else '—' }}</td>
-                <td class="cv-cell-num"><strong>{{ "{:,.1f}"|format(row['net_revenue_keur']) }}</strong></td>
+                <td class="cv-cell-num">{{ "{:,.1f}".format(row['arbitrage_keur']) }}</td>
+                <td class="cv-cell-num">{{ "{:,.1f}".format(row['capacity_keur']) if row['capacity_keur'] > 0 else '—' }}</td>
+                <td class="cv-cell-num">{{ "{:,.1f}".format(row['ancillary_keur']) if row['ancillary_keur'] > 0 else '—' }}</td>
+                <td class="cv-cell-num">{{ "{:,.1f}".format(row['freq_reg_keur']) if row['freq_reg_keur'] > 0 else '—' }}</td>
+                <td class="cv-cell-num">{{ "{:,.1f}".format(row['reserve_keur']) if row['reserve_keur'] > 0 else '—' }}</td>
+                <td class="cv-cell-num">{{ "{:,.1f}".format(row['fixed_contracted_keur']) if row['fixed_contracted_keur'] > 0 else '—' }}</td>
+                <td class="cv-cell-num"><strong>{{ "{:,.1f}".format(row['net_revenue_keur']) }}</strong></td>
                 <td class="cv-cell-num">{{ "%.1f"|format(row['state_of_health_pct']) }}%</td>
               </tr>
             {% endfor %}

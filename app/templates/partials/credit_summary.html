@@ -76,7 +76,7 @@
               <span class="cs-label">{{ label }}</span>
               <span class="cs-value">
                 {% if val is number %}
-                  {% if unit == 'kEUR' %}{{ "{:,.0f}"|format(val) }}
+                  {% if unit == 'kEUR' %}{{ "{:,.0f}".format(val) }}
                   {% elif unit == '%' %}{{ "%.1f"|format(val) }}
                   {% else %}{{ val }}{% endif %}
                 {% else %}{{ val or '—' }}{% endif %}

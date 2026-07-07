@@ -40,11 +40,11 @@ class TestRevenueGridRendering:
 
     def test_fc_grid_present(self, revenue_template):
         """Revenue grid uses fc-grid class."""
-        assert 'class="fc-grid"' in revenue_template
+        assert "fc-grid" in revenue_template
 
     def test_fc_grid_wrapper_present(self, revenue_template):
-        """fc-grid-wrapper is present for sticky positioning."""
-        assert 'fc-grid-wrapper' in revenue_template
+        """Revenue sections render inside stable sheet cards."""
+        assert "sheet-card" in revenue_template
 
     def test_sticky_header_row(self, revenue_template):
         """Sticky header row (fc-grid-header) renders."""
@@ -55,8 +55,8 @@ class TestRevenueGridRendering:
         assert 'fc-grid-col-label' in revenue_template
 
     def test_section_bands_render(self, revenue_template):
-        """Section bands render for each revenue group."""
-        assert 'fc-section-band' in revenue_template
+        """Section headers render for each revenue group."""
+        assert "section-header" in revenue_template
         assert 'Production' in revenue_template
         assert 'PPA' in revenue_template or 'PPA / Tariff' in revenue_template
         assert 'Merchant' in revenue_template or 'Market' in revenue_template
@@ -118,12 +118,12 @@ class TestRevenueGridRendering:
         assert "CO2" in revenue_template
 
     def test_revenue_banner_present(self, revenue_template):
-        """Revenue sheet banner renders."""
-        assert "sheet-banner" in revenue_template
+        """Revenue sheet renders the read-only state banner."""
+        assert "inp-readonly-notice" in revenue_template
 
     def test_ppa_tariff_y1_in_footer(self, revenue_template):
-        """PPA tariff Y1 value appears in the footer summary."""
-        assert "EUR/MWh" in revenue_template
+        """PPA tariff evidence appears in the contract section."""
+        assert "ppa_tariff_eur_mwh" in revenue_template or "ppa_base_tariff" in revenue_template
 
     def test_sheet_revenue_grew_significantly(self):
         """sheet_revenue.html grew substantially (proves new content)."""

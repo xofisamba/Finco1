@@ -57,7 +57,7 @@
               <span class="rp-kv-label">{{ label }}</span>
               <span class="rp-kv-val">
                 {% if val is number %}
-                  {% if unit == 'kEUR' %}{{ "{:,.0f}"|format(val) }} kEUR
+                  {% if unit == 'kEUR' %}{{ "{:,.0f}".format(val) }} kEUR
                   {% elif unit == '%' %}{{ "%.1f"|format(val) }}%
                   {% else %}{{ val }}{% if unit %} {{ unit }}{% endif %}{% endif %}
                 {% else %}{{ val or '—' }}{% endif %}
@@ -155,15 +155,15 @@
                     {{ "%.4f"|format(p['llcr']) if p['llcr'] is not none else '—' }}
                     {%- if p['llcr'] is not none %}x{% endif %}
                   </td>
-                  <td class="cv-cell-num">{{ "{:,.1f}"|format(p['senior_balance_keur']) }}</td>
+                  <td class="cv-cell-num">{{ "{:,.1f}".format(p['senior_balance_keur']) }}</td>
                   <td class="cv-cell-center">
                     {% if p['lockup'] %}<span class="cv-lockup-badge">LOCKED</span>{% else %}—{% endif %}
                   </td>
                   <td class="cv-cell-num">
-                    {% if p['distribution_keur'] > 0 %}{{ "{:,.1f}"|format(p['distribution_keur']) }}{% else %}—{% endif %}
+                    {% if p['distribution_keur'] > 0 %}{{ "{:,.1f}".format(p['distribution_keur']) }}{% else %}—{% endif %}
                   </td>
                   <td class="cv-cell-num">
-                    {% if p['cash_sweep_keur'] > 0 %}{{ "{:,.1f}"|format(p['cash_sweep_keur']) }}{% else %}—{% endif %}
+                    {% if p['cash_sweep_keur'] > 0 %}{{ "{:,.1f}".format(p['cash_sweep_keur']) }}{% else %}—{% endif %}
                   </td>
                   <td class="cv-cell-center">
                     <span class="cv-rag-badge cv-rag-badge--{{ p['rag'] }}">
@@ -236,7 +236,7 @@
                   <td>{{ p['period'] }}</td>
                   <td>{{ p['date'][:7] if p['date'] else '—' }}</td>
                   <td class="cv-cell-num">{{ "%.4f"|format(p['dscr']) if p['dscr'] is not none else '—' }}x</td>
-                  <td class="cv-cell-num">{{ "{:,.1f}"|format(p['cash_sweep_keur']) }}</td>
+                  <td class="cv-cell-num">{{ "{:,.1f}".format(p['cash_sweep_keur']) }}</td>
                 </tr>
               {% endfor %}
             </tbody>

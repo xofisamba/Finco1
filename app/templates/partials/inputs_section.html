@@ -208,7 +208,7 @@
   {{ field_row("R99/R102", project_ctx.r99_r102_status or "NOT_APPROVED", badge=project_ctx.r99_r102_status or "NOT_APPROVED", badge_class="badge-warn", section="tax", field_key="r99_r102_status", raw=project_ctx.r99_r102_status) }}
 {% endset %}
 {% if audit_mode|default(false) %}
-  {{ section_card("Tax Summary", tax_rows, section_note="Tax template override not yet configured. Country-specific defaults apply.") }}
+  {{ section_card("Tax Summary", tax_rows, section_note="Tax template override uses country-specific defaults unless overridden.") }}
 {% else %}
   {# P2-FIX-2: G20 / R99/R102 governance posture is the
      reviewer surface. In normal mode we expose only a
@@ -218,7 +218,7 @@
       field_row("CIT Rate", "{:.1f}%".format(project_ctx.cit_rate_pct * 100) if project_ctx.cit_rate_pct else "—", section="tax", field_key="cit_rate", raw=project_ctx.cit_rate_pct),
       field_row("Loss Carryforward", "{} years".format(project_ctx.loss_carryforward_years) if project_ctx.loss_carryforward_years else "—", section="tax", field_key="loss_carryforward", raw=project_ctx.loss_carryforward_years),
   ] %}
-  {{ section_card("Tax Summary", tax_rows_normal, section_note="Tax template override not yet configured. Country-specific defaults apply. See the Audit / Reference tab for the reviewer notes.") }}
+  {{ section_card("Tax Summary", tax_rows_normal, section_note="Tax template override uses country-specific defaults unless overridden. See the Audit / Reference tab for the reviewer notes.") }}
 {% endif %}
 
 {# ── Dirty-state indicator ─────────────────────────────────────────────── #}
