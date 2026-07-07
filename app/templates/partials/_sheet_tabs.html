@@ -317,6 +317,48 @@
   }, true);
 })();
 
+// UI-9: wire click handlers for DOM-switch modeling tabs
+(function() {
+  function _syncFoSheetActive(tabId) {
+    document.querySelectorAll('.fo-sheet[data-fo-sheet-kind="dom"]').forEach(function(btn) {
+      btn.classList.toggle('fo-sheet--active', btn.getAttribute('data-fo-sheet-id') === tabId);
+    });
+  }
+
+  document.querySelectorAll('.fo-sheet[data-fo-sheet-kind="dom"]').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      var sheetId = btn.getAttribute('data-fo-sheet-id');
+      if (!sheetId) return;
+      if (typeof window.switchTab === 'function') {
+        window.switchTab(sheetId);
+      }
+      _syncFoSheetActive(sheetId);
+    });
+  });
+
+  // Patch switchTab to also keep fo-sheet active state in sync when called
+  // from keyboard shortcuts or other code paths.
+  var _origSwitchTab = window.switchTab;
+  if (typeof _origSwitchTab === 'function') {
+    window.switchTab = function(tabId) {
+      _origSwitchTab(tabId);
+      _syncFoSheetActive(tabId);
+    };
+  } else {
+    // switchTab not yet defined — patch once it is (DOMContentLoaded fires before this partial
+    // is parsed in most cases, but guard the race just in case).
+    document.addEventListener('DOMContentLoaded', function() {
+      var _st = window.switchTab;
+      if (typeof _st === 'function') {
+        window.switchTab = function(tabId) {
+          _st(tabId);
+          _syncFoSheetActive(tabId);
+        };
+      }
+    });
+  }
+})();
+
 // UI-8A: sync active tab highlight after HTMX canvas swap
 document.addEventListener('htmx:pushedIntoHistory', function() {
   var path = window.location.pathname;
