@@ -18,8 +18,10 @@
 {% set _print_title = _title|default("Financial Statements") %}
 {% set _print_scenario = active_scenario_name|default("") %}
 
+{# UI-8E: data-fo-fs-state defaults to "no-runtime"; JS sets "runtime" after a Run. #}
 <div class="fo-statements-workspace" data-fo-stmts-print-title="{{ _print_title }}"
-     data-fo-stmts-print-scenario="{{ _print_scenario }}">
+     data-fo-stmts-print-scenario="{{ _print_scenario }}"
+     data-fo-fs-state="no-runtime">
 
   {# ── Statement selector (sticky) ───────────────────────────────── #}
   {% if _available %}
