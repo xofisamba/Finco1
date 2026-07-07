@@ -14,8 +14,11 @@
 {% set _wht = project_ctx.wht_rate_pct|default(0) %}
 {% set _tax_regime = project_ctx.tax_regime|default("corporate") %}
 
-<aside class="fo-modelling-workspace__context" aria-label="Tax context">
-  <h2 class="fo-modelling-workspace__context-title">Context</h2>
+<aside class="fo-modelling-workspace__context fo-modelling-workspace__context--collapsed" aria-label="Tax context" data-fo-context-sheet="tax">
+  <div class="fo-modelling-workspace__context-header">
+    <h2 class="fo-modelling-workspace__context-title">Context</h2>
+    <button type="button" class="fo-modelling-workspace__context-toggle" aria-label="Toggle context panel" title="Toggle context panel">›</button>
+  </div>
   <dl class="fo-modelling-workspace__context-list">
     <div class="fo-modelling-workspace__context-row">
       <dt class="fo-modelling-workspace__context-label">Tax regime</dt>
