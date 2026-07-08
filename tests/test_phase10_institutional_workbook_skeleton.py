@@ -137,4 +137,4 @@ def test_docs_keep_runtime_scope_and_governance_constraints():
 
     main_web = (ROOT / "main_web.py").read_text(encoding="utf-8")
     assert '@app.get("/exports/institutional-workbook.xlsx")' in main_web
-    assert "export_institutional_workbook_skeleton(project)" in main_web
+    assert "build_institutional_workbook_export(runtime_project_code, safe_project=safe_project)" in main_web

@@ -274,8 +274,8 @@ def test_excel_notes_include_portfolio_experimental_warning():
     assert len(portfolio_rows) > 0, f"Expected Portfolio/IRR warning in Notes, got fields: {fields}"
 
 
-def test_portfolio_sponsor_irr_placeholder_label():
-    """Portfolio IRR note in Dashboard or Notes should indicate placeholder status."""
+def test_portfolio_sponsor_irr_unavailable_evidence_label():
+    """Portfolio IRR note in Dashboard or Notes should use production evidence wording."""
     import openpyxl
     result = run_demo_project("Portfolio")
     data = build_excel_export(
@@ -285,15 +285,14 @@ def test_portfolio_sponsor_irr_placeholder_label():
         scenario="Base",
     )
     wb = openpyxl.load_workbook(BytesIO(data))
-    # Check all sheets for experimental/placeholder note
+    # Check all sheets for production evidence wording.
     all_values = []
     for sheet_name in wb.sheetnames:
         ws = wb[sheet_name]
         # iter_rows with values_only=True returns tuples of cell values
         all_values.extend([v for row in ws.iter_rows(values_only=True) for v in row if v])
-    # At minimum, the experimental status should be surfaced somewhere
-    assert any("experimental" in str(v).lower() or "placeholder" in str(v).lower()
-               for v in all_values), f"Portfolio IRR placeholder/experimental note not found in workbook values"
+    assert any("portfolio sponsor irr evidence unavailable" in str(v).lower()
+               for v in all_values), f"Portfolio IRR unavailable-evidence note not found in workbook values"
 
 
 def test_excel_has_required_sheets():
@@ -680,7 +679,7 @@ def test_excel_opex_detail_columns_and_row_count():
 
     # Collect headers
     headers = [cell.value for cell in ws[1]]
-    expected = ["Line Item Name", "Category", "Year", "Value (kEUR)", "Source", "Is Override", "Is Hardcoded", "Override Note"]
+    expected = ["Line Item Name", "Category", "Year", "Value (kEUR)", "Source", "Is Override", "Fixed Assumption", "Override Note"]
     assert headers == expected, f"Expected {expected}, got {headers}"
 
     # Row count (excluding header)
@@ -726,7 +725,7 @@ def test_excel_opex_detail_values_are_values_only():
 
 
 def test_excel_opex_detail_hardcoded_flag_from_is_hardcoded_field():
-    """OPEX Detail Is Hardcoded=True when OpexLineItem.is_hardcoded=True (even with FORMULA source)."""
+    """OPEX Detail Fixed Assumption=True when OpexLineItem.is_hardcoded=True (even with FORMULA source)."""
     from io import BytesIO
     import openpyxl
     from app.excel_export import build_excel_export
@@ -753,10 +752,10 @@ def test_excel_opex_detail_hardcoded_flag_from_is_hardcoded_field():
     wb = openpyxl.load_workbook(BytesIO(data))
     ws = wb["OPEX Detail"]
 
-    # Find the row(s) for Insurance — Is Hardcoded must be True
+    # Find the row(s) for Insurance — Fixed Assumption must be True
     for row in ws.iter_rows(min_row=2, values_only=True):
         if row[0] == "Insurance":
-            assert row[6] is True, f"Is Hardcoded should be True for is_hardcoded=True item, got {row[6]}"
+            assert row[6] is True, f"Fixed Assumption should be True for is_hardcoded=True item, got {row[6]}"
 
 # ── Portfolio UI export tests (Phase 1.5) ──────────────────────────────────
 

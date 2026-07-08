@@ -118,7 +118,7 @@ def default_export_registry() -> ExportRegistry:
                 runtime_or_preview="runtime",
                 governance_sensitive=True,
                 current_status="runtime_binding_in_progress",
-                description="Runtime workbook foundation for institutional lender, IC, and audit review, with populated runtime sections and explicit placeholders where evidence is still pending.",
+                description="Runtime workbook foundation for institutional lender, IC, and audit review, with populated runtime sections and explicit unavailable-evidence notes where support is still pending.",
                 path="/exports/institutional-workbook.xlsx",
                 notes="Runtime workbook / lender pack foundation with standardized metadata, reviewer navigation, and explicit runtime-versus-review boundaries.",
             ),

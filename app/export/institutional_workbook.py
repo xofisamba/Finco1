@@ -386,7 +386,7 @@ def _write_cover_sheet(sheet, bundle: WorkbookExportBundle) -> None:
         ("Template revision", bundle.template_revision),
         ("Export template version", bundle.export_template_version),
         ("Workbook version", "Institutional Runtime Workbook — presentation edition"),
-        ("Runtime / preview", "runtime-bound workbook with explicit assumption sections"),
+        ("Evidence status", "Runtime-bound workbook with explicit assumption sections"),
         ("Governance status", bundle.governance_posture_summary),
         ("Runtime flag snapshot", f"{bundle.runtime_flag_count} flags captured for replay provenance"),
         ("Purpose", "Institutional review workbook fed from existing runtime outputs and documented assumptions."),
@@ -529,7 +529,7 @@ def _write_construction_sheet(sheet, bundle: WorkbookExportBundle) -> None:
         ("SHL anchor", bundle.context.shl_amount_keur + bundle.context.shl_idc_keur, "template assumption", "Opening SHL assumption including IDC.", K_EUR_FORMAT),
         ("Share capital", getattr(financing, "share_capital_keur", 0.0), "template assumption", "Existing financing input.", K_EUR_FORMAT),
         ("Share premium", getattr(financing, "share_premium_keur", 0.0), "template assumption", "Existing financing input.", K_EUR_FORMAT),
-        ("Runtime status note", "Detailed construction schedule not exported in this branch", "preview", "Workbook uses summary binding only."),
+        ("Runtime status note", "Detailed construction schedule is outside this report scope", "assumption", "Workbook uses summary binding only."),
     ]
     _write_key_value_section(sheet, 6, "Construction summary", rows, include_format=True)
 
@@ -541,7 +541,7 @@ def _write_opex_sheet(sheet, bundle: WorkbookExportBundle) -> None:
         ("Template Y1 total OPEX", bundle.context.opex_y1_total_keur, "template assumption", "Read-only project context.", K_EUR_FORMAT),
         ("Contingency method", bundle.context.opex_contingency_method, "template assumption", "Read-only project context."),
         ("Contingency percent", bundle.context.opex_contingency_pct / 100.0, "template assumption", "Read-only project context.", RATIO_FORMAT),
-        ("Runtime/preview boundary", "Line items below are template assumptions; runtime total above is authoritative", "review", "No workbook-only OPEX calculations."),
+        ("Runtime/evidence boundary", "Line items below are template assumptions; runtime total above is authoritative", "review", "No workbook-only OPEX calculations."),
     ]
     next_row = _write_key_value_section(sheet, 6, "OPEX summary", rows, include_format=True)
     item_rows = [
@@ -787,7 +787,7 @@ def _write_audit_sheet(sheet, bundle: WorkbookExportBundle) -> None:
         ("Revenue period source", "build_revenue_table(runtime_result)", "runtime", "Existing output table builder."),
         ("Debt period source", "build_debt_table(runtime_result)", "runtime", "Existing output table builder."),
         ("Workbook-only formulas", "none", "review", "Presentation-only export branch."),
-        ("Runtime / preview rule", "Sheets label runtime-derived sections separately from template assumptions", "review", "No blurred authority."),
+        ("Runtime / evidence rule", "Sheets label runtime-derived sections separately from template assumptions", "review", "Runtime authority remains explicit."),
         ("Governance note", "G20 remains blocked; R99/R102 remains not approved", "review", "No approval implied."),
     ]
     next_row = _write_key_value_section(sheet, 6, "Audit source map", rows)
@@ -807,7 +807,7 @@ def _write_audit_sheet(sheet, bundle: WorkbookExportBundle) -> None:
         sheet,
         next_row,
         "Sheet binding coverage",
-        ("Sheet", "Primary source", "Runtime/preview", "Status"),
+        ("Sheet", "Primary source", "Evidence status", "Status"),
         audit_rows,
     )
 
@@ -852,7 +852,7 @@ def _write_validation_status_sheet(sheet, bundle: WorkbookExportBundle) -> None:
             (
                 entry.display_name,
                 "Validated" if entry.level == MetricValidationLevel.VALIDATED else "Methodology caveat",
-                entry.caveat_text or "Validated against the internal reference workbook.",
+                entry.caveat_text or "Validated against reference workbook evidence.",
             )
             for entry in status.metrics
         ]
@@ -992,7 +992,7 @@ def _write_metadata_block(sheet, bundle: WorkbookExportBundle, marker: str) -> N
     metadata = (
         ("Project", bundle.project_name),
         ("Export generated at", bundle.generated_at),
-        ("Runtime / preview", marker),
+        ("Evidence status", marker),
         ("Runtime boundary", f"{bundle.runtime_timestamp} | {_display_runtime_origin(bundle.runtime_origin)} | {bundle.runtime_snapshot_id}"),
         ("Provenance", f"{bundle.branch or _source_branch()} | {bundle.commit_sha} | {_display_template_origin(bundle.template_origin)} | {bundle.scenario_name}"),
     )
@@ -1183,7 +1183,7 @@ def _period_label(period: object) -> str:
 
 def _binding_fields_for_sheet(sheet_name: str) -> str:
     mapping = {
-        "Cover": "project, timestamp, export type, branch, runtime/preview, purpose, status",
+        "Cover": "project, timestamp, export type, branch, evidence status, purpose, status",
         "Governance": "governance status, G20, R99/R102, provenance",
         "Runtime Summary": "IRR, revenue, EBITDA, OPEX, DSCR, distributions, SHL service",
         "Inputs": "project metadata, technical assumptions, governance labels, input summary",
