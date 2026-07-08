@@ -9803,3 +9803,34 @@ tr.fc-grid-header--sub th {
 }
 /* C.01-C.18 category labels: wider label for long names */
 .fc-capex-grid-wrapper .fc-grid { min-width: 520px; }
+
+/* ── Sprint 14E: OPEX grid — Excel-like layout (sticky, scroll, KPIs) ── */
+.opex-ws-grid-wrapper {
+  overflow-x: auto;
+  overflow-y: auto;
+  max-height: 70vh;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  margin-bottom: 0.5rem;
+}
+/* Sticky header */
+.opex-ws-grid thead tr { position: sticky; top: 0; z-index: 10; background: var(--surface-2); }
+/* Sticky first two columns */
+.opex-ws-col-label {
+  position: sticky; left: 0; z-index: 5;
+  background: var(--surface); min-width: 200px; max-width: 240px;
+}
+.opex-ws-col-code {
+  position: sticky; left: 200px; z-index: 5;
+  background: var(--surface-2); width: 70px; min-width: 60px;
+}
+/* Compact rows */
+.opex-ws-grid .fc-data-row td { padding: 0.22rem 0.45rem; font-size: 0.79rem; }
+/* Year column styling */
+.opex-ws-yr-col { width: 72px; min-width: 65px; text-align: right; }
+.opex-ws-yr-col--y1 { background: var(--surface); font-weight: 600; }
+.opex-ws-yr-derived { color: var(--muted); font-size: 0.75rem; }
+/* Y1 input compact */
+.opex-ws-y1-input { width: 60px; text-align: right; font-size: 0.79rem; }
+/* Min-width for full table */
+.opex-ws-grid { min-width: 900px; }
