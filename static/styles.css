@@ -9738,3 +9738,6 @@ tr.fc-grid-header--sub th {
 .rp-export-btn:hover { background: #e5e7eb; }
 .rp-export-btn--xl { background: #f0fdf4; border-color: #86efac; color: #166534; }
 .rp-export-btn--docx { background: #eff6ff; border-color: #bfdbfe; color: #1e40af; }
+
+/* ── Sprint 14A: hide secondary results sub-nav (duplicate navigation) ── */
+#results-subnav-wrapper { display: none !important; }
