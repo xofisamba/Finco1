@@ -103,6 +103,7 @@ from app.ui.dirty_state import build_dirty_state_ui
 from app.ui.scenario_workflow import build_scenario_workflow_ui
 # Phase 25B-6 — generic project review pack helpers (pure functions, no DB, no I/O)
 from app.ui.project_review import build_project_review_ui
+from app.ui.capex_view_model import build_capex_view_model
 from app.export.runtime_summary import build_runtime_summary_csv, build_runtime_summary_rows
 from app.export.institutional_workbook import export_institutional_workbook_skeleton
 from app.services.export_service import build_values_only_export_for_project, build_runtime_summary_csv_export, build_institutional_workbook_export, build_excel_export_for_post_request
@@ -2639,6 +2640,11 @@ async def index(request: Request, project: str | None = None):
             ) else {}),
             "workspace_message": None,
             "is_user_project": project_record.project_origin == "user_created",
+            # PR B — CAPEX Excel grid view model (sheet_capex_grid.html)
+            "capex_vm": build_capex_view_model(
+                ctx,
+                is_user_project=project_record.project_origin == "user_created",
+            ),
             # Phase 24-H: exploratory warning flag (user_created + generic)
             "is_exploratory_project": (
                 project_record.project_origin == "user_created"
