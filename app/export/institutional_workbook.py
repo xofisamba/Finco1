@@ -1,4 +1,4 @@
-"""Institutional workbook export for Phase 10.
+﻿"""Institutional workbook export for Phase 10.
 
 This module binds existing runtime outputs, project context assumptions, and
 offline financial statement assembly into a standardized review workbook.
@@ -38,7 +38,7 @@ class WorkbookSheetDefinition:
     sheet_order: int
     sheet_name: str
     implemented_level: str
-    runtime_or_preview: str
+    runtime_or_evidence: str
     governance_sensitive: bool
     notes: str
 
@@ -265,7 +265,7 @@ def write_workbook_sheet_map_csv(path: str | Path) -> Path:
                 "sheet_order",
                 "sheet_name",
                 "implemented_level",
-                "runtime_or_preview",
+                "runtime_or_evidence",
                 "governance_sensitive",
                 "notes",
             ],
@@ -277,7 +277,7 @@ def write_workbook_sheet_map_csv(path: str | Path) -> Path:
                     "sheet_order": definition.sheet_order,
                     "sheet_name": definition.sheet_name,
                     "implemented_level": definition.implemented_level,
-                    "runtime_or_preview": definition.runtime_or_preview,
+                    "runtime_or_evidence": definition.runtime_or_evidence,
                     "governance_sensitive": "yes" if definition.governance_sensitive else "no",
                     "notes": definition.notes,
                 }
@@ -292,9 +292,9 @@ def write_runtime_workbook_binding_status_csv(path: str | Path) -> Path:
         {
             "sheet_name": definition.sheet_name,
             "runtime_binding_level": definition.implemented_level,
-            "runtime_or_preview": definition.runtime_or_preview,
+            "runtime_or_evidence": definition.runtime_or_evidence,
             "implemented_fields": _binding_fields_for_sheet(definition.sheet_name),
-            "remaining_placeholders": _remaining_placeholders_for_sheet(definition.sheet_name),
+            "remaining_evidence_gaps": _remaining_evidence_gaps_for_sheet(definition.sheet_name),
             "governance_sensitive": "yes" if definition.governance_sensitive else "no",
             "notes": definition.notes,
         }
@@ -306,9 +306,9 @@ def write_runtime_workbook_binding_status_csv(path: str | Path) -> Path:
             fieldnames=[
                 "sheet_name",
                 "runtime_binding_level",
-                "runtime_or_preview",
+                "runtime_or_evidence",
                 "implemented_fields",
-                "remaining_placeholders",
+                "remaining_evidence_gaps",
                 "governance_sensitive",
                 "notes",
             ],
@@ -483,7 +483,7 @@ def _write_runtime_summary_sheet(sheet, bundle: WorkbookExportBundle) -> None:
         if metric not in RUNTIME_SUMMARY_LABELS:
             continue
         label, number_format = RUNTIME_SUMMARY_LABELS[metric]
-        rows.append((label, _coerce_value(runtime_row["value"], number_format), runtime_row["runtime_or_preview"], runtime_row["notes"], number_format))
+        rows.append((label, _coerce_value(runtime_row["value"], number_format), runtime_row["runtime_or_evidence"], runtime_row["notes"], number_format))
     _write_key_value_section(sheet, 6, "Runtime summary values", rows, include_format=True)
 
 
@@ -1203,7 +1203,7 @@ def _binding_fields_for_sheet(sheet_name: str) -> str:
     return mapping[sheet_name]
 
 
-def _remaining_placeholders_for_sheet(sheet_name: str) -> str:
+def _remaining_evidence_gaps_for_sheet(sheet_name: str) -> str:
     mapping = {
         "Cover": "none",
         "Governance": "none",
@@ -1223,3 +1223,4 @@ def _remaining_placeholders_for_sheet(sheet_name: str) -> str:
         "Gap Register": "none",
     }
     return mapping[sheet_name]
+
