@@ -9741,3 +9741,17 @@ tr.fc-grid-header--sub th {
 
 /* ── Sprint 14A: hide secondary results sub-nav (duplicate navigation) ── */
 #results-subnav-wrapper { display: none !important; }
+
+/* ── Sprint 14B: Inputs section index nav ── */
+.inp-section-index {
+  display: flex; flex-wrap: wrap; gap: 0.15rem 0; align-items: center;
+  padding: 0.4rem 0.75rem; margin-bottom: 0.5rem;
+  background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: var(--radius-md); font-size: 0.72rem;
+}
+.inp-section-index__link {
+  color: var(--primary); text-decoration: none; padding: 0.1rem 0.25rem;
+}
+.inp-section-index__link:hover { text-decoration: underline; }
+.inp-section-index__sep { color: var(--muted); padding: 0 0.1rem; }
+.inp-tab-link { color: var(--primary); text-decoration: underline; cursor: pointer; }
