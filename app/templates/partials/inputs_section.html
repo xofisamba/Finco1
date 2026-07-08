@@ -170,21 +170,46 @@
    CAPEX SUMMARY
    ══════════════════════════════════════════════════════════════════════ #}
 {% set capex_rows %}
-  {{ field_row("Total CAPEX", "{:,.0f} kEUR".format(project_ctx.total_capex_keur) if project_ctx.total_capex_keur else "—", editable=is_user_project, field_name="total_capex_keur", input_type="number", unit="kEUR", step="1", min_val="0", section="capex", field_key="total_capex_keur", raw=project_ctx.total_capex_keur) }}
-  {{ field_row("Senior Debt", "{:,.0f} kEUR".format(project_ctx.senior_debt_keur) if project_ctx.senior_debt_keur else "N/A", calculated=True, caveat_icon="ƒ", caveat_title="Calculated — derived from other inputs, not entered directly.", section="debt", field_key="senior_debt", raw=project_ctx.senior_debt_keur) }}
+  {# PR E: use capex_vm breakdown when available; fall back to project_ctx scalar #}
+  {% if capex_vm %}
+    {{ field_row("Hard CAPEX (C.01–C.16)", "{:,.0f} kEUR".format(capex_vm.hard_capex_keur), calculated=True, caveat_icon="ƒ", caveat_title="Calculated — sum of C.01–C.16 from CAPEX detail grid.", section="capex", field_key="hard_capex_keur", raw=capex_vm.hard_capex_keur) }}
+    {% if capex_vm.financing_keur %}
+      {{ field_row("Financing Costs (C.17)", "{:,.0f} kEUR".format(capex_vm.financing_keur), calculated=True, caveat_icon="ƒ", caveat_title="Calculated — backend computed (IDC + bank fees). Detail in CAPEX tab.", section="capex", field_key="financing_keur", raw=capex_vm.financing_keur) }}
+    {% endif %}
+    {% if capex_vm.reserve_keur %}
+      {{ field_row("Reserve Accounts (C.18)", "{:,.0f} kEUR".format(capex_vm.reserve_keur), calculated=True, caveat_icon="ƒ", caveat_title="Calculated — backend computed reserve. Detail in CAPEX tab.", section="capex", field_key="reserve_keur", raw=capex_vm.reserve_keur) }}
+    {% endif %}
+    {{ field_row("Total CAPEX", "{:,.0f} kEUR".format(capex_vm.total_capex_keur), editable=is_user_project, field_name="total_capex_keur", input_type="number", unit="kEUR", step="1", min_val="0", calculated=(not is_user_project), caveat_icon=(None if is_user_project else "ƒ"), caveat_title=(None if is_user_project else "Calculated — Hard CAPEX + Financing Costs + Reserve."), section="capex", field_key="total_capex_keur", raw=capex_vm.total_capex_keur) }}
+    {{ field_row("CAPEX / MW", "{:,.1f} kEUR/MW".format(capex_vm.total_per_mw) if capex_vm.capacity_mw else "—", calculated=True, caveat_icon="ƒ", caveat_title="Calculated — Total CAPEX ÷ Installed Capacity.", section="capex", field_key="capex_per_mw", raw=capex_vm.total_per_mw) }}
+  {% else %}
+    {{ field_row("Total CAPEX", "{:,.0f} kEUR".format(project_ctx.total_capex_keur) if project_ctx.total_capex_keur else "—", editable=is_user_project, field_name="total_capex_keur", input_type="number", unit="kEUR", step="1", min_val="0", section="capex", field_key="total_capex_keur", raw=project_ctx.total_capex_keur) }}
+  {% endif %}
   {{ field_row("IDC", "{:,.0f} kEUR".format(project_ctx.idc_keur) if project_ctx.idc_keur else "—", calculated=True, caveat_icon="ƒ", caveat_title="Calculated — derived from other inputs, not entered directly.", section="capex", field_key="idc", raw=project_ctx.idc_keur) }}
   {{ field_row("Bank Fees", "{:,.0f} kEUR".format(project_ctx.bank_fees_keur) if project_ctx.bank_fees_keur else "—", calculated=True, caveat_icon="ƒ", caveat_title="Calculated — derived from other inputs, not entered directly.", section="capex", field_key="bank_fees", raw=project_ctx.bank_fees_keur) }}
 {% endset %}
-{{ section_card("CAPEX Summary", capex_rows, section_note="CAPEX detail breakdown available in CAPEX tab.") }}
+{{ section_card("CAPEX Summary", capex_rows, section_note="CAPEX detail breakdown (C.01–C.18) available in CAPEX tab.") }}
 
 {# ══════════════════════════════════════════════════════════════════════
    OPEX SUMMARY
    ══════════════════════════════════════════════════════════════════════ #}
 {% set opex_rows %}
-  {{ field_row("Y1 OPEX Total", "{:,.0f} kEUR".format(project_ctx.opex_y1_total_keur) if project_ctx.opex_y1_total_keur else "—", editable=is_user_project, field_name="opex_y1_keur", input_type="number", unit="kEUR", step="1", min_val="0", section="opex", field_key="opex_y1_total", raw=project_ctx.opex_y1_total_keur) }}
-  {{ field_row("Contingency", "{:.1f}%".format(project_ctx.opex_contingency_pct * 100) if project_ctx.opex_contingency_pct else "—", section="opex", field_key="contingency_pct", raw=project_ctx.opex_contingency_pct) }}
+  {# PR E: use opex_vm when available for richer breakdown #}
+  {% if opex_vm %}
+    {{ field_row("Total OPEX Y1", "{:,.0f} kEUR".format(opex_vm.y1_total_opex), editable=is_user_project, field_name="opex_y1_keur", input_type="number", unit="kEUR", step="1", min_val="0", section="opex", field_key="opex_y1_total", raw=opex_vm.y1_total_opex) }}
+    {{ field_row("Contingency Rate", "{:.1f}%".format(opex_vm.contingency_rate), section="opex", field_key="contingency_pct", raw=opex_vm.contingency_rate) }}
+    {{ field_row("Contingency Y1", "{:,.0f} kEUR".format(opex_vm.contingency_by_year[0]) if opex_vm.contingency_by_year else "—", calculated=True, caveat_icon="ƒ", caveat_title="Calculated — contingency rate × total OPEX excl. contingency.", section="opex", field_key="contingency_y1", raw=(opex_vm.contingency_by_year[0] if opex_vm.contingency_by_year else None)) }}
+    {% if opex_vm.opex_per_mw_y1 is not none %}
+      {{ field_row("OPEX / MW (Y1)", "{:,.1f} kEUR/MW".format(opex_vm.opex_per_mw_y1), calculated=True, caveat_icon="ƒ", caveat_title="Calculated — Total OPEX Y1 ÷ Installed Capacity.", section="opex", field_key="opex_per_mw_y1", raw=opex_vm.opex_per_mw_y1) }}
+    {% endif %}
+    {% if opex_vm.opex_per_mwh_y1 is not none %}
+      {{ field_row("OPEX / MWh (Y1)", "{:.2f} EUR/MWh".format(opex_vm.opex_per_mwh_y1), calculated=True, caveat_icon="ƒ", caveat_title="Calculated — Total OPEX Y1 × 1,000 ÷ P50 Annual Yield.", section="opex", field_key="opex_per_mwh_y1", raw=opex_vm.opex_per_mwh_y1) }}
+    {% endif %}
+  {% else %}
+    {{ field_row("Y1 OPEX Total", "{:,.0f} kEUR".format(project_ctx.opex_y1_total_keur) if project_ctx.opex_y1_total_keur else "—", editable=is_user_project, field_name="opex_y1_keur", input_type="number", unit="kEUR", step="1", min_val="0", section="opex", field_key="opex_y1_total", raw=project_ctx.opex_y1_total_keur) }}
+    {{ field_row("Contingency", "{:.1f}%".format(project_ctx.opex_contingency_pct * 100) if project_ctx.opex_contingency_pct else "—", section="opex", field_key="contingency_pct", raw=project_ctx.opex_contingency_pct) }}
+  {% endif %}
 {% endset %}
-{{ section_card("OPEX Summary", opex_rows, section_note="OPEX detail breakdown available in OPEX tab.") }}
+{{ section_card("OPEX Summary", opex_rows, section_note="OPEX detail breakdown (B.01–B.13, Y1–Y30) available in OPEX tab.") }}
 
 {# ══════════════════════════════════════════════════════════════════════
    FINANCING SUMMARY
