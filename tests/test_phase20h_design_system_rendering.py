@@ -341,6 +341,7 @@ class TestInputsSectionUnchanged:
 def test_css_has_valid_syntax():
     """Basic CSS syntax sanity — no unclosed braces."""
     content = _read_text_utf8(STYLES_CSS)
+    content = re.sub(r"/\*.*?\*/", "", content, flags=re.DOTALL)
     open_braces = content.count("{")
     close_braces = content.count("}")
     assert open_braces == close_braces, \

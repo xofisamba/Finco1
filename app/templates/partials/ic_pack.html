@@ -94,7 +94,7 @@
               <span class="rp-kv-label">{{ label }}</span>
               <span class="rp-kv-val">
                 {% if val is number %}
-                  {% if unit == 'kEUR' %}{{ "{:,.0f}"|format(val) }} kEUR
+                  {% if unit == 'kEUR' %}{{ "{:,.0f}".format(val) }} kEUR
                   {% elif unit == '%' %}{{ "%.1f"|format(val) }}%
                   {% else %}{{ val }}{% if unit %} {{ unit }}{% endif %}{% endif %}
                 {% else %}{{ val or '—' }}{% endif %}
@@ -221,7 +221,7 @@
       {% set ds = ic['dist_summary'] %}
       <div class="rp-kv-row" style="margin-bottom:0.4rem;">
         <span class="rp-kv-label">Total Distributions</span>
-        <span class="rp-kv-val"><strong>{{ "{:,.0f}"|format(ds['total_keur']) }} kEUR</strong></span>
+        <span class="rp-kv-val"><strong>{{ "{:,.0f}".format(ds['total_keur']) }} kEUR</strong></span>
       </div>
       {% if ds['annual'] %}
         <div style="overflow-x:auto;">
@@ -235,8 +235,8 @@
                 {% set ns.cum = ns.cum + dist %}
                 <tr>
                   <td>{{ yr }}</td>
-                  <td class="rp-num">{{ "{:,.1f}"|format(dist) }}</td>
-                  <td class="rp-num">{{ "{:,.1f}"|format(ns.cum) }}</td>
+                  <td class="rp-num">{{ "{:,.1f}".format(dist) }}</td>
+                  <td class="rp-num">{{ "{:,.1f}".format(ns.cum) }}</td>
                 </tr>
               {% endfor %}
             </tbody>

@@ -80,20 +80,20 @@
               <td class="cv-cell-num">
                 {{ "%.4f"|format(p['plcr']) if p['plcr'] is not none and p['plcr'] > 0 else '—' }}{% if p['plcr'] is not none and p['plcr'] > 0 %}x{% endif %}
               </td>
-              <td class="cv-cell-num">{{ "{:,.1f}"|format(p['senior_balance_keur']) }}</td>
-              <td class="cv-cell-num">{{ "{:,.1f}"|format(p['senior_ds_keur']) }}</td>
+              <td class="cv-cell-num">{{ "{:,.1f}".format(p['senior_balance_keur']) }}</td>
+              <td class="cv-cell-num">{{ "{:,.1f}".format(p['senior_ds_keur']) }}</td>
               <td class="cv-cell-center">
                 {% if p['lockup'] %}<span class="cv-lockup-badge">LOCKED</span>{% else %}—{% endif %}
               </td>
               <td class="cv-cell-num">
                 {% if p['distribution_keur'] > 0 %}
-                  {{ "{:,.1f}"|format(p['distribution_keur']) }}
+                  {{ "{:,.1f}".format(p['distribution_keur']) }}
                 {% else %}
                   <span style="color:var(--text-muted,#6b7280)">—</span>
                 {% endif %}
               </td>
               <td class="cv-cell-num">
-                {% if p['cash_sweep_keur'] > 0 %}{{ "{:,.1f}"|format(p['cash_sweep_keur']) }}{% else %}—{% endif %}
+                {% if p['cash_sweep_keur'] > 0 %}{{ "{:,.1f}".format(p['cash_sweep_keur']) }}{% else %}—{% endif %}
               </td>
               <td class="cv-cell-center">
                 <span class="cv-rag-badge cv-rag-badge--{{ p['rag'] }}">
