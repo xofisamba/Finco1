@@ -54,62 +54,41 @@
 
   <!-- Sticky header bar -->
   <div class="sc-header">
-    <div class="sc-header-title">Scenario Input Matrix</div>
+    <div class="sc-header-title">Scenario Inputs</div>
     <div class="sc-header-subtitle">
       {% if not is_user_project %}
         <span class="badge badge-muted">Read-only</span>
         &nbsp;Protected projects cannot add scenarios — use Create Working Copy to make an editable copy.
       {% else %}
         <span class="badge badge-pass">Editing</span>
-        &nbsp;Base Case is the reference. Override cells are highlighted. The Active badge marks the saved scenario that Run Model will use.
+        &nbsp;Base Case is the reference. Override cells are highlighted. The Active badge marks the saved scenario that Run Model will use. Unsaved draft edits do not affect Run until saved.
       {% endif %}
     </div>
   </div>
 
   {% if is_user_project %}
-  <!-- Sprint 14C: Preset scenario buttons + custom add form -->
+  <!-- Add Scenario form — only for user_created projects -->
   <div class="sc-add-form" id="sc-add-form">
-    <div class="sc-preset-row">
-      <span class="sc-preset-label">Add preset:</span>
-      {% for preset_name in ["Downside", "Upside", "Bank Case", "Custom"] %}
-      <form hx-post="/scenarios/add"
-            hx-target="#scenario-tab"
-            hx-swap="innerHTML"
-            onsubmit="return false;"
-            style="display:inline;">
-        <input type="hidden" name="project_code" value="{{ project_record.project_code }}" />
-        <input type="hidden" name="scenario_name" value="{{ preset_name }}" />
-        <button type="submit"
-                class="btn btn--ghost btn--sm sc-preset-btn"
-                data-sc-preset="{{ preset_name }}"
-                onclick="this.disabled=true; this.textContent='Adding…'; this.form.requestSubmit();">
-          + {{ preset_name }}
-        </button>
-      </form>
-      {% endfor %}
-      <span class="sc-preset-sep" aria-hidden="true">|</span>
+    <form hx-post="/scenarios/add"
+          hx-target="#scenario-tab"
+          hx-swap="innerHTML"
+          hx-include="#sc-add-form"
+          onsubmit="return false;">
+      <input type="hidden" name="project_code" value="{{ project_record.project_code }}" />
       <input type="text"
              name="scenario_name"
              id="sc-add-name"
              class="inp-input sc-add-input"
-             placeholder="Custom name…"
+             placeholder="New scenario name…"
              maxlength="60"
              autocomplete="off" />
-      <form hx-post="/scenarios/add"
-            hx-target="#scenario-tab"
-            hx-swap="innerHTML"
-            onsubmit="return false;"
-            id="sc-add-custom-form">
-        <input type="hidden" name="project_code" value="{{ project_record.project_code }}" />
-        <button type="button"
-                class="btn btn--primary btn--sm"
-                id="sc-add-btn"
-                onclick="var n=document.getElementById('sc-add-name').value.trim(); if(!n)return; var f=document.getElementById('sc-add-custom-form'); var inp=f.querySelector('[name=scenario_name]'); if(!inp){inp=document.createElement('input');inp.type='hidden';inp.name='scenario_name';f.appendChild(inp);} inp.value=n; this.disabled=true; this.textContent='Adding…'; f.requestSubmit();">
-          + Add
-        </button>
-        <input type="hidden" name="scenario_name" value="" />
-      </form>
-    </div>
+      <button type="submit"
+              class="btn btn--primary btn--sm"
+              id="sc-add-btn"
+              onclick="this.disabled=true; this.textContent='Adding…'; this.form.requestSubmit();">
+        + Add Scenario
+      </button>
+    </form>
   </div>
   {% endif %}
 
