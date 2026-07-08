@@ -41,22 +41,6 @@
     <div class="opex-ws-summary-card__unit">{{ project_ctx.opex_contingency_method }}</div>
   </div>
   {% endif %}
-  {# Sprint 14E: OPEX/MW and OPEX/MWh derived KPIs #}
-  {% if project_ctx.capacity_mw and project_ctx.capacity_mw > 0 %}
-  <div class="opex-ws-summary-card">
-    <div class="opex-ws-summary-card__label">OPEX / MW</div>
-    <div class="opex-ws-summary-card__value">{{ "{:,.1f}".format((project_ctx.opex_y1_total_keur or 0) / project_ctx.capacity_mw) }}</div>
-    <div class="opex-ws-summary-card__unit">kEUR / MW</div>
-  </div>
-  {% endif %}
-  {% if project_ctx.operating_hours_p50 and project_ctx.capacity_mw and project_ctx.capacity_mw > 0 %}
-  {% set opex_mwh = (project_ctx.opex_y1_total_keur or 0) * 1000 / (project_ctx.operating_hours_p50 * project_ctx.capacity_mw) %}
-  <div class="opex-ws-summary-card">
-    <div class="opex-ws-summary-card__label">OPEX / MWh</div>
-    <div class="opex-ws-summary-card__value">{{ "{:,.2f}".format(opex_mwh) }}</div>
-    <div class="opex-ws-summary-card__unit">EUR / MWh</div>
-  </div>
-  {% endif %}
 </div>
 
 {# ── Collapse controls ─────────────────────────────────────────── #}
@@ -65,12 +49,9 @@
   <button class="btn-sm btn-muted" onclick="opexWsCollapseAll()">Collapse all</button>
 </div>
 
-{# Sprint 14E: OPEX display years (Y1-Y10, computed from escalation — display only) #}
-{% set _opex_display_years = range(1, 11) %}
-
 {# ── OPEX Grid — dynamic groups ────────────────────────────────── #}
 <div class="sheet-card opex-ws-card">
-  <div class="section-header">OPEX Budget — kEUR · Y1 editable · Y2–Y10 escalated (display)</div>
+  <div class="section-header">OPEX Budget — Year 1 (kEUR)</div>
 
   {% if project_ctx.opex_items %}
 
@@ -82,18 +63,17 @@
     {% endif %}
   {% endfor %}
 
-  <div class="opex-ws-grid-wrapper">
   <table class="fc-grid opex-ws-grid" id="opex-ws-grid">
     <thead>
       <tr class="fc-grid-header">
-        <th class="fc-th fc-grid-col-label opex-ws-col-label">Line Item</th>
-        <th class="fc-th opex-ws-col-code">Code</th>
-        <th class="fc-th fc-th--amount">Inflation %</th>
+        <th class="fc-th fc-grid-col-label">Line Item</th>
+        <th class="fc-th fc-th--code">Code</th>
+        <th class="fc-th fc-th--amount">Y1 kEUR</th>
         <th class="fc-th fc-th--unit">Unit</th>
+        <th class="fc-th fc-th--amount">Escal. %</th>
+        <th class="fc-th fc-th--num">Start</th>
+        <th class="fc-th fc-th--num">End</th>
         <th class="fc-th fc-th--pct-label">Fixed/Var</th>
-        {% for yr in _opex_display_years %}
-        <th class="fc-th fc-th--amount opex-ws-yr-col{% if yr == 1 %} opex-ws-yr-col--y1{% endif %}">Y{{ yr }}</th>
-        {% endfor %}
         <th class="fc-th fc-cell--notes">Notes</th>
       </tr>
     </thead>
@@ -116,47 +96,38 @@
             <span class="opex-ws-toggle-icon" id="opex-ws-icon-{{ loop.index0 }}">▼</span>
             {{ group_name }}
           </td>
-          <td class="fc-cell fc-cell--amount fc-cell--group-total" colspan="3">{{ "{:,.2f}".format(ns.subtotal) }} kEUR Y1</td>
-          <td class="fc-cell" colspan="{{ _opex_display_years|list|length + 1 }}"><span class="fc-cell--muted">subtotal</span></td>
+          <td class="fc-cell fc-cell--amount fc-cell--group-total">{{ "{:,.2f}".format(ns.subtotal) }}</td>
+          <td class="fc-cell" colspan="6"><span class="fc-cell--muted">subtotal</span></td>
         </tr>
 
         {# Child rows #}
         {% for item in project_ctx.opex_items %}
           {% if item.group == group_name %}
           <tr class="fc-data-row opex-ws-child-row" data-group="{{ loop.index0 }}">
-            <td class="fc-cell fc-cell--label fc-grid-col-label opex-ws-child-label opex-ws-col-label">{{ item.name }}</td>
-            <td class="fc-cell fc-cell--code opex-ws-col-code">{{ item.code }}</td>
-            <td class="fc-cell fc-cell--amount">{{ "%.1f"|format(item.escalation_pct or 0) }}%</td>
+            <td class="fc-cell fc-cell--label fc-grid-col-label opex-ws-child-label">{{ item.name }}</td>
+            <td class="fc-cell fc-cell--code">{{ item.code }}</td>
+            <td class="fc-cell fc-cell--amount">
+              {% if is_user_project %}
+              <input type="number" step="any" min="0"
+                     class="fc-input-native"
+                     name="opex_{{ item.code }}_y1_keur"
+                     value="{{ "%.2f"|format(item.y1_keur or 0) }}"
+                     data-opex-item="{{ item.code }}"
+                     data-opex-group="{{ loop.index0 }}"
+                     aria-label="{{ item.name }} Y1 OPEX" />
+              {% else %}
+              <span class="fc-cell-runtime">{{ "{:,.2f}".format(item.y1_keur or 0) }}</span>
+              {% endif %}
+            </td>
             <td class="fc-cell fc-th--unit">{{ item.unit }}</td>
+            <td class="fc-cell fc-cell--amount">{{ "%.1f"|format(item.escalation_pct or 0) }}%</td>
+            <td class="fc-cell fc-cell--num">{{ item.start_year }}</td>
+            <td class="fc-cell fc-cell--num">{{ item.end_year }}</td>
             <td class="fc-cell fc-th--pct-label">
               {% if item.fixed_variable %}
                 <span class="badge badge-muted">{{ item.fixed_variable }}</span>
               {% endif %}
             </td>
-            {# Y1 editable; Y2-Y10 display-computed from escalation #}
-            {% for yr in _opex_display_years %}
-            <td class="fc-cell fc-cell--amount opex-ws-yr-col{% if yr == 1 %} opex-ws-yr-col--y1{% endif %}">
-              {% if yr == 1 %}
-                {% if is_user_project %}
-                <input type="number" step="any" min="0"
-                       class="fc-input-native opex-ws-y1-input"
-                       name="opex_{{ item.code }}_y1_keur"
-                       value="{{ "%.2f"|format(item.y1_keur or 0) }}"
-                       data-opex-item="{{ item.code }}"
-                       data-opex-group="{{ loop.index0 }}"
-                       aria-label="{{ item.name }} Y1 OPEX" />
-                {% else %}
-                <span class="fc-cell-runtime">{{ "{:,.2f}".format(item.y1_keur or 0) }}</span>
-                {% endif %}
-              {% else %}
-                {# Display-only escalated value — not submitted, not used by engine #}
-                {% set esc = (item.escalation_pct or 0) / 100.0 %}
-                <span class="fc-cell-runtime opex-ws-yr-derived" title="Y1 × (1+{{ "%.1f"|format(item.escalation_pct or 0) }}%)^{{ yr-1 }}">
-                  {{ "{:,.1f}".format((item.y1_keur or 0) * ((1 + esc) ** (yr - 1))) }}
-                </span>
-              {% endif %}
-            </td>
-            {% endfor %}
             <td class="fc-cell fc-cell--notes">{{ item.notes or "—" }}</td>
           </tr>
           {% endif %}
@@ -164,9 +135,9 @@
 
         {# Group subtotal row #}
         <tr class="fc-subtotal-row opex-ws-group-subtotal-row">
-          <td class="fc-cell fc-cell--label fc-grid-col-label fc-subtotal-label opex-ws-col-label" colspan="2">{{ group_name }} Subtotal</td>
-          <td class="fc-total-cell opex-ws-subtotal-value" data-group-subtotal="{{ loop.index0 }}" colspan="3">{{ "{:,.2f}".format(ns.subtotal) }}</td>
-          <td colspan="{{ _opex_display_years|list|length + 1 }}"></td>
+          <td class="fc-cell fc-cell--label fc-grid-col-label fc-subtotal-label" colspan="2">{{ group_name }} Subtotal</td>
+          <td class="fc-total-cell opex-ws-subtotal-value" data-group-subtotal="{{ loop.index0 }}">{{ "{:,.2f}".format(ns.subtotal) }}</td>
+          <td colspan="6"></td>
         </tr>
       </tbody>
     {% endfor %}
@@ -174,11 +145,11 @@
     {# Grand total row #}
     <tbody>
       <tr class="fc-grand-total">
-        <td class="fc-cell fc-cell--label fc-grid-col-label fc-grand-total__label opex-ws-col-label" colspan="2">Total OPEX (Y1)</td>
-        <td class="fc-total-cell fc-total-value fc-grand-total__value" colspan="3">
+        <td class="fc-cell fc-cell--label fc-grid-col-label fc-grand-total__label" colspan="2">Total OPEX (Y1)</td>
+        <td class="fc-total-cell fc-total-value fc-grand-total__value">
           {{ "{:,.2f}".format(project_ctx.opex_y1_total_keur or 0) }}
         </td>
-        <td colspan="{{ _opex_display_years|list|length + 1 }}"></td>
+        <td colspan="6"></td>
       </tr>
 
       {# Delta warning — grid sum vs model summary #}
@@ -189,15 +160,14 @@
       {% set delta = (grid_ns.total - (project_ctx.opex_y1_total_keur or 0)) | abs %}
       {% if delta > 0.5 %}
       <tr class="fc-delta-row">
-        <td class="fc-cell fc-delta-label opex-ws-col-label" colspan="2">⚠ Delta vs model</td>
-        <td class="fc-delta-warning" colspan="3">{{ "%.2f"|format(delta) }} kEUR</td>
-        <td class="fc-cell fc-cell--notes" colspan="{{ _opex_display_years|list|length + 1 }}">Model OPEX summary is authoritative.</td>
+        <td class="fc-cell fc-delta-label" colspan="2">⚠ Delta vs model</td>
+        <td class="fc-delta-warning">{{ "%.2f"|format(delta) }} kEUR</td>
+        <td class="fc-cell fc-cell--notes" colspan="6">Model OPEX summary is authoritative.</td>
       </tr>
       {% endif %}
     </tbody>
 
   </table>
-  </div>{# /opex-ws-grid-wrapper #}
 
   {% else %}
   <div class="inp-empty-state">

@@ -71,8 +71,8 @@
 {%- endmacro -%}
 
 {# ── Helper: section card ──────────────────────────────────────────────── #}
-{%- macro section_card(title, rows, section_note=None, anchor=None) -%}
-<div class="inp-card"{% if anchor %} id="{{ anchor }}"{% endif %}>
+{%- macro section_card(title, rows, section_note=None) -%}
+<div class="inp-card">
   <div class="inp-section-header">{{ title }}</div>
   <div class="inp-rows">
     {{ rows }}
@@ -82,29 +82,6 @@
   {% endif %}
 </div>
 {%- endmacro -%}
-
-{# ── Sprint 14B: local section index ─────────────────────────────────── #}
-<nav class="inp-section-index" aria-label="Jump to section">
-  <a class="inp-section-index__link" href="#inp-sec-identity">Identity</a>
-  <span class="inp-section-index__sep" aria-hidden="true">·</span>
-  <a class="inp-section-index__link" href="#inp-sec-schedule">Schedule</a>
-  <span class="inp-section-index__sep" aria-hidden="true">·</span>
-  <a class="inp-section-index__link" href="#inp-sec-technical">Technical</a>
-  <span class="inp-section-index__sep" aria-hidden="true">·</span>
-  <a class="inp-section-index__link" href="#inp-sec-revenue">Revenue</a>
-  <span class="inp-section-index__sep" aria-hidden="true">·</span>
-  <a class="inp-section-index__link" href="#inp-sec-capex">CAPEX</a>
-  <span class="inp-section-index__sep" aria-hidden="true">·</span>
-  <a class="inp-section-index__link" href="#inp-sec-opex">OPEX</a>
-  <span class="inp-section-index__sep" aria-hidden="true">·</span>
-  <a class="inp-section-index__link" href="#inp-sec-debt">Debt</a>
-  <span class="inp-section-index__sep" aria-hidden="true">·</span>
-  <a class="inp-section-index__link" href="#inp-sec-tax">Tax</a>
-  <span class="inp-section-index__sep" aria-hidden="true">·</span>
-  <a class="inp-section-index__link" href="#inp-sec-sponsor">Sponsor / SHL</a>
-  <span class="inp-section-index__sep" aria-hidden="true">·</span>
-  <a class="inp-section-index__link" href="#inp-sec-runtime">Runtime</a>
-</nav>
 
 {# ── UX-1B: compact top-of-sheet legend ──────────────────────────────── #}
 <div class="inp-legend" role="note" aria-label="Inputs legend">
@@ -147,7 +124,7 @@
     {{ field_row("Template Origin", "Generic", section="identity", field_key="template_origin", raw="Generic") }}
   {% endif %}
 {% endset %}
-{{ section_card("Identity", identity_rows, anchor="inp-sec-identity") }}
+{{ section_card("Identity", identity_rows) }}
 
 {# ══════════════════════════════════════════════════════════════════════
    SCHEDULE
@@ -159,7 +136,7 @@
   {{ field_row("Project Horizon", "{} years".format(project_ctx.horizon_years) if project_ctx.horizon_years else "—", editable=is_user_project, field_name="horizon_years", input_type="number", unit="years", step="1", min_val="1", section="schedule", field_key="horizon_years", raw=project_ctx.horizon_years) }}
   {{ field_row("Period Frequency", project_ctx.period_frequency or "Quarterly", section="schedule", field_key="period_frequency", raw=project_ctx.period_frequency) }}
 {% endset %}
-{{ section_card("Schedule", schedule_rows, anchor="inp-sec-schedule") }}
+{{ section_card("Schedule", schedule_rows) }}
 
 {# ══════════════════════════════════════════════════════════════════════
    TECHNICAL
@@ -176,7 +153,7 @@
   {{ field_row("Grid Availability", "{:.0f}%".format(project_ctx.grid_availability * 100) if project_ctx.grid_availability else "—", badge="Template", badge_class="badge-muted", badge_title="Set by the project template. Not currently editable via the workspace form.", section="technical", field_key="grid_availability", raw=project_ctx.grid_availability) }}
   {{ field_row("Annual Degradation", "{:.1f}%/yr".format(project_ctx.pv_degradation * 100) if project_ctx.pv_degradation else "0% (wind — no degradation)", badge="Template", badge_class="badge-muted", badge_title="Set by the project template. Solar projects use the PV degradation rate; wind projects assume no degradation.", section="technical", field_key="degradation", raw=project_ctx.pv_degradation) }}
 {% endset %}
-{{ section_card("Technical / Yield", technical_rows, section_note="Plant availability, grid availability and degradation are sourced from the project template and applied across all periods. P90 sensitivity is available in the Sensitivity analysis tab.", anchor="inp-sec-technical") }}
+{{ section_card("Technical", technical_rows, section_note="Plant availability, grid availability and degradation are sourced from the project template and applied across all periods. P90 sensitivity is available in the Sensitivity analysis tab.") }}
 
 {# ══════════════════════════════════════════════════════════════════════
    REVENUE / PPA SUMMARY
@@ -187,7 +164,7 @@
   {{ field_row("PPA Index", "{:.1f}% annually".format(project_ctx.ppa_index_pct * 100) if project_ctx.ppa_index_pct else "—", section="revenue", field_key="ppa_index_pct", raw=project_ctx.ppa_index_pct) }}
   {{ field_row("CO2 Revenue", "Enabled — {:.3f} EUR/MWh".format(project_ctx.co2_price_eur_mwh) if project_ctx.co2_enabled else "Disabled", section="revenue", field_key="co2_revenue", raw=project_ctx.co2_price_eur_mwh) }}
 {% endset %}
-{{ section_card("Revenue / PPA Summary", revenue_rows, anchor="inp-sec-revenue") }}
+{{ section_card("Revenue / PPA Summary", revenue_rows) }}
 
 {# ══════════════════════════════════════════════════════════════════════
    CAPEX SUMMARY
@@ -198,8 +175,7 @@
   {{ field_row("IDC", "{:,.0f} kEUR".format(project_ctx.idc_keur) if project_ctx.idc_keur else "—", calculated=True, caveat_icon="ƒ", caveat_title="Calculated — derived from other inputs, not entered directly.", section="capex", field_key="idc", raw=project_ctx.idc_keur) }}
   {{ field_row("Bank Fees", "{:,.0f} kEUR".format(project_ctx.bank_fees_keur) if project_ctx.bank_fees_keur else "—", calculated=True, caveat_icon="ƒ", caveat_title="Calculated — derived from other inputs, not entered directly.", section="capex", field_key="bank_fees", raw=project_ctx.bank_fees_keur) }}
 {% endset %}
-{% set capex_link_note %}CAPEX detail breakdown available in the <a href="javascript:void(0)" onclick="if(typeof switchTab==='function')switchTab('capex')" class="inp-tab-link">CAPEX tab</a>.{% endset %}
-{{ section_card("CAPEX Summary", capex_rows, section_note=capex_link_note, anchor="inp-sec-capex") }}
+{{ section_card("CAPEX Summary", capex_rows, section_note="CAPEX detail breakdown available in CAPEX tab.") }}
 
 {# ══════════════════════════════════════════════════════════════════════
    OPEX SUMMARY
@@ -208,8 +184,7 @@
   {{ field_row("Y1 OPEX Total", "{:,.0f} kEUR".format(project_ctx.opex_y1_total_keur) if project_ctx.opex_y1_total_keur else "—", editable=is_user_project, field_name="opex_y1_keur", input_type="number", unit="kEUR", step="1", min_val="0", section="opex", field_key="opex_y1_total", raw=project_ctx.opex_y1_total_keur) }}
   {{ field_row("Contingency", "{:.1f}%".format(project_ctx.opex_contingency_pct * 100) if project_ctx.opex_contingency_pct else "—", section="opex", field_key="contingency_pct", raw=project_ctx.opex_contingency_pct) }}
 {% endset %}
-{% set opex_link_note %}OPEX detail breakdown available in the <a href="javascript:void(0)" onclick="if(typeof switchTab==='function')switchTab('opex')" class="inp-tab-link">OPEX tab</a>.{% endset %}
-{{ section_card("OPEX Summary", opex_rows, section_note=opex_link_note, anchor="inp-sec-opex") }}
+{{ section_card("OPEX Summary", opex_rows, section_note="OPEX detail breakdown available in OPEX tab.") }}
 
 {# ══════════════════════════════════════════════════════════════════════
    FINANCING SUMMARY
@@ -221,7 +196,7 @@
   {{ field_row("Senior Tenor", "{} years".format(project_ctx.senior_tenor_years) if project_ctx.senior_tenor_years else "—", editable=is_user_project, field_name="tenor_years", input_type="number", unit="years", step="1", min_val="0", caveat_icon="⚠", caveat_title="DSCR sculpt driver — affects debt / equity / DSCR outputs under the current DSCR sculpting method. Project IRR may not change.", section="debt", field_key="tenor_years", raw=project_ctx.senior_tenor_years) }}
   {{ field_row("SHL Amount", "{:,.0f} kEUR".format(project_ctx.shl_amount_keur) if project_ctx.shl_amount_keur else "—", calculated=True, caveat_icon="ƒ", caveat_title="Calculated — derived from other inputs, not entered directly.", section="debt", field_key="shl_amount", raw=project_ctx.shl_amount_keur) }}
 {% endset %}
-{{ section_card("Debt / Sizing", financing_rows, anchor="inp-sec-debt") }}
+{{ section_card("Debt Summary", financing_rows) }}
 
 {# ══════════════════════════════════════════════════════════════════════
    TAX SUMMARY
@@ -233,7 +208,7 @@
   {{ field_row("R99/R102", project_ctx.r99_r102_status or "NOT_APPROVED", badge=project_ctx.r99_r102_status or "NOT_APPROVED", badge_class="badge-warn", section="tax", field_key="r99_r102_status", raw=project_ctx.r99_r102_status) }}
 {% endset %}
 {% if audit_mode|default(false) %}
-  {{ section_card("Tax / WHT", tax_rows, section_note="Tax template override uses country-specific defaults unless overridden.", anchor="inp-sec-tax") }}
+  {{ section_card("Tax Summary", tax_rows, section_note="Tax template override uses country-specific defaults unless overridden.") }}
 {% else %}
   {# P2-FIX-2: G20 / R99/R102 governance posture is the
      reviewer surface. In normal mode we expose only a
@@ -243,29 +218,8 @@
       field_row("CIT Rate", "{:.1f}%".format(project_ctx.cit_rate_pct * 100) if project_ctx.cit_rate_pct else "—", section="tax", field_key="cit_rate", raw=project_ctx.cit_rate_pct),
       field_row("Loss Carryforward", "{} years".format(project_ctx.loss_carryforward_years) if project_ctx.loss_carryforward_years else "—", section="tax", field_key="loss_carryforward", raw=project_ctx.loss_carryforward_years),
   ] %}
-  {{ section_card("Tax / WHT", tax_rows_normal, section_note="Tax rates are country-specific defaults from the project template. WHT and thin-cap settings are applied automatically.", anchor="inp-sec-tax") }}
+  {{ section_card("Tax Summary", tax_rows_normal, section_note="Tax template override uses country-specific defaults unless overridden. See the Audit / Reference tab for the reviewer notes.") }}
 {% endif %}
-
-{# ══════════════════════════════════════════════════════════════════════
-   SPONSOR / SHL  (Sprint 14B)
-   ══════════════════════════════════════════════════════════════════════ #}
-{% set sponsor_rows %}
-  {{ field_row("SHL Amount", "{:,.0f} kEUR".format(project_ctx.shl_amount_keur) if project_ctx.shl_amount_keur else "—", calculated=True, caveat_icon="ƒ", caveat_title="Calculated — residual equity gap after senior debt and CAPEX.", section="sponsor", field_key="shl_amount", raw=project_ctx.shl_amount_keur) }}
-  {{ field_row("SHL Rate", "{:.2f}%".format(project_ctx.shl_rate_pct * 100) if project_ctx.shl_rate_pct else "—", section="sponsor", field_key="shl_rate", raw=project_ctx.shl_rate_pct) }}
-  {{ field_row("SHL IDC", "{:,.0f} kEUR".format(project_ctx.shl_idc_keur) if project_ctx.shl_idc_keur else "—", calculated=True, caveat_icon="ƒ", caveat_title="Calculated — interest during construction on SHL.", section="sponsor", field_key="shl_idc", raw=project_ctx.shl_idc_keur) }}
-{% endset %}
-{{ section_card("Sponsor / SHL", sponsor_rows, section_note="Shareholder loan sizing is derived from the capital structure. SHL detail is available in the Debt tab.", anchor="inp-sec-sponsor") }}
-
-{# ══════════════════════════════════════════════════════════════════════
-   RUNTIME / GOVERNANCE  (Sprint 14B)
-   ══════════════════════════════════════════════════════════════════════ #}
-{% set runtime_rows %}
-  {{ field_row("Project Code", project_ctx.code or "—", section="runtime", field_key="project_code", raw=project_ctx.code) }}
-  {{ field_row("Project Type", project_ctx.technology or "—", section="runtime", field_key="technology", raw=project_ctx.technology) }}
-  {{ field_row("Period Frequency", project_ctx.period_frequency or "Quarterly", section="runtime", field_key="period_frequency", raw=project_ctx.period_frequency) }}
-  {{ field_row("Editable", "Yes — user project" if is_user_project else "No — protected original", section="runtime", field_key="is_user_project", raw=is_user_project) }}
-{% endset %}
-{{ section_card("Runtime / Governance", runtime_rows, section_note="Runtime parameters govern period frequency and model version. Protected originals cannot be edited — use Duplicate to create a working copy.", anchor="inp-sec-runtime") }}
 
 {# ── Dirty-state indicator ─────────────────────────────────────────────── #}
 <div id="dirty-indicator" class="inp-dirty-indicator" style="display:none;">
