@@ -9767,3 +9767,39 @@ tr.fc-grid-header--sub th {
 .sc-preset-btn { font-size: 0.75rem; }
 .sc-preset-sep { color: var(--border); padding: 0 0.25rem; }
 .sc-add-input { flex: 1; min-width: 120px; max-width: 200px; font-size: 0.8rem; }
+
+/* ── Sprint 14D: CAPEX grid — Excel-like layout improvements ── */
+.fc-capex-grid-wrapper {
+  max-height: 70vh;
+  overflow-y: auto;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+/* Sticky header accounts for fo-chrome bar above */
+#capex-single-sheet .fc-grid-header th {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--surface-2);
+}
+/* Sticky first two columns (label + code) */
+#capex-single-sheet .fc-grid-col-label {
+  position: sticky; left: 0; z-index: 5; background: var(--surface); min-width: 200px;
+}
+#capex-single-sheet .fc-th--code {
+  position: sticky; left: 200px; z-index: 5; background: var(--surface-2); min-width: 70px;
+}
+#capex-single-sheet td:nth-child(2) {
+  position: sticky; left: 200px; z-index: 4; background: var(--surface);
+}
+/* Compact data rows */
+#capex-single-sheet .fc-data-row td { padding: 0.25rem 0.5rem; font-size: 0.8rem; }
+#capex-single-sheet .fc-section-band td { padding: 0.35rem 0.5rem; }
+/* C.17/C.18 read-only colouring */
+#capex-single-sheet .fc-data-row[data-capex-section="C.17"] td,
+#capex-single-sheet .fc-data-row[data-capex-section="C.18"] td {
+  color: var(--muted); font-style: italic;
+}
+/* C.01-C.18 category labels: wider label for long names */
+.fc-capex-grid-wrapper .fc-grid { min-width: 520px; }
