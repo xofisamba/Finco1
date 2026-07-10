@@ -153,6 +153,14 @@ templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "app", "templates")
 templates.env.globals["htmx"] = True
 templates.env.globals["asset_version"] = ASSET_VERSION
 
+# -- Workbook V2 feature flag -------------------------------------------------
+# Set FINCO_WORKBOOK_V2=1 (or "true"/"yes") to mount the /v2 router.
+# When absent or falsy, all legacy routes are unaffected.
+_v2_flag = os.environ.get("FINCO_WORKBOOK_V2", "").strip().lower()
+if _v2_flag in ("1", "true", "yes"):
+    from app.v2.router import router as _v2_router
+    app.include_router(_v2_router, prefix="/v2")
+
 
 def _friendly_error(exc: Exception, context: str = "") -> str:
     """Return a user-safe error message; log the raw exception server-side."""
