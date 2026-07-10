@@ -1,0 +1,66 @@
+{#
+  Workbook V2 — Project Setup sheet partial.
+
+  Context variables expected (passed from app/v2/router.py):
+    ps_fields  : list of dicts, one per FieldSpec in the project_setup sheet,
+                 ordered by section then field.order.  Each dict has:
+                   field_id     : str  — semantic ID (e.g. "project_setup.identity.project_name")
+                   label        : str  — display label
+                   unit         : str|None
+                   editable     : bool — False for TEMPLATE_LOCKED / DISPLAY_ONLY
+                   display_only : bool — True for DISPLAY_ONLY (no <input>)
+                   section_id   : str  — "identity" or "technical"
+                   section_label: str  — "Project Identity" or "Technical Parameters"
+                   value        : any  — typed value from ProjectInputSet (or "")
+
+  Values ALWAYS come from pis.get(field_id) via the router; never from the
+  legacy snapshot dict.  The template must not reference snapshot keys.
+#}
+
+<div id="v2-sheet-project-setup" data-sheet="project_setup">
+
+  {% set ns = namespace(current_section=None) %}
+  {% for f in ps_fields %}
+    {% if f.section_id != ns.current_section %}
+      {% if ns.current_section is not none %}
+        </div>{# close previous section-fields #}
+      </div>{# close previous section #}
+      {% endif %}
+      <div class="v2-section" data-section="{{ f.section_id }}">
+        <h3 class="v2-section-label">{{ f.section_label }}</h3>
+        <div class="v2-section-fields">
+      {% set ns.current_section = f.section_id %}
+    {% endif %}
+
+    <div class="v2-field-row {{ 'v2-field-display-only' if f.display_only else '' }}"
+         data-field-id="{{ f.field_id }}">
+      <label class="v2-field-label" for="v2-{{ f.field_id | replace('.', '-') }}">
+        {{ f.label }}{% if f.unit %} <span class="v2-field-unit">({{ f.unit }})</span>{% endif %}
+      </label>
+      {% if f.editable and not f.display_only %}
+        <input
+          id="v2-{{ f.field_id | replace('.', '-') }}"
+          class="v2-field-input"
+          name="{{ f.field_id }}"
+          type="text"
+          value="{{ f.value if f.value is not none else '' }}"
+          data-field-id="{{ f.field_id }}"
+        >
+      {% else %}
+        <span
+          id="v2-{{ f.field_id | replace('.', '-') }}"
+          class="v2-field-value {{ 'v2-field-locked' if not f.display_only else 'v2-field-derived' }}"
+          data-field-id="{{ f.field_id }}"
+        >{{ f.value if f.value is not none else '—' }}</span>
+      {% endif %}
+    </div>
+
+  {% endfor %}
+
+  {# close last section if any fields were rendered #}
+  {% if ns.current_section is not none %}
+    </div>{# close section-fields #}
+  </div>{# close last section #}
+  {% endif %}
+
+</div>{# v2-sheet-project-setup #}

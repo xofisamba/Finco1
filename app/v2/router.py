@@ -20,12 +20,16 @@ GET /v2/workbook
     RuntimeResult sessionStorage script so the page loads without a model
     re-run.
 
+    The Project Setup sheet (identity + technical sections) is rendered
+    using values sourced exclusively from ProjectInputSet, keyed by
+    semantic field_id.  No legacy snapshot keys are referenced in the
+    template layer.
+
 Scope constraints
 -----------------
 - No engine calls, no formula logic, no parity changes.
 - No DB writes; reads WorkspaceStateRecord via the existing repository
   layer only.
-- No sheet migration (PR 6).
 - No legacy ``_collect_form_snapshot`` / ``_strip_empty_fields`` helpers.
 - No reuse of ``build_input_set_from_workspace`` (removed in PR 4).
 """
@@ -39,6 +43,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from app.auth import COOKIE_NAME, decode_session_token
+from app.workbook.registry import WORKBOOK
 from app.workbook.service import WorkbookService
 
 router = APIRouter()
@@ -59,6 +64,34 @@ def _get_current_user(request: Request):
     if not token:
         return None
     return decode_session_token(token)
+
+
+def _build_ps_fields(pis) -> list[dict]:
+    """Build the project_setup field context list for the template.
+
+    Returns one dict per FieldSpec in the project_setup sheet, ordered by
+    section then field.order.  Values come exclusively from pis.get(field_id)
+    — never from snapshot keys or any other source.
+    """
+    sheet = WORKBOOK.sheet("project_setup")
+    rows: list[dict] = []
+    for section in sorted(sheet.sections, key=lambda s: s.order):
+        for fspec in sorted(section.fields, key=lambda f: f.order):
+            from app.workbook.specs import BindingStatus
+            display_only = fspec.binding_status == BindingStatus.DISPLAY_ONLY
+            locked = fspec.binding_status == BindingStatus.TEMPLATE_LOCKED
+            value = pis.get(fspec.field_id)
+            rows.append({
+                "field_id": fspec.field_id,
+                "label": fspec.label,
+                "unit": fspec.unit,
+                "editable": fspec.editable and not display_only and not locked,
+                "display_only": display_only,
+                "section_id": section.section_id,
+                "section_label": section.label,
+                "value": value,
+            })
+    return rows
 
 
 @router.get("/workbook", response_class=HTMLResponse)
@@ -103,12 +136,16 @@ async def v2_workbook(request: Request, project: Optional[str] = None):
     # Empty string when no run has been persisted; safe to embed directly.
     hydration_script = WorkbookService.runtime_hydration_script(ws)
 
+    # Build project_setup sheet context — values from ProjectInputSet only.
+    ps_fields = _build_ps_fields(pis)
+
     context = {
         "project_code": project,
         "workbook_version": pis.workbook_version,
         "content_hash": pis.content_hash,
         "template_source": pis.template_source,
         "hydration_script": hydration_script,
+        "ps_fields": ps_fields,
         "user": user,
     }
     return _templates.TemplateResponse(request=request, name="workbook.html", context=context)
