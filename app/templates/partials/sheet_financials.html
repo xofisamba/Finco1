@@ -1,6 +1,7 @@
 <!-- Sheet: Financial Statements (P&L / Cash Flow / Balance Sheet)
      Phase 20M — Financial Statements Polish
      Product Gap PR6 — Financial Statements Reality Check
+     PR #857 — output honesty: scoped querySelector fixes triple-DOM bug
      fc-grid design system applied to statement tables
 
      PR6 finding: the Income Statement, Cash Flow, and Balance Sheet
@@ -11,51 +12,64 @@
      run response provides it, with the existing sessionStorage payload
      retained as a same-run HTMX refresh fallback. No statement values
      are calculated in this template.
+
+     PR #857 fix: this template is included three times in workspace_shell.html
+     (once per FS outer tab panel). document.getElementById() only hits the
+     first DOM instance, so the JS now scopes all queries to the enclosing
+     [data-fs-panel] container captured at script-execution time via
+     document.currentScript. All three panels independently populate their
+     own tables without cross-panel interference.
 -->
 {# UI-8E: banner removed — the statement selector is the page identity. #}
+
+{# PR #857: panel identity — _active_statement is set by workspace_shell.html
+   before each include ("pl", "cf", "bs"). Defaults to "pl" for safety. #}
+{% set _fs_panel_id = _active_statement|default("pl") %}
 
 {# ══════════════════════════════════════════════════════════════════════
    LIVE RUNTIME BLOCK (sessionStorage — shown after model run)
    ══════════════════════════════════════════════════════════════════════ #}
-<div id="fs-runtime-block">
-  <div class="fs-runtime-block" id="shared-runtime-block" style="display:none;">
+<div data-fs-panel="{{ _fs_panel_id }}" id="fs-panel-{{ _fs_panel_id }}">
+
+<div id="fs-runtime-block-{{ _fs_panel_id }}">
+  <div class="fs-runtime-block" id="shared-runtime-block-{{ _fs_panel_id }}" style="display:none;">
     <div class="fs-runtime-header">
       <div class="fs-runtime-header-left">
         <span class="badge badge-runtime">Runtime</span>
         <span class="fs-runtime-title">Live Model Output</span>
-        <span class="fs-runtime-project" id="runtime-block-project"></span>
+        <span class="fs-runtime-project" id="runtime-block-project-{{ _fs_panel_id }}"></span>
       </div>
       <div class="fs-runtime-header-right">
-        <span class="fs-runtime-time" id="runtime-block-time"></span>
+        <span class="fs-runtime-time" id="runtime-block-time-{{ _fs_panel_id }}"></span>
         {% if runtime_summary is defined and runtime_summary.active_scenario_name %}
         <span class="badge badge-runtime">{{ runtime_summary.active_scenario_name }}</span>
         {% endif %}
       </div>
     </div>
-    <div class="fs-runtime-kpis" id="runtime-block-kpis"></div>
+    <div class="fs-runtime-kpis" id="runtime-block-kpis-{{ _fs_panel_id }}"></div>
   </div>
 
   {# Secondary runtime metrics for financial statements #}
-  <div class="fs-secondary-metrics" id="fs-secondary-metrics" style="display:none;">
+  <div class="fs-secondary-metrics" id="fs-secondary-metrics-{{ _fs_panel_id }}" style="display:none;">
     <div class="fs-metric">
       <span class="fs-metric-label">Total Distributions</span>
-      <span class="fs-metric-value" id="fs-total-dist"></span>
+      <span class="fs-metric-value" id="fs-total-dist-{{ _fs_panel_id }}"></span>
     </div>
     <div class="fs-metric">
       <span class="fs-metric-label">SHL Opening</span>
-      <span class="fs-metric-value" id="fs-shl-opening"></span>
+      <span class="fs-metric-value" id="fs-shl-opening-{{ _fs_panel_id }}"></span>
     </div>
     <div class="fs-metric">
       <span class="fs-metric-label">Total Revenue</span>
-      <span class="fs-metric-value" id="fs-total-rev"></span>
+      <span class="fs-metric-value" id="fs-total-rev-{{ _fs_panel_id }}"></span>
     </div>
     <div class="fs-metric">
       <span class="fs-metric-label">EBITDA</span>
-      <span class="fs-metric-value" id="fs-ebitda"></span>
+      <span class="fs-metric-value" id="fs-ebitda-{{ _fs_panel_id }}"></span>
     </div>
     <div class="fs-metric">
       <span class="fs-metric-label">Total OPEX</span>
-      <span class="fs-metric-value" id="fs-opex"></span>
+      <span class="fs-metric-value" id="fs-opex-{{ _fs_panel_id }}"></span>
     </div>
   </div>
 </div>
@@ -136,7 +150,7 @@
 {# UI-8E: default visible — JS hides this when runtime exists.
    Removed style="display:none;" to avoid FOUC (flash of empty page). #}
 <div class="fo-fs-empty-state"
-     id="fs-unavailable-panel"
+     id="fs-unavailable-panel-{{ _fs_panel_id }}"
      {% if _fs_has_runtime %}style="display:none;"{% endif %}
      role="status" aria-label="Financial statements outside current runtime view">
   <div class="fo-fs-empty-state__icon" aria-hidden="true">⬜</div>
@@ -150,17 +164,17 @@
    is retained only as a same-run refresh fallback. No financial
    calculations are performed here.
    ══════════════════════════════════════════════════════════════════════ #}
-<div id="fs-statements-block"{% if not _fs_has_runtime %} style="display:none;"{% endif %} data-fs-source="{{ 'canonical-runtime-financial-statements' if _fs_has_runtime else 'session-storage-runtime-fallback' }}">
+<div id="fs-statements-block-{{ _fs_panel_id }}"{% if not _fs_has_runtime %} style="display:none;"{% endif %} data-fs-source="{{ 'canonical-runtime-financial-statements' if _fs_has_runtime else 'session-storage-runtime-fallback' }}">
 
   {# ── Income Statement (P&L) ── #}
   <div class="fc-section-header">
     <span class="fc-section-title">Income Statement (P&amp;L)</span>
     <span class="badge badge-runtime fs-source-badge" title="Read-only canonical runtime output from the latest model run.">Engine Output</span>
   </div>
-  <div class="fc-table-wrapper" id="fs-pnl-table-wrapper">
-    <table class="fc-grid fs-statement-table" id="fs-pnl-table">
-      <thead><tr id="fs-pnl-header">{% if _fs_has_runtime %}{{ _fs_header(_fs.pnl.periods) }}{% endif %}</tr></thead>
-      <tbody id="fs-pnl-body">{% if _fs_has_runtime %}{{ _fs_body(_pnl_rows, _fs.pnl.periods) }}{% endif %}</tbody>
+  <div class="fc-table-wrapper" id="fs-pnl-table-wrapper-{{ _fs_panel_id }}">
+    <table class="fc-grid fs-statement-table" id="fs-pnl-table-{{ _fs_panel_id }}">
+      <thead><tr id="fs-pnl-header-{{ _fs_panel_id }}">{% if _fs_has_runtime %}{{ _fs_header(_fs.pnl.periods) }}{% endif %}</tr></thead>
+      <tbody id="fs-pnl-body-{{ _fs_panel_id }}">{% if _fs_has_runtime %}{{ _fs_body(_pnl_rows, _fs.pnl.periods) }}{% endif %}</tbody>
     </table>
   </div>
 
@@ -171,10 +185,10 @@
     <span class="fc-section-title">Balance Sheet</span>
     <span class="badge badge-runtime fs-source-badge" title="Read-only canonical runtime output from the latest model run.">Engine Output</span>
   </div>
-  <div class="fc-table-wrapper" id="fs-bs-table-wrapper">
-    <table class="fc-grid fs-statement-table" id="fs-bs-table">
-      <thead><tr id="fs-bs-header">{% if _fs_has_runtime %}{{ _fs_header(_fs.balance_sheet.periods) }}{% endif %}</tr></thead>
-      <tbody id="fs-bs-body">{% if _fs_has_runtime %}{{ _fs_body(_bs_rows, _fs.balance_sheet.periods) }}{% endif %}</tbody>
+  <div class="fc-table-wrapper" id="fs-bs-table-wrapper-{{ _fs_panel_id }}">
+    <table class="fc-grid fs-statement-table" id="fs-bs-table-{{ _fs_panel_id }}">
+      <thead><tr id="fs-bs-header-{{ _fs_panel_id }}">{% if _fs_has_runtime %}{{ _fs_header(_fs.balance_sheet.periods) }}{% endif %}</tr></thead>
+      <tbody id="fs-bs-body-{{ _fs_panel_id }}">{% if _fs_has_runtime %}{{ _fs_body(_bs_rows, _fs.balance_sheet.periods) }}{% endif %}</tbody>
     </table>
   </div>
 
@@ -185,10 +199,10 @@
     <span class="fc-section-title">PF Cash Waterfall</span>
     <span class="badge badge-runtime fs-source-badge" title="Read-only canonical runtime output from the latest model run.">Engine Output</span>
   </div>
-  <div class="fc-table-wrapper" id="fs-pf-table-wrapper">
-    <table class="fc-grid fs-statement-table" id="fs-pf-table">
-      <thead><tr id="fs-pf-header">{% if _fs_has_runtime %}{{ _fs_header(_fs.pf_cash_waterfall.periods) }}{% endif %}</tr></thead>
-      <tbody id="fs-pf-body">{% if _fs_has_runtime %}{{ _fs_body(_pf_rows, _fs.pf_cash_waterfall.periods) }}{% endif %}</tbody>
+  <div class="fc-table-wrapper" id="fs-pf-table-wrapper-{{ _fs_panel_id }}">
+    <table class="fc-grid fs-statement-table" id="fs-pf-table-{{ _fs_panel_id }}">
+      <thead><tr id="fs-pf-header-{{ _fs_panel_id }}">{% if _fs_has_runtime %}{{ _fs_header(_fs.pf_cash_waterfall.periods) }}{% endif %}</tr></thead>
+      <tbody id="fs-pf-body-{{ _fs_panel_id }}">{% if _fs_has_runtime %}{{ _fs_body(_pf_rows, _fs.pf_cash_waterfall.periods) }}{% endif %}</tbody>
     </table>
   </div>
 
@@ -231,13 +245,30 @@
   </div>
 </div>
 
+</div>{# /data-fs-panel wrapper #}
 
 {# ══════════════════════════════════════════════════════════════════════
-   SESSION STORAGE RUNTIME BINDING
+   SESSION STORAGE RUNTIME BINDING — PR #857: scoped to this panel only.
+   document.currentScript is captured immediately so the IIFE's helper
+   functions scope all DOM queries to this panel's [data-fs-panel]
+   container, preventing getElementById cross-talk when the template is
+   included three times in the same page.
    ══════════════════════════════════════════════════════════════════════ #}
 <script>
 (function() {
   "use strict";
+
+  // Capture this script's enclosing panel at execution time.
+  // _container scopes all DOM queries to this panel instance only.
+  var _scriptEl = document.currentScript;
+  var _container = _scriptEl ? _scriptEl.closest('[data-fs-panel]') : null;
+
+  function _q(id) {
+    return _container ? _container.querySelector('#' + id) : document.getElementById(id);
+  }
+
+  // Panel suffix used for per-panel element IDs (matches Jinja _fs_panel_id).
+  var _panelId = _container ? (_container.dataset.fsPanel || 'pl') : 'pl';
 
   // ── P&L row definitions (label, field key) ───────────────────────────────
   var PNL_ROWS = [
@@ -328,37 +359,38 @@
   }
 
   function _renderStatements(fs) {
-    // P&L
-    var pnlHead = document.getElementById("fs-pnl-header");
-    var pnlBody = document.getElementById("fs-pnl-body");
+    // P&L — scoped via _q() to this panel only
+    var pnlHead = _q("fs-pnl-header-" + _panelId);
+    var pnlBody = _q("fs-pnl-body-" + _panelId);
     if (pnlHead && pnlBody && fs.pnl && fs.pnl.periods) {
       _buildHeader(pnlHead, fs.pnl.periods);
       _buildBody(pnlBody, PNL_ROWS, fs.pnl.periods);
     }
 
     // Balance Sheet
-    var bsHead = document.getElementById("fs-bs-header");
-    var bsBody = document.getElementById("fs-bs-body");
+    var bsHead = _q("fs-bs-header-" + _panelId);
+    var bsBody = _q("fs-bs-body-" + _panelId);
     if (bsHead && bsBody && fs.balance_sheet && fs.balance_sheet.periods) {
       _buildHeader(bsHead, fs.balance_sheet.periods);
       _buildBody(bsBody, BS_ROWS, fs.balance_sheet.periods);
     }
 
     // PF Cash Waterfall
-    var pfHead = document.getElementById("fs-pf-header");
-    var pfBody = document.getElementById("fs-pf-body");
+    var pfHead = _q("fs-pf-header-" + _panelId);
+    var pfBody = _q("fs-pf-body-" + _panelId);
     if (pfHead && pfBody && fs.pf_cash_waterfall && fs.pf_cash_waterfall.periods) {
       _buildHeader(pfHead, fs.pf_cash_waterfall.periods);
       _buildBody(pfBody, PF_ROWS, fs.pf_cash_waterfall.periods);
     }
 
     // Show statements block, hide unavailable panel, mark workspace as runtime-ready
-    var stmtBlock = document.getElementById("fs-statements-block");
+    var stmtBlock = _q("fs-statements-block-" + _panelId);
     if (stmtBlock) stmtBlock.style.display = "";
-    var unavail = document.getElementById("fs-unavailable-panel");
+    var unavail = _q("fs-unavailable-panel-" + _panelId);
     if (unavail) unavail.style.display = "none";
     // UI-8E: mark workspace so toolbar is enabled
-    var ws = document.querySelector(".fo-statements-workspace");
+    var ws = _container ? _container.querySelector(".fo-statements-workspace") : null;
+    if (!ws) ws = document.querySelector(".fo-statements-workspace");
     if (ws) ws.setAttribute("data-fo-fs-state", "runtime");
   }
 
@@ -370,12 +402,12 @@
         _renderStatements(fs);
       } catch(e) {
         // Malformed FS data: show unavailable panel
-        var unavail = document.getElementById("fs-unavailable-panel");
+        var unavail = _q("fs-unavailable-panel-" + _panelId);
         if (unavail) unavail.style.display = "";
       }
     } else {
       // No run yet: show unavailable panel
-      var unavail2 = document.getElementById("fs-unavailable-panel");
+      var unavail2 = _q("fs-unavailable-panel-" + _panelId);
       if (unavail2) unavail2.style.display = "";
     }
   }
@@ -387,18 +419,18 @@
     var data;
     try { data = JSON.parse(raw); } catch(e) { return; }
 
-    // Show runtime block
-    var block = document.getElementById("shared-runtime-block");
+    // Show runtime block (panel-scoped)
+    var block = _q("shared-runtime-block-" + _panelId);
     if (block) block.style.display = "";
 
-    var proj = document.getElementById("runtime-block-project");
+    var proj = _q("runtime-block-project-" + _panelId);
     if (proj) proj.textContent = data.project_name || "";
 
-    var time = document.getElementById("runtime-block-time");
+    var time = _q("runtime-block-time-" + _panelId);
     if (time) time.textContent = data.ran_at || "";
 
     // Primary KPIs
-    var kpiGrid = document.getElementById("runtime-block-kpis");
+    var kpiGrid = _q("runtime-block-kpis-" + _panelId);
     if (kpiGrid) {
       var kpis = [
         { label: "Project IRR",    key: "project_irr" },
@@ -419,17 +451,17 @@
     }
 
     // Secondary: distributions, SHL opening, revenue, EBITDA, opex
-    var secBlock = document.getElementById("fs-secondary-metrics");
+    var secBlock = _q("fs-secondary-metrics-" + _panelId);
     if (secBlock) {
-      var distEl = document.getElementById("fs-total-dist");
+      var distEl = _q("fs-total-dist-" + _panelId);
       if (distEl) distEl.textContent = data.total_distributions_keur || "—";
-      var shlEl = document.getElementById("fs-shl-opening");
+      var shlEl = _q("fs-shl-opening-" + _panelId);
       if (shlEl) shlEl.textContent = data.shl_opening_keur || "—";
-      var revEl = document.getElementById("fs-total-rev");
+      var revEl = _q("fs-total-rev-" + _panelId);
       if (revEl) revEl.textContent = data.total_revenue_keur || "—";
-      var ebitdaEl = document.getElementById("fs-ebitda");
+      var ebitdaEl = _q("fs-ebitda-" + _panelId);
       if (ebitdaEl) ebitdaEl.textContent = data.total_ebitda_keur || "—";
-      var opexEl = document.getElementById("fs-opex");
+      var opexEl = _q("fs-opex-" + _panelId);
       if (opexEl) opexEl.textContent = data.total_opex_keur || "—";
       secBlock.style.display = "";
     }

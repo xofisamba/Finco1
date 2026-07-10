@@ -1,9 +1,19 @@
 <!-- Sheet: Senior Debt — {{ project_ctx.name }}
-     Phase 9.5 — Output Tabs Runtime Summary Binding -->
-<div class="sheet-banner">
-  <span class="sheet-banner-tag">🏦 Senior Debt</span>
-  <span class="sheet-banner-badge">
-    <span class="badge badge-preview">Protected</span>
+     Phase 9.5 — Output Tabs Runtime Summary Binding
+     PR #857 — output honesty: fix protected badge, guard editable inputs,
+     fix unavailable panel display, add section labels -->
+
+{# PR #857: section banner — truthful status labels #}
+<div class="sc-section-banner sc-section-banner--inputs" style="margin-bottom:0.75rem;">
+  <span class="sc-section-banner-label">Senior Debt</span>
+  <span class="sc-section-banner-note">
+    {% if is_user_project %}
+      <span class="badge badge-pass">Editing</span>
+      Debt assumptions are editable. Debt schedule outputs appear after running the model.
+    {% else %}
+      <span class="badge badge-muted">Protected original</span>
+      Read-only — use Create Working Copy to edit debt assumptions.
+    {% endif %}
   </span>
 </div>
 
@@ -33,13 +43,19 @@
 
 <div class="section-divider"></div>
 
-<!-- Debt Facility Summary -->
+<!-- Debt Assumptions -->
 <div class="sheet-card" data-fc-grid="seniordebt" data-fc-scroll-container="true">
-  <div class="section-header">Debt Facility Summary</div>
+  <div class="sc-section-banner sc-section-banner--inputs" style="border-radius:4px 4px 0 0;margin:-1px -1px 0.75rem -1px;">
+    <span class="sc-section-banner-label">Debt Assumptions</span>
+    <span class="sc-section-banner-note">Saved input values — not engine outputs. Run the model to compute debt sizing and service.</span>
+  </div>
+
+  {% if is_user_project %}
+  {# Editable draft grid — user projects only #}
   <div class="editable-grid-shell">
     <div class="editable-grid-shell__header">
       <div>
-        <div class="editable-grid-shell__title">Editable financing assumptions</div>
+        <div class="editable-grid-shell__title">Draft financing assumptions</div>
         <div class="editable-grid-shell__note">These controls update draft workspace state only. The last runtime snapshot stays authoritative until you save or revert.</div>
       </div>
       <span class="badge badge-runtime">Draft only</span>
@@ -50,34 +66,35 @@
           <tr>
             <th>Assumption</th>
             <th>Draft value (unsaved workspace)</th>
-            <th>Saved/runtime note</th>
+            <th>Note</th>
           </tr>
         </thead>
         <tbody>
           <tr data-fc-row="true">
             <td>Gearing (%)</td>
             <td data-fc-cell="true" data-fc-addr="seniordebt!gearing_pct" data-fc-kind="text" data-fc-editable="true" data-fc-raw="{{ project_ctx.gearing_pct }}"><input class="editable-grid-input" type="number" step="any" min="0" max="100" data-grid-source="gearing_pct" inputmode="decimal" aria-label="Draft gearing percentage" /></td>
-            <td>Runtime remains blocked while edits are unsaved.</td>
+            <td>Save and run to see effect on debt sizing.</td>
           </tr>
           <tr data-fc-row="true">
             <td>Target DSCR</td>
             <td data-fc-cell="true" data-fc-addr="seniordebt!target_dscr" data-fc-kind="text" data-fc-editable="true" data-fc-raw="{{ project_ctx.target_dscr }}"><input class="editable-grid-input" type="number" step="any" min="0" data-grid-source="target_dscr" inputmode="decimal" aria-label="Draft target debt service coverage ratio" /></td>
-            <td>Saved scenario snapshot required for runtime execution.</td>
+            <td>Minimum coverage required for debt sizing.</td>
           </tr>
           <tr data-fc-row="true">
             <td>Interest Rate (%)</td>
             <td data-fc-cell="true" data-fc-addr="seniordebt!interest_rate_pct" data-fc-kind="text" data-fc-editable="true" data-fc-raw="{{ project_ctx.interest_rate_pct }}"><input class="editable-grid-input" type="number" step="any" min="0" data-grid-source="interest_rate_pct" inputmode="decimal" aria-label="Draft interest rate percentage" /></td>
-            <td>Save and run the model to see the effect on debt service.</td>
+            <td>All-in rate applied to senior balance.</td>
           </tr>
           <tr data-fc-row="true">
             <td>Tenor (years)</td>
             <td data-fc-cell="true" data-fc-addr="seniordebt!tenor_years" data-fc-kind="text" data-fc-editable="true" data-fc-raw="{{ project_ctx.senior_tenor_years }}"><input class="editable-grid-input" type="number" step="1" min="0" data-grid-source="tenor_years" inputmode="numeric" aria-label="Draft senior debt tenor in years" /></td>
-            <td>Draft-only until saved and re-run.</td>
+            <td>Repayment period (years from COD).</td>
           </tr>
         </tbody>
       </table>
     </div>
   </div>
+  {% endif %}
   <div class="assumption-grid sd-assumption-grid">
     {# ── Facility ── #}
     <div class="assumption-item" data-fc-row="true">
@@ -171,27 +188,31 @@
 <div class="section-divider"></div>
 
 <!-- Phase E3/E4: Debt Schedule Output
-     Pre-Run: sd-unavailable-panel shown (fallback, hidden by JS after Run).
-     Post-Run: sd-schedule-block populated from sessionStorage["lastDebtSchedule"].
+     PR #857: display inversion fixed — unavailable panel now starts visible
+     (consistent with sheet_financials.html). JS hides it after a Run.
      Source: WaterfallResult.periods (per-period engine output).
      No financial calculations performed here. Read-only display only. -->
 <div class="sheet-card">
-  <div class="section-header">Debt Schedule Output
-    <span class="badge badge-runtime" style="float:right;margin-top:2px;" title="Source: WaterfallResult.periods (per-period engine output)">Engine Output</span>
+  <div class="sc-section-banner sc-section-banner--outputs" style="border-radius:4px 4px 0 0;margin:-1px -1px 0.75rem -1px;">
+    <span class="sc-section-banner-label">Runtime Debt Outputs</span>
+    <span class="sc-section-banner-note">
+      Draft schedule — not yet a full lender debt model.
+      Calculated after Run from <code>WaterfallResult.periods</code>.
+      Identical to XLSX export. Read-only.
+    </span>
   </div>
 
-  {# Pre-Run fallback — shown when no lastDebtSchedule in sessionStorage.
-     JS hides this and shows sd-schedule-block once a Run has been executed. #}
+  {# Pre-Run fallback — starts visible. JS hides this and shows sd-schedule-block
+     once a Run has been executed. PR #857 fix: removed style="display:none;"
+     (was an inverted display pattern inconsistent with sheet_financials.html). #}
   <div class="empty-state-notice empty-state-notice--warn sd-unavailable-panel"
        id="sd-unavailable-panel"
-       role="status" aria-label="Senior debt schedule output outside current runtime view"
-       style="display:none;">
+       role="status" aria-label="Senior debt schedule output outside current runtime view">
     <div class="esn-icon" aria-hidden="true">📋</div>
-    <div class="esn-title">Senior debt schedule output is not available yet</div>
+    <div class="esn-title">Debt schedule not yet available</div>
     <div class="esn-desc">
-      Run-backed debt sizing, interest, principal, and covenant results
-      will be shown here once you execute a Run. Values are sourced
-      directly from <code>WaterfallResult.periods</code> — the same
+      Run the model to generate the debt schedule.
+      Results are sourced directly from <code>WaterfallResult.periods</code> — the same
       engine output used by the XLSX export. No values are hardcoded
       or computed client-side.
     </div>
