@@ -34,10 +34,59 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Optional
+
+
+class _FrozenEncoder(json.JSONEncoder):
+    """JSON encoder that serialises MappingProxyType as dict."""
+
+    def default(self, obj: Any) -> Any:
+        if isinstance(obj, MappingProxyType):
+            return dict(obj)
+        return super().default(obj)
+
+    def encode(self, obj: Any) -> str:
+        # Intercept the full structure so nested MappingProxyType is handled.
+        return super().encode(self._thaw(obj))
+
+    @staticmethod
+    def _thaw(obj: Any) -> Any:
+        """Recursively convert MappingProxyType → dict for JSON serialisation."""
+        if isinstance(obj, MappingProxyType):
+            return {k: _FrozenEncoder._thaw(v) for k, v in obj.items()}
+        if isinstance(obj, (list, tuple)):
+            return [_FrozenEncoder._thaw(item) for item in obj]
+        return obj
+
+
+def _dumps(obj: Any) -> str:
+    """json.dumps that handles MappingProxyType at every nesting level."""
+    return json.dumps(_FrozenEncoder._thaw(obj))
 
 if TYPE_CHECKING:
     from app.persistence.records import WorkspaceStateRecord
+
+
+def _freeze(obj: Any) -> Any:
+    """Recursively convert JSON-like dicts into MappingProxyType (read-only).
+
+    dict  → MappingProxyType, with each value recursively frozen.
+    list  → new list whose elements are recursively frozen.
+              Lists stay as lists so that equality checks against plain Python
+              structures (e.g. ``rr.financial_statements == SAMPLE_FS``) continue
+              to work; it is the *dict* nodes at every depth that become read-only.
+    other → returned as-is (str, int, float, bool, None are already immutable).
+
+    This guarantees that direct dict mutation fails at *every* nesting level
+    (rr.runtime_summary["k"] = v raises TypeError; so does
+    rr.financial_statements["periods"][0]["revenue_keur"] = v).
+    """
+    if isinstance(obj, dict):
+        return MappingProxyType({k: _freeze(v) for k, v in obj.items()})
+    if isinstance(obj, list):
+        return [_freeze(item) for item in obj]
+    return obj
 
 # sessionStorage key names — single source of truth in the Python layer.
 # Templates read these keys; they must never diverge.
@@ -98,6 +147,29 @@ class RuntimeResult:
     tax_schedule: Optional[dict[str, Any]]
     distribution_schedule: Optional[dict[str, Any]]
     sponsor_schedule: Optional[dict[str, Any]]
+
+    def __post_init__(self) -> None:
+        """Freeze all mutable payload fields so nested mutation also fails.
+
+        frozen=True prevents attribute *re-assignment*, but a plain dict
+        field can still be mutated in-place (e.g. rr.runtime_summary["k"] = 1).
+        _freeze() converts every dict/list recursively to MappingProxyType/tuple
+        so that neither top-level nor nested mutation is possible.
+
+        object.__setattr__ is required because frozen=True blocks normal assignment.
+        """
+        _PAYLOAD_FIELDS = (
+            "runtime_summary",
+            "financial_statements",
+            "debt_schedule",
+            "tax_schedule",
+            "distribution_schedule",
+            "sponsor_schedule",
+        )
+        for field in _PAYLOAD_FIELDS:
+            val = getattr(self, field)
+            if val is not None:
+                object.__setattr__(self, field, _freeze(val))
 
     # ------------------------------------------------------------------ #
     # Construction                                                         #
@@ -192,11 +264,14 @@ class RuntimeResult:
         """
         parts: list[str] = []
 
-        def _set_or_remove(key: str, payload: Optional[dict]) -> None:
+        def _set_or_remove(key: str, payload: Optional[Any]) -> None:
             if payload:
+                # Double-serialise: json.dumps(json.dumps(payload)) matches the
+                # convention used by run_service._build_sessionstorage_save_tag().
+                # Use _dumps() so MappingProxyType fields serialise correctly.
                 parts.append(
                     f'sessionStorage.setItem({json.dumps(key)}, '
-                    + json.dumps(json.dumps(payload))
+                    + json.dumps(_dumps(payload))
                     + ');'
                 )
             else:
@@ -209,7 +284,7 @@ class RuntimeResult:
         _set_or_remove(_SS_KEY_SPONSOR_SCHEDULE, self.sponsor_schedule)
         parts.append(
             f'sessionStorage.setItem({json.dumps(_SS_KEY_RUNTIME_SUMMARY)}, '
-            + json.dumps(json.dumps(self.runtime_summary))
+            + json.dumps(_dumps(self.runtime_summary))
             + ');'
         )
 

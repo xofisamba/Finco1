@@ -150,6 +150,9 @@ class TestFieldShapes:
         "draft_snapshot", "saved_snapshot",
         "last_runtime_snapshot", "last_runtime_summary",
         "last_runtime_snapshot_id", "last_runtime_origin", "last_runtime_scenario_id",
+        # Workbook V2 PR 3: schedule payload columns added to workspace_states
+        "last_financial_statements", "last_debt_schedule", "last_tax_schedule",
+        "last_distribution_schedule", "last_sponsor_schedule",
         "dirty", "governance_state", "replay_metadata",
         "created_at", "updated_at", "last_runtime_at",
     ])
@@ -178,8 +181,8 @@ class TestFieldShapes:
 
     def test_workspace_state_record_field_count(self):
         from app.persistence.repository import WorkspaceStateRecord
-        assert len(_get_field_names(WorkspaceStateRecord)) == 19, \
-            f"WorkspaceStateRecord has 19 fields, got {_get_field_names(WorkspaceStateRecord)}"
+        assert len(_get_field_names(WorkspaceStateRecord)) == 24, \
+            f"WorkspaceStateRecord has 24 fields, got {_get_field_names(WorkspaceStateRecord)}"
 
     def test_run_record_field_count(self):
         from app.persistence.runs_repository import RunRecord

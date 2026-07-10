@@ -356,6 +356,84 @@ class TestImmutability:
         assert "20260710T120000Z" in r
         assert "RuntimeResult" in r
 
+    # -- Genuine deep-immutability (MappingProxyType) --
+
+    def test_runtime_summary_top_level_mutation_fails(self, full_rr):
+        """Direct key-assignment on runtime_summary must fail."""
+        with pytest.raises(TypeError):
+            full_rr.runtime_summary["injected"] = "bad"  # type: ignore[index]
+
+    def test_financial_statements_top_level_mutation_fails(self, full_rr):
+        with pytest.raises(TypeError):
+            full_rr.financial_statements["injected"] = "bad"  # type: ignore[index]
+
+    def test_debt_schedule_top_level_mutation_fails(self, full_rr):
+        with pytest.raises(TypeError):
+            full_rr.debt_schedule["injected"] = "bad"  # type: ignore[index]
+
+    def test_nested_dict_in_list_mutation_fails(self, full_rr):
+        """Nested dict inside a list (financial_statements.periods[0]) must be immutable."""
+        # _freeze makes every dict node a MappingProxyType, so mutation of
+        # a deeply-nested dict raises TypeError even though the list is still a list.
+        period = full_rr.financial_statements["periods"][0]
+        with pytest.raises(TypeError):
+            period["revenue_keur"] = 99999.0  # type: ignore[index]
+
+    def test_nested_dict_key_assignment_fails_two_levels_deep(self, full_rr):
+        """Mutation fails at a second nested dict level."""
+        meta = full_rr.financial_statements.get("version")
+        # Test a different nested dict — runtime_summary is MappingProxyType.
+        with pytest.raises(TypeError):
+            full_rr.runtime_summary["new_field"] = "injected"  # type: ignore[index]
+
+    def test_source_result_dict_mutation_does_not_affect_rr(self):
+        """Mutating the original result dict after construction leaves RuntimeResult unchanged."""
+        result = {
+            "financial_statements": {"periods": [{"year": 1, "revenue_keur": 5000.0}]},
+            "debt_schedule": None,
+            "tax_schedule": None,
+            "distribution_schedule": None,
+            "sponsor_schedule": None,
+        }
+        rr = RuntimeResult.from_run_result(
+            result,
+            runtime_summary={"project_id": "p"},
+            snapshot_id="snap",
+            ran_at="",
+            origin="workspace_base",
+        )
+        # Mutate the source dict after construction.
+        result["financial_statements"]["periods"][0]["revenue_keur"] = 99999.0
+        result["financial_statements"]["new_key"] = "injected"
+        # RuntimeResult must be unchanged.
+        assert rr.financial_statements["periods"][0]["revenue_keur"] == 5000.0
+        assert "new_key" not in rr.financial_statements
+
+    def test_workspace_state_mutation_does_not_affect_rr(self):
+        """Mutating WorkspaceStateRecord payload after reconstruction leaves RuntimeResult unchanged."""
+        from types import SimpleNamespace
+        from datetime import datetime, timezone
+        fs = {"periods": [{"year": 1, "revenue_keur": 5000.0}]}
+        ws = SimpleNamespace(
+            last_runtime_snapshot_id="snap",
+            last_runtime_at=datetime(2026, 7, 10, 12, 0, 0, tzinfo=timezone.utc),
+            last_runtime_origin="workspace_base",
+            last_runtime_summary={"project_id": "p"},
+            last_financial_statements=fs,
+            last_debt_schedule={},
+            last_tax_schedule={},
+            last_distribution_schedule={},
+            last_sponsor_schedule={},
+        )
+        rr = RuntimeResult.from_workspace_state(ws)
+        assert rr is not None
+        # Mutate the source after construction.
+        fs["periods"][0]["revenue_keur"] = 99999.0
+        fs["injected"] = "bad"
+        # RuntimeResult must not be affected.
+        assert rr.financial_statements["periods"][0]["revenue_keur"] == 5000.0
+        assert "injected" not in rr.financial_statements
+
 
 # ---------------------------------------------------------------------------
 # 6. Persistence round-trip via save_workspace_state
@@ -613,3 +691,193 @@ class TestSessionStorageKeyNames:
 
     def test_runtime_summary_key(self):
         assert _SS_KEY_RUNTIME_SUMMARY == "lastRuntimeSummary"
+
+
+# ---------------------------------------------------------------------------
+# 10. Extended persistence tests
+# ---------------------------------------------------------------------------
+
+class TestExtendedPersistence:
+    """Covers: old rows, discard draft, user/project auth, JSON round-trip,
+    record_workspace_runtime with all 3 origin types."""
+
+    def _uid(self):
+        uid = uuid.uuid4().hex[:12]
+        return f"user_{uid}", f"proj_{uid}"
+
+    def test_old_db_row_without_schedule_columns_readable(self):
+        """Rows inserted without the 5 schedule columns (pre-migration) must
+        deserialise gracefully — from_row() must not raise."""
+        from app.persistence.db import get_cursor, get_connection
+        from app.persistence.records import WorkspaceStateRecord
+        # Insert a minimal row without the schedule JSON columns.
+        user_id, project_id = self._uid()
+        _insert_project(user_id, project_id, "old_code")
+        workspace_id = uuid.uuid4().hex[:16]
+        now = "2026-07-10T00:00:00+00:00"
+        with get_cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO workspace_states (
+                    workspace_id, project_id, user_id, project_code,
+                    active_scenario_id, active_scenario_name,
+                    draft_snapshot_json, saved_snapshot_json,
+                    last_runtime_snapshot_json, last_runtime_summary_json,
+                    last_runtime_snapshot_id, last_runtime_origin,
+                    last_runtime_scenario_id, dirty,
+                    governance_state_json, replay_metadata_json,
+                    created_at, updated_at, last_runtime_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    workspace_id, project_id, user_id, "old_code",
+                    None, None,
+                    json.dumps({}), json.dumps({}),
+                    json.dumps({}), json.dumps(SAMPLE_SUMMARY),
+                    "snap_old", "workspace_base",
+                    None, 0,
+                    json.dumps({}), json.dumps({}),
+                    now, now, None,
+                ),
+            )
+        from app.persistence.workspace_repository import get_workspace_state
+        ws = get_workspace_state(user_id, project_id)
+        assert ws is not None
+        # The new fields default to empty dict via _ensure_column DEFAULT '{}'.
+        assert isinstance(ws.last_financial_statements, dict)
+        rr = RuntimeResult.from_workspace_state(ws)
+        assert rr is not None
+        assert rr.financial_statements is None  # empty dict → None
+
+    def test_discard_draft_preserves_runtime_schedules(self):
+        """discard_workspace_draft must not erase last_financial_statements etc."""
+        from app.persistence.workspace_repository import (
+            save_workspace_state, get_workspace_state, discard_workspace_draft,
+        )
+        user_id, project_id = self._uid()
+        _insert_project(user_id, project_id, "code")
+        save_workspace_state(
+            user_id=user_id,
+            project_id=project_id,
+            project_code="code",
+            draft_snapshot={"capacity_mw": "50.0"},
+            saved_snapshot={"capacity_mw": "35.0"},
+            dirty=True,
+            last_runtime_summary=SAMPLE_SUMMARY,
+            last_runtime_snapshot_id="snap",
+            last_runtime_origin="workspace_base",
+            last_financial_statements=SAMPLE_FS,
+            last_debt_schedule=SAMPLE_DS,
+            last_tax_schedule=SAMPLE_TS,
+            last_distribution_schedule=SAMPLE_DIST,
+            last_sponsor_schedule=SAMPLE_SPONSOR,
+        )
+        ws = discard_workspace_draft(user_id, project_id)
+        assert ws is not None
+        # Draft is rolled back to saved snapshot.
+        assert ws.draft_snapshot == {"capacity_mw": "35.0"}
+        assert not ws.dirty
+        # Runtime schedules must survive the discard.
+        assert ws.last_financial_statements == SAMPLE_FS
+        assert ws.last_debt_schedule == SAMPLE_DS
+        assert ws.last_sponsor_schedule == SAMPLE_SPONSOR
+
+    def test_get_workspace_state_wrong_user_returns_none(self):
+        """get_workspace_state must not return another user's workspace."""
+        from app.persistence.workspace_repository import save_workspace_state, get_workspace_state
+        user_a, project_id = self._uid()
+        user_b = f"user_other_{uuid.uuid4().hex[:8]}"
+        _insert_project(user_a, project_id, "code")
+        save_workspace_state(
+            user_id=user_a,
+            project_id=project_id,
+            project_code="code",
+            draft_snapshot={},
+            saved_snapshot={},
+            last_financial_statements=SAMPLE_FS,
+        )
+        ws = get_workspace_state(user_b, project_id)
+        assert ws is None
+
+    def test_json_round_trip_preserves_exact_payload(self):
+        """Schedule payloads survive JSON serialise → DB write → deserialise unchanged."""
+        from app.persistence.workspace_repository import save_workspace_state, get_workspace_state
+        user_id, project_id = self._uid()
+        _insert_project(user_id, project_id, "code")
+        complex_fs = {
+            "periods": [
+                {"year": 1, "revenue_keur": 5000.0, "flags": ["ok", "complete"]},
+                {"year": 2, "revenue_keur": 5200.5, "flags": []},
+            ],
+            "version": "v2",
+            "metadata": {"source": "engine", "count": 2},
+        }
+        save_workspace_state(
+            user_id=user_id,
+            project_id=project_id,
+            project_code="code",
+            draft_snapshot={},
+            saved_snapshot={},
+            last_runtime_summary=SAMPLE_SUMMARY,
+            last_runtime_snapshot_id="snap",
+            last_runtime_origin="workspace_base",
+            last_financial_statements=complex_fs,
+        )
+        ws = get_workspace_state(user_id, project_id)
+        assert ws is not None
+        # Exact content must match.
+        assert ws.last_financial_statements == complex_fs
+
+    def test_record_workspace_runtime_with_saved_state_origin(self):
+        """record_workspace_runtime with origin=saved_state persists schedules."""
+        from app.persistence.repository import record_workspace_runtime
+        from app.persistence.workspace_repository import save_workspace_state, get_workspace_state
+        user_id, project_id = self._uid()
+        _insert_project(user_id, project_id, "code")
+        save_workspace_state(user_id=user_id, project_id=project_id,
+                             project_code="code", draft_snapshot={}, saved_snapshot={})
+        record_workspace_runtime(
+            user_id=user_id, project_id=project_id, project_code="code",
+            runtime_snapshot={}, runtime_summary=SAMPLE_SUMMARY,
+            runtime_snapshot_id="snap", runtime_origin="saved_state",
+            financial_statements=SAMPLE_FS, debt_schedule=SAMPLE_DS,
+        )
+        ws = get_workspace_state(user_id, project_id)
+        assert ws.last_financial_statements == SAMPLE_FS
+        assert ws.last_runtime_origin == "saved_state"
+
+    def test_record_workspace_runtime_with_workspace_base_origin(self):
+        """record_workspace_runtime with origin=workspace_base persists schedules."""
+        from app.persistence.repository import record_workspace_runtime
+        from app.persistence.workspace_repository import save_workspace_state, get_workspace_state
+        user_id, project_id = self._uid()
+        _insert_project(user_id, project_id, "code")
+        save_workspace_state(user_id=user_id, project_id=project_id,
+                             project_code="code", draft_snapshot={}, saved_snapshot={})
+        record_workspace_runtime(
+            user_id=user_id, project_id=project_id, project_code="code",
+            runtime_snapshot={}, runtime_summary=SAMPLE_SUMMARY,
+            runtime_snapshot_id="snap", runtime_origin="workspace_base",
+            financial_statements=SAMPLE_FS, tax_schedule=SAMPLE_TS,
+        )
+        ws = get_workspace_state(user_id, project_id)
+        assert ws.last_financial_statements == SAMPLE_FS
+        assert ws.last_tax_schedule == SAMPLE_TS
+
+    def test_record_workspace_runtime_with_preview_only_origin(self):
+        """record_workspace_runtime with origin=preview_only persists schedules."""
+        from app.persistence.repository import record_workspace_runtime
+        from app.persistence.workspace_repository import save_workspace_state, get_workspace_state
+        user_id, project_id = self._uid()
+        _insert_project(user_id, project_id, "code")
+        save_workspace_state(user_id=user_id, project_id=project_id,
+                             project_code="code", draft_snapshot={}, saved_snapshot={})
+        record_workspace_runtime(
+            user_id=user_id, project_id=project_id, project_code="code",
+            runtime_snapshot={}, runtime_summary=SAMPLE_SUMMARY,
+            runtime_snapshot_id="snap", runtime_origin="preview_only",
+            distribution_schedule=SAMPLE_DIST, sponsor_schedule=SAMPLE_SPONSOR,
+        )
+        ws = get_workspace_state(user_id, project_id)
+        assert ws.last_distribution_schedule == SAMPLE_DIST
+        assert ws.last_sponsor_schedule == SAMPLE_SPONSOR
