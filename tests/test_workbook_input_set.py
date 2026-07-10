@@ -2,25 +2,30 @@
 Tests for Workbook V2 ProjectInputSet — app/workbook/input_set.py.
 
 Validates:
-1. from_snapshot() — type conversion, field_id keying, system-meta extraction
-2. Unknown key reporting — non-empty unmapped keys recorded, not silently dropped
-3. Provenance fields — template_source, project_origin, workbook_version, created_from
-4. Content hash — deterministic, stable, changes on value change
-5. get() / has() / binding_summary() helpers
-6. to_snapshot() round-trip — verbatim origin preserved
-7. with_value() — immutability, hash update, snapshot_origin update
-8. to_projectinputs() adapter boundary — routes through existing adapter
-9. TUHO zero drift — legacy snapshot → ProjectInputSet → engine → same KPIs as direct path
-10. Oborovo zero drift — same
-11. strict mode — raises on unknown keys or coercion errors
-12. Registry consumption — ProjectInputSet never duplicates field definitions
-13. Edge cases — empty snapshot, all-empty values, partial snapshots
+1.  from_snapshot() — type conversion, field_id keying, system-meta extraction
+2.  Unknown key reporting — non-empty unmapped keys recorded, not silently dropped
+3.  Provenance fields — template_source, project_origin, workbook_version, created_from
+4.  Content hash — covers ALL adapter inputs; two sets with different inputs differ
+5.  get() / has() / binding_summary() helpers
+6.  to_snapshot() round-trip — verbatim origin preserved
+7.  with_value() — immutability, hash update, snapshot_origin update,
+                   registry editability enforcement
+8.  Immutability — MappingProxyType prevents direct mutation of values /
+                   snapshot_origin
+9.  to_projectinputs() adapter boundary — routes through existing adapter
+10. TUHO zero drift — legacy snapshot → ProjectInputSet → engine → same KPIs
+11. Oborovo zero drift — same
+12. Strict mode — raises on unknown keys or coercion errors
+13. Coercion error preservation in non-strict mode
+14. Registry consumption — ProjectInputSet never duplicates field definitions
+15. Edge cases — empty snapshot, all-empty values, partial snapshots
 """
 from __future__ import annotations
 
 import hashlib
 import json
 from datetime import date
+from types import MappingProxyType
 
 import pytest
 
@@ -156,26 +161,18 @@ class TestFromSnapshot:
         assert v > 0
 
     def test_values_keyed_by_field_id(self, tuho_pis):
-        """values dict uses semantic field_ids, never raw snapshot keys."""
         assert "project_setup.technical.capacity_mw" in tuho_pis.values
         assert "capacity_mw" not in tuho_pis.values
 
     def test_empty_string_values_not_in_values(self, tuho_pis, tuho_snap):
-        """Empty string snapshot values produce no entry in values."""
-        # gearing_pct is empty in TUHO snapshot
         assert tuho_snap["gearing_pct"] == ""
         assert "debt.senior.gearing_pct" not in tuho_pis.values
 
     def test_system_meta_not_in_values(self, tuho_pis):
-        """System-meta keys must not appear in values."""
-        system_meta_field_ids = {
-            "active_project", "project_origin", "template_source",
-        }
-        for pseudo_id in system_meta_field_ids:
+        for pseudo_id in ("active_project", "project_origin", "template_source"):
             assert pseudo_id not in tuho_pis.values
 
     def test_ppa_tariff_field_id_mapped(self, tuho_pis):
-        """Legacy tariff_eur_mwh maps to revenue.ppa.tariff_legacy."""
         assert tuho_pis.has("revenue.ppa.tariff_legacy")
 
     def test_scenario_mapped_if_present(self, tuho_pis, tuho_snap):
@@ -189,7 +186,6 @@ class TestFromSnapshot:
         assert v > 0
 
     def test_capacity_factor_display_only_included(self, tuho_pis):
-        """capacity_factor is DISPLAY_ONLY but still included in values for completeness."""
         v = tuho_pis.get("project_setup.technical.capacity_factor")
         assert v is not None
 
@@ -200,29 +196,21 @@ class TestFromSnapshot:
 
 class TestUnknownKeyReporting:
     def test_known_snapshot_keys_not_in_unknown(self, tuho_pis):
-        """All registered snapshot keys must not appear in unknown_keys."""
         registered_snap_keys = {f.snapshot_key for f in WORKBOOK.all_fields()}
         for uk in tuho_pis.unknown_keys:
-            assert uk not in registered_snap_keys, (
-                f"Registered key '{uk}' appeared in unknown_keys"
-            )
+            assert uk not in registered_snap_keys
 
     def test_unknown_keys_only_non_empty(self, tuho_snap):
-        """unknown_keys only contains keys with non-empty values."""
         pis = ProjectInputSet.from_snapshot(tuho_snap)
         for uk in pis.unknown_keys:
-            assert tuho_snap.get(uk, "").strip(), (
-                f"Unknown key '{uk}' has empty value but was reported"
-            )
+            assert tuho_snap.get(uk, "").strip()
 
     def test_system_meta_not_in_unknown(self, tuho_pis):
-        """active_project, project_origin, template_source must not be in unknown_keys."""
         assert "active_project" not in tuho_pis.unknown_keys
         assert "project_origin" not in tuho_pis.unknown_keys
         assert "template_source" not in tuho_pis.unknown_keys
 
     def test_genuinely_unknown_key_reported(self):
-        """A key with no registry mapping and a non-empty value must appear in unknown_keys."""
         snap = {
             "project_type": "Wind",
             "project_origin": "factory_template",
@@ -233,7 +221,6 @@ class TestUnknownKeyReporting:
         assert "some_future_field_xyz" in pis.unknown_keys
 
     def test_empty_unknown_field_not_reported(self):
-        """A key with no registry mapping but an empty value must NOT appear in unknown_keys."""
         snap = {
             "project_type": "Wind",
             "project_origin": "factory_template",
@@ -252,6 +239,14 @@ class TestUnknownKeyReporting:
         snap = {"project_type": "Wind", "unregistered_key": "nonempty"}
         pis = ProjectInputSet.from_snapshot(snap)
         assert "unregistered_key" in pis.unknown_keys
+
+    def test_unknown_key_changes_hash(self):
+        """An unknown key with a non-empty value must change content_hash."""
+        snap_base = {"project_type": "Wind", "capacity_mw": "35.0"}
+        snap_extra = {**snap_base, "some_future_field_xyz": "99"}
+        pis_base = ProjectInputSet.from_snapshot(snap_base)
+        pis_extra = ProjectInputSet.from_snapshot(snap_extra)
+        assert pis_base.content_hash != pis_extra.content_hash
 
 
 # ---------------------------------------------------------------------------
@@ -282,6 +277,14 @@ class TestProvenance:
         assert isinstance(tuho_pis.workbook_version, str)
         assert tuho_pis.workbook_version.count(".") >= 1
 
+    def test_template_source_change_changes_hash(self):
+        """template_source is a routing field — changing it must change hash."""
+        snap_tuho = {"project_type": "Wind", "template_source": "tuho"}
+        snap_generic = {"project_type": "Wind", "template_source": "generic_wind"}
+        pis_tuho = ProjectInputSet.from_snapshot(snap_tuho)
+        pis_generic = ProjectInputSet.from_snapshot(snap_generic)
+        assert pis_tuho.content_hash != pis_generic.content_hash
+
 
 # ---------------------------------------------------------------------------
 # 4. Content hash
@@ -304,32 +307,26 @@ class TestContentHash:
         assert pis1.content_hash != pis2.content_hash
 
     def test_hash_stable_across_dict_insertion_order(self, tuho_snap):
-        """Hash must not depend on dict insertion order."""
         items = list(tuho_snap.items())
         snap_reversed = dict(reversed(items))
         pis_fwd = ProjectInputSet.from_snapshot(tuho_snap)
         pis_rev = ProjectInputSet.from_snapshot(snap_reversed)
         assert pis_fwd.content_hash == pis_rev.content_hash
 
-    def test_compute_hash_deterministic(self):
-        values = {"a.b.c": 42.0, "x.y.z": "hello"}
-        h1 = _compute_hash("2.0.0", values)
-        h2 = _compute_hash("2.0.0", values)
-        assert h1 == h2
+    def test_hash_covers_unknown_keys(self):
+        """Two sets differing only by an unknown key must have different hashes."""
+        snap_base = {"capacity_mw": "35.0", "template_source": "tuho"}
+        snap_extra = {**snap_base, "future_field": "123"}
+        pis_base = ProjectInputSet.from_snapshot(snap_base)
+        pis_extra = ProjectInputSet.from_snapshot(snap_extra)
+        assert pis_base.content_hash != pis_extra.content_hash
 
-    def test_compute_hash_version_sensitive(self):
-        values = {"a.b.c": 42.0}
-        h1 = _compute_hash("2.0.0", values)
-        h2 = _compute_hash("3.0.0", values)
-        assert h1 != h2
-
-    def test_none_values_excluded_from_hash(self):
-        """Fields absent from snapshot produce same hash as None explicitly."""
-        values_with = {"a.b.c": 42.0, "x.y.z": None}
-        values_without = {"a.b.c": 42.0}
-        h1 = _compute_hash("2.0.0", values_with)
-        h2 = _compute_hash("2.0.0", values_without)
-        assert h1 == h2
+    def test_hash_covers_project_origin(self):
+        snap_a = {"project_type": "Wind", "project_origin": "factory_template"}
+        snap_b = {"project_type": "Wind", "project_origin": "user_created"}
+        pis_a = ProjectInputSet.from_snapshot(snap_a)
+        pis_b = ProjectInputSet.from_snapshot(snap_b)
+        assert pis_a.content_hash != pis_b.content_hash
 
 
 # ---------------------------------------------------------------------------
@@ -338,8 +335,7 @@ class TestContentHash:
 
 class TestHelpers:
     def test_get_existing_field(self, tuho_pis):
-        v = tuho_pis.get("project_setup.technical.capacity_mw")
-        assert v is not None
+        assert tuho_pis.get("project_setup.technical.capacity_mw") is not None
 
     def test_get_missing_field_returns_default(self, tuho_pis):
         assert tuho_pis.get("no.such.field") is None
@@ -377,17 +373,15 @@ class TestToSnapshot:
         assert isinstance(tuho_pis.to_snapshot(), dict)
 
     def test_preserves_capacity_mw_string(self, tuho_pis, tuho_snap):
-        snap_out = tuho_pis.to_snapshot()
-        assert snap_out["capacity_mw"] == tuho_snap["capacity_mw"]
+        assert tuho_pis.to_snapshot()["capacity_mw"] == tuho_snap["capacity_mw"]
 
     def test_preserves_template_source(self, tuho_pis, tuho_snap):
-        snap_out = tuho_pis.to_snapshot()
-        assert snap_out["template_source"] == tuho_snap["template_source"]
+        assert tuho_pis.to_snapshot()["template_source"] == tuho_snap["template_source"]
 
     def test_preserves_all_keys(self, tuho_pis, tuho_snap):
         snap_out = tuho_pis.to_snapshot()
         for k in tuho_snap:
-            assert k in snap_out, f"Key '{k}' missing from to_snapshot() output"
+            assert k in snap_out
 
     def test_does_not_mutate_original(self, tuho_pis):
         snap_out = tuho_pis.to_snapshot()
@@ -401,7 +395,45 @@ class TestToSnapshot:
 
 
 # ---------------------------------------------------------------------------
-# 7. with_value() — immutable update
+# 7. Immutability — MappingProxyType
+# ---------------------------------------------------------------------------
+
+class TestImmutability:
+    def test_values_is_mapping_proxy(self, tuho_pis):
+        assert isinstance(tuho_pis.values, MappingProxyType)
+
+    def test_snapshot_origin_is_mapping_proxy(self, tuho_pis):
+        assert isinstance(tuho_pis.snapshot_origin, MappingProxyType)
+
+    def test_direct_mutation_of_values_fails(self, tuho_pis):
+        with pytest.raises(TypeError):
+            tuho_pis.values["project_setup.technical.capacity_mw"] = 999.0  # type: ignore[index]
+
+    def test_direct_deletion_from_values_fails(self, tuho_pis):
+        with pytest.raises(TypeError):
+            del tuho_pis.values["project_setup.technical.capacity_mw"]  # type: ignore[attr-defined]
+
+    def test_direct_mutation_of_snapshot_origin_fails(self, tuho_pis):
+        with pytest.raises(TypeError):
+            tuho_pis.snapshot_origin["capacity_mw"] = "mutated"  # type: ignore[index]
+
+    def test_direct_deletion_from_snapshot_origin_fails(self, tuho_pis):
+        with pytest.raises(TypeError):
+            del tuho_pis.snapshot_origin["capacity_mw"]  # type: ignore[attr-defined]
+
+    def test_frozen_dataclass_attribute_reassignment_rejected(self, tuho_pis):
+        with pytest.raises((AttributeError, TypeError)):
+            tuho_pis.workbook_version = "mutated"  # type: ignore[misc]
+
+    def test_to_snapshot_returns_mutable_copy(self, tuho_pis):
+        snap_out = tuho_pis.to_snapshot()
+        snap_out["capacity_mw"] = "mutated"
+        # Original snapshot_origin must be unchanged
+        assert tuho_pis.snapshot_origin["capacity_mw"] != "mutated"
+
+
+# ---------------------------------------------------------------------------
+# 8. with_value() — immutable update + registry editability
 # ---------------------------------------------------------------------------
 
 class TestWithValue:
@@ -449,9 +481,69 @@ class TestWithValue:
         pis2 = tuho_pis.with_value("project_setup.technical.capacity_mw", 50.0)
         assert pis2.template_source == tuho_pis.template_source
 
+    def test_with_value_accepts_bound_input_field(self, tuho_pis):
+        """A BOUND persisted INPUT field must be accepted."""
+        spec = WORKBOOK.field("project_setup.technical.capacity_mw")
+        assert spec.binding_status.value == "BOUND"
+        pis2 = tuho_pis.with_value("project_setup.technical.capacity_mw", 42.0)
+        assert pis2.get("project_setup.technical.capacity_mw") == 42.0
+
+    def test_with_value_rejects_idc(self, tuho_pis):
+        """IDC is ENGINE-derived and DISPLAY_ONLY — must be rejected."""
+        idc_field = next(
+            (f for f in WORKBOOK.all_fields() if f.field_id == "capex.F.idc"),
+            None,
+        )
+        assert idc_field is not None, "idc field missing from registry"
+        with pytest.raises(ProjectInputSetError):
+            tuho_pis.with_value(idc_field.field_id, 100.0)
+
+    def test_with_value_rejects_reserve_accounts(self, tuho_pis):
+        """Reserve accounts (C.18) are ENGINE-derived — must be rejected."""
+        reserve_field = next(
+            (f for f in WORKBOOK.all_fields()
+             if "reserve" in f.field_id and f.binding_status.value in ("DISPLAY_ONLY", "TEMPLATE_LOCKED")),
+            None,
+        )
+        assert reserve_field is not None, "No reserve account field found in registry"
+        with pytest.raises(ProjectInputSetError):
+            tuho_pis.with_value(reserve_field.field_id, 500.0)
+
+    def test_with_value_rejects_total_capex_summary(self, tuho_pis):
+        """total_capex_keur is a PARTIAL false-editable derived total — must be rejected."""
+        with pytest.raises(ProjectInputSetError):
+            tuho_pis.with_value("capex.summary.total", 99999.0)
+
+    def test_with_value_rejects_template_locked_field(self, tuho_pis):
+        """bank_fees_keur is TEMPLATE_LOCKED — must be rejected."""
+        bank_fees_field = next(
+            (f for f in WORKBOOK.all_fields()
+             if f.binding_status.value == "TEMPLATE_LOCKED"),
+            None,
+        )
+        assert bank_fees_field is not None, "No TEMPLATE_LOCKED field found in registry"
+        with pytest.raises(ProjectInputSetError):
+            tuho_pis.with_value(bank_fees_field.field_id, 1000.0)
+
+    def test_with_value_error_message_names_field(self, tuho_pis):
+        """The ProjectInputSetError message must name the rejected field_id."""
+        idc_field = next(
+            f for f in WORKBOOK.all_fields() if f.field_id == "capex.F.idc"
+        )
+        with pytest.raises(ProjectInputSetError, match=idc_field.field_id.replace(".", r"\.")):
+            tuho_pis.with_value(idc_field.field_id, 100.0)
+
+    def test_internal_override_bypasses_editability(self, tuho_pis):
+        """_internal_override=True must allow writing a DISPLAY_ONLY field."""
+        idc_field = next(
+            f for f in WORKBOOK.all_fields() if f.field_id == "capex.F.idc"
+        )
+        pis2 = tuho_pis.with_value(idc_field.field_id, 100.0, _internal_override=True)
+        assert pis2.get(idc_field.field_id) == 100.0
+
 
 # ---------------------------------------------------------------------------
-# 8. to_projectinputs() — adapter boundary
+# 9. to_projectinputs() — adapter boundary
 # ---------------------------------------------------------------------------
 
 class TestToProjectInputsAdapter:
@@ -472,7 +564,7 @@ class TestToProjectInputsAdapter:
 
 
 # ---------------------------------------------------------------------------
-# 9. TUHO zero drift
+# 10. TUHO zero drift
 # ---------------------------------------------------------------------------
 
 class TestTuhoZeroDrift:
@@ -534,7 +626,7 @@ class TestTuhoZeroDrift:
 
 
 # ---------------------------------------------------------------------------
-# 10. Oborovo zero drift
+# 11. Oborovo zero drift
 # ---------------------------------------------------------------------------
 
 class TestOborovoZeroDrift:
@@ -587,7 +679,7 @@ class TestOborovoZeroDrift:
 
 
 # ---------------------------------------------------------------------------
-# 11. Strict mode
+# 12. Strict mode
 # ---------------------------------------------------------------------------
 
 class TestStrictMode:
@@ -613,32 +705,74 @@ class TestStrictMode:
 
 
 # ---------------------------------------------------------------------------
-# 12. Registry consumption — no duplicated field definitions
+# 13. Coercion error preservation
+# ---------------------------------------------------------------------------
+
+class TestCoercionErrors:
+    def test_coercion_errors_field_exists(self):
+        snap = {"capacity_mw": "not_a_number"}
+        pis = ProjectInputSet.from_snapshot(snap, strict=False)
+        assert hasattr(pis, "coercion_errors")
+        assert isinstance(pis.coercion_errors, tuple)
+
+    def test_bad_float_recorded_in_coercion_errors(self):
+        snap = {"capacity_mw": "not_a_number"}
+        pis = ProjectInputSet.from_snapshot(snap, strict=False)
+        assert len(pis.coercion_errors) >= 1
+        assert any("capacity_mw" in e or "not_a_number" in e for e in pis.coercion_errors)
+
+    def test_bad_float_excluded_from_values(self):
+        """A non-empty invalid value must not silently produce a None entry in values."""
+        snap = {"capacity_mw": "not_a_number"}
+        pis = ProjectInputSet.from_snapshot(snap, strict=False)
+        assert "project_setup.technical.capacity_mw" not in pis.values
+
+    def test_bad_date_recorded_in_coercion_errors(self):
+        snap = {"cod_date": "not-a-date"}
+        pis = ProjectInputSet.from_snapshot(snap, strict=False)
+        assert len(pis.coercion_errors) >= 1
+
+    def test_valid_snapshot_has_empty_coercion_errors_direct(self, tuho_pis):
+        assert tuho_pis.coercion_errors == ()
+
+    def test_strict_mode_raises_not_records(self):
+        snap = {"capacity_mw": "not_a_number"}
+        with pytest.raises(ProjectInputSetError, match="coercion"):
+            ProjectInputSet.from_snapshot(snap, strict=True)
+
+    def test_coercion_errors_is_tuple(self):
+        snap = {"capacity_mw": "bad", "horizon_years": "also_bad"}
+        pis = ProjectInputSet.from_snapshot(snap, strict=False)
+        assert isinstance(pis.coercion_errors, tuple)
+
+    def test_multiple_coercion_errors_all_recorded(self):
+        snap = {"capacity_mw": "bad", "horizon_years": "also_bad"}
+        pis = ProjectInputSet.from_snapshot(snap, strict=False)
+        assert len(pis.coercion_errors) >= 2
+
+
+# ---------------------------------------------------------------------------
+# 14. Registry consumption — no duplicated field definitions
 # ---------------------------------------------------------------------------
 
 class TestRegistryConsumption:
     def test_values_keyed_only_by_registered_field_ids(self, tuho_pis):
-        """All keys in values must be registered field_ids."""
         registered = {f.field_id for f in WORKBOOK.all_fields()}
         for key in tuho_pis.values:
-            assert key in registered, (
-                f"values contains unregistered field_id '{key}'"
-            )
+            assert key in registered
 
     def test_snapshot_key_lookup_uses_registry(self, tuho_pis):
-        """Capacity MW field_id is derived from registry, not hard-coded."""
         spec = WORKBOOK.field_by_snapshot_key("capacity_mw")
         assert tuho_pis.has(spec.field_id)
 
     def test_with_value_uses_registry_for_snapshot_key(self, tuho_pis):
-        """with_value() must look up snapshot_key through the registry, not hard-code it."""
         spec = WORKBOOK.field("project_setup.technical.horizon_years")
         pis2 = tuho_pis.with_value(spec.field_id, 25)
         assert pis2.snapshot_origin[spec.snapshot_key] == "25"
 
 
 # ---------------------------------------------------------------------------
-# 13. Edge cases
+# 15. Edge cases
 # ---------------------------------------------------------------------------
 
 class TestEdgeCases:
@@ -679,9 +813,8 @@ class TestEdgeCases:
         with pytest.raises((AttributeError, TypeError)):
             tuho_pis.workbook_version = "mutated"  # type: ignore[misc]
 
-    def test_values_dict_is_copy(self, tuho_pis):
-        """Mutating the returned values dict does not affect the ProjectInputSet."""
-        v = tuho_pis.values
-        # frozen dataclass — the dict itself is the stored value, immutability
-        # enforced at the dataclass level (frozen=True prevents attribute reassignment)
-        assert isinstance(v, dict)
+    def test_values_is_immutable_proxy(self, tuho_pis):
+        assert isinstance(tuho_pis.values, MappingProxyType)
+
+    def test_snapshot_origin_is_immutable_proxy(self, tuho_pis):
+        assert isinstance(tuho_pis.snapshot_origin, MappingProxyType)

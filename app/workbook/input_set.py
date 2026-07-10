@@ -22,16 +22,23 @@ Architecture position:
           WaterfallRunner.run()
 
 Design invariants:
-- ProjectInputSet is immutable (frozen dataclass).
+- ProjectInputSet is immutable: frozen dataclass + MappingProxyType for dict
+  fields.  Direct mutation of values or snapshot_origin is impossible.
 - Values are stored by semantic field_id (from WORKBOOK registry), not by
   legacy snapshot key — V2 code never hard-codes snapshot key strings.
 - The legacy snapshot_origin is preserved verbatim so to_projectinputs() can
   route through the existing adapter without any re-encoding risk.
+- content_hash covers ALL non-empty snapshot values that reach the adapter
+  (semantic values, unknown keys, provenance routing fields), so two
+  ProjectInputSets with different adapter inputs cannot share the same hash.
 - Unknown snapshot keys (non-empty values with no registry mapping, excluding
   known system-meta keys) are recorded in unknown_keys rather than silently
   dropped. Callers can inspect and decide how to handle them.
-- Content hash is deterministic: same typed values → same hash regardless of
-  insertion order.
+- Coercion failures in non-strict mode are recorded in coercion_errors rather
+  than silently discarded.  Non-empty invalid values are never lost.
+- with_value() enforces registry editability: DISPLAY_ONLY, TEMPLATE_LOCKED,
+  UNSUPPORTED, non-INPUT, non-persisted, runtime-only, and ENGINE/DERIVED/
+  TEMPLATE source fields are rejected.
 - No dependency on request.form, Jinja, ProjectContext, active tabs, or
   sessionStorage.
 """
@@ -41,10 +48,18 @@ import hashlib
 import json
 from dataclasses import dataclass, field
 from datetime import date
-from typing import TYPE_CHECKING, Any, Optional
+from types import MappingProxyType
+from typing import TYPE_CHECKING, Any, Mapping, Optional
 
 from app.workbook.registry import WORKBOOK
-from app.workbook.specs import BindingStatus, FieldSpec, FieldType, WorkbookSpec
+from app.workbook.specs import (
+    BindingStatus,
+    FieldKind,
+    FieldSpec,
+    FieldType,
+    SourceOfTruth,
+    WorkbookSpec,
+)
 
 if TYPE_CHECKING:
     from domain.inputs import ProjectInputs
@@ -62,9 +77,24 @@ _SYSTEM_META_KEYS: frozenset[str] = frozenset({
     "template_source",
 })
 
+# BindingStatus values that are never user-editable.
+_NON_EDITABLE_BINDING_STATUSES: frozenset[BindingStatus] = frozenset({
+    BindingStatus.DISPLAY_ONLY,
+    BindingStatus.TEMPLATE_LOCKED,
+    BindingStatus.UNSUPPORTED,
+})
+
+# SourceOfTruth values that prohibit with_value() writes.
+_NON_EDITABLE_SOURCES: frozenset[SourceOfTruth] = frozenset({
+    SourceOfTruth.ENGINE,
+    SourceOfTruth.TEMPLATE,
+    SourceOfTruth.DERIVED_UI,
+})
+
 
 class ProjectInputSetError(ValueError):
-    """Raised when a ProjectInputSet cannot be built from a snapshot."""
+    """Raised when a ProjectInputSet cannot be built from a snapshot,
+    or when a with_value() call violates registry editability."""
 
 
 # ---------------------------------------------------------------------------
@@ -114,19 +144,68 @@ def _encode_for_hash(value: Any) -> str:
     return str(value)
 
 
-def _compute_hash(workbook_version: str, values: dict[str, Any]) -> str:
+def _compute_hash(
+    workbook_version: str,
+    values: Mapping[str, Any],
+    snapshot_origin: Mapping[str, str],
+    template_source: str,
+    project_origin: str,
+) -> str:
     """
-    Deterministic SHA-256 hash over (workbook_version, sorted field_id→value).
+    Deterministic SHA-256 hash over ALL inputs that can reach the adapter.
 
-    Only non-None values are included so that absent snapshot keys do not
-    affect the hash of projects that do have them.
+    Includes:
+    - workbook_version
+    - every non-empty snapshot_origin value (covers unknown keys too)
+    - provenance routing fields (template_source, project_origin)
+
+    This ensures two ProjectInputSets with different adapter inputs
+    cannot share the same content_hash.
     """
-    payload = {
+    payload: dict[str, str] = {
         "_workbook_version": workbook_version,
-        **{k: _encode_for_hash(v) for k, v in sorted(values.items()) if v is not None},
+        "_template_source": template_source,
+        "_project_origin": project_origin,
+        # All non-empty snapshot_origin values, keyed by snapshot key.
+        # This covers both registered semantic values AND unknown keys,
+        # matching exactly what the legacy adapter sees.
+        **{
+            f"snap:{k}": v
+            for k, v in sorted(snapshot_origin.items())
+            if v  # exclude empty strings
+        },
     }
     raw = json.dumps(payload, sort_keys=True, ensure_ascii=True)
     return hashlib.sha256(raw.encode()).hexdigest()
+
+
+def _check_with_value_allowed(spec: FieldSpec, field_id: str) -> None:
+    """
+    Raise ProjectInputSetError if the FieldSpec does not permit with_value().
+
+    Normal callers must not write derived, engine-computed, template-locked,
+    display-only, or runtime-only fields.
+    """
+    reasons: list[str] = []
+
+    if not spec.editable:
+        reasons.append("editable=False")
+    if not spec.persisted:
+        reasons.append("persisted=False")
+    if spec.runtime_only:
+        reasons.append("runtime_only=True")
+    if spec.kind != FieldKind.INPUT:
+        reasons.append(f"kind={spec.kind.value} (only INPUT is writable)")
+    if spec.binding_status in _NON_EDITABLE_BINDING_STATUSES:
+        reasons.append(f"binding_status={spec.binding_status.value}")
+    if spec.source_of_truth in _NON_EDITABLE_SOURCES:
+        reasons.append(f"source_of_truth={spec.source_of_truth.value}")
+
+    if reasons:
+        raise ProjectInputSetError(
+            f"Field '{field_id}' cannot be set via with_value(): "
+            + "; ".join(reasons)
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -148,14 +227,16 @@ class ProjectInputSet:
         Version of the WORKBOOK registry this set was validated against.
         Stored so future migration code can detect stale sets.
 
-    values : dict[str, Any]
-        Typed field values keyed by semantic field_id.  Only fields with a
-        non-empty snapshot value are present; absent fields are not in the
-        dict (use .get(field_id) to read with a default).
+    values : MappingProxyType[str, Any]
+        Typed field values keyed by semantic field_id.  Immutable mapping —
+        direct mutation is impossible; use with_value() to derive an updated
+        instance.  Only fields with a non-empty snapshot value are present;
+        absent fields are not in the mapping (use .get(field_id) to read).
 
-    snapshot_origin : dict[str, str]
+    snapshot_origin : MappingProxyType[str, str]
         Verbatim legacy snapshot (string values, as stored in the DB).
-        Used by to_projectinputs() so the existing adapter runs unchanged.
+        Immutable mapping.  Used by to_projectinputs() so the existing
+        adapter runs unchanged.
 
     template_source : str
         Routing key extracted from snapshot_origin["template_source"].
@@ -167,13 +248,19 @@ class ProjectInputSet:
 
     unknown_keys : tuple[str, ...]
         Snapshot keys that had a non-empty value but no registry mapping
-        and are not known system-meta keys.  These are recorded rather than
-        silently dropped.  Empty tuple when all keys are accounted for.
+        and are not known system-meta keys.  Recorded rather than silently
+        dropped.  Empty tuple when all keys are accounted for.
+
+    coercion_errors : tuple[str, ...]
+        Type coercion error messages for non-empty snapshot values that could
+        not be converted.  Populated in non-strict mode only (strict=True
+        raises instead).  Empty tuple when no errors occurred.
 
     content_hash : str
-        Deterministic SHA-256 (first 16 hex chars) over workbook_version
-        and the sorted non-None values dict.  Changes when any field value
-        changes; stable across dict insertion order.
+        Deterministic SHA-256 over workbook_version, ALL non-empty
+        snapshot_origin values (including unknown keys), and provenance
+        routing fields.  Two ProjectInputSets that would produce different
+        adapter inputs always have different content_hash values.
 
     created_from : str
         How this instance was constructed.
@@ -181,11 +268,12 @@ class ProjectInputSet:
     """
 
     workbook_version: str
-    values: dict[str, Any]
-    snapshot_origin: dict[str, str]
+    values: MappingProxyType  # MappingProxyType[str, Any]
+    snapshot_origin: MappingProxyType  # MappingProxyType[str, str]
     template_source: str
     project_origin: str
     unknown_keys: tuple[str, ...]
+    coercion_errors: tuple[str, ...]
     content_hash: str
     created_from: str
 
@@ -215,14 +303,14 @@ class ProjectInputSet:
             Registry to use for field_id mapping and type coercion.
             Defaults to the singleton WORKBOOK (v2.0.0).
         strict : bool
-            If True, raise ProjectInputSetError when unknown_keys is non-empty.
-            Default False (record unknowns, do not raise).
+            If True, raise ProjectInputSetError when unknown_keys or
+            coercion_errors is non-empty.  Default False (record, do not raise).
 
         Returns
         -------
         ProjectInputSet
         """
-        # Normalise all values to str for the verbatim origin copy.
+        # Defensive copy + normalise all values to str for the verbatim origin.
         snapshot_origin: dict[str, str] = {
             k: (str(v) if v is not None else "")
             for k, v in snapshot.items()
@@ -275,15 +363,20 @@ class ProjectInputSet:
                 "(no registry mapping): " + ", ".join(sorted(unknown_keys))
             )
 
-        content_hash = _compute_hash(workbook.version, values)
+        origin_proxy = MappingProxyType(snapshot_origin)
+        content_hash = _compute_hash(
+            workbook.version, values, origin_proxy,
+            template_source, project_origin,
+        )
 
         return cls(
             workbook_version=workbook.version,
-            values=values,
-            snapshot_origin=snapshot_origin,
+            values=MappingProxyType(values),
+            snapshot_origin=origin_proxy,
             template_source=template_source,
             project_origin=project_origin,
             unknown_keys=tuple(sorted(unknown_keys)),
+            coercion_errors=tuple(coerce_errors),
             content_hash=content_hash,
             created_from="legacy_snapshot",
         )
@@ -310,6 +403,7 @@ class ProjectInputSet:
         value: Any,
         *,
         workbook: WorkbookSpec = WORKBOOK,
+        _internal_override: bool = False,
     ) -> "ProjectInputSet":
         """
         Return a new ProjectInputSet with one field value replaced.
@@ -324,14 +418,23 @@ class ProjectInputSet:
         value : Any
             Typed Python value to set.  Pass None to remove the field.
         workbook : WorkbookSpec
-            Registry used to resolve snapshot_key for the field.
+            Registry used to resolve snapshot_key and validate editability.
+        _internal_override : bool
+            Narrowly-scoped escape hatch for internal infrastructure code
+            (e.g. migration scripts, test fixtures seeding non-editable values).
+            Must not be used by normal callers.
 
         Raises
         ------
         KeyError
             If field_id is not registered in the workbook.
+        ProjectInputSetError
+            If the field is not writable per the registry contract.
         """
         spec = workbook.field(field_id)
+
+        if not _internal_override:
+            _check_with_value_allowed(spec, field_id)
 
         new_values = dict(self.values)
         new_origin = dict(self.snapshot_origin)
@@ -349,15 +452,20 @@ class ProjectInputSet:
             else:
                 new_origin[spec.snapshot_key] = str(value)
 
-        new_hash = _compute_hash(self.workbook_version, new_values)
+        new_origin_proxy = MappingProxyType(new_origin)
+        new_hash = _compute_hash(
+            self.workbook_version, new_values, new_origin_proxy,
+            self.template_source, self.project_origin,
+        )
 
         return ProjectInputSet(
             workbook_version=self.workbook_version,
-            values=new_values,
-            snapshot_origin=new_origin,
+            values=MappingProxyType(new_values),
+            snapshot_origin=new_origin_proxy,
             template_source=self.template_source,
             project_origin=self.project_origin,
             unknown_keys=self.unknown_keys,
+            coercion_errors=self.coercion_errors,
             content_hash=new_hash,
             created_from=self.created_from,
         )
@@ -368,7 +476,7 @@ class ProjectInputSet:
 
     def to_snapshot(self) -> dict[str, str]:
         """
-        Return a copy of the verbatim legacy snapshot dict.
+        Return a mutable copy of the verbatim legacy snapshot dict.
 
         This is the round-trip path back to the format expected by the DB
         and by build_projectinputs_from_snapshot().
@@ -394,7 +502,7 @@ class ProjectInputSet:
         input will raise SnapshotInputError.
         """
         from app.input_adapter import build_projectinputs_from_snapshot
-        return build_projectinputs_from_snapshot(self.snapshot_origin)
+        return build_projectinputs_from_snapshot(dict(self.snapshot_origin))
 
     # ------------------------------------------------------------------ #
     # Diagnostics                                                          #
@@ -407,7 +515,6 @@ class ProjectInputSet:
         Useful for diagnostics: shows which BOUND/PARTIAL/DISPLAY_ONLY fields
         have values in this ProjectInputSet.
         """
-        from app.workbook.specs import BindingStatus
         result: dict[str, list[str]] = {s.value: [] for s in BindingStatus}
         for f in workbook.all_fields():
             if f.field_id in self.values:
@@ -417,8 +524,9 @@ class ProjectInputSet:
     def __repr__(self) -> str:
         n = len(self.values)
         unk = f", {len(self.unknown_keys)} unknown" if self.unknown_keys else ""
+        err = f", {len(self.coercion_errors)} coerce_errors" if self.coercion_errors else ""
         return (
             f"ProjectInputSet(workbook_version={self.workbook_version!r}, "
             f"template_source={self.template_source!r}, "
-            f"fields={n}{unk}, hash={self.content_hash[:8]})"
+            f"fields={n}{unk}{err}, hash={self.content_hash[:8]})"
         )
