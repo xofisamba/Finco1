@@ -4,6 +4,13 @@ app.v2.router — Workbook V2 feature-flagged routes.
 Mounted at ``/v2`` in main_web.py when ``FINCO_WORKBOOK_V2`` is truthy.
 All routes require the same authentication as the legacy stack.
 
+Authentication
+--------------
+Uses the canonical ``get_current_user`` helper from ``app.auth`` (cookie →
+``decode_session_token`` → ``SessionData``).  The authenticated user is a
+``SessionData`` instance; its ``user_id`` attribute is used to scope DB
+lookups, matching the legacy convention in all other routes.
+
 Current routes
 --------------
 GET /v2/workbook
@@ -20,6 +27,7 @@ Scope constraints
   layer only.
 - No sheet migration (PR 6).
 - No legacy ``_collect_form_snapshot`` / ``_strip_empty_fields`` helpers.
+- No reuse of ``build_input_set_from_workspace`` (removed in PR 4).
 """
 from __future__ import annotations
 
@@ -30,6 +38,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
+from app.auth import COOKIE_NAME, decode_session_token
 from app.workbook.service import WorkbookService
 
 router = APIRouter()
@@ -39,8 +48,17 @@ _templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "app", "templates"
 
 
 def _get_current_user(request: Request):
-    """Return the authenticated user from session, or None."""
-    return getattr(request.state, "user", None) or request.session.get("user")
+    """Return the authenticated SessionData, or None.
+
+    Uses the canonical app.auth mechanism: reads the finco_session cookie,
+    decodes and validates the signed token, and returns a SessionData object
+    (with .user_id and .username attributes) — the same shape that all legacy
+    routes receive from get_current_user() in main_web.py.
+    """
+    token = request.cookies.get(COOKIE_NAME)
+    if not token:
+        return None
+    return decode_session_token(token)
 
 
 @router.get("/workbook", response_class=HTMLResponse)
@@ -64,11 +82,17 @@ async def v2_workbook(request: Request, project: Optional[str] = None):
     if not project:
         return RedirectResponse(url="/", status_code=302)
 
-    # Resolve workspace state via the existing repository layer.
-    # Import here (TYPE_CHECKING-safe) to avoid circular imports at module load.
-    from app.persistence.repository import get_workspace_state
+    # Resolve project record by slug → then workspace by UUID project_id.
+    # project_code (slug) and project_id (UUID) are distinct; passing the slug
+    # directly to get_workspace_state would always miss.
+    from app.persistence.projects_repository import get_project_record
+    from app.persistence.workspace_repository import get_workspace_state
 
-    ws = await get_workspace_state(user_id=user["id"], project_code=project)
+    project_record = get_project_record(user_id=user.user_id, project_code=project)
+    if project_record is None:
+        return RedirectResponse(url="/", status_code=302)
+
+    ws = get_workspace_state(user_id=user.user_id, project_id=project_record.project_id)
     if ws is None:
         return RedirectResponse(url="/", status_code=302)
 
@@ -76,10 +100,10 @@ async def v2_workbook(request: Request, project: Optional[str] = None):
     pis = WorkbookService.build_draft_input_set_from_workspace(ws)
 
     # Build the sessionStorage hydration script from persisted RuntimeResult.
+    # Empty string when no run has been persisted; safe to embed directly.
     hydration_script = WorkbookService.runtime_hydration_script(ws)
 
     context = {
-        "request": request,
         "project_code": project,
         "workbook_version": pis.workbook_version,
         "content_hash": pis.content_hash,
@@ -87,4 +111,4 @@ async def v2_workbook(request: Request, project: Optional[str] = None):
         "hydration_script": hydration_script,
         "user": user,
     }
-    return _templates.TemplateResponse("workbook.html", context)
+    return _templates.TemplateResponse(request=request, name="workbook.html", context=context)
