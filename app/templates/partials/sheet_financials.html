@@ -245,14 +245,14 @@
   </div>
 </div>
 
-</div>{# /data-fs-panel wrapper #}
-
 {# ══════════════════════════════════════════════════════════════════════
    SESSION STORAGE RUNTIME BINDING — PR #857: scoped to this panel only.
    document.currentScript is captured immediately so the IIFE's helper
    functions scope all DOM queries to this panel's [data-fs-panel]
    container, preventing getElementById cross-talk when the template is
    included three times in the same page.
+   Script MUST remain inside the [data-fs-panel] div so that
+   document.currentScript.closest('[data-fs-panel]') resolves correctly.
    ══════════════════════════════════════════════════════════════════════ #}
 <script>
 (function() {
@@ -493,3 +493,7 @@
   }
 })();
 </script>
+
+</div>{# /data-fs-panel wrapper — MUST close after </script> so that
+        document.currentScript.closest('[data-fs-panel]') resolves correctly
+        for all three panel instances included by workspace_shell.html. #}

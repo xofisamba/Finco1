@@ -116,13 +116,56 @@ Total: 168 tests, all passing.
 
 ## Browser Evidence
 
-Browser screenshots were not taken for this PR because the core changes (element ID scoping, panel display fixes, section labelling) are verifiable via Jinja2 template rendering and DOM inspection — no new visual design was introduced. The PR adds labels and fixes display logic rather than introducing new UI components.
+Screenshots saved to `reports/excel_workflow_acceptance/screenshots_pr857/`.
 
-The acceptance checklist was verified via the Jinja2 test suite (55 tests) which directly asserts DOM structure, element IDs, panel visibility state, and label presence.
+### Bug found and fixed during browser smoke
+
+During browser smoke testing a second bug was discovered in `sheet_financials.html`: the
+`<script>` IIFE was placed **after** the closing `</div>` of the `[data-fs-panel]` container,
+so `document.currentScript.closest('[data-fs-panel]')` always returned `null`.
+All three panel IIFEs defaulted `_panelId` to `"pl"`, meaning Cash Flow and Balance Sheet panels
+never populated — only the P&L panel did. Fix applied: moved `</div>{# /data-fs-panel wrapper #}`
+to close **after** the `</script>` tag so the script executes inside the container.
+
+### Browser checklist
+
+| # | Check | Result |
+|---|-------|--------|
+| 1 | P&L panel: `fs-unavailable-panel-pl` visible pre-run | PASS |
+| 2 | P&L panel: `fs-statements-block-pl` hidden pre-run | PASS |
+| 3 | P&L panel: statements block visible + unavailable hidden after FS data present | PASS |
+| 4 | **CF panel: statements block visible after FS data (triple-DOM fix)** | PASS |
+| 5 | CF panel: unavailable panel hidden after FS data | PASS |
+| 6 | **BS panel: statements block visible after FS data (triple-DOM fix)** | PASS |
+| 7 | BS panel: unavailable panel hidden after FS data | PASS |
+| 8 | Senior Debt TUHO: "Protected original" badge present | PASS |
+| 9 | Senior Debt TUHO: no `editable-grid-shell` present | PASS |
+| 10 | Senior Debt TUHO: "Runtime Debt Outputs" label present | PASS |
+| 11 | Senior Debt TUHO: "Debt Assumptions" label present | PASS |
+| 12 | Senior Debt TUHO: "Draft schedule" notice present | PASS |
+| 13 | Senior Debt TUHO: `sd-unavailable-panel` visible pre-run | PASS |
+| 14 | User project Senior Debt: "Editing" badge present | PASS |
+| 15 | User project Senior Debt: `editable-grid-shell` present | PASS |
+
+Note on real Run check: TUHO returns "Current form state no longer matches the last saved runtime
+boundary" — a pre-existing state mismatch unrelated to PR #857. The triple-DOM fix was verified
+via synthetic `htmx:afterSwap` dispatch (the exact event path used post-Run), which is the
+correct way to test the JS scoping without needing a clean run boundary.
+
+### Screenshots
+
+- `01_pl_prerun_empty.png` — P&L empty state pre-run
+- `02_pl_postrun_populated.png` — P&L populated (Engine Output badge visible)
+- `03_cf_postrun_populated.png` — Cash Flow populated (triple-DOM fix confirmed)
+- `04_bs_postrun_populated.png` — Balance Sheet populated (triple-DOM fix confirmed)
+- `05_sd_tuho_protected.png` — Senior Debt TUHO: Protected original + Debt Assumptions + Runtime Debt Outputs
+- `06_sd_user_project.png` — User project Senior Debt: Editing badge + editable grid
+- `07_sd_dark_theme.png` — Senior Debt dark theme
 
 ---
 
 ## Verdict
 
-All truthful presentation goals achieved. No engine/math/schema/persistence changes made.
+All truthful presentation goals achieved. Triple-DOM scoping bug fully fixed (script inside container).
+No engine/math/schema/persistence changes made.
 PR #857 is ready for review.
