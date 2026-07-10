@@ -4,10 +4,10 @@ Workbook V2 — structural spec dataclasses.
 Hierarchy: WorkbookSpec → SheetSpec → SectionSpec → FieldSpec
 
 FieldSpec is the single source of truth for a workable field:
-  - stable semantic ID (e.g. "technical.capacity_mw")
+  - stable semantic ID (e.g. "project_setup.technical.capacity_mw")
   - legacy snapshot key (form field name used today)
-  - display metadata
-  - type / validation hints
+  - canonical contract metadata: kind, persisted, source_of_truth, engine_path,
+    scenario_policy, binding_status, excel mappings, dependencies
 
 Nothing here touches the engine, the DB, or the web layer.
 """
@@ -30,70 +30,174 @@ class FieldType(str, Enum):
     BPS = "bps"         # basis points
     YEARS = "years"     # integer duration in years
     MONTHS = "months"   # integer duration in months
-    MWH = "mwh"         # energy-specific numeric
+    MWH = "mwh"         # energy-specific numeric (hours or yield)
     MW = "mw"           # power capacity
 
 
-class FieldSection(str, Enum):
-    """Which part of a sheet a field belongs to."""
-    INPUTS = "inputs"
-    OUTPUTS = "outputs"
-    ASSUMPTIONS = "assumptions"
+class FieldKind(str, Enum):
+    """Functional role of a field in the workbook lifecycle."""
+    INPUT = "input"
+    # User-entered; persisted in the snapshot; drives the engine on every Run.
+
+    TEMPLATE_INPUT = "template_input"
+    # Value originates from the Excel/factory template.  Users cannot change it
+    # from the UI.  Frozen in the CapexStructure (bank_fees, commitment_fees, etc.)
+    # or project metadata.
+
+    DERIVED_DISPLAY = "derived_display"
+    # Computed from other fields in the UI layer or by the engine; never a direct
+    # user input.  Shown for information only (subtotals, IDC, capacity_factor).
+
+    RUNTIME_OUTPUT = "runtime_output"
+    # Produced by WaterfallRunner.run() and returned in WaterfallResult.  Populated
+    # after a successful model Run; cleared on page reload unless OOB re-render fires.
+
+    AUDIT_ONLY = "audit_only"
+    # Visible in audit/diagnostic panels.  Never submitted, never drives the engine.
+
+
+class SourceOfTruth(str, Enum):
+    """Where the authoritative value for this field lives."""
+    INPUT_SET = "input_set"
+    # The user-editable project record (snapshot dict / ProjectInputs).
+
+    TEMPLATE = "template"
+    # The factory / Excel-extracted template (frozen CapexStructure scalars,
+    # project_type, template_source).
+
+    ENGINE = "engine"
+    # Computed inside WaterfallRunner / IDC engine / depreciation engine.
+    # Value is determined by the model run, not direct user entry.
+
+    DERIVED_UI = "derived_ui"
+    # Computed in the Python view layer (ProjectContext) or in JS/Jinja from
+    # other persisted fields.  Not stored independently.
+
+
+class ScenarioPolicy(str, Enum):
+    """How this field behaves across scenarios."""
+    NOT_ALLOWED = "not_allowed"
+    # Cannot vary between scenarios.  Identity fields, dates, project structure.
+
+    OVERRIDE = "override"
+    # A scalar override can be set per scenario (single value replaces default).
+    # Technical params, tariff, debt inputs.
+
+    FULL_SERIES_OVERRIDE = "full_series_override"
+    # A complete period-by-period series can be provided per scenario.
+    # Currently used for merchant price curves.
+
+
+class BindingStatus(str, Enum):
+    """
+    End-to-end wiring status: from HTML surface → snapshot → engine → output.
+
+    BOUND           Fully wired.  HTML input → snapshot_key persisted →
+                    engine_path consumed by WaterfallRunner → output reflected.
+
+    PARTIAL         Partially wired.  The field is persisted in the snapshot and
+                    visible in the UI, but the path to the engine is incomplete
+                    (legacy key superseded by a newer key, derived total that the
+                    engine recomputes, or workspace-draft that is not yet
+                    submitted through the canonical form path).
+
+    DISPLAY_ONLY    Read-only computed value.  Not a user input; not persisted
+                    via the form snapshot.  C.17/C.18 financing rows, subtotals,
+                    derived ratios.
+
+    TEMPLATE_LOCKED Value is set from the Excel/factory template and frozen.
+                    Shown to the user but cannot be changed.  bank_fees_keur,
+                    commitment_fees_keur, project_type after creation.
+
+    UNSUPPORTED     Field exists in the HTML form name-space but has no known
+                    engine effect and is not persisted in any meaningful way.
+    """
+    BOUND = "BOUND"
+    PARTIAL = "PARTIAL"
+    DISPLAY_ONLY = "DISPLAY_ONLY"
+    TEMPLATE_LOCKED = "TEMPLATE_LOCKED"
+    UNSUPPORTED = "UNSUPPORTED"
 
 
 @dataclass(frozen=True)
 class FieldSpec:
-    """Descriptor for a single workbook field."""
+    """Descriptor for a single workbook field — full canonical contract."""
 
-    # Stable semantic identifier — never changes once shipped
-    field_id: str                  # e.g. "technical.capacity_mw"
+    # ── Identity ──────────────────────────────────────────────────────────── #
 
-    # Human-readable label (used in UI and Excel headers)
+    field_id: str
+    # Stable semantic identifier — never changes once shipped.
+    # Convention: <sheet_id>.<section_id>.<name>
+
     label: str
+    # Human-readable label for UI and Excel headers.
 
-    # Legacy snapshot key in `_collect_form_snapshot()` / HTML form `name`
-    snapshot_key: str              # e.g. "capacity_mw"
+    snapshot_key: str
+    # Legacy HTML form `name` attribute and `_collect_form_snapshot()` key.
 
-    # Data type
     field_type: FieldType
+    sheet_id: str
+    section_id: str
 
-    # Which sheet this field belongs to (redundant with SheetSpec but useful for lookups)
-    sheet_id: str                  # e.g. "project_setup"
+    # ── Canonical contract ─────────────────────────────────────────────────── #
 
-    # Which section within the sheet
-    section_id: str                # e.g. "technical"
+    kind: FieldKind = FieldKind.INPUT
 
-    # Optional unit label for display
+    persisted: bool = True
+    # True  → snapshot_key appears in _collect_form_snapshot() and is saved to DB.
+    # False → value is computed at runtime / display-only / not in snapshot dict.
+
+    runtime_only: bool = False
+    # True  → value lives only in sessionStorage post-Run; cleared on page reload.
+    #         (All WaterfallResult-derived outputs.)
+    # False → value is available before / independent of a model Run.
+
+    source_of_truth: SourceOfTruth = SourceOfTruth.INPUT_SET
+
+    engine_path: Optional[str] = None
+    # Dotted path into ProjectInputs consumed by WaterfallRunner, e.g.
+    # "technical.capacity_mw" or "capex.epc_contract.amount_keur".
+    # None for display-only and template-locked fields with no direct engine binding.
+
+    scenario_policy: ScenarioPolicy = ScenarioPolicy.NOT_ALLOWED
+
+    binding_status: BindingStatus = BindingStatus.BOUND
+
+    # ── Excel mappings ─────────────────────────────────────────────────────── #
+
+    excel_tuho: Optional[str] = None
+    # Excel cell / range reference in the TUHO reference workbook.
+    # Format: "<SheetName>!<CellRef>" or "<C.XX.YY>" for CAPEX line items.
+
+    excel_oborovo: Optional[str] = None
+    # Same for the Oborovo reference workbook.
+
+    export_mapping: Optional[str] = None
+    # Column header used in the generated Excel export (runtime summary / institutional).
+
+    # ── Dependencies ──────────────────────────────────────────────────────── #
+
+    dependencies: tuple[str, ...] = ()
+    # field_ids of fields this field is derived from (for DERIVED_DISPLAY fields).
+
+    # ── Display / validation ───────────────────────────────────────────────── #
+
     unit: Optional[str] = None
-
-    # Tooltip / description shown in UI
     description: Optional[str] = None
-
-    # Whether this field is editable by the user (vs read-only computed)
     editable: bool = True
-
-    # Whether this field is required for a valid model run
     required: bool = False
-
-    # For SELECT fields: valid option values
-    options: tuple[str, ...] = field(default_factory=tuple)
-
-    # Min / max for numeric validation (None = unconstrained)
+    options: tuple[str, ...] = ()
     min_value: Optional[float] = None
     max_value: Optional[float] = None
-
-    # Decimal places for display
     decimals: Optional[int] = None
-
-    # Order within section (lower = first)
     order: int = 0
 
 
 @dataclass(frozen=True)
 class SectionSpec:
     """A named group of fields within a sheet."""
-    section_id: str         # e.g. "technical"
-    label: str              # e.g. "Technical Parameters"
+    section_id: str
+    label: str
     sheet_id: str
     order: int = 0
     fields: tuple[FieldSpec, ...] = field(default_factory=tuple)
@@ -102,8 +206,8 @@ class SectionSpec:
 @dataclass(frozen=True)
 class SheetSpec:
     """One workbook tab / sheet."""
-    sheet_id: str           # e.g. "project_setup"
-    label: str              # e.g. "Project Setup"
+    sheet_id: str
+    label: str
     icon: Optional[str] = None
     order: int = 0
     sections: tuple[SectionSpec, ...] = field(default_factory=tuple)
@@ -115,12 +219,10 @@ class SheetSpec:
 @dataclass(frozen=True)
 class WorkbookSpec:
     """Root registry object for the entire workbook."""
-    version: str            # e.g. "2.0.0"
+    version: str
     sheets: tuple[SheetSpec, ...] = field(default_factory=tuple)
 
-    # ------------------------------------------------------------------ #
-    # Lookup helpers                                                       #
-    # ------------------------------------------------------------------ #
+    # ── Lookup helpers ─────────────────────────────────────────────────────── #
 
     def sheet(self, sheet_id: str) -> SheetSpec:
         for s in self.sheets:
@@ -152,3 +254,9 @@ class WorkbookSpec:
     def field_id_to_snapshot_key(self) -> dict[str, str]:
         """Map semantic field IDs → legacy snapshot keys."""
         return {f.field_id: f.snapshot_key for f in self.all_fields()}
+
+    def fields_by_binding_status(self, status: BindingStatus) -> tuple[FieldSpec, ...]:
+        return tuple(f for f in self.all_fields() if f.binding_status == status)
+
+    def editable_fields(self) -> tuple[FieldSpec, ...]:
+        return tuple(f for f in self.all_fields() if f.editable)
