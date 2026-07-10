@@ -72,21 +72,40 @@ def _build_ps_fields(pis) -> list[dict]:
     Returns one dict per FieldSpec in the project_setup sheet, ordered by
     section then field.order.  Values come exclusively from pis.get(field_id)
     — never from snapshot keys or any other source.
+
+    All fields are rendered read-only in this PR (read-only projection).
+    Editing arrives in a subsequent PR once a V2 draft-update endpoint and
+    round-trip persistence tests exist.
+
+    binding_label encodes the registry contract for display:
+      "bound"           — BOUND INPUT, will be editable once save endpoint exists
+      "partial"         — PARTIAL; not yet fully wired to engine
+      "display-only"    — DERIVED_DISPLAY; computed, never user-editable
+      "template-locked" — TEMPLATE_LOCKED; frozen at project creation
     """
+    from app.workbook.specs import BindingStatus, FieldKind, SourceOfTruth
     sheet = WORKBOOK.sheet("project_setup")
     rows: list[dict] = []
     for section in sorted(sheet.sections, key=lambda s: s.order):
         for fspec in sorted(section.fields, key=lambda f: f.order):
-            from app.workbook.specs import BindingStatus
-            display_only = fspec.binding_status == BindingStatus.DISPLAY_ONLY
-            locked = fspec.binding_status == BindingStatus.TEMPLATE_LOCKED
+            bs = fspec.binding_status
+            if bs == BindingStatus.DISPLAY_ONLY:
+                binding_label = "display-only"
+            elif bs == BindingStatus.TEMPLATE_LOCKED:
+                binding_label = "template-locked"
+            elif bs == BindingStatus.PARTIAL:
+                binding_label = "partial"
+            else:
+                binding_label = "bound"
+
             value = pis.get(fspec.field_id)
             rows.append({
                 "field_id": fspec.field_id,
                 "label": fspec.label,
                 "unit": fspec.unit,
-                "editable": fspec.editable and not display_only and not locked,
-                "display_only": display_only,
+                "field_type": fspec.field_type.value,
+                "binding_label": binding_label,
+                "options": list(fspec.options),
                 "section_id": section.section_id,
                 "section_label": section.label,
                 "value": value,

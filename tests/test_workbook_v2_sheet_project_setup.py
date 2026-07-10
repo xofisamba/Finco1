@@ -1,13 +1,19 @@
 """
-Tests for the V2 Project Setup sheet migration (PR 6).
+Tests for the V2 Project Setup sheet — read-only projection (PR 6).
+
+This PR renders a read-only view of the project_setup sheet.  No <input>
+controls exist; editing deferred to a follow-up PR with save endpoint and
+round-trip persistence tests.
 
 Coverage:
-1. _build_ps_fields — structure, ordering, value source (pis.get not snapshot keys)
-2. Field-by-field proof — each project_setup field's value comes from pis.get(field_id)
-3. HTTP integration — project_setup sheet rendered in /v2/workbook response
-4. Editability contract — BOUND fields get <input>, DISPLAY_ONLY get <span>
-5. Template structure — partial file exists and contains no legacy snapshot key refs
-6. WORKBOOK registry completeness — all project_setup fields covered
+1. _build_ps_fields — structure, ordering, field_type, binding_label, value source
+2. Field-by-field proof — each project_setup field's value from pis.get(field_id)
+3. Read-only contract — no <input> controls, no snapshot key names, binding badges
+4. HTTP integration — project_setup sheet rendered in /v2/workbook response
+5. FieldType metadata — field_type propagated from registry
+6. Binding label contract — BOUND/PARTIAL/DISPLAY_ONLY/TEMPLATE_LOCKED mapping
+7. Template structure — partial exists, no legacy snapshot key refs
+8. Source guard — _build_ps_fields contains no hardcoded snapshot keys
 """
 from __future__ import annotations
 
@@ -103,21 +109,30 @@ class TestBuildPsFieldsStructure(unittest.TestCase):
         self.assertIsInstance(self.rows, list)
 
     def test_all_rows_have_required_keys(self):
-        required = {"field_id", "label", "unit", "editable", "display_only",
-                    "section_id", "section_label", "value"}
+        required = {"field_id", "label", "unit", "field_type", "binding_label",
+                    "options", "section_id", "section_label", "value"}
         for row in self.rows:
-            self.assertEqual(set(row.keys()) & required, required,
-                             f"missing keys in row for {row.get('field_id')}")
+            missing = required - set(row.keys())
+            self.assertFalse(missing, f"missing keys in row for {row.get('field_id')}: {missing}")
+
+    def test_no_editable_key(self):
+        """Read-only PR: editable key must not exist (no inputs allowed yet)."""
+        for row in self.rows:
+            self.assertNotIn("editable", row,
+                             f"'editable' key must not appear in read-only projection: {row['field_id']}")
+
+    def test_no_display_only_key(self):
+        """Replaced by binding_label; display_only must not appear."""
+        for row in self.rows:
+            self.assertNotIn("display_only", row)
 
     def test_covers_all_registry_fields(self):
-        """Every FieldSpec in project_setup registry appears in output."""
         sheet = WORKBOOK.sheet("project_setup")
         registry_ids = {f.field_id for s in sheet.sections for f in s.fields}
         output_ids = {r["field_id"] for r in self.rows}
         self.assertEqual(output_ids, registry_ids)
 
     def test_identity_section_before_technical(self):
-        """identity section fields appear before technical section fields."""
         sections_seen = []
         for r in self.rows:
             if not sections_seen or sections_seen[-1] != r["section_id"]:
@@ -131,21 +146,18 @@ class TestBuildPsFieldsStructure(unittest.TestCase):
             self.assertEqual(row["section_label"], section_labels[row["section_id"]])
 
     def test_field_id_strings_are_semantic(self):
-        """All field_ids use the project_setup.<section>.<name> convention."""
         for row in self.rows:
             self.assertTrue(row["field_id"].startswith("project_setup."),
                             f"unexpected field_id: {row['field_id']}")
 
     def test_no_snapshot_key_in_field_id(self):
-        """field_ids are semantic, not legacy snapshot keys."""
         legacy_keys = {
             "project_name", "project_type", "country_market", "currency",
             "scenario", "capacity_mw", "p50_hours", "capacity_factor",
             "cod_date", "construction_months", "horizon_years",
         }
         for row in self.rows:
-            self.assertNotIn(row["field_id"], legacy_keys,
-                             f"legacy snapshot key used as field_id: {row['field_id']}")
+            self.assertNotIn(row["field_id"], legacy_keys)
 
 
 # ---------------------------------------------------------------------------
@@ -153,13 +165,12 @@ class TestBuildPsFieldsStructure(unittest.TestCase):
 # ---------------------------------------------------------------------------
 
 class TestPsFieldValueSource(unittest.TestCase):
-    """Prove each field's value comes from pis.get(field_id), not snapshot keys."""
 
-    def _row(self, rows: list[dict], field_id: str) -> dict:
+    def _row(self, rows, field_id):
         for r in rows:
             if r["field_id"] == field_id:
                 return r
-        self.fail(f"field_id {field_id!r} not found in ps_fields")
+        self.fail(f"{field_id!r} not found")
 
     def test_project_name_from_pis(self):
         pis = _make_pis({"project_name": "My Wind Farm"})
@@ -211,7 +222,6 @@ class TestPsFieldValueSource(unittest.TestCase):
         self.assertAlmostEqual(r["value"], 2100.0)
 
     def test_capacity_factor_from_pis(self):
-        """DISPLAY_ONLY — value from pis (may be None if not stored in snapshot)."""
         pis = _make_pis({"capacity_mw": "100", "p50_hours": "2000"})
         rows = _build_ps_fields(pis)
         r = self._row(rows, "project_setup.technical.capacity_factor")
@@ -240,52 +250,152 @@ class TestPsFieldValueSource(unittest.TestCase):
         self.assertEqual(r["value"], 30)
 
     def test_value_changes_when_snapshot_changes(self):
-        """Proves value tracks pis, not a stale snapshot copy."""
         pis_a = _make_pis({"capacity_mw": "50"})
         pis_b = _make_pis({"capacity_mw": "200"})
-        rows_a = _build_ps_fields(pis_a)
-        rows_b = _build_ps_fields(pis_b)
-        val_a = next(r["value"] for r in rows_a if r["field_id"] == "project_setup.technical.capacity_mw")
-        val_b = next(r["value"] for r in rows_b if r["field_id"] == "project_setup.technical.capacity_mw")
+        val_a = next(r["value"] for r in _build_ps_fields(pis_a)
+                     if r["field_id"] == "project_setup.technical.capacity_mw")
+        val_b = next(r["value"] for r in _build_ps_fields(pis_b)
+                     if r["field_id"] == "project_setup.technical.capacity_mw")
         self.assertNotEqual(val_a, val_b)
         self.assertAlmostEqual(val_a, 50.0)
         self.assertAlmostEqual(val_b, 200.0)
 
 
 # ---------------------------------------------------------------------------
-# 3. Editability contract
+# 3. Read-only contract
 # ---------------------------------------------------------------------------
 
-class TestPsFieldEditability(unittest.TestCase):
+class TestReadOnlyContract(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        cls.client = _authed_client()
+        cls.project_code = _create_project(cls.client, "readonly")
+
+    def _body(self):
+        resp = self.client.get(f"/v2/workbook?project={self.project_code}")
+        self.assertEqual(resp.status_code, 200, resp.text[:300])
+        return resp.text
+
+    def test_no_input_elements_in_project_setup(self):
+        """The project_setup section must contain no <input> elements."""
+        body = self._body()
+        # Extract just the v2-sheet-project-setup section
+        start = body.find('id="v2-sheet-project-setup"')
+        end = body.find('</div>', body.rfind('v2-section-fields', start)) + len('</div>')
+        if start == -1:
+            self.fail("v2-sheet-project-setup not found")
+        section = body[start:end + 500]  # generous slice
+        self.assertNotIn("<input", section,
+                         "Read-only projection must not render any <input> elements")
+
+    def test_no_form_element(self):
+        """No <form> wrapping the project_setup sheet (read-only)."""
+        body = self._body()
+        # The v2 workbook shell should not have a form for project setup
+        self.assertNotIn('action="/v2/', body,
+                         "No V2 form action expected in read-only projection")
+
+    def test_no_legacy_snapshot_name_attrs(self):
+        """No name="capacity_mw" or similar snapshot key attrs in the body."""
+        body = self._body()
+        legacy_names = [
+            'name="capacity_mw"', 'name="project_name"', 'name="p50_hours"',
+            'name="cod_date"', 'name="horizon_years"', 'name="construction_months"',
+            'name="country_market"', 'name="currency"', 'name="scenario"',
+        ]
+        for pat in legacy_names:
+            self.assertNotIn(pat, body, f"Legacy snapshot key name found: {pat!r}")
+
+    def test_binding_badges_present(self):
+        """binding_label badges render in the HTML."""
+        body = self._body()
+        self.assertIn("v2-binding-badge", body)
+
+    def test_bound_badge_present(self):
+        body = self._body()
+        self.assertIn("v2-binding-bound", body)
+
+    def test_read_only_class_on_rows(self):
+        body = self._body()
+        self.assertIn("v2-field-readonly", body)
+
+    def test_data_field_id_on_value_spans(self):
+        body = self._body()
+        self.assertIn('data-field-id="project_setup.technical.capacity_mw"', body)
+
+    def test_capacity_mw_value_displayed(self):
+        """The capacity_mw value from project creation (100) appears as read-only text."""
+        body = self._body()
+        # Value renders as typed float (100.0) in a <span>
+        self.assertIn("100.0", body)
+
+
+# ---------------------------------------------------------------------------
+# 4. FieldType metadata
+# ---------------------------------------------------------------------------
+
+class TestFieldTypeMetadata(unittest.TestCase):
 
     def setUp(self):
-        pis = _make_pis({"project_name": "X", "project_type": "wind_onshore"})
-        self.rows = _build_ps_fields(pis)
+        self.pis = _make_pis({})
+        self.rows = _build_ps_fields(self.pis)
 
-    def _row(self, field_id: str) -> dict:
+    def _row(self, field_id):
         for r in self.rows:
             if r["field_id"] == field_id:
                 return r
         self.fail(f"{field_id} not found")
 
-    def test_project_name_is_editable(self):
-        r = self._row("project_setup.identity.project_name")
-        self.assertTrue(r["editable"])
-        self.assertFalse(r["display_only"])
+    def test_project_name_is_text_type(self):
+        self.assertEqual(self._row("project_setup.identity.project_name")["field_type"], "text")
 
-    def test_project_type_is_not_editable(self):
-        """TEMPLATE_LOCKED — editable=False, display_only=False."""
+    def test_project_type_is_select_type(self):
+        self.assertEqual(self._row("project_setup.identity.project_type")["field_type"], "select")
+
+    def test_capacity_mw_is_mw_type(self):
+        self.assertEqual(self._row("project_setup.technical.capacity_mw")["field_type"], "mw")
+
+    def test_p50_hours_is_mwh_type(self):
+        self.assertEqual(self._row("project_setup.technical.p50_hours")["field_type"], "mwh")
+
+    def test_cod_date_is_date_type(self):
+        self.assertEqual(self._row("project_setup.technical.cod_date")["field_type"], "date")
+
+    def test_construction_months_is_months_type(self):
+        self.assertEqual(self._row("project_setup.technical.construction_months")["field_type"], "months")
+
+    def test_horizon_years_is_years_type(self):
+        self.assertEqual(self._row("project_setup.technical.horizon_years")["field_type"], "years")
+
+    def test_project_type_options_from_registry(self):
         r = self._row("project_setup.identity.project_type")
-        self.assertFalse(r["editable"])
-        self.assertFalse(r["display_only"])
+        self.assertIn("wind_onshore", r["options"])
+        self.assertIn("solar_pv", r["options"])
 
-    def test_capacity_factor_is_display_only(self):
-        r = self._row("project_setup.technical.capacity_factor")
-        self.assertTrue(r["display_only"])
-        self.assertFalse(r["editable"])
+    def test_currency_options_from_registry(self):
+        r = self._row("project_setup.identity.currency")
+        self.assertIn("EUR", r["options"])
 
-    def test_bound_fields_are_editable(self):
-        bound_ids = {
+    def test_non_select_fields_have_empty_options(self):
+        for row in self.rows:
+            if row["field_type"] != "select":
+                self.assertEqual(row["options"], [],
+                                 f"{row['field_id']} is not SELECT but has options: {row['options']}")
+
+
+# ---------------------------------------------------------------------------
+# 5. Binding label contract
+# ---------------------------------------------------------------------------
+
+class TestBindingLabelContract(unittest.TestCase):
+
+    def setUp(self):
+        self.pis = _make_pis({})
+        self.rows = {r["field_id"]: r for r in _build_ps_fields(self.pis)}
+
+    def test_bound_fields(self):
+        bound = {
             "project_setup.identity.project_name",
             "project_setup.technical.capacity_mw",
             "project_setup.technical.p50_hours",
@@ -293,20 +403,41 @@ class TestPsFieldEditability(unittest.TestCase):
             "project_setup.technical.construction_months",
             "project_setup.technical.horizon_years",
         }
-        for row in self.rows:
-            if row["field_id"] in bound_ids:
-                self.assertTrue(row["editable"],
-                                f"BOUND field {row['field_id']} should be editable")
+        for fid in bound:
+            self.assertEqual(self.rows[fid]["binding_label"], "bound",
+                             f"{fid} should be 'bound'")
 
-    def test_display_only_fields_not_editable(self):
-        for row in self.rows:
-            if row["display_only"]:
-                self.assertFalse(row["editable"],
-                                 f"display_only field {row['field_id']} should not be editable")
+    def test_partial_fields(self):
+        partial = {
+            "project_setup.identity.country_market",
+            "project_setup.identity.currency",
+            "project_setup.identity.scenario",
+        }
+        for fid in partial:
+            self.assertEqual(self.rows[fid]["binding_label"], "partial",
+                             f"{fid} should be 'partial'")
+
+    def test_display_only_fields(self):
+        self.assertEqual(
+            self.rows["project_setup.technical.capacity_factor"]["binding_label"],
+            "display-only"
+        )
+
+    def test_template_locked_fields(self):
+        self.assertEqual(
+            self.rows["project_setup.identity.project_type"]["binding_label"],
+            "template-locked"
+        )
+
+    def test_binding_labels_are_valid_values(self):
+        valid = {"bound", "partial", "display-only", "template-locked"}
+        for row in self.rows.values():
+            self.assertIn(row["binding_label"], valid,
+                          f"invalid binding_label: {row['binding_label']}")
 
 
 # ---------------------------------------------------------------------------
-# 4. HTTP integration — ps_fields in response
+# 6. HTTP integration
 # ---------------------------------------------------------------------------
 
 class TestV2WorkbookProjectSetupResponse(unittest.TestCase):
@@ -316,163 +447,131 @@ class TestV2WorkbookProjectSetupResponse(unittest.TestCase):
         cls.client = _authed_client()
         cls.project_code = _create_project(cls.client, "psresponse")
 
-    def _get(self) -> str:
+    def _get(self):
         resp = self.client.get(f"/v2/workbook?project={self.project_code}")
         self.assertEqual(resp.status_code, 200, resp.text[:300])
         return resp.text
 
     def test_v2_project_setup_div_present(self):
-        body = self._get()
-        self.assertIn('id="v2-sheet-project-setup"', body)
+        self.assertIn('id="v2-sheet-project-setup"', self._get())
 
     def test_identity_section_present(self):
-        body = self._get()
-        self.assertIn('data-section="identity"', body)
+        self.assertIn('data-section="identity"', self._get())
 
     def test_technical_section_present(self):
-        body = self._get()
-        self.assertIn('data-section="technical"', body)
+        self.assertIn('data-section="technical"', self._get())
 
-    def test_project_name_field_rendered(self):
+    def test_field_id_attributes_use_semantic_ids(self):
         body = self._get()
         self.assertIn('data-field-id="project_setup.identity.project_name"', body)
-
-    def test_capacity_mw_field_rendered(self):
-        body = self._get()
         self.assertIn('data-field-id="project_setup.technical.capacity_mw"', body)
 
-    def test_capacity_mw_value_in_response(self):
-        """The capacity_mw value (100 MW from project creation) appears in the body."""
+    def test_no_legacy_input_name_attrs(self):
         body = self._get()
-        # The value is rendered in the input's value attribute
-        self.assertIn("100", body)
-
-    def test_no_snapshot_keys_as_html_names(self):
-        """<input name=> attributes must use semantic field_ids, not legacy snapshot keys."""
-        body = self._get()
-        # Legacy snapshot key 'capacity_mw' must NOT appear as name="capacity_mw"
         self.assertNotIn('name="capacity_mw"', body)
         self.assertNotIn('name="project_name"', body)
         self.assertNotIn('name="p50_hours"', body)
-        # V2 semantic names must appear instead
-        self.assertIn('name="project_setup.technical.capacity_mw"', body)
-        self.assertIn('name="project_setup.identity.project_name"', body)
 
-    def test_capacity_factor_rendered_as_span_not_input(self):
-        """DISPLAY_ONLY field must render as <span>, not <input>."""
-        body = self._get()
-        # A <input ... data-field-id="project_setup.technical.capacity_factor"> must NOT appear
-        self.assertNotIn(
-            'name="project_setup.technical.capacity_factor"', body,
-            "DISPLAY_ONLY capacity_factor must not render as <input>"
-        )
-
-    def test_ps_fields_values_from_pis(self):
-        """Patch _build_ps_fields to confirm router calls it with pis, not raw snapshot."""
+    def test_ps_fields_called_with_projectinputset(self):
+        """Router calls _build_ps_fields with a ProjectInputSet instance."""
         sentinel = [{"field_id": "project_setup.identity.project_name",
-                     "label": "Project Name", "unit": None, "editable": True,
-                     "display_only": False, "section_id": "identity",
-                     "section_label": "Project Identity", "value": "SENTINEL_VALUE"}]
+                     "label": "Project Name", "unit": None, "field_type": "text",
+                     "binding_label": "bound", "options": [],
+                     "section_id": "identity", "section_label": "Project Identity",
+                     "value": "SENTINEL"}]
         with patch("app.v2.router._build_ps_fields", return_value=sentinel) as mock:
             resp = self.client.get(f"/v2/workbook?project={self.project_code}")
             self.assertEqual(resp.status_code, 200)
             mock.assert_called_once()
-            # The first (and only) arg is a ProjectInputSet
             pis_arg = mock.call_args[0][0]
             self.assertIsInstance(pis_arg, ProjectInputSet)
 
 
 # ---------------------------------------------------------------------------
-# 5. Template structure
+# 7. Template structure
 # ---------------------------------------------------------------------------
 
 class TestV2ProjectSetupTemplateStructure(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        import os as _os
-        base = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
-        cls.partial_path = _os.path.join(
+        base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        cls.partial_path = os.path.join(
             base, "app", "templates", "v2", "partials", "sheet_project_setup.html"
         )
 
     def test_partial_file_exists(self):
-        self.assertTrue(
-            os.path.isfile(self.partial_path),
-            f"partial not found: {self.partial_path}"
-        )
+        self.assertTrue(os.path.isfile(self.partial_path))
+
+    def test_no_input_elements_in_template(self):
+        """Template source must not contain rendered <input ... > tags
+        (comments describing what is absent are allowed)."""
+        with open(self.partial_path) as fh:
+            src = fh.read()
+        # Strip Jinja/HTML comments before checking — only actual rendered tags matter.
+        import re
+        no_comments = re.sub(r'\{#.*?#\}', '', src, flags=re.DOTALL)
+        no_comments = re.sub(r'<!--.*?-->', '', no_comments, flags=re.DOTALL)
+        self.assertNotIn("<input", no_comments,
+                         "Read-only template must not render <input> elements")
+
+    def test_no_form_elements_in_template(self):
+        with open(self.partial_path) as fh:
+            src = fh.read()
+        self.assertNotIn("<form", src)
 
     def test_no_legacy_snapshot_key_references(self):
-        """Template must not reference snapshot key strings as form names."""
         with open(self.partial_path) as fh:
             src = fh.read()
-        legacy_patterns = [
-            'name="capacity_mw"', 'name="project_name"', 'name="p50_hours"',
-            'name="cod_date"', 'name="horizon_years"', 'name="construction_months"',
-            'name="country_market"', 'name="currency"', 'name="scenario"',
-            'name="project_type"',
-        ]
-        for pat in legacy_patterns:
-            self.assertNotIn(pat, src,
-                             f"Legacy snapshot key reference found in template: {pat!r}")
+        for pat in ['name="capacity_mw"', 'name="project_name"', 'name="p50_hours"',
+                    'name="cod_date"', 'name="horizon_years"']:
+            self.assertNotIn(pat, src, f"Legacy key in template: {pat!r}")
 
-    def test_uses_field_id_for_names(self):
+    def test_uses_binding_label(self):
         with open(self.partial_path) as fh:
             src = fh.read()
-        # Template should use f.field_id as the name attribute
-        self.assertIn("f.field_id", src,
-                      "Template must use f.field_id as the form name attribute")
+        self.assertIn("binding_label", src)
 
-    def test_data_section_attribute_present(self):
+    def test_uses_field_type_for_display(self):
         with open(self.partial_path) as fh:
             src = fh.read()
-        self.assertIn("data-section=", src)
+        self.assertIn("field_type", src)
 
-    def test_data_field_id_attribute_present(self):
-        with open(self.partial_path) as fh:
-            src = fh.read()
-        self.assertIn("data-field-id=", src)
-
-    def test_workbook_include_in_main_template(self):
-        import os as _os
-        base = _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))
-        main_tpl = _os.path.join(base, "app", "templates", "v2", "workbook.html")
+    def test_workbook_html_includes_partial(self):
+        base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        main_tpl = os.path.join(base, "app", "templates", "v2", "workbook.html")
         with open(main_tpl) as fh:
             src = fh.read()
-        self.assertIn("sheet_project_setup.html", src,
-                      "workbook.html must include sheet_project_setup partial")
+        self.assertIn("sheet_project_setup.html", src)
 
 
 # ---------------------------------------------------------------------------
-# 6. Router source guard — no snapshot key references in _build_ps_fields
+# 8. Source guard — _build_ps_fields must not hard-code snapshot keys
 # ---------------------------------------------------------------------------
 
 class TestBuildPsFieldsSourceGuard(unittest.TestCase):
 
-    def test_no_legacy_snapshot_keys_in_function_source(self):
-        """_build_ps_fields must not hard-code any legacy snapshot key strings."""
+    def test_no_legacy_snapshot_keys_hardcoded(self):
         src = inspect.getsource(_build_ps_fields)
-        legacy_snapshot_keys = [
-            '"project_name"', '"project_type"', '"country_market"', '"currency"',
-            '"scenario"', '"capacity_mw"', '"p50_hours"', '"capacity_factor"',
-            '"cod_date"', '"construction_months"', '"horizon_years"',
-        ]
-        for key in legacy_snapshot_keys:
-            self.assertNotIn(key, src,
-                             f"_build_ps_fields hard-codes legacy snapshot key: {key}")
+        for key in ['"project_name"', '"project_type"', '"country_market"',
+                    '"currency"', '"scenario"', '"capacity_mw"', '"p50_hours"',
+                    '"capacity_factor"', '"cod_date"', '"construction_months"',
+                    '"horizon_years"']:
+            self.assertNotIn(key, src, f"snapshot key hard-coded: {key}")
 
     def test_uses_pis_get(self):
-        """_build_ps_fields must call pis.get() to retrieve values."""
         src = inspect.getsource(_build_ps_fields)
-        self.assertIn("pis.get(", src,
-                      "_build_ps_fields must retrieve values via pis.get(field_id)")
+        self.assertIn("pis.get(", src)
 
     def test_uses_fspec_field_id(self):
         src = inspect.getsource(_build_ps_fields)
         self.assertIn("fspec.field_id", src)
 
+    def test_uses_fspec_field_type(self):
+        src = inspect.getsource(_build_ps_fields)
+        self.assertIn("fspec.field_type", src)
+
     def test_no_direct_snapshot_access(self):
-        """_build_ps_fields must not access pis.snapshot_origin or ws.draft_snapshot."""
         src = inspect.getsource(_build_ps_fields)
         self.assertNotIn("snapshot_origin", src)
         self.assertNotIn("draft_snapshot", src)
