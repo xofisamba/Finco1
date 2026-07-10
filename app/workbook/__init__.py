@@ -4,16 +4,34 @@ from app.workbook.registry import WORKBOOK
 from app.workbook.input_set import ProjectInputSet, ProjectInputSetError
 from app.workbook.runtime_result import RuntimeResult
 from app.workbook.service import WorkbookService
+from app.workbook.update_service import (
+    WorkbookUpdateService,
+    WorkbookUpdateError,
+    UnknownFieldError,
+    NonEditableFieldError,
+    FieldValidationError,
+    StaleContentError,
+    ProtectedReferenceError,
+    FieldValidationResult,
+)
 
 __all__ = [
     "WORKBOOK",
     "FieldSpec",
     "FieldType",
+    "FieldValidationError",
+    "FieldValidationResult",
+    "NonEditableFieldError",
     "ProjectInputSet",
     "ProjectInputSetError",
+    "ProtectedReferenceError",
     "RuntimeResult",
     "SectionSpec",
     "SheetSpec",
-    "WorkbookSpec",
+    "StaleContentError",
+    "UnknownFieldError",
     "WorkbookService",
+    "WorkbookSpec",
+    "WorkbookUpdateError",
+    "WorkbookUpdateService",
 ]
