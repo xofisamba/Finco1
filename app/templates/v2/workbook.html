@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Workbook V2 — {{ project_code }}</title>
+</head>
+<body>
+  {# sessionStorage hydration: re-populates schedule data on page load
+     without a model re-run.  Empty string when no run has been persisted. #}
+  {{ hydration_script | safe }}
+
+  <div id="v2-workbook-shell"
+       data-project="{{ project_code }}"
+       data-workbook-version="{{ workbook_version }}"
+       data-content-hash="{{ content_hash }}"
+       data-template-source="{{ template_source }}">
+    <p>Workbook V2 shell — {{ project_code }}</p>
+  </div>
+</body>
+</html>
