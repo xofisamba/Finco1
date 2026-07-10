@@ -11,6 +11,9 @@ Architecture position:
           ├── build_input_set()  ──▶ ProjectInputSet  (PR 2)
           │       └── to_projectinputs()  ──▶ ProjectInputs (existing engine)
           │
+          ├── build_draft_input_set_from_workspace()   ──▶ ProjectInputSet
+          ├── build_saved_input_set_from_workspace()   ──▶ ProjectInputSet
+          │
           ├── get_runtime_result() ──▶ RuntimeResult  (PR 3)
           │       └── to_sessionstorage_script() ──▶ <script>…</script>
           │
@@ -20,6 +23,11 @@ Design invariants:
 - All methods are pure functions (no DB calls, no HTTP, no I/O, no side effects).
 - WorkbookService never imports from app.persistence directly.
 - It delegates to ProjectInputSet and RuntimeResult; it does not duplicate logic.
+- template_source is NEVER derived from project_code or any other identity field.
+  It must come only from the snapshot itself, a dedicated persisted field, or an
+  explicit caller-supplied argument.
+- Draft vs saved snapshot boundaries are explicit: callers must choose
+  build_draft_input_set_from_workspace() or build_saved_input_set_from_workspace().
 - It is the single controlled entry point for converting persistence types
   into Workbook V2 domain types, so future callers (app/v2/ shell, PR 5;
   sheet migration, PR 6) import from here rather than from input_set.py or
@@ -56,6 +64,8 @@ class WorkbookService:
     @staticmethod
     def build_input_set(
         snapshot: dict[str, Any],
+        *,
+        strict: bool = False,
     ) -> ProjectInputSet:
         """Build a ProjectInputSet from a flat snapshot dict.
 
@@ -65,38 +75,78 @@ class WorkbookService:
             Flat key→value snapshot (e.g. ``workspace_state.draft_snapshot``).
             May include ``template_source`` and ``project_origin`` keys, which
             ProjectInputSet.from_snapshot() extracts as provenance metadata.
+            template_source is taken only from the snapshot; it is never
+            invented or derived from identity fields.
+        strict : bool
+            Forwarded to ProjectInputSet.from_snapshot().  When True, raises
+            ProjectInputSetError on unknown keys or coercion errors.
 
         Returns
         -------
         ProjectInputSet
             Immutable, hash-stable input aggregate.
         """
-        return ProjectInputSet.from_snapshot(snapshot=snapshot)
+        return ProjectInputSet.from_snapshot(snapshot=snapshot, strict=strict)
 
     @staticmethod
-    def build_input_set_from_workspace(ws: "WorkspaceStateRecord") -> ProjectInputSet:
-        """Build a ProjectInputSet from a WorkspaceStateRecord's draft snapshot.
+    def build_draft_input_set_from_workspace(
+        ws: "WorkspaceStateRecord",
+        *,
+        strict: bool = False,
+    ) -> ProjectInputSet:
+        """Build a ProjectInputSet from a WorkspaceStateRecord's *draft* snapshot.
 
-        Uses the draft snapshot (the current editable state) rather than the
-        saved_snapshot (the last immutable runtime boundary).
+        Uses ``ws.draft_snapshot`` — the current in-progress editable state.
+        This is the appropriate source for UI display and mid-session validation.
+        It must NOT be used as the input for a persisted model run; use
+        ``build_saved_input_set_from_workspace`` for that boundary.
 
-        Injects ``ws.project_code`` as ``template_source`` when the draft
-        snapshot does not already carry one, so the engine's provenance
-        routing is always set correctly.
+        template_source is taken only from the snapshot itself.  It is never
+        copied from ``ws.project_code`` or any other identity field.
 
         Parameters
         ----------
         ws : WorkspaceStateRecord
-            Persisted workspace state record.
+        strict : bool
+            Forwarded to ProjectInputSet.from_snapshot().
 
         Returns
         -------
         ProjectInputSet
         """
-        snapshot = dict(ws.draft_snapshot)
-        if ws.project_code and not snapshot.get("template_source"):
-            snapshot["template_source"] = ws.project_code
-        return ProjectInputSet.from_snapshot(snapshot=snapshot)
+        return ProjectInputSet.from_snapshot(
+            snapshot=ws.draft_snapshot, strict=strict
+        )
+
+    @staticmethod
+    def build_saved_input_set_from_workspace(
+        ws: "WorkspaceStateRecord",
+        *,
+        strict: bool = False,
+    ) -> ProjectInputSet:
+        """Build a ProjectInputSet from a WorkspaceStateRecord's *saved* snapshot.
+
+        Uses ``ws.saved_snapshot`` — the immutable runtime boundary, written at
+        the moment a model run is committed.  This is the appropriate source for
+        re-running the engine or auditing a past result.  It must NOT silently
+        fall back to draft values.
+
+        template_source is taken only from the snapshot itself.  It is never
+        copied from ``ws.project_code`` or any other identity field.
+
+        Parameters
+        ----------
+        ws : WorkspaceStateRecord
+        strict : bool
+            Forwarded to ProjectInputSet.from_snapshot().
+
+        Returns
+        -------
+        ProjectInputSet
+        """
+        return ProjectInputSet.from_snapshot(
+            snapshot=ws.saved_snapshot, strict=strict
+        )
 
     # ------------------------------------------------------------------ #
     # Engine bridge                                                        #
