@@ -52,18 +52,17 @@
      data-base-case-id="{{ base_case_record.scenario_id if base_case_record else '' }}"
      data-active-scenario-id="{{ workspace_state.active_scenario_id if workspace_state else '' }}">
 
-  <!-- Sticky header bar -->
-  <div class="sc-header">
-    <div class="sc-header-title">Scenario Inputs</div>
-    <div class="sc-header-subtitle">
+  <!-- Section banner: Scenario Assumptions -->
+  <div class="sc-section-banner sc-section-banner--inputs">
+    <span class="sc-section-banner-label">Scenario Assumptions</span>
+    <span class="sc-section-banner-note">
       {% if not is_user_project %}
-        <span class="badge badge-muted">Read-only</span>
-        &nbsp;Protected projects cannot add scenarios — use Create Working Copy to make an editable copy.
+        <span class="badge badge-muted">Protected original</span>
+        Read-only — use Create Working Copy to add or edit scenarios.
       {% else %}
-        <span class="badge badge-pass">Editing</span>
-        &nbsp;Base Case is the reference. Override cells are highlighted. The Active badge marks the saved scenario that Run Model will use. Unsaved draft edits do not affect Run until saved.
+        Double-click any non-Base cell to override an assumption. Highlighted cells differ from the Base Case.
       {% endif %}
-    </div>
+    </span>
   </div>
 
   {% if is_user_project %}
@@ -99,7 +98,12 @@
       <!-- Column header row (sticky) -->
       <thead>
         <tr>
-          <th class="sc-th sc-th--label">Assumption</th>
+          <th class="sc-th sc-th--label">
+            <div class="sc-col-header">
+              <div class="sc-col-name">Assumption</div>
+              <div class="sc-col-sub">Input parameter</div>
+            </div>
+          </th>
 
           <!-- Base Case column -->
           {% if base_case_record %}
@@ -112,6 +116,7 @@
                   Base Case
                 {% endif %}
               </div>
+              <div class="sc-col-sub">Live project values</div>
               <div class="sc-col-meta">
                 <span class="badge badge-info">Base</span>
                 {% if workspace_state and workspace_state.active_scenario_id == base_case_record.scenario_id %}
@@ -128,17 +133,24 @@
               id="col-{{ scen.scenario_id }}">
             <div class="sc-col-header">
               <div class="sc-col-name" title="{{ scen.scenario_name }}">{{ scen.scenario_name }}</div>
+              <div class="sc-col-sub">
+                {%- if loop.index == 1 %}Downside
+                {%- elif loop.index == 2 %}Upside
+                {%- elif loop.index == 3 %}Custom
+                {%- else %}Scenario {{ loop.index }}
+                {%- endif %}
+              </div>
               <div class="sc-col-meta">
                 {% if scen.last_run_summary %}
-                  <span class="sc-run-badge sc-run-badge--run" data-wf6-run-badge="run">Run ✓</span>
+                  <span class="sc-run-badge sc-run-badge--run" data-wf6-run-badge="run" title="Model results available">Run ✓</span>
                 {% else %}
-                  <span class="sc-run-badge sc-run-badge--not-run" data-wf6-run-badge="not-run">Not run</span>
+                  <span class="sc-run-badge sc-run-badge--not-run" data-wf6-run-badge="not-run" title="Run the model to see outputs">Not run</span>
                 {% endif %}
                 {% if scen.scenario_id == workspace_state.active_scenario_id %}
                   <span class="badge badge-pass">Active</span>
                 {% else %}
                   <button class="sc-select-btn"
-                          title="Set as active scenario"
+                          title="Set as active scenario for Run Model"
                           hx-post="/scenarios/{{ scen.scenario_id }}/select"
                           hx-target="#scenario-tab"
                           hx-swap="innerHTML">Activate</button>
@@ -192,7 +204,7 @@
             {%- set _badge_alias = _SC_CANONICAL_TO_ALIAS.get(fieldName, fieldName) -%}
             {%- set _scen_overrides = scen.overrides or {} -%}
             {% if not scen.is_base_case and ((_badge_alias in _scen_overrides) or (fieldName in _scen_overrides)) %}
-              <span class="sc-override-badge" title="Override">✎</span>
+              <span class="sc-override-badge" title="Overridden — differs from Base Case">▲</span>
             {% endif %}
           </td>
           {% endfor %}

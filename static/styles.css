@@ -3732,6 +3732,37 @@ body {
   padding: 0.5rem 0.75rem; border-top: 1px solid var(--border);
 }
 
+/* PR-856: Scenario Excel Matrix — section banners and sub-labels */
+.sc-section-banner {
+  display: flex; align-items: baseline; gap: 0.75rem;
+  padding: 0.5rem 0.75rem 0.5rem 1rem;
+  border-left: 3px solid var(--border); margin-bottom: 0.75rem;
+  background: var(--surface-2); border-radius: 0 4px 4px 0;
+}
+.sc-section-banner--inputs  { border-left-color: var(--color-accent); }
+.sc-section-banner--outputs { border-left-color: var(--color-pass); }
+.sc-section-banner-label {
+  font-weight: 700; font-size: 0.82rem; text-transform: uppercase;
+  letter-spacing: 0.06em; color: var(--text);
+}
+.sc-section-banner-note { font-size: 0.78rem; color: var(--text-2); }
+
+.sc-col-sub { font-size: 0.7rem; color: var(--text-2); font-weight: 400; white-space: nowrap; }
+
+/* KPI summary table (scenario outputs) */
+.sc-kpi-th { padding: 0.5rem 0.6rem; text-align: left; font-size: 0.78rem;
+  border-bottom: 2px solid var(--border); background: var(--surface-2);
+  vertical-align: top;
+}
+.sc-kpi-th--label { width: 160px; min-width: 140px; }
+.sc-kpi-th--base  { background: var(--cell-base-bg); }
+.sc-kpi-col-name  { font-weight: 600; color: var(--text); }
+.sc-kpi-col-sub   { font-size: 0.7rem; color: var(--text-2); font-weight: 400; margin-top: 0.15rem; }
+.sc-kpi-unit      { font-size: 0.7rem; color: var(--text-2); margin-left: 0.3rem; }
+.sc-kpi-td        { padding: 0.35rem 0.6rem; font-size: 0.82rem; font-variant-numeric: tabular-nums; }
+.sc-kpi-td--base  { background: var(--cell-base-bg); font-weight: 600; color: var(--text); }
+.sc-kpi-td--empty { color: var(--text-2); font-style: italic; }
+
 /* ps-compare aliases (compare tab) */
 .ps-compare-heading {
   font-size: 1rem; font-weight: 700; color: var(--text);
