@@ -217,6 +217,12 @@ class WorkspaceStateRecord:
     last_runtime_snapshot_id: Optional[str]
     last_runtime_origin: Optional[str]
     last_runtime_scenario_id: Optional[str]
+    # Workbook V2 PR 3: full schedule payloads persisted to DB.
+    last_financial_statements: dict[str, Any]
+    last_debt_schedule: dict[str, Any]
+    last_tax_schedule: dict[str, Any]
+    last_distribution_schedule: dict[str, Any]
+    last_sponsor_schedule: dict[str, Any]
     dirty: bool
     governance_state: dict[str, Any]
     replay_metadata: dict[str, Any]
@@ -240,6 +246,11 @@ class WorkspaceStateRecord:
             last_runtime_snapshot_id=row["last_runtime_snapshot_id"],
             last_runtime_origin=row["last_runtime_origin"],
             last_runtime_scenario_id=row["last_runtime_scenario_id"],
+            last_financial_statements=_from_json(row["last_financial_statements_json"] if "last_financial_statements_json" in row.keys() else "{}", {}),
+            last_debt_schedule=_from_json(row["last_debt_schedule_json"] if "last_debt_schedule_json" in row.keys() else "{}", {}),
+            last_tax_schedule=_from_json(row["last_tax_schedule_json"] if "last_tax_schedule_json" in row.keys() else "{}", {}),
+            last_distribution_schedule=_from_json(row["last_distribution_schedule_json"] if "last_distribution_schedule_json" in row.keys() else "{}", {}),
+            last_sponsor_schedule=_from_json(row["last_sponsor_schedule_json"] if "last_sponsor_schedule_json" in row.keys() else "{}", {}),
             dirty=bool(row["dirty"]),
             governance_state=_from_json(row["governance_state_json"], {}),
             replay_metadata=_from_json(row["replay_metadata_json"], {}),

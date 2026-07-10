@@ -208,6 +208,12 @@ def _init_schema(conn):
     _ensure_column(conn, "scenarios", "full_inputs_json", "TEXT")  # V3-8
     _ensure_column(conn, "scenario_exports", "replay_metadata_json", "TEXT NOT NULL DEFAULT '{}'")
     _ensure_column(conn, "workspace_states", "replay_metadata_json", "TEXT NOT NULL DEFAULT '{}'")
+    # Workbook V2 PR 3: persist full schedule payloads so DB is authoritative.
+    _ensure_column(conn, "workspace_states", "last_financial_statements_json", "TEXT NOT NULL DEFAULT '{}'")
+    _ensure_column(conn, "workspace_states", "last_debt_schedule_json", "TEXT NOT NULL DEFAULT '{}'")
+    _ensure_column(conn, "workspace_states", "last_tax_schedule_json", "TEXT NOT NULL DEFAULT '{}'")
+    _ensure_column(conn, "workspace_states", "last_distribution_schedule_json", "TEXT NOT NULL DEFAULT '{}'")
+    _ensure_column(conn, "workspace_states", "last_sponsor_schedule_json", "TEXT NOT NULL DEFAULT '{}'")
     conn.commit()
 
 

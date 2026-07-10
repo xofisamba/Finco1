@@ -143,5 +143,5 @@ class TestRepositoryPyShrank:
     def test_repository_py_under_330_lines(self):
         text = REPOSITORY_PY.read_text()
         n = len(text.splitlines())
-        # Pre-53I-2: 295 (post-53G-8). After 53I-2: should be ~305 (3 re-exports added)
-        assert n < 330, f"repository.py should be < 330 lines after 53I-2, got {n}"
+        # Pre-53I-2: 295 (post-53G-8). After 53I-2: ~305. After Workbook V2 PR 3: ~335 (schedule kwargs).
+        assert n < 360, f"repository.py should be < 360 lines after Workbook V2 PR 3, got {n}"

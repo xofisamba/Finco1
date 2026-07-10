@@ -107,6 +107,7 @@ from app.ui.capex_view_model import build_capex_view_model
 from app.ui.opex_view_model import build_opex_view_model
 from app.export.runtime_summary import build_runtime_summary_csv, build_runtime_summary_rows
 from app.export.institutional_workbook import export_institutional_workbook_skeleton
+from app.workbook import RuntimeResult
 from app.services.export_service import build_values_only_export_for_project, build_runtime_summary_csv_export, build_institutional_workbook_export, build_excel_export_for_post_request
 from app.services.export_audit_service import record_runtime_summary_export, record_institutional_workbook_export, record_download_export
 from app.services.scenario_state_service import build_workspace_state_metadata, scenario_provenance_for_record, resolve_runtime_snapshot, RuntimeSnapshotResolution, check_runtime_allowed
@@ -2563,7 +2564,7 @@ async def index(request: Request, project: str | None = None):
     # same dict literal (causing NameError on GET /).
     validation_errors: list[str] = []
 
-    return templates.TemplateResponse(
+    _index_response = templates.TemplateResponse(
         request=request,
         name="index.html",
         context={
@@ -2697,6 +2698,22 @@ async def index(request: Request, project: str | None = None):
             "audit_mode": False,
         },
     )
+
+    # Workbook V2 PR 3: hydrate sessionStorage from DB on page load so that
+    # schedule data (FS, debt, tax, distribution, sponsor) survives browser
+    # refresh without a re-run. workspace_state is already scoped to the
+    # authenticated user + active project, so no cross-project/user leak.
+    _rr = RuntimeResult.from_workspace_state(workspace_state) if workspace_state else None
+    if _rr is not None:
+        _hydration_script = _rr.to_sessionstorage_script()
+        if _hydration_script:
+            _body = _index_response.body.decode("utf-8")
+            if _body.startswith("<!DOCTYPE"):
+                _body = _body.replace("<body", _hydration_script + "<body", 1)
+            else:
+                _body = _hydration_script + _body
+            return HTMLResponse(content=_body, status_code=200)
+    return _index_response
 
 
 @app.post("/validate")

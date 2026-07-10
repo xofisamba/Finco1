@@ -80,6 +80,12 @@ def save_workspace_state(
     last_runtime_snapshot_id: Optional[str] = None,
     last_runtime_origin: Optional[str] = None,
     last_runtime_scenario_id: Optional[str] = None,
+    # Workbook V2 PR 3: full schedule payloads — DB is now authoritative.
+    last_financial_statements: Optional[dict[str, Any]] = None,
+    last_debt_schedule: Optional[dict[str, Any]] = None,
+    last_tax_schedule: Optional[dict[str, Any]] = None,
+    last_distribution_schedule: Optional[dict[str, Any]] = None,
+    last_sponsor_schedule: Optional[dict[str, Any]] = None,
     dirty: bool = False,
     replay_metadata: Optional[dict[str, Any]] = None,
     last_runtime_at: Optional[datetime] = None,
@@ -104,6 +110,16 @@ def save_workspace_state(
             last_runtime_scenario_id = existing.last_runtime_scenario_id
         if last_runtime_at is None:
             last_runtime_at = existing.last_runtime_at
+        if last_financial_statements is None:
+            last_financial_statements = existing.last_financial_statements
+        if last_debt_schedule is None:
+            last_debt_schedule = existing.last_debt_schedule
+        if last_tax_schedule is None:
+            last_tax_schedule = existing.last_tax_schedule
+        if last_distribution_schedule is None:
+            last_distribution_schedule = existing.last_distribution_schedule
+        if last_sponsor_schedule is None:
+            last_sponsor_schedule = existing.last_sponsor_schedule
         if not governance_state:
             governance_state = existing.governance_state
         merged_replay_metadata = dict(existing.replay_metadata or {})
@@ -116,6 +132,9 @@ def save_workspace_state(
                 SET project_code=?, active_scenario_id=?, active_scenario_name=?, draft_snapshot_json=?,
                     saved_snapshot_json=?, last_runtime_snapshot_json=?, last_runtime_summary_json=?,
                     last_runtime_snapshot_id=?, last_runtime_origin=?, last_runtime_scenario_id=?,
+                    last_financial_statements_json=?, last_debt_schedule_json=?,
+                    last_tax_schedule_json=?, last_distribution_schedule_json=?,
+                    last_sponsor_schedule_json=?,
                     dirty=?, governance_state_json=?, replay_metadata_json=?, updated_at=?, last_runtime_at=?
                 WHERE workspace_id=? AND user_id=?
                 """,
@@ -130,6 +149,11 @@ def save_workspace_state(
                     last_runtime_snapshot_id,
                     last_runtime_origin,
                     last_runtime_scenario_id,
+                    _to_json(last_financial_statements or {}),
+                    _to_json(last_debt_schedule or {}),
+                    _to_json(last_tax_schedule or {}),
+                    _to_json(last_distribution_schedule or {}),
+                    _to_json(last_sponsor_schedule or {}),
                     int(dirty),
                     _to_json(governance_state),
                     _to_json(replay_metadata),
@@ -149,9 +173,11 @@ def save_workspace_state(
                 INSERT INTO workspace_states (
                     workspace_id, project_id, user_id, project_code, active_scenario_id, active_scenario_name,
                     draft_snapshot_json, saved_snapshot_json, last_runtime_snapshot_json, last_runtime_summary_json,
-                    last_runtime_snapshot_id, last_runtime_origin, last_runtime_scenario_id, dirty,
-                    governance_state_json, replay_metadata_json, created_at, updated_at, last_runtime_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    last_runtime_snapshot_id, last_runtime_origin, last_runtime_scenario_id,
+                    last_financial_statements_json, last_debt_schedule_json, last_tax_schedule_json,
+                    last_distribution_schedule_json, last_sponsor_schedule_json,
+                    dirty, governance_state_json, replay_metadata_json, created_at, updated_at, last_runtime_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     workspace_id,
@@ -167,6 +193,11 @@ def save_workspace_state(
                     last_runtime_snapshot_id,
                     last_runtime_origin,
                     last_runtime_scenario_id,
+                    _to_json(last_financial_statements or {}),
+                    _to_json(last_debt_schedule or {}),
+                    _to_json(last_tax_schedule or {}),
+                    _to_json(last_distribution_schedule or {}),
+                    _to_json(last_sponsor_schedule or {}),
                     int(dirty),
                     _to_json(governance_state),
                     _to_json(replay_metadata),
@@ -190,6 +221,11 @@ def save_workspace_state(
         last_runtime_snapshot_id=last_runtime_snapshot_id,
         last_runtime_origin=last_runtime_origin,
         last_runtime_scenario_id=last_runtime_scenario_id,
+        last_financial_statements=last_financial_statements or {},
+        last_debt_schedule=last_debt_schedule or {},
+        last_tax_schedule=last_tax_schedule or {},
+        last_distribution_schedule=last_distribution_schedule or {},
+        last_sponsor_schedule=last_sponsor_schedule or {},
         dirty=dirty,
         governance_state=governance_state,
         replay_metadata=replay_metadata,
@@ -246,6 +282,11 @@ def discard_workspace_draft(user_id: str, project_id: str) -> "Optional[Workspac
         last_runtime_snapshot_id=record.last_runtime_snapshot_id,
         last_runtime_origin=record.last_runtime_origin,
         last_runtime_scenario_id=record.last_runtime_scenario_id,
+        last_financial_statements=record.last_financial_statements,
+        last_debt_schedule=record.last_debt_schedule,
+        last_tax_schedule=record.last_tax_schedule,
+        last_distribution_schedule=record.last_distribution_schedule,
+        last_sponsor_schedule=record.last_sponsor_schedule,
         dirty=False,
         governance_state=record.governance_state,
         replay_metadata=record.replay_metadata,

@@ -297,6 +297,12 @@ def record_workspace_runtime(
     active_scenario_id: Optional[str] = None,
     active_scenario_name: Optional[str] = None,
     replay_metadata: Optional[dict[str, Any]] = None,
+    # Workbook V2 PR 3: full schedule payloads — DB is now authoritative.
+    financial_statements: Optional[dict[str, Any]] = None,
+    debt_schedule: Optional[dict[str, Any]] = None,
+    tax_schedule: Optional[dict[str, Any]] = None,
+    distribution_schedule: Optional[dict[str, Any]] = None,
+    sponsor_schedule: Optional[dict[str, Any]] = None,
 ) -> WorkspaceStateRecord:
     existing = get_workspace_state(user_id, project_id)
     saved_snapshot = existing.saved_snapshot if existing else runtime_snapshot
@@ -315,6 +321,11 @@ def record_workspace_runtime(
         last_runtime_snapshot_id=runtime_snapshot_id,
         last_runtime_origin=runtime_origin,
         last_runtime_scenario_id=active_scenario_id if runtime_origin == "saved_state" else None,
+        last_financial_statements=financial_statements,
+        last_debt_schedule=debt_schedule,
+        last_tax_schedule=tax_schedule,
+        last_distribution_schedule=distribution_schedule,
+        last_sponsor_schedule=sponsor_schedule,
         dirty=dirty,
         governance_state=governance_state or (existing.governance_state if existing else {}),
         replay_metadata=replay_metadata,
