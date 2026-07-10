@@ -452,6 +452,11 @@ async def _execute_user_created_path(
             active_scenario_id=bound_scenario_id if effective_runtime_origin == "saved_state" else None,
             active_scenario_name=bound_scenario_name if effective_runtime_origin == "saved_state" else None,
             replay_metadata=replay_metadata,
+            financial_statements=result.get("financial_statements"),
+            debt_schedule=result.get("debt_schedule"),
+            tax_schedule=result.get("tax_schedule"),
+            distribution_schedule=result.get("distribution_schedule"),
+            sponsor_schedule=result.get("sponsor_schedule"),
         )
         if effective_runtime_origin == "saved_state" and bound_scenario_id:
             scenario_replay = deps.replay_metadata_for_project(
@@ -585,6 +590,11 @@ async def _execute_template_seeded_path(
             active_scenario_id=bound_scenario_id if runtime_origin == "saved_state" else None,
             active_scenario_name=bound_scenario_name if runtime_origin == "saved_state" else None,
             replay_metadata=replay_metadata,
+            financial_statements=result.get("financial_statements"),
+            debt_schedule=result.get("debt_schedule"),
+            tax_schedule=result.get("tax_schedule"),
+            distribution_schedule=result.get("distribution_schedule"),
+            sponsor_schedule=result.get("sponsor_schedule"),
         )
         if runtime_origin == "saved_state" and bound_scenario_id:
             scenario_replay = deps.replay_metadata_for_project(
@@ -719,6 +729,11 @@ async def _execute_generic_path(
             active_scenario_id=bound_scenario_id if runtime_origin == "saved_state" else None,
             active_scenario_name=bound_scenario_name if runtime_origin == "saved_state" else None,
             replay_metadata=replay_metadata,
+            financial_statements=result.get("financial_statements"),
+            debt_schedule=result.get("debt_schedule"),
+            tax_schedule=result.get("tax_schedule"),
+            distribution_schedule=result.get("distribution_schedule"),
+            sponsor_schedule=result.get("sponsor_schedule"),
         )
         if runtime_origin == "saved_state" and bound_scenario_id:
             scenario_replay = deps.replay_metadata_for_project(
