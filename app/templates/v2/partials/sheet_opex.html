@@ -1,0 +1,251 @@
+{#
+  Workbook V2 — OPEX worksheet partial.
+
+  Registry-driven + OpexViewModel-driven.  Scalar editing only — no custom-row
+  commands.  Field saves route through POST /v2/workbook/update with sheet_id="opex".
+
+  Row types
+  ---------
+  1. Group header  — B.01…B.13 collapsible <details> with subtotal Y1
+  2. BOUND field   — render_field() for editable registry fields
+  3. DERIVED       — read-only DERIVED badge for B.13 contingencies
+  4. ENGINE        — read-only ENGINE badge (B.09 Fees — no registry field)
+  5. DISPLAY_ONLY  — read-only badge for non-editable fields
+  6. Sub-line rows — individual OpexLineVM detail rows (read-only)
+
+  Year projection table
+  ---------------------
+  A separate horizontally-scrollable table below the group accordion shows
+  each group's Y1–Y30 subtotals.  Code + Name columns are sticky.
+
+  Context variables (from app/v2/router.py)
+    opex_vm              OpexViewModel  — groups + totals
+    opex_group_to_field  dict           — B-code → registry field dict (or None)
+    project_code         str
+    workbook_version     str
+    content_hash         str
+    project_editable     bool
+    ws_dirty             bool
+    has_runtime          bool
+    field_error          str
+#}
+{% from "partials/field_editor.html" import render_field %}
+
+{# Macro: read-only ENGINE / DERIVED row #}
+{% macro opex_ro_row(label, value, badge="ENGINE", unit="kEUR") %}
+<div class="v2-field-row v2-field-readonly v2-opex-ro-row">
+  <span class="v2-field-label">{{ label }}</span>
+  <span class="v2-field-value">
+    {%- if value is not none and value != "" -%}
+      <span class="v2-opex-amount-cell">{{ "%.0f"|format(value|float) }}</span>
+    {%- else -%}
+      <span class="v2-field-empty">—</span>
+    {%- endif -%}
+    <span class="v2-binding-badge v2-opex-badge-{{ badge | lower | replace(' ', '-') }}">{{ badge }}</span>
+  </span>
+  {%- if unit %}<span class="v2-unit">{{ unit }}</span>{% endif %}
+</div>
+{% endmacro %}
+
+{# Macro: sub-line detail row (read-only) #}
+{% macro opex_line_row(line) %}
+<div class="v2-opex-line-row{% if not line.is_active %} v2-opex-inactive{% endif %}">
+  <span class="v2-opex-line-code">{{ line.code }}</span>
+  <span class="v2-opex-line-name">{{ line.name }}</span>
+  <span class="v2-opex-line-y1 v2-opex-amount-cell">{{ "%.0f"|format(line.y1_keur) }}</span>
+  <span class="v2-opex-line-escl">{{ "%.1f"|format(line.inflation_pct) }}%</span>
+  {%- if line.notes %}<span class="v2-opex-line-notes">{{ line.notes }}</span>{% endif %}
+  {%- if line.is_derived %}<span class="v2-binding-badge v2-opex-badge-derived">DERIVED</span>
+  {%- elif line.is_read_only %}<span class="v2-binding-badge v2-opex-badge-engine">ENGINE</span>
+  {%- endif %}
+</div>
+{% endmacro %}
+
+<div id="v2-sheet-opex" data-sheet="opex">
+
+  {% if not project_editable %}
+    <div class="v2-protected-notice" role="status">
+      Reference project — create a working copy to edit.
+      <a href="/projects/{{ project_code }}/save-as" class="v2-copy-link">Create working copy</a>
+    </div>
+  {% endif %}
+
+  {% if field_error %}
+    <div class="v2-field-error-banner" role="alert">{{ field_error }}</div>
+  {% endif %}
+
+  {# ── KPI strip ────────────────────────────────────────────────── #}
+  <div class="v2-opex-kpi-bar" data-testid="opex-kpi-bar">
+    <div class="v2-opex-kpi-item">
+      <span class="v2-opex-kpi-label">OPEX Y1</span>
+      <span class="v2-opex-kpi-value" data-testid="opex-y1-total">
+        {{ "%.0f"|format(opex_vm.y1_total_opex) }}
+      </span>
+      <span class="v2-unit">kEUR</span>
+    </div>
+    <div class="v2-opex-kpi-item">
+      <span class="v2-opex-kpi-label">OPEX Y{{ opex_vm.display_years }}</span>
+      <span class="v2-opex-kpi-value" data-testid="opex-final-year-total">
+        {{ "%.0f"|format(opex_vm.final_year_total_opex) }}
+      </span>
+      <span class="v2-unit">kEUR</span>
+    </div>
+    <div class="v2-opex-kpi-item">
+      <span class="v2-opex-kpi-label">kEUR/MW Y1</span>
+      <span class="v2-opex-kpi-value" data-testid="opex-per-mw">
+        {%- if opex_vm.opex_per_mw_y1 is not none -%}
+          {{ "%.1f"|format(opex_vm.opex_per_mw_y1) }}
+        {%- else -%}—{%- endif -%}
+      </span>
+    </div>
+    <div class="v2-opex-kpi-item">
+      <span class="v2-opex-kpi-label">EUR/MWh Y1</span>
+      <span class="v2-opex-kpi-value" data-testid="opex-per-mwh">
+        {%- if opex_vm.opex_per_mwh_y1 is not none -%}
+          {{ "%.2f"|format(opex_vm.opex_per_mwh_y1) }}
+        {%- else -%}—{%- endif -%}
+      </span>
+    </div>
+    <div class="v2-opex-kpi-item">
+      <span class="v2-opex-kpi-label">Contingency</span>
+      <span class="v2-opex-kpi-value" data-testid="opex-contingency-rate">
+        {{ "%.1f"|format(opex_vm.contingency_rate) }}%
+      </span>
+    </div>
+  </div>
+
+  {# ── Column header ─────────────────────────────────────────────── #}
+  <div class="v2-opex-col-header" aria-hidden="true">
+    <span class="v2-opex-col-code">Code</span>
+    <span class="v2-opex-col-desc">Description</span>
+    <span class="v2-opex-col-y1">Y1 kEUR</span>
+    <span class="v2-opex-col-escl">Escl %</span>
+    <span class="v2-opex-col-status">Status</span>
+  </div>
+
+  {# ── B.01–B.13 groups ─────────────────────────────────────────── #}
+  {% for group in opex_vm.groups %}
+    {% set gf = opex_group_to_field.get(group.code) %}
+    <details class="v2-opex-group{% if group.is_contingency %} v2-opex-group-contingency{% endif %}"
+             open
+             data-group-code="{{ group.code }}"
+             data-testid="opex-group-{{ group.code }}">
+
+      <summary class="v2-opex-group-header">
+        <span class="v2-opex-col-code">{{ group.code }}</span>
+        <span class="v2-opex-col-desc">{{ group.name }}</span>
+        <span class="v2-opex-col-y1 v2-opex-subtotal v2-opex-amount-cell"
+              data-testid="opex-subtotal-{{ group.code }}">
+          {{ "%.0f"|format(group.subtotal_per_year[0] if group.subtotal_per_year else 0) }}
+        </span>
+        <span class="v2-opex-col-escl">
+          {{ "%.1f"|format(group.inflation_pct) }}%
+        </span>
+        <span class="v2-opex-col-status">
+          {%- if group.is_contingency -%}
+            <span class="v2-binding-badge v2-opex-badge-derived">DERIVED</span>
+          {%- elif not gf -%}
+            <span class="v2-binding-badge v2-opex-badge-engine">ENGINE</span>
+          {%- elif gf.binding_label == "bound" -%}
+            <span class="v2-binding-badge v2-opex-badge-bound">BOUND</span>
+          {%- elif gf.binding_label == "partial" -%}
+            <span class="v2-binding-badge v2-opex-badge-partial">PARTIAL</span>
+          {%- elif gf.binding_label == "display-only" -%}
+            <span class="v2-binding-badge v2-opex-badge-derived">DISPLAY</span>
+          {%- endif -%}
+        </span>
+      </summary>
+
+      <div class="v2-opex-group-body">
+
+        {# Registry field row #}
+        {%- if group.is_contingency -%}
+          {# B.13 contingencies: always DERIVED, show total_incl minus total_excl #}
+          {% if gf %}
+            {{ opex_ro_row(gf.label, gf.value, badge="DERIVED") }}
+          {% else %}
+            {{ opex_ro_row(group.name, opex_vm.contingency_by_year[0] if opex_vm.contingency_by_year else none, badge="DERIVED") }}
+          {% endif %}
+        {%- elif not gf -%}
+          {# B.09 Fees: no registry field — show group Y1 subtotal as ENGINE #}
+          {{ opex_ro_row(group.name, group.subtotal_per_year[0] if group.subtotal_per_year else none, badge="ENGINE") }}
+        {%- elif gf.binding_label == "bound" -%}
+          {{ render_field(gf, project_code, workbook_version, content_hash, project_editable,
+                          hx_target="#v2-sheet-opex", sheet_id="opex") }}
+        {%- else -%}
+          {{ opex_ro_row(gf.label, gf.value, badge=gf.binding_label | upper) }}
+        {%- endif -%}
+
+        {# Sub-line detail rows #}
+        {%- if group.lines -%}
+          <div class="v2-opex-lines-container">
+            {% for line in group.lines %}
+              {{ opex_line_row(line) }}
+            {% endfor %}
+          </div>
+        {%- endif -%}
+
+      </div>
+    </details>
+  {% endfor %}
+
+  {# ── Grand total row ──────────────────────────────────────────── #}
+  <div class="v2-opex-grand-total-row" data-testid="opex-grand-total-row">
+    <span class="v2-opex-col-code"></span>
+    <span class="v2-opex-col-desc v2-opex-total-label-cell">Total OPEX (incl. contingency)</span>
+    <span class="v2-opex-col-y1 v2-opex-grand-total-amount v2-opex-amount-cell"
+          data-testid="opex-grand-total-y1">
+      {{ "%.0f"|format(opex_vm.y1_total_opex) }}
+    </span>
+    <span class="v2-opex-col-escl"></span>
+    <span class="v2-opex-col-status"></span>
+  </div>
+
+  {# ── Year projection table ─────────────────────────────────────── #}
+  <details class="v2-opex-projection-panel" open data-testid="opex-projection-panel">
+    <summary class="v2-opex-projection-toggle">
+      Year Projection (Y1–Y{{ opex_vm.display_years }})
+    </summary>
+    <div class="v2-opex-projection-scroll">
+      <table class="v2-opex-proj-table" data-testid="opex-projection-table">
+        <thead>
+          <tr>
+            <th class="v2-opex-proj-th-code v2-opex-proj-sticky-code">Code</th>
+            <th class="v2-opex-proj-th-name v2-opex-proj-sticky-name">Group</th>
+            {% for yr in range(1, opex_vm.display_years + 1) %}
+              <th class="v2-opex-proj-th-year" data-testid="proj-year-{{ yr }}">Y{{ yr }}</th>
+            {% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for group in opex_vm.groups %}
+            <tr class="v2-opex-proj-row{% if group.is_contingency %} v2-opex-proj-contingency{% endif %}"
+                data-testid="proj-row-{{ group.code }}">
+              <td class="v2-opex-proj-td-code v2-opex-proj-sticky-code">{{ group.code }}</td>
+              <td class="v2-opex-proj-td-name v2-opex-proj-sticky-name">{{ group.name }}</td>
+              {% for yr_idx in range(opex_vm.display_years) %}
+                <td class="v2-opex-proj-td-year v2-opex-amount-cell"
+                    data-testid="proj-{{ group.code }}-y{{ yr_idx + 1 }}">
+                  {{ "%.0f"|format(group.subtotal_per_year[yr_idx]) }}
+                </td>
+              {% endfor %}
+            </tr>
+          {% endfor %}
+          <tr class="v2-opex-proj-total-row" data-testid="proj-row-total">
+            <td class="v2-opex-proj-sticky-code"></td>
+            <td class="v2-opex-proj-td-name v2-opex-proj-sticky-name v2-opex-proj-total-label">
+              Total OPEX
+            </td>
+            {% for yr_idx in range(opex_vm.display_years) %}
+              <td class="v2-opex-proj-td-year v2-opex-proj-total-cell v2-opex-amount-cell"
+                  data-testid="proj-total-y{{ yr_idx + 1 }}">
+                {{ "%.0f"|format(opex_vm.total_incl_contingency[yr_idx]) }}
+              </td>
+            {% endfor %}
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </details>
+
+</div>{# v2-sheet-opex #}

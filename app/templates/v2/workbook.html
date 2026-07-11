@@ -348,6 +348,146 @@
       cursor: pointer; white-space: nowrap; flex-shrink: 0;
     }
     .v2-capex-add-btn:hover { background: #ddeeff; }
+
+    /* ── OPEX worksheet ─────────────────────────────────────────── */
+    #v2-sheet-opex { font-size: 0.85rem; }
+
+    .v2-opex-kpi-bar {
+      display: flex; flex-wrap: wrap; gap: 1rem;
+      background: #f0faf4; border: 1px solid #c3e6d0;
+      border-radius: 3px; padding: 0.5rem 0.75rem;
+      margin-bottom: 0.75rem;
+    }
+    .v2-opex-kpi-item { display: flex; align-items: baseline; gap: 0.3rem; }
+    .v2-opex-kpi-label { font-size: 0.72rem; color: #555;
+                         text-transform: uppercase; letter-spacing: 0.04em; }
+    .v2-opex-kpi-value { font-weight: 600;
+                         font-variant-numeric: tabular-nums; color: #1a4a28; }
+
+    .v2-opex-col-header {
+      display: grid;
+      grid-template-columns: 4rem 1fr 7rem 5rem 7rem;
+      align-items: center;
+      padding: 0.2rem 0.4rem;
+      font-size: 0.7rem; font-weight: 600; text-transform: uppercase;
+      letter-spacing: 0.06em; color: #888;
+      border-bottom: 2px solid #ddd;
+    }
+    .v2-opex-col-code   { min-width: 4rem; }
+    .v2-opex-col-desc   { flex: 1; padding-right: 0.5rem; }
+    .v2-opex-col-y1     { min-width: 7rem; text-align: right;
+                          font-variant-numeric: tabular-nums; }
+    .v2-opex-col-escl   { min-width: 5rem; text-align: right; color: #888; }
+    .v2-opex-col-status { min-width: 7rem; text-align: right; }
+
+    .v2-opex-group { border-bottom: 1px solid #ddd; }
+    .v2-opex-group-contingency > summary .v2-opex-subtotal { color: #888; font-style: italic; }
+
+    .v2-opex-group-header {
+      display: grid;
+      grid-template-columns: 4rem 1fr 7rem 5rem 7rem;
+      align-items: center;
+      cursor: pointer; list-style: none;
+      font-weight: 600; font-size: 0.8rem;
+      padding: 0.35rem 0.4rem;
+      background: #f7f7f7; border-top: 1px solid #e4e4e4;
+      position: sticky; top: 0; z-index: 10; user-select: none;
+    }
+    .v2-opex-group-header::-webkit-details-marker { display: none; }
+    .v2-opex-group-header::before {
+      content: '▶'; font-size: 0.6rem;
+      transition: transform 0.15s; color: #999; margin-right: 0.25rem;
+    }
+    details.v2-opex-group[open] > .v2-opex-group-header::before {
+      transform: rotate(90deg);
+    }
+    .v2-opex-group-body { padding: 0.1rem 0 0.35rem 0; }
+
+    .v2-opex-ro-row {
+      background: #fafafa; border-left: 2px solid #e0e0e0; margin-left: 0.5rem;
+    }
+    .v2-opex-amount-cell { font-variant-numeric: tabular-nums; }
+    .v2-opex-badge-engine   { background: #6b7280; color: #fff; }
+    .v2-opex-badge-derived  { background: #7a9bbf; color: #fff; }
+    .v2-opex-badge-partial  { background: #e8a020; color: #fff; }
+    .v2-opex-badge-bound    { background: #2e6b35; color: #fff; }
+
+    .v2-opex-lines-container {
+      margin-left: 1rem; border-left: 1px solid #eee;
+    }
+    .v2-opex-line-row {
+      display: grid;
+      grid-template-columns: 4.5rem 1fr 6rem 4rem 1fr auto;
+      align-items: center;
+      padding: 0.1rem 0.4rem;
+      font-size: 0.78rem; color: #666;
+      border-bottom: 1px solid #f0f0f0;
+    }
+    .v2-opex-line-row:last-child { border-bottom: none; }
+    .v2-opex-line-code  { color: #999; font-size: 0.72rem; }
+    .v2-opex-line-name  { padding-right: 0.5rem; }
+    .v2-opex-line-y1    { text-align: right; }
+    .v2-opex-line-escl  { text-align: right; color: #aaa; font-size: 0.75rem; }
+    .v2-opex-line-notes { font-size: 0.72rem; color: #aaa; padding-left: 0.5rem; }
+    .v2-opex-inactive { opacity: 0.4; text-decoration: line-through; }
+
+    .v2-opex-grand-total-row {
+      display: grid;
+      grid-template-columns: 4rem 1fr 7rem 5rem 7rem;
+      align-items: center;
+      padding: 0.4rem 0.4rem;
+      border-top: 2px solid #333;
+      font-weight: 700; font-size: 0.88rem;
+    }
+    .v2-opex-total-label-cell { color: #222; }
+    .v2-opex-grand-total-amount {
+      text-align: right; font-variant-numeric: tabular-nums; color: #1a4a28;
+    }
+
+    /* OPEX year projection table */
+    .v2-opex-projection-panel {
+      margin-top: 1.5rem; border: 1px solid #ddd; border-radius: 3px;
+    }
+    .v2-opex-projection-toggle {
+      cursor: pointer; list-style: none;
+      padding: 0.4rem 0.75rem;
+      font-size: 0.78rem; font-weight: 600; text-transform: uppercase;
+      letter-spacing: 0.05em; color: #555;
+      background: #f7f7f7; user-select: none;
+    }
+    .v2-opex-projection-toggle::-webkit-details-marker { display: none; }
+    .v2-opex-projection-scroll {
+      overflow-x: auto; padding: 0.25rem;
+    }
+    .v2-opex-proj-table {
+      border-collapse: collapse; font-size: 0.75rem;
+      font-variant-numeric: tabular-nums; white-space: nowrap;
+      min-width: max-content;
+    }
+    .v2-opex-proj-table th,
+    .v2-opex-proj-table td {
+      padding: 0.2rem 0.5rem;
+      border: 1px solid #e8e8e8;
+      text-align: right;
+    }
+    .v2-opex-proj-table thead th { background: #f4f4f4; font-weight: 600; }
+    .v2-opex-proj-sticky-code {
+      position: sticky; left: 0; z-index: 2;
+      background: #f9f9f9; text-align: left !important;
+      min-width: 4rem; border-right: 2px solid #ccc;
+    }
+    .v2-opex-proj-sticky-name {
+      position: sticky; left: 4.2rem; z-index: 2;
+      background: #f9f9f9; text-align: left !important;
+      min-width: 12rem; border-right: 2px solid #ccc;
+    }
+    .v2-opex-proj-contingency td { color: #7a9bbf; font-style: italic; }
+    .v2-opex-proj-total-row td {
+      font-weight: 700; background: #f0faf4; border-top: 2px solid #333;
+    }
+    .v2-opex-proj-total-label { color: #1a4a28; }
+    .v2-opex-proj-total-cell  { color: #1a4a28; }
+    .v2-opex-proj-th-year     { min-width: 5rem; }
   </style>
 </head>
 <body>
@@ -371,6 +511,7 @@
     {% include "partials/sheet_inputs.html" %}
     {% include "partials/sheet_revenue.html" %}
     {% include "partials/sheet_capex.html" %}
+    {% include "partials/sheet_opex.html" %}
   </div>
 
   <script>
