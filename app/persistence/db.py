@@ -214,6 +214,8 @@ def _init_schema(conn):
     _ensure_column(conn, "workspace_states", "last_tax_schedule_json", "TEXT NOT NULL DEFAULT '{}'")
     _ensure_column(conn, "workspace_states", "last_distribution_schedule_json", "TEXT NOT NULL DEFAULT '{}'")
     _ensure_column(conn, "workspace_states", "last_sponsor_schedule_json", "TEXT NOT NULL DEFAULT '{}'")
+    # Workbook V2 PR 7: SHA-256 of draft ProjectInputSet for atomic CAS edits.
+    _ensure_column(conn, "workspace_states", "draft_content_hash", "TEXT")
     conn.commit()
 
 

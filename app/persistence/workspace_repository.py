@@ -35,12 +35,25 @@ Public surface preserved:
 """
 from __future__ import annotations
 
+import hashlib
+import json
 import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Optional
 
 from app.persistence.db import get_cursor
 from app.persistence._helpers import _now_utc, _to_json
+
+
+def _draft_content_hash(draft_snapshot: dict) -> str:
+    """Stable SHA-256 over the serialised draft snapshot.
+
+    Fallback hash for rows that pre-date the draft_content_hash column.
+    The V2 edit pipeline stores pis.content_hash instead (passed explicitly
+    via the draft_content_hash parameter of save_workspace_state / v2_atomic_draft_update).
+    """
+    raw = json.dumps(draft_snapshot or {}, sort_keys=True, ensure_ascii=True)
+    return hashlib.sha256(raw.encode()).hexdigest()
 
 if TYPE_CHECKING:
     from app.persistence.records import ScenarioRecord, WorkspaceStateRecord
@@ -89,6 +102,10 @@ def save_workspace_state(
     dirty: bool = False,
     replay_metadata: Optional[dict[str, Any]] = None,
     last_runtime_at: Optional[datetime] = None,
+    # Workbook V2 PR 7: caller-supplied content hash for atomic CAS.
+    # Pass pis.content_hash here when saving from the V2 edit pipeline.
+    # Falls back to a raw JSON hash if not provided (for legacy callers).
+    v2_draft_content_hash: Optional[str] = None,
 ) -> "WorkspaceStateRecord":
     from app.persistence.records import WorkspaceStateRecord
     now = _now_utc()
@@ -125,6 +142,7 @@ def save_workspace_state(
         merged_replay_metadata = dict(existing.replay_metadata or {})
         merged_replay_metadata.update(replay_metadata)
         replay_metadata = merged_replay_metadata
+        _dch = v2_draft_content_hash or _draft_content_hash(draft_snapshot or {})
         with get_cursor() as cur:
             cur.execute(
                 """
@@ -134,7 +152,7 @@ def save_workspace_state(
                     last_runtime_snapshot_id=?, last_runtime_origin=?, last_runtime_scenario_id=?,
                     last_financial_statements_json=?, last_debt_schedule_json=?,
                     last_tax_schedule_json=?, last_distribution_schedule_json=?,
-                    last_sponsor_schedule_json=?,
+                    last_sponsor_schedule_json=?, draft_content_hash=?,
                     dirty=?, governance_state_json=?, replay_metadata_json=?, updated_at=?, last_runtime_at=?
                 WHERE workspace_id=? AND user_id=?
                 """,
@@ -154,6 +172,7 @@ def save_workspace_state(
                     _to_json(last_tax_schedule or {}),
                     _to_json(last_distribution_schedule or {}),
                     _to_json(last_sponsor_schedule or {}),
+                    _dch,
                     int(dirty),
                     _to_json(governance_state),
                     _to_json(replay_metadata),
@@ -175,9 +194,9 @@ def save_workspace_state(
                     draft_snapshot_json, saved_snapshot_json, last_runtime_snapshot_json, last_runtime_summary_json,
                     last_runtime_snapshot_id, last_runtime_origin, last_runtime_scenario_id,
                     last_financial_statements_json, last_debt_schedule_json, last_tax_schedule_json,
-                    last_distribution_schedule_json, last_sponsor_schedule_json,
+                    last_distribution_schedule_json, last_sponsor_schedule_json, draft_content_hash,
                     dirty, governance_state_json, replay_metadata_json, created_at, updated_at, last_runtime_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     workspace_id,
@@ -198,6 +217,7 @@ def save_workspace_state(
                     _to_json(last_tax_schedule or {}),
                     _to_json(last_distribution_schedule or {}),
                     _to_json(last_sponsor_schedule or {}),
+                    v2_draft_content_hash or _draft_content_hash(draft_snapshot or {}),
                     int(dirty),
                     _to_json(governance_state),
                     _to_json(replay_metadata),
@@ -292,3 +312,115 @@ def discard_workspace_draft(user_id: str, project_id: str) -> "Optional[Workspac
         replay_metadata=record.replay_metadata,
         last_runtime_at=record.last_runtime_at,
     )
+
+
+# -----------------------------------------------------------------
+# v2_atomic_draft_update
+# -----------------------------------------------------------------
+
+def v2_atomic_draft_update(
+    *,
+    user_id: str,
+    project_id: str,
+    expected_content_hash: str,
+    field_id: str,
+    typed_value: Any,
+) -> "Optional[WorkspaceStateRecord]":
+    """Atomic compare-and-swap for Workbook V2 single-field draft edits.
+
+    All steps execute inside a single ``BEGIN EXCLUSIVE`` transaction:
+
+    1. Read ``draft_snapshot_json`` from the DB.
+    2. Build a ``ProjectInputSet`` from that snapshot and compute its
+       canonical ``content_hash``.
+    3. Compare the canonical hash against ``expected_content_hash``.
+       Return ``None`` (stale) on mismatch — the caller raises StaleContentError.
+    4. Apply ``field_id`` / ``typed_value`` to that ``ProjectInputSet``
+       via ``with_value()``.
+    5. Persist the resulting snapshot and the new canonical content hash.
+
+    The snapshot used to build the updated ProjectInputSet is always the one
+    read inside the transaction, never a pre-transaction copy.  This prevents
+    a lost update when a concurrent write (including legacy non-CAS saves)
+    changes the draft between the caller's read and this write.
+
+    The stored ``draft_content_hash`` column is **not used for comparison**
+    (it may be a legacy raw-JSON hash on rows that pre-date this pipeline).
+    Only the canonical hash derived from the persisted snapshot is authoritative.
+    On success ``draft_content_hash`` is always updated to the new canonical
+    ``pis.content_hash``, migrating legacy rows in place.
+
+    Returns the updated WorkspaceStateRecord on success, or None on stale.
+    """
+    from app.persistence.db import get_connection
+    from app.persistence.records import WorkspaceStateRecord
+    from app.workbook.input_set import ProjectInputSet
+    from app.workbook.registry import WORKBOOK
+
+    import json as _json
+
+    now = _now_utc()
+    conn = get_connection()
+    cur = None
+    try:
+        # Exclusive lock: prevents any concurrent read or write until COMMIT/ROLLBACK.
+        conn.execute("BEGIN EXCLUSIVE")
+        cur = conn.cursor()
+
+        cur.execute(
+            "SELECT * FROM workspace_states WHERE user_id=? AND project_id=?",
+            (user_id, project_id),
+        )
+        row = cur.fetchone()
+        if row is None:
+            conn.execute("ROLLBACK")
+            return None
+
+        # Build canonical ProjectInputSet from the persisted snapshot and compare
+        # its content_hash against expected_content_hash.  This is authoritative
+        # for both legacy rows (raw-JSON draft_content_hash) and V2 rows
+        # (canonical pis.content_hash) — the stored column is not consulted.
+        row_snapshot = _json.loads(row["draft_snapshot_json"] or "{}")
+        current_pis = ProjectInputSet.from_snapshot(row_snapshot, workbook=WORKBOOK)
+
+        if current_pis.content_hash != expected_content_hash:
+            conn.execute("ROLLBACK")
+            return None  # stale — caller raises StaleContentError
+
+        # Apply the validated update to the snapshot read inside the transaction.
+        updated_pis = current_pis.with_value(field_id, typed_value)
+        new_snapshot = updated_pis.to_snapshot()
+        new_content_hash = updated_pis.content_hash
+
+        cur.execute(
+            """
+            UPDATE workspace_states
+            SET draft_snapshot_json=?, draft_content_hash=?, dirty=1, updated_at=?
+            WHERE workspace_id=? AND user_id=?
+            """,
+            (
+                _to_json(new_snapshot),
+                new_content_hash,
+                now.isoformat(),
+                row["workspace_id"],
+                user_id,
+            ),
+        )
+        conn.execute("COMMIT")
+
+        cur.execute(
+            "SELECT * FROM workspace_states WHERE user_id=? AND project_id=?",
+            (user_id, project_id),
+        )
+        updated_row = cur.fetchone()
+        return WorkspaceStateRecord.from_row(updated_row) if updated_row else None
+    except Exception:
+        try:
+            conn.execute("ROLLBACK")
+        except Exception:
+            pass
+        raise
+    finally:
+        if cur is not None:
+            cur.close()
+        conn.close()

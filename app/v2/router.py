@@ -21,15 +21,26 @@ GET /v2/workbook
     re-run.
 
     The Project Setup sheet (identity + technical sections) is rendered
-    using values sourced exclusively from ProjectInputSet, keyed by
-    semantic field_id.  No legacy snapshot keys are referenced in the
-    template layer.
+    as a read-only projection using values sourced exclusively from
+    ProjectInputSet, keyed by semantic field_id.
+
+POST /v2/workbook/update
+    Canonical V2 field edit endpoint.  Accepts a single field_id + value
+    plus optimistic-concurrency token (content_hash).  Full pipeline:
+
+      semantic field_id
+      → WorkbookUpdateService.validate_field_update()
+      → ProjectInputSet.with_value()
+      → save_workspace_state(draft_snapshot=…)
+      → redirect to GET /v2/workbook?project=…
+
+    No legacy snapshot keys may appear in the request body.
+    Protected references (TUHO/Oborovo) are rejected with 409.
+    Stale content_hash is rejected with 409.
 
 Scope constraints
 -----------------
 - No engine calls, no formula logic, no parity changes.
-- No DB writes; reads WorkspaceStateRecord via the existing repository
-  layer only.
 - No legacy ``_collect_form_snapshot`` / ``_strip_empty_fields`` helpers.
 - No reuse of ``build_input_set_from_workspace`` (removed in PR 4).
 """
@@ -38,13 +49,22 @@ from __future__ import annotations
 import os
 from typing import Optional
 
-from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi import APIRouter, Form, Request
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from app.auth import COOKIE_NAME, decode_session_token
 from app.workbook.registry import WORKBOOK
 from app.workbook.service import WorkbookService
+from app.workbook.update_service import (
+    FieldValidationError,
+    NonEditableFieldError,
+    ProtectedReferenceError,
+    StaleContentError,
+    UnknownFieldError,
+    VersionMismatchError,
+    WorkbookUpdateService,
+)
 
 router = APIRouter()
 
@@ -168,3 +188,62 @@ async def v2_workbook(request: Request, project: Optional[str] = None):
         "user": user,
     }
     return _templates.TemplateResponse(request=request, name="workbook.html", context=context)
+
+
+@router.post("/workbook/update")
+async def v2_workbook_update(
+    request: Request,
+    field_id: str = Form(...),
+    value: Optional[str] = Form(default=""),
+    project: str = Form(...),
+    workbook_version: str = Form(...),
+    content_hash: str = Form(...),
+):
+    """V2 field edit endpoint — canonical edit pipeline.
+
+    Accepts a single field update identified by semantic field_id (never a
+    legacy snapshot key).  Applies optimistic concurrency via content_hash.
+
+    On success: redirects to GET /v2/workbook?project=<project>.
+    On 409 (stale / protected): JSON error body with "error" key.
+    On 422 (unknown field / validation error): JSON error body.
+    """
+    user = _get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+
+    from app.persistence.projects_repository import get_project_record
+    from app.persistence.workspace_repository import get_workspace_state
+
+    project_record = get_project_record(user_id=user.user_id, project_code=project)
+    if project_record is None:
+        return JSONResponse({"error": f"Project {project!r} not found."}, status_code=404)
+
+    ws = get_workspace_state(user_id=user.user_id, project_id=project_record.project_id)
+    if ws is None:
+        return JSONResponse({"error": "Workspace not found."}, status_code=404)
+
+    try:
+        updated_pis = WorkbookUpdateService.apply_draft_update(
+            ws=ws,
+            field_id=field_id,
+            raw_value=value or "",
+            content_hash=content_hash,
+            workbook_version=workbook_version,
+            project_record=project_record,
+        )
+    except ProtectedReferenceError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=409)
+    except StaleContentError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=409)
+    except VersionMismatchError as exc:
+        return JSONResponse({"error": str(exc), "reload": True}, status_code=409)
+    except (UnknownFieldError, NonEditableFieldError) as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    except FieldValidationError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+
+    return RedirectResponse(
+        url=f"/v2/workbook?project={project}",
+        status_code=303,
+    )
