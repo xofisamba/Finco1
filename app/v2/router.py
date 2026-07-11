@@ -66,6 +66,8 @@ from fastapi.templating import Jinja2Templates
 from app.auth import COOKIE_NAME, decode_session_token
 from app.ui.capex_view_model import build_capex_view_model
 from app.ui.inputs_summary import build_inputs_summary
+from app.ui.opex_sheet_projection import build_opex_sheet_projection
+from app.ui.opex_view_model import build_opex_view_model
 from app.ui.project_context import build_project_context_for_record
 from app.ui.protected_reference_service import is_protected_reference
 from app.workbook.registry import WORKBOOK
@@ -299,6 +301,61 @@ def _render_capex_htmx_sheet(
     return HTMLResponse(content=sheet_html + "\n" + oob)
 
 
+def _build_opex_vm_ctx(project_record, pis) -> dict:
+    """Build OpexViewModel context for the OPEX sheet.
+
+    Delegates B.01–B.13 canonical structure to build_opex_sheet_projection()
+    in app.ui.opex_sheet_projection.  The router owns no OPEX domain mappings.
+
+    Returns opex_vm and opex_sheet_groups (always 13 OpexSheetGroup objects
+    in canonical order — present for every project regardless of ViewModel
+    group coverage).
+    """
+    snapshot = pis.to_snapshot()
+    project_ctx = build_project_context_for_record(
+        project_code=project_record.project_code,
+        project_name=project_record.project_name,
+        project_type=project_record.project_type,
+        project_origin=project_record.project_origin,
+        template_source=project_record.template_source,
+        baseline_snapshot=snapshot,
+    )
+    is_user = not (
+        project_record.project_origin == "factory_template"
+        and (project_record.template_source or "").strip().lower() in ("tuho", "oborovo")
+    )
+    opex_vm = build_opex_view_model(project_ctx, is_user_project=is_user)
+    opex_fields = _build_sheet_fields("opex", pis)
+    opex_sheet_groups = build_opex_sheet_projection(opex_vm, opex_fields)
+
+    # Summary section fields (e.g. opex.summary.total_y1 PARTIAL) rendered separately
+    # at the bottom of the sheet so PARTIAL fields are never silently filtered out.
+    opex_summary_fields = [f for f in opex_fields if f["section_id"] == "summary"]
+
+    return {
+        "opex_vm": opex_vm,
+        "opex_sheet_groups": opex_sheet_groups,
+        "opex_summary_fields": opex_summary_fields,
+    }
+
+
+def _render_opex_htmx_sheet(
+    request: Request,
+    pis,
+    ws,
+    project_record,
+    project: str,
+    field_error: str = "",
+) -> HTMLResponse:
+    """Render the OPEX sheet partial + OOB status banner for HTMX."""
+    ctx = _base_sheet_ctx(request, pis, ws, project_record, project, field_error)
+    ctx.update(_build_opex_vm_ctx(project_record, pis))
+    sheet_html = _templates.get_template("partials/sheet_opex.html").render(ctx)
+    banner_html = _templates.get_template("partials/_v2_status_banner.html").render(ctx)
+    oob = '<div id="v2-status-banner" hx-swap-oob="true">' + banner_html + "</div>"
+    return HTMLResponse(content=sheet_html + "\n" + oob)
+
+
 def _render_revenue_htmx_sheet(
     request: Request,
     pis,
@@ -411,6 +468,7 @@ async def v2_workbook(request: Request, project: Optional[str] = None):
         "field_error": "",
     }
     context.update(_build_capex_vm_ctx(project_record, pis))
+    context.update(_build_opex_vm_ctx(project_record, pis))
     return _templates.TemplateResponse(request=request, name="workbook.html", context=context)
 
 
@@ -477,6 +535,11 @@ async def v2_workbook_update(
                 request, pis_for_render, ws, project_record, project,
                 field_error=field_error,
             )
+        if sheet_id == "opex":
+            return _render_opex_htmx_sheet(
+                request, pis_for_render, ws, project_record, project,
+                field_error=field_error,
+            )
         return _render_htmx_sheet(
             request, pis_for_render, ws, project_record, project,
             field_error=field_error,
@@ -530,6 +593,10 @@ async def v2_workbook_update(
             )
         if sheet_id == "capex":
             return _render_capex_htmx_sheet(
+                request, updated_pis, updated_ws or ws, project_record, project,
+            )
+        if sheet_id == "opex":
+            return _render_opex_htmx_sheet(
                 request, updated_pis, updated_ws or ws, project_record, project,
             )
         return _render_htmx_sheet(
