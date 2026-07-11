@@ -1,23 +1,34 @@
 {#
   Reusable V2 field editor macro.
 
-  render_field(f, project_code, workbook_version, content_hash)
-    BOUND   → <form method="post" action="/v2/workbook/update"> with type-appropriate input
-    Others  → read-only span + binding badge
+  render_field(f, project_code, workbook_version, content_hash, project_editable=True)
 
-  f dict keys: field_id, label, unit, field_type, binding_label, options, value
-  Caller supplies project_code, workbook_version, content_hash from template context.
+  BOUND + project_editable  → <form> posting to /v2/workbook/update via HTMX,
+                               type-appropriate input with registry HTML5 attrs
+                               (min, max, step, required, title).
+  All other cases           → read-only span + binding badge.
+
+  f dict keys (from _build_ps_fields):
+    field_id, label, unit, field_type, binding_label, options, value,
+    required, min_value, max_value, step, help_text.
+
+  Caller supplies project_code, workbook_version, content_hash, project_editable
+  from template context.
 #}
-{% macro render_field(f, project_code, workbook_version, content_hash) %}
-<div class="v2-field-row {% if f.binding_label == 'bound' %}v2-field-editable{% else %}v2-field-readonly{% endif %}"
+{% macro render_field(f, project_code, workbook_version, content_hash, project_editable=True) %}
+<div class="v2-field-row {% if f.binding_label == 'bound' and project_editable %}v2-field-editable{% else %}v2-field-readonly{% endif %}"
      data-field-id="{{ f.field_id }}"
      data-binding="{{ f.binding_label }}"
      data-field-type="{{ f.field_type }}">
   <span class="v2-field-label">
     {{ f.label }}{% if f.unit %}&thinsp;<span class="v2-unit">{{ f.unit }}</span>{% endif %}
   </span>
-  {% if f.binding_label == 'bound' %}
-    <form method="post" action="/v2/workbook/update" class="v2-field-form" autocomplete="off">
+  {% if f.binding_label == 'bound' and project_editable %}
+    <form method="post" action="/v2/workbook/update" class="v2-field-form"
+          autocomplete="off"
+          hx-post="/v2/workbook/update"
+          hx-target="#v2-sheet-project-setup"
+          hx-swap="outerHTML">
       <input type="hidden" name="field_id"        value="{{ f.field_id }}">
       <input type="hidden" name="project"          value="{{ project_code }}">
       <input type="hidden" name="workbook_version" value="{{ workbook_version }}">
@@ -25,18 +36,34 @@
       {% if f.field_type == 'date' %}
         <input type="date"   name="value"
                value="{{ f.value | string if f.value is not none else '' }}"
-               class="v2-field-input" aria-label="{{ f.label }}">
+               class="v2-field-input"
+               aria-label="{{ f.label }}"
+               {% if f.required %}required{% endif %}
+               {% if f.help_text %}title="{{ f.help_text }}"{% endif %}>
       {% elif f.field_type in ('months', 'years', 'int') %}
         <input type="number" name="value"
                value="{{ f.value if f.value is not none else '' }}"
-               step="1" class="v2-field-input" aria-label="{{ f.label }}">
+               step="{{ f.step }}"
+               {% if f.min_value is not none %}min="{{ f.min_value }}"{% endif %}
+               {% if f.max_value is not none %}max="{{ f.max_value }}"{% endif %}
+               class="v2-field-input"
+               aria-label="{{ f.label }}"
+               {% if f.required %}required{% endif %}
+               {% if f.help_text %}title="{{ f.help_text }}"{% endif %}>
       {% elif f.field_type in ('float', 'mw', 'mwh', 'keur', 'pct', 'bps') %}
         <input type="number" name="value"
                value="{{ f.value if f.value is not none else '' }}"
-               step="any" class="v2-field-input" aria-label="{{ f.label }}">
+               step="{{ f.step }}"
+               {% if f.min_value is not none %}min="{{ f.min_value }}"{% endif %}
+               {% if f.max_value is not none %}max="{{ f.max_value }}"{% endif %}
+               class="v2-field-input"
+               aria-label="{{ f.label }}"
+               {% if f.required %}required{% endif %}
+               {% if f.help_text %}title="{{ f.help_text }}"{% endif %}>
       {% elif f.field_type == 'select' %}
         <select name="value" class="v2-field-input" aria-label="{{ f.label }}"
-                onchange="this.form.submit()">
+                onchange="this.form.requestSubmit()"
+                {% if f.required %}required{% endif %}>
           {% if f.value not in f.options %}<option value="">—</option>{% endif %}
           {% for opt in f.options %}
             <option value="{{ opt }}"{% if f.value == opt %} selected{% endif %}>{{ opt }}</option>
@@ -44,16 +71,20 @@
         </select>
       {% elif f.field_type == 'bool' %}
         <select name="value" class="v2-field-input" aria-label="{{ f.label }}"
-                onchange="this.form.submit()">
+                onchange="this.form.requestSubmit()">
           <option value="true" {% if f.value %}selected{% endif %}>Yes</option>
           <option value="false"{% if not f.value %}selected{% endif %}>No</option>
         </select>
       {% else %}
         <input type="text" name="value"
                value="{{ f.value if f.value is not none else '' }}"
-               class="v2-field-input" aria-label="{{ f.label }}">
+               class="v2-field-input"
+               aria-label="{{ f.label }}"
+               {% if f.required %}required{% endif %}
+               {% if f.help_text %}title="{{ f.help_text }}"{% endif %}>
       {% endif %}
-      <button type="submit" class="v2-field-save" aria-label="Save {{ f.label }}">&#10003;</button>
+      <button type="submit" class="v2-field-save"
+              aria-label="Save {{ f.label }}">&#10003;</button>
     </form>
   {% else %}
     <span class="v2-field-value">

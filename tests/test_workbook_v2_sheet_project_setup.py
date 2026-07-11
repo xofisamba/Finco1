@@ -109,8 +109,12 @@ class TestBuildPsFieldsStructure(unittest.TestCase):
         self.assertIsInstance(self.rows, list)
 
     def test_all_rows_have_required_keys(self):
-        required = {"field_id", "label", "unit", "field_type", "binding_label",
-                    "options", "section_id", "section_label", "value"}
+        required = {
+            "field_id", "label", "unit", "field_type", "binding_label",
+            "options", "section_id", "section_label", "value",
+            # Validation metadata (PR 865)
+            "required", "min_value", "max_value", "step", "help_text",
+        }
         for row in self.rows:
             missing = required - set(row.keys())
             self.assertFalse(missing, f"missing keys in row for {row.get('field_id')}: {missing}")
@@ -657,7 +661,374 @@ class TestFieldEditorControls(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# 9. Source guard — _build_ps_fields must not hard-code snapshot keys
+# 9. Registry validation metadata propagated to field dicts
+# ---------------------------------------------------------------------------
+
+class TestRegistryValidationMetadata(unittest.TestCase):
+
+    def setUp(self):
+        self.rows = {r["field_id"]: r for r in _build_ps_fields(_make_pis({}))}
+
+    def test_capacity_mw_has_min_from_registry(self):
+        r = self.rows["project_setup.technical.capacity_mw"]
+        self.assertIsNotNone(r["min_value"])
+        self.assertAlmostEqual(r["min_value"], 0.1)
+
+    def test_capacity_mw_step_from_decimals(self):
+        r = self.rows["project_setup.technical.capacity_mw"]
+        # decimals=2 → step="0.01"
+        self.assertEqual(r["step"], "0.01")
+
+    def test_p50_hours_step_from_decimals_zero(self):
+        r = self.rows["project_setup.technical.p50_hours"]
+        # decimals=0 → step="1"
+        self.assertEqual(r["step"], "1")
+
+    def test_p50_hours_has_min_from_registry(self):
+        r = self.rows["project_setup.technical.p50_hours"]
+        self.assertIsNotNone(r["min_value"])
+        self.assertAlmostEqual(r["min_value"], 1.0)
+
+    def test_construction_months_has_max_from_registry(self):
+        r = self.rows["project_setup.technical.construction_months"]
+        self.assertIsNotNone(r["max_value"])
+        self.assertEqual(r["max_value"], 120)
+
+    def test_construction_months_has_integer_step(self):
+        r = self.rows["project_setup.technical.construction_months"]
+        self.assertEqual(r["step"], "1")
+
+    def test_horizon_years_has_max_from_registry(self):
+        r = self.rows["project_setup.technical.horizon_years"]
+        self.assertIsNotNone(r["max_value"])
+        self.assertEqual(r["max_value"], 50)
+
+    def test_horizon_years_has_integer_step(self):
+        r = self.rows["project_setup.technical.horizon_years"]
+        self.assertEqual(r["step"], "1")
+
+    def test_project_name_is_required(self):
+        r = self.rows["project_setup.identity.project_name"]
+        self.assertTrue(r["required"])
+
+    def test_select_options_come_from_registry_only(self):
+        r = self.rows["project_setup.identity.project_type"]
+        spec = WORKBOOK.field("project_setup.identity.project_type")
+        self.assertEqual(r["options"], list(spec.options))
+
+    def test_non_select_fields_have_empty_options(self):
+        for fid, row in self.rows.items():
+            if row["field_type"] != "select":
+                self.assertEqual(row["options"], [],
+                                 f"{fid} options must be empty for non-SELECT")
+
+    def test_step_rendered_in_number_input(self):
+        """step value from registry appears in the rendered input attr."""
+        from bs4 import BeautifulSoup
+        import os as _os
+        client = _authed_client()
+        project_code = _create_project(client, "regval")
+        resp = client.get(f"/v2/workbook?project={project_code}")
+        soup = BeautifulSoup(resp.text, "html.parser")
+        row = soup.find(attrs={"data-field-id": "project_setup.technical.capacity_mw"})
+        inp = row.find("input", {"name": "value"}) if row else None
+        self.assertIsNotNone(inp, "capacity_mw input not found")
+        # step must be "0.01" (decimals=2), not "any"
+        self.assertEqual(inp.get("step"), "0.01")
+
+    def test_min_attr_rendered_in_number_input(self):
+        """min_value from registry appears in the rendered input attr."""
+        from bs4 import BeautifulSoup
+        client = _authed_client()
+        project_code = _create_project(client, "regval-min")
+        resp = client.get(f"/v2/workbook?project={project_code}")
+        soup = BeautifulSoup(resp.text, "html.parser")
+        row = soup.find(attrs={"data-field-id": "project_setup.technical.capacity_mw"})
+        inp = row.find("input", {"name": "value"}) if row else None
+        self.assertIsNotNone(inp)
+        self.assertIsNotNone(inp.get("min"), "capacity_mw input must have min attr")
+
+    def test_max_attr_rendered_in_number_input(self):
+        """max_value from registry appears in construction_months input."""
+        from bs4 import BeautifulSoup
+        client = _authed_client()
+        project_code = _create_project(client, "regval-max")
+        resp = client.get(f"/v2/workbook?project={project_code}")
+        soup = BeautifulSoup(resp.text, "html.parser")
+        row = soup.find(attrs={"data-field-id": "project_setup.technical.construction_months"})
+        inp = row.find("input", {"name": "value"}) if row else None
+        self.assertIsNotNone(inp)
+        self.assertIsNotNone(inp.get("max"), "construction_months input must have max attr")
+
+
+# ---------------------------------------------------------------------------
+# 10. Protected reference display — no editable controls for TUHO/Oborovo
+# ---------------------------------------------------------------------------
+
+class TestProtectedReferenceDisplay(unittest.TestCase):
+    """Protected reference projects (TUHO/Oborovo) must render fully
+    read-only with a working-copy CTA, zero editable controls."""
+
+    @classmethod
+    def setUpClass(cls):
+        from unittest.mock import patch as _patch
+        cls.client = _authed_client()
+        cls.project_code = _create_project(cls.client, "protected-ref")
+        cls._patch = _patch
+
+    def _body_as_protected(self):
+        from unittest.mock import patch
+        with patch("app.v2.router.is_protected_reference", return_value=True):
+            resp = self.client.get(f"/v2/workbook?project={self.project_code}")
+            self.assertEqual(resp.status_code, 200, resp.text[:200])
+            return resp.text
+
+    def test_no_editable_controls_for_protected_ref(self):
+        """Protected reference → zero v2-field-editable rows (in DOM, not CSS)."""
+        from bs4 import BeautifulSoup
+        soup = BeautifulSoup(self._body_as_protected(), "html.parser")
+        editable = soup.select(".v2-field-editable")
+        self.assertEqual(len(editable), 0,
+                         f"Protected ref must have no editable rows, found: "
+                         f"{[e.get('data-field-id') for e in editable]}")
+
+    def test_all_rows_read_only_for_protected_ref(self):
+        """Every field row in a protected reference is read-only."""
+        from bs4 import BeautifulSoup
+        soup = BeautifulSoup(self._body_as_protected(), "html.parser")
+        editable = soup.select(".v2-field-editable")
+        self.assertEqual(len(editable), 0, "No editable rows for protected reference")
+
+    def test_working_copy_cta_shown(self):
+        """Protected reference shows 'create a working copy' notice."""
+        body = self._body_as_protected()
+        self.assertIn("working copy", body.lower())
+
+    def test_working_copy_link_present(self):
+        """Working copy link points to /projects/{code}/save-as."""
+        from bs4 import BeautifulSoup
+        soup = BeautifulSoup(self._body_as_protected(), "html.parser")
+        link = soup.find("a", href=lambda h: h and "save-as" in h)
+        self.assertIsNotNone(link, "working-copy link must be present")
+
+    def test_no_form_elements_for_protected_ref(self):
+        """No <form> elements should appear for protected reference."""
+        from bs4 import BeautifulSoup
+        soup = BeautifulSoup(self._body_as_protected(), "html.parser")
+        forms = soup.select("form.v2-field-form")
+        self.assertEqual(len(forms), 0, "No v2-field-form for protected reference")
+
+    def test_post_to_protected_ref_returns_409(self):
+        """POST /v2/workbook/update to protected project → 409 (defense in depth)."""
+        from unittest.mock import patch
+        with patch("app.ui.protected_reference_service.is_protected_reference", return_value=True):
+            resp = self.client.post(
+                "/v2/workbook/update",
+                data={
+                    "field_id": "project_setup.identity.project_name",
+                    "project": self.project_code,
+                    "workbook_version": WORKBOOK.version,
+                    "content_hash": "a" * 64,
+                    "value": "Hacked",
+                },
+            )
+        self.assertEqual(resp.status_code, 409)
+
+    def test_user_project_has_six_editable_controls(self):
+        """Normal (non-protected) user project has exactly 6 BOUND editable rows."""
+        from bs4 import BeautifulSoup
+        resp = self.client.get(f"/v2/workbook?project={self.project_code}")
+        soup = BeautifulSoup(resp.text, "html.parser")
+        editable = soup.select(".v2-field-editable")
+        self.assertEqual(len(editable), 6,
+                         f"Expected 6 editable rows, got {len(editable)}: "
+                         f"{[e.get('data-field-id') for e in editable]}")
+
+
+# ---------------------------------------------------------------------------
+# 11. Draft status banner
+# ---------------------------------------------------------------------------
+
+class TestDraftStatusBanner(unittest.TestCase):
+    """After a successful V2 edit the workspace is dirty and the page
+    must display 'Draft changed — Run required'."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.client = _authed_client()
+        cls.project_code = _create_project(cls.client, "dirty-banner")
+
+    def _get_body(self):
+        resp = self.client.get(f"/v2/workbook?project={self.project_code}")
+        self.assertEqual(resp.status_code, 200)
+        return resp.text
+
+    def _current_hash(self):
+        from bs4 import BeautifulSoup
+        soup = BeautifulSoup(self._get_body(), "html.parser")
+        inp = soup.find("input", {"name": "content_hash"})
+        return inp["value"] if inp else None
+
+    def test_clean_project_no_dirty_banner(self):
+        """Fresh project has no dirty banner."""
+        body = self._get_body()
+        self.assertNotIn("Draft changed", body)
+
+    def test_dirty_banner_after_edit(self):
+        """After a V2 edit the page shows 'Draft changed — Run required'."""
+        content_hash = self._current_hash()
+        self.assertIsNotNone(content_hash)
+        resp = self.client.post(
+            "/v2/workbook/update",
+            data={
+                "field_id": "project_setup.identity.project_name",
+                "project": self.project_code,
+                "workbook_version": WORKBOOK.version,
+                "content_hash": content_hash,
+                "value": "Dirty Banner Test",
+            },
+            follow_redirects=False,
+        )
+        self.assertEqual(resp.status_code, 303)
+        body = self._get_body()
+        self.assertIn("Draft changed", body,
+                      "Status banner must show 'Draft changed — Run required' after edit")
+
+    def test_htmx_success_response_contains_dirty_banner(self):
+        """HTMX success response includes the dirty status in OOB banner."""
+        content_hash = self._current_hash()
+        self.assertIsNotNone(content_hash)
+        resp = self.client.post(
+            "/v2/workbook/update",
+            data={
+                "field_id": "project_setup.identity.project_name",
+                "project": self.project_code,
+                "workbook_version": WORKBOOK.version,
+                "content_hash": content_hash,
+                "value": "HTMX Dirty Banner",
+            },
+            headers={"HX-Request": "true"},
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("Draft changed", resp.text,
+                      "HTMX response must contain dirty banner")
+
+
+# ---------------------------------------------------------------------------
+# 12. HTMX field edit integration
+# ---------------------------------------------------------------------------
+
+class TestHtmxFieldEdit(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        cls.client = _authed_client()
+        cls.project_code = _create_project(cls.client, "htmx-edit")
+
+    def _current_hash(self):
+        from bs4 import BeautifulSoup
+        resp = self.client.get(f"/v2/workbook?project={self.project_code}")
+        soup = BeautifulSoup(resp.text, "html.parser")
+        inp = soup.find("input", {"name": "content_hash"})
+        return inp["value"] if inp else None
+
+    def test_htmx_success_returns_sheet_html(self):
+        """HTMX success → 200 with updated #v2-sheet-project-setup."""
+        content_hash = self._current_hash()
+        resp = self.client.post(
+            "/v2/workbook/update",
+            data={
+                "field_id": "project_setup.identity.project_name",
+                "project": self.project_code,
+                "workbook_version": WORKBOOK.version,
+                "content_hash": content_hash,
+                "value": "HTMX Update Name",
+            },
+            headers={"HX-Request": "true"},
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("v2-sheet-project-setup", resp.text)
+
+    def test_htmx_success_contains_oob_status_banner(self):
+        """HTMX success response includes the OOB status banner element."""
+        content_hash = self._current_hash()
+        resp = self.client.post(
+            "/v2/workbook/update",
+            data={
+                "field_id": "project_setup.identity.project_name",
+                "project": self.project_code,
+                "workbook_version": WORKBOOK.version,
+                "content_hash": content_hash,
+                "value": "HTMX OOB Test",
+            },
+            headers={"HX-Request": "true"},
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("v2-status-banner", resp.text)
+        self.assertIn("hx-swap-oob", resp.text)
+
+    def test_htmx_success_new_content_hash_in_forms(self):
+        """After HTMX edit, returned sheet contains a different content_hash."""
+        from bs4 import BeautifulSoup
+        old_hash = self._current_hash()
+        resp = self.client.post(
+            "/v2/workbook/update",
+            data={
+                "field_id": "project_setup.identity.project_name",
+                "project": self.project_code,
+                "workbook_version": WORKBOOK.version,
+                "content_hash": old_hash,
+                "value": "Hash Change Test",
+            },
+            headers={"HX-Request": "true"},
+        )
+        self.assertEqual(resp.status_code, 200)
+        soup = BeautifulSoup(resp.text, "html.parser")
+        new_hash_inp = soup.find("input", {"name": "content_hash"})
+        self.assertIsNotNone(new_hash_inp, "New form must carry content_hash")
+        self.assertNotEqual(new_hash_inp.get("value"), old_hash,
+                            "content_hash must change after successful edit")
+
+    def test_htmx_forms_carry_hx_attrs(self):
+        """BOUND field forms include HTMX attributes."""
+        from bs4 import BeautifulSoup
+        resp = self.client.get(f"/v2/workbook?project={self.project_code}")
+        soup = BeautifulSoup(resp.text, "html.parser")
+        form = soup.find("form", {"class": "v2-field-form"})
+        self.assertIsNotNone(form, "v2-field-form must exist")
+        self.assertEqual(form.get("hx-post"), "/v2/workbook/update")
+        self.assertEqual(form.get("hx-target"), "#v2-sheet-project-setup")
+
+    def test_flash_error_shown_after_non_htmx_redirect(self):
+        """Non-HTMX validation error → v2_err param shown as flash in GET."""
+        import urllib.parse
+        content_hash = self._current_hash()
+        # Submit invalid value (negative capacity)
+        resp = self.client.post(
+            "/v2/workbook/update",
+            data={
+                "field_id": "project_setup.technical.capacity_mw",
+                "project": self.project_code,
+                "workbook_version": WORKBOOK.version,
+                "content_hash": content_hash,
+                "value": "-999",
+            },
+            follow_redirects=False,
+        )
+        self.assertEqual(resp.status_code, 303)
+        location = resp.headers["location"]
+        self.assertIn("v2_err", location)
+        # Follow the redirect and check the error is shown
+        get_resp = self.client.get(location)
+        self.assertEqual(get_resp.status_code, 200)
+        err_param = urllib.parse.parse_qs(urllib.parse.urlparse(location).query).get("v2_err", [""])[0]
+        decoded = urllib.parse.unquote_plus(err_param)
+        self.assertIn(decoded[:30], get_resp.text,
+                      "Flash error must appear in the workbook page")
+
+
+# ---------------------------------------------------------------------------
+# 13. Source guard — _build_ps_fields must not hard-code snapshot keys
 # ---------------------------------------------------------------------------
 
 class TestBuildPsFieldsSourceGuard(unittest.TestCase):

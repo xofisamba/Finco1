@@ -1,0 +1,19 @@
+{#
+  V2 status banner content — rendered standalone for OOB HTMX swaps
+  and embedded in workbook.html on initial page load.
+
+  Context vars: ws_dirty, has_runtime, field_error, flash_error
+#}
+{% if field_error or flash_error %}
+  <div class="v2-banner v2-banner-error" role="alert">
+    {{ field_error or flash_error }}
+  </div>
+{% elif ws_dirty %}
+  <div class="v2-banner v2-banner-dirty" role="status">
+    Draft changed — Run required
+  </div>
+{% elif has_runtime %}
+  <div class="v2-banner v2-banner-clean" role="status">
+    Outputs current
+  </div>
+{% endif %}

@@ -203,24 +203,36 @@ class TestStaleContentHash(unittest.TestCase):
             f"setUpClass seed edit failed: {seed_resp.status_code} {seed_resp.text[:200]}"
         )
 
-    def test_stale_hash_returns_409(self):
+    def test_stale_hash_redirects_with_error(self):
+        """Non-HTMX stale hash → 303 redirect to GET with v2_err flash param."""
         resp = _post_update(
             self.client, self.project_code,
             content_hash="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1",
             field_id="project_setup.identity.project_name",
             value="X",
         )
-        self.assertEqual(resp.status_code, 409, resp.text[:200])
+        self.assertEqual(resp.status_code, 303, resp.text[:200])
+        location = resp.headers.get("location", "")
+        self.assertIn("v2_err", location,
+                      "Redirect must carry v2_err flash param for stale hash")
 
-    def test_stale_hash_error_body(self):
-        resp = _post_update(
-            self.client, self.project_code,
-            content_hash="bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-            field_id="project_setup.identity.project_name",
-            value="X",
+    def test_stale_hash_htmx_returns_refreshed_sheet(self):
+        """HTMX stale hash → 200 with re-rendered sheet so user can retry."""
+        resp = self.client.post(
+            "/v2/workbook/update",
+            data={
+                "field_id": "project_setup.identity.project_name",
+                "project": self.project_code,
+                "workbook_version": WORKBOOK.version,
+                "content_hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+                "value": "X",
+            },
+            headers={"HX-Request": "true"},
         )
-        self.assertEqual(resp.status_code, 409, resp.text[:200])
-        self.assertIn("error", resp.json())
+        self.assertEqual(resp.status_code, 200, resp.text[:200])
+        self.assertIn("v2-sheet-project-setup", resp.text)
+        # Error message appears in the OOB status banner
+        self.assertIn("refreshed", resp.text)
 
 
 # ---------------------------------------------------------------------------
@@ -370,16 +382,34 @@ class TestFieldValidationErrors(unittest.TestCase):
         resp = _get_workbook(self.client, self.project_code)
         return _extract_content_hash(resp.text)
 
-    def test_capacity_mw_negative_returns_422(self):
+    def test_capacity_mw_negative_redirects_with_error(self):
+        """Non-HTMX field validation failure → 303 redirect with v2_err flash."""
         resp = _post_update(
             self.client, self.project_code, self._hash(),
             field_id="project_setup.technical.capacity_mw",
             value="-50",
         )
-        self.assertEqual(resp.status_code, 422)
-        self.assertIn("error", resp.json())
+        self.assertEqual(resp.status_code, 303)
+        self.assertIn("v2_err", resp.headers.get("location", ""))
+
+    def test_capacity_mw_negative_htmx_returns_error_sheet(self):
+        """HTMX validation error → 200 with error in re-rendered sheet."""
+        resp = self.client.post(
+            "/v2/workbook/update",
+            data={
+                "field_id": "project_setup.technical.capacity_mw",
+                "project": self.project_code,
+                "workbook_version": WORKBOOK.version,
+                "content_hash": self._hash(),
+                "value": "-50",
+            },
+            headers={"HX-Request": "true"},
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("v2-sheet-project-setup", resp.text)
 
     def test_currency_invalid_option_returns_422(self):
+        """currency is PARTIAL (NonEditableFieldError) → 422 JSON (API error)."""
         resp = _post_update(
             self.client, self.project_code, self._hash(),
             field_id="project_setup.identity.currency",
@@ -388,22 +418,25 @@ class TestFieldValidationErrors(unittest.TestCase):
         self.assertEqual(resp.status_code, 422)
         self.assertIn("error", resp.json())
 
-    def test_project_name_required_empty_returns_422(self):
+    def test_project_name_required_empty_redirects_with_error(self):
+        """Empty required field → 303 redirect with v2_err flash."""
         resp = _post_update(
             self.client, self.project_code, self._hash(),
             field_id="project_setup.identity.project_name",
             value="",
         )
-        self.assertEqual(resp.status_code, 422)
-        self.assertIn("error", resp.json())
+        self.assertEqual(resp.status_code, 303)
+        self.assertIn("v2_err", resp.headers.get("location", ""))
 
-    def test_cod_date_bad_format_returns_422(self):
+    def test_cod_date_bad_format_redirects_with_error(self):
+        """Invalid date format → 303 redirect with v2_err flash."""
         resp = _post_update(
             self.client, self.project_code, self._hash(),
             field_id="project_setup.technical.cod_date",
             value="not-a-date",
         )
-        self.assertEqual(resp.status_code, 422)
+        self.assertEqual(resp.status_code, 303)
+        self.assertIn("v2_err", resp.headers.get("location", ""))
 
 
 # ---------------------------------------------------------------------------
@@ -653,8 +686,9 @@ class TestLegacyFirstWriteRegression(unittest.TestCase):
             value="Should Not Write",
         )
 
-        # Step 5: must be stale conflict
-        self.assertEqual(resp.status_code, 409, resp.text[:300])
+        # Step 5: must be stale conflict — non-HTMX path redirects with v2_err
+        self.assertEqual(resp.status_code, 303, resp.text[:300])
+        self.assertIn("v2_err", resp.headers.get("location", ""))
 
         # Step 6: snapshot B still persisted; "Should Not Write" must not appear
         row_after = _get_workspace_row(self.project_code)
@@ -736,14 +770,17 @@ class TestLegacyFirstWriteRegression(unittest.TestCase):
         self.assertEqual(resp1.status_code, 303,
                          f"first concurrent edit failed: {resp1.text[:200]}")
 
-        # Second edit with the same original_hash → 409 (canonical hash now differs)
+        # Second edit with the same original_hash → 303 redirect with v2_err
+        # (StaleContentError, non-HTMX path redirects with flash error)
         resp2 = _post_update(
             self.client, self.project_code, original_hash,
             field_id="project_setup.identity.project_name",
             value="Second Concurrent",
         )
-        self.assertEqual(resp2.status_code, 409,
-                         f"second concurrent edit must be 409, got {resp2.status_code}: {resp2.text[:200]}")
+        self.assertEqual(resp2.status_code, 303,
+                         f"second concurrent edit must redirect (stale), got {resp2.status_code}: {resp2.text[:200]}")
+        self.assertIn("v2_err", resp2.headers.get("location", ""),
+                      "Stale hash redirect must carry v2_err flash param")
 
 
 if __name__ == "__main__":
