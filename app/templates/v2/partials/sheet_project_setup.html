@@ -1,49 +1,39 @@
 {#
-  Workbook V2 — Project Setup sheet partial (read-only projection).
+  Workbook V2 — Project Setup sheet partial.
 
-  This is a READ-ONLY view.  No <input> or <select> controls are rendered.
-  Editing arrives in a subsequent PR once a V2 draft-update endpoint and
-  round-trip persistence tests exist.
+  BOUND fields (project_name, capacity_mw, p50_hours, cod_date,
+  construction_months, horizon_years) render as editable forms when
+  project_editable is True.  Protected reference projects (TUHO/Oborovo)
+  receive project_editable=False and all fields render read-only.
 
-  Context variables (from app/v2/router.py _build_ps_fields):
-    ps_fields : list of dicts, one per FieldSpec, ordered by section.order
-                then field.order.  Each dict:
-      field_id      str   — semantic ID ("project_setup.identity.project_name")
-      label         str   — display label
-      unit          str|None
-      field_type    str   — FieldType.value ("text","date","select","float",…)
-      binding_label str   — "bound"|"partial"|"display-only"|"template-locked"
-      options       list  — non-empty for SELECT fields
-      section_id    str   — "identity"|"technical"
-      section_label str
-      value         any   — typed value from ProjectInputSet (or None)
+  Context variables (from app/v2/router.py):
+    ps_fields        list of field dicts (field_id, label, unit, field_type,
+                     binding_label, options, section_id, section_label, value,
+                     required, min_value, max_value, step, help_text)
+    project_code     str
+    workbook_version str   (WORKBOOK.version, passed to each form)
+    content_hash     str   (current PIS content_hash, passed to each form)
+    project_editable bool  (False for TUHO/Oborovo protected references)
+    field_error      str   (inline error from a failed HTMX edit, or "")
 
   Values always come from pis.get(field_id).  Snapshot keys never appear here.
-
-  binding_label drives the annotation badge:
-    bound           will be editable once save endpoint exists
-    partial         not yet fully connected to engine
-    display-only    derived/computed; never user-editable
-    template-locked frozen at project creation
 #}
-
-{%- macro _display_value(f) -%}
-  {%- if f.value is none or f.value == "" -%}
-    <span class="v2-field-empty">—</span>
-  {%- elif f.field_type == "date" -%}
-    {{ f.value | string }}
-  {%- elif f.field_type == "bool" -%}
-    {{ "Yes" if f.value else "No" }}
-  {%- elif f.field_type in ("float","mw","mwh","keur","pct","bps") -%}
-    {{ f.value }}{% if f.unit %} <span class="v2-field-unit">{{ f.unit }}</span>{% endif %}
-  {%- elif f.field_type in ("int","years","months") -%}
-    {{ f.value }}{% if f.unit %} <span class="v2-field-unit">{{ f.unit }}</span>{% endif %}
-  {%- else -%}
-    {{ f.value }}
-  {%- endif -%}
-{%- endmacro -%}
+{% from "partials/field_editor.html" import render_field %}
 
 <div id="v2-sheet-project-setup" data-sheet="project_setup">
+
+  {% if not project_editable %}
+    <div class="v2-protected-notice" role="status">
+      Reference project — create a working copy to edit.
+      <a href="/projects/{{ project_code }}/save-as" class="v2-copy-link">
+        Create working copy
+      </a>
+    </div>
+  {% endif %}
+
+  {% if field_error %}
+    <div class="v2-field-error-banner" role="alert">{{ field_error }}</div>
+  {% endif %}
 
   {% set ns = namespace(current_section=None) %}
   {% for f in ps_fields %}
@@ -59,19 +49,7 @@
       {% set ns.current_section = f.section_id %}
     {% endif %}
 
-    <div class="v2-field-row v2-field-readonly"
-         data-field-id="{{ f.field_id }}"
-         data-binding="{{ f.binding_label }}"
-         data-field-type="{{ f.field_type }}">
-      <span class="v2-field-label">
-        {{ f.label }}{% if f.unit %} <span class="v2-field-unit">({{ f.unit }})</span>{% endif %}
-      </span>
-      <span class="v2-field-value" data-field-id="{{ f.field_id }}">
-        {{ _display_value(f) }}
-      </span>
-      <span class="v2-binding-badge v2-binding-{{ f.binding_label }}"
-            title="{{ f.binding_label }}">{{ f.binding_label }}</span>
-    </div>
+    {{ render_field(f, project_code, workbook_version, content_hash, project_editable) }}
 
   {% endfor %}
 

@@ -4,6 +4,107 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Workbook V2 — {{ project_code }}</title>
+  <script src="/static/vendor/htmx.min.js"></script>
+  <style>
+    /* ── V2 Workbook base ─────────────────────────────────────────── */
+    .v2-section { margin-bottom: 1.5rem; }
+    .v2-section-label { font-size: 0.85rem; text-transform: uppercase;
+                        letter-spacing: 0.06em; color: #666; margin: 0 0 0.5rem; }
+    .v2-section-fields { display: grid; gap: 0; }
+
+    /* ── Status banners ──────────────────────────────────────────── */
+    .v2-banner {
+      padding: 0.45rem 0.75rem;
+      border-radius: 3px;
+      font-size: 0.82rem;
+      margin-bottom: 0.75rem;
+    }
+    .v2-banner-dirty   { background: #fff3cd; color: #7a5c00; border: 1px solid #ffe08a; }
+    .v2-banner-clean   { background: #e8f5e9; color: #2e6b35; border: 1px solid #b6dfba; }
+    .v2-banner-error   { background: #fdecea; color: #991b1b; border: 1px solid #f5c2be; }
+
+    .v2-protected-notice {
+      padding: 0.45rem 0.75rem;
+      background: #f0f4ff;
+      border: 1px solid #b8c7f0;
+      border-radius: 3px;
+      font-size: 0.82rem;
+      color: #2c3e7a;
+      margin-bottom: 0.75rem;
+    }
+    .v2-copy-link { margin-left: 0.5rem; font-weight: 600; color: #2b7be0; }
+
+    .v2-field-error-banner {
+      padding: 0.35rem 0.6rem;
+      background: #fdecea;
+      border: 1px solid #f5c2be;
+      border-radius: 3px;
+      font-size: 0.8rem;
+      color: #991b1b;
+      margin-bottom: 0.5rem;
+    }
+
+    /* ── Field rows ──────────────────────────────────────────────── */
+    .v2-field-row {
+      display: grid;
+      grid-template-columns: 16rem 1fr auto;
+      align-items: center;
+      min-height: 2rem;
+      border-bottom: 1px solid #e8e8e8;
+      padding: 0.15rem 0;
+    }
+    .v2-field-label { font-size: 0.85rem; color: #444; padding-right: 0.5rem; }
+    .v2-unit { color: #888; font-size: 0.8em; }
+
+    /* ── Read-only fields ────────────────────────────────────────── */
+    .v2-field-readonly .v2-field-value { font-size: 0.85rem; color: #222; }
+    .v2-field-empty { color: #bbb; }
+    .v2-binding-badge {
+      font-size: 0.65rem; padding: 0.1em 0.4em; border-radius: 3px;
+      text-transform: uppercase; letter-spacing: 0.04em; color: #fff;
+      margin-left: 0.5rem; white-space: nowrap;
+    }
+    .v2-binding-partial         { background: #e8a020; }
+    .v2-binding-display-only    { background: #7a9bbf; }
+    .v2-binding-template-locked { background: #9b7abf; }
+
+    /* ── Editable fields (Excel-like) ────────────────────────────── */
+    .v2-field-editable { background: transparent; }
+    .v2-field-form {
+      display: contents; /* form is invisible in layout; children join grid */
+    }
+    .v2-field-input {
+      font-size: 0.85rem;
+      border: 1px solid transparent;
+      background: transparent;
+      padding: 0.1rem 0.25rem;
+      border-radius: 2px;
+      width: 100%;
+      box-sizing: border-box;
+      transition: border-color 0.1s;
+    }
+    .v2-field-input:hover  { border-color: #c8c8c8; }
+    .v2-field-input:focus  { border-color: #2b7be0; outline: none;
+                             background: #fff; }
+    .v2-field-save {
+      font-size: 0.75rem;
+      padding: 0.1rem 0.4rem;
+      border: 1px solid #2b7be0;
+      border-radius: 2px;
+      background: #2b7be0;
+      color: #fff;
+      cursor: pointer;
+      opacity: 0;
+      transition: opacity 0.1s;
+      margin-left: 0.25rem;
+      white-space: nowrap;
+    }
+    .v2-field-form:focus-within .v2-field-save { opacity: 1; }
+    .v2-field-save:focus { opacity: 1; }
+
+    /* ── HTMX request indicator ──────────────────────────────────── */
+    .htmx-request .v2-field-save { opacity: 0.5; pointer-events: none; }
+  </style>
 </head>
 <body>
   {# sessionStorage hydration: re-populates schedule data on page load
@@ -16,7 +117,30 @@
        data-content-hash="{{ content_hash }}"
        data-template-source="{{ template_source }}">
     <p>Workbook V2 shell — {{ project_code }}</p>
+
+    {# Status banner — updated via HTMX OOB swap after each field edit #}
+    <div id="v2-status-banner">
+      {% include "partials/_v2_status_banner.html" %}
+    </div>
+
     {% include "partials/sheet_project_setup.html" %}
   </div>
+
+  <script>
+    // Escape resets input to its original value; Enter submits the form.
+    document.addEventListener('keydown', function(e) {
+      var inp = e.target;
+      if (!inp.classList.contains('v2-field-input')) return;
+      if (e.key === 'Escape') {
+        inp.value = inp.defaultValue;
+        inp.blur();
+        e.preventDefault();
+      } else if (e.key === 'Enter') {
+        var form = inp.closest('form');
+        if (form) { form.requestSubmit(); }
+        e.preventDefault();
+      }
+    });
+  </script>
 </body>
 </html>
