@@ -1,0 +1,189 @@
+{#
+  Workbook V2 — Revenue worksheet partial.
+
+  Registry-driven.  Each editable field renders via the render_field macro
+  (hx_target="#v2-sheet-revenue", sheet_id="revenue").
+
+  Sections
+  --------
+  1. Commercial Structure  — ppa section BOUND fields + placeholders
+  2. Balancing & CO2       — balancing section fields + placeholders
+  3. Production            — all DISPLAY_ONLY; no editing (placeholders until migrated)
+  4. Revenue Outputs       — runtime truth matrix + output placeholders
+  5. Future Modules        — Battery, ancillary, certs, GOOs, carbon, hydrogen
+
+  Context variables (from app/v2/router.py):
+    revenue_fields    list[dict]  — revenue sheet fields from registry
+    project_code      str
+    workbook_version  str
+    content_hash      str
+    project_editable  bool
+    ws_dirty          bool
+    has_runtime       bool
+    field_error       str
+#}
+{% from "partials/field_editor.html" import render_field %}
+
+{# Macro: read-only placeholder row #}
+{% macro placeholder_row(label, reason="Planned in future migration") %}
+<div class="v2-field-row v2-field-readonly v2-inputs-placeholder-row">
+  <span class="v2-field-label">{{ label }}</span>
+  <span class="v2-field-value"><span class="v2-placeholder-tag">{{ reason }}</span></span>
+</div>
+{% endmacro %}
+
+{# Macro: section nav anchor header #}
+{% macro section_anchor(id, label, icon="") %}
+<summary class="v2-inputs-section-summary" id="nav-rev-{{ id }}">
+  {%- if icon %}<span class="v2-inputs-section-icon">{{ icon }}</span>{% endif -%}
+  {{ label }}
+</summary>
+{% endmacro %}
+
+<div id="v2-sheet-revenue" data-sheet="revenue">
+
+  {% if not project_editable %}
+    <div class="v2-protected-notice" role="status">
+      Reference project — create a working copy to edit.
+      <a href="/projects/{{ project_code }}/save-as" class="v2-copy-link">Create working copy</a>
+    </div>
+  {% endif %}
+
+  {% if field_error %}
+    <div class="v2-field-error-banner" role="alert">{{ field_error }}</div>
+  {% endif %}
+
+  {# ── Local navigation ──────────────────────────────────────────────── #}
+  <nav class="v2-inputs-nav" aria-label="Revenue sections">
+    <a href="#nav-rev-commercial">Commercial</a>
+    <a href="#nav-rev-balancing">Balancing</a>
+    <a href="#nav-rev-production">Production</a>
+    <a href="#nav-rev-outputs">Outputs</a>
+    <a href="#nav-rev-future">Future</a>
+  </nav>
+
+  {# ── 1. Commercial Structure ───────────────────────────────────────── #}
+  <details class="v2-inputs-section" open>
+    {{ section_anchor("commercial", "1. Commercial Structure") }}
+    <div class="v2-section-fields">
+
+      {# All ppa section fields — render_field decides BOUND→editable / PARTIAL→read-only badge #}
+      {% for f in revenue_fields %}
+        {% if f.section_id == "ppa" %}
+          {{ render_field(f, project_code, workbook_version, content_hash, project_editable,
+                          hx_target="#v2-sheet-revenue", sheet_id="revenue") }}
+        {% endif %}
+      {% endfor %}
+
+      {# Not yet migrated — planned in future registry expansion #}
+      {{ placeholder_row("Offtake Type") }}
+      {{ placeholder_row("Merchant %") }}
+      {{ placeholder_row("Contract Count") }}
+      {{ placeholder_row("CfD Strike Price") }}
+      {{ placeholder_row("Corporate PPA") }}
+
+    </div>
+  </details>
+
+  {# ── 2. Balancing & CO2 ────────────────────────────────────────────── #}
+  <details class="v2-inputs-section">
+    {{ section_anchor("balancing", "2. Balancing & CO2") }}
+    <div class="v2-section-fields">
+
+      {% for f in revenue_fields %}
+        {% if f.section_id == "balancing" %}
+          {{ render_field(f, project_code, workbook_version, content_hash, project_editable,
+                          hx_target="#v2-sheet-revenue", sheet_id="revenue") }}
+        {% endif %}
+      {% endfor %}
+
+      {{ placeholder_row("Merchant Price") }}
+      {{ placeholder_row("Indexation") }}
+      {{ placeholder_row("Price Curve") }}
+      {{ placeholder_row("Reference Market") }}
+      {{ placeholder_row("Inflation Link") }}
+
+    </div>
+  </details>
+
+  {# ── 3. Production (Display Only) ─────────────────────────────────── #}
+  <details class="v2-inputs-section">
+    {{ section_anchor("production", "3. Production") }}
+    <div class="v2-section-fields">
+      {{ placeholder_row("Annual Generation (P50)", "Available after Production migration") }}
+      {{ placeholder_row("Net Production",          "Available after Production migration") }}
+      {{ placeholder_row("Curtailment",             "Available after Production migration") }}
+      {{ placeholder_row("Availability",            "Available after Production migration") }}
+      {{ placeholder_row("Losses",                  "Available after Production migration") }}
+    </div>
+  </details>
+
+  {# ── 4. Revenue Outputs ────────────────────────────────────────────── #}
+  <details class="v2-inputs-section">
+    {{ section_anchor("outputs", "4. Revenue Outputs") }}
+    <div class="v2-section-fields">
+
+      <div class="v2-field-row v2-field-readonly">
+        <span class="v2-field-label">Runtime Status</span>
+        <span class="v2-field-value">
+          {%- if not has_runtime -%}
+            {# State A: no RuntimeResult yet #}
+            <span class="v2-field-empty">Not yet run</span>
+          {%- elif not ws_dirty -%}
+            {# State B: runtime exists and draft is clean #}
+            <span class="v2-runtime-clean">Outputs current</span>
+          {%- else -%}
+            {# State C: runtime exists but draft has unsaved changes #}
+            <span class="v2-runtime-dirty">Previous run available — stale for current draft</span>
+          {%- endif -%}
+        </span>
+      </div>
+      <div class="v2-field-row v2-field-readonly">
+        <span class="v2-field-label">Run Required</span>
+        <span class="v2-field-value">
+          {%- if ws_dirty -%}
+            <span class="v2-runtime-dirty">Yes</span>
+          {%- else -%}
+            No
+          {%- endif -%}
+        </span>
+      </div>
+
+      {#
+        Revenue output placeholder text varies by runtime state:
+        A: no RuntimeResult               → "Available after run"
+        B: RuntimeResult + clean draft    → "Runtime available — Revenue output mapping not yet connected"
+        C: RuntimeResult + dirty draft    → "Previous run available — output mapping not yet connected"
+        Never tell the user to run when a run already exists.
+      #}
+      {% if not has_runtime %}
+        {% set _output_note = "Available after run" %}
+      {% elif not ws_dirty %}
+        {% set _output_note = "Runtime available — Revenue output mapping not yet connected" %}
+      {% else %}
+        {% set _output_note = "Previous run available — output mapping not yet connected" %}
+      {% endif %}
+
+      {{ placeholder_row("Annual Revenue",   _output_note) }}
+      {{ placeholder_row("Average Price",    _output_note) }}
+      {{ placeholder_row("Captured Price",   _output_note) }}
+      {{ placeholder_row("Merchant Revenue", _output_note) }}
+      {{ placeholder_row("PPA Revenue",      _output_note) }}
+
+    </div>
+  </details>
+
+  {# ── 5. Future Modules ─────────────────────────────────────────────── #}
+  <details class="v2-inputs-section">
+    {{ section_anchor("future", "5. Future Modules") }}
+    <div class="v2-section-fields">
+      {{ placeholder_row("Battery Revenue",       "Available after future migration") }}
+      {{ placeholder_row("Ancillary Services",    "Available after future migration") }}
+      {{ placeholder_row("Certificates (ROC/LGC)","Available after future migration") }}
+      {{ placeholder_row("GOOs",                  "Available after future migration") }}
+      {{ placeholder_row("Carbon Credits",        "Available after future migration") }}
+      {{ placeholder_row("Hydrogen",              "Available after future migration") }}
+    </div>
+  </details>
+
+</div>{# v2-sheet-revenue #}
