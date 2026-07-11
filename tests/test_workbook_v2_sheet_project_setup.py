@@ -277,24 +277,33 @@ class TestReadOnlyContract(unittest.TestCase):
         self.assertEqual(resp.status_code, 200, resp.text[:300])
         return resp.text
 
-    def test_no_input_elements_in_project_setup(self):
-        """The project_setup section must contain no <input> elements."""
+    def test_non_bound_fields_have_no_input(self):
+        """PARTIAL, DISPLAY_ONLY, TEMPLATE_LOCKED field rows must not contain <input>."""
+        from bs4 import BeautifulSoup
         body = self._body()
-        # Extract just the v2-sheet-project-setup section
-        start = body.find('id="v2-sheet-project-setup"')
-        end = body.find('</div>', body.rfind('v2-section-fields', start)) + len('</div>')
-        if start == -1:
-            self.fail("v2-sheet-project-setup not found")
-        section = body[start:end + 500]  # generous slice
-        self.assertNotIn("<input", section,
-                         "Read-only projection must not render any <input> elements")
+        soup = BeautifulSoup(body, "html.parser")
+        for row in soup.select(".v2-field-readonly"):
+            self.assertEqual(
+                row.find("input"), None,
+                f"Read-only row {row.get('data-field-id')} must not have <input>"
+            )
 
-    def test_no_form_element(self):
-        """No <form> wrapping the project_setup sheet (read-only)."""
+    def test_bound_fields_have_input_elements(self):
+        """BOUND field rows must contain an <input> or <select> for editing."""
+        from bs4 import BeautifulSoup
         body = self._body()
-        # The v2 workbook shell should not have a form for project setup
-        self.assertNotIn('action="/v2/', body,
-                         "No V2 form action expected in read-only projection")
+        soup = BeautifulSoup(body, "html.parser")
+        for row in soup.select(".v2-field-editable"):
+            has_ctrl = row.find("input", {"name": "value"}) or row.find("select", {"name": "value"})
+            self.assertIsNotNone(
+                has_ctrl,
+                f"Editable row {row.get('data-field-id')} must have an input/select"
+            )
+
+    def test_bound_fields_have_form_action(self):
+        """BOUND fields render a form posting to /v2/workbook/update."""
+        body = self._body()
+        self.assertIn('action="/v2/workbook/update"', body)
 
     def test_no_legacy_snapshot_name_attrs(self):
         """No name="capacity_mw" or similar snapshot key attrs in the body."""
@@ -312,9 +321,9 @@ class TestReadOnlyContract(unittest.TestCase):
         body = self._body()
         self.assertIn("v2-binding-badge", body)
 
-    def test_bound_badge_present(self):
+    def test_bound_rows_have_data_binding_bound(self):
         body = self._body()
-        self.assertIn("v2-binding-bound", body)
+        self.assertIn('data-binding="bound"', body)
 
     def test_read_only_class_on_rows(self):
         body = self._body()
@@ -503,22 +512,20 @@ class TestV2ProjectSetupTemplateStructure(unittest.TestCase):
     def test_partial_file_exists(self):
         self.assertTrue(os.path.isfile(self.partial_path))
 
-    def test_no_input_elements_in_template(self):
-        """Template source must not contain rendered <input ... > tags
-        (comments describing what is absent are allowed)."""
+    def test_sheet_imports_field_editor(self):
+        """sheet_project_setup.html must import the render_field macro."""
         with open(self.partial_path) as fh:
             src = fh.read()
-        # Strip Jinja/HTML comments before checking — only actual rendered tags matter.
-        import re
-        no_comments = re.sub(r'\{#.*?#\}', '', src, flags=re.DOTALL)
-        no_comments = re.sub(r'<!--.*?-->', '', no_comments, flags=re.DOTALL)
-        self.assertNotIn("<input", no_comments,
-                         "Read-only template must not render <input> elements")
+        self.assertIn("field_editor.html", src)
+        self.assertIn("render_field", src)
 
-    def test_no_form_elements_in_template(self):
-        with open(self.partial_path) as fh:
-            src = fh.read()
-        self.assertNotIn("<form", src)
+    def test_field_editor_partial_exists(self):
+        base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        editor_path = os.path.join(
+            base, "app", "templates", "v2", "partials", "field_editor.html"
+        )
+        self.assertTrue(os.path.isfile(editor_path),
+                        "partials/field_editor.html must exist")
 
     def test_no_legacy_snapshot_key_references(self):
         with open(self.partial_path) as fh:
@@ -546,7 +553,111 @@ class TestV2ProjectSetupTemplateStructure(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# 8. Source guard — _build_ps_fields must not hard-code snapshot keys
+# 8. Field editor — live edit controls for BOUND fields
+# ---------------------------------------------------------------------------
+
+class TestFieldEditorControls(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        cls.client = _authed_client()
+        cls.project_code = _create_project(cls.client, "editor")
+
+    def _body(self):
+        resp = self.client.get(f"/v2/workbook?project={self.project_code}")
+        self.assertEqual(resp.status_code, 200, resp.text[:300])
+        return resp.text
+
+    def test_hidden_content_hash_present(self):
+        """BOUND field forms include a hidden content_hash input."""
+        body = self._body()
+        self.assertIn('name="content_hash"', body)
+
+    def test_hidden_workbook_version_present(self):
+        """BOUND field forms include a hidden workbook_version input."""
+        body = self._body()
+        self.assertIn('name="workbook_version"', body)
+
+    def test_hidden_field_id_present(self):
+        """BOUND field forms include a hidden field_id input (not a snapshot key)."""
+        body = self._body()
+        self.assertIn('name="field_id"', body)
+        self.assertIn('value="project_setup.', body)
+
+    def test_hidden_project_present(self):
+        """BOUND field forms include a hidden project input."""
+        body = self._body()
+        self.assertIn('name="project"', body)
+
+    def test_project_name_has_text_input(self):
+        """project_name (TEXT, BOUND) renders as type=text input."""
+        from bs4 import BeautifulSoup
+        soup = BeautifulSoup(self._body(), "html.parser")
+        row = soup.find(attrs={"data-field-id": "project_setup.identity.project_name"})
+        self.assertIsNotNone(row, "project_name row not found")
+        inp = row.find("input", {"name": "value", "type": "text"})
+        self.assertIsNotNone(inp, "project_name must have type=text input")
+
+    def test_capacity_mw_has_number_input(self):
+        """capacity_mw (MW, BOUND) renders as type=number input."""
+        from bs4 import BeautifulSoup
+        soup = BeautifulSoup(self._body(), "html.parser")
+        row = soup.find(attrs={"data-field-id": "project_setup.technical.capacity_mw"})
+        self.assertIsNotNone(row, "capacity_mw row not found")
+        inp = row.find("input", {"name": "value", "type": "number"})
+        self.assertIsNotNone(inp, "capacity_mw must have type=number input")
+
+    def test_cod_date_has_date_input(self):
+        """cod_date (DATE, BOUND) renders as type=date input."""
+        from bs4 import BeautifulSoup
+        soup = BeautifulSoup(self._body(), "html.parser")
+        row = soup.find(attrs={"data-field-id": "project_setup.technical.cod_date"})
+        self.assertIsNotNone(row, "cod_date row not found")
+        inp = row.find("input", {"name": "value", "type": "date"})
+        self.assertIsNotNone(inp, "cod_date must have type=date input")
+
+    def test_non_bound_country_market_has_no_input(self):
+        """country_market (PARTIAL) must not have an input — not user-editable."""
+        from bs4 import BeautifulSoup
+        soup = BeautifulSoup(self._body(), "html.parser")
+        row = soup.find(attrs={"data-field-id": "project_setup.identity.country_market"})
+        self.assertIsNotNone(row, "country_market row not found")
+        self.assertIsNone(row.find("input", {"name": "value"}),
+                          "country_market must not have an editable input")
+
+    def test_display_only_capacity_factor_has_no_input(self):
+        """capacity_factor (DISPLAY_ONLY) must not have an input."""
+        from bs4 import BeautifulSoup
+        soup = BeautifulSoup(self._body(), "html.parser")
+        row = soup.find(attrs={"data-field-id": "project_setup.technical.capacity_factor"})
+        self.assertIsNotNone(row, "capacity_factor row not found")
+        self.assertIsNone(row.find("input", {"name": "value"}),
+                          "capacity_factor must not have an editable input")
+
+    def test_template_locked_project_type_has_no_input(self):
+        """project_type (TEMPLATE_LOCKED) must not have an input."""
+        from bs4 import BeautifulSoup
+        soup = BeautifulSoup(self._body(), "html.parser")
+        row = soup.find(attrs={"data-field-id": "project_setup.identity.project_type"})
+        self.assertIsNotNone(row, "project_type row not found")
+        self.assertIsNone(row.find("input", {"name": "value"}),
+                          "project_type must not have an editable input")
+
+    def test_save_button_present_for_bound_fields(self):
+        """A save button renders inside BOUND field forms."""
+        body = self._body()
+        self.assertIn('class="v2-field-save"', body)
+
+    def test_no_legacy_name_attrs_for_snapshot_keys(self):
+        """Inputs must not use snapshot key names (e.g. name='capacity_mw')."""
+        body = self._body()
+        for legacy in ['name="capacity_mw"', 'name="project_name"', 'name="p50_hours"',
+                       'name="cod_date"', 'name="horizon_years"', 'name="construction_months"']:
+            self.assertNotIn(legacy, body, f"Legacy snapshot key attr found: {legacy!r}")
+
+
+# ---------------------------------------------------------------------------
+# 9. Source guard — _build_ps_fields must not hard-code snapshot keys
 # ---------------------------------------------------------------------------
 
 class TestBuildPsFieldsSourceGuard(unittest.TestCase):
