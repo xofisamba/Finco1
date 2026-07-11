@@ -153,6 +153,7 @@ class TestAddCapexLine(unittest.TestCase):
         pr = self._make_project_record(project_id="add-test-001")
         result = add_capex_line(
             project_record=pr,
+            user_id="test-unit-user",
             label="Custom Turbine Pad",
             parent_category_code="C.05",
             amount_keur=500.0,
@@ -172,6 +173,7 @@ class TestAddCapexLine(unittest.TestCase):
         pr = self._make_project_record(project_id="add-test-002")
         result = add_capex_line(
             project_record=pr,
+            user_id="test-unit-user",
             label="First Custom",
             parent_category_code="C.03",
             workbook_version=_workbook_version(),
@@ -187,6 +189,7 @@ class TestAddCapexLine(unittest.TestCase):
         with self.assertRaises(CapexProtectedReferenceError):
             add_capex_line(
                 project_record=pr,
+            user_id="test-unit-user",
                 label="Should Fail",
                 parent_category_code="C.05",
                 workbook_version=_workbook_version(),
@@ -198,6 +201,7 @@ class TestAddCapexLine(unittest.TestCase):
         with self.assertRaises(CapexProtectedGroupError):
             add_capex_line(
                 project_record=pr,
+            user_id="test-unit-user",
                 label="Financing row",
                 parent_category_code="C.17",
                 workbook_version=_workbook_version(),
@@ -209,6 +213,7 @@ class TestAddCapexLine(unittest.TestCase):
         with self.assertRaises(CapexProtectedGroupError):
             add_capex_line(
                 project_record=pr,
+            user_id="test-unit-user",
                 label="Reserve row",
                 parent_category_code="C.18",
                 workbook_version=_workbook_version(),
@@ -220,6 +225,7 @@ class TestAddCapexLine(unittest.TestCase):
         with self.assertRaises(CapexProtectedGroupError):
             add_capex_line(
                 project_record=pr,
+            user_id="test-unit-user",
                 label="Contingency row",
                 parent_category_code="C.13",
                 workbook_version=_workbook_version(),
@@ -231,6 +237,7 @@ class TestAddCapexLine(unittest.TestCase):
         with self.assertRaises(CapexProtectedGroupError):
             add_capex_line(
                 project_record=pr,
+            user_id="test-unit-user",
                 label="Unknown group",
                 parent_category_code="C.99",
                 workbook_version=_workbook_version(),
@@ -242,6 +249,7 @@ class TestAddCapexLine(unittest.TestCase):
         with self.assertRaises(CapexVersionMismatchError):
             add_capex_line(
                 project_record=pr,
+            user_id="test-unit-user",
                 label="Version mismatch",
                 parent_category_code="C.05",
                 workbook_version="WRONG_VERSION",
@@ -253,6 +261,7 @@ class TestAddCapexLine(unittest.TestCase):
         with self.assertRaises(ValueError):
             add_capex_line(
                 project_record=pr,
+            user_id="test-unit-user",
                 label="   ",
                 parent_category_code="C.05",
                 workbook_version=_workbook_version(),
@@ -285,6 +294,7 @@ class TestUpdateCapexLine(unittest.TestCase):
         pr = self._make_project_record(project_id)
         return add_capex_line(
             project_record=pr,
+            user_id="test-unit-user",
             label=label,
             parent_category_code="C.02",
             amount_keur=100.0,
@@ -296,6 +306,7 @@ class TestUpdateCapexLine(unittest.TestCase):
         sl, pr = self._add_line("upd-test-001")
         updated = update_capex_line(
             project_record=pr,
+            user_id="test-unit-user",
             sub_line_id=sl.sub_line_id,
             label="Updated Label",
             amount_keur=999.0,
@@ -311,6 +322,7 @@ class TestUpdateCapexLine(unittest.TestCase):
         # First update succeeds
         update_capex_line(
             project_record=pr,
+            user_id="test-unit-user",
             sub_line_id=sl.sub_line_id,
             label="First Update",
             amount_keur=200.0,
@@ -321,6 +333,7 @@ class TestUpdateCapexLine(unittest.TestCase):
         with self.assertRaises(CapexConcurrentEditError):
             update_capex_line(
                 project_record=pr,
+            user_id="test-unit-user",
                 sub_line_id=sl.sub_line_id,
                 label="Stale Update",
                 amount_keur=300.0,
@@ -337,6 +350,7 @@ class TestUpdateCapexLine(unittest.TestCase):
         with self.assertRaises(CapexProtectedReferenceError):
             update_capex_line(
                 project_record=pr_ro,
+                user_id="test-unit-user",
                 sub_line_id=sl.sub_line_id,
                 label="Blocked",
                 amount_keur=0.0,
@@ -350,6 +364,7 @@ class TestUpdateCapexLine(unittest.TestCase):
         with self.assertRaises(CapexVersionMismatchError):
             update_capex_line(
                 project_record=pr,
+            user_id="test-unit-user",
                 sub_line_id=sl.sub_line_id,
                 label="Version fail",
                 amount_keur=0.0,
@@ -385,13 +400,15 @@ class TestDeactivateCapexLine(unittest.TestCase):
         project_id = "deact-test-001"
         pr = self._make_project_record(project_id)
         sl = add_capex_line(
-            project_record=pr, label="To Remove",
+            project_record=pr,
+            user_id="test-unit-user", label="To Remove",
             parent_category_code="C.06", amount_keur=50.0,
             workbook_version=_workbook_version(),
         )
         self.assertTrue(sl.is_active)
         deactivate_capex_line(
-            project_record=pr, sub_line_id=sl.sub_line_id,
+            project_record=pr,
+            user_id="test-unit-user", sub_line_id=sl.sub_line_id,
             row_version=sl.updated_at, workbook_version=_workbook_version(),
         )
         active = get_active_sub_lines_for_project(project_id)
@@ -403,20 +420,23 @@ class TestDeactivateCapexLine(unittest.TestCase):
         project_id = "deact-test-002"
         pr = self._make_project_record(project_id)
         sl = add_capex_line(
-            project_record=pr, label="Concurrent",
+            project_record=pr,
+            user_id="test-unit-user", label="Concurrent",
             parent_category_code="C.07", amount_keur=10.0,
             workbook_version=_workbook_version(),
         )
         # Mutate row so token becomes stale
         update_capex_line(
-            project_record=pr, sub_line_id=sl.sub_line_id,
+            project_record=pr,
+            user_id="test-unit-user", sub_line_id=sl.sub_line_id,
             label="Updated First", amount_keur=20.0,
             row_version=sl.updated_at, workbook_version=_workbook_version(),
         )
         # Deactivate with old token must fail
         with self.assertRaises(CapexConcurrentEditError):
             deactivate_capex_line(
-                project_record=pr, sub_line_id=sl.sub_line_id,
+                project_record=pr,
+            user_id="test-unit-user", sub_line_id=sl.sub_line_id,
                 row_version=sl.updated_at, workbook_version=_workbook_version(),
             )
 
@@ -427,7 +447,8 @@ class TestDeactivateCapexLine(unittest.TestCase):
         pr.is_readonly = False
         with self.assertRaises(CapexProtectedReferenceError):
             deactivate_capex_line(
-                project_record=pr, sub_line_id="fake-id",
+                project_record=pr,
+            user_id="test-unit-user", sub_line_id="fake-id",
                 row_version="fake-version", workbook_version=_workbook_version(),
             )
 
@@ -459,18 +480,24 @@ class TestReorderCapexLines(unittest.TestCase):
         project_id = "reorder-test-001"
         pr = self._make_project_record(project_id)
         sl1 = add_capex_line(
-            project_record=pr, label="First", parent_category_code="C.04",
+            project_record=pr,
+            user_id="test-unit-user", label="First", parent_category_code="C.04",
             amount_keur=10.0, workbook_version=_workbook_version(),
         )
         sl2 = add_capex_line(
-            project_record=pr, label="Second", parent_category_code="C.04",
+            project_record=pr,
+            user_id="test-unit-user", label="Second", parent_category_code="C.04",
             amount_keur=20.0, workbook_version=_workbook_version(),
         )
-        # Reverse: sl2 first, sl1 second
+        # Reverse: sl2 first, sl1 second — submit complete set with row_versions
         reorder_capex_lines(
             project_record=pr,
+            user_id="test-unit-user",
             parent_category_code="C.04",
-            ordered_ids=[sl2.sub_line_id, sl1.sub_line_id],
+            ordered_rows=[
+                {"sub_line_id": sl2.sub_line_id, "row_version": sl2.updated_at},
+                {"sub_line_id": sl1.sub_line_id, "row_version": sl1.updated_at},
+            ],
             workbook_version=_workbook_version(),
         )
         active = [
@@ -479,6 +506,9 @@ class TestReorderCapexLines(unittest.TestCase):
         ]
         ids_in_order = [s.sub_line_id for s in sorted(active, key=lambda s: s.display_order)]
         self.assertEqual(ids_in_order, [sl2.sub_line_id, sl1.sub_line_id])
+        # Verify contiguous 1..N display_order values
+        orders = sorted(s.display_order for s in active)
+        self.assertEqual(orders, list(range(1, len(active) + 1)))
 
     def test_reorder_engine_group_rejected(self):
         from app.v2.capex_commands import reorder_capex_lines, CapexProtectedGroupError
@@ -486,8 +516,9 @@ class TestReorderCapexLines(unittest.TestCase):
         with self.assertRaises(CapexProtectedGroupError):
             reorder_capex_lines(
                 project_record=pr,
+                user_id="test-unit-user",
                 parent_category_code="C.17",
-                ordered_ids=[],
+                ordered_rows=[],
                 workbook_version=_workbook_version(),
             )
 
@@ -520,6 +551,7 @@ class TestCapexViewModelWithSubLines(unittest.TestCase):
 
         sl = add_capex_line(
             project_record=pr,
+            user_id="test-unit-user",
             label="Custom Row VM Test",
             parent_category_code="C.05",
             amount_keur=1234.0,
@@ -571,12 +603,14 @@ class TestCapexViewModelWithSubLines(unittest.TestCase):
         pr.is_readonly = False
 
         sl = add_capex_line(
-            project_record=pr, label="Will Be Deactivated",
+            project_record=pr,
+            user_id="test-unit-user", label="Will Be Deactivated",
             parent_category_code="C.09", amount_keur=9999.0,
             workbook_version=_workbook_version(),
         )
         deactivate_capex_line(
-            project_record=pr, sub_line_id=sl.sub_line_id,
+            project_record=pr,
+            user_id="test-unit-user", sub_line_id=sl.sub_line_id,
             row_version=sl.updated_at, workbook_version=_workbook_version(),
         )
 
@@ -624,7 +658,8 @@ class TestCapexViewModelWithSubLines(unittest.TestCase):
         hard_before = vm_before.hard_capex_keur
 
         add_capex_line(
-            project_record=pr, label="Hard CAPEX Row",
+            project_record=pr,
+            user_id="test-unit-user", label="Hard CAPEX Row",
             parent_category_code="C.01", amount_keur=500.0,
             workbook_version=_workbook_version(),
         )
@@ -651,16 +686,19 @@ class TestCapexViewModelWithSubLines(unittest.TestCase):
         pr.template_source = "generic_wind"
         pr.is_readonly = False
 
-        # Verify no WaterfallRunner or engine module is imported during the command.
+        # Verify add_capex_line does NOT import or call WaterfallRunner.
+        # Patch the local binding in capex_commands (from ... import create_sub_line).
         import app.v2.capex_commands as _cmd_mod
         with patch.object(_cmd_mod, "create_sub_line",
                           wraps=_cmd_mod.create_sub_line) as spy:
             add_capex_line(
-                project_record=pr, label="No Engine Call",
+                project_record=pr,
+                user_id="test-unit-user", label="No Engine Call",
                 parent_category_code="C.10", amount_keur=0.0,
                 workbook_version=_workbook_version(),
             )
-            # If we got here without an engine call, we're good.
+            # create_sub_line called once means the command went through
+            # the persistence path and not via any engine calculation.
             spy.assert_called_once()
 
 
@@ -692,7 +730,8 @@ class TestInputsSummaryParity(unittest.TestCase):
         pr.is_readonly = False
 
         add_capex_line(
-            project_record=pr, label="Parity Row",
+            project_record=pr,
+            user_id="test-unit-user", label="Parity Row",
             parent_category_code="C.12", amount_keur=750.0,
             workbook_version=_workbook_version(),
         )
@@ -1041,6 +1080,409 @@ class TestCapexNoParityDrift(unittest.TestCase):
         c13 = capex.find(attrs={"data-group-code": "C.13"})
         add_form = c13.find(attrs={"data-testid": "add-row-form-C.13"}) if c13 else None
         self.assertIsNone(add_form, "C.13 must not have an Add Row form")
+
+
+# ---------------------------------------------------------------------------
+# 9. Reorder atomicity — validation and rollback
+# ---------------------------------------------------------------------------
+
+class TestReorderAtomicity(unittest.TestCase):
+    """Reorder must validate the complete active set and roll back on any mismatch."""
+
+    BASE_PID = "reorder-atomic-"
+
+    def _pid(self, suffix: str) -> str:
+        return f"{self.BASE_PID}{suffix}"
+
+    def setUp(self):
+        for suffix in ["stale", "unknown", "dup", "missing", "inactive",
+                       "concurrent", "order"]:
+            _register_project_id(self._pid(suffix))
+
+    def _make_pr(self, project_id: str):
+        r = MagicMock()
+        r.project_id = project_id
+        r.project_code = "TEST"
+        r.project_name = "Test"
+        r.project_type = "Wind"
+        r.project_origin = "user_created"
+        r.template_source = "generic_wind"
+        r.is_readonly = False
+        return r
+
+    def _add(self, project_id: str, label: str, code: str = "C.04"):
+        from app.v2.capex_commands import add_capex_line
+        return add_capex_line(
+            project_record=self._make_pr(project_id),
+            user_id="test-unit-user",
+            label=label,
+            parent_category_code=code,
+            workbook_version=_workbook_version(),
+        )
+
+    def _reorder(self, project_id: str, ordered_rows, code: str = "C.04"):
+        from app.v2.capex_commands import reorder_capex_lines
+        return reorder_capex_lines(
+            project_record=self._make_pr(project_id),
+            user_id="test-unit-user",
+            parent_category_code=code,
+            ordered_rows=ordered_rows,
+            workbook_version=_workbook_version(),
+        )
+
+    def test_stale_row_version_rejected(self):
+        from app.v2.capex_commands import CapexConcurrentEditError
+        pid = self._pid("stale")
+        sl1 = self._add(pid, "A")
+        sl2 = self._add(pid, "B")
+        with self.assertRaises(CapexConcurrentEditError):
+            self._reorder(pid, [
+                {"sub_line_id": sl1.sub_line_id, "row_version": "2000-01-01T00:00:00+00:00"},
+                {"sub_line_id": sl2.sub_line_id, "row_version": sl2.updated_at},
+            ])
+
+    def test_unknown_id_rejected(self):
+        from app.v2.capex_commands import CapexConcurrentEditError
+        pid = self._pid("unknown")
+        sl1 = self._add(pid, "A")
+        with self.assertRaises(CapexConcurrentEditError):
+            self._reorder(pid, [
+                {"sub_line_id": sl1.sub_line_id, "row_version": sl1.updated_at},
+                {"sub_line_id": "00000000-dead-beef-0000-000000000000", "row_version": "x"},
+            ])
+
+    def test_duplicate_id_rejected(self):
+        from app.v2.capex_commands import CapexConcurrentEditError
+        pid = self._pid("dup")
+        sl1 = self._add(pid, "A")
+        with self.assertRaises(CapexConcurrentEditError):
+            self._reorder(pid, [
+                {"sub_line_id": sl1.sub_line_id, "row_version": sl1.updated_at},
+                {"sub_line_id": sl1.sub_line_id, "row_version": sl1.updated_at},
+            ])
+
+    def test_missing_active_row_rejected(self):
+        from app.v2.capex_commands import CapexConcurrentEditError
+        pid = self._pid("missing")
+        sl1 = self._add(pid, "A")
+        sl2 = self._add(pid, "B")
+        # Submit only sl1, omitting sl2
+        with self.assertRaises(CapexConcurrentEditError):
+            self._reorder(pid, [
+                {"sub_line_id": sl1.sub_line_id, "row_version": sl1.updated_at},
+            ])
+
+    def test_inactive_row_id_rejected(self):
+        from app.v2.capex_commands import (
+            CapexConcurrentEditError, deactivate_capex_line, add_capex_line,
+        )
+        pid = self._pid("inactive")
+        sl1 = self._add(pid, "A")
+        sl2 = self._add(pid, "B")
+        deactivate_capex_line(
+            project_record=self._make_pr(pid),
+            user_id="test-unit-user",
+            sub_line_id=sl2.sub_line_id,
+            row_version=sl2.updated_at,
+            workbook_version=_workbook_version(),
+        )
+        # Now sl2 is inactive; submitting it must be rejected
+        with self.assertRaises(CapexConcurrentEditError):
+            self._reorder(pid, [
+                {"sub_line_id": sl1.sub_line_id, "row_version": sl1.updated_at},
+                {"sub_line_id": sl2.sub_line_id, "row_version": sl2.updated_at},
+            ])
+
+    def test_concurrent_reorder_second_fails(self):
+        """First reorder succeeds; second from the same (now-stale) versions fails."""
+        from app.v2.capex_commands import CapexConcurrentEditError
+        pid = self._pid("concurrent")
+        sl1 = self._add(pid, "A")
+        sl2 = self._add(pid, "B")
+
+        # First reorder — reverse order — succeeds
+        result = self._reorder(pid, [
+            {"sub_line_id": sl2.sub_line_id, "row_version": sl2.updated_at},
+            {"sub_line_id": sl1.sub_line_id, "row_version": sl1.updated_at},
+        ])
+        self.assertEqual(result[0].sub_line_id, sl2.sub_line_id)
+
+        # Second reorder with same stale tokens — must be rejected
+        with self.assertRaises(CapexConcurrentEditError):
+            self._reorder(pid, [
+                {"sub_line_id": sl2.sub_line_id, "row_version": sl2.updated_at},
+                {"sub_line_id": sl1.sub_line_id, "row_version": sl1.updated_at},
+            ])
+
+    def test_final_order_is_contiguous_1_to_n(self):
+        pid = self._pid("order")
+        sls = [self._add(pid, f"Row{i}") for i in range(4)]
+
+        reversed_rows = [
+            {"sub_line_id": sl.sub_line_id, "row_version": sl.updated_at}
+            for sl in reversed(sls)
+        ]
+        result = self._reorder(pid, reversed_rows)
+
+        orders = sorted(r.display_order for r in result)
+        self.assertEqual(orders, list(range(1, len(result) + 1)),
+                         f"display_order must be 1..N, got {orders}")
+        # Confirm actual order matches submission
+        self.assertEqual(result[0].sub_line_id, sls[-1].sub_line_id)
+
+    def test_transaction_rolls_back_on_mismatch(self):
+        """Orders must remain unchanged when reorder is rejected."""
+        from app.v2.capex_commands import CapexConcurrentEditError
+        from app.persistence.capex_sub_lines import list_sub_lines_for_project
+        from app.persistence.db import get_cursor
+
+        pid = self._pid("stale")
+        # Re-register to get clean state (setUp already ran, but stale test may have added rows)
+        _register_project_id(pid)
+        sl1 = self._add(pid, "X")
+        sl2 = self._add(pid, "Y")
+        orig_orders = {sl1.sub_line_id: sl1.display_order, sl2.sub_line_id: sl2.display_order}
+
+        with self.assertRaises(CapexConcurrentEditError):
+            self._reorder(pid, [
+                {"sub_line_id": sl2.sub_line_id, "row_version": "stale"},
+                {"sub_line_id": sl1.sub_line_id, "row_version": "stale"},
+            ])
+
+        with get_cursor() as cur:
+            rows = list_sub_lines_for_project(cur, pid)
+        after_orders = {r.sub_line_id: r.display_order for r in rows}
+        self.assertEqual(after_orders, orig_orders,
+                         "display_order must be unchanged after rejected reorder")
+
+
+# ---------------------------------------------------------------------------
+# 10. Workspace dirty-state after every row command
+# ---------------------------------------------------------------------------
+
+class TestWorkspaceDirtyState(unittest.TestCase):
+    """Each successful row command must set workspace.dirty = True."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.client = _authed_client()
+        cls.project_code = _create_project(cls.client, "DIRTY")
+
+    def _user_and_pr(self):
+        from app.auth import decode_session_token, COOKIE_NAME
+        from app.persistence.projects_repository import get_project_record
+        token = self.client.cookies.get(COOKIE_NAME)
+        user = decode_session_token(token)
+        pr = get_project_record(user_id=user.user_id, project_code=self.project_code)
+        return user, pr
+
+    def _ws(self):
+        from app.persistence.workspace_repository import get_workspace_state
+        user, pr = self._user_and_pr()
+        return get_workspace_state(user_id=user.user_id, project_id=pr.project_id)
+
+    def _reset_dirty(self):
+        from app.persistence.db import get_cursor
+        user, pr = self._user_and_pr()
+        with get_cursor() as cur:
+            cur.execute(
+                "UPDATE workspace_states SET dirty=0 WHERE user_id=? AND project_id=?",
+                (user.user_id, pr.project_id),
+            )
+
+    def _workbook_version(self):
+        return WORKBOOK.version
+
+    def test_add_marks_workspace_dirty(self):
+        self._reset_dirty()
+        self.client.post(
+            "/v2/capex/line/add",
+            data={
+                "project": self.project_code,
+                "parent_category_code": "C.02",
+                "label": "Dirty Test Add",
+                "amount_keur": "100",
+                "workbook_version": self._workbook_version(),
+            },
+            headers={"HX-Request": "true"},
+        )
+        self.assertEqual(self._ws().dirty, True,
+                         "workspace must be dirty after successful add")
+
+    def test_update_marks_workspace_dirty(self):
+        from app.persistence.capex_sub_lines import get_active_sub_lines_for_project
+        # Ensure at least one C.02 row exists
+        self.client.post(
+            "/v2/capex/line/add",
+            data={
+                "project": self.project_code,
+                "parent_category_code": "C.02",
+                "label": "Update Dirty Source",
+                "amount_keur": "50",
+                "workbook_version": self._workbook_version(),
+            },
+            headers={"HX-Request": "true"},
+        )
+        user, pr = self._user_and_pr()
+        sub_lines = get_active_sub_lines_for_project(pr.project_id)
+        c02 = [sl for sl in sub_lines if sl.parent_category_code == "C.02"]
+        self.assertGreater(len(c02), 0)
+        target = c02[-1]
+
+        self._reset_dirty()
+        self.client.post(
+            "/v2/capex/line/update",
+            data={
+                "project": self.project_code,
+                "sub_line_id": target.sub_line_id,
+                "label": "Dirty Test Update",
+                "amount_keur": "200",
+                "notes": "",
+                "row_version": target.updated_at,
+                "workbook_version": self._workbook_version(),
+            },
+            headers={"HX-Request": "true"},
+        )
+        self.assertEqual(self._ws().dirty, True,
+                         "workspace must be dirty after successful update")
+
+    def test_deactivate_marks_workspace_dirty(self):
+        from app.persistence.capex_sub_lines import get_active_sub_lines_for_project
+        self.client.post(
+            "/v2/capex/line/add",
+            data={
+                "project": self.project_code,
+                "parent_category_code": "C.03",
+                "label": "Deactivate Dirty Source",
+                "amount_keur": "10",
+                "workbook_version": self._workbook_version(),
+            },
+            headers={"HX-Request": "true"},
+        )
+        user, pr = self._user_and_pr()
+        sub_lines = get_active_sub_lines_for_project(pr.project_id)
+        c03 = [sl for sl in sub_lines if sl.parent_category_code == "C.03"]
+        self.assertGreater(len(c03), 0)
+        target = c03[-1]
+
+        self._reset_dirty()
+        self.client.post(
+            "/v2/capex/line/deactivate",
+            data={
+                "project": self.project_code,
+                "sub_line_id": target.sub_line_id,
+                "row_version": target.updated_at,
+                "workbook_version": self._workbook_version(),
+            },
+            headers={"HX-Request": "true"},
+        )
+        self.assertEqual(self._ws().dirty, True,
+                         "workspace must be dirty after successful deactivate")
+
+    def test_reorder_marks_workspace_dirty(self):
+        from app.persistence.capex_sub_lines import get_active_sub_lines_for_project
+        # Ensure ≥2 rows in C.04
+        for i in range(2):
+            self.client.post(
+                "/v2/capex/line/add",
+                data={
+                    "project": self.project_code,
+                    "parent_category_code": "C.04",
+                    "label": f"Reorder Dirty {i}",
+                    "amount_keur": "0",
+                    "workbook_version": self._workbook_version(),
+                },
+                headers={"HX-Request": "true"},
+            )
+        user, pr = self._user_and_pr()
+        sub_lines = get_active_sub_lines_for_project(pr.project_id)
+        c04 = [sl for sl in sub_lines if sl.parent_category_code == "C.04"]
+        self.assertGreaterEqual(len(c04), 2)
+
+        self._reset_dirty()
+        form = {
+            "project": self.project_code,
+            "parent_category_code": "C.04",
+            "workbook_version": self._workbook_version(),
+        }
+        # FastAPI accepts repeated fields with the same key for List[str]
+        # TestClient sends list values as repeated keys
+        resp = self.client.post(
+            "/v2/capex/line/reorder",
+            data={
+                **form,
+                "sub_line_id": [sl.sub_line_id for sl in reversed(c04)],
+                "row_version": [sl.updated_at for sl in reversed(c04)],
+            },
+            headers={"HX-Request": "true"},
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(self._ws().dirty, True,
+                         "workspace must be dirty after successful reorder")
+
+
+# ---------------------------------------------------------------------------
+# 11. Concurrent add — unique UUIDs and unique business codes
+# ---------------------------------------------------------------------------
+
+class TestConcurrentAdd(unittest.TestCase):
+    """Concurrent adds must produce unique sub_line_ids and unique business codes."""
+
+    def setUp(self):
+        _register_project_id("concurrent-add-001")
+
+    def _make_pr(self, project_id: str):
+        r = MagicMock()
+        r.project_id = project_id
+        r.project_code = "TEST"
+        r.project_name = "Test"
+        r.project_type = "Wind"
+        r.project_origin = "user_created"
+        r.template_source = "generic_wind"
+        r.is_readonly = False
+        return r
+
+    def test_concurrent_adds_produce_unique_ids_and_codes(self):
+        import threading
+        from app.v2.capex_commands import add_capex_line
+        from app.persistence.capex_sub_lines import get_active_sub_lines_for_project
+        from app.persistence.db import get_cursor
+
+        pid = "concurrent-add-001"
+        pr = self._make_pr(pid)
+        errors = []
+        results = []
+        lock = threading.Lock()
+
+        def _add(n: int):
+            try:
+                sl = add_capex_line(
+                    project_record=pr,
+                    user_id="test-unit-user",
+                    label=f"Concurrent {n}",
+                    parent_category_code="C.06",
+                    amount_keur=float(n),
+                    workbook_version=_workbook_version(),
+                )
+                with lock:
+                    results.append(sl)
+            except Exception as exc:
+                with lock:
+                    errors.append(exc)
+
+        threads = [threading.Thread(target=_add, args=(i,)) for i in range(5)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        self.assertEqual(errors, [], f"Unexpected errors during concurrent add: {errors}")
+        self.assertEqual(len(results), 5, f"Expected 5 results, got {len(results)}")
+
+        ids = [r.sub_line_id for r in results]
+        codes = [r.business_code for r in results]
+        self.assertEqual(len(set(ids)), 5, f"sub_line_ids must be unique: {ids}")
+        self.assertEqual(len(set(codes)), 5, f"business_codes must be unique: {codes}")
 
 
 if __name__ == "__main__":

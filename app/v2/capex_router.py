@@ -18,8 +18,10 @@ POST /v2/capex/line/deactivate
     Requires row_version for optimistic concurrency.
 
 POST /v2/capex/line/reorder
-    Update display_order for rows in a group.
-    Accepts ordered_ids as repeated form values.
+    Atomically reorder all rows in a CAPEX group.
+    Accepts the COMPLETE active set as ordered pairs of
+    sub_line_id[] + row_version[] (parallel repeated form fields).
+    Any unknown, missing, duplicate, or stale entry → 409.
 
 All endpoints
   - Require authentication (finco_session cookie).
@@ -33,6 +35,8 @@ All endpoints
 
 Row commands do NOT route through WorkbookUpdateService or /v2/workbook/update.
 They mutate capex_sub_lines only; the workspace draft_snapshot is untouched.
+The workspace is marked dirty (dirty=1) inside the same exclusive transaction
+as the row mutation.
 """
 from __future__ import annotations
 
@@ -65,14 +69,16 @@ def _get_current_user(request: Request):
     return decode_session_token(token)
 
 
-def _render_capex_sheet(request: Request, project_record, pis, ws, project: str, field_error: str = "") -> HTMLResponse:
+def _render_capex_sheet(
+    request: Request, project_record, pis, ws, project: str, field_error: str = ""
+) -> HTMLResponse:
     """Delegate to the main V2 router's CAPEX partial renderer."""
     from app.v2.router import _render_capex_htmx_sheet
     return _render_capex_htmx_sheet(request, pis, ws, project_record, project, field_error=field_error)
 
 
 def _load_project_and_ws(user, project: str):
-    """Return (project_record, ws, pis) or raise RuntimeError with a message."""
+    """Return (project_record, ws, pis) or raise LookupError."""
     from app.persistence.projects_repository import get_project_record
     from app.persistence.workspace_repository import get_workspace_state
     from app.workbook.service import WorkbookService
@@ -126,6 +132,7 @@ async def capex_line_add(
     try:
         add_capex_line(
             project_record=project_record,
+            user_id=user.user_id,
             label=label.strip(),
             parent_category_code=parent_category_code,
             amount_keur=amount_keur,
@@ -141,7 +148,6 @@ async def capex_line_add(
             return _render_capex_sheet(request, project_record, pis, ws, project, field_error=str(exc))
         return JSONResponse({"error": str(exc)}, status_code=422)
 
-    # Reload workspace state (dirty flag may have changed externally) and re-render.
     from app.persistence.workspace_repository import get_workspace_state
     ws = get_workspace_state(user_id=user.user_id, project_id=project_record.project_id) or ws
     if is_htmx:
@@ -175,6 +181,7 @@ async def capex_line_update(
     try:
         update_capex_line(
             project_record=project_record,
+            user_id=user.user_id,
             sub_line_id=sub_line_id,
             label=label.strip(),
             amount_keur=amount_keur,
@@ -224,6 +231,7 @@ async def capex_line_deactivate(
     try:
         deactivate_capex_line(
             project_record=project_record,
+            user_id=user.user_id,
             sub_line_id=sub_line_id,
             row_version=row_version,
             workbook_version=workbook_version,
@@ -248,13 +256,18 @@ async def capex_line_reorder(
     request: Request,
     project: str = Form(...),
     parent_category_code: str = Form(...),
-    ordered_ids: List[str] = Form(default=[]),
+    sub_line_id: List[str] = Form(default=[]),
+    row_version: List[str] = Form(default=[]),
     workbook_version: str = Form(...),
 ):
-    """Reorder custom rows within a CAPEX group.
+    """Atomically reorder all custom rows within a CAPEX group.
 
-    ``ordered_ids`` is a repeated form field: the first value becomes
-    display_order=1, the second display_order=2, etc.
+    Accepts two parallel repeated form fields:
+    - sub_line_id[] — ordered list of sub-line UUIDs (desired new order)
+    - row_version[]  — matching updated_at tokens (must align 1-to-1)
+
+    The submitted set must be COMPLETE (all active rows for the group).
+    Any mismatch → 409.
     """
     user = _get_current_user(request)
     if not user:
@@ -267,11 +280,23 @@ async def capex_line_reorder(
 
     is_htmx = request.headers.get("HX-Request") == "true"
 
+    if len(sub_line_id) != len(row_version):
+        err = "sub_line_id and row_version lists must have equal length."
+        if is_htmx:
+            return _render_capex_sheet(request, project_record, pis, ws, project, field_error=err)
+        return JSONResponse({"error": err}, status_code=422)
+
+    ordered_rows = [
+        {"sub_line_id": sid, "row_version": rv}
+        for sid, rv in zip(sub_line_id, row_version)
+    ]
+
     try:
         reorder_capex_lines(
             project_record=project_record,
+            user_id=user.user_id,
             parent_category_code=parent_category_code,
-            ordered_ids=ordered_ids,
+            ordered_rows=ordered_rows,
             workbook_version=workbook_version,
         )
     except CapexCommandError as exc:

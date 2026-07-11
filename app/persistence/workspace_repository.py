@@ -424,3 +424,24 @@ def v2_atomic_draft_update(
         if cur is not None:
             cur.close()
         conn.close()
+
+
+# mark_workspace_dirty
+# -----------------------------------------------------------------
+
+def mark_workspace_dirty_cursor(cur: Any, *, user_id: str, project_id: str) -> bool:
+    """Set dirty=1 on the workspace row using an existing cursor.
+
+    Intended for use inside an already-open exclusive transaction so the
+    dirty-state update is atomic with the row mutation that triggered it.
+
+    Returns True if a workspace row was found and updated, False if none
+    exists (e.g. workspace not yet initialised — safe to ignore; no state
+    to mark dirty).
+    """
+    now = _now_utc().isoformat()
+    cur.execute(
+        "UPDATE workspace_states SET dirty=1, updated_at=? WHERE user_id=? AND project_id=?",
+        (now, user_id, project_id),
+    )
+    return cur.rowcount > 0

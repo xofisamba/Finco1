@@ -1230,29 +1230,98 @@ def deactivate_sub_line_with_version(
     return cur.rowcount > 0
 
 
+class ReorderConflictError(ValueError):
+    """Raised when a reorder operation detects stale, unknown, duplicate, or
+    missing row IDs. The transaction must be rolled back by the caller."""
+
+
 def reorder_sub_lines(
     cur: Any,
     *,
     project_id: str,
     parent_category_code: str,
-    ordered_ids: Sequence[str],
+    ordered_rows: Sequence[Mapping[str, str]],
 ) -> list[CapexSubLine]:
-    """Update display_order for a set of active sub-lines within a group.
+    """Atomically reorder active sub-lines within a group.
 
-    ``ordered_ids`` is the desired order of sub-line UUIDs (first UUID gets
-    display_order=1, second gets 2, …).  Only sub-line IDs that are active
-    and belong to this project/category are accepted; any unknown or inactive
-    IDs are ignored silently (defensive).
+    ``ordered_rows`` is the complete ordered set of active rows for the group,
+    each as ``{"sub_line_id": str, "row_version": str}`` where ``row_version``
+    is the ``updated_at`` timestamp (optimistic-lock token).
 
-    Returns the updated records in their new order.
-    The caller is responsible for opening the transaction.
+    Validation rules (ALL must pass or ReorderConflictError is raised):
+    - No duplicate sub_line_id in the submitted list.
+    - The submitted IDs exactly equal the current active ID set for the group
+      (no unknown, no missing, no inactive IDs).
+    - Every submitted row_version must equal the row's current updated_at.
+
+    On success:
+    - All active rows in the group receive unique contiguous display_order
+      values 1..N in the submitted order.
+    - No gaps, no duplicates.
+
+    The caller is responsible for ensuring this function runs inside an
+    exclusive transaction so the read-then-write is atomic.
     """
     validate_parent_category(parent_category_code)
     from datetime import datetime, timezone
     now = datetime.now(timezone.utc).isoformat()
 
-    results: list[CapexSubLine] = []
-    for new_order, sid in enumerate(ordered_ids, start=1):
+    # 1. Load current active rows for the group.
+    cur.execute(
+        """
+        SELECT sub_line_id, updated_at FROM capex_sub_lines
+        WHERE project_id = ? AND parent_category_code = ? AND is_active = 1
+        """,
+        (project_id, parent_category_code),
+    )
+    db_rows = {r["sub_line_id"]: r["updated_at"] for r in cur.fetchall()}
+    current_ids: set[str] = set(db_rows.keys())
+
+    # 2. Validate submitted list.
+    submitted_ids: list[str] = [r["sub_line_id"] for r in ordered_rows]
+    submitted_versions: dict[str, str] = {
+        r["sub_line_id"]: r["row_version"] for r in ordered_rows
+    }
+
+    # 2a. Duplicate IDs in the submitted list.
+    if len(submitted_ids) != len(set(submitted_ids)):
+        seen: set[str] = set()
+        dups = [sid for sid in submitted_ids if sid in seen or seen.add(sid)]  # type: ignore[func-returns-value]
+        raise ReorderConflictError(
+            f"Duplicate sub_line_id(s) in reorder request: {dups!r}."
+        )
+
+    submitted_id_set = set(submitted_ids)
+
+    # 2b. Unknown or inactive IDs (not in current active set).
+    unknown = submitted_id_set - current_ids
+    if unknown:
+        raise ReorderConflictError(
+            f"Unknown or inactive sub_line_id(s): {sorted(unknown)!r}. "
+            "Reload the page and try again."
+        )
+
+    # 2c. Missing active IDs (active row not present in submitted list).
+    missing = current_ids - submitted_id_set
+    if missing:
+        raise ReorderConflictError(
+            f"Missing active sub_line_id(s) from reorder request: {sorted(missing)!r}. "
+            "Submit the complete active set for the group."
+        )
+
+    # 2d. Stale row_version for any row.
+    stale = [
+        sid for sid in submitted_ids
+        if submitted_versions[sid] != db_rows[sid]
+    ]
+    if stale:
+        raise ReorderConflictError(
+            f"Stale row_version for sub_line_id(s): {stale!r}. "
+            "Reload and try again."
+        )
+
+    # 3. Update display_order 1..N (contiguous, no gaps).
+    for new_order, sid in enumerate(submitted_ids, start=1):
         cur.execute(
             """
             UPDATE capex_sub_lines
@@ -1262,7 +1331,8 @@ def reorder_sub_lines(
             """,
             (new_order, now, project_id, sid, parent_category_code),
         )
-    # Read back the current state for the group.
+
+    # 4. Read back in new order.
     cur.execute(
         """
         SELECT * FROM capex_sub_lines
@@ -1271,9 +1341,7 @@ def reorder_sub_lines(
         """,
         (project_id, parent_category_code),
     )
-    for row in cur.fetchall():
-        results.append(CapexSubLine.from_row(row))
-    return results
+    return [CapexSubLine.from_row(row) for row in cur.fetchall()]
 
 
 __all__ = [
@@ -1294,6 +1362,7 @@ __all__ = [
     "list_business_codes_for_project",
     "list_sub_lines_for_project",
     "replace_sub_lines_for_project",
+    "ReorderConflictError",
     "reorder_sub_lines",
     "resolve_effective_sub_line_amount",
     "sanitize_scalar_capex_metadata",
