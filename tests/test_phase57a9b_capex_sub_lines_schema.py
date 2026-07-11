@@ -306,6 +306,7 @@ class TestExistingTablesUnchanged:
     EXPECTED_TABLES = {
         "projects", "scenarios", "runs",
         "workspace_states", "scenario_exports", "capex_sub_lines",
+        "opex_sub_lines",
     }
 
     def test_all_expected_tables_present(self, test_db, conn):
