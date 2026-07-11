@@ -104,6 +104,93 @@
 
     /* ── HTMX request indicator ──────────────────────────────────── */
     .htmx-request .v2-field-save { opacity: 0.5; pointer-events: none; }
+
+    /* ── Inputs sheet: collapsible sections ─────────────────────── */
+    .v2-inputs-section {
+      margin-bottom: 0;
+      border-bottom: 1px solid #ddd;
+    }
+    .v2-inputs-section-summary {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      cursor: pointer;
+      list-style: none;
+      font-size: 0.78rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #555;
+      padding: 0.45rem 0.5rem;
+      background: #f7f7f7;
+      border-top: 1px solid #e4e4e4;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      user-select: none;
+    }
+    .v2-inputs-section-summary::-webkit-details-marker { display: none; }
+    .v2-inputs-section-summary::before {
+      content: '▶';
+      font-size: 0.6rem;
+      transition: transform 0.15s;
+      color: #999;
+    }
+    details.v2-inputs-section[open] > .v2-inputs-section-summary::before {
+      transform: rotate(90deg);
+    }
+    .v2-inputs-section-icon { font-style: normal; }
+
+    /* ── Inputs sheet: nav ───────────────────────────────────────── */
+    .v2-inputs-nav {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.25rem;
+      padding: 0.4rem 0;
+      margin-bottom: 0.5rem;
+      border-bottom: 1px solid #e8e8e8;
+    }
+    .v2-inputs-nav a {
+      font-size: 0.75rem;
+      color: #2b7be0;
+      text-decoration: none;
+      padding: 0.15rem 0.45rem;
+      border-radius: 2px;
+      border: 1px solid #d0e0f8;
+      background: #f4f8ff;
+    }
+    .v2-inputs-nav a:hover { background: #ddeeff; }
+
+    /* ── Inputs sheet: computed summary rows ─────────────────────── */
+    .v2-inputs-summary-row .v2-field-value { font-variant-numeric: tabular-nums; }
+    .v2-inputs-placeholder-row .v2-field-value { font-style: italic; }
+    .v2-placeholder-tag {
+      font-size: 0.72rem;
+      color: #999;
+      border: 1px solid #ddd;
+      border-radius: 2px;
+      padding: 0.05em 0.35em;
+      background: #fafafa;
+      white-space: nowrap;
+    }
+
+    /* ── Inputs sheet: link row ──────────────────────────────────── */
+    .v2-inputs-sheet-link {
+      padding: 0.3rem 0;
+      border-top: 1px solid #eee;
+      margin-top: 0.1rem;
+    }
+    .v2-inputs-sheet-link a {
+      font-size: 0.78rem;
+      color: #2b7be0;
+      text-decoration: none;
+    }
+    .v2-inputs-sheet-link a:hover { text-decoration: underline; }
+
+    /* ── Runtime section colours ─────────────────────────────────── */
+    .v2-runtime-dirty { color: #7a5c00; font-weight: 600; }
+    .v2-runtime-clean { color: #2e6b35; }
+    .v2-runtime-mono  { font-family: monospace; font-size: 0.82rem; color: #555; }
   </style>
 </head>
 <body>
@@ -124,6 +211,7 @@
     </div>
 
     {% include "partials/sheet_project_setup.html" %}
+    {% include "partials/sheet_inputs.html" %}
   </div>
 
   <script>

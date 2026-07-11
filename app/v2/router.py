@@ -97,25 +97,24 @@ def _get_current_user(request: Request):
     return decode_session_token(token)
 
 
-def _build_ps_fields(pis) -> list[dict]:
-    """Build the project_setup field context list for the template.
+def _build_sheet_fields(sheet_id: str, pis) -> list[dict]:
+    """Build the field context list for any registry sheet.
 
-    Returns one dict per FieldSpec in the project_setup sheet, ordered by
-    section then field.order.  Values come exclusively from pis.get(field_id)
-    — never from snapshot keys or any other source.
+    Returns one dict per FieldSpec ordered by section.order then field.order.
+    Values come exclusively from pis.get(field_id).
 
-    binding_label encodes the registry contract for display:
+    binding_label encodes the registry contract:
       "bound"           — BOUND INPUT, editable via the V2 save endpoint
-      "partial"         — PARTIAL; not yet fully wired to engine
+      "partial"         — PARTIAL; partially wired to engine
       "display-only"    — DERIVED_DISPLAY; computed, never user-editable
       "template-locked" — TEMPLATE_LOCKED; frozen at project creation
 
     Validation metadata (required, min_value, max_value, step, help_text)
-    is propagated from the FieldSpec so the macro can render HTML5 attrs
-    without hard-coding any field-specific knowledge.
+    is propagated from FieldSpec so templates can render HTML5 attrs without
+    any field-specific knowledge.
     """
     from app.workbook.specs import BindingStatus
-    sheet = WORKBOOK.sheet("project_setup")
+    sheet = WORKBOOK.sheet(sheet_id)
     rows: list[dict] = []
     for section in sorted(sheet.sections, key=lambda s: s.order):
         for fspec in sorted(section.fields, key=lambda f: f.order):
@@ -154,7 +153,6 @@ def _build_ps_fields(pis) -> list[dict]:
                 "section_id": section.section_id,
                 "section_label": section.label,
                 "value": value,
-                # HTML5 validation metadata from registry
                 "required": fspec.required,
                 "min_value": fspec.min_value,
                 "max_value": fspec.max_value,
@@ -162,6 +160,105 @@ def _build_ps_fields(pis) -> list[dict]:
                 "help_text": fspec.description or "",
             })
     return rows
+
+
+def _build_ps_fields(pis) -> list[dict]:
+    """Build project_setup field list — delegates to _build_sheet_fields."""
+    return _build_sheet_fields("project_setup", pis)
+
+
+def _build_inputs_context(pis, ws) -> dict:
+    """Compute CAPEX/OPEX summary numbers and runtime metadata for the Inputs sheet.
+
+    Pulls only from pis (registry values) and ws (workspace state).
+    No engine calls, no ViewModels, no ProjectContext.
+    """
+    capex_c_ids = [
+        "capex.C.epc_contract", "capex.C.production_units", "capex.C.epc_other",
+        "capex.C.grid_connection", "capex.C.ops_preparation", "capex.C.insurances",
+        "capex.C.lease_tax", "capex.C.construction_mgmt_a", "capex.C.commissioning",
+        "capex.C.taxes",
+    ]
+    capex_d_ids = [
+        "capex.D.project_acquisition", "capex.D.project_rights",
+        "capex.D.audit_legal", "capex.D.construction_mgmt_b",
+    ]
+    capex_f_ids = [
+        "capex.F.idc", "capex.F.bank_fees", "capex.F.commitment_fees",
+        "capex.F.other_financial", "capex.F.vat_costs",
+    ]
+
+    def _sum_pis(field_ids):
+        total = 0.0
+        any_set = False
+        for fid in field_ids:
+            v = pis.get(fid)
+            if v is not None:
+                try:
+                    total += float(v)
+                    any_set = True
+                except (TypeError, ValueError):
+                    pass
+        return round(total, 2) if any_set else None
+
+    hard_capex = _sum_pis(capex_c_ids + capex_d_ids)
+    financing = _sum_pis(capex_f_ids)
+    reserve_v = pis.get("capex.R.reserve_accounts")
+    reserve = float(reserve_v) if reserve_v is not None else None
+    total_capex_v = pis.get("capex.summary.total")
+    total_capex = float(total_capex_v) if total_capex_v is not None else None
+
+    cap_v = pis.get("project_setup.technical.capacity_mw")
+    p50_v = pis.get("project_setup.technical.p50_hours")
+    capacity_mw = float(cap_v) if cap_v is not None else None
+    p50_hours = float(p50_v) if p50_v is not None else None
+
+    capex_per_mw = None
+    if total_capex is not None and capacity_mw:
+        try:
+            capex_per_mw = round(total_capex / capacity_mw, 1)
+        except ZeroDivisionError:
+            pass
+
+    opex_y1_v = pis.get("opex.summary.total_y1")
+    opex_y1 = float(opex_y1_v) if opex_y1_v is not None else None
+    opex_per_mw = None
+    opex_per_mwh = None
+    if opex_y1 is not None and capacity_mw:
+        try:
+            opex_per_mw = round(opex_y1 / capacity_mw, 1)
+            if p50_hours:
+                opex_per_mwh = round(opex_y1 / (capacity_mw * p50_hours), 4)
+        except ZeroDivisionError:
+            pass
+
+    return {
+        "capex_hard_keur": hard_capex,
+        "capex_financing_keur": financing,
+        "capex_reserve_keur": reserve,
+        "capex_total_keur": total_capex,
+        "capex_per_mw_keur": capex_per_mw,
+        "opex_y1_keur": opex_y1,
+        "opex_per_mw_keur": opex_per_mw,
+        "opex_per_mwh_eur": opex_per_mwh,
+        "runtime_snapshot_id": ws.last_runtime_snapshot_id,
+        "last_run_at": getattr(ws, "last_runtime_at", None),
+    }
+
+
+def _base_sheet_ctx(request, pis, ws, project_record, project, field_error=""):
+    """Shared context dict for both sheet partials."""
+    return {
+        "request": request,
+        "project_code": project,
+        "workbook_version": pis.workbook_version,
+        "content_hash": pis.content_hash,
+        "template_source": pis.template_source,
+        "project_editable": not is_protected_reference(project_record),
+        "ws_dirty": ws.dirty,
+        "has_runtime": bool(ws.last_runtime_snapshot_id),
+        "field_error": field_error,
+    }
 
 
 def _render_htmx_sheet(
@@ -172,37 +269,36 @@ def _render_htmx_sheet(
     project: str,
     field_error: str = "",
 ) -> HTMLResponse:
-    """Render the sheet partial + OOB status banner for an HTMX response.
+    """Render the project_setup sheet partial + OOB status banner for HTMX."""
+    ctx = _base_sheet_ctx(request, pis, ws, project_record, project, field_error)
+    ctx["ps_fields"] = _build_ps_fields(pis)
+    sheet_html = _templates.get_template("partials/sheet_project_setup.html").render(ctx)
+    banner_html = _templates.get_template("partials/_v2_status_banner.html").render(ctx)
+    oob = '<div id="v2-status-banner" hx-swap-oob="true">' + banner_html + "</div>"
+    return HTMLResponse(content=sheet_html + "\n" + oob)
 
-    Used by the POST handler on both success and error paths so every
-    HTMX response returns fresh state with the current content_hash.
-    """
 
-    project_editable = not is_protected_reference(project_record)
-    ps_fields = _build_ps_fields(pis)
-    ctx = {
-        "request": request,
-        "ps_fields": ps_fields,
-        "project_code": project,
-        "workbook_version": pis.workbook_version,
-        "content_hash": pis.content_hash,
-        "template_source": pis.template_source,
-        "project_editable": project_editable,
-        "ws_dirty": ws.dirty,
-        "has_runtime": bool(ws.last_runtime_snapshot_id),
-        "field_error": field_error,
-    }
-    sheet_html = _templates.get_template(
-        "partials/sheet_project_setup.html"
-    ).render(ctx)
-    banner_html = _templates.get_template(
-        "partials/_v2_status_banner.html"
-    ).render(ctx)
-    oob = (
-        '<div id="v2-status-banner" hx-swap-oob="true">'
-        + banner_html
-        + "</div>"
-    )
+def _render_inputs_htmx_sheet(
+    request: Request,
+    pis,
+    ws,
+    project_record,
+    project: str,
+    field_error: str = "",
+) -> HTMLResponse:
+    """Render the inputs sheet partial + OOB status banner for HTMX."""
+    ctx = _base_sheet_ctx(request, pis, ws, project_record, project, field_error)
+    ctx.update({
+        "technical_fields": _build_sheet_fields("project_setup", pis),
+        "revenue_fields": _build_sheet_fields("revenue", pis),
+        "capex_fields": _build_sheet_fields("capex", pis),
+        "opex_fields": _build_sheet_fields("opex", pis),
+        "debt_fields": _build_sheet_fields("debt", pis),
+        "inputs_summary": _build_inputs_context(pis, ws),
+    })
+    sheet_html = _templates.get_template("partials/sheet_inputs.html").render(ctx)
+    banner_html = _templates.get_template("partials/_v2_status_banner.html").render(ctx)
+    oob = '<div id="v2-status-banner" hx-swap-oob="true">' + banner_html + "</div>"
     return HTMLResponse(content=sheet_html + "\n" + oob)
 
 
@@ -245,11 +341,9 @@ async def v2_workbook(request: Request, project: Optional[str] = None):
 
     pis = WorkbookService.build_draft_input_set_from_workspace(ws)
     hydration_script = WorkbookService.runtime_hydration_script(ws)
-    ps_fields = _build_ps_fields(pis)
 
     project_editable = not is_protected_reference(project_record)
 
-    # Decode flash error from a failed non-HTMX POST.
     flash_error = ""
     raw_err = request.query_params.get("v2_err", "")
     if raw_err:
@@ -264,7 +358,13 @@ async def v2_workbook(request: Request, project: Optional[str] = None):
         "content_hash": pis.content_hash,
         "template_source": pis.template_source,
         "hydration_script": hydration_script,
-        "ps_fields": ps_fields,
+        "ps_fields": _build_ps_fields(pis),
+        "technical_fields": _build_sheet_fields("project_setup", pis),
+        "revenue_fields": _build_sheet_fields("revenue", pis),
+        "capex_fields": _build_sheet_fields("capex", pis),
+        "opex_fields": _build_sheet_fields("opex", pis),
+        "debt_fields": _build_sheet_fields("debt", pis),
+        "inputs_summary": _build_inputs_context(pis, ws),
         "user": user,
         "project_editable": project_editable,
         "ws_dirty": ws.dirty,
@@ -283,6 +383,7 @@ async def v2_workbook_update(
     project: str = Form(...),
     workbook_version: str = Form(...),
     content_hash: str = Form(...),
+    sheet_id: str = Form(default="project_setup"),
 ):
     """V2 field edit endpoint — canonical edit pipeline.
 
@@ -321,6 +422,17 @@ async def v2_workbook_update(
             status_code=303,
         )
 
+    def _htmx_error(pis_for_render, field_error: str) -> HTMLResponse:
+        if sheet_id == "inputs":
+            return _render_inputs_htmx_sheet(
+                request, pis_for_render, ws, project_record, project,
+                field_error=field_error,
+            )
+        return _render_htmx_sheet(
+            request, pis_for_render, ws, project_record, project,
+            field_error=field_error,
+        )
+
     try:
         updated_pis = WorkbookUpdateService.apply_draft_update(
             ws=ws,
@@ -331,47 +443,38 @@ async def v2_workbook_update(
             project_record=project_record,
         )
     except ProtectedReferenceError as exc:
-        # Defense-in-depth: UI already hides forms for protected refs.
         if is_htmx:
             pis = WorkbookService.build_draft_input_set_from_workspace(ws)
-            return _render_htmx_sheet(
-                request, pis, ws, project_record, project,
-                field_error=str(exc),
-            )
+            return _htmx_error(pis, str(exc))
         return JSONResponse({"error": str(exc)}, status_code=409)
     except StaleContentError as exc:
-        # Re-render with fresh state; user can retry.
         if is_htmx:
             pis = WorkbookService.build_draft_input_set_from_workspace(ws)
-            return _render_htmx_sheet(
-                request, pis, ws, project_record, project,
-                field_error=(
-                    "Draft changed since page loaded — values refreshed. "
-                    "Please try your edit again."
-                ),
+            return _htmx_error(
+                pis,
+                "Draft changed since page loaded — values refreshed. "
+                "Please try your edit again.",
             )
         return _redirect_with_error(str(exc))
     except VersionMismatchError as exc:
-        # Always return 409 JSON (HTMX or not) — the browser must reload.
         return JSONResponse({"error": str(exc), "reload": True}, status_code=409)
     except (UnknownFieldError, NonEditableFieldError) as exc:
-        # API-level errors: 422 JSON (not user-facing validation).
         return JSONResponse({"error": str(exc)}, status_code=422)
     except FieldValidationError as exc:
         if is_htmx:
             pis = WorkbookService.build_draft_input_set_from_workspace(ws)
-            return _render_htmx_sheet(
-                request, pis, ws, project_record, project,
-                field_error=str(exc),
-            )
+            return _htmx_error(pis, str(exc))
         return _redirect_with_error(str(exc))
 
     # Success path.
     if is_htmx:
-        # Re-read workspace so ws.dirty reflects the committed write.
         updated_ws = get_workspace_state(
             user_id=user.user_id, project_id=project_record.project_id
         )
+        if sheet_id == "inputs":
+            return _render_inputs_htmx_sheet(
+                request, updated_pis, updated_ws or ws, project_record, project,
+            )
         return _render_htmx_sheet(
             request, updated_pis, updated_ws or ws, project_record, project,
         )

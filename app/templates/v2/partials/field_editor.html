@@ -1,21 +1,25 @@
 {#
   Reusable V2 field editor macro.
 
-  render_field(f, project_code, workbook_version, content_hash, project_editable=True)
+  render_field(f, project_code, workbook_version, content_hash,
+               project_editable=True,
+               hx_target="#v2-sheet-project-setup",
+               sheet_id="project_setup")
 
   BOUND + project_editable  → <form> posting to /v2/workbook/update via HTMX,
                                type-appropriate input with registry HTML5 attrs
                                (min, max, step, required, title).
   All other cases           → read-only span + binding badge.
 
-  f dict keys (from _build_ps_fields):
+  f dict keys (from _build_sheet_fields):
     field_id, label, unit, field_type, binding_label, options, value,
     required, min_value, max_value, step, help_text.
 
   Caller supplies project_code, workbook_version, content_hash, project_editable
-  from template context.
+  from template context.  hx_target and sheet_id default to project_setup sheet;
+  override for other sheets so HTMX swaps the correct container.
 #}
-{% macro render_field(f, project_code, workbook_version, content_hash, project_editable=True) %}
+{% macro render_field(f, project_code, workbook_version, content_hash, project_editable=True, hx_target="#v2-sheet-project-setup", sheet_id="project_setup") %}
 <div class="v2-field-row {% if f.binding_label == 'bound' and project_editable %}v2-field-editable{% else %}v2-field-readonly{% endif %}"
      data-field-id="{{ f.field_id }}"
      data-binding="{{ f.binding_label }}"
@@ -27,12 +31,13 @@
     <form method="post" action="/v2/workbook/update" class="v2-field-form"
           autocomplete="off"
           hx-post="/v2/workbook/update"
-          hx-target="#v2-sheet-project-setup"
+          hx-target="{{ hx_target }}"
           hx-swap="outerHTML">
-      <input type="hidden" name="field_id"        value="{{ f.field_id }}">
-      <input type="hidden" name="project"          value="{{ project_code }}">
-      <input type="hidden" name="workbook_version" value="{{ workbook_version }}">
-      <input type="hidden" name="content_hash"     value="{{ content_hash }}">
+      <input type="hidden" name="sheet_id"         value="{{ sheet_id }}">
+      <input type="hidden" name="field_id"          value="{{ f.field_id }}">
+      <input type="hidden" name="project"           value="{{ project_code }}">
+      <input type="hidden" name="workbook_version"  value="{{ workbook_version }}">
+      <input type="hidden" name="content_hash"      value="{{ content_hash }}">
       {% if f.field_type == 'date' %}
         <input type="date"   name="value"
                value="{{ f.value | string if f.value is not none else '' }}"

@@ -35,7 +35,7 @@ from app.workbook.input_set import ProjectInputSet  # noqa: E402
 from app.workbook.registry import WORKBOOK  # noqa: E402
 from app.workbook.service import WorkbookService  # noqa: E402
 from app.workbook.specs import BindingStatus  # noqa: E402
-from app.v2.router import _build_ps_fields  # noqa: E402
+from app.v2.router import _build_ps_fields, _build_sheet_fields  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -835,13 +835,16 @@ class TestProtectedReferenceDisplay(unittest.TestCase):
         self.assertEqual(resp.status_code, 409)
 
     def test_user_project_has_six_editable_controls(self):
-        """Normal (non-protected) user project has exactly 6 BOUND editable rows."""
+        """Normal (non-protected) user project has exactly 6 BOUND editable rows
+        in the project_setup sheet."""
         from bs4 import BeautifulSoup
         resp = self.client.get(f"/v2/workbook?project={self.project_code}")
         soup = BeautifulSoup(resp.text, "html.parser")
-        editable = soup.select(".v2-field-editable")
+        ps_div = soup.find(id="v2-sheet-project-setup")
+        self.assertIsNotNone(ps_div, "#v2-sheet-project-setup not found")
+        editable = ps_div.select(".v2-field-editable")
         self.assertEqual(len(editable), 6,
-                         f"Expected 6 editable rows, got {len(editable)}: "
+                         f"Expected 6 editable rows in project_setup sheet, got {len(editable)}: "
                          f"{[e.get('data-field-id') for e in editable]}")
 
 
@@ -1042,19 +1045,19 @@ class TestBuildPsFieldsSourceGuard(unittest.TestCase):
             self.assertNotIn(key, src, f"snapshot key hard-coded: {key}")
 
     def test_uses_pis_get(self):
-        src = inspect.getsource(_build_ps_fields)
+        src = inspect.getsource(_build_sheet_fields)
         self.assertIn("pis.get(", src)
 
     def test_uses_fspec_field_id(self):
-        src = inspect.getsource(_build_ps_fields)
+        src = inspect.getsource(_build_sheet_fields)
         self.assertIn("fspec.field_id", src)
 
     def test_uses_fspec_field_type(self):
-        src = inspect.getsource(_build_ps_fields)
+        src = inspect.getsource(_build_sheet_fields)
         self.assertIn("fspec.field_type", src)
 
     def test_no_direct_snapshot_access(self):
-        src = inspect.getsource(_build_ps_fields)
+        src = inspect.getsource(_build_sheet_fields)
         self.assertNotIn("snapshot_origin", src)
         self.assertNotIn("draft_snapshot", src)
 
