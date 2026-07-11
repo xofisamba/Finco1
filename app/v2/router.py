@@ -64,7 +64,9 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from app.auth import COOKIE_NAME, decode_session_token
+from app.ui.capex_view_model import build_capex_view_model
 from app.ui.inputs_summary import build_inputs_summary
+from app.ui.project_context import build_project_context_for_record
 from app.ui.protected_reference_service import is_protected_reference
 from app.workbook.registry import WORKBOOK
 from app.workbook.service import WorkbookService
@@ -211,6 +213,87 @@ def _render_htmx_sheet(
     return HTMLResponse(content=sheet_html + "\n" + oob)
 
 
+def _build_capex_vm_ctx(project_record, pis) -> dict:
+    """Build CapexViewModel context for the CAPEX sheet.
+
+    Returns capex_vm, capex_group_to_field, and capex_section_fields.
+    All CAPEX financial totals come exclusively from CapexViewModel.
+    No field lists, formulas, or aggregation are computed here.
+    """
+    from app.persistence.capex_sub_lines import CAPEX_CATEGORY_TO_FIELD
+
+    snapshot = pis.to_snapshot()
+    project_ctx = build_project_context_for_record(
+        project_code=project_record.project_code,
+        project_name=project_record.project_name,
+        project_type=project_record.project_type,
+        project_origin=project_record.project_origin,
+        template_source=project_record.template_source,
+        baseline_snapshot=snapshot,
+    )
+    is_user = not (
+        project_record.project_origin == "factory_template"
+        and (project_record.template_source or "").strip().lower() in ("tuho", "oborovo")
+    )
+    capex_vm = build_capex_view_model(project_ctx, is_user_project=is_user)
+
+    # Registry field list for capex; keyed by short name for group mapping
+    capex_fields = _build_sheet_fields("capex", pis)
+    fields_by_key = {f["field_id"].split(".")[-1]: f for f in capex_fields}
+
+    # Mapping: Excel group code → registry field dict.
+    # C.08 and C.11 share the same registry field (capex.D.audit_legal).
+    # The FIRST occurrence (C.08) gets the editable render_field form.
+    # The SECOND occurrence (C.11) gets a read-only alias row that clearly
+    # labels it as a shared field so neither group is silently hidden.
+    #
+    # capex_alias_groups: group code → {"owner": first_group_code, "field": field_dict}
+    # Template uses this to render the SHARED FIELD badge on the alias group.
+    seen_field_keys: dict[str, str] = {}   # field_key → first group code that owns it
+    capex_group_to_field: dict[str, dict | None] = {}
+    capex_alias_groups: dict[str, dict] = {}  # alias code → {owner, field}
+    for code, field_key in CAPEX_CATEGORY_TO_FIELD.items():
+        if field_key in seen_field_keys:
+            # This group is an alias — the field is owned by an earlier group
+            capex_group_to_field[code] = None
+            capex_alias_groups[code] = {
+                "owner": seen_field_keys[field_key],
+                "field": fields_by_key.get(field_key),
+            }
+        else:
+            capex_group_to_field[code] = fields_by_key.get(field_key)
+            seen_field_keys[field_key] = code
+
+    # Mapping: registry section_id → list of field dicts
+    capex_section_fields: dict[str, list] = {}
+    for f in capex_fields:
+        capex_section_fields.setdefault(f["section_id"], []).append(f)
+
+    return {
+        "capex_vm": capex_vm,
+        "capex_group_to_field": capex_group_to_field,
+        "capex_section_fields": capex_section_fields,
+        "capex_alias_groups": capex_alias_groups,
+    }
+
+
+def _render_capex_htmx_sheet(
+    request: Request,
+    pis,
+    ws,
+    project_record,
+    project: str,
+    field_error: str = "",
+) -> HTMLResponse:
+    """Render the CAPEX sheet partial + OOB status banner for HTMX."""
+    ctx = _base_sheet_ctx(request, pis, ws, project_record, project, field_error)
+    ctx.update(_build_capex_vm_ctx(project_record, pis))
+    sheet_html = _templates.get_template("partials/sheet_capex.html").render(ctx)
+    banner_html = _templates.get_template("partials/_v2_status_banner.html").render(ctx)
+    oob = '<div id="v2-status-banner" hx-swap-oob="true">' + banner_html + "</div>"
+    return HTMLResponse(content=sheet_html + "\n" + oob)
+
+
 def _render_revenue_htmx_sheet(
     request: Request,
     pis,
@@ -322,6 +405,7 @@ async def v2_workbook(request: Request, project: Optional[str] = None):
         "flash_error": flash_error,
         "field_error": "",
     }
+    context.update(_build_capex_vm_ctx(project_record, pis))
     return _templates.TemplateResponse(request=request, name="workbook.html", context=context)
 
 
@@ -383,6 +467,11 @@ async def v2_workbook_update(
                 request, pis_for_render, ws, project_record, project,
                 field_error=field_error,
             )
+        if sheet_id == "capex":
+            return _render_capex_htmx_sheet(
+                request, pis_for_render, ws, project_record, project,
+                field_error=field_error,
+            )
         return _render_htmx_sheet(
             request, pis_for_render, ws, project_record, project,
             field_error=field_error,
@@ -432,6 +521,10 @@ async def v2_workbook_update(
             )
         if sheet_id == "revenue":
             return _render_revenue_htmx_sheet(
+                request, updated_pis, updated_ws or ws, project_record, project,
+            )
+        if sheet_id == "capex":
+            return _render_capex_htmx_sheet(
                 request, updated_pis, updated_ws or ws, project_record, project,
             )
         return _render_htmx_sheet(
