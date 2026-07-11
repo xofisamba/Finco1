@@ -191,6 +191,108 @@
     .v2-runtime-dirty { color: #7a5c00; font-weight: 600; }
     .v2-runtime-clean { color: #2e6b35; }
     .v2-runtime-mono  { font-family: monospace; font-size: 0.82rem; color: #555; }
+
+    /* ── CAPEX worksheet ─────────────────────────────────────────── */
+    #v2-sheet-capex { font-size: 0.85rem; }
+
+    .v2-capex-totals-bar {
+      display: flex; flex-wrap: wrap; gap: 1rem;
+      background: #f4f8ff; border: 1px solid #d0e0f8;
+      border-radius: 3px; padding: 0.5rem 0.75rem;
+      margin-bottom: 0.75rem;
+    }
+    .v2-capex-total-item { display: flex; align-items: baseline; gap: 0.3rem; }
+    .v2-capex-total-label { font-size: 0.72rem; color: #555;
+                            text-transform: uppercase; letter-spacing: 0.04em; }
+    .v2-capex-total-value { font-weight: 600;
+                            font-variant-numeric: tabular-nums; color: #222; }
+    .v2-capex-grand-total .v2-capex-total-value { color: #1a4fa0; font-size: 1rem; }
+    .v2-capex-total-permw { font-size: 0.72rem; color: #888; }
+
+    .v2-capex-col-header {
+      display: grid;
+      grid-template-columns: 4rem 1fr 7rem 6rem 6rem;
+      align-items: center;
+      padding: 0.2rem 0.4rem;
+      font-size: 0.7rem; font-weight: 600; text-transform: uppercase;
+      letter-spacing: 0.06em; color: #888;
+      border-bottom: 2px solid #ddd;
+    }
+    .v2-capex-col-code   { min-width: 4rem; }
+    .v2-capex-col-desc   { flex: 1; padding-right: 0.5rem; }
+    .v2-capex-col-amount { min-width: 7rem; text-align: right;
+                           font-variant-numeric: tabular-nums; }
+    .v2-capex-col-permw  { min-width: 6rem; text-align: right; color: #888;
+                           font-variant-numeric: tabular-nums; }
+    .v2-capex-col-status { min-width: 6rem; text-align: right; }
+
+    .v2-capex-group { border-bottom: 1px solid #ddd; }
+    .v2-capex-group-engine > summary .v2-capex-subtotal { color: #888; }
+
+    .v2-capex-group-header {
+      display: grid;
+      grid-template-columns: 4rem 1fr 7rem 6rem 6rem;
+      align-items: center;
+      cursor: pointer; list-style: none;
+      font-weight: 600; font-size: 0.8rem;
+      padding: 0.35rem 0.4rem;
+      background: #f7f7f7; border-top: 1px solid #e4e4e4;
+      position: sticky; top: 0; z-index: 10; user-select: none;
+    }
+    .v2-capex-group-header::-webkit-details-marker { display: none; }
+    .v2-capex-group-header::before {
+      content: '▶'; font-size: 0.6rem;
+      transition: transform 0.15s; color: #999; margin-right: 0.25rem;
+    }
+    details.v2-capex-group[open] > .v2-capex-group-header::before {
+      transform: rotate(90deg);
+    }
+    .v2-capex-group-body { padding: 0.1rem 0 0.35rem 0; }
+
+    .v2-capex-engine-row {
+      background: #fafafa; border-left: 2px solid #e0e0e0; margin-left: 0.5rem;
+    }
+    .v2-capex-amount-cell { font-variant-numeric: tabular-nums; }
+    .v2-capex-badge-engine   { background: #6b7280; color: #fff; }
+    .v2-capex-badge-derived  { background: #7a9bbf; color: #fff; }
+    .v2-capex-badge-partial  { background: #e8a020; color: #fff; }
+    .v2-capex-badge-bound    { background: #2e6b35; color: #fff; }
+    .v2-capex-badge-shared   { background: #7a4fa0; color: #fff; }
+    .v2-capex-shared-note    { font-size: 0.72rem; color: #888; padding-left: 0.5rem; }
+    .v2-capex-shared-row     { border-left: 3px solid #c8a8e8; background: #f9f5ff; }
+
+    .v2-capex-sublines-container {
+      margin-left: 1rem; border-left: 1px solid #eee;
+    }
+    .v2-capex-subline {
+      display: grid;
+      grid-template-columns: 4rem 1fr 7rem 6rem 1fr;
+      align-items: center;
+      padding: 0.1rem 0.4rem;
+      font-size: 0.78rem; color: #666;
+      border-bottom: 1px solid #f0f0f0;
+    }
+    .v2-capex-subline:last-child { border-bottom: none; }
+    .v2-capex-subline-code   { color: #999; font-size: 0.72rem; }
+    .v2-capex-subline-name   { padding-right: 0.5rem; }
+    .v2-capex-subline-amount { text-align: right; font-variant-numeric: tabular-nums; }
+    .v2-capex-subline-permw  { text-align: right; color: #aaa;
+                                font-variant-numeric: tabular-nums; }
+    .v2-capex-subline-notes  { font-size: 0.72rem; color: #aaa; padding-left: 0.5rem; }
+    .v2-capex-inactive { opacity: 0.4; text-decoration: line-through; }
+
+    .v2-capex-grand-total-row {
+      display: grid;
+      grid-template-columns: 4rem 1fr 7rem 6rem 6rem;
+      align-items: center;
+      padding: 0.4rem 0.4rem;
+      border-top: 2px solid #333;
+      font-weight: 700; font-size: 0.88rem;
+    }
+    .v2-capex-total-label-cell { color: #222; }
+    .v2-capex-grand-total-amount {
+      text-align: right; font-variant-numeric: tabular-nums; color: #1a4fa0;
+    }
   </style>
 </head>
 <body>
@@ -213,6 +315,7 @@
     {% include "partials/sheet_project_setup.html" %}
     {% include "partials/sheet_inputs.html" %}
     {% include "partials/sheet_revenue.html" %}
+    {% include "partials/sheet_capex.html" %}
   </div>
 
   <script>
