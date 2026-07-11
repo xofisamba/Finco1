@@ -57,7 +57,10 @@ def build_inputs_summary(project_record: Any, pis: Any, ws: Any) -> dict[str, An
         and (project_record.template_source or "").strip().lower() in ("tuho", "oborovo")
     )
 
-    capex_vm = build_capex_view_model(project_ctx, is_user_project=is_user)
+    # Load active user sub-lines so the Inputs summary matches the CAPEX detail sheet.
+    from app.persistence.capex_sub_lines import get_active_sub_lines_for_project
+    sub_lines = get_active_sub_lines_for_project(project_record.project_id)
+    capex_vm = build_capex_view_model(project_ctx, is_user_project=is_user, sub_lines=sub_lines)
     opex_vm = build_opex_view_model(project_ctx, is_user_project=is_user)
 
     return {

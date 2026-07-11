@@ -24,10 +24,11 @@ Mutation contract:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Sequence
 
 if TYPE_CHECKING:
     from app.ui.project_context import ProjectContext
+    from app.persistence.capex_sub_lines import CapexSubLine
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -95,9 +96,13 @@ class CapexLineVM:
     is_reserve: bool             # True for C.18 sub-lines
     is_readonly_financing: bool  # True for C.17 or C.18 sub-lines (legacy alias)
 
-    # Future: user-managed line items
+    # User-managed line items
     is_custom: bool   # True = user-added line (not in Excel template)
     is_active: bool   # False = user has deactivated this line (excluded from totals)
+
+    # Custom-row identity (empty string for Excel-reference rows)
+    sub_line_id: str = ""    # UUID from capex_sub_lines table
+    row_version: str = ""    # updated_at timestamp — optimistic-lock token
 
 
 # ---------------------------------------------------------------------------
@@ -217,6 +222,7 @@ def _map_validation_status(mapping_status: str | None) -> str:
 def build_capex_view_model(
     project_ctx: "ProjectContext",
     is_user_project: bool = False,
+    sub_lines: "Sequence[CapexSubLine] | None" = None,
 ) -> CapexViewModel:
     """
     Build a CapexViewModel from ProjectContext.capex_detail_items.
@@ -225,6 +231,10 @@ def build_capex_view_model(
         project_ctx:     Populated ProjectContext (frozen dataclass).
         is_user_project: True iff the current session user owns this project
                          and may edit line-item amounts.
+        sub_lines:       Optional list of active CapexSubLine records to inject
+                         as custom rows into the appropriate groups.  Only
+                         active rows (is_active=True) are included; the caller
+                         is responsible for filtering.
 
     Returns:
         Fully populated CapexViewModel — all derived fields computed here.
@@ -232,6 +242,17 @@ def build_capex_view_model(
     capacity_mw: float = project_ctx.capacity_mw
     project_code: str = project_ctx.code
     groups: list[CapexGroupVM] = []
+
+    # Index sub-lines by parent_category_code for O(1) lookup per group.
+    sub_lines_by_group: dict[str, list[CapexSubLine]] = {}
+    if sub_lines:
+        for sl in sub_lines:
+            sub_lines_by_group.setdefault(sl.parent_category_code, []).append(sl)
+        # Stable sort within each group by display_order then business_code.
+        for code in sub_lines_by_group:
+            sub_lines_by_group[code].sort(
+                key=lambda s: (s.display_order, s.business_code)
+            )
 
     for cat in project_ctx.capex_detail_items:
         group_code: str = cat["code"]
@@ -287,6 +308,37 @@ def build_capex_view_model(
                 is_custom=False,   # future: set from user-stored overrides
                 is_active=True,    # future: set from user-stored deactivation
             ))
+
+        # Inject user-added custom sub-lines for this group.
+        # Only eligible (non-readonly, non-contingency) groups accept custom rows.
+        if not group_is_readonly and not group_is_contingency:
+            for sl in sub_lines_by_group.get(group_code, []):
+                sl_amount = float(sl.amount_keur or 0.0)
+                lines.append(CapexLineVM(
+                    row_id=_make_row_id(project_code, group_code, sl.business_code),
+                    code=sl.business_code,
+                    parent_code=group_code,
+                    name=sl.label,
+                    source="user",
+                    unit="kEUR",
+                    notes=sl.comments or "",
+                    display_order=sl.display_order,
+                    validation_status=VALIDATION_OK,
+                    amount_keur=sl_amount,
+                    per_mw=_safe_per_mw(sl_amount, capacity_mw),
+                    is_group=False,
+                    is_editable=is_user_project,
+                    is_read_only=not is_user_project,
+                    is_derived=False,
+                    is_contingency=False,
+                    is_financing=False,
+                    is_reserve=False,
+                    is_readonly_financing=False,
+                    is_custom=True,
+                    is_active=True,
+                    sub_line_id=sl.sub_line_id,
+                    row_version=sl.updated_at or "",
+                ))
 
         active_lines = [ln for ln in lines if ln.is_active]
         subtotal_keur = sum(ln.amount_keur for ln in active_lines)
