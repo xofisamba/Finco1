@@ -211,6 +211,23 @@ def _render_htmx_sheet(
     return HTMLResponse(content=sheet_html + "\n" + oob)
 
 
+def _render_revenue_htmx_sheet(
+    request: Request,
+    pis,
+    ws,
+    project_record,
+    project: str,
+    field_error: str = "",
+) -> HTMLResponse:
+    """Render the revenue sheet partial + OOB status banner for HTMX."""
+    ctx = _base_sheet_ctx(request, pis, ws, project_record, project, field_error)
+    ctx["revenue_fields"] = _build_sheet_fields("revenue", pis)
+    sheet_html = _templates.get_template("partials/sheet_revenue.html").render(ctx)
+    banner_html = _templates.get_template("partials/_v2_status_banner.html").render(ctx)
+    oob = '<div id="v2-status-banner" hx-swap-oob="true">' + banner_html + "</div>"
+    return HTMLResponse(content=sheet_html + "\n" + oob)
+
+
 def _render_inputs_htmx_sheet(
     request: Request,
     pis,
@@ -361,6 +378,11 @@ async def v2_workbook_update(
                 request, pis_for_render, ws, project_record, project,
                 field_error=field_error,
             )
+        if sheet_id == "revenue":
+            return _render_revenue_htmx_sheet(
+                request, pis_for_render, ws, project_record, project,
+                field_error=field_error,
+            )
         return _render_htmx_sheet(
             request, pis_for_render, ws, project_record, project,
             field_error=field_error,
@@ -406,6 +428,10 @@ async def v2_workbook_update(
         )
         if sheet_id == "inputs":
             return _render_inputs_htmx_sheet(
+                request, updated_pis, updated_ws or ws, project_record, project,
+            )
+        if sheet_id == "revenue":
+            return _render_revenue_htmx_sheet(
                 request, updated_pis, updated_ws or ws, project_record, project,
             )
         return _render_htmx_sheet(
