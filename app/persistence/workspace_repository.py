@@ -323,32 +323,45 @@ def v2_atomic_draft_update(
     user_id: str,
     project_id: str,
     expected_content_hash: str,
-    new_draft_snapshot: dict,
-    new_content_hash: str,
+    field_id: str,
+    typed_value: Any,
 ) -> "Optional[WorkspaceStateRecord]":
     """Atomic compare-and-swap for Workbook V2 single-field draft edits.
 
-    Opens a single SQLite connection, acquires an exclusive write lock via
-    ``BEGIN EXCLUSIVE``, reads the current ``draft_content_hash``, and only
-    updates ``draft_snapshot_json`` if it still matches ``expected_content_hash``.
+    All steps execute inside a single ``BEGIN EXCLUSIVE`` transaction:
 
-    Returns the updated WorkspaceStateRecord on success, or None if the
-    expected hash does not match the current persisted state (stale read).
-    The caller must raise StaleContentError on None.
+    1. Read ``draft_snapshot_json`` from the DB.
+    2. Build a ``ProjectInputSet`` from that snapshot and compute its
+       canonical ``content_hash``.
+    3. Compare the canonical hash against ``expected_content_hash``.
+       Return ``None`` (stale) on mismatch — the caller raises StaleContentError.
+    4. Apply ``field_id`` / ``typed_value`` to that ``ProjectInputSet``
+       via ``with_value()``.
+    5. Persist the resulting snapshot and the new canonical content hash.
 
-    Guarantees
-    ----------
-    - Two concurrent callers with the same expected_content_hash will serialize:
-      whichever acquires the exclusive lock first wins; the second sees a
-      mismatched hash and receives None.
-    - saved_snapshot and all runtime fields are not touched.
-    - dirty is always set to True on success.
+    The snapshot used to build the updated ProjectInputSet is always the one
+    read inside the transaction, never a pre-transaction copy.  This prevents
+    a lost update when a concurrent write (including legacy non-CAS saves)
+    changes the draft between the caller's read and this write.
+
+    The stored ``draft_content_hash`` column is **not used for comparison**
+    (it may be a legacy raw-JSON hash on rows that pre-date this pipeline).
+    Only the canonical hash derived from the persisted snapshot is authoritative.
+    On success ``draft_content_hash`` is always updated to the new canonical
+    ``pis.content_hash``, migrating legacy rows in place.
+
+    Returns the updated WorkspaceStateRecord on success, or None on stale.
     """
     from app.persistence.db import get_connection
     from app.persistence.records import WorkspaceStateRecord
+    from app.workbook.input_set import ProjectInputSet
+    from app.workbook.registry import WORKBOOK
+
+    import json as _json
 
     now = _now_utc()
     conn = get_connection()
+    cur = None
     try:
         # Exclusive lock: prevents any concurrent read or write until COMMIT/ROLLBACK.
         conn.execute("BEGIN EXCLUSIVE")
@@ -363,32 +376,21 @@ def v2_atomic_draft_update(
             conn.execute("ROLLBACK")
             return None
 
-        # Compare expected hash against persisted draft_content_hash.
-        #
-        # Two cases where we treat the write as unconditional (first V2 edit):
-        #   1. draft_content_hash IS NULL — row predates the column.
-        #   2. draft_content_hash is a raw-JSON fallback hash (stored by
-        #      save_workspace_state callers that predate the V2 pipeline, i.e.
-        #      project creation and legacy draft saves).  We detect this by
-        #      recomputing _draft_content_hash over the current snapshot_json and
-        #      comparing; if they match the stored value is a raw hash, not a
-        #      pis.content_hash, so no real concurrency conflict exists yet.
-        #
-        # After a successful V2 write the stored hash is always pis.content_hash,
-        # so subsequent edits use proper CAS.
-        keys = row.keys()
-        persisted_hash = row["draft_content_hash"] if "draft_content_hash" in keys else None
+        # Build canonical ProjectInputSet from the persisted snapshot and compare
+        # its content_hash against expected_content_hash.  This is authoritative
+        # for both legacy rows (raw-JSON draft_content_hash) and V2 rows
+        # (canonical pis.content_hash) — the stored column is not consulted.
+        row_snapshot = _json.loads(row["draft_snapshot_json"] or "{}")
+        current_pis = ProjectInputSet.from_snapshot(row_snapshot, workbook=WORKBOOK)
 
-        if persisted_hash is not None and persisted_hash != expected_content_hash:
-            import json as _json
-            raw = _json.loads(row["draft_snapshot_json"] or "{}")
-            raw_json_hash = _draft_content_hash(raw)
-            if persisted_hash != raw_json_hash:
-                # Genuine stale conflict: stored hash is a pis.content_hash that
-                # no longer matches what the browser saw.
-                conn.execute("ROLLBACK")
-                return None  # stale — caller raises StaleContentError
-            # persisted_hash == raw_json_hash: legacy first-write, proceed.
+        if current_pis.content_hash != expected_content_hash:
+            conn.execute("ROLLBACK")
+            return None  # stale — caller raises StaleContentError
+
+        # Apply the validated update to the snapshot read inside the transaction.
+        updated_pis = current_pis.with_value(field_id, typed_value)
+        new_snapshot = updated_pis.to_snapshot()
+        new_content_hash = updated_pis.content_hash
 
         cur.execute(
             """
@@ -397,7 +399,7 @@ def v2_atomic_draft_update(
             WHERE workspace_id=? AND user_id=?
             """,
             (
-                _to_json(new_draft_snapshot),
+                _to_json(new_snapshot),
                 new_content_hash,
                 now.isoformat(),
                 row["workspace_id"],
@@ -419,5 +421,6 @@ def v2_atomic_draft_update(
             pass
         raise
     finally:
-        cur.close()
+        if cur is not None:
+            cur.close()
         conn.close()

@@ -20,6 +20,7 @@ G. Field validation errors → 422
 """
 from __future__ import annotations
 
+import json
 import os
 import re
 import unittest
@@ -531,6 +532,218 @@ class TestWorkbookVersionEnforcement(unittest.TestCase):
             follow_redirects=False,
         )
         self.assertEqual(resp.status_code, 422)
+
+
+# ---------------------------------------------------------------------------
+# I. Legacy row regression: canonical-hash comparison never bypassed
+# ---------------------------------------------------------------------------
+
+def _get_workspace_row(project_code: str) -> dict:
+    """Return the raw workspace_states row for a project as a plain dict."""
+    from app.persistence.db import get_connection
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            """
+            SELECT ws.* FROM workspace_states ws
+            JOIN projects p ON p.project_id = ws.project_id
+            WHERE p.project_code = ?
+            LIMIT 1
+            """,
+            (project_code,),
+        ).fetchone()
+        return dict(row) if row else {}
+    finally:
+        conn.close()
+
+
+def _set_raw_json_hash(project_code: str, snapshot: dict) -> str:
+    """Overwrite draft_content_hash with the raw-JSON fallback hash.
+
+    Simulates a legacy row (created before the V2 CAS pipeline).
+    Returns the raw hash that was written.
+    """
+    from app.persistence.db import get_connection
+    from app.persistence.workspace_repository import _draft_content_hash
+    raw_hash = _draft_content_hash(snapshot)
+    conn = get_connection()
+    try:
+        conn.execute(
+            """
+            UPDATE workspace_states SET draft_content_hash = ?
+            WHERE project_id = (SELECT project_id FROM projects WHERE project_code = ?)
+            """,
+            (raw_hash, project_code),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return raw_hash
+
+
+def _set_draft_snapshot(project_code: str, snapshot: dict) -> None:
+    """Directly overwrite draft_snapshot_json (simulates a legacy non-CAS write)."""
+    from app.persistence.db import get_connection
+    from app.persistence.workspace_repository import _draft_content_hash
+    raw_hash = _draft_content_hash(snapshot)
+    conn = get_connection()
+    try:
+        conn.execute(
+            """
+            UPDATE workspace_states
+            SET draft_snapshot_json = ?, draft_content_hash = ?
+            WHERE project_id = (SELECT project_id FROM projects WHERE project_code = ?)
+            """,
+            (json.dumps(snapshot), raw_hash, project_code),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+class TestLegacyFirstWriteRegression(unittest.TestCase):
+    """
+    Regression: v2_atomic_draft_update must always compare the canonical
+    ProjectInputSet.content_hash derived from the persisted snapshot — never
+    treat a legacy raw-JSON draft_content_hash as a bypass token.
+
+    Scenario (from review):
+      1. Create row; reset draft_content_hash to raw-JSON fallback (legacy state).
+      2. Browser reads snapshot A → canonical hash A.
+      3. Legacy write changes persisted draft to snapshot B (different capacity_mw).
+      4. Browser submits edit using stale hash A.
+      5. CAS computes canonical hash of snapshot B ≠ hash A → stale conflict.
+      6. Snapshot B remains unchanged.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.client = _authed_client()
+        cls.project_code = _create_project(cls.client, "rt-legacy-regression")
+
+    def _canonical_hash_from_db(self) -> str:
+        """Read the persisted draft_snapshot_json and return its canonical PIS hash."""
+        from app.workbook.input_set import ProjectInputSet
+        from app.workbook.registry import WORKBOOK
+        row = _get_workspace_row(self.project_code)
+        snapshot = json.loads(row["draft_snapshot_json"] or "{}")
+        return ProjectInputSet.from_snapshot(snapshot, workbook=WORKBOOK).content_hash
+
+    def test_stale_legacy_hash_rejected(self):
+        """Browser hash A stale after legacy write to snapshot B → 409."""
+        # Step 1: reset to legacy raw-JSON hash state
+        row = _get_workspace_row(self.project_code)
+        snapshot_a = json.loads(row["draft_snapshot_json"] or "{}")
+        _set_raw_json_hash(self.project_code, snapshot_a)
+
+        # Step 2: browser computes canonical hash A from snapshot A
+        from app.workbook.input_set import ProjectInputSet
+        from app.workbook.registry import WORKBOOK
+        hash_a = ProjectInputSet.from_snapshot(snapshot_a, workbook=WORKBOOK).content_hash
+
+        # Step 3: legacy write changes draft to snapshot B (capacity_mw changed)
+        snapshot_b = dict(snapshot_a)
+        snapshot_b["capacity_mw"] = "999"
+        _set_draft_snapshot(self.project_code, snapshot_b)
+
+        # Step 4: browser submits edit with stale hash A
+        resp = _post_update(
+            self.client, self.project_code, hash_a,
+            field_id="project_setup.identity.project_name",
+            value="Should Not Write",
+        )
+
+        # Step 5: must be stale conflict
+        self.assertEqual(resp.status_code, 409, resp.text[:300])
+
+        # Step 6: snapshot B still persisted; "Should Not Write" must not appear
+        row_after = _get_workspace_row(self.project_code)
+        snap_after = json.loads(row_after["draft_snapshot_json"] or "{}")
+        self.assertEqual(str(snap_after.get("capacity_mw")), "999",
+                         "snapshot B must remain after stale rejection")
+        self.assertNotEqual(
+            snap_after.get("project_name"), "Should Not Write",
+            "stale write must not have been persisted",
+        )
+
+    def test_legacy_row_with_correct_canonical_hash_succeeds(self):
+        """Legacy row + browser sends the correct canonical hash → 303."""
+        # Reset to legacy raw-JSON hash state
+        row = _get_workspace_row(self.project_code)
+        snapshot = json.loads(row["draft_snapshot_json"] or "{}")
+        _set_raw_json_hash(self.project_code, snapshot)
+
+        # Get canonical hash for current snapshot
+        canonical_hash = self._canonical_hash_from_db()
+
+        resp = _post_update(
+            self.client, self.project_code, canonical_hash,
+            field_id="project_setup.identity.project_name",
+            value="Legacy First Write",
+        )
+        self.assertEqual(resp.status_code, 303,
+                         f"expected 303, got {resp.status_code}: {resp.text[:200]}")
+
+    def test_first_v2_write_stores_canonical_pis_hash(self):
+        """After a successful V2 write, draft_content_hash must be the canonical PIS hash."""
+        # Reset to legacy state
+        row = _get_workspace_row(self.project_code)
+        snapshot = json.loads(row["draft_snapshot_json"] or "{}")
+        _set_raw_json_hash(self.project_code, snapshot)
+
+        canonical_hash = self._canonical_hash_from_db()
+
+        _post_update(
+            self.client, self.project_code, canonical_hash,
+            field_id="project_setup.identity.project_name",
+            value="Post-Migration Name",
+        )
+
+        # Verify that draft_content_hash is now a canonical PIS hash (not raw-JSON)
+        row_after = _get_workspace_row(self.project_code)
+        stored_hash = row_after.get("draft_content_hash")
+        snap_after = json.loads(row_after["draft_snapshot_json"] or "{}")
+        from app.workbook.input_set import ProjectInputSet
+        from app.workbook.registry import WORKBOOK
+        from app.persistence.workspace_repository import _draft_content_hash
+        expected_canonical = ProjectInputSet.from_snapshot(snap_after, workbook=WORKBOOK).content_hash
+        raw_json_hash = _draft_content_hash(snap_after)
+        self.assertEqual(stored_hash, expected_canonical,
+                         "draft_content_hash must be canonical PIS hash after first V2 write")
+        self.assertNotEqual(stored_hash, raw_json_hash,
+                            "draft_content_hash must not remain as raw-JSON fallback hash")
+
+    def test_second_concurrent_caller_from_same_original_hash_fails(self):
+        """Two callers from the same hash: first wins, second gets 409."""
+        # Ensure a clean canonical-hash state by doing a fresh edit
+        canonical_hash = self._canonical_hash_from_db()
+        seed = _post_update(
+            self.client, self.project_code, canonical_hash,
+            field_id="project_setup.identity.project_name",
+            value="Seed Before Concurrency",
+        )
+        self.assertEqual(seed.status_code, 303, f"seed failed: {seed.text[:200]}")
+
+        # Now get the current canonical hash (post-seed)
+        original_hash = self._canonical_hash_from_db()
+
+        # First edit succeeds
+        resp1 = _post_update(
+            self.client, self.project_code, original_hash,
+            field_id="project_setup.identity.project_name",
+            value="First Concurrent",
+        )
+        self.assertEqual(resp1.status_code, 303,
+                         f"first concurrent edit failed: {resp1.text[:200]}")
+
+        # Second edit with the same original_hash → 409 (canonical hash now differs)
+        resp2 = _post_update(
+            self.client, self.project_code, original_hash,
+            field_id="project_setup.identity.project_name",
+            value="Second Concurrent",
+        )
+        self.assertEqual(resp2.status_code, 409,
+                         f"second concurrent edit must be 409, got {resp2.status_code}: {resp2.text[:200]}")
 
 
 if __name__ == "__main__":

@@ -334,26 +334,27 @@ class WorkbookUpdateService:
                 f"server is running {current_version!r}. Reload the page before editing."
             )
 
-        # --- Validate field and compute updated pis ---------------------
-        # Validation is pure (no DB); done before the CAS so that bad input
-        # never reaches the DB write boundary.
-        current_pis = ProjectInputSet.from_snapshot(ws.draft_snapshot, workbook=WORKBOOK)
+        # --- Validate field (pure, no DB) --------------------------------
+        # Raises UnknownFieldError / NonEditableFieldError before any DB work.
+        # FieldValidationError raised here if value fails type/bounds/options.
         validation = WorkbookUpdateService.validate_field_update(field_id, raw_value)
-        updated_pis = WorkbookUpdateService.apply_field_to_pis(current_pis, validation)
+        if not validation.is_valid:
+            raise FieldValidationError(validation.error)
 
         # --- Atomic compare-and-swap ------------------------------------
         # v2_atomic_draft_update opens a single exclusive-lock transaction:
-        # 1. Reads persisted draft_content_hash
-        # 2. Compares with content_hash (expected)
-        # 3. Only writes if they match; returns None on mismatch
-        # This prevents a lost-update when two edits start from the same hash.
-        new_snapshot = updated_pis.to_snapshot()
+        # 1. Reads draft_snapshot_json from DB
+        # 2. Builds canonical ProjectInputSet and compares content_hash
+        # 3. Applies field_id / typed_value to that PIS (inside transaction)
+        # 4. Persists resulting snapshot and canonical new content_hash
+        # Returns None when the canonical hash of the persisted draft no longer
+        # matches expected_content_hash (concurrent or legacy write detected).
         result = v2_atomic_draft_update(
             user_id=ws.user_id,
             project_id=ws.project_id,
             expected_content_hash=content_hash,
-            new_draft_snapshot=new_snapshot,
-            new_content_hash=updated_pis.content_hash,
+            field_id=field_id,
+            typed_value=validation.typed_value,
         )
         if result is None:
             raise StaleContentError(
@@ -361,4 +362,4 @@ class WorkbookUpdateService:
                 "Reload and try again."
             )
 
-        return updated_pis
+        return ProjectInputSet.from_snapshot(result.draft_snapshot, workbook=WORKBOOK)

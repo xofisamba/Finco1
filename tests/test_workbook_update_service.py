@@ -345,7 +345,8 @@ class TestApplyDraftUpdate(unittest.TestCase):
         pr = self._make_project_record()
         content_hash = self._current_hash(ws)
 
-        # v2_atomic_draft_update returns a WorkspaceStateRecord on success
+        # v2_atomic_draft_update returns a WorkspaceStateRecord on success;
+        # apply_draft_update builds the return PIS from result.draft_snapshot.
         mock_cas.return_value = self._make_updated_ws_mock(
             {"project_name": "Updated Name", "capacity_mw": "50"}
         )
@@ -363,13 +364,15 @@ class TestApplyDraftUpdate(unittest.TestCase):
         self.assertEqual(call_kwargs["user_id"], "test-user")
         self.assertEqual(call_kwargs["project_id"], "proj-uuid")
         self.assertEqual(call_kwargs["expected_content_hash"], content_hash)
-        self.assertEqual(call_kwargs["new_draft_snapshot"]["project_name"], "Updated Name")
+        # CAS now receives field_id + typed_value, not pre-computed snapshot
+        self.assertEqual(call_kwargs["field_id"], "project_setup.identity.project_name")
+        self.assertEqual(call_kwargs["typed_value"], "Updated Name")
 
     @patch("app.persistence.workspace_repository.v2_atomic_draft_update")
     def test_stale_hash_raises(self, mock_cas):
         ws = self._make_ws()
         pr = self._make_project_record()
-        mock_cas.return_value = None  # hash mismatch → None
+        mock_cas.return_value = None  # canonical hash mismatch → None
         with self.assertRaises(StaleContentError):
             WorkbookUpdateService.apply_draft_update(
                 ws=ws, field_id="project_setup.identity.project_name",
@@ -482,7 +485,7 @@ class TestApplyDraftUpdate(unittest.TestCase):
 
         v2_atomic_draft_update serializes them at the DB level.
         First caller → gets back a WorkspaceStateRecord (success).
-        Second caller → gets None (hash already changed by first).
+        Second caller → gets None (canonical hash already changed by first).
         """
         ws = self._make_ws()
         pr = self._make_project_record()
@@ -491,7 +494,7 @@ class TestApplyDraftUpdate(unittest.TestCase):
         updated_ws = self._make_updated_ws_mock(
             {"project_name": "First Update", "capacity_mw": "50"}
         )
-        # First call succeeds, second returns None (stale)
+        # First call succeeds, second returns None (stale — canonical hash changed)
         mock_cas.side_effect = [updated_ws, None]
 
         # First caller succeeds
@@ -504,6 +507,7 @@ class TestApplyDraftUpdate(unittest.TestCase):
         self.assertIsInstance(result1, ProjectInputSet)
 
         # Second caller with same original hash → StaleContentError
+        # (CAS computes canonical hash from persisted snapshot, which now differs)
         with self.assertRaises(StaleContentError):
             WorkbookUpdateService.apply_draft_update(
                 ws=ws, field_id="project_setup.identity.project_name",
