@@ -62,6 +62,7 @@ from app.workbook.update_service import (
     ProtectedReferenceError,
     StaleContentError,
     UnknownFieldError,
+    VersionMismatchError,
     WorkbookUpdateService,
 )
 
@@ -228,12 +229,15 @@ async def v2_workbook_update(
             field_id=field_id,
             raw_value=value or "",
             content_hash=content_hash,
+            workbook_version=workbook_version,
             project_record=project_record,
         )
     except ProtectedReferenceError as exc:
         return JSONResponse({"error": str(exc)}, status_code=409)
     except StaleContentError as exc:
         return JSONResponse({"error": str(exc)}, status_code=409)
+    except VersionMismatchError as exc:
+        return JSONResponse({"error": str(exc), "reload": True}, status_code=409)
     except (UnknownFieldError, NonEditableFieldError) as exc:
         return JSONResponse({"error": str(exc)}, status_code=422)
     except FieldValidationError as exc:

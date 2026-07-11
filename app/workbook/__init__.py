@@ -12,6 +12,7 @@ from app.workbook.update_service import (
     FieldValidationError,
     StaleContentError,
     ProtectedReferenceError,
+    VersionMismatchError,
     FieldValidationResult,
 )
 
@@ -30,6 +31,7 @@ __all__ = [
     "SheetSpec",
     "StaleContentError",
     "UnknownFieldError",
+    "VersionMismatchError",
     "WorkbookService",
     "WorkbookSpec",
     "WorkbookUpdateError",

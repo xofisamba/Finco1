@@ -4,8 +4,11 @@ Tests for WorkbookUpdateService (PR 864).
 Coverage:
 1. validate_field_update — all 11 project_setup fields, type coercion, bounds, options
 2. Error taxonomy — UnknownFieldError, NonEditableFieldError, FieldValidationError
+   2b. PARTIAL fields rejected (country_market, currency, scenario)
 3. apply_field_to_pis — immutability, content_hash change, error propagation
 4. apply_draft_update — stale hash, protected reference, persist path
+   4b. workbook_version enforcement — mismatch → VersionMismatchError
+   4c. Concurrency — two edits from same hash: first wins, second gets StaleContentError
 5. FieldValidationResult contract
 """
 from __future__ import annotations
@@ -23,6 +26,7 @@ from app.workbook.update_service import (
     ProtectedReferenceError,
     StaleContentError,
     UnknownFieldError,
+    VersionMismatchError,
     WorkbookUpdateError,
     WorkbookUpdateService,
 )
@@ -62,28 +66,7 @@ class TestValidateFieldUpdate(unittest.TestCase):
         r = self._invalid("project_setup.identity.project_name", "   ")
         self.assertIn("required", r.error.lower())
 
-    def test_country_market_text(self):
-        r = self._valid("project_setup.identity.country_market", "Germany")
-        self.assertEqual(r.typed_value, "Germany")
-
-    def test_country_market_empty_allowed(self):
-        r = WorkbookUpdateService.validate_field_update("project_setup.identity.country_market", "")
-        self.assertTrue(r.is_valid)
-        self.assertIsNone(r.typed_value)
-
-    def test_currency_valid_option(self):
-        for opt in ("EUR", "USD", "GBP", "HRK", "PLN", "RON"):
-            r = self._valid("project_setup.identity.currency", opt)
-            self.assertEqual(r.typed_value, opt)
-
-    def test_currency_invalid_option(self):
-        r = self._invalid("project_setup.identity.currency", "BTC")
-        self.assertIn("not a valid option", r.error)
-        self.assertIn("EUR", r.error)
-
-    def test_scenario_text(self):
-        r = self._valid("project_setup.identity.scenario", "Upside")
-        self.assertEqual(r.typed_value, "Upside")
+    # country_market, currency, scenario are PARTIAL — see TestErrorTaxonomy for rejection tests
 
     # --- project_setup.technical fields ---
 
@@ -178,6 +161,65 @@ class TestErrorTaxonomy(unittest.TestCase):
         self.assertTrue(issubclass(FieldValidationError, WorkbookUpdateError))
         self.assertTrue(issubclass(StaleContentError, WorkbookUpdateError))
         self.assertTrue(issubclass(ProtectedReferenceError, WorkbookUpdateError))
+        self.assertTrue(issubclass(VersionMismatchError, WorkbookUpdateError))
+
+    # --- 2b. PARTIAL fields rejected (BOUND-only gate) ---
+
+    def test_country_market_partial_raises_non_editable(self):
+        """PARTIAL binding must be rejected, not silently accepted."""
+        with self.assertRaises(NonEditableFieldError):
+            WorkbookUpdateService.validate_field_update(
+                "project_setup.identity.country_market", "Germany"
+            )
+
+    def test_currency_partial_raises_non_editable(self):
+        with self.assertRaises(NonEditableFieldError):
+            WorkbookUpdateService.validate_field_update(
+                "project_setup.identity.currency", "EUR"
+            )
+
+    def test_scenario_partial_raises_non_editable(self):
+        with self.assertRaises(NonEditableFieldError):
+            WorkbookUpdateService.validate_field_update(
+                "project_setup.identity.scenario", "Base Case"
+            )
+
+    def test_bound_project_name_still_accepted(self):
+        """Verify BOUND fields are still accepted after PARTIAL gate was added."""
+        r = WorkbookUpdateService.validate_field_update(
+            "project_setup.identity.project_name", "My Farm"
+        )
+        self.assertTrue(r.is_valid)
+
+    def test_bound_capacity_mw_still_accepted(self):
+        r = WorkbookUpdateService.validate_field_update(
+            "project_setup.technical.capacity_mw", "100"
+        )
+        self.assertTrue(r.is_valid)
+
+    def test_bound_p50_hours_still_accepted(self):
+        r = WorkbookUpdateService.validate_field_update(
+            "project_setup.technical.p50_hours", "2200"
+        )
+        self.assertTrue(r.is_valid)
+
+    def test_bound_cod_date_still_accepted(self):
+        r = WorkbookUpdateService.validate_field_update(
+            "project_setup.technical.cod_date", "2028-01-01"
+        )
+        self.assertTrue(r.is_valid)
+
+    def test_bound_construction_months_still_accepted(self):
+        r = WorkbookUpdateService.validate_field_update(
+            "project_setup.technical.construction_months", "18"
+        )
+        self.assertTrue(r.is_valid)
+
+    def test_bound_horizon_years_still_accepted(self):
+        r = WorkbookUpdateService.validate_field_update(
+            "project_setup.technical.horizon_years", "25"
+        )
+        self.assertTrue(r.is_valid)
 
 
 # ---------------------------------------------------------------------------
@@ -268,6 +310,8 @@ class TestApplyFieldToPis(unittest.TestCase):
 
 class TestApplyDraftUpdate(unittest.TestCase):
 
+    CURRENT_VERSION = "2.0.0"
+
     def _make_ws(self, draft_snapshot=None, saved_snapshot=None):
         ws = MagicMock()
         ws.user_id = "test-user"
@@ -289,39 +333,54 @@ class TestApplyDraftUpdate(unittest.TestCase):
         pis = ProjectInputSet.from_snapshot(ws.draft_snapshot, workbook=WORKBOOK)
         return pis.content_hash
 
-    @patch("app.persistence.workspace_repository.save_workspace_state")
-    def test_success_updates_draft(self, mock_save):
+    def _make_updated_ws_mock(self, new_draft_snapshot):
+        """Return a MagicMock WorkspaceStateRecord with the new draft snapshot."""
+        updated_ws = MagicMock()
+        updated_ws.draft_snapshot = new_draft_snapshot
+        return updated_ws
+
+    @patch("app.persistence.workspace_repository.v2_atomic_draft_update")
+    def test_success_updates_draft(self, mock_cas):
         ws = self._make_ws()
         pr = self._make_project_record()
         content_hash = self._current_hash(ws)
 
+        # v2_atomic_draft_update returns a WorkspaceStateRecord on success
+        mock_cas.return_value = self._make_updated_ws_mock(
+            {"project_name": "Updated Name", "capacity_mw": "50"}
+        )
+
         updated = WorkbookUpdateService.apply_draft_update(
             ws=ws, field_id="project_setup.identity.project_name",
             raw_value="Updated Name", content_hash=content_hash,
+            workbook_version=self.CURRENT_VERSION,
             project_record=pr,
         )
 
         self.assertEqual(updated.get("project_setup.identity.project_name"), "Updated Name")
-        mock_save.assert_called_once()
-        call_kwargs = mock_save.call_args.kwargs
-        self.assertEqual(call_kwargs["draft_snapshot"]["project_name"], "Updated Name")
-        self.assertEqual(call_kwargs["saved_snapshot"], ws.saved_snapshot)
-        self.assertTrue(call_kwargs["dirty"])
+        mock_cas.assert_called_once()
+        call_kwargs = mock_cas.call_args.kwargs
+        self.assertEqual(call_kwargs["user_id"], "test-user")
+        self.assertEqual(call_kwargs["project_id"], "proj-uuid")
+        self.assertEqual(call_kwargs["expected_content_hash"], content_hash)
+        self.assertEqual(call_kwargs["new_draft_snapshot"]["project_name"], "Updated Name")
 
-    @patch("app.persistence.workspace_repository.save_workspace_state")
-    def test_stale_hash_raises(self, mock_save):
+    @patch("app.persistence.workspace_repository.v2_atomic_draft_update")
+    def test_stale_hash_raises(self, mock_cas):
         ws = self._make_ws()
         pr = self._make_project_record()
+        mock_cas.return_value = None  # hash mismatch → None
         with self.assertRaises(StaleContentError):
             WorkbookUpdateService.apply_draft_update(
                 ws=ws, field_id="project_setup.identity.project_name",
                 raw_value="X", content_hash="stale-hash",
+                workbook_version=self.CURRENT_VERSION,
                 project_record=pr,
             )
-        mock_save.assert_not_called()
+        mock_cas.assert_called_once()
 
-    @patch("app.persistence.workspace_repository.save_workspace_state")
-    def test_protected_reference_raises(self, mock_save):
+    @patch("app.persistence.workspace_repository.v2_atomic_draft_update")
+    def test_protected_reference_raises_before_db(self, mock_cas):
         ws = self._make_ws(
             draft_snapshot={"project_name": "TUHO", "template_source": "tuho",
                             "project_origin": "factory_template"}
@@ -333,12 +392,13 @@ class TestApplyDraftUpdate(unittest.TestCase):
             WorkbookUpdateService.apply_draft_update(
                 ws=ws, field_id="project_setup.identity.project_name",
                 raw_value="X", content_hash=content_hash,
+                workbook_version=self.CURRENT_VERSION,
                 project_record=pr,
             )
-        mock_save.assert_not_called()
+        mock_cas.assert_not_called()
 
-    @patch("app.persistence.workspace_repository.save_workspace_state")
-    def test_validation_error_not_saved(self, mock_save):
+    @patch("app.persistence.workspace_repository.v2_atomic_draft_update")
+    def test_validation_error_not_saved(self, mock_cas):
         ws = self._make_ws()
         pr = self._make_project_record()
         content_hash = self._current_hash(ws)
@@ -346,36 +406,113 @@ class TestApplyDraftUpdate(unittest.TestCase):
             WorkbookUpdateService.apply_draft_update(
                 ws=ws, field_id="project_setup.technical.capacity_mw",
                 raw_value="-100", content_hash=content_hash,
+                workbook_version=self.CURRENT_VERSION,
                 project_record=pr,
             )
-        mock_save.assert_not_called()
+        mock_cas.assert_not_called()
 
-    @patch("app.persistence.workspace_repository.save_workspace_state")
-    def test_saved_snapshot_not_mutated(self, mock_save):
-        """Saving a draft must never change the saved_snapshot."""
-        ws = self._make_ws()
-        pr = self._make_project_record()
-        original_saved = ws.saved_snapshot.copy()
-        content_hash = self._current_hash(ws)
-        WorkbookUpdateService.apply_draft_update(
-            ws=ws, field_id="project_setup.identity.project_name",
-            raw_value="New Name", content_hash=content_hash,
-            project_record=pr,
-        )
-        saved_kwarg = mock_save.call_args.kwargs["saved_snapshot"]
-        self.assertEqual(saved_kwarg, original_saved)
-
-    @patch("app.persistence.workspace_repository.save_workspace_state")
-    def test_returned_pis_is_projectinputset(self, mock_save):
+    @patch("app.persistence.workspace_repository.v2_atomic_draft_update")
+    def test_returned_pis_is_projectinputset(self, mock_cas):
         ws = self._make_ws()
         pr = self._make_project_record()
         content_hash = self._current_hash(ws)
+        mock_cas.return_value = self._make_updated_ws_mock(ws.draft_snapshot)
         result = WorkbookUpdateService.apply_draft_update(
             ws=ws, field_id="project_setup.identity.project_name",
             raw_value="Updated", content_hash=content_hash,
+            workbook_version=self.CURRENT_VERSION,
             project_record=pr,
         )
         self.assertIsInstance(result, ProjectInputSet)
+
+    # --- 4b. workbook_version enforcement ---
+
+    @patch("app.persistence.workspace_repository.v2_atomic_draft_update")
+    def test_version_mismatch_raises_before_db(self, mock_cas):
+        """Stale browser registry → VersionMismatchError; DB never touched."""
+        ws = self._make_ws()
+        pr = self._make_project_record()
+        content_hash = self._current_hash(ws)
+        with self.assertRaises(VersionMismatchError):
+            WorkbookUpdateService.apply_draft_update(
+                ws=ws, field_id="project_setup.identity.project_name",
+                raw_value="X", content_hash=content_hash,
+                workbook_version="1.0.0",  # wrong version
+                project_record=pr,
+            )
+        mock_cas.assert_not_called()
+
+    @patch("app.persistence.workspace_repository.v2_atomic_draft_update")
+    def test_correct_version_proceeds(self, mock_cas):
+        ws = self._make_ws()
+        pr = self._make_project_record()
+        content_hash = self._current_hash(ws)
+        mock_cas.return_value = self._make_updated_ws_mock(ws.draft_snapshot)
+        result = WorkbookUpdateService.apply_draft_update(
+            ws=ws, field_id="project_setup.identity.project_name",
+            raw_value="Farm", content_hash=content_hash,
+            workbook_version=self.CURRENT_VERSION,
+            project_record=pr,
+        )
+        self.assertIsInstance(result, ProjectInputSet)
+        mock_cas.assert_called_once()
+
+    @patch("app.persistence.workspace_repository.v2_atomic_draft_update")
+    def test_version_mismatch_error_message_contains_versions(self, mock_cas):
+        ws = self._make_ws()
+        pr = self._make_project_record()
+        content_hash = self._current_hash(ws)
+        try:
+            WorkbookUpdateService.apply_draft_update(
+                ws=ws, field_id="project_setup.identity.project_name",
+                raw_value="X", content_hash=content_hash,
+                workbook_version="0.9.0",
+                project_record=pr,
+            )
+            self.fail("expected VersionMismatchError")
+        except VersionMismatchError as exc:
+            self.assertIn("0.9.0", str(exc))
+            self.assertIn(self.CURRENT_VERSION, str(exc))
+
+    # --- 4c. Concurrency test: same hash, two callers ---
+
+    @patch("app.persistence.workspace_repository.v2_atomic_draft_update")
+    def test_concurrent_edit_second_caller_gets_stale(self, mock_cas):
+        """Simulate two callers starting from the same content_hash.
+
+        v2_atomic_draft_update serializes them at the DB level.
+        First caller → gets back a WorkspaceStateRecord (success).
+        Second caller → gets None (hash already changed by first).
+        """
+        ws = self._make_ws()
+        pr = self._make_project_record()
+        content_hash = self._current_hash(ws)
+
+        updated_ws = self._make_updated_ws_mock(
+            {"project_name": "First Update", "capacity_mw": "50"}
+        )
+        # First call succeeds, second returns None (stale)
+        mock_cas.side_effect = [updated_ws, None]
+
+        # First caller succeeds
+        result1 = WorkbookUpdateService.apply_draft_update(
+            ws=ws, field_id="project_setup.identity.project_name",
+            raw_value="First Update", content_hash=content_hash,
+            workbook_version=self.CURRENT_VERSION,
+            project_record=pr,
+        )
+        self.assertIsInstance(result1, ProjectInputSet)
+
+        # Second caller with same original hash → StaleContentError
+        with self.assertRaises(StaleContentError):
+            WorkbookUpdateService.apply_draft_update(
+                ws=ws, field_id="project_setup.identity.project_name",
+                raw_value="Second Update", content_hash=content_hash,
+                workbook_version=self.CURRENT_VERSION,
+                project_record=pr,
+            )
+
+        self.assertEqual(mock_cas.call_count, 2)
 
 
 # ---------------------------------------------------------------------------

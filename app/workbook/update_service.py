@@ -67,6 +67,13 @@ class ProtectedReferenceError(WorkbookUpdateError):
     """Project is a protected reference (TUHO/Oborovo) and cannot be mutated."""
 
 
+class VersionMismatchError(WorkbookUpdateError):
+    """Submitted workbook_version does not match the current WORKBOOK version.
+
+    The browser's registry is stale — it must reload before editing.
+    """
+
+
 # ---------------------------------------------------------------------------
 # Validation result
 # ---------------------------------------------------------------------------
@@ -95,10 +102,14 @@ _NON_EDITABLE_SOURCES: frozenset[SourceOfTruth] = frozenset({
     SourceOfTruth.DERIVED_UI,
 })
 
-# BindingStatus values that are never user-editable.
+# BindingStatus values that are never user-editable via the V2 edit API.
+# PARTIAL is explicitly excluded: partial fields are not fully connected to the
+# engine and must not be presented as authoritative editable inputs until their
+# engine binding is resolved and promoted to BOUND.
 _NON_EDITABLE_BINDINGS: frozenset[BindingStatus] = frozenset({
     BindingStatus.DISPLAY_ONLY,
     BindingStatus.TEMPLATE_LOCKED,
+    BindingStatus.PARTIAL,
     BindingStatus.UNSUPPORTED,
 })
 
@@ -263,74 +274,91 @@ class WorkbookUpdateService:
         field_id: str,
         raw_value: str,
         content_hash: str,
+        workbook_version: str,
         project_record,
     ) -> ProjectInputSet:
-        """Full edit pipeline: validate → concurrency check → with_value → persist.
+        """Full edit pipeline: validate → version check → CAS persist.
 
         Parameters
         ----------
         ws : WorkspaceStateRecord
-            Current workspace state (draft_snapshot is the base).
+            Current workspace state.  Used for protected-reference check and
+            to seed the atomic compare-and-swap.
         field_id : str
-            Semantic field_id from the WORKBOOK registry.
+            Semantic field_id from the WORKBOOK registry.  Legacy snapshot
+            keys are rejected by validate_field_update.
         raw_value : str
-            Raw string value from the browser.
+            Raw string value from the browser (not yet type-coerced).
         content_hash : str
-            SHA-256 hash of the draft ProjectInputSet as seen by the browser.
-            Must match the current draft's hash — optimistic concurrency guard.
+            SHA-256 of the ProjectInputSet as seen by the browser.
+            Matched atomically against the persisted draft at write time.
+        workbook_version : str
+            WORKBOOK registry version submitted by the browser.  Must match
+            the current WORKBOOK.version; mismatch means the browser has a
+            stale registry and must reload.
         project_record : ProjectRecord
             Used for protected-reference check.
 
         Returns
         -------
         ProjectInputSet
-            The updated ProjectInputSet after persistence.
+            The updated ProjectInputSet after atomic persistence.
 
         Raises
         ------
         ProtectedReferenceError
-            If the project is a TUHO/Oborovo seeded original.
+            Project is TUHO/Oborovo seeded original — no writes allowed.
+        VersionMismatchError
+            Submitted workbook_version doesn't match WORKBOOK.version.
         StaleContentError
-            If content_hash does not match the current draft.
+            content_hash doesn't match the current persisted draft at write
+            time (concurrent edit detected by atomic CAS).
         UnknownFieldError, NonEditableFieldError, FieldValidationError
             Propagated from validate_field_update / apply_field_to_pis.
         """
         from app.ui.protected_reference_service import is_protected_reference
-        from app.persistence.workspace_repository import save_workspace_state
+        from app.persistence.workspace_repository import v2_atomic_draft_update
 
-        # --- Protected reference guard -----------------------------------
+        # --- Protected reference guard (before any DB work) -------------
         if is_protected_reference(project_record):
             raise ProtectedReferenceError(
                 f"Project {getattr(project_record, 'project_code', '?')!r} is a protected "
                 "reference (TUHO/Oborovo). Create a working copy before editing."
             )
 
-        # --- Build current draft pis -------------------------------------
-        current_pis = ProjectInputSet.from_snapshot(
-            ws.draft_snapshot, workbook=WORKBOOK
-        )
-
-        # --- Optimistic concurrency --------------------------------------
-        if current_pis.content_hash != content_hash:
-            raise StaleContentError(
-                f"Draft has changed since the page loaded (expected {content_hash[:8]}…, "
-                f"current {current_pis.content_hash[:8]}…). Reload and try again."
+        # --- Workbook version check -------------------------------------
+        current_version = WORKBOOK.version
+        if workbook_version != current_version:
+            raise VersionMismatchError(
+                f"Your browser has workbook version {workbook_version!r} but the "
+                f"server is running {current_version!r}. Reload the page before editing."
             )
 
-        # --- Validate and apply -----------------------------------------
+        # --- Validate field and compute updated pis ---------------------
+        # Validation is pure (no DB); done before the CAS so that bad input
+        # never reaches the DB write boundary.
+        current_pis = ProjectInputSet.from_snapshot(ws.draft_snapshot, workbook=WORKBOOK)
         validation = WorkbookUpdateService.validate_field_update(field_id, raw_value)
         updated_pis = WorkbookUpdateService.apply_field_to_pis(current_pis, validation)
 
-        # --- Persist draft -----------------------------------------------
+        # --- Atomic compare-and-swap ------------------------------------
+        # v2_atomic_draft_update opens a single exclusive-lock transaction:
+        # 1. Reads persisted draft_content_hash
+        # 2. Compares with content_hash (expected)
+        # 3. Only writes if they match; returns None on mismatch
+        # This prevents a lost-update when two edits start from the same hash.
         new_snapshot = updated_pis.to_snapshot()
-        save_workspace_state(
+        result = v2_atomic_draft_update(
             user_id=ws.user_id,
             project_id=ws.project_id,
-            project_code=ws.project_code,
-            draft_snapshot=new_snapshot,
-            saved_snapshot=ws.saved_snapshot,
-            dirty=True,
-            # Runtime fields not passed → save_workspace_state preserves them.
+            expected_content_hash=content_hash,
+            new_draft_snapshot=new_snapshot,
+            new_content_hash=updated_pis.content_hash,
         )
+        if result is None:
+            raise StaleContentError(
+                f"Draft has changed since the page loaded (expected {content_hash[:8]}…). "
+                "Reload and try again."
+            )
 
         return updated_pis

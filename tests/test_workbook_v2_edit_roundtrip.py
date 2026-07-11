@@ -181,11 +181,26 @@ class TestBoundFieldRoundTrip(unittest.TestCase):
 # ---------------------------------------------------------------------------
 
 class TestStaleContentHash(unittest.TestCase):
+    """Stale-hash detection requires at least one prior V2 edit so the DB
+    holds a pis.content_hash (not a legacy raw-JSON fallback hash).
+    setUpClass performs one valid edit to put the project in V2-committed state.
+    """
 
     @classmethod
     def setUpClass(cls):
         cls.client = _authed_client()
         cls.project_code = _create_project(cls.client, "rt-stale")
+        # Perform one successful V2 edit so draft_content_hash is a pis.content_hash.
+        resp = _get_workbook(cls.client, cls.project_code)
+        content_hash = _extract_content_hash(resp.text)
+        seed_resp = _post_update(
+            cls.client, cls.project_code, content_hash,
+            field_id="project_setup.identity.project_name",
+            value="Seeded Name",
+        )
+        assert seed_resp.status_code == 303, (
+            f"setUpClass seed edit failed: {seed_resp.status_code} {seed_resp.text[:200]}"
+        )
 
     def test_stale_hash_returns_409(self):
         resp = _post_update(
@@ -199,10 +214,11 @@ class TestStaleContentHash(unittest.TestCase):
     def test_stale_hash_error_body(self):
         resp = _post_update(
             self.client, self.project_code,
-            content_hash="stale-hash",
+            content_hash="bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
             field_id="project_setup.identity.project_name",
             value="X",
         )
+        self.assertEqual(resp.status_code, 409, resp.text[:200])
         self.assertIn("error", resp.json())
 
 
@@ -385,6 +401,134 @@ class TestFieldValidationErrors(unittest.TestCase):
             self.client, self.project_code, self._hash(),
             field_id="project_setup.technical.cod_date",
             value="not-a-date",
+        )
+        self.assertEqual(resp.status_code, 422)
+
+
+# ---------------------------------------------------------------------------
+# H. workbook_version enforcement — version mismatch → 409 with reload:true
+# ---------------------------------------------------------------------------
+
+class TestWorkbookVersionEnforcement(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        cls.client = _authed_client()
+        cls.project_code = _create_project(cls.client, "rt-version")
+
+    def _hash(self):
+        resp = _get_workbook(self.client, self.project_code)
+        return _extract_content_hash(resp.text)
+
+    def test_correct_version_returns_303(self):
+        resp = self.client.post(
+            "/v2/workbook/update",
+            data={
+                "project": self.project_code,
+                "field_id": "project_setup.technical.capacity_mw",
+                "value": "77",
+                "workbook_version": "2.0.0",
+                "content_hash": self._hash(),
+            },
+            follow_redirects=False,
+        )
+        self.assertEqual(resp.status_code, 303,
+                         f"expected 303 with correct version, got {resp.status_code}: {resp.text[:200]}")
+
+    def test_wrong_version_returns_409(self):
+        resp = self.client.post(
+            "/v2/workbook/update",
+            data={
+                "project": self.project_code,
+                "field_id": "project_setup.technical.capacity_mw",
+                "value": "78",
+                "workbook_version": "1.0.0",
+                "content_hash": self._hash(),
+            },
+            follow_redirects=False,
+        )
+        self.assertEqual(resp.status_code, 409,
+                         f"expected 409 with wrong version, got {resp.status_code}: {resp.text[:200]}")
+
+    def test_wrong_version_response_has_reload_flag(self):
+        resp = self.client.post(
+            "/v2/workbook/update",
+            data={
+                "project": self.project_code,
+                "field_id": "project_setup.technical.capacity_mw",
+                "value": "79",
+                "workbook_version": "0.0.1",
+                "content_hash": self._hash(),
+            },
+            follow_redirects=False,
+        )
+        self.assertEqual(resp.status_code, 409)
+        body = resp.json()
+        self.assertIn("error", body)
+        self.assertTrue(body.get("reload"), "expected reload:true in 409 version mismatch response")
+
+    def test_wrong_version_error_message_mentions_reload(self):
+        resp = self.client.post(
+            "/v2/workbook/update",
+            data={
+                "project": self.project_code,
+                "field_id": "project_setup.technical.capacity_mw",
+                "value": "80",
+                "workbook_version": "9.9.9",
+                "content_hash": self._hash(),
+            },
+            follow_redirects=False,
+        )
+        self.assertEqual(resp.status_code, 409)
+        error_msg = resp.json().get("error", "")
+        # Error should mention reload
+        self.assertTrue(
+            "reload" in error_msg.lower() or "9.9.9" in error_msg,
+            f"expected reload instruction in error: {error_msg!r}",
+        )
+
+    # --- PARTIAL fields rejected at HTTP level ---
+
+    def test_partial_country_market_returns_422(self):
+        resp = self.client.post(
+            "/v2/workbook/update",
+            data={
+                "project": self.project_code,
+                "field_id": "project_setup.identity.country_market",
+                "value": "Germany",
+                "workbook_version": "2.0.0",
+                "content_hash": self._hash(),
+            },
+            follow_redirects=False,
+        )
+        self.assertEqual(resp.status_code, 422,
+                         f"PARTIAL field must be 422, got {resp.status_code}: {resp.text[:200]}")
+
+    def test_partial_currency_returns_422(self):
+        resp = self.client.post(
+            "/v2/workbook/update",
+            data={
+                "project": self.project_code,
+                "field_id": "project_setup.identity.currency",
+                "value": "EUR",
+                "workbook_version": "2.0.0",
+                "content_hash": self._hash(),
+            },
+            follow_redirects=False,
+        )
+        self.assertEqual(resp.status_code, 422)
+
+    def test_partial_scenario_returns_422(self):
+        resp = self.client.post(
+            "/v2/workbook/update",
+            data={
+                "project": self.project_code,
+                "field_id": "project_setup.identity.scenario",
+                "value": "Base Case",
+                "workbook_version": "2.0.0",
+                "content_hash": self._hash(),
+            },
+            follow_redirects=False,
         )
         self.assertEqual(resp.status_code, 422)
 
