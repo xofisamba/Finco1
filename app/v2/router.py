@@ -66,6 +66,7 @@ from fastapi.templating import Jinja2Templates
 from app.auth import COOKIE_NAME, decode_session_token
 from app.ui.capex_view_model import build_capex_view_model
 from app.ui.inputs_summary import build_inputs_summary
+from app.ui.opex_sheet_projection import build_opex_sheet_projection
 from app.ui.opex_view_model import build_opex_view_model
 from app.ui.project_context import build_project_context_for_record
 from app.ui.protected_reference_service import is_protected_reference
@@ -82,25 +83,6 @@ from app.workbook.update_service import (
 )
 
 router = APIRouter()
-
-# Registry field-suffix for each OPEX group code (B.01–B.13).
-# B.09 "Fees" has no BOUND registry field — rendered ENGINE/read-only.
-# B.13 "Contingencies" is DISPLAY_ONLY in the registry.
-_OPEX_GROUP_FIELD_SUFFIX: dict[str, str | None] = {
-    "B.01": "technical_management",
-    "B.02": "om_preventive",
-    "B.03": "site_maintenance",
-    "B.04": "cleaning_materials",
-    "B.05": "security",
-    "B.06": "insurance",
-    "B.07": "lease_property_tax",
-    "B.08": "power_expenses",
-    "B.09": None,
-    "B.10": "audit_accounting_legal",
-    "B.11": "bank_fees",
-    "B.12": "environmental_social",
-    "B.13": "contingencies",
-}
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 _templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "app", "templates", "v2"))
@@ -322,8 +304,12 @@ def _render_capex_htmx_sheet(
 def _build_opex_vm_ctx(project_record, pis) -> dict:
     """Build OpexViewModel context for the OPEX sheet.
 
-    Returns opex_vm and opex_group_to_field (group code → registry field dict
-    or None for B.09 which has no BOUND field).
+    Delegates B.01–B.13 canonical structure to build_opex_sheet_projection()
+    in app.ui.opex_sheet_projection.  The router owns no OPEX domain mappings.
+
+    Returns opex_vm and opex_sheet_groups (always 13 OpexSheetGroup objects
+    in canonical order — present for every project regardless of ViewModel
+    group coverage).
     """
     snapshot = pis.to_snapshot()
     project_ctx = build_project_context_for_record(
@@ -339,17 +325,17 @@ def _build_opex_vm_ctx(project_record, pis) -> dict:
         and (project_record.template_source or "").strip().lower() in ("tuho", "oborovo")
     )
     opex_vm = build_opex_view_model(project_ctx, is_user_project=is_user)
-
     opex_fields = _build_sheet_fields("opex", pis)
-    fields_by_suffix = {f["field_id"].split(".")[-1]: f for f in opex_fields}
+    opex_sheet_groups = build_opex_sheet_projection(opex_vm, opex_fields)
 
-    opex_group_to_field: dict[str, dict | None] = {}
-    for code, suffix in _OPEX_GROUP_FIELD_SUFFIX.items():
-        opex_group_to_field[code] = fields_by_suffix.get(suffix) if suffix else None
+    # Summary section fields (e.g. opex.summary.total_y1 PARTIAL) rendered separately
+    # at the bottom of the sheet so PARTIAL fields are never silently filtered out.
+    opex_summary_fields = [f for f in opex_fields if f["section_id"] == "summary"]
 
     return {
         "opex_vm": opex_vm,
-        "opex_group_to_field": opex_group_to_field,
+        "opex_sheet_groups": opex_sheet_groups,
+        "opex_summary_fields": opex_summary_fields,
     }
 
 

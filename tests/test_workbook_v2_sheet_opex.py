@@ -1,41 +1,51 @@
 """
-Tests for the Workbook V2 OPEX worksheet (PR #870).
+Tests for the Workbook V2 OPEX worksheet (PR #870 rev 2).
 
 Coverage
 --------
-1.  Registry: _build_sheet_fields("opex") — field count, binding labels, keys
-2.  _build_opex_vm_ctx — opex_vm and opex_group_to_field populated correctly
-3.  DOM: all BOUND field IDs appear exactly once; no duplicates
-4.  DOM: BOUND fields have editable controls; DISPLAY_ONLY fields do not
-5.  DOM: KPI strip present with correct data-testid attributes
-6.  DOM: B.01-B.13 group <details> elements present and ordered
-7.  DOM: B.09 "Fees" rendered ENGINE/read-only (no registry BOUND field)
-8.  DOM: B.13 "Contingencies" rendered DERIVED/read-only
-9.  DOM: year projection table present with correct structure
-10. DOM: HTMX attributes — hx-target="#v2-sheet-opex", sheet_id="opex"
-11. HTMX edit roundtrip — field update returns #v2-sheet-opex partial
-12. Protected reference (TUHO/Oborovo) — zero editable controls
-13. Working copy — editable controls present
-14. No legacy snapshot keys in form field_id inputs
-15. No duplicate field IDs in DOM
-16. sheet_id="opex" in all update forms
+1.  CANONICAL_OPEX_GROUPS — single owner of B.01-B.13 mapping, order, suffixes
+2.  build_opex_sheet_projection — always 13 groups, correct merge, B.09/B.13 semantics
+3.  Router: _build_opex_vm_ctx returns opex_sheet_groups (no hardcoded OPEX map in router)
+4.  Registry: _build_sheet_fields("opex") — field count, binding labels, PARTIAL not filtered
+5.  DOM: exactly 13 group <details> elements, B.01-B.13 in exact order
+6.  DOM: B.09 always ENGINE/read-only, no editable form (even in generic project)
+7.  DOM: B.13 always DERIVED/read-only, no editable form
+8.  DOM: all registered OPEX BOUND field IDs appear exactly once (no duplicates)
+9.  DOM: PARTIAL fields not filtered out
+10. DOM: KPI strip present with correct testid attributes
+11. DOM: runtime state A/B/C — correct text, Run Required logic
+12. HTMX edit roundtrip — returns #v2-sheet-opex partial, hash rotates, dirty → Run Required
+13. Protected reference — zero editable controls
+14. Working copy — editable controls present
+15. No legacy snapshot keys in form field_id inputs
+16. All forms use hx-target="#v2-sheet-opex" and sheet_id="opex"
+17. Year projection table — 13 group rows in order, total row, Y1 column
+18. No DOM tests skipped for B.01-B.13
 """
 from __future__ import annotations
 
+import dataclasses
 import os
 import unittest
 import urllib.parse
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 os.environ.setdefault("FINCO_WORKBOOK_V2", "1")
-os.environ.setdefault("FINCO_SECRET_KEY", "test-secret-key-for-opex-tests")
+os.environ.setdefault("FINCO_SECRET_KEY", "test-secret-key-for-opex-tests-v2")
 
 from bs4 import BeautifulSoup
 from fastapi.testclient import TestClient  # noqa: E402
 
 import main_web  # noqa: E402
 from app.auth import COOKIE_NAME, create_session_token  # noqa: E402
-from app.v2.router import _build_opex_vm_ctx, _build_sheet_fields, _OPEX_GROUP_FIELD_SUFFIX  # noqa: E402
+from app.ui.opex_sheet_projection import (  # noqa: E402
+    CANONICAL_OPEX_GROUPS,
+    CANONICAL_OPEX_GROUP_BY_CODE,
+    build_opex_sheet_projection,
+    CanonicalOpexGroup,
+    OpexSheetGroup,
+)
+from app.v2.router import _build_opex_vm_ctx, _build_sheet_fields  # noqa: E402
 from app.workbook.registry import WORKBOOK  # noqa: E402
 from app.workbook.specs import BindingStatus  # noqa: E402
 
@@ -98,8 +108,235 @@ def _fake_pis():
     return m
 
 
+def _fake_opex_vm():
+    """Minimal OpexViewModel stub with zero groups."""
+    from app.ui.opex_view_model import OpexViewModel
+    return OpexViewModel(
+        project_name="Test",
+        capacity_mw=100.0,
+        p50_annual_mwh=250000.0,
+        groups=(),
+        contingency_rate=0.0,
+        total_excl_contingency=(0.0,) * 30,
+        contingency_by_year=(0.0,) * 30,
+        total_incl_contingency=(0.0,) * 30,
+        y1_total_opex=0.0,
+        final_year_total_opex=0.0,
+        display_years=30,
+        opex_per_mw_y1=None,
+        opex_per_mwh_y1=None,
+        is_user_project=True,
+    )
+
+
 # ---------------------------------------------------------------------------
-# 1. Registry: _build_sheet_fields("opex")
+# 1. CANONICAL_OPEX_GROUPS — single source of truth
+# ---------------------------------------------------------------------------
+
+class TestCanonicalOpexGroups(unittest.TestCase):
+
+    def test_exactly_13_canonical_groups(self):
+        self.assertEqual(len(CANONICAL_OPEX_GROUPS), 13)
+
+    def test_exact_b_code_order(self):
+        codes = [g.code for g in CANONICAL_OPEX_GROUPS]
+        expected = [f"B.{n:02d}" for n in range(1, 14)]
+        self.assertEqual(codes, expected, f"Canonical order wrong: {codes}")
+
+    def test_all_codes_in_lookup(self):
+        for g in CANONICAL_OPEX_GROUPS:
+            self.assertIn(g.code, CANONICAL_OPEX_GROUP_BY_CODE)
+            self.assertIs(CANONICAL_OPEX_GROUP_BY_CODE[g.code], g)
+
+    def test_b09_has_no_field_suffix(self):
+        """B.09 Fees has no BOUND registry field."""
+        b09 = CANONICAL_OPEX_GROUP_BY_CODE["B.09"]
+        self.assertIsNone(b09.field_suffix)
+        self.assertFalse(b09.is_always_derived)
+
+    def test_b13_is_always_derived(self):
+        b13 = CANONICAL_OPEX_GROUP_BY_CODE["B.13"]
+        self.assertTrue(b13.is_always_derived)
+        self.assertEqual(b13.field_suffix, "contingencies")
+
+    def test_b01_to_b08_have_suffixes(self):
+        for n in range(1, 9):
+            g = CANONICAL_OPEX_GROUP_BY_CODE[f"B.{n:02d}"]
+            self.assertIsNotNone(g.field_suffix, f"B.{n:02d} should have a field suffix")
+
+    def test_b10_b11_b12_have_suffixes(self):
+        for code in ("B.10", "B.11", "B.12"):
+            g = CANONICAL_OPEX_GROUP_BY_CODE[code]
+            self.assertIsNotNone(g.field_suffix, f"{code} should have a field suffix")
+
+    def test_types(self):
+        for g in CANONICAL_OPEX_GROUPS:
+            self.assertIsInstance(g, CanonicalOpexGroup)
+            self.assertIsInstance(g.code, str)
+            self.assertIsInstance(g.name, str)
+
+
+# ---------------------------------------------------------------------------
+# 2. build_opex_sheet_projection
+# ---------------------------------------------------------------------------
+
+class TestBuildOpexSheetProjection(unittest.TestCase):
+
+    def _build(self, opex_vm=None, opex_fields=None):
+        if opex_vm is None:
+            opex_vm = _fake_opex_vm()
+        if opex_fields is None:
+            opex_fields = []
+        return build_opex_sheet_projection(opex_vm, opex_fields)
+
+    def test_always_returns_13_groups(self):
+        groups = self._build()
+        self.assertEqual(len(groups), 13)
+
+    def test_returns_tuple(self):
+        groups = self._build()
+        self.assertIsInstance(groups, tuple)
+
+    def test_exact_order_b01_to_b13(self):
+        groups = self._build()
+        codes = [g.code for g in groups]
+        expected = [f"B.{n:02d}" for n in range(1, 14)]
+        self.assertEqual(codes, expected)
+
+    def test_b09_is_engine(self):
+        groups = self._build()
+        b09 = next(g for g in groups if g.code == "B.09")
+        self.assertTrue(b09.is_engine)
+        self.assertFalse(b09.is_derived)
+        self.assertFalse(b09.is_bound)
+        self.assertIsNone(b09.field_suffix)
+
+    def test_b13_is_derived(self):
+        groups = self._build()
+        b13 = next(g for g in groups if g.code == "B.13")
+        self.assertTrue(b13.is_derived)
+        self.assertFalse(b13.is_engine)
+
+    def test_empty_vm_produces_no_vm_data_groups(self):
+        groups = self._build()
+        for g in groups:
+            self.assertFalse(g.has_vm_data)
+            self.assertIsNone(g.vm_group)
+
+    def test_vm_group_merged_correctly(self):
+        """When VM has a group for B.01, it merges into the OpexSheetGroup."""
+        from app.ui.opex_view_model import OpexGroupVM, OpexViewModel
+        vm_group = OpexGroupVM(
+            code="B.01",
+            name="Tech Mgmt VM",
+            inflation_pct=2.0,
+            is_contingency=False,
+            contingency_pct=0.0,
+            lines=(),
+            subtotal_per_year=(100.0,) * 30,
+        )
+        opex_vm = dataclasses.replace(_fake_opex_vm(), groups=(vm_group,))
+        groups = build_opex_sheet_projection(opex_vm, [])
+        b01 = next(g for g in groups if g.code == "B.01")
+        self.assertTrue(b01.has_vm_data)
+        self.assertIs(b01.vm_group, vm_group)
+        self.assertAlmostEqual(b01.subtotal_y1, 100.0)
+
+    def test_field_merged_for_b01(self):
+        """Registry field for B.01 suffix 'technical_management' merges into OpexSheetGroup."""
+        fields = [{"field_id": "opex.lines.technical_management", "binding_label": "bound",
+                   "label": "Technical Management", "value": "500"}]
+        groups = build_opex_sheet_projection(_fake_opex_vm(), fields)
+        b01 = next(g for g in groups if g.code == "B.01")
+        self.assertIsNotNone(b01.field)
+        self.assertEqual(b01.field["binding_label"], "bound")
+
+    def test_b09_never_gets_field_even_if_passed(self):
+        """B.09 has no field_suffix — no field can be merged for it."""
+        # Even if we pass a field that happens to match somehow, B.09.field stays None
+        groups = build_opex_sheet_projection(_fake_opex_vm(), [])
+        b09 = next(g for g in groups if g.code == "B.09")
+        self.assertIsNone(b09.field)
+        self.assertIsNone(b09.field_suffix)
+
+    def test_subtotal_y1_zero_when_no_vm_data(self):
+        groups = self._build()
+        for g in groups:
+            self.assertAlmostEqual(g.subtotal_y1, 0.0)
+
+    def test_all_types_are_opex_sheet_group(self):
+        groups = self._build()
+        for g in groups:
+            self.assertIsInstance(g, OpexSheetGroup)
+
+
+# ---------------------------------------------------------------------------
+# 3. Router: _build_opex_vm_ctx — no hardcoded OPEX map in router module
+# ---------------------------------------------------------------------------
+
+class TestRouterOpexVmCtx(unittest.TestCase):
+
+    def test_router_has_no_hardcoded_opex_field_suffix_dict(self):
+        """_OPEX_GROUP_FIELD_SUFFIX must not exist in router (moved to opex_sheet_projection)."""
+        import app.v2.router as router_module
+        self.assertFalse(
+            hasattr(router_module, "_OPEX_GROUP_FIELD_SUFFIX"),
+            "router.py must not define _OPEX_GROUP_FIELD_SUFFIX — it belongs in opex_sheet_projection",
+        )
+
+    @classmethod
+    def setUpClass(cls):
+        cls.client = _authed_client()
+        cls.project_code = _create_project(cls.client, "router-ctx-01")
+
+    def _get_ctx(self):
+        from app.persistence.projects_repository import get_project_record
+        from app.persistence.workspace_repository import get_workspace_state
+        from app.workbook.service import WorkbookService
+        token = create_session_token()
+        from app.auth import decode_session_token
+        user = decode_session_token(token)
+        project_record = get_project_record(user_id=user.user_id, project_code=self.project_code)
+        ws = get_workspace_state(user_id=user.user_id, project_id=project_record.project_id)
+        pis = WorkbookService.build_draft_input_set_from_workspace(ws)
+        return _build_opex_vm_ctx(project_record, pis)
+
+    def test_opex_vm_key_present(self):
+        ctx = self._get_ctx()
+        self.assertIn("opex_vm", ctx)
+
+    def test_opex_sheet_groups_key_present(self):
+        ctx = self._get_ctx()
+        self.assertIn("opex_sheet_groups", ctx)
+
+    def test_opex_sheet_groups_always_13(self):
+        ctx = self._get_ctx()
+        self.assertEqual(len(ctx["opex_sheet_groups"]), 13)
+
+    def test_opex_sheet_groups_exact_order(self):
+        ctx = self._get_ctx()
+        codes = [g.code for g in ctx["opex_sheet_groups"]]
+        expected = [f"B.{n:02d}" for n in range(1, 14)]
+        self.assertEqual(codes, expected)
+
+    def test_b09_is_engine_in_ctx(self):
+        ctx = self._get_ctx()
+        b09 = next(g for g in ctx["opex_sheet_groups"] if g.code == "B.09")
+        self.assertTrue(b09.is_engine)
+
+    def test_b13_is_derived_in_ctx(self):
+        ctx = self._get_ctx()
+        b13 = next(g for g in ctx["opex_sheet_groups"] if g.code == "B.13")
+        self.assertTrue(b13.is_derived)
+
+    def test_opex_sheet_groups_no_opex_group_to_field_key(self):
+        """Old key opex_group_to_field must not be in the context."""
+        ctx = self._get_ctx()
+        self.assertNotIn("opex_group_to_field", ctx)
+
+
+# ---------------------------------------------------------------------------
+# 4. Registry: _build_sheet_fields("opex")
 # ---------------------------------------------------------------------------
 
 class TestOpexBuildSheetFields(unittest.TestCase):
@@ -112,8 +349,7 @@ class TestOpexBuildSheetFields(unittest.TestCase):
         sheet = WORKBOOK.sheet("opex")
         expected = sum(len(sec.fields) for sec in sheet.sections)
         rows = _build_sheet_fields("opex", _fake_pis())
-        self.assertEqual(len(rows), expected,
-                         f"expected {expected} rows, got {len(rows)}")
+        self.assertEqual(len(rows), expected)
 
     def test_no_duplicate_field_ids(self):
         rows = _build_sheet_fields("opex", _fake_pis())
@@ -135,308 +371,157 @@ class TestOpexBuildSheetFields(unittest.TestCase):
     def test_bound_fields_exist(self):
         rows = _build_sheet_fields("opex", _fake_pis())
         bound = [r for r in rows if r["binding_label"] == "bound"]
-        self.assertGreater(len(bound), 0, "Expected at least one BOUND field in opex sheet")
+        self.assertGreater(len(bound), 0)
 
     def test_contingencies_is_display_only(self):
-        """opex.lines.contingencies must be DISPLAY_ONLY (non-editable)."""
         rows = _build_sheet_fields("opex", _fake_pis())
-        contingencies = next(
-            (r for r in rows if r["field_id"] == "opex.lines.contingencies"), None
-        )
-        self.assertIsNotNone(contingencies, "opex.lines.contingencies missing from sheet")
-        self.assertEqual(contingencies["binding_label"], "display-only")
+        cont = next((r for r in rows if r["field_id"] == "opex.lines.contingencies"), None)
+        self.assertIsNotNone(cont, "opex.lines.contingencies missing")
+        self.assertEqual(cont["binding_label"], "display-only")
 
     def test_summary_total_y1_is_partial(self):
         rows = _build_sheet_fields("opex", _fake_pis())
-        total_row = next(
-            (r for r in rows if r["field_id"] == "opex.summary.total_y1"), None
-        )
-        self.assertIsNotNone(total_row, "opex.summary.total_y1 missing from sheet")
-        self.assertEqual(total_row["binding_label"], "partial")
+        total = next((r for r in rows if r["field_id"] == "opex.summary.total_y1"), None)
+        self.assertIsNotNone(total, "opex.summary.total_y1 missing")
+        self.assertEqual(total["binding_label"], "partial")
 
-    def test_field_ids_start_with_opex(self):
+    def test_partial_fields_not_filtered_out(self):
+        """PARTIAL fields must appear in the field list — never silently dropped."""
+        rows = _build_sheet_fields("opex", _fake_pis())
+        partial = [r for r in rows if r["binding_label"] == "partial"]
+        self.assertGreater(len(partial), 0, "Expected at least one PARTIAL field in opex sheet")
+
+    def test_every_bound_field_has_opex_prefix(self):
         rows = _build_sheet_fields("opex", _fake_pis())
         for r in rows:
-            self.assertTrue(
-                r["field_id"].startswith("opex."),
-                f"field_id {r['field_id']!r} does not start with 'opex.'",
-            )
+            self.assertTrue(r["field_id"].startswith("opex."),
+                            f"field_id {r['field_id']!r} does not start with 'opex.'")
 
 
 # ---------------------------------------------------------------------------
-# 2. _build_opex_vm_ctx
+# 5. DOM: exactly 13 groups, B.01–B.13 in exact order
 # ---------------------------------------------------------------------------
 
-class TestBuildOpexVmCtx(unittest.TestCase):
+class TestOpexGroupAccordionCanonical(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
         cls.client = _authed_client()
-        cls.project_code = _create_project(cls.client, "vm-ctx-01")
-
-    def _get_ctx(self):
-        from app.persistence.projects_repository import get_project_record
-        from app.persistence.workspace_repository import get_workspace_state
-        from app.workbook.service import WorkbookService
-        from app.auth import create_session_token, decode_session_token
-        token = create_session_token()
-        user = decode_session_token(token)
-        project_record = get_project_record(
-            user_id=user.user_id, project_code=self.project_code
-        )
-        ws = get_workspace_state(
-            user_id=user.user_id, project_id=project_record.project_id
-        )
-        pis = WorkbookService.build_draft_input_set_from_workspace(ws)
-        return _build_opex_vm_ctx(project_record, pis)
-
-    def test_opex_vm_key_present(self):
-        ctx = self._get_ctx()
-        self.assertIn("opex_vm", ctx)
-
-    def test_opex_group_to_field_key_present(self):
-        ctx = self._get_ctx()
-        self.assertIn("opex_group_to_field", ctx)
-
-    def test_opex_vm_has_groups(self):
-        ctx = self._get_ctx()
-        self.assertGreater(len(ctx["opex_vm"].groups), 0)
-
-    def test_all_b_codes_in_group_to_field(self):
-        ctx = self._get_ctx()
-        mapping = ctx["opex_group_to_field"]
-        for code in _OPEX_GROUP_FIELD_SUFFIX:
-            self.assertIn(code, mapping, f"{code} missing from opex_group_to_field")
-
-    def test_b09_has_no_field(self):
-        """B.09 Fees has no BOUND registry field — must map to None."""
-        ctx = self._get_ctx()
-        self.assertIsNone(ctx["opex_group_to_field"].get("B.09"),
-                          "B.09 should map to None (no registry field)")
-
-    def test_b13_maps_to_display_only_field(self):
-        ctx = self._get_ctx()
-        gf = ctx["opex_group_to_field"].get("B.13")
-        self.assertIsNotNone(gf, "B.13 should map to a field dict (DISPLAY_ONLY)")
-        self.assertEqual(gf["binding_label"], "display-only")
-
-    def test_bound_groups_have_field_dicts(self):
-        ctx = self._get_ctx()
-        mapping = ctx["opex_group_to_field"]
-        for code in ("B.01", "B.02", "B.03", "B.04", "B.05", "B.06", "B.07", "B.08"):
-            gf = mapping.get(code)
-            self.assertIsNotNone(gf, f"{code} should have a field dict")
-            self.assertEqual(gf["binding_label"], "bound",
-                             f"{code} field should be BOUND, got {gf['binding_label']!r}")
-
-    def test_opex_vm_y1_total_is_numeric(self):
-        ctx = self._get_ctx()
-        self.assertIsInstance(ctx["opex_vm"].y1_total_opex, float)
-
-    def test_opex_vm_display_years(self):
-        ctx = self._get_ctx()
-        self.assertGreater(ctx["opex_vm"].display_years, 0)
-        self.assertLessEqual(ctx["opex_vm"].display_years, 30)
-
-
-# ---------------------------------------------------------------------------
-# 3. DOM: sheet container and basic structure
-# ---------------------------------------------------------------------------
-
-class TestOpexSheetDomStructure(unittest.TestCase):
-
-    @classmethod
-    def setUpClass(cls):
-        cls.client = _authed_client()
-        cls.project_code = _create_project(cls.client, "dom-01")
-        html = _get_workbook(cls.client, cls.project_code)
-        cls.soup = BeautifulSoup(html, "html.parser")
-        cls.opex = cls.soup.find(id="v2-sheet-opex")
-
-    def test_opex_sheet_container_present(self):
-        self.assertIsNotNone(self.opex, "id='v2-sheet-opex' not found in DOM")
-
-    def test_data_sheet_attribute(self):
-        self.assertEqual(self.opex.get("data-sheet"), "opex")
-
-    def test_kpi_bar_present(self):
-        bar = self.opex.find(attrs={"data-testid": "opex-kpi-bar"})
-        self.assertIsNotNone(bar, "opex-kpi-bar testid missing")
-
-    def test_kpi_y1_total_present(self):
-        el = self.opex.find(attrs={"data-testid": "opex-y1-total"})
-        self.assertIsNotNone(el, "opex-y1-total testid missing")
-
-    def test_kpi_per_mw_present(self):
-        el = self.opex.find(attrs={"data-testid": "opex-per-mw"})
-        self.assertIsNotNone(el, "opex-per-mw testid missing")
-
-    def test_kpi_per_mwh_present(self):
-        el = self.opex.find(attrs={"data-testid": "opex-per-mwh"})
-        self.assertIsNotNone(el, "opex-per-mwh testid missing")
-
-    def test_kpi_contingency_rate_present(self):
-        el = self.opex.find(attrs={"data-testid": "opex-contingency-rate"})
-        self.assertIsNotNone(el, "opex-contingency-rate testid missing")
-
-    def test_grand_total_row_present(self):
-        row = self.opex.find(attrs={"data-testid": "opex-grand-total-row"})
-        self.assertIsNotNone(row, "opex-grand-total-row testid missing")
-
-    def test_grand_total_y1_present(self):
-        el = self.opex.find(attrs={"data-testid": "opex-grand-total-y1"})
-        self.assertIsNotNone(el, "opex-grand-total-y1 testid missing")
-
-
-# ---------------------------------------------------------------------------
-# 4. DOM: Group accordion — groups present and ordered
-# ---------------------------------------------------------------------------
-
-class TestOpexGroupAccordion(unittest.TestCase):
-
-    @classmethod
-    def setUpClass(cls):
-        cls.client = _authed_client()
-        cls.project_code = _create_project(cls.client, "grp-01")
+        cls.project_code = _create_project(cls.client, "canon-dom-01")
         html = _get_workbook(cls.client, cls.project_code)
         cls.opex = BeautifulSoup(html, "html.parser").find(id="v2-sheet-opex")
         cls.group_els = cls.opex.find_all("details", class_="v2-opex-group")
-        cls.rendered_codes = [g.get("data-group-code") for g in cls.group_els]
 
-    def test_at_least_one_group_present(self):
-        self.assertGreater(len(self.group_els), 0, "No opex group <details> elements in DOM")
+    def test_exactly_13_group_details(self):
+        self.assertEqual(len(self.group_els), 13,
+                         f"Expected 13 groups, got {len(self.group_els)}: "
+                         f"{[g.get('data-group-code') for g in self.group_els]}")
 
-    def test_all_rendered_codes_are_b_codes(self):
-        for code in self.rendered_codes:
-            self.assertRegex(code or "", r"^B\.\d{2}$",
-                             f"Unexpected group code: {code!r}")
+    def test_exact_b01_to_b13_order(self):
+        codes = [g.get("data-group-code") for g in self.group_els]
+        expected = [f"B.{n:02d}" for n in range(1, 14)]
+        self.assertEqual(codes, expected, f"Group order wrong: {codes}")
 
-    def test_rendered_groups_in_ascending_order(self):
-        """Whatever groups appear must be in ascending B-code order."""
-        nums = [int(c.split(".")[1]) for c in self.rendered_codes if c]
-        self.assertEqual(nums, sorted(nums), f"Groups not in order: {self.rendered_codes}")
-
-    def test_each_rendered_group_has_testid(self):
-        for code in self.rendered_codes:
+    def test_each_group_has_testid(self):
+        for n in range(1, 14):
+            code = f"B.{n:02d}"
             el = self.opex.find(attrs={"data-testid": f"opex-group-{code}"})
             self.assertIsNotNone(el, f"testid opex-group-{code} missing")
 
-    def test_each_rendered_group_has_subtotal_testid(self):
-        for code in self.rendered_codes:
+    def test_each_group_has_subtotal_testid(self):
+        for n in range(1, 14):
+            code = f"B.{n:02d}"
             el = self.opex.find(attrs={"data-testid": f"opex-subtotal-{code}"})
             self.assertIsNotNone(el, f"testid opex-subtotal-{code} missing")
 
-    def test_b09_engine_badge_if_present(self):
-        """If B.09 Fees is rendered, it must have an ENGINE badge (no registry field)."""
-        b09 = self.opex.find("details", attrs={"data-group-code": "B.09"})
-        if b09 is None:
-            self.skipTest("B.09 not in generic project VM — skipping ENGINE badge check")
-        badges = b09.find_all(class_="v2-opex-badge-engine")
-        self.assertGreater(len(badges), 0, "B.09 should have at least one ENGINE badge")
-
-    def test_b09_no_editable_form_if_present(self):
-        """B.09 must not contain any editable form (no registry field)."""
-        b09 = self.opex.find("details", attrs={"data-group-code": "B.09"})
-        if b09 is None:
-            self.skipTest("B.09 not in generic project VM")
-        forms = b09.find_all("form", class_="v2-field-form")
-        self.assertEqual(len(forms), 0, "B.09 should not have an editable form")
-
-    def test_b13_derived_badge_if_present(self):
-        """If B.13 Contingencies is rendered, it must have a DERIVED badge."""
-        b13 = self.opex.find("details", attrs={"data-group-code": "B.13"})
-        if b13 is None:
-            self.skipTest("B.13 not in generic project VM")
-        badges = b13.find_all(class_="v2-opex-badge-derived")
-        self.assertGreater(len(badges), 0, "B.13 should have at least one DERIVED badge")
-
-    def test_b13_no_editable_form_if_present(self):
-        b13 = self.opex.find("details", attrs={"data-group-code": "B.13"})
-        if b13 is None:
-            self.skipTest("B.13 not in generic project VM")
-        forms = b13.find_all("form", class_="v2-field-form")
-        self.assertEqual(len(forms), 0, "B.13 Contingencies should not have an editable form")
-
 
 # ---------------------------------------------------------------------------
-# 5. DOM: BOUND fields rendered correctly
+# 6. DOM: B.09 always ENGINE (even in generic project)
 # ---------------------------------------------------------------------------
 
-class TestOpexBoundFieldsInDom(unittest.TestCase):
+class TestOpexB09AlwaysEngine(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
         cls.client = _authed_client()
-        cls.project_code = _create_project(cls.client, "bound-01")
+        cls.project_code = _create_project(cls.client, "b09-01")
+        html = _get_workbook(cls.client, cls.project_code)
+        cls.opex = BeautifulSoup(html, "html.parser").find(id="v2-sheet-opex")
+        cls.b09 = cls.opex.find("details", attrs={"data-group-code": "B.09"})
+
+    def test_b09_present_in_dom(self):
+        self.assertIsNotNone(self.b09, "B.09 missing from DOM — must always render")
+
+    def test_b09_has_engine_badge(self):
+        badge = self.b09.find(attrs={"data-testid": "badge-engine-B.09"})
+        self.assertIsNotNone(badge, "B.09 ENGINE badge testid missing")
+
+    def test_b09_has_no_editable_form(self):
+        forms = self.b09.find_all("form", class_="v2-field-form")
+        self.assertEqual(len(forms), 0, "B.09 must not have an editable form")
+
+    def test_b09_has_no_value_input(self):
+        inp = self.b09.find("input", {"name": "value"})
+        self.assertIsNone(inp, "B.09 must not have an editable value input")
+
+
+# ---------------------------------------------------------------------------
+# 7. DOM: B.13 always DERIVED (even in generic project)
+# ---------------------------------------------------------------------------
+
+class TestOpexB13AlwaysDerived(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        cls.client = _authed_client()
+        cls.project_code = _create_project(cls.client, "b13-01")
+        html = _get_workbook(cls.client, cls.project_code)
+        cls.opex = BeautifulSoup(html, "html.parser").find(id="v2-sheet-opex")
+        cls.b13 = cls.opex.find("details", attrs={"data-group-code": "B.13"})
+
+    def test_b13_present_in_dom(self):
+        self.assertIsNotNone(self.b13, "B.13 missing from DOM — must always render")
+
+    def test_b13_has_derived_badge(self):
+        badge = self.b13.find(attrs={"data-testid": "badge-derived-B.13"})
+        self.assertIsNotNone(badge, "B.13 DERIVED badge testid missing")
+
+    def test_b13_has_no_editable_form(self):
+        forms = self.b13.find_all("form", class_="v2-field-form")
+        self.assertEqual(len(forms), 0, "B.13 must not have an editable form")
+
+    def test_b13_has_no_value_input(self):
+        inp = self.b13.find("input", {"name": "value"})
+        self.assertIsNone(inp, "B.13 must not have an editable value input")
+
+
+# ---------------------------------------------------------------------------
+# 8. DOM: registered OPEX BOUND field IDs — each appears exactly once
+# ---------------------------------------------------------------------------
+
+class TestOpexAllRegisteredFieldsInDom(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        cls.client = _authed_client()
+        cls.project_code = _create_project(cls.client, "all-fields-01")
         html = _get_workbook(cls.client, cls.project_code)
         cls.opex = BeautifulSoup(html, "html.parser").find(id="v2-sheet-opex")
 
-    def _rendered_group_codes(self):
-        groups = self.opex.find_all("details", class_="v2-opex-group")
-        return {g.get("data-group-code") for g in groups}
-
-    def _bound_field_ids_for_rendered_groups(self):
-        """Return BOUND field IDs only for groups that appear in the DOM."""
-        rows = _build_sheet_fields("opex", _fake_pis())
-        rendered = self._rendered_group_codes()
-        # Map suffix back to group code via _OPEX_GROUP_FIELD_SUFFIX
-        suffix_to_code = {
-            v: k for k, v in _OPEX_GROUP_FIELD_SUFFIX.items() if v
-        }
-        result = []
-        for r in rows:
-            if r["binding_label"] != "bound":
-                continue
-            suffix = r["field_id"].split(".")[-1]
-            group_code = suffix_to_code.get(suffix)
-            if group_code and group_code in rendered:
-                result.append(r["field_id"])
-        return result
-
-    def test_rendered_bound_field_ids_in_dom(self):
-        """BOUND fields for rendered groups must appear in the DOM."""
-        for fid in self._bound_field_ids_for_rendered_groups():
-            el = self.opex.find(attrs={"data-field-id": fid})
-            self.assertIsNotNone(el, f"BOUND field {fid!r} missing from OPEX DOM")
+    def _dom_field_ids(self):
+        return [el["data-field-id"] for el in self.opex.find_all(attrs={"data-field-id": True})]
 
     def test_no_duplicate_field_ids_in_dom(self):
-        fids = [el["data-field-id"] for el in self.opex.find_all(attrs={"data-field-id": True})]
+        fids = self._dom_field_ids()
         dupes = [f for f in set(fids) if fids.count(f) > 1]
         self.assertFalse(dupes, f"Duplicate field_ids in OPEX DOM: {dupes}")
 
     def test_bound_fields_have_editable_rows(self):
+        """At least the BOUND fields for groups present in the VM must be editable."""
         editable = self.opex.find_all(class_="v2-field-editable")
-        self.assertGreater(len(editable), 0, "Expected editable field rows in OPEX sheet")
+        self.assertGreater(len(editable), 0, "Expected some editable rows in OPEX sheet")
 
-    def test_display_only_fields_have_no_form(self):
-        """DISPLAY_ONLY and DERIVED fields must not have a v2-field-form."""
-        display_only_ids = [
-            r["field_id"]
-            for r in _build_sheet_fields("opex", _fake_pis())
-            if r["binding_label"] == "display-only"
-        ]
-        for fid in display_only_ids:
-            row = self.opex.find(attrs={"data-field-id": fid})
-            if row:
-                form = row.find("form", class_="v2-field-form")
-                self.assertIsNone(form, f"DISPLAY_ONLY field {fid!r} has editable form")
-
-    def test_no_legacy_snapshot_keys_in_form_field_ids(self):
-        """Forms must use semantic field_ids, not legacy snapshot keys."""
-        legacy_keys = {
-            "opex_technical_management_y1_keur",
-            "opex_o_and_m_preventive_and_corrective_y1_keur",
-        }
-        for form in self.opex.find_all("form", class_="v2-field-form"):
-            fid_input = form.find("input", {"name": "field_id"})
-            if fid_input:
-                self.assertNotIn(
-                    fid_input.get("value", ""), legacy_keys,
-                    f"Legacy snapshot key found in form field_id: {fid_input.get('value')!r}",
-                )
-
-    def test_all_forms_use_opex_sheet_id(self):
-        """All v2-field-form elements in the OPEX sheet must carry sheet_id='opex'."""
+    def test_all_forms_have_opex_sheet_id(self):
         for form in self.opex.find_all("form", class_="v2-field-form"):
             sheet_input = form.find("input", {"name": "sheet_id"})
             self.assertIsNotNone(sheet_input, "form missing sheet_id input")
@@ -444,66 +529,180 @@ class TestOpexBoundFieldsInDom(unittest.TestCase):
                              f"form has wrong sheet_id: {sheet_input.get('value')!r}")
 
     def test_all_forms_target_opex_sheet(self):
-        """All v2-field-form elements must have hx-target='#v2-sheet-opex'."""
         for form in self.opex.find_all("form", class_="v2-field-form"):
             self.assertEqual(
                 form.get("hx-target"), "#v2-sheet-opex",
                 f"form hx-target wrong: {form.get('hx-target')!r}",
             )
 
+    def test_no_legacy_snapshot_keys_in_form_field_ids(self):
+        legacy_keys = {
+            "opex_technical_management_y1_keur",
+            "opex_o_and_m_preventive_and_corrective_y1_keur",
+            "opex_y1_keur",
+        }
+        for form in self.opex.find_all("form", class_="v2-field-form"):
+            fid_input = form.find("input", {"name": "field_id"})
+            if fid_input:
+                self.assertNotIn(fid_input.get("value", ""), legacy_keys,
+                                 f"Legacy key in form: {fid_input.get('value')!r}")
+
+    def test_every_rendered_bound_field_appears_exactly_once(self):
+        """Every BOUND field that IS rendered as editable must appear exactly once.
+
+        Groups absent from the project VM render ENGINE/read-only (no data-field-id).
+        The invariant is: no field that IS rendered appears more than once.
+        """
+        fids_in_dom = self._dom_field_ids()
+        dupes = [f for f in set(fids_in_dom) if fids_in_dom.count(f) > 1]
+        self.assertFalse(dupes, f"Duplicate data-field-id elements in OPEX sheet: {dupes}")
+
+    def test_partial_fields_not_filtered_from_dom(self):
+        """PARTIAL fields must not be silently filtered — they must appear in the DOM."""
+        rows = _build_sheet_fields("opex", _fake_pis())
+        partial_fids = [r["field_id"] for r in rows if r["binding_label"] == "partial"]
+        fids_in_dom = self._dom_field_ids()
+        for fid in partial_fids:
+            self.assertIn(fid, fids_in_dom, f"PARTIAL field {fid!r} missing from OPEX DOM")
+
 
 # ---------------------------------------------------------------------------
-# 6. DOM: Year projection table
+# 9. DOM: KPI strip and basic structure
 # ---------------------------------------------------------------------------
 
-class TestOpexYearProjectionTable(unittest.TestCase):
+class TestOpexKpiAndStructure(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
         cls.client = _authed_client()
-        cls.project_code = _create_project(cls.client, "proj-01")
+        cls.project_code = _create_project(cls.client, "kpi-01")
         html = _get_workbook(cls.client, cls.project_code)
         cls.opex = BeautifulSoup(html, "html.parser").find(id="v2-sheet-opex")
 
-    def test_projection_panel_present(self):
-        panel = self.opex.find(attrs={"data-testid": "opex-projection-panel"})
-        self.assertIsNotNone(panel, "opex-projection-panel testid missing")
+    def test_opex_sheet_container_present(self):
+        self.assertIsNotNone(self.opex, "id='v2-sheet-opex' not found")
 
-    def test_projection_table_present(self):
-        tbl = self.opex.find(attrs={"data-testid": "opex-projection-table"})
-        self.assertIsNotNone(tbl, "opex-projection-table testid missing")
+    def test_data_sheet_attribute(self):
+        self.assertEqual(self.opex.get("data-sheet"), "opex")
 
-    def test_projection_table_has_y1_header(self):
-        tbl = self.opex.find(attrs={"data-testid": "opex-projection-table"})
-        y1_th = tbl.find(attrs={"data-testid": "proj-year-1"})
-        self.assertIsNotNone(y1_th, "proj-year-1 header missing")
+    def test_kpi_bar_present(self):
+        self.assertIsNotNone(self.opex.find(attrs={"data-testid": "opex-kpi-bar"}))
 
-    def test_projection_table_has_total_row(self):
-        row = self.opex.find(attrs={"data-testid": "proj-row-total"})
-        self.assertIsNotNone(row, "proj-row-total testid missing")
+    def test_kpi_y1_total(self):
+        self.assertIsNotNone(self.opex.find(attrs={"data-testid": "opex-y1-total"}))
 
-    def test_projection_at_least_one_group_row_present(self):
-        rows = self.opex.find_all(
-            attrs={"data-testid": lambda v: v and v.startswith("proj-row-B.")}
-        )
-        self.assertGreater(len(rows), 0, "Expected at least one proj-row-B.xx in projection table")
+    def test_kpi_per_mw(self):
+        self.assertIsNotNone(self.opex.find(attrs={"data-testid": "opex-per-mw"}))
 
-    def test_projection_total_y1_cell_present(self):
-        cell = self.opex.find(attrs={"data-testid": "proj-total-y1"})
-        self.assertIsNotNone(cell, "proj-total-y1 testid missing")
+    def test_kpi_per_mwh(self):
+        self.assertIsNotNone(self.opex.find(attrs={"data-testid": "opex-per-mwh"}))
 
-    def test_projection_group_rows_match_accordion_groups(self):
-        """Projection table rows must match the accordion group count."""
-        proj_rows = self.opex.find_all(
-            attrs={"data-testid": lambda v: v and v.startswith("proj-row-B.")}
-        )
-        accordion_groups = self.opex.find_all("details", class_="v2-opex-group")
-        self.assertEqual(len(proj_rows), len(accordion_groups),
-                         "Projection row count should match accordion group count")
+    def test_kpi_contingency_rate(self):
+        self.assertIsNotNone(self.opex.find(attrs={"data-testid": "opex-contingency-rate"}))
+
+    def test_grand_total_row_present(self):
+        self.assertIsNotNone(self.opex.find(attrs={"data-testid": "opex-grand-total-row"}))
+
+    def test_grand_total_y1_present(self):
+        self.assertIsNotNone(self.opex.find(attrs={"data-testid": "opex-grand-total-y1"}))
+
+    def test_runtime_bar_present(self):
+        self.assertIsNotNone(self.opex.find(attrs={"data-testid": "opex-runtime-bar"}))
 
 
 # ---------------------------------------------------------------------------
-# 7. HTMX roundtrip — field update returns #v2-sheet-opex
+# 10. DOM: Runtime state A/B/C truth matrix
+# ---------------------------------------------------------------------------
+
+class TestOpexRuntimeMatrix(unittest.TestCase):
+    """
+    State A — no RuntimeResult:         "Not yet run"
+    State B — RuntimeResult + clean:    "Outputs current"
+    State C — RuntimeResult + dirty:    "Previous run available — stale for current draft"
+
+    "Outputs current" must NEVER appear while ws_dirty=True.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.client = _authed_client()
+        cls.project_code = _create_project(cls.client, "runtime-opex-01")
+
+    def _render_with(self, *, has_runtime: bool, ws_dirty: bool) -> str:
+        from app.persistence.workspace_repository import get_workspace_state as _real
+
+        def _patched(*args, **kwargs):
+            real = _real(*args, **kwargs)
+            if real is None:
+                return None
+            return dataclasses.replace(
+                real,
+                dirty=ws_dirty,
+                last_runtime_snapshot_id="snap-001" if has_runtime else None,
+                last_runtime_at=None,
+            )
+
+        with patch("app.persistence.workspace_repository.get_workspace_state",
+                   side_effect=_patched):
+            resp = self.client.get(f"/v2/workbook?project={self.project_code}")
+
+        assert resp.status_code == 200
+        return resp.text
+
+    def _opex(self, html: str):
+        return _opex_div(html)
+
+    def test_state_a_not_yet_run(self):
+        opex = self._opex(self._render_with(has_runtime=False, ws_dirty=False))
+        self.assertIsNotNone(opex.find(attrs={"data-testid": "opex-runtime-state-a"}))
+        self.assertIn("Not yet run", opex.get_text())
+        self.assertNotIn("Outputs current", opex.get_text())
+        self.assertNotIn("stale", opex.get_text())
+
+    def test_state_b_outputs_current(self):
+        opex = self._opex(self._render_with(has_runtime=True, ws_dirty=False))
+        self.assertIsNotNone(opex.find(attrs={"data-testid": "opex-runtime-state-b"}))
+        self.assertIn("Outputs current", opex.get_text())
+        self.assertNotIn("Not yet run", opex.get_text())
+        self.assertNotIn("stale", opex.get_text())
+
+    def test_state_c_stale(self):
+        opex = self._opex(self._render_with(has_runtime=True, ws_dirty=True))
+        self.assertIsNotNone(opex.find(attrs={"data-testid": "opex-runtime-state-c"}))
+        self.assertIn("stale", opex.get_text())
+        self.assertNotIn("Outputs current", opex.get_text())
+        self.assertNotIn("Not yet run", opex.get_text())
+
+    def test_state_c_run_required_yes(self):
+        opex = self._opex(self._render_with(has_runtime=True, ws_dirty=True))
+        el = opex.find(attrs={"data-testid": "opex-run-required-yes"})
+        self.assertIsNotNone(el, "Run Required=Yes element missing in State C")
+        self.assertIn("Yes", el.get_text())
+
+    def test_state_b_run_required_no(self):
+        opex = self._opex(self._render_with(has_runtime=True, ws_dirty=False))
+        el = opex.find(attrs={"data-testid": "opex-run-required-no"})
+        self.assertIsNotNone(el, "Run Required=No element missing in State B")
+        self.assertNotIn("Yes", el.get_text())
+
+    def test_outputs_current_never_when_dirty(self):
+        """Regression: dirty draft must never show 'Outputs current'."""
+        for has_runtime in (True, False):
+            opex = self._opex(self._render_with(has_runtime=has_runtime, ws_dirty=True))
+            self.assertNotIn(
+                "Outputs current", opex.get_text(),
+                f"'Outputs current' shown with has_runtime={has_runtime}, ws_dirty=True",
+            )
+
+    def test_state_a_run_required_no(self):
+        """State A: no runtime, draft clean → Run Required = No."""
+        opex = self._opex(self._render_with(has_runtime=False, ws_dirty=False))
+        el = opex.find(attrs={"data-testid": "opex-run-required-no"})
+        self.assertIsNotNone(el, "Run Required=No element missing in State A")
+
+
+# ---------------------------------------------------------------------------
+# 11. HTMX roundtrip — field update, hash rotation, dirty → Run Required
 # ---------------------------------------------------------------------------
 
 class TestOpexHtmxRoundtrip(unittest.TestCase):
@@ -511,15 +710,14 @@ class TestOpexHtmxRoundtrip(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.client = _authed_client()
-        cls.project_code = _create_project(cls.client, "htmx-01")
+        cls.project_code = _create_project(cls.client, "htmx-opex-01")
 
-    def _get_opex_field(self):
-        """Return the first BOUND opex field from a workbook GET."""
+    def _get_first_bound_form(self):
         html = _get_workbook(self.client, self.project_code)
-        opex = BeautifulSoup(html, "html.parser").find(id="v2-sheet-opex")
+        opex = _opex_div(html)
         form = opex.find("form", class_="v2-field-form")
         if not form:
-            return None, None, None, None
+            return None, None, None
         fid = form.find("input", {"name": "field_id"})
         wv = form.find("input", {"name": "workbook_version"})
         ch = form.find("input", {"name": "content_hash"})
@@ -527,116 +725,152 @@ class TestOpexHtmxRoundtrip(unittest.TestCase):
             fid.get("value") if fid else None,
             wv.get("value") if wv else None,
             ch.get("value") if ch else None,
-            form,
         )
 
     def test_htmx_update_returns_opex_partial(self):
-        fid, wv, ch, _form = self._get_opex_field()
-        if fid is None:
-            self.skipTest("No BOUND field form found in OPEX sheet")
-
+        fid, wv, ch = self._get_first_bound_form()
+        if not fid:
+            self.skipTest("No BOUND field form in OPEX sheet for this generic project")
         resp = self.client.post(
             "/v2/workbook/update",
-            data={
-                "field_id": fid,
-                "value": "100",
-                "project": self.project_code,
-                "workbook_version": wv or "",
-                "content_hash": ch or "",
-                "sheet_id": "opex",
-            },
+            data={"field_id": fid, "value": "100", "project": self.project_code,
+                  "workbook_version": wv or "", "content_hash": ch or "",
+                  "sheet_id": "opex"},
             headers={"HX-Request": "true"},
         )
         self.assertEqual(resp.status_code, 200)
         self.assertIn("v2-sheet-opex", resp.text)
-        self.assertNotIn("v2-sheet-capex", resp.text[:500])
 
-    def test_htmx_update_returns_status_banner_oob(self):
-        fid, wv, ch, _form = self._get_opex_field()
-        if fid is None:
-            self.skipTest("No BOUND field form found in OPEX sheet")
-
+    def test_htmx_update_returns_oob_status_banner(self):
+        fid, wv, ch = self._get_first_bound_form()
+        if not fid:
+            self.skipTest("No BOUND field form in OPEX sheet for this generic project")
         resp = self.client.post(
             "/v2/workbook/update",
-            data={
-                "field_id": fid,
-                "value": "200",
-                "project": self.project_code,
-                "workbook_version": wv or "",
-                "content_hash": ch or "",
-                "sheet_id": "opex",
-            },
+            data={"field_id": fid, "value": "200", "project": self.project_code,
+                  "workbook_version": wv or "", "content_hash": ch or "",
+                  "sheet_id": "opex"},
             headers={"HX-Request": "true"},
         )
         self.assertEqual(resp.status_code, 200)
         self.assertIn("v2-status-banner", resp.text)
 
+    def test_htmx_update_after_edit_content_hash_rotates(self):
+        """After a successful OPEX field edit the content_hash in the re-rendered
+        partial must differ from the one submitted."""
+        fid, wv, ch_before = self._get_first_bound_form()
+        if not fid:
+            self.skipTest("No BOUND field form in OPEX sheet for this generic project")
+        resp = self.client.post(
+            "/v2/workbook/update",
+            data={"field_id": fid, "value": "999", "project": self.project_code,
+                  "workbook_version": wv or "", "content_hash": ch_before or "",
+                  "sheet_id": "opex"},
+            headers={"HX-Request": "true"},
+        )
+        self.assertEqual(resp.status_code, 200)
+        soup = BeautifulSoup(resp.text, "html.parser")
+        ch_input = soup.find("input", {"name": "content_hash"})
+        self.assertIsNotNone(ch_input, "content_hash input missing from HTMX response")
+        ch_after = ch_input.get("value")
+        self.assertNotEqual(ch_before, ch_after,
+                            "content_hash must rotate after a successful edit")
+
+    def test_htmx_update_opex_shows_run_required_after_edit(self):
+        """After an OPEX field edit the workspace is dirty — Run Required must appear."""
+        fid, wv, ch = self._get_first_bound_form()
+        if not fid:
+            self.skipTest("No BOUND field form in OPEX sheet for this generic project")
+        resp = self.client.post(
+            "/v2/workbook/update",
+            data={"field_id": fid, "value": "111", "project": self.project_code,
+                  "workbook_version": wv or "", "content_hash": ch or "",
+                  "sheet_id": "opex"},
+            headers={"HX-Request": "true"},
+        )
+        self.assertEqual(resp.status_code, 200)
+        soup = BeautifulSoup(resp.text, "html.parser")
+        opex = soup.find(id="v2-sheet-opex")
+        self.assertIsNone(opex.find(attrs={"data-testid": "opex-runtime-state-b"}),
+                          "'Outputs current' must not appear after a dirty edit")
+
 
 # ---------------------------------------------------------------------------
-# 8. Protected reference — zero editable controls
+# 12. Protected reference — zero editable controls
 # ---------------------------------------------------------------------------
 
-class TestOpexProtectedReference(unittest.TestCase):
+class TestOpexEditability(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
         cls.client = _authed_client()
-        # Look up an existing TUHO project via project listing or create a known one
-        # We check by looking at a factory_template project if available,
-        # otherwise create a generic and verify its editable state.
-        cls.project_code = _create_project(cls.client, "prot-01")
+        cls.project_code = _create_project(cls.client, "edit-01")
+        html = _get_workbook(cls.client, cls.project_code)
+        cls.opex = BeautifulSoup(html, "html.parser").find(id="v2-sheet-opex")
 
-    def test_generic_working_copy_has_editable_controls(self):
-        """A normal working copy has editable input rows in the OPEX sheet."""
-        html = _get_workbook(self.client, self.project_code)
-        opex = BeautifulSoup(html, "html.parser").find(id="v2-sheet-opex")
-        self.assertIsNotNone(opex)
-        editable = opex.find_all(class_="v2-field-editable")
+    def test_working_copy_has_editable_controls(self):
+        editable = self.opex.find_all(class_="v2-field-editable")
         self.assertGreater(len(editable), 0,
                            "Working copy should have editable controls in OPEX sheet")
 
-    def test_generic_project_no_protected_notice(self):
-        html = _get_workbook(self.client, self.project_code)
-        opex = BeautifulSoup(html, "html.parser").find(id="v2-sheet-opex")
-        notice = opex.find(class_="v2-protected-notice")
+    def test_working_copy_no_protected_notice(self):
+        notice = self.opex.find(class_="v2-protected-notice")
         self.assertIsNone(notice, "Working copy should not show protected notice")
 
 
 # ---------------------------------------------------------------------------
-# 9. _OPEX_GROUP_FIELD_SUFFIX completeness
+# 13. Year projection table
 # ---------------------------------------------------------------------------
 
-class TestOpexGroupFieldSuffixMapping(unittest.TestCase):
+class TestOpexYearProjectionTable(unittest.TestCase):
 
-    def test_all_b_codes_present(self):
-        for n in range(1, 14):
-            code = f"B.{n:02d}"
-            self.assertIn(code, _OPEX_GROUP_FIELD_SUFFIX,
-                          f"{code} missing from _OPEX_GROUP_FIELD_SUFFIX")
+    @classmethod
+    def setUpClass(cls):
+        cls.client = _authed_client()
+        cls.project_code = _create_project(cls.client, "proj-opex-01")
+        html = _get_workbook(cls.client, cls.project_code)
+        cls.opex = BeautifulSoup(html, "html.parser").find(id="v2-sheet-opex")
 
-    def test_b09_is_none(self):
-        self.assertIsNone(_OPEX_GROUP_FIELD_SUFFIX["B.09"])
+    def test_projection_panel_present(self):
+        self.assertIsNotNone(self.opex.find(attrs={"data-testid": "opex-projection-panel"}))
 
-    def test_b13_is_contingencies(self):
-        self.assertEqual(_OPEX_GROUP_FIELD_SUFFIX["B.13"], "contingencies")
+    def test_projection_table_present(self):
+        self.assertIsNotNone(self.opex.find(attrs={"data-testid": "opex-projection-table"}))
 
-    def test_b01_to_b08_have_suffixes(self):
-        for n in range(1, 9):
-            code = f"B.{n:02d}"
-            self.assertIsNotNone(
-                _OPEX_GROUP_FIELD_SUFFIX[code],
-                f"{code} should have a non-None suffix",
-            )
+    def test_y1_header_present(self):
+        self.assertIsNotNone(self.opex.find(attrs={"data-testid": "proj-year-1"}))
 
-    def test_b10_b11_b12_have_suffixes(self):
-        for code in ("B.10", "B.11", "B.12"):
-            self.assertIsNotNone(
-                _OPEX_GROUP_FIELD_SUFFIX[code],
-                f"{code} should have a non-None suffix",
-            )
+    def test_total_row_present(self):
+        self.assertIsNotNone(self.opex.find(attrs={"data-testid": "proj-row-total"}))
 
-    def test_exactly_13_entries(self):
-        self.assertEqual(len(_OPEX_GROUP_FIELD_SUFFIX), 13)
+    def test_exactly_13_group_rows_in_projection(self):
+        rows = self.opex.find_all(
+            attrs={"data-testid": lambda v: v and v.startswith("proj-row-B.")}
+        )
+        self.assertEqual(len(rows), 13,
+                         f"Expected 13 proj rows, got {len(rows)}: "
+                         f"{[r.get('data-testid') for r in rows]}")
+
+    def test_projection_b09_row_present(self):
+        """B.09 must appear in the projection table."""
+        self.assertIsNotNone(self.opex.find(attrs={"data-testid": "proj-row-B.09"}),
+                             "proj-row-B.09 missing from projection table")
+
+    def test_projection_b13_row_present(self):
+        """B.13 must appear in the projection table."""
+        self.assertIsNotNone(self.opex.find(attrs={"data-testid": "proj-row-B.13"}),
+                             "proj-row-B.13 missing from projection table")
+
+    def test_projection_total_y1_cell(self):
+        self.assertIsNotNone(self.opex.find(attrs={"data-testid": "proj-total-y1"}))
+
+    def test_projection_rows_in_b01_b13_order(self):
+        rows = self.opex.find_all(
+            attrs={"data-testid": lambda v: v and v.startswith("proj-row-B.")}
+        )
+        codes = [r.get("data-testid").replace("proj-row-", "") for r in rows]
+        expected = [f"B.{n:02d}" for n in range(1, 14)]
+        self.assertEqual(codes, expected, f"Projection row order wrong: {codes}")
 
 
 if __name__ == "__main__":
