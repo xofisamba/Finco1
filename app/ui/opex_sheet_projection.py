@@ -122,6 +122,23 @@ class OpexSheetGroup:
         )
 
     @property
+    def is_custom_eligible(self) -> bool:
+        """True iff this group accepts user-added custom rows.
+
+        All groups except B.13 (Contingencies, always DERIVED) are eligible.
+        B.09 (Fees, no registry BOUND field) is explicitly custom-eligible:
+        users create their own fee lines rather than editing a scalar value.
+        """
+        return not self.is_always_derived
+
+    @property
+    def custom_lines(self) -> tuple:
+        """Active custom (user-added) lines from the VM group, in display order."""
+        if not self.vm_group:
+            return ()
+        return tuple(ln for ln in self.vm_group.lines if ln.is_custom and ln.is_active)
+
+    @property
     def year_rows(self) -> tuple[float, ...]:
         """Per-year subtotals for the projection table (empty if no VM data)."""
         if self.vm_group:

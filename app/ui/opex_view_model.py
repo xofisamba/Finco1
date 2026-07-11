@@ -39,10 +39,11 @@ Mutation contract:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional, Sequence
 
 if TYPE_CHECKING:
     from app.ui.project_context import ProjectContext
+    from app.persistence.opex_sub_lines import OpexSubLine
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -120,6 +121,10 @@ class OpexLineVM:
     # Pre-computed year values (index 0 = Y1, index 1 = Y2, …)
     # Length = display_years (from OpexViewModel).
     year_values: tuple[float, ...]
+
+    # Custom-row identity — empty strings for factory / template lines.
+    sub_line_id: str = ""     # UUID; populated for user-added custom rows
+    row_version: str = ""     # updated_at token; populated for custom rows
 
 
 # ---------------------------------------------------------------------------
@@ -255,10 +260,49 @@ def _get_year_values(
 # Builder
 # ---------------------------------------------------------------------------
 
+def _build_custom_line_vm(
+    sl: "OpexSubLine",
+    project_code: str,
+    display_years: int,
+    is_user_project: bool,
+) -> OpexLineVM:
+    """Build an OpexLineVM from a user-added OpexSubLine."""
+    year_values = tuple(
+        compute_year_values(sl.amount_keur, sl.inflation_pct, display_years)
+    )
+    return OpexLineVM(
+        row_id=_make_row_id(project_code, sl.parent_group_code, sl.business_code),
+        code=sl.business_code,
+        parent_code=sl.parent_group_code,
+        name=sl.label,
+        source=sl.source or "user",
+        unit="kEUR",
+        notes=sl.comments or "",
+        display_order=sl.display_order,
+        validation_status="ok",
+        y1_keur=sl.amount_keur,
+        inflation_pct=sl.inflation_pct,
+        wht_flag=False,
+        is_group=False,
+        is_editable=is_user_project,
+        is_read_only=not is_user_project,
+        is_derived=False,
+        is_contingency=False,
+        is_fixed=True,
+        is_variable=False,
+        is_custom=True,
+        is_active=sl.is_active,
+        year_values=year_values,
+        sub_line_id=sl.sub_line_id,
+        row_version=sl.updated_at or "",
+    )
+
+
 def build_opex_view_model(
     project_ctx: "ProjectContext",
     is_user_project: bool = False,
     display_years: int = DEFAULT_DISPLAY_YEARS,
+    sub_lines: Optional[Sequence["OpexSubLine"]] = None,
 ) -> OpexViewModel:
     """
     Build an OpexViewModel from ProjectContext.opex_detail_items.
@@ -267,6 +311,13 @@ def build_opex_view_model(
         project_ctx:     Populated ProjectContext (frozen dataclass).
         is_user_project: True iff the current session user owns this project.
         display_years:   How many year columns to render (default 30, max 30).
+        sub_lines:       Active OpexSubLine records to inject as custom rows.
+                         When provided, custom rows are merged into their
+                         parent groups in display_order sequence. For groups
+                         absent from opex_detail_items (e.g. B.09 "Fees" when
+                         no fee lines were modelled in the template), a
+                         synthetic OpexGroupVM is created so custom lines are
+                         visible in the sheet and ViewModel totals.
 
     Returns:
         Fully populated OpexViewModel — all derived fields computed here.
@@ -277,7 +328,18 @@ def build_opex_view_model(
     contingency_rate: float = float(getattr(project_ctx, "opex_contingency_pct", 0.0))
     project_code: str = project_ctx.code
 
+    # Index active custom sub-lines by parent group code for O(1) injection.
+    active_custom: dict[str, list["OpexSubLine"]] = {}
+    if sub_lines:
+        for sl in sub_lines:
+            if sl.is_active:
+                active_custom.setdefault(sl.parent_group_code, []).append(sl)
+        # Ensure sub-lists are sorted by display_order
+        for grp_list in active_custom.values():
+            grp_list.sort(key=lambda s: (s.display_order, s.business_code))
+
     groups: list[OpexGroupVM] = []
+    seen_group_codes: set[str] = set()
 
     for cat in project_ctx.opex_detail_items:
         group_code: str = cat["code"]
@@ -285,6 +347,7 @@ def build_opex_view_model(
         group_inflation: float = float(cat.get("inflation_pct") or 0.0)
         is_contingency_group: bool = cat.get("is_contingency", False)
         cat_contingency_pct: float = float(cat.get("contingency_pct") or 0.0)
+        seen_group_codes.add(group_code)
 
         lines: list[OpexLineVM] = []
         for order, child in enumerate(cat.get("children", []), start=1):
@@ -317,12 +380,20 @@ def build_opex_view_model(
                 is_read_only=is_read_only,
                 is_derived=is_derived,
                 is_contingency=is_contingency_group,
-                is_fixed=True,    # v1 default; future: read from line metadata
+                is_fixed=True,
                 is_variable=False,
                 is_custom=False,
                 is_active=True,
                 year_values=year_values,
             ))
+
+        # Inject custom sub-lines for this group (non-contingency only).
+        if not is_contingency_group and group_code in active_custom:
+            for sl in active_custom[group_code]:
+                lines.append(_build_custom_line_vm(sl, project_code, display_years, is_user_project))
+            # Re-sort: factory lines first (display_order from enumeration),
+            # then custom lines (their own display_order), all by display_order ASC.
+            lines.sort(key=lambda ln: (ln.display_order, ln.code))
 
         active_lines = [ln for ln in lines if ln.is_active]
         subtotal_per_year = tuple(
@@ -343,6 +414,33 @@ def build_opex_view_model(
             lines=tuple(lines),
             subtotal_per_year=subtotal_per_year,
         ))
+
+    # Create synthetic groups for custom sub-lines in groups absent from opex_detail_items
+    # (e.g. B.09 "Fees" when the project template has no fee lines).
+    if active_custom:
+        from app.ui.opex_sheet_projection import CANONICAL_OPEX_GROUP_BY_CODE
+        for group_code, sl_list in active_custom.items():
+            if group_code in seen_group_codes:
+                continue
+            canonical = CANONICAL_OPEX_GROUP_BY_CODE.get(group_code)
+            group_name = canonical.name if canonical else group_code
+            custom_lines = [
+                _build_custom_line_vm(sl, project_code, display_years, is_user_project)
+                for sl in sl_list
+            ]
+            subtotal_per_year = tuple(
+                sum(ln.year_values[yr] for ln in custom_lines if ln.is_active)
+                for yr in range(display_years)
+            )
+            groups.append(OpexGroupVM(
+                code=group_code,
+                name=group_name,
+                inflation_pct=0.0,
+                is_contingency=False,
+                contingency_pct=0.0,
+                lines=tuple(custom_lines),
+                subtotal_per_year=subtotal_per_year,
+            ))
 
     # Aggregate per-year totals
     non_contingency_groups = [g for g in groups if not g.is_contingency]

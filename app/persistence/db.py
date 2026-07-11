@@ -195,6 +195,33 @@ def _init_schema(conn):
         "CREATE INDEX IF NOT EXISTS idx_capex_sub_lines_project"
         " ON capex_sub_lines(project_id, is_active, parent_category_code, display_order)"
     )
+    # Workbook V2 PR 11: OPEX custom-row sub-lines table.
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS opex_sub_lines (
+            id                INTEGER PRIMARY KEY AUTOINCREMENT,
+            sub_line_id       TEXT    NOT NULL UNIQUE,
+            project_id        TEXT    NOT NULL,
+            parent_group_code TEXT    NOT NULL,
+            business_code     TEXT    NOT NULL,
+            display_order     INTEGER NOT NULL,
+            label             TEXT    NOT NULL,
+            amount_keur       REAL    NOT NULL DEFAULT 0.0,
+            inflation_pct     REAL    NOT NULL DEFAULT 0.0,
+            comments          TEXT    NOT NULL DEFAULT '',
+            source            TEXT    NOT NULL DEFAULT 'user',
+            is_active         INTEGER NOT NULL DEFAULT 1,
+            created_at        TEXT    NOT NULL,
+            updated_at        TEXT    NOT NULL,
+            FOREIGN KEY(project_id) REFERENCES projects(project_id),
+            UNIQUE(project_id, business_code)
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_opex_sub_lines_project"
+        " ON opex_sub_lines(project_id, is_active, parent_group_code, display_order)"
+    )
     _ensure_column(conn, "runs", "replay_metadata_json", "TEXT NOT NULL DEFAULT '{}'")
     _ensure_column(conn, "projects", "project_type", "TEXT")
     _ensure_column(conn, "projects", "project_origin", "TEXT NOT NULL DEFAULT 'factory_template'")
