@@ -235,7 +235,12 @@ def _build_capex_vm_ctx(project_record, pis) -> dict:
         project_record.project_origin == "factory_template"
         and (project_record.template_source or "").strip().lower() in ("tuho", "oborovo")
     )
-    capex_vm = build_capex_view_model(project_ctx, is_user_project=is_user)
+
+    # Load active user-added sub-lines and inject into CapexViewModel so that
+    # group subtotals, hard CAPEX, and total CAPEX reflect custom rows.
+    from app.persistence.capex_sub_lines import get_active_sub_lines_for_project
+    sub_lines = get_active_sub_lines_for_project(project_record.project_id)
+    capex_vm = build_capex_view_model(project_ctx, is_user_project=is_user, sub_lines=sub_lines)
 
     # Registry field list for capex; keyed by short name for group mapping
     capex_fields = _build_sheet_fields("capex", pis)

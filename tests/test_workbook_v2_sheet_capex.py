@@ -168,6 +168,18 @@ class TestCapexVmCtxBuilder(unittest.TestCase):
         from app.v2.router import _build_capex_vm_ctx as _b
         cls._build_fn = staticmethod(_b)
 
+    def setUp(self):
+        # Patch sub-line loading so MagicMock project_ids don't hit SQLite.
+        patcher = patch(
+            "app.persistence.capex_sub_lines.get_active_sub_lines_for_project",
+            return_value=[],
+        )
+        self._sub_lines_patcher = patcher
+        patcher.start()
+
+    def tearDown(self):
+        self._sub_lines_patcher.stop()
+
     def _make_project_record(self, origin="user", template_source="generic_wind"):
         r = MagicMock()
         r.project_code = "TEST01"
@@ -382,11 +394,17 @@ class TestCapexEditable(unittest.TestCase):
                           f"Form hx-target should be #v2-sheet-capex, got: {target!r}")
 
     def test_capex_forms_have_sheet_id_capex(self):
-        forms = self.capex.find_all("form")
+        # Only the workbook/update scalar-edit forms require sheet_id=capex.
+        # Custom-row command forms (add/update/deactivate/reorder) post to
+        # /v2/capex/line/* and do not carry sheet_id.
+        forms = [
+            f for f in self.capex.find_all("form")
+            if (f.get("hx-post") or "").endswith("/v2/workbook/update")
+        ]
         for form in forms:
             sheet_input = form.find("input", attrs={"name": "sheet_id"})
             self.assertIsNotNone(sheet_input,
-                                 "Every capex form must have a sheet_id hidden input")
+                                 "workbook/update form must have a sheet_id hidden input")
             self.assertEqual(sheet_input.get("value", ""), "capex",
                              f"sheet_id value should be 'capex', got: {sheet_input.get('value')!r}")
 

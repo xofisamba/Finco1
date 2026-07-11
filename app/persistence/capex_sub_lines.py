@@ -499,10 +499,10 @@ def assert_project_allows_capex_sub_lines(project_record: Any) -> None:
             f"Factory templates (TUHO, Oborovo, Generic Wind, "
             f"Generic Solar) are read-only."
         )
-    if origin not in ("user_project", "saved_baseline"):
+    if origin not in ("user_project", "user_created", "saved_baseline"):
         raise PermissionError(
             f"Cannot add CAPEX sub-lines: unknown project_origin "
-            f"{origin!r}; expected one of 'user_project', "
+            f"{origin!r}; expected one of 'user_project', 'user_created', "
             f"'saved_baseline', 'factory_template'"
         )
 
@@ -1135,6 +1135,215 @@ def get_active_sub_lines_for_project(
         )
 
 
+def update_sub_line(
+    cur: Any,
+    *,
+    project_id: str,
+    sub_line_id: str,
+    label: str,
+    amount_keur: float,
+    comments: str = "",
+    display_order: Optional[int] = None,
+    row_version: str,
+) -> Optional[CapexSubLine]:
+    """Update an active sub-line, guarded by row_version (updated_at).
+
+    ``row_version`` must equal the current ``updated_at`` value for the row.
+    Returns the updated ``CapexSubLine`` on success, or ``None`` if no
+    matching active row with that ``updated_at`` was found (concurrent edit
+    or stale token).
+
+    The caller is responsible for opening the transaction.
+    """
+    if not isinstance(label, str) or not label.strip():
+        raise ValueError(f"label must be a non-empty string, got {label!r}")
+    if not isinstance(amount_keur, (int, float)):
+        raise ValueError(f"amount_keur must be a number, got {amount_keur!r}")
+
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc).isoformat()
+
+    if display_order is not None:
+        cur.execute(
+            """
+            UPDATE capex_sub_lines
+            SET label = ?, amount_keur = ?, comments = ?,
+                display_order = ?, updated_at = ?
+            WHERE project_id = ? AND sub_line_id = ?
+              AND is_active = 1 AND updated_at = ?
+            """,
+            (
+                label, float(amount_keur), comments or "",
+                display_order, now,
+                project_id, sub_line_id, row_version,
+            ),
+        )
+    else:
+        cur.execute(
+            """
+            UPDATE capex_sub_lines
+            SET label = ?, amount_keur = ?, comments = ?,
+                updated_at = ?
+            WHERE project_id = ? AND sub_line_id = ?
+              AND is_active = 1 AND updated_at = ?
+            """,
+            (
+                label, float(amount_keur), comments or "",
+                now,
+                project_id, sub_line_id, row_version,
+            ),
+        )
+    if cur.rowcount == 0:
+        return None
+    cur.execute(
+        "SELECT * FROM capex_sub_lines WHERE project_id = ? AND sub_line_id = ?",
+        (project_id, sub_line_id),
+    )
+    row = cur.fetchone()
+    return CapexSubLine.from_row(row) if row else None
+
+
+def deactivate_sub_line_with_version(
+    cur: Any,
+    *,
+    project_id: str,
+    sub_line_id: str,
+    row_version: str,
+) -> bool:
+    """Soft-delete a sub-line, guarded by row_version (updated_at).
+
+    Returns ``True`` if the row was deactivated, ``False`` if no matching
+    active row with that ``updated_at`` was found (concurrent edit or stale
+    token).  The caller is responsible for opening the transaction.
+    """
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc).isoformat()
+    cur.execute(
+        """
+        UPDATE capex_sub_lines
+        SET is_active = 0, updated_at = ?
+        WHERE project_id = ? AND sub_line_id = ?
+          AND is_active = 1 AND updated_at = ?
+        """,
+        (now, project_id, sub_line_id, row_version),
+    )
+    return cur.rowcount > 0
+
+
+class ReorderConflictError(ValueError):
+    """Raised when a reorder operation detects stale, unknown, duplicate, or
+    missing row IDs. The transaction must be rolled back by the caller."""
+
+
+def reorder_sub_lines(
+    cur: Any,
+    *,
+    project_id: str,
+    parent_category_code: str,
+    ordered_rows: Sequence[Mapping[str, str]],
+) -> list[CapexSubLine]:
+    """Atomically reorder active sub-lines within a group.
+
+    ``ordered_rows`` is the complete ordered set of active rows for the group,
+    each as ``{"sub_line_id": str, "row_version": str}`` where ``row_version``
+    is the ``updated_at`` timestamp (optimistic-lock token).
+
+    Validation rules (ALL must pass or ReorderConflictError is raised):
+    - No duplicate sub_line_id in the submitted list.
+    - The submitted IDs exactly equal the current active ID set for the group
+      (no unknown, no missing, no inactive IDs).
+    - Every submitted row_version must equal the row's current updated_at.
+
+    On success:
+    - All active rows in the group receive unique contiguous display_order
+      values 1..N in the submitted order.
+    - No gaps, no duplicates.
+
+    The caller is responsible for ensuring this function runs inside an
+    exclusive transaction so the read-then-write is atomic.
+    """
+    validate_parent_category(parent_category_code)
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc).isoformat()
+
+    # 1. Load current active rows for the group.
+    cur.execute(
+        """
+        SELECT sub_line_id, updated_at FROM capex_sub_lines
+        WHERE project_id = ? AND parent_category_code = ? AND is_active = 1
+        """,
+        (project_id, parent_category_code),
+    )
+    db_rows = {r["sub_line_id"]: r["updated_at"] for r in cur.fetchall()}
+    current_ids: set[str] = set(db_rows.keys())
+
+    # 2. Validate submitted list.
+    submitted_ids: list[str] = [r["sub_line_id"] for r in ordered_rows]
+    submitted_versions: dict[str, str] = {
+        r["sub_line_id"]: r["row_version"] for r in ordered_rows
+    }
+
+    # 2a. Duplicate IDs in the submitted list.
+    if len(submitted_ids) != len(set(submitted_ids)):
+        seen: set[str] = set()
+        dups = [sid for sid in submitted_ids if sid in seen or seen.add(sid)]  # type: ignore[func-returns-value]
+        raise ReorderConflictError(
+            f"Duplicate sub_line_id(s) in reorder request: {dups!r}."
+        )
+
+    submitted_id_set = set(submitted_ids)
+
+    # 2b. Unknown or inactive IDs (not in current active set).
+    unknown = submitted_id_set - current_ids
+    if unknown:
+        raise ReorderConflictError(
+            f"Unknown or inactive sub_line_id(s): {sorted(unknown)!r}. "
+            "Reload the page and try again."
+        )
+
+    # 2c. Missing active IDs (active row not present in submitted list).
+    missing = current_ids - submitted_id_set
+    if missing:
+        raise ReorderConflictError(
+            f"Missing active sub_line_id(s) from reorder request: {sorted(missing)!r}. "
+            "Submit the complete active set for the group."
+        )
+
+    # 2d. Stale row_version for any row.
+    stale = [
+        sid for sid in submitted_ids
+        if submitted_versions[sid] != db_rows[sid]
+    ]
+    if stale:
+        raise ReorderConflictError(
+            f"Stale row_version for sub_line_id(s): {stale!r}. "
+            "Reload and try again."
+        )
+
+    # 3. Update display_order 1..N (contiguous, no gaps).
+    for new_order, sid in enumerate(submitted_ids, start=1):
+        cur.execute(
+            """
+            UPDATE capex_sub_lines
+            SET display_order = ?, updated_at = ?
+            WHERE project_id = ? AND sub_line_id = ?
+              AND parent_category_code = ? AND is_active = 1
+            """,
+            (new_order, now, project_id, sid, parent_category_code),
+        )
+
+    # 4. Read back in new order.
+    cur.execute(
+        """
+        SELECT * FROM capex_sub_lines
+        WHERE project_id = ? AND parent_category_code = ? AND is_active = 1
+        ORDER BY display_order ASC
+        """,
+        (project_id, parent_category_code),
+    )
+    return [CapexSubLine.from_row(row) for row in cur.fetchall()]
+
+
 __all__ = [
     "ALLOWED_PARENT_CATEGORIES",
     "APPROVED_SCALAR_CAPEX_METADATA_KEYS",
@@ -1146,16 +1355,20 @@ __all__ = [
     "assert_project_allows_capex_sub_lines",
     "category_for_field_name",
     "create_sub_line",
+    "deactivate_sub_line_with_version",
     "fold_sub_lines_into_capex",
     "generate_next_business_code",
     "get_active_sub_lines_for_project",
     "list_business_codes_for_project",
     "list_sub_lines_for_project",
     "replace_sub_lines_for_project",
+    "ReorderConflictError",
+    "reorder_sub_lines",
     "resolve_effective_sub_line_amount",
     "sanitize_scalar_capex_metadata",
     "soft_delete_sub_line",
     "soft_delete_sub_line_for_project",
+    "update_sub_line",
     "validate_business_code",
     "validate_parent_category",
 ]
