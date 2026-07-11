@@ -435,9 +435,14 @@ def mark_workspace_dirty_cursor(cur: Any, *, user_id: str, project_id: str) -> b
     Intended for use inside an already-open exclusive transaction so the
     dirty-state update is atomic with the row mutation that triggered it.
 
-    Returns True if a workspace row was found and updated, False if none
-    exists (e.g. workspace not yet initialised — safe to ignore; no state
-    to mark dirty).
+    Returns True if the workspace row was found and updated, False if no
+    workspace row exists for (user_id, project_id).
+
+    Callers that perform Workbook V2 row mutations MUST treat a False
+    return as a hard error and roll back the transaction.  A missing
+    workspace row means the project has no initialised draft state, and
+    committing a CAPEX mutation without recording the dirty flag would
+    leave the workspace in a silently inconsistent state.
     """
     now = _now_utc().isoformat()
     cur.execute(

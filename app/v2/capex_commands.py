@@ -125,15 +125,21 @@ def _exclusive_tx(user_id: str, project_id: str) -> Iterator[Any]:
     """Open a BEGIN EXCLUSIVE transaction covering capex_sub_lines and
     workspace_states; mark the workspace dirty on successful commit.
 
-    Yields a cursor.  On clean exit: marks workspace dirty, then COMMITs.
-    On any exception: ROLLBACKs (dirty-state and capex write both rolled back).
+    Yields a cursor.  On clean exit: marks workspace dirty (raises
+    CapexCommandError if no workspace row exists, which also triggers
+    rollback), then COMMITs.  On any exception: ROLLBACKs — both the
+    row mutation and the dirty-state update are rolled back atomically.
     """
     conn = get_connection()
     conn.execute("BEGIN EXCLUSIVE")
     cur = conn.cursor()
     try:
         yield cur
-        mark_workspace_dirty_cursor(cur, user_id=user_id, project_id=project_id)
+        marked = mark_workspace_dirty_cursor(cur, user_id=user_id, project_id=project_id)
+        if not marked:
+            raise CapexCommandError(
+                "Workspace state is missing; CAPEX row mutation was not committed."
+            )
         conn.execute("COMMIT")
     except Exception:
         try:

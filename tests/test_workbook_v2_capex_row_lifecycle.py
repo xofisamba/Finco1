@@ -101,8 +101,19 @@ def _workbook_version() -> str:
     return WORKBOOK.version
 
 
-def _register_project_id(project_id: str, origin: str = "user_created") -> None:
-    """Insert a minimal projects row and clean stale sub-lines so FK constraints pass."""
+def _register_project_id(
+    project_id: str,
+    origin: str = "user_created",
+    with_workspace: bool = True,
+) -> None:
+    """Insert a minimal projects row (and optionally a workspace_states row) and
+    clean stale sub-lines so FK constraints pass.
+
+    Pass with_workspace=False only when testing the missing-workspace error path;
+    all normal command tests require a workspace row because _exclusive_tx enforces
+    that mark_workspace_dirty_cursor must succeed.
+    """
+    import uuid
     from app.persistence.db import get_cursor
     now = "2026-01-01T00:00:00"
     project_code = project_id.replace("-", "").upper()[:20]
@@ -120,6 +131,18 @@ def _register_project_id(project_id: str, origin: str = "user_created") -> None:
         )
         # Remove stale sub-lines from previous runs so tests don't bleed state.
         cur.execute("DELETE FROM capex_sub_lines WHERE project_id = ?", (project_id,))
+        if with_workspace:
+            workspace_id = str(uuid.uuid4())
+            cur.execute(
+                "INSERT OR IGNORE INTO workspace_states "
+                "(workspace_id, project_id, user_id, project_code, "
+                "draft_snapshot_json, saved_snapshot_json, "
+                "last_runtime_snapshot_json, last_runtime_summary_json, "
+                "governance_state_json, dirty, created_at, updated_at) "
+                "VALUES (?,?,?,?,?,?,?,?,?,0,?,?)",
+                (workspace_id, project_id, "test-unit-user", project_code,
+                 "{}", "{}", "{}", "{}", "{}", now, now),
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -1483,6 +1506,178 @@ class TestConcurrentAdd(unittest.TestCase):
         codes = [r.business_code for r in results]
         self.assertEqual(len(set(ids)), 5, f"sub_line_ids must be unique: {ids}")
         self.assertEqual(len(set(codes)), 5, f"business_codes must be unique: {codes}")
+
+
+# ---------------------------------------------------------------------------
+# 12. Missing workspace row — command must fail and row mutation must roll back
+# ---------------------------------------------------------------------------
+
+class TestMissingWorkspaceRollback(unittest.TestCase):
+    """When no workspace_states row exists the command must raise and the
+    capex_sub_lines table must remain unchanged."""
+
+    BASE_PID = "missing-ws-"
+
+    def _pid(self, suffix: str) -> str:
+        return f"{self.BASE_PID}{suffix}"
+
+    def setUp(self):
+        for suffix in ["add", "update", "deactivate"]:
+            # with_workspace=False: project exists but no workspace row
+            _register_project_id(self._pid(suffix), with_workspace=False)
+
+    def _make_pr(self, project_id: str):
+        r = MagicMock()
+        r.project_id = project_id
+        r.project_code = "TEST"
+        r.project_name = "Test"
+        r.project_type = "Wind"
+        r.project_origin = "user_created"
+        r.template_source = "generic_wind"
+        r.is_readonly = False
+        return r
+
+    def _sub_line_count(self, project_id: str) -> int:
+        from app.persistence.db import get_cursor
+        from app.persistence.capex_sub_lines import list_sub_lines_for_project
+        with get_cursor() as cur:
+            return len(list_sub_lines_for_project(cur, project_id, include_inactive=True))
+
+    def test_add_fails_when_workspace_missing(self):
+        from app.v2.capex_commands import add_capex_line, CapexCommandError
+        pid = self._pid("add")
+        before = self._sub_line_count(pid)
+
+        with self.assertRaises(CapexCommandError) as ctx:
+            add_capex_line(
+                project_record=self._make_pr(pid),
+                user_id="test-unit-user",
+                label="Should Not Persist",
+                parent_category_code="C.05",
+                workbook_version=_workbook_version(),
+            )
+        self.assertIn("Workspace state is missing", str(ctx.exception))
+
+        after = self._sub_line_count(pid)
+        self.assertEqual(after, before,
+                         "capex_sub_lines must be unchanged after failed add")
+
+    def test_update_fails_when_workspace_missing(self):
+        """Add a row with a workspace present, remove workspace row, then update must fail."""
+        from app.v2.capex_commands import add_capex_line, update_capex_line, CapexCommandError
+        from app.persistence.db import get_cursor
+
+        pid = self._pid("update")
+
+        # Bootstrap: temporarily give this project a workspace so we can add a row
+        import uuid
+        now = "2026-01-01T00:00:00"
+        ws_id = str(uuid.uuid4())
+        project_code = pid.replace("-", "").upper()[:20]
+        with get_cursor() as cur:
+            cur.execute(
+                "INSERT OR IGNORE INTO workspace_states "
+                "(workspace_id, project_id, user_id, project_code, "
+                "draft_snapshot_json, saved_snapshot_json, "
+                "last_runtime_snapshot_json, last_runtime_summary_json, "
+                "governance_state_json, dirty, created_at, updated_at) "
+                "VALUES (?,?,?,?,?,?,?,?,?,0,?,?)",
+                (ws_id, pid, "test-unit-user", project_code,
+                 "{}", "{}", "{}", "{}", "{}", now, now),
+            )
+        sl = add_capex_line(
+            project_record=self._make_pr(pid),
+            user_id="test-unit-user",
+            label="Will Not Be Updated",
+            parent_category_code="C.06",
+            workbook_version=_workbook_version(),
+        )
+        original_label = sl.label
+        original_amount = sl.amount_keur
+
+        # Now remove the workspace row to simulate missing state
+        with get_cursor() as cur:
+            cur.execute(
+                "DELETE FROM workspace_states WHERE project_id=? AND user_id=?",
+                (pid, "test-unit-user"),
+            )
+
+        with self.assertRaises(CapexCommandError) as ctx:
+            update_capex_line(
+                project_record=self._make_pr(pid),
+                user_id="test-unit-user",
+                sub_line_id=sl.sub_line_id,
+                label="Updated Label",
+                amount_keur=9999.0,
+                row_version=sl.updated_at,
+                workbook_version=_workbook_version(),
+            )
+        self.assertIn("Workspace state is missing", str(ctx.exception))
+
+        # Verify the row is unchanged
+        from app.persistence.capex_sub_lines import list_sub_lines_for_project
+        with get_cursor() as cur:
+            rows = list_sub_lines_for_project(cur, pid, include_inactive=True)
+        matching = [r for r in rows if r.sub_line_id == sl.sub_line_id]
+        self.assertEqual(len(matching), 1)
+        self.assertEqual(matching[0].label, original_label,
+                         "label must be unchanged after failed update")
+        self.assertAlmostEqual(matching[0].amount_keur, original_amount,
+                               msg="amount must be unchanged after failed update")
+
+    def test_deactivate_fails_when_workspace_missing(self):
+        """Add a row with workspace present, remove workspace, deactivate must fail."""
+        from app.v2.capex_commands import add_capex_line, deactivate_capex_line, CapexCommandError
+        from app.persistence.db import get_cursor
+
+        pid = self._pid("deactivate")
+
+        import uuid
+        now = "2026-01-01T00:00:00"
+        ws_id = str(uuid.uuid4())
+        project_code = pid.replace("-", "").upper()[:20]
+        with get_cursor() as cur:
+            cur.execute(
+                "INSERT OR IGNORE INTO workspace_states "
+                "(workspace_id, project_id, user_id, project_code, "
+                "draft_snapshot_json, saved_snapshot_json, "
+                "last_runtime_snapshot_json, last_runtime_summary_json, "
+                "governance_state_json, dirty, created_at, updated_at) "
+                "VALUES (?,?,?,?,?,?,?,?,?,0,?,?)",
+                (ws_id, pid, "test-unit-user", project_code,
+                 "{}", "{}", "{}", "{}", "{}", now, now),
+            )
+        sl = add_capex_line(
+            project_record=self._make_pr(pid),
+            user_id="test-unit-user",
+            label="Will Not Be Deactivated",
+            parent_category_code="C.07",
+            workbook_version=_workbook_version(),
+        )
+
+        with get_cursor() as cur:
+            cur.execute(
+                "DELETE FROM workspace_states WHERE project_id=? AND user_id=?",
+                (pid, "test-unit-user"),
+            )
+
+        with self.assertRaises(CapexCommandError) as ctx:
+            deactivate_capex_line(
+                project_record=self._make_pr(pid),
+                user_id="test-unit-user",
+                sub_line_id=sl.sub_line_id,
+                row_version=sl.updated_at,
+                workbook_version=_workbook_version(),
+            )
+        self.assertIn("Workspace state is missing", str(ctx.exception))
+
+        # Row must still be active
+        from app.persistence.capex_sub_lines import list_sub_lines_for_project
+        with get_cursor() as cur:
+            rows = list_sub_lines_for_project(cur, pid)
+        still_active = [r for r in rows if r.sub_line_id == sl.sub_line_id]
+        self.assertEqual(len(still_active), 1,
+                         "row must remain active after failed deactivate")
 
 
 if __name__ == "__main__":
