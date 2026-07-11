@@ -1,20 +1,22 @@
 """
-Tests for the Workbook V2 Revenue worksheet (PR 867).
+Tests for the Workbook V2 Revenue worksheet (PR 867 v2).
 
 Coverage
 --------
-1.  Registry coverage — every revenue field accessible via _build_sheet_fields
-2.  BOUND fields have editable input controls
-3.  PARTIAL fields (legacy keys) are never editable
-4.  Sheet has 5 sections, local nav
-5.  hx-target="#v2-sheet-revenue", sheet_id="revenue" on all forms
-6.  Runtime truth matrix: State A / B / C
-7.  HTMX edit roundtrip from revenue sheet
-8.  Protected reference (TUHO/Oborovo) — zero editable controls
-9.  Working copy — editable controls present
-10. No legacy snapshot keys in form action targets
-11. No duplicate field IDs in DOM
-12. Placeholder text for unmigrated sections
+1.  Registry coverage — all 9 revenue fields via _build_sheet_fields
+2.  All 9 field IDs appear exactly once in the DOM
+3.  7 BOUND fields have editable input controls (active editable count)
+4.  2 PARTIAL fields are read-only with PARTIAL badge; no form/input
+5.  Sheet has 5 sections, local nav
+6.  hx-target="#v2-sheet-revenue", sheet_id="revenue" on all forms
+7.  Runtime truth matrix: State A / B / C
+8.  Revenue output placeholder text varies by runtime state (A/B/C)
+9.  HTMX edit roundtrip from revenue sheet
+10. Protected reference (TUHO/Oborovo) — zero editable controls
+11. Working copy — editable controls present
+12. No legacy snapshot keys in form field_id inputs
+13. No duplicate field IDs in DOM
+14. No financial calculations in the sheet template
 """
 from __future__ import annotations
 
@@ -96,7 +98,7 @@ def _fake_pis():
 
 
 # ---------------------------------------------------------------------------
-# 1. Registry coverage
+# 1. Registry: _build_sheet_fields coverage
 # ---------------------------------------------------------------------------
 
 class TestRevenueBuildSheetFields(unittest.TestCase):
@@ -105,12 +107,13 @@ class TestRevenueBuildSheetFields(unittest.TestCase):
         rows = _build_sheet_fields("revenue", _fake_pis())
         self.assertGreater(len(rows), 0)
 
-    def test_all_registry_fields_present(self):
-        """_build_sheet_fields returns one row per FieldSpec in the revenue sheet."""
+    def test_exactly_nine_fields(self):
+        """Revenue registry has exactly 9 FieldSpecs; all must be returned."""
         sheet = WORKBOOK.sheet("revenue")
         expected = sum(len(sec.fields) for sec in sheet.sections)
         rows = _build_sheet_fields("revenue", _fake_pis())
-        self.assertEqual(len(rows), expected)
+        self.assertEqual(len(rows), expected,
+                         f"expected {expected} rows, got {len(rows)}")
 
     def test_no_duplicate_field_ids(self):
         rows = _build_sheet_fields("revenue", _fake_pis())
@@ -118,26 +121,24 @@ class TestRevenueBuildSheetFields(unittest.TestCase):
         dupes = [f for f in set(fids) if fids.count(f) > 1]
         self.assertFalse(dupes, f"Duplicate field_ids: {dupes}")
 
-    def test_bound_fields_have_correct_binding_label(self):
+    def test_seven_bound_fields(self):
+        """Exactly 7 BOUND fields in the revenue sheet."""
         rows = _build_sheet_fields("revenue", _fake_pis())
-        bound_ids = {
-            f.field_id
-            for sec in WORKBOOK.sheet("revenue").sections
-            for f in sec.fields
-            if f.binding_status == BindingStatus.BOUND
-        }
-        for row in rows:
-            if row["field_id"] in bound_ids:
-                self.assertEqual(row["binding_label"], "bound",
-                                 f"{row['field_id']} should be 'bound'")
+        bound = [r for r in rows if r["binding_label"] == "bound"]
+        self.assertEqual(len(bound), 7, f"expected 7 BOUND, got {len(bound)}: {[r['field_id'] for r in bound]}")
 
-    def test_partial_legacy_fields_have_partial_binding_label(self):
+    def test_two_partial_fields(self):
+        """Exactly 2 PARTIAL fields (the legacy keys)."""
         rows = _build_sheet_fields("revenue", _fake_pis())
-        partial_ids = {"revenue.ppa.tariff_legacy", "revenue.ppa.ppa_term_legacy"}
-        for row in rows:
-            if row["field_id"] in partial_ids:
-                self.assertEqual(row["binding_label"], "partial",
-                                 f"{row['field_id']} should be 'partial'")
+        partial = [r for r in rows if r["binding_label"] == "partial"]
+        self.assertEqual(len(partial), 2,
+                         f"expected 2 PARTIAL, got {len(partial)}: {[r['field_id'] for r in partial]}")
+
+    def test_partial_fields_are_legacy_keys(self):
+        rows = _build_sheet_fields("revenue", _fake_pis())
+        partial_ids = {r["field_id"] for r in rows if r["binding_label"] == "partial"}
+        self.assertEqual(partial_ids,
+                         {"revenue.ppa.tariff_legacy", "revenue.ppa.ppa_term_legacy"})
 
     def test_required_dict_keys_present(self):
         rows = _build_sheet_fields("revenue", _fake_pis())
@@ -150,19 +151,98 @@ class TestRevenueBuildSheetFields(unittest.TestCase):
             missing = required_keys - row.keys()
             self.assertFalse(missing, f"Row {row['field_id']} missing keys: {missing}")
 
-    def test_ppa_section_fields_accessible(self):
+    def test_ppa_section_has_six_fields(self):
         rows = _build_sheet_fields("revenue", _fake_pis())
         ppa_rows = [r for r in rows if r["section_id"] == "ppa"]
-        self.assertGreater(len(ppa_rows), 0)
+        self.assertEqual(len(ppa_rows), 6)
 
-    def test_balancing_section_fields_accessible(self):
+    def test_balancing_section_has_three_fields(self):
         rows = _build_sheet_fields("revenue", _fake_pis())
         bal_rows = [r for r in rows if r["section_id"] == "balancing"]
-        self.assertGreater(len(bal_rows), 0)
+        self.assertEqual(len(bal_rows), 3)
 
 
 # ---------------------------------------------------------------------------
-# 2. Sheet HTML structure
+# 2. All 9 field IDs appear exactly once in the DOM
+# ---------------------------------------------------------------------------
+
+class TestRevenueAllFieldsRendered(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        cls.client = _authed_client()
+        cls.project_code = _create_project(cls.client, "all-fields-01")
+        cls.soup = BeautifulSoup(_get_workbook(cls.client, cls.project_code), "html.parser")
+        cls.rev = cls.soup.find(id="v2-sheet-revenue")
+
+    def _dom_field_ids(self):
+        return [r["data-field-id"] for r in self.rev.find_all(attrs={"data-field-id": True})]
+
+    def test_all_nine_field_ids_present(self):
+        expected = {
+            "revenue.ppa.base_tariff",
+            "revenue.ppa.index",
+            "revenue.ppa.term_years",
+            "revenue.ppa.production_share",
+            "revenue.ppa.tariff_legacy",
+            "revenue.ppa.ppa_term_legacy",
+            "revenue.balancing.cost",
+            "revenue.balancing.co2_enabled",
+            "revenue.balancing.co2_price",
+        }
+        dom_ids = set(self._dom_field_ids())
+        missing = expected - dom_ids
+        self.assertFalse(missing, f"Missing field_ids in DOM: {missing}")
+
+    def test_each_field_id_appears_exactly_once(self):
+        fids = self._dom_field_ids()
+        dupes = [f for f in set(fids) if fids.count(f) > 1]
+        self.assertFalse(dupes, f"Duplicate field_ids in DOM: {dupes}")
+
+    def test_seven_editable_controls(self):
+        """Exactly 7 BOUND fields rendered as editable rows."""
+        editable = self.rev.find_all(class_="v2-field-editable")
+        self.assertEqual(len(editable), 7,
+                         f"expected 7 editable, got {len(editable)}")
+
+    def test_two_partial_rows_in_dom(self):
+        """Both PARTIAL legacy fields appear as read-only rows with PARTIAL badge."""
+        for fid in ("revenue.ppa.tariff_legacy", "revenue.ppa.ppa_term_legacy"):
+            row = self.rev.find(attrs={"data-field-id": fid})
+            self.assertIsNotNone(row, f"PARTIAL field {fid!r} missing from DOM")
+
+    def test_partial_badge_on_both_legacy_fields(self):
+        """PARTIAL badge must appear for both legacy fields."""
+        for fid in ("revenue.ppa.tariff_legacy", "revenue.ppa.ppa_term_legacy"):
+            row = self.rev.find(attrs={"data-field-id": fid})
+            self.assertIsNotNone(row, f"field {fid!r} missing")
+            badge = row.find(class_="v2-binding-partial")
+            self.assertIsNotNone(badge,
+                                 f"PARTIAL badge missing for {fid!r}; row HTML: {row}")
+
+    def test_partial_fields_have_no_form(self):
+        """PARTIAL fields must not be wrapped in editable <form> elements."""
+        for fid in ("revenue.ppa.tariff_legacy", "revenue.ppa.ppa_term_legacy"):
+            row = self.rev.find(attrs={"data-field-id": fid})
+            self.assertIsNotNone(row, f"field {fid!r} missing")
+            self.assertIsNone(
+                row.find("form"),
+                f"PARTIAL field {fid!r} has an editable form",
+            )
+
+    def test_partial_fields_have_no_value_input(self):
+        """PARTIAL fields must not contain an <input name='value'>."""
+        for fid in ("revenue.ppa.tariff_legacy", "revenue.ppa.ppa_term_legacy"):
+            row = self.rev.find(attrs={"data-field-id": fid})
+            self.assertIsNotNone(row, f"field {fid!r} missing")
+            self.assertIsNone(
+                row.find("input", {"name": "value"}),
+                f"PARTIAL field {fid!r} has an editable input",
+            )
+
+
+# ---------------------------------------------------------------------------
+# 3. Sheet HTML structure
 # ---------------------------------------------------------------------------
 
 class TestRevenueSheetHtml(unittest.TestCase):
@@ -192,7 +272,6 @@ class TestRevenueSheetHtml(unittest.TestCase):
             self.assertIn(expected, link_texts, f"nav missing '{expected}'")
 
     def test_ppa_bound_fields_rendered(self):
-        """base_tariff, index, term_years, production_share must all appear."""
         for fid in (
             "revenue.ppa.base_tariff",
             "revenue.ppa.index",
@@ -203,17 +282,6 @@ class TestRevenueSheetHtml(unittest.TestCase):
                 self.rev.find(attrs={"data-field-id": fid}),
                 f"field {fid!r} missing from revenue sheet",
             )
-
-    def test_legacy_partial_fields_not_editable(self):
-        """tariff_legacy and ppa_term_legacy must NOT appear as editable input forms."""
-        for fid in ("revenue.ppa.tariff_legacy", "revenue.ppa.ppa_term_legacy"):
-            row = self.rev.find(attrs={"data-field-id": fid})
-            if row is not None:
-                # Field may render read-only; it must not have an editable input
-                self.assertIsNone(
-                    row.find("input", {"name": "value"}),
-                    f"legacy field {fid!r} rendered editable",
-                )
 
     def test_balancing_fields_rendered(self):
         for fid in (
@@ -245,7 +313,6 @@ class TestRevenueSheetHtml(unittest.TestCase):
         self.assertFalse(dupes, f"Duplicate field_ids in revenue sheet DOM: {dupes}")
 
     def test_no_legacy_snapshot_keys_in_form_actions(self):
-        """Form hidden inputs must not expose raw snapshot keys (e.g. tariff_eur_mwh)."""
         legacy_snapshot_keys = {"tariff_eur_mwh", "ppa_term_years"}
         for form in self.rev.find_all("form", class_="v2-field-form"):
             fid_input = form.find("input", {"name": "field_id"})
@@ -258,7 +325,7 @@ class TestRevenueSheetHtml(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# 3. Editable controls (user project)
+# 4. Editable controls (user project)
 # ---------------------------------------------------------------------------
 
 class TestRevenueSheetEditable(unittest.TestCase):
@@ -270,9 +337,11 @@ class TestRevenueSheetEditable(unittest.TestCase):
         cls.soup = BeautifulSoup(_get_workbook(cls.client, cls.project_code), "html.parser")
         cls.rev = cls.soup.find(id="v2-sheet-revenue")
 
-    def test_bound_fields_have_editable_controls(self):
+    def test_exactly_seven_editable_controls(self):
+        """7 BOUND fields → 7 editable rows."""
         editable = self.rev.find_all(class_="v2-field-editable")
-        self.assertGreater(len(editable), 0)
+        self.assertEqual(len(editable), 7,
+                         f"expected 7, got {len(editable)}")
 
     def test_forms_target_revenue_sheet(self):
         forms = self.rev.find_all("form", class_="v2-field-form")
@@ -288,11 +357,6 @@ class TestRevenueSheetEditable(unittest.TestCase):
             sid = form.find("input", {"name": "sheet_id"})
             self.assertIsNotNone(sid, "form missing sheet_id hidden input")
             self.assertEqual(sid["value"], "revenue")
-
-    def test_base_tariff_has_float_input(self):
-        row = self.rev.find(attrs={"data-field-id": "revenue.ppa.base_tariff"})
-        self.assertIsNotNone(row)
-        self.assertIsNotNone(row.find("input", {"name": "value"}))
 
     def test_base_tariff_step_from_registry(self):
         """base_tariff has decimals=2 → step="0.01"."""
@@ -316,7 +380,7 @@ class TestRevenueSheetEditable(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# 4. Protected reference — zero editable controls
+# 5. Protected reference — zero editable controls
 # ---------------------------------------------------------------------------
 
 class TestRevenueSheetProtectedRef(unittest.TestCase):
@@ -338,6 +402,17 @@ class TestRevenueSheetProtectedRef(unittest.TestCase):
         rev = _revenue_div(resp.text)
         self.assertIsNotNone(rev.find(class_="v2-protected-notice"))
 
+    def test_protected_ref_partial_fields_still_shown(self):
+        """PARTIAL legacy fields must still appear read-only for protected refs."""
+        with patch("app.v2.router.is_protected_reference", return_value=True):
+            resp = self.client.get(f"/v2/workbook?project={self.project_code}")
+        rev = _revenue_div(resp.text)
+        for fid in ("revenue.ppa.tariff_legacy", "revenue.ppa.ppa_term_legacy"):
+            self.assertIsNotNone(
+                rev.find(attrs={"data-field-id": fid}),
+                f"PARTIAL field {fid!r} missing for protected ref",
+            )
+
     def test_user_project_has_editable_controls(self):
         with patch("app.v2.router.is_protected_reference", return_value=False):
             resp = self.client.get(f"/v2/workbook?project={self.project_code}")
@@ -346,7 +421,7 @@ class TestRevenueSheetProtectedRef(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# 5. Runtime truth matrix
+# 6. Runtime truth matrix
 # ---------------------------------------------------------------------------
 
 class TestRevenueRuntimeMatrix(unittest.TestCase):
@@ -433,7 +508,99 @@ class TestRevenueRuntimeMatrix(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# 6. HTMX edit roundtrip from revenue sheet
+# 7. Revenue output placeholder text varies by runtime state
+# ---------------------------------------------------------------------------
+
+class TestRevenueOutputPlaceholders(unittest.TestCase):
+    """
+    State A: no RuntimeResult        → "Available after run"
+    State B: RuntimeResult + clean   → "Runtime available — Revenue output mapping not yet connected"
+    State C: RuntimeResult + dirty   → "Previous run available — output mapping not yet connected"
+
+    Never tell the user to run when a RuntimeResult already exists.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.client = _authed_client()
+        cls.project_code = _create_project(cls.client, "outputs-ph-01")
+
+    def _render_with(self, *, has_runtime: bool, ws_dirty: bool) -> str:
+        import dataclasses
+        from app.persistence.workspace_repository import get_workspace_state as _real
+
+        def _patched(*args, **kwargs):
+            real = _real(*args, **kwargs)
+            if real is None:
+                return None
+            return dataclasses.replace(
+                real,
+                dirty=ws_dirty,
+                last_runtime_snapshot_id="snap-001" if has_runtime else None,
+                last_runtime_at=None,
+            )
+
+        with patch("app.persistence.workspace_repository.get_workspace_state",
+                   side_effect=_patched):
+            resp = self.client.get(f"/v2/workbook?project={self.project_code}")
+
+        assert resp.status_code == 200
+        return resp.text
+
+    def _outputs_text(self, html: str) -> str:
+        """Text of the Revenue Outputs section only."""
+        rev = _revenue_div(html)
+        # Find the outputs section by its anchor id
+        anchor = rev.find(id="nav-rev-outputs")
+        if anchor:
+            section = anchor.find_parent("details")
+            return section.get_text() if section else rev.get_text()
+        return rev.get_text()
+
+    def test_state_a_available_after_run(self):
+        """State A: no runtime → 'Available after run' for all output rows."""
+        text = self._outputs_text(self._render_with(has_runtime=False, ws_dirty=False))
+        self.assertIn("Available after run", text)
+        self.assertNotIn("mapping not yet connected", text)
+
+    def test_state_b_mapping_not_connected(self):
+        """State B: runtime exists, clean → 'Revenue output mapping not yet connected'."""
+        text = self._outputs_text(self._render_with(has_runtime=True, ws_dirty=False))
+        self.assertIn("mapping not yet connected", text)
+        self.assertNotIn("Available after run", text)
+
+    def test_state_b_does_not_say_run_required(self):
+        """State B must not prompt a new run — a run already exists."""
+        html = self._render_with(has_runtime=True, ws_dirty=False)
+        # Check the output placeholder text only (not the Runtime Status row)
+        text = self._outputs_text(html)
+        # Should mention connected status, not "Available after run"
+        self.assertNotIn("Available after run", text)
+
+    def test_state_c_output_stale_message(self):
+        """State C: runtime exists, dirty → 'output mapping not yet connected'."""
+        text = self._outputs_text(self._render_with(has_runtime=True, ws_dirty=True))
+        self.assertIn("output mapping not yet connected", text)
+        self.assertNotIn("Available after run", text)
+
+    def test_state_a_does_not_show_connected_message(self):
+        """State A must not claim a runtime is available when none exists."""
+        text = self._outputs_text(self._render_with(has_runtime=False, ws_dirty=False))
+        self.assertNotIn("mapping not yet connected", text)
+
+    def test_output_row_labels_always_present(self):
+        """Annual Revenue, Average Price etc. labels always appear regardless of state."""
+        for has_runtime, ws_dirty in ((False, False), (True, False), (True, True)):
+            html = self._render_with(has_runtime=has_runtime, ws_dirty=ws_dirty)
+            rev = _revenue_div(html)
+            for label in ("Annual Revenue", "Average Price", "Captured Price",
+                          "Merchant Revenue", "PPA Revenue"):
+                self.assertIn(label, rev.get_text(),
+                              f"label '{label}' missing with has_runtime={has_runtime}")
+
+
+# ---------------------------------------------------------------------------
+# 8. HTMX edit roundtrip from revenue sheet
 # ---------------------------------------------------------------------------
 
 class TestRevenueHtmxEdit(unittest.TestCase):
@@ -498,7 +665,6 @@ class TestRevenueHtmxEdit(unittest.TestCase):
         self.assertNotEqual(next(iter(hashes)), self.content_hash)
 
     def test_htmx_validation_error_returns_revenue_sheet(self):
-        """Min-value violation on base_tariff returns revenue sheet with error."""
         resp = self._post("revenue.ppa.base_tariff", "-999")
         self.assertIn("v2-sheet-revenue", resp.text)
 
@@ -507,24 +673,42 @@ class TestRevenueHtmxEdit(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertIn("v2-sheet-revenue", resp.text)
 
+    def test_value_persists_after_edit(self):
+        """After HTMX edit, a fresh GET must reflect the new value."""
+        # Fetch a fresh content_hash — prior tests in this class may have rotated it.
+        current_html = _get_workbook(self.client, self.project_code)
+        shell = BeautifulSoup(current_html, "html.parser").find(id="v2-workbook-shell")
+        fresh_hash = shell["data-content-hash"]
+
+        resp = self._post("revenue.ppa.base_tariff", "80.0", content_hash=fresh_hash)
+        self.assertEqual(resp.status_code, 200)
+        # Confirm no stale-hash error in response
+        self.assertNotIn("Draft changed since page loaded", resp.text)
+
+        html3 = _get_workbook(self.client, self.project_code)
+        rev = _revenue_div(html3)
+        tariff_row = rev.find(attrs={"data-field-id": "revenue.ppa.base_tariff"})
+        inp = tariff_row.find("input", {"name": "value"})
+        self.assertIsNotNone(inp)
+        self.assertEqual(inp["value"], "80.0")
+
 
 # ---------------------------------------------------------------------------
-# 7. No financial calculations in the sheet template
+# 9. No financial calculations in the sheet template
 # ---------------------------------------------------------------------------
 
 class TestRevenueNoCalculations(unittest.TestCase):
 
-    def test_no_revenue_formulas_in_template(self):
-        """Template must not contain multiplication/division operators on revenue data."""
-        import inspect
-        from jinja2 import Environment, FileSystemLoader
+    def _template_source(self) -> str:
         template_dir = os.path.join(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
             "app", "templates", "v2", "partials",
         )
         with open(os.path.join(template_dir, "sheet_revenue.html")) as f:
-            source = f.read()
-        # No inline arithmetic on financial variables
+            return f.read()
+
+    def test_no_revenue_formulas_in_template(self):
+        source = self._template_source()
         forbidden = ["* tariff", "* price", "* mwh", "revenue / ", "ppa * "]
         for pattern in forbidden:
             self.assertNotIn(
@@ -533,30 +717,26 @@ class TestRevenueNoCalculations(unittest.TestCase):
             )
 
     def test_template_uses_render_field_macro(self):
-        template_dir = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-            "app", "templates", "v2", "partials",
-        )
-        with open(os.path.join(template_dir, "sheet_revenue.html")) as f:
-            source = f.read()
+        source = self._template_source()
         self.assertIn("render_field", source)
         self.assertIn('from "partials/field_editor.html"', source)
 
-    def test_template_uses_section_id_not_field_id_filter(self):
-        """Template must filter by section_id (registry metadata), not hardcoded field_ids."""
-        template_dir = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-            "app", "templates", "v2", "partials",
-        )
-        with open(os.path.join(template_dir, "sheet_revenue.html")) as f:
-            source = f.read()
+    def test_template_filters_by_section_id_not_binding_label(self):
+        """PPA section loop must filter by section_id only, not binding_label."""
+        source = self._template_source()
         self.assertIn("f.section_id", source)
-        # binding_label filter is acceptable (registry-derived)
-        # but no hardcoded semantic field ID literals beyond the excluded legacy pair
+        # The old filter that excluded PARTIAL must be gone
+        self.assertNotIn('f.binding_label == "bound"', source)
+
+    def test_template_no_hardcoded_bound_field_ids(self):
+        """Template must not reference specific BOUND field IDs in loop conditions."""
         import re
-        # Must not reference specific BOUND field_ids by ID in template logic
-        bound_hardcoded = re.findall(r'f\.field_id\s*==\s*"revenue\.ppa\.(base_tariff|index|term_years|production_share)"', source)
-        self.assertFalse(bound_hardcoded, f"Template hardcodes bound field_ids: {bound_hardcoded}")
+        source = self._template_source()
+        hardcoded = re.findall(
+            r'f\.field_id\s*==\s*"revenue\.ppa\.(base_tariff|index|term_years|production_share)"',
+            source,
+        )
+        self.assertFalse(hardcoded, f"Template hardcodes bound field_ids: {hardcoded}")
 
 
 if __name__ == "__main__":

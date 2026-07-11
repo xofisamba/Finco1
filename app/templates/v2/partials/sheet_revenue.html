@@ -67,9 +67,9 @@
     {{ section_anchor("commercial", "1. Commercial Structure") }}
     <div class="v2-section-fields">
 
-      {# BOUND fields from the ppa registry section (legacy PARTIAL keys excluded by binding_label) #}
+      {# All ppa section fields — render_field decides BOUND→editable / PARTIAL→read-only badge #}
       {% for f in revenue_fields %}
-        {% if f.section_id == "ppa" and f.binding_label == "bound" %}
+        {% if f.section_id == "ppa" %}
           {{ render_field(f, project_code, workbook_version, content_hash, project_editable,
                           hx_target="#v2-sheet-revenue", sheet_id="revenue") }}
         {% endif %}
@@ -149,11 +149,26 @@
         </span>
       </div>
 
-      {{ placeholder_row("Annual Revenue",   "Available after run") }}
-      {{ placeholder_row("Average Price",    "Available after run") }}
-      {{ placeholder_row("Captured Price",   "Available after run") }}
-      {{ placeholder_row("Merchant Revenue", "Available after run") }}
-      {{ placeholder_row("PPA Revenue",      "Available after run") }}
+      {#
+        Revenue output placeholder text varies by runtime state:
+        A: no RuntimeResult               → "Available after run"
+        B: RuntimeResult + clean draft    → "Runtime available — Revenue output mapping not yet connected"
+        C: RuntimeResult + dirty draft    → "Previous run available — output mapping not yet connected"
+        Never tell the user to run when a run already exists.
+      #}
+      {% if not has_runtime %}
+        {% set _output_note = "Available after run" %}
+      {% elif not ws_dirty %}
+        {% set _output_note = "Runtime available — Revenue output mapping not yet connected" %}
+      {% else %}
+        {% set _output_note = "Previous run available — output mapping not yet connected" %}
+      {% endif %}
+
+      {{ placeholder_row("Annual Revenue",   _output_note) }}
+      {{ placeholder_row("Average Price",    _output_note) }}
+      {{ placeholder_row("Captured Price",   _output_note) }}
+      {{ placeholder_row("Merchant Revenue", _output_note) }}
+      {{ placeholder_row("PPA Revenue",      _output_note) }}
 
     </div>
   </details>
