@@ -250,10 +250,15 @@
       <div class="v2-field-row v2-field-readonly">
         <span class="v2-field-label">Runtime Status</span>
         <span class="v2-field-value">
-          {%- if has_runtime -%}
+          {%- if not has_runtime -%}
+            {# State A: no RuntimeResult yet #}
+            <span class="v2-field-empty">Not yet run</span>
+          {%- elif not ws_dirty -%}
+            {# State B: runtime exists and draft is clean #}
             <span class="v2-runtime-clean">Outputs current</span>
           {%- else -%}
-            <span class="v2-field-empty">Not yet run</span>
+            {# State C: runtime exists but draft has unsaved changes #}
+            <span class="v2-runtime-dirty">Previous run available — stale for current draft</span>
           {%- endif -%}
         </span>
       </div>

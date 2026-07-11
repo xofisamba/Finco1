@@ -64,6 +64,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from app.auth import COOKIE_NAME, decode_session_token
+from app.ui.inputs_summary import build_inputs_summary
 from app.ui.protected_reference_service import is_protected_reference
 from app.workbook.registry import WORKBOOK
 from app.workbook.service import WorkbookService
@@ -167,83 +168,15 @@ def _build_ps_fields(pis) -> list[dict]:
     return _build_sheet_fields("project_setup", pis)
 
 
-def _build_inputs_context(pis, ws) -> dict:
-    """Compute CAPEX/OPEX summary numbers and runtime metadata for the Inputs sheet.
+def _get_inputs_summary(project_record, pis, ws) -> dict:
+    """Delegate to the canonical Inputs summary adapter.
 
-    Pulls only from pis (registry values) and ws (workspace state).
-    No engine calls, no ViewModels, no ProjectContext.
+    All CAPEX/OPEX aggregation is performed by build_inputs_summary using
+    the canonical CapexViewModel and OpexViewModel — the same code paths
+    used by the detailed CAPEX and OPEX sheets.  No field lists, no
+    formulas, and no ViewModel construction live here.
     """
-    capex_c_ids = [
-        "capex.C.epc_contract", "capex.C.production_units", "capex.C.epc_other",
-        "capex.C.grid_connection", "capex.C.ops_preparation", "capex.C.insurances",
-        "capex.C.lease_tax", "capex.C.construction_mgmt_a", "capex.C.commissioning",
-        "capex.C.taxes",
-    ]
-    capex_d_ids = [
-        "capex.D.project_acquisition", "capex.D.project_rights",
-        "capex.D.audit_legal", "capex.D.construction_mgmt_b",
-    ]
-    capex_f_ids = [
-        "capex.F.idc", "capex.F.bank_fees", "capex.F.commitment_fees",
-        "capex.F.other_financial", "capex.F.vat_costs",
-    ]
-
-    def _sum_pis(field_ids):
-        total = 0.0
-        any_set = False
-        for fid in field_ids:
-            v = pis.get(fid)
-            if v is not None:
-                try:
-                    total += float(v)
-                    any_set = True
-                except (TypeError, ValueError):
-                    pass
-        return round(total, 2) if any_set else None
-
-    hard_capex = _sum_pis(capex_c_ids + capex_d_ids)
-    financing = _sum_pis(capex_f_ids)
-    reserve_v = pis.get("capex.R.reserve_accounts")
-    reserve = float(reserve_v) if reserve_v is not None else None
-    total_capex_v = pis.get("capex.summary.total")
-    total_capex = float(total_capex_v) if total_capex_v is not None else None
-
-    cap_v = pis.get("project_setup.technical.capacity_mw")
-    p50_v = pis.get("project_setup.technical.p50_hours")
-    capacity_mw = float(cap_v) if cap_v is not None else None
-    p50_hours = float(p50_v) if p50_v is not None else None
-
-    capex_per_mw = None
-    if total_capex is not None and capacity_mw:
-        try:
-            capex_per_mw = round(total_capex / capacity_mw, 1)
-        except ZeroDivisionError:
-            pass
-
-    opex_y1_v = pis.get("opex.summary.total_y1")
-    opex_y1 = float(opex_y1_v) if opex_y1_v is not None else None
-    opex_per_mw = None
-    opex_per_mwh = None
-    if opex_y1 is not None and capacity_mw:
-        try:
-            opex_per_mw = round(opex_y1 / capacity_mw, 1)
-            if p50_hours:
-                opex_per_mwh = round(opex_y1 / (capacity_mw * p50_hours), 4)
-        except ZeroDivisionError:
-            pass
-
-    return {
-        "capex_hard_keur": hard_capex,
-        "capex_financing_keur": financing,
-        "capex_reserve_keur": reserve,
-        "capex_total_keur": total_capex,
-        "capex_per_mw_keur": capex_per_mw,
-        "opex_y1_keur": opex_y1,
-        "opex_per_mw_keur": opex_per_mw,
-        "opex_per_mwh_eur": opex_per_mwh,
-        "runtime_snapshot_id": ws.last_runtime_snapshot_id,
-        "last_run_at": getattr(ws, "last_runtime_at", None),
-    }
+    return build_inputs_summary(project_record, pis, ws)
 
 
 def _base_sheet_ctx(request, pis, ws, project_record, project, field_error=""):
@@ -294,7 +227,7 @@ def _render_inputs_htmx_sheet(
         "capex_fields": _build_sheet_fields("capex", pis),
         "opex_fields": _build_sheet_fields("opex", pis),
         "debt_fields": _build_sheet_fields("debt", pis),
-        "inputs_summary": _build_inputs_context(pis, ws),
+        "inputs_summary": _get_inputs_summary(project_record, pis, ws),
     })
     sheet_html = _templates.get_template("partials/sheet_inputs.html").render(ctx)
     banner_html = _templates.get_template("partials/_v2_status_banner.html").render(ctx)
@@ -364,7 +297,7 @@ async def v2_workbook(request: Request, project: Optional[str] = None):
         "capex_fields": _build_sheet_fields("capex", pis),
         "opex_fields": _build_sheet_fields("opex", pis),
         "debt_fields": _build_sheet_fields("debt", pis),
-        "inputs_summary": _build_inputs_context(pis, ws),
+        "inputs_summary": _get_inputs_summary(project_record, pis, ws),
         "user": user,
         "project_editable": project_editable,
         "ws_dirty": ws.dirty,

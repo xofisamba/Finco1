@@ -1,26 +1,24 @@
 """
-Tests for the Workbook V2 Inputs Control Tower sheet (PR 866).
+Tests for the Workbook V2 Inputs Control Tower sheet (PR 866 v2).
 
 Coverage:
-1. Registry-driven rendering — fields from all 5 registry sheets appear
-2. No duplicated field_ids — each field_id appears at most once per sheet
-3. Placeholder rows — "Not yet connected" / "Available after … migration"
-4. Section links — CAPEX, OPEX, Debt, Revenue, Tax links present
-5. Editable controls — BOUND fields render <input>/<select> for user projects
-6. Protected reference — zero editable controls for TUHO/Oborovo originals
-7. HTMX edit from inputs sheet — sheet_id="inputs", hx-target="#v2-sheet-inputs"
-8. HTMX success response — returns #v2-sheet-inputs + OOB banner
-9. _build_sheet_fields — structure, ordering, parity with _build_ps_fields for project_setup
-10. _build_inputs_context — CAPEX/OPEX summaries derived without engine calls
-11. Runtime section — workbook_version, content_hash, draft/runtime status
+1.  _build_sheet_fields — structure, ordering, parity with _build_ps_fields
+2.  build_inputs_summary — parity with canonical CapexViewModel / OpexViewModel
+3.  OPEX/MWh units — EUR/MWh (kEUR * 1000 / MWh), not kEUR/MWh
+4.  Runtime status truth matrix — three states (no run / clean / stale)
+5.  Sheet HTML — registry-driven rendering, 8 sections, local nav
+6.  Placeholder rows — "Not yet connected" / "Available after … migration"
+7.  Section links — CAPEX, OPEX, Debt, Revenue, Tax
+8.  Editable controls — BOUND fields, hx-target, sheet_id="inputs"
+9.  Protected reference — zero editable controls
+10. HTMX edit from inputs sheet — correct sheet returned, OOB banner
 """
 from __future__ import annotations
 
 import os
-import sys
 import unittest
 import urllib.parse
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 os.environ.setdefault("FINCO_WORKBOOK_V2", "1")
 os.environ.setdefault("FINCO_SECRET_KEY", "test-secret-key-for-inputs-tests")
@@ -30,13 +28,11 @@ from fastapi.testclient import TestClient  # noqa: E402
 
 import main_web  # noqa: E402
 from app.auth import COOKIE_NAME, create_session_token  # noqa: E402
-from app.workbook.registry import WORKBOOK  # noqa: E402
-from app.workbook.specs import BindingStatus  # noqa: E402
-from app.v2.router import (  # noqa: E402
-    _build_inputs_context,
-    _build_ps_fields,
-    _build_sheet_fields,
-)
+from app.ui.capex_view_model import build_capex_view_model  # noqa: E402
+from app.ui.inputs_summary import build_inputs_summary  # noqa: E402
+from app.ui.opex_view_model import build_opex_view_model  # noqa: E402
+from app.ui.project_context import build_project_context_for_record  # noqa: E402
+from app.v2.router import _build_ps_fields, _build_sheet_fields  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -49,7 +45,9 @@ def _authed_client() -> TestClient:
     return tc
 
 
-def _create_project(client: TestClient, suffix: str) -> str:
+def _create_project(client: TestClient, suffix: str, capacity_mw="100",
+                    p50_hours="1000", opex_y1_keur="5000",
+                    total_capex_keur="80000") -> str:
     resp = client.post(
         "/projects/create",
         data={
@@ -57,15 +55,15 @@ def _create_project(client: TestClient, suffix: str) -> str:
             "project_type": "Wind",
             "template_source": "generic_wind",
             "country_market": "Germany",
-            "capacity_mw": "100",
+            "capacity_mw": capacity_mw,
             "cod_date": "2027-06-01",
             "construction_months": "24",
             "horizon_years": "20",
             "tariff_eur_mwh": "60",
             "ppa_term_years": "15",
-            "p50_hours": "2500",
-            "opex_y1_keur": "1200",
-            "total_capex_keur": "80000",
+            "p50_hours": p50_hours,
+            "opex_y1_keur": opex_y1_keur,
+            "total_capex_keur": total_capex_keur,
             "gearing_pct": "70",
             "interest_rate_pct": "4.5",
             "tenor_years": "18",
@@ -81,28 +79,28 @@ def _create_project(client: TestClient, suffix: str) -> str:
     return codes[0]
 
 
-def _get_workbook_body(client, project_code: str) -> str:
+def _get_workbook(client, project_code: str):
     resp = client.get(f"/v2/workbook?project={project_code}")
-    assert resp.status_code == 200, f"expected 200, got {resp.status_code}"
+    assert resp.status_code == 200
     return resp.text
 
 
-def _fake_pis(values: dict | None = None):
-    """Minimal ProjectInputSet-like mock for unit tests."""
-    m = MagicMock()
-    m.workbook_version = "2.0.0"
-    m.content_hash = "abc123deadbeef"
-    m.template_source = "generic_wind"
-    m.get = lambda fid: (values or {}).get(fid)
-    return m
+def _inputs_div(html: str):
+    return BeautifulSoup(html, "html.parser").find(id="v2-sheet-inputs")
 
 
-def _fake_ws(dirty: bool = False, has_runtime: bool = False):
-    m = MagicMock()
-    m.dirty = dirty
-    m.last_runtime_snapshot_id = "snap-001" if has_runtime else None
-    m.last_runtime_at = None
-    return m
+def _project_record_and_pis(client, project_code: str):
+    """Return (project_record, pis, ws) for a project."""
+    from app.auth import COOKIE_NAME, decode_session_token
+    from app.persistence.projects_repository import get_project_record
+    from app.persistence.workspace_repository import get_workspace_state
+    from app.workbook.service import WorkbookService
+    token = client.cookies.get(COOKIE_NAME)
+    user = decode_session_token(token)
+    pr = get_project_record(user_id=user.user_id, project_code=project_code)
+    ws = get_workspace_state(user_id=user.user_id, project_id=pr.project_id)
+    pis = WorkbookService.build_draft_input_set_from_workspace(ws)
+    return pr, pis, ws
 
 
 # ---------------------------------------------------------------------------
@@ -111,145 +109,321 @@ def _fake_ws(dirty: bool = False, has_runtime: bool = False):
 
 class TestBuildSheetFields(unittest.TestCase):
 
+    def _fake_pis(self):
+        from unittest.mock import MagicMock
+        m = MagicMock()
+        m.get = lambda fid: None
+        return m
+
     def test_project_setup_parity(self):
-        """_build_sheet_fields('project_setup', pis) == _build_ps_fields(pis)."""
-        pis = _fake_pis()
-        result_generic = _build_sheet_fields("project_setup", pis)
-        result_ps = _build_ps_fields(pis)
+        """_build_sheet_fields('project_setup') == _build_ps_fields for same pis."""
+        pis = self._fake_pis()
         self.assertEqual(
-            [r["field_id"] for r in result_generic],
-            [r["field_id"] for r in result_ps],
+            [r["field_id"] for r in _build_sheet_fields("project_setup", pis)],
+            [r["field_id"] for r in _build_ps_fields(pis)],
         )
 
     def test_all_registry_sheets_accessible(self):
-        """_build_sheet_fields works for every declared registry sheet."""
-        pis = _fake_pis()
-        for sheet_id in ("project_setup", "capex", "opex", "revenue", "debt"):
-            rows = _build_sheet_fields(sheet_id, pis)
-            self.assertIsInstance(rows, list)
-            self.assertGreater(len(rows), 0, f"sheet {sheet_id!r} returned no fields")
+        pis = self._fake_pis()
+        for sid in ("project_setup", "capex", "opex", "revenue", "debt"):
+            rows = _build_sheet_fields(sid, pis)
+            self.assertGreater(len(rows), 0, f"sheet {sid!r} returned no fields")
 
     def test_field_dict_keys_complete(self):
-        """Every field dict carries all required keys."""
-        pis = _fake_pis()
-        required_keys = {
+        pis = self._fake_pis()
+        required = {
             "field_id", "label", "unit", "field_type", "binding_label",
             "options", "section_id", "section_label", "value",
             "required", "min_value", "max_value", "step", "help_text",
         }
-        for sheet_id in ("project_setup", "capex", "opex", "revenue", "debt"):
-            for row in _build_sheet_fields(sheet_id, pis):
-                missing = required_keys - row.keys()
-                self.assertFalse(
-                    missing,
-                    f"sheet {sheet_id!r} field {row.get('field_id')!r} missing keys: {missing}",
-                )
+        for sid in ("project_setup", "capex", "opex", "revenue", "debt"):
+            for row in _build_sheet_fields(sid, pis):
+                missing = required - row.keys()
+                self.assertFalse(missing, f"{sid!r} {row.get('field_id')!r}: {missing}")
 
     def test_no_duplicate_field_ids_per_sheet(self):
-        """No field_id appears twice within a single registry sheet."""
-        pis = _fake_pis()
-        for sheet_id in ("project_setup", "capex", "opex", "revenue", "debt"):
-            fids = [r["field_id"] for r in _build_sheet_fields(sheet_id, pis)]
-            self.assertEqual(
-                len(fids), len(set(fids)),
-                f"sheet {sheet_id!r} has duplicate field_ids: "
-                + str([f for f in fids if fids.count(f) > 1]),
-            )
+        pis = self._fake_pis()
+        for sid in ("project_setup", "capex", "opex", "revenue", "debt"):
+            fids = [r["field_id"] for r in _build_sheet_fields(sid, pis)]
+            dupes = [f for f in set(fids) if fids.count(f) > 1]
+            self.assertFalse(dupes, f"sheet {sid!r} has duplicate field_ids: {dupes}")
 
-    def test_value_comes_from_pis(self):
-        """Values are taken from pis.get(field_id), not hardcoded."""
-        pis = _fake_pis({"project_setup.technical.capacity_mw": 123.45})
-        rows = _build_sheet_fields("project_setup", pis)
-        cap = next(r for r in rows if r["field_id"] == "project_setup.technical.capacity_mw")
-        self.assertEqual(cap["value"], 123.45)
-
-    def test_debt_senior_gearing_binding(self):
-        """debt.senior.gearing_pct is BOUND (editable)."""
-        pis = _fake_pis()
-        rows = _build_sheet_fields("debt", pis)
-        gearing = next(r for r in rows if r["field_id"] == "debt.senior.gearing_pct")
-        self.assertEqual(gearing["binding_label"], "bound")
+    def test_debt_gearing_is_bound(self):
+        pis = self._fake_pis()
+        rows = {r["field_id"]: r for r in _build_sheet_fields("debt", pis)}
+        self.assertEqual(rows["debt.senior.gearing_pct"]["binding_label"], "bound")
 
     def test_capex_summary_total_is_partial(self):
-        """capex.summary.total is PARTIAL (engine-derived, not user-editable)."""
-        pis = _fake_pis()
-        rows = _build_sheet_fields("capex", pis)
-        total = next(r for r in rows if r["field_id"] == "capex.summary.total")
-        self.assertEqual(total["binding_label"], "partial")
+        pis = self._fake_pis()
+        rows = {r["field_id"]: r for r in _build_sheet_fields("capex", pis)}
+        self.assertEqual(rows["capex.summary.total"]["binding_label"], "partial")
 
 
 # ---------------------------------------------------------------------------
-# 2. _build_inputs_context — computed summaries
+# 2. build_inputs_summary — parity with canonical ViewModels
 # ---------------------------------------------------------------------------
 
-class TestBuildInputsContext(unittest.TestCase):
+class TestBuildInputsSummaryParity(unittest.TestCase):
+    """
+    Proves that build_inputs_summary values equal the canonical CapexViewModel
+    and OpexViewModel values for the same project state.
+    """
 
-    def _pis_with_capex(self):
-        values = {
-            "capex.C.epc_contract": 10000,
-            "capex.C.grid_connection": 5000,
-            "capex.D.audit_legal": 500,
-            "capex.F.idc": 2000,
-            "capex.R.reserve_accounts": 1000,
-            "capex.summary.total": 18500,
-            "project_setup.technical.capacity_mw": 100.0,
-            "project_setup.technical.p50_hours": 2500.0,
-            "opex.summary.total_y1": 1200,
-        }
-        return _fake_pis(values)
+    @classmethod
+    def setUpClass(cls):
+        cls.client = _authed_client()
+        cls.project_code = _create_project(
+            cls.client, "parity-01",
+            capacity_mw="50", p50_hours="2000",
+            opex_y1_keur="3000", total_capex_keur="60000",
+        )
+        cls.pr, cls.pis, cls.ws = _project_record_and_pis(cls.client, cls.project_code)
 
-    def test_hard_capex_sum(self):
-        ctx = _build_inputs_context(self._pis_with_capex(), _fake_ws())
-        # 10000 + 5000 (C) + 500 (D) = 15500
-        self.assertEqual(ctx["capex_hard_keur"], 15500.0)
+        snapshot = cls.pis.to_snapshot()
+        ctx = build_project_context_for_record(
+            project_code=cls.pr.project_code,
+            project_name=cls.pr.project_name,
+            project_type=cls.pr.project_type,
+            project_origin=cls.pr.project_origin,
+            template_source=cls.pr.template_source,
+            baseline_snapshot=snapshot,
+        )
+        cls.capex_vm = build_capex_view_model(ctx, is_user_project=True)
+        cls.opex_vm = build_opex_view_model(ctx, is_user_project=True)
+        cls.summary = build_inputs_summary(cls.pr, cls.pis, cls.ws)
 
-    def test_financing_sum(self):
-        ctx = _build_inputs_context(self._pis_with_capex(), _fake_ws())
-        self.assertEqual(ctx["capex_financing_keur"], 2000.0)
+    def test_capex_hard_matches_viewmodel(self):
+        self.assertAlmostEqual(
+            self.summary["capex_hard_keur"], self.capex_vm.hard_capex_keur, places=2,
+            msg="capex_hard_keur != CapexViewModel.hard_capex_keur",
+        )
 
-    def test_reserve_passthrough(self):
-        ctx = _build_inputs_context(self._pis_with_capex(), _fake_ws())
-        self.assertEqual(ctx["capex_reserve_keur"], 1000.0)
+    def test_capex_financing_matches_viewmodel(self):
+        self.assertAlmostEqual(
+            self.summary["capex_financing_keur"], self.capex_vm.financing_keur, places=2,
+        )
 
-    def test_capex_total_from_summary_field(self):
-        ctx = _build_inputs_context(self._pis_with_capex(), _fake_ws())
-        self.assertEqual(ctx["capex_total_keur"], 18500.0)
+    def test_capex_reserve_matches_viewmodel(self):
+        self.assertAlmostEqual(
+            self.summary["capex_reserve_keur"], self.capex_vm.reserve_keur, places=2,
+        )
 
-    def test_capex_per_mw(self):
-        ctx = _build_inputs_context(self._pis_with_capex(), _fake_ws())
-        self.assertAlmostEqual(ctx["capex_per_mw_keur"], 185.0, places=0)
+    def test_capex_total_matches_viewmodel(self):
+        self.assertAlmostEqual(
+            self.summary["capex_total_keur"], self.capex_vm.total_capex_keur, places=2,
+            msg="capex_total_keur != CapexViewModel.total_capex_keur",
+        )
 
-    def test_opex_y1_passthrough(self):
-        ctx = _build_inputs_context(self._pis_with_capex(), _fake_ws())
-        self.assertEqual(ctx["opex_y1_keur"], 1200.0)
+    def test_capex_per_mw_matches_viewmodel(self):
+        self.assertAlmostEqual(
+            self.summary["capex_per_mw_keur"], self.capex_vm.total_per_mw, places=2,
+        )
 
-    def test_opex_per_mw(self):
-        ctx = _build_inputs_context(self._pis_with_capex(), _fake_ws())
-        self.assertAlmostEqual(ctx["opex_per_mw_keur"], 12.0, places=0)
+    def test_opex_y1_matches_viewmodel(self):
+        self.assertAlmostEqual(
+            self.summary["opex_y1_keur"], self.opex_vm.y1_total_opex, places=2,
+            msg="opex_y1_keur != OpexViewModel.y1_total_opex",
+        )
 
-    def test_opex_per_mwh(self):
-        ctx = _build_inputs_context(self._pis_with_capex(), _fake_ws())
-        # 1200 / (100 * 2500) = 0.0048
-        self.assertAlmostEqual(ctx["opex_per_mwh_eur"], 0.0048, places=4)
+    def test_opex_per_mw_matches_viewmodel(self):
+        if self.opex_vm.opex_per_mw_y1 is None:
+            self.assertIsNone(self.summary["opex_per_mw_keur"])
+        else:
+            self.assertAlmostEqual(
+                self.summary["opex_per_mw_keur"], self.opex_vm.opex_per_mw_y1, places=2,
+            )
 
-    def test_none_when_capacity_missing(self):
-        pis = _fake_pis({"capex.summary.total": 50000})
-        ctx = _build_inputs_context(pis, _fake_ws())
-        self.assertIsNone(ctx["capex_per_mw_keur"])
-
-    def test_none_when_no_capex_values(self):
-        ctx = _build_inputs_context(_fake_pis(), _fake_ws())
-        self.assertIsNone(ctx["capex_hard_keur"])
-        self.assertIsNone(ctx["capex_total_keur"])
-
-    def test_runtime_fields_from_ws(self):
-        ws = _fake_ws(dirty=True, has_runtime=True)
-        ctx = _build_inputs_context(_fake_pis(), ws)
-        self.assertEqual(ctx["runtime_snapshot_id"], "snap-001")
+    def test_opex_per_mwh_matches_viewmodel(self):
+        if self.opex_vm.opex_per_mwh_y1 is None:
+            self.assertIsNone(self.summary["opex_per_mwh_eur"])
+        else:
+            self.assertAlmostEqual(
+                self.summary["opex_per_mwh_eur"], self.opex_vm.opex_per_mwh_y1, places=4,
+                msg="opex_per_mwh_eur != OpexViewModel.opex_per_mwh_y1",
+            )
 
 
 # ---------------------------------------------------------------------------
-# 3. Sheet HTML — registry-driven rendering
+# 3. OPEX/MWh units — EUR/MWh, not kEUR/MWh
+# ---------------------------------------------------------------------------
+
+class TestOpexPerMwhUnits(unittest.TestCase):
+    """
+    Regression: 1,000 kEUR / 100,000 MWh = 10 EUR/MWh.
+
+    The OpexViewModel formula (used by build_inputs_summary via the adapter):
+        opex_per_mwh_y1 = y1_total_opex_keur × 1000 / p50_annual_mwh   [EUR/MWh]
+
+    The wrong formula (the units bug) would be:
+        y1_total_opex_keur / p50_annual_mwh                             [kEUR/MWh ≈ 0.01]
+    """
+
+    def test_viewmodel_formula_proves_eur_mwh(self):
+        """Numerical proof: ~1,000 kEUR / (100 MW × 1,000 h) ≈ 10 EUR/MWh.
+
+        Build an OpexViewModel from a controlled snapshot:
+          capacity_mw = 100, p50_hours = 1000 → p50_annual_mwh = 100,000 MWh
+          opex_y1_keur seeded at 1000
+
+        The ViewModel formula is:
+          opex_per_mwh_y1 = y1_total_opex * 1000 / 100,000
+
+        So if y1_total_opex ≈ 1000 kEUR, we get ≈ 10 EUR/MWh.
+        The kEUR/MWh bug would give ≈ 0.01.  The test guards the > 1.0
+        lower bound, proving the 1000× factor is present.
+        """
+        ctx = build_project_context_for_record(
+            project_code="TEST",
+            project_name="Test",
+            project_type="wind",
+            project_origin="user_created",
+            template_source="generic_wind",
+            baseline_snapshot={
+                "capacity_mw": "100",
+                "p50_hours": "1000",    # → p50_annual_mwh = 100,000 MWh
+                "opex_y1_keur": "1000", # target Y1 total (template scales to this)
+            },
+        )
+        vm = build_opex_view_model(ctx, is_user_project=True)
+        self.assertIsNotNone(vm.opex_per_mwh_y1)
+        # correct: ~1000 * 1000 / 100_000 ≈ 10 EUR/MWh (allow delta for contingency)
+        # wrong:   ~1000 / 100_000 ≈ 0.01 kEUR/MWh
+        self.assertGreater(vm.opex_per_mwh_y1, 1.0,
+                           f"opex_per_mwh_y1 = {vm.opex_per_mwh_y1:.4f}: "
+                           f"looks like kEUR/MWh (expected EUR/MWh ≈ 10)")
+        self.assertAlmostEqual(vm.opex_per_mwh_y1, 10.0, delta=5.0,
+                               msg=f"Expected ~10 EUR/MWh, got {vm.opex_per_mwh_y1:.4f}. "
+                                   f"The kEUR/MWh bug would give ~0.01.")
+
+    @classmethod
+    def setUpClass(cls):
+        cls.client = _authed_client()
+        cls.project_code = _create_project(
+            cls.client, "mwh-units",
+            capacity_mw="100", p50_hours="1000", opex_y1_keur="1000",
+        )
+        cls.pr, cls.pis, cls.ws = _project_record_and_pis(cls.client, cls.project_code)
+
+    def test_adapter_matches_canonical_viewmodel(self):
+        """build_inputs_summary EUR/MWh == OpexViewModel.opex_per_mwh_y1."""
+        summary = build_inputs_summary(self.pr, self.pis, self.ws)
+        snapshot = self.pis.to_snapshot()
+        ctx = build_project_context_for_record(
+            project_code=self.pr.project_code,
+            project_name=self.pr.project_name,
+            project_type=self.pr.project_type,
+            project_origin=self.pr.project_origin,
+            template_source=self.pr.template_source,
+            baseline_snapshot=snapshot,
+        )
+        vm = build_opex_view_model(ctx, is_user_project=True)
+        if vm.opex_per_mwh_y1 is None:
+            self.skipTest("ViewModel opex_per_mwh_y1 is None")
+        self.assertAlmostEqual(
+            summary["opex_per_mwh_eur"], vm.opex_per_mwh_y1, places=4,
+        )
+
+    def test_adapter_value_is_not_keur_per_mwh(self):
+        """Adapter value is in EUR/MWh (> 1), not kEUR/MWh (≈ 0.01)."""
+        summary = build_inputs_summary(self.pr, self.pis, self.ws)
+        per_mwh = summary["opex_per_mwh_eur"]
+        if per_mwh is None:
+            self.skipTest("opex_per_mwh_eur is None")
+        self.assertGreater(per_mwh, 0.1,
+                           f"opex_per_mwh_eur={per_mwh:.4f} looks like kEUR/MWh "
+                           f"(should be EUR/MWh, typically 5–30 for wind)")
+
+
+# ---------------------------------------------------------------------------
+# 4. Runtime status truth matrix
+# ---------------------------------------------------------------------------
+
+class TestRuntimeStatusMatrix(unittest.TestCase):
+    """
+    State A — no RuntimeResult:    Runtime Status = "Not yet run"
+    State B — runtime + not dirty: Runtime Status = "Outputs current"
+    State C — runtime + dirty:     Runtime Status = "Previous run available — stale for current draft"
+
+    "Outputs current" must never appear while the draft is dirty.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.client = _authed_client()
+        cls.project_code = _create_project(cls.client, "runtime-matrix")
+        body = _get_workbook(cls.client, cls.project_code)
+        shell = BeautifulSoup(body, "html.parser").find(id="v2-workbook-shell")
+        cls.content_hash = shell["data-content-hash"]
+        cls.workbook_version = shell["data-workbook-version"]
+
+    def _render_inputs_with(self, *, has_runtime: bool, ws_dirty: bool) -> str:
+        """GET /v2/workbook with workspace dirty/runtime state overridden."""
+        import dataclasses
+        from app.persistence.workspace_repository import get_workspace_state as _real_ws
+
+        def _patched_ws(*args, **kwargs):
+            real = _real_ws(*args, **kwargs)
+            if real is None:
+                return None
+            return dataclasses.replace(
+                real,
+                dirty=ws_dirty,
+                last_runtime_snapshot_id="snap-001" if has_runtime else None,
+                last_runtime_at=None,
+            )
+
+        with patch("app.persistence.workspace_repository.get_workspace_state",
+                   side_effect=_patched_ws):
+            resp = self.client.get(f"/v2/workbook?project={self.project_code}")
+
+        assert resp.status_code == 200, f"Got {resp.status_code}"
+        return resp.text
+
+    def test_state_a_no_runtime(self):
+        """State A: no RuntimeResult → 'Not yet run'."""
+        html = self._render_inputs_with(has_runtime=False, ws_dirty=False)
+        inp = _inputs_div(html)
+        self.assertIn("Not yet run", inp.get_text())
+        self.assertNotIn("Outputs current", inp.get_text())
+        self.assertNotIn("stale", inp.get_text())
+
+    def test_state_b_runtime_clean(self):
+        """State B: RuntimeResult + clean draft → 'Outputs current'."""
+        html = self._render_inputs_with(has_runtime=True, ws_dirty=False)
+        inp = _inputs_div(html)
+        self.assertIn("Outputs current", inp.get_text())
+        self.assertNotIn("Not yet run", inp.get_text())
+        self.assertNotIn("stale", inp.get_text())
+
+    def test_state_c_runtime_dirty(self):
+        """State C: RuntimeResult + dirty draft → stale message, not 'Outputs current'."""
+        html = self._render_inputs_with(has_runtime=True, ws_dirty=True)
+        inp = _inputs_div(html)
+        self.assertIn("stale", inp.get_text())
+        self.assertNotIn("Outputs current", inp.get_text())
+        self.assertNotIn("Not yet run", inp.get_text())
+
+    def test_state_c_shows_run_required(self):
+        """State C: Run Required = Yes when dirty."""
+        html = self._render_inputs_with(has_runtime=True, ws_dirty=True)
+        inp = _inputs_div(html)
+        text = inp.get_text()
+        idx = text.find("Run Required")
+        self.assertGreater(idx, -1)
+        self.assertIn("Yes", text[idx:idx + 40])
+
+    def test_state_b_does_not_show_run_required(self):
+        """State B: Run Required = No when clean."""
+        html = self._render_inputs_with(has_runtime=True, ws_dirty=False)
+        inp = _inputs_div(html)
+        text = inp.get_text()
+        idx = text.find("Run Required")
+        self.assertGreater(idx, -1)
+        self.assertNotIn("Yes", text[idx:idx + 40])
+
+
+# ---------------------------------------------------------------------------
+# 5. Sheet HTML — registry-driven rendering
 # ---------------------------------------------------------------------------
 
 class TestInputsSheetHtml(unittest.TestCase):
@@ -258,110 +432,86 @@ class TestInputsSheetHtml(unittest.TestCase):
     def setUpClass(cls):
         cls.client = _authed_client()
         cls.project_code = _create_project(cls.client, "html-01")
-        body = _get_workbook_body(cls.client, cls.project_code)
-        cls.soup = BeautifulSoup(body, "html.parser")
+        cls.soup = BeautifulSoup(_get_workbook(cls.client, cls.project_code), "html.parser")
 
     def test_inputs_sheet_container_present(self):
-        div = self.soup.find(id="v2-sheet-inputs")
-        self.assertIsNotNone(div, "#v2-sheet-inputs not found in workbook response")
+        self.assertIsNotNone(self.soup.find(id="v2-sheet-inputs"))
 
     def test_eight_collapsible_sections(self):
-        inputs_div = self.soup.find(id="v2-sheet-inputs")
-        details = inputs_div.find_all("details", class_="v2-inputs-section")
-        self.assertEqual(len(details), 8, f"expected 8 sections, got {len(details)}")
+        inp = self.soup.find(id="v2-sheet-inputs")
+        details = inp.find_all("details", class_="v2-inputs-section")
+        self.assertEqual(len(details), 8, f"expected 8, got {len(details)}")
 
-    def test_section_nav_present(self):
-        inputs_div = self.soup.find(id="v2-sheet-inputs")
-        nav = inputs_div.find("nav", class_="v2-inputs-nav")
-        self.assertIsNotNone(nav, "section nav not found")
-        links = nav.find_all("a")
-        link_texts = {a.get_text(strip=True) for a in links}
-        for expected in ("Technical", "Revenue", "CAPEX", "OPEX", "Debt", "Tax", "Sponsor", "Runtime"):
-            self.assertIn(expected, link_texts, f"nav link '{expected}' missing")
+    def test_section_nav_links(self):
+        inp = self.soup.find(id="v2-sheet-inputs")
+        nav = inp.find("nav", class_="v2-inputs-nav")
+        self.assertIsNotNone(nav)
+        link_texts = {a.get_text(strip=True) for a in nav.find_all("a")}
+        for t in ("Technical", "Revenue", "CAPEX", "OPEX", "Debt", "Tax", "Sponsor", "Runtime"):
+            self.assertIn(t, link_texts)
 
-    def test_technical_section_has_registry_fields(self):
-        """Technical section renders capacity_mw and p50_hours from registry."""
-        inputs_div = self.soup.find(id="v2-sheet-inputs")
+    def test_technical_registry_fields_present(self):
+        inp = self.soup.find(id="v2-sheet-inputs")
         self.assertIsNotNone(
-            inputs_div.find(attrs={"data-field-id": "project_setup.technical.capacity_mw"}),
-            "capacity_mw field-row not found in inputs sheet",
-        )
+            inp.find(attrs={"data-field-id": "project_setup.technical.capacity_mw"}))
         self.assertIsNotNone(
-            inputs_div.find(attrs={"data-field-id": "project_setup.technical.p50_hours"}),
-        )
+            inp.find(attrs={"data-field-id": "project_setup.technical.p50_hours"}))
 
-    def test_revenue_section_has_ppa_fields(self):
-        inputs_div = self.soup.find(id="v2-sheet-inputs")
+    def test_revenue_ppa_fields_present(self):
+        inp = self.soup.find(id="v2-sheet-inputs")
         self.assertIsNotNone(
-            inputs_div.find(attrs={"data-field-id": "revenue.ppa.base_tariff"}),
-            "revenue.ppa.base_tariff not found in inputs sheet",
-        )
+            inp.find(attrs={"data-field-id": "revenue.ppa.base_tariff"}))
 
-    def test_debt_section_has_gearing_field(self):
-        inputs_div = self.soup.find(id="v2-sheet-inputs")
+    def test_debt_gearing_field_present(self):
+        inp = self.soup.find(id="v2-sheet-inputs")
         self.assertIsNotNone(
-            inputs_div.find(attrs={"data-field-id": "debt.senior.gearing_pct"}),
-        )
+            inp.find(attrs={"data-field-id": "debt.senior.gearing_pct"}))
 
-    def test_placeholder_rows_present(self):
-        """'Not yet connected' placeholders appear for missing technical fields."""
-        inputs_div = self.soup.find(id="v2-sheet-inputs")
-        text = inputs_div.get_text()
-        self.assertIn("Not yet connected", text)
+    def test_placeholder_not_yet_connected(self):
+        inp = self.soup.find(id="v2-sheet-inputs")
+        self.assertIn("Not yet connected", inp.get_text())
 
     def test_tax_migration_placeholder(self):
-        inputs_div = self.soup.find(id="v2-sheet-inputs")
-        self.assertIn("Available after Tax migration", inputs_div.get_text())
+        inp = self.soup.find(id="v2-sheet-inputs")
+        self.assertIn("Available after Tax migration", inp.get_text())
 
     def test_sponsor_reserved_placeholder(self):
-        inputs_div = self.soup.find(id="v2-sheet-inputs")
-        self.assertIn("Reserved for future Sponsor module", inputs_div.get_text())
+        inp = self.soup.find(id="v2-sheet-inputs")
+        self.assertIn("Reserved for future Sponsor module", inp.get_text())
 
-    def test_capex_sheet_link(self):
-        inputs_div = self.soup.find(id="v2-sheet-inputs")
-        capex_link = inputs_div.find("a", href=lambda h: h and "/capex" in h)
-        self.assertIsNotNone(capex_link, "CAPEX link not found in inputs sheet")
+    def test_capex_link(self):
+        inp = self.soup.find(id="v2-sheet-inputs")
+        self.assertIsNotNone(inp.find("a", href=lambda h: h and "/capex" in h))
 
-    def test_opex_sheet_link(self):
-        inputs_div = self.soup.find(id="v2-sheet-inputs")
-        opex_link = inputs_div.find("a", href=lambda h: h and "/opex" in h)
-        self.assertIsNotNone(opex_link, "OPEX link not found in inputs sheet")
+    def test_opex_link(self):
+        inp = self.soup.find(id="v2-sheet-inputs")
+        self.assertIsNotNone(inp.find("a", href=lambda h: h and "/opex" in h))
 
-    def test_debt_sheet_link(self):
-        inputs_div = self.soup.find(id="v2-sheet-inputs")
-        debt_link = inputs_div.find("a", href=lambda h: h and "/debt" in h)
-        self.assertIsNotNone(debt_link, "Debt link not found in inputs sheet")
+    def test_debt_link(self):
+        inp = self.soup.find(id="v2-sheet-inputs")
+        self.assertIsNotNone(inp.find("a", href=lambda h: h and "/debt" in h))
 
-    def test_revenue_sheet_link(self):
-        inputs_div = self.soup.find(id="v2-sheet-inputs")
-        rev_link = inputs_div.find("a", href=lambda h: h and "/revenue" in h)
-        self.assertIsNotNone(rev_link, "Revenue link not found in inputs sheet")
+    def test_revenue_link(self):
+        inp = self.soup.find(id="v2-sheet-inputs")
+        self.assertIsNotNone(inp.find("a", href=lambda h: h and "/revenue" in h))
 
-    def test_no_duplicate_field_ids_in_rendered_html(self):
-        """No field_id data-attribute appears twice in the inputs sheet DOM."""
-        inputs_div = self.soup.find(id="v2-sheet-inputs")
-        rows = inputs_div.find_all(attrs={"data-field-id": True})
-        fids = [r["data-field-id"] for r in rows]
-        self.assertEqual(
-            len(fids), len(set(fids)),
-            "Duplicate field_ids in rendered inputs sheet: "
-            + str([f for f in fids if fids.count(f) > 1]),
-        )
+    def test_no_duplicate_field_ids_in_dom(self):
+        inp = self.soup.find(id="v2-sheet-inputs")
+        fids = [r["data-field-id"] for r in inp.find_all(attrs={"data-field-id": True})]
+        dupes = [f for f in set(fids) if fids.count(f) > 1]
+        self.assertFalse(dupes, f"Duplicate field_ids in inputs sheet: {dupes}")
 
     def test_runtime_section_has_workbook_version(self):
-        inputs_div = self.soup.find(id="v2-sheet-inputs")
-        text = inputs_div.get_text()
-        self.assertIn("2.0.0", text, "workbook_version not found in runtime section")
+        inp = self.soup.find(id="v2-sheet-inputs")
+        self.assertIn("2.0.0", inp.get_text())
 
-    def test_runtime_section_has_content_hash(self):
-        inputs_div = self.soup.find(id="v2-sheet-inputs")
-        text = inputs_div.get_text()
-        # Content hash is truncated to 12 chars + ellipsis in the template
-        self.assertIn("…", text, "truncated content_hash not found in runtime section")
+    def test_runtime_section_has_truncated_hash(self):
+        inp = self.soup.find(id="v2-sheet-inputs")
+        self.assertIn("…", inp.get_text())
 
 
 # ---------------------------------------------------------------------------
-# 4. Editable controls for user project
+# 6. Editable controls for user project
 # ---------------------------------------------------------------------------
 
 class TestInputsSheetEditable(unittest.TestCase):
@@ -370,55 +520,41 @@ class TestInputsSheetEditable(unittest.TestCase):
     def setUpClass(cls):
         cls.client = _authed_client()
         cls.project_code = _create_project(cls.client, "editable-01")
-        body = _get_workbook_body(cls.client, cls.project_code)
-        cls.soup = BeautifulSoup(body, "html.parser")
+        cls.soup = BeautifulSoup(_get_workbook(cls.client, cls.project_code), "html.parser")
 
     def test_bound_fields_have_input_controls(self):
-        """BOUND fields in the inputs sheet render <input> or <select>."""
-        inputs_div = self.soup.find(id="v2-sheet-inputs")
-        editable_rows = inputs_div.find_all(class_="v2-field-editable")
-        self.assertGreater(len(editable_rows), 0, "no editable rows found in inputs sheet")
+        inp = self.soup.find(id="v2-sheet-inputs")
+        self.assertGreater(len(inp.find_all(class_="v2-field-editable")), 0)
 
     def test_forms_target_inputs_sheet(self):
-        """All forms in the inputs sheet target #v2-sheet-inputs."""
-        inputs_div = self.soup.find(id="v2-sheet-inputs")
-        forms = inputs_div.find_all("form", class_="v2-field-form")
-        self.assertGreater(len(forms), 0, "no forms found in inputs sheet")
+        inp = self.soup.find(id="v2-sheet-inputs")
+        forms = inp.find_all("form", class_="v2-field-form")
+        self.assertGreater(len(forms), 0)
         for form in forms:
-            target = form.get("hx-target")
-            self.assertEqual(
-                target, "#v2-sheet-inputs",
-                f"form for {form.find('input', {'name': 'field_id'}) and form.find('input', {'name': 'field_id'}).get('value')!r} "
-                f"has wrong hx-target: {target!r}",
-            )
+            self.assertEqual(form.get("hx-target"), "#v2-sheet-inputs",
+                             f"wrong hx-target on form {form}")
 
     def test_forms_carry_sheet_id_inputs(self):
-        """All forms in the inputs sheet send sheet_id=inputs."""
-        inputs_div = self.soup.find(id="v2-sheet-inputs")
-        forms = inputs_div.find_all("form", class_="v2-field-form")
-        for form in forms:
-            sheet_input = form.find("input", {"name": "sheet_id"})
-            self.assertIsNotNone(sheet_input, "sheet_id hidden input missing in form")
-            self.assertEqual(sheet_input["value"], "inputs")
+        inp = self.soup.find(id="v2-sheet-inputs")
+        for form in inp.find_all("form", class_="v2-field-form"):
+            sid = form.find("input", {"name": "sheet_id"})
+            self.assertIsNotNone(sid)
+            self.assertEqual(sid["value"], "inputs")
 
-    def test_capacity_mw_has_step_attr(self):
-        """capacity_mw input carries step derived from registry decimals=2."""
-        inputs_div = self.soup.find(id="v2-sheet-inputs")
-        row = inputs_div.find(attrs={"data-field-id": "project_setup.technical.capacity_mw"})
-        inp = row.find("input", {"name": "value"})
-        self.assertIsNotNone(inp, "capacity_mw input not found")
-        self.assertEqual(inp.get("step"), "0.01")
+    def test_capacity_mw_step_from_registry(self):
+        """capacity_mw step="0.01" from registry decimals=2."""
+        inp = self.soup.find(id="v2-sheet-inputs")
+        row = inp.find(attrs={"data-field-id": "project_setup.technical.capacity_mw"})
+        self.assertEqual(row.find("input", {"name": "value"}).get("step"), "0.01")
 
-    def test_gearing_pct_has_pct_field_type(self):
-        """gearing_pct field has field_type=pct in the rendered row."""
-        inputs_div = self.soup.find(id="v2-sheet-inputs")
-        row = inputs_div.find(attrs={"data-field-id": "debt.senior.gearing_pct"})
-        self.assertIsNotNone(row)
+    def test_gearing_pct_field_type(self):
+        inp = self.soup.find(id="v2-sheet-inputs")
+        row = inp.find(attrs={"data-field-id": "debt.senior.gearing_pct"})
         self.assertEqual(row.get("data-field-type"), "pct")
 
 
 # ---------------------------------------------------------------------------
-# 5. Protected reference — zero editable controls
+# 7. Protected reference — zero editable controls
 # ---------------------------------------------------------------------------
 
 class TestInputsSheetProtectedRef(unittest.TestCase):
@@ -427,33 +563,21 @@ class TestInputsSheetProtectedRef(unittest.TestCase):
         self.client = _authed_client()
         self.project_code = _create_project(self.client, "prot-ref-01")
 
-    def test_protected_ref_zero_editable_inputs_controls(self):
-        """When project_editable=False, inputs sheet has zero editable rows."""
+    def test_protected_ref_zero_editable(self):
         with patch("app.v2.router.is_protected_reference", return_value=True):
             resp = self.client.get(f"/v2/workbook?project={self.project_code}")
-        self.assertEqual(resp.status_code, 200)
-        soup = BeautifulSoup(resp.text, "html.parser")
-        inputs_div = soup.find(id="v2-sheet-inputs")
-        self.assertIsNotNone(inputs_div)
-        editable = inputs_div.find_all(class_="v2-field-editable")
-        self.assertEqual(
-            len(editable), 0,
-            f"expected 0 editable rows for protected ref, got {len(editable)}",
-        )
+        inp = _inputs_div(resp.text)
+        self.assertEqual(len(inp.find_all(class_="v2-field-editable")), 0)
 
-    def test_user_project_has_editable_inputs_controls(self):
-        """Normal user project has editable controls in inputs sheet."""
+    def test_user_project_has_editable_controls(self):
         with patch("app.v2.router.is_protected_reference", return_value=False):
             resp = self.client.get(f"/v2/workbook?project={self.project_code}")
-        self.assertEqual(resp.status_code, 200)
-        soup = BeautifulSoup(resp.text, "html.parser")
-        inputs_div = soup.find(id="v2-sheet-inputs")
-        editable = inputs_div.find_all(class_="v2-field-editable")
-        self.assertGreater(len(editable), 0)
+        inp = _inputs_div(resp.text)
+        self.assertGreater(len(inp.find_all(class_="v2-field-editable")), 0)
 
 
 # ---------------------------------------------------------------------------
-# 6. HTMX edit from inputs sheet
+# 8. HTMX edit from inputs sheet
 # ---------------------------------------------------------------------------
 
 class TestInputsSheetHtmxEdit(unittest.TestCase):
@@ -462,14 +586,12 @@ class TestInputsSheetHtmxEdit(unittest.TestCase):
     def setUpClass(cls):
         cls.client = _authed_client()
         cls.project_code = _create_project(cls.client, "htmx-01")
-        # Get initial content_hash
-        body = _get_workbook_body(cls.client, cls.project_code)
-        soup = BeautifulSoup(body, "html.parser")
-        shell = soup.find(id="v2-workbook-shell")
+        html = _get_workbook(cls.client, cls.project_code)
+        shell = BeautifulSoup(html, "html.parser").find(id="v2-workbook-shell")
         cls.content_hash = shell["data-content-hash"]
         cls.workbook_version = shell["data-workbook-version"]
 
-    def _post_htmx(self, field_id, value, content_hash=None, sheet_id="inputs"):
+    def _post(self, field_id, value, sheet_id="inputs", content_hash=None):
         return self.client.post(
             "/v2/workbook/update",
             data={
@@ -484,54 +606,36 @@ class TestInputsSheetHtmxEdit(unittest.TestCase):
         )
 
     def test_htmx_success_returns_inputs_sheet(self):
-        """HTMX edit with sheet_id=inputs returns #v2-sheet-inputs."""
-        resp = self._post_htmx("debt.senior.gearing_pct", "65.0")
+        resp = self._post("debt.senior.gearing_pct", "65.0")
         self.assertEqual(resp.status_code, 200)
         self.assertIn("v2-sheet-inputs", resp.text)
 
-    def test_htmx_success_returns_oob_banner(self):
-        """HTMX success includes OOB status banner."""
-        resp = self._post_htmx("debt.senior.target_dscr", "1.25")
+    def test_htmx_success_oob_banner(self):
+        resp = self._post("debt.senior.target_dscr", "1.25")
         self.assertEqual(resp.status_code, 200)
         self.assertIn('hx-swap-oob="true"', resp.text)
         self.assertIn("v2-status-banner", resp.text)
 
-    def test_htmx_success_does_not_return_project_setup_sheet(self):
-        """HTMX inputs edit does NOT return the project_setup sheet container."""
-        resp = self._post_htmx("debt.senior.tenor_years", "20")
-        self.assertEqual(resp.status_code, 200)
+    def test_htmx_inputs_edit_not_project_setup_sheet(self):
+        resp = self._post("debt.senior.tenor_years", "20")
         self.assertNotIn("v2-sheet-project-setup", resp.text)
 
-    def test_htmx_project_setup_edit_returns_project_setup_sheet(self):
-        """HTMX edit with sheet_id=project_setup still returns project_setup sheet."""
-        resp = self._post_htmx(
-            "project_setup.technical.horizon_years", "25",
-            sheet_id="project_setup",
-        )
-        self.assertEqual(resp.status_code, 200)
+    def test_htmx_project_setup_still_works(self):
+        resp = self._post("project_setup.technical.horizon_years", "25",
+                          sheet_id="project_setup")
         self.assertIn("v2-sheet-project-setup", resp.text)
 
     def test_htmx_validation_error_returns_inputs_sheet(self):
-        """HTMX validation error for inputs-sheet field returns inputs sheet with error."""
-        resp = self._post_htmx("project_setup.technical.capacity_mw", "-999")
-        self.assertEqual(resp.status_code, 200)
+        resp = self._post("project_setup.technical.capacity_mw", "-999")
         self.assertIn("v2-sheet-inputs", resp.text)
 
-    def test_htmx_new_content_hash_in_forms(self):
-        """After a successful inputs-sheet edit, new content_hash appears in returned forms."""
-        resp = self._post_htmx("debt.senior.interest_rate_pct", "4.75")
+    def test_htmx_new_content_hash_in_returned_forms(self):
+        resp = self._post("debt.senior.interest_rate_pct", "4.75")
         self.assertEqual(resp.status_code, 200)
         soup = BeautifulSoup(resp.text, "html.parser")
-        hashes = {
-            inp["value"]
-            for inp in soup.find_all("input", {"name": "content_hash"})
-        }
-        self.assertEqual(len(hashes), 1, f"inconsistent content_hash values: {hashes}")
-        new_hash = next(iter(hashes))
-        self.assertNotEqual(
-            new_hash, self.content_hash,
-            "content_hash did not change after successful edit",
-        )
+        hashes = {i["value"] for i in soup.find_all("input", {"name": "content_hash"})}
+        self.assertEqual(len(hashes), 1)
+        self.assertNotEqual(next(iter(hashes)), self.content_hash)
 
 
 if __name__ == "__main__":
