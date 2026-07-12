@@ -162,6 +162,8 @@ if _v2_flag in ("1", "true", "yes"):
     app.include_router(_v2_router, prefix="/v2")
     from app.v2.capex_router import capex_router as _v2_capex_router
     app.include_router(_v2_capex_router, prefix="/v2/capex")
+    from app.v2.opex_router import opex_router as _v2_opex_router
+    app.include_router(_v2_opex_router, prefix="/v2/opex")
 
 
 def _friendly_error(exc: Exception, context: str = "") -> str:

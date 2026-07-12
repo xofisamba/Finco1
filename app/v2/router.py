@@ -324,7 +324,9 @@ def _build_opex_vm_ctx(project_record, pis) -> dict:
         project_record.project_origin == "factory_template"
         and (project_record.template_source or "").strip().lower() in ("tuho", "oborovo")
     )
-    opex_vm = build_opex_view_model(project_ctx, is_user_project=is_user)
+    from app.persistence.opex_sub_lines import get_active_sub_lines_for_project as _get_opex_sub_lines
+    opex_sub_lines = _get_opex_sub_lines(project_record.project_id)
+    opex_vm = build_opex_view_model(project_ctx, is_user_project=is_user, sub_lines=opex_sub_lines)
     opex_fields = _build_sheet_fields("opex", pis)
     opex_sheet_groups = build_opex_sheet_projection(opex_vm, opex_fields)
 

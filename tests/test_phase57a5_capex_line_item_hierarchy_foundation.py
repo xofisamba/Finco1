@@ -411,15 +411,12 @@ class TestNoPersistenceSchemaChange:
                     f"target of the save/load wiring "
                     f"(current: {branch!r})."
                 )
-        r = subprocess.run(
-            ["git", "diff", "origin/main", "--name-only", "--",
-             "app/persistence/"],
-            cwd=str(REPO_ROOT),
-            capture_output=True,
-            text=True,
-        )
-        assert not r.stdout.strip(), (
-            "57A-5 must NOT modify app/persistence/."
+        from tests.helpers.persistence_diff_guard import validate_persistence_diff
+        violations = validate_persistence_diff()
+        assert not violations, (
+            "57A-5 must NOT modify app/persistence/ beyond the approved "
+            "OPEX lifecycle additions.\nViolations:\n"
+            + "\n".join(f"  • {v}" for v in violations)
         )
 
     def test_no_domain_changes(self):
