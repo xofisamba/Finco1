@@ -9,12 +9,10 @@ Approved additions
 ------------------
 - app/persistence/opex_sub_lines.py  — new file; any content is accepted
   (the file itself is reviewed separately and is explicitly approved).
-- app/persistence/db.py              — additive only; the only permitted
-  changes are:
-    1. A single CREATE TABLE IF NOT EXISTS opex_sub_lines block
-    2. A single CREATE INDEX IF NOT EXISTS idx_opex_sub_lines_project
-  Any deletion, any modification to an existing line, or any addition
-  outside those two DDL objects is a violation.
+- app/persistence/db.py              — additive only; the added non-blank
+  lines must equal APPROVED_OPEX_DB_ADDITIONS exactly (after stripping
+  leading/trailing whitespace from each line for indentation tolerance).
+  Any deletion, any extra line, or any missing line is a violation.
 
 Any other changed file is unconditionally a violation.
 
@@ -36,7 +34,6 @@ strings on failure.
 
 from __future__ import annotations
 
-import re
 import subprocess
 from pathlib import Path
 
@@ -50,9 +47,37 @@ _ALLOWED_NEW_PERSISTENCE_FILES = frozenset({
     "app/persistence/opex_sub_lines.py",
 })
 
-# The exact table name and index name that are permitted to be added to db.py.
-_APPROVED_TABLE = "opex_sub_lines"
-_APPROVED_INDEX = "idx_opex_sub_lines_project"
+# The canonical non-blank lines that must appear in db.py — no more, no less.
+# Each line is stored stripped; comparison normalises indentation on both sides.
+APPROVED_OPEX_DB_ADDITIONS: tuple[str, ...] = (
+    "# Workbook V2 PR 11: OPEX custom-row sub-lines table.",
+    "conn.execute(",
+    '"""',
+    "CREATE TABLE IF NOT EXISTS opex_sub_lines (",
+    "id                INTEGER PRIMARY KEY AUTOINCREMENT,",
+    "sub_line_id       TEXT    NOT NULL UNIQUE,",
+    "project_id        TEXT    NOT NULL,",
+    "parent_group_code TEXT    NOT NULL,",
+    "business_code     TEXT    NOT NULL,",
+    "display_order     INTEGER NOT NULL,",
+    "label             TEXT    NOT NULL,",
+    "amount_keur       REAL    NOT NULL DEFAULT 0.0,",
+    "inflation_pct     REAL    NOT NULL DEFAULT 0.0,",
+    "comments          TEXT    NOT NULL DEFAULT '',",
+    "source            TEXT    NOT NULL DEFAULT 'user',",
+    "is_active         INTEGER NOT NULL DEFAULT 1,",
+    "created_at        TEXT    NOT NULL,",
+    "updated_at        TEXT    NOT NULL,",
+    "FOREIGN KEY(project_id) REFERENCES projects(project_id),",
+    "UNIQUE(project_id, business_code)",
+    ")",
+    '"""',
+    ")",
+    "conn.execute(",
+    '"CREATE INDEX IF NOT EXISTS idx_opex_sub_lines_project"',
+    '" ON opex_sub_lines(project_id, is_active, parent_group_code, display_order)"',
+    ")",
+)
 
 
 # ---------------------------------------------------------------------------
@@ -91,20 +116,9 @@ def check_db_diff_text(diff_text: str) -> list[str]:
     Rules enforced:
     - No lines may be deleted (i.e. no ``-`` diff lines other than the
       ``---`` file header).
-    - Added lines (``+`` lines, excluding the ``+++`` header) must
-      collectively:
-        a. Include a ``CREATE TABLE IF NOT EXISTS opex_sub_lines`` block.
-        b. Include a ``CREATE INDEX IF NOT EXISTS idx_opex_sub_lines_project``
-           definition.
-        c. Contain no ``CREATE TABLE`` for any table other than
-           ``opex_sub_lines``.
-        d. Contain no ``CREATE INDEX`` for any index other than
-           ``idx_opex_sub_lines_project``.
-        e. Contain no reference to ``capex_sub_lines`` (prevents accidental
-           CAPEX schema changes slipping through).
-        f. Contain no ``_ensure_column`` calls (existing schema migration
-           helpers must not be touched).
-        g. Contain no ``ALTER TABLE`` statements.
+    - The non-blank added lines, after stripping leading/trailing whitespace,
+      must equal APPROVED_OPEX_DB_ADDITIONS exactly — no extra lines, no
+      missing lines, no reordering.
     """
     violations: list[str] = []
     added_lines: list[str] = []
@@ -126,66 +140,32 @@ def check_db_diff_text(diff_text: str) -> list[str]:
         )
 
     if not added_lines:
-        # No additions at all — nothing to approve.
         violations.append("db.py: no additions found; expected the opex_sub_lines block.")
         return violations
 
-    added_text = "\n".join(added_lines)
+    # --- Rule: added non-blank lines must match approved block exactly ---
+    actual = tuple(ln.strip() for ln in added_lines if ln.strip())
+    expected = APPROVED_OPEX_DB_ADDITIONS
 
-    # --- Rule a: opex_sub_lines table must be added ---
-    if _APPROVED_TABLE not in added_text:
-        violations.append(
-            f"db.py: expected {_APPROVED_TABLE!r} CREATE TABLE not found in additions."
-        )
-
-    # --- Rule b: idx_opex_sub_lines_project index must be added ---
-    if _APPROVED_INDEX not in added_text:
-        violations.append(
-            f"db.py: expected {_APPROVED_INDEX!r} CREATE INDEX not found in additions."
-        )
-
-    # --- Rule c: no other CREATE TABLE ---
-    for m in re.finditer(
-        r"CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(\w+)",
-        added_text,
-        re.IGNORECASE,
-    ):
-        name = m.group(1)
-        if name.lower() != _APPROVED_TABLE:
+    if actual != expected:
+        # Produce a useful diff-style message.
+        actual_set = set(actual)
+        expected_set = set(expected)
+        extra = [ln for ln in actual if ln not in expected_set]
+        missing = [ln for ln in expected if ln not in actual_set]
+        # Also catch reordering / count mismatches when sets match.
+        if not extra and not missing and actual != expected:
             violations.append(
-                f"db.py: disallowed CREATE TABLE {name!r} in additions."
+                "db.py: added lines match approved set but differ in order or count."
             )
-
-    # --- Rule d: no other CREATE INDEX ---
-    for m in re.finditer(
-        r"CREATE\s+INDEX\s+(?:IF\s+NOT\s+EXISTS\s+)?(\w+)",
-        added_text,
-        re.IGNORECASE,
-    ):
-        name = m.group(1)
-        if name.lower() != _APPROVED_INDEX:
+        for ln in extra:
             violations.append(
-                f"db.py: disallowed CREATE INDEX {name!r} in additions."
+                f"db.py: unapproved added line: {ln!r}"
             )
-
-    # --- Rule e: no capex references ---
-    if "capex_sub_lines" in added_text.lower():
-        violations.append(
-            "db.py: additions reference capex_sub_lines — CAPEX schema must not be touched."
-        )
-
-    # --- Rule f: no _ensure_column calls ---
-    if "_ensure_column" in added_text:
-        violations.append(
-            "db.py: additions include _ensure_column call — "
-            "existing schema migration order must not be modified."
-        )
-
-    # --- Rule g: no ALTER TABLE ---
-    if re.search(r"ALTER\s+TABLE", added_text, re.IGNORECASE):
-        violations.append(
-            "db.py: additions include ALTER TABLE — only additive DDL is permitted."
-        )
+        for ln in missing:
+            violations.append(
+                f"db.py: approved line missing from additions: {ln!r}"
+            )
 
     return violations
 
@@ -211,7 +191,6 @@ def validate_persistence_diff() -> list[str]:
 
     for path in changed:
         if path in _ALLOWED_NEW_PERSISTENCE_FILES:
-            # New OPEX persistence module — always approved.
             continue
         elif path == "app/persistence/db.py":
             diff_text = _git_diff_text(path)

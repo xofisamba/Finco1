@@ -253,5 +253,78 @@ class TestRejectMereWordPresence(unittest.TestCase):
         )
 
 
+# ---------------------------------------------------------------------------
+# Rejection: exact OPEX block plus extra lines that the denylist would miss
+# ---------------------------------------------------------------------------
+
+class TestRejectExtraHarmlessLookingLines(unittest.TestCase):
+    """Reject additions that pass every denylist rule but are not the approved
+    block — e.g. arbitrary Python, PRAGMA, extra conn.execute, extra comment."""
+
+    def test_extra_python_assignment_rejected(self):
+        extra = _APPROVED_ADDED + [
+            "    _SCHEMA_VERSION = 2",
+        ]
+        diff = _diff(extra)
+        violations = check_db_diff_text(diff)
+        self.assertTrue(
+            violations,
+            "Expected violation for extra Python assignment alongside OPEX block.",
+        )
+        self.assertTrue(
+            any("_SCHEMA_VERSION" in v or "unapproved" in v.lower() for v in violations),
+            f"Expected unapproved-line violation, got: {violations}",
+        )
+
+    def test_extra_pragma_rejected(self):
+        extra = _APPROVED_ADDED + [
+            '    conn.execute("PRAGMA foreign_keys = OFF")',
+        ]
+        diff = _diff(extra)
+        violations = check_db_diff_text(diff)
+        self.assertTrue(
+            violations,
+            "Expected violation for PRAGMA statement alongside OPEX block.",
+        )
+        self.assertTrue(
+            any("PRAGMA" in v or "unapproved" in v.lower() for v in violations),
+            f"Expected unapproved-line violation for PRAGMA, got: {violations}",
+        )
+
+    def test_extra_conn_execute_rejected(self):
+        extra = _APPROVED_ADDED + [
+            "    conn.execute(",
+            '        "SELECT 1"',
+            "    )",
+        ]
+        diff = _diff(extra)
+        violations = check_db_diff_text(diff)
+        self.assertTrue(
+            violations,
+            "Expected violation for extra conn.execute alongside OPEX block.",
+        )
+        self.assertTrue(
+            any("unapproved" in v.lower() or "SELECT" in v or "conn.execute" in v
+                for v in violations),
+            f"Expected unapproved-line violation for extra conn.execute, got: {violations}",
+        )
+
+    def test_extra_comment_rejected(self):
+        extra = _APPROVED_ADDED + [
+            "    # harmless-looking extra comment",
+        ]
+        diff = _diff(extra)
+        violations = check_db_diff_text(diff)
+        self.assertTrue(
+            violations,
+            "Expected violation for unapproved comment alongside OPEX block.",
+        )
+        self.assertTrue(
+            any("unapproved" in v.lower() or "harmless" in v or "comment" in v.lower()
+                for v in violations),
+            f"Expected unapproved-line violation for extra comment, got: {violations}",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
