@@ -72,6 +72,7 @@ from app.ui.project_context import build_project_context_for_record
 from app.ui.protected_reference_service import is_protected_reference
 from app.workbook.registry import WORKBOOK
 from app.workbook.service import WorkbookService
+from app.workbook.workbook_identity import assemble_for_workspace
 from app.workbook.update_service import (
     FieldValidationError,
     NonEditableFieldError,
@@ -83,6 +84,24 @@ from app.workbook.update_service import (
 )
 
 router = APIRouter()
+
+
+def _build_pis_with_composite_identity(ws, project_record, user):
+    """Build ProjectInputSet with composite Workbook V2 identity.
+
+    STAB-1B: assembles the full composite identity (scalars + CAPEX rows +
+    OPEX rows + scenario) and injects it into the PIS content_hash so every
+    form the browser receives carries the complete workbook identity token.
+    """
+    pis = WorkbookService.build_draft_input_set_from_workspace(ws)
+    identity = assemble_for_workspace(
+        ws,
+        user_id=user.user_id,
+        project_id=project_record.project_id,
+        workbook_version=pis.workbook_version,
+    )
+    return pis.with_composite_hash(identity.composite_hash)
+
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 _templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "app", "templates", "v2"))
@@ -436,7 +455,7 @@ async def v2_workbook(request: Request, project: Optional[str] = None):
     if ws is None:
         return RedirectResponse(url="/", status_code=302)
 
-    pis = WorkbookService.build_draft_input_set_from_workspace(ws)
+    pis = _build_pis_with_composite_identity(ws, project_record, user)
     hydration_script = WorkbookService.runtime_hydration_script(ws)
 
     project_editable = not is_protected_reference(project_record)
@@ -558,12 +577,12 @@ async def v2_workbook_update(
         )
     except ProtectedReferenceError as exc:
         if is_htmx:
-            pis = WorkbookService.build_draft_input_set_from_workspace(ws)
+            pis = _build_pis_with_composite_identity(ws, project_record, user)
             return _htmx_error(pis, str(exc))
         return JSONResponse({"error": str(exc)}, status_code=409)
     except StaleContentError as exc:
         if is_htmx:
-            pis = WorkbookService.build_draft_input_set_from_workspace(ws)
+            pis = _build_pis_with_composite_identity(ws, project_record, user)
             return _htmx_error(
                 pis,
                 "Draft changed since page loaded — values refreshed. "
@@ -576,33 +595,44 @@ async def v2_workbook_update(
         return JSONResponse({"error": str(exc)}, status_code=422)
     except FieldValidationError as exc:
         if is_htmx:
-            pis = WorkbookService.build_draft_input_set_from_workspace(ws)
+            pis = _build_pis_with_composite_identity(ws, project_record, user)
             return _htmx_error(pis, str(exc))
         return _redirect_with_error(str(exc))
 
-    # Success path.
-    if is_htmx:
-        updated_ws = get_workspace_state(
-            user_id=user.user_id, project_id=project_record.project_id
+    # Success path — inject composite identity into the returned PIS so the
+    # browser receives the full workbook identity token, not just the scalar hash.
+    if updated_ws_after := get_workspace_state(
+        user_id=user.user_id, project_id=project_record.project_id
+    ):
+        updated_identity = assemble_for_workspace(
+            updated_ws_after,
+            user_id=user.user_id,
+            project_id=project_record.project_id,
+            workbook_version=updated_pis.workbook_version,
         )
+        updated_pis = updated_pis.with_composite_hash(updated_identity.composite_hash)
+    else:
+        updated_ws_after = ws
+
+    if is_htmx:
         if sheet_id == "inputs":
             return _render_inputs_htmx_sheet(
-                request, updated_pis, updated_ws or ws, project_record, project,
+                request, updated_pis, updated_ws_after, project_record, project,
             )
         if sheet_id == "revenue":
             return _render_revenue_htmx_sheet(
-                request, updated_pis, updated_ws or ws, project_record, project,
+                request, updated_pis, updated_ws_after, project_record, project,
             )
         if sheet_id == "capex":
             return _render_capex_htmx_sheet(
-                request, updated_pis, updated_ws or ws, project_record, project,
+                request, updated_pis, updated_ws_after, project_record, project,
             )
         if sheet_id == "opex":
             return _render_opex_htmx_sheet(
-                request, updated_pis, updated_ws or ws, project_record, project,
+                request, updated_pis, updated_ws_after, project_record, project,
             )
         return _render_htmx_sheet(
-            request, updated_pis, updated_ws or ws, project_record, project,
+            request, updated_pis, updated_ws_after, project_record, project,
         )
 
     return RedirectResponse(

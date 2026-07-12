@@ -470,6 +470,40 @@ class ProjectInputSet:
             created_from=self.created_from,
         )
 
+    def with_composite_hash(self, composite_hash: str) -> "ProjectInputSet":
+        """Return a new ProjectInputSet whose content_hash is the composite hash.
+
+        STAB-1B: called at the V2 router boundary and inside
+        v2_atomic_draft_update after ``CompositeWorkbookIdentity`` is assembled.
+        The content_hash field then represents the FULL engine-effective workbook
+        state (scalars + CAPEX rows + OPEX rows + scenario), not just scalars.
+
+        For factory/template projects with no rows and no scenario overrides the
+        composite hash differs from the pre-STAB-1B scalar-only hash because it
+        includes the ``_schema: "composite_v1"`` discriminator.  Legacy tokens
+        from clients that loaded before STAB-1B will receive a 409 and the user
+        will reload with the composite token.
+
+        Args:
+            composite_hash: the ``composite_hash`` from a
+                ``CompositeWorkbookIdentity`` instance.
+
+        Returns:
+            A new ``ProjectInputSet`` identical to ``self`` except
+            ``content_hash`` is replaced with ``composite_hash``.
+        """
+        return ProjectInputSet(
+            workbook_version=self.workbook_version,
+            values=self.values,
+            snapshot_origin=self.snapshot_origin,
+            template_source=self.template_source,
+            project_origin=self.project_origin,
+            unknown_keys=self.unknown_keys,
+            coercion_errors=self.coercion_errors,
+            content_hash=composite_hash,
+            created_from=self.created_from,
+        )
+
     # ------------------------------------------------------------------ #
     # Serialization / round-trip                                           #
     # ------------------------------------------------------------------ #
