@@ -101,6 +101,24 @@ def _workbook_version() -> str:
     return WORKBOOK.version
 
 
+def _current_hash(project_id: str, user_id: str = "test-unit-user") -> str:
+    """Return the current composite workbook identity hash for a project."""
+    from app.workbook.workbook_identity import assemble_consistent_for_get
+    from app.persistence.workspace_repository import get_workspace_state
+    ws = get_workspace_state(user_id=user_id, project_id=project_id)
+    if ws is None:
+        return "0" * 64
+    try:
+        identity = assemble_consistent_for_get(
+            user_id=user_id,
+            project_id=project_id,
+            workbook_version=WORKBOOK.version,
+        )
+        return identity.composite_hash
+    except Exception:
+        return "0" * 64
+
+
 def _register_project_id(
     project_id: str,
     origin: str = "user_created",
@@ -174,7 +192,7 @@ class TestAddCapexLine(unittest.TestCase):
         from app.v2.capex_commands import add_capex_line
         from app.persistence.capex_sub_lines import CapexSubLine
         pr = self._make_project_record(project_id="add-test-001")
-        result = add_capex_line(
+        result, _hash = add_capex_line(
             project_record=pr,
             user_id="test-unit-user",
             label="Custom Turbine Pad",
@@ -182,6 +200,7 @@ class TestAddCapexLine(unittest.TestCase):
             amount_keur=500.0,
             notes="Test note",
             workbook_version=_workbook_version(),
+            expected_content_hash=_current_hash("add-test-001"),
         )
         self.assertIsInstance(result, CapexSubLine)
         self.assertEqual(result.label, "Custom Turbine Pad")
@@ -194,12 +213,13 @@ class TestAddCapexLine(unittest.TestCase):
         from app.v2.capex_commands import add_capex_line
         from app.persistence.capex_sub_lines import validate_business_code
         pr = self._make_project_record(project_id="add-test-002")
-        result = add_capex_line(
+        result, _hash = add_capex_line(
             project_record=pr,
             user_id="test-unit-user",
             label="First Custom",
             parent_category_code="C.03",
             workbook_version=_workbook_version(),
+            expected_content_hash=_current_hash("add-test-002"),
         )
         # Must pass validate_business_code — format C.NN.U###
         validate_business_code(result.business_code)
@@ -212,10 +232,11 @@ class TestAddCapexLine(unittest.TestCase):
         with self.assertRaises(CapexProtectedReferenceError):
             add_capex_line(
                 project_record=pr,
-            user_id="test-unit-user",
+                user_id="test-unit-user",
                 label="Should Fail",
                 parent_category_code="C.05",
                 workbook_version=_workbook_version(),
+                expected_content_hash="0" * 64,
             )
 
     def test_engine_group_c17_rejected(self):
@@ -224,10 +245,11 @@ class TestAddCapexLine(unittest.TestCase):
         with self.assertRaises(CapexProtectedGroupError):
             add_capex_line(
                 project_record=pr,
-            user_id="test-unit-user",
+                user_id="test-unit-user",
                 label="Financing row",
                 parent_category_code="C.17",
                 workbook_version=_workbook_version(),
+                expected_content_hash="0" * 64,
             )
 
     def test_engine_group_c18_rejected(self):
@@ -236,10 +258,11 @@ class TestAddCapexLine(unittest.TestCase):
         with self.assertRaises(CapexProtectedGroupError):
             add_capex_line(
                 project_record=pr,
-            user_id="test-unit-user",
+                user_id="test-unit-user",
                 label="Reserve row",
                 parent_category_code="C.18",
                 workbook_version=_workbook_version(),
+                expected_content_hash="0" * 64,
             )
 
     def test_contingency_group_c13_rejected(self):
@@ -248,10 +271,11 @@ class TestAddCapexLine(unittest.TestCase):
         with self.assertRaises(CapexProtectedGroupError):
             add_capex_line(
                 project_record=pr,
-            user_id="test-unit-user",
+                user_id="test-unit-user",
                 label="Contingency row",
                 parent_category_code="C.13",
                 workbook_version=_workbook_version(),
+                expected_content_hash="0" * 64,
             )
 
     def test_invalid_group_rejected(self):
@@ -260,10 +284,11 @@ class TestAddCapexLine(unittest.TestCase):
         with self.assertRaises(CapexProtectedGroupError):
             add_capex_line(
                 project_record=pr,
-            user_id="test-unit-user",
+                user_id="test-unit-user",
                 label="Unknown group",
                 parent_category_code="C.99",
                 workbook_version=_workbook_version(),
+                expected_content_hash="0" * 64,
             )
 
     def test_workbook_version_mismatch_rejected(self):
@@ -272,10 +297,11 @@ class TestAddCapexLine(unittest.TestCase):
         with self.assertRaises(CapexVersionMismatchError):
             add_capex_line(
                 project_record=pr,
-            user_id="test-unit-user",
+                user_id="test-unit-user",
                 label="Version mismatch",
                 parent_category_code="C.05",
                 workbook_version="WRONG_VERSION",
+                expected_content_hash="0" * 64,
             )
 
     def test_empty_label_rejected(self):
@@ -284,10 +310,11 @@ class TestAddCapexLine(unittest.TestCase):
         with self.assertRaises(ValueError):
             add_capex_line(
                 project_record=pr,
-            user_id="test-unit-user",
+                user_id="test-unit-user",
                 label="   ",
                 parent_category_code="C.05",
                 workbook_version=_workbook_version(),
+                expected_content_hash=_current_hash("add-test-label"),
             )
 
 
@@ -315,19 +342,21 @@ class TestUpdateCapexLine(unittest.TestCase):
     def _add_line(self, project_id: str, label: str = "Initial Label"):
         from app.v2.capex_commands import add_capex_line
         pr = self._make_project_record(project_id)
-        return add_capex_line(
+        sl, _hash = add_capex_line(
             project_record=pr,
             user_id="test-unit-user",
             label=label,
             parent_category_code="C.02",
             amount_keur=100.0,
             workbook_version=_workbook_version(),
-        ), pr
+            expected_content_hash=_current_hash(project_id),
+        )
+        return sl, pr
 
     def test_update_label_and_amount(self):
         from app.v2.capex_commands import update_capex_line
         sl, pr = self._add_line("upd-test-001")
-        updated = update_capex_line(
+        updated, _hash = update_capex_line(
             project_record=pr,
             user_id="test-unit-user",
             sub_line_id=sl.sub_line_id,
@@ -335,6 +364,7 @@ class TestUpdateCapexLine(unittest.TestCase):
             amount_keur=999.0,
             row_version=sl.updated_at,
             workbook_version=_workbook_version(),
+            expected_content_hash=_current_hash("upd-test-001"),
         )
         self.assertEqual(updated.label, "Updated Label")
         self.assertAlmostEqual(updated.amount_keur, 999.0)
@@ -351,17 +381,19 @@ class TestUpdateCapexLine(unittest.TestCase):
             amount_keur=200.0,
             row_version=sl.updated_at,
             workbook_version=_workbook_version(),
+            expected_content_hash=_current_hash("upd-test-002"),
         )
         # Second update with the original row_version must fail
         with self.assertRaises(CapexConcurrentEditError):
             update_capex_line(
                 project_record=pr,
-            user_id="test-unit-user",
+                user_id="test-unit-user",
                 sub_line_id=sl.sub_line_id,
                 label="Stale Update",
                 amount_keur=300.0,
                 row_version=sl.updated_at,  # stale token
                 workbook_version=_workbook_version(),
+                expected_content_hash=_current_hash("upd-test-002"),
             )
 
     def test_protected_reference_rejected(self):
@@ -379,6 +411,7 @@ class TestUpdateCapexLine(unittest.TestCase):
                 amount_keur=0.0,
                 row_version=sl.updated_at,
                 workbook_version=_workbook_version(),
+                expected_content_hash="0" * 64,
             )
 
     def test_version_mismatch_rejected(self):
@@ -387,12 +420,13 @@ class TestUpdateCapexLine(unittest.TestCase):
         with self.assertRaises(CapexVersionMismatchError):
             update_capex_line(
                 project_record=pr,
-            user_id="test-unit-user",
+                user_id="test-unit-user",
                 sub_line_id=sl.sub_line_id,
                 label="Version fail",
                 amount_keur=0.0,
                 row_version=sl.updated_at,
                 workbook_version="STALE",
+                expected_content_hash="0" * 64,
             )
 
 
@@ -422,17 +456,19 @@ class TestDeactivateCapexLine(unittest.TestCase):
         from app.persistence.capex_sub_lines import get_active_sub_lines_for_project
         project_id = "deact-test-001"
         pr = self._make_project_record(project_id)
-        sl = add_capex_line(
+        sl, _hash = add_capex_line(
             project_record=pr,
             user_id="test-unit-user", label="To Remove",
             parent_category_code="C.06", amount_keur=50.0,
             workbook_version=_workbook_version(),
+            expected_content_hash=_current_hash(project_id),
         )
         self.assertTrue(sl.is_active)
         deactivate_capex_line(
             project_record=pr,
             user_id="test-unit-user", sub_line_id=sl.sub_line_id,
             row_version=sl.updated_at, workbook_version=_workbook_version(),
+            expected_content_hash=_current_hash(project_id),
         )
         active = get_active_sub_lines_for_project(project_id)
         active_ids = [s.sub_line_id for s in active]
@@ -442,11 +478,12 @@ class TestDeactivateCapexLine(unittest.TestCase):
         from app.v2.capex_commands import add_capex_line, update_capex_line, deactivate_capex_line, CapexConcurrentEditError
         project_id = "deact-test-002"
         pr = self._make_project_record(project_id)
-        sl = add_capex_line(
+        sl, _hash = add_capex_line(
             project_record=pr,
             user_id="test-unit-user", label="Concurrent",
             parent_category_code="C.07", amount_keur=10.0,
             workbook_version=_workbook_version(),
+            expected_content_hash=_current_hash(project_id),
         )
         # Mutate row so token becomes stale
         update_capex_line(
@@ -454,13 +491,15 @@ class TestDeactivateCapexLine(unittest.TestCase):
             user_id="test-unit-user", sub_line_id=sl.sub_line_id,
             label="Updated First", amount_keur=20.0,
             row_version=sl.updated_at, workbook_version=_workbook_version(),
+            expected_content_hash=_current_hash(project_id),
         )
         # Deactivate with old token must fail
         with self.assertRaises(CapexConcurrentEditError):
             deactivate_capex_line(
                 project_record=pr,
-            user_id="test-unit-user", sub_line_id=sl.sub_line_id,
+                user_id="test-unit-user", sub_line_id=sl.sub_line_id,
                 row_version=sl.updated_at, workbook_version=_workbook_version(),
+                expected_content_hash=_current_hash(project_id),
             )
 
     def test_protected_reference_rejected(self):
@@ -471,8 +510,9 @@ class TestDeactivateCapexLine(unittest.TestCase):
         with self.assertRaises(CapexProtectedReferenceError):
             deactivate_capex_line(
                 project_record=pr,
-            user_id="test-unit-user", sub_line_id="fake-id",
+                user_id="test-unit-user", sub_line_id="fake-id",
                 row_version="fake-version", workbook_version=_workbook_version(),
+                expected_content_hash="0" * 64,
             )
 
 
@@ -502,15 +542,17 @@ class TestReorderCapexLines(unittest.TestCase):
         from app.persistence.capex_sub_lines import get_active_sub_lines_for_project
         project_id = "reorder-test-001"
         pr = self._make_project_record(project_id)
-        sl1 = add_capex_line(
+        sl1, _hash = add_capex_line(
             project_record=pr,
             user_id="test-unit-user", label="First", parent_category_code="C.04",
             amount_keur=10.0, workbook_version=_workbook_version(),
+            expected_content_hash=_current_hash(project_id),
         )
-        sl2 = add_capex_line(
+        sl2, _hash = add_capex_line(
             project_record=pr,
             user_id="test-unit-user", label="Second", parent_category_code="C.04",
             amount_keur=20.0, workbook_version=_workbook_version(),
+            expected_content_hash=_current_hash(project_id),
         )
         # Reverse: sl2 first, sl1 second — submit complete set with row_versions
         reorder_capex_lines(
@@ -522,6 +564,7 @@ class TestReorderCapexLines(unittest.TestCase):
                 {"sub_line_id": sl1.sub_line_id, "row_version": sl1.updated_at},
             ],
             workbook_version=_workbook_version(),
+            expected_content_hash=_current_hash(project_id),
         )
         active = [
             s for s in get_active_sub_lines_for_project(project_id)
@@ -543,6 +586,7 @@ class TestReorderCapexLines(unittest.TestCase):
                 parent_category_code="C.17",
                 ordered_rows=[],
                 workbook_version=_workbook_version(),
+                expected_content_hash="0" * 64,
             )
 
 
@@ -572,13 +616,14 @@ class TestCapexViewModelWithSubLines(unittest.TestCase):
         pr.template_source = "generic_wind"
         pr.is_readonly = False
 
-        sl = add_capex_line(
+        sl, _hash = add_capex_line(
             project_record=pr,
             user_id="test-unit-user",
             label="Custom Row VM Test",
             parent_category_code="C.05",
             amount_keur=1234.0,
             workbook_version=_workbook_version(),
+            expected_content_hash=_current_hash(project_id),
         )
 
         # Build CapexViewModel with the sub-line injected
@@ -625,16 +670,18 @@ class TestCapexViewModelWithSubLines(unittest.TestCase):
         pr.template_source = "generic_wind"
         pr.is_readonly = False
 
-        sl = add_capex_line(
+        sl, _hash = add_capex_line(
             project_record=pr,
             user_id="test-unit-user", label="Will Be Deactivated",
             parent_category_code="C.09", amount_keur=9999.0,
             workbook_version=_workbook_version(),
+            expected_content_hash=_current_hash(project_id),
         )
         deactivate_capex_line(
             project_record=pr,
             user_id="test-unit-user", sub_line_id=sl.sub_line_id,
             row_version=sl.updated_at, workbook_version=_workbook_version(),
+            expected_content_hash=_current_hash(project_id),
         )
 
         project_ctx = build_project_context_for_record(
@@ -680,11 +727,12 @@ class TestCapexViewModelWithSubLines(unittest.TestCase):
         vm_before = build_capex_view_model(project_ctx, is_user_project=True, sub_lines=[])
         hard_before = vm_before.hard_capex_keur
 
-        add_capex_line(
+        _, _hash = add_capex_line(
             project_record=pr,
             user_id="test-unit-user", label="Hard CAPEX Row",
             parent_category_code="C.01", amount_keur=500.0,
             workbook_version=_workbook_version(),
+            expected_content_hash=_current_hash(project_id),
         )
 
         sub_lines = get_active_sub_lines_for_project(project_id)
@@ -714,11 +762,12 @@ class TestCapexViewModelWithSubLines(unittest.TestCase):
         import app.v2.capex_commands as _cmd_mod
         with patch.object(_cmd_mod, "create_sub_line",
                           wraps=_cmd_mod.create_sub_line) as spy:
-            add_capex_line(
+            _, _hash = add_capex_line(
                 project_record=pr,
                 user_id="test-unit-user", label="No Engine Call",
                 parent_category_code="C.10", amount_keur=0.0,
                 workbook_version=_workbook_version(),
+                expected_content_hash=_current_hash("vm-test-004"),
             )
             # create_sub_line called once means the command went through
             # the persistence path and not via any engine calculation.
@@ -752,11 +801,12 @@ class TestInputsSummaryParity(unittest.TestCase):
         pr.template_source = "generic_wind"
         pr.is_readonly = False
 
-        add_capex_line(
+        _, _hash = add_capex_line(
             project_record=pr,
             user_id="test-unit-user", label="Parity Row",
             parent_category_code="C.12", amount_keur=750.0,
             workbook_version=_workbook_version(),
+            expected_content_hash=_current_hash(project_id),
         )
 
         # Build via build_capex_view_model (the detail-sheet path)
@@ -806,6 +856,14 @@ class TestCapexRowLifecycleHttp(unittest.TestCase):
         from app.workbook.registry import WORKBOOK
         return WORKBOOK.version
 
+    def _content_hash(self):
+        from app.auth import decode_session_token, COOKIE_NAME
+        from app.persistence.projects_repository import get_project_record
+        token = self.client.cookies.get(COOKIE_NAME)
+        user = decode_session_token(token)
+        pr = get_project_record(user_id=user.user_id, project_code=self.project_code)
+        return _current_hash(pr.project_id, user.user_id)
+
     def test_add_row_htmx_returns_capex_sheet(self):
         resp = self.client.post(
             "/v2/capex/line/add",
@@ -816,6 +874,7 @@ class TestCapexRowLifecycleHttp(unittest.TestCase):
                 "amount_keur": "1000",
                 "notes": "HTTP test note",
                 "workbook_version": self._get_workbook_version(),
+                "content_hash": self._content_hash(),
             },
             headers=self._htmx_headers(),
         )
@@ -832,6 +891,7 @@ class TestCapexRowLifecycleHttp(unittest.TestCase):
                 "label": "Persisted Custom Row",
                 "amount_keur": "750",
                 "workbook_version": self._get_workbook_version(),
+                "content_hash": self._content_hash(),
             },
             headers=self._htmx_headers(),
         )
@@ -857,6 +917,7 @@ class TestCapexRowLifecycleHttp(unittest.TestCase):
                 "label": "Big Custom Row",
                 "amount_keur": "5000",
                 "workbook_version": self._get_workbook_version(),
+                "content_hash": self._content_hash(),
             },
             headers=self._htmx_headers(),
         )
@@ -879,6 +940,7 @@ class TestCapexRowLifecycleHttp(unittest.TestCase):
                 "label": "Custom Badge Test",
                 "amount_keur": "100",
                 "workbook_version": self._get_workbook_version(),
+                "content_hash": self._content_hash(),
             },
             headers=self._htmx_headers(),
         )
@@ -898,6 +960,7 @@ class TestCapexRowLifecycleHttp(unittest.TestCase):
                 "label": "Before Update",
                 "amount_keur": "10",
                 "workbook_version": self._get_workbook_version(),
+                "content_hash": self._content_hash(),
             },
             headers=self._htmx_headers(),
         )
@@ -928,6 +991,7 @@ class TestCapexRowLifecycleHttp(unittest.TestCase):
                 "notes": "Updated via HTTP",
                 "row_version": target.updated_at,
                 "workbook_version": self._get_workbook_version(),
+                "content_hash": self._content_hash(),
             },
             headers=self._htmx_headers(),
         )
@@ -949,6 +1013,7 @@ class TestCapexRowLifecycleHttp(unittest.TestCase):
                 "label": "Will Be Deactivated HTTP",
                 "amount_keur": "777",
                 "workbook_version": self._get_workbook_version(),
+                "content_hash": self._content_hash(),
             },
             headers=self._htmx_headers(),
         )
@@ -967,6 +1032,7 @@ class TestCapexRowLifecycleHttp(unittest.TestCase):
                 "sub_line_id": target.sub_line_id,
                 "row_version": target.updated_at,
                 "workbook_version": self._get_workbook_version(),
+                "content_hash": self._content_hash(),
             },
             headers=self._htmx_headers(),
         )
@@ -997,6 +1063,7 @@ class TestCapexRowLifecycleHttp(unittest.TestCase):
                 "label": "Blocked",
                 "amount_keur": "0",
                 "workbook_version": WORKBOOK.version,
+                "content_hash": "0" * 64,
             },
             headers=self._htmx_headers(),
         )
@@ -1013,6 +1080,7 @@ class TestCapexRowLifecycleHttp(unittest.TestCase):
                 "label": "Blocked by engine group",
                 "amount_keur": "0",
                 "workbook_version": self._get_workbook_version(),
+                "content_hash": "0" * 64,
             },
         )
         self.assertEqual(resp.status_code, 422)
@@ -1027,6 +1095,7 @@ class TestCapexRowLifecycleHttp(unittest.TestCase):
                 "label": "OOB Banner Test",
                 "amount_keur": "0",
                 "workbook_version": self._get_workbook_version(),
+                "content_hash": self._content_hash(),
             },
             headers=self._htmx_headers(),
         )
@@ -1046,6 +1115,14 @@ class TestCapexNoParityDrift(unittest.TestCase):
         cls.client = _authed_client()
         cls.project_code = _create_project(cls.client, "PARITY")
 
+    def _content_hash(self):
+        from app.auth import decode_session_token, COOKIE_NAME
+        from app.persistence.projects_repository import get_project_record
+        token = self.client.cookies.get(COOKIE_NAME)
+        user = decode_session_token(token)
+        pr = get_project_record(user_id=user.user_id, project_code=self.project_code)
+        return _current_hash(pr.project_id, user.user_id)
+
     def test_engine_groups_c17_c18_still_engine_badge(self):
         """C.17 and C.18 must still show ENGINE badge regardless of sub-lines."""
         # Add custom rows to eligible groups
@@ -1057,6 +1134,7 @@ class TestCapexNoParityDrift(unittest.TestCase):
                 "label": "No-op for parity check",
                 "amount_keur": "0",
                 "workbook_version": WORKBOOK.version,
+                "content_hash": self._content_hash(),
             },
             headers={"HX-Request": "true"},
         )
@@ -1135,23 +1213,27 @@ class TestReorderAtomicity(unittest.TestCase):
 
     def _add(self, project_id: str, label: str, code: str = "C.04"):
         from app.v2.capex_commands import add_capex_line
-        return add_capex_line(
+        sl, _hash = add_capex_line(
             project_record=self._make_pr(project_id),
             user_id="test-unit-user",
             label=label,
             parent_category_code=code,
             workbook_version=_workbook_version(),
+            expected_content_hash=_current_hash(project_id),
         )
+        return sl
 
     def _reorder(self, project_id: str, ordered_rows, code: str = "C.04"):
         from app.v2.capex_commands import reorder_capex_lines
-        return reorder_capex_lines(
+        result, _hash = reorder_capex_lines(
             project_record=self._make_pr(project_id),
             user_id="test-unit-user",
             parent_category_code=code,
             ordered_rows=ordered_rows,
             workbook_version=_workbook_version(),
+            expected_content_hash=_current_hash(project_id),
         )
+        return result
 
     def test_stale_row_version_rejected(self):
         from app.v2.capex_commands import CapexConcurrentEditError
@@ -1208,6 +1290,7 @@ class TestReorderAtomicity(unittest.TestCase):
             sub_line_id=sl2.sub_line_id,
             row_version=sl2.updated_at,
             workbook_version=_workbook_version(),
+            expected_content_hash=_current_hash(pid),
         )
         # Now sl2 is inactive; submitting it must be rejected
         with self.assertRaises(CapexConcurrentEditError):
@@ -1318,6 +1401,7 @@ class TestWorkspaceDirtyState(unittest.TestCase):
 
     def test_add_marks_workspace_dirty(self):
         self._reset_dirty()
+        user, pr = self._user_and_pr()
         self.client.post(
             "/v2/capex/line/add",
             data={
@@ -1326,6 +1410,7 @@ class TestWorkspaceDirtyState(unittest.TestCase):
                 "label": "Dirty Test Add",
                 "amount_keur": "100",
                 "workbook_version": self._workbook_version(),
+                "content_hash": _current_hash(pr.project_id, user.user_id),
             },
             headers={"HX-Request": "true"},
         )
@@ -1335,6 +1420,7 @@ class TestWorkspaceDirtyState(unittest.TestCase):
     def test_update_marks_workspace_dirty(self):
         from app.persistence.capex_sub_lines import get_active_sub_lines_for_project
         # Ensure at least one C.02 row exists
+        user, pr = self._user_and_pr()
         self.client.post(
             "/v2/capex/line/add",
             data={
@@ -1343,6 +1429,7 @@ class TestWorkspaceDirtyState(unittest.TestCase):
                 "label": "Update Dirty Source",
                 "amount_keur": "50",
                 "workbook_version": self._workbook_version(),
+                "content_hash": _current_hash(pr.project_id, user.user_id),
             },
             headers={"HX-Request": "true"},
         )
@@ -1363,6 +1450,7 @@ class TestWorkspaceDirtyState(unittest.TestCase):
                 "notes": "",
                 "row_version": target.updated_at,
                 "workbook_version": self._workbook_version(),
+                "content_hash": _current_hash(pr.project_id, user.user_id),
             },
             headers={"HX-Request": "true"},
         )
@@ -1371,6 +1459,7 @@ class TestWorkspaceDirtyState(unittest.TestCase):
 
     def test_deactivate_marks_workspace_dirty(self):
         from app.persistence.capex_sub_lines import get_active_sub_lines_for_project
+        user, pr = self._user_and_pr()
         self.client.post(
             "/v2/capex/line/add",
             data={
@@ -1379,6 +1468,7 @@ class TestWorkspaceDirtyState(unittest.TestCase):
                 "label": "Deactivate Dirty Source",
                 "amount_keur": "10",
                 "workbook_version": self._workbook_version(),
+                "content_hash": _current_hash(pr.project_id, user.user_id),
             },
             headers={"HX-Request": "true"},
         )
@@ -1396,6 +1486,7 @@ class TestWorkspaceDirtyState(unittest.TestCase):
                 "sub_line_id": target.sub_line_id,
                 "row_version": target.updated_at,
                 "workbook_version": self._workbook_version(),
+                "content_hash": _current_hash(pr.project_id, user.user_id),
             },
             headers={"HX-Request": "true"},
         )
@@ -1406,6 +1497,7 @@ class TestWorkspaceDirtyState(unittest.TestCase):
         from app.persistence.capex_sub_lines import get_active_sub_lines_for_project
         # Ensure ≥2 rows in C.04
         for i in range(2):
+            user, pr = self._user_and_pr()
             self.client.post(
                 "/v2/capex/line/add",
                 data={
@@ -1414,6 +1506,7 @@ class TestWorkspaceDirtyState(unittest.TestCase):
                     "label": f"Reorder Dirty {i}",
                     "amount_keur": "0",
                     "workbook_version": self._workbook_version(),
+                    "content_hash": _current_hash(pr.project_id, user.user_id),
                 },
                 headers={"HX-Request": "true"},
             )
@@ -1427,6 +1520,7 @@ class TestWorkspaceDirtyState(unittest.TestCase):
             "project": self.project_code,
             "parent_category_code": "C.04",
             "workbook_version": self._workbook_version(),
+            "content_hash": _current_hash(pr.project_id, user.user_id),
         }
         # FastAPI accepts repeated fields with the same key for List[str]
         # TestClient sends list values as repeated keys
@@ -1478,20 +1572,27 @@ class TestConcurrentAdd(unittest.TestCase):
         lock = threading.Lock()
 
         def _add(n: int):
-            try:
-                sl = add_capex_line(
-                    project_record=pr,
-                    user_id="test-unit-user",
-                    label=f"Concurrent {n}",
-                    parent_category_code="C.06",
-                    amount_keur=float(n),
-                    workbook_version=_workbook_version(),
-                )
-                with lock:
-                    results.append(sl)
-            except Exception as exc:
-                with lock:
-                    errors.append(exc)
+            from app.v2.capex_commands import CapexStaleIdentityError
+            for _attempt in range(10):
+                try:
+                    sl, _hash = add_capex_line(
+                        project_record=pr,
+                        user_id="test-unit-user",
+                        label=f"Concurrent {n}",
+                        parent_category_code="C.06",
+                        amount_keur=float(n),
+                        workbook_version=_workbook_version(),
+                        expected_content_hash=_current_hash(pid),
+                    )
+                    with lock:
+                        results.append(sl)
+                    return
+                except CapexStaleIdentityError:
+                    continue  # retry with fresh hash
+                except Exception as exc:
+                    with lock:
+                        errors.append(exc)
+                    return
 
         threads = [threading.Thread(target=_add, args=(i,)) for i in range(5)]
         for t in threads:
@@ -1555,6 +1656,7 @@ class TestMissingWorkspaceRollback(unittest.TestCase):
                 label="Should Not Persist",
                 parent_category_code="C.05",
                 workbook_version=_workbook_version(),
+                expected_content_hash="0" * 64,
             )
         self.assertIn("Workspace state is missing", str(ctx.exception))
 
@@ -1585,12 +1687,13 @@ class TestMissingWorkspaceRollback(unittest.TestCase):
                 (ws_id, pid, "test-unit-user", project_code,
                  "{}", "{}", "{}", "{}", "{}", now, now),
             )
-        sl = add_capex_line(
+        sl, _hash = add_capex_line(
             project_record=self._make_pr(pid),
             user_id="test-unit-user",
             label="Will Not Be Updated",
             parent_category_code="C.06",
             workbook_version=_workbook_version(),
+            expected_content_hash=_current_hash(pid),
         )
         original_label = sl.label
         original_amount = sl.amount_keur
@@ -1611,6 +1714,7 @@ class TestMissingWorkspaceRollback(unittest.TestCase):
                 amount_keur=9999.0,
                 row_version=sl.updated_at,
                 workbook_version=_workbook_version(),
+                expected_content_hash="0" * 64,
             )
         self.assertIn("Workspace state is missing", str(ctx.exception))
 
@@ -1647,12 +1751,13 @@ class TestMissingWorkspaceRollback(unittest.TestCase):
                 (ws_id, pid, "test-unit-user", project_code,
                  "{}", "{}", "{}", "{}", "{}", now, now),
             )
-        sl = add_capex_line(
+        sl, _hash = add_capex_line(
             project_record=self._make_pr(pid),
             user_id="test-unit-user",
             label="Will Not Be Deactivated",
             parent_category_code="C.07",
             workbook_version=_workbook_version(),
+            expected_content_hash=_current_hash(pid),
         )
 
         with get_cursor() as cur:
@@ -1668,6 +1773,7 @@ class TestMissingWorkspaceRollback(unittest.TestCase):
                 sub_line_id=sl.sub_line_id,
                 row_version=sl.updated_at,
                 workbook_version=_workbook_version(),
+                expected_content_hash="0" * 64,
             )
         self.assertIn("Workspace state is missing", str(ctx.exception))
 
