@@ -407,6 +407,25 @@ async def _execute_user_created_path(
             from dataclasses import replace as _dc_replace
             override = _dc_replace(override, capex=folded_capex)
 
+        # STAB-1A: fold persisted OPEX custom sub-lines into
+        # the input opex tuple. Additive: each active sub-line
+        # becomes a new OpexItem appended to the existing tuple.
+        # B.09 "Fees" (no registry field) is the primary use
+        # case — sub-lines create new costs where there were none.
+        # The contingency OpexItem (percentage_of_opex) is
+        # recomputed by the engine over the updated tuple.
+        from app.services.opex_sub_lines_integration import (
+            apply_user_sub_lines_to_opex,
+        )
+        folded_opex = apply_user_sub_lines_to_opex(
+            override.opex,
+            project_id=project_record.project_id,
+            scenario_overrides=_scenario_overrides_for_fold,
+        )
+        if folded_opex is not override.opex:
+            from dataclasses import replace as _dc_replace  # noqa: F811
+            override = _dc_replace(override, opex=folded_opex)
+
         scenario_name = (
             (runtime_snapshot.get("scenario") if runtime_snapshot else None)
             or snapshot.get("scenario", "")
