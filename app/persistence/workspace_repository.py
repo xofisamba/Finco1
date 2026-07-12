@@ -376,21 +376,46 @@ def v2_atomic_draft_update(
             conn.execute("ROLLBACK")
             return None
 
-        # Build canonical ProjectInputSet from the persisted snapshot and compare
-        # its content_hash against expected_content_hash.  This is authoritative
-        # for both legacy rows (raw-JSON draft_content_hash) and V2 rows
-        # (canonical pis.content_hash) — the stored column is not consulted.
-        row_snapshot = _json.loads(row["draft_snapshot_json"] or "{}")
-        current_pis = ProjectInputSet.from_snapshot(row_snapshot, workbook=WORKBOOK)
+        # STAB-1B: Build composite workbook identity from the persisted snapshot
+        # (scalar + CAPEX rows + OPEX rows + scenario) inside the already-open
+        # BEGIN EXCLUSIVE cursor, then compare the composite hash against the
+        # client-supplied expected_content_hash.
+        # Legacy scalar-only tokens (no _schema:composite_v1 discriminator) will
+        # never match composite hashes, so they are correctly rejected with a
+        # stale-content 409 — the client refreshes and receives a composite token.
+        from app.workbook.workbook_identity import assemble_transactional
 
-        if current_pis.content_hash != expected_content_hash:
+        identity = assemble_transactional(
+            draft_snapshot_json=row["draft_snapshot_json"] or "{}",
+            project_id=project_id,
+            user_id=user_id,
+            active_scenario_id=row["active_scenario_id"],
+            active_scenario_name=row["active_scenario_name"],
+            cursor=cur,
+            workbook_version=WORKBOOK.version,
+        )
+
+        if identity.composite_hash != expected_content_hash:
             conn.execute("ROLLBACK")
             return None  # stale — caller raises StaleContentError
 
         # Apply the validated update to the snapshot read inside the transaction.
+        row_snapshot = _json.loads(row["draft_snapshot_json"] or "{}")
+        current_pis = ProjectInputSet.from_snapshot(row_snapshot, workbook=WORKBOOK)
         updated_pis = current_pis.with_value(field_id, typed_value)
         new_snapshot = updated_pis.to_snapshot()
-        new_content_hash = updated_pis.content_hash
+
+        # Re-assemble composite identity after scalar mutation (rows/scenario unchanged).
+        new_identity = assemble_transactional(
+            draft_snapshot_json=_to_json(new_snapshot),
+            project_id=project_id,
+            user_id=user_id,
+            active_scenario_id=row["active_scenario_id"],
+            active_scenario_name=row["active_scenario_name"],
+            cursor=cur,
+            workbook_version=WORKBOOK.version,
+        )
+        new_content_hash = new_identity.composite_hash
 
         cur.execute(
             """
@@ -428,6 +453,33 @@ def v2_atomic_draft_update(
 
 # mark_workspace_dirty
 # -----------------------------------------------------------------
+
+def update_composite_hash_cursor(
+    cur: Any,
+    *,
+    user_id: str,
+    project_id: str,
+    composite_hash: str,
+    now_iso: str,
+) -> bool:
+    """Set dirty=1 and update draft_content_hash using an existing cursor.
+
+    STAB-1B: used by CAPEX/OPEX row commands after a successful mutation so
+    the workspace record carries the new composite identity token.  Must be
+    called inside the same exclusive transaction as the row mutation.
+
+    Returns True if the workspace row was found and updated, False otherwise.
+    """
+    cur.execute(
+        """
+        UPDATE workspace_states
+        SET dirty=1, draft_content_hash=?, updated_at=?
+        WHERE user_id=? AND project_id=?
+        """,
+        (composite_hash, now_iso, user_id, project_id),
+    )
+    return cur.rowcount > 0
+
 
 def mark_workspace_dirty_cursor(cur: Any, *, user_id: str, project_id: str) -> bool:
     """Set dirty=1 on the workspace row using an existing cursor.

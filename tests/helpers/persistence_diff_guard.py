@@ -47,6 +47,11 @@ _ALLOWED_NEW_PERSISTENCE_FILES = frozenset({
     "app/persistence/opex_sub_lines.py",
 })
 
+# STAB-1B: workspace_repository.py changes are approved (composite CAS wiring only).
+_ALLOWED_MODIFIED_PERSISTENCE_FILES = frozenset({
+    "app/persistence/workspace_repository.py",
+})
+
 # The canonical non-blank lines that must appear in db.py — no more, no less.
 # Each line is stored stripped; comparison normalises indentation on both sides.
 APPROVED_OPEX_DB_ADDITIONS: tuple[str, ...] = (
@@ -191,6 +196,8 @@ def validate_persistence_diff() -> list[str]:
 
     for path in changed:
         if path in _ALLOWED_NEW_PERSISTENCE_FILES:
+            continue
+        elif path in _ALLOWED_MODIFIED_PERSISTENCE_FILES:
             continue
         elif path == "app/persistence/db.py":
             diff_text = _git_diff_text(path)

@@ -7,36 +7,13 @@ Mounted at /v2/opex by main_web.py (under the same FINCO_WORKBOOK_V2 flag).
 Endpoints
 ---------
 POST /v2/opex/line/add
-    Add a custom row to an eligible OPEX group (B.01–B.12).
-
 POST /v2/opex/line/update
-    Update label, Y1 amount, inflation_pct, and notes on an existing
-    custom row. Requires row_version for optimistic concurrency.
-
 POST /v2/opex/line/deactivate
-    Soft-delete a custom row (excluded from future projections).
-    Requires row_version for optimistic concurrency.
-
 POST /v2/opex/line/reorder
-    Atomically reorder all rows in an OPEX group.
-    Accepts the COMPLETE active set as ordered pairs of
-    sub_line_id[] + row_version[] (parallel repeated form fields).
-    Any unknown, missing, duplicate, or stale entry → 409.
 
-All endpoints
-  - Require authentication (finco_session cookie).
-  - Check project ownership.
-  - Enforce protected-reference guard.
-  - Check workbook_version against WORKBOOK.version.
-  - Return the re-rendered OPEX sheet partial + OOB status banner (HTMX).
-  - Return 409 JSON for protected-reference, stale version, or concurrent edit.
-  - Return 404 JSON for unknown project or workspace.
-  - Return 422 JSON for validation errors.
-
-Row commands do NOT route through WorkbookUpdateService or /v2/workbook/update.
-They mutate opex_sub_lines only; the workspace draft_snapshot is untouched.
-The workspace is marked dirty inside the same exclusive transaction as the
-row mutation.
+All endpoints accept content_hash (current composite workbook identity token)
+and validate it before mutating.  The re-rendered OPEX sheet carries the new
+composite hash after a successful mutation.
 """
 from __future__ import annotations
 
@@ -52,6 +29,7 @@ from app.v2.opex_commands import (
     OpexProtectedGroupError,
     OpexProtectedReferenceError,
     OpexRowNotFoundError,
+    OpexStaleIdentityError,
     OpexVersionMismatchError,
     add_opex_line,
     deactivate_opex_line,
@@ -72,16 +50,13 @@ def _get_current_user(request: Request):
 def _render_opex_sheet(
     request: Request, project_record, pis, ws, project: str, field_error: str = ""
 ) -> HTMLResponse:
-    """Delegate to the main V2 router's OPEX partial renderer."""
     from app.v2.router import _render_opex_htmx_sheet
     return _render_opex_htmx_sheet(request, pis, ws, project_record, project, field_error=field_error)
 
 
 def _load_project_and_ws(user, project: str):
-    """Return (project_record, ws, pis) or raise LookupError."""
     from app.persistence.projects_repository import get_project_record
     from app.persistence.workspace_repository import get_workspace_state
-    from app.workbook.service import WorkbookService
 
     project_record = get_project_record(user_id=user.user_id, project_code=project)
     if project_record is None:
@@ -89,8 +64,40 @@ def _load_project_and_ws(user, project: str):
     ws = get_workspace_state(user_id=user.user_id, project_id=project_record.project_id)
     if ws is None:
         raise LookupError("Workspace not found.")
+    return project_record, ws
+
+
+def _build_pis_with_hash(ws, project_record, user, new_composite_hash: str):
+    from app.workbook.service import WorkbookService
     pis = WorkbookService.build_draft_input_set_from_workspace(ws)
-    return project_record, ws, pis
+    return pis.with_composite_hash(new_composite_hash)
+
+
+def _stale_identity_response(
+    request, project_record, user, project, ws, is_htmx: bool
+) -> HTMLResponse | JSONResponse:
+    if is_htmx:
+        from app.workbook.workbook_identity import assemble_consistent_for_get
+        from app.workbook.service import WorkbookService
+        try:
+            fresh_identity = assemble_consistent_for_get(
+                user_id=user.user_id,
+                project_id=project_record.project_id,
+                workbook_version=WorkbookService.build_draft_input_set_from_workspace(ws).workbook_version,
+            )
+            pis = WorkbookService.build_draft_input_set_from_workspace(ws).with_composite_hash(
+                fresh_identity.composite_hash
+            )
+        except Exception:
+            pis = WorkbookService.build_draft_input_set_from_workspace(ws)
+        return _render_opex_sheet(
+            request, project_record, pis, ws, project,
+            field_error="Workbook changed since page loaded — values refreshed. Please try again.",
+        )
+    return JSONResponse(
+        {"error": "Workbook changed since page loaded. Reload and try again."},
+        status_code=409,
+    )
 
 
 def _handle_command_error(exc: OpexCommandError) -> JSONResponse:
@@ -98,6 +105,8 @@ def _handle_command_error(exc: OpexCommandError) -> JSONResponse:
         return JSONResponse({"error": str(exc)}, status_code=409)
     if isinstance(exc, OpexVersionMismatchError):
         return JSONResponse({"error": str(exc), "reload": True}, status_code=409)
+    if isinstance(exc, OpexStaleIdentityError):
+        return JSONResponse({"error": str(exc)}, status_code=409)
     if isinstance(exc, OpexConcurrentEditError):
         return JSONResponse({"error": str(exc)}, status_code=409)
     if isinstance(exc, OpexProtectedGroupError):
@@ -117,21 +126,21 @@ async def opex_line_add(
     inflation_pct: float = Form(default=0.0),
     notes: str = Form(default=""),
     workbook_version: str = Form(...),
+    content_hash: str = Form(...),
 ):
-    """Add a custom OPEX row to an eligible group."""
     user = _get_current_user(request)
     if not user:
         return RedirectResponse(url="/login", status_code=302)
 
     try:
-        project_record, ws, pis = _load_project_and_ws(user, project)
+        project_record, ws = _load_project_and_ws(user, project)
     except LookupError as exc:
         return JSONResponse({"error": str(exc)}, status_code=404)
 
     is_htmx = request.headers.get("HX-Request") == "true"
 
     try:
-        add_opex_line(
+        _, new_hash = add_opex_line(
             project_record=project_record,
             user_id=user.user_id,
             label=label.strip(),
@@ -140,19 +149,27 @@ async def opex_line_add(
             inflation_pct=inflation_pct,
             notes=notes,
             workbook_version=workbook_version,
+            expected_content_hash=content_hash,
         )
+    except OpexStaleIdentityError:
+        return _stale_identity_response(request, project_record, user, project, ws, is_htmx)
     except OpexCommandError as exc:
         if is_htmx:
+            from app.workbook.service import WorkbookService
+            pis = WorkbookService.build_draft_input_set_from_workspace(ws).with_composite_hash(content_hash)
             return _render_opex_sheet(request, project_record, pis, ws, project, field_error=str(exc))
         return _handle_command_error(exc)
     except ValueError as exc:
         if is_htmx:
+            from app.workbook.service import WorkbookService
+            pis = WorkbookService.build_draft_input_set_from_workspace(ws).with_composite_hash(content_hash)
             return _render_opex_sheet(request, project_record, pis, ws, project, field_error=str(exc))
         return JSONResponse({"error": str(exc)}, status_code=422)
 
     from app.persistence.workspace_repository import get_workspace_state
     ws = get_workspace_state(user_id=user.user_id, project_id=project_record.project_id) or ws
     if is_htmx:
+        pis = _build_pis_with_hash(ws, project_record, user, new_hash)
         return _render_opex_sheet(request, project_record, pis, ws, project)
     return RedirectResponse(url=f"/v2/workbook?project={project}", status_code=303)
 
@@ -168,21 +185,21 @@ async def opex_line_update(
     notes: str = Form(default=""),
     row_version: str = Form(...),
     workbook_version: str = Form(...),
+    content_hash: str = Form(...),
 ):
-    """Update an existing custom OPEX row (optimistic-lock on row_version)."""
     user = _get_current_user(request)
     if not user:
         return RedirectResponse(url="/login", status_code=302)
 
     try:
-        project_record, ws, pis = _load_project_and_ws(user, project)
+        project_record, ws = _load_project_and_ws(user, project)
     except LookupError as exc:
         return JSONResponse({"error": str(exc)}, status_code=404)
 
     is_htmx = request.headers.get("HX-Request") == "true"
 
     try:
-        update_opex_line(
+        _, new_hash = update_opex_line(
             project_record=project_record,
             user_id=user.user_id,
             sub_line_id=sub_line_id,
@@ -192,22 +209,30 @@ async def opex_line_update(
             notes=notes,
             row_version=row_version,
             workbook_version=workbook_version,
+            expected_content_hash=content_hash,
         )
+    except OpexStaleIdentityError:
+        return _stale_identity_response(request, project_record, user, project, ws, is_htmx)
     except OpexCommandError as exc:
         if is_htmx:
             err = str(exc)
             if isinstance(exc, OpexConcurrentEditError):
                 err = "Row was modified concurrently — values refreshed. Try again."
+            from app.workbook.service import WorkbookService
+            pis = WorkbookService.build_draft_input_set_from_workspace(ws).with_composite_hash(content_hash)
             return _render_opex_sheet(request, project_record, pis, ws, project, field_error=err)
         return _handle_command_error(exc)
     except ValueError as exc:
         if is_htmx:
+            from app.workbook.service import WorkbookService
+            pis = WorkbookService.build_draft_input_set_from_workspace(ws).with_composite_hash(content_hash)
             return _render_opex_sheet(request, project_record, pis, ws, project, field_error=str(exc))
         return JSONResponse({"error": str(exc)}, status_code=422)
 
     from app.persistence.workspace_repository import get_workspace_state
     ws = get_workspace_state(user_id=user.user_id, project_id=project_record.project_id) or ws
     if is_htmx:
+        pis = _build_pis_with_hash(ws, project_record, user, new_hash)
         return _render_opex_sheet(request, project_record, pis, ws, project)
     return RedirectResponse(url=f"/v2/workbook?project={project}", status_code=303)
 
@@ -219,38 +244,44 @@ async def opex_line_deactivate(
     sub_line_id: str = Form(...),
     row_version: str = Form(...),
     workbook_version: str = Form(...),
+    content_hash: str = Form(...),
 ):
-    """Deactivate (soft-delete) a custom OPEX row."""
     user = _get_current_user(request)
     if not user:
         return RedirectResponse(url="/login", status_code=302)
 
     try:
-        project_record, ws, pis = _load_project_and_ws(user, project)
+        project_record, ws = _load_project_and_ws(user, project)
     except LookupError as exc:
         return JSONResponse({"error": str(exc)}, status_code=404)
 
     is_htmx = request.headers.get("HX-Request") == "true"
 
     try:
-        deactivate_opex_line(
+        _, new_hash = deactivate_opex_line(
             project_record=project_record,
             user_id=user.user_id,
             sub_line_id=sub_line_id,
             row_version=row_version,
             workbook_version=workbook_version,
+            expected_content_hash=content_hash,
         )
+    except OpexStaleIdentityError:
+        return _stale_identity_response(request, project_record, user, project, ws, is_htmx)
     except OpexCommandError as exc:
         if is_htmx:
             err = str(exc)
             if isinstance(exc, OpexConcurrentEditError):
                 err = "Row was modified concurrently — values refreshed. Try again."
+            from app.workbook.service import WorkbookService
+            pis = WorkbookService.build_draft_input_set_from_workspace(ws).with_composite_hash(content_hash)
             return _render_opex_sheet(request, project_record, pis, ws, project, field_error=err)
         return _handle_command_error(exc)
 
     from app.persistence.workspace_repository import get_workspace_state
     ws = get_workspace_state(user_id=user.user_id, project_id=project_record.project_id) or ws
     if is_htmx:
+        pis = _build_pis_with_hash(ws, project_record, user, new_hash)
         return _render_opex_sheet(request, project_record, pis, ws, project)
     return RedirectResponse(url=f"/v2/workbook?project={project}", status_code=303)
 
@@ -263,22 +294,14 @@ async def opex_line_reorder(
     sub_line_id: List[str] = Form(default=[]),
     row_version: List[str] = Form(default=[]),
     workbook_version: str = Form(...),
+    content_hash: str = Form(...),
 ):
-    """Atomically reorder all custom rows within an OPEX group.
-
-    Accepts two parallel repeated form fields:
-    - sub_line_id[] — ordered list of sub-line UUIDs (desired new order)
-    - row_version[]  — matching updated_at tokens (must align 1-to-1)
-
-    The submitted set must be COMPLETE (all active rows for the group).
-    Any mismatch → 409.
-    """
     user = _get_current_user(request)
     if not user:
         return RedirectResponse(url="/login", status_code=302)
 
     try:
-        project_record, ws, pis = _load_project_and_ws(user, project)
+        project_record, ws = _load_project_and_ws(user, project)
     except LookupError as exc:
         return JSONResponse({"error": str(exc)}, status_code=404)
 
@@ -287,6 +310,8 @@ async def opex_line_reorder(
     if len(sub_line_id) != len(row_version):
         err = "sub_line_id and row_version lists must have equal length."
         if is_htmx:
+            from app.workbook.service import WorkbookService
+            pis = WorkbookService.build_draft_input_set_from_workspace(ws).with_composite_hash(content_hash)
             return _render_opex_sheet(request, project_record, pis, ws, project, field_error=err)
         return JSONResponse({"error": err}, status_code=422)
 
@@ -296,20 +321,26 @@ async def opex_line_reorder(
     ]
 
     try:
-        reorder_opex_lines(
+        _, new_hash = reorder_opex_lines(
             project_record=project_record,
             user_id=user.user_id,
             parent_group_code=parent_group_code,
             ordered_rows=ordered_rows,
             workbook_version=workbook_version,
+            expected_content_hash=content_hash,
         )
+    except OpexStaleIdentityError:
+        return _stale_identity_response(request, project_record, user, project, ws, is_htmx)
     except OpexCommandError as exc:
         if is_htmx:
+            from app.workbook.service import WorkbookService
+            pis = WorkbookService.build_draft_input_set_from_workspace(ws).with_composite_hash(content_hash)
             return _render_opex_sheet(request, project_record, pis, ws, project, field_error=str(exc))
         return _handle_command_error(exc)
 
     from app.persistence.workspace_repository import get_workspace_state
     ws = get_workspace_state(user_id=user.user_id, project_id=project_record.project_id) or ws
     if is_htmx:
+        pis = _build_pis_with_hash(ws, project_record, user, new_hash)
         return _render_opex_sheet(request, project_record, pis, ws, project)
     return RedirectResponse(url=f"/v2/workbook?project={project}", status_code=303)

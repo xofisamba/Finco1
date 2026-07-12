@@ -113,6 +113,24 @@ def _user_id() -> str:
     return decode_session_token(token).user_id
 
 
+def _current_hash(project_id: str, user_id: str) -> str:
+    """Return the current composite workbook identity hash for a project."""
+    from app.workbook.workbook_identity import assemble_consistent_for_get
+    from app.persistence.workspace_repository import get_workspace_state
+    ws = get_workspace_state(user_id=user_id, project_id=project_id)
+    if ws is None:
+        return "0" * 64
+    try:
+        identity = assemble_consistent_for_get(
+            user_id=user_id,
+            project_id=project_id,
+            workbook_version=WORKBOOK.version,
+        )
+        return identity.composite_hash
+    except Exception:
+        return "0" * 64
+
+
 # ---------------------------------------------------------------------------
 # 1. add_opex_line
 # ---------------------------------------------------------------------------
@@ -126,13 +144,14 @@ class TestAddOpexLine(unittest.TestCase):
     def test_add_returns_sub_line_with_uuid(self):
         from app.v2.opex_commands import add_opex_line
         pr, _ = _get_project_record_and_ws(self.project_code, self.user_id)
-        sl = add_opex_line(
+        sl, _hash = add_opex_line(
             project_record=pr,
             user_id=self.user_id,
             label="Grid fee",
             parent_group_code="B.09",
             amount_keur=50.0,
             workbook_version=_workbook_version(),
+            expected_content_hash=_current_hash(pr.project_id, self.user_id),
         )
         self.assertTrue(sl.sub_line_id)
         self.assertEqual(sl.label, "Grid fee")
@@ -142,13 +161,14 @@ class TestAddOpexLine(unittest.TestCase):
     def test_business_code_format(self):
         from app.v2.opex_commands import add_opex_line
         pr, _ = _get_project_record_and_ws(self.project_code, self.user_id)
-        sl = add_opex_line(
+        sl, _hash = add_opex_line(
             project_record=pr,
             user_id=self.user_id,
             label="Permit fee",
             parent_group_code="B.09",
             amount_keur=10.0,
             workbook_version=_workbook_version(),
+            expected_content_hash=_current_hash(pr.project_id, self.user_id),
         )
         import re
         self.assertRegex(sl.business_code, r"^B\.09\.U\d{3}$")
@@ -156,13 +176,14 @@ class TestAddOpexLine(unittest.TestCase):
     def test_add_to_non_b09_group(self):
         from app.v2.opex_commands import add_opex_line
         pr, _ = _get_project_record_and_ws(self.project_code, self.user_id)
-        sl = add_opex_line(
+        sl, _hash = add_opex_line(
             project_record=pr,
             user_id=self.user_id,
             label="Extra insurance",
             parent_group_code="B.06",
             amount_keur=20.0,
             workbook_version=_workbook_version(),
+            expected_content_hash=_current_hash(pr.project_id, self.user_id),
         )
         self.assertEqual(sl.parent_group_code, "B.06")
         import re
@@ -172,13 +193,14 @@ class TestAddOpexLine(unittest.TestCase):
         from app.v2.opex_commands import add_opex_line
         from app.persistence.opex_sub_lines import get_active_sub_lines_for_project
         pr, _ = _get_project_record_and_ws(self.project_code, self.user_id)
-        sl = add_opex_line(
+        sl, _hash = add_opex_line(
             project_record=pr,
             user_id=self.user_id,
             label="Market operator fee",
             parent_group_code="B.09",
             amount_keur=75.0,
             workbook_version=_workbook_version(),
+            expected_content_hash=_current_hash(pr.project_id, self.user_id),
         )
         reloaded = get_active_sub_lines_for_project(pr.project_id)
         ids = [r.sub_line_id for r in reloaded]
@@ -187,12 +209,14 @@ class TestAddOpexLine(unittest.TestCase):
     def test_display_order_increments(self):
         from app.v2.opex_commands import add_opex_line
         pr, _ = _get_project_record_and_ws(self.project_code, self.user_id)
-        sl1 = add_opex_line(project_record=pr, user_id=self.user_id, label="Fee A",
+        sl1, _hash = add_opex_line(project_record=pr, user_id=self.user_id, label="Fee A",
                              parent_group_code="B.09", amount_keur=10.0,
-                             workbook_version=_workbook_version())
-        sl2 = add_opex_line(project_record=pr, user_id=self.user_id, label="Fee B",
+                             workbook_version=_workbook_version(),
+                             expected_content_hash=_current_hash(pr.project_id, self.user_id))
+        sl2, _hash = add_opex_line(project_record=pr, user_id=self.user_id, label="Fee B",
                              parent_group_code="B.09", amount_keur=20.0,
-                             workbook_version=_workbook_version())
+                             workbook_version=_workbook_version(),
+                             expected_content_hash=_current_hash(pr.project_id, self.user_id))
         self.assertGreater(sl2.display_order, sl1.display_order)
 
     def test_empty_label_rejected(self):
@@ -201,7 +225,8 @@ class TestAddOpexLine(unittest.TestCase):
         with self.assertRaises(ValueError):
             add_opex_line(project_record=pr, user_id=self.user_id, label="  ",
                           parent_group_code="B.09", amount_keur=10.0,
-                          workbook_version=_workbook_version())
+                          workbook_version=_workbook_version(),
+                          expected_content_hash=_current_hash(pr.project_id, self.user_id))
 
 
 # ---------------------------------------------------------------------------
@@ -216,15 +241,16 @@ class TestUpdateOpexLine(unittest.TestCase):
         from app.v2.opex_commands import add_opex_line
         pr, _ = _get_project_record_and_ws(self.project_code, self.user_id)
         self.project_record = pr
-        self.sl = add_opex_line(
+        self.sl, _hash = add_opex_line(
             project_record=pr, user_id=self.user_id, label="Original",
             parent_group_code="B.09", amount_keur=100.0,
             workbook_version=_workbook_version(),
+            expected_content_hash=_current_hash(pr.project_id, self.user_id),
         )
 
     def test_update_label_and_amount(self):
         from app.v2.opex_commands import update_opex_line
-        updated = update_opex_line(
+        updated, _hash = update_opex_line(
             project_record=self.project_record,
             user_id=self.user_id,
             sub_line_id=self.sl.sub_line_id,
@@ -232,13 +258,14 @@ class TestUpdateOpexLine(unittest.TestCase):
             amount_keur=200.0,
             row_version=self.sl.updated_at,
             workbook_version=_workbook_version(),
+            expected_content_hash=_current_hash(self.project_record.project_id, self.user_id),
         )
         self.assertEqual(updated.label, "Updated fee")
         self.assertAlmostEqual(updated.amount_keur, 200.0)
 
     def test_update_inflation_pct(self):
         from app.v2.opex_commands import update_opex_line
-        updated = update_opex_line(
+        updated, _hash = update_opex_line(
             project_record=self.project_record,
             user_id=self.user_id,
             sub_line_id=self.sl.sub_line_id,
@@ -247,6 +274,7 @@ class TestUpdateOpexLine(unittest.TestCase):
             inflation_pct=2.5,
             row_version=self.sl.updated_at,
             workbook_version=_workbook_version(),
+            expected_content_hash=_current_hash(self.project_record.project_id, self.user_id),
         )
         self.assertAlmostEqual(updated.inflation_pct, 2.5)
 
@@ -260,6 +288,7 @@ class TestUpdateOpexLine(unittest.TestCase):
             amount_keur=150.0,
             row_version=self.sl.updated_at,
             workbook_version=_workbook_version(),
+            expected_content_hash=_current_hash(self.project_record.project_id, self.user_id),
         )
         with self.assertRaises(OpexConcurrentEditError):
             update_opex_line(
@@ -270,11 +299,12 @@ class TestUpdateOpexLine(unittest.TestCase):
                 amount_keur=999.0,
                 row_version=self.sl.updated_at,   # stale
                 workbook_version=_workbook_version(),
+                expected_content_hash=_current_hash(self.project_record.project_id, self.user_id),
             )
 
     def test_update_updates_row_version(self):
         from app.v2.opex_commands import update_opex_line
-        updated = update_opex_line(
+        updated, _hash = update_opex_line(
             project_record=self.project_record,
             user_id=self.user_id,
             sub_line_id=self.sl.sub_line_id,
@@ -282,6 +312,7 @@ class TestUpdateOpexLine(unittest.TestCase):
             amount_keur=50.0,
             row_version=self.sl.updated_at,
             workbook_version=_workbook_version(),
+            expected_content_hash=_current_hash(self.project_record.project_id, self.user_id),
         )
         self.assertNotEqual(updated.updated_at, self.sl.updated_at)
 
@@ -296,6 +327,7 @@ class TestUpdateOpexLine(unittest.TestCase):
                 amount_keur=0.0,
                 row_version=self.sl.updated_at,
                 workbook_version="STALE",
+                expected_content_hash="0" * 64,
             )
 
 
@@ -311,21 +343,23 @@ class TestDeactivateOpexLine(unittest.TestCase):
         from app.v2.opex_commands import add_opex_line
         pr, _ = _get_project_record_and_ws(self.project_code, self.user_id)
         self.project_record = pr
-        self.sl = add_opex_line(
+        self.sl, _hash = add_opex_line(
             project_record=pr, user_id=self.user_id, label="Temp fee",
             parent_group_code="B.09", amount_keur=50.0,
             workbook_version=_workbook_version(),
+            expected_content_hash=_current_hash(pr.project_id, self.user_id),
         )
 
     def test_deactivate_removes_from_active_set(self):
         from app.v2.opex_commands import deactivate_opex_line
         from app.persistence.opex_sub_lines import get_active_sub_lines_for_project
-        ok = deactivate_opex_line(
+        ok, _hash = deactivate_opex_line(
             project_record=self.project_record,
             user_id=self.user_id,
             sub_line_id=self.sl.sub_line_id,
             row_version=self.sl.updated_at,
             workbook_version=_workbook_version(),
+            expected_content_hash=_current_hash(self.project_record.project_id, self.user_id),
         )
         self.assertTrue(ok)
         active = get_active_sub_lines_for_project(self.project_record.project_id)
@@ -340,6 +374,7 @@ class TestDeactivateOpexLine(unittest.TestCase):
             sub_line_id=self.sl.sub_line_id,
             row_version=self.sl.updated_at,
             workbook_version=_workbook_version(),
+            expected_content_hash=_current_hash(self.project_record.project_id, self.user_id),
         )
         with self.assertRaises(OpexConcurrentEditError):
             deactivate_opex_line(
@@ -348,6 +383,7 @@ class TestDeactivateOpexLine(unittest.TestCase):
                 sub_line_id=self.sl.sub_line_id,
                 row_version=self.sl.updated_at,   # stale
                 workbook_version=_workbook_version(),
+                expected_content_hash=_current_hash(self.project_record.project_id, self.user_id),
             )
 
     def test_deactivated_row_excluded_from_viewmodel(self):
@@ -377,6 +413,7 @@ class TestDeactivateOpexLine(unittest.TestCase):
             sub_line_id=self.sl.sub_line_id,
             row_version=self.sl.updated_at,
             workbook_version=_workbook_version(),
+            expected_content_hash=_current_hash(self.project_record.project_id, self.user_id),
         )
         after_sls = get_active_sub_lines_for_project(self.project_record.project_id)
         vm_after = build_opex_view_model(ctx, is_user_project=True, sub_lines=after_sls)
@@ -399,15 +436,18 @@ class TestReorderOpexLines(unittest.TestCase):
         from app.v2.opex_commands import add_opex_line
         pr, _ = _get_project_record_and_ws(self.project_code, self.user_id)
         self.project_record = pr
-        self.sl1 = add_opex_line(project_record=pr, user_id=self.user_id, label="Fee A",
+        self.sl1, _h = add_opex_line(project_record=pr, user_id=self.user_id, label="Fee A",
                                   parent_group_code="B.09", amount_keur=10.0,
-                                  workbook_version=_workbook_version())
-        self.sl2 = add_opex_line(project_record=pr, user_id=self.user_id, label="Fee B",
+                                  workbook_version=_workbook_version(),
+                                  expected_content_hash=_current_hash(pr.project_id, self.user_id))
+        self.sl2, _h = add_opex_line(project_record=pr, user_id=self.user_id, label="Fee B",
                                   parent_group_code="B.09", amount_keur=20.0,
-                                  workbook_version=_workbook_version())
-        self.sl3 = add_opex_line(project_record=pr, user_id=self.user_id, label="Fee C",
+                                  workbook_version=_workbook_version(),
+                                  expected_content_hash=_current_hash(pr.project_id, self.user_id))
+        self.sl3, _h = add_opex_line(project_record=pr, user_id=self.user_id, label="Fee C",
                                   parent_group_code="B.09", amount_keur=30.0,
-                                  workbook_version=_workbook_version())
+                                  workbook_version=_workbook_version(),
+                                  expected_content_hash=_current_hash(pr.project_id, self.user_id))
 
     def test_reorder_updates_display_order(self):
         from app.v2.opex_commands import reorder_opex_lines
@@ -423,6 +463,7 @@ class TestReorderOpexLines(unittest.TestCase):
             parent_group_code="B.09",
             ordered_rows=ordered_rows,
             workbook_version=_workbook_version(),
+            expected_content_hash=_current_hash(self.project_record.project_id, self.user_id),
         )
         active = {sl.sub_line_id: sl for sl in
                   get_active_sub_lines_for_project(self.project_record.project_id)}
@@ -444,6 +485,7 @@ class TestReorderOpexLines(unittest.TestCase):
             parent_group_code="B.09",
             ordered_rows=ordered_rows,
             workbook_version=_workbook_version(),
+            expected_content_hash=_current_hash(self.project_record.project_id, self.user_id),
         )
         sls = [sl for sl in get_active_sub_lines_for_project(self.project_record.project_id)
                if sl.parent_group_code == "B.09"]
@@ -464,6 +506,7 @@ class TestReorderOpexLines(unittest.TestCase):
                 parent_group_code="B.09",
                 ordered_rows=ordered_rows,
                 workbook_version=_workbook_version(),
+                expected_content_hash=_current_hash(self.project_record.project_id, self.user_id),
             )
 
     def test_unknown_id_rejected(self):
@@ -480,6 +523,7 @@ class TestReorderOpexLines(unittest.TestCase):
                 parent_group_code="B.09",
                 ordered_rows=ordered_rows,
                 workbook_version=_workbook_version(),
+                expected_content_hash=_current_hash(self.project_record.project_id, self.user_id),
             )
 
     def test_missing_active_id_rejected(self):
@@ -495,6 +539,7 @@ class TestReorderOpexLines(unittest.TestCase):
                 parent_group_code="B.09",
                 ordered_rows=ordered_rows,
                 workbook_version=_workbook_version(),
+                expected_content_hash=_current_hash(self.project_record.project_id, self.user_id),
             )
 
     def test_duplicate_id_rejected(self):
@@ -511,6 +556,7 @@ class TestReorderOpexLines(unittest.TestCase):
                 parent_group_code="B.09",
                 ordered_rows=ordered_rows,
                 workbook_version=_workbook_version(),
+                expected_content_hash=_current_hash(self.project_record.project_id, self.user_id),
             )
 
     def test_second_reorder_stale_409(self):
@@ -528,11 +574,13 @@ class TestReorderOpexLines(unittest.TestCase):
         ]
         reorder_opex_lines(project_record=self.project_record, user_id=self.user_id,
                            parent_group_code="B.09", ordered_rows=ordered_a,
-                           workbook_version=_workbook_version())
+                           workbook_version=_workbook_version(),
+                           expected_content_hash=_current_hash(self.project_record.project_id, self.user_id))
         with self.assertRaises(OpexConcurrentEditError):
             reorder_opex_lines(project_record=self.project_record, user_id=self.user_id,
                                parent_group_code="B.09", ordered_rows=ordered_b,
-                               workbook_version=_workbook_version())
+                               workbook_version=_workbook_version(),
+                               expected_content_hash=_current_hash(self.project_record.project_id, self.user_id))
 
 
 # ---------------------------------------------------------------------------
@@ -556,6 +604,7 @@ class TestGroupGuards(unittest.TestCase):
                 parent_group_code="B.13",
                 amount_keur=0.0,
                 workbook_version=_workbook_version(),
+                expected_content_hash="0" * 64,
             )
 
     def test_unknown_group_rejected(self):
@@ -568,19 +617,21 @@ class TestGroupGuards(unittest.TestCase):
                 parent_group_code="B.99",
                 amount_keur=0.0,
                 workbook_version=_workbook_version(),
+                expected_content_hash="0" * 64,
             )
 
     def test_all_b01_to_b12_allowed(self):
         from app.v2.opex_commands import add_opex_line
         for n in range(1, 13):
             code = f"B.{n:02d}"
-            sl = add_opex_line(
+            sl, _hash = add_opex_line(
                 project_record=self.project_record,
                 user_id=self.user_id,
                 label=f"Fee in {code}",
                 parent_group_code=code,
                 amount_keur=1.0,
                 workbook_version=_workbook_version(),
+                expected_content_hash=_current_hash(self.project_record.project_id, self.user_id),
             )
             self.assertEqual(sl.parent_group_code, code)
 
@@ -593,6 +644,7 @@ class TestGroupGuards(unittest.TestCase):
                 parent_group_code="B.13",
                 ordered_rows=[],
                 workbook_version=_workbook_version(),
+                expected_content_hash="0" * 64,
             )
 
 
@@ -624,6 +676,7 @@ class TestProtectedReferenceGuard(unittest.TestCase):
                 parent_group_code="B.09",
                 amount_keur=0.0,
                 workbook_version=_workbook_version(),
+                expected_content_hash="0" * 64,
             )
 
     def test_update_factory_template_rejected(self):
@@ -637,6 +690,7 @@ class TestProtectedReferenceGuard(unittest.TestCase):
                 amount_keur=0.0,
                 row_version="ver",
                 workbook_version=_workbook_version(),
+                expected_content_hash="0" * 64,
             )
 
     def test_deactivate_factory_template_rejected(self):
@@ -648,6 +702,7 @@ class TestProtectedReferenceGuard(unittest.TestCase):
                 sub_line_id="any",
                 row_version="ver",
                 workbook_version=_workbook_version(),
+                expected_content_hash="0" * 64,
             )
 
 
@@ -682,9 +737,10 @@ class TestOpexViewModelWithCustomRows(unittest.TestCase):
 
     def test_custom_row_appears_in_group(self):
         from app.v2.opex_commands import add_opex_line
-        add_opex_line(project_record=self.project_record, user_id=self.user_id,
+        _, _hash = add_opex_line(project_record=self.project_record, user_id=self.user_id,
                       label="Grid fee", parent_group_code="B.09", amount_keur=500.0,
-                      workbook_version=_workbook_version())
+                      workbook_version=_workbook_version(),
+                      expected_content_hash=_current_hash(self.project_record.project_id, self.user_id))
         vm = self._vm()
         # Find B.09 group
         b09 = next((g for g in vm.groups if g.code == "B.09"), None)
@@ -698,9 +754,10 @@ class TestOpexViewModelWithCustomRows(unittest.TestCase):
         vm_before = self._vm()
         total_before = vm_before.y1_total_opex
 
-        add_opex_line(project_record=self.project_record, user_id=self.user_id,
+        _, _hash = add_opex_line(project_record=self.project_record, user_id=self.user_id,
                       label="Regulatory fee", parent_group_code="B.09", amount_keur=1000.0,
-                      workbook_version=_workbook_version())
+                      workbook_version=_workbook_version(),
+                      expected_content_hash=_current_hash(self.project_record.project_id, self.user_id))
 
         vm_after = self._vm()
         # Total incl. contingency must increase (B.09 feeds total_excl_contingency)
@@ -708,24 +765,27 @@ class TestOpexViewModelWithCustomRows(unittest.TestCase):
 
     def test_deactivated_row_excluded_from_total(self):
         from app.v2.opex_commands import add_opex_line, deactivate_opex_line
-        sl = add_opex_line(project_record=self.project_record, user_id=self.user_id,
+        sl, _hash = add_opex_line(project_record=self.project_record, user_id=self.user_id,
                            label="Temp fee", parent_group_code="B.09", amount_keur=2000.0,
-                           workbook_version=_workbook_version())
+                           workbook_version=_workbook_version(),
+                           expected_content_hash=_current_hash(self.project_record.project_id, self.user_id))
         vm_with = self._vm()
         total_with = vm_with.y1_total_opex
 
         deactivate_opex_line(project_record=self.project_record, user_id=self.user_id,
                              sub_line_id=sl.sub_line_id, row_version=sl.updated_at,
-                             workbook_version=_workbook_version())
+                             workbook_version=_workbook_version(),
+                             expected_content_hash=_current_hash(self.project_record.project_id, self.user_id))
         vm_without = self._vm()
         self.assertLess(vm_without.y1_total_opex, total_with)
 
     def test_custom_row_year_values_escalated(self):
         from app.v2.opex_commands import add_opex_line
-        add_opex_line(project_record=self.project_record, user_id=self.user_id,
+        _, _hash = add_opex_line(project_record=self.project_record, user_id=self.user_id,
                       label="Fee with escalation", parent_group_code="B.09",
                       amount_keur=1000.0, inflation_pct=2.0,
-                      workbook_version=_workbook_version())
+                      workbook_version=_workbook_version(),
+                      expected_content_hash=_current_hash(self.project_record.project_id, self.user_id))
         vm = self._vm()
         b09 = next(g for g in vm.groups if g.code == "B.09")
         custom = [ln for ln in b09.lines if ln.is_custom][0]
@@ -736,9 +796,10 @@ class TestOpexViewModelWithCustomRows(unittest.TestCase):
     def test_b13_always_derived_unchanged(self):
         """B.13 must remain is_contingency after custom rows added to B.09."""
         from app.v2.opex_commands import add_opex_line
-        add_opex_line(project_record=self.project_record, user_id=self.user_id,
+        _, _hash = add_opex_line(project_record=self.project_record, user_id=self.user_id,
                       label="Fee", parent_group_code="B.09", amount_keur=100.0,
-                      workbook_version=_workbook_version())
+                      workbook_version=_workbook_version(),
+                      expected_content_hash=_current_hash(self.project_record.project_id, self.user_id))
         vm = self._vm()
         b13 = next((g for g in vm.groups if g.code == "B.13"), None)
         if b13 is None:
@@ -763,9 +824,10 @@ class TestInputsSummaryParity(unittest.TestCase):
 
     def test_inputs_summary_opex_matches_detail_sheet(self):
         from app.v2.opex_commands import add_opex_line
-        add_opex_line(project_record=self.project_record, user_id=self.user_id,
+        _, _hash = add_opex_line(project_record=self.project_record, user_id=self.user_id,
                       label="Grid fee", parent_group_code="B.09", amount_keur=777.0,
-                      workbook_version=_workbook_version())
+                      workbook_version=_workbook_version(),
+                      expected_content_hash=_current_hash(self.project_record.project_id, self.user_id))
 
         from app.ui.inputs_summary import build_inputs_summary
         from app.ui.opex_view_model import build_opex_view_model
@@ -823,9 +885,10 @@ class TestB09DomRendering(unittest.TestCase):
         from app.v2.opex_commands import add_opex_line
         user_id = _user_id()
         pr, _ = _get_project_record_and_ws(self.project_code, user_id)
-        sl = add_opex_line(project_record=pr, user_id=user_id, label="Grid fee",
+        sl, _hash = add_opex_line(project_record=pr, user_id=user_id, label="Grid fee",
                            parent_group_code="B.09", amount_keur=500.0,
-                           workbook_version=_workbook_version())
+                           workbook_version=_workbook_version(),
+                           expected_content_hash=_current_hash(pr.project_id, user_id))
         html = _get_workbook_html(self.client, self.project_code)
         soup = BeautifulSoup(html, "html.parser")
         row = soup.find(attrs={"data-testid": f"opex-custom-row-{sl.sub_line_id}"})
@@ -871,6 +934,10 @@ class TestHTMXRoundtrip(unittest.TestCase):
         self.project_code = _create_project(self.client, "htmx")
         self.user_id = _user_id()
 
+    def _content_hash(self):
+        pr, _ = _get_project_record_and_ws(self.project_code, self.user_id)
+        return _current_hash(pr.project_id, self.user_id)
+
     def _htmx_add(self, group_code="B.09", label="Fee", amount_keur=100.0) -> str:
         resp = self.client.post(
             "/v2/opex/line/add",
@@ -880,6 +947,7 @@ class TestHTMXRoundtrip(unittest.TestCase):
                 "label": label,
                 "amount_keur": str(amount_keur),
                 "workbook_version": _workbook_version(),
+                "content_hash": self._content_hash(),
             },
             headers={"HX-Request": "true"},
         )
@@ -915,6 +983,7 @@ class TestHTMXRoundtrip(unittest.TestCase):
                 "amount_keur": "250",
                 "row_version": sl.updated_at,
                 "workbook_version": _workbook_version(),
+                "content_hash": self._content_hash(),
             },
             headers={"HX-Request": "true"},
         )
@@ -932,6 +1001,7 @@ class TestHTMXRoundtrip(unittest.TestCase):
                 "sub_line_id": sl.sub_line_id,
                 "row_version": sl.updated_at,
                 "workbook_version": _workbook_version(),
+                "content_hash": self._content_hash(),
             },
             headers={"HX-Request": "true"},
         )
@@ -949,6 +1019,7 @@ class TestHTMXRoundtrip(unittest.TestCase):
                 "label": "Invalid",
                 "amount_keur": "0",
                 "workbook_version": _workbook_version(),
+                "content_hash": "0" * 64,
             },
             headers={"HX-Request": "true"},
         )
@@ -970,6 +1041,7 @@ class TestHTMXRoundtrip(unittest.TestCase):
                 "label": "Fee",
                 "amount_keur": "100",
                 "workbook_version": _workbook_version(),
+                "content_hash": self._content_hash(),
             },
         )
         self.assertIn(resp.status_code, (302, 303))
@@ -987,6 +1059,7 @@ class TestHTMXRoundtrip(unittest.TestCase):
                 "amount_keur": "0",
                 "row_version": "stale",
                 "workbook_version": _workbook_version(),
+                "content_hash": self._content_hash(),
             },
         )
         # Non-HTMX concurrent error → 409
@@ -1015,36 +1088,42 @@ class TestDirtyState(unittest.TestCase):
 
     def test_add_marks_workspace_dirty(self):
         from app.v2.opex_commands import add_opex_line
-        add_opex_line(project_record=self.project_record, user_id=self.user_id,
+        _, _hash = add_opex_line(project_record=self.project_record, user_id=self.user_id,
                       label="Fee", parent_group_code="B.09", amount_keur=100.0,
-                      workbook_version=_workbook_version())
+                      workbook_version=_workbook_version(),
+                      expected_content_hash=_current_hash(self.project_record.project_id, self.user_id))
         self.assertTrue(self._ws_dirty())
 
     def test_update_marks_workspace_dirty(self):
         from app.v2.opex_commands import add_opex_line, update_opex_line
-        sl = add_opex_line(project_record=self.project_record, user_id=self.user_id,
+        sl, _hash = add_opex_line(project_record=self.project_record, user_id=self.user_id,
                            label="Fee", parent_group_code="B.09", amount_keur=100.0,
-                           workbook_version=_workbook_version())
+                           workbook_version=_workbook_version(),
+                           expected_content_hash=_current_hash(self.project_record.project_id, self.user_id))
         update_opex_line(project_record=self.project_record, user_id=self.user_id,
                          sub_line_id=sl.sub_line_id, label="Updated", amount_keur=200.0,
-                         row_version=sl.updated_at, workbook_version=_workbook_version())
+                         row_version=sl.updated_at, workbook_version=_workbook_version(),
+                         expected_content_hash=_current_hash(self.project_record.project_id, self.user_id))
         self.assertTrue(self._ws_dirty())
 
     def test_deactivate_marks_workspace_dirty(self):
         from app.v2.opex_commands import add_opex_line, deactivate_opex_line
-        sl = add_opex_line(project_record=self.project_record, user_id=self.user_id,
+        sl, _hash = add_opex_line(project_record=self.project_record, user_id=self.user_id,
                            label="Fee", parent_group_code="B.09", amount_keur=100.0,
-                           workbook_version=_workbook_version())
+                           workbook_version=_workbook_version(),
+                           expected_content_hash=_current_hash(self.project_record.project_id, self.user_id))
         deactivate_opex_line(project_record=self.project_record, user_id=self.user_id,
                              sub_line_id=sl.sub_line_id, row_version=sl.updated_at,
-                             workbook_version=_workbook_version())
+                             workbook_version=_workbook_version(),
+                             expected_content_hash=_current_hash(self.project_record.project_id, self.user_id))
         self.assertTrue(self._ws_dirty())
 
     def test_run_required_in_dom_after_add(self):
         from app.v2.opex_commands import add_opex_line
-        add_opex_line(project_record=self.project_record, user_id=self.user_id,
+        _, _hash = add_opex_line(project_record=self.project_record, user_id=self.user_id,
                       label="Fee", parent_group_code="B.09", amount_keur=100.0,
-                      workbook_version=_workbook_version())
+                      workbook_version=_workbook_version(),
+                      expected_content_hash=_current_hash(self.project_record.project_id, self.user_id))
         html = _get_workbook_html(self.client, self.project_code)
         soup = BeautifulSoup(html, "html.parser")
         run_req = soup.find(attrs={"data-testid": "opex-run-required-yes"})
@@ -1069,7 +1148,7 @@ class TestRollbackOnMissingWorkspace(unittest.TestCase):
         before = get_active_sub_lines_for_project(self.project_record.project_id)
 
         with patch(
-            "app.v2.opex_commands.mark_workspace_dirty_cursor",
+            "app.v2.opex_commands.update_composite_hash_cursor",
             return_value=False,
         ):
             with self.assertRaises(OpexCommandError):
@@ -1080,6 +1159,7 @@ class TestRollbackOnMissingWorkspace(unittest.TestCase):
                     parent_group_code="B.09",
                     amount_keur=100.0,
                     workbook_version=_workbook_version(),
+                    expected_content_hash=_current_hash(self.project_record.project_id, self.user_id),
                 )
 
         after = get_active_sub_lines_for_project(self.project_record.project_id)
@@ -1099,26 +1179,30 @@ class TestBusinessCodeUniqueness(unittest.TestCase):
 
     def test_codes_unique_across_adds(self):
         from app.v2.opex_commands import add_opex_line
-        sls = [
-            add_opex_line(project_record=self.project_record, user_id=self.user_id,
+        sls = []
+        for i in range(5):
+            sl, _hash = add_opex_line(project_record=self.project_record, user_id=self.user_id,
                           label=f"Fee {i}", parent_group_code="B.09",
-                          amount_keur=float(i), workbook_version=_workbook_version())
-            for i in range(5)
-        ]
+                          amount_keur=float(i), workbook_version=_workbook_version(),
+                          expected_content_hash=_current_hash(self.project_record.project_id, self.user_id))
+            sls.append(sl)
         codes = [sl.business_code for sl in sls]
         self.assertEqual(len(codes), len(set(codes)), "Business codes must be unique")
 
     def test_gap_preserved_after_deactivate(self):
         from app.v2.opex_commands import add_opex_line, deactivate_opex_line
-        sl1 = add_opex_line(project_record=self.project_record, user_id=self.user_id,
+        sl1, _hash = add_opex_line(project_record=self.project_record, user_id=self.user_id,
                              label="Fee A", parent_group_code="B.09",
-                             amount_keur=10.0, workbook_version=_workbook_version())
+                             amount_keur=10.0, workbook_version=_workbook_version(),
+                             expected_content_hash=_current_hash(self.project_record.project_id, self.user_id))
         deactivate_opex_line(project_record=self.project_record, user_id=self.user_id,
                              sub_line_id=sl1.sub_line_id, row_version=sl1.updated_at,
-                             workbook_version=_workbook_version())
-        sl2 = add_opex_line(project_record=self.project_record, user_id=self.user_id,
+                             workbook_version=_workbook_version(),
+                             expected_content_hash=_current_hash(self.project_record.project_id, self.user_id))
+        sl2, _hash = add_opex_line(project_record=self.project_record, user_id=self.user_id,
                              label="Fee B", parent_group_code="B.09",
-                             amount_keur=20.0, workbook_version=_workbook_version())
+                             amount_keur=20.0, workbook_version=_workbook_version(),
+                             expected_content_hash=_current_hash(self.project_record.project_id, self.user_id))
         # Gap preserved: sl1 was U001, sl2 should be U002 (not reuse U001)
         self.assertNotEqual(sl1.business_code, sl2.business_code)
 
@@ -1140,18 +1224,25 @@ class TestConcurrentAdds(unittest.TestCase):
         errors = []
 
         def _add():
-            try:
-                sl = add_opex_line(
-                    project_record=self.project_record,
-                    user_id=self.user_id,
-                    label="Concurrent fee",
-                    parent_group_code="B.09",
-                    amount_keur=1.0,
-                    workbook_version=_workbook_version(),
-                )
-                results.append(sl)
-            except Exception as e:
-                errors.append(e)
+            from app.v2.opex_commands import OpexStaleIdentityError
+            for _attempt in range(10):
+                try:
+                    sl, _hash = add_opex_line(
+                        project_record=self.project_record,
+                        user_id=self.user_id,
+                        label="Concurrent fee",
+                        parent_group_code="B.09",
+                        amount_keur=1.0,
+                        workbook_version=_workbook_version(),
+                        expected_content_hash=_current_hash(self.project_record.project_id, self.user_id),
+                    )
+                    results.append(sl)
+                    return
+                except OpexStaleIdentityError:
+                    continue  # retry with fresh hash
+                except Exception as e:
+                    errors.append(e)
+                    return
 
         threads = [threading.Thread(target=_add) for _ in range(5)]
         for t in threads:
@@ -1179,9 +1270,10 @@ class TestYearProjectionWithCustomRows(unittest.TestCase):
     def test_b09_proj_row_shows_nonzero_after_add(self):
         from app.v2.opex_commands import add_opex_line
         pr, _ = _get_project_record_and_ws(self.project_code, self.user_id)
-        add_opex_line(project_record=pr, user_id=self.user_id, label="Fee",
+        _, _hash = add_opex_line(project_record=pr, user_id=self.user_id, label="Fee",
                       parent_group_code="B.09", amount_keur=999.0,
-                      workbook_version=_workbook_version())
+                      workbook_version=_workbook_version(),
+                      expected_content_hash=_current_hash(pr.project_id, self.user_id))
         html = _get_workbook_html(self.client, self.project_code)
         soup = BeautifulSoup(html, "html.parser")
         cell = soup.find(attrs={"data-testid": "proj-B.09-y1"})
@@ -1197,9 +1289,10 @@ class TestYearProjectionWithCustomRows(unittest.TestCase):
 
         from app.v2.opex_commands import add_opex_line
         pr, _ = _get_project_record_and_ws(self.project_code, self.user_id)
-        add_opex_line(project_record=pr, user_id=self.user_id, label="Fee",
+        _, _hash = add_opex_line(project_record=pr, user_id=self.user_id, label="Fee",
                       parent_group_code="B.09", amount_keur=5000.0,
-                      workbook_version=_workbook_version())
+                      workbook_version=_workbook_version(),
+                      expected_content_hash=_current_hash(pr.project_id, self.user_id))
 
         html_after = _get_workbook_html(self.client, self.project_code)
         soup_after = BeautifulSoup(html_after, "html.parser")
@@ -1223,9 +1316,10 @@ class TestCanonicalGroupOrder(unittest.TestCase):
         pr, _ = _get_project_record_and_ws(self.project_code, self.user_id)
         # Add to various groups
         for code in ["B.09", "B.03", "B.11"]:
-            add_opex_line(project_record=pr, user_id=self.user_id, label=f"Fee {code}",
+            _, _hash = add_opex_line(project_record=pr, user_id=self.user_id, label=f"Fee {code}",
                           parent_group_code=code, amount_keur=100.0,
-                          workbook_version=_workbook_version())
+                          workbook_version=_workbook_version(),
+                          expected_content_hash=_current_hash(pr.project_id, self.user_id))
 
         html = _get_workbook_html(self.client, self.project_code)
         soup = BeautifulSoup(html, "html.parser")

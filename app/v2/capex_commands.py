@@ -5,28 +5,49 @@ Each command function enforces:
   - Protected-reference guard (factory_template → PermissionError)
   - Category eligibility (C.17/C.18 → ValueError; C.13 contingency → ValueError)
   - Workbook version check (browser registry must match server)
-  - Row-level optimistic concurrency (updated_at token)
-  - Atomic DB write covering both capex_sub_lines and workspace_states
-    (BEGIN EXCLUSIVE — row mutation + dirty-state update in one transaction)
+  - Composite workbook identity CAS (expected_content_hash must match current
+    composite identity before any mutation is applied)
+  - Row-level optimistic concurrency (updated_at token) for precise row conflicts
+  - Atomic DB write covering capex_sub_lines, workspace_states, and the new
+    composite hash (BEGIN EXCLUSIVE — all steps in one transaction)
 
-Commands do NOT route through WorkbookUpdateService or the scalar field
-endpoint.  They write only to capex_sub_lines; the workspace draft_snapshot
-is not touched.  The CapexViewModel is rebuilt from DB state after each
-command so UI totals reflect the mutation.
+Aggregate identity and row version solve different problems; both are required:
+  - Composite identity: cross-type CAS — prevents a stale CAPEX client from
+    mutating after an OPEX row or scalar change (or vice versa).
+  - Row version: precise row-level conflict detection within the CAPEX domain.
+
+Transaction sequence (every mutating command)
+----------------------------------------------
+1. BEGIN EXCLUSIVE
+2. Read workspace row (draft_snapshot + active_scenario_id + active_scenario_name)
+3. Read active CAPEX rows inside transaction
+4. Read active OPEX rows inside transaction
+5. Read active scenario overrides inside transaction
+6. Compute current composite identity → compare submitted expected_content_hash
+7. Reject stale with CapexStaleIdentityError before any mutation
+8. Apply row mutation (create / update / deactivate / reorder)
+9. Recompute composite identity from the new in-transaction state
+10. Persist the new composite hash + dirty=1 to workspace_states
+11. COMMIT
+12. Return (row_result, new_composite_hash) to the caller
+
+Reorder semantics
+-----------------
+Reorder is presentation-only; display_order is excluded from the hash.
+The composite hash is INVARIANT to reorder — the new hash will equal the
+expected_content_hash already held by the client.  The expected_content_hash
+is still validated before reordering to catch cross-type stale state.
 
 Dirty-state guarantee
 ---------------------
 Every successful command sets workspace_states.dirty=1 inside the same
-exclusive transaction as the capex_sub_lines write.  The workspace
-draft_snapshot and saved_snapshot are not modified; the existing
-RuntimeResult is preserved.  The UI will show "Draft changed — Run required"
-on next page load.  If the dirty-state UPDATE fails the whole transaction
-rolls back — the caller never receives a success response for a partially
-committed state.
+exclusive transaction as the capex_sub_lines write.  If the dirty-state
+UPDATE fails the whole transaction rolls back.
 """
 from __future__ import annotations
 
 from contextlib import contextmanager
+from datetime import datetime, timezone
 from typing import Any, Iterator, List, Mapping, Optional, Sequence
 
 from app.persistence.capex_sub_lines import (
@@ -42,7 +63,7 @@ from app.persistence.capex_sub_lines import (
     validate_parent_category,
 )
 from app.persistence.db import get_connection
-from app.persistence.workspace_repository import mark_workspace_dirty_cursor
+from app.persistence.workspace_repository import update_composite_hash_cursor
 from app.workbook.registry import WORKBOOK
 
 # Groups that are derived/computed — no custom rows allowed even though the
@@ -68,6 +89,16 @@ class CapexProtectedGroupError(CapexCommandError):
 
 class CapexConcurrentEditError(CapexCommandError):
     """Row version is stale — concurrent edit detected."""
+
+
+class CapexStaleIdentityError(CapexConcurrentEditError):
+    """Composite workbook identity is stale — cross-type concurrent change detected.
+
+    Raised when the submitted expected_content_hash does not match the
+    current composite identity.  Covers: scalar change by another client,
+    OPEX row mutation, scenario switch — any engine-effective change that
+    rotated the composite hash since the client loaded the page.
+    """
 
 
 class CapexVersionMismatchError(CapexCommandError):
@@ -116,31 +147,127 @@ def _check_group_eligible(parent_category_code: str) -> None:
         raise CapexProtectedGroupError(str(exc)) from exc
 
 
+def _now_utc_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+# ---------------------------------------------------------------------------
+# Mutable hash output container
+# ---------------------------------------------------------------------------
+
+class _HashOut:
+    """Carries the new composite hash out of the context manager."""
+    __slots__ = ("value",)
+    def __init__(self) -> None:
+        self.value: str = ""
+
+
 # ---------------------------------------------------------------------------
 # Atomic transaction context manager
 # ---------------------------------------------------------------------------
 
 @contextmanager
-def _exclusive_tx(user_id: str, project_id: str) -> Iterator[Any]:
-    """Open a BEGIN EXCLUSIVE transaction covering capex_sub_lines and
-    workspace_states; mark the workspace dirty on successful commit.
+def _exclusive_tx(
+    user_id: str,
+    project_id: str,
+    *,
+    expected_content_hash: str,
+    hash_out: _HashOut,
+) -> Iterator[Any]:
+    """BEGIN EXCLUSIVE transaction with composite identity CAS.
 
-    Yields a cursor.  On clean exit: marks workspace dirty (raises
-    CapexCommandError if no workspace row exists, which also triggers
-    rollback), then COMMITs.  On any exception: ROLLBACKs — both the
-    row mutation and the dirty-state update are rolled back atomically.
+    Validates current composite workbook identity against
+    ``expected_content_hash`` before yielding the cursor.  After the body
+    returns, recomputes the identity from the new state, persists the new
+    hash + dirty=1, and COMMITs.  Any failure triggers ROLLBACK.
+
+    The new composite hash after commit is written to ``hash_out.value``.
+
+    Raises CapexStaleIdentityError on hash mismatch (before any mutation).
+    Raises CapexCommandError if identity assembly fails or workspace is missing.
     """
+    from app.workbook.workbook_identity import WorkbookIdentityError, assemble_transactional
+
     conn = get_connection()
     conn.execute("BEGIN EXCLUSIVE")
     cur = conn.cursor()
     try:
-        yield cur
-        marked = mark_workspace_dirty_cursor(cur, user_id=user_id, project_id=project_id)
-        if not marked:
+        # Read workspace row (draft_snapshot + scenario)
+        cur.execute(
+            "SELECT draft_snapshot_json, active_scenario_id, active_scenario_name "
+            "FROM workspace_states WHERE user_id=? AND project_id=?",
+            (user_id, project_id),
+        )
+        ws_row = cur.fetchone()
+        if ws_row is None:
             raise CapexCommandError(
-                "Workspace state is missing; CAPEX row mutation was not committed."
+                "Workspace state is missing; CAPEX row mutation rejected."
             )
+
+        # Compute current composite identity (reads CAPEX + OPEX + scenario inside tx)
+        try:
+            current_identity = assemble_transactional(
+                draft_snapshot_json=ws_row["draft_snapshot_json"] or "{}",
+                project_id=project_id,
+                user_id=user_id,
+                active_scenario_id=ws_row["active_scenario_id"],
+                active_scenario_name=ws_row["active_scenario_name"],
+                cursor=cur,
+                workbook_version=WORKBOOK.version,
+            )
+        except WorkbookIdentityError as exc:
+            raise CapexCommandError(
+                f"Identity assembly failed before mutation; rolling back: {exc}"
+            ) from exc
+
+        # CAS check: reject stale before any mutation
+        if current_identity.composite_hash != expected_content_hash:
+            raise CapexStaleIdentityError(
+                "Workbook changed since page loaded — values refreshed. "
+                "Please try your edit again."
+            )
+
+        # Execute row mutation (caller's body)
+        yield cur
+
+        # Recompute composite identity from new in-transaction state
+        try:
+            cur.execute(
+                "SELECT draft_snapshot_json, active_scenario_id, active_scenario_name "
+                "FROM workspace_states WHERE user_id=? AND project_id=?",
+                (user_id, project_id),
+            )
+            ws_row_after = cur.fetchone() or ws_row
+            new_identity = assemble_transactional(
+                draft_snapshot_json=ws_row_after["draft_snapshot_json"] or "{}",
+                project_id=project_id,
+                user_id=user_id,
+                active_scenario_id=ws_row_after["active_scenario_id"],
+                active_scenario_name=ws_row_after["active_scenario_name"],
+                cursor=cur,
+                workbook_version=WORKBOOK.version,
+            )
+        except WorkbookIdentityError as exc:
+            raise CapexCommandError(
+                f"Identity assembly failed after mutation; rolling back: {exc}"
+            ) from exc
+
+        # Persist new hash + dirty flag atomically with the row mutation
+        updated = update_composite_hash_cursor(
+            cur,
+            user_id=user_id,
+            project_id=project_id,
+            composite_hash=new_identity.composite_hash,
+            now_iso=_now_utc_iso(),
+        )
+        if not updated:
+            raise CapexCommandError(
+                "Workspace state disappeared during mutation; rolling back."
+            )
+
+        hash_out.value = new_identity.composite_hash
         conn.execute("COMMIT")
+
     except Exception:
         try:
             conn.execute("ROLLBACK")
@@ -165,12 +292,13 @@ def add_capex_line(
     amount_keur: float = 0.0,
     notes: str = "",
     workbook_version: str,
-) -> CapexSubLine:
+    expected_content_hash: str,
+) -> tuple[CapexSubLine, str]:
     """Add a custom sub-line to an eligible CAPEX group.
 
-    Returns the persisted CapexSubLine (with UUID, business_code,
-    display_order, timestamps).  The workspace is marked dirty in the
-    same exclusive transaction.
+    Returns ``(sub_line, new_composite_hash)``.  The workspace is marked
+    dirty and the new composite hash is persisted in the same exclusive
+    transaction.
 
     Raises
     ------
@@ -180,6 +308,8 @@ def add_capex_line(
         Group does not accept custom rows (C.13, C.17, C.18, unknown).
     CapexVersionMismatchError
         Browser workbook version is stale.
+    CapexStaleIdentityError
+        Composite workbook identity is stale (cross-type concurrent change).
     ValueError
         label is empty or amount_keur is not numeric.
     """
@@ -188,8 +318,10 @@ def add_capex_line(
     _check_group_eligible(parent_category_code)
 
     project_id: str = project_record.project_id
-    with _exclusive_tx(user_id, project_id) as cur:
-        return create_sub_line(
+    hash_out = _HashOut()
+    result_holder: list[Any] = [None]
+    with _exclusive_tx(user_id, project_id, expected_content_hash=expected_content_hash, hash_out=hash_out) as cur:
+        result_holder[0] = create_sub_line(
             cur,
             project_id=project_id,
             parent_category_code=parent_category_code,
@@ -197,6 +329,7 @@ def add_capex_line(
             amount_keur=float(amount_keur),
             comments=notes,
         )
+    return result_holder[0], hash_out.value
 
 
 def update_capex_line(
@@ -209,28 +342,25 @@ def update_capex_line(
     notes: str = "",
     row_version: str,
     workbook_version: str,
-) -> CapexSubLine:
+    expected_content_hash: str,
+) -> tuple[CapexSubLine, str]:
     """Update an existing custom sub-line's label, amount, and notes.
 
-    Returns the updated CapexSubLine.  The workspace is marked dirty in
-    the same exclusive transaction.
+    Returns ``(updated_sub_line, new_composite_hash)``.
 
     Raises
     ------
-    CapexProtectedReferenceError
-        Project is a factory_template.
-    CapexVersionMismatchError
-        Browser workbook version is stale.
-    CapexConcurrentEditError
-        row_version does not match current updated_at (concurrent edit).
-    CapexRowNotFoundError
-        sub_line_id does not exist or is not active for this project.
+    CapexProtectedReferenceError / CapexVersionMismatchError /
+    CapexStaleIdentityError / CapexConcurrentEditError / CapexRowNotFoundError
     """
     _check_project_allows(project_record)
     _check_workbook_version(workbook_version)
 
     project_id: str = project_record.project_id
-    with _exclusive_tx(user_id, project_id) as cur:
+    hash_out = _HashOut()
+    result_holder: list[Any] = [None]
+
+    with _exclusive_tx(user_id, project_id, expected_content_hash=expected_content_hash, hash_out=hash_out) as cur:
         result = update_sub_line(
             cur,
             project_id=project_id,
@@ -241,7 +371,6 @@ def update_capex_line(
             row_version=row_version,
         )
         if result is None:
-            # Check whether the row exists at all (to distinguish not-found vs stale).
             rows = list_sub_lines_for_project(cur, project_id, include_inactive=True)
             if not any(r.sub_line_id == sub_line_id for r in rows):
                 raise CapexRowNotFoundError(
@@ -251,7 +380,9 @@ def update_capex_line(
                 f"Sub-line {sub_line_id!r} was modified concurrently. "
                 "Reload and try again."
             )
-    return result
+        result_holder[0] = result
+
+    return result_holder[0], hash_out.value
 
 
 def deactivate_capex_line(
@@ -261,28 +392,24 @@ def deactivate_capex_line(
     sub_line_id: str,
     row_version: str,
     workbook_version: str,
-) -> bool:
+    expected_content_hash: str,
+) -> tuple[bool, str]:
     """Deactivate (soft-delete) a custom sub-line.
 
-    Returns True on success.  The workspace is marked dirty in the same
-    exclusive transaction.
+    Returns ``(True, new_composite_hash)`` on success.
 
     Raises
     ------
-    CapexProtectedReferenceError
-        Project is a factory_template.
-    CapexVersionMismatchError
-        Browser workbook version is stale.
-    CapexConcurrentEditError
-        row_version does not match current updated_at.
-    CapexRowNotFoundError
-        sub_line_id not found or already inactive.
+    CapexProtectedReferenceError / CapexVersionMismatchError /
+    CapexStaleIdentityError / CapexConcurrentEditError / CapexRowNotFoundError
     """
     _check_project_allows(project_record)
     _check_workbook_version(workbook_version)
 
     project_id: str = project_record.project_id
-    with _exclusive_tx(user_id, project_id) as cur:
+    hash_out = _HashOut()
+
+    with _exclusive_tx(user_id, project_id, expected_content_hash=expected_content_hash, hash_out=hash_out) as cur:
         ok = deactivate_sub_line_with_version(
             cur,
             project_id=project_id,
@@ -299,7 +426,8 @@ def deactivate_capex_line(
                 f"Sub-line {sub_line_id!r} was modified concurrently. "
                 "Reload and try again."
             )
-    return True
+
+    return True, hash_out.value
 
 
 def reorder_capex_lines(
@@ -309,34 +437,36 @@ def reorder_capex_lines(
     parent_category_code: str,
     ordered_rows: Sequence[Mapping[str, str]],
     workbook_version: str,
-) -> list[CapexSubLine]:
+    expected_content_hash: str,
+) -> tuple[list[CapexSubLine], str]:
     """Reorder custom sub-lines within a group (atomic, fully validated).
 
     ``ordered_rows`` must be the COMPLETE active set for the group, each
     entry as ``{"sub_line_id": str, "row_version": str}``.
 
-    All rows are verified inside a BEGIN EXCLUSIVE transaction:
-    - No duplicates, no unknown IDs, no missing active IDs.
-    - Every row_version must match the current updated_at.
-    - If any check fails the transaction rolls back and
-      CapexConcurrentEditError is raised.
+    Reorder is presentation-only — display_order is excluded from the
+    composite hash, so ``new_composite_hash == expected_content_hash``.
+    The expected_content_hash is still validated to reject cross-type stale
+    state before any mutation is applied.
 
-    On success display_order values are set to 1..N (contiguous, no gaps)
-    and the workspace is marked dirty in the same transaction.
+    Returns ``(ordered_sub_lines, new_composite_hash)``.
 
     Raises
     ------
     CapexProtectedReferenceError / CapexProtectedGroupError /
-    CapexVersionMismatchError / CapexConcurrentEditError
+    CapexVersionMismatchError / CapexStaleIdentityError / CapexConcurrentEditError
     """
     _check_project_allows(project_record)
     _check_workbook_version(workbook_version)
     _check_group_eligible(parent_category_code)
 
     project_id: str = project_record.project_id
-    with _exclusive_tx(user_id, project_id) as cur:
+    hash_out = _HashOut()
+    result_holder: list[Any] = [None]
+
+    with _exclusive_tx(user_id, project_id, expected_content_hash=expected_content_hash, hash_out=hash_out) as cur:
         try:
-            return reorder_sub_lines(
+            result_holder[0] = reorder_sub_lines(
                 cur,
                 project_id=project_id,
                 parent_category_code=parent_category_code,
@@ -344,3 +474,5 @@ def reorder_capex_lines(
             )
         except ReorderConflictError as exc:
             raise CapexConcurrentEditError(str(exc)) from exc
+
+    return result_holder[0], hash_out.value
