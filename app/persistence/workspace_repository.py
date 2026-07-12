@@ -454,6 +454,33 @@ def v2_atomic_draft_update(
 # mark_workspace_dirty
 # -----------------------------------------------------------------
 
+def update_composite_hash_cursor(
+    cur: Any,
+    *,
+    user_id: str,
+    project_id: str,
+    composite_hash: str,
+    now_iso: str,
+) -> bool:
+    """Set dirty=1 and update draft_content_hash using an existing cursor.
+
+    STAB-1B: used by CAPEX/OPEX row commands after a successful mutation so
+    the workspace record carries the new composite identity token.  Must be
+    called inside the same exclusive transaction as the row mutation.
+
+    Returns True if the workspace row was found and updated, False otherwise.
+    """
+    cur.execute(
+        """
+        UPDATE workspace_states
+        SET dirty=1, draft_content_hash=?, updated_at=?
+        WHERE user_id=? AND project_id=?
+        """,
+        (composite_hash, now_iso, user_id, project_id),
+    )
+    return cur.rowcount > 0
+
+
 def mark_workspace_dirty_cursor(cur: Any, *, user_id: str, project_id: str) -> bool:
     """Set dirty=1 on the workspace row using an existing cursor.
 

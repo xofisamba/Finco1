@@ -43,12 +43,15 @@ OPEX    — ``sub_line_id``, ``parent_group_code``, ``business_code``,
           Excluded: ``label``, ``comments``, ``source``, ``created_at``,
           ``updated_at``, ``id``, ``display_order``.
 
-Scenario — ``scenario_id`` (stable identity), ``scenario_name``
-           (display, but included so rename is visible), and every key in
+Scenario — ``scenario_id`` (stable identity) and every key in
            ``overrides_json`` including the reserved opaque keys
            ``_capex_sub_line_overrides`` and ``_opex_sub_line_overrides``.
-           Excluded: ``base_input_set`` (redundant — covered by Scalar axis),
-           timestamps, audit fields.
+           ``scenario_name`` is EXCLUDED: renaming a scenario is
+           presentation-only and does not affect the financial model.
+           Engine identity rotates on: active scenario_id, effective
+           overrides, and schema/version state.
+           Excluded: ``scenario_name``, ``base_input_set`` (redundant —
+           covered by Scalar axis), timestamps, audit fields.
 
 Registry — ``WORKBOOK.version`` (already included via Scalar axis; also
            stored as explicit registry_version key so registry-only changes
@@ -84,22 +87,30 @@ rejected with a normal 409 StaleContentError — the user refreshes and
 gets a composite token.  This is the correct behaviour: the workbook state
 on disk has not changed, but the identity representation has been upgraded.
 
+Fail-closed contract
+--------------------
+All DB reads in this module raise ``WorkbookIdentityError`` on any
+persistence/schema/parse failure.  Callers must not proceed with mutation
+or hash emission after a ``WorkbookIdentityError``.
+
+A missing project (no rows) is NOT a failure — it returns an empty tuple
+or base-case scenario.  Only actual DB/schema/parse errors raise.
+
 Transactional consistency
 --------------------------
-``assemble_for_workspace`` reads scalar state from a pre-loaded
-``WorkspaceStateRecord`` and calls two DB queries for CAPEX/OPEX rows.
-These are separate reads in sequence, not a single BEGIN … COMMIT.
+``assemble_consistent_for_get`` reads all four sources (workspace snapshot,
+CAPEX rows, OPEX rows, active scenario) inside a single ``BEGIN DEFERRED``
+transaction, giving a consistent point-in-time snapshot.  Use this function
+for all GET and HTMX rendering paths.
 
-Known limitation (deferred): if a CAPEX or OPEX row is mutated between the
-workspace read and the row query, the assembled identity may be inconsistent.
-The row-command path uses its own ``BEGIN EXCLUSIVE`` transaction and the
-workspace record is re-read there.  Full transactional consistency across all
-three reads is deferred to a future migration of the scalar snapshot into the
-same row-table transaction.
+``assemble_transactional`` (used by ``v2_atomic_draft_update`` and
+``_exclusive_tx`` in CAPEX/OPEX commands) takes a SQLite connection cursor
+that already holds a ``BEGIN EXCLUSIVE`` lock — it reads all three tables
+inside that lock window, closing the race.
 
-``assemble_transactional`` (used by ``v2_atomic_draft_update``) takes a
-SQLite connection cursor that already holds a ``BEGIN EXCLUSIVE`` lock — it
-reads all three tables inside that lock window, closing the race.
+``assemble_for_workspace`` is kept for backward compatibility and for
+contexts where a workspace record has already been loaded, but callers
+should prefer ``assemble_consistent_for_get`` for the GET path.
 """
 
 from __future__ import annotations
@@ -115,6 +126,23 @@ logger = logging.getLogger(__name__)
 # Discriminator key — absent from pre-STAB-1B scalar-only hashes, so a
 # composite hash is never mistaken for a legacy hash.
 _SCHEMA_VERSION = "composite_v1"
+
+
+# ---------------------------------------------------------------------------
+# Exceptions
+# ---------------------------------------------------------------------------
+
+class WorkbookIdentityError(RuntimeError):
+    """Raised when composite workbook identity cannot be assembled.
+
+    Signals a DB, schema, or parse failure during identity computation.
+    Callers MUST NOT proceed with mutation or hash emission after catching
+    this error.  The transaction must be rolled back.
+
+    A missing/empty project (no rows) is NOT a WorkbookIdentityError —
+    that case returns an empty tuple or base-case scenario normally.
+    Only actual persistence failures raise this exception.
+    """
 
 
 # ---------------------------------------------------------------------------
@@ -141,16 +169,24 @@ class CanonicalOpexRow:
 
 @dataclass(frozen=True)
 class CanonicalScenarioState:
-    """Engine-effective scenario identity."""
+    """Engine-effective scenario identity.
+
+    ``scenario_name`` is stored for display/logging purposes but is NOT
+    included in the hash payload — renaming a scenario is presentation-only
+    and does not affect the financial model.
+    """
     scenario_id: Optional[str]      # None → Base Case (no active scenario)
-    scenario_name: Optional[str]    # display only but included for visibility
+    scenario_name: Optional[str]    # display only; excluded from hash
     overrides: Mapping[str, Any]    # full overrides_json dict, including reserved keys
 
     def to_payload(self) -> dict:
-        """Deterministic serialisable form."""
+        """Deterministic serialisable form for hash computation.
+
+        ``scenario_name`` is intentionally excluded: rename is
+        presentation-only and must not rotate the identity hash.
+        """
         return {
             "scenario_id": self.scenario_id or "",
-            "scenario_name": self.scenario_name or "",
             "overrides": _sort_dict_recursive(dict(self.overrides)),
         }
 
@@ -163,7 +199,8 @@ class CanonicalScenarioState:
 class CompositeWorkbookIdentity:
     """Full engine-effective workbook state identity for Workbook V2.
 
-    Construct via ``assemble_for_workspace()`` or ``assemble_from_parts()``.
+    Construct via ``assemble_consistent_for_get()``, ``assemble_for_workspace()``,
+    or ``assemble_from_parts()``.
     """
     workbook_version: str
     scalar_snapshot: Mapping[str, str]    # non-empty snapshot_origin values
@@ -201,6 +238,8 @@ def _compute_composite_hash(
 
     The ``_schema`` key is a discriminator that ensures composite hashes
     can never collide with pre-STAB-1B scalar-only hashes.
+
+    ``scenario_name`` is NOT included: see CanonicalScenarioState.to_payload().
     """
     payload: dict[str, Any] = {
         "_schema": _SCHEMA_VERSION,
@@ -237,11 +276,15 @@ def _compute_composite_hash(
 
 
 # ---------------------------------------------------------------------------
-# Row loaders
+# Row loaders — fail-closed: DB/schema/parse errors raise WorkbookIdentityError
 # ---------------------------------------------------------------------------
 
 def _load_canonical_capex_rows(project_id: str) -> tuple[CanonicalCapexRow, ...]:
-    """Load active CAPEX sub-lines and extract engine-effective fields."""
+    """Load active CAPEX sub-lines and extract engine-effective fields.
+
+    Returns an empty tuple when the project has no active CAPEX rows.
+    Raises WorkbookIdentityError on any DB/schema/parse failure.
+    """
     if not project_id:
         return ()
     try:
@@ -255,13 +298,21 @@ def _load_canonical_capex_rows(project_id: str) -> tuple[CanonicalCapexRow, ...]
             )
             for r in rows
         )
-    except Exception:
+    except WorkbookIdentityError:
+        raise
+    except Exception as exc:
         logger.exception("STAB-1B: failed to load CAPEX rows; project_id=%s", project_id)
-        return ()
+        raise WorkbookIdentityError(
+            f"CAPEX row read failed for project {project_id!r}: {exc}"
+        ) from exc
 
 
 def _load_canonical_opex_rows(project_id: str) -> tuple[CanonicalOpexRow, ...]:
-    """Load active OPEX sub-lines and extract engine-effective fields."""
+    """Load active OPEX sub-lines and extract engine-effective fields.
+
+    Returns an empty tuple when the project has no active OPEX rows.
+    Raises WorkbookIdentityError on any DB/schema/parse failure.
+    """
     if not project_id:
         return ()
     try:
@@ -277,9 +328,13 @@ def _load_canonical_opex_rows(project_id: str) -> tuple[CanonicalOpexRow, ...]:
             )
             for r in rows
         )
-    except Exception:
+    except WorkbookIdentityError:
+        raise
+    except Exception as exc:
         logger.exception("STAB-1B: failed to load OPEX rows; project_id=%s", project_id)
-        return ()
+        raise WorkbookIdentityError(
+            f"OPEX row read failed for project {project_id!r}: {exc}"
+        ) from exc
 
 
 def _canonical_scenario(
@@ -287,7 +342,11 @@ def _canonical_scenario(
     active_scenario_name: Optional[str],
     user_id: str,
 ) -> CanonicalScenarioState:
-    """Load and canonicalise the active scenario."""
+    """Load and canonicalise the active scenario.
+
+    Returns a base-case (empty overrides) state when no scenario is active.
+    Raises WorkbookIdentityError when a scenario_id is set but DB/parse fails.
+    """
     if not active_scenario_id:
         return CanonicalScenarioState(
             scenario_id=None,
@@ -298,6 +357,12 @@ def _canonical_scenario(
         from app.persistence.scenarios_repository import get_scenario
         rec = get_scenario(active_scenario_id, user_id)
         if rec is None:
+            # Scenario row gone — treat as if no scenario is active.
+            # This is a legitimate state (scenario was deleted) not a read failure.
+            logger.warning(
+                "STAB-1B: active scenario %s not found; treating as base case",
+                active_scenario_id,
+            )
             return CanonicalScenarioState(
                 scenario_id=active_scenario_id,
                 scenario_name=active_scenario_name,
@@ -308,15 +373,15 @@ def _canonical_scenario(
             scenario_name=rec.scenario_name,
             overrides=dict(rec.overrides or {}),
         )
-    except Exception:
+    except WorkbookIdentityError:
+        raise
+    except Exception as exc:
         logger.exception(
             "STAB-1B: failed to load scenario; scenario_id=%s", active_scenario_id
         )
-        return CanonicalScenarioState(
-            scenario_id=active_scenario_id,
-            scenario_name=active_scenario_name,
-            overrides={},
-        )
+        raise WorkbookIdentityError(
+            f"Scenario read failed for scenario_id={active_scenario_id!r}: {exc}"
+        ) from exc
 
 
 # ---------------------------------------------------------------------------
@@ -357,6 +422,62 @@ def assemble_from_parts(
     )
 
 
+def assemble_consistent_for_get(
+    user_id: str,
+    project_id: str,
+    workbook_version: str,
+) -> CompositeWorkbookIdentity:
+    """Assemble composite identity inside a consistent read-only transaction.
+
+    All four sources — workspace snapshot, CAPEX rows, OPEX rows, and active
+    scenario — are read inside a single ``BEGIN DEFERRED`` transaction,
+    giving a point-in-time consistent snapshot.
+
+    Use this function for all GET and HTMX rendering paths.  A token
+    assembled from state read at different moments is not acceptable for
+    the workbook identity contract.
+
+    Raises WorkbookIdentityError on workspace-not-found or any read failure.
+    """
+    from app.persistence.db import get_connection
+    conn = get_connection()
+    try:
+        conn.execute("BEGIN DEFERRED")
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT * FROM workspace_states WHERE user_id=? AND project_id=?",
+            (user_id, project_id),
+        )
+        row = cur.fetchone()
+        if row is None:
+            conn.execute("ROLLBACK")
+            raise WorkbookIdentityError(
+                f"Workspace not found for user={user_id!r} project={project_id!r}"
+            )
+        identity = assemble_transactional(
+            draft_snapshot_json=row["draft_snapshot_json"] or "{}",
+            project_id=project_id,
+            user_id=user_id,
+            active_scenario_id=row["active_scenario_id"],
+            active_scenario_name=row["active_scenario_name"],
+            cursor=cur,
+            workbook_version=workbook_version,
+        )
+        conn.execute("COMMIT")
+        return identity
+    except Exception:
+        try:
+            conn.execute("ROLLBACK")
+        except Exception:
+            pass
+        raise
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
 def assemble_for_workspace(
     ws: Any,  # WorkspaceStateRecord
     *,
@@ -370,8 +491,11 @@ def assemble_for_workspace(
     The scalar state is taken from ``ws.draft_snapshot``.
 
     Note: three separate reads (workspace already read by caller; CAPEX/OPEX
-    rows and scenario each require one additional query).  Full transactional
-    consistency across all reads is a deferred improvement.
+    rows and scenario each require one additional query).  For a fully
+    consistent identity, prefer ``assemble_consistent_for_get()`` which reads
+    all sources inside one transaction.
+
+    Raises WorkbookIdentityError on any DB read failure.
     """
     from app.workbook.registry import WORKBOOK as _wb
     _wv = workbook_version or _wb.version
@@ -405,14 +529,14 @@ def assemble_transactional(
     user_id: str,
     active_scenario_id: Optional[str],
     active_scenario_name: Optional[str],
-    cursor: Any,  # sqlite3.Cursor already inside BEGIN EXCLUSIVE
+    cursor: Any,  # sqlite3.Cursor already inside a transaction
     workbook_version: str,
 ) -> CompositeWorkbookIdentity:
-    """Assemble composite identity inside an existing exclusive transaction.
+    """Assemble composite identity inside an existing transaction.
 
-    Used by ``v2_atomic_draft_update``.  All three reads happen while the
-    BEGIN EXCLUSIVE lock is held, providing transactional consistency across
-    scalar + row + scenario state.
+    Used by ``v2_atomic_draft_update`` and ``_exclusive_tx`` in CAPEX/OPEX
+    commands.  All three reads happen while the transaction lock is held,
+    providing transactional consistency across scalar + row + scenario state.
 
     Args:
         draft_snapshot_json: raw JSON string of ``draft_snapshot_json`` column.
@@ -420,17 +544,26 @@ def assemble_transactional(
         user_id: user UUID (needed for scenario query).
         active_scenario_id: from workspace row.
         active_scenario_name: from workspace row.
-        cursor: SQLite cursor, already inside BEGIN EXCLUSIVE.
+        cursor: SQLite cursor, already inside a transaction.
         workbook_version: WORKBOOK.version string.
 
     Returns:
         ``CompositeWorkbookIdentity`` with consistent hash.
+
+    Raises:
+        WorkbookIdentityError: on any DB/schema/parse failure.
     """
     import json as _json
     from app.workbook.registry import WORKBOOK as _wb
     _wv = workbook_version or _wb.version
 
-    scalar_snapshot = _json.loads(draft_snapshot_json or "{}")
+    try:
+        scalar_snapshot = _json.loads(draft_snapshot_json or "{}")
+    except Exception as exc:
+        raise WorkbookIdentityError(
+            f"Failed to parse draft_snapshot_json: {exc}"
+        ) from exc
+
     template_source = scalar_snapshot.get("template_source", "")
     project_origin = scalar_snapshot.get("project_origin", "")
 
@@ -449,8 +582,13 @@ def assemble_transactional(
                 parent_category_code=r["parent_category_code"],
                 amount_keur=float(r["amount_keur"]),
             ))
-    except Exception:
+    except WorkbookIdentityError:
+        raise
+    except Exception as exc:
         logger.exception("STAB-1B: CAPEX row read failed inside transaction; project_id=%s", project_id)
+        raise WorkbookIdentityError(
+            f"CAPEX row read failed inside transaction for project {project_id!r}: {exc}"
+        ) from exc
 
     # --- OPEX rows (inside transaction) ---
     opex_rows: list[CanonicalOpexRow] = []
@@ -469,8 +607,13 @@ def assemble_transactional(
                 amount_keur=float(r["amount_keur"]),
                 inflation_pct=float(r["inflation_pct"]),
             ))
-    except Exception:
+    except WorkbookIdentityError:
+        raise
+    except Exception as exc:
         logger.exception("STAB-1B: OPEX row read failed inside transaction; project_id=%s", project_id)
+        raise WorkbookIdentityError(
+            f"OPEX row read failed inside transaction for project {project_id!r}: {exc}"
+        ) from exc
 
     # --- Scenario (inside transaction) ---
     scenario_overrides: dict = {}
@@ -483,8 +626,16 @@ def assemble_transactional(
             row = cursor.fetchone()
             if row:
                 scenario_overrides = _json.loads(row["overrides_json"] or "{}")
-        except Exception:
-            logger.exception("STAB-1B: scenario read failed inside transaction; scenario_id=%s", active_scenario_id)
+        except WorkbookIdentityError:
+            raise
+        except Exception as exc:
+            logger.exception(
+                "STAB-1B: scenario read failed inside transaction; scenario_id=%s",
+                active_scenario_id,
+            )
+            raise WorkbookIdentityError(
+                f"Scenario read failed inside transaction for scenario_id={active_scenario_id!r}: {exc}"
+            ) from exc
 
     scenario = CanonicalScenarioState(
         scenario_id=active_scenario_id,

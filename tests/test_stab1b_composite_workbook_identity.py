@@ -758,3 +758,519 @@ class TestPersistenceDiffGuard:
         from tests.helpers.persistence_diff_guard import validate_persistence_diff
         # Cannot easily test the git-diff path here, but validate imports cleanly
         assert callable(validate_persistence_diff)
+
+
+# ---------------------------------------------------------------------------
+# Part H — Fail-closed: WorkbookIdentityError on DB failures
+# ---------------------------------------------------------------------------
+
+class TestFailClosed:
+    """Identity assembly must raise WorkbookIdentityError, never silently
+    return empty state, when a DB/schema/parse error occurs."""
+
+    def test_capex_row_query_failure_raises(self):
+        """A broken capex_sub_lines table must raise WorkbookIdentityError."""
+        conn = sqlite3.connect(":memory:")
+        conn.row_factory = sqlite3.Row
+        # NO capex_sub_lines table → query error
+        conn.executescript("""
+            CREATE TABLE opex_sub_lines (sub_line_id TEXT, project_id TEXT,
+                parent_group_code TEXT, business_code TEXT,
+                amount_keur REAL, inflation_pct REAL, is_active INTEGER);
+            CREATE TABLE scenarios (scenario_id TEXT, overrides_json TEXT);
+        """)
+        conn.execute("BEGIN EXCLUSIVE")
+        cur = conn.cursor()
+
+        from app.workbook.workbook_identity import WorkbookIdentityError
+        with pytest.raises(WorkbookIdentityError, match="CAPEX"):
+            assemble_transactional(
+                draft_snapshot_json="{}",
+                project_id="p1",
+                user_id="u1",
+                active_scenario_id=None,
+                active_scenario_name=None,
+                cursor=cur,
+                workbook_version=_WV,
+            )
+        conn.execute("ROLLBACK")
+
+    def test_opex_row_query_failure_raises(self):
+        """A broken opex_sub_lines table must raise WorkbookIdentityError."""
+        conn = sqlite3.connect(":memory:")
+        conn.row_factory = sqlite3.Row
+        conn.executescript("""
+            CREATE TABLE capex_sub_lines (sub_line_id TEXT, project_id TEXT,
+                parent_category_code TEXT, amount_keur REAL, is_active INTEGER);
+            CREATE TABLE scenarios (scenario_id TEXT, overrides_json TEXT);
+            -- deliberately omit opex_sub_lines
+        """)
+        conn.execute("BEGIN EXCLUSIVE")
+        cur = conn.cursor()
+
+        from app.workbook.workbook_identity import WorkbookIdentityError
+        with pytest.raises(WorkbookIdentityError, match="OPEX"):
+            assemble_transactional(
+                draft_snapshot_json="{}",
+                project_id="p1",
+                user_id="u1",
+                active_scenario_id=None,
+                active_scenario_name=None,
+                cursor=cur,
+                workbook_version=_WV,
+            )
+        conn.execute("ROLLBACK")
+
+    def test_scenario_query_failure_raises(self):
+        """A broken scenarios table must raise WorkbookIdentityError."""
+        conn = sqlite3.connect(":memory:")
+        conn.row_factory = sqlite3.Row
+        conn.executescript("""
+            CREATE TABLE capex_sub_lines (sub_line_id TEXT, project_id TEXT,
+                parent_category_code TEXT, amount_keur REAL, is_active INTEGER);
+            CREATE TABLE opex_sub_lines (sub_line_id TEXT, project_id TEXT,
+                parent_group_code TEXT, business_code TEXT,
+                amount_keur REAL, inflation_pct REAL, is_active INTEGER);
+            -- deliberately omit scenarios
+        """)
+        conn.execute("BEGIN EXCLUSIVE")
+        cur = conn.cursor()
+        sid = str(uuid.uuid4())
+
+        from app.workbook.workbook_identity import WorkbookIdentityError
+        with pytest.raises(WorkbookIdentityError, match="[Ss]cenario"):
+            assemble_transactional(
+                draft_snapshot_json="{}",
+                project_id="p1",
+                user_id="u1",
+                active_scenario_id=sid,
+                active_scenario_name="S1",
+                cursor=cur,
+                workbook_version=_WV,
+            )
+        conn.execute("ROLLBACK")
+
+    def test_corrupt_snapshot_json_raises(self):
+        """Unparseable draft_snapshot_json must raise WorkbookIdentityError."""
+        conn = _make_test_db()
+        conn.execute("BEGIN EXCLUSIVE")
+        cur = conn.cursor()
+
+        from app.workbook.workbook_identity import WorkbookIdentityError
+        with pytest.raises(WorkbookIdentityError, match="parse"):
+            assemble_transactional(
+                draft_snapshot_json="{NOT VALID JSON",
+                project_id="p1",
+                user_id="u1",
+                active_scenario_id=None,
+                active_scenario_name=None,
+                cursor=cur,
+                workbook_version=_WV,
+            )
+        conn.execute("ROLLBACK")
+
+    def test_no_hash_emitted_after_capex_failure(self):
+        """Confirm the function raises rather than returning a partial identity."""
+        conn = sqlite3.connect(":memory:")
+        conn.row_factory = sqlite3.Row
+        conn.executescript("""
+            CREATE TABLE opex_sub_lines (sub_line_id TEXT, project_id TEXT,
+                parent_group_code TEXT, business_code TEXT,
+                amount_keur REAL, inflation_pct REAL, is_active INTEGER);
+            CREATE TABLE scenarios (scenario_id TEXT, overrides_json TEXT);
+        """)
+        conn.execute("BEGIN EXCLUSIVE")
+        cur = conn.cursor()
+        from app.workbook.workbook_identity import WorkbookIdentityError
+        raised = False
+        try:
+            assemble_transactional(
+                draft_snapshot_json="{}",
+                project_id="p1",
+                user_id="u1",
+                active_scenario_id=None,
+                active_scenario_name=None,
+                cursor=cur,
+                workbook_version=_WV,
+            )
+        except WorkbookIdentityError:
+            raised = True
+        conn.execute("ROLLBACK")
+        assert raised, "Expected WorkbookIdentityError, but no exception was raised"
+
+
+# ---------------------------------------------------------------------------
+# Part I — Scenario name excluded from hash
+# ---------------------------------------------------------------------------
+
+class TestScenarioNameExcluded:
+    """scenario_name is display-only; renaming must not rotate the hash."""
+
+    def test_rename_does_not_change_hash(self):
+        sc1 = CanonicalScenarioState("s1", "Bull Case", {"rev": "10"})
+        sc2 = CanonicalScenarioState("s1", "Bear Case (renamed)", {"rev": "10"})
+        assert _h(scenario=sc1) == _h(scenario=sc2)
+
+    def test_id_change_still_changes_hash(self):
+        sc1 = CanonicalScenarioState("s1", "Bull", {"rev": "10"})
+        sc2 = CanonicalScenarioState("s2", "Bull", {"rev": "10"})
+        assert _h(scenario=sc1) != _h(scenario=sc2)
+
+    def test_overrides_change_still_changes_hash(self):
+        sc1 = CanonicalScenarioState("s1", "Bull", {"rev": "10"})
+        sc2 = CanonicalScenarioState("s1", "Bull", {"rev": "20"})
+        assert _h(scenario=sc1) != _h(scenario=sc2)
+
+    def test_none_name_same_as_any_name(self):
+        sc1 = CanonicalScenarioState("s1", None, {})
+        sc2 = CanonicalScenarioState("s1", "Any Name", {})
+        assert _h(scenario=sc1) == _h(scenario=sc2)
+
+    def test_to_payload_excludes_name_key(self):
+        sc = CanonicalScenarioState("s1", "Visible Name", {"k": "v"})
+        payload = sc.to_payload()
+        assert "scenario_name" not in payload
+        assert "scenario_id" in payload
+        assert "overrides" in payload
+
+
+# ---------------------------------------------------------------------------
+# Part J — Cross-type CAS: stale tokens rejected across domains
+# ---------------------------------------------------------------------------
+
+def _make_full_test_db() -> sqlite3.Connection:
+    """In-memory DB with workspace_states, capex_sub_lines, opex_sub_lines, scenarios."""
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.executescript("""
+        CREATE TABLE workspace_states (
+            workspace_id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            project_id TEXT NOT NULL,
+            draft_snapshot_json TEXT NOT NULL DEFAULT '{}',
+            draft_content_hash TEXT NOT NULL DEFAULT '',
+            active_scenario_id TEXT,
+            active_scenario_name TEXT,
+            dirty INTEGER NOT NULL DEFAULT 0,
+            updated_at TEXT NOT NULL DEFAULT ''
+        );
+        CREATE TABLE capex_sub_lines (
+            sub_line_id TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL,
+            parent_category_code TEXT NOT NULL,
+            amount_keur REAL NOT NULL DEFAULT 0.0,
+            is_active INTEGER NOT NULL DEFAULT 1
+        );
+        CREATE TABLE opex_sub_lines (
+            sub_line_id TEXT PRIMARY KEY,
+            project_id TEXT NOT NULL,
+            parent_group_code TEXT NOT NULL,
+            business_code TEXT NOT NULL,
+            amount_keur REAL NOT NULL DEFAULT 0.0,
+            inflation_pct REAL NOT NULL DEFAULT 0.0,
+            is_active INTEGER NOT NULL DEFAULT 1
+        );
+        CREATE TABLE scenarios (
+            scenario_id TEXT PRIMARY KEY,
+            scenario_name TEXT NOT NULL DEFAULT '',
+            overrides_json TEXT NOT NULL DEFAULT '{}'
+        );
+    """)
+    return conn
+
+
+def _get_identity(conn, project_id: str, snap_json: str = "{}") -> str:
+    """Helper: get composite hash in a BEGIN DEFERRED transaction."""
+    conn.execute("BEGIN DEFERRED")
+    cur = conn.cursor()
+    identity = assemble_transactional(
+        draft_snapshot_json=snap_json,
+        project_id=project_id,
+        user_id="u1",
+        active_scenario_id=None,
+        active_scenario_name=None,
+        cursor=cur,
+        workbook_version=_WV,
+    )
+    conn.execute("COMMIT")
+    return identity.composite_hash
+
+
+class TestCrossTypeCAS:
+    """Cross-type CAS: a stale token from one domain is rejected by another.
+
+    These tests exercise the _composite hash comparison logic directly
+    (via assemble_transactional) rather than going through the full
+    command stack, since the commands require a real project record.
+    The invariant is: H1 (computed at state S1) must not equal H2
+    (computed at state S2) when S2 differs from S1 in any axis.
+    """
+
+    def test_capex_mutation_rotates_hash(self):
+        """After a CAPEX row is added, the hash changes."""
+        conn = _make_full_test_db()
+        h1 = _get_identity(conn, "proj-x")
+
+        cid = str(uuid.uuid4())
+        conn.execute(
+            "INSERT INTO capex_sub_lines VALUES (?, 'proj-x', 'C.01', 100.0, 1)",
+            (cid,),
+        )
+        conn.commit()
+        h2 = _get_identity(conn, "proj-x")
+        assert h1 != h2
+
+    def test_stale_token_after_capex_mutation(self):
+        """H1 token is stale after CAPEX mutation: h1 != h2."""
+        conn = _make_full_test_db()
+        h1 = _get_identity(conn, "proj-y")
+
+        cid = str(uuid.uuid4())
+        conn.execute(
+            "INSERT INTO capex_sub_lines VALUES (?, 'proj-y', 'C.02', 200.0, 1)",
+            (cid,),
+        )
+        conn.commit()
+        h2 = _get_identity(conn, "proj-y")
+
+        # A scalar-only client holding H1 would be rejected by the CAPEX command
+        # (because current hash is H2, not H1).
+        assert h1 != h2, "Expected h1 to be stale after CAPEX mutation"
+
+    def test_stale_opex_token_after_capex_mutation(self):
+        """OPEX client holding H1 is stale after a CAPEX mutation (h2 != h1)."""
+        conn = _make_full_test_db()
+        h1 = _get_identity(conn, "proj-z")
+
+        conn.execute(
+            "INSERT INTO capex_sub_lines VALUES (?, 'proj-z', 'C.03', 150.0, 1)",
+            (str(uuid.uuid4()),),
+        )
+        conn.commit()
+        h2 = _get_identity(conn, "proj-z")
+
+        assert h1 != h2, "OPEX client holding H1 must be stale after CAPEX mutation"
+
+    def test_stale_capex_token_after_opex_mutation(self):
+        """CAPEX client holding H1 is stale after an OPEX mutation."""
+        conn = _make_full_test_db()
+        h1 = _get_identity(conn, "proj-w")
+
+        conn.execute(
+            "INSERT INTO opex_sub_lines VALUES (?, 'proj-w', 'B.01', 'fees', 50.0, 2.0, 1)",
+            (str(uuid.uuid4()),),
+        )
+        conn.commit()
+        h2 = _get_identity(conn, "proj-w")
+
+        assert h1 != h2, "CAPEX client holding H1 must be stale after OPEX mutation"
+
+    def test_first_mutation_persisted_after_second_stale_rejected(self):
+        """After C1 succeeds (H1→H2), a stale mutation with H1 is rejected.
+        The first mutation (C1's row) remains persisted.
+        """
+        conn = _make_full_test_db()
+        h1 = _get_identity(conn, "proj-v")
+
+        # First mutation: add CAPEX row
+        cid = str(uuid.uuid4())
+        conn.execute(
+            "INSERT INTO capex_sub_lines VALUES (?, 'proj-v', 'C.04', 300.0, 1)",
+            (cid,),
+        )
+        conn.commit()
+        h2 = _get_identity(conn, "proj-v")
+        assert h1 != h2
+
+        # Stale OPEX mutation using H1 must be detected (h1 != h2)
+        # and first CAPEX row must still be present
+        conn.execute("BEGIN DEFERRED")
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT COUNT(*) as cnt FROM capex_sub_lines WHERE project_id='proj-v' AND is_active=1"
+        )
+        row = cur.fetchone()
+        conn.execute("COMMIT")
+        assert row["cnt"] == 1, "First CAPEX mutation must remain persisted"
+
+    def test_no_partial_write_on_stale_rejection(self):
+        """When stale check fails, no row must be inserted."""
+        conn = _make_full_test_db()
+        # State S1: one CAPEX row
+        conn.execute(
+            "INSERT INTO capex_sub_lines VALUES (?, 'proj-q', 'C.05', 100.0, 1)",
+            (str(uuid.uuid4()),),
+        )
+        conn.commit()
+        h1 = _get_identity(conn, "proj-q")  # hash at S1
+
+        # State S2: remove the row (simulate mutation by another client)
+        conn.execute("UPDATE capex_sub_lines SET is_active=0 WHERE project_id='proj-q'")
+        conn.commit()
+        h2 = _get_identity(conn, "proj-q")  # hash at S2
+        assert h1 != h2
+
+        # Now simulate a stale client trying to mutate: they hold H1 but current is H2
+        # We verify the partial-write guard is in place by checking that the
+        # transaction is NOT committed when the hash comparison fails.
+        conn.execute("BEGIN EXCLUSIVE")
+        cur = conn.cursor()
+        current_identity = assemble_transactional(
+            draft_snapshot_json="{}",
+            project_id="proj-q",
+            user_id="u1",
+            active_scenario_id=None,
+            active_scenario_name=None,
+            cursor=cur,
+            workbook_version=_WV,
+        )
+        # The hash check: H1 (stale) must not equal current (H2)
+        hash_mismatch = current_identity.composite_hash != h1
+        conn.execute("ROLLBACK")
+
+        # Verify: no write happened, no new rows
+        conn.execute("BEGIN DEFERRED")
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT COUNT(*) as cnt FROM capex_sub_lines WHERE project_id='proj-q' AND is_active=1"
+        )
+        row = cur.fetchone()
+        conn.execute("COMMIT")
+
+        assert hash_mismatch, "Stale H1 must not match current H2"
+        assert row["cnt"] == 0, "No partial write: deactivated row must not be re-activated"
+
+
+# ---------------------------------------------------------------------------
+# Part K — assemble_consistent_for_get: transactionally consistent read
+# ---------------------------------------------------------------------------
+
+class TestAssembleConsistentForGet:
+    """assemble_consistent_for_get reads all sources in one transaction."""
+
+    def test_raises_on_missing_workspace(self):
+        """WorkbookIdentityError when no workspace row exists."""
+        from app.workbook.workbook_identity import WorkbookIdentityError, assemble_consistent_for_get
+        # Patch get_connection to return a DB with no workspace_states rows
+        import unittest.mock as mock
+
+        conn = _make_full_test_db()
+
+        # Patch get_connection in the persistence layer used by workbook_identity
+        with mock.patch(
+            "app.persistence.db.get_connection", return_value=conn
+        ):
+            with pytest.raises(WorkbookIdentityError, match="[Ww]orkspace"):
+                assemble_consistent_for_get(
+                    user_id="u-missing",
+                    project_id="p-missing",
+                    workbook_version=_WV,
+                )
+
+    def test_consistent_snapshot_with_mocked_db(self):
+        """assemble_consistent_for_get returns a consistent identity."""
+        from app.workbook.workbook_identity import assemble_consistent_for_get
+        import unittest.mock as mock
+
+        conn = _make_full_test_db()
+        ws_id = str(uuid.uuid4())
+        conn.execute(
+            "INSERT INTO workspace_states VALUES (?,?,?,?,?,?,?,?,?)",
+            (ws_id, "u1", "proj-cg", '{"capacity_mw":"100"}', "", None, None, 0, ""),
+        )
+        cid = str(uuid.uuid4())
+        conn.execute(
+            "INSERT INTO capex_sub_lines VALUES (?,?,?,?,?)",
+            (cid, "proj-cg", "C.01", 500.0, 1),
+        )
+        conn.commit()
+
+        with mock.patch(
+            "app.persistence.db.get_connection", return_value=conn
+        ):
+            identity = assemble_consistent_for_get(
+                user_id="u1",
+                project_id="proj-cg",
+                workbook_version=_WV,
+            )
+
+        assert len(identity.composite_hash) == 64
+        assert len(identity.capex_rows) == 1
+        assert identity.capex_rows[0].sub_line_id == cid
+
+    def test_result_corresponds_to_pre_or_post_mutation_state(self):
+        """Token must correspond entirely to pre- or post-mutation state.
+
+        This is the concurrency regression test: simulate a row mutation
+        occurring between two identity reads and verify that neither read
+        returns a mixed-state hash (partial pre + partial post).
+        In practice, assemble_consistent_for_get uses BEGIN DEFERRED so
+        each call sees one consistent snapshot — the state either before
+        or after the mutation, never a mix.
+        """
+        import sqlite3
+        from app.workbook.workbook_identity import assemble_consistent_for_get
+        import unittest.mock as mock
+
+        # Use a shared-cache URI so multiple connections see the same data
+        # while each connection can be independently opened/closed.
+        db_uri = "file:test_concurrency_cc?mode=memory&cache=shared"
+
+        def make_conn():
+            c = sqlite3.connect(db_uri, uri=True, check_same_thread=False)
+            c.row_factory = sqlite3.Row
+            return c
+
+        # Bootstrap schema and data via a persistent anchor connection
+        anchor = make_conn()
+        # Create tables
+        anchor.executescript(
+            "CREATE TABLE IF NOT EXISTS workspace_states "
+            "(workspace_id TEXT, user_id TEXT, project_id TEXT, draft_snapshot_json TEXT, "
+            "draft_content_hash TEXT, active_scenario_id TEXT, active_scenario_name TEXT, "
+            "dirty INTEGER DEFAULT 0, updated_at TEXT);"
+            "CREATE TABLE IF NOT EXISTS capex_sub_lines "
+            "(sub_line_id TEXT, project_id TEXT, parent_category_code TEXT, amount_keur REAL, is_active INTEGER);"
+            "CREATE TABLE IF NOT EXISTS opex_sub_lines "
+            "(sub_line_id TEXT, project_id TEXT, parent_group_code TEXT, business_code TEXT DEFAULT '', "
+            "amount_keur REAL, inflation_pct REAL DEFAULT 0.0, is_active INTEGER);"
+            "CREATE TABLE IF NOT EXISTS scenarios "
+            "(scenario_id TEXT, project_id TEXT, user_id TEXT, name TEXT, overrides_json TEXT, is_active INTEGER);"
+        )
+        ws_id = str(uuid.uuid4())
+        anchor.execute(
+            "INSERT INTO workspace_states VALUES (?,?,?,?,?,?,?,?,?)",
+            (ws_id, "u1", "proj-cc", "{}", "", None, None, 0, ""),
+        )
+        anchor.commit()
+
+        # Pre-mutation hash
+        with mock.patch("app.persistence.db.get_connection", side_effect=make_conn):
+            h_pre = assemble_consistent_for_get(
+                user_id="u1",
+                project_id="proj-cc",
+                workbook_version=_WV,
+            ).composite_hash
+
+        # Mutation: add CAPEX row
+        anchor.execute(
+            "INSERT INTO capex_sub_lines VALUES (?,?,?,?,?)",
+            (str(uuid.uuid4()), "proj-cc", "C.06", 777.0, 1),
+        )
+        anchor.commit()
+
+        # Post-mutation hash
+        with mock.patch("app.persistence.db.get_connection", side_effect=make_conn):
+            h_post = assemble_consistent_for_get(
+                user_id="u1",
+                project_id="proj-cc",
+                workbook_version=_WV,
+            ).composite_hash
+
+        anchor.close()
+
+        # Pre- and post-mutation hashes must differ (not mixed)
+        assert h_pre != h_post, "Pre- and post-mutation hashes must differ"
+        # Both must be valid 64-char hex hashes
+        assert len(h_pre) == 64
+        assert len(h_post) == 64

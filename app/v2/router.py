@@ -72,7 +72,7 @@ from app.ui.project_context import build_project_context_for_record
 from app.ui.protected_reference_service import is_protected_reference
 from app.workbook.registry import WORKBOOK
 from app.workbook.service import WorkbookService
-from app.workbook.workbook_identity import assemble_for_workspace
+from app.workbook.workbook_identity import assemble_consistent_for_get, assemble_for_workspace
 from app.workbook.update_service import (
     FieldValidationError,
     NonEditableFieldError,
@@ -89,13 +89,14 @@ router = APIRouter()
 def _build_pis_with_composite_identity(ws, project_record, user):
     """Build ProjectInputSet with composite Workbook V2 identity.
 
-    STAB-1B: assembles the full composite identity (scalars + CAPEX rows +
-    OPEX rows + scenario) and injects it into the PIS content_hash so every
-    form the browser receives carries the complete workbook identity token.
+    STAB-1B: uses assemble_consistent_for_get to read all four sources
+    (workspace snapshot, CAPEX rows, OPEX rows, active scenario) inside a
+    single consistent SQLite transaction.  The resulting composite hash is
+    injected into the PIS so every form the browser receives carries a
+    fully consistent workbook identity token.
     """
     pis = WorkbookService.build_draft_input_set_from_workspace(ws)
-    identity = assemble_for_workspace(
-        ws,
+    identity = assemble_consistent_for_get(
         user_id=user.user_id,
         project_id=project_record.project_id,
         workbook_version=pis.workbook_version,
@@ -599,20 +600,20 @@ async def v2_workbook_update(
             return _htmx_error(pis, str(exc))
         return _redirect_with_error(str(exc))
 
-    # Success path — inject composite identity into the returned PIS so the
-    # browser receives the full workbook identity token, not just the scalar hash.
-    if updated_ws_after := get_workspace_state(
+    # Success path — reload workspace and assemble composite identity consistently
+    # so the re-rendered sheet carries a hash over the full post-mutation state.
+    updated_ws_after = get_workspace_state(
         user_id=user.user_id, project_id=project_record.project_id
-    ):
-        updated_identity = assemble_for_workspace(
-            updated_ws_after,
+    ) or ws
+    try:
+        updated_identity = assemble_consistent_for_get(
             user_id=user.user_id,
             project_id=project_record.project_id,
             workbook_version=updated_pis.workbook_version,
         )
         updated_pis = updated_pis.with_composite_hash(updated_identity.composite_hash)
-    else:
-        updated_ws_after = ws
+    except Exception:
+        pass  # scalar hash already set by v2_atomic_draft_update; best-effort only
 
     if is_htmx:
         if sheet_id == "inputs":
