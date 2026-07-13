@@ -974,138 +974,261 @@ class TestTaxFirstLoadHydration(unittest.TestCase):
                 "content_hash must not rotate between two consecutive GETs"
 
 
+def _legacy_form_save(client: TestClient, project_code: str) -> int:
+    """POST to /scenarios/state/draft — the canonical legacy save path.
+
+    This is the real production path that calls _collect_form_snapshot()
+    (which has no tax keys). Returns the HTTP status code.
+    """
+    resp = client.post(
+        "/scenarios/state/draft",
+        data={
+            "active_project": project_code,
+            "project_name": "Merge Preserve Test",
+            "project_type": "Wind",
+            "country_market": "Germany",
+            "capacity_mw": "100",
+            "cod_date": "2027-06-01",
+            "construction_months": "24",
+            "horizon_years": "20",
+            "tariff_eur_mwh": "65",
+            "ppa_term_years": "15",
+            "p50_hours": "2500",
+            "opex_y1_keur": "5000",
+            "total_capex_keur": "80000",
+            "gearing_pct": "70",
+            "interest_rate_pct": "4.5",
+            "tenor_years": "18",
+            "target_dscr": "1.30",
+            # Intentionally NO tax_corporate_rate_pct or tax_loss_carryforward_years.
+        },
+        follow_redirects=False,
+    )
+    return resp.status_code
+
+
+def _get_workspace_by_code(project_code: str):
+    """Return (WorkspaceStateRecord, project_id) for the test user's project."""
+    from app.persistence.projects_repository import get_project_record
+    from app.persistence.workspace_repository import get_workspace_state
+    # create_session_token() defaults to user_id="1"
+    proj = get_project_record(user_id="1", project_code=project_code)
+    assert proj is not None, f"Project not found in DB: {project_code}"
+    ws = get_workspace_state("1", proj.project_id)
+    return ws, proj.project_id
+
+
+def _set_tax_via_v2(client: TestClient, project_code: str, cit_pct: float, lcf_years: int) -> None:
+    """Set both Tax fields via the V2 endpoint. Asserts 200 on each POST."""
+    ch1, wv1, _ = _get_tax_form_details(client, project_code, "tax.assumptions.cit_rate_pct")
+    resp1 = client.post(
+        "/v2/workbook/update",
+        data={
+            "project": project_code,
+            "field_id": "tax.assumptions.cit_rate_pct",
+            "value": str(cit_pct),
+            "content_hash": ch1,
+            "workbook_version": wv1,
+            "sheet_id": "tax",
+        },
+        headers={"HX-Request": "true"},
+    )
+    assert resp1.status_code == 200, f"CIT rate set failed: {resp1.status_code} {resp1.text[:300]}"
+
+    ch2, wv2, _ = _get_tax_form_details(client, project_code, "tax.assumptions.loss_carryforward_years")
+    resp2 = client.post(
+        "/v2/workbook/update",
+        data={
+            "project": project_code,
+            "field_id": "tax.assumptions.loss_carryforward_years",
+            "value": str(lcf_years),
+            "content_hash": ch2,
+            "workbook_version": wv2,
+            "sheet_id": "tax",
+        },
+        headers={"HX-Request": "true"},
+    )
+    assert resp2.status_code == 200, f"LCF set failed: {resp2.status_code} {resp2.text[:300]}"
+
+
+def _find_tax_form_value(soup: BeautifulSoup, field_id: str) -> str:
+    """Find the value input inside the Tax form identified by a hidden field_id input.
+
+    The render_field macro produces:
+      <input type="hidden" name="field_id" value="tax.assumptions.cit_rate_pct">
+      <input type="number" name="value" class="v2-field-input" value="...">
+    inside the same <form>.
+    """
+    tax_div = soup.find(id="v2-sheet-tax")
+    assert tax_div is not None, "v2-sheet-tax div not found in workbook HTML"
+    forms = tax_div.find_all("form")
+    form = next(
+        (f for f in forms
+         if any(i.get("value") == field_id
+                for i in f.find_all("input", {"name": "field_id"}))),
+        None,
+    )
+    assert form is not None, f"No form found for field_id={field_id}"
+    value_input = form.find("input", {"name": "value"})
+    assert value_input is not None, f"No 'value' input in form for field_id={field_id}"
+    return value_input.get("value", "")
+
+
 class TestTaxMergePreserve(unittest.TestCase):
     """Merge-preserve: V2 Tax values survive legacy save paths."""
 
-    def _set_tax_via_v2(self, client, project_code: str, cit_pct: float, lcf_years: int):
-        """Set both Tax fields via the V2 endpoint."""
-        ch1, wv1, _ = _get_tax_form_details(client, project_code, "tax.assumptions.cit_rate_pct")
-        resp1 = client.post(
-            "/v2/workbook/update",
-            data={
-                "project": project_code,
-                "field_id": "tax.assumptions.cit_rate_pct",
-                "value": str(cit_pct),
-                "content_hash": ch1,
-                "workbook_version": wv1,
-                "sheet_id": "tax",
-            },
-            headers={"HX-Request": "true"},
-        )
-        assert resp1.status_code == 200, f"CIT rate set failed: {resp1.status_code} {resp1.text[:200]}"
-
-        ch2, wv2, _ = _get_tax_form_details(client, project_code, "tax.assumptions.loss_carryforward_years")
-        resp2 = client.post(
-            "/v2/workbook/update",
-            data={
-                "project": project_code,
-                "field_id": "tax.assumptions.loss_carryforward_years",
-                "value": str(lcf_years),
-                "content_hash": ch2,
-                "workbook_version": wv2,
-                "sheet_id": "tax",
-            },
-            headers={"HX-Request": "true"},
-        )
-        assert resp2.status_code == 200, f"LCF set failed: {resp2.status_code} {resp2.text[:200]}"
-
-    def _legacy_save(self, client, project_code: str):
-        """Simulate a legacy form save (no tax keys in form data)."""
-        client.post(
-            "/save",
-            data={
-                "project_code": project_code,
-                "project_name": "Merge Preserve Test",
-                "project_type": "Wind",
-                "country_market": "Germany",
-                "capacity_mw": "100",
-                "cod_date": "2027-06-01",
-                "construction_months": "24",
-                "horizon_years": "20",
-                "tariff_eur_mwh": "65",
-                "ppa_term_years": "15",
-                "p50_hours": "2500",
-                "opex_y1_keur": "5000",
-                "total_capex_keur": "80000",
-                "gearing_pct": "70",
-                "interest_rate_pct": "4.5",
-                "tenor_years": "18",
-                "target_dscr": "1.30",
-                # Intentionally NO tax_corporate_rate_pct / tax_loss_carryforward_years.
-            },
-            follow_redirects=False,
-        )
-
     def test_v2_tax_values_survive_legacy_save(self):
-        """Tax values set via V2 endpoint must still be present after a legacy save."""
+        """Full path: V2 Tax edit → legacy save → workspace DB → HTML → ProjectInputs.
+
+        Proves:
+        1. Legacy save via /scenarios/state/draft returns expected success status.
+        2. Workbook HTML after legacy save shows 17.5% CIT and 7yr LCF.
+        3. draft_snapshot in DB has the correct Tax keys.
+        4. build_projectinputs_from_snapshot materializes correct TaxParams.
+        """
+        from app.input_adapter import build_projectinputs_from_snapshot
         client = _authed_client()
         project_code = _create_project(client, "legacy-save-test")
 
-        # Set Tax values via V2.
-        self._set_tax_via_v2(client, project_code, cit_pct=17.5, lcf_years=7)
+        # Step 1: Set Tax values via V2 endpoint.
+        _set_tax_via_v2(client, project_code, cit_pct=17.5, lcf_years=7)
 
-        # Simulate legacy form save (no tax keys).
-        self._legacy_save(client, project_code)
+        # Step 2: Verify Tax values in DB after V2 edits (pre-legacy-save baseline).
+        ws_pre, _proj_id = _get_workspace_by_code(project_code)
+        assert ws_pre is not None, "Workspace not found after V2 edits"
+        assert str(ws_pre.draft_snapshot.get("tax_corporate_rate_pct", "")).strip() != "", \
+            "tax_corporate_rate_pct should be set in DB after V2 edit"
 
-        # Verify Tax values are preserved in the workbook after legacy save.
+        # Step 3: Legacy save — /scenarios/state/draft (the real production path).
+        # This calls _collect_form_snapshot() which has no tax keys.
+        save_status = _legacy_form_save(client, project_code)
+        assert save_status in (200, 302, 303), \
+            f"/scenarios/state/draft returned unexpected status {save_status}"
+
+        # Step 4: Verify Tax values survived in the workspace draft_snapshot (DB layer).
+        ws_post, _ = _get_workspace_by_code(project_code)
+        assert ws_post is not None, "Workspace not found after legacy save"
+        snap = ws_post.draft_snapshot
+
+        cit_snap = str(snap.get("tax_corporate_rate_pct", "")).strip()
+        assert cit_snap != "", \
+            f"tax_corporate_rate_pct was erased from draft_snapshot by legacy save; got {snap.get('tax_corporate_rate_pct')!r}"
+        assert float(cit_snap) == 17.5, \
+            f"tax_corporate_rate_pct mismatch in draft_snapshot: expected '17.5', got {cit_snap!r}"
+
+        lcf_snap = str(snap.get("tax_loss_carryforward_years", "")).strip()
+        assert lcf_snap != "", \
+            f"tax_loss_carryforward_years was erased from draft_snapshot by legacy save; got {snap.get('tax_loss_carryforward_years')!r}"
+        assert int(float(lcf_snap)) == 7, \
+            f"tax_loss_carryforward_years mismatch in draft_snapshot: expected '7', got {lcf_snap!r}"
+
+        # Step 5: Materialize snapshot through the canonical adapter path.
+        inputs = build_projectinputs_from_snapshot(snap)
+        assert abs(inputs.tax.corporate_rate - 0.175) < 1e-9, \
+            f"ProjectInputs.tax.corporate_rate should be 0.175 (17.5÷100), got {inputs.tax.corporate_rate}"
+        assert inputs.tax.loss_carryforward_years == 7, \
+            f"ProjectInputs.tax.loss_carryforward_years should be 7, got {inputs.tax.loss_carryforward_years}"
+
+        # Step 6: HTML layer — workbook reload shows correct values.
         html = _get_workbook(client, project_code)
         soup = BeautifulSoup(html, "html.parser")
-        cit_input = soup.find("input", {"name": "tax.assumptions.cit_rate_pct"})
-        if cit_input:
-            val = cit_input.get("value", "")
-            assert val and float(val) == 17.5, \
-                f"CIT Rate lost after legacy save: got '{val}' expected '17.5'"
-        lcf_input = soup.find("input", {"name": "tax.assumptions.loss_carryforward_years"})
-        if lcf_input:
-            val2 = lcf_input.get("value", "")
-            assert val2 and int(float(val2)) == 7, \
-                f"Loss Carryforward lost after legacy save: got '{val2}' expected '7'"
 
-    def test_merge_preserve_does_not_inject_empty_strings(self):
-        """merge-preserve must never write empty strings into V2-only keys.
+        cit_val = _find_tax_form_value(soup, "tax.assumptions.cit_rate_pct")
+        assert cit_val != "", "CIT Rate input must have a non-empty value after legacy save"
+        assert float(cit_val) == 17.5, \
+            f"CIT Rate lost after legacy save: got {cit_val!r} expected '17.5'"
 
-        Directly tests the merge-preserve dict logic extracted from
-        save_workspace_state: when existing draft has non-empty V2 tax keys
-        and the incoming draft omits them, the merge-preserve code must copy
-        the existing values — and must never inject empty strings when both
-        existing and incoming are absent.
+        lcf_val = _find_tax_form_value(soup, "tax.assumptions.loss_carryforward_years")
+        assert lcf_val != "", "Loss Carryforward input must have a non-empty value after legacy save"
+        assert int(float(lcf_val)) == 7, \
+            f"Loss Carryforward lost after legacy save: got {lcf_val!r} expected '7'"
+
+    def test_merge_preserve_semantics_via_real_save_workspace_state(self):
+        """Prove merge-preserve in save_workspace_state() using the real repository function.
+
+        Four cases:
+        A — Missing incoming keys: existing non-empty V2 keys survive.
+        B — Blank incoming keys: existing non-empty V2 keys survive (blank != explicit clear).
+        C — Explicit incoming value: incoming value wins (not overwritten).
+        D — Both absent: no empty-string V2 keys are injected.
         """
-        _V2_ONLY = frozenset({"tax_corporate_rate_pct", "tax_loss_carryforward_years"})
+        from app.persistence.workspace_repository import save_workspace_state, get_workspace_state
 
-        def _merge_preserve(existing_draft: dict, incoming_draft: dict) -> dict:
-            """Replicate the merge-preserve logic from save_workspace_state."""
-            result = dict(incoming_draft)
-            for k in _V2_ONLY:
-                existing_val = existing_draft.get(k)
-                incoming_val = result.get(k)
-                incoming_blank = not str(incoming_val or "").strip()
-                existing_nonempty = bool(str(existing_val or "").strip())
-                if incoming_blank and existing_nonempty:
-                    result[k] = existing_val
-            return result
+        client = _authed_client()
+        project_code = _create_project(client, "mp-semantics")
+        ws_init, project_id = _get_workspace_by_code(project_code)
+        assert ws_init is not None
 
-        # Case 1: existing has V2 tax keys, incoming omits them → preserve.
-        existing = {"tax_corporate_rate_pct": "17.5", "tax_loss_carryforward_years": "7", "x": "y"}
-        incoming = {"x": "y", "other_key": "val"}
-        merged = _merge_preserve(existing, incoming)
-        assert merged["tax_corporate_rate_pct"] == "17.5"
-        assert merged["tax_loss_carryforward_years"] == "7"
+        def _save(draft: dict) -> dict:
+            """Call save_workspace_state and return the stored draft_snapshot."""
+            save_workspace_state(
+                user_id="1",
+                project_id=project_id,
+                project_code=project_code,
+                draft_snapshot=dict(draft),
+                saved_snapshot=dict(draft),
+            )
+            ws = get_workspace_state("1", project_id)
+            return ws.draft_snapshot
 
-        # Case 2: both existing and incoming have no V2 keys → no empty string injected.
-        merged2 = _merge_preserve({}, {"x": "y"})
-        for k in _V2_ONLY:
-            val = merged2.get(k)
-            assert not (isinstance(val, str) and val.strip() == ""), \
-                f"merge-preserve injected empty string for {k}: {val!r}"
-            assert val is None, f"unexpected value for {k}: {val!r}"
+        # Seed the workspace with non-empty V2 Tax keys.
+        seed_snap = dict(ws_init.draft_snapshot)
+        seed_snap["tax_corporate_rate_pct"] = "17.5"
+        seed_snap["tax_loss_carryforward_years"] = "7"
+        _save(seed_snap)
 
-        # Case 3: incoming has an explicit value → that value wins (not overwritten).
-        merged3 = _merge_preserve(
-            {"tax_corporate_rate_pct": "17.5"},
-            {"tax_corporate_rate_pct": "22.0"},
+        # ── Case A: incoming omits V2 Tax keys entirely → existing values survive. ──
+        incoming_a = {k: v for k, v in seed_snap.items()
+                      if k not in ("tax_corporate_rate_pct", "tax_loss_carryforward_years")}
+        stored_a = _save(incoming_a)
+        assert str(stored_a.get("tax_corporate_rate_pct", "")).strip() == "17.5", \
+            f"Case A: tax_corporate_rate_pct should survive; got {stored_a.get('tax_corporate_rate_pct')!r}"
+        assert str(stored_a.get("tax_loss_carryforward_years", "")).strip() == "7", \
+            f"Case A: tax_loss_carryforward_years should survive; got {stored_a.get('tax_loss_carryforward_years')!r}"
+
+        # Re-seed (Case A mutated it but values should still be there).
+        _save(seed_snap)
+
+        # ── Case B: incoming has blank V2 Tax keys → existing non-empty values survive. ──
+        incoming_b = dict(seed_snap)
+        incoming_b["tax_corporate_rate_pct"] = ""
+        incoming_b["tax_loss_carryforward_years"] = ""
+        stored_b = _save(incoming_b)
+        assert str(stored_b.get("tax_corporate_rate_pct", "")).strip() == "17.5", \
+            f"Case B: blank incoming must not overwrite existing; got {stored_b.get('tax_corporate_rate_pct')!r}"
+        assert str(stored_b.get("tax_loss_carryforward_years", "")).strip() == "7", \
+            f"Case B: blank incoming must not overwrite existing; got {stored_b.get('tax_loss_carryforward_years')!r}"
+
+        # ── Case C: incoming has explicit new value → incoming wins. ──
+        incoming_c = dict(seed_snap)
+        incoming_c["tax_corporate_rate_pct"] = "22.0"
+        incoming_c["tax_loss_carryforward_years"] = "5"
+        stored_c = _save(incoming_c)
+        assert str(stored_c.get("tax_corporate_rate_pct", "")).strip() == "22.0", \
+            f"Case C: explicit incoming value must win; got {stored_c.get('tax_corporate_rate_pct')!r}"
+        assert str(stored_c.get("tax_loss_carryforward_years", "")).strip() == "5", \
+            f"Case C: explicit incoming value must win; got {stored_c.get('tax_loss_carryforward_years')!r}"
+
+        # ── Case D: both existing and incoming lack V2 Tax keys → no empty string injected. ──
+        # Use a brand-new project so neither existing nor incoming has V2 Tax keys.
+        project_code_d = _create_project(client, "mp-case-d")
+        _, project_id_d = _get_workspace_by_code(project_code_d)
+        ws_d_init = get_workspace_state("1", project_id_d)
+        # Strip any accidental V2 keys from the initial snapshot.
+        incoming_d = {k: v for k, v in ws_d_init.draft_snapshot.items()
+                      if k not in ("tax_corporate_rate_pct", "tax_loss_carryforward_years")}
+        save_workspace_state(
+            user_id="1",
+            project_id=project_id_d,
+            project_code=project_code_d,
+            draft_snapshot=dict(incoming_d),
+            saved_snapshot=dict(incoming_d),
         )
-        assert merged3["tax_corporate_rate_pct"] == "22.0", \
-            "incoming explicit value must not be overwritten by merge-preserve"
+        ws_d = get_workspace_state("1", project_id_d)
+        for k in ("tax_corporate_rate_pct", "tax_loss_carryforward_years"):
+            val = ws_d.draft_snapshot.get(k)
+            assert not (isinstance(val, str) and val.strip() == ""), \
+                f"Case D: merge-preserve injected empty string for {k}: {val!r}"
 
     def test_hash_rotates_only_on_real_mutation(self):
         """content_hash must change after a Tax edit but not after a read-only GET."""
