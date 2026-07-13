@@ -1,0 +1,195 @@
+{#
+  Workbook V2 — Tax worksheet partial.
+
+  Sections
+  --------
+  A. Tax Assumptions       — placeholders only (cit_rate_pct and
+                             loss_carryforward_years are not yet Workbook
+                             Registry snapshot keys; they come from TaxParams
+                             set at project creation and will be migrated in a
+                             future registry expansion)
+  B. Runtime Tax Summary   — KPI tiles from runtime_summary
+  C. Tax Schedule table    — operational periods only (is_operation=True)
+  D. Runtime state badge   — Run Required / Last Run
+
+  Context variables (from app/v2/router.py):
+    tax_schedule              dict|None   — rr.tax_schedule (thawed)
+    tax_operational_periods   list|None   — operational periods only, or None if no runtime
+    runtime_summary           dict|None   — rr.runtime_summary (thawed)
+    project_code              str
+    workbook_version          str
+    content_hash              str
+    project_editable          bool
+    ws_dirty                  bool
+    has_runtime               bool
+    field_error               str
+#}
+
+{% macro placeholder_row(label, reason="Planned in future migration") %}
+<div class="v2-field-row v2-field-readonly v2-inputs-placeholder-row">
+  <span class="v2-field-label">{{ label }}</span>
+  <span class="v2-field-value"><span class="v2-placeholder-tag">{{ reason }}</span></span>
+</div>
+{% endmacro %}
+
+<div id="v2-sheet-tax" data-sheet="tax">
+
+  {% if not project_editable %}
+    <div class="v2-protected-notice" role="status">
+      Reference project — create a working copy to edit.
+      <a href="/projects/{{ project_code }}/save-as" class="v2-copy-link">Create working copy</a>
+    </div>
+  {% endif %}
+
+  {% if field_error %}
+    <div class="v2-field-error-banner" role="alert">{{ field_error }}</div>
+  {% endif %}
+
+  {# ── D. Runtime state badge ────────────────────────────────────────── #}
+  <div class="v2-section-label" data-testid="tax-runtime-bar">
+    {% if not has_runtime %}
+      <span class="v2-field-empty" data-testid="tax-runtime-state-a">Run Required</span>
+    {% elif ws_dirty %}
+      <span class="v2-runtime-dirty" data-testid="tax-runtime-state-c">Previous run — stale for current draft</span>
+    {% else %}
+      <span class="v2-runtime-clean" data-testid="tax-runtime-state-b">Outputs current</span>
+    {% endif %}
+  </div>
+
+  {# ── A. Tax Assumptions ────────────────────────────────────────────── #}
+  <details class="v2-inputs-section" open>
+    <summary class="v2-inputs-section-summary" id="nav-tax-assumptions">
+      A. Tax Assumptions
+    </summary>
+    <div class="v2-section-fields">
+
+      {#
+        CIT Rate and Loss Carryforward Years are engine-bound but are NOT yet
+        Workbook Registry snapshot keys.  They are set at project-creation time
+        via TaxParams and require a future registry expansion to become editable
+        here.  Until that migration is complete these rows are display-only
+        placeholders.
+      #}
+      {{ placeholder_row("CIT Rate (%)", "Not editable — not yet migrated to Workbook Registry") }}
+      {{ placeholder_row("Loss Carryforward Years", "Not editable — not yet migrated to Workbook Registry") }}
+      {{ placeholder_row("Loss Carryforward Cap", "Not editable — not yet migrated to Workbook Registry") }}
+      {{ placeholder_row("ATAD EBITDA Limit", "Not editable — not yet migrated to Workbook Registry") }}
+
+    </div>
+  </details>
+
+  {# ── B. Runtime Tax Summary ────────────────────────────────────────── #}
+  <details class="v2-inputs-section" open>
+    <summary class="v2-inputs-section-summary" id="nav-tax-summary">
+      B. Tax Summary
+    </summary>
+    <div class="v2-section-fields">
+
+      {% if runtime_summary is not none %}
+        <div class="v2-kpi-grid" data-testid="tax-kpi-bar"
+             style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:.75rem;padding:.5rem 0;">
+
+          <div class="v2-kpi-tile" data-testid="tax-kpi-total-tax">
+            <span class="v2-kpi-label">Total Tax</span>
+            <span class="v2-kpi-value">
+              {% if runtime_summary.total_tax_keur is not none and runtime_summary.total_tax_keur != "—" %}
+                {{ runtime_summary.total_tax_keur }}
+              {% else %}—{% endif %}
+            </span>
+          </div>
+
+          <div class="v2-kpi-tile" data-testid="tax-kpi-eff-rate">
+            <span class="v2-kpi-label">Effective Tax Rate</span>
+            <span class="v2-kpi-value">
+              {% if runtime_summary.effective_tax_rate_pct is not none and runtime_summary.effective_tax_rate_pct != "—" %}
+                {{ runtime_summary.effective_tax_rate_pct }}
+              {% else %}—{% endif %}
+            </span>
+          </div>
+
+        </div>
+      {% else %}
+        <div class="v2-field-row v2-field-readonly" data-testid="tax-pre-run-notice">
+          <span class="v2-field-value">
+            <span class="v2-field-empty">Run the model to generate tax outputs.</span>
+          </span>
+        </div>
+      {% endif %}
+
+    </div>
+  </details>
+
+  {# ── C. Tax Schedule table ─────────────────────────────────────────── #}
+  <details class="v2-inputs-section">
+    <summary class="v2-inputs-section-summary" id="nav-tax-schedule">
+      C. Tax Schedule
+    </summary>
+
+    {#
+      tax_operational_periods is prepared server-side in _build_tax_ctx().
+      Construction periods (is_operation=False) are excluded before this
+      template receives the list.  None means no runtime exists yet.
+    #}
+    {% if tax_operational_periods is not none %}
+      {% if tax_operational_periods %}
+        <div style="overflow-x:auto;" data-testid="tax-schedule-table-wrapper">
+          <table class="v2-table" data-testid="tax-schedule-table"
+                 style="width:100%;border-collapse:collapse;font-size:.85rem;">
+            <thead>
+              <tr>
+                <th style="text-align:left;padding:.3rem .5rem;white-space:nowrap;">Period</th>
+                <th style="text-align:left;padding:.3rem .5rem;white-space:nowrap;">Date</th>
+                <th style="text-align:right;padding:.3rem .5rem;white-space:nowrap;">Taxable Profit (kEUR)</th>
+                <th style="text-align:right;padding:.3rem .5rem;white-space:nowrap;">Tax (kEUR)</th>
+                <th style="text-align:right;padding:.3rem .5rem;white-space:nowrap;">CF After Tax (kEUR)</th>
+                <th style="text-align:right;padding:.3rem .5rem;white-space:nowrap;">Loss Opening (kEUR)</th>
+                <th style="text-align:right;padding:.3rem .5rem;white-space:nowrap;">Loss Used (kEUR)</th>
+                <th style="text-align:right;padding:.3rem .5rem;white-space:nowrap;">Loss Closing (kEUR)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for p in tax_operational_periods %}
+              <tr data-testid="tax-schedule-row-{{ p.period }}">
+                <td style="padding:.3rem .5rem;">{{ p.period }}</td>
+                <td style="padding:.3rem .5rem;white-space:nowrap;">{{ p.date }}</td>
+                <td style="text-align:right;padding:.3rem .5rem;">
+                  {% if p.taxable_profit_keur is not none %}{{ "%.0f"|format(p.taxable_profit_keur) }}{% else %}—{% endif %}
+                </td>
+                <td style="text-align:right;padding:.3rem .5rem;">
+                  {% if p.tax_keur is not none %}{{ "%.0f"|format(p.tax_keur) }}{% else %}—{% endif %}
+                </td>
+                <td style="text-align:right;padding:.3rem .5rem;">
+                  {% if p.cf_after_tax_keur is not none %}{{ "%.0f"|format(p.cf_after_tax_keur) }}{% else %}—{% endif %}
+                </td>
+                <td style="text-align:right;padding:.3rem .5rem;">
+                  {% if p.tax_loss_opening_audit_keur is not none %}{{ "%.0f"|format(p.tax_loss_opening_audit_keur) }}{% else %}—{% endif %}
+                </td>
+                <td style="text-align:right;padding:.3rem .5rem;">
+                  {% if p.tax_loss_used_audit_keur is not none %}{{ "%.0f"|format(p.tax_loss_used_audit_keur) }}{% else %}—{% endif %}
+                </td>
+                <td style="text-align:right;padding:.3rem .5rem;">
+                  {% if p.tax_loss_closing_audit_keur is not none %}{{ "%.0f"|format(p.tax_loss_closing_audit_keur) }}{% else %}—{% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="v2-field-row v2-field-readonly" data-testid="tax-schedule-empty">
+          <span class="v2-field-value">
+            <span class="v2-field-empty">No operational periods in tax schedule.</span>
+          </span>
+        </div>
+      {% endif %}
+    {% else %}
+      <div class="v2-field-row v2-field-readonly" data-testid="tax-schedule-no-runtime">
+        <span class="v2-field-value">
+          <span class="v2-field-empty">Run the model to generate the tax schedule.</span>
+        </span>
+      </div>
+    {% endif %}
+
+  </details>
+
+</div>{# v2-sheet-tax #}

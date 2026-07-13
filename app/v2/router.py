@@ -449,6 +449,49 @@ def _render_debt_htmx_sheet(
     return HTMLResponse(content=sheet_html + "\n" + oob)
 
 
+def _build_tax_ctx(pis, ws) -> dict:
+    """Build Tax sheet context from RuntimeResult output.
+
+    Tax assumptions (cit_rate_pct, loss_carryforward_years) are NOT yet
+    persisted as Workbook Registry snapshot keys — they come from TaxParams
+    set at project creation time.  Section A is therefore all placeholders;
+    no BOUND tax fields exist in the registry.
+
+    ``tax_operational_periods`` is filtered server-side (is_operation=True
+    only) before the template receives the list, matching the debt-sheet
+    pattern.  None means no runtime exists yet.
+    """
+    from app.workbook.service import WorkbookService
+    rr = WorkbookService.get_runtime_result(ws)
+    schedule = _thaw(rr.tax_schedule) if rr and rr.tax_schedule else None
+    op_periods = None
+    if schedule is not None:
+        raw = schedule.get("periods") or []
+        op_periods = [p for p in raw if p.get("is_operation")]
+    return {
+        "tax_schedule": schedule,
+        "tax_operational_periods": op_periods,
+        "runtime_summary": _thaw(rr.runtime_summary) if rr and rr.runtime_summary else None,
+    }
+
+
+def _render_tax_htmx_sheet(
+    request: Request,
+    pis,
+    ws,
+    project_record,
+    project: str,
+    field_error: str = "",
+) -> HTMLResponse:
+    """Render the Tax sheet partial + OOB status banner for HTMX."""
+    ctx = _base_sheet_ctx(request, pis, ws, project_record, project, field_error)
+    ctx.update(_build_tax_ctx(pis, ws))
+    sheet_html = _templates.get_template("partials/sheet_tax.html").render(ctx)
+    banner_html = _templates.get_template("partials/_v2_status_banner.html").render(ctx)
+    oob = '<div id="v2-status-banner" hx-swap-oob="true">' + banner_html + "</div>"
+    return HTMLResponse(content=sheet_html + "\n" + oob)
+
+
 def _render_inputs_htmx_sheet(
     request: Request,
     pis,
@@ -546,6 +589,7 @@ async def v2_workbook(request: Request, project: Optional[str] = None):
     context.update(_build_capex_vm_ctx(project_record, pis))
     context.update(_build_opex_vm_ctx(project_record, pis))
     context.update(_build_debt_ctx(pis, ws))
+    context.update(_build_tax_ctx(pis, ws))
     return _templates.TemplateResponse(request=request, name="workbook.html", context=context)
 
 
@@ -622,6 +666,11 @@ async def v2_workbook_update(
                 request, pis_for_render, ws, project_record, project,
                 field_error=field_error,
             )
+        if sheet_id == "tax":
+            return _render_tax_htmx_sheet(
+                request, pis_for_render, ws, project_record, project,
+                field_error=field_error,
+            )
         return _render_htmx_sheet(
             request, pis_for_render, ws, project_record, project,
             field_error=field_error,
@@ -694,6 +743,10 @@ async def v2_workbook_update(
             )
         if sheet_id == "debt":
             return _render_debt_htmx_sheet(
+                request, updated_pis, updated_ws_after, project_record, project,
+            )
+        if sheet_id == "tax":
+            return _render_tax_htmx_sheet(
                 request, updated_pis, updated_ws_after, project_record, project,
             )
         return _render_htmx_sheet(
