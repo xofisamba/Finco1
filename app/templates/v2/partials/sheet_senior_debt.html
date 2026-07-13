@@ -1,0 +1,223 @@
+{#
+  Workbook V2 — Senior Debt worksheet partial.
+
+  Registry-driven.  Editable fields render via the render_field macro
+  (hx_target="#v2-sheet-senior-debt", sheet_id="debt").
+
+  Sections
+  --------
+  A. Debt Assumptions       — 4 BOUND registry fields + future placeholders
+  B. Runtime Debt Summary   — KPI tiles from RuntimeResult
+  C. Debt Schedule table    — operational periods only
+  D. Runtime state badge    — Run Required / Last Run
+
+  Context variables (from app/v2/router.py):
+    debt_fields      list[dict]  — debt sheet fields from registry
+    debt_schedule    dict|None   — rr.debt_schedule (thawed)
+    runtime_summary  dict|None   — rr.runtime_summary (thawed)
+    project_code     str
+    workbook_version str
+    content_hash     str
+    project_editable bool
+    ws_dirty         bool
+    has_runtime      bool
+    field_error      str
+#}
+{% from "partials/field_editor.html" import render_field %}
+
+{% macro placeholder_row(label, reason="Planned in future migration") %}
+<div class="v2-field-row v2-field-readonly v2-inputs-placeholder-row">
+  <span class="v2-field-label">{{ label }}</span>
+  <span class="v2-field-value"><span class="v2-placeholder-tag">{{ reason }}</span></span>
+</div>
+{% endmacro %}
+
+<div id="v2-sheet-senior-debt" data-sheet="debt">
+
+  {% if not project_editable %}
+    <div class="v2-protected-notice" role="status">
+      Reference project — create a working copy to edit.
+      <a href="/projects/{{ project_code }}/save-as" class="v2-copy-link">Create working copy</a>
+    </div>
+  {% endif %}
+
+  {% if field_error %}
+    <div class="v2-field-error-banner" role="alert">{{ field_error }}</div>
+  {% endif %}
+
+  {# ── D. Runtime state badge ────────────────────────────────────────── #}
+  <div class="v2-section-label" data-testid="debt-runtime-bar">
+    {% if not has_runtime %}
+      <span class="v2-field-empty" data-testid="debt-runtime-state-a">Run Required</span>
+    {% elif ws_dirty %}
+      <span class="v2-runtime-dirty" data-testid="debt-runtime-state-c">Previous run — stale for current draft</span>
+    {% else %}
+      <span class="v2-runtime-clean" data-testid="debt-runtime-state-b">Outputs current</span>
+    {% endif %}
+  </div>
+
+  {# ── A. Debt Assumptions ───────────────────────────────────────────── #}
+  <details class="v2-inputs-section" open>
+    <summary class="v2-inputs-section-summary" id="nav-debt-assumptions">
+      A. Debt Assumptions
+    </summary>
+    <div class="v2-section-fields">
+
+      {% for f in debt_fields %}
+        {{ render_field(f, project_code, workbook_version, content_hash, project_editable,
+                        hx_target="#v2-sheet-senior-debt", sheet_id="debt") }}
+      {% endfor %}
+
+      {# Not yet migrated — planned in future registry expansion #}
+      {{ placeholder_row("Base Rate") }}
+      {{ placeholder_row("Grace Period") }}
+      {{ placeholder_row("Repayment Profile") }}
+      {{ placeholder_row("DSRA (months)") }}
+
+    </div>
+  </details>
+
+  {# ── B. Runtime Debt Summary ───────────────────────────────────────── #}
+  <details class="v2-inputs-section" open>
+    <summary class="v2-inputs-section-summary" id="nav-debt-summary">
+      B. Senior Debt Summary
+    </summary>
+    <div class="v2-section-fields">
+
+      {% if debt_schedule is not none and runtime_summary is not none %}
+        <div class="v2-kpi-grid" data-testid="debt-kpi-bar"
+             style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:.75rem;padding:.5rem 0;">
+
+          <div class="v2-kpi-tile" data-testid="debt-kpi-total-ds">
+            <span class="v2-kpi-label">Total Debt Service</span>
+            <span class="v2-kpi-value">
+              {% if runtime_summary.total_senior_ds_keur is not none %}
+                {{ "%.0f"|format(runtime_summary.total_senior_ds_keur) }} kEUR
+              {% else %}—{% endif %}
+            </span>
+          </div>
+
+          <div class="v2-kpi-tile" data-testid="debt-kpi-avg-dscr">
+            <span class="v2-kpi-label">Avg DSCR</span>
+            <span class="v2-kpi-value">
+              {% if runtime_summary.avg_dscr is not none %}
+                {{ "%.2f"|format(runtime_summary.avg_dscr) }}x
+              {% else %}—{% endif %}
+            </span>
+          </div>
+
+          <div class="v2-kpi-tile" data-testid="debt-kpi-min-dscr">
+            <span class="v2-kpi-label">Min DSCR</span>
+            <span class="v2-kpi-value">
+              {% if runtime_summary.min_dscr is not none %}
+                {{ "%.2f"|format(runtime_summary.min_dscr) }}x
+              {% else %}—{% endif %}
+            </span>
+          </div>
+
+          <div class="v2-kpi-tile" data-testid="debt-kpi-min-llcr">
+            <span class="v2-kpi-label">Min LLCR</span>
+            <span class="v2-kpi-value">
+              {% if debt_schedule.summary and debt_schedule.summary.min_llcr is not none %}
+                {{ "%.2f"|format(debt_schedule.summary.min_llcr) }}x
+              {% else %}—{% endif %}
+            </span>
+          </div>
+
+          <div class="v2-kpi-tile" data-testid="debt-kpi-lockup">
+            <span class="v2-kpi-label">Periods in Lock-up</span>
+            <span class="v2-kpi-value">
+              {% if debt_schedule.summary and debt_schedule.summary.periods_in_lockup is not none %}
+                {{ debt_schedule.summary.periods_in_lockup }}
+              {% else %}—{% endif %}
+            </span>
+          </div>
+
+        </div>
+      {% else %}
+        <div class="v2-field-row v2-field-readonly" data-testid="debt-pre-run-notice">
+          <span class="v2-field-value">
+            <span class="v2-field-empty">Run the model to generate the debt schedule.</span>
+          </span>
+        </div>
+      {% endif %}
+
+    </div>
+  </details>
+
+  {# ── C. Debt Schedule table ────────────────────────────────────────── #}
+  <details class="v2-inputs-section">
+    <summary class="v2-inputs-section-summary" id="nav-debt-schedule">
+      C. Debt Schedule
+    </summary>
+
+    {% if debt_schedule is not none and debt_schedule.periods %}
+      {% set op_periods = [] %}
+      {% for p in debt_schedule.periods %}
+        {% if p.is_operation %}
+          {% set _ = op_periods.append(p) %}
+        {% endif %}
+      {% endfor %}
+
+      {% if op_periods %}
+        <div style="overflow-x:auto;" data-testid="debt-schedule-table-wrapper">
+          <table class="v2-table" data-testid="debt-schedule-table"
+                 style="width:100%;border-collapse:collapse;font-size:.85rem;">
+            <thead>
+              <tr>
+                <th style="text-align:left;padding:.3rem .5rem;white-space:nowrap;">Period</th>
+                <th style="text-align:left;padding:.3rem .5rem;white-space:nowrap;">Date</th>
+                <th style="text-align:right;padding:.3rem .5rem;white-space:nowrap;">Balance (kEUR)</th>
+                <th style="text-align:right;padding:.3rem .5rem;white-space:nowrap;">Principal (kEUR)</th>
+                <th style="text-align:right;padding:.3rem .5rem;white-space:nowrap;">Interest (kEUR)</th>
+                <th style="text-align:right;padding:.3rem .5rem;white-space:nowrap;">Debt Service (kEUR)</th>
+                <th style="text-align:right;padding:.3rem .5rem;white-space:nowrap;">DSCR</th>
+                <th style="text-align:right;padding:.3rem .5rem;white-space:nowrap;">DSRA Balance (kEUR)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for p in op_periods %}
+              <tr data-testid="debt-schedule-row-{{ p.period }}">
+                <td style="padding:.3rem .5rem;">{{ p.period }}</td>
+                <td style="padding:.3rem .5rem;white-space:nowrap;">{{ p.date }}</td>
+                <td style="text-align:right;padding:.3rem .5rem;">
+                  {% if p.senior_balance_keur is not none %}{{ "%.0f"|format(p.senior_balance_keur) }}{% else %}—{% endif %}
+                </td>
+                <td style="text-align:right;padding:.3rem .5rem;">
+                  {% if p.senior_principal_keur is not none %}{{ "%.0f"|format(p.senior_principal_keur) }}{% else %}—{% endif %}
+                </td>
+                <td style="text-align:right;padding:.3rem .5rem;">
+                  {% if p.senior_interest_keur is not none %}{{ "%.0f"|format(p.senior_interest_keur) }}{% else %}—{% endif %}
+                </td>
+                <td style="text-align:right;padding:.3rem .5rem;">
+                  {% if p.senior_ds_keur is not none %}{{ "%.0f"|format(p.senior_ds_keur) }}{% else %}—{% endif %}
+                </td>
+                <td style="text-align:right;padding:.3rem .5rem;">
+                  {% if p.dscr is not none %}{{ "%.2f"|format(p.dscr) }}{% else %}—{% endif %}
+                </td>
+                <td style="text-align:right;padding:.3rem .5rem;">
+                  {% if p.dsra_balance_keur is not none %}{{ "%.0f"|format(p.dsra_balance_keur) }}{% else %}—{% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="v2-field-row v2-field-readonly" data-testid="debt-schedule-empty">
+          <span class="v2-field-value">
+            <span class="v2-field-empty">No operational periods in debt schedule.</span>
+          </span>
+        </div>
+      {% endif %}
+    {% else %}
+      <div class="v2-field-row v2-field-readonly" data-testid="debt-schedule-no-runtime">
+        <span class="v2-field-value">
+          <span class="v2-field-empty">Run the model to generate the debt schedule.</span>
+        </span>
+      </div>
+    {% endif %}
+
+  </details>
+
+</div>{# v2-sheet-senior-debt #}

@@ -395,6 +395,46 @@ def _render_revenue_htmx_sheet(
     return HTMLResponse(content=sheet_html + "\n" + oob)
 
 
+def _thaw(obj):
+    """Recursively convert MappingProxyType to plain dict for Jinja2 iteration."""
+    from types import MappingProxyType
+    if isinstance(obj, MappingProxyType):
+        return {k: _thaw(v) for k, v in obj.items()}
+    if isinstance(obj, dict):
+        return {k: _thaw(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_thaw(i) for i in obj]
+    return obj
+
+
+def _build_debt_ctx(pis, ws) -> dict:
+    """Build Senior Debt sheet context: registry fields + RuntimeResult output."""
+    from app.workbook.service import WorkbookService
+    rr = WorkbookService.get_runtime_result(ws)
+    return {
+        "debt_fields": _build_sheet_fields("debt", pis),
+        "debt_schedule": _thaw(rr.debt_schedule) if rr and rr.debt_schedule else None,
+        "runtime_summary": _thaw(rr.runtime_summary) if rr and rr.runtime_summary else None,
+    }
+
+
+def _render_debt_htmx_sheet(
+    request: Request,
+    pis,
+    ws,
+    project_record,
+    project: str,
+    field_error: str = "",
+) -> HTMLResponse:
+    """Render the Senior Debt sheet partial + OOB status banner for HTMX."""
+    ctx = _base_sheet_ctx(request, pis, ws, project_record, project, field_error)
+    ctx.update(_build_debt_ctx(pis, ws))
+    sheet_html = _templates.get_template("partials/sheet_senior_debt.html").render(ctx)
+    banner_html = _templates.get_template("partials/_v2_status_banner.html").render(ctx)
+    oob = '<div id="v2-status-banner" hx-swap-oob="true">' + banner_html + "</div>"
+    return HTMLResponse(content=sheet_html + "\n" + oob)
+
+
 def _render_inputs_htmx_sheet(
     request: Request,
     pis,
@@ -491,6 +531,7 @@ async def v2_workbook(request: Request, project: Optional[str] = None):
     }
     context.update(_build_capex_vm_ctx(project_record, pis))
     context.update(_build_opex_vm_ctx(project_record, pis))
+    context.update(_build_debt_ctx(pis, ws))
     return _templates.TemplateResponse(request=request, name="workbook.html", context=context)
 
 
@@ -562,6 +603,11 @@ async def v2_workbook_update(
                 request, pis_for_render, ws, project_record, project,
                 field_error=field_error,
             )
+        if sheet_id == "debt":
+            return _render_debt_htmx_sheet(
+                request, pis_for_render, ws, project_record, project,
+                field_error=field_error,
+            )
         return _render_htmx_sheet(
             request, pis_for_render, ws, project_record, project,
             field_error=field_error,
@@ -630,6 +676,10 @@ async def v2_workbook_update(
             )
         if sheet_id == "opex":
             return _render_opex_htmx_sheet(
+                request, updated_pis, updated_ws_after, project_record, project,
+            )
+        if sheet_id == "debt":
+            return _render_debt_htmx_sheet(
                 request, updated_pis, updated_ws_after, project_record, project,
             )
         return _render_htmx_sheet(
