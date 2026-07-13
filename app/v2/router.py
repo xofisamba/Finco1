@@ -466,8 +466,29 @@ def _build_tax_ctx(pis, ws) -> dict:
     if schedule is not None:
         raw = schedule.get("periods") or []
         op_periods = [p for p in raw if p.get("is_operation")]
+    raw_fields = _build_sheet_fields("tax", pis)
+
+    # Option B — effective-value projection.
+    # When a Tax snapshot key is absent, pis.get(field_id) returns None even
+    # though the engine would use a concrete factory default.  Project the
+    # canonical effective value from pis.to_projectinputs().tax so the first
+    # load shows real defaults rather than empty fields.
+    # This path never calls the engine, never hard-codes a rate, never
+    # writes to the snapshot, and never marks the workspace dirty.
+    if any(f["value"] is None for f in raw_fields):
+        effective_tax = pis.to_projectinputs().tax
+        _TAX_FIELD_MAP = {
+            "tax.assumptions.cit_rate_pct": lambda t: round(t.corporate_rate * 100, 10),
+            "tax.assumptions.loss_carryforward_years": lambda t: t.loss_carryforward_years,
+        }
+        for f in raw_fields:
+            if f["value"] is None:
+                proj_fn = _TAX_FIELD_MAP.get(f["field_id"])
+                if proj_fn is not None:
+                    f["value"] = proj_fn(effective_tax)
+
     return {
-        "tax_fields": _build_sheet_fields("tax", pis),
+        "tax_fields": raw_fields,
         "tax_schedule": schedule,
         "tax_operational_periods": op_periods,
         "runtime_summary": _thaw(rr.runtime_summary) if rr and rr.runtime_summary else None,

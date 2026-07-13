@@ -111,10 +111,26 @@ def save_workspace_state(
     now = _now_utc()
     governance_state = governance_state or {}
     replay_metadata = dict(replay_metadata or {})
+    # V2-only snapshot keys that legacy save paths never include.
+    # These must be preserved from the existing draft when the incoming
+    # draft_snapshot omits or blanks them — prevents legacy saves from
+    # silently erasing V2-set Tax field values.
+    _V2_ONLY_SNAPSHOT_KEYS = frozenset({"tax_corporate_rate_pct", "tax_loss_carryforward_years"})
+
     existing = get_workspace_state(user_id, project_id)
     if existing is not None:
         workspace_id = existing.workspace_id
         created_at = existing.created_at
+        # Merge-preserve: copy any non-empty V2-only key from existing draft
+        # when the incoming draft_snapshot is absent/blank for that key.
+        if existing.draft_snapshot:
+            for _k in _V2_ONLY_SNAPSHOT_KEYS:
+                _existing_val = existing.draft_snapshot.get(_k)
+                _incoming_val = draft_snapshot.get(_k)
+                _incoming_blank = not str(_incoming_val or "").strip()
+                _existing_nonempty = bool(str(_existing_val or "").strip())
+                if _incoming_blank and _existing_nonempty:
+                    draft_snapshot = {**draft_snapshot, _k: _existing_val}
         if last_runtime_snapshot is None:
             last_runtime_snapshot = existing.last_runtime_snapshot
         if last_runtime_summary is None:

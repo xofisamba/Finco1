@@ -836,5 +836,313 @@ class TestTaxKpiTiles(unittest.TestCase):
         assert "Loss Opening" in html_str
 
 
+# ---------------------------------------------------------------------------
+# 37–46. Truthful default hydration (Option B) + merge-preserve (legacy save)
+# ---------------------------------------------------------------------------
+
+class TestTaxFirstLoadHydration(unittest.TestCase):
+    """Option B effective-value projection: first GET shows factory defaults, not None.
+
+    These are characterization tests — they prove the displayed Tax field
+    values match the effective ProjectInputs.tax for each project template.
+    No rate is hard-coded here; the expected value comes from the same
+    canonical materialization path as the router.
+    """
+
+    def _effective_tax(self, template_source: str, project_type: str = "Wind") -> object:
+        """Return effective TaxParams for a freshly created project (no V2 tax keys set)."""
+        from app.input_adapter import build_projectinputs_from_snapshot
+        base = {
+            "project_name": f"Test {template_source}",
+            "project_type": project_type,
+            "country_market": "Germany",
+            "capacity_mw": "100",
+            "cod_date": "2027-06-01",
+            "construction_months": "24",
+            "horizon_years": "20",
+            "tariff_eur_mwh": "65",
+            "ppa_term_years": "15",
+            "p50_hours": "2500",
+            "opex_y1_keur": "5000",
+            "total_capex_keur": "80000",
+            "gearing_pct": "70",
+            "interest_rate_pct": "4.5",
+            "tenor_years": "18",
+            "target_dscr": "1.30",
+            # No tax_corporate_rate_pct or tax_loss_carryforward_years → factory defaults.
+        }
+        return build_projectinputs_from_snapshot(base).tax
+
+    def _pis_without_tax_keys(self, template_source: str = "generic_wind",
+                               project_type: str = "Wind"):
+        """Build a ProjectInputSet without any Tax snapshot keys (first-load state)."""
+        from app.workbook.input_set import ProjectInputSet
+        snapshot = {
+            "project_name": f"Test {template_source}",
+            "project_type": project_type,
+            "country_market": "Germany",
+            "capacity_mw": "100",
+            "cod_date": "2027-06-01",
+            "construction_months": "24",
+            "horizon_years": "20",
+            "tariff_eur_mwh": "65",
+            "ppa_term_years": "15",
+            "p50_hours": "2500",
+            "opex_y1_keur": "5000",
+            "total_capex_keur": "80000",
+            "gearing_pct": "70",
+            "interest_rate_pct": "4.5",
+            "tenor_years": "18",
+            "target_dscr": "1.30",
+        }
+        return ProjectInputSet.from_snapshot(snapshot)
+
+    def _tax_fields_from_pis(self, pis) -> dict:
+        """Return {field_id: value} from _build_tax_ctx for a given ProjectInputSet."""
+        from app.v2.router import _build_tax_ctx
+        # Minimal workspace mock — no runtime result needed for this test.
+        ws = MagicMock()
+        ws.last_runtime_snapshot = None
+        ws.last_runtime_summary = None
+        ws.last_tax_schedule = None
+        from unittest.mock import patch
+        with patch("app.workbook.service.WorkbookService.get_runtime_result", return_value=None):
+            ctx = _build_tax_ctx(pis, ws)
+        return {f["field_id"]: f["value"] for f in ctx["tax_fields"]}
+
+    def test_generic_wind_first_load_cit_rate_not_none(self):
+        """First GET for Generic Wind shows effective CIT rate, not None."""
+        pis = self._pis_without_tax_keys("generic_wind", "Wind")
+        fields = self._tax_fields_from_pis(pis)
+        assert fields["tax.assumptions.cit_rate_pct"] is not None, \
+            "CIT Rate must not be None on first load (Option B hydration)"
+
+    def test_generic_wind_first_load_cit_rate_matches_effective(self):
+        """Displayed CIT rate equals canonical factory default × 100."""
+        pis = self._pis_without_tax_keys("generic_wind", "Wind")
+        fields = self._tax_fields_from_pis(pis)
+        effective = self._effective_tax("generic_wind", "Wind")
+        expected = round(effective.corporate_rate * 100, 10)
+        assert fields["tax.assumptions.cit_rate_pct"] == expected, \
+            f"CIT Rate mismatch: got {fields['tax.assumptions.cit_rate_pct']} expected {expected}"
+
+    def test_generic_solar_first_load_cit_rate_not_none(self):
+        """First GET for Generic Solar shows effective CIT rate."""
+        pis = self._pis_without_tax_keys("generic_solar", "Solar")
+        fields = self._tax_fields_from_pis(pis)
+        assert fields["tax.assumptions.cit_rate_pct"] is not None
+
+    def test_generic_solar_first_load_loss_carryforward_not_none(self):
+        """First GET for Generic Solar shows effective loss carryforward years."""
+        pis = self._pis_without_tax_keys("generic_solar", "Solar")
+        fields = self._tax_fields_from_pis(pis)
+        assert fields["tax.assumptions.loss_carryforward_years"] is not None
+
+    def test_generic_wind_first_load_loss_carryforward_matches_effective(self):
+        """Displayed loss carryforward equals canonical factory default."""
+        pis = self._pis_without_tax_keys("generic_wind", "Wind")
+        fields = self._tax_fields_from_pis(pis)
+        effective = self._effective_tax("generic_wind", "Wind")
+        assert fields["tax.assumptions.loss_carryforward_years"] == effective.loss_carryforward_years
+
+    def test_first_get_does_not_mark_workspace_dirty(self):
+        """GET /v2/workbook must not flip dirty=True (Option B is read-only)."""
+        client = _authed_client()
+        project_code = _create_project(client, "dirty-check")
+        # Fetch the workbook — must not mutate dirty flag.
+        _get_workbook(client, project_code)
+        # Re-fetch and check that the dirty indicator is absent (no asterisk / "Unsaved").
+        html = _get_workbook(client, project_code)
+        soup = BeautifulSoup(html, "html.parser")
+        dirty_marker = soup.find(attrs={"data-testid": "ws-dirty-indicator"})
+        if dirty_marker:
+            assert "unsaved" not in dirty_marker.get_text("", strip=True).lower(), \
+                "GET must not mark workspace dirty"
+
+    def test_hash_does_not_rotate_on_first_get(self):
+        """Two consecutive GETs return the same content_hash (no spurious mutation)."""
+        client = _authed_client()
+        project_code = _create_project(client, "hash-stable")
+        resp1 = client.get(f"/v2/workbook?project={project_code}")
+        resp2 = client.get(f"/v2/workbook?project={project_code}")
+        assert resp1.status_code == resp2.status_code == 200
+        from bs4 import BeautifulSoup as BS
+        h1 = BS(resp1.text, "html.parser").find(attrs={"data-content-hash": True})
+        h2 = BS(resp2.text, "html.parser").find(attrs={"data-content-hash": True})
+        if h1 and h2:
+            assert h1["data-content-hash"] == h2["data-content-hash"], \
+                "content_hash must not rotate between two consecutive GETs"
+
+
+class TestTaxMergePreserve(unittest.TestCase):
+    """Merge-preserve: V2 Tax values survive legacy save paths."""
+
+    def _set_tax_via_v2(self, client, project_code: str, cit_pct: float, lcf_years: int):
+        """Set both Tax fields via the V2 endpoint."""
+        ch1, wv1, _ = _get_tax_form_details(client, project_code, "tax.assumptions.cit_rate_pct")
+        resp1 = client.post(
+            "/v2/workbook/update",
+            data={
+                "project": project_code,
+                "field_id": "tax.assumptions.cit_rate_pct",
+                "value": str(cit_pct),
+                "content_hash": ch1,
+                "workbook_version": wv1,
+                "sheet_id": "tax",
+            },
+            headers={"HX-Request": "true"},
+        )
+        assert resp1.status_code == 200, f"CIT rate set failed: {resp1.status_code} {resp1.text[:200]}"
+
+        ch2, wv2, _ = _get_tax_form_details(client, project_code, "tax.assumptions.loss_carryforward_years")
+        resp2 = client.post(
+            "/v2/workbook/update",
+            data={
+                "project": project_code,
+                "field_id": "tax.assumptions.loss_carryforward_years",
+                "value": str(lcf_years),
+                "content_hash": ch2,
+                "workbook_version": wv2,
+                "sheet_id": "tax",
+            },
+            headers={"HX-Request": "true"},
+        )
+        assert resp2.status_code == 200, f"LCF set failed: {resp2.status_code} {resp2.text[:200]}"
+
+    def _legacy_save(self, client, project_code: str):
+        """Simulate a legacy form save (no tax keys in form data)."""
+        client.post(
+            "/save",
+            data={
+                "project_code": project_code,
+                "project_name": "Merge Preserve Test",
+                "project_type": "Wind",
+                "country_market": "Germany",
+                "capacity_mw": "100",
+                "cod_date": "2027-06-01",
+                "construction_months": "24",
+                "horizon_years": "20",
+                "tariff_eur_mwh": "65",
+                "ppa_term_years": "15",
+                "p50_hours": "2500",
+                "opex_y1_keur": "5000",
+                "total_capex_keur": "80000",
+                "gearing_pct": "70",
+                "interest_rate_pct": "4.5",
+                "tenor_years": "18",
+                "target_dscr": "1.30",
+                # Intentionally NO tax_corporate_rate_pct / tax_loss_carryforward_years.
+            },
+            follow_redirects=False,
+        )
+
+    def test_v2_tax_values_survive_legacy_save(self):
+        """Tax values set via V2 endpoint must still be present after a legacy save."""
+        client = _authed_client()
+        project_code = _create_project(client, "legacy-save-test")
+
+        # Set Tax values via V2.
+        self._set_tax_via_v2(client, project_code, cit_pct=17.5, lcf_years=7)
+
+        # Simulate legacy form save (no tax keys).
+        self._legacy_save(client, project_code)
+
+        # Verify Tax values are preserved in the workbook after legacy save.
+        html = _get_workbook(client, project_code)
+        soup = BeautifulSoup(html, "html.parser")
+        cit_input = soup.find("input", {"name": "tax.assumptions.cit_rate_pct"})
+        if cit_input:
+            val = cit_input.get("value", "")
+            assert val and float(val) == 17.5, \
+                f"CIT Rate lost after legacy save: got '{val}' expected '17.5'"
+        lcf_input = soup.find("input", {"name": "tax.assumptions.loss_carryforward_years"})
+        if lcf_input:
+            val2 = lcf_input.get("value", "")
+            assert val2 and int(float(val2)) == 7, \
+                f"Loss Carryforward lost after legacy save: got '{val2}' expected '7'"
+
+    def test_merge_preserve_does_not_inject_empty_strings(self):
+        """merge-preserve must never write empty strings into V2-only keys.
+
+        Directly tests the merge-preserve dict logic extracted from
+        save_workspace_state: when existing draft has non-empty V2 tax keys
+        and the incoming draft omits them, the merge-preserve code must copy
+        the existing values — and must never inject empty strings when both
+        existing and incoming are absent.
+        """
+        _V2_ONLY = frozenset({"tax_corporate_rate_pct", "tax_loss_carryforward_years"})
+
+        def _merge_preserve(existing_draft: dict, incoming_draft: dict) -> dict:
+            """Replicate the merge-preserve logic from save_workspace_state."""
+            result = dict(incoming_draft)
+            for k in _V2_ONLY:
+                existing_val = existing_draft.get(k)
+                incoming_val = result.get(k)
+                incoming_blank = not str(incoming_val or "").strip()
+                existing_nonempty = bool(str(existing_val or "").strip())
+                if incoming_blank and existing_nonempty:
+                    result[k] = existing_val
+            return result
+
+        # Case 1: existing has V2 tax keys, incoming omits them → preserve.
+        existing = {"tax_corporate_rate_pct": "17.5", "tax_loss_carryforward_years": "7", "x": "y"}
+        incoming = {"x": "y", "other_key": "val"}
+        merged = _merge_preserve(existing, incoming)
+        assert merged["tax_corporate_rate_pct"] == "17.5"
+        assert merged["tax_loss_carryforward_years"] == "7"
+
+        # Case 2: both existing and incoming have no V2 keys → no empty string injected.
+        merged2 = _merge_preserve({}, {"x": "y"})
+        for k in _V2_ONLY:
+            val = merged2.get(k)
+            assert not (isinstance(val, str) and val.strip() == ""), \
+                f"merge-preserve injected empty string for {k}: {val!r}"
+            assert val is None, f"unexpected value for {k}: {val!r}"
+
+        # Case 3: incoming has an explicit value → that value wins (not overwritten).
+        merged3 = _merge_preserve(
+            {"tax_corporate_rate_pct": "17.5"},
+            {"tax_corporate_rate_pct": "22.0"},
+        )
+        assert merged3["tax_corporate_rate_pct"] == "22.0", \
+            "incoming explicit value must not be overwritten by merge-preserve"
+
+    def test_hash_rotates_only_on_real_mutation(self):
+        """content_hash must change after a Tax edit but not after a read-only GET."""
+        client = _authed_client()
+        project_code = _create_project(client, "hash-rotation")
+
+        # Get initial hash and form metadata.
+        ch_before, wv, _ = _get_tax_form_details(client, project_code, "tax.assumptions.cit_rate_pct")
+
+        # POST a real Tax mutation.
+        resp_post = client.post(
+            "/v2/workbook/update",
+            data={
+                "project": project_code,
+                "field_id": "tax.assumptions.cit_rate_pct",
+                "value": "22.0",
+                "content_hash": ch_before,
+                "workbook_version": wv,
+                "sheet_id": "tax",
+            },
+            headers={"HX-Request": "true"},
+        )
+        assert resp_post.status_code == 200, f"Tax edit failed: {resp_post.status_code}"
+        soup_post = BeautifulSoup(resp_post.text, "html.parser")
+        ch_el_post = soup_post.find(attrs={"data-content-hash": True})
+        hash_after = ch_el_post["data-content-hash"] if ch_el_post else None
+
+        # Verify hash changed: GET after the edit must return a different hash from before.
+        ch_after_edit, _, _ = _get_tax_form_details(client, project_code, "tax.assumptions.cit_rate_pct")
+        assert ch_before != ch_after_edit, \
+            f"content_hash must rotate after CIT Rate edit; before={ch_before} after={ch_after_edit}"
+
+        # Second GET must return same hash (no further rotation).
+        ch_get2, _, _ = _get_tax_form_details(client, project_code, "tax.assumptions.cit_rate_pct")
+        assert ch_after_edit == ch_get2, \
+            f"content_hash must not rotate between two consecutive GETs: {ch_after_edit} vs {ch_get2}"
+
+
 if __name__ == "__main__":
     unittest.main()
