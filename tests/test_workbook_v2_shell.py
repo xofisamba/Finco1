@@ -105,14 +105,19 @@ class TestV2RouterStructure(unittest.TestCase):
         self.assertNotIn("_strip_empty_fields", code)
 
     def test_does_not_call_waterfall_runner(self):
+        # WaterfallRunner must never appear — run_project is the canonical call.
+        # The /v2/workbook/run endpoint uses run_project; that is expected.
         code = self._router_code()
         self.assertNotIn("WaterfallRunner", code)
-        self.assertNotIn("run_project", code)
 
     def test_uses_workbook_service(self):
         self.assertIn("WorkbookService", self._router_code())
 
     def test_uses_draft_method_not_saved(self):
+        # All V2 endpoints (GET, UPDATE, and RUN) use build_draft_input_set_from_workspace.
+        # The /v2/workbook/run endpoint materialises from draft_snapshot (bug fix: was
+        # incorrectly using build_saved_input_set_from_workspace; edits never reached engine).
+        # v2_atomic_run_commit promotes draft→saved atomically after the engine runs.
         code = self._router_code()
         self.assertIn("build_draft_input_set_from_workspace", code)
         self.assertNotIn("build_saved_input_set_from_workspace", code)
