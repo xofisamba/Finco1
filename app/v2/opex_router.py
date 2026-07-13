@@ -103,17 +103,27 @@ def _stale_identity_response(
 def _render_opex_sheet_with_oob(
     request: Request, project_record, pis, ws, project: str, field_error: str = ""
 ) -> HTMLResponse:
-    """Render OPEX sheet + append all three runtime bar OOBs on success."""
+    """Render OPEX sheet + append all three runtime bar OOBs + run controls OOB on success."""
     resp = _render_opex_sheet(request, project_record, pis, ws, project, field_error=field_error)
     if field_error:
         return resp
     from app.workbook.runtime_projection import build_runtime_projection_bundle
     from app.v2.runtime_projection_views import build_all_runtime_bar_oob
     from app.workbook.service import WorkbookService
+    from fastapi.templating import Jinja2Templates
+    import os
+    _BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    _tmpl = Jinja2Templates(directory=os.path.join(_BASE_DIR, "app", "templates", "v2"))
     rr = WorkbookService.get_runtime_result(ws)
     projection = build_runtime_projection_bundle(rr, ws.dirty)
     oob = build_all_runtime_bar_oob(projection)
-    return HTMLResponse(content=resp.body.decode() + "\n" + oob)
+    run_controls_html = _tmpl.get_template("partials/_v2_run_controls.html").render({
+        "project_code": project,
+        "workbook_version": pis.workbook_version,
+        "content_hash": pis.content_hash,
+    })
+    run_controls_oob = '<div id="v2-run-controls" hx-swap-oob="true">' + run_controls_html + "</div>"
+    return HTMLResponse(content=resp.body.decode() + "\n" + oob + "\n" + run_controls_oob)
 
 
 def _handle_command_error(exc: OpexCommandError) -> JSONResponse:

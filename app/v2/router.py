@@ -218,6 +218,12 @@ def _base_sheet_ctx(request, pis, ws, project_record, project, field_error=""):
     }
 
 
+def _build_run_controls_oob(ctx: dict) -> str:
+    """Return OOB HTML to refresh #v2-run-controls with the current composite hash."""
+    run_controls_html = _templates.get_template("partials/_v2_run_controls.html").render(ctx)
+    return '<div id="v2-run-controls" hx-swap-oob="true">' + run_controls_html + "</div>"
+
+
 def _render_htmx_sheet(
     request: Request,
     pis,
@@ -232,6 +238,8 @@ def _render_htmx_sheet(
     sheet_html = _templates.get_template("partials/sheet_project_setup.html").render(ctx)
     banner_html = _templates.get_template("partials/_v2_status_banner.html").render(ctx)
     oob = '<div id="v2-status-banner" hx-swap-oob="true">' + banner_html + "</div>"
+    if not field_error:
+        oob += "\n" + _build_run_controls_oob(ctx)
     return HTMLResponse(content=sheet_html + "\n" + oob)
 
 
@@ -318,6 +326,8 @@ def _render_capex_htmx_sheet(
     sheet_html = _templates.get_template("partials/sheet_capex.html").render(ctx)
     banner_html = _templates.get_template("partials/_v2_status_banner.html").render(ctx)
     oob = '<div id="v2-status-banner" hx-swap-oob="true">' + banner_html + "</div>"
+    if not field_error:
+        oob += "\n" + _build_run_controls_oob(ctx)
     return HTMLResponse(content=sheet_html + "\n" + oob)
 
 
@@ -375,6 +385,8 @@ def _render_opex_htmx_sheet(
     sheet_html = _templates.get_template("partials/sheet_opex.html").render(ctx)
     banner_html = _templates.get_template("partials/_v2_status_banner.html").render(ctx)
     oob = '<div id="v2-status-banner" hx-swap-oob="true">' + banner_html + "</div>"
+    if not field_error:
+        oob += "\n" + _build_run_controls_oob(ctx)
     return HTMLResponse(content=sheet_html + "\n" + oob)
 
 
@@ -392,6 +404,8 @@ def _render_revenue_htmx_sheet(
     sheet_html = _templates.get_template("partials/sheet_revenue.html").render(ctx)
     banner_html = _templates.get_template("partials/_v2_status_banner.html").render(ctx)
     oob = '<div id="v2-status-banner" hx-swap-oob="true">' + banner_html + "</div>"
+    if not field_error:
+        oob += "\n" + _build_run_controls_oob(ctx)
     return HTMLResponse(content=sheet_html + "\n" + oob)
 
 
@@ -439,6 +453,8 @@ def _render_debt_htmx_sheet(
     sheet_html = _templates.get_template("partials/sheet_senior_debt.html").render(ctx)
     banner_html = _templates.get_template("partials/_v2_status_banner.html").render(ctx)
     oob = '<div id="v2-status-banner" hx-swap-oob="true">' + banner_html + "</div>"
+    if not field_error:
+        oob += "\n" + _build_run_controls_oob(ctx)
     return HTMLResponse(content=sheet_html + "\n" + oob)
 
 
@@ -505,6 +521,8 @@ def _render_tax_htmx_sheet(
     sheet_html = _templates.get_template("partials/sheet_tax.html").render(ctx)
     banner_html = _templates.get_template("partials/_v2_status_banner.html").render(ctx)
     oob = '<div id="v2-status-banner" hx-swap-oob="true">' + banner_html + "</div>"
+    if not field_error:
+        oob += "\n" + _build_run_controls_oob(ctx)
     return HTMLResponse(content=sheet_html + "\n" + oob)
 
 
@@ -594,6 +612,8 @@ def _render_financial_statements_htmx_sheet(
     sheet_html = _templates.get_template("partials/sheet_financial_statements.html").render(ctx)
     banner_html = _templates.get_template("partials/_v2_status_banner.html").render(ctx)
     oob = '<div id="v2-status-banner" hx-swap-oob="true">' + banner_html + "</div>"
+    if not field_error:
+        oob += "\n" + _build_run_controls_oob(ctx)
     return HTMLResponse(content=sheet_html + "\n" + oob)
 
 
@@ -618,6 +638,8 @@ def _render_inputs_htmx_sheet(
     sheet_html = _templates.get_template("partials/sheet_inputs.html").render(ctx)
     banner_html = _templates.get_template("partials/_v2_status_banner.html").render(ctx)
     oob = '<div id="v2-status-banner" hx-swap-oob="true">' + banner_html + "</div>"
+    if not field_error:
+        oob += "\n" + _build_run_controls_oob(ctx)
     return HTMLResponse(content=sheet_html + "\n" + oob)
 
 
@@ -911,43 +933,46 @@ async def v2_workbook_run(
     """V2 Run endpoint — canonical engine orchestration for Workbook V2.
 
     Pipeline (all checks fail-closed):
-      1. Auth
-      2. Load project_record + workspace_state
-      3. Protected reference check (block TUHO/Oborovo edits; they CAN run)
-      4. Runtime guard: check_runtime_allowed(ws, ws.draft_snapshot)
-      5. Stale identity: content_hash must match assemble_consistent_for_get(...)
-      6. Materialize: build_saved_input_set_from_workspace(ws).to_projectinputs()
-         → fold CAPEX (replace-semantics) → fold OPEX (additive)
-      7. run_project(project_type, scenario_name, project_inputs_override=override)
-      8. record_workspace_runtime(...) with all schedule payloads
-      9. Fresh workspace reload → build_runtime_projection_bundle(rr, ws.dirty)
-     10. HTMX response: all three sheet fragments + three OOB bars + status banner
+      1.  Auth
+      2.  Load project_record + workspace_state
+      3.  Runtime guard: check_runtime_allowed(ws, ws.draft_snapshot)
+      4.  Version check: workbook_version must match WORKBOOK.version
+      5.  Pre-engine identity CAS: content_hash must match current composite hash
+      6.  Project type validation: Solar→"Solar", Wind→"Wind", else error
+      7.  Materialise: build_draft_input_set_from_workspace(ws).to_projectinputs()
+          (draft_snapshot is the canonical V2 run boundary after V2 edits)
+      8.  Scenario resolution via get_scenario_record — fail closed on error
+      9.  CAPEX fold (replace-semantics)
+      10. OPEX fold (additive)
+      11. run_project(project_type, scenario_name, project_inputs_override=override)
+      12. v2_atomic_run_commit: final CAS + promote draft→saved + dirty=False
+          Raises V2RunCommitConflictError if workbook changed during engine run
+      13. ws_fresh = get_workspace_state(...); rr = WorkbookService.get_runtime_result(ws_fresh)
+      14. build_runtime_projection_bundle(rr, ws_fresh.dirty)
+      15. HTMX response: #v2-run-controls + #v2-status-banner + three sheet OOBs
 
-    HTMX: always responds with 200 + HTML fragments (success or error).
+    HTMX: always responds with 200 + HTML fragments (success or user-safe error).
     Non-HTMX: 303 redirect on success; redirect with ?v2_err=... on error.
 
     Scope constraints — NO engine formula modifications, NO parity changes.
-    FINCO_WORKBOOK_V2 flag is respected by the router mount in main_web.py.
     """
     from datetime import datetime, timezone
 
     from app.api.project_runner import run_project
     from app.persistence.projects_repository import get_project_record
-    from app.persistence.repository import record_workspace_runtime
-    from app.persistence.workspace_repository import get_workspace_state
+    from app.persistence.workspace_repository import (
+        V2RunCommitConflictError,
+        get_workspace_state,
+        v2_atomic_run_commit,
+    )
     from app.services.capex_sub_lines_integration import apply_user_sub_lines_replacing_base
     from app.services.opex_sub_lines_integration import apply_user_sub_lines_to_opex
-    from app.services.scenario_state_service import check_runtime_allowed
-    from app.ui.runtime_summary import runtime_summary_to_dict
+    from app.workbook.registry import WORKBOOK
     from app.workbook.runtime_projection import build_runtime_projection_bundle
-    from app.workbook.runtime_result import RuntimeResult
     from app.workbook.workbook_identity import WorkbookIdentityError
 
     def _utc_compact() -> str:
         return datetime.now(timezone.utc).isoformat().replace(":", "").replace("-", "")
-
-    def _utc_full() -> str:
-        return datetime.now(timezone.utc).isoformat()
 
     user = _get_current_user(request)
     if not user:
@@ -956,7 +981,6 @@ async def v2_workbook_run(
     is_htmx = request.headers.get("HX-Request") == "true"
 
     def _htmx_error(msg: str, ws_for_render=None) -> HTMLResponse:
-        """Render error as OOB status banner + no-op sheet (banner only)."""
         ctx: dict = {
             "ws_dirty": getattr(ws_for_render, "dirty", True),
             "has_runtime": bool(
@@ -987,26 +1011,26 @@ async def v2_workbook_run(
         msg = "Workspace not found."
         return _htmx_error(msg) if is_htmx else _non_htmx_error(msg)
 
-    # ── Step 3: protected reference check ─────────────────────────────────── #
-    # TUHO/Oborovo can be run but NOT edited; running is allowed, so no block here.
-    # (Protected references reach the engine with their saved_snapshot as-is.)
+    # ── Step 3: V2 runtime origin ──────────────────────────────────────────── #
+    # V2 runs always materialise from draft_snapshot and promote it to
+    # saved_snapshot atomically.  The legacy runtime_guard_for_snapshot blocks
+    # dirty workspaces (designed for the legacy saved-state-only run path).
+    # V2 uses CAS-based locking (content_hash + final CAS) instead, so we
+    # skip the legacy guard and assign the origin directly.
+    runtime_origin = "v2_run"
 
-    # ── Step 4: runtime guard ──────────────────────────────────────────────── #
-    allow_run, runtime_origin, guard_message = check_runtime_allowed(ws, ws.draft_snapshot)
-    if not allow_run:
-        msg = guard_message or "Run not allowed in current workspace state."
-        return _htmx_error(msg, ws) if is_htmx else _non_htmx_error(msg)
-
-    # ── Step 5: stale identity check ──────────────────────────────────────── #
-    pis_for_identity = WorkbookService.build_draft_input_set_from_workspace(ws)
-    if pis_for_identity.workbook_version != workbook_version:
+    # ── Step 4: version check ──────────────────────────────────────────────── #
+    pis_draft = WorkbookService.build_draft_input_set_from_workspace(ws)
+    if pis_draft.workbook_version != workbook_version:
         msg = "Workbook version mismatch — please reload the page."
         return _htmx_error(msg, ws) if is_htmx else _non_htmx_error(msg)
+
+    # ── Step 5: pre-engine identity CAS ───────────────────────────────────── #
     try:
         current_identity = assemble_consistent_for_get(
             user_id=user.user_id,
             project_id=project_record.project_id,
-            workbook_version=pis_for_identity.workbook_version,
+            workbook_version=pis_draft.workbook_version,
         )
     except WorkbookIdentityError:
         msg = "Could not verify workbook identity — please reload."
@@ -1018,19 +1042,34 @@ async def v2_workbook_run(
         )
         return _htmx_error(msg, ws) if is_htmx else _non_htmx_error(msg)
 
-    # ── Step 6: materialize project inputs from saved snapshot ────────────── #
+    # ── Step 6: project type validation ───────────────────────────────────── #
+    project_type_raw = (project_record.project_type or "").strip().lower()
+    if project_type_raw == "solar":
+        runtime_project_key = "Solar"
+    elif project_type_raw == "wind":
+        runtime_project_key = "Wind"
+    else:
+        msg = (
+            f"Unsupported project type {project_record.project_type!r}. "
+            "Only Solar and Wind projects can be run from Workbook V2."
+        )
+        return _htmx_error(msg, ws) if is_htmx else _non_htmx_error(msg)
+
+    # ── Step 7: materialise from draft snapshot ────────────────────────────── #
+    # draft_snapshot is the V2 canonical run boundary: it contains the exact
+    # scalar values the user saw and approved when they clicked Run.
     try:
-        pis_saved = WorkbookService.build_saved_input_set_from_workspace(ws)
-        override = WorkbookService.to_projectinputs(pis_saved)
+        override = WorkbookService.to_projectinputs(pis_draft)
     except Exception as exc:
         msg = f"Could not build project inputs: {exc}"
         return _htmx_error(msg, ws) if is_htmx else _non_htmx_error(msg)
 
+    # ── Step 8: scenario resolution ────────────────────────────────────────── #
     active_scenario_id = ws.active_scenario_id
     active_scenario_name = ws.active_scenario_name
-
-    # Fetch active scenario overrides for CAPEX/OPEX fold.
+    scenario_name = active_scenario_name or "Base"
     _scenario_overrides_for_fold = None
+
     if active_scenario_id:
         try:
             from app.persistence.scenarios_repository import get_scenario_record
@@ -1039,11 +1078,19 @@ async def v2_workbook_run(
                 project_id=project_record.project_id,
                 scenario_id=active_scenario_id,
             )
-            _scenario_overrides_for_fold = sc_rec.overrides if sc_rec else None
-        except Exception:
-            pass
+            if sc_rec is None:
+                msg = (
+                    f"Active scenario (id={active_scenario_id!r}) could not be found. "
+                    "Please re-select a scenario and try again."
+                )
+                return _htmx_error(msg, ws) if is_htmx else _non_htmx_error(msg)
+            _scenario_overrides_for_fold = sc_rec.overrides
+            scenario_name = sc_rec.scenario_name or scenario_name
+        except Exception as exc:
+            msg = f"Scenario resolution failed: {exc}"
+            return _htmx_error(msg, ws) if is_htmx else _non_htmx_error(msg)
 
-    # CAPEX fold — replace-semantics (matches legacy user_created path).
+    # ── Steps 9–10: CAPEX and OPEX fold ───────────────────────────────────── #
     from dataclasses import replace as _dc_replace
     folded_capex = apply_user_sub_lines_replacing_base(
         override.capex,
@@ -1053,7 +1100,6 @@ async def v2_workbook_run(
     if folded_capex is not override.capex:
         override = _dc_replace(override, capex=folded_capex)
 
-    # OPEX fold — additive (matches legacy user_created path).
     folded_opex = apply_user_sub_lines_to_opex(
         override.opex,
         project_id=project_record.project_id,
@@ -1062,11 +1108,7 @@ async def v2_workbook_run(
     if folded_opex is not override.opex:
         override = _dc_replace(override, opex=folded_opex)
 
-    # ── Step 7: run the engine ────────────────────────────────────────────── #
-    project_type_raw = (project_record.project_type or "").strip().lower()
-    runtime_project_key = "Solar" if project_type_raw == "solar" else "Wind"
-    scenario_name = active_scenario_name or "Base"
-
+    # ── Step 11: run the engine ────────────────────────────────────────────── #
     try:
         result = run_project(
             runtime_project_key,
@@ -1079,50 +1121,50 @@ async def v2_workbook_run(
         msg = "Engine run failed — please try again or contact support."
         return _htmx_error(msg, ws) if is_htmx else _non_htmx_error(msg)
 
-    # ── Step 8: persist ───────────────────────────────────────────────────── #
+    # ── Step 12: atomic commit (final CAS + promote + dirty=False) ────────── #
     runtime_snapshot_id = _utc_compact()
-    ran_at = _utc_full()
-    runtime_summary = runtime_summary_to_dict(
-        result, project_record.project_code, project_record.project_name
-    )
-
+    ran_at = datetime.now(timezone.utc)
     try:
-        record_workspace_runtime(
+        ws_committed = v2_atomic_run_commit(
             user_id=user.user_id,
             project_id=project_record.project_id,
             project_code=project_record.project_code,
-            runtime_snapshot=ws.saved_snapshot or {},
-            runtime_summary=result["kpis"],
+            expected_composite_hash=content_hash,
             runtime_snapshot_id=runtime_snapshot_id,
             runtime_origin=runtime_origin or "v2_run",
-            active_scenario_id=active_scenario_id,
-            active_scenario_name=active_scenario_name,
+            runtime_summary=result["kpis"],
             financial_statements=result.get("financial_statements"),
             debt_schedule=result.get("debt_schedule"),
             tax_schedule=result.get("tax_schedule"),
             distribution_schedule=result.get("distribution_schedule"),
             sponsor_schedule=result.get("sponsor_schedule"),
+            active_scenario_id=active_scenario_id,
+            active_scenario_name=active_scenario_name,
+            ran_at=ran_at,
         )
+    except V2RunCommitConflictError as exc:
+        msg = str(exc)
+        return _htmx_error(msg, ws) if is_htmx else _non_htmx_error(msg)
     except Exception as exc:
         import logging
         logging.getLogger(__name__).exception("v2_workbook_run: persistence failure")
         msg = "Run completed but could not be saved — please try again."
         return _htmx_error(msg, ws) if is_htmx else _non_htmx_error(msg)
 
-    # ── Step 9: reload workspace and build projection ─────────────────────── #
-    ws_fresh = get_workspace_state(
+    # ── Step 13–14: project from the persisted RuntimeResult ──────────────── #
+    ws_fresh = ws_committed or get_workspace_state(
         user_id=user.user_id, project_id=project_record.project_id
-    ) or ws
-    rr = RuntimeResult.from_run_result(
-        result,
-        runtime_summary=result["kpis"],
-        snapshot_id=runtime_snapshot_id,
-        ran_at=ran_at,
-        origin=runtime_origin or "v2_run",
     )
+    if ws_fresh is None:
+        msg = "Run committed but workspace could not be reloaded."
+        return _htmx_error(msg) if is_htmx else _non_htmx_error(msg)
+    rr = WorkbookService.get_runtime_result(ws_fresh)
+    if rr is None:
+        msg = "Run committed but the persisted RuntimeResult could not be reconstructed."
+        return _htmx_error(msg) if is_htmx else _non_htmx_error(msg)
     projection = build_runtime_projection_bundle(rr, ws_fresh.dirty)
 
-    # ── Step 10: HTMX response ────────────────────────────────────────────── #
+    # ── Step 15: HTMX response ────────────────────────────────────────────── #
     if not is_htmx:
         return RedirectResponse(
             url=f"/v2/workbook?project={project}",
@@ -1132,7 +1174,15 @@ async def v2_workbook_run(
     pis_fresh = _build_pis_with_composite_identity(ws_fresh, project_record, user)
     ctx = _base_sheet_ctx(request, pis_fresh, ws_fresh, project_record, project)
 
-    # Status banner (OOB).
+    # #v2-run-controls OOB — refreshes the Run form with the new composite hash.
+    run_controls_html = _templates.get_template(
+        "partials/_v2_run_controls.html"
+    ).render(ctx)
+    run_controls_oob = (
+        '<div id="v2-run-controls" hx-swap-oob="true">' + run_controls_html + "</div>"
+    )
+
+    # #v2-status-banner OOB.
     banner_html = _templates.get_template(
         "partials/_v2_status_banner.html"
     ).render(ctx)
@@ -1140,31 +1190,37 @@ async def v2_workbook_run(
         '<div id="v2-status-banner" hx-swap-oob="true">' + banner_html + "</div>"
     )
 
-    # Three sheet fragments (OOB) — full re-render of each sheet so runtime
-    # data appears immediately without a page reload.
+    # Three sheet OOBs — attach hx-swap-oob="true" to the sheet root element
+    # (not a wrapper) to avoid nested duplicate DOM IDs.
     ctx.update(_build_debt_ctx(pis_fresh, ws_fresh, projection=projection))
     debt_html = _templates.get_template("partials/sheet_senior_debt.html").render(ctx)
-    debt_oob = '<div id="v2-sheet-senior-debt" hx-swap-oob="true">' + debt_html + "</div>"
+    debt_oob = debt_html.replace(
+        '<div id="v2-sheet-senior-debt"',
+        '<div id="v2-sheet-senior-debt" hx-swap-oob="true"',
+        1,
+    )
 
     ctx.update(_build_tax_ctx(pis_fresh, ws_fresh, projection=projection))
     tax_html = _templates.get_template("partials/sheet_tax.html").render(ctx)
-    tax_oob = '<div id="v2-sheet-tax" hx-swap-oob="true">' + tax_html + "</div>"
+    tax_oob = tax_html.replace(
+        '<div id="v2-sheet-tax"',
+        '<div id="v2-sheet-tax" hx-swap-oob="true"',
+        1,
+    )
 
     ctx.update(_build_financial_statements_ctx(pis_fresh, ws_fresh, projection=projection))
     fs_html = _templates.get_template(
         "partials/sheet_financial_statements.html"
     ).render(ctx)
-    fs_oob = (
-        '<div id="v2-sheet-financial-statements" hx-swap-oob="true">'
-        + fs_html
-        + "</div>"
+    fs_oob = fs_html.replace(
+        '<div id="v2-sheet-financial-statements"',
+        '<div id="v2-sheet-financial-statements" hx-swap-oob="true"',
+        1,
     )
 
-    # Three runtime bar OOBs (already inside the sheet fragments above, but
-    # also sent as standalone OOBs so the bars update even if the viewer is
-    # on a different sheet when the run completes).
+    # Runtime bar OOBs.
     from app.v2.runtime_projection_views import build_all_runtime_bar_oob
     bars_oob = build_all_runtime_bar_oob(projection)
 
-    combined = "\n".join([banner_oob, debt_oob, tax_oob, fs_oob, bars_oob])
+    combined = "\n".join([run_controls_oob, banner_oob, debt_oob, tax_oob, fs_oob, bars_oob])
     return HTMLResponse(content=combined)

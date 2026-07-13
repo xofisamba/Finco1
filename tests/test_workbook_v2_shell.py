@@ -114,12 +114,13 @@ class TestV2RouterStructure(unittest.TestCase):
         self.assertIn("WorkbookService", self._router_code())
 
     def test_uses_draft_method_not_saved(self):
-        # GET and UPDATE endpoints use build_draft_input_set_from_workspace.
-        # The /v2/workbook/run endpoint uses build_saved_input_set_from_workspace
-        # because saved_snapshot is the correct run/materialization boundary.
+        # All V2 endpoints (GET, UPDATE, and RUN) use build_draft_input_set_from_workspace.
+        # The /v2/workbook/run endpoint materialises from draft_snapshot (bug fix: was
+        # incorrectly using build_saved_input_set_from_workspace; edits never reached engine).
+        # v2_atomic_run_commit promotes draft→saved atomically after the engine runs.
         code = self._router_code()
         self.assertIn("build_draft_input_set_from_workspace", code)
-        self.assertIn("build_saved_input_set_from_workspace", code)
+        self.assertNotIn("build_saved_input_set_from_workspace", code)
 
     def test_uses_runtime_hydration_script(self):
         self.assertIn("runtime_hydration_script", self._router_code())
