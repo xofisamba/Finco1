@@ -458,5 +458,180 @@ class TestDebtScheduleRenderedFromRuntime(unittest.TestCase):
         self.assertIsNotNone(badge, "State B badge missing with clean runtime")
 
 
+# ---------------------------------------------------------------------------
+# 6. Server-side operational-period filtering
+# ---------------------------------------------------------------------------
+
+class TestDebtOperationalPeriodFiltering(unittest.TestCase):
+    """_build_debt_ctx must filter construction periods before the template sees them."""
+
+    def _make_ws(self, has_runtime=True):
+        ws = MagicMock()
+        ws.last_runtime_snapshot_id = "snap-001" if has_runtime else None
+        ws.dirty = False
+        return ws
+
+    def _make_rr_with_mixed_periods(self):
+        """RuntimeResult with 2 construction periods and 3 operational periods."""
+        rr = MagicMock()
+        rr.debt_schedule = {
+            "periods": [
+                # construction draw-downs — must be excluded
+                {"period": -2, "date": "2025-06-30", "is_operation": False,
+                 "senior_balance_keur": 0.0, "senior_principal_keur": 0.0,
+                 "senior_interest_keur": 500.0, "senior_ds_keur": 500.0,
+                 "dscr": None, "dsra_balance_keur": 0.0},
+                {"period": -1, "date": "2026-12-31", "is_operation": False,
+                 "senior_balance_keur": 55000.0, "senior_principal_keur": 0.0,
+                 "senior_interest_keur": 1000.0, "senior_ds_keur": 1000.0,
+                 "dscr": None, "dsra_balance_keur": 0.0},
+                # operational periods — must be retained in order
+                {"period": 1, "date": "2027-06-30", "is_operation": True,
+                 "senior_balance_keur": 54000.0, "senior_principal_keur": 1000.0,
+                 "senior_interest_keur": 2475.0, "senior_ds_keur": 3475.0,
+                 "dscr": 1.40, "dsra_balance_keur": 3475.0},
+                {"period": 2, "date": "2027-12-31", "is_operation": True,
+                 "senior_balance_keur": 53000.0, "senior_principal_keur": 1000.0,
+                 "senior_interest_keur": 2430.0, "senior_ds_keur": 3430.0,
+                 "dscr": 1.42, "dsra_balance_keur": 3430.0},
+                {"period": 3, "date": "2028-06-30", "is_operation": True,
+                 "senior_balance_keur": 52000.0, "senior_principal_keur": 1000.0,
+                 "senior_interest_keur": 2385.0, "senior_ds_keur": 3385.0,
+                 "dscr": 1.44, "dsra_balance_keur": 3385.0},
+            ],
+            "summary": {
+                "total_senior_ds_keur": 100000.0, "actual_min_dscr": 1.40,
+                "actual_avg_dscr": 1.42, "target_dscr": 1.30,
+                "min_llcr": 1.55, "periods_in_lockup": 0,
+            },
+        }
+        rr.runtime_summary = {
+            "total_senior_ds_keur": 100000.0, "min_dscr": 1.40,
+            "avg_dscr": 1.42, "target_dscr": 1.30,
+        }
+        return rr
+
+    def test_construction_periods_excluded(self):
+        """_build_debt_ctx must not include is_operation=False periods."""
+        from app.v2.router import _build_debt_ctx
+        fake_rr = self._make_rr_with_mixed_periods()
+        fake_pis = _fake_pis()
+
+        with patch("app.workbook.service.WorkbookService.get_runtime_result",
+                   return_value=fake_rr):
+            ctx = _build_debt_ctx(fake_pis, self._make_ws())
+
+        op = ctx["debt_operational_periods"]
+        self.assertIsNotNone(op, "debt_operational_periods should not be None with runtime")
+        for p in op:
+            self.assertTrue(p["is_operation"],
+                            f"Period {p['period']} is not operational but appears in output")
+        # Both construction periods (period -2 and -1) must be absent
+        periods_in_output = {p["period"] for p in op}
+        self.assertNotIn(-2, periods_in_output, "Construction period -2 leaked into output")
+        self.assertNotIn(-1, periods_in_output, "Construction period -1 leaked into output")
+
+    def test_operational_periods_retained_in_order(self):
+        """Operational periods must appear in original schedule order."""
+        from app.v2.router import _build_debt_ctx
+        fake_rr = self._make_rr_with_mixed_periods()
+        fake_pis = _fake_pis()
+
+        with patch("app.workbook.service.WorkbookService.get_runtime_result",
+                   return_value=fake_rr):
+            ctx = _build_debt_ctx(fake_pis, self._make_ws())
+
+        op = ctx["debt_operational_periods"]
+        self.assertEqual([p["period"] for p in op], [1, 2, 3],
+                         "Operational periods not in original order")
+
+    def test_empty_operational_set_renders_truthful_empty_state(self):
+        """When schedule has only construction periods, table shows empty-state notice."""
+        from app.v2.router import _build_debt_ctx
+        rr = MagicMock()
+        rr.debt_schedule = {
+            "periods": [
+                {"period": -1, "date": "2026-12-31", "is_operation": False,
+                 "senior_balance_keur": 55000.0, "senior_principal_keur": 0.0,
+                 "senior_interest_keur": 1000.0, "senior_ds_keur": 1000.0,
+                 "dscr": None, "dsra_balance_keur": 0.0},
+            ],
+            "summary": {},
+        }
+        rr.runtime_summary = {}
+        fake_pis = _fake_pis()
+
+        with patch("app.workbook.service.WorkbookService.get_runtime_result",
+                   return_value=rr):
+            ctx = _build_debt_ctx(fake_pis, self._make_ws())
+
+        op = ctx["debt_operational_periods"]
+        self.assertIsNotNone(op, "debt_operational_periods should not be None when schedule exists")
+        self.assertEqual(op, [], "Expected empty list when all periods are construction")
+
+    def test_empty_operational_set_template_shows_empty_state(self):
+        """When debt_operational_periods is [], the template shows the empty-state row."""
+        client = _authed_client()
+        project_code = _create_project(client, "op-empty-01")
+
+        rr = MagicMock()
+        rr.debt_schedule = {
+            "periods": [
+                {"period": -1, "date": "2026-12-31", "is_operation": False,
+                 "senior_balance_keur": 55000.0, "senior_principal_keur": 0.0,
+                 "senior_interest_keur": 1000.0, "senior_ds_keur": 1000.0,
+                 "dscr": None, "dsra_balance_keur": 0.0},
+            ],
+            "summary": {"total_senior_ds_keur": 1000.0, "actual_min_dscr": None,
+                        "actual_avg_dscr": None, "target_dscr": 1.30,
+                        "min_llcr": None, "periods_in_lockup": 0},
+        }
+        rr.runtime_summary = {"total_senior_ds_keur": 1000.0, "min_dscr": None, "avg_dscr": None}
+
+        with patch("app.workbook.service.WorkbookService.get_runtime_result",
+                   return_value=rr):
+            resp = client.get(f"/v2/workbook?project={project_code}")
+
+        self.assertEqual(resp.status_code, 200)
+        div = _debt_div(resp.text)
+        # Empty-state element should be present; table should NOT be present
+        empty = div.find(attrs={"data-testid": "debt-schedule-empty"})
+        self.assertIsNotNone(empty, "Empty-state notice missing when only construction periods")
+        table = div.find(attrs={"data-testid": "debt-schedule-table"})
+        self.assertIsNone(table, "Schedule table must not render when operational set is empty")
+
+    def test_no_runtime_yields_none_operational_periods(self):
+        """When no runtime result exists, debt_operational_periods must be None."""
+        from app.v2.router import _build_debt_ctx
+        fake_pis = _fake_pis()
+
+        with patch("app.workbook.service.WorkbookService.get_runtime_result",
+                   return_value=None):
+            ctx = _build_debt_ctx(fake_pis, self._make_ws(has_runtime=False))
+
+        self.assertIsNone(ctx["debt_operational_periods"],
+                          "debt_operational_periods must be None when no RuntimeResult")
+
+    def test_construction_excluded_and_table_shows_only_operational_rows(self):
+        """Template must render exactly the operational rows, none of the construction ones."""
+        client = _authed_client()
+        project_code = _create_project(client, "op-filter-01")
+        fake_rr = self._make_rr_with_mixed_periods()
+
+        with patch("app.workbook.service.WorkbookService.get_runtime_result",
+                   return_value=fake_rr):
+            resp = client.get(f"/v2/workbook?project={project_code}")
+
+        self.assertEqual(resp.status_code, 200)
+        div = _debt_div(resp.text)
+        rows = div.find_all(attrs={"data-testid": lambda v: v and v.startswith("debt-schedule-row-")})
+        row_ids = [r["data-testid"] for r in rows]
+        # Must see exactly the 3 operational rows
+        self.assertEqual(len(rows), 3, f"Expected 3 operational rows, got {len(rows)}: {row_ids}")
+        # Construction period numbers (-2, -1) must not appear as row testids
+        self.assertNotIn("debt-schedule-row--2", row_ids, "Construction period -2 rendered")
+        self.assertNotIn("debt-schedule-row--1", row_ids, "Construction period -1 rendered")
+
+
 if __name__ == "__main__":
     unittest.main()

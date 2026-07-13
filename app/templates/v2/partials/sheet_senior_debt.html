@@ -68,11 +68,15 @@
                         hx_target="#v2-sheet-senior-debt", sheet_id="debt") }}
       {% endfor %}
 
-      {# Not yet migrated — planned in future registry expansion #}
-      {{ placeholder_row("Base Rate") }}
-      {{ placeholder_row("Grace Period") }}
-      {{ placeholder_row("Repayment Profile") }}
-      {{ placeholder_row("DSRA (months)") }}
+      {#
+        The four rows below are placeholders for the current single-facility
+        debt projection.  They are NOT editable and NOT engine-bound in this PR.
+        They will be wired in a future registry expansion (multi-lender module).
+      #}
+      {{ placeholder_row("Base Rate", "Not editable — not engine-bound in this PR") }}
+      {{ placeholder_row("Grace Period", "Not editable — not engine-bound in this PR") }}
+      {{ placeholder_row("Repayment Profile", "Not editable — not engine-bound in this PR") }}
+      {{ placeholder_row("DSRA (months)", "Not editable — not engine-bound in this PR") }}
 
     </div>
   </details>
@@ -151,15 +155,13 @@
       C. Debt Schedule
     </summary>
 
-    {% if debt_schedule is not none and debt_schedule.periods %}
-      {% set op_periods = [] %}
-      {% for p in debt_schedule.periods %}
-        {% if p.is_operation %}
-          {% set _ = op_periods.append(p) %}
-        {% endif %}
-      {% endfor %}
-
-      {% if op_periods %}
+    {#
+      debt_operational_periods is prepared server-side in _build_debt_ctx().
+      Construction periods (is_operation=False) are excluded before this
+      template receives the list.  None means no runtime exists yet.
+    #}
+    {% if debt_operational_periods is not none %}
+      {% if debt_operational_periods %}
         <div style="overflow-x:auto;" data-testid="debt-schedule-table-wrapper">
           <table class="v2-table" data-testid="debt-schedule-table"
                  style="width:100%;border-collapse:collapse;font-size:.85rem;">
@@ -176,7 +178,7 @@
               </tr>
             </thead>
             <tbody>
-              {% for p in op_periods %}
+              {% for p in debt_operational_periods %}
               <tr data-testid="debt-schedule-row-{{ p.period }}">
                 <td style="padding:.3rem .5rem;">{{ p.period }}</td>
                 <td style="padding:.3rem .5rem;white-space:nowrap;">{{ p.date }}</td>

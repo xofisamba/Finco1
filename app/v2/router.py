@@ -408,12 +408,26 @@ def _thaw(obj):
 
 
 def _build_debt_ctx(pis, ws) -> dict:
-    """Build Senior Debt sheet context: registry fields + RuntimeResult output."""
+    """Build Senior Debt sheet context: registry fields + RuntimeResult output.
+
+    Operational-period filtering is done here, not in the template.
+    ``debt_operational_periods`` contains only periods where is_operation is
+    True, in their original order from the schedule.  Construction draw-down
+    periods (is_operation=False) are excluded before the template receives the
+    list.  When no runtime exists the value is None and the template renders the
+    truthful empty state.
+    """
     from app.workbook.service import WorkbookService
     rr = WorkbookService.get_runtime_result(ws)
+    schedule = _thaw(rr.debt_schedule) if rr and rr.debt_schedule else None
+    op_periods = None
+    if schedule is not None:
+        raw = schedule.get("periods") or []
+        op_periods = [p for p in raw if p.get("is_operation")]
     return {
         "debt_fields": _build_sheet_fields("debt", pis),
-        "debt_schedule": _thaw(rr.debt_schedule) if rr and rr.debt_schedule else None,
+        "debt_schedule": schedule,
+        "debt_operational_periods": op_periods,
         "runtime_summary": _thaw(rr.runtime_summary) if rr and rr.runtime_summary else None,
     }
 
