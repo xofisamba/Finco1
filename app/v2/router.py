@@ -397,38 +397,30 @@ def _render_revenue_htmx_sheet(
 
 def _thaw(obj):
     """Recursively convert MappingProxyType to plain dict for Jinja2 iteration."""
-    from types import MappingProxyType
-    if isinstance(obj, MappingProxyType):
-        return {k: _thaw(v) for k, v in obj.items()}
-    if isinstance(obj, dict):
-        return {k: _thaw(v) for k, v in obj.items()}
-    if isinstance(obj, list):
-        return [_thaw(i) for i in obj]
-    return obj
+    from app.workbook.runtime_projection import thaw_runtime_payload
+    return thaw_runtime_payload(obj)
 
 
-def _build_debt_ctx(pis, ws) -> dict:
+def _build_debt_ctx(pis, ws, projection=None) -> dict:
     """Build Senior Debt sheet context: registry fields + RuntimeResult output.
 
-    Operational-period filtering is done here, not in the template.
-    ``debt_operational_periods`` contains only periods where is_operation is
-    True, in their original order from the schedule.  Construction draw-down
-    periods (is_operation=False) are excluded before the template receives the
-    list.  When no runtime exists the value is None and the template renders the
-    truthful empty state.
+    When a pre-built WorkbookRuntimeProjection bundle is supplied (GET handler),
+    it is reused so that only one get_runtime_result call is made per request.
+    When called standalone (HTMX sheet re-render), the bundle is built here.
     """
+    from app.workbook.runtime_projection import build_runtime_projection_bundle
     from app.workbook.service import WorkbookService
-    rr = WorkbookService.get_runtime_result(ws)
-    schedule = _thaw(rr.debt_schedule) if rr and rr.debt_schedule else None
-    op_periods = None
-    if schedule is not None:
-        raw = schedule.get("periods") or []
-        op_periods = [p for p in raw if p.get("is_operation")]
+    if projection is None:
+        rr = WorkbookService.get_runtime_result(ws)
+        from app.workbook.runtime_projection import build_runtime_projection_bundle
+        projection = build_runtime_projection_bundle(rr, ws.dirty)
+    d = projection.debt
     return {
         "debt_fields": _build_sheet_fields("debt", pis),
-        "debt_schedule": schedule,
-        "debt_operational_periods": op_periods,
-        "runtime_summary": _thaw(rr.runtime_summary) if rr and rr.runtime_summary else None,
+        "debt_state": d.state.value,
+        "debt_schedule": d.schedule,
+        "debt_operational_periods": d.operational_periods,
+        "runtime_summary": d.runtime_summary,
     }
 
 
@@ -449,23 +441,24 @@ def _render_debt_htmx_sheet(
     return HTMLResponse(content=sheet_html + "\n" + oob)
 
 
-def _build_tax_ctx(pis, ws) -> dict:
+def _build_tax_ctx(pis, ws, projection=None) -> dict:
     """Build Tax sheet context: registry fields + RuntimeResult output.
 
     ``tax_fields`` contains the two BOUND Tax registry fields rendered in
     Section A via the render_field macro (cit_rate_pct, loss_carryforward_years).
 
-    ``tax_operational_periods`` is filtered server-side (is_operation=True
-    only) before the template receives the list, matching the debt-sheet
-    pattern.  None means no runtime exists yet.
+    Option B hydration fills None values from pis.to_projectinputs().tax
+    without calling the engine or writing to the snapshot.
+
+    When a pre-built WorkbookRuntimeProjection bundle is supplied (GET handler),
+    it is reused so that only one get_runtime_result call is made per request.
     """
+    from app.workbook.runtime_projection import build_runtime_projection_bundle
     from app.workbook.service import WorkbookService
-    rr = WorkbookService.get_runtime_result(ws)
-    schedule = _thaw(rr.tax_schedule) if rr and rr.tax_schedule else None
-    op_periods = None
-    if schedule is not None:
-        raw = schedule.get("periods") or []
-        op_periods = [p for p in raw if p.get("is_operation")]
+    if projection is None:
+        rr = WorkbookService.get_runtime_result(ws)
+        projection = build_runtime_projection_bundle(rr, ws.dirty)
+    t = projection.tax
     raw_fields = _build_sheet_fields("tax", pis)
 
     # Option B — effective-value projection.
@@ -478,8 +471,8 @@ def _build_tax_ctx(pis, ws) -> dict:
     if any(f["value"] is None for f in raw_fields):
         effective_tax = pis.to_projectinputs().tax
         _TAX_FIELD_MAP = {
-            "tax.assumptions.cit_rate_pct": lambda t: round(t.corporate_rate * 100, 10),
-            "tax.assumptions.loss_carryforward_years": lambda t: t.loss_carryforward_years,
+            "tax.assumptions.cit_rate_pct": lambda tx: round(tx.corporate_rate * 100, 10),
+            "tax.assumptions.loss_carryforward_years": lambda tx: tx.loss_carryforward_years,
         }
         for f in raw_fields:
             if f["value"] is None:
@@ -489,9 +482,10 @@ def _build_tax_ctx(pis, ws) -> dict:
 
     return {
         "tax_fields": raw_fields,
-        "tax_schedule": schedule,
-        "tax_operational_periods": op_periods,
-        "runtime_summary": _thaw(rr.runtime_summary) if rr and rr.runtime_summary else None,
+        "tax_state": t.state.value,
+        "tax_schedule": t.schedule,
+        "tax_operational_periods": t.operational_periods,
+        "runtime_summary": t.runtime_summary,
     }
 
 
@@ -512,174 +506,76 @@ def _render_tax_htmx_sheet(
     return HTMLResponse(content=sheet_html + "\n" + oob)
 
 
-# ── Financial Statements state constants ──────────────────────────────────── #
-_FS_STATE_NOT_RUN = "NOT_RUN"              # no RuntimeResult exists at all
-_FS_STATE_CLEAN = "CLEAN"                  # rr + fs payload + workspace clean
-_FS_STATE_STALE = "STALE"                  # rr + fs payload + workspace dirty
-_FS_STATE_FS_UNAVAILABLE = "FS_UNAVAILABLE"  # rr exists but fs payload is None/empty
+# ── Legacy re-exports kept for backward compatibility with existing tests ──── #
+# The canonical implementations live in app.workbook.runtime_projection.
+from app.workbook.runtime_projection import (  # noqa: E402
+    FS_PNL_ROW_DEFS    as _FS_PNL_ROW_DEFS,
+    FS_PF_CF_ROW_DEFS  as _FS_PF_CF_ROW_DEFS,
+    FS_BS_ROW_DEFS     as _FS_BS_ROW_DEFS,
+    project_rows       as _fs_project_rows,
+    project_period_labels as _fs_period_labels,
+    fs_classify_statement as _fs_classify,
+)
 
-# ── Server-side row projection definitions ────────────────────────────────── #
-# (key, display_label, is_total)
-_FS_PNL_ROW_DEFS = [
-    ("revenues_keur",                 "Revenues",             False),
-    ("operating_expenses_keur",       "Operating Expenses",   False),
-    ("depreciation_keur",             "Depreciation",         False),
-    ("ebit_keur",                     "EBIT",                 True),
-    ("senior_interest_expense_keur",  "Senior Interest",      False),
-    ("shl_interest_expense_keur",     "SHL Interest",         False),
-    ("earnings_before_tax_keur",      "Earnings Before Tax",  True),
-    ("cit_accrual_keur",              "CIT Accrual",          False),
-    ("net_income_keur",               "Net Income",           True),
-    ("retained_earnings_keur",        "Retained Earnings",    False),
-    ("net_dividends_keur",            "Net Dividends",        False),
-]
-
-_FS_PF_CF_ROW_DEFS = [
-    ("revenue_cash_keur",           "Revenue Cash",           False),
-    ("opex_cash_keur",              "OPEX Cash",              False),
-    ("ebitda_cash_keur",            "EBITDA Cash",            True),
-    ("cash_tax_keur",               "Cash Tax",               False),
-    ("fcf_banks_keur",              "FCF to Banks",           True),
-    ("senior_total_ds_keur",        "Senior Total DS",        False),
-    ("dsra_funding_keur",           "DSRA Funding",           False),
-    ("dsra_release_keur",           "DSRA Release",           False),
-    ("fcf_junior_keur",             "FCF Junior",             False),
-    ("fcf_for_distribution_keur",   "FCF for Distribution",   True),
-    ("net_dividends_keur",          "Net Dividends",          False),
-]
-
-_FS_BS_ROW_DEFS = [
-    ("net_fixed_assets_keur",           "Net Fixed Assets",          False),
-    ("dsra_balance_keur",               "DSRA Balance",              False),
-    ("cash_keur",                       "Cash",                      False),
-    ("total_assets_keur",               "Total Assets",              True),
-    ("share_capital_keur",              "Share Capital ★",      False),
-    ("retained_earnings_keur",          "Retained Earnings",         False),
-    ("shl_balance_keur",                "SHL Balance",               False),
-    ("senior_balance_keur",             "Senior Balance",            False),
-    ("total_liabilities_equity_keur",   "Total Liabilities + Equity", True),
-    ("balance_check_keur",              "Balance Check",             False),
-]
+_FS_STATE_NOT_RUN        = "NOT_RUN"
+_FS_STATE_CLEAN          = "CLEAN"
+_FS_STATE_STALE          = "STALE"
+_FS_STATE_FS_UNAVAILABLE = "FS_UNAVAILABLE"
 
 
-def _fs_classify(rr, fs, statement_key: str) -> str:
-    """Return PARTIAL / UNAVAILABLE / NOT_RUN classification for one statement."""
-    if rr is None:
-        return "NOT_RUN"
-    if fs is None:
-        return "UNAVAILABLE"
-    if statement_key not in fs:
-        return "UNAVAILABLE"
-    if fs[statement_key].get("periods") is None:
-        return "UNAVAILABLE"
-    return "PARTIAL"
-
-
-def _fs_project_rows(row_defs: list, periods) -> list | None:
-    """Build presentation rows from payload periods.
-
-    Returns None when periods is None (no runtime / statement unavailable).
-    Returns an empty list when periods is [] (run produced zero periods).
-    Values are preserved verbatim; None is kept as None, 0 is kept as 0.
-    No arithmetic is performed.
-    """
-    if periods is None:
-        return None
-    return [
-        {
-            "key": key,
-            "label": label,
-            "is_total": is_total,
-            "values": [p.get(key) for p in periods],
-        }
-        for key, label, is_total in row_defs
-    ]
-
-
-def _fs_period_labels(periods) -> list:
-    """Extract YYYY-MM display labels from period date fields server-side."""
-    if not periods:
-        return []
-    return [
-        p.get("date", "")[:7] if p.get("date") else "—"
-        for p in periods
-    ]
-
-
-def _build_financial_statements_ctx(pis, ws) -> dict:
+def _build_financial_statements_ctx(pis, ws, projection=None) -> dict:
     """Build Financial Statements sheet context from persisted RuntimeResult.
 
-    Reads the three-statement payload serialised by _serialize_financial_statements()
-    in project_runner.py.  Never invokes the engine, never performs arithmetic —
-    period dicts are passed verbatim through _fs_project_rows().
-
-    State machine
-    -------------
-    NOT_RUN         : no RuntimeResult exists
-    CLEAN           : rr + fs payload + workspace clean
-    STALE           : rr + fs payload + workspace dirty
-    FS_UNAVAILABLE  : rr exists but financial_statements payload is absent
-
-    Classifications (per statement): PARTIAL | UNAVAILABLE | NOT_RUN
-    The serialiser currently exposes partial contracts; FULL is not used here.
+    When a pre-built WorkbookRuntimeProjection bundle is supplied (GET handler),
+    it is reused so that only one get_runtime_result call is made per request.
     """
+    from app.workbook.runtime_projection import build_runtime_projection_bundle
     from app.workbook.service import WorkbookService
-    rr = WorkbookService.get_runtime_result(ws)
-    fs = _thaw(rr.financial_statements) if rr and rr.financial_statements else None
-
-    # FS-level state
-    if rr is None:
-        fs_state = _FS_STATE_NOT_RUN
-    elif fs is None:
-        fs_state = _FS_STATE_FS_UNAVAILABLE
-    elif ws.dirty:
-        fs_state = _FS_STATE_STALE
-    else:
-        fs_state = _FS_STATE_CLEAN
-
-    pnl_periods = fs.get("pnl", {}).get("periods") if fs else None
-    bs_periods = fs.get("balance_sheet", {}).get("periods") if fs else None
-    pf_cf_periods = fs.get("pf_cash_waterfall", {}).get("periods") if fs else None
-
+    if projection is None:
+        rr = WorkbookService.get_runtime_result(ws)
+        projection = build_runtime_projection_bundle(rr, ws.dirty)
+    f = projection.fs
+    # Map the FS UNAVAILABLE state to the legacy template key for backward compat
+    fs_state = f.state.value if f.state.value != "UNAVAILABLE" else "FS_UNAVAILABLE"
     return {
         "fs_state": fs_state,
-        "fs_available": fs is not None,
-        "fs_pnl_rows": _fs_project_rows(_FS_PNL_ROW_DEFS, pnl_periods),
-        "fs_bs_rows": _fs_project_rows(_FS_BS_ROW_DEFS, bs_periods),
-        "fs_pf_cf_rows": _fs_project_rows(_FS_PF_CF_ROW_DEFS, pf_cf_periods),
-        "fs_pnl_period_labels": _fs_period_labels(pnl_periods),
-        "fs_bs_period_labels": _fs_period_labels(bs_periods),
-        "fs_pf_cf_period_labels": _fs_period_labels(pf_cf_periods),
-        "fs_pnl_classification": _fs_classify(rr, fs, "pnl"),
-        "fs_bs_classification": _fs_classify(rr, fs, "balance_sheet"),
-        "fs_pf_cf_classification": _fs_classify(rr, fs, "pf_cash_waterfall"),
-        "runtime_summary": _thaw(rr.runtime_summary) if rr and rr.runtime_summary else None,
+        "fs_available": f.fs_available,
+        "fs_pnl_rows": f.pnl_rows,
+        "fs_bs_rows": f.bs_rows,
+        "fs_pf_cf_rows": f.pf_cf_rows,
+        "fs_pnl_period_labels": f.pnl_period_labels,
+        "fs_bs_period_labels": f.bs_period_labels,
+        "fs_pf_cf_period_labels": f.pf_cf_period_labels,
+        "fs_pnl_classification": f.pnl_classification,
+        "fs_bs_classification": f.bs_classification,
+        "fs_pf_cf_classification": f.pf_cf_classification,
+        "runtime_summary": f.runtime_summary,
     }
 
 
-def _build_fs_runtime_bar_oob(ws) -> str:
-    """Build the OOB HTML that refreshes #fs-runtime-bar after a cross-sheet edit.
+def _build_all_oob(ws) -> str:
+    """Build combined OOB for debt, tax, and fs runtime bars after a mutation.
 
-    Called from every HTMX success response so that editing Tax, Debt, Revenue etc.
-    correctly updates the Financial Statements runtime state badge without
-    re-rendering the full statements tables.
-
-    Must NOT be appended on validation-error responses — those never mutate state.
+    Called from every HTMX success response that does NOT re-render one of
+    the three runtime-bar sheets directly.  Must NOT be appended on
+    validation-error responses — those never mutate state.
     """
+    from app.workbook.runtime_projection import build_runtime_projection_bundle
+    from app.v2.runtime_projection_views import build_all_runtime_bar_oob
     from app.workbook.service import WorkbookService
     rr = WorkbookService.get_runtime_result(ws)
-    if rr is None:
-        fs_state = _FS_STATE_NOT_RUN
-    elif not rr.financial_statements:
-        fs_state = _FS_STATE_FS_UNAVAILABLE
-    elif ws.dirty:
-        fs_state = _FS_STATE_STALE
-    else:
-        fs_state = _FS_STATE_CLEAN
-    bar_html = _templates.get_template("partials/_fs_runtime_bar.html").render(
-        {"fs_state": fs_state}
-    )
-    return f'<div id="fs-runtime-bar" hx-swap-oob="true">{bar_html}</div>'
+    projection = build_runtime_projection_bundle(rr, ws.dirty)
+    return build_all_runtime_bar_oob(projection)
+
+
+# Legacy alias so tests that imported the old helper continue to pass.
+def _build_fs_runtime_bar_oob(ws) -> str:
+    from app.workbook.runtime_projection import build_runtime_projection_bundle
+    from app.v2.runtime_projection_views import build_fs_bar_oob
+    from app.workbook.service import WorkbookService
+    rr = WorkbookService.get_runtime_result(ws)
+    projection = build_runtime_projection_bundle(rr, ws.dirty)
+    return build_fs_bar_oob(projection)
 
 
 def _render_financial_statements_htmx_sheet(
@@ -795,9 +691,13 @@ async def v2_workbook(request: Request, project: Optional[str] = None):
     }
     context.update(_build_capex_vm_ctx(project_record, pis))
     context.update(_build_opex_vm_ctx(project_record, pis))
-    context.update(_build_debt_ctx(pis, ws))
-    context.update(_build_tax_ctx(pis, ws))
-    context.update(_build_financial_statements_ctx(pis, ws))
+    # Build projection bundle once; pass it to all three sheet context builders.
+    from app.workbook.runtime_projection import build_runtime_projection_bundle
+    _rr = WorkbookService.get_runtime_result(ws)
+    _projection = build_runtime_projection_bundle(_rr, ws.dirty)
+    context.update(_build_debt_ctx(pis, ws, projection=_projection))
+    context.update(_build_tax_ctx(pis, ws, projection=_projection))
+    context.update(_build_financial_statements_ctx(pis, ws, projection=_projection))
     return _templates.TemplateResponse(request=request, name="workbook.html", context=context)
 
 
@@ -972,11 +872,11 @@ async def v2_workbook_update(
             resp = _render_htmx_sheet(
                 request, updated_pis, updated_ws_after, project_record, project,
             )
-        # Append OOB refresh of the Financial Statements runtime bar so that
-        # editing any other sheet immediately reflects the dirty/clean state
-        # in the Financial Statements section without a full page reload.
-        fs_bar_oob = _build_fs_runtime_bar_oob(updated_ws_after)
-        return HTMLResponse(content=resp.body.decode() + "\n" + fs_bar_oob)
+        # Append OOB refresh of all three runtime bars so that editing any
+        # sheet immediately reflects the dirty/clean state on Debt, Tax, and
+        # Financial Statements without a full page reload.
+        all_bars_oob = _build_all_oob(updated_ws_after)
+        return HTMLResponse(content=resp.body.decode() + "\n" + all_bars_oob)
 
     return RedirectResponse(
         url=f"/v2/workbook?project={project}",
