@@ -1635,3 +1635,148 @@ class TestImmutabilityAndIdentity:
         assert periods is not None
         assert len(periods) == 3
         assert [p["senior_balance_keur"] for p in periods] == [1000.0, 900.0, 800.0]
+
+
+# ═══════════════════════════════════════════════════════════════════════════ #
+# T. has_payload structural truthfulness                                       #
+# ═══════════════════════════════════════════════════════════════════════════ #
+
+class TestHasPayloadStructuralTruthfulness:
+    """has_payload must agree with the structural availability contract."""
+
+    def _make_rr(self, debt_schedule=None, tax_schedule=None):
+        from app.workbook.runtime_result import RuntimeResult
+        rr = MagicMock(spec=RuntimeResult)
+        rr.snapshot_id = rr.ran_at = rr.origin = "s"
+        rr.debt_schedule = debt_schedule
+        rr.tax_schedule = tax_schedule
+        rr.financial_statements = None
+        rr.runtime_summary = None
+        return rr
+
+    def test_debt_non_empty_payload_without_periods_key(self):
+        from app.workbook.runtime_projection import build_runtime_projection_bundle, RuntimeProjectionState
+        rr = self._make_rr(debt_schedule={"summary": {"total": 100}})
+        bundle = build_runtime_projection_bundle(rr, is_dirty=False)
+        assert bundle.debt.meta.state == RuntimeProjectionState.UNAVAILABLE
+        assert bundle.debt.meta.has_payload is False
+        assert bundle.debt.periods is None
+        assert bundle.debt.operational_periods is None
+
+    def test_tax_non_empty_payload_without_periods_key(self):
+        from app.workbook.runtime_projection import build_runtime_projection_bundle, RuntimeProjectionState
+        rr = self._make_rr(tax_schedule={"summary": {"total": 50}})
+        bundle = build_runtime_projection_bundle(rr, is_dirty=False)
+        assert bundle.tax.meta.state == RuntimeProjectionState.UNAVAILABLE
+        assert bundle.tax.meta.has_payload is False
+        assert bundle.tax.periods is None
+        assert bundle.tax.operational_periods is None
+
+    def test_debt_empty_periods_list_has_payload_true_clean(self):
+        from app.workbook.runtime_projection import build_runtime_projection_bundle, RuntimeProjectionState
+        rr = self._make_rr(debt_schedule={"periods": []})
+        bundle = build_runtime_projection_bundle(rr, is_dirty=False)
+        assert bundle.debt.meta.has_payload is True
+        assert bundle.debt.meta.state == RuntimeProjectionState.CLEAN
+
+    def test_debt_empty_periods_list_has_payload_true_stale(self):
+        from app.workbook.runtime_projection import build_runtime_projection_bundle, RuntimeProjectionState
+        rr = self._make_rr(debt_schedule={"periods": []})
+        bundle = build_runtime_projection_bundle(rr, is_dirty=True)
+        assert bundle.debt.meta.has_payload is True
+        assert bundle.debt.meta.state == RuntimeProjectionState.STALE
+
+    def test_tax_empty_periods_list_has_payload_true_clean(self):
+        from app.workbook.runtime_projection import build_runtime_projection_bundle, RuntimeProjectionState
+        rr = self._make_rr(tax_schedule={"periods": []})
+        bundle = build_runtime_projection_bundle(rr, is_dirty=False)
+        assert bundle.tax.meta.has_payload is True
+        assert bundle.tax.meta.state == RuntimeProjectionState.CLEAN
+
+    def test_tax_empty_periods_list_has_payload_true_stale(self):
+        from app.workbook.runtime_projection import build_runtime_projection_bundle, RuntimeProjectionState
+        rr = self._make_rr(tax_schedule={"periods": []})
+        bundle = build_runtime_projection_bundle(rr, is_dirty=True)
+        assert bundle.tax.meta.has_payload is True
+        assert bundle.tax.meta.state == RuntimeProjectionState.STALE
+
+    def test_meta_state_and_has_payload_never_contradict(self):
+        """UNAVAILABLE ↔ has_payload False; CLEAN/STALE ↔ has_payload True."""
+        from app.workbook.runtime_projection import build_runtime_projection_bundle, RuntimeProjectionState
+        unavailable_states = {RuntimeProjectionState.UNAVAILABLE, RuntimeProjectionState.NOT_RUN}
+        available_states = {RuntimeProjectionState.CLEAN, RuntimeProjectionState.STALE}
+        cases = [
+            (None, None),
+            ({}, None),
+            ({"summary": {}}, None),
+            ({"periods": None}, None),
+            ({"periods": []}, None),
+            (_sample_debt_schedule(), None),
+        ]
+        from app.workbook.runtime_result import RuntimeResult
+        for debt_sched, tax_sched in cases:
+            rr = MagicMock(spec=RuntimeResult)
+            rr.snapshot_id = rr.ran_at = rr.origin = "s"
+            rr.debt_schedule = debt_sched
+            rr.tax_schedule = tax_sched
+            rr.financial_statements = None
+            rr.runtime_summary = None
+            bundle = build_runtime_projection_bundle(rr, is_dirty=False)
+            if bundle.debt.meta.state in unavailable_states:
+                assert bundle.debt.meta.has_payload is False, f"debt has_payload True but state={bundle.debt.meta.state} for schedule={debt_sched!r}"
+            elif bundle.debt.meta.state in available_states:
+                assert bundle.debt.meta.has_payload is True, f"debt has_payload False but state={bundle.debt.meta.state} for schedule={debt_sched!r}"
+
+
+# ═══════════════════════════════════════════════════════════════════════════ #
+# U. Identity None preservation                                                #
+# ═══════════════════════════════════════════════════════════════════════════ #
+
+class TestIdentityNonePreservation:
+    """Absent identity attributes must be None, not the string "None"."""
+
+    def test_absent_snapshot_id_is_none_not_string(self):
+        from app.workbook.runtime_projection import build_runtime_projection_bundle
+        from app.workbook.runtime_result import RuntimeResult
+        rr = MagicMock(spec=RuntimeResult)
+        # Do not set snapshot_id so getattr returns the MagicMock default sentinel
+        # Instead, explicitly set it to None
+        rr.snapshot_id = None
+        rr.ran_at = None
+        rr.origin = None
+        rr.debt_schedule = _sample_debt_schedule()
+        rr.tax_schedule = _sample_tax_schedule()
+        rr.financial_statements = _sample_fs()
+        rr.runtime_summary = {}
+        bundle = build_runtime_projection_bundle(rr, is_dirty=False)
+        assert bundle.debt.meta.snapshot_id is None
+        assert bundle.debt.meta.ran_at is None
+        assert bundle.debt.meta.origin is None
+        assert bundle.debt.meta.snapshot_id != "None"
+        assert bundle.debt.meta.ran_at != "None"
+        assert bundle.debt.meta.origin != "None"
+
+    def test_present_snapshot_id_preserved_as_string(self):
+        from app.workbook.runtime_projection import build_runtime_projection_bundle
+        from app.workbook.runtime_result import RuntimeResult
+        rr = MagicMock(spec=RuntimeResult)
+        rr.snapshot_id = "snap-abc-123"
+        rr.ran_at = "2026-07-13T12:00:00"
+        rr.origin = "workbook_v2"
+        rr.debt_schedule = _sample_debt_schedule()
+        rr.tax_schedule = _sample_tax_schedule()
+        rr.financial_statements = _sample_fs()
+        rr.runtime_summary = {}
+        bundle = build_runtime_projection_bundle(rr, is_dirty=False)
+        assert bundle.debt.meta.snapshot_id == "snap-abc-123"
+        assert bundle.tax.meta.ran_at == "2026-07-13T12:00:00"
+        assert bundle.fs.meta.origin == "workbook_v2"
+
+    def test_no_rr_identity_fields_all_none(self):
+        from app.workbook.runtime_projection import build_runtime_projection_bundle
+        bundle = build_runtime_projection_bundle(None, is_dirty=False)
+        assert bundle.debt.meta.snapshot_id is None
+        assert bundle.debt.meta.ran_at is None
+        assert bundle.debt.meta.origin is None
+        assert bundle.tax.meta.snapshot_id is None
+        assert bundle.fs.meta.snapshot_id is None

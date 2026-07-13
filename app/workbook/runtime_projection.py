@@ -311,9 +311,13 @@ def build_runtime_projection_bundle(
 
     # ── Shared rr identity (same across all three sheets) ────────────────── #
     _has_runtime = rr is not None
-    _snapshot_id = str(getattr(rr, "snapshot_id", None)) if _has_runtime else None
-    _ran_at      = str(getattr(rr, "ran_at", None))      if _has_runtime else None
-    _origin      = str(getattr(rr, "origin", None))      if _has_runtime else None
+    def _identity(attr: str) -> Optional[str]:
+        v = getattr(rr, attr, None) if _has_runtime else None
+        return str(v) if v is not None else None
+
+    _snapshot_id = _identity("snapshot_id")
+    _ran_at      = _identity("ran_at")
+    _origin      = _identity("origin")
 
     # ── Debt projection ──────────────────────────────────────────────────── #
     debt_state = classify_schedule_state(rr, debt_schedule, is_dirty)
@@ -322,7 +326,7 @@ def build_runtime_projection_bundle(
     debt_meta = RuntimeProjectionMeta(
         state=debt_state,
         has_runtime=_has_runtime,
-        has_payload=debt_schedule is not None,
+        has_payload=_schedule_has_valid_periods(debt_schedule),
         is_dirty=is_dirty,
         snapshot_id=_snapshot_id,
         ran_at=_ran_at,
@@ -346,7 +350,7 @@ def build_runtime_projection_bundle(
     tax_meta = RuntimeProjectionMeta(
         state=tax_state,
         has_runtime=_has_runtime,
-        has_payload=tax_schedule is not None,
+        has_payload=_schedule_has_valid_periods(tax_schedule),
         is_dirty=is_dirty,
         snapshot_id=_snapshot_id,
         ran_at=_ran_at,
