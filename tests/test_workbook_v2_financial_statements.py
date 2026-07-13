@@ -332,8 +332,7 @@ class TestStateMachine(unittest.TestCase):
         bar = soup.find(id="fs-runtime-bar")
         assert bar is not None
         text = bar.get_text()
-        assert "Not yet run" in text
-        assert "Available after Run" in text
+        assert "Not run" in text
 
     def test_state_a_statement_tables_absent(self):
         soup = _render_fs_template(_base_no_runtime_ctx())
@@ -347,17 +346,11 @@ class TestStateMachine(unittest.TestCase):
         assert badge is not None
         assert "Outputs current" in badge.get_text()
 
-    def test_state_c_stale_text(self):
+    def test_state_c_run_required_text(self):
         soup = _render_fs_template(_base_stale_ctx())
         badge = soup.find(attrs={"data-testid": "fs-runtime-state-c"})
         assert badge is not None
-        assert "stale" in badge.get_text().lower()
-
-    def test_state_c_run_required_visible(self):
-        soup = _render_fs_template(_base_stale_ctx())
-        run_req = soup.find(attrs={"data-testid": "fs-runtime-state-c-run-required"})
-        assert run_req is not None
-        assert "Run Required" in run_req.get_text()
+        assert "run required" in badge.get_text().lower()
 
     def test_state_d_unavailable_no_outputs_current(self):
         soup = _render_fs_template(_base_unavailable_ctx())
@@ -370,8 +363,7 @@ class TestStateMachine(unittest.TestCase):
         badge = soup.find(attrs={"data-testid": "fs-runtime-state-d"})
         assert badge is not None
         text = badge.get_text()
-        assert "completed" in text.lower()
-        assert "unavailable" in text.lower() or "not" in text.lower()
+        assert "unavailable" in text.lower()
 
     def test_state_d_statement_tables_absent(self):
         soup = _render_fs_template(_base_unavailable_ctx())
@@ -535,10 +527,10 @@ class TestTemplateRendering(unittest.TestCase):
         assert self.clean_soup.find(attrs={"data-testid": "fs-pf-cf-classification-badge"})
         assert self.clean_soup.find(attrs={"data-testid": "fs-bs-classification-badge"})
 
-    def test_partial_notices_present(self):
-        assert self.clean_soup.find(attrs={"data-testid": "fs-pnl-partial-notice"})
-        assert self.clean_soup.find(attrs={"data-testid": "fs-pf-cf-partial-notice"})
-        assert self.clean_soup.find(attrs={"data-testid": "fs-bs-partial-notice"})
+    def test_statements_tables_present_when_clean(self):
+        assert self.clean_soup.find(attrs={"data-testid": "fs-pnl-table-wrapper"})
+        assert self.clean_soup.find(attrs={"data-testid": "fs-pf-cf-table-wrapper"})
+        assert self.clean_soup.find(attrs={"data-testid": "fs-bs-table-wrapper"})
 
     def test_pnl_table_has_11_data_rows(self):
         table = self.clean_soup.find(attrs={"data-testid": "fs-pnl-table"})
@@ -822,9 +814,8 @@ class TestCrossSheetStaleTransition(unittest.TestCase):
         bar = fs_div.find(id="fs-runtime-bar")
         assert bar is not None
         bar_text = bar.get_text()
-        # State C: stale badge + Run Required
-        assert "stale" in bar_text.lower() or "previous run" in bar_text.lower()
-        assert "Run Required" in bar_text
+        # State C: run required
+        assert "run required" in bar_text.lower()
         # Previous statement tables still visible (persisted, not erased)
         assert fs_div.find(attrs={"data-testid": "fs-pnl-table"}) is not None
 

@@ -25,10 +25,10 @@
 {% from "partials/field_editor.html" import render_field %}
 
 {# Macro: read-only placeholder row #}
-{% macro placeholder_row(label, reason="Planned in future migration") %}
+{% macro placeholder_row(label, note="Future input") %}
 <div class="v2-field-row v2-field-readonly v2-inputs-placeholder-row">
   <span class="v2-field-label">{{ label }}</span>
-  <span class="v2-field-value"><span class="v2-placeholder-tag">{{ reason }}</span></span>
+  <span class="v2-field-value"><span class="v2-future-tag">{{ note }}</span></span>
 </div>
 {% endmacro %}
 
@@ -75,7 +75,6 @@
         {% endif %}
       {% endfor %}
 
-      {# Not yet migrated — planned in future registry expansion #}
       {{ placeholder_row("Offtake Type") }}
       {{ placeholder_row("Merchant %") }}
       {{ placeholder_row("Contract Count") }}
@@ -110,11 +109,11 @@
   <details class="v2-inputs-section">
     {{ section_anchor("production", "3. Production") }}
     <div class="v2-section-fields">
-      {{ placeholder_row("Annual Generation (P50)", "Available after Production migration") }}
-      {{ placeholder_row("Net Production",          "Available after Production migration") }}
-      {{ placeholder_row("Curtailment",             "Available after Production migration") }}
-      {{ placeholder_row("Availability",            "Available after Production migration") }}
-      {{ placeholder_row("Losses",                  "Available after Production migration") }}
+      {{ placeholder_row("Annual Generation (P50)") }}
+      {{ placeholder_row("Net Production") }}
+      {{ placeholder_row("Curtailment") }}
+      {{ placeholder_row("Availability") }}
+      {{ placeholder_row("Losses") }}
     </div>
   </details>
 
@@ -123,52 +122,11 @@
     {{ section_anchor("outputs", "4. Revenue Outputs") }}
     <div class="v2-section-fields">
 
-      <div class="v2-field-row v2-field-readonly">
-        <span class="v2-field-label">Runtime Status</span>
-        <span class="v2-field-value">
-          {%- if not has_runtime -%}
-            {# State A: no RuntimeResult yet #}
-            <span class="v2-field-empty">Not yet run</span>
-          {%- elif not ws_dirty -%}
-            {# State B: runtime exists and draft is clean #}
-            <span class="v2-runtime-clean">Outputs current</span>
-          {%- else -%}
-            {# State C: runtime exists but draft has unsaved changes #}
-            <span class="v2-runtime-dirty">Previous run available — stale for current draft</span>
-          {%- endif -%}
-        </span>
-      </div>
-      <div class="v2-field-row v2-field-readonly">
-        <span class="v2-field-label">Run Required</span>
-        <span class="v2-field-value">
-          {%- if ws_dirty -%}
-            <span class="v2-runtime-dirty">Yes</span>
-          {%- else -%}
-            No
-          {%- endif -%}
-        </span>
-      </div>
-
-      {#
-        Revenue output placeholder text varies by runtime state:
-        A: no RuntimeResult               → "Available after run"
-        B: RuntimeResult + clean draft    → "Runtime available — Revenue output mapping not yet connected"
-        C: RuntimeResult + dirty draft    → "Previous run available — output mapping not yet connected"
-        Never tell the user to run when a run already exists.
-      #}
-      {% if not has_runtime %}
-        {% set _output_note = "Available after run" %}
-      {% elif not ws_dirty %}
-        {% set _output_note = "Runtime available — Revenue output mapping not yet connected" %}
-      {% else %}
-        {% set _output_note = "Previous run available — output mapping not yet connected" %}
-      {% endif %}
-
-      {{ placeholder_row("Annual Revenue",   _output_note) }}
-      {{ placeholder_row("Average Price",    _output_note) }}
-      {{ placeholder_row("Captured Price",   _output_note) }}
-      {{ placeholder_row("Merchant Revenue", _output_note) }}
-      {{ placeholder_row("PPA Revenue",      _output_note) }}
+      {{ placeholder_row("Annual Revenue") }}
+      {{ placeholder_row("Average Price") }}
+      {{ placeholder_row("Captured Price") }}
+      {{ placeholder_row("Merchant Revenue") }}
+      {{ placeholder_row("PPA Revenue") }}
 
     </div>
   </details>
@@ -177,12 +135,12 @@
   <details class="v2-inputs-section">
     {{ section_anchor("future", "5. Future Modules") }}
     <div class="v2-section-fields">
-      {{ placeholder_row("Battery Revenue",       "Available after future migration") }}
-      {{ placeholder_row("Ancillary Services",    "Available after future migration") }}
-      {{ placeholder_row("Certificates (ROC/LGC)","Available after future migration") }}
-      {{ placeholder_row("GOOs",                  "Available after future migration") }}
-      {{ placeholder_row("Carbon Credits",        "Available after future migration") }}
-      {{ placeholder_row("Hydrogen",              "Available after future migration") }}
+      {{ placeholder_row("Battery Revenue") }}
+      {{ placeholder_row("Ancillary Services") }}
+      {{ placeholder_row("Certificates (ROC/LGC)") }}
+      {{ placeholder_row("GOOs") }}
+      {{ placeholder_row("Carbon Credits") }}
+      {{ placeholder_row("Hydrogen") }}
     </div>
   </details>
 

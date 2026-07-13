@@ -294,8 +294,8 @@ class TestRevenueSheetHtml(unittest.TestCase):
                 f"field {fid!r} missing from revenue sheet",
             )
 
-    def test_planned_future_migration_placeholder(self):
-        self.assertIn("Planned in future migration", self.rev.get_text())
+    def test_future_input_tags_present(self):
+        self.assertIn("Future input", self.rev.get_text())
 
     def test_future_modules_placeholders(self):
         text = self.rev.get_text()
@@ -426,11 +426,8 @@ class TestRevenueSheetProtectedRef(unittest.TestCase):
 
 class TestRevenueRuntimeMatrix(unittest.TestCase):
     """
-    State A — no RuntimeResult:          "Not yet run"
-    State B — RuntimeResult + clean:     "Outputs current"
-    State C — RuntimeResult + dirty:     "Previous run available — stale for current draft"
-
-    "Outputs current" must never appear while the draft is dirty.
+    Revenue outputs section uses uniform 'Future input' tags regardless of runtime state.
+    The global status banner (not the revenue sheet) conveys runtime state to the user.
     """
 
     @classmethod
@@ -460,51 +457,31 @@ class TestRevenueRuntimeMatrix(unittest.TestCase):
         assert resp.status_code == 200
         return resp.text
 
-    def test_state_a_not_yet_run(self):
-        """State A: no RuntimeResult → 'Not yet run'."""
+    def test_state_a_outputs_section_has_future_input(self):
+        """State A: no RuntimeResult → output rows show 'Future input'."""
         rev = _revenue_div(self._render_with(has_runtime=False, ws_dirty=False))
-        self.assertIn("Not yet run", rev.get_text())
-        self.assertNotIn("Outputs current", rev.get_text())
-        self.assertNotIn("stale", rev.get_text())
+        self.assertIn("Future input", rev.get_text())
 
-    def test_state_b_outputs_current(self):
-        """State B: RuntimeResult + clean draft → 'Outputs current'."""
+    def test_state_b_outputs_section_has_future_input(self):
+        """State B: RuntimeResult + clean → output rows still show 'Future input'."""
         rev = _revenue_div(self._render_with(has_runtime=True, ws_dirty=False))
-        self.assertIn("Outputs current", rev.get_text())
-        self.assertNotIn("Not yet run", rev.get_text())
-        self.assertNotIn("stale", rev.get_text())
+        self.assertIn("Future input", rev.get_text())
 
-    def test_state_c_stale(self):
-        """State C: RuntimeResult + dirty → stale message, never 'Outputs current'."""
+    def test_state_c_outputs_section_has_future_input(self):
+        """State C: RuntimeResult + dirty → output rows still show 'Future input'."""
         rev = _revenue_div(self._render_with(has_runtime=True, ws_dirty=True))
-        self.assertIn("stale", rev.get_text())
-        self.assertNotIn("Outputs current", rev.get_text())
-        self.assertNotIn("Not yet run", rev.get_text())
+        self.assertIn("Future input", rev.get_text())
 
-    def test_state_c_run_required_yes(self):
-        """State C: Run Required = Yes when dirty."""
-        rev = _revenue_div(self._render_with(has_runtime=True, ws_dirty=True))
-        text = rev.get_text()
-        idx = text.find("Run Required")
-        self.assertGreater(idx, -1)
-        self.assertIn("Yes", text[idx:idx + 40])
-
-    def test_state_b_run_required_no(self):
-        """State B: Run Required = No when clean."""
-        rev = _revenue_div(self._render_with(has_runtime=True, ws_dirty=False))
-        text = rev.get_text()
-        idx = text.find("Run Required")
-        self.assertGreater(idx, -1)
-        self.assertNotIn("Yes", text[idx:idx + 40])
-
-    def test_outputs_current_never_when_dirty(self):
-        """Regression: dirty draft must never show 'Outputs current'."""
+    def test_outputs_current_never_in_revenue_sheet(self):
+        """Revenue sheet itself never says 'Outputs current' — that's the global banner."""
         for has_runtime in (True, False):
-            rev = _revenue_div(self._render_with(has_runtime=has_runtime, ws_dirty=True))
-            self.assertNotIn(
-                "Outputs current", rev.get_text(),
-                f"'Outputs current' shown with has_runtime={has_runtime}, ws_dirty=True",
-            )
+            for ws_dirty in (True, False):
+                rev = _revenue_div(self._render_with(has_runtime=has_runtime, ws_dirty=ws_dirty))
+                self.assertNotIn(
+                    "Outputs current", rev.get_text(),
+                    f"'Outputs current' must not appear in revenue sheet "
+                    f"(has_runtime={has_runtime}, ws_dirty={ws_dirty})",
+                )
 
 
 # ---------------------------------------------------------------------------
@@ -513,11 +490,8 @@ class TestRevenueRuntimeMatrix(unittest.TestCase):
 
 class TestRevenueOutputPlaceholders(unittest.TestCase):
     """
-    State A: no RuntimeResult        → "Available after run"
-    State B: RuntimeResult + clean   → "Runtime available — Revenue output mapping not yet connected"
-    State C: RuntimeResult + dirty   → "Previous run available — output mapping not yet connected"
-
-    Never tell the user to run when a RuntimeResult already exists.
+    Revenue output rows (Annual Revenue, Average Price, etc.) show 'Future input'
+    in all runtime states — uniform vocabulary, no state-conditional messaging.
     """
 
     @classmethod
@@ -557,36 +531,19 @@ class TestRevenueOutputPlaceholders(unittest.TestCase):
             return section.get_text() if section else rev.get_text()
         return rev.get_text()
 
-    def test_state_a_available_after_run(self):
-        """State A: no runtime → 'Available after run' for all output rows."""
-        text = self._outputs_text(self._render_with(has_runtime=False, ws_dirty=False))
-        self.assertIn("Available after run", text)
-        self.assertNotIn("mapping not yet connected", text)
+    def test_all_states_show_future_input(self):
+        """All runtime states: output rows show 'Future input' tag."""
+        for has_runtime, ws_dirty in ((False, False), (True, False), (True, True)):
+            text = self._outputs_text(self._render_with(has_runtime=has_runtime, ws_dirty=ws_dirty))
+            self.assertIn("Future input", text,
+                          f"'Future input' missing in state has_runtime={has_runtime}, ws_dirty={ws_dirty}")
 
-    def test_state_b_mapping_not_connected(self):
-        """State B: runtime exists, clean → 'Revenue output mapping not yet connected'."""
-        text = self._outputs_text(self._render_with(has_runtime=True, ws_dirty=False))
-        self.assertIn("mapping not yet connected", text)
-        self.assertNotIn("Available after run", text)
-
-    def test_state_b_does_not_say_run_required(self):
-        """State B must not prompt a new run — a run already exists."""
-        html = self._render_with(has_runtime=True, ws_dirty=False)
-        # Check the output placeholder text only (not the Runtime Status row)
-        text = self._outputs_text(html)
-        # Should mention connected status, not "Available after run"
-        self.assertNotIn("Available after run", text)
-
-    def test_state_c_output_stale_message(self):
-        """State C: runtime exists, dirty → 'output mapping not yet connected'."""
-        text = self._outputs_text(self._render_with(has_runtime=True, ws_dirty=True))
-        self.assertIn("output mapping not yet connected", text)
-        self.assertNotIn("Available after run", text)
-
-    def test_state_a_does_not_show_connected_message(self):
-        """State A must not claim a runtime is available when none exists."""
-        text = self._outputs_text(self._render_with(has_runtime=False, ws_dirty=False))
-        self.assertNotIn("mapping not yet connected", text)
+    def test_no_migration_text_in_outputs(self):
+        """Output placeholders must not say 'mapping not yet connected' or 'Available after run'."""
+        for has_runtime, ws_dirty in ((False, False), (True, False), (True, True)):
+            text = self._outputs_text(self._render_with(has_runtime=has_runtime, ws_dirty=ws_dirty))
+            self.assertNotIn("mapping not yet connected", text)
+            self.assertNotIn("Available after run", text)
 
     def test_output_row_labels_always_present(self):
         """Annual Revenue, Average Price etc. labels always appear regardless of state."""

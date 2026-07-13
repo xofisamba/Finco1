@@ -467,9 +467,9 @@ class TestInputsSheetHtml(unittest.TestCase):
         self.assertIsNotNone(
             inp.find(attrs={"data-field-id": "debt.senior.gearing_pct"}))
 
-    def test_placeholder_not_yet_connected(self):
+    def test_placeholder_future_input(self):
         inp = self.soup.find(id="v2-sheet-inputs")
-        self.assertIn("Not yet connected", inp.get_text())
+        self.assertIn("Future input", inp.get_text())
 
     def test_tax_migration_placeholder(self):
         inp = self.soup.find(id="v2-sheet-inputs")

@@ -695,6 +695,10 @@ async def v2_workbook(request: Request, project: Optional[str] = None):
 
     context = {
         "project_code": project,
+        "project_name": project_record.project_name or project,
+        "project_type": (project_record.project_type or "").capitalize(),
+        "active_scenario_name": ws.active_scenario_name or "",
+        "last_runtime_at": ws.last_runtime_at or "",
         "workbook_version": pis.workbook_version,
         "content_hash": pis.content_hash,
         "template_source": pis.template_source,

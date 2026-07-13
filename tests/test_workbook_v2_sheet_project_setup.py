@@ -854,7 +854,7 @@ class TestProtectedReferenceDisplay(unittest.TestCase):
 
 class TestDraftStatusBanner(unittest.TestCase):
     """After a successful V2 edit the workspace is dirty and the page
-    must display 'Draft changed — Run required'."""
+    must display 'Changes not yet reflected in outputs — Run required'."""
 
     @classmethod
     def setUpClass(cls):
@@ -875,10 +875,10 @@ class TestDraftStatusBanner(unittest.TestCase):
     def test_clean_project_no_dirty_banner(self):
         """Fresh project has no dirty banner."""
         body = self._get_body()
-        self.assertNotIn("Draft changed", body)
+        self.assertNotIn("Changes not yet reflected", body)
 
     def test_dirty_banner_after_edit(self):
-        """After a V2 edit the page shows 'Draft changed — Run required'."""
+        """After a V2 edit the page shows 'Changes not yet reflected in outputs — Run required'."""
         content_hash = self._current_hash()
         self.assertIsNotNone(content_hash)
         resp = self.client.post(
@@ -894,8 +894,8 @@ class TestDraftStatusBanner(unittest.TestCase):
         )
         self.assertEqual(resp.status_code, 303)
         body = self._get_body()
-        self.assertIn("Draft changed", body,
-                      "Status banner must show 'Draft changed — Run required' after edit")
+        self.assertIn("Changes not yet reflected", body,
+                      "Status banner must show 'Changes not yet reflected in outputs — Run required' after edit")
 
     def test_htmx_success_response_contains_dirty_banner(self):
         """HTMX success response includes the dirty status in OOB banner."""
@@ -913,7 +913,7 @@ class TestDraftStatusBanner(unittest.TestCase):
             headers={"HX-Request": "true"},
         )
         self.assertEqual(resp.status_code, 200)
-        self.assertIn("Draft changed", resp.text,
+        self.assertIn("Changes not yet reflected", resp.text,
                       "HTMX response must contain dirty banner")
 
 

@@ -3,46 +3,191 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Workbook V2 — {{ project_code }}</title>
+  <title>{{ project_name }} — Workbook</title>
   <script src="/static/vendor/htmx.min.js"></script>
   <style>
-    /* ── V2 Workbook base ─────────────────────────────────────────── */
-    .v2-section { margin-bottom: 1.5rem; }
-    .v2-section-label { font-size: 0.85rem; text-transform: uppercase;
-                        letter-spacing: 0.06em; color: #666; margin: 0 0 0.5rem; }
-    .v2-section-fields { display: grid; gap: 0; }
+    /* ── Reset / base ─────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; }
+    body { margin: 0; font-family: system-ui, -apple-system, sans-serif;
+           font-size: 14px; color: #222; background: #f0f0ef; }
+
+    /* ── Workbook toolbar ─────────────────────────────────────────── */
+    .v2-toolbar {
+      display: flex;
+      align-items: center;
+      gap: 0;
+      padding: 0 0.75rem;
+      height: 2.4rem;
+      background: #1c2333;
+      color: #e0e4ef;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      border-bottom: 1px solid #0d1117;
+    }
+    .v2-toolbar-project {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      min-width: 0;
+      flex: 1;
+      overflow: hidden;
+    }
+    .v2-toolbar-name {
+      font-weight: 600;
+      font-size: 0.88rem;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      color: #fff;
+    }
+    .v2-toolbar-sep { color: #445; margin: 0 0.1rem; }
+    .v2-toolbar-type {
+      font-size: 0.75rem;
+      color: #8899bb;
+      white-space: nowrap;
+    }
+    .v2-toolbar-scenario {
+      font-size: 0.75rem;
+      color: #8899bb;
+      white-space: nowrap;
+      padding-left: 0.75rem;
+      border-left: 1px solid #2c3555;
+      margin-left: 0.5rem;
+    }
+    .v2-toolbar-scenario strong { color: #b0bcdd; font-weight: 500; }
+    .v2-toolbar-runtime {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0 0.75rem;
+      border-left: 1px solid #2c3555;
+      margin-left: 0.5rem;
+      flex-shrink: 0;
+    }
+    /* v2-toolbar-status is updated by OOB banner replacement */
+    .v2-toolbar-lastrun {
+      font-size: 0.72rem;
+      color: #667;
+      white-space: nowrap;
+    }
+    .v2-toolbar-run {
+      flex-shrink: 0;
+      margin-left: 0.5rem;
+    }
+
+    /* ── Run button ──────────────────────────────────────────────── */
+    .v2-run-btn {
+      font-size: 0.82rem;
+      font-weight: 600;
+      padding: 0.3rem 0.9rem;
+      border: none;
+      border-radius: 3px;
+      background: #2563eb;
+      color: #fff;
+      cursor: pointer;
+      white-space: nowrap;
+      letter-spacing: 0.01em;
+      transition: background 0.1s, opacity 0.1s;
+    }
+    .v2-run-btn:hover  { background: #1d4ed8; }
+    .v2-run-btn:active { background: #1e40af; }
+    .v2-run-btn:disabled,
+    .htmx-request .v2-run-btn { opacity: 0.55; cursor: not-allowed; }
+
+    /* ── Sheet tabs ──────────────────────────────────────────────── */
+    .v2-tabs {
+      display: flex;
+      gap: 0;
+      background: #fff;
+      border-bottom: 1px solid #d8d8d8;
+      overflow-x: auto;
+      scrollbar-width: none;
+      position: sticky;
+      top: 2.4rem;
+      z-index: 90;
+    }
+    .v2-tabs::-webkit-scrollbar { display: none; }
+    .v2-tab {
+      font-size: 0.78rem;
+      font-weight: 500;
+      padding: 0.45rem 0.85rem;
+      border: none;
+      border-bottom: 2px solid transparent;
+      background: transparent;
+      color: #555;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: color 0.1s, border-color 0.1s;
+    }
+    .v2-tab:hover { color: #222; background: #f7f7f7; }
+    .v2-tab[aria-selected="true"] {
+      color: #1d4ed8;
+      border-bottom-color: #1d4ed8;
+      font-weight: 600;
+    }
 
     /* ── Status banners ──────────────────────────────────────────── */
     .v2-banner {
-      padding: 0.45rem 0.75rem;
-      border-radius: 3px;
+      padding: 0.4rem 0.75rem;
       font-size: 0.82rem;
-      margin-bottom: 0.75rem;
+      border-bottom: 1px solid transparent;
     }
-    .v2-banner-dirty   { background: #fff3cd; color: #7a5c00; border: 1px solid #ffe08a; }
-    .v2-banner-clean   { background: #e8f5e9; color: #2e6b35; border: 1px solid #b6dfba; }
-    .v2-banner-error   { background: #fdecea; color: #991b1b; border: 1px solid #f5c2be; }
+    .v2-banner-dirty   { background: #fffbeb; color: #78350f; border-color: #fcd34d; }
+    .v2-banner-clean   { background: #f0fdf4; color: #166534; border-color: #86efac; }
+    .v2-banner-error   { background: #fef2f2; color: #991b1b; border-color: #fca5a5; }
 
     .v2-protected-notice {
-      padding: 0.45rem 0.75rem;
-      background: #f0f4ff;
-      border: 1px solid #b8c7f0;
-      border-radius: 3px;
+      padding: 0.4rem 0.75rem;
+      background: #eff6ff;
+      border-bottom: 1px solid #bfdbfe;
       font-size: 0.82rem;
-      color: #2c3e7a;
-      margin-bottom: 0.75rem;
+      color: #1e40af;
     }
-    .v2-copy-link { margin-left: 0.5rem; font-weight: 600; color: #2b7be0; }
+    .v2-copy-link { margin-left: 0.5rem; font-weight: 600; color: #2563eb; text-decoration: none; }
+    .v2-copy-link:hover { text-decoration: underline; }
 
     .v2-field-error-banner {
-      padding: 0.35rem 0.6rem;
-      background: #fdecea;
-      border: 1px solid #f5c2be;
-      border-radius: 3px;
-      font-size: 0.8rem;
+      padding: 0.35rem 0.75rem;
+      background: #fef2f2;
+      border-bottom: 1px solid #fca5a5;
+      font-size: 0.82rem;
       color: #991b1b;
-      margin-bottom: 0.5rem;
     }
+
+    /* ── Sheet panel ─────────────────────────────────────────────── */
+    .v2-sheet-panel {
+      background: #fff;
+      min-height: calc(100vh - 6rem);
+    }
+    .v2-sheet-panel[hidden] { display: none; }
+    .v2-sheet-body { padding: 0.75rem 1rem; }
+
+    /* ── Section layout ──────────────────────────────────────────── */
+    .v2-section { margin-bottom: 1.25rem; }
+    .v2-section-label {
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: #888;
+      margin: 0 0 0.4rem;
+      padding: 0.25rem 0;
+      border-bottom: 1px solid #eee;
+    }
+    .v2-section-fields { display: grid; gap: 0; }
+
+    /* ── Runtime state label (inside sheet header bars) ─────────── */
+    .v2-runtime-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      font-size: 0.78rem;
+      font-weight: 500;
+    }
+    .v2-runtime-label.not-run  { color: #9ca3af; }
+    .v2-runtime-label.current  { color: #16a34a; }
+    .v2-runtime-label.stale    { color: #b45309; }
+    .v2-runtime-label.unavail  { color: #6b7280; }
 
     /* ── Field rows ──────────────────────────────────────────────── */
     .v2-field-row {
@@ -50,65 +195,73 @@
       grid-template-columns: 16rem 1fr auto;
       align-items: center;
       min-height: 2rem;
-      border-bottom: 1px solid #e8e8e8;
-      padding: 0.15rem 0;
+      border-bottom: 1px solid #f0f0f0;
+      padding: 0.1rem 0;
     }
-    .v2-field-label { font-size: 0.85rem; color: #444; padding-right: 0.5rem; }
-    .v2-unit { color: #888; font-size: 0.8em; }
+    .v2-field-label { font-size: 0.84rem; color: #374151; padding-right: 0.5rem; }
+    .v2-unit { color: #9ca3af; font-size: 0.78em; }
 
     /* ── Read-only fields ────────────────────────────────────────── */
-    .v2-field-readonly .v2-field-value { font-size: 0.85rem; color: #222; }
-    .v2-field-empty { color: #bbb; }
+    .v2-field-readonly .v2-field-value { font-size: 0.84rem; color: #111; }
+    .v2-field-empty { color: #d1d5db; }
+
     .v2-binding-badge {
-      font-size: 0.65rem; padding: 0.1em 0.4em; border-radius: 3px;
+      font-size: 0.62rem; padding: 0.1em 0.4em; border-radius: 2px;
       text-transform: uppercase; letter-spacing: 0.04em; color: #fff;
-      margin-left: 0.5rem; white-space: nowrap;
+      margin-left: 0.4rem; white-space: nowrap;
     }
-    .v2-binding-partial         { background: #e8a020; }
-    .v2-binding-display-only    { background: #7a9bbf; }
-    .v2-binding-template-locked { background: #9b7abf; }
+    .v2-binding-partial         { background: #d97706; }
+    .v2-binding-display-only    { background: #6b7280; }
+    .v2-binding-template-locked { background: #7c3aed; }
+
+    /* ── Future inputs (was "placeholder") ──────────────────────── */
+    .v2-future-tag {
+      font-size: 0.7rem;
+      color: #9ca3af;
+      border: 1px solid #e5e7eb;
+      border-radius: 2px;
+      padding: 0.05em 0.35em;
+      background: #f9fafb;
+      white-space: nowrap;
+    }
+    .v2-inputs-placeholder-row .v2-field-label { color: #9ca3af; }
 
     /* ── Editable fields (Excel-like) ────────────────────────────── */
     .v2-field-editable { background: transparent; }
-    .v2-field-form {
-      display: contents; /* form is invisible in layout; children join grid */
-    }
+    .v2-field-form { display: contents; }
     .v2-field-input {
-      font-size: 0.85rem;
+      font-size: 0.84rem;
       border: 1px solid transparent;
       background: transparent;
-      padding: 0.1rem 0.25rem;
+      padding: 0.1rem 0.3rem;
       border-radius: 2px;
       width: 100%;
-      box-sizing: border-box;
-      transition: border-color 0.1s;
+      color: #111;
+      transition: border-color 0.1s, background 0.1s;
     }
-    .v2-field-input:hover  { border-color: #c8c8c8; }
-    .v2-field-input:focus  { border-color: #2b7be0; outline: none;
-                             background: #fff; }
+    .v2-field-input:hover  { border-color: #d1d5db; background: #fafafa; }
+    .v2-field-input:focus  { border-color: #2563eb; outline: none; background: #fff; }
     .v2-field-save {
-      font-size: 0.75rem;
+      font-size: 0.73rem;
       padding: 0.1rem 0.4rem;
-      border: 1px solid #2b7be0;
+      border: 1px solid #2563eb;
       border-radius: 2px;
-      background: #2b7be0;
+      background: #2563eb;
       color: #fff;
       cursor: pointer;
       opacity: 0;
       transition: opacity 0.1s;
-      margin-left: 0.25rem;
+      margin-left: 0.2rem;
       white-space: nowrap;
     }
     .v2-field-form:focus-within .v2-field-save { opacity: 1; }
     .v2-field-save:focus { opacity: 1; }
+    .htmx-request .v2-field-save { opacity: 0.4; pointer-events: none; }
 
-    /* ── HTMX request indicator ──────────────────────────────────── */
-    .htmx-request .v2-field-save { opacity: 0.5; pointer-events: none; }
-
-    /* ── Inputs sheet: collapsible sections ─────────────────────── */
+    /* ── Collapsible sections ───────────────────────────────────── */
     .v2-inputs-section {
       margin-bottom: 0;
-      border-bottom: 1px solid #ddd;
+      border-bottom: 1px solid #e5e7eb;
     }
     .v2-inputs-section-summary {
       display: flex;
@@ -116,133 +269,143 @@
       gap: 0.4rem;
       cursor: pointer;
       list-style: none;
-      font-size: 0.78rem;
+      font-size: 0.76rem;
       font-weight: 600;
       text-transform: uppercase;
       letter-spacing: 0.06em;
-      color: #555;
-      padding: 0.45rem 0.5rem;
-      background: #f7f7f7;
-      border-top: 1px solid #e4e4e4;
+      color: #4b5563;
+      padding: 0.4rem 0.5rem;
+      background: #f9fafb;
+      border-top: 1px solid #e5e7eb;
       position: sticky;
-      top: 0;
+      top: 4.8rem;
       z-index: 10;
       user-select: none;
     }
     .v2-inputs-section-summary::-webkit-details-marker { display: none; }
     .v2-inputs-section-summary::before {
       content: '▶';
-      font-size: 0.6rem;
+      font-size: 0.58rem;
       transition: transform 0.15s;
-      color: #999;
+      color: #9ca3af;
+      flex-shrink: 0;
     }
     details.v2-inputs-section[open] > .v2-inputs-section-summary::before {
       transform: rotate(90deg);
     }
     .v2-inputs-section-icon { font-style: normal; }
 
-    /* ── Inputs sheet: nav ───────────────────────────────────────── */
+    /* ── Section nav pills ───────────────────────────────────────── */
     .v2-inputs-nav {
       display: flex;
       flex-wrap: wrap;
       gap: 0.25rem;
       padding: 0.4rem 0;
       margin-bottom: 0.5rem;
-      border-bottom: 1px solid #e8e8e8;
+      border-bottom: 1px solid #e5e7eb;
     }
     .v2-inputs-nav a {
-      font-size: 0.75rem;
-      color: #2b7be0;
+      font-size: 0.73rem;
+      color: #2563eb;
       text-decoration: none;
       padding: 0.15rem 0.45rem;
       border-radius: 2px;
-      border: 1px solid #d0e0f8;
-      background: #f4f8ff;
+      border: 1px solid #bfdbfe;
+      background: #eff6ff;
     }
-    .v2-inputs-nav a:hover { background: #ddeeff; }
+    .v2-inputs-nav a:hover { background: #dbeafe; }
 
-    /* ── Inputs sheet: computed summary rows ─────────────────────── */
+    /* ── Inputs: summary + placeholder rows ─────────────────────── */
     .v2-inputs-summary-row .v2-field-value { font-variant-numeric: tabular-nums; }
-    .v2-inputs-placeholder-row .v2-field-value { font-style: italic; }
-    .v2-placeholder-tag {
-      font-size: 0.72rem;
-      color: #999;
-      border: 1px solid #ddd;
-      border-radius: 2px;
-      padding: 0.05em 0.35em;
-      background: #fafafa;
-      white-space: nowrap;
-    }
-
-    /* ── Inputs sheet: link row ──────────────────────────────────── */
-    .v2-inputs-sheet-link {
-      padding: 0.3rem 0;
-      border-top: 1px solid #eee;
-      margin-top: 0.1rem;
-    }
-    .v2-inputs-sheet-link a {
-      font-size: 0.78rem;
-      color: #2b7be0;
-      text-decoration: none;
-    }
+    .v2-inputs-sheet-link { padding: 0.3rem 0; border-top: 1px solid #f0f0f0; margin-top: 0.1rem; }
+    .v2-inputs-sheet-link a { font-size: 0.76rem; color: #2563eb; text-decoration: none; }
     .v2-inputs-sheet-link a:hover { text-decoration: underline; }
 
-    /* ── Runtime section colours ─────────────────────────────────── */
-    .v2-runtime-dirty { color: #7a5c00; font-weight: 600; }
-    .v2-runtime-clean { color: #2e6b35; }
-    .v2-runtime-mono  { font-family: monospace; font-size: 0.82rem; color: #555; }
+    /* ── Runtime colours (used inline on spans) ──────────────────── */
+    .v2-runtime-dirty { color: #b45309; font-weight: 600; }
+    .v2-runtime-clean { color: #15803d; }
+    .v2-runtime-mono  { font-size: 0.82rem; color: #6b7280; }
+
+    /* ── KPI tiles ───────────────────────────────────────────────── */
+    .v2-kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+      gap: 0.6rem;
+      padding: 0.5rem 0;
+    }
+    .v2-kpi-tile {
+      display: flex;
+      flex-direction: column;
+      gap: 0.15rem;
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      border-radius: 3px;
+      padding: 0.4rem 0.6rem;
+    }
+    .v2-kpi-label {
+      font-size: 0.68rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #6b7280;
+    }
+    .v2-kpi-value {
+      font-size: 0.95rem;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+      color: #111827;
+    }
 
     /* ── CAPEX worksheet ─────────────────────────────────────────── */
-    #v2-sheet-capex { font-size: 0.85rem; }
+    #v2-sheet-capex { font-size: 0.84rem; }
 
     .v2-capex-totals-bar {
       display: flex; flex-wrap: wrap; gap: 1rem;
-      background: #f4f8ff; border: 1px solid #d0e0f8;
+      background: #eff6ff; border: 1px solid #bfdbfe;
       border-radius: 3px; padding: 0.5rem 0.75rem;
       margin-bottom: 0.75rem;
     }
     .v2-capex-total-item { display: flex; align-items: baseline; gap: 0.3rem; }
-    .v2-capex-total-label { font-size: 0.72rem; color: #555;
+    .v2-capex-total-label { font-size: 0.7rem; color: #4b5563;
                             text-transform: uppercase; letter-spacing: 0.04em; }
     .v2-capex-total-value { font-weight: 600;
-                            font-variant-numeric: tabular-nums; color: #222; }
-    .v2-capex-grand-total .v2-capex-total-value { color: #1a4fa0; font-size: 1rem; }
-    .v2-capex-total-permw { font-size: 0.72rem; color: #888; }
+                            font-variant-numeric: tabular-nums; color: #111; }
+    .v2-capex-grand-total .v2-capex-total-value { color: #1d4ed8; font-size: 1rem; }
+    .v2-capex-total-permw { font-size: 0.7rem; color: #9ca3af; }
 
     .v2-capex-col-header {
       display: grid;
       grid-template-columns: 4rem 1fr 7rem 6rem 6rem;
       align-items: center;
       padding: 0.2rem 0.4rem;
-      font-size: 0.7rem; font-weight: 600; text-transform: uppercase;
-      letter-spacing: 0.06em; color: #888;
-      border-bottom: 2px solid #ddd;
+      font-size: 0.68rem; font-weight: 600; text-transform: uppercase;
+      letter-spacing: 0.06em; color: #9ca3af;
+      border-bottom: 2px solid #e5e7eb;
     }
     .v2-capex-col-code   { min-width: 4rem; }
     .v2-capex-col-desc   { flex: 1; padding-right: 0.5rem; }
     .v2-capex-col-amount { min-width: 7rem; text-align: right;
                            font-variant-numeric: tabular-nums; }
-    .v2-capex-col-permw  { min-width: 6rem; text-align: right; color: #888;
+    .v2-capex-col-permw  { min-width: 6rem; text-align: right; color: #9ca3af;
                            font-variant-numeric: tabular-nums; }
     .v2-capex-col-status { min-width: 6rem; text-align: right; }
 
-    .v2-capex-group { border-bottom: 1px solid #ddd; }
-    .v2-capex-group-engine > summary .v2-capex-subtotal { color: #888; }
+    .v2-capex-group { border-bottom: 1px solid #e5e7eb; }
+    .v2-capex-group-engine > summary .v2-capex-subtotal { color: #9ca3af; }
 
     .v2-capex-group-header {
       display: grid;
       grid-template-columns: 4rem 1fr 7rem 6rem 6rem;
       align-items: center;
       cursor: pointer; list-style: none;
-      font-weight: 600; font-size: 0.8rem;
+      font-weight: 600; font-size: 0.78rem;
       padding: 0.35rem 0.4rem;
-      background: #f7f7f7; border-top: 1px solid #e4e4e4;
-      position: sticky; top: 0; z-index: 10; user-select: none;
+      background: #f9fafb; border-top: 1px solid #e5e7eb;
+      position: sticky; top: 4.8rem; z-index: 10; user-select: none;
     }
     .v2-capex-group-header::-webkit-details-marker { display: none; }
     .v2-capex-group-header::before {
-      content: '▶'; font-size: 0.6rem;
-      transition: transform 0.15s; color: #999; margin-right: 0.25rem;
+      content: '▶'; font-size: 0.58rem;
+      transition: transform 0.15s; color: #9ca3af; margin-right: 0.25rem;
     }
     details.v2-capex-group[open] > .v2-capex-group-header::before {
       transform: rotate(90deg);
@@ -250,281 +413,342 @@
     .v2-capex-group-body { padding: 0.1rem 0 0.35rem 0; }
 
     .v2-capex-engine-row {
-      background: #fafafa; border-left: 2px solid #e0e0e0; margin-left: 0.5rem;
+      background: #fafafa; border-left: 2px solid #e5e7eb; margin-left: 0.5rem;
     }
     .v2-capex-amount-cell { font-variant-numeric: tabular-nums; }
     .v2-capex-badge-engine   { background: #6b7280; color: #fff; }
-    .v2-capex-badge-derived  { background: #7a9bbf; color: #fff; }
-    .v2-capex-badge-partial  { background: #e8a020; color: #fff; }
-    .v2-capex-badge-bound    { background: #2e6b35; color: #fff; }
-    .v2-capex-badge-shared   { background: #7a4fa0; color: #fff; }
-    .v2-capex-shared-note    { font-size: 0.72rem; color: #888; padding-left: 0.5rem; }
-    .v2-capex-shared-row     { border-left: 3px solid #c8a8e8; background: #f9f5ff; }
+    .v2-capex-badge-derived  { background: #6b7280; color: #fff; }
+    .v2-capex-badge-partial  { background: #d97706; color: #fff; }
+    .v2-capex-badge-bound    { background: #15803d; color: #fff; }
+    .v2-capex-badge-shared   { background: #7c3aed; color: #fff; }
+    .v2-capex-shared-note    { font-size: 0.7rem; color: #9ca3af; padding-left: 0.5rem; }
+    .v2-capex-shared-row     { border-left: 3px solid #c4b5fd; background: #faf5ff; }
 
     .v2-capex-sublines-container {
-      margin-left: 1rem; border-left: 1px solid #eee;
+      margin-left: 1rem; border-left: 1px solid #f3f4f6;
     }
     .v2-capex-subline {
       display: grid;
       grid-template-columns: 4rem 1fr 7rem 6rem 1fr;
       align-items: center;
       padding: 0.1rem 0.4rem;
-      font-size: 0.78rem; color: #666;
-      border-bottom: 1px solid #f0f0f0;
+      font-size: 0.76rem; color: #6b7280;
+      border-bottom: 1px solid #f9fafb;
     }
     .v2-capex-subline:last-child { border-bottom: none; }
-    .v2-capex-subline-code   { color: #999; font-size: 0.72rem; }
+    .v2-capex-subline-code   { color: #d1d5db; font-size: 0.7rem; }
     .v2-capex-subline-name   { padding-right: 0.5rem; }
     .v2-capex-subline-amount { text-align: right; font-variant-numeric: tabular-nums; }
-    .v2-capex-subline-permw  { text-align: right; color: #aaa;
+    .v2-capex-subline-permw  { text-align: right; color: #d1d5db;
                                 font-variant-numeric: tabular-nums; }
-    .v2-capex-subline-notes  { font-size: 0.72rem; color: #aaa; padding-left: 0.5rem; }
-    .v2-capex-inactive { opacity: 0.4; text-decoration: line-through; }
+    .v2-capex-subline-notes  { font-size: 0.7rem; color: #d1d5db; padding-left: 0.5rem; }
+    .v2-capex-inactive { opacity: 0.35; text-decoration: line-through; }
 
     .v2-capex-grand-total-row {
       display: grid;
       grid-template-columns: 4rem 1fr 7rem 6rem 6rem;
       align-items: center;
       padding: 0.4rem 0.4rem;
-      border-top: 2px solid #333;
+      border-top: 2px solid #374151;
       font-weight: 700; font-size: 0.88rem;
     }
-    .v2-capex-total-label-cell { color: #222; }
+    .v2-capex-total-label-cell { color: #111; }
     .v2-capex-grand-total-amount {
-      text-align: right; font-variant-numeric: tabular-nums; color: #1a4fa0;
+      text-align: right; font-variant-numeric: tabular-nums; color: #1d4ed8;
     }
 
-    /* ── CAPEX custom rows ───────────────────────────────────────────── */
-    .v2-capex-badge-custom   { background: #1a5fa0; color: #fff; }
-
+    /* CAPEX custom rows */
+    .v2-capex-badge-custom   { background: #1d4ed8; color: #fff; }
     .v2-capex-custom-rows-container {
-      margin-left: 1rem; border-left: 2px solid #b0cce8;
-      background: #f4f8ff;
+      margin-left: 1rem; border-left: 2px solid #bfdbfe; background: #eff6ff;
     }
     .v2-capex-custom-row {
-      display: flex;
-      align-items: center;
-      gap: 0.3rem;
-      padding: 0.15rem 0.4rem;
-      border-bottom: 1px solid #dce8f8;
-      font-size: 0.82rem;
+      display: flex; align-items: center; gap: 0.3rem;
+      padding: 0.15rem 0.4rem; border-bottom: 1px solid #dbeafe; font-size: 0.8rem;
     }
     .v2-capex-custom-row:last-child { border-bottom: none; }
     .v2-capex-custom-form { display: contents; }
-    .v2-capex-custom-code {
-      min-width: 5rem; color: #1a5fa0; font-size: 0.72rem; flex-shrink: 0;
-    }
+    .v2-capex-custom-code { min-width: 5rem; color: #1d4ed8; font-size: 0.7rem; flex-shrink: 0; }
     .v2-capex-custom-label { flex: 1; min-width: 8rem; }
-    .v2-capex-custom-amount { width: 5.5rem; text-align: right;
-                               font-variant-numeric: tabular-nums; }
-    .v2-capex-custom-notes { flex: 1; min-width: 6rem; color: #888; }
-    .v2-capex-custom-label-ro { flex: 1; color: #333; }
+    .v2-capex-custom-amount { width: 5.5rem; text-align: right; font-variant-numeric: tabular-nums; }
+    .v2-capex-custom-notes { flex: 1; min-width: 6rem; color: #9ca3af; }
+    .v2-capex-custom-label-ro { flex: 1; color: #374151; }
     .v2-capex-custom-amount-ro { width: 5.5rem; text-align: right;
-                                  font-variant-numeric: tabular-nums; color: #333; }
+                                  font-variant-numeric: tabular-nums; color: #374151; }
     .v2-capex-deactivate-form { display: inline; }
     .v2-capex-deactivate-btn {
       width: 1.4rem; height: 1.4rem; line-height: 1.4rem;
-      padding: 0; border: 1px solid #f5c2be; border-radius: 2px;
-      background: #fdecea; color: #991b1b; cursor: pointer; font-size: 0.8rem;
-      flex-shrink: 0;
+      padding: 0; border: 1px solid #fca5a5; border-radius: 2px;
+      background: #fef2f2; color: #991b1b; cursor: pointer; font-size: 0.8rem; flex-shrink: 0;
     }
-    .v2-capex-deactivate-btn:hover { background: #f9d0cd; }
-
-    /* Add Row form */
+    .v2-capex-deactivate-btn:hover { background: #fee2e2; }
     .v2-capex-add-row-container {
-      padding: 0.2rem 0.4rem 0.25rem 1.4rem;
-      background: #fafcff;
-      border-top: 1px dashed #d0e0f8;
+      padding: 0.2rem 0.4rem 0.25rem 1.4rem; background: #fafcff; border-top: 1px dashed #bfdbfe;
     }
-    .v2-capex-add-row-form {
-      display: flex; align-items: center; gap: 0.3rem;
-    }
+    .v2-capex-add-row-form { display: flex; align-items: center; gap: 0.3rem; }
     .v2-capex-add-label { flex: 1; min-width: 8rem; }
     .v2-capex-add-amount { width: 5.5rem; text-align: right; }
     .v2-capex-add-btn {
-      font-size: 0.75rem; padding: 0.15rem 0.5rem;
-      border: 1px solid #2b7be0; border-radius: 2px;
-      background: #f0f6ff; color: #2b7be0;
-      cursor: pointer; white-space: nowrap; flex-shrink: 0;
+      font-size: 0.73rem; padding: 0.15rem 0.5rem;
+      border: 1px solid #2563eb; border-radius: 2px;
+      background: #eff6ff; color: #2563eb; cursor: pointer; white-space: nowrap; flex-shrink: 0;
     }
-    .v2-capex-add-btn:hover { background: #ddeeff; }
+    .v2-capex-add-btn:hover { background: #dbeafe; }
 
-    /* ── OPEX worksheet ─────────────────────────────────────────── */
-    #v2-sheet-opex { font-size: 0.85rem; }
+    /* ── OPEX worksheet ──────────────────────────────────────────── */
+    #v2-sheet-opex { font-size: 0.84rem; }
 
     .v2-opex-kpi-bar {
       display: flex; flex-wrap: wrap; gap: 1rem;
-      background: #f0faf4; border: 1px solid #c3e6d0;
-      border-radius: 3px; padding: 0.5rem 0.75rem;
-      margin-bottom: 0.75rem;
+      background: #f0fdf4; border: 1px solid #bbf7d0;
+      border-radius: 3px; padding: 0.5rem 0.75rem; margin-bottom: 0.75rem;
     }
     .v2-opex-kpi-item { display: flex; align-items: baseline; gap: 0.3rem; }
-    .v2-opex-kpi-label { font-size: 0.72rem; color: #555;
+    .v2-opex-kpi-label { font-size: 0.7rem; color: #4b5563;
                          text-transform: uppercase; letter-spacing: 0.04em; }
-    .v2-opex-kpi-value { font-weight: 600;
-                         font-variant-numeric: tabular-nums; color: #1a4a28; }
+    .v2-opex-kpi-value { font-weight: 600; font-variant-numeric: tabular-nums; color: #14532d; }
 
     .v2-opex-col-header {
-      display: grid;
-      grid-template-columns: 4rem 1fr 7rem 5rem 7rem;
-      align-items: center;
-      padding: 0.2rem 0.4rem;
-      font-size: 0.7rem; font-weight: 600; text-transform: uppercase;
-      letter-spacing: 0.06em; color: #888;
-      border-bottom: 2px solid #ddd;
+      display: grid; grid-template-columns: 4rem 1fr 7rem 5rem 7rem;
+      align-items: center; padding: 0.2rem 0.4rem;
+      font-size: 0.68rem; font-weight: 600; text-transform: uppercase;
+      letter-spacing: 0.06em; color: #9ca3af; border-bottom: 2px solid #e5e7eb;
     }
     .v2-opex-col-code   { min-width: 4rem; }
     .v2-opex-col-desc   { flex: 1; padding-right: 0.5rem; }
-    .v2-opex-col-y1     { min-width: 7rem; text-align: right;
-                          font-variant-numeric: tabular-nums; }
-    .v2-opex-col-escl   { min-width: 5rem; text-align: right; color: #888; }
+    .v2-opex-col-y1     { min-width: 7rem; text-align: right; font-variant-numeric: tabular-nums; }
+    .v2-opex-col-escl   { min-width: 5rem; text-align: right; color: #9ca3af; }
     .v2-opex-col-status { min-width: 7rem; text-align: right; }
 
-    .v2-opex-group { border-bottom: 1px solid #ddd; }
-    .v2-opex-group-contingency > summary .v2-opex-subtotal { color: #888; font-style: italic; }
-
+    .v2-opex-group { border-bottom: 1px solid #e5e7eb; }
+    .v2-opex-group-contingency > summary .v2-opex-subtotal { color: #9ca3af; font-style: italic; }
     .v2-opex-group-header {
-      display: grid;
-      grid-template-columns: 4rem 1fr 7rem 5rem 7rem;
-      align-items: center;
-      cursor: pointer; list-style: none;
-      font-weight: 600; font-size: 0.8rem;
-      padding: 0.35rem 0.4rem;
-      background: #f7f7f7; border-top: 1px solid #e4e4e4;
-      position: sticky; top: 0; z-index: 10; user-select: none;
+      display: grid; grid-template-columns: 4rem 1fr 7rem 5rem 7rem;
+      align-items: center; cursor: pointer; list-style: none;
+      font-weight: 600; font-size: 0.78rem; padding: 0.35rem 0.4rem;
+      background: #f9fafb; border-top: 1px solid #e5e7eb;
+      position: sticky; top: 4.8rem; z-index: 10; user-select: none;
     }
     .v2-opex-group-header::-webkit-details-marker { display: none; }
     .v2-opex-group-header::before {
-      content: '▶'; font-size: 0.6rem;
-      transition: transform 0.15s; color: #999; margin-right: 0.25rem;
+      content: '▶'; font-size: 0.58rem; transition: transform 0.15s;
+      color: #9ca3af; margin-right: 0.25rem;
     }
-    details.v2-opex-group[open] > .v2-opex-group-header::before {
-      transform: rotate(90deg);
-    }
+    details.v2-opex-group[open] > .v2-opex-group-header::before { transform: rotate(90deg); }
     .v2-opex-group-body { padding: 0.1rem 0 0.35rem 0; }
-
-    .v2-opex-ro-row {
-      background: #fafafa; border-left: 2px solid #e0e0e0; margin-left: 0.5rem;
-    }
+    .v2-opex-ro-row { background: #fafafa; border-left: 2px solid #e5e7eb; margin-left: 0.5rem; }
     .v2-opex-amount-cell { font-variant-numeric: tabular-nums; }
     .v2-opex-badge-engine   { background: #6b7280; color: #fff; }
-    .v2-opex-badge-derived  { background: #7a9bbf; color: #fff; }
-    .v2-opex-badge-partial  { background: #e8a020; color: #fff; }
-    .v2-opex-badge-bound    { background: #2e6b35; color: #fff; }
+    .v2-opex-badge-derived  { background: #6b7280; color: #fff; }
+    .v2-opex-badge-partial  { background: #d97706; color: #fff; }
+    .v2-opex-badge-bound    { background: #15803d; color: #fff; }
 
-    .v2-opex-lines-container {
-      margin-left: 1rem; border-left: 1px solid #eee;
-    }
+    .v2-opex-lines-container { margin-left: 1rem; border-left: 1px solid #f3f4f6; }
     .v2-opex-line-row {
-      display: grid;
-      grid-template-columns: 4.5rem 1fr 6rem 4rem 1fr auto;
-      align-items: center;
-      padding: 0.1rem 0.4rem;
-      font-size: 0.78rem; color: #666;
-      border-bottom: 1px solid #f0f0f0;
+      display: grid; grid-template-columns: 4.5rem 1fr 6rem 4rem 1fr auto;
+      align-items: center; padding: 0.1rem 0.4rem;
+      font-size: 0.76rem; color: #6b7280; border-bottom: 1px solid #f9fafb;
     }
     .v2-opex-line-row:last-child { border-bottom: none; }
-    .v2-opex-line-code  { color: #999; font-size: 0.72rem; }
+    .v2-opex-line-code  { color: #d1d5db; font-size: 0.7rem; }
     .v2-opex-line-name  { padding-right: 0.5rem; }
     .v2-opex-line-y1    { text-align: right; }
-    .v2-opex-line-escl  { text-align: right; color: #aaa; font-size: 0.75rem; }
-    .v2-opex-line-notes { font-size: 0.72rem; color: #aaa; padding-left: 0.5rem; }
-    .v2-opex-inactive { opacity: 0.4; text-decoration: line-through; }
-
+    .v2-opex-line-escl  { text-align: right; color: #d1d5db; font-size: 0.73rem; }
+    .v2-opex-line-notes { font-size: 0.7rem; color: #d1d5db; padding-left: 0.5rem; }
+    .v2-opex-inactive { opacity: 0.35; text-decoration: line-through; }
     .v2-opex-grand-total-row {
-      display: grid;
-      grid-template-columns: 4rem 1fr 7rem 5rem 7rem;
-      align-items: center;
-      padding: 0.4rem 0.4rem;
-      border-top: 2px solid #333;
-      font-weight: 700; font-size: 0.88rem;
+      display: grid; grid-template-columns: 4rem 1fr 7rem 5rem 7rem;
+      align-items: center; padding: 0.4rem 0.4rem;
+      border-top: 2px solid #374151; font-weight: 700; font-size: 0.88rem;
     }
-    .v2-opex-total-label-cell { color: #222; }
+    .v2-opex-total-label-cell { color: #111; }
     .v2-opex-grand-total-amount {
-      text-align: right; font-variant-numeric: tabular-nums; color: #1a4a28;
+      text-align: right; font-variant-numeric: tabular-nums; color: #14532d;
     }
 
     /* OPEX year projection table */
-    .v2-opex-projection-panel {
-      margin-top: 1.5rem; border: 1px solid #ddd; border-radius: 3px;
-    }
+    .v2-opex-projection-panel { margin-top: 1.5rem; border: 1px solid #e5e7eb; border-radius: 3px; }
     .v2-opex-projection-toggle {
-      cursor: pointer; list-style: none;
-      padding: 0.4rem 0.75rem;
-      font-size: 0.78rem; font-weight: 600; text-transform: uppercase;
-      letter-spacing: 0.05em; color: #555;
-      background: #f7f7f7; user-select: none;
+      cursor: pointer; list-style: none; padding: 0.4rem 0.75rem;
+      font-size: 0.76rem; font-weight: 600; text-transform: uppercase;
+      letter-spacing: 0.05em; color: #4b5563; background: #f9fafb; user-select: none;
     }
     .v2-opex-projection-toggle::-webkit-details-marker { display: none; }
-    .v2-opex-projection-scroll {
-      overflow-x: auto; padding: 0.25rem;
-    }
+    .v2-opex-projection-scroll { overflow-x: auto; padding: 0.25rem; }
     .v2-opex-proj-table {
-      border-collapse: collapse; font-size: 0.75rem;
-      font-variant-numeric: tabular-nums; white-space: nowrap;
-      min-width: max-content;
+      border-collapse: collapse; font-size: 0.73rem;
+      font-variant-numeric: tabular-nums; white-space: nowrap; min-width: max-content;
     }
-    .v2-opex-proj-table th,
-    .v2-opex-proj-table td {
-      padding: 0.2rem 0.5rem;
-      border: 1px solid #e8e8e8;
-      text-align: right;
+    .v2-opex-proj-table th, .v2-opex-proj-table td {
+      padding: 0.2rem 0.5rem; border: 1px solid #e5e7eb; text-align: right;
     }
-    .v2-opex-proj-table thead th { background: #f4f4f4; font-weight: 600; }
+    .v2-opex-proj-table thead th { background: #f9fafb; font-weight: 600; }
     .v2-opex-proj-sticky-code {
       position: sticky; left: 0; z-index: 2;
-      background: #f9f9f9; text-align: left !important;
-      min-width: 4rem; border-right: 2px solid #ccc;
+      background: #f9fafb; text-align: left !important;
+      min-width: 4rem; border-right: 2px solid #d1d5db;
     }
     .v2-opex-proj-sticky-name {
       position: sticky; left: 4.2rem; z-index: 2;
-      background: #f9f9f9; text-align: left !important;
-      min-width: 12rem; border-right: 2px solid #ccc;
+      background: #f9fafb; text-align: left !important;
+      min-width: 12rem; border-right: 2px solid #d1d5db;
     }
-    .v2-opex-proj-contingency td { color: #7a9bbf; font-style: italic; }
-    .v2-opex-proj-total-row td {
-      font-weight: 700; background: #f0faf4; border-top: 2px solid #333;
-    }
-    .v2-opex-proj-total-label { color: #1a4a28; }
-    .v2-opex-proj-total-cell  { color: #1a4a28; }
+    .v2-opex-proj-contingency td { color: #6b7280; font-style: italic; }
+    .v2-opex-proj-total-row td { font-weight: 700; background: #f0fdf4; border-top: 2px solid #374151; }
+    .v2-opex-proj-total-label { color: #14532d; }
+    .v2-opex-proj-total-cell  { color: #14532d; }
     .v2-opex-proj-th-year     { min-width: 5rem; }
+
+    /* ── Table base ──────────────────────────────────────────────── */
+    .v2-table { width: 100%; border-collapse: collapse; font-size: 0.84rem; }
+    .v2-table thead th {
+      background: #f9fafb; font-weight: 600; border-bottom: 2px solid #e5e7eb;
+      padding: 0.3rem 0.5rem; white-space: nowrap; color: #374151;
+    }
+    .v2-table tbody tr:nth-child(even) { background: #fafafa; }
+    .v2-table tbody td { padding: 0.3rem 0.5rem; border-bottom: 1px solid #f0f0f0;
+                         font-variant-numeric: tabular-nums; }
+    .v2-table tbody tr:hover { background: #f5f5f5; }
+    .v2-table .v2-total-row { font-weight: 700; background: #f0fdf4 !important;
+                               border-top: 2px solid #374151; }
   </style>
 </head>
 <body>
-  {# sessionStorage hydration: re-populates schedule data on page load
-     without a model re-run.  Empty string when no run has been persisted. #}
+  {# sessionStorage hydration: re-populates schedule data on load without re-run #}
   {{ hydration_script | safe }}
 
+  {#
+    ── Workbook toolbar ─────────────────────────────────────────────────
+    Shows project identity, active scenario, runtime state, and Run button.
+    The #v2-status-banner element is hidden (display:none) in the toolbar
+    context — banners show below the tab bar instead.
+    The Run controls OOB-swaps the #v2-run-controls div within the toolbar.
+  #}
+  <div class="v2-toolbar" role="banner">
+    <div class="v2-toolbar-project">
+      <span class="v2-toolbar-name">{{ project_name }}</span>
+      {% if project_type %}
+        <span class="v2-toolbar-sep">·</span>
+        <span class="v2-toolbar-type">{{ project_type }}</span>
+      {% endif %}
+      {% if active_scenario_name %}
+        <span class="v2-toolbar-scenario">Scenario: <strong>{{ active_scenario_name }}</strong></span>
+      {% endif %}
+    </div>
+    <div class="v2-toolbar-run" id="v2-run-controls">
+      {% include "partials/_v2_run_controls.html" %}
+    </div>
+  </div>
+
+  {# ── Sheet tab navigation ──────────────────────────────────────────── #}
+  <nav class="v2-tabs" role="tablist" aria-label="Workbook sheets" id="v2-sheet-tabs">
+    <button class="v2-tab" role="tab" aria-selected="true"  aria-controls="panel-project-setup"  id="tab-project-setup">Project Setup</button>
+    <button class="v2-tab" role="tab" aria-selected="false" aria-controls="panel-inputs"          id="tab-inputs">Inputs</button>
+    <button class="v2-tab" role="tab" aria-selected="false" aria-controls="panel-revenue"         id="tab-revenue">Revenue</button>
+    <button class="v2-tab" role="tab" aria-selected="false" aria-controls="panel-capex"           id="tab-capex">CAPEX</button>
+    <button class="v2-tab" role="tab" aria-selected="false" aria-controls="panel-opex"            id="tab-opex">OPEX</button>
+    <button class="v2-tab" role="tab" aria-selected="false" aria-controls="panel-debt"            id="tab-debt">Senior Debt</button>
+    <button class="v2-tab" role="tab" aria-selected="false" aria-controls="panel-tax"             id="tab-tax">Tax</button>
+    <button class="v2-tab" role="tab" aria-selected="false" aria-controls="panel-fs"              id="tab-fs">Financial Statements</button>
+  </nav>
+
+  {# ── Status banner — OOB-swappable ────────────────────────────────── #}
+  <div id="v2-status-banner">
+    {% include "partials/_v2_status_banner.html" %}
+  </div>
+
+  {# ── Sheet panels ─────────────────────────────────────────────────── #}
   <div id="v2-workbook-shell"
        data-project="{{ project_code }}"
        data-workbook-version="{{ workbook_version }}"
        data-content-hash="{{ content_hash }}"
        data-template-source="{{ template_source }}">
-    <p>Workbook V2 shell — {{ project_code }}</p>
 
-    {# Status banner — updated via HTMX OOB swap after each field edit #}
-    <div id="v2-status-banner">
-      {% include "partials/_v2_status_banner.html" %}
+    <div class="v2-sheet-panel" role="tabpanel" id="panel-project-setup" aria-labelledby="tab-project-setup">
+      <div class="v2-sheet-body">
+        {% include "partials/sheet_project_setup.html" %}
+      </div>
     </div>
 
-    {# Run controls — refreshed via OOB after every engine-effective mutation #}
-    <div id="v2-run-controls">
-      {% include "partials/_v2_run_controls.html" %}
+    <div class="v2-sheet-panel" role="tabpanel" id="panel-inputs" aria-labelledby="tab-inputs" hidden>
+      <div class="v2-sheet-body">
+        {% include "partials/sheet_inputs.html" %}
+      </div>
     </div>
 
-    {% include "partials/sheet_project_setup.html" %}
-    {% include "partials/sheet_inputs.html" %}
-    {% include "partials/sheet_revenue.html" %}
-    {% include "partials/sheet_capex.html" %}
-    {% include "partials/sheet_opex.html" %}
-    {% include "partials/sheet_senior_debt.html" %}
-    {% include "partials/sheet_tax.html" %}
-    {% include "partials/sheet_financial_statements.html" %}
-  </div>
+    <div class="v2-sheet-panel" role="tabpanel" id="panel-revenue" aria-labelledby="tab-revenue" hidden>
+      <div class="v2-sheet-body">
+        {% include "partials/sheet_revenue.html" %}
+      </div>
+    </div>
+
+    <div class="v2-sheet-panel" role="tabpanel" id="panel-capex" aria-labelledby="tab-capex" hidden>
+      <div class="v2-sheet-body">
+        {% include "partials/sheet_capex.html" %}
+      </div>
+    </div>
+
+    <div class="v2-sheet-panel" role="tabpanel" id="panel-opex" aria-labelledby="tab-opex" hidden>
+      <div class="v2-sheet-body">
+        {% include "partials/sheet_opex.html" %}
+      </div>
+    </div>
+
+    <div class="v2-sheet-panel" role="tabpanel" id="panel-debt" aria-labelledby="tab-debt" hidden>
+      <div class="v2-sheet-body">
+        {% include "partials/sheet_senior_debt.html" %}
+      </div>
+    </div>
+
+    <div class="v2-sheet-panel" role="tabpanel" id="panel-tax" aria-labelledby="tab-tax" hidden>
+      <div class="v2-sheet-body">
+        {% include "partials/sheet_tax.html" %}
+      </div>
+    </div>
+
+    <div class="v2-sheet-panel" role="tabpanel" id="panel-fs" aria-labelledby="tab-fs" hidden>
+      <div class="v2-sheet-body">
+        {% include "partials/sheet_financial_statements.html" %}
+      </div>
+    </div>
+
+  </div>{# v2-workbook-shell #}
 
   <script>
-    // Escape resets input to its original value; Enter submits the form.
-    document.addEventListener('keydown', function(e) {
+    // ── Tab navigation ──────────────────────────────────────────────
+    (function () {
+      var tabs = document.querySelectorAll('#v2-sheet-tabs .v2-tab');
+      var panels = document.querySelectorAll('.v2-sheet-panel');
+
+      function activateTab(btn) {
+        tabs.forEach(function (t) { t.setAttribute('aria-selected', 'false'); });
+        panels.forEach(function (p) { p.hidden = true; });
+        btn.setAttribute('aria-selected', 'true');
+        var panelId = btn.getAttribute('aria-controls');
+        var panel = document.getElementById(panelId);
+        if (panel) { panel.hidden = false; }
+      }
+
+      tabs.forEach(function (btn) {
+        btn.addEventListener('click', function () { activateTab(btn); });
+        btn.addEventListener('keydown', function (e) {
+          var idx = Array.prototype.indexOf.call(tabs, btn);
+          if (e.key === 'ArrowRight') {
+            tabs[(idx + 1) % tabs.length].focus();
+            e.preventDefault();
+          } else if (e.key === 'ArrowLeft') {
+            tabs[(idx + tabs.length - 1) % tabs.length].focus();
+            e.preventDefault();
+          } else if (e.key === 'Enter' || e.key === ' ') {
+            activateTab(btn);
+            e.preventDefault();
+          }
+        });
+      });
+    })();
+
+    // ── Field keyboard handling ─────────────────────────────────────
+    document.addEventListener('keydown', function (e) {
       var inp = e.target;
       if (!inp.classList.contains('v2-field-input')) return;
       if (e.key === 'Escape') {

@@ -25,10 +25,10 @@
 #}
 {% from "partials/field_editor.html" import render_field %}
 
-{% macro placeholder_row(label, reason="Planned in future migration") %}
+{% macro placeholder_row(label) %}
 <div class="v2-field-row v2-field-readonly v2-inputs-placeholder-row">
   <span class="v2-field-label">{{ label }}</span>
-  <span class="v2-field-value"><span class="v2-placeholder-tag">{{ reason }}</span></span>
+  <span class="v2-field-value"><span class="v2-future-tag">Future input</span></span>
 </div>
 {% endmacro %}
 
@@ -62,15 +62,10 @@
                         hx_target="#v2-sheet-senior-debt", sheet_id="debt") }}
       {% endfor %}
 
-      {#
-        The four rows below are placeholders for the current single-facility
-        debt projection.  They are NOT editable and NOT engine-bound in this PR.
-        They will be wired in a future registry expansion (multi-lender module).
-      #}
-      {{ placeholder_row("Base Rate", "Not editable — not engine-bound in this PR") }}
-      {{ placeholder_row("Grace Period", "Not editable — not engine-bound in this PR") }}
-      {{ placeholder_row("Repayment Profile", "Not editable — not engine-bound in this PR") }}
-      {{ placeholder_row("DSRA (months)", "Not editable — not engine-bound in this PR") }}
+      {{ placeholder_row("Base Rate") }}
+      {{ placeholder_row("Grace Period") }}
+      {{ placeholder_row("Repayment Profile") }}
+      {{ placeholder_row("DSRA (months)") }}
 
     </div>
   </details>

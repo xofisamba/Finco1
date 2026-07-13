@@ -10,10 +10,14 @@
   </div>
 {% elif ws_dirty %}
   <div class="v2-banner v2-banner-dirty" role="status">
-    Draft changed — Run required
+    Changes not yet reflected in outputs — Run required
   </div>
 {% elif has_runtime %}
   <div class="v2-banner v2-banner-clean" role="status">
     Outputs current
+  </div>
+{% else %}
+  <div class="v2-banner v2-banner-dirty" role="status">
+    Model has not been run — Run to generate outputs
   </div>
 {% endif %}

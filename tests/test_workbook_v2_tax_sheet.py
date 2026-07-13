@@ -315,7 +315,7 @@ class TestTaxSheetPageRendering(unittest.TestCase):
         soup = BeautifulSoup(html, "html.parser")
         badge = soup.find(attrs={"data-testid": "tax-runtime-state-a"})
         assert badge is not None, "State A badge not found"
-        assert "Run Required" in badge.get_text()
+        assert "Not run" in badge.get_text()
 
     def test_no_runtime_pre_run_notice(self):
         html = _get_workbook(self.client, self.project_code)

@@ -10,18 +10,11 @@
     FS_UNAVAILABLE  — run completed but no fs payload persisted
 #}
 {% if fs_state == "NOT_RUN" %}
-  <span class="v2-field-empty" data-testid="fs-runtime-state-a">Not yet run</span>
-  <span class="v2-field-empty" data-testid="fs-runtime-state-a-hint"
-        style="margin-left:.5rem;font-size:.8rem;">Available after Run</span>
+  <span class="v2-field-empty" data-testid="fs-runtime-state-a">Not run</span>
 {% elif fs_state == "CLEAN" %}
   <span class="v2-runtime-clean" data-testid="fs-runtime-state-b">Outputs current</span>
 {% elif fs_state == "STALE" %}
-  <span class="v2-runtime-dirty" data-testid="fs-runtime-state-c">Previous run — stale for current draft</span>
-  <span class="v2-field-empty" data-testid="fs-runtime-state-c-run-required"
-        style="margin-left:.5rem;font-size:.8rem;">Run Required</span>
+  <span class="v2-runtime-dirty" data-testid="fs-runtime-state-c">Run required</span>
 {% elif fs_state == "FS_UNAVAILABLE" %}
-  <span class="v2-runtime-mono" data-testid="fs-runtime-state-d">
-    Run completed — Financial Statements unavailable.
-    The model run completed, but no authoritative Financial Statements payload was persisted for this run.
-  </span>
+  <span class="v2-runtime-mono" data-testid="fs-runtime-state-d">Output unavailable</span>
 {% endif %}
