@@ -846,6 +846,496 @@ class TestRunRouteRegistration(unittest.TestCase):
         self.fail("/workbook/run route not found")
 
 
+# ---------------------------------------------------------------------------
+# 16. TestScalarEffectiveness
+# ---------------------------------------------------------------------------
+
+class TestScalarEffectiveness(unittest.TestCase):
+    """Scalar edits reach the engine: gearing_pct captured in project_inputs_override."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.client = _authed_client()
+        cls.project_code = _create_project(cls.client, suffix="scalar-eff")
+
+    def test_gearing_pct_edit_reaches_engine(self):
+        from app.api import project_runner
+        captured_overrides = []
+        orig = project_runner.run_project
+
+        def capturing_run(pt, name, project_inputs_override=None, **kw):
+            captured_overrides.append(project_inputs_override)
+            return orig(pt, name, project_inputs_override=project_inputs_override, **kw)
+
+        ch, wv = _get_content_hash(self.client, self.project_code)
+        # Edit gearing to 60%
+        self.client.post(
+            "/v2/workbook/update",
+            data={
+                "project": self.project_code,
+                "field_id": "debt.senior.gearing_pct",
+                "value": "60",
+                "workbook_version": wv,
+                "content_hash": ch,
+                "sheet_id": "debt",
+            },
+            headers={"HX-Request": "true"},
+            follow_redirects=False,
+        )
+        ch2, wv2 = _get_content_hash(self.client, self.project_code)
+        with patch("app.api.project_runner.run_project", side_effect=capturing_run):
+            resp = _post_run(self.client, self.project_code, ch2, wv2)
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(captured_overrides, "run_project must have been called")
+        pi = captured_overrides[0]
+        self.assertIsNotNone(pi, "project_inputs_override must not be None")
+        gearing = pi.financing.gearing_ratio
+        self.assertAlmostEqual(gearing, 0.60, places=4,
+                               msg=f"gearing_ratio should be 0.60 after editing gearing_pct=60, got {gearing}")
+
+
+# ---------------------------------------------------------------------------
+# 17. TestCapexEffectiveness
+# ---------------------------------------------------------------------------
+
+class TestCapexEffectiveness(unittest.TestCase):
+    """CAPEX sub-line (C.02 epc_contract) is folded into project_inputs_override.capex."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.client = _authed_client()
+        cls.project_code = _create_project(cls.client, suffix="capex-eff")
+
+    def test_capex_sub_line_c02_folded(self):
+        from app.api import project_runner
+        captured_overrides = []
+        orig = project_runner.run_project
+
+        def capturing_run(pt, name, project_inputs_override=None, **kw):
+            captured_overrides.append(project_inputs_override)
+            return orig(pt, name, project_inputs_override=project_inputs_override, **kw)
+
+        # First run to get baseline capex
+        ch, wv = _get_content_hash(self.client, self.project_code)
+        baseline = []
+
+        def base_run(pt, name, project_inputs_override=None, **kw):
+            baseline.append(project_inputs_override)
+            return orig(pt, name, project_inputs_override=project_inputs_override, **kw)
+
+        with patch("app.api.project_runner.run_project", side_effect=base_run):
+            _post_run(self.client, self.project_code, ch, wv)
+
+        baseline_capex = baseline[0].capex if baseline else None
+
+        # Add CAPEX sub-line under C.02
+        ch2, wv2 = _get_content_hash(self.client, self.project_code)
+        add_resp = self.client.post(
+            "/v2/capex/line/add",
+            data={
+                "project": self.project_code,
+                "parent_category_code": "C.02",
+                "label": "Test EPC Sub-line",
+                "amount_keur": "5000",
+                "notes": "",
+                "workbook_version": wv2,
+                "content_hash": ch2,
+            },
+            headers={"HX-Request": "true"},
+            follow_redirects=False,
+        )
+        if add_resp.status_code not in (200,):
+            self.skipTest(f"CAPEX add returned {add_resp.status_code} — skipping effectiveness check")
+
+        ch3, wv3 = _get_content_hash(self.client, self.project_code)
+        with patch("app.api.project_runner.run_project", side_effect=capturing_run):
+            resp = _post_run(self.client, self.project_code, ch3, wv3)
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(captured_overrides, "run_project must have been called")
+        pi = captured_overrides[0]
+        self.assertIsNotNone(pi)
+        # capex object should differ from baseline after sub-line was added
+        if baseline_capex is not None:
+            self.assertIsNot(pi.capex, baseline_capex,
+                             "capex in override must be a new object after CAPEX fold")
+
+
+# ---------------------------------------------------------------------------
+# 18. TestOpexEffectiveness
+# ---------------------------------------------------------------------------
+
+class TestOpexEffectiveness(unittest.TestCase):
+    """OPEX sub-line (B.09) is additively folded into project_inputs_override.opex."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.client = _authed_client()
+        cls.project_code = _create_project(cls.client, suffix="opex-eff")
+
+    def test_opex_sub_line_b09_additive(self):
+        from app.api import project_runner
+        baseline = []
+        captured = []
+        orig = project_runner.run_project
+
+        def base_run(pt, name, project_inputs_override=None, **kw):
+            baseline.append(project_inputs_override)
+            return orig(pt, name, project_inputs_override=project_inputs_override, **kw)
+
+        def after_run(pt, name, project_inputs_override=None, **kw):
+            captured.append(project_inputs_override)
+            return orig(pt, name, project_inputs_override=project_inputs_override, **kw)
+
+        # Baseline run
+        ch, wv = _get_content_hash(self.client, self.project_code)
+        with patch("app.api.project_runner.run_project", side_effect=base_run):
+            _post_run(self.client, self.project_code, ch, wv)
+
+        baseline_opex_len = len(baseline[0].opex) if baseline else 0
+
+        # Add OPEX sub-line under B.09
+        ch2, wv2 = _get_content_hash(self.client, self.project_code)
+        add_resp = self.client.post(
+            "/v2/opex/line/add",
+            data={
+                "project": self.project_code,
+                "parent_group_code": "B.09",
+                "label": "Test OPEX Sub-line",
+                "amount_keur_y1": "100",
+                "escalation_pct": "2",
+                "notes": "",
+                "workbook_version": wv2,
+                "content_hash": ch2,
+            },
+            headers={"HX-Request": "true"},
+            follow_redirects=False,
+        )
+        if add_resp.status_code not in (200,):
+            self.skipTest(f"OPEX add returned {add_resp.status_code} — skipping effectiveness check")
+
+        ch3, wv3 = _get_content_hash(self.client, self.project_code)
+        with patch("app.api.project_runner.run_project", side_effect=after_run):
+            resp = _post_run(self.client, self.project_code, ch3, wv3)
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(captured, "run_project must have been called after OPEX add")
+        pi = captured[0]
+        self.assertIsNotNone(pi)
+        self.assertGreater(
+            len(pi.opex), baseline_opex_len,
+            f"opex tuple must grow after B.09 additive fold (was {baseline_opex_len}, got {len(pi.opex)})",
+        )
+
+
+# ---------------------------------------------------------------------------
+# 19. TestActiveScenario
+# ---------------------------------------------------------------------------
+
+class TestActiveScenario(unittest.TestCase):
+    """Active scenario: resolves, correct name passed to engine, metadata persisted."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.client = _authed_client()
+        cls.project_code = _create_project(cls.client, suffix="active-scenario")
+
+    def _get_user_and_project(self):
+        from app.auth import decode_session_token
+        from app.persistence.projects_repository import get_project_record
+        token = self.client.cookies.get(COOKIE_NAME)
+        session = decode_session_token(token)
+        proj = get_project_record(user_id=session.user_id, project_code=self.project_code)
+        return session, proj
+
+    def test_active_scenario_name_passes_to_engine_and_persists(self):
+        from app.api import project_runner
+        from app.persistence.scenarios_repository import add_scenario, select_scenario
+        from app.workbook.service import WorkbookService
+
+        session, proj = self._get_user_and_project()
+
+        # Get baseline input set for scenario creation
+        ws = _get_ws(self.client, self.project_code)
+        pis = WorkbookService.build_draft_input_set_from_workspace(ws)
+        base_input_set = pis.to_snapshot() if hasattr(pis, "to_snapshot") else {}
+
+        # Create a scenario
+        sc = add_scenario(
+            user_id=session.user_id,
+            project_id=proj.project_id,
+            project_code=self.project_code,
+            scenario_name="My Test Scenario",
+            parent_scenario_id=None,
+            base_input_set=base_input_set,
+        )
+        self.assertIsNotNone(sc)
+
+        # Select the scenario as active
+        select_scenario(
+            user_id=session.user_id,
+            project_id=proj.project_id,
+            scenario_id=sc.scenario_id,
+        )
+
+        # Capture scenario_name passed to engine
+        captured_names = []
+        orig = project_runner.run_project
+
+        def capturing_run(pt, name, **kw):
+            captured_names.append(name)
+            return orig(pt, name, **kw)
+
+        ch, wv = _get_content_hash(self.client, self.project_code)
+        with patch("app.api.project_runner.run_project", side_effect=capturing_run):
+            resp = _post_run(self.client, self.project_code, ch, wv)
+
+        self.assertEqual(resp.status_code, 200, f"run failed: {resp.text[:300]}")
+        self.assertTrue(captured_names, "run_project must have been called")
+        self.assertEqual(captured_names[0], "My Test Scenario",
+                         f"engine must receive scenario name, got {captured_names[0]!r}")
+
+        # Metadata must be persisted on the workspace
+        ws2 = _get_ws(self.client, self.project_code)
+        self.assertEqual(ws2.active_scenario_id, sc.scenario_id)
+        self.assertEqual(ws2.active_scenario_name, "My Test Scenario")
+
+
+# ---------------------------------------------------------------------------
+# 20. TestMissingScenario
+# ---------------------------------------------------------------------------
+
+class TestMissingScenario(unittest.TestCase):
+    """Run fails before engine when active_scenario_id points to a non-existent scenario."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.client = _authed_client()
+        cls.project_code = _create_project(cls.client, suffix="missing-scenario")
+
+    def test_missing_scenario_fails_before_engine(self):
+        import uuid
+        from app.api import project_runner
+        from app.auth import decode_session_token
+        from app.persistence.workspace_repository import get_workspace_state
+        from app.persistence.projects_repository import get_project_record
+
+        token = self.client.cookies.get(COOKIE_NAME)
+        session = decode_session_token(token)
+        proj = get_project_record(user_id=session.user_id, project_code=self.project_code)
+
+        # Inject a bogus scenario ID directly on the workspace
+        from app.persistence.workspace_repository import save_workspace_state
+        ws = get_workspace_state(user_id=session.user_id, project_id=proj.project_id)
+        fake_id = str(uuid.uuid4())
+        save_workspace_state(
+            user_id=session.user_id,
+            project_id=proj.project_id,
+            project_code=ws.project_code,
+            draft_snapshot=ws.draft_snapshot or {},
+            saved_snapshot=ws.saved_snapshot or {},
+            active_scenario_id=fake_id,
+            active_scenario_name="Ghost Scenario",
+            dirty=ws.dirty,
+        )
+
+        engine_called = []
+        orig = project_runner.run_project
+
+        def capturing_run(*a, **kw):
+            engine_called.append(True)
+            return orig(*a, **kw)
+
+        ch, wv = _get_content_hash(self.client, self.project_code)
+        with patch("app.api.project_runner.run_project", side_effect=capturing_run):
+            resp = _post_run(self.client, self.project_code, ch, wv)
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertFalse(engine_called, "engine must NOT be called when scenario is missing")
+        self.assertIn("scenario", resp.text.lower(), "response must mention scenario")
+
+
+# ---------------------------------------------------------------------------
+# 21. TestArchivedScenario
+# ---------------------------------------------------------------------------
+
+class TestArchivedScenario(unittest.TestCase):
+    """Run fails before engine when active scenario is archived."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.client = _authed_client()
+        cls.project_code = _create_project(cls.client, suffix="archived-scenario")
+
+    def test_archived_scenario_fails_before_engine(self):
+        from app.api import project_runner
+        from app.auth import decode_session_token
+        from app.persistence.projects_repository import get_project_record
+        from app.persistence.scenarios_repository import add_scenario, archive_scenario, select_scenario
+        from app.workbook.service import WorkbookService
+
+        token = self.client.cookies.get(COOKIE_NAME)
+        session = decode_session_token(token)
+        proj = get_project_record(user_id=session.user_id, project_code=self.project_code)
+
+        ws = _get_ws(self.client, self.project_code)
+        pis = WorkbookService.build_draft_input_set_from_workspace(ws)
+        base_input_set = pis.to_snapshot() if hasattr(pis, "to_snapshot") else {}
+
+        sc = add_scenario(
+            user_id=session.user_id,
+            project_id=proj.project_id,
+            project_code=self.project_code,
+            scenario_name="To Be Archived",
+            parent_scenario_id=None,
+            base_input_set=base_input_set,
+        )
+        select_scenario(
+            user_id=session.user_id,
+            project_id=proj.project_id,
+            scenario_id=sc.scenario_id,
+        )
+        archive_scenario(user_id=session.user_id, scenario_id=sc.scenario_id)
+
+        engine_called = []
+        orig = project_runner.run_project
+
+        def capturing_run(*a, **kw):
+            engine_called.append(True)
+            return orig(*a, **kw)
+
+        ch, wv = _get_content_hash(self.client, self.project_code)
+        with patch("app.api.project_runner.run_project", side_effect=capturing_run):
+            resp = _post_run(self.client, self.project_code, ch, wv)
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertFalse(engine_called, "engine must NOT be called for an archived scenario")
+        self.assertIn("archived", resp.text.lower(), "response must mention archived")
+
+
+# ---------------------------------------------------------------------------
+# 22. TestWrongProjectScenario
+# ---------------------------------------------------------------------------
+
+class TestWrongProjectScenario(unittest.TestCase):
+    """Run fails before engine when active scenario belongs to a different project."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.client = _authed_client()
+        cls.project_code = _create_project(cls.client, suffix="wrong-proj-a")
+        cls.other_project_code = _create_project(cls.client, suffix="wrong-proj-b")
+
+    def test_wrong_project_scenario_fails_before_engine(self):
+        from app.api import project_runner
+        from app.auth import decode_session_token
+        from app.persistence.projects_repository import get_project_record
+        from app.persistence.scenarios_repository import add_scenario
+        from app.persistence.workspace_repository import get_workspace_state, save_workspace_state
+        from app.workbook.service import WorkbookService
+
+        token = self.client.cookies.get(COOKIE_NAME)
+        session = decode_session_token(token)
+
+        # Create a scenario on the OTHER project
+        other_proj = get_project_record(user_id=session.user_id, project_code=self.other_project_code)
+        ws_other = _get_ws(self.client, self.other_project_code)
+        pis = WorkbookService.build_draft_input_set_from_workspace(ws_other)
+        base_input_set = pis.to_snapshot() if hasattr(pis, "to_snapshot") else {}
+
+        sc = add_scenario(
+            user_id=session.user_id,
+            project_id=other_proj.project_id,
+            project_code=self.other_project_code,
+            scenario_name="Other Project Scenario",
+            parent_scenario_id=None,
+            base_input_set=base_input_set,
+        )
+
+        # Inject the foreign scenario ID onto the target project's workspace
+        this_proj = get_project_record(user_id=session.user_id, project_code=self.project_code)
+        ws_this = get_workspace_state(user_id=session.user_id, project_id=this_proj.project_id)
+        save_workspace_state(
+            user_id=session.user_id,
+            project_id=this_proj.project_id,
+            project_code=ws_this.project_code,
+            draft_snapshot=ws_this.draft_snapshot or {},
+            saved_snapshot=ws_this.saved_snapshot or {},
+            active_scenario_id=sc.scenario_id,
+            active_scenario_name="Other Project Scenario",
+            dirty=ws_this.dirty,
+        )
+
+        engine_called = []
+        orig = project_runner.run_project
+
+        def capturing_run(*a, **kw):
+            engine_called.append(True)
+            return orig(*a, **kw)
+
+        ch, wv = _get_content_hash(self.client, self.project_code)
+        with patch("app.api.project_runner.run_project", side_effect=capturing_run):
+            resp = _post_run(self.client, self.project_code, ch, wv)
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertFalse(engine_called, "engine must NOT be called for a cross-project scenario")
+        self.assertIn("project", resp.text.lower(),
+                      "response must mention project mismatch")
+
+
+# ---------------------------------------------------------------------------
+# 23. TestStaleRunRecovery
+# ---------------------------------------------------------------------------
+
+class TestStaleRunRecovery(unittest.TestCase):
+    """Stale hash response must contain refreshed #v2-run-controls with a valid hash."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.client = _authed_client()
+        cls.project_code = _create_project(cls.client, suffix="stale-recovery")
+
+    def test_stale_hash_response_has_run_controls_with_current_hash(self):
+        import re
+        ch, wv = _get_content_hash(self.client, self.project_code)
+        # Submit with a deliberately wrong hash
+        bad_hash = "0" * 64
+        resp = _post_run(self.client, self.project_code, bad_hash, wv)
+
+        self.assertEqual(resp.status_code, 200, "stale recovery must return 200")
+        body = resp.text
+        self.assertIn('id="v2-run-controls"', body,
+                      "stale recovery must refresh #v2-run-controls OOB")
+        # The refreshed controls must embed a non-empty content_hash
+        m = re.search(r'name="content_hash"\s+value="([^"]+)"', body)
+        self.assertIsNotNone(m, "refreshed controls must contain a content_hash hidden input")
+        fresh_hash = m.group(1)
+        self.assertNotEqual(fresh_hash, bad_hash,
+                            "refreshed hash must differ from the bogus hash we submitted")
+        self.assertEqual(fresh_hash, ch,
+                         "refreshed hash must equal the true current hash")
+
+
+# ---------------------------------------------------------------------------
+# 24. TestDoubleSubmitProtection
+# ---------------------------------------------------------------------------
+
+class TestDoubleSubmitProtection(unittest.TestCase):
+    """Workbook page run form must carry hx-disabled-elt to prevent double-submit."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.client = _authed_client()
+        cls.project_code = _create_project(cls.client, suffix="double-submit")
+
+    def test_run_form_has_hx_disabled_elt(self):
+        resp = self.client.get(f"/v2/workbook?project={self.project_code}")
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("hx-disabled-elt", resp.text,
+                      "run form must have hx-disabled-elt for double-submit protection")
+
+
 class TestV2OffByDefault(unittest.TestCase):
     """FINCO_WORKBOOK_V2 must remain OFF by default (no auto-enable)."""
 

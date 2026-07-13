@@ -941,7 +941,7 @@ async def v2_workbook_run(
       6.  Project type validation: Solar→"Solar", Wind→"Wind", else error
       7.  Materialise: build_draft_input_set_from_workspace(ws).to_projectinputs()
           (draft_snapshot is the canonical V2 run boundary after V2 edits)
-      8.  Scenario resolution via get_scenario_record — fail closed on error
+      8.  Scenario resolution via get_scenario — fail closed on error
       9.  CAPEX fold (replace-semantics)
       10. OPEX fold (additive)
       11. run_project(project_type, scenario_name, project_inputs_override=override)
@@ -1040,7 +1040,31 @@ async def v2_workbook_run(
             "Draft changed since page loaded — values refreshed. "
             "Please run again."
         )
-        return _htmx_error(msg, ws) if is_htmx else _non_htmx_error(msg)
+        if not is_htmx:
+            return _non_htmx_error(msg)
+        # Return both the banner and refreshed run controls (with the current hash).
+        stale_ctx: dict = {
+            "ws_dirty": getattr(ws, "dirty", True),
+            "has_runtime": bool(getattr(ws, "last_runtime_snapshot_id", None)),
+            "field_error": msg,
+            "flash_error": "",
+            "project_code": project,
+            "workbook_version": workbook_version,
+            "content_hash": current_identity.composite_hash,
+        }
+        stale_banner_html = _templates.get_template(
+            "partials/_v2_status_banner.html"
+        ).render(stale_ctx)
+        stale_banner_oob = (
+            '<div id="v2-status-banner" hx-swap-oob="true">' + stale_banner_html + "</div>"
+        )
+        stale_controls_html = _templates.get_template(
+            "partials/_v2_run_controls.html"
+        ).render(stale_ctx)
+        stale_controls_oob = (
+            '<div id="v2-run-controls" hx-swap-oob="true">' + stale_controls_html + "</div>"
+        )
+        return HTMLResponse(content=stale_banner_oob + "\n" + stale_controls_oob)
 
     # ── Step 6: project type validation ───────────────────────────────────── #
     project_type_raw = (project_record.project_type or "").strip().lower()
@@ -1060,8 +1084,13 @@ async def v2_workbook_run(
     # scalar values the user saw and approved when they clicked Run.
     try:
         override = WorkbookService.to_projectinputs(pis_draft)
-    except Exception as exc:
-        msg = f"Could not build project inputs: {exc}"
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception(
+            "v2_workbook_run: build_project_inputs failed project=%s user=%s",
+            project, user.user_id,
+        )
+        msg = "Could not build project inputs — please reload and try again."
         return _htmx_error(msg, ws) if is_htmx else _non_htmx_error(msg)
 
     # ── Step 8: scenario resolution ────────────────────────────────────────── #
@@ -1071,24 +1100,25 @@ async def v2_workbook_run(
     _scenario_overrides_for_fold = None
 
     if active_scenario_id:
-        try:
-            from app.persistence.scenarios_repository import get_scenario_record
-            sc_rec = get_scenario_record(
-                user_id=user.user_id,
-                project_id=project_record.project_id,
-                scenario_id=active_scenario_id,
-            )
-            if sc_rec is None:
-                msg = (
-                    f"Active scenario (id={active_scenario_id!r}) could not be found. "
-                    "Please re-select a scenario and try again."
-                )
-                return _htmx_error(msg, ws) if is_htmx else _non_htmx_error(msg)
-            _scenario_overrides_for_fold = sc_rec.overrides
-            scenario_name = sc_rec.scenario_name or scenario_name
-        except Exception as exc:
-            msg = f"Scenario resolution failed: {exc}"
+        import logging as _log
+        from app.persistence.scenarios_repository import get_scenario
+        sc_rec = get_scenario(scenario_id=active_scenario_id, user_id=user.user_id)
+        if sc_rec is None:
+            msg = "Active scenario could not be found. Please re-select a scenario and try again."
             return _htmx_error(msg, ws) if is_htmx else _non_htmx_error(msg)
+        if sc_rec.archived:
+            msg = "Active scenario has been archived. Please re-select a scenario and try again."
+            return _htmx_error(msg, ws) if is_htmx else _non_htmx_error(msg)
+        if sc_rec.project_id != project_record.project_id:
+            _log.getLogger(__name__).warning(
+                "v2_workbook_run: scenario project_id mismatch "
+                "scenario=%s scenario.project_id=%s expected=%s user=%s",
+                active_scenario_id, sc_rec.project_id, project_record.project_id, user.user_id,
+            )
+            msg = "Active scenario does not belong to this project. Please re-select and try again."
+            return _htmx_error(msg, ws) if is_htmx else _non_htmx_error(msg)
+        _scenario_overrides_for_fold = sc_rec.overrides
+        scenario_name = sc_rec.scenario_name or scenario_name
 
     # ── Steps 9–10: CAPEX and OPEX fold ───────────────────────────────────── #
     from dataclasses import replace as _dc_replace
@@ -1142,9 +1172,49 @@ async def v2_workbook_run(
             active_scenario_name=active_scenario_name,
             ran_at=ran_at,
         )
-    except V2RunCommitConflictError as exc:
-        msg = str(exc)
-        return _htmx_error(msg, ws) if is_htmx else _non_htmx_error(msg)
+    except V2RunCommitConflictError:
+        msg = (
+            "Workbook changed while the engine was running — values refreshed. "
+            "Please run again."
+        )
+        if not is_htmx:
+            return _non_htmx_error(msg)
+        # Re-fetch workspace to get the current hash for the run controls.
+        ws_conflict = get_workspace_state(
+            user_id=user.user_id, project_id=project_record.project_id
+        ) or ws
+        pis_conflict = WorkbookService.build_draft_input_set_from_workspace(ws_conflict)
+        try:
+            conflict_identity = assemble_consistent_for_get(
+                user_id=user.user_id,
+                project_id=project_record.project_id,
+                workbook_version=pis_conflict.workbook_version,
+            )
+            conflict_hash = conflict_identity.composite_hash
+        except WorkbookIdentityError:
+            conflict_hash = ""
+        conflict_ctx: dict = {
+            "ws_dirty": getattr(ws_conflict, "dirty", True),
+            "has_runtime": bool(getattr(ws_conflict, "last_runtime_snapshot_id", None)),
+            "field_error": msg,
+            "flash_error": "",
+            "project_code": project,
+            "workbook_version": workbook_version,
+            "content_hash": conflict_hash,
+        }
+        conflict_banner_html = _templates.get_template(
+            "partials/_v2_status_banner.html"
+        ).render(conflict_ctx)
+        conflict_banner_oob = (
+            '<div id="v2-status-banner" hx-swap-oob="true">' + conflict_banner_html + "</div>"
+        )
+        conflict_controls_html = _templates.get_template(
+            "partials/_v2_run_controls.html"
+        ).render(conflict_ctx)
+        conflict_controls_oob = (
+            '<div id="v2-run-controls" hx-swap-oob="true">' + conflict_controls_html + "</div>"
+        )
+        return HTMLResponse(content=conflict_banner_oob + "\n" + conflict_controls_oob)
     except Exception as exc:
         import logging
         logging.getLogger(__name__).exception("v2_workbook_run: persistence failure")

@@ -7,7 +7,8 @@
 #}
 <form method="post" action="/v2/workbook/run"
       hx-post="/v2/workbook/run"
-      hx-swap="none">
+      hx-swap="none"
+      hx-disabled-elt="find button">
   <input type="hidden" name="project" value="{{ project_code }}">
   <input type="hidden" name="workbook_version" value="{{ workbook_version }}">
   <input type="hidden" name="content_hash" value="{{ content_hash }}">
