@@ -55,6 +55,7 @@ Scope constraints
 """
 from __future__ import annotations
 
+import datetime
 import os
 import urllib.parse
 from typing import Optional
@@ -84,6 +85,17 @@ from app.workbook.update_service import (
 )
 
 router = APIRouter()
+
+
+def _fmt_runtime_at(ts: str) -> str:
+    """Format an ISO timestamp into a human-readable string for the toolbar."""
+    if not ts:
+        return ""
+    try:
+        dt = datetime.datetime.fromisoformat(ts.replace("Z", "+00:00"))
+        return dt.strftime("%-d %b %Y, %H:%M")
+    except Exception:
+        return ts
 
 
 def _build_pis_with_composite_identity(ws, project_record, user):
@@ -214,6 +226,7 @@ def _base_sheet_ctx(request, pis, ws, project_record, project, field_error=""):
         "project_editable": not is_protected_reference(project_record),
         "ws_dirty": ws.dirty,
         "has_runtime": bool(ws.last_runtime_snapshot_id),
+        "last_runtime_at": _fmt_runtime_at(getattr(ws, "last_runtime_at", None) or ""),
         "field_error": field_error,
     }
 
@@ -222,6 +235,12 @@ def _build_run_controls_oob(ctx: dict) -> str:
     """Return OOB HTML to refresh #v2-run-controls with the current composite hash."""
     run_controls_html = _templates.get_template("partials/_v2_run_controls.html").render(ctx)
     return '<div id="v2-run-controls" hx-swap-oob="true">' + run_controls_html + "</div>"
+
+
+def _build_toolbar_state_oob(ctx: dict) -> str:
+    """Return OOB HTML to refresh the toolbar runtime state chip."""
+    toolbar_html = _templates.get_template("partials/_v2_toolbar_state.html").render(ctx)
+    return '<div id="v2-toolbar-runtime-state" hx-swap-oob="true">' + toolbar_html + "</div>"
 
 
 def _render_htmx_sheet(
@@ -698,7 +717,7 @@ async def v2_workbook(request: Request, project: Optional[str] = None):
         "project_name": project_record.project_name or project,
         "project_type": (project_record.project_type or "").capitalize(),
         "active_scenario_name": ws.active_scenario_name or "",
-        "last_runtime_at": ws.last_runtime_at or "",
+        "last_runtime_at": _fmt_runtime_at(getattr(ws, "last_runtime_at", None) or ""),
         "workbook_version": pis.workbook_version,
         "content_hash": pis.content_hash,
         "template_source": pis.template_source,
@@ -1297,5 +1316,6 @@ async def v2_workbook_run(
 
     # Each full sheet OOB already includes its runtime bar; do not add standalone bar OOBs
     # here — that would create duplicate DOM IDs (debt-runtime-bar, tax-runtime-bar, fs-runtime-bar).
-    combined = "\n".join([run_controls_oob, banner_oob, debt_oob, tax_oob, fs_oob])
+    toolbar_state_oob = _build_toolbar_state_oob(ctx)
+    combined = "\n".join([run_controls_oob, banner_oob, toolbar_state_oob, debt_oob, tax_oob, fs_oob])
     return HTMLResponse(content=combined)

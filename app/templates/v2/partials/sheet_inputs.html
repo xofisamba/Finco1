@@ -90,14 +90,21 @@
         {% endif %}
       {% endfor %}
 
-      {# Fields not yet in registry #}
+    </div>
+  </details>
+
+  {# Planned technical inputs (collapsed) #}
+  <details class="v2-inputs-section">
+    <summary class="v2-inputs-section-summary">
+      Planned technical inputs <span class="v2-future-tag" style="margin-left:.4rem">Planned inputs</span>
+    </summary>
+    <div class="v2-section-fields">
       {{ placeholder_row("Availability") }}
       {{ placeholder_row("Curtailment") }}
       {{ placeholder_row("Degradation") }}
       {{ placeholder_row("Losses") }}
       {{ placeholder_row("Grid Losses") }}
       {{ placeholder_row("Aux Consumption") }}
-
     </div>
   </details>
 

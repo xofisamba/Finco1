@@ -62,11 +62,18 @@
                         hx_target="#v2-sheet-senior-debt", sheet_id="debt") }}
       {% endfor %}
 
+    </div>
+  </details>
+
+  <details class="v2-inputs-section">
+    <summary class="v2-inputs-section-summary" id="nav-debt-additional">
+      Additional assumptions <span class="v2-future-tag" style="margin-left:.4rem">Planned inputs</span>
+    </summary>
+    <div class="v2-section-fields">
       {{ placeholder_row("Base Rate") }}
       {{ placeholder_row("Grace Period") }}
       {{ placeholder_row("Repayment Profile") }}
       {{ placeholder_row("DSRA (months)") }}
-
     </div>
   </details>
 
