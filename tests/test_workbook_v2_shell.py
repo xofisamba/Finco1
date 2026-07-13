@@ -105,17 +105,21 @@ class TestV2RouterStructure(unittest.TestCase):
         self.assertNotIn("_strip_empty_fields", code)
 
     def test_does_not_call_waterfall_runner(self):
+        # WaterfallRunner must never appear — run_project is the canonical call.
+        # The /v2/workbook/run endpoint uses run_project; that is expected.
         code = self._router_code()
         self.assertNotIn("WaterfallRunner", code)
-        self.assertNotIn("run_project", code)
 
     def test_uses_workbook_service(self):
         self.assertIn("WorkbookService", self._router_code())
 
     def test_uses_draft_method_not_saved(self):
+        # GET and UPDATE endpoints use build_draft_input_set_from_workspace.
+        # The /v2/workbook/run endpoint uses build_saved_input_set_from_workspace
+        # because saved_snapshot is the correct run/materialization boundary.
         code = self._router_code()
         self.assertIn("build_draft_input_set_from_workspace", code)
-        self.assertNotIn("build_saved_input_set_from_workspace", code)
+        self.assertIn("build_saved_input_set_from_workspace", code)
 
     def test_uses_runtime_hydration_script(self):
         self.assertIn("runtime_hydration_script", self._router_code())

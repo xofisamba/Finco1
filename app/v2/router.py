@@ -899,3 +899,272 @@ async def v2_workbook_update(
         url=f"/v2/workbook?project={project}",
         status_code=303,
     )
+
+
+@router.post("/workbook/run")
+async def v2_workbook_run(
+    request: Request,
+    project: str = Form(...),
+    content_hash: str = Form(...),
+    workbook_version: str = Form(...),
+):
+    """V2 Run endpoint — canonical engine orchestration for Workbook V2.
+
+    Pipeline (all checks fail-closed):
+      1. Auth
+      2. Load project_record + workspace_state
+      3. Protected reference check (block TUHO/Oborovo edits; they CAN run)
+      4. Runtime guard: check_runtime_allowed(ws, ws.draft_snapshot)
+      5. Stale identity: content_hash must match assemble_consistent_for_get(...)
+      6. Materialize: build_saved_input_set_from_workspace(ws).to_projectinputs()
+         → fold CAPEX (replace-semantics) → fold OPEX (additive)
+      7. run_project(project_type, scenario_name, project_inputs_override=override)
+      8. record_workspace_runtime(...) with all schedule payloads
+      9. Fresh workspace reload → build_runtime_projection_bundle(rr, ws.dirty)
+     10. HTMX response: all three sheet fragments + three OOB bars + status banner
+
+    HTMX: always responds with 200 + HTML fragments (success or error).
+    Non-HTMX: 303 redirect on success; redirect with ?v2_err=... on error.
+
+    Scope constraints — NO engine formula modifications, NO parity changes.
+    FINCO_WORKBOOK_V2 flag is respected by the router mount in main_web.py.
+    """
+    from datetime import datetime, timezone
+
+    from app.api.project_runner import run_project
+    from app.persistence.projects_repository import get_project_record
+    from app.persistence.repository import record_workspace_runtime
+    from app.persistence.workspace_repository import get_workspace_state
+    from app.services.capex_sub_lines_integration import apply_user_sub_lines_replacing_base
+    from app.services.opex_sub_lines_integration import apply_user_sub_lines_to_opex
+    from app.services.scenario_state_service import check_runtime_allowed
+    from app.ui.runtime_summary import runtime_summary_to_dict
+    from app.workbook.runtime_projection import build_runtime_projection_bundle
+    from app.workbook.runtime_result import RuntimeResult
+    from app.workbook.workbook_identity import WorkbookIdentityError
+
+    def _utc_compact() -> str:
+        return datetime.now(timezone.utc).isoformat().replace(":", "").replace("-", "")
+
+    def _utc_full() -> str:
+        return datetime.now(timezone.utc).isoformat()
+
+    user = _get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+
+    is_htmx = request.headers.get("HX-Request") == "true"
+
+    def _htmx_error(msg: str, ws_for_render=None) -> HTMLResponse:
+        """Render error as OOB status banner + no-op sheet (banner only)."""
+        ctx: dict = {
+            "ws_dirty": getattr(ws_for_render, "dirty", True),
+            "has_runtime": bool(
+                getattr(ws_for_render, "last_runtime_snapshot_id", None)
+            ) if ws_for_render else False,
+            "field_error": msg,
+            "flash_error": "",
+        }
+        banner_html = _templates.get_template(
+            "partials/_v2_status_banner.html"
+        ).render(ctx)
+        oob = '<div id="v2-status-banner" hx-swap-oob="true">' + banner_html + "</div>"
+        return HTMLResponse(content=oob)
+
+    def _non_htmx_error(msg: str) -> RedirectResponse:
+        return RedirectResponse(
+            url=f"/v2/workbook?project={project}&v2_err={urllib.parse.quote_plus(msg)}",
+            status_code=303,
+        )
+
+    project_record = get_project_record(user_id=user.user_id, project_code=project)
+    if project_record is None:
+        msg = f"Project {project!r} not found."
+        return _htmx_error(msg) if is_htmx else _non_htmx_error(msg)
+
+    ws = get_workspace_state(user_id=user.user_id, project_id=project_record.project_id)
+    if ws is None:
+        msg = "Workspace not found."
+        return _htmx_error(msg) if is_htmx else _non_htmx_error(msg)
+
+    # ── Step 3: protected reference check ─────────────────────────────────── #
+    # TUHO/Oborovo can be run but NOT edited; running is allowed, so no block here.
+    # (Protected references reach the engine with their saved_snapshot as-is.)
+
+    # ── Step 4: runtime guard ──────────────────────────────────────────────── #
+    allow_run, runtime_origin, guard_message = check_runtime_allowed(ws, ws.draft_snapshot)
+    if not allow_run:
+        msg = guard_message or "Run not allowed in current workspace state."
+        return _htmx_error(msg, ws) if is_htmx else _non_htmx_error(msg)
+
+    # ── Step 5: stale identity check ──────────────────────────────────────── #
+    pis_for_identity = WorkbookService.build_draft_input_set_from_workspace(ws)
+    if pis_for_identity.workbook_version != workbook_version:
+        msg = "Workbook version mismatch — please reload the page."
+        return _htmx_error(msg, ws) if is_htmx else _non_htmx_error(msg)
+    try:
+        current_identity = assemble_consistent_for_get(
+            user_id=user.user_id,
+            project_id=project_record.project_id,
+            workbook_version=pis_for_identity.workbook_version,
+        )
+    except WorkbookIdentityError:
+        msg = "Could not verify workbook identity — please reload."
+        return _htmx_error(msg, ws) if is_htmx else _non_htmx_error(msg)
+    if current_identity.composite_hash != content_hash:
+        msg = (
+            "Draft changed since page loaded — values refreshed. "
+            "Please run again."
+        )
+        return _htmx_error(msg, ws) if is_htmx else _non_htmx_error(msg)
+
+    # ── Step 6: materialize project inputs from saved snapshot ────────────── #
+    try:
+        pis_saved = WorkbookService.build_saved_input_set_from_workspace(ws)
+        override = WorkbookService.to_projectinputs(pis_saved)
+    except Exception as exc:
+        msg = f"Could not build project inputs: {exc}"
+        return _htmx_error(msg, ws) if is_htmx else _non_htmx_error(msg)
+
+    active_scenario_id = ws.active_scenario_id
+    active_scenario_name = ws.active_scenario_name
+
+    # Fetch active scenario overrides for CAPEX/OPEX fold.
+    _scenario_overrides_for_fold = None
+    if active_scenario_id:
+        try:
+            from app.persistence.scenarios_repository import get_scenario_record
+            sc_rec = get_scenario_record(
+                user_id=user.user_id,
+                project_id=project_record.project_id,
+                scenario_id=active_scenario_id,
+            )
+            _scenario_overrides_for_fold = sc_rec.overrides if sc_rec else None
+        except Exception:
+            pass
+
+    # CAPEX fold — replace-semantics (matches legacy user_created path).
+    from dataclasses import replace as _dc_replace
+    folded_capex = apply_user_sub_lines_replacing_base(
+        override.capex,
+        project_id=project_record.project_id,
+        scenario_overrides=_scenario_overrides_for_fold,
+    )
+    if folded_capex is not override.capex:
+        override = _dc_replace(override, capex=folded_capex)
+
+    # OPEX fold — additive (matches legacy user_created path).
+    folded_opex = apply_user_sub_lines_to_opex(
+        override.opex,
+        project_id=project_record.project_id,
+        scenario_overrides=_scenario_overrides_for_fold,
+    )
+    if folded_opex is not override.opex:
+        override = _dc_replace(override, opex=folded_opex)
+
+    # ── Step 7: run the engine ────────────────────────────────────────────── #
+    project_type_raw = (project_record.project_type or "").strip().lower()
+    runtime_project_key = "Solar" if project_type_raw == "solar" else "Wind"
+    scenario_name = active_scenario_name or "Base"
+
+    try:
+        result = run_project(
+            runtime_project_key,
+            scenario_name,
+            project_inputs_override=override,
+        )
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).exception("v2_workbook_run: engine failure")
+        msg = "Engine run failed — please try again or contact support."
+        return _htmx_error(msg, ws) if is_htmx else _non_htmx_error(msg)
+
+    # ── Step 8: persist ───────────────────────────────────────────────────── #
+    runtime_snapshot_id = _utc_compact()
+    ran_at = _utc_full()
+    runtime_summary = runtime_summary_to_dict(
+        result, project_record.project_code, project_record.project_name
+    )
+
+    try:
+        record_workspace_runtime(
+            user_id=user.user_id,
+            project_id=project_record.project_id,
+            project_code=project_record.project_code,
+            runtime_snapshot=ws.saved_snapshot or {},
+            runtime_summary=result["kpis"],
+            runtime_snapshot_id=runtime_snapshot_id,
+            runtime_origin=runtime_origin or "v2_run",
+            active_scenario_id=active_scenario_id,
+            active_scenario_name=active_scenario_name,
+            financial_statements=result.get("financial_statements"),
+            debt_schedule=result.get("debt_schedule"),
+            tax_schedule=result.get("tax_schedule"),
+            distribution_schedule=result.get("distribution_schedule"),
+            sponsor_schedule=result.get("sponsor_schedule"),
+        )
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).exception("v2_workbook_run: persistence failure")
+        msg = "Run completed but could not be saved — please try again."
+        return _htmx_error(msg, ws) if is_htmx else _non_htmx_error(msg)
+
+    # ── Step 9: reload workspace and build projection ─────────────────────── #
+    ws_fresh = get_workspace_state(
+        user_id=user.user_id, project_id=project_record.project_id
+    ) or ws
+    rr = RuntimeResult.from_run_result(
+        result,
+        runtime_summary=result["kpis"],
+        snapshot_id=runtime_snapshot_id,
+        ran_at=ran_at,
+        origin=runtime_origin or "v2_run",
+    )
+    projection = build_runtime_projection_bundle(rr, ws_fresh.dirty)
+
+    # ── Step 10: HTMX response ────────────────────────────────────────────── #
+    if not is_htmx:
+        return RedirectResponse(
+            url=f"/v2/workbook?project={project}",
+            status_code=303,
+        )
+
+    pis_fresh = _build_pis_with_composite_identity(ws_fresh, project_record, user)
+    ctx = _base_sheet_ctx(request, pis_fresh, ws_fresh, project_record, project)
+
+    # Status banner (OOB).
+    banner_html = _templates.get_template(
+        "partials/_v2_status_banner.html"
+    ).render(ctx)
+    banner_oob = (
+        '<div id="v2-status-banner" hx-swap-oob="true">' + banner_html + "</div>"
+    )
+
+    # Three sheet fragments (OOB) — full re-render of each sheet so runtime
+    # data appears immediately without a page reload.
+    ctx.update(_build_debt_ctx(pis_fresh, ws_fresh, projection=projection))
+    debt_html = _templates.get_template("partials/sheet_senior_debt.html").render(ctx)
+    debt_oob = '<div id="v2-sheet-senior-debt" hx-swap-oob="true">' + debt_html + "</div>"
+
+    ctx.update(_build_tax_ctx(pis_fresh, ws_fresh, projection=projection))
+    tax_html = _templates.get_template("partials/sheet_tax.html").render(ctx)
+    tax_oob = '<div id="v2-sheet-tax" hx-swap-oob="true">' + tax_html + "</div>"
+
+    ctx.update(_build_financial_statements_ctx(pis_fresh, ws_fresh, projection=projection))
+    fs_html = _templates.get_template(
+        "partials/sheet_financial_statements.html"
+    ).render(ctx)
+    fs_oob = (
+        '<div id="v2-sheet-financial-statements" hx-swap-oob="true">'
+        + fs_html
+        + "</div>"
+    )
+
+    # Three runtime bar OOBs (already inside the sheet fragments above, but
+    # also sent as standalone OOBs so the bars update even if the viewer is
+    # on a different sheet when the run completes).
+    from app.v2.runtime_projection_views import build_all_runtime_bar_oob
+    bars_oob = build_all_runtime_bar_oob(projection)
+
+    combined = "\n".join([banner_oob, debt_oob, tax_oob, fs_oob, bars_oob])
+    return HTMLResponse(content=combined)
