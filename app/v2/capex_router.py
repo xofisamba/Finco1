@@ -110,6 +110,22 @@ def _stale_identity_response(
     )
 
 
+def _render_capex_sheet_with_oob(
+    request: Request, project_record, pis, ws, project: str, field_error: str = ""
+) -> HTMLResponse:
+    """Render CAPEX sheet + append all three runtime bar OOBs on success."""
+    resp = _render_capex_sheet(request, project_record, pis, ws, project, field_error=field_error)
+    if field_error:
+        return resp
+    from app.workbook.runtime_projection import build_runtime_projection_bundle
+    from app.v2.runtime_projection_views import build_all_runtime_bar_oob
+    from app.workbook.service import WorkbookService
+    rr = WorkbookService.get_runtime_result(ws)
+    projection = build_runtime_projection_bundle(rr, ws.dirty)
+    oob = build_all_runtime_bar_oob(projection)
+    return HTMLResponse(content=resp.body.decode() + "\n" + oob)
+
+
 def _handle_command_error(exc: CapexCommandError) -> JSONResponse:
     if isinstance(exc, CapexProtectedReferenceError):
         return JSONResponse({"error": str(exc)}, status_code=409)
@@ -179,7 +195,7 @@ async def capex_line_add(
     ws = get_workspace_state(user_id=user.user_id, project_id=project_record.project_id) or ws
     if is_htmx:
         pis = _build_pis_with_hash(ws, project_record, user, new_hash)
-        return _render_capex_sheet(request, project_record, pis, ws, project)
+        return _render_capex_sheet_with_oob(request, project_record, pis, ws, project)
     return RedirectResponse(url=f"/v2/workbook?project={project}", status_code=303)
 
 
@@ -241,7 +257,7 @@ async def capex_line_update(
     ws = get_workspace_state(user_id=user.user_id, project_id=project_record.project_id) or ws
     if is_htmx:
         pis = _build_pis_with_hash(ws, project_record, user, new_hash)
-        return _render_capex_sheet(request, project_record, pis, ws, project)
+        return _render_capex_sheet_with_oob(request, project_record, pis, ws, project)
     return RedirectResponse(url=f"/v2/workbook?project={project}", status_code=303)
 
 
@@ -291,7 +307,7 @@ async def capex_line_deactivate(
     ws = get_workspace_state(user_id=user.user_id, project_id=project_record.project_id) or ws
     if is_htmx:
         pis = _build_pis_with_hash(ws, project_record, user, new_hash)
-        return _render_capex_sheet(request, project_record, pis, ws, project)
+        return _render_capex_sheet_with_oob(request, project_record, pis, ws, project)
     return RedirectResponse(url=f"/v2/workbook?project={project}", status_code=303)
 
 
@@ -353,5 +369,5 @@ async def capex_line_reorder(
     if is_htmx:
         # Reorder is hash-invariant; new_hash == content_hash
         pis = _build_pis_with_hash(ws, project_record, user, new_hash)
-        return _render_capex_sheet(request, project_record, pis, ws, project)
+        return _render_capex_sheet_with_oob(request, project_record, pis, ws, project)
     return RedirectResponse(url=f"/v2/workbook?project={project}", status_code=303)

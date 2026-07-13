@@ -40,14 +40,8 @@
   {% endif %}
 
   {# ── D. Runtime state badge ────────────────────────────────────────── #}
-  <div class="v2-section-label" data-testid="tax-runtime-bar">
-    {% if not has_runtime %}
-      <span class="v2-field-empty" data-testid="tax-runtime-state-a">Run Required</span>
-    {% elif ws_dirty %}
-      <span class="v2-runtime-dirty" data-testid="tax-runtime-state-c">Previous run — stale for current draft</span>
-    {% else %}
-      <span class="v2-runtime-clean" data-testid="tax-runtime-state-b">Outputs current</span>
-    {% endif %}
+  <div id="tax-runtime-bar" class="v2-section-label" data-testid="tax-runtime-bar">
+    {% include "partials/_tax_runtime_bar.html" %}
   </div>
 
   {# ── A. Tax Assumptions ────────────────────────────────────────────── #}
