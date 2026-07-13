@@ -694,16 +694,66 @@ _SHEET_DEBT = _sheet(_DT, "Senior Debt", [_dt_senior], icon="🏦", order=4)
 
 
 # ---------------------------------------------------------------------------
+# Sheet: tax
+# ---------------------------------------------------------------------------
+#
+# Tax Assumptions — Registry v2.1.0 expansion.
+#
+# Only CIT Rate and Loss Carryforward Years are added here; these are the
+# two scalar TaxParams fields that:
+#   (a) are set in every project factory and carried on every project snapshot,
+#   (b) are read directly by the waterfall engine (TaxParams.corporate_rate
+#       and TaxParams.loss_carryforward_years),
+#   (c) have a clean 1:1 mapping from snapshot → domain without coupling to
+#       jurisdiction-specific mechanics.
+#
+# Other TaxParams fields (loss_carryforward_cap, atad_ebitda_limit, etc.) are
+# not added here because they require jurisdiction-specific design decisions
+# and dedicated test fixtures that go beyond this PR's scope.
+#
+# Canonical mapping:
+#   field_id                           snapshot_key                  engine path
+#   tax.assumptions.cit_rate_pct       tax_corporate_rate_pct        tax.corporate_rate   (stored %→ratio /100)
+#   tax.assumptions.loss_carryforward_years  tax_loss_carryforward_years  tax.loss_carryforward_years  (int)
+
+_TX = "tax"
+
+_tx_assumptions = _section("assumptions", "Tax Assumptions", _TX, order=0, fields=[
+    _f(f"{_TX}.assumptions.cit_rate_pct", "CIT Rate", "tax_corporate_rate_pct", FieldType.PCT, _TX, "assumptions",
+       kind=FieldKind.INPUT, persisted=True, source_of_truth=SourceOfTruth.INPUT_SET,
+       engine_path="tax.corporate_rate",
+       scenario_policy=ScenarioPolicy.OVERRIDE, binding_status=BindingStatus.BOUND,
+       editable=True,
+       unit="%", min_value=0, max_value=100, decimals=2,
+       description="Corporate income tax rate stored as % (0–100); input_adapter divides by 100 → domain 0.0–1.0.",
+       order=0),
+
+    _f(f"{_TX}.assumptions.loss_carryforward_years", "Loss Carryforward Years", "tax_loss_carryforward_years",
+       FieldType.YEARS, _TX, "assumptions",
+       kind=FieldKind.INPUT, persisted=True, source_of_truth=SourceOfTruth.INPUT_SET,
+       engine_path="tax.loss_carryforward_years",
+       scenario_policy=ScenarioPolicy.OVERRIDE, binding_status=BindingStatus.BOUND,
+       editable=True,
+       unit="years", min_value=0, max_value=30,
+       description="Number of years tax losses may be carried forward.",
+       order=1),
+])
+
+_SHEET_TAX = _sheet(_TX, "Tax", [_tx_assumptions], icon="📋", order=5)
+
+
+# ---------------------------------------------------------------------------
 # Singleton
 # ---------------------------------------------------------------------------
 
 WORKBOOK = WorkbookSpec(
-    version="2.0.0",
+    version="2.1.0",
     sheets=(
         _SHEET_PROJECT_SETUP,
         _SHEET_CAPEX,
         _SHEET_OPEX,
         _SHEET_REVENUE,
         _SHEET_DEBT,
+        _SHEET_TAX,
     ),
 )

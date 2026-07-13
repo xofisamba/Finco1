@@ -450,12 +450,10 @@ def _render_debt_htmx_sheet(
 
 
 def _build_tax_ctx(pis, ws) -> dict:
-    """Build Tax sheet context from RuntimeResult output.
+    """Build Tax sheet context: registry fields + RuntimeResult output.
 
-    Tax assumptions (cit_rate_pct, loss_carryforward_years) are NOT yet
-    persisted as Workbook Registry snapshot keys — they come from TaxParams
-    set at project creation time.  Section A is therefore all placeholders;
-    no BOUND tax fields exist in the registry.
+    ``tax_fields`` contains the two BOUND Tax registry fields rendered in
+    Section A via the render_field macro (cit_rate_pct, loss_carryforward_years).
 
     ``tax_operational_periods`` is filtered server-side (is_operation=True
     only) before the template receives the list, matching the debt-sheet
@@ -469,6 +467,7 @@ def _build_tax_ctx(pis, ws) -> dict:
         raw = schedule.get("periods") or []
         op_periods = [p for p in raw if p.get("is_operation")]
     return {
+        "tax_fields": _build_sheet_fields("tax", pis),
         "tax_schedule": schedule,
         "tax_operational_periods": op_periods,
         "runtime_summary": _thaw(rr.runtime_summary) if rr and rr.runtime_summary else None,

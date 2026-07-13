@@ -47,6 +47,12 @@ class DebtInput(BaseModel):
     target_dscr: Optional[float] = Field(None, gt=0, description="Target DSCR")
 
 
+class TaxInput(BaseModel):
+    """Tax assumptions."""
+    cit_rate_pct: Optional[float] = Field(None, ge=0, le=100, description="CIT rate %")
+    loss_carryforward_years: Optional[int] = Field(None, ge=0, le=30, description="Loss carryforward years")
+
+
 class ProjectInputsSchema(BaseModel):
     """Root input schema for custom project definitions.
 
@@ -78,6 +84,7 @@ class ProjectInputsSchema(BaseModel):
     capex: Optional[CapexInput] = None
     opex: Optional[OpexInput] = None
     debt: Optional[DebtInput] = None
+    tax: Optional[TaxInput] = None
 
     @field_validator('project_type')
     @classmethod

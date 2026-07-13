@@ -85,6 +85,15 @@ def _set_financing_target_dscr(proj: "ProjectInputs", value: float) -> "ProjectI
     return dc_replace(proj, financing=dc_replace(proj.financing, target_dscr=value))
 
 
+def _set_tax_corporate_rate(proj: "ProjectInputs", value: float) -> "ProjectInputs":
+    # Registry stores % (0–100); engine expects ratio (0.0–1.0).
+    return dc_replace(proj, tax=dc_replace(proj.tax, corporate_rate=value / 100.0))
+
+
+def _set_tax_loss_carryforward_years(proj: "ProjectInputs", value: int) -> "ProjectInputs":
+    return dc_replace(proj, tax=dc_replace(proj.tax, loss_carryforward_years=int(value)))
+
+
 def _set_revenue_ppa_term(proj: "ProjectInputs", value: int) -> "ProjectInputs":
     """Set the PPA term in years on the revenue block."""
     return dc_replace(
@@ -171,6 +180,8 @@ def _resolve_user_inputs(
     interest_rate_pct: float = None,
     tenor_years: int = None,
     target_dscr: float = None,
+    tax_corporate_rate_pct: float = None,
+    tax_loss_carryforward_years: int = None,
     base_inputs: "ProjectInputs" = None,
 ) -> "ProjectInputs":
     """Phase S1: shared resolver. Both the form path and the
@@ -324,6 +335,13 @@ def _resolve_user_inputs(
                 ),
             )
 
+    # ── Tax ──────────────────────────────────────────────────
+    # Registry stores CIT rate as % (0–100); absent key means inherit factory/template default.
+    if tax_corporate_rate_pct is not None:
+        proj = _set_tax_corporate_rate(proj, tax_corporate_rate_pct)
+    if tax_loss_carryforward_years is not None:
+        proj = _set_tax_loss_carryforward_years(proj, tax_loss_carryforward_years)
+
     # ── Financing (DSCR sculpt semantics) ────────────────────
     if gearing_pct is not None:
         proj = _set_financing_gearing(proj, gearing_pct)
@@ -410,6 +428,12 @@ def _schema_to_dict(schema: ProjectInputsSchema) -> dict:
         "target_dscr": (
             schema.debt.target_dscr if schema.debt else None
         ),
+        "tax_corporate_rate_pct": (
+            schema.tax.cit_rate_pct if schema.tax else None
+        ),
+        "tax_loss_carryforward_years": (
+            schema.tax.loss_carryforward_years if schema.tax else None
+        ),
     }
 
 
@@ -471,6 +495,17 @@ def _snapshot_to_dict(snapshot: dict) -> dict:
         ),
         "target_dscr": _snapshot_float(
             snapshot, "target_dscr", positive=True
+        ),
+        # Tax snapshot keys — optional; absent means inherit factory/template TaxParams.
+        "tax_corporate_rate_pct": (
+            _snapshot_float(snapshot, "tax_corporate_rate_pct", non_negative=True)
+            if str(snapshot.get("tax_corporate_rate_pct", "") or "").strip()
+            else None
+        ),
+        "tax_loss_carryforward_years": (
+            _snapshot_int(snapshot, "tax_loss_carryforward_years")
+            if str(snapshot.get("tax_loss_carryforward_years", "") or "").strip()
+            else None
         ),
     }
 
