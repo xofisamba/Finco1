@@ -1,0 +1,303 @@
+{#
+  Workbook V2 — Financial Statements worksheet partial.
+
+  Read-only.  Three PARTIAL statements from persisted RuntimeResult payload.
+  No arithmetic, no aggregation, no accounting formulas in this template.
+  All row definitions and period labels are projected server-side in router.py.
+
+  Sections
+  --------
+  A. Runtime state bar  (#fs-runtime-bar — OOB-targetable by other sheet edits)
+  B. Income Statement   (PARTIAL — 11 rows: revenues → net dividends)
+  C. Project Finance Cash Waterfall  (PARTIAL — 11 rows; NOT indirect-method CFS)
+  D. Balance Sheet      (PARTIAL — 10 rows; share_capital is placeholder zero)
+
+  Context variables (from _build_financial_statements_ctx in router.py):
+    fs_state               str     — NOT_RUN | CLEAN | STALE | FS_UNAVAILABLE
+    fs_available           bool    — True when fs payload is present
+    fs_pnl_rows            list|None — projected rows [{key,label,is_total,values}] or None
+    fs_pf_cf_rows          list|None
+    fs_bs_rows             list|None
+    fs_pnl_period_labels   list[str] — YYYY-MM labels for PNL column headers
+    fs_pf_cf_period_labels list[str]
+    fs_bs_period_labels    list[str]
+    fs_pnl_classification  str     — PARTIAL | UNAVAILABLE | NOT_RUN
+    fs_pf_cf_classification str
+    fs_bs_classification   str
+    runtime_summary        dict|None
+    project_code           str
+    workbook_version       str
+    content_hash           str
+    project_editable       bool
+    ws_dirty               bool
+    has_runtime            bool
+    field_error            str
+#}
+
+{# ── helpers ─────────────────────────────────────────────────────────────── #}
+{% macro fmt_keur(v) %}{% if v is not none %}{{ "%.0f"|format(v) }}{% else %}—{% endif %}{% endmacro %}
+
+<div id="v2-sheet-financial-statements" data-sheet="financial_statements">
+
+  {% if field_error %}
+    <div class="v2-field-error-banner" role="alert">{{ field_error }}</div>
+  {% endif %}
+
+  {# ── A. Runtime state bar — OOB-targetable ──────────────────────────── #}
+  <div id="fs-runtime-bar" class="v2-section-label" data-testid="fs-runtime-bar">
+    {% include "partials/_fs_runtime_bar.html" %}
+  </div>
+
+  {# ── State D — truthful unavailable notice (replaces statement tables) ─ #}
+  {% if fs_state == "FS_UNAVAILABLE" %}
+    <div class="v2-field-row v2-field-readonly" style="padding:.5rem;"
+         data-testid="fs-unavailable-notice">
+      <span class="v2-field-value">
+        <span class="v2-runtime-mono">
+          The model run completed, but no authoritative Financial Statements payload
+          was persisted for this run. Re-run the model to generate Financial Statements.
+        </span>
+      </span>
+    </div>
+  {% endif %}
+
+  {# ── B. Income Statement ─────────────────────────────────────────────── #}
+  <details class="v2-inputs-section" open>
+    <summary class="v2-inputs-section-summary" id="nav-fs-pnl">
+      B. Income Statement
+      <span class="v2-binding-badge
+            {% if fs_pnl_classification == 'PARTIAL' %}v2-binding-partial
+            {% elif fs_pnl_classification == 'UNAVAILABLE' %}v2-binding-display-only
+            {% else %}v2-binding-template-locked{% endif %}"
+            style="margin-left:.4rem;"
+            data-testid="fs-pnl-classification-badge">{{ fs_pnl_classification }}</span>
+    </summary>
+
+    {% if fs_pnl_rows is not none %}
+      <div style="padding:.35rem .5rem;font-size:.75rem;color:#7a5c00;background:#fffbf0;
+                  border-bottom:1px solid #f0e0a0;" data-testid="fs-pnl-partial-notice">
+        PARTIAL: 11 revenue-through-dividends lines serialised. Subtotals and additional
+        P&amp;L lines are not included in this view.
+      </div>
+
+      {% if fs_pnl_period_labels %}
+        <div style="overflow-x:auto;" data-testid="fs-pnl-table-wrapper">
+          <table class="v2-table" data-testid="fs-pnl-table"
+                 style="width:100%;border-collapse:collapse;font-size:.82rem;
+                        font-variant-numeric:tabular-nums;white-space:nowrap;">
+            <thead>
+              <tr>
+                <th style="text-align:left;padding:.3rem .5rem;position:sticky;left:0;
+                           background:#f4f4f4;min-width:14rem;border-bottom:2px solid #ddd;">
+                  Line (kEUR)
+                </th>
+                {% for lbl in fs_pnl_period_labels %}
+                <th style="text-align:right;padding:.3rem .5rem;min-width:5rem;
+                           border-bottom:2px solid #ddd;">{{ lbl }}</th>
+                {% endfor %}
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in fs_pnl_rows %}
+              <tr data-testid="fs-pnl-row-{{ row.key }}">
+                <td style="padding:.25rem .5rem;position:sticky;left:0;background:#fff;
+                           border-bottom:1px solid #f0f0f0;
+                           {% if row.is_total %}font-weight:600;{% endif %}">
+                  {{ row.label }}
+                </td>
+                {% for v in row['values'] %}
+                <td style="text-align:right;padding:.25rem .5rem;border-bottom:1px solid #f0f0f0;">
+                  {{ fmt_keur(v) }}
+                </td>
+                {% endfor %}
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="v2-field-row v2-field-readonly" data-testid="fs-pnl-empty">
+          <span class="v2-field-value">
+            <span class="v2-field-empty">Income Statement: no periods produced in this run.</span>
+          </span>
+        </div>
+      {% endif %}
+
+    {% elif fs_pnl_classification == "UNAVAILABLE" %}
+      <div class="v2-field-row v2-field-readonly" data-testid="fs-pnl-unavailable">
+        <span class="v2-field-value">
+          <span class="v2-runtime-mono">Income Statement data unavailable for this run.</span>
+        </span>
+      </div>
+    {% else %}
+      <div class="v2-field-row v2-field-readonly" data-testid="fs-pnl-no-runtime">
+        <span class="v2-field-value">
+          <span class="v2-field-empty">Run the model to generate the Income Statement.</span>
+        </span>
+      </div>
+    {% endif %}
+
+  </details>
+
+  {# ── C. Project Finance Cash Waterfall ──────────────────────────────── #}
+  <details class="v2-inputs-section" open>
+    <summary class="v2-inputs-section-summary" id="nav-fs-pf-cf">
+      C. Project Finance Cash Waterfall
+      <span class="v2-binding-badge
+            {% if fs_pf_cf_classification == 'PARTIAL' %}v2-binding-partial
+            {% elif fs_pf_cf_classification == 'UNAVAILABLE' %}v2-binding-display-only
+            {% else %}v2-binding-template-locked{% endif %}"
+            style="margin-left:.4rem;"
+            data-testid="fs-pf-cf-classification-badge">{{ fs_pf_cf_classification }}</span>
+    </summary>
+
+    {% if fs_pf_cf_rows is not none %}
+      <div style="padding:.35rem .5rem;font-size:.75rem;color:#7a5c00;background:#fffbf0;
+                  border-bottom:1px solid #f0e0a0;" data-testid="fs-pf-cf-partial-notice">
+        PARTIAL: 11 project-finance cash waterfall rows. This is not an indirect-method
+        accounting Cash Flow Statement.
+      </div>
+
+      {% if fs_pf_cf_period_labels %}
+        <div style="overflow-x:auto;" data-testid="fs-pf-cf-table-wrapper">
+          <table class="v2-table" data-testid="fs-pf-cf-table"
+                 style="width:100%;border-collapse:collapse;font-size:.82rem;
+                        font-variant-numeric:tabular-nums;white-space:nowrap;">
+            <thead>
+              <tr>
+                <th style="text-align:left;padding:.3rem .5rem;position:sticky;left:0;
+                           background:#f4f4f4;min-width:14rem;border-bottom:2px solid #ddd;">
+                  Line (kEUR)
+                </th>
+                {% for lbl in fs_pf_cf_period_labels %}
+                <th style="text-align:right;padding:.3rem .5rem;min-width:5rem;
+                           border-bottom:2px solid #ddd;">{{ lbl }}</th>
+                {% endfor %}
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in fs_pf_cf_rows %}
+              <tr data-testid="fs-pf-cf-row-{{ row.key }}">
+                <td style="padding:.25rem .5rem;position:sticky;left:0;background:#fff;
+                           border-bottom:1px solid #f0f0f0;
+                           {% if row.is_total %}font-weight:600;{% endif %}">
+                  {{ row.label }}
+                </td>
+                {% for v in row['values'] %}
+                <td style="text-align:right;padding:.25rem .5rem;border-bottom:1px solid #f0f0f0;">
+                  {{ fmt_keur(v) }}
+                </td>
+                {% endfor %}
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="v2-field-row v2-field-readonly" data-testid="fs-pf-cf-empty">
+          <span class="v2-field-value">
+            <span class="v2-field-empty">PF Cash Waterfall: no periods produced in this run.</span>
+          </span>
+        </div>
+      {% endif %}
+
+    {% elif fs_pf_cf_classification == "UNAVAILABLE" %}
+      <div class="v2-field-row v2-field-readonly" data-testid="fs-pf-cf-unavailable">
+        <span class="v2-field-value">
+          <span class="v2-runtime-mono">Project Finance Cash Waterfall data unavailable for this run.</span>
+        </span>
+      </div>
+    {% else %}
+      <div class="v2-field-row v2-field-readonly" data-testid="fs-pf-cf-no-runtime">
+        <span class="v2-field-value">
+          <span class="v2-field-empty">Run the model to generate the Project Finance Cash Waterfall.</span>
+        </span>
+      </div>
+    {% endif %}
+
+  </details>
+
+  {# ── D. Balance Sheet ────────────────────────────────────────────────── #}
+  <details class="v2-inputs-section" open>
+    <summary class="v2-inputs-section-summary" id="nav-fs-bs">
+      D. Balance Sheet
+      <span class="v2-binding-badge
+            {% if fs_bs_classification == 'PARTIAL' %}v2-binding-partial
+            {% elif fs_bs_classification == 'UNAVAILABLE' %}v2-binding-display-only
+            {% else %}v2-binding-template-locked{% endif %}"
+            style="margin-left:.4rem;"
+            data-testid="fs-bs-classification-badge">{{ fs_bs_classification }}</span>
+    </summary>
+
+    {% if fs_bs_rows is not none %}
+      <div style="padding:.35rem .5rem;font-size:.75rem;color:#7a5c00;background:#fffbf0;
+                  border-bottom:1px solid #f0e0a0;" data-testid="fs-bs-partial-notice">
+        PARTIAL: 10 balance sheet rows. Share capital (equity paid-in) is a placeholder
+        zero — it is not modelled in the current engine version.
+      </div>
+
+      {% if fs_bs_period_labels %}
+        <div style="overflow-x:auto;" data-testid="fs-bs-table-wrapper">
+          <table class="v2-table" data-testid="fs-bs-table"
+                 style="width:100%;border-collapse:collapse;font-size:.82rem;
+                        font-variant-numeric:tabular-nums;white-space:nowrap;">
+            <thead>
+              <tr>
+                <th style="text-align:left;padding:.3rem .5rem;position:sticky;left:0;
+                           background:#f4f4f4;min-width:14rem;border-bottom:2px solid #ddd;">
+                  Line (kEUR)
+                </th>
+                {% for lbl in fs_bs_period_labels %}
+                <th style="text-align:right;padding:.3rem .5rem;min-width:5rem;
+                           border-bottom:2px solid #ddd;">{{ lbl }}</th>
+                {% endfor %}
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in fs_bs_rows %}
+              <tr data-testid="fs-bs-row-{{ row.key }}">
+                <td style="padding:.25rem .5rem;position:sticky;left:0;background:#fff;
+                           border-bottom:1px solid #f0f0f0;
+                           {% if row.is_total %}font-weight:600;{% endif %}">
+                  {{ row.label }}
+                </td>
+                {% for v in row['values'] %}
+                <td style="text-align:right;padding:.25rem .5rem;border-bottom:1px solid #f0f0f0;">
+                  {{ fmt_keur(v) }}
+                </td>
+                {% endfor %}
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <div style="padding:.25rem .5rem;font-size:.72rem;color:#999;"
+             data-testid="fs-bs-share-capital-footnote">
+          ★ Share capital (equity paid-in) is not modelled; displayed as placeholder zero.
+        </div>
+
+      {% else %}
+        <div class="v2-field-row v2-field-readonly" data-testid="fs-bs-empty">
+          <span class="v2-field-value">
+            <span class="v2-field-empty">Balance Sheet: no periods produced in this run.</span>
+          </span>
+        </div>
+      {% endif %}
+
+    {% elif fs_bs_classification == "UNAVAILABLE" %}
+      <div class="v2-field-row v2-field-readonly" data-testid="fs-bs-unavailable">
+        <span class="v2-field-value">
+          <span class="v2-runtime-mono">Balance Sheet data unavailable for this run.</span>
+        </span>
+      </div>
+    {% else %}
+      <div class="v2-field-row v2-field-readonly" data-testid="fs-bs-no-runtime">
+        <span class="v2-field-value">
+          <span class="v2-field-empty">Run the model to generate the Balance Sheet.</span>
+        </span>
+      </div>
+    {% endif %}
+
+  </details>
+
+</div>{# v2-sheet-financial-statements #}
