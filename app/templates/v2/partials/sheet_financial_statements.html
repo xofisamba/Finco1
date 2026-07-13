@@ -1,0 +1,303 @@
+{#
+  Workbook V2 — Financial Statements worksheet partial.
+
+  Read-only.  Displays three PARTIAL statement tables derived exclusively from
+  the persisted RuntimeResult.financial_statements payload.  No arithmetic, no
+  aggregation, no accounting formulas appear in this template — every value
+  is rendered verbatim from the server-provided period dicts.
+
+  Sections
+  --------
+  A. Runtime state badge
+  B. Income Statement          (PARTIAL — 11 of ~29 fields; revenues through net dividends)
+  C. Project Finance Cash Waterfall  (PARTIAL — 11 rows; NOT an indirect-method CFS)
+  D. Balance Sheet             (PARTIAL — 10 rows; share_capital is placeholder zero)
+
+  Context variables (from app/v2/router.py _build_financial_statements_ctx):
+    fs_available          bool        — True when a runtime result with FS data exists
+    fs_pnl_periods        list|None   — Income Statement period dicts, or None (no run)
+    fs_bs_periods         list|None   — Balance Sheet period dicts, or None (no run)
+    fs_pf_cf_periods      list|None   — PF Cash Waterfall period dicts, or None (no run)
+    fs_pnl_classification str         — always "PARTIAL"
+    fs_bs_classification  str         — always "PARTIAL"
+    fs_pf_cf_classification str       — always "PARTIAL"
+    runtime_summary       dict|None
+    project_code          str
+    workbook_version      str
+    content_hash          str
+    project_editable      bool
+    ws_dirty              bool
+    has_runtime           bool
+    field_error           str
+#}
+
+{# ── helper: format a kEUR value or show dash ──────────────────────────── #}
+{% macro keur(v) %}{% if v is not none %}{{ "%.0f"|format(v) }}{% else %}—{% endif %}{% endmacro %}
+
+<div id="v2-sheet-financial-statements" data-sheet="financial_statements">
+
+  {% if field_error %}
+    <div class="v2-field-error-banner" role="alert">{{ field_error }}</div>
+  {% endif %}
+
+  {# ── A. Runtime state badge ──────────────────────────────────────────── #}
+  <div class="v2-section-label" data-testid="fs-runtime-bar">
+    {% if not has_runtime %}
+      <span class="v2-field-empty" data-testid="fs-runtime-state-a">Run Required</span>
+    {% elif ws_dirty %}
+      <span class="v2-runtime-dirty" data-testid="fs-runtime-state-c">Previous run — stale for current draft</span>
+    {% else %}
+      <span class="v2-runtime-clean" data-testid="fs-runtime-state-b">Outputs current</span>
+    {% endif %}
+  </div>
+
+  {# ── B. Income Statement ─────────────────────────────────────────────── #}
+  <details class="v2-inputs-section" open>
+    <summary class="v2-inputs-section-summary" id="nav-fs-pnl">
+      B. Income Statement
+      <span class="v2-binding-badge v2-binding-partial" style="margin-left:.4rem;"
+            title="11 of ~29 lines serialised">{{ fs_pnl_classification }}</span>
+    </summary>
+
+    <div style="padding:.35rem .5rem;font-size:.75rem;color:#7a5c00;background:#fffbf0;
+                border-bottom:1px solid #f0e0a0;" data-testid="fs-pnl-partial-notice">
+      PARTIAL: 11 revenue-through-dividends lines serialised. Subtotals and additional
+      P&amp;L lines are not included in this view.
+    </div>
+
+    {% if fs_pnl_periods is not none %}
+      {% if fs_pnl_periods %}
+        <div style="overflow-x:auto;" data-testid="fs-pnl-table-wrapper">
+          <table class="v2-table" data-testid="fs-pnl-table"
+                 style="width:100%;border-collapse:collapse;font-size:.82rem;
+                        font-variant-numeric:tabular-nums;white-space:nowrap;">
+            <thead>
+              <tr>
+                <th style="text-align:left;padding:.3rem .5rem;position:sticky;left:0;
+                           background:#f4f4f4;min-width:14rem;border-bottom:2px solid #ddd;">
+                  Line (kEUR)
+                </th>
+                {% for p in fs_pnl_periods %}
+                <th style="text-align:right;padding:.3rem .5rem;min-width:5rem;
+                           border-bottom:2px solid #ddd;">
+                  {{ p.date[:7] if p.date else "—" }}
+                </th>
+                {% endfor %}
+              </tr>
+            </thead>
+            <tbody>
+              {% set pnl_rows = [
+                ("Revenues",              "revenues_keur"),
+                ("Operating Expenses",    "operating_expenses_keur"),
+                ("Depreciation",          "depreciation_keur"),
+                ("EBIT",                  "ebit_keur"),
+                ("Senior Interest",       "senior_interest_expense_keur"),
+                ("SHL Interest",          "shl_interest_expense_keur"),
+                ("Earnings Before Tax",   "earnings_before_tax_keur"),
+                ("CIT Accrual",           "cit_accrual_keur"),
+                ("Net Income",            "net_income_keur"),
+                ("Retained Earnings",     "retained_earnings_keur"),
+                ("Net Dividends",         "net_dividends_keur"),
+              ] %}
+              {% for label, key in pnl_rows %}
+              <tr data-testid="fs-pnl-row-{{ key }}">
+                <td style="padding:.25rem .5rem;position:sticky;left:0;background:#fff;
+                           border-bottom:1px solid #f0f0f0;font-weight:
+                           {% if key in ('ebit_keur','net_income_keur') %}600{% else %}normal{% endif %};">
+                  {{ label }}
+                </td>
+                {% for p in fs_pnl_periods %}
+                <td style="text-align:right;padding:.25rem .5rem;border-bottom:1px solid #f0f0f0;">
+                  {{ keur(p.get(key)) }}
+                </td>
+                {% endfor %}
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="v2-field-row v2-field-readonly" data-testid="fs-pnl-empty">
+          <span class="v2-field-value">
+            <span class="v2-field-empty">Income Statement has no periods in runtime result.</span>
+          </span>
+        </div>
+      {% endif %}
+    {% else %}
+      <div class="v2-field-row v2-field-readonly" data-testid="fs-pnl-no-runtime">
+        <span class="v2-field-value">
+          <span class="v2-field-empty">Run the model to generate the Income Statement.</span>
+        </span>
+      </div>
+    {% endif %}
+
+  </details>
+
+  {# ── C. Project Finance Cash Waterfall ──────────────────────────────── #}
+  <details class="v2-inputs-section" open>
+    <summary class="v2-inputs-section-summary" id="nav-fs-pf-cf">
+      C. Project Finance Cash Waterfall
+      <span class="v2-binding-badge v2-binding-partial" style="margin-left:.4rem;"
+            title="11 rows; not an indirect-method cash flow statement">{{ fs_pf_cf_classification }}</span>
+    </summary>
+
+    <div style="padding:.35rem .5rem;font-size:.75rem;color:#7a5c00;background:#fffbf0;
+                border-bottom:1px solid #f0e0a0;" data-testid="fs-pf-cf-partial-notice">
+      PARTIAL: 11 project-finance cash waterfall rows. This is not an indirect-method
+      accounting Cash Flow Statement.
+    </div>
+
+    {% if fs_pf_cf_periods is not none %}
+      {% if fs_pf_cf_periods %}
+        <div style="overflow-x:auto;" data-testid="fs-pf-cf-table-wrapper">
+          <table class="v2-table" data-testid="fs-pf-cf-table"
+                 style="width:100%;border-collapse:collapse;font-size:.82rem;
+                        font-variant-numeric:tabular-nums;white-space:nowrap;">
+            <thead>
+              <tr>
+                <th style="text-align:left;padding:.3rem .5rem;position:sticky;left:0;
+                           background:#f4f4f4;min-width:14rem;border-bottom:2px solid #ddd;">
+                  Line (kEUR)
+                </th>
+                {% for p in fs_pf_cf_periods %}
+                <th style="text-align:right;padding:.3rem .5rem;min-width:5rem;
+                           border-bottom:2px solid #ddd;">
+                  {{ p.date[:7] if p.date else "—" }}
+                </th>
+                {% endfor %}
+              </tr>
+            </thead>
+            <tbody>
+              {% set pf_cf_rows = [
+                ("Revenue Cash",           "revenue_cash_keur"),
+                ("OPEX Cash",              "opex_cash_keur"),
+                ("EBITDA Cash",            "ebitda_cash_keur"),
+                ("Cash Tax",               "cash_tax_keur"),
+                ("FCF to Banks",           "fcf_banks_keur"),
+                ("Senior Total DS",        "senior_total_ds_keur"),
+                ("DSRA Funding",           "dsra_funding_keur"),
+                ("DSRA Release",           "dsra_release_keur"),
+                ("FCF Junior",             "fcf_junior_keur"),
+                ("FCF for Distribution",   "fcf_for_distribution_keur"),
+                ("Net Dividends",          "net_dividends_keur"),
+              ] %}
+              {% for label, key in pf_cf_rows %}
+              <tr data-testid="fs-pf-cf-row-{{ key }}">
+                <td style="padding:.25rem .5rem;position:sticky;left:0;background:#fff;
+                           border-bottom:1px solid #f0f0f0;font-weight:
+                           {% if key in ('ebitda_cash_keur','fcf_banks_keur','fcf_for_distribution_keur') %}600{% else %}normal{% endif %};">
+                  {{ label }}
+                </td>
+                {% for p in fs_pf_cf_periods %}
+                <td style="text-align:right;padding:.25rem .5rem;border-bottom:1px solid #f0f0f0;">
+                  {{ keur(p.get(key)) }}
+                </td>
+                {% endfor %}
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="v2-field-row v2-field-readonly" data-testid="fs-pf-cf-empty">
+          <span class="v2-field-value">
+            <span class="v2-field-empty">Project Finance Cash Waterfall has no periods in runtime result.</span>
+          </span>
+        </div>
+      {% endif %}
+    {% else %}
+      <div class="v2-field-row v2-field-readonly" data-testid="fs-pf-cf-no-runtime">
+        <span class="v2-field-value">
+          <span class="v2-field-empty">Run the model to generate the Project Finance Cash Waterfall.</span>
+        </span>
+      </div>
+    {% endif %}
+
+  </details>
+
+  {# ── D. Balance Sheet ────────────────────────────────────────────────── #}
+  <details class="v2-inputs-section" open>
+    <summary class="v2-inputs-section-summary" id="nav-fs-bs">
+      D. Balance Sheet
+      <span class="v2-binding-badge v2-binding-partial" style="margin-left:.4rem;"
+            title="10 rows; share_capital is placeholder zero">{{ fs_bs_classification }}</span>
+    </summary>
+
+    <div style="padding:.35rem .5rem;font-size:.75rem;color:#7a5c00;background:#fffbf0;
+                border-bottom:1px solid #f0e0a0;" data-testid="fs-bs-partial-notice">
+      PARTIAL: 10 balance sheet rows. Share capital (equity paid-in) is a placeholder
+      zero — it is not modelled in the current engine version.
+    </div>
+
+    {% if fs_bs_periods is not none %}
+      {% if fs_bs_periods %}
+        <div style="overflow-x:auto;" data-testid="fs-bs-table-wrapper">
+          <table class="v2-table" data-testid="fs-bs-table"
+                 style="width:100%;border-collapse:collapse;font-size:.82rem;
+                        font-variant-numeric:tabular-nums;white-space:nowrap;">
+            <thead>
+              <tr>
+                <th style="text-align:left;padding:.3rem .5rem;position:sticky;left:0;
+                           background:#f4f4f4;min-width:14rem;border-bottom:2px solid #ddd;">
+                  Line (kEUR)
+                </th>
+                {% for p in fs_bs_periods %}
+                <th style="text-align:right;padding:.3rem .5rem;min-width:5rem;
+                           border-bottom:2px solid #ddd;">
+                  {{ p.date[:7] if p.date else "—" }}
+                </th>
+                {% endfor %}
+              </tr>
+            </thead>
+            <tbody>
+              {% set bs_rows = [
+                ("Net Fixed Assets",         "net_fixed_assets_keur"),
+                ("DSRA Balance",             "dsra_balance_keur"),
+                ("Cash",                     "cash_keur"),
+                ("Total Assets",             "total_assets_keur"),
+                ("Share Capital *",          "share_capital_keur"),
+                ("Retained Earnings",        "retained_earnings_keur"),
+                ("SHL Balance",              "shl_balance_keur"),
+                ("Senior Balance",           "senior_balance_keur"),
+                ("Total Liabilities + Equity","total_liabilities_equity_keur"),
+                ("Balance Check",            "balance_check_keur"),
+              ] %}
+              {% for label, key in bs_rows %}
+              <tr data-testid="fs-bs-row-{{ key }}">
+                <td style="padding:.25rem .5rem;position:sticky;left:0;background:#fff;
+                           border-bottom:1px solid #f0f0f0;font-weight:
+                           {% if key in ('total_assets_keur','total_liabilities_equity_keur') %}600{% else %}normal{% endif %};">
+                  {{ label }}
+                </td>
+                {% for p in fs_bs_periods %}
+                <td style="text-align:right;padding:.25rem .5rem;border-bottom:1px solid #f0f0f0;">
+                  {{ keur(p.get(key)) }}
+                </td>
+                {% endfor %}
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <div style="padding:.25rem .5rem;font-size:.72rem;color:#999;"
+             data-testid="fs-bs-share-capital-footnote">
+          * Share capital (equity paid-in) is not modelled; displayed as placeholder zero.
+        </div>
+      {% else %}
+        <div class="v2-field-row v2-field-readonly" data-testid="fs-bs-empty">
+          <span class="v2-field-value">
+            <span class="v2-field-empty">Balance Sheet has no periods in runtime result.</span>
+          </span>
+        </div>
+      {% endif %}
+    {% else %}
+      <div class="v2-field-row v2-field-readonly" data-testid="fs-bs-no-runtime">
+        <span class="v2-field-value">
+          <span class="v2-field-empty">Run the model to generate the Balance Sheet.</span>
+        </span>
+      </div>
+    {% endif %}
+
+  </details>
+
+</div>{# v2-sheet-financial-statements #}

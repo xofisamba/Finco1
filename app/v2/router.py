@@ -512,6 +512,52 @@ def _render_tax_htmx_sheet(
     return HTMLResponse(content=sheet_html + "\n" + oob)
 
 
+def _build_financial_statements_ctx(pis, ws) -> dict:
+    """Build Financial Statements sheet context from persisted RuntimeResult.
+
+    Reads the three-statement payload serialised by _serialize_financial_statements()
+    in project_runner.py.  Never invokes the engine, never performs arithmetic
+    in Python — the template receives raw period dicts from the payload verbatim.
+
+    All three statements are PARTIAL; the template must show explicit notices.
+    Returns None period lists (not empty lists) when no runtime result exists, so
+    the template can distinguish "no run" from "run produced zero periods".
+    """
+    from app.workbook.service import WorkbookService
+    rr = WorkbookService.get_runtime_result(ws)
+    fs = _thaw(rr.financial_statements) if rr and rr.financial_statements else None
+    pnl_periods = fs.get("pnl", {}).get("periods") if fs else None
+    bs_periods = fs.get("balance_sheet", {}).get("periods") if fs else None
+    pf_cf_periods = fs.get("pf_cash_waterfall", {}).get("periods") if fs else None
+    return {
+        "fs_available": fs is not None,
+        "fs_pnl_periods": pnl_periods,
+        "fs_bs_periods": bs_periods,
+        "fs_pf_cf_periods": pf_cf_periods,
+        "fs_pnl_classification": "PARTIAL",
+        "fs_bs_classification": "PARTIAL",
+        "fs_pf_cf_classification": "PARTIAL",
+        "runtime_summary": _thaw(rr.runtime_summary) if rr and rr.runtime_summary else None,
+    }
+
+
+def _render_financial_statements_htmx_sheet(
+    request: Request,
+    pis,
+    ws,
+    project_record,
+    project: str,
+    field_error: str = "",
+) -> HTMLResponse:
+    """Render the Financial Statements sheet partial + OOB status banner for HTMX."""
+    ctx = _base_sheet_ctx(request, pis, ws, project_record, project, field_error)
+    ctx.update(_build_financial_statements_ctx(pis, ws))
+    sheet_html = _templates.get_template("partials/sheet_financial_statements.html").render(ctx)
+    banner_html = _templates.get_template("partials/_v2_status_banner.html").render(ctx)
+    oob = '<div id="v2-status-banner" hx-swap-oob="true">' + banner_html + "</div>"
+    return HTMLResponse(content=sheet_html + "\n" + oob)
+
+
 def _render_inputs_htmx_sheet(
     request: Request,
     pis,
@@ -610,6 +656,7 @@ async def v2_workbook(request: Request, project: Optional[str] = None):
     context.update(_build_opex_vm_ctx(project_record, pis))
     context.update(_build_debt_ctx(pis, ws))
     context.update(_build_tax_ctx(pis, ws))
+    context.update(_build_financial_statements_ctx(pis, ws))
     return _templates.TemplateResponse(request=request, name="workbook.html", context=context)
 
 
@@ -691,6 +738,11 @@ async def v2_workbook_update(
                 request, pis_for_render, ws, project_record, project,
                 field_error=field_error,
             )
+        if sheet_id == "financial_statements":
+            return _render_financial_statements_htmx_sheet(
+                request, pis_for_render, ws, project_record, project,
+                field_error=field_error,
+            )
         return _render_htmx_sheet(
             request, pis_for_render, ws, project_record, project,
             field_error=field_error,
@@ -767,6 +819,10 @@ async def v2_workbook_update(
             )
         if sheet_id == "tax":
             return _render_tax_htmx_sheet(
+                request, updated_pis, updated_ws_after, project_record, project,
+            )
+        if sheet_id == "financial_statements":
+            return _render_financial_statements_htmx_sheet(
                 request, updated_pis, updated_ws_after, project_record, project,
             )
         return _render_htmx_sheet(
