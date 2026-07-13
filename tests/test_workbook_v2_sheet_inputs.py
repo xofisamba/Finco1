@@ -503,7 +503,7 @@ class TestInputsSheetHtml(unittest.TestCase):
 
     def test_runtime_section_has_workbook_version(self):
         inp = self.soup.find(id="v2-sheet-inputs")
-        self.assertIn("2.0.0", inp.get_text())
+        self.assertIn("2.1.0", inp.get_text())
 
     def test_runtime_section_has_truncated_hash(self):
         inp = self.soup.find(id="v2-sheet-inputs")
