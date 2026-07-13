@@ -512,33 +512,174 @@ def _render_tax_htmx_sheet(
     return HTMLResponse(content=sheet_html + "\n" + oob)
 
 
+# ── Financial Statements state constants ──────────────────────────────────── #
+_FS_STATE_NOT_RUN = "NOT_RUN"              # no RuntimeResult exists at all
+_FS_STATE_CLEAN = "CLEAN"                  # rr + fs payload + workspace clean
+_FS_STATE_STALE = "STALE"                  # rr + fs payload + workspace dirty
+_FS_STATE_FS_UNAVAILABLE = "FS_UNAVAILABLE"  # rr exists but fs payload is None/empty
+
+# ── Server-side row projection definitions ────────────────────────────────── #
+# (key, display_label, is_total)
+_FS_PNL_ROW_DEFS = [
+    ("revenues_keur",                 "Revenues",             False),
+    ("operating_expenses_keur",       "Operating Expenses",   False),
+    ("depreciation_keur",             "Depreciation",         False),
+    ("ebit_keur",                     "EBIT",                 True),
+    ("senior_interest_expense_keur",  "Senior Interest",      False),
+    ("shl_interest_expense_keur",     "SHL Interest",         False),
+    ("earnings_before_tax_keur",      "Earnings Before Tax",  True),
+    ("cit_accrual_keur",              "CIT Accrual",          False),
+    ("net_income_keur",               "Net Income",           True),
+    ("retained_earnings_keur",        "Retained Earnings",    False),
+    ("net_dividends_keur",            "Net Dividends",        False),
+]
+
+_FS_PF_CF_ROW_DEFS = [
+    ("revenue_cash_keur",           "Revenue Cash",           False),
+    ("opex_cash_keur",              "OPEX Cash",              False),
+    ("ebitda_cash_keur",            "EBITDA Cash",            True),
+    ("cash_tax_keur",               "Cash Tax",               False),
+    ("fcf_banks_keur",              "FCF to Banks",           True),
+    ("senior_total_ds_keur",        "Senior Total DS",        False),
+    ("dsra_funding_keur",           "DSRA Funding",           False),
+    ("dsra_release_keur",           "DSRA Release",           False),
+    ("fcf_junior_keur",             "FCF Junior",             False),
+    ("fcf_for_distribution_keur",   "FCF for Distribution",   True),
+    ("net_dividends_keur",          "Net Dividends",          False),
+]
+
+_FS_BS_ROW_DEFS = [
+    ("net_fixed_assets_keur",           "Net Fixed Assets",          False),
+    ("dsra_balance_keur",               "DSRA Balance",              False),
+    ("cash_keur",                       "Cash",                      False),
+    ("total_assets_keur",               "Total Assets",              True),
+    ("share_capital_keur",              "Share Capital ★",      False),
+    ("retained_earnings_keur",          "Retained Earnings",         False),
+    ("shl_balance_keur",                "SHL Balance",               False),
+    ("senior_balance_keur",             "Senior Balance",            False),
+    ("total_liabilities_equity_keur",   "Total Liabilities + Equity", True),
+    ("balance_check_keur",              "Balance Check",             False),
+]
+
+
+def _fs_classify(rr, fs, statement_key: str) -> str:
+    """Return PARTIAL / UNAVAILABLE / NOT_RUN classification for one statement."""
+    if rr is None:
+        return "NOT_RUN"
+    if fs is None:
+        return "UNAVAILABLE"
+    if statement_key not in fs:
+        return "UNAVAILABLE"
+    if fs[statement_key].get("periods") is None:
+        return "UNAVAILABLE"
+    return "PARTIAL"
+
+
+def _fs_project_rows(row_defs: list, periods) -> list | None:
+    """Build presentation rows from payload periods.
+
+    Returns None when periods is None (no runtime / statement unavailable).
+    Returns an empty list when periods is [] (run produced zero periods).
+    Values are preserved verbatim; None is kept as None, 0 is kept as 0.
+    No arithmetic is performed.
+    """
+    if periods is None:
+        return None
+    return [
+        {
+            "key": key,
+            "label": label,
+            "is_total": is_total,
+            "values": [p.get(key) for p in periods],
+        }
+        for key, label, is_total in row_defs
+    ]
+
+
+def _fs_period_labels(periods) -> list:
+    """Extract YYYY-MM display labels from period date fields server-side."""
+    if not periods:
+        return []
+    return [
+        p.get("date", "")[:7] if p.get("date") else "—"
+        for p in periods
+    ]
+
+
 def _build_financial_statements_ctx(pis, ws) -> dict:
     """Build Financial Statements sheet context from persisted RuntimeResult.
 
     Reads the three-statement payload serialised by _serialize_financial_statements()
-    in project_runner.py.  Never invokes the engine, never performs arithmetic
-    in Python — the template receives raw period dicts from the payload verbatim.
+    in project_runner.py.  Never invokes the engine, never performs arithmetic —
+    period dicts are passed verbatim through _fs_project_rows().
 
-    All three statements are PARTIAL; the template must show explicit notices.
-    Returns None period lists (not empty lists) when no runtime result exists, so
-    the template can distinguish "no run" from "run produced zero periods".
+    State machine
+    -------------
+    NOT_RUN         : no RuntimeResult exists
+    CLEAN           : rr + fs payload + workspace clean
+    STALE           : rr + fs payload + workspace dirty
+    FS_UNAVAILABLE  : rr exists but financial_statements payload is absent
+
+    Classifications (per statement): PARTIAL | UNAVAILABLE | NOT_RUN
+    The serialiser currently exposes partial contracts; FULL is not used here.
     """
     from app.workbook.service import WorkbookService
     rr = WorkbookService.get_runtime_result(ws)
     fs = _thaw(rr.financial_statements) if rr and rr.financial_statements else None
+
+    # FS-level state
+    if rr is None:
+        fs_state = _FS_STATE_NOT_RUN
+    elif fs is None:
+        fs_state = _FS_STATE_FS_UNAVAILABLE
+    elif ws.dirty:
+        fs_state = _FS_STATE_STALE
+    else:
+        fs_state = _FS_STATE_CLEAN
+
     pnl_periods = fs.get("pnl", {}).get("periods") if fs else None
     bs_periods = fs.get("balance_sheet", {}).get("periods") if fs else None
     pf_cf_periods = fs.get("pf_cash_waterfall", {}).get("periods") if fs else None
+
     return {
+        "fs_state": fs_state,
         "fs_available": fs is not None,
-        "fs_pnl_periods": pnl_periods,
-        "fs_bs_periods": bs_periods,
-        "fs_pf_cf_periods": pf_cf_periods,
-        "fs_pnl_classification": "PARTIAL",
-        "fs_bs_classification": "PARTIAL",
-        "fs_pf_cf_classification": "PARTIAL",
+        "fs_pnl_rows": _fs_project_rows(_FS_PNL_ROW_DEFS, pnl_periods),
+        "fs_bs_rows": _fs_project_rows(_FS_BS_ROW_DEFS, bs_periods),
+        "fs_pf_cf_rows": _fs_project_rows(_FS_PF_CF_ROW_DEFS, pf_cf_periods),
+        "fs_pnl_period_labels": _fs_period_labels(pnl_periods),
+        "fs_bs_period_labels": _fs_period_labels(bs_periods),
+        "fs_pf_cf_period_labels": _fs_period_labels(pf_cf_periods),
+        "fs_pnl_classification": _fs_classify(rr, fs, "pnl"),
+        "fs_bs_classification": _fs_classify(rr, fs, "balance_sheet"),
+        "fs_pf_cf_classification": _fs_classify(rr, fs, "pf_cash_waterfall"),
         "runtime_summary": _thaw(rr.runtime_summary) if rr and rr.runtime_summary else None,
     }
+
+
+def _build_fs_runtime_bar_oob(ws) -> str:
+    """Build the OOB HTML that refreshes #fs-runtime-bar after a cross-sheet edit.
+
+    Called from every HTMX success response so that editing Tax, Debt, Revenue etc.
+    correctly updates the Financial Statements runtime state badge without
+    re-rendering the full statements tables.
+
+    Must NOT be appended on validation-error responses — those never mutate state.
+    """
+    from app.workbook.service import WorkbookService
+    rr = WorkbookService.get_runtime_result(ws)
+    if rr is None:
+        fs_state = _FS_STATE_NOT_RUN
+    elif not rr.financial_statements:
+        fs_state = _FS_STATE_FS_UNAVAILABLE
+    elif ws.dirty:
+        fs_state = _FS_STATE_STALE
+    else:
+        fs_state = _FS_STATE_CLEAN
+    bar_html = _templates.get_template("partials/_fs_runtime_bar.html").render(
+        {"fs_state": fs_state}
+    )
+    return f'<div id="fs-runtime-bar" hx-swap-oob="true">{bar_html}</div>'
 
 
 def _render_financial_statements_htmx_sheet(
@@ -797,37 +938,45 @@ async def v2_workbook_update(
         pass  # scalar hash already set by v2_atomic_draft_update; best-effort only
 
     if is_htmx:
+        # Dispatch to the correct sheet renderer.
         if sheet_id == "inputs":
-            return _render_inputs_htmx_sheet(
+            resp = _render_inputs_htmx_sheet(
                 request, updated_pis, updated_ws_after, project_record, project,
             )
-        if sheet_id == "revenue":
-            return _render_revenue_htmx_sheet(
+        elif sheet_id == "revenue":
+            resp = _render_revenue_htmx_sheet(
                 request, updated_pis, updated_ws_after, project_record, project,
             )
-        if sheet_id == "capex":
-            return _render_capex_htmx_sheet(
+        elif sheet_id == "capex":
+            resp = _render_capex_htmx_sheet(
                 request, updated_pis, updated_ws_after, project_record, project,
             )
-        if sheet_id == "opex":
-            return _render_opex_htmx_sheet(
+        elif sheet_id == "opex":
+            resp = _render_opex_htmx_sheet(
                 request, updated_pis, updated_ws_after, project_record, project,
             )
-        if sheet_id == "debt":
-            return _render_debt_htmx_sheet(
+        elif sheet_id == "debt":
+            resp = _render_debt_htmx_sheet(
                 request, updated_pis, updated_ws_after, project_record, project,
             )
-        if sheet_id == "tax":
-            return _render_tax_htmx_sheet(
+        elif sheet_id == "tax":
+            resp = _render_tax_htmx_sheet(
                 request, updated_pis, updated_ws_after, project_record, project,
             )
-        if sheet_id == "financial_statements":
+        elif sheet_id == "financial_statements":
+            # Full sheet re-render already contains #fs-runtime-bar; no OOB needed.
             return _render_financial_statements_htmx_sheet(
                 request, updated_pis, updated_ws_after, project_record, project,
             )
-        return _render_htmx_sheet(
-            request, updated_pis, updated_ws_after, project_record, project,
-        )
+        else:
+            resp = _render_htmx_sheet(
+                request, updated_pis, updated_ws_after, project_record, project,
+            )
+        # Append OOB refresh of the Financial Statements runtime bar so that
+        # editing any other sheet immediately reflects the dirty/clean state
+        # in the Financial Statements section without a full page reload.
+        fs_bar_oob = _build_fs_runtime_bar_oob(updated_ws_after)
+        return HTMLResponse(content=resp.body.decode() + "\n" + fs_bar_oob)
 
     return RedirectResponse(
         url=f"/v2/workbook?project={project}",
