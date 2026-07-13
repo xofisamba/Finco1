@@ -10,6 +10,13 @@ State machine (per sheet payload):
     UNAVAILABLE — rr exists but this sheet's payload is absent  (beats STALE)
     STALE       — rr + payload + workspace dirty
     CLEAN       — rr + payload + workspace clean
+
+Structural availability contract for debt/tax schedules:
+    payload is None                       → UNAVAILABLE, periods=None
+    payload is {}                         → UNAVAILABLE, periods=None
+    payload exists but "periods" key absent → UNAVAILABLE, periods=None
+    payload["periods"] is None            → UNAVAILABLE, periods=None
+    payload["periods"] == []              → CLEAN or STALE, periods=[]
 """
 from __future__ import annotations
 
@@ -41,12 +48,21 @@ def thaw_runtime_payload(obj: Any) -> Any:
     return obj
 
 
+def _schedule_has_valid_periods(schedule: Optional[Dict]) -> bool:
+    """True iff schedule is a non-empty dict with a non-None 'periods' key."""
+    if not schedule:
+        return False
+    if "periods" not in schedule:
+        return False
+    return schedule["periods"] is not None
+
+
 def classify_runtime_state(
     rr: Any,
     payload: Any,
     is_dirty: bool,
 ) -> RuntimeProjectionState:
-    """Classify the runtime state for a single sheet payload.
+    """Classify state for FS-style payloads (top-level dict presence only).
 
     UNAVAILABLE takes precedence over STALE: if the run completed but the
     payload was not persisted, the bar must say "unavailable", not "stale".
@@ -60,19 +76,44 @@ def classify_runtime_state(
     return RuntimeProjectionState.CLEAN
 
 
+def classify_schedule_state(
+    rr: Any,
+    schedule: Optional[Dict],
+    is_dirty: bool,
+) -> RuntimeProjectionState:
+    """Classify state for debt/tax schedule payloads with explicit periods-key check.
+
+    All four structural-unavailability conditions map to UNAVAILABLE:
+      - schedule is None
+      - schedule is {} (empty, no "periods" key)
+      - schedule has keys but "periods" is absent
+      - schedule["periods"] is None
+
+    Only schedule["periods"] == [] (present, non-None, but empty) is CLEAN/STALE.
+    """
+    if rr is None:
+        return RuntimeProjectionState.NOT_RUN
+    if not _schedule_has_valid_periods(schedule):
+        return RuntimeProjectionState.UNAVAILABLE
+    if is_dirty:
+        return RuntimeProjectionState.STALE
+    return RuntimeProjectionState.CLEAN
+
+
 def extract_periods(
     schedule: Optional[Dict],
     operational_only: bool = False,
 ) -> Optional[List[Dict]]:
     """Return the periods list from a thawed schedule dict.
 
-    Returns None when schedule is None (no runtime / payload absent).
-    Returns an empty list when the schedule has no periods.
+    Returns None for all structural-unavailability conditions:
+      schedule is None, {}, missing 'periods' key, or periods is None.
+    Returns [] when periods list is explicitly empty.
     When operational_only=True, filters to is_operation=True entries.
     """
-    if schedule is None:
+    if not _schedule_has_valid_periods(schedule):
         return None
-    raw: List[Dict] = schedule.get("periods") or []
+    raw: List[Dict] = schedule["periods"]  # type: ignore[index]
     if operational_only:
         return [p for p in raw if p.get("is_operation")]
     return raw
@@ -173,23 +214,53 @@ def fs_classify_statement(rr: Any, fs: Optional[Dict], statement_key: str) -> st
 # ── Typed projection structs ──────────────────────────────────────────────── #
 
 @dataclass(frozen=True)
-class DebtRuntimeProjection:
+class RuntimeProjectionMeta:
+    """Identity and state metadata shared from the single RuntimeResult.
+
+    snapshot_id, ran_at, and origin come from the persisted RuntimeResult and
+    are identical across all three sheet projections built from the same rr.
+    Only state and has_payload differ per sheet.
+    """
     state: RuntimeProjectionState
-    schedule: Optional[Dict]
+    has_runtime: bool
+    has_payload: bool
+    is_dirty: bool
+    snapshot_id: Optional[str]
+    ran_at: Optional[str]
+    origin: Optional[str]
+
+
+@dataclass(frozen=True)
+class DebtRuntimeProjection:
+    meta: RuntimeProjectionMeta
+    # Canonical field names
+    source: Optional[Dict]          # thawed authoritative schedule payload
+    periods: Optional[List[Dict]]   # all source periods in original order
     operational_periods: Optional[List[Dict]]
-    runtime_summary: Optional[Dict]
+    summary: Optional[Dict]
+    # Backward-compat aliases (same objects, no copy)
+    state: RuntimeProjectionState
+    schedule: Optional[Dict]        # alias for source
+    runtime_summary: Optional[Dict] # alias for summary
 
 
 @dataclass(frozen=True)
 class TaxRuntimeProjection:
+    meta: RuntimeProjectionMeta
+    # Canonical field names
+    source: Optional[Dict]
+    periods: Optional[List[Dict]]
+    operational_periods: Optional[List[Dict]]
+    summary: Optional[Dict]
+    # Backward-compat aliases
     state: RuntimeProjectionState
     schedule: Optional[Dict]
-    operational_periods: Optional[List[Dict]]
     runtime_summary: Optional[Dict]
 
 
 @dataclass(frozen=True)
 class FinancialStatementsProjection:
+    meta: RuntimeProjectionMeta
     state: RuntimeProjectionState
     fs_available: bool
     pnl_rows: Optional[List[Dict]]
@@ -238,23 +309,57 @@ def build_runtime_projection_bundle(
     fs_payload      = thaw_runtime_payload(_fs_raw)      if _fs_raw      else None
     runtime_summary = thaw_runtime_payload(_summary_raw) if _summary_raw else None
 
+    # ── Shared rr identity (same across all three sheets) ────────────────── #
+    _has_runtime = rr is not None
+    _snapshot_id = str(getattr(rr, "snapshot_id", None)) if _has_runtime else None
+    _ran_at      = str(getattr(rr, "ran_at", None))      if _has_runtime else None
+    _origin      = str(getattr(rr, "origin", None))      if _has_runtime else None
+
     # ── Debt projection ──────────────────────────────────────────────────── #
-    debt_state = classify_runtime_state(rr, debt_schedule, is_dirty)
+    debt_state = classify_schedule_state(rr, debt_schedule, is_dirty)
+    debt_periods    = extract_periods(debt_schedule, operational_only=False)
     debt_op_periods = extract_periods(debt_schedule, operational_only=True)
+    debt_meta = RuntimeProjectionMeta(
+        state=debt_state,
+        has_runtime=_has_runtime,
+        has_payload=debt_schedule is not None,
+        is_dirty=is_dirty,
+        snapshot_id=_snapshot_id,
+        ran_at=_ran_at,
+        origin=_origin,
+    )
     debt = DebtRuntimeProjection(
+        meta=debt_meta,
+        source=debt_schedule,
+        periods=debt_periods,
+        operational_periods=debt_op_periods,
+        summary=runtime_summary,
         state=debt_state,
         schedule=debt_schedule,
-        operational_periods=debt_op_periods,
         runtime_summary=runtime_summary,
     )
 
     # ── Tax projection ───────────────────────────────────────────────────── #
-    tax_state = classify_runtime_state(rr, tax_schedule, is_dirty)
+    tax_state = classify_schedule_state(rr, tax_schedule, is_dirty)
+    tax_periods    = extract_periods(tax_schedule, operational_only=False)
     tax_op_periods = extract_periods(tax_schedule, operational_only=True)
+    tax_meta = RuntimeProjectionMeta(
+        state=tax_state,
+        has_runtime=_has_runtime,
+        has_payload=tax_schedule is not None,
+        is_dirty=is_dirty,
+        snapshot_id=_snapshot_id,
+        ran_at=_ran_at,
+        origin=_origin,
+    )
     tax = TaxRuntimeProjection(
+        meta=tax_meta,
+        source=tax_schedule,
+        periods=tax_periods,
+        operational_periods=tax_op_periods,
+        summary=runtime_summary,
         state=tax_state,
         schedule=tax_schedule,
-        operational_periods=tax_op_periods,
         runtime_summary=runtime_summary,
     )
 
@@ -263,7 +368,17 @@ def build_runtime_projection_bundle(
     pnl_periods    = fs_payload.get("pnl", {}).get("periods") if fs_payload else None
     bs_periods     = fs_payload.get("balance_sheet", {}).get("periods") if fs_payload else None
     pf_cf_periods  = fs_payload.get("pf_cash_waterfall", {}).get("periods") if fs_payload else None
+    fs_meta = RuntimeProjectionMeta(
+        state=fs_state,
+        has_runtime=_has_runtime,
+        has_payload=fs_payload is not None,
+        is_dirty=is_dirty,
+        snapshot_id=_snapshot_id,
+        ran_at=_ran_at,
+        origin=_origin,
+    )
     fs = FinancialStatementsProjection(
+        meta=fs_meta,
         state=fs_state,
         fs_available=fs_payload is not None,
         pnl_rows=project_rows(FS_PNL_ROW_DEFS, pnl_periods),

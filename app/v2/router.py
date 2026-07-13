@@ -431,10 +431,11 @@ def _render_debt_htmx_sheet(
     project_record,
     project: str,
     field_error: str = "",
+    projection=None,
 ) -> HTMLResponse:
     """Render the Senior Debt sheet partial + OOB status banner for HTMX."""
     ctx = _base_sheet_ctx(request, pis, ws, project_record, project, field_error)
-    ctx.update(_build_debt_ctx(pis, ws))
+    ctx.update(_build_debt_ctx(pis, ws, projection=projection))
     sheet_html = _templates.get_template("partials/sheet_senior_debt.html").render(ctx)
     banner_html = _templates.get_template("partials/_v2_status_banner.html").render(ctx)
     oob = '<div id="v2-status-banner" hx-swap-oob="true">' + banner_html + "</div>"
@@ -496,10 +497,11 @@ def _render_tax_htmx_sheet(
     project_record,
     project: str,
     field_error: str = "",
+    projection=None,
 ) -> HTMLResponse:
     """Render the Tax sheet partial + OOB status banner for HTMX."""
     ctx = _base_sheet_ctx(request, pis, ws, project_record, project, field_error)
-    ctx.update(_build_tax_ctx(pis, ws))
+    ctx.update(_build_tax_ctx(pis, ws, projection=projection))
     sheet_html = _templates.get_template("partials/sheet_tax.html").render(ctx)
     banner_html = _templates.get_template("partials/_v2_status_banner.html").render(ctx)
     oob = '<div id="v2-status-banner" hx-swap-oob="true">' + banner_html + "</div>"
@@ -856,13 +858,28 @@ async def v2_workbook_update(
                 request, updated_pis, updated_ws_after, project_record, project,
             )
         elif sheet_id == "debt":
+            # Build projection once — pass to both sheet renderer and OOB bars.
+            from app.workbook.runtime_projection import build_runtime_projection_bundle
+            from app.v2.runtime_projection_views import build_all_runtime_bar_oob
+            from app.workbook.service import WorkbookService
+            _rr = WorkbookService.get_runtime_result(updated_ws_after)
+            _proj = build_runtime_projection_bundle(_rr, updated_ws_after.dirty)
             resp = _render_debt_htmx_sheet(
                 request, updated_pis, updated_ws_after, project_record, project,
+                projection=_proj,
             )
+            return HTMLResponse(content=resp.body.decode() + "\n" + build_all_runtime_bar_oob(_proj))
         elif sheet_id == "tax":
+            from app.workbook.runtime_projection import build_runtime_projection_bundle
+            from app.v2.runtime_projection_views import build_all_runtime_bar_oob
+            from app.workbook.service import WorkbookService
+            _rr = WorkbookService.get_runtime_result(updated_ws_after)
+            _proj = build_runtime_projection_bundle(_rr, updated_ws_after.dirty)
             resp = _render_tax_htmx_sheet(
                 request, updated_pis, updated_ws_after, project_record, project,
+                projection=_proj,
             )
+            return HTMLResponse(content=resp.body.decode() + "\n" + build_all_runtime_bar_oob(_proj))
         elif sheet_id == "financial_statements":
             # Full sheet re-render already contains #fs-runtime-bar; no OOB needed.
             return _render_financial_statements_htmx_sheet(

@@ -117,16 +117,13 @@ def _render_capex_sheet_with_oob(
     resp = _render_capex_sheet(request, project_record, pis, ws, project, field_error=field_error)
     if field_error:
         return resp
-    try:
-        from app.workbook.runtime_projection import build_runtime_projection_bundle
-        from app.v2.runtime_projection_views import build_all_runtime_bar_oob
-        from app.workbook.service import WorkbookService
-        rr = WorkbookService.get_runtime_result(ws)
-        projection = build_runtime_projection_bundle(rr, ws.dirty)
-        oob = build_all_runtime_bar_oob(projection)
-        return HTMLResponse(content=resp.body.decode() + "\n" + oob)
-    except Exception:
-        return resp
+    from app.workbook.runtime_projection import build_runtime_projection_bundle
+    from app.v2.runtime_projection_views import build_all_runtime_bar_oob
+    from app.workbook.service import WorkbookService
+    rr = WorkbookService.get_runtime_result(ws)
+    projection = build_runtime_projection_bundle(rr, ws.dirty)
+    oob = build_all_runtime_bar_oob(projection)
+    return HTMLResponse(content=resp.body.decode() + "\n" + oob)
 
 
 def _handle_command_error(exc: CapexCommandError) -> JSONResponse:

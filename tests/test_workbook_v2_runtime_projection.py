@@ -267,9 +267,23 @@ class TestExtractPeriods:
         assert len(result) == 1
         assert result[0]["n"] == 1
 
-    def test_missing_periods_key_returns_empty(self):
+    def test_missing_periods_key_returns_none(self):
+        """Empty dict has no 'periods' key → structurally unavailable → None."""
         from app.workbook.runtime_projection import extract_periods
-        assert extract_periods({}) == []
+        assert extract_periods({}) is None
+
+    def test_periods_key_none_returns_none(self):
+        from app.workbook.runtime_projection import extract_periods
+        assert extract_periods({"periods": None}) is None
+
+    def test_schedule_with_other_keys_but_no_periods_returns_none(self):
+        from app.workbook.runtime_projection import extract_periods
+        assert extract_periods({"summary": {"total": 100}}) is None
+
+    def test_empty_periods_list_returns_empty_list(self):
+        """Explicit empty list is structurally available → []."""
+        from app.workbook.runtime_projection import extract_periods
+        assert extract_periods({"periods": []}) == []
 
 
 class TestProjectRows:
@@ -407,6 +421,20 @@ class TestBuildRuntimeProjectionBundle:
 # B. OOB view helpers                                                         #
 # ═══════════════════════════════════════════════════════════════════════════ #
 
+def _make_meta(state_str, has_payload=False):
+    """Build a RuntimeProjectionMeta for test purposes."""
+    from app.workbook.runtime_projection import RuntimeProjectionMeta, RuntimeProjectionState
+    return RuntimeProjectionMeta(
+        state=RuntimeProjectionState(state_str),
+        has_runtime=state_str != "NOT_RUN",
+        has_payload=has_payload,
+        is_dirty=state_str == "STALE",
+        snapshot_id=None,
+        ran_at=None,
+        origin=None,
+    )
+
+
 class TestOobViewHelpers:
     def _make_bundle(self, debt_state, tax_state, fs_state):
         from app.workbook.runtime_projection import (
@@ -415,14 +443,19 @@ class TestOobViewHelpers:
             RuntimeProjectionState,
         )
         debt = DebtRuntimeProjection(
+            meta=_make_meta(debt_state),
+            source=None, periods=None, operational_periods=None, summary=None,
             state=RuntimeProjectionState(debt_state),
-            schedule=None, operational_periods=None, runtime_summary=None,
+            schedule=None, runtime_summary=None,
         )
         tax = TaxRuntimeProjection(
+            meta=_make_meta(tax_state),
+            source=None, periods=None, operational_periods=None, summary=None,
             state=RuntimeProjectionState(tax_state),
-            schedule=None, operational_periods=None, runtime_summary=None,
+            schedule=None, runtime_summary=None,
         )
         fs = FinancialStatementsProjection(
+            meta=_make_meta(fs_state),
             state=RuntimeProjectionState(fs_state),
             fs_available=False,
             pnl_rows=None, bs_rows=None, pf_cf_rows=None,
@@ -1002,14 +1035,603 @@ class TestFailureResponsesNoOob:
             headers={"HX-Request": "true"},
         )
         # Validation error → 200 HTMX response with error in banner,
-        # but workspace is not mutated so no separate runtime-bar OOBs appended.
+        # but workspace is not mutated so runtime-bar OOBs must NOT be appended.
         body = resp.text
         assert resp.status_code == 200
-        # The sheet re-render contains the inline bars (not separate OOBs)
-        # The critical check: the stale OOB pattern appears at most once
-        # (inline, from the full sheet render) not twice (inline + OOB appended)
-        oob_count = body.count('hx-swap-oob="true"')
-        # Status banner OOB is always present; runtime bar OOBs should NOT be added
-        # (error path returns early without appending bars)
-        # We just verify the response is valid and status is 200.
-        assert oob_count >= 1  # at minimum the status banner OOB
+        # Exact assertions: no runtime bar OOB divs in validation error response.
+        assert 'id="debt-runtime-bar" hx-swap-oob="true"' not in body
+        assert 'id="tax-runtime-bar" hx-swap-oob="true"' not in body
+        assert 'id="fs-runtime-bar" hx-swap-oob="true"' not in body
+
+
+# ═══════════════════════════════════════════════════════════════════════════ #
+# M. RuntimeProjectionMeta — shared identity across all three sheets         #
+# ═══════════════════════════════════════════════════════════════════════════ #
+
+class TestRuntimeProjectionMeta:
+    def test_meta_exists_on_all_three_projections(self):
+        from app.workbook.runtime_projection import build_runtime_projection_bundle
+        bundle = build_runtime_projection_bundle(None, is_dirty=False)
+        assert hasattr(bundle.debt, "meta")
+        assert hasattr(bundle.tax, "meta")
+        assert hasattr(bundle.fs, "meta")
+
+    def test_no_rr_meta_has_no_runtime(self):
+        from app.workbook.runtime_projection import build_runtime_projection_bundle
+        bundle = build_runtime_projection_bundle(None, is_dirty=False)
+        assert bundle.debt.meta.has_runtime is False
+        assert bundle.debt.meta.snapshot_id is None
+
+    def test_all_three_share_same_snapshot_id(self):
+        from app.workbook.runtime_projection import build_runtime_projection_bundle
+        from app.workbook.runtime_result import RuntimeResult
+        rr = MagicMock(spec=RuntimeResult)
+        rr.snapshot_id = "snap-xyz-001"
+        rr.ran_at = "2026-07-13T10:00:00"
+        rr.origin = "workbook_v2"
+        rr.debt_schedule = _sample_debt_schedule()
+        rr.tax_schedule = _sample_tax_schedule()
+        rr.financial_statements = _sample_fs()
+        rr.runtime_summary = {}
+        bundle = build_runtime_projection_bundle(rr, is_dirty=False)
+        assert bundle.debt.meta.snapshot_id == bundle.tax.meta.snapshot_id
+        assert bundle.tax.meta.snapshot_id == bundle.fs.meta.snapshot_id
+        assert bundle.debt.meta.snapshot_id == "snap-xyz-001"
+
+    def test_state_differs_per_sheet_while_identity_shared(self):
+        from app.workbook.runtime_projection import build_runtime_projection_bundle, RuntimeProjectionState
+        from app.workbook.runtime_result import RuntimeResult
+        rr = MagicMock(spec=RuntimeResult)
+        rr.snapshot_id = "snap-002"
+        rr.ran_at = "2026-07-13T10:00:00"
+        rr.origin = "workbook_v2"
+        rr.debt_schedule = None
+        rr.tax_schedule = _sample_tax_schedule()
+        rr.financial_statements = _sample_fs()
+        rr.runtime_summary = {}
+        bundle = build_runtime_projection_bundle(rr, is_dirty=True)
+        assert bundle.debt.meta.state == RuntimeProjectionState.UNAVAILABLE
+        assert bundle.tax.meta.state == RuntimeProjectionState.STALE
+        assert bundle.debt.meta.snapshot_id == bundle.tax.meta.snapshot_id == "snap-002"
+
+    def test_meta_has_payload_reflects_per_sheet(self):
+        from app.workbook.runtime_projection import build_runtime_projection_bundle
+        from app.workbook.runtime_result import RuntimeResult
+        rr = MagicMock(spec=RuntimeResult)
+        rr.snapshot_id = rr.ran_at = rr.origin = "x"
+        rr.debt_schedule = None
+        rr.tax_schedule = _sample_tax_schedule()
+        rr.financial_statements = None
+        rr.runtime_summary = {}
+        bundle = build_runtime_projection_bundle(rr, is_dirty=False)
+        assert bundle.debt.meta.has_payload is False
+        assert bundle.tax.meta.has_payload is True
+        assert bundle.fs.meta.has_payload is False
+
+
+# ═══════════════════════════════════════════════════════════════════════════ #
+# N. Structural availability                                                  #
+# ═══════════════════════════════════════════════════════════════════════════ #
+
+class TestStructuralAvailability:
+    def _bundle_with_debt(self, debt_schedule, is_dirty=False):
+        from app.workbook.runtime_projection import build_runtime_projection_bundle
+        from app.workbook.runtime_result import RuntimeResult
+        rr = MagicMock(spec=RuntimeResult)
+        rr.snapshot_id = rr.ran_at = rr.origin = "s"
+        rr.debt_schedule = debt_schedule
+        rr.tax_schedule = None
+        rr.financial_statements = None
+        rr.runtime_summary = None
+        return build_runtime_projection_bundle(rr, is_dirty=is_dirty)
+
+    def test_none_schedule_is_unavailable(self):
+        from app.workbook.runtime_projection import RuntimeProjectionState
+        bundle = self._bundle_with_debt(None)
+        assert bundle.debt.state == RuntimeProjectionState.UNAVAILABLE
+        assert bundle.debt.periods is None
+
+    def test_empty_dict_schedule_is_unavailable(self):
+        from app.workbook.runtime_projection import RuntimeProjectionState
+        bundle = self._bundle_with_debt({})
+        assert bundle.debt.state == RuntimeProjectionState.UNAVAILABLE
+        assert bundle.debt.periods is None
+
+    def test_schedule_missing_periods_key_is_unavailable(self):
+        from app.workbook.runtime_projection import RuntimeProjectionState
+        bundle = self._bundle_with_debt({"summary": {"total": 100}})
+        assert bundle.debt.state == RuntimeProjectionState.UNAVAILABLE
+        assert bundle.debt.periods is None
+
+    def test_schedule_periods_none_is_unavailable(self):
+        from app.workbook.runtime_projection import RuntimeProjectionState
+        bundle = self._bundle_with_debt({"periods": None})
+        assert bundle.debt.state == RuntimeProjectionState.UNAVAILABLE
+        assert bundle.debt.periods is None
+
+    def test_schedule_periods_empty_list_is_clean(self):
+        from app.workbook.runtime_projection import RuntimeProjectionState
+        bundle = self._bundle_with_debt({"periods": []}, is_dirty=False)
+        assert bundle.debt.state == RuntimeProjectionState.CLEAN
+        assert bundle.debt.periods == []
+
+    def test_schedule_periods_empty_list_dirty_is_stale(self):
+        from app.workbook.runtime_projection import RuntimeProjectionState
+        bundle = self._bundle_with_debt({"periods": []}, is_dirty=True)
+        assert bundle.debt.state == RuntimeProjectionState.STALE
+
+    def test_same_contract_applies_to_tax(self):
+        from app.workbook.runtime_projection import build_runtime_projection_bundle, RuntimeProjectionState
+        from app.workbook.runtime_result import RuntimeResult
+        rr = MagicMock(spec=RuntimeResult)
+        rr.snapshot_id = rr.ran_at = rr.origin = "s"
+        rr.debt_schedule = None
+        rr.tax_schedule = {"summary": {"total": 50}}
+        rr.financial_statements = None
+        rr.runtime_summary = None
+        bundle = build_runtime_projection_bundle(rr, is_dirty=True)
+        assert bundle.tax.state == RuntimeProjectionState.UNAVAILABLE
+        assert bundle.tax.periods is None
+
+
+# ═══════════════════════════════════════════════════════════════════════════ #
+# O. Debt/Tax projection contract                                              #
+# ═══════════════════════════════════════════════════════════════════════════ #
+
+class TestDebtTaxProjectionContract:
+    def test_debt_source_equals_schedule(self):
+        from app.workbook.runtime_projection import build_runtime_projection_bundle
+        from app.workbook.runtime_result import RuntimeResult
+        rr = MagicMock(spec=RuntimeResult)
+        rr.snapshot_id = rr.ran_at = rr.origin = "x"
+        rr.debt_schedule = _sample_debt_schedule()
+        rr.tax_schedule = None
+        rr.financial_statements = None
+        rr.runtime_summary = None
+        bundle = build_runtime_projection_bundle(rr, is_dirty=False)
+        assert bundle.debt.source is bundle.debt.schedule
+
+    def test_debt_summary_equals_runtime_summary(self):
+        from app.workbook.runtime_projection import build_runtime_projection_bundle
+        from app.workbook.runtime_result import RuntimeResult
+        rr = MagicMock(spec=RuntimeResult)
+        rr.snapshot_id = rr.ran_at = rr.origin = "x"
+        rr.debt_schedule = _sample_debt_schedule()
+        rr.tax_schedule = None
+        rr.financial_statements = None
+        rr.runtime_summary = {"project_irr": "8%"}
+        bundle = build_runtime_projection_bundle(rr, is_dirty=False)
+        assert bundle.debt.summary is bundle.debt.runtime_summary
+
+    def test_debt_periods_all_in_original_order(self):
+        from app.workbook.runtime_projection import build_runtime_projection_bundle
+        from app.workbook.runtime_result import RuntimeResult
+        rr = MagicMock(spec=RuntimeResult)
+        rr.snapshot_id = rr.ran_at = rr.origin = "x"
+        rr.debt_schedule = {"periods": [
+            {"is_operation": False, "period": 0},
+            {"is_operation": True, "period": 1},
+            {"is_operation": True, "period": 2},
+        ]}
+        rr.tax_schedule = None
+        rr.financial_statements = None
+        rr.runtime_summary = None
+        bundle = build_runtime_projection_bundle(rr, is_dirty=False)
+        assert len(bundle.debt.periods) == 3
+        assert bundle.debt.periods[0]["period"] == 0
+        assert len(bundle.debt.operational_periods) == 2
+
+    def test_tax_source_equals_schedule(self):
+        from app.workbook.runtime_projection import build_runtime_projection_bundle
+        from app.workbook.runtime_result import RuntimeResult
+        rr = MagicMock(spec=RuntimeResult)
+        rr.snapshot_id = rr.ran_at = rr.origin = "x"
+        rr.debt_schedule = None
+        rr.tax_schedule = _sample_tax_schedule()
+        rr.financial_statements = None
+        rr.runtime_summary = None
+        bundle = build_runtime_projection_bundle(rr, is_dirty=False)
+        assert bundle.tax.source is bundle.tax.schedule
+
+
+# ═══════════════════════════════════════════════════════════════════════════ #
+# P. One RuntimeResult per HTMX request                                       #
+# ═══════════════════════════════════════════════════════════════════════════ #
+
+class TestOneRrPerHtmxRequest:
+    def _get_identity(self, project_code):
+        from app.workbook.workbook_identity import assemble_consistent_for_get
+        from app.workbook.service import WorkbookService
+        from app.persistence.projects_repository import get_project_record
+        from app.persistence.workspace_repository import get_workspace_state
+        proj = get_project_record(user_id="1", project_code=project_code)
+        ws = get_workspace_state(user_id="1", project_id=proj.project_id)
+        pis = WorkbookService.build_draft_input_set_from_workspace(ws)
+        ident = assemble_consistent_for_get(user_id="1", project_id=proj.project_id, workbook_version=pis.workbook_version)
+        return pis.workbook_version, ident.composite_hash
+
+    def _count_rr_calls(self, fn):
+        count = []
+        original = __import__("app.workbook.service", fromlist=["WorkbookService"]).WorkbookService.get_runtime_result
+        def counter(ws):
+            count.append(1)
+            return original(ws)
+        with patch("app.workbook.service.WorkbookService.get_runtime_result", side_effect=counter):
+            fn()
+        return len(count)
+
+    def test_debt_htmx_edit_calls_get_runtime_result_once(self):
+        client = _authed_client()
+        code = _create_project(client, "one-rr-debt")
+        wv, ch = self._get_identity(code)
+        def do_edit():
+            client.post("/v2/workbook/update", data={
+                "field_id": "debt.senior.interest_rate_pct",
+                "value": "5.5", "project": code,
+                "workbook_version": wv, "content_hash": ch, "sheet_id": "debt",
+            }, headers={"HX-Request": "true"})
+        count = self._count_rr_calls(do_edit)
+        assert count == 1, f"Debt HTMX edit called get_runtime_result {count} times; expected 1"
+
+    def test_tax_htmx_edit_calls_get_runtime_result_once(self):
+        client = _authed_client()
+        code = _create_project(client, "one-rr-tax")
+        wv, ch = self._get_identity(code)
+        def do_edit():
+            client.post("/v2/workbook/update", data={
+                "field_id": "tax.assumptions.cit_rate_pct",
+                "value": "19.0", "project": code,
+                "workbook_version": wv, "content_hash": ch, "sheet_id": "tax",
+            }, headers={"HX-Request": "true"})
+        count = self._count_rr_calls(do_edit)
+        assert count == 1, f"Tax HTMX edit called get_runtime_result {count} times; expected 1"
+
+
+# ═══════════════════════════════════════════════════════════════════════════ #
+# Q. Stale composite hash — rejection, no OOB emitted                        #
+# ═══════════════════════════════════════════════════════════════════════════ #
+
+class TestStaleHashNoOob:
+    def test_scalar_stale_hash_no_oob(self):
+        client = _authed_client()
+        code = _create_project(client, "stale-scalar")
+        resp = client.post("/v2/workbook/update", data={
+            "field_id": "project_setup.technical.p50_hours", "value": "2600",
+            "project": code, "workbook_version": "2.1.0",
+            "content_hash": "definitely-wrong-hash", "sheet_id": "project_setup",
+        }, headers={"HX-Request": "true"})
+        body = resp.text
+        assert 'id="debt-runtime-bar" hx-swap-oob="true"' not in body
+        assert 'id="tax-runtime-bar" hx-swap-oob="true"' not in body
+        assert 'id="fs-runtime-bar" hx-swap-oob="true"' not in body
+
+    def test_capex_stale_hash_no_oob(self):
+        client = _authed_client()
+        code = _create_project(client, "stale-capex")
+        resp = client.post("/v2/capex/line/add", data={
+            "project": code, "parent_category_code": "C.01",
+            "label": "Stale line", "amount_keur": "100", "notes": "",
+            "workbook_version": "2.1.0", "content_hash": "wrong-hash",
+        }, headers={"HX-Request": "true"})
+        body = resp.text
+        assert 'id="debt-runtime-bar" hx-swap-oob="true"' not in body
+        assert 'id="fs-runtime-bar" hx-swap-oob="true"' not in body
+
+    def test_opex_stale_hash_no_oob(self):
+        client = _authed_client()
+        code = _create_project(client, "stale-opex")
+        resp = client.post("/v2/opex/line/add", data={
+            "project": code, "parent_group_code": "B.01",
+            "label": "Stale line", "amount_keur": "100",
+            "inflation_pct": "2.0", "notes": "",
+            "workbook_version": "2.1.0", "content_hash": "wrong-hash",
+        }, headers={"HX-Request": "true"})
+        body = resp.text
+        assert 'id="debt-runtime-bar" hx-swap-oob="true"' not in body
+        assert 'id="fs-runtime-bar" hx-swap-oob="true"' not in body
+
+
+# ═══════════════════════════════════════════════════════════════════════════ #
+# R. All 8 CAPEX/OPEX operations — full OOB coverage                         #
+# ═══════════════════════════════════════════════════════════════════════════ #
+
+def _get_identity_for(project_code):
+    from app.workbook.workbook_identity import assemble_consistent_for_get
+    from app.workbook.service import WorkbookService
+    from app.persistence.projects_repository import get_project_record
+    from app.persistence.workspace_repository import get_workspace_state
+    proj = get_project_record(user_id="1", project_code=project_code)
+    ws = get_workspace_state(user_id="1", project_id=proj.project_id)
+    pis = WorkbookService.build_draft_input_set_from_workspace(ws)
+    ident = assemble_consistent_for_get(user_id="1", project_id=proj.project_id, workbook_version=pis.workbook_version)
+    return pis.workbook_version, ident.composite_hash
+
+
+def _assert_oob_bars(resp):
+    assert resp.status_code == 200
+    body = resp.text
+    assert 'id="debt-runtime-bar"' in body
+    assert 'id="tax-runtime-bar"' in body
+    assert 'id="fs-runtime-bar"' in body
+    assert 'hx-swap-oob="true"' in body
+
+
+def _get_custom_capex_lines(project_code):
+    from app.persistence.projects_repository import get_project_record
+    from app.persistence.capex_sub_lines import get_active_sub_lines_for_project
+    proj = get_project_record(user_id="1", project_code=project_code)
+    return get_active_sub_lines_for_project(proj.project_id)
+
+
+def _get_custom_opex_lines(project_code):
+    from app.persistence.projects_repository import get_project_record
+    from app.persistence.opex_sub_lines import get_active_sub_lines_for_project as opex_active
+    proj = get_project_record(user_id="1", project_code=project_code)
+    return opex_active(proj.project_id)
+
+
+class TestCapexAllOps:
+    def test_capex_add(self):
+        client = _authed_client()
+        code = _create_project(client, "capex-add2")
+        wv, ch = _get_identity_for(code)
+        resp = client.post("/v2/capex/line/add", data={
+            "project": code, "parent_category_code": "C.01",
+            "label": "Add OOB", "amount_keur": "100", "notes": "",
+            "workbook_version": wv, "content_hash": ch,
+        }, headers={"HX-Request": "true"})
+        _assert_oob_bars(resp)
+
+    def test_capex_update(self):
+        client = _authed_client()
+        code = _create_project(client, "capex-update")
+        wv, ch = _get_identity_for(code)
+        client.post("/v2/capex/line/add", data={
+            "project": code, "parent_category_code": "C.01",
+            "label": "To update", "amount_keur": "100", "notes": "",
+            "workbook_version": wv, "content_hash": ch,
+        }, headers={"HX-Request": "true"})
+        wv2, ch2 = _get_identity_for(code)
+        lines = _get_custom_capex_lines(code)
+        assert lines
+        line = lines[0]
+        resp = client.post("/v2/capex/line/update", data={
+            "project": code, "sub_line_id": line.sub_line_id,
+            "label": "Updated", "amount_keur": "200", "notes": "",
+            "row_version": line.updated_at, "workbook_version": wv2, "content_hash": ch2,
+        }, headers={"HX-Request": "true"})
+        _assert_oob_bars(resp)
+
+    def test_capex_deactivate(self):
+        client = _authed_client()
+        code = _create_project(client, "capex-deact")
+        wv, ch = _get_identity_for(code)
+        client.post("/v2/capex/line/add", data={
+            "project": code, "parent_category_code": "C.01",
+            "label": "To deactivate", "amount_keur": "50", "notes": "",
+            "workbook_version": wv, "content_hash": ch,
+        }, headers={"HX-Request": "true"})
+        wv2, ch2 = _get_identity_for(code)
+        lines = _get_custom_capex_lines(code)
+        assert lines
+        line = lines[0]
+        resp = client.post("/v2/capex/line/deactivate", data={
+            "project": code, "sub_line_id": line.sub_line_id,
+            "row_version": line.updated_at, "workbook_version": wv2, "content_hash": ch2,
+        }, headers={"HX-Request": "true"})
+        _assert_oob_bars(resp)
+
+    def test_capex_reorder(self):
+        client = _authed_client()
+        code = _create_project(client, "capex-reorder")
+        wv, ch = _get_identity_for(code)
+        client.post("/v2/capex/line/add", data={
+            "project": code, "parent_category_code": "C.01",
+            "label": "Line A", "amount_keur": "10", "notes": "",
+            "workbook_version": wv, "content_hash": ch,
+        }, headers={"HX-Request": "true"})
+        wv2, ch2 = _get_identity_for(code)
+        client.post("/v2/capex/line/add", data={
+            "project": code, "parent_category_code": "C.01",
+            "label": "Line B", "amount_keur": "20", "notes": "",
+            "workbook_version": wv2, "content_hash": ch2,
+        }, headers={"HX-Request": "true"})
+        wv3, ch3 = _get_identity_for(code)
+        lines = _get_custom_capex_lines(code)
+        assert len(lines) >= 2
+        resp = client.post("/v2/capex/line/reorder", data={
+            "project": code, "parent_category_code": "C.01",
+            "sub_line_id": [lines[1].sub_line_id, lines[0].sub_line_id],
+            "row_version": [lines[1].updated_at, lines[0].updated_at],
+            "workbook_version": wv3, "content_hash": ch3,
+        }, headers={"HX-Request": "true"})
+        _assert_oob_bars(resp)
+
+
+class TestOpexAllOps:
+    def test_opex_add(self):
+        client = _authed_client()
+        code = _create_project(client, "opex-add2")
+        wv, ch = _get_identity_for(code)
+        resp = client.post("/v2/opex/line/add", data={
+            "project": code, "parent_group_code": "B.01",
+            "label": "OPEX Add", "amount_keur": "50",
+            "inflation_pct": "2.0", "notes": "",
+            "workbook_version": wv, "content_hash": ch,
+        }, headers={"HX-Request": "true"})
+        _assert_oob_bars(resp)
+
+    def test_opex_update(self):
+        client = _authed_client()
+        code = _create_project(client, "opex-update")
+        wv, ch = _get_identity_for(code)
+        client.post("/v2/opex/line/add", data={
+            "project": code, "parent_group_code": "B.01",
+            "label": "To update", "amount_keur": "30",
+            "inflation_pct": "1.5", "notes": "",
+            "workbook_version": wv, "content_hash": ch,
+        }, headers={"HX-Request": "true"})
+        wv2, ch2 = _get_identity_for(code)
+        lines = _get_custom_opex_lines(code)
+        assert lines
+        line = lines[0]
+        resp = client.post("/v2/opex/line/update", data={
+            "project": code, "sub_line_id": line.sub_line_id,
+            "label": "Updated OPEX", "amount_keur": "60",
+            "inflation_pct": "3.0", "notes": "",
+            "row_version": line.updated_at, "workbook_version": wv2, "content_hash": ch2,
+        }, headers={"HX-Request": "true"})
+        _assert_oob_bars(resp)
+
+    def test_opex_deactivate(self):
+        client = _authed_client()
+        code = _create_project(client, "opex-deact")
+        wv, ch = _get_identity_for(code)
+        client.post("/v2/opex/line/add", data={
+            "project": code, "parent_group_code": "B.01",
+            "label": "To deactivate", "amount_keur": "25",
+            "inflation_pct": "1.0", "notes": "",
+            "workbook_version": wv, "content_hash": ch,
+        }, headers={"HX-Request": "true"})
+        wv2, ch2 = _get_identity_for(code)
+        lines = _get_custom_opex_lines(code)
+        assert lines
+        line = lines[0]
+        resp = client.post("/v2/opex/line/deactivate", data={
+            "project": code, "sub_line_id": line.sub_line_id,
+            "row_version": line.updated_at, "workbook_version": wv2, "content_hash": ch2,
+        }, headers={"HX-Request": "true"})
+        _assert_oob_bars(resp)
+
+    def test_opex_reorder(self):
+        client = _authed_client()
+        code = _create_project(client, "opex-reorder")
+        wv, ch = _get_identity_for(code)
+        client.post("/v2/opex/line/add", data={
+            "project": code, "parent_group_code": "B.01",
+            "label": "OPEX A", "amount_keur": "10",
+            "inflation_pct": "1.0", "notes": "",
+            "workbook_version": wv, "content_hash": ch,
+        }, headers={"HX-Request": "true"})
+        wv2, ch2 = _get_identity_for(code)
+        client.post("/v2/opex/line/add", data={
+            "project": code, "parent_group_code": "B.01",
+            "label": "OPEX B", "amount_keur": "20",
+            "inflation_pct": "2.0", "notes": "",
+            "workbook_version": wv2, "content_hash": ch2,
+        }, headers={"HX-Request": "true"})
+        wv3, ch3 = _get_identity_for(code)
+        lines = _get_custom_opex_lines(code)
+        assert len(lines) >= 2
+        resp = client.post("/v2/opex/line/reorder", data={
+            "project": code, "parent_group_code": "B.01",
+            "sub_line_id": [lines[1].sub_line_id, lines[0].sub_line_id],
+            "row_version": [lines[1].updated_at, lines[0].updated_at],
+            "workbook_version": wv3, "content_hash": ch3,
+        }, headers={"HX-Request": "true"})
+        _assert_oob_bars(resp)
+
+
+# ═══════════════════════════════════════════════════════════════════════════ #
+# S. Immutability and persisted identity proofs                               #
+# ═══════════════════════════════════════════════════════════════════════════ #
+
+class TestImmutabilityAndIdentity:
+    def test_bundle_does_not_mutate_rr(self):
+        from app.workbook.runtime_projection import build_runtime_projection_bundle
+        from app.workbook.runtime_result import RuntimeResult
+        rr = MagicMock(spec=RuntimeResult)
+        rr.snapshot_id = "snap-immut"
+        rr.ran_at = "2026-07-13"
+        rr.origin = "workbook_v2"
+        rr.debt_schedule = _sample_debt_schedule()
+        rr.tax_schedule = _sample_tax_schedule()
+        rr.financial_statements = _sample_fs()
+        rr.runtime_summary = {}
+        build_runtime_projection_bundle(rr, is_dirty=False)
+        assert rr.snapshot_id == "snap-immut"
+        assert rr.origin == "workbook_v2"
+
+    def test_repeated_projection_produces_equal_output(self):
+        from app.workbook.runtime_projection import build_runtime_projection_bundle
+        from app.workbook.runtime_result import RuntimeResult
+        rr = MagicMock(spec=RuntimeResult)
+        rr.snapshot_id = rr.ran_at = rr.origin = "x"
+        rr.debt_schedule = _sample_debt_schedule()
+        rr.tax_schedule = _sample_tax_schedule()
+        rr.financial_statements = _sample_fs()
+        rr.runtime_summary = {}
+        b1 = build_runtime_projection_bundle(rr, is_dirty=False)
+        b2 = build_runtime_projection_bundle(rr, is_dirty=False)
+        assert b1.debt.state == b2.debt.state
+        assert b1.debt.periods == b2.debt.periods
+        assert b1.tax.state == b2.tax.state
+        assert b1.fs.state == b2.fs.state
+        assert b1.fs.pnl_rows == b2.fs.pnl_rows
+
+    def test_no_repository_writes_during_projection(self):
+        from app.workbook.runtime_projection import build_runtime_projection_bundle
+        from app.workbook.runtime_result import RuntimeResult
+        rr = MagicMock(spec=RuntimeResult)
+        rr.snapshot_id = rr.ran_at = rr.origin = "x"
+        rr.debt_schedule = _sample_debt_schedule()
+        rr.tax_schedule = _sample_tax_schedule()
+        rr.financial_statements = _sample_fs()
+        rr.runtime_summary = {}
+        with patch("app.persistence.repository.record_workspace_runtime") as mock_write:
+            build_runtime_projection_bundle(rr, is_dirty=False)
+            assert mock_write.call_count == 0
+
+    def test_persisted_snapshot_id_matches_meta(self):
+        client = _authed_client()
+        code = _create_project(client, "persist-id")
+        snap_id = f"test-{uuid.uuid4().hex[:8]}"
+        from app.persistence.projects_repository import get_project_record
+        from app.persistence.repository import record_workspace_runtime
+        from app.workbook.service import WorkbookService
+        from app.persistence.workspace_repository import get_workspace_state
+        from app.workbook.runtime_projection import build_runtime_projection_bundle
+        proj = get_project_record(user_id="1", project_code=code)
+        record_workspace_runtime(
+            user_id="1", project_id=proj.project_id, project_code=code,
+            runtime_snapshot={"_test": True}, runtime_summary=_FULL_RUNTIME_SUMMARY,
+            runtime_snapshot_id=snap_id, runtime_origin="workbook_v2",
+            debt_schedule=_sample_debt_schedule(),
+            tax_schedule=_sample_tax_schedule(),
+            financial_statements=_sample_fs(),
+        )
+        ws = get_workspace_state(user_id="1", project_id=proj.project_id)
+        rr = WorkbookService.get_runtime_result(ws)
+        bundle = build_runtime_projection_bundle(rr, ws.dirty)
+        assert bundle.debt.meta.snapshot_id == str(snap_id)
+        assert bundle.tax.meta.snapshot_id == str(snap_id)
+        assert bundle.fs.meta.snapshot_id == str(snap_id)
+
+    def test_period_ordering_survives_fresh_reload(self):
+        client = _authed_client()
+        code = _create_project(client, "persist-order")
+        extra = {k: 0.0 for k in ["senior_principal_keur","senior_interest_keur","senior_total_ds_keur","senior_ds_keur","dscr","llcr","plcr","dsra_balance_keur","dsra_funding_keur","dsra_release_keur","senior_balance_open_keur","senior_balance_close_keur"]}
+        debt_sched = {"periods": [
+            {"period": 1, "is_operation": True, "senior_balance_keur": 1000.0, "date": "2030-01-01", **extra},
+            {"period": 2, "is_operation": True, "senior_balance_keur": 900.0, "date": "2030-07-01", **extra},
+            {"period": 3, "is_operation": True, "senior_balance_keur": 800.0, "date": "2031-01-01", **extra},
+        ]}
+        from app.persistence.projects_repository import get_project_record
+        from app.persistence.repository import record_workspace_runtime
+        from app.workbook.service import WorkbookService
+        from app.persistence.workspace_repository import get_workspace_state
+        from app.workbook.runtime_projection import build_runtime_projection_bundle
+        proj = get_project_record(user_id="1", project_code=code)
+        record_workspace_runtime(
+            user_id="1", project_id=proj.project_id, project_code=code,
+            runtime_snapshot={"_test": True}, runtime_summary=_FULL_RUNTIME_SUMMARY,
+            runtime_snapshot_id=f"test-{uuid.uuid4().hex[:8]}", runtime_origin="workbook_v2",
+            debt_schedule=debt_sched, tax_schedule=None, financial_statements=None,
+        )
+        ws2 = get_workspace_state(user_id="1", project_id=proj.project_id)
+        rr2 = WorkbookService.get_runtime_result(ws2)
+        bundle2 = build_runtime_projection_bundle(rr2, ws2.dirty)
+        periods = bundle2.debt.periods
+        assert periods is not None
+        assert len(periods) == 3
+        assert [p["senior_balance_keur"] for p in periods] == [1000.0, 900.0, 800.0]
