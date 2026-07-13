@@ -507,16 +507,10 @@
       {% include "partials/_v2_status_banner.html" %}
     </div>
 
-    {# Run button — triggers POST /v2/workbook/run via HTMX #}
-    <form method="post" action="/v2/workbook/run"
-          hx-post="/v2/workbook/run"
-          hx-swap="none"
-          hx-include="[name='workbook_version'],[name='content_hash']">
-      <input type="hidden" name="project" value="{{ project_code }}">
-      <input type="hidden" name="workbook_version" value="{{ workbook_version }}">
-      <input type="hidden" name="content_hash" value="{{ content_hash }}">
-      <button type="submit" class="v2-run-btn" data-testid="v2-run-btn">Run</button>
-    </form>
+    {# Run controls — refreshed via OOB after every engine-effective mutation #}
+    <div id="v2-run-controls">
+      {% include "partials/_v2_run_controls.html" %}
+    </div>
 
     {% include "partials/sheet_project_setup.html" %}
     {% include "partials/sheet_inputs.html" %}

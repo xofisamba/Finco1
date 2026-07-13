@@ -497,6 +497,158 @@ def update_composite_hash_cursor(
     return cur.rowcount > 0
 
 
+class V2RunCommitConflictError(Exception):
+    """Raised when the final CAS check fails in v2_atomic_run_commit.
+
+    The composite identity changed between the initial pre-engine check
+    and the post-engine commit window.  The run result is discarded; the
+    caller must return a truthful conflict response without mutating state.
+    """
+
+
+def v2_atomic_run_commit(
+    *,
+    user_id: str,
+    project_id: str,
+    project_code: str,
+    expected_composite_hash: str,
+    runtime_snapshot_id: str,
+    runtime_origin: str,
+    runtime_summary: dict,
+    financial_statements,
+    debt_schedule,
+    tax_schedule,
+    distribution_schedule,
+    sponsor_schedule,
+    active_scenario_id,
+    active_scenario_name,
+    ran_at,
+) -> "WorkspaceStateRecord":
+    """Atomic V2 run commit: final CAS + promote draft → saved + clear dirty.
+
+    All steps execute inside a single BEGIN EXCLUSIVE transaction:
+
+    1. Re-read the workspace state.
+    2. Re-assemble composite identity from the current draft state.
+    3. Final CAS: if composite_hash != expected_composite_hash raise
+       V2RunCommitConflictError without mutating anything.
+    4. Promote draft_snapshot → saved_snapshot.
+    5. Persist all runtime schedule payloads, summary, and metadata.
+    6. Set dirty=False.
+    7. COMMIT.
+
+    Raises V2RunCommitConflictError on hash mismatch (another tab edited
+    the workbook while the engine was running).  All other exceptions
+    propagate unchanged; the caller must not partially commit on error.
+    """
+    from app.persistence.db import get_connection
+    from app.persistence.records import WorkspaceStateRecord
+    from app.workbook.workbook_identity import assemble_transactional
+    from app.workbook.registry import WORKBOOK
+    import json as _json
+
+    now = _now_utc()
+    conn = get_connection()
+    cur = None
+    try:
+        conn.execute("BEGIN EXCLUSIVE")
+        cur = conn.cursor()
+
+        cur.execute(
+            "SELECT * FROM workspace_states WHERE user_id=? AND project_id=?",
+            (user_id, project_id),
+        )
+        row = cur.fetchone()
+        if row is None:
+            conn.execute("ROLLBACK")
+            raise V2RunCommitConflictError("Workspace not found during run commit.")
+
+        # Final CAS: re-derive composite hash from current draft state.
+        identity = assemble_transactional(
+            draft_snapshot_json=row["draft_snapshot_json"] or "{}",
+            project_id=project_id,
+            user_id=user_id,
+            active_scenario_id=row["active_scenario_id"],
+            active_scenario_name=row["active_scenario_name"],
+            cursor=cur,
+            workbook_version=WORKBOOK.version,
+        )
+        if identity.composite_hash != expected_composite_hash:
+            conn.execute("ROLLBACK")
+            raise V2RunCommitConflictError(
+                f"Workbook changed during engine run "
+                f"(expected {expected_composite_hash[:8]}…, "
+                f"found {identity.composite_hash[:8]}…). "
+                "Please run again."
+            )
+
+        # Promote draft → saved; clear dirty.
+        draft_snapshot = _json.loads(row["draft_snapshot_json"] or "{}")
+        cur.execute(
+            """
+            UPDATE workspace_states
+            SET saved_snapshot_json=?,
+                last_runtime_snapshot_json=?,
+                last_runtime_summary_json=?,
+                last_runtime_snapshot_id=?,
+                last_runtime_origin=?,
+                last_financial_statements_json=?,
+                last_debt_schedule_json=?,
+                last_tax_schedule_json=?,
+                last_distribution_schedule_json=?,
+                last_sponsor_schedule_json=?,
+                active_scenario_id=?,
+                active_scenario_name=?,
+                dirty=0,
+                updated_at=?,
+                last_runtime_at=?
+            WHERE workspace_id=? AND user_id=?
+            """,
+            (
+                _to_json(draft_snapshot),
+                _to_json(draft_snapshot),
+                _to_json(runtime_summary or {}),
+                runtime_snapshot_id,
+                runtime_origin,
+                _to_json(financial_statements or {}),
+                _to_json(debt_schedule or {}),
+                _to_json(tax_schedule or {}),
+                _to_json(distribution_schedule or {}),
+                _to_json(sponsor_schedule or {}),
+                active_scenario_id,
+                active_scenario_name,
+                now.isoformat(),
+                ran_at.isoformat() if hasattr(ran_at, "isoformat") else str(ran_at),
+                row["workspace_id"],
+                user_id,
+            ),
+        )
+        conn.execute("COMMIT")
+
+        cur.execute(
+            "SELECT * FROM workspace_states WHERE user_id=? AND project_id=?",
+            (user_id, project_id),
+        )
+        updated_row = cur.fetchone()
+        return WorkspaceStateRecord.from_row(updated_row) if updated_row else None
+    except V2RunCommitConflictError:
+        try:
+            conn.execute("ROLLBACK")
+        except Exception:
+            pass
+        raise
+    except Exception:
+        try:
+            conn.execute("ROLLBACK")
+        except Exception:
+            pass
+        raise
+    finally:
+        if cur is not None:
+            cur.close()
+        conn.close()
+
+
 def mark_workspace_dirty_cursor(cur: Any, *, user_id: str, project_id: str) -> bool:
     """Set dirty=1 on the workspace row using an existing cursor.
 
