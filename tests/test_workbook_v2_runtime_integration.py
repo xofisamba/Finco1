@@ -703,11 +703,16 @@ class TestHtmxOobTargetIds(unittest.TestCase):
         self.assertIn("hx-swap-oob", m.group(1),
                       "v2-sheet-senior-debt must have hx-swap-oob on its root element")
 
-    def test_response_contains_runtime_bar_oobs(self):
+    def test_runtime_bars_appear_exactly_once(self):
+        """Runtime bars come from inside the full sheet OOBs; no standalone duplicates."""
         body = self._run_and_get_body()
-        self.assertIn('id="debt-runtime-bar"', body)
-        self.assertIn('id="tax-runtime-bar"', body)
-        self.assertIn('id="fs-runtime-bar"', body)
+        # Use element open-tag prefix to avoid matching data-testid="debt-runtime-bar"
+        self.assertEqual(body.count('<div id="debt-runtime-bar"'), 1,
+                         "debt-runtime-bar div must appear exactly once (not standalone + in-sheet)")
+        self.assertEqual(body.count('<div id="tax-runtime-bar"'), 1,
+                         "tax-runtime-bar div must appear exactly once")
+        self.assertEqual(body.count('<div id="fs-runtime-bar"'), 1,
+                         "fs-runtime-bar div must appear exactly once")
 
 
 # ---------------------------------------------------------------------------
@@ -1034,7 +1039,9 @@ class TestOpexEffectiveness(unittest.TestCase):
 # ---------------------------------------------------------------------------
 
 class TestActiveScenario(unittest.TestCase):
-    """Active scenario: resolves, correct name passed to engine, metadata persisted."""
+    """Active scenario: Contract A — engine always called with 'Base', overrides reach ProjectInputs,
+    atomic commit called once, runtime snapshot ID persisted, dirty=False, last_runtime_scenario_id
+    matches selected scenario, response has no engine failure text, reload reconstructs same result."""
 
     @classmethod
     def setUpClass(cls):
@@ -1049,57 +1056,214 @@ class TestActiveScenario(unittest.TestCase):
         proj = get_project_record(user_id=session.user_id, project_code=self.project_code)
         return session, proj
 
-    def test_active_scenario_name_passes_to_engine_and_persists(self):
+    def test_comprehensive_scenario_run_contract_a(self):
+        """10-assertion comprehensive test for active-scenario run under Contract A."""
         from app.api import project_runner
         from app.persistence.scenarios_repository import add_scenario, select_scenario
+        from app.persistence.workspace_repository import v2_atomic_run_commit as _orig_commit
         from app.workbook.service import WorkbookService
+        import app.persistence.workspace_repository as _ws_repo
 
         session, proj = self._get_user_and_project()
 
-        # Get baseline input set for scenario creation
-        ws = _get_ws(self.client, self.project_code)
-        pis = WorkbookService.build_draft_input_set_from_workspace(ws)
-        base_input_set = pis.to_snapshot() if hasattr(pis, "to_snapshot") else {}
+        ws0 = _get_ws(self.client, self.project_code)
+        pis0 = WorkbookService.build_draft_input_set_from_workspace(ws0)
+        base_input_set = pis0.to_snapshot() if hasattr(pis0, "to_snapshot") else {}
 
-        # Create a scenario
         sc = add_scenario(
             user_id=session.user_id,
             project_id=proj.project_id,
             project_code=self.project_code,
-            scenario_name="My Test Scenario",
+            scenario_name="Scenario Alpha",
             parent_scenario_id=None,
             base_input_set=base_input_set,
         )
         self.assertIsNotNone(sc)
-
-        # Select the scenario as active
         select_scenario(
             user_id=session.user_id,
             project_id=proj.project_id,
             scenario_id=sc.scenario_id,
         )
 
-        # Capture scenario_name passed to engine
-        captured_names = []
-        orig = project_runner.run_project
+        engine_calls = []
+        commit_calls = []
+        orig_run = project_runner.run_project
+        orig_commit = _ws_repo.v2_atomic_run_commit
 
         def capturing_run(pt, name, **kw):
-            captured_names.append(name)
-            return orig(pt, name, **kw)
+            engine_calls.append({"name": name, "inputs": kw.get("project_inputs_override")})
+            return orig_run(pt, name, **kw)
+
+        def capturing_commit(**kw):
+            commit_calls.append(kw)
+            return orig_commit(**kw)
+
+        ch, wv = _get_content_hash(self.client, self.project_code)
+        with patch("app.api.project_runner.run_project", side_effect=capturing_run), \
+             patch("app.persistence.workspace_repository.v2_atomic_run_commit", side_effect=capturing_commit):
+            resp = _post_run(self.client, self.project_code, ch, wv)
+
+        # 1. HTTP 200, no engine failure text
+        self.assertEqual(resp.status_code, 200, f"run failed: {resp.text[:300]}")
+        body = resp.text
+        for failure_phrase in ("engine run failed", "Engine run failed", "could not be saved"):
+            self.assertNotIn(failure_phrase, body, f"Response contains failure text: {failure_phrase!r}")
+
+        # 2. Engine called exactly once with "Base" (Contract A)
+        self.assertEqual(len(engine_calls), 1, "run_project must be called exactly once")
+        self.assertEqual(engine_calls[0]["name"], "Base",
+                         f"Contract A: engine must receive 'Base', got {engine_calls[0]['name']!r}")
+
+        # 3. Atomic commit called exactly once
+        self.assertEqual(len(commit_calls), 1, "v2_atomic_run_commit must be called exactly once")
+
+        # 4. New runtime snapshot ID persisted (workspace dirty==False)
+        ws_after = _get_ws(self.client, self.project_code)
+        self.assertFalse(ws_after.dirty, "workspace must be clean after successful run")
+        self.assertIsNotNone(ws_after.last_runtime_snapshot_id,
+                             "runtime snapshot ID must be persisted after run")
+
+        # 5. last_runtime_scenario_id matches selected scenario
+        self.assertEqual(ws_after.last_runtime_scenario_id, sc.scenario_id,
+                         "last_runtime_scenario_id must match the selected scenario after run")
+
+        # 6. active_scenario_id and active_scenario_name preserved on workspace
+        self.assertEqual(ws_after.active_scenario_id, sc.scenario_id)
+        self.assertEqual(ws_after.active_scenario_name, "Scenario Alpha")
+
+        # 7. Reload reconstructs a RuntimeResult (Debt/Tax/FS state is not NOT_RUN)
+        ws_reload = _get_ws(self.client, self.project_code)
+        rr = WorkbookService.get_runtime_result(ws_reload)
+        self.assertIsNotNone(rr, "RuntimeResult must be reconstructible after successful run")
+
+
+# ---------------------------------------------------------------------------
+# 20a. TestDownsideNameRegression
+# ---------------------------------------------------------------------------
+
+class TestDownsideNameRegression(unittest.TestCase):
+    """A scenario literally named 'Downside' must NOT activate the legacy ScenarioManager.
+
+    Contract A: regardless of display name, the engine is always called with 'Base'.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.client = _authed_client()
+        cls.project_code = _create_project(cls.client, suffix="downside-regression")
+
+    def test_downside_named_scenario_calls_engine_with_base(self):
+        from app.api import project_runner
+        from app.auth import decode_session_token
+        from app.persistence.projects_repository import get_project_record
+        from app.persistence.scenarios_repository import add_scenario, select_scenario
+        from app.workbook.service import WorkbookService
+
+        token = self.client.cookies.get(COOKIE_NAME)
+        session = decode_session_token(token)
+        proj = get_project_record(user_id=session.user_id, project_code=self.project_code)
+
+        ws0 = _get_ws(self.client, self.project_code)
+        pis0 = WorkbookService.build_draft_input_set_from_workspace(ws0)
+        base_input_set = pis0.to_snapshot() if hasattr(pis0, "to_snapshot") else {}
+
+        sc = add_scenario(
+            user_id=session.user_id,
+            project_id=proj.project_id,
+            project_code=self.project_code,
+            scenario_name="Downside",  # matches legacy ScenarioManager name — must NOT be forwarded
+            parent_scenario_id=None,
+            base_input_set=base_input_set,
+        )
+        self.assertIsNotNone(sc)
+        select_scenario(
+            user_id=session.user_id,
+            project_id=proj.project_id,
+            scenario_id=sc.scenario_id,
+        )
+
+        engine_calls = []
+        orig_run = project_runner.run_project
+
+        def capturing_run(pt, name, **kw):
+            engine_calls.append(name)
+            return orig_run(pt, name, **kw)
 
         ch, wv = _get_content_hash(self.client, self.project_code)
         with patch("app.api.project_runner.run_project", side_effect=capturing_run):
             resp = _post_run(self.client, self.project_code, ch, wv)
 
         self.assertEqual(resp.status_code, 200, f"run failed: {resp.text[:300]}")
-        self.assertTrue(captured_names, "run_project must have been called")
-        self.assertEqual(captured_names[0], "My Test Scenario",
-                         f"engine must receive scenario name, got {captured_names[0]!r}")
+        self.assertEqual(len(engine_calls), 1, "run_project must be called exactly once")
+        self.assertEqual(engine_calls[0], "Base",
+                         f"'Downside' display name must NOT reach engine; got {engine_calls[0]!r}")
 
-        # Metadata must be persisted on the workspace
-        ws2 = _get_ws(self.client, self.project_code)
-        self.assertEqual(ws2.active_scenario_id, sc.scenario_id)
-        self.assertEqual(ws2.active_scenario_name, "My Test Scenario")
+
+# ---------------------------------------------------------------------------
+# 20b. TestLastRuntimeScenarioId
+# ---------------------------------------------------------------------------
+
+class TestLastRuntimeScenarioId(unittest.TestCase):
+    """last_runtime_scenario_id is updated atomically in v2_atomic_run_commit."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.client = _authed_client()
+        cls.project_code = _create_project(cls.client, suffix="last-rt-sc-id")
+
+    def _session_and_proj(self):
+        from app.auth import decode_session_token
+        from app.persistence.projects_repository import get_project_record
+        token = self.client.cookies.get(COOKIE_NAME)
+        session = decode_session_token(token)
+        proj = get_project_record(user_id=session.user_id, project_code=self.project_code)
+        return session, proj
+
+    def test_last_runtime_scenario_id_set_on_run(self):
+        from app.persistence.scenarios_repository import add_scenario, select_scenario
+        from app.workbook.service import WorkbookService
+
+        session, proj = self._session_and_proj()
+        ws0 = _get_ws(self.client, self.project_code)
+        pis0 = WorkbookService.build_draft_input_set_from_workspace(ws0)
+        base_input_set = pis0.to_snapshot() if hasattr(pis0, "to_snapshot") else {}
+
+        sc_a = add_scenario(
+            user_id=session.user_id,
+            project_id=proj.project_id,
+            project_code=self.project_code,
+            scenario_name="Scenario A",
+            parent_scenario_id=None,
+            base_input_set=base_input_set,
+        )
+        select_scenario(user_id=session.user_id, project_id=proj.project_id, scenario_id=sc_a.scenario_id)
+
+        ch, wv = _get_content_hash(self.client, self.project_code)
+        resp = _post_run(self.client, self.project_code, ch, wv)
+        self.assertEqual(resp.status_code, 200)
+
+        ws_a = _get_ws(self.client, self.project_code)
+        self.assertEqual(ws_a.last_runtime_scenario_id, sc_a.scenario_id,
+                         "last_runtime_scenario_id must equal scenario A after running with it")
+
+        # Switch to scenario B and run again — last_runtime_scenario_id must update
+        sc_b = add_scenario(
+            user_id=session.user_id,
+            project_id=proj.project_id,
+            project_code=self.project_code,
+            scenario_name="Scenario B",
+            parent_scenario_id=None,
+            base_input_set=base_input_set,
+        )
+        select_scenario(user_id=session.user_id, project_id=proj.project_id, scenario_id=sc_b.scenario_id)
+
+        ch2, wv2 = _get_content_hash(self.client, self.project_code)
+        resp2 = _post_run(self.client, self.project_code, ch2, wv2)
+        self.assertEqual(resp2.status_code, 200)
+
+        ws_b = _get_ws(self.client, self.project_code)
+        self.assertEqual(ws_b.last_runtime_scenario_id, sc_b.scenario_id,
+                         "last_runtime_scenario_id must update to scenario B after switching and running")
 
 
 # ---------------------------------------------------------------------------

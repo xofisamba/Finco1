@@ -1118,7 +1118,9 @@ async def v2_workbook_run(
             msg = "Active scenario does not belong to this project. Please re-select and try again."
             return _htmx_error(msg, ws) if is_htmx else _non_htmx_error(msg)
         _scenario_overrides_for_fold = sc_rec.overrides
-        scenario_name = sc_rec.scenario_name or scenario_name
+        # Keep display name for provenance only; engine always receives "Base"
+        # so the legacy ScenarioManager is never activated by a user-created name.
+        scenario_name = sc_rec.scenario_name or scenario_name  # provenance / metadata only
 
     # ── Steps 9–10: CAPEX and OPEX fold ───────────────────────────────────── #
     from dataclasses import replace as _dc_replace
@@ -1142,7 +1144,7 @@ async def v2_workbook_run(
     try:
         result = run_project(
             runtime_project_key,
-            scenario_name,
+            "Base",  # Contract A: always "Base"; display name must not activate legacy ScenarioManager
             project_inputs_override=override,
         )
     except Exception as exc:
@@ -1170,6 +1172,7 @@ async def v2_workbook_run(
             sponsor_schedule=result.get("sponsor_schedule"),
             active_scenario_id=active_scenario_id,
             active_scenario_name=active_scenario_name,
+            last_runtime_scenario_id=active_scenario_id,
             ran_at=ran_at,
         )
     except V2RunCommitConflictError:
@@ -1288,9 +1291,7 @@ async def v2_workbook_run(
         1,
     )
 
-    # Runtime bar OOBs.
-    from app.v2.runtime_projection_views import build_all_runtime_bar_oob
-    bars_oob = build_all_runtime_bar_oob(projection)
-
-    combined = "\n".join([run_controls_oob, banner_oob, debt_oob, tax_oob, fs_oob, bars_oob])
+    # Each full sheet OOB already includes its runtime bar; do not add standalone bar OOBs
+    # here — that would create duplicate DOM IDs (debt-runtime-bar, tax-runtime-bar, fs-runtime-bar).
+    combined = "\n".join([run_controls_oob, banner_oob, debt_oob, tax_oob, fs_oob])
     return HTMLResponse(content=combined)

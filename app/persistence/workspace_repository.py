@@ -523,6 +523,7 @@ def v2_atomic_run_commit(
     active_scenario_id,
     active_scenario_name,
     ran_at,
+    last_runtime_scenario_id=None,
 ) -> "WorkspaceStateRecord":
     """Atomic V2 run commit: final CAS + promote draft → saved + clear dirty.
 
@@ -599,6 +600,7 @@ def v2_atomic_run_commit(
                 last_sponsor_schedule_json=?,
                 active_scenario_id=?,
                 active_scenario_name=?,
+                last_runtime_scenario_id=?,
                 dirty=0,
                 updated_at=?,
                 last_runtime_at=?
@@ -617,6 +619,7 @@ def v2_atomic_run_commit(
                 _to_json(sponsor_schedule or {}),
                 active_scenario_id,
                 active_scenario_name,
+                last_runtime_scenario_id if last_runtime_scenario_id is not None else active_scenario_id,
                 now.isoformat(),
                 ran_at.isoformat() if hasattr(ran_at, "isoformat") else str(ran_at),
                 row["workspace_id"],
