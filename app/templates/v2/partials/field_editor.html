@@ -43,6 +43,11 @@
                value="{{ f.value | string if f.value is not none else '' }}"
                class="v2-field-input"
                aria-label="{{ f.label }}"
+               data-pending="false"
+               data-original-value="{{ f.value | string if f.value is not none else '' }}"
+               onchange="v2MarkPending(this)"
+               onkeydown="v2FieldKeydown(event)"
+               onblur="v2FieldBlur(event)"
                {% if f.required %}required{% endif %}
                {% if f.help_text %}title="{{ f.help_text }}"{% endif %}>
       {% elif f.field_type in ('months', 'years', 'int') %}
@@ -53,6 +58,11 @@
                {% if f.max_value is not none %}max="{{ f.max_value }}"{% endif %}
                class="v2-field-input"
                aria-label="{{ f.label }}"
+               data-pending="false"
+               data-original-value="{{ f.value if f.value is not none else '' }}"
+               onchange="v2MarkPending(this)"
+               onkeydown="v2FieldKeydown(event)"
+               onblur="v2FieldBlur(event)"
                {% if f.required %}required{% endif %}
                {% if f.help_text %}title="{{ f.help_text }}"{% endif %}>
       {% elif f.field_type in ('float', 'mw', 'mwh', 'keur', 'pct', 'bps') %}
@@ -63,6 +73,11 @@
                {% if f.max_value is not none %}max="{{ f.max_value }}"{% endif %}
                class="v2-field-input"
                aria-label="{{ f.label }}"
+               data-pending="false"
+               data-original-value="{{ f.value if f.value is not none else '' }}"
+               onchange="v2MarkPending(this)"
+               onkeydown="v2FieldKeydown(event)"
+               onblur="v2FieldBlur(event)"
                {% if f.required %}required{% endif %}
                {% if f.help_text %}title="{{ f.help_text }}"{% endif %}>
       {% elif f.field_type == 'select' %}
@@ -85,6 +100,11 @@
                value="{{ f.value if f.value is not none else '' }}"
                class="v2-field-input"
                aria-label="{{ f.label }}"
+               data-pending="false"
+               data-original-value="{{ f.value if f.value is not none else '' }}"
+               onchange="v2MarkPending(this)"
+               onkeydown="v2FieldKeydown(event)"
+               onblur="v2FieldBlur(event)"
                {% if f.required %}required{% endif %}
                {% if f.help_text %}title="{{ f.help_text }}"{% endif %}>
       {% endif %}

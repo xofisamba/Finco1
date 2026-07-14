@@ -306,6 +306,21 @@ def _resolve_user_inputs(
             if not _capex_matches_base:
                 proj = _zero_financial_capex_subfields(proj)
                 proj = _apply_capex_total(proj, total_capex_keur)
+                # Frozen debt schedule and SHL were calibrated for the
+                # original capex; disable frozen schedule and zero SHL
+                # when the user supplies a different capex total, so the
+                # engine can size debt from gearing/DSCR inputs instead.
+                if getattr(proj.financing, "use_frozen_excel_senior_debt_schedule", False):
+                    proj = dc_replace(
+                        proj,
+                        financing=dc_replace(
+                            proj.financing,
+                            use_frozen_excel_senior_debt_schedule=False,
+                            fixed_debt_keur=0.0,
+                            shl_amount_keur=0.0,
+                            shl_idc_keur=0.0,
+                        ),
+                    )
     else:
         proj = _zero_financial_capex_subfields(proj)
         if total_capex_keur is not None:
@@ -691,6 +706,31 @@ def build_projectinputs_from_snapshot(snapshot: dict) -> "ProjectInputs":
     # applies the snapshot field validation (positive,
     # non_negative, ISO date, whole-number int) for the
     # remaining fields.
-    return _resolve_user_inputs(base_inputs=_base, **_snapshot_to_dict(snapshot))
+    result = _resolve_user_inputs(base_inputs=_base, **_snapshot_to_dict(snapshot))
+
+    # Per-line OPEX fold: apply B.01–B.12 scalar overrides from the snapshot onto
+    # the calibrated base item tuple, preserving step_changes, annual_inflation, etc.
+    # Precedence: TUHO/Oborovo → use _base.opex (project-specific calibrated items).
+    #             generic → recreate the factory to get the correct name set, then fold.
+    # B.13 (Contingencies, derived) and B.09 (Fees, no scalar) are always skipped.
+    from app.v2.opex_assembly import has_per_line_overrides, build_effective_draft_opex
+    if has_per_line_overrides(snapshot):
+        if _base is not None:
+            _base_opex = _base.opex
+        else:
+            # Generic project: recreate the appropriate factory to get named OpexItems.
+            # This is the only place a generic factory is recreated for OPEX base resolution.
+            if project_type == "Solar":
+                from app.project_factories import create_default_solar_project as _gsf
+                _base_opex = _gsf().opex
+            else:
+                from app.project_factories import create_default_wind_project as _gwf
+                _base_opex = _gwf().opex
+        _effective_opex = build_effective_draft_opex(_base_opex, snapshot)
+        if _effective_opex is not _base_opex:
+            import dataclasses as _dc
+            result = _dc.replace(result, opex=_effective_opex)
+
+    return result
 
 

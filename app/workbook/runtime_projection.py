@@ -147,55 +147,128 @@ def project_rows(
             "key": key,
             "label": label,
             "is_total": is_total,
+            "is_stock": is_stock,
             "values": [p.get(key) for p in periods],
         }
-        for key, label, is_total in row_defs
+        for key, label, is_total, is_stock in row_defs
     ]
 
 
 # ── Financial Statements row definitions ─────────────────────────────────── #
-# (key, display_label, is_total)
+# (key, display_label, is_total, is_stock)
+# is_stock=True  → Annual value = year-end period value  (balance sheet items)
+# is_stock=False → Annual value = sum of all model periods in the year (flow items)
 
 FS_PNL_ROW_DEFS: List[tuple] = [
-    ("revenues_keur",                "Revenues",             False),
-    ("operating_expenses_keur",      "Operating Expenses",   False),
-    ("depreciation_keur",            "Depreciation",         False),
-    ("ebit_keur",                    "EBIT",                 True),
-    ("senior_interest_expense_keur", "Senior Interest",      False),
-    ("shl_interest_expense_keur",    "SHL Interest",         False),
-    ("earnings_before_tax_keur",     "Earnings Before Tax",  True),
-    ("cit_accrual_keur",             "CIT Accrual",          False),
-    ("net_income_keur",              "Net Income",           True),
-    ("retained_earnings_keur",       "Retained Earnings",    False),
-    ("net_dividends_keur",           "Net Dividends",        False),
+    ("revenues_keur",                "Revenues",             False, False),
+    ("operating_expenses_keur",      "Operating Expenses",   False, False),
+    ("depreciation_keur",            "Depreciation",         False, False),
+    ("ebit_keur",                    "EBIT",                 True,  False),
+    ("senior_interest_expense_keur", "Senior Interest",      False, False),
+    ("shl_interest_expense_keur",    "SHL Interest",         False, False),
+    ("earnings_before_tax_keur",     "Earnings Before Tax",  True,  False),
+    ("cit_accrual_keur",             "CIT Accrual",          False, False),
+    ("net_income_keur",              "Net Income",           True,  False),
+    ("retained_earnings_keur",       "Retained Earnings",    False, True),
+    ("net_dividends_keur",           "Net Dividends",        False, False),
 ]
 
 FS_PF_CF_ROW_DEFS: List[tuple] = [
-    ("revenue_cash_keur",          "Revenue Cash",         False),
-    ("opex_cash_keur",             "OPEX Cash",            False),
-    ("ebitda_cash_keur",           "EBITDA Cash",          True),
-    ("cash_tax_keur",              "Cash Tax",             False),
-    ("fcf_banks_keur",             "FCF to Banks",         True),
-    ("senior_total_ds_keur",       "Senior Total DS",      False),
-    ("dsra_funding_keur",          "DSRA Funding",         False),
-    ("dsra_release_keur",          "DSRA Release",         False),
-    ("fcf_junior_keur",            "FCF Junior",           False),
-    ("fcf_for_distribution_keur",  "FCF for Distribution", True),
-    ("net_dividends_keur",         "Net Dividends",        False),
+    ("revenue_cash_keur",          "Revenue Cash",         False, False),
+    ("opex_cash_keur",             "OPEX Cash",            False, False),
+    ("ebitda_cash_keur",           "EBITDA Cash",          True,  False),
+    ("cash_tax_keur",              "Cash Tax",             False, False),
+    ("fcf_banks_keur",             "FCF to Banks",         True,  False),
+    ("senior_total_ds_keur",       "Senior Total DS",      False, False),
+    ("dsra_funding_keur",          "DSRA Funding",         False, False),
+    ("dsra_release_keur",          "DSRA Release",         False, False),
+    ("fcf_junior_keur",            "FCF Junior",           False, False),
+    ("fcf_for_distribution_keur",  "FCF for Distribution", True,  False),
+    ("net_dividends_keur",         "Net Dividends",        False, False),
 ]
 
 FS_BS_ROW_DEFS: List[tuple] = [
-    ("net_fixed_assets_keur",          "Net Fixed Assets",           False),
-    ("dsra_balance_keur",              "DSRA Balance",               False),
-    ("cash_keur",                      "Cash",                       False),
-    ("total_assets_keur",              "Total Assets",               True),
-    ("share_capital_keur",             "Share Capital ★",       False),
-    ("retained_earnings_keur",         "Retained Earnings",          False),
-    ("shl_balance_keur",               "SHL Balance",                False),
-    ("senior_balance_keur",            "Senior Balance",             False),
-    ("total_liabilities_equity_keur",  "Total Liabilities + Equity", True),
-    ("balance_check_keur",             "Balance Check",              False),
+    ("net_fixed_assets_keur",          "Net Fixed Assets",           False, True),
+    ("dsra_balance_keur",              "DSRA Balance",               False, True),
+    ("cash_keur",                      "Cash",                       False, True),
+    ("total_assets_keur",              "Total Assets",               True,  True),
+    ("share_capital_keur",             "Share Capital ★",            False, True),
+    ("retained_earnings_keur",         "Retained Earnings",          False, True),
+    ("shl_balance_keur",               "SHL Balance",                False, True),
+    ("senior_balance_keur",            "Senior Balance",             False, True),
+    ("total_liabilities_equity_keur",  "Total Liabilities + Equity", True,  True),
+    ("balance_check_keur",             "Balance Check",              False, True),
 ]
+
+
+def _year_from_label(label: str) -> Optional[str]:
+    """Return the 4-digit year string from a YYYY-MM label, or None."""
+    if label and len(label) >= 4:
+        return label[:4]
+    return None
+
+
+def aggregate_to_annual(
+    rows: Optional[List[Dict]],
+    period_labels: List[str],
+) -> tuple:
+    """Aggregate model-period rows to annual rows and annual labels.
+
+    Flow items (is_stock=False): annual value = sum of all model periods in year.
+    Stock items (is_stock=True):  annual value = last model period in year.
+    None values are treated as 0 for flow summation; last-value for stock.
+
+    Returns (annual_rows, annual_labels) where annual_labels are the year strings
+    in ascending order.  Returns (None, []) when rows is None.
+    """
+    if rows is None:
+        return None, []
+    if not rows or not period_labels:
+        return [], []
+
+    # Group period indices by year.
+    years_ordered: List[str] = []
+    year_to_indices: Dict[str, List[int]] = {}
+    for i, lbl in enumerate(period_labels):
+        yr = _year_from_label(lbl)
+        if yr is None:
+            continue
+        if yr not in year_to_indices:
+            years_ordered.append(yr)
+            year_to_indices[yr] = []
+        year_to_indices[yr].append(i)
+
+    if not years_ordered:
+        return [], []
+
+    annual_rows: List[Dict] = []
+    for row in rows:
+        is_stock = row.get("is_stock", False)
+        vals = row.get("values", [])
+        annual_vals: List[Any] = []
+        for yr in years_ordered:
+            indices = year_to_indices[yr]
+            period_vals = [vals[i] for i in indices if i < len(vals)]
+            if is_stock:
+                # year-end: last non-None value; None if all None
+                val = None
+                for v in period_vals:
+                    if v is not None:
+                        val = v
+                annual_vals.append(val)
+            else:
+                # flow: sum; None if all None
+                non_none = [v for v in period_vals if v is not None]
+                annual_vals.append(sum(non_none) if non_none else None)
+        annual_rows.append({
+            "key": row["key"],
+            "label": row["label"],
+            "is_total": row.get("is_total", False),
+            "is_stock": is_stock,
+            "values": annual_vals,
+        })
+
+    return annual_rows, years_ordered
 
 
 def fs_classify_statement(rr: Any, fs: Optional[Dict], statement_key: str) -> str:
@@ -273,6 +346,13 @@ class FinancialStatementsProjection:
     bs_classification: str
     pf_cf_classification: str
     runtime_summary: Optional[Dict]
+    # Annual aggregated rows and labels (server-side; None when no data)
+    pnl_annual_rows: Optional[List[Dict]]
+    bs_annual_rows: Optional[List[Dict]]
+    pf_cf_annual_rows: Optional[List[Dict]]
+    pnl_annual_labels: List[str]
+    bs_annual_labels: List[str]
+    pf_cf_annual_labels: List[str]
 
 
 @dataclass(frozen=True)
@@ -381,20 +461,35 @@ def build_runtime_projection_bundle(
         ran_at=_ran_at,
         origin=_origin,
     )
+    _pnl_rows    = project_rows(FS_PNL_ROW_DEFS, pnl_periods)
+    _bs_rows     = project_rows(FS_BS_ROW_DEFS, bs_periods)
+    _pf_cf_rows  = project_rows(FS_PF_CF_ROW_DEFS, pf_cf_periods)
+    _pnl_labels    = project_period_labels(pnl_periods)
+    _bs_labels     = project_period_labels(bs_periods)
+    _pf_cf_labels  = project_period_labels(pf_cf_periods)
+    _pnl_annual_rows, _pnl_annual_labels     = aggregate_to_annual(_pnl_rows, _pnl_labels)
+    _bs_annual_rows, _bs_annual_labels       = aggregate_to_annual(_bs_rows, _bs_labels)
+    _pf_cf_annual_rows, _pf_cf_annual_labels = aggregate_to_annual(_pf_cf_rows, _pf_cf_labels)
     fs = FinancialStatementsProjection(
         meta=fs_meta,
         state=fs_state,
         fs_available=fs_payload is not None,
-        pnl_rows=project_rows(FS_PNL_ROW_DEFS, pnl_periods),
-        bs_rows=project_rows(FS_BS_ROW_DEFS, bs_periods),
-        pf_cf_rows=project_rows(FS_PF_CF_ROW_DEFS, pf_cf_periods),
-        pnl_period_labels=project_period_labels(pnl_periods),
-        bs_period_labels=project_period_labels(bs_periods),
-        pf_cf_period_labels=project_period_labels(pf_cf_periods),
+        pnl_rows=_pnl_rows,
+        bs_rows=_bs_rows,
+        pf_cf_rows=_pf_cf_rows,
+        pnl_period_labels=_pnl_labels,
+        bs_period_labels=_bs_labels,
+        pf_cf_period_labels=_pf_cf_labels,
         pnl_classification=fs_classify_statement(rr, fs_payload, "pnl"),
         bs_classification=fs_classify_statement(rr, fs_payload, "balance_sheet"),
         pf_cf_classification=fs_classify_statement(rr, fs_payload, "pf_cash_waterfall"),
         runtime_summary=runtime_summary,
+        pnl_annual_rows=_pnl_annual_rows,
+        bs_annual_rows=_bs_annual_rows,
+        pf_cf_annual_rows=_pf_cf_annual_rows,
+        pnl_annual_labels=_pnl_annual_labels,
+        bs_annual_labels=_bs_annual_labels,
+        pf_cf_annual_labels=_pf_cf_annual_labels,
     )
 
     return WorkbookRuntimeProjection(debt=debt, tax=tax, fs=fs)

@@ -338,7 +338,7 @@
 
         {%- elif sg.is_bound and project_editable -%}
           {{ render_field(sg.field, project_code, workbook_version, content_hash, project_editable,
-                          hx_target="#v2-sheet-opex", sheet_id="opex") }}
+                          hx_target="#panel-opex", sheet_id="opex") }}
 
         {%- elif sg.field -%}
           {{ opex_ro_row(sg.field.label, sg.field.value, badge=sg.field.binding_label | upper) }}
@@ -394,7 +394,7 @@
     <div class="v2-opex-summary-fields" data-testid="opex-summary-fields">
       {% for f in opex_summary_fields %}
         {{ render_field(f, project_code, workbook_version, content_hash, project_editable,
-                        hx_target="#v2-sheet-opex", sheet_id="opex") }}
+                        hx_target="#panel-opex", sheet_id="opex") }}
       {% endfor %}
     </div>
   {% endif %}
