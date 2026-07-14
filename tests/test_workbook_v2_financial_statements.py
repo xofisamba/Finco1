@@ -945,3 +945,156 @@ class TestRegressionOtherSheets(unittest.TestCase):
 
     def test_debt_sheet_still_present(self):
         assert self.soup.find(id="v2-sheet-senior-debt") is not None
+
+
+# ---------------------------------------------------------------------------
+# 50–53. CIT rate display scaling
+# ---------------------------------------------------------------------------
+
+class TestCITRateDisplay(unittest.TestCase):
+    """CIT rate must display as percentage (0.20 → '20.0%'), never as fraction."""
+
+    def setUp(self):
+        self.client = _authed_client()
+        self.project_code = _create_project(self.client, "CIT")
+
+    def _get_fs_soup(self) -> BeautifulSoup:
+        soup = _get_workbook_soup(self.client, self.project_code)
+        fs_div = soup.find(id="v2-sheet-financial-statements")
+        assert fs_div is not None, "#v2-sheet-financial-statements not found"
+        return fs_div
+
+    def _set_cit_rate(self, value_str: str):
+        """Set CIT rate via HTMX field edit."""
+        resp = self.client.get(f"/v2/workbook?project={self.project_code}")
+        soup = BeautifulSoup(resp.text, "html.parser")
+        shell = soup.find(id="v2-workbook-shell")
+        ch = shell["data-content-hash"]
+        self.client.post(
+            "/v2/workbook/update",
+            data={
+                "field_id": "tax.assumptions.cit_rate_pct",
+                "value": value_str,
+                "project": self.project_code,
+                "workbook_version": "2.1.0",
+                "content_hash": ch,
+                "sheet_id": "tax",
+            },
+            headers={"HX-Request": "true"},
+        )
+
+    def test_default_cit_rate_displayed_as_percent(self):
+        """Default CIT rate must display as 'XX.X%', not '0.XX'."""
+        fs = self._get_fs_soup()
+        cit_el = fs.find(attrs={"data-testid": "fs-cit-rate"})
+        assert cit_el is not None, "fs-cit-rate element not found"
+        text = cit_el.get_text(strip=True)
+        assert text.endswith("%"), f"CIT rate must end with '%', got: {text!r}"
+        # Must NOT look like a fraction (0.xx)
+        assert not text.startswith("0."), (
+            f"CIT rate displayed as fraction {text!r} — must be percentage"
+        )
+
+    def test_cit_rate_20_pct_displays_correctly(self):
+        """0.20 stored → '20.0%' displayed."""
+        self._set_cit_rate("20.0")
+        fs = self._get_fs_soup()
+        cit_el = fs.find(attrs={"data-testid": "fs-cit-rate"})
+        assert cit_el is not None
+        assert cit_el.get_text(strip=True) == "20.0%", (
+            f"Expected '20.0%', got {cit_el.get_text(strip=True)!r}"
+        )
+
+    def test_cit_rate_18_pct_displays_correctly(self):
+        """18% CIT rate must display as '18.0%'."""
+        self._set_cit_rate("18.0")
+        fs = self._get_fs_soup()
+        cit_el = fs.find(attrs={"data-testid": "fs-cit-rate"})
+        assert cit_el is not None
+        assert cit_el.get_text(strip=True) == "18.0%"
+
+    def test_cit_rate_zero_displays_correctly(self):
+        """0% CIT rate must display as '0.0%', not '0.0' or blank."""
+        self._set_cit_rate("0.0")
+        fs = self._get_fs_soup()
+        cit_el = fs.find(attrs={"data-testid": "fs-cit-rate"})
+        assert cit_el is not None
+        assert cit_el.get_text(strip=True) == "0.0%"
+
+
+# ---------------------------------------------------------------------------
+# 54–58. HX-Trigger save signal tests
+# ---------------------------------------------------------------------------
+
+class TestHXTriggerSaveSignals(unittest.TestCase):
+    """HTMX save responses carry workbook-field-saved / workbook-field-error triggers."""
+
+    def setUp(self):
+        self.client = _authed_client()
+        self.project_code = _create_project(self.client, "Trigger")
+
+    def _get_hash(self) -> str:
+        resp = self.client.get(f"/v2/workbook?project={self.project_code}")
+        soup = BeautifulSoup(resp.text, "html.parser")
+        return soup.find(id="v2-workbook-shell")["data-content-hash"]
+
+    def _htmx_edit(self, field_id: str, value: str, sheet_id: str = "tax",
+                   content_hash: str | None = None):
+        ch = content_hash if content_hash is not None else self._get_hash()
+        return self.client.post(
+            "/v2/workbook/update",
+            data={
+                "field_id": field_id,
+                "value": value,
+                "project": self.project_code,
+                "workbook_version": "2.1.0",
+                "content_hash": ch,
+                "sheet_id": sheet_id,
+            },
+            headers={"HX-Request": "true"},
+        )
+
+    def test_success_response_has_field_saved_trigger(self):
+        resp = self._htmx_edit("tax.assumptions.cit_rate_pct", "19.0", "tax")
+        assert resp.status_code == 200
+        trigger = resp.headers.get("HX-Trigger", "")
+        assert "workbook-field-saved" in trigger, (
+            f"HX-Trigger missing 'workbook-field-saved': {trigger!r}"
+        )
+
+    def test_success_trigger_contains_new_hash(self):
+        import json
+        resp = self._htmx_edit("tax.assumptions.cit_rate_pct", "22.0", "tax")
+        trigger = resp.headers.get("HX-Trigger", "{}")
+        data = json.loads(trigger)
+        payload = data.get("workbook-field-saved", {})
+        assert "new_hash" in payload, f"new_hash missing from trigger payload: {payload}"
+        assert payload["new_hash"], "new_hash must be non-empty"
+
+    def test_success_trigger_contains_field_id(self):
+        import json
+        resp = self._htmx_edit("tax.assumptions.cit_rate_pct", "21.0", "tax")
+        trigger = resp.headers.get("HX-Trigger", "{}")
+        data = json.loads(trigger)
+        payload = data.get("workbook-field-saved", {})
+        assert payload.get("field_id") == "tax.assumptions.cit_rate_pct", (
+            f"field_id mismatch: {payload}"
+        )
+
+    def test_stale_hash_response_has_field_error_trigger(self):
+        resp = self._htmx_edit(
+            "tax.assumptions.cit_rate_pct", "15.0", "tax",
+            content_hash="deliberately-stale-hash"
+        )
+        # Stale hash → HTMX error response
+        trigger = resp.headers.get("HX-Trigger", "")
+        assert "workbook-field-error" in trigger, (
+            f"Stale-hash response missing 'workbook-field-error': {trigger!r}"
+        )
+
+    def test_validation_error_response_has_field_error_trigger(self):
+        resp = self._htmx_edit("tax.assumptions.cit_rate_pct", "not-a-number", "tax")
+        trigger = resp.headers.get("HX-Trigger", "")
+        assert "workbook-field-error" in trigger, (
+            f"Validation-error response missing 'workbook-field-error': {trigger!r}"
+        )

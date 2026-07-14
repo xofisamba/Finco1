@@ -102,12 +102,13 @@
 </style>
 
 <script>
-/* Period selector: tab-based client-side toggle (no form elements) */
+/* Period selector: tab-based client-side toggle with sessionStorage persistence */
 function v2FsPeriodSwitch(val) {
   document.querySelectorAll('.v2-fs-period-tab').forEach(function (el) {
     var isActive = el.getAttribute('data-period-view') === val;
     el.classList.toggle('v2-fs-period-tab-active', isActive);
     el.setAttribute('aria-selected', isActive ? 'true' : 'false');
+    el.setAttribute('tabindex', isActive ? '0' : '-1');
   });
   document.querySelectorAll('.v2-fs-table-model').forEach(function (el) {
     el.style.display = val === 'model' ? '' : 'none';
@@ -115,6 +116,20 @@ function v2FsPeriodSwitch(val) {
   document.querySelectorAll('.v2-fs-table-annual').forEach(function (el) {
     el.style.display = val === 'annual' ? '' : 'none';
   });
+  try { sessionStorage.setItem('v2FsPeriodView', val); } catch(e) {}
+}
+
+function v2FsPeriodKeydown(event, val) {
+  if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+    event.preventDefault();
+    var other = val === 'model' ? 'annual' : 'model';
+    v2FsPeriodSwitch(other);
+    var otherBtn = document.querySelector('.v2-fs-period-tab[data-period-view="' + other + '"]');
+    if (otherBtn) otherBtn.focus();
+  } else if (event.key === 'Enter' || event.key === ' ') {
+    event.preventDefault();
+    v2FsPeriodSwitch(val);
+  }
 }
 </script>
 
@@ -128,6 +143,14 @@ function v2FsPeriodSwitch(val) {
   <div id="fs-runtime-bar" class="v2-section-label" data-testid="fs-runtime-bar">
     {% include "partials/_fs_runtime_bar.html" %}
   </div>
+
+  {# ── CIT rate assumption display ─────────────────────────────────────── #}
+  {% if fs_cit_rate_display is defined and fs_cit_rate_display %}
+  <div class="v2-field-row v2-field-readonly" style="padding:.25rem .5rem;font-size:.82rem;">
+    <span class="v2-field-label">Corporate Income Tax (CIT) rate</span>
+    <span class="v2-field-value" data-testid="fs-cit-rate">{{ fs_cit_rate_display }}</span>
+  </div>
+  {% endif %}
 
   {# ── State D — truthful unavailable notice (replaces statement tables) ─ #}
   {% if fs_state == "FS_UNAVAILABLE" %}
@@ -149,13 +172,13 @@ function v2FsPeriodSwitch(val) {
     <div role="tab" tabindex="0" class="v2-fs-period-tab v2-fs-period-tab-active"
          data-period-view="model" aria-selected="true"
          onclick="v2FsPeriodSwitch('model')"
-         onkeydown="if(event.key==='Enter'||event.key===' ')v2FsPeriodSwitch('model')">
+         onkeydown="v2FsPeriodKeydown(event,'model')">
       Model periods
     </div>
-    <div role="tab" tabindex="0" class="v2-fs-period-tab"
+    <div role="tab" tabindex="-1" class="v2-fs-period-tab"
          data-period-view="annual" aria-selected="false"
          onclick="v2FsPeriodSwitch('annual')"
-         onkeydown="if(event.key==='Enter'||event.key===' ')v2FsPeriodSwitch('annual')">
+         onkeydown="v2FsPeriodKeydown(event,'annual')">
       Annual
     </div>
   </div>
@@ -181,18 +204,51 @@ function v2FsPeriodSwitch(val) {
     document.querySelectorAll('.v2-fs-inner-tab').forEach(function(t) {
       var active = t.getAttribute('data-panel') === panelId;
       t.setAttribute('aria-selected', active ? 'true' : 'false');
+      t.setAttribute('tabindex', active ? '0' : '-1');
     });
     document.querySelectorAll('.v2-fs-inner-panel').forEach(function(p) {
       p.classList.toggle('v2-fs-inner-panel-active', p.id === panelId);
     });
+    try { sessionStorage.setItem('v2FsInnerTab', panelId); } catch(e) {}
   }
+
+  function v2FsInnerTabKeydown(event, panelId) {
+    var tabs = Array.prototype.slice.call(
+      document.querySelectorAll('.v2-fs-inner-tab'));
+    var idx = tabs.findIndex(function(t){ return t.getAttribute('data-panel')===panelId; });
+    var newIdx;
+    if (event.key === 'ArrowRight') { newIdx = (idx+1) % tabs.length; }
+    else if (event.key === 'ArrowLeft') { newIdx = (idx+tabs.length-1) % tabs.length; }
+    else if (event.key === 'Enter' || event.key === ' ') { v2FsInnerTabSwitch(panelId); event.preventDefault(); return; }
+    else { return; }
+    event.preventDefault();
+    var nextId = tabs[newIdx].getAttribute('data-panel');
+    v2FsInnerTabSwitch(nextId);
+    tabs[newIdx].focus();
+  }
+
+  /* Restore UI state from sessionStorage after HTMX swaps */
+  (function restoreFsUiState() {
+    try {
+      var savedTab = sessionStorage.getItem('v2FsInnerTab');
+      if (savedTab && document.getElementById(savedTab)) {
+        v2FsInnerTabSwitch(savedTab);
+      } else {
+        v2FsInnerTabSwitch('fs-inner-panel-pnl');
+      }
+      var savedView = sessionStorage.getItem('v2FsPeriodView');
+      if (savedView) { v2FsPeriodSwitch(savedView); }
+    } catch(e) {
+      v2FsInnerTabSwitch('fs-inner-panel-pnl');
+    }
+  })();
   </script>
 
   <div class="v2-fs-inner-tabs" role="tablist" aria-label="Financial statement">
     <div role="tab" tabindex="0" class="v2-fs-inner-tab" data-panel="fs-inner-panel-pnl"
          aria-selected="true" id="nav-fs-pnl"
          onclick="v2FsInnerTabSwitch('fs-inner-panel-pnl')"
-         onkeydown="if(event.key==='Enter'||event.key===' ')v2FsInnerTabSwitch('fs-inner-panel-pnl')">
+         onkeydown="v2FsInnerTabKeydown(event,'fs-inner-panel-pnl')">
       B. Income Statement
       {% if fs_pnl_classification == 'PARTIAL' %}
         <span class="v2-future-tag" style="margin-left:.35rem;"
@@ -205,7 +261,7 @@ function v2FsPeriodSwitch(val) {
     <div role="tab" tabindex="0" class="v2-fs-inner-tab" data-panel="fs-inner-panel-pf-cf"
          aria-selected="false" id="nav-fs-pf-cf"
          onclick="v2FsInnerTabSwitch('fs-inner-panel-pf-cf')"
-         onkeydown="if(event.key==='Enter'||event.key===' ')v2FsInnerTabSwitch('fs-inner-panel-pf-cf')">
+         onkeydown="v2FsInnerTabKeydown(event,'fs-inner-panel-pf-cf')">
       C. Cash Waterfall
       {% if fs_pf_cf_classification == 'PARTIAL' %}
         <span class="v2-future-tag" style="margin-left:.35rem;"
@@ -218,7 +274,7 @@ function v2FsPeriodSwitch(val) {
     <div role="tab" tabindex="0" class="v2-fs-inner-tab" data-panel="fs-inner-panel-bs"
          aria-selected="false" id="nav-fs-bs"
          onclick="v2FsInnerTabSwitch('fs-inner-panel-bs')"
-         onkeydown="if(event.key==='Enter'||event.key===' ')v2FsInnerTabSwitch('fs-inner-panel-bs')">
+         onkeydown="v2FsInnerTabKeydown(event,'fs-inner-panel-bs')">
       D. Balance Sheet
       {% if fs_bs_classification == 'PARTIAL' %}
         <span class="v2-future-tag" style="margin-left:.35rem;"
@@ -229,10 +285,6 @@ function v2FsPeriodSwitch(val) {
       {% endif %}
     </div>
   </div>
-  <script>
-  /* Activate first inner tab on load. */
-  (function(){ v2FsInnerTabSwitch('fs-inner-panel-pnl'); })();
-  </script>
 
   {# ── Helper macro: statement table (model or annual) ─────────────────── #}
   {%- macro statement_table(rows, period_labels, testid_prefix) -%}

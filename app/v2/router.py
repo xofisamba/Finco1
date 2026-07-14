@@ -116,6 +116,34 @@ def _build_pis_with_composite_identity(ws, project_record, user):
     return pis.with_composite_hash(identity.composite_hash)
 
 
+def _add_field_saved_trigger(resp: HTMLResponse, field_id: str, new_hash: str) -> HTMLResponse:
+    import json as _json
+    resp.headers["HX-Trigger"] = _json.dumps({
+        "workbook-field-saved": {"field_id": field_id, "new_hash": new_hash}
+    })
+    return resp
+
+
+def _add_field_error_trigger(resp: HTMLResponse, field_id: str, message: str) -> HTMLResponse:
+    import json as _json
+    resp.headers["HX-Trigger"] = _json.dumps({
+        "workbook-field-error": {"field_id": field_id, "message": message}
+    })
+    return resp
+
+
+def _cit_rate_display(pis) -> str:
+    """Return CIT rate as a display string like '20.0%', or '—' if unavailable."""
+    try:
+        pi = pis.to_projectinputs()
+        rate = pi.tax.corporate_rate
+        if rate is None:
+            return "—"
+        return f"{round(rate * 100, 1):.1f}%"
+    except Exception:
+        return "—"
+
+
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 _templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "app", "templates", "v2"))
 
@@ -603,6 +631,7 @@ def _build_financial_statements_ctx(pis, ws, projection=None) -> dict:
         "fs_pnl_annual_labels": f.pnl_annual_labels,
         "fs_bs_annual_labels": f.bs_annual_labels,
         "fs_pf_cf_annual_labels": f.pf_cf_annual_labels,
+        "fs_cit_rate_display": _cit_rate_display(pis),
     }
 
 
@@ -862,16 +891,18 @@ async def v2_workbook_update(
     except ProtectedReferenceError as exc:
         if is_htmx:
             pis = _build_pis_with_composite_identity(ws, project_record, user)
-            return _htmx_error(pis, str(exc))
+            resp = _htmx_error(pis, str(exc))
+            return _add_field_error_trigger(resp, field_id, str(exc))
         return JSONResponse({"error": str(exc)}, status_code=409)
     except StaleContentError as exc:
         if is_htmx:
             pis = _build_pis_with_composite_identity(ws, project_record, user)
-            return _htmx_error(
-                pis,
+            msg = (
                 "Draft changed since page loaded — values refreshed. "
-                "Please try your edit again.",
+                "Please try your edit again."
             )
+            resp = _htmx_error(pis, msg)
+            return _add_field_error_trigger(resp, field_id, msg)
         return _redirect_with_error(str(exc))
     except VersionMismatchError as exc:
         return JSONResponse({"error": str(exc), "reload": True}, status_code=409)
@@ -880,7 +911,8 @@ async def v2_workbook_update(
     except FieldValidationError as exc:
         if is_htmx:
             pis = _build_pis_with_composite_identity(ws, project_record, user)
-            return _htmx_error(pis, str(exc))
+            resp = _htmx_error(pis, str(exc))
+            return _add_field_error_trigger(resp, field_id, str(exc))
         return _redirect_with_error(str(exc))
 
     # Success path — reload workspace and assemble composite identity consistently
@@ -927,7 +959,8 @@ async def v2_workbook_update(
                 request, updated_pis, updated_ws_after, project_record, project,
                 projection=_proj,
             )
-            return HTMLResponse(content=resp.body.decode() + "\n" + build_all_runtime_bar_oob(_proj))
+            body = resp.body.decode() + "\n" + build_all_runtime_bar_oob(_proj)
+            return _add_field_saved_trigger(HTMLResponse(content=body), field_id, updated_pis.content_hash)
         elif sheet_id == "tax":
             from app.workbook.runtime_projection import build_runtime_projection_bundle
             from app.v2.runtime_projection_views import build_all_runtime_bar_oob
@@ -938,12 +971,14 @@ async def v2_workbook_update(
                 request, updated_pis, updated_ws_after, project_record, project,
                 projection=_proj,
             )
-            return HTMLResponse(content=resp.body.decode() + "\n" + build_all_runtime_bar_oob(_proj))
+            body = resp.body.decode() + "\n" + build_all_runtime_bar_oob(_proj)
+            return _add_field_saved_trigger(HTMLResponse(content=body), field_id, updated_pis.content_hash)
         elif sheet_id == "financial_statements":
             # Full sheet re-render already contains #fs-runtime-bar; no OOB needed.
-            return _render_financial_statements_htmx_sheet(
+            resp = _render_financial_statements_htmx_sheet(
                 request, updated_pis, updated_ws_after, project_record, project,
             )
+            return _add_field_saved_trigger(resp, field_id, updated_pis.content_hash)
         else:
             resp = _render_htmx_sheet(
                 request, updated_pis, updated_ws_after, project_record, project,
@@ -952,7 +987,8 @@ async def v2_workbook_update(
         # sheet immediately reflects the dirty/clean state on Debt, Tax, and
         # Financial Statements without a full page reload.
         all_bars_oob = _build_all_oob(updated_ws_after)
-        return HTMLResponse(content=resp.body.decode() + "\n" + all_bars_oob)
+        final_resp = HTMLResponse(content=resp.body.decode() + "\n" + all_bars_oob)
+        return _add_field_saved_trigger(final_resp, field_id, updated_pis.content_hash)
 
     return RedirectResponse(
         url=f"/v2/workbook?project={project}",
