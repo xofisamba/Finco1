@@ -434,9 +434,18 @@ function v2FsPeriodKeydown(event, val) {
     var savedTab = sessionStorage.getItem('v2FsInnerTab');
     if (savedTab && document.getElementById(savedTab)) {
       v2FsInnerTabSwitch(savedTab);
+    } else {
+      v2FsInnerTabSwitch('fs-inner-panel-pnl');
     }
     var savedView = sessionStorage.getItem('v2FsPeriodView');
-    if (savedView) { v2FsPeriodSwitch(savedView); }
-  } catch(e) {}
+    if (savedView === 'model' || savedView === 'annual') {
+      v2FsPeriodSwitch(savedView);
+    } else {
+      v2FsPeriodSwitch('model');
+    }
+  } catch (e) {
+    v2FsInnerTabSwitch('fs-inner-panel-pnl');
+    v2FsPeriodSwitch('model');
+  }
 })();
 </script>

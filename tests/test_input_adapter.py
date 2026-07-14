@@ -136,3 +136,135 @@ class TestInputAdapter:
         assert demo.result is not None
         assert demo.result.project_irr is not None
 
+
+class TestFrozenScheduleCompatibility:
+    """Tests for the frozen debt schedule compatibility rule in _resolve_user_inputs.
+
+    Rule: if the user-supplied total_capex_keur differs from the factory
+    base_capex by >= 0.01 kEUR (strict <), the frozen Excel senior debt
+    schedule flag and all calibrated debt values must be zeroed out.
+    If the diff is < 0.01 kEUR the frozen schedule is preserved unchanged.
+    """
+
+    # ------------------------------------------------------------------
+    # A1: Exact unchanged Oborovo CAPEX → frozen preserved, calibrated
+    #     debt field values are intact.
+    # ------------------------------------------------------------------
+    def test_oborovo_exact_capex_preserves_frozen_schedule(self):
+        from app.project_factories import create_default_oborovo
+        from app.input_adapter import _resolve_user_inputs
+
+        obo = create_default_oborovo()
+        base_capex = obo.capex.total_capex  # 57973.05265737862
+
+        result = _resolve_user_inputs(
+            project_type="Solar",
+            total_capex_keur=base_capex,
+            base_inputs=obo,
+        )
+
+        assert result.financing.use_frozen_excel_senior_debt_schedule is True
+        assert abs(result.financing.fixed_debt_keur - 42852.26672602787) < 0.01
+        assert abs(result.financing.shl_amount_keur - 13547.2) < 0.01
+        assert abs(result.financing.shl_idc_keur - 1169.0) < 0.01
+
+    # ------------------------------------------------------------------
+    # A2: Significantly different CAPEX → frozen disabled, calibrated
+    #     debt fields zeroed; gearing and DSCR are preserved.
+    # ------------------------------------------------------------------
+    def test_oborovo_different_capex_disables_frozen_schedule(self):
+        from app.project_factories import create_default_oborovo
+        from app.input_adapter import _resolve_user_inputs
+
+        obo = create_default_oborovo()
+
+        result = _resolve_user_inputs(
+            project_type="Solar",
+            total_capex_keur=40000.0,
+            base_inputs=obo,
+        )
+
+        assert result.financing.use_frozen_excel_senior_debt_schedule is False
+        assert result.financing.fixed_debt_keur == 0.0
+        assert result.financing.shl_amount_keur == 0.0
+        assert result.financing.shl_idc_keur == 0.0
+        # Gearing and DSCR must be preserved from the factory
+        assert abs(result.financing.gearing_ratio - obo.financing.gearing_ratio) < 1e-9
+        assert abs(result.financing.target_dscr - obo.financing.target_dscr) < 1e-9
+
+    # ------------------------------------------------------------------
+    # A3: CAPEX within tolerance (diff = 0.005 kEUR < 0.01) → preserved.
+    # ------------------------------------------------------------------
+    def test_oborovo_capex_within_tolerance_preserves_frozen(self):
+        from app.project_factories import create_default_oborovo
+        from app.input_adapter import _resolve_user_inputs
+
+        obo = create_default_oborovo()
+        within_tolerance = obo.capex.total_capex + 0.005
+
+        result = _resolve_user_inputs(
+            project_type="Solar",
+            total_capex_keur=within_tolerance,
+            base_inputs=obo,
+        )
+
+        assert result.financing.use_frozen_excel_senior_debt_schedule is True
+
+    # ------------------------------------------------------------------
+    # A4: Boundary — diff exactly 0.01 kEUR → strict < means DISABLED.
+    # ------------------------------------------------------------------
+    def test_oborovo_capex_at_boundary_disables_frozen(self):
+        from app.project_factories import create_default_oborovo
+        from app.input_adapter import _resolve_user_inputs
+
+        obo = create_default_oborovo()
+        at_boundary = obo.capex.total_capex + 0.01
+
+        result = _resolve_user_inputs(
+            project_type="Solar",
+            total_capex_keur=at_boundary,
+            base_inputs=obo,
+        )
+
+        assert result.financing.use_frozen_excel_senior_debt_schedule is False
+        assert result.financing.fixed_debt_keur == 0.0
+
+    # ------------------------------------------------------------------
+    # A5: Generic Solar / Wind with a capex override — these factories
+    #     do NOT set use_frozen_excel_senior_debt_schedule=True, so the
+    #     flag must remain False regardless (no invented values).
+    # ------------------------------------------------------------------
+    def test_generic_solar_capex_override_does_not_invent_frozen(self):
+        from app.project_factories import create_default_solar_project
+        from app.input_adapter import _resolve_user_inputs
+
+        solar = create_default_solar_project()
+        assert solar.financing.use_frozen_excel_senior_debt_schedule is False
+
+        result = _resolve_user_inputs(
+            project_type="Solar",
+            total_capex_keur=solar.capex.total_capex + 5000.0,
+            base_inputs=solar,
+        )
+
+        assert result.financing.use_frozen_excel_senior_debt_schedule is False
+        assert not result.financing.fixed_debt_keur  # None or 0.0 — no invented calibrated value
+
+    # ------------------------------------------------------------------
+    # A6: TUHO unchanged CAPEX → financing mode (frozen=True) preserved.
+    # ------------------------------------------------------------------
+    def test_tuho_exact_capex_preserves_frozen_schedule(self):
+        from app.project_factories import create_default_tuho_wind1
+        from app.input_adapter import _resolve_user_inputs
+
+        tuho = create_default_tuho_wind1()
+        assert tuho.financing.use_frozen_excel_senior_debt_schedule is True
+        base_capex = tuho.capex.total_capex
+
+        result = _resolve_user_inputs(
+            project_type="Wind",
+            total_capex_keur=base_capex,
+            base_inputs=tuho,
+        )
+
+        assert result.financing.use_frozen_excel_senior_debt_schedule is True

@@ -1058,14 +1058,16 @@ class TestFSBrowserAcceptance:
                 except ValueError:
                     pass
 
-        if not model_values:
-            pytest.skip("No model period revenue values (engine may not have run)")
+        assert model_values, (
+            "No model period revenue values — revenue cells rendered as '—'; "
+            "engine must have produced revenue rows for this test to be valid"
+        )
 
         # Switch to Annual
         p.locator('[data-period-view="annual"]').click()
         p.wait_for_timeout(300)
         annual_cells = p.locator(
-            '[data-testid="fs-pnl-annual-table"] [data-testid="fs-pnl-row-revenues_keur"] td'
+            '[data-testid="fs-pnl-annual-table"] [data-testid="fs-pnl-annual-row-revenues_keur"] td'
         ).all_inner_texts()
         annual_values = []
         for c in annual_cells[1:]:
@@ -1076,8 +1078,7 @@ class TestFSBrowserAcceptance:
                 except ValueError:
                     pass
 
-        if not annual_values:
-            pytest.skip("No annual revenue cells rendered")
+        assert annual_values, "No annual revenue cells rendered after switching to Annual view"
 
         assert abs(sum(annual_values) - sum(model_values)) < 1.0, (
             f"Annual Revenue sum {sum(annual_values):.0f} ≠ model sum {sum(model_values):.0f}"
@@ -1158,7 +1159,61 @@ class TestFSBrowserAcceptance:
 
 
 # ---------------------------------------------------------------------------
-# 7. FS selection persistence
+# 7. FS first-visit default panel
+# ---------------------------------------------------------------------------
+
+class TestFSFirstVisit:
+    """Income Statement panel must be visible on first visit (no sessionStorage)."""
+
+    @pytest.fixture(autouse=True)
+    def setup_page(self, authed_page, live_server, ran_project):
+        self.page = authed_page
+        self.base_url = live_server["base_url"]
+        self.project_code = ran_project
+
+    def test_pnl_panel_visible_on_first_visit(self):
+        """With sessionStorage cleared the PNL panel must be display:block (not none)."""
+        p = self.page
+
+        # Clear any saved FS state from earlier tests
+        p.goto(self.base_url)
+        p.wait_for_load_state("networkidle")
+        p.evaluate("sessionStorage.removeItem('v2FsInnerTab'); sessionStorage.removeItem('v2FsPeriodView');")
+
+        # Now load the workbook fresh
+        p.goto(f"{self.base_url}/v2/workbook?project={self.project_code}")
+        p.wait_for_load_state("networkidle")
+        _switch_tab(p, "financial-statements")
+        p.wait_for_timeout(300)
+
+        # PNL panel must be visible
+        pnl_display = p.evaluate(
+            "window.getComputedStyle(document.getElementById('fs-inner-panel-pnl')).display"
+        )
+        assert pnl_display != "none", (
+            f"PNL panel display={pnl_display!r} on first visit — IIFE else branch missing"
+        )
+
+        # PNL tab must be aria-selected=true
+        pnl_tab_selected = p.evaluate(
+            "document.querySelector('[data-panel=\"fs-inner-panel-pnl\"]')"
+            "?.getAttribute('aria-selected')"
+        )
+        assert pnl_tab_selected == "true", (
+            f"PNL tab aria-selected={pnl_tab_selected!r} on first visit"
+        )
+
+        # Other panels must be hidden
+        cf_display = p.evaluate(
+            "window.getComputedStyle(document.getElementById('fs-inner-panel-pf-cf')).display"
+        )
+        assert cf_display == "none", (
+            f"Cash flow panel should be hidden on first visit, got display={cf_display!r}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# 8. FS selection persistence
 # ---------------------------------------------------------------------------
 
 class TestFSSelectionPersistence:
