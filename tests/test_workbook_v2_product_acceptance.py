@@ -6,16 +6,23 @@ Uses the REAL engine (no mock for the output assertions).
 
 Coverage:
 1. TestRunChain — run produces output, dirty/clean transitions, output stability
-2. TestDebtEffectiveness — gearing / interest rate change → debt service / EBITDA changes
-3. TestOpexEffectiveness — OPEX Y1 change → EBITDA decreases
-4. TestTaxEffectiveness — cit_rate_pct change → total_tax_keur changes
+2. TestRevenueEffectiveness — p50_hours edit → total_revenue_keur changes
+3. TestCapexEffectiveness — CAPEX sub-line → total_capex_keur increases
+4. TestOpexEffectiveness — OPEX sub-line → total_opex_keur increases, EBITDA decreases
+5. TestDebtEffectiveness — target_dscr change → total_senior_ds_keur changes
+6. TestTaxEffectiveness — CIT rate change → total_tax_keur changes + reload preservation
 
 Note on revenue.ppa.base_tariff (rev_ppa_base_tariff snapshot key):
-  The rev_ppa_base_tariff key is not yet wired into build_projectinputs_from_snapshot
+  The rev_ppa_base_tariff key is not yet wired into _snapshot_to_dict
   (which reads the legacy tariff_eur_mwh key). The BOUND field is correctly stored in
   the draft snapshot, but does not flow through to the engine via V2's to_projectinputs()
-  path. This is a known input coverage gap; revenue tariff effectiveness is tested via
-  the legacy run path. Tracked as ITEM 8 (Input Coverage Gap report).
+  path. This is a known input coverage gap; revenue tariff effectiveness is NOT tested here.
+  Tracked as ITEM 8 (Input Coverage Gap report).
+
+Note on DSCR-sculpted model: higher target_dscr → the engine re-sculpts debt service to
+match CFADS / target_dscr per period (debt quantum changes to hit the target). In the
+test below, total_senior_ds_keur changes materially when target_dscr is changed — proving
+the debt wiring is live — but the direction depends on the full model dynamics.
 """
 from __future__ import annotations
 
@@ -56,7 +63,7 @@ def _create_project(client, suffix):
         "horizon_years": "25",
         "tariff_eur_mwh": "55",
         "ppa_term_years": "15",
-        "p50_hours": "1800",
+        "p50_hours": "2200",
         "opex_y1_keur": "700",
         "total_capex_keur": "45000",
         "gearing_pct": "70",
@@ -187,19 +194,184 @@ class TestRunChain(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# 2. Debt — gearing / interest rate changes → output changes
+# 2. Revenue — p50_hours increase → total_revenue_keur increases
+# ---------------------------------------------------------------------------
+
+class TestRevenueEffectiveness(unittest.TestCase):
+    """Verify p50_hours edit flows through engine to change total_revenue_keur."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.client = _client()
+        cls.project_code = _create_project(cls.client, "rev-accept")
+
+    def test_p50_hours_increase_raises_total_revenue(self):
+        # Step 1: Baseline run
+        _run(self.client, self.project_code)
+        ws1 = _get_ws(self.client, self.project_code)
+        summary1 = _get_summary(ws1)
+        rev1 = summary1.get("total_revenue_keur")
+        self.assertIsNotNone(rev1, f"Baseline must produce total_revenue_keur; keys={list(summary1)}")
+
+        # Step 2: Edit p50_hours from 2200 → 6000 (nearly 3× increase)
+        _update_field(self.client, self.project_code,
+                      "project_setup.technical.p50_hours", "6000", "project_setup")
+        ws_stale = _get_ws(self.client, self.project_code)
+        self.assertTrue(ws_stale.dirty, "Workspace must be STALE after p50_hours edit")
+
+        # Step 3: Run
+        _run(self.client, self.project_code)
+        ws2 = _get_ws(self.client, self.project_code)
+        self.assertFalse(ws2.dirty, "Workspace must be CLEAN after run")
+        summary2 = _get_summary(ws2)
+        rev2 = summary2.get("total_revenue_keur")
+        self.assertIsNotNone(rev2)
+
+        # Step 4: Assert total_revenue_keur increased materially (expect ~3× of baseline)
+        self.assertGreater(rev2, rev1 * 2.0,
+            f"p50_hours 2200→6000 must increase total_revenue_keur >2×: "
+            f"{rev1:.0f} → {rev2:.0f}")
+
+        # Step 5: Reload and assert value preserved
+        ws_reload = _get_ws(self.client, self.project_code)
+        rev_reload = _get_summary(ws_reload).get("total_revenue_keur")
+        self.assertAlmostEqual(rev2, rev_reload, places=0,
+            msg=f"Revenue must be preserved after reload: {rev2:.0f} vs {rev_reload:.0f}")
+
+
+# ---------------------------------------------------------------------------
+# 3. CAPEX — sub-line add → total_capex_keur increases
+# ---------------------------------------------------------------------------
+
+class TestCapexEffectiveness(unittest.TestCase):
+    """Verify CAPEX sub-line flows through engine to change total_capex_keur."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.client = _client()
+        cls.project_code = _create_project(cls.client, "capex-accept")
+
+    def test_capex_subline_increases_total_capex(self):
+        # Step 1: Baseline run
+        _run(self.client, self.project_code)
+        ws1 = _get_ws(self.client, self.project_code)
+        summary1 = _get_summary(ws1)
+        capex1 = summary1.get("total_capex_keur")
+        self.assertIsNotNone(capex1, f"Baseline must produce total_capex_keur; keys={list(summary1)}")
+
+        # Step 2: Add CAPEX sub-line (8000 kEUR)
+        ch, wv = _get_hash(self.client, self.project_code)
+        resp = self.client.post("/v2/capex/line/add", data={
+            "project": self.project_code,
+            "parent_category_code": "C.07",
+            "label": "Extra CAPEX Test",
+            "amount_keur": 8000.0,
+            "notes": "",
+            "workbook_version": wv,
+            "content_hash": ch,
+        }, headers={"HX-Request": "true"})
+        self.assertEqual(resp.status_code, 200,
+            f"CAPEX sub-line add failed: {resp.status_code} {resp.text[:200]}")
+
+        ws_stale = _get_ws(self.client, self.project_code)
+        self.assertTrue(ws_stale.dirty, "Workspace must be STALE after CAPEX sub-line add")
+
+        # Step 3: Run
+        _run(self.client, self.project_code)
+        ws2 = _get_ws(self.client, self.project_code)
+        self.assertFalse(ws2.dirty, "Workspace must be CLEAN after run")
+        summary2 = _get_summary(ws2)
+        capex2 = summary2.get("total_capex_keur")
+        self.assertIsNotNone(capex2)
+
+        # Step 4: Assert total_capex_keur increased by ~8000
+        self.assertGreater(capex2, capex1 + 5000,
+            f"CAPEX sub-line +8000kEUR must increase total_capex_keur: "
+            f"{capex1:.0f} → {capex2:.0f}")
+
+        # Step 5: Reload and assert value preserved
+        ws_reload = _get_ws(self.client, self.project_code)
+        capex_reload = _get_summary(ws_reload).get("total_capex_keur")
+        self.assertAlmostEqual(capex2, capex_reload, places=0,
+            msg=f"CAPEX must be preserved after reload: {capex2:.0f} vs {capex_reload:.0f}")
+
+
+# ---------------------------------------------------------------------------
+# 4. OPEX — sub-line add → total_opex_keur increases, EBITDA decreases
+# ---------------------------------------------------------------------------
+
+class TestOpexEffectiveness(unittest.TestCase):
+    """Verify OPEX sub-line flows through engine to change total_opex_keur and EBITDA."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.client = _client()
+        cls.project_code = _create_project(cls.client, "opex-accept")
+
+    def test_opex_subline_increases_opex_and_decreases_ebitda(self):
+        # Step 1: Baseline run
+        _run(self.client, self.project_code)
+        ws1 = _get_ws(self.client, self.project_code)
+        summary1 = _get_summary(ws1)
+        opex1 = summary1.get("total_opex_keur")
+        ebitda1 = summary1.get("total_ebitda_keur")
+        self.assertIsNotNone(opex1, f"Baseline must produce total_opex_keur; keys={list(summary1)}")
+        self.assertIsNotNone(ebitda1)
+
+        # Step 2: Add OPEX sub-line (500 kEUR/yr)
+        ch, wv = _get_hash(self.client, self.project_code)
+        resp = self.client.post("/v2/opex/line/add", data={
+            "project": self.project_code,
+            "parent_group_code": "B.01",
+            "label": "Extra OPEX Test",
+            "amount_keur": 500.0,
+            "workbook_version": wv,
+            "content_hash": ch,
+        }, headers={"HX-Request": "true"})
+        self.assertEqual(resp.status_code, 200,
+            f"OPEX sub-line add failed: {resp.status_code} {resp.text[:200]}")
+
+        ws_stale = _get_ws(self.client, self.project_code)
+        self.assertTrue(ws_stale.dirty, "Workspace must be STALE after OPEX sub-line add")
+
+        # Step 3: Run
+        _run(self.client, self.project_code)
+        ws2 = _get_ws(self.client, self.project_code)
+        self.assertFalse(ws2.dirty, "Workspace must be CLEAN after run")
+        summary2 = _get_summary(ws2)
+        opex2 = summary2.get("total_opex_keur")
+        ebitda2 = summary2.get("total_ebitda_keur")
+        self.assertIsNotNone(opex2)
+        self.assertIsNotNone(ebitda2)
+
+        # Step 4: Assert total_opex_keur increased and EBITDA decreased
+        self.assertGreater(opex2, opex1,
+            f"OPEX sub-line +500kEUR/yr must increase total_opex_keur: "
+            f"{opex1:.0f} → {opex2:.0f}")
+        self.assertLess(ebitda2, ebitda1,
+            f"OPEX increase must decrease EBITDA: {ebitda1:.0f} → {ebitda2:.0f}")
+
+        # Step 5: Reload and assert values preserved
+        ws_reload = _get_ws(self.client, self.project_code)
+        summary_reload = _get_summary(ws_reload)
+        opex_reload = summary_reload.get("total_opex_keur")
+        ebitda_reload = summary_reload.get("total_ebitda_keur")
+        self.assertAlmostEqual(opex2, opex_reload, places=0,
+            msg=f"OPEX must be preserved after reload: {opex2:.0f} vs {opex_reload:.0f}")
+        self.assertAlmostEqual(ebitda2, ebitda_reload, places=0,
+            msg=f"EBITDA must be preserved after reload: {ebitda2:.0f} vs {ebitda_reload:.0f}")
+
+
+# ---------------------------------------------------------------------------
+# 5. Debt — target_dscr change → total_senior_ds_keur changes
 # ---------------------------------------------------------------------------
 
 class TestDebtEffectiveness(unittest.TestCase):
-    """Verify debt field edits are accepted, workspace transitions correctly, run stays CLEAN.
+    """Verify target_dscr change flows through to total_senior_ds_keur.
 
-    Note on DSCR-sculpted model economics: in this engine, debt service is sculpted
-    to CFADS/DSCR_target each period. As a result, total_senior_ds_keur, equity_irr,
-    and equity_npv_keur are not sensitive to gearing in the expected naive direction —
-    the available equity waterfall (CFADS - DS) is a fixed fraction of CFADS regardless
-    of the debt quantum. This is the correct behaviour for a sculpted model; the
-    economic sensitivity of gearing on equity is tracked in the Input Coverage Gap
-    report (Item 8). These tests focus on the edit→STALE→Run→CLEAN contract.
+    In the sculpted-DSCR model: DS_period = CFADS_period / target_dscr.
+    Changing target_dscr alters the sculpted debt service schedule, so
+    total_senior_ds_keur must change materially.
     """
 
     @classmethod
@@ -207,108 +379,60 @@ class TestDebtEffectiveness(unittest.TestCase):
         cls.client = _client()
         cls.project_code = _create_project(cls.client, "debt-accept")
 
-    def test_gearing_edit_accepted_and_run_is_clean(self):
-        """Gearing field edit is accepted (200), workspace goes dirty, run goes clean."""
-        _run(self.client, self.project_code)
-
-        # Edit gearing
-        _update_field(self.client, self.project_code,
-                      "debt.senior.gearing_pct", "80.0", "debt")
-        ws_stale = _get_ws(self.client, self.project_code)
-        self.assertTrue(ws_stale.dirty, "Workspace must be STALE after gearing edit")
-
-        # Run — must produce clean state with persisted output
-        _run(self.client, self.project_code)
-        ws_clean = _get_ws(self.client, self.project_code)
-        self.assertFalse(ws_clean.dirty, "Workspace must be CLEAN after run")
-        self.assertIsNotNone(ws_clean.last_runtime_snapshot_id, "Must have runtime snapshot")
-        summary = _get_summary(ws_clean)
-        self.assertIsNotNone(summary.get("total_ebitda_keur"), "Must produce EBITDA")
-
-    def test_interest_rate_edit_accepted_and_run_is_clean(self):
-        """Interest rate edit accepted, run stays CLEAN, output is present."""
-        _update_field(self.client, self.project_code,
-                      "debt.senior.interest_rate_pct", "7.0", "debt")
-        ws_stale = _get_ws(self.client, self.project_code)
-        self.assertTrue(ws_stale.dirty)
-
-        _run(self.client, self.project_code)
-        ws_clean = _get_ws(self.client, self.project_code)
-        self.assertFalse(ws_clean.dirty)
-        self.assertIsNotNone(_get_summary(ws_clean).get("total_ebitda_keur"))
-
-    def test_tax_rate_increase_changes_total_tax(self):
-        """Higher CIT rate → total_tax_keur changes (confirms full engine chain)."""
+    def test_target_dscr_change_alters_senior_ds(self):
+        # Step 1: Baseline run at default (target_dscr=1.30)
         _run(self.client, self.project_code)
         ws1 = _get_ws(self.client, self.project_code)
-        tax1 = _get_summary(ws1).get("total_tax_keur")
-        self.assertIsNotNone(tax1)
+        summary1 = _get_summary(ws1)
+        ds1 = summary1.get("total_senior_ds_keur")
+        self.assertIsNotNone(ds1,
+            f"Baseline must produce total_senior_ds_keur; keys={list(summary1)}")
 
+        # Step 2: Edit target_dscr to 1.80
         _update_field(self.client, self.project_code,
-                      "tax.assumptions.cit_rate_pct", "35.0", "tax")
-        _run(self.client, self.project_code)
-        ws2 = _get_ws(self.client, self.project_code)
-        tax2 = _get_summary(ws2).get("total_tax_keur")
-
-        self.assertIsNotNone(tax2)
-        self.assertNotAlmostEqual(tax1, tax2, places=0,
-            msg=f"CIT rate change must alter total_tax_keur: {tax1:.0f} → {tax2:.0f}")
-
-
-# ---------------------------------------------------------------------------
-# 3. OPEX — OPEX Y1 increase → EBITDA decreases
-# ---------------------------------------------------------------------------
-
-class TestOpexEffectiveness(unittest.TestCase):
-    """Verify OPEX field edits are accepted and the full Run cycle works.
-
-    Input Coverage Gap: individual OPEX line fields (opex.lines.*) are BOUND in
-    the registry and are stored in the draft snapshot, but build_projectinputs_from_snapshot
-    reads only opex_y1_keur (the aggregate total). Edits to individual lines therefore do
-    not currently change engine EBITDA output. This gap is tracked in the Input Coverage
-    Gap report (Item 8). Tests focus on the edit→STALE→Run→CLEAN contract.
-    """
-
-    @classmethod
-    def setUpClass(cls):
-        cls.client = _client()
-        cls.project_code = _create_project(cls.client, "opex-accept")
-
-    def test_opex_line_edit_accepted_run_is_clean(self):
-        """OPEX line edit is accepted (200), workspace goes dirty, run goes clean."""
-        _run(self.client, self.project_code)
-
-        _update_field(self.client, self.project_code,
-                      "opex.lines.technical_management", "300", "opex")
+                      "debt.senior.target_dscr", "1.80", "debt")
         ws_stale = _get_ws(self.client, self.project_code)
-        self.assertTrue(ws_stale.dirty, "Workspace must be STALE after OPEX edit")
+        self.assertTrue(ws_stale.dirty,
+                        "Workspace must be STALE after target_dscr edit")
 
-        _run(self.client, self.project_code)
-        ws_clean = _get_ws(self.client, self.project_code)
-        self.assertFalse(ws_clean.dirty, "Workspace must be CLEAN after run")
-        self.assertIsNotNone(_get_summary(ws_clean).get("total_ebitda_keur"))
-
-    def test_opex_output_stable_on_consecutive_runs(self):
-        """Consecutive runs with the same OPEX produce identical EBITDA."""
-        _run(self.client, self.project_code)
-        ws1 = _get_ws(self.client, self.project_code)
-        ebitda1 = _get_summary(ws1).get("total_ebitda_keur")
-
+        # Step 3: Run
         _run(self.client, self.project_code)
         ws2 = _get_ws(self.client, self.project_code)
-        ebitda2 = _get_summary(ws2).get("total_ebitda_keur")
+        self.assertFalse(ws2.dirty, "Workspace must be CLEAN after run")
+        summary2 = _get_summary(ws2)
+        ds2 = summary2.get("total_senior_ds_keur")
+        self.assertIsNotNone(ds2)
 
-        self.assertIsNotNone(ebitda1)
-        self.assertAlmostEqual(ebitda1, ebitda2, places=0,
-            msg=f"EBITDA must be stable on re-run: {ebitda1:.0f} → {ebitda2:.0f}")
+        # Step 4: Assert total_senior_ds_keur changed materially (>5% difference)
+        relative_change = abs(ds2 - ds1) / max(abs(ds1), 1.0)
+        self.assertGreater(relative_change, 0.05,
+            f"target_dscr 1.30→1.80 must change total_senior_ds_keur >5%: "
+            f"{ds1:.0f} → {ds2:.0f}")
+
+        # Step 5: Reload and assert value preserved
+        ws_reload = _get_ws(self.client, self.project_code)
+        ds_reload = _get_summary(ws_reload).get("total_senior_ds_keur")
+        self.assertAlmostEqual(ds2, ds_reload, places=0,
+            msg=f"Senior DS must be preserved after reload: {ds2:.0f} vs {ds_reload:.0f}")
+
+    def test_min_dscr_tracks_target(self):
+        """After editing target_dscr, min_dscr value is present and numeric."""
+        _update_field(self.client, self.project_code,
+                      "debt.senior.target_dscr", "1.50", "debt")
+        _run(self.client, self.project_code)
+        ws = _get_ws(self.client, self.project_code)
+        summary = _get_summary(ws)
+        min_dscr = summary.get("min_dscr")
+        self.assertIsNotNone(min_dscr, "Run must produce min_dscr")
+        self.assertGreater(min_dscr, 0.5, "min_dscr must be positive")
 
 
 # ---------------------------------------------------------------------------
-# 4. Tax — cit_rate_pct change → total_tax_keur changes
+# 6. Tax — CIT rate change → total_tax_keur changes + reload preservation
 # ---------------------------------------------------------------------------
 
 class TestTaxEffectiveness(unittest.TestCase):
-    """Verify tax rate changes flow through to total_tax_keur."""
+    """Verify tax rate changes flow through to total_tax_keur, with reload preservation."""
 
     @classmethod
     def setUpClass(cls):
@@ -316,25 +440,36 @@ class TestTaxEffectiveness(unittest.TestCase):
         cls.project_code = _create_project(cls.client, "tax-accept")
 
     def test_cit_rate_increase_changes_tax(self):
-        # Initial run
+        # Step 1: Baseline run at default CIT (~19%)
         _run(self.client, self.project_code)
         ws1 = _get_ws(self.client, self.project_code)
         tax1 = _get_summary(ws1).get("total_tax_keur")
         self.assertIsNotNone(tax1, f"No total_tax_keur in summary: {list(_get_summary(ws1))}")
 
-        # Increase CIT rate significantly (default ~19% → 35%)
+        # Step 2: Edit CIT rate to 35%
         _update_field(self.client, self.project_code,
                       "tax.assumptions.cit_rate_pct", "35.0", "tax")
+        ws_stale = _get_ws(self.client, self.project_code)
+        self.assertTrue(ws_stale.dirty, "Workspace must be STALE after CIT rate edit")
 
+        # Step 3: Run
         _run(self.client, self.project_code)
         ws2 = _get_ws(self.client, self.project_code)
         self.assertFalse(ws2.dirty)
         tax2 = _get_summary(ws2).get("total_tax_keur")
-
         self.assertIsNotNone(tax2)
-        # Higher CIT rate → tax amount changes (absolute value increases)
+
+        # Step 4: Assert total_tax_keur changed (higher CIT rate → more tax)
         self.assertNotAlmostEqual(tax1, tax2, places=0,
-            msg=f"CIT rate change must change total tax: {tax1} → {tax2}")
+            msg=f"CIT rate change must alter total_tax_keur: {tax1:.0f} → {tax2:.0f}")
+
+        # Step 5: Reload via GET and re-read workspace summary (proves reload preservation)
+        # Re-GET the workbook page (simulating a page reload)
+        _get_hash(self.client, self.project_code)  # forces a fresh GET
+        ws_reload = _get_ws(self.client, self.project_code)
+        tax_reload = _get_summary(ws_reload).get("total_tax_keur")
+        self.assertAlmostEqual(tax2, tax_reload, places=0,
+            msg=f"total_tax_keur must be preserved after reload: {tax2:.0f} vs {tax_reload:.0f}")
 
     def test_loss_carryforward_change_affects_run(self):
         """Loss carryforward change produces a valid, stable run."""

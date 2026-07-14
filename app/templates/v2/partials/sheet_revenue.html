@@ -68,8 +68,10 @@
     <div class="v2-section-fields">
 
       {# All ppa section fields — render_field decides BOUND→editable / PARTIAL→read-only badge #}
+      {# revenue.ppa.base_tariff is BOUND in registry but NOT wired in V2 _snapshot_to_dict   #}
+      {# (engine reads legacy tariff_eur_mwh key). It is shown as a planned input below.       #}
       {% for f in revenue_fields %}
-        {% if f.section_id == "ppa" %}
+        {% if f.section_id == "ppa" and f.field_id != "revenue.ppa.base_tariff" %}
           {{ render_field(f, project_code, workbook_version, content_hash, project_editable,
                           hx_target="#v2-sheet-revenue", sheet_id="revenue") }}
         {% endif %}
@@ -97,6 +99,8 @@
   <details class="v2-inputs-section">
     {{ section_anchor("planned", "3. Planned inputs") }}
     <div class="v2-section-fields">
+      {# revenue.ppa.base_tariff: stored in draft but not wired to V2 engine (reads tariff_eur_mwh) #}
+      {{ placeholder_row("PPA Base Tariff (EUR/MWh)", "Not wired in V2 engine — use project creation") }}
       {{ placeholder_row("Offtake Type") }}
       {{ placeholder_row("Merchant %") }}
       {{ placeholder_row("Contract Count") }}

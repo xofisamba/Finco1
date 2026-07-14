@@ -459,9 +459,12 @@ class TestInputsSheetHtml(unittest.TestCase):
             inp.find(attrs={"data-field-id": "project_setup.technical.p50_hours"}))
 
     def test_revenue_ppa_fields_present(self):
+        # revenue.ppa.base_tariff is excluded from the Inputs sheet (not wired in V2 engine).
+        # Use revenue.ppa.index instead (which is wired and editable).
         inp = self.soup.find(id="v2-sheet-inputs")
         self.assertIsNotNone(
-            inp.find(attrs={"data-field-id": "revenue.ppa.base_tariff"}))
+            inp.find(attrs={"data-field-id": "revenue.ppa.index"}),
+            "revenue.ppa.index must appear in Inputs aggregation sheet")
 
     def test_debt_gearing_field_present(self):
         inp = self.soup.find(id="v2-sheet-inputs")

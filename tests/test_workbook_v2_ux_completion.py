@@ -558,5 +558,58 @@ class TestNoNestedForms(unittest.TestCase):
                 depth -= 1
 
 
+class TestRevenueTariffPlacement(unittest.TestCase):
+    """revenue.ppa.base_tariff must not appear as a primary editable in the open section.
+
+    The field is BOUND in the registry but NOT wired in V2 _snapshot_to_dict
+    (engine reads legacy tariff_eur_mwh). It must therefore NOT be rendered as
+    a primary editable input in the open Commercial Structure section.
+    """
+
+    def setUp(self):
+        self.client = _authed_client()
+        self.project_code = _create_project(self.client, "tariff-placement")
+
+    def test_revenue_tariff_not_in_open_primary_section(self):
+        """revenue.ppa.base_tariff must not appear as an editable field in the open section."""
+        body = _get_workbook(self.client, self.project_code)
+        import re
+        # The open Commercial Structure section is the first <details open> block.
+        # Find the first open details block in the revenue sheet.
+        open_section_match = re.search(
+            r'<details[^>]+class="v2-inputs-section"[^>]*open[^>]*>(.*?)</details>',
+            body, re.DOTALL
+        )
+        if open_section_match is None:
+            # Try alternate attribute order
+            open_section_match = re.search(
+                r'<details[^>]+open[^>]*class="v2-inputs-section"[^>]*>(.*?)</details>',
+                body, re.DOTALL
+            )
+        # If still not found, search for open details broadly
+        if open_section_match is None:
+            open_section_match = re.search(
+                r'<details open>(.*?)</details>', body, re.DOTALL
+            )
+
+        # revenue.ppa.base_tariff must not appear as an htmx-wired editable input
+        # (i.e., must not have hx-post with that field_id as a primary editable)
+        # We check that the field_id does not appear inside an hx-post update form
+        editable_pattern = re.compile(
+            r'name="field_id"[^>]*value="revenue\.ppa\.base_tariff"'
+            r'|value="revenue\.ppa\.base_tariff"[^>]*name="field_id"',
+            re.DOTALL
+        )
+        self.assertNotRegex(body, editable_pattern,
+            "revenue.ppa.base_tariff must not appear as a primary editable input "
+            "(it is not wired to V2 engine — should be in planned/collapsed section)")
+
+    def test_revenue_tariff_placeholder_in_collapsed_section(self):
+        """PPA Base Tariff placeholder appears in collapsed planned-inputs section."""
+        body = _get_workbook(self.client, self.project_code)
+        self.assertIn("PPA Base Tariff", body,
+            "PPA Base Tariff placeholder must appear somewhere in the revenue sheet")
+
+
 if __name__ == "__main__":
     unittest.main()

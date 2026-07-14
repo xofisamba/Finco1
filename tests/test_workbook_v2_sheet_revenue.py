@@ -179,8 +179,10 @@ class TestRevenueAllFieldsRendered(unittest.TestCase):
         return [r["data-field-id"] for r in self.rev.find_all(attrs={"data-field-id": True})]
 
     def test_all_nine_field_ids_present(self):
+        # revenue.ppa.base_tariff is excluded from the revenue sheet DOM:
+        # it is NOT wired in V2 _snapshot_to_dict (engine reads legacy tariff_eur_mwh).
+        # It is shown as a placeholder in the "Planned inputs" collapsed section instead.
         expected = {
-            "revenue.ppa.base_tariff",
             "revenue.ppa.index",
             "revenue.ppa.term_years",
             "revenue.ppa.production_share",
@@ -193,6 +195,10 @@ class TestRevenueAllFieldsRendered(unittest.TestCase):
         dom_ids = set(self._dom_field_ids())
         missing = expected - dom_ids
         self.assertFalse(missing, f"Missing field_ids in DOM: {missing}")
+        # Also verify base_tariff is NOT in the revenue sheet DOM (moved to placeholder)
+        self.assertNotIn("revenue.ppa.base_tariff", dom_ids,
+            "revenue.ppa.base_tariff must not appear as editable in revenue sheet "
+            "(not wired to V2 engine)")
 
     def test_each_field_id_appears_exactly_once(self):
         fids = self._dom_field_ids()
@@ -200,10 +206,10 @@ class TestRevenueAllFieldsRendered(unittest.TestCase):
         self.assertFalse(dupes, f"Duplicate field_ids in DOM: {dupes}")
 
     def test_seven_editable_controls(self):
-        """Exactly 7 BOUND fields rendered as editable rows."""
+        """6 BOUND fields rendered as editable rows (base_tariff moved to planned placeholder)."""
         editable = self.rev.find_all(class_="v2-field-editable")
-        self.assertEqual(len(editable), 7,
-                         f"expected 7 editable, got {len(editable)}")
+        self.assertEqual(len(editable), 6,
+                         f"expected 6 editable (base_tariff is a placeholder), got {len(editable)}")
 
     def test_two_partial_rows_in_dom(self):
         """Both PARTIAL legacy fields appear as read-only rows with PARTIAL badge."""
@@ -272,8 +278,8 @@ class TestRevenueSheetHtml(unittest.TestCase):
             self.assertIn(expected, link_texts, f"nav missing '{expected}'")
 
     def test_ppa_bound_fields_rendered(self):
+        # revenue.ppa.base_tariff is excluded from the sheet DOM (not wired in V2 engine).
         for fid in (
-            "revenue.ppa.base_tariff",
             "revenue.ppa.index",
             "revenue.ppa.term_years",
             "revenue.ppa.production_share",
@@ -282,6 +288,11 @@ class TestRevenueSheetHtml(unittest.TestCase):
                 self.rev.find(attrs={"data-field-id": fid}),
                 f"field {fid!r} missing from revenue sheet",
             )
+        # base_tariff must NOT appear in the revenue sheet DOM
+        self.assertIsNone(
+            self.rev.find(attrs={"data-field-id": "revenue.ppa.base_tariff"}),
+            "revenue.ppa.base_tariff must not appear as editable in revenue sheet",
+        )
 
     def test_balancing_fields_rendered(self):
         for fid in (
@@ -338,10 +349,10 @@ class TestRevenueSheetEditable(unittest.TestCase):
         cls.rev = cls.soup.find(id="v2-sheet-revenue")
 
     def test_exactly_seven_editable_controls(self):
-        """7 BOUND fields → 7 editable rows."""
+        """6 BOUND fields → 6 editable rows (base_tariff is a planned placeholder)."""
         editable = self.rev.find_all(class_="v2-field-editable")
-        self.assertEqual(len(editable), 7,
-                         f"expected 7, got {len(editable)}")
+        self.assertEqual(len(editable), 6,
+                         f"expected 6 (base_tariff excluded from editables), got {len(editable)}")
 
     def test_forms_target_revenue_sheet(self):
         forms = self.rev.find_all("form", class_="v2-field-form")
@@ -358,12 +369,12 @@ class TestRevenueSheetEditable(unittest.TestCase):
             self.assertIsNotNone(sid, "form missing sheet_id hidden input")
             self.assertEqual(sid["value"], "revenue")
 
-    def test_base_tariff_step_from_registry(self):
-        """base_tariff has decimals=2 → step="0.01"."""
+    def test_base_tariff_not_in_editable_dom(self):
+        """base_tariff must NOT appear as an editable field — it is a planned placeholder."""
         row = self.rev.find(attrs={"data-field-id": "revenue.ppa.base_tariff"})
-        inp = row.find("input", {"name": "value"})
-        self.assertIsNotNone(inp)
-        self.assertEqual(inp.get("step"), "0.01")
+        self.assertIsNone(row,
+            "revenue.ppa.base_tariff must not appear in editable DOM "
+            "(not wired in V2 engine; shown as planned placeholder instead)")
 
     def test_term_years_step_is_1(self):
         """term_years is YEARS type → step="1"."""
@@ -586,7 +597,7 @@ class TestRevenueHtmxEdit(unittest.TestCase):
         )
 
     def test_htmx_success_returns_revenue_sheet(self):
-        resp = self._post("revenue.ppa.base_tariff", "70.0")
+        resp = self._post("revenue.ppa.index", "2.5")
         self.assertEqual(resp.status_code, 200)
         self.assertIn("v2-sheet-revenue", resp.text)
 
@@ -622,7 +633,7 @@ class TestRevenueHtmxEdit(unittest.TestCase):
         self.assertNotEqual(next(iter(hashes)), self.content_hash)
 
     def test_htmx_validation_error_returns_revenue_sheet(self):
-        resp = self._post("revenue.ppa.base_tariff", "-999")
+        resp = self._post("revenue.ppa.term_years", "-999")
         self.assertIn("v2-sheet-revenue", resp.text)
 
     def test_htmx_co2_enabled_bool_field(self):
@@ -637,17 +648,20 @@ class TestRevenueHtmxEdit(unittest.TestCase):
         shell = BeautifulSoup(current_html, "html.parser").find(id="v2-workbook-shell")
         fresh_hash = shell["data-content-hash"]
 
-        resp = self._post("revenue.ppa.base_tariff", "80.0", content_hash=fresh_hash)
+        # Use ppa.index (a wired, editable field) instead of base_tariff
+        # (base_tariff is now a planned placeholder, not an editable field in V2)
+        resp = self._post("revenue.ppa.index", "3.5", content_hash=fresh_hash)
         self.assertEqual(resp.status_code, 200)
         # Confirm no stale-hash error in response
         self.assertNotIn("Draft changed since page loaded", resp.text)
 
         html3 = _get_workbook(self.client, self.project_code)
         rev = _revenue_div(html3)
-        tariff_row = rev.find(attrs={"data-field-id": "revenue.ppa.base_tariff"})
-        inp = tariff_row.find("input", {"name": "value"})
+        index_row = rev.find(attrs={"data-field-id": "revenue.ppa.index"})
+        self.assertIsNotNone(index_row, "revenue.ppa.index must be in revenue sheet DOM")
+        inp = index_row.find("input", {"name": "value"})
         self.assertIsNotNone(inp)
-        self.assertEqual(inp["value"], "80.0")
+        self.assertEqual(inp["value"], "3.5")
 
 
 # ---------------------------------------------------------------------------
