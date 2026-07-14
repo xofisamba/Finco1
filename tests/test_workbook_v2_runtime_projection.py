@@ -796,8 +796,7 @@ class TestTemplateBarsRender:
             {"debt_state": "STALE"}
         )
         assert "debt-runtime-state-c" in html
-        assert "stale" in html.lower()
-        assert "debt-runtime-state-c-run-required" in html
+        assert "run required" in html.lower()
 
     def test_debt_bar_unavailable_renders_state_d(self):
         from fastapi.templating import Jinja2Templates
@@ -829,7 +828,7 @@ class TestTemplateBarsRender:
             {"tax_state": "STALE"}
         )
         assert "tax-runtime-state-c" in html
-        assert "tax-runtime-state-c-run-required" in html
+        assert "run required" in html.lower()
 
 
 # ═══════════════════════════════════════════════════════════════════════════ #

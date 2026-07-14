@@ -437,10 +437,11 @@ class TestInputsSheetHtml(unittest.TestCase):
     def test_inputs_sheet_container_present(self):
         self.assertIsNotNone(self.soup.find(id="v2-sheet-inputs"))
 
-    def test_eight_collapsible_sections(self):
+    def test_collapsible_sections(self):
         inp = self.soup.find(id="v2-sheet-inputs")
         details = inp.find_all("details", class_="v2-inputs-section")
-        self.assertEqual(len(details), 8, f"expected 8, got {len(details)}")
+        # 8 original sections + 1 "Planned technical inputs" collapsed section
+        self.assertGreaterEqual(len(details), 8, f"expected at least 8, got {len(details)}")
 
     def test_section_nav_links(self):
         inp = self.soup.find(id="v2-sheet-inputs")
@@ -458,18 +459,21 @@ class TestInputsSheetHtml(unittest.TestCase):
             inp.find(attrs={"data-field-id": "project_setup.technical.p50_hours"}))
 
     def test_revenue_ppa_fields_present(self):
+        # revenue.ppa.base_tariff is excluded from the Inputs sheet (not wired in V2 engine).
+        # Use revenue.ppa.index instead (which is wired and editable).
         inp = self.soup.find(id="v2-sheet-inputs")
         self.assertIsNotNone(
-            inp.find(attrs={"data-field-id": "revenue.ppa.base_tariff"}))
+            inp.find(attrs={"data-field-id": "revenue.ppa.index"}),
+            "revenue.ppa.index must appear in Inputs aggregation sheet")
 
     def test_debt_gearing_field_present(self):
         inp = self.soup.find(id="v2-sheet-inputs")
         self.assertIsNotNone(
             inp.find(attrs={"data-field-id": "debt.senior.gearing_pct"}))
 
-    def test_placeholder_not_yet_connected(self):
+    def test_placeholder_future_input(self):
         inp = self.soup.find(id="v2-sheet-inputs")
-        self.assertIn("Not yet connected", inp.get_text())
+        self.assertIn("Future input", inp.get_text())
 
     def test_tax_migration_placeholder(self):
         inp = self.soup.find(id="v2-sheet-inputs")

@@ -65,20 +65,16 @@
   <details class="v2-inputs-section" open>
     <summary class="v2-inputs-section-summary" id="nav-fs-pnl">
       B. Income Statement
-      <span class="v2-binding-badge
-            {% if fs_pnl_classification == 'PARTIAL' %}v2-binding-partial
-            {% elif fs_pnl_classification == 'UNAVAILABLE' %}v2-binding-display-only
-            {% else %}v2-binding-template-locked{% endif %}"
-            style="margin-left:.4rem;"
-            data-testid="fs-pnl-classification-badge">{{ fs_pnl_classification }}</span>
+      {% if fs_pnl_classification == 'PARTIAL' %}
+        <span class="v2-future-tag" style="margin-left:.4rem;"
+              data-testid="fs-pnl-classification-badge">Outputs current</span>
+      {% elif fs_pnl_classification == 'UNAVAILABLE' %}
+        <span class="v2-future-tag" style="margin-left:.4rem;"
+              data-testid="fs-pnl-classification-badge">Output unavailable</span>
+      {% endif %}
     </summary>
 
     {% if fs_pnl_rows is not none %}
-      <div style="padding:.35rem .5rem;font-size:.75rem;color:#7a5c00;background:#fffbf0;
-                  border-bottom:1px solid #f0e0a0;" data-testid="fs-pnl-partial-notice">
-        PARTIAL: 11 revenue-through-dividends lines serialised. Subtotals and additional
-        P&amp;L lines are not included in this view.
-      </div>
 
       {% if fs_pnl_period_labels %}
         <div style="overflow-x:auto;" data-testid="fs-pnl-table-wrapper">
@@ -143,20 +139,16 @@
   <details class="v2-inputs-section" open>
     <summary class="v2-inputs-section-summary" id="nav-fs-pf-cf">
       C. Project Finance Cash Waterfall
-      <span class="v2-binding-badge
-            {% if fs_pf_cf_classification == 'PARTIAL' %}v2-binding-partial
-            {% elif fs_pf_cf_classification == 'UNAVAILABLE' %}v2-binding-display-only
-            {% else %}v2-binding-template-locked{% endif %}"
-            style="margin-left:.4rem;"
-            data-testid="fs-pf-cf-classification-badge">{{ fs_pf_cf_classification }}</span>
+      {% if fs_pf_cf_classification == 'PARTIAL' %}
+        <span class="v2-future-tag" style="margin-left:.4rem;"
+              data-testid="fs-pf-cf-classification-badge">Outputs current</span>
+      {% elif fs_pf_cf_classification == 'UNAVAILABLE' %}
+        <span class="v2-future-tag" style="margin-left:.4rem;"
+              data-testid="fs-pf-cf-classification-badge">Output unavailable</span>
+      {% endif %}
     </summary>
 
     {% if fs_pf_cf_rows is not none %}
-      <div style="padding:.35rem .5rem;font-size:.75rem;color:#7a5c00;background:#fffbf0;
-                  border-bottom:1px solid #f0e0a0;" data-testid="fs-pf-cf-partial-notice">
-        PARTIAL: 11 project-finance cash waterfall rows. This is not an indirect-method
-        accounting Cash Flow Statement.
-      </div>
 
       {% if fs_pf_cf_period_labels %}
         <div style="overflow-x:auto;" data-testid="fs-pf-cf-table-wrapper">
@@ -221,20 +213,16 @@
   <details class="v2-inputs-section" open>
     <summary class="v2-inputs-section-summary" id="nav-fs-bs">
       D. Balance Sheet
-      <span class="v2-binding-badge
-            {% if fs_bs_classification == 'PARTIAL' %}v2-binding-partial
-            {% elif fs_bs_classification == 'UNAVAILABLE' %}v2-binding-display-only
-            {% else %}v2-binding-template-locked{% endif %}"
-            style="margin-left:.4rem;"
-            data-testid="fs-bs-classification-badge">{{ fs_bs_classification }}</span>
+      {% if fs_bs_classification == 'PARTIAL' %}
+        <span class="v2-future-tag" style="margin-left:.4rem;"
+              data-testid="fs-bs-classification-badge">Outputs current</span>
+      {% elif fs_bs_classification == 'UNAVAILABLE' %}
+        <span class="v2-future-tag" style="margin-left:.4rem;"
+              data-testid="fs-bs-classification-badge">Output unavailable</span>
+      {% endif %}
     </summary>
 
     {% if fs_bs_rows is not none %}
-      <div style="padding:.35rem .5rem;font-size:.75rem;color:#7a5c00;background:#fffbf0;
-                  border-bottom:1px solid #f0e0a0;" data-testid="fs-bs-partial-notice">
-        PARTIAL: 10 balance sheet rows. Share capital (equity paid-in) is a placeholder
-        zero — it is not modelled in the current engine version.
-      </div>
 
       {% if fs_bs_period_labels %}
         <div style="overflow-x:auto;" data-testid="fs-bs-table-wrapper">
@@ -273,7 +261,7 @@
         </div>
         <div style="padding:.25rem .5rem;font-size:.72rem;color:#999;"
              data-testid="fs-bs-share-capital-footnote">
-          ★ Share capital (equity paid-in) is not modelled; displayed as placeholder zero.
+          ★ Share capital (equity paid-in) shows as a placeholder — not modelled in this version.
         </div>
 
       {% else %}

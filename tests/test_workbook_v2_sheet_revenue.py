@@ -179,8 +179,10 @@ class TestRevenueAllFieldsRendered(unittest.TestCase):
         return [r["data-field-id"] for r in self.rev.find_all(attrs={"data-field-id": True})]
 
     def test_all_nine_field_ids_present(self):
+        # revenue.ppa.base_tariff is excluded from the revenue sheet DOM:
+        # it is NOT wired in V2 _snapshot_to_dict (engine reads legacy tariff_eur_mwh).
+        # It is shown as a placeholder in the "Planned inputs" collapsed section instead.
         expected = {
-            "revenue.ppa.base_tariff",
             "revenue.ppa.index",
             "revenue.ppa.term_years",
             "revenue.ppa.production_share",
@@ -193,6 +195,10 @@ class TestRevenueAllFieldsRendered(unittest.TestCase):
         dom_ids = set(self._dom_field_ids())
         missing = expected - dom_ids
         self.assertFalse(missing, f"Missing field_ids in DOM: {missing}")
+        # Also verify base_tariff is NOT in the revenue sheet DOM (moved to placeholder)
+        self.assertNotIn("revenue.ppa.base_tariff", dom_ids,
+            "revenue.ppa.base_tariff must not appear as editable in revenue sheet "
+            "(not wired to V2 engine)")
 
     def test_each_field_id_appears_exactly_once(self):
         fids = self._dom_field_ids()
@@ -200,10 +206,10 @@ class TestRevenueAllFieldsRendered(unittest.TestCase):
         self.assertFalse(dupes, f"Duplicate field_ids in DOM: {dupes}")
 
     def test_seven_editable_controls(self):
-        """Exactly 7 BOUND fields rendered as editable rows."""
+        """6 BOUND fields rendered as editable rows (base_tariff moved to planned placeholder)."""
         editable = self.rev.find_all(class_="v2-field-editable")
-        self.assertEqual(len(editable), 7,
-                         f"expected 7 editable, got {len(editable)}")
+        self.assertEqual(len(editable), 6,
+                         f"expected 6 editable (base_tariff is a placeholder), got {len(editable)}")
 
     def test_two_partial_rows_in_dom(self):
         """Both PARTIAL legacy fields appear as read-only rows with PARTIAL badge."""
@@ -272,8 +278,8 @@ class TestRevenueSheetHtml(unittest.TestCase):
             self.assertIn(expected, link_texts, f"nav missing '{expected}'")
 
     def test_ppa_bound_fields_rendered(self):
+        # revenue.ppa.base_tariff is excluded from the sheet DOM (not wired in V2 engine).
         for fid in (
-            "revenue.ppa.base_tariff",
             "revenue.ppa.index",
             "revenue.ppa.term_years",
             "revenue.ppa.production_share",
@@ -282,6 +288,11 @@ class TestRevenueSheetHtml(unittest.TestCase):
                 self.rev.find(attrs={"data-field-id": fid}),
                 f"field {fid!r} missing from revenue sheet",
             )
+        # base_tariff must NOT appear in the revenue sheet DOM
+        self.assertIsNone(
+            self.rev.find(attrs={"data-field-id": "revenue.ppa.base_tariff"}),
+            "revenue.ppa.base_tariff must not appear as editable in revenue sheet",
+        )
 
     def test_balancing_fields_rendered(self):
         for fid in (
@@ -294,8 +305,8 @@ class TestRevenueSheetHtml(unittest.TestCase):
                 f"field {fid!r} missing from revenue sheet",
             )
 
-    def test_planned_future_migration_placeholder(self):
-        self.assertIn("Planned in future migration", self.rev.get_text())
+    def test_future_input_tags_present(self):
+        self.assertIn("Future input", self.rev.get_text())
 
     def test_future_modules_placeholders(self):
         text = self.rev.get_text()
@@ -338,10 +349,10 @@ class TestRevenueSheetEditable(unittest.TestCase):
         cls.rev = cls.soup.find(id="v2-sheet-revenue")
 
     def test_exactly_seven_editable_controls(self):
-        """7 BOUND fields → 7 editable rows."""
+        """6 BOUND fields → 6 editable rows (base_tariff is a planned placeholder)."""
         editable = self.rev.find_all(class_="v2-field-editable")
-        self.assertEqual(len(editable), 7,
-                         f"expected 7, got {len(editable)}")
+        self.assertEqual(len(editable), 6,
+                         f"expected 6 (base_tariff excluded from editables), got {len(editable)}")
 
     def test_forms_target_revenue_sheet(self):
         forms = self.rev.find_all("form", class_="v2-field-form")
@@ -358,12 +369,12 @@ class TestRevenueSheetEditable(unittest.TestCase):
             self.assertIsNotNone(sid, "form missing sheet_id hidden input")
             self.assertEqual(sid["value"], "revenue")
 
-    def test_base_tariff_step_from_registry(self):
-        """base_tariff has decimals=2 → step="0.01"."""
+    def test_base_tariff_not_in_editable_dom(self):
+        """base_tariff must NOT appear as an editable field — it is a planned placeholder."""
         row = self.rev.find(attrs={"data-field-id": "revenue.ppa.base_tariff"})
-        inp = row.find("input", {"name": "value"})
-        self.assertIsNotNone(inp)
-        self.assertEqual(inp.get("step"), "0.01")
+        self.assertIsNone(row,
+            "revenue.ppa.base_tariff must not appear in editable DOM "
+            "(not wired in V2 engine; shown as planned placeholder instead)")
 
     def test_term_years_step_is_1(self):
         """term_years is YEARS type → step="1"."""
@@ -426,11 +437,8 @@ class TestRevenueSheetProtectedRef(unittest.TestCase):
 
 class TestRevenueRuntimeMatrix(unittest.TestCase):
     """
-    State A — no RuntimeResult:          "Not yet run"
-    State B — RuntimeResult + clean:     "Outputs current"
-    State C — RuntimeResult + dirty:     "Previous run available — stale for current draft"
-
-    "Outputs current" must never appear while the draft is dirty.
+    Revenue outputs section uses uniform 'Future input' tags regardless of runtime state.
+    The global status banner (not the revenue sheet) conveys runtime state to the user.
     """
 
     @classmethod
@@ -460,51 +468,31 @@ class TestRevenueRuntimeMatrix(unittest.TestCase):
         assert resp.status_code == 200
         return resp.text
 
-    def test_state_a_not_yet_run(self):
-        """State A: no RuntimeResult → 'Not yet run'."""
+    def test_state_a_outputs_section_has_future_input(self):
+        """State A: no RuntimeResult → output rows show 'Future input'."""
         rev = _revenue_div(self._render_with(has_runtime=False, ws_dirty=False))
-        self.assertIn("Not yet run", rev.get_text())
-        self.assertNotIn("Outputs current", rev.get_text())
-        self.assertNotIn("stale", rev.get_text())
+        self.assertIn("Future input", rev.get_text())
 
-    def test_state_b_outputs_current(self):
-        """State B: RuntimeResult + clean draft → 'Outputs current'."""
+    def test_state_b_outputs_section_has_future_input(self):
+        """State B: RuntimeResult + clean → output rows still show 'Future input'."""
         rev = _revenue_div(self._render_with(has_runtime=True, ws_dirty=False))
-        self.assertIn("Outputs current", rev.get_text())
-        self.assertNotIn("Not yet run", rev.get_text())
-        self.assertNotIn("stale", rev.get_text())
+        self.assertIn("Future input", rev.get_text())
 
-    def test_state_c_stale(self):
-        """State C: RuntimeResult + dirty → stale message, never 'Outputs current'."""
+    def test_state_c_outputs_section_has_future_input(self):
+        """State C: RuntimeResult + dirty → output rows still show 'Future input'."""
         rev = _revenue_div(self._render_with(has_runtime=True, ws_dirty=True))
-        self.assertIn("stale", rev.get_text())
-        self.assertNotIn("Outputs current", rev.get_text())
-        self.assertNotIn("Not yet run", rev.get_text())
+        self.assertIn("Future input", rev.get_text())
 
-    def test_state_c_run_required_yes(self):
-        """State C: Run Required = Yes when dirty."""
-        rev = _revenue_div(self._render_with(has_runtime=True, ws_dirty=True))
-        text = rev.get_text()
-        idx = text.find("Run Required")
-        self.assertGreater(idx, -1)
-        self.assertIn("Yes", text[idx:idx + 40])
-
-    def test_state_b_run_required_no(self):
-        """State B: Run Required = No when clean."""
-        rev = _revenue_div(self._render_with(has_runtime=True, ws_dirty=False))
-        text = rev.get_text()
-        idx = text.find("Run Required")
-        self.assertGreater(idx, -1)
-        self.assertNotIn("Yes", text[idx:idx + 40])
-
-    def test_outputs_current_never_when_dirty(self):
-        """Regression: dirty draft must never show 'Outputs current'."""
+    def test_outputs_current_never_in_revenue_sheet(self):
+        """Revenue sheet itself never says 'Outputs current' — that's the global banner."""
         for has_runtime in (True, False):
-            rev = _revenue_div(self._render_with(has_runtime=has_runtime, ws_dirty=True))
-            self.assertNotIn(
-                "Outputs current", rev.get_text(),
-                f"'Outputs current' shown with has_runtime={has_runtime}, ws_dirty=True",
-            )
+            for ws_dirty in (True, False):
+                rev = _revenue_div(self._render_with(has_runtime=has_runtime, ws_dirty=ws_dirty))
+                self.assertNotIn(
+                    "Outputs current", rev.get_text(),
+                    f"'Outputs current' must not appear in revenue sheet "
+                    f"(has_runtime={has_runtime}, ws_dirty={ws_dirty})",
+                )
 
 
 # ---------------------------------------------------------------------------
@@ -513,11 +501,8 @@ class TestRevenueRuntimeMatrix(unittest.TestCase):
 
 class TestRevenueOutputPlaceholders(unittest.TestCase):
     """
-    State A: no RuntimeResult        → "Available after run"
-    State B: RuntimeResult + clean   → "Runtime available — Revenue output mapping not yet connected"
-    State C: RuntimeResult + dirty   → "Previous run available — output mapping not yet connected"
-
-    Never tell the user to run when a RuntimeResult already exists.
+    Revenue output rows (Annual Revenue, Average Price, etc.) show 'Future input'
+    in all runtime states — uniform vocabulary, no state-conditional messaging.
     """
 
     @classmethod
@@ -557,46 +542,29 @@ class TestRevenueOutputPlaceholders(unittest.TestCase):
             return section.get_text() if section else rev.get_text()
         return rev.get_text()
 
-    def test_state_a_available_after_run(self):
-        """State A: no runtime → 'Available after run' for all output rows."""
-        text = self._outputs_text(self._render_with(has_runtime=False, ws_dirty=False))
-        self.assertIn("Available after run", text)
-        self.assertNotIn("mapping not yet connected", text)
-
-    def test_state_b_mapping_not_connected(self):
-        """State B: runtime exists, clean → 'Revenue output mapping not yet connected'."""
-        text = self._outputs_text(self._render_with(has_runtime=True, ws_dirty=False))
-        self.assertIn("mapping not yet connected", text)
-        self.assertNotIn("Available after run", text)
-
-    def test_state_b_does_not_say_run_required(self):
-        """State B must not prompt a new run — a run already exists."""
-        html = self._render_with(has_runtime=True, ws_dirty=False)
-        # Check the output placeholder text only (not the Runtime Status row)
-        text = self._outputs_text(html)
-        # Should mention connected status, not "Available after run"
-        self.assertNotIn("Available after run", text)
-
-    def test_state_c_output_stale_message(self):
-        """State C: runtime exists, dirty → 'output mapping not yet connected'."""
-        text = self._outputs_text(self._render_with(has_runtime=True, ws_dirty=True))
-        self.assertIn("output mapping not yet connected", text)
-        self.assertNotIn("Available after run", text)
-
-    def test_state_a_does_not_show_connected_message(self):
-        """State A must not claim a runtime is available when none exists."""
-        text = self._outputs_text(self._render_with(has_runtime=False, ws_dirty=False))
-        self.assertNotIn("mapping not yet connected", text)
-
-    def test_output_row_labels_always_present(self):
-        """Annual Revenue, Average Price etc. labels always appear regardless of state."""
+    def test_all_states_show_future_input(self):
+        """All runtime states: output rows show 'Future input' tag."""
         for has_runtime, ws_dirty in ((False, False), (True, False), (True, True)):
-            html = self._render_with(has_runtime=has_runtime, ws_dirty=ws_dirty)
-            rev = _revenue_div(html)
-            for label in ("Annual Revenue", "Average Price", "Captured Price",
-                          "Merchant Revenue", "PPA Revenue"):
-                self.assertIn(label, rev.get_text(),
-                              f"label '{label}' missing with has_runtime={has_runtime}")
+            text = self._outputs_text(self._render_with(has_runtime=has_runtime, ws_dirty=ws_dirty))
+            self.assertIn("Future input", text,
+                          f"'Future input' missing in state has_runtime={has_runtime}, ws_dirty={ws_dirty}")
+
+    def test_no_migration_text_in_outputs(self):
+        """Output placeholders must not say 'mapping not yet connected' or 'Available after run'."""
+        for has_runtime, ws_dirty in ((False, False), (True, False), (True, True)):
+            text = self._outputs_text(self._render_with(has_runtime=has_runtime, ws_dirty=ws_dirty))
+            self.assertNotIn("mapping not yet connected", text)
+            self.assertNotIn("Available after run", text)
+
+    def test_output_section_removed_consolidated_into_planned(self):
+        """Revenue output placeholders are consolidated; no separate 'Revenue Outputs' section."""
+        html = self._render_with(has_runtime=False, ws_dirty=False)
+        rev = _revenue_div(html)
+        # The old nav-rev-outputs section is removed; planned inputs section exists instead
+        self.assertIsNone(rev.find(id="nav-rev-outputs"),
+                          "nav-rev-outputs section must not exist in consolidated layout")
+        self.assertIn("Future input", rev.get_text(),
+                      "Consolidated planned-inputs section must still show 'Future input' tags")
 
 
 # ---------------------------------------------------------------------------
@@ -629,7 +597,7 @@ class TestRevenueHtmxEdit(unittest.TestCase):
         )
 
     def test_htmx_success_returns_revenue_sheet(self):
-        resp = self._post("revenue.ppa.base_tariff", "70.0")
+        resp = self._post("revenue.ppa.index", "2.5")
         self.assertEqual(resp.status_code, 200)
         self.assertIn("v2-sheet-revenue", resp.text)
 
@@ -665,7 +633,7 @@ class TestRevenueHtmxEdit(unittest.TestCase):
         self.assertNotEqual(next(iter(hashes)), self.content_hash)
 
     def test_htmx_validation_error_returns_revenue_sheet(self):
-        resp = self._post("revenue.ppa.base_tariff", "-999")
+        resp = self._post("revenue.ppa.term_years", "-999")
         self.assertIn("v2-sheet-revenue", resp.text)
 
     def test_htmx_co2_enabled_bool_field(self):
@@ -680,17 +648,20 @@ class TestRevenueHtmxEdit(unittest.TestCase):
         shell = BeautifulSoup(current_html, "html.parser").find(id="v2-workbook-shell")
         fresh_hash = shell["data-content-hash"]
 
-        resp = self._post("revenue.ppa.base_tariff", "80.0", content_hash=fresh_hash)
+        # Use ppa.index (a wired, editable field) instead of base_tariff
+        # (base_tariff is now a planned placeholder, not an editable field in V2)
+        resp = self._post("revenue.ppa.index", "3.5", content_hash=fresh_hash)
         self.assertEqual(resp.status_code, 200)
         # Confirm no stale-hash error in response
         self.assertNotIn("Draft changed since page loaded", resp.text)
 
         html3 = _get_workbook(self.client, self.project_code)
         rev = _revenue_div(html3)
-        tariff_row = rev.find(attrs={"data-field-id": "revenue.ppa.base_tariff"})
-        inp = tariff_row.find("input", {"name": "value"})
+        index_row = rev.find(attrs={"data-field-id": "revenue.ppa.index"})
+        self.assertIsNotNone(index_row, "revenue.ppa.index must be in revenue sheet DOM")
+        inp = index_row.find("input", {"name": "value"})
         self.assertIsNotNone(inp)
-        self.assertEqual(inp["value"], "80.0")
+        self.assertEqual(inp["value"], "3.5")
 
 
 # ---------------------------------------------------------------------------

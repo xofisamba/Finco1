@@ -3,8 +3,7 @@
 
   Registry-driven.  Each editable section renders live forms via the
   render_field macro (hx_target="#v2-sheet-inputs", sheet_id="inputs").
-  Summary rows that lack registry fields show "Not yet connected" or
-  "Available after <Sheet> migration" placeholders.
+  Summary rows that lack registry fields show "Future input" tags.
 
   Context variables (from app/v2/router.py):
     technical_fields   list[dict]  — project_setup sheet fields
@@ -38,10 +37,10 @@
 {% endmacro %}
 
 {# Macro: placeholder row for fields not yet in registry #}
-{% macro placeholder_row(label, reason="Not yet connected") %}
+{% macro placeholder_row(label, reason="Future input") %}
 <div class="v2-field-row v2-field-readonly v2-inputs-placeholder-row">
   <span class="v2-field-label">{{ label }}</span>
-  <span class="v2-field-value"><span class="v2-placeholder-tag">{{ reason }}</span></span>
+  <span class="v2-field-value"><span class="v2-future-tag">{{ reason }}</span></span>
 </div>
 {% endmacro %}
 
@@ -91,14 +90,21 @@
         {% endif %}
       {% endfor %}
 
-      {# Fields not yet in registry #}
+    </div>
+  </details>
+
+  {# Planned technical inputs (collapsed) #}
+  <details class="v2-inputs-section">
+    <summary class="v2-inputs-section-summary">
+      Planned technical inputs <span class="v2-future-tag" style="margin-left:.4rem">Planned inputs</span>
+    </summary>
+    <div class="v2-section-fields">
       {{ placeholder_row("Availability") }}
       {{ placeholder_row("Curtailment") }}
       {{ placeholder_row("Degradation") }}
       {{ placeholder_row("Losses") }}
       {{ placeholder_row("Grid Losses") }}
       {{ placeholder_row("Aux Consumption") }}
-
     </div>
   </details>
 
@@ -108,9 +114,11 @@
     <div class="v2-section-fields">
 
       {# PPA section #}
+      {# revenue.ppa.base_tariff excluded: not wired in V2 engine (reads tariff_eur_mwh legacy key) #}
       {% for f in revenue_fields %}
         {% if f.section_id == "ppa"
-              and f.field_id not in ("revenue.ppa.tariff_legacy", "revenue.ppa.ppa_term_legacy") %}
+              and f.field_id not in ("revenue.ppa.tariff_legacy", "revenue.ppa.ppa_term_legacy",
+                                     "revenue.ppa.base_tariff") %}
           {{ render_field(f, project_code, workbook_version, content_hash, project_editable,
                           hx_target="#v2-sheet-inputs", sheet_id="inputs") }}
         {% endif %}
@@ -125,9 +133,9 @@
       {% endfor %}
 
       {# Not yet migrated #}
-      {{ placeholder_row("Offtake Type", "Available after Revenue migration") }}
-      {{ placeholder_row("Merchant %", "Available after Revenue migration") }}
-      {{ placeholder_row("Number of Contracts", "Available after Revenue migration") }}
+      {{ placeholder_row("Offtake Type", "Future input") }}
+      {{ placeholder_row("Merchant %", "Future input") }}
+      {{ placeholder_row("Number of Contracts", "Future input") }}
 
       <div class="v2-inputs-sheet-link">
         <a href="/revenue?project={{ project_code }}">Open detailed Revenue →</a>
@@ -168,8 +176,8 @@
                      inputs_summary.opex_per_mw_keur, "k€/MW") }}
       {{ summary_row("OPEX / MWh",
                      inputs_summary.opex_per_mwh_eur, "€/MWh") }}
-      {{ placeholder_row("Contingency Rate", "Not yet connected") }}
-      {{ placeholder_row("Inflation", "Not yet connected") }}
+      {{ placeholder_row("Contingency Rate", "Future input") }}
+      {{ placeholder_row("Inflation", "Future input") }}
 
       <div class="v2-inputs-sheet-link">
         <a href="/opex?project={{ project_code }}">Open detailed OPEX →</a>
@@ -189,11 +197,11 @@
         {% endif %}
       {% endfor %}
 
-      {{ placeholder_row("Margin (bps)", "Not yet connected") }}
-      {{ placeholder_row("Base Rate", "Not yet connected") }}
-      {{ placeholder_row("Grace Period", "Not yet connected") }}
-      {{ placeholder_row("Repayment Profile", "Not yet connected") }}
-      {{ placeholder_row("DSRA", "Not yet connected") }}
+      {{ placeholder_row("Margin (bps)", "Future input") }}
+      {{ placeholder_row("Base Rate", "Future input") }}
+      {{ placeholder_row("Grace Period", "Future input") }}
+      {{ placeholder_row("Repayment Profile", "Future input") }}
+      {{ placeholder_row("DSRA", "Future input") }}
 
       <div class="v2-inputs-sheet-link">
         <a href="/debt?project={{ project_code }}">Open Debt →</a>
