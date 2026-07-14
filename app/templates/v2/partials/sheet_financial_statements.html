@@ -227,21 +227,6 @@ function v2FsPeriodKeydown(event, val) {
     tabs[newIdx].focus();
   }
 
-  /* Restore UI state from sessionStorage after HTMX swaps */
-  (function restoreFsUiState() {
-    try {
-      var savedTab = sessionStorage.getItem('v2FsInnerTab');
-      if (savedTab && document.getElementById(savedTab)) {
-        v2FsInnerTabSwitch(savedTab);
-      } else {
-        v2FsInnerTabSwitch('fs-inner-panel-pnl');
-      }
-      var savedView = sessionStorage.getItem('v2FsPeriodView');
-      if (savedView) { v2FsPeriodSwitch(savedView); }
-    } catch(e) {
-      v2FsInnerTabSwitch('fs-inner-panel-pnl');
-    }
-  })();
   </script>
 
   <div class="v2-fs-inner-tabs" role="tablist" aria-label="Financial statement">
@@ -258,7 +243,7 @@ function v2FsPeriodKeydown(event, val) {
               data-testid="fs-pnl-classification-badge">Unavailable</span>
       {% endif %}
     </div>
-    <div role="tab" tabindex="0" class="v2-fs-inner-tab" data-panel="fs-inner-panel-pf-cf"
+    <div role="tab" tabindex="-1" class="v2-fs-inner-tab" data-panel="fs-inner-panel-pf-cf"
          aria-selected="false" id="nav-fs-pf-cf"
          onclick="v2FsInnerTabSwitch('fs-inner-panel-pf-cf')"
          onkeydown="v2FsInnerTabKeydown(event,'fs-inner-panel-pf-cf')">
@@ -271,7 +256,7 @@ function v2FsPeriodKeydown(event, val) {
               data-testid="fs-pf-cf-classification-badge">Unavailable</span>
       {% endif %}
     </div>
-    <div role="tab" tabindex="0" class="v2-fs-inner-tab" data-panel="fs-inner-panel-bs"
+    <div role="tab" tabindex="-1" class="v2-fs-inner-tab" data-panel="fs-inner-panel-bs"
          aria-selected="false" id="nav-fs-bs"
          onclick="v2FsInnerTabSwitch('fs-inner-panel-bs')"
          onkeydown="v2FsInnerTabKeydown(event,'fs-inner-panel-bs')">
@@ -442,3 +427,16 @@ function v2FsPeriodKeydown(event, val) {
   </div>
 
 </div>{# v2-sheet-financial-statements #}
+<script>
+/* Restore UI state from sessionStorage — runs after all inner tab/panel elements exist */
+(function() {
+  try {
+    var savedTab = sessionStorage.getItem('v2FsInnerTab');
+    if (savedTab && document.getElementById(savedTab)) {
+      v2FsInnerTabSwitch(savedTab);
+    }
+    var savedView = sessionStorage.getItem('v2FsPeriodView');
+    if (savedView) { v2FsPeriodSwitch(savedView); }
+  } catch(e) {}
+})();
+</script>

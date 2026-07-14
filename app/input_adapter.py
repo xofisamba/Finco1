@@ -306,6 +306,21 @@ def _resolve_user_inputs(
             if not _capex_matches_base:
                 proj = _zero_financial_capex_subfields(proj)
                 proj = _apply_capex_total(proj, total_capex_keur)
+                # Frozen debt schedule and SHL were calibrated for the
+                # original capex; disable frozen schedule and zero SHL
+                # when the user supplies a different capex total, so the
+                # engine can size debt from gearing/DSCR inputs instead.
+                if getattr(proj.financing, "use_frozen_excel_senior_debt_schedule", False):
+                    proj = dc_replace(
+                        proj,
+                        financing=dc_replace(
+                            proj.financing,
+                            use_frozen_excel_senior_debt_schedule=False,
+                            fixed_debt_keur=0.0,
+                            shl_amount_keur=0.0,
+                            shl_idc_keur=0.0,
+                        ),
+                    )
     else:
         proj = _zero_financial_capex_subfields(proj)
         if total_capex_keur is not None:

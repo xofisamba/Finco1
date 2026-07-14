@@ -329,17 +329,28 @@ _INSTRUMENT_JS = """
             window._v2TestLog.push({type:'htmx:beforeRequest', tag:tag, ts:Date.now()});
         }
     });
+    // Use capture phase so this fires before workbook_v2.js bubble-phase handlers.
+    // That ensures the afterRequest timestamp is recorded before htmx.ajax() fires
+    // htmx:beforeRequest for the queued Run synchronously inside the same handler.
     document.addEventListener('htmx:afterRequest', function(e) {
         if (e.detail && e.detail.elt) {
             var elt = e.detail.elt;
             var tag = elt.classList && elt.classList.contains('v2-run-form') ? 'run-form' :
                       elt.classList && elt.classList.contains('v2-field-form') ? 'field-form' : 'other';
+            // Fallback: after outerHTML swap elt may be detached/replaced;
+            // identify field-form requests by URL when class check fails.
+            if (tag === 'other') {
+                var xhr = e.detail.xhr;
+                if (xhr && xhr.responseURL && xhr.responseURL.indexOf('/v2/workbook/update') !== -1) {
+                    tag = 'field-form';
+                }
+            }
             window._v2TestLog.push({
                 type:'htmx:afterRequest', tag:tag,
                 successful: e.detail.successful, ts:Date.now()
             });
         }
-    });
+    }, true);
 }
 """
 
@@ -729,10 +740,18 @@ class TestErrorCancelsQueue:
         _switch_tab(p, "opex")
         _open_group(p, "B.01")
 
+        # Corrupt the content_hash to force a server-side field-error response.
+        # (type=number inputs reject non-numeric text via browser validation, so
+        # we use a stale hash to trigger workbook-field-error from the server.)
+        p.evaluate(
+            "document.querySelector('[data-field-id=\"opex.lines.technical_management\"]"
+            " input[name=\"content_hash\"]').value = 'stale-hash-validation-test'"
+        )
+
         inp = _tm_input(p)
         inp.click()
         inp.select_text()
-        inp.fill("not-a-number")
+        inp.fill("250")
         p.evaluate(
             "document.querySelector('[data-field-id=\"opex.lines.technical_management\"]"
             " input.v2-field-input').dispatchEvent(new Event('input', {bubbles:true}))"
@@ -741,7 +760,7 @@ class TestErrorCancelsQueue:
         run_requests: list = []
         p.on("request", lambda r: run_requests.append(r) if "/v2/workbook/run" in r.url else None)
 
-        # Click Run — should queue, send field update, get error, cancel Run
+        # Click Run — should queue, send field update with stale hash, get error, cancel Run
         with p.expect_response(lambda r: "/v2/workbook/update" in r.url, timeout=15_000):
             p.locator('[data-testid="v2-run-btn"]').click()
         p.wait_for_load_state("networkidle", timeout=15_000)
@@ -805,8 +824,14 @@ class TestErrorCancelsQueue:
         inp = _tm_input(p)
         original_val = inp.get_attribute("data-original-value")
         inp.click()
+        # Use a stale hash to force a server-side field-error response
+        # (type=number inputs reject non-numeric text via browser validation).
+        p.evaluate(
+            "document.querySelector('[data-field-id=\"opex.lines.technical_management\"]"
+            " input[name=\"content_hash\"]').value = 'stale-hash-original-val-test'"
+        )
         inp.select_text()
-        inp.fill("not-a-number")
+        inp.fill("205")
         p.evaluate(
             "document.querySelector('[data-field-id=\"opex.lines.technical_management\"]"
             " input.v2-field-input').dispatchEvent(new Event('input', {bubbles:true}))"
@@ -953,22 +978,29 @@ class TestAdditionalOPEX:
         import app.persistence.projects_repository as pr
         import app.persistence.workspace_repository as wr
         import app.workbook.service as svc
+        import app.persistence.db as _db
 
-        proj = pr.get_project_record(user_id="1", project_code=code)
-        ws   = wr.get_workspace_state("1", proj.project_id)
-        pis  = svc.WorkbookService.build_draft_input_set_from_workspace(ws)
-        pi   = pis.to_projectinputs()
+        # Point the in-process persistence layer at the live server's temp DB
+        _orig_db_path = _db.DB_PATH
+        _db.DB_PATH = db
+        try:
+            proj = pr.get_project_record(user_id="1", project_code=code)
+            ws   = wr.get_workspace_state("1", proj.project_id)
+            pis  = svc.WorkbookService.build_draft_input_set_from_workspace(ws)
+            pi   = pis.to_projectinputs()
 
-        tm_item = next((o for o in pi.opex if "Technical Management" in o.name), None)
-        assert tm_item is not None, "TM OpexItem not found in merged opex"
-        assert tm_item.y1_amount_keur == 210.0, (
-            f"TM override not applied: {tm_item.y1_amount_keur}"
-        )
-        # Oborovo TM has step_changes = [] but annual_inflation=0.02 from factory
-        # The annual_inflation must be preserved (not replaced by factory defaults)
-        assert tm_item.annual_inflation == 0.02, (
-            f"annual_inflation changed after override: {tm_item.annual_inflation}"
-        )
+            tm_item = next((o for o in pi.opex if "Technical Management" in o.name), None)
+            assert tm_item is not None, "TM OpexItem not found in merged opex"
+            assert tm_item.y1_amount_keur == 210.0, (
+                f"TM override not applied: {tm_item.y1_amount_keur}"
+            )
+            # Oborovo TM has step_changes = [] but annual_inflation=0.02 from factory
+            # The annual_inflation must be preserved (not replaced by factory defaults)
+            assert tm_item.annual_inflation == 0.02, (
+                f"annual_inflation changed after override: {tm_item.annual_inflation}"
+            )
+        finally:
+            _db.DB_PATH = _orig_db_path
 
 
 # ---------------------------------------------------------------------------
@@ -1203,13 +1235,9 @@ class TestFSSelectionPersistence:
         p.locator('[data-panel="fs-inner-panel-bs"]').click()
         p.wait_for_timeout(200)
 
-        ch = _get_content_hash(self.base_url, live_server["token"], oborovo_project)
+        # Trigger Run from the browser so HTMX can receive and swap the response
         with p.expect_response(lambda r: "/v2/workbook/run" in r.url, timeout=90_000):
-            _http(self.base_url, live_server["token"], "POST", "/v2/workbook/run", {
-                "project": oborovo_project,
-                "workbook_version": "2.1.0",
-                "content_hash": ch,
-            }, extra_headers={"HX-Request": "true"})
+            p.locator('[data-testid="v2-run-btn"]').click()
         p.wait_for_load_state("networkidle", timeout=30_000)
         p.wait_for_timeout(500)
 
