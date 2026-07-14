@@ -63,6 +63,10 @@ class ProjectRecord:
     created_at: datetime
     updated_at: datetime
     full_inputs: Optional[dict[str, Any]] = None  # V3-7: full-fidelity ProjectInputs dict
+    # Project Library fields (project-library-reference-working-copies)
+    project_role: str = "user_project"           # "reference" | "working_copy" | "user_project"
+    is_protected: bool = False                   # True for reference projects
+    source_project_id: Optional[str] = None      # lineage: working_copy → source reference
 
     @classmethod
     def from_row(cls, row) -> "ProjectRecord":
@@ -85,6 +89,9 @@ class ProjectRecord:
             created_at=_from_iso(row["created_at"]),
             updated_at=_from_iso(row["updated_at"]),
             full_inputs=_from_json(row["full_inputs_json"], None) if "full_inputs_json" in keys else None,
+            project_role=row["project_role"] if "project_role" in keys else "user_project",
+            is_protected=bool(row["is_protected"]) if "is_protected" in keys else False,
+            source_project_id=row["source_project_id"] if "source_project_id" in keys else None,
         )
 
 

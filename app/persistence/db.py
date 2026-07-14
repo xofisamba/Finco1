@@ -231,6 +231,28 @@ def _init_schema(conn):
     _ensure_column(conn, "projects", "archived", "INTEGER NOT NULL DEFAULT 0")
     _ensure_column(conn, "projects", "is_readonly", "INTEGER NOT NULL DEFAULT 0")
     _ensure_column(conn, "projects", "full_inputs_json", "TEXT")
+    # Project Library (PR: project-library-reference-working-copies)
+    _ensure_column(conn, "projects", "project_role", "TEXT NOT NULL DEFAULT 'user_project'")
+    _ensure_column(conn, "projects", "is_protected", "INTEGER NOT NULL DEFAULT 0")
+    _ensure_column(conn, "projects", "source_project_id", "TEXT")
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_projects_role"
+        " ON projects(user_id, project_role, archived, updated_at DESC)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_projects_template_role"
+        " ON projects(template_source, project_role, archived)"
+    )
+    # Backfill: existing factory_template tuho/oborovo rows → project_role='reference', is_protected=1
+    conn.execute(
+        """
+        UPDATE projects
+        SET project_role='reference', is_protected=1
+        WHERE project_origin='factory_template'
+          AND template_source IN ('tuho','oborovo')
+          AND project_role='user_project'
+        """
+    )
     _ensure_column(conn, "scenarios", "replay_metadata_json", "TEXT NOT NULL DEFAULT '{}'")
     _ensure_column(conn, "scenarios", "full_inputs_json", "TEXT")  # V3-8
     _ensure_column(conn, "scenario_exports", "replay_metadata_json", "TEXT NOT NULL DEFAULT '{}'")

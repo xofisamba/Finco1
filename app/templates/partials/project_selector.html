@@ -117,11 +117,14 @@
   {# WF-3: Two labelled sidebar nav groups #}
   {% if user_project_records %}
   <div class="ps-nav-group" id="ps-nav-my-projects">
-    <div class="ps-nav-group-label">My projects</div>
+    <div class="ps-nav-group-label">Recent projects</div>
     {% for item in user_project_records %}
     <a class="ps-nav-link{% if active_project_code == item.project_code %} ps-nav-link--active{% endif %}"
        href="/?project={{ item.project_code }}">
       {{ item.label }}
+      {% if 'Copy' in (item.meta or '') %}
+        <span style="font-size:.65rem;opacity:.7;margin-left:.25rem;">copy</span>
+      {% endif %}
     </a>
     {% endfor %}
   </div>
@@ -138,6 +141,15 @@
     {% endfor %}
   </div>
   {% endif %}
+
+  {# Project Library: bounded recent list — always offer the full library link #}
+  <div class="ps-nav-group" id="ps-nav-library-link" style="padding:.5rem .75rem;">
+    <a href="/library"
+       data-testid="view-all-projects-link"
+       style="font-size:.75rem;color:var(--sidebar-link-color,#9ca3af);text-decoration:none;display:flex;align-items:center;gap:.35rem;">
+      <span aria-hidden="true">☰</span> View all projects
+    </a>
+  </div>
 
 </div>
 

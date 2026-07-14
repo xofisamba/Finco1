@@ -76,6 +76,13 @@ from app.persistence.projects_repository import (
     list_baseline_records,
     get_project_record,
     list_project_records,
+    # Project Library (project-library-reference-working-copies)
+    REFERENCE_USER_ID,
+    get_reference_projects,
+    get_reference_by_template_source,
+    get_project_by_id,
+    list_projects_paged,
+    list_recent_projects,
 )
 
 

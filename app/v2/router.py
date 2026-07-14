@@ -824,7 +824,19 @@ async def v2_workbook_update(
 
     project_record = get_project_record(user_id=user.user_id, project_code=project)
     if project_record is None:
+        # Also check cross-user reference projects (user may have navigated to one)
+        from app.persistence.projects_repository import get_project_by_code
+        project_record = get_project_by_code("__reference__", project)
+    if project_record is None:
         return JSONResponse({"error": f"Project {project!r} not found."}, status_code=404)
+
+    # Block mutations on protected reference projects.
+    from app.services.project_library_service import is_protected_reference
+    if is_protected_reference(project_record):
+        return JSONResponse(
+            {"error": "This is a protected reference model. Create a working copy to edit it."},
+            status_code=403,
+        )
 
     ws = get_workspace_state(user_id=user.user_id, project_id=project_record.project_id)
     if ws is None:
