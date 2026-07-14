@@ -52,7 +52,7 @@
 
   // --- Run queue state ---
   var _runQueued = false;
-  var _pendingSaveForms = [];  // forms currently in-flight
+  var _inFlightSaveCount = 0;  // explicit counter; HX-Trigger fires BEFORE htmx:afterRequest
 
   function _row(input) { return input.closest('.v2-field-row'); }
 
@@ -114,16 +114,18 @@
 
   function _tryFireQueuedRun() {
     if (!_runQueued) return;
-    if (_hasPendingOrSaving()) return;
+    // HX-Trigger (workbook-field-saved) fires BEFORE htmx:afterRequest in HTMX 1.9.x,
+    // so the form may still carry v2-field-saving when this is called from the
+    // saved-event handler. The in-flight counter is the authoritative gate.
+    if (_inFlightSaveCount > 0) return;
+    if (_hasPendingOrSaving()) return;  // belt-and-suspenders for any race
 
     _runQueued = false;
     _setRunBtnState(null, false);
 
-    // Read newest hash from Run form hidden input
     var runForm = document.querySelector('.v2-run-form');
     if (!runForm) return;
 
-    // Submit run once via HTMX
     htmx.trigger(runForm, 'submit');
   }
 
@@ -160,6 +162,7 @@
   document.addEventListener('htmx:beforeRequest', function (event) {
     var form = event.detail.elt;
     if (!form || !form.classList || !form.classList.contains('v2-field-form')) return;
+    _inFlightSaveCount++;
     _markSaving(form);
     var input = form.querySelector('.v2-field-input');
     if (input) v2ClearPending(input);
@@ -168,16 +171,17 @@
   document.addEventListener('htmx:afterRequest', function (event) {
     var form = event.detail.elt;
     if (!form || !form.classList || !form.classList.contains('v2-field-form')) return;
+    // Always decrement — pairs with the increment in htmx:beforeRequest.
+    _inFlightSaveCount = Math.max(0, _inFlightSaveCount - 1);
     if (event.detail.successful) {
       _markSaved(form);
-      // Update data-original-value to saved value
       var input = form.querySelector('.v2-field-input');
-      if (input) {
-        input.setAttribute('data-original-value', input.value);
-      }
+      if (input) input.setAttribute('data-original-value', input.value);
+      // Primary gate: try queued Run now that saving state AND counter are clear.
+      // (workbook-field-saved may have already tried and been blocked by the counter.)
+      _tryFireQueuedRun();
     } else {
       _markError(form);
-      // Cancel queued run on save failure
       if (_runQueued) {
         _runQueued = false;
         _setRunBtnState(null, false);
