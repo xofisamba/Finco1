@@ -146,6 +146,10 @@ _OPEX_NAME_TO_CODE: dict[str, str] = {
     # --- B.13 Contingencies (derived — never overridden) ---
     "Contingencies":                            "B.13",
 
+    # --- Generic solar factory names (project_factories.py create_default_solar_project) ---
+    "Maintenance":                              "B.03",   # generic solar → Site Maintenance slot
+    "Lease & Tax":                              "B.07",   # generic solar → Lease & Property Tax slot
+
     # --- Extra names found in some solar factory variants ---
     "Taxes":                                    None,      # Not mapped to any B-code
     "Salary&Payroll":                           None,      # Not mapped to any B-code
@@ -265,8 +269,12 @@ def build_effective_draft_opex(
         if b_code in _SKIP_OVERRIDE_CODES:
             continue
         value = snapshot.get(snap_key)
-        if value is not None:
+        if value is None or value == "":
+            continue
+        try:
             active_overrides[b_code] = float(value)
+        except (TypeError, ValueError):
+            continue
 
     if not active_overrides:
         return base_opex

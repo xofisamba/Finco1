@@ -350,57 +350,6 @@ def _render_capex_htmx_sheet(
     return HTMLResponse(content=sheet_html + "\n" + oob)
 
 
-def _apply_per_line_overrides_to_detail(
-    opex_detail_items,
-    snapshot: dict,
-):
-    """Update opex_detail_items category yearly_totals with per-line snapshot overrides.
-
-    When a user has saved a per-line OPEX override (e.g. opex_technical_management_y1_keur=300),
-    the category's yearly_totals[0] (Y1) should reflect that value, and subsequent years
-    should be re-derived from it using the existing inflation rate.
-
-    Returns the original opex_detail_items unchanged if no per-line overrides apply.
-    """
-    from app.v2.opex_assembly import get_per_line_override_for_group
-    if not opex_detail_items:
-        return opex_detail_items
-    updated = []
-    changed = False
-    for cat in opex_detail_items:
-        code = cat.get("code", "")
-        override_val = get_per_line_override_for_group(snapshot, code)
-        if override_val is None:
-            updated.append(cat)
-            continue
-        # Recompute yearly_totals from the override Y1 and existing inflation
-        inflation_pct = float(cat.get("inflation_pct") or 0.0)
-        inflation_factor = 1.0 + inflation_pct / 100.0
-        existing_years = len(cat.get("yearly_totals") or [])
-        new_yearly = []
-        yr_val = override_val
-        for i in range(existing_years):
-            new_yearly.append(yr_val)
-            yr_val *= inflation_factor
-        new_cat = dict(cat)
-        new_cat["yearly_totals"] = new_yearly
-        # Also update first child if it represents the whole group (single child)
-        children = list(cat.get("children") or [])
-        if len(children) == 1:
-            child = dict(children[0])
-            child_years = []
-            cv = override_val
-            for i in range(len(child.get("yearly_values") or [])):
-                child_years.append(cv)
-                cv *= inflation_factor
-            child["yearly_values"] = child_years
-            child["budget_y1_keur"] = override_val
-            new_cat["children"] = [child]
-        updated.append(new_cat)
-        changed = True
-    return tuple(updated) if changed else opex_detail_items
-
-
 def _build_opex_vm_ctx(project_record, pis) -> dict:
     """Build OpexViewModel context for the OPEX sheet.
 
@@ -410,7 +359,14 @@ def _build_opex_vm_ctx(project_record, pis) -> dict:
     Returns opex_vm and opex_sheet_groups (always 13 OpexSheetGroup objects
     in canonical order — present for every project regardless of ViewModel
     group coverage).
+
+    Per-line OPEX overrides are materialised by build_projectinputs_from_snapshot
+    (via WorkbookService.to_projectinputs).  The effective ProjectInputs are passed
+    to build_project_context_for_record so both display and Run use the same
+    canonical effective OPEX — no separate display-layer recomputation.
     """
+    from app.workbook.service import WorkbookService
+    effective_pi = WorkbookService.to_projectinputs(pis)
     snapshot = pis.to_snapshot()
     project_ctx = build_project_context_for_record(
         project_code=project_record.project_code,
@@ -419,18 +375,8 @@ def _build_opex_vm_ctx(project_record, pis) -> dict:
         project_origin=project_record.project_origin,
         template_source=project_record.template_source,
         baseline_snapshot=snapshot,
+        effective_project_inputs=effective_pi,
     )
-    # Apply per-line snapshot overrides to the ViewModel for display accuracy.
-    # Without this, group subtotals show factory-default scaled values instead of
-    # the user's edited values.
-    from app.v2.opex_assembly import get_per_line_override_for_group
-    _snap_vm = pis.to_snapshot()
-    _updated_opex_detail = _apply_per_line_overrides_to_detail(
-        project_ctx.opex_detail_items, _snap_vm
-    )
-    if _updated_opex_detail is not project_ctx.opex_detail_items:
-        from dataclasses import replace as _replace_ctx
-        project_ctx = _replace_ctx(project_ctx, opex_detail_items=_updated_opex_detail)
     is_user = not (
         project_record.project_origin == "factory_template"
         and (project_record.template_source or "").strip().lower() in ("tuho", "oborovo")
@@ -651,6 +597,12 @@ def _build_financial_statements_ctx(pis, ws, projection=None) -> dict:
         "fs_bs_classification": f.bs_classification,
         "fs_pf_cf_classification": f.pf_cf_classification,
         "runtime_summary": f.runtime_summary,
+        "fs_pnl_annual_rows": f.pnl_annual_rows,
+        "fs_bs_annual_rows": f.bs_annual_rows,
+        "fs_pf_cf_annual_rows": f.pf_cf_annual_rows,
+        "fs_pnl_annual_labels": f.pnl_annual_labels,
+        "fs_bs_annual_labels": f.bs_annual_labels,
+        "fs_pf_cf_annual_labels": f.pf_cf_annual_labels,
     }
 
 
@@ -1177,26 +1129,6 @@ async def v2_workbook_run(
         )
         msg = "Could not build project inputs — please reload and try again."
         return _htmx_error(msg, ws) if is_htmx else _non_htmx_error(msg)
-
-    # ── Step 7b: fold per-line OPEX registry overrides into the base items. ── #
-    # build_effective_draft_opex reads per-line snapshot keys (B.01–B.12) and
-    # replaces matching OpexItem.y1_amount_keur values while preserving all
-    # other item attributes (inflation schedule, etc.).
-    # This must run AFTER to_projectinputs (which applies the aggregate opex_y1_keur
-    # path) but BEFORE apply_user_sub_lines_to_opex (which is additive custom rows).
-    # For TUHO/Oborovo locked projects, project_editable=False means no per-line edits
-    # exist in the snapshot — has_per_line_overrides returns False, this is a no-op.
-    from app.v2.opex_assembly import build_effective_draft_opex, has_per_line_overrides as _has_opex_overrides
-    _snap_for_opex = pis_draft.to_snapshot()
-    if _has_opex_overrides(_snap_for_opex):
-        # Get factory base opex for this project type (unmodified by aggregate path)
-        from app.project_factories import create_default_solar_project, create_default_wind_project
-        _factory_fn = create_default_solar_project if (project_record.project_type or "").lower() == "solar" else create_default_wind_project
-        _factory_base_opex = _factory_fn().opex
-        _folded_base = build_effective_draft_opex(_factory_base_opex, _snap_for_opex)
-        if _folded_base is not _factory_base_opex:
-            from dataclasses import replace as _dc_replace
-            override = _dc_replace(override, opex=_folded_base)
 
     # ── Step 8: scenario resolution ────────────────────────────────────────── #
     active_scenario_id = ws.active_scenario_id

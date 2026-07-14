@@ -2488,6 +2488,7 @@ def build_project_context_for_record(
     project_origin: str,
     template_source: str | None,
     baseline_snapshot: dict[str, Any] | None = None,
+    effective_project_inputs=None,
 ) -> ProjectContext:
     seed_key = (template_source or "").strip().lower()
     if seed_key == "tuho":
@@ -2531,7 +2532,13 @@ def build_project_context_for_record(
     construction_months = _snapshot_int(snapshot, "construction_months", base.construction_months)
     horizon_years = _snapshot_int(snapshot, "horizon_years", base.horizon_years)
     cod_date = (snapshot.get("cod_date") or base.cod_date or "").strip() or base.cod_date
-    opex_items = _scaled_opex_items(base.opex_items, opex_y1_total_keur)
+    # When the caller supplies effective ProjectInputs (per-line overrides already applied),
+    # use those opex items directly — they preserve step_changes and calibrated inflation.
+    # Fall back to proportional scaling from the aggregate when not provided.
+    if effective_project_inputs is not None and getattr(effective_project_inputs, "opex", None):
+        opex_items = tuple(effective_project_inputs.opex)
+    else:
+        opex_items = _scaled_opex_items(base.opex_items, opex_y1_total_keur)
 
     return replace(
         base,
