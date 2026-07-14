@@ -126,7 +126,21 @@
     var runForm = document.querySelector('.v2-run-form');
     if (!runForm) return;
 
-    htmx.trigger(runForm, 'submit');
+    // Use htmx.ajax() directly so the request is always sent via HTMX with
+    // HX-Request:true — regardless of whether the run form was replaced by an
+    // OOB swap between the field-save response and this call (which would leave
+    // requestSubmit() racing against HTMX re-initialising the new element).
+    var action = runForm.getAttribute('action') || '/v2/workbook/run';
+    var values = {};
+    Array.prototype.forEach.call(runForm.querySelectorAll('input'), function(inp) {
+      if (inp.name) values[inp.name] = inp.value;
+    });
+    htmx.ajax('POST', action, {
+      source: runForm,
+      target: 'body',
+      swap: 'none',
+      values: values
+    });
   }
 
   // input event marks field pending
@@ -170,7 +184,23 @@
 
   document.addEventListener('htmx:afterRequest', function (event) {
     var form = event.detail.elt;
-    if (!form || !form.classList || !form.classList.contains('v2-field-form')) return;
+    // When hx-target outerHTML swap replaces the panel, elt may be the new target
+    // element rather than the original form. Fall back to URL matching.
+    var isFieldForm = form && form.classList && form.classList.contains('v2-field-form');
+    if (!isFieldForm) {
+      var xhr = event.detail.xhr;
+      if (!xhr || xhr.responseURL.indexOf('/v2/workbook/update') === -1) return;
+      // elt is not the field form — decrement counter and gate queued run by URL match
+      _inFlightSaveCount = Math.max(0, _inFlightSaveCount - 1);
+      if (event.detail.successful) {
+        _tryFireQueuedRun();
+      } else if (_runQueued) {
+        _runQueued = false;
+        _setRunBtnState(null, false);
+      }
+      return;
+    }
+    if (!form) return;
     // Always decrement — pairs with the increment in htmx:beforeRequest.
     _inFlightSaveCount = Math.max(0, _inFlightSaveCount - 1);
     if (event.detail.successful) {

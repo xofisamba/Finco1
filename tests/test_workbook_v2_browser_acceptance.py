@@ -869,7 +869,7 @@ class TestAdditionalOPEX:
         code = _create_project(self.base_url, self.token, "_v2BrAccept_Maint",
                                project_type="Solar", template_source="oborovo")
         self._run_single_field_flow(
-            code, "opex.lines.maintain_site", "B.03", "150",
+            code, "opex.lines.site_maintenance", "B.03", "150",
             "opex_maintain_site_y1_keur",
         )
 
