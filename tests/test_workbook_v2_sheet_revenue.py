@@ -545,15 +545,15 @@ class TestRevenueOutputPlaceholders(unittest.TestCase):
             self.assertNotIn("mapping not yet connected", text)
             self.assertNotIn("Available after run", text)
 
-    def test_output_row_labels_always_present(self):
-        """Annual Revenue, Average Price etc. labels always appear regardless of state."""
-        for has_runtime, ws_dirty in ((False, False), (True, False), (True, True)):
-            html = self._render_with(has_runtime=has_runtime, ws_dirty=ws_dirty)
-            rev = _revenue_div(html)
-            for label in ("Annual Revenue", "Average Price", "Captured Price",
-                          "Merchant Revenue", "PPA Revenue"):
-                self.assertIn(label, rev.get_text(),
-                              f"label '{label}' missing with has_runtime={has_runtime}")
+    def test_output_section_removed_consolidated_into_planned(self):
+        """Revenue output placeholders are consolidated; no separate 'Revenue Outputs' section."""
+        html = self._render_with(has_runtime=False, ws_dirty=False)
+        rev = _revenue_div(html)
+        # The old nav-rev-outputs section is removed; planned inputs section exists instead
+        self.assertIsNone(rev.find(id="nav-rev-outputs"),
+                          "nav-rev-outputs section must not exist in consolidated layout")
+        self.assertIn("Future input", rev.get_text(),
+                      "Consolidated planned-inputs section must still show 'Future input' tags")
 
 
 # ---------------------------------------------------------------------------

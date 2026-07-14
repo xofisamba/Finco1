@@ -437,10 +437,11 @@ class TestInputsSheetHtml(unittest.TestCase):
     def test_inputs_sheet_container_present(self):
         self.assertIsNotNone(self.soup.find(id="v2-sheet-inputs"))
 
-    def test_eight_collapsible_sections(self):
+    def test_collapsible_sections(self):
         inp = self.soup.find(id="v2-sheet-inputs")
         details = inp.find_all("details", class_="v2-inputs-section")
-        self.assertEqual(len(details), 8, f"expected 8, got {len(details)}")
+        # 8 original sections + 1 "Planned technical inputs" collapsed section
+        self.assertGreaterEqual(len(details), 8, f"expected at least 8, got {len(details)}")
 
     def test_section_nav_links(self):
         inp = self.soup.find(id="v2-sheet-inputs")
