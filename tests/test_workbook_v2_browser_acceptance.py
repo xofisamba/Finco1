@@ -349,9 +349,25 @@ def _instrument(page) -> None:
 
 
 def _switch_tab(page, tab_name: str) -> None:
-    """Click the workbook tab whose aria-controls is 'v2-sheet-<tab_name>'."""
-    page.locator(f'[aria-controls="v2-sheet-{tab_name}"]').click()
-    page.locator(f'#v2-sheet-{tab_name}:not([hidden])').wait_for(timeout=5000)
+    """Click the workbook top-level sheet tab.
+
+    The workbook HTML uses aria-controls="panel-<short>" where short codes are:
+      opex → panel-opex
+      financial-statements → panel-fs
+    """
+    _TAB_PANEL = {
+        "opex": "panel-opex",
+        "financial-statements": "panel-fs",
+        "inputs": "panel-inputs",
+        "revenue": "panel-revenue",
+        "capex": "panel-capex",
+        "debt": "panel-debt",
+        "tax": "panel-tax",
+        "project-setup": "panel-project-setup",
+    }
+    panel_id = _TAB_PANEL.get(tab_name, f"panel-{tab_name}")
+    page.locator(f'[aria-controls="{panel_id}"]').click()
+    page.locator(f'#{panel_id}:not([hidden])').wait_for(timeout=5000)
 
 
 def _open_group(page, group_code: str) -> None:
@@ -393,7 +409,7 @@ class TestRouteVerification:
         p = authed_page
         p.goto(f"/v2/workbook?project={oborovo_project}")
         p.wait_for_load_state("networkidle")
-        assert p.locator("#v2-sheet-opex").count() == 1, "#v2-sheet-opex missing"
+        assert p.locator("#panel-opex").count() == 1, "#panel-opex missing"
         _switch_tab(p, "opex")
         assert p.locator('[data-testid="opex-group-B.01"]').count() >= 1
 
@@ -401,7 +417,7 @@ class TestRouteVerification:
         p = authed_page
         p.goto(f"/v2/workbook?project={oborovo_project}")
         p.wait_for_load_state("networkidle")
-        assert p.locator("#v2-sheet-financial-statements").count() == 1
+        assert p.locator("#panel-fs").count() == 1
 
     def test_workbook_v2_js_loaded(self, authed_page, live_server, oborovo_project):
         p = authed_page
@@ -1313,7 +1329,7 @@ class TestViewport:
             # OPEX sheet
             _switch_tab(p, "opex")
             p.screenshot(path=str(SCREENSHOTS_DIR / f"opex_{suffix}.png"))
-            opex_sheet = p.locator("#v2-sheet-opex")
+            opex_sheet = p.locator("#panel-opex")
             assert opex_sheet.is_visible()
 
             # FS sheet – model period
