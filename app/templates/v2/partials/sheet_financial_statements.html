@@ -37,6 +37,87 @@
 {# ── helpers ─────────────────────────────────────────────────────────────── #}
 {% macro fmt_keur(v) %}{% if v is not none %}{{ "%.0f"|format(v) }}{% else %}—{% endif %}{% endmacro %}
 
+{# ── fmt_period: convert YYYY-MM → "Jan 2028" style labels ─────────────── #}
+{% macro fmt_period(lbl) %}
+{%- if lbl and lbl|length >= 7 -%}
+  {{- lbl[0:4] ~ " " ~ {"01":"Jan","02":"Feb","03":"Mar","04":"Apr","05":"May","06":"Jun","07":"Jul","08":"Aug","09":"Sep","10":"Oct","11":"Nov","12":"Dec"}.get(lbl[5:7], lbl[5:7]) -}}
+{%- else -%}
+  {{- lbl -}}
+{%- endif -%}
+{% endmacro %}
+
+<style>
+/* ── Financial Statements: sticky column theming ── */
+.v2-fs-sticky-header {
+  background: var(--v2-sticky-bg, #f4f4f4);
+  position: sticky;
+  left: 0;
+  z-index: 1;
+}
+.v2-fs-sticky-cell {
+  background: var(--v2-sticky-cell-bg, #fff);
+  position: sticky;
+  left: 0;
+  z-index: 1;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --v2-sticky-bg: #2a2a2a;
+    --v2-sticky-cell-bg: #1e1e1e;
+  }
+}
+:root[data-theme="dark"]  { --v2-sticky-bg: #2a2a2a; --v2-sticky-cell-bg: #1e1e1e; }
+:root[data-theme="light"] { --v2-sticky-bg: #f4f4f4; --v2-sticky-cell-bg: #fff; }
+
+/* ── Period selector ── */
+.v2-fs-period-selector {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  padding: .45rem .6rem;
+  margin-bottom: .5rem;
+  border: 1px solid var(--v2-border, #ddd);
+  border-radius: 4px;
+  font-size: .82rem;
+  background: var(--v2-sticky-bg, #f4f4f4);
+}
+.v2-fs-period-selector label {
+  display: flex;
+  align-items: center;
+  gap: .3rem;
+  cursor: pointer;
+  font-weight: 500;
+}
+.v2-fs-period-note {
+  margin-left: auto;
+  color: #999;
+  font-size: .76rem;
+  font-style: italic;
+}
+
+/* ── Balance check row colouring ── */
+.v2-bs-balance-check-ok   td { color: #2a9d2a; font-weight: 600; }
+.v2-bs-balance-check-warn td { color: #c0392b; font-weight: 700; background: #fff4f4; }
+:root[data-theme="dark"] .v2-bs-balance-check-warn td { background: #3a1a1a; }
+</style>
+
+<script>
+/* Period selector: tab-based client-side toggle (no form elements) */
+function v2FsPeriodSwitch(val) {
+  document.querySelectorAll('.v2-fs-period-tab').forEach(function (el) {
+    var isActive = el.getAttribute('data-period-view') === val;
+    el.classList.toggle('v2-fs-period-tab-active', isActive);
+    el.setAttribute('aria-selected', isActive ? 'true' : 'false');
+  });
+  document.querySelectorAll('.v2-fs-table-model').forEach(function (el) {
+    el.style.display = val === 'model' ? '' : 'none';
+  });
+  document.querySelectorAll('.v2-fs-table-annual').forEach(function (el) {
+    el.style.display = val === 'annual' ? '' : 'none';
+  });
+}
+</script>
+
 <div id="v2-sheet-financial-statements" data-sheet="financial_statements">
 
   {% if field_error %}
@@ -61,6 +142,25 @@
     </div>
   {% endif %}
 
+  {# ── Period granularity selector ─────────────────────────────────────── #}
+  {# Uses <div role="tab"> so no form elements are added to the read-only FS sheet. #}
+  <div class="v2-fs-period-selector" data-testid="fs-period-selector" role="tablist" aria-label="Period granularity">
+    <span style="font-weight:600;margin-right:.25rem;">View:</span>
+    <div role="tab" tabindex="0" class="v2-fs-period-tab v2-fs-period-tab-active"
+         data-period-view="model" aria-selected="true"
+         onclick="v2FsPeriodSwitch('model')"
+         onkeydown="if(event.key==='Enter'||event.key===' ')v2FsPeriodSwitch('model')">
+      Model periods
+    </div>
+    <div role="tab" tabindex="0" class="v2-fs-period-tab"
+         data-period-view="annual" aria-selected="false"
+         onclick="v2FsPeriodSwitch('annual')"
+         onkeydown="if(event.key==='Enter'||event.key===' ')v2FsPeriodSwitch('annual')">
+      Annual
+    </div>
+    <span class="v2-fs-period-note">Annual view: aggregated from model periods where available</span>
+  </div>
+
   {# ── B. Income Statement ─────────────────────────────────────────────── #}
   <details class="v2-inputs-section" open>
     <summary class="v2-inputs-section-summary" id="nav-fs-pnl">
@@ -77,27 +177,27 @@
     {% if fs_pnl_rows is not none %}
 
       {% if fs_pnl_period_labels %}
-        <div style="overflow-x:auto;" data-testid="fs-pnl-table-wrapper">
+        <div class="v2-fs-table-model" style="overflow-x:auto;" data-testid="fs-pnl-table-wrapper">
           <table class="v2-table" data-testid="fs-pnl-table"
                  style="width:100%;border-collapse:collapse;font-size:.82rem;
                         font-variant-numeric:tabular-nums;white-space:nowrap;">
             <thead>
               <tr>
-                <th style="text-align:left;padding:.3rem .5rem;position:sticky;left:0;
-                           background:#f4f4f4;min-width:14rem;border-bottom:2px solid #ddd;">
+                <th class="v2-fs-sticky-header"
+                    style="text-align:left;padding:.3rem .5rem;min-width:14rem;border-bottom:2px solid #ddd;">
                   Line (kEUR)
                 </th>
                 {% for lbl in fs_pnl_period_labels %}
                 <th style="text-align:right;padding:.3rem .5rem;min-width:5rem;
-                           border-bottom:2px solid #ddd;">{{ lbl }}</th>
+                           border-bottom:2px solid #ddd;">{{ fmt_period(lbl) }}</th>
                 {% endfor %}
               </tr>
             </thead>
             <tbody>
               {% for row in fs_pnl_rows %}
               <tr data-testid="fs-pnl-row-{{ row.key }}">
-                <td style="padding:.25rem .5rem;position:sticky;left:0;background:#fff;
-                           border-bottom:1px solid #f0f0f0;
+                <td class="v2-fs-sticky-cell"
+                    style="padding:.25rem .5rem;border-bottom:1px solid #f0f0f0;
                            {% if row.is_total %}font-weight:600;{% endif %}">
                   {{ row.label }}
                 </td>
@@ -110,6 +210,10 @@
               {% endfor %}
             </tbody>
           </table>
+        </div>
+        <div class="v2-fs-table-annual" style="display:none;padding:.4rem .5rem;font-size:.82rem;color:#999;"
+             data-testid="fs-pnl-annual-placeholder">
+          Annual view not yet available for Income Statement.
         </div>
       {% else %}
         <div class="v2-field-row v2-field-readonly" data-testid="fs-pnl-empty">
@@ -151,27 +255,27 @@
     {% if fs_pf_cf_rows is not none %}
 
       {% if fs_pf_cf_period_labels %}
-        <div style="overflow-x:auto;" data-testid="fs-pf-cf-table-wrapper">
+        <div class="v2-fs-table-model" style="overflow-x:auto;" data-testid="fs-pf-cf-table-wrapper">
           <table class="v2-table" data-testid="fs-pf-cf-table"
                  style="width:100%;border-collapse:collapse;font-size:.82rem;
                         font-variant-numeric:tabular-nums;white-space:nowrap;">
             <thead>
               <tr>
-                <th style="text-align:left;padding:.3rem .5rem;position:sticky;left:0;
-                           background:#f4f4f4;min-width:14rem;border-bottom:2px solid #ddd;">
+                <th class="v2-fs-sticky-header"
+                    style="text-align:left;padding:.3rem .5rem;min-width:14rem;border-bottom:2px solid #ddd;">
                   Line (kEUR)
                 </th>
                 {% for lbl in fs_pf_cf_period_labels %}
                 <th style="text-align:right;padding:.3rem .5rem;min-width:5rem;
-                           border-bottom:2px solid #ddd;">{{ lbl }}</th>
+                           border-bottom:2px solid #ddd;">{{ fmt_period(lbl) }}</th>
                 {% endfor %}
               </tr>
             </thead>
             <tbody>
               {% for row in fs_pf_cf_rows %}
               <tr data-testid="fs-pf-cf-row-{{ row.key }}">
-                <td style="padding:.25rem .5rem;position:sticky;left:0;background:#fff;
-                           border-bottom:1px solid #f0f0f0;
+                <td class="v2-fs-sticky-cell"
+                    style="padding:.25rem .5rem;border-bottom:1px solid #f0f0f0;
                            {% if row.is_total %}font-weight:600;{% endif %}">
                   {{ row.label }}
                 </td>
@@ -184,6 +288,10 @@
               {% endfor %}
             </tbody>
           </table>
+        </div>
+        <div class="v2-fs-table-annual" style="display:none;padding:.4rem .5rem;font-size:.82rem;color:#999;"
+             data-testid="fs-pf-cf-annual-placeholder">
+          Annual view not yet available for PF Cash Waterfall.
         </div>
       {% else %}
         <div class="v2-field-row v2-field-readonly" data-testid="fs-pf-cf-empty">
@@ -225,27 +333,36 @@
     {% if fs_bs_rows is not none %}
 
       {% if fs_bs_period_labels %}
-        <div style="overflow-x:auto;" data-testid="fs-bs-table-wrapper">
+        {# Separate balance_check row out before rendering the main table #}
+        {% set balance_check_row = namespace(found=none) %}
+        {% for row in fs_bs_rows %}
+          {% if row.key == "balance_check_keur" %}
+            {% set balance_check_row.found = row %}
+          {% endif %}
+        {% endfor %}
+
+        <div class="v2-fs-table-model" style="overflow-x:auto;" data-testid="fs-bs-table-wrapper">
           <table class="v2-table" data-testid="fs-bs-table"
                  style="width:100%;border-collapse:collapse;font-size:.82rem;
                         font-variant-numeric:tabular-nums;white-space:nowrap;">
             <thead>
               <tr>
-                <th style="text-align:left;padding:.3rem .5rem;position:sticky;left:0;
-                           background:#f4f4f4;min-width:14rem;border-bottom:2px solid #ddd;">
+                <th class="v2-fs-sticky-header"
+                    style="text-align:left;padding:.3rem .5rem;min-width:14rem;border-bottom:2px solid #ddd;">
                   Line (kEUR)
                 </th>
                 {% for lbl in fs_bs_period_labels %}
                 <th style="text-align:right;padding:.3rem .5rem;min-width:5rem;
-                           border-bottom:2px solid #ddd;">{{ lbl }}</th>
+                           border-bottom:2px solid #ddd;">{{ fmt_period(lbl) }}</th>
                 {% endfor %}
               </tr>
             </thead>
             <tbody>
               {% for row in fs_bs_rows %}
+              {% if row.key != "balance_check_keur" %}
               <tr data-testid="fs-bs-row-{{ row.key }}">
-                <td style="padding:.25rem .5rem;position:sticky;left:0;background:#fff;
-                           border-bottom:1px solid #f0f0f0;
+                <td class="v2-fs-sticky-cell"
+                    style="padding:.25rem .5rem;border-bottom:1px solid #f0f0f0;
                            {% if row.is_total %}font-weight:600;{% endif %}">
                   {{ row.label }}
                 </td>
@@ -255,13 +372,49 @@
                 </td>
                 {% endfor %}
               </tr>
+              {% endif %}
               {% endfor %}
+
+              {# ── Balance check row (appended last, styled by tolerance) ── #}
+              {% if balance_check_row.found is not none %}
+              {% set bc = balance_check_row.found %}
+              {# Determine if any value is outside ±1.0 kEUR tolerance #}
+              {% set bc_warn = namespace(flag=false) %}
+              {% for v in bc['values'] %}
+                {% if v is not none and (v > 1.0 or v < -1.0) %}
+                  {% set bc_warn.flag = true %}
+                {% endif %}
+              {% endfor %}
+              <tr class="{% if bc_warn.flag %}v2-bs-balance-check-warn{% else %}v2-bs-balance-check-ok{% endif %}"
+                  data-testid="fs-bs-row-balance_check_keur"
+                  title="{% if bc_warn.flag %}Balance sheet does not balance — check model outputs{% else %}Balance sheet balanced within ±1 kEUR tolerance{% endif %}">
+                <td class="v2-fs-sticky-cell"
+                    style="padding:.25rem .5rem;border-top:2px solid #ddd;font-weight:600;">
+                  {{ bc.label }}
+                  {% if bc_warn.flag %}
+                    <span style="margin-left:.35rem;" title="Outside ±1 kEUR tolerance">&#9888;</span>
+                  {% else %}
+                    <span style="margin-left:.35rem;" title="Balanced">&#10003;</span>
+                  {% endif %}
+                </td>
+                {% for v in bc['values'] %}
+                <td style="text-align:right;padding:.25rem .5rem;border-top:2px solid #ddd;">
+                  {{ fmt_keur(v) }}
+                </td>
+                {% endfor %}
+              </tr>
+              {% endif %}
+
             </tbody>
           </table>
         </div>
+        <div class="v2-fs-table-annual" style="display:none;padding:.4rem .5rem;font-size:.82rem;color:#999;"
+             data-testid="fs-bs-annual-placeholder">
+          Annual view not yet available for Balance Sheet.
+        </div>
         <div style="padding:.25rem .5rem;font-size:.72rem;color:#999;"
              data-testid="fs-bs-share-capital-footnote">
-          ★ Share capital (equity paid-in) shows as a placeholder — not modelled in this version.
+          &#9733; Share capital (equity paid-in) shows as a placeholder — not modelled in this version.
         </div>
 
       {% else %}
