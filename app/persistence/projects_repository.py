@@ -44,6 +44,11 @@ from typing import TYPE_CHECKING, Any, Optional
 from app.persistence._helpers import _from_iso, _from_json, _now_utc, _to_json
 from app.persistence.db import get_cursor
 
+# Sentinel for "argument was not passed by caller" — distinguishes omission from
+# explicit None on project-library metadata fields so save_project() can
+# preserve existing DB values when callers do not supply new ones.
+_UNSET = object()
+
 if TYPE_CHECKING:
     from app.persistence.records import ProjectRecord
 
@@ -158,6 +163,31 @@ def get_project_by_id(project_id: str) -> "Optional[ProjectRecord]":
     return ProjectRecord.from_row(row) if row else None
 
 
+def resolve_accessible_project(
+    user_id: str,
+    project_code: str,
+) -> "tuple[Optional[ProjectRecord], str]":
+    """Resolve a project code for a user, returning (record, workspace_owner_id).
+
+    Lookup order:
+    1. User's own project — workspace_owner_id == user_id
+    2. Canonical system reference (user_id=='__reference__', project_role='reference')
+       — workspace_owner_id == REFERENCE_USER_ID
+
+    Never returns another normal user's project.
+    Returns (None, user_id) when not found.
+    """
+    record = get_project_by_code(user_id, project_code)
+    if record is not None:
+        return record, user_id
+
+    ref = get_project_by_code(REFERENCE_USER_ID, project_code)
+    if ref is not None and ref.project_role == "reference" and ref.is_protected:
+        return ref, REFERENCE_USER_ID
+
+    return None, user_id
+
+
 def list_projects_paged(
     *,
     user_id: str,
@@ -250,9 +280,9 @@ def save_project(
     replay_metadata: Optional[dict[str, Any]] = None,
     capex_sub_lines: Optional[list] = None,
     full_inputs: Optional[dict[str, Any]] = None,  # V3-7: full-fidelity ProjectInputs dict
-    project_role: str = "user_project",             # Project Library
-    is_protected: bool = False,                     # Project Library
-    source_project_id: Optional[str] = None,        # Project Library
+    project_role: Any = _UNSET,                     # Project Library — preserved on update when omitted
+    is_protected: Any = _UNSET,                     # Project Library — preserved on update when omitted
+    source_project_id: Any = _UNSET,                # Project Library — preserved on update when omitted
 ) -> "ProjectRecord":
     now = _now_utc()
     governance_state = governance_state or {}
@@ -265,7 +295,8 @@ def save_project(
         cur.execute(
             """
             SELECT project_id, created_at, project_type, project_origin, template_source,
-                   baseline_snapshot_json, archived, full_inputs_json
+                   baseline_snapshot_json, archived, full_inputs_json,
+                   project_role, is_protected, source_project_id
             FROM projects
             WHERE user_id=? AND project_code=?
             """,
@@ -285,6 +316,14 @@ def save_project(
                 _existing_fi = existing["full_inputs_json"] if "full_inputs_json" in existing.keys() else None
                 full_inputs = _from_json(_existing_fi, None) if _existing_fi else None
             archived = bool(existing["archived"]) if archived is None else archived
+            # Preserve project-library metadata from existing row when caller did not pass new values.
+            _keys = existing.keys()
+            if project_role is _UNSET:
+                project_role = existing["project_role"] if "project_role" in _keys else "user_project"
+            if is_protected is _UNSET:
+                is_protected = bool(existing["is_protected"]) if "is_protected" in _keys else False
+            if source_project_id is _UNSET:
+                source_project_id = existing["source_project_id"] if "source_project_id" in _keys else None
             replay_metadata.setdefault("project_id", project_id)
             cur.execute(
                 """
@@ -319,6 +358,13 @@ def save_project(
         else:
             project_id = uuid.uuid4().hex[:16]
             created_at = now
+            # Apply insert-time defaults for omitted project-library fields.
+            if project_role is _UNSET:
+                project_role = "user_project"
+            if is_protected is _UNSET:
+                is_protected = False
+            if source_project_id is _UNSET:
+                source_project_id = None
             replay_metadata.setdefault("project_id", project_id)
             cur.execute(
                 """

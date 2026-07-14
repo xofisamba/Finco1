@@ -132,7 +132,9 @@ class TestFieldShapes:
         "template_source", "baseline_snapshot", "archived", "is_readonly",
         "governance_state", "last_run_summary", "replay_metadata",
         "created_at", "updated_at",
-        "full_inputs",  # V3-7: full-fidelity ProjectInputs dict (nullable)
+        "full_inputs",        # V3-7: full-fidelity ProjectInputs dict (nullable)
+        # Project Library (project-library-reference-working-copies)
+        "project_role", "is_protected", "source_project_id",
     ])
 
     EXPECTED_SCENARIO_RECORD_FIELDS = sorted([
@@ -171,8 +173,8 @@ class TestFieldShapes:
 
     def test_project_record_field_count(self):
         from app.persistence.repository import ProjectRecord
-        assert len(_get_field_names(ProjectRecord)) == 17, \
-            f"ProjectRecord has 17 fields, got {_get_field_names(ProjectRecord)}"
+        assert len(_get_field_names(ProjectRecord)) == 20, \
+            f"ProjectRecord has 20 fields (17 original + 3 project-library), got {_get_field_names(ProjectRecord)}"
 
     def test_scenario_record_field_count(self):
         from app.persistence.repository import ScenarioRecord

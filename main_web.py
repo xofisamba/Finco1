@@ -147,6 +147,18 @@ _logger.info("FincoGPT startup: asset_version=%s", ASSET_VERSION)
 # -- FastAPI app --------------------------------------------------------------
 app = FastAPI(title="FincoGPT Internal Demo")
 
+
+@app.on_event("startup")
+async def _bootstrap_reference_models():
+    """Idempotent: ensure system reference projects exist before first request."""
+    try:
+        from app.services.project_library_service import ensure_reference_models
+        ensure_reference_models()
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception("Failed to bootstrap reference models at startup")
+
+
 # -- Template setup -----------------------------------------------------------
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "app", "templates"))

@@ -394,3 +394,252 @@ class TestMutationGuard:
         )
         with pytest.raises(ProtectedProjectError):
             assert_project_not_protected(legacy_ref)
+
+# ===========================================================================
+# Migration and backfill safety
+# ===========================================================================
+
+class TestMigrationBackfillSafety:
+    """Verify that schema migration does not silently convert user-owned
+    factory_template rows into globally visible reference projects."""
+
+    @pytest.fixture(autouse=True)
+    def isolated(self, isolated_db):
+        pass
+
+    def _raw_insert_project(self, user_id, project_code, project_name,
+                             project_origin, template_source):
+        """Insert a project row as it would exist before the Project Library migration."""
+        import sqlite3, os
+        # Ensure schema exists first (simulates a pre-migration DB with schema).
+        from app.persistence.db import init_db
+        init_db()
+        conn = sqlite3.connect(os.environ["FINCO_DB_PATH"])
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA journal_mode=WAL")
+        # Insert without the new project-library columns to simulate pre-migration state.
+        conn.execute("""
+            INSERT INTO projects (
+                project_id, user_id, project_code, project_name,
+                project_type, project_origin, source_project_template,
+                template_source, baseline_snapshot_json, archived,
+                governance_state_json, last_run_summary_json,
+                replay_metadata_json, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, '{}', 0, '{}', '{}', '{}',
+                      datetime('now'), datetime('now'))
+        """, (
+            "usr-" + project_code[:8], user_id, project_code, project_name,
+            "Wind", project_origin, template_source, template_source,
+        ))
+        conn.commit()
+        conn.close()
+
+    def test_user_owned_tuho_row_not_promoted(self):
+        """A user-owned TUHO factory_template row must stay user-owned after init_db."""
+        from app.persistence.projects_repository import get_project_by_code
+        # Pre-insert a user-owned TUHO row (simulating legacy state)
+        self._raw_insert_project(
+            "alice", "tuho-my-project", "Alice TUHO Project",
+            "factory_template", "tuho"
+        )
+        # Re-run schema init (migration runs here)
+        from app.persistence.db import init_db
+        init_db()
+        record = get_project_by_code("alice", "tuho-my-project")
+        assert record is not None
+        assert record.user_id == "alice", "User-owned row must stay with alice"
+        assert record.project_role != "reference", \
+            "User-owned factory_template TUHO row must NOT be promoted to reference"
+
+    def test_user_owned_oborovo_row_not_promoted(self):
+        """A user-owned Oborovo factory_template row must stay user-owned after init_db."""
+        from app.persistence.projects_repository import get_project_by_code
+        self._raw_insert_project(
+            "bob", "oborovo-my-project", "Bob Oborovo Project",
+            "factory_template", "oborovo"
+        )
+        from app.persistence.db import init_db
+        init_db()
+        record = get_project_by_code("bob", "oborovo-my-project")
+        assert record is not None
+        assert record.user_id == "bob", "User-owned row must stay with bob"
+        assert record.project_role != "reference", \
+            "User-owned factory_template Oborovo row must NOT be promoted to reference"
+
+    def test_system_reference_row_is_backfilled(self):
+        """A row already owned by __reference__ is backfilled to role='reference'."""
+        import sqlite3, os
+        # Ensure schema exists first.
+        from app.persistence.db import init_db
+        init_db()
+        # Insert a __reference__-owned row that predates the project_role column
+        conn = sqlite3.connect(os.environ["FINCO_DB_PATH"])
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("""
+            INSERT INTO projects (
+                project_id, user_id, project_code, project_name,
+                project_type, project_origin, source_project_template,
+                template_source, baseline_snapshot_json, archived,
+                governance_state_json, last_run_summary_json,
+                replay_metadata_json, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, '{}', 0, '{}', '{}', '{}',
+                      datetime('now'), datetime('now'))
+        """, (
+            "ref-tuho-old", "__reference__", "tuho-reference", "TUHO Reference",
+            "Wind", "factory_template", "tuho", "tuho",
+        ))
+        conn.commit()
+        conn.close()
+        from app.persistence.db import init_db
+        init_db()
+        from app.persistence.projects_repository import get_project_by_code, REFERENCE_USER_ID
+        record = get_project_by_code(REFERENCE_USER_ID, "tuho-reference")
+        assert record is not None
+        assert record.project_role == "reference", \
+            f"System __reference__ TUHO row should be backfilled to 'reference', got {record.project_role!r}"
+        assert record.is_protected is True
+
+    def test_bootstrap_after_legacy_user_rows(self):
+        """Bootstrap creates exactly two __reference__ projects even when user-owned rows exist."""
+        from app.persistence.projects_repository import get_project_by_code, REFERENCE_USER_ID
+        from app.persistence.projects_repository import get_reference_projects
+        # Insert user-owned factory_template rows for alice
+        self._raw_insert_project(
+            "alice", "tuho-project", "Alice TUHO", "factory_template", "tuho"
+        )
+        self._raw_insert_project(
+            "alice", "oborovo-project", "Alice Oborovo", "factory_template", "oborovo"
+        )
+        # Now bootstrap
+        from app.services.project_library_service import ensure_reference_models
+        ensure_reference_models()
+        refs = get_reference_projects()
+        ref_srcs = {r.template_source for r in refs}
+        assert "tuho" in ref_srcs, "TUHO system reference must be created"
+        assert "oborovo" in ref_srcs, "Oborovo system reference must be created"
+        # Alice's rows must not be affected
+        alice_tuho = get_project_by_code("alice", "tuho-project")
+        assert alice_tuho is not None
+        assert alice_tuho.project_role != "reference"
+
+    def test_alice_cannot_see_bobs_tuho_row_in_library(self):
+        """list_projects_paged must not expose Bob's user-owned TUHO row to Alice."""
+        from app.persistence.projects_repository import save_project, list_projects_paged
+        # Bob creates a user_project (even with factory_template origin)
+        save_project(
+            user_id="bob",
+            project_code="bobs-tuho",
+            project_name="Bob TUHO",
+            source_project_template="tuho",
+            project_type="Wind",
+            project_origin="user_created",
+            template_source="tuho",
+            project_role="user_project",
+        )
+        # Alice queries the library
+        records, total = list_projects_paged(user_id="alice")
+        codes = [r.project_code for r in records]
+        assert "bobs-tuho" not in codes, \
+            "Alice must not see Bob's project in the library"
+
+
+# ===========================================================================
+# save_project() metadata preservation
+# ===========================================================================
+
+class TestSaveProjectMetadataPreservation:
+    """Verify that save_project() preserves role/lineage/protection on updates
+    when the caller does not pass the project-library arguments."""
+
+    @pytest.fixture(autouse=True)
+    def isolated(self, isolated_db):
+        pass
+
+    def test_working_copy_role_preserved_on_update(self):
+        """A working_copy project must keep role/source_project_id after a
+        routine save_project() call that omits the library params."""
+        from app.persistence.projects_repository import save_project, get_project_by_code
+        # Create the working copy explicitly
+        save_project(
+            user_id="alice",
+            project_code="my-wc",
+            project_name="My Working Copy",
+            source_project_template="tuho",
+            project_type="Wind",
+            project_role="working_copy",
+            source_project_id="ref-tuho-001",
+            is_protected=False,
+        )
+        # Now simulate a routine update (name change) without passing library params
+        save_project(
+            user_id="alice",
+            project_code="my-wc",
+            project_name="My Working Copy (renamed)",
+            source_project_template="tuho",
+            project_type="Wind",
+            # project_role, is_protected, source_project_id NOT passed
+        )
+        updated = get_project_by_code("alice", "my-wc")
+        assert updated is not None
+        assert updated.project_role == "working_copy", \
+            f"Role must be preserved as 'working_copy', got {updated.project_role!r}"
+        assert updated.source_project_id == "ref-tuho-001", \
+            f"source_project_id must be preserved, got {updated.source_project_id!r}"
+        assert updated.is_protected is False
+
+    def test_reference_protection_preserved_on_metadata_update(self):
+        """A reference project must keep role/protection after a benign metadata update."""
+        from app.persistence.projects_repository import (
+            save_project, get_project_by_code, REFERENCE_USER_ID,
+        )
+        save_project(
+            user_id=REFERENCE_USER_ID,
+            project_code="tuho-ref-test",
+            project_name="TUHO Reference",
+            source_project_template="tuho",
+            project_type="Wind",
+            project_role="reference",
+            is_protected=True,
+        )
+        # Simulate a benign last_run_summary update without library params
+        save_project(
+            user_id=REFERENCE_USER_ID,
+            project_code="tuho-ref-test",
+            project_name="TUHO Reference",
+            source_project_template="tuho",
+            project_type="Wind",
+            last_run_summary={"status": "success"},
+            # project_role, is_protected NOT passed
+        )
+        updated = get_project_by_code(REFERENCE_USER_ID, "tuho-ref-test")
+        assert updated is not None
+        assert updated.project_role == "reference", \
+            f"Role must remain 'reference', got {updated.project_role!r}"
+        assert updated.is_protected is True, \
+            "is_protected must remain True after metadata update"
+        assert updated.user_id == REFERENCE_USER_ID
+
+    def test_explicit_role_change_takes_effect(self):
+        """Explicit project_role argument is honored on update."""
+        from app.persistence.projects_repository import save_project, get_project_by_code
+        save_project(
+            user_id="carol",
+            project_code="carol-proj",
+            project_name="Carol Project",
+            source_project_template="tuho",
+            project_type="Wind",
+            project_role="user_project",
+        )
+        # Explicitly upgrade to working_copy with lineage
+        save_project(
+            user_id="carol",
+            project_code="carol-proj",
+            project_name="Carol Working Copy",
+            source_project_template="tuho",
+            project_type="Wind",
+            project_role="working_copy",
+            source_project_id="ref-xyz",
+        )
+        updated = get_project_by_code("carol", "carol-proj")
+        assert updated.project_role == "working_copy"
+        assert updated.source_project_id == "ref-xyz"

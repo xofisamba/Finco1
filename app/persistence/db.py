@@ -243,12 +243,25 @@ def _init_schema(conn):
         "CREATE INDEX IF NOT EXISTS idx_projects_template_role"
         " ON projects(template_source, project_role, archived)"
     )
-    # Backfill: existing factory_template tuho/oborovo rows → project_role='reference', is_protected=1
+    # Unique constraint: exactly one canonical system reference per template_source.
+    # Scoped to __reference__ user only — never touches user-owned rows.
+    conn.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS ux_projects_system_reference_source
+        ON projects(template_source)
+        WHERE user_id='__reference__'
+          AND project_role='reference'
+          AND archived=0
+        """
+    )
+    # Backfill: only rows already owned by the system reference user get
+    # promoted to role='reference'. User-owned factory_template rows are
+    # intentionally left untouched — they must not become globally visible.
     conn.execute(
         """
         UPDATE projects
         SET project_role='reference', is_protected=1
-        WHERE project_origin='factory_template'
+        WHERE user_id='__reference__'
           AND template_source IN ('tuho','oborovo')
           AND project_role='user_project'
         """

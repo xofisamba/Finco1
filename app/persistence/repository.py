@@ -83,6 +83,7 @@ from app.persistence.projects_repository import (
     get_project_by_id,
     list_projects_paged,
     list_recent_projects,
+    resolve_accessible_project,
 )
 
 

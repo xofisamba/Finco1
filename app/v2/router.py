@@ -731,14 +731,14 @@ async def v2_workbook(request: Request, project: Optional[str] = None):
     if not project:
         return RedirectResponse(url="/", status_code=302)
 
-    from app.persistence.projects_repository import get_project_record
+    from app.persistence.projects_repository import resolve_accessible_project
     from app.persistence.workspace_repository import get_workspace_state
 
-    project_record = get_project_record(user_id=user.user_id, project_code=project)
+    project_record, workspace_owner = resolve_accessible_project(user.user_id, project)
     if project_record is None:
         return RedirectResponse(url="/", status_code=302)
 
-    ws = get_workspace_state(user_id=user.user_id, project_id=project_record.project_id)
+    ws = get_workspace_state(user_id=workspace_owner, project_id=project_record.project_id)
     if ws is None:
         return RedirectResponse(url="/", status_code=302)
 
@@ -819,14 +819,10 @@ async def v2_workbook_update(
 
     is_htmx = request.headers.get("HX-Request") == "true"
 
-    from app.persistence.projects_repository import get_project_record
+    from app.persistence.projects_repository import resolve_accessible_project
     from app.persistence.workspace_repository import get_workspace_state
 
-    project_record = get_project_record(user_id=user.user_id, project_code=project)
-    if project_record is None:
-        # Also check cross-user reference projects (user may have navigated to one)
-        from app.persistence.projects_repository import get_project_by_code
-        project_record = get_project_by_code("__reference__", project)
+    project_record, _workspace_owner = resolve_accessible_project(user.user_id, project)
     if project_record is None:
         return JSONResponse({"error": f"Project {project!r} not found."}, status_code=404)
 
@@ -1044,7 +1040,6 @@ async def v2_workbook_run(
     from datetime import datetime, timezone
 
     from app.api.project_runner import run_project
-    from app.persistence.projects_repository import get_project_record
     from app.persistence.workspace_repository import (
         V2RunCommitConflictError,
         get_workspace_state,
@@ -1086,12 +1081,13 @@ async def v2_workbook_run(
             status_code=303,
         )
 
-    project_record = get_project_record(user_id=user.user_id, project_code=project)
+    from app.persistence.projects_repository import resolve_accessible_project
+    project_record, workspace_owner = resolve_accessible_project(user.user_id, project)
     if project_record is None:
         msg = f"Project {project!r} not found."
         return _htmx_error(msg) if is_htmx else _non_htmx_error(msg)
 
-    ws = get_workspace_state(user_id=user.user_id, project_id=project_record.project_id)
+    ws = get_workspace_state(user_id=workspace_owner, project_id=project_record.project_id)
     if ws is None:
         msg = "Workspace not found."
         return _htmx_error(msg) if is_htmx else _non_htmx_error(msg)
@@ -1113,7 +1109,7 @@ async def v2_workbook_run(
     # ── Step 5: pre-engine identity CAS ───────────────────────────────────── #
     try:
         current_identity = assemble_consistent_for_get(
-            user_id=user.user_id,
+            user_id=workspace_owner,
             project_id=project_record.project_id,
             workbook_version=pis_draft.workbook_version,
         )
@@ -1187,7 +1183,7 @@ async def v2_workbook_run(
     if active_scenario_id:
         import logging as _log
         from app.persistence.scenarios_repository import get_scenario
-        sc_rec = get_scenario(scenario_id=active_scenario_id, user_id=user.user_id)
+        sc_rec = get_scenario(scenario_id=active_scenario_id, user_id=workspace_owner)
         if sc_rec is None:
             msg = "Active scenario could not be found. Please re-select a scenario and try again."
             return _htmx_error(msg, ws) if is_htmx else _non_htmx_error(msg)
@@ -1269,12 +1265,12 @@ async def v2_workbook_run(
             return _non_htmx_error(msg)
         # Re-fetch workspace to get the current hash for the run controls.
         ws_conflict = get_workspace_state(
-            user_id=user.user_id, project_id=project_record.project_id
+            user_id=workspace_owner, project_id=project_record.project_id
         ) or ws
         pis_conflict = WorkbookService.build_draft_input_set_from_workspace(ws_conflict)
         try:
             conflict_identity = assemble_consistent_for_get(
-                user_id=user.user_id,
+                user_id=workspace_owner,
                 project_id=project_record.project_id,
                 workbook_version=pis_conflict.workbook_version,
             )

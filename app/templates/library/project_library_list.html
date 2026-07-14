@@ -60,12 +60,10 @@
       </td>
 
       <td style="padding:.625rem .75rem;white-space:nowrap;">
-        {# Open link — V2 workbook if env var, else legacy #}
-        {% if not is_ref %}
-          <a href="/v2/workbook?project={{ proj.project_code }}"
-             data-testid="open-{{ proj.project_code }}"
-             style="font-size:.8125rem;color:var(--fo-accent,#1d4ed8);text-decoration:none;margin-right:.75rem;">Open</a>
-        {% endif %}
+        {# Open link — always visible for all project types #}
+        <a href="/v2/workbook?project={{ proj.project_code }}"
+           data-testid="open-{{ proj.project_code }}"
+           style="font-size:.8125rem;color:var(--fo-accent,#1d4ed8);text-decoration:none;margin-right:.75rem;">Open</a>
 
         {# Create working copy for references #}
         {% if is_ref %}
