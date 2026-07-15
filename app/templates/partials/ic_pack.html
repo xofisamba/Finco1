@@ -156,7 +156,7 @@
             <span class="rp-kpi-tlabel">{{ label }}</span>
             <span class="rp-kpi-tval">
               {% if fmt == 'pct' %}{{ "%.2f%%"|format(val * 100) if val is not none else '—' }}
-              {% elif fmt == 'keur' %}{{ "{:,.0f} kEUR"|format(val) if val is not none else '—' }}
+              {% elif fmt == 'keur' %}{{ "{:,.0f} kEUR".format(val) if val is not none else '—' }}
               {% elif fmt == 'x' %}{{ "%.4fx"|format(val) if val is not none else '—' }}
               {% elif fmt == 'yrs_f' %}{{ "%.1f yrs"|format(val) if val is not none else '—' }}
               {% else %}{{ val if val is not none else '—' }}{% endif %}
@@ -178,9 +178,9 @@
         {% for row in ic['sens_headline'] %}
           <div class="rp-kpi-trow">
             <span class="rp-kpi-tlabel">{{ row['label'] }}</span>
-            <span class="rp-kpi-tval">{{ "{:+.0f}%"|format(row['level']) }}</span>
+            <span class="rp-kpi-tval">{{ "{:+.0f}%".format(row['level']) }}</span>
             <span class="rp-kpi-tval {{ 'scm-delta--bad' if row['delta'] < 0 else 'scm-delta--good' }}">
-              {{ "{:+.2f}pp"|format(row['delta'] * 100) }}
+              {{ "{:+.2f}pp".format(row['delta'] * 100) }}
             </span>
           </div>
         {% endfor %}
@@ -206,7 +206,7 @@
           <div class="rp-kpi-trow">
             <span class="rp-kpi-tlabel">{{ label }}</span>
             <span class="rp-kpi-tval">
-              {% if fmt == 'keur' %}{{ "{:,.0f} kEUR"|format(val) if val is not none else '—' }}
+              {% if fmt == 'keur' %}{{ "{:,.0f} kEUR".format(val) if val is not none else '—' }}
               {% elif fmt == 'x' %}{{ "%.4fx"|format(val) if val is not none else '—' }}
               {% else %}{{ val if val is not none else '—' }}{% if fmt == 'yrs' and val is not none %} yrs{% endif %}{% endif %}
             </span>
