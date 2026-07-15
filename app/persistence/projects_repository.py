@@ -130,24 +130,79 @@ def list_project_records(
 # Sentinel user_id for system-owned reference projects.
 REFERENCE_USER_ID: str = "__reference__"
 
+# Canonical system-reference SQL predicate.
+#
+# A row is a *canonical* system reference iff ALL of:
+#   user_id == REFERENCE_USER_ID
+#   project_role == 'reference'
+#   is_protected == True
+#   archived == False
+#   template_source in ('tuho', 'oborovo')
+#
+# Use these constants / helper everywhere canonical-reference checks
+# happen — do not let functions drift into different definitions.
+CANONICAL_REFERENCE_TEMPLATES: tuple[str, ...] = ("tuho", "oborovo")
+
+
+def _canonical_reference_predicate() -> str:
+    """Return the shared SQL WHERE clause for a canonical system reference.
+
+    Returns just the predicate (without the leading WHERE). All five
+    canonical-reference columns are bound by parameter. The first
+    parameter is the canonical owner (REFERENCE_USER_ID); the second
+    is the template-source placeholder (filled by one or two values).
+    """
+    return (
+        "user_id=? AND project_role='reference' AND is_protected=1"
+        " AND archived=0 AND template_source IN (?, ?)"
+    )
+
 
 def get_reference_projects() -> "list[ProjectRecord]":
-    """Return all system-owned reference projects (any template source)."""
+    """Return all canonical system reference projects.
+
+    "Canonical" means: owned by ``__reference__``, marked
+    ``is_protected=1``, not archived, and templated as
+    ``tuho`` or ``oborovo``. User-owned rows carrying
+    ``project_role='reference'`` are intentionally excluded — they
+    are not system canonical references and must not be globally
+    visible.
+    """
     with get_cursor() as cur:
         cur.execute(
-            "SELECT * FROM projects WHERE project_role='reference' AND archived=0"
-            " ORDER BY template_source, project_name",
+            "SELECT * FROM projects WHERE "
+            + _canonical_reference_predicate()
+            + " ORDER BY template_source, project_name",
+            (
+                REFERENCE_USER_ID,
+                CANONICAL_REFERENCE_TEMPLATES[0],
+                CANONICAL_REFERENCE_TEMPLATES[1],
+            ),
         )
         from app.persistence.records import ProjectRecord
         return [ProjectRecord.from_row(row) for row in cur.fetchall()]
 
 
 def get_reference_by_template_source(template_source: str) -> "Optional[ProjectRecord]":
-    """Return the canonical reference project for a given template source."""
+    """Return the canonical reference project for a given template source.
+
+    "Canonical" means: owned by ``__reference__``, marked
+    ``is_protected=1``, not archived, and templated as
+    ``tuho`` or ``oborovo``. Bootstrap depends on this function
+    returning exactly the system reference — never a user-owned row
+    that happens to share the same template_source value.
+    """
     with get_cursor() as cur:
         cur.execute(
-            "SELECT * FROM projects WHERE project_role='reference' AND template_source=? AND archived=0 LIMIT 1",
-            (template_source,),
+            "SELECT * FROM projects WHERE "
+            + _canonical_reference_predicate()
+            + " AND template_source=?",
+            (
+                REFERENCE_USER_ID,
+                CANONICAL_REFERENCE_TEMPLATES[0],
+                CANONICAL_REFERENCE_TEMPLATES[1],
+                template_source,
+            ),
         )
         row = cur.fetchone()
     from app.persistence.records import ProjectRecord
@@ -166,25 +221,25 @@ def get_project_by_id(project_id: str) -> "Optional[ProjectRecord]":
 def get_canonical_reference_by_id(project_id: str) -> "Optional[ProjectRecord]":
     """Return a reference project only if it satisfies the strict canonical contract.
 
-    Returns None if the project does not exist or does not meet all criteria:
-    - user_id == REFERENCE_USER_ID
-    - project_role == 'reference'
-    - is_protected == True
-    - template_source in ('tuho', 'oborovo')
-    - archived == False
+    Returns None if the project does not exist or does not meet all
+    canonical-reference criteria (see
+    ``_canonical_reference_predicate()`` for the single source of
+    truth).
     """
     record = get_project_by_id(project_id)
     if record is None:
         return None
-    if (
-        record.user_id == REFERENCE_USER_ID
-        and record.project_role == "reference"
-        and record.is_protected
-        and record.template_source in ("tuho", "oborovo")
-        and not record.archived
-    ):
-        return record
-    return None
+    if record.user_id != REFERENCE_USER_ID:
+        return None
+    if record.project_role != "reference":
+        return None
+    if not record.is_protected:
+        return None
+    if record.archived:
+        return None
+    if record.template_source not in CANONICAL_REFERENCE_TEMPLATES:
+        return None
+    return record
 
 
 def resolve_accessible_project(
@@ -195,10 +250,16 @@ def resolve_accessible_project(
 
     Lookup order:
     1. User's own project — workspace_owner_id == user_id
-    2. Canonical system reference (user_id=='__reference__', project_role='reference')
+    2. Canonical system reference (user_id='__reference__',
+       project_role='reference', is_protected=1, archived=0,
+       template_source in ('tuho','oborovo'))
        — workspace_owner_id == REFERENCE_USER_ID
 
-    Never returns another normal user's project.
+    Never returns another normal user's project. Never returns a
+    user-owned row that happens to carry ``project_role='reference'``:
+    only rows that satisfy the strict canonical-reference contract
+    are eligible for cross-user resolution.
+
     Returns (None, user_id) when not found.
     """
     record = get_project_by_code(user_id, project_code)
@@ -206,7 +267,14 @@ def resolve_accessible_project(
         return record, user_id
 
     ref = get_project_by_code(REFERENCE_USER_ID, project_code)
-    if ref is not None and ref.project_role == "reference" and ref.is_protected:
+    if (
+        ref is not None
+        and ref.user_id == REFERENCE_USER_ID
+        and ref.project_role == "reference"
+        and ref.is_protected
+        and not ref.archived
+        and ref.template_source in CANONICAL_REFERENCE_TEMPLATES
+    ):
         return ref, REFERENCE_USER_ID
 
     return None, user_id
@@ -223,15 +291,44 @@ def list_projects_paged(
     """Paginated project query for the project library.
 
     Returns (records, total_count).
-    References (project_role='reference') are always included regardless
-    of user_id — they are accessible to everyone.
+
+    A user sees their own projects unioned with **canonical system
+    references only** — i.e. ``__reference__``-owned, ``is_protected=1``,
+    not archived, templated as ``tuho`` or ``oborovo``. A user-owned row
+    that happens to carry ``project_role='reference'`` is **not**
+    globally visible; this is the canonical-reference contract enforced
+    uniformly by ``_canonical_reference_predicate()``.
+
+    Both the result query and the total-count query use the same
+    ``base_where`` so pagination totals are isolated from user-owned
+    role-reference rows.
     """
     from app.persistence.records import ProjectRecord
 
     # Build the WHERE clause.
-    # User sees: their own projects UNION reference projects (by role).
-    base_where = "(user_id=? OR project_role='reference') AND archived=0"
-    params: list[Any] = [user_id]
+    # A user sees: their own projects UNION canonical system references.
+    # "Canonical" requires user_id='__reference__' AND project_role='reference'
+    # AND is_protected=1 AND archived=0 AND template_source IN
+    # ('tuho','oborovo'). The user_id parameter is bound; the canonical
+    # template list is bound too — no SQL interpolation.
+    base_where = (
+        "(user_id=?"
+        " OR ("
+        + _canonical_reference_predicate()
+        + "))"
+        " AND archived=0"
+    )
+    # Parameter order:
+    #   1) requesting user_id (their-own branch)
+    #   2) canonical owner (REFERENCE_USER_ID) for the canonical branch
+    #   3) canonical template #1
+    #   4) canonical template #2
+    params: list[Any] = [
+        user_id,
+        REFERENCE_USER_ID,
+        CANONICAL_REFERENCE_TEMPLATES[0],
+        CANONICAL_REFERENCE_TEMPLATES[1],
+    ]
 
     if role_filter and role_filter in ("reference", "working_copy", "user_project"):
         base_where += " AND project_role=?"

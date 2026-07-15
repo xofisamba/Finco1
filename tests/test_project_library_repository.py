@@ -1124,3 +1124,333 @@ class TestBootstrapSelfHealing:
 
         assert tuho_ws_count == 1, f"Expected 1 TUHO workspace, got {tuho_ws_count}"
         assert obo_ws_count == 1, f"Expected 1 Oborovo workspace, got {obo_ws_count}"
+
+
+# ---------------------------------------------------------------------------
+# Adversarial authorization — global-visibility regression
+# ---------------------------------------------------------------------------
+#
+# The PR-882 fix guarantees that no row with
+#   project_role='reference' AND user_id != REFERENCE_USER_ID
+# is ever returned as a globally visible reference. User-owned rows
+# that happen to carry that role must not appear in Alice's library,
+# must not be picked up by get_reference_projects() /
+# get_reference_by_template_source(), and must not inflate
+# list_projects_paged() pagination totals. Conversely, an unprotected
+# or unsupported-template system row must not leak either.
+
+class TestAdversarialGlobalVisibility:
+    """Six adversarial scenarios — none of them is a canonical reference."""
+
+    # ----- A. User-owned role-reference is not globally visible ----- #
+
+    def test_bob_owned_role_reference_not_visible_to_alice(self, isolated_db):
+        from app.persistence.projects_repository import (
+            save_project, list_projects_paged, REFERENCE_USER_ID,
+        )
+        # Bob creates a row that *looks* like a canonical reference but
+        # is owned by Bob.
+        bob = save_project(
+            user_id="bob",
+            project_code="bob-impostor-tuho",
+            project_name="Bob Impostor TUHO",
+            source_project_template="tuho",
+            project_type="Wind",
+            project_origin="factory_template",
+            template_source="tuho",
+            project_role="reference",
+            is_protected=True,
+        )
+
+        results, total = list_projects_paged(user_id="alice")
+        # Bob's row must not appear, and the total must not include it.
+        codes = [r.project_code for r in results]
+        names = [r.project_name for r in results]
+        ids = [r.project_id for r in results]
+        assert bob.project_code not in codes
+        assert bob.project_name not in names
+        assert bob.project_id not in ids
+        # Without any Alice-owned projects and no real reference
+        # bootstrap, total must be 0.
+        assert total == 0, (
+            f"Bob's impostor row leaked into Alice's library. "
+            f"Got {total} rows: {codes}"
+        )
+
+    def test_bob_owned_role_reference_not_visible_with_role_filter(
+        self, isolated_db,
+    ):
+        from app.persistence.projects_repository import (
+            save_project, list_projects_paged,
+        )
+        bob = save_project(
+            user_id="bob",
+            project_code="bob-impostor",
+            project_name="Bob Impostor",
+            source_project_template="tuho",
+            project_type="Wind",
+            project_origin="factory_template",
+            template_source="tuho",
+            project_role="reference",
+            is_protected=True,
+        )
+        # role=reference must still exclude Bob's row from Alice's view.
+        results, total = list_projects_paged(
+            user_id="alice", role_filter="reference",
+        )
+        codes = [r.project_code for r in results]
+        assert bob.project_code not in codes
+        assert total == 0
+
+    # ----- B. Unprotected system row is not globally visible ----- #
+
+    def test_unprotected_system_row_not_globally_visible(self, isolated_db):
+        from app.persistence.projects_repository import (
+            save_project, list_projects_paged, get_reference_projects,
+            REFERENCE_USER_ID,
+        )
+        save_project(
+            user_id=REFERENCE_USER_ID,
+            project_code="unprotected-tuho",
+            project_name="Unprotected TUHO",
+            source_project_template="tuho",
+            project_type="Wind",
+            project_origin="factory_template",
+            template_source="tuho",
+            project_role="reference",
+            is_protected=False,
+        )
+        refs = get_reference_projects()
+        codes = [r.project_code for r in refs]
+        assert "unprotected-tuho" not in codes
+        # Same for list_projects_paged from Alice's perspective.
+        results, total = list_projects_paged(user_id="alice")
+        assert total == 0
+
+    # ----- C. Unsupported system reference is not globally visible ----- #
+
+    def test_unsupported_template_system_reference_not_globally_visible(
+        self, isolated_db,
+    ):
+        from app.persistence.projects_repository import (
+            save_project, get_reference_projects,
+            get_reference_by_template_source, REFERENCE_USER_ID,
+        )
+        save_project(
+            user_id=REFERENCE_USER_ID,
+            project_code="ref-generic-solar",
+            project_name="Generic Solar Reference",
+            source_project_template="generic_solar",
+            project_type="Solar",
+            project_origin="factory_template",
+            template_source="generic_solar",
+            project_role="reference",
+            is_protected=True,
+        )
+        refs = get_reference_projects()
+        assert all(
+            r.template_source in ("tuho", "oborovo") for r in refs
+        ), "Reference list must contain only canonical templates."
+        # Per-template lookup must also reject.
+        ref = get_reference_by_template_source("generic_solar")
+        assert ref is None
+
+    # ----- D. Canonical lookup ignores Bob's row ----- #
+
+    def test_canonical_lookup_ignores_bob_before_bootstrap(self, isolated_db):
+        from app.persistence.projects_repository import (
+            save_project, get_reference_by_template_source,
+        )
+        save_project(
+            user_id="bob",
+            project_code="bob-impostor",
+            project_name="Bob Impostor",
+            source_project_template="tuho",
+            project_type="Wind",
+            project_origin="factory_template",
+            template_source="tuho",
+            project_role="reference",
+            is_protected=True,
+        )
+        # Without bootstrap, the canonical lookup must return None,
+        # not Bob's row.
+        result = get_reference_by_template_source("tuho")
+        assert result is None, (
+            "get_reference_by_template_source must not return a "
+            "user-owned row."
+        )
+
+    def test_canonical_lookup_after_bootstrap_excludes_bob(self, isolated_db):
+        from app.persistence.projects_repository import (
+            save_project, get_reference_by_template_source,
+            get_project_by_id, REFERENCE_USER_ID,
+        )
+        bob = save_project(
+            user_id="bob",
+            project_code="bob-impostor",
+            project_name="Bob Impostor",
+            source_project_template="tuho",
+            project_type="Wind",
+            project_origin="factory_template",
+            template_source="tuho",
+            project_role="reference",
+            is_protected=True,
+        )
+        from app.services.project_library_service import ensure_reference_models
+        ensure_reference_models()
+        result = get_reference_by_template_source("tuho")
+        assert result is not None
+        # The returned canonical reference must be system-owned, not Bob.
+        assert result.user_id == REFERENCE_USER_ID
+        assert result.project_code != bob.project_code
+        # Bob's row remains untouched.
+        bob_after = get_project_by_id(bob.project_id)
+        assert bob_after.user_id == "bob"
+        assert bob_after.project_id == bob.project_id
+
+    def test_bootstrap_does_not_create_workspace_for_bob(self, isolated_db):
+        from app.persistence.projects_repository import (
+            save_project, REFERENCE_USER_ID,
+        )
+        bob = save_project(
+            user_id="bob",
+            project_code="bob-impostor",
+            project_name="Bob Impostor",
+            source_project_template="tuho",
+            project_type="Wind",
+            project_origin="factory_template",
+            template_source="tuho",
+            project_role="reference",
+            is_protected=True,
+        )
+        from app.services.project_library_service import ensure_reference_models
+        ensure_reference_models()
+        # Bob's row must not have gained a workspace as a bootstrap
+        # side-effect. Workspace_repository only knows about
+        # REFERENCE_USER_ID's projects.
+        from app.persistence.db import get_connection
+        conn = get_connection()
+        bob_ws_count = conn.execute(
+            "SELECT COUNT(*) FROM workspace_states WHERE user_id=? AND project_code=?",
+            ("bob", bob.project_code),
+        ).fetchone()[0]
+        ref_ws_count = conn.execute(
+            "SELECT COUNT(*) FROM workspace_states WHERE user_id=? AND project_code LIKE 'tuho-%'",
+            (REFERENCE_USER_ID,),
+        ).fetchone()[0]
+        conn.close()
+        assert bob_ws_count == 0, (
+            "Bootstrap must not create a workspace for Bob's row."
+        )
+        assert ref_ws_count == 1, (
+            "Bootstrap must have created exactly one TUHO workspace "
+            "(under the canonical owner)."
+        )
+
+    # ----- E. Canonical reference list — full adversarial matrix ----- #
+
+    def test_get_reference_projects_returns_only_canonical(self, isolated_db):
+        from app.persistence.projects_repository import (
+            save_project, get_reference_projects, REFERENCE_USER_ID,
+        )
+        from app.services.project_library_service import ensure_reference_models
+        # Real canonical references.
+        ensure_reference_models()
+        # Bob-owned role-reference (template_source='tuho' is the
+        # classic impersonation attempt).
+        save_project(
+            user_id="bob",
+            project_code="bob-impostor",
+            project_name="Bob Impostor",
+            source_project_template="tuho",
+            project_type="Wind",
+            project_origin="factory_template",
+            template_source="tuho",
+            project_role="reference",
+            is_protected=True,
+        )
+        # Unprotected system row — use a non-canonical template_source
+        # to avoid the UNIQUE(template_source) index that protects the
+        # canonical tuho/oborovo slots.
+        save_project(
+            user_id=REFERENCE_USER_ID,
+            project_code="unprotected",
+            project_name="Unprotected",
+            source_project_template="custom_unprotected",
+            project_type="Wind",
+            project_origin="factory_template",
+            template_source="custom_unprotected",
+            project_role="reference",
+            is_protected=False,
+        )
+        # Unsupported-template system reference.
+        save_project(
+            user_id=REFERENCE_USER_ID,
+            project_code="unsupported",
+            project_name="Unsupported",
+            source_project_template="generic_solar",
+            project_type="Solar",
+            project_origin="factory_template",
+            template_source="generic_solar",
+            project_role="reference",
+            is_protected=True,
+        )
+        # Archived canonical-shaped row — use a non-canonical template
+        # to avoid the UNIQUE index (the archived test on tuho is
+        # already covered by the schema UNIQUE).
+        save_project(
+            user_id=REFERENCE_USER_ID,
+            project_code="archived",
+            project_name="Archived",
+            source_project_template="custom_archived",
+            project_type="Wind",
+            project_origin="factory_template",
+            template_source="custom_archived",
+            project_role="reference",
+            is_protected=True,
+            archived=True,
+        )
+        refs = get_reference_projects()
+        codes = {r.project_code for r in refs}
+        # Only the two canonical rows remain.
+        assert "bob-impostor" not in codes
+        assert "unprotected" not in codes
+        assert "unsupported" not in codes
+        assert "archived" not in codes
+        # All returned rows must satisfy the canonical contract.
+        for r in refs:
+            assert r.user_id == REFERENCE_USER_ID
+            assert r.project_role == "reference"
+            assert r.is_protected is True
+            assert r.archived is False
+            assert r.template_source in ("tuho", "oborovo")
+
+    # ----- Pagination-total non-leak ----- #
+
+    def test_pagination_total_excludes_bob_impostor(self, isolated_db):
+        from app.persistence.projects_repository import (
+            save_project, list_projects_paged,
+        )
+        # Bob creates an impostor reference.
+        save_project(
+            user_id="bob",
+            project_code="bob-impostor",
+            project_name="Bob Impostor",
+            source_project_template="tuho",
+            project_type="Wind",
+            project_origin="factory_template",
+            template_source="tuho",
+            project_role="reference",
+            is_protected=True,
+        )
+        # Alice has nothing of her own and sees no canonical references.
+        results, total = list_projects_paged(user_id="alice", page_size=10)
+        assert total == 0
+        assert results == []
+        # With a search that should match Bob's row, the impostor must
+        # still not appear.
+        results, total = list_projects_paged(
+            user_id="alice", search="Impostor",
+        )
+        assert total == 0
+        assert results == []
