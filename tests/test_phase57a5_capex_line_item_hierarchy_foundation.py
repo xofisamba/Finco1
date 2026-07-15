@@ -411,14 +411,6 @@ class TestNoPersistenceSchemaChange:
                     f"target of the save/load wiring "
                     f"(current: {branch!r})."
                 )
-            if "project-library" in branch.lower():
-                pytest.skip(
-                    f"project-library-reference branch — "
-                    f"app/persistence/projects_repository.py is "
-                    f"the explicit target of the canonical-"
-                    f"reference query correction "
-                    f"(current: {branch!r})."
-                )
         from tests.helpers.persistence_diff_guard import validate_persistence_diff
         violations = validate_persistence_diff()
         assert not violations, (
