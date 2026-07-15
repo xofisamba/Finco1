@@ -1,0 +1,123 @@
+{
+  "summary_version": "v5.3",
+  "registry_backed_canonical": {
+    "count": 61,
+    "by_runtime_binding_status": {
+      "RUNTIME_FULLY_BOUND": 39,
+      "TEMPLATE_LOCKED": 5,
+      "RUNTIME_PARTIALLY_BOUND": 10,
+      "DISPLAY_ONLY": 5,
+      "DERIVED_ONLY": 2
+    },
+    "by_excel_mapping_status": {
+      "VERIFIED_BOTH_MODELS": 4,
+      "SOURCE_COORDINATE_UNRESOLVED": 23,
+      "REGISTRY_HINT_ONLY": 34
+    },
+    "by_runtime_validation_status": {
+      "GENERIC_ROUTE_ONLY": 14,
+      "UNRESOLVED": 21,
+      "SHARED_PIPELINE_PROVEN": 24,
+      "FIELD_SPECIFIC_E2E_PROVEN": 1,
+      "DISPLAY_ONLY_PROVEN": 1
+    },
+    "by_scenario_mapping_status": {
+      "SOURCE_COORDINATE_UNRESOLVED": 60,
+      "VERIFIED_TUHO_ONLY": 1
+    },
+    "by_cell_role": {
+      "UNRESOLVED": 8,
+      "DERIVED_OUTPUT": 3,
+      "EDITABLE_HARDCODE": 20,
+      "FORMULA_RESULT": 2,
+      "TOGGLE": 3
+    }
+  },
+  "v53_evidence_axes": {
+    "label_cell_count": 50,
+    "value_cell_count": 44,
+    "editable_cell_count": 44,
+    "formula_cell_count": 6,
+    "rows_with_label_cell": 26,
+    "rows_with_value_cell": 23,
+    "rows_with_editable_cell": 23,
+    "rows_with_formula_cell": 3,
+    "by_mapping_verification_status": {
+      "ABSENCE_CONFIRMED": 8,
+      "UNRESOLVED": 2,
+      "MAPPING_CONFIRMED": 26
+    }
+  },
+  "workbook_only_concepts": {
+    "count": 36,
+    "by_status": {
+      "APPLICABLE_BESS": 4,
+      "DERIVED_FROM": 2,
+      "ENGINE_GAP": 29,
+      "ENGINE_COMPUTED_OUTPUT": 1
+    },
+    "by_mapping_verification_status": {
+      "ABSENCE_CONFIRMED": 8,
+      "UNRESOLVED": 2,
+      "MAPPING_CONFIRMED": 26
+    }
+  },
+  "engine_owned_boundaries": {
+    "count": 7,
+    "by_runtime_binding_status": {
+      "DERIVED_ONLY": 7
+    }
+  },
+  "editable_input_disposition": {
+    "total_rows": 187,
+    "by_disposition": {
+      "MAPPED_TO_REGISTRY": 39,
+      "TRUE_DUPLICATE": 25,
+      "ENGINE_GAP": 103,
+      "DERIVED_FROM_EXISTING_INPUT": 16,
+      "UI_GAP": 4
+    },
+    "by_model": {
+      "TUHO": 92,
+      "OBOROVO": 95
+    },
+    "by_priority": {
+      "P0": 8,
+      "P2_ENGINE": 175,
+      "P1_ENGINE": 4
+    }
+  },
+  "by_model": {
+    "TUHO": {
+      "inputs_classification": {
+        "EDITABLE_INPUT": 92,
+        "SECTION_HEADER": 63,
+        "DERIVED_FORMULA": 136,
+        "LINKED_VALUE": 42,
+        "LEGEND_TOOL": 14
+      },
+      "scenarios_classification": {
+        "SECTION_HEADER": 7,
+        "SCENARIO_OVERRIDE": 170,
+        "CHECK_ONLY": 1,
+        "ENGINE_OUTPUT": 16
+      }
+    },
+    "OBOROVO": {
+      "inputs_classification": {
+        "EDITABLE_INPUT": 95,
+        "SECTION_HEADER": 64,
+        "LINKED_VALUE": 47,
+        "DERIVED_FORMULA": 139,
+        "LEGEND_TOOL": 14
+      },
+      "scenarios_classification": {
+        "SECTION_HEADER": 8,
+        "SCENARIO_OVERRIDE": 329,
+        "CHECK_ONLY": 3,
+        "ENGINE_OUTPUT": 16
+      }
+    }
+  },
+  "real_pytest_node_ids_collected": 472
+}
