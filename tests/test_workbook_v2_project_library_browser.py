@@ -436,6 +436,34 @@ class TestAuthorization:
             final_url = e.url
         assert "/login" in final_url or "login" in final_url, f"Expected login redirect, got {final_url}"
 
+    def _ensure_alice_has_working_copy(self):
+        """Ensure Alice has a working copy; return (project_code, project_id)."""
+        import sqlite3
+        with sqlite3.connect(self.db_path) as conn:
+            alice_wc = conn.execute(
+                "SELECT project_code, project_id FROM projects "
+                "WHERE user_id='alice-lib-test' AND project_role='working_copy' LIMIT 1"
+            ).fetchone()
+        if alice_wc is not None:
+            return alice_wc[0], alice_wc[1]
+        # Find TUHO reference project_id
+        with sqlite3.connect(self.db_path) as conn:
+            row = conn.execute(
+                "SELECT project_id FROM projects WHERE user_id='__reference__' AND template_source='tuho' AND project_role='reference' LIMIT 1"
+            ).fetchone()
+        assert row, "TUHO reference must exist for clone"
+        tuho_ref_id = row[0]
+        status, _, body = _http(self.base_url, self.tokens["alice"], "POST", f"/library/clone/{tuho_ref_id}")
+        assert status in (200, 302, 303), f"Clone failed: {status} {body[:200]}"
+        # Fetch created working copy from DB
+        with sqlite3.connect(self.db_path) as conn:
+            alice_wc = conn.execute(
+                "SELECT project_code, project_id FROM projects "
+                "WHERE user_id='alice-lib-test' AND project_role='working_copy' LIMIT 1"
+            ).fetchone()
+        assert alice_wc, "Alice must have a working copy after clone"
+        return alice_wc[0], alice_wc[1]
+
     def test_cross_user_get_rejected(self):
         """Bob cannot GET Alice's working copy via /v2/workbook.
 
@@ -444,15 +472,7 @@ class TestAuthorization:
         but the body must NOT contain Alice's working-copy content.
         """
         bob_token = self.tokens["bob"]
-        import sqlite3
-        with sqlite3.connect(self.db_path) as conn:
-            alice_wc = conn.execute(
-                "SELECT project_code, project_name FROM projects "
-                "WHERE user_id='alice-lib-test' AND project_role='working_copy' LIMIT 1"
-            ).fetchone()
-        if alice_wc is None:
-            pytest.skip("Alice has no working copy yet")
-        wc_code, wc_name = alice_wc[0], alice_wc[1]
+        wc_code, _ = self._ensure_alice_has_working_copy()
         status, _, body = _http(
             self.base_url, bob_token, "GET", f"/v2/workbook?project={wc_code}",
         )
@@ -476,15 +496,7 @@ class TestAuthorization:
         route returns 200 with an HTMX error fragment (not found message).
         """
         bob_token = self.tokens["bob"]
-        import sqlite3
-        with sqlite3.connect(self.db_path) as conn:
-            alice_wc = conn.execute(
-                "SELECT project_code FROM projects "
-                "WHERE user_id='alice-lib-test' AND project_role='working_copy' LIMIT 1"
-            ).fetchone()
-        if alice_wc is None:
-            pytest.skip("Alice has no working copy yet")
-        wc_code = alice_wc[0]
+        wc_code, _ = self._ensure_alice_has_working_copy()
         status, _, body = _http(
             self.base_url, bob_token, "POST", "/v2/workbook/run",
             {
@@ -506,24 +518,30 @@ class TestAuthorization:
             )
 
     def test_cross_user_clone_by_raw_id_rejected(self):
-        """Bob cannot clone Alice's working copy by raw project_id."""
-        alice_token = self.tokens["alice"]
+        """Bob cannot clone Alice's working copy by raw project_id via the real clone route."""
         bob_token = self.tokens["bob"]
+        # Ensure Alice has a working copy (deterministic setup)
+        _, alice_wc_project_id = self._ensure_alice_has_working_copy()
+        # Record Bob's project count before attempt
         import sqlite3
         with sqlite3.connect(self.db_path) as conn:
-            alice_wc = conn.execute(
-                "SELECT project_id FROM projects "
-                "WHERE user_id='alice-lib-test' AND project_role='working_copy' LIMIT 1"
-            ).fetchone()
-        if alice_wc is None:
-            pytest.skip("Alice has no working copy yet")
-        raw_id = alice_wc[0]
+            bob_count_before = conn.execute(
+                "SELECT COUNT(*) FROM projects WHERE user_id='bob-lib-test'"
+            ).fetchone()[0]
+        # POST to the REAL route: POST /library/clone/{alice_working_copy_project_id}
         status, _, body = _http(
-            self.base_url, bob_token, "POST", "/library/clone",
-            {"source_project_id": raw_id},
+            self.base_url, bob_token, "POST", f"/library/clone/{alice_wc_project_id}",
         )
-        assert status in (400, 403, 404, 422), (
+        assert status in (400, 403), (
             f"Bob should not be able to clone Alice's working copy, got {status}; body={body[:200]}"
+        )
+        # Bob's project count must be unchanged
+        with sqlite3.connect(self.db_path) as conn:
+            bob_count_after = conn.execute(
+                "SELECT COUNT(*) FROM projects WHERE user_id='bob-lib-test'"
+            ).fetchone()[0]
+        assert bob_count_after == bob_count_before, (
+            f"Bob's project count changed from {bob_count_before} to {bob_count_after}"
         )
 
 
@@ -546,28 +564,314 @@ class TestReferenceWorkbookV2:
         assert status == 200, f"Expected 200 for reference GET, got {status}; body={body[:300]}"
         assert "TUHO" in body, "TUHO name not in response body"
 
-    def test_reference_run_not_crash(self):
-        """POSTing a run on the TUHO reference should not 500 — may return any non-500."""
+    def test_reference_open_200_oborovo(self):
+        """Opening the Oborovo reference GET /v2/workbook returns 200."""
         token = self.tokens["alice"]
-        # First get the current hash by fetching the page
         status, _, body = _http(
-            self.base_url, token, "GET", "/v2/workbook?project=tuho-reference",
+            self.base_url, token, "GET", "/v2/workbook?project=oborovo-reference",
         )
-        assert status == 200
-        # Extract content_hash if present in a hidden input
-        import re
-        match = re.search(r'name="content_hash"\s+value="([^"]+)"', body)
-        content_hash = match.group(1) if match else "no-hash"
-        match_ver = re.search(r'name="workbook_version"\s+value="([^"]+)"', body)
-        workbook_version = match_ver.group(1) if match_ver else "2.1.0"
+        assert status == 200, f"Expected 200 for Oborovo reference GET, got {status}; body={body[:300]}"
+        assert "borovo" in body or "Oborovo" in body, "Oborovo name not in response body"
 
-        run_status, _, run_body = _http(
-            self.base_url, token, "POST", "/v2/workbook/run",
-            {
-                "project": "tuho-reference",
-                "workbook_version": workbook_version,
-                "content_hash": content_hash,
-            },
-            extra_headers={"HX-Request": "true"},
-        )
-        assert run_status != 500, f"Reference run crashed with 500: {run_body[:300]}"
+
+# ---------------------------------------------------------------------------
+# Reference Run acceptance tests
+# ---------------------------------------------------------------------------
+
+class TestReferenceRunAcceptance:
+    @pytest.fixture(autouse=True)
+    def setup(self, live_server, tokens, references_bootstrapped):
+        self.base_url = live_server["base_url"]
+        self.tokens = tokens
+        self.db_path = live_server["db_path"]
+
+    def _run_reference_and_check(self, project_code: str, user_id: str = "__reference__"):
+        import re, json, sqlite3
+        token = self.tokens["alice"]
+        base_url = self.base_url
+
+        # Record before-state
+        with sqlite3.connect(self.db_path) as conn:
+            before_ws = conn.execute(
+                "SELECT last_runtime_snapshot_json, last_runtime_summary_json, draft_snapshot_json, saved_snapshot_json "
+                f"FROM workspace_states WHERE user_id='{user_id}' AND project_code='{project_code}'"
+            ).fetchone()
+
+        # GET workbook to extract content_hash and workbook_version
+        status, _, body = _http(base_url, token, "GET", f"/v2/workbook?project={project_code}")
+        assert status == 200, f"GET workbook failed: {status}"
+        ch_m = re.search(r'name="content_hash"\s+value="([^"]+)"', body)
+        wv_m = re.search(r'name="workbook_version"\s+value="([^"]+)"', body)
+        content_hash = ch_m.group(1) if ch_m else "no-hash"
+        workbook_version = wv_m.group(1) if wv_m else "2.1.0"
+
+        # POST Run
+        run_status, _, run_body = _http(base_url, token, "POST", "/v2/workbook/run", {
+            "project": project_code,
+            "workbook_version": workbook_version,
+            "content_hash": content_hash,
+        }, extra_headers={"HX-Request": "true"})
+        assert run_status == 200, f"Run failed: {run_body[:400]}"
+
+        # Assert after-state
+        with sqlite3.connect(self.db_path) as conn:
+            after_ws = conn.execute(
+                "SELECT last_runtime_snapshot_json, last_runtime_summary_json, draft_snapshot_json, saved_snapshot_json, "
+                f"last_runtime_snapshot_id FROM workspace_states WHERE user_id='{user_id}' AND project_code='{project_code}'"
+            ).fetchone()
+
+        assert after_ws, "Workspace must exist after run"
+        after_summary = json.loads(after_ws[1]) if after_ws[1] else {}
+        assert after_summary, "Runtime summary must be non-empty after Run"
+
+        # draft and saved snapshots must be unchanged
+        if before_ws:
+            assert after_ws[2] == before_ws[2], "Draft snapshot must not change on reference Run"
+            assert after_ws[3] == before_ws[3], "Saved snapshot must not change on reference Run"
+
+        # runtime snapshot ID must be populated
+        assert after_ws[4], "last_runtime_snapshot_id must be set after Run"
+
+        return after_ws
+
+    def test_tuho_reference_run_persists(self):
+        import sqlite3, json
+        after_ws = self._run_reference_and_check("tuho-reference")
+
+        # project record must still be reference
+        with sqlite3.connect(self.db_path) as conn:
+            proj = conn.execute(
+                "SELECT project_role, is_protected FROM projects WHERE user_id='__reference__' AND project_code='tuho-reference'"
+            ).fetchone()
+        assert proj[0] == "reference"
+        assert proj[1] == 1
+
+        # Alice must not own a new workspace for tuho-reference
+        with sqlite3.connect(self.db_path) as conn:
+            alice_ws = conn.execute(
+                "SELECT 1 FROM workspace_states WHERE user_id='alice-lib-test' AND project_code='tuho-reference'"
+            ).fetchone()
+        assert alice_ws is None, "Reference Run must not create a user-owned workspace"
+
+        # Update endpoint still returns 403 for reference
+        token = self.tokens["alice"]
+        status, _, body = _http(self.base_url, token, "GET", "/v2/workbook?project=tuho-reference")
+        import re
+        wv_m = re.search(r'name="workbook_version"\s+value="([^"]+)"', body)
+        ch_m2 = re.search(r'name="content_hash"\s+value="([^"]+)"', body)
+        workbook_version = wv_m.group(1) if wv_m else "2.1.0"
+        content_hash2 = ch_m2.group(1) if ch_m2 else "no-hash"
+        upd_status, _, upd_body = _http(self.base_url, token, "POST", "/v2/workbook/update", {
+            "project": "tuho-reference",
+            "workbook_version": workbook_version,
+            "content_hash": content_hash2,
+            "field_id": "capacity_mw",
+            "value": "999",
+            "sheet_id": "project_setup",
+        }, extra_headers={"HX-Request": "true"})
+        assert upd_status == 403, f"Update on reference must return 403, got {upd_status}"
+
+    def test_oborovo_reference_run_persists(self):
+        self._run_reference_and_check("oborovo-reference")
+
+        # project record must still be reference
+        import sqlite3
+        with sqlite3.connect(self.db_path) as conn:
+            proj = conn.execute(
+                "SELECT project_role, is_protected FROM projects WHERE user_id='__reference__' AND project_code='oborovo-reference'"
+            ).fetchone()
+        assert proj[0] == "reference"
+        assert proj[1] == 1
+
+
+# ---------------------------------------------------------------------------
+# TUHO working copy full workflow
+# ---------------------------------------------------------------------------
+
+class TestTuhoWorkingCopyWorkflow:
+    """Full clone→run cycle for TUHO working copy."""
+
+    @pytest.fixture(autouse=True)
+    def setup(self, live_server, tokens, references_bootstrapped):
+        self.base_url = live_server["base_url"]
+        self.tokens = tokens
+        self.db_path = live_server["db_path"]
+
+    def test_tuho_working_copy_full_workflow(self):
+        """Open reference → clone → Run → persist → source unchanged."""
+        import re, json, sqlite3
+        token = self.tokens["alice"]
+        base_url = self.base_url
+
+        # Find TUHO reference project_id
+        with sqlite3.connect(self.db_path) as conn:
+            row = conn.execute(
+                "SELECT project_id FROM projects WHERE user_id='__reference__' AND template_source='tuho' AND project_role='reference' LIMIT 1"
+            ).fetchone()
+        assert row, "TUHO reference must exist"
+        tuho_ref_id = row[0]
+
+        # Record reference workspace state before
+        with sqlite3.connect(self.db_path) as conn:
+            ref_ws_before = conn.execute(
+                "SELECT draft_snapshot_json, saved_snapshot_json FROM workspace_states WHERE user_id='__reference__' AND project_code='tuho-reference'"
+            ).fetchone()
+
+        # Clone as Alice (may already exist — find or create)
+        with sqlite3.connect(self.db_path) as conn:
+            existing_wc = conn.execute(
+                "SELECT project_code, project_id FROM projects WHERE user_id='alice-lib-test' AND template_source='tuho' AND project_role='working_copy' ORDER BY created_at DESC LIMIT 1"
+            ).fetchone()
+
+        if existing_wc:
+            wc_code, wc_project_id = existing_wc
+        else:
+            clone_status, _, clone_body = _http(base_url, token, "POST", f"/library/clone/{tuho_ref_id}")
+            assert clone_status in (200, 302, 303), f"Clone failed: {clone_status} {clone_body[:200]}"
+            with sqlite3.connect(self.db_path) as conn:
+                wc_row = conn.execute(
+                    "SELECT project_code, project_id FROM projects WHERE user_id='alice-lib-test' AND template_source='tuho' AND project_role='working_copy' ORDER BY created_at DESC LIMIT 1"
+                ).fetchone()
+            assert wc_row, "Working copy must exist in DB after clone"
+            wc_code, wc_project_id = wc_row
+
+        assert wc_project_id != tuho_ref_id, "Working copy must have different project_id"
+
+        # Open working copy
+        status, _, body = _http(base_url, token, "GET", f"/v2/workbook?project={wc_code}")
+        assert status == 200, f"Open working copy failed: {status}"
+
+        ch_m = re.search(r'name="content_hash"\s+value="([^"]+)"', body)
+        wv_m = re.search(r'name="workbook_version"\s+value="([^"]+)"', body)
+        assert ch_m and wv_m, "Must find content_hash and workbook_version in workbook HTML"
+        content_hash = ch_m.group(1)
+        workbook_version = wv_m.group(1)
+
+        # Run on working copy
+        run_status, _, run_body = _http(base_url, token, "POST", "/v2/workbook/run", {
+            "project": wc_code,
+            "workbook_version": workbook_version,
+            "content_hash": content_hash,
+        }, extra_headers={"HX-Request": "true"})
+        assert run_status == 200, f"Working copy run failed: {run_status} {run_body[:400]}"
+
+        # Assert runtime persisted in working copy workspace
+        with sqlite3.connect(self.db_path) as conn:
+            wc_ws = conn.execute(
+                "SELECT last_runtime_summary_json, last_runtime_snapshot_id FROM workspace_states WHERE user_id='alice-lib-test' AND project_code=?",
+                (wc_code,)
+            ).fetchone()
+        assert wc_ws, "Working copy workspace must exist"
+        wc_summary = json.loads(wc_ws[0]) if wc_ws[0] else {}
+        assert wc_summary, "Working copy runtime summary must be non-empty"
+        assert wc_ws[1], "Working copy last_runtime_snapshot_id must be set"
+
+        # Assert reference workspace unchanged
+        with sqlite3.connect(self.db_path) as conn:
+            ref_ws_after = conn.execute(
+                "SELECT draft_snapshot_json, saved_snapshot_json FROM workspace_states WHERE user_id='__reference__' AND project_code='tuho-reference'"
+            ).fetchone()
+        if ref_ws_before and ref_ws_after:
+            assert ref_ws_after[0] == ref_ws_before[0], "Reference draft snapshot must be unchanged"
+            assert ref_ws_after[1] == ref_ws_before[1], "Reference saved snapshot must be unchanged"
+
+
+# ---------------------------------------------------------------------------
+# Oborovo working copy full workflow
+# ---------------------------------------------------------------------------
+
+class TestOborovoWorkingCopyWorkflow:
+    """Full clone→run cycle for Oborovo working copy."""
+
+    @pytest.fixture(autouse=True)
+    def setup(self, live_server, tokens, references_bootstrapped):
+        self.base_url = live_server["base_url"]
+        self.tokens = tokens
+        self.db_path = live_server["db_path"]
+
+    def test_oborovo_working_copy_full_workflow(self):
+        """Clone Oborovo reference → Run → persist → source unchanged."""
+        import re, json, sqlite3
+        token = self.tokens["alice"]
+        base_url = self.base_url
+
+        # Find Oborovo reference project_id
+        with sqlite3.connect(self.db_path) as conn:
+            row = conn.execute(
+                "SELECT project_id FROM projects WHERE user_id='__reference__' AND template_source='oborovo' AND project_role='reference' LIMIT 1"
+            ).fetchone()
+        assert row, "Oborovo reference must exist"
+        obo_ref_id = row[0]
+
+        # Record reference workspace state before
+        with sqlite3.connect(self.db_path) as conn:
+            ref_ws_before = conn.execute(
+                "SELECT draft_snapshot_json, saved_snapshot_json FROM workspace_states WHERE user_id='__reference__' AND project_code='oborovo-reference'"
+            ).fetchone()
+
+        # Check for reference's baseline snapshot to verify frozen_senior_debt_schedule
+        with sqlite3.connect(self.db_path) as conn:
+            ref_snap = conn.execute(
+                "SELECT baseline_snapshot_json FROM projects WHERE user_id='__reference__' AND project_code='oborovo-reference'"
+            ).fetchone()
+        if ref_snap and ref_snap[0]:
+            ref_snap_data = json.loads(ref_snap[0]) if isinstance(ref_snap[0], str) else ref_snap[0]
+            # Oborovo reference snapshot exists (may contain frozen_senior_debt_schedule)
+            assert ref_snap_data is not None
+
+        # Clone as Alice (find or create)
+        with sqlite3.connect(self.db_path) as conn:
+            existing_wc = conn.execute(
+                "SELECT project_code, project_id FROM projects WHERE user_id='alice-lib-test' AND template_source='oborovo' AND project_role='working_copy' ORDER BY created_at DESC LIMIT 1"
+            ).fetchone()
+
+        if existing_wc:
+            wc_code, wc_project_id = existing_wc
+        else:
+            clone_status, _, clone_body = _http(base_url, token, "POST", f"/library/clone/{obo_ref_id}")
+            assert clone_status in (200, 302, 303), f"Clone failed: {clone_status} {clone_body[:200]}"
+            with sqlite3.connect(self.db_path) as conn:
+                wc_row = conn.execute(
+                    "SELECT project_code, project_id FROM projects WHERE user_id='alice-lib-test' AND template_source='oborovo' AND project_role='working_copy' ORDER BY created_at DESC LIMIT 1"
+                ).fetchone()
+            assert wc_row, "Working copy must exist in DB after clone"
+            wc_code, wc_project_id = wc_row
+
+        assert wc_project_id != obo_ref_id, "Working copy must have different project_id"
+
+        # Open and run working copy
+        status, _, body = _http(base_url, token, "GET", f"/v2/workbook?project={wc_code}")
+        assert status == 200, f"Open Oborovo working copy failed: {status}"
+
+        ch_m = re.search(r'name="content_hash"\s+value="([^"]+)"', body)
+        wv_m = re.search(r'name="workbook_version"\s+value="([^"]+)"', body)
+        assert ch_m and wv_m, "Must find content_hash and workbook_version"
+        content_hash = ch_m.group(1)
+        workbook_version = wv_m.group(1)
+
+        run_status, _, run_body = _http(base_url, token, "POST", "/v2/workbook/run", {
+            "project": wc_code,
+            "workbook_version": workbook_version,
+            "content_hash": content_hash,
+        }, extra_headers={"HX-Request": "true"})
+        assert run_status == 200, f"Oborovo working copy run failed: {run_status} {run_body[:400]}"
+
+        # Assert runtime persisted
+        with sqlite3.connect(self.db_path) as conn:
+            wc_ws = conn.execute(
+                "SELECT last_runtime_summary_json, last_runtime_snapshot_id FROM workspace_states WHERE user_id='alice-lib-test' AND project_code=?",
+                (wc_code,)
+            ).fetchone()
+        assert wc_ws, "Oborovo working copy workspace must exist"
+        wc_summary = json.loads(wc_ws[0]) if wc_ws[0] else {}
+        assert wc_summary, "Oborovo working copy runtime summary must be non-empty"
+        assert wc_ws[1], "Oborovo working copy last_runtime_snapshot_id must be set"
+
+        # Assert reference workspace unchanged
+        with sqlite3.connect(self.db_path) as conn:
+            ref_ws_after = conn.execute(
+                "SELECT draft_snapshot_json, saved_snapshot_json FROM workspace_states WHERE user_id='__reference__' AND project_code='oborovo-reference'"
+            ).fetchone()
+        if ref_ws_before and ref_ws_after:
+            assert ref_ws_after[0] == ref_ws_before[0], "Oborovo reference draft snapshot must be unchanged"
+            assert ref_ws_after[1] == ref_ws_before[1], "Oborovo reference saved snapshot must be unchanged"

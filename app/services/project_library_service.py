@@ -145,77 +145,82 @@ def ensure_reference_models() -> list:
     under the system sentinel user_id if they do not already exist.
 
     One canonical reference per template_source.  Repeated calls are safe.
+    Always ensures workspace and base-case scenario exist (self-healing).
     Returns a list of newly-created ProjectRecords (empty if both existed).
     """
     created = []
     for defn in _REFERENCE_DEFINITIONS:
-        existing = get_reference_by_template_source(defn["template_source"])
-        if existing is not None:
-            continue  # already bootstrapped
-
-        try:
-            factory_fn = _get_factory(defn["factory"])
-            project_inputs = factory_fn()
-            snapshot = _build_reference_snapshot(project_inputs, defn)
-
-            record = save_project(
-                user_id=REFERENCE_USER_ID,
-                project_code=defn["project_code"],
-                project_name=defn["display_name"],
-                source_project_template=defn["template_source"],
-                project_type=defn["project_type"],
-                project_origin="factory_template",
-                template_source=defn["template_source"],
-                baseline_snapshot=snapshot,
-                is_readonly=True,
-                is_protected=True,
-                project_role="reference",
-                governance_state={
-                    "g20": "BLOCKED",
-                    "r99_r102": "NOT_APPROVED",
-                    "lender_ready": False,
-                    "reference_model": True,
-                },
-                replay_metadata={
-                    "factory": defn["factory"],
-                    "bootstrapped_at": _now_utc().isoformat(),
-                    "reference": True,
-                },
-            )
-
-            _init_reference_workspace(record, project_inputs, snapshot, defn)
-
+        was_existing = get_reference_by_template_source(defn["template_source"]) is not None
+        record = _ensure_reference_project(defn)
+        if record is None:
+            continue
+        _ensure_reference_workspace_and_scenario(record, defn)
+        if not was_existing:
             created.append(record)
-        except Exception as _exc:
-            # Re-raise unless this is a unique-constraint violation from a
-            # concurrent bootstrap (two processes racing to insert the same
-            # reference row).  Use the type name so we never import sqlite3
-            # at module level (guardrail: no direct DB imports outside persistence).
-            if type(_exc).__name__ != "IntegrityError":
-                raise
-            # Concurrent bootstrap — reference was created by another process.
-
     return created
 
 
-def _build_reference_snapshot(project_inputs, defn: dict) -> dict:
-    """Build a workspace-ready snapshot dict for a reference project."""
+def _ensure_reference_project(defn: dict):
+    """Get or create the canonical project record. Returns the record."""
+    existing = get_reference_by_template_source(defn["template_source"])
+    if existing is not None:
+        return existing
+    try:
+        factory_fn = _get_factory(defn["factory"])
+        project_inputs = factory_fn()
+        snapshot = _build_reference_snapshot(project_inputs, defn)
+        record = save_project(
+            user_id=REFERENCE_USER_ID,
+            project_code=defn["project_code"],
+            project_name=defn["display_name"],
+            source_project_template=defn["template_source"],
+            project_type=defn["project_type"],
+            project_origin="factory_template",
+            template_source=defn["template_source"],
+            baseline_snapshot=snapshot,
+            is_readonly=True,
+            is_protected=True,
+            project_role="reference",
+            governance_state={
+                "g20": "BLOCKED",
+                "r99_r102": "NOT_APPROVED",
+                "lender_ready": False,
+                "reference_model": True,
+            },
+            replay_metadata={
+                "factory": defn["factory"],
+                "bootstrapped_at": _now_utc().isoformat(),
+                "reference": True,
+            },
+        )
+        return record
+    except Exception as _exc:
+        # Use type name to avoid importing sqlite3 at module level
+        # (guardrail: no direct DB imports outside persistence layer).
+        if type(_exc).__name__ != "IntegrityError":
+            raise
+        # Concurrent bootstrap — re-fetch the winning record.
+        return get_reference_by_template_source(defn["template_source"])
+
+
+def _ensure_reference_workspace_and_scenario(record, defn: dict) -> None:
+    """Idempotently ensure workspace and base scenario exist for a reference."""
     from app.persistence.projects_repository import _compute_baseline_snapshot
-    return _compute_baseline_snapshot(defn["project_type"], defn["template_source"])
+    snapshot = _compute_baseline_snapshot(defn["project_type"], defn["template_source"])
 
+    ws = get_workspace_state(record.user_id, record.project_id)
+    if ws is None:
+        save_workspace_state(
+            user_id=record.user_id,
+            project_id=record.project_id,
+            project_code=record.project_code,
+            draft_snapshot=snapshot,
+            saved_snapshot=snapshot,
+            last_runtime_snapshot={},
+            last_runtime_summary={},
+            governance_state=record.governance_state,
+        )
 
-def _init_reference_workspace(record, project_inputs, snapshot: dict, defn: dict) -> None:
-    """Create initial workspace_state + base-case scenario for a reference project."""
-    save_workspace_state(
-        user_id=record.user_id,
-        project_id=record.project_id,
-        project_code=record.project_code,
-        draft_snapshot=snapshot,
-        saved_snapshot=snapshot,
-        last_runtime_snapshot={},
-        last_runtime_summary={},
-        governance_state=record.governance_state,
-    )
     get_or_create_base_case_scenario(
         record.user_id,
         record.project_id,
@@ -226,6 +231,17 @@ def _init_reference_workspace(record, project_inputs, snapshot: dict, defn: dict
         snapshot,
         record.governance_state,
     )
+
+
+def _build_reference_snapshot(project_inputs, defn: dict) -> dict:
+    """Build a workspace-ready snapshot dict for a reference project."""
+    from app.persistence.projects_repository import _compute_baseline_snapshot
+    return _compute_baseline_snapshot(defn["project_type"], defn["template_source"])
+
+
+def _init_reference_workspace(record, project_inputs, snapshot: dict, defn: dict) -> None:
+    """Backward-compat shim — delegates to _ensure_reference_workspace_and_scenario."""
+    _ensure_reference_workspace_and_scenario(record, defn)
 
 
 # ---------------------------------------------------------------------------
