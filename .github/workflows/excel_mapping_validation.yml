@@ -1,0 +1,55 @@
+name: Excel mapping validation
+
+# Focused GitHub Actions job that runs the Excel input coverage
+# mapping tests and the strict validator on the exact PR head
+# from a clean Actions checkout. Triggered on push and pull
+# request for the `excel-input-coverage-gap-analysis` branch
+# and on every push to any branch that changes
+# `docs/model_mapping/**` or
+# `tests/test_model_mapping_manifests.py`.
+
+on:
+  push:
+    branches:
+      - main
+      - industry-engine-refactor
+      - excel-input-coverage-gap-analysis
+    paths:
+      - 'docs/model_mapping/**'
+      - 'tests/test_model_mapping_manifests.py'
+      - '.github/workflows/excel_mapping_validation.yml'
+  pull_request:
+    branches:
+      - main
+      - industry-engine-refactor
+      - excel-input-coverage-gap-analysis
+    paths:
+      - 'docs/model_mapping/**'
+      - 'tests/test_model_mapping_manifests.py'
+      - '.github/workflows/excel_mapping_validation.yml'
+
+env:
+  PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+
+jobs:
+  excel-mapping-validation:
+    name: Excel mapping validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: |
+          pip install --no-cache-dir -c constraints.txt -e .
+          pip install --no-cache-dir -c constraints.txt pytest
+      - name: Build artifacts (clean checkout)
+        run: |
+          python3 docs/model_mapping/tools/model_mapping/build_artifacts.py
+      - name: Run strict validator
+        run: |
+          python3 docs/model_mapping/tools/model_mapping/validate_manifests.py
+      - name: Run focused mapping tests
+        run: |
+          python3 -m pytest tests/test_model_mapping_manifests.py -q

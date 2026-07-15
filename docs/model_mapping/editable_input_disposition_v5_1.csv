@@ -1,0 +1,188 @@
+model,sheet,row,active_cell,label,field_id_candidate,canonical_field_id,disposition,technology_scope,runtime_status,scenario_eligible,priority,confidence,review_note
+TUHO,Project Identity,2,,Project Name,project.project_name,registry.project_setup.identity.project_name,MAPPED_TO_REGISTRY,Common,RUNTIME_FULLY_BOUND,FALSE,P0,CONFIRMED,Registry-backed exact match
+TUHO,Project Identity,3,,Project Company,project.project_company,ui.project.project_company,MAPPED_TO_REGISTRY,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Workbook label; not in registry; display only
+TUHO,Project Identity,4,,Project Code,project.project_code,ui.project.project_code,MAPPED_TO_REGISTRY,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Workbook label; not in registry; display only
+TUHO,Project Identity,5,,Country,project.country,registry.project_setup.identity.country_market,MAPPED_TO_REGISTRY,Common,RUNTIME_PARTIALLY_BOUND,FALSE,P1_ENGINE,CONFIRMED,Pack 'country' column maps to registry 'country_market'
+TUHO,Project Schedule,9,,Financial Close,schedule.financial_close,,TRUE_DUPLICATE,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Same as registry project_setup.technical.cod_date (engine_path info.financial_close).
+TUHO,Project Schedule,10,,Scheduled Construction Time,schedule.scheduled_construction_time,,TRUE_DUPLICATE,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Same as registry project_setup.technical.construction_months.
+TUHO,Project Schedule,14,,Investment Horizon,schedule.investment_horizon,,TRUE_DUPLICATE,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Same as registry project_setup.technical.horizon_years.
+TUHO,Project Schedule,15,,Project Life,schedule.project_life,,TRUE_DUPLICATE,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Same as registry project_setup.technical.horizon_years.
+TUHO,Project Schedule,16,,Model Horizon,schedule.model_horizon,,TRUE_DUPLICATE,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Same as registry project_setup.technical.horizon_years.
+TUHO,Project Schedule,18,,Model Period,schedule.model_period,,TRUE_DUPLICATE,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Same as registry project_setup.info.period_frequency (display only).
+TUHO,Technical & Yield,58,,Period,technical.period,,TRUE_DUPLICATE,Wind,N/A,FALSE,P2_ENGINE,CONFIRMED,Same as registry project_setup.info.period_frequency (display only).
+TUHO,Technical & Yield,59,,Curtailment,technical.curtailment,,ENGINE_GAP,Wind,N/A,FALSE,P2_ENGINE,CONFIRMED,No registry field; engine does not consume (TUHO wind has no curtailment model).
+TUHO,Technical & Yield,61,,Discount,technical.discount,,ENGINE_GAP,Wind,N/A,FALSE,P2_ENGINE,CONFIRMED,No registry field. WACC/discount rate is engine-internal.
+TUHO,Technical & Yield,62,,Power Curve Adjustment,technical.power_curve_adjustment,,ENGINE_GAP,Wind,N/A,FALSE,P2_ENGINE,CONFIRMED,No registry field. Engine does not consume.
+TUHO,Technical & Yield,66,,Historical average,technical.historical_average,,ENGINE_GAP,Wind,N/A,FALSE,P2_ENGINE,CONFIRMED,Historical average (yield reference). No registry field. Diagnostic only.
+TUHO,Revenue,92,,Scenario,revenue.scenario,,ENGINE_GAP,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Scenario label. Display only.
+TUHO,Revenue,93,,if Profile,revenue.if_profile,,ENGINE_GAP,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,IF (intrinsic forecasting) profile. No registry field.
+TUHO,Revenue,94,,Index,revenue.index,,MAPPED_TO_REGISTRY,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Mapped to registry ProjectInputs.revenue.ppa_index (RUNTIME_PARTIALLY_BOUND).
+TUHO,Revenue,96,,Index,revenue.index,,MAPPED_TO_REGISTRY,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Mapped to registry ProjectInputs.revenue.ppa_index (RUNTIME_PARTIALLY_BOUND).
+TUHO,Revenue,111,,Inflation index,revenue.inflation_index,,ENGINE_GAP,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Inflation index. Distinct from opex inflation; no registry field.
+TUHO,Revenue,112,,Balancing costs,revenue.balancing_costs,,MAPPED_TO_REGISTRY,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Mapped to registry ProjectInputs.revenue.balancing_cost_eur_per_mwh (RUNTIME_PARTIALLY_BOUND in cross-walk; pack provides the editable cell).
+TUHO,Revenue,116,,Amount,revenue.amount,,DERIVED_FROM_EXISTING_INPUT,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Revenue amount derived from tariff * production. Not a user input.
+TUHO,Revenue,117,,Payment year,revenue.payment_year,,ENGINE_GAP,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Payment year. No registry field.
+TUHO,Revenue,123,,CO2 price,revenue.co2_price,,MAPPED_TO_REGISTRY,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Mapped to registry ProjectInputs.revenue.co2_price_eur (RUNTIME_PARTIALLY_BOUND).
+TUHO,Revenue,124,,UNFCC's Retainer,revenue.unfcc_s_retainer,,ENGINE_GAP,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,UNFCCC retainer. No registry field.
+TUHO,Project & Debt Sizing,159,,Scenario,debt_sizing.scenario,,ENGINE_GAP,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Debt-sizing scenario label. Display only; no engine consumer.
+TUHO,Project & Debt Sizing,167,,Debt Sizing,debt_sizing.debt_sizing,,ENGINE_GAP,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Debt-sizing toggle (sculpting vs flat). The actual sculpting/flat decision is exposed via debt.senior.interest_rate_pct; this pack row is a legacy artefact.
+TUHO,Senior Debt & Refinancing,177,,Senior Loan,debt.senior_loan,,DERIVED_FROM_EXISTING_INPUT,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Senior loan amount is derived from gearing_ratio * total_capex in the engine; not a user input.
+TUHO,Senior Debt & Refinancing,182,,Used %,debt.used,,ENGINE_GAP,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Debt-used toggle. No registry field.
+TUHO,Senior Debt & Refinancing,192,,Facility Bank 1,debt.facility_bank_1,,ENGINE_GAP,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Bank-1 facility share. No registry field. No engine consumer.
+TUHO,Senior Debt & Refinancing,197,,Commitment Fee,debt.commitment_fee,,ENGINE_GAP,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Senior debt commitment fee. No registry field. Engine does not consume.
+TUHO,Senior Debt & Refinancing,200,,Structuring Fee,debt.structuring_fee,,ENGINE_GAP,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Senior debt structuring fee. No registry field.
+TUHO,Senior Debt & Refinancing,201,,Arrangement Fee,debt.arrangement_fee,,ENGINE_GAP,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Senior debt arrangement fee. No registry field. Engine does not consume (debt is sized in the engine).
+TUHO,Senior Debt & Refinancing,205,,Annual DSCR Increase,debt.annual_dscr_increase,,DERIVED_FROM_EXISTING_INPUT,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Derived from target DSCR + sweep; not a user-editable input in the Finco1 engine.
+TUHO,Senior Debt & Refinancing,206,,Lock-up,debt.lock_up,,TRUE_DUPLICATE,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Pack lock_up is the same concept as engine.dscr.lockup; documented in unresolved_pack_id_evidence as engine-owned.
+TUHO,Senior Debt & Refinancing,209,,Operation,debt.operation,,ENGINE_GAP,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Operation toggle. No registry field.
+TUHO,Senior Debt & Refinancing,215,,Swap Margin,debt.swap_margin,,ENGINE_GAP,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Swap margin. No engine consumer (engine does not model swaps).
+TUHO,Senior Debt & Refinancing,216,,Forward Swap Margin,debt.forward_swap_margin,,ENGINE_GAP,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Forward swap margin. No registry field. No engine consumer (engine does not model swaps).
+TUHO,Senior Debt & Refinancing,217,,Credit Valuation Adjustment,debt.credit_valuation_adjustment,,ENGINE_GAP,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,CVA. No registry field. No engine consumer.
+TUHO,Senior Debt & Refinancing,222,,Year of refinancing,debt.year_of_refinancing,,ENGINE_GAP,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Refinancing year. No engine consumer (no refinancing modelled).
+TUHO,Senior Debt & Refinancing,227,,Margin,debt.margin,,DERIVED_FROM_EXISTING_INPUT,Common,N/A,TRUE,P2_ENGINE,CONFIRMED,Derived from interest_rate_pct - base_rate; not a separate user input.
+TUHO,Senior Debt & Refinancing,230,,Swap additionnal,debt.swap_additionnal,,ENGINE_GAP,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Additional swap toggle. No engine consumer.
+TUHO,Senior Debt & Refinancing,233,,Up-front fee (% of total refinancing),debt.up_front_fee_of_total_refinancing,,ENGINE_GAP,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Up-front fee. No registry field.
+TUHO,Junior / VAT / LC / Rates,242,,Maturity,facilities.maturity,,TRUE_DUPLICATE,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Same as debt.senior.tenor_years.
+TUHO,Junior / VAT / LC / Rates,245,,J-DSCR,facilities.j_dscr,,ENGINE_GAP,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Junior DSCR. No registry field.
+TUHO,Junior / VAT / LC / Rates,249,,Junior Front End Fee,facilities.junior_front_end_fee,,ENGINE_GAP,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Junior front-end fee. No registry field.
+TUHO,Junior / VAT / LC / Rates,253,,Hedge Coverage,facilities.hedge_coverage,,MAPPED_TO_REGISTRY,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Mapped to registry ProjectInputs.financing.hedge_coverage (RUNTIME_PARTIALLY_BOUND in cross-walk; pack provides the editable cell).
+TUHO,Junior / VAT / LC / Rates,259,,Amount paid in certificates,facilities.amount_paid_in_certificates,,ENGINE_GAP,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,No registry field; no engine consumer.
+TUHO,Junior / VAT / LC / Rates,261,,VAT% for VAT loan repayment,facilities.vat_for_vat_loan_repayment,,ENGINE_GAP,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,VAT loan. No registry field.
+TUHO,Junior / VAT / LC / Rates,269,,VAT collected,facilities.vat_collected,,ENGINE_GAP,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,VAT collected. No registry field. No engine consumer.
+TUHO,Junior / VAT / LC / Rates,274,,L/C Fee,facilities.l_c_fee,,ENGINE_GAP,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,L/C fee. No registry field.
+TUHO,Junior / VAT / LC / Rates,275,,Amount,facilities.amount,,DERIVED_FROM_EXISTING_INPUT,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Facility amount derived from capex + financing structure.
+TUHO,Junior / VAT / LC / Rates,281,,Buffer on external source,facilities.buffer_on_external_source,,ENGINE_GAP,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,No registry field; no engine consumer.
+TUHO,Equity & Shareholder Loan,295,,Amount,equity.amount,,DERIVED_FROM_EXISTING_INPUT,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Equity amount is derived from capex - senior_debt; not a user input.
+TUHO,Equity & Shareholder Loan,296,,Share Premium,equity.share_premium,,ENGINE_GAP,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Share premium. No registry field. Single-SPV assumption.
+TUHO,Equity & Shareholder Loan,297,,Shareholding,equity.shareholding,,ENGINE_GAP,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Shareholder structure. No registry field.
+TUHO,Equity & Shareholder Loan,303,,Dividend distribution,equity.dividend_distribution,,ENGINE_GAP,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Dividend distribution toggle. No registry field; engine does not model dividend smoothing.
+TUHO,Equity & Shareholder Loan,310,,% SHL,equity.shl,,TRUE_DUPLICATE,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Same as financing.shl_amount_keur (engine-owned closed-form).
+TUHO,Equity & Shareholder Loan,318,,Equity Distribution Grace Period,equity.equity_distribution_grace_period,,ENGINE_GAP,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Distribution grace period. No registry field.
+TUHO,Equity & Shareholder Loan,319,,Delay Operation & Distribution Flows,equity.delay_operation_and_distribution_flows,,ENGINE_GAP,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,No registry field; no engine consumer.
+TUHO,Reserves & PPA Warranties,336,,0 months,reserves.0_months,,ENGINE_GAP,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,DSRA initial months. No registry field; engine computes DSRA from CFADS.
+TUHO,Reserves & PPA Warranties,343,,Period,reserves.period,,ENGINE_GAP,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Reserve period. No registry field.
+TUHO,Reserves & PPA Warranties,351,,Initial funding,reserves.initial_funding,,ENGINE_GAP,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Reserve initial funding. No registry field.
+TUHO,Reserves & PPA Warranties,352,,Start,reserves.start,,ENGINE_GAP,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Reserve start period. No registry field.
+TUHO,Depreciation,357,,Asset,depreciation.asset,,DERIVED_FROM_EXISTING_INPUT,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Asset depreciation is engine-owned (engine.depreciation.*); derived from capex schedule + useful life.
+TUHO,Depreciation,375,,Commitment Fees,depreciation.commitment_fees,,TRUE_DUPLICATE,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Same as capex.F.commitment_fees (TEMPLATE_LOCKED).
+TUHO,Depreciation,376,,Bank Fees,depreciation.bank_fees,,TRUE_DUPLICATE,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Same as capex.F.bank_fees (TEMPLATE_LOCKED).
+TUHO,Depreciation,378,,Reserve Accounts,depreciation.reserve_accounts,,TRUE_DUPLICATE,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Same as capex.F.reserve_accounts (TEMPLATE_LOCKED).
+TUHO,Tax & Accounting,386,,Rate,tax.rate,,MAPPED_TO_REGISTRY,Common,N/A,FALSE,P0,CONFIRMED,"Pack 'tax.rate' is a disambiguating label only; the registry has multiple rate fields (CIT, WHT, VAT). The disposition is MAPPED_TO_REGISTRY for the CIT cell and ENGINE_GAP for WHT/VAT (see canonical_to_pack_id_evidence)."
+TUHO,Tax & Accounting,390,,Losses carried forward,tax.losses_carried_forward,,TRUE_DUPLICATE,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Pack losses_carried_forward is a MAX cap (years); registry tax.loss_carryforward_years is the editable years input. Documented as separate in unresolved_pack_id_evidence (tax.loss_carryforward_max_years).
+TUHO,Tax & Accounting,391,,Cap,tax.cap,,ENGINE_GAP,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Tax cap toggle. No registry field. No engine consumer.
+TUHO,Tax & Accounting,393,,Legal Reserve,tax.legal_reserve,,MAPPED_TO_REGISTRY,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Mapped to registry ProjectInputs.tax.legal_reserve_cap (engine-owned closed-form; pack provides the editable cell).
+TUHO,Tax & Accounting,395,,SHL interest rate cap applicable (foreign shareholder),tax.shl_interest_rate_cap_applicable_foreign_shareholder,,ENGINE_GAP,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Mapped to registry ProjectInputs.tax.shl_cap_applies (engine-owned closed-form).
+TUHO,Tax & Accounting,397,,Thin Capitalization,tax.thin_capitalization,,MAPPED_TO_REGISTRY,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Mapped to registry ProjectInputs.tax.thin_cap_enabled (engine-owned closed-form; pack provides the editable cell).
+TUHO,Tax & Accounting,399,,Max. SHL interests expenses,tax.max_shl_interests_expenses,,MAPPED_TO_REGISTRY,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Mapped to registry ProjectInputs.tax.atad_min_interest_keur (engine-owned closed-form).
+TUHO,Tax & Accounting,400,,Max. SHL interests % of EBITDA,tax.max_shl_interests_of_ebitda,,MAPPED_TO_REGISTRY,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Mapped to registry ProjectInputs.tax.atad_ebitda_limit (engine-owned closed-form).
+TUHO,Tax & Accounting,405,,on debt interests,tax.on_debt_interests,,MAPPED_TO_REGISTRY,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Mapped to registry ProjectInputs.tax.wht_sponsor_shl_interest (RUNTIME_PARTIALLY_BOUND; pack provides the editable cell).
+TUHO,Tax & Accounting,412,,on financial revenues,tax.on_financial_revenues,,MAPPED_TO_REGISTRY,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Mapped to registry ProjectInputs.tax.wht_sponsor_dividends (RUNTIME_PARTIALLY_BOUND; pack provides the editable cell).
+TUHO,Tax & Accounting,413,,on upfront fees,tax.on_upfront_fees,,ENGINE_GAP,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,WHT on upfront fees. No registry field. No engine consumer.
+TUHO,Tax & Accounting,414,,on technical services,tax.on_technical_services,,ENGINE_GAP,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,WHT on technical services. No registry field. No engine consumer.
+TUHO,Tax & Accounting,415,,WHT on Senior Refinancing,tax.wht_on_senior_refinancing,,ENGINE_GAP,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,WHT on senior refinancing. No registry field. No engine consumer (no refinancing model).
+TUHO,Tax & Accounting,419,,Reimbursed,tax.reimbursed,,ENGINE_GAP,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,WHT reimbursed toggle. No registry field.
+TUHO,Tax & Accounting,421,,Rate,tax.rate,,MAPPED_TO_REGISTRY,Common,N/A,FALSE,P0,CONFIRMED,"Pack 'tax.rate' is a disambiguating label only; the registry has multiple rate fields (CIT, WHT, VAT). The disposition is MAPPED_TO_REGISTRY for the CIT cell and ENGINE_GAP for WHT/VAT (see canonical_to_pack_id_evidence)."
+TUHO,Tax & Accounting,423,,VAT Break,tax.vat_break,,ENGINE_GAP,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,VAT break flag. No registry field. No engine consumer.
+TUHO,Tax & Accounting,427,,Rate,tax.rate,,MAPPED_TO_REGISTRY,Common,N/A,FALSE,P0,CONFIRMED,"Pack 'tax.rate' is a disambiguating label only; the registry has multiple rate fields (CIT, WHT, VAT). The disposition is MAPPED_TO_REGISTRY for the CIT cell and ENGINE_GAP for WHT/VAT (see canonical_to_pack_id_evidence)."
+TUHO,FX / Macro / Discount Rates,431,,Currency,facilities.currency,,UI_GAP,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Currency is a display field on Inputs!E3 (TUHO). Engine uses EUR via project_setup.identity.country_market + financing.base_rate.
+TUHO,FX / Macro / Discount Rates,434,,EUR inflation,facilities.eur_inflation,,ENGINE_GAP,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,EUR inflation index. No registry field.
+TUHO,FX / Macro / Discount Rates,438,,Cash Interest,facilities.cash_interest,,DERIVED_FROM_EXISTING_INPUT,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Cash interest is computed by the engine from senior_debt_amount_keur and margin_bps.
+TUHO,FX / Macro / Discount Rates,439,,Interest on short term loan,facilities.interest_on_short_term_loan,,ENGINE_GAP,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,No registry field. Engine does not consume short-term loan interest.
+TUHO,FX / Macro / Discount Rates,452,,Discount rate Project NPV,facilities.discount_rate_project_npv,,ENGINE_GAP,Solar,N/A,FALSE,P2_ENGINE,CONFIRMED,No registry field. Engine does not consume.
+TUHO,FX / Macro / Discount Rates,453,,Discount rate Equity NPV,facilities.discount_rate_equity_npv,,ENGINE_GAP,Solar,N/A,FALSE,P2_ENGINE,CONFIRMED,No registry field. Engine does not consume.
+TUHO,Warranties & Bonds,457,,Name,reserves.name,,UI_GAP,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Reserve account name; display only.
+OBOROVO,Project Identity,2,,Project Name,project.project_name,registry.project_setup.identity.project_name,MAPPED_TO_REGISTRY,Common,RUNTIME_FULLY_BOUND,FALSE,P0,CONFIRMED,Registry-backed exact match
+OBOROVO,Project Identity,3,,Project Company,project.project_company,ui.project.project_company,MAPPED_TO_REGISTRY,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Workbook label; not in registry; display only
+OBOROVO,Project Identity,4,,Project Code,project.project_code,ui.project.project_code,MAPPED_TO_REGISTRY,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Workbook label; not in registry; display only
+OBOROVO,Project Identity,5,,Country,project.country,registry.project_setup.identity.country_market,MAPPED_TO_REGISTRY,Common,RUNTIME_PARTIALLY_BOUND,FALSE,P1_ENGINE,CONFIRMED,Pack 'country' column maps to registry 'country_market'
+OBOROVO,Project Schedule,14,,Investment Horizon,schedule.investment_horizon,,TRUE_DUPLICATE,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Same as registry project_setup.technical.horizon_years.
+OBOROVO,Project Schedule,15,,Project Life,schedule.project_life,,TRUE_DUPLICATE,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Same as registry project_setup.technical.horizon_years.
+OBOROVO,Project Schedule,16,,Model Horizon,schedule.model_horizon,,TRUE_DUPLICATE,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Same as registry project_setup.technical.horizon_years.
+OBOROVO,Project Schedule,18,,Model Period,schedule.model_period,,TRUE_DUPLICATE,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Same as registry project_setup.info.period_frequency (display only).
+OBOROVO,Technical & Yield,53,,Yield Study,technical.yield_study,,ENGINE_GAP,Solar + BESS/Hybrid,N/A,FALSE,P2_ENGINE,CONFIRMED,Yield study reference; no registry field.
+OBOROVO,Technical & Yield,56,,PV module degradation,technical.pv_module_degradation,,MAPPED_TO_REGISTRY,Solar,N/A,FALSE,P1_ENGINE,CONFIRMED,Mapped to registry ProjectInputs.technical.pv_degradation (RUNTIME_PARTIALLY_BOUND; setter _set_technical_degradation exists).
+OBOROVO,Technical & Yield,57,,BESS degradation,technical.bess_degradation,,MAPPED_TO_REGISTRY,BESS/Hybrid,N/A,FALSE,P1_ENGINE,CONFIRMED,Mapped to registry ProjectInputs.technical.bess_degradation (RUNTIME_PARTIALLY_BOUND; BESS-only).
+OBOROVO,Technical & Yield,58,,Plant Availability,technical.plant_availability,,ENGINE_GAP,Solar + BESS/Hybrid,N/A,FALSE,P2_ENGINE,CONFIRMED,No registry field. Engine does not consume (P50 already captures availability).
+OBOROVO,Technical & Yield,59,,Grid Availability,technical.grid_availability,,ENGINE_GAP,Solar + BESS/Hybrid,N/A,FALSE,P2_ENGINE,CONFIRMED,No registry field. Engine does not consume (P50 already captures availability).
+OBOROVO,Technical & Yield,63,,Historical average,technical.historical_average,,ENGINE_GAP,Solar + BESS/Hybrid,N/A,FALSE,P2_ENGINE,CONFIRMED,Historical average (yield reference). No registry field. Diagnostic only.
+OBOROVO,Revenue,89,,Scenario,revenue.scenario,,ENGINE_GAP,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Scenario label. Display only.
+OBOROVO,Revenue,90,,if Profile,revenue.if_profile,,ENGINE_GAP,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,IF (intrinsic forecasting) profile. No registry field.
+OBOROVO,Revenue,91,,Index,revenue.index,,MAPPED_TO_REGISTRY,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Mapped to registry ProjectInputs.revenue.ppa_index (RUNTIME_PARTIALLY_BOUND).
+OBOROVO,Revenue,93,,Index,revenue.index,,MAPPED_TO_REGISTRY,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Mapped to registry ProjectInputs.revenue.ppa_index (RUNTIME_PARTIALLY_BOUND).
+OBOROVO,Revenue,108,,Central case GMPV,revenue.central_case_gmpv,,ENGINE_GAP,Solar,N/A,FALSE,P2_ENGINE,CONFIRMED,GMPV central case. No registry field; engine does not consume.
+OBOROVO,Revenue,110,,Low case GMPV,revenue.low_case_gmpv,,ENGINE_GAP,Solar,N/A,FALSE,P2_ENGINE,CONFIRMED,GMPV low case. No registry field.
+OBOROVO,Revenue,114,,Balancing costs PV,revenue.balancing_costs_pv,,MAPPED_TO_REGISTRY,Solar,N/A,FALSE,P2_ENGINE,CONFIRMED,PV-specific balancing cost; mapped to registry ProjectInputs.revenue.balancing_cost_pv (RUNTIME_PARTIALLY_BOUND).
+OBOROVO,Revenue,115,,Balancing costs BESS,revenue.balancing_costs_bess,,MAPPED_TO_REGISTRY,BESS/Hybrid,N/A,FALSE,P2_ENGINE,CONFIRMED,BESS-specific balancing cost; mapped to registry ProjectInputs.revenue.balancing_cost_bess (RUNTIME_PARTIALLY_BOUND).
+OBOROVO,Revenue,116,,Inflation index,revenue.inflation_index,,ENGINE_GAP,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Inflation index. Distinct from opex inflation; no registry field.
+OBOROVO,Revenue,123,,EMS revenues - Afry Central case - 4h Degraded,revenue.ems_revenues_afry_central_case_4h_degraded,,ENGINE_GAP,BESS/Hybrid,N/A,FALSE,P2_ENGINE,CONFIRMED,AFRY EMS curve. No registry field.
+OBOROVO,Revenue,125,,EMS revenues - Afry Low case - 4h Degraded,revenue.ems_revenues_afry_low_case_4h_degraded,,ENGINE_GAP,BESS/Hybrid,N/A,FALSE,P2_ENGINE,CONFIRMED,AFRY EMS curve. No registry field.
+OBOROVO,Revenue,126,,EMS revenues - Afry Stress case - 4h Degraded,revenue.ems_revenues_afry_stress_case_4h_degraded,,ENGINE_GAP,BESS/Hybrid,N/A,FALSE,P2_ENGINE,CONFIRMED,AFRY EMS curve. No registry field.
+OBOROVO,Revenue,129,,Annual inflation on market prices,revenue.annual_inflation_on_market_prices,,ENGINE_GAP,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,No registry field; engine does not consume market-price inflation (PPA fixed-tariff model).
+OBOROVO,Revenue,134,,Amount,revenue.amount,,DERIVED_FROM_EXISTING_INPUT,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Revenue amount derived from tariff * production. Not a user input.
+OBOROVO,Revenue,135,,Payment year,revenue.payment_year,,ENGINE_GAP,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Payment year. No registry field.
+OBOROVO,Revenue,141,,CO2 price,revenue.co2_price,,MAPPED_TO_REGISTRY,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Mapped to registry ProjectInputs.revenue.co2_price_eur (RUNTIME_PARTIALLY_BOUND).
+OBOROVO,Revenue,142,,UNFCC's Retainer,revenue.unfcc_s_retainer,,ENGINE_GAP,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,UNFCCC retainer. No registry field.
+OBOROVO,Project & Debt Sizing,176,,Scenario,debt_sizing.scenario,,ENGINE_GAP,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Debt-sizing scenario label. Display only; no engine consumer.
+OBOROVO,Project & Debt Sizing,184,,Debt Sizing,debt_sizing.debt_sizing,,ENGINE_GAP,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Debt-sizing toggle (sculpting vs flat). The actual sculpting/flat decision is exposed via debt.senior.interest_rate_pct; this pack row is a legacy artefact.
+OBOROVO,Senior Debt & Refinancing,194,,Senior Loan,debt.senior_loan,,DERIVED_FROM_EXISTING_INPUT,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Senior loan amount is derived from gearing_ratio * total_capex in the engine; not a user input.
+OBOROVO,Senior Debt & Refinancing,199,,Used %,debt.used,,ENGINE_GAP,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Debt-used toggle. No registry field.
+OBOROVO,Senior Debt & Refinancing,209,,Facility Bank 1,debt.facility_bank_1,,ENGINE_GAP,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Bank-1 facility share. No registry field. No engine consumer.
+OBOROVO,Senior Debt & Refinancing,217,,Structuring Fee,debt.structuring_fee,,ENGINE_GAP,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Senior debt structuring fee. No registry field.
+OBOROVO,Senior Debt & Refinancing,218,,Arrangement Fee,debt.arrangement_fee,,ENGINE_GAP,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Senior debt arrangement fee. No registry field. Engine does not consume (debt is sized in the engine).
+OBOROVO,Senior Debt & Refinancing,222,,Annual DSCR Increase,debt.annual_dscr_increase,,DERIVED_FROM_EXISTING_INPUT,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Derived from target DSCR + sweep; not a user-editable input in the Finco1 engine.
+OBOROVO,Senior Debt & Refinancing,223,,Lock-up,debt.lock_up,,TRUE_DUPLICATE,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Pack lock_up is the same concept as engine.dscr.lockup; documented in unresolved_pack_id_evidence as engine-owned.
+OBOROVO,Senior Debt & Refinancing,226,,Operation,debt.operation,,ENGINE_GAP,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Operation toggle. No registry field.
+OBOROVO,Senior Debt & Refinancing,232,,Swap Margin,debt.swap_margin,,ENGINE_GAP,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Swap margin. No engine consumer (engine does not model swaps).
+OBOROVO,Senior Debt & Refinancing,233,,Forward Swap Margin,debt.forward_swap_margin,,ENGINE_GAP,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Forward swap margin. No registry field. No engine consumer (engine does not model swaps).
+OBOROVO,Senior Debt & Refinancing,234,,Credit Valuation Adjustment,debt.credit_valuation_adjustment,,ENGINE_GAP,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,CVA. No registry field. No engine consumer.
+OBOROVO,Senior Debt & Refinancing,239,,Year of refinancing,debt.year_of_refinancing,,ENGINE_GAP,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Refinancing year. No engine consumer (no refinancing modelled).
+OBOROVO,Senior Debt & Refinancing,244,,Margin,debt.margin,,DERIVED_FROM_EXISTING_INPUT,Common,N/A,TRUE,P2_ENGINE,CONFIRMED,Derived from interest_rate_pct - base_rate; not a separate user input.
+OBOROVO,Senior Debt & Refinancing,247,,Swap additionnal,debt.swap_additionnal,,ENGINE_GAP,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Additional swap toggle. No engine consumer.
+OBOROVO,Senior Debt & Refinancing,250,,Up-front fee (% of total refinancing),debt.up_front_fee_of_total_refinancing,,ENGINE_GAP,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Up-front fee. No registry field.
+OBOROVO,Junior / VAT / LC / Rates,259,,Maturity,facilities.maturity,,TRUE_DUPLICATE,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Same as debt.senior.tenor_years.
+OBOROVO,Junior / VAT / LC / Rates,262,,J-DSCR,facilities.j_dscr,,ENGINE_GAP,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Junior DSCR. No registry field.
+OBOROVO,Junior / VAT / LC / Rates,266,,Junior Front End Fee,facilities.junior_front_end_fee,,ENGINE_GAP,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Junior front-end fee. No registry field.
+OBOROVO,Junior / VAT / LC / Rates,270,,Hedge Coverage,facilities.hedge_coverage,,MAPPED_TO_REGISTRY,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Mapped to registry ProjectInputs.financing.hedge_coverage (RUNTIME_PARTIALLY_BOUND in cross-walk; pack provides the editable cell).
+OBOROVO,Junior / VAT / LC / Rates,276,,Amount paid in certificates,facilities.amount_paid_in_certificates,,ENGINE_GAP,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,No registry field; no engine consumer.
+OBOROVO,Junior / VAT / LC / Rates,278,,VAT% for VAT loan repayment,facilities.vat_for_vat_loan_repayment,,ENGINE_GAP,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,VAT loan. No registry field.
+OBOROVO,Junior / VAT / LC / Rates,286,,VAT collected,facilities.vat_collected,,ENGINE_GAP,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,VAT collected. No registry field. No engine consumer.
+OBOROVO,Junior / VAT / LC / Rates,291,,L/C Fee,facilities.l_c_fee,,ENGINE_GAP,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,L/C fee. No registry field.
+OBOROVO,Junior / VAT / LC / Rates,292,,Amount,facilities.amount,,DERIVED_FROM_EXISTING_INPUT,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Facility amount derived from capex + financing structure.
+OBOROVO,Junior / VAT / LC / Rates,298,,Buffer on external source,facilities.buffer_on_external_source,,ENGINE_GAP,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,No registry field; no engine consumer.
+OBOROVO,Equity & Shareholder Loan,312,,Amount,equity.amount,,DERIVED_FROM_EXISTING_INPUT,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Equity amount is derived from capex - senior_debt; not a user input.
+OBOROVO,Equity & Shareholder Loan,313,,Share Premium,equity.share_premium,,ENGINE_GAP,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Share premium. No registry field. Single-SPV assumption.
+OBOROVO,Equity & Shareholder Loan,314,,Shareholding,equity.shareholding,,ENGINE_GAP,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Shareholder structure. No registry field.
+OBOROVO,Equity & Shareholder Loan,320,,Dividend distribution,equity.dividend_distribution,,ENGINE_GAP,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Dividend distribution toggle. No registry field; engine does not model dividend smoothing.
+OBOROVO,Equity & Shareholder Loan,327,,% SHL,equity.shl,,TRUE_DUPLICATE,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Same as financing.shl_amount_keur (engine-owned closed-form).
+OBOROVO,Equity & Shareholder Loan,335,,Equity Distribution Grace Period,equity.equity_distribution_grace_period,,ENGINE_GAP,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Distribution grace period. No registry field.
+OBOROVO,Equity & Shareholder Loan,336,,Delay Operation & Distribution Flows,equity.delay_operation_and_distribution_flows,,ENGINE_GAP,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,No registry field; no engine consumer.
+OBOROVO,Reserves & PPA Warranties,353,,0 months,reserves.0_months,,ENGINE_GAP,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,DSRA initial months. No registry field; engine computes DSRA from CFADS.
+OBOROVO,Reserves & PPA Warranties,360,,Period,reserves.period,,ENGINE_GAP,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Reserve period. No registry field.
+OBOROVO,Reserves & PPA Warranties,368,,Initial funding,reserves.initial_funding,,ENGINE_GAP,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Reserve initial funding. No registry field.
+OBOROVO,Reserves & PPA Warranties,369,,Start,reserves.start,,ENGINE_GAP,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Reserve start period. No registry field.
+OBOROVO,Depreciation,374,,Asset,depreciation.asset,,DERIVED_FROM_EXISTING_INPUT,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Asset depreciation is engine-owned (engine.depreciation.*); derived from capex schedule + useful life.
+OBOROVO,Depreciation,392,,Commitment Fees,depreciation.commitment_fees,,TRUE_DUPLICATE,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Same as capex.F.commitment_fees (TEMPLATE_LOCKED).
+OBOROVO,Depreciation,393,,Bank Fees,depreciation.bank_fees,,TRUE_DUPLICATE,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Same as capex.F.bank_fees (TEMPLATE_LOCKED).
+OBOROVO,Depreciation,395,,Reserve Accounts,depreciation.reserve_accounts,,TRUE_DUPLICATE,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Same as capex.F.reserve_accounts (TEMPLATE_LOCKED).
+OBOROVO,Tax & Accounting,403,,Rate,tax.rate,,MAPPED_TO_REGISTRY,Common,N/A,FALSE,P0,CONFIRMED,"Pack 'tax.rate' is a disambiguating label only; the registry has multiple rate fields (CIT, WHT, VAT). The disposition is MAPPED_TO_REGISTRY for the CIT cell and ENGINE_GAP for WHT/VAT (see canonical_to_pack_id_evidence)."
+OBOROVO,Tax & Accounting,407,,Losses carried forward,tax.losses_carried_forward,,TRUE_DUPLICATE,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Pack losses_carried_forward is a MAX cap (years); registry tax.loss_carryforward_years is the editable years input. Documented as separate in unresolved_pack_id_evidence (tax.loss_carryforward_max_years).
+OBOROVO,Tax & Accounting,408,,Cap,tax.cap,,ENGINE_GAP,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Tax cap toggle. No registry field. No engine consumer.
+OBOROVO,Tax & Accounting,410,,Legal Reserve,tax.legal_reserve,,MAPPED_TO_REGISTRY,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Mapped to registry ProjectInputs.tax.legal_reserve_cap (engine-owned closed-form; pack provides the editable cell).
+OBOROVO,Tax & Accounting,412,,SHL interest rate cap applicable (foreign shareholder),tax.shl_interest_rate_cap_applicable_foreign_shareholder,,ENGINE_GAP,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Mapped to registry ProjectInputs.tax.shl_cap_applies (engine-owned closed-form).
+OBOROVO,Tax & Accounting,414,,Thin Capitalization,tax.thin_capitalization,,MAPPED_TO_REGISTRY,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Mapped to registry ProjectInputs.tax.thin_cap_enabled (engine-owned closed-form; pack provides the editable cell).
+OBOROVO,Tax & Accounting,416,,Max. SHL interests expenses,tax.max_shl_interests_expenses,,MAPPED_TO_REGISTRY,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Mapped to registry ProjectInputs.tax.atad_min_interest_keur (engine-owned closed-form).
+OBOROVO,Tax & Accounting,417,,Max. SHL interests % of EBITDA,tax.max_shl_interests_of_ebitda,,MAPPED_TO_REGISTRY,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Mapped to registry ProjectInputs.tax.atad_ebitda_limit (engine-owned closed-form).
+OBOROVO,Tax & Accounting,422,,on debt interests,tax.on_debt_interests,,MAPPED_TO_REGISTRY,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Mapped to registry ProjectInputs.tax.wht_sponsor_shl_interest (RUNTIME_PARTIALLY_BOUND; pack provides the editable cell).
+OBOROVO,Tax & Accounting,429,,on financial revenues,tax.on_financial_revenues,,MAPPED_TO_REGISTRY,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Mapped to registry ProjectInputs.tax.wht_sponsor_dividends (RUNTIME_PARTIALLY_BOUND; pack provides the editable cell).
+OBOROVO,Tax & Accounting,430,,on upfront fees,tax.on_upfront_fees,,ENGINE_GAP,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,WHT on upfront fees. No registry field. No engine consumer.
+OBOROVO,Tax & Accounting,431,,on technical services,tax.on_technical_services,,ENGINE_GAP,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,WHT on technical services. No registry field. No engine consumer.
+OBOROVO,Tax & Accounting,432,,WHT on Senior Refinancing,tax.wht_on_senior_refinancing,,ENGINE_GAP,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,WHT on senior refinancing. No registry field. No engine consumer (no refinancing model).
+OBOROVO,Tax & Accounting,436,,Reimbursed,tax.reimbursed,,ENGINE_GAP,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,WHT reimbursed toggle. No registry field.
+OBOROVO,Tax & Accounting,438,,Rate,tax.rate,,MAPPED_TO_REGISTRY,Common,N/A,FALSE,P0,CONFIRMED,"Pack 'tax.rate' is a disambiguating label only; the registry has multiple rate fields (CIT, WHT, VAT). The disposition is MAPPED_TO_REGISTRY for the CIT cell and ENGINE_GAP for WHT/VAT (see canonical_to_pack_id_evidence)."
+OBOROVO,Tax & Accounting,440,,VAT Break,tax.vat_break,,ENGINE_GAP,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,VAT break flag. No registry field. No engine consumer.
+OBOROVO,Tax & Accounting,444,,Rate,tax.rate,,MAPPED_TO_REGISTRY,Common,N/A,FALSE,P0,CONFIRMED,"Pack 'tax.rate' is a disambiguating label only; the registry has multiple rate fields (CIT, WHT, VAT). The disposition is MAPPED_TO_REGISTRY for the CIT cell and ENGINE_GAP for WHT/VAT (see canonical_to_pack_id_evidence)."
+OBOROVO,FX / Macro / Discount Rates,448,,Currency,facilities.currency,,UI_GAP,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Currency is a display field on Inputs!E3 (TUHO). Engine uses EUR via project_setup.identity.country_market + financing.base_rate.
+OBOROVO,FX / Macro / Discount Rates,451,,EUR inflation,facilities.eur_inflation,,ENGINE_GAP,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,EUR inflation index. No registry field.
+OBOROVO,FX / Macro / Discount Rates,455,,Cash Interest,facilities.cash_interest,,DERIVED_FROM_EXISTING_INPUT,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Cash interest is computed by the engine from senior_debt_amount_keur and margin_bps.
+OBOROVO,FX / Macro / Discount Rates,456,,Interest on short term loan,facilities.interest_on_short_term_loan,,ENGINE_GAP,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,No registry field. Engine does not consume short-term loan interest.
+OBOROVO,Warranties & Bonds,472,,Name,reserves.name,,UI_GAP,Common,N/A,FALSE,P2_ENGINE,CONFIRMED,Reserve account name; display only.

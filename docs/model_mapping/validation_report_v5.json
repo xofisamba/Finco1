@@ -1,0 +1,270 @@
+{
+  "status": "PASS",
+  "error_count": 0,
+  "errors": [],
+  "summary": {
+    "canonical_field_count": 70,
+    "crosswalk_row_count": 61,
+    "matrix_row_count": 61,
+    "pack_evidence_count": 68,
+    "unresolved_pack_id_count": 36,
+    "tuho_inputs_row_count": 347,
+    "oborovo_inputs_row_count": 359,
+    "tuho_scenario_row_count": 194,
+    "oborovo_scenario_row_count": 356,
+    "runtime_binding_status_counts": {
+      "RUNTIME_FULLY_BOUND": 39,
+      "TEMPLATE_LOCKED": 5,
+      "RUNTIME_PARTIALLY_BOUND": 10,
+      "DISPLAY_ONLY": 5,
+      "DERIVED_ONLY": 2
+    },
+    "excel_mapping_status_counts": {
+      "VERIFIED_BOTH_MODELS": 4,
+      "SOURCE_COORDINATE_UNRESOLVED": 23,
+      "REGISTRY_HINT_ONLY": 34
+    },
+    "tuho_inputs_classification": {
+      "EDITABLE_INPUT": 92,
+      "SECTION_HEADER": 63,
+      "DERIVED_FORMULA": 136,
+      "LINKED_VALUE": 42,
+      "LEGEND_TOOL": 14
+    },
+    "oborovo_inputs_classification": {
+      "EDITABLE_INPUT": 95,
+      "SECTION_HEADER": 64,
+      "LINKED_VALUE": 47,
+      "DERIVED_FORMULA": 139,
+      "LEGEND_TOOL": 14
+    },
+    "tuho_scenario_classification": {
+      "SECTION_HEADER": 7,
+      "SCENARIO_OVERRIDE": 170,
+      "CHECK_ONLY": 1,
+      "ENGINE_OUTPUT": 16
+    },
+    "oborovo_scenario_classification": {
+      "SECTION_HEADER": 8,
+      "SCENARIO_OVERRIDE": 329,
+      "CHECK_ONLY": 3,
+      "ENGINE_OUTPUT": 16
+    },
+    "registry_backed_canonical": {
+      "count": 61,
+      "by_runtime_binding_status": {
+        "RUNTIME_FULLY_BOUND": 39,
+        "TEMPLATE_LOCKED": 5,
+        "RUNTIME_PARTIALLY_BOUND": 10,
+        "DISPLAY_ONLY": 5,
+        "DERIVED_ONLY": 2
+      },
+      "by_excel_mapping_status": {
+        "VERIFIED_BOTH_MODELS": 4,
+        "SOURCE_COORDINATE_UNRESOLVED": 23,
+        "REGISTRY_HINT_ONLY": 34
+      },
+      "by_runtime_validation_status": {
+        "GENERIC_ROUTE_ONLY": 14,
+        "UNRESOLVED": 21,
+        "SHARED_PIPELINE_PROVEN": 24,
+        "FIELD_SPECIFIC_E2E_PROVEN": 1,
+        "DISPLAY_ONLY_PROVEN": 1
+      },
+      "by_scenario_mapping_status": {
+        "SOURCE_COORDINATE_UNRESOLVED": 60,
+        "VERIFIED_TUHO_ONLY": 1
+      },
+      "by_cell_role": {
+        "UNRESOLVED": 8,
+        "DERIVED_OUTPUT": 3,
+        "EDITABLE_HARDCODE": 20,
+        "FORMULA_RESULT": 2,
+        "TOGGLE": 3
+      }
+    },
+    "workbook_only_concepts": {
+      "count": 36,
+      "by_status": {
+        "APPLICABLE_BESS": 4,
+        "DERIVED_FROM": 2,
+        "ENGINE_GAP": 29,
+        "ENGINE_COMPUTED_OUTPUT": 1
+      },
+      "by_mapping_verification_status": {
+        "ABSENCE_CONFIRMED": 8,
+        "UNRESOLVED": 2,
+        "MAPPING_CONFIRMED": 26
+      }
+    },
+    "engine_owned_boundaries": {
+      "count": 7,
+      "by_runtime_binding_status": {
+        "DERIVED_ONLY": 7
+      }
+    },
+    "support_package_metadata_audit": {
+      "version": "v5.3.1",
+      "inputs": {
+        "package_rows": 706,
+        "manifest_rows": 706,
+        "missing_rows": 0,
+        "extra_rows": 0,
+        "structural_mismatches": 0,
+        "package_hardcodes_reclassified_as_formula": 330,
+        "by_model": {
+          "TUHO": 146,
+          "OBOROVO": 184
+        },
+        "by_domain": {
+          "capex": 76,
+          "revenue": 151,
+          "opex": 24,
+          "depreciation": 78,
+          "equity": 1
+        },
+        "candidate_input_formula_conflicts": 14,
+        "candidate_input_formula_conflict_rows": [
+          {
+            "model": "TUHO",
+            "row": 375,
+            "domain": "depreciation",
+            "field_id_candidate": "depreciation.commitment_fees",
+            "label": "Commitment Fees"
+          },
+          {
+            "model": "TUHO",
+            "row": 375,
+            "domain": "depreciation",
+            "field_id_candidate": "depreciation.commitment_fees",
+            "label": "Commitment Fees"
+          },
+          {
+            "model": "TUHO",
+            "row": 375,
+            "domain": "depreciation",
+            "field_id_candidate": "depreciation.commitment_fees",
+            "label": "Commitment Fees"
+          },
+          {
+            "model": "TUHO",
+            "row": 376,
+            "domain": "depreciation",
+            "field_id_candidate": "depreciation.bank_fees",
+            "label": "Bank Fees"
+          },
+          {
+            "model": "TUHO",
+            "row": 376,
+            "domain": "depreciation",
+            "field_id_candidate": "depreciation.bank_fees",
+            "label": "Bank Fees"
+          },
+          {
+            "model": "TUHO",
+            "row": 376,
+            "domain": "depreciation",
+            "field_id_candidate": "depreciation.bank_fees",
+            "label": "Bank Fees"
+          },
+          {
+            "model": "TUHO",
+            "row": 378,
+            "domain": "depreciation",
+            "field_id_candidate": "depreciation.reserve_accounts",
+            "label": "Reserve Accounts"
+          },
+          {
+            "model": "OBOROVO",
+            "row": 392,
+            "domain": "depreciation",
+            "field_id_candidate": "depreciation.commitment_fees",
+            "label": "Commitment Fees"
+          },
+          {
+            "model": "OBOROVO",
+            "row": 392,
+            "domain": "depreciation",
+            "field_id_candidate": "depreciation.commitment_fees",
+            "label": "Commitment Fees"
+          },
+          {
+            "model": "OBOROVO",
+            "row": 392,
+            "domain": "depreciation",
+            "field_id_candidate": "depreciation.commitment_fees",
+            "label": "Commitment Fees"
+          },
+          {
+            "model": "OBOROVO",
+            "row": 393,
+            "domain": "depreciation",
+            "field_id_candidate": "depreciation.bank_fees",
+            "label": "Bank Fees"
+          },
+          {
+            "model": "OBOROVO",
+            "row": 393,
+            "domain": "depreciation",
+            "field_id_candidate": "depreciation.bank_fees",
+            "label": "Bank Fees"
+          },
+          {
+            "model": "OBOROVO",
+            "row": 393,
+            "domain": "depreciation",
+            "field_id_candidate": "depreciation.bank_fees",
+            "label": "Bank Fees"
+          },
+          {
+            "model": "OBOROVO",
+            "row": 395,
+            "domain": "depreciation",
+            "field_id_candidate": "depreciation.reserve_accounts",
+            "label": "Reserve Accounts"
+          }
+        ],
+        "unique_candidate_input_formula_conflict_rows": 6
+      },
+      "scenarios": {
+        "package_rows": 550,
+        "manifest_rows": 550,
+        "missing_rows": 0,
+        "extra_rows": 0,
+        "structural_mismatches": 0,
+        "active_formula_claim_mismatches": 478,
+        "by_model": {
+          "TUHO": 147,
+          "OBOROVO": 331
+        },
+        "by_domain": {
+          "technical": 20,
+          "capex": 245,
+          "opex": 166,
+          "revenue": 20,
+          "tax": 6,
+          "debt": 21
+        }
+      },
+      "curated_evidence": {
+        "value_editable_formula_coordinates_checked": 94,
+        "total_coordinates_checked": 112,
+        "hardcode_evidence_valid": 88,
+        "formula_evidence_valid": 6,
+        "period_evidence_valid": 6,
+        "counterparty_label_evidence_valid": 12,
+        "issues": 0
+      },
+      "verified_storage": {
+        "hardcode_cell_count": 3116,
+        "formula_cell_count": 4289,
+        "empty_cell_count": 1810,
+        "label_or_presentation_cell_count": 547,
+        "hardcode_formula_overlap_count": 0,
+        "hardcode_empty_overlap_count": 0,
+        "formula_empty_overlap_count": 0
+      }
+    },
+    "real_pytest_node_ids_collected": 472
+  }
+}

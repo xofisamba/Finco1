@@ -1,0 +1,69 @@
+pack_id,canonical_field_id,mapping_type,confidence,evidence,review_note
+project.project_name,registry.project_setup.identity.project_name,EXACT,CONFIRMED,registry FieldSpec.project_setup.identity.project_name,Registry-backed exact match
+project.project_type,registry.project_setup.identity.project_type,EXACT,CONFIRMED,registry FieldSpec.project_setup.identity.project_type (TEMPLATE_LOCKED),TEMPLATE_LOCKED; description: 'Set at project creation from template; cannot be changed afterwards.'
+project.country,registry.project_setup.identity.country_market,EXACT,CONFIRMED,registry FieldSpec.project_setup.identity.country_market (engine_path info.country_iso),Pack 'country' column maps to registry 'country_market'
+project.currency,registry.project_setup.identity.currency,EXACT,CONFIRMED,registry FieldSpec.project_setup.identity.currency (display only),Registry display-only field
+technical.capacity,registry.project_setup.technical.capacity_mw,TRUE_SYNONYM,CONFIRMED,registry field_id + engine_path technical.capacity_mw,Pack 'capacity' canonicalises to registry 'capacity_mw'; verified workbook cell Inputs!D51
+technical.p_50,registry.project_setup.technical.p50_hours,UNRESOLVED,UNRESOLVED,"registry p50_hours has field_type=MWH, unit=h/yr; workbook P_50 source is a cross-sheet formula link; structural unit evidence insufficient","v5.3 finding: structural unit evidence is insufficient to conclude EXACT/TRUE_SYNONYM/DERIVED_FROM/UNIT_CONVERSION. Yield P_50 may be h/yr, MWh/year, or a yield study parameter; needs client review of scenario column values. The sanitized artifact records formula-kind evidence without storing workbook formula text or source values."
+technical.cod_date,registry.project_setup.technical.cod_date,EXACT,CONFIRMED,registry FieldSpec.project_setup.technical.cod_date (engine_path info.cod_date),Workbook COD date is formula-derived while the engine stores info.cod_date. The sanitized artifact records formula-kind evidence without storing workbook formula text.
+technical.construction_months,registry.project_setup.technical.construction_months,EXACT,CONFIRMED,registry FieldSpec.project_setup.technical.construction_months (engine_path info.construction_months),Direct match
+technical.horizon_years,registry.project_setup.technical.horizon_years,EXACT,CONFIRMED,registry FieldSpec.project_setup.technical.horizon_years (engine_path info.horizon_years),Direct match
+technical.capacity_factor,registry.project_setup.technical.capacity_factor,EXACT,CONFIRMED,registry FieldSpec.project_setup.technical.capacity_factor (DISPLAY_ONLY),Display-only field
+capex.C.epc_contract,registry.capex.C.epc_contract,EXACT,CONFIRMED,registry FieldSpec.capex.C.epc_contract (engine_path capex.epc_contract.amount_keur),Direct match; runtime path via capex sub-lines integration service
+capex.C.production_units,registry.capex.C.production_units,EXACT,CONFIRMED,registry FieldSpec.capex.C.production_units,Direct match
+capex.C.epc_other,registry.capex.C.epc_other,EXACT,CONFIRMED,registry FieldSpec.capex.C.epc_other,Direct match
+capex.C.grid_connection,registry.capex.C.grid_connection,EXACT,CONFIRMED,registry FieldSpec.capex.C.grid_connection,Direct match
+capex.C.insurances,registry.capex.C.insurances,EXACT,CONFIRMED,registry FieldSpec.capex.C.insurances,Direct match
+capex.C.lease_tax,registry.capex.C.lease_tax,EXACT,CONFIRMED,registry FieldSpec.capex.C.lease_tax,Direct match
+capex.C.construction_mgmt_a,registry.capex.C.construction_mgmt_a,EXACT,CONFIRMED,registry FieldSpec.capex.C.construction_mgmt_a,Direct match
+capex.C.commissioning,registry.capex.C.commissioning,EXACT,CONFIRMED,registry FieldSpec.capex.C.commissioning,Direct match
+capex.C.ops_preparation,registry.capex.C.ops_preparation,EXACT,CONFIRMED,registry FieldSpec.capex.C.ops_preparation (engine_path capex.ops_prep.amount_keur),Direct match
+capex.C.taxes,registry.capex.C.taxes,EXACT,CONFIRMED,registry FieldSpec.capex.C.taxes,Direct match
+capex.C.contingencies,registry.capex.C.contingencies,EXACT,CONFIRMED,registry FieldSpec.capex.C.contingencies (DISPLAY_ONLY),Display-only (engine computes from C-line)
+capex.D.project_acquisition,registry.capex.D.project_acquisition,EXACT,CONFIRMED,registry FieldSpec.capex.D.project_acquisition,Direct match
+capex.D.project_rights,registry.capex.D.project_rights,EXACT,CONFIRMED,registry FieldSpec.capex.D.project_rights,Direct match
+capex.D.audit_legal,registry.capex.D.audit_legal,EXACT,CONFIRMED,registry FieldSpec.capex.D.audit_legal,Direct match
+capex.D.construction_mgmt_b,registry.capex.D.construction_mgmt_b,EXACT,CONFIRMED,registry FieldSpec.capex.D.construction_mgmt_b,Direct match
+capex.F.bank_fees,registry.capex.F.bank_fees,EXACT,CONFIRMED,registry FieldSpec.capex.F.bank_fees (TEMPLATE_LOCKED),Workbook Financing!BankFees; engine consumes from waterfall; form is template-locked
+capex.F.commitment_fees,registry.capex.F.commitment_fees,EXACT,CONFIRMED,registry FieldSpec.capex.F.commitment_fees (TEMPLATE_LOCKED),Workbook Financing!CommFees; engine consumes from waterfall
+capex.F.other_financial,registry.capex.F.other_financial,EXACT,CONFIRMED,registry FieldSpec.capex.F.other_financial (TEMPLATE_LOCKED),Workbook Financing!OtherFin; engine consumes from waterfall
+capex.F.vat_costs,registry.capex.F.vat_costs,EXACT,CONFIRMED,registry FieldSpec.capex.F.vat_costs (TEMPLATE_LOCKED),Workbook Financing!VAT; engine consumes from waterfall
+capex.F.idc,engine.capex.idc,EXACT,CONFIRMED,registry FieldSpec.capex.F.idc; engine-owned closed-form,Engine-owned (IDC); canonical alias
+capex.R.reserve_accounts,engine.capex.reserve_accounts,EXACT,CONFIRMED,registry FieldSpec.capex.R.reserve_accounts (DISPLAY_ONLY),Display-only; engine computes from CFADS
+capex.summary.total,registry.capex.summary.total,EXACT,CONFIRMED,registry FieldSpec.capex.summary.total (PARTIAL),Display computed from C+D+F lines
+opex.lines.technical_management,registry.opex.lines.technical_management,EXACT,CONFIRMED,registry FieldSpec.opex.lines.technical_management (engine_path opex[technical_management].y1_amount_keur),Direct match; runtime path via opex sub-lines integration service
+opex.lines.om_preventive,registry.opex.lines.om_preventive,EXACT,CONFIRMED,registry FieldSpec.opex.lines.om_preventive (engine_path opex[o_and_m_preventive_and_corrective].y1_amount_keur),Direct match
+opex.lines.site_maintenance,registry.opex.lines.site_maintenance,EXACT,CONFIRMED,registry FieldSpec.opex.lines.site_maintenance (engine_path opex[maintain_site].y1_amount_keur),Direct match
+opex.lines.cleaning_materials,registry.opex.lines.cleaning_materials,EXACT,CONFIRMED,registry FieldSpec.opex.lines.cleaning_materials (engine_path opex[clean_material].y1_amount_keur),Direct match
+opex.lines.security,registry.opex.lines.security,EXACT,CONFIRMED,registry FieldSpec.opex.lines.security (engine_path opex[security].y1_amount_keur),Direct match
+opex.lines.insurance,registry.opex.lines.insurance,EXACT,CONFIRMED,registry FieldSpec.opex.lines.insurance (engine_path opex[insurance].y1_amount_keur),Direct match
+opex.lines.lease_property_tax,registry.opex.lines.lease_property_tax,EXACT,CONFIRMED,registry FieldSpec.opex.lines.lease_property_tax (engine_path opex[lease_and_property_tax].y1_amount_keur),Direct match
+opex.lines.power_expenses,registry.opex.lines.power_expenses,EXACT,CONFIRMED,registry FieldSpec.opex.lines.power_expenses (engine_path opex[power_expenses].y1_amount_keur),Direct match
+opex.lines.audit_accounting_legal,registry.opex.lines.audit_accounting_legal,EXACT,CONFIRMED,registry FieldSpec.opex.lines.audit_accounting_legal (engine_path opex[audit_and_accounting_and_legal].y1_amount_keur),Direct match
+opex.lines.bank_fees,registry.opex.lines.bank_fees,EXACT,CONFIRMED,registry FieldSpec.opex.lines.bank_fees (engine_path opex[bank_fees_opex].y1_amount_keur),Direct match
+opex.lines.environmental_social,registry.opex.lines.environmental_social,EXACT,CONFIRMED,registry FieldSpec.opex.lines.environmental_social (engine_path opex[environmental_and_social_management].y1_amount_keur),Direct match
+opex.lines.contingencies,registry.opex.lines.contingencies,EXACT,CONFIRMED,registry FieldSpec.opex.lines.contingencies (DISPLAY_ONLY),Display-only (engine computes from B-line)
+opex.summary.total_y1,registry.opex.summary.total_y1,EXACT,CONFIRMED,registry FieldSpec.opex.summary.total_y1 (PARTIAL),Display computed from line items
+revenue.ppa.base_tariff,registry.revenue.ppa.base_tariff,EXACT,CONFIRMED,registry FieldSpec.revenue.ppa.base_tariff (engine_path revenue.ppa_base_tariff),Direct match
+revenue.ppa.index,registry.revenue.ppa.index,EXACT,CONFIRMED,registry FieldSpec.revenue.ppa.index,Direct match
+revenue.ppa.term_years,registry.revenue.ppa.term_years,EXACT,CONFIRMED,registry FieldSpec.revenue.ppa.term_years,Direct match
+revenue.ppa.production_share,registry.revenue.ppa.production_share,EXACT,CONFIRMED,registry FieldSpec.revenue.ppa.production_share,Direct match
+revenue.ppa.tariff_legacy,registry.revenue.ppa.tariff_legacy,LEGACY_SUPERSEDED,CONFIRMED,registry FieldSpec.revenue.ppa.tariff_legacy (PARTIAL); superseded by revenue.ppa.base_tariff,Legacy; not the active PPA tariff
+revenue.ppa.ppa_term_legacy,registry.revenue.ppa.ppa_term_legacy,LEGACY_SUPERSEDED,CONFIRMED,registry FieldSpec.revenue.ppa.ppa_term_legacy (PARTIAL); superseded by revenue.ppa.term_years,Legacy; not the active PPA term
+revenue.balancing.cost,registry.revenue.balancing.cost,EXACT,CONFIRMED,registry FieldSpec.revenue.balancing.cost (engine_path revenue.balancing_cost_eur_per_mwh),Direct match
+revenue.balancing.co2_enabled,registry.revenue.balancing.co2_enabled,EXACT,CONFIRMED,registry FieldSpec.revenue.balancing.co2_enabled,Direct match
+revenue.balancing.co2_price,registry.revenue.balancing.co2_price,EXACT,CONFIRMED,registry FieldSpec.revenue.balancing.co2_price (engine_path revenue.co2_price_eur),Direct match
+debt.senior.gearing_pct,registry.debt.senior.gearing_pct,EXACT,CONFIRMED,registry FieldSpec.debt.senior.gearing_pct (engine_path financing.gearing_ratio),Direct match
+debt.senior.target_dscr,registry.debt.senior.target_dscr,EXACT,CONFIRMED,registry FieldSpec.debt.senior.target_dscr (engine_path financing.target_dscr),Direct match
+debt.senior.interest_rate_pct,registry.debt.senior.interest_rate_pct,EXACT,CONFIRMED,"registry FieldSpec.debt.senior.interest_rate_pct (engine_path financing.margin_bps; all-in rate stored as %, adapter converts to margin_bps)",Snapshot stores all-in rate as %; engine stores margin_bps
+debt.senior.tenor_years,registry.debt.senior.tenor_years,EXACT,CONFIRMED,registry FieldSpec.debt.senior.tenor_years (engine_path financing.senior_tenor_years),Direct match
+tax.cit_rate_pct,registry.tax.assumptions.cit_rate_pct,EXACT,CONFIRMED,registry FieldSpec.tax.assumptions.cit_rate_pct (engine_path tax.corporate_rate),Direct match
+tax.loss_carryforward_years,registry.tax.assumptions.loss_carryforward_years,EXACT,CONFIRMED,registry FieldSpec.tax.assumptions.loss_carryforward_years,Direct match
+project.project_company,ui.project.project_company,DISPLAY_ONLY,CONFIRMED,Inputs!A3 (pack source); no registry FieldSpec; display only,Workbook label; not in registry; display only
+project.project_code,ui.project.project_code,DISPLAY_ONLY,CONFIRMED,Inputs!A4 (pack source); no registry FieldSpec; display only,Workbook label; not in registry; display only
+project.scenario,registry.project_setup.identity.scenario,EXACT,CONFIRMED,registry FieldSpec.project_setup.identity.scenario (PARTIAL),Display only; active scenario label
+debt.sizing.frozen_calibrated,engine.frozen_calibrated.toggle,EXACT,CONFIRMED,engine_path financing.use_frozen_excel_senior_debt_schedule; consumed by waterfall,Engine-owned boundary; not an editable input
+debt.sculpting.schedule,engine.debt_sculpting.schedule,EXACT,CONFIRMED,engine_path financing.sculpting_schedule,Engine-owned closed-form; not editable
+distribution.waterfall,engine.shl_distribution.waterfall,EXACT,CONFIRMED,engine_path waterfall.shl_distribution,Engine-owned; SHL waterfall
+dscr.lockup,engine.dscr.lockup,EXACT,CONFIRMED,engine_path covenants.dscr_lockup,Engine-owned; DSCR / lockup covenants
+tax.loss_carryforward_motion,engine.tax.loss_carryforward_motion,EXACT,CONFIRMED,engine_path tax.loss_carryforward_motion,Engine-owned; per-period LCF roll

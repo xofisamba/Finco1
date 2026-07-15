@@ -1,0 +1,168 @@
+{
+  "version": "v5.3.1",
+  "trust_hierarchy": [
+    "AUTHORITATIVE_RUNTIME_EVIDENCE",
+    "CURATED_V5_3_EVIDENCE_AXES",
+    "VERIFIED_WORKBOOK_STORAGE_METADATA",
+    "PRELIMINARY_PACKAGE_INVENTORY"
+  ],
+  "inputs": {
+    "package_rows": 706,
+    "manifest_rows": 706,
+    "missing_rows": 0,
+    "extra_rows": 0,
+    "structural_mismatches": 0,
+    "package_hardcodes_reclassified_as_formula": 330,
+    "by_model": {
+      "TUHO": 146,
+      "OBOROVO": 184
+    },
+    "by_domain": {
+      "capex": 76,
+      "revenue": 151,
+      "opex": 24,
+      "depreciation": 78,
+      "equity": 1
+    },
+    "candidate_input_formula_conflicts": 14,
+    "candidate_input_formula_conflict_rows": [
+      {
+        "model": "TUHO",
+        "row": 375,
+        "domain": "depreciation",
+        "field_id_candidate": "depreciation.commitment_fees",
+        "label": "Commitment Fees"
+      },
+      {
+        "model": "TUHO",
+        "row": 375,
+        "domain": "depreciation",
+        "field_id_candidate": "depreciation.commitment_fees",
+        "label": "Commitment Fees"
+      },
+      {
+        "model": "TUHO",
+        "row": 375,
+        "domain": "depreciation",
+        "field_id_candidate": "depreciation.commitment_fees",
+        "label": "Commitment Fees"
+      },
+      {
+        "model": "TUHO",
+        "row": 376,
+        "domain": "depreciation",
+        "field_id_candidate": "depreciation.bank_fees",
+        "label": "Bank Fees"
+      },
+      {
+        "model": "TUHO",
+        "row": 376,
+        "domain": "depreciation",
+        "field_id_candidate": "depreciation.bank_fees",
+        "label": "Bank Fees"
+      },
+      {
+        "model": "TUHO",
+        "row": 376,
+        "domain": "depreciation",
+        "field_id_candidate": "depreciation.bank_fees",
+        "label": "Bank Fees"
+      },
+      {
+        "model": "TUHO",
+        "row": 378,
+        "domain": "depreciation",
+        "field_id_candidate": "depreciation.reserve_accounts",
+        "label": "Reserve Accounts"
+      },
+      {
+        "model": "OBOROVO",
+        "row": 392,
+        "domain": "depreciation",
+        "field_id_candidate": "depreciation.commitment_fees",
+        "label": "Commitment Fees"
+      },
+      {
+        "model": "OBOROVO",
+        "row": 392,
+        "domain": "depreciation",
+        "field_id_candidate": "depreciation.commitment_fees",
+        "label": "Commitment Fees"
+      },
+      {
+        "model": "OBOROVO",
+        "row": 392,
+        "domain": "depreciation",
+        "field_id_candidate": "depreciation.commitment_fees",
+        "label": "Commitment Fees"
+      },
+      {
+        "model": "OBOROVO",
+        "row": 393,
+        "domain": "depreciation",
+        "field_id_candidate": "depreciation.bank_fees",
+        "label": "Bank Fees"
+      },
+      {
+        "model": "OBOROVO",
+        "row": 393,
+        "domain": "depreciation",
+        "field_id_candidate": "depreciation.bank_fees",
+        "label": "Bank Fees"
+      },
+      {
+        "model": "OBOROVO",
+        "row": 393,
+        "domain": "depreciation",
+        "field_id_candidate": "depreciation.bank_fees",
+        "label": "Bank Fees"
+      },
+      {
+        "model": "OBOROVO",
+        "row": 395,
+        "domain": "depreciation",
+        "field_id_candidate": "depreciation.reserve_accounts",
+        "label": "Reserve Accounts"
+      }
+    ],
+    "unique_candidate_input_formula_conflict_rows": 6
+  },
+  "scenarios": {
+    "package_rows": 550,
+    "manifest_rows": 550,
+    "missing_rows": 0,
+    "extra_rows": 0,
+    "structural_mismatches": 0,
+    "active_formula_claim_mismatches": 478,
+    "by_model": {
+      "TUHO": 147,
+      "OBOROVO": 331
+    },
+    "by_domain": {
+      "technical": 20,
+      "capex": 245,
+      "opex": 166,
+      "revenue": 20,
+      "tax": 6,
+      "debt": 21
+    }
+  },
+  "curated_evidence": {
+    "value_editable_formula_coordinates_checked": 94,
+    "total_coordinates_checked": 112,
+    "hardcode_evidence_valid": 88,
+    "formula_evidence_valid": 6,
+    "period_evidence_valid": 6,
+    "counterparty_label_evidence_valid": 12,
+    "issues": 0
+  },
+  "verified_storage": {
+    "hardcode_cell_count": 3116,
+    "formula_cell_count": 4289,
+    "empty_cell_count": 1810,
+    "label_or_presentation_cell_count": 547,
+    "hardcode_formula_overlap_count": 0,
+    "hardcode_empty_overlap_count": 0,
+    "formula_empty_overlap_count": 0
+  }
+}
