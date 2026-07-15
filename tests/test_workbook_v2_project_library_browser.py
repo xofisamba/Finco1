@@ -435,3 +435,139 @@ class TestAuthorization:
         except urllib.error.HTTPError as e:
             final_url = e.url
         assert "/login" in final_url or "login" in final_url, f"Expected login redirect, got {final_url}"
+
+    def test_cross_user_get_rejected(self):
+        """Bob cannot GET Alice's working copy via /v2/workbook.
+
+        The server returns 302 → / (dashboard) for an unknown project.
+        urllib follows the redirect so the final status is 200 (dashboard),
+        but the body must NOT contain Alice's working-copy content.
+        """
+        bob_token = self.tokens["bob"]
+        import sqlite3
+        with sqlite3.connect(self.db_path) as conn:
+            alice_wc = conn.execute(
+                "SELECT project_code, project_name FROM projects "
+                "WHERE user_id='alice-lib-test' AND project_role='working_copy' LIMIT 1"
+            ).fetchone()
+        if alice_wc is None:
+            pytest.skip("Alice has no working copy yet")
+        wc_code, wc_name = alice_wc[0], alice_wc[1]
+        status, _, body = _http(
+            self.base_url, bob_token, "GET", f"/v2/workbook?project={wc_code}",
+        )
+        # Either a redirect (302/303) to homepage OR 200 from the dashboard redirect.
+        # In both cases the workbook content for Alice's project must not appear.
+        assert status in (200, 302, 303, 404), (
+            f"Unexpected status for cross-user GET: {status}"
+        )
+        if status == 200:
+            # Dashboard/homepage body — must NOT contain Alice's working-copy workbook
+            # The V2 workbook page includes the project_code in the form action.
+            assert f"project={wc_code}" not in body or "/v2/workbook" not in body, (
+                f"Bob appears to see Alice's working copy workbook at project={wc_code}"
+            )
+
+    def test_cross_user_run_rejected(self):
+        """Bob cannot run Alice's working copy.
+
+        The run route uses resolve_accessible_project which returns None for
+        projects belonging to another regular user.  With HX-Request=true the
+        route returns 200 with an HTMX error fragment (not found message).
+        """
+        bob_token = self.tokens["bob"]
+        import sqlite3
+        with sqlite3.connect(self.db_path) as conn:
+            alice_wc = conn.execute(
+                "SELECT project_code FROM projects "
+                "WHERE user_id='alice-lib-test' AND project_role='working_copy' LIMIT 1"
+            ).fetchone()
+        if alice_wc is None:
+            pytest.skip("Alice has no working copy yet")
+        wc_code = alice_wc[0]
+        status, _, body = _http(
+            self.base_url, bob_token, "POST", "/v2/workbook/run",
+            {
+                "project": wc_code,
+                "workbook_version": "2.1.0",
+                "content_hash": "fake-hash",
+            },
+            extra_headers={"HX-Request": "true"},
+        )
+        # HTMX error responses are 200 with error HTML — the project should not be found.
+        # Non-HTMX would be a 302/303 redirect.
+        assert status in (200, 302, 303, 404, 400, 422), (
+            f"Unexpected status for cross-user run: {status}"
+        )
+        if status == 200:
+            # The HTMX error body must indicate the project was not found
+            assert "not found" in body.lower() or "error" in body.lower(), (
+                f"Bob got 200 for Alice's run but body does not indicate error: {body[:200]}"
+            )
+
+    def test_cross_user_clone_by_raw_id_rejected(self):
+        """Bob cannot clone Alice's working copy by raw project_id."""
+        alice_token = self.tokens["alice"]
+        bob_token = self.tokens["bob"]
+        import sqlite3
+        with sqlite3.connect(self.db_path) as conn:
+            alice_wc = conn.execute(
+                "SELECT project_id FROM projects "
+                "WHERE user_id='alice-lib-test' AND project_role='working_copy' LIMIT 1"
+            ).fetchone()
+        if alice_wc is None:
+            pytest.skip("Alice has no working copy yet")
+        raw_id = alice_wc[0]
+        status, _, body = _http(
+            self.base_url, bob_token, "POST", "/library/clone",
+            {"source_project_id": raw_id},
+        )
+        assert status in (400, 403, 404, 422), (
+            f"Bob should not be able to clone Alice's working copy, got {status}; body={body[:200]}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# V2 workbook reference open / run
+# ---------------------------------------------------------------------------
+
+class TestReferenceWorkbookV2:
+    @pytest.fixture(autouse=True)
+    def setup(self, live_server, tokens, references_bootstrapped):
+        self.base_url = live_server["base_url"]
+        self.tokens = tokens
+
+    def test_reference_open_get_200(self):
+        """Opening the TUHO reference GET /v2/workbook returns 200."""
+        token = self.tokens["alice"]
+        status, _, body = _http(
+            self.base_url, token, "GET", "/v2/workbook?project=tuho-reference",
+        )
+        assert status == 200, f"Expected 200 for reference GET, got {status}; body={body[:300]}"
+        assert "TUHO" in body, "TUHO name not in response body"
+
+    def test_reference_run_not_crash(self):
+        """POSTing a run on the TUHO reference should not 500 — may return any non-500."""
+        token = self.tokens["alice"]
+        # First get the current hash by fetching the page
+        status, _, body = _http(
+            self.base_url, token, "GET", "/v2/workbook?project=tuho-reference",
+        )
+        assert status == 200
+        # Extract content_hash if present in a hidden input
+        import re
+        match = re.search(r'name="content_hash"\s+value="([^"]+)"', body)
+        content_hash = match.group(1) if match else "no-hash"
+        match_ver = re.search(r'name="workbook_version"\s+value="([^"]+)"', body)
+        workbook_version = match_ver.group(1) if match_ver else "2.1.0"
+
+        run_status, _, run_body = _http(
+            self.base_url, token, "POST", "/v2/workbook/run",
+            {
+                "project": "tuho-reference",
+                "workbook_version": workbook_version,
+                "content_hash": content_hash,
+            },
+            extra_headers={"HX-Request": "true"},
+        )
+        assert run_status != 500, f"Reference run crashed with 500: {run_body[:300]}"
