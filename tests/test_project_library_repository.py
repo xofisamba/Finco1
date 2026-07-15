@@ -277,7 +277,7 @@ class TestCloneLineage:
             project_type="Solar", project_origin="user_created",
             template_source="generic_solar", project_role="user_project",
         )
-        with pytest.raises(ValueError, match="not a reference model"):
+        with pytest.raises(ValueError, match="not a canonical reference model"):
             create_working_copy("user2", user_proj.project_id)
 
     def test_oborovo_clone_lineage(self, isolated_db):
@@ -643,3 +643,243 @@ class TestSaveProjectMetadataPreservation:
         updated = get_project_by_code("carol", "carol-proj")
         assert updated.project_role == "working_copy"
         assert updated.source_project_id == "ref-xyz"
+
+
+# ---------------------------------------------------------------------------
+# get_canonical_reference_by_id
+# ---------------------------------------------------------------------------
+
+class TestCanonicalReferenceById:
+    def test_get_canonical_reference_by_id_returns_reference(self, isolated_db):
+        from app.services.project_library_service import ensure_reference_models
+        from app.persistence.projects_repository import get_canonical_reference_by_id
+        refs = ensure_reference_models()
+        tuho = next(r for r in refs if r.template_source == "tuho")
+        result = get_canonical_reference_by_id(tuho.project_id)
+        assert result is not None
+        assert result.project_id == tuho.project_id
+        assert result.template_source == "tuho"
+        assert result.project_role == "reference"
+        assert result.is_protected is True
+
+    def test_get_canonical_reference_by_id_rejects_user_owned(self, isolated_db):
+        from app.persistence.projects_repository import (
+            save_project, get_canonical_reference_by_id,
+        )
+        r = save_project(
+            user_id="bob",
+            project_code="bobs-tuho",
+            project_name="Bob TUHO",
+            source_project_template="tuho",
+            project_type="Wind",
+            project_origin="factory_template",
+            template_source="tuho",
+            project_role="user_project",
+        )
+        assert get_canonical_reference_by_id(r.project_id) is None
+
+    def test_get_canonical_reference_by_id_rejects_archived(self, isolated_db):
+        from app.persistence.projects_repository import (
+            save_project, get_canonical_reference_by_id, REFERENCE_USER_ID,
+        )
+        r = save_project(
+            user_id=REFERENCE_USER_ID,
+            project_code="archived-tuho",
+            project_name="Archived TUHO",
+            source_project_template="tuho",
+            project_type="Wind",
+            project_role="reference",
+            is_protected=True,
+            template_source="tuho",
+            archived=True,
+        )
+        assert get_canonical_reference_by_id(r.project_id) is None
+
+    def test_get_canonical_reference_by_id_rejects_wrong_role(self, isolated_db):
+        from app.persistence.projects_repository import (
+            save_project, get_canonical_reference_by_id, REFERENCE_USER_ID,
+        )
+        # Use a non-reference template_source so db.py backfill does not promote it.
+        r = save_project(
+            user_id=REFERENCE_USER_ID,
+            project_code="ref-wrong-role",
+            project_name="Ref Wrong Role",
+            source_project_template="generic_wind",
+            project_type="Wind",
+            project_role="user_project",
+            template_source="generic_wind",
+        )
+        assert get_canonical_reference_by_id(r.project_id) is None
+
+
+# ---------------------------------------------------------------------------
+# create_working_copy — strict authorization
+# ---------------------------------------------------------------------------
+
+class TestCreateWorkingCopyAuthorization:
+    def test_clone_rejects_bob_normal_project(self, isolated_db):
+        from app.persistence.projects_repository import save_project
+        from app.services.project_library_service import create_working_copy
+        r = save_project(
+            user_id="bob",
+            project_code="bob-proj",
+            project_name="Bob Project",
+            source_project_template="tuho",
+            project_type="Wind",
+            project_role="user_project",
+            template_source="tuho",
+        )
+        with pytest.raises(ValueError, match="not a canonical reference model"):
+            create_working_copy("alice", r.project_id)
+
+    def test_clone_rejects_bob_factory_template_tuho(self, isolated_db):
+        """Bob owns a factory_template/tuho row (not __reference__) — must be rejected."""
+        from app.persistence.projects_repository import save_project
+        from app.services.project_library_service import create_working_copy
+        r = save_project(
+            user_id="bob",
+            project_code="bob-factory-tuho",
+            project_name="Bob Factory TUHO",
+            source_project_template="tuho",
+            project_type="Wind",
+            project_role="reference",
+            is_protected=True,
+            template_source="tuho",
+        )
+        with pytest.raises(ValueError, match="not a canonical reference model"):
+            create_working_copy("alice", r.project_id)
+
+    def test_clone_rejects_bob_working_copy(self, isolated_db):
+        from app.persistence.projects_repository import save_project
+        from app.services.project_library_service import create_working_copy
+        r = save_project(
+            user_id="bob",
+            project_code="bob-wc",
+            project_name="Bob Working Copy",
+            source_project_template="tuho",
+            project_type="Wind",
+            project_role="working_copy",
+            template_source="tuho",
+        )
+        with pytest.raises(ValueError, match="not a canonical reference model"):
+            create_working_copy("alice", r.project_id)
+
+    def test_clone_rejects_archived_reference(self, isolated_db):
+        from app.persistence.projects_repository import save_project, REFERENCE_USER_ID
+        from app.services.project_library_service import create_working_copy
+        r = save_project(
+            user_id=REFERENCE_USER_ID,
+            project_code="archived-ref",
+            project_name="Archived Ref",
+            source_project_template="tuho",
+            project_type="Wind",
+            project_role="reference",
+            is_protected=True,
+            template_source="tuho",
+            archived=True,
+        )
+        with pytest.raises(ValueError, match="not a canonical reference model"):
+            create_working_copy("alice", r.project_id)
+
+    def test_canonical_reference_can_be_cloned(self, isolated_db):
+        from app.services.project_library_service import ensure_reference_models, create_working_copy
+        refs = ensure_reference_models()
+        tuho = next(r for r in refs if r.template_source == "tuho")
+        wc = create_working_copy("alice", tuho.project_id)
+        assert wc.project_role == "working_copy"
+        assert wc.user_id == "alice"
+        assert wc.source_project_id == tuho.project_id
+
+
+# ---------------------------------------------------------------------------
+# Bootstrap concurrency / idempotency
+# ---------------------------------------------------------------------------
+
+class TestBootstrapConcurrency:
+    def test_ensure_reference_models_idempotent_repeated_calls(self, isolated_db):
+        from app.services.project_library_service import ensure_reference_models
+        from app.persistence.projects_repository import get_reference_by_template_source
+        created1 = ensure_reference_models()
+        created2 = ensure_reference_models()
+        created3 = ensure_reference_models()
+        assert len(created1) == 2
+        assert len(created2) == 0
+        assert len(created3) == 0
+        tuho = get_reference_by_template_source("tuho")
+        obo = get_reference_by_template_source("oborovo")
+        assert tuho is not None
+        assert obo is not None
+        assert tuho.project_role == "reference"
+        assert obo.project_role == "reference"
+
+    def test_get_reference_by_template_source_returns_only_reference_user(self, isolated_db):
+        from app.persistence.projects_repository import (
+            save_project, get_reference_by_template_source, REFERENCE_USER_ID,
+        )
+        # Insert a user-owned tuho row (not a system reference)
+        save_project(
+            user_id="someuser",
+            project_code="user-tuho",
+            project_name="User TUHO",
+            source_project_template="tuho",
+            project_type="Wind",
+            project_role="user_project",
+            template_source="tuho",
+        )
+        # Only the system reference user should be returned
+        result = get_reference_by_template_source("tuho")
+        if result is not None:
+            assert result.user_id == REFERENCE_USER_ID
+
+
+# ---------------------------------------------------------------------------
+# Protection predicate consolidation
+# ---------------------------------------------------------------------------
+
+class TestProtectionPredicateConsolidation:
+    def test_ui_service_is_protected_reference_matches_canonical(self, isolated_db):
+        """Both import paths on the same object must return identical results."""
+        from app.ui.protected_reference_service import is_protected_reference as ui_fn
+        from app.services.project_library_service import is_protected_reference as svc_fn
+        from app.persistence.projects_repository import save_project, REFERENCE_USER_ID
+        r = save_project(
+            user_id=REFERENCE_USER_ID,
+            project_code="pred-test",
+            project_name="Pred Test",
+            source_project_template="tuho",
+            project_type="Wind",
+            project_role="reference",
+            is_protected=True,
+            template_source="tuho",
+        )
+        assert ui_fn(r) == svc_fn(r)
+        assert ui_fn(r) is True
+
+        # A genuinely non-reference row: user_project, non-tuho/oborovo template.
+        r2 = save_project(
+            user_id="alice",
+            project_code="alice-proj-pred",
+            project_name="Alice Project",
+            source_project_template="generic_solar",
+            project_type="Solar",
+            project_role="user_project",
+            template_source="generic_solar",
+        )
+        assert ui_fn(r2) == svc_fn(r2)
+        assert ui_fn(r2) is False
+
+
+# ---------------------------------------------------------------------------
+# Workspace owner correctness for references
+# ---------------------------------------------------------------------------
+
+class TestWorkspaceOwnerForReference:
+    def test_workspace_owner_id_correct_for_reference(self, isolated_db):
+        """resolve_accessible_project returns __reference__ as workspace_owner for references."""
+        from app.services.project_library_service import ensure_reference_models
+        from app.persistence.projects_repository import resolve_accessible_project, REFERENCE_USER_ID
+        ensure_reference_models()
+        record, owner = resolve_accessible_project("some-requesting-user", "tuho-reference")
+        assert record is not None
+        assert owner == REFERENCE_USER_ID
+        assert record.project_role == "reference"

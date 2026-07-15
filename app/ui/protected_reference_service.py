@@ -53,23 +53,16 @@ PROTECTED_REFERENCE_TEMPLATE_SOURCES: frozenset[str] = frozenset({
 
 
 def is_protected_reference(project_record: Any) -> bool:
-    """Return True if the project is a protected reference (TUHO
-    or Oborovo factory template)."""
-    if project_record is None:
-        return False
-    project_origin = getattr(project_record, "project_origin", None)
-    template_source = getattr(project_record, "template_source", None)
-    source_project_template = getattr(
-        project_record, "source_project_template", None
+    """Return True if the project is a protected reference.
+
+    Delegates to the canonical implementation in
+    app.services.project_library_service so there is a single source of
+    truth for the protection predicate.
+    """
+    from app.services.project_library_service import (
+        is_protected_reference as _canonical,
     )
-    if project_origin != "factory_template":
-        return False
-    # The factory templates use template_source == source_project_template.
-    if template_source in PROTECTED_REFERENCE_TEMPLATE_SOURCES:
-        return True
-    if source_project_template in PROTECTED_REFERENCE_TEMPLATE_SOURCES:
-        return True
-    return False
+    return _canonical(project_record)
 
 
 def first_edit_response(project_record: Any) -> dict[str, Any]:

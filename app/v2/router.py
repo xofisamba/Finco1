@@ -98,7 +98,7 @@ def _fmt_runtime_at(ts: str) -> str:
         return ts
 
 
-def _build_pis_with_composite_identity(ws, project_record, user):
+def _build_pis_with_composite_identity(ws, project_record, workspace_owner_id: str):
     """Build ProjectInputSet with composite Workbook V2 identity.
 
     STAB-1B: uses assemble_consistent_for_get to read all four sources
@@ -106,10 +106,13 @@ def _build_pis_with_composite_identity(ws, project_record, user):
     single consistent SQLite transaction.  The resulting composite hash is
     injected into the PIS so every form the browser receives carries a
     fully consistent workbook identity token.
+
+    workspace_owner_id must be the owner of the workspace (REFERENCE_USER_ID
+    for system reference projects, user.user_id for user-owned projects).
     """
     pis = WorkbookService.build_draft_input_set_from_workspace(ws)
     identity = assemble_consistent_for_get(
-        user_id=user.user_id,
+        user_id=workspace_owner_id,
         project_id=project_record.project_id,
         workbook_version=pis.workbook_version,
     )
@@ -742,7 +745,7 @@ async def v2_workbook(request: Request, project: Optional[str] = None):
     if ws is None:
         return RedirectResponse(url="/", status_code=302)
 
-    pis = _build_pis_with_composite_identity(ws, project_record, user)
+    pis = _build_pis_with_composite_identity(ws, project_record, workspace_owner)
     hydration_script = WorkbookService.runtime_hydration_script(ws)
 
     project_editable = not is_protected_reference(project_record)
@@ -834,7 +837,7 @@ async def v2_workbook_update(
             status_code=403,
         )
 
-    ws = get_workspace_state(user_id=user.user_id, project_id=project_record.project_id)
+    ws = get_workspace_state(user_id=_workspace_owner, project_id=project_record.project_id)
     if ws is None:
         return JSONResponse({"error": "Workspace not found."}, status_code=404)
 
@@ -898,13 +901,13 @@ async def v2_workbook_update(
         )
     except ProtectedReferenceError as exc:
         if is_htmx:
-            pis = _build_pis_with_composite_identity(ws, project_record, user)
+            pis = _build_pis_with_composite_identity(ws, project_record, _workspace_owner)
             resp = _htmx_error(pis, str(exc))
             return _add_field_error_trigger(resp, field_id, str(exc))
         return JSONResponse({"error": str(exc)}, status_code=409)
     except StaleContentError as exc:
         if is_htmx:
-            pis = _build_pis_with_composite_identity(ws, project_record, user)
+            pis = _build_pis_with_composite_identity(ws, project_record, _workspace_owner)
             msg = (
                 "Draft changed since page loaded — values refreshed. "
                 "Please try your edit again."
@@ -918,7 +921,7 @@ async def v2_workbook_update(
         return JSONResponse({"error": str(exc)}, status_code=422)
     except FieldValidationError as exc:
         if is_htmx:
-            pis = _build_pis_with_composite_identity(ws, project_record, user)
+            pis = _build_pis_with_composite_identity(ws, project_record, _workspace_owner)
             resp = _htmx_error(pis, str(exc))
             return _add_field_error_trigger(resp, field_id, str(exc))
         return _redirect_with_error(str(exc))
@@ -926,11 +929,11 @@ async def v2_workbook_update(
     # Success path — reload workspace and assemble composite identity consistently
     # so the re-rendered sheet carries a hash over the full post-mutation state.
     updated_ws_after = get_workspace_state(
-        user_id=user.user_id, project_id=project_record.project_id
+        user_id=_workspace_owner, project_id=project_record.project_id
     ) or ws
     try:
         updated_identity = assemble_consistent_for_get(
-            user_id=user.user_id,
+            user_id=_workspace_owner,
             project_id=project_record.project_id,
             workbook_version=updated_pis.workbook_version,
         )
@@ -1239,7 +1242,7 @@ async def v2_workbook_run(
     ran_at = datetime.now(timezone.utc)
     try:
         ws_committed = v2_atomic_run_commit(
-            user_id=user.user_id,
+            user_id=workspace_owner,
             project_id=project_record.project_id,
             project_code=project_record.project_code,
             expected_composite_hash=content_hash,
@@ -1307,7 +1310,7 @@ async def v2_workbook_run(
 
     # ── Step 13–14: project from the persisted RuntimeResult ──────────────── #
     ws_fresh = ws_committed or get_workspace_state(
-        user_id=user.user_id, project_id=project_record.project_id
+        user_id=workspace_owner, project_id=project_record.project_id
     )
     if ws_fresh is None:
         msg = "Run committed but workspace could not be reloaded."
@@ -1325,7 +1328,7 @@ async def v2_workbook_run(
             status_code=303,
         )
 
-    pis_fresh = _build_pis_with_composite_identity(ws_fresh, project_record, user)
+    pis_fresh = _build_pis_with_composite_identity(ws_fresh, project_record, workspace_owner)
     ctx = _base_sheet_ctx(request, pis_fresh, ws_fresh, project_record, project)
 
     # #v2-run-controls OOB — refreshes the Run form with the new composite hash.

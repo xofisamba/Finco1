@@ -163,6 +163,30 @@ def get_project_by_id(project_id: str) -> "Optional[ProjectRecord]":
     return ProjectRecord.from_row(row) if row else None
 
 
+def get_canonical_reference_by_id(project_id: str) -> "Optional[ProjectRecord]":
+    """Return a reference project only if it satisfies the strict canonical contract.
+
+    Returns None if the project does not exist or does not meet all criteria:
+    - user_id == REFERENCE_USER_ID
+    - project_role == 'reference'
+    - is_protected == True
+    - template_source in ('tuho', 'oborovo')
+    - archived == False
+    """
+    record = get_project_by_id(project_id)
+    if record is None:
+        return None
+    if (
+        record.user_id == REFERENCE_USER_ID
+        and record.project_role == "reference"
+        and record.is_protected
+        and record.template_source in ("tuho", "oborovo")
+        and not record.archived
+    ):
+        return record
+    return None
+
+
 def resolve_accessible_project(
     user_id: str,
     project_code: str,

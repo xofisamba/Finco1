@@ -81,6 +81,7 @@ from app.persistence.projects_repository import (
     get_reference_projects,
     get_reference_by_template_source,
     get_project_by_id,
+    get_canonical_reference_by_id,
     list_projects_paged,
     list_recent_projects,
     resolve_accessible_project,

@@ -80,6 +80,30 @@ def is_protected_reference(project_record) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# Strict clone authorization
+# ---------------------------------------------------------------------------
+
+CLONEABLE_TEMPLATE_SOURCES = frozenset({"tuho", "oborovo"})
+
+
+def _is_canonical_reference(source) -> bool:
+    """Strict clone authorization — source must satisfy ALL criteria.
+
+    This is stricter than is_protected_reference() which accepts legacy
+    composite combinations.  For cloning, we require the full explicit
+    contract so that user-owned factory_template rows (pre-migration)
+    cannot be cloned via this service.
+    """
+    return (
+        getattr(source, "user_id", None) == "__reference__"
+        and getattr(source, "project_role", None) == "reference"
+        and bool(getattr(source, "is_protected", False))
+        and getattr(source, "template_source", None) in CLONEABLE_TEMPLATE_SOURCES
+        and not bool(getattr(source, "archived", True))
+    )
+
+
+# ---------------------------------------------------------------------------
 # Mutation guard
 # ---------------------------------------------------------------------------
 
@@ -129,38 +153,47 @@ def ensure_reference_models() -> list:
         if existing is not None:
             continue  # already bootstrapped
 
-        factory_fn = _get_factory(defn["factory"])
-        project_inputs = factory_fn()
-        snapshot = _build_reference_snapshot(project_inputs, defn)
+        try:
+            factory_fn = _get_factory(defn["factory"])
+            project_inputs = factory_fn()
+            snapshot = _build_reference_snapshot(project_inputs, defn)
 
-        record = save_project(
-            user_id=REFERENCE_USER_ID,
-            project_code=defn["project_code"],
-            project_name=defn["display_name"],
-            source_project_template=defn["template_source"],
-            project_type=defn["project_type"],
-            project_origin="factory_template",
-            template_source=defn["template_source"],
-            baseline_snapshot=snapshot,
-            is_readonly=True,
-            is_protected=True,
-            project_role="reference",
-            governance_state={
-                "g20": "BLOCKED",
-                "r99_r102": "NOT_APPROVED",
-                "lender_ready": False,
-                "reference_model": True,
-            },
-            replay_metadata={
-                "factory": defn["factory"],
-                "bootstrapped_at": _now_utc().isoformat(),
-                "reference": True,
-            },
-        )
+            record = save_project(
+                user_id=REFERENCE_USER_ID,
+                project_code=defn["project_code"],
+                project_name=defn["display_name"],
+                source_project_template=defn["template_source"],
+                project_type=defn["project_type"],
+                project_origin="factory_template",
+                template_source=defn["template_source"],
+                baseline_snapshot=snapshot,
+                is_readonly=True,
+                is_protected=True,
+                project_role="reference",
+                governance_state={
+                    "g20": "BLOCKED",
+                    "r99_r102": "NOT_APPROVED",
+                    "lender_ready": False,
+                    "reference_model": True,
+                },
+                replay_metadata={
+                    "factory": defn["factory"],
+                    "bootstrapped_at": _now_utc().isoformat(),
+                    "reference": True,
+                },
+            )
 
-        _init_reference_workspace(record, project_inputs, snapshot, defn)
+            _init_reference_workspace(record, project_inputs, snapshot, defn)
 
-        created.append(record)
+            created.append(record)
+        except Exception as _exc:
+            # Re-raise unless this is a unique-constraint violation from a
+            # concurrent bootstrap (two processes racing to insert the same
+            # reference row).  Use the type name so we never import sqlite3
+            # at module level (guardrail: no direct DB imports outside persistence).
+            if type(_exc).__name__ != "IntegrityError":
+                raise
+            # Concurrent bootstrap — reference was created by another process.
 
     return created
 
@@ -219,14 +252,14 @@ def create_working_copy(
         get_project_by_code,
     )
 
-    # Step 1 — verify source is a reference
+    # Step 1 — verify source is a canonical reference
     source = get_project_by_id(source_reference_id)
     if source is None:
         raise ValueError(f"Source project {source_reference_id!r} not found.")
-    if not is_protected_reference(source):
+    if not _is_canonical_reference(source):
         raise ValueError(
-            f"Project {source_reference_id!r} (role={source.project_role!r}) "
-            "is not a reference model and cannot be cloned via this service."
+            f"Project {source_reference_id!r} (role={getattr(source, 'project_role', None)!r}) "
+            "is not a canonical reference model and cannot be cloned via this service."
         )
 
     # Step 2 — determine default name
