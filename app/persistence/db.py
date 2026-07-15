@@ -231,6 +231,56 @@ def _init_schema(conn):
     _ensure_column(conn, "projects", "archived", "INTEGER NOT NULL DEFAULT 0")
     _ensure_column(conn, "projects", "is_readonly", "INTEGER NOT NULL DEFAULT 0")
     _ensure_column(conn, "projects", "full_inputs_json", "TEXT")
+    # Project Library (PR: project-library-reference-working-copies)
+    _ensure_column(conn, "projects", "project_role", "TEXT NOT NULL DEFAULT 'user_project'")
+    _ensure_column(conn, "projects", "is_protected", "INTEGER NOT NULL DEFAULT 0")
+    _ensure_column(conn, "projects", "source_project_id", "TEXT")
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_projects_role"
+        " ON projects(user_id, project_role, archived, updated_at DESC)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_projects_template_role"
+        " ON projects(template_source, project_role, archived)"
+    )
+    # Unique constraint: exactly one canonical system reference per
+    # template_source. The OLD index
+    #   ux_projects_system_reference_source
+    # used the partial WHERE
+    #   user_id='__reference__' AND project_role='reference' AND archived=0
+    # which was broader than the canonical-reference contract
+    #   user_id='__reference__' AND project_role='reference'
+    #   AND is_protected=1 AND archived=0
+    #   AND template_source IN ('tuho','oborovo')
+    # The new index carries the same name on existing databases that
+    # have already been initialised — we therefore drop the old
+    # versioned name first and recreate it under the corrected
+    # versioned name ux_projects_canonical_reference_source. This
+    # migration is idempotent: on a fresh DB the DROP is a no-op.
+    conn.execute("DROP INDEX IF EXISTS ux_projects_system_reference_source")
+    conn.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS ux_projects_canonical_reference_source
+        ON projects(template_source)
+        WHERE user_id='__reference__'
+          AND project_role='reference'
+          AND is_protected=1
+          AND archived=0
+          AND template_source IN ('tuho','oborovo')
+        """
+    )
+    # Backfill: only rows already owned by the system reference user get
+    # promoted to role='reference'. User-owned factory_template rows are
+    # intentionally left untouched — they must not become globally visible.
+    conn.execute(
+        """
+        UPDATE projects
+        SET project_role='reference', is_protected=1
+        WHERE user_id='__reference__'
+          AND template_source IN ('tuho','oborovo')
+          AND project_role='user_project'
+        """
+    )
     _ensure_column(conn, "scenarios", "replay_metadata_json", "TEXT NOT NULL DEFAULT '{}'")
     _ensure_column(conn, "scenarios", "full_inputs_json", "TEXT")  # V3-8
     _ensure_column(conn, "scenario_exports", "replay_metadata_json", "TEXT NOT NULL DEFAULT '{}'")

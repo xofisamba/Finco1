@@ -147,11 +147,27 @@ _logger.info("FincoGPT startup: asset_version=%s", ASSET_VERSION)
 # -- FastAPI app --------------------------------------------------------------
 app = FastAPI(title="FincoGPT Internal Demo")
 
+
+@app.on_event("startup")
+async def _bootstrap_reference_models():
+    """Idempotent: ensure system reference projects exist before first request."""
+    try:
+        from app.services.project_library_service import ensure_reference_models
+        ensure_reference_models()
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception("Failed to bootstrap reference models at startup")
+
+
 # -- Template setup -----------------------------------------------------------
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "app", "templates"))
 templates.env.globals["htmx"] = True
 templates.env.globals["asset_version"] = ASSET_VERSION
+
+# -- Project Library (always mounted) ----------------------------------------
+from app.library.router import router as _library_router
+app.include_router(_library_router)
 
 # -- Workbook V2 feature flag -------------------------------------------------
 # Set FINCO_WORKBOOK_V2=1 (or "true"/"yes") to mount the /v2 router.
@@ -1551,19 +1567,27 @@ def _replay_metadata_for_project(
     return replay_metadata
 
 
+_SIDEBAR_RECENT_LIMIT = 8  # Project Library: cap sidebar recent-project list
+
+
 def _user_project_selector_items(user) -> list[dict[str, str]]:
+    """Return up to _SIDEBAR_RECENT_LIMIT most-recent user-owned projects for the sidebar.
+
+    Does not include reference projects (those live in the full project library).
+    """
+    from app.persistence.projects_repository import list_recent_projects
     items = []
-    for record in list_project_records(user_id=user.user_id):
-        if record.project_origin != "user_created":
+    for record in list_recent_projects(user.user_id, limit=_SIDEBAR_RECENT_LIMIT):
+        if record.project_origin not in ("user_created", "saved_baseline"):
             continue
+        role_label = ""
+        if record.project_role == "working_copy":
+            role_label = " · Copy"
         items.append(
             {
                 "project_code": record.project_code,
                 "label": record.project_name,
-                # Phase P2-FIX-5E: drop the 'seed' suffix;
-                # the user does not need to know the
-                # underlying template_source code.
-                "meta": f"{record.project_type or 'Unknown'}",
+                "meta": f"{record.project_type or 'Unknown'}{role_label}",
             }
         )
     return items
@@ -3823,10 +3847,8 @@ async def save_workspace_draft_endpoint(request: Request):
         ScenarioStateRouteDeps,
         execute_draft_route,
     )
-    from app.ui.protected_reference_service import (
-        is_protected_reference,
-        first_edit_response,
-    )
+    from app.services.project_library_service import is_protected_reference
+    from app.ui.protected_reference_service import first_edit_response
     from app.persistence.repository import (
         get_project_record as gpr_for_p2fix3_guard,
     )

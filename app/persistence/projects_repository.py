@@ -44,6 +44,11 @@ from typing import TYPE_CHECKING, Any, Optional
 from app.persistence._helpers import _from_iso, _from_json, _now_utc, _to_json
 from app.persistence.db import get_cursor
 
+# Sentinel for "argument was not passed by caller" — distinguishes omission from
+# explicit None on project-library metadata fields so save_project() can
+# preserve existing DB values when callers do not supply new ones.
+_UNSET = object()
+
 if TYPE_CHECKING:
     from app.persistence.records import ProjectRecord
 
@@ -122,6 +127,259 @@ def list_project_records(
         return [ProjectRecord.from_row(row) for row in cur.fetchall()]
 
 
+# Sentinel user_id for system-owned reference projects.
+REFERENCE_USER_ID: str = "__reference__"
+
+# Canonical system-reference SQL predicate.
+#
+# A row is a *canonical* system reference iff ALL of:
+#   user_id == REFERENCE_USER_ID
+#   project_role == 'reference'
+#   is_protected == True
+#   archived == False
+#   template_source in ('tuho', 'oborovo')
+#
+# Use these constants / helper everywhere canonical-reference checks
+# happen — do not let functions drift into different definitions.
+CANONICAL_REFERENCE_TEMPLATES: tuple[str, ...] = ("tuho", "oborovo")
+
+
+def _canonical_reference_predicate() -> str:
+    """Return the shared SQL WHERE clause for a canonical system reference.
+
+    Returns just the predicate (without the leading WHERE). All five
+    canonical-reference columns are bound by parameter. The first
+    parameter is the canonical owner (REFERENCE_USER_ID); the second
+    is the template-source placeholder (filled by one or two values).
+    """
+    return (
+        "user_id=? AND project_role='reference' AND is_protected=1"
+        " AND archived=0 AND template_source IN (?, ?)"
+    )
+
+
+def get_reference_projects() -> "list[ProjectRecord]":
+    """Return all canonical system reference projects.
+
+    "Canonical" means: owned by ``__reference__``, marked
+    ``is_protected=1``, not archived, and templated as
+    ``tuho`` or ``oborovo``. User-owned rows carrying
+    ``project_role='reference'`` are intentionally excluded — they
+    are not system canonical references and must not be globally
+    visible.
+    """
+    with get_cursor() as cur:
+        cur.execute(
+            "SELECT * FROM projects WHERE "
+            + _canonical_reference_predicate()
+            + " ORDER BY template_source, project_name",
+            (
+                REFERENCE_USER_ID,
+                CANONICAL_REFERENCE_TEMPLATES[0],
+                CANONICAL_REFERENCE_TEMPLATES[1],
+            ),
+        )
+        from app.persistence.records import ProjectRecord
+        return [ProjectRecord.from_row(row) for row in cur.fetchall()]
+
+
+def get_reference_by_template_source(template_source: str) -> "Optional[ProjectRecord]":
+    """Return the canonical reference project for a given template source.
+
+    "Canonical" means: owned by ``__reference__``, marked
+    ``is_protected=1``, not archived, and templated as
+    ``tuho`` or ``oborovo``. Bootstrap depends on this function
+    returning exactly the system reference — never a user-owned row
+    that happens to share the same template_source value.
+    """
+    with get_cursor() as cur:
+        cur.execute(
+            "SELECT * FROM projects WHERE "
+            + _canonical_reference_predicate()
+            + " AND template_source=?",
+            (
+                REFERENCE_USER_ID,
+                CANONICAL_REFERENCE_TEMPLATES[0],
+                CANONICAL_REFERENCE_TEMPLATES[1],
+                template_source,
+            ),
+        )
+        row = cur.fetchone()
+    from app.persistence.records import ProjectRecord
+    return ProjectRecord.from_row(row) if row else None
+
+
+def get_project_by_id(project_id: str) -> "Optional[ProjectRecord]":
+    """Fetch a project by primary key only (no user_id filter — for cross-user reference access)."""
+    with get_cursor() as cur:
+        cur.execute("SELECT * FROM projects WHERE project_id=?", (project_id,))
+        row = cur.fetchone()
+    from app.persistence.records import ProjectRecord
+    return ProjectRecord.from_row(row) if row else None
+
+
+def get_canonical_reference_by_id(project_id: str) -> "Optional[ProjectRecord]":
+    """Return a reference project only if it satisfies the strict canonical contract.
+
+    Returns None if the project does not exist or does not meet all
+    canonical-reference criteria (see
+    ``_canonical_reference_predicate()`` for the single source of
+    truth).
+    """
+    record = get_project_by_id(project_id)
+    if record is None:
+        return None
+    if record.user_id != REFERENCE_USER_ID:
+        return None
+    if record.project_role != "reference":
+        return None
+    if not record.is_protected:
+        return None
+    if record.archived:
+        return None
+    if record.template_source not in CANONICAL_REFERENCE_TEMPLATES:
+        return None
+    return record
+
+
+def resolve_accessible_project(
+    user_id: str,
+    project_code: str,
+) -> "tuple[Optional[ProjectRecord], str]":
+    """Resolve a project code for a user, returning (record, workspace_owner_id).
+
+    Lookup order:
+    1. User's own project — workspace_owner_id == user_id
+    2. Canonical system reference (user_id='__reference__',
+       project_role='reference', is_protected=1, archived=0,
+       template_source in ('tuho','oborovo'))
+       — workspace_owner_id == REFERENCE_USER_ID
+
+    Never returns another normal user's project. Never returns a
+    user-owned row that happens to carry ``project_role='reference'``:
+    only rows that satisfy the strict canonical-reference contract
+    are eligible for cross-user resolution.
+
+    Returns (None, user_id) when not found.
+    """
+    record = get_project_by_code(user_id, project_code)
+    if record is not None:
+        return record, user_id
+
+    ref = get_project_by_code(REFERENCE_USER_ID, project_code)
+    if (
+        ref is not None
+        and ref.user_id == REFERENCE_USER_ID
+        and ref.project_role == "reference"
+        and ref.is_protected
+        and not ref.archived
+        and ref.template_source in CANONICAL_REFERENCE_TEMPLATES
+    ):
+        return ref, REFERENCE_USER_ID
+
+    return None, user_id
+
+
+def list_projects_paged(
+    *,
+    user_id: str,
+    page: int = 1,
+    page_size: int = 20,
+    search: Optional[str] = None,
+    role_filter: Optional[str] = None,
+) -> "tuple[list[ProjectRecord], int]":
+    """Paginated project query for the project library.
+
+    Returns (records, total_count).
+
+    A user sees their own projects unioned with **canonical system
+    references only** — i.e. ``__reference__``-owned, ``is_protected=1``,
+    not archived, templated as ``tuho`` or ``oborovo``. A user-owned row
+    that happens to carry ``project_role='reference'`` is **not**
+    globally visible; this is the canonical-reference contract enforced
+    uniformly by ``_canonical_reference_predicate()``.
+
+    Both the result query and the total-count query use the same
+    ``base_where`` so pagination totals are isolated from user-owned
+    role-reference rows.
+    """
+    from app.persistence.records import ProjectRecord
+
+    # Build the WHERE clause.
+    # A user sees: their own projects UNION canonical system references.
+    # "Canonical" requires user_id='__reference__' AND project_role='reference'
+    # AND is_protected=1 AND archived=0 AND template_source IN
+    # ('tuho','oborovo'). The user_id parameter is bound; the canonical
+    # template list is bound too — no SQL interpolation.
+    base_where = (
+        "(user_id=?"
+        " OR ("
+        + _canonical_reference_predicate()
+        + "))"
+        " AND archived=0"
+    )
+    # Parameter order:
+    #   1) requesting user_id (their-own branch)
+    #   2) canonical owner (REFERENCE_USER_ID) for the canonical branch
+    #   3) canonical template #1
+    #   4) canonical template #2
+    params: list[Any] = [
+        user_id,
+        REFERENCE_USER_ID,
+        CANONICAL_REFERENCE_TEMPLATES[0],
+        CANONICAL_REFERENCE_TEMPLATES[1],
+    ]
+
+    if role_filter and role_filter in ("reference", "working_copy", "user_project"):
+        base_where += " AND project_role=?"
+        params.append(role_filter)
+
+    if search:
+        # Escape SQLite LIKE wildcards in user input, then match anywhere in name.
+        safe = search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        base_where += " AND project_name LIKE ? ESCAPE '\\'"
+        params.append(f"%{safe}%")
+
+    count_sql = f"SELECT COUNT(*) FROM projects WHERE {base_where}"
+    data_sql = (
+        f"SELECT * FROM projects WHERE {base_where}"
+        " ORDER BY"
+        "  CASE WHEN project_role='reference' THEN 0 ELSE 1 END,"
+        "  updated_at DESC"
+        f" LIMIT {int(page_size)} OFFSET {int((page - 1) * page_size)}"
+    )
+
+    with get_cursor() as cur:
+        cur.execute(count_sql, tuple(params))
+        total = cur.fetchone()[0]
+        cur.execute(data_sql, tuple(params))
+        records = [ProjectRecord.from_row(row) for row in cur.fetchall()]
+
+    return records, total
+
+
+def list_recent_projects(
+    user_id: str,
+    *,
+    limit: int = 8,
+    exclude_project_id: Optional[str] = None,
+) -> "list[ProjectRecord]":
+    """Return the most-recently-updated user-owned projects for the sidebar."""
+    params: list[Any] = [user_id]
+    extra = ""
+    if exclude_project_id:
+        extra = " AND project_id != ?"
+        params.append(exclude_project_id)
+    with get_cursor() as cur:
+        cur.execute(
+            f"SELECT * FROM projects WHERE user_id=? AND archived=0{extra}"
+            f" ORDER BY updated_at DESC LIMIT {int(limit)}",
+            tuple(params),
+        )
+        from app.persistence.records import ProjectRecord
+        return [ProjectRecord.from_row(row) for row in cur.fetchall()]
+
+
 # ===========================================================================
 # Group A-2 writes (Phase 53E-2)
 # ===========================================================================
@@ -143,6 +401,9 @@ def save_project(
     replay_metadata: Optional[dict[str, Any]] = None,
     capex_sub_lines: Optional[list] = None,
     full_inputs: Optional[dict[str, Any]] = None,  # V3-7: full-fidelity ProjectInputs dict
+    project_role: Any = _UNSET,                     # Project Library — preserved on update when omitted
+    is_protected: Any = _UNSET,                     # Project Library — preserved on update when omitted
+    source_project_id: Any = _UNSET,                # Project Library — preserved on update when omitted
 ) -> "ProjectRecord":
     now = _now_utc()
     governance_state = governance_state or {}
@@ -155,7 +416,8 @@ def save_project(
         cur.execute(
             """
             SELECT project_id, created_at, project_type, project_origin, template_source,
-                   baseline_snapshot_json, archived, full_inputs_json
+                   baseline_snapshot_json, archived, full_inputs_json,
+                   project_role, is_protected, source_project_id
             FROM projects
             WHERE user_id=? AND project_code=?
             """,
@@ -175,13 +437,22 @@ def save_project(
                 _existing_fi = existing["full_inputs_json"] if "full_inputs_json" in existing.keys() else None
                 full_inputs = _from_json(_existing_fi, None) if _existing_fi else None
             archived = bool(existing["archived"]) if archived is None else archived
+            # Preserve project-library metadata from existing row when caller did not pass new values.
+            _keys = existing.keys()
+            if project_role is _UNSET:
+                project_role = existing["project_role"] if "project_role" in _keys else "user_project"
+            if is_protected is _UNSET:
+                is_protected = bool(existing["is_protected"]) if "is_protected" in _keys else False
+            if source_project_id is _UNSET:
+                source_project_id = existing["source_project_id"] if "source_project_id" in _keys else None
             replay_metadata.setdefault("project_id", project_id)
             cur.execute(
                 """
                 UPDATE projects
                 SET project_name=?, project_type=?, project_origin=?, source_project_template=?, template_source=?,
                     baseline_snapshot_json=?, archived=?, is_readonly=?, governance_state_json=?, last_run_summary_json=?,
-                    replay_metadata_json=?, full_inputs_json=?, updated_at=?
+                    replay_metadata_json=?, full_inputs_json=?, project_role=?, is_protected=?, source_project_id=?,
+                    updated_at=?
                 WHERE project_id=? AND user_id=?
                 """,
                 (
@@ -197,6 +468,9 @@ def save_project(
                     _to_json(last_run_summary),
                     _to_json(replay_metadata),
                     _to_json(full_inputs) if full_inputs is not None else None,
+                    project_role,
+                    int(bool(is_protected)),
+                    source_project_id,
                     now.isoformat(),
                     project_id,
                     user_id,
@@ -205,6 +479,13 @@ def save_project(
         else:
             project_id = uuid.uuid4().hex[:16]
             created_at = now
+            # Apply insert-time defaults for omitted project-library fields.
+            if project_role is _UNSET:
+                project_role = "user_project"
+            if is_protected is _UNSET:
+                is_protected = False
+            if source_project_id is _UNSET:
+                source_project_id = None
             replay_metadata.setdefault("project_id", project_id)
             cur.execute(
                 """
@@ -212,8 +493,8 @@ def save_project(
                     project_id, user_id, project_code, project_name, project_type, project_origin,
                     source_project_template, template_source, baseline_snapshot_json, archived, is_readonly,
                     governance_state_json, last_run_summary_json, replay_metadata_json,
-                    full_inputs_json, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    full_inputs_json, project_role, is_protected, source_project_id, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     project_id,
@@ -231,6 +512,9 @@ def save_project(
                     _to_json(last_run_summary),
                     _to_json(replay_metadata),
                     _to_json(full_inputs) if full_inputs is not None else None,
+                    project_role,
+                    int(bool(is_protected)),
+                    source_project_id,
                     created_at.isoformat(),
                     now.isoformat(),
                 ),
@@ -300,6 +584,9 @@ def save_project(
         replay_metadata=replay_metadata,
         created_at=created_at,
         updated_at=now,
+        project_role=project_role,
+        is_protected=bool(is_protected),
+        source_project_id=source_project_id,
     )
 
 
