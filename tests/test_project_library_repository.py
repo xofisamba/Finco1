@@ -996,38 +996,109 @@ class TestBootstrapSelfHealing:
         assert sc is not None, "Scenario must be recreated"
 
     def test_integrity_error_race_completes_workspace(self):
-        """Simulated race condition: even when IntegrityError is raised on project insert,
-        ensure_reference_models() still creates workspace and scenario for the winning record."""
+        """Simulate a concurrent bootstrap race via monkeypatch:
+        - First call to get_reference_by_template_source returns None (pre-insert check)
+        - save_project raises sqlite3.IntegrityError (concurrent writer won)
+        - Second call to get_reference_by_template_source returns the winning record
+        Expect: winning record returned, workspace + scenario ensured, no exception escapes.
+        """
+        import sqlite3 as _sqlite3
+        from unittest.mock import patch, MagicMock
         from app.services.project_library_service import (
-            ensure_reference_models, _ensure_reference_project, _ensure_reference_workspace_and_scenario,
+            _ensure_reference_project,
+            _ensure_reference_workspace_and_scenario,
             _REFERENCE_DEFINITIONS,
         )
         from app.persistence.projects_repository import REFERENCE_USER_ID, get_reference_by_template_source
         from app.persistence.workspace_repository import get_workspace_state
         from app.persistence.scenarios_repository import get_base_case_scenario
 
-        # Bootstrap first (simulates the "winner" in a race)
+        # First bootstrap so we have a real reference to act as "winning record"
+        from app.services.project_library_service import ensure_reference_models
         ensure_reference_models()
 
-        # Verify workspace and scenario exist for both references
-        for defn in _REFERENCE_DEFINITIONS:
-            ref = get_reference_by_template_source(defn["template_source"])
-            assert ref is not None
-            ws = get_workspace_state(REFERENCE_USER_ID, ref.project_id)
-            sc = get_base_case_scenario(REFERENCE_USER_ID, ref.project_id)
-            assert ws is not None, f"Workspace missing for {defn['template_source']}"
-            assert sc is not None, f"Scenario missing for {defn['template_source']}"
+        defn = _REFERENCE_DEFINITIONS[0]  # tuho
+        winning_record = get_reference_by_template_source(defn["template_source"])
+        assert winning_record is not None
 
-        # Run again (idempotent) — should not create duplicates
-        ensure_reference_models()
+        # Wipe workspace/scenario so we can verify _ensure_reference_workspace_and_scenario ran
+        import sqlite3, os
+        conn = sqlite3.connect(os.environ["FINCO_DB_PATH"])
+        conn.execute(
+            "DELETE FROM workspace_states WHERE user_id=? AND project_id=?",
+            (REFERENCE_USER_ID, winning_record.project_id),
+        )
+        conn.execute(
+            "DELETE FROM scenarios WHERE user_id=? AND project_id=?",
+            (REFERENCE_USER_ID, winning_record.project_id),
+        )
+        conn.commit()
+        conn.close()
 
-        for defn in _REFERENCE_DEFINITIONS:
-            ref = get_reference_by_template_source(defn["template_source"])
-            assert ref is not None
-            ws = get_workspace_state(REFERENCE_USER_ID, ref.project_id)
-            sc = get_base_case_scenario(REFERENCE_USER_ID, ref.project_id)
-            assert ws is not None
-            assert sc is not None
+        # Simulate the race: first fetch returns None, save_project raises IntegrityError,
+        # second fetch returns winning_record.
+        call_count = {"n": 0}
+
+        def _fake_get_reference(ts):
+            call_count["n"] += 1
+            if call_count["n"] == 1:
+                return None  # pre-insert check: "doesn't exist yet"
+            return winning_record  # post-IntegrityError fetch: "the winner"
+
+        def _fake_save_project(**kwargs):
+            raise _sqlite3.IntegrityError("UNIQUE constraint failed")
+
+        with patch(
+            "app.services.project_library_service.get_reference_by_template_source",
+            side_effect=_fake_get_reference,
+        ), patch(
+            "app.services.project_library_service.save_project",
+            side_effect=_fake_save_project,
+        ):
+            result = _ensure_reference_project(defn)
+
+        assert result is not None, "Must return the winning record after IntegrityError"
+        assert result.project_id == winning_record.project_id
+
+        # Workspace and scenario should now be ensured
+        _ensure_reference_workspace_and_scenario(winning_record, defn)
+        ws = get_workspace_state(REFERENCE_USER_ID, winning_record.project_id)
+        sc = get_base_case_scenario(REFERENCE_USER_ID, winning_record.project_id)
+        assert ws is not None, "Workspace must exist after _ensure_reference_workspace_and_scenario"
+        assert sc is not None, "Scenario must exist after _ensure_reference_workspace_and_scenario"
+
+    def test_integrity_error_race_second_fetch_returns_none(self):
+        """If IntegrityError is raised AND second lookup returns None,
+        _ensure_reference_project must return None clearly (no silent swallow)."""
+        import sqlite3 as _sqlite3
+        from unittest.mock import patch
+        from app.services.project_library_service import (
+            _ensure_reference_project,
+            _REFERENCE_DEFINITIONS,
+        )
+
+        defn = _REFERENCE_DEFINITIONS[0]
+
+        call_count = {"n": 0}
+
+        def _fake_get_reference(ts):
+            call_count["n"] += 1
+            return None  # always returns None — race where winner also vanished
+
+        def _fake_save_project(**kwargs):
+            raise _sqlite3.IntegrityError("UNIQUE constraint failed")
+
+        with patch(
+            "app.services.project_library_service.get_reference_by_template_source",
+            side_effect=_fake_get_reference,
+        ), patch(
+            "app.services.project_library_service.save_project",
+            side_effect=_fake_save_project,
+        ):
+            result = _ensure_reference_project(defn)
+
+        # Returns None — ensure_reference_models() will skip workspace creation
+        assert result is None, "Should return None when second lookup also returns None"
 
     def test_idempotent_no_duplicates(self):
         """Calling ensure_reference_models() many times must not create duplicate
