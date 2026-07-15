@@ -48,6 +48,19 @@ class ProtectedProjectError(Exception):
         super().__init__(f"Project '{project_name}' is a protected reference and cannot be modified.")
 
 
+class ReferenceBootstrapError(RuntimeError):
+    """Raised when the canonical-reference bootstrap cannot resolve a
+    uniqueness conflict to a winning canonical record.
+
+    The previous behaviour silently returned ``None`` after a
+    uniqueness conflict, which let ``ensure_reference_models()`` keep
+    going with one missing canonical reference. The new contract is
+    fail-closed: if the conflict cannot be re-resolved to a
+    canonical winning record, raise this error so the caller knows
+    the bootstrap is in an unrecoverable state.
+    """
+
+
 # ---------------------------------------------------------------------------
 # Helper: is_protected_reference
 # ---------------------------------------------------------------------------
@@ -161,8 +174,22 @@ def ensure_reference_models() -> list:
 
 
 def _ensure_reference_project(defn: dict):
-    """Get or create the canonical project record. Returns the record."""
-    existing = get_reference_by_template_source(defn["template_source"])
+    """Get or create the canonical project record. Returns the record.
+
+    Fail-closed contract for ``IntegrityError`` (typically a
+    uniqueness conflict on
+    ``ux_projects_canonical_reference_source``):
+
+    1. Re-fetch the canonical winning record.
+    2. If the winning record satisfies the full canonical contract
+       (``_is_canonical_reference``), return it.
+    3. Otherwise raise :class:`ReferenceBootstrapError` with a clear
+       message identifying the template source. The caller
+       (``ensure_reference_models``) propagates the error so a
+       partial bootstrap never silently continues.
+    """
+    template_source = defn["template_source"]
+    existing = get_reference_by_template_source(template_source)
     if existing is not None:
         return existing
     try:
@@ -173,10 +200,10 @@ def _ensure_reference_project(defn: dict):
             user_id=REFERENCE_USER_ID,
             project_code=defn["project_code"],
             project_name=defn["display_name"],
-            source_project_template=defn["template_source"],
+            source_project_template=template_source,
             project_type=defn["project_type"],
             project_origin="factory_template",
-            template_source=defn["template_source"],
+            template_source=template_source,
             baseline_snapshot=snapshot,
             is_readonly=True,
             is_protected=True,
@@ -199,8 +226,19 @@ def _ensure_reference_project(defn: dict):
         # (guardrail: no direct DB imports outside persistence layer).
         if type(_exc).__name__ != "IntegrityError":
             raise
-        # Concurrent bootstrap — re-fetch the winning record.
-        return get_reference_by_template_source(defn["template_source"])
+        # Concurrent bootstrap: re-fetch the winning record.
+        winner = get_reference_by_template_source(template_source)
+        if winner is not None and _is_canonical_reference(winner):
+            return winner
+        # Conflict cannot be resolved to a canonical winning record.
+        # Do NOT silently continue with a missing reference.
+        raise ReferenceBootstrapError(
+            f"Canonical {template_source} reference could not be "
+            f"resolved after a uniqueness conflict. A conflicting "
+            f"row exists that is not a canonical reference, or no "
+            f"winning record could be re-fetched. Inspect the "
+            f"``projects`` table for template_source='{template_source}'."
+        ) from _exc
 
 
 def _ensure_reference_workspace_and_scenario(record, defn: dict) -> None:

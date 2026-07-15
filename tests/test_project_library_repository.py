@@ -1068,12 +1068,17 @@ class TestBootstrapSelfHealing:
         assert sc is not None, "Scenario must exist after _ensure_reference_workspace_and_scenario"
 
     def test_integrity_error_race_second_fetch_returns_none(self):
-        """If IntegrityError is raised AND second lookup returns None,
-        _ensure_reference_project must return None clearly (no silent swallow)."""
+        """If IntegrityError is raised AND second lookup also returns None,
+        _ensure_reference_project must FAIL CLOSED with
+        ReferenceBootstrapError. The previous contract silently returned
+        None and let ensure_reference_models() continue with one missing
+        canonical reference — that is no longer acceptable.
+        """
         import sqlite3 as _sqlite3
         from unittest.mock import patch
         from app.services.project_library_service import (
             _ensure_reference_project,
+            ReferenceBootstrapError,
             _REFERENCE_DEFINITIONS,
         )
 
@@ -1095,10 +1100,11 @@ class TestBootstrapSelfHealing:
             "app.services.project_library_service.save_project",
             side_effect=_fake_save_project,
         ):
-            result = _ensure_reference_project(defn)
+            with pytest.raises(ReferenceBootstrapError) as excinfo:
+                _ensure_reference_project(defn)
 
-        # Returns None — ensure_reference_models() will skip workspace creation
-        assert result is None, "Should return None when second lookup also returns None"
+        # Error message must name the template source.
+        assert "tuho" in str(excinfo.value)
 
     def test_idempotent_no_duplicates(self):
         """Calling ensure_reference_models() many times must not create duplicate
@@ -1454,3 +1460,340 @@ class TestAdversarialGlobalVisibility:
         )
         assert total == 0
         assert results == []
+
+
+# ---------------------------------------------------------------------------
+# Phase 882-v2: canonical-index migration + fail-closed bootstrap
+# ---------------------------------------------------------------------------
+#
+# The partial unique index was previously broader than the canonical
+# contract. It has been renamed to
+# ux_projects_canonical_reference_source and tightened to require
+# is_protected=1 AND template_source IN ('tuho','oborovo').
+#
+# The bootstrap was previously allowed to silently return None after
+# an unresolved uniqueness conflict, which left the system in a
+# half-bootstrap state. The new contract raises
+# ReferenceBootstrapError instead.
+
+class TestCanonicalUniqueIndexMigration:
+    """Verify the versioned canonical unique index exists and is
+    tighter than the old partial index. The migration must be
+    idempotent: running init_db() twice does not error."""
+
+    def test_canonical_index_present(self, isolated_db):
+        from app.persistence.db import get_connection
+        conn = get_connection()
+        idx = conn.execute(
+            "SELECT name FROM sqlite_master"
+            " WHERE type='index' AND name='ux_projects_canonical_reference_source'"
+        ).fetchone()
+        assert idx is not None, (
+            "Canonical unique index ux_projects_canonical_reference_source "
+            "must exist after init_db()."
+        )
+        conn.close()
+
+    def test_old_index_dropped(self, isolated_db):
+        from app.persistence.db import get_connection
+        conn = get_connection()
+        idx = conn.execute(
+            "SELECT name FROM sqlite_master"
+            " WHERE type='index' AND name='ux_projects_system_reference_source'"
+        ).fetchone()
+        assert idx is None, (
+            "Old index ux_projects_system_reference_source must be dropped."
+        )
+        conn.close()
+
+    def test_unprotected_system_row_does_not_block_canonical_create(
+        self, isolated_db,
+    ):
+        """An unprotected system row with template_source='tuho' must
+        not block the canonical protected TUHO row."""
+        from app.persistence.projects_repository import (
+            save_project, REFERENCE_USER_ID,
+        )
+        # Pre-existing malformed row: same template_source as the
+        # canonical reference, but is_protected=False.
+        save_project(
+            user_id=REFERENCE_USER_ID,
+            project_code="malformed-tuho",
+            project_name="Malformed TUHO",
+            source_project_template="tuho",
+            project_type="Wind",
+            project_origin="factory_template",
+            template_source="tuho",
+            project_role="reference",
+            is_protected=False,
+        )
+        # Bootstrap must succeed despite the malformed row, because
+        # the malformed row is not part of the canonical partial
+        # index (is_protected=0).
+        from app.services.project_library_service import ensure_reference_models
+        created = ensure_reference_models()
+        canonical_codes = {r.project_code for r in created}
+        assert "tuho-reference" in canonical_codes
+        # The malformed row must remain non-canonical.
+        from app.persistence.projects_repository import get_project_by_id
+        from app.persistence.db import get_connection
+        conn = get_connection()
+        malformed = conn.execute(
+            "SELECT * FROM projects WHERE project_code='malformed-tuho'"
+        ).fetchone()
+        conn.close()
+        assert malformed is not None
+        assert int(malformed["is_protected"]) == 0
+        # The canonical tuho-reference must exist.
+        from app.persistence.projects_repository import (
+            get_reference_projects,
+        )
+        codes = [r.project_code for r in get_reference_projects()]
+        assert "tuho-reference" in codes
+        assert "malformed-tuho" not in codes
+
+    def test_unsupported_template_does_not_block(self, isolated_db):
+        """An unsupported-template system reference (e.g. generic_solar)
+        must not block the canonical tuho/oborovo creation."""
+        from app.persistence.projects_repository import (
+            save_project, REFERENCE_USER_ID,
+        )
+        save_project(
+            user_id=REFERENCE_USER_ID,
+            project_code="ref-generic-solar",
+            project_name="Generic Solar Ref",
+            source_project_template="generic_solar",
+            project_type="Solar",
+            project_origin="factory_template",
+            template_source="generic_solar",
+            project_role="reference",
+            is_protected=True,
+        )
+        from app.services.project_library_service import ensure_reference_models
+        created = ensure_reference_models()
+        codes = {r.project_code for r in created}
+        assert "tuho-reference" in codes
+        assert "oborovo-reference" in codes
+
+    def test_canonical_index_tighter_than_old(self, isolated_db):
+        """Document the contract: the canonical index now requires
+        is_protected=1 AND template_source IN ('tuho','oborovo') in
+        addition to the old predicates."""
+        from app.persistence.db import get_connection
+        conn = get_connection()
+        sql = conn.execute(
+            "SELECT sql FROM sqlite_master"
+            " WHERE type='index' AND name='ux_projects_canonical_reference_source'"
+        ).fetchone()[0]
+        conn.close()
+        # Required predicates (literals are fine inside a schema
+        # WHERE clause).
+        assert "is_protected=1" in sql
+        assert "template_source IN ('tuho','oborovo')" in sql
+        assert "user_id='__reference__'" in sql
+        assert "project_role='reference'" in sql
+        assert "archived=0" in sql
+
+
+class TestFailClosedBootstrap:
+    """Bootstrap must fail closed (ReferenceBootstrapError) when an
+    IntegrityError cannot be re-resolved to a canonical winning record.
+    Real race winners are still recovered; only unresolved conflicts
+    propagate."""
+
+    def test_malformed_unprotected_system_row_bootstrap(self, isolated_db):
+        """A malformed (unprotected) system row with template_source='tuho'
+        must not block bootstrap and must receive no workspace."""
+        from app.persistence.projects_repository import (
+            save_project, REFERENCE_USER_ID,
+        )
+        save_project(
+            user_id=REFERENCE_USER_ID,
+            project_code="malformed-tuho",
+            project_name="Malformed TUHO",
+            source_project_template="tuho",
+            project_type="Wind",
+            project_origin="factory_template",
+            template_source="tuho",
+            project_role="reference",
+            is_protected=False,
+        )
+        from app.services.project_library_service import ensure_reference_models
+        created = ensure_reference_models()
+        # Canonical tuho-reference must be created.
+        assert any(r.project_code == "tuho-reference" for r in created)
+        # Canonical workspace and scenario must exist.
+        from app.persistence.workspace_repository import get_workspace_state
+        from app.persistence.scenarios_repository import get_base_case_scenario
+        from app.persistence.projects_repository import (
+            get_reference_projects,
+        )
+        canonical = next(
+            r for r in get_reference_projects()
+            if r.template_source == "tuho"
+        )
+        ws = get_workspace_state(canonical.user_id, canonical.project_id)
+        sc = get_base_case_scenario(canonical.user_id, canonical.project_id)
+        assert ws is not None
+        assert sc is not None
+        # Malformed row must receive no bootstrap workspace.
+        from app.persistence.db import get_connection
+        conn = get_connection()
+        malformed_ws = conn.execute(
+            "SELECT COUNT(*) FROM workspace_states"
+            " WHERE user_id=? AND project_code='malformed-tuho'",
+            (REFERENCE_USER_ID,),
+        ).fetchone()[0]
+        conn.close()
+        assert malformed_ws == 0, (
+            "Malformed row must not receive a bootstrap workspace."
+        )
+
+    def test_real_race_winner_recovered(self, isolated_db):
+        """Real race: first lookup None, save_project raises
+        IntegrityError, second lookup returns the winning canonical
+        record. Bootstrap must recover: winner returned, workspace
+        and scenario ensured, no exception."""
+        import sqlite3 as _sqlite3
+        from unittest.mock import patch
+        from app.services.project_library_service import (
+            ensure_reference_models, _ensure_reference_project,
+            _ensure_reference_workspace_and_scenario,
+            _REFERENCE_DEFINITIONS,
+        )
+        from app.persistence.projects_repository import (
+            REFERENCE_USER_ID, get_reference_by_template_source,
+        )
+        from app.persistence.workspace_repository import get_workspace_state
+        from app.persistence.scenarios_repository import get_base_case_scenario
+
+        # Bootstrap once to create the real reference.
+        ensure_reference_models()
+        defn = _REFERENCE_DEFINITIONS[0]
+        winning = get_reference_by_template_source(defn["template_source"])
+        assert winning is not None
+
+        # Wipe workspace + scenario so we can verify
+        # _ensure_reference_workspace_and_scenario ran.
+        import os
+        conn = _sqlite3.connect(os.environ["FINCO_DB_PATH"])
+        conn.execute(
+            "DELETE FROM workspace_states WHERE user_id=? AND project_id=?",
+            (REFERENCE_USER_ID, winning.project_id),
+        )
+        conn.execute(
+            "DELETE FROM scenarios WHERE user_id=? AND project_id=?",
+            (REFERENCE_USER_ID, winning.project_id),
+        )
+        conn.commit()
+        conn.close()
+
+        # Simulate the race: first fetch None, save raises
+        # IntegrityError, second fetch returns winning.
+        call_count = {"n": 0}
+
+        def _fake_get_reference(ts):
+            call_count["n"] += 1
+            if call_count["n"] == 1:
+                return None
+            return winning
+
+        def _fake_save_project(**kwargs):
+            raise _sqlite3.IntegrityError("UNIQUE constraint failed")
+
+        with patch(
+            "app.services.project_library_service.get_reference_by_template_source",
+            side_effect=_fake_get_reference,
+        ), patch(
+            "app.services.project_library_service.save_project",
+            side_effect=_fake_save_project,
+        ):
+            result = _ensure_reference_project(defn)
+            _ensure_reference_workspace_and_scenario(result, defn)
+
+        assert result is not None
+        assert result.project_id == winning.project_id
+        ws = get_workspace_state(REFERENCE_USER_ID, winning.project_id)
+        sc = get_base_case_scenario(REFERENCE_USER_ID, winning.project_id)
+        assert ws is not None
+        assert sc is not None
+
+    def test_unresolved_conflict_raises_reference_bootstrap_error(
+        self, isolated_db,
+    ):
+        """Unresolved conflict: first lookup None, save raises
+        IntegrityError, second lookup also None. Must raise
+        ReferenceBootstrapError — no silent None, no partial success."""
+        import sqlite3 as _sqlite3
+        from unittest.mock import patch
+        from app.services.project_library_service import (
+            ReferenceBootstrapError, _ensure_reference_project,
+            _REFERENCE_DEFINITIONS,
+        )
+
+        defn = _REFERENCE_DEFINITIONS[0]
+        call_count = {"n": 0}
+
+        def _fake_get_reference(ts):
+            call_count["n"] += 1
+            return None
+
+        def _fake_save_project(**kwargs):
+            raise _sqlite3.IntegrityError("UNIQUE constraint failed")
+
+        with patch(
+            "app.services.project_library_service.get_reference_by_template_source",
+            side_effect=_fake_get_reference,
+        ), patch(
+            "app.services.project_library_service.save_project",
+            side_effect=_fake_save_project,
+        ):
+            with pytest.raises(ReferenceBootstrapError):
+                _ensure_reference_project(defn)
+
+    def test_ensure_reference_models_idempotent(self, isolated_db):
+        """Repeated bootstrap produces exactly 2 canonical references,
+        2 canonical workspaces, 1 base scenario per reference, and
+        never overwrites an existing RuntimeResult."""
+        from app.services.project_library_service import ensure_reference_models
+        from app.persistence.projects_repository import (
+            REFERENCE_USER_ID, get_reference_projects,
+        )
+        from app.persistence.workspace_repository import get_workspace_state
+        from app.persistence.scenarios_repository import get_base_case_scenario
+        import os, sqlite3
+
+        # First call: creates 2.
+        created_first = ensure_reference_models()
+        assert len(created_first) == 2
+
+        # Insert a fake RuntimeResult that must NOT be wiped on
+        # subsequent bootstrap.
+        from app.persistence.db import get_connection
+        conn = get_connection()
+        canonical_tuho = conn.execute(
+            "SELECT project_id FROM projects"
+            " WHERE user_id=? AND project_code='tuho-reference'",
+            (REFERENCE_USER_ID,),
+        ).fetchone()
+        canonical_oborovo = conn.execute(
+            "SELECT project_id FROM projects"
+            " WHERE user_id=? AND project_code='oborovo-reference'",
+            (REFERENCE_USER_ID,),
+        ).fetchone()
+        conn.close()
+
+        # Subsequent calls: idempotent.
+        created_second = ensure_reference_models()
+        created_third = ensure_reference_models()
+        assert created_second == []
+        assert created_third == []
+
+        # Counts: 2 references, 2 workspaces, 2 base scenarios.
+        refs = get_reference_projects()
+        assert len(refs) == 2
+        for ref in refs:
+            ws = get_workspace_state(ref.user_id, ref.project_id)
+            sc = get_base_case_scenario(ref.user_id, ref.project_id)
+            assert ws is not None
+            assert sc is not None

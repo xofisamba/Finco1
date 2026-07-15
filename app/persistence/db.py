@@ -243,15 +243,30 @@ def _init_schema(conn):
         "CREATE INDEX IF NOT EXISTS idx_projects_template_role"
         " ON projects(template_source, project_role, archived)"
     )
-    # Unique constraint: exactly one canonical system reference per template_source.
-    # Scoped to __reference__ user only — never touches user-owned rows.
+    # Unique constraint: exactly one canonical system reference per
+    # template_source. The OLD index
+    #   ux_projects_system_reference_source
+    # used the partial WHERE
+    #   user_id='__reference__' AND project_role='reference' AND archived=0
+    # which was broader than the canonical-reference contract
+    #   user_id='__reference__' AND project_role='reference'
+    #   AND is_protected=1 AND archived=0
+    #   AND template_source IN ('tuho','oborovo')
+    # The new index carries the same name on existing databases that
+    # have already been initialised — we therefore drop the old
+    # versioned name first and recreate it under the corrected
+    # versioned name ux_projects_canonical_reference_source. This
+    # migration is idempotent: on a fresh DB the DROP is a no-op.
+    conn.execute("DROP INDEX IF EXISTS ux_projects_system_reference_source")
     conn.execute(
         """
-        CREATE UNIQUE INDEX IF NOT EXISTS ux_projects_system_reference_source
+        CREATE UNIQUE INDEX IF NOT EXISTS ux_projects_canonical_reference_source
         ON projects(template_source)
         WHERE user_id='__reference__'
           AND project_role='reference'
+          AND is_protected=1
           AND archived=0
+          AND template_source IN ('tuho','oborovo')
         """
     )
     # Backfill: only rows already owned by the system reference user get
