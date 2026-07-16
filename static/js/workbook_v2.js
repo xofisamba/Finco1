@@ -30,7 +30,12 @@
   });
 
   if (tabs.length > 0) {
-    activateTab(tabs[0]);
+    // Honour ?sheet=<name> URL param so New Project lands on the correct tab.
+    var sheetParam = new URLSearchParams(window.location.search).get('sheet');
+    var initialTab = sheetParam
+      ? tabs.find(function(t) { return t.id === 'tab-' + sheetParam; }) || tabs[0]
+      : tabs[0];
+    activateTab(initialTab);
   }
 
   document.addEventListener('htmx:afterSwap', function() {

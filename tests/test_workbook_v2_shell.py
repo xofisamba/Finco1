@@ -144,42 +144,90 @@ class TestV2RouterStructure(unittest.TestCase):
 # ---------------------------------------------------------------------------
 
 class TestFeatureFlagGate(unittest.TestCase):
+    """PR-A: V2 routers are always mounted; the inactive guard lives inside handlers.
 
-    def _routes_for_flag(self, flag_value: str | None) -> set[str]:
-        for key in list(sys.modules.keys()):
-            if "main_web" in key:
-                del sys.modules[key]
-        env = {k: v for k, v in os.environ.items()}
-        if flag_value is None:
-            env.pop("FINCO_WORKBOOK_V2", None)
-        else:
-            env["FINCO_WORKBOOK_V2"] = flag_value
-        with patch.dict(os.environ, env, clear=True):
-            import main_web as mw
-            return {getattr(r, "path", None) for r in mw.app.routes if getattr(r, "path", None)}
+    Tests verify the HTTP-level contract with a real project:
+      - GET /v2/workbook returns 200 + v2-workbook-shell when V2 is active.
+      - GET /v2/workbook returns 302 → /?project=<code> when FINCO_WORKBOOK_V2=0.
+      - Sheet param is preserved on inactive redirect.
+      - Legacy GET / is always preserved.
+    """
 
-    def test_flag_off_no_v2_routes(self):
-        paths = self._routes_for_flag(None)
-        self.assertEqual({p for p in paths if p.startswith("/v2")}, set())
+    @classmethod
+    def setUpClass(cls):
+        cls.client = _authed_client()
+        cls.project_code = _create_project(cls.client, suffix="flag-gate")
 
-    def test_flag_empty_string_no_v2_routes(self):
-        paths = self._routes_for_flag("")
-        self.assertEqual({p for p in paths if p.startswith("/v2")}, set())
+    def test_v2_routes_always_mounted_flag_absent(self):
+        """Flag absent = active; route returns 200 with shell."""
+        env_without_flag = {k: v for k, v in os.environ.items() if k != "FINCO_WORKBOOK_V2"}
+        with patch.dict(os.environ, env_without_flag, clear=True):
+            resp = self.client.get(f"/v2/workbook?project={self.project_code}")
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("v2-workbook-shell", resp.text)
 
-    def test_flag_on_1_registers_v2_workbook(self):
-        self.assertIn("/v2/workbook", self._routes_for_flag("1"))
+    def test_flag_on_1_v2_route_reachable(self):
+        """FINCO_WORKBOOK_V2=1 → 200 + v2-workbook-shell."""
+        with patch.dict(os.environ, {"FINCO_WORKBOOK_V2": "1"}):
+            resp = self.client.get(f"/v2/workbook?project={self.project_code}")
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("v2-workbook-shell", resp.text)
 
     def test_flag_on_true_registers_v2_workbook(self):
-        self.assertIn("/v2/workbook", self._routes_for_flag("true"))
+        """FINCO_WORKBOOK_V2=true → 200 + v2-workbook-shell."""
+        with patch.dict(os.environ, {"FINCO_WORKBOOK_V2": "true"}):
+            resp = self.client.get(f"/v2/workbook?project={self.project_code}")
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("v2-workbook-shell", resp.text)
 
     def test_flag_on_yes_registers_v2_workbook(self):
-        self.assertIn("/v2/workbook", self._routes_for_flag("yes"))
+        """FINCO_WORKBOOK_V2=yes → 200 + v2-workbook-shell."""
+        with patch.dict(os.environ, {"FINCO_WORKBOOK_V2": "yes"}):
+            resp = self.client.get(f"/v2/workbook?project={self.project_code}")
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("v2-workbook-shell", resp.text)
+
+    def test_v2_inactive_flag_off_redirects_to_legacy(self):
+        """FINCO_WORKBOOK_V2=0 → 302, location contains /?project=<code>."""
+        with patch.dict(os.environ, {"FINCO_WORKBOOK_V2": "0"}):
+            resp = self.client.get(f"/v2/workbook?project={self.project_code}")
+        self.assertEqual(resp.status_code, 302)
+        location = resp.headers.get("location", "")
+        self.assertIn(f"project={self.project_code}", location)
+
+    def test_v2_inactive_flag_false_redirects_to_legacy(self):
+        """FINCO_WORKBOOK_V2=false → 302, location contains project=<code>."""
+        with patch.dict(os.environ, {"FINCO_WORKBOOK_V2": "false"}):
+            resp = self.client.get(f"/v2/workbook?project={self.project_code}")
+        self.assertEqual(resp.status_code, 302)
+        location = resp.headers.get("location", "")
+        self.assertIn(f"project={self.project_code}", location)
+
+    def test_inactive_with_sheet_inputs_preserves_fragment(self):
+        """FINCO_WORKBOOK_V2=0, sheet=inputs → 302, location == /?project=<code>#inputs."""
+        with patch.dict(os.environ, {"FINCO_WORKBOOK_V2": "0"}):
+            resp = self.client.get(
+                f"/v2/workbook?project={self.project_code}&sheet=inputs"
+            )
+        self.assertEqual(resp.status_code, 302)
+        location = resp.headers.get("location", "")
+        self.assertEqual(location, f"/?project={self.project_code}#inputs")
 
     def test_flag_off_legacy_index_preserved(self):
-        self.assertIn("/", self._routes_for_flag(None))
+        """FINCO_WORKBOOK_V2=0 → GET / → 302 to /library."""
+        with patch.dict(os.environ, {"FINCO_WORKBOOK_V2": "0"}):
+            resp = self.client.get("/")
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn("/library", resp.headers.get("location", ""))
 
     def test_flag_on_legacy_index_preserved(self):
-        self.assertIn("/", self._routes_for_flag("1"))
+        """FINCO_WORKBOOK_V2=1 → GET /?project=<code> → 302 to /v2/workbook?project=<code>."""
+        with patch.dict(os.environ, {"FINCO_WORKBOOK_V2": "1"}):
+            resp = self.client.get(f"/?project={self.project_code}")
+        self.assertEqual(resp.status_code, 302)
+        location = resp.headers.get("location", "")
+        self.assertIn("/v2/workbook", location)
+        self.assertIn(f"project={self.project_code}", location)
 
 
 # ---------------------------------------------------------------------------
@@ -205,12 +253,12 @@ class TestV2WorkbookRoute(unittest.TestCase):
     def test_authenticated_no_project_redirects_to_root(self):
         resp = self.client.get("/v2/workbook")
         self.assertEqual(resp.status_code, 302)
-        self.assertEqual(resp.headers["location"], "/")
+        self.assertEqual(resp.headers["location"], "/library")
 
     def test_authenticated_missing_workspace_redirects_to_root(self):
         resp = self.client.get("/v2/workbook?project=does-not-exist-xyzzy")
         self.assertEqual(resp.status_code, 302)
-        self.assertEqual(resp.headers["location"], "/")
+        self.assertEqual(resp.headers["location"], "/library")
 
     # -- Successful response --------------------------------------------------
 

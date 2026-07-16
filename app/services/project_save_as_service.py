@@ -134,6 +134,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
 
+from app.utils.workbook_flag import project_workbook_url
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Public dataclasses
@@ -334,5 +336,5 @@ async def execute_project_save_as_route(
     return ProjectSaveAsRouteOutcome(
         status_code=302,
         is_redirect=True,
-        redirect_url=f"/?project={new_code}",
+        redirect_url=project_workbook_url(new_code),
     )

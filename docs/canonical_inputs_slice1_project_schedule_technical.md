@@ -7,7 +7,7 @@ set of registry-backed fields. It uses the existing canonical path:
 
 `Registry -> ProjectInputSet -> WorkbookService -> ProjectInputs -> engine -> RuntimeResult -> server projection -> HTMX/Jinja`
 
-The feature flag is `FINCO_INPUTS_SLICE1_ENABLED` and is off by default.
+The feature flag is `FINCO_INPUTS_SLICE1_ENABLED`. **Default: active** (absent or empty → on). Set to `"0"`, `"false"`, `"no"`, or `"off"` to disable. Canonical parser: `app.utils.workbook_flag.inputs_slice1_active()`.
 
 ## Included Fields
 

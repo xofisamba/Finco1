@@ -1,8 +1,11 @@
 """
-app.v2.router — Workbook V2 feature-flagged routes.
+app.v2.router — Workbook V2 routes (always mounted; inactive-guard inside).
 
-Mounted at ``/v2`` in main_web.py when ``FINCO_WORKBOOK_V2`` is truthy.
-All routes require the same authentication as the legacy stack.
+Mounted unconditionally in main_web.py so that GET /v2/workbook can issue
+a 302 when the flag is off rather than returning a 404.  All mutation
+endpoints reject requests with 409 via the require_v2_active dependency
+when the flag is inactive.  See app/utils/workbook_flag.py for the flag
+contract (absent → ACTIVE).
 
 Authentication
 --------------
@@ -60,9 +63,16 @@ import os
 import urllib.parse
 from typing import Optional
 
-from fastapi import APIRouter, Form, Request
+from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
+
+from app.utils.workbook_flag import (
+    inputs_slice1_active,
+    project_workbook_url,
+    require_v2_active,
+    workbook_v2_active,
+)
 
 from app.auth import COOKIE_NAME, decode_session_token
 from app.ui.capex_view_model import build_capex_view_model
@@ -72,7 +82,6 @@ from app.ui.opex_view_model import build_opex_view_model
 from app.ui.inputs_slice1 import (
     build_inputs_slice1_sections,
     classify_slice1_field_id,
-    inputs_slice1_enabled,
     slice1_rejection_message,
     KNOWN_SLICE1_EDITABLE,
 )
@@ -709,7 +718,7 @@ def _render_inputs_htmx_sheet(
         "opex_fields": _build_sheet_fields("opex", pis),
         "debt_fields": _build_sheet_fields("debt", pis),
         "inputs_summary": _get_inputs_summary(project_record, pis, ws),
-        "inputs_slice1_enabled": inputs_slice1_enabled(),
+        "inputs_slice1_enabled": inputs_slice1_active(),
         "inputs_slice1_sections": build_inputs_slice1_sections(
             pis,
             project_editable=project_editable,
@@ -726,7 +735,7 @@ def _render_inputs_htmx_sheet(
 
 
 @router.get("/workbook", response_class=HTMLResponse)
-async def v2_workbook(request: Request, project: Optional[str] = None):
+async def v2_workbook(request: Request, project: Optional[str] = None, sheet: Optional[str] = None):
     """Workbook V2 shell page.
 
     Renders the V2 template skeleton and injects a sessionStorage hydration
@@ -740,27 +749,37 @@ async def v2_workbook(request: Request, project: Optional[str] = None):
     ----------------
     project : str, optional
         Project code.  When absent, redirects to the project home.
+    sheet : str, optional
+        Sheet name (e.g. "inputs").  Preserved on inactive redirect so the
+        legacy URL fragment (#inputs) is reconstructed correctly.
     v2_err : str, optional
         URL-encoded error message from a failed non-HTMX POST.  Shown as
         a flash error in the status banner.
     """
+    if not workbook_v2_active():
+        if project:
+            dest = project_workbook_url(project, sheet=sheet)
+        else:
+            dest = "/library"
+        return RedirectResponse(url=dest, status_code=302)
+
     user = _get_current_user(request)
     if not user:
         return RedirectResponse(url="/login", status_code=302)
 
     if not project:
-        return RedirectResponse(url="/", status_code=302)
+        return RedirectResponse(url="/library", status_code=302)
 
     from app.persistence.projects_repository import resolve_accessible_project
     from app.persistence.workspace_repository import get_workspace_state
 
     project_record, workspace_owner = resolve_accessible_project(user.user_id, project)
     if project_record is None:
-        return RedirectResponse(url="/", status_code=302)
+        return RedirectResponse(url="/library", status_code=302)
 
     ws = get_workspace_state(user_id=workspace_owner, project_id=project_record.project_id)
     if ws is None:
-        return RedirectResponse(url="/", status_code=302)
+        return RedirectResponse(url="/library", status_code=302)
 
     pis = _build_pis_with_composite_identity(ws, project_record, workspace_owner)
     hydration_script = WorkbookService.runtime_hydration_script(ws)
@@ -792,7 +811,7 @@ async def v2_workbook(request: Request, project: Optional[str] = None):
         "opex_fields": _build_sheet_fields("opex", pis),
         "debt_fields": _build_sheet_fields("debt", pis),
         "inputs_summary": _get_inputs_summary(project_record, pis, ws),
-        "inputs_slice1_enabled": inputs_slice1_enabled(),
+        "inputs_slice1_enabled": inputs_slice1_active(),
         "inputs_slice1_sections": build_inputs_slice1_sections(
             pis,
             project_editable=project_editable,
@@ -803,6 +822,8 @@ async def v2_workbook(request: Request, project: Optional[str] = None):
         "has_runtime": bool(ws.last_runtime_snapshot_id),
         "flash_error": flash_error,
         "field_error": "",
+        "scenario_url": f"/scenarios?project={urllib.parse.quote(project, safe='')}",
+        "library_url": "/library",
     }
     context.update(_build_capex_vm_ctx(project_record, pis))
     context.update(_build_opex_vm_ctx(project_record, pis))
@@ -824,6 +845,7 @@ async def v2_inputs_slice1_update(
     project: str = Form(...),
     workbook_version: str = Form(...),
     content_hash: str = Form(...),
+    _: None = Depends(require_v2_active),
 ):
     """Feature-flagged Slice 1 edit endpoint.
 
@@ -832,8 +854,8 @@ async def v2_inputs_slice1_update(
     projection, then delegates validation/persistence to
     WorkbookUpdateService.apply_draft_update().
     """
-    if not inputs_slice1_enabled():
-        return JSONResponse({"error": "Inputs Slice 1 is not enabled."}, status_code=404)
+    if not inputs_slice1_active():
+        return JSONResponse({"error": "Inputs Slice 1 is disabled by configuration."}, status_code=409)
 
     user = _get_current_user(request)
     if not user:
@@ -983,6 +1005,7 @@ async def v2_workbook_update(
     workbook_version: str = Form(...),
     content_hash: str = Form(...),
     sheet_id: str = Form(default="project_setup"),
+    _: None = Depends(require_v2_active),
 ):
     """V2 field edit endpoint — canonical edit pipeline.
 
@@ -1193,6 +1216,7 @@ async def v2_workbook_run(
     project: str = Form(...),
     content_hash: str = Form(...),
     workbook_version: str = Form(...),
+    _: None = Depends(require_v2_active),
 ):
     """V2 Run endpoint — canonical engine orchestration for Workbook V2.
 

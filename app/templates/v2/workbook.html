@@ -20,12 +20,21 @@
   #}
   <div class="v2-toolbar" role="banner">
     <div class="v2-toolbar-project">
+      <a class="v2-toolbar-back" href="{{ library_url }}" aria-label="Back to project library">&#8592; Library</a>
+      <span class="v2-toolbar-sep">·</span>
       <span class="v2-toolbar-name">{{ project_name }}</span>
       {% if project_type %}
         <span class="v2-toolbar-sep">·</span>
-        <span class="v2-toolbar-type">{{ project_type }}</span>
+        <span class="v2-toolbar-badge v2-toolbar-type">{{ project_type }}</span>
       {% endif %}
-      <span class="v2-toolbar-scenario">Scenario: <strong>{{ active_scenario_name or "Base" }}</strong></span>
+      <span class="v2-toolbar-sep">·</span>
+      {% if not project_editable %}
+        <span class="v2-toolbar-badge v2-toolbar-ref-badge">Reference</span>
+      {% else %}
+        <span class="v2-toolbar-badge v2-toolbar-wc-badge">Working Copy</span>
+      {% endif %}
+      <span class="v2-toolbar-sep">·</span>
+      <a class="v2-toolbar-scenario-link" href="{{ scenario_url }}">Scenario: <strong>{{ active_scenario_name or "Base" }}</strong></a>
     </div>
     <div class="v2-toolbar-runtime" id="v2-toolbar-runtime-state">
       {% include "partials/_v2_toolbar_state.html" %}

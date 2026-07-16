@@ -27,7 +27,7 @@
     <span class="ph-quick-desc">Browse reference models (TUHO and Oborovo)</span>
   </a>
   {% if _continue_project %}
-  <a href="/?project={{ _continue_project.project_code }}"
+  <a href="{{ _continue_project.workbook_url }}"
      class="ph-quick-card ph-quick-card--accent"
      data-p1sprint2-link="continue">
     <span class="ph-quick-icon">▶</span>
@@ -43,8 +43,16 @@
 <div class="ph-section-tabs" data-p1sprint2-component="section-tabs">
   <div class="ph-section-tabs-label">Sections (open your most recent project)</div>
   <div class="ph-section-tabs-grid">
-    {% set _open = _continue_project.project_code if _continue_project else None %}
     {% set _disabled = not _has_projects %}
+    {% if not _disabled %}
+      {% set _tab_urls = {
+        "inputs":    _continue_project.workbook_url_inputs,
+        "capex":     _continue_project.workbook_url_capex,
+        "opex":      _continue_project.workbook_url_opex,
+        "results":   _continue_project.workbook_url_results,
+        "scenarios": _continue_project.workbook_url_scenarios,
+      } %}
+    {% endif %}
     {% for tab in [("Inputs","inputs"),("CAPEX","capex"),("OPEX","opex"),("Results","results"),("Scenarios","scenarios")] %}
     {% set _label, _key = tab %}
     {% if _disabled %}
@@ -56,7 +64,7 @@
     </span>
     {% else %}
     <a class="ph-section-tab"
-       href="/?project={{ _open }}&tab={{ _key }}"
+       href="{{ _tab_urls[_key] }}"
        data-p1sprint2-tab="{{ _key }}">
       {{ _label }}
     </a>
@@ -86,7 +94,7 @@
         {% for item in home_user_projects %}
         <tr class="ph-table-row" data-project-code="{{ item.project_code }}">
           <td class="ph-table-name">
-            <a href="/?project={{ item.project_code }}" class="ph-table-link">{{ item.name }}</a>
+            <a href="{{ item.workbook_url }}" class="ph-table-link">{{ item.name }}</a>
           </td>
           <td>
             {# WF-4: technology badge pill #}
@@ -104,7 +112,7 @@
             </span>
           </td>
           <td class="ph-table-actions">
-            <a href="/?project={{ item.project_code }}" class="ph-action-link">Open</a>
+            <a href="{{ item.workbook_url }}" class="ph-action-link">Open</a>
           </td>
         </tr>
         {% endfor %}
