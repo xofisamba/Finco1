@@ -45,6 +45,38 @@
   });
 })();
 
+// Scoped HTMX handling for controlled Slice 1 application errors.
+(function () {
+  var SLICE1_UPDATE_ENDPOINT = '/v2/workbook/inputs-slice1/update';
+  var CONTROLLED_SWAP_STATUSES = { 409: true, 422: true };
+
+  window.v2ShouldSwapSlice1ErrorResponse = function (event) {
+    var detail = (event && event.detail) || {};
+    var xhr = detail.xhr || {};
+    var status = xhr.status;
+    var requestPath = '';
+
+    if (xhr.responseURL) {
+      requestPath = xhr.responseURL;
+    } else if (detail.pathInfo && detail.pathInfo.requestPath) {
+      requestPath = detail.pathInfo.requestPath;
+    } else if (detail.requestConfig && detail.requestConfig.path) {
+      requestPath = detail.requestConfig.path;
+    }
+
+    return !!(
+      CONTROLLED_SWAP_STATUSES[status] &&
+      requestPath.indexOf(SLICE1_UPDATE_ENDPOINT) !== -1
+    );
+  };
+
+  document.addEventListener('htmx:beforeSwap', function (event) {
+    if (!window.v2ShouldSwapSlice1ErrorResponse(event)) return;
+    event.detail.shouldSwap = true;
+    event.detail.isError = false;
+  });
+}());
+
 // ── Field editor: pending / saving / saved / error state machine ──────────
 (function () {
   if (window.__v2FieldEditorInitialised) return;
