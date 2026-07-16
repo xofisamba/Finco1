@@ -375,25 +375,20 @@ class TestPhaseInvariants:
 
 
 class TestDefaultRouteRendersProjectHome:
-    def test_get_root_no_project_param_renders_project_home(self, logged_in_client):
-        """``GET /`` with no project param must
-        render the Project Home (My Projects
-        + Create New Project CTA), not the
-        old workspace machinery.
+    def test_get_root_no_project_param_redirects_to_library(self, logged_in_client):
+        """Hotfix project-library-data-hygiene: ``GET /`` with no
+        project param must 302-redirect to ``/library`` (the
+        single authoritative Project Library entry point). The
+        Project Home is no longer reached via ``/``; ``/home``
+        remains a 302-redirect target for back-compat.
         """
         r = logged_in_client.get("/", follow_redirects=False)
-        assert r.status_code == 200
-        text = r.text
-        # The Project Home partial exposes
-        # the "My projects" section label
-        # and the Create New Project CTA.
-        assert "My projects" in text or "Create New Project" in text, (
-            "GET / (no project) must render Project Home markers"
+        assert r.status_code == 302, (
+            f"GET / (no project) must 302 to /library; got {r.status_code}"
         )
-        # The home partial uses the
-        # ph-cta class for the Create
-        # New Project button.
-        assert "ph-cta" in text or "Create New Project" in text
+        assert r.headers.get("location") == "/library", (
+            f"GET / (no project) must redirect to /library; got {r.headers.get('location')}"
+        )
 
     def test_get_root_no_project_param_does_not_contain_old_workspace_machinery(self, logged_in_client):
         """The old workspace machinery (inputs
@@ -402,16 +397,15 @@ class TestDefaultRouteRendersProjectHome:
         project is selected.
         """
         r = logged_in_client.get("/", follow_redirects=False)
-        assert r.status_code == 200
-        text = r.text
-        # The Project Home does not show
-        # the inputs section.
+        assert r.status_code == 302
+        # Following the redirect must not return old workspace machinery.
+        r2 = logged_in_client.get("/", follow_redirects=True)
+        text = r2.text
+        # The Project Library does not show the inputs section.
         assert 'id="panel-inputs"' not in text, (
             "GET / (no project) must NOT render the old inputs section"
         )
-        # The Project Home does not show
-        # the audit / governance / parity
-        # panels.
+        # The Project Library does not show the audit / governance / parity panels.
         assert 'id="panel-audit"' not in text, (
             "GET / (no project) must NOT render the old audit panel"
         )

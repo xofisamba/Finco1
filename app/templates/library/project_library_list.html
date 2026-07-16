@@ -60,9 +60,10 @@
       </td>
 
       <td style="padding:.625rem .75rem;white-space:nowrap;">
-        {# Open link — always visible for all project types #}
-        <a href="/v2/workbook?project={{ proj.project_code }}"
+        {# Open link — flag-aware via workbook_destination_fn. #}
+        <a href="{{ workbook_destination_fn(proj.project_code) }}"
            data-testid="open-{{ proj.project_code }}"
+           data-test-v2-enabled="{{ '1' if workbook_v2_enabled_flag else '0' }}"
            style="font-size:.8125rem;color:var(--fo-accent,#1d4ed8);text-decoration:none;margin-right:.75rem;">Open</a>
 
         {# Create working copy for references #}
