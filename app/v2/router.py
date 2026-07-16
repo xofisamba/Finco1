@@ -69,6 +69,13 @@ from app.ui.capex_view_model import build_capex_view_model
 from app.ui.inputs_summary import build_inputs_summary
 from app.ui.opex_sheet_projection import build_opex_sheet_projection
 from app.ui.opex_view_model import build_opex_view_model
+from app.ui.inputs_slice1 import (
+    build_inputs_slice1_sections,
+    classify_slice1_field_id,
+    inputs_slice1_enabled,
+    slice1_rejection_message,
+    KNOWN_SLICE1_EDITABLE,
+)
 from app.ui.project_context import build_project_context_for_record
 from app.ui.protected_reference_service import is_protected_reference
 from app.workbook.registry import WORKBOOK
@@ -689,9 +696,12 @@ def _render_inputs_htmx_sheet(
     project_record,
     project: str,
     field_error: str = "",
+    slice1_submitted_values: Optional[dict[str, str]] = None,
+    slice1_field_errors: Optional[dict[str, str]] = None,
 ) -> HTMLResponse:
     """Render the inputs sheet partial + OOB status banner for HTMX."""
     ctx = _base_sheet_ctx(request, pis, ws, project_record, project, field_error)
+    project_editable = not is_protected_reference(project_record)
     ctx.update({
         "technical_fields": _build_sheet_fields("project_setup", pis),
         "revenue_fields": _build_sheet_fields("revenue", pis),
@@ -699,6 +709,13 @@ def _render_inputs_htmx_sheet(
         "opex_fields": _build_sheet_fields("opex", pis),
         "debt_fields": _build_sheet_fields("debt", pis),
         "inputs_summary": _get_inputs_summary(project_record, pis, ws),
+        "inputs_slice1_enabled": inputs_slice1_enabled(),
+        "inputs_slice1_sections": build_inputs_slice1_sections(
+            pis,
+            project_editable=project_editable,
+            submitted_values=slice1_submitted_values,
+            field_errors=slice1_field_errors,
+        ),
     })
     sheet_html = _templates.get_template("partials/sheet_inputs.html").render(ctx)
     banner_html = _templates.get_template("partials/_v2_status_banner.html").render(ctx)
@@ -775,6 +792,11 @@ async def v2_workbook(request: Request, project: Optional[str] = None):
         "opex_fields": _build_sheet_fields("opex", pis),
         "debt_fields": _build_sheet_fields("debt", pis),
         "inputs_summary": _get_inputs_summary(project_record, pis, ws),
+        "inputs_slice1_enabled": inputs_slice1_enabled(),
+        "inputs_slice1_sections": build_inputs_slice1_sections(
+            pis,
+            project_editable=project_editable,
+        ),
         "user": user,
         "project_editable": project_editable,
         "ws_dirty": ws.dirty,
@@ -792,6 +814,164 @@ async def v2_workbook(request: Request, project: Optional[str] = None):
     context.update(_build_tax_ctx(pis, ws, projection=_projection))
     context.update(_build_financial_statements_ctx(pis, ws, projection=_projection))
     return _templates.TemplateResponse(request=request, name="workbook.html", context=context)
+
+
+@router.post("/workbook/inputs-slice1/update")
+async def v2_inputs_slice1_update(
+    request: Request,
+    field_id: str = Form(...),
+    value: Optional[str] = Form(default=""),
+    project: str = Form(...),
+    workbook_version: str = Form(...),
+    content_hash: str = Form(...),
+):
+    """Feature-flagged Slice 1 edit endpoint.
+
+    The endpoint is intentionally narrower than the general V2 edit endpoint:
+    it accepts only fields classified as EDITABLE_BOUND in the Slice 1
+    projection, then delegates validation/persistence to
+    WorkbookUpdateService.apply_draft_update().
+    """
+    if not inputs_slice1_enabled():
+        return JSONResponse({"error": "Inputs Slice 1 is not enabled."}, status_code=404)
+
+    user = _get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+
+    is_htmx = request.headers.get("HX-Request") == "true"
+
+    from app.persistence.projects_repository import resolve_accessible_project
+    from app.persistence.workspace_repository import get_workspace_state
+
+    project_record, workspace_owner = resolve_accessible_project(user.user_id, project)
+    if project_record is None:
+        return JSONResponse({"error": f"Project {project!r} not found."}, status_code=404)
+
+    ws = get_workspace_state(user_id=workspace_owner, project_id=project_record.project_id)
+    if ws is None:
+        return JSONResponse({"error": "Workspace not found."}, status_code=404)
+
+    def _json_error(message: str, status_code: int) -> JSONResponse:
+        return JSONResponse({"error": message}, status_code=status_code)
+
+    def _render_sheet_response(
+        message: str = "",
+        *,
+        status_code: int = 200,
+        preserve_submitted: bool = False,
+        pis_for_render=None,
+        ws_for_render=None,
+    ) -> HTMLResponse:
+        render_ws = ws_for_render or ws
+        render_pis = pis_for_render
+        if render_pis is None:
+            render_pis = _build_pis_with_composite_identity(
+                render_ws, project_record, workspace_owner
+            )
+        submitted = (
+            {field_id: value or ""}
+            if preserve_submitted and classify_slice1_field_id(field_id) == KNOWN_SLICE1_EDITABLE
+            else None
+        )
+        errors = (
+            {field_id: message}
+            if message and classify_slice1_field_id(field_id) == KNOWN_SLICE1_EDITABLE
+            else None
+        )
+        resp = _render_inputs_htmx_sheet(
+            request,
+            render_pis,
+            render_ws,
+            project_record,
+            project,
+            field_error=message,
+            slice1_submitted_values=submitted,
+            slice1_field_errors=errors,
+        )
+        resp.status_code = status_code
+        return resp
+
+    def _render_field_error(message: str, status_code: int, *, preserve_submitted: bool = False) -> HTMLResponse:
+        pis_for_render = _build_pis_with_composite_identity(
+            ws, project_record, workspace_owner
+        )
+        resp = _render_sheet_response(
+            message,
+            status_code=status_code,
+            preserve_submitted=preserve_submitted,
+            pis_for_render=pis_for_render,
+        )
+        return _add_field_error_trigger(resp, field_id, message)
+
+    field_classification = classify_slice1_field_id(field_id)
+    if field_classification != KNOWN_SLICE1_EDITABLE:
+        status_code = 422
+        msg = slice1_rejection_message(field_id, field_classification)
+        return (
+            _render_field_error(msg, status_code)
+            if is_htmx else _json_error(msg, status_code)
+        )
+
+    try:
+        updated_pis = WorkbookUpdateService.apply_draft_update(
+            ws=ws,
+            field_id=field_id,
+            raw_value=value or "",
+            content_hash=content_hash,
+            workbook_version=workbook_version,
+            project_record=project_record,
+        )
+    except ProtectedReferenceError as exc:
+        return (
+            _render_field_error(str(exc), 409)
+            if is_htmx else _json_error(str(exc), 409)
+        )
+    except StaleContentError:
+        msg = "Draft changed since page loaded - values refreshed. Please try your edit again."
+        return _render_field_error(msg, 409) if is_htmx else _json_error(msg, 409)
+    except VersionMismatchError as exc:
+        if is_htmx:
+            return HTMLResponse(
+                content=str(exc),
+                status_code=409,
+                headers={"HX-Refresh": "true"},
+            )
+        return _json_error(str(exc), 409)
+    except (UnknownFieldError, NonEditableFieldError) as exc:
+        return (
+            _render_field_error(str(exc), 422)
+            if is_htmx else _json_error(str(exc), 422)
+        )
+    except FieldValidationError as exc:
+        return (
+            _render_field_error(str(exc), 422, preserve_submitted=True)
+            if is_htmx else _json_error(str(exc), 422)
+        )
+
+    updated_ws_after = get_workspace_state(
+        user_id=workspace_owner, project_id=project_record.project_id
+    ) or ws
+    try:
+        updated_identity = assemble_consistent_for_get(
+            user_id=workspace_owner,
+            project_id=project_record.project_id,
+            workbook_version=updated_pis.workbook_version,
+        )
+        updated_pis = updated_pis.with_composite_hash(updated_identity.composite_hash)
+    except Exception:
+        pass
+
+    if is_htmx:
+        resp = _render_sheet_response(
+            pis_for_render=updated_pis,
+            ws_for_render=updated_ws_after,
+        )
+        all_bars_oob = _build_all_oob(updated_ws_after)
+        final_resp = HTMLResponse(content=resp.body.decode() + "\n" + all_bars_oob)
+        return _add_field_saved_trigger(final_resp, field_id, updated_pis.content_hash)
+
+    return RedirectResponse(url=f"/v2/workbook?project={project}", status_code=303)
 
 
 @router.post("/workbook/update")

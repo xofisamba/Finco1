@@ -22,6 +22,10 @@
 #}
 {% from "partials/field_editor.html" import render_field %}
 
+{% if inputs_slice1_enabled|default(false) %}
+  {% include "partials/inputs_slice1.html" %}
+{% else %}
+
 {# Macro: read-only summary row (label + formatted value + optional unit) #}
 {% macro summary_row(label, value, unit="", note="") %}
 <div class="v2-field-row v2-field-readonly v2-inputs-summary-row">
@@ -299,3 +303,4 @@
   </details>
 
 </div>{# v2-sheet-inputs #}
+{% endif %}
