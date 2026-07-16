@@ -113,42 +113,41 @@
     #}
     {% if tax_operational_periods is not none %}
       {% if tax_operational_periods %}
-        <div style="overflow-x:auto;" data-testid="tax-schedule-table-wrapper">
-          <table class="v2-table" data-testid="tax-schedule-table"
-                 style="width:100%;border-collapse:collapse;font-size:.85rem;">
+        <div class="v2-schedule-scroll" data-testid="tax-schedule-table-wrapper">
+          <table class="v2-schedule-table" data-testid="tax-schedule-table">
             <thead>
               <tr>
-                <th style="text-align:left;padding:.3rem .5rem;white-space:nowrap;">Period</th>
-                <th style="text-align:left;padding:.3rem .5rem;white-space:nowrap;">Date</th>
-                <th style="text-align:right;padding:.3rem .5rem;white-space:nowrap;">Taxable Profit (kEUR)</th>
-                <th style="text-align:right;padding:.3rem .5rem;white-space:nowrap;">Tax (kEUR)</th>
-                <th style="text-align:right;padding:.3rem .5rem;white-space:nowrap;">CF After Tax (kEUR)</th>
-                <th style="text-align:right;padding:.3rem .5rem;white-space:nowrap;">Loss Opening (kEUR)</th>
-                <th style="text-align:right;padding:.3rem .5rem;white-space:nowrap;">Loss Used (kEUR)</th>
-                <th style="text-align:right;padding:.3rem .5rem;white-space:nowrap;">Loss Closing (kEUR)</th>
+                <th>Period</th>
+                <th>Date</th>
+                <th class="v2-num">Taxable Profit (kEUR)</th>
+                <th class="v2-num">Tax (kEUR)</th>
+                <th class="v2-num">CF After Tax (kEUR)</th>
+                <th class="v2-num">Loss Opening (kEUR)</th>
+                <th class="v2-num">Loss Used (kEUR)</th>
+                <th class="v2-num">Loss Closing (kEUR)</th>
               </tr>
             </thead>
             <tbody>
               {% for p in tax_operational_periods %}
               <tr data-testid="tax-schedule-row-{{ p.period }}">
-                <td style="padding:.3rem .5rem;">{{ p.period }}</td>
-                <td style="padding:.3rem .5rem;white-space:nowrap;">{{ p.date }}</td>
-                <td style="text-align:right;padding:.3rem .5rem;">
+                <td>{{ p.period }}</td>
+                <td>{{ p.date }}</td>
+                <td class="v2-num">
                   {% if p.taxable_profit_keur is not none %}{{ "%.0f"|format(p.taxable_profit_keur) }}{% else %}—{% endif %}
                 </td>
-                <td style="text-align:right;padding:.3rem .5rem;">
+                <td class="v2-num">
                   {% if p.tax_keur is not none %}{{ "%.0f"|format(p.tax_keur) }}{% else %}—{% endif %}
                 </td>
-                <td style="text-align:right;padding:.3rem .5rem;">
+                <td class="v2-num">
                   {% if p.cf_after_tax_keur is not none %}{{ "%.0f"|format(p.cf_after_tax_keur) }}{% else %}—{% endif %}
                 </td>
-                <td style="text-align:right;padding:.3rem .5rem;">
+                <td class="v2-num">
                   {% if p.tax_loss_opening_audit_keur is not none %}{{ "%.0f"|format(p.tax_loss_opening_audit_keur) }}{% else %}—{% endif %}
                 </td>
-                <td style="text-align:right;padding:.3rem .5rem;">
+                <td class="v2-num">
                   {% if p.tax_loss_used_audit_keur is not none %}{{ "%.0f"|format(p.tax_loss_used_audit_keur) }}{% else %}—{% endif %}
                 </td>
-                <td style="text-align:right;padding:.3rem .5rem;">
+                <td class="v2-num">
                   {% if p.tax_loss_closing_audit_keur is not none %}{{ "%.0f"|format(p.tax_loss_closing_audit_keur) }}{% else %}—{% endif %}
                 </td>
               </tr>

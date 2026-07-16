@@ -6,26 +6,28 @@
 
   Sections
   --------
-  1. Commercial Structure  — ppa section BOUND fields + placeholders
-  2. Balancing & CO2       — balancing section fields + placeholders
-  3. Production            — all DISPLAY_ONLY; no editing (placeholders until migrated)
-  4. Revenue Outputs       — runtime truth matrix + output placeholders
-  5. Future Modules        — Battery, ancillary, certs, GOOs, carbon, hydrogen
+  1. Commercial Structure  — ppa section BOUND fields
+  2. Balancing & CO2       — balancing section fields
+  3. Revenue Outputs       — runtime state + derivation evidence from RuntimeResult
+  4. Planned inputs        — collapsed; not wired in V2 engine
+  5. Future Modules        — collapsed; Battery, ancillary, certs, GOOs, carbon
 
-  Context variables (from app/v2/router.py):
-    revenue_fields    list[dict]  — revenue sheet fields from registry
-    project_code      str
-    workbook_version  str
-    content_hash      str
-    project_editable  bool
-    ws_dirty          bool
-    has_runtime       bool
-    field_error       str
+  Context variables (from app/v2/router.py _build_revenue_ctx):
+    revenue_fields           list[dict]  — revenue sheet fields from registry
+    revenue_state            str         — NOT_RUN | CLEAN | STALE | UNAVAILABLE
+    revenue_runtime_summary  dict|None   — thawed runtime_summary dict or None
+    project_code             str
+    workbook_version         str
+    content_hash             str
+    project_editable         bool
+    ws_dirty                 bool
+    has_runtime              bool
+    field_error              str
 #}
 {% from "partials/field_editor.html" import render_field %}
 
 {# Macro: read-only placeholder row #}
-{% macro placeholder_row(label, note="Future input") %}
+{% macro placeholder_row(label, note="Not yet supported") %}
 <div class="v2-field-row v2-field-readonly v2-inputs-placeholder-row">
   <span class="v2-field-label">{{ label }}</span>
   <span class="v2-field-value"><span class="v2-future-tag">{{ note }}</span></span>
@@ -57,8 +59,8 @@
   <nav class="v2-inputs-nav" aria-label="Revenue sections">
     <a href="#nav-rev-commercial">Commercial</a>
     <a href="#nav-rev-balancing">Balancing</a>
-    <a href="#nav-rev-production">Production</a>
     <a href="#nav-rev-outputs">Outputs</a>
+    <a href="#nav-rev-planned">Planned</a>
     <a href="#nav-rev-future">Future</a>
   </nav>
 
@@ -69,7 +71,7 @@
 
       {# All ppa section fields — render_field decides BOUND→editable / PARTIAL→read-only badge #}
       {# revenue.ppa.base_tariff is BOUND in registry but NOT wired in V2 _snapshot_to_dict   #}
-      {# (engine reads legacy tariff_eur_mwh key). It is shown as a planned input below.       #}
+      {# (engine reads legacy tariff_eur_mwh key). It is shown in section 4 Planned inputs.   #}
       {% for f in revenue_fields %}
         {% if f.section_id == "ppa" and f.field_id != "revenue.ppa.base_tariff" %}
           {{ render_field(f, project_code, workbook_version, content_hash, project_editable,
@@ -95,9 +97,114 @@
     </div>
   </details>
 
-  {# ── 3. Planned inputs (collapsed) ────────────────────────────────── #}
+  {# ── 3. Revenue Outputs ────────────────────────────────────────────── #}
+  {#
+    Data authority: runtime_summary["revenue_derivation"] from persisted RuntimeResult.
+    No arithmetic, no totals, no annualisation in this template.
+    State classification uses the same four states as Debt / Tax / FS.
+  #}
+  <details class="v2-inputs-section" open>
+    {{ section_anchor("outputs", "3. Revenue Outputs") }}
+    <div class="v2-section-fields">
+
+      {# State badge #}
+      <div class="v2-revenue-state-bar" data-testid="revenue-state-bar">
+        {% if revenue_state == "NOT_RUN" %}
+          <span class="v2-field-empty" data-testid="revenue-state-notrun">
+            Run the model to generate revenue outputs.
+          </span>
+        {% elif revenue_state == "UNAVAILABLE" %}
+          <span class="v2-runtime-mono" data-testid="revenue-state-unavailable">
+            The model ran but no revenue derivation was persisted.
+            Re-run the model to generate revenue outputs.
+          </span>
+        {% elif revenue_state == "STALE" %}
+          <span class="v2-runtime-clean" data-testid="revenue-state-stale">
+            Revenue outputs below
+          </span>
+          <span class="v2-revenue-stale-notice" data-testid="revenue-stale-notice">
+            &#9888; Inputs changed — outputs are stale. Run again to refresh.
+          </span>
+        {% else %}
+          <span class="v2-runtime-clean" data-testid="revenue-state-clean">
+            Outputs current
+          </span>
+        {% endif %}
+      </div>
+
+      {# Derivation evidence — only when runtime_summary carries revenue_derivation #}
+      {% if revenue_state in ("CLEAN", "STALE") and revenue_runtime_summary is not none %}
+        {% set rd = revenue_runtime_summary.get("revenue_derivation") if revenue_runtime_summary else none %}
+        {% if rd is not none %}
+          <dl class="v2-revenue-derivation" data-testid="revenue-derivation">
+
+            {# Generation evidence — labelled with the persisted sample period #}
+            <dt>Generation</dt>
+            <dd data-testid="revenue-derivation-generation">
+              {% set gen = rd.get("sample_generation_mwh") %}
+              {% set period_lbl = rd.get("sample_period_label", "") %}
+              {% if gen is not none and gen != "NOT_AVAILABLE" %}
+                {{ gen }}{% if period_lbl %} — {{ period_lbl }}{% endif %}
+              {% else %}
+                —
+              {% endif %}
+            </dd>
+
+            {# Sample period revenue #}
+            <dt>Sample period revenue</dt>
+            <dd data-testid="revenue-derivation-sample-revenue">
+              {% set sr = rd.get("sample_revenue_keur") %}
+              {% if sr is not none and sr != "NOT_AVAILABLE" %}{{ sr }}{% else %}—{% endif %}
+            </dd>
+
+            {# Summary method — describes how the derivation was computed #}
+            <dt>Method</dt>
+            <dd data-testid="revenue-derivation-method">
+              {{ rd.get("summary_method") or "—" }}
+            </dd>
+
+            {# Period formula — the scaling / annualisation formula used by the engine #}
+            <dt>Period formula</dt>
+            <dd data-testid="revenue-derivation-formula">
+              {{ rd.get("period_formula") or "—" }}
+            </dd>
+
+            {# Audit source #}
+            <dt>Audit source</dt>
+            <dd data-testid="revenue-derivation-audit-source"
+                style="font-size:.75rem;color:#6b7280;">
+              {{ rd.get("audit_source") or "—" }}
+            </dd>
+
+          </dl>
+
+          {# Total revenue kEUR — from display_value_keur only; no derivation in template #}
+          {% set total = rd.get("display_value_keur") %}
+          {% if total is not none and total != "NOT_AVAILABLE" %}
+            <div class="v2-kpi-grid" data-testid="revenue-kpi-bar"
+                 style="margin-top:.5rem;">
+              <div class="v2-kpi-tile" data-testid="revenue-kpi-total">
+                <span class="v2-kpi-label">Revenue (persisted summary)</span>
+                <span class="v2-kpi-value">{{ total }}</span>
+              </div>
+            </div>
+          {% endif %}
+
+        {% else %}
+          <div class="v2-field-row v2-field-readonly" data-testid="revenue-derivation-absent">
+            <span class="v2-field-value">
+              <span class="v2-runtime-mono">Revenue derivation not available for this run.</span>
+            </span>
+          </div>
+        {% endif %}
+      {% endif %}
+
+    </div>
+  </details>
+
+  {# ── 4. Planned inputs (collapsed) ────────────────────────────────── #}
   <details class="v2-inputs-section">
-    {{ section_anchor("planned", "3. Planned inputs") }}
+    {{ section_anchor("planned", "4. Planned inputs") }}
     <div class="v2-section-fields">
       {# revenue.ppa.base_tariff: stored in draft but not wired to V2 engine (reads tariff_eur_mwh) #}
       {{ placeholder_row("PPA Base Tariff (EUR/MWh)", "Not wired in V2 engine — use project creation") }}
@@ -111,18 +218,6 @@
       {{ placeholder_row("Price Curve") }}
       {{ placeholder_row("Reference Market") }}
       {{ placeholder_row("Inflation Link") }}
-    </div>
-  </details>
-
-  {# ── 4. Production (collapsed) ─────────────────────────────────────── #}
-  <details class="v2-inputs-section">
-    {{ section_anchor("production", "4. Production") }}
-    <div class="v2-section-fields">
-      {{ placeholder_row("Annual Generation (P50)") }}
-      {{ placeholder_row("Net Production") }}
-      {{ placeholder_row("Curtailment") }}
-      {{ placeholder_row("Availability") }}
-      {{ placeholder_row("Losses") }}
     </div>
   </details>
 

@@ -154,6 +154,36 @@ def project_rows(
     ]
 
 
+def annotate_balance_check_row(rows: Optional[List[Dict]]) -> Optional[List[Dict]]:
+    """Classify the balance_check_keur row server-side.
+
+    Adds 'balance_check_ok' (bool), 'css_class' (str), and 'status_title' (str)
+    to the balance_check_keur row so Jinja performs no numeric comparison.
+    The threshold is ±1 kEUR.  All other rows are returned unchanged.
+    Values of None are treated as 0 for threshold purposes only.
+    """
+    if rows is None:
+        return None
+    result = []
+    for row in rows:
+        if row.get("key") != "balance_check_keur":
+            result.append(row)
+            continue
+        values = row.get("values", [])
+        warn = any(
+            abs(v) > 1.0
+            for v in values
+            if v is not None
+        )
+        result.append({
+            **row,
+            "balance_check_ok": not warn,
+            "css_class": "v2-bs-balance-check-ok" if not warn else "v2-bs-balance-check-warn",
+            "status_title": "Balanced within ±1 kEUR" if not warn else "Balance sheet does not balance",
+        })
+    return result
+
+
 # ── Financial Statements row definitions ─────────────────────────────────── #
 # (key, display_label, is_total, is_stock)
 # is_stock=True  → Annual value = year-end period value  (balance sheet items)
@@ -467,15 +497,17 @@ def build_runtime_projection_bundle(
     _pnl_labels    = project_period_labels(pnl_periods)
     _bs_labels     = project_period_labels(bs_periods)
     _pf_cf_labels  = project_period_labels(pf_cf_periods)
-    _pnl_annual_rows, _pnl_annual_labels     = aggregate_to_annual(_pnl_rows, _pnl_labels)
+    _bs_rows_annotated        = annotate_balance_check_row(_bs_rows)
     _bs_annual_rows, _bs_annual_labels       = aggregate_to_annual(_bs_rows, _bs_labels)
+    _bs_annual_rows_annotated = annotate_balance_check_row(_bs_annual_rows)
+    _pnl_annual_rows, _pnl_annual_labels     = aggregate_to_annual(_pnl_rows, _pnl_labels)
     _pf_cf_annual_rows, _pf_cf_annual_labels = aggregate_to_annual(_pf_cf_rows, _pf_cf_labels)
     fs = FinancialStatementsProjection(
         meta=fs_meta,
         state=fs_state,
         fs_available=fs_payload is not None,
         pnl_rows=_pnl_rows,
-        bs_rows=_bs_rows,
+        bs_rows=_bs_rows_annotated,
         pf_cf_rows=_pf_cf_rows,
         pnl_period_labels=_pnl_labels,
         bs_period_labels=_bs_labels,
@@ -485,7 +517,7 @@ def build_runtime_projection_bundle(
         pf_cf_classification=fs_classify_statement(rr, fs_payload, "pf_cash_waterfall"),
         runtime_summary=runtime_summary,
         pnl_annual_rows=_pnl_annual_rows,
-        bs_annual_rows=_bs_annual_rows,
+        bs_annual_rows=_bs_annual_rows_annotated,
         pf_cf_annual_rows=_pf_cf_annual_rows,
         pnl_annual_labels=_pnl_annual_labels,
         bs_annual_labels=_bs_annual_labels,

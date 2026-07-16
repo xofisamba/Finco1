@@ -304,25 +304,106 @@
   });
 }());
 
+// ── FS: period selector and inner tab functions ───────────────────────────
+// These were previously inline in sheet_financial_statements.html.
+// Centralised here so they are available on initial page load and after
+// any HTMX swap, without re-defining them per-render.
+
+function v2FsPeriodSwitch(val) {
+  document.querySelectorAll('.v2-fs-period-tab').forEach(function (el) {
+    var isActive = el.getAttribute('data-period-view') === val;
+    el.classList.toggle('v2-fs-period-tab-active', isActive);
+    el.setAttribute('aria-selected', isActive ? 'true' : 'false');
+    el.setAttribute('tabindex', isActive ? '0' : '-1');
+  });
+  document.querySelectorAll('.v2-fs-table-model').forEach(function (el) {
+    el.style.display = val === 'model' ? '' : 'none';
+  });
+  document.querySelectorAll('.v2-fs-table-annual').forEach(function (el) {
+    el.style.display = val === 'annual' ? '' : 'none';
+  });
+  try { sessionStorage.setItem('v2FsPeriodView', val); } catch (e) {}
+}
+
+function v2FsPeriodKeydown(event, val) {
+  if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+    event.preventDefault();
+    var other = val === 'model' ? 'annual' : 'model';
+    v2FsPeriodSwitch(other);
+    var otherBtn = document.querySelector(
+      '.v2-fs-period-tab[data-period-view="' + other + '"]');
+    if (otherBtn) otherBtn.focus();
+  } else if (event.key === 'Enter' || event.key === ' ') {
+    event.preventDefault();
+    v2FsPeriodSwitch(val);
+  }
+}
+
+function v2FsInnerTabSwitch(panelId) {
+  document.querySelectorAll('.v2-fs-inner-tab').forEach(function (t) {
+    var active = t.getAttribute('data-panel') === panelId;
+    t.setAttribute('aria-selected', active ? 'true' : 'false');
+    t.setAttribute('tabindex', active ? '0' : '-1');
+  });
+  document.querySelectorAll('.v2-fs-inner-panel').forEach(function (p) {
+    p.classList.toggle('v2-fs-inner-panel-active', p.id === panelId);
+  });
+  try { sessionStorage.setItem('v2FsInnerTab', panelId); } catch (e) {}
+}
+
+function v2FsInnerTabKeydown(event, panelId) {
+  var tabs = Array.prototype.slice.call(
+    document.querySelectorAll('.v2-fs-inner-tab'));
+  var idx = tabs.findIndex(function (t) {
+    return t.getAttribute('data-panel') === panelId;
+  });
+  var newIdx;
+  if (event.key === 'ArrowRight') { newIdx = (idx + 1) % tabs.length; }
+  else if (event.key === 'ArrowLeft') { newIdx = (idx + tabs.length - 1) % tabs.length; }
+  else if (event.key === 'Enter' || event.key === ' ') {
+    v2FsInnerTabSwitch(panelId);
+    event.preventDefault();
+    return;
+  } else { return; }
+  event.preventDefault();
+  var nextId = tabs[newIdx].getAttribute('data-panel');
+  v2FsInnerTabSwitch(nextId);
+  tabs[newIdx].focus();
+}
+
+function _v2FsRestoreState() {
+  try {
+    var savedTab = sessionStorage.getItem('v2FsInnerTab');
+    if (savedTab && document.getElementById(savedTab)) {
+      v2FsInnerTabSwitch(savedTab);
+    } else {
+      v2FsInnerTabSwitch('fs-inner-panel-pnl');
+    }
+    var savedView = sessionStorage.getItem('v2FsPeriodView');
+    if (savedView === 'model' || savedView === 'annual') {
+      v2FsPeriodSwitch(savedView);
+    } else {
+      v2FsPeriodSwitch('annual');  // Annual is the first-use default
+    }
+  } catch (e) {
+    v2FsInnerTabSwitch('fs-inner-panel-pnl');
+    v2FsPeriodSwitch('annual');
+  }
+}
+
+// Restore on initial page load (all sheets are eagerly included in workbook.html)
+document.addEventListener('DOMContentLoaded', function () {
+  if (document.getElementById('v2-sheet-financial-statements')) {
+    _v2FsRestoreState();
+  }
+});
+
 // ── FS UI state restore after HTMX swap ──────────────────────────────────
-// The inline scripts in sheet_financial_statements.html define v2FsInnerTabSwitch
-// and v2FsPeriodSwitch with sessionStorage persistence. After an HTMX swap that
-// re-renders the FS partial we call them to restore the user's last selection.
-document.addEventListener('htmx:afterSettle', function(e) {
+document.addEventListener('htmx:afterSettle', function (e) {
   var elt = e.detail && e.detail.elt;
-  // Only restore if the FS sheet was part of the swap target
   if (!elt) return;
   var fsPanel = elt.id === 'v2-sheet-financial-statements' ? elt :
                 elt.querySelector && elt.querySelector('#v2-sheet-financial-statements');
   if (!fsPanel && !document.getElementById('v2-sheet-financial-statements')) return;
-  try {
-    var savedTab = sessionStorage.getItem('v2FsInnerTab');
-    if (savedTab && typeof v2FsInnerTabSwitch === 'function') {
-      v2FsInnerTabSwitch(savedTab);
-    }
-    var savedView = sessionStorage.getItem('v2FsPeriodView');
-    if (savedView && typeof v2FsPeriodSwitch === 'function') {
-      v2FsPeriodSwitch(savedView);
-    }
-  } catch(err) {}
+  _v2FsRestoreState();
 });

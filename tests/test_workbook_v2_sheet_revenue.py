@@ -272,9 +272,10 @@ class TestRevenueSheetHtml(unittest.TestCase):
         self.assertIsNotNone(nav)
 
     def test_local_nav_links(self):
+        # PR-B: nav updated — Production section removed; Outputs and Planned added.
         nav = self.rev.find("nav", class_="v2-inputs-nav")
         link_texts = {a.get_text(strip=True) for a in nav.find_all("a")}
-        for expected in ("Commercial", "Balancing", "Production", "Outputs", "Future"):
+        for expected in ("Commercial", "Balancing", "Outputs", "Planned", "Future"):
             self.assertIn(expected, link_texts, f"nav missing '{expected}'")
 
     def test_ppa_bound_fields_rendered(self):
@@ -305,18 +306,19 @@ class TestRevenueSheetHtml(unittest.TestCase):
                 f"field {fid!r} missing from revenue sheet",
             )
 
-    def test_future_input_tags_present(self):
-        self.assertIn("Future input", self.rev.get_text())
+    def test_not_yet_supported_tags_present(self):
+        # PR-B: placeholder vocabulary changed from "Future input" to "Not yet supported".
+        self.assertIn("Not yet supported", self.rev.get_text())
 
     def test_future_modules_placeholders(self):
         text = self.rev.get_text()
         for label in ("Battery Revenue", "Ancillary Services", "GOOs", "Carbon Credits"):
             self.assertIn(label, text, f"future module placeholder '{label}' missing")
 
-    def test_production_section_placeholders(self):
-        text = self.rev.get_text()
-        for label in ("Annual Generation", "Net Production", "Curtailment"):
-            self.assertIn(label, text)
+    def test_outputs_section_present(self):
+        # PR-B: Revenue Outputs section (nav-rev-outputs) replaced the old Production section.
+        self.assertIsNotNone(self.rev.find(id="nav-rev-outputs"),
+                             "nav-rev-outputs section must exist in revenue sheet")
 
     def test_no_duplicate_field_ids_in_dom(self):
         fids = [r["data-field-id"] for r in self.rev.find_all(attrs={"data-field-id": True})]
@@ -468,31 +470,31 @@ class TestRevenueRuntimeMatrix(unittest.TestCase):
         assert resp.status_code == 200
         return resp.text
 
-    def test_state_a_outputs_section_has_future_input(self):
-        """State A: no RuntimeResult → output rows show 'Future input'."""
+    def test_state_a_outputs_section_shows_not_run(self):
+        """State A (NOT_RUN): no runtime → shows 'Run the model' notice."""
         rev = _revenue_div(self._render_with(has_runtime=False, ws_dirty=False))
-        self.assertIn("Future input", rev.get_text())
+        self.assertIn("Run the model", rev.get_text())
+        # PR-B: state bar is present
+        self.assertIsNotNone(rev.find(attrs={"data-testid": "revenue-state-bar"}))
 
-    def test_state_b_outputs_section_has_future_input(self):
-        """State B: RuntimeResult + clean → output rows still show 'Future input'."""
+    def test_state_b_outputs_section_shows_state_bar(self):
+        """State B (CLEAN or UNAVAILABLE): runtime present + clean → state bar visible."""
         rev = _revenue_div(self._render_with(has_runtime=True, ws_dirty=False))
-        self.assertIn("Future input", rev.get_text())
+        self.assertIsNotNone(rev.find(attrs={"data-testid": "revenue-state-bar"}))
 
-    def test_state_c_outputs_section_has_future_input(self):
-        """State C: RuntimeResult + dirty → output rows still show 'Future input'."""
+    def test_state_c_outputs_section_shows_stale_or_notrun(self):
+        """State C: runtime present + dirty → stale or UNAVAILABLE notice visible."""
         rev = _revenue_div(self._render_with(has_runtime=True, ws_dirty=True))
-        self.assertIn("Future input", rev.get_text())
+        text = rev.get_text()
+        # Either stale notice or the state bar indicates an output is present/stale
+        self.assertIsNotNone(rev.find(attrs={"data-testid": "revenue-state-bar"}))
+        # Must not silently say "Outputs current" when dirty
+        self.assertNotIn("Outputs current", text)
 
-    def test_outputs_current_never_in_revenue_sheet(self):
-        """Revenue sheet itself never says 'Outputs current' — that's the global banner."""
-        for has_runtime in (True, False):
-            for ws_dirty in (True, False):
-                rev = _revenue_div(self._render_with(has_runtime=has_runtime, ws_dirty=ws_dirty))
-                self.assertNotIn(
-                    "Outputs current", rev.get_text(),
-                    f"'Outputs current' must not appear in revenue sheet "
-                    f"(has_runtime={has_runtime}, ws_dirty={ws_dirty})",
-                )
+    def test_not_run_state_has_no_outputs_current_label(self):
+        """NOT_RUN state must not label outputs as current."""
+        rev = _revenue_div(self._render_with(has_runtime=False, ws_dirty=False))
+        self.assertNotIn("Outputs current", rev.get_text())
 
 
 # ---------------------------------------------------------------------------
@@ -542,12 +544,15 @@ class TestRevenueOutputPlaceholders(unittest.TestCase):
             return section.get_text() if section else rev.get_text()
         return rev.get_text()
 
-    def test_all_states_show_future_input(self):
-        """All runtime states: output rows show 'Future input' tag."""
+    def test_all_states_show_state_bar(self):
+        """PR-B: All runtime states: Revenue Outputs section has a state bar."""
         for has_runtime, ws_dirty in ((False, False), (True, False), (True, True)):
-            text = self._outputs_text(self._render_with(has_runtime=has_runtime, ws_dirty=ws_dirty))
-            self.assertIn("Future input", text,
-                          f"'Future input' missing in state has_runtime={has_runtime}, ws_dirty={ws_dirty}")
+            html = self._render_with(has_runtime=has_runtime, ws_dirty=ws_dirty)
+            rev = _revenue_div(html)
+            self.assertIsNotNone(
+                rev.find(attrs={"data-testid": "revenue-state-bar"}),
+                f"revenue-state-bar missing in state has_runtime={has_runtime}, ws_dirty={ws_dirty}"
+            )
 
     def test_no_migration_text_in_outputs(self):
         """Output placeholders must not say 'mapping not yet connected' or 'Available after run'."""
@@ -556,15 +561,16 @@ class TestRevenueOutputPlaceholders(unittest.TestCase):
             self.assertNotIn("mapping not yet connected", text)
             self.assertNotIn("Available after run", text)
 
-    def test_output_section_removed_consolidated_into_planned(self):
-        """Revenue output placeholders are consolidated; no separate 'Revenue Outputs' section."""
+    def test_outputs_section_and_planned_section_both_present(self):
+        """PR-B: Revenue Outputs section and Planned inputs section both exist."""
         html = self._render_with(has_runtime=False, ws_dirty=False)
         rev = _revenue_div(html)
-        # The old nav-rev-outputs section is removed; planned inputs section exists instead
-        self.assertIsNone(rev.find(id="nav-rev-outputs"),
-                          "nav-rev-outputs section must not exist in consolidated layout")
-        self.assertIn("Future input", rev.get_text(),
-                      "Consolidated planned-inputs section must still show 'Future input' tags")
+        self.assertIsNotNone(rev.find(id="nav-rev-outputs"),
+                             "nav-rev-outputs section must exist (PR-B adds runtime outputs)")
+        self.assertIsNotNone(rev.find(id="nav-rev-planned"),
+                             "nav-rev-planned section must exist for non-wired planned inputs")
+        self.assertIn("Not yet supported", rev.get_text(),
+                      "Planned inputs section must show 'Not yet supported' placeholder tags")
 
 
 # ---------------------------------------------------------------------------

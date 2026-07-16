@@ -810,3 +810,295 @@ details.v2-opex-group[open] > .v2-opex-group-header::before { transform: rotate(
   color: #8899aa;
   margin: 0;
 }
+
+/* ── PR-B: Sticky-table tokens ──────────────────────────────────────────── */
+:root {
+  --v2-sched-header-bg:  #f9fafb;
+  --v2-sched-cell-bg:    #fff;
+  --v2-sched-row-alt:    #fafafa;
+  --v2-sched-row-hover:  #f5f5f5;
+  --v2-sticky-bg:        #f4f4f4;
+  --v2-sticky-cell-bg:   #fff;
+  --v2-border:           #ddd;
+  --v2-bg:               #fff;
+  --v2-text:             #111;
+  --v2-text-muted:       #666;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --v2-sched-header-bg:  #2a2a2a;
+    --v2-sched-cell-bg:    #1e1e1e;
+    --v2-sched-row-alt:    #252525;
+    --v2-sched-row-hover:  #2f2f2f;
+    --v2-sticky-bg:        #2a2a2a;
+    --v2-sticky-cell-bg:   #1e1e1e;
+    --v2-border:           #444;
+    --v2-bg:               #1e1e1e;
+    --v2-text:             #e0e0e0;
+    --v2-text-muted:       #999;
+  }
+}
+:root[data-theme="dark"] {
+  --v2-sched-header-bg:  #2a2a2a;
+  --v2-sched-cell-bg:    #1e1e1e;
+  --v2-sched-row-alt:    #252525;
+  --v2-sched-row-hover:  #2f2f2f;
+  --v2-sticky-bg:        #2a2a2a;
+  --v2-sticky-cell-bg:   #1e1e1e;
+  --v2-border:           #444;
+  --v2-bg:               #1e1e1e;
+  --v2-text:             #e0e0e0;
+  --v2-text-muted:       #999;
+}
+:root[data-theme="light"] {
+  --v2-sched-header-bg:  #f9fafb;
+  --v2-sched-cell-bg:    #fff;
+  --v2-sched-row-alt:    #fafafa;
+  --v2-sched-row-hover:  #f5f5f5;
+  --v2-sticky-bg:        #f4f4f4;
+  --v2-sticky-cell-bg:   #fff;
+  --v2-border:           #ddd;
+  --v2-bg:               #fff;
+  --v2-text:             #111;
+  --v2-text-muted:       #666;
+}
+
+/* ── Schedule table contract (Debt · Tax) ─────────────────────────────── */
+.v2-schedule-scroll {
+  overflow-x: auto;
+}
+
+.v2-schedule-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: .82rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Sticky header: each th, not the tr */
+.v2-schedule-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--v2-sched-header-bg);
+  white-space: normal;
+  overflow-wrap: anywhere;
+  padding: .3rem .5rem;
+  border-bottom: 2px solid var(--v2-border);
+  text-align: left;
+}
+
+/* Corner cell: sticky on both axes */
+.v2-schedule-table thead th:first-child {
+  position: sticky;
+  top: 0;
+  left: 0;
+  z-index: 3;
+}
+
+/* Sticky first column in body */
+.v2-schedule-table tbody td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--v2-sched-cell-bg);
+}
+
+.v2-schedule-table tbody td {
+  padding: .25rem .5rem;
+  border-bottom: 1px solid var(--v2-border);
+  white-space: nowrap;
+}
+
+.v2-schedule-table .v2-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Statement table contract (Financial Statements) ─────────────────── */
+.v2-statement-scroll {
+  overflow-x: auto;
+}
+
+.v2-statement-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: .82rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Corner: sticky top + left */
+.v2-statement-corner {
+  position: sticky;
+  top: 0;
+  left: 0;
+  z-index: 3;
+  background: var(--v2-sched-header-bg);
+  text-align: left;
+  padding: .3rem .5rem;
+  min-width: 14rem;
+  border-bottom: 2px solid var(--v2-border);
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+/* Period headers: sticky top only */
+.v2-statement-period-header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--v2-sched-header-bg);
+  text-align: right;
+  padding: .3rem .5rem;
+  min-width: 5rem;
+  border-bottom: 2px solid var(--v2-border);
+  white-space: nowrap;
+}
+
+/* Row label column: sticky left */
+.v2-statement-row-label {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--v2-sched-cell-bg);
+  padding: .25rem .5rem;
+  border-bottom: 1px solid var(--v2-border);
+  white-space: normal;
+  overflow-wrap: anywhere;
+  min-width: 12rem;
+}
+
+/* Numeric value cells */
+.v2-statement-num {
+  text-align: right;
+  padding: .25rem .5rem;
+  border-bottom: 1px solid var(--v2-border);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Total rows */
+.v2-statement-total {
+  font-weight: 600;
+  border-top: 1px solid var(--v2-border);
+}
+
+/* Legacy alias — kept for backward compat with existing markup */
+.v2-fs-sticky-header {
+  position: sticky;
+  top: 0;
+  left: 0;
+  z-index: 3;
+  background: var(--v2-sched-header-bg);
+}
+
+.v2-fs-sticky-cell {
+  background: var(--v2-sticky-cell-bg);
+  position: sticky;
+  left: 0;
+  z-index: 1;
+}
+
+/* ── PR-B: FS period selector + inner tabs ─────────────────────────────── */
+.v2-fs-period-selector {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  padding: .45rem .6rem;
+  margin-bottom: .5rem;
+  border: 1px solid var(--v2-border);
+  border-radius: 4px;
+  font-size: .82rem;
+  background: var(--v2-sticky-bg);
+}
+.v2-fs-period-note {
+  margin-left: auto;
+  color: #999;
+  font-size: .76rem;
+  font-style: italic;
+}
+.v2-fs-period-tab {
+  padding: .25rem .6rem;
+  border: 1px solid #ccc;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: .82rem;
+  color: var(--v2-text-muted);
+  background: transparent;
+}
+.v2-fs-period-tab-active {
+  background: var(--v2-sticky-bg);
+  color: var(--v2-text);
+  font-weight: 600;
+  border-color: var(--v2-border);
+}
+.v2-bs-balance-check-ok  td { color: #2a9d2a; font-weight: 600; }
+.v2-bs-balance-check-warn td { color: #c0392b; font-weight: 700; background: #fff4f4; }
+:root[data-theme="dark"] .v2-bs-balance-check-warn td { background: #3a1a1a; }
+@media (prefers-color-scheme: dark) {
+  .v2-bs-balance-check-warn td { background: #3a1a1a; }
+}
+.v2-fs-inner-tabs {
+  display: flex;
+  gap: .25rem;
+  border-bottom: 2px solid var(--v2-border);
+  margin: .5rem 0 0;
+}
+.v2-fs-inner-tab {
+  padding: .35rem .75rem;
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: 4px 4px 0 0;
+  cursor: pointer;
+  font-size: .82rem;
+  font-weight: 500;
+  color: var(--v2-text-muted);
+  background: transparent;
+  position: relative;
+  bottom: -2px;
+}
+.v2-fs-inner-tab[aria-selected="true"] {
+  border-color: var(--v2-border);
+  border-bottom-color: var(--v2-bg);
+  color: var(--v2-text);
+  background: var(--v2-bg);
+}
+.v2-fs-inner-panel { display: none; }
+.v2-fs-inner-panel.v2-fs-inner-panel-active { display: block; }
+
+/* ── PR-B: Revenue output evidence section ──────────────────────────────── */
+.v2-revenue-state-bar {
+  padding: .4rem .6rem;
+  border-radius: 4px;
+  font-size: .82rem;
+  margin-bottom: .75rem;
+  background: var(--v2-sticky-bg);
+  border: 1px solid var(--v2-border);
+}
+.v2-revenue-stale-notice {
+  background: #78350f;
+  color: #fde68a;
+  border-radius: 3px;
+  padding: .25rem .5rem;
+  font-size: .78rem;
+  margin-top: .35rem;
+  display: inline-block;
+}
+.v2-revenue-derivation {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: .2rem .75rem;
+  font-size: .82rem;
+  padding: .4rem 0;
+}
+.v2-revenue-derivation dt {
+  color: #6b7280;
+  font-size: .72rem;
+  text-transform: uppercase;
+  letter-spacing: .03em;
+}
+.v2-revenue-derivation dd {
+  margin: 0;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}

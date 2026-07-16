@@ -464,6 +464,51 @@ def _render_opex_htmx_sheet(
     return HTMLResponse(content=sheet_html + "\n" + oob)
 
 
+def _build_revenue_ctx(pis, ws, projection=None) -> dict:
+    """Build Revenue sheet context: registry fields + runtime derivation evidence.
+
+    Revenue has no separate RuntimeResult sub-payload (unlike debt/tax/fs).
+    Runtime evidence lives in runtime_summary["revenue_derivation"] which is
+    always present on a successful run.  State classification reuses the
+    same classify_runtime_state helper so the Revenue bar uses the same four
+    states as the other output sheets.
+
+    When a pre-built WorkbookRuntimeProjection bundle is supplied (GET handler),
+    the runtime_summary is read from projection.fs.runtime_summary — it is the
+    same thawed dict as rr.runtime_summary and avoids a second get_runtime_result call.
+    """
+    from app.workbook.runtime_projection import (
+        build_runtime_projection_bundle,
+        classify_runtime_state,
+        thaw_runtime_payload,
+    )
+    from app.workbook.service import WorkbookService
+
+    if projection is None:
+        rr = WorkbookService.get_runtime_result(ws)
+        projection = build_runtime_projection_bundle(rr, ws.dirty)
+        rs = thaw_runtime_payload(rr.runtime_summary) if rr else None
+    else:
+        # Re-use runtime_summary already thawed by fs projection (same dict);
+        # avoids a second get_runtime_result call in the GET handler path.
+        rs = projection.fs.runtime_summary
+
+    # Classify revenue state using the shared FS projection meta (not Debt).
+    # Revenue has no separate payload — its presence is determined by runtime_summary
+    # existing at all, not by whether the debt schedule was produced.
+    meta = projection.fs.meta
+    revenue_derivation = rs.get("revenue_derivation") if rs else None
+    # classify_runtime_state treats None as NOT_RUN; any truthy sentinel as "rr present".
+    _rr_sentinel = object() if meta.has_runtime else None
+    revenue_state = classify_runtime_state(_rr_sentinel, revenue_derivation, meta.is_dirty)
+
+    return {
+        "revenue_fields": _build_sheet_fields("revenue", pis),
+        "revenue_state": revenue_state.value,
+        "revenue_runtime_summary": rs,
+    }
+
+
 def _render_revenue_htmx_sheet(
     request: Request,
     pis,
@@ -471,10 +516,11 @@ def _render_revenue_htmx_sheet(
     project_record,
     project: str,
     field_error: str = "",
+    projection=None,
 ) -> HTMLResponse:
     """Render the revenue sheet partial + OOB status banner for HTMX."""
     ctx = _base_sheet_ctx(request, pis, ws, project_record, project, field_error)
-    ctx["revenue_fields"] = _build_sheet_fields("revenue", pis)
+    ctx.update(_build_revenue_ctx(pis, ws, projection=projection))
     sheet_html = _templates.get_template("partials/sheet_revenue.html").render(ctx)
     banner_html = _templates.get_template("partials/_v2_status_banner.html").render(ctx)
     oob = '<div id="v2-status-banner" hx-swap-oob="true">' + banner_html + "</div>"
@@ -806,7 +852,6 @@ async def v2_workbook(request: Request, project: Optional[str] = None, sheet: Op
         "hydration_script": hydration_script,
         "ps_fields": _build_ps_fields(pis),
         "technical_fields": _build_sheet_fields("project_setup", pis),
-        "revenue_fields": _build_sheet_fields("revenue", pis),
         "capex_fields": _build_sheet_fields("capex", pis),
         "opex_fields": _build_sheet_fields("opex", pis),
         "debt_fields": _build_sheet_fields("debt", pis),
@@ -827,10 +872,11 @@ async def v2_workbook(request: Request, project: Optional[str] = None, sheet: Op
     }
     context.update(_build_capex_vm_ctx(project_record, pis))
     context.update(_build_opex_vm_ctx(project_record, pis))
-    # Build projection bundle once; pass it to all three sheet context builders.
+    # Build projection bundle once; pass it to all four output sheet builders.
     from app.workbook.runtime_projection import build_runtime_projection_bundle
     _rr = WorkbookService.get_runtime_result(ws)
     _projection = build_runtime_projection_bundle(_rr, ws.dirty)
+    context.update(_build_revenue_ctx(pis, ws, projection=_projection))
     context.update(_build_debt_ctx(pis, ws, projection=_projection))
     context.update(_build_tax_ctx(pis, ws, projection=_projection))
     context.update(_build_financial_statements_ctx(pis, ws, projection=_projection))
@@ -1441,6 +1487,18 @@ async def v2_workbook_run(
         msg = "Engine run failed — please try again or contact support."
         return _htmx_error(msg, ws) if is_htmx else _non_htmx_error(msg)
 
+    # ── Step 11b: enrich runtime_summary with derivation evidence ────────────── #
+    # result["kpis"] is the raw engine KPI dict.  Derivation evidence is a
+    # separate top-level key produced by _build_runtime_derivation_evidence.
+    # We format and embed revenue_derivation here so it is persisted with the
+    # runtime_summary and can be read back by _build_revenue_ctx without a
+    # second engine call or an additional DB query.
+    from app.ui.runtime_summary import _format_revenue_derivation as _fmt_rev_deriv
+    _derivation_evidence = result.get("derivation_evidence", {})
+    _revenue_derivation_raw = _derivation_evidence.get("revenue", {})
+    _kpis_enriched = dict(result["kpis"])
+    _kpis_enriched["revenue_derivation"] = _fmt_rev_deriv(_revenue_derivation_raw)
+
     # ── Step 12: atomic commit (final CAS + promote + dirty=False) ────────── #
     runtime_snapshot_id = _utc_compact()
     ran_at = datetime.now(timezone.utc)
@@ -1452,7 +1510,7 @@ async def v2_workbook_run(
             expected_composite_hash=content_hash,
             runtime_snapshot_id=runtime_snapshot_id,
             runtime_origin=runtime_origin or "v2_run",
-            runtime_summary=result["kpis"],
+            runtime_summary=_kpis_enriched,
             financial_statements=result.get("financial_statements"),
             debt_schedule=result.get("debt_schedule"),
             tax_schedule=result.get("tax_schedule"),
