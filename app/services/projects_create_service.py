@@ -151,6 +151,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
 
+from app.utils.workbook_flag import project_workbook_url
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Public dataclasses
@@ -437,6 +439,6 @@ async def execute_projects_create_route(
         },
         status_code=200,
         headers={
-            "HX-Redirect": f"/?project={project_record.project_code}#inputs"
+            "HX-Redirect": project_workbook_url(project_record.project_code, sheet="inputs")
         },
     )

@@ -229,31 +229,62 @@ class TestIndexContextContract:
         )
 
     def test_get_root_has_workspace_marker(self, client):
-        """GET /?project=tuho must render the workspace.
+        """GET /?project=tuho must render an appropriate workspace.
 
-        Phase P2-FIX-1: ``GET /`` (no project) now
-        renders the Project Home (presentation
-        landing). To verify the workspace shell
-        still renders, query with an explicit
-        ``?project=tuho`` parameter.
+        Phase P2-FIX-1: ``GET /`` (no project) now renders the Project
+        Home. ``GET /?project=tuho`` either:
+
+        - (V2 active, default): redirects to ``/v2/workbook?project=tuho``
+          — the response must contain a V2 shell marker.
+        - (V2 inactive, FINCO_WORKBOOK_V2=0): renders the legacy workspace
+          — the response must contain a legacy workspace marker.
+
+        This test detects the current flag state and asserts the
+        appropriate contract so it remains valid under both configurations.
         """
+        import os as _os
+        from app.utils.workbook_flag import workbook_v2_active
+
         r = client.get("/?project=tuho", follow_redirects=True)
         body = r.text
-        markers = [
-            "ps-ap-name",        # 56E sidebar
-            "data-tab=\"help\"",  # 56B help tab
-            "banner-56f",        # 56F banner
-            "panel-overview",    # overview tab panel
-            "panel-help",        # help tab panel
-        ]
-        for marker in markers:
-            if marker in body:
-                # Found at least one workspace marker.
+
+        if workbook_v2_active():
+            # V2 active: should have landed on /v2/workbook?project=tuho
+            v2_markers = [
+                "v2-workbook",       # V2 shell id/class
+                "v2-workbook-shell", # V2 shell marker
+                "v2-sheet",          # V2 sheet panel
+            ]
+            for marker in v2_markers:
+                if marker in body:
+                    return
+            # Also acceptable: the redirect URL itself in a meta-refresh
+            if "/v2/workbook" in body:
                 return
-        pytest.fail(
-            "GET /?project=tuho response is missing every workspace "
-            "marker. Expected at least one of: " + ", ".join(markers)
-        )
+            pytest.fail(
+                "GET /?project=tuho (V2 active) response is missing every V2 "
+                "workbook marker. Expected at least one of: "
+                + ", ".join(v2_markers)
+                + f"\nFinal URL: {r.url}\nBody snippet: {body[:500]}"
+            )
+        else:
+            # V2 inactive: should render the legacy workspace
+            legacy_markers = [
+                "ps-ap-name",        # 56E sidebar
+                "data-tab=\"help\"",  # 56B help tab
+                "banner-56f",        # 56F banner
+                "panel-overview",    # overview tab panel
+                "panel-help",        # help tab panel
+            ]
+            for marker in legacy_markers:
+                if marker in body:
+                    return
+            pytest.fail(
+                "GET /?project=tuho (V2 inactive) response is missing every "
+                "legacy workspace marker. Expected at least one of: "
+                + ", ".join(legacy_markers)
+                + f"\nBody snippet: {body[:500]}"
+            )
 
     def test_get_root_no_project_redirects_to_library(self, client):
         """Hotfix project-library-data-hygiene: ``GET /`` (no

@@ -23,8 +23,10 @@ from __future__ import annotations
 
 from typing import List, Optional
 
-from fastapi import APIRouter, Form, Request
+from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+
+from app.utils.workbook_flag import require_v2_active
 
 from app.auth import COOKIE_NAME, decode_session_token
 from app.v2.capex_commands import (
@@ -162,6 +164,7 @@ async def capex_line_add(
     notes: str = Form(default=""),
     workbook_version: str = Form(...),
     content_hash: str = Form(...),
+    _: None = Depends(require_v2_active),
 ):
     """Add a custom CAPEX row to an eligible group."""
     user = _get_current_user(request)
@@ -220,6 +223,7 @@ async def capex_line_update(
     row_version: str = Form(...),
     workbook_version: str = Form(...),
     content_hash: str = Form(...),
+    _: None = Depends(require_v2_active),
 ):
     """Update an existing custom CAPEX row (optimistic-lock on row_version)."""
     user = _get_current_user(request)
@@ -279,6 +283,7 @@ async def capex_line_deactivate(
     row_version: str = Form(...),
     workbook_version: str = Form(...),
     content_hash: str = Form(...),
+    _: None = Depends(require_v2_active),
 ):
     """Deactivate (soft-delete) a custom CAPEX row."""
     user = _get_current_user(request)
@@ -330,6 +335,7 @@ async def capex_line_reorder(
     row_version: List[str] = Form(default=[]),
     workbook_version: str = Form(...),
     content_hash: str = Form(...),
+    _: None = Depends(require_v2_active),
 ):
     """Atomically reorder all custom rows within a CAPEX group."""
     user = _get_current_user(request)

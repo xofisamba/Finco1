@@ -239,15 +239,16 @@ class TestInputsSlice1Routes(unittest.TestCase):
         self.assertNotIn("Capacity Factor", inputs_html)
 
     def test_flag_off_preserves_existing_inputs_sheet(self):
-        with patch.dict(os.environ, {"FINCO_INPUTS_SLICE1_ENABLED": ""}):
+        with patch.dict(os.environ, {"FINCO_INPUTS_SLICE1_ENABLED": "0"}):
             html = _get_workbook(self.client, self.project_code)
         self.assertNotIn("Canonical Slice 1", html)
-        self.assertIn("Revenue Summary", html)
-        self.assertIn("CAPEX Summary", html)
+        # Legacy accordion must NOT appear; disabled config-state notice shown instead.
+        self.assertNotIn("Revenue Summary", html)
+        self.assertIn("v2-slice1-config-state", html)
 
     def test_flag_off_rejects_slice1_post(self):
         html = _get_workbook(self.client, self.project_code)
-        with patch.dict(os.environ, {"FINCO_INPUTS_SLICE1_ENABLED": ""}):
+        with patch.dict(os.environ, {"FINCO_INPUTS_SLICE1_ENABLED": "0"}):
             resp = _post_slice1(
                 self.client,
                 self.project_code,
@@ -255,7 +256,7 @@ class TestInputsSlice1Routes(unittest.TestCase):
                 "88",
                 _extract_hash(html),
             )
-        self.assertEqual(resp.status_code, 404)
+        self.assertEqual(resp.status_code, 409)
 
     def test_editable_capacity_saves_and_resolves_to_projectinputs(self):
         html = _get_workbook(self.client, self.project_code)

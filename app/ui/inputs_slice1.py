@@ -143,8 +143,14 @@ class Slice1Section:
 
 
 def inputs_slice1_enabled() -> bool:
-    """Return True when the feature flag explicitly enables Slice 1."""
-    return os.getenv(SLICE1_FLAG, "").strip().lower() in {"1", "true", "yes", "on"}
+    """Return True when Slice 1 is active (default: active when flag is absent).
+
+    Delegates to the canonical flag helper. Kept for call sites that
+    import directly from this module; new code should use
+    ``app.utils.workbook_flag.inputs_slice1_active``.
+    """
+    from app.utils.workbook_flag import inputs_slice1_active
+    return inputs_slice1_active()
 
 
 def build_inputs_slice1_sections(

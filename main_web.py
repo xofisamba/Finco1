@@ -169,19 +169,19 @@ templates.env.globals["asset_version"] = ASSET_VERSION
 from app.library.router import router as _library_router
 app.include_router(_library_router)
 
-# -- Workbook V2 feature flag -------------------------------------------------
-# Canonical truthy values: "1", "true", "yes", "on" (case-insensitive,
-# whitespace-stripped). When absent or any other value, all legacy routes
-# are unaffected and ``workbook_destination()`` in
-# ``app/library/router.py`` falls back to the legacy workspace.
-_v2_flag = os.environ.get("FINCO_WORKBOOK_V2", "").strip().lower()
-if _v2_flag in ("1", "true", "yes", "on"):
-    from app.v2.router import router as _v2_router
-    app.include_router(_v2_router, prefix="/v2")
-    from app.v2.capex_router import capex_router as _v2_capex_router
-    app.include_router(_v2_capex_router, prefix="/v2/capex")
-    from app.v2.opex_router import opex_router as _v2_opex_router
-    app.include_router(_v2_opex_router, prefix="/v2/opex")
+# -- Workbook V2 — always mounted (inactive guard inside each router) ---------
+# The V2 routers are mounted unconditionally so that:
+#   1. ``GET /v2/workbook`` can issue a 302 to the library when the flag is off.
+#   2. All 11 mutation endpoints return 409 (via require_v2_active dependency)
+#      instead of 404 when the flag is off, preserving a consistent contract.
+#
+# Flag default changed in PR-A: absent → ACTIVE (see app/utils/workbook_flag.py).
+from app.v2.router import router as _v2_router
+app.include_router(_v2_router, prefix="/v2")
+from app.v2.capex_router import capex_router as _v2_capex_router
+app.include_router(_v2_capex_router, prefix="/v2/capex")
+from app.v2.opex_router import opex_router as _v2_opex_router
+app.include_router(_v2_opex_router, prefix="/v2/opex")
 
 
 def _friendly_error(exc: Exception, context: str = "") -> str:
@@ -2577,6 +2577,12 @@ async def index(request: Request, project: str | None = None):
         # entry point for browsing projects.
         return RedirectResponse(url="/library", status_code=302)
 
+    project_code = (project or "").strip()
+    if project_code:
+        from app.utils.workbook_flag import project_workbook_url, workbook_v2_active
+        if workbook_v2_active():
+            return RedirectResponse(url=project_workbook_url(project_code), status_code=302)
+
     project_record = _resolve_project_record(user, project)
     (
         project_record,
@@ -3489,8 +3495,11 @@ def _home_user_projects(user) -> list:
                 status = "Run completed"
         else:
             status = "Draft"
+        from app.utils.workbook_flag import project_workbook_url as _pwurl
+        import urllib.parse as _up
+        code = record.project_code
         rows.append({
-            "project_code": record.project_code,
+            "project_code": code,
             "name": record.project_name,
             "technology": _resolve_technology(record),
             "country": snap.get("country_market") or "—",
@@ -3498,6 +3507,13 @@ def _home_user_projects(user) -> list:
             "last_edited": str(record.updated_at)[:10] if record.updated_at else "—",
             "last_run": str(last_run.get("run_at") or last_run.get("timestamp") or "")[:10] or "—",
             "status": status,
+            # Canonical destination URLs — flag-aware, built server-side
+            "workbook_url": _pwurl(code),
+            "workbook_url_inputs": _pwurl(code, sheet="inputs"),
+            "workbook_url_capex": _pwurl(code, sheet="capex"),
+            "workbook_url_opex": _pwurl(code, sheet="opex"),
+            "workbook_url_results": _pwurl(code),
+            "workbook_url_scenarios": f"/scenarios?project={_up.quote(code, safe='')}",
         })
     return rows
 
@@ -3817,6 +3833,10 @@ async def create_project_route(
     outcome = await execute_projects_create_route(
         request=request, submitted=submitted, user=user, deps=deps,
     )
+    # For non-HTMX browsers, translate HX-Redirect into a real 303.
+    if outcome.status_code == 200 and outcome.headers and "HX-Redirect" in outcome.headers:
+        if request.headers.get("HX-Request") != "true":
+            return RedirectResponse(url=outcome.headers["HX-Redirect"], status_code=303)
     return templates.TemplateResponse(
         request=request,
         name=outcome.template_name,
@@ -3894,7 +3914,8 @@ async def save_workspace_draft_endpoint(request: Request):
                     user.user_id, active_project_code
                 )
                 if existing:
-                    redirect_url = f"/?project={existing.project_code}"
+                    from app.utils.workbook_flag import project_workbook_url as _pwurl
+                    redirect_url = _pwurl(existing.project_code)
                     return JSONResponse(
                         {"redirect": redirect_url},
                         status_code=200,
@@ -5453,8 +5474,9 @@ async def confirm_first_edit_copy_endpoint(
     # this source, redirect to it instead of creating another.
     existing = _find_existing_working_copy(user.user_id, project_code)
     if existing:
+        from app.utils.workbook_flag import project_workbook_url as _pwurl
         return RedirectResponse(
-            url=f"/?project={existing.project_code}", status_code=302
+            url=_pwurl(existing.project_code), status_code=302
         )
 
     # Reuse the existing /save-as machinery. The deps below are
