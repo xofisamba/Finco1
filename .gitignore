@@ -29,8 +29,14 @@ tests/__pycache__/
 tests/**/__pycache__/
 persistence/__pycache__/
 reporting/__pycache__/
+*.db.backup.*.sqlite3
+*.db.backup.*
+*.archive-manifest.local.json
+*.archive-audit.local.json
+*.archive-inventory.local.json
 *.xlsm
 *.xlsx
 !tests/fixtures/*.xlsx
 !tests/fixtures/*.xlsm
 .pytest-tmp*/
+.worktrees/

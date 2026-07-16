@@ -5,11 +5,36 @@ Routes
 GET  /library                          — full project library page
 GET  /library/list                     — HTMX partial: paginated project list
 POST /library/clone/{source_project_id} — create working copy, redirect to workbook
+
+Project Library Open / Clone destination is flag-aware. The single
+authoritative helper ``workbook_destination(project_code)`` chooses
+between the legacy workspace and the Workbook V2 route based on
+``FINCO_WORKBOOK_V2``. Truthy values are exactly:
+
+    "1" | "true" | "yes" | "on"
+
+Anything else (including unset, "0", "false", "no", "off", empty)
+falls back to the legacy workspace.
+
+This helper is the only place that decides the Open / Clone target.
+The same helper is used for:
+
+* Project Library Open link (``GET /library`` and ``GET /library/list``)
+* Working-copy clone redirect (``POST /library/clone/{id}``)
+* HTMX ``HX-Redirect`` for the clone handler
+* Non-HTMX 303 ``Location`` for the clone handler
+
+A Project Library Open link must NEVER point at an unmounted route,
+even when the operator sets ``FINCO_WORKBOOK_V2=1`` but the V2
+router failed to import. In that pathological case the helper falls
+back to the legacy workspace.
 """
 from __future__ import annotations
 
 import math
+import os
 from typing import Optional
+from urllib.parse import quote
 
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
@@ -18,6 +43,91 @@ router = APIRouter()
 
 PAGE_SIZE = 20
 
+# ---------------------------------------------------------------------------
+# Workbook destination helper
+# ---------------------------------------------------------------------------
+
+_TRUTHY_VALUES = frozenset({"1", "true", "yes", "on"})
+
+
+def _is_v2_router_mounted() -> bool:
+    """Return True iff the exact ``/v2/workbook`` route is
+    mounted on the FastAPI app. A route such as
+    ``/v2/capex/line/add`` or ``/v2/opex/line/add`` does NOT
+    alone prove that ``/v2/workbook`` is mounted; the probe
+    checks the exact path. The probe walks nested
+    ``APIRouter`` includes because FastAPI's
+    ``include_router`` wraps sub-routers in ``_IncludedRouter``
+    entries whose own ``path`` is empty. Best-effort: any
+    introspection failure returns False so the helper falls
+    back to the legacy workspace.
+    """
+    try:
+        from main_web import app  # local import to avoid cycles
+    except Exception:
+        return False
+    try:
+        target = "/v2/workbook"
+
+        def _walk(routes, prefix: str) -> bool:
+            for route in routes:
+                # FastAPI include_router wraps the sub-router
+                # in a _IncludedRouter entry whose own path
+                # is empty. The include prefix is held in
+                # route.include_context.prefix and the
+                # APIRouter itself in
+                # route.include_context.included_router.
+                ctx = getattr(route, "include_context", None)
+                if ctx is not None:
+                    sub_prefix = getattr(ctx, "prefix", "") or ""
+                    inner = getattr(ctx, "included_router", None)
+                    if inner is not None:
+                        if _walk(
+                            getattr(inner, "routes", []) or [],
+                            prefix + sub_prefix,
+                        ):
+                            return True
+                    continue
+                # A regular APIRoute: combine prefix with
+                # path. Mount entries (static files) are
+                # skipped.
+                own_path = getattr(route, "path", None)
+                if not own_path:
+                    continue
+                full = prefix + own_path
+                if full == target:
+                    return True
+            return False
+
+        return _walk(app.routes, "")
+    except Exception:
+        return False
+
+
+def workbook_v2_enabled() -> bool:
+    """Return True iff the operator has explicitly enabled
+    Workbook V2 with a canonical truthy value AND the V2 router
+    is actually mounted on the app."""
+    flag = os.environ.get("FINCO_WORKBOOK_V2", "").strip().lower()
+    if flag not in _TRUTHY_VALUES:
+        return False
+    return _is_v2_router_mounted()
+
+
+def workbook_destination(project_code: str) -> str:
+    """Return the navigation target for opening a project from
+    the Project Library. Uses Workbook V2 iff enabled AND mounted;
+    otherwise falls back to the legacy workspace.
+    """
+    code = quote((project_code or "").strip(), safe="")
+    if workbook_v2_enabled():
+        return f"/v2/workbook?project={code}"
+    return f"/?project={code}"
+
+
+# ---------------------------------------------------------------------------
+# Internal helpers
+# ---------------------------------------------------------------------------
 
 def _get_current_user(request: Request):
     from main_web import get_current_user
@@ -83,6 +193,8 @@ async def project_library_page(
         "user_project_records": [],
         "factory_template_projects": [],
         "active_project_code": None,
+        "workbook_destination_fn": workbook_destination,
+        "workbook_v2_enabled_flag": workbook_v2_enabled(),
     }
     return _templates().TemplateResponse(request=request, name="library/project_library.html", context=ctx)
 
@@ -127,6 +239,8 @@ async def project_library_list(
         "has_prev": page > 1,
         "has_next": page < total_pages,
         "selected_project": project or "",
+        "workbook_destination_fn": workbook_destination,
+        "workbook_v2_enabled_flag": workbook_v2_enabled(),
     }
     return _templates().TemplateResponse(request=request, name="library/project_library_list.html", context=ctx)
 
@@ -159,13 +273,8 @@ async def project_library_clone(
     except (ValueError, ProtectedProjectError) as exc:
         return JSONResponse({"error": str(exc)}, status_code=400)
 
+    dest = workbook_destination(new_project.project_code)
     is_htmx = request.headers.get("HX-Request") == "true"
-    _v2_flag = __import__("os").environ.get("FINCO_WORKBOOK_V2", "").strip().lower()
-    if _v2_flag in ("1", "true", "yes"):
-        dest = f"/v2/workbook?project={new_project.project_code}"
-    else:
-        dest = f"/?project={new_project.project_code}"
-
     if is_htmx:
         from fastapi.responses import Response
         resp = Response(status_code=204)

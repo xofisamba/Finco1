@@ -170,10 +170,12 @@ from app.library.router import router as _library_router
 app.include_router(_library_router)
 
 # -- Workbook V2 feature flag -------------------------------------------------
-# Set FINCO_WORKBOOK_V2=1 (or "true"/"yes") to mount the /v2 router.
-# When absent or falsy, all legacy routes are unaffected.
+# Canonical truthy values: "1", "true", "yes", "on" (case-insensitive,
+# whitespace-stripped). When absent or any other value, all legacy routes
+# are unaffected and ``workbook_destination()`` in
+# ``app/library/router.py`` falls back to the legacy workspace.
 _v2_flag = os.environ.get("FINCO_WORKBOOK_V2", "").strip().lower()
-if _v2_flag in ("1", "true", "yes"):
+if _v2_flag in ("1", "true", "yes", "on"):
     from app.v2.router import router as _v2_router
     app.include_router(_v2_router, prefix="/v2")
     from app.v2.capex_router import capex_router as _v2_capex_router
@@ -2551,20 +2553,29 @@ async def index(request: Request, project: str | None = None):
     Project Home URL. The legacy ``/home`` route
     redirects here (canonicalisation).
 
+    Hotfix project-library-data-hygiene: ``GET /`` with no
+    project now redirects to ``/library`` (the paginated
+    Project Library) instead of rendering the legacy
+    Project Home. The library is the single authoritative
+    entry point for the project list (20 per page, search,
+    role filter, cross-user isolation). The legacy Project
+    Home and the ``/home`` redirect target are preserved for
+    back-compat but are no longer reached via ``/``.
+
     Behaviour:
-    - ``GET /`` (no project) renders the Project
-      Home (My Projects + Create New Project CTA).
+    - ``GET /`` (no project) -> 302 to ``/library``.
     - ``GET /?project=tuho`` (or any project) opens
-      that project's workspace.
+      that project's workspace (unchanged).
     """
     user = get_current_user(request)
     if not user:
         return RedirectResponse(url="/login", status_code=302)
 
     if not (project or "").strip():
-        # No project selected: render Project Home
-        # (the same view that /home used to render).
-        return _render_project_home(request, user)
+        # No project selected: redirect to the paginated
+        # Project Library. This is the single authoritative
+        # entry point for browsing projects.
+        return RedirectResponse(url="/library", status_code=302)
 
     project_record = _resolve_project_record(user, project)
     (

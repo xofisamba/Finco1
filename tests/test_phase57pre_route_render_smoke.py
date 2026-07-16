@@ -255,29 +255,38 @@ class TestIndexContextContract:
             "marker. Expected at least one of: " + ", ".join(markers)
         )
 
-    def test_get_root_no_project_renders_project_home(self, client):
-        """Phase P2-FIX-1: ``GET /`` (no project)
-        renders the Project Home (My Projects +
-        Create New Project CTA), not the old
-        workspace shell.
-        """
-        r = client.get("/", follow_redirects=True)
-        body = r.text
-        # The Project Home partial exposes
-        # the "My projects" section label
-        # and the Create New Project CTA.
-        home_markers = [
-            "ph-cta",            # Create New Project CTA class
-            "ph-section",        # My projects section class
-            "ph-grid",           # Project grid
-            "ph-card",           # Project card
+    def test_get_root_no_project_redirects_to_library(self, client):
+        """Hotfix project-library-data-hygiene: ``GET /`` (no
+        project) now 302-redirects to ``/library``. The Project
+        Library is the single authoritative entry point. The
+        Project Home markers must NOT appear on ``/`` itself,
+        but they may appear after the redirect on ``/library``
+        (and historically did on the now-redirected Project
+        Home). This test asserts the redirect."""
+        r = client.get("/", follow_redirects=False)
+        assert r.status_code == 302, (
+            f"GET / (no project) must 302 to /library; got {r.status_code}"
+        )
+        assert r.headers.get("location") == "/library", (
+            f"GET / (no project) must redirect to /library; "
+            f"got {r.headers.get('location')}"
+        )
+        # Following the redirect must yield a Project Library
+        # marker. The library template uses 'lib-grid' or
+        # 'project-library' tokens; we accept any one of these.
+        r2 = client.get("/library", follow_redirects=True)
+        body = r2.text
+        library_markers = [
+            "library",
+            "Project Library",
+            "lib-grid",
         ]
-        for marker in home_markers:
+        for marker in library_markers:
             if marker in body:
                 return
         pytest.fail(
-            "GET / (no project) response is missing every Project Home "
-            "marker. Expected at least one of: " + ", ".join(home_markers)
+            "GET /library is missing every Project Library marker. "
+            "Expected at least one of: " + ", ".join(library_markers)
         )
 
     def test_get_root_no_project_does_not_render_workspace_machinery(self, client):
