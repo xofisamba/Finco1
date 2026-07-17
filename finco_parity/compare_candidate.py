@@ -49,7 +49,7 @@ from finco_parity.dual_run import (
     BaselineRunStatus,
     compare_candidate_directory,
 )
-from finco_parity.manifest import manifest_baseline_ids, ManifestIntegrityError
+from finco_parity.manifest import manifest_baseline_ids, ManifestIntegrityError, validate_manifest_integrity
 
 
 # ---------------------------------------------------------------------------
@@ -59,28 +59,21 @@ from finco_parity.manifest import manifest_baseline_ids, ManifestIntegrityError
 _STATUS_EXIT_CODE: dict[BaselineRunStatus, int] = {
     BaselineRunStatus.PASS: 0,
     BaselineRunStatus.EXECUTION_ERROR: 1,
+    BaselineRunStatus.UNKNOWN_BASELINE: 2,
+    BaselineRunStatus.PAYLOAD_DRIFT: 3,
     BaselineRunStatus.MANIFEST_INTEGRITY_FAILURE: 4,
     BaselineRunStatus.ENVIRONMENT_MISMATCH: 5,
-    BaselineRunStatus.PAYLOAD_DRIFT: 3,
-    BaselineRunStatus.LEGACY_DRIFT: 8,
     BaselineRunStatus.CANDIDATE_MISSING: 6,
     BaselineRunStatus.CANDIDATE_INVALID: 6,
     BaselineRunStatus.IDENTITY_MISMATCH: 7,
     BaselineRunStatus.SCHEMA_MISMATCH: 7,
+    BaselineRunStatus.LEGACY_DRIFT: 8,
 }
 
 
 def _exit_code_for_aggregate(result: AggregateRunResult) -> int:
-    """Return the most-severe exit code across all baseline results."""
-    if result.overall_status == BaselineRunStatus.PASS:
-        return 0
-    # Return the highest (most-severe) exit code among failed baselines.
-    max_code = 0
-    for r in result.baseline_results:
-        code = _STATUS_EXIT_CODE.get(r.status, 1)
-        if code > max_code:
-            max_code = code
-    return max_code
+    """Return the exit code for the aggregate result, derived from overall_status."""
+    return _STATUS_EXIT_CODE.get(result.overall_status, 1)
 
 
 # ---------------------------------------------------------------------------
@@ -105,8 +98,7 @@ def _write_report(path: Path, content: bytes | str, label: str) -> str | None:
         if isinstance(content, bytes):
             path.write_bytes(content)
         else:
-            if not content.endswith("\n"):
-                content += "\n"
+            content = content.rstrip("\n") + "\n"
             path.write_text(content, encoding="utf-8")
         return None
     except OSError as exc:
@@ -275,20 +267,21 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 2
 
+    # Validate manifest and load baseline IDs upfront.
+    try:
+        validate_manifest_integrity()
+        all_ids = manifest_baseline_ids()
+    except ManifestIntegrityError as exc:
+        print(f"ERROR: Manifest integrity failure: {exc}", file=sys.stderr)
+        return 4
+    except Exception as exc:
+        print(f"ERROR: Failed to load manifest: {exc}", file=sys.stderr)
+        return 4
+
     # Determine target baseline IDs.
     if args.all:
-        try:
-            baseline_ids = None  # means all
-        except Exception as exc:
-            print(f"ERROR: Failed to load manifest: {exc}", file=sys.stderr)
-            return 4
+        baseline_ids = None  # means all in compare_candidate_directory
     else:
-        # Single baseline.
-        try:
-            all_ids = manifest_baseline_ids()
-        except Exception as exc:
-            print(f"ERROR: Failed to load manifest: {exc}", file=sys.stderr)
-            return 4
         if args.baseline_id not in all_ids:
             print(
                 f"ERROR: Unknown baseline_id {args.baseline_id!r}. "
@@ -314,13 +307,13 @@ def main(argv: list[str] | None = None) -> int:
             max_diffs=args.max_diffs,
             verbose=verbose,
         )
+    except ManifestIntegrityError as exc:
+        print(f"ERROR: Manifest integrity failure: {exc}", file=sys.stderr)
+        return 4
     except ValueError as exc:
         # Unknown baseline IDs surfaced here.
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
-    except ManifestIntegrityError as exc:
-        print(f"ERROR: Manifest integrity failure: {exc}", file=sys.stderr)
-        return 4
     except Exception as exc:
         print(f"ERROR: Unexpected error during comparison: {exc}", file=sys.stderr)
         traceback.print_exc(file=sys.stderr)

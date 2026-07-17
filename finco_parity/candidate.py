@@ -206,19 +206,19 @@ class FileCandidateSnapshotProvider:
         except ValueError:
             raise CandidatePathError(
                 f"{baseline_id}: candidate path escapes candidate_dir "
-                f"(symlink escape?): {resolved}"
+                f"(symlink escape?): {rel}"
             )
 
         # Reject directories.
         if resolved.is_dir():
             raise CandidatePathError(
-                f"{baseline_id}: candidate path resolves to a directory: {resolved}"
+                f"{baseline_id}: candidate path resolves to a directory: {rel}"
             )
 
         # Missing file.
         if not resolved.exists():
             raise CandidateFileNotFoundError(
-                f"{baseline_id}: candidate snapshot not found: {resolved}"
+                f"{baseline_id}: candidate snapshot not found: {rel}"
             )
 
         raw_bytes = resolved.read_bytes()
@@ -226,7 +226,7 @@ class FileCandidateSnapshotProvider:
             data = json.loads(raw_bytes)
         except Exception as exc:
             raise CandidateError(
-                f"{baseline_id}: cannot parse candidate JSON at {resolved}: {exc}"
+                f"{baseline_id}: cannot parse candidate JSON at {rel}: {exc}"
             )
 
         if not isinstance(data, dict):
@@ -245,7 +245,7 @@ class FileCandidateSnapshotProvider:
             )
         if raw_bytes != expected_bytes:
             raise CandidateContentInvalid(
-                f"{baseline_id}: candidate snapshot at {resolved} is not in "
+                f"{baseline_id}: candidate snapshot at {rel} is not in "
                 f"canonical JSON form (file bytes != canonical_json_bytes(parsed)). "
                 f"Re-serialize with canonical_json_bytes() to fix."
             )
@@ -281,24 +281,35 @@ def validate_candidate_snapshot(
     """Validate a candidate snapshot dict against the given baseline reference.
 
     Checks performed (in order):
-    1. Identity fields (schema_version, baseline_id, input_source_id) must
-       match *reference* exactly.
-    2. Structural schema validation via ``validate_snapshot()``.
-    3. No NaN or infinity in any numeric value.
-    4. If *raw_bytes* is provided, canonical byte equality check.
+    1. schema_version must match reference → CandidateSchemaMismatch on mismatch.
+    2. Identity fields (baseline_id, input_source_id, baseline_commit_sha) must
+       match *reference* exactly → CandidateIdentityMismatch on any mismatch.
+    3. Structural schema validation via ``validate_snapshot()`` → CandidateSchemaMismatch.
+    4. No NaN or infinity in any numeric value → CandidateContentInvalid.
+    5. If *raw_bytes* is provided, canonical byte equality check → CandidateContentInvalid.
 
     Note: ``engine_designation`` and ``run_path_id`` are intentionally NOT
     checked — they are expected provenance differences between legacy and
     candidate engines.
 
     Raises:
-        CandidateValidationError: on any failure.
+        CandidateSchemaMismatch: on schema_version mismatch or structural validation failure.
+        CandidateIdentityMismatch: on identity field mismatch.
+        CandidateContentInvalid: on NaN/inf or non-canonical bytes.
     """
-    # 1. Identity field checks.
+    # 1. Schema version check → CandidateSchemaMismatch.
+    if candidate.get("schema_version") != reference.schema_version:
+        raise CandidateSchemaMismatch(
+            f"schema_version mismatch: expected {reference.schema_version!r}, "
+            f"got {candidate.get('schema_version')!r} "
+            f"(baseline_id={reference.baseline_id!r})"
+        )
+
+    # 2. Identity field checks → CandidateIdentityMismatch.
     _IDENTITY_FIELDS = {
-        "schema_version": reference.schema_version,
         "baseline_id": reference.baseline_id,
         "input_source_id": reference.input_source_id,
+        "baseline_commit_sha": reference.baseline_commit_sha,
     }
     for field, expected in _IDENTITY_FIELDS.items():
         actual = candidate.get(field)
@@ -309,7 +320,7 @@ def validate_candidate_snapshot(
                 f"(baseline_id={reference.baseline_id!r})"
             )
 
-    # 2. Structural schema validation.
+    # 3. Structural schema validation → CandidateSchemaMismatch.
     try:
         validate_snapshot(candidate)
     except SnapshotValidationError as exc:

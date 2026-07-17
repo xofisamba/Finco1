@@ -110,7 +110,7 @@ def test_unknown_baseline_id(mock_env_ok, mock_manifest_ok):
 
     result = run_candidate_provider("nonexistent_baseline_xyz", provider, verify_legacy=False)
 
-    assert result.status == BaselineRunStatus.EXECUTION_ERROR
+    assert result.status == BaselineRunStatus.UNKNOWN_BASELINE
     assert "nonexistent_baseline_xyz" in (result.error_message or "")
 
 
@@ -257,14 +257,14 @@ def test_aggregate_run_result_to_dict():
 # run_candidate_provider: schema_version mismatch → IDENTITY_MISMATCH (typed)
 # ---------------------------------------------------------------------------
 
-def test_schema_version_mismatch_identity_status(tuho_candidate, mock_env_ok, mock_manifest_ok):
-    """schema_version mismatch raises CandidateIdentityMismatch → IDENTITY_MISMATCH status."""
+def test_schema_version_mismatch_schema_mismatch_status(tuho_candidate, mock_env_ok, mock_manifest_ok):
+    """schema_version mismatch raises CandidateSchemaMismatch → SCHEMA_MISMATCH status."""
     bad = dict(tuho_candidate)
     bad["schema_version"] = "9.9.9"
     provider = MagicMock()
     provider.capture_snapshot.return_value = bad
     result = run_candidate_provider(BASELINE_ID, provider, verify_legacy=False)
-    assert result.status == BaselineRunStatus.IDENTITY_MISMATCH
+    assert result.status == BaselineRunStatus.SCHEMA_MISMATCH
 
 
 # ---------------------------------------------------------------------------
@@ -287,10 +287,10 @@ def test_schema_structural_failure_schema_mismatch_status(tuho_candidate, mock_e
 # ---------------------------------------------------------------------------
 
 def test_unknown_baseline_provider_not_called(mock_env_ok, mock_manifest_ok):
-    """Unknown baseline_id returns EXECUTION_ERROR and never calls provider.capture_snapshot."""
+    """Unknown baseline_id returns UNKNOWN_BASELINE and never calls provider.capture_snapshot."""
     provider = MagicMock()
     result = run_candidate_provider("nonexistent_baseline_xyz", provider, verify_legacy=False)
-    assert result.status == BaselineRunStatus.EXECUTION_ERROR
+    assert result.status == BaselineRunStatus.UNKNOWN_BASELINE
     provider.capture_snapshot.assert_not_called()
 
 
@@ -364,3 +364,93 @@ def test_aggregate_severity_completeness():
     from finco_parity.dual_run import _AGGREGATE_SEVERITY
     missing = [s for s in BaselineRunStatus if s not in _AGGREGATE_SEVERITY]
     assert not missing, f"_AGGREGATE_SEVERITY missing entries for: {missing}"
+
+
+# ---------------------------------------------------------------------------
+# run_candidate_provider: baseline_commit_sha mismatch → IDENTITY_MISMATCH
+# ---------------------------------------------------------------------------
+
+def test_baseline_commit_sha_mismatch_identity_status(tuho_candidate, mock_env_ok, mock_manifest_ok):
+    """baseline_commit_sha mismatch → IDENTITY_MISMATCH status."""
+    bad = dict(tuho_candidate)
+    bad["baseline_commit_sha"] = "a" * 40  # wrong SHA
+    provider = MagicMock()
+    provider.capture_snapshot.return_value = bad
+    result = run_candidate_provider(BASELINE_ID, provider, verify_legacy=False)
+    assert result.status == BaselineRunStatus.IDENTITY_MISMATCH
+
+
+# ---------------------------------------------------------------------------
+# run_candidate_provider: unknown baseline → legacy engine not called
+# ---------------------------------------------------------------------------
+
+def test_unknown_baseline_legacy_not_called(mock_env_ok, mock_manifest_ok):
+    """Unknown baseline_id: capture_snapshot from legacy_snapshot is never called."""
+    provider = MagicMock()
+    with patch("finco_parity.dual_run.validate_manifest_integrity"):
+        with patch("finco_parity.legacy_snapshot.capture_snapshot") as mock_legacy:
+            result = run_candidate_provider("nonexistent_baseline_xyz", provider, verify_legacy=True)
+    assert result.status == BaselineRunStatus.UNKNOWN_BASELINE
+    mock_legacy.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Mixed-failure aggregate: MANIFEST_INTEGRITY_FAILURE dominates LEGACY_DRIFT
+# ---------------------------------------------------------------------------
+
+def _make_result(bid, status, error="test"):
+    return BaselineRunResult(
+        baseline_id=bid,
+        status=status,
+        legacy_engine_designation=None,
+        candidate_engine_designation=None,
+        legacy_run_path=None,
+        candidate_run_path=None,
+        comparison_status=None,
+        difference_count=0,
+        differences=(),
+        legacy_warnings=(),
+        candidate_warnings=(),
+        error_message=error,
+    )
+
+
+def test_mixed_failure_aggregate_mif_dominates_legacy_drift():
+    """MANIFEST_INTEGRITY_FAILURE (severity 9) > LEGACY_DRIFT (severity 7)."""
+    from finco_parity.compare_candidate import _exit_code_for_aggregate
+
+    r_mif = _make_result("a", BaselineRunStatus.MANIFEST_INTEGRITY_FAILURE)
+    r_ld = _make_result("b", BaselineRunStatus.LEGACY_DRIFT)
+
+    for (res1, res2, bid1, bid2) in [
+        (r_mif, r_ld, "a", "b"),
+        (r_ld, r_mif, "b", "a"),
+    ]:
+        agg = AggregateRunResult(
+            selected_baselines=(bid1, bid2),
+            passed_baselines=(),
+            failed_baselines=(bid1, bid2),
+            overall_status=BaselineRunStatus.MANIFEST_INTEGRITY_FAILURE,
+            baseline_results=(res1, res2),
+        )
+        assert _exit_code_for_aggregate(agg) == 4, (
+            f"Expected exit 4, got {_exit_code_for_aggregate(agg)} for ordering ({bid1}, {bid2})"
+        )
+
+
+def test_exit_code_for_aggregate_uses_overall_status_only():
+    """_exit_code_for_aggregate derives exit code from overall_status, not individual results."""
+    from finco_parity.compare_candidate import _exit_code_for_aggregate
+
+    # overall_status=MANIFEST_INTEGRITY_FAILURE even if individual results differ
+    r_pass = _make_result("a", BaselineRunStatus.PASS, error=None)
+    r_mif = _make_result("b", BaselineRunStatus.MANIFEST_INTEGRITY_FAILURE)
+
+    agg = AggregateRunResult(
+        selected_baselines=("a", "b"),
+        passed_baselines=("a",),
+        failed_baselines=("b",),
+        overall_status=BaselineRunStatus.MANIFEST_INTEGRITY_FAILURE,
+        baseline_results=(r_pass, r_mif),
+    )
+    assert _exit_code_for_aggregate(agg) == 4

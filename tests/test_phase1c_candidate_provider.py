@@ -308,10 +308,10 @@ def test_validate_raw_bytes_correct_passes(candidate_snapshot, tuho_reference):
 # ---------------------------------------------------------------------------
 
 def test_validate_schema_version_mismatch_typed(candidate_snapshot, tuho_reference):
-    """schema_version mismatch raises CandidateIdentityMismatch (not just CandidateValidationError)."""
+    """schema_version mismatch raises CandidateSchemaMismatch (not CandidateIdentityMismatch)."""
     bad = dict(candidate_snapshot)
     bad["schema_version"] = "9.9.9"
-    with pytest.raises(CandidateIdentityMismatch):
+    with pytest.raises(CandidateSchemaMismatch):
         validate_candidate_snapshot(bad, tuho_reference)
 
 
@@ -401,3 +401,98 @@ def test_file_provider_baseline_id_mismatch_raises_path_error(candidate_dir_with
     provider = FileCandidateSnapshotProvider(candidate_dir_with_tuho)
     with pytest.raises(CandidatePathError, match="baseline_id mismatch"):
         provider.capture_snapshot("wrong_baseline_id", tuho_reference)
+
+
+# ---------------------------------------------------------------------------
+# validate_candidate_snapshot: baseline_commit_sha checks
+# ---------------------------------------------------------------------------
+
+def test_validate_baseline_commit_sha_mismatch(candidate_snapshot, tuho_reference):
+    """baseline_commit_sha mismatch raises CandidateIdentityMismatch."""
+    bad = dict(candidate_snapshot)
+    bad["baseline_commit_sha"] = "a" * 40  # wrong 40-char SHA
+    with pytest.raises(CandidateIdentityMismatch, match="baseline_commit_sha"):
+        validate_candidate_snapshot(bad, tuho_reference)
+
+
+def test_validate_baseline_commit_sha_missing(candidate_snapshot, tuho_reference):
+    """Missing baseline_commit_sha in candidate raises CandidateIdentityMismatch."""
+    bad = dict(candidate_snapshot)
+    bad.pop("baseline_commit_sha", None)
+    with pytest.raises(CandidateIdentityMismatch, match="baseline_commit_sha"):
+        validate_candidate_snapshot(bad, tuho_reference)
+
+
+def test_validate_baseline_commit_sha_correct_passes(candidate_snapshot, tuho_reference):
+    """Matching baseline_commit_sha (same 40-char commit) does not raise."""
+    # tuho_reference.baseline_commit_sha is the real SHA; candidate_snapshot has it too
+    validate_candidate_snapshot(candidate_snapshot, tuho_reference)
+
+
+def test_validate_baseline_commit_sha_different_40char(candidate_snapshot, tuho_reference):
+    """A different 40-char commit SHA raises CandidateIdentityMismatch."""
+    bad = dict(candidate_snapshot)
+    # Build a different SHA from the real one
+    real_sha = tuho_reference.baseline_commit_sha
+    different_sha = ("b" * 40) if real_sha != ("b" * 40) else ("c" * 40)
+    bad["baseline_commit_sha"] = different_sha
+    with pytest.raises(CandidateIdentityMismatch):
+        validate_candidate_snapshot(bad, tuho_reference)
+
+
+# ---------------------------------------------------------------------------
+# Exception routing by type (not by message)
+# ---------------------------------------------------------------------------
+
+def test_identity_mismatch_routing_by_type_not_message(candidate_snapshot, tuho_reference):
+    """CandidateIdentityMismatch is raised regardless of what the message says."""
+    from unittest.mock import patch
+
+    bad = dict(candidate_snapshot)
+    bad["baseline_id"] = "wrong"
+
+    # Even if the message text were random, the type determines routing.
+    # Just verify that any baseline_id mismatch raises CandidateIdentityMismatch.
+    with pytest.raises(CandidateIdentityMismatch):
+        validate_candidate_snapshot(bad, tuho_reference)
+
+
+# ---------------------------------------------------------------------------
+# FileCandidateSnapshotProvider: error messages must NOT contain absolute paths
+# ---------------------------------------------------------------------------
+
+def test_file_provider_missing_file_no_absolute_path(tmp_path, tuho_reference):
+    """error_message from missing file must not contain absolute paths."""
+    provider = FileCandidateSnapshotProvider(tmp_path)
+    try:
+        provider.capture_snapshot(BASELINE_ID, tuho_reference)
+        pytest.fail("Expected CandidateFileNotFoundError")
+    except CandidateFileNotFoundError as exc:
+        msg = str(exc)
+        assert "/home/" not in msg, f"Absolute path in error: {msg}"
+        assert str(tmp_path) not in msg, f"Absolute candidate_dir in error: {msg}"
+
+
+def test_file_provider_symlink_escape_no_absolute_resolved_path(tmp_path, tuho_reference):
+    """error_message from symlink escape must not contain the resolved absolute path."""
+    outside_dir = tmp_path / "outside"
+    outside_dir.mkdir()
+    real_file = outside_dir / "secret.json"
+    real_file.write_bytes(b'{"x": 1}')
+
+    candidate_dir = tmp_path / "candidates"
+    candidate_dir.mkdir()
+
+    symlink_target = candidate_dir / "tuho.json"
+    import os
+    os.symlink(real_file, symlink_target)
+
+    provider = FileCandidateSnapshotProvider(candidate_dir)
+    try:
+        provider.capture_snapshot(BASELINE_ID, tuho_reference)
+        pytest.fail("Expected CandidatePathError")
+    except CandidatePathError as exc:
+        msg = str(exc)
+        # Must not contain the resolved absolute path
+        assert str(real_file) not in msg, f"Absolute resolved path in error: {msg}"
+        assert str(candidate_dir) not in msg, f"Absolute candidate_dir in error: {msg}"

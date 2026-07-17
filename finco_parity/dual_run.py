@@ -70,6 +70,7 @@ class BaselineRunStatus(str, Enum):
     ENVIRONMENT_MISMATCH = "ENVIRONMENT_MISMATCH"
     EXECUTION_ERROR = "EXECUTION_ERROR"
     MANIFEST_INTEGRITY_FAILURE = "MANIFEST_INTEGRITY_FAILURE"
+    UNKNOWN_BASELINE = "UNKNOWN_BASELINE"
 
 
 # ---------------------------------------------------------------------------
@@ -162,6 +163,7 @@ _AGGREGATE_SEVERITY: dict[BaselineRunStatus, int] = {
     BaselineRunStatus.IDENTITY_MISMATCH: 4,
     BaselineRunStatus.CANDIDATE_INVALID: 3,
     BaselineRunStatus.CANDIDATE_MISSING: 2,
+    BaselineRunStatus.UNKNOWN_BASELINE: 2,
     BaselineRunStatus.PAYLOAD_DRIFT: 1,
     BaselineRunStatus.PASS: 0,
 }
@@ -249,7 +251,7 @@ def run_candidate_provider(
     except KeyError:
         return _error_result(
             baseline_id,
-            BaselineRunStatus.EXECUTION_ERROR,
+            BaselineRunStatus.UNKNOWN_BASELINE,
             f"baseline_id not found in manifest: {baseline_id!r}",
         )
 

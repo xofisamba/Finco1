@@ -262,7 +262,25 @@ def test_max_diffs_zero_is_valid(tmp_path):
 # ---------------------------------------------------------------------------
 
 def test_manifest_integrity_failure_exits_4(tmp_path):
-    """MANIFEST_INTEGRITY_FAILURE status → exit code 4."""
+    """validate_manifest_integrity raising ManifestIntegrityError → exit code 4."""
+    from finco_parity.manifest import ManifestIntegrityError
+    with patch("finco_parity.compare_candidate.validate_manifest_integrity",
+               side_effect=ManifestIntegrityError("bad manifest")):
+        result = cli_main(["--candidate-dir", str(tmp_path), "--all", "--quiet"])
+    assert result == 4
+
+
+def test_manifest_integrity_failure_from_directory_exits_4(tmp_path):
+    """ManifestIntegrityError raised from compare_candidate_directory → exit code 4."""
+    from finco_parity.manifest import ManifestIntegrityError
+    with patch("finco_parity.compare_candidate.compare_candidate_directory",
+               side_effect=ManifestIntegrityError("bad manifest")):
+        result = cli_main(["--candidate-dir", str(tmp_path), "--all", "--quiet"])
+    assert result == 4
+
+
+def test_manifest_integrity_failure_aggregate_status_exits_4(tmp_path):
+    """MANIFEST_INTEGRITY_FAILURE in overall_status → exit code 4 (via _exit_code_for_aggregate)."""
     agg = _make_aggregate(BaselineRunStatus.MANIFEST_INTEGRITY_FAILURE)
     with patch("finco_parity.compare_candidate.compare_candidate_directory", return_value=agg):
         result = cli_main(["--candidate-dir", str(tmp_path), "--all", "--quiet"])
@@ -352,3 +370,122 @@ def test_no_report_written_without_flags(tmp_path):
         cli_main(["--candidate-dir", str(tmp_path), "--all", "--quiet"])
     after = set(tmp_path.iterdir())
     assert after == before, f"Unexpected files written: {after - before}"
+
+
+# ---------------------------------------------------------------------------
+# --all + malformed manifest → exit 4
+# ---------------------------------------------------------------------------
+
+def test_all_malformed_manifest_exits_4(tmp_path):
+    """--all with ManifestIntegrityError from upfront validation → exit 4."""
+    from finco_parity.manifest import ManifestIntegrityError
+    with patch("finco_parity.compare_candidate.validate_manifest_integrity",
+               side_effect=ManifestIntegrityError("corrupt manifest")):
+        result = cli_main(["--candidate-dir", str(tmp_path), "--all", "--quiet"])
+    assert result == 4
+
+
+def test_all_manifest_load_exception_exits_4(tmp_path):
+    """--all with unexpected exception from manifest_baseline_ids → exit 4."""
+    with patch("finco_parity.compare_candidate.manifest_baseline_ids",
+               side_effect=RuntimeError("disk error")):
+        result = cli_main(["--candidate-dir", str(tmp_path), "--all", "--quiet"])
+    assert result == 4
+
+
+# ---------------------------------------------------------------------------
+# Aggregate order-independence via _exit_code_for_aggregate
+# ---------------------------------------------------------------------------
+
+def test_exit_code_for_aggregate_order_independence(tmp_path):
+    """_exit_code_for_aggregate returns same exit code regardless of result ordering."""
+    from finco_parity.compare_candidate import _exit_code_for_aggregate
+    from finco_parity.dual_run import AggregateRunResult, BaselineRunResult
+
+    def _res(bid, status):
+        return BaselineRunResult(
+            baseline_id=bid,
+            status=status,
+            legacy_engine_designation=None,
+            candidate_engine_designation=None,
+            legacy_run_path=None,
+            candidate_run_path=None,
+            comparison_status=None,
+            difference_count=0,
+            differences=(),
+            legacy_warnings=(),
+            candidate_warnings=(),
+            error_message="test",
+        )
+
+    r_mif = _res("a", BaselineRunStatus.MANIFEST_INTEGRITY_FAILURE)
+    r_ld = _res("b", BaselineRunStatus.LEGACY_DRIFT)
+
+    agg1 = AggregateRunResult(
+        selected_baselines=("a", "b"),
+        passed_baselines=(),
+        failed_baselines=("a", "b"),
+        overall_status=BaselineRunStatus.MANIFEST_INTEGRITY_FAILURE,
+        baseline_results=(r_mif, r_ld),
+    )
+    agg2 = AggregateRunResult(
+        selected_baselines=("b", "a"),
+        passed_baselines=(),
+        failed_baselines=("b", "a"),
+        overall_status=BaselineRunStatus.MANIFEST_INTEGRITY_FAILURE,
+        baseline_results=(r_ld, r_mif),
+    )
+    assert _exit_code_for_aggregate(agg1) == 4
+    assert _exit_code_for_aggregate(agg2) == 4
+
+
+# ---------------------------------------------------------------------------
+# Text report trailing newline normalization
+# ---------------------------------------------------------------------------
+
+def test_text_report_trailing_newline_normalization(tmp_path):
+    """_write_report normalizes trailing newlines to exactly one."""
+    from finco_parity.compare_candidate import _write_report
+
+    # zero newlines → one
+    p1 = tmp_path / "r1.txt"
+    _write_report(p1, "content", "r1")
+    text = p1.read_text(encoding="utf-8")
+    assert text.endswith("\n")
+    assert not text.endswith("\n\n")
+
+    # multiple newlines → exactly one
+    p2 = tmp_path / "r2.txt"
+    _write_report(p2, "content\n\n\n", "r2")
+    assert p2.read_text(encoding="utf-8") == "content\n"
+
+    # already one newline → unchanged
+    p3 = tmp_path / "r3.txt"
+    _write_report(p3, "content\n", "r3")
+    assert p3.read_text(encoding="utf-8") == "content\n"
+
+
+# ---------------------------------------------------------------------------
+# Absolute path redaction: error messages must not contain absolute paths
+# ---------------------------------------------------------------------------
+
+def test_error_messages_contain_no_absolute_paths(tmp_path):
+    """Missing candidate file: error_message must not contain absolute paths."""
+    import json
+    from finco_parity.dual_run import compare_candidate_directory
+    from finco_parity.manifest import get_manifest_entry, resolve_snapshot_path
+
+    cand_dir = tmp_path / "candidates"
+    cand_dir.mkdir()
+    # Don't create candidate file → CANDIDATE_MISSING
+
+    result = compare_candidate_directory(cand_dir, ["tuho"], verify_legacy=False)
+
+    for r in result.baseline_results:
+        if r.error_message:
+            assert "/home/" not in r.error_message, f"Absolute path in error_message: {r.error_message}"
+            assert "/tmp/" not in r.error_message, f"Absolute /tmp/ path in error_message: {r.error_message}"
+            assert str(cand_dir) not in r.error_message, f"Absolute cand_dir in error_message: {r.error_message}"
+        d = r.to_dict()
+        msg = d.get("error_message") or ""
+        assert str(tmp_path) not in msg, f"Absolute path in JSON: {msg}"
