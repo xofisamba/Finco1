@@ -1,7 +1,13 @@
 {
-  "status": "PASS",
-  "error_count": 0,
-  "errors": [],
+  "status": "FAIL",
+  "error_count": 5,
+  "errors": [
+    "semantic: tax.vat.rate tuho editable role must not carry formula axis",
+    "curated: tax.vat.rate tuho formula cell D421 is not verified formula",
+    "audit: curated value/editable/formula count does not reconcile",
+    "audit: curated total coordinate count does not reconcile",
+    "audit: curated issue count does not reconcile"
+  ],
   "summary": {
     "canonical_field_count": 70,
     "crosswalk_row_count": 61,
