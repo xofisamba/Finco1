@@ -17,8 +17,8 @@ aggregate severity policy, and supplies a deterministic CLI.
 | Base SHA | `459c20550c6f86e0a869bffc424e91e4a972b6a0` |
 | Branch | `phase1c-candidate-comparison-contract` |
 | PR | #892 — Draft, do not merge |
-| Previous amendment head | `460f1a68f8bb1894c08552ebc0d8466ae8e8f051` |
-| Final head | committed with this amendment |
+| Previous amendment head | `1b4a5c1a2ad18d11818b70966a2ee94c0802f517` |
+| Final head | `1b67506a` (phase1c-candidate-comparison-contract) |
 
 ---
 
@@ -33,6 +33,44 @@ CandidateError(ValueError)
         ├── CandidateSchemaMismatch    — schema_version mismatch or structural schema failure
         └── CandidateContentInvalid   — NaN/inf or non-canonical bytes
 ```
+
+---
+
+## `ValidatedManifestContext` — Single Manifest Boundary
+
+```python
+@dataclass(frozen=True)
+class ValidatedManifestContext:
+    manifest: dict
+    entries: tuple[dict, ...]
+    baseline_ids: tuple[str, ...]
+
+
+def load_validated_manifest_context() -> ValidatedManifestContext:
+    """Load, parse and validate the manifest in one controlled boundary."""
+```
+
+`load_validated_manifest_context()` in `finco_parity/manifest.py`:
+1. Parses manifest JSON — `json.JSONDecodeError` / `OSError` → `ManifestIntegrityError`
+2. Checks root is a dict — wrong type → `ManifestIntegrityError`
+3. Checks `baselines` exists and is a list — missing / wrong type → `ManifestIntegrityError`
+4. Calls `validate_manifest_integrity()` — any integrity failure → `ManifestIntegrityError`
+5. Returns `ValidatedManifestContext` with manifest dict, entries tuple, baseline IDs in manifest order
+
+Used by `run_candidate_provider()`, `compare_candidate_directory()`, and the CLI as the single
+controlled boundary. Library calls are deterministic without relying on the CLI to validate first.
+
+**Required distinctions:**
+
+| Manifest state | Status / Result |
+|---|---|
+| Malformed JSON | `MANIFEST_INTEGRITY_FAILURE` |
+| Missing `baselines` field | `MANIFEST_INTEGRITY_FAILURE` |
+| `baselines` wrong type | `MANIFEST_INTEGRITY_FAILURE` |
+| Invalid entry / hash mismatch | `MANIFEST_INTEGRITY_FAILURE` |
+| Valid manifest, unknown baseline_id | `UNKNOWN_BASELINE` |
+
+In all manifest-failure cases, provider and legacy engine are never called.
 
 ---
 
@@ -275,13 +313,13 @@ AST scan of `app/`, `domain/`, `finco_core/`, `main_web.py`, `main_api.py`:
 
 | File | Tests collected |
 |---|---|
-| `test_phase1c_candidate_provider.py` | (see --collect-only) |
-| `test_phase1c_dual_run.py` | (see --collect-only) |
-| `test_phase1c_compare_candidate_cli.py` | (see --collect-only) |
+| `test_phase1c_candidate_provider.py` | includes `TestPathRedaction` (8 tests) |
+| `test_phase1c_dual_run.py` | includes library-level manifest tests |
+| `test_phase1c_compare_candidate_cli.py` | includes manifest + redaction tests |
 | `test_phase1c_production_isolation.py` | 3 |
-| **Phase 1C total** | **86** |
+| **Phase 1C total** | **101** |
 
-Full focused suite (Phase 1A + 1B + 1C): **601 passed**
+Full focused suite (Phase 1A + 1B + 1C): **616 passed**
 
 ---
 
