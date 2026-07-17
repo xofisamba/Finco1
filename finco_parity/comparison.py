@@ -217,19 +217,19 @@ def _compare_values(
         ))
         return
 
-    # Type mismatch (excluding numeric promotion).
+    # Type mismatch — exact types required.
+    # bool must be checked before int because bool is a subclass of int in Python.
+    # True vs 1 → STRUCTURAL_DRIFT; 1 vs 1.0 → STRUCTURAL_DRIFT; 1 vs 1 → IDENTICAL.
     b_type = type(baseline)
     c_type = type(current)
     if b_type != c_type:
-        # Allow int/float interchange in numeric lists.
-        if not (isinstance(baseline, (int, float)) and isinstance(current, (int, float))):
-            diffs.append(Difference(
-                kind=DriftKind.STRUCTURAL_DRIFT,
-                path=path,
-                baseline_value=baseline,
-                current_value=current,
-            ))
-            return
+        diffs.append(Difference(
+            kind=DriftKind.STRUCTURAL_DRIFT,
+            path=path,
+            baseline_value=baseline,
+            current_value=current,
+        ))
+        return
 
     # Dict comparison.
     if isinstance(baseline, dict):
@@ -286,8 +286,13 @@ def _compare_values(
             _compare_values(bv, cv, f"{path}[{i}]", diffs, tol)
         return
 
-    # Numeric comparison.
-    if isinstance(baseline, (int, float)) and isinstance(current, (int, float)):
+    # Numeric comparison (bool already dispatched above via type mismatch or dict/list).
+    if (
+        isinstance(baseline, (int, float))
+        and isinstance(current, (int, float))
+        and not isinstance(baseline, bool)
+        and not isinstance(current, bool)
+    ):
         if math.isnan(baseline) or math.isnan(current):
             diffs.append(Difference(
                 kind=DriftKind.VALUE_DRIFT,

@@ -30,6 +30,15 @@ Exit codes
 3  Drift detected in --check mode.
 4  Manifest integrity failure.
 
+baseline_commit_sha semantics
+------------------------------
+``baseline_commit_sha`` in a snapshot identifies the source commit represented
+by the committed characterization baseline.  It is fixed at generation time and
+does NOT change when a later commit runs ``--check``.  In check mode, the
+committed artifact's ``baseline_commit_sha`` is read and passed explicitly to
+fresh generation so the comparison payload is identical — only engine outputs
+are compared, not repository advancement.
+
 Import boundary
 ---------------
 This module may only import from:
@@ -49,17 +58,20 @@ import traceback
 from pathlib import Path
 from typing import Any
 
-from finco_parity.canonical import canonical_json_bytes, sha256_of_bytes, sha256_of_file, write_canonical_json
+from finco_parity.canonical import canonical_json_bytes, sha256_of_bytes, write_canonical_json
+from finco_parity.comparison import compare_snapshots, format_comparison_report
 from finco_parity.legacy_snapshot import ALL_BASELINE_IDS, capture_snapshot
 from finco_parity.manifest import (
     BASELINES_DIR,
     SNAPSHOTS_DIR,
+    get_manifest_entry,
     load_manifest,
     manifest_baseline_ids,
-    snapshot_path_for,
+    resolve_snapshot_path,
     validate_manifest_integrity,
+    ManifestIntegrityError,
 )
-from finco_parity.schema import SnapshotValidationError
+from finco_parity.schema import SnapshotValidationError, validate_snapshot
 from finco_parity.normalization import NormalizationError
 
 
@@ -69,10 +81,10 @@ def _generate_one(
     *,
     verbose: bool = True,
     commit_sha: str | None = None,
-) -> tuple[Path, bytes]:
+) -> tuple[Path, bytes, dict]:
     """Capture, validate and serialize one baseline into *output_dir*.
 
-    Returns (dest_path, raw_bytes).
+    Returns (dest_path, raw_bytes, snapshot_dict).
     """
     if verbose:
         print(f"  generating {baseline_id} …", flush=True)
@@ -89,7 +101,7 @@ def _generate_one(
         periods = len(snapshot.get("period_grid", []))
         print(f"  written → {dest}  ({periods} periods, sha256={sha[:16]}…)", flush=True)
 
-    return dest, raw
+    return dest, raw, snapshot
 
 
 def cmd_generate(
@@ -129,13 +141,24 @@ def cmd_check(
 ) -> int:
     """Check mode: generate fresh in temp dir and compare against committed artifacts.
 
-    Returns 0 if all match, 3 if any drift, 1 if generation failure, 4 if manifest
-    integrity failure.
+    For each baseline:
+      1. Load and validate the committed artifact.
+      2. Read baseline_commit_sha from the committed artifact (stable reference SHA).
+      3. Generate a fresh snapshot using that fixed baseline_commit_sha.
+      4. Check canonical byte integrity of the committed artifact.
+      5. Compare fresh snapshot against committed with zero tolerance.
+      6. Report drift classification and paths.
+
+    Returns:
+      0 — all baselines match committed artifacts
+      1 — generation failure
+      3 — drift detected (byte or semantic)
+      4 — manifest integrity failure
     """
     # Validate manifest integrity first.
     try:
         validate_manifest_integrity()
-    except Exception as exc:
+    except ManifestIntegrityError as exc:
         print(f"MANIFEST INTEGRITY FAILURE: {exc}", file=sys.stderr)
         return 4
 
@@ -148,15 +171,61 @@ def cmd_check(
             if verbose:
                 print(f"\nchecking {bid} …", flush=True)
 
-            committed_path = snapshot_path_for(bid)
+            # 1. Load committed artifact via declared manifest snapshot_path.
+            entry = get_manifest_entry(bid)
+            committed_path = resolve_snapshot_path(entry)
+
             if not committed_path.exists():
                 msg = f"{bid}: committed artifact missing: {committed_path}"
                 drifts.append(msg)
                 print(f"  DRIFT: {msg}", file=sys.stderr, flush=True)
                 continue
 
+            committed_bytes = committed_path.read_bytes()
             try:
-                _, fresh_bytes = _generate_one(bid, tmp_dir, verbose=verbose)
+                committed_snapshot = json.loads(committed_bytes)
+            except Exception as exc:
+                msg = f"{bid}: cannot parse committed artifact: {exc}"
+                failures.append(msg)
+                print(f"  ERROR: {msg}", file=sys.stderr, flush=True)
+                continue
+
+            # Validate committed snapshot.
+            try:
+                validate_snapshot(committed_snapshot)
+            except SnapshotValidationError as exc:
+                msg = f"{bid}: committed snapshot fails schema validation: {exc}"
+                failures.append(msg)
+                print(f"  ERROR: {msg}", file=sys.stderr, flush=True)
+                continue
+
+            # 4. Canonical byte integrity check.
+            try:
+                expected_bytes = canonical_json_bytes(committed_snapshot)
+            except Exception as exc:
+                msg = f"{bid}: committed artifact cannot be re-serialised: {exc}"
+                failures.append(msg)
+                print(f"  ERROR: {msg}", file=sys.stderr, flush=True)
+                continue
+
+            if expected_bytes != committed_bytes:
+                msg = (
+                    f"{bid}: committed artifact is not in canonical form "
+                    f"(file bytes != canonical_json_bytes(parsed_artifact))"
+                )
+                drifts.append(msg)
+                print(f"  DRIFT: {msg}", file=sys.stderr, flush=True)
+                continue
+
+            # 2. Read fixed baseline_commit_sha from committed artifact — this is the
+            #    source commit the baseline represents, NOT the current checkout SHA.
+            fixed_commit_sha: str = committed_snapshot.get("baseline_commit_sha", "unknown")
+
+            # 3. Generate fresh snapshot using the fixed baseline_commit_sha.
+            try:
+                _, fresh_bytes, fresh_snapshot = _generate_one(
+                    bid, tmp_dir, verbose=verbose, commit_sha=fixed_commit_sha
+                )
             except Exception as exc:
                 msg = f"{bid}: {type(exc).__name__}: {exc}"
                 failures.append(msg)
@@ -165,29 +234,33 @@ def cmd_check(
                     traceback.print_exc()
                 continue
 
-            committed_bytes = committed_path.read_bytes()
-            if fresh_bytes != committed_bytes:
-                msg = (
-                    f"{bid}: content differs from committed artifact "
-                    f"(committed sha256={sha256_of_bytes(committed_bytes)[:16]}…, "
-                    f"fresh sha256={sha256_of_bytes(fresh_bytes)[:16]}…)"
-                )
+            # 5. Compare using compare_snapshots (zero tolerance).
+            result = compare_snapshots(
+                committed_snapshot, fresh_snapshot, baseline_id=bid
+            )
+
+            if result.is_identical():
+                if verbose:
+                    print(f"  OK: {bid} — IDENTICAL", flush=True)
+            else:
+                report = format_comparison_report(result)
+                msg = f"{bid}: {result.status.value}"
                 drifts.append(msg)
                 print(f"  DRIFT: {msg}", file=sys.stderr, flush=True)
-            else:
-                if verbose:
-                    print(f"  OK: {bid} matches committed artifact", flush=True)
+                print(report, file=sys.stderr, flush=True)
 
-        # Check for unreferenced artifacts.
+        # Check for unreferenced artifacts (orphans).
         manifest = load_manifest()
-        referenced = {
-            snapshot_path_for(entry["baseline_id"])
-            for entry in manifest["baselines"]
-        }
+        referenced: set[Path] = set()
+        for e in manifest["baselines"]:
+            try:
+                referenced.add(resolve_snapshot_path(e))
+            except ManifestIntegrityError:
+                pass
         if SNAPSHOTS_DIR.exists():
             for p in SNAPSHOTS_DIR.glob("*.json"):
                 if p not in referenced:
-                    msg = f"unreferenced artifact: {p}"
+                    msg = f"unreferenced artifact: {p.name}"
                     drifts.append(msg)
                     print(f"  DRIFT: {msg}", file=sys.stderr, flush=True)
 
@@ -235,7 +308,10 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--commit-sha",
         metavar="SHA",
-        help="Explicit git commit SHA (default: auto-detected).",
+        help=(
+            "Explicit baseline_commit_sha for generated snapshots. "
+            "In --check mode, the committed artifact's SHA is used automatically."
+        ),
     )
     p.add_argument(
         "--quiet",

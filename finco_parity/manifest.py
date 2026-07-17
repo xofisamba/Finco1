@@ -1,9 +1,36 @@
 """
-finco_parity.manifest — Manifest loading and integrity validation for Phase 1B.
+finco_parity.manifest — Manifest loading, path resolution and integrity validation.
 
 The manifest is the single source of truth for baseline identity.  Every
-artifact must be referenced by exactly one manifest entry; every manifest entry
-must point to exactly one committed artifact.
+artifact must be referenced by exactly one manifest entry; every manifest
+entry must point to exactly one committed artifact.
+
+Artifact path resolution
+------------------------
+Artifact paths are resolved from the declared `snapshot_path` in each
+manifest entry (relative to the repository root), NOT derived from
+``SNAPSHOTS_DIR / f"{baseline_id}.json"``.
+
+Required fields
+---------------
+Every manifest entry must supply these non-empty fields:
+
+    baseline_id, project_type_key, project_code, scenario_identity,
+    engine_designation, schema_version, baseline_commit_sha,
+    input_source_id, capture_source, run_path, snapshot_path,
+    artifact_sha256
+
+``artifact_sha256`` must be exactly 64 lowercase hexadecimal characters.
+
+``capture_source`` must equal the canonical capture function identifier:
+    finco_parity.legacy_snapshot.capture_snapshot
+
+``baseline_commit_sha`` semantics
+----------------------------------
+``baseline_commit_sha`` identifies the source commit represented by the
+committed characterization baseline.  It is fixed at the time the baseline
+is generated and does NOT change when a later commit runs ``--check``.
+It is NOT the transient SHA executing the current CI run.
 
 Import boundary
 ---------------
@@ -15,6 +42,7 @@ It must NOT import from app.*, domain.*, finco_core.*, main_web, main_api.
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -22,9 +50,32 @@ from finco_parity.canonical import sha256_of_file
 from finco_parity.schema import SCHEMA_VERSION
 
 # Canonical paths.
+_REPO_ROOT: Path = Path(__file__).parent.parent
 BASELINES_DIR: Path = Path(__file__).parent / "baselines"
 SNAPSHOTS_DIR: Path = BASELINES_DIR / "snapshots"
 MANIFEST_PATH: Path = BASELINES_DIR / "manifest.json"
+
+# Required manifest entry fields.
+_REQUIRED_ENTRY_FIELDS: tuple[str, ...] = (
+    "baseline_id",
+    "project_type_key",
+    "project_code",
+    "scenario_identity",
+    "engine_designation",
+    "schema_version",
+    "baseline_commit_sha",
+    "input_source_id",
+    "capture_source",
+    "run_path",
+    "snapshot_path",
+    "artifact_sha256",
+)
+
+# Canonical capture source identifier.
+_CANONICAL_CAPTURE_SOURCE = "finco_parity.legacy_snapshot.capture_snapshot"
+
+# artifact_sha256 must be 64 lowercase hex chars.
+_SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 
 
 def load_manifest() -> dict[str, Any]:
@@ -37,9 +88,54 @@ def manifest_baseline_ids() -> list[str]:
     return [entry["baseline_id"] for entry in load_manifest()["baselines"]]
 
 
+def resolve_snapshot_path(entry: dict[str, Any]) -> Path:
+    """Return the resolved absolute artifact path for a manifest entry.
+
+    Resolution rules:
+      - Uses the declared ``snapshot_path`` field (relative to repo root).
+      - Absolute paths are rejected.
+      - ``..`` traversal is rejected.
+      - Resolved path must remain inside SNAPSHOTS_DIR.
+    """
+    declared = entry.get("snapshot_path", "")
+    if not declared:
+        raise ManifestIntegrityError(
+            f"{entry.get('baseline_id', '?')}: snapshot_path is empty"
+        )
+    p = Path(declared)
+    if p.is_absolute():
+        raise ManifestIntegrityError(
+            f"{entry.get('baseline_id', '?')}: snapshot_path must be relative: {declared!r}"
+        )
+    resolved = (_REPO_ROOT / p).resolve()
+    try:
+        resolved.relative_to(SNAPSHOTS_DIR.resolve())
+    except ValueError:
+        raise ManifestIntegrityError(
+            f"{entry.get('baseline_id', '?')}: snapshot_path escapes SNAPSHOTS_DIR: {declared!r}"
+        )
+    return resolved
+
+
 def snapshot_path_for(baseline_id: str) -> Path:
-    """Return the canonical committed artifact path for *baseline_id*."""
-    return SNAPSHOTS_DIR / f"{baseline_id}.json"
+    """Return the resolved artifact path for *baseline_id* from the manifest.
+
+    Raises KeyError if the baseline_id is not found.
+    """
+    manifest = load_manifest()
+    for entry in manifest["baselines"]:
+        if entry["baseline_id"] == baseline_id:
+            return resolve_snapshot_path(entry)
+    raise KeyError(f"baseline_id not found in manifest: {baseline_id!r}")
+
+
+def get_manifest_entry(baseline_id: str) -> dict[str, Any]:
+    """Return the manifest entry for *baseline_id*.  Raises KeyError if absent."""
+    manifest = load_manifest()
+    for entry in manifest["baselines"]:
+        if entry["baseline_id"] == baseline_id:
+            return entry
+    raise KeyError(f"baseline_id not found in manifest: {baseline_id!r}")
 
 
 class ManifestIntegrityError(ValueError):
@@ -49,21 +145,31 @@ class ManifestIntegrityError(ValueError):
 def validate_manifest_integrity() -> None:
     """Validate full manifest ↔ artifact consistency.
 
-    Checks:
-      1. No duplicate baseline_ids.
-      2. No duplicate artifact paths.
-      3. Every manifest entry points to an existing artifact.
-      4. No orphan artifacts (unreferenced .json files in SNAPSHOTS_DIR).
-      5. Artifact SHA-256 matches the value stored in the manifest (if present).
-      6. Snapshot schema_version matches SCHEMA_VERSION.
-      7. Snapshot baseline_id matches the manifest entry.
-      8. Snapshot engine_designation matches the manifest entry.
-      9. Snapshot input_source_id matches the manifest entry.
-     10. All artifact paths remain inside SNAPSHOTS_DIR (no path traversal).
+    Checks (all run, errors accumulated):
+      1.  No missing required entry fields.
+      2.  No duplicate baseline_ids.
+      3.  No duplicate artifact paths (normalized).
+      4.  capture_source == canonical capture function.
+      5.  artifact_sha256 is exactly 64 lowercase hex chars.
+      6.  No absolute snapshot_path.
+      7.  No path traversal (resolved path inside SNAPSHOTS_DIR).
+      8.  Every artifact exists.
+      9.  artifact_sha256 matches artifact bytes.
+     10.  Artifact is valid canonical JSON (round-trip byte equality).
+     11.  snapshot schema_version matches manifest.schema_version.
+     12.  snapshot baseline_id matches manifest.baseline_id.
+     13.  snapshot engine_designation matches manifest.engine_designation.
+     14.  snapshot baseline_commit_sha matches manifest.baseline_commit_sha.
+     15.  snapshot input_source_id matches manifest.input_source_id.
+     16.  snapshot run_path_id matches manifest.run_path.
+     17.  No orphan artifacts.
+     18.  Each committed snapshot passes validate_snapshot().
 
-    Raises ManifestIntegrityError on first failure found per check (all
-    checks run independently so multiple issues are reported together).
+    Raises ManifestIntegrityError listing all errors found.
     """
+    from finco_parity.canonical import canonical_json_bytes
+    from finco_parity.schema import validate_snapshot, SnapshotValidationError
+
     manifest = load_manifest()
     entries: list[dict] = manifest.get("baselines", [])
     errors: list[str] = []
@@ -73,95 +179,107 @@ def validate_manifest_integrity() -> None:
     referenced_paths: set[Path] = set()
 
     for entry in entries:
-        bid = entry.get("baseline_id", "")
+        bid = entry.get("baseline_id", "<missing>")
 
-        # 1. Duplicate IDs.
+        # 1. Required fields.
+        for field in _REQUIRED_ENTRY_FIELDS:
+            val = entry.get(field)
+            if not val:
+                errors.append(f"{bid}: missing or empty required field: {field!r}")
+
+        # 2. Duplicate baseline_ids.
         if bid in seen_ids:
             errors.append(f"Duplicate baseline_id: {bid!r}")
         seen_ids.add(bid)
 
-        # Resolve artifact path.
-        artifact_path = snapshot_path_for(bid)
+        # 4. capture_source.
+        cs = entry.get("capture_source", "")
+        if cs and cs != _CANONICAL_CAPTURE_SOURCE:
+            errors.append(
+                f"{bid}: capture_source={cs!r} != {_CANONICAL_CAPTURE_SOURCE!r}"
+            )
 
-        # 2. Duplicate paths.
+        # 5. artifact_sha256 format.
+        sha_val = entry.get("artifact_sha256", "")
+        if sha_val and not _SHA256_RE.match(sha_val):
+            errors.append(
+                f"{bid}: artifact_sha256 must be 64 lowercase hex chars: {sha_val!r}"
+            )
+
+        # Resolve artifact path (catches 6 and 7).
+        try:
+            artifact_path = resolve_snapshot_path(entry)
+        except ManifestIntegrityError as exc:
+            errors.append(str(exc))
+            continue
+
+        # 3. Duplicate paths.
         if artifact_path in seen_paths:
             errors.append(f"Duplicate artifact path: {artifact_path}")
         seen_paths.add(artifact_path)
         referenced_paths.add(artifact_path)
 
-        # 10. Path traversal check.
-        try:
-            artifact_path.resolve().relative_to(SNAPSHOTS_DIR.resolve())
-        except ValueError:
-            errors.append(
-                f"{bid}: artifact path escapes SNAPSHOTS_DIR: {artifact_path}"
-            )
-            continue
-
-        # 3. Artifact existence.
+        # 8. Artifact exists.
         if not artifact_path.exists():
             errors.append(f"{bid}: artifact missing: {artifact_path}")
             continue
 
-        # Load snapshot for content checks.
+        # Load raw bytes and parsed snapshot.
+        raw_bytes = artifact_path.read_bytes()
         try:
-            snapshot = json.loads(artifact_path.read_text(encoding="utf-8"))
+            snapshot = json.loads(raw_bytes)
         except Exception as exc:
             errors.append(f"{bid}: cannot parse artifact JSON: {exc}")
             continue
 
-        # 5. SHA-256 check (if stored in manifest).
-        if "artifact_sha256" in entry:
-            actual_sha = sha256_of_file(artifact_path)
-            if actual_sha != entry["artifact_sha256"]:
+        # 9. SHA-256 check.
+        if sha_val and _SHA256_RE.match(sha_val):
+            import hashlib
+            actual_sha = hashlib.sha256(raw_bytes).hexdigest()
+            if actual_sha != sha_val:
                 errors.append(
                     f"{bid}: SHA-256 mismatch "
-                    f"(manifest={entry['artifact_sha256'][:16]}… "
-                    f"actual={actual_sha[:16]}…)"
+                    f"(manifest={sha_val[:16]}… actual={actual_sha[:16]}…)"
                 )
 
-        # 6. Schema version.
-        snap_schema = snapshot.get("schema_version", "")
-        if snap_schema != SCHEMA_VERSION:
-            errors.append(
-                f"{bid}: snapshot schema_version={snap_schema!r} "
-                f"!= expected {SCHEMA_VERSION!r}"
-            )
-
-        # 7. Baseline ID provenance.
-        if snapshot.get("baseline_id") != bid:
-            errors.append(
-                f"{bid}: snapshot baseline_id={snapshot.get('baseline_id')!r} "
-                f"!= manifest baseline_id={bid!r}"
-            )
-
-        # 8. Engine designation provenance.
-        manifest_engine = entry.get("engine_designation", "")
-        snap_engine = snapshot.get("engine_designation", "")
-        if manifest_engine and snap_engine != manifest_engine:
-            errors.append(
-                f"{bid}: snapshot engine_designation={snap_engine!r} "
-                f"!= manifest {manifest_engine!r}"
-            )
-
-        # 9. Input source provenance.
-        # Manifest uses factory_function; snapshot uses input_source_id (project_factories.*)
-        manifest_factory = entry.get("factory_function", "")
-        snap_input = snapshot.get("input_source_id", "")
-        # Normalize: snapshot strips "app." prefix, manifest includes it.
-        # Accept either exact match or manifest endswith snapshot.
-        if manifest_factory and snap_input:
-            normalized_manifest = manifest_factory.replace("app.", "")
-            normalized_snap = snap_input.replace("app.", "")
-            if normalized_manifest != normalized_snap:
+        # 10. Canonical byte integrity — artifact must be byte-identical to its
+        #     re-serialized form.
+        try:
+            reserialised = canonical_json_bytes(snapshot)
+            if reserialised != raw_bytes:
                 errors.append(
-                    f"{bid}: snapshot input_source_id={snap_input!r} "
-                    f"!= manifest factory_function={manifest_factory!r}"
+                    f"{bid}: artifact is not in canonical form "
+                    f"(file bytes != canonical_json_bytes(parsed_artifact)). "
+                    f"Re-run generate_baselines to fix."
+                )
+        except Exception as exc:
+            errors.append(f"{bid}: cannot re-serialise artifact: {exc}")
+
+        # 11–16. Provenance binding checks.
+        def _chk(field_label: str, snap_val: Any, manifest_val: Any) -> None:
+            if manifest_val and snap_val != manifest_val:
+                errors.append(
+                    f"{bid}: {field_label} mismatch: "
+                    f"snapshot={snap_val!r} manifest={manifest_val!r}"
                 )
 
-    # 4. Orphan artifacts.
+        manifest_schema = entry.get("schema_version", "")
+        _chk("schema_version", snapshot.get("schema_version"), manifest_schema or SCHEMA_VERSION)
+        _chk("baseline_id", snapshot.get("baseline_id"), bid)
+        _chk("engine_designation", snapshot.get("engine_designation"), entry.get("engine_designation"))
+        _chk("baseline_commit_sha", snapshot.get("baseline_commit_sha"), entry.get("baseline_commit_sha"))
+        _chk("input_source_id", snapshot.get("input_source_id"), entry.get("input_source_id"))
+        _chk("run_path_id", snapshot.get("run_path_id"), entry.get("run_path"))
+
+        # 18. validate_snapshot().
+        try:
+            validate_snapshot(snapshot)
+        except SnapshotValidationError as exc:
+            errors.append(f"{bid}: snapshot fails schema validation: {exc}")
+
+    # 17. Orphan artifacts.
     if SNAPSHOTS_DIR.exists():
-        for p in SNAPSHOTS_DIR.glob("*.json"):
+        for p in sorted(SNAPSHOTS_DIR.glob("*.json")):
             if p not in referenced_paths:
                 errors.append(f"Orphan artifact (unreferenced by manifest): {p.name}")
 

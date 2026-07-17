@@ -15,21 +15,82 @@ and drift detection.
 | Field | Value |
 |---|---|
 | Base SHA | `8b13a53805ea2e1e84144ccad1f2484e16fa8592` |
-| Head SHA | (set at merge) |
-| Base branch | `main` |
-| Feature branch | `phase1b-legacy-baseline-materialization` |
-| PR | Draft — do not merge until CI is green |
+| Previous head (ba3c5c71) | corrected in this amendment |
+| Branch | `phase1b-legacy-baseline-materialization` |
+| PR | #891 — Draft, do not merge |
+
+---
+
+## Root cause of original red baseline workflow
+
+The original `cmd_check()` auto-detected the current checkout SHA and embedded
+it in every fresh snapshot as `baseline_commit_sha`.  The committed artifacts
+contain the Phase 1A merge SHA (`8b13a538…`).  After the Phase 1B commit
+advanced HEAD, every future `--check` run generated a snapshot with the new
+HEAD SHA, causing `PROVENANCE_DRIFT` on `baseline_commit_sha` for all four
+baselines.  This made the baseline workflow permanently red.
+
+## Stable `baseline_commit_sha` policy
+
+`baseline_commit_sha` identifies the **source commit represented by the
+committed characterization baseline**.  It is fixed at generation time and
+does **not** change when a later commit runs `--check`.  It is **not** the
+transient SHA executing the current CI run.
+
+In `cmd_check()`:
+1. Load the committed artifact.
+2. Read `baseline_commit_sha` from the committed artifact (fixed reference).
+3. Pass that value explicitly to `capture_snapshot()`.
+4. Compare only engine outputs — repository advancement is invisible.
+
+---
+
+## Required Manifest Entry Fields
+
+Every manifest entry must supply these non-empty fields:
+
+| Field | Description |
+|---|---|
+| `baseline_id` | Canonical identifier |
+| `project_type_key` | Engine project type key |
+| `project_code` | Project code |
+| `scenario_identity` | Scenario (`Base` for all current entries) |
+| `engine_designation` | Engine identifier |
+| `schema_version` | Snapshot schema version |
+| `baseline_commit_sha` | Source commit the baseline represents |
+| `input_source_id` | Factory function (without `app.` prefix) |
+| `capture_source` | Must equal `finco_parity.legacy_snapshot.capture_snapshot` |
+| `run_path` | Run path (without `app.` prefix; matches `snapshot.run_path_id`) |
+| `snapshot_path` | Declared artifact path (repo-relative) |
+| `artifact_sha256` | 64 lowercase hex chars; must match artifact bytes |
+
+---
+
+## `snapshot_path` is Authoritative
+
+Artifact paths are resolved from the **declared `snapshot_path`** in each
+manifest entry (relative to the repository root).  They are **not** derived
+from `SNAPSHOTS_DIR / f"{baseline_id}.json"`.
+
+Validation rules:
+- Relative paths only (absolute paths fail).
+- `..` traversal is rejected.
+- Resolved path must remain inside `finco_parity/baselines/snapshots/`.
+- Duplicate normalized paths fail.
+- Every declared artifact must exist.
+- Every artifact must be referenced exactly once.
+- Orphan JSON files fail.
 
 ---
 
 ## Baseline IDs
 
-| baseline_id | Display name | Periods | Technology |
-|---|---|---|---|
-| `tuho` | TUHO Wind 1 | 61 | wind |
-| `oborovo` | Oborovo Solar PV | 60 | solar |
-| `generic_solar` | Generic Solar (Test 1) | 41 | solar |
-| `generic_wind` | Generic Wind (Test 2) | 51 | wind |
+| baseline_id | Display name | Periods | Technology | baseline_commit_sha |
+|---|---|---|---|---|
+| `tuho` | TUHO Wind 1 | 61 | wind | `8b13a538…` |
+| `oborovo` | Oborovo Solar PV | 60 | solar | `8b13a538…` |
+| `generic_solar` | Generic Solar (Test 1) | 41 | solar | `8b13a538…` |
+| `generic_wind` | Generic Wind (Test 2) | 51 | wind | `8b13a538…` |
 
 ---
 
@@ -44,23 +105,6 @@ and drift detection.
 
 ---
 
-## Capture Path
-
-```
-python -m finco_parity.generate_baselines
-```
-
-Internally: `finco_parity.legacy_snapshot.capture_snapshot(baseline_id)` →
-`app.ui_runner.run_demo_project(project_type)` →
-WaterfallRunner → `run_waterfall_v3_core` →
-`finco_parity.normalization.normalize_snapshot()` →
-`finco_parity.schema.validate_snapshot()` →
-`finco_parity.canonical.write_canonical_json()`
-
-No production startup path, route, or persistence layer is involved.
-
----
-
 ## Canonical Serialization Rules
 
 | Rule | Value |
@@ -72,13 +116,14 @@ No production startup path, route, or persistence layer is involved.
 | allow_nan | False |
 | EOF | Single trailing LF (`\n`) |
 
-Prohibited content: timestamps generated at capture time, machine-specific
-paths, hostnames, usernames, random UUIDs, memory addresses, unordered
-mappings, Python repr output, NaN or infinity, environment-dependent values.
+Prohibited: timestamps, machine paths, hostnames, random UUIDs, NaN/infinity.
 
-Two clean generations from the same commit produce byte-identical files
-(verified: SHA-256 match across two independent generations for all four
-baselines).
+Byte-determinism verified: two independent generations produce bit-identical
+files for all four baselines.
+
+Canonical integrity check: committed artifact bytes must equal
+`canonical_json_bytes(parsed_artifact)`.  A manually reformatted artifact
+fails even if its parsed JSON values are equal.
 
 ---
 
@@ -89,46 +134,97 @@ baselines).
 | `IDENTICAL` | No differences |
 | `SCHEMA_DRIFT` | `schema_version` changed |
 | `PROVENANCE_DRIFT` | `baseline_id`, `engine_designation`, `baseline_commit_sha`, `run_path_id`, or `input_source_id` changed |
-| `STRUCTURAL_DRIFT` | Missing/extra key; list length changed; type changed |
+| `STRUCTURAL_DRIFT` | Missing/extra key; list length changed; **type changed** (incl. bool vs int vs float) |
 | `AVAILABILITY_DRIFT` | Populated ↔ None transition; `unavailable_fields` or `unavailable_sections` changed |
 | `VALUE_DRIFT` | Numeric, string, or bool value changed |
 
-Severity (most to least): SCHEMA_DRIFT > PROVENANCE_DRIFT > STRUCTURAL_DRIFT > AVAILABILITY_DRIFT > VALUE_DRIFT.
+---
 
-All differences are accumulated; the first does not suppress the rest.
-Differences are sorted deterministically by JSON path.
+## Exact Type Comparison Policy
+
+| Comparison | Result |
+|---|---|
+| `True` vs `1` | `STRUCTURAL_DRIFT` |
+| `False` vs `0` | `STRUCTURAL_DRIFT` |
+| `1` vs `1.0` | `STRUCTURAL_DRIFT` |
+| `1.0` vs `1.0` | `IDENTICAL` |
+| `1` vs `1` | `IDENTICAL` |
+| `"1"` vs `1` | `STRUCTURAL_DRIFT` |
+
+`bool` is checked before `int` because `bool` is a Python subclass of `int`.
+Diagnostic `Tolerance` may only be applied after both values pass the type
+policy; it never suppresses type mismatches.
 
 ---
 
 ## Exact Comparison Policy
 
-- Strings: exact
-- Booleans: exact
-- Integers: exact
-- None: exact
-- List lengths and ordering: exact
-- Floats: exact serialized value comparison (IEEE-754 `==`)
+- Default tolerance: zero (`Tolerance(absolute=0.0, relative=0.0)`)
+- CI guardrail always uses zero tolerance
+- No tolerance stored in production code
+- No difference approved via allowlist in this PR
 
-Default tolerance is zero (`Tolerance(absolute=0.0, relative=0.0)`).
+---
 
-A `Tolerance` object may be supplied explicitly for diagnostic use only.
-The CI guardrail (`--check`) always uses zero tolerance.
-No tolerance configuration is stored in production code.
-No current difference is approved through a tolerance allowlist in this PR.
+## Manifest Negative-Test Matrix
+
+| Test | Expected error |
+|---|---|
+| Missing any required field | `ManifestIntegrityError` mentioning field name |
+| Missing artifact file | `ManifestIntegrityError: missing` |
+| Orphan artifact | `ManifestIntegrityError: Orphan` |
+| Duplicate baseline_id | `ManifestIntegrityError: Duplicate` |
+| Duplicate snapshot_path | `ManifestIntegrityError: Duplicate` |
+| Wrong artifact_sha256 | `ManifestIntegrityError: mismatch` |
+| sha256 wrong format | `ManifestIntegrityError: sha256/hex` |
+| schema_version mismatch | `ManifestIntegrityError: schema_version` |
+| baseline_id mismatch | `ManifestIntegrityError: baseline_id` |
+| engine_designation mismatch | `ManifestIntegrityError: engine_designation` |
+| baseline_commit_sha mismatch | `ManifestIntegrityError: baseline_commit_sha` |
+| input_source_id mismatch | `ManifestIntegrityError: input_source_id` |
+| run_path mismatch | `ManifestIntegrityError: run_path` |
+| capture_source mismatch | `ManifestIntegrityError: capture_source` |
+| Non-canonical artifact bytes | `ManifestIntegrityError: canonical` |
+| Path traversal | `ManifestIntegrityError: Escapes/traversal` |
+| Absolute snapshot_path | `ManifestIntegrityError: relative/absolute` |
+
+---
+
+## Drift Formatter Example
+
+```
+Baseline: tuho
+Status:   VALUE_DRIFT
+Differences: 1
+
+1. returns.project_irr
+   kind:     VALUE_DRIFT
+   baseline: 0.089...
+   current:  0.9999
+   absolute delta: 0.910...
+   relative delta: 1019.XXX%
+```
+
+---
+
+## `--check` Result (committed state)
+
+```
+python -m finco_parity.generate_baselines --check --quiet
+exit: 0
+```
+
+All 4 baselines match committed artifacts.
 
 ---
 
 ## Production Isolation Proof
 
-AST scan of `app/`, `domain/`, `finco_core/`, `main_web.py`, `main_api.py`
-confirms:
-
-- No production file imports `finco_parity` or any of its submodules.
-- No production file contains references to `baselines/snapshots`, `generate_baselines`, `finco_parity.comparison`, `finco_parity.canonical`, or `finco_parity.manifest`.
-- Importing `finco_parity.*` at module level does not execute any engine code.
+AST scan of `app/`, `domain/`, `finco_core/`, `main_web.py`, `main_api.py`:
+- No production file imports any `finco_parity.*` module.
+- No production file references `baselines/snapshots`, `generate_baselines`, etc.
+- Importing `finco_parity.*` does not execute any engine code.
 - `--check` mode does not write to committed artifact paths.
-
-Test: `tests/test_phase1b_production_isolation.py`
 
 ---
 
@@ -138,22 +234,19 @@ Test: `tests/test_phase1b_production_isolation.py`
 python -m finco_parity.generate_baselines --check
 ```
 
-Exit codes:
-- `0` — all baselines match committed artifacts
-- `1` — generation/normalization/validation failure
-- `3` — drift detected
-- `4` — manifest integrity failure
-
 Workflow: `.github/workflows/phase1b_baseline_check.yml`
-Triggers on: pull requests to `main` with changes in `finco_parity/**`, baseline files, Phase 1A/1B tests.
-Permissions: `contents: read` (read-only).
+Triggers on PRs to `main` with changes in `finco_parity/**`, baseline files, tests.
+Checks out PR head explicitly: `ref: ${{ github.event.pull_request.head.sha }}`
+Permissions: `contents: read`
+
+Workflow run IDs: pending CI execution on corrected head.
 
 ---
 
-## Test Results
+## Test Results (local)
 
 ```
-455 passed in 10.45s
+498 passed in 11.21s
 ```
 
 | File | Tests |
@@ -161,10 +254,10 @@ Permissions: `contents: read` (read-only).
 | `test_phase1a_parity_manifest.py` | 39 |
 | `test_phase1a_parity_schema_normalization.py` | 135 |
 | `test_phase1a_parity_runner.py` | 204 |
-| `test_phase1b_baseline_generation.py` | 27 |
-| `test_phase1b_baseline_integrity.py` | 9 |
-| `test_phase1b_snapshot_comparison.py` | 27 |
-| `test_phase1b_production_isolation.py` | 14 |
+| `test_phase1b_baseline_generation.py` | 43 |
+| `test_phase1b_baseline_integrity.py` | 29 |
+| `test_phase1b_snapshot_comparison.py` | 50 |
+| `test_phase1b_production_isolation.py` | 14 (was 14) |
 
 ---
 
@@ -175,18 +268,13 @@ They are compatibility references, not evidence that the underlying
 financial methodology is correct, complete or bankable.
 
 The legacy engine remains an oracle for compatibility characterization only.
-No financial correctness claim is made.  No audit, approval, or bankability
-certification is implied.
+No financial correctness claim is made.
 
 ---
 
 ## Phase 1C Remaining Decisions
 
-1. Drift threshold policy for Phase 2 extraction comparison (tolerance object
-   parameters, if any, and which baselines require exact vs. near-exact match).
-2. Whether to add construction-period baselines if the engine is extended to
-   produce them.
-3. Whether to archive intermediate drift reports as CI artifacts (currently
-   only console output).
-4. Whether to add a `--verbose-diff` mode to `generate_baselines --check` that
-   emits the full human-readable comparison report for each drifted baseline.
+1. Drift threshold policy for Phase 2 extraction comparison.
+2. Whether to add construction-period baselines.
+3. Whether to archive intermediate drift reports as CI artifacts.
+4. Whether to add `--verbose-diff` to `generate_baselines --check`.

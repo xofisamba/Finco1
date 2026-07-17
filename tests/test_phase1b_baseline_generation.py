@@ -15,6 +15,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import subprocess
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -236,4 +237,63 @@ def test_artifact_sha256_matches_content(baseline_id: str) -> None:
     actual_sha = hashlib.sha256(snapshot_path_for(baseline_id).read_bytes()).hexdigest()
     assert actual_sha == expected_sha, (
         f"{baseline_id}: SHA-256 mismatch: manifest={expected_sha[:16]}… actual={actual_sha[:16]}…"
+    )
+
+
+# ---------------------------------------------------------------------------
+# H. baseline_commit_sha policy
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("baseline_id", ALL_BASELINE_IDS)
+def test_committed_artifact_has_baseline_commit_sha(baseline_id: str) -> None:
+    """Every committed artifact must have a non-empty baseline_commit_sha."""
+    snap = json.loads(snapshot_path_for(baseline_id).read_bytes())
+    sha = snap.get("baseline_commit_sha", "")
+    assert sha and sha != "unknown", (
+        f"{baseline_id}: baseline_commit_sha is missing or 'unknown': {sha!r}"
+    )
+
+
+@pytest.mark.parametrize("baseline_id", ALL_BASELINE_IDS)
+def test_manifest_baseline_commit_sha_matches_artifact(baseline_id: str) -> None:
+    """Manifest baseline_commit_sha must equal artifact baseline_commit_sha."""
+    from finco_parity.manifest import load_manifest
+    manifest = load_manifest()
+    entry = next(e for e in manifest["baselines"] if e["baseline_id"] == baseline_id)
+    snap = json.loads(snapshot_path_for(baseline_id).read_bytes())
+    assert entry["baseline_commit_sha"] == snap["baseline_commit_sha"], (
+        f"{baseline_id}: manifest.baseline_commit_sha={entry['baseline_commit_sha']!r} "
+        f"!= artifact.baseline_commit_sha={snap['baseline_commit_sha']!r}"
+    )
+
+
+def test_check_uses_committed_baseline_commit_sha(monkeypatch) -> None:
+    """cmd_check must pass the committed artifact's baseline_commit_sha to fresh generation.
+
+    If cmd_check used the transient HEAD SHA instead, baseline_commit_sha would
+    differ in the fresh snapshot, causing PROVENANCE_DRIFT on every future run.
+    This test verifies that cmd_check produces IDENTICAL even when HEAD has advanced.
+    """
+    from finco_parity.generate_baselines import cmd_check
+
+    calls: list[str] = []
+    original_capture = __import__("finco_parity.legacy_snapshot", fromlist=["capture_snapshot"]).capture_snapshot
+
+    def _recording_capture(baseline_id: str, *, commit_sha=None, verbose=True):
+        calls.append(f"{baseline_id}:{commit_sha}")
+        return original_capture(baseline_id, commit_sha=commit_sha, verbose=verbose)
+
+    monkeypatch.setattr(
+        "finco_parity.generate_baselines.capture_snapshot",
+        _recording_capture,
+    )
+
+    rc = cmd_check(["tuho"], verbose=False)
+    assert rc == 0, f"cmd_check returned {rc}"
+    # Verify that the committed artifact's baseline_commit_sha was passed.
+    snap = json.loads(snapshot_path_for("tuho").read_bytes())
+    committed_sha = snap["baseline_commit_sha"]
+    assert any(committed_sha in call for call in calls), (
+        f"cmd_check did not pass committed baseline_commit_sha={committed_sha!r} "
+        f"to capture_snapshot. Calls: {calls}"
     )

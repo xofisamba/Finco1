@@ -330,3 +330,191 @@ def test_format_report_deterministic(tuho_snap: dict) -> None:
     r1 = format_comparison_report(result)
     r2 = format_comparison_report(result)
     assert r1 == r2
+
+
+def test_format_report_contains_required_fields(tuho_snap: dict) -> None:
+    """Report must include Baseline, Status, Differences and at least one path."""
+    current = copy.deepcopy(tuho_snap)
+    current["returns"]["project_irr"] = 0.999
+    result = compare_snapshots(tuho_snap, current, baseline_id="tuho")
+    report = format_comparison_report(result)
+    assert "Baseline:" in report
+    assert "Status:" in report
+    assert "Differences:" in report
+    assert "project_irr" in report
+
+
+# ---------------------------------------------------------------------------
+# N. Exact type comparison
+# ---------------------------------------------------------------------------
+
+def test_bool_vs_int_is_structural_drift(tuho_snap: dict) -> None:
+    """True vs 1 must produce STRUCTURAL_DRIFT, not IDENTICAL."""
+    result = compare_snapshots({"x": True}, {"x": 1}, baseline_id="t")
+    assert result.status == DriftKind.STRUCTURAL_DRIFT
+
+
+def test_false_vs_zero_is_structural_drift(tuho_snap: dict) -> None:
+    """False vs 0 must produce STRUCTURAL_DRIFT."""
+    result = compare_snapshots({"x": False}, {"x": 0}, baseline_id="t")
+    assert result.status == DriftKind.STRUCTURAL_DRIFT
+
+
+def test_bool_vs_float_is_structural_drift() -> None:
+    """True vs 1.0 must produce STRUCTURAL_DRIFT."""
+    result = compare_snapshots({"x": True}, {"x": 1.0}, baseline_id="t")
+    assert result.status == DriftKind.STRUCTURAL_DRIFT
+
+
+def test_int_vs_float_is_structural_drift() -> None:
+    """1 vs 1.0 must produce STRUCTURAL_DRIFT in exact mode."""
+    result = compare_snapshots({"x": 1}, {"x": 1.0}, baseline_id="t")
+    assert result.status == DriftKind.STRUCTURAL_DRIFT
+
+
+def test_float_vs_float_equal_is_identical() -> None:
+    """1.0 vs 1.0 must be IDENTICAL."""
+    result = compare_snapshots({"x": 1.0}, {"x": 1.0}, baseline_id="t")
+    assert result.status == DriftKind.IDENTICAL
+
+
+def test_int_vs_int_equal_is_identical() -> None:
+    """1 vs 1 must be IDENTICAL."""
+    result = compare_snapshots({"x": 1}, {"x": 1}, baseline_id="t")
+    assert result.status == DriftKind.IDENTICAL
+
+
+def test_string_vs_numeric_is_structural_drift() -> None:
+    """'1' vs 1 must produce STRUCTURAL_DRIFT."""
+    result = compare_snapshots({"x": "1"}, {"x": 1}, baseline_id="t")
+    assert result.status == DriftKind.STRUCTURAL_DRIFT
+
+
+def test_tiny_same_type_float_drift_detected() -> None:
+    """A tiny representable float difference at exact tolerance must be detected."""
+    import math
+    v = 1234.5678
+    next_v = math.nextafter(v, float("inf"))
+    result = compare_snapshots({"x": v}, {"x": next_v}, baseline_id="t")
+    assert result.status != DriftKind.IDENTICAL
+
+
+# ---------------------------------------------------------------------------
+# O. cmd_check integration tests
+# ---------------------------------------------------------------------------
+
+def test_cmd_check_committed_state_returns_zero() -> None:
+    """cmd_check against committed artifacts must return 0."""
+    from finco_parity.generate_baselines import cmd_check
+    from finco_parity.legacy_snapshot import ALL_BASELINE_IDS
+    rc = cmd_check(list(ALL_BASELINE_IDS), verbose=False)
+    assert rc == 0, f"cmd_check returned {rc} instead of 0"
+
+
+def test_cmd_check_head_sha_differs_from_baseline_sha_no_drift() -> None:
+    """HEAD SHA may differ from baseline_commit_sha without causing drift."""
+    import subprocess
+    from finco_parity.generate_baselines import cmd_check
+    from finco_parity.legacy_snapshot import ALL_BASELINE_IDS
+    from finco_parity.manifest import snapshot_path_for
+
+    # Confirm HEAD differs from the stored baseline_commit_sha.
+    result = subprocess.run(
+        ["git", "rev-parse", "HEAD"], capture_output=True, text=True, timeout=5
+    )
+    current_head = result.stdout.strip()
+    committed_sha = json.loads(snapshot_path_for("tuho").read_bytes())["baseline_commit_sha"]
+    # They may or may not differ depending on checkout; either way --check must pass.
+    rc = cmd_check(list(ALL_BASELINE_IDS), verbose=False)
+    assert rc == 0, (
+        f"cmd_check failed (rc={rc}) even though HEAD={current_head!r} "
+        f"baseline_commit_sha={committed_sha!r} — HEAD advancement must not cause drift"
+    )
+
+
+def test_cmd_check_numeric_drift_returns_nonzero(tmp_path: Path, monkeypatch) -> None:
+    """cmd_check with a modified committed snapshot returns non-zero (VALUE_DRIFT)."""
+    from finco_parity.generate_baselines import cmd_check
+    from finco_parity.canonical import canonical_json_bytes
+    from finco_parity.manifest import snapshot_path_for
+
+    committed_path = snapshot_path_for("tuho")
+    snap = json.loads(committed_path.read_bytes())
+    # Mutate a numeric value.
+    snap["returns"]["project_irr"] = 0.9999
+    bad_bytes = canonical_json_bytes(snap)
+
+    fake_committed = tmp_path / "tuho.json"
+    fake_committed.write_bytes(bad_bytes)
+
+    monkeypatch.setattr(
+        "finco_parity.generate_baselines.resolve_snapshot_path",
+        lambda entry: fake_committed if entry.get("baseline_id") == "tuho" else snapshot_path_for(entry["baseline_id"]),
+    )
+    rc = cmd_check(["tuho"], verbose=False)
+    assert rc != 0, "Modified committed snapshot must cause non-zero exit"
+
+
+def test_cmd_check_missing_key_returns_nonzero(tmp_path: Path, monkeypatch) -> None:
+    """cmd_check with a missing key in committed snapshot returns non-zero (STRUCTURAL_DRIFT)."""
+    from finco_parity.generate_baselines import cmd_check
+    from finco_parity.canonical import canonical_json_bytes
+    from finco_parity.manifest import snapshot_path_for
+
+    committed_path = snapshot_path_for("tuho")
+    snap = json.loads(committed_path.read_bytes())
+    del snap["returns"]
+    bad_bytes = canonical_json_bytes(snap)
+
+    fake_committed = tmp_path / "tuho.json"
+    fake_committed.write_bytes(bad_bytes)
+
+    monkeypatch.setattr(
+        "finco_parity.generate_baselines.resolve_snapshot_path",
+        lambda entry: fake_committed if entry.get("baseline_id") == "tuho" else snapshot_path_for(entry["baseline_id"]),
+    )
+    rc = cmd_check(["tuho"], verbose=False)
+    assert rc != 0
+
+
+def test_cmd_check_malformed_artifact_returns_nonzero(tmp_path: Path, monkeypatch) -> None:
+    """cmd_check with a non-canonical artifact returns non-zero."""
+    from finco_parity.generate_baselines import cmd_check
+    from finco_parity.manifest import snapshot_path_for
+
+    snap = json.loads(snapshot_path_for("tuho").read_bytes())
+    # Non-canonical: no trailing newline.
+    non_canonical = json.dumps(snap, sort_keys=True, indent=2).encode("utf-8")
+
+    fake_committed = tmp_path / "tuho.json"
+    fake_committed.write_bytes(non_canonical)
+
+    monkeypatch.setattr(
+        "finco_parity.generate_baselines.resolve_snapshot_path",
+        lambda entry: fake_committed if entry.get("baseline_id") == "tuho" else snapshot_path_for(entry["baseline_id"]),
+    )
+    rc = cmd_check(["tuho"], verbose=False)
+    assert rc != 0
+
+
+def test_cmd_check_does_not_write_to_committed_paths(monkeypatch) -> None:
+    """cmd_check must not write to any committed artifact paths."""
+    from finco_parity.generate_baselines import cmd_check
+    from finco_parity.legacy_snapshot import ALL_BASELINE_IDS
+    from finco_parity.manifest import SNAPSHOTS_DIR
+
+    writes: list[str] = []
+    original_write = Path.write_bytes
+
+    def _recording_write(self: Path, data: bytes) -> None:
+        writes.append(str(self))
+        return original_write(self, data)
+
+    monkeypatch.setattr(Path, "write_bytes", _recording_write)
+    cmd_check(list(ALL_BASELINE_IDS), verbose=False)
+
+    repo_writes = [w for w in writes if str(SNAPSHOTS_DIR) in w]
+    assert not repo_writes, (
+        "--check mode wrote to committed snapshot paths:\n"
+        + "\n".join(f"  {w}" for w in repo_writes)
+    )
