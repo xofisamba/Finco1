@@ -43,8 +43,10 @@ from __future__ import annotations
 
 import json
 import re
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from types import MappingProxyType
+from typing import Any, Mapping, Union
 
 from finco_parity.canonical import sha256_of_file
 from finco_parity.schema import SCHEMA_VERSION
@@ -86,6 +88,15 @@ _REQUIRED_GENERATION_ENV_FIELDS: tuple[str, ...] = (
 )
 
 
+def _freeze(obj: Any) -> Any:
+    """Recursively convert dicts → MappingProxyType, lists → tuple of frozen values."""
+    if isinstance(obj, dict):
+        return MappingProxyType({k: _freeze(v) for k, v in obj.items()})
+    if isinstance(obj, list):
+        return tuple(_freeze(v) for v in obj)
+    return obj
+
+
 def load_manifest() -> dict[str, Any]:
     """Load and return the raw manifest dict."""
     return json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
@@ -96,7 +107,7 @@ def manifest_baseline_ids() -> list[str]:
     return [entry["baseline_id"] for entry in load_manifest()["baselines"]]
 
 
-def resolve_snapshot_path(entry: dict[str, Any]) -> Path:
+def resolve_snapshot_path(entry: Mapping[str, Any]) -> Path:
     """Return the resolved absolute artifact path for a manifest entry.
 
     Resolution rules:
@@ -160,8 +171,14 @@ class ManifestIntegrityError(ValueError):
     """Raised when the manifest or its artifacts fail an integrity check."""
 
 
-def validate_manifest_integrity() -> None:
+def validate_manifest_integrity(
+    manifest: Mapping[str, Any] | None = None,
+) -> None:
     """Validate full manifest ↔ artifact consistency.
+
+    If manifest is None, loads it internally (backward compatibility).
+    If a manifest mapping is supplied, validates that exact object without
+    calling load_manifest() again.
 
     Checks (all run, errors accumulated):
       1.  No missing required entry fields.
@@ -188,7 +205,8 @@ def validate_manifest_integrity() -> None:
     from finco_parity.canonical import canonical_json_bytes
     from finco_parity.schema import validate_snapshot, SnapshotValidationError
 
-    manifest = load_manifest()
+    if manifest is None:
+        manifest = load_manifest()
     entries: list[dict] = manifest.get("baselines", [])
     errors: list[str] = []
 
@@ -246,17 +264,37 @@ def validate_manifest_integrity() -> None:
 
         # 3. Duplicate paths.
         if artifact_path in seen_paths:
-            errors.append(f"Duplicate artifact path: {artifact_path}")
+            try:
+                _rel = artifact_path.relative_to(_REPO_ROOT)
+            except ValueError:
+                _rel = artifact_path.name
+            errors.append(f"Duplicate artifact path: {_rel}")
         seen_paths.add(artifact_path)
         referenced_paths.add(artifact_path)
 
         # 8. Artifact exists.
         if not artifact_path.exists():
-            errors.append(f"{bid}: artifact missing: {artifact_path}")
+            try:
+                _rel = artifact_path.relative_to(_REPO_ROOT)
+            except ValueError:
+                _rel = artifact_path.name
+            errors.append(f"{bid}: artifact missing: {_rel}")
             continue
 
         # Load raw bytes and parsed snapshot.
-        raw_bytes = artifact_path.read_bytes()
+        try:
+            raw_bytes = artifact_path.read_bytes()
+        except OSError as exc:
+            try:
+                _rel = artifact_path.relative_to(_REPO_ROOT)
+            except ValueError:
+                _rel = Path(artifact_path.name)
+            errors.append(
+                f"{bid}: artifact read error: {_rel} "
+                f"({type(exc).__name__}, errno={getattr(exc, 'errno', None)}: "
+                f"{getattr(exc, 'strerror', str(exc))})"
+            )
+            continue
         try:
             snapshot = json.loads(raw_bytes)
         except Exception as exc:
@@ -320,3 +358,109 @@ def validate_manifest_integrity() -> None:
             f"{len(errors)} manifest integrity error(s):\n"
             + "\n".join(f"  - {e}" for e in errors)
         )
+
+
+# ---------------------------------------------------------------------------
+# Validated manifest context
+# ---------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class ValidatedManifestContext:
+    manifest: Mapping[str, Any]
+    entries: tuple[Mapping[str, Any], ...]
+    baseline_ids: tuple[str, ...]
+    entries_by_id: Mapping[str, Mapping[str, Any]]  # read-only baseline_id → entry
+
+    def get_entry(self, baseline_id: str) -> Mapping[str, Any]:
+        """Return the manifest entry for baseline_id.
+
+        Raises:
+            KeyError: if baseline_id is not in this context.
+        """
+        return self.entries_by_id[baseline_id]
+
+
+def load_validated_manifest_context() -> ValidatedManifestContext:
+    """Load and validate manifest in one controlled boundary — one file read.
+
+    Normalizes JSON parse errors, structural errors and integrity failures
+    to ManifestIntegrityError.
+
+    Returns a ValidatedManifestContext with manifest dict, entries tuple,
+    baseline_ids tuple, and entries_by_id mapping in manifest order.
+
+    Raises:
+        ManifestIntegrityError: on any parse, structure or integrity failure.
+    """
+    try:
+        manifest = load_manifest()
+    except OSError as exc:
+        raise ManifestIntegrityError(
+            f"Cannot load manifest ({type(exc).__name__}, errno={exc.errno}: {exc.strerror})"
+        ) from exc
+    except UnicodeDecodeError as exc:
+        raise ManifestIntegrityError(
+            f"Cannot load manifest (UnicodeDecodeError at position {exc.start})"
+        ) from exc
+    except json.JSONDecodeError as exc:
+        raise ManifestIntegrityError(
+            f"Cannot load manifest (JSONDecodeError at line {exc.lineno} col {exc.colno})"
+        ) from exc
+    except Exception as exc:
+        raise ManifestIntegrityError(
+            f"Cannot load manifest: {type(exc).__name__}"
+        ) from exc
+
+    if not isinstance(manifest, dict):
+        raise ManifestIntegrityError(
+            f"Manifest root must be a mapping, got {type(manifest).__name__}"
+        )
+
+    baselines = manifest.get("baselines")
+    if baselines is None:
+        raise ManifestIntegrityError("Manifest missing 'baselines' field")
+    if not isinstance(baselines, list):
+        raise ManifestIntegrityError(
+            f"Manifest 'baselines' must be a list, got {type(baselines).__name__}"
+        )
+
+    # Normalize malformed entries before integrity check.
+    for i, entry in enumerate(baselines):
+        if not isinstance(entry, Mapping):
+            raise ManifestIntegrityError(
+                f"Manifest baselines[{i}] must be a mapping, "
+                f"got {type(entry).__name__!r}"
+            )
+        if not entry:
+            raise ManifestIntegrityError(
+                f"Manifest baselines[{i}] is an empty mapping"
+            )
+        if "baseline_id" not in entry:
+            raise ManifestIntegrityError(
+                f"Manifest baselines[{i}] missing required field 'baseline_id'"
+            )
+
+    # Pass the already-loaded manifest to avoid a second file read.
+    try:
+        validate_manifest_integrity(manifest)
+    except ManifestIntegrityError:
+        raise
+    except (AttributeError, TypeError, KeyError, ValueError) as exc:
+        raise ManifestIntegrityError(
+            f"Manifest integrity check failed: {type(exc).__name__}: {exc}"
+        ) from exc
+
+    frozen_manifest: Mapping[str, Any] = _freeze(manifest)
+    frozen_entries: tuple[Mapping[str, Any], ...] = tuple(
+        _freeze(e) for e in baselines
+    )
+    baseline_ids = tuple(e["baseline_id"] for e in baselines)
+    entries_by_id: Mapping[str, Mapping[str, Any]] = MappingProxyType(
+        {bid: fe for bid, fe in zip(baseline_ids, frozen_entries)}
+    )
+    return ValidatedManifestContext(
+        manifest=frozen_manifest,
+        entries=frozen_entries,
+        baseline_ids=baseline_ids,
+        entries_by_id=entries_by_id,
+    )

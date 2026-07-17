@@ -50,3 +50,7 @@ jobs:
             tests/test_phase1b_baseline_integrity.py \
             tests/test_phase1b_snapshot_comparison.py \
             tests/test_phase1b_production_isolation.py
+
+      - name: Run Phase 1C tests
+        run: |
+          python -m pytest tests/test_phase1c_candidate_provider.py tests/test_phase1c_dual_run.py tests/test_phase1c_compare_candidate_cli.py tests/test_phase1c_production_isolation.py -v
