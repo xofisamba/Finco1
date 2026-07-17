@@ -281,7 +281,7 @@ def run_candidate_provider(
             from finco_parity.legacy_snapshot import capture_snapshot
             fresh_legacy = capture_snapshot(
                 baseline_id=baseline_id,
-                baseline_commit_sha=committed_snapshot.get("baseline_commit_sha", ""),
+                commit_sha=committed_snapshot.get("baseline_commit_sha", ""),
             )
         except Exception as exc:
             return _error_result(
