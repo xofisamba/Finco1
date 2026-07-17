@@ -1,0 +1,86 @@
+{
+  "manifest_version": "1.0.0",
+  "description": "Baseline project registry for Phase 1A legacy characterization snapshots",
+  "baselines": [
+    {
+      "baseline_id": "tuho",
+      "display_name": "TUHO Wind 1",
+      "project_type_key": "TUHO",
+      "project_code": "TUHO-WIND-1",
+      "technology": "wind",
+      "capacity_mw": null,
+      "horizon_years": null,
+      "factory_function": "app.project_factories.create_default_tuho_wind1",
+      "run_path": "app.ui_runner.run_demo_project",
+      "engine_designation": "legacy_waterfall_v3",
+      "identity_guard": "is_tuho = (code == 'TUHO-WIND-1')",
+      "frozen_fixture_path": "reports/phase7_tuho_senior_debt_sizing_extraction.csv",
+      "frozen_fixture_active": true,
+      "notes": [
+        "Senior debt schedule is frozen from the CSV fixture — engine uses fixture values, not a fresh sizing run.",
+        "CFADS proxy: cf_after_tax_keur (period-level). Multiple CFADS representations exist in the codebase; see report for disambiguation.",
+        "Identity guard in app/waterfall_core.py activates frozen schedule dispatch by project code."
+      ]
+    },
+    {
+      "baseline_id": "oborovo",
+      "display_name": "Oborovo Solar PV",
+      "project_type_key": "Oborovo",
+      "project_code": "OBOROVO-SOLAR-1",
+      "technology": "solar",
+      "capacity_mw": null,
+      "horizon_years": null,
+      "factory_function": "app.project_factories.create_default_oborovo",
+      "run_path": "app.ui_runner.run_demo_project",
+      "engine_designation": "legacy_waterfall_v3",
+      "identity_guard": "is_oborovo = (code == 'OBOROVO-SOLAR-1')",
+      "frozen_fixture_path": "reports/phase23q_oborovo_senior_debt_sizing_extraction.csv",
+      "frozen_fixture_active": true,
+      "notes": [
+        "Senior debt schedule is frozen from the CSV fixture — engine uses fixture values, not a fresh sizing run.",
+        "CFADS proxy: cf_after_tax_keur (period-level).",
+        "Identity guard in app/waterfall_core.py activates frozen schedule dispatch by project code."
+      ]
+    },
+    {
+      "baseline_id": "generic_solar",
+      "display_name": "Generic Solar (Test 1)",
+      "project_type_key": "Test 1",
+      "project_code": null,
+      "technology": "solar",
+      "capacity_mw": 50,
+      "horizon_years": 20,
+      "factory_function": "app.project_factories.create_default_solar_project",
+      "run_path": "app.ui_runner.run_demo_project",
+      "engine_designation": "legacy_waterfall_v3",
+      "identity_guard": null,
+      "frozen_fixture_path": null,
+      "frozen_fixture_active": false,
+      "notes": [
+        "No frozen fixture. Senior debt is sized live by the engine each run.",
+        "Determinism depends on the engine being deterministic for identical inputs.",
+        "CFADS proxy: cf_after_tax_keur (period-level)."
+      ]
+    },
+    {
+      "baseline_id": "generic_wind",
+      "display_name": "Generic Wind (Test 2)",
+      "project_type_key": "Test 2",
+      "project_code": null,
+      "technology": "wind",
+      "capacity_mw": 40,
+      "horizon_years": 25,
+      "factory_function": "app.project_factories.create_default_wind_project",
+      "run_path": "app.ui_runner.run_demo_project",
+      "engine_designation": "legacy_waterfall_v3",
+      "identity_guard": null,
+      "frozen_fixture_path": null,
+      "frozen_fixture_active": false,
+      "notes": [
+        "No frozen fixture. Senior debt is sized live by the engine each run.",
+        "Determinism depends on the engine being deterministic for identical inputs.",
+        "CFADS proxy: cf_after_tax_keur (period-level)."
+      ]
+    }
+  ]
+}
