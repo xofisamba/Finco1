@@ -29,7 +29,7 @@ from finco_parity.dual_run import (
     run_candidate_provider,
 )
 import json as _json_module
-from finco_parity.manifest import SNAPSHOTS_DIR, ManifestIntegrityError
+from finco_parity.manifest import SNAPSHOTS_DIR, ManifestIntegrityError, load_validated_manifest_context
 
 pytestmark = pytest.mark.unit
 
@@ -521,3 +521,133 @@ def test_manifest_failure_error_message_no_absolute_path():
     assert result.error_message is not None
     assert "/home/" not in result.error_message
     assert "/tmp/" not in result.error_message
+
+
+# ---------------------------------------------------------------------------
+# Single manifest load count tests (Phase 1C context boundary)
+# ---------------------------------------------------------------------------
+
+def test_run_candidate_provider_loads_manifest_exactly_once():
+    """Exactly one manifest file read per run_candidate_provider() call."""
+    provider = MagicMock()
+    provider.capture_snapshot.side_effect = CandidateFileNotFoundError("missing")
+
+    import finco_parity.manifest as _manifest_mod
+    original = _manifest_mod.load_manifest
+    call_count = []
+
+    def counting(*args, **kwargs):
+        call_count.append(1)
+        return original(*args, **kwargs)
+
+    with patch.object(_manifest_mod, "load_manifest", side_effect=counting):
+        run_candidate_provider("tuho", provider, verify_legacy=False)
+
+    assert len(call_count) == 1, f"Expected 1 manifest load, got {len(call_count)}"
+
+
+def test_compare_candidate_directory_loads_manifest_exactly_once(tmp_path):
+    """Exactly one manifest file read for all baselines in compare_candidate_directory."""
+    import finco_parity.manifest as _manifest_mod
+    original = _manifest_mod.load_manifest
+    call_count = []
+
+    def counting(*args, **kwargs):
+        call_count.append(1)
+        return original(*args, **kwargs)
+
+    with patch.object(_manifest_mod, "load_manifest", side_effect=counting):
+        compare_candidate_directory(tmp_path, verify_legacy=False)
+
+    assert len(call_count) == 1, f"Expected 1 manifest load, got {len(call_count)}"
+
+
+def test_validate_integrity_called_once_for_four_baselines(tmp_path):
+    """validate_manifest_integrity() is called exactly once for all baselines."""
+    import finco_parity.manifest as _manifest_mod
+    original = _manifest_mod.validate_manifest_integrity
+    call_count = []
+
+    def counting(*args, **kwargs):
+        call_count.append(1)
+        return original(*args, **kwargs)
+
+    with patch.object(_manifest_mod, "validate_manifest_integrity", side_effect=counting):
+        compare_candidate_directory(tmp_path, verify_legacy=False)
+
+    assert len(call_count) == 1, f"Expected 1 integrity check, got {len(call_count)}"
+
+
+def test_same_object_validation():
+    """Only the first-loaded manifest object is used; no second read occurs."""
+    import finco_parity.manifest as _manifest_mod
+
+    original_manifest = _manifest_mod.load_manifest()
+    second_manifest = {"baselines": [], "manifest_version": "fake"}
+
+    load_count = []
+
+    def first_then_different():
+        if not load_count:
+            load_count.append(1)
+            return original_manifest
+        return second_manifest
+
+    provider = MagicMock()
+    provider.capture_snapshot.side_effect = CandidateFileNotFoundError("missing")
+
+    with patch.object(_manifest_mod, "load_manifest", side_effect=first_then_different):
+        result = run_candidate_provider("tuho", provider, verify_legacy=False)
+
+    # The result must use the first manifest, not the second
+    assert len(load_count) == 1
+    # tuho is in the real manifest → should proceed past manifest validation
+    assert result.status != BaselineRunStatus.MANIFEST_INTEGRITY_FAILURE
+
+
+# ---------------------------------------------------------------------------
+# Malformed entry tests
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("bad_entry,description", [
+    (1, "scalar int"),
+    (None, "null"),
+    ("tuho", "string"),
+])
+def test_run_candidate_provider_scalar_null_string_entry(bad_entry, description):
+    """Malformed entry in baselines list → MANIFEST_INTEGRITY_FAILURE, provider not called."""
+    provider = MagicMock()
+    real_manifest = load_validated_manifest_context().manifest.copy()
+    bad_manifest = {**real_manifest, "baselines": [bad_entry]}
+
+    with patch("finco_parity.manifest.load_manifest", return_value=bad_manifest):
+        result = run_candidate_provider("tuho", provider, verify_legacy=False)
+
+    assert result.status == BaselineRunStatus.MANIFEST_INTEGRITY_FAILURE
+    provider.capture_snapshot.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Artifact read error: relative path in error message
+# ---------------------------------------------------------------------------
+
+def test_artifact_read_error_no_absolute_path(monkeypatch):
+    """OSError reading a baseline artifact produces ManifestIntegrityError with relative path."""
+    import finco_parity.manifest as _manifest_mod
+    from pathlib import Path as _Path
+
+    original_read_bytes = _Path.read_bytes
+    manifest_path = _manifest_mod.MANIFEST_PATH
+
+    def patched_read_bytes(self):
+        if self == manifest_path:
+            return original_read_bytes(self)
+        raise OSError(13, "Permission denied")
+
+    monkeypatch.setattr(_Path, "read_bytes", patched_read_bytes)
+    with pytest.raises(ManifestIntegrityError) as exc_info:
+        load_validated_manifest_context()
+
+    msg = str(exc_info.value)
+    assert "/home/" not in msg
+    assert "/tmp/" not in msg

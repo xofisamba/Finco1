@@ -51,9 +51,6 @@ from finco_parity.dual_run import (
 )
 from finco_parity.manifest import (
     ManifestIntegrityError,
-    ValidatedManifestContext,
-    load_validated_manifest_context,
-    manifest_baseline_ids,
 )
 
 
@@ -272,30 +269,8 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 2
 
-    # Validate manifest and load baseline IDs upfront.
-    try:
-        ctx = load_validated_manifest_context()
-    except ManifestIntegrityError as exc:
-        print(f"ERROR: Manifest integrity failure: {exc}", file=sys.stderr)
-        return 4
-    except Exception as exc:
-        print(f"ERROR: Failed to load manifest: {exc}", file=sys.stderr)
-        return 4
-
-    all_ids = list(ctx.baseline_ids)
-
-    # Determine target baseline IDs.
-    if args.all:
-        baseline_ids = None  # means all in compare_candidate_directory
-    else:
-        if args.baseline_id not in all_ids:
-            print(
-                f"ERROR: Unknown baseline_id {args.baseline_id!r}. "
-                f"Valid IDs: {all_ids!r}",
-                file=sys.stderr,
-            )
-            return 2
-        baseline_ids = [args.baseline_id]
+    # Baseline IDs — validation happens inside compare_candidate_directory.
+    baseline_ids = [args.baseline_id] if args.baseline_id else None
 
     # In --check mode, force verify_legacy=True.
     verify_legacy = args.verify_legacy
@@ -304,7 +279,7 @@ def main(argv: list[str] | None = None) -> int:
 
     verbose = not args.quiet
 
-    # Run comparison.
+    # Run comparison — manifest loading happens exactly once inside here.
     try:
         result = compare_candidate_directory(
             candidate_dir,
@@ -314,16 +289,17 @@ def main(argv: list[str] | None = None) -> int:
             verbose=verbose,
         )
     except ManifestIntegrityError as exc:
+        # Must be before ValueError since ManifestIntegrityError subclasses ValueError.
         print(f"ERROR: Manifest integrity failure: {exc}", file=sys.stderr)
         return 4
     except ValueError as exc:
-        # Unknown baseline IDs surfaced here.
+        # Unknown baseline IDs (valid manifest but ID not found).
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
     except Exception as exc:
         print(f"ERROR: Unexpected error during comparison: {exc}", file=sys.stderr)
         traceback.print_exc(file=sys.stderr)
-        return 1
+        return 4
 
     # Write reports.
     if args.json_report:

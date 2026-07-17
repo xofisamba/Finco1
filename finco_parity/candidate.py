@@ -100,6 +100,24 @@ def baseline_reference_from_manifest(baseline_id: str) -> BaselineReference:
     )
 
 
+def baseline_reference_from_entry(entry: Mapping[str, Any]) -> BaselineReference:
+    """Build a BaselineReference from a manifest entry dict (no manifest reload).
+
+    Use this when the entry has already been loaded from a ValidatedManifestContext.
+    """
+    committed_path = resolve_snapshot_path(entry)
+    return BaselineReference(
+        baseline_id=entry["baseline_id"],
+        project_type_key=entry.get("project_type_key", ""),
+        project_code=entry.get("project_code", ""),
+        scenario_identity=entry.get("scenario_identity", ""),
+        input_source_id=entry["input_source_id"],
+        schema_version=entry["schema_version"],
+        baseline_commit_sha=entry.get("baseline_commit_sha", ""),
+        committed_snapshot_path=committed_path,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Protocol
 # ---------------------------------------------------------------------------

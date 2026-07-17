@@ -34,6 +34,7 @@ from finco_parity.candidate import (
     CandidateSnapshotProvider,
     CandidateValidationError,
     FileCandidateSnapshotProvider,
+    baseline_reference_from_entry,
     baseline_reference_from_manifest,
     validate_candidate_snapshot,
 )
@@ -47,7 +48,6 @@ from finco_parity.comparison import (
 from finco_parity.manifest import (
     ManifestIntegrityError,
     ValidatedManifestContext,
-    get_manifest_entry,
     load_validated_manifest_context,
     manifest_baseline_ids,
     resolve_snapshot_path,
@@ -219,43 +219,25 @@ def _error_result(
 # Primary orchestration functions
 # ---------------------------------------------------------------------------
 
-def run_candidate_provider(
+def _run_candidate_with_context(
     baseline_id: str,
     provider: CandidateSnapshotProvider,
+    ctx: ValidatedManifestContext,
     *,
     verify_legacy: bool = True,
     max_diffs: int | None = None,
     verbose: bool = False,
 ) -> BaselineRunResult:
-    """Orchestrate one baseline comparison.
+    """Internal: run one baseline comparison using an already-validated context.
 
-    Steps:
-    1. Environment check.
-    2. Manifest integrity check.
-    3. Load committed artifact.
-    4. Optionally capture fresh legacy snapshot and verify against committed.
-    5. Acquire candidate snapshot.
-    6. Validate candidate.
-    7. Project both to _PARITY_SECTIONS.
-    8. Compare.
-    9. Return result.
+    Does NOT reload the manifest; uses the provided ValidatedManifestContext.
     """
     from finco_parity.generate_baselines import check_generation_environment
 
     if max_diffs is not None and max_diffs < 0:
         raise ValueError(f"max_diffs must be >= 0, got {max_diffs!r}")
 
-    # Step 1: Load and validate manifest (single controlled boundary).
-    try:
-        ctx = load_validated_manifest_context()
-    except ManifestIntegrityError as exc:
-        return _error_result(
-            baseline_id,
-            BaselineRunStatus.MANIFEST_INTEGRITY_FAILURE,
-            f"Manifest integrity failure: {exc}",
-        )
-
-    # Step 2: Look up baseline_id inside validated context.
+    # Baseline ID lookup inside validated context (no manifest reload).
     if baseline_id not in ctx.baseline_ids:
         return _error_result(
             baseline_id,
@@ -263,9 +245,8 @@ def run_candidate_provider(
             f"baseline_id not found in manifest: {baseline_id!r}",
         )
 
-    # Step 3: Environment check.
-    manifest = ctx.manifest
-    env_error = check_generation_environment(manifest)
+    # Environment check.
+    env_error = check_generation_environment(ctx.manifest)
     if env_error:
         return _error_result(
             baseline_id,
@@ -273,31 +254,45 @@ def run_candidate_provider(
             f"Environment mismatch: {env_error}",
         )
 
-    # Step 4 (was 3): Load committed artifact.
-    entry = get_manifest_entry(baseline_id)
+    # Load committed artifact from context (no manifest reload).
+    try:
+        entry = ctx.get_entry(baseline_id)
+    except KeyError:
+        return _error_result(
+            baseline_id,
+            BaselineRunStatus.MANIFEST_INTEGRITY_FAILURE,
+            f"baseline_id not in validated context: {baseline_id!r}",
+        )
+
     try:
         artifact_path = resolve_snapshot_path(entry)
         raw_committed = artifact_path.read_bytes()
         committed_snapshot: dict = json.loads(raw_committed)
+    except (ManifestIntegrityError, OSError, json.JSONDecodeError, ValueError) as exc:
+        return _error_result(
+            baseline_id,
+            BaselineRunStatus.MANIFEST_INTEGRITY_FAILURE,
+            f"Failed to load committed artifact for {baseline_id!r}: {type(exc).__name__}",
+        )
     except Exception as exc:
         return _error_result(
             baseline_id,
             BaselineRunStatus.EXECUTION_ERROR,
-            f"Failed to load committed artifact: {exc}",
+            f"Failed to load committed artifact: {type(exc).__name__}",
         )
 
-    # Build reference object.
+    # Build reference from entry (no manifest reload).
     try:
-        reference = baseline_reference_from_manifest(baseline_id)
+        reference = baseline_reference_from_entry(entry)
     except Exception as exc:
         return _error_result(
             baseline_id,
             BaselineRunStatus.EXECUTION_ERROR,
-            f"Failed to build BaselineReference: {exc}",
+            f"Failed to build BaselineReference: {type(exc).__name__}",
             legacy_snapshot=committed_snapshot,
         )
 
-    # Step 4: Optional legacy re-run.
+    # Optional legacy re-run.
     if verify_legacy:
         try:
             from finco_parity.legacy_snapshot import capture_snapshot
@@ -337,7 +332,7 @@ def run_candidate_provider(
                 ),
             )
 
-    # Step 5: Acquire candidate snapshot.
+    # Acquire candidate snapshot.
     candidate_snapshot: dict | None = None
     try:
         candidate_raw = provider.capture_snapshot(baseline_id, reference)
@@ -364,7 +359,7 @@ def run_candidate_provider(
             legacy_snapshot=committed_snapshot,
         )
 
-    # Step 6: Validate candidate.
+    # Validate candidate.
     try:
         validate_candidate_snapshot(candidate_snapshot, reference)
     except CandidateIdentityMismatch as exc:
@@ -400,18 +395,18 @@ def run_candidate_provider(
             candidate_snapshot=candidate_snapshot,
         )
 
-    # Step 7: Project to parity sections.
+    # Project to parity sections.
     committed_projected = _project_for_comparison(committed_snapshot)
     candidate_projected = _project_for_comparison(candidate_snapshot)
 
-    # Step 8: Compare.
+    # Compare.
     cmp_result = compare_snapshots(committed_projected, candidate_projected, baseline_id)
 
     diffs = cmp_result.differences
     if max_diffs is not None:
         diffs = diffs[:max_diffs]
 
-    # Step 9: Determine result status.
+    # Determine result status.
     if cmp_result.is_identical():
         run_status = BaselineRunStatus.PASS
     else:
@@ -430,6 +425,38 @@ def run_candidate_provider(
         legacy_warnings=_extract_warnings(committed_snapshot),
         candidate_warnings=_extract_warnings(candidate_snapshot),
         error_message=None,
+    )
+
+
+def run_candidate_provider(
+    baseline_id: str,
+    provider: CandidateSnapshotProvider,
+    *,
+    verify_legacy: bool = True,
+    max_diffs: int | None = None,
+    verbose: bool = False,
+) -> BaselineRunResult:
+    """Orchestrate one baseline comparison. Loads manifest exactly once."""
+    if max_diffs is not None and max_diffs < 0:
+        raise ValueError(f"max_diffs must be >= 0, got {max_diffs!r}")
+
+    # Single manifest load and validation.
+    try:
+        ctx = load_validated_manifest_context()
+    except ManifestIntegrityError as exc:
+        return _error_result(
+            baseline_id,
+            BaselineRunStatus.MANIFEST_INTEGRITY_FAILURE,
+            f"Manifest integrity failure: {exc}",
+        )
+
+    return _run_candidate_with_context(
+        baseline_id,
+        provider,
+        ctx,
+        verify_legacy=verify_legacy,
+        max_diffs=max_diffs,
+        verbose=verbose,
     )
 
 
@@ -517,9 +544,10 @@ def compare_candidate_directory(
     for bid in selected:
         if verbose:
             print(f"Comparing {bid} ...", file=sys.stderr, flush=True)
-        result = run_candidate_provider(
+        result = _run_candidate_with_context(
             bid,
             provider,
+            ctx,  # same context for every baseline — no re-validation
             verify_legacy=verify_legacy,
             max_diffs=max_diffs,
             verbose=verbose,
