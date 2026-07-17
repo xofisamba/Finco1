@@ -225,6 +225,15 @@ def capture_snapshot(
     if fs_payload is UNAVAILABLE:
         unavailable_sections.append("financial_statements")
 
+    # Deterministic metadata: fields that are structurally absent from WaterfallPeriod
+    # or WaterfallResult — captured once per baseline, same for all four baselines.
+    unavailable_fields: dict[str, list[str]] = {
+        "period_grid": ["is_construction", "start_date"],
+        "financing.senior_debt": ["drawdown_keur", "opening_keur"],
+        "financing.shl": ["opening_keur"],
+        "financing.equity": ["injections_keur"],
+    }
+
     if verbose:
         print("  normalizing …", flush=True)
 
@@ -237,6 +246,7 @@ def capture_snapshot(
         input_source_id=input_source_id,
         warnings=engine_warnings,
         unavailable_sections=unavailable_sections,
+        unavailable_fields=unavailable_fields,
         financial_statements_payload=fs_payload,
     )
 

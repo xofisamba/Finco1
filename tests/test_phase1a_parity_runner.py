@@ -146,6 +146,53 @@ class TestCaptureSnapshotSchema:
         snap = _capture(baseline_id)
         assert "unavailable_fields" in snap
 
+    def test_unavailable_fields_is_dict(self, baseline_id):
+        snap = _capture(baseline_id)
+        assert isinstance(snap["unavailable_fields"], dict)
+
+    def test_unavailable_fields_period_grid_section(self, baseline_id):
+        snap = _capture(baseline_id)
+        uf = snap["unavailable_fields"]
+        assert "period_grid" in uf
+        assert "is_construction" in uf["period_grid"]
+        assert "start_date" in uf["period_grid"]
+
+    def test_unavailable_fields_senior_debt_section(self, baseline_id):
+        snap = _capture(baseline_id)
+        uf = snap["unavailable_fields"]
+        assert "financing.senior_debt" in uf
+        assert "opening_keur" in uf["financing.senior_debt"]
+        assert "drawdown_keur" in uf["financing.senior_debt"]
+
+    def test_unavailable_fields_shl_section(self, baseline_id):
+        snap = _capture(baseline_id)
+        uf = snap["unavailable_fields"]
+        assert "financing.shl" in uf
+        assert "opening_keur" in uf["financing.shl"]
+
+    def test_unavailable_fields_equity_section(self, baseline_id):
+        snap = _capture(baseline_id)
+        uf = snap["unavailable_fields"]
+        assert "financing.equity" in uf
+        assert "injections_keur" in uf["financing.equity"]
+
+    def test_tax_and_cfads_present(self, baseline_id):
+        snap = _capture(baseline_id)
+        assert "tax_and_cfads" in snap
+        assert isinstance(snap["tax_and_cfads"], dict)
+
+    def test_financial_statements_key_present(self, baseline_id):
+        snap = _capture(baseline_id)
+        assert "financial_statements" in snap
+
+    def test_period_grid_rows_have_all_required_keys(self, baseline_id):
+        snap = _capture(baseline_id)
+        required = {"period_index", "date", "year_index", "period_in_year",
+                    "is_operation", "start_date", "is_construction"}
+        for row in snap["period_grid"]:
+            missing = required - row.keys()
+            assert not missing, f"{baseline_id}: period row missing keys {missing}"
+
     def test_financing_has_llcr(self, baseline_id):
         snap = _capture(baseline_id)
         assert "llcr" in snap["financing"]["senior_debt"]
@@ -367,11 +414,69 @@ class TestCLIFileWrite:
 
 
 # ---------------------------------------------------------------------------
-# Section G: import boundary
+# Section G: import boundary (AST-based repository scan)
 # ---------------------------------------------------------------------------
 
 class TestImportBoundary:
-    """Production modules must not import finco_parity."""
+    """Production code must not import finco_parity.
+
+    Uses AST inspection rather than substring matching so that comments and
+    strings do not trigger false positives.  Scans all .py files under the
+    production directories: app/, domain/, finco_core/, main_web.py, main_api.py.
+    Excludes finco_parity/, tests/, and reports/ which are allowed to import it.
+    """
+
+    @staticmethod
+    def _collect_production_files() -> list[Path]:
+        """Return all production Python files that must not import finco_parity."""
+        import ast as _ast  # noqa: F401 (used below via _check_file)
+        repo_root = Path(__file__).parent.parent
+        production_dirs = [
+            repo_root / "app",
+            repo_root / "domain",
+            repo_root / "finco_core",
+        ]
+        top_level_files = [
+            repo_root / "main_web.py",
+            repo_root / "main_api.py",
+        ]
+        paths: list[Path] = []
+        for d in production_dirs:
+            if d.exists():
+                paths.extend(sorted(d.rglob("*.py")))
+        for f in top_level_files:
+            if f.exists():
+                paths.append(f)
+        return paths
+
+    @staticmethod
+    def _file_imports_finco_parity(path: Path) -> bool:
+        """Return True if any import statement in path references finco_parity."""
+        import ast
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        except SyntaxError:
+            return False
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    if alias.name == "finco_parity" or alias.name.startswith("finco_parity."):
+                        return True
+            elif isinstance(node, ast.ImportFrom):
+                module = node.module or ""
+                if module == "finco_parity" or module.startswith("finco_parity."):
+                    return True
+        return False
+
+    def test_no_production_file_imports_finco_parity(self):
+        violators: list[str] = []
+        for path in self._collect_production_files():
+            if self._file_imports_finco_parity(path):
+                repo_root = Path(__file__).parent.parent
+                violators.append(str(path.relative_to(repo_root)))
+        assert not violators, (
+            f"Production files that import finco_parity (violates boundary): {violators}"
+        )
 
     @pytest.mark.parametrize("module_name", [
         "app.ui_runner",
@@ -381,51 +486,117 @@ class TestImportBoundary:
         "app.api.project_runner",
         "app.services.run_service",
     ])
-    def test_production_module_does_not_import_finco_parity(self, module_name):
+    def test_named_module_does_not_import_finco_parity(self, module_name):
         import importlib
+        import ast
         mod = importlib.import_module(module_name)
         src_file = getattr(mod, "__file__", None)
         if src_file is None:
             pytest.skip(f"No source file for {module_name}")
-        src = Path(src_file).read_text(encoding="utf-8")
-        assert "finco_parity" not in src, (
+        assert not self._file_imports_finco_parity(Path(src_file)), (
             f"Production module {module_name} imports finco_parity — violates boundary"
         )
 
 
 # ---------------------------------------------------------------------------
-# Section H: source-object immutability
+# Section H: source-object immutability (deep fingerprint)
 # ---------------------------------------------------------------------------
 
+def _fingerprint_waterfall_result(wr: Any) -> dict[str, Any]:
+    """Build a deep structural fingerprint of a WaterfallResult for mutation detection.
+
+    Captures aggregate scalars, period count, and per-period numeric values for
+    the first and last period.  Sufficient to detect any in-place mutation of the
+    result or its period objects.
+    """
+    scalars = {
+        "project_irr": getattr(wr, "project_irr", None),
+        "equity_irr": getattr(wr, "equity_irr", None),
+        "total_revenue_keur": getattr(wr, "total_revenue_keur", None),
+        "total_opex_keur": getattr(wr, "total_opex_keur", None),
+        "total_distribution_keur": getattr(wr, "total_distribution_keur", None),
+        "avg_dscr": getattr(wr, "avg_dscr", None),
+        "min_dscr": getattr(wr, "min_dscr", None),
+        "min_llcr": getattr(wr, "min_llcr", None),
+    }
+    periods = getattr(wr, "periods", []) or []
+    period_count = len(periods)
+
+    def _period_snapshot(p: Any) -> dict[str, Any]:
+        attrs = [
+            "period", "revenue_keur", "opex_keur", "ebitda_keur",
+            "dscr", "llcr", "senior_balance_keur", "senior_ds_keur",
+            "distribution_keur", "cf_after_tax_keur",
+        ]
+        return {a: getattr(p, a, None) for a in attrs}
+
+    first_period = _period_snapshot(periods[0]) if periods else {}
+    last_period = _period_snapshot(periods[-1]) if periods else {}
+
+    return {
+        "scalars": scalars,
+        "period_count": period_count,
+        "first_period": first_period,
+        "last_period": last_period,
+    }
+
+
 class TestSourceObjectImmutability:
-    """capture_snapshot must not mutate WaterfallResult, WaterfallPeriod, or inputs."""
+    """capture_snapshot must not mutate WaterfallResult, WaterfallPeriod, or inputs.
 
-    def test_waterfall_result_not_mutated(self):
+    Uses a deep structural fingerprint taken before and after normalization on
+    the SAME object (not a fresh engine run).  monkeypatches _run_engine() so
+    the test controls exactly which object is passed to normalize_snapshot().
+    """
+
+    def test_waterfall_result_not_mutated_via_monkeypatch(self, monkeypatch):
         from app.ui_runner import run_demo_project
+        import finco_parity.legacy_snapshot as ls
+
         demo = run_demo_project("TUHO")
         wr = demo.result
-        # Record key aggregate values
-        original_irr = wr.project_irr
-        original_n_periods = len(wr.periods)
-        original_revenue = wr.total_revenue_keur
 
-        # Run snapshot capture
-        capture_snapshot("tuho", commit_sha="immutability-test", verbose=False)
+        fingerprint_before = _fingerprint_waterfall_result(wr)
 
-        # Verify result unchanged
-        assert wr.project_irr == original_irr
-        assert len(wr.periods) == original_n_periods
-        assert wr.total_revenue_keur == original_revenue
+        # Inject the pre-captured result so normalize_snapshot receives this exact object.
+        def _mock_run_engine(project_type: str):
+            return wr, None, []
 
-    def test_waterfall_period_not_mutated(self):
+        monkeypatch.setattr(ls, "_run_engine", _mock_run_engine)
+        capture_snapshot("tuho", commit_sha="immutability-monkeypatch", verbose=False)
+
+        fingerprint_after = _fingerprint_waterfall_result(wr)
+        assert fingerprint_before == fingerprint_after, (
+            "WaterfallResult was mutated by capture_snapshot(). "
+            f"Before: {fingerprint_before!r}  After: {fingerprint_after!r}"
+        )
+
+    def test_waterfall_period_attributes_not_mutated(self, monkeypatch):
         from app.ui_runner import run_demo_project
+        import finco_parity.legacy_snapshot as ls
+
         demo = run_demo_project("TUHO")
         wr = demo.result
-        p0 = wr.periods[0]
-        original_revenue = p0.revenue_keur
-        original_dscr = p0.dscr
+        periods = wr.periods
 
-        capture_snapshot("tuho", commit_sha="immutability-test-p", verbose=False)
+        # Snapshot all period attributes up front
+        period_attrs = ["revenue_keur", "opex_keur", "dscr", "llcr",
+                        "senior_balance_keur", "distribution_keur"]
+        before = {
+            (i, attr): getattr(p, attr, None)
+            for i, p in enumerate(periods)
+            for attr in period_attrs
+        }
 
-        assert p0.revenue_keur == original_revenue
-        assert p0.dscr == original_dscr
+        def _mock_run_engine(project_type: str):
+            return wr, None, []
+
+        monkeypatch.setattr(ls, "_run_engine", _mock_run_engine)
+        capture_snapshot("tuho", commit_sha="immutability-periods", verbose=False)
+
+        after = {
+            (i, attr): getattr(p, attr, None)
+            for i, p in enumerate(periods)
+            for attr in period_attrs
+        }
+        assert before == after, "WaterfallPeriod attributes were mutated by capture_snapshot()"

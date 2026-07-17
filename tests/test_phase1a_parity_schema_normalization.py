@@ -23,6 +23,7 @@ from finco_parity.schema import (
 )
 from finco_parity.normalization import (
     NormalizationError,
+    NonFiniteError,
     normalize_value,
     normalize_snapshot,
     _safe_float,
@@ -49,17 +50,33 @@ def _minimal_snapshot(**overrides) -> dict[str, Any]:
 def _snap_with_period() -> dict[str, Any]:
     """Minimal snapshot with one period row and matching schedule lengths."""
     snap = _minimal_snapshot()
-    snap["period_grid"] = [{"period_index": 0, "date": "2025-06-30"}]
+    snap["period_grid"] = [{
+        "period_index": 0,
+        "date": "2025-06-30",
+        "year_index": 1,
+        "period_in_year": 1,
+        "is_operation": True,
+        "start_date": None,
+        "is_construction": None,
+    }]
     for k in snap["operating_schedules"]:
         snap["operating_schedules"][k] = [100.0]
+    for k in snap["tax_and_cfads"]:
+        snap["tax_and_cfads"][k] = [50.0]
     snap["financing"]["senior_debt"]["closing_keur"] = [5000.0]
     snap["financing"]["senior_debt"]["interest_keur"] = [50.0]
     snap["financing"]["senior_debt"]["principal_keur"] = [100.0]
     snap["financing"]["senior_debt"]["debt_service_keur"] = [150.0]
     snap["financing"]["senior_debt"]["dscr"] = [1.2]
     snap["financing"]["senior_debt"]["llcr"] = [1.4]
+    for k in snap["financing"]["shl"]:
+        snap["financing"]["shl"][k] = [0.0]
+    for k in snap["financing"]["equity"]:
+        snap["financing"]["equity"][k] = [0.0]
     snap["returns"]["project_irr"] = 0.08
     snap["returns"]["equity_irr"] = 0.12
+    snap["returns"]["sponsor_irr"] = 0.10
+    snap["returns"]["min_llcr"] = 1.3
     snap["returns"]["total_distribution_keur"] = 1000.0
     snap["returns"]["total_revenue_keur"] = 5000.0
     return snap
@@ -139,28 +156,50 @@ class TestValidateSnapshotRequiredKeys:
         with pytest.raises(SnapshotValidationError):
             validate_snapshot(snap)
 
+    @staticmethod
+    def _full_period_row(period_index: int) -> dict:
+        return {
+            "period_index": period_index,
+            "date": "2025-06-30",
+            "year_index": 1,
+            "period_in_year": 1,
+            "is_operation": True,
+            "start_date": None,
+            "is_construction": None,
+        }
+
     def test_duplicate_period_indices_raises(self):
         snap = _minimal_snapshot(period_grid=[
-            {"period_index": 0}, {"period_index": 0}
+            self._full_period_row(0), self._full_period_row(0),
         ])
         with pytest.raises(SnapshotValidationError, match="duplicate"):
             validate_snapshot(snap)
 
     def test_unsorted_period_indices_raises(self):
         snap = _minimal_snapshot(period_grid=[
-            {"period_index": 1}, {"period_index": 0}
+            self._full_period_row(1), self._full_period_row(0),
         ])
         with pytest.raises(SnapshotValidationError, match="sorted"):
             validate_snapshot(snap)
 
     def test_sorted_period_indices_passes(self):
         snap = _snap_with_period()
-        snap["period_grid"] = [{"period_index": 0, "date": "2025-06-30"},
-                               {"period_index": 1, "date": "2025-12-31"}]
+        snap["period_grid"] = [
+            {"period_index": 0, "date": "2025-06-30", "year_index": 1,
+             "period_in_year": 1, "is_operation": True, "start_date": None, "is_construction": None},
+            {"period_index": 1, "date": "2025-12-31", "year_index": 1,
+             "period_in_year": 2, "is_operation": True, "start_date": None, "is_construction": None},
+        ]
         for k in snap["operating_schedules"]:
             snap["operating_schedules"][k] = [100.0, 100.0]
+        for k in snap["tax_and_cfads"]:
+            snap["tax_and_cfads"][k] = [50.0, 50.0]
         for k in ("closing_keur", "interest_keur", "principal_keur", "debt_service_keur", "dscr", "llcr"):
-            snap["financing"]["senior_debt"][k] = [snap["financing"]["senior_debt"][k][0], snap["financing"]["senior_debt"][k][0]]
+            snap["financing"]["senior_debt"][k] = [snap["financing"]["senior_debt"][k][0]] * 2
+        for k in snap["financing"]["shl"]:
+            snap["financing"]["shl"][k] = [0.0, 0.0]
+        for k in snap["financing"]["equity"]:
+            snap["financing"]["equity"][k] = [0.0, 0.0]
         validate_snapshot(snap)
 
     def test_non_finite_in_operating_schedules_raises(self):
@@ -305,32 +344,102 @@ class TestSafeFloat:
     def test_zero_passes(self):
         assert _safe_float(0.0) == 0.0
 
-    def test_nan_raises(self):
-        with pytest.raises(NormalizationError, match="NaN"):
+    # NaN and inf → NonFiniteError (subclass of NormalizationError)
+    def test_nan_raises_nonfinite_error(self):
+        with pytest.raises(NonFiniteError, match="NaN"):
             _safe_float(float("nan"))
 
-    def test_inf_raises(self):
-        with pytest.raises(NormalizationError, match="Infinite"):
+    def test_nan_is_also_normalization_error(self):
+        with pytest.raises(NormalizationError):
+            _safe_float(float("nan"))
+
+    def test_pos_inf_raises_nonfinite_error(self):
+        with pytest.raises(NonFiniteError, match="Infinite"):
             _safe_float(float("inf"))
 
-    def test_neg_inf_raises(self):
-        with pytest.raises(NormalizationError, match="Infinite"):
+    def test_neg_inf_raises_nonfinite_error(self):
+        with pytest.raises(NonFiniteError, match="Infinite"):
             _safe_float(float("-inf"))
 
-    def test_bool_raises(self):
-        with pytest.raises(NormalizationError):
+    # Wrong types → NormalizationError (not NonFiniteError)
+    def test_bool_raises_normalization_error_not_nonfinite(self):
+        with pytest.raises(NormalizationError) as exc_info:
             _safe_float(True)
+        assert not isinstance(exc_info.value, NonFiniteError)
 
-    def test_non_numeric_string_raises(self):
-        with pytest.raises(NormalizationError):
+    def test_non_numeric_string_raises_normalization_error_not_nonfinite(self):
+        with pytest.raises(NormalizationError) as exc_info:
             _safe_float("not_a_number")
+        assert not isinstance(exc_info.value, NonFiniteError)
 
-    def test_none_raises(self):
-        with pytest.raises(NormalizationError):
+    def test_none_raises_normalization_error_not_nonfinite(self):
+        with pytest.raises(NormalizationError) as exc_info:
             _safe_float(None)
+        assert not isinstance(exc_info.value, NonFiniteError)
+
+    def test_list_raises_normalization_error(self):
+        with pytest.raises(NormalizationError) as exc_info:
+            _safe_float([1.0])
+        assert not isinstance(exc_info.value, NonFiniteError)
+
+    def test_dict_raises_normalization_error(self):
+        with pytest.raises(NormalizationError) as exc_info:
+            _safe_float({"v": 1.0})
+        assert not isinstance(exc_info.value, NonFiniteError)
 
     def test_decimal_converted(self):
         assert _safe_float(float(Decimal("1.5"))) == pytest.approx(1.5)
+
+    def test_numeric_string_succeeds(self):
+        # float("3.14") is valid — numeric strings are accepted.
+        assert _safe_float("3.14") == pytest.approx(3.14)
+
+
+class TestGetFloatTypeSafety:
+    """_get_float must absorb NonFiniteError but propagate NormalizationError (wrong types)."""
+
+    @dataclasses.dataclass
+    class _Obj:
+        good: float = 1.5
+        nan_val: float = float("nan")
+        inf_val: float = float("inf")
+        bool_val: bool = True
+        list_val: list = dataclasses.field(default_factory=lambda: [1.0])
+
+    def test_good_value_returned(self):
+        from finco_parity.normalization import _get_float
+        obj = self._Obj()
+        assert _get_float(obj, "good", []) == pytest.approx(1.5)
+
+    def test_nan_converted_to_unavailable_with_warning(self):
+        from finco_parity.normalization import _get_float
+        obj = self._Obj()
+        warnings: list[str] = []
+        result = _get_float(obj, "nan_val", warnings)
+        assert result is None
+        assert len(warnings) == 1
+
+    def test_inf_converted_to_unavailable_with_warning(self):
+        from finco_parity.normalization import _get_float
+        obj = self._Obj()
+        warnings: list[str] = []
+        result = _get_float(obj, "inf_val", warnings)
+        assert result is None
+        assert len(warnings) == 1
+
+    def test_bool_attr_raises_normalization_error(self):
+        from finco_parity.normalization import _get_float
+        obj = self._Obj()
+        with pytest.raises(NormalizationError) as exc_info:
+            _get_float(obj, "bool_val", [])
+        assert not isinstance(exc_info.value, NonFiniteError)
+
+    def test_list_attr_raises_normalization_error(self):
+        from finco_parity.normalization import _get_float
+        obj = self._Obj()
+        with pytest.raises(NormalizationError) as exc_info:
+            _get_float(obj, "list_val", [])
+        assert not isinstance(exc_info.value, NonFiniteError)
 
 
 # ---------------------------------------------------------------------------

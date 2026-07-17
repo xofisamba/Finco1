@@ -54,13 +54,24 @@ class NormalizationError(TypeError):
     """Raised when an unsupported or non-serializable type is encountered."""
 
 
+class NonFiniteError(NormalizationError):
+    """Raised specifically for NaN or +-inf float values.
+
+    Callers that want to convert non-finite engine outputs to UNAVAILABLE
+    should catch NonFiniteError, not the broader NormalizationError.
+    Wrong-type errors (bool, list, dict, arbitrary object) propagate as
+    NormalizationError and must NOT be silently absorbed.
+    """
+
+
 _ATTR_SENTINEL = object()
 
 
 def _safe_float(v: Any) -> float:
     """Normalize a numeric value to float.
 
-    Raises NormalizationError for NaN, +-inf, or non-numeric types.
+    Raises NonFiniteError for NaN or +-inf.
+    Raises NormalizationError for non-numeric types (bool, list, dict, object).
     Does NOT convert to None; callers handle unavailability explicitly.
     """
     if isinstance(v, bool):
@@ -74,11 +85,11 @@ def _safe_float(v: Any) -> float:
             f"Cannot convert {type(v).__name__!r} to float: {v!r}"
         ) from exc
     if math.isnan(f):
-        raise NormalizationError(
+        raise NonFiniteError(
             f"NaN encountered in source attribute: {v!r}"
         )
     if math.isinf(f):
-        raise NormalizationError(
+        raise NonFiniteError(
             f"Infinite value encountered in source attribute: {v!r}"
         )
     return f
@@ -87,21 +98,22 @@ def _safe_float(v: Any) -> float:
 def _get_float(obj: Any, attr: str, warnings: list[str]) -> float | None:
     """Get a float attribute from obj.
 
-    Returns UNAVAILABLE (None) if the attribute is absent.
+    Returns UNAVAILABLE (None) if the attribute is absent or None.
     Returns UNAVAILABLE with a warning for NaN or +-inf engine outputs
-    (non-finite values cannot be serialized to standard JSON and have no
-    meaningful snapshot value).
+    (non-finite values cannot be serialized to standard JSON).
+    Raises NormalizationError for wrong-type values (bool, list, dict, object).
     """
     val = getattr(obj, attr, _ATTR_SENTINEL)
     if val is _ATTR_SENTINEL or val is None:
         return UNAVAILABLE
     try:
         return _safe_float(val)
-    except NormalizationError:
+    except NonFiniteError:
         warnings.append(
             f"Non-finite value in {attr!r} ({val!r}) converted to unavailable."
         )
         return UNAVAILABLE
+    # NormalizationError (wrong type) propagates to caller.
 
 
 def _get_float_series(periods: list[Any], attr: str, warnings: list[str]) -> list[Any]:
@@ -112,8 +124,8 @@ def _get_float_series(periods: list[Any], attr: str, warnings: list[str]) -> lis
     real-value tests rather than silently passing.
 
     NaN or +-inf values from the engine are converted to UNAVAILABLE per period
-    (with a warning on first occurrence) since they cannot be JSON-serialized and
-    have no meaningful snapshot representation.
+    (with a warning on first occurrence) since they cannot be JSON-serialized.
+    Wrong-type values (bool, list, dict, object) propagate as NormalizationError.
     """
     if not periods:
         return []
@@ -131,13 +143,14 @@ def _get_float_series(periods: list[Any], attr: str, warnings: list[str]) -> lis
         else:
             try:
                 result.append(_safe_float(val))
-            except NormalizationError:
+            except NonFiniteError:
                 if not nonfinite_warned:
                     warnings.append(
                         f"Non-finite value(s) in period series {attr!r} converted to unavailable."
                     )
                     nonfinite_warned = True
                 result.append(UNAVAILABLE)
+            # NormalizationError (wrong type) propagates to caller.
     return result
 
 
