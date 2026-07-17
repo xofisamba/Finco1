@@ -489,3 +489,74 @@ def test_error_messages_contain_no_absolute_paths(tmp_path):
         d = r.to_dict()
         msg = d.get("error_message") or ""
         assert str(tmp_path) not in msg, f"Absolute path in JSON: {msg}"
+
+
+# ---------------------------------------------------------------------------
+# CLI exception exit-code contract
+# ---------------------------------------------------------------------------
+
+def test_cli_manifest_integrity_error_exits_4(tmp_path):
+    """compare_candidate_directory raises ManifestIntegrityError → exit 4."""
+    from finco_parity.manifest import ManifestIntegrityError
+
+    cand_dir = tmp_path / "c"
+    cand_dir.mkdir()
+
+    with patch(
+        "finco_parity.compare_candidate.compare_candidate_directory",
+        side_effect=ManifestIntegrityError("corrupt manifest"),
+    ):
+        code = cli_main(["--candidate-dir", str(cand_dir), "--all", "--no-verify-legacy"])
+    assert code == 4, f"Expected exit 4, got {code}"
+
+
+def test_cli_unknown_baseline_id_exits_2(tmp_path):
+    """compare_candidate_directory raises ValueError for unknown ID → exit 2."""
+    cand_dir = tmp_path / "c"
+    cand_dir.mkdir()
+
+    with patch(
+        "finco_parity.compare_candidate.compare_candidate_directory",
+        side_effect=ValueError("Unknown baseline_id(s): ['not-real']"),
+    ):
+        code = cli_main(["--candidate-dir", str(cand_dir), "--baseline-id", "not-real", "--no-verify-legacy"])
+    assert code == 2, f"Expected exit 2, got {code}"
+
+
+def test_cli_runtime_error_exits_1(tmp_path):
+    """compare_candidate_directory raises RuntimeError → exit 1."""
+    cand_dir = tmp_path / "c"
+    cand_dir.mkdir()
+
+    with patch(
+        "finco_parity.compare_candidate.compare_candidate_directory",
+        side_effect=RuntimeError("engine blew up"),
+    ):
+        code = cli_main(["--candidate-dir", str(cand_dir), "--all", "--no-verify-legacy"])
+    assert code == 1, f"Expected exit 1, got {code}"
+
+
+def test_cli_report_write_oserror_exits_1(tmp_path):
+    """OSError writing a report → exit 1."""
+    from finco_parity.dual_run import BaselineRunStatus
+
+    cand_dir = tmp_path / "c"
+    cand_dir.mkdir()
+    report_path = tmp_path / "out" / "report.json"
+
+    agg = _make_aggregate(BaselineRunStatus.PASS)
+    with patch(
+        "finco_parity.compare_candidate.compare_candidate_directory",
+        return_value=agg,
+    ):
+        with patch(
+            "finco_parity.compare_candidate._write_report",
+            return_value="write failed",
+        ):
+            code = cli_main([
+                "--candidate-dir", str(cand_dir),
+                "--all",
+                "--no-verify-legacy",
+                "--json-report", str(report_path),
+            ])
+    assert code == 1, f"Expected exit 1, got {code}"

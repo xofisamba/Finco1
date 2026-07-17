@@ -49,7 +49,6 @@ from finco_parity.manifest import (
     ManifestIntegrityError,
     ValidatedManifestContext,
     load_validated_manifest_context,
-    manifest_baseline_ids,
     resolve_snapshot_path,
 )
 from finco_parity.schema import SnapshotValidationError

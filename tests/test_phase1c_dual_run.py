@@ -579,19 +579,19 @@ def test_validate_integrity_called_once_for_four_baselines(tmp_path):
 
 
 def test_same_object_validation():
-    """Only the first-loaded manifest object is used; no second read occurs."""
+    """Only the first-loaded manifest is used; a second call would return a different object."""
     import finco_parity.manifest as _manifest_mod
 
-    original_manifest = _manifest_mod.load_manifest()
-    second_manifest = {"baselines": [], "manifest_version": "fake"}
+    manifest_a = _manifest_mod.load_manifest()
+    manifest_b = {"baselines": [], "manifest_version": "fake"}
 
-    load_count = []
+    calls: list[int] = []
 
     def first_then_different():
-        if not load_count:
-            load_count.append(1)
-            return original_manifest
-        return second_manifest
+        calls.append(len(calls) + 1)
+        if len(calls) == 1:
+            return manifest_a
+        return manifest_b
 
     provider = MagicMock()
     provider.capture_snapshot.side_effect = CandidateFileNotFoundError("missing")
@@ -599,9 +599,9 @@ def test_same_object_validation():
     with patch.object(_manifest_mod, "load_manifest", side_effect=first_then_different):
         result = run_candidate_provider("tuho", provider, verify_legacy=False)
 
-    # The result must use the first manifest, not the second
-    assert len(load_count) == 1
-    # tuho is in the real manifest → should proceed past manifest validation
+    # load_manifest was called exactly once → manifest_b was never requested
+    assert len(calls) == 1, f"Expected 1 manifest load, got {len(calls)}"
+    # Baseline execution used manifest_a (tuho is present → not MANIFEST_INTEGRITY_FAILURE)
     assert result.status != BaselineRunStatus.MANIFEST_INTEGRITY_FAILURE
 
 
@@ -651,3 +651,66 @@ def test_artifact_read_error_no_absolute_path(monkeypatch):
     msg = str(exc_info.value)
     assert "/home/" not in msg
     assert "/tmp/" not in msg
+
+
+# ---------------------------------------------------------------------------
+# Manifest-load OSError path-redaction test
+# ---------------------------------------------------------------------------
+
+def test_manifest_load_oserror_redacts_path(monkeypatch, tmp_path):
+    """OSError from load_manifest() must not expose absolute paths."""
+    import finco_parity.manifest as _manifest_mod
+
+    # OSError whose filename contains a recognizable absolute path.
+    abs_path = str(tmp_path / "secret" / "manifest.json")
+    exc = OSError(13, "Permission denied")
+    exc.filename = abs_path
+
+    def raise_exc():
+        raise exc
+
+    monkeypatch.setattr(_manifest_mod, "load_manifest", raise_exc)
+    with pytest.raises(ManifestIntegrityError) as exc_info:
+        load_validated_manifest_context()
+
+    msg = str(exc_info.value)
+    assert abs_path not in msg, f"Absolute path leaked into error: {msg!r}"
+    assert "/home/" not in msg
+    assert "/tmp/" not in msg
+    # Safe metadata present
+    assert "13" in msg or "Permission denied" in msg
+
+
+# ---------------------------------------------------------------------------
+# Immutability tests
+# ---------------------------------------------------------------------------
+
+def test_ctx_manifest_is_immutable():
+    """ctx.manifest must reject mutation with TypeError."""
+    ctx = load_validated_manifest_context()
+    with pytest.raises(TypeError):
+        ctx.manifest["baselines"] = ()  # type: ignore[index]
+
+
+def test_ctx_entry_is_immutable():
+    """ctx.get_entry() must return a read-only mapping."""
+    ctx = load_validated_manifest_context()
+    entry = ctx.get_entry("tuho")
+    with pytest.raises(TypeError):
+        entry["baseline_commit_sha"] = "a" * 40  # type: ignore[index]
+
+
+def test_ctx_entries_by_id_value_is_immutable():
+    """ctx.entries_by_id values must reject mutation."""
+    ctx = load_validated_manifest_context()
+    with pytest.raises(TypeError):
+        ctx.entries_by_id["tuho"]["snapshot_path"] = "other.json"  # type: ignore[index]
+
+
+def test_ctx_nested_generation_environment_is_immutable():
+    """Nested generation_environment inside ctx.manifest must reject mutation."""
+    ctx = load_validated_manifest_context()
+    gen_env = ctx.manifest.get("generation_environment")
+    if gen_env is not None:
+        with pytest.raises(TypeError):
+            gen_env["python_minor"] = "3.12"  # type: ignore[index]

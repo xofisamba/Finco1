@@ -46,7 +46,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, Mapping
+from typing import Any, Mapping, Union
 
 from finco_parity.canonical import sha256_of_file
 from finco_parity.schema import SCHEMA_VERSION
@@ -88,6 +88,15 @@ _REQUIRED_GENERATION_ENV_FIELDS: tuple[str, ...] = (
 )
 
 
+def _freeze(obj: Any) -> Any:
+    """Recursively convert dicts → MappingProxyType, lists → tuple of frozen values."""
+    if isinstance(obj, dict):
+        return MappingProxyType({k: _freeze(v) for k, v in obj.items()})
+    if isinstance(obj, list):
+        return tuple(_freeze(v) for v in obj)
+    return obj
+
+
 def load_manifest() -> dict[str, Any]:
     """Load and return the raw manifest dict."""
     return json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
@@ -98,7 +107,7 @@ def manifest_baseline_ids() -> list[str]:
     return [entry["baseline_id"] for entry in load_manifest()["baselines"]]
 
 
-def resolve_snapshot_path(entry: dict[str, Any]) -> Path:
+def resolve_snapshot_path(entry: Mapping[str, Any]) -> Path:
     """Return the resolved absolute artifact path for a manifest entry.
 
     Resolution rules:
@@ -357,12 +366,12 @@ def validate_manifest_integrity(
 
 @dataclass(frozen=True)
 class ValidatedManifestContext:
-    manifest: dict
-    entries: tuple[dict, ...]
+    manifest: Mapping[str, Any]
+    entries: tuple[Mapping[str, Any], ...]
     baseline_ids: tuple[str, ...]
-    entries_by_id: Mapping[str, dict]  # read-only mapping baseline_id → entry
+    entries_by_id: Mapping[str, Mapping[str, Any]]  # read-only baseline_id → entry
 
-    def get_entry(self, baseline_id: str) -> dict:
+    def get_entry(self, baseline_id: str) -> Mapping[str, Any]:
         """Return the manifest entry for baseline_id.
 
         Raises:
@@ -385,11 +394,21 @@ def load_validated_manifest_context() -> ValidatedManifestContext:
     """
     try:
         manifest = load_manifest()
-    except (json.JSONDecodeError, UnicodeDecodeError, OSError) as exc:
-        raise ManifestIntegrityError(f"Cannot load manifest: {exc}") from exc
+    except OSError as exc:
+        raise ManifestIntegrityError(
+            f"Cannot load manifest ({type(exc).__name__}, errno={exc.errno}: {exc.strerror})"
+        ) from exc
+    except UnicodeDecodeError as exc:
+        raise ManifestIntegrityError(
+            f"Cannot load manifest (UnicodeDecodeError at position {exc.start})"
+        ) from exc
+    except json.JSONDecodeError as exc:
+        raise ManifestIntegrityError(
+            f"Cannot load manifest (JSONDecodeError at line {exc.lineno} col {exc.colno})"
+        ) from exc
     except Exception as exc:
         raise ManifestIntegrityError(
-            f"Cannot load manifest: {type(exc).__name__}: {exc}"
+            f"Cannot load manifest: {type(exc).__name__}"
         ) from exc
 
     if not isinstance(manifest, dict):
@@ -431,12 +450,17 @@ def load_validated_manifest_context() -> ValidatedManifestContext:
             f"Manifest integrity check failed: {type(exc).__name__}: {exc}"
         ) from exc
 
-    entries = tuple(dict(e) for e in baselines)
-    baseline_ids = tuple(e["baseline_id"] for e in entries)
-    entries_by_id = MappingProxyType({e["baseline_id"]: e for e in entries})
+    frozen_manifest: Mapping[str, Any] = _freeze(manifest)
+    frozen_entries: tuple[Mapping[str, Any], ...] = tuple(
+        _freeze(e) for e in baselines
+    )
+    baseline_ids = tuple(e["baseline_id"] for e in baselines)
+    entries_by_id: Mapping[str, Mapping[str, Any]] = MappingProxyType(
+        {bid: fe for bid, fe in zip(baseline_ids, frozen_entries)}
+    )
     return ValidatedManifestContext(
-        manifest=manifest,
-        entries=entries,
+        manifest=frozen_manifest,
+        entries=frozen_entries,
         baseline_ids=baseline_ids,
         entries_by_id=entries_by_id,
     )

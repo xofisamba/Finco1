@@ -16,7 +16,7 @@ Usage::
 Exit codes
 ----------
 0  All baselines pass.
-1  Execution error (engine failure, manifest error, unexpected exception).
+1  Execution error (unexpected exception during comparison).
 2  Unknown baseline ID or invalid CLI args.
 3  Candidate payload drift.
 4  Manifest / baseline integrity failure.
@@ -299,7 +299,7 @@ def main(argv: list[str] | None = None) -> int:
     except Exception as exc:
         print(f"ERROR: Unexpected error during comparison: {exc}", file=sys.stderr)
         traceback.print_exc(file=sys.stderr)
-        return 4
+        return 1
 
     # Write reports.
     if args.json_report:
