@@ -1,0 +1,52 @@
+name: Phase 1B Baseline Check
+
+# Verifies that committed baseline artifacts match a fresh generation from the
+# current legacy engine.  Fails on any content drift, hash mismatch, orphan
+# artifact, or manifest integrity failure.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "finco_parity/**"
+      - "finco_parity/baselines/**"
+      - "tests/test_phase1b_*.py"
+      - "tests/test_phase1a_*.py"
+      - ".github/workflows/phase1b_baseline_check.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  baseline-check:
+    name: Phase 1B Baseline Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies (reproducible via constraints.txt)
+        run: |
+          pip install --no-cache-dir -c constraints.txt -e .
+          pip install --no-cache-dir -c constraints.txt pytest
+
+      - name: Verify baseline artifacts match committed snapshots
+        run: |
+          python -m finco_parity.generate_baselines --check
+
+      - name: Run Phase 1B focused tests
+        run: |
+          python -m pytest -q --tb=short \
+            --basetemp=.pytest-tmp-phase1b \
+            tests/test_phase1a_parity_manifest.py \
+            tests/test_phase1a_parity_schema_normalization.py \
+            tests/test_phase1a_parity_runner.py \
+            tests/test_phase1b_baseline_generation.py \
+            tests/test_phase1b_baseline_integrity.py \
+            tests/test_phase1b_snapshot_comparison.py \
+            tests/test_phase1b_production_isolation.py

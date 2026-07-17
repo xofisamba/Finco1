@@ -1,6 +1,6 @@
 {
-  "manifest_version": "1.1.0",
-  "description": "Baseline project registry for Phase 1A legacy characterization snapshots. All facts verified against current codebase as of 2026-07-17.",
+  "manifest_version": "1.2.0",
+  "description": "Baseline project registry for Phase 1A/1B legacy characterization snapshots. All facts verified against current codebase as of 2026-07-17.",
   "baselines": [
     {
       "baseline_id": "tuho",
@@ -14,6 +14,11 @@
       "factory_function": "app.project_factories.create_default_tuho_wind1",
       "run_path": "app.ui_runner.run_demo_project",
       "engine_designation": "legacy_waterfall_v3",
+      "schema_version": "1.0.0",
+      "input_source_id": "project_factories.create_default_tuho_wind1",
+      "capture_source": "finco_parity.legacy_snapshot.capture_snapshot",
+      "snapshot_path": "finco_parity/baselines/snapshots/tuho.json",
+      "artifact_sha256": "9d5cb01a5f84aae61ca6b0dfbc4365ff249645a96d7a93616b6039088dee83e7",
       "fixture_selection": {
         "mechanism": "capability_flag",
         "flag": "use_frozen_excel_senior_debt_schedule",
@@ -46,6 +51,11 @@
       "factory_function": "app.project_factories.create_default_oborovo",
       "run_path": "app.ui_runner.run_demo_project",
       "engine_designation": "legacy_waterfall_v3",
+      "schema_version": "1.0.0",
+      "input_source_id": "project_factories.create_default_oborovo",
+      "capture_source": "finco_parity.legacy_snapshot.capture_snapshot",
+      "snapshot_path": "finco_parity/baselines/snapshots/oborovo.json",
+      "artifact_sha256": "81f9942775b370e0ba973fac69091b19a093460794ee51848840f3c1d25370dd",
       "fixture_selection": {
         "mechanism": "capability_flag",
         "flag": "use_frozen_excel_senior_debt_schedule",
@@ -78,6 +88,11 @@
       "factory_function": "app.project_factories.create_default_solar_project",
       "run_path": "app.ui_runner.run_demo_project",
       "engine_designation": "legacy_waterfall_v3",
+      "schema_version": "1.0.0",
+      "input_source_id": "project_factories.create_default_solar_project",
+      "capture_source": "finco_parity.legacy_snapshot.capture_snapshot",
+      "snapshot_path": "finco_parity/baselines/snapshots/generic_solar.json",
+      "artifact_sha256": "8eb03a9b5ec2f75976c461f828837c31f96c9611a367a468f2f6a051683fa3c4",
       "fixture_selection": {
         "mechanism": "none",
         "flag": null,
@@ -105,6 +120,11 @@
       "factory_function": "app.project_factories.create_default_wind_project",
       "run_path": "app.ui_runner.run_demo_project",
       "engine_designation": "legacy_waterfall_v3",
+      "schema_version": "1.0.0",
+      "input_source_id": "project_factories.create_default_wind_project",
+      "capture_source": "finco_parity.legacy_snapshot.capture_snapshot",
+      "snapshot_path": "finco_parity/baselines/snapshots/generic_wind.json",
+      "artifact_sha256": "fc0c1c8b3ba9814313cecdbc856c7860ea8336c0549d1faf880c4ec36564beb9",
       "fixture_selection": {
         "mechanism": "none",
         "flag": null,

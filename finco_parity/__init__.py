@@ -1,11 +1,21 @@
 """
 finco_parity — Finco One parity harness and legacy-engine characterization.
 
-Phase 1A (current): Legacy Characterization Snapshot Foundation
+Phase 1B (current): Legacy Baseline Materialization and Drift Comparison
+Phase 1A: Legacy Characterization Snapshot Foundation
 ---------------------------------------------------------------
 Captures deterministic, normalized, offline snapshots of the current legacy
 waterfall engine for four baseline projects.  The snapshots are the reference
 baseline against which the extracted engine (Phase 2+) will be compared.
+
+Modules added in Phase 1B:
+    canonical        — Canonical UTF-8 JSON serialization (sort_keys, indent=2, trailing LF)
+    comparison       — Structural/numeric snapshot comparison (IDENTICAL/STRUCTURAL_DRIFT/…)
+    generate_baselines — Baseline generation CLI (python -m finco_parity.generate_baselines)
+    manifest         — Manifest loading and artifact integrity validation
+
+Subpackages added in Phase 1B:
+    baselines/snapshots/  — Committed canonical JSON baseline artifacts
 
 Modules added in Phase 1A:
     schema          — Versioned snapshot schema, UNAVAILABLE sentinel, validate_snapshot()
