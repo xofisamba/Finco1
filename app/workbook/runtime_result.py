@@ -37,6 +37,8 @@ from dataclasses import dataclass
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Optional
 
+from app.utils.script_json import dumps_for_script as _dumps_for_script
+
 
 class _FrozenEncoder(json.JSONEncoder):
     """JSON encoder that serialises MappingProxyType as dict."""
@@ -63,6 +65,11 @@ class _FrozenEncoder(json.JSONEncoder):
 def _dumps(obj: Any) -> str:
     """json.dumps that handles MappingProxyType at every nesting level."""
     return json.dumps(_FrozenEncoder._thaw(obj))
+
+
+def _dumps_script_safe(obj: Any) -> str:
+    """HTML-script-safe variant of _dumps: escapes <, >, &, U+2028, U+2029."""
+    return _dumps_for_script(_FrozenEncoder._thaw(obj))
 
 if TYPE_CHECKING:
     from app.persistence.records import WorkspaceStateRecord
@@ -266,12 +273,15 @@ class RuntimeResult:
 
         def _set_or_remove(key: str, payload: Optional[Any]) -> None:
             if payload:
-                # Double-serialise: json.dumps(json.dumps(payload)) matches the
-                # convention used by run_service._build_sessionstorage_save_tag().
-                # Use _dumps() so MappingProxyType fields serialise correctly.
+                # Double-serialise using the HTML-script-safe serializer.
+                # The inner call (_dumps_script_safe) converts the payload to a
+                # JSON string with <, >, & and U+2028/U+2029 unicode-escaped so
+                # an HTML parser cannot terminate the enclosing script element.
+                # The outer json.dumps wraps that safe string in a JS string
+                # literal.  Mirrors run_service._build_sessionstorage_save_tag().
                 parts.append(
                     f'sessionStorage.setItem({json.dumps(key)}, '
-                    + json.dumps(_dumps(payload))
+                    + json.dumps(_dumps_script_safe(payload))
                     + ');'
                 )
             else:
@@ -284,7 +294,7 @@ class RuntimeResult:
         _set_or_remove(_SS_KEY_SPONSOR_SCHEDULE, self.sponsor_schedule)
         parts.append(
             f'sessionStorage.setItem({json.dumps(_SS_KEY_RUNTIME_SUMMARY)}, '
-            + json.dumps(_dumps(self.runtime_summary))
+            + json.dumps(_dumps_script_safe(self.runtime_summary))
             + ');'
         )
 

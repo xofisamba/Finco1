@@ -28,6 +28,8 @@ import json
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable, Mapping, Optional
 
+from app.utils.script_json import dumps_for_script as _dumps_for_script
+
 
 @dataclass
 class RunRouteOutcome:
@@ -885,11 +887,16 @@ def _build_sessionstorage_save_tag(
     # Phase D1: persist FS payload to sessionStorage so sheet_financials.html
     # can render real engine output without a separate HTTP round-trip.
     # FS data is read-only engine output from assemble_financial_statements().
+    # All schedule/summary payloads are serialized with _dumps_for_script so
+    # that user-controlled strings containing </script> cannot terminate the
+    # enclosing script element.  The outer json.dumps wraps the safe JSON
+    # string in a JavaScript string literal.  Values round-trip exactly
+    # after JSON.parse() in the browser.
     fs_script = ""
     if financial_statements is not None:
         fs_script = (
             'sessionStorage.setItem("lastFinancialStatements", '
-            + json.dumps(json.dumps(financial_statements))
+            + json.dumps(_dumps_for_script(financial_statements))
             + ');'
         )
     else:
@@ -904,7 +911,7 @@ def _build_sessionstorage_save_tag(
     if debt_schedule is not None:
         ds_script = (
             'sessionStorage.setItem("lastDebtSchedule", '
-            + json.dumps(json.dumps(debt_schedule))
+            + json.dumps(_dumps_for_script(debt_schedule))
             + ');'
         )
     else:
@@ -919,7 +926,7 @@ def _build_sessionstorage_save_tag(
     if tax_schedule is not None:
         ts_script = (
             'sessionStorage.setItem("lastTaxSchedule", '
-            + json.dumps(json.dumps(tax_schedule))
+            + json.dumps(_dumps_for_script(tax_schedule))
             + ');'
         )
     else:
@@ -934,7 +941,7 @@ def _build_sessionstorage_save_tag(
     if distribution_schedule is not None:
         dist_script = (
             'sessionStorage.setItem("lastDistributionSchedule", '
-            + json.dumps(json.dumps(distribution_schedule))
+            + json.dumps(_dumps_for_script(distribution_schedule))
             + ');'
         )
     else:
@@ -949,7 +956,7 @@ def _build_sessionstorage_save_tag(
     if sponsor_schedule is not None:
         sponsor_script = (
             'sessionStorage.setItem("lastSponsorSchedule", '
-            + json.dumps(json.dumps(sponsor_schedule))
+            + json.dumps(_dumps_for_script(sponsor_schedule))
             + ');'
         )
     else:
@@ -963,8 +970,8 @@ def _build_sessionstorage_save_tag(
         + ts_script
         + dist_script
         + sponsor_script
-        + 'sessionStorage.setItem("lastRuntimeSummary", ' + json.dumps(json.dumps(runtime_summary)) + ');'
-        'window.applyWorkspaceStateMeta && window.applyWorkspaceStateMeta(' + json.dumps({
+        + 'sessionStorage.setItem("lastRuntimeSummary", ' + json.dumps(_dumps_for_script(runtime_summary)) + ');'
+        'window.applyWorkspaceStateMeta && window.applyWorkspaceStateMeta(' + _dumps_for_script({
             "dirty": False if is_clean else True,
             "dirty_label": dirty_label,
             "active_scenario_id": getattr(workspace_state, "active_scenario_id", "") or "",

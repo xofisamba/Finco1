@@ -1339,3 +1339,85 @@ async def test_revenue_exact_clean_after_run(server_v2):
                 "revenue-derivation evidence must appear when CLEAN"
         finally:
             await browser.close()
+
+
+@pytest.mark.asyncio
+async def test_xss_marker_undefined_after_hydration(server_v2):
+    """Security: XSS inert marker must remain undefined after workbook hydration.
+
+    Places the canonical inert payload in project_name (a user-controlled field
+    that is embedded in the sessionStorage hydration script) and asserts that:
+    - window.__fincoXssMarker is undefined (script element was not broken);
+    - the workbook loads successfully;
+    - the page HTML does not contain the attacker literal </script> after a run.
+    """
+    base_url, token = server_v2["base_url"], server_v2["token"]
+    _INERT_PAYLOAD = 'Project </script><script>window.__fincoXssMarker="executed"</script>'
+
+    async with async_playwright() as pw:
+        browser, page = await _new_page(pw, token, base_url)
+        try:
+            # 1. Create project with an ordinary name (project_name is
+            #    not user-editable post-creation in V2, but runtime_summary
+            #    carries it through the hydration path).
+            code = await _arrange_project(page, base_url, "xss-check")
+
+            # 2. Run the model to populate the sessionStorage hydration script.
+            _run_model(base_url, token, code)
+
+            # 3. Inject the inert payload into the persisted runtime_summary
+            #    so it is embedded in the next hydration script.
+            import json, sqlite3
+            db_path = server_v2["db_path"]
+            con = sqlite3.connect(db_path)
+            row = con.execute(
+                "SELECT last_runtime_summary_json FROM workspace_states WHERE project_code=?",
+                (code,)
+            ).fetchone()
+            if row and row[0]:
+                rs = json.loads(row[0])
+                rs["project_name"] = _INERT_PAYLOAD
+                con.execute(
+                    "UPDATE workspace_states SET last_runtime_summary_json=? WHERE project_code=?",
+                    (json.dumps(rs), code)
+                )
+                con.commit()
+            con.close()
+
+            # 4. Navigate to the V2 workbook (triggers hydration script).
+            await page.goto(f"{base_url}/v2/workbook?project={code}", wait_until="networkidle")
+
+            # 5. Assert the inert marker was NOT executed.
+            marker = await page.evaluate("window.__fincoXssMarker")
+            assert marker is None, (
+                f"XSS inert marker executed — window.__fincoXssMarker={marker!r}. "
+                "The sessionStorage hydration script is not HTML-script-safe."
+            )
+
+            # 6. Workbook loads successfully (Run button present).
+            run_btn = page.locator('[data-testid="v2-run-btn"]')
+            assert await run_btn.count() > 0, "Workbook must load successfully"
+
+            # 7. Inspect the page source — no literal attacker payload.
+            html = await page.content()
+            assert _INERT_PAYLOAD not in html, (
+                "Attacker literal payload found verbatim in page HTML"
+            )
+
+            # 8. sessionStorage round-trip: key must exist and payload must decode correctly.
+            stored_raw = await page.evaluate(
+                "window.sessionStorage.getItem('lastRuntimeSummary')"
+            )
+            assert stored_raw is not None, (
+                "lastRuntimeSummary must exist after V2 workbook hydration"
+            )
+            assert stored_raw != "", (
+                "lastRuntimeSummary must not be an empty string"
+            )
+            stored = json.loads(stored_raw)
+            assert stored.get("project_name") == _INERT_PAYLOAD, (
+                "project_name must round-trip exactly through the script-safe "
+                "sessionStorage hydration path"
+            )
+        finally:
+            await browser.close()
