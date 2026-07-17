@@ -220,3 +220,135 @@ def test_check_forces_verify_legacy(tmp_path):
         ])
 
     assert captured_kwargs.get("verify_legacy") is True
+
+
+# ---------------------------------------------------------------------------
+# --max-diffs -1 → exit 2 (argparse error)
+# ---------------------------------------------------------------------------
+
+def test_max_diffs_negative_exits_2(tmp_path):
+    """--max-diffs -1 is invalid and should cause argparse to exit with code 2."""
+    with pytest.raises(SystemExit) as exc_info:
+        cli_main(["--candidate-dir", str(tmp_path), "--all", "--max-diffs", "-1"])
+    assert exc_info.value.code == 2
+
+
+# ---------------------------------------------------------------------------
+# --max-diffs 0 → valid, passes through
+# ---------------------------------------------------------------------------
+
+def test_max_diffs_zero_is_valid(tmp_path):
+    """--max-diffs 0 is valid and should not cause an error."""
+    agg = _make_aggregate(BaselineRunStatus.PASS)
+    captured_kwargs = {}
+
+    def fake_compare(candidate_dir, baseline_ids=None, max_diffs=None, **kwargs):
+        captured_kwargs["max_diffs"] = max_diffs
+        return agg
+
+    with patch("finco_parity.compare_candidate.compare_candidate_directory", side_effect=fake_compare):
+        result = cli_main([
+            "--candidate-dir", str(tmp_path),
+            "--all",
+            "--quiet",
+            "--max-diffs", "0",
+        ])
+    assert result == 0
+    assert captured_kwargs.get("max_diffs") == 0
+
+
+# ---------------------------------------------------------------------------
+# MANIFEST_INTEGRITY_FAILURE → exit 4
+# ---------------------------------------------------------------------------
+
+def test_manifest_integrity_failure_exits_4(tmp_path):
+    """MANIFEST_INTEGRITY_FAILURE status → exit code 4."""
+    agg = _make_aggregate(BaselineRunStatus.MANIFEST_INTEGRITY_FAILURE)
+    with patch("finco_parity.compare_candidate.compare_candidate_directory", return_value=agg):
+        result = cli_main(["--candidate-dir", str(tmp_path), "--all", "--quiet"])
+    assert result == 4
+
+
+# ---------------------------------------------------------------------------
+# Nested report directory created automatically
+# ---------------------------------------------------------------------------
+
+def test_json_report_nested_dir_created(tmp_path):
+    """--json-report with a nested path creates parent directories automatically."""
+    agg = _make_aggregate(BaselineRunStatus.PASS)
+    nested_report = tmp_path / "nested" / "subdir" / "report.json"
+    with patch("finco_parity.compare_candidate.compare_candidate_directory", return_value=agg):
+        result = cli_main([
+            "--candidate-dir", str(tmp_path),
+            "--all",
+            "--quiet",
+            "--json-report", str(nested_report),
+        ])
+    assert result == 0
+    assert nested_report.exists()
+
+
+def test_text_report_nested_dir_created(tmp_path):
+    """--text-report with a nested path creates parent directories automatically."""
+    agg = _make_aggregate(BaselineRunStatus.PASS)
+    nested_report = tmp_path / "nested" / "subdir" / "report.txt"
+    with patch("finco_parity.compare_candidate.compare_candidate_directory", return_value=agg):
+        result = cli_main([
+            "--candidate-dir", str(tmp_path),
+            "--all",
+            "--quiet",
+            "--text-report", str(nested_report),
+        ])
+    assert result == 0
+    assert nested_report.exists()
+
+
+# ---------------------------------------------------------------------------
+# Unwritable report destination → exit 1
+# ---------------------------------------------------------------------------
+
+def test_json_report_write_failure_exits_1(tmp_path):
+    """JSON report write failure → exit code 1."""
+    import os
+    agg = _make_aggregate(BaselineRunStatus.PASS)
+    report_path = tmp_path / "report.json"
+
+    with patch("finco_parity.compare_candidate.compare_candidate_directory", return_value=agg):
+        with patch("pathlib.Path.write_bytes", side_effect=OSError("permission denied")):
+            result = cli_main([
+                "--candidate-dir", str(tmp_path),
+                "--all",
+                "--quiet",
+                "--json-report", str(report_path),
+            ])
+    assert result == 1
+
+
+def test_text_report_write_failure_exits_1(tmp_path):
+    """Text report write failure → exit code 1."""
+    agg = _make_aggregate(BaselineRunStatus.PASS)
+    report_path = tmp_path / "report.txt"
+
+    with patch("finco_parity.compare_candidate.compare_candidate_directory", return_value=agg):
+        with patch("pathlib.Path.write_text", side_effect=OSError("permission denied")):
+            result = cli_main([
+                "--candidate-dir", str(tmp_path),
+                "--all",
+                "--quiet",
+                "--text-report", str(report_path),
+            ])
+    assert result == 1
+
+
+# ---------------------------------------------------------------------------
+# No report written unless --json-report / --text-report explicitly passed
+# ---------------------------------------------------------------------------
+
+def test_no_report_written_without_flags(tmp_path):
+    """Running without --json-report or --text-report writes no files to tmp_path."""
+    agg = _make_aggregate(BaselineRunStatus.PASS)
+    before = set(tmp_path.iterdir())
+    with patch("finco_parity.compare_candidate.compare_candidate_directory", return_value=agg):
+        cli_main(["--candidate-dir", str(tmp_path), "--all", "--quiet"])
+    after = set(tmp_path.iterdir())
+    assert after == before, f"Unexpected files written: {after - before}"

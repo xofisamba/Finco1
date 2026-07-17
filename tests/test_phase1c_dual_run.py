@@ -97,7 +97,7 @@ def test_manifest_integrity_failure(tuho_candidate, mock_env_ok):
                side_effect=ManifestIntegrityError("bad manifest")):
         result = run_candidate_provider(BASELINE_ID, provider, verify_legacy=False)
 
-    assert result.status == BaselineRunStatus.EXECUTION_ERROR
+    assert result.status == BaselineRunStatus.MANIFEST_INTEGRITY_FAILURE
     assert "Manifest" in result.error_message or "integrity" in result.error_message.lower()
 
 
@@ -251,3 +251,116 @@ def test_aggregate_run_result_to_dict():
     assert d["failed_baselines"] == []
     assert len(d["baseline_results"]) == 1
     assert isinstance(d["baseline_results"][0], dict)
+
+
+# ---------------------------------------------------------------------------
+# run_candidate_provider: schema_version mismatch → IDENTITY_MISMATCH (typed)
+# ---------------------------------------------------------------------------
+
+def test_schema_version_mismatch_identity_status(tuho_candidate, mock_env_ok, mock_manifest_ok):
+    """schema_version mismatch raises CandidateIdentityMismatch → IDENTITY_MISMATCH status."""
+    bad = dict(tuho_candidate)
+    bad["schema_version"] = "9.9.9"
+    provider = MagicMock()
+    provider.capture_snapshot.return_value = bad
+    result = run_candidate_provider(BASELINE_ID, provider, verify_legacy=False)
+    assert result.status == BaselineRunStatus.IDENTITY_MISMATCH
+
+
+# ---------------------------------------------------------------------------
+# run_candidate_provider: validate_snapshot failure → SCHEMA_MISMATCH (typed)
+# ---------------------------------------------------------------------------
+
+def test_schema_structural_failure_schema_mismatch_status(tuho_candidate, mock_env_ok, mock_manifest_ok):
+    """A snapshot failing validate_snapshot() → SCHEMA_MISMATCH status."""
+    from finco_parity.schema import SnapshotValidationError
+    provider = MagicMock()
+    provider.capture_snapshot.return_value = tuho_candidate
+    with patch("finco_parity.candidate.validate_snapshot",
+               side_effect=SnapshotValidationError("bad schema")):
+        result = run_candidate_provider(BASELINE_ID, provider, verify_legacy=False)
+    assert result.status == BaselineRunStatus.SCHEMA_MISMATCH
+
+
+# ---------------------------------------------------------------------------
+# run_candidate_provider: unknown baseline → EXECUTION_ERROR, provider NOT called
+# ---------------------------------------------------------------------------
+
+def test_unknown_baseline_provider_not_called(mock_env_ok, mock_manifest_ok):
+    """Unknown baseline_id returns EXECUTION_ERROR and never calls provider.capture_snapshot."""
+    provider = MagicMock()
+    result = run_candidate_provider("nonexistent_baseline_xyz", provider, verify_legacy=False)
+    assert result.status == BaselineRunStatus.EXECUTION_ERROR
+    provider.capture_snapshot.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# run_candidate_provider: max_diffs=0 → differences empty, difference_count preserved
+# ---------------------------------------------------------------------------
+
+def test_max_diffs_zero_preserves_count(tuho_candidate, mock_env_ok, mock_manifest_ok):
+    """max_diffs=0 → differences is empty tuple but difference_count reflects full count."""
+    bad = dict(tuho_candidate)
+    fs = bad.get("financial_statements", {})
+    modified_fs = dict(fs)
+    modified_fs["_injected_drift1"] = "x"
+    modified_fs["_injected_drift2"] = "y"
+    bad["financial_statements"] = modified_fs
+    provider = MagicMock()
+    provider.capture_snapshot.return_value = bad
+    result = run_candidate_provider(BASELINE_ID, provider, verify_legacy=False, max_diffs=0)
+    assert result.differences == ()
+    assert result.difference_count >= 1  # actual drift recorded
+
+
+# ---------------------------------------------------------------------------
+# run_candidate_provider: max_diffs=-1 raises ValueError
+# ---------------------------------------------------------------------------
+
+def test_max_diffs_negative_raises_value_error(tuho_candidate):
+    provider = MagicMock()
+    with pytest.raises(ValueError, match="max_diffs"):
+        run_candidate_provider(BASELINE_ID, provider, verify_legacy=False, max_diffs=-1)
+
+
+# ---------------------------------------------------------------------------
+# compare_candidate_directory: aggregate severity is deterministic
+# ---------------------------------------------------------------------------
+
+def test_aggregate_severity_deterministic():
+    """Two failing statuses → overall is the one with higher severity."""
+    from finco_parity.dual_run import _AGGREGATE_SEVERITY
+
+    def _make_result(bid, status):
+        return BaselineRunResult(
+            baseline_id=bid,
+            status=status,
+            legacy_engine_designation=None,
+            candidate_engine_designation=None,
+            legacy_run_path=None,
+            candidate_run_path=None,
+            comparison_status=None,
+            difference_count=0,
+            differences=(),
+            legacy_warnings=(),
+            candidate_warnings=(),
+            error_message="test",
+        )
+
+    r1 = _make_result("a", BaselineRunStatus.PAYLOAD_DRIFT)    # severity 1
+    r2 = _make_result("b", BaselineRunStatus.IDENTITY_MISMATCH)  # severity 4
+
+    failed_statuses = [r.status for r in [r1, r2] if r.status != BaselineRunStatus.PASS]
+    overall = max(failed_statuses, key=lambda s: _AGGREGATE_SEVERITY[s])
+    assert overall == BaselineRunStatus.IDENTITY_MISMATCH
+
+
+# ---------------------------------------------------------------------------
+# _AGGREGATE_SEVERITY covers all BaselineRunStatus values
+# ---------------------------------------------------------------------------
+
+def test_aggregate_severity_completeness():
+    """_AGGREGATE_SEVERITY must contain an entry for every BaselineRunStatus value."""
+    from finco_parity.dual_run import _AGGREGATE_SEVERITY
+    missing = [s for s in BaselineRunStatus if s not in _AGGREGATE_SEVERITY]
+    assert not missing, f"_AGGREGATE_SEVERITY missing entries for: {missing}"

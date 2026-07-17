@@ -19,9 +19,12 @@ import pytest
 
 from finco_parity.candidate import (
     BaselineReference,
+    CandidateContentInvalid,
     CandidateError,
     CandidateFileNotFoundError,
+    CandidateIdentityMismatch,
     CandidatePathError,
+    CandidateSchemaMismatch,
     CandidateValidationError,
     FileCandidateSnapshotProvider,
     baseline_reference_from_manifest,
@@ -298,3 +301,103 @@ def test_validate_raw_bytes_correct_passes(candidate_snapshot, tuho_reference):
     """Passing correct raw_bytes passes without exception."""
     raw = canonical_json_bytes(candidate_snapshot)
     validate_candidate_snapshot(candidate_snapshot, tuho_reference, raw_bytes=raw)
+
+
+# ---------------------------------------------------------------------------
+# Typed exception subclasses: identity mismatches → CandidateIdentityMismatch
+# ---------------------------------------------------------------------------
+
+def test_validate_schema_version_mismatch_typed(candidate_snapshot, tuho_reference):
+    """schema_version mismatch raises CandidateIdentityMismatch (not just CandidateValidationError)."""
+    bad = dict(candidate_snapshot)
+    bad["schema_version"] = "9.9.9"
+    with pytest.raises(CandidateIdentityMismatch):
+        validate_candidate_snapshot(bad, tuho_reference)
+
+
+def test_validate_baseline_id_mismatch_typed(candidate_snapshot, tuho_reference):
+    """baseline_id mismatch raises CandidateIdentityMismatch."""
+    bad = dict(candidate_snapshot)
+    bad["baseline_id"] = "wrong_baseline"
+    with pytest.raises(CandidateIdentityMismatch):
+        validate_candidate_snapshot(bad, tuho_reference)
+
+
+def test_validate_input_source_id_mismatch_typed(candidate_snapshot, tuho_reference):
+    """input_source_id mismatch raises CandidateIdentityMismatch."""
+    bad = dict(candidate_snapshot)
+    bad["input_source_id"] = "wrong_input_source"
+    with pytest.raises(CandidateIdentityMismatch):
+        validate_candidate_snapshot(bad, tuho_reference)
+
+
+# ---------------------------------------------------------------------------
+# Typed exception subclasses: schema validation failure → CandidateSchemaMismatch
+# ---------------------------------------------------------------------------
+
+def test_validate_schema_failure_typed(candidate_snapshot, tuho_reference):
+    """A snapshot that fails schema validation raises CandidateSchemaMismatch."""
+    from unittest.mock import patch
+    from finco_parity.schema import SnapshotValidationError
+
+    bad = dict(candidate_snapshot)
+    with patch("finco_parity.candidate.validate_snapshot",
+               side_effect=SnapshotValidationError("bad schema")):
+        with pytest.raises(CandidateSchemaMismatch):
+            validate_candidate_snapshot(bad, tuho_reference)
+
+
+# ---------------------------------------------------------------------------
+# Typed exception subclasses: NaN/inf → CandidateContentInvalid
+# ---------------------------------------------------------------------------
+
+def test_validate_nan_raises_content_invalid(candidate_snapshot, tuho_reference):
+    """NaN in candidate raises CandidateContentInvalid."""
+    bad = dict(candidate_snapshot)
+    bad["_test_nan"] = float("nan")
+    with pytest.raises(CandidateContentInvalid):
+        validate_candidate_snapshot(bad, tuho_reference)
+
+
+def test_validate_inf_raises_content_invalid(candidate_snapshot, tuho_reference):
+    """inf in candidate raises CandidateContentInvalid."""
+    bad = dict(candidate_snapshot)
+    bad["_test_inf"] = float("inf")
+    with pytest.raises(CandidateContentInvalid):
+        validate_candidate_snapshot(bad, tuho_reference)
+
+
+# ---------------------------------------------------------------------------
+# Typed exception subclasses: raw_bytes mismatch → CandidateContentInvalid
+# ---------------------------------------------------------------------------
+
+def test_validate_raw_bytes_mismatch_typed(candidate_snapshot, tuho_reference):
+    """raw_bytes mismatch raises CandidateContentInvalid."""
+    raw = canonical_json_bytes(candidate_snapshot)
+    wrong_bytes = raw + b" "
+    with pytest.raises(CandidateContentInvalid):
+        validate_candidate_snapshot(candidate_snapshot, tuho_reference, raw_bytes=wrong_bytes)
+
+
+# ---------------------------------------------------------------------------
+# FileCandidateSnapshotProvider: non-canonical file bytes → CandidateContentInvalid
+# ---------------------------------------------------------------------------
+
+def test_file_provider_non_canonical_raises_content_invalid(tmp_path, tuho_reference, candidate_snapshot):
+    """Non-canonical file bytes raises CandidateContentInvalid (typed subclass)."""
+    non_canonical = json.dumps(candidate_snapshot, indent=4).encode()
+    (tmp_path / "tuho.json").write_bytes(non_canonical)
+    provider = FileCandidateSnapshotProvider(tmp_path)
+    with pytest.raises(CandidateContentInvalid):
+        provider.capture_snapshot(BASELINE_ID, tuho_reference)
+
+
+# ---------------------------------------------------------------------------
+# FileCandidateSnapshotProvider: baseline_id mismatch → CandidatePathError
+# ---------------------------------------------------------------------------
+
+def test_file_provider_baseline_id_mismatch_raises_path_error(candidate_dir_with_tuho, tuho_reference):
+    """Calling capture_snapshot with mismatched baseline_id raises CandidatePathError."""
+    provider = FileCandidateSnapshotProvider(candidate_dir_with_tuho)
+    with pytest.raises(CandidatePathError, match="baseline_id mismatch"):
+        provider.capture_snapshot("wrong_baseline_id", tuho_reference)

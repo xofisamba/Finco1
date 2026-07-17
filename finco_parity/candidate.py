@@ -49,6 +49,18 @@ class CandidateValidationError(CandidateError):
     """Raised when a candidate snapshot fails validation."""
 
 
+class CandidateIdentityMismatch(CandidateValidationError):
+    """Raised when schema_version, baseline_id, or input_source_id does not match."""
+
+
+class CandidateSchemaMismatch(CandidateValidationError):
+    """Raised when schema structural validation fails."""
+
+
+class CandidateContentInvalid(CandidateValidationError):
+    """Raised when candidate contains NaN/inf or non-canonical JSON."""
+
+
 # ---------------------------------------------------------------------------
 # BaselineReference dataclass
 # ---------------------------------------------------------------------------
@@ -147,6 +159,12 @@ class FileCandidateSnapshotProvider:
         Does NOT validate the snapshot; validation is the caller's
         responsibility.  Does NOT modify the file.
         """
+        if baseline_id != reference.baseline_id:
+            raise CandidatePathError(
+                f"baseline_id mismatch: caller passed {baseline_id!r} "
+                f"but reference.baseline_id is {reference.baseline_id!r}"
+            )
+
         canonical_path = reference.committed_snapshot_path
         snapshots_root = SNAPSHOTS_DIR.resolve()
 
@@ -221,12 +239,12 @@ class FileCandidateSnapshotProvider:
         try:
             expected_bytes = canonical_json_bytes(data)
         except (ValueError, TypeError) as exc:
-            raise CandidateValidationError(
+            raise CandidateContentInvalid(
                 f"{baseline_id}: candidate snapshot cannot be re-serialized "
                 f"canonically: {exc}"
             )
         if raw_bytes != expected_bytes:
-            raise CandidateValidationError(
+            raise CandidateContentInvalid(
                 f"{baseline_id}: candidate snapshot at {resolved} is not in "
                 f"canonical JSON form (file bytes != canonical_json_bytes(parsed)). "
                 f"Re-serialize with canonical_json_bytes() to fix."
@@ -285,7 +303,7 @@ def validate_candidate_snapshot(
     for field, expected in _IDENTITY_FIELDS.items():
         actual = candidate.get(field)
         if actual != expected:
-            raise CandidateValidationError(
+            raise CandidateIdentityMismatch(
                 f"Identity field mismatch for {field!r}: "
                 f"expected {expected!r}, got {actual!r} "
                 f"(baseline_id={reference.baseline_id!r})"
@@ -295,7 +313,7 @@ def validate_candidate_snapshot(
     try:
         validate_snapshot(candidate)
     except SnapshotValidationError as exc:
-        raise CandidateValidationError(
+        raise CandidateSchemaMismatch(
             f"Candidate snapshot fails schema validation "
             f"(baseline_id={reference.baseline_id!r}): {exc}"
         ) from exc
@@ -303,7 +321,7 @@ def validate_candidate_snapshot(
     # 3. No NaN / infinity.
     nonfinite_errors = _check_no_nonfinite(candidate)
     if nonfinite_errors:
-        raise CandidateValidationError(
+        raise CandidateContentInvalid(
             f"Candidate snapshot contains non-finite floats "
             f"(baseline_id={reference.baseline_id!r}):\n"
             + "\n".join(f"  {e}" for e in nonfinite_errors)
@@ -314,12 +332,12 @@ def validate_candidate_snapshot(
         try:
             expected_bytes = canonical_json_bytes(candidate)
         except (ValueError, TypeError) as exc:
-            raise CandidateValidationError(
+            raise CandidateContentInvalid(
                 f"Cannot re-serialize candidate canonically "
                 f"(baseline_id={reference.baseline_id!r}): {exc}"
             ) from exc
         if raw_bytes != expected_bytes:
-            raise CandidateValidationError(
+            raise CandidateContentInvalid(
                 f"Candidate snapshot is not in canonical JSON form "
                 f"(baseline_id={reference.baseline_id!r}): "
                 f"raw_bytes != canonical_json_bytes(parsed)"

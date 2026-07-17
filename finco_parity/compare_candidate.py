@@ -59,6 +59,7 @@ from finco_parity.manifest import manifest_baseline_ids, ManifestIntegrityError
 _STATUS_EXIT_CODE: dict[BaselineRunStatus, int] = {
     BaselineRunStatus.PASS: 0,
     BaselineRunStatus.EXECUTION_ERROR: 1,
+    BaselineRunStatus.MANIFEST_INTEGRITY_FAILURE: 4,
     BaselineRunStatus.ENVIRONMENT_MISMATCH: 5,
     BaselineRunStatus.PAYLOAD_DRIFT: 3,
     BaselineRunStatus.LEGACY_DRIFT: 8,
@@ -80,6 +81,36 @@ def _exit_code_for_aggregate(result: AggregateRunResult) -> int:
         if code > max_code:
             max_code = code
     return max_code
+
+
+# ---------------------------------------------------------------------------
+# Argument validators
+# ---------------------------------------------------------------------------
+
+def _positive_or_zero_int(value: str) -> int:
+    ivalue = int(value)
+    if ivalue < 0:
+        raise argparse.ArgumentTypeError(f"--max-diffs must be >= 0, got {value}")
+    return ivalue
+
+
+# ---------------------------------------------------------------------------
+# Report write helper
+# ---------------------------------------------------------------------------
+
+def _write_report(path: Path, content: bytes | str, label: str) -> str | None:
+    """Write report to path, creating parent dirs. Returns error string or None."""
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if isinstance(content, bytes):
+            path.write_bytes(content)
+        else:
+            if not content.endswith("\n"):
+                content += "\n"
+            path.write_text(content, encoding="utf-8")
+        return None
+    except OSError as exc:
+        return f"Failed to write {label} to {path}: {exc}"
 
 
 # ---------------------------------------------------------------------------
@@ -214,7 +245,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--max-diffs",
         metavar="N",
-        type=int,
+        type=_positive_or_zero_int,
         default=None,
         help="Maximum number of differences to report per baseline.",
     )
@@ -299,7 +330,10 @@ def main(argv: list[str] | None = None) -> int:
     if args.json_report:
         json_path = Path(args.json_report)
         json_bytes = _format_json_report(result)
-        json_path.write_bytes(json_bytes)
+        err = _write_report(json_path, json_bytes, "JSON report")
+        if err:
+            print(f"ERROR: {err}", file=sys.stderr)
+            return 1
         if verbose:
             print(f"JSON report written to {json_path}", file=sys.stderr)
 
@@ -308,7 +342,10 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.text_report:
         text_path = Path(args.text_report)
-        text_path.write_text(text_report, encoding="utf-8")
+        err = _write_report(text_path, text_report, "text report")
+        if err:
+            print(f"ERROR: {err}", file=sys.stderr)
+            return 1
         if verbose:
             print(f"Text report written to {text_path}", file=sys.stderr)
 

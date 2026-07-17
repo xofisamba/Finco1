@@ -26,8 +26,11 @@ from typing import Any, Mapping
 
 from finco_parity.candidate import (
     BaselineReference,
+    CandidateContentInvalid,
     CandidateError,
     CandidateFileNotFoundError,
+    CandidateIdentityMismatch,
+    CandidateSchemaMismatch,
     CandidateSnapshotProvider,
     CandidateValidationError,
     FileCandidateSnapshotProvider,
@@ -66,6 +69,7 @@ class BaselineRunStatus(str, Enum):
     LEGACY_DRIFT = "LEGACY_DRIFT"
     ENVIRONMENT_MISMATCH = "ENVIRONMENT_MISMATCH"
     EXECUTION_ERROR = "EXECUTION_ERROR"
+    MANIFEST_INTEGRITY_FAILURE = "MANIFEST_INTEGRITY_FAILURE"
 
 
 # ---------------------------------------------------------------------------
@@ -149,6 +153,19 @@ _PROVENANCE_FIELDS: frozenset[str] = frozenset({
     "run_path_id",
 })
 
+_AGGREGATE_SEVERITY: dict[BaselineRunStatus, int] = {
+    BaselineRunStatus.MANIFEST_INTEGRITY_FAILURE: 9,
+    BaselineRunStatus.ENVIRONMENT_MISMATCH: 8,
+    BaselineRunStatus.LEGACY_DRIFT: 7,
+    BaselineRunStatus.EXECUTION_ERROR: 6,
+    BaselineRunStatus.SCHEMA_MISMATCH: 5,
+    BaselineRunStatus.IDENTITY_MISMATCH: 4,
+    BaselineRunStatus.CANDIDATE_INVALID: 3,
+    BaselineRunStatus.CANDIDATE_MISSING: 2,
+    BaselineRunStatus.PAYLOAD_DRIFT: 1,
+    BaselineRunStatus.PASS: 0,
+}
+
 
 # ---------------------------------------------------------------------------
 # Internal helpers
@@ -223,6 +240,19 @@ def run_candidate_provider(
     """
     from finco_parity.generate_baselines import check_generation_environment
 
+    if max_diffs is not None and max_diffs < 0:
+        raise ValueError(f"max_diffs must be >= 0, got {max_diffs!r}")
+
+    # Step 0: Validate baseline_id exists in manifest FIRST.
+    try:
+        entry = get_manifest_entry(baseline_id)
+    except KeyError:
+        return _error_result(
+            baseline_id,
+            BaselineRunStatus.EXECUTION_ERROR,
+            f"baseline_id not found in manifest: {baseline_id!r}",
+        )
+
     # Step 1: Environment check.
     manifest = load_manifest()
     env_error = check_generation_environment(manifest)
@@ -239,20 +269,11 @@ def run_candidate_provider(
     except ManifestIntegrityError as exc:
         return _error_result(
             baseline_id,
-            BaselineRunStatus.EXECUTION_ERROR,
+            BaselineRunStatus.MANIFEST_INTEGRITY_FAILURE,
             f"Manifest integrity failure: {exc}",
         )
 
     # Step 3: Load committed artifact.
-    try:
-        entry = get_manifest_entry(baseline_id)
-    except KeyError:
-        return _error_result(
-            baseline_id,
-            BaselineRunStatus.EXECUTION_ERROR,
-            f"baseline_id not found in manifest: {baseline_id!r}",
-        )
-
     try:
         artifact_path = resolve_snapshot_path(entry)
         raw_committed = artifact_path.read_bytes()
@@ -345,19 +366,27 @@ def run_candidate_provider(
     # Step 6: Validate candidate.
     try:
         validate_candidate_snapshot(candidate_snapshot, reference)
-    except CandidateValidationError as exc:
-        msg = str(exc)
-        # Classify error type.
-        if any(f in msg for f in ("schema_version", "baseline_id", "input_source_id")):
-            status = BaselineRunStatus.IDENTITY_MISMATCH
-        elif "schema validation" in msg:
-            status = BaselineRunStatus.SCHEMA_MISMATCH
-        else:
-            status = BaselineRunStatus.CANDIDATE_INVALID
+    except CandidateIdentityMismatch as exc:
         return _error_result(
             baseline_id,
-            status,
-            msg,
+            BaselineRunStatus.IDENTITY_MISMATCH,
+            str(exc),
+            legacy_snapshot=committed_snapshot,
+            candidate_snapshot=candidate_snapshot,
+        )
+    except CandidateSchemaMismatch as exc:
+        return _error_result(
+            baseline_id,
+            BaselineRunStatus.SCHEMA_MISMATCH,
+            str(exc),
+            legacy_snapshot=committed_snapshot,
+            candidate_snapshot=candidate_snapshot,
+        )
+    except CandidateValidationError as exc:
+        return _error_result(
+            baseline_id,
+            BaselineRunStatus.CANDIDATE_INVALID,
+            str(exc),
             legacy_snapshot=committed_snapshot,
             candidate_snapshot=candidate_snapshot,
         )
@@ -415,6 +444,9 @@ def compare_candidate_snapshot(
     This is a convenience wrapper around run_candidate_provider that accepts
     a pre-loaded snapshot dict instead of a provider object.
     """
+    if max_diffs is not None and max_diffs < 0:
+        raise ValueError(f"max_diffs must be >= 0, got {max_diffs!r}")
+
     class _InlineProvider:
         def __init__(self, snapshot: Mapping[str, Any]) -> None:
             self._snapshot = snapshot
@@ -456,6 +488,9 @@ def compare_candidate_directory(
     """
     import sys
 
+    if max_diffs is not None and max_diffs < 0:
+        raise ValueError(f"max_diffs must be >= 0, got {max_diffs!r}")
+
     all_ids = manifest_baseline_ids()
 
     if baseline_ids is not None:
@@ -489,9 +524,13 @@ def compare_candidate_directory(
 
     passed = tuple(r.baseline_id for r in results if r.status == BaselineRunStatus.PASS)
     failed = tuple(r.baseline_id for r in results if r.status != BaselineRunStatus.PASS)
-    overall = BaselineRunStatus.PASS if not failed else results[
-        next(i for i, r in enumerate(results) if r.status != BaselineRunStatus.PASS)
-    ].status
+    if not failed:
+        overall = BaselineRunStatus.PASS
+    else:
+        overall = max(
+            (r.status for r in results if r.status != BaselineRunStatus.PASS),
+            key=lambda s: _AGGREGATE_SEVERITY.get(s, 0),
+        )
 
     return AggregateRunResult(
         selected_baselines=tuple(selected),
