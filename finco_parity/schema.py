@@ -14,9 +14,18 @@ Design invariants
 - The schema is a plain Python dict-of-dicts description; validation uses
   validate_snapshot() which checks structural presence, not financial values.
 - Production code never imports this module.
+
+Unavailability levels
+---------------------
+- UNAVAILABLE (None): sentinel for "field requested but engine did not produce it".
+- unavailable_sections: top-level sections that could not be captured at all.
+- unavailable_fields: per-section dict of field names that are explicitly absent.
+- An all-None schedule list is NOT automatically a successfully captured schedule;
+  real-value tests in test_phase1a_parity_runner.py verify numeric content.
 """
 from __future__ import annotations
 
+import math
 from typing import Any
 
 SCHEMA_VERSION = "1.0.0"
@@ -40,10 +49,41 @@ _REQUIRED_TOP_LEVEL = frozenset({
     "returns",
 })
 
-# Optional top-level keys (present only when engine produces them).
-_OPTIONAL_TOP_LEVEL = frozenset({
-    "tax_and_cfads",
-    "financial_statements",
+# Required keys within operating_schedules.
+_REQUIRED_OPERATING_SCHEDULES = frozenset({
+    "production_mwh",
+    "revenue_keur",
+    "opex_keur",
+    "ebitda_keur",
+    "book_depreciation_keur",
+    "tax_depreciation_keur",
+})
+
+# Required keys within financing.senior_debt.
+_REQUIRED_SENIOR_DEBT = frozenset({
+    "closing_keur",
+    "interest_keur",
+    "principal_keur",
+    "debt_service_keur",
+    "dscr",
+    "llcr",
+})
+
+# Required keys within returns.
+_REQUIRED_RETURNS = frozenset({
+    "project_irr",
+    "equity_irr",
+    "total_distribution_keur",
+    "total_revenue_keur",
+})
+
+# Required provenance keys (must be non-empty strings).
+_REQUIRED_PROVENANCE = frozenset({
+    "baseline_id",
+    "engine_designation",
+    "baseline_commit_sha",
+    "run_path_id",
+    "input_source_id",
 })
 
 
@@ -51,38 +91,71 @@ class SnapshotValidationError(ValueError):
     """Raised when a snapshot dict fails structural validation."""
 
 
-def validate_snapshot(snapshot: dict[str, Any]) -> None:
-    """Validate structural presence of required snapshot sections.
+def _check_no_nonfinite(section_name: str, data: Any, path: str = "") -> None:
+    """Recursively check that no non-finite floats exist in data."""
+    if isinstance(data, float):
+        if math.isnan(data) or math.isinf(data):
+            raise SnapshotValidationError(
+                f"Non-finite float at {path or section_name}: {data!r}"
+            )
+    elif isinstance(data, list):
+        for i, item in enumerate(data):
+            _check_no_nonfinite(section_name, item, f"{path or section_name}[{i}]")
+    elif isinstance(data, dict):
+        for k, v in data.items():
+            _check_no_nonfinite(section_name, v, f"{path or section_name}.{k}")
 
-    Raises SnapshotValidationError on the first structural problem found.
-    Does not validate financial values.
+
+def validate_snapshot(snapshot: dict[str, Any]) -> None:
+    """Validate structural integrity of a snapshot dict.
+
+    Checks performed:
+    1. Top-level type and required keys.
+    2. Required provenance values are non-empty strings.
+    3. schema_version matches SCHEMA_VERSION.
+    4. period_grid: list, each row is a dict with period_index, unique sorted indices.
+    5. operating_schedules: dict with required keys; series lengths match period count.
+    6. financing: dict with senior_debt sub-dict with required keys.
+    7. returns: dict with required keys.
+    8. warnings and unavailable_sections are lists.
+    9. No non-finite floats in any section.
+    10. Period indices are unique and sorted.
+
+    Does NOT validate financial values.
     """
     if not isinstance(snapshot, dict):
         raise SnapshotValidationError(
             f"Snapshot must be a dict, got {type(snapshot).__name__}"
         )
 
-    sv = snapshot.get("schema_version")
-    if sv != SCHEMA_VERSION:
-        raise SnapshotValidationError(
-            f"schema_version mismatch: expected {SCHEMA_VERSION!r}, got {sv!r}"
-        )
-
+    # 1. Required top-level keys
     missing = _REQUIRED_TOP_LEVEL - snapshot.keys()
     if missing:
         raise SnapshotValidationError(
             f"Snapshot missing required keys: {sorted(missing)}"
         )
 
-    baseline_id = snapshot.get("baseline_id")
-    if not isinstance(baseline_id, str) or not baseline_id:
-        raise SnapshotValidationError("baseline_id must be a non-empty string")
+    # 2. schema_version
+    sv = snapshot.get("schema_version")
+    if sv != SCHEMA_VERSION:
+        raise SnapshotValidationError(
+            f"schema_version mismatch: expected {SCHEMA_VERSION!r}, got {sv!r}"
+        )
 
+    # 3. Provenance strings
+    for key in _REQUIRED_PROVENANCE:
+        val = snapshot.get(key)
+        if not isinstance(val, str) or not val:
+            raise SnapshotValidationError(
+                f"{key!r} must be a non-empty string, got {val!r}"
+            )
+
+    # 4. period_grid
     period_grid = snapshot.get("period_grid")
     if not isinstance(period_grid, list):
         raise SnapshotValidationError("period_grid must be a list")
 
-    # Each period grid entry must have period_index.
+    period_indices: list[int | float] = []
     for i, row in enumerate(period_grid):
         if not isinstance(row, dict):
             raise SnapshotValidationError(
@@ -92,26 +165,98 @@ def validate_snapshot(snapshot: dict[str, Any]) -> None:
             raise SnapshotValidationError(
                 f"period_grid[{i}] missing 'period_index'"
             )
+        pi = row["period_index"]
+        if not isinstance(pi, (int, float)) or (isinstance(pi, float) and math.isnan(pi)):
+            raise SnapshotValidationError(
+                f"period_grid[{i}].period_index must be numeric, got {pi!r}"
+            )
+        period_indices.append(pi)
 
+    # 5. Duplicate period indices
+    if len(period_indices) != len(set(period_indices)):
+        raise SnapshotValidationError("period_grid contains duplicate period_index values")
+
+    # 6. Sorted period indices
+    if period_indices != sorted(period_indices):
+        raise SnapshotValidationError("period_grid is not sorted by period_index")
+
+    n_periods = len(period_grid)
+
+    # 7. operating_schedules
     op = snapshot.get("operating_schedules")
     if not isinstance(op, dict):
         raise SnapshotValidationError("operating_schedules must be a dict")
 
+    missing_op = _REQUIRED_OPERATING_SCHEDULES - op.keys()
+    if missing_op:
+        raise SnapshotValidationError(
+            f"operating_schedules missing required keys: {sorted(missing_op)}"
+        )
+
+    # Each schedule must be a list with length matching n_periods or be UNAVAILABLE
+    if n_periods > 0:
+        for field in _REQUIRED_OPERATING_SCHEDULES:
+            val = op[field]
+            if val is not UNAVAILABLE:
+                if not isinstance(val, list):
+                    raise SnapshotValidationError(
+                        f"operating_schedules.{field} must be a list, got {type(val).__name__}"
+                    )
+                if len(val) != n_periods:
+                    raise SnapshotValidationError(
+                        f"operating_schedules.{field} length {len(val)} != "
+                        f"period_grid length {n_periods}"
+                    )
+
+    # 8. financing
     fin = snapshot.get("financing")
     if not isinstance(fin, dict):
         raise SnapshotValidationError("financing must be a dict")
 
+    senior = fin.get("senior_debt")
+    if not isinstance(senior, dict):
+        raise SnapshotValidationError("financing.senior_debt must be a dict")
+
+    missing_sd = _REQUIRED_SENIOR_DEBT - senior.keys()
+    if missing_sd:
+        raise SnapshotValidationError(
+            f"financing.senior_debt missing required keys: {sorted(missing_sd)}"
+        )
+
+    if n_periods > 0:
+        for field in _REQUIRED_SENIOR_DEBT:
+            val = senior[field]
+            if val is not UNAVAILABLE and isinstance(val, list):
+                if len(val) != n_periods:
+                    raise SnapshotValidationError(
+                        f"financing.senior_debt.{field} length {len(val)} != "
+                        f"period_grid length {n_periods}"
+                    )
+
+    # 9. returns
     ret = snapshot.get("returns")
     if not isinstance(ret, dict):
         raise SnapshotValidationError("returns must be a dict")
 
-    warnings = snapshot.get("warnings")
-    if not isinstance(warnings, list):
+    missing_ret = _REQUIRED_RETURNS - ret.keys()
+    if missing_ret:
+        raise SnapshotValidationError(
+            f"returns missing required keys: {sorted(missing_ret)}"
+        )
+
+    # 10. warnings and unavailable_sections
+    warnings_val = snapshot.get("warnings")
+    if not isinstance(warnings_val, list):
         raise SnapshotValidationError("warnings must be a list")
 
     unavailable = snapshot.get("unavailable_sections")
     if not isinstance(unavailable, list):
         raise SnapshotValidationError("unavailable_sections must be a list")
+
+    # 11. No non-finite numbers anywhere
+    for section in ("period_grid", "operating_schedules", "financing", "returns", "tax_and_cfads"):
+        if section in snapshot:
+            _check_no_nonfinite(section, snapshot[section])
 
 
 def build_empty_snapshot(
@@ -136,6 +281,7 @@ def build_empty_snapshot(
         "input_source_id": input_source_id,
         "warnings": [],
         "unavailable_sections": [],
+        "unavailable_fields": {},
         "period_grid": [],
         "operating_schedules": {
             "production_mwh": [],
@@ -146,46 +292,78 @@ def build_empty_snapshot(
             "tax_depreciation_keur": [],
         },
         "tax_and_cfads": {
-            "taxable_income_keur": [],
-            "deductible_interest_keur": [],
-            "cash_tax_keur": [],
-            "loss_carryforward_keur": [],
-            "cfads_proxy_keur": [],
+            "taxable_profit_keur": [],
+            "taxable_income_before_losses_audit_keur": [],
+            "taxable_profit_after_losses_audit_keur": [],
+            "cit_accrual_audit_keur": [],
+            "cash_tax_current_period_audit_keur": [],
+            "corporate_tax_cash_keur": [],
+            "tax_keur": [],
+            "cash_tax_bridge_reconciliation_keur": [],
+            "tax_loss_opening_audit_keur": [],
+            "tax_loss_used_audit_keur": [],
+            "tax_loss_closing_audit_keur": [],
+            "tax_depreciation_audit_keur": [],
+            "fiscal_reintegration_audit_keur": [],
+            "cf_after_tax_keur": [],
+            "r69_fcf_banks_keur": [],
+            "r84_fcf_junior_keur": [],
+            "r99_fcf_for_distribution_keur": [],
+            "r102_fcf_for_shl_keur": [],
+            "fcf_for_shl_keur": [],
         },
         "financing": {
             "senior_debt": {
                 "opening_keur": [],
                 "drawdown_keur": [],
+                "closing_keur": [],
                 "interest_keur": [],
                 "principal_keur": [],
                 "debt_service_keur": [],
-                "closing_keur": [],
                 "dscr": [],
-                "llcr": UNAVAILABLE,
-                "dsra_keur": [],
+                "llcr": [],
+                "plcr": [],
+                "dsra_balance_keur": [],
+                "dsra_contribution_keur": [],
+                "cash_sweep_keur": [],
             },
             "shl": {
                 "opening_keur": [],
                 "interest_keur": [],
                 "principal_keur": [],
+                "service_keur": [],
                 "closing_keur": [],
+                "pik_keur": [],
+                "gross_accrued_interest_keur": [],
             },
             "equity": {
+                "distribution_keur": [],
                 "injections_keur": [],
-                "distributions_keur": [],
+                "cf_after_reserves_keur": [],
+                "lockup_active": [],
             },
         },
         "financial_statements": UNAVAILABLE,
         "returns": {
             "project_irr": UNAVAILABLE,
             "equity_irr": UNAVAILABLE,
+            "sponsor_irr": UNAVAILABLE,
+            "project_npv": UNAVAILABLE,
+            "equity_npv": UNAVAILABLE,
             "avg_dscr": UNAVAILABLE,
-            "actual_avg_dscr": UNAVAILABLE,
             "min_dscr": UNAVAILABLE,
+            "actual_avg_dscr": UNAVAILABLE,
+            "actual_min_dscr": UNAVAILABLE,
+            "min_llcr": UNAVAILABLE,
+            "min_plcr": UNAVAILABLE,
+            "periods_in_lockup": UNAVAILABLE,
             "total_revenue_keur": UNAVAILABLE,
-            "total_ebitda_keur": UNAVAILABLE,
             "total_opex_keur": UNAVAILABLE,
+            "total_ebitda_keur": UNAVAILABLE,
             "total_tax_keur": UNAVAILABLE,
-            "total_distributions_keur": UNAVAILABLE,
+            "total_senior_ds_keur": UNAVAILABLE,
+            "total_shl_service_keur": UNAVAILABLE,
+            "total_distribution_keur": UNAVAILABLE,
+            "equity_irr_method": "",
         },
     }

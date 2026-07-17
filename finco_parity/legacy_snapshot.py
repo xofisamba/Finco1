@@ -134,33 +134,33 @@ def _run_engine(project_type: str) -> tuple[Any, Any, list[str]]:
     Deferred import keeps the production module boundary clean —
     this module is test-only and must not be imported by production code.
     """
-    # Defer all production imports to runtime.
+    # Defer all production imports to runtime.  run_project is intentionally NOT
+    # imported here — this runner captures via ui_runner only (legacy calc path).
     from app.ui_runner import run_demo_project  # type: ignore[import]
-    from app.api.project_runner import run_project  # type: ignore[import]
 
     warnings: list[str] = []
 
-    # run_demo_project executes the full stack: factory → WaterfallRunner → engine.
+    # run_demo_project executes: factory → WaterfallRunner → run_waterfall_v3_core.
+    # This is the legacy calculation capture path, not the full production Run path.
+    # The production Run path additionally executes: run_project serializers,
+    # persistence, sessionStorage, and Workbook V2 hydration.
     demo_result = run_demo_project(project_type)
 
     if demo_result is None:
         raise RuntimeError(f"run_demo_project({project_type!r}) returned None")
 
     # Extract the WaterfallResult from DemoResult.
+    # DemoResult.result is the primary attribute per app/ui_runner.py.
     waterfall_result = getattr(demo_result, "result", None)
     if waterfall_result is None:
-        waterfall_result = getattr(demo_result, "waterfall_result", None)
-    if waterfall_result is None:
-        # Some DemoResult shapes expose `results` (plural).
-        waterfall_result = getattr(demo_result, "results", None)
-
-    if waterfall_result is None:
         raise RuntimeError(
-            f"Cannot extract WaterfallResult from DemoResult for {project_type!r}. "
-            f"Available attrs: {[a for a in dir(demo_result) if not a.startswith('_')]}"
+            f"DemoResult.result is None for {project_type!r}. "
+            f"Engine may have errored. Available attrs: "
+            f"{[a for a in dir(demo_result) if not a.startswith('_')]}"
         )
 
-    # Attempt to extract financial statements payload.
+    # Attempt to extract financial statements payload using the same assembly
+    # function as the production runner.
     fs_payload = UNAVAILABLE
     try:
         from domain.financial_statements.assembly import (  # type: ignore[import]
@@ -168,8 +168,9 @@ def _run_engine(project_type: str) -> tuple[Any, Any, list[str]]:
         )
         fs_payload = assemble_financial_statements(waterfall_result)
     except Exception as exc:
+        # Record failure type only — no absolute paths or tracebacks in warnings.
         warnings.append(
-            f"financial_statements unavailable: {type(exc).__name__}: {exc}"
+            f"financial_statements unavailable: {type(exc).__name__}"
         )
 
     # Collect any engine warnings from DemoResult.
@@ -177,7 +178,8 @@ def _run_engine(project_type: str) -> tuple[Any, Any, list[str]]:
         msgs = getattr(demo_result, attr, None)
         if msgs:
             for m in msgs:
-                warnings.append(str(m))
+                s = str(m)
+                warnings.append(s)
 
     return waterfall_result, fs_payload, warnings
 
@@ -251,9 +253,14 @@ def capture_snapshot(
 # ---------------------------------------------------------------------------
 
 def _serialize_snapshot(snapshot: dict[str, Any], *, pretty: bool = False) -> str:
-    """Serialize snapshot to deterministic UTF-8 JSON string."""
+    """Serialize snapshot to deterministic UTF-8 JSON string.
+
+    allow_nan=False enforces that no NaN or infinity survived normalization.
+    """
     indent = 2 if pretty else None
-    return json.dumps(snapshot, sort_keys=True, indent=indent, ensure_ascii=False)
+    return json.dumps(
+        snapshot, sort_keys=True, indent=indent, ensure_ascii=False, allow_nan=False
+    )
 
 
 # ---------------------------------------------------------------------------

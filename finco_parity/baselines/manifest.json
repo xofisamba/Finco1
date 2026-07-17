@@ -1,6 +1,6 @@
 {
-  "manifest_version": "1.0.0",
-  "description": "Baseline project registry for Phase 1A legacy characterization snapshots",
+  "manifest_version": "1.1.0",
+  "description": "Baseline project registry for Phase 1A legacy characterization snapshots. All facts verified against current codebase as of 2026-07-17.",
   "baselines": [
     {
       "baseline_id": "tuho",
@@ -8,78 +8,116 @@
       "project_type_key": "TUHO",
       "project_code": "TUHO-WIND-1",
       "technology": "wind",
-      "capacity_mw": null,
-      "horizon_years": null,
+      "capacity_mw": 35.0,
+      "horizon_years": 30,
+      "period_frequency": "SEMESTRIAL",
       "factory_function": "app.project_factories.create_default_tuho_wind1",
       "run_path": "app.ui_runner.run_demo_project",
       "engine_designation": "legacy_waterfall_v3",
-      "identity_guard": "is_tuho = (code == 'TUHO-WIND-1')",
-      "frozen_fixture_path": "reports/phase7_tuho_senior_debt_sizing_extraction.csv",
-      "frozen_fixture_active": true,
+      "fixture_selection": {
+        "mechanism": "capability_flag",
+        "flag": "use_frozen_excel_senior_debt_schedule",
+        "flag_value": true,
+        "flag_location": "FinancingParams (set in create_default_tuho_wind1)",
+        "fixture_path_param": "frozen_senior_ds_fixture_path",
+        "fixture_path_value": "reports/phase7_tuho_senior_debt_sizing_extraction.csv",
+        "use_senior_debt_sizing_engine": true,
+        "notes": "Fixture selection is capability-driven via FinancingParams fields, not via project-code guard in waterfall_core.py. The frozen schedule replaces live sculpting output."
+      },
+      "identity_guard": null,
       "notes": [
-        "Senior debt schedule is frozen from the CSV fixture — engine uses fixture values, not a fresh sizing run.",
-        "CFADS proxy: cf_after_tax_keur (period-level). Multiple CFADS representations exist in the codebase; see report for disambiguation.",
-        "Identity guard in app/waterfall_core.py activates frozen schedule dispatch by project code."
+        "Senior debt schedule is frozen from the CSV fixture — activated by use_frozen_excel_senior_debt_schedule=True in FinancingParams.",
+        "use_senior_debt_sizing_engine=True also set (Phase 23F canonical sizing path enabled).",
+        "CFADS variants: cf_after_tax_keur, r69_fcf_banks_keur, r84_fcf_junior_keur, r99_fcf_for_distribution_keur, r102_fcf_for_shl_keur, fcf_for_shl_keur.",
+        "Distribution attribute: WaterfallPeriod.distribution_keur (singular). WaterfallResult.total_distribution_keur.",
+        "WaterfallResult.periods contains operation-only periods (n=61 semi-annual periods).",
+        "equity_irr_method: shl_plus_dividends"
       ]
     },
     {
       "baseline_id": "oborovo",
       "display_name": "Oborovo Solar PV",
       "project_type_key": "Oborovo",
-      "project_code": "OBOROVO-SOLAR-1",
+      "project_code": "OBR-001",
       "technology": "solar",
-      "capacity_mw": null,
-      "horizon_years": null,
+      "capacity_mw": 75.26,
+      "horizon_years": 30,
+      "period_frequency": "SEMESTRIAL",
       "factory_function": "app.project_factories.create_default_oborovo",
       "run_path": "app.ui_runner.run_demo_project",
       "engine_designation": "legacy_waterfall_v3",
-      "identity_guard": "is_oborovo = (code == 'OBOROVO-SOLAR-1')",
-      "frozen_fixture_path": "reports/phase23q_oborovo_senior_debt_sizing_extraction.csv",
-      "frozen_fixture_active": true,
+      "fixture_selection": {
+        "mechanism": "capability_flag",
+        "flag": "use_frozen_excel_senior_debt_schedule",
+        "flag_value": true,
+        "flag_location": "FinancingParams (set in create_default_oborovo)",
+        "fixture_path_param": "frozen_senior_ds_fixture_path",
+        "fixture_path_value": "reports/phase23q_oborovo_senior_debt_sizing_extraction.csv",
+        "use_senior_debt_sizing_engine": true,
+        "notes": "Fixture selection is capability-driven via FinancingParams fields. No project-code guard is used."
+      },
+      "identity_guard": null,
       "notes": [
-        "Senior debt schedule is frozen from the CSV fixture — engine uses fixture values, not a fresh sizing run.",
-        "CFADS proxy: cf_after_tax_keur (period-level).",
-        "Identity guard in app/waterfall_core.py activates frozen schedule dispatch by project code."
+        "Project code is OBR-001, not OBOROVO-SOLAR-1.",
+        "Senior debt schedule is frozen from the CSV fixture — activated by use_frozen_excel_senior_debt_schedule=True in FinancingParams.",
+        "debt_sizing_method: gearing_cap (not DSCR-sculpted).",
+        "CFADS variants: cf_after_tax_keur, r69_fcf_banks_keur, r84_fcf_junior_keur, r99_fcf_for_distribution_keur, r102_fcf_for_shl_keur, fcf_for_shl_keur.",
+        "Distribution attribute: WaterfallPeriod.distribution_keur (singular). WaterfallResult.total_distribution_keur.",
+        "equity_irr_method: shl_plus_dividends"
       ]
     },
     {
       "baseline_id": "generic_solar",
       "display_name": "Generic Solar (Test 1)",
       "project_type_key": "Test 1",
-      "project_code": null,
+      "project_code": "TEST-SOLAR-1",
       "technology": "solar",
-      "capacity_mw": 50,
+      "capacity_mw": 50.0,
       "horizon_years": 20,
+      "period_frequency": "SEMESTRIAL",
       "factory_function": "app.project_factories.create_default_solar_project",
       "run_path": "app.ui_runner.run_demo_project",
       "engine_designation": "legacy_waterfall_v3",
+      "fixture_selection": {
+        "mechanism": "none",
+        "flag": null,
+        "flag_value": null,
+        "notes": "No frozen fixture. Senior debt is sized live by the engine each run."
+      },
       "identity_guard": null,
-      "frozen_fixture_path": null,
-      "frozen_fixture_active": false,
       "notes": [
-        "No frozen fixture. Senior debt is sized live by the engine each run.",
+        "Entirely fictional project — no Excel calibration data.",
+        "Senior debt is sized live (DSCR-sculpted) on every run.",
         "Determinism depends on the engine being deterministic for identical inputs.",
-        "CFADS proxy: cf_after_tax_keur (period-level)."
+        "CFADS variants: cf_after_tax_keur plus r-row audit fields (r69, r84, r99, r102).",
+        "Distribution attribute: WaterfallPeriod.distribution_keur (singular). WaterfallResult.total_distribution_keur."
       ]
     },
     {
       "baseline_id": "generic_wind",
       "display_name": "Generic Wind (Test 2)",
       "project_type_key": "Test 2",
-      "project_code": null,
+      "project_code": "TEST-WIND-1",
       "technology": "wind",
-      "capacity_mw": 40,
+      "capacity_mw": 40.0,
       "horizon_years": 25,
+      "period_frequency": "SEMESTRIAL",
       "factory_function": "app.project_factories.create_default_wind_project",
       "run_path": "app.ui_runner.run_demo_project",
       "engine_designation": "legacy_waterfall_v3",
+      "fixture_selection": {
+        "mechanism": "none",
+        "flag": null,
+        "flag_value": null,
+        "notes": "No frozen fixture. Senior debt is sized live by the engine each run."
+      },
       "identity_guard": null,
-      "frozen_fixture_path": null,
-      "frozen_fixture_active": false,
       "notes": [
-        "No frozen fixture. Senior debt is sized live by the engine each run.",
+        "Entirely fictional project — no Excel calibration data.",
+        "Senior debt is sized live (DSCR-sculpted) on every run.",
         "Determinism depends on the engine being deterministic for identical inputs.",
-        "CFADS proxy: cf_after_tax_keur (period-level)."
+        "CFADS variants: cf_after_tax_keur plus r-row audit fields (r69, r84, r99, r102).",
+        "Distribution attribute: WaterfallPeriod.distribution_keur (singular). WaterfallResult.total_distribution_keur."
       ]
     }
   ]

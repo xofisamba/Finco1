@@ -25,6 +25,7 @@ from finco_parity.normalization import (
     NormalizationError,
     normalize_value,
     normalize_snapshot,
+    _safe_float,
 )
 
 
@@ -45,6 +46,25 @@ def _minimal_snapshot(**overrides) -> dict[str, Any]:
     return base
 
 
+def _snap_with_period() -> dict[str, Any]:
+    """Minimal snapshot with one period row and matching schedule lengths."""
+    snap = _minimal_snapshot()
+    snap["period_grid"] = [{"period_index": 0, "date": "2025-06-30"}]
+    for k in snap["operating_schedules"]:
+        snap["operating_schedules"][k] = [100.0]
+    snap["financing"]["senior_debt"]["closing_keur"] = [5000.0]
+    snap["financing"]["senior_debt"]["interest_keur"] = [50.0]
+    snap["financing"]["senior_debt"]["principal_keur"] = [100.0]
+    snap["financing"]["senior_debt"]["debt_service_keur"] = [150.0]
+    snap["financing"]["senior_debt"]["dscr"] = [1.2]
+    snap["financing"]["senior_debt"]["llcr"] = [1.4]
+    snap["returns"]["project_irr"] = 0.08
+    snap["returns"]["equity_irr"] = 0.12
+    snap["returns"]["total_distribution_keur"] = 1000.0
+    snap["returns"]["total_revenue_keur"] = 5000.0
+    return snap
+
+
 # ---------------------------------------------------------------------------
 # Section A: UNAVAILABLE sentinel
 # ---------------------------------------------------------------------------
@@ -53,19 +73,29 @@ class TestUnavailableSentinel:
     def test_unavailable_is_none(self):
         assert UNAVAILABLE is None
 
-    def test_unavailable_distinct_from_zero(self):
+    def test_unavailable_distinct_from_zero_float(self):
         assert UNAVAILABLE != 0.0
+
+    def test_unavailable_distinct_from_zero_int(self):
         assert UNAVAILABLE != 0
+
+    def test_schema_version_string(self):
+        assert isinstance(SCHEMA_VERSION, str)
+        assert SCHEMA_VERSION == "1.0.0"
 
 
 # ---------------------------------------------------------------------------
-# Section B: validate_snapshot — required keys
+# Section B: validate_snapshot — top-level structure
 # ---------------------------------------------------------------------------
 
 class TestValidateSnapshotRequiredKeys:
     def test_valid_empty_snapshot_passes(self):
         snap = _minimal_snapshot()
-        validate_snapshot(snap)  # must not raise
+        validate_snapshot(snap)
+
+    def test_valid_snapshot_with_period_passes(self):
+        snap = _snap_with_period()
+        validate_snapshot(snap)
 
     def test_wrong_schema_version_raises(self):
         snap = _minimal_snapshot(schema_version="0.0.1")
@@ -81,6 +111,11 @@ class TestValidateSnapshotRequiredKeys:
     def test_empty_baseline_id_raises(self):
         snap = _minimal_snapshot(baseline_id="")
         with pytest.raises(SnapshotValidationError, match="baseline_id"):
+            validate_snapshot(snap)
+
+    def test_empty_engine_designation_raises(self):
+        snap = _minimal_snapshot(engine_designation="")
+        with pytest.raises(SnapshotValidationError, match="engine_designation"):
             validate_snapshot(snap)
 
     def test_missing_period_grid_raises(self):
@@ -104,6 +139,42 @@ class TestValidateSnapshotRequiredKeys:
         with pytest.raises(SnapshotValidationError):
             validate_snapshot(snap)
 
+    def test_duplicate_period_indices_raises(self):
+        snap = _minimal_snapshot(period_grid=[
+            {"period_index": 0}, {"period_index": 0}
+        ])
+        with pytest.raises(SnapshotValidationError, match="duplicate"):
+            validate_snapshot(snap)
+
+    def test_unsorted_period_indices_raises(self):
+        snap = _minimal_snapshot(period_grid=[
+            {"period_index": 1}, {"period_index": 0}
+        ])
+        with pytest.raises(SnapshotValidationError, match="sorted"):
+            validate_snapshot(snap)
+
+    def test_sorted_period_indices_passes(self):
+        snap = _snap_with_period()
+        snap["period_grid"] = [{"period_index": 0, "date": "2025-06-30"},
+                               {"period_index": 1, "date": "2025-12-31"}]
+        for k in snap["operating_schedules"]:
+            snap["operating_schedules"][k] = [100.0, 100.0]
+        for k in ("closing_keur", "interest_keur", "principal_keur", "debt_service_keur", "dscr", "llcr"):
+            snap["financing"]["senior_debt"][k] = [snap["financing"]["senior_debt"][k][0], snap["financing"]["senior_debt"][k][0]]
+        validate_snapshot(snap)
+
+    def test_non_finite_in_operating_schedules_raises(self):
+        snap = _snap_with_period()
+        snap["operating_schedules"]["revenue_keur"] = [float("nan")]
+        with pytest.raises(SnapshotValidationError, match="Non-finite"):
+            validate_snapshot(snap)
+
+    def test_operating_schedules_length_mismatch_raises(self):
+        snap = _snap_with_period()
+        snap["operating_schedules"]["revenue_keur"] = [1.0, 2.0]
+        with pytest.raises(SnapshotValidationError, match="length"):
+            validate_snapshot(snap)
+
     def test_missing_operating_schedules_raises(self):
         snap = _minimal_snapshot()
         del snap["operating_schedules"]
@@ -121,9 +192,10 @@ class TestValidateSnapshotRequiredKeys:
         with pytest.raises(SnapshotValidationError):
             validate_snapshot(snap)
 
-    def test_financing_not_dict_raises(self):
-        snap = _minimal_snapshot(financing=[])
-        with pytest.raises(SnapshotValidationError, match="financing"):
+    def test_missing_senior_debt_raises(self):
+        snap = _minimal_snapshot()
+        del snap["financing"]["senior_debt"]
+        with pytest.raises(SnapshotValidationError, match="senior_debt"):
             validate_snapshot(snap)
 
     def test_missing_returns_raises(self):
@@ -132,9 +204,10 @@ class TestValidateSnapshotRequiredKeys:
         with pytest.raises(SnapshotValidationError):
             validate_snapshot(snap)
 
-    def test_returns_not_dict_raises(self):
-        snap = _minimal_snapshot(returns=[])
-        with pytest.raises(SnapshotValidationError, match="returns"):
+    def test_returns_missing_total_distribution_keur_raises(self):
+        snap = _snap_with_period()
+        del snap["returns"]["total_distribution_keur"]
+        with pytest.raises(SnapshotValidationError, match="total_distribution_keur"):
             validate_snapshot(snap)
 
     def test_warnings_not_list_raises(self):
@@ -150,10 +223,6 @@ class TestValidateSnapshotRequiredKeys:
     def test_non_dict_snapshot_raises(self):
         with pytest.raises(SnapshotValidationError, match="dict"):
             validate_snapshot([])
-
-    def test_period_grid_with_valid_row_passes(self):
-        snap = _minimal_snapshot(period_grid=[{"period_index": 0, "start_date": "2025-01-01"}])
-        validate_snapshot(snap)  # must not raise
 
 
 # ---------------------------------------------------------------------------
@@ -177,6 +246,10 @@ class TestBuildEmptySnapshot:
         snap = _minimal_snapshot()
         assert snap["warnings"] == []
 
+    def test_unavailable_fields_is_dict(self):
+        snap = _minimal_snapshot()
+        assert isinstance(snap["unavailable_fields"], dict)
+
     def test_financing_has_senior_debt(self):
         snap = _minimal_snapshot()
         assert "senior_debt" in snap["financing"]
@@ -193,9 +266,75 @@ class TestBuildEmptySnapshot:
         snap = _minimal_snapshot()
         assert snap["financial_statements"] is UNAVAILABLE
 
+    def test_returns_has_total_distribution_keur(self):
+        snap = _minimal_snapshot()
+        assert "total_distribution_keur" in snap["returns"]
+
+    def test_returns_has_min_llcr(self):
+        snap = _minimal_snapshot()
+        assert "min_llcr" in snap["returns"]
+
+    def test_financing_senior_has_llcr(self):
+        snap = _minimal_snapshot()
+        assert "llcr" in snap["financing"]["senior_debt"]
+
+    def test_tax_and_cfads_has_cfads_variants(self):
+        snap = _minimal_snapshot()
+        tac = snap["tax_and_cfads"]
+        for key in ("cf_after_tax_keur", "r69_fcf_banks_keur", "r84_fcf_junior_keur"):
+            assert key in tac, f"Missing CFADS field: {key}"
+
+    def test_distribution_key_is_singular(self):
+        snap = _minimal_snapshot()
+        eq = snap["financing"]["equity"]
+        assert "distribution_keur" in eq
+        assert "distributions_keur" not in eq
+
 
 # ---------------------------------------------------------------------------
-# Section D: normalize_value — primitive types
+# Section D: _safe_float — strict numeric conversion
+# ---------------------------------------------------------------------------
+
+class TestSafeFloat:
+    def test_int_converted(self):
+        assert _safe_float(42) == 42.0
+
+    def test_float_passes(self):
+        assert _safe_float(3.14) == pytest.approx(3.14)
+
+    def test_zero_passes(self):
+        assert _safe_float(0.0) == 0.0
+
+    def test_nan_raises(self):
+        with pytest.raises(NormalizationError, match="NaN"):
+            _safe_float(float("nan"))
+
+    def test_inf_raises(self):
+        with pytest.raises(NormalizationError, match="Infinite"):
+            _safe_float(float("inf"))
+
+    def test_neg_inf_raises(self):
+        with pytest.raises(NormalizationError, match="Infinite"):
+            _safe_float(float("-inf"))
+
+    def test_bool_raises(self):
+        with pytest.raises(NormalizationError):
+            _safe_float(True)
+
+    def test_non_numeric_string_raises(self):
+        with pytest.raises(NormalizationError):
+            _safe_float("not_a_number")
+
+    def test_none_raises(self):
+        with pytest.raises(NormalizationError):
+            _safe_float(None)
+
+    def test_decimal_converted(self):
+        assert _safe_float(float(Decimal("1.5"))) == pytest.approx(1.5)
+
+
+# ---------------------------------------------------------------------------
+# Section E: normalize_value — primitive types
 # ---------------------------------------------------------------------------
 
 class TestNormalizeValuePrimitives:
@@ -222,14 +361,13 @@ class TestNormalizeValuePrimitives:
         assert isinstance(result, float)
         assert result == pytest.approx(1.5)
 
-    def test_nan_becomes_none(self):
-        assert normalize_value(float("nan")) is None
+    def test_nan_raises(self):
+        with pytest.raises(NormalizationError):
+            normalize_value(float("nan"))
 
-    def test_inf_becomes_none(self):
-        assert normalize_value(float("inf")) is None
-
-    def test_neg_inf_becomes_none(self):
-        assert normalize_value(float("-inf")) is None
+    def test_inf_raises(self):
+        with pytest.raises(NormalizationError):
+            normalize_value(float("inf"))
 
     def test_date_to_iso(self):
         d = datetime.date(2025, 6, 15)
@@ -240,7 +378,6 @@ class TestNormalizeValuePrimitives:
         assert normalize_value(dt) == "2025-06-15"
 
     def test_zero_float_preserved(self):
-        # 0.0 must remain 0.0, not become None
         assert normalize_value(0.0) == 0.0
 
     def test_zero_int_preserved(self):
@@ -248,7 +385,7 @@ class TestNormalizeValuePrimitives:
 
 
 # ---------------------------------------------------------------------------
-# Section E: normalize_value — containers
+# Section F: normalize_value — containers
 # ---------------------------------------------------------------------------
 
 class TestNormalizeValueContainers:
@@ -277,7 +414,7 @@ class TestNormalizeValueContainers:
 
 
 # ---------------------------------------------------------------------------
-# Section F: normalize_value — enum and dataclass
+# Section G: normalize_value — enum and dataclass
 # ---------------------------------------------------------------------------
 
 class _Color(enum.Enum):
@@ -320,62 +457,84 @@ class TestNormalizeValueEnumDataclass:
 
 
 # ---------------------------------------------------------------------------
-# Section G: normalize_snapshot — smoke test (mock WaterfallResult)
+# Section H: normalize_snapshot — mock WaterfallResult
 # ---------------------------------------------------------------------------
 
 @dataclasses.dataclass
 class _MockPeriod:
     period: int
-    year_index: float
+    date: datetime.date
+    year_index: int
     period_in_year: int
-    start_date: datetime.date
-    end_date: datetime.date
     is_operation: bool
-    is_construction: bool
     generation_mwh: float
     revenue_keur: float
     opex_keur: float
     ebitda_keur: float
     depreciation_keur: float
+    taxable_profit_keur: float
     tax_keur: float
     cf_after_tax_keur: float
     senior_interest_keur: float
     senior_principal_keur: float
     senior_ds_keur: float
     dscr: float
+    llcr: float
+    plcr: float
+    lockup_active: bool
+    distribution_keur: float
+    cash_sweep_keur: float
     senior_balance_keur: float
-    tax_depreciation_audit_keur: float
-    shl_opening_keur: float = 0.0
     shl_interest_keur: float = 0.0
     shl_principal_keur: float = 0.0
+    shl_service_keur: float = 0.0
     shl_balance_keur: float = 0.0
-    shl_pik_accrual_keur: float = 0.0
-    distributions_keur: float = 0.0
-    equity_injection_keur: float = 0.0
-    taxable_income_keur: float = 0.0
-    deductible_interest_keur: float = 0.0
-    disallowed_interest_keur: float = 0.0
-    loss_carryforward_keur: float = 0.0
-    fiscal_reintegration_keur: float = 0.0
+    shl_pik_keur: float = 0.0
+    shl_gross_accrued_interest_keur: float = 0.0
+    dsra_contribution_keur: float = 0.0
     dsra_balance_keur: float = 0.0
+    cf_after_reserves_keur: float = 0.0
+    tax_depreciation_audit_keur: float = 0.0
+    fiscal_reintegration_audit_keur: float = 0.0
+    taxable_income_before_losses_audit_keur: float = 0.0
+    tax_loss_opening_audit_keur: float = 0.0
+    tax_loss_used_audit_keur: float = 0.0
+    tax_loss_closing_audit_keur: float = 0.0
+    taxable_profit_after_losses_audit_keur: float = 0.0
+    cit_accrual_audit_keur: float = 0.0
+    cash_tax_current_period_audit_keur: float = 0.0
+    corporate_tax_cash_keur: float = 0.0
+    cash_tax_bridge_reconciliation_keur: float = 0.0
+    r69_fcf_banks_keur: float = 0.0
+    r84_fcf_junior_keur: float = 0.0
+    r99_fcf_for_distribution_keur: float = 0.0
+    r102_fcf_for_shl_keur: float = 0.0
+    fcf_for_shl_keur: float = 0.0
 
 
 @dataclasses.dataclass
 class _MockWaterfallResult:
     periods: list[_MockPeriod]
-    project_irr: float | None = None
-    equity_irr: float | None = None
-    avg_dscr: float | None = None
-    actual_avg_dscr: float | None = None
-    min_dscr: float | None = None
-    actual_min_dscr: float | None = None
-    total_revenue_keur: float | None = None
-    total_ebitda_keur: float | None = None
-    total_opex_keur: float | None = None
-    total_tax_keur: float | None = None
-    total_senior_ds_keur: float | None = None
-    total_distributions_keur: float | None = None
-    equity_irr_method: str | None = None
+    project_irr: float = 0.0
+    equity_irr: float = 0.0
+    sponsor_irr: float = 0.0
+    project_npv: float = 0.0
+    equity_npv: float = 0.0
+    avg_dscr: float = 0.0
+    min_dscr: float = 0.0
+    actual_avg_dscr: float = 0.0
+    actual_min_dscr: float = 0.0
+    min_llcr: float = 0.0
+    min_plcr: float = 0.0
+    periods_in_lockup: int = 0
+    total_revenue_keur: float = 0.0
+    total_opex_keur: float = 0.0
+    total_ebitda_keur: float = 0.0
+    total_tax_keur: float = 0.0
+    total_senior_ds_keur: float = 0.0
+    total_shl_service_keur: float = 0.0
+    total_distribution_keur: float = 0.0
+    equity_irr_method: str = "equity_only"
 
 
 def _make_mock_result(n_periods: int = 3) -> _MockWaterfallResult:
@@ -383,32 +542,37 @@ def _make_mock_result(n_periods: int = 3) -> _MockWaterfallResult:
     for i in range(n_periods):
         periods.append(_MockPeriod(
             period=i,
-            year_index=float(i),
+            date=datetime.date(2025 + i, 6, 30),
+            year_index=i + 1,
             period_in_year=1,
-            start_date=datetime.date(2025, 1, 1),
-            end_date=datetime.date(2025, 12, 31),
-            is_operation=(i > 0),
-            is_construction=(i == 0),
-            generation_mwh=1000.0 * i,
-            revenue_keur=500.0 * i,
-            opex_keur=100.0 * i,
-            ebitda_keur=400.0 * i,
-            depreciation_keur=50.0 * i,
-            tax_keur=80.0 * i,
-            cf_after_tax_keur=320.0 * i,
-            senior_interest_keur=30.0 * i,
-            senior_principal_keur=70.0 * i,
-            senior_ds_keur=100.0 * i,
-            dscr=1.3 if i > 0 else 0.0,
+            is_operation=True,
+            generation_mwh=1000.0 * (i + 1),
+            revenue_keur=500.0 * (i + 1),
+            opex_keur=100.0 * (i + 1),
+            ebitda_keur=400.0 * (i + 1),
+            depreciation_keur=50.0,
+            taxable_profit_keur=350.0 * (i + 1),
+            tax_keur=80.0 * (i + 1),
+            cf_after_tax_keur=320.0 * (i + 1),
+            senior_interest_keur=30.0,
+            senior_principal_keur=70.0,
+            senior_ds_keur=100.0,
+            dscr=1.3,
+            llcr=1.5,
+            plcr=2.0,
+            lockup_active=False,
+            distribution_keur=200.0 * (i + 1),
+            cash_sweep_keur=0.0,
             senior_balance_keur=10000.0 - 70.0 * i,
-            tax_depreciation_audit_keur=60.0 * i,
         ))
     return _MockWaterfallResult(
         periods=periods,
         project_irr=0.08,
         equity_irr=0.12,
         avg_dscr=1.3,
+        min_llcr=1.5,
         total_revenue_keur=sum(p.revenue_keur for p in periods),
+        total_distribution_keur=sum(p.distribution_keur for p in periods),
     )
 
 
@@ -428,100 +592,130 @@ class TestNormalizeSnapshot:
     def test_period_grid_length(self):
         result = _make_mock_result(n_periods=3)
         snap = normalize_snapshot(
-            result,
-            baseline_id="test",
-            engine_designation="test_engine",
-            baseline_commit_sha="abc",
-            run_path_id="test.path",
-            input_source_id="test.source",
+            result, baseline_id="t", engine_designation="e",
+            baseline_commit_sha="x", run_path_id="r", input_source_id="i",
         )
         assert len(snap["period_grid"]) == 3
 
     def test_period_grid_sorted(self):
         result = _make_mock_result(n_periods=3)
         snap = normalize_snapshot(
-            result,
-            baseline_id="test",
-            engine_designation="test_engine",
-            baseline_commit_sha="abc",
-            run_path_id="test.path",
-            input_source_id="test.source",
+            result, baseline_id="t", engine_designation="e",
+            baseline_commit_sha="x", run_path_id="r", input_source_id="i",
         )
         indices = [r["period_index"] for r in snap["period_grid"]]
         assert indices == sorted(indices)
 
+    def test_period_grid_captures_date(self):
+        result = _make_mock_result(n_periods=1)
+        snap = normalize_snapshot(
+            result, baseline_id="t", engine_designation="e",
+            baseline_commit_sha="x", run_path_id="r", input_source_id="i",
+        )
+        assert snap["period_grid"][0]["date"] == "2025-06-30"
+
+    def test_period_grid_is_construction_unavailable(self):
+        result = _make_mock_result(n_periods=1)
+        snap = normalize_snapshot(
+            result, baseline_id="t", engine_designation="e",
+            baseline_commit_sha="x", run_path_id="r", input_source_id="i",
+        )
+        assert snap["period_grid"][0]["is_construction"] is None
+
+    def test_period_grid_start_date_unavailable(self):
+        result = _make_mock_result(n_periods=1)
+        snap = normalize_snapshot(
+            result, baseline_id="t", engine_designation="e",
+            baseline_commit_sha="x", run_path_id="r", input_source_id="i",
+        )
+        assert snap["period_grid"][0]["start_date"] is None
+
     def test_returns_project_irr(self):
         result = _make_mock_result()
         snap = normalize_snapshot(
-            result,
-            baseline_id="test",
-            engine_designation="test_engine",
-            baseline_commit_sha="abc",
-            run_path_id="test.path",
-            input_source_id="test.source",
+            result, baseline_id="t", engine_designation="e",
+            baseline_commit_sha="x", run_path_id="r", input_source_id="i",
         )
         assert snap["returns"]["project_irr"] == pytest.approx(0.08)
 
-    def test_none_irr_remains_none(self):
+    def test_returns_min_llcr(self):
         result = _make_mock_result()
-        result.project_irr = None
         snap = normalize_snapshot(
-            result,
-            baseline_id="test",
-            engine_designation="test_engine",
-            baseline_commit_sha="abc",
-            run_path_id="test.path",
-            input_source_id="test.source",
+            result, baseline_id="t", engine_designation="e",
+            baseline_commit_sha="x", run_path_id="r", input_source_id="i",
         )
-        assert snap["returns"]["project_irr"] is None
+        assert snap["returns"]["min_llcr"] == pytest.approx(1.5)
+
+    def test_returns_total_distribution_keur(self):
+        result = _make_mock_result(n_periods=2)
+        snap = normalize_snapshot(
+            result, baseline_id="t", engine_designation="e",
+            baseline_commit_sha="x", run_path_id="r", input_source_id="i",
+        )
+        # Mock has distribution_keur: 200, 400 → total=600; WaterfallResult.total_distribution_keur=600
+        assert snap["returns"]["total_distribution_keur"] == pytest.approx(600.0)
+
+    def test_distribution_key_singular(self):
+        result = _make_mock_result(n_periods=1)
+        snap = normalize_snapshot(
+            result, baseline_id="t", engine_designation="e",
+            baseline_commit_sha="x", run_path_id="r", input_source_id="i",
+        )
+        eq = snap["financing"]["equity"]
+        assert "distribution_keur" in eq
+        assert "distributions_keur" not in eq
+
+    def test_financing_llcr_captured(self):
+        result = _make_mock_result(n_periods=1)
+        snap = normalize_snapshot(
+            result, baseline_id="t", engine_designation="e",
+            baseline_commit_sha="x", run_path_id="r", input_source_id="i",
+        )
+        llcr = snap["financing"]["senior_debt"]["llcr"]
+        assert isinstance(llcr, list)
+        assert llcr[0] == pytest.approx(1.5)
 
     def test_schema_version_set(self):
         result = _make_mock_result()
         snap = normalize_snapshot(
-            result,
-            baseline_id="test",
-            engine_designation="test_engine",
-            baseline_commit_sha="abc",
-            run_path_id="test.path",
-            input_source_id="test.source",
+            result, baseline_id="t", engine_designation="e",
+            baseline_commit_sha="x", run_path_id="r", input_source_id="i",
         )
         assert snap["schema_version"] == SCHEMA_VERSION
 
     def test_warnings_included(self):
         result = _make_mock_result()
         snap = normalize_snapshot(
-            result,
-            baseline_id="test",
-            engine_designation="test_engine",
-            baseline_commit_sha="abc",
-            run_path_id="test.path",
-            input_source_id="test.source",
+            result, baseline_id="t", engine_designation="e",
+            baseline_commit_sha="x", run_path_id="r", input_source_id="i",
             warnings=["test warning"],
         )
         assert "test warning" in snap["warnings"]
 
-    def test_nan_period_value_becomes_none(self):
-        result = _make_mock_result(n_periods=1)
-        result.periods[0].generation_mwh = float("nan")
-        snap = normalize_snapshot(
-            result,
-            baseline_id="test",
-            engine_designation="test_engine",
-            baseline_commit_sha="abc",
-            run_path_id="test.path",
-            input_source_id="test.source",
-        )
-        assert snap["operating_schedules"]["production_mwh"][0] is None
-
-    def test_zero_not_replaced_by_none(self):
+    def test_zero_preserved_not_replaced(self):
         result = _make_mock_result(n_periods=1)
         result.periods[0].generation_mwh = 0.0
         snap = normalize_snapshot(
-            result,
-            baseline_id="test",
-            engine_designation="test_engine",
-            baseline_commit_sha="abc",
-            run_path_id="test.path",
-            input_source_id="test.source",
+            result, baseline_id="t", engine_designation="e",
+            baseline_commit_sha="x", run_path_id="r", input_source_id="i",
         )
         assert snap["operating_schedules"]["production_mwh"][0] == 0.0
+
+    def test_missing_attribute_yields_unavailable_series_with_warning(self):
+        result = _make_mock_result(n_periods=2)
+        # Remove an attribute to simulate a missing field
+        delattr(result.periods[0], "generation_mwh")
+        warnings: list[str] = []
+        from finco_parity.normalization import normalize_operating_schedules
+        op = normalize_operating_schedules(result, warnings)
+        assert all(v is None for v in op["production_mwh"])
+        assert any("generation_mwh" in w for w in warnings)
+
+    def test_unavailable_fields_key_in_snapshot(self):
+        result = _make_mock_result()
+        snap = normalize_snapshot(
+            result, baseline_id="t", engine_designation="e",
+            baseline_commit_sha="x", run_path_id="r", input_source_id="i",
+        )
+        assert "unavailable_fields" in snap
+        assert isinstance(snap["unavailable_fields"], dict)

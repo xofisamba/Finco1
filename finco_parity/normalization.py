@@ -11,15 +11,25 @@ Design contract
   in the canonical snapshot content.
 - Stable key ordering (explicit, not sort-based) where financial meaning dictates order;
   sort_keys=True is applied at the JSON serialization layer for remaining dict nodes.
-- None remains distinct from 0.0 (engine did not compute ≠ computed zero).
+- None remains distinct from 0.0 (engine did not compute != computed zero).
 - Floats are preserved as-is from the engine.  A future tolerance layer (Phase 1B)
   decides whether two values are financially equivalent.  Rounding at this layer would
   hide real differences.
 - Dates serialized as ISO-8601 strings ("YYYY-MM-DD").
 - Enums serialized as their .value (string or int).
 - Dataclasses serialized field-by-field (no repr, no memory addresses).
-- Decimal serialized to str then float to preserve precision without JSON ambiguity.
+- Decimal serialized via float().  NOTE: conversion does not preserve arbitrary Decimal
+  precision beyond IEEE-754 double (53 bits / ~15-16 significant digits).
 - Unsupported types raise NormalizationError rather than producing unstable repr() strings.
+- NaN and +-inf inputs raise NormalizationError — they must not reach JSON output.
+  The caller serializes with allow_nan=False to enforce this at the boundary.
+
+Field mapping policy
+--------------------
+Every captured field must correspond to a real, verified attribute on WaterfallPeriod
+or WaterfallResult.  If an attribute does not exist, _get_float_series() returns a
+list of UNAVAILABLE (None) values and records a warning.  Silent all-None schedules
+from typos are caught by real-value tests in test_phase1a_parity_runner.py.
 
 Import boundary
 ---------------
@@ -37,28 +47,98 @@ import math
 from decimal import Decimal
 from typing import Any
 
-from finco_parity.schema import UNAVAILABLE
+from finco_parity.schema import SCHEMA_VERSION, UNAVAILABLE
 
 
 class NormalizationError(TypeError):
-    """Raised when an unsupported type is encountered during normalization."""
+    """Raised when an unsupported or non-serializable type is encountered."""
 
 
-def _safe_float(v: Any) -> float | None:
-    """Convert a value to float, returning None for None input.
+_ATTR_SENTINEL = object()
 
-    Preserves NaN as None (NaN in a snapshot is meaningless and non-deterministic).
-    Preserves ±inf as None (non-serializable in standard JSON).
+
+def _safe_float(v: Any) -> float:
+    """Normalize a numeric value to float.
+
+    Raises NormalizationError for NaN, +-inf, or non-numeric types.
+    Does NOT convert to None; callers handle unavailability explicitly.
     """
-    if v is None:
-        return UNAVAILABLE
+    if isinstance(v, bool):
+        raise NormalizationError(
+            f"Expected numeric value, got bool {v!r}."
+        )
     try:
         f = float(v)
-    except (TypeError, ValueError):
-        return UNAVAILABLE
-    if math.isnan(f) or math.isinf(f):
-        return UNAVAILABLE
+    except (TypeError, ValueError) as exc:
+        raise NormalizationError(
+            f"Cannot convert {type(v).__name__!r} to float: {v!r}"
+        ) from exc
+    if math.isnan(f):
+        raise NormalizationError(
+            f"NaN encountered in source attribute: {v!r}"
+        )
+    if math.isinf(f):
+        raise NormalizationError(
+            f"Infinite value encountered in source attribute: {v!r}"
+        )
     return f
+
+
+def _get_float(obj: Any, attr: str, warnings: list[str]) -> float | None:
+    """Get a float attribute from obj.
+
+    Returns UNAVAILABLE (None) if the attribute is absent.
+    Returns UNAVAILABLE with a warning for NaN or +-inf engine outputs
+    (non-finite values cannot be serialized to standard JSON and have no
+    meaningful snapshot value).
+    """
+    val = getattr(obj, attr, _ATTR_SENTINEL)
+    if val is _ATTR_SENTINEL or val is None:
+        return UNAVAILABLE
+    try:
+        return _safe_float(val)
+    except NormalizationError:
+        warnings.append(
+            f"Non-finite value in {attr!r} ({val!r}) converted to unavailable."
+        )
+        return UNAVAILABLE
+
+
+def _get_float_series(periods: list[Any], attr: str, warnings: list[str]) -> list[Any]:
+    """Extract a per-period float series for a named attribute.
+
+    If the attribute is absent on the first period, returns a list of UNAVAILABLE
+    values and appends a warning.  This makes typos in field names detectable via
+    real-value tests rather than silently passing.
+
+    NaN or +-inf values from the engine are converted to UNAVAILABLE per period
+    (with a warning on first occurrence) since they cannot be JSON-serialized and
+    have no meaningful snapshot representation.
+    """
+    if not periods:
+        return []
+    if getattr(periods[0], attr, _ATTR_SENTINEL) is _ATTR_SENTINEL:
+        warnings.append(
+            f"Attribute {attr!r} not found on WaterfallPeriod — series unavailable."
+        )
+        return [UNAVAILABLE] * len(periods)
+    result = []
+    nonfinite_warned = False
+    for p in periods:
+        val = getattr(p, attr, None)
+        if val is None:
+            result.append(UNAVAILABLE)
+        else:
+            try:
+                result.append(_safe_float(val))
+            except NormalizationError:
+                if not nonfinite_warned:
+                    warnings.append(
+                        f"Non-finite value(s) in period series {attr!r} converted to unavailable."
+                    )
+                    nonfinite_warned = True
+                result.append(UNAVAILABLE)
+    return result
 
 
 def _safe_date(v: Any) -> str | None:
@@ -83,8 +163,7 @@ def normalize_value(v: Any) -> Any:
         enum.Enum, dataclass instances,
         dict, list, tuple.
 
-    Raises NormalizationError for unsupported types (e.g. objects with repr
-    containing memory addresses, custom classes without dataclass).
+    Raises NormalizationError for NaN/+-inf floats or unsupported types.
     """
     if v is None:
         return None
@@ -95,7 +174,7 @@ def normalize_value(v: Any) -> Any:
     if isinstance(v, float):
         return _safe_float(v)
     if isinstance(v, Decimal):
-        return _safe_float(v)
+        return _safe_float(float(v))
     if isinstance(v, str):
         return v
     if isinstance(v, (datetime.datetime, datetime.date)):
@@ -111,161 +190,248 @@ def normalize_value(v: Any) -> Any:
         return {str(k): normalize_value(val) for k, val in v.items()}
     if isinstance(v, (list, tuple)):
         return [normalize_value(item) for item in v]
-    # Reject anything else rather than producing unstable output.
     raise NormalizationError(
         f"Cannot normalize value of type {type(v).__name__!r}: {v!r}"
     )
 
 
-def _attr(obj: Any, *names: str, default: Any = UNAVAILABLE) -> Any:
-    """Get the first existing attribute from obj, returning default if none found."""
-    for name in names:
-        val = getattr(obj, name, _SENTINEL)
-        if val is not _SENTINEL:
-            return val
-    return default
-
-
-_SENTINEL = object()
-
-
-def normalize_period_grid(waterfall_result: Any) -> list[dict[str, Any]]:
+def normalize_period_grid(waterfall_result: Any, warnings: list[str]) -> list[dict[str, Any]]:
     """Build the canonical period grid from a WaterfallResult.
 
-    Each row covers one waterfall period (construction or operating).
+    IMPORTANT: WaterfallResult.periods contains operation-only periods.
+    The legacy engine (run_waterfall_v3_core) passes only operation periods
+    into run_waterfall().  There is no native construction-period axis in the
+    WaterfallResult.
+
+    WaterfallPeriod native fields captured:
+      period (int)    — period index
+      date            — period-end date (only date stored; no start_date)
+      year_index (int)
+      period_in_year (int)
+      is_operation (bool)
+
+    Fields explicitly unavailable (not present on WaterfallPeriod):
+      start_date      — only period-end date is stored
+      end_date        — alias for date; captured there
+      is_construction — not a WaterfallPeriod attribute
+
     Returns periods sorted by period_index ascending.
     """
     periods = getattr(waterfall_result, "periods", []) or []
     rows = []
     for i, p in enumerate(periods):
+        period_idx = getattr(p, "period", i)
         row: dict[str, Any] = {
-            "period_index": _safe_float(getattr(p, "period", i)) or i,
-            "year_index": _safe_float(getattr(p, "year_index", None)),
-            "period_in_year": _safe_float(getattr(p, "period_in_year", None)),
-            "start_date": _safe_date(getattr(p, "start_date", None)),
-            "end_date": _safe_date(getattr(p, "end_date", None)),
-            "is_operation": bool(getattr(p, "is_operation", False)),
-            "is_construction": bool(getattr(p, "is_construction", False)),
+            "period_index": period_idx,
+            "date": _safe_date(getattr(p, "date", None)),
+            "year_index": _get_float(p, "year_index", warnings),
+            "period_in_year": _get_float(p, "period_in_year", warnings),
+            "is_operation": bool(getattr(p, "is_operation", True)),
+            # Explicitly unavailable (not WaterfallPeriod attributes):
+            "start_date": UNAVAILABLE,
+            "is_construction": UNAVAILABLE,
         }
         rows.append(row)
-    # Sort by period_index for determinism.
     rows.sort(key=lambda r: r["period_index"])
     return rows
 
 
-def _extract_period_series(waterfall_result: Any, attr: str) -> list[Any]:
-    """Extract a per-period attribute series from WaterfallResult.periods, sorted."""
-    periods = getattr(waterfall_result, "periods", []) or []
-    if not periods:
-        return []
-    # Sort by period index for determinism.
-    sorted_periods = sorted(periods, key=lambda p: getattr(p, "period", 0))
-    return [_safe_float(getattr(p, attr, None)) for p in sorted_periods]
-
-
-def normalize_operating_schedules(waterfall_result: Any) -> dict[str, Any]:
+def normalize_operating_schedules(waterfall_result: Any, warnings: list[str]) -> dict[str, Any]:
     """Build the canonical operating schedules section."""
+    periods = sorted(
+        getattr(waterfall_result, "periods", []) or [],
+        key=lambda p: getattr(p, "period", 0),
+    )
     return {
-        "production_mwh": _extract_period_series(waterfall_result, "generation_mwh"),
-        "revenue_keur": _extract_period_series(waterfall_result, "revenue_keur"),
-        "opex_keur": _extract_period_series(waterfall_result, "opex_keur"),
-        "ebitda_keur": _extract_period_series(waterfall_result, "ebitda_keur"),
-        "book_depreciation_keur": _extract_period_series(waterfall_result, "depreciation_keur"),
-        "tax_depreciation_keur": _extract_period_series(waterfall_result, "tax_depreciation_audit_keur"),
+        "production_mwh": _get_float_series(periods, "generation_mwh", warnings),
+        "revenue_keur": _get_float_series(periods, "revenue_keur", warnings),
+        "opex_keur": _get_float_series(periods, "opex_keur", warnings),
+        "ebitda_keur": _get_float_series(periods, "ebitda_keur", warnings),
+        "book_depreciation_keur": _get_float_series(periods, "depreciation_keur", warnings),
+        "tax_depreciation_keur": _get_float_series(periods, "tax_depreciation_audit_keur", warnings),
     }
 
 
-def normalize_tax_and_cfads(waterfall_result: Any) -> dict[str, Any]:
+def normalize_tax_and_cfads(waterfall_result: Any, warnings: list[str]) -> dict[str, Any]:
     """Build the canonical tax-and-CFADS section.
 
-    CFADS proxy = cf_after_tax_keur (the period-level cash available after tax,
-    before senior debt service).  This is the period attribute closest to a
-    standalone CFADS in the current legacy engine.  The report documents the
-    ambiguity; the snapshot preserves the current engine value.
+    Tax field classification (verified against WaterfallPeriod definition):
+    - taxable_profit_keur: taxable income before loss carryforward
+    - taxable_income_before_losses_audit_keur: audit alias for pre-LCF taxable income
+    - taxable_profit_after_losses_audit_keur: taxable income after loss carryforward
+    - cit_accrual_audit_keur: CIT accrual (P&L expense)
+    - cash_tax_current_period_audit_keur: current-period cash CIT payment
+    - corporate_tax_cash_keur: primary cash tax field
+    - tax_keur: legacy field (ambiguous; DO NOT classify as authoritative cash tax)
+    - tax_loss_opening/used/closing_audit_keur: loss carryforward movement
+    - fiscal_reintegration_audit_keur: fiscal reintegration adjustment
+    - cash_tax_bridge_reconciliation_keur: diagnostic bridge (not primary)
+
+    CFADS variants — all captured; canonical selection deferred to Phase 1B:
+    - cf_after_tax_keur: CF after tax, before senior DS (primary proxy)
+    - r69_fcf_banks_keur: FCF to banks (pre-DS, post-tax)
+    - r84_fcf_junior_keur: FCF after senior DS
+    - r99_fcf_for_distribution_keur: FCF for distribution (post-DA)
+    - r102_fcf_for_shl_keur: FCF for SHL service
+    - fcf_for_shl_keur: SHL FCF (waterfall approach)
     """
+    periods = sorted(
+        getattr(waterfall_result, "periods", []) or [],
+        key=lambda p: getattr(p, "period", 0),
+    )
     return {
-        "taxable_income_keur": _extract_period_series(waterfall_result, "taxable_income_keur"),
-        "deductible_interest_keur": _extract_period_series(waterfall_result, "deductible_interest_keur"),
-        "disallowed_interest_keur": _extract_period_series(waterfall_result, "disallowed_interest_keur"),
-        "cash_tax_keur": _extract_period_series(waterfall_result, "tax_keur"),
-        "loss_carryforward_keur": _extract_period_series(waterfall_result, "loss_carryforward_keur"),
-        "fiscal_reintegration_keur": _extract_period_series(waterfall_result, "fiscal_reintegration_keur"),
-        "cfads_proxy_keur": _extract_period_series(waterfall_result, "cf_after_tax_keur"),
+        "taxable_profit_keur": _get_float_series(periods, "taxable_profit_keur", warnings),
+        "taxable_income_before_losses_audit_keur": _get_float_series(
+            periods, "taxable_income_before_losses_audit_keur", warnings
+        ),
+        "taxable_profit_after_losses_audit_keur": _get_float_series(
+            periods, "taxable_profit_after_losses_audit_keur", warnings
+        ),
+        "cit_accrual_audit_keur": _get_float_series(periods, "cit_accrual_audit_keur", warnings),
+        "cash_tax_current_period_audit_keur": _get_float_series(
+            periods, "cash_tax_current_period_audit_keur", warnings
+        ),
+        "corporate_tax_cash_keur": _get_float_series(periods, "corporate_tax_cash_keur", warnings),
+        "tax_keur": _get_float_series(periods, "tax_keur", warnings),
+        "cash_tax_bridge_reconciliation_keur": _get_float_series(
+            periods, "cash_tax_bridge_reconciliation_keur", warnings
+        ),
+        "tax_loss_opening_audit_keur": _get_float_series(
+            periods, "tax_loss_opening_audit_keur", warnings
+        ),
+        "tax_loss_used_audit_keur": _get_float_series(periods, "tax_loss_used_audit_keur", warnings),
+        "tax_loss_closing_audit_keur": _get_float_series(
+            periods, "tax_loss_closing_audit_keur", warnings
+        ),
+        "tax_depreciation_audit_keur": _get_float_series(
+            periods, "tax_depreciation_audit_keur", warnings
+        ),
+        "fiscal_reintegration_audit_keur": _get_float_series(
+            periods, "fiscal_reintegration_audit_keur", warnings
+        ),
+        # CFADS variants — canonical owner unresolved until Phase 1B
+        "cf_after_tax_keur": _get_float_series(periods, "cf_after_tax_keur", warnings),
+        "r69_fcf_banks_keur": _get_float_series(periods, "r69_fcf_banks_keur", warnings),
+        "r84_fcf_junior_keur": _get_float_series(periods, "r84_fcf_junior_keur", warnings),
+        "r99_fcf_for_distribution_keur": _get_float_series(
+            periods, "r99_fcf_for_distribution_keur", warnings
+        ),
+        "r102_fcf_for_shl_keur": _get_float_series(periods, "r102_fcf_for_shl_keur", warnings),
+        "fcf_for_shl_keur": _get_float_series(periods, "fcf_for_shl_keur", warnings),
     }
 
 
-def normalize_financing(waterfall_result: Any) -> dict[str, Any]:
-    """Build the canonical financing section (senior debt, SHL, equity)."""
-    periods = getattr(waterfall_result, "periods", []) or []
-    sorted_periods = sorted(periods, key=lambda p: getattr(p, "period", 0))
+def normalize_financing(waterfall_result: Any, warnings: list[str]) -> dict[str, Any]:
+    """Build the canonical financing section (senior debt, SHL, equity).
 
-    def _series(attr: str) -> list[Any]:
-        return [_safe_float(getattr(p, attr, None)) for p in sorted_periods]
-
-    # Opening senior balance = previous period closing + principal (first period: initial draw).
-    # The engine stores closing balance on each period; opening is reconstructed here.
-    closing_balances = _series("senior_balance_keur")
+    Field policy (verified against WaterfallPeriod definition):
+    - llcr, plcr: real WaterfallPeriod attributes — captured.
+    - opening senior balance and drawdown: NOT native attributes — unavailable.
+    - shl_opening_keur: NOT a native attribute — unavailable.
+    - equity_injection_keur: NOT a native attribute — unavailable.
+    - distribution_keur: correct singular attribute (NOT distributions_keur).
+    """
+    periods = sorted(
+        getattr(waterfall_result, "periods", []) or [],
+        key=lambda p: getattr(p, "period", 0),
+    )
+    n = len(periods)
 
     return {
         "senior_debt": {
-            "closing_keur": closing_balances,
-            "interest_keur": _series("senior_interest_keur"),
-            "principal_keur": _series("senior_principal_keur"),
-            "debt_service_keur": _series("senior_ds_keur"),
-            "dscr": _series("dscr"),
-            "dsra_keur": _series("dsra_balance_keur"),
-            "llcr": UNAVAILABLE,  # LLCR not computed in current legacy engine
+            # opening_keur and drawdown_keur are not native WaterfallPeriod fields
+            "opening_keur": [UNAVAILABLE] * n,
+            "drawdown_keur": [UNAVAILABLE] * n,
+            "closing_keur": _get_float_series(periods, "senior_balance_keur", warnings),
+            "interest_keur": _get_float_series(periods, "senior_interest_keur", warnings),
+            "principal_keur": _get_float_series(periods, "senior_principal_keur", warnings),
+            "debt_service_keur": _get_float_series(periods, "senior_ds_keur", warnings),
+            "dscr": _get_float_series(periods, "dscr", warnings),
+            "llcr": _get_float_series(periods, "llcr", warnings),
+            "plcr": _get_float_series(periods, "plcr", warnings),
+            "dsra_balance_keur": _get_float_series(periods, "dsra_balance_keur", warnings),
+            "dsra_contribution_keur": _get_float_series(periods, "dsra_contribution_keur", warnings),
+            "cash_sweep_keur": _get_float_series(periods, "cash_sweep_keur", warnings),
         },
         "shl": {
-            "opening_keur": _series("shl_opening_keur"),
-            "interest_keur": _series("shl_interest_keur"),
-            "principal_keur": _series("shl_principal_keur"),
-            "closing_keur": _series("shl_balance_keur"),
-            "pik_accrual_keur": _series("shl_pik_accrual_keur"),
+            # shl_opening_keur is not a native WaterfallPeriod attribute
+            "opening_keur": [UNAVAILABLE] * n,
+            "interest_keur": _get_float_series(periods, "shl_interest_keur", warnings),
+            "principal_keur": _get_float_series(periods, "shl_principal_keur", warnings),
+            "service_keur": _get_float_series(periods, "shl_service_keur", warnings),
+            "closing_keur": _get_float_series(periods, "shl_balance_keur", warnings),
+            "pik_keur": _get_float_series(periods, "shl_pik_keur", warnings),
+            "gross_accrued_interest_keur": _get_float_series(
+                periods, "shl_gross_accrued_interest_keur", warnings
+            ),
         },
         "equity": {
-            "distributions_keur": _series("distributions_keur"),
-            "injections_keur": _series("equity_injection_keur"),
+            # distribution_keur is the correct singular attribute
+            "distribution_keur": _get_float_series(periods, "distribution_keur", warnings),
+            # equity injection is not a native WaterfallPeriod attribute
+            "injections_keur": [UNAVAILABLE] * n,
+            "cf_after_reserves_keur": _get_float_series(
+                periods, "cf_after_reserves_keur", warnings
+            ),
+            "lockup_active": [bool(getattr(p, "lockup_active", False)) for p in periods],
         },
     }
 
 
-def normalize_returns(waterfall_result: Any) -> dict[str, Any]:
-    """Build the canonical aggregate returns section."""
+def normalize_returns(waterfall_result: Any, warnings: list[str]) -> dict[str, Any]:
+    """Build the canonical aggregate returns section.
+
+    All attributes verified against current WaterfallResult definition.
+    Correct: total_distribution_keur (singular, not total_distributions_keur).
+    """
+    def _s(attr: str) -> float | None:
+        return _get_float(waterfall_result, attr, warnings)
+
     return {
-        "project_irr": _safe_float(getattr(waterfall_result, "project_irr", None)),
-        "equity_irr": _safe_float(getattr(waterfall_result, "equity_irr", None)),
-        "avg_dscr": _safe_float(getattr(waterfall_result, "avg_dscr", None)),
-        "actual_avg_dscr": _safe_float(getattr(waterfall_result, "actual_avg_dscr", None)),
-        "min_dscr": _safe_float(getattr(waterfall_result, "min_dscr", None)),
-        "actual_min_dscr": _safe_float(getattr(waterfall_result, "actual_min_dscr", None)),
-        "total_revenue_keur": _safe_float(getattr(waterfall_result, "total_revenue_keur", None)),
-        "total_ebitda_keur": _safe_float(getattr(waterfall_result, "total_ebitda_keur", None)),
-        "total_opex_keur": _safe_float(getattr(waterfall_result, "total_opex_keur", None)),
-        "total_tax_keur": _safe_float(getattr(waterfall_result, "total_tax_keur", None)),
-        "total_senior_ds_keur": _safe_float(getattr(waterfall_result, "total_senior_ds_keur", None)),
-        "total_distributions_keur": _safe_float(
-            getattr(waterfall_result, "total_distributions_keur", None)
-        ),
-        "equity_irr_method": str(getattr(waterfall_result, "equity_irr_method", UNAVAILABLE) or ""),
+        "project_irr": _s("project_irr"),
+        "equity_irr": _s("equity_irr"),
+        "sponsor_irr": _s("sponsor_irr"),
+        "project_npv": _s("project_npv"),
+        "equity_npv": _s("equity_npv"),
+        "avg_dscr": _s("avg_dscr"),
+        "min_dscr": _s("min_dscr"),
+        "actual_avg_dscr": _s("actual_avg_dscr"),
+        "actual_min_dscr": _s("actual_min_dscr"),
+        "min_llcr": _s("min_llcr"),
+        "min_plcr": _s("min_plcr"),
+        "periods_in_lockup": getattr(waterfall_result, "periods_in_lockup", UNAVAILABLE),
+        "total_revenue_keur": _s("total_revenue_keur"),
+        "total_opex_keur": _s("total_opex_keur"),
+        "total_ebitda_keur": _s("total_ebitda_keur"),
+        "total_tax_keur": _s("total_tax_keur"),
+        "total_senior_ds_keur": _s("total_senior_ds_keur"),
+        "total_shl_service_keur": _s("total_shl_service_keur"),
+        # Correct attribute: total_distribution_keur (singular)
+        "total_distribution_keur": _s("total_distribution_keur"),
+        "equity_irr_method": str(getattr(waterfall_result, "equity_irr_method", "") or ""),
     }
 
 
-def normalize_financial_statements(fs_payload: Any) -> Any:
-    """Normalize a financial statements payload (dict or FinancialStatementsResult).
+def normalize_financial_statements(fs_payload: Any, warnings: list[str]) -> Any:
+    """Normalize a financial statements payload (dict or dataclass).
 
     Returns UNAVAILABLE if the payload is None or empty.
+    Warnings record failure type without absolute paths or memory addresses.
     """
     if fs_payload is None:
         return UNAVAILABLE
     if isinstance(fs_payload, dict):
         if not fs_payload:
             return UNAVAILABLE
-        return normalize_value(fs_payload)
-    # Dataclass or object — use normalize_value which handles dataclasses.
+        try:
+            return normalize_value(fs_payload)
+        except NormalizationError as exc:
+            warnings.append(f"financial_statements normalization failed: {type(exc).__name__}")
+            return UNAVAILABLE
     try:
         return normalize_value(fs_payload)
-    except NormalizationError:
+    except NormalizationError as exc:
+        warnings.append(f"financial_statements normalization failed: {type(exc).__name__}")
         return UNAVAILABLE
 
 
@@ -279,49 +445,55 @@ def normalize_snapshot(
     input_source_id: str,
     warnings: list[str] | None = None,
     unavailable_sections: list[str] | None = None,
+    unavailable_fields: dict[str, list[str]] | None = None,
     financial_statements_payload: Any = UNAVAILABLE,
 ) -> dict[str, Any]:
     """Build a fully normalized snapshot dict from a WaterfallResult.
 
-    This is the primary public API of this module.  It is called by
-    legacy_snapshot.py after running the engine.
+    This is the primary public API of this module.  Called by legacy_snapshot.py.
 
     Parameters
     ----------
     waterfall_result
         The WaterfallResult object returned by the legacy engine.
     baseline_id
-        Stable baseline identifier (e.g. "tuho_wind1").
+        Stable baseline identifier (e.g. "tuho").
     engine_designation
-        String identifying the engine version (e.g. "legacy_waterfall_v3").
+        String identifying the engine version.
     baseline_commit_sha
-        Git SHA of the repository at capture time (passed in by the runner,
-        not read from the filesystem here to avoid environment dependency).
+        Git SHA of the repository at capture time (passed in by the runner).
     run_path_id
-        Identifier for the canonical run path used (e.g. "ui_runner.run_demo_project").
+        Identifier for the canonical run path.
     input_source_id
-        Identifier for the input source (e.g. "project_factories.create_default_tuho_wind1").
+        Identifier for the input source.
     warnings
-        List of warning strings emitted during the run.
+        Initial list of warning strings; will be extended during normalization.
     unavailable_sections
-        List of section names that could not be captured.
+        Section names that could not be captured at all.
+    unavailable_fields
+        Per-section mapping of field names that are explicitly unavailable.
     financial_statements_payload
-        FS payload dict/object from assemble_financial_statements(), or UNAVAILABLE.
+        FS payload dict/object, or UNAVAILABLE.
     """
+    collected_warnings: list[str] = list(warnings or [])
+
     snap: dict[str, Any] = {
-        "schema_version": "1.0.0",
+        "schema_version": SCHEMA_VERSION,
         "baseline_id": baseline_id,
         "engine_designation": engine_designation,
         "baseline_commit_sha": baseline_commit_sha,
         "run_path_id": run_path_id,
         "input_source_id": input_source_id,
-        "warnings": list(warnings or []),
+        "warnings": collected_warnings,
         "unavailable_sections": list(unavailable_sections or []),
-        "period_grid": normalize_period_grid(waterfall_result),
-        "operating_schedules": normalize_operating_schedules(waterfall_result),
-        "tax_and_cfads": normalize_tax_and_cfads(waterfall_result),
-        "financing": normalize_financing(waterfall_result),
-        "financial_statements": normalize_financial_statements(financial_statements_payload),
-        "returns": normalize_returns(waterfall_result),
+        "unavailable_fields": dict(unavailable_fields or {}),
+        "period_grid": normalize_period_grid(waterfall_result, collected_warnings),
+        "operating_schedules": normalize_operating_schedules(waterfall_result, collected_warnings),
+        "tax_and_cfads": normalize_tax_and_cfads(waterfall_result, collected_warnings),
+        "financing": normalize_financing(waterfall_result, collected_warnings),
+        "financial_statements": normalize_financial_statements(
+            financial_statements_payload, collected_warnings
+        ),
+        "returns": normalize_returns(waterfall_result, collected_warnings),
     }
     return snap
