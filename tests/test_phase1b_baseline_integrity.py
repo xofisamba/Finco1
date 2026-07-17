@@ -417,3 +417,108 @@ def test_absolute_snapshot_path_rejected(tmp_path: Path) -> None:
     with p1, p2, p3:
         with pytest.raises(ManifestIntegrityError, match="[Rr]elative|absolute"):
             validate_manifest_integrity()
+
+
+# ---------------------------------------------------------------------------
+# Explicit '..' component rejected even if normalization stays inside dir
+# ---------------------------------------------------------------------------
+
+def test_explicit_dotdot_component_rejected(tmp_path: Path) -> None:
+    """An entry with an explicit '..' path component raises ManifestIntegrityError."""
+    fake_root, snap_dir = _setup_fake_root(tmp_path)
+    entry = _entry("tuho", fake_root)
+    # This would normalize to remain inside snapshots/ but must still be rejected.
+    entry["snapshot_path"] = "finco_parity/baselines/snapshots/../snapshots/tuho.json"
+
+    p1, p2, p3 = _patch_manifest([entry], fake_root, snap_dir)
+    with p1, p2, p3:
+        with pytest.raises(ManifestIntegrityError, match="traversal|escapes"):
+            validate_manifest_integrity()
+
+
+# ---------------------------------------------------------------------------
+# Directory path rejected
+# ---------------------------------------------------------------------------
+
+def test_directory_snapshot_path_rejected(tmp_path: Path) -> None:
+    """An entry whose snapshot_path resolves to a directory raises ManifestIntegrityError."""
+    fake_root, snap_dir = _setup_fake_root(tmp_path)
+    # Create a subdirectory inside snap_dir named like a baseline.
+    subdir = snap_dir / "tuho"
+    subdir.mkdir()
+    entry = _entry("tuho", fake_root)
+    entry["snapshot_path"] = "finco_parity/baselines/snapshots/tuho"
+
+    p1, p2, p3 = _patch_manifest([entry], fake_root, snap_dir)
+    with p1, p2, p3:
+        with pytest.raises(ManifestIntegrityError, match="[Dd]irectory"):
+            validate_manifest_integrity()
+
+
+# ---------------------------------------------------------------------------
+# Nested orphan discovery via rglob
+# ---------------------------------------------------------------------------
+
+def test_nested_orphan_artifact_fails(tmp_path: Path) -> None:
+    """A .json file in a subdirectory of snapshots not referenced by any entry fails."""
+    fake_root, snap_dir = _setup_fake_root(tmp_path)
+    raw = _write_committed_to_fake("tuho", snap_dir)
+    sha = hashlib.sha256(raw).hexdigest()
+    entry = _entry("tuho", fake_root, artifact_sha256=sha)
+
+    # Write an orphan in a nested subdirectory.
+    nested = snap_dir / "v1"
+    nested.mkdir()
+    (nested / "orphan.json").write_bytes(b"{}")
+
+    p1, p2, p3 = _patch_manifest([entry], fake_root, snap_dir)
+    with p1, p2, p3:
+        with pytest.raises(ManifestIntegrityError, match="[Oo]rphan"):
+            validate_manifest_integrity()
+
+
+# ---------------------------------------------------------------------------
+# generation_environment structure validation
+# ---------------------------------------------------------------------------
+
+def test_generation_environment_missing_field_fails(tmp_path: Path) -> None:
+    """A manifest with generation_environment missing a required field fails integrity."""
+    fake_root, snap_dir = _setup_fake_root(tmp_path)
+    raw = _write_committed_to_fake("tuho", snap_dir)
+    sha = hashlib.sha256(raw).hexdigest()
+    entry = _entry("tuho", fake_root, artifact_sha256=sha)
+
+    manifest_data = {
+        "manifest_version": "1.3.0",
+        "generation_environment": {
+            "python_minor": "3.11",
+            # missing constraints_file, numpy_version, pandas_version
+        },
+        "baselines": [entry],
+    }
+    p1 = patch("finco_parity.manifest.load_manifest", return_value=manifest_data)
+    p2 = patch("finco_parity.manifest._REPO_ROOT", fake_root)
+    p3 = patch("finco_parity.manifest.SNAPSHOTS_DIR", snap_dir)
+    with p1, p2, p3:
+        with pytest.raises(ManifestIntegrityError, match="generation_environment"):
+            validate_manifest_integrity()
+
+
+def test_generation_environment_not_dict_fails(tmp_path: Path) -> None:
+    """A manifest with generation_environment not a dict fails integrity."""
+    fake_root, snap_dir = _setup_fake_root(tmp_path)
+    raw = _write_committed_to_fake("tuho", snap_dir)
+    sha = hashlib.sha256(raw).hexdigest()
+    entry = _entry("tuho", fake_root, artifact_sha256=sha)
+
+    manifest_data = {
+        "manifest_version": "1.3.0",
+        "generation_environment": "not-a-dict",
+        "baselines": [entry],
+    }
+    p1 = patch("finco_parity.manifest.load_manifest", return_value=manifest_data)
+    p2 = patch("finco_parity.manifest._REPO_ROOT", fake_root)
+    p3 = patch("finco_parity.manifest.SNAPSHOTS_DIR", snap_dir)
+    with p1, p2, p3:
+        with pytest.raises(ManifestIntegrityError, match="generation_environment"):
+            validate_manifest_integrity()

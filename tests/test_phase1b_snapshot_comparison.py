@@ -518,3 +518,124 @@ def test_cmd_check_does_not_write_to_committed_paths(monkeypatch) -> None:
         "--check mode wrote to committed snapshot paths:\n"
         + "\n".join(f"  {w}" for w in repo_writes)
     )
+
+
+# ---------------------------------------------------------------------------
+# P. Generation environment checks
+# ---------------------------------------------------------------------------
+
+def _make_manifest_with_env(env: dict) -> dict:
+    from finco_parity.manifest import load_manifest
+    m = dict(load_manifest())
+    m["generation_environment"] = env
+    return m
+
+
+def _base_env() -> dict:
+    return {
+        "python_minor": "3.11",
+        "constraints_file": "constraints.txt",
+        "numpy_version": "1.26.4",
+        "pandas_version": "2.2.3",
+    }
+
+
+def test_matching_environment_passes(monkeypatch) -> None:
+    """check_generation_environment returns None when everything matches."""
+    import sys
+    import importlib.metadata
+    from finco_parity.generate_baselines import check_generation_environment
+
+    env = _base_env()
+    env["python_minor"] = f"{sys.version_info.major}.{sys.version_info.minor}"
+    env["numpy_version"] = importlib.metadata.version("numpy")
+    env["pandas_version"] = importlib.metadata.version("pandas")
+    m = _make_manifest_with_env(env)
+    assert check_generation_environment(m) is None
+
+
+def test_python_version_mismatch_fails_clearly(monkeypatch) -> None:
+    """check_generation_environment reports BASELINE ENVIRONMENT MISMATCH for wrong Python."""
+    import sys
+    from finco_parity.generate_baselines import check_generation_environment
+
+    # Use a Python version that cannot be the current one.
+    wrong_major = 2 if sys.version_info.major != 2 else 4
+    env = _base_env()
+    env["python_minor"] = f"{wrong_major}.99"
+    m = _make_manifest_with_env(env)
+    result = check_generation_environment(m)
+    assert result is not None
+    assert "BASELINE ENVIRONMENT MISMATCH" in result
+    assert f"{wrong_major}.99" in result
+
+
+def test_numpy_version_mismatch_fails_clearly() -> None:
+    """check_generation_environment reports mismatch for wrong NumPy version."""
+    from finco_parity.generate_baselines import check_generation_environment
+    import importlib.metadata
+
+    actual = importlib.metadata.version("numpy")
+    wrong = "0.0.0.wrong"
+    env = _base_env()
+    env["numpy_version"] = wrong
+    m = _make_manifest_with_env(env)
+    result = check_generation_environment(m)
+    assert result is not None
+    assert "BASELINE ENVIRONMENT MISMATCH" in result
+    assert wrong in result
+
+
+def test_pandas_version_mismatch_fails_clearly() -> None:
+    """check_generation_environment reports mismatch for wrong pandas version."""
+    from finco_parity.generate_baselines import check_generation_environment
+
+    env = _base_env()
+    env["pandas_version"] = "0.0.0.wrong"
+    m = _make_manifest_with_env(env)
+    result = check_generation_environment(m)
+    assert result is not None
+    assert "BASELINE ENVIRONMENT MISMATCH" in result
+
+
+def test_environment_mismatch_stops_engine(monkeypatch) -> None:
+    """cmd_check returns non-zero (5) before running the engine on env mismatch."""
+    import sys
+    from finco_parity.generate_baselines import cmd_check, check_generation_environment
+
+    wrong_py = f"{sys.version_info.major}.99"
+
+    engine_calls: list[str] = []
+
+    original_capture = __import__(
+        "finco_parity.legacy_snapshot", fromlist=["capture_snapshot"]
+    ).capture_snapshot
+
+    def _recording_capture(bid, *, commit_sha=None, verbose=True):
+        engine_calls.append(bid)
+        return original_capture(bid, commit_sha=commit_sha, verbose=verbose)
+
+    monkeypatch.setattr(
+        "finco_parity.generate_baselines.capture_snapshot", _recording_capture
+    )
+
+    # Patch load_manifest to return wrong Python version.
+    from finco_parity.manifest import load_manifest as _lm
+    real_manifest = _lm()
+    patched = dict(real_manifest)
+    patched["generation_environment"] = {
+        **real_manifest.get("generation_environment", {}),
+        "python_minor": wrong_py,
+    }
+    monkeypatch.setattr("finco_parity.generate_baselines.load_manifest", lambda: patched)
+
+    rc = cmd_check(["tuho"], verbose=False)
+    assert rc == 5, f"Expected exit 5 on env mismatch, got {rc}"
+    assert not engine_calls, "Engine must not start after environment mismatch"
+
+
+def test_no_generation_environment_in_manifest_passes() -> None:
+    """check_generation_environment returns None when generation_environment is absent."""
+    from finco_parity.generate_baselines import check_generation_environment
+    assert check_generation_environment({}) is None
+    assert check_generation_environment({"baselines": []}) is None

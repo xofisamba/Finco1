@@ -15,22 +15,42 @@ and drift detection.
 | Field | Value |
 |---|---|
 | Base SHA | `8b13a53805ea2e1e84144ccad1f2484e16fa8592` |
-| Previous head (ba3c5c71) | corrected in this amendment |
 | Branch | `phase1b-legacy-baseline-materialization` |
 | PR | #891 — Draft, do not merge |
+| Previous amendment head | `2428e343b6c602a4cff5e54f590a1617226578cc` |
+| Python-pin head | `ee1f39c40a128f73078d8c5e70d2c26dc63bcf35` |
+| Final head | committed with this amendment |
 
 ---
 
-## Root cause of original red baseline workflow
+## Failure History
+
+### Stage 1 — Transient `baseline_commit_sha` → PROVENANCE_DRIFT
 
 The original `cmd_check()` auto-detected the current checkout SHA and embedded
-it in every fresh snapshot as `baseline_commit_sha`.  The committed artifacts
-contain the Phase 1A merge SHA (`8b13a538…`).  After the Phase 1B commit
+it in every fresh snapshot as `baseline_commit_sha`.  After the Phase 1B commit
 advanced HEAD, every future `--check` run generated a snapshot with the new
 HEAD SHA, causing `PROVENANCE_DRIFT` on `baseline_commit_sha` for all four
-baselines.  This made the baseline workflow permanently red.
+baselines.
 
-## Stable `baseline_commit_sha` policy
+**Fix:** `cmd_check()` now reads `baseline_commit_sha` from the committed
+artifact and passes it explicitly to `capture_snapshot()`.
+
+### Stage 2 — Python 3.11 vs 3.12 → VALUE_DRIFT at 1 ULP
+
+After fixing provenance, CI (Python 3.12) generated LLCR/PLCR ratio values
+that differed from the committed artifacts by 1 ULP (~4.4e-16).  This is
+caused by different floating-point code-generation between CPython 3.11 and
+3.12; the arithmetic is identical but last-bit rounding differs.
+
+**Fix:** Workflow pinned to `python-version: "3.11"` to match the generation
+environment.  The `generation_environment` contract in the manifest documents
+the required environment and `cmd_check()` enforces it as a fail-fast check
+before running the engine.
+
+---
+
+## Stable `baseline_commit_sha` Policy
 
 `baseline_commit_sha` identifies the **source commit represented by the
 committed characterization baseline**.  It is fixed at generation time and
@@ -42,6 +62,33 @@ In `cmd_check()`:
 2. Read `baseline_commit_sha` from the committed artifact (fixed reference).
 3. Pass that value explicitly to `capture_snapshot()`.
 4. Compare only engine outputs — repository advancement is invisible.
+
+---
+
+## Generation Environment Contract
+
+```json
+{
+  "generation_environment": {
+    "python_minor": "3.11",
+    "constraints_file": "constraints.txt",
+    "numpy_version": "1.26.4",
+    "pandas_version": "2.2.3"
+  }
+}
+```
+
+`cmd_check()` enforces this contract before running the engine (exit code 5):
+
+```
+BASELINE ENVIRONMENT MISMATCH
+expected Python 3.11, NumPy 1.26.4, pandas 2.2.3
+actual   Python 3.12, NumPy 2.4.6, pandas 3.0.3
+```
+
+Version lookup uses `importlib.metadata` (stdlib, no extra dependencies).
+Environment mismatch is reported as `BASELINE ENVIRONMENT MISMATCH`, not as
+`VALUE_DRIFT`.
 
 ---
 
@@ -72,14 +119,37 @@ Artifact paths are resolved from the **declared `snapshot_path`** in each
 manifest entry (relative to the repository root).  They are **not** derived
 from `SNAPSHOTS_DIR / f"{baseline_id}.json"`.
 
+Generation rules:
+- Default (no `--output-dir`): writes to `resolve_snapshot_path(entry)`.
+- `--output-dir DIR`: preserves relative subpath beneath `SNAPSHOTS_DIR`;
+  e.g. `snapshot_path = ".../snapshots/sub/foo.json"` → `DIR/sub/foo.json`.
+
 Validation rules:
 - Relative paths only (absolute paths fail).
-- `..` traversal is rejected.
+- Explicit `..` path component is rejected even if normalization stays inside.
 - Resolved path must remain inside `finco_parity/baselines/snapshots/`.
+- Paths resolving to a directory are rejected.
 - Duplicate normalized paths fail.
 - Every declared artifact must exist.
 - Every artifact must be referenced exactly once.
-- Orphan JSON files fail.
+- Orphan JSON files fail (recursive via `rglob("*.json")`).
+
+---
+
+## Workflow Trigger Policy
+
+The Phase 1B baseline check runs on **every PR to `main`** — no `paths:`
+filter.  This ensures future changes to the legacy engine, its dependencies,
+or any file in the repository are caught immediately.
+
+```yaml
+on:
+  pull_request:
+    branches: [main]
+```
+
+The workflow pins Python 3.11 and installs from `constraints.txt`
+(numpy==1.26.4, pandas==2.2.3) to match the generation environment.
 
 ---
 
@@ -103,6 +173,8 @@ Validation rules:
 | `generic_solar` | `finco_parity/baselines/snapshots/generic_solar.json` | `8eb03a9b5ec2f75976c461f828837c31f96c9611a367a468f2f6a051683fa3c4` |
 | `generic_wind` | `finco_parity/baselines/snapshots/generic_wind.json` | `fc0c1c8b3ba9814313cecdbc856c7860ea8336c0549d1faf880c4ec36564beb9` |
 
+Baseline artifact bytes are **unchanged** from the original Phase 1B additions.
+
 ---
 
 ## Canonical Serialization Rules
@@ -119,7 +191,7 @@ Validation rules:
 Prohibited: timestamps, machine paths, hostnames, random UUIDs, NaN/infinity.
 
 Byte-determinism verified: two independent generations produce bit-identical
-files for all four baselines.
+files for all four baselines (within the same environment).
 
 Canonical integrity check: committed artifact bytes must equal
 `canonical_json_bytes(parsed_artifact)`.  A manually reformatted artifact
@@ -172,7 +244,8 @@ policy; it never suppresses type mismatches.
 |---|---|
 | Missing any required field | `ManifestIntegrityError` mentioning field name |
 | Missing artifact file | `ManifestIntegrityError: missing` |
-| Orphan artifact | `ManifestIntegrityError: Orphan` |
+| Orphan artifact (top-level) | `ManifestIntegrityError: Orphan` |
+| Orphan artifact (nested subdirectory) | `ManifestIntegrityError: Orphan` |
 | Duplicate baseline_id | `ManifestIntegrityError: Duplicate` |
 | Duplicate snapshot_path | `ManifestIntegrityError: Duplicate` |
 | Wrong artifact_sha256 | `ManifestIntegrityError: mismatch` |
@@ -185,8 +258,24 @@ policy; it never suppresses type mismatches.
 | run_path mismatch | `ManifestIntegrityError: run_path` |
 | capture_source mismatch | `ManifestIntegrityError: capture_source` |
 | Non-canonical artifact bytes | `ManifestIntegrityError: canonical` |
-| Path traversal | `ManifestIntegrityError: Escapes/traversal` |
+| Path traversal (`../`) | `ManifestIntegrityError: Escapes/traversal` |
+| Explicit `..` component | `ManifestIntegrityError: traversal` |
 | Absolute snapshot_path | `ManifestIntegrityError: relative/absolute` |
+| Directory snapshot_path | `ManifestIntegrityError: directory` |
+| generation_environment not a dict | `ManifestIntegrityError: generation_environment` |
+| generation_environment missing field | `ManifestIntegrityError: generation_environment` |
+
+---
+
+## Environment Mismatch Matrix
+
+| Mismatch | `cmd_check()` result |
+|---|---|
+| Matching environment | returns 0 (if no drift) |
+| Wrong Python minor | exit 5, `BASELINE ENVIRONMENT MISMATCH` |
+| Wrong NumPy version | exit 5, `BASELINE ENVIRONMENT MISMATCH` |
+| Wrong pandas version | exit 5, `BASELINE ENVIRONMENT MISMATCH` |
+| Engine not called after mismatch | verified (no `capture_snapshot` calls) |
 
 ---
 
@@ -235,18 +324,19 @@ python -m finco_parity.generate_baselines --check
 ```
 
 Workflow: `.github/workflows/phase1b_baseline_check.yml`
-Triggers on PRs to `main` with changes in `finco_parity/**`, baseline files, tests.
+Triggers on **all** PRs to `main` — no `paths:` filter (full drift guardrail).
 Checks out PR head explicitly: `ref: ${{ github.event.pull_request.head.sha }}`
+Python: `3.11` (matches generation environment; numpy==1.26.4, pandas==2.2.3)
 Permissions: `contents: read`
 
-Workflow run IDs: pending CI execution on corrected head.
+Workflow run IDs and conclusions: pending CI execution on corrected head.
 
 ---
 
 ## Test Results (local)
 
 ```
-498 passed in 11.21s
+515 passed in 11.43s
 ```
 
 | File | Tests |
@@ -254,10 +344,10 @@ Workflow run IDs: pending CI execution on corrected head.
 | `test_phase1a_parity_manifest.py` | 39 |
 | `test_phase1a_parity_schema_normalization.py` | 135 |
 | `test_phase1a_parity_runner.py` | 204 |
-| `test_phase1b_baseline_generation.py` | 43 |
-| `test_phase1b_baseline_integrity.py` | 29 |
-| `test_phase1b_snapshot_comparison.py` | 50 |
-| `test_phase1b_production_isolation.py` | 14 (was 14) |
+| `test_phase1b_baseline_generation.py` | 52 |
+| `test_phase1b_baseline_integrity.py` | 38 |
+| `test_phase1b_snapshot_comparison.py` | 57 |
+| `test_phase1b_production_isolation.py` | 15 |
 
 ---
 

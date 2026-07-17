@@ -29,6 +29,7 @@ Exit codes
 2  Unknown baseline ID.
 3  Drift detected in --check mode.
 4  Manifest integrity failure.
+5  Generation environment mismatch (Python version, NumPy, or pandas).
 
 baseline_commit_sha semantics
 ------------------------------
@@ -50,6 +51,7 @@ This module must NOT be imported by production code.
 from __future__ import annotations
 
 import argparse
+import importlib.metadata
 import json
 import sys
 import tempfile
@@ -75,24 +77,97 @@ from finco_parity.schema import SnapshotValidationError, validate_snapshot
 from finco_parity.normalization import NormalizationError
 
 
+def check_generation_environment(manifest: dict) -> str | None:
+    """Check that the current runtime matches the manifest's generation_environment.
+
+    Returns a human-readable error string on mismatch, or None if the environment
+    matches (or no generation_environment is declared).
+
+    Uses importlib.metadata for package version lookup (stdlib, no extra deps).
+    """
+    env = manifest.get("generation_environment")
+    if not env:
+        return None
+
+    mismatches: list[str] = []
+
+    # Python minor version check (e.g. "3.11").
+    expected_py = env.get("python_minor", "")
+    if expected_py:
+        actual_py = f"{sys.version_info.major}.{sys.version_info.minor}"
+        if actual_py != expected_py:
+            mismatches.append(f"Python {expected_py} (actual: Python {actual_py})")
+
+    # Package version checks.
+    for pkg, key in (("numpy", "numpy_version"), ("pandas", "pandas_version")):
+        expected = env.get(key, "")
+        if expected:
+            try:
+                actual = importlib.metadata.version(pkg)
+            except importlib.metadata.PackageNotFoundError:
+                actual = "not installed"
+            if actual != expected:
+                mismatches.append(f"{pkg}=={expected} (actual: {pkg}=={actual})")
+
+    if mismatches:
+        expected_line = ", ".join(
+            [
+                f"Python {env.get('python_minor', '?')}",
+                f"NumPy {env.get('numpy_version', '?')}",
+                f"pandas {env.get('pandas_version', '?')}",
+            ]
+        )
+        actual_py = f"{sys.version_info.major}.{sys.version_info.minor}"
+        try:
+            actual_numpy = importlib.metadata.version("numpy")
+        except importlib.metadata.PackageNotFoundError:
+            actual_numpy = "not installed"
+        try:
+            actual_pandas = importlib.metadata.version("pandas")
+        except importlib.metadata.PackageNotFoundError:
+            actual_pandas = "not installed"
+        actual_line = f"Python {actual_py}, NumPy {actual_numpy}, pandas {actual_pandas}"
+        return (
+            "BASELINE ENVIRONMENT MISMATCH\n"
+            f"expected {expected_line}\n"
+            f"actual   {actual_line}"
+        )
+    return None
+
+
 def _generate_one(
     baseline_id: str,
-    output_dir: Path,
+    output_dir: Path | None,
     *,
     verbose: bool = True,
     commit_sha: str | None = None,
 ) -> tuple[Path, bytes, dict]:
-    """Capture, validate and serialize one baseline into *output_dir*.
+    """Capture, validate and serialize one baseline.
+
+    The canonical destination is derived from the manifest entry's ``snapshot_path``:
+      - If *output_dir* is None, write to the canonical path declared in the manifest.
+      - If *output_dir* is given, preserve the relative subpath beneath SNAPSHOTS_DIR
+        so that ``snapshot_path = ".../snapshots/sub/foo.json"`` becomes
+        ``output_dir / "sub/foo.json"``.
 
     Returns (dest_path, raw_bytes, snapshot_dict).
     """
     if verbose:
         print(f"  generating {baseline_id} …", flush=True)
 
+    entry = get_manifest_entry(baseline_id)
+    canonical_path = resolve_snapshot_path(entry)
+
+    if output_dir is None:
+        dest = canonical_path
+    else:
+        # Preserve relative subpath beneath SNAPSHOTS_DIR.
+        rel = canonical_path.relative_to(SNAPSHOTS_DIR.resolve())
+        dest = output_dir / rel
+
     snapshot = capture_snapshot(baseline_id, commit_sha=commit_sha, verbose=verbose)
 
     raw = canonical_json_bytes(snapshot)
-    dest = output_dir / f"{baseline_id}.json"
     dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_bytes(raw)
 
@@ -106,12 +181,20 @@ def _generate_one(
 
 def cmd_generate(
     baseline_ids: list[str],
-    output_dir: Path,
+    output_dir: Path | None = None,
     *,
     verbose: bool = True,
     commit_sha: str | None = None,
 ) -> int:
-    """Generate baselines into *output_dir*.  Returns exit code."""
+    """Generate baselines.
+
+    If *output_dir* is None, writes to the canonical repository locations declared
+    in the manifest (``snapshot_path`` for each entry).  If *output_dir* is given,
+    each artifact is written under that directory preserving the relative subpath
+    beneath SNAPSHOTS_DIR.
+
+    Returns exit code.
+    """
     failures: list[str] = []
     for bid in baseline_ids:
         if verbose:
@@ -161,6 +244,13 @@ def cmd_check(
     except ManifestIntegrityError as exc:
         print(f"MANIFEST INTEGRITY FAILURE: {exc}", file=sys.stderr)
         return 4
+
+    # Environment check — must match generation_environment before running engine.
+    manifest = load_manifest()
+    env_error = check_generation_environment(manifest)
+    if env_error is not None:
+        print(env_error, file=sys.stderr)
+        return 5
 
     with tempfile.TemporaryDirectory(prefix="finco_parity_check_") as tmp:
         tmp_dir = Path(tmp)
@@ -249,8 +339,7 @@ def cmd_check(
                 print(f"  DRIFT: {msg}", file=sys.stderr, flush=True)
                 print(report, file=sys.stderr, flush=True)
 
-        # Check for unreferenced artifacts (orphans).
-        manifest = load_manifest()
+        # Check for unreferenced artifacts (orphans) — rglob covers nested subdirectories.
         referenced: set[Path] = set()
         for e in manifest["baselines"]:
             try:
@@ -258,9 +347,10 @@ def cmd_check(
             except ManifestIntegrityError:
                 pass
         if SNAPSHOTS_DIR.exists():
-            for p in SNAPSHOTS_DIR.glob("*.json"):
+            for p in SNAPSHOTS_DIR.rglob("*.json"):
                 if p not in referenced:
-                    msg = f"unreferenced artifact: {p.name}"
+                    rel = p.relative_to(SNAPSHOTS_DIR)
+                    msg = f"unreferenced artifact: {rel}"
                     drifts.append(msg)
                     print(f"  DRIFT: {msg}", file=sys.stderr, flush=True)
 
@@ -338,10 +428,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_check(baseline_ids, verbose=verbose)
 
     # Default / --output-dir mode.
-    if args.output_dir:
-        output_dir = Path(args.output_dir)
-    else:
-        output_dir = SNAPSHOTS_DIR
+    # output_dir=None means "write to canonical paths from manifest".
+    output_dir: Path | None = Path(args.output_dir) if args.output_dir else None
 
     return cmd_generate(
         baseline_ids,

@@ -3,16 +3,14 @@ name: Phase 1B Baseline Check
 # Verifies that committed baseline artifacts match a fresh generation from the
 # current legacy engine.  Fails on any content drift, hash mismatch, orphan
 # artifact, or manifest integrity failure.
+#
+# Runs on every PR to main so that future changes to the legacy engine, its
+# dependencies, or any file in the repository are caught immediately.
+# No paths filter — this is a full drift guardrail.
 
 on:
   pull_request:
     branches: [main]
-    paths:
-      - "finco_parity/**"
-      - "finco_parity/baselines/**"
-      - "tests/test_phase1b_*.py"
-      - "tests/test_phase1a_*.py"
-      - ".github/workflows/phase1b_baseline_check.yml"
 
 permissions:
   contents: read

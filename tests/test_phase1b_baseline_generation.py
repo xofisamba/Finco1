@@ -297,3 +297,149 @@ def test_check_uses_committed_baseline_commit_sha(monkeypatch) -> None:
         f"cmd_check did not pass committed baseline_commit_sha={committed_sha!r} "
         f"to capture_snapshot. Calls: {calls}"
     )
+
+
+# ---------------------------------------------------------------------------
+# I. snapshot_path authoritative generation and path validation
+# ---------------------------------------------------------------------------
+
+def test_output_dir_preserves_declared_filename(tmp_path: Path) -> None:
+    """--output-dir writes to the filename declared in snapshot_path, not baseline_id.json."""
+    from finco_parity.generate_baselines import cmd_generate
+    from finco_parity.manifest import SNAPSHOTS_DIR, get_manifest_entry, resolve_snapshot_path
+
+    # For all current baselines the declared filename equals baseline_id.json, so verify
+    # that _generate_one routes through manifest path resolution.
+    entry = get_manifest_entry("tuho")
+    canonical = resolve_snapshot_path(entry)
+    rel = canonical.relative_to(SNAPSHOTS_DIR.resolve())  # e.g. "tuho.json"
+
+    rc = cmd_generate(["tuho"], tmp_path, verbose=False)
+    assert rc == 0
+    assert (tmp_path / rel).exists(), (
+        f"expected file at {tmp_path / rel}, declared in manifest snapshot_path"
+    )
+
+
+def test_output_dir_non_standard_filename_respected(tmp_path: Path, monkeypatch) -> None:
+    """A manifest snapshot_path with a non-standard filename is used verbatim in --output-dir."""
+    import copy
+    from finco_parity.generate_baselines import cmd_generate
+    from finco_parity.manifest import load_manifest as _lm, SNAPSHOTS_DIR
+
+    # Patch the manifest so tuho's snapshot_path declares a different filename.
+    real = _lm()
+    patched = copy.deepcopy(real)
+    for e in patched["baselines"]:
+        if e["baseline_id"] == "tuho":
+            e["snapshot_path"] = "finco_parity/baselines/snapshots/tuho_renamed.json"
+    monkeypatch.setattr("finco_parity.generate_baselines.get_manifest_entry",
+                        lambda bid: next(e for e in patched["baselines"] if e["baseline_id"] == bid))
+    monkeypatch.setattr("finco_parity.generate_baselines.resolve_snapshot_path",
+                        __import__("finco_parity.manifest", fromlist=["resolve_snapshot_path"]).resolve_snapshot_path)
+
+    # Override resolve_snapshot_path to use the patched entry directly.
+    from finco_parity import generate_baselines as _gb
+    from finco_parity.manifest import _REPO_ROOT
+    from pathlib import Path as _P
+
+    def _patched_resolve(entry):
+        declared = entry.get("snapshot_path", "")
+        p = _P(declared)
+        return (_REPO_ROOT / p).resolve()
+
+    monkeypatch.setattr("finco_parity.generate_baselines.resolve_snapshot_path", _patched_resolve)
+    monkeypatch.setattr("finco_parity.generate_baselines.SNAPSHOTS_DIR", SNAPSHOTS_DIR)
+
+    rc = cmd_generate(["tuho"], tmp_path, verbose=False)
+    assert rc == 0
+    # File must be at tuho_renamed.json, NOT tuho.json.
+    assert (tmp_path / "tuho_renamed.json").exists(), (
+        "Expected tuho_renamed.json from declared snapshot_path"
+    )
+    assert not (tmp_path / "tuho.json").exists(), (
+        "File must not be derived from baseline_id"
+    )
+
+
+def test_output_dir_nested_path_respected(tmp_path: Path, monkeypatch) -> None:
+    """A manifest snapshot_path with a subdirectory is preserved under --output-dir."""
+    import copy
+    from finco_parity.generate_baselines import cmd_generate
+    from finco_parity.manifest import load_manifest as _lm, SNAPSHOTS_DIR, _REPO_ROOT
+
+    patched_manifest = copy.deepcopy(_lm())
+    for e in patched_manifest["baselines"]:
+        if e["baseline_id"] == "tuho":
+            e["snapshot_path"] = "finco_parity/baselines/snapshots/v1/tuho.json"
+
+    def _patched_get_entry(bid):
+        return next(e for e in patched_manifest["baselines"] if e["baseline_id"] == bid)
+
+    from pathlib import Path as _P
+
+    def _patched_resolve(entry):
+        declared = entry.get("snapshot_path", "")
+        return (_REPO_ROOT / _P(declared)).resolve()
+
+    monkeypatch.setattr("finco_parity.generate_baselines.get_manifest_entry", _patched_get_entry)
+    monkeypatch.setattr("finco_parity.generate_baselines.resolve_snapshot_path", _patched_resolve)
+    monkeypatch.setattr("finco_parity.generate_baselines.SNAPSHOTS_DIR", SNAPSHOTS_DIR)
+
+    rc = cmd_generate(["tuho"], tmp_path, verbose=False)
+    assert rc == 0
+    # File must be at <output_dir>/v1/tuho.json.
+    assert (tmp_path / "v1" / "tuho.json").exists(), (
+        "Nested manifest path must be preserved under --output-dir"
+    )
+
+
+def test_canonical_generation_uses_manifest_path(monkeypatch) -> None:
+    """Default (no --output-dir) generation routes writes through manifest snapshot_path."""
+    from finco_parity.generate_baselines import _generate_one
+    from finco_parity.manifest import get_manifest_entry, resolve_snapshot_path
+    from pathlib import Path as _P
+
+    entry = get_manifest_entry("tuho")
+    expected = resolve_snapshot_path(entry)
+
+    # Intercept write_bytes to record destination without actually writing the file.
+    written_paths: list[_P] = []
+
+    def _mock_write(self, data):
+        written_paths.append(self)
+        # Do not call the real write — we don't want to corrupt committed artifacts.
+
+    monkeypatch.setattr(_P, "write_bytes", _mock_write)
+
+    # Run with output_dir=None (canonical mode) and a fixed commit SHA.
+    _generate_one("tuho", None, verbose=False,
+                  commit_sha="8b13a53805ea2e1e84144ccad1f2484e16fa8592")
+
+    assert any(p == expected for p in written_paths), (
+        f"Expected write to manifest-declared path {expected}; got {written_paths}"
+    )
+
+
+def test_output_dir_does_not_write_to_repository(tmp_path: Path) -> None:
+    """--output-dir never writes inside the repository SNAPSHOTS_DIR."""
+    from finco_parity.generate_baselines import cmd_generate
+    from finco_parity.manifest import SNAPSHOTS_DIR
+    from pathlib import Path as _P
+
+    writes: list[str] = []
+    original_write = _P.write_bytes
+
+    def _recording_write(self, data):
+        writes.append(str(self))
+        return original_write(self, data)
+
+    import unittest.mock
+    with unittest.mock.patch.object(_P, "write_bytes", _recording_write):
+        cmd_generate(["tuho"], tmp_path, verbose=False)
+
+    snap_str = str(SNAPSHOTS_DIR)
+    repo_writes = [w for w in writes if w.startswith(snap_str)]
+    assert not repo_writes, (
+        f"--output-dir must not write inside SNAPSHOTS_DIR; got: {repo_writes}"
+    )

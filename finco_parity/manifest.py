@@ -77,6 +77,14 @@ _CANONICAL_CAPTURE_SOURCE = "finco_parity.legacy_snapshot.capture_snapshot"
 # artifact_sha256 must be 64 lowercase hex chars.
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 
+# Required fields in the generation_environment block.
+_REQUIRED_GENERATION_ENV_FIELDS: tuple[str, ...] = (
+    "python_minor",
+    "constraints_file",
+    "numpy_version",
+    "pandas_version",
+)
+
 
 def load_manifest() -> dict[str, Any]:
     """Load and return the raw manifest dict."""
@@ -107,12 +115,22 @@ def resolve_snapshot_path(entry: dict[str, Any]) -> Path:
         raise ManifestIntegrityError(
             f"{entry.get('baseline_id', '?')}: snapshot_path must be relative: {declared!r}"
         )
+    # Reject explicit '..' components before normalization.
+    if any(part == ".." for part in p.parts):
+        raise ManifestIntegrityError(
+            f"{entry.get('baseline_id', '?')}: snapshot_path contains '..' traversal: {declared!r}"
+        )
     resolved = (_REPO_ROOT / p).resolve()
     try:
         resolved.relative_to(SNAPSHOTS_DIR.resolve())
     except ValueError:
         raise ManifestIntegrityError(
             f"{entry.get('baseline_id', '?')}: snapshot_path escapes SNAPSHOTS_DIR: {declared!r}"
+        )
+    # Reject paths that resolve to an existing directory.
+    if resolved.is_dir():
+        raise ManifestIntegrityError(
+            f"{entry.get('baseline_id', '?')}: snapshot_path resolves to a directory: {declared!r}"
         )
     return resolved
 
@@ -173,6 +191,19 @@ def validate_manifest_integrity() -> None:
     manifest = load_manifest()
     entries: list[dict] = manifest.get("baselines", [])
     errors: list[str] = []
+
+    # 0. Validate generation_environment block if present.
+    gen_env = manifest.get("generation_environment")
+    if gen_env is not None:
+        if not isinstance(gen_env, dict):
+            errors.append("generation_environment must be a JSON object")
+        else:
+            for field in _REQUIRED_GENERATION_ENV_FIELDS:
+                val = gen_env.get(field)
+                if not val or not isinstance(val, str):
+                    errors.append(
+                        f"generation_environment.{field} is missing or empty"
+                    )
 
     seen_ids: set[str] = set()
     seen_paths: set[Path] = set()
@@ -277,11 +308,12 @@ def validate_manifest_integrity() -> None:
         except SnapshotValidationError as exc:
             errors.append(f"{bid}: snapshot fails schema validation: {exc}")
 
-    # 17. Orphan artifacts.
+    # 17. Orphan artifacts — rglob covers nested subdirectories.
     if SNAPSHOTS_DIR.exists():
-        for p in sorted(SNAPSHOTS_DIR.glob("*.json")):
+        for p in sorted(SNAPSHOTS_DIR.rglob("*.json")):
             if p not in referenced_paths:
-                errors.append(f"Orphan artifact (unreferenced by manifest): {p.name}")
+                rel = p.relative_to(SNAPSHOTS_DIR)
+                errors.append(f"Orphan artifact (unreferenced by manifest): {rel}")
 
     if errors:
         raise ManifestIntegrityError(

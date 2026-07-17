@@ -232,3 +232,29 @@ def test_check_mode_does_not_write_files(tmp_path: Path, monkeypatch) -> None:
         "--check mode wrote to committed snapshot paths:\n"
         + "\n".join(f"  {w}" for w in repo_writes)
     )
+
+
+# ---------------------------------------------------------------------------
+# Workflow contract: no paths filter
+# ---------------------------------------------------------------------------
+
+def test_phase1b_workflow_has_no_paths_filter() -> None:
+    """Phase 1B baseline check workflow must trigger on all PRs to main — no paths filter."""
+    import re
+
+    wf_path = Path(__file__).parent.parent / ".github" / "workflows" / "phase1b_baseline_check.yml"
+    assert wf_path.exists(), f"Workflow file not found: {wf_path}"
+    text = wf_path.read_text(encoding="utf-8")
+
+    # Must NOT have a 'paths:' key under the pull_request trigger.
+    # A paths filter would restrict the guardrail to only certain file changes.
+    assert "paths:" not in text, (
+        "Phase 1B baseline check workflow must not have a 'paths:' filter; "
+        "it must run on every PR to main to catch engine changes."
+    )
+
+    # Must trigger on pull_request to main.
+    assert "pull_request" in text, "Workflow must have a pull_request trigger."
+    assert "branches: [main]" in text or "branches:\n      - main" in text, (
+        "Workflow must target the main branch."
+    )
