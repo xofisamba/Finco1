@@ -502,42 +502,94 @@ class TestImportBoundary:
 # Section H: source-object immutability (deep fingerprint)
 # ---------------------------------------------------------------------------
 
-def _fingerprint_waterfall_result(wr: Any) -> dict[str, Any]:
-    """Build a deep structural fingerprint of a WaterfallResult for mutation detection.
+def _stable_value(v: Any) -> Any:
+    """Recursively convert a value to a stable, hashable-comparable representation.
 
-    Captures aggregate scalars, period count, and per-period numeric values for
-    the first and last period.  Sufficient to detect any in-place mutation of the
-    result or its period objects.
+    Handles: None, bool, int, float, str, list, tuple, dict, dataclasses,
+    and arbitrary objects (captured via vars() if possible, else repr).
+    Does NOT modify the source object.
     """
-    scalars = {
-        "project_irr": getattr(wr, "project_irr", None),
-        "equity_irr": getattr(wr, "equity_irr", None),
-        "total_revenue_keur": getattr(wr, "total_revenue_keur", None),
-        "total_opex_keur": getattr(wr, "total_opex_keur", None),
-        "total_distribution_keur": getattr(wr, "total_distribution_keur", None),
-        "avg_dscr": getattr(wr, "avg_dscr", None),
-        "min_dscr": getattr(wr, "min_dscr", None),
-        "min_llcr": getattr(wr, "min_llcr", None),
-    }
+    import dataclasses
+    if v is None or isinstance(v, (bool, int, float, str)):
+        return v
+    if isinstance(v, (list, tuple)):
+        return [_stable_value(item) for item in v]
+    if isinstance(v, dict):
+        return {str(k): _stable_value(val) for k, val in sorted(v.items())}
+    if dataclasses.is_dataclass(v) and not isinstance(v, type):
+        return {
+            f.name: _stable_value(getattr(v, f.name))
+            for f in dataclasses.fields(v)
+        }
+    # For arbitrary objects: snapshot all public instance attributes
+    try:
+        obj_vars = vars(v)
+        return {
+            k: _stable_value(val)
+            for k, val in sorted(obj_vars.items())
+            if not k.startswith("__")
+        }
+    except TypeError:
+        # Not dict-like; fall back to repr for immutability check purposes
+        return repr(v)
+
+
+def _fingerprint_waterfall_result(wr: Any) -> dict[str, Any]:
+    """Build a complete structural fingerprint of a WaterfallResult.
+
+    Covers:
+    - All WaterfallResult dataclass fields or vars(result)
+    - Every WaterfallPeriod and all its attributes
+    - Attached dynamic audit attributes on result and periods
+    - Nested lists, tuples, dicts and dataclasses
+    - Period count and identity markers
+
+    The fingerprint is computed without mutating the object.
+    """
+    import dataclasses
+
+    # Snapshot the result object itself (all public attributes)
+    if dataclasses.is_dataclass(wr) and not isinstance(wr, type):
+        result_fields = {
+            f.name: _stable_value(getattr(wr, f.name))
+            for f in dataclasses.fields(wr)
+            if f.name != "periods"  # periods handled below
+        }
+    else:
+        try:
+            result_fields = {
+                k: _stable_value(v)
+                for k, v in sorted(vars(wr).items())
+                if not k.startswith("__") and k != "periods"
+            }
+        except TypeError:
+            result_fields = {}
+
     periods = getattr(wr, "periods", []) or []
     period_count = len(periods)
 
-    def _period_snapshot(p: Any) -> dict[str, Any]:
-        attrs = [
-            "period", "revenue_keur", "opex_keur", "ebitda_keur",
-            "dscr", "llcr", "senior_balance_keur", "senior_ds_keur",
-            "distribution_keur", "cf_after_tax_keur",
-        ]
-        return {a: getattr(p, a, None) for a in attrs}
+    # Full snapshot of every period and all its attributes
+    def _period_full(p: Any) -> dict[str, Any]:
+        if dataclasses.is_dataclass(p) and not isinstance(p, type):
+            return {
+                f.name: _stable_value(getattr(p, f.name))
+                for f in dataclasses.fields(p)
+            }
+        try:
+            return {
+                k: _stable_value(v)
+                for k, v in sorted(vars(p).items())
+                if not k.startswith("__")
+            }
+        except TypeError:
+            return {"repr": repr(p)}
 
-    first_period = _period_snapshot(periods[0]) if periods else {}
-    last_period = _period_snapshot(periods[-1]) if periods else {}
+    period_snapshots = [_period_full(p) for p in periods]
 
     return {
-        "scalars": scalars,
+        "result_fields": result_fields,
         "period_count": period_count,
-        "first_period": first_period,
-        "last_period": last_period,
+        "periods": period_snapshots,
     }
 
 

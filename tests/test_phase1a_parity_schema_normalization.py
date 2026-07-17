@@ -47,32 +47,81 @@ def _minimal_snapshot(**overrides) -> dict[str, Any]:
     return base
 
 
-def _snap_with_period() -> dict[str, Any]:
-    """Minimal snapshot with one period row and matching schedule lengths."""
+def _snap_with_period(n: int = 1) -> dict[str, Any]:
+    """Minimal snapshot with n period rows and matching schedule lengths.
+
+    Matches the real-baseline structure:
+    - start_date and is_construction are None in period rows (listed in unavailable_fields)
+    - financing.senior_debt.opening_keur and drawdown_keur are all-None (listed)
+    - financing.shl.opening_keur is all-None (listed)
+    - financing.equity.injections_keur is all-None (listed)
+    - financial_statements is None → listed in unavailable_sections
+    """
     snap = _minimal_snapshot()
-    snap["period_grid"] = [{
-        "period_index": 0,
-        "date": "2025-06-30",
-        "year_index": 1,
-        "period_in_year": 1,
-        "is_operation": True,
-        "start_date": None,
-        "is_construction": None,
-    }]
+    snap["period_grid"] = [
+        {
+            "period_index": idx,
+            "date": f"2025-{6 * (idx + 1):02d}-30",
+            "year_index": idx + 1,
+            "period_in_year": 1,
+            "is_operation": True,
+            "start_date": None,
+            "is_construction": None,
+        }
+        for idx in range(n)
+    ]
+    # Fix date for idx=0: 2025-06-30; idx=1: 2025-12-30; etc.
+    # Simpler: use hardcoded dates that are valid ISO strings.
+    dates = ["2025-06-30", "2025-12-31", "2026-06-30", "2026-12-31"]
+    for i, row in enumerate(snap["period_grid"]):
+        row["date"] = dates[i] if i < len(dates) else f"202{i+5}-06-30"
+
     for k in snap["operating_schedules"]:
-        snap["operating_schedules"][k] = [100.0]
+        snap["operating_schedules"][k] = [100.0] * n
     for k in snap["tax_and_cfads"]:
-        snap["tax_and_cfads"][k] = [50.0]
-    snap["financing"]["senior_debt"]["closing_keur"] = [5000.0]
-    snap["financing"]["senior_debt"]["interest_keur"] = [50.0]
-    snap["financing"]["senior_debt"]["principal_keur"] = [100.0]
-    snap["financing"]["senior_debt"]["debt_service_keur"] = [150.0]
-    snap["financing"]["senior_debt"]["dscr"] = [1.2]
-    snap["financing"]["senior_debt"]["llcr"] = [1.4]
-    for k in snap["financing"]["shl"]:
-        snap["financing"]["shl"][k] = [0.0]
-    for k in snap["financing"]["equity"]:
-        snap["financing"]["equity"][k] = [0.0]
+        snap["tax_and_cfads"][k] = [50.0] * n
+
+    # senior_debt: opening and drawdown are all-None (unavailable); rest are populated
+    snap["financing"]["senior_debt"]["opening_keur"] = [None] * n
+    snap["financing"]["senior_debt"]["drawdown_keur"] = [None] * n
+    snap["financing"]["senior_debt"]["closing_keur"] = [5000.0] * n
+    snap["financing"]["senior_debt"]["interest_keur"] = [50.0] * n
+    snap["financing"]["senior_debt"]["principal_keur"] = [100.0] * n
+    snap["financing"]["senior_debt"]["debt_service_keur"] = [150.0] * n
+    snap["financing"]["senior_debt"]["dscr"] = [1.2] * n
+    snap["financing"]["senior_debt"]["llcr"] = [1.4] * n
+    snap["financing"]["senior_debt"]["plcr"] = [1.5] * n
+    snap["financing"]["senior_debt"]["dsra_balance_keur"] = [0.0] * n
+    snap["financing"]["senior_debt"]["dsra_contribution_keur"] = [0.0] * n
+    snap["financing"]["senior_debt"]["cash_sweep_keur"] = [0.0] * n
+
+    # shl: opening is all-None; rest are populated
+    snap["financing"]["shl"]["opening_keur"] = [None] * n
+    snap["financing"]["shl"]["interest_keur"] = [10.0] * n
+    snap["financing"]["shl"]["principal_keur"] = [0.0] * n
+    snap["financing"]["shl"]["service_keur"] = [10.0] * n
+    snap["financing"]["shl"]["closing_keur"] = [1000.0] * n
+    snap["financing"]["shl"]["pik_keur"] = [0.0] * n
+    snap["financing"]["shl"]["gross_accrued_interest_keur"] = [0.0] * n
+
+    # equity: injections is all-None; rest are populated
+    snap["financing"]["equity"]["distribution_keur"] = [200.0] * n
+    snap["financing"]["equity"]["injections_keur"] = [None] * n
+    snap["financing"]["equity"]["cf_after_reserves_keur"] = [200.0] * n
+    snap["financing"]["equity"]["lockup_active"] = [False] * n
+
+    # unavailable_fields: all all-None series
+    snap["unavailable_fields"] = {
+        "financing.equity": ["injections_keur"],
+        "financing.senior_debt": ["drawdown_keur", "opening_keur"],
+        "financing.shl": ["opening_keur"],
+        "period_grid": ["is_construction", "start_date"],
+    }
+
+    # financial_statements is None → listed in unavailable_sections
+    snap["unavailable_sections"] = ["financial_statements"]
+    snap["financial_statements"] = None
+
     snap["returns"]["project_irr"] = 0.08
     snap["returns"]["equity_irr"] = 0.12
     snap["returns"]["sponsor_irr"] = 0.10
@@ -183,23 +232,9 @@ class TestValidateSnapshotRequiredKeys:
             validate_snapshot(snap)
 
     def test_sorted_period_indices_passes(self):
-        snap = _snap_with_period()
-        snap["period_grid"] = [
-            {"period_index": 0, "date": "2025-06-30", "year_index": 1,
-             "period_in_year": 1, "is_operation": True, "start_date": None, "is_construction": None},
-            {"period_index": 1, "date": "2025-12-31", "year_index": 1,
-             "period_in_year": 2, "is_operation": True, "start_date": None, "is_construction": None},
-        ]
-        for k in snap["operating_schedules"]:
-            snap["operating_schedules"][k] = [100.0, 100.0]
-        for k in snap["tax_and_cfads"]:
-            snap["tax_and_cfads"][k] = [50.0, 50.0]
-        for k in ("closing_keur", "interest_keur", "principal_keur", "debt_service_keur", "dscr", "llcr"):
-            snap["financing"]["senior_debt"][k] = [snap["financing"]["senior_debt"][k][0]] * 2
-        for k in snap["financing"]["shl"]:
-            snap["financing"]["shl"][k] = [0.0, 0.0]
-        for k in snap["financing"]["equity"]:
-            snap["financing"]["equity"][k] = [0.0, 0.0]
+        snap = _snap_with_period(n=2)
+        assert snap["period_grid"][0]["period_index"] == 0
+        assert snap["period_grid"][1]["period_index"] == 1
         validate_snapshot(snap)
 
     def test_non_finite_in_operating_schedules_raises(self):
@@ -695,6 +730,13 @@ class TestNormalizeSnapshot:
             baseline_commit_sha="abc",
             run_path_id="test.path",
             input_source_id="test.source",
+            unavailable_fields={
+                "financing.equity": ["injections_keur"],
+                "financing.senior_debt": ["drawdown_keur", "opening_keur"],
+                "financing.shl": ["opening_keur"],
+                "period_grid": ["is_construction", "start_date"],
+            },
+            unavailable_sections=["financial_statements"],
         )
         validate_snapshot(snap)
 
@@ -828,3 +870,244 @@ class TestNormalizeSnapshot:
         )
         assert "unavailable_fields" in snap
         assert isinstance(snap["unavailable_fields"], dict)
+
+
+# ---------------------------------------------------------------------------
+# Section I: Negative tests for comprehensive schema validation
+# ---------------------------------------------------------------------------
+
+class TestNegativeSchemaValidation:
+    """Required negative tests proving validation fails for invalid snapshots."""
+
+    # --- tax_and_cfads ---
+
+    def test_empty_tax_and_cfads_raises(self):
+        snap = _snap_with_period()
+        snap["tax_and_cfads"] = {}
+        with pytest.raises(SnapshotValidationError, match="empty"):
+            validate_snapshot(snap)
+
+    def test_missing_tax_and_cfads_key_raises(self):
+        snap = _snap_with_period()
+        del snap["tax_and_cfads"]["cf_after_tax_keur"]
+        with pytest.raises(SnapshotValidationError, match="tax_and_cfads missing"):
+            validate_snapshot(snap)
+
+    def test_tax_and_cfads_scalar_where_series_required_raises(self):
+        snap = _snap_with_period()
+        snap["tax_and_cfads"]["cf_after_tax_keur"] = 100.0
+        with pytest.raises(SnapshotValidationError, match="list"):
+            validate_snapshot(snap)
+
+    def test_tax_and_cfads_wrong_series_length_raises(self):
+        snap = _snap_with_period()
+        snap["tax_and_cfads"]["cf_after_tax_keur"] = [50.0, 50.0]
+        with pytest.raises(SnapshotValidationError, match="length"):
+            validate_snapshot(snap)
+
+    # --- financing sections ---
+
+    def test_missing_financing_shl_raises(self):
+        snap = _snap_with_period()
+        del snap["financing"]["shl"]
+        with pytest.raises(SnapshotValidationError, match="shl"):
+            validate_snapshot(snap)
+
+    def test_missing_financing_equity_raises(self):
+        snap = _snap_with_period()
+        del snap["financing"]["equity"]
+        with pytest.raises(SnapshotValidationError, match="equity"):
+            validate_snapshot(snap)
+
+    def test_missing_senior_debt_required_field_raises(self):
+        snap = _snap_with_period()
+        del snap["financing"]["senior_debt"]["dscr"]
+        with pytest.raises(SnapshotValidationError, match="senior_debt missing"):
+            validate_snapshot(snap)
+
+    def test_missing_shl_required_field_raises(self):
+        snap = _snap_with_period()
+        del snap["financing"]["shl"]["pik_keur"]
+        with pytest.raises(SnapshotValidationError, match="shl missing"):
+            validate_snapshot(snap)
+
+    def test_missing_equity_required_field_raises(self):
+        snap = _snap_with_period()
+        del snap["financing"]["equity"]["cf_after_reserves_keur"]
+        with pytest.raises(SnapshotValidationError, match="equity missing"):
+            validate_snapshot(snap)
+
+    def test_senior_debt_scalar_where_series_required_raises(self):
+        snap = _snap_with_period()
+        snap["financing"]["senior_debt"]["closing_keur"] = 5000.0
+        with pytest.raises(SnapshotValidationError, match="list"):
+            validate_snapshot(snap)
+
+    def test_senior_debt_wrong_series_length_raises(self):
+        snap = _snap_with_period()
+        snap["financing"]["senior_debt"]["closing_keur"] = [5000.0, 5000.0]
+        with pytest.raises(SnapshotValidationError, match="length"):
+            validate_snapshot(snap)
+
+    def test_shl_scalar_where_series_required_raises(self):
+        snap = _snap_with_period()
+        snap["financing"]["shl"]["closing_keur"] = 1000.0
+        with pytest.raises(SnapshotValidationError, match="list"):
+            validate_snapshot(snap)
+
+    def test_equity_scalar_where_series_required_raises(self):
+        snap = _snap_with_period()
+        snap["financing"]["equity"]["distribution_keur"] = 200.0
+        with pytest.raises(SnapshotValidationError, match="list"):
+            validate_snapshot(snap)
+
+    # --- returns ---
+
+    def test_returns_missing_required_key_raises(self):
+        snap = _snap_with_period()
+        del snap["returns"]["project_npv"]
+        with pytest.raises(SnapshotValidationError, match="returns missing"):
+            validate_snapshot(snap)
+
+    def test_returns_missing_equity_irr_method_raises(self):
+        snap = _snap_with_period()
+        del snap["returns"]["equity_irr_method"]
+        with pytest.raises(SnapshotValidationError, match="returns missing"):
+            validate_snapshot(snap)
+
+    # --- unavailable_fields semantic rules ---
+
+    def test_unknown_unavailable_section_path_raises(self):
+        snap = _snap_with_period()
+        snap["unavailable_fields"]["nonexistent_section"] = ["some_field"]
+        with pytest.raises(SnapshotValidationError, match="unknown section path"):
+            validate_snapshot(snap)
+
+    def test_unknown_unavailable_field_raises(self):
+        snap = _snap_with_period()
+        snap["unavailable_fields"]["financing.senior_debt"] = [
+            "drawdown_keur", "opening_keur", "nonexistent_field"
+        ]
+        with pytest.raises(SnapshotValidationError, match="unknown field"):
+            validate_snapshot(snap)
+
+    def test_duplicate_unavailable_field_raises(self):
+        snap = _snap_with_period()
+        snap["unavailable_fields"]["financing.senior_debt"] = [
+            "drawdown_keur", "drawdown_keur", "opening_keur"
+        ]
+        with pytest.raises(SnapshotValidationError, match="duplicate"):
+            validate_snapshot(snap)
+
+    def test_unsorted_unavailable_field_list_raises(self):
+        snap = _snap_with_period()
+        # Reverse the order of a field list that is currently sorted
+        snap["unavailable_fields"]["financing.senior_debt"] = [
+            "opening_keur", "drawdown_keur"  # reversed (drawdown < opening alphabetically)
+        ]
+        with pytest.raises(SnapshotValidationError, match="sorted"):
+            validate_snapshot(snap)
+
+    def test_all_none_series_not_listed_in_unavailable_fields_raises(self):
+        """An all-None series not listed in unavailable_fields must fail."""
+        snap = _snap_with_period()
+        # Make dsra_balance_keur all-None (not currently listed)
+        snap["financing"]["senior_debt"]["dsra_balance_keur"] = [None]
+        with pytest.raises(SnapshotValidationError, match="all-None series"):
+            validate_snapshot(snap)
+
+    def test_populated_field_listed_as_unavailable_raises(self):
+        """A populated field declared unavailable must fail."""
+        snap = _snap_with_period()
+        # closing_keur has [5000.0] but we declare it unavailable
+        snap["unavailable_fields"]["financing.senior_debt"] = [
+            "closing_keur", "drawdown_keur", "opening_keur"
+        ]
+        with pytest.raises(SnapshotValidationError, match="non-None values"):
+            validate_snapshot(snap)
+
+    # --- period-grid row types ---
+
+    def test_period_row_malformed_date_raises(self):
+        snap = _snap_with_period()
+        snap["period_grid"][0]["date"] = "30-06-2025"  # wrong format
+        with pytest.raises(SnapshotValidationError, match="ISO date"):
+            validate_snapshot(snap)
+
+    def test_period_row_date_none_raises(self):
+        snap = _snap_with_period()
+        snap["period_grid"][0]["date"] = None
+        with pytest.raises(SnapshotValidationError, match="ISO date"):
+            validate_snapshot(snap)
+
+    def test_period_row_period_index_float_raises(self):
+        snap = _snap_with_period()
+        snap["period_grid"][0]["period_index"] = 0.0
+        with pytest.raises(SnapshotValidationError, match="integer"):
+            validate_snapshot(snap)
+
+    def test_period_row_is_operation_numeric_raises(self):
+        snap = _snap_with_period()
+        snap["period_grid"][0]["is_operation"] = 1  # int masquerading as bool
+        with pytest.raises(SnapshotValidationError, match="bool"):
+            validate_snapshot(snap)
+
+    def test_period_row_is_construction_int_raises(self):
+        snap = _snap_with_period()
+        snap["period_grid"][0]["is_construction"] = 0  # int where bool or None expected
+        with pytest.raises(SnapshotValidationError, match="bool or None"):
+            validate_snapshot(snap)
+
+    # --- financial_statements bidirectional consistency ---
+
+    def test_financial_statements_none_without_unavailable_section_entry_raises(self):
+        snap = _snap_with_period()
+        snap["financial_statements"] = None
+        snap["unavailable_sections"] = []  # missing the required entry
+        with pytest.raises(SnapshotValidationError, match="unavailable_sections"):
+            validate_snapshot(snap)
+
+    def test_available_financial_statements_listed_unavailable_raises(self):
+        snap = _snap_with_period()
+        snap["financial_statements"] = {"pnl": {}, "balance_sheet": {}, "pf_cash_waterfall": {}}
+        snap["unavailable_sections"] = ["financial_statements"]  # incorrectly listed
+        with pytest.raises(SnapshotValidationError, match="unavailable_sections"):
+            validate_snapshot(snap)
+
+    def test_financial_statements_missing_pnl_raises(self):
+        snap = _snap_with_period()
+        snap["financial_statements"] = {"balance_sheet": {}, "pf_cash_waterfall": {}}
+        snap["unavailable_sections"] = []
+        with pytest.raises(SnapshotValidationError, match="pnl"):
+            validate_snapshot(snap)
+
+    def test_financial_statements_missing_balance_sheet_raises(self):
+        snap = _snap_with_period()
+        snap["financial_statements"] = {"pnl": {}, "pf_cash_waterfall": {}}
+        snap["unavailable_sections"] = []
+        with pytest.raises(SnapshotValidationError, match="balance_sheet"):
+            validate_snapshot(snap)
+
+    def test_financial_statements_available_passes(self):
+        snap = _snap_with_period()
+        snap["financial_statements"] = {
+            "pnl": {"data": []},
+            "balance_sheet": {"data": []},
+            "pf_cash_waterfall": {"data": []},
+        }
+        snap["unavailable_sections"] = []
+        validate_snapshot(snap)  # Must not raise
+
+    # --- unavailable_sections rules ---
+
+    def test_unavailable_sections_unknown_name_raises(self):
+        snap = _snap_with_period()
+        snap["unavailable_sections"] = ["financial_statements", "unknown_section"]
+        with pytest.raises(SnapshotValidationError, match="unknown name"):
+            validate_snapshot(snap)
+
+    def test_unavailable_sections_duplicate_raises(self):
+        snap = _snap_with_period()
+        snap["unavailable_sections"] = ["financial_statements", "financial_statements"]
+        with pytest.raises(SnapshotValidationError, match="duplicate"):
+            validate_snapshot(snap)
