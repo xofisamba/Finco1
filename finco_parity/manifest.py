@@ -43,8 +43,9 @@ from __future__ import annotations
 
 import json
 import re
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
 from finco_parity.canonical import sha256_of_file
 from finco_parity.schema import SCHEMA_VERSION
@@ -320,3 +321,52 @@ def validate_manifest_integrity() -> None:
             f"{len(errors)} manifest integrity error(s):\n"
             + "\n".join(f"  - {e}" for e in errors)
         )
+
+
+# ---------------------------------------------------------------------------
+# Validated manifest context
+# ---------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class ValidatedManifestContext:
+    manifest: dict
+    entries: tuple
+    baseline_ids: tuple
+
+
+def load_validated_manifest_context() -> ValidatedManifestContext:
+    """Load, parse and validate the manifest in one controlled boundary.
+
+    Normalizes JSON parse errors, structural errors and integrity failures
+    to ManifestIntegrityError.
+
+    Returns a ValidatedManifestContext with manifest dict, entries tuple,
+    and baseline_ids tuple in manifest order.
+
+    Raises:
+        ManifestIntegrityError: on any parse, structure or integrity failure.
+    """
+    try:
+        manifest = load_manifest()
+    except (json.JSONDecodeError, OSError) as exc:
+        raise ManifestIntegrityError(f"Cannot load manifest: {exc}") from exc
+
+    if not isinstance(manifest, dict):
+        raise ManifestIntegrityError(
+            f"Manifest root must be a mapping, got {type(manifest).__name__}"
+        )
+
+    baselines = manifest.get("baselines")
+    if baselines is None:
+        raise ManifestIntegrityError("Manifest missing 'baselines' field")
+    if not isinstance(baselines, list):
+        raise ManifestIntegrityError(
+            f"Manifest 'baselines' must be a list, got {type(baselines).__name__}"
+        )
+
+    # Full structural + hash integrity check.
+    validate_manifest_integrity()
+
+    entries = tuple(baselines)
+    ids = tuple(e["baseline_id"] for e in entries if "baseline_id" in e)
+    return ValidatedManifestContext(manifest=manifest, entries=entries, baseline_ids=ids)

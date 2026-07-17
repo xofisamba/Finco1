@@ -496,3 +496,112 @@ def test_file_provider_symlink_escape_no_absolute_resolved_path(tmp_path, tuho_r
         # Must not contain the resolved absolute path
         assert str(real_file) not in msg, f"Absolute resolved path in error: {msg}"
         assert str(candidate_dir) not in msg, f"Absolute candidate_dir in error: {msg}"
+
+
+# ---------------------------------------------------------------------------
+# Path redaction (Change 4)
+# ---------------------------------------------------------------------------
+
+def _assert_no_absolute_paths(text: str, tmp_root: Path, repo_root: Path | None = None) -> None:
+    """Assert text contains no absolute paths."""
+    assert str(tmp_root) not in text, f"tmp_root in: {text!r}"
+    assert "/home/" not in text, f"/home/ in: {text!r}"
+    assert "/tmp/" not in text, f"/tmp/ in: {text!r}"
+    if repo_root:
+        assert str(repo_root) not in text, f"repo_root in: {text!r}"
+
+
+class TestPathRedaction:
+    """All candidate error messages must be free of absolute paths."""
+
+    def _make_provider(self, candidate_dir):
+        return FileCandidateSnapshotProvider(candidate_dir)
+
+    def _get_reference(self):
+        return baseline_reference_from_manifest("tuho")
+
+    def test_missing_file_no_absolute_path(self, tmp_path):
+        ref = self._get_reference()
+        provider = self._make_provider(tmp_path)
+        with pytest.raises(CandidateFileNotFoundError) as exc_info:
+            provider.capture_snapshot("tuho", ref)
+        msg = str(exc_info.value)
+        _assert_no_absolute_paths(msg, tmp_path)
+
+    def test_directory_at_path_no_absolute_path(self, tmp_path):
+        ref = self._get_reference()
+        target = tmp_path / "tuho.json"
+        target.mkdir()
+        provider = self._make_provider(tmp_path)
+        with pytest.raises(CandidatePathError) as exc_info:
+            provider.capture_snapshot("tuho", ref)
+        msg = str(exc_info.value)
+        _assert_no_absolute_paths(msg, tmp_path)
+
+    def test_symlink_escape_no_absolute_path(self, tmp_path):
+        ref = self._get_reference()
+        outside = tmp_path / "outside.json"
+        outside.write_text("{}")
+        candidate_dir = tmp_path / "candidates"
+        candidate_dir.mkdir()
+        link = candidate_dir / "tuho.json"
+        link.symlink_to(outside)
+        provider = self._make_provider(candidate_dir)
+        with pytest.raises(CandidatePathError) as exc_info:
+            provider.capture_snapshot("tuho", ref)
+        msg = str(exc_info.value)
+        _assert_no_absolute_paths(msg, tmp_path)
+
+    def test_read_error_no_absolute_path(self, tmp_path):
+        ref = self._get_reference()
+        from finco_parity.canonical import canonical_json_bytes as _cbytes
+        import json as _json
+        committed = _json.loads(ref.committed_snapshot_path.read_bytes())
+        raw = _cbytes(committed)
+        target = tmp_path / "tuho.json"
+        target.write_bytes(raw)
+        provider = self._make_provider(tmp_path)
+        from unittest.mock import patch
+        with patch("pathlib.Path.read_bytes", side_effect=OSError(13, "Permission denied")):
+            with pytest.raises(CandidateError) as exc_info:
+                provider.capture_snapshot("tuho", ref)
+        msg = str(exc_info.value)
+        _assert_no_absolute_paths(msg, tmp_path)
+
+    def test_non_canonical_bytes_no_absolute_path(self, tmp_path):
+        ref = self._get_reference()
+        import json as _json
+        committed = _json.loads(ref.committed_snapshot_path.read_bytes())
+        non_canonical = _json.dumps(committed, indent=4).encode()
+        target = tmp_path / "tuho.json"
+        target.write_bytes(non_canonical)
+        provider = self._make_provider(tmp_path)
+        with pytest.raises(CandidateContentInvalid) as exc_info:
+            provider.capture_snapshot("tuho", ref)
+        msg = str(exc_info.value)
+        _assert_no_absolute_paths(msg, tmp_path)
+
+    def test_error_message_no_absolute_path_in_orchestration(self, tmp_path):
+        """BaselineRunResult.error_message must not contain absolute paths."""
+        from finco_parity.dual_run import compare_candidate_directory
+        result = compare_candidate_directory(tmp_path, ["tuho"], verify_legacy=False)
+        for r in result.baseline_results:
+            if r.error_message:
+                _assert_no_absolute_paths(r.error_message, tmp_path)
+
+    def test_json_report_no_absolute_paths(self, tmp_path):
+        """JSON report must not contain absolute paths."""
+        from finco_parity.dual_run import compare_candidate_directory
+        from finco_parity.compare_candidate import _format_json_report
+        result = compare_candidate_directory(tmp_path, ["tuho"], verify_legacy=False)
+        report_bytes = _format_json_report(result)
+        report_text = report_bytes.decode("utf-8")
+        _assert_no_absolute_paths(report_text, tmp_path)
+
+    def test_text_report_no_absolute_paths(self, tmp_path):
+        """Text report must not contain absolute paths."""
+        from finco_parity.dual_run import compare_candidate_directory
+        from finco_parity.compare_candidate import _format_text_report
+        result = compare_candidate_directory(tmp_path, ["tuho"], verify_legacy=False)
+        report_text = _format_text_report(result)
+        _assert_no_absolute_paths(report_text, tmp_path)

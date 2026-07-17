@@ -28,7 +28,8 @@ from finco_parity.dual_run import (
     compare_candidate_snapshot,
     run_candidate_provider,
 )
-from finco_parity.manifest import SNAPSHOTS_DIR
+import json as _json_module
+from finco_parity.manifest import SNAPSHOTS_DIR, ManifestIntegrityError
 
 pytestmark = pytest.mark.unit
 
@@ -92,8 +93,7 @@ def test_manifest_integrity_failure(tuho_candidate, mock_env_ok):
     provider = MagicMock()
     provider.capture_snapshot.return_value = tuho_candidate
 
-    from finco_parity.manifest import ManifestIntegrityError
-    with patch("finco_parity.dual_run.validate_manifest_integrity",
+    with patch("finco_parity.manifest.validate_manifest_integrity",
                side_effect=ManifestIntegrityError("bad manifest")):
         result = run_candidate_provider(BASELINE_ID, provider, verify_legacy=False)
 
@@ -387,9 +387,8 @@ def test_baseline_commit_sha_mismatch_identity_status(tuho_candidate, mock_env_o
 def test_unknown_baseline_legacy_not_called(mock_env_ok, mock_manifest_ok):
     """Unknown baseline_id: capture_snapshot from legacy_snapshot is never called."""
     provider = MagicMock()
-    with patch("finco_parity.dual_run.validate_manifest_integrity"):
-        with patch("finco_parity.legacy_snapshot.capture_snapshot") as mock_legacy:
-            result = run_candidate_provider("nonexistent_baseline_xyz", provider, verify_legacy=True)
+    with patch("finco_parity.legacy_snapshot.capture_snapshot") as mock_legacy:
+        result = run_candidate_provider("nonexistent_baseline_xyz", provider, verify_legacy=True)
     assert result.status == BaselineRunStatus.UNKNOWN_BASELINE
     mock_legacy.assert_not_called()
 
@@ -454,3 +453,71 @@ def test_exit_code_for_aggregate_uses_overall_status_only():
         baseline_results=(r_pass, r_mif),
     )
     assert _exit_code_for_aggregate(agg) == 4
+
+
+# ---------------------------------------------------------------------------
+# Library-level manifest tests (Change 3)
+# ---------------------------------------------------------------------------
+
+def test_run_candidate_provider_malformed_json_manifest():
+    """Malformed JSON manifest → MANIFEST_INTEGRITY_FAILURE, provider not called."""
+    provider = MagicMock()
+    with patch("finco_parity.manifest.load_manifest",
+               side_effect=_json_module.JSONDecodeError("bad json", "", 0)):
+        result = run_candidate_provider("tuho", provider, verify_legacy=False)
+    assert result.status == BaselineRunStatus.MANIFEST_INTEGRITY_FAILURE
+    provider.capture_snapshot.assert_not_called()
+
+
+def test_run_candidate_provider_missing_baselines_field():
+    """Manifest missing 'baselines' → MANIFEST_INTEGRITY_FAILURE."""
+    provider = MagicMock()
+    with patch("finco_parity.manifest.load_manifest", return_value={"manifest_version": "1.0"}):
+        result = run_candidate_provider("tuho", provider, verify_legacy=False)
+    assert result.status == BaselineRunStatus.MANIFEST_INTEGRITY_FAILURE
+    provider.capture_snapshot.assert_not_called()
+
+
+def test_run_candidate_provider_baselines_wrong_type():
+    """Manifest baselines not a list → MANIFEST_INTEGRITY_FAILURE."""
+    provider = MagicMock()
+    with patch("finco_parity.manifest.load_manifest",
+               return_value={"manifest_version": "1.0", "baselines": "oops"}):
+        result = run_candidate_provider("tuho", provider, verify_legacy=False)
+    assert result.status == BaselineRunStatus.MANIFEST_INTEGRITY_FAILURE
+    provider.capture_snapshot.assert_not_called()
+
+
+def test_run_candidate_provider_unknown_id_in_valid_manifest():
+    """Valid manifest, unknown baseline_id → UNKNOWN_BASELINE, provider not called."""
+    provider = MagicMock()
+    result = run_candidate_provider("nonexistent_baseline_xyz", provider, verify_legacy=False)
+    assert result.status == BaselineRunStatus.UNKNOWN_BASELINE
+    provider.capture_snapshot.assert_not_called()
+
+
+def test_compare_candidate_directory_malformed_manifest(tmp_path):
+    """compare_candidate_directory with malformed manifest raises ManifestIntegrityError."""
+    with patch("finco_parity.manifest.load_manifest",
+               side_effect=_json_module.JSONDecodeError("bad", "", 0)):
+        with pytest.raises(ManifestIntegrityError):
+            compare_candidate_directory(tmp_path, verify_legacy=False)
+
+
+def test_compare_candidate_directory_manifest_order(tmp_path):
+    """compare_candidate_directory processes baselines in manifest order."""
+    result = compare_candidate_directory(tmp_path, verify_legacy=False)
+    from finco_parity.manifest import manifest_baseline_ids
+    expected_ids = list(manifest_baseline_ids())
+    assert list(result.selected_baselines) == expected_ids
+
+
+def test_manifest_failure_error_message_no_absolute_path():
+    """MANIFEST_INTEGRITY_FAILURE error_message must not contain absolute paths."""
+    provider = MagicMock()
+    with patch("finco_parity.manifest.load_manifest",
+               side_effect=_json_module.JSONDecodeError("bad", "", 0)):
+        result = run_candidate_provider("tuho", provider, verify_legacy=False)
+    assert result.error_message is not None
+    assert "/home/" not in result.error_message
+    assert "/tmp/" not in result.error_message

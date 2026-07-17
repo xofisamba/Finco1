@@ -264,7 +264,7 @@ def test_max_diffs_zero_is_valid(tmp_path):
 def test_manifest_integrity_failure_exits_4(tmp_path):
     """validate_manifest_integrity raising ManifestIntegrityError → exit code 4."""
     from finco_parity.manifest import ManifestIntegrityError
-    with patch("finco_parity.compare_candidate.validate_manifest_integrity",
+    with patch("finco_parity.manifest.validate_manifest_integrity",
                side_effect=ManifestIntegrityError("bad manifest")):
         result = cli_main(["--candidate-dir", str(tmp_path), "--all", "--quiet"])
     assert result == 4
@@ -379,15 +379,15 @@ def test_no_report_written_without_flags(tmp_path):
 def test_all_malformed_manifest_exits_4(tmp_path):
     """--all with ManifestIntegrityError from upfront validation → exit 4."""
     from finco_parity.manifest import ManifestIntegrityError
-    with patch("finco_parity.compare_candidate.validate_manifest_integrity",
+    with patch("finco_parity.manifest.validate_manifest_integrity",
                side_effect=ManifestIntegrityError("corrupt manifest")):
         result = cli_main(["--candidate-dir", str(tmp_path), "--all", "--quiet"])
     assert result == 4
 
 
 def test_all_manifest_load_exception_exits_4(tmp_path):
-    """--all with unexpected exception from manifest_baseline_ids → exit 4."""
-    with patch("finco_parity.compare_candidate.manifest_baseline_ids",
+    """--all with unexpected exception loading manifest → exit 4."""
+    with patch("finco_parity.manifest.load_manifest",
                side_effect=RuntimeError("disk error")):
         result = cli_main(["--candidate-dir", str(tmp_path), "--all", "--quiet"])
     assert result == 4

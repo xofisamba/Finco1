@@ -49,7 +49,12 @@ from finco_parity.dual_run import (
     BaselineRunStatus,
     compare_candidate_directory,
 )
-from finco_parity.manifest import manifest_baseline_ids, ManifestIntegrityError, validate_manifest_integrity
+from finco_parity.manifest import (
+    ManifestIntegrityError,
+    ValidatedManifestContext,
+    load_validated_manifest_context,
+    manifest_baseline_ids,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -269,14 +274,15 @@ def main(argv: list[str] | None = None) -> int:
 
     # Validate manifest and load baseline IDs upfront.
     try:
-        validate_manifest_integrity()
-        all_ids = manifest_baseline_ids()
+        ctx = load_validated_manifest_context()
     except ManifestIntegrityError as exc:
         print(f"ERROR: Manifest integrity failure: {exc}", file=sys.stderr)
         return 4
     except Exception as exc:
         print(f"ERROR: Failed to load manifest: {exc}", file=sys.stderr)
         return 4
+
+    all_ids = list(ctx.baseline_ids)
 
     # Determine target baseline IDs.
     if args.all:

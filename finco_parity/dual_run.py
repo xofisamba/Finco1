@@ -46,11 +46,11 @@ from finco_parity.comparison import (
 )
 from finco_parity.manifest import (
     ManifestIntegrityError,
+    ValidatedManifestContext,
     get_manifest_entry,
-    load_manifest,
+    load_validated_manifest_context,
     manifest_baseline_ids,
     resolve_snapshot_path,
-    validate_manifest_integrity,
 )
 from finco_parity.schema import SnapshotValidationError
 
@@ -245,18 +245,26 @@ def run_candidate_provider(
     if max_diffs is not None and max_diffs < 0:
         raise ValueError(f"max_diffs must be >= 0, got {max_diffs!r}")
 
-    # Step 0: Validate baseline_id exists in manifest FIRST.
+    # Step 1: Load and validate manifest (single controlled boundary).
     try:
-        entry = get_manifest_entry(baseline_id)
-    except KeyError:
+        ctx = load_validated_manifest_context()
+    except ManifestIntegrityError as exc:
+        return _error_result(
+            baseline_id,
+            BaselineRunStatus.MANIFEST_INTEGRITY_FAILURE,
+            f"Manifest integrity failure: {exc}",
+        )
+
+    # Step 2: Look up baseline_id inside validated context.
+    if baseline_id not in ctx.baseline_ids:
         return _error_result(
             baseline_id,
             BaselineRunStatus.UNKNOWN_BASELINE,
             f"baseline_id not found in manifest: {baseline_id!r}",
         )
 
-    # Step 1: Environment check.
-    manifest = load_manifest()
+    # Step 3: Environment check.
+    manifest = ctx.manifest
     env_error = check_generation_environment(manifest)
     if env_error:
         return _error_result(
@@ -265,17 +273,8 @@ def run_candidate_provider(
             f"Environment mismatch: {env_error}",
         )
 
-    # Step 2: Manifest integrity.
-    try:
-        validate_manifest_integrity()
-    except ManifestIntegrityError as exc:
-        return _error_result(
-            baseline_id,
-            BaselineRunStatus.MANIFEST_INTEGRITY_FAILURE,
-            f"Manifest integrity failure: {exc}",
-        )
-
-    # Step 3: Load committed artifact.
+    # Step 4 (was 3): Load committed artifact.
+    entry = get_manifest_entry(baseline_id)
     try:
         artifact_path = resolve_snapshot_path(entry)
         raw_committed = artifact_path.read_bytes()
@@ -493,7 +492,12 @@ def compare_candidate_directory(
     if max_diffs is not None and max_diffs < 0:
         raise ValueError(f"max_diffs must be >= 0, got {max_diffs!r}")
 
-    all_ids = manifest_baseline_ids()
+    try:
+        ctx = load_validated_manifest_context()
+    except ManifestIntegrityError:
+        raise  # propagate to caller
+
+    all_ids = list(ctx.baseline_ids)
 
     if baseline_ids is not None:
         # Validate requested IDs against manifest.

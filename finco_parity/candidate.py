@@ -50,7 +50,7 @@ class CandidateValidationError(CandidateError):
 
 
 class CandidateIdentityMismatch(CandidateValidationError):
-    """Raised when schema_version, baseline_id, or input_source_id does not match."""
+    """Raised when baseline_id, input_source_id, or baseline_commit_sha does not match reference."""
 
 
 class CandidateSchemaMismatch(CandidateValidationError):
@@ -173,8 +173,7 @@ class FileCandidateSnapshotProvider:
             rel = canonical_path.relative_to(snapshots_root)
         except ValueError:
             raise CandidatePathError(
-                f"{baseline_id}: committed snapshot path is not under SNAPSHOTS_DIR: "
-                f"{canonical_path}"
+                f"{baseline_id}: committed snapshot path is outside the allowed snapshot root"
             )
 
         # Reject absolute candidate-relative paths (rel should always be relative
@@ -195,9 +194,9 @@ class FileCandidateSnapshotProvider:
         # Resolve to detect symlink escapes.
         try:
             resolved = candidate_path.resolve()
-        except Exception as exc:
+        except Exception:
             raise CandidatePathError(
-                f"{baseline_id}: cannot resolve candidate path {candidate_path}: {exc}"
+                f"{baseline_id}: candidate path could not be resolved: {rel}"
             )
 
         # Must remain inside candidate_dir (symlink escape check).
@@ -205,14 +204,13 @@ class FileCandidateSnapshotProvider:
             resolved.relative_to(self._candidate_dir)
         except ValueError:
             raise CandidatePathError(
-                f"{baseline_id}: candidate path escapes candidate_dir "
-                f"(symlink escape?): {rel}"
+                f"{baseline_id}: candidate path escapes candidate directory: {rel}"
             )
 
         # Reject directories.
         if resolved.is_dir():
             raise CandidatePathError(
-                f"{baseline_id}: candidate path resolves to a directory: {rel}"
+                f"{baseline_id}: candidate path is a directory: {rel}"
             )
 
         # Missing file.
@@ -221,12 +219,18 @@ class FileCandidateSnapshotProvider:
                 f"{baseline_id}: candidate snapshot not found: {rel}"
             )
 
-        raw_bytes = resolved.read_bytes()
+        try:
+            raw_bytes = resolved.read_bytes()
+        except OSError as exc:
+            raise CandidateError(
+                f"{baseline_id}: candidate snapshot could not be read: {rel} "
+                f"({type(exc).__name__}, errno={exc.errno}: {exc.strerror})"
+            ) from exc
         try:
             data = json.loads(raw_bytes)
-        except Exception as exc:
+        except Exception:
             raise CandidateError(
-                f"{baseline_id}: cannot parse candidate JSON at {rel}: {exc}"
+                f"{baseline_id}: cannot parse candidate JSON: {rel}"
             )
 
         if not isinstance(data, dict):
@@ -245,8 +249,7 @@ class FileCandidateSnapshotProvider:
             )
         if raw_bytes != expected_bytes:
             raise CandidateContentInvalid(
-                f"{baseline_id}: candidate snapshot at {rel} is not in "
-                f"canonical JSON form (file bytes != canonical_json_bytes(parsed)). "
+                f"{baseline_id}: candidate snapshot is not in canonical JSON form: {rel}. "
                 f"Re-serialize with canonical_json_bytes() to fix."
             )
 
