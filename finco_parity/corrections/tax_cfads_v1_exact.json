@@ -3,7 +3,7 @@
   "profile": "TAX_CFADS_V1",
   "description": "Per-field, per-baseline, per-period APPROVED corrections for Phase 2B TAX_CFADS_V1 parity. All records manually reviewed and promoted from tax_cfads_v1_proposed.json. Differences matching this ledger → APPROVED_FINANCIAL_CORRECTION. Differences NOT matching → UNEXPLAINED_DRIFT (exit 3).",
   "governance": {
-    "proposed_file": "/home/user/Finco1/finco_parity/corrections/tax_cfads_v1_proposed.json",
+    "proposed_file": "finco_parity/corrections/tax_cfads_v1_proposed.json",
     "generator": "finco_parity.generate_tax_cfads_corrections",
     "approved_by": "Phase 2B implementation review",
     "approval_date": "2026-07-18",

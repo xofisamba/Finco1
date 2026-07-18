@@ -26,6 +26,7 @@ Exit codes
 6  Candidate missing or invalid.
 7  Identity or schema mismatch.
 8  Live legacy drift.
+9  One or more baselines are INPUT_SOURCE_BLOCKED (use --allow-input-source-blocked to treat as non-fatal).
 
 Import boundary
 ---------------
@@ -37,13 +38,18 @@ It must NOT import from app.*, domain.*, finco_core.*, main_web, main_api.
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 import traceback
 from pathlib import Path
 from typing import Any
 
 from finco_parity.canonical import canonical_json_bytes
+from finco_parity.correction_matcher import (
+    LedgerValidationError,
+    MatchResult,
+    load_and_validate_ledger,
+    match_differences,
+)
 from finco_parity.dual_run import (
     AggregateRunResult,
     BaselineRunStatus,
@@ -67,45 +73,6 @@ _CORRECTIONS_PATH = Path(__file__).parent / "corrections" / "tax_cfads_v1_exact.
 _STATUS_IDENTICAL = "IDENTICAL"
 _STATUS_APPROVED = "APPROVED_FINANCIAL_CORRECTION"
 _STATUS_UNEXPLAINED = "UNEXPLAINED_DRIFT"
-
-
-def _load_corrections() -> dict[str, set[str]]:
-    """Load approved corrections ledger.
-
-    Returns {baseline_id: set of approved field_paths}.
-    Returns empty dict if the corrections file does not exist.
-    """
-    if not _CORRECTIONS_PATH.exists():
-        return {}
-    with open(_CORRECTIONS_PATH) as f:
-        ledger = json.load(f)
-    approved: dict[str, set[str]] = {}
-    for record in ledger.get("corrections", []):
-        bid = record["baseline_id"]
-        if bid not in approved:
-            approved[bid] = set()
-        approved[bid].add(record["field_path"])
-    return approved
-
-
-def _correction_status_for_baseline(
-    baseline_id: str,
-    differences: list,
-    approved: dict[str, set[str]],
-) -> tuple[str, list, list]:
-    """Classify each difference as APPROVED or UNEXPLAINED.
-
-    Returns (overall_status, approved_diffs, unexplained_diffs).
-    """
-    if not differences:
-        return _STATUS_IDENTICAL, [], []
-
-    approved_paths = approved.get(baseline_id, set())
-    unexplained = [d for d in differences if d.path not in approved_paths]
-    approved_list = [d for d in differences if d.path in approved_paths]
-
-    overall = _STATUS_UNEXPLAINED if unexplained else _STATUS_APPROVED
-    return overall, approved_list, unexplained
 
 _PROFILE = ComparisonProfile.TAX_CFADS_V1
 _ALL_BASELINE_IDS = ("tuho", "oborovo", "generic_solar", "generic_wind")
@@ -196,6 +163,15 @@ def main(argv: list[str] | None = None) -> int:
         help="Write text comparison report to PATH.",
     )
     parser.add_argument("--quiet", "-q", action="store_true", help="Suppress progress output.")
+    parser.add_argument(
+        "--allow-input-source-blocked",
+        action="store_true",
+        help=(
+            "Diagnostic flag: treat INPUT_SOURCE_BLOCKED baselines as non-fatal "
+            "and exit 0 if all runnable baselines pass. "
+            "NOT for CI use — CI step 13 must assert zero blocked baselines."
+        ),
+    )
 
     args = parser.parse_args(argv)
     verify_legacy = True
@@ -238,20 +214,28 @@ def main(argv: list[str] | None = None) -> int:
         # All selected baselines are blocked; nothing to compare.
         aggregate = None
 
-    # Load corrections ledger for correction-aware status classification.
-    approved = _load_corrections()
-    if not args.quiet and approved:
-        n_total = sum(len(v) for v in approved.values())
-        print(f"Corrections ledger: {n_total} approved field paths across "
-              f"{len(approved)} baseline(s)", flush=True)
-    elif not args.quiet:
-        print("Corrections ledger: not found — all differences will be UNEXPLAINED_DRIFT",
-              flush=True)
+    # Load corrections ledger (exact matching — all financially relevant fields).
+    try:
+        ledger = load_and_validate_ledger(_CORRECTIONS_PATH)
+        n_total = sum(len(v) for v in ledger.values())
+        if not args.quiet:
+            print(f"Corrections ledger: {n_total} approved records across "
+                  f"{len(ledger)} baseline(s)", flush=True)
+    except FileNotFoundError:
+        ledger = {}
+        if not args.quiet:
+            print("Corrections ledger: not found — all differences will be UNEXPLAINED_DRIFT",
+                  flush=True)
+    except LedgerValidationError as exc:
+        print(f"LEDGER VALIDATION FAILURE: {exc}", file=sys.stderr)
+        return 1
     if not args.quiet:
         print()
 
     # Per-baseline correction-aware classification.
     any_unexplained = False
+    any_stale = False
+    match_results: list[MatchResult] = []
     baseline_correction_statuses: list[dict[str, Any]] = []
 
     # Blocked baselines — report INPUT_SOURCE_BLOCKED (not a drift, not an error).
@@ -262,50 +246,88 @@ def main(argv: list[str] | None = None) -> int:
             "correction_status": _STATUS_BLOCKED,
             "n_approved": 0,
             "n_unexplained": 0,
+            "n_stale": 0,
             "unexplained_diffs": [],
             "block_reason": reason[:120],
         })
 
     for result in (aggregate.baseline_results if aggregate is not None else []):
-        c_status, approved_diffs, unexplained = _correction_status_for_baseline(
-            result.baseline_id, result.differences, approved
-        )
-        if unexplained:
+        mr = match_differences(result.baseline_id, result.differences, ledger)
+        match_results.append(mr)
+        if mr.unexplained:
             any_unexplained = True
+        if mr.stale_records:
+            any_stale = True
+        c_status = mr.status
         baseline_correction_statuses.append({
             "baseline_id": result.baseline_id,
             "legacy_status": result.status.value,
             "correction_status": c_status,
-            "n_approved": len(approved_diffs),
-            "n_unexplained": len(unexplained),
-            "unexplained_diffs": unexplained,
+            "n_approved": len(mr.approved),
+            "n_unexplained": len(mr.unexplained),
+            "n_stale": len(mr.stale_records),
+            "unexplained_diffs": mr.unexplained,
         })
 
         if not args.quiet:
-            label = (
-                f"{c_status} ({len(approved_diffs)} approved)"
-                if c_status == _STATUS_APPROVED
-                else f"{c_status} ({len(unexplained)} unexplained)"
-                if c_status == _STATUS_UNEXPLAINED
-                else c_status
-            )
+            if c_status == _STATUS_APPROVED:
+                label = f"{c_status} ({len(mr.approved)} approved)"
+            elif c_status == _STATUS_UNEXPLAINED:
+                parts = []
+                if mr.unexplained:
+                    parts.append(f"{len(mr.unexplained)} unexplained")
+                if mr.stale_records:
+                    parts.append(f"{len(mr.stale_records)} stale")
+                label = f"{c_status} ({', '.join(parts)})"
+            else:
+                label = c_status
             print(f"  [{result.baseline_id}] TAX_CFADS_V1 {label}", flush=True)
-            # Show unexplained diffs (worst first)
-            if unexplained:
-                for d in unexplained[:5]:
-                    print(f"    UNEXPLAINED: {d.path}: {d.kind.value}", flush=True)
-                if len(unexplained) > 5:
-                    print(f"    ... and {len(unexplained) - 5} more unexplained", flush=True)
+            for d in mr.unexplained[:5]:
+                print(f"    UNEXPLAINED: {d.path}: {d.kind.value}", flush=True)
+            if len(mr.unexplained) > 5:
+                print(f"    ... and {len(mr.unexplained) - 5} more unexplained", flush=True)
+            for rec in mr.stale_records[:3]:
+                print(f"    STALE_RECORD: {rec.field_path} (correction_id={rec.correction_id})",
+                      flush=True)
+            if len(mr.stale_records) > 3:
+                print(f"    ... and {len(mr.stale_records) - 3} more stale records", flush=True)
+
+    n_selected = len(selected_ids)
+    n_runnable = len(runnable_ids)
+    n_identical = sum(1 for s in baseline_correction_statuses if s["correction_status"] == _STATUS_IDENTICAL)
+    n_approved = sum(1 for s in baseline_correction_statuses if s["correction_status"] == _STATUS_APPROVED)
+    n_blocked = len(blocked_baselines)
+    n_unexplained = sum(s["n_unexplained"] for s in baseline_correction_statuses)
+    n_stale = sum(s["n_stale"] for s in baseline_correction_statuses)
 
     if not args.quiet:
         print()
-        if not any_unexplained:
-            print("Overall: PASS (0 UNEXPLAINED_DRIFT)")
+        print(f"Selected:              {n_selected}")
+        print(f"Runnable:              {n_runnable}")
+        print(f"Identical:             {n_identical}")
+        print(f"Approved corrections:  {n_approved}")
+        print(f"Input-source blocked:  {n_blocked}")
+        print(f"Unexplained drift:     {n_unexplained}")
+        print(f"Stale correction recs: {n_stale}")
+        print()
+        has_failures = any_unexplained or any_stale or (n_blocked > 0 and not args.allow_input_source_blocked)
+        if not has_failures:
+            if n_blocked > 0:
+                # --allow-input-source-blocked in effect
+                print(f"Overall: PASS (runnable baselines clean; {n_blocked} INPUT_SOURCE_BLOCKED)")
+            else:
+                print("Overall: PASS (0 UNEXPLAINED_DRIFT, 0 stale records)")
             print()
             print(TAX_CFADS_V1_PASS_WORDING)
         else:
-            total_unexp = sum(s["n_unexplained"] for s in baseline_correction_statuses)
-            print(f"Overall: FAIL ({total_unexp} UNEXPLAINED_DRIFT across all baselines)")
+            items = []
+            if n_unexplained:
+                items.append(f"{n_unexplained} UNEXPLAINED_DRIFT")
+            if n_stale:
+                items.append(f"{n_stale} stale correction records")
+            if n_blocked and not args.allow_input_source_blocked:
+                items.append(f"{n_blocked} INPUT_SOURCE_BLOCKED")
+            print(f"Overall: FAIL ({'; '.join(items)})")
 
     json_records: list[dict[str, Any]] = [
         {
@@ -315,6 +337,7 @@ def main(argv: list[str] | None = None) -> int:
             "correction_status": s["correction_status"],
             "n_approved_corrections": s["n_approved"],
             "n_unexplained_drift": s["n_unexplained"],
+            "n_stale_records": s["n_stale"],
             "unexplained_differences": [d.to_dict() for d in s["unexplained_diffs"]],
         }
         for s in baseline_correction_statuses
@@ -335,7 +358,6 @@ def main(argv: list[str] | None = None) -> int:
             if aggregate is not None:
                 _write_report(args.text_report, _format_text_report(aggregate))
             else:
-                # All baselines blocked — write minimal report.
                 lines = [
                     "=== TAX_CFADS_V1 Report ===",
                     f"Profile:    {_PROFILE.value}",
@@ -350,10 +372,16 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Cannot write text report: {exc.strerror}", file=sys.stderr)
             return 1
 
-    # Exit 0 if all differences are IDENTICAL or APPROVED_FINANCIAL_CORRECTION.
-    # Exit 3 only if any UNEXPLAINED_DRIFT exists.
-    if any_unexplained:
-        return 3
+    # Exit codes (non-zero exit only in --check mode):
+    #   0 — clean (or informational run without --check).
+    #   3 — UNEXPLAINED_DRIFT or stale correction records (--check mode).
+    #   9 — one or more INPUT_SOURCE_BLOCKED and --allow-input-source-blocked not set
+    #       (--check mode only; informational runs always exit 0).
+    if args.check:
+        if any_unexplained or any_stale:
+            return 3
+        if n_blocked > 0 and not args.allow_input_source_blocked:
+            return 9
     return 0
 
 

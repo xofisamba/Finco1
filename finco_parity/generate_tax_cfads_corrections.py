@@ -145,8 +145,8 @@ def generate_proposed_corrections() -> dict:
             "approval_basis, status=APPROVED_FINANCIAL_CORRECTION)."
         ),
         "governance": {
-            "proposed_file": str(PROPOSED_PATH),
-            "approved_file": str(APPROVED_PATH),
+            "proposed_file": "finco_parity/corrections/tax_cfads_v1_proposed.json",
+            "approved_file": "finco_parity/corrections/tax_cfads_v1_exact.json",
             "rule": "This generator NEVER writes to the approved ledger.",
         },
         "summary": summary,

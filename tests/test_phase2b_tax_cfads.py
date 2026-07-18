@@ -2146,3 +2146,280 @@ class TestZ_TuhoInputSourceBlocked:
         blocked = _check_blocked_baselines(["tuho", "oborovo"])
         assert "tuho" in blocked, f"TUHO must be in blocked: {blocked}"
         assert "oborovo" not in blocked, f"Oborovo must NOT be blocked: {blocked}"
+
+
+class TestAA_ExactCorrectionMatcher:
+    """Exact correction-record matching contract (production correction_matcher module).
+
+    All tests use the production finco_parity.correction_matcher module.
+    No simplified inline matchers.
+    """
+
+    # ── Fixtures ──────────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _make_ledger_json(records: list[dict]) -> str:
+        import json
+        return json.dumps({"corrections": records})
+
+    @staticmethod
+    def _approved_record(
+        *,
+        baseline_id: str = "oborovo",
+        field_path: str = "tax_and_cfads.cash_tax_keur[0]",
+        baseline_value: object = 0.0,
+        candidate_value: object = 100.0,
+        delta: object = 100.0,
+    ) -> dict:
+        return {
+            "correction_id": "test_rec_001",
+            "baseline_id": baseline_id,
+            "field_path": field_path,
+            "baseline_value": baseline_value,
+            "candidate_value": candidate_value,
+            "delta": delta,
+            "correction_category": "calendar_year_axis",
+            "financial_reason": "Test: calendar-year axis correction.",
+            "manual_test_reference": "TestAA_ExactCorrectionMatcher",
+            "policy_id": "hr_reduced_factory_v1",
+            "policy_version": "1.0",
+            "approval_basis": "Verified by unit test.",
+            "status": "APPROVED_FINANCIAL_CORRECTION",
+        }
+
+    @staticmethod
+    def _make_diff(
+        *,
+        path: str = "tax_and_cfads.cash_tax_keur[0]",
+        baseline_value: object = 0.0,
+        current_value: object = 100.0,
+        absolute_delta: float | None = 100.0,
+    ) -> object:
+        from finco_parity.comparison import Difference, DriftKind
+        return Difference(
+            kind=DriftKind.VALUE_DRIFT,
+            path=path,
+            baseline_value=baseline_value,
+            current_value=current_value,
+            absolute_delta=absolute_delta,
+        )
+
+    # ── load_and_validate_ledger ───────────────────────────────────────────────
+
+    def test_missing_ledger_raises_file_not_found(self, tmp_path):
+        from finco_parity.correction_matcher import load_and_validate_ledger
+        missing = tmp_path / "nonexistent.json"
+        with pytest.raises(FileNotFoundError):
+            load_and_validate_ledger(missing)
+
+    def test_duplicate_correction_id_raises(self, tmp_path):
+        from finco_parity.correction_matcher import LedgerValidationError, load_and_validate_ledger
+        rec = self._approved_record()
+        rec2 = self._approved_record()
+        rec2["field_path"] = "tax_and_cfads.cash_tax_keur[1]"
+        import json
+        ledger_path = tmp_path / "exact.json"
+        ledger_path.write_text(json.dumps({"corrections": [rec, rec2]}))
+        with pytest.raises(LedgerValidationError) as exc_info:
+            load_and_validate_ledger(ledger_path)
+        assert "duplicate correction_id" in str(exc_info.value)
+
+    def test_duplicate_baseline_field_path_raises(self, tmp_path):
+        from finco_parity.correction_matcher import LedgerValidationError, load_and_validate_ledger
+        import json
+        rec1 = self._approved_record()
+        rec2 = self._approved_record()
+        rec2["correction_id"] = "test_rec_002"
+        # same (baseline_id, field_path) → duplicate
+        ledger_path = tmp_path / "exact.json"
+        ledger_path.write_text(json.dumps({"corrections": [rec1, rec2]}))
+        with pytest.raises(LedgerValidationError) as exc_info:
+            load_and_validate_ledger(ledger_path)
+        assert "duplicate (baseline_id, field_path)" in str(exc_info.value)
+
+    def test_unknown_policy_id_raises(self, tmp_path):
+        from finco_parity.correction_matcher import LedgerValidationError, load_and_validate_ledger
+        import json
+        rec = self._approved_record()
+        rec["policy_id"] = "unknown_policy_xyz"
+        ledger_path = tmp_path / "exact.json"
+        ledger_path.write_text(json.dumps({"corrections": [rec]}))
+        with pytest.raises(LedgerValidationError) as exc_info:
+            load_and_validate_ledger(ledger_path)
+        assert "unknown policy_id" in str(exc_info.value)
+
+    def test_absolute_path_in_financial_reason_raises(self, tmp_path):
+        from finco_parity.correction_matcher import LedgerValidationError, load_and_validate_ledger
+        import json
+        rec = self._approved_record()
+        rec["financial_reason"] = "See /home/user/Finco1/docs/analysis.md for details."
+        ledger_path = tmp_path / "exact.json"
+        ledger_path.write_text(json.dumps({"corrections": [rec]}))
+        with pytest.raises(LedgerValidationError) as exc_info:
+            load_and_validate_ledger(ledger_path)
+        assert "absolute filesystem path" in str(exc_info.value)
+
+    def test_inconsistent_delta_raises(self, tmp_path):
+        from finco_parity.correction_matcher import LedgerValidationError, load_and_validate_ledger
+        import json
+        rec = self._approved_record(baseline_value=0.0, candidate_value=100.0, delta=999.0)
+        ledger_path = tmp_path / "exact.json"
+        ledger_path.write_text(json.dumps({"corrections": [rec]}))
+        with pytest.raises(LedgerValidationError) as exc_info:
+            load_and_validate_ledger(ledger_path)
+        assert "delta" in str(exc_info.value)
+
+    def test_valid_ledger_loads_successfully(self, tmp_path):
+        from finco_parity.correction_matcher import load_and_validate_ledger
+        import json
+        rec = self._approved_record()
+        ledger_path = tmp_path / "exact.json"
+        ledger_path.write_text(json.dumps({"corrections": [rec]}))
+        result = load_and_validate_ledger(ledger_path)
+        assert "oborovo" in result
+        assert len(result["oborovo"]) == 1
+
+    # ── match_differences ─────────────────────────────────────────────────────
+
+    def test_exact_match_approved(self, tmp_path):
+        from finco_parity.correction_matcher import load_and_validate_ledger, match_differences
+        import json
+        rec = self._approved_record()
+        ledger_path = tmp_path / "exact.json"
+        ledger_path.write_text(json.dumps({"corrections": [rec]}))
+        ledger = load_and_validate_ledger(ledger_path)
+
+        diff = self._make_diff()
+        result = match_differences("oborovo", [diff], ledger)
+        assert result.status == "APPROVED_FINANCIAL_CORRECTION"
+        assert len(result.approved) == 1
+        assert len(result.unexplained) == 0
+        assert len(result.stale_records) == 0
+
+    def test_changed_candidate_value_unexplained(self, tmp_path):
+        """Same path but different current_value → UNEXPLAINED_DRIFT (not approved)."""
+        from finco_parity.correction_matcher import load_and_validate_ledger, match_differences
+        import json
+        rec = self._approved_record(candidate_value=100.0, delta=100.0)
+        ledger_path = tmp_path / "exact.json"
+        ledger_path.write_text(json.dumps({"corrections": [rec]}))
+        ledger = load_and_validate_ledger(ledger_path)
+
+        diff = self._make_diff(current_value=200.0, absolute_delta=200.0)
+        result = match_differences("oborovo", [diff], ledger)
+        assert result.status == "UNEXPLAINED_DRIFT"
+        assert len(result.unexplained) == 1
+        assert len(result.approved) == 0
+
+    def test_changed_baseline_value_unexplained(self, tmp_path):
+        """Same path but different baseline_value → UNEXPLAINED_DRIFT."""
+        from finco_parity.correction_matcher import load_and_validate_ledger, match_differences
+        import json
+        rec = self._approved_record(baseline_value=0.0)
+        ledger_path = tmp_path / "exact.json"
+        ledger_path.write_text(json.dumps({"corrections": [rec]}))
+        ledger = load_and_validate_ledger(ledger_path)
+
+        diff = self._make_diff(baseline_value=50.0, absolute_delta=50.0)
+        result = match_differences("oborovo", [diff], ledger)
+        assert result.status == "UNEXPLAINED_DRIFT"
+        assert len(result.unexplained) == 1
+
+    def test_changed_delta_unexplained(self, tmp_path):
+        """Same path + values but different absolute_delta → UNEXPLAINED_DRIFT."""
+        from finco_parity.correction_matcher import load_and_validate_ledger, match_differences
+        import json
+        rec = self._approved_record(baseline_value=0.0, candidate_value=100.0, delta=100.0)
+        ledger_path = tmp_path / "exact.json"
+        ledger_path.write_text(json.dumps({"corrections": [rec]}))
+        ledger = load_and_validate_ledger(ledger_path)
+
+        # Diff has same path/values but absolute_delta differs
+        diff = self._make_diff(
+            baseline_value=0.0, current_value=100.0, absolute_delta=99.99
+        )
+        result = match_differences("oborovo", [diff], ledger)
+        assert result.status == "UNEXPLAINED_DRIFT"
+        assert len(result.unexplained) == 1
+
+    def test_json_type_int_ne_float(self, tmp_path):
+        """1 (int) != 1.0 (float) — JSON type semantics must be preserved."""
+        from finco_parity.correction_matcher import load_and_validate_ledger, match_differences
+        import json
+        # Record approves int baseline_value=1
+        rec = self._approved_record(baseline_value=1, candidate_value=2, delta=1)
+        ledger_path = tmp_path / "exact.json"
+        ledger_path.write_text(json.dumps({"corrections": [rec]}))
+        ledger = load_and_validate_ledger(ledger_path)
+
+        # Diff has float baseline_value=1.0 — must NOT match
+        diff = self._make_diff(baseline_value=1.0, current_value=2.0, absolute_delta=1.0)
+        result = match_differences("oborovo", [diff], ledger)
+        assert result.status == "UNEXPLAINED_DRIFT", (
+            "1 (int) != 1.0 (float): JSON type semantics must be preserved"
+        )
+
+    def test_drift_kind_mismatch_unexplained(self, tmp_path):
+        """Diff with AVAILABILITY_DRIFT against VALUE_DRIFT record → UNEXPLAINED_DRIFT."""
+        from finco_parity.comparison import Difference, DriftKind
+        from finco_parity.correction_matcher import load_and_validate_ledger, match_differences
+        import json
+        # Record implicitly approves VALUE_DRIFT (no UNAVAILABLE sentinel)
+        rec = self._approved_record()
+        ledger_path = tmp_path / "exact.json"
+        ledger_path.write_text(json.dumps({"corrections": [rec]}))
+        ledger = load_and_validate_ledger(ledger_path)
+
+        # Diff has AVAILABILITY_DRIFT kind
+        diff = Difference(
+            kind=DriftKind.AVAILABILITY_DRIFT,
+            path="tax_and_cfads.cash_tax_keur[0]",
+            baseline_value="UNAVAILABLE",
+            current_value=100.0,
+            absolute_delta=None,
+        )
+        result = match_differences("oborovo", [diff], ledger)
+        assert result.status == "UNEXPLAINED_DRIFT"
+
+    def test_stale_record_causes_failure(self, tmp_path):
+        """Approved record with no matching observed diff → stale → has_failures=True."""
+        from finco_parity.correction_matcher import load_and_validate_ledger, match_differences
+        import json
+        rec = self._approved_record()
+        ledger_path = tmp_path / "exact.json"
+        ledger_path.write_text(json.dumps({"corrections": [rec]}))
+        ledger = load_and_validate_ledger(ledger_path)
+
+        # No differences observed — stale record
+        result = match_differences("oborovo", [], ledger)
+        assert result.has_failures, "Stale correction record must cause has_failures=True"
+        assert len(result.stale_records) == 1
+        assert result.stale_records[0].correction_id == "test_rec_001"
+
+    def test_no_diffs_no_records_identical(self, tmp_path):
+        """No differences and no approved records → IDENTICAL (clean)."""
+        from finco_parity.correction_matcher import load_and_validate_ledger, match_differences
+        import json
+        ledger_path = tmp_path / "exact.json"
+        ledger_path.write_text(json.dumps({"corrections": []}))
+        ledger = load_and_validate_ledger(ledger_path)
+
+        result = match_differences("oborovo", [], ledger)
+        assert result.status == "IDENTICAL"
+        assert not result.has_failures
+
+    def test_none_ne_zero(self, tmp_path):
+        """null (None) != 0 — JSON type semantics."""
+        from finco_parity.correction_matcher import load_and_validate_ledger, match_differences
+        import json
+        rec = self._approved_record(baseline_value=None, candidate_value=100.0, delta=None)
+        ledger_path = tmp_path / "exact.json"
+        ledger_path.write_text(json.dumps({"corrections": [rec]}))
+        ledger = load_and_validate_ledger(ledger_path)
+
+        # Diff has int 0 as baseline_value — must NOT match
+        diff = self._make_diff(baseline_value=0, current_value=100.0, absolute_delta=100.0)
+        result = match_differences("oborovo", [diff], ledger)
+        assert result.status == "UNEXPLAINED_DRIFT", (
+            "null (None) != 0: JSON type semantics must be preserved"
+        )
