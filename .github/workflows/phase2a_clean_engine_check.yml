@@ -1,0 +1,97 @@
+name: Phase 2A Clean Engine Check
+
+# Phase 2A — Clean operating-core parity enforcement.
+#
+# On a successful run, every substantive Phase 2A gate executes.
+# Any failed gate fails the workflow and may stop later steps.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+env:
+  PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+  PYTHONDONTWRITEBYTECODE: "1"
+
+jobs:
+  phase2a-clean-engine:
+    name: Phase 2A Clean Engine (Python 3.11)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Resolve comparison base SHA
+        id: base
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          else
+            # push: use the before SHA when available, else parent of HEAD
+            BASE_SHA="${{ github.event.before }}"
+            if [ -z "$BASE_SHA" ] || [ "$BASE_SHA" = "0000000000000000000000000000000000000000" ]; then
+              BASE_SHA="$(git rev-parse HEAD^)"
+            fi
+          fi
+          echo "base_sha=$BASE_SHA" >> "$GITHUB_OUTPUT"
+          echo "Comparison base: $BASE_SHA"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies (reproducible via constraints.txt)
+        run: |
+          pip install --no-cache-dir -c constraints.txt numpy==1.26.4 pandas==2.2.3
+          pip install --no-cache-dir -c constraints.txt -e .
+          pip install --no-cache-dir -c constraints.txt pytest
+
+      - name: Check baseline snapshots are unchanged
+        run: |
+          BASE="${{ steps.base.outputs.base_sha }}"
+          CHANGED="$(git diff --name-only "$BASE"...HEAD -- finco_parity/baselines/snapshots/)"
+          if [ -n "$CHANGED" ]; then
+            echo "ERROR: Baseline snapshot files were modified:" >&2
+            echo "$CHANGED" >&2
+            exit 1
+          fi
+          echo "Baseline snapshots: unchanged"
+
+      - name: Check protected production scope is unchanged
+        run: |
+          BASE="${{ steps.base.outputs.base_sha }}"
+          CHANGED="$(git diff --name-only "$BASE"...HEAD -- \
+            app/ \
+            domain/ \
+            main_web.py \
+            main_api.py \
+            finco_core/waterfall/)"
+          if [ -n "$CHANGED" ]; then
+            echo "ERROR: Protected production files were modified:" >&2
+            echo "$CHANGED" >&2
+            exit 1
+          fi
+          echo "Protected production scope: unchanged"
+
+      - name: Verify baselines generate cleanly (generate_baselines --check)
+        run: |
+          python3 -m finco_parity.generate_baselines --check --quiet
+
+      - name: Run Phase 2A unit tests
+        run: |
+          python3 -m pytest -q --tb=short \
+            tests/test_phase2a_engine_inputs.py \
+            tests/test_phase2a_orchestrator.py \
+            tests/test_phase2a_production_isolation.py
+
+      - name: Four-baseline OPERATING_CORE_V1 CLI check
+        run: |
+          python3 -m finco_parity.check_financial_engine_operating_core --all --check
