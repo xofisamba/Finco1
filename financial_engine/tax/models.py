@@ -24,8 +24,9 @@ class TaxYearPeriodFragment:
     source_period_index: int
     start_date: date
     end_date: date
-    days: int
-    allocation_fraction: float     # fraction of period amount assigned here
+    days: int                      # (end_date - start_date).days for this fragment
+    source_period_days: int        # (period_end - period_start).days for the full source period
+    allocation_fraction: float     # = days / source_period_days (last fragment adjusted for exact 1.0)
 
 
 @dataclass(frozen=True)

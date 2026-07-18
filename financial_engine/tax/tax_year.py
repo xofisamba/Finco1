@@ -57,6 +57,7 @@ def _split_period(
             start_date=period_start,
             end_date=period_end,
             days=0,
+            source_period_days=0,
             allocation_fraction=1.0,
         )]
 
@@ -87,6 +88,7 @@ def _split_period(
             start_date=fs,
             end_date=fe,
             days=fd,
+            source_period_days=total_frag_days,
             allocation_fraction=frac,
         )
         for (yr, fs, fe, fd), frac in zip(fragments, fracs)
