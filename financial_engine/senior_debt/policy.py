@@ -5,6 +5,33 @@ from dataclasses import dataclass
 from enum import Enum
 
 
+class SeniorDebtRepaymentMethod(str, Enum):
+    """Controls the amortisation profile applied by the solver.
+
+    DSCR_SCULPTED   : principal repaid in each period is sized so that DSCR equals
+                      the target (default for DSCR_SCULPTED and COMBINED_MINIMUM
+                      sizing modes).
+    LEVEL_PRINCIPAL : equal principal repayment in every period between
+                      repayment_start_period_index and maturity_period_index
+                      (default for GEARING_CAP sizing mode).
+    EXPLICIT        : the repayment schedule is supplied directly via the explicit
+                      schedule on the inputs object (default for EXPLICIT_SCHEDULE
+                      sizing mode).
+
+    Documented default combinations
+    --------------------------------
+    DSCR_SCULPTED sizing   → DSCR_SCULPTED repayment  (default)
+    GEARING_CAP sizing     → LEVEL_PRINCIPAL repayment (default)
+    COMBINED_MINIMUM sizing→ DSCR_SCULPTED repayment   (min of two capacities;
+                             amortisation does NOT switch to level-principal merely
+                             because the gearing constraint binds)
+    EXPLICIT_SCHEDULE sizing→ EXPLICIT repayment       (default)
+    """
+    DSCR_SCULPTED = "dscr_sculpted"
+    LEVEL_PRINCIPAL = "level_principal"
+    EXPLICIT = "explicit"
+
+
 class SeniorDebtSizingMode(str, Enum):
     DSCR_SCULPTED = "DSCR_SCULPTED"
     GEARING_CAP = "GEARING_CAP"
@@ -34,6 +61,8 @@ class SeniorDebtPolicy:
     maximum_iterations      : iteration cap; non-convergence → MAX_ITERATIONS_REACHED
     permit_terminal_balloon : if False, a non-zero closing balance at maturity is an error
     damping_alpha           : iteration damping factor in (0, 1]; 1.0 = no damping
+    repayment_method        : amortisation profile; None = inferred from sizing_mode by
+                              the solver (see SeniorDebtRepaymentMethod for defaults)
     """
     policy_id: str
     policy_version: str
@@ -50,3 +79,4 @@ class SeniorDebtPolicy:
     maximum_iterations: int
     permit_terminal_balloon: bool
     damping_alpha: float = 1.0
+    repayment_method: SeniorDebtRepaymentMethod | None = None

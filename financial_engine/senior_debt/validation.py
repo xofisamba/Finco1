@@ -14,53 +14,115 @@ def validate_senior_debt_inputs(
     policy: "SeniorDebtPolicy",
     known_period_indices: frozenset[int],
 ) -> list[str]:
-    """Return a list of error messages (empty = valid)."""
+    """Return a list of error messages (empty = valid).
+
+    Warnings are prefixed with 'WARNING:' and do not indicate an invalid
+    configuration — they surface conditions the caller should surface to
+    the user but that do not prevent the solver from running.
+    """
     from financial_engine.senior_debt.policy import SeniorDebtSizingMode
 
     errors: list[str] = []
 
     # --- Policy fields ---
-    if policy.target_dscr <= 1.0:
-        errors.append(
-            f"target_dscr must be > 1.0, got {policy.target_dscr}"
-        )
+
+    # target_dscr: must be finite AND > 1.0 (checked separately)
+    if not math.isfinite(policy.target_dscr):
+        errors.append(f"target_dscr must be finite, got {policy.target_dscr}")
+    elif policy.target_dscr <= 1.0:
+        errors.append(f"target_dscr must be > 1.0, got {policy.target_dscr}")
+
+    # maximum_gearing: must be finite when provided, and in (0, 1]
     if policy.maximum_gearing is not None:
-        if not (0.0 < policy.maximum_gearing <= 1.0):
+        if not math.isfinite(policy.maximum_gearing):
+            errors.append(
+                f"maximum_gearing must be finite, got {policy.maximum_gearing}"
+            )
+        elif not (0.0 < policy.maximum_gearing <= 1.0):
             errors.append(
                 f"maximum_gearing must be in (0, 1], got {policy.maximum_gearing}"
             )
+
+    # maturity >= repayment_start
     if policy.maturity_period_index < policy.repayment_start_period_index:
         errors.append(
             f"maturity_period_index ({policy.maturity_period_index}) "
             f"must be >= repayment_start_period_index ({policy.repayment_start_period_index})"
         )
-    if policy.convergence_tolerance_keur < 0:
-        errors.append(f"convergence_tolerance_keur must be >= 0")
+
+    # repayment_start_period_index must be a known period (if known_period_indices is non-empty)
+    if known_period_indices and policy.repayment_start_period_index not in known_period_indices:
+        errors.append(
+            f"repayment_start_period_index ({policy.repayment_start_period_index}) "
+            f"is not in known_period_indices"
+        )
+
+    # maturity_period_index must be a known period (if known_period_indices is non-empty)
+    if known_period_indices and policy.maturity_period_index not in known_period_indices:
+        errors.append(
+            f"maturity_period_index ({policy.maturity_period_index}) "
+            f"is not in known_period_indices"
+        )
+
+    # convergence_tolerance_keur: must be finite and >= 0
+    if not math.isfinite(policy.convergence_tolerance_keur):
+        errors.append("convergence_tolerance_keur must be finite")
+    elif policy.convergence_tolerance_keur < 0:
+        errors.append("convergence_tolerance_keur must be >= 0")
+
+    # convergence_relative_tolerance: must be finite and >= 0
+    if not math.isfinite(policy.convergence_relative_tolerance):
+        errors.append("convergence_relative_tolerance must be finite")
+    elif policy.convergence_relative_tolerance < 0:
+        errors.append("convergence_relative_tolerance must be >= 0")
+
+    # maximum_iterations: must be >= 1
     if policy.maximum_iterations < 1:
-        errors.append(f"maximum_iterations must be >= 1")
+        errors.append("maximum_iterations must be >= 1")
+
+    # damping_alpha: must be in (0, 1]
     if not (0.0 < policy.damping_alpha <= 1.0):
         errors.append(f"damping_alpha must be in (0, 1], got {policy.damping_alpha}")
+
+    # annual_fixed_rate: must be >= 0 if provided
+    if policy.annual_fixed_rate is not None:
+        if not math.isfinite(policy.annual_fixed_rate):
+            errors.append(f"Non-finite policy.annual_fixed_rate: {policy.annual_fixed_rate}")
+        elif policy.annual_fixed_rate < 0:
+            errors.append(
+                f"annual_fixed_rate must be >= 0, got {policy.annual_fixed_rate}; "
+                "negative rates are not permitted"
+            )
 
     # --- Input fields ---
     if not math.isfinite(inputs.eligible_project_cost_keur):
         errors.append("eligible_project_cost_keur must be finite")
-    if inputs.eligible_project_cost_keur < 0:
+    elif inputs.eligible_project_cost_keur < 0:
         errors.append("eligible_project_cost_keur must be >= 0")
+
     if not math.isfinite(inputs.initial_debt_guess_keur):
         errors.append("initial_debt_guess_keur must be finite")
-    if inputs.initial_debt_guess_keur < 0:
+    elif inputs.initial_debt_guess_keur < 0:
         errors.append("initial_debt_guess_keur must be >= 0")
 
     # --- Period rates ---
     seen_rate_periods: set[int] = set()
+    prev_period_index: int | None = None
     for pr in inputs.period_rates:
         if pr.period_index in seen_rate_periods:
             errors.append(f"Duplicate period_rate for period_index={pr.period_index}")
         seen_rate_periods.add(pr.period_index)
-        if pr.period_index not in known_period_indices:
+        if known_period_indices and pr.period_index not in known_period_indices:
             errors.append(f"period_rate references unknown period_index={pr.period_index}")
         if not math.isfinite(pr.annual_rate):
             errors.append(f"Non-finite annual_rate for period_index={pr.period_index}")
+        # Order check: period_index must be strictly increasing
+        if prev_period_index is not None and pr.period_index <= prev_period_index:
+            errors.append(
+                f"period_rates are out of order: period_index={pr.period_index} "
+                f"follows period_index={prev_period_index}; indices must be strictly increasing"
+            )
+        prev_period_index = pr.period_index
 
     # Fixed rate required if no explicit rates cover all periods
     if not inputs.period_rates and policy.annual_fixed_rate is None:
@@ -68,8 +130,6 @@ def validate_senior_debt_inputs(
             "No period_rates provided and policy.annual_fixed_rate is None; "
             "at least one source of interest rates is required"
         )
-    if policy.annual_fixed_rate is not None and not math.isfinite(policy.annual_fixed_rate):
-        errors.append(f"Non-finite policy.annual_fixed_rate: {policy.annual_fixed_rate}")
 
     # --- GEARING_CAP / COMBINED_MINIMUM require maximum_gearing ---
     if policy.sizing_mode in (
@@ -86,13 +146,14 @@ def validate_senior_debt_inputs(
             errors.append("EXPLICIT_SCHEDULE mode requires explicit_principal_schedule")
         else:
             seen_principal_periods: set[int] = set()
+            cumulative_principal: float = 0.0
             for pp in inputs.explicit_principal_schedule:
                 if pp.period_index in seen_principal_periods:
                     errors.append(
                         f"Duplicate explicit_principal for period_index={pp.period_index}"
                     )
                 seen_principal_periods.add(pp.period_index)
-                if pp.period_index not in known_period_indices:
+                if known_period_indices and pp.period_index not in known_period_indices:
                     errors.append(
                         f"explicit_principal references unknown period_index={pp.period_index}"
                     )
@@ -100,13 +161,27 @@ def validate_senior_debt_inputs(
                     errors.append(
                         f"Non-finite principal_keur for period_index={pp.period_index}"
                     )
-                if pp.principal_keur < 0:
+                elif pp.principal_keur < 0:
                     errors.append(
                         f"Negative principal_keur for period_index={pp.period_index}"
                     )
-        if inputs.opening_debt_balance_keur < 0:
-            errors.append("opening_debt_balance_keur must be >= 0")
+                else:
+                    cumulative_principal += pp.principal_keur
+
+            # Validate cumulative principal against opening debt balance
+            opening = inputs.opening_debt_balance_keur
+            tol = policy.convergence_tolerance_keur
+            if math.isfinite(cumulative_principal) and math.isfinite(opening) and math.isfinite(tol):
+                if cumulative_principal > opening + tol:
+                    errors.append(
+                        f"cumulative explicit principal {cumulative_principal:.3f} kEUR exceeds "
+                        f"opening debt {opening:.3f} kEUR; "
+                        "use INVALID_INPUT to reject over-repayment"
+                    )
+
         if not math.isfinite(inputs.opening_debt_balance_keur):
             errors.append("opening_debt_balance_keur must be finite")
+        elif inputs.opening_debt_balance_keur < 0:
+            errors.append("opening_debt_balance_keur must be >= 0")
 
     return errors

@@ -2,31 +2,28 @@
 
 Iteration sequence (DSCR_SCULPTED / COMBINED_MINIMUM):
   1.  Start from initial_debt_guess.
-  2.  Build opening-balance and interest schedules.
+  2.  Forward-roll the schedule to get per-period interest (rolling balance).
   3.  Pass period interest into the Phase 2B tax/CFADS calculation.
   4.  Recalculate cash tax and canonical CFADS.
-  5.  Sculpt debt-service capacity from CFADS.
-  6.  Compute new debt size = D_old − terminal_balance(D_old).
-     (terminal_balance = opening at maturity minus principal at maturity)
-  7.  Apply optional damping: D_new = alpha*D_candidate + (1-alpha)*D_old.
-  8.  Compare new vs old debt size and per-period schedules.
-  9.  Repeat until convergence or maximum_iterations.
+  5.  Backward-induct DSCR capacity from the updated CFADS.
+  6.  Apply optional damping: D_new = alpha*D_candidate + (1-alpha)*D_old.
+  7.  Compare |D_new - D_old| and per-period CFADS/tax diffs.
+  8.  Repeat until convergence or maximum_iterations.
 
-Convergence requires BOTH:
-  |D_new - D_old| <= convergence_tolerance_keur
-  max per-period schedule difference <= convergence_relative_tolerance
-  (checked across opening, interest, principal, closing, cash_tax, CFADS)
+Convergence requires:
+  max(|D_new - D_old|, max_cfads_diff, max_cash_tax_diff) <= convergence_tolerance_keur
 
-Non-convergence → termination_reason=MAX_ITERATIONS_REACHED; result is blocked,
-not silently returned as a valid model output.
+Non-convergence → termination_reason=MAX_ITERATIONS_REACHED; result has
+is_authoritative=False.
 
 GEARING_CAP: D = eligible_project_cost × maximum_gearing; level-principal amort;
 one iteration (no sizing loop). Tax feedback computed once.
 
-COMBINED_MINIMUM: run both DSCR and GEARING sizing; take the minimum.
+COMBINED_MINIMUM: run DSCR sizing loop to convergence, then apply gearing cap and
+take the minimum; forward roll with DSCR-sculpted repayment at that final D.
 
-EXPLICIT_SCHEDULE: accept given opening balance and principal; compute interest,
-closing balance, DSCR. One iteration; no sizing.
+EXPLICIT_SCHEDULE: validate that explicit schedule sums to opening balance (within
+tolerance); forward roll once with exact explicit principals; no sizing loop.
 
 Determinism guarantee: same input → same iteration count → same schedules.
 No random damping. No mutable global state.
@@ -56,145 +53,193 @@ if TYPE_CHECKING:
 
 
 # Type alias for the tax+CFADS callable the solver calls on each iteration.
-# Signature: (period_interest_map: dict[int, float]) -> dict[int, float]
-# Returns {period_index: cfads_keur} and modifies tax_keur_by_period in-place
-# via a shared container — the solver passes an interest dict, receives a
-# (cfads_by_period, cash_tax_by_period) pair.
+# Signature: (period_interest_map: dict[int, float]) -> (cfads_by_period, cash_tax_by_period)
 TaxCfadsCallable = Callable[
     [dict[int, float]],        # senior_interest_by_period
     tuple[dict[int, float], dict[int, float]],  # (cfads_by_period, cash_tax_by_period)
 ]
 
 
-def _max_schedule_diff(
-    old_rows: tuple[PeriodDebtRow, ...],
-    new_rows: tuple[PeriodDebtRow, ...],
-) -> float:
-    """Maximum absolute difference across all per-period schedule fields."""
-    if not old_rows:
-        return 0.0
-    diffs = []
-    for o, n in zip(old_rows, new_rows):
-        diffs.extend([
-            abs(n.opening_keur - o.opening_keur),
-            abs(n.interest_keur - o.interest_keur),
-            abs(n.principal_keur - o.principal_keur),
-            abs(n.closing_keur - o.closing_keur),
-        ])
-    return max(diffs) if diffs else 0.0
+# ---------------------------------------------------------------------------
+# Helper: max absolute difference across two period-keyed dicts
+# ---------------------------------------------------------------------------
 
-
-def _max_cfads_diff(
-    old_cfads: dict[int, float],
-    new_cfads: dict[int, float],
+def _max_dict_diff(
+    a: dict[int, float],
+    b: dict[int, float],
     period_indices: tuple[int, ...],
 ) -> float:
-    diffs = [abs(new_cfads.get(i, 0.0) - old_cfads.get(i, 0.0)) for i in period_indices]
+    diffs = [abs(a.get(i, 0.0) - b.get(i, 0.0)) for i in period_indices]
     return max(diffs) if diffs else 0.0
 
 
-def _build_interest_by_period(
-    debt_keur: float,
-    rows: tuple[PeriodDebtRow, ...],
+# ---------------------------------------------------------------------------
+# Helper: repayment method string for a given policy / mode
+# ---------------------------------------------------------------------------
+
+def _repayment_method_for_mode(
+    policy: SeniorDebtPolicy,
+    mode: SeniorDebtSizingMode | None = None,
+) -> str:
+    effective_mode = mode if mode is not None else policy.sizing_mode
+    if effective_mode == SeniorDebtSizingMode.GEARING_CAP:
+        return "level_principal"
+    if effective_mode == SeniorDebtSizingMode.EXPLICIT_SCHEDULE:
+        return "explicit"
+    # DSCR_SCULPTED and COMBINED_MINIMUM both use sculpted repayment
+    return "dscr_sculpted"
+
+
+# ---------------------------------------------------------------------------
+# BLOCKER 1: Backward DSCR capacity via backward induction
+# ---------------------------------------------------------------------------
+
+def _backward_dscr_capacity(
+    cfads_by: dict[int, float],
     rate_map: dict[int, float],
     period_start_end: dict[int, tuple],
+    period_indices: tuple[int, ...],
     policy: SeniorDebtPolicy,
-) -> dict[int, float]:
-    """Compute {period_index: interest_keur} given opening balances from rows."""
-    result: dict[int, float] = {}
-    for row in rows:
-        idx = row.period_index
+) -> float:
+    """Compute maximum debt capacity via backward induction.
+
+    Starting from closing_maturity = 0, work backwards:
+      opening_t = (closing_t + ds_t) / (1 + f_t)
+    where ds_t = max(0, cfads_t / target_dscr) and f_t = rate_t * day_frac_t.
+    """
+    repayment_ids = [
+        idx for idx in period_indices
+        if policy.repayment_start_period_index <= idx <= policy.maturity_period_index
+    ]
+    if not repayment_ids:
+        return 0.0
+
+    closing = 0.0
+    for idx in reversed(repayment_ids):
+        ds = max(0.0, cfads_by.get(idx, 0.0) / policy.target_dscr) if policy.target_dscr > 0 else 0.0
         rate = rate_map.get(idx, 0.0)
         start, end = period_start_end[idx]
-        day_frac = period_day_fraction(start, end, policy.day_count_convention)
-        result[idx] = period_interest(row.opening_keur, rate, day_frac)
-    return result
+        f = rate * period_day_fraction(start, end, policy.day_count_convention)
+        denom = 1.0 + f
+        opening = (closing + ds) / denom if denom > 1e-15 else closing + ds
+        closing = max(0.0, opening)
+
+    return closing
 
 
-def _rows_from_opening(
+# ---------------------------------------------------------------------------
+# BLOCKER 2: Authoritative forward roll (single pass, rolling balance)
+# ---------------------------------------------------------------------------
+
+def _forward_roll(
     opening_keur: float,
     period_indices: tuple[int, ...],
     rate_map: dict[int, float],
     period_start_end: dict[int, tuple],
-    cfads_by_period: dict[int, float],
+    cfads_by: dict[int, float],
     policy: SeniorDebtPolicy,
-    mode: SeniorDebtSizingMode,
-    explicit_principal_by_period: dict[int, float] | None,
+    repayment_method_str: str,
+    explicit_by: dict[int, float] | None = None,
 ) -> tuple[PeriodDebtRow, ...]:
-    """Build schedule rows from an opening balance.
+    """Single-pass authoritative forward roll.
 
-    Interest is computed from the opening balance within the schedule builder.
+    Interest is computed from the rolling balance — the identity of this function.
     """
-    interest_map: dict[int, float] = {}
+    rows: list[PeriodDebtRow] = []
     balance = opening_keur
-    # Pre-compute interest by period based on rolling balance
-    tmp_balance = opening_keur
+
+    repayment_ids = [
+        idx for idx in period_indices
+        if policy.repayment_start_period_index <= idx <= policy.maturity_period_index
+    ]
+    n_repayment = len(repayment_ids)
+    level_installment = opening_keur / n_repayment if n_repayment > 0 else 0.0
+
     for idx in period_indices:
         rate = rate_map.get(idx, 0.0)
         start, end = period_start_end[idx]
         day_frac = period_day_fraction(start, end, policy.day_count_convention)
-        interest_map[idx] = period_interest(tmp_balance, rate, day_frac)
-        # Approximate closing for interest pre-computation (use sculpting to get principal)
-        # This is re-computed in the schedule builders below; here we just need interest_map
-        # for the final call — the builders compute rolling interest themselves.
-        # Reset: the builders roll the balance internally.
-    # Actually, delegate entirely to the builders which roll balance internally.
-    # Recompute interest_map correctly by simulating the roll:
-    _balance = opening_keur
-    for idx in period_indices:
-        rate = rate_map.get(idx, 0.0)
-        start, end = period_start_end[idx]
-        day_frac = period_day_fraction(start, end, policy.day_count_convention)
-        interest_map[idx] = period_interest(_balance, rate, day_frac)
-        # Compute principal to advance balance (approximate for pre-computation)
-        in_repayment = policy.repayment_start_period_index <= idx <= policy.maturity_period_index
-        if in_repayment and _balance > 0.0:
-            if mode == SeniorDebtSizingMode.GEARING_CAP:
-                pass  # will be overridden in level-principal builder
-            else:
-                cfads = cfads_by_period.get(idx, 0.0)
-                max_ds = max(0.0, cfads / policy.target_dscr) if policy.target_dscr > 0 else 0.0
-                p = max(0.0, max_ds - interest_map[idx])
-                p = min(p, _balance)
-                _balance -= p
-        # For gearing / explicit: interest map is still useful for principal computation later
+        interest = balance * rate * day_frac  # ROLLING BALANCE — identity test
 
-    if mode in (SeniorDebtSizingMode.DSCR_SCULPTED, SeniorDebtSizingMode.COMBINED_MINIMUM):
-        return build_schedule(
-            opening_debt_keur=opening_keur,
-            period_indices=period_indices,
-            interest_by_period=interest_map,
-            cfads_by_period=cfads_by_period,
-            target_dscr=policy.target_dscr,
-            repayment_start_index=policy.repayment_start_period_index,
-            maturity_index=policy.maturity_period_index,
+        in_repayment = (
+            policy.repayment_start_period_index <= idx <= policy.maturity_period_index
         )
-    if mode == SeniorDebtSizingMode.GEARING_CAP:
-        return build_level_principal_schedule(
-            opening_debt_keur=opening_keur,
-            period_indices=period_indices,
-            interest_by_period=interest_map,
-            cfads_by_period=cfads_by_period,
-            repayment_start_index=policy.repayment_start_period_index,
-            maturity_index=policy.maturity_period_index,
-        )
-    if mode == SeniorDebtSizingMode.EXPLICIT_SCHEDULE:
-        return build_explicit_schedule(
-            opening_debt_keur=opening_keur,
-            period_indices=period_indices,
-            interest_by_period=interest_map,
-            cfads_by_period=cfads_by_period,
-            explicit_principal_by_period=explicit_principal_by_period or {},
-        )
-    raise ValueError(f"Unsupported sizing_mode: {mode!r}")
 
+        if not in_repayment:
+            principal = 0.0
+        elif repayment_method_str == "dscr_sculpted":
+            cfads = cfads_by.get(idx, 0.0)
+            ds = max(0.0, cfads / policy.target_dscr) if policy.target_dscr > 0 else 0.0
+            principal = max(0.0, ds - interest)
+            principal = min(principal, balance)  # safety floor
+        elif repayment_method_str == "level_principal":
+            principal = min(level_installment, balance)
+        elif repayment_method_str == "explicit":
+            # NO CAPPING per Blocker 5 — exact explicit schedule
+            principal = (explicit_by or {}).get(idx, 0.0)
+        else:
+            raise ValueError(f"Unknown repayment_method_str: {repayment_method_str!r}")
+
+        debt_service = interest + principal
+        closing = max(0.0, balance - principal)
+
+        cfads_val = cfads_by.get(idx, 0.0)
+        dscr_val = (
+            cfads_val / debt_service
+            if debt_service > 0.0 and math.isfinite(cfads_val)
+            else None
+        )
+
+        rows.append(PeriodDebtRow(
+            period_index=idx,
+            opening_keur=balance,
+            interest_keur=interest,
+            principal_keur=principal,
+            debt_service_keur=debt_service,
+            closing_keur=closing,
+            dscr=dscr_val,
+        ))
+        balance = closing
+
+    return tuple(rows)
+
+
+# ---------------------------------------------------------------------------
+# Diagnostic factory
+# ---------------------------------------------------------------------------
+
+def _make_diag(
+    *,
+    converged: bool,
+    iteration: int,
+    initial_guess: float,
+    final_d: float,
+    max_abs_diff: float,
+    binding: str | None,
+    termination_reason: str,
+) -> SolverDiagnostics:
+    return SolverDiagnostics(
+        converged=converged,
+        iteration_count=iteration,
+        initial_debt_guess_keur=initial_guess,
+        final_debt_size_keur=final_d,
+        maximum_absolute_difference_keur=max_abs_diff,
+        maximum_relative_difference=max_abs_diff / max(abs(final_d), 1.0),
+        binding_constraint=binding,
+        termination_reason=termination_reason,
+        is_authoritative=(termination_reason == "CONVERGED"),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Schedule → SeniorDebtSchedules
+# ---------------------------------------------------------------------------
 
 def _to_schedules(
     rows: tuple[PeriodDebtRow, ...],
-    cfads_by_period: dict[int, float],
     debt_size_keur: float,
-    binding_constraint: str | None,
-    diagnostics: SolverDiagnostics,
+    binding: str | None,
+    diag: SolverDiagnostics,
 ) -> SeniorDebtSchedules:
     return SeniorDebtSchedules(
         period_indices=tuple(r.period_index for r in rows),
@@ -205,10 +250,14 @@ def _to_schedules(
         senior_debt_closing_keur=tuple(r.closing_keur for r in rows),
         senior_dscr=tuple(r.dscr for r in rows),
         debt_size_keur=debt_size_keur,
-        binding_constraint=binding_constraint,
-        diagnostics=diagnostics,
+        binding_constraint=binding,
+        diagnostics=diag,
     )
 
+
+# ---------------------------------------------------------------------------
+# Main entry point
+# ---------------------------------------------------------------------------
 
 def solve_senior_debt(
     *,
@@ -226,8 +275,8 @@ def solve_senior_debt(
 
     Returns SeniorDebtSchedules. Raises ValueError on INVALID_INPUT.
     Non-convergence does NOT raise — it returns diagnostics with
-    termination_reason=MAX_ITERATIONS_REACHED and converged=False.
-    Callers must check diagnostics.converged.
+    termination_reason=MAX_ITERATIONS_REACHED and is_authoritative=False.
+    Callers must check diagnostics.is_authoritative.
     """
     from financial_engine.senior_debt.validation import validate_senior_debt_inputs
 
@@ -239,17 +288,12 @@ def solve_senior_debt(
 
     errors = validate_senior_debt_inputs(inputs, policy, known_period_indices)
     if errors:
-        diag = SolverDiagnostics(
-            converged=False,
-            iteration_count=0,
-            initial_debt_guess_keur=inputs.initial_debt_guess_keur,
-            final_debt_size_keur=0.0,
-            maximum_absolute_difference_keur=float("inf"),
-            maximum_relative_difference=float("inf"),
-            binding_constraint=None,
-            termination_reason="INVALID_INPUT",
+        diag = _make_diag(
+            converged=False, iteration=0,
+            initial_guess=inputs.initial_debt_guess_keur,
+            final_d=0.0, max_abs_diff=float("inf"),
+            binding=None, termination_reason="INVALID_INPUT",
         )
-        # Return a zero schedule with error diagnostics
         zero_rows = tuple(
             PeriodDebtRow(
                 period_index=idx,
@@ -258,7 +302,7 @@ def solve_senior_debt(
             )
             for idx in period_indices
         )
-        return _to_schedules(zero_rows, {}, 0.0, None, diag)
+        return _to_schedules(zero_rows, 0.0, None, diag)
 
     rate_map = build_rate_map(inputs.period_rates, period_indices, policy.annual_fixed_rate)
     mode = policy.sizing_mode
@@ -291,23 +335,9 @@ def solve_senior_debt(
     raise ValueError(f"Unsupported sizing_mode: {mode!r}")
 
 
-def _compute_interest_map(
-    opening_keur: float,
-    period_indices: tuple[int, ...],
-    rate_map: dict[int, float],
-    period_start_end: dict[int, tuple],
-    policy: SeniorDebtPolicy,
-    cfads_by_period: dict[int, float],
-    mode: SeniorDebtSizingMode,
-    explicit_principal_by_period: dict[int, float] | None = None,
-) -> dict[int, float]:
-    """Compute interest by rolling the balance through the sculpted schedule."""
-    rows = _rows_from_opening(
-        opening_keur, period_indices, rate_map, period_start_end,
-        cfads_by_period, policy, mode, explicit_principal_by_period,
-    )
-    return {r.period_index: r.interest_keur for r in rows}
-
+# ---------------------------------------------------------------------------
+# BLOCKER 4: DSCR convergence loop (tracks debt, cfads, cash_tax)
+# ---------------------------------------------------------------------------
 
 def _solve_dscr(
     *,
@@ -319,124 +349,99 @@ def _solve_dscr(
     tax_cfads_fn: TaxCfadsCallable,
     binding_constraint: str,
 ) -> SeniorDebtSchedules:
-    """Fixed-point iteration for DSCR_SCULPTED sizing."""
+    """Fixed-point iteration for DSCR_SCULPTED sizing using backward induction."""
     D = inputs.initial_debt_guess_keur
     alpha = policy.damping_alpha
     max_iter = policy.maximum_iterations
-    tol_abs = policy.convergence_tolerance_keur
-    tol_rel = policy.convergence_relative_tolerance
+    tol = policy.convergence_tolerance_keur
 
-    prev_rows: tuple[PeriodDebtRow, ...] = ()
-    prev_cfads: dict[int, float] = {}
+    cfads_by: dict[int, float] = {idx: 0.0 for idx in period_indices}
+    cash_tax_by: dict[int, float] = {idx: 0.0 for idx in period_indices}
+
+    prev_D: float | None = None
+    prev_cfads: dict[int, float] | None = None
+    prev_cash_tax: dict[int, float] | None = None
     max_abs_diff = float("inf")
-    max_rel_diff = float("inf")
 
     for iteration in range(1, max_iter + 1):
-        # Step 1: build interest map from current D
-        interest_map = _compute_interest_map(
-            D, period_indices, rate_map, period_start_end, policy,
-            prev_cfads if prev_cfads else {i: 0.0 for i in period_indices},
-            SeniorDebtSizingMode.DSCR_SCULPTED,
-        )
-
-        # Step 2: call Phase 2B tax+CFADS with these interests
-        cfads_by_period, cash_tax_by_period = tax_cfads_fn(interest_map)
-
-        # Step 3: build sculpted schedule from D with updated CFADS
-        rows = _rows_from_opening(
+        # Step 1: forward roll to get interest (using current cfads_by for DSCR sculpting)
+        rows = _forward_roll(
             D, period_indices, rate_map, period_start_end,
-            cfads_by_period, policy, SeniorDebtSizingMode.DSCR_SCULPTED, None,
+            cfads_by, policy, "dscr_sculpted",
+        )
+        interest_by = {r.period_index: r.interest_keur for r in rows}
+
+        # Step 2: tax feedback
+        new_cfads, new_cash_tax = tax_cfads_fn(interest_by)
+
+        # Step 3: backward capacity from updated CFADS
+        dscr_capacity = _backward_dscr_capacity(
+            new_cfads, rate_map, period_start_end, period_indices, policy,
         )
 
-        # Step 4: terminal balance at maturity
-        terminal_balance = rows[-1].closing_keur if rows else 0.0
-
-        # Check if capacity is zero
-        total_principal = sum(r.principal_keur for r in rows)
-        if total_principal == 0.0 and D > 0.0:
-            diag = SolverDiagnostics(
-                converged=False, iteration_count=iteration,
-                initial_debt_guess_keur=inputs.initial_debt_guess_keur,
-                final_debt_size_keur=0.0,
-                maximum_absolute_difference_keur=D,
-                maximum_relative_difference=1.0,
-                binding_constraint=binding_constraint,
-                termination_reason="NO_DEBT_CAPACITY",
+        # Zero capacity short-circuit
+        if dscr_capacity == 0.0 and D > 0.0 and iteration == 1:
+            diag = _make_diag(
+                converged=False, iteration=iteration,
+                initial_guess=inputs.initial_debt_guess_keur,
+                final_d=0.0, max_abs_diff=D,
+                binding=binding_constraint, termination_reason="NO_DEBT_CAPACITY",
             )
-            return _to_schedules(rows, cfads_by_period, 0.0, binding_constraint, diag)
+            zero_rows = _forward_roll(
+                0.0, period_indices, rate_map, period_start_end,
+                new_cfads, policy, "dscr_sculpted",
+            )
+            return _to_schedules(zero_rows, 0.0, binding_constraint, diag)
 
-        # Step 5: new D = D - terminal_balance (find D such that terminal = 0)
-        D_candidate = D - terminal_balance
-        D_candidate = max(0.0, D_candidate)
+        # Step 4: damping
+        new_D = alpha * dscr_capacity + (1.0 - alpha) * D
+        new_D = max(0.0, new_D)
 
-        # Apply damping
-        D_new = alpha * D_candidate + (1.0 - alpha) * D
+        # Step 5: convergence check (skip first iteration — no prev to compare)
+        if prev_D is not None:
+            debt_diff = abs(new_D - D)
+            cfads_diff = _max_dict_diff(new_cfads, cfads_by, period_indices)
+            cash_tax_diff = _max_dict_diff(new_cash_tax, cash_tax_by, period_indices)
+            max_abs_diff = max(debt_diff, cfads_diff, cash_tax_diff)
 
-        # Convergence checks
-        if prev_rows:
-            sched_diff = _max_schedule_diff(prev_rows, rows)
-            cfads_diff = _max_cfads_diff(prev_cfads, cfads_by_period, period_indices)
-            max_abs_diff = max(abs(D_new - D), sched_diff, cfads_diff)
-            max_rel_diff = max_abs_diff / max(abs(D), 1.0)
-        else:
-            max_abs_diff = abs(D_new - D)
-            max_rel_diff = max_abs_diff / max(abs(D), 1.0)
-
-        prev_rows = rows
-        prev_cfads = cfads_by_period
-
-        if max_abs_diff <= tol_abs and (
-            prev_rows is rows or max_rel_diff <= tol_rel
-        ):
-            # Converged
-            if not policy.permit_terminal_balloon and terminal_balance > tol_abs:
-                diag = SolverDiagnostics(
-                    converged=False, iteration_count=iteration,
-                    initial_debt_guess_keur=inputs.initial_debt_guess_keur,
-                    final_debt_size_keur=D,
-                    maximum_absolute_difference_keur=max_abs_diff,
-                    maximum_relative_difference=max_rel_diff,
-                    binding_constraint=binding_constraint,
-                    termination_reason="TERMINAL_BALANCE_NOT_ALLOWED",
+            if max_abs_diff <= tol:
+                # CONVERGED: final authoritative forward roll
+                final_rows = _forward_roll(
+                    new_D, period_indices, rate_map, period_start_end,
+                    new_cfads, policy, "dscr_sculpted",
                 )
-                return _to_schedules(rows, cfads_by_period, D, binding_constraint, diag)
+                diag = _make_diag(
+                    converged=True, iteration=iteration,
+                    initial_guess=inputs.initial_debt_guess_keur,
+                    final_d=new_D, max_abs_diff=max_abs_diff,
+                    binding=binding_constraint, termination_reason="CONVERGED",
+                )
+                return _to_schedules(final_rows, new_D, binding_constraint, diag)
 
-            diag = SolverDiagnostics(
-                converged=True, iteration_count=iteration,
-                initial_debt_guess_keur=inputs.initial_debt_guess_keur,
-                final_debt_size_keur=D,
-                maximum_absolute_difference_keur=max_abs_diff,
-                maximum_relative_difference=max_rel_diff,
-                binding_constraint=binding_constraint,
-                termination_reason="CONVERGED",
-            )
-            return _to_schedules(rows, cfads_by_period, D, binding_constraint, diag)
+        prev_D = D
+        prev_cfads = cfads_by
+        prev_cash_tax = cash_tax_by
+        D = new_D
+        cfads_by = new_cfads
+        cash_tax_by = new_cash_tax
 
-        D = D_new
-
-    # Max iterations reached — do NOT return as if valid
-    # Build final rows for diagnostic purposes only
-    interest_map = _compute_interest_map(
-        D, period_indices, rate_map, period_start_end, policy,
-        prev_cfads if prev_cfads else {i: 0.0 for i in period_indices},
-        SeniorDebtSizingMode.DSCR_SCULPTED,
-    )
-    cfads_by_period, _ = tax_cfads_fn(interest_map)
-    rows = _rows_from_opening(
+    # Max iterations reached
+    final_rows = _forward_roll(
         D, period_indices, rate_map, period_start_end,
-        cfads_by_period, policy, SeniorDebtSizingMode.DSCR_SCULPTED, None,
+        cfads_by, policy, "dscr_sculpted",
     )
-    diag = SolverDiagnostics(
-        converged=False, iteration_count=max_iter,
-        initial_debt_guess_keur=inputs.initial_debt_guess_keur,
-        final_debt_size_keur=D,
-        maximum_absolute_difference_keur=max_abs_diff,
-        maximum_relative_difference=max_rel_diff,
-        binding_constraint=binding_constraint,
-        termination_reason="MAX_ITERATIONS_REACHED",
+    diag = _make_diag(
+        converged=False, iteration=max_iter,
+        initial_guess=inputs.initial_debt_guess_keur,
+        final_d=D, max_abs_diff=max_abs_diff,
+        binding=binding_constraint, termination_reason="MAX_ITERATIONS_REACHED",
     )
-    return _to_schedules(rows, cfads_by_period, D, binding_constraint, diag)
+    return _to_schedules(final_rows, D, binding_constraint, diag)
 
+
+# ---------------------------------------------------------------------------
+# GEARING_CAP: single-pass level-principal
+# ---------------------------------------------------------------------------
 
 def _solve_gearing(
     *,
@@ -451,25 +456,31 @@ def _solve_gearing(
     assert policy.maximum_gearing is not None
     D = inputs.eligible_project_cost_keur * policy.maximum_gearing
 
-    interest_map = _compute_interest_map(
-        D, period_indices, rate_map, period_start_end, policy,
-        {i: 0.0 for i in period_indices},
-        SeniorDebtSizingMode.GEARING_CAP,
-    )
-    cfads_by_period, _ = tax_cfads_fn(interest_map)
-    rows = _rows_from_opening(
+    # One pass: forward roll with zero CFADS to get interest, then tax feedback once
+    rows = _forward_roll(
         D, period_indices, rate_map, period_start_end,
-        cfads_by_period, policy, SeniorDebtSizingMode.GEARING_CAP, None,
+        {idx: 0.0 for idx in period_indices}, policy, "level_principal",
+    )
+    interest_by = {r.period_index: r.interest_keur for r in rows}
+    cfads_by, _ = tax_cfads_fn(interest_by)
+
+    # Final roll with updated CFADS (for DSCR reporting)
+    final_rows = _forward_roll(
+        D, period_indices, rate_map, period_start_end,
+        cfads_by, policy, "level_principal",
     )
 
-    diag = SolverDiagnostics(
-        converged=True, iteration_count=1,
-        initial_debt_guess_keur=D, final_debt_size_keur=D,
-        maximum_absolute_difference_keur=0.0, maximum_relative_difference=0.0,
-        binding_constraint="GEARING", termination_reason="CONVERGED",
+    diag = _make_diag(
+        converged=True, iteration=1,
+        initial_guess=D, final_d=D, max_abs_diff=0.0,
+        binding="GEARING", termination_reason="CONVERGED",
     )
-    return _to_schedules(rows, cfads_by_period, D, "GEARING", diag)
+    return _to_schedules(final_rows, D, "GEARING", diag)
 
+
+# ---------------------------------------------------------------------------
+# COMBINED_MINIMUM (BLOCKER 7): DSCR loop → gearing cap → min → DSCR-sculpted roll
+# ---------------------------------------------------------------------------
 
 def _solve_combined(
     *,
@@ -480,84 +491,67 @@ def _solve_combined(
     rate_map: dict[int, float],
     tax_cfads_fn: TaxCfadsCallable,
 ) -> SeniorDebtSchedules:
-    """COMBINED_MINIMUM: min(DSCR capacity, gearing cap)."""
+    """COMBINED_MINIMUM: run DSCR loop to get dscr_capacity, apply gearing cap, take min.
+
+    Forward roll at final D always uses DSCR-sculpted repayment.
+    """
     assert policy.maximum_gearing is not None
     gearing_cap = inputs.eligible_project_cost_keur * policy.maximum_gearing
 
-    # Run DSCR solver
+    # Run DSCR loop to convergence
     dscr_result = _solve_dscr(
         policy=policy, inputs=inputs, period_indices=period_indices,
         period_start_end=period_start_end, rate_map=rate_map, tax_cfads_fn=tax_cfads_fn,
         binding_constraint="DSCR",
     )
-    if not dscr_result.diagnostics.converged:
-        # Propagate non-convergence
+    if not dscr_result.diagnostics.is_authoritative:
+        # Propagate non-convergence / non-authoritative results unchanged
         return dscr_result
 
-    dscr_debt = dscr_result.debt_size_keur
-
+    dscr_capacity = dscr_result.debt_size_keur
     tol = policy.convergence_tolerance_keur
-    if abs(dscr_debt - gearing_cap) <= tol:
+
+    # Determine binding constraint
+    if abs(dscr_capacity - gearing_cap) <= tol:
         binding = "BOTH"
-    elif dscr_debt < gearing_cap:
+    elif dscr_capacity < gearing_cap:
         binding = "DSCR"
     else:
         binding = "GEARING"
 
-    if binding in ("DSCR", "BOTH"):
-        final_d = dscr_debt
-    else:
-        final_d = gearing_cap
+    final_d = min(dscr_capacity, gearing_cap)
 
-    # If gearing binds, rebuild with gearing debt size and level-principal schedule
-    if binding == "GEARING":
-        gearing_inputs_d = final_d
-        interest_map = _compute_interest_map(
-            gearing_inputs_d, period_indices, rate_map, period_start_end, policy,
-            {i: 0.0 for i in period_indices},
-            SeniorDebtSizingMode.GEARING_CAP,
-        )
-        cfads_by_period, _ = tax_cfads_fn(interest_map)
-        rows = _rows_from_opening(
-            gearing_inputs_d, period_indices, rate_map, period_start_end,
-            cfads_by_period, policy, SeniorDebtSizingMode.GEARING_CAP, None,
-        )
-        diag = SolverDiagnostics(
-            converged=True,
-            iteration_count=dscr_result.diagnostics.iteration_count + 1,
-            initial_debt_guess_keur=inputs.initial_debt_guess_keur,
-            final_debt_size_keur=final_d,
-            maximum_absolute_difference_keur=dscr_result.diagnostics.maximum_absolute_difference_keur,
-            maximum_relative_difference=dscr_result.diagnostics.maximum_relative_difference,
-            binding_constraint=binding,
-            termination_reason="CONVERGED",
-        )
-        return _to_schedules(rows, cfads_by_period, final_d, binding, diag)
-    else:
-        # DSCR or BOTH — reuse dscr_result arrays, update binding and debt_size
-        diag = SolverDiagnostics(
-            converged=dscr_result.diagnostics.converged,
-            iteration_count=dscr_result.diagnostics.iteration_count,
-            initial_debt_guess_keur=dscr_result.diagnostics.initial_debt_guess_keur,
-            final_debt_size_keur=final_d,
-            maximum_absolute_difference_keur=dscr_result.diagnostics.maximum_absolute_difference_keur,
-            maximum_relative_difference=dscr_result.diagnostics.maximum_relative_difference,
-            binding_constraint=binding,
-            termination_reason=dscr_result.diagnostics.termination_reason,
-        )
-        return SeniorDebtSchedules(
-            period_indices=dscr_result.period_indices,
-            senior_debt_opening_keur=dscr_result.senior_debt_opening_keur,
-            senior_interest_keur=dscr_result.senior_interest_keur,
-            senior_principal_keur=dscr_result.senior_principal_keur,
-            senior_debt_service_keur=dscr_result.senior_debt_service_keur,
-            senior_debt_closing_keur=dscr_result.senior_debt_closing_keur,
-            senior_dscr=dscr_result.senior_dscr,
-            debt_size_keur=final_d,
-            binding_constraint=binding,
-            diagnostics=diag,
-        )
+    # Final authoritative forward roll with DSCR-sculpted repayment at final_d
+    # Re-use cfads from the converged DSCR run
+    cfads_by = dict(zip(dscr_result.period_indices, [0.0] * len(dscr_result.period_indices)))
+    # Recompute interest from final_d to get correct CFADS via tax feedback
+    initial_rows = _forward_roll(
+        final_d, period_indices, rate_map, period_start_end,
+        cfads_by, policy, "dscr_sculpted",
+    )
+    interest_by = {r.period_index: r.interest_keur for r in initial_rows}
+    new_cfads, _ = tax_cfads_fn(interest_by)
 
+    final_rows = _forward_roll(
+        final_d, period_indices, rate_map, period_start_end,
+        new_cfads, policy, "dscr_sculpted",
+    )
+
+    diag = _make_diag(
+        converged=True,
+        iteration=dscr_result.diagnostics.iteration_count,
+        initial_guess=inputs.initial_debt_guess_keur,
+        final_d=final_d,
+        max_abs_diff=dscr_result.diagnostics.maximum_absolute_difference_keur,
+        binding=binding,
+        termination_reason="CONVERGED",
+    )
+    return _to_schedules(final_rows, final_d, binding, diag)
+
+
+# ---------------------------------------------------------------------------
+# EXPLICIT_SCHEDULE (BLOCKER 5): upfront validation then exact forward roll
+# ---------------------------------------------------------------------------
 
 def _solve_explicit(
     *,
@@ -568,40 +562,69 @@ def _solve_explicit(
     rate_map: dict[int, float],
     tax_cfads_fn: TaxCfadsCallable,
 ) -> SeniorDebtSchedules:
-    """EXPLICIT_SCHEDULE: accept given opening balance and principal schedule."""
-    D = inputs.opening_debt_balance_keur
-    explicit_map = {pp.period_index: pp.principal_keur
-                    for pp in (inputs.explicit_principal_schedule or ())}
-
-    # One pass: compute interest from rolling balance, call tax+CFADS once
-    interest_map = _compute_interest_map(
-        D, period_indices, rate_map, period_start_end, policy,
-        {i: 0.0 for i in period_indices},
-        SeniorDebtSizingMode.EXPLICIT_SCHEDULE, explicit_map,
-    )
-    cfads_by_period, _ = tax_cfads_fn(interest_map)
-    rows = _rows_from_opening(
-        D, period_indices, rate_map, period_start_end,
-        cfads_by_period, policy, SeniorDebtSizingMode.EXPLICIT_SCHEDULE, explicit_map,
-    )
-
-    terminal_balance = rows[-1].closing_keur if rows else 0.0
+    """EXPLICIT_SCHEDULE: validate principal schedule then forward roll once."""
+    opening = inputs.opening_debt_balance_keur
+    explicit_map = {
+        pp.period_index: pp.principal_keur
+        for pp in (inputs.explicit_principal_schedule or ())
+    }
+    explicit_total = sum(pp.principal_keur for pp in (inputs.explicit_principal_schedule or ()))
     tol = policy.convergence_tolerance_keur
 
-    if not policy.permit_terminal_balloon and terminal_balance > tol:
-        diag = SolverDiagnostics(
-            converged=False, iteration_count=1,
-            initial_debt_guess_keur=D, final_debt_size_keur=D,
-            maximum_absolute_difference_keur=terminal_balance,
-            maximum_relative_difference=terminal_balance / max(D, 1.0),
-            binding_constraint=None, termination_reason="TERMINAL_BALANCE_NOT_ALLOWED",
+    # BLOCKER 5 validation
+    if explicit_total > opening + tol:
+        diag = _make_diag(
+            converged=False, iteration=0,
+            initial_guess=opening, final_d=opening,
+            max_abs_diff=explicit_total - opening,
+            binding=None, termination_reason="INVALID_INPUT",
         )
-        return _to_schedules(rows, cfads_by_period, D, None, diag)
+        zero_rows = tuple(
+            PeriodDebtRow(
+                period_index=idx,
+                opening_keur=0.0, interest_keur=0.0, principal_keur=0.0,
+                debt_service_keur=0.0, closing_keur=0.0, dscr=None,
+            )
+            for idx in period_indices
+        )
+        return _to_schedules(zero_rows, opening, None, diag)
 
-    diag = SolverDiagnostics(
-        converged=True, iteration_count=1,
-        initial_debt_guess_keur=D, final_debt_size_keur=D,
-        maximum_absolute_difference_keur=0.0, maximum_relative_difference=0.0,
-        binding_constraint=None, termination_reason="CONVERGED",
+    if not policy.permit_terminal_balloon and explicit_total < opening - tol:
+        diag = _make_diag(
+            converged=False, iteration=0,
+            initial_guess=opening, final_d=opening,
+            max_abs_diff=opening - explicit_total,
+            binding=None, termination_reason="TERMINAL_BALANCE_NOT_ALLOWED",
+        )
+        zero_rows = tuple(
+            PeriodDebtRow(
+                period_index=idx,
+                opening_keur=0.0, interest_keur=0.0, principal_keur=0.0,
+                debt_service_keur=0.0, closing_keur=0.0, dscr=None,
+            )
+            for idx in period_indices
+        )
+        return _to_schedules(zero_rows, opening, None, diag)
+
+    # One pass: exact explicit schedule (NO min(p, balance))
+    # Get interest first with zero CFADS, then tax feedback, then final roll
+    cfads_by: dict[int, float] = {idx: 0.0 for idx in period_indices}
+    rows = _forward_roll(
+        opening, period_indices, rate_map, period_start_end,
+        cfads_by, policy, "explicit", explicit_by=explicit_map,
     )
-    return _to_schedules(rows, cfads_by_period, D, None, diag)
+    interest_by = {r.period_index: r.interest_keur for r in rows}
+    cfads_by, _ = tax_cfads_fn(interest_by)
+
+    # Final roll for DSCR reporting with updated CFADS
+    final_rows = _forward_roll(
+        opening, period_indices, rate_map, period_start_end,
+        cfads_by, policy, "explicit", explicit_by=explicit_map,
+    )
+
+    diag = _make_diag(
+        converged=True, iteration=1,
+        initial_guess=opening, final_d=opening, max_abs_diff=0.0,
+        binding=None, termination_reason="CONVERGED",
+    )
+    return _to_schedules(final_rows, opening, None, diag)

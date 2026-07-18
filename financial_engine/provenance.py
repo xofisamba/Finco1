@@ -107,3 +107,74 @@ def compute_tax_cfads_fingerprint(inputs: "Any") -> str:
     raw = _to_canonical_extended(inputs)
     canonical = json.dumps(raw, sort_keys=True, ensure_ascii=False, allow_nan=False)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def compute_senior_debt_fingerprint(inputs: "Any") -> str:
+    """Deterministic SHA-256 fingerprint for a Phase 2C SeniorDebtModelInput.
+
+    Covers operating + tax + senior_debt_policy + senior_debt_inputs.
+    initial_debt_guess_keur is intentionally EXCLUDED — the correct answer
+    must be independent of the initial guess.
+
+    Two runs differing only in target_dscr, annual_fixed_rate, maximum_gearing,
+    maturity, opening_debt_balance_keur, or explicit_principal produce different
+    fingerprints. Two identical runs produce the same fingerprint.
+    """
+    import dataclasses
+    from enum import Enum
+
+    def _to_c(obj):
+        if isinstance(obj, Enum):
+            return obj.value
+        if isinstance(obj, date):
+            return obj.isoformat()
+        if isinstance(obj, (bool, int, float, str, type(None))):
+            return obj
+        if isinstance(obj, (list, tuple)):
+            return [_to_c(v) for v in obj]
+        if isinstance(obj, dict):
+            return {k: _to_c(v) for k in sorted(obj) for v in [obj[k]]}
+        try:
+            if dataclasses.is_dataclass(obj) and not isinstance(obj, type):
+                return _to_c(dataclasses.asdict(obj))
+        except Exception:
+            pass
+        return str(obj)
+
+    from financial_engine.inputs import TaxCfadsModelInput
+    phase2b_fp = compute_tax_cfads_fingerprint(
+        TaxCfadsModelInput(operating=inputs.operating, tax=inputs.tax)
+    )
+
+    policy = inputs.senior_debt_policy
+    sd = inputs.senior_debt_inputs
+
+    payload = {
+        "phase2b_fingerprint": phase2b_fp,
+        "policy": {
+            "policy_id": policy.policy_id,
+            "policy_version": policy.policy_version,
+            "sizing_mode": policy.sizing_mode.value,
+            "target_dscr": policy.target_dscr,
+            "maximum_gearing": policy.maximum_gearing,
+            "annual_fixed_rate": policy.annual_fixed_rate,
+            "periods_per_year": policy.periods_per_year,
+            "day_count_convention": policy.day_count_convention.value,
+            "repayment_start_period_index": policy.repayment_start_period_index,
+            "maturity_period_index": policy.maturity_period_index,
+            "convergence_tolerance_keur": policy.convergence_tolerance_keur,
+            "convergence_relative_tolerance": policy.convergence_relative_tolerance,
+            "maximum_iterations": policy.maximum_iterations,
+            "permit_terminal_balloon": policy.permit_terminal_balloon,
+            "damping_alpha": policy.damping_alpha,
+            "repayment_method": policy.repayment_method.value if policy.repayment_method is not None else None,
+        },
+        "inputs": {
+            "eligible_project_cost_keur": sd.eligible_project_cost_keur,
+            "opening_debt_balance_keur": sd.opening_debt_balance_keur,
+            "period_rates": [{"period_index": pr.period_index, "annual_rate": pr.annual_rate} for pr in sd.period_rates],
+            "explicit_principal": [{"period_index": pp.period_index, "principal_keur": pp.principal_keur} for pp in (sd.explicit_principal_schedule or ())],
+        },
+    }
+    canonical = json.dumps(payload, sort_keys=True, ensure_ascii=False, allow_nan=False, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()

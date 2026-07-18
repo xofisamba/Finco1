@@ -4,6 +4,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 
+class SeniorDebtNonConvergenceError(Exception):
+    "Raised to signal a non-authoritative senior debt result."
+
+
 @dataclass(frozen=True)
 class SolverDiagnostics:
     """Fixed-point solver convergence diagnostics.
@@ -24,6 +28,8 @@ class SolverDiagnostics:
     maximum_relative_difference: float
     binding_constraint: str | None  # "DSCR", "GEARING", "BOTH", or None
     termination_reason: str
+    is_authoritative: bool = True
+    """True only when termination_reason == CONVERGED. Downstream code must reject non-authoritative results."""
 
 
 @dataclass(frozen=True)
