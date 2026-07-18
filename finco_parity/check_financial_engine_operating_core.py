@@ -1,6 +1,9 @@
 """
 finco_parity.check_financial_engine_operating_core — Phase 2A clean-engine parity CLI.
 
+Thin wrapper around Phase 1C dual-run orchestration with OPERATING_CORE_V1 profile.
+Uses FinancialEngineCandidateProvider (exactly once per baseline) via run_candidate_provider.
+
 Usage::
 
     python -m finco_parity.check_financial_engine_operating_core --all --check
@@ -15,14 +18,14 @@ Usage::
 Exit codes
 ----------
 0  All selected baselines pass OPERATING_CORE_V1.
-1  Execution error (unexpected exception).
+1  Execution error (unexpected exception or report write failure).
 2  Unknown baseline ID or invalid CLI args.
 3  Candidate payload drift (PAYLOAD_DRIFT).
 4  Manifest / baseline integrity failure.
 5  Environment mismatch.
 6  Candidate missing or invalid.
 7  Identity or schema mismatch.
-8  Live legacy drift (not checked in operating-core mode).
+8  Live legacy drift.
 
 Import boundary
 ---------------
@@ -41,27 +44,26 @@ from pathlib import Path
 from typing import Any
 
 from finco_parity.canonical import canonical_json_bytes
-from finco_parity.comparison import (
-    ComparisonResult,
-    DriftKind,
-    compare_snapshots,
-    format_comparison_report,
+from finco_parity.comparison import format_comparison_report
+from finco_parity.dual_run import (
+    AggregateRunResult,
+    BaselineRunResult,
+    BaselineRunStatus,
+    run_candidate_provider,
+    _run_candidate_with_context,
 )
 from finco_parity.financial_engine_candidate import (
     CANDIDATE_RUN_PATH_ID,
-    get_candidate_snapshot,
+    FinancialEngineCandidateProvider,
 )
 from finco_parity.manifest import (
     ManifestIntegrityError,
     load_validated_manifest_context,
-    resolve_snapshot_path,
 )
 from finco_parity.profiles import (
     OPERATING_CORE_V1_PASS_WORDING,
     ComparisonProfile,
-    project_for_profile,
 )
-from finco_parity.schema import SnapshotValidationError, validate_snapshot
 from financial_engine.version import ENGINE_VERSION
 
 _PROFILE = ComparisonProfile.OPERATING_CORE_V1
@@ -69,103 +71,65 @@ _ALL_BASELINE_IDS = ("tuho", "oborovo", "generic_solar", "generic_wind")
 
 
 # ---------------------------------------------------------------------------
-# Exit-code mapping (mirrors compare_candidate.py)
+# Exit-code mapping (matches compare_candidate.py)
 # ---------------------------------------------------------------------------
 
-def _exit_code(drift_kind: DriftKind | None) -> int:
-    if drift_kind is None or drift_kind == DriftKind.IDENTICAL:
-        return 0
-    return {
-        DriftKind.VALUE_DRIFT: 3,
-        DriftKind.AVAILABILITY_DRIFT: 3,
-        DriftKind.STRUCTURAL_DRIFT: 3,
-        DriftKind.PROVENANCE_DRIFT: 3,
-        DriftKind.SCHEMA_DRIFT: 7,
-    }.get(drift_kind, 3)
+_STATUS_EXIT_CODE: dict[BaselineRunStatus, int] = {
+    BaselineRunStatus.PASS: 0,
+    BaselineRunStatus.EXECUTION_ERROR: 1,
+    BaselineRunStatus.UNKNOWN_BASELINE: 2,
+    BaselineRunStatus.PAYLOAD_DRIFT: 3,
+    BaselineRunStatus.MANIFEST_INTEGRITY_FAILURE: 4,
+    BaselineRunStatus.ENVIRONMENT_MISMATCH: 5,
+    BaselineRunStatus.CANDIDATE_MISSING: 6,
+    BaselineRunStatus.CANDIDATE_INVALID: 6,
+    BaselineRunStatus.IDENTITY_MISMATCH: 7,
+    BaselineRunStatus.SCHEMA_MISMATCH: 7,
+    BaselineRunStatus.LEGACY_DRIFT: 8,
+}
+
+
+def _exit_code(result: BaselineRunResult) -> int:
+    return _STATUS_EXIT_CODE.get(result.status, 1)
 
 
 # ---------------------------------------------------------------------------
 # Report helpers
 # ---------------------------------------------------------------------------
 
-def _write_report(path: Path, content: bytes | str) -> str | None:
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        if isinstance(content, bytes):
-            path.write_bytes(content)
-        else:
-            path.write_text(content, encoding="utf-8")
-        return None
-    except OSError as exc:
-        return f"Cannot write report to {path}: {exc}"
+def _write_report(path: Path, content: bytes | str) -> None:
+    """Write report to path. Raises OSError on failure (caller exits 1)."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if isinstance(content, bytes):
+        path.write_bytes(content)
+    else:
+        path.write_text(content, encoding="utf-8")
 
 
-def _format_text_report(
-    baseline_id: str,
-    result: ComparisonResult,
-    candidate: dict[str, Any],
-) -> str:
+def _format_text_report(baseline_id: str, result: BaselineRunResult) -> str:
     lines = [
         f"=== OPERATING_CORE_V1 Report: {baseline_id} ===",
         f"Profile:     {_PROFILE.value}",
         f"Engine:      {ENGINE_VERSION}",
         f"Run path:    {CANDIDATE_RUN_PATH_ID}",
         f"Status:      {result.status.value}",
-        f"Differences: {len(result.differences)}",
+        f"Differences: {result.difference_count}",
         "",
     ]
-    if result.status == DriftKind.IDENTICAL:
+    if result.status == BaselineRunStatus.PASS:
         lines.append(OPERATING_CORE_V1_PASS_WORDING)
-    else:
-        lines.append(format_comparison_report(result))
+    elif result.error_message:
+        lines.append(f"Error: {result.error_message}")
+    elif result.differences:
+        # Format using comparison report helper.
+        from finco_parity.comparison import ComparisonResult, DriftKind, Difference
+        # Build a minimal ComparisonResult from the BaselineRunResult differences.
+        fake_result = ComparisonResult(
+            status=DriftKind(result.comparison_status or "VALUE_DRIFT"),
+            differences=result.differences,
+        )
+        lines.append(format_comparison_report(fake_result))
     return "\n".join(lines)
-
-
-# ---------------------------------------------------------------------------
-# Per-baseline run
-# ---------------------------------------------------------------------------
-
-def _run_one_baseline(
-    baseline_id: str,
-    *,
-    committed_snapshot: dict[str, Any],
-    quiet: bool,
-) -> tuple[int, ComparisonResult | None, dict[str, Any] | None]:
-    """Run OPERATING_CORE_V1 check for one baseline. Returns (exit_code, result, candidate)."""
-    baseline_commit_sha: str = committed_snapshot.get("baseline_commit_sha", "")
-
-    if not quiet:
-        print(f"  [{baseline_id}] generating Phase 2A candidate ...", flush=True)
-
-    try:
-        candidate = get_candidate_snapshot(
-            baseline_id,
-            baseline_commit_sha=baseline_commit_sha,
-        )
-    except Exception as exc:
-        print(
-            f"  [{baseline_id}] CANDIDATE ERROR: {type(exc).__name__}: {exc}",
-            file=sys.stderr,
-        )
-        return 6, None, None
-
-    # Project both snapshots to OPERATING_CORE_V1 paths.
-    b_proj = project_for_profile(committed_snapshot, _PROFILE)
-    c_proj = project_for_profile(candidate, _PROFILE)
-
-    result = compare_snapshots(b_proj, c_proj, baseline_id=baseline_id)
-
-    if not quiet:
-        status_str = "PASS" if result.status == DriftKind.IDENTICAL else f"FAIL ({result.status.value})"
-        print(f"  [{baseline_id}] OPERATING_CORE_V1 {status_str}", flush=True)
-        if result.differences and not quiet:
-            for d in result.differences[:5]:
-                print(f"    {d.path}: {d.kind.value}", flush=True)
-            if len(result.differences) > 5:
-                print(f"    ... and {len(result.differences) - 5} more", flush=True)
-
-    exit_code = _exit_code(result.status if result.status != DriftKind.IDENTICAL else None)
-    return exit_code, result, candidate
 
 
 # ---------------------------------------------------------------------------
@@ -222,46 +186,51 @@ def main(argv: list[str] | None = None) -> int:
         print(f"UNEXPECTED ERROR loading manifest: {exc}", file=sys.stderr)
         return 1
 
+    provider = FinancialEngineCandidateProvider()
     overall_exit = 0
     json_records: list[dict[str, Any]] = []
     text_lines: list[str] = []
 
     for baseline_id in selected:
-        try:
-            entry = ctx.get_entry(baseline_id)
-        except KeyError:
+        if baseline_id not in ctx.baseline_ids:
             print(f"  [{baseline_id}] UNKNOWN BASELINE", file=sys.stderr)
             overall_exit = max(overall_exit, 2)
             continue
 
-        snapshot_path = resolve_snapshot_path(entry)
-        try:
-            committed_bytes = snapshot_path.read_bytes()
-            committed = json.loads(committed_bytes)
-        except (OSError, json.JSONDecodeError) as exc:
-            print(f"  [{baseline_id}] Cannot read committed snapshot: {exc}", file=sys.stderr)
-            overall_exit = max(overall_exit, 4)
-            continue
+        if not args.quiet:
+            print(f"  [{baseline_id}] generating Phase 2A candidate ...", flush=True)
 
-        code, result, candidate = _run_one_baseline(
+        # Provider is called exactly once per baseline by _run_candidate_with_context.
+        result = _run_candidate_with_context(
             baseline_id,
-            committed_snapshot=committed,
-            quiet=args.quiet,
+            provider,
+            ctx,
+            verify_legacy=True,
+            comparison_profile=_PROFILE,
         )
 
+        if not args.quiet:
+            status_str = "PASS" if result.status == BaselineRunStatus.PASS else f"FAIL ({result.status.value})"
+            print(f"  [{baseline_id}] OPERATING_CORE_V1 {status_str}", flush=True)
+            if result.differences:
+                for d in result.differences[:5]:
+                    print(f"    {d.path}: {d.kind.value}", flush=True)
+                if result.difference_count > 5:
+                    print(f"    ... and {result.difference_count - 5} more", flush=True)
+
+        code = _exit_code(result)
         if check and code != 0:
             overall_exit = max(overall_exit, code)
 
-        if result is not None:
-            json_records.append({
-                "baseline_id": baseline_id,
-                "profile": _PROFILE.value,
-                "engine_designation": ENGINE_VERSION,
-                "status": result.status.value,
-                "differences": [d.to_dict() for d in result.differences],
-            })
-            text_lines.append(_format_text_report(baseline_id, result, candidate or {}))
-            text_lines.append("")
+        json_records.append({
+            "baseline_id": baseline_id,
+            "profile": _PROFILE.value,
+            "engine_designation": ENGINE_VERSION,
+            "status": result.status.value,
+            "differences": [d.to_dict() for d in result.differences],
+        })
+        text_lines.append(_format_text_report(baseline_id, result))
+        text_lines.append("")
 
     # Summary
     if not args.quiet:
@@ -273,19 +242,23 @@ def main(argv: list[str] | None = None) -> int:
         else:
             print(f"Overall: FAIL (exit {overall_exit})")
 
-    # Optional report files
+    # Optional report files — OSError → exit 1
     if args.json_report and json_records:
-        err = _write_report(
-            args.json_report,
-            canonical_json_bytes({"results": json_records}),
-        )
-        if err:
-            print(err, file=sys.stderr)
+        try:
+            _write_report(
+                args.json_report,
+                canonical_json_bytes({"results": json_records}),
+            )
+        except OSError as exc:
+            print(f"Cannot write JSON report: {exc.strerror}", file=sys.stderr)
+            return 1
 
     if args.text_report and text_lines:
-        err = _write_report(args.text_report, "\n".join(text_lines))
-        if err:
-            print(err, file=sys.stderr)
+        try:
+            _write_report(args.text_report, "\n".join(text_lines))
+        except OSError as exc:
+            print(f"Cannot write text report: {exc.strerror}", file=sys.stderr)
+            return 1
 
     return overall_exit
 

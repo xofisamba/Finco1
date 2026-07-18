@@ -38,6 +38,7 @@ from finco_parity.candidate import (
     baseline_reference_from_manifest,
     validate_candidate_snapshot,
 )
+from finco_parity.profiles import ComparisonProfile, project_for_profile
 from finco_parity.comparison import (
     ComparisonResult,
     Difference,
@@ -226,10 +227,13 @@ def _run_candidate_with_context(
     verify_legacy: bool = True,
     max_diffs: int | None = None,
     verbose: bool = False,
+    comparison_profile: ComparisonProfile = ComparisonProfile.FULL,
 ) -> BaselineRunResult:
     """Internal: run one baseline comparison using an already-validated context.
 
     Does NOT reload the manifest; uses the provided ValidatedManifestContext.
+    comparison_profile alters payload projection only — not identity, schema, or
+    legacy verification.
     """
     from finco_parity.generate_baselines import check_generation_environment
 
@@ -394,9 +398,15 @@ def _run_candidate_with_context(
             candidate_snapshot=candidate_snapshot,
         )
 
-    # Project to parity sections.
-    committed_projected = _project_for_comparison(committed_snapshot)
-    candidate_projected = _project_for_comparison(candidate_snapshot)
+    # Project to parity sections using the comparison profile.
+    # FULL: standard _PARITY_SECTIONS projection (Phase 1C behaviour unchanged).
+    # OPERATING_CORE_V1: project_for_profile narrows to Phase 2A paths only.
+    if comparison_profile is ComparisonProfile.FULL:
+        committed_projected = _project_for_comparison(committed_snapshot)
+        candidate_projected = _project_for_comparison(candidate_snapshot)
+    else:
+        committed_projected = project_for_profile(committed_snapshot, comparison_profile)
+        candidate_projected = project_for_profile(candidate_snapshot, comparison_profile)
 
     # Compare.
     cmp_result = compare_snapshots(committed_projected, candidate_projected, baseline_id)
@@ -434,8 +444,13 @@ def run_candidate_provider(
     verify_legacy: bool = True,
     max_diffs: int | None = None,
     verbose: bool = False,
+    comparison_profile: ComparisonProfile = ComparisonProfile.FULL,
 ) -> BaselineRunResult:
-    """Orchestrate one baseline comparison. Loads manifest exactly once."""
+    """Orchestrate one baseline comparison. Loads manifest exactly once.
+
+    comparison_profile alters payload projection only — not identity, schema, or
+    legacy verification.
+    """
     if max_diffs is not None and max_diffs < 0:
         raise ValueError(f"max_diffs must be >= 0, got {max_diffs!r}")
 
@@ -456,6 +471,7 @@ def run_candidate_provider(
         verify_legacy=verify_legacy,
         max_diffs=max_diffs,
         verbose=verbose,
+        comparison_profile=comparison_profile,
     )
 
 

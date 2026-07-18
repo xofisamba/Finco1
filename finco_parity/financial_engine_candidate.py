@@ -73,6 +73,29 @@ class CleanEngineCandidate:
     engine_version: str
 
 
+class FinancialEngineCandidateProvider:
+    """CandidateSnapshotProvider implementation for the Phase 2A clean engine.
+
+    Satisfies the finco_parity.candidate.CandidateSnapshotProvider protocol.
+    Called exactly once per baseline by the Phase 1C dual-run orchestrator.
+    """
+
+    def capture_snapshot(
+        self,
+        baseline_id: str,
+        reference: Any,  # BaselineReference — typed loosely to avoid circular import
+    ) -> dict[str, Any]:
+        """Generate and return a Phase 2A candidate snapshot.
+
+        Uses the committed baseline_commit_sha from the reference to stamp the
+        candidate snapshot identity, enabling identity validation to pass.
+        """
+        return generate_candidate_snapshot(
+            baseline_id,
+            baseline_commit_sha=reference.baseline_commit_sha,
+        )
+
+
 def _load_project_inputs(baseline_id: str) -> Any:
     """Load the canonical ProjectInputs for the given baseline via its factory."""
     entry = _BASELINE_REGISTRY[baseline_id]
