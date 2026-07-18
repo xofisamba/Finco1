@@ -137,25 +137,34 @@ def validate_operating_model_input(
             issues.append(_err("OPEX002", f"opex.items[{i}].annual_inflation",
                                f"annual_inflation for item {item.name!r} is not finite"))
 
-    # Depreciation — period_count/cod_period only validated when using legacy AssetInput path.
-    if dep.assets and dep.period_count <= 0:
-        issues.append(_err("DEP001", "depreciation.period_count",
-                           f"period_count must be positive, got {dep.period_count}"))
+    # Depreciation
+    if dep.financial_cost_useful_life_years <= 0:
+        issues.append(_err("DEP004", "depreciation.financial_cost_useful_life_years",
+                           f"financial_cost_useful_life_years must be positive, "
+                           f"got {dep.financial_cost_useful_life_years}"))
 
-    if dep.assets and dep.cod_period < 0:
-        issues.append(_err("DEP002", "depreciation.cod_period",
-                           f"cod_period must be non-negative, got {dep.cod_period}"))
+    _RECOGNIZED_ASSET_CLASSES = frozenset({
+        "solar_panels", "wind_turbines", "bess_cells", "bess_pe",
+        "civil_grid", "soft_costs", "financial_costs",
+    })
 
-    for i, asset in enumerate(dep.assets):
-        if not _is_finite(asset.gross_asset_basis_keur) or asset.gross_asset_basis_keur < 0:
-            issues.append(_err("DEP003", f"depreciation.assets[{i}].gross_asset_basis_keur",
-                               f"gross_asset_basis_keur for {asset.asset_class!r} must be finite and non-negative"))
-        if asset.book_useful_life_years <= 0:
-            issues.append(_err("DEP004", f"depreciation.assets[{i}].book_useful_life_years",
-                               f"book_useful_life_years for {asset.asset_class!r} must be positive"))
-        if asset.tax_useful_life_years <= 0:
-            issues.append(_err("DEP005", f"depreciation.assets[{i}].tax_useful_life_years",
-                               f"tax_useful_life_years for {asset.asset_class!r} must be positive"))
+    for i, item in enumerate(dep.capex_items_for_depreciation):
+        if not _is_finite(item.amount_keur):
+            issues.append(_err("DEP001", f"depreciation.capex_items_for_depreciation[{i}].amount_keur",
+                               f"amount_keur for item {item.name!r} must be finite, got {item.amount_keur}"))
+        elif item.amount_keur < 0:
+            issues.append(_err("DEP001", f"depreciation.capex_items_for_depreciation[{i}].amount_keur",
+                               f"amount_keur for item {item.name!r} must be non-negative, got {item.amount_keur}"))
+
+        if item.asset_class_code not in _RECOGNIZED_ASSET_CLASSES:
+            issues.append(_err("DEP002", f"depreciation.capex_items_for_depreciation[{i}].asset_class_code",
+                               f"asset_class_code {item.asset_class_code!r} is not recognized; "
+                               f"valid: {sorted(_RECOGNIZED_ASSET_CLASSES)}"))
+
+        if item.useful_life_override is not None and item.useful_life_override <= 0:
+            issues.append(_err("DEP003", f"depreciation.capex_items_for_depreciation[{i}].useful_life_override",
+                               f"useful_life_override for item {item.name!r} must be positive "
+                               f"or None, got {item.useful_life_override}"))
 
     return tuple(issues)
 

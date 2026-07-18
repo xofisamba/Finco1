@@ -507,6 +507,124 @@ def compare_candidate_snapshot(
     )
 
 
+# ---------------------------------------------------------------------------
+# Shared aggregate exit-code mapping (single source of truth)
+# ---------------------------------------------------------------------------
+
+_STATUS_EXIT_CODE: dict[BaselineRunStatus, int] = {
+    BaselineRunStatus.PASS: 0,
+    BaselineRunStatus.EXECUTION_ERROR: 1,
+    BaselineRunStatus.UNKNOWN_BASELINE: 2,
+    BaselineRunStatus.PAYLOAD_DRIFT: 3,
+    BaselineRunStatus.MANIFEST_INTEGRITY_FAILURE: 4,
+    BaselineRunStatus.ENVIRONMENT_MISMATCH: 5,
+    BaselineRunStatus.CANDIDATE_MISSING: 6,
+    BaselineRunStatus.CANDIDATE_INVALID: 6,
+    BaselineRunStatus.IDENTITY_MISMATCH: 7,
+    BaselineRunStatus.SCHEMA_MISMATCH: 7,
+    BaselineRunStatus.LEGACY_DRIFT: 8,
+}
+
+
+def exit_code_for_aggregate(result: AggregateRunResult) -> int:
+    """Return the CLI exit code for an AggregateRunResult.
+
+    Derived from overall_status using _AGGREGATE_SEVERITY ordering.
+    Shared by all Phase 1C and Phase 2A CLIs.
+    """
+    return _STATUS_EXIT_CODE.get(result.overall_status, 1)
+
+
+def _build_aggregate(
+    selected: list[str],
+    results: list[BaselineRunResult],
+) -> AggregateRunResult:
+    """Assemble an AggregateRunResult from a list of per-baseline results.
+
+    overall_status uses _AGGREGATE_SEVERITY; does not aggregate by exit-code order.
+    """
+    passed = tuple(r.baseline_id for r in results if r.status == BaselineRunStatus.PASS)
+    failed = tuple(r.baseline_id for r in results if r.status != BaselineRunStatus.PASS)
+    if not failed:
+        overall = BaselineRunStatus.PASS
+    else:
+        overall = max(
+            (r.status for r in results if r.status != BaselineRunStatus.PASS),
+            key=lambda s: _AGGREGATE_SEVERITY.get(s, 0),
+        )
+    return AggregateRunResult(
+        selected_baselines=tuple(selected),
+        passed_baselines=passed,
+        failed_baselines=failed,
+        overall_status=overall,
+        baseline_results=tuple(results),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Public provider-aggregate API
+# ---------------------------------------------------------------------------
+
+def compare_candidate_provider(
+    provider: CandidateSnapshotProvider,
+    *,
+    baseline_ids: "Sequence[str] | None" = None,
+    comparison_profile: ComparisonProfile = ComparisonProfile.FULL,
+    verify_legacy: bool = True,
+    max_diffs: int | None = None,
+    verbose: bool = False,
+) -> AggregateRunResult:
+    """Orchestrate comparison for all (or selected) baselines using a provider.
+
+    1. Loads one ValidatedManifestContext.
+    2. Validates selected IDs.
+    3. Preserves manifest order.
+    4. Reuses the same context for every baseline.
+    5. Calls the provider exactly once per selected baseline.
+    6. Uses _run_candidate_with_context() internally.
+    7. Selects overall_status using _AGGREGATE_SEVERITY.
+    8. Returns AggregateRunResult.
+
+    ComparisonProfile.FULL is the default (Phase 1C behaviour unchanged).
+    """
+    from typing import Sequence as _Sequence
+
+    if max_diffs is not None and max_diffs < 0:
+        raise ValueError(f"max_diffs must be >= 0, got {max_diffs!r}")
+
+    try:
+        ctx = load_validated_manifest_context()
+    except ManifestIntegrityError:
+        raise
+
+    all_ids = list(ctx.baseline_ids)
+
+    if baseline_ids is not None:
+        unknown = [bid for bid in baseline_ids if bid not in all_ids]
+        if unknown:
+            raise ValueError(
+                f"Unknown baseline_id(s): {unknown!r}. Valid IDs: {all_ids!r}"
+            )
+        selected = [bid for bid in all_ids if bid in set(baseline_ids)]
+    else:
+        selected = list(all_ids)
+
+    results: list[BaselineRunResult] = []
+    for bid in selected:
+        result = _run_candidate_with_context(
+            bid,
+            provider,
+            ctx,
+            verify_legacy=verify_legacy,
+            max_diffs=max_diffs,
+            verbose=verbose,
+            comparison_profile=comparison_profile,
+        )
+        results.append(result)
+
+    return _build_aggregate(selected, results)
+
+
 def compare_candidate_directory(
     candidate_dir: Path,
     baseline_ids: list[str] | None = None,
@@ -571,20 +689,4 @@ def compare_candidate_directory(
         if verbose:
             print(f"  {bid}: {result.status.value}", file=sys.stderr, flush=True)
 
-    passed = tuple(r.baseline_id for r in results if r.status == BaselineRunStatus.PASS)
-    failed = tuple(r.baseline_id for r in results if r.status != BaselineRunStatus.PASS)
-    if not failed:
-        overall = BaselineRunStatus.PASS
-    else:
-        overall = max(
-            (r.status for r in results if r.status != BaselineRunStatus.PASS),
-            key=lambda s: _AGGREGATE_SEVERITY.get(s, 0),
-        )
-
-    return AggregateRunResult(
-        selected_baselines=tuple(selected),
-        passed_baselines=passed,
-        failed_baselines=failed,
-        overall_status=overall,
-        baseline_results=tuple(results),
-    )
+    return _build_aggregate(selected, results)

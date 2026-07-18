@@ -22,6 +22,7 @@ if TYPE_CHECKING:
 class OperatingPeriodResult:
     """Immutable result for one period in the operating core."""
     period_index: int
+    period_start: date
     period_end: date
     year_index: float
     period_in_year: float

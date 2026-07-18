@@ -216,7 +216,7 @@ def _compute_depreciation(inputs: OperatingModelInput, periods_meta: list) -> tu
     annual_schedule = build_depreciation_schedule(
         capex_items=capex_items,
         horizon_years=inputs.calendar.horizon_years,
-        senior_tenor_years=dep.senior_tenor_years,
+        senior_tenor_years=dep.financial_cost_useful_life_years,
     )
 
     dep_by_idx = depreciation_per_period(annual_schedule, periods_meta)
@@ -270,6 +270,7 @@ def run_operating_model(inputs: OperatingModelInput) -> ProjectModelResult:
         idx = p.index
         period_results.append(OperatingPeriodResult(
             period_index=idx,
+            period_start=p.start_date,
             period_end=p.end_date,
             year_index=float(p.year_index),
             period_in_year=float(p.period_in_year),

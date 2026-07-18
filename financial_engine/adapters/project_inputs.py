@@ -2,6 +2,10 @@
 
 One generic mapping for all projects. No project-code dispatch, no project-name
 references, no factory invocation, no file loading.
+
+Depreciation metadata is obtained generically from ProjectInputs.capex.capex_items().
+The financing tenor (senior_tenor_years) is mapped explicitly to
+financial_cost_useful_life_years so the clean engine carries no financing dependency.
 """
 from __future__ import annotations
 
@@ -29,15 +33,12 @@ def from_project_inputs(
     *,
     source_id: str = "",
     baseline_commit_sha: str = "",
-    # Legacy params kept for test backward compat — ignored by orchestrator.
-    depreciation_period_count: int = 0,
-    depreciation_cod_period: int = 0,
 ) -> OperatingModelInput:
     """Adapt a canonical ProjectInputs to a clean OperatingModelInput.
 
-    Depreciation asset metadata is not carried in ProjectInputs; callers must
-    supply `depreciation_period_count` and `depreciation_cod_period` directly.
-    Asset-class information must be injected separately if needed.
+    Maps capex items generically from inputs.capex.capex_items().
+    Maps financing.senior_tenor_years → depreciation.financial_cost_useful_life_years
+    explicitly (no silent default).
     """
     info = inputs.info
     tech = inputs.technical
@@ -108,6 +109,10 @@ def from_project_inputs(
         for item in inputs.capex.capex_items()
     )
 
+    # Explicit mapping of financing tenor → depreciation driver.
+    # No silent default: if the field is absent the AttributeError surfaces immediately.
+    financial_cost_useful_life_years: int = inputs.financing.senior_tenor_years
+
     return OperatingModelInput(
         calendar=calendar,
         technical=technical,
@@ -115,7 +120,7 @@ def from_project_inputs(
         opex=OpexInput(items=opex_items),
         depreciation=DepreciationInput(
             capex_items_for_depreciation=capex_items_for_dep,
-            senior_tenor_years=getattr(inputs.financing, "senior_tenor_years", 14),
+            financial_cost_useful_life_years=financial_cost_useful_life_years,
         ),
         source=InputProvenance(
             source_id=source_id,

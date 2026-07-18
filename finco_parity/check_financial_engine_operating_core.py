@@ -1,8 +1,12 @@
 """
 finco_parity.check_financial_engine_operating_core — Phase 2A clean-engine parity CLI.
 
-Thin wrapper around Phase 1C dual-run orchestration with OPERATING_CORE_V1 profile.
-Uses FinancialEngineCandidateProvider (exactly once per baseline) via run_candidate_provider.
+Thin wrapper: parse args → instantiate FinancialEngineCandidateProvider →
+call compare_candidate_provider() → format AggregateRunResult → return shared exit code.
+
+Does NOT implement manifest iteration, per-baseline severity aggregation,
+identity routing, schema routing, legacy routing, environment routing,
+or status-to-exit mapping.
 
 Usage::
 
@@ -37,29 +41,23 @@ It must NOT import from app.*, domain.*, finco_core.*, main_web, main_api.
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 import traceback
 from pathlib import Path
 from typing import Any
 
 from finco_parity.canonical import canonical_json_bytes
-from finco_parity.comparison import format_comparison_report
 from finco_parity.dual_run import (
     AggregateRunResult,
-    BaselineRunResult,
     BaselineRunStatus,
-    run_candidate_provider,
-    _run_candidate_with_context,
+    compare_candidate_provider,
+    exit_code_for_aggregate,
 )
 from finco_parity.financial_engine_candidate import (
     CANDIDATE_RUN_PATH_ID,
     FinancialEngineCandidateProvider,
 )
-from finco_parity.manifest import (
-    ManifestIntegrityError,
-    load_validated_manifest_context,
-)
+from finco_parity.manifest import ManifestIntegrityError
 from finco_parity.profiles import (
     OPERATING_CORE_V1_PASS_WORDING,
     ComparisonProfile,
@@ -68,29 +66,6 @@ from financial_engine.version import ENGINE_VERSION
 
 _PROFILE = ComparisonProfile.OPERATING_CORE_V1
 _ALL_BASELINE_IDS = ("tuho", "oborovo", "generic_solar", "generic_wind")
-
-
-# ---------------------------------------------------------------------------
-# Exit-code mapping (matches compare_candidate.py)
-# ---------------------------------------------------------------------------
-
-_STATUS_EXIT_CODE: dict[BaselineRunStatus, int] = {
-    BaselineRunStatus.PASS: 0,
-    BaselineRunStatus.EXECUTION_ERROR: 1,
-    BaselineRunStatus.UNKNOWN_BASELINE: 2,
-    BaselineRunStatus.PAYLOAD_DRIFT: 3,
-    BaselineRunStatus.MANIFEST_INTEGRITY_FAILURE: 4,
-    BaselineRunStatus.ENVIRONMENT_MISMATCH: 5,
-    BaselineRunStatus.CANDIDATE_MISSING: 6,
-    BaselineRunStatus.CANDIDATE_INVALID: 6,
-    BaselineRunStatus.IDENTITY_MISMATCH: 7,
-    BaselineRunStatus.SCHEMA_MISMATCH: 7,
-    BaselineRunStatus.LEGACY_DRIFT: 8,
-}
-
-
-def _exit_code(result: BaselineRunResult) -> int:
-    return _STATUS_EXIT_CODE.get(result.status, 1)
 
 
 # ---------------------------------------------------------------------------
@@ -103,32 +78,34 @@ def _write_report(path: Path, content: bytes | str) -> None:
     if isinstance(content, bytes):
         path.write_bytes(content)
     else:
-        path.write_text(content, encoding="utf-8")
+        text = content.rstrip("\n") + "\n"
+        path.write_text(text, encoding="utf-8")
 
 
-def _format_text_report(baseline_id: str, result: BaselineRunResult) -> str:
+def _format_text_report(aggregate: AggregateRunResult) -> str:
     lines = [
-        f"=== OPERATING_CORE_V1 Report: {baseline_id} ===",
-        f"Profile:     {_PROFILE.value}",
-        f"Engine:      {ENGINE_VERSION}",
-        f"Run path:    {CANDIDATE_RUN_PATH_ID}",
-        f"Status:      {result.status.value}",
-        f"Differences: {result.difference_count}",
+        f"=== OPERATING_CORE_V1 Report ===",
+        f"Profile:    {_PROFILE.value}",
+        f"Engine:     {ENGINE_VERSION}",
+        f"Run path:   {CANDIDATE_RUN_PATH_ID}",
+        f"Status:     {aggregate.overall_status.value}",
+        f"Selected:   {len(aggregate.selected_baselines)}",
+        f"Passed:     {len(aggregate.passed_baselines)}",
+        f"Failed:     {len(aggregate.failed_baselines)}",
         "",
     ]
-    if result.status == BaselineRunStatus.PASS:
+    for result in aggregate.baseline_results:
+        lines.append(f"  [{result.baseline_id}] {result.status.value} "
+                     f"({result.difference_count} diffs)")
+        if result.error_message:
+            lines.append(f"    Error: {result.error_message}")
+        for d in result.differences[:5]:
+            lines.append(f"    {d.path}: {d.kind.value}")
+        if result.difference_count > 5:
+            lines.append(f"    ... and {result.difference_count - 5} more")
+    lines.append("")
+    if aggregate.overall_status == BaselineRunStatus.PASS:
         lines.append(OPERATING_CORE_V1_PASS_WORDING)
-    elif result.error_message:
-        lines.append(f"Error: {result.error_message}")
-    elif result.differences:
-        # Format using comparison report helper.
-        from finco_parity.comparison import ComparisonResult, DriftKind, Difference
-        # Build a minimal ComparisonResult from the BaselineRunResult differences.
-        fake_result = ComparisonResult(
-            status=DriftKind(result.comparison_status or "VALUE_DRIFT"),
-            differences=result.differences,
-        )
-        lines.append(format_comparison_report(fake_result))
     return "\n".join(lines)
 
 
@@ -150,7 +127,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--check",
         action="store_true",
-        help="Exit non-zero on any drift (default when --all).",
+        help="Exit non-zero on any drift (implied by --all).",
     )
     parser.add_argument(
         "--json-report",
@@ -167,83 +144,62 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--quiet", "-q", action="store_true", help="Suppress progress output.")
 
     args = parser.parse_args(argv)
-    check: bool = args.check or args.all
-
-    selected = list(_ALL_BASELINE_IDS) if args.all else [args.baseline]
+    # --all implies zero tolerance; --check forces verify_legacy=True.
+    verify_legacy = True
+    selected_ids = list(_ALL_BASELINE_IDS) if args.all else [args.baseline]
 
     if not args.quiet:
         print(f"Phase 2A OPERATING_CORE_V1 parity check — engine: {ENGINE_VERSION}")
         print(f"Profile: {_PROFILE.value}")
-        print(f"Baselines: {', '.join(selected)}")
+        print(f"Baselines: {', '.join(selected_ids)}")
         print()
 
     try:
-        ctx = load_validated_manifest_context()
+        aggregate = compare_candidate_provider(
+            FinancialEngineCandidateProvider(),
+            baseline_ids=selected_ids,
+            comparison_profile=_PROFILE,
+            verify_legacy=verify_legacy,
+        )
     except ManifestIntegrityError as exc:
         print(f"MANIFEST INTEGRITY FAILURE: {exc}", file=sys.stderr)
         return 4
     except Exception as exc:
-        print(f"UNEXPECTED ERROR loading manifest: {exc}", file=sys.stderr)
+        print(f"UNEXPECTED ERROR: {exc}", file=sys.stderr)
         return 1
 
-    provider = FinancialEngineCandidateProvider()
-    overall_exit = 0
-    json_records: list[dict[str, Any]] = []
-    text_lines: list[str] = []
-
-    for baseline_id in selected:
-        if baseline_id not in ctx.baseline_ids:
-            print(f"  [{baseline_id}] UNKNOWN BASELINE", file=sys.stderr)
-            overall_exit = max(overall_exit, 2)
-            continue
-
-        if not args.quiet:
-            print(f"  [{baseline_id}] generating Phase 2A candidate ...", flush=True)
-
-        # Provider is called exactly once per baseline by _run_candidate_with_context.
-        result = _run_candidate_with_context(
-            baseline_id,
-            provider,
-            ctx,
-            verify_legacy=True,
-            comparison_profile=_PROFILE,
-        )
-
-        if not args.quiet:
+    # Print per-baseline results.
+    if not args.quiet:
+        for result in aggregate.baseline_results:
             status_str = "PASS" if result.status == BaselineRunStatus.PASS else f"FAIL ({result.status.value})"
-            print(f"  [{baseline_id}] OPERATING_CORE_V1 {status_str}", flush=True)
+            print(f"  [{result.baseline_id}] OPERATING_CORE_V1 {status_str}", flush=True)
             if result.differences:
                 for d in result.differences[:5]:
                     print(f"    {d.path}: {d.kind.value}", flush=True)
                 if result.difference_count > 5:
                     print(f"    ... and {result.difference_count - 5} more", flush=True)
-
-        code = _exit_code(result)
-        if check and code != 0:
-            overall_exit = max(overall_exit, code)
-
-        json_records.append({
-            "baseline_id": baseline_id,
-            "profile": _PROFILE.value,
-            "engine_designation": ENGINE_VERSION,
-            "status": result.status.value,
-            "differences": [d.to_dict() for d in result.differences],
-        })
-        text_lines.append(_format_text_report(baseline_id, result))
-        text_lines.append("")
-
-    # Summary
-    if not args.quiet:
         print()
-        if overall_exit == 0:
-            print(f"Overall: PASS ({len(selected)} baseline(s))")
+        if aggregate.overall_status == BaselineRunStatus.PASS:
+            print(f"Overall: PASS ({len(aggregate.selected_baselines)} baseline(s))")
             print()
             print(OPERATING_CORE_V1_PASS_WORDING)
         else:
-            print(f"Overall: FAIL (exit {overall_exit})")
+            code = exit_code_for_aggregate(aggregate)
+            print(f"Overall: FAIL (exit {code})")
 
-    # Optional report files — OSError → exit 1
-    if args.json_report and json_records:
+    # Optional report files — OSError → exit 1 (no absolute paths in errors).
+    json_records: list[dict[str, Any]] = [
+        {
+            "baseline_id": r.baseline_id,
+            "profile": _PROFILE.value,
+            "engine_designation": ENGINE_VERSION,
+            "status": r.status.value,
+            "differences": [d.to_dict() for d in r.differences],
+        }
+        for r in aggregate.baseline_results
+    ]
+
+    if args.json_report:
         try:
             _write_report(
                 args.json_report,
@@ -253,14 +209,14 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Cannot write JSON report: {exc.strerror}", file=sys.stderr)
             return 1
 
-    if args.text_report and text_lines:
+    if args.text_report:
         try:
-            _write_report(args.text_report, "\n".join(text_lines))
+            _write_report(args.text_report, _format_text_report(aggregate))
         except OSError as exc:
             print(f"Cannot write text report: {exc.strerror}", file=sys.stderr)
             return 1
 
-    return overall_exit
+    return exit_code_for_aggregate(aggregate)
 
 
 if __name__ == "__main__":
