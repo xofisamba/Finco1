@@ -2,9 +2,10 @@
 tests/test_phase2a_orchestrator.py — Phase 2A orchestrator and operating-schedule parity tests.
 
 Covers:
-- Four-baseline OPERATING_CORE_V1 PASS (production, revenue, OPEX, EBITDA)
-- Period-grid parity (date, index, year_index, period_in_year, is_operation)
+- Four-baseline OPERATING_CORE_V1 PASS (production, revenue, OPEX, EBITDA, book/tax depreciation)
+- Period-grid parity (date, start_date, index, year_index, period_in_year, is_operation)
 - Negative parity tests (one-ULP changes → PAYLOAD_DRIFT)
+- Identity/schema/legacy/environment/mixed-status exit-code tests via injected providers
 - Source immutability during orchestration
 """
 from __future__ import annotations
@@ -21,6 +22,13 @@ import pytest
 from financial_engine.adapters.project_inputs import from_project_inputs
 from financial_engine.orchestrator import run_operating_model
 from finco_parity.comparison import DriftKind, compare_snapshots
+from finco_parity.dual_run import (
+    AggregateRunResult,
+    BaselineRunResult,
+    BaselineRunStatus,
+    compare_candidate_provider,
+    exit_code_for_aggregate,
+)
 from finco_parity.financial_engine_candidate import get_candidate_snapshot
 from finco_parity.profiles import ComparisonProfile, project_for_profile
 
@@ -51,8 +59,6 @@ def _get_adapted_inputs(name: str):
     p = _get_project_inputs(name)
     return from_project_inputs(
         p,
-        depreciation_period_count=1,
-        depreciation_cod_period=0,
         source_id=_FACTORY_MAP[name],
         baseline_commit_sha=_BASELINE_COMMIT_SHA,
     )
@@ -84,7 +90,7 @@ def test_operating_core_v1_pass(baseline_id: str):
 
 @pytest.mark.parametrize("baseline_id", _ALL_BASELINES)
 def test_period_grid_parity(baseline_id: str):
-    """Period indices, dates, year_index, period_in_year, is_operation must match exactly."""
+    """Period indices, dates, year_index, period_in_year, is_operation, start_date must match."""
     baseline = _load_baseline(baseline_id)
     adapted = _get_adapted_inputs(baseline_id)
     result = run_operating_model(adapted)
@@ -102,6 +108,12 @@ def test_period_grid_parity(baseline_id: str):
         assert my_p.year_index == bl_p["year_index"], f"[{i}] year_index"
         assert my_p.period_in_year == bl_p["period_in_year"], f"[{i}] period_in_year"
         assert my_p.is_operation == bl_p["is_operation"], f"[{i}] is_operation"
+        # start_date: baseline may store null for construction-phase periods;
+        # operating periods always have a start_date in the clean engine.
+        if bl_p.get("start_date") is not None:
+            assert str(my_p.period_start) == bl_p["start_date"], f"[{i}] start_date"
+        else:
+            assert my_p.period_start is not None, f"[{i}] period_start must not be None"
 
 
 # ---------------------------------------------------------------------------
@@ -261,7 +273,6 @@ def test_period_count_change_causes_structural_drift():
     candidate = get_candidate_snapshot("tuho", baseline_commit_sha=_BASELINE_COMMIT_SHA)
     candidate = dict(candidate)
     candidate["period_grid"] = candidate["period_grid"][:-1]
-    # operating_schedules must match; truncate them too (raw structural test)
     os_ = {k: v[:-1] if isinstance(v, list) else v
            for k, v in candidate["operating_schedules"].items()}
     candidate["operating_schedules"] = os_
@@ -269,25 +280,112 @@ def test_period_count_change_causes_structural_drift():
     assert status != DriftKind.IDENTICAL
 
 
+# ---------------------------------------------------------------------------
+# Identity / schema / legacy / environment orchestration tests via injected providers
+# ---------------------------------------------------------------------------
+
+class _FixedSnapshotProvider:
+    """Provider that always returns the given snapshot dict."""
+    def __init__(self, snapshot: dict[str, Any]) -> None:
+        self._snapshot = snapshot
+
+    def capture_snapshot(self, baseline_id: str, reference: Any) -> dict[str, Any]:
+        return dict(self._snapshot)
+
+
+class _RaisingProvider:
+    """Provider that raises on capture."""
+    def __init__(self, exc: Exception) -> None:
+        self._exc = exc
+
+    def capture_snapshot(self, baseline_id: str, reference: Any) -> dict[str, Any]:
+        raise self._exc
+
+
+def _good_snapshot() -> dict[str, Any]:
+    return get_candidate_snapshot("tuho", baseline_commit_sha=_BASELINE_COMMIT_SHA)
+
+
+def test_compare_candidate_provider_pass_all_baselines():
+    """compare_candidate_provider with the real provider passes all four baselines."""
+    from finco_parity.financial_engine_candidate import FinancialEngineCandidateProvider
+    aggregate = compare_candidate_provider(
+        FinancialEngineCandidateProvider(),
+        baseline_ids=_ALL_BASELINES,
+        comparison_profile=_PROFILE,
+        verify_legacy=False,
+    )
+    assert aggregate.overall_status == BaselineRunStatus.PASS
+    assert exit_code_for_aggregate(aggregate) == 0
+
+
 def test_candidate_sha_change_causes_identity_mismatch():
     """A changed baseline_commit_sha in the candidate must surface as identity drift."""
     committed = _load_baseline("tuho")
     candidate = get_candidate_snapshot("tuho", baseline_commit_sha="a" * 40)
-    # Compare identity fields directly (not projected, as OPERATING_CORE_V1 strips them).
-    # The baseline_commit_sha is not in the OPERATING_CORE_V1 projection;
-    # confirm it IS different at the full snapshot level.
     assert candidate["baseline_commit_sha"] != committed["baseline_commit_sha"]
 
 
 def test_candidate_schema_version_change_causes_schema_drift():
     """A schema_version change must surface as SCHEMA_DRIFT in a full comparison."""
-    from finco_parity.comparison import compare_snapshots as _cmp
     committed = _load_baseline("tuho")
     candidate = get_candidate_snapshot("tuho", baseline_commit_sha=_BASELINE_COMMIT_SHA)
     candidate = dict(candidate)
     candidate["schema_version"] = "99.0.0"
-    result = _cmp(committed, candidate, baseline_id="tuho")
+    result = compare_snapshots(committed, candidate, baseline_id="tuho")
     assert result.status == DriftKind.SCHEMA_DRIFT
+
+
+def test_execution_error_provider_yields_exit_1():
+    """A provider that raises an unexpected exception → EXECUTION_ERROR → exit 1."""
+    provider = _RaisingProvider(RuntimeError("boom"))
+    aggregate = compare_candidate_provider(
+        provider,
+        baseline_ids=["tuho"],
+        comparison_profile=_PROFILE,
+        verify_legacy=False,
+    )
+    assert aggregate.overall_status == BaselineRunStatus.EXECUTION_ERROR
+    assert exit_code_for_aggregate(aggregate) == 1
+
+
+def test_payload_drift_yields_exit_3():
+    """One-ULP change in schedule → PAYLOAD_DRIFT → exit 3."""
+    mutated = _candidate_with_schedule_mutation("tuho", "production_mwh")
+    provider = _FixedSnapshotProvider(mutated)
+    aggregate = compare_candidate_provider(
+        provider,
+        baseline_ids=["tuho"],
+        comparison_profile=_PROFILE,
+        verify_legacy=False,
+    )
+    assert aggregate.overall_status == BaselineRunStatus.PAYLOAD_DRIFT
+    assert exit_code_for_aggregate(aggregate) == 3
+
+
+def test_mixed_status_execution_error_dominates_payload_drift():
+    """EXECUTION_ERROR + PAYLOAD_DRIFT → overall EXECUTION_ERROR → exit 1."""
+
+    class _MixedProvider:
+        def __init__(self) -> None:
+            self._call = 0
+
+        def capture_snapshot(self, baseline_id: str, reference: Any) -> dict[str, Any]:
+            self._call += 1
+            if self._call == 1:
+                raise RuntimeError("first baseline explodes")
+            # Second baseline returns a mutated (drifted) snapshot.
+            return _candidate_with_schedule_mutation(baseline_id, "production_mwh")
+
+    provider = _MixedProvider()
+    aggregate = compare_candidate_provider(
+        provider,
+        baseline_ids=["tuho", "oborovo"],
+        comparison_profile=_PROFILE,
+        verify_legacy=False,
+    )
+    assert aggregate.overall_status == BaselineRunStatus.EXECUTION_ERROR
+    assert exit_code_for_aggregate(aggregate) == 1
 
 
 # ---------------------------------------------------------------------------

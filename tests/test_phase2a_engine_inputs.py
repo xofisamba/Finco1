@@ -17,8 +17,8 @@ from datetime import date
 import pytest
 
 from financial_engine.inputs import (
-    AssetInput,
     CalendarInput,
+    CapexItemForDep,
     DepreciationInput,
     InputProvenance,
     OpexInput,
@@ -77,7 +77,10 @@ def _minimal_valid_inputs(**overrides) -> OperatingModelInput:
             percentage_of_opex=0.0,
         ),
     ))
-    dep = DepreciationInput(assets=(), period_count=41, cod_period=2)
+    dep = DepreciationInput(
+        capex_items_for_depreciation=(),
+        financial_cost_useful_life_years=14,
+    )
     src = InputProvenance(source_id="test", baseline_commit_sha="abc")
     base = OperatingModelInput(
         calendar=cal, technical=tech, revenue=rev,
@@ -119,9 +122,9 @@ def test_opex_items_are_tuples():
     assert isinstance(inputs.opex.items, tuple)
 
 
-def test_depreciation_assets_are_tuples():
+def test_depreciation_capex_items_are_tuples():
     inputs = _minimal_valid_inputs()
-    assert isinstance(inputs.depreciation.assets, tuple)
+    assert isinstance(inputs.depreciation.capex_items_for_depreciation, tuple)
 
 
 def test_market_prices_curve_is_tuple():
@@ -143,11 +146,7 @@ def test_adapter_does_not_mutate_project_inputs():
     original_tariff = original.revenue.ppa_base_tariff
     original_opex_count = len(original.opex)
 
-    from_project_inputs(
-        original,
-        depreciation_period_count=61,
-        depreciation_cod_period=2,
-    )
+    from_project_inputs(original)
 
     assert original.technical.capacity_mw == original_capacity
     assert original.revenue.ppa_base_tariff == original_tariff
@@ -160,8 +159,8 @@ def test_adapter_is_idempotent():
     from financial_engine.adapters.project_inputs import from_project_inputs
 
     p = create_default_tuho_wind1()
-    r1 = from_project_inputs(p, depreciation_period_count=61, depreciation_cod_period=2)
-    r2 = from_project_inputs(p, depreciation_period_count=61, depreciation_cod_period=2)
+    r1 = from_project_inputs(p)
+    r2 = from_project_inputs(p)
     assert r1 == r2
 
 
@@ -170,7 +169,7 @@ def test_adapter_preserves_capacity():
     from financial_engine.adapters.project_inputs import from_project_inputs
 
     p = create_default_tuho_wind1()
-    adapted = from_project_inputs(p, depreciation_period_count=61, depreciation_cod_period=2)
+    adapted = from_project_inputs(p)
     assert adapted.technical.capacity_mw == p.technical.capacity_mw
 
 
@@ -179,7 +178,7 @@ def test_adapter_preserves_tariff():
     from financial_engine.adapters.project_inputs import from_project_inputs
 
     p = create_default_tuho_wind1()
-    adapted = from_project_inputs(p, depreciation_period_count=61, depreciation_cod_period=2)
+    adapted = from_project_inputs(p)
     assert adapted.revenue.ppa_base_tariff_eur_mwh == p.revenue.ppa_base_tariff
 
 
@@ -188,11 +187,21 @@ def test_adapter_preserves_opex_items():
     from financial_engine.adapters.project_inputs import from_project_inputs
 
     p = create_default_tuho_wind1()
-    adapted = from_project_inputs(p, depreciation_period_count=61, depreciation_cod_period=2)
+    adapted = from_project_inputs(p)
     assert len(adapted.opex.items) == len(p.opex)
     for clean_item, orig_item in zip(adapted.opex.items, p.opex):
         assert clean_item.name == orig_item.name
         assert clean_item.y1_amount_keur == orig_item.y1_amount_keur
+
+
+def test_adapter_maps_financial_cost_useful_life_years():
+    """Adapter must map financing.senior_tenor_years → financial_cost_useful_life_years."""
+    from app.project_factories import create_default_tuho_wind1
+    from financial_engine.adapters.project_inputs import from_project_inputs
+
+    p = create_default_tuho_wind1()
+    adapted = from_project_inputs(p)
+    assert adapted.depreciation.financial_cost_useful_life_years == p.financing.senior_tenor_years
 
 
 # ---------------------------------------------------------------------------
@@ -214,7 +223,6 @@ def test_cal001_financial_close_required():
         ppa_years=10.0,
     )
     inputs = _minimal_valid_inputs()
-    # Rebuild with bad calendar
     inputs2 = OperatingModelInput(
         calendar=cal,
         technical=inputs.technical,
@@ -274,23 +282,71 @@ def test_cal005_ppa_exceeds_horizon_is_warning():
     assert not has_errors(issues)
 
 
-def test_dep004_asset_life_must_be_positive():
-    asset = AssetInput(
-        asset_class="civil",
-        gross_asset_basis_keur=10000.0,
-        book_depreciable_basis_keur=10000.0,
-        tax_depreciable_basis_keur=10000.0,
-        placed_in_service_period=2,
-        book_useful_life_years=0,  # invalid
-        tax_useful_life_years=20,
+def test_dep001_negative_amount_keur_is_error():
+    """DEP001: capex item amount_keur must be non-negative."""
+    item = CapexItemForDep(
+        name="solar_panels",
+        amount_keur=-1000.0,
+        asset_class_code="solar_panels",
     )
     inputs = _minimal_valid_inputs()
-    dep = dataclasses.replace(
-        inputs.depreciation,
-        assets=(asset,),
-        period_count=41,
-        cod_period=2,
+    dep = dataclasses.replace(inputs.depreciation, capex_items_for_depreciation=(item,))
+    inputs2 = dataclasses.replace(inputs, depreciation=dep)
+    issues = validate_operating_model_input(inputs2)
+    assert any(i.code == "DEP001" for i in issues)
+    assert has_errors(issues)
+
+
+def test_dep001_nan_amount_keur_is_error():
+    """DEP001: capex item amount_keur must be finite."""
+    item = CapexItemForDep(
+        name="solar_panels",
+        amount_keur=float("nan"),
+        asset_class_code="solar_panels",
     )
+    inputs = _minimal_valid_inputs()
+    dep = dataclasses.replace(inputs.depreciation, capex_items_for_depreciation=(item,))
+    inputs2 = dataclasses.replace(inputs, depreciation=dep)
+    issues = validate_operating_model_input(inputs2)
+    assert any(i.code == "DEP001" for i in issues)
+    assert has_errors(issues)
+
+
+def test_dep002_unknown_asset_class_is_error():
+    """DEP002: unknown asset_class_code must produce an error."""
+    item = CapexItemForDep(
+        name="mystery_asset",
+        amount_keur=1000.0,
+        asset_class_code="unicorn_tech",
+    )
+    inputs = _minimal_valid_inputs()
+    dep = dataclasses.replace(inputs.depreciation, capex_items_for_depreciation=(item,))
+    inputs2 = dataclasses.replace(inputs, depreciation=dep)
+    issues = validate_operating_model_input(inputs2)
+    assert any(i.code == "DEP002" for i in issues)
+    assert has_errors(issues)
+
+
+def test_dep003_invalid_useful_life_override_is_error():
+    """DEP003: useful_life_override must be positive when set."""
+    item = CapexItemForDep(
+        name="solar_panels",
+        amount_keur=1000.0,
+        asset_class_code="solar_panels",
+        useful_life_override=0,
+    )
+    inputs = _minimal_valid_inputs()
+    dep = dataclasses.replace(inputs.depreciation, capex_items_for_depreciation=(item,))
+    inputs2 = dataclasses.replace(inputs, depreciation=dep)
+    issues = validate_operating_model_input(inputs2)
+    assert any(i.code == "DEP003" for i in issues)
+    assert has_errors(issues)
+
+
+def test_dep004_financial_cost_useful_life_must_be_positive():
+    """DEP004: financial_cost_useful_life_years must be positive."""
+    inputs = _minimal_valid_inputs()
+    dep = dataclasses.replace(inputs.depreciation, financial_cost_useful_life_years=0)
     inputs2 = dataclasses.replace(inputs, depreciation=dep)
     issues = validate_operating_model_input(inputs2)
     assert any(i.code == "DEP004" for i in issues)
