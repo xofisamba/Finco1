@@ -1,11 +1,12 @@
 """
-financial_engine.results — Immutable result types for Phase 2A operating core.
+financial_engine.results — Immutable result types (Phase 2A + 2B).
 
 All types are frozen dataclasses. No setattr, no post-construction mutation,
 no mutable period lists.
 
 Phase 2A provides: period_grid, operating_schedules.
-Unimplemented sections: tax_and_cfads, financing, financial_statements, returns.
+Phase 2B adds: tax_and_cfads.
+Unimplemented sections: financing, financial_statements, returns.
 """
 from __future__ import annotations
 
@@ -53,12 +54,44 @@ class OperatingSchedules:
 
 
 @dataclass(frozen=True)
+class TaxAndCfadsSchedules:
+    """Parallel-array tax and CFADS schedules for all model periods.
+
+    Fields match the Phase 1 baseline snapshot schema for tax_and_cfads.
+    Waterfall-specific fields (fcf_for_shl, r69, r84, r99, r102) are
+    populated with zeros in Phase 2B (out of scope).
+    """
+    period_indices: tuple[int, ...]
+    taxable_profit_keur: tuple[float, ...]
+    taxable_income_before_losses_audit_keur: tuple[float, ...]
+    taxable_profit_after_losses_audit_keur: tuple[float, ...]
+    tax_keur: tuple[float, ...]
+    corporate_tax_cash_keur: tuple[float, ...]
+    cit_accrual_audit_keur: tuple[float, ...]
+    tax_loss_opening_audit_keur: tuple[float, ...]
+    tax_loss_closing_audit_keur: tuple[float, ...]
+    tax_loss_used_audit_keur: tuple[float, ...]
+    fiscal_reintegration_audit_keur: tuple[float, ...]
+    tax_depreciation_audit_keur: tuple[float, ...]
+    cf_after_tax_keur: tuple[float, ...]
+    cash_tax_current_period_audit_keur: tuple[float, ...]
+    cash_tax_bridge_reconciliation_keur: tuple[float, ...]
+    cfads_keur: tuple[float, ...]
+    # Out-of-scope waterfall rows — always 0.0 in Phase 2B
+    fcf_for_shl_keur: tuple[float, ...]
+    r69_fcf_banks_keur: tuple[float, ...]
+    r84_fcf_junior_keur: tuple[float, ...]
+    r99_fcf_for_distribution_keur: tuple[float, ...]
+    r102_fcf_for_shl_keur: tuple[float, ...]
+
+
+@dataclass(frozen=True)
 class ProjectModelResult:
-    """Top-level immutable result for one Phase 2A run.
+    """Top-level immutable result for a clean engine run.
 
     Phase 2A populates: period_grid, operating_schedules.
-    Sections declared unavailable: tax_and_cfads, financing,
-    financial_statements, returns (out of Phase 2A scope).
+    Phase 2B additionally populates: tax_and_cfads.
+    Sections declared unavailable: financing, financial_statements, returns.
     """
     provenance: "EngineProvenance"
     periods: tuple[OperatingPeriodResult, ...]
@@ -66,3 +99,4 @@ class ProjectModelResult:
     unavailable_sections: tuple[str, ...]
     validation_issues: tuple["ValidationIssue", ...]
     warnings: tuple[str, ...]
+    tax_and_cfads: TaxAndCfadsSchedules | None = None

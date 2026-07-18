@@ -27,11 +27,12 @@ from __future__ import annotations
 from datetime import date
 from typing import TYPE_CHECKING
 
-from financial_engine.inputs import OperatingModelInput, YieldScenario
+from financial_engine.inputs import OperatingModelInput, TaxCfadsModelInput, YieldScenario
 from financial_engine.results import (
     OperatingPeriodResult,
     OperatingSchedules,
     ProjectModelResult,
+    TaxAndCfadsSchedules,
 )
 from financial_engine.validation import validate_operating_model_input, has_errors
 from financial_engine.provenance import (
@@ -45,6 +46,9 @@ RUN_PATH_ID = "financial_engine.orchestrator.run_operating_model"
 
 # Sections not yet implemented in Phase 2A.
 _PHASE_2A_UNAVAILABLE = ("tax_and_cfads", "financing", "financial_statements", "returns")
+
+# Sections still out of scope in Phase 2B.
+_PHASE_2B_UNAVAILABLE = ("financing", "financial_statements", "returns")
 
 
 def _build_period_engine(inputs: OperatingModelInput):
@@ -360,4 +364,113 @@ def run_operating_model(inputs: OperatingModelInput) -> ProjectModelResult:
         unavailable_sections=_PHASE_2A_UNAVAILABLE,
         validation_issues=validation_issues,
         warnings=(),
+    )
+
+
+TAX_CFADS_RUN_PATH_ID = "financial_engine.orchestrator.run_tax_cfads_model"
+
+
+def run_tax_cfads_model(inputs: TaxCfadsModelInput) -> ProjectModelResult:
+    """Phase 2B orchestrator: operating core + tax + canonical CFADS.
+
+    Steps:
+      1. Run the Phase 2A operating model (validate, period grid, production,
+         revenue, OPEX, EBITDA, depreciation).
+      2. Calculate ATAD-adjusted interest and taxable income.
+      3. Run vintage FIFO loss ledger.
+      4. Calculate CIT accrual and cash tax.
+      5. Calculate canonical CFADS = EBITDA − cash_tax.
+      6. Assemble TaxAndCfadsSchedules.
+      7. Attach extended provenance and return ProjectModelResult.
+    """
+    # Step 1: Phase 2A operating core
+    base_result = run_operating_model(inputs.operating)
+
+    # Step 2–5: Tax and CFADS
+    from financial_engine.tax.engine import calculate_tax, build_tax_schedules
+    from financial_engine.cfads import calculate_canonical_cfads
+
+    tax_period_results = calculate_tax(base_result.periods, inputs.tax)
+    cfads_period_results = calculate_canonical_cfads(base_result.periods, tax_period_results)
+    tax_schedules = build_tax_schedules(tax_period_results)
+
+    n = len(base_result.periods)
+    zeros = tuple(0.0 for _ in range(n))
+
+    tax_and_cfads = TaxAndCfadsSchedules(
+        period_indices=tax_schedules.period_indices,
+        taxable_profit_keur=tax_schedules.taxable_profit_keur,
+        taxable_income_before_losses_audit_keur=tax_schedules.taxable_income_before_losses_keur,
+        taxable_profit_after_losses_audit_keur=tax_schedules.taxable_profit_after_losses_keur,
+        tax_keur=tax_schedules.tax_keur,
+        corporate_tax_cash_keur=tax_schedules.corporate_tax_cash_keur,
+        cit_accrual_audit_keur=tax_schedules.cit_accrual_keur,
+        tax_loss_opening_audit_keur=tax_schedules.tax_loss_opening_keur,
+        tax_loss_closing_audit_keur=tax_schedules.tax_loss_closing_keur,
+        tax_loss_used_audit_keur=tax_schedules.tax_loss_used_keur,
+        fiscal_reintegration_audit_keur=tax_schedules.fiscal_reintegration_keur,
+        tax_depreciation_audit_keur=tax_schedules.tax_depreciation_audit_keur,
+        cf_after_tax_keur=tax_schedules.cf_after_tax_keur,
+        cash_tax_current_period_audit_keur=tax_schedules.cash_tax_current_period_keur,
+        cash_tax_bridge_reconciliation_keur=tax_schedules.cash_tax_bridge_reconciliation_keur,
+        cfads_keur=tuple(r.cfads_keur for r in cfads_period_results),
+        fcf_for_shl_keur=zeros,
+        r69_fcf_banks_keur=zeros,
+        r84_fcf_junior_keur=zeros,
+        r99_fcf_for_distribution_keur=zeros,
+        r102_fcf_for_shl_keur=zeros,
+    )
+
+    # Step 7: Extended provenance
+    fingerprint = compute_input_fingerprint(inputs.operating)
+    tax_evidence = (
+        DerivationEvidence(
+            output_path="tax_and_cfads.taxable_income_before_losses_audit_keur",
+            source_module="financial_engine.tax.engine",
+            source_function="calculate_tax",
+            input_paths=("tax.policy", "tax.period_interest", "operating_schedules.ebitda_keur"),
+            notes=("EBITDA - tax_dep - deductible_interest + atad_addback + reintegration",),
+        ),
+        DerivationEvidence(
+            output_path="tax_and_cfads.taxable_profit_after_losses_audit_keur",
+            source_module="financial_engine.tax.loss_ledger",
+            source_function="run_fifo_loss_ledger",
+            input_paths=("tax.opening_loss_vintages", "tax_and_cfads.taxable_income_before_losses"),
+            notes=("FIFO vintage ledger; 5-year / 2-period window",),
+        ),
+        DerivationEvidence(
+            output_path="tax_and_cfads.corporate_tax_cash_keur",
+            source_module="financial_engine.tax.engine",
+            source_function="calculate_tax",
+            input_paths=("tax.policy.cash_tax_timing", "tax_and_cfads.cit_accrual_audit_keur"),
+            notes=("H2-only cash crystallisation (TAX_YEAR_LAST_PERIOD timing)",),
+        ),
+        DerivationEvidence(
+            output_path="tax_and_cfads.cfads_keur",
+            source_module="financial_engine.cfads",
+            source_function="calculate_canonical_cfads",
+            input_paths=("operating_schedules.ebitda_keur", "tax_and_cfads.corporate_tax_cash_keur"),
+            notes=("canonical CFADS = EBITDA - cash_tax_paid; pre-debt-service",),
+        ),
+    )
+
+    base_evidence = base_result.provenance.derivation_evidence
+    all_evidence = base_evidence + tax_evidence
+
+    from financial_engine.provenance import EngineProvenance as _EP
+    provenance = _EP(
+        engine_version=ENGINE_VERSION,
+        run_path_id=TAX_CFADS_RUN_PATH_ID,
+        input_fingerprint=fingerprint,
+        derivation_evidence=all_evidence,
+    )
+
+    return ProjectModelResult(
+        provenance=provenance,
+        periods=base_result.periods,
+        operating_schedules=base_result.operating_schedules,
+        tax_and_cfads=tax_and_cfads,
+        unavailable_sections=_PHASE_2B_UNAVAILABLE,
+        validation_issues=base_result.validation_issues,
+        warnings=base_result.warnings,
     )

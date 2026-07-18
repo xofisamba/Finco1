@@ -1,0 +1,91 @@
+name: Phase 2B Tax and CFADS Check
+
+# Phase 2B — Policy-driven tax, vintage FIFO LCF, and canonical CFADS.
+#
+# On a successful run, every substantive Phase 2B gate executes.
+# Any failed gate fails the workflow and may stop later steps.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+env:
+  PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+  PYTHONDONTWRITEBYTECODE: "1"
+
+jobs:
+  phase2b-tax-cfads:
+    name: Phase 2B Tax and CFADS (Python 3.11)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Resolve comparison base SHA
+        id: base
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          else
+            BASE_SHA="${{ github.event.before }}"
+            if [ -z "$BASE_SHA" ] || [ "$BASE_SHA" = "0000000000000000000000000000000000000000" ]; then
+              BASE_SHA=$(git rev-parse HEAD^1 2>/dev/null || git rev-parse HEAD)
+            fi
+          fi
+          echo "base_sha=$BASE_SHA" >> "$GITHUB_OUTPUT"
+          echo "Comparison base: $BASE_SHA"
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Check baseline snapshots unchanged
+        run: |
+          CHANGED=$(git diff --name-only ${{ steps.base.outputs.base_sha }} HEAD \
+            -- finco_parity/baselines/snapshots/ 2>/dev/null || true)
+          if [ -n "$CHANGED" ]; then
+            echo "ERROR: Phase 2B must not modify baseline snapshots:"
+            echo "$CHANGED"
+            exit 1
+          fi
+          echo "Baseline snapshots: unchanged"
+
+      - name: Check protected production scope unchanged
+        run: |
+          CHANGED=$(git diff --name-only ${{ steps.base.outputs.base_sha }} HEAD \
+            -- app/ domain/ main_web.py main_api.py finco_core/waterfall/ 2>/dev/null || true)
+          if [ -n "$CHANGED" ]; then
+            echo "ERROR: Phase 2B must not modify protected production files:"
+            echo "$CHANGED"
+            exit 1
+          fi
+          echo "Protected production scope: unchanged"
+
+      - name: Phase 2B test suite
+        run: |
+          python -m pytest tests/test_phase2b_tax_cfads.py -v --tb=short
+
+      - name: Phase 2A regression suite
+        run: |
+          python -m pytest \
+            tests/test_phase2a_engine_inputs.py \
+            tests/test_phase2a_orchestrator.py \
+            tests/test_phase2a_production_isolation.py \
+            -v --tb=short
+
+      - name: Phase 2A OPERATING_CORE_V1 parity (regression gate)
+        run: |
+          python -m finco_parity.check_financial_engine_operating_core --all --check

@@ -1,5 +1,5 @@
 """
-financial_engine.inputs — Immutable Phase 2A input contract.
+financial_engine.inputs — Immutable input contracts (Phase 2A + 2B).
 
 All types are frozen dataclasses. No mutable state.
 No imports from app, finco_core, fastapi, jinja2, requests, openpyxl, pandas.
@@ -92,6 +92,56 @@ class DepreciationInput:
 
 
 @dataclass(frozen=True)
+class OpeningTaxLossVintageInput:
+    """One pre-existing loss vintage carried into the model start.
+
+    amount_keur : loss amount outstanding (must be non-negative)
+    periods_remaining : number of model periods before this vintage expires
+    source_label : optional human-readable label for audit trail
+    """
+    amount_keur: float
+    periods_remaining: int
+    source_label: str = ""
+
+
+@dataclass(frozen=True)
+class PeriodInterestInput:
+    """Exogenous interest expense for one model period.
+
+    Phase 2B does not size debt — interest is provided externally.
+    gross_interest_expense_keur : total interest accrued (pre-ATAD)
+    """
+    period_index: int
+    gross_interest_expense_keur: float
+
+
+@dataclass(frozen=True)
+class PeriodTaxAdjustmentInput:
+    """Additional fiscal adjustments for one model period.
+
+    other_fiscal_reintegration_keur : addbacks (e.g. non-deductible expenses).
+        Positive = addback to taxable income.
+    """
+    period_index: int
+    other_fiscal_reintegration_keur: float = 0.0
+
+
+@dataclass(frozen=True)
+class TaxCalculationInput:
+    """All tax-specific inputs for a Phase 2B run.
+
+    policy : TaxPolicy instance (imported lazily to avoid circular deps)
+    opening_loss_vintages : pre-model loss pool (oldest vintage first)
+    period_interest : one entry per model period; must cover all operating periods
+    period_adjustments : optional per-period fiscal adjustments
+    """
+    policy: object  # TaxPolicy — kept as object to avoid runtime import cycles
+    opening_loss_vintages: tuple[OpeningTaxLossVintageInput, ...]
+    period_interest: tuple[PeriodInterestInput, ...]
+    period_adjustments: tuple[PeriodTaxAdjustmentInput, ...] = ()
+
+
+@dataclass(frozen=True)
 class InputProvenance:
     source_id: str
     baseline_commit_sha: str
@@ -105,3 +155,15 @@ class OperatingModelInput:
     opex: OpexInput
     depreciation: DepreciationInput
     source: InputProvenance
+
+
+@dataclass(frozen=True)
+class TaxCfadsModelInput:
+    """Phase 2B input: operating core result + tax inputs.
+
+    operating: the Phase 2A OperatingModelInput (calendar, tech, revenue, etc.)
+    tax: tax policy and per-period interest / adjustment inputs
+    source: provenance (re-used from Phase 2A source or overridden)
+    """
+    operating: OperatingModelInput
+    tax: TaxCalculationInput
