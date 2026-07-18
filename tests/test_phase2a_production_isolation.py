@@ -114,27 +114,53 @@ def test_engine_version_constant():
 
 
 # ---------------------------------------------------------------------------
-# Legacy production engine untouched
+# Protected production files — AST-level and content guardrails
 # ---------------------------------------------------------------------------
 
-def _sha256_of_file(path: Path) -> str:
-    import hashlib
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+_PROTECTED_FILES = [
+    Path("app/waterfall_core.py"),
+    Path("app/waterfall_runner.py"),
+    Path("finco_core/waterfall/waterfall_engine.py"),
+]
+
+_PROTECTED_SYMBOLS = {
+    Path("app/waterfall_core.py"): {"run_waterfall_v3_core"},
+    Path("app/waterfall_runner.py"): {"WaterfallRunner"},
+    Path("finco_core/waterfall/waterfall_engine.py"): {"run_waterfall", "WaterfallResult"},
+}
 
 
-def test_waterfall_core_not_changed():
-    """app/waterfall_core.py must remain unchanged from baseline commit."""
-    # Just verify the file exists and imports without error.
-    # Actual SHA checking happens via CI artifact hash.
-    assert Path("app/waterfall_core.py").exists()
+@pytest.mark.parametrize("protected_file", _PROTECTED_FILES)
+def test_protected_file_exists(protected_file: Path):
+    """Protected production files must exist."""
+    assert protected_file.exists(), f"{protected_file} is missing"
 
 
-def test_waterfall_runner_not_changed():
-    assert Path("app/waterfall_runner.py").exists()
+@pytest.mark.parametrize("protected_file", _PROTECTED_FILES)
+def test_protected_file_is_valid_python(protected_file: Path):
+    """Protected production files must parse as valid Python."""
+    source = protected_file.read_text(encoding="utf-8")
+    try:
+        ast.parse(source, filename=str(protected_file))
+    except SyntaxError as exc:
+        pytest.fail(f"{protected_file} has syntax errors: {exc}")
 
 
-def test_finco_core_waterfall_engine_not_changed():
-    assert Path("finco_core/waterfall/waterfall_engine.py").exists()
+@pytest.mark.parametrize("protected_file,symbols", [
+    (f, s) for f, s in _PROTECTED_SYMBOLS.items()
+])
+def test_protected_file_retains_key_symbols(protected_file: Path, symbols: set):
+    """Protected files must still define their key symbols (not gutted)."""
+    source = protected_file.read_text(encoding="utf-8")
+    tree = ast.parse(source, filename=str(protected_file))
+    defined: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            defined.add(node.name)
+    missing = symbols - defined
+    assert not missing, (
+        f"{protected_file} is missing expected symbol(s): {sorted(missing)}"
+    )
 
 
 def test_financial_engine_does_not_import_waterfall_core():
