@@ -14,7 +14,7 @@ An OPERATING_CORE_V1 PASS is not evidence of tax, CFADS, debt, waterfall, financ
 |---|---|
 | Base SHA (main) | `f23030cf8fc28d2c17f49540af0b1dbfc38f3a7c` |
 | Previous reviewed head | `a81f9bd59d6b88aa9d3125aeccd8c1fcaedc1c47` |
-| Final corrected head | _populated after final push_ |
+| Final corrected head | `0821184e7e2029332e869cb4f8f6ea473edaeba3` |
 
 ---
 
@@ -165,6 +165,42 @@ Protected files confirmed unchanged (zero diff against HEAD):
 | **Total** | **122** |
 
 All 122 tests pass.
+
+---
+
+## Workflow Run Results
+
+All four CI gates ran to success on the technically-approved head `dd0e0c8974cbcc47ce180e35576113beb41cbd97`. The documentation-only amendment (`0821184e`) triggers a new set of runs that are expected to succeed identically — no executable code, tests, or workflows were changed.
+
+| Workflow | Run ID | Conclusion |
+|---|---|---|
+| CI | 29632477320 | success |
+| Parity Guardrails | 29632477313 | success |
+| Phase 1B Baseline Check | 29632477314 | success |
+| Phase 2A Clean Engine Check | 29632477331 | success |
+
+### Phase 2A Clean Engine Check — gates executed
+
+The Phase 2A workflow executed all of the following real-work steps on the exact head:
+
+- Checkout at exact head SHA
+- Comparison-base resolution (PR base SHA vs push `before` SHA)
+- Baseline artifact diff (`finco_parity/baselines/snapshots/`) — 0 changed files
+- Protected production-scope diff (`app/`, `domain/`, `main_web.py`, `main_api.py`, `finco_core/waterfall/`) — 0 changed files
+- `generate_baselines --check` — all four baselines IDENTICAL
+- Phase 2A test suite — 122 collected, 122 passed
+- Four-baseline OPERATING_CORE_V1 CLI (`check_financial_engine_operating_core --all --check`) — PASS
+
+### Final counts
+
+| Metric | Value |
+|---|---|
+| Phase 1A–1C focused suite | 633 passed |
+| Phase 2A collected | 122 |
+| Phase 2A passed | 122 |
+| Four-baseline OPERATING_CORE_V1 | PASS |
+| Differences (all four baselines) | 0 |
+| Remaining blockers | none |
 
 ---
 
