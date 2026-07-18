@@ -773,18 +773,22 @@ BASELINE_IDS = ["tuho", "oborovo", "generic_solar", "generic_wind"]
 def test_j_four_baseline_smoke(baseline_id: str):
     """Phase 2B smoke: load factory inputs, build TaxCfadsModelInput, run engine.
 
-    Only verifies that the engine runs without error and returns non-empty results.
+    TUHO is expected to raise TuhoOpeningLossVintageUnresolved (INPUT_SOURCE_BLOCKED).
+    The other three baselines must run without error and return non-empty results.
     The actual numeric comparison lives in the parity CLI (TAX_CFADS_V1 profile).
     """
     from finco_parity.financial_engine_tax_cfads_candidate import generate_tax_cfads_candidate_snapshot
+    from finco_parity.tax_reference_inputs import TuhoOpeningLossVintageUnresolved
+
+    if baseline_id == "tuho":
+        with pytest.raises(TuhoOpeningLossVintageUnresolved):
+            generate_tax_cfads_candidate_snapshot(baseline_id)
+        return
+
     snapshot = generate_tax_cfads_candidate_snapshot(baseline_id)
     assert snapshot is not None
     tc = snapshot.get("tax_and_cfads")
     assert tc is not None
-    # cfads_keur should be populated (not all None)
-    # It lives in the engine result, serialized to the candidate snapshot
-    # The snapshot may have cfads in unavailable_fields for the legacy side,
-    # but our candidate populates them
     assert "period_grid" in snapshot
     assert len(snapshot["period_grid"]) > 0
 
@@ -1528,9 +1532,13 @@ class TestT_CalendarDateBoundary:
         calc = calculate_tax(op_result.periods, tax_input)
         tax_years = {ar.tax_year for ar in calc.annual_results}
         # With FC=2029-06-29 and 12-month construction, COD is ~2030-06-29.
-        # First construction period spans partial 2029. The model must have 2029 as a tax year.
-        assert 2029 in tax_years or 2030 in tax_years, (
-            f"Expected 2029 or 2030 in tax years, got {sorted(tax_years)}"
+        # First construction period spans 2029-06-29 to 2030-01-01, contributing a fragment
+        # to calendar year 2029. Year 2029 MUST be present as its own TaxYearCalculationBasis.
+        assert 2029 in tax_years, (
+            f"2029 must be an explicit tax year (first period crosses Dec31): {sorted(tax_years)}"
+        )
+        assert 2030 in tax_years, (
+            f"2030 must be an explicit tax year (post-COD operation): {sorted(tax_years)}"
         )
         # Tax years must be calendar-year values, not year_index-based integers
         for yr in tax_years:
@@ -1560,11 +1568,25 @@ class TestT_CalendarDateBoundary:
         )
         calc = calculate_tax(op_result.periods, tax_input)
         tax_years = sorted({ar.tax_year for ar in calc.annual_results})
-        assert tax_years[0] <= 2031, f"First tax year should be ≤2031, got {tax_years[0]}"
-        # Operating results begin in 2031, so 2031 must be a tax year
-        assert 2031 in tax_years or 2030 in tax_years, (
-            f"Expected 2030 or 2031 in tax years; got {tax_years}"
+        # FC=2030-01-01, 18-month construction → COD ≈ 2031-07-01.
+        # Construction period spans Jan 2030 – Jul 2031; calendar year 2030 MUST be present.
+        # First operating period is Jul 2031 – Jan 2032; 2031 MUST be present.
+        assert 2030 in tax_years, (
+            f"2030 must be a tax year (construction starts Jan 2030): {tax_years}"
         )
+        assert 2031 in tax_years, (
+            f"2031 must be a tax year (first operating period): {tax_years}"
+        )
+        # Verify fragment reconciliation for the first period that crosses Jan 1 2031
+        from financial_engine.tax.tax_year import build_tax_year_bases
+        bases = build_tax_year_bases(op_result.periods, {}, {})
+        basis_map = {b.tax_year: b for b in bases}
+        # For every year, sum of fragment ebitda_keur should equal basis.ebitda_keur
+        for b in bases:
+            frag_sum = sum(f.ebitda_keur for f in b.fragments)
+            assert abs(frag_sum - b.ebitda_keur) < 1e-6, (
+                f"Year {b.tax_year}: fragment EBITDA sum {frag_sum} ≠ basis {b.ebitda_keur}"
+            )
 
     def test_cross_year_period_fragments_sum_to_original(self):
         """A 2029-10-01 to 2030-03-31 period: fragment allocations reconcile to original amounts.
@@ -1580,10 +1602,11 @@ class TestT_CalendarDateBoundary:
         ebitda = 1_000.0
         dep    =   200.0
 
-        frags = _split_period(0, period_start, period_end)
-        # Fragment-level reconciliation
-        recon_ebitda = sum(ebitda * f.allocation_fraction for f in frags)
-        recon_dep    = sum(dep   * f.allocation_fraction for f in frags)
+        frags = _split_period(0, period_start, period_end, ebitda_keur=ebitda,
+                              tax_depreciation_keur=dep)
+        # Fragment-level reconciliation: pre-allocated amounts sum to period totals
+        recon_ebitda = sum(f.ebitda_keur for f in frags)
+        recon_dep    = sum(f.tax_depreciation_keur for f in frags)
         assert abs(recon_ebitda - ebitda) < 1e-9, f"EBITDA reconciliation: {recon_ebitda}"
         assert abs(recon_dep    - dep   ) < 1e-9, f"Dep reconciliation: {recon_dep}"
         # Two calendar years
@@ -1800,6 +1823,14 @@ def test_w_correction_aware_four_baseline(baseline_id: str):
                 approved[bid] = set()
             approved[bid].add(rec["field_path"])
 
+    from finco_parity.tax_reference_inputs import TuhoOpeningLossVintageUnresolved
+
+    # TUHO has an unresolved opening-loss vintage — permitted outcome is INPUT_SOURCE_BLOCKED.
+    if baseline_id == "tuho":
+        with pytest.raises(TuhoOpeningLossVintageUnresolved):
+            generate_tax_cfads_candidate_snapshot(baseline_id)
+        return
+
     profile = ComparisonProfile.TAX_CFADS_V1
     snapshot_path = SNAPSHOTS_DIR / f"{baseline_id}.json"
     with open(snapshot_path) as f:
@@ -1824,3 +1855,294 @@ def test_w_correction_aware_four_baseline(baseline_id: str):
         f"[{baseline_id}] {len(unexplained)} UNEXPLAINED_DRIFT:\n"
         + "\n".join(f"  {d.path}: {d.kind.value}" for d in unexplained[:10])
     )
+
+
+# ---------------------------------------------------------------------------
+# TestX — End-to-end cross-year allocation (Blocker 3 exact values)
+# ---------------------------------------------------------------------------
+
+class TestX_CrossYearAllocation:
+    """End-to-end tests proving both years survive when a period crosses Dec31.
+
+    Reviewer requirement:
+      Single period 2029-10-01 → 2030-03-31, EBITDA=181, tax_dep=0, interest=0, rate=10%:
+        2029 fragment: 92 days (Oct 1 → Jan 1), 2030 fragment: 89 days (Jan 1 → Mar 31)
+        2029 EBITDA=92, taxable=92, CIT=9.2
+        2030 EBITDA=89, taxable=89, CIT=8.9
+        total EBITDA=181, total CIT=18.1 — BOTH years must exist, neither may be skipped.
+    """
+
+    def _build_single_cross_year_result(self):
+        """Single cross-year period: 2029-10-01 → 2030-03-31, EBITDA=181."""
+        from financial_engine.results import OperatingPeriodResult
+        from financial_engine.tax.engine import calculate_tax
+
+        period_start = date(2029, 10, 1)
+        period_end   = date(2030, 3, 31)
+        # days: Oct1→Jan1 = 92; Jan1→Mar31 = 89; total = 181
+        p = OperatingPeriodResult(
+            period_index=0,
+            period_start=period_start,
+            period_end=period_end,
+            year_index=0.0, period_in_year=1.0, is_construction=False, is_operation=True,
+            is_ppa_active=True, days_in_period=181, day_fraction=1.0,
+            production_mwh=0.0, revenue_keur=0.0, opex_keur=0.0,
+            ebitda_keur=181.0, book_depreciation_keur=0.0, tax_depreciation_keur=0.0,
+        )
+        tax_input = TaxCalculationInput(
+            policy=_flat_policy(rate=0.10, atad_enabled=False),
+            opening_loss_vintages=(), period_interest=(), period_adjustments=(),
+        )
+        return calculate_tax((p,), tax_input)
+
+    def test_both_years_present(self):
+        """Both 2029 and 2030 must produce a TaxYearCalculationBasis — neither skipped."""
+        calc = self._build_single_cross_year_result()
+        years = {ar.tax_year for ar in calc.annual_results}
+        assert 2029 in years, f"2029 missing from annual_results: {sorted(years)}"
+        assert 2030 in years, f"2030 missing from annual_results: {sorted(years)}"
+
+    def test_2029_ebitda_exact(self):
+        """2029 EBITDA: 92 days / 181 days × 181 = 92 kEUR."""
+        calc = self._build_single_cross_year_result()
+        ar_map = {ar.tax_year: ar for ar in calc.annual_results}
+        # 92 / 181 × 181 = 92.0 exactly (integer day count)
+        expected = 181.0 * (92 / 181)
+        actual = ar_map[2029].ebitda_keur
+        assert abs(actual - expected) < 1e-6, f"2029 EBITDA: expected {expected}, got {actual}"
+
+    def test_2030_ebitda_exact(self):
+        """2030 EBITDA: 89 days / 181 days × 181 = 89 kEUR."""
+        calc = self._build_single_cross_year_result()
+        ar_map = {ar.tax_year: ar for ar in calc.annual_results}
+        expected = 181.0 * (89 / 181)
+        actual = ar_map[2030].ebitda_keur
+        assert abs(actual - expected) < 1e-6, f"2030 EBITDA: expected {expected}, got {actual}"
+
+    def test_total_ebitda_preserved(self):
+        """Sum of annual EBITDA across both years = 181 kEUR."""
+        calc = self._build_single_cross_year_result()
+        total = sum(ar.ebitda_keur for ar in calc.annual_results)
+        assert abs(total - 181.0) < 1e-9, f"Total EBITDA: expected 181, got {total}"
+
+    def test_2029_cit_exact(self):
+        """2029 CIT = 92 × 10% = 9.2 kEUR."""
+        calc = self._build_single_cross_year_result()
+        ar_map = {ar.tax_year: ar for ar in calc.annual_results}
+        expected = 181.0 * (92 / 181) * 0.10  # = 9.2 exactly
+        actual = ar_map[2029].current_tax_liability_keur
+        assert abs(actual - expected) < 1e-6, f"2029 CIT: expected {expected:.4f}, got {actual:.4f}"
+
+    def test_2030_cit_exact(self):
+        """2030 CIT = 89 × 10% = 8.9 kEUR."""
+        calc = self._build_single_cross_year_result()
+        ar_map = {ar.tax_year: ar for ar in calc.annual_results}
+        expected = 181.0 * (89 / 181) * 0.10  # = 8.9 exactly
+        actual = ar_map[2030].current_tax_liability_keur
+        assert abs(actual - expected) < 1e-6, f"2030 CIT: expected {expected:.4f}, got {actual:.4f}"
+
+    def test_total_cit_exact(self):
+        """Total CIT = 9.2 + 8.9 = 18.1 kEUR."""
+        calc = self._build_single_cross_year_result()
+        total = sum(ar.current_tax_liability_keur for ar in calc.annual_results)
+        assert abs(total - 18.1) < 1e-6, f"Total CIT: expected 18.1, got {total:.6f}"
+
+    def test_fragment_ebitda_reconciliation(self):
+        """Pre-allocated fragment amounts sum back to 181 kEUR."""
+        from financial_engine.tax.tax_year import build_tax_year_bases
+        from financial_engine.results import OperatingPeriodResult
+        p = OperatingPeriodResult(
+            period_index=0, period_start=date(2029, 10, 1), period_end=date(2030, 3, 31),
+            year_index=0.0, period_in_year=1.0, is_construction=False, is_operation=True,
+            is_ppa_active=True, days_in_period=181, day_fraction=1.0,
+            production_mwh=0.0, revenue_keur=0.0, opex_keur=0.0,
+            ebitda_keur=181.0, book_depreciation_keur=0.0, tax_depreciation_keur=0.0,
+        )
+        bases = build_tax_year_bases((p,), {}, {})
+        total_ebitda = sum(b.ebitda_keur for b in bases)
+        assert abs(total_ebitda - 181.0) < 1e-9, (
+            f"Fragment EBITDA total: expected 181, got {total_ebitda}"
+        )
+        # Period 0 must appear in both years
+        all_period_indices = {idx for b in bases for idx in b.period_indices}
+        assert 0 in all_period_indices, "Period 0 must appear in at least one year"
+        years = {b.tax_year for b in bases}
+        assert 2029 in years and 2030 in years, f"Must have both 2029 and 2030: {years}"
+
+
+# ---------------------------------------------------------------------------
+# TestY — Multi-period cross-year fragment reconciliation (Blocker 3 multi-period)
+# ---------------------------------------------------------------------------
+
+class TestY_MultiPeriodCrossYear:
+    """Multi-period test per Blocker 3 reviewer requirement.
+
+    Scenario (periods use half-open intervals [start, end)):
+      Period A: entirely 2029 (2029-01-01 → 2029-10-01), EBITDA=100
+      Period B: crosses 2029/2030 (2029-10-01 → 2030-04-01), EBITDA=50
+                 Oct1→Jan1 = 92 days in 2029; Jan1→Apr1 = 90 days in 2030
+                 2029 fraction = 92/182; 2030 fraction = 90/182
+      Period C: entirely 2030 (2030-04-01 → 2030-10-01), EBITDA=200
+
+    Expected:
+      2029 basis: A (100) + B's 2029 fragment (50 × 92/182) = 125.27...
+      2030 basis: B's 2030 fragment (50 × 90/182) + C (200) = 224.72...
+      Total EBITDA = 350 (preserved exactly)
+
+    Period B (idx=1) must appear in BOTH 2029 and 2030 period_indices.
+    """
+
+    _B_DAYS_2029 = 92   # Oct1→Jan1
+    _B_DAYS_2030 = 90   # Jan1→Apr1
+    _B_TOTAL = 182      # 92 + 90
+
+    def _build(self):
+        from financial_engine.results import OperatingPeriodResult
+        from financial_engine.tax.tax_year import build_tax_year_bases
+
+        pA = OperatingPeriodResult(
+            period_index=0, period_start=date(2029, 1, 1), period_end=date(2029, 10, 1),
+            year_index=0.0, period_in_year=0.5, is_construction=False, is_operation=True,
+            is_ppa_active=True, days_in_period=273, day_fraction=0.75,
+            production_mwh=0.0, revenue_keur=0.0, opex_keur=0.0,
+            ebitda_keur=100.0, book_depreciation_keur=0.0, tax_depreciation_keur=0.0,
+        )
+        pB = OperatingPeriodResult(
+            period_index=1, period_start=date(2029, 10, 1), period_end=date(2030, 4, 1),
+            year_index=0.0, period_in_year=1.0, is_construction=False, is_operation=True,
+            is_ppa_active=True, days_in_period=182, day_fraction=0.5,
+            production_mwh=0.0, revenue_keur=0.0, opex_keur=0.0,
+            ebitda_keur=50.0, book_depreciation_keur=0.0, tax_depreciation_keur=0.0,
+        )
+        pC = OperatingPeriodResult(
+            period_index=2, period_start=date(2030, 4, 1), period_end=date(2030, 10, 1),
+            year_index=1.0, period_in_year=0.5, is_construction=False, is_operation=True,
+            is_ppa_active=True, days_in_period=183, day_fraction=0.5,
+            production_mwh=0.0, revenue_keur=0.0, opex_keur=0.0,
+            ebitda_keur=200.0, book_depreciation_keur=0.0, tax_depreciation_keur=0.0,
+        )
+        return build_tax_year_bases((pA, pB, pC), {}, {})
+
+    def test_both_years_present(self):
+        bases = self._build()
+        years = {b.tax_year for b in bases}
+        assert 2029 in years, f"2029 must be present: {sorted(years)}"
+        assert 2030 in years, f"2030 must be present: {sorted(years)}"
+
+    def test_2029_basis_includes_period_B_fragment(self):
+        """Year 2029 must include period B (which crosses Dec31)."""
+        bases = self._build()
+        b2029 = next(b for b in bases if b.tax_year == 2029)
+        assert 1 in b2029.period_indices, (
+            f"Period B (idx=1) must appear in 2029 period_indices: {b2029.period_indices}"
+        )
+
+    def test_2030_basis_includes_period_B_fragment(self):
+        """Year 2030 must include period B (its Jan–Mar fragment goes to 2030)."""
+        bases = self._build()
+        b2030 = next(b for b in bases if b.tax_year == 2030)
+        assert 1 in b2030.period_indices, (
+            f"Period B (idx=1) must appear in 2030 period_indices: {b2030.period_indices}"
+        )
+
+    def test_2029_ebitda_exact(self):
+        """2029 EBITDA = A (100) + B's 2029 fragment (50 × 92/182)."""
+        bases = self._build()
+        b2029 = next(b for b in bases if b.tax_year == 2029)
+        b_frac_2029 = self._B_DAYS_2029 / self._B_TOTAL
+        expected = 100.0 + 50.0 * b_frac_2029
+        assert abs(b2029.ebitda_keur - expected) < 1e-6, (
+            f"2029 EBITDA: expected {expected:.6f}, got {b2029.ebitda_keur:.6f}"
+        )
+
+    def test_2030_ebitda_exact(self):
+        """2030 EBITDA = B's 2030 fragment (50 × 90/182) + C (200)."""
+        bases = self._build()
+        b2030 = next(b for b in bases if b.tax_year == 2030)
+        b_frac_2030 = self._B_DAYS_2030 / self._B_TOTAL
+        expected = 50.0 * b_frac_2030 + 200.0
+        assert abs(b2030.ebitda_keur - expected) < 1e-6, (
+            f"2030 EBITDA: expected {expected:.6f}, got {b2030.ebitda_keur:.6f}"
+        )
+
+    def test_total_ebitda_preserved(self):
+        """Total EBITDA across all years = 100 + 50 + 200 = 350."""
+        bases = self._build()
+        total = sum(b.ebitda_keur for b in bases)
+        assert abs(total - 350.0) < 1e-9, f"Total EBITDA: expected 350, got {total}"
+
+    def test_fragment_amounts_reconcile_per_year(self):
+        """For each year basis, sum of fragment ebitda_keur == basis.ebitda_keur."""
+        bases = self._build()
+        for b in bases:
+            frag_sum = sum(f.ebitda_keur for f in b.fragments)
+            assert abs(frag_sum - b.ebitda_keur) < 1e-9, (
+                f"Year {b.tax_year}: fragment sum {frag_sum} ≠ basis {b.ebitda_keur}"
+            )
+
+
+# ---------------------------------------------------------------------------
+# TestZ — TUHO INPUT_SOURCE_BLOCKED (Blocker 5)
+# ---------------------------------------------------------------------------
+
+class TestZ_TuhoInputSourceBlocked:
+    """TUHO opening-loss vintage is unresolved; TAX_CFADS_V1 = INPUT_SOURCE_BLOCKED."""
+
+    def test_build_opening_loss_vintages_tuho_raises(self):
+        """build_opening_loss_vintages('tuho') raises TuhoOpeningLossVintageUnresolved."""
+        from finco_parity.tax_reference_inputs import (
+            build_opening_loss_vintages,
+            TuhoOpeningLossVintageUnresolved,
+        )
+        with pytest.raises(TuhoOpeningLossVintageUnresolved) as exc_info:
+            build_opening_loss_vintages("tuho")
+        assert "TUHO_OPENING_LOSS_VINTAGE_UNRESOLVED" in str(exc_info.value)
+
+    def test_non_tuho_baselines_not_blocked(self):
+        """Oborovo, generic_solar, generic_wind: build_opening_loss_vintages succeeds."""
+        from finco_parity.tax_reference_inputs import build_opening_loss_vintages
+        for bid in ("oborovo", "generic_solar", "generic_wind"):
+            result = build_opening_loss_vintages(bid)
+            assert isinstance(result, tuple), f"{bid}: expected tuple, got {type(result)}"
+
+    def test_generator_skips_tuho_and_writes_proposed(self):
+        """Generator writes PENDING_REVIEW to proposed file; TUHO is INPUT_SOURCE_BLOCKED."""
+        import tempfile, json
+        from pathlib import Path
+        # Patch the paths to avoid modifying real files
+        import finco_parity.generate_tax_cfads_corrections as gen_mod
+        orig_proposed = gen_mod.PROPOSED_PATH
+        with tempfile.TemporaryDirectory() as tmpdir:
+            gen_mod.PROPOSED_PATH = Path(tmpdir) / "proposed.json"
+            try:
+                ledger = gen_mod.generate_proposed_corrections()
+            finally:
+                gen_mod.PROPOSED_PATH = orig_proposed
+        # TUHO must be INPUT_SOURCE_BLOCKED in summary
+        assert ledger["summary"]["tuho"]["status"] == "INPUT_SOURCE_BLOCKED", (
+            f"TUHO summary: {ledger['summary']['tuho']}"
+        )
+        # All records must be PENDING_REVIEW
+        statuses = {r["status"] for r in ledger["corrections"]}
+        assert statuses <= {"PENDING_REVIEW"}, (
+            f"All records must be PENDING_REVIEW, found: {statuses}"
+        )
+        # No APPROVED_FINANCIAL_CORRECTION may appear
+        assert "APPROVED_FINANCIAL_CORRECTION" not in statuses
+
+    def test_generator_never_overwrites_approved_ledger(self):
+        """Generator must not write to tax_cfads_v1_exact.json."""
+        import finco_parity.generate_tax_cfads_corrections as gen_mod
+        # Approved path must be a different file from proposed
+        assert gen_mod.APPROVED_PATH.name == "tax_cfads_v1_exact.json"
+        assert gen_mod.PROPOSED_PATH.name == "tax_cfads_v1_proposed.json"
+        assert gen_mod.APPROVED_PATH != gen_mod.PROPOSED_PATH, (
+            "Generator must write to proposed, not approved"
+        )
+
+    def test_check_cli_reports_tuho_blocked(self):
+        """check_financial_engine_tax_cfads detects TUHO block before comparison."""
+        from finco_parity.check_financial_engine_tax_cfads import _check_blocked_baselines
+        blocked = _check_blocked_baselines(["tuho", "oborovo"])
+        assert "tuho" in blocked, f"TUHO must be in blocked: {blocked}"
+        assert "oborovo" not in blocked, f"Oborovo must NOT be blocked: {blocked}"

@@ -304,7 +304,11 @@ def generate_tax_cfads_candidate_snapshot(
 
     period_interest = _build_exogenous_interest(baseline_snapshot)
     policy = build_tax_policy(baseline_id)
-    opening_vintages = build_opening_loss_vintages(baseline_id)
+    from finco_parity.tax_reference_inputs import TuhoOpeningLossVintageUnresolved
+    try:
+        opening_vintages = build_opening_loss_vintages(baseline_id)
+    except TuhoOpeningLossVintageUnresolved:
+        raise
 
     tax_input = TaxCalculationInput(
         policy=policy,

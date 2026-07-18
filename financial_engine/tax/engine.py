@@ -26,6 +26,15 @@ Example:
     EBITDA=10 000, tax_dep=2 000, gross_interest=4 000,
     deductible_interest=3 000 → taxable = 10 000 − 2 000 − 3 000 = 5 000  ✓
     (disallowed_interest is NOT added back separately)
+
+Multi-year periods
+------------------
+A period that spans 31 December appears in ``period_indices`` for BOTH the
+preceding and following calendar year.  CIT accrual for such a period is
+computed by summing (annual_CIT × allocation_fraction) across every year
+the period contributes to.  ATAD deductible/disallowed are similarly
+accumulated across all years.  Cash-tax timing is unchanged: under
+TAX_YEAR_LAST_PERIOD the full annual CIT lands in a single payment period.
 """
 from __future__ import annotations
 
@@ -35,6 +44,7 @@ from financial_engine.tax.atad import calculate_annual_atad, allocate_atad_to_pe
 from financial_engine.tax.loss_ledger import run_annual_fifo_ledger
 from financial_engine.tax.models import (
     PeriodCashTaxResult,
+    PeriodTaxYearAllocation,
     TaxAndCfadsResult,
     TaxAnnualResult,
 )
@@ -52,6 +62,18 @@ def _build_adj_map(period_adjustments: tuple) -> dict[int, float]:
         adj.period_index: adj.other_fiscal_reintegration_keur
         for adj in period_adjustments
     }
+
+
+def _period_alloc_fraction(
+    period_index: int,
+    frags_for_year: tuple,
+) -> float:
+    """Sum of allocation_fraction for fragments of ``period_index`` in one year."""
+    return sum(
+        f.allocation_fraction
+        for f in frags_for_year
+        if f.source_period_index == period_index
+    )
 
 
 def calculate_tax(
@@ -82,18 +104,15 @@ def calculate_tax(
     # ── Step 3: ATAD + taxable income + LCF + CIT per tax year ───────────────
     atad_results = []
     for basis in bases:
-        # Per-period interest in the order the fragments appear within the year
-        # (chronological by source period index).
-        seen: dict[int, float] = {}
+        # Build per-period interest allocation from pre-allocated fragment amounts.
+        period_int: dict[int, float] = {}
         for frag in basis.fragments:
-            pi_obj = interest_map.get(frag.source_period_index)
-            gross = pi_obj.total_interest_keur if pi_obj else 0.0
-            if frag.source_period_index not in seen:
-                seen[frag.source_period_index] = 0.0
-            seen[frag.source_period_index] += gross * frag.allocation_fraction
+            period_int[frag.source_period_index] = (
+                period_int.get(frag.source_period_index, 0.0) + frag.total_interest_keur
+            )
 
         period_interests: tuple[float, ...] = tuple(
-            seen.get(idx, 0.0) for idx in basis.period_indices
+            period_int.get(idx, 0.0) for idx in basis.period_indices
         )
 
         annual_atad = calculate_annual_atad(basis, policy)
@@ -152,20 +171,15 @@ def calculate_tax(
         ))
 
     # ── Step 4: Allocate cash tax to periods ──────────────────────────────────
-    # Build lookup period_index → annual_result
-    period_to_annual: dict[int, TaxAnnualResult] = {}
-    for ar in annual_results:
-        for idx in ar.period_indices:
-            period_to_annual[idx] = ar
+    # Build lookup: tax_year → (basis, annual_result)
+    basis_by_tax_year: dict[int, object] = {b.tax_year: b for b in bases}
+    ar_by_tax_year: dict[int, TaxAnnualResult] = {ar.tax_year: ar for ar in annual_results}
 
     all_period_indices = sorted(p.period_index for p in periods)  # type: ignore[attr-defined]
     max_period_idx = max(all_period_indices) if all_period_indices else -1
 
     terminal_unpaid = 0.0
     tax_year_cash_period: dict[int, int | None] = {}
-
-    # Build map from tax_year → basis (for payment_period_index lookup)
-    basis_by_tax_year: dict[int, object] = {b.tax_year: b for b in bases}
 
     for ar in annual_results:
         if not ar.period_indices:
@@ -188,6 +202,44 @@ def calculate_tax(
             # SAME_PERIOD: handled per-period below; mark sentinel
             tax_year_cash_period[ar.tax_year] = -1  # sentinel = distribute
 
+    # Accumulate ATAD deductible/disallowed per period across all years.
+    # A cross-year period accumulates from multiple annual ATAD results.
+    period_ded_lookup: dict[int, float] = {}
+    period_dis_lookup: dict[int, float] = {}
+    for ar in annual_results:
+        for idx, ded, dis in zip(
+            ar.period_indices,
+            ar.period_atad_deductible,
+            ar.period_atad_disallowed,
+        ):
+            period_ded_lookup[idx] = period_ded_lookup.get(idx, 0.0) + ded
+            period_dis_lookup[idx] = period_dis_lookup.get(idx, 0.0) + dis
+
+    # For each year, the sum of per-period allocation fractions may exceed 1.0
+    # (e.g. two full-year periods each have frac=1.0 in the same year → sum=2.0).
+    # Normalise so that: sum_over_periods(cit_accrual_from_year_Y) == AR_Y.CIT.
+    year_alloc_sum: dict[int, float] = {}
+    for ar in annual_results:
+        basis = basis_by_tax_year[ar.tax_year]
+        frags_for_year = basis.fragments  # type: ignore[union-attr]
+        year_alloc_sum[ar.tax_year] = sum(
+            _period_alloc_fraction(idx, frags_for_year) for idx in ar.period_indices
+        )
+
+    # Build per-period → list of (tax_year, alloc_fraction_normalised, annual_result).
+    # Used for PeriodTaxYearAllocation and SAME_PERIOD accrual.
+    period_year_contributions: dict[int, list[tuple[int, float, TaxAnnualResult]]] = {
+        idx: [] for idx in all_period_indices
+    }
+    for ar in annual_results:
+        basis = basis_by_tax_year[ar.tax_year]
+        frags_for_year = basis.fragments  # type: ignore[union-attr]
+        denom = year_alloc_sum.get(ar.tax_year, 1.0) or 1.0
+        for idx in ar.period_indices:
+            raw_frac = _period_alloc_fraction(idx, frags_for_year)
+            norm_frac = raw_frac / denom
+            period_year_contributions[idx].append((ar.tax_year, norm_frac, ar))
+
     # Build cash_tax_by_period
     cash_tax_by_period: dict[int, float] = {idx: 0.0 for idx in all_period_indices}
 
@@ -199,44 +251,81 @@ def calculate_tax(
                     cash_tax_by_period[payment_period] + ar.current_tax_liability_keur
                 )
     else:
-        # SAME_PERIOD: each period pays its own prorated CIT accrual share
-        for ar in annual_results:
-            n_in_year = len(ar.period_indices)
-            if n_in_year == 0:
-                continue
-            share = ar.current_tax_liability_keur / n_in_year
-            for idx in ar.period_indices:
-                cash_tax_by_period[idx] = cash_tax_by_period.get(idx, 0.0) + share
+        # SAME_PERIOD: each period's share = sum(annual_CIT × alloc_frac) over all years.
+        for idx in all_period_indices:
+            for _yr, alloc_frac, ar in period_year_contributions[idx]:
+                share = ar.current_tax_liability_keur * alloc_frac
+                cash_tax_by_period[idx] = cash_tax_by_period[idx] + share
 
     # ── Step 5: Build per-period results ──────────────────────────────────────
-    period_ded_lookup: dict[int, float] = {}
-    period_dis_lookup: dict[int, float] = {}
-    for ar in annual_results:
-        for idx, ded, dis in zip(
-            ar.period_indices,
-            ar.period_atad_deductible,
-            ar.period_atad_disallowed,
-        ):
-            period_ded_lookup[idx] = ded
-            period_dis_lookup[idx] = dis
-
     period_results: list[PeriodCashTaxResult] = []
     for p in periods:
         idx = p.period_index   # type: ignore[attr-defined]
-        ar = period_to_annual[idx]
-        n_in_year = len(ar.period_indices)
-        cit_share = ar.current_tax_liability_keur / n_in_year if n_in_year else 0.0
-        ti_share = ar.taxable_income_before_lcf_keur / n_in_year if n_in_year else 0.0
+        contributions = period_year_contributions[idx]
+
+        # Build PeriodTaxYearAllocation for each year this period contributes to.
+        # ``alloc_frac`` here is the normalised share (raw/sum_of_raw_for_year),
+        # ensuring sum(cit_accrual_keur over all periods) == AR_Y.CIT for each year.
+        allocations: list[PeriodTaxYearAllocation] = []
+        for yr, alloc_frac, ar in contributions:
+            basis = basis_by_tax_year[yr]
+            frags_for_year = basis.fragments  # type: ignore[union-attr]
+
+            # Per-year ATAD for this period (from ar.period_atad_* arrays).
+            yr_idx_list = list(ar.period_indices)
+            if idx in yr_idx_list:
+                pos = yr_idx_list.index(idx)
+                yr_ded = ar.period_atad_deductible[pos]
+                yr_dis = ar.period_atad_disallowed[pos]
+            else:
+                yr_ded = 0.0
+                yr_dis = 0.0
+
+            # Allocated amounts for this period in this year (from fragment amounts).
+            yr_ebitda = sum(
+                f.ebitda_keur for f in frags_for_year if f.source_period_index == idx
+            )
+            yr_reint = sum(
+                f.other_fiscal_reintegration_keur
+                for f in frags_for_year if f.source_period_index == idx
+            )
+            yr_ti_share = ar.taxable_income_before_lcf_keur * alloc_frac
+            yr_cit = ar.current_tax_liability_keur * alloc_frac
+
+            allocations.append(PeriodTaxYearAllocation(
+                tax_year=yr,
+                allocation_fraction=alloc_frac,
+                ebitda_keur=yr_ebitda,
+                deductible_interest_keur=yr_ded,
+                disallowed_interest_keur=yr_dis,
+                other_fiscal_reintegration_keur=yr_reint,
+                taxable_income_share_keur=yr_ti_share,
+                cit_accrual_keur=yr_cit,
+            ))
+
+        # Primary year = year with largest allocation fraction (display-only).
+        if allocations:
+            primary_yr = max(allocations, key=lambda a: (a.allocation_fraction, a.tax_year)).tax_year
+        else:
+            primary_yr = 0
+
+        total_ded = period_ded_lookup.get(idx, 0.0)
+        total_dis = period_dis_lookup.get(idx, 0.0)
+        total_reint = adj_map.get(idx, 0.0)
+        total_ti_share = sum(a.taxable_income_share_keur for a in allocations)
+        total_cit_share = sum(a.cit_accrual_keur for a in allocations)
+
         period_results.append(PeriodCashTaxResult(
             period_index=idx,
             is_operation=p.is_operation,    # type: ignore[attr-defined]
             ebitda_keur=p.ebitda_keur,      # type: ignore[attr-defined]
-            tax_year=ar.tax_year,
-            deductible_interest_keur=period_ded_lookup.get(idx, 0.0),
-            disallowed_interest_keur=period_dis_lookup.get(idx, 0.0),
-            other_fiscal_reintegration_keur=adj_map.get(idx, 0.0),
-            taxable_income_before_lcf_share_keur=ti_share,
-            cit_accrual_share_keur=cit_share,
+            primary_tax_year=primary_yr,
+            tax_year_allocations=tuple(allocations),
+            deductible_interest_keur=total_ded,
+            disallowed_interest_keur=total_dis,
+            other_fiscal_reintegration_keur=total_reint,
+            taxable_income_before_lcf_share_keur=total_ti_share,
+            cit_accrual_share_keur=total_cit_share,
             cash_tax_keur=cash_tax_by_period.get(idx, 0.0),
         ))
 

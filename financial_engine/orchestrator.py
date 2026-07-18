@@ -416,24 +416,35 @@ def run_tax_cfads_model(inputs: TaxCfadsModelInput) -> ProjectModelResult:
 
     # Step 7: Assemble TaxAndCfadsSchedules
     annual_map = {ar.tax_year: ar for ar in tax_result.annual_results}
-    period_to_annual_tax_year: dict[int, int] = {}
-    for ar in tax_result.annual_results:
-        for idx in ar.period_indices:
-            period_to_annual_tax_year[idx] = ar.tax_year
+    # Use primary_tax_year (display-only) for audit lookups that need a single year per period.
+    period_to_annual_tax_year: dict[int, int] = {
+        pr.period_index: pr.primary_tax_year for pr in period_results
+    }
 
     def _per_period_annual_share(attr: str) -> tuple[float, ...]:
-        out = []
+        """Allocate an annual attribute to periods using normalised allocation fractions.
+
+        For cross-year periods, the attribute is split across all years the period
+        contributes to, weighted by the normalised allocation fraction stored on each
+        PeriodTaxYearAllocation.  This ensures the per-period sum equals the sum of
+        all annual values.
+        """
+        out: list[float] = []
         for pr in period_results:
-            ar = annual_map.get(period_to_annual_tax_year.get(pr.period_index, -999999))
-            if ar is None:
-                out.append(0.0)
+            if pr.tax_year_allocations:
+                total = sum(
+                    getattr(annual_map[a.tax_year], attr) * a.allocation_fraction
+                    for a in pr.tax_year_allocations
+                    if a.tax_year in annual_map
+                )
             else:
-                n_in_year = len(ar.period_indices)
-                out.append(getattr(ar, attr) / n_in_year if n_in_year else 0.0)
+                total = 0.0
+            out.append(total)
         return tuple(out)
 
     period_indices = tuple(pr.period_index for pr in period_results)
-    cit_accrual_per_period = _per_period_annual_share("current_tax_liability_keur")
+    # CIT accrual is already correctly computed per-period in engine.py.
+    cit_accrual_per_period = tuple(pr.cit_accrual_share_keur for pr in period_results)
     corporate_tax_cash = tuple(pr.cash_tax_keur for pr in period_results)
 
     # Canonical CFADS from calculate_canonical_cfads (authoritative)

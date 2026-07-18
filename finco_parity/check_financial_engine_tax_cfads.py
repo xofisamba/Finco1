@@ -109,6 +109,26 @@ def _correction_status_for_baseline(
 
 _PROFILE = ComparisonProfile.TAX_CFADS_V1
 _ALL_BASELINE_IDS = ("tuho", "oborovo", "generic_solar", "generic_wind")
+_STATUS_BLOCKED = "INPUT_SOURCE_BLOCKED"
+
+
+def _check_blocked_baselines(baseline_ids: list[str]) -> dict[str, str]:
+    """Return {baseline_id: block_reason} for baselines that cannot be run.
+
+    A blocked baseline (e.g. TUHO opening-loss unresolved) produces
+    INPUT_SOURCE_BLOCKED rather than a comparison result.
+    """
+    from finco_parity.tax_reference_inputs import (
+        TuhoOpeningLossVintageUnresolved,
+        build_opening_loss_vintages,
+    )
+    blocked: dict[str, str] = {}
+    for bid in baseline_ids:
+        try:
+            build_opening_loss_vintages(bid)
+        except TuhoOpeningLossVintageUnresolved as exc:
+            blocked[bid] = str(exc)
+    return blocked
 
 
 def _write_report(path: Path, content: bytes | str) -> None:
@@ -187,23 +207,36 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Baselines: {', '.join(selected_ids)}")
         print()
 
-    try:
-        aggregate = compare_candidate_provider(
-            FinancialEngineTaxCfadsCandidateProvider(),
-            baseline_ids=selected_ids,
-            comparison_profile=_PROFILE,
-            verify_legacy=verify_legacy,
-        )
-    except ManifestIntegrityError as exc:
-        print(f"MANIFEST INTEGRITY FAILURE: {exc}", file=sys.stderr)
-        return 4
-    except ValueError as exc:
-        print(f"UNKNOWN BASELINE: {exc}", file=sys.stderr)
-        return 2
-    except Exception as exc:
-        print(f"UNEXPECTED ERROR: {type(exc).__name__}: {exc}", file=sys.stderr)
-        traceback.print_exc()
-        return 1
+    # Detect baselines blocked by unresolved input sources (e.g. TUHO opening loss).
+    blocked_baselines = _check_blocked_baselines(selected_ids)
+    runnable_ids = [bid for bid in selected_ids if bid not in blocked_baselines]
+
+    if not args.quiet and blocked_baselines:
+        for bid, reason in blocked_baselines.items():
+            print(f"  [{bid}] {_STATUS_BLOCKED}: {reason[:120]}", flush=True)
+        print()
+
+    if runnable_ids:
+        try:
+            aggregate = compare_candidate_provider(
+                FinancialEngineTaxCfadsCandidateProvider(),
+                baseline_ids=runnable_ids,
+                comparison_profile=_PROFILE,
+                verify_legacy=verify_legacy,
+            )
+        except ManifestIntegrityError as exc:
+            print(f"MANIFEST INTEGRITY FAILURE: {exc}", file=sys.stderr)
+            return 4
+        except ValueError as exc:
+            print(f"UNKNOWN BASELINE: {exc}", file=sys.stderr)
+            return 2
+        except Exception as exc:
+            print(f"UNEXPECTED ERROR: {type(exc).__name__}: {exc}", file=sys.stderr)
+            traceback.print_exc()
+            return 1
+    else:
+        # All selected baselines are blocked; nothing to compare.
+        aggregate = None
 
     # Load corrections ledger for correction-aware status classification.
     approved = _load_corrections()
@@ -220,7 +253,20 @@ def main(argv: list[str] | None = None) -> int:
     # Per-baseline correction-aware classification.
     any_unexplained = False
     baseline_correction_statuses: list[dict[str, Any]] = []
-    for result in aggregate.baseline_results:
+
+    # Blocked baselines — report INPUT_SOURCE_BLOCKED (not a drift, not an error).
+    for bid, reason in blocked_baselines.items():
+        baseline_correction_statuses.append({
+            "baseline_id": bid,
+            "legacy_status": _STATUS_BLOCKED,
+            "correction_status": _STATUS_BLOCKED,
+            "n_approved": 0,
+            "n_unexplained": 0,
+            "unexplained_diffs": [],
+            "block_reason": reason[:120],
+        })
+
+    for result in (aggregate.baseline_results if aggregate is not None else []):
         c_status, approved_diffs, unexplained = _correction_status_for_baseline(
             result.baseline_id, result.differences, approved
         )
@@ -286,7 +332,20 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.text_report:
         try:
-            _write_report(args.text_report, _format_text_report(aggregate))
+            if aggregate is not None:
+                _write_report(args.text_report, _format_text_report(aggregate))
+            else:
+                # All baselines blocked — write minimal report.
+                lines = [
+                    "=== TAX_CFADS_V1 Report ===",
+                    f"Profile:    {_PROFILE.value}",
+                    f"Engine:     {ENGINE_VERSION}",
+                    "",
+                ]
+                for bid, reason in blocked_baselines.items():
+                    lines.append(f"  [{bid}] {_STATUS_BLOCKED}: {reason[:120]}")
+                lines.append("")
+                _write_report(args.text_report, "\n".join(lines))
         except OSError as exc:
             print(f"Cannot write text report: {exc.strerror}", file=sys.stderr)
             return 1

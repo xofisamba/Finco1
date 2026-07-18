@@ -19,6 +19,9 @@ class TaxYearPeriodFragment:
 
     ``days`` uses the convention (frag_end − frag_start).days so that
     ``sum(f.days for f in fragments) == (period_end − period_start).days``.
+
+    The allocated amount fields carry the period's amounts × allocation_fraction,
+    so a year's basis totals can be derived purely by summing its fragments.
     """
     tax_year: int                  # calendar year, e.g. 2030
     source_period_index: int
@@ -27,6 +30,11 @@ class TaxYearPeriodFragment:
     days: int                      # (end_date - start_date).days for this fragment
     source_period_days: int        # (period_end - period_start).days for the full source period
     allocation_fraction: float     # = days / source_period_days (last fragment adjusted for exact 1.0)
+    # Pre-allocated amounts: period amount × allocation_fraction
+    ebitda_keur: float
+    tax_depreciation_keur: float
+    total_interest_keur: float
+    other_fiscal_reintegration_keur: float
 
 
 @dataclass(frozen=True)
@@ -149,16 +157,45 @@ class TaxAnnualResult:
 
 
 @dataclass(frozen=True)
-class PeriodCashTaxResult:
-    """Cash tax payment assignment for one model period."""
-    period_index: int
-    is_operation: bool
+class PeriodTaxYearAllocation:
+    """Per-calendar-year allocation share for one model period.
+
+    A cross-year period produces one instance per calendar year it spans.
+    ``cit_accrual_keur`` is the period's proportional share of that year's CIT
+    liability (annual CIT × allocation_fraction).  It is an accrual figure, NOT
+    the cash payment date — cash timing is determined by the period-level
+    ``cash_tax_keur`` field on ``PeriodCashTaxResult``.
+    """
+    tax_year: int
+    allocation_fraction: float
     ebitda_keur: float
-    tax_year: int                    # calendar year
     deductible_interest_keur: float
     disallowed_interest_keur: float
     other_fiscal_reintegration_keur: float
-    # Taxable income shares (annual result, prorated to this period for audit)
+    taxable_income_share_keur: float
+    cit_accrual_keur: float
+
+
+@dataclass(frozen=True)
+class PeriodCashTaxResult:
+    """Cash tax payment assignment for one model period.
+
+    ``primary_tax_year`` is the calendar year with the largest allocation
+    fraction (display-only; must not control any calculation).
+    ``tax_year_allocations`` carries the per-year accrual contract; cross-year
+    periods have len > 1.
+    ``cash_tax_keur`` is the actual cash outflow in this period (determined by
+    the configured cash timing rule — TAX_YEAR_LAST_PERIOD or SAME_PERIOD).
+    """
+    period_index: int
+    is_operation: bool
+    ebitda_keur: float
+    primary_tax_year: int            # display-only: year with largest allocation fraction
+    tax_year_allocations: tuple[PeriodTaxYearAllocation, ...]
+    # Aggregate convenience fields (sum over all years)
+    deductible_interest_keur: float
+    disallowed_interest_keur: float
+    other_fiscal_reintegration_keur: float
     taxable_income_before_lcf_share_keur: float
     cit_accrual_share_keur: float
     cash_tax_keur: float             # actual cash payment in this period

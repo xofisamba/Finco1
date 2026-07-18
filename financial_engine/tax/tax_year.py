@@ -13,7 +13,11 @@ Rules
   ``(period_end − period_start).days``.  For periods of length 0 the single
   fragment has ``days=0`` and ``allocation_fraction=1.0``.
 * EBITDA, tax depreciation, interest and fiscal reintegration are allocated
-  proportionally.  Totals are preserved exactly (floating-point arithmetic).
+  proportionally and stored directly on each fragment.
+* Every calendar year that contains at least one fragment from any period
+  produces a ``TaxYearCalculationBasis`` — no year is skipped because a period
+  only has a "minority" allocation to it.  Cross-year periods appear in the
+  ``period_indices`` of every year they contribute to.
 
 Pure function.  No imports from app, finco_core or any framework.
 """
@@ -30,8 +34,12 @@ def _split_period(
     period_index: int,
     period_start: date,
     period_end: date,
+    ebitda_keur: float = 0.0,
+    tax_depreciation_keur: float = 0.0,
+    total_interest_keur: float = 0.0,
+    other_fiscal_reintegration_keur: float = 0.0,
 ) -> list[TaxYearPeriodFragment]:
-    """Split one period into calendar-year fragments.
+    """Split one period into calendar-year fragments with allocated amounts.
 
     Uses the half-open interval convention [period_start, period_end) so that
     fragment days sum to (period_end − period_start).days.
@@ -45,8 +53,11 @@ def _split_period(
     Allocation fraction: frag_days / sum(all_frag_days).  The last fragment's
     fraction is adjusted to ensure exact sum == 1.0.
 
+    Each fragment carries the pre-allocated amounts: period_amount × fraction.
+
     Zero-length periods ((period_end - period_start).days == 0) receive a
-    single zero-day fragment with allocation_fraction == 1.0.
+    single zero-day fragment with allocation_fraction == 1.0 and the full
+    period amounts (fraction = 1.0 so amounts pass through unchanged).
     """
     total_days = (period_end - period_start).days
 
@@ -59,6 +70,10 @@ def _split_period(
             days=0,
             source_period_days=0,
             allocation_fraction=1.0,
+            ebitda_keur=ebitda_keur,
+            tax_depreciation_keur=tax_depreciation_keur,
+            total_interest_keur=total_interest_keur,
+            other_fiscal_reintegration_keur=other_fiscal_reintegration_keur,
         )]
 
     fragments: list[tuple[int, date, date, int]] = []
@@ -81,8 +96,30 @@ def _split_period(
     fracs = [fd / total_frag_days for _, _, _, fd in fragments]
     fracs[-1] = 1.0 - sum(fracs[:-1])
 
-    return [
-        TaxYearPeriodFragment(
+    result = []
+    accumulated_ebitda = 0.0
+    accumulated_dep = 0.0
+    accumulated_int = 0.0
+    accumulated_reint = 0.0
+
+    for i, ((yr, fs, fe, fd), frac) in enumerate(zip(fragments, fracs)):
+        if i < len(fragments) - 1:
+            frag_ebitda = ebitda_keur * frac
+            frag_dep = tax_depreciation_keur * frac
+            frag_int = total_interest_keur * frac
+            frag_reint = other_fiscal_reintegration_keur * frac
+            accumulated_ebitda += frag_ebitda
+            accumulated_dep += frag_dep
+            accumulated_int += frag_int
+            accumulated_reint += frag_reint
+        else:
+            # Last fragment: use remainder to preserve exact totals.
+            frag_ebitda = ebitda_keur - accumulated_ebitda
+            frag_dep = tax_depreciation_keur - accumulated_dep
+            frag_int = total_interest_keur - accumulated_int
+            frag_reint = other_fiscal_reintegration_keur - accumulated_reint
+
+        result.append(TaxYearPeriodFragment(
             tax_year=yr,
             source_period_index=period_index,
             start_date=fs,
@@ -90,9 +127,13 @@ def _split_period(
             days=fd,
             source_period_days=total_frag_days,
             allocation_fraction=frac,
-        )
-        for (yr, fs, fe, fd), frac in zip(fragments, fracs)
-    ]
+            ebitda_keur=frag_ebitda,
+            tax_depreciation_keur=frag_dep,
+            total_interest_keur=frag_int,
+            other_fiscal_reintegration_keur=frag_reint,
+        ))
+
+    return result
 
 
 def _payment_period_for_year(
@@ -140,8 +181,12 @@ def build_tax_year_bases(
     """Aggregate period amounts into calendar-year TaxYearCalculationBasis records.
 
     Periods are split on 31 December when they cross year-end.  Each fragment
-    contributes its allocated fraction of the period's EBITDA, tax depreciation,
-    interest, and fiscal reintegration to the fragment's calendar year.
+    contributes its allocated amounts to the fragment's calendar year.
+
+    Every calendar year that contains at least one fragment from any period
+    produces a ``TaxYearCalculationBasis``.  A period that spans two years
+    appears in ``period_indices`` for BOTH years.  There is no primary-year
+    ownership — minority-year contributions are never dropped.
 
     Parameters
     ----------
@@ -156,12 +201,7 @@ def build_tax_year_bases(
     -------
     Tuple of TaxYearCalculationBasis, sorted by ascending calendar year.
     """
-    # Accumulate per-year totals and fragments.
     year_fragments: dict[int, list[TaxYearPeriodFragment]] = defaultdict(list)
-    year_ebitda: dict[int, float] = defaultdict(float)
-    year_tax_dep: dict[int, float] = defaultdict(float)
-    year_interest: dict[int, float] = defaultdict(float)
-    year_reint: dict[int, float] = defaultdict(float)
 
     for p in periods:
         idx: int = p.period_index          # type: ignore[attr-defined]
@@ -174,16 +214,16 @@ def build_tax_year_bases(
         gross_int = pi_obj.total_interest_keur if pi_obj else 0.0
         reint = adj_map.get(idx, 0.0)
 
-        frags = _split_period(idx, p_start, p_end)
+        frags = _split_period(
+            idx, p_start, p_end,
+            ebitda_keur=ebitda,
+            tax_depreciation_keur=tax_dep,
+            total_interest_keur=gross_int,
+            other_fiscal_reintegration_keur=reint,
+        )
 
         for frag in frags:
-            yr = frag.tax_year
-            f = frag.allocation_fraction
-            year_fragments[yr].append(frag)
-            year_ebitda[yr] += ebitda * f
-            year_tax_dep[yr] += tax_dep * f
-            year_interest[yr] += gross_int * f
-            year_reint[yr] += reint * f
+            year_fragments[frag.tax_year].append(frag)
 
     # Build index for payment_period resolution
     periods_by_index: dict[int, object] = {
@@ -191,47 +231,32 @@ def build_tax_year_bases(
         for p in periods
     }
 
-    # Determine the "primary year" for each period: the calendar year that receives the
-    # largest allocation fraction.  For ties, the later year (higher value) wins so that
-    # the payment stays with the majority year.
-    period_primary_year: dict[int, int] = {}
-    period_max_frac: dict[int, float] = {}
-    for yr, frags in year_fragments.items():
-        for frag in frags:
-            idx = frag.source_period_index
-            total_frac_in_yr = sum(
-                f.allocation_fraction for f in frags if f.source_period_index == idx
-            )
-            if total_frac_in_yr > period_max_frac.get(idx, -1.0):
-                period_primary_year[idx] = yr
-                period_max_frac[idx] = total_frac_in_yr
-            elif total_frac_in_yr == period_max_frac.get(idx, -1.0) and yr > period_primary_year.get(idx, -1):
-                # Tie-break: later year wins (ensures Dec31→Jan1 period belongs to the later year).
-                period_primary_year[idx] = yr
-
     bases: list[TaxYearCalculationBasis] = []
     for yr in sorted(year_fragments.keys()):
         frags_for_year = tuple(year_fragments[yr])
-        # period_indices: only periods whose primary year is this year.
-        # This ensures each period appears in exactly one year's proration, preventing
-        # double-counting for Dec31-start periods that straddle year boundaries.
+
+        # Every period with any fragment in this year is listed.
+        # Preserve insertion order (chronological by source_period_index).
         period_indices = tuple(dict.fromkeys(
-            frag.source_period_index
-            for frag in frags_for_year
-            if period_primary_year.get(frag.source_period_index) == yr
+            frag.source_period_index for frag in frags_for_year
         ))
-        if not period_indices:
-            continue
+
+        # Sum amounts from the pre-allocated fragment fields.
+        year_ebitda = sum(f.ebitda_keur for f in frags_for_year)
+        year_tax_dep = sum(f.tax_depreciation_keur for f in frags_for_year)
+        year_interest = sum(f.total_interest_keur for f in frags_for_year)
+        year_reint = sum(f.other_fiscal_reintegration_keur for f in frags_for_year)
+
         payment_idx = _payment_period_for_year(yr, frags_for_year, periods_by_index)
         bases.append(TaxYearCalculationBasis(
             tax_year=yr,
             fragments=frags_for_year,
             period_indices=period_indices,
             payment_period_index=payment_idx,
-            ebitda_keur=year_ebitda[yr],
-            tax_depreciation_keur=year_tax_dep[yr],
-            total_interest_keur=year_interest[yr],
-            other_fiscal_reintegration_keur=year_reint[yr],
+            ebitda_keur=year_ebitda,
+            tax_depreciation_keur=year_tax_dep,
+            total_interest_keur=year_interest,
+            other_fiscal_reintegration_keur=year_reint,
         ))
 
     return tuple(bases)

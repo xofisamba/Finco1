@@ -8,23 +8,25 @@ It does NOT live inside financial_engine.  The financial_engine accepts an
 explicit TaxPolicy and explicit opening vintages; project identity is resolved
 HERE, in the parity adapter layer.
 
-Opening loss origin-year convention
-------------------------------------
-TUHO reports ``prior_tax_loss_keur = 25 000`` kEUR.  The project inputs do not
-carry an explicit vintage year.  Convention adopted here:
+TUHO opening-loss: UNRESOLVED
+-------------------------------
+TUHO reports ``prior_tax_loss_keur = 25 000`` kEUR in
+``project_factories.create_default_tuho_wind1()``.  This is a factory
+hard-coded default with no supporting Excel extract.
 
-    origin_tax_year = financial_close.year − 1
+Evidence:
+  * ``docs/phase7f_tuho_tax_basis_diagnostic.md`` — CRITICAL DISCREPANCY:
+    Python engine 25 000 kEUR vs Excel ~3 569 kEUR (7× larger).
+  * ``docs/phase6_tax_bridge_residual_r67_final_calibration.md`` — states
+    "near-expiry assumption pending full pre-COD Excel loss extract".
+  * The factory convention ``origin_tax_year = financial_close.year − 1 = 2028``
+    has no supporting source document.
 
-For TUHO this yields 2028.  With ``loss_carryforward_years = 5``:
-    last_usable_tax_year = 2028 + 5 = 2033
+Because neither the amount nor the origin year can be verified against an
+authoritative primary source, ``build_opening_loss_vintages("tuho")`` raises
+``TuhoOpeningLossVintageUnresolved``.  Callers must handle this stop condition.
 
-The loss is therefore available for use in calendar years 2030–2033
-(construction year 2029 does not generate taxable income, and expiry occurs
-when last_usable_tax_year < current_tax_year, i.e. from 2034 onwards).
-
-Source: project_factories.create_default_tuho_wind1() → pi.tax.prior_tax_loss_keur
-Rationale: "Convention: year before financial close (financial_close.year − 1).
-No explicit vintage origin year in project inputs."
+Permitted outcome: ``TUHO TAX_CFADS_V1 = INPUT_SOURCE_BLOCKED``.
 
 For baselines with no opening losses, an explicit reviewed-zero position is
 recorded rather than relying on an absent tuple.
@@ -34,6 +36,15 @@ from __future__ import annotations
 from typing import Any
 
 
+class TuhoOpeningLossVintageUnresolved(RuntimeError):
+    """Raised when TUHO opening-loss vintage cannot be resolved from a primary source.
+
+    The factory value (25 000 kEUR, origin 2028) is a hard-coded default with no
+    supporting Excel extract.  Until a verified source is provided the TUHO
+    TAX_CFADS_V1 result is INPUT_SOURCE_BLOCKED.
+    """
+
+
 # ---------------------------------------------------------------------------
 # Registry schema
 # ---------------------------------------------------------------------------
@@ -41,16 +52,18 @@ from typing import Any
 _OPENING_LOSS_REGISTRY: dict[str, list[dict[str, Any]]] = {
     "tuho": [
         {
-            "vintage_id": "tuho_prior_loss_opening",
+            # UNRESOLVED — factory hard-coded default, no Excel source.
+            # build_opening_loss_vintages("tuho") raises TuhoOpeningLossVintageUnresolved.
+            # Do NOT use this entry directly.
+            "vintage_id": "tuho_prior_loss_opening_UNRESOLVED",
             "source_field": "project_inputs.tax.prior_tax_loss_keur",
             "amount_keur": 25_000.0,
-            "origin_tax_year": 2028,
-            # origin_tax_year = financial_close.year (2029) - 1 = 2028
-            # No explicit vintage year in project inputs; convention applied.
+            "origin_tax_year": None,   # unresolved — no verified source
             "source_rationale": (
-                "Convention: year before financial close 2029-07-01 → origin 2028. "
-                "last_usable = 2028 + 5 = 2033. "
-                "Source: create_default_tuho_wind1().tax.prior_tax_loss_keur."
+                "UNRESOLVED: factory default 25 000 kEUR with no Excel extract. "
+                "Excel shows ~3 569 kEUR (phase7f_tuho_tax_basis_diagnostic.md). "
+                "Origin year 2028 is a code convention, not from any source document. "
+                "Status: TUHO_OPENING_LOSS_VINTAGE_UNRESOLVED."
             ),
             "policy_id": "hr_standard_factory_v1",
         }
@@ -197,13 +210,28 @@ def build_opening_loss_vintages(baseline_id: str) -> tuple:
     """Build the opening loss vintage tuple for the given baseline.
 
     Returns an empty tuple for baselines with reviewed-zero positions.
-    For TUHO, returns the 25 000 kEUR opening vintage.
+
+    Raises
+    ------
+    TuhoOpeningLossVintageUnresolved
+        For ``baseline_id == "tuho"``: the factory opening-loss amount and
+        origin year cannot be verified against an authoritative primary source.
+        Callers must catch this and return ``INPUT_SOURCE_BLOCKED`` for TUHO.
     """
     if baseline_id not in _OPENING_LOSS_REGISTRY:
         raise ValueError(
             f"No opening loss registry entry for {baseline_id!r}. "
             f"Valid: {sorted(_OPENING_LOSS_REGISTRY)}"
         )
+
+    if baseline_id == "tuho":
+        raise TuhoOpeningLossVintageUnresolved(
+            "TUHO_OPENING_LOSS_VINTAGE_UNRESOLVED: factory value 25 000 kEUR "
+            "(origin 2028) has no verified Excel source. "
+            "Excel extract shows ~3 569 kEUR (phase7f_tuho_tax_basis_diagnostic.md). "
+            "Permitted outcome: TUHO TAX_CFADS_V1 = INPUT_SOURCE_BLOCKED."
+        )
+
     from financial_engine.inputs import OpeningTaxLossVintageInput
 
     vintages = []

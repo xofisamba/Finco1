@@ -2,14 +2,20 @@ name: Phase 2B Tax and CFADS Check
 
 # Phase 2B — Policy-driven tax, vintage FIFO LCF, and canonical CFADS.
 #
-# Gate order (all must pass):
-#   1. Baseline snapshots unchanged
-#   2. Protected production scope unchanged
-#   3. Phase 2B unit tests (tests A–J)
-#   4. Phase 2A regression suite
-#   5. Phase 1A–1C generate_baselines --check (integrity of baseline data)
-#   6. Phase 2A OPERATING_CORE_V1 parity (regression gate)
-#   7. Phase 2B TAX_CFADS_V1 parity (all four baselines)
+# Gate order (all 13 steps must pass):
+#   1.  Checkout
+#   2.  Resolve comparison base SHA
+#   3.  Install dependencies (constraint-based)
+#   4.  Baseline snapshots unchanged (merge-base diff, no || true)
+#   5.  Protected production scope unchanged
+#   6.  Phase 2B unit tests (tests A–J+)
+#   7.  Phase 2A regression suite
+#   8.  Phase 1A–1C generate_baselines --check (baseline integrity)
+#   9.  Phase 1A–1C generate_baselines --regen (regenerate, check no delta)
+#   10. Phase 2A OPERATING_CORE_V1 parity (regression gate)
+#   11. Correction schema validation
+#   12. Phase 2B TAX_CFADS_V1 correction-aware comparison (blocking)
+#   13. Zero-unexplained-drift assertion
 
 on:
   pull_request:
@@ -30,11 +36,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
+      # ── Step 1: Checkout ────────────────────────────────────────────────────
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
 
+      # ── Step 2: Resolve comparison base SHA ─────────────────────────────────
       - name: Resolve comparison base SHA
         id: base
         run: |
@@ -49,6 +57,7 @@ jobs:
           echo "base_sha=$BASE_SHA" >> "$GITHUB_OUTPUT"
           echo "Comparison base: $BASE_SHA"
 
+      # ── Step 3: Install dependencies (constraint-based) ─────────────────────
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
@@ -56,12 +65,16 @@ jobs:
           cache: pip
 
       - name: Install dependencies
-        run: pip install --no-cache-dir -r requirements.txt
+        run: |
+          pip install --no-cache-dir -c constraints.txt numpy==1.26.4 pandas==2.2.3
+          pip install --no-cache-dir -c constraints.txt -e .
+          pip install --no-cache-dir -c constraints.txt pytest
 
+      # ── Step 4: Baseline snapshots unchanged ────────────────────────────────
       - name: Check baseline snapshots unchanged
         run: |
-          CHANGED=$(git diff --name-only ${{ steps.base.outputs.base_sha }} HEAD \
-            -- finco_parity/baselines/snapshots/ 2>/dev/null || true)
+          CHANGED=$(git diff --name-only "${{ steps.base.outputs.base_sha }}"...HEAD \
+            -- finco_parity/baselines/snapshots/)
           if [ -n "$CHANGED" ]; then
             echo "ERROR: Phase 2B must not modify baseline snapshots:"
             echo "$CHANGED"
@@ -69,10 +82,11 @@ jobs:
           fi
           echo "Baseline snapshots: unchanged"
 
+      # ── Step 5: Protected production scope unchanged ────────────────────────
       - name: Check protected production scope unchanged
         run: |
-          CHANGED=$(git diff --name-only ${{ steps.base.outputs.base_sha }} HEAD \
-            -- app/ domain/ main_web.py main_api.py finco_core/waterfall/ 2>/dev/null || true)
+          CHANGED=$(git diff --name-only "${{ steps.base.outputs.base_sha }}"...HEAD \
+            -- app/ domain/ main_web.py main_api.py finco_core/waterfall/)
           if [ -n "$CHANGED" ]; then
             echo "ERROR: Phase 2B must not modify protected production files:"
             echo "$CHANGED"
@@ -80,10 +94,12 @@ jobs:
           fi
           echo "Protected production scope: unchanged"
 
-      - name: Phase 2B test suite (tests A–J)
+      # ── Step 6: Phase 2B test suite ────────────────────────────────────────
+      - name: Phase 2B test suite (tests A–J+)
         run: |
           python -m pytest tests/test_phase2b_tax_cfads.py -v --tb=short
 
+      # ── Step 7: Phase 2A regression suite ──────────────────────────────────
       - name: Phase 2A regression suite
         run: |
           python -m pytest \
@@ -92,19 +108,91 @@ jobs:
             tests/test_phase2a_production_isolation.py \
             -v --tb=short
 
+      # ── Step 8: Phase 1A–1C generate_baselines integrity check ─────────────
       - name: Phase 1A–1C generate_baselines integrity check
         run: |
           python -m finco_parity.generate_baselines --check
 
+      # ── Step 9: Phase 1A–1C generate_baselines --regen (no delta) ──────────
+      - name: Phase 1A–1C generate_baselines regeneration check
+        run: |
+          python -m finco_parity.generate_baselines --regen
+          CHANGED=$(git diff --name-only -- finco_parity/baselines/snapshots/ 2>/dev/null || true)
+          if [ -n "$CHANGED" ]; then
+            echo "ERROR: generate_baselines --regen produced snapshot changes:"
+            echo "$CHANGED"
+            exit 1
+          fi
+          echo "Baseline regeneration: no delta"
+
+      # ── Step 10: Phase 2A OPERATING_CORE_V1 parity ─────────────────────────
       - name: Phase 2A OPERATING_CORE_V1 parity (regression gate)
         run: |
           python -m finco_parity.check_financial_engine_operating_core --all --check
 
-      - name: Phase 2B TAX_CFADS_V1 parity (all four baselines, blocking)
+      # ── Step 11: Correction schema validation ──────────────────────────────
+      - name: Correction schema validation
         run: |
-          # Correction-aware check: IDENTICAL and APPROVED_FINANCIAL_CORRECTION → exit 0.
-          # UNEXPLAINED_DRIFT → exit 3 (blocks the build).
-          # The approved corrections are recorded in finco_parity/corrections/tax_cfads_v1_exact.json.
-          # Regenerate with: python -m finco_parity.generate_tax_cfads_corrections
+          python - <<'EOF'
+          import json, sys
+          from pathlib import Path
+
+          approved_path = Path("finco_parity/corrections/tax_cfads_v1_exact.json")
+          if not approved_path.exists():
+            print("Approved corrections ledger not found — skipping schema check")
+            sys.exit(0)
+
+          with open(approved_path) as f:
+            ledger = json.load(f)
+
+          required_record_fields = {
+            "baseline_id", "field_path", "baseline_value", "candidate_value",
+            "status",
+          }
+          required_governance_fields = {
+            "correction_id", "correction_category", "financial_reason",
+            "manual_test_reference", "policy_id", "policy_version",
+            "approval_basis",
+          }
+
+          errors = []
+          for i, rec in enumerate(ledger.get("corrections", [])):
+            missing = required_record_fields - set(rec)
+            if missing:
+              errors.append(f"Record {i}: missing fields {missing}")
+              continue
+            if rec.get("status") == "APPROVED_FINANCIAL_CORRECTION":
+              missing_gov = required_governance_fields - set(rec)
+              if missing_gov:
+                errors.append(f"Record {i} ({rec['field_path']}): "
+                              f"missing governance fields {missing_gov}")
+              if rec.get("financial_reason", "").startswith("Phase 2B approved"):
+                errors.append(f"Record {i}: generic financial_reason not accepted")
+              if not rec.get("manual_test_reference", "").strip():
+                errors.append(f"Record {i}: manual_test_reference is empty")
+
+          if errors:
+            for e in errors[:10]:
+              print(f"SCHEMA ERROR: {e}")
+            if len(errors) > 10:
+              print(f"... and {len(errors) - 10} more errors")
+            sys.exit(1)
+
+          n = len(ledger.get("corrections", []))
+          print(f"Correction schema: {n} records valid")
+          EOF
+
+      # ── Step 12: Phase 2B TAX_CFADS_V1 correction-aware check ─────────────
+      - name: Phase 2B TAX_CFADS_V1 correction-aware comparison (blocking)
+        run: |
+          mkdir -p "${RUNNER_TEMP}/phase2b"
           python -m finco_parity.check_financial_engine_tax_cfads --all \
-            --text-report reports/phase2b_tax_cfads/tax_cfads_v1_parity.txt
+            --text-report "${RUNNER_TEMP}/phase2b/tax_cfads_v1_parity.txt"
+
+      # ── Step 13: Zero unexplained drift assertion ───────────────────────────
+      - name: Zero unexplained drift assertion
+        run: |
+          # Re-run in check mode (exit 3 on any UNEXPLAINED_DRIFT).
+          # INPUT_SOURCE_BLOCKED baselines are excluded from drift counting.
+          python -m finco_parity.check_financial_engine_tax_cfads --all --check \
+            --text-report "${RUNNER_TEMP}/phase2b/tax_cfads_v1_parity_check.txt"
