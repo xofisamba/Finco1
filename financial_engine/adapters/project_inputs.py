@@ -1,8 +1,7 @@
 """financial_engine.adapters.project_inputs — Generic ProjectInputs → OperatingModelInput adapter.
 
 One generic mapping for all projects. No project-code dispatch, no project-name
-references, no factory invocation, no file loading. Ignores FinancingParams,
-TaxParams, CapexStructure (not consumed by Phase 2A leaves).
+references, no factory invocation, no file loading.
 """
 from __future__ import annotations
 
@@ -13,6 +12,7 @@ if TYPE_CHECKING:
 
 from financial_engine.inputs import (
     CalendarInput,
+    CapexItemForDep,
     DepreciationInput,
     InputProvenance,
     OpexInput,
@@ -27,10 +27,11 @@ from financial_engine.inputs import (
 def from_project_inputs(
     inputs: "ProjectInputs",
     *,
-    depreciation_period_count: int,
-    depreciation_cod_period: int,
     source_id: str = "",
     baseline_commit_sha: str = "",
+    # Legacy params kept for test backward compat — ignored by orchestrator.
+    depreciation_period_count: int = 0,
+    depreciation_cod_period: int = 0,
 ) -> OperatingModelInput:
     """Adapt a canonical ProjectInputs to a clean OperatingModelInput.
 
@@ -97,15 +98,24 @@ def from_project_inputs(
         for item in inputs.opex
     )
 
+    capex_items_for_dep = tuple(
+        CapexItemForDep(
+            name=item.name,
+            amount_keur=item.amount_keur,
+            asset_class_code=item.asset_class.value,
+            useful_life_override=item.useful_life_override,
+        )
+        for item in inputs.capex.capex_items()
+    )
+
     return OperatingModelInput(
         calendar=calendar,
         technical=technical,
         revenue=revenue,
         opex=OpexInput(items=opex_items),
         depreciation=DepreciationInput(
-            assets=(),
-            period_count=depreciation_period_count,
-            cod_period=depreciation_cod_period,
+            capex_items_for_depreciation=capex_items_for_dep,
+            senior_tenor_years=getattr(inputs.financing, "senior_tenor_years", 14),
         ),
         source=InputProvenance(
             source_id=source_id,

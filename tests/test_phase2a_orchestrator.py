@@ -160,6 +160,32 @@ def test_ebitda_parity(baseline_id: str):
         assert my_v == bl_v, f"{baseline_id} ebitda_keur[{i}]: {my_v} != {bl_v}"
 
 
+@pytest.mark.parametrize("baseline_id", _ALL_BASELINES)
+def test_book_depreciation_parity(baseline_id: str):
+    baseline = _load_baseline(baseline_id)
+    adapted = _get_adapted_inputs(baseline_id)
+    result = run_operating_model(adapted)
+    op_periods = [p for p in result.periods if p.is_operation]
+    bl_vals = baseline["operating_schedules"]["book_depreciation_keur"]
+    for i, (my_v, bl_v) in enumerate(zip(
+        [p.book_depreciation_keur for p in op_periods], bl_vals
+    )):
+        assert my_v == bl_v, f"{baseline_id} book_depreciation_keur[{i}]: {my_v} != {bl_v}"
+
+
+@pytest.mark.parametrize("baseline_id", _ALL_BASELINES)
+def test_tax_depreciation_parity(baseline_id: str):
+    baseline = _load_baseline(baseline_id)
+    adapted = _get_adapted_inputs(baseline_id)
+    result = run_operating_model(adapted)
+    op_periods = [p for p in result.periods if p.is_operation]
+    bl_vals = baseline["operating_schedules"]["tax_depreciation_keur"]
+    for i, (my_v, bl_v) in enumerate(zip(
+        [p.tax_depreciation_keur for p in op_periods], bl_vals
+    )):
+        assert my_v == bl_v, f"{baseline_id} tax_depreciation_keur[{i}]: {my_v} != {bl_v}"
+
+
 # ---------------------------------------------------------------------------
 # Negative parity tests — one-ULP changes → PAYLOAD_DRIFT
 # ---------------------------------------------------------------------------
@@ -201,6 +227,8 @@ def _compare_operating_core(baseline_id: str, candidate: dict[str, Any]) -> Drif
     "revenue_keur",
     "opex_keur",
     "ebitda_keur",
+    "book_depreciation_keur",
+    "tax_depreciation_keur",
 ])
 def test_one_ulp_change_causes_payload_drift(schedule_key: str):
     """One-ULP change in any in-scope schedule must produce PAYLOAD_DRIFT."""

@@ -86,7 +86,7 @@ class OpexInput:
 
 @dataclass(frozen=True)
 class AssetInput:
-    """One CAPEX asset class for depreciation."""
+    """One CAPEX asset class for depreciation (used by validation tests)."""
     asset_class: str
     gross_asset_basis_keur: float
     book_depreciable_basis_keur: float
@@ -97,11 +97,23 @@ class AssetInput:
 
 
 @dataclass(frozen=True)
+class CapexItemForDep:
+    """Minimal capex item for straight-line depreciation via build_depreciation_schedule."""
+    name: str
+    amount_keur: float
+    asset_class_code: str  # e.g. "civil_grid", "solar_panels", "financial_costs"
+    useful_life_override: int | None = None
+
+
+@dataclass(frozen=True)
 class DepreciationInput:
-    """CAPEX asset classes for book and tax depreciation."""
-    assets: tuple[AssetInput, ...]
-    period_count: int
-    cod_period: int
+    """CAPEX items and parameters for straight-line book/tax depreciation."""
+    capex_items_for_depreciation: tuple[CapexItemForDep, ...] = ()
+    senior_tenor_years: int = 14
+    # Legacy fields kept for validation-test backward compat (not used by orchestrator).
+    assets: tuple[AssetInput, ...] = ()
+    period_count: int = 0
+    cod_period: int = 0
 
 
 @dataclass(frozen=True)

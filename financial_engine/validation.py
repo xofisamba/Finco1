@@ -137,12 +137,12 @@ def validate_operating_model_input(
             issues.append(_err("OPEX002", f"opex.items[{i}].annual_inflation",
                                f"annual_inflation for item {item.name!r} is not finite"))
 
-    # Depreciation
-    if dep.period_count <= 0:
+    # Depreciation — period_count/cod_period only validated when using legacy AssetInput path.
+    if dep.assets and dep.period_count <= 0:
         issues.append(_err("DEP001", "depreciation.period_count",
                            f"period_count must be positive, got {dep.period_count}"))
 
-    if dep.cod_period < 0:
+    if dep.assets and dep.cod_period < 0:
         issues.append(_err("DEP002", "depreciation.cod_period",
                            f"cod_period must be non-negative, got {dep.cod_period}"))
 

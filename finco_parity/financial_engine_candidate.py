@@ -88,8 +88,8 @@ def _build_all_none_list(n: int) -> list:
 def _serialize_period_grid(result: Any) -> list[dict[str, Any]]:
     """Serialize operating periods from the clean engine result.
 
-    Only operating periods are emitted (period_index >= COD period).
-    is_construction and start_date are emitted as null and declared unavailable.
+    Only operating periods are emitted, matching the committed baseline structure.
+    is_construction and start_date are emitted as null (matching baseline null values).
     """
     rows = []
     for p in result.periods:
@@ -117,9 +117,8 @@ def _serialize_operating_schedules(result: Any, n_periods: int) -> dict[str, Any
         "revenue_keur": [p.revenue_keur for p in op_periods],
         "opex_keur": [p.opex_keur for p in op_periods],
         "ebitda_keur": [p.ebitda_keur for p in op_periods],
-        # Depreciation not yet implemented in Phase 2A adapter (no asset metadata).
-        "book_depreciation_keur": _build_all_none_list(n_periods),
-        "tax_depreciation_keur": _build_all_none_list(n_periods),
+        "book_depreciation_keur": [p.book_depreciation_keur for p in op_periods],
+        "tax_depreciation_keur": [p.tax_depreciation_keur for p in op_periods],
     }
 
 
@@ -143,15 +142,9 @@ def _build_unavailable_fields(n_periods: int) -> dict[str, list[str]]:
     """Build the unavailable_fields declaration for a Phase 2A candidate snapshot."""
     fields: dict[str, list[str]] = {}
 
-    # period_grid: is_construction and start_date are null.
+    # period_grid: is_construction and start_date match the baseline null values.
+    # They participate in OPERATING_CORE_V1 comparison; both sides are null.
     fields["period_grid"] = sorted(["is_construction", "start_date"])
-
-    # operating_schedules: book/tax depreciation are not yet implemented.
-    if n_periods > 0:
-        fields["operating_schedules"] = sorted([
-            "book_depreciation_keur",
-            "tax_depreciation_keur",
-        ])
 
     # tax_and_cfads: all fields unavailable.
     if n_periods > 0:
@@ -198,8 +191,6 @@ def generate_candidate_snapshot(
     from financial_engine.adapters.project_inputs import from_project_inputs
     clean_inputs = from_project_inputs(
         project_inputs,
-        depreciation_period_count=1,  # stub — no asset metadata in adapter yet
-        depreciation_cod_period=0,
         source_id=input_source_id,
         baseline_commit_sha=baseline_commit_sha,
     )
@@ -224,11 +215,6 @@ def generate_candidate_snapshot(
         for issue in result.validation_issues
         if issue.severity.value == "WARNING"
     ]
-    warnings.append(
-        "Phase 2A: book_depreciation_keur and tax_depreciation_keur are not yet "
-        "implemented in the clean engine adapter (no asset metadata supplied). "
-        "OPERATING_CORE_V1 comparison excludes depreciation from parity gate."
-    )
 
     snapshot: dict[str, Any] = {
         "schema_version": SCHEMA_VERSION,

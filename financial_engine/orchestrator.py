@@ -185,55 +185,43 @@ def _cod_date(cal) -> date:
     return cal.financial_close + relativedelta(months=cal.construction_months)
 
 
-def _build_depreciation_engine_inputs(inputs: OperatingModelInput):
-    """Build DepreciationEngineInputs from the clean input contract."""
-    from finco_core.depreciation.engine import DepreciationEngineInputs
-    from finco_core.depreciation.asset import AssetClassConfig
-    from finco_core.depreciation.schedule import DepreciationPolicy
+def _compute_depreciation(inputs: OperatingModelInput, periods_meta: list) -> tuple[dict, dict]:
+    """Compute per-period book and tax depreciation using build_depreciation_schedule.
+
+    Uses the same straight-line, day-fraction-based formula as the legacy engine.
+    Both book and tax schedules are identical in the Phase 2A operating core.
+    Returns (book_dep_by_idx, tax_dep_by_idx) dicts keyed by period index.
+    """
+    from finco_core.inputs import AssetClass, CapexItem, ASSET_CLASS_USEFUL_LIFE
+    from finco_core.debt.depreciation_schedule import (
+        build_depreciation_schedule,
+        depreciation_per_period,
+    )
 
     dep = inputs.depreciation
+    if not dep.capex_items_for_depreciation:
+        return {}, {}
 
-    asset_classes = tuple(
-        AssetClassConfig(
-            asset_class=a.asset_class,
-            gross_asset_basis_keur=a.gross_asset_basis_keur,
-            book_depreciable_basis_keur=a.book_depreciable_basis_keur,
-            tax_depreciable_basis_keur=a.tax_depreciable_basis_keur,
-            placed_in_service_period=a.placed_in_service_period,
-            depreciation_start_period=a.placed_in_service_period,
+    # Reconstruct finco_core CapexItem objects from the clean contract.
+    capex_items = tuple(
+        CapexItem(
+            name=item.name,
+            amount_keur=item.amount_keur,
+            asset_class=AssetClass(item.asset_class_code),
+            useful_life_override=item.useful_life_override,
         )
-        for a in dep.assets
+        for item in dep.capex_items_for_depreciation
     )
 
-    # Build one policy per asset class from the clean input's useful-life fields.
-    policies: dict = {}
-    for a in dep.assets:
-        policy = DepreciationPolicy(
-            method="straight_line",
-            useful_life_book_periods=a.book_useful_life_years * 2,
-            useful_life_tax_periods=a.tax_useful_life_years * 2,
-            period_frequency="semiannual",
-            partial_period_convention="full",
-        )
-        policies[a.asset_class] = policy
-
-    if not policies:
-        policies["default"] = DepreciationPolicy(
-            method="straight_line",
-            useful_life_book_periods=50,
-            useful_life_tax_periods=40,
-            period_frequency="semiannual",
-            partial_period_convention="full",
-        )
-
-    return DepreciationEngineInputs(
-        project_name="clean_engine",
-        asset_classes=asset_classes,
-        policies=policies,
-        period_count=dep.period_count,
-        period_frequency="semiannual",
-        cod_period=dep.cod_period,
+    annual_schedule = build_depreciation_schedule(
+        capex_items=capex_items,
+        horizon_years=inputs.calendar.horizon_years,
+        senior_tenor_years=dep.senior_tenor_years,
     )
+
+    dep_by_idx = depreciation_per_period(annual_schedule, periods_meta)
+    # Both book and tax use the same formula in the Phase 2A operating core.
+    return dep_by_idx, dep_by_idx
 
 
 def run_operating_model(inputs: OperatingModelInput) -> ProjectModelResult:
@@ -273,17 +261,8 @@ def run_operating_model(inputs: OperatingModelInput) -> ProjectModelResult:
         for idx in production_by_idx
     }
 
-    # Step 7: Book and tax depreciation via DepreciationEngine (skipped when no assets).
-    book_dep_by_idx: dict[int, float] = {}
-    tax_dep_by_idx: dict[int, float] = {}
-    if inputs.depreciation.assets:
-        from finco_core.depreciation.engine import DepreciationEngine
-        dep_engine_inputs = _build_depreciation_engine_inputs(inputs)
-        dep_result = DepreciationEngine.compute(dep_engine_inputs)
-        for row in dep_result.audit_rows:
-            pidx = row.period_index
-            book_dep_by_idx[pidx] = book_dep_by_idx.get(pidx, 0.0) + row.book_depreciation_keur
-            tax_dep_by_idx[pidx] = tax_dep_by_idx.get(pidx, 0.0) + row.tax_depreciation_keur
+    # Step 7: Book and tax depreciation via build_depreciation_schedule leaf.
+    book_dep_by_idx, tax_dep_by_idx = _compute_depreciation(inputs, periods_meta)
 
     # Step 8: Assemble immutable period results.
     period_results: list[OperatingPeriodResult] = []
@@ -352,17 +331,17 @@ def run_operating_model(inputs: OperatingModelInput) -> ProjectModelResult:
         ),
         DerivationEvidence(
             output_path="operating_schedules.book_depreciation_keur",
-            source_module="finco_core.depreciation.engine",
-            source_function="DepreciationEngine.compute",
-            input_paths=("depreciation",),
-            notes=(),
+            source_module="finco_core.debt.depreciation_schedule",
+            source_function="build_depreciation_schedule+depreciation_per_period",
+            input_paths=("depreciation", "calendar.horizon_years"),
+            notes=("straight-line, day-fraction-weighted; same formula as legacy engine",),
         ),
         DerivationEvidence(
             output_path="operating_schedules.tax_depreciation_keur",
-            source_module="finco_core.depreciation.engine",
-            source_function="DepreciationEngine.compute",
-            input_paths=("depreciation",),
-            notes=(),
+            source_module="finco_core.debt.depreciation_schedule",
+            source_function="build_depreciation_schedule+depreciation_per_period",
+            input_paths=("depreciation", "calendar.horizon_years"),
+            notes=("equal to book depreciation in Phase 2A operating core",),
         ),
     )
 

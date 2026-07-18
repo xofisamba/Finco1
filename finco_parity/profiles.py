@@ -22,15 +22,19 @@ _OPERATING_CORE_V1_OS_FIELDS: frozenset[str] = frozenset({
     "revenue_keur",
     "opex_keur",
     "ebitda_keur",
+    "book_depreciation_keur",
+    "tax_depreciation_keur",
 })
 
-# Period-grid fields the clean engine populates (non-null in operating periods).
+# Period-grid fields the clean engine populates.
 _OPERATING_CORE_V1_PG_FIELDS: frozenset[str] = frozenset({
     "period_index",
     "date",
     "year_index",
     "period_in_year",
     "is_operation",
+    "is_construction",
+    "start_date",
 })
 
 OPERATING_CORE_V1_PASS_WORDING = (
