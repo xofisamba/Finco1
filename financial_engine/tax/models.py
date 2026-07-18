@@ -5,22 +5,47 @@ All types are frozen dataclasses.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date
+
+
+@dataclass(frozen=True)
+class TaxYearPeriodFragment:
+    """One calendar-year slice of a model period.
+
+    When a semi-annual period crosses 31 December, it is split into two
+    fragments — one per calendar year.  All fragments of a period share
+    the same ``source_period_index`` and their ``allocation_fraction`` values
+    sum to 1.0.
+
+    ``days`` uses the convention (frag_end − frag_start).days so that
+    ``sum(f.days for f in fragments) == (period_end − period_start).days``.
+    """
+    tax_year: int                  # calendar year, e.g. 2030
+    source_period_index: int
+    start_date: date
+    end_date: date
+    days: int
+    allocation_fraction: float     # fraction of period amount assigned here
 
 
 @dataclass(frozen=True)
 class TaxYearCalculationBasis:
-    """Aggregated annual inputs for one tax year.
+    """Aggregated annual inputs for one calendar tax year.
 
-    tax_year : 0-based tax-year index (0 = first operating year)
-    period_indices : actual model period indices belonging to this tax year
-                     (ordered chronologically; typically two for semi-annual)
-    ebitda_keur : sum of EBITDA across all periods in the year
-    tax_depreciation_keur : sum of tax depreciation across all periods
-    total_interest_keur : sum of gross interest across all periods
-    other_fiscal_reintegration_keur : sum of other addbacks
+    ``tax_year`` is the 4-digit calendar year (e.g. 2030), not a model index.
+    ``fragments`` carries the per-period fragments that contribute to this year;
+    ``period_indices`` is the distinct set of source period indices.
+
+    ``payment_period_index`` is the period_index to use for TAX_YEAR_LAST_PERIOD
+    cash-tax assignment.  It is the period whose ``period_end`` falls within
+    ``tax_year`` and has the latest chronological position.  This avoids
+    assigning cash tax to periods that barely cross a year boundary (Dec 31
+    start date = 1-day fragment in the previous year).
     """
     tax_year: int
+    fragments: tuple[TaxYearPeriodFragment, ...]
     period_indices: tuple[int, ...]
+    payment_period_index: int   # period that receives TAX_YEAR_LAST_PERIOD cash tax
     ebitda_keur: float
     tax_depreciation_keur: float
     total_interest_keur: float
@@ -43,22 +68,49 @@ class AtadAnnualResult:
 
 @dataclass(frozen=True)
 class TaxLossVintage:
-    """One loss vintage in the annual FIFO ledger."""
-    origin_tax_year: int
-    last_usable_tax_year: int  # loss expires before use outside this year
-    amount_keur: float
-    source_label: str = ""
+    """One loss vintage and its lifecycle within a single tax year.
+
+    A new instance is produced for each (vintage, year) pair by the ledger.
+    The reconciliation identity holds per vintage:
+
+        closing_keur = opening_keur + generated_keur − used_keur − expired_keur
+    """
+    vintage_id: str               # stable identifier across years
+    origin_tax_year: int          # calendar year the loss was generated
+    last_usable_tax_year: int     # last calendar year in which it may be used
+    opening_keur: float           # balance at start of this tax year
+    generated_keur: float         # new loss created this year (0 unless origin == this year)
+    used_keur: float              # amount absorbed against taxable income
+    expired_keur: float           # amount that lapsed (last_usable < this year)
+    closing_keur: float           # balance at end of year
+    source_label: str             # human-readable origin description
 
 
 @dataclass(frozen=True)
 class TaxAnnualLedgerEntry:
-    """Loss ledger snapshot for one tax year."""
+    """Full vintage-level loss ledger for one tax year.
+
+    Aggregate reconciliation:
+        opening_loss_pre_expiry_keur
+        + loss_generated_keur
+        − loss_used_keur
+        − loss_expired_keur
+        == closing_loss_keur
+    """
     tax_year: int
-    opening_loss_keur: float
+    # Vintage snapshots
+    opening_vintages: tuple[TaxLossVintage, ...]
+    expired_vintages: tuple[TaxLossVintage, ...]
+    used_vintages: tuple[TaxLossVintage, ...]
+    generated_vintages: tuple[TaxLossVintage, ...]
+    closing_vintages: tuple[TaxLossVintage, ...]
+    # Scalar aggregates (derived from vintage tuples for convenience)
+    opening_loss_pre_expiry_keur: float
     loss_expired_keur: float
     loss_used_keur: float
     loss_generated_keur: float
     closing_loss_keur: float
+    # Taxable income
     taxable_income_before_lcf_keur: float
     taxable_income_after_lcf_keur: float
 
@@ -79,13 +131,15 @@ class TaxAnnualResult:
     tax_depreciation_keur: float
     other_fiscal_reintegration_keur: float
     taxable_income_before_lcf_keur: float
-    # LCF
+    # LCF (aggregate scalars for fast access)
     loss_opening_keur: float
     loss_expired_keur: float
     loss_used_keur: float
     loss_generated_keur: float
     loss_closing_keur: float
     taxable_income_after_lcf_keur: float
+    # LCF vintage detail
+    ledger_entry: TaxAnnualLedgerEntry
     # CIT
     current_tax_liability_keur: float
     # Per-period ATAD allocation (same length as period_indices)
@@ -99,15 +153,14 @@ class PeriodCashTaxResult:
     period_index: int
     is_operation: bool
     ebitda_keur: float
-    tax_year: int
+    tax_year: int                    # calendar year
     deductible_interest_keur: float
     disallowed_interest_keur: float
     other_fiscal_reintegration_keur: float
-    # Taxable income shares (from the annual result, allocated to this period for audit)
+    # Taxable income shares (annual result, prorated to this period for audit)
     taxable_income_before_lcf_share_keur: float
     cit_accrual_share_keur: float
-    cash_tax_keur: float  # actual cash payment in this period
-    cfads_keur: float
+    cash_tax_keur: float             # actual cash payment in this period
 
 
 @dataclass(frozen=True)

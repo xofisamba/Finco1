@@ -192,13 +192,16 @@ def validate_tax_calculation_input(
       TAX005  atad_de_minimis_threshold_keur_annual < 0
       TAX006  cash_tax_payment_lag_periods < 0
       TAX007  opening vintage amount invalid (negative or nonfinite)
-      TAX008  opening vintage origin_tax_year invalid (missing)
-      TAX009  period_interest value is nonfinite or negative
+      TAX008  opening vintage origin_tax_year invalid (not an int)
+      TAX009  period_interest component nonfinite or negative
       TAX010  period_interest has duplicate period_index
-      TAX011  period_interest references unknown period_index
+      TAX011  period_interest period_index not in known model periods
       TAX012  period_adjustments has duplicate period_index
       TAX013  fiscal reintegration value is nonfinite
-      TAX014  wrong policy type
+      TAX014  policy is not a TaxPolicy instance
+      TAX015  period_interest out-of-order (period_index not ascending)
+      TAX016  period_adjustments period_index not in known model periods
+      TAX017  period_adjustments out-of-order (period_index not ascending)
     """
     from financial_engine.policies.tax import TaxPolicy
 
@@ -247,12 +250,20 @@ def validate_tax_calculation_input(
                                f"origin_tax_year must be an integer, got {type(v.origin_tax_year).__name__}"))
 
     seen_pi: set[int] = set()
+    prev_pi_idx: int | None = None
     for i, pi in enumerate(tax_input.period_interest):
         if pi.period_index in seen_pi:
             issues.append(_err("TAX010",
                                f"tax.period_interest[{i}].period_index",
                                f"duplicate period_index {pi.period_index}"))
         seen_pi.add(pi.period_index)
+
+        if prev_pi_idx is not None and pi.period_index <= prev_pi_idx:
+            issues.append(_err("TAX015",
+                               f"tax.period_interest[{i}].period_index",
+                               f"period_index {pi.period_index} is not ascending "
+                               f"(previous was {prev_pi_idx})"))
+        prev_pi_idx = pi.period_index
 
         for component, label in [
             (pi.senior_interest_keur, "senior_interest_keur"),
@@ -270,12 +281,26 @@ def validate_tax_calculation_input(
                                f"period_index {pi.period_index} is not a known model period"))
 
     seen_adj: set[int] = set()
+    prev_adj_idx: int | None = None
     for i, adj in enumerate(tax_input.period_adjustments):
         if adj.period_index in seen_adj:
             issues.append(_err("TAX012",
                                f"tax.period_adjustments[{i}].period_index",
                                f"duplicate period_index {adj.period_index}"))
         seen_adj.add(adj.period_index)
+
+        if prev_adj_idx is not None and adj.period_index <= prev_adj_idx:
+            issues.append(_err("TAX017",
+                               f"tax.period_adjustments[{i}].period_index",
+                               f"period_index {adj.period_index} is not ascending "
+                               f"(previous was {prev_adj_idx})"))
+        prev_adj_idx = adj.period_index
+
+        if known_period_indices is not None and adj.period_index not in known_period_indices:
+            issues.append(_err("TAX016",
+                               f"tax.period_adjustments[{i}].period_index",
+                               f"period_index {adj.period_index} is not a known model period"))
+
         if not _is_finite(adj.other_fiscal_reintegration_keur):
             issues.append(_err("TAX013",
                                f"tax.period_adjustments[{i}].other_fiscal_reintegration_keur",

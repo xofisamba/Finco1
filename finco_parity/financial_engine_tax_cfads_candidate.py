@@ -5,8 +5,13 @@ Loads the committed baseline project inputs, adapts them to TaxCfadsModelInput,
 runs the Phase 2B orchestrator, and serializes an honest Phase 2B candidate snapshot.
 
 Exogenous interest is sourced from the baseline snapshot's financing section
-(senior_debt.interest_keur + shl.interest_keur per period). The candidate does NOT
-use project-identity-aware tax parameters — a canonical TaxPolicy is applied.
+(senior_debt.interest_keur + shl.interest_keur per period), indexed by
+period_index values from the baseline snapshot period_grid — no separate operating
+model run is needed or performed to build the interest schedule.
+
+Per-baseline TaxPolicy and opening loss vintages are resolved from
+``finco_parity.tax_reference_inputs`` (the parity-layer source of truth), NOT from
+any universal canonical policy.
 
 Waterfall rows (r69, r84, r99, r102, fcf_for_shl) are declared as unavailable_fields
 because they belong to Phase 2C+ and are not computed by the Phase 2B engine.
@@ -71,23 +76,6 @@ _BASELINE_REGISTRY: dict[str, dict[str, str]] = {
     },
 }
 
-# Canonical Phase 2B TaxPolicy — same for all baselines.
-# Project-identity-aware parameters (actual tax rates, ATAD specifics) live in
-# project factories and are NOT copied here.  The canonical policy uses HR defaults.
-_CANONICAL_TAX_POLICY_PARAMS: dict[str, Any] = {
-    "policy_id": "canonical_phase2b_hr",
-    "policy_version": "1.0",
-    "corporate_rate": 0.18,
-    "periods_per_tax_year": 2,
-    "loss_carryforward_years": 5,
-    "atad_enabled": True,
-    "atad_ebitda_limit": 0.30,
-    "atad_de_minimis_threshold_keur_annual": 3_000.0,
-    "cash_tax_timing": "tax_year_last_period",
-    "cash_tax_payment_lag_periods": 0,
-}
-
-
 def _load_project_inputs(baseline_id: str) -> Any:
     entry = _BASELINE_REGISTRY[baseline_id]
     from app import project_factories
@@ -105,17 +93,19 @@ def _load_baseline_snapshot(baseline_id: str) -> dict[str, Any]:
 
 def _build_exogenous_interest(
     baseline_snapshot: dict[str, Any],
-    operating_periods: list,
 ) -> tuple:
-    """Extract per-period exogenous interest from the baseline snapshot financing data.
+    """Extract per-period exogenous interest from the baseline snapshot.
 
     Uses senior_debt.interest_keur + shl.interest_keur from the baseline, indexed
-    positionally to the operating periods (baseline and candidate share the same grid).
+    positionally to the operating period_grid.  period_index values come from the
+    baseline snapshot directly — no separate operating model run is performed.
 
-    Only operating periods are used; construction periods have zero interest.
+    Only operating periods appear in period_grid; construction periods are absent.
+    Interest entries are only emitted for periods with non-zero interest.
     """
     from financial_engine.inputs import PeriodInterestInput
 
+    period_grid = baseline_snapshot.get("period_grid") or []
     financing = baseline_snapshot.get("financing") or {}
     senior_debt = financing.get("senior_debt") or {}
     shl = financing.get("shl") or {}
@@ -124,7 +114,10 @@ def _build_exogenous_interest(
     shl_interest_list = shl.get("interest_keur") or []
 
     interest_inputs: list[PeriodInterestInput] = []
-    for i, p in enumerate(operating_periods):
+    for i, row in enumerate(period_grid):
+        period_index = row.get("period_index")
+        if period_index is None:
+            continue
         senior_keur = float(senior_interest_list[i]) if (
             i < len(senior_interest_list) and senior_interest_list[i] is not None
         ) else 0.0
@@ -133,30 +126,13 @@ def _build_exogenous_interest(
         ) else 0.0
         if senior_keur != 0.0 or shl_keur != 0.0:
             interest_inputs.append(PeriodInterestInput(
-                period_index=p.period_index,
+                period_index=period_index,
                 senior_interest_keur=senior_keur,
                 shl_interest_keur=shl_keur,
                 other_interest_keur=0.0,
             ))
 
     return tuple(interest_inputs)
-
-
-def _build_canonical_tax_policy():
-    from financial_engine.policies.tax import TaxPolicy, CashTaxTiming
-    p = _CANONICAL_TAX_POLICY_PARAMS
-    return TaxPolicy(
-        policy_id=p["policy_id"],
-        policy_version=p["policy_version"],
-        corporate_rate=p["corporate_rate"],
-        periods_per_tax_year=p["periods_per_tax_year"],
-        loss_carryforward_years=p["loss_carryforward_years"],
-        atad_enabled=p["atad_enabled"],
-        atad_ebitda_limit=p["atad_ebitda_limit"],
-        atad_de_minimis_threshold_keur_annual=p["atad_de_minimis_threshold_keur_annual"],
-        cash_tax_timing=CashTaxTiming(p["cash_tax_timing"]),
-        cash_tax_payment_lag_periods=p["cash_tax_payment_lag_periods"],
-    )
 
 
 def _serialize_period_grid(result: Any) -> list[dict[str, Any]]:
@@ -191,51 +167,51 @@ def _serialize_operating_schedules(result: Any, n_periods: int) -> dict[str, Any
 
 def _serialize_tax_and_cfads(
     result: Any,
-    op_period_indices: frozenset[int],
 ) -> dict[str, Any]:
-    """Serialize Phase 2B tax_and_cfads, setting waterfall rows to UNAVAILABLE."""
+    """Serialize Phase 2B tax_and_cfads, setting waterfall rows to UNAVAILABLE.
+
+    TaxAndCfadsSchedules.period_indices covers ALL model periods (including
+    construction).  We filter to operating periods using result.periods to
+    determine which indices correspond to operating periods.
+    """
     tc = result.tax_and_cfads
     if tc is None:
         return {field: UNAVAILABLE for field in sorted(_REQUIRED_TAX_AND_CFADS)}
 
-    # Build index → position mapping for operating periods only
-    op_period_index_ordered = [
-        p.period_index for p in result.periods if p.is_operation
-    ]
-    pos_map: dict[int, int] = {idx: i for i, idx in enumerate(op_period_index_ordered)}
-    n = len(op_period_index_ordered)
+    # Operating period indices in chronological order (from model periods tuple).
+    op_idx_set = frozenset(p.period_index for p in result.periods if p.is_operation)
+    # Position map: period_index → position within tc.period_indices for operating periods.
+    op_positions: list[int] = []
+    op_period_indices_ordered: list[int] = []
+    for i, idx in enumerate(tc.period_indices):
+        if idx in op_idx_set:
+            op_positions.append(i)
+            op_period_indices_ordered.append(idx)
+    n = len(op_positions)
 
-    def _reindex(values: tuple[float, ...]) -> list[float | None]:
-        """Reindex from all-period ordering to operating-period ordering."""
-        out: list[float | None] = [UNAVAILABLE] * n
-        for period_idx_in_full, v in zip(tc.period_indices, values):
-            pos = pos_map.get(period_idx_in_full)
-            if pos is not None:
-                out[pos] = v
-        return out
+    def _pick(values: tuple[float, ...]) -> list[float]:
+        return [values[i] for i in op_positions]
 
     out: dict[str, Any] = {}
-
-    out["taxable_profit_keur"] = _reindex(tc.taxable_profit_keur)
-    out["taxable_income_before_losses_audit_keur"] = _reindex(
+    out["taxable_profit_keur"] = _pick(tc.taxable_profit_keur)
+    out["taxable_income_before_losses_audit_keur"] = _pick(
         tc.taxable_income_before_losses_audit_keur
     )
-    out["taxable_profit_after_losses_audit_keur"] = _reindex(
+    out["taxable_profit_after_losses_audit_keur"] = _pick(
         tc.taxable_profit_after_losses_audit_keur
     )
-    out["cit_accrual_audit_keur"] = _reindex(tc.cit_accrual_audit_keur)
-    out["cash_tax_current_period_audit_keur"] = _reindex(tc.corporate_tax_cash_keur)
-    out["corporate_tax_cash_keur"] = _reindex(tc.corporate_tax_cash_keur)
-    out["tax_keur"] = _reindex(tc.tax_keur)
-    out["cash_tax_bridge_reconciliation_keur"] = _reindex(
-        tc.cash_tax_bridge_reconciliation_keur
-    )
-    out["tax_loss_opening_audit_keur"] = _reindex(tc.tax_loss_opening_audit_keur)
-    out["tax_loss_used_audit_keur"] = _reindex(tc.tax_loss_used_audit_keur)
-    out["tax_loss_closing_audit_keur"] = _reindex(tc.tax_loss_closing_audit_keur)
-    out["tax_depreciation_audit_keur"] = _reindex(tc.tax_depreciation_audit_keur)
-    out["fiscal_reintegration_audit_keur"] = _reindex(tc.fiscal_reintegration_audit_keur)
-    out["cf_after_tax_keur"] = _reindex(tc.cf_after_tax_keur)
+    out["cit_accrual_audit_keur"] = _pick(tc.cit_accrual_audit_keur)
+    out["cash_tax_current_period_audit_keur"] = _pick(tc.cash_tax_current_period_audit_keur)
+    out["corporate_tax_cash_keur"] = _pick(tc.corporate_tax_cash_keur)
+    out["tax_keur"] = _pick(tc.tax_keur)
+    out["cash_tax_bridge_reconciliation_keur"] = _pick(tc.cash_tax_bridge_reconciliation_keur)
+    out["tax_loss_opening_audit_keur"] = _pick(tc.tax_loss_opening_audit_keur)
+    out["tax_loss_used_audit_keur"] = _pick(tc.tax_loss_used_audit_keur)
+    out["tax_loss_closing_audit_keur"] = _pick(tc.tax_loss_closing_audit_keur)
+    out["tax_depreciation_audit_keur"] = _pick(tc.tax_depreciation_audit_keur)
+    out["fiscal_reintegration_audit_keur"] = _pick(tc.fiscal_reintegration_audit_keur)
+    out["cf_after_tax_keur"] = _pick(tc.cf_after_tax_keur)
+    out["cfads_keur"] = _pick(tc.cfads_keur)
 
     # Waterfall rows — not implemented in Phase 2B
     for field in sorted(_WATERFALL_UNAVAILABLE):
@@ -279,14 +255,17 @@ def generate_tax_cfads_candidate_snapshot(
     """Generate an honest Phase 2B candidate snapshot for the given baseline.
 
     Steps:
-    1. Load baseline snapshot to extract exogenous interest per period.
+    1. Load baseline snapshot (exogenous interest, commit sha).
     2. Load committed baseline project inputs via the factory function.
     3. Adapt to OperatingModelInput.
-    4. Build TaxCfadsModelInput with canonical TaxPolicy + exogenous interest.
-    5. Run run_tax_cfads_model.
+    4. Build TaxCfadsModelInput:
+       - TaxPolicy from tax_reference_inputs.build_tax_policy (per-baseline).
+       - Opening vintages from tax_reference_inputs.build_opening_loss_vintages.
+       - Exogenous interest indexed from baseline snapshot period_grid.
+    5. Run run_tax_cfads_model exactly once (operating model runs internally).
     6. Serialize an honest Phase 2B candidate snapshot.
        - Waterfall rows declared unavailable in unavailable_fields.
-       - cfads_keur is a Phase 2B-only field, not compared vs baseline.
+       - cfads_keur is included in tax_and_cfads.
     """
     if baseline_id not in _BASELINE_REGISTRY:
         raise ValueError(
@@ -297,7 +276,7 @@ def generate_tax_cfads_candidate_snapshot(
     registry_entry = _BASELINE_REGISTRY[baseline_id]
     input_source_id = registry_entry["input_source_id"]
 
-    # Step 1: Load baseline snapshot for exogenous interest
+    # Step 1: Load baseline snapshot for exogenous interest and commit sha
     baseline_snapshot = _load_baseline_snapshot(baseline_id)
     if not baseline_commit_sha:
         baseline_commit_sha = baseline_snapshot.get("baseline_commit_sha", "")
@@ -313,36 +292,38 @@ def generate_tax_cfads_candidate_snapshot(
         baseline_commit_sha=baseline_commit_sha,
     )
 
-    # Run Phase 2A first to get operating period indices for interest mapping
-    from financial_engine.orchestrator import run_operating_model
-    op_result = run_operating_model(clean_inputs)
-    operating_periods = [p for p in op_result.periods if p.is_operation]
-
-    # Step 4: Build TaxCfadsModelInput
+    # Step 4: Build TaxCfadsModelInput — no separate operating model run.
+    # Exogenous interest is sourced from the baseline snapshot period_grid (which
+    # carries the same period_index values the engine will produce).
+    # Per-baseline TaxPolicy and opening vintages come from tax_reference_inputs.
     from financial_engine.inputs import TaxCalculationInput, TaxCfadsModelInput
+    from finco_parity.tax_reference_inputs import (
+        build_tax_policy,
+        build_opening_loss_vintages,
+    )
 
-    period_interest = _build_exogenous_interest(baseline_snapshot, operating_periods)
-    policy = _build_canonical_tax_policy()
+    period_interest = _build_exogenous_interest(baseline_snapshot)
+    policy = build_tax_policy(baseline_id)
+    opening_vintages = build_opening_loss_vintages(baseline_id)
 
     tax_input = TaxCalculationInput(
         policy=policy,
-        opening_loss_vintages=(),
+        opening_loss_vintages=opening_vintages,
         period_interest=period_interest,
         period_adjustments=(),
     )
     model_input = TaxCfadsModelInput(operating=clean_inputs, tax=tax_input)
 
-    # Step 5: Run Phase 2B engine
+    # Step 5: Run Phase 2B engine (single invocation — operating model runs internally)
     from financial_engine.orchestrator import run_tax_cfads_model
     result = run_tax_cfads_model(model_input)
 
     # Step 6: Serialize
     period_grid = _serialize_period_grid(result)
     n_periods = len(period_grid)
-    op_period_indices = frozenset(row["period_index"] for row in period_grid)
 
     operating_schedules = _serialize_operating_schedules(result, n_periods)
-    tax_and_cfads = _serialize_tax_and_cfads(result, op_period_indices)
+    tax_and_cfads = _serialize_tax_and_cfads(result)
     financing = _build_all_none_financing(n_periods)
     returns = _build_all_none_returns()
     unavailable_fields = _build_unavailable_fields(n_periods)

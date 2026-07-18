@@ -373,80 +373,86 @@ TAX_CFADS_RUN_PATH_ID = "financial_engine.orchestrator.run_tax_cfads_model"
 def run_tax_cfads_model(inputs: TaxCfadsModelInput) -> ProjectModelResult:
     """Phase 2B orchestrator: operating core + annual tax + canonical CFADS.
 
-    Calculation order:
-      1. Validate operating + tax inputs; refuse on ERROR-level issues.
-      2. Run Phase 2A operating model.
-      3. Aggregate periods into annual TaxYearCalculationBasis.
-      4. Per tax year: annual ATAD → annual taxable income → annual LCF → annual CIT.
-      5. Allocate cash tax to model periods (TAX_YEAR_LAST_PERIOD timing).
-      6. Canonical CFADS = EBITDA − cash_tax per period.
-      7. Assemble TaxAndCfadsSchedules.
-      8. Attach Phase 2B provenance (covers full TaxCfadsModelInput).
+    The operating model is invoked exactly once.  Canonical CFADS is computed
+    by ``calculate_canonical_cfads``; no inline CFADS formula exists here.
 
-    Taxable income formula:
-        taxable_income_before_lcf = EBITDA - tax_dep - deductible_interest
+    Calculation order:
+      1.  Validate operating + tax inputs; refuse on ERROR-level issues.
+      2.  Run Phase 2A operating model (exactly once).
+      3.  Calendar-year fragment splitting → TaxYearCalculationBasis per year.
+      4.  Per tax year: ATAD → taxable income → FIFO LCF → CIT.
+      5.  Allocate cash tax to periods (TAX_YEAR_LAST_PERIOD or SAME_PERIOD).
+      6.  Canonical CFADS = EBITDA − cash_tax via calculate_canonical_cfads().
+      7.  Assemble TaxAndCfadsSchedules.
+      8.  Attach Phase 2B provenance.
+
+    Taxable income formula::
+
+        taxable_income_before_lcf = EBITDA − tax_dep − deductible_interest
                                    + other_fiscal_reintegration
         (disallowed_interest is NOT added back separately)
     """
     from financial_engine.validation import validate_tax_calculation_input, has_errors
+    from financial_engine.cfads import calculate_canonical_cfads
 
     # Step 1: Validate
-    base_result = run_operating_model(inputs.operating)
+    base_result = run_operating_model(inputs.operating)  # single invocation
     known_period_indices = frozenset(p.period_index for p in base_result.periods)
     tax_issues = validate_tax_calculation_input(inputs.tax, known_period_indices)
     combined_issues = base_result.validation_issues + tax_issues
     if has_errors(combined_issues):
         raise ValueError(
-            f"Phase 2B validation failed with {sum(1 for i in combined_issues if i.severity.value == 'ERROR')} error(s)"
+            f"Phase 2B validation failed with "
+            f"{sum(1 for i in combined_issues if i.severity.value == 'ERROR')} error(s)"
         )
 
-    # Steps 2–6: Annual tax engine
+    # Steps 2-5: Annual tax engine
     from financial_engine.tax.engine import calculate_tax
     tax_result = calculate_tax(base_result.periods, inputs.tax)
 
-    # Step 7: Assemble TaxAndCfadsSchedules from per-period results
+    # Step 6: Canonical CFADS via the single authoritative function
     period_results = tax_result.period_results
-    n = len(base_result.periods)
+    cfads_results = calculate_canonical_cfads(base_result.periods, period_results)
 
-    # Build indexed lookups for annual LCF trail (annual → per-period for reporting)
-    annual_map: dict[int, "TaxAnnualResult"] = {ar.tax_year: ar for ar in tax_result.annual_results}
-    period_to_annual_idx: dict[int, int] = {}
+    # Step 7: Assemble TaxAndCfadsSchedules
+    annual_map = {ar.tax_year: ar for ar in tax_result.annual_results}
+    period_to_annual_tax_year: dict[int, int] = {}
     for ar in tax_result.annual_results:
         for idx in ar.period_indices:
-            period_to_annual_idx[idx] = ar.tax_year
+            period_to_annual_tax_year[idx] = ar.tax_year
 
     def _per_period_annual_share(attr: str) -> tuple[float, ...]:
-        result = []
+        out = []
         for pr in period_results:
-            ar = annual_map.get(period_to_annual_idx.get(pr.period_index, -999))
+            ar = annual_map.get(period_to_annual_tax_year.get(pr.period_index, -999999))
             if ar is None:
-                result.append(0.0)
+                out.append(0.0)
             else:
                 n_in_year = len(ar.period_indices)
-                result.append(getattr(ar, attr) / n_in_year if n_in_year else 0.0)
-        return tuple(result)
+                out.append(getattr(ar, attr) / n_in_year if n_in_year else 0.0)
+        return tuple(out)
 
     period_indices = tuple(pr.period_index for pr in period_results)
     cit_accrual_per_period = _per_period_annual_share("current_tax_liability_keur")
     corporate_tax_cash = tuple(pr.cash_tax_keur for pr in period_results)
-    cfads = tuple(pr.cfads_keur for pr in period_results)
 
-    # LCF audit trail: show annual values in each period's H1, 0 in H2 (first period carries the year's audit)
-    # More precisely: opening/closing/used shown once per year in first period, 0 in others
+    # Canonical CFADS from calculate_canonical_cfads (authoritative)
+    cfads = tuple(cr.cfads_keur for cr in cfads_results)
+
+    # LCF audit trail: annual values shown in first period of each year, 0 thereafter
     tax_loss_opening: list[float] = []
     tax_loss_closing: list[float] = []
     tax_loss_used: list[float] = []
     for pr in period_results:
-        tax_year = period_to_annual_idx.get(pr.period_index, -999)
+        tax_year = period_to_annual_tax_year.get(pr.period_index, -999999)
         ar = annual_map.get(tax_year)
         if ar is None:
             tax_loss_opening.append(0.0)
             tax_loss_closing.append(0.0)
             tax_loss_used.append(0.0)
         else:
-            # Show annual LCF in the first period of the year; 0 in subsequent periods
-            first_period_of_year = ar.period_indices[0] if ar.period_indices else -1
-            if pr.period_index == first_period_of_year:
+            first_idx = ar.period_indices[0] if ar.period_indices else -1
+            if pr.period_index == first_idx:
                 tax_loss_opening.append(ar.loss_opening_keur)
                 tax_loss_closing.append(ar.loss_closing_keur)
                 tax_loss_used.append(ar.loss_used_keur)
@@ -457,10 +463,13 @@ def run_tax_cfads_model(inputs: TaxCfadsModelInput) -> ProjectModelResult:
 
     taxable_profit = tuple(pr.taxable_income_before_lcf_share_keur for pr in period_results)
     taxable_after_lcf = _per_period_annual_share("taxable_income_after_lcf_keur")
-    ebitda_per_period = tuple(pr.ebitda_keur for pr in period_results)
+    ebitda_per_period = tuple(cr.ebitda_keur for cr in cfads_results)
     tax_dep_per_period = tuple(
         p.tax_depreciation_keur for p in base_result.periods  # type: ignore[attr-defined]
     )
+
+    # cf_after_tax_keur sources from the canonical CFADS tuple (not recalculated)
+    cf_after_tax = cfads
 
     tax_and_cfads = TaxAndCfadsSchedules(
         period_indices=period_indices,
@@ -482,7 +491,7 @@ def run_tax_cfads_model(inputs: TaxCfadsModelInput) -> ProjectModelResult:
             for pr in period_results
         ),
         tax_depreciation_audit_keur=tax_dep_per_period,
-        cf_after_tax_keur=tuple(e - c for e, c in zip(ebitda_per_period, corporate_tax_cash)),
+        cf_after_tax_keur=cf_after_tax,
         cfads_keur=cfads,
         terminal_unpaid_tax_keur=tax_result.terminal_unpaid_tax_keur,
     )

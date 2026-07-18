@@ -44,9 +44,12 @@ OPERATING_CORE_V1_PASS_WORDING = (
 )
 
 
-# Phase 2B tax-and-CFADS fields that the clean engine computes and the baseline also has.
+# Phase 2B tax-and-CFADS fields that the clean engine computes.
 # Waterfall rows (r69, r84, r99, r102, fcf_for_shl) exist in the baseline but are
 # NOT computed by the Phase 2B clean engine; they are declared unavailable in candidate.
+# cfads_keur is a Phase 2B-only canonical output not present in legacy baselines;
+# it appears in the candidate profile but will show as APPROVED_FINANCIAL_CORRECTION
+# (new field) in the correction-aware comparison status.
 _TAX_CFADS_V1_FIELDS: frozenset[str] = frozenset({
     "taxable_profit_keur",
     "taxable_income_before_losses_audit_keur",
@@ -62,6 +65,7 @@ _TAX_CFADS_V1_FIELDS: frozenset[str] = frozenset({
     "tax_depreciation_audit_keur",
     "fiscal_reintegration_audit_keur",
     "cf_after_tax_keur",
+    "cfads_keur",
 })
 
 # Waterfall rows the baseline has but the Phase 2B candidate does not implement.
@@ -75,9 +79,12 @@ _TAX_CFADS_V1_WATERFALL_UNAVAILABLE: frozenset[str] = frozenset({
 
 TAX_CFADS_V1_PASS_WORDING = (
     "TAX_CFADS_V1 PASS confirms parity for Phase 2B tax schedule fields: "
-    "taxable income trail, ATAD, FIFO LCF, CIT accrual, cash tax, and cf_after_tax. "
-    "Waterfall rows (r69, r84, r99, r102, fcf_for_shl) and canonical CFADS are "
-    "out-of-scope for baseline comparison and declared unavailable in the candidate."
+    "taxable income trail, ATAD, FIFO LCF, CIT accrual, cash tax, cf_after_tax, "
+    "and canonical cfads_keur. "
+    "cfads_keur is a new Phase 2B-only output (not in legacy baselines) and appears "
+    "as APPROVED_FINANCIAL_CORRECTION in the correction ledger. "
+    "Waterfall rows (r69, r84, r99, r102, fcf_for_shl) are out-of-scope and "
+    "declared unavailable in the candidate."
 )
 
 

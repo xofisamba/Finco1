@@ -199,26 +199,37 @@ class TestA_NoAtadNoLosses:
     def test_annual_taxable_income_equals_annual_ebitda_minus_dep(self):
         """With no interest, annual taxable = annual EBITDA - annual tax_dep.
 
-        Taxable income is computed annually and prorated across periods, so the
-        per-period proration sum across all periods in a year must equal
-        annual_ebitda - annual_dep.
+        Taxable income is computed per calendar year and prorated to periods.
+        The sum of per-period taxable shares for periods in a given calendar year
+        must equal the calendar-year annual EBITDA - tax_dep.
+
+        Note: the grouping is by calendar year (from tax_and_cfads annual results),
+        not by year_index (an operating-model concept distinct from calendar year).
         """
+        from financial_engine.tax.engine import calculate_tax
+        from financial_engine.inputs import TaxCalculationInput, TaxCfadsModelInput
+
         result = self._result()
         tc = result.tax_and_cfads
-        from collections import defaultdict
-        year_ebitda: dict[float, float] = defaultdict(float)
-        year_dep: dict[float, float] = defaultdict(float)
-        year_taxable: dict[float, float] = defaultdict(float)
-        for i, p in enumerate(result.periods):
-            yi = p.year_index
-            year_ebitda[yi] += p.ebitda_keur
-            year_dep[yi] += p.tax_depreciation_keur
-            year_taxable[yi] += tc.taxable_income_before_losses_audit_keur[i]
-        for yi in year_ebitda:
-            expected = year_ebitda[yi] - year_dep[yi]
-            actual = year_taxable[yi]
+
+        # Use the annual_results to check per-year conservation.
+        # Re-run to access TaxAndCfadsResult directly.
+        op = _minimal_operating_input()
+        from financial_engine.orchestrator import run_operating_model
+        op_result = run_operating_model(op)
+        tax_input = TaxCalculationInput(
+            policy=_flat_policy(rate=0.18, atad_enabled=False),
+            opening_loss_vintages=(),
+            period_interest=(),
+            period_adjustments=(),
+        )
+        tax_result = calculate_tax(op_result.periods, tax_input)
+
+        for ar in tax_result.annual_results:
+            expected = ar.ebitda_keur - ar.tax_depreciation_keur
+            actual = ar.taxable_income_before_lcf_keur
             assert abs(actual - expected) < 1e-4, (
-                f"Year {yi}: annual_taxable={actual:.4f} != ebitda-dep={expected:.4f}"
+                f"TaxYear {ar.tax_year}: taxable={actual:.4f} != ebitda-dep={expected:.4f}"
             )
 
 
@@ -241,8 +252,10 @@ class TestB_AtadAnnualThreshold:
 
     def _basis(self, total_interest: float) -> TaxYearCalculationBasis:
         return TaxYearCalculationBasis(
-            tax_year=0,
+            tax_year=2030,
+            fragments=(),
             period_indices=(0, 1),
+            payment_period_index=1,
             ebitda_keur=self._EBITDA,
             tax_depreciation_keur=0.0,
             total_interest_keur=total_interest,
@@ -294,8 +307,10 @@ class TestB_AtadAnnualThreshold:
         """When 30%×EBITDA < threshold, threshold binds."""
         # EBITDA = 5 000 → 30% = 1 500 < threshold (3 000) → capacity = 3 000
         basis = TaxYearCalculationBasis(
-            tax_year=0,
+            tax_year=2030,
+            fragments=(),
             period_indices=(0, 1),
+            payment_period_index=1,
             ebitda_keur=5_000.0,
             tax_depreciation_keur=0.0,
             total_interest_keur=4_000.0,
