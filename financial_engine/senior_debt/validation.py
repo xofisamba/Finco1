@@ -116,6 +116,11 @@ def validate_senior_debt_inputs(
             errors.append(f"period_rate references unknown period_index={pr.period_index}")
         if not math.isfinite(pr.annual_rate):
             errors.append(f"Non-finite annual_rate for period_index={pr.period_index}")
+        elif pr.annual_rate < 0:
+            errors.append(
+                f"Negative annual_rate {pr.annual_rate} for period_index={pr.period_index}; "
+                "negative interest rates are not permitted"
+            )
         # Order check: period_index must be strictly increasing
         if prev_period_index is not None and pr.period_index <= prev_period_index:
             errors.append(
@@ -124,8 +129,20 @@ def validate_senior_debt_inputs(
             )
         prev_period_index = pr.period_index
 
-    # Fixed rate required if no explicit rates cover all periods
-    if not inputs.period_rates and policy.annual_fixed_rate is None:
+    # Rate coverage: when annual_fixed_rate is None, every required debt period must
+    # have an explicit period_rate (no fallback exists for uncovered periods).
+    if policy.annual_fixed_rate is None and known_period_indices:
+        repayment_periods = frozenset(
+            idx for idx in known_period_indices
+            if policy.repayment_start_period_index <= idx <= policy.maturity_period_index
+        )
+        uncovered = repayment_periods - seen_rate_periods
+        if uncovered:
+            errors.append(
+                f"annual_fixed_rate is None and {len(uncovered)} required debt period(s) have "
+                f"no explicit period_rate: {sorted(uncovered)[:5]}{'...' if len(uncovered) > 5 else ''}"
+            )
+    elif not inputs.period_rates and policy.annual_fixed_rate is None:
         errors.append(
             "No period_rates provided and policy.annual_fixed_rate is None; "
             "at least one source of interest rates is required"
@@ -147,6 +164,7 @@ def validate_senior_debt_inputs(
         else:
             seen_principal_periods: set[int] = set()
             cumulative_principal: float = 0.0
+            prev_principal_index: int | None = None
             for pp in inputs.explicit_principal_schedule:
                 if pp.period_index in seen_principal_periods:
                     errors.append(
@@ -156,6 +174,21 @@ def validate_senior_debt_inputs(
                 if known_period_indices and pp.period_index not in known_period_indices:
                     errors.append(
                         f"explicit_principal references unknown period_index={pp.period_index}"
+                    )
+                # Out-of-order check: period_index must be strictly increasing
+                if prev_principal_index is not None and pp.period_index <= prev_principal_index:
+                    errors.append(
+                        f"explicit_principal_schedule is out of order: period_index={pp.period_index} "
+                        f"follows period_index={prev_principal_index}; indices must be strictly increasing"
+                    )
+                prev_principal_index = pp.period_index
+                # Must be within the permitted repayment window
+                if (pp.period_index < policy.repayment_start_period_index
+                        or pp.period_index > policy.maturity_period_index):
+                    errors.append(
+                        f"explicit_principal period_index={pp.period_index} is outside the permitted "
+                        f"repayment window [{policy.repayment_start_period_index}, "
+                        f"{policy.maturity_period_index}]"
                     )
                 if not math.isfinite(pp.principal_keur):
                     errors.append(

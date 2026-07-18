@@ -167,7 +167,6 @@ def compute_senior_debt_fingerprint(inputs: "Any") -> str:
             "maximum_iterations": policy.maximum_iterations,
             "permit_terminal_balloon": policy.permit_terminal_balloon,
             "damping_alpha": policy.damping_alpha,
-            "repayment_method": policy.repayment_method.value if policy.repayment_method is not None else None,
         },
         "inputs": {
             "eligible_project_cost_keur": sd.eligible_project_cost_keur,

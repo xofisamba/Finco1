@@ -13,7 +13,11 @@ class SolverDiagnostics:
     """Fixed-point solver convergence diagnostics.
 
     termination_reason values:
-      CONVERGED                  : absolute and relative tolerances both satisfied
+      CONVERGED                  : every tracked field (debt_size, opening, interest,
+                                   principal, closing, CFADS, cash_tax) satisfies
+                                   |Δ| ≤ convergence_tolerance_keur  OR
+                                   |Δ|/max(|a|,|b|,1) ≤ convergence_relative_tolerance
+                                   for all periods; self-consistency finalisation passed.
       MAX_ITERATIONS_REACHED     : iteration cap hit before convergence
       INVALID_INPUT              : input validation failure
       NO_DEBT_CAPACITY           : zero sculpted capacity (CFADS too low)

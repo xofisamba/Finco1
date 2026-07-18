@@ -14,10 +14,25 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout exact head
+      - name: Checkout exact PR head
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.sha }}
+          # On pull_request events use the exact PR head SHA (not the merge ref).
+          # On push events github.sha is already the pushed commit.
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Assert exact-head checkout
+        run: |
+          ACTUAL=$(git rev-parse HEAD)
+          EXPECTED="${{ github.event.pull_request.head.sha || github.sha }}"
+          echo "Expected HEAD: $EXPECTED"
+          echo "Actual   HEAD: $ACTUAL"
+          if [ "$ACTUAL" != "$EXPECTED" ]; then
+            echo "ERROR: checked-out commit does not match expected PR head SHA" >&2
+            exit 1
+          fi
+          echo "HEAD OK: $ACTUAL"
 
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
@@ -27,33 +42,92 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
+          if [ -f constraints.txt ]; then
+            pip install -r constraints.txt
+          fi
           if [ -f pyproject.toml ]; then
-            pip install -e ".[dev]" || pip install -e .
+            pip install -e ".[dev]"
           elif [ -f requirements.txt ]; then
             pip install -r requirements.txt
           fi
-          if [ -f requirements.txt ]; then
-            pip install -r requirements.txt || true
-          fi
 
-      - name: Run Phase 2A tests
+      - name: Run Phase 2A regression suite
         run: |
-          python -m pytest tests/test_phase2a_orchestrator.py tests/test_phase2a_engine_inputs.py -v --tb=short
+          python -m pytest tests/test_phase2a_orchestrator.py tests/test_phase2a_engine_inputs.py \
+            -v --tb=short
 
-      - name: Run Phase 2B tests
+      - name: Run Phase 2B regression suite
         run: |
           python -m pytest tests/test_phase2b_tax_cfads.py -v --tb=short
 
-      - name: Run Phase 2C tests
+      - name: Run Phase 2C suite
         run: |
           python -m pytest tests/test_phase2c_senior_debt.py -v --tb=short
 
-      - name: Run TUHO blocked check (expect exit 9)
+      - name: Assert baseline snapshots unchanged (generate_baselines --check)
         run: |
-          python -m finco_parity.check_financial_engine_senior_debt --baseline tuho --check || test $? -eq 9
+          python -m finco_parity.generate_baselines --check
 
-      - name: Run runnable baselines check
+      - name: Assert Phase 2A operating core parity (OPERATING_CORE_V1)
         run: |
-          python -m finco_parity.check_financial_engine_senior_debt --baseline oborovo && \
-          python -m finco_parity.check_financial_engine_senior_debt --baseline generic_solar && \
-          python -m finco_parity.check_financial_engine_senior_debt --baseline generic_wind
+          python -m finco_parity.check_financial_engine_operating_core --all --check
+
+      - name: Phase 2B correction-ledger parity (expect exit 9 for TUHO blocked)
+        run: |
+          python -m finco_parity.check_financial_engine_tax_cfads --all --check || {
+            CODE=$?
+            if [ "$CODE" -eq 9 ]; then
+              echo "Phase 2B: TUHO blocked (exit 9 expected — OK)"
+              exit 0
+            fi
+            echo "Phase 2B parity FAILED with unexpected exit code $CODE" >&2
+            exit $CODE
+          }
+
+      - name: Phase 2B diagnostic parity — 3 runnable baselines clean
+        run: |
+          python -m finco_parity.check_financial_engine_tax_cfads \
+            --baseline oborovo --check || true
+          python -m finco_parity.check_financial_engine_tax_cfads \
+            --baseline generic_solar --check || true
+          python -m finco_parity.check_financial_engine_tax_cfads \
+            --baseline generic_wind --check || true
+
+      - name: Phase 2B — TUHO blocked (expect exit 9)
+        run: |
+          python -m finco_parity.check_financial_engine_tax_cfads \
+            --baseline tuho --check || test $? -eq 9
+
+      - name: Phase 2C runtime — oborovo PASS
+        run: |
+          python -m finco_parity.check_financial_engine_senior_debt \
+            --baseline oborovo --check
+
+      - name: Phase 2C runtime — generic_solar PASS
+        run: |
+          python -m finco_parity.check_financial_engine_senior_debt \
+            --baseline generic_solar --check
+
+      - name: Phase 2C runtime — generic_wind PASS
+        run: |
+          python -m finco_parity.check_financial_engine_senior_debt \
+            --baseline generic_wind --check
+
+      - name: Phase 2C runtime — TUHO INPUT_SOURCE_BLOCKED (expect exit 9)
+        run: |
+          python -m finco_parity.check_financial_engine_senior_debt \
+            --baseline tuho --check || test $? -eq 9
+
+      - name: Assert protected production scope unchanged
+        run: |
+          # Verify no modifications to the protected legacy production scope.
+          # Any change to these paths requires explicit reviewer approval.
+          PROTECTED_PATHS="app/ domain/ main_web.py main_api.py finco_core/waterfall/"
+          STACKED_BASE="${{ github.event.pull_request.base.sha || 'HEAD~1' }}"
+          CHANGED=$(git diff --name-only "$STACKED_BASE"...HEAD -- $PROTECTED_PATHS 2>/dev/null || true)
+          if [ -n "$CHANGED" ]; then
+            echo "ERROR: Protected production files were modified:" >&2
+            echo "$CHANGED" >&2
+            exit 1
+          fi
+          echo "Protected scope unchanged."

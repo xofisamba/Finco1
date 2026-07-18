@@ -665,9 +665,22 @@ def run_senior_debt_model(inputs: SeniorDebtModelInput) -> ProjectModelResult:
         tax_cfads_fn=tax_cfads_fn,
     )
 
+    # Issue 4: Block non-authoritative results from being returned as valid ProjectModelResult.
+    # Downstream waterfall/FS/returns code must never receive a non-authoritative debt result.
+    if not sd_result.diagnostics.is_authoritative:
+        from financial_engine.senior_debt.models import SeniorDebtNonConvergenceError
+        raise SeniorDebtNonConvergenceError(
+            f"Senior debt solver terminated with non-authoritative result: "
+            f"termination_reason={sd_result.diagnostics.termination_reason!r}, "
+            f"iteration_count={sd_result.diagnostics.iteration_count}, "
+            f"max_abs_diff={sd_result.diagnostics.maximum_absolute_difference_keur:.6f} kEUR. "
+            f"Downstream waterfall/FS/returns code must not receive non-authoritative debt results."
+        )
+
     # Step 5: Assemble result-layer SeniorDebtSchedules
     diag_dict = {
         "converged": sd_result.diagnostics.converged,
+        "is_authoritative": sd_result.diagnostics.is_authoritative,
         "iteration_count": sd_result.diagnostics.iteration_count,
         "initial_debt_guess_keur": sd_result.diagnostics.initial_debt_guess_keur,
         "final_debt_size_keur": sd_result.diagnostics.final_debt_size_keur,
