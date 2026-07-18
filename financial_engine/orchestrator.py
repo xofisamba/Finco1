@@ -27,11 +27,12 @@ from __future__ import annotations
 from datetime import date
 from typing import TYPE_CHECKING
 
-from financial_engine.inputs import OperatingModelInput, TaxCfadsModelInput, YieldScenario
+from financial_engine.inputs import OperatingModelInput, TaxCfadsModelInput, SeniorDebtModelInput, YieldScenario
 from financial_engine.results import (
     OperatingPeriodResult,
     OperatingSchedules,
     ProjectModelResult,
+    SeniorDebtSchedules as _SeniorDebtSchedulesResult,
     TaxAndCfadsSchedules,
 )
 from financial_engine.validation import validate_operating_model_input, has_errors
@@ -563,4 +564,164 @@ def run_tax_cfads_model(inputs: TaxCfadsModelInput) -> ProjectModelResult:
         unavailable_sections=_PHASE_2B_UNAVAILABLE,
         validation_issues=all_issues,
         warnings=warnings,
+    )
+
+
+SENIOR_DEBT_RUN_PATH_ID = "financial_engine.orchestrator.run_senior_debt_model"
+
+# Sections still out of scope in Phase 2C.
+_PHASE_2C_UNAVAILABLE = ("financial_statements", "returns")
+
+
+def run_senior_debt_model(inputs: SeniorDebtModelInput) -> ProjectModelResult:
+    """Phase 2C orchestrator: operating core + tax + canonical CFADS + senior debt.
+
+    The fixed-point solver calls back into the Phase 2B tax/CFADS calculation on
+    each iteration, passing the current period senior interest.  There is one
+    authoritative tax/CFADS result per iteration; no separate CFADS formula exists.
+
+    Calculation order:
+      1.  Run Phase 2B tax+CFADS model (initial pass with zero senior interest).
+      2.  Build rate map and period metadata from operating periods.
+      3.  Define tax_cfads_fn: given senior_interest_by_period, rebuild
+          TaxCalculationInput with updated PeriodInterestInput, call calculate_tax
+          and calculate_canonical_cfads, return (cfads_by_period, cash_tax_by_period).
+      4.  Call solve_senior_debt() with this callback.
+      5.  Assemble SeniorDebtSchedules result.
+      6.  Attach Phase 2C provenance.
+
+    Non-converged results are returned with diagnostics.converged=False.
+    Callers must check senior_debt.diagnostics["converged"].
+    """
+    from financial_engine.inputs import TaxCalculationInput, PeriodInterestInput
+    from financial_engine.tax.engine import calculate_tax
+    from financial_engine.cfads import calculate_canonical_cfads
+    from financial_engine.senior_debt.solver import solve_senior_debt
+    from financial_engine.senior_debt.policy import SeniorDebtPolicy
+    from financial_engine.senior_debt.inputs import SeniorDebtInputs
+
+    policy: SeniorDebtPolicy = inputs.senior_debt_policy  # type: ignore[assignment]
+    sd_inputs: SeniorDebtInputs = inputs.senior_debt_inputs  # type: ignore[assignment]
+
+    # Step 1: Phase 2B base run (with any pre-existing interest in inputs.tax)
+    phase2b_inputs = TaxCfadsModelInput(operating=inputs.operating, tax=inputs.tax)
+    phase2b_result = run_tax_cfads_model(phase2b_inputs)
+
+    # Closure over base inputs for tax feedback
+    base_tax_input = inputs.tax
+
+    def tax_cfads_fn(
+        senior_interest_by_period: dict[int, float],
+    ) -> tuple[dict[int, float], dict[int, float]]:
+        """Rebuild tax + CFADS with updated senior interest on each solver iteration."""
+        # Merge solver-provided senior interest into PeriodInterestInput
+        merged_interest: dict[int, "PeriodInterestInput"] = {}
+        for pi in base_tax_input.period_interest:
+            merged_interest[pi.period_index] = pi
+        for idx, senior_keur in senior_interest_by_period.items():
+            existing = merged_interest.get(idx)
+            if existing is not None:
+                merged_interest[idx] = PeriodInterestInput(
+                    period_index=idx,
+                    senior_interest_keur=senior_keur,
+                    shl_interest_keur=existing.shl_interest_keur,
+                    other_interest_keur=existing.other_interest_keur,
+                )
+            else:
+                merged_interest[idx] = PeriodInterestInput(
+                    period_index=idx,
+                    senior_interest_keur=senior_keur,
+                )
+
+        updated_tax_input = TaxCalculationInput(
+            policy=base_tax_input.policy,
+            opening_loss_vintages=base_tax_input.opening_loss_vintages,
+            period_interest=tuple(merged_interest.values()),
+            period_adjustments=base_tax_input.period_adjustments,
+        )
+        tax_result = calculate_tax(phase2b_result.periods, updated_tax_input)
+        cfads_results = calculate_canonical_cfads(phase2b_result.periods, tax_result.period_results)
+        cfads_by_period = {cr.period_index: cr.cfads_keur for cr in cfads_results}
+        cash_tax_by_period = {
+            pr.period_index: pr.cash_tax_keur for pr in tax_result.period_results
+        }
+        return cfads_by_period, cash_tax_by_period
+
+    # Step 4: Fixed-point solver
+    sd_result = solve_senior_debt(
+        policy=policy,
+        inputs=sd_inputs,
+        periods=phase2b_result.periods,
+        tax_cfads_fn=tax_cfads_fn,
+    )
+
+    # Step 5: Assemble result-layer SeniorDebtSchedules
+    diag_dict = {
+        "converged": sd_result.diagnostics.converged,
+        "iteration_count": sd_result.diagnostics.iteration_count,
+        "initial_debt_guess_keur": sd_result.diagnostics.initial_debt_guess_keur,
+        "final_debt_size_keur": sd_result.diagnostics.final_debt_size_keur,
+        "maximum_absolute_difference_keur": sd_result.diagnostics.maximum_absolute_difference_keur,
+        "maximum_relative_difference": sd_result.diagnostics.maximum_relative_difference,
+        "binding_constraint": sd_result.diagnostics.binding_constraint,
+        "termination_reason": sd_result.diagnostics.termination_reason,
+    }
+    result_schedules = _SeniorDebtSchedulesResult(
+        period_indices=sd_result.period_indices,
+        senior_debt_opening_keur=sd_result.senior_debt_opening_keur,
+        senior_interest_keur=sd_result.senior_interest_keur,
+        senior_principal_keur=sd_result.senior_principal_keur,
+        senior_debt_service_keur=sd_result.senior_debt_service_keur,
+        senior_debt_closing_keur=sd_result.senior_debt_closing_keur,
+        senior_dscr=sd_result.senior_dscr,
+        debt_size_keur=sd_result.debt_size_keur,
+        binding_constraint=sd_result.binding_constraint,
+        diagnostics=diag_dict,
+    )
+
+    # Step 6: Phase 2C provenance
+    from financial_engine.provenance import compute_tax_cfads_fingerprint
+    fingerprint = compute_tax_cfads_fingerprint(phase2b_inputs)
+    evidence = phase2b_result.provenance.derivation_evidence + (
+        DerivationEvidence(
+            output_path="senior_debt.senior_interest_keur",
+            source_module="financial_engine.senior_debt.interest",
+            source_function="period_interest",
+            input_paths=("senior_debt_inputs.period_rates", "senior_debt_policy"),
+            notes=("interest = opening_balance × annual_rate × day_count_fraction",),
+        ),
+        DerivationEvidence(
+            output_path="senior_debt.senior_principal_keur",
+            source_module="financial_engine.senior_debt.sculpting",
+            source_function="build_schedule",
+            input_paths=("tax_and_cfads.cfads_keur", "senior_debt_policy.target_dscr"),
+            notes=("principal = max(0, cfads/target_dscr - interest), capped at opening",),
+        ),
+        DerivationEvidence(
+            output_path="senior_debt.debt_size_keur",
+            source_module="financial_engine.senior_debt.solver",
+            source_function="solve_senior_debt",
+            input_paths=("senior_debt_inputs", "senior_debt_policy"),
+            notes=(
+                f"fixed-point sizing; termination={sd_result.diagnostics.termination_reason}; "
+                f"iterations={sd_result.diagnostics.iteration_count}",
+            ),
+        ),
+    )
+    provenance = EngineProvenance(
+        engine_version=ENGINE_VERSION,
+        run_path_id=SENIOR_DEBT_RUN_PATH_ID,
+        input_fingerprint=fingerprint,
+        derivation_evidence=evidence,
+    )
+
+    return ProjectModelResult(
+        provenance=provenance,
+        periods=phase2b_result.periods,
+        operating_schedules=phase2b_result.operating_schedules,
+        tax_and_cfads=phase2b_result.tax_and_cfads,
+        senior_debt=result_schedules,
+        unavailable_sections=_PHASE_2C_UNAVAILABLE,
+        validation_issues=phase2b_result.validation_issues,
+        warnings=phase2b_result.warnings,
     )

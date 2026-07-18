@@ -167,6 +167,25 @@ class InputProvenance:
     baseline_commit_sha: str
 
 
+# ---------------------------------------------------------------------------
+# Phase 2C senior debt input contracts
+# ---------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class SeniorDebtModelInput:
+    """Phase 2C input: Phase 2B inputs + senior debt policy + senior debt inputs.
+
+    operating: Phase 2A OperatingModelInput
+    tax: Phase 2B TaxCalculationInput (interest from Phase 2C solver feeds back here)
+    senior_debt_policy: SeniorDebtPolicy (sizing mode, DSCR target, rates, etc.)
+    senior_debt_inputs: SeniorDebtInputs (cost base, initial guess, rate schedule, etc.)
+    """
+    operating: "OperatingModelInput"
+    tax: "TaxCalculationInput"
+    senior_debt_policy: object   # SeniorDebtPolicy (avoid circular imports)
+    senior_debt_inputs: object   # SeniorDebtInputs
+
+
 @dataclass(frozen=True)
 class OperatingModelInput:
     calendar: CalendarInput
