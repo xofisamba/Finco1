@@ -81,12 +81,14 @@ class CapexItemForDep:
 class DepreciationInput:
     """CAPEX items for straight-line book/tax depreciation.
 
+    Both fields are required — no defaults.
+
     financial_cost_useful_life_years: amortization period for items with
-        asset_class_code == "financial_costs". Maps from financing.senior_tenor_years
-        in the adapter; kept explicit here so the clean engine has no financing dependency.
+        asset_class_code == "financial_costs". Mapped explicitly from
+        financing.senior_tenor_years in the adapter.
     """
-    capex_items_for_depreciation: tuple[CapexItemForDep, ...] = ()
-    financial_cost_useful_life_years: int = 14
+    capex_items_for_depreciation: tuple[CapexItemForDep, ...]
+    financial_cost_useful_life_years: int
 
 
 @dataclass(frozen=True)

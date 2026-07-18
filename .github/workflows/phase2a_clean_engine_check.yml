@@ -2,8 +2,8 @@ name: Phase 2A Clean Engine Check
 
 # Phase 2A — Clean operating-core parity enforcement.
 #
-# All substantive gates must execute for every run.
-# No gate may be skipped by an earlier step's failure.
+# On a successful run, every substantive Phase 2A gate executes.
+# Any failed gate fails the workflow and may stop later steps.
 
 on:
   pull_request:

@@ -22,6 +22,7 @@ import json
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
+from collections.abc import Sequence
 from typing import Any, Mapping
 
 from finco_parity.candidate import (
@@ -568,7 +569,7 @@ def _build_aggregate(
 def compare_candidate_provider(
     provider: CandidateSnapshotProvider,
     *,
-    baseline_ids: "Sequence[str] | None" = None,
+    baseline_ids: Sequence[str] | None = None,
     comparison_profile: ComparisonProfile = ComparisonProfile.FULL,
     verify_legacy: bool = True,
     max_diffs: int | None = None,
@@ -587,8 +588,6 @@ def compare_candidate_provider(
 
     ComparisonProfile.FULL is the default (Phase 1C behaviour unchanged).
     """
-    from typing import Sequence as _Sequence
-
     if max_diffs is not None and max_diffs < 0:
         raise ValueError(f"max_diffs must be >= 0, got {max_diffs!r}")
 

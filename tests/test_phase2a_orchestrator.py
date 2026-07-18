@@ -5,7 +5,7 @@ Covers:
 - Four-baseline OPERATING_CORE_V1 PASS (production, revenue, OPEX, EBITDA, book/tax depreciation)
 - Period-grid parity (date, start_date, index, year_index, period_in_year, is_operation)
 - Negative parity tests (one-ULP changes → PAYLOAD_DRIFT)
-- Identity/schema/legacy/environment/mixed-status exit-code tests via injected providers
+- Identity/schema/legacy/environment/manifest/mixed-status exit-code tests via injected providers
 - Source immutability during orchestration
 """
 from __future__ import annotations
@@ -26,10 +26,12 @@ from finco_parity.dual_run import (
     AggregateRunResult,
     BaselineRunResult,
     BaselineRunStatus,
+    _build_aggregate,
     compare_candidate_provider,
     exit_code_for_aggregate,
 )
 from finco_parity.financial_engine_candidate import get_candidate_snapshot
+from finco_parity.manifest import ManifestIntegrityError
 from finco_parity.profiles import ComparisonProfile, project_for_profile
 
 _BASELINE_DIR = Path("finco_parity/baselines/snapshots")
@@ -62,6 +64,45 @@ def _get_adapted_inputs(name: str):
         source_id=_FACTORY_MAP[name],
         baseline_commit_sha=_BASELINE_COMMIT_SHA,
     )
+
+
+def _good_snapshot(baseline_id: str = "tuho") -> dict[str, Any]:
+    return get_candidate_snapshot(baseline_id, baseline_commit_sha=_BASELINE_COMMIT_SHA)
+
+
+# ---------------------------------------------------------------------------
+# Injected providers for status/exit-code tests
+# ---------------------------------------------------------------------------
+
+class _FixedSnapshotProvider:
+    """Returns the given snapshot dict for any baseline."""
+    def __init__(self, snapshot: dict[str, Any]) -> None:
+        self._snapshot = snapshot
+
+    def capture_snapshot(self, baseline_id: str, reference: Any) -> dict[str, Any]:
+        return dict(self._snapshot)
+
+
+class _RaisingProvider:
+    """Raises on any capture_snapshot call."""
+    def __init__(self, exc: Exception) -> None:
+        self._exc = exc
+
+    def capture_snapshot(self, baseline_id: str, reference: Any) -> dict[str, Any]:
+        raise self._exc
+
+
+class _CountingProvider:
+    """Records calls and delegates to a wrapped provider."""
+    def __init__(self, inner=None) -> None:
+        self.call_count = 0
+        self._inner = inner
+
+    def capture_snapshot(self, baseline_id: str, reference: Any) -> dict[str, Any]:
+        self.call_count += 1
+        if self._inner is not None:
+            return self._inner.capture_snapshot(baseline_id, reference)
+        raise RuntimeError("CountingProvider: no inner provider")
 
 
 # ---------------------------------------------------------------------------
@@ -108,7 +149,7 @@ def test_period_grid_parity(baseline_id: str):
         assert my_p.year_index == bl_p["year_index"], f"[{i}] year_index"
         assert my_p.period_in_year == bl_p["period_in_year"], f"[{i}] period_in_year"
         assert my_p.is_operation == bl_p["is_operation"], f"[{i}] is_operation"
-        # start_date: baseline may store null for construction-phase periods;
+        # start_date: baseline stores null for construction-phase periods;
         # operating periods always have a start_date in the clean engine.
         if bl_p.get("start_date") is not None:
             assert str(my_p.period_start) == bl_p["start_date"], f"[{i}] start_date"
@@ -281,30 +322,8 @@ def test_period_count_change_causes_structural_drift():
 
 
 # ---------------------------------------------------------------------------
-# Identity / schema / legacy / environment orchestration tests via injected providers
+# compare_candidate_provider — all four baselines pass
 # ---------------------------------------------------------------------------
-
-class _FixedSnapshotProvider:
-    """Provider that always returns the given snapshot dict."""
-    def __init__(self, snapshot: dict[str, Any]) -> None:
-        self._snapshot = snapshot
-
-    def capture_snapshot(self, baseline_id: str, reference: Any) -> dict[str, Any]:
-        return dict(self._snapshot)
-
-
-class _RaisingProvider:
-    """Provider that raises on capture."""
-    def __init__(self, exc: Exception) -> None:
-        self._exc = exc
-
-    def capture_snapshot(self, baseline_id: str, reference: Any) -> dict[str, Any]:
-        raise self._exc
-
-
-def _good_snapshot() -> dict[str, Any]:
-    return get_candidate_snapshot("tuho", baseline_commit_sha=_BASELINE_COMMIT_SHA)
-
 
 def test_compare_candidate_provider_pass_all_baselines():
     """compare_candidate_provider with the real provider passes all four baselines."""
@@ -319,28 +338,100 @@ def test_compare_candidate_provider_pass_all_baselines():
     assert exit_code_for_aggregate(aggregate) == 0
 
 
-def test_candidate_sha_change_causes_identity_mismatch():
-    """A changed baseline_commit_sha in the candidate must surface as identity drift."""
-    committed = _load_baseline("tuho")
-    candidate = get_candidate_snapshot("tuho", baseline_commit_sha="a" * 40)
-    assert candidate["baseline_commit_sha"] != committed["baseline_commit_sha"]
+# ---------------------------------------------------------------------------
+# Identity mismatch tests — wrong SHA, wrong baseline_id, wrong input_source_id
+# These use injected providers and compare_candidate_provider so that payload
+# projection occurs only after identity gating.
+# ---------------------------------------------------------------------------
+
+def test_wrong_baseline_commit_sha_causes_identity_mismatch():
+    """Provider returning wrong baseline_commit_sha → IDENTITY_MISMATCH → exit 7."""
+    snap = dict(_good_snapshot("tuho"))
+    snap["baseline_commit_sha"] = "b" * 40  # wrong SHA
+
+    aggregate = compare_candidate_provider(
+        _FixedSnapshotProvider(snap),
+        baseline_ids=["tuho"],
+        comparison_profile=_PROFILE,
+        verify_legacy=False,
+    )
+    assert aggregate.overall_status == BaselineRunStatus.IDENTITY_MISMATCH
+    assert exit_code_for_aggregate(aggregate) == 7
 
 
-def test_candidate_schema_version_change_causes_schema_drift():
-    """A schema_version change must surface as SCHEMA_DRIFT in a full comparison."""
-    committed = _load_baseline("tuho")
-    candidate = get_candidate_snapshot("tuho", baseline_commit_sha=_BASELINE_COMMIT_SHA)
-    candidate = dict(candidate)
-    candidate["schema_version"] = "99.0.0"
-    result = compare_snapshots(committed, candidate, baseline_id="tuho")
-    assert result.status == DriftKind.SCHEMA_DRIFT
+def test_wrong_baseline_id_causes_identity_mismatch():
+    """Provider returning wrong baseline_id → IDENTITY_MISMATCH → exit 7."""
+    snap = dict(_good_snapshot("tuho"))
+    snap["baseline_id"] = "wrong_baseline"  # wrong baseline_id
 
+    aggregate = compare_candidate_provider(
+        _FixedSnapshotProvider(snap),
+        baseline_ids=["tuho"],
+        comparison_profile=_PROFILE,
+        verify_legacy=False,
+    )
+    assert aggregate.overall_status == BaselineRunStatus.IDENTITY_MISMATCH
+    assert exit_code_for_aggregate(aggregate) == 7
+
+
+def test_wrong_input_source_id_causes_identity_mismatch():
+    """Provider returning wrong input_source_id → IDENTITY_MISMATCH → exit 7."""
+    snap = dict(_good_snapshot("tuho"))
+    snap["input_source_id"] = "wrong.source.id"  # wrong input_source_id
+
+    aggregate = compare_candidate_provider(
+        _FixedSnapshotProvider(snap),
+        baseline_ids=["tuho"],
+        comparison_profile=_PROFILE,
+        verify_legacy=False,
+    )
+    assert aggregate.overall_status == BaselineRunStatus.IDENTITY_MISMATCH
+    assert exit_code_for_aggregate(aggregate) == 7
+
+
+# ---------------------------------------------------------------------------
+# Schema mismatch tests — wrong schema_version, structurally invalid candidate
+# ---------------------------------------------------------------------------
+
+def test_wrong_schema_version_causes_schema_mismatch():
+    """Provider returning wrong schema_version → SCHEMA_MISMATCH → exit 7."""
+    snap = dict(_good_snapshot("tuho"))
+    snap["schema_version"] = "99.0.0"
+
+    aggregate = compare_candidate_provider(
+        _FixedSnapshotProvider(snap),
+        baseline_ids=["tuho"],
+        comparison_profile=_PROFILE,
+        verify_legacy=False,
+    )
+    assert aggregate.overall_status == BaselineRunStatus.SCHEMA_MISMATCH
+    assert exit_code_for_aggregate(aggregate) == 7
+
+
+def test_structurally_invalid_candidate_causes_schema_mismatch():
+    """Provider returning snapshot with missing required section → SCHEMA_MISMATCH → exit 7."""
+    snap = dict(_good_snapshot("tuho"))
+    # Remove a required top-level section so schema validation fails.
+    snap.pop("period_grid", None)
+
+    aggregate = compare_candidate_provider(
+        _FixedSnapshotProvider(snap),
+        baseline_ids=["tuho"],
+        comparison_profile=_PROFILE,
+        verify_legacy=False,
+    )
+    assert aggregate.overall_status == BaselineRunStatus.SCHEMA_MISMATCH
+    assert exit_code_for_aggregate(aggregate) == 7
+
+
+# ---------------------------------------------------------------------------
+# Phase 2A profile status-boundary tests
+# ---------------------------------------------------------------------------
 
 def test_execution_error_provider_yields_exit_1():
-    """A provider that raises an unexpected exception → EXECUTION_ERROR → exit 1."""
-    provider = _RaisingProvider(RuntimeError("boom"))
+    """Provider raising unexpected exception → EXECUTION_ERROR → exit 1."""
     aggregate = compare_candidate_provider(
-        provider,
+        _RaisingProvider(RuntimeError("boom")),
         baseline_ids=["tuho"],
         comparison_profile=_PROFILE,
         verify_legacy=False,
@@ -352,9 +443,8 @@ def test_execution_error_provider_yields_exit_1():
 def test_payload_drift_yields_exit_3():
     """One-ULP change in schedule → PAYLOAD_DRIFT → exit 3."""
     mutated = _candidate_with_schedule_mutation("tuho", "production_mwh")
-    provider = _FixedSnapshotProvider(mutated)
     aggregate = compare_candidate_provider(
-        provider,
+        _FixedSnapshotProvider(mutated),
         baseline_ids=["tuho"],
         comparison_profile=_PROFILE,
         verify_legacy=False,
@@ -362,6 +452,122 @@ def test_payload_drift_yields_exit_3():
     assert aggregate.overall_status == BaselineRunStatus.PAYLOAD_DRIFT
     assert exit_code_for_aggregate(aggregate) == 3
 
+
+def test_live_legacy_drift_yields_exit_8(monkeypatch):
+    """Live legacy snapshot differing from committed → LEGACY_DRIFT → exit 8."""
+    import finco_parity.legacy_snapshot as _ls
+
+    def _drifted_legacy(baseline_id, commit_sha):
+        snap = get_candidate_snapshot(baseline_id, baseline_commit_sha=commit_sha)
+        snap = dict(snap)
+        os_ = dict(snap["operating_schedules"])
+        os_["production_mwh"] = [v * 1.001 for v in os_["production_mwh"]]
+        snap["operating_schedules"] = os_
+        return snap
+
+    monkeypatch.setattr(_ls, "capture_snapshot", _drifted_legacy)
+
+    # Provider should never be called when legacy drift is detected first.
+    counting = _CountingProvider()
+    aggregate = compare_candidate_provider(
+        counting,
+        baseline_ids=["tuho"],
+        comparison_profile=_PROFILE,
+        verify_legacy=True,
+    )
+    assert aggregate.overall_status == BaselineRunStatus.LEGACY_DRIFT
+    assert exit_code_for_aggregate(aggregate) == 8
+    assert counting.call_count == 0  # provider never called — legacy check runs first
+
+
+def test_environment_mismatch_yields_exit_5(monkeypatch):
+    """Generation environment mismatch → ENVIRONMENT_MISMATCH → exit 5; provider not called."""
+    import finco_parity.generate_baselines as _gb
+
+    monkeypatch.setattr(_gb, "check_generation_environment", lambda manifest: "test env mismatch")
+
+    counting = _CountingProvider()
+    aggregate = compare_candidate_provider(
+        counting,
+        baseline_ids=["tuho"],
+        comparison_profile=_PROFILE,
+        verify_legacy=False,
+    )
+    assert aggregate.overall_status == BaselineRunStatus.ENVIRONMENT_MISMATCH
+    assert exit_code_for_aggregate(aggregate) == 5
+    assert counting.call_count == 0  # environment check runs before provider
+
+
+def test_manifest_integrity_failure_propagates_from_compare(monkeypatch):
+    """ManifestIntegrityError raised by compare_candidate_provider → CLI exit 4."""
+    import finco_parity.dual_run as _dr
+
+    def _raise():
+        raise ManifestIntegrityError("injected manifest failure")
+
+    # Patch the name in the dual_run module namespace (where it's called).
+    monkeypatch.setattr(_dr, "load_validated_manifest_context", _raise)
+
+    with pytest.raises(ManifestIntegrityError):
+        compare_candidate_provider(
+            _RaisingProvider(RuntimeError("should not be called")),
+            baseline_ids=["tuho"],
+            comparison_profile=_PROFILE,
+            verify_legacy=False,
+        )
+
+
+def test_manifest_integrity_failure_cli_exits_4(monkeypatch):
+    """ManifestIntegrityError bubbling through CLI returns exit code 4."""
+    import finco_parity.check_financial_engine_operating_core as _cli
+    import finco_parity.dual_run as _dr
+
+    def _raise():
+        raise ManifestIntegrityError("injected manifest failure")
+
+    # Patch in dual_run (where compare_candidate_provider calls it)
+    # and in the CLI module namespace as well.
+    monkeypatch.setattr(_dr, "load_validated_manifest_context", _raise)
+    # The CLI catches ManifestIntegrityError from compare_candidate_provider.
+    # Re-patch compare_candidate_provider in the CLI's namespace to raise directly.
+    def _raise_manifest(*args, **kwargs):
+        raise ManifestIntegrityError("injected manifest failure")
+    monkeypatch.setattr(_cli, "compare_candidate_provider", _raise_manifest)
+
+    code = _cli.main(["--baseline", "tuho", "--quiet"])
+    assert code == 4
+
+
+def test_unknown_baseline_cli_exits_2(monkeypatch):
+    """ValueError from compare_candidate_provider (unknown baseline) → CLI exit 2."""
+    import finco_parity.check_financial_engine_operating_core as _cli
+
+    def _raise_value_error(*args, **kwargs):
+        raise ValueError("Unknown baseline_id(s): ['bad_id']")
+
+    # Patch in the CLI module's namespace (the name was imported there).
+    monkeypatch.setattr(_cli, "compare_candidate_provider", _raise_value_error)
+
+    code = _cli.main(["--baseline", "tuho", "--quiet"])
+    assert code == 2
+
+
+def test_unexpected_error_cli_exits_1(monkeypatch):
+    """Unexpected RuntimeError from compare_candidate_provider → CLI exit 1."""
+    import finco_parity.check_financial_engine_operating_core as _cli
+
+    def _raise_runtime_error(*args, **kwargs):
+        raise RuntimeError("something exploded")
+
+    monkeypatch.setattr(_cli, "compare_candidate_provider", _raise_runtime_error)
+
+    code = _cli.main(["--baseline", "tuho", "--quiet"])
+    assert code == 1
+
+
+# ---------------------------------------------------------------------------
+# Mixed-status aggregate tests
+# ---------------------------------------------------------------------------
 
 def test_mixed_status_execution_error_dominates_payload_drift():
     """EXECUTION_ERROR + PAYLOAD_DRIFT → overall EXECUTION_ERROR → exit 1."""
@@ -374,18 +580,55 @@ def test_mixed_status_execution_error_dominates_payload_drift():
             self._call += 1
             if self._call == 1:
                 raise RuntimeError("first baseline explodes")
-            # Second baseline returns a mutated (drifted) snapshot.
             return _candidate_with_schedule_mutation(baseline_id, "production_mwh")
 
-    provider = _MixedProvider()
     aggregate = compare_candidate_provider(
-        provider,
+        _MixedProvider(),
         baseline_ids=["tuho", "oborovo"],
         comparison_profile=_PROFILE,
         verify_legacy=False,
     )
     assert aggregate.overall_status == BaselineRunStatus.EXECUTION_ERROR
     assert exit_code_for_aggregate(aggregate) == 1
+
+
+def test_mixed_status_order_independent():
+    """_build_aggregate: EXECUTION_ERROR + PAYLOAD_DRIFT is stable regardless of result order."""
+    err_result = BaselineRunResult(
+        baseline_id="tuho",
+        status=BaselineRunStatus.EXECUTION_ERROR,
+        legacy_engine_designation=None,
+        candidate_engine_designation=None,
+        legacy_run_path=None,
+        candidate_run_path=None,
+        comparison_status=None,
+        difference_count=0,
+        differences=(),
+        legacy_warnings=(),
+        candidate_warnings=(),
+        error_message="boom",
+    )
+    drift_result = BaselineRunResult(
+        baseline_id="oborovo",
+        status=BaselineRunStatus.PAYLOAD_DRIFT,
+        legacy_engine_designation=None,
+        candidate_engine_designation=None,
+        legacy_run_path=None,
+        candidate_run_path=None,
+        comparison_status="VALUE_DRIFT",
+        difference_count=1,
+        differences=(),
+        legacy_warnings=(),
+        candidate_warnings=(),
+        error_message=None,
+    )
+
+    agg_forward = _build_aggregate(["tuho", "oborovo"], [err_result, drift_result])
+    agg_reversed = _build_aggregate(["oborovo", "tuho"], [drift_result, err_result])
+
+    assert agg_forward.overall_status == BaselineRunStatus.EXECUTION_ERROR
+    assert agg_reversed.overall_status == BaselineRunStatus.EXECUTION_ERROR
+    assert exit_code_for_aggregate(agg_forward) == exit_code_for_aggregate(agg_reversed) == 1
 
 
 # ---------------------------------------------------------------------------

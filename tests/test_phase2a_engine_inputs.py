@@ -127,6 +127,12 @@ def test_depreciation_capex_items_are_tuples():
     assert isinstance(inputs.depreciation.capex_items_for_depreciation, tuple)
 
 
+def test_depreciation_input_both_fields_required():
+    """DepreciationInput has no defaults — both fields are required."""
+    with pytest.raises(TypeError):
+        DepreciationInput()  # type: ignore[call-arg]
+
+
 def test_market_prices_curve_is_tuple():
     inputs = _minimal_valid_inputs()
     assert isinstance(inputs.revenue.market_prices_curve_eur_mwh, tuple)
@@ -343,10 +349,20 @@ def test_dep003_invalid_useful_life_override_is_error():
     assert has_errors(issues)
 
 
-def test_dep004_financial_cost_useful_life_must_be_positive():
-    """DEP004: financial_cost_useful_life_years must be positive."""
+def test_dep004_financial_cost_useful_life_zero_is_error():
+    """DEP004: financial_cost_useful_life_years = 0 must produce an error."""
     inputs = _minimal_valid_inputs()
     dep = dataclasses.replace(inputs.depreciation, financial_cost_useful_life_years=0)
+    inputs2 = dataclasses.replace(inputs, depreciation=dep)
+    issues = validate_operating_model_input(inputs2)
+    assert any(i.code == "DEP004" for i in issues)
+    assert has_errors(issues)
+
+
+def test_dep004_financial_cost_useful_life_negative_is_error():
+    """DEP004: financial_cost_useful_life_years < 0 must produce an error."""
+    inputs = _minimal_valid_inputs()
+    dep = dataclasses.replace(inputs.depreciation, financial_cost_useful_life_years=-5)
     inputs2 = dataclasses.replace(inputs, depreciation=dep)
     issues = validate_operating_model_input(inputs2)
     assert any(i.code == "DEP004" for i in issues)

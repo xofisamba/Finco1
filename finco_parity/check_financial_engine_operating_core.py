@@ -164,8 +164,11 @@ def main(argv: list[str] | None = None) -> int:
     except ManifestIntegrityError as exc:
         print(f"MANIFEST INTEGRITY FAILURE: {exc}", file=sys.stderr)
         return 4
+    except ValueError as exc:
+        print(f"UNKNOWN BASELINE: {exc}", file=sys.stderr)
+        return 2
     except Exception as exc:
-        print(f"UNEXPECTED ERROR: {exc}", file=sys.stderr)
+        print(f"UNEXPECTED ERROR: {type(exc).__name__}", file=sys.stderr)
         return 1
 
     # Print per-baseline results.
