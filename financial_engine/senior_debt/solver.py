@@ -10,7 +10,7 @@ Iteration sequence (DSCR_SCULPTED / COMBINED_MINIMUM):
   7.  Compare per-field convergence using abs OR rel tolerance.
   8.  Repeat until convergence or maximum_iterations.
 
-Convergence contract (Issue 2):
+Convergence contract:
   Tracked fields: debt_size, opening, interest, principal, closing, CFADS, cash_tax
   A field pair (a, b) is converged when:
     |a - b| <= convergence_tolerance_keur   (absolute)
@@ -18,14 +18,34 @@ Convergence contract (Issue 2):
   ALL tracked fields for ALL periods must satisfy convergence simultaneously.
   Both convergence_tolerance_keur and convergence_relative_tolerance have real semantics.
 
-Finalisation contract (Issue 1):
-  After the outer loop converges, a finalisation sub-loop runs to ensure the
-  returned schedule is self-consistent with the tax/CFADS calculation:
-    1. Build forward roll at final D → extract interest_by
-    2. Call tax_cfads_fn(interest_by) → get cfads, cash_tax
-    3. Rebuild forward roll with those cfads → check interest consistency
-    4. Repeat until interest in step 1 and step 3 agree (within tol), or limit
-  Only when self-consistent is the result marked authoritative.
+Finalisation contract:
+  After the outer loop converges, a finalisation sub-loop enforces the exact handshake
+  invariant: the exact senior_interest_keur in the returned result must be exactly the
+  interest input used in the final authoritative tax/CFADS calculation.
+
+  Algorithm (per iteration of the sub-loop):
+    1. Build candidate_rows from current CFADS at final D.
+    2. Extract candidate_interest EXACTLY from candidate_rows (not a copy or approximation).
+    3. Call tax_cfads_fn(candidate_interest) → get new_cfads, new_cash_tax.
+    4. Build verify_rows from new_cfads.
+    5. Compare candidate_rows vs verify_rows using the SAME convergence contract
+       (abs OR rel, all fields: interest, principal, closing, CFADS, cash_tax).
+    6. If converged: return candidate_rows as the authoritative result.
+       The last tax_cfads_fn call received candidate_interest, which is EXACTLY
+       the interest in candidate_rows (= returned rows). Invariant holds by construction.
+    7. If not converged: set CFADS = new_cfads and repeat.
+
+  If the sub-loop reaches _MAX_FINALISATION_ITERATIONS without convergence:
+    termination_reason = FINALISATION_NOT_CONVERGED
+    is_authoritative = False
+    The caller raises SeniorDebtNonConvergenceError.
+
+Repayment method (Option B — fixed documented combinations):
+  DSCR_SCULPTED sizing   → DSCR_SCULPTED repayment
+  GEARING_CAP sizing     → LEVEL_PRINCIPAL repayment
+  COMBINED_MINIMUM sizing→ DSCR_SCULPTED repayment (sizing and repayment are separate;
+                           amortisation never switches to level-principal when gearing binds)
+  EXPLICIT_SCHEDULE sizing→ EXPLICIT repayment
 
 Repayment method (Issue 3 — Option B):
   Fixed documented combinations derived from sizing_mode:
@@ -291,48 +311,54 @@ def _finalise_authoritative(
     repayment_str: str,
     tax_cfads_fn: TaxCfadsCallable,
     explicit_by: dict[int, float] | None = None,
-) -> tuple[tuple[PeriodDebtRow, ...], dict[int, float], dict[int, float]]:
+) -> tuple[tuple[PeriodDebtRow, ...], dict[int, float], dict[int, float], bool]:
     """After outer loop convergence, ensure schedule is self-consistent with tax/CFADS.
 
-    Required invariant:
-      returned senior_interest_keur  =  the exact interest input used to calculate
-      returned tax_and_cfads (via the last tax_cfads_fn call)
+    Invariant by construction:
+      The last tax_cfads_fn call receives candidate_interest (from candidate_rows).
+      We return candidate_rows — so returned interest EXACTLY equals last tax input.
 
-    Runs up to _MAX_FINALISATION_ITERATIONS sub-iterations:
-      1. Build forward roll → extract interest
-      2. Call tax_cfads_fn(interest) → get cfads', cash_tax'
-      3. Rebuild forward roll with cfads' → check interest consistency
-      4. If consistent (within abs_tol): done — return the final (rows, cfads, cash_tax)
-      5. Else: update cfads_by = cfads', loop
+    Returns (rows, cfads, cash_tax, converged: bool).
+    converged=False signals FINALISATION_NOT_CONVERGED; caller sets is_authoritative=False.
     """
     abs_tol = policy.convergence_tolerance_keur
+    rel_tol = policy.convergence_relative_tolerance
+    prev_cash_tax: dict[int, float] = {idx: 0.0 for idx in period_indices}
 
     for _ in range(_MAX_FINALISATION_ITERATIONS):
-        rows = _forward_roll(
+        # candidate_rows: schedule with current CFADS at debt D
+        candidate_rows = _forward_roll(
             D, period_indices, rate_map, period_start_end,
             cfads_by, policy, repayment_str, explicit_by=explicit_by,
         )
-        interest_by = {r.period_index: r.interest_keur for r in rows}
-        new_cfads, new_cash_tax = tax_cfads_fn(interest_by)
-        new_rows = _forward_roll(
+        # Last tax call with candidate interest — new_cfads is RESPONSE to candidate_rows
+        candidate_interest = {r.period_index: r.interest_keur for r in candidate_rows}
+        new_cfads, new_cash_tax = tax_cfads_fn(candidate_interest)
+        # verify_rows: what the schedule looks like if we use the response CFADS
+        verify_rows = _forward_roll(
             D, period_indices, rate_map, period_start_end,
             new_cfads, policy, repayment_str, explicit_by=explicit_by,
         )
-        # Check interest self-consistency between rows and new_rows
-        max_int_diff = max(
-            (abs(r1.interest_keur - r2.interest_keur) for r1, r2 in zip(rows, new_rows)),
-            default=0.0,
-        )
-        if max_int_diff <= abs_tol:
-            # Consistent: return new_rows (built from new_cfads) and new_cfads
-            # The last tax_cfads_fn call used interest_by from rows,
-            # and new_rows was built with new_cfads derived from those same interests.
-            return new_rows, new_cfads, new_cash_tax
+        # Converged when candidate_rows ≈ verify_rows across ALL fields (same contract as outer loop)
+        if _schedules_converged(
+            candidate_rows, verify_rows,
+            cfads_by, new_cfads,
+            prev_cash_tax, new_cash_tax,
+            D, D,
+            abs_tol, rel_tol,
+        ):
+            # Return candidate_rows: last tax call received candidate_interest,
+            # which is EXACTLY the interest in candidate_rows. Invariant holds.
+            return candidate_rows, new_cfads, new_cash_tax, True
+        prev_cash_tax = new_cash_tax
         cfads_by = new_cfads
 
-    # Finalisation limit reached — return best attempt; is_authoritative will remain
-    # True since outer loop converged. Caller must note this edge case.
-    return new_rows, new_cfads, new_cash_tax
+    # Exhausted finalisation iterations — not self-consistent
+    candidate_rows = _forward_roll(
+        D, period_indices, rate_map, period_start_end,
+        cfads_by, policy, repayment_str, explicit_by=explicit_by,
+    )
+    return candidate_rows, cfads_by, prev_cash_tax, False
 
 
 # ---------------------------------------------------------------------------
@@ -360,6 +386,7 @@ def _make_diag(
         termination_reason=termination_reason,
         is_authoritative=(termination_reason == "CONVERGED"),
     )
+
 
 
 # ---------------------------------------------------------------------------
@@ -555,11 +582,20 @@ def _solve_dscr(
             )
 
             if converged:
-                # Issue 1: finalisation — enforce interest/CFADS self-consistency
-                final_rows, final_cfads, final_cash_tax = _finalise_authoritative(
+                # Finalisation — enforce exact interest/CFADS handshake
+                final_rows, final_cfads, final_cash_tax, fin_ok = _finalise_authoritative(
                     new_D, period_indices, rate_map, period_start_end,
                     new_cfads, policy, "dscr_sculpted", tax_cfads_fn,
                 )
+                if not fin_ok:
+                    diag = _make_diag(
+                        converged=False, iteration=iteration,
+                        initial_guess=inputs.initial_debt_guess_keur,
+                        final_d=new_D, max_abs_diff=max_abs_diff,
+                        binding=binding_constraint,
+                        termination_reason="FINALISATION_NOT_CONVERGED",
+                    )
+                    return _to_schedules(final_rows, new_D, binding_constraint, diag)
                 diag = _make_diag(
                     converged=True, iteration=iteration,
                     initial_guess=inputs.initial_debt_guess_keur,
@@ -616,11 +652,18 @@ def _solve_gearing(
     interest_by = {r.period_index: r.interest_keur for r in rows}
     cfads_by, _ = tax_cfads_fn(interest_by)
 
-    # Issue 1: finalisation — enforce interest/CFADS self-consistency
-    final_rows, final_cfads, final_cash_tax = _finalise_authoritative(
+    # Finalisation — enforce exact interest/CFADS handshake
+    final_rows, final_cfads, final_cash_tax, fin_ok = _finalise_authoritative(
         D, period_indices, rate_map, period_start_end,
         cfads_by, policy, "level_principal", tax_cfads_fn,
     )
+    if not fin_ok:
+        diag = _make_diag(
+            converged=False, iteration=1,
+            initial_guess=D, final_d=D, max_abs_diff=0.0,
+            binding="GEARING", termination_reason="FINALISATION_NOT_CONVERGED",
+        )
+        return _to_schedules(final_rows, D, "GEARING", diag)
 
     diag = _make_diag(
         converged=True, iteration=1,
@@ -673,14 +716,23 @@ def _solve_combined(
 
     final_d = min(dscr_capacity, gearing_cap)
 
-    # Issue 1: finalisation at final_d with DSCR-sculpted repayment
-    # Start from zero CFADS so finalisation always calls tax_cfads_fn with
-    # the exact interest from the final_d schedule.
+    # Finalisation at final_d with DSCR-sculpted repayment
     init_cfads: dict[int, float] = {idx: 0.0 for idx in period_indices}
-    final_rows, final_cfads, final_cash_tax = _finalise_authoritative(
+    final_rows, final_cfads, final_cash_tax, fin_ok = _finalise_authoritative(
         final_d, period_indices, rate_map, period_start_end,
         init_cfads, policy, "dscr_sculpted", tax_cfads_fn,
     )
+    if not fin_ok:
+        diag = _make_diag(
+            converged=False,
+            iteration=dscr_result.diagnostics.iteration_count,
+            initial_guess=inputs.initial_debt_guess_keur,
+            final_d=final_d,
+            max_abs_diff=dscr_result.diagnostics.maximum_absolute_difference_keur,
+            binding=binding,
+            termination_reason="FINALISATION_NOT_CONVERGED",
+        )
+        return _to_schedules(final_rows, final_d, binding, diag)
 
     diag = _make_diag(
         converged=True,
@@ -736,12 +788,19 @@ def _solve_explicit(
         )
         return _to_schedules(_zero_rows(period_indices), opening, None, diag)
 
-    # Issue 1: finalisation — enforce interest/CFADS self-consistency
+    # Finalisation — enforce exact interest/CFADS handshake
     init_cfads: dict[int, float] = {idx: 0.0 for idx in period_indices}
-    final_rows, final_cfads, final_cash_tax = _finalise_authoritative(
+    final_rows, final_cfads, final_cash_tax, fin_ok = _finalise_authoritative(
         opening, period_indices, rate_map, period_start_end,
         init_cfads, policy, "explicit", tax_cfads_fn, explicit_by=explicit_map,
     )
+    if not fin_ok:
+        diag = _make_diag(
+            converged=False, iteration=1,
+            initial_guess=opening, final_d=opening, max_abs_diff=0.0,
+            binding=None, termination_reason="FINALISATION_NOT_CONVERGED",
+        )
+        return _to_schedules(final_rows, opening, None, diag)
 
     diag = _make_diag(
         converged=True, iteration=1,

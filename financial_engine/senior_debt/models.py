@@ -22,7 +22,7 @@ class SolverDiagnostics:
       INVALID_INPUT              : input validation failure
       NO_DEBT_CAPACITY           : zero sculpted capacity (CFADS too low)
       TERMINAL_BALANCE_NOT_ALLOWED : residual terminal balance and balloon prohibited
-      INPUT_SOURCE_BLOCKED       : baseline blocked (e.g. TUHO opening-loss unresolved)
+      INPUT_SOURCE_BLOCKED       : baseline blocked (opening-loss unresolved)
     """
     converged: bool
     iteration_count: int
