@@ -120,6 +120,8 @@ def generate_proposed_corrections() -> dict:
                     and isinstance(d.current_value, (int, float))
                     else None
                 ),
+                # Actual observed drift kind — required field in approved ledger.
+                "drift_kind": d.kind.value,
                 "observed_reason": reason,
                 # NOT approved — human review required before promotion to exact.json.
                 "status": "PENDING_REVIEW",

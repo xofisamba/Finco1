@@ -17,16 +17,17 @@ Usage::
 
 Exit codes
 ----------
-0  All selected baselines pass TAX_CFADS_V1.
-1  Execution error (unexpected exception or report write failure).
-2  Unknown baseline ID or invalid CLI args.
-3  Candidate payload drift (PAYLOAD_DRIFT).
-4  Manifest / baseline integrity failure.
-5  Environment mismatch.
-6  Candidate missing or invalid.
-7  Identity or schema mismatch.
-8  Live legacy drift.
-9  One or more baselines are INPUT_SOURCE_BLOCKED (use --allow-input-source-blocked to treat as non-fatal).
+0   All selected baselines pass TAX_CFADS_V1.
+1   Execution error (unexpected exception or report write failure).
+2   Unknown baseline ID or invalid CLI args.
+3   UNEXPLAINED_DRIFT or stale correction records (--check mode only).
+4   Manifest / baseline integrity failure.
+5   Environment mismatch.
+6   Candidate missing or invalid.
+7   Identity or schema mismatch.
+8   Live legacy drift.
+9   One or more baselines INPUT_SOURCE_BLOCKED (--check mode; use --allow-input-source-blocked for diagnostic).
+10  Approved corrections ledger missing or invalid — mandatory governance failure.
 
 Import boundary
 ---------------
@@ -215,20 +216,23 @@ def main(argv: list[str] | None = None) -> int:
         aggregate = None
 
     # Load corrections ledger (exact matching — all financially relevant fields).
+    # A missing or invalid ledger is a hard governance failure (exit 10).
     try:
         ledger = load_and_validate_ledger(_CORRECTIONS_PATH)
         n_total = sum(len(v) for v in ledger.values())
         if not args.quiet:
             print(f"Corrections ledger: {n_total} approved records across "
                   f"{len(ledger)} baseline(s)", flush=True)
-    except FileNotFoundError:
-        ledger = {}
-        if not args.quiet:
-            print("Corrections ledger: not found — all differences will be UNEXPLAINED_DRIFT",
-                  flush=True)
+    except FileNotFoundError as exc:
+        print(
+            f"GOVERNANCE FAILURE: approved corrections ledger is mandatory and not found.\n"
+            f"  {exc}",
+            file=sys.stderr,
+        )
+        return 10
     except LedgerValidationError as exc:
-        print(f"LEDGER VALIDATION FAILURE: {exc}", file=sys.stderr)
-        return 1
+        print(f"GOVERNANCE FAILURE: ledger validation failed:\n{exc}", file=sys.stderr)
+        return 10
     if not args.quiet:
         print()
 
@@ -372,11 +376,11 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Cannot write text report: {exc.strerror}", file=sys.stderr)
             return 1
 
-    # Exit codes (non-zero exit only in --check mode):
-    #   0 — clean (or informational run without --check).
-    #   3 — UNEXPLAINED_DRIFT or stale correction records (--check mode).
-    #   9 — one or more INPUT_SOURCE_BLOCKED and --allow-input-source-blocked not set
-    #       (--check mode only; informational runs always exit 0).
+    # Exit codes:
+    #  10 — ledger missing or invalid (always; returned above before reaching here)
+    #   3 — UNEXPLAINED_DRIFT or stale correction records (--check mode)
+    #   9 — INPUT_SOURCE_BLOCKED and --allow-input-source-blocked not set (--check mode)
+    #   0 — clean (or informational run without --check)
     if args.check:
         if any_unexplained or any_stale:
             return 3

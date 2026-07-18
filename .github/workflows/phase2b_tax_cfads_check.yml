@@ -3,19 +3,19 @@ name: Phase 2B Tax and CFADS Check
 # Phase 2B — Policy-driven tax, vintage FIFO LCF, and canonical CFADS.
 #
 # Gate order (all 13 steps must pass):
-#   1.  Checkout
+#   1.  Checkout exact head
 #   2.  Resolve comparison base SHA
-#   3.  Install dependencies (constraint-based)
-#   4.  Baseline snapshots unchanged (merge-base diff)
-#   5.  Protected production scope unchanged
-#   6.  Phase 2B unit tests (tests A–J+)
+#   3.  Constraint-based install (numpy==1.26.4, pandas==2.2.3)
+#   4.  Baseline snapshot diff (must be unchanged from merge-base)
+#   5.  Protected production scope diff (must be unchanged from merge-base)
+#   6.  Phase 2B unit tests (A–J+, TestAA exact correction matcher)
 #   7.  Phase 2A regression suite
-#   8.  Phase 1A–1C generate_baselines --check (baseline integrity)
-#   9.  Phase 1A–1C generate_baselines --check --regen-verify (no snapshot delta)
-#   10. Phase 2A OPERATING_CORE_V1 parity (regression gate)
-#   11. Correction schema validation (load_and_validate_ledger)
-#   12. Phase 2B TAX_CFADS_V1 correction-aware comparison (blocking)
-#   13. Zero-input-source-blocked assertion (fails while TUHO unresolved)
+#   8.  generate_baselines --check (baseline integrity; covers freshness in memory)
+#   9.  [No-op: --check already validates snapshot freshness; no --regen CLI arg exists]
+#   10. OPERATING_CORE_V1 --all --check (Phase 2A regression gate)
+#   11. Approved-ledger hard validation via load_and_validate_ledger (exit 1 on any error)
+#   12. TAX_CFADS_V1 diagnostic comparison with --allow-input-source-blocked (report only)
+#   13. TAX_CFADS_V1 --check: zero-unexplained + zero-input-source-blocked (exit 9 while TUHO unresolved)
 
 on:
   pull_request:
@@ -125,8 +125,9 @@ jobs:
         run: |
           python -m finco_parity.check_financial_engine_operating_core --all --check
 
-      # ── Step 11: Correction schema validation (load_and_validate_ledger) ──────
-      - name: Correction schema validation
+      # ── Step 11: Approved-ledger hard validation ──────────────────────────────
+      # Missing ledger is a hard failure (exit 1). No skip-if-missing path.
+      - name: Approved-ledger hard validation (load_and_validate_ledger)
         run: |
           python - <<'EOF'
           import sys
@@ -137,25 +138,29 @@ jobs:
           )
 
           approved_path = Path("finco_parity/corrections/tax_cfads_v1_exact.json")
-          if not approved_path.exists():
-              print("Approved corrections ledger not found — skipping schema check")
-              sys.exit(0)
-
+          # Missing ledger is a hard failure — no skip.
           try:
               ledger = load_and_validate_ledger(approved_path)
+          except FileNotFoundError as exc:
+              print(f"GOVERNANCE FAILURE: mandatory approved ledger not found: {exc}")
+              sys.exit(1)
           except LedgerValidationError as exc:
               print(str(exc))
               sys.exit(1)
 
           n = sum(len(v) for v in ledger.values())
-          print(f"Correction schema: {n} records valid across {len(ledger)} baseline(s)")
+          print(f"Approved ledger: {n} records valid across {len(ledger)} baseline(s)")
           EOF
 
-      # ── Step 12: Phase 2B TAX_CFADS_V1 correction-aware check ─────────────
-      - name: Phase 2B TAX_CFADS_V1 correction-aware comparison (blocking)
+      # ── Step 12: Phase 2B TAX_CFADS_V1 diagnostic comparison ─────────────────
+      # Diagnostic run: reports all three runnable baselines; TUHO shown as blocked.
+      # Uses --allow-input-source-blocked so this step passes while TUHO is unresolved.
+      # Step 13 applies the blocking assertion.
+      - name: Phase 2B TAX_CFADS_V1 correction-aware comparison (diagnostic)
         run: |
           mkdir -p "${RUNNER_TEMP}/phase2b"
           python -m finco_parity.check_financial_engine_tax_cfads --all \
+            --allow-input-source-blocked \
             --text-report "${RUNNER_TEMP}/phase2b/tax_cfads_v1_parity.txt"
 
       # ── Step 13: Zero-input-source-blocked assertion ───────────────────────
