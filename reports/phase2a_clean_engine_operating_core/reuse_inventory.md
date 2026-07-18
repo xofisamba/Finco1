@@ -15,8 +15,8 @@ Base SHA: `f23030cf8fc28d2c17f49540af0b1dbfc38f3a7c`
 | OPEX total | `finco_core.opex.projections.opex_schedule_period` | `opex_schedule_period(inputs: ProjectInputs, engine)` | `ProjectInputs, PeriodEngine` | `dict[int, float]` | Yes | Yes | Yes | — |
 | OPEX line schedule | `finco_core.opex.projections.opex_breakdown_year` | `opex_breakdown_year(inputs, year_index)` per year | `ProjectInputs, int` | `dict[str, float]` | Yes | Yes | Yes | — |
 | EBITDA | Assembled by orchestrator | `revenue_keur - opex_keur` per period | Derived | `dict[int, float]` | Yes | Yes | N/A | Simple arithmetic assembled by orchestrator |
-| Book depreciation | `finco_core.depreciation.engine.DepreciationEngine.compute` | `DepreciationEngine.compute(DepreciationEngineInputs(...))` | `DepreciationEngineInputs` | `DepreciationEngineResult` | Yes* | Yes | Yes | *`project_name` stored verbatim, not dispatched on |
-| Tax depreciation | `finco_core.depreciation.engine.DepreciationEngine.compute` | Same engine; `.total_tax_depreciation_keur` per period | `DepreciationEngineInputs` | `DepreciationEngineResult` | Yes* | Yes | Yes | — |
+| Book depreciation | `finco_core.debt.depreciation_schedule.build_depreciation_schedule` + `depreciation_per_period` | `build_depreciation_schedule(capex_items, horizon_years, senior_tenor_years)` → `depreciation_per_period(annual_schedule, periods_meta)` | `tuple[CapexItem, ...], int, int, List[PeriodMeta]` | `dict[int, float]` period depreciation | Yes | Yes | Yes | — |
+| Tax depreciation | `finco_core.debt.depreciation_schedule.build_depreciation_schedule` + `depreciation_per_period` | Same leaves; book and tax are identical in Phase 2A operating core (ATAD tax bridge out of scope) | `tuple[CapexItem, ...], int, int, List[PeriodMeta]` | `dict[int, float]` period depreciation | Yes | Yes | Yes | — |
 
 ---
 
@@ -46,13 +46,14 @@ Fields present in `ProjectInputs` that are mathematically unnecessary for the Ph
 | `info.use_senior_sculpting_basis_engine` | Debt sizing not in Phase 2A scope |
 | `info.use_shl_fcf_waterfall_engine` | SHL waterfall not in Phase 2A scope |
 | `info.use_shl_canonical_engine` | SHL not in Phase 2A scope |
-| `info.use_canonical_tax_depreciation_bridge` | Handled directly by `DepreciationEngine` |
-| `info.use_depreciation_canonical_engine` | Always True in Phase 2A |
+| `info.use_canonical_tax_depreciation_bridge` | Phase 2A does not execute the tax depreciation bridge; book and tax depreciation are identical operating-core schedules computed by the same generic leaves |
+| `info.use_depreciation_canonical_engine` | The clean engine does not dispatch on this compatibility flag; it calls `build_depreciation_schedule` + `depreciation_per_period` directly |
 | `info.use_tax_bridge_engine` | Tax bridge not in Phase 2A scope |
 | `info.use_senior_debt_sizing_engine` | Debt sizing not in Phase 2A scope |
 | `info.use_shl_gross_accrued_for_pnl` | SHL not in Phase 2A scope |
 | `info.use_book_depreciation_for_pnl` | Financial statements not in Phase 2A scope |
-| `financing.*` | All financing assumptions; debt, SHL, DSRA out of Phase 2A scope |
+| `financing.senior_tenor_years` | Consumed by the adapter as the explicit `depreciation.financial_cost_useful_life_years` driver; not ignored |
+| Other `financing.*` fields | Ignored because debt, SHL, DSRA and financing cash flows are outside Phase 2A scope |
 | `tax.*` | Tax parameters; tax calculation out of Phase 2A scope |
 | `technical.bess_enabled`, `technical.bess` | BESS not in Phase 2A scope |
 
