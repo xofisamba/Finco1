@@ -10,6 +10,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date
 from enum import Enum
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from financial_engine.policies.tax import TaxPolicy
 
 
 class YieldScenario(str, Enum):
@@ -91,16 +95,23 @@ class DepreciationInput:
     financial_cost_useful_life_years: int
 
 
+# ---------------------------------------------------------------------------
+# Phase 2B tax input contracts
+# ---------------------------------------------------------------------------
+
 @dataclass(frozen=True)
 class OpeningTaxLossVintageInput:
     """One pre-existing loss vintage carried into the model start.
 
-    amount_keur : loss amount outstanding (must be non-negative)
-    periods_remaining : number of model periods before this vintage expires
+    origin_tax_year : 0-based index of the tax year in which the loss was
+        generated. Must be negative (losses generated before the model) or
+        0 (first model tax year). Use negative integers for pre-model losses
+        (e.g. -3 = three tax years before the model start).
+    amount_keur : outstanding loss (must be non-negative and finite)
     source_label : optional human-readable label for audit trail
     """
+    origin_tax_year: int
     amount_keur: float
-    periods_remaining: int
     source_label: str = ""
 
 
@@ -109,18 +120,26 @@ class PeriodInterestInput:
     """Exogenous interest expense for one model period.
 
     Phase 2B does not size debt — interest is provided externally.
-    gross_interest_expense_keur : total interest accrued (pre-ATAD)
+
+    All three components are optional (default 0). At least one must be
+    provided for the period to carry non-zero interest.
     """
     period_index: int
-    gross_interest_expense_keur: float
+    senior_interest_keur: float = 0.0
+    shl_interest_keur: float = 0.0
+    other_interest_keur: float = 0.0
+
+    @property
+    def total_interest_keur(self) -> float:
+        return self.senior_interest_keur + self.shl_interest_keur + self.other_interest_keur
 
 
 @dataclass(frozen=True)
 class PeriodTaxAdjustmentInput:
     """Additional fiscal adjustments for one model period.
 
-    other_fiscal_reintegration_keur : addbacks (e.g. non-deductible expenses).
-        Positive = addback to taxable income.
+    other_fiscal_reintegration_keur : addbacks not already captured by the
+        ATAD interest-limitation mechanism. Positive = addback to taxable income.
     """
     period_index: int
     other_fiscal_reintegration_keur: float = 0.0
@@ -130,12 +149,13 @@ class PeriodTaxAdjustmentInput:
 class TaxCalculationInput:
     """All tax-specific inputs for a Phase 2B run.
 
-    policy : TaxPolicy instance (imported lazily to avoid circular deps)
-    opening_loss_vintages : pre-model loss pool (oldest vintage first)
-    period_interest : one entry per model period; must cover all operating periods
+    policy : the jurisdiction's TaxPolicy
+    opening_loss_vintages : pre-model loss pool in vintage order (oldest first)
+    period_interest : one entry per model period that carries interest; periods
+        not listed default to zero interest
     period_adjustments : optional per-period fiscal adjustments
     """
-    policy: object  # TaxPolicy — kept as object to avoid runtime import cycles
+    policy: "TaxPolicy"
     opening_loss_vintages: tuple[OpeningTaxLossVintageInput, ...]
     period_interest: tuple[PeriodInterestInput, ...]
     period_adjustments: tuple[PeriodTaxAdjustmentInput, ...] = ()
@@ -159,11 +179,10 @@ class OperatingModelInput:
 
 @dataclass(frozen=True)
 class TaxCfadsModelInput:
-    """Phase 2B input: operating core result + tax inputs.
+    """Phase 2B input: operating core inputs + tax inputs.
 
-    operating: the Phase 2A OperatingModelInput (calendar, tech, revenue, etc.)
+    operating: the Phase 2A OperatingModelInput
     tax: tax policy and per-period interest / adjustment inputs
-    source: provenance (re-used from Phase 2A source or overridden)
     """
     operating: OperatingModelInput
     tax: TaxCalculationInput

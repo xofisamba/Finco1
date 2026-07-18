@@ -5,8 +5,8 @@ All types are frozen dataclasses. No setattr, no post-construction mutation,
 no mutable period lists.
 
 Phase 2A provides: period_grid, operating_schedules.
-Phase 2B adds: tax_and_cfads.
-Unimplemented sections: financing, financial_statements, returns.
+Phase 2B adds: tax_and_cfads (annual tax, period cash tax, canonical CFADS).
+Unimplemented: financing, financial_statements, returns.
 """
 from __future__ import annotations
 
@@ -57,32 +57,39 @@ class OperatingSchedules:
 class TaxAndCfadsSchedules:
     """Parallel-array tax and CFADS schedules for all model periods.
 
-    Fields match the Phase 1 baseline snapshot schema for tax_and_cfads.
-    Waterfall-specific fields (fcf_for_shl, r69, r84, r99, r102) are
-    populated with zeros in Phase 2B (out of scope).
+    Field names match the Phase 1 baseline snapshot schema for tax_and_cfads.
+
+    Phase 2B populates all fields that the clean engine computes.
+    Unimplemented waterfall rows (fcf_for_shl, r69, r84, r99, r102) are NOT
+    included here — they belong to Phase 2C+ and are declared unavailable in
+    the candidate snapshot's unavailable_fields map.
+
+    terminal_unpaid_tax_keur : annual CIT liabilities whose cash-tax payment
+        falls outside the model horizon due to the payment lag.
     """
     period_indices: tuple[int, ...]
+    # Taxable income trail
     taxable_profit_keur: tuple[float, ...]
     taxable_income_before_losses_audit_keur: tuple[float, ...]
     taxable_profit_after_losses_audit_keur: tuple[float, ...]
-    tax_keur: tuple[float, ...]
-    corporate_tax_cash_keur: tuple[float, ...]
+    # Tax (accrual and cash)
+    tax_keur: tuple[float, ...]                          # CIT accrual share per period
+    corporate_tax_cash_keur: tuple[float, ...]           # actual cash payment per period
     cit_accrual_audit_keur: tuple[float, ...]
+    cash_tax_bridge_reconciliation_keur: tuple[float, ...]
+    cash_tax_current_period_audit_keur: tuple[float, ...]
+    # LCF audit trail
     tax_loss_opening_audit_keur: tuple[float, ...]
     tax_loss_closing_audit_keur: tuple[float, ...]
     tax_loss_used_audit_keur: tuple[float, ...]
+    # Supplementary audit fields
     fiscal_reintegration_audit_keur: tuple[float, ...]
     tax_depreciation_audit_keur: tuple[float, ...]
-    cf_after_tax_keur: tuple[float, ...]
-    cash_tax_current_period_audit_keur: tuple[float, ...]
-    cash_tax_bridge_reconciliation_keur: tuple[float, ...]
+    cf_after_tax_keur: tuple[float, ...]  # EBITDA - cash_tax per period (matches legacy definition)
+    # Canonical CFADS (primary deliverable)
     cfads_keur: tuple[float, ...]
-    # Out-of-scope waterfall rows — always 0.0 in Phase 2B
-    fcf_for_shl_keur: tuple[float, ...]
-    r69_fcf_banks_keur: tuple[float, ...]
-    r84_fcf_junior_keur: tuple[float, ...]
-    r99_fcf_for_distribution_keur: tuple[float, ...]
-    r102_fcf_for_shl_keur: tuple[float, ...]
+    # Terminal unpaid tax (annual liabilities not yet paid within the model horizon)
+    terminal_unpaid_tax_keur: float
 
 
 @dataclass(frozen=True)

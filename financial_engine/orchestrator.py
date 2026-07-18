@@ -371,98 +371,168 @@ TAX_CFADS_RUN_PATH_ID = "financial_engine.orchestrator.run_tax_cfads_model"
 
 
 def run_tax_cfads_model(inputs: TaxCfadsModelInput) -> ProjectModelResult:
-    """Phase 2B orchestrator: operating core + tax + canonical CFADS.
+    """Phase 2B orchestrator: operating core + annual tax + canonical CFADS.
 
-    Steps:
-      1. Run the Phase 2A operating model (validate, period grid, production,
-         revenue, OPEX, EBITDA, depreciation).
-      2. Calculate ATAD-adjusted interest and taxable income.
-      3. Run vintage FIFO loss ledger.
-      4. Calculate CIT accrual and cash tax.
-      5. Calculate canonical CFADS = EBITDA − cash_tax.
-      6. Assemble TaxAndCfadsSchedules.
-      7. Attach extended provenance and return ProjectModelResult.
+    Calculation order:
+      1. Validate operating + tax inputs; refuse on ERROR-level issues.
+      2. Run Phase 2A operating model.
+      3. Aggregate periods into annual TaxYearCalculationBasis.
+      4. Per tax year: annual ATAD → annual taxable income → annual LCF → annual CIT.
+      5. Allocate cash tax to model periods (TAX_YEAR_LAST_PERIOD timing).
+      6. Canonical CFADS = EBITDA − cash_tax per period.
+      7. Assemble TaxAndCfadsSchedules.
+      8. Attach Phase 2B provenance (covers full TaxCfadsModelInput).
+
+    Taxable income formula:
+        taxable_income_before_lcf = EBITDA - tax_dep - deductible_interest
+                                   + other_fiscal_reintegration
+        (disallowed_interest is NOT added back separately)
     """
-    # Step 1: Phase 2A operating core
+    from financial_engine.validation import validate_tax_calculation_input, has_errors
+
+    # Step 1: Validate
     base_result = run_operating_model(inputs.operating)
+    known_period_indices = frozenset(p.period_index for p in base_result.periods)
+    tax_issues = validate_tax_calculation_input(inputs.tax, known_period_indices)
+    combined_issues = base_result.validation_issues + tax_issues
+    if has_errors(combined_issues):
+        raise ValueError(
+            f"Phase 2B validation failed with {sum(1 for i in combined_issues if i.severity.value == 'ERROR')} error(s)"
+        )
 
-    # Step 2–5: Tax and CFADS
-    from financial_engine.tax.engine import calculate_tax, build_tax_schedules
-    from financial_engine.cfads import calculate_canonical_cfads
+    # Steps 2–6: Annual tax engine
+    from financial_engine.tax.engine import calculate_tax
+    tax_result = calculate_tax(base_result.periods, inputs.tax)
 
-    tax_period_results = calculate_tax(base_result.periods, inputs.tax)
-    cfads_period_results = calculate_canonical_cfads(base_result.periods, tax_period_results)
-    tax_schedules = build_tax_schedules(tax_period_results)
-
+    # Step 7: Assemble TaxAndCfadsSchedules from per-period results
+    period_results = tax_result.period_results
     n = len(base_result.periods)
-    zeros = tuple(0.0 for _ in range(n))
 
-    tax_and_cfads = TaxAndCfadsSchedules(
-        period_indices=tax_schedules.period_indices,
-        taxable_profit_keur=tax_schedules.taxable_profit_keur,
-        taxable_income_before_losses_audit_keur=tax_schedules.taxable_income_before_losses_keur,
-        taxable_profit_after_losses_audit_keur=tax_schedules.taxable_profit_after_losses_keur,
-        tax_keur=tax_schedules.tax_keur,
-        corporate_tax_cash_keur=tax_schedules.corporate_tax_cash_keur,
-        cit_accrual_audit_keur=tax_schedules.cit_accrual_keur,
-        tax_loss_opening_audit_keur=tax_schedules.tax_loss_opening_keur,
-        tax_loss_closing_audit_keur=tax_schedules.tax_loss_closing_keur,
-        tax_loss_used_audit_keur=tax_schedules.tax_loss_used_keur,
-        fiscal_reintegration_audit_keur=tax_schedules.fiscal_reintegration_keur,
-        tax_depreciation_audit_keur=tax_schedules.tax_depreciation_audit_keur,
-        cf_after_tax_keur=tax_schedules.cf_after_tax_keur,
-        cash_tax_current_period_audit_keur=tax_schedules.cash_tax_current_period_keur,
-        cash_tax_bridge_reconciliation_keur=tax_schedules.cash_tax_bridge_reconciliation_keur,
-        cfads_keur=tuple(r.cfads_keur for r in cfads_period_results),
-        fcf_for_shl_keur=zeros,
-        r69_fcf_banks_keur=zeros,
-        r84_fcf_junior_keur=zeros,
-        r99_fcf_for_distribution_keur=zeros,
-        r102_fcf_for_shl_keur=zeros,
+    # Build indexed lookups for annual LCF trail (annual → per-period for reporting)
+    annual_map: dict[int, "TaxAnnualResult"] = {ar.tax_year: ar for ar in tax_result.annual_results}
+    period_to_annual_idx: dict[int, int] = {}
+    for ar in tax_result.annual_results:
+        for idx in ar.period_indices:
+            period_to_annual_idx[idx] = ar.tax_year
+
+    def _per_period_annual_share(attr: str) -> tuple[float, ...]:
+        result = []
+        for pr in period_results:
+            ar = annual_map.get(period_to_annual_idx.get(pr.period_index, -999))
+            if ar is None:
+                result.append(0.0)
+            else:
+                n_in_year = len(ar.period_indices)
+                result.append(getattr(ar, attr) / n_in_year if n_in_year else 0.0)
+        return tuple(result)
+
+    period_indices = tuple(pr.period_index for pr in period_results)
+    cit_accrual_per_period = _per_period_annual_share("current_tax_liability_keur")
+    corporate_tax_cash = tuple(pr.cash_tax_keur for pr in period_results)
+    cfads = tuple(pr.cfads_keur for pr in period_results)
+
+    # LCF audit trail: show annual values in each period's H1, 0 in H2 (first period carries the year's audit)
+    # More precisely: opening/closing/used shown once per year in first period, 0 in others
+    tax_loss_opening: list[float] = []
+    tax_loss_closing: list[float] = []
+    tax_loss_used: list[float] = []
+    for pr in period_results:
+        tax_year = period_to_annual_idx.get(pr.period_index, -999)
+        ar = annual_map.get(tax_year)
+        if ar is None:
+            tax_loss_opening.append(0.0)
+            tax_loss_closing.append(0.0)
+            tax_loss_used.append(0.0)
+        else:
+            # Show annual LCF in the first period of the year; 0 in subsequent periods
+            first_period_of_year = ar.period_indices[0] if ar.period_indices else -1
+            if pr.period_index == first_period_of_year:
+                tax_loss_opening.append(ar.loss_opening_keur)
+                tax_loss_closing.append(ar.loss_closing_keur)
+                tax_loss_used.append(ar.loss_used_keur)
+            else:
+                tax_loss_opening.append(0.0)
+                tax_loss_closing.append(0.0)
+                tax_loss_used.append(0.0)
+
+    taxable_profit = tuple(pr.taxable_income_before_lcf_share_keur for pr in period_results)
+    taxable_after_lcf = _per_period_annual_share("taxable_income_after_lcf_keur")
+    ebitda_per_period = tuple(pr.ebitda_keur for pr in period_results)
+    tax_dep_per_period = tuple(
+        p.tax_depreciation_keur for p in base_result.periods  # type: ignore[attr-defined]
     )
 
-    # Step 7: Extended provenance
-    fingerprint = compute_input_fingerprint(inputs.operating)
-    tax_evidence = (
+    tax_and_cfads = TaxAndCfadsSchedules(
+        period_indices=period_indices,
+        taxable_profit_keur=taxable_profit,
+        taxable_income_before_losses_audit_keur=taxable_profit,
+        taxable_profit_after_losses_audit_keur=taxable_after_lcf,
+        tax_keur=cit_accrual_per_period,
+        corporate_tax_cash_keur=corporate_tax_cash,
+        cit_accrual_audit_keur=cit_accrual_per_period,
+        cash_tax_bridge_reconciliation_keur=tuple(
+            e - c for e, c in zip(ebitda_per_period, corporate_tax_cash)
+        ),
+        cash_tax_current_period_audit_keur=corporate_tax_cash,
+        tax_loss_opening_audit_keur=tuple(tax_loss_opening),
+        tax_loss_closing_audit_keur=tuple(tax_loss_closing),
+        tax_loss_used_audit_keur=tuple(tax_loss_used),
+        fiscal_reintegration_audit_keur=tuple(
+            pr.disallowed_interest_keur + pr.other_fiscal_reintegration_keur
+            for pr in period_results
+        ),
+        tax_depreciation_audit_keur=tax_dep_per_period,
+        cf_after_tax_keur=tuple(e - c for e, c in zip(ebitda_per_period, corporate_tax_cash)),
+        cfads_keur=cfads,
+        terminal_unpaid_tax_keur=tax_result.terminal_unpaid_tax_keur,
+    )
+
+    # Step 8: Phase 2B provenance
+    from financial_engine.provenance import compute_tax_cfads_fingerprint
+    fingerprint = compute_tax_cfads_fingerprint(inputs)
+    evidence = base_result.provenance.derivation_evidence + (
         DerivationEvidence(
             output_path="tax_and_cfads.taxable_income_before_losses_audit_keur",
             source_module="financial_engine.tax.engine",
             source_function="calculate_tax",
-            input_paths=("tax.policy", "tax.period_interest", "operating_schedules.ebitda_keur"),
-            notes=("EBITDA - tax_dep - deductible_interest + atad_addback + reintegration",),
+            input_paths=("tax.policy", "tax.period_interest", "operating_schedules.ebitda_keur",
+                         "operating_schedules.tax_depreciation_keur"),
+            notes=("EBITDA - tax_dep - deductible_interest + other_reintegration",
+                   "disallowed_interest is NOT added back separately"),
         ),
         DerivationEvidence(
             output_path="tax_and_cfads.taxable_profit_after_losses_audit_keur",
             source_module="financial_engine.tax.loss_ledger",
-            source_function="run_fifo_loss_ledger",
-            input_paths=("tax.opening_loss_vintages", "tax_and_cfads.taxable_income_before_losses"),
-            notes=("FIFO vintage ledger; 5-year / 2-period window",),
+            source_function="run_annual_fifo_ledger",
+            input_paths=("tax.opening_loss_vintages", "annual taxable_income_before_lcf"),
+            notes=("annual FIFO vintage ledger; origin_tax_year + lcf_years = last_usable_tax_year",),
         ),
         DerivationEvidence(
             output_path="tax_and_cfads.corporate_tax_cash_keur",
             source_module="financial_engine.tax.engine",
             source_function="calculate_tax",
-            input_paths=("tax.policy.cash_tax_timing", "tax_and_cfads.cit_accrual_audit_keur"),
-            notes=("H2-only cash crystallisation (TAX_YEAR_LAST_PERIOD timing)",),
+            input_paths=("tax.policy.cash_tax_timing", "tax.policy.cash_tax_payment_lag_periods"),
+            notes=("full annual liability paid in last period of year + lag",),
         ),
         DerivationEvidence(
             output_path="tax_and_cfads.cfads_keur",
-            source_module="financial_engine.cfads",
-            source_function="calculate_canonical_cfads",
+            source_module="financial_engine.orchestrator",
+            source_function="run_tax_cfads_model",
             input_paths=("operating_schedules.ebitda_keur", "tax_and_cfads.corporate_tax_cash_keur"),
-            notes=("canonical CFADS = EBITDA - cash_tax_paid; pre-debt-service",),
+            notes=("canonical CFADS = EBITDA - cash_tax_paid; pre-debt-service, pre-DSRA",),
         ),
     )
-
-    base_evidence = base_result.provenance.derivation_evidence
-    all_evidence = base_evidence + tax_evidence
-
-    from financial_engine.provenance import EngineProvenance as _EP
-    provenance = _EP(
+    provenance = EngineProvenance(
         engine_version=ENGINE_VERSION,
         run_path_id=TAX_CFADS_RUN_PATH_ID,
         input_fingerprint=fingerprint,
-        derivation_evidence=all_evidence,
+        derivation_evidence=evidence,
+    )
+
+    all_issues = combined_issues
+    warnings = base_result.warnings + tuple(
+        f"{i.code} {i.path}: {i.message}" for i in tax_issues
+        if i.severity.value == "WARNING"
     )
 
     return ProjectModelResult(
@@ -471,6 +541,6 @@ def run_tax_cfads_model(inputs: TaxCfadsModelInput) -> ProjectModelResult:
         operating_schedules=base_result.operating_schedules,
         tax_and_cfads=tax_and_cfads,
         unavailable_sections=_PHASE_2B_UNAVAILABLE,
-        validation_issues=base_result.validation_issues,
-        warnings=base_result.warnings,
+        validation_issues=all_issues,
+        warnings=warnings,
     )

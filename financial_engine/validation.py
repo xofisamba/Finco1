@@ -12,7 +12,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 from enum import Enum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from financial_engine.inputs import OperatingModelInput
@@ -172,3 +172,113 @@ def validate_operating_model_input(
 def has_errors(issues: tuple[ValidationIssue, ...]) -> bool:
     """Return True if any issue has ERROR severity."""
     return any(i.severity == ValidationSeverity.ERROR for i in issues)
+
+
+# ---------------------------------------------------------------------------
+# Phase 2B Tax validation
+# ---------------------------------------------------------------------------
+
+def validate_tax_calculation_input(
+    tax_input: "Any",  # TaxCalculationInput
+    known_period_indices: "frozenset[int] | None" = None,
+) -> tuple[ValidationIssue, ...]:
+    """Validate TaxCalculationInput. Returns tuple of ValidationIssue.
+
+    Error codes:
+      TAX001  corporate_rate outside [0, 1]
+      TAX002  periods_per_tax_year <= 0
+      TAX003  loss_carryforward_years < 0
+      TAX004  atad_ebitda_limit outside [0, 1]
+      TAX005  atad_de_minimis_threshold_keur_annual < 0
+      TAX006  cash_tax_payment_lag_periods < 0
+      TAX007  opening vintage amount invalid (negative or nonfinite)
+      TAX008  opening vintage origin_tax_year invalid (missing)
+      TAX009  period_interest value is nonfinite or negative
+      TAX010  period_interest has duplicate period_index
+      TAX011  period_interest references unknown period_index
+      TAX012  period_adjustments has duplicate period_index
+      TAX013  fiscal reintegration value is nonfinite
+      TAX014  wrong policy type
+    """
+    from financial_engine.policies.tax import TaxPolicy
+
+    issues: list[ValidationIssue] = []
+
+    policy = tax_input.policy
+    if not isinstance(policy, TaxPolicy):
+        issues.append(_err(
+            "TAX014", "tax.policy",
+            f"policy must be a TaxPolicy instance, got {type(policy).__name__}",
+        ))
+        return tuple(issues)  # can't validate further
+
+    if not (0.0 <= policy.corporate_rate <= 1.0):
+        issues.append(_err("TAX001", "tax.policy.corporate_rate",
+                           f"corporate_rate must be in [0, 1], got {policy.corporate_rate}"))
+
+    if policy.periods_per_tax_year <= 0:
+        issues.append(_err("TAX002", "tax.policy.periods_per_tax_year",
+                           f"periods_per_tax_year must be > 0, got {policy.periods_per_tax_year}"))
+
+    if policy.loss_carryforward_years < 0:
+        issues.append(_err("TAX003", "tax.policy.loss_carryforward_years",
+                           f"loss_carryforward_years must be >= 0, got {policy.loss_carryforward_years}"))
+
+    if policy.atad_enabled and not (0.0 <= policy.atad_ebitda_limit <= 1.0):
+        issues.append(_err("TAX004", "tax.policy.atad_ebitda_limit",
+                           f"atad_ebitda_limit must be in [0, 1], got {policy.atad_ebitda_limit}"))
+
+    if policy.atad_de_minimis_threshold_keur_annual < 0:
+        issues.append(_err("TAX005", "tax.policy.atad_de_minimis_threshold_keur_annual",
+                           f"atad_de_minimis_threshold_keur_annual must be >= 0"))
+
+    if policy.cash_tax_payment_lag_periods < 0:
+        issues.append(_err("TAX006", "tax.policy.cash_tax_payment_lag_periods",
+                           f"cash_tax_payment_lag_periods must be >= 0, got {policy.cash_tax_payment_lag_periods}"))
+
+    for i, v in enumerate(tax_input.opening_loss_vintages):
+        if not _is_finite(v.amount_keur) or v.amount_keur < 0:
+            issues.append(_err("TAX007",
+                               f"tax.opening_loss_vintages[{i}].amount_keur",
+                               f"amount_keur must be finite and non-negative, got {v.amount_keur}"))
+        if not isinstance(v.origin_tax_year, int):
+            issues.append(_err("TAX008",
+                               f"tax.opening_loss_vintages[{i}].origin_tax_year",
+                               f"origin_tax_year must be an integer, got {type(v.origin_tax_year).__name__}"))
+
+    seen_pi: set[int] = set()
+    for i, pi in enumerate(tax_input.period_interest):
+        if pi.period_index in seen_pi:
+            issues.append(_err("TAX010",
+                               f"tax.period_interest[{i}].period_index",
+                               f"duplicate period_index {pi.period_index}"))
+        seen_pi.add(pi.period_index)
+
+        for component, label in [
+            (pi.senior_interest_keur, "senior_interest_keur"),
+            (pi.shl_interest_keur, "shl_interest_keur"),
+            (pi.other_interest_keur, "other_interest_keur"),
+        ]:
+            if not _is_finite(component) or component < 0:
+                issues.append(_err("TAX009",
+                                   f"tax.period_interest[{i}].{label}",
+                                   f"{label} must be finite and non-negative, got {component}"))
+
+        if known_period_indices is not None and pi.period_index not in known_period_indices:
+            issues.append(_err("TAX011",
+                               f"tax.period_interest[{i}].period_index",
+                               f"period_index {pi.period_index} is not a known model period"))
+
+    seen_adj: set[int] = set()
+    for i, adj in enumerate(tax_input.period_adjustments):
+        if adj.period_index in seen_adj:
+            issues.append(_err("TAX012",
+                               f"tax.period_adjustments[{i}].period_index",
+                               f"duplicate period_index {adj.period_index}"))
+        seen_adj.add(adj.period_index)
+        if not _is_finite(adj.other_fiscal_reintegration_keur):
+            issues.append(_err("TAX013",
+                               f"tax.period_adjustments[{i}].other_fiscal_reintegration_keur",
+                               "must be finite"))
+
+    return tuple(issues)

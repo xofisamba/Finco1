@@ -1,134 +1,139 @@
-"""financial_engine.tax.loss_ledger — Vintage FIFO loss-carryforward ledger.
+"""financial_engine.tax.loss_ledger — Annual vintage FIFO loss-carryforward ledger.
 
 Pure function. No imports from app, finco_core or any framework.
 
-One TaxLossLedgerYear is produced per model period. The ledger:
-  - Tracks one LossCarryforwardBucket per vintage
-  - Applies expiry BEFORE use when expire_losses_before_use=True
-  - Consumes oldest bucket first (FIFO)
-  - Generates a new bucket for each period that produces a loss
+One TaxAnnualLedgerEntry is produced per tax year.
+
+Rules:
+  - Expiry before use: at the start of each tax year, expire vintages whose
+    last_usable_tax_year < current_tax_year before applying them.
+  - FIFO: oldest vintage (smallest origin_tax_year) is consumed first.
+  - One new vintage is created per loss-making tax year.
+  - Loss generated in tax year Y has last_usable_tax_year = Y + lcf_years
+    (usable in Y+1 through Y+lcf_years, i.e., five subsequent years for HR).
+  - No vintage amount can go negative.
+  - No income can be over-sheltered: taxable_after_lcf >= 0.
 """
 from __future__ import annotations
 
-from financial_engine.tax.models import TaxLossLedgerYear, TaxLossVintage
+from financial_engine.tax.models import TaxAnnualLedgerEntry, TaxLossVintage
+from financial_engine.inputs import OpeningTaxLossVintageInput
 
 
-def _apply_fifo_ledger_period(
-    taxable_before: float,
-    buckets: tuple[TaxLossVintage, ...],
-    period_index: int,
-    duration_periods: int,
-    expire_before_use: bool,
-) -> tuple[TaxLossLedgerYear, tuple[TaxLossVintage, ...]]:
-    """Process one period through the FIFO ledger.
+def _opening_vintages_from_inputs(
+    opening_inputs: tuple[OpeningTaxLossVintageInput, ...],
+    loss_carryforward_years: int,
+) -> tuple[TaxLossVintage, ...]:
+    """Convert OpeningTaxLossVintageInput to internal TaxLossVintage.
 
-    Returns (period result, next_period_opening_buckets).
+    last_usable_tax_year = origin_tax_year + loss_carryforward_years.
+    For a loss in year -3 with 5-year window: last_usable = -3 + 5 = 2.
     """
-    # Expire buckets whose life has run out
-    expired_keur = 0.0
-    active: list[TaxLossVintage] = []
-    for b in buckets:
-        if b.periods_remaining <= 0 and expire_before_use:
-            expired_keur += b.amount_keur
-        elif b.periods_remaining <= 0:
-            expired_keur += b.amount_keur
-        else:
-            active.append(b)
-
-    opening_loss = sum(b.amount_keur for b in active)
-    losses_used = 0.0
-    generated = 0.0
-    retained: list[TaxLossVintage] = []
-
-    if taxable_before > 0:
-        remaining = taxable_before
-        for b in active:
-            use = min(b.amount_keur, remaining)
-            losses_used += use
-            remaining -= use
-            residual = b.amount_keur - use
-            if residual > 1e-9:
-                retained.append(TaxLossVintage(
-                    amount_keur=residual,
-                    periods_remaining=b.periods_remaining,
-                    source_period_index=b.source_period_index,
-                    source_label=b.source_label,
-                ))
-        taxable_after = max(0.0, remaining)
-    else:
-        retained.extend(active)
-        taxable_after = 0.0
-        generated = -taxable_before  # taxable_before < 0 means a loss
-
-    # Age surviving buckets
-    aged: list[TaxLossVintage] = []
-    for b in retained:
-        new_remaining = b.periods_remaining - 1
-        if new_remaining >= 0:
-            aged.append(TaxLossVintage(
-                amount_keur=b.amount_keur,
-                periods_remaining=new_remaining,
-                source_period_index=b.source_period_index,
-                source_label=b.source_label,
-            ))
-        else:
-            expired_keur += b.amount_keur
-
-    # Add new vintage for this period's loss
-    if generated > 1e-9:
-        aged.append(TaxLossVintage(
-            amount_keur=generated,
-            periods_remaining=duration_periods,
-            source_period_index=period_index,
-            source_label=f"period_{period_index}",
-        ))
-
-    closing_loss = sum(b.amount_keur for b in aged)
-
-    return (
-        TaxLossLedgerYear(
-            period_index=period_index,
-            opening_loss_keur=opening_loss,
-            loss_used_keur=losses_used,
-            loss_generated_keur=generated,
-            loss_expired_keur=expired_keur,
-            closing_loss_keur=closing_loss,
-            taxable_income_before_losses_keur=taxable_before,
-            taxable_profit_after_losses_keur=taxable_after,
-        ),
-        tuple(aged),
+    return tuple(
+        TaxLossVintage(
+            origin_tax_year=v.origin_tax_year,
+            last_usable_tax_year=v.origin_tax_year + loss_carryforward_years,
+            amount_keur=v.amount_keur,
+            source_label=v.source_label,
+        )
+        for v in opening_inputs
     )
 
 
-def run_fifo_loss_ledger(
-    taxable_income_before_losses: tuple[float, ...],
-    opening_vintages: tuple[TaxLossVintage, ...],
+def _expire_vintages(
+    vintages: tuple[TaxLossVintage, ...],
+    current_tax_year: int,
+) -> tuple[tuple[TaxLossVintage, ...], float]:
+    """Expire vintages whose last_usable_tax_year < current_tax_year.
+
+    Returns (active_vintages, total_expired_keur).
+    Expiry is applied BEFORE use (canonical rule).
+    """
+    active = []
+    expired_keur = 0.0
+    for v in vintages:
+        if v.last_usable_tax_year < current_tax_year:
+            expired_keur += v.amount_keur
+        else:
+            active.append(v)
+    return tuple(active), expired_keur
+
+
+def run_annual_fifo_ledger(
+    taxable_income_before_lcf: tuple[float, ...],
+    tax_year_indices: tuple[int, ...],
+    opening_inputs: tuple[OpeningTaxLossVintageInput, ...],
     loss_carryforward_years: int,
-    periods_per_tax_year: int,
-    expire_losses_before_use: bool,
-) -> tuple[TaxLossLedgerYear, ...]:
-    """Run the full FIFO loss ledger over all model periods.
+) -> tuple[TaxAnnualLedgerEntry, ...]:
+    """Run the annual FIFO loss ledger over all tax years.
 
     Parameters
     ----------
-    taxable_income_before_losses : one value per model period (signed; negative = loss)
-    opening_vintages : pre-model opening loss vintages (oldest first)
+    taxable_income_before_lcf : one value per tax year (signed; negative = loss)
+    tax_year_indices : 0-based tax year indices (same length as above)
+    opening_inputs : pre-model opening loss vintages (oldest first)
     loss_carryforward_years : e.g. 5 for Croatia
-    periods_per_tax_year : e.g. 2 for semi-annual
-    expire_losses_before_use : True = Excel-compatible expiry-before-use mode
+
+    Returns
+    -------
+    Tuple of TaxAnnualLedgerEntry, one per tax year.
     """
-    duration_periods = loss_carryforward_years * periods_per_tax_year
-    buckets = opening_vintages
-    period_results: list[TaxLossLedgerYear] = []
+    vintages = _opening_vintages_from_inputs(opening_inputs, loss_carryforward_years)
+    entries: list[TaxAnnualLedgerEntry] = []
 
-    for i, taxable_before in enumerate(taxable_income_before_losses):
-        ledger_year, buckets = _apply_fifo_ledger_period(
-            taxable_before=taxable_before,
-            buckets=buckets,
-            period_index=i,
-            duration_periods=duration_periods,
-            expire_before_use=expire_losses_before_use,
-        )
-        period_results.append(ledger_year)
+    for tax_year, taxable_before in zip(tax_year_indices, taxable_income_before_lcf):
+        # Step 1: Expire before use
+        vintages, expired_keur = _expire_vintages(vintages, tax_year)
+        opening_loss = sum(v.amount_keur for v in vintages)
 
-    return tuple(period_results)
+        if taxable_before <= 0.0:
+            # Loss-making or break-even year: generate a new vintage, use nothing
+            generated = -taxable_before if taxable_before < 0 else 0.0
+            used = 0.0
+            taxable_after = 0.0
+            new_vintages = list(vintages)
+            if generated > 1e-12:
+                new_vintages.append(TaxLossVintage(
+                    origin_tax_year=tax_year,
+                    last_usable_tax_year=tax_year + loss_carryforward_years,
+                    amount_keur=generated,
+                    source_label=f"year_{tax_year}",
+                ))
+            vintages = tuple(new_vintages)
+        else:
+            # Profit year: consume oldest vintages first (FIFO)
+            remaining = taxable_before
+            used = 0.0
+            new_vintages = []
+            for v in vintages:
+                if remaining <= 0.0:
+                    new_vintages.append(v)
+                    continue
+                consume = min(v.amount_keur, remaining)
+                used += consume
+                remaining -= consume
+                residual = v.amount_keur - consume
+                if residual > 1e-12:
+                    new_vintages.append(TaxLossVintage(
+                        origin_tax_year=v.origin_tax_year,
+                        last_usable_tax_year=v.last_usable_tax_year,
+                        amount_keur=residual,
+                        source_label=v.source_label,
+                    ))
+            taxable_after = max(0.0, remaining)
+            generated = 0.0
+            vintages = tuple(new_vintages)
+
+        closing_loss = sum(v.amount_keur for v in vintages)
+        entries.append(TaxAnnualLedgerEntry(
+            tax_year=tax_year,
+            opening_loss_keur=opening_loss,
+            loss_expired_keur=expired_keur,
+            loss_used_keur=used,
+            loss_generated_keur=generated,
+            closing_loss_keur=closing_loss,
+            taxable_income_before_lcf_keur=taxable_before,
+            taxable_income_after_lcf_keur=taxable_after,
+        ))
+
+    return tuple(entries)
