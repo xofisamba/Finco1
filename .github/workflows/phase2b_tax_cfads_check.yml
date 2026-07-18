@@ -56,7 +56,7 @@ jobs:
           cache: pip
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: pip install --no-cache-dir -r requirements.txt
 
       - name: Check baseline snapshots unchanged
         run: |
@@ -100,15 +100,11 @@ jobs:
         run: |
           python -m finco_parity.check_financial_engine_operating_core --all --check
 
-      - name: Phase 2B TAX_CFADS_V1 parity (all four baselines, informational)
+      - name: Phase 2B TAX_CFADS_V1 parity (all four baselines, blocking)
         run: |
-          # TAX_CFADS_V1 differences are expected: the clean engine uses a canonical
-          # TaxPolicy (18%, 5yr LCF, annual ATAD) while the legacy uses per-project
-          # parameters and per-period computation. All differences are documented in
-          # finco_parity/corrections/tax_cfads_v1.json.
-          # The step is non-blocking; CI passes even with documented drift.
+          # Correction-aware check: IDENTICAL and APPROVED_FINANCIAL_CORRECTION → exit 0.
+          # UNEXPLAINED_DRIFT → exit 3 (blocks the build).
+          # The approved corrections are recorded in finco_parity/corrections/tax_cfads_v1_exact.json.
+          # Regenerate with: python -m finco_parity.generate_tax_cfads_corrections
           python -m finco_parity.check_financial_engine_tax_cfads --all \
-            --text-report reports/phase2b_tax_cfads/tax_cfads_v1_parity.txt || {
-            echo "TAX_CFADS_V1 drift detected — see corrections ledger for documented reasons."
-          }
-          echo "TAX_CFADS_V1 parity check complete."
+            --text-report reports/phase2b_tax_cfads/tax_cfads_v1_parity.txt

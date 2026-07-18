@@ -759,3 +759,73 @@ def test_j_four_baseline_smoke(baseline_id: str):
     # but our candidate populates them
     assert "period_grid" in snapshot
     assert len(snapshot["period_grid"]) > 0
+
+
+# ---------------------------------------------------------------------------
+# Test K — Construction-loss model
+# ---------------------------------------------------------------------------
+
+class TestK_ConstructionLoss:
+    """Manual model: construction-period losses generated, carried forward (FIFO), used, expired.
+
+    Uses run_annual_fifo_ledger directly to verify the full LCF lifecycle
+    independent of the baseline-specific inputs.
+
+    Scenario:
+      - Years 2029-2030: construction losses (-10 000, -5 000 kEUR)
+      - Years 2031-2036: operating profit (8 000 kEUR each)
+      - lcf_years = 5  →  2029 vintage last_usable = 2034
+                           2030 vintage last_usable = 2035
+    """
+
+    _TAXABLE = (-10_000.0, -5_000.0, 8_000.0, 8_000.0, 8_000.0, 8_000.0, 8_000.0, 8_000.0)
+    _YEARS   = (2029,       2030,     2031,     2032,     2033,     2034,     2035,     2036)
+    _LCF     = 5
+
+    @pytest.fixture(scope="class")
+    @classmethod
+    def entries(cls):
+        return run_annual_fifo_ledger(cls._TAXABLE, cls._YEARS, (), cls._LCF)
+
+    def test_construction_losses_generated(self, entries):
+        """Years 2029 and 2030 each generate a loss."""
+        assert abs(entries[0].loss_generated_keur - 10_000.0) < 1e-6, "2029 loss"
+        assert abs(entries[1].loss_generated_keur - 5_000.0) < 1e-6, "2030 loss"
+
+    def test_pool_accumulates_correctly(self, entries):
+        """After year 2030 the closing pool = 10 000 + 5 000 = 15 000."""
+        assert abs(entries[1].closing_loss_keur - 15_000.0) < 1e-6
+
+    def test_no_loss_generated_in_profitable_years(self, entries):
+        """No new loss generated in years 2031-2036."""
+        for i in range(2, len(entries)):
+            assert entries[i].loss_generated_keur == 0.0, f"year {self._YEARS[i]}"
+
+    def test_loss_used_2031(self, entries):
+        """Year 2031: full 8 000 profit offset by 2029-vintage loss (FIFO)."""
+        assert abs(entries[2].loss_used_keur - 8_000.0) < 1e-6
+        assert abs(entries[2].taxable_income_after_lcf_keur - 0.0) < 1e-6
+
+    def test_loss_used_2032(self, entries):
+        """Year 2032: remaining 2 000 from 2029 vintage used first, then 5 000 from 2030."""
+        # 2029 vintage pool after 2031 = 10 000 - 8 000 = 2 000
+        # 2030 vintage pool = 5 000
+        # 2032 profit = 8 000 → uses 2 000 (clears 2029) + 5 000 (partial 2030 clear) = 7 000
+        # Remaining taxable = 8 000 - 7 000 = 1 000
+        assert abs(entries[3].loss_used_keur - 7_000.0) < 1e-6
+        assert abs(entries[3].taxable_income_after_lcf_keur - 1_000.0) < 1e-6
+
+    def test_pool_cleared_after_2032(self, entries):
+        """After year 2032 the LCF pool should be zero (all vintages consumed)."""
+        assert abs(entries[3].closing_loss_keur - 0.0) < 1e-6
+
+    def test_no_loss_used_2033_onwards(self, entries):
+        """Years 2033-2036: pool is empty, full taxable income applies."""
+        for i in range(4, len(entries)):
+            assert entries[i].loss_used_keur == 0.0, f"year {self._YEARS[i]}"
+            assert abs(entries[i].taxable_income_after_lcf_keur - 8_000.0) < 1e-6, f"year {self._YEARS[i]}"
+
+    def test_no_expiry_in_this_scenario(self, entries):
+        """Pool cleared by profitable years before any vintage expires."""
+        for e in entries:
+            assert e.loss_expired_keur == 0.0

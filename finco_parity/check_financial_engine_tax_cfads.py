@@ -37,6 +37,7 @@ It must NOT import from app.*, domain.*, finco_core.*, main_web, main_api.
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 import traceback
 from pathlib import Path
@@ -59,6 +60,52 @@ from finco_parity.profiles import (
     ComparisonProfile,
 )
 from financial_engine.version import ENGINE_VERSION
+
+_CORRECTIONS_PATH = Path(__file__).parent / "corrections" / "tax_cfads_v1_exact.json"
+
+# Comparison statuses per the correction-aware contract.
+_STATUS_IDENTICAL = "IDENTICAL"
+_STATUS_APPROVED = "APPROVED_FINANCIAL_CORRECTION"
+_STATUS_UNEXPLAINED = "UNEXPLAINED_DRIFT"
+
+
+def _load_corrections() -> dict[str, set[str]]:
+    """Load approved corrections ledger.
+
+    Returns {baseline_id: set of approved field_paths}.
+    Returns empty dict if the corrections file does not exist.
+    """
+    if not _CORRECTIONS_PATH.exists():
+        return {}
+    with open(_CORRECTIONS_PATH) as f:
+        ledger = json.load(f)
+    approved: dict[str, set[str]] = {}
+    for record in ledger.get("corrections", []):
+        bid = record["baseline_id"]
+        if bid not in approved:
+            approved[bid] = set()
+        approved[bid].add(record["field_path"])
+    return approved
+
+
+def _correction_status_for_baseline(
+    baseline_id: str,
+    differences: list,
+    approved: dict[str, set[str]],
+) -> tuple[str, list, list]:
+    """Classify each difference as APPROVED or UNEXPLAINED.
+
+    Returns (overall_status, approved_diffs, unexplained_diffs).
+    """
+    if not differences:
+        return _STATUS_IDENTICAL, [], []
+
+    approved_paths = approved.get(baseline_id, set())
+    unexplained = [d for d in differences if d.path not in approved_paths]
+    approved_list = [d for d in differences if d.path in approved_paths]
+
+    overall = _STATUS_UNEXPLAINED if unexplained else _STATUS_APPROVED
+    return overall, approved_list, unexplained
 
 _PROFILE = ComparisonProfile.TAX_CFADS_V1
 _ALL_BASELINE_IDS = ("tuho", "oborovo", "generic_solar", "generic_wind")
@@ -158,33 +205,73 @@ def main(argv: list[str] | None = None) -> int:
         traceback.print_exc()
         return 1
 
+    # Load corrections ledger for correction-aware status classification.
+    approved = _load_corrections()
+    if not args.quiet and approved:
+        n_total = sum(len(v) for v in approved.values())
+        print(f"Corrections ledger: {n_total} approved field paths across "
+              f"{len(approved)} baseline(s)", flush=True)
+    elif not args.quiet:
+        print("Corrections ledger: not found — all differences will be UNEXPLAINED_DRIFT",
+              flush=True)
     if not args.quiet:
-        for result in aggregate.baseline_results:
-            status_str = "PASS" if result.status == BaselineRunStatus.PASS else f"FAIL ({result.status.value})"
-            print(f"  [{result.baseline_id}] TAX_CFADS_V1 {status_str}", flush=True)
-            if result.differences:
-                for d in result.differences[:5]:
-                    print(f"    {d.path}: {d.kind.value}", flush=True)
-                if result.difference_count > 5:
-                    print(f"    ... and {result.difference_count - 5} more", flush=True)
         print()
-        if aggregate.overall_status == BaselineRunStatus.PASS:
-            print(f"Overall: PASS ({len(aggregate.selected_baselines)} baseline(s))")
+
+    # Per-baseline correction-aware classification.
+    any_unexplained = False
+    baseline_correction_statuses: list[dict[str, Any]] = []
+    for result in aggregate.baseline_results:
+        c_status, approved_diffs, unexplained = _correction_status_for_baseline(
+            result.baseline_id, result.differences, approved
+        )
+        if unexplained:
+            any_unexplained = True
+        baseline_correction_statuses.append({
+            "baseline_id": result.baseline_id,
+            "legacy_status": result.status.value,
+            "correction_status": c_status,
+            "n_approved": len(approved_diffs),
+            "n_unexplained": len(unexplained),
+            "unexplained_diffs": unexplained,
+        })
+
+        if not args.quiet:
+            label = (
+                f"{c_status} ({len(approved_diffs)} approved)"
+                if c_status == _STATUS_APPROVED
+                else f"{c_status} ({len(unexplained)} unexplained)"
+                if c_status == _STATUS_UNEXPLAINED
+                else c_status
+            )
+            print(f"  [{result.baseline_id}] TAX_CFADS_V1 {label}", flush=True)
+            # Show unexplained diffs (worst first)
+            if unexplained:
+                for d in unexplained[:5]:
+                    print(f"    UNEXPLAINED: {d.path}: {d.kind.value}", flush=True)
+                if len(unexplained) > 5:
+                    print(f"    ... and {len(unexplained) - 5} more unexplained", flush=True)
+
+    if not args.quiet:
+        print()
+        if not any_unexplained:
+            print("Overall: PASS (0 UNEXPLAINED_DRIFT)")
             print()
             print(TAX_CFADS_V1_PASS_WORDING)
         else:
-            code = exit_code_for_aggregate(aggregate)
-            print(f"Overall: FAIL (exit {code})")
+            total_unexp = sum(s["n_unexplained"] for s in baseline_correction_statuses)
+            print(f"Overall: FAIL ({total_unexp} UNEXPLAINED_DRIFT across all baselines)")
 
     json_records: list[dict[str, Any]] = [
         {
-            "baseline_id": r.baseline_id,
+            "baseline_id": s["baseline_id"],
             "profile": _PROFILE.value,
             "engine_designation": ENGINE_VERSION,
-            "status": r.status.value,
-            "differences": [d.to_dict() for d in r.differences],
+            "correction_status": s["correction_status"],
+            "n_approved_corrections": s["n_approved"],
+            "n_unexplained_drift": s["n_unexplained"],
+            "unexplained_differences": [d.to_dict() for d in s["unexplained_diffs"]],
         }
-        for r in aggregate.baseline_results
+        for s in baseline_correction_statuses
     ]
 
     if args.json_report:
@@ -204,7 +291,11 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Cannot write text report: {exc.strerror}", file=sys.stderr)
             return 1
 
-    return exit_code_for_aggregate(aggregate)
+    # Exit 0 if all differences are IDENTICAL or APPROVED_FINANCIAL_CORRECTION.
+    # Exit 3 only if any UNEXPLAINED_DRIFT exists.
+    if any_unexplained:
+        return 3
+    return 0
 
 
 if __name__ == "__main__":
