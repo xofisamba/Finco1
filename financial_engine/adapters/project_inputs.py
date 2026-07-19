@@ -106,7 +106,7 @@ def from_project_inputs(
             asset_class_code=item.asset_class.value,
             useful_life_override=item.useful_life_override,
         )
-        for item in inputs.capex.capex_items()
+        for item in inputs.capex.depreciable_capex_items()
     )
 
     # Explicit mapping of financing tenor → depreciation driver.

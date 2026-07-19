@@ -56,7 +56,7 @@ jobs:
             --output artifacts/reconciliation/oborovo_excel_python_reconciliation.xlsx
           ls -lh artifacts/reconciliation/oborovo_excel_python_reconciliation.xlsx
 
-      - name: Verify workbook sheet count
+      - name: Verify workbook sheet contract
         run: |
           python - <<'EOF'
           import openpyxl, sys
@@ -64,12 +64,38 @@ jobs:
               "artifacts/reconciliation/oborovo_excel_python_reconciliation.xlsx",
               read_only=True, data_only=True)
           sheets = wb.sheetnames
-          expected = 16
+          REQUIRED_SHEETS = [
+              "00_README",
+              "01_EXEC_RECON",
+              "02_INPUTS_RECON",
+              "03_TIMELINE_RECON",
+              "04_PROD_REV_RECON",
+              "05_OPEX_RECON",
+              "06_PNL_RECON",
+              "07_CAPEX_IDC_RECON",
+              "08_DEPRECIATION_RECON",
+              "09_TAX_RECON",
+              "10_CFADS_RECON",
+              "11_SENIOR_DEBT_RECON",
+              "12_SHL_RECON",
+              "13_OPENING_BALANCES",
+              "14_DELTA_REGISTER",
+              "15_SOURCE_MAP",
+              "16_RAW_RECON",
+          ]
           print(f"Sheets ({len(sheets)}): {', '.join(sheets)}")
-          if len(sheets) != expected:
-              print(f"FAIL: expected {expected} sheets, got {len(sheets)}", file=sys.stderr)
+          missing = [s for s in REQUIRED_SHEETS if s not in sheets]
+          unexpected = [s for s in sheets if s not in REQUIRED_SHEETS]
+          if missing:
+              print(f"FAIL: missing sheets: {missing}", file=sys.stderr)
               sys.exit(1)
-          print("PASS: all 16 sheets present")
+          if unexpected:
+              print(f"FAIL: unexpected sheets (update REQUIRED_SHEETS if intentional): {unexpected}", file=sys.stderr)
+              sys.exit(1)
+          if len(sheets) != len(REQUIRED_SHEETS):
+              print(f"FAIL: sheet count {len(sheets)} != expected {len(REQUIRED_SHEETS)}", file=sys.stderr)
+              sys.exit(1)
+          print(f"PASS: all {len(REQUIRED_SHEETS)} required sheets present with exact names")
           wb.close()
           EOF
 

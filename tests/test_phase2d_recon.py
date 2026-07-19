@@ -759,6 +759,195 @@ class TestFinancialIdentities:
         hard_fin = [i for i in hard_items if i.asset_class == AssetClass.FINANCIAL_COSTS]
         assert not hard_fin, "capex_items() must NOT include FINANCIAL_COSTS items (hard capex only)"
 
+    def test_b3_clean_engine_adapter_receives_financing_costs(self):
+        """B3 (L.2): clean engine adapter must pass financing-cost items to DepreciationInput.
+
+        Verifies the fix is in financial_engine/adapters/project_inputs.py, NOT in
+        app/waterfall_core.py. The adapter must call depreciable_capex_items() so that
+        bank IDC, commitment fees, bank fees, and VAT enter DepreciationInput.
+        """
+        from app.project_factories import create_default_oborovo
+        from financial_engine.adapters.project_inputs import from_project_inputs
+        from finco_core.inputs._models import AssetClass
+
+        factory = create_default_oborovo()
+        adapted = from_project_inputs(
+            factory,
+            source_id="test_b3_clean_engine_adapter",
+            baseline_commit_sha="test",
+        )
+        dep_items = adapted.depreciation.capex_items_for_depreciation
+        fin_items = [i for i in dep_items if i.asset_class_code == AssetClass.FINANCIAL_COSTS.value]
+        assert fin_items, (
+            "Clean engine DepreciationInput must include FINANCIAL_COSTS items. "
+            "Fix must be in financial_engine/adapters/project_inputs.py, not waterfall_core.py."
+        )
+        total_fin_basis = sum(i.amount_keur for i in fin_items)
+        capex = factory.capex
+        expected = capex.idc_keur + capex.commitment_fees_keur + capex.bank_fees_keur + capex.vat_costs_keur
+        assert total_fin_basis == pytest.approx(expected, abs=0.01), (
+            f"Adapter financing-cost basis {total_fin_basis:.2f} != expected {expected:.2f}"
+        )
+
+    def test_b3_bank_idc_excel_evidence(self):
+        """B3 (L.7): Bank IDC is depreciable in Excel — non-zero dep_idc_keur values confirmed."""
+        import json
+        truth_path = pathlib.Path("tests/fixtures/excel_oborovo_financial_truth.json")
+        with open(truth_path) as f:
+            d = json.load(f)
+        dep = d["dep"]
+        idc_vals = [v for v in dep.get("dep_idc_keur", []) if v is not None and v > 0]
+        assert idc_vals, "Excel dep_idc_keur must have at least one non-zero period value"
+        assert len(idc_vals) >= 10, (
+            f"Expected dep_idc_keur to be non-zero across multiple periods; "
+            f"got non-zero count={len(idc_vals)}"
+        )
+
+    def test_b3_commitment_fees_excel_evidence(self):
+        """B3 (L.8): Commitment fees are depreciable in Excel — non-zero dep_commitment_fees_keur."""
+        import json
+        truth_path = pathlib.Path("tests/fixtures/excel_oborovo_financial_truth.json")
+        with open(truth_path) as f:
+            d = json.load(f)
+        dep = d["dep"]
+        vals = [v for v in dep.get("dep_commitment_fees_keur", []) if v is not None and v > 0]
+        assert vals, "Excel dep_commitment_fees_keur must have at least one non-zero period value"
+
+    def test_b3_bank_fees_excel_evidence(self):
+        """B3 (L.9): Bank fees are depreciable in Excel — non-zero dep_bank_fees_keur."""
+        import json
+        truth_path = pathlib.Path("tests/fixtures/excel_oborovo_financial_truth.json")
+        with open(truth_path) as f:
+            d = json.load(f)
+        dep = d["dep"]
+        vals = [v for v in dep.get("dep_bank_fees_keur", []) if v is not None and v > 0]
+        assert vals, "Excel dep_bank_fees_keur must have at least one non-zero period value"
+
+    def test_b3_vat_excel_evidence(self):
+        """B3 (L.10): VAT is depreciable in Excel — non-zero dep_vat_keur values confirmed.
+
+        Evidence: dep_vat_keur is non-zero across operating periods.
+        Note: useful-life convention for VAT remains OPEN — cannot prove from data_only fixture.
+        """
+        import json
+        truth_path = pathlib.Path("tests/fixtures/excel_oborovo_financial_truth.json")
+        with open(truth_path) as f:
+            d = json.load(f)
+        dep = d["dep"]
+        vals = [v for v in dep.get("dep_vat_keur", []) if v is not None and v > 0]
+        assert vals, "Excel dep_vat_keur must have at least one non-zero period value"
+
+    def test_b3_shl_idc_not_in_depreciable_items(self):
+        """B3 (L.11): SHL IDC must NOT be included in depreciable_capex_items().
+
+        Excel treatment of SHL IDC is OPEN — cannot prove depreciation/capitalisation from
+        data_only fixture. SHL IDC must remain OPEN; it is NOT added to the depreciable basis.
+        """
+        from app.project_factories import create_default_oborovo
+        from finco_core.inputs._models import AssetClass
+
+        factory = create_default_oborovo()
+        capex = factory.capex
+        dep_items = capex.depreciable_capex_items()
+
+        # SHL IDC is on FinancingStructure, not CapexStructure
+        # Confirm shl_idc_keur exists on financing but is NOT included in capex depreciable items
+        financing = factory.financing
+        shl_idc = getattr(financing, "shl_idc_keur", 0.0)
+        if shl_idc > 0:
+            fin_basis = sum(
+                i.amount_keur for i in dep_items
+                if i.asset_class == AssetClass.FINANCIAL_COSTS
+            )
+            # The fin_basis should equal capex-side costs only (no SHL IDC)
+            expected_no_shl = capex.idc_keur + capex.commitment_fees_keur + capex.bank_fees_keur + capex.vat_costs_keur
+            assert fin_basis == pytest.approx(expected_no_shl, abs=0.01), (
+                f"depreciable_capex_items() financing basis {fin_basis:.2f} includes SHL IDC? "
+                f"Expected {expected_no_shl:.2f} (bank costs only, no SHL)"
+            )
+
+    def test_b3_no_project_code_dispatch_in_depreciable_items(self):
+        """B3 (L.4+L.5): depreciable_capex_items() must not branch on project code or baseline id."""
+        import ast, inspect
+        from finco_core.inputs._models import CapexStructure
+
+        import textwrap
+        source = textwrap.dedent(inspect.getsource(CapexStructure.depreciable_capex_items))
+        tree = ast.parse(source)
+        # Look for any string literal that looks like a project/baseline identifier
+        project_ids = {"oborovo", "tuho", "OBR-001", "TUHO", "generic_solar", "generic_wind"}
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Constant) and isinstance(node.value, str):
+                assert node.value.lower() not in {p.lower() for p in project_ids}, (
+                    f"depreciable_capex_items() contains project-specific string '{node.value}'"
+                )
+
+    def test_b3_legacy_waterfall_core_uses_hard_capex_only(self):
+        """B3 (L.3): waterfall_core.py canonical depreciation path must still use capex_items()
+        (hard capex only), NOT depreciable_capex_items(). Legacy reference engine is unchanged.
+        """
+        import ast
+        with open("app/waterfall_core.py") as f:
+            source = f.read()
+        tree = ast.parse(source)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call):
+                # Look for depreciable_capex_items() call
+                func = node.func
+                if isinstance(func, ast.Attribute) and func.attr == "depreciable_capex_items":
+                    raise AssertionError(
+                        "app/waterfall_core.py calls depreciable_capex_items() — "
+                        "this is the legacy reference engine; it must remain unchanged. "
+                        "B3 fix must be in financial_engine/adapters/project_inputs.py only."
+                    )
+
+    def test_b3_useful_life_convention_is_open(self):
+        """B3 (L.16): Financing-cost useful-life convention is OPEN.
+
+        Python uses senior_tenor_years (14y for Oborovo) for FINANCIAL_COSTS items.
+        Excel useful life is UNRESOLVED from data_only fixture (formula not accessible).
+        This test documents the unresolved status and verifies the Python value currently used.
+        """
+        from app.project_factories import create_default_oborovo
+        from financial_engine.adapters.project_inputs import from_project_inputs
+
+        factory = create_default_oborovo()
+        adapted = from_project_inputs(factory, source_id="test", baseline_commit_sha="test")
+
+        # Python uses senior_tenor_years as financial_cost_useful_life_years
+        assert adapted.depreciation.financial_cost_useful_life_years == factory.financing.senior_tenor_years, (
+            "financial_cost_useful_life_years must equal senior_tenor_years. "
+            "NOTE: this convention is OPEN — Excel source formula is unverified."
+        )
+        import warnings
+        warnings.warn(
+            f"B3 OPEN: financial_cost_useful_life_years={adapted.depreciation.financial_cost_useful_life_years} "
+            f"mapped from senior_tenor_years={factory.financing.senior_tenor_years}. "
+            "Excel Dep-sheet formula for IDC/commitment/bank/VAT useful life is UNVERIFIED "
+            "from data_only fixture. Manual review required.",
+            UserWarning, stacklevel=2,
+        )
+
+    def test_b3_frozen_baseline_not_auto_regenerated(self):
+        """B3 (L.12): Frozen baseline snapshots must NOT be regenerated to absorb clean-engine changes.
+
+        Verifies that tuho/generic_solar/generic_wind baseline_commit_sha fields remain at the
+        pre-Phase-2E value. Oborovo is governed-drift (B1+B3 known divergence — xfail in parity
+        suite). This test enforces no silent recapture for the unchanged projects.
+        """
+        import json
+        expected_sha = "8b13a53805ea2e1e84144ccad1f2484e16fa8592"
+        stable_baselines = ["tuho", "generic_solar", "generic_wind"]
+        for bid in stable_baselines:
+            path = pathlib.Path(f"finco_parity/baselines/snapshots/{bid}.json")
+            with open(path) as f:
+                snap = json.load(f)
+            actual = snap.get("baseline_commit_sha", "")
+            assert actual == expected_sha, (
+                f"{bid}.json baseline_commit_sha={actual!r} != expected {expected_sha!r}. "
+                "Frozen baseline was silently updated — this must require explicit governance approval."
+            )
+
     def test_two_sided_coverage_required_items(self, sources):
         """Verify key reconciled items have both Excel and Python values in at least one period."""
         required_two_sided = {

@@ -352,7 +352,7 @@ def run_waterfall_v3_core(
         from domain.depreciation.canonical_wiring import build_canonical_depreciation_wiring
         dep_wiring = build_canonical_depreciation_wiring(
             project_name=getattr(inputs.info, 'name', 'Project'),
-            capex_items=inputs.capex.depreciable_capex_items(),
+            capex_items=inputs.capex.capex_items(),
             horizon_years=horizon_years,
             cod_period=2,  # semiannual: COD = period 2 (first operating period)
             period_frequency="semiannual",
