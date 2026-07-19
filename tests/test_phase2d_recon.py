@@ -655,3 +655,87 @@ class TestCLI:
         rc = main(["--output", str(out), "--abs-tol", "5.0"])
         assert rc == 0
         assert out.exists()
+
+
+# ---------------------------------------------------------------------------
+# 8. Scope-contamination guard
+# ---------------------------------------------------------------------------
+
+class TestScopeContaminationGuard:
+    """Ensure the Phase 2D PR does not silently modify unrelated canonical
+    mapping evidence.  Only concepts whose model column includes 'OBOROVO'
+    (or BOTH with a confirmed Oborovo extraction) may have *new* cell
+    coordinates added in verified_* columns.  Any row whose only confirmed
+    model is TUHO must not have cell coordinates introduced by this PR."""
+
+    CLEAN_BASELINE = "fe7c671a"  # last clean Phase-2D-only commit
+    CSV_REL = "docs/model_mapping/unresolved_pack_id_evidence.csv"
+
+    def _git_show_csv(self, ref: str) -> list[str]:
+        import subprocess
+        result = subprocess.run(
+            ["git", "show", f"{ref}:{self.CSV_REL}"],
+            capture_output=True, text=True,
+        )
+        if result.returncode != 0:
+            pytest.skip(f"Cannot read {ref} from git: {result.stderr.strip()}")
+        return result.stdout.splitlines()
+
+    def _parse_rows(self, lines: list[str]) -> dict[str, list[str]]:
+        """Return {canonical_concept: [fields...]} keyed by col-0."""
+        rows: dict[str, list[str]] = {}
+        for line in lines[1:]:  # skip header
+            if not line.strip():
+                continue
+            fields = line.split(",")
+            if fields:
+                rows[fields[0]] = fields
+        return rows
+
+    def test_no_tuho_only_rows_have_new_verified_cells(self):
+        """No row whose model is exclusively TUHO should have gained
+        non-empty cell coordinates in verified_* columns vs the baseline."""
+        baseline_lines = self._git_show_csv(self.CLEAN_BASELINE)
+        import pathlib
+        current_lines = pathlib.Path(self.CSV_REL).read_text().splitlines()
+
+        baseline = self._parse_rows(baseline_lines)
+        current = self._parse_rows(current_lines)
+
+        # verified_* columns are indices 12-23 (0-based)
+        VERIFIED_COLS = range(12, 24)
+
+        violations: list[str] = []
+        for concept, cur_fields in current.items():
+            model_col = cur_fields[2].strip().upper() if len(cur_fields) > 2 else ""
+            if model_col not in ("TUHO",):
+                continue
+            base_fields = baseline.get(concept, [""] * 24)
+            for idx in VERIFIED_COLS:
+                base_val = base_fields[idx].strip() if idx < len(base_fields) else ""
+                cur_val = cur_fields[idx].strip() if idx < len(cur_fields) else ""
+                if cur_val and not base_val:
+                    violations.append(
+                        f"{concept}: col {idx} gained '{cur_val}' (was empty in baseline)"
+                    )
+
+        assert not violations, (
+            "Phase 2D PR introduced cell coordinates for TUHO-only mapping rows "
+            "without source-workbook verification:\n" + "\n".join(violations)
+        )
+
+    def test_equity_investor_2_share_tuho_formula_cell_not_set(self):
+        """equity.investor_2_share must NOT have verified_formula_cell_tuho
+        (col 18) populated — it was added without workbook verification and
+        has been reverted by this cleanup commit."""
+        import pathlib
+        lines = pathlib.Path(self.CSV_REL).read_text().splitlines()
+        rows = self._parse_rows(lines)
+        concept = "equity.investor_2_share"
+        assert concept in rows, f"{concept} not found in CSV"
+        fields = rows[concept]
+        # col 18 = verified_formula_cell_tuho (0-based, after header split)
+        col18 = fields[18].strip() if len(fields) > 18 else ""
+        assert col18 == "", (
+            f"{concept}: verified_formula_cell_tuho (col 18) must be empty, got '{col18}'"
+        )
