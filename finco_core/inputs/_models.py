@@ -244,6 +244,24 @@ class CapexStructure:
             if getattr(self, field).amount_keur != 0
         )
 
+    def depreciable_capex_items(self) -> tuple[CapexItem, ...]:
+        """Return hard capex items plus capitalised bank financing costs.
+
+        Bank IDC, commitment fees, bank fees, and VAT are capitalised costs that
+        form part of the gross asset basis. The Excel Dep sheet confirms these are
+        depreciable (dep_idc_keur, dep_commitment_fees_keur, dep_bank_fees_keur
+        are non-zero). SHL IDC is excluded — it is out of the clean engine scope.
+        """
+        items = list(self.capex_items())
+        fin_total = self.idc_keur + self.commitment_fees_keur + self.bank_fees_keur + self.vat_costs_keur
+        if fin_total > 0:
+            items.append(CapexItem(
+                name="Bank Financing Costs (IDC + Commitment + Bank + VAT)",
+                amount_keur=fin_total,
+                asset_class=AssetClass.FINANCIAL_COSTS,
+            ))
+        return tuple(items)
+
     @property
     def hard_capex_keur(self) -> float:
         """Sum of all hard-capex items, excluding financing and reserve costs."""

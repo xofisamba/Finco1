@@ -695,6 +695,70 @@ class TestFinancialIdentities:
             f"Only {len(dscr_vals)} periods pass DSCR filter — expected at least 10"
         )
 
+    def test_b1_opex_factory_y1_values_match_xlsm(self):
+        """B1: Oborovo factory Y1 OPEX values must match XLSM Inputs authoritative values.
+
+        Exact XLSM values from excel_oborovo_financial_truth.json fixture:
+          B.03 (Maintain Site):  45.2 kEUR/yr
+          B.05 (Security):       30.1 kEUR/yr
+          B.08 (Power Expenses): 176.8608 kEUR/yr
+          B.13 (Contingencies):  51.489632 kEUR/yr
+        """
+        from app.project_factories import create_default_oborovo
+        factory = create_default_oborovo()
+        opex_items = factory.opex
+
+        def _find(name_fragment: str) -> float | None:
+            for item in opex_items:
+                if name_fragment.lower() in item.name.lower():
+                    return item.y1_amount_keur
+            return None
+
+        b03 = _find("Maintain Site")
+        b05 = _find("Security")
+        b08 = _find("Power Expenses")
+        b13 = _find("Contingencies")
+
+        assert b03 == pytest.approx(45.2, abs=0.001), f"B.03 Maintain Site Y1: got {b03}, expected 45.2"
+        assert b05 == pytest.approx(30.1, abs=0.001), f"B.05 Security Y1: got {b05}, expected 30.1"
+        assert b08 == pytest.approx(176.8608, abs=0.0001), f"B.08 Power Expenses Y1: got {b08}, expected 176.8608"
+        assert b13 == pytest.approx(51.489632, abs=0.000001), f"B.13 Contingencies Y1: got {b13}, expected 51.489632"
+
+    def test_b3_depreciation_basis_includes_financing_costs(self):
+        """B3: Depreciation basis includes Bank IDC, commitment fees, bank fees, and VAT costs.
+
+        Evidence: excel_oborovo_financial_truth.json dep section confirms dep_idc_keur,
+        dep_commitment_fees_keur, dep_bank_fees_keur are non-zero (Excel depreciates these).
+        The fix is generic: CapexStructure.depreciable_capex_items() includes financing costs.
+        """
+        from app.project_factories import create_default_oborovo
+        from finco_core.inputs._models import AssetClass
+
+        factory = create_default_oborovo()
+        capex = factory.capex
+
+        # Verify financing costs are non-zero for Oborovo
+        assert capex.idc_keur > 0, "Oborovo IDC must be positive"
+        assert capex.commitment_fees_keur > 0, "Oborovo commitment fees must be positive"
+        assert capex.bank_fees_keur > 0, "Oborovo bank fees must be positive"
+
+        # depreciable_capex_items() must include a financing cost item
+        dep_items = capex.depreciable_capex_items()
+        fin_items = [i for i in dep_items if i.asset_class == AssetClass.FINANCIAL_COSTS]
+        assert fin_items, "depreciable_capex_items() must include a FINANCIAL_COSTS item"
+
+        # The financing cost item amount = idc + commitment + bank + vat
+        expected_fin = capex.idc_keur + capex.commitment_fees_keur + capex.bank_fees_keur + capex.vat_costs_keur
+        actual_fin = sum(i.amount_keur for i in fin_items)
+        assert actual_fin == pytest.approx(expected_fin, abs=0.01), (
+            f"Financing cost depreciable basis: got {actual_fin:.2f}, expected {expected_fin:.2f}"
+        )
+
+        # capex_items() (hard capex only) must NOT include financing costs
+        hard_items = capex.capex_items()
+        hard_fin = [i for i in hard_items if i.asset_class == AssetClass.FINANCIAL_COSTS]
+        assert not hard_fin, "capex_items() must NOT include FINANCIAL_COSTS items (hard capex only)"
+
     def test_two_sided_coverage_required_items(self, sources):
         """Verify key reconciled items have both Excel and Python values in at least one period."""
         required_two_sided = {

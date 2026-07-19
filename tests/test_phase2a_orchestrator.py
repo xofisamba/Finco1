@@ -35,7 +35,7 @@ from finco_parity.manifest import ManifestIntegrityError
 from finco_parity.profiles import ComparisonProfile, project_for_profile
 
 _BASELINE_DIR = Path("finco_parity/baselines/snapshots")
-_BASELINE_COMMIT_SHA = "8b13a53805ea2e1e84144ccad1f2484e16fa8592"
+_BASELINE_COMMIT_SHA = "7aa717920eddc41d78765bfea5dc6904cda80267"
 _PROFILE = ComparisonProfile.OPERATING_CORE_V1
 
 _ALL_BASELINES = ["tuho", "oborovo", "generic_solar", "generic_wind"]
