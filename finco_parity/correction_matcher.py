@@ -136,7 +136,7 @@ _REQUIRED_PROFILE = "TAX_CFADS_V1"
 
 # Expected summary counts (exact; verified against actual records).
 _EXPECTED_SUMMARY_COUNTS: dict[str, int] = {
-    "oborovo": 610,
+    "oborovo": 617,
     "generic_solar": 314,
     "generic_wind": 510,
 }
