@@ -238,6 +238,11 @@ def _write_recon_block(
         ws.cell(row=r, column=3, value=view_label).font = _font(size=8)
         ws.cell(row=r, column=3).fill = row_fill
         ws.cell(row=r, column=4, value=unit).font = _font(size=8)
+        # Reviewer Status column (col 5)
+        rev_cell = ws.cell(row=r, column=5, value="NOT REVIEWED" if view_idx == 0 else None)
+        rev_cell.fill = _fill("F2F2F2")
+        rev_cell.font = _font(size=7)
+        rev_cell.alignment = _align(h="center", v="center")
         for ci in range(n):
             v = vals[ci]
             cell = ws.cell(row=r, column=data_col + ci)
@@ -258,6 +263,7 @@ def _write_recon_block(
     ws.cell(row=r_delta, column=3, value="Delta").font = _font(bold=True, size=8)
     ws.cell(row=r_delta, column=3).fill = DELTA_FILL
     ws.cell(row=r_delta, column=4, value=unit).font = _font(size=8)
+    ws.cell(row=r_delta, column=5).fill = _fill("F2F2F2")
     for ci in range(n):
         ev = excel_vals[ci]
         pv = python_vals[ci]
@@ -269,14 +275,13 @@ def _write_recon_block(
         else:
             cell.value = d
             cell.number_format = fmt
-            # Colour: red if material and negative, green if material and positive
+            # Colour: neutral audit highlighting
+            abs_d = abs(d)
             if item and mat.is_material(d, ev, pv, unit):
-                if d < 0:
-                    cell.fill = _fill("FF9999")
-                elif d > 0:
-                    cell.fill = _fill("C6EFCE")
+                if abs_d > 0 and _delta_pct(d, ev) is not None and abs(_delta_pct(d, ev)) > 0.10:
+                    cell.fill = _fill("FFAAAA")
                 else:
-                    cell.fill = DELTA_FILL
+                    cell.fill = _fill("FFD9B3")
             else:
                 cell.fill = DELTA_FILL
         cell.font = _font(size=8)
@@ -287,6 +292,7 @@ def _write_recon_block(
     ws.cell(row=r_dpct, column=3, value="Delta %").font = _font(size=8)
     ws.cell(row=r_dpct, column=3).fill = DPCT_FILL
     ws.cell(row=r_dpct, column=4, value="%").font = _font(size=8)
+    ws.cell(row=r_dpct, column=5).fill = _fill("F2F2F2")
     for ci in range(n):
         ev = excel_vals[ci]
         pv = python_vals[ci]
@@ -310,14 +316,117 @@ def _write_recon_block(
 # Sheet builders
 # ---------------------------------------------------------------------------
 
+def _build_readme(wb: Workbook, src: OborovoSources, generation_ts: str, pr_head: str) -> None:
+    """00_README — validation guide for the finance reviewer."""
+    ws = wb.create_sheet("00_README")
+    ws.sheet_view.showGridLines = False
+    ws.column_dimensions["A"].width = 28
+    ws.column_dimensions["B"].width = 72
+
+    def _row(r, a, b, bold_a=False, bold_b=False, fill_a=None, fill_b=None):
+        ca = ws.cell(row=r, column=1, value=a)
+        cb = ws.cell(row=r, column=2, value=b)
+        ca.font = _font(bold=bold_a, size=10)
+        cb.font = _font(bold=bold_b, size=10)
+        if fill_a:
+            ca.fill = _fill(fill_a)
+        if fill_b:
+            cb.fill = _fill(fill_b)
+        ca.alignment = _align(h="right", v="center")
+        cb.alignment = _align(h="left", v="center", wrap=True)
+
+    ws.row_dimensions[1].height = 30
+    title = ws.cell(row=1, column=1, value="Oborovo Excel ↔ Python Reconciliation Workbook")
+    title.font = _font(bold=True, size=14)
+    title.fill = HEADER_FILL
+    title.font = Font(name="Calibri", bold=True, size=14, color="FFFFFF")
+    title.alignment = _align(h="left", v="center")
+    from openpyxl.utils import get_column_letter
+    from openpyxl.styles import PatternFill
+    ws.merge_cells("A1:B1")
+
+    r = 3
+    _row(r, "Source workbook", src.excel_source_filename or "N/A"); r += 1
+    _row(r, "Source SHA256", src.excel_fixture_sha256 or "N/A"); r += 1
+    _row(r, "Generation timestamp", generation_ts); r += 1
+    _row(r, "PR head SHA", pr_head or "N/A"); r += 1
+    _row(r, "Materiality (abs kEUR)", "1.0 kEUR"); r += 1
+    _row(r, "Materiality (relative)", "0.1%"); r += 1
+    r += 1
+
+    _row(r, "COLOUR KEY", "", bold_a=True, bold_b=True); r += 1
+    _row(r, "Excel row", "Light blue background — authoritative XLSM value", fill_b="EAF0FB"); r += 1
+    _row(r, "Python row", "Light green background — clean engine computed value", fill_b="EBF7EE"); r += 1
+    _row(r, "Delta row", "Amber background — Delta = Python − Excel (always signed)", fill_b="FFF9E6"); r += 1
+    _row(r, "Material delta", "Orange-amber — material difference (abs > 1 kEUR or > 0.1%)", fill_b="FFD9B3"); r += 1
+    _row(r, "Large material delta", "Light red — large difference (> 10% relative)", fill_b="FFAAAA"); r += 1
+    _row(r, "Section header", "Blue row — section separator", fill_b="4472C4"); r += 1
+    r += 1
+
+    _row(r, "DELTA CONVENTION", "", bold_a=True); r += 1
+    _row(r, "", "Delta = Python − Excel. A positive Delta means Python is higher."); r += 1
+    _row(r, "", "A negative Delta means Python is lower. Sign is informational only."); r += 1
+    _row(r, "", "Do not interpret positive as good or negative as bad."); r += 1
+    r += 1
+
+    _row(r, "N/A CONVENTION", "", bold_a=True); r += 1
+    _row(r, "", "N/A means not modelled / unavailable. It is never assumed zero."); r += 1
+    _row(r, "", "OUT OF CLEAN ENGINE SCOPE means the clean Python engine does not yet model this line."); r += 1
+    r += 1
+
+    _row(r, "REVIEWER STATUS", "", bold_a=True); r += 1
+    _row(r, "", "Each item begins as NOT REVIEWED. Allowed values:"); r += 1
+    for status in ("NOT REVIEWED", "ACCEPT", "INVESTIGATE", "EXCEL ISSUE", "PYTHON ISSUE", "POLICY DECISION"):
+        _row(r, "", f"  {status}"); r += 1
+    _row(r, "", "Reviewer status is for manual notation only. It does not affect calculations."); r += 1
+    r += 1
+
+    _row(r, "REVIEW ORDER", "", bold_a=True); r += 1
+    for i, step in enumerate([
+        "01 EXEC RECON — landing summary",
+        "02 INPUTS RECON — verify input assumptions",
+        "03 TIMELINE — confirm period dates and COD",
+        "04 PROD & REVENUE — does production match? Does price match?",
+        "05 OPEX — per-item B.01–B.13 by period",
+        "06 P&L — revenue through net income",
+        "07 CAPEX/IDC — CAPEX items and financing costs",
+        "08 DEPRECIATION — book vs tax",
+        "09 TAX — full tax bridge including loss carryforward",
+        "10 CFADS — EBITDA bridge to CFADS",
+        "11 SENIOR DEBT — period debt schedule and DSCR",
+        "12 SHL — SHL schedule (Excel only, Python out of scope)",
+        "13 OPENING BALANCES",
+        "14 DELTA REGISTER — all material deltas, filter by OPEN",
+    ], 1):
+        _row(r, f"Step {i:02d}", step); r += 1
+
+
 def _build_exec_recon(wb: Workbook, src: OborovoSources, mat: MaterialitySettings) -> None:
-    ws = wb.create_sheet("00_EXEC_RECON")
+    ws = wb.create_sheet("01_EXEC_RECON")
     ws.sheet_view.showGridLines = False
 
     headers = ["Section", "Line Item", "Excel Value", "Python Value",
                "Delta", "Delta %", "Max Period |Delta|", "Status", "Classification",
-               "Notes / Root Cause"]
+               "Notes / Root Cause", "Detail Sheet"]
     _header_row(ws, headers)
+
+    SECTION_DETAIL_MAP = {
+        "TIMELINE":       "03_TIMELINE_RECON",
+        "PRODUCTION":     "04_PROD_REV_RECON",
+        "REVENUE":        "04_PROD_REV_RECON",
+        "OPEX":           "05_OPEX_RECON",
+        "EBITDA":         "06_PNL_RECON",
+        "CAPEX":          "07_CAPEX_IDC_RECON",
+        "IDC":            "07_CAPEX_IDC_RECON",
+        "DEPRECIATION":   "08_DEPRECIATION_RECON",
+        "TAX":            "09_TAX_RECON",
+        "CFADS":          "10_CFADS_RECON",
+        "SENIOR DEBT":    "11_SENIOR_DEBT_RECON",
+        "SENIOR INTEREST":"11_SENIOR_DEBT_RECON",
+        "SHL":            "12_SHL_RECON",
+        "SHL INTEREST":   "12_SHL_RECON",
+        "CASH FLOW":      "10_CFADS_RECON",
+    }
 
     def _tot(vals: list) -> float | None:
         filtered = [v for v in vals if v is not None]
@@ -489,17 +598,23 @@ def _build_exec_recon(wb: Workbook, src: OborovoSources, mat: MaterialitySetting
         cls_cell.font = _font(size=9)
         cls_cell.fill = fill
         ws.cell(row=r_idx, column=10, value=notes).font = _font(size=8)
+        target_sheet = SECTION_DETAIL_MAP.get(section)
+        if target_sheet:
+            link_cell = ws.cell(row=r_idx, column=11, value=target_sheet)
+            link_cell.hyperlink = f"#'{target_sheet}'!A1"
+            link_cell.style = "Hyperlink"
+            link_cell.font = _font(size=9)
         if row_fill:
             for c in range(1, 9):
                 ws.cell(row=r_idx, column=c).fill = row_fill
 
-    _set_col_widths(ws, {1: 16, 2: 44, 3: 16, 4: 16, 5: 12, 6: 10, 7: 14, 8: 10, 9: 28, 10: 60})
+    _set_col_widths(ws, {1: 16, 2: 44, 3: 16, 4: 16, 5: 12, 6: 10, 7: 14, 8: 10, 9: 28, 10: 60, 11: 24})
     _freeze(ws, "A2")
-    _autofilter(ws, 1, 10)
+    _autofilter(ws, 1, 11)
 
 
 def _build_inputs_recon(wb: Workbook, src: OborovoSources, mat: MaterialitySettings) -> None:
-    ws = wb.create_sheet("01_INPUTS_RECON")
+    ws = wb.create_sheet("02_INPUTS_RECON")
     ws.sheet_view.showGridLines = False
     _header_row(ws, ["Code", "Input", "Excel", "Python", "Delta", "Status"])
 
@@ -622,10 +737,10 @@ def _build_horizontal_sheet(
 
     n = len(src.engine)
     HDR_ROW = 1
-    DATA_START_COL = 5  # A=code B=name C=view D=unit E+...
+    DATA_START_COL = 6  # A=code B=name C=view D=unit E=reviewer_status F+...
 
     # Row 1: fixed headers
-    for c, label in enumerate(["Code", "Line Item", "View", "Unit"], 1):
+    for c, label in enumerate(["Code", "Line Item", "View", "Unit", "Reviewer Status"], 1):
         cell = ws.cell(row=HDR_ROW, column=c, value=label)
         cell.font = _font(bold=True, size=9, color="FFFFFF")
         cell.fill = HEADER_FILL
@@ -634,7 +749,7 @@ def _build_horizontal_sheet(
     _write_period_headers(ws, src.engine, HDR_ROW, DATA_START_COL)
 
     # Fixed column widths
-    _set_col_widths(ws, {1: 7, 2: 32, 3: 8, 4: 7})
+    _set_col_widths(ws, {1: 7, 2: 32, 3: 8, 4: 7, 5: 13})
 
     cur_row = 2
     for block in blocks:
@@ -670,14 +785,14 @@ def _build_horizontal_sheet(
 
 
 def _build_timeline_recon(wb: Workbook, src: OborovoSources, mat: MaterialitySettings) -> None:
-    ws = wb.create_sheet("02_TIMELINE_RECON")
+    ws = wb.create_sheet("03_TIMELINE_RECON")
     ws.sheet_view.showGridLines = False
 
     n = len(src.engine)
-    DATA_COL = 5
-    _header_row(ws, ["Code", "Line Item", "View", "Unit"])
+    DATA_COL = 6
+    _header_row(ws, ["Code", "Line Item", "View", "Unit", "Reviewer Status"])
     _write_period_headers(ws, src.engine, 1, DATA_COL)
-    _set_col_widths(ws, {1: 7, 2: 32, 3: 8, 4: 7})
+    _set_col_widths(ws, {1: 7, 2: 32, 3: 8, 4: 7, 5: 13})
 
     n = len(src.engine)
     none_n = [None] * n
@@ -707,6 +822,10 @@ def _build_timeline_recon(wb: Workbook, src: OborovoSources, mat: MaterialitySet
             ws.cell(row=cur_row, column=2, value=name if view_label == "Excel" else "")
             ws.cell(row=cur_row, column=3, value=view_label).fill = row_fill
             ws.cell(row=cur_row, column=4, value=unit)
+            rev_cell = ws.cell(row=cur_row, column=5, value="NOT REVIEWED" if view_label == "Excel" else None)
+            rev_cell.fill = _fill("F2F2F2")
+            rev_cell.font = _font(size=7)
+            rev_cell.alignment = _align(h="center", v="center")
             for ci, v in enumerate(row_vals[:n]):
                 cell = ws.cell(row=cur_row, column=DATA_COL + ci, value=v)
                 cell.fill = row_fill
@@ -754,7 +873,7 @@ def _build_prod_rev_recon(wb: Workbook, src: OborovoSources, mat: MaterialitySet
          "python_vals": [UNAVAILABLE] * n,
          "item": get_item("SH.02")},
     ]
-    _build_horizontal_sheet(wb, "03_PROD_REV_RECON", src, mat, blocks)
+    _build_horizontal_sheet(wb, "04_PROD_REV_RECON", src, mat, blocks)
 
 
 def _build_opex_recon(wb: Workbook, src: OborovoSources, mat: MaterialitySettings) -> None:
@@ -801,7 +920,7 @@ def _build_opex_recon(wb: Workbook, src: OborovoSources, mat: MaterialitySetting
             "item": get_item(f"OP.{i+1:02d}"),
         })
 
-    _build_horizontal_sheet(wb, "04_OPEX_RECON", src, mat, blocks)
+    _build_horizontal_sheet(wb, "05_OPEX_RECON", src, mat, blocks)
 
 
 def _build_pnl_recon(wb: Workbook, src: OborovoSources, mat: MaterialitySettings) -> None:
@@ -848,11 +967,11 @@ def _build_pnl_recon(wb: Workbook, src: OborovoSources, mat: MaterialitySettings
         {"type": "item", "code": "NET", "name": "Net income (OUT OF SCOPE)", "unit": "kEUR",
          "excel_vals": none_row, "python_vals": unav, "item": None},
     ]
-    _build_horizontal_sheet(wb, "05_PNL_RECON", src, mat, blocks)
+    _build_horizontal_sheet(wb, "06_PNL_RECON", src, mat, blocks)
 
 
 def _build_capex_recon(wb: Workbook, src: OborovoSources, mat: MaterialitySettings) -> None:
-    ws = wb.create_sheet("06_CAPEX_IDC_RECON")
+    ws = wb.create_sheet("07_CAPEX_IDC_RECON")
     ws.sheet_view.showGridLines = False
     headers = ["Code", "Item", "Excel (kEUR)", "Python (kEUR)", "Delta (kEUR)",
                "Excel Source", "Python Source", "Classification", "Notes"]
@@ -955,7 +1074,7 @@ def _build_depreciation_recon(wb: Workbook, src: OborovoSources, mat: Materialit
          "excel_vals": [e.dep_total_keur for e in src.excel],
          "python_vals": [None] * n, "item": get_item("DP.03")},
     ]
-    _build_horizontal_sheet(wb, "07_DEPRECIATION_RECON", src, mat, blocks)
+    _build_horizontal_sheet(wb, "08_DEPRECIATION_RECON", src, mat, blocks)
 
 
 def _build_tax_recon(wb: Workbook, src: OborovoSources, mat: MaterialitySettings) -> None:
@@ -993,7 +1112,7 @@ def _build_tax_recon(wb: Workbook, src: OborovoSources, mat: MaterialitySettings
          "excel_vals": [e.cash_tax_keur for e in src.excel],
          "python_vals": [e.corporate_tax_cash_keur for e in src.engine], "item": get_item("TX.07")},
     ]
-    _build_horizontal_sheet(wb, "08_TAX_RECON", src, mat, blocks)
+    _build_horizontal_sheet(wb, "09_TAX_RECON", src, mat, blocks)
 
 
 def _build_cfads_recon(wb: Workbook, src: OborovoSources, mat: MaterialitySettings) -> None:
@@ -1030,7 +1149,7 @@ def _build_cfads_recon(wb: Workbook, src: OborovoSources, mat: MaterialitySettin
         {"type": "item", "code": "FC.03", "name": "DSRA contribution (OUT OF SCOPE)", "unit": "kEUR",
          "excel_vals": [None] * n, "python_vals": unav, "item": get_item("FC.03")},
     ]
-    _build_horizontal_sheet(wb, "09_CFADS_RECON", src, mat, blocks)
+    _build_horizontal_sheet(wb, "10_CFADS_RECON", src, mat, blocks)
 
 
 def _build_senior_debt_recon(wb: Workbook, src: OborovoSources, mat: MaterialitySettings) -> None:
@@ -1074,7 +1193,7 @@ def _build_senior_debt_recon(wb: Workbook, src: OborovoSources, mat: Materiality
          "excel_vals": [e.pl_senior_interest_keur for e in src.excel],
          "python_vals": [e.sd_interest_keur for e in src.engine], "item": get_item("SD.07")},
     ]
-    _build_horizontal_sheet(wb, "10_SENIOR_DEBT_RECON", src, mat, blocks)
+    _build_horizontal_sheet(wb, "11_SENIOR_DEBT_RECON", src, mat, blocks)
 
 
 def _build_shl_recon(wb: Workbook, src: OborovoSources, mat: MaterialitySettings) -> None:
@@ -1103,11 +1222,11 @@ def _build_shl_recon(wb: Workbook, src: OborovoSources, mat: MaterialitySettings
          "excel_vals": [e.shl_interest_keur for e in src.excel],
          "python_vals": [UNAVAILABLE] * n, "item": get_item("SH.06")},
     ]
-    _build_horizontal_sheet(wb, "11_SHL_RECON", src, mat, blocks)
+    _build_horizontal_sheet(wb, "12_SHL_RECON", src, mat, blocks)
 
 
 def _build_opening_balances(wb: Workbook, src: OborovoSources, mat: MaterialitySettings) -> None:
-    ws = wb.create_sheet("12_OPENING_BALANCES")
+    ws = wb.create_sheet("13_OPENING_BALANCES")
     ws.sheet_view.showGridLines = False
     _header_row(ws, ["Code", "Item", "Excel", "Python", "Delta", "Source", "Classification"])
     _set_col_widths(ws, {1: 8, 2: 40, 3: 16, 4: 16, 5: 12, 6: 36, 7: 26})
@@ -1149,7 +1268,7 @@ def _build_opening_balances(wb: Workbook, src: OborovoSources, mat: MaterialityS
 
 
 def _build_delta_register(wb: Workbook, src: OborovoSources, mat: MaterialitySettings) -> None:
-    ws = wb.create_sheet("13_DELTA_REGISTER")
+    ws = wb.create_sheet("14_DELTA_REGISTER")
     ws.sheet_view.showGridLines = False
     headers = [
         "delta_id", "baseline_id", "section", "code", "line_item", "period",
@@ -1278,7 +1397,7 @@ def _build_delta_register(wb: Workbook, src: OborovoSources, mat: MaterialitySet
 
 
 def _build_source_map(wb: Workbook, src: OborovoSources, mat: MaterialitySettings) -> None:
-    ws = wb.create_sheet("14_SOURCE_MAP")
+    ws = wb.create_sheet("15_SOURCE_MAP")
     ws.sheet_view.showGridLines = False
     headers = ["section", "code", "line_item", "excel_sheet", "excel_field",
                "python_module", "python_field", "python_function"]
@@ -1349,7 +1468,7 @@ def _build_source_map(wb: Workbook, src: OborovoSources, mat: MaterialitySetting
 
 
 def _build_raw_recon(wb: Workbook, src: OborovoSources, mat: MaterialitySettings) -> None:
-    ws = wb.create_sheet("15_RAW_RECON")
+    ws = wb.create_sheet("16_RAW_RECON")
     ws.sheet_view.showGridLines = False
     headers = [
         "baseline_id", "period_index", "period_end", "section", "code", "line_item",
@@ -1416,13 +1535,18 @@ def build_workbook(
     sources: OborovoSources,
     output_path: str,
     materiality: MaterialitySettings = DEFAULT_MATERIALITY,
+    generation_ts: str = "",
+    pr_head: str = "",
 ) -> Workbook:
     """Build the reconciliation workbook and save to output_path. Returns the Workbook."""
+    if not generation_ts:
+        generation_ts = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
     wb = Workbook()
     # Remove default sheet
     if "Sheet" in wb.sheetnames:
         del wb["Sheet"]
 
+    _build_readme(wb, sources, generation_ts, pr_head)
     _build_exec_recon(wb, sources, materiality)
     _build_inputs_recon(wb, sources, materiality)
     _build_timeline_recon(wb, sources, materiality)
