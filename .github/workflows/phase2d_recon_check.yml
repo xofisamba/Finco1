@@ -1,0 +1,93 @@
+name: Phase 2D — Excel↔Python Reconciliation Check
+
+on:
+  push:
+    branches:
+      - phase2d-excel-python-recon
+  pull_request:
+    branches:
+      - phase2d-excel-python-recon
+      - phase2c-senior-debt-fixed-point
+      - phase2b-tax-cfads-core
+      - main
+
+jobs:
+  recon-check:
+    name: Reconciliation framework tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install -c constraints.txt -e .
+          pip install -c constraints.txt pytest openpyxl
+
+      - name: Verify protected scopes unchanged
+        run: |
+          git diff origin/main...HEAD -- \
+            app/waterfall_core.py \
+            app/waterfall_runner.py \
+            finco_core/waterfall/waterfall_engine.py \
+            financial_engine/ \
+            finco_parity/baselines/ \
+            | grep -c '^' || true
+          echo "Checking no runtime files modified by Phase 2D..."
+          git diff origin/phase2c-senior-debt-fixed-point...HEAD -- \
+            app/waterfall_core.py \
+            app/waterfall_runner.py \
+            finco_core/waterfall/waterfall_engine.py \
+            finco_parity/baselines/ \
+            | diff /dev/stdin /dev/null && echo "PASS: Protected scope clean" || \
+            (echo "FAIL: Protected-scope files modified"; exit 1)
+
+      - name: Run Phase 2D reconciliation tests
+        run: |
+          python -m pytest tests/test_phase2d_recon.py -v
+
+      - name: Generate reconciliation workbook
+        run: |
+          python -m finco_recon.generate_oborovo \
+            --output artifacts/reconciliation/oborovo_excel_python_reconciliation.xlsx
+          ls -lh artifacts/reconciliation/oborovo_excel_python_reconciliation.xlsx
+
+      - name: Verify workbook sheet count
+        run: |
+          python - <<'EOF'
+          import openpyxl, sys
+          wb = openpyxl.load_workbook(
+              "artifacts/reconciliation/oborovo_excel_python_reconciliation.xlsx",
+              read_only=True, data_only=True)
+          sheets = wb.sheetnames
+          expected = 16
+          print(f"Sheets ({len(sheets)}): {', '.join(sheets)}")
+          if len(sheets) != expected:
+              print(f"FAIL: expected {expected} sheets, got {len(sheets)}", file=sys.stderr)
+              sys.exit(1)
+          print("PASS: all 16 sheets present")
+          wb.close()
+          EOF
+
+      - name: Upload reconciliation workbook
+        uses: actions/upload-artifact@v4
+        with:
+          name: oborovo-excel-python-reconciliation
+          path: artifacts/reconciliation/oborovo_excel_python_reconciliation.xlsx
+          retention-days: 30
+
+      - name: Regression — Phase 2A tests still pass
+        run: |
+          python -m pytest tests/test_phase2a_*.py -q
+
+      - name: Regression — Phase 2B tests still pass
+        run: |
+          python -m pytest tests/test_phase2b_*.py -q
+
+      - name: Regression — Phase 2C tests still pass
+        run: |
+          python -m pytest tests/test_phase2c_*.py -q
