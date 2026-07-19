@@ -112,17 +112,21 @@ class _CountingProvider:
 @pytest.mark.parametrize("baseline_id", _ALL_BASELINES)
 def test_operating_core_v1_pass(baseline_id: str):
     """All four baselines must reach OPERATING_CORE_V1 IDENTICAL."""
-    if baseline_id in ("oborovo", "tuho"):
-        reason = (
-            "Governed drift [B3]: clean engine generically includes capitalised bank financing costs "
-            "in depreciable basis; legacy reference baseline excludes them. "
+    if baseline_id == "oborovo":
+        pytest.xfail(
+            "Governed drift [B1+B3-book]: oborovo OPEX corrected to exact XLSM values (B1); "
+            "clean engine book depreciable basis now includes bank financing costs per Excel "
+            "Dep-sheet evidence (B3). Tax depreciation is UNCHANGED from baseline. "
+            "Baseline refresh requires explicit governance approval."
         )
-        if baseline_id == "oborovo":
-            reason += (
-                "Also [B1]: oborovo Y1 OPEX corrected to exact XLSM values. "
-            )
-        reason += "Baseline refresh requires explicit governance approval."
-        pytest.xfail(reason)
+    if baseline_id == "tuho":
+        pytest.xfail(
+            "Governed drift [B3-book]: TUHO book depreciable basis now includes capitalised "
+            "bank financing costs (idc_keur=1519.56, bank_fees_keur=782.61) per the generic "
+            "CapexStructure contract that these fields represent capitalised costs. "
+            "Tax depreciation is UNCHANGED from baseline. "
+            "Baseline refresh requires explicit governance approval."
+        )
     committed = _load_baseline(baseline_id)
     candidate = get_candidate_snapshot(
         baseline_id, baseline_commit_sha=_BASELINE_COMMIT_SHA
@@ -237,13 +241,19 @@ def test_ebitda_parity(baseline_id: str):
 
 @pytest.mark.parametrize("baseline_id", _ALL_BASELINES)
 def test_book_depreciation_parity(baseline_id: str):
-    if baseline_id in ("oborovo", "tuho"):
+    if baseline_id == "oborovo":
         pytest.xfail(
-            f"Governed drift [B3] for {baseline_id}: clean engine now generically includes "
-            "capitalised bank financing costs (IDC + commitment fees + bank fees + VAT) in "
-            "depreciable basis via CapexStructure.depreciable_capex_items(). "
-            "Evidence confirmed from Oborovo Excel Dep sheet; same generic policy applies to TUHO. "
-            "Legacy reference baseline excludes these costs. "
+            "Governed drift [B3-book]: clean engine BOOK depreciable basis now includes "
+            "bank financing costs (IDC + commitment fees + bank fees + VAT, total ~1 974 kEUR) "
+            "per Oborovo Excel Dep-sheet evidence. TAX depreciation is unchanged from baseline. "
+            "Baseline refresh requires explicit governance approval."
+        )
+    if baseline_id == "tuho":
+        pytest.xfail(
+            "Governed drift [B3-book]: TUHO BOOK depreciable basis now includes capitalised "
+            "bank financing costs (idc_keur=1519.56, bank_fees_keur=782.61) per CapexStructure "
+            "field contract (these fields represent capitalised costs in the asset base). "
+            "TAX depreciation is unchanged from baseline. "
             "Baseline refresh requires explicit governance approval."
         )
     baseline = _load_baseline(baseline_id)
@@ -259,13 +269,8 @@ def test_book_depreciation_parity(baseline_id: str):
 
 @pytest.mark.parametrize("baseline_id", _ALL_BASELINES)
 def test_tax_depreciation_parity(baseline_id: str):
-    if baseline_id in ("oborovo", "tuho"):
-        pytest.xfail(
-            f"Governed drift [B3] for {baseline_id}: same as book_depreciation — clean engine "
-            "depreciable basis expanded to include bank financing costs generically. "
-            "Phase 2A uses same formula for book and tax. "
-            "Baseline refresh requires explicit governance approval."
-        )
+    # No xfail: B3 changes BOOK depreciation only; TAX basis is unchanged (hard capex only).
+    # Tax treatment of capitalised financing costs is OPEN — no authoritative tax evidence.
     baseline = _load_baseline(baseline_id)
     adapted = _get_adapted_inputs(baseline_id)
     result = run_operating_model(adapted)

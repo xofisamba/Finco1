@@ -99,17 +99,29 @@ def from_project_inputs(
         for item in inputs.opex
     )
 
-    capex_items_for_dep = tuple(
-        CapexItemForDep(
+    def _to_dep_item(item) -> CapexItemForDep:
+        return CapexItemForDep(
             name=item.name,
             amount_keur=item.amount_keur,
             asset_class_code=item.asset_class.value,
             useful_life_override=item.useful_life_override,
         )
-        for item in inputs.capex.depreciable_capex_items()
+
+    # BOOK depreciable basis: hard capex + capitalised bank financing costs.
+    # Evidence (Oborovo Excel Dep sheet): dep_idc_keur, dep_commitment_fees_keur,
+    # dep_bank_fees_keur, dep_vat_keur all non-zero. SHL IDC excluded (OPEN).
+    book_capex_items_for_dep = tuple(
+        _to_dep_item(item) for item in inputs.capex.book_depreciable_capex_items()
     )
 
-    # Explicit mapping of financing tenor → depreciation driver.
+    # TAX depreciable basis: hard capex only. Tax treatment of capitalised
+    # financing costs is OPEN — no authoritative tax-source evidence validated yet.
+    tax_capex_items_for_dep = tuple(
+        _to_dep_item(item) for item in inputs.capex.tax_depreciable_capex_items()
+    )
+
+    # Explicit mapping of financing tenor → book depreciation driver.
+    # OPEN: Excel Dep-sheet formula for useful life is unverified from data_only extraction.
     # No silent default: if the field is absent the AttributeError surfaces immediately.
     financial_cost_useful_life_years: int = inputs.financing.senior_tenor_years
 
@@ -119,7 +131,8 @@ def from_project_inputs(
         revenue=revenue,
         opex=OpexInput(items=opex_items),
         depreciation=DepreciationInput(
-            capex_items_for_depreciation=capex_items_for_dep,
+            book_capex_items_for_depreciation=book_capex_items_for_dep,
+            tax_capex_items_for_depreciation=tax_capex_items_for_dep,
             financial_cost_useful_life_years=financial_cost_useful_life_years,
         ),
         source=InputProvenance(

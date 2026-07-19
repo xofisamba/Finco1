@@ -776,17 +776,29 @@ class TestFinancialIdentities:
             source_id="test_b3_clean_engine_adapter",
             baseline_commit_sha="test",
         )
-        dep_items = adapted.depreciation.capex_items_for_depreciation
-        fin_items = [i for i in dep_items if i.asset_class_code == AssetClass.FINANCIAL_COSTS.value]
-        assert fin_items, (
-            "Clean engine DepreciationInput must include FINANCIAL_COSTS items. "
+        book_items = adapted.depreciation.book_capex_items_for_depreciation
+        tax_items = adapted.depreciation.tax_capex_items_for_depreciation
+
+        # Book basis must include FINANCIAL_COSTS items
+        book_fin = [i for i in book_items if i.asset_class_code == AssetClass.FINANCIAL_COSTS.value]
+        assert book_fin, (
+            "Clean engine DepreciationInput.book_capex_items_for_depreciation must include "
+            "FINANCIAL_COSTS items per Excel Dep sheet evidence. "
             "Fix must be in financial_engine/adapters/project_inputs.py, not waterfall_core.py."
         )
-        total_fin_basis = sum(i.amount_keur for i in fin_items)
+
+        # Tax basis must NOT include FINANCIAL_COSTS items (tax treatment is OPEN)
+        tax_fin = [i for i in tax_items if i.asset_class_code == AssetClass.FINANCIAL_COSTS.value]
+        assert not tax_fin, (
+            "Clean engine DepreciationInput.tax_capex_items_for_depreciation must NOT include "
+            "FINANCIAL_COSTS items — tax treatment is OPEN; no authoritative tax evidence validated."
+        )
+
         capex = factory.capex
         expected = capex.idc_keur + capex.commitment_fees_keur + capex.bank_fees_keur + capex.vat_costs_keur
-        assert total_fin_basis == pytest.approx(expected, abs=0.01), (
-            f"Adapter financing-cost basis {total_fin_basis:.2f} != expected {expected:.2f}"
+        total_book_fin = sum(i.amount_keur for i in book_fin)
+        assert total_book_fin == pytest.approx(expected, abs=0.01), (
+            f"Book financing-cost basis {total_book_fin:.2f} != expected {expected:.2f}"
         )
 
     def test_b3_bank_idc_excel_evidence(self):
@@ -924,9 +936,65 @@ class TestFinancialIdentities:
             f"B3 OPEN: financial_cost_useful_life_years={adapted.depreciation.financial_cost_useful_life_years} "
             f"mapped from senior_tenor_years={factory.financing.senior_tenor_years}. "
             "Excel Dep-sheet formula for IDC/commitment/bank/VAT useful life is UNVERIFIED "
-            "from data_only fixture. Manual review required.",
+            "from data_only fixture. This applies to BOOK depreciation only; tax is OPEN separately. "
+            "Manual review required.",
             UserWarning, stacklevel=2,
         )
+
+    def test_b3_book_depreciation_differs_from_tax(self):
+        """B3 (L.3/L.4): Book and tax depreciation must be distinct after B3.
+
+        B3 expands the BOOK basis to include financing costs.
+        TAX basis remains hard capex only (tax treatment is OPEN).
+        This test proves the two are computed independently.
+        """
+        from app.project_factories import create_default_oborovo
+        from financial_engine.adapters.project_inputs import from_project_inputs
+        from financial_engine.orchestrator import run_operating_model
+
+        factory = create_default_oborovo()
+        adapted = from_project_inputs(factory, source_id="test", baseline_commit_sha="test")
+        result = run_operating_model(adapted)
+
+        op = [p for p in result.periods if p.is_operation]
+        # Book > Tax because book includes financing costs
+        assert op[0].book_depreciation_keur > op[0].tax_depreciation_keur, (
+            f"Book dep {op[0].book_depreciation_keur:.4f} must exceed tax dep "
+            f"{op[0].tax_depreciation_keur:.4f} — book includes bank financing costs"
+        )
+        # Delta should correspond to ~1 974 kEUR extra basis over 14 years (semi-annual)
+        delta = op[0].book_depreciation_keur - op[0].tax_depreciation_keur
+        assert 50 < delta < 100, (
+            f"Book-vs-tax delta at period 1: {delta:.2f} kEUR — expected ~71 kEUR "
+            "(1 974 kEUR over 14 years semi-annual)"
+        )
+
+    def test_b3_tax_depreciation_unchanged_from_pre_b3(self):
+        """B3 (L.4): TAX depreciation must equal the pre-B3 baseline value for Oborovo.
+
+        Tax treatment of capitalised financing costs is OPEN.
+        B3 must NOT change the tax depreciation output.
+        """
+        import json
+        from app.project_factories import create_default_oborovo
+        from financial_engine.adapters.project_inputs import from_project_inputs
+        from financial_engine.orchestrator import run_operating_model
+
+        factory = create_default_oborovo()
+        adapted = from_project_inputs(factory, source_id="test", baseline_commit_sha="test")
+        result = run_operating_model(adapted)
+        op = [p for p in result.periods if p.is_operation]
+
+        with open("finco_parity/baselines/snapshots/oborovo.json") as f:
+            baseline = json.load(f)
+        bl_tax = baseline["operating_schedules"]["tax_depreciation_keur"]
+
+        for i, (engine_v, bl_v) in enumerate(zip([p.tax_depreciation_keur for p in op], bl_tax)):
+            assert engine_v == pytest.approx(bl_v, abs=1e-9), (
+                f"Tax depreciation period {i} changed after B3: "
+                f"engine={engine_v:.6f}, baseline={bl_v:.6f}. "
+                "B3 must only affect BOOK depreciation."
+            )
 
     def test_b3_frozen_baseline_not_auto_regenerated(self):
         """B3 (L.12): Frozen baseline snapshots must NOT be regenerated to absorb clean-engine changes.

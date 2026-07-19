@@ -244,13 +244,29 @@ class CapexStructure:
             if getattr(self, field).amount_keur != 0
         )
 
-    def depreciable_capex_items(self) -> tuple[CapexItem, ...]:
-        """Return hard capex items plus capitalised bank financing costs.
+    def book_depreciable_capex_items(self) -> tuple[CapexItem, ...]:
+        """Return items included in the BOOK depreciable basis.
 
-        Bank IDC, commitment fees, bank fees, and VAT are capitalised costs that
-        form part of the gross asset basis. The Excel Dep sheet confirms these are
-        depreciable (dep_idc_keur, dep_commitment_fees_keur, dep_bank_fees_keur
-        are non-zero). SHL IDC is excluded — it is out of the clean engine scope.
+        Contract: hard capex items (capex_items()) plus bank financing costs
+        capitalised into the asset base:
+          - idc_keur        : bank interest during construction, capitalised
+          - commitment_fees_keur: bank commitment fees, capitalised
+          - bank_fees_keur  : bank structuring / arrangement fees, capitalised
+          - vat_costs_keur  : VAT on capital expenditure, capitalised
+
+        These fields are on CapexStructure (not OpexStructure) because they
+        represent capitalised costs forming part of the gross asset value.
+        Their presence here is itself the evidence of capitalisation.
+
+        Excel Dep-sheet evidence (Oborovo): dep_idc_keur, dep_commitment_fees_keur,
+        dep_bank_fees_keur, dep_vat_keur are all non-zero across operating periods,
+        confirming these costs enter the book depreciable basis.
+
+        SHL IDC is excluded — it is on FinancingStructure, not CapexStructure,
+        and its book/tax treatment is OPEN.
+
+        Useful-life convention for the financing-cost bundle is OPEN:
+        currently mapped from senior_tenor_years in the adapter.
         """
         items = list(self.capex_items())
         fin_total = self.idc_keur + self.commitment_fees_keur + self.bank_fees_keur + self.vat_costs_keur
@@ -261,6 +277,25 @@ class CapexStructure:
                 asset_class=AssetClass.FINANCIAL_COSTS,
             ))
         return tuple(items)
+
+    def tax_depreciable_capex_items(self) -> tuple[CapexItem, ...]:
+        """Return items included in the TAX depreciable basis.
+
+        Currently returns hard capex only (same as capex_items()).
+
+        Tax treatment of capitalised financing costs (IDC, commitment fees,
+        bank fees, VAT) is OPEN — no authoritative per-project tax evidence
+        has been validated. These items are excluded until explicit tax
+        source evidence is confirmed for each item.
+        """
+        return self.capex_items()
+
+    def depreciable_capex_items(self) -> tuple[CapexItem, ...]:
+        """Backward-compat alias for book_depreciable_capex_items().
+
+        Prefer book_depreciable_capex_items() for new callers.
+        """
+        return self.book_depreciable_capex_items()
 
     @property
     def hard_capex_keur(self) -> float:
