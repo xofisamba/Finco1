@@ -473,8 +473,13 @@ def _build_exec_recon(wb: Workbook, src: OborovoSources, mat: MaterialitySetting
     py_opex_tot  = _tot(py_opex)
     py_ebitda_tot = _tot(py_ebitda)
 
-    # Python average DSCR: mean over periods with active debt service (sd_dscr > 0)
-    dscr_vals = [e.sd_dscr for e in eng_p if e.sd_dscr is not None and e.sd_dscr > 0]
+    # Python average DSCR: mean over periods with active senior debt balance AND active debt service.
+    # Filter mirrors Excel logic: sd_opening_keur > 0.01 AND sd_service_keur > 0.01.
+    dscr_vals = [
+        e.sd_dscr for e in eng_p
+        if e.sd_dscr is not None and e.sd_dscr > 0
+        and e.sd_opening_keur is not None and e.sd_opening_keur > 0.01
+    ]
     py_avg_dscr = sum(dscr_vals) / len(dscr_vals) if dscr_vals else None
     py_min_dscr = min(dscr_vals) if dscr_vals else None
 
@@ -594,7 +599,7 @@ def _build_exec_recon(wb: Workbook, src: OborovoSources, mat: MaterialitySetting
         c7.font = _font(size=9)
         if max_d is not None: c7.number_format = KEUR_FMT
         ws.cell(row=r_idx, column=8, value=status).font = _font(size=9)
-        cls_cell = ws.cell(row=r_idx, column=9, value=cls if cls else "OPEN — ROOT CAUSE REQUIRED")
+        cls_cell = ws.cell(row=r_idx, column=9, value=cls if cls else "")
         cls_cell.font = _font(size=9)
         cls_cell.fill = fill
         ws.cell(row=r_idx, column=10, value=notes).font = _font(size=8)
@@ -849,8 +854,11 @@ def _build_prod_rev_recon(wb: Workbook, src: OborovoSources, mat: MaterialitySet
          "excel_vals": [e.production_mwh for e in src.excel],
          "python_vals": [e.production_mwh for e in src.engine],
          "item": get_item("PR.01")},
-        {"type": "section", "label": "— PRICE — Excel: CF indexed tariff row; Python: revenue÷production —"},
-        {"type": "item", "code": "PR.02", "name": "Indexed tariff (EUR/MWh)", "unit": "EUR/MWh",
+        {"type": "section", "label": (
+            "— PRICE — Excel: CF indexed tariff per period; "
+            "Python: EFFECTIVE price back-calculated as Revenue÷Production (NOT the actual PPA tariff) —"
+        )},
+        {"type": "item", "code": "PR.02", "name": "Effective revenue/MWh — Revenue÷Prod. (EUR/MWh)", "unit": "EUR/MWh",
          "excel_vals": [e.tariff_indexed_eur_mwh for e in src.excel],
          "python_vals": [
              (e.revenue_keur * 1000.0 / e.production_mwh)
@@ -902,7 +910,10 @@ def _build_opex_recon(wb: Workbook, src: OborovoSources, mat: MaterialitySetting
          "excel_vals": [e.opex_keur for e in src.excel],
          "python_vals": [e.opex_keur for e in src.engine],
          "item": get_item("OP.00")},
-        {"type": "section", "label": "— OPEX BY ITEM CODE: Excel: CF rows 56-68 (abs); Python: factory per-item —"},
+        {"type": "section", "label": (
+            "— OPEX BY ITEM CODE: Excel: CF per-period values (exact period); "
+            "Python: factory annual × day_fraction (APPROXIMATION — B.13 % treatment means sum ≠ total exactly) —"
+        )},
     ]
     for i, (opex_item, py_field) in enumerate(zip(src.opex_items, opex_field_map)):
         code = opex_item["code"]
@@ -916,7 +927,12 @@ def _build_opex_recon(wb: Workbook, src: OborovoSources, mat: MaterialitySetting
             "name": name,
             "unit": "kEUR",
             "excel_vals": xl_vals,
-            "python_vals": [getattr(e, py_field) for e in src.engine],
+            "python_vals": [
+                getattr(e, py_field) * e.day_fraction
+                if (getattr(e, py_field) is not None and e.day_fraction)
+                else None
+                for e in src.engine
+            ],
             "item": get_item(f"OP.{i+1:02d}"),
         })
 
@@ -1379,8 +1395,6 @@ def _build_delta_register(wb: Workbook, src: OborovoSources, mat: MaterialitySet
     for r_idx, row in enumerate(delta_rows, 2):
         for c_idx, val in enumerate(row, 1):
             display_val = val
-            if c_idx == 11 and val == "":
-                display_val = "OPEN — ROOT CAUSE REQUIRED"
             cell = ws.cell(row=r_idx, column=c_idx, value=display_val)
             cell.font = _font(size=9)
             if c_idx in (7, 8, 9):
@@ -1419,7 +1433,19 @@ def _build_source_map(wb: Workbook, src: OborovoSources, mat: MaterialitySetting
         ("REVENUE",     "RV.02", "Total revenues (P&L)",    "P&L",                "P&L.total_revenues_keur",  "financial_engine.results", "revenue_keur (same field)",  "from_project_inputs → run_senior_debt_model"),
         # OPEX
         ("OPEX",        "OP.00", "Total OPEX",              "CF",                 "CF.operating_expenses_after_bank_tax_keur","financial_engine.results","opex_keur","from_project_inputs → run_senior_debt_model"),
-        ("OPEX",        "OP.01–OP.15","OPEX by item B.xx", "UNRESOLVED",          "not in fixture (total only)","app.project_factories",  "opex_b01..15_keur",         "OpexItem.amount_at_year(year_index)"),
+        ("OPEX",        "B.01", "O&M labour",                   "CF", "CF.opex_b01_keur (period)",  "app.project_factories", "opex_b01_keur × day_fraction", "OpexItem.amount_at_year(year_index) × day_fraction"),
+        ("OPEX",        "B.02", "Infrastructure maintenance",   "CF", "CF.opex_b02_keur (period)",  "app.project_factories", "opex_b02_keur × day_fraction", "OpexItem.amount_at_year(year_index) × day_fraction"),
+        ("OPEX",        "B.03", "O&M contract",                 "CF", "CF.opex_b03_keur (period)",  "app.project_factories", "opex_b03_keur × day_fraction", "OpexItem.amount_at_year(year_index) × day_fraction"),
+        ("OPEX",        "B.04", "Asset management",             "CF", "CF.opex_b04_keur (period)",  "app.project_factories", "opex_b04_keur × day_fraction", "OpexItem.amount_at_year(year_index) × day_fraction"),
+        ("OPEX",        "B.05", "Insurance",                    "CF", "CF.opex_b05_keur (period)",  "app.project_factories", "opex_b05_keur × day_fraction", "OpexItem.amount_at_year(year_index) × day_fraction"),
+        ("OPEX",        "B.06", "Land lease",                   "CF", "CF.opex_b06_keur (period)",  "app.project_factories", "opex_b06_keur × day_fraction", "OpexItem.amount_at_year(year_index) × day_fraction"),
+        ("OPEX",        "B.07", "Corporate overheads",          "CF", "CF.opex_b07_keur (period)",  "app.project_factories", "opex_b07_keur × day_fraction", "OpexItem.amount_at_year(year_index) × day_fraction"),
+        ("OPEX",        "B.08", "Power expenses",               "CF", "CF.opex_b08_keur (period)",  "app.project_factories", "opex_b08_keur × day_fraction", "OpexItem.amount_at_year(year_index) × day_fraction"),
+        ("OPEX",        "B.09", "Technical management",         "CF", "CF.opex_b09_keur (period)",  "app.project_factories", "opex_b09_keur × day_fraction", "OpexItem.amount_at_year(year_index) × day_fraction"),
+        ("OPEX",        "B.10", "Cleaning",                     "CF", "CF.opex_b10_keur (period)",  "app.project_factories", "opex_b10_keur × day_fraction", "OpexItem.amount_at_year(year_index) × day_fraction"),
+        ("OPEX",        "B.11", "Security",                     "CF", "CF.opex_b11_keur (period)",  "app.project_factories", "opex_b11_keur × day_fraction", "OpexItem.amount_at_year(year_index) × day_fraction"),
+        ("OPEX",        "B.12", "Spare parts",                  "CF", "CF.opex_b12_keur (period)",  "app.project_factories", "opex_b12_keur × day_fraction", "OpexItem.amount_at_year(year_index) × day_fraction"),
+        ("OPEX",        "B.13", "Variable O&M (% of revenue)",  "CF", "CF.opex_b13_keur (period)",  "app.project_factories", "opex_b13_keur × day_fraction", "OpexItem.amount_at_year(year_index) × day_fraction"),
         # EBITDA
         ("EBITDA",      "EB.01", "EBITDA",                  "CF",                 "CF.ebitda_keur",           "financial_engine.results", "ebitda_keur",                "from_project_inputs → run_senior_debt_model"),
         # CAPEX

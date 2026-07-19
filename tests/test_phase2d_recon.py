@@ -611,6 +611,90 @@ class TestFinancialIdentities:
         delta = abs(sources.excel_total_debt_keur - sources.engine_debt_size_keur)
         assert delta > 1000, f"Debt delta only {delta:.1f} kEUR — expected >1000"
 
+    def test_excel_opex_b_items_sum_to_total(self, sources):
+        """Excel: sum(B.01-B.13 period values) = total opex_keur per period (exact identity).
+
+        This test verifies the Excel fixture is consistent: the per-item B.xx columns
+        from the CF sheet sum exactly to the CF total opex column.
+        """
+        opex_fields = [
+            "opex_b01_keur", "opex_b02_keur", "opex_b03_keur", "opex_b04_keur",
+            "opex_b05_keur", "opex_b06_keur", "opex_b07_keur", "opex_b08_keur",
+            "opex_b09_keur", "opex_b10_keur", "opex_b11_keur", "opex_b12_keur",
+            "opex_b13_keur",
+        ]
+        failures = []
+        for i, ep in enumerate(sources.excel):
+            if ep.opex_keur is None or ep.opex_keur == 0:
+                continue
+            items = [getattr(ep, f) for f in opex_fields]
+            if any(v is None for v in items):
+                continue
+            period_sum = sum(items)
+            residual = abs(period_sum - ep.opex_keur)
+            if residual > 0.01:
+                failures.append(
+                    f"Period {i}: sum(B.01-13)={period_sum:.4f} vs opex={ep.opex_keur:.4f}, "
+                    f"residual={residual:.6f} kEUR"
+                )
+        assert not failures, (
+            "Excel B.xx item sum deviates from total opex (should be exact from CF sheet):\n"
+            + "\n".join(failures[:5])
+        )
+
+    def test_engine_opex_bxx_annual_amounts_present(self, sources):
+        """Engine EngineData B.xx fields contain annual amounts (not per-period).
+
+        Documents the known design: EngineData.opex_bXX_keur = OpexItem.amount_at_year(year_index)
+        (annual kEUR/yr). The workbook shows these × day_fraction as a per-period approximation.
+        The sum(B.xx × day_frac) ≠ opex_keur exactly because B.13 is % of other items.
+        """
+        import warnings
+        opex_fields = [
+            "opex_b{:02d}_keur".format(j) for j in range(1, 14)
+        ]
+        # Verify all fields are populated for period 0
+        eg0 = sources.engine[0]
+        for f in opex_fields:
+            assert getattr(eg0, f) is not None, f"EngineData.{f} is None at period 0"
+        # Document the ratio: annual / day_fraction ≈ 2× per-period opex
+        # (annual amounts, not semi-annual)
+        opex_0 = eg0.opex_keur
+        b_sum_annual = sum(getattr(eg0, f) for f in opex_fields)
+        ratio = b_sum_annual / opex_0 if opex_0 else 0
+        warnings.warn(
+            f"Engine B.xx fields are ANNUAL amounts. "
+            f"sum(B.01-13 annual) / opex_period = {ratio:.3f} at period 0 "
+            f"(expect ≈ 2.0 for semi-annual periods). "
+            f"Workbook shows annual × day_fraction as per-period approximation.",
+            UserWarning, stacklevel=1,
+        )
+
+    def test_avg_dscr_reasonable_range(self, sources):
+        """Python average DSCR (with corrected filter) must be in plausible range [1.0, 3.0].
+
+        The filter now requires sd_opening_keur > 0.01 to exclude pre-COD periods
+        where DSCR calculations are not meaningful.
+        """
+        from finco_recon.sources import load_oborovo_sources
+        src = sources
+        eng_p = src.engine
+        dscr_vals = [
+            e.sd_dscr for e in eng_p
+            if e.sd_dscr is not None and e.sd_dscr > 0
+            and e.sd_opening_keur is not None and e.sd_opening_keur > 0.01
+        ]
+        assert dscr_vals, "No valid DSCR periods found after filter"
+        avg_dscr = sum(dscr_vals) / len(dscr_vals)
+        assert 1.0 <= avg_dscr <= 3.0, (
+            f"Average DSCR {avg_dscr:.3f} outside plausible range [1.0, 3.0]. "
+            "Check DSCR filter: sd_dscr > 0 AND sd_opening_keur > 0.01"
+        )
+        # Count: at least 10 periods with active debt service
+        assert len(dscr_vals) >= 10, (
+            f"Only {len(dscr_vals)} periods pass DSCR filter — expected at least 10"
+        )
+
     def test_two_sided_coverage_required_items(self, sources):
         """Verify key reconciled items have both Excel and Python values in at least one period."""
         required_two_sided = {
