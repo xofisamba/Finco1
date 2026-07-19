@@ -185,6 +185,11 @@ class OborovoSources:
     excel_min_dscr: float = 0.0
     excel_total_capex_keur: float = 0.0
     excel_target_dscr: float = 0.0
+    # Computed Excel senior-debt schedule (reconstructed from DS sheet + opening balance)
+    # Source: excel_total_debt_keur (opening) + DS.senior_principal_keur per period
+    # These are genuine Excel-provenance values, not legacy snapshot.
+    excel_sd_opening_keur: list[float | None] = field(default_factory=list)
+    excel_sd_closing_keur: list[float | None] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -593,6 +598,23 @@ def load_oborovo_sources() -> OborovoSources:
     if excel_shl:
         shl_idc = abs(float(excel_shl[0].get("capitalized_interest") or 0.0))
 
+    # Reconstruct Excel senior-debt opening/closing schedule from DS sheet principal.
+    # Source: excel_total_debt_keur as period-0 opening; closing = opening - principal.
+    # This is genuine Excel provenance: opening balance from golden KPI extract,
+    # per-period principal from DS.senior_principal_keur column in period_diagnostics.
+    excel_opening: list[float | None] = []
+    excel_closing: list[float | None] = []
+    _opening = golden["excel_total_debt_keur"] if golden["excel_total_debt_keur"] > 0 else None
+    for ep in excel:
+        excel_opening.append(_opening)
+        principal = ep.senior_principal_keur
+        if _opening is not None and principal is not None:
+            _opening = _opening - principal
+            excel_closing.append(_opening)
+        else:
+            _opening = None
+            excel_closing.append(None)
+
     return OborovoSources(
         excel=excel,
         legacy=legacy,
@@ -622,4 +644,6 @@ def load_oborovo_sources() -> OborovoSources:
         excel_min_dscr=golden["excel_min_dscr"],
         excel_total_capex_keur=golden["excel_total_capex_keur"],
         excel_target_dscr=golden["excel_target_dscr"],
+        excel_sd_opening_keur=excel_opening,
+        excel_sd_closing_keur=excel_closing,
     )

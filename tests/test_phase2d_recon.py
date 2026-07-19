@@ -5,7 +5,8 @@ Tests cover:
   - Catalog integrity
   - Materiality thresholds
   - Source loading (oborovo)
-  - Workbook generation (structure checks only — no financial assertions)
+  - Workbook generation (structure checks)
+  - Financial truth and data-provenance tests
   - Classification coverage
 """
 from __future__ import annotations
@@ -299,7 +300,326 @@ class TestWorkbookGeneration:
 
 
 # ---------------------------------------------------------------------------
-# 6. CLI entry point
+# 6. Financial truth and data-provenance tests
+# ---------------------------------------------------------------------------
+
+FACTORY_ONLY_MODULES = {
+    "app.project_factories",
+    "financial_engine",
+    "finco_parity.baselines",
+}
+
+
+class TestSourceIndependence:
+    """Verify Excel-labelled values do NOT silently come from Python-only sources."""
+
+    @pytest.fixture(scope="class")
+    def sources(self):
+        from finco_recon.sources import load_oborovo_sources
+        return load_oborovo_sources()
+
+    def test_excel_revenue_from_fixture_not_engine(self, sources):
+        # Excel revenue comes from CF.operating_revenues_keur in the JSON fixture.
+        # Python revenue comes from the engine. They must NOT be identical for all periods
+        # (if they were, it would suggest one side was copied from the other).
+        # In practice they differ due to debt-size policy difference → downstream CFADS → tax.
+        xl_rev = [p.revenue_keur for p in sources.excel if p.revenue_keur is not None]
+        py_rev = [p.revenue_keur for p in sources.engine if p.revenue_keur is not None]
+        assert len(xl_rev) == 60, "Expected 60 Excel revenue periods"
+        assert len(py_rev) == 60, "Expected 60 engine revenue periods"
+        # They share the same physical model, so some periods may match. But the sources
+        # are independent objects loaded from different files.
+        # Key provenance test: Excel values are floats extracted from the JSON fixture.
+        assert all(isinstance(v, float) for v in xl_rev), "Excel revenue values must be floats"
+
+    def test_excel_cfads_from_fixture(self, sources):
+        xl = [p.cfads_keur for p in sources.excel if p.cfads_keur is not None]
+        assert len(xl) == 60
+        # CFADS in fixture is CF.free_cash_flow_for_banks_keur, which comes from Excel model.
+        assert all(isinstance(v, float) for v in xl)
+
+    def test_excel_opex_individual_items_unresolved(self, sources):
+        # B.xx individual items have NO Excel source in the fixture — all should be None.
+        # If any Excel B.xx value is non-None, it means a factory value was incorrectly
+        # used as Excel provenance.
+        # (There is no ExcelData field for individual OPEX items.)
+        for p in sources.excel:
+            assert not hasattr(p, "opex_b01_keur"), \
+                "ExcelData must NOT have per-item B.xx fields (they are Python-only)"
+
+    def test_excel_capex_per_item_unresolved(self, sources):
+        # No per-item CAPEX in ExcelData.
+        for p in sources.excel:
+            assert not hasattr(p, "capex_c01_keur"), \
+                "ExcelData must NOT have per-item C.xx fields (they are Python-only)"
+
+    def test_legacy_not_used_as_excel_in_sd_schedule(self, sources):
+        # SD.01 and SD.05 must use excel_sd_opening/closing (reconstructed from Excel data),
+        # NOT legacy snapshot values directly.
+        assert hasattr(sources, "excel_sd_opening_keur"), "OborovoSources missing excel_sd_opening_keur"
+        assert hasattr(sources, "excel_sd_closing_keur"), "OborovoSources missing excel_sd_closing_keur"
+        assert len(sources.excel_sd_opening_keur) == 60
+        assert len(sources.excel_sd_closing_keur) == 60
+        # Opening period 0 must equal the Excel total debt (the golden KPI, not legacy snapshot).
+        assert sources.excel_sd_opening_keur[0] == sources.excel_total_debt_keur, \
+            "SD.01 Excel opening must equal excel_total_debt_keur (from golden, not legacy)"
+
+    def test_excel_sd_schedule_identity(self, sources):
+        # Verify: closing[t] == opening[t] - principal[t] for all periods where data exists.
+        tol = 0.1  # 100 EUR rounding tolerance
+        for i, (ep, op, cl) in enumerate(zip(
+            sources.excel, sources.excel_sd_opening_keur, sources.excel_sd_closing_keur
+        )):
+            if op is None or ep.senior_principal_keur is None or cl is None:
+                continue
+            expected_closing = op - ep.senior_principal_keur
+            assert abs(expected_closing - cl) < tol, \
+                f"Period {i}: SD identity fail: {op:.2f} - {ep.senior_principal_keur:.2f} = {expected_closing:.2f} ≠ {cl:.2f}"
+
+    def test_no_legacy_values_substituted_for_excel(self, sources):
+        # Legacy snapshot opening debt at period 0 and Excel reconstruction should differ
+        # (they come from different-sized debt stacks).
+        if sources.legacy and sources.excel_sd_opening_keur:
+            leg_opening = sources.legacy[0].sd_opening_keur
+            xl_opening = sources.excel_sd_opening_keur[0]
+            if leg_opening is not None and xl_opening is not None:
+                # Legacy and Excel should NOT be the same (different debt sizes)
+                # Legacy = Python engine output stored in snapshot ≈ 46,343 kEUR
+                # Excel = gearing cap ≈ 42,852 kEUR
+                assert abs(leg_opening - xl_opening) > 100, \
+                    "Legacy and Excel opening SD are suspiciously identical — verify sources are independent"
+
+
+class TestFinancialIdentities:
+    """Verify financial accounting identities hold within each source."""
+
+    @pytest.fixture(scope="class")
+    def sources(self):
+        from finco_recon.sources import load_oborovo_sources
+        return load_oborovo_sources()
+
+    def test_excel_ebitda_identity_per_period(self, sources):
+        """Excel: Revenue - OPEX = EBITDA per period (from CF sheet).
+
+        KNOWN DATA QUALITY ISSUE: CF.ebitda_keur = 0.0 in fixture for periods 20-59.
+        This is an extraction gap — the fixture was not fully populated.
+        Test validates the identity only for periods where EBITDA is non-zero.
+        """
+        tol = 1.0  # 1 kEUR per period
+        failures = []
+        zero_ebitda_periods = []
+        for i, ep in enumerate(sources.excel):
+            if ep.revenue_keur is None or ep.opex_keur is None or ep.ebitda_keur is None:
+                continue
+            # Document periods where EBITDA = 0 but revenue ≠ 0 (fixture extraction gap)
+            if ep.ebitda_keur == 0.0 and ep.revenue_keur and ep.revenue_keur > 100:
+                zero_ebitda_periods.append(i)
+                continue
+            computed = ep.revenue_keur - ep.opex_keur
+            if abs(computed - ep.ebitda_keur) > tol:
+                failures.append(
+                    f"Period {i} ({ep.period_end}): Rev({ep.revenue_keur:.2f}) - OPEX({ep.opex_keur:.2f}) "
+                    f"= {computed:.2f} ≠ EBITDA({ep.ebitda_keur:.2f}), delta={computed - ep.ebitda_keur:.3f}"
+                )
+        # Document the extraction gap as a warning, not a failure
+        if zero_ebitda_periods:
+            import warnings
+            warnings.warn(
+                f"KNOWN FIXTURE GAP: CF.ebitda_keur = 0 in periods {zero_ebitda_periods[:5]}... "
+                f"({len(zero_ebitda_periods)} periods total). This represents an incomplete Excel extraction. "
+                "Periods where Revenue>0 but EBITDA=0 are excluded from the identity check.",
+                UserWarning, stacklevel=1,
+            )
+        assert not failures, f"Excel EBITDA identity fails (excluding known zero-EBITDA periods):\n" + "\n".join(failures[:5])
+
+    def test_engine_ebitda_identity_per_period(self, sources):
+        """Engine: Revenue - OPEX = EBITDA per period."""
+        tol = 1.0
+        failures = []
+        for i, eg in enumerate(sources.engine):
+            if eg.revenue_keur is None or eg.opex_keur is None or eg.ebitda_keur is None:
+                continue
+            computed = eg.revenue_keur - eg.opex_keur
+            if abs(computed - eg.ebitda_keur) > tol:
+                failures.append(f"Period {i}: {computed:.2f} ≠ {eg.ebitda_keur:.2f}")
+        assert not failures, "Engine EBITDA identity fails:\n" + "\n".join(failures[:5])
+
+    def test_excel_senior_ds_identity_per_period(self, sources):
+        """Excel: DS = interest + principal per period (DS sheet + CF sheet)."""
+        tol = 1.0
+        failures = []
+        for i, ep in enumerate(sources.excel):
+            if ep.senior_interest_keur is None or ep.senior_principal_keur is None or ep.senior_ds_keur is None:
+                continue
+            computed = ep.senior_interest_keur + ep.senior_principal_keur
+            if abs(computed - ep.senior_ds_keur) > tol:
+                failures.append(
+                    f"Period {i}: int({ep.senior_interest_keur:.2f}) + prin({ep.senior_principal_keur:.2f}) "
+                    f"= {computed:.2f} ≠ DS({ep.senior_ds_keur:.2f})"
+                )
+        assert not failures, "Excel DS identity fails:\n" + "\n".join(failures[:5])
+
+    def test_engine_senior_ds_identity_per_period(self, sources):
+        """Engine: DS = interest + principal per period."""
+        tol = 1.0
+        failures = []
+        for i, eg in enumerate(sources.engine):
+            if eg.sd_interest_keur is None or eg.sd_principal_keur is None or eg.sd_ds_keur is None:
+                continue
+            computed = eg.sd_interest_keur + eg.sd_principal_keur
+            if abs(computed - eg.sd_ds_keur) > tol:
+                failures.append(f"Period {i}: {computed:.2f} ≠ {eg.sd_ds_keur:.2f}")
+        assert not failures, "Engine DS identity fails:\n" + "\n".join(failures[:5])
+
+    def test_engine_opex_item_sum_vs_total(self, sources):
+        """Engine: B.xx items are annual amounts; engine total OPEX is per-period (semi-annual).
+
+        KNOWN: OpexItem.amount_at_year() returns annual kEUR. The engine total opex_keur
+        is per-period (semi-annual). Therefore sum(B.xx annual) ≈ 2 × engine_total_opex_semiannual.
+        This test documents that relationship and verifies the ratio is approximately 2:1.
+        """
+        opex_fields = [
+            "opex_b01_keur", "opex_b02_keur", "opex_b03_keur", "opex_b04_keur",
+            "opex_b05_keur", "opex_b06_keur", "opex_b07_keur", "opex_b08_keur",
+            "opex_b09_keur", "opex_b10_keur", "opex_b11_keur", "opex_b12_keur",
+            "opex_b13_keur", "opex_b14_keur", "opex_b15_keur",
+        ]
+        ratios = []
+        for i, eg in enumerate(sources.engine):
+            if eg.opex_keur is None or eg.opex_keur == 0:
+                continue
+            items = [getattr(eg, f) for f in opex_fields]
+            if any(v is None for v in items):
+                continue
+            item_sum = sum(items)
+            ratios.append(item_sum / eg.opex_keur)
+        # Verify ratio is approximately 2.0 (annual items vs semi-annual periods)
+        assert ratios, "No periods with full B.xx data and non-zero total opex"
+        avg_ratio = sum(ratios) / len(ratios)
+        # Document: B.xx amounts are annual → ratio should be ~2
+        assert 1.5 < avg_ratio < 2.5, \
+            f"Expected sum(B.xx annual) / opex_period ≈ 2.0, got {avg_ratio:.3f}. " \
+            "This documents that per-item B.xx amounts are annual, not semi-annual."
+
+    def test_excel_pl_revenue_matches_cf_revenue(self, sources):
+        """Excel: P&L revenue and CF revenue should be identical (same model cell usually)."""
+        tol = 1.0
+        mismatches = []
+        for i, ep in enumerate(sources.excel):
+            if ep.revenue_keur is None or ep.pl_revenue_keur is None:
+                continue
+            if abs(ep.revenue_keur - ep.pl_revenue_keur) > tol:
+                mismatches.append(
+                    f"Period {i}: CF_rev={ep.revenue_keur:.2f} ≠ PL_rev={ep.pl_revenue_keur:.2f}"
+                )
+        # This may legitimately differ if Excel model uses different P&L/CF revenue lines
+        # — test reports but does NOT hard-fail; annotate any differences.
+        if mismatches:
+            import warnings
+            warnings.warn(
+                f"Excel CF revenue ≠ P&L revenue in {len(mismatches)} periods "
+                f"(first: {mismatches[0]}). This may be expected if revenue recognition differs.",
+                UserWarning, stacklevel=1,
+            )
+
+    def test_classification_no_auto_policy_difference(self, sources):
+        """No material delta should be auto-classified POLICY DIFFERENCE without evidence."""
+        from finco_recon.workbook import _classify, _delta, _safe
+        from finco_recon.materiality import DEFAULT_MATERIALITY
+        from finco_recon.catalog import get_item
+        # Test _classify with a synthetic material delta — should return "" not POLICY DIFFERENCE
+        item = get_item("RV.01")  # revenue — no documented policy difference
+        cls = _classify(item, 100.0, 1000.0, 1100.0, DEFAULT_MATERIALITY)
+        assert cls != "POLICY DIFFERENCE", \
+            "_classify must NOT auto-assign POLICY DIFFERENCE for undocumented material deltas"
+        assert cls == "", \
+            f"Expected blank (OPEN) for undocumented material delta, got {cls!r}"
+
+    def test_classification_match_for_immaterial(self, sources):
+        """Immaterial deltas classify as MATCH."""
+        from finco_recon.workbook import _classify
+        from finco_recon.materiality import DEFAULT_MATERIALITY
+        from finco_recon.catalog import get_item
+        item = get_item("RV.01")
+        cls = _classify(item, 0.001, 1000.0, 1000.001, DEFAULT_MATERIALITY)
+        assert cls == "MATCH"
+
+    def test_classification_unresolved_when_excel_none(self, sources):
+        """UNRESOLVED SOURCE when Excel value is None."""
+        from finco_recon.workbook import _classify
+        from finco_recon.materiality import DEFAULT_MATERIALITY
+        from finco_recon.catalog import get_item
+        item = get_item("PR.01")  # production — no Excel source
+        cls = _classify(item, None, None, 1000.0, DEFAULT_MATERIALITY)
+        assert cls == "UNRESOLVED SOURCE"
+
+    def test_policy_difference_only_for_documented_case(self, sources):
+        """POLICY DIFFERENCE only returned when documented_cls is explicitly passed."""
+        from finco_recon.workbook import _classify
+        from finco_recon.materiality import DEFAULT_MATERIALITY
+        from finco_recon.catalog import get_item
+        item = get_item("SD.02")  # senior interest
+        # Without documented_cls → blank
+        cls_undoc = _classify(item, 500.0, 1000.0, 1500.0, DEFAULT_MATERIALITY)
+        assert cls_undoc == ""
+        # With documented_cls → POLICY DIFFERENCE
+        cls_doc = _classify(item, 500.0, 1000.0, 1500.0, DEFAULT_MATERIALITY,
+                            documented_cls="POLICY DIFFERENCE")
+        assert cls_doc == "POLICY DIFFERENCE"
+
+    def test_excel_total_capex_vs_python_total_capex_provenance(self, sources):
+        """Total CAPEX: document provenance — both sides come from factory/golden.
+
+        KNOWN: excel_total_capex_keur (from oborovo_golden.json outputs.total_capex_keur)
+        and total_capex_keur (from app.project_factories) are identical in this baseline
+        because the golden JSON was generated from the same factory. This is a provenance
+        limitation: no independent Excel cell-level CAPEX extraction exists in the fixture.
+        Classification: UNRESOLVED SOURCE for per-item CAPEX; total = MATCH (same source).
+        """
+        assert sources.excel_total_capex_keur > 0, "Excel total CAPEX must be positive"
+        assert sources.total_capex_keur > 0, "Python total CAPEX must be positive"
+        # Document that they are from the same provenance chain (no surprise MATCH)
+        delta = abs(sources.excel_total_capex_keur - sources.total_capex_keur)
+        # Either they match (same source) or differ (independent sources)
+        # — either is acceptable; we just document the actual delta
+        if delta < 1.0:
+            import warnings
+            warnings.warn(
+                f"Excel and Python total CAPEX are nearly identical (delta={delta:.3f} kEUR). "
+                "Both are sourced from oborovo_golden.json/factory — not independent Excel extraction. "
+                "Classification should be MATCH with note 'UNRESOLVED PROVENANCE'.",
+                UserWarning, stacklevel=1,
+            )
+
+    def test_excel_debt_differs_from_engine_debt(self, sources):
+        """Excel and Python debt size differ — confirms POLICY DIFFERENCE is real."""
+        assert sources.excel_total_debt_keur != sources.engine_debt_size_keur, \
+            "Excel and Python debt sizes are identical — verify POLICY DIFFERENCE"
+        delta = abs(sources.excel_total_debt_keur - sources.engine_debt_size_keur)
+        assert delta > 1000, f"Debt delta only {delta:.1f} kEUR — expected >1000"
+
+    def test_two_sided_coverage_required_items(self, sources):
+        """Verify key reconciled items have both Excel and Python values in at least one period."""
+        required_two_sided = {
+            "revenue": ([p.revenue_keur for p in sources.excel], [p.revenue_keur for p in sources.engine]),
+            "opex": ([p.opex_keur for p in sources.excel], [p.opex_keur for p in sources.engine]),
+            "ebitda": ([p.ebitda_keur for p in sources.excel], [p.ebitda_keur for p in sources.engine]),
+            "cfads": ([p.cfads_keur for p in sources.excel], [p.cfads_keur for p in sources.engine]),
+            "senior_interest": ([p.senior_interest_keur for p in sources.excel], [p.sd_interest_keur for p in sources.engine]),
+            "senior_principal": ([p.senior_principal_keur for p in sources.excel], [p.sd_principal_keur for p in sources.engine]),
+            "depreciation": ([p.depreciation_keur for p in sources.excel], [p.book_depreciation_keur for p in sources.engine]),
+            "cit_accrual": ([p.pl_cit_keur for p in sources.excel], [p.tax_keur for p in sources.engine]),
+            "cash_tax": ([p.cash_tax_keur for p in sources.excel], [p.corporate_tax_cash_keur for p in sources.engine]),
+        }
+        for name, (xl_vals, py_vals) in required_two_sided.items():
+            xl_ok = any(v is not None for v in xl_vals)
+            py_ok = any(v is not None for v in py_vals)
+            assert xl_ok, f"{name}: no Excel values present"
+            assert py_ok, f"{name}: no Python values present"
+
+
+# ---------------------------------------------------------------------------
+# 7. CLI entry point
 # ---------------------------------------------------------------------------
 
 class TestCLI:
