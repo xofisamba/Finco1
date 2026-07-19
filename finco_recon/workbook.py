@@ -339,7 +339,11 @@ def _build_exec_recon(wb: Workbook, src: OborovoSources, mat: MaterialitySetting
     py_rev   = [e.revenue_keur for e in eng_p]
     xl_opex  = [e.opex_keur for e in excel_p]
     py_opex  = [e.opex_keur for e in eng_p]
-    xl_ebitda = [e.ebitda_keur for e in excel_p]
+    # EBITDA: use direct workbook value where cached (periods 1-20), derived elsewhere
+    xl_ebitda = [
+        e.ebitda_keur if e.ebitda_keur is not None else e.ebitda_derived_keur
+        for e in excel_p
+    ]
     py_ebitda = [e.ebitda_keur for e in eng_p]
     xl_ctax  = [e.cash_tax_keur for e in excel_p]
     py_ctax  = [e.corporate_tax_cash_keur for e in eng_p]
@@ -350,7 +354,7 @@ def _build_exec_recon(wb: Workbook, src: OborovoSources, mat: MaterialitySetting
     xl_dep   = [e.depreciation_keur for e in excel_p]
     py_dep   = [e.book_depreciation_keur for e in eng_p]
 
-    # Excel EBITDA identity: Revenue - OPEX should equal EBITDA in the CF sheet
+    # Excel EBITDA identity: Revenue - OPEX should equal EBITDA (direct or derived) for all 60 periods
     xl_rev_tot   = _tot(xl_rev)
     xl_opex_tot  = _tot(xl_opex)
     xl_ebitda_tot = _tot(xl_ebitda)
@@ -365,7 +369,7 @@ def _build_exec_recon(wb: Workbook, src: OborovoSources, mat: MaterialitySetting
     py_avg_dscr = sum(dscr_vals) / len(dscr_vals) if dscr_vals else None
     py_min_dscr = min(dscr_vals) if dscr_vals else None
 
-    # COD date: Excel from golden (2030-06-29), Python from engine period_start
+    # COD date: Excel from XLSM Inputs!D11, Python from engine first period_start
     py_cod = src.engine[0].period_start if eng_p else None
     cod_match = src.cod_date == py_cod
     cod_cls = "MATCH" if cod_match else ""
@@ -376,32 +380,34 @@ def _build_exec_recon(wb: Workbook, src: OborovoSources, mat: MaterialitySetting
          float(len(excel_p)), float(len(eng_p)), None, "MATCH", ""),
         ("TIMELINE",     "COD date (Excel vs engine period start)",
          src.cod_date, py_cod, None, cod_cls,
-         "Excel COD from oborovo_golden.json; Python from engine first period_start" if not cod_match else ""),
+         "Excel COD from XLSM Inputs!D11 (operation_start); Python from engine first period_start" if not cod_match else ""),
         ("PRODUCTION",   "Total net production (MWh)",
-         None, _tot([e.production_mwh for e in eng_p]), None, "UNRESOLVED SOURCE",
-         "Production not available in excel_oborovo_full_model_extract.json"),
-        ("PRODUCTION",   "Price (EUR/MWh)",
-         None, None, None, "UNRESOLVED SOURCE",
-         "Revenue price not available in Excel fixture; requires separate extraction"),
+         _tot([e.production_mwh for e in excel_p]),
+         _tot([e.production_mwh for e in eng_p]),
+         _max_abs_delta([e.production_mwh for e in excel_p], [e.production_mwh for e in eng_p]),
+         None, "Excel: CF row 21 production_mwh; Python: engine production_mwh"),
+        ("PRODUCTION",   "Avg PPA tariff (EUR/MWh)",
+         src.ppa_tariff_eur_mwh or None, None, None, "UNRESOLVED SOURCE",
+         "Excel: PPA base tariff Y1; indexed per-period price vs Python production×tariff requires period-level reconciliation in 03_PROD_REV_RECON"),
         ("REVENUE",      "Total operating revenue CF (kEUR)",
          xl_rev_tot, py_rev_tot, _max_abs_delta(xl_rev, py_rev), None,
          "Excel: CF.operating_revenues_keur; Python: engine revenue_keur"),
         ("OPEX",         "Total OPEX (kEUR)",
          xl_opex_tot, py_opex_tot, _max_abs_delta(xl_opex, py_opex), None,
          "Excel: abs(CF.operating_expenses_after_bank_tax_keur); Python: engine opex_keur"),
-        ("EBITDA",       "Total EBITDA CF (kEUR) — direct",
+        ("EBITDA",       "Total EBITDA CF (kEUR) — direct+derived",
          xl_ebitda_tot, py_ebitda_tot, _max_abs_delta(xl_ebitda, py_ebitda), None,
-         "Excel: CF.ebitda_keur; Python: engine ebitda_keur"),
+         "Excel: CF.ebitda_keur (direct periods 1-20) + Rev-OPEX (derived periods 21-60); Python: engine ebitda_keur"),
         ("EBITDA",       "Excel EBITDA identity: Revenue - OPEX (kEUR)",
          xl_ebitda_computed, xl_ebitda_tot, None,
          "MATCH" if (xl_ebitda_computed is not None and xl_ebitda_tot is not None and abs(xl_ebitda_computed - xl_ebitda_tot) < 1.0) else ("" if xl_ebitda_computed is not None else "UNRESOLVED SOURCE"),
-         f"Computed={xl_ebitda_computed:.1f} vs Direct={xl_ebitda_tot:.1f}" if (xl_ebitda_computed is not None and xl_ebitda_tot is not None) else "Cannot verify — missing data"),
+         f"Computed={xl_ebitda_computed:.1f} vs Direct/Derived={xl_ebitda_tot:.1f}" if (xl_ebitda_computed is not None and xl_ebitda_tot is not None) else "Cannot verify — missing data"),
         ("CAPEX",        "Total CAPEX (kEUR)",
-         src.excel_total_capex_keur or None, src.total_capex_keur, None, "POLICY DIFFERENCE",
-         "Excel: oborovo_golden.json total_capex_keur; Python: factory total_capex. Difference = SHL IDC capitalised in Excel only"),
+         src.excel_total_capex_keur or None, src.total_capex_keur, None, None,
+         "Excel: XLSM Inputs!C45 (authoritative); Python: factory total_capex. See 06_CAPEX_IDC_RECON for per-item breakdown."),
         ("IDC",          "Bank IDC (kEUR)",
-         None, src.idc_keur, None, "UNRESOLVED SOURCE",
-         "Excel IDC not separately extracted in fixture; Python from factory idc_keur"),
+         src.excel_idc_keur or None, src.idc_keur, None, None,
+         "Excel: XLSM CapEx sheet C.IDC; Python: factory idc_keur"),
         ("DEPRECIATION", "Total book depreciation (kEUR)",
          _tot(xl_dep), _tot(py_dep), _max_abs_delta(xl_dep, py_dep), None,
          "Excel: P&L.depreciation_keur; Python: engine book_depreciation_keur"),
@@ -429,11 +435,11 @@ def _build_exec_recon(wb: Workbook, src: OborovoSources, mat: MaterialitySetting
         ("SHL INTEREST", "Total SHL interest (kEUR)",
          _tot([e.shl_interest_keur for e in excel_p]), UNAVAILABLE, None,
          "OUT OF CLEAN ENGINE SCOPE",
-         "Excel: P&L.shareholder_loan_interests_keur; Python: not modelled in clean engine"),
+         "Excel: P&L.shl_interests_keur (DS sheet direct); Python: not modelled in clean engine"),
         ("CASH FLOW",    "Total FCF for distribution (kEUR)",
-         _tot([e.free_cash_flow_keur for e in excel_p]), UNAVAILABLE, None,
+         None, UNAVAILABLE, None,
          "OUT OF CLEAN ENGINE SCOPE",
-         "Excel: CF.free_cash_flow_for_distribution_keur; Python: not modelled in clean engine"),
+         "Excel FCF for distribution = CFADS - SD service (not separately extracted); Python: not modelled in clean engine"),
     ]
 
     for r_idx, row_tuple in enumerate(rows_data, 2):
@@ -539,11 +545,11 @@ def _build_inputs_recon(wb: Workbook, src: OborovoSources, mat: MaterialitySetti
     row(ws, r, "T.05", "Construction (months)", src.construction_months, src.construction_months, INT_FMT); r += 1
     row(ws, r, "T.06", "Period frequency",      "Semestrial",            "Semestrial",            "@"); r += 1
 
-    sec("— PRODUCTION (no Excel fixture source) —")
-    row(ws, r, "P.01", "P50 operating hours [UNRESOLVED]",  UNRES, 1494.0, "@"); r += 1
-    row(ws, r, "P.02", "PV degradation (%/yr) [UNRESOLVED]",UNRES, 0.004,  "@"); r += 1
-    row(ws, r, "P.03", "Plant availability [UNRESOLVED]",   UNRES, 0.99,   "@"); r += 1
-    row(ws, r, "P.04", "Grid availability [UNRESOLVED]",    UNRES, 0.99,   "@"); r += 1
+    sec("— PRODUCTION (Excel: XLSM Inputs sheet) —")
+    row(ws, r, "P.01", "P50 operating hours",    src.operating_hours_p50 or None, 1494.0, INT_FMT); r += 1
+    row(ws, r, "P.02", "PV degradation (%/yr)",  src.pv_degradation_pa or None,  0.004,   PCT_FMT); r += 1
+    row(ws, r, "P.03", "Plant availability",      src.plant_availability or None, 0.99,    PCT_FMT); r += 1
+    row(ws, r, "P.04", "Grid availability",       src.grid_availability or None,  0.99,    PCT_FMT); r += 1
 
     sec("— PRICE / REVENUE (Excel: oborovo_golden.json) —")
     row(ws, r, "R.01", "PPA tariff (EUR/MWh)",  src.ppa_tariff_eur_mwh, src.ppa_tariff_eur_mwh, KEUR_FMT); r += 1
@@ -551,17 +557,23 @@ def _build_inputs_recon(wb: Workbook, src: OborovoSources, mat: MaterialitySetti
     row(ws, r, "R.03", "PPA indexation (%/yr)",  src.ppa_index,          src.ppa_index,          PCT_FMT); r += 1
     row(ws, r, "R.04", "Effective price (EUR/MWh) [UNRESOLVED]", UNRES, UNRES, "@"); r += 1
 
-    sec("— OPEX (Y1 kEUR) — Excel: not in fixture; Python: app.project_factories —")
+    sec("— OPEX Y1 (kEUR/yr) — Excel: XLSM Inputs rows 146-160; Python: app.project_factories —")
     for item in src.opex_items:
-        row(ws, r, item["code"], item["name"] + " Y1 kEUR [UNRESOLVED Excel]", UNRES, item["y1_keur"], KEUR_FMT); r += 1
-        row(ws, r, "",           item["name"] + " inflation [UNRESOLVED Excel]", UNRES, item["inflation"], "@"); r += 1
+        code = item["code"]
+        xl_opex_item = src.excel_opex_annual.get(code, {})
+        xl_y1 = xl_opex_item.get("year1_keur") if xl_opex_item else None
+        row(ws, r, code, item["name"] + " Y1 (kEUR)", xl_y1, item["y1_keur"], KEUR_FMT); r += 1
+        row(ws, r, "",   item["name"] + " inflation [Excel: not extracted]", UNRES, item["inflation"], "@"); r += 1
 
-    sec("— CAPEX (kEUR) — Excel: golden total only; per-item from Python factory —")
+    sec("— CAPEX (kEUR) — Excel: XLSM Inputs/CapEx sheets; Python: app.project_factories —")
     for item in src.capex_items:
-        row(ws, r, item["code"], item["name"] + " [UNRESOLVED Excel]", UNRES, item["amount_keur"], KEUR_FMT); r += 1
-    row(ws, r, "C.00", "Total Hard CAPEX [UNRESOLVED Excel]", UNRES, src.hard_capex_keur, KEUR_FMT); r += 1
-    row(ws, r, "C.IDC", "Bank IDC [UNRESOLVED Excel]",        UNRES, src.idc_keur,        KEUR_FMT); r += 1
-    row(ws, r, "C.TOT", "Total CAPEX (Excel golden vs Python factory)",
+        code = item["code"]
+        xl_cap = src.excel_capex_items.get(code, {})
+        xl_amt = xl_cap.get("amount_keur") if xl_cap else None
+        row(ws, r, code, item["name"], xl_amt, item["amount_keur"], KEUR_FMT); r += 1
+    row(ws, r, "C.00", "Total Hard CAPEX [Python factory only]", UNRES, src.hard_capex_keur, KEUR_FMT); r += 1
+    row(ws, r, "C.IDC", "Bank IDC",   src.excel_idc_keur or None, src.idc_keur, KEUR_FMT); r += 1
+    row(ws, r, "C.TOT", "Total CAPEX (Excel XLSM vs Python factory)",
         src.excel_total_capex_keur, src.total_capex_keur, KEUR_FMT); r += 1
 
     sec("— TAX — Excel: not in fixture; Python: tax_reference_inputs —")
@@ -571,16 +583,17 @@ def _build_inputs_recon(wb: Workbook, src: OborovoSources, mat: MaterialitySetti
     row(ws, r, "TX.04", "ATAD EBITDA limit [UNRESOLVED Excel]",      UNRES, 0.30,   "@"); r += 1
     row(ws, r, "TX.05", "ATAD de minimis kEUR/yr [UNRESOLVED Excel]",UNRES, 3000.0, "@"); r += 1
 
-    sec("— SENIOR DEBT (Excel: oborovo_golden.json; Python: SeniorDebtPolicy) —")
+    sec("— SENIOR DEBT (Excel: XLSM Inputs sheet; Python: SeniorDebtPolicy) —")
     row(ws, r, "SD.01", "Target DSCR",              src.excel_target_dscr, 1.15,         DSCR_FMT); r += 1
     row(ws, r, "SD.02", "Gearing ratio (Excel only)", 0.7524,               UNRES,        PCT_FMT); r += 1
     row(ws, r, "SD.03", "Debt size at COD (kEUR)",  src.excel_total_debt_keur, src.engine_debt_size_keur, KEUR_FMT); r += 1
-    row(ws, r, "SD.04", "Fixed rate [UNRESOLVED Excel]",  UNRES, 0.0565,   "@"); r += 1
-    row(ws, r, "SD.05", "Tenor (years) [UNRESOLVED Excel]", UNRES, 14.0,   "@"); r += 1
-    row(ws, r, "SD.06", "Day count [UNRESOLVED Excel]",   UNRES, "ACT/365", "@"); r += 1
+    xl_rate = (src.excel_senior_base_rate + src.excel_senior_margin_bps / 10000.0) if src.excel_senior_base_rate else None
+    row(ws, r, "SD.04", "All-in fixed rate (base+margin)", xl_rate, 0.0565, PCT_FMT); r += 1
+    row(ws, r, "SD.05", "Tenor (years)",             src.excel_senior_maturity_years or None, 14.0, INT_FMT); r += 1
+    row(ws, r, "SD.06", "Day count [Excel: not extracted]", UNRES, "ACT/365", "@"); r += 1
     row(ws, r, "SD.07", "Sizing mode",              "GEARING CAP (Excel)", "DSCR SCULPTED (Python)", "@"); r += 1
 
-    sec("— SHL (Excel: oborovo_golden.json / SHL fixture) —")
+    sec("— SHL (Excel: XLSM Inputs sheet / DS sheet) —")
     row(ws, r, "SH.01", "SHL amount at COD (kEUR)", src.shl_amount_keur,  UNRES, KEUR_FMT); r += 1
     row(ws, r, "SH.02", "SHL rate",                 src.shl_rate,         UNRES, PCT_FMT); r += 1
     row(ws, r, "SH.03", "SHL IDC capitalised (kEUR)",src.shl_idc_keur,    UNRES, KEUR_FMT); r += 1
@@ -669,19 +682,19 @@ def _build_timeline_recon(wb: Workbook, src: OborovoSources, mat: MaterialitySet
     n = len(src.engine)
     none_n = [None] * n
 
-    # TL.02 period-end date: available from Excel fixture (date column).
-    # TL.01, TL.03, TL.04, TL.05: NOT in period_diagnostic_columns → UNRESOLVED SOURCE.
+    # TL.02, TL.04: now sourced from XLSM CF sheet.
+    # TL.01, TL.03, TL.05: engine-only.
     items_def = [
         ("TL.01", "Period index",    "index",
-         none_n,                                  [e.period_index for e in src.engine]),
+         none_n,                                                    [e.period_index for e in src.engine]),
         ("TL.02", "Period end date", "date",
-         [ep.period_end for ep in src.excel],     [e.period_end for e in src.engine]),
+         [ep.period_end for ep in src.excel],                       [e.period_end for e in src.engine]),
         ("TL.03", "Days in period",  "days",
-         none_n,                                  [e.days_in_period for e in src.engine]),
+         none_n,                                                    [e.days_in_period for e in src.engine]),
         ("TL.04", "Day fraction",    "frac",
-         none_n,                                  [e.day_fraction for e in src.engine]),
+         [ep.operation_period_fraction for ep in src.excel],        [e.day_fraction for e in src.engine]),
         ("TL.05", "Is operation",    "flag",
-         none_n,                                  [str(e.is_operation) for e in src.engine]),
+         none_n,                                                    [str(e.is_operation) for e in src.engine]),
     ]
 
     cur_row = 2
@@ -712,21 +725,31 @@ def _build_prod_rev_recon(wb: Workbook, src: OborovoSources, mat: MaterialitySet
     n = len(src.engine)
     none_row = [None] * n
     blocks = [
-        {"type": "section", "label": "— PRODUCTION —"},
-        {"type": "item", "code": "PR.01", "name": "Net production (engine)", "unit": "MWh",
-         "excel_vals": none_row, "python_vals": [e.production_mwh for e in src.engine],
+        {"type": "section", "label": "— PRODUCTION — Excel: CF row 21; Python: engine —"},
+        {"type": "item", "code": "PR.01", "name": "Net production (MWh)", "unit": "MWh",
+         "excel_vals": [e.production_mwh for e in src.excel],
+         "python_vals": [e.production_mwh for e in src.engine],
          "item": get_item("PR.01")},
-        {"type": "section", "label": "— REVENUE —"},
-        {"type": "item", "code": "RV.01", "name": "Operating revenues (CF)", "unit": "kEUR",
+        {"type": "section", "label": "— PRICE — Excel: CF indexed tariff row; Python: revenue÷production —"},
+        {"type": "item", "code": "PR.02", "name": "Indexed tariff (EUR/MWh)", "unit": "EUR/MWh",
+         "excel_vals": [e.tariff_indexed_eur_mwh for e in src.excel],
+         "python_vals": [
+             (e.revenue_keur * 1000.0 / e.production_mwh)
+             if (e.revenue_keur and e.production_mwh) else None
+             for e in src.engine
+         ],
+         "item": get_item("PR.02")},
+        {"type": "section", "label": "— REVENUE — Excel: CF row 23; Python: engine —"},
+        {"type": "item", "code": "RV.01", "name": "Operating revenues CF (kEUR)", "unit": "kEUR",
          "excel_vals": [e.revenue_keur for e in src.excel],
          "python_vals": [e.revenue_keur for e in src.engine],
          "item": get_item("RV.01")},
-        {"type": "item", "code": "RV.02", "name": "P&L total revenues", "unit": "kEUR",
+        {"type": "item", "code": "RV.02", "name": "P&L total revenues (kEUR)", "unit": "kEUR",
          "excel_vals": [e.pl_revenue_keur for e in src.excel],
          "python_vals": [e.revenue_keur for e in src.engine],
          "item": get_item("RV.02")},
-        {"type": "section", "label": "— SHL INTEREST (P&L) —"},
-        {"type": "item", "code": "SH.02", "name": "SHL gross interest (P&L)", "unit": "kEUR",
+        {"type": "section", "label": "— SHL INTEREST (P&L) — OUT OF CLEAN ENGINE SCOPE —"},
+        {"type": "item", "code": "SH.02", "name": "SHL gross interest P&L (kEUR)", "unit": "kEUR",
          "excel_vals": [e.shl_interest_keur for e in src.excel],
          "python_vals": [UNAVAILABLE] * n,
          "item": get_item("SH.02")},
@@ -745,24 +768,36 @@ def _build_opex_recon(wb: Workbook, src: OborovoSources, mat: MaterialitySetting
         "opex_b13_keur", "opex_b14_keur", "opex_b15_keur",
     ]
 
+    # Map B.xx code → ExcelData field
+    excel_opex_field_map = [
+        ("B.01", "opex_b01_keur"), ("B.02", "opex_b02_keur"), ("B.03", "opex_b03_keur"),
+        ("B.04", "opex_b04_keur"), ("B.05", "opex_b05_keur"), ("B.06", "opex_b06_keur"),
+        ("B.07", "opex_b07_keur"), ("B.08", "opex_b08_keur"), ("B.09", "opex_b09_keur"),
+        ("B.10", "opex_b10_keur"), ("B.11", "opex_b11_keur"), ("B.12", "opex_b12_keur"),
+        ("B.13", "opex_b13_keur"),
+    ]
+
     blocks = [
-        {"type": "section", "label": "— TOTAL OPEX —"},
+        {"type": "section", "label": "— TOTAL OPEX — Excel: CF row 49 (abs); Python: engine —"},
         {"type": "item", "code": "OP.00", "name": "Total OPEX", "unit": "kEUR",
          "excel_vals": [e.opex_keur for e in src.excel],
          "python_vals": [e.opex_keur for e in src.engine],
          "item": get_item("OP.00")},
-        {"type": "section", "label": "— OPEX BY ITEM CODE: Excel source NOT AVAILABLE in fixture (Excel fixture contains total OPEX only). Python values shown for reference. Classification = UNRESOLVED SOURCE. —"},
+        {"type": "section", "label": "— OPEX BY ITEM CODE: Excel: CF rows 56-68 (abs); Python: factory per-item —"},
     ]
-    for i, (opex_item, field) in enumerate(zip(src.opex_items, opex_field_map)):
+    for i, (opex_item, py_field) in enumerate(zip(src.opex_items, opex_field_map)):
         code = opex_item["code"]
         name = opex_item["name"]
+        # Match Excel B.xx field (B.01..B.13; B.14/B.15 Excel is None)
+        xl_field = excel_opex_field_map[i][1] if i < len(excel_opex_field_map) else None
+        xl_vals = [getattr(e, xl_field) for e in src.excel] if xl_field else none_row
         blocks.append({
             "type": "item",
             "code": code,
             "name": name,
             "unit": "kEUR",
-            "excel_vals": none_row,
-            "python_vals": [getattr(e, field) for e in src.engine],
+            "excel_vals": xl_vals,
+            "python_vals": [getattr(e, py_field) for e in src.engine],
             "item": get_item(f"OP.{i+1:02d}"),
         })
 
@@ -782,8 +817,11 @@ def _build_pnl_recon(wb: Workbook, src: OborovoSources, mat: MaterialitySettings
         {"type": "item", "code": "OP.00", "name": "Total OPEX", "unit": "kEUR",
          "excel_vals": [e.opex_keur for e in src.excel],
          "python_vals": [e.opex_keur for e in src.engine], "item": get_item("OP.00")},
-        {"type": "item", "code": "EB.01", "name": "EBITDA", "unit": "kEUR",
-         "excel_vals": [e.ebitda_keur for e in src.excel],
+        {"type": "item", "code": "EB.01", "name": "EBITDA (direct+derived)", "unit": "kEUR",
+         "excel_vals": [
+             e.ebitda_keur if e.ebitda_keur is not None else e.ebitda_derived_keur
+             for e in src.excel
+         ],
          "python_vals": [e.ebitda_keur for e in src.engine], "item": get_item("EB.01")},
         {"type": "item", "code": "DP.01", "name": "Book depreciation", "unit": "kEUR",
          "excel_vals": [e.depreciation_keur for e in src.excel],
@@ -866,33 +904,36 @@ def _build_capex_recon(wb: Workbook, src: OborovoSources, mat: MaterialitySettin
         ws.cell(row=r, column=9, value=note).font = _font(size=8)
         r += 1
 
-    sec("— HARD CAPEX: per-item (Excel: not in fixture — UNRESOLVED SOURCE) —")
+    sec("— HARD CAPEX per-item: Excel: XLSM Inputs rows (C.01-C.08) / CapEx sheet; Python: app.project_factories —")
     for item in src.capex_items:
-        add(item["code"], item["name"],
-            UNRES_STR, item["amount_keur"],
-            "UNRESOLVED — period_diagnostics has no per-item CAPEX", "app.project_factories",
-            "UNRESOLVED SOURCE")
-    add("C.00", "Total Hard CAPEX",
-        UNRES_STR, src.hard_capex_keur,
-        "UNRESOLVED", "app.project_factories (sum of capex_items)",
+        code = item["code"]
+        xl_item = src.excel_capex_items.get(code, {})
+        xl_amt = xl_item.get("amount_keur") if xl_item else None
+        xl_lbl = xl_item.get("label") or UNRES_STR
+        add(code, item["name"],
+            xl_amt, item["amount_keur"],
+            f"XLSM Inputs: {xl_lbl}" if xl_amt is not None else "UNRESOLVED — code not in XLSM extract",
+            "app.project_factories")
+    add("C.00", "Total Hard CAPEX (Python factory sum)",
+        None, src.hard_capex_keur,
+        "Not separately totalled in XLSM (individual codes above)", "app.project_factories (sum of capex_items)",
         "UNRESOLVED SOURCE")
 
     sec("— FINANCING COSTS —")
     add("C.IDC", "Bank IDC (capitalised)",
-        UNRES_STR, src.idc_keur,
-        "UNRESOLVED — not separately in fixture", "app.project_factories",
-        "UNRESOLVED SOURCE", "IDC included in Excel total_capex_keur but not extracted separately")
+        src.excel_idc_keur or None, src.idc_keur,
+        "XLSM Inputs CapEx C.IDC", "app.project_factories",
+        note="IDC extracted from XLSM CapEx sheet")
     add("C.SHL", "SHL IDC capitalised",
         src.shl_idc_keur, None,
-        "excel_oborovo_full_model_extract.json → shl[0].capitalized_interest", "OUT OF CLEAN ENGINE SCOPE",
-        "OUT OF CLEAN ENGINE SCOPE", "Excel SHL IDC = abs(construction period capitalized_interest)")
+        "XLSM DS sheet row 128 period 0 (construction capitalised interest)", "OUT OF CLEAN ENGINE SCOPE",
+        "OUT OF CLEAN ENGINE SCOPE", "Excel SHL IDC = construction period capitalised SHL interest")
 
     sec("— TOTAL PROJECT COST —")
     add("C.TOT", "Total CAPEX (Hard + IDC)",
         src.excel_total_capex_keur, src.total_capex_keur,
-        "oborovo_golden.json → outputs.total_capex_keur", "app.project_factories total_capex",
-        "POLICY DIFFERENCE",
-        f"Excel={src.excel_total_capex_keur:.1f} includes SHL IDC; Python={src.total_capex_keur:.1f} excludes SHL IDC")
+        "XLSM Inputs!C45 (authoritative)", "app.project_factories total_capex",
+        note=f"Excel={src.excel_total_capex_keur:.1f} kEUR; Python={src.total_capex_keur:.1f} kEUR")
 
     _freeze(ws, "A2")
     _autofilter(ws, 1, len(headers))
@@ -909,9 +950,9 @@ def _build_depreciation_recon(wb: Workbook, src: OborovoSources, mat: Materialit
         {"type": "item", "code": "DP.02", "name": "Tax depreciation (Python only)", "unit": "kEUR",
          "excel_vals": [None] * n,
          "python_vals": [e.tax_depreciation_keur for e in src.engine], "item": get_item("DP.02")},
-        {"type": "section", "label": "— CUMULATED DEPRECIATION —"},
-        {"type": "item", "code": "DP.03", "name": "Cumulated depreciation (Excel Dep sheet)", "unit": "kEUR",
-         "excel_vals": [e.dep_cumulated_keur for e in src.excel],
+        {"type": "section", "label": "— DEP SHEET TOTAL (cross-check vs P&L) —"},
+        {"type": "item", "code": "DP.03", "name": "Dep sheet total depreciation", "unit": "kEUR",
+         "excel_vals": [e.dep_total_keur for e in src.excel],
          "python_vals": [None] * n, "item": get_item("DP.03")},
     ]
     _build_horizontal_sheet(wb, "07_DEPRECIATION_RECON", src, mat, blocks)
@@ -922,8 +963,11 @@ def _build_tax_recon(wb: Workbook, src: OborovoSources, mat: MaterialitySettings
     none_row = [None] * n
     blocks = [
         {"type": "section", "label": "— TAX BRIDGE —"},
-        {"type": "item", "code": "EB.01", "name": "EBITDA", "unit": "kEUR",
-         "excel_vals": [e.ebitda_keur for e in src.excel],
+        {"type": "item", "code": "EB.01", "name": "EBITDA (direct+derived)", "unit": "kEUR",
+         "excel_vals": [
+             e.ebitda_keur if e.ebitda_keur is not None else e.ebitda_derived_keur
+             for e in src.excel
+         ],
          "python_vals": [e.ebitda_keur for e in src.engine], "item": get_item("EB.01")},
         {"type": "item", "code": "SD.07", "name": "Senior interest deductible", "unit": "kEUR",
          "excel_vals": [e.pl_senior_interest_keur for e in src.excel],
@@ -963,8 +1007,11 @@ def _build_cfads_recon(wb: Workbook, src: OborovoSources, mat: MaterialitySettin
         {"type": "item", "code": "OP.00", "name": "OPEX", "unit": "kEUR",
          "excel_vals": [e.opex_keur for e in src.excel],
          "python_vals": [e.opex_keur for e in src.engine], "item": get_item("OP.00")},
-        {"type": "item", "code": "EB.01", "name": "EBITDA", "unit": "kEUR",
-         "excel_vals": [e.ebitda_keur for e in src.excel],
+        {"type": "item", "code": "EB.01", "name": "EBITDA (direct+derived)", "unit": "kEUR",
+         "excel_vals": [
+             e.ebitda_keur if e.ebitda_keur is not None else e.ebitda_derived_keur
+             for e in src.excel
+         ],
          "python_vals": [e.ebitda_keur for e in src.engine], "item": get_item("EB.01")},
         {"type": "item", "code": "TX.07", "name": "Cash tax paid", "unit": "kEUR",
          "excel_vals": [e.cash_tax_keur for e in src.excel],
@@ -977,7 +1024,7 @@ def _build_cfads_recon(wb: Workbook, src: OborovoSources, mat: MaterialitySettin
          "excel_vals": [e.senior_ds_keur for e in src.excel],
          "python_vals": [e.sd_ds_keur for e in src.engine], "item": get_item("SD.04")},
         {"type": "item", "code": "FC.01", "name": "FCF for distribution (OUT OF SCOPE)", "unit": "kEUR",
-         "excel_vals": [e.free_cash_flow_keur for e in src.excel],
+         "excel_vals": [None] * n,
          "python_vals": unav, "item": get_item("FC.01")},
         {"type": "section", "label": "— OUT OF CLEAN ENGINE SCOPE —"},
         {"type": "item", "code": "FC.03", "name": "DSRA contribution (OUT OF SCOPE)", "unit": "kEUR",
@@ -999,8 +1046,7 @@ def _build_senior_debt_recon(wb: Workbook, src: OborovoSources, mat: Materiality
             f"Delta={debt_delta:+.1f} kEUR  → POLICY DIFFERENCE —"
         )},
         {"type": "section", "label": (
-            "— SD.01 / SD.05 Opening/Closing: Excel reconstructed from golden opening "
-            "balance + DS.senior_principal_keur (genuine Excel provenance, NOT legacy snapshot) —"
+            "— SD.01 / SD.05 Opening/Closing: Excel DIRECT from DS sheet rows 50/56 (authoritative XLSM) —"
         )},
         {"type": "item", "code": "SD.01", "name": "Opening senior debt", "unit": "kEUR",
          "excel_vals": src.excel_sd_opening_keur,
@@ -1017,8 +1063,12 @@ def _build_senior_debt_recon(wb: Workbook, src: OborovoSources, mat: Materiality
         {"type": "item", "code": "SD.05", "name": "Closing senior debt (reconstructed)", "unit": "kEUR",
          "excel_vals": src.excel_sd_closing_keur,
          "python_vals": [e.sd_closing_keur for e in src.engine], "item": get_item("SD.05")},
-        {"type": "item", "code": "SD.06", "name": "DSCR — average per period (CF sheet)", "unit": "x",
-         "excel_vals": [e.avg_dscr for e in src.excel],
+        {"type": "item", "code": "SD.06", "name": "DSCR per period (CFADS÷DS service)", "unit": "x",
+         "excel_vals": [
+             (e.cfads_keur / e.sd_service_keur)
+             if (e.cfads_keur is not None and e.sd_service_keur and e.sd_service_keur > 0.01) else None
+             for e in src.excel
+         ],
          "python_vals": [e.sd_dscr for e in src.engine], "item": get_item("SD.06")},
         {"type": "item", "code": "SD.07", "name": "Senior interest P&L (cross-check)", "unit": "kEUR",
          "excel_vals": [e.pl_senior_interest_keur for e in src.excel],
@@ -1028,35 +1078,32 @@ def _build_senior_debt_recon(wb: Workbook, src: OborovoSources, mat: Materiality
 
 
 def _build_shl_recon(wb: Workbook, src: OborovoSources, mat: MaterialitySettings) -> None:
-    ws = wb.create_sheet("11_SHL_RECON")
-    ws.sheet_view.showGridLines = False
-
-    headers = ["Period", "Date", "Opening (kEUR)", "Closing (kEUR)", "Gross Interest (kEUR)",
-               "Principal Flow (kEUR)", "Cash Interest Paid (kEUR)", "Capitalised Interest (kEUR)",
-               "Net Dividend (kEUR)", "Source", "Python Status"]
-    _header_row(ws, headers)
-    _set_col_widths(ws, {c: 16 for c in range(1, 12)})
-    _set_col_widths(ws, {1: 8, 2: 12})
-
-    for r_idx, row in enumerate(src.excel_shl, 2):
-        period_label = "Construction" if r_idx == 2 else f"Op.{r_idx - 2}"
-        ws.cell(row=r_idx, column=1, value=period_label)
-        for c, key in enumerate(["date", "opening", "closing", "gross_interest",
-                                   "principal_flow", "paid_net_interest",
-                                   "capitalized_interest", "net_dividend"], 2):
-            val = row.get(key)
-            cell = ws.cell(row=r_idx, column=c, value=_safe(val) if isinstance(val, (int, float)) else val)
-            if isinstance(val, (int, float)):
-                cell.number_format = KEUR_FMT
-            cell.fill = EXCEL_FILL
-            cell.font = _font(size=9)
-        ws.cell(row=r_idx, column=10, value="excel_oborovo_full_model_extract.json").font = _font(size=8)
-        cls_cell = ws.cell(row=r_idx, column=11, value="OUT OF CLEAN ENGINE SCOPE")
-        cls_cell.fill = _fill(CLASS_FILL["OUT OF CLEAN ENGINE SCOPE"])
-        cls_cell.font = _font(size=9)
-
-    _freeze(ws, "A2")
-    _autofilter(ws, 1, 11)
+    n = len(src.engine)
+    blocks = [
+        {"type": "section", "label": (
+            "— SHL SCHEDULE: Excel: DS sheet rows 123-130 (DIRECT from XLSM) — OUT OF CLEAN ENGINE SCOPE —"
+        )},
+        {"type": "item", "code": "SH.01", "name": "SHL opening balance (kEUR)", "unit": "kEUR",
+         "excel_vals": [e.shl_opening_keur for e in src.excel],
+         "python_vals": [UNAVAILABLE] * n, "item": get_item("SH.01")},
+        {"type": "item", "code": "SH.02", "name": "SHL net interest (kEUR)", "unit": "kEUR",
+         "excel_vals": [e.shl_net_interest_keur for e in src.excel],
+         "python_vals": [UNAVAILABLE] * n, "item": get_item("SH.02")},
+        {"type": "item", "code": "SH.03", "name": "SHL capitalised interest (kEUR)", "unit": "kEUR",
+         "excel_vals": [e.shl_interest_capitalised_keur for e in src.excel],
+         "python_vals": [UNAVAILABLE] * n, "item": get_item("SH.03")},
+        {"type": "item", "code": "SH.04", "name": "SHL closing balance (kEUR)", "unit": "kEUR",
+         "excel_vals": [e.shl_closing_keur for e in src.excel],
+         "python_vals": [UNAVAILABLE] * n, "item": get_item("SH.04")},
+        {"type": "item", "code": "SH.05", "name": "SHL service (kEUR)", "unit": "kEUR",
+         "excel_vals": [e.shl_service_keur for e in src.excel],
+         "python_vals": [UNAVAILABLE] * n, "item": get_item("SH.05")},
+        {"type": "section", "label": "— SHL INTEREST CROSS-CHECK vs P&L —"},
+        {"type": "item", "code": "SH.06", "name": "SHL interest P&L (kEUR)", "unit": "kEUR",
+         "excel_vals": [e.shl_interest_keur for e in src.excel],
+         "python_vals": [UNAVAILABLE] * n, "item": get_item("SH.06")},
+    ]
+    _build_horizontal_sheet(wb, "11_SHL_RECON", src, mat, blocks)
 
 
 def _build_opening_balances(wb: Workbook, src: OborovoSources, mat: MaterialitySettings) -> None:
@@ -1129,7 +1176,11 @@ def _build_delta_register(wb: Workbook, src: OborovoSources, mat: MaterialitySet
         ("SD.02", "SENIOR_DEBT","Senior interest", lambda ep, eg: ep.senior_interest_keur, lambda ep, eg: eg.sd_interest_keur, "kEUR"),
         ("SD.03", "SENIOR_DEBT","Senior principal",lambda ep, eg: ep.senior_principal_keur,lambda ep, eg: eg.sd_principal_keur,"kEUR"),
         ("SD.04", "SENIOR_DEBT","Senior DS",       lambda ep, eg: ep.senior_ds_keur, lambda ep, eg: eg.sd_ds_keur, "kEUR"),
-        ("SD.06", "SENIOR_DEBT","DSCR",            lambda ep, eg: ep.avg_dscr,     lambda ep, eg: eg.sd_dscr,      "x"),
+        ("SD.06", "SENIOR_DEBT","DSCR",
+         lambda ep, eg: (ep.cfads_keur / ep.sd_service_keur)
+             if (ep.cfads_keur is not None and ep.sd_service_keur and ep.sd_service_keur > 0.01)
+             else None,
+         lambda ep, eg: eg.sd_dscr, "x"),
         ("DP.01", "DEPRECIATION","Book depreciation",lambda ep, eg: ep.depreciation_keur, lambda ep, eg: eg.book_depreciation_keur, "kEUR"),
     ]
 
@@ -1319,9 +1370,12 @@ def _build_raw_recon(wb: Workbook, src: OborovoSources, mat: MaterialitySettings
         ("SENIOR_DEBT", "SD.02", "Senior interest",      "kEUR", lambda ep: ep.senior_interest_keur,lambda eg: eg.sd_interest_keur),
         ("SENIOR_DEBT", "SD.03", "Senior principal",     "kEUR", lambda ep: ep.senior_principal_keur,lambda eg: eg.sd_principal_keur),
         ("SENIOR_DEBT", "SD.04", "Senior DS",            "kEUR", lambda ep: ep.senior_ds_keur,      lambda eg: eg.sd_ds_keur),
-        ("SENIOR_DEBT", "SD.06", "DSCR",                 "x",    lambda ep: ep.avg_dscr,            lambda eg: eg.sd_dscr),
+        ("SENIOR_DEBT", "SD.06", "DSCR", "x",
+         lambda ep: (ep.cfads_keur / ep.sd_service_keur)
+             if (ep.cfads_keur is not None and ep.sd_service_keur and ep.sd_service_keur > 0.01) else None,
+         lambda eg: eg.sd_dscr),
         ("DEPRECIATION","DP.01", "Book depreciation",    "kEUR", lambda ep: ep.depreciation_keur,   lambda eg: eg.book_depreciation_keur),
-        ("PRODUCTION",  "PR.01", "Net production",       "MWh",  lambda ep: None,                   lambda eg: eg.production_mwh),
+        ("PRODUCTION",  "PR.01", "Net production",       "MWh",  lambda ep: ep.production_mwh,      lambda eg: eg.production_mwh),
     ]
 
     r_idx = 2

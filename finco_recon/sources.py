@@ -1,8 +1,9 @@
 """finco_recon.sources — Load all data sources for Oborovo reconciliation.
 
 Three data sources:
-  1. Excel fixture: tests/fixtures/excel_oborovo_full_model_extract.json
-     60 periods of CF/DS/P&L/Dep data extracted from the source Excel workbook.
+  1. Excel truth fixture: tests/fixtures/excel_oborovo_financial_truth.json
+     Extracted by finco_recon.extract_oborovo_excel from the authoritative XLSM.
+     61 periods (0=construction, 1-60=operation) from CF/DS/P&L/Dep/Inputs/CapEx sheets.
   2. Legacy baseline snapshot: finco_parity/baselines/snapshots/oborovo.json
      Full 60-period legacy waterfall output (legacy_waterfall_v3).
   3. Clean engine: run_senior_debt_model with Phase 2C calibration.
@@ -27,23 +28,58 @@ _REPO_ROOT = Path(__file__).parent.parent
 
 @dataclass
 class ExcelData:
-    """Parsed Excel fixture data for one operating period."""
-    period_index: int       # 0-based (fixture uses 1-based)
-    period_end: str         # e.g. "2030-12-31"
-    # CF sheet
-    revenue_keur: float | None = None
-    opex_keur: float | None = None          # stored positive
+    """Parsed Excel fixture data for one operating period.
+
+    Sourced from authoritative XLSM via finco_recon.extract_oborovo_excel.
+    period_index 0 = first operation period (Excel period 1, H2-2030).
+    """
+    period_index: int       # 0-based operation index (fixture period_num - 1)
+    period_start: str       # BoP date e.g. "2030-07-01"
+    period_end: str         # EoP date e.g. "2030-12-31"
+    operation_period_fraction: float | None = None   # day fraction
+    # CF sheet — production & revenue
+    production_mwh: float | None = None
+    revenue_keur: float | None = None       # CF.operating_revenues_keur
+    ppa_sales_keur: float | None = None
+    production_to_ppa_mwh: float | None = None
+    tariff_indexed_eur_mwh: float | None = None
+    # CF sheet — OPEX
+    opex_keur: float | None = None          # stored positive (abs of CF.operating_expenses)
+    # CF OPEX per item (stored positive: abs of workbook negative values)
+    opex_b01_keur: float | None = None  # Technical Management
+    opex_b02_keur: float | None = None  # Infrastructure Maintenance
+    opex_b03_keur: float | None = None  # Maintain Site
+    opex_b04_keur: float | None = None  # Clean Material
+    opex_b05_keur: float | None = None  # Security
+    opex_b06_keur: float | None = None  # Insurance
+    opex_b07_keur: float | None = None  # Lease & property Tax
+    opex_b08_keur: float | None = None  # Power Expenses
+    opex_b09_keur: float | None = None  # Fees
+    opex_b10_keur: float | None = None  # Audit & Accounting & Legal
+    opex_b11_keur: float | None = None  # Bank Fees
+    opex_b12_keur: float | None = None  # Environmental & Social
+    opex_b13_keur: float | None = None  # Contingencies
+    # CF sheet — EBITDA  (direct from workbook, None if cell not cached)
     ebitda_keur: float | None = None
+    # EBITDA derived as Revenue - OPEX where direct is None
+    ebitda_derived_keur: float | None = None
+    # CF sheet — downstream
     cash_tax_keur: float | None = None      # stored positive (abs)
-    cfads_keur: float | None = None
+    cfads_keur: float | None = None         # FCF for banks
     senior_ds_keur: float | None = None     # stored positive (abs)
-    free_cash_flow_keur: float | None = None
-    avg_dscr: float | None = None
-    min_dscr: float | None = None
-    # DS sheet
+    # DS sheet — senior debt schedule (direct from DS.senior_debt_service rows)
     dscr_target: float | None = None
     senior_principal_keur: float | None = None   # stored positive
     senior_interest_keur: float | None = None    # stored positive
+    sd_opening_keur: float | None = None
+    sd_closing_keur: float | None = None
+    sd_service_keur: float | None = None
+    # DS sheet — SHL schedule
+    shl_opening_keur: float | None = None
+    shl_net_interest_keur: float | None = None
+    shl_interest_capitalised_keur: float | None = None
+    shl_closing_keur: float | None = None
+    shl_service_keur: float | None = None
     # P&L sheet
     pl_revenue_keur: float | None = None
     depreciation_keur: float | None = None
@@ -53,9 +89,10 @@ class ExcelData:
     taxable_income_keur: float | None = None
     pl_cit_keur: float | None = None            # stored positive (abs)
     net_dividends_keur: float | None = None
+    net_income_keur: float | None = None
     # Dep sheet
     dep_depreciation_keur: float | None = None
-    dep_cumulated_keur: float | None = None
+    dep_total_keur: float | None = None
 
 
 @dataclass
@@ -151,43 +188,59 @@ class EngineData:
 @dataclass
 class OborovoSources:
     """Container for all Oborovo data sources."""
-    excel: list[ExcelData]       # 60 periods, index 0..59
+    excel: list[ExcelData]       # 60 operation periods, index 0..59
     legacy: list[LegacyData]     # 60 periods, index 0..59
     engine: list[EngineData]     # 60 periods
-    # Scalar inputs from factory
-    capacity_mw: float = 0.0
-    cod_date: str = ""
-    financial_close: str = ""
-    ppa_tariff_eur_mwh: float = 0.0
-    ppa_term_years: int = 0
-    ppa_index: float = 0.0
+    # Provenance of authoritative Excel fixture
+    excel_fixture_sha256: str = ""
+    excel_source_filename: str = ""
+    # Scalar inputs — authoritative Excel source (from XLSM Inputs sheet)
+    capacity_mw: float = 0.0                  # Excel: Inputs!D51
+    cod_date: str = ""                        # Excel: Inputs!D11 (operation start)
+    financial_close: str = ""                 # Excel: Inputs!D9
+    ppa_tariff_eur_mwh: float = 0.0          # Excel: Inputs!D78
+    ppa_term_years: int = 0                   # Excel: Inputs!D81
+    ppa_index: float = 0.0                    # Excel: Inputs!D83
+    operating_hours_p50: int = 0              # Excel: Inputs!D54
+    plant_availability: float = 0.0          # Excel: Inputs!D58
+    grid_availability: float = 0.0           # Excel: Inputs!D59
+    pv_degradation_pa: float = 0.0           # Excel: Inputs!D56
     horizon_years: int = 0
     construction_months: int = 0
+    # CAPEX — Excel source (from XLSM Inputs/CapEx sheets)
+    excel_total_capex_keur: float = 0.0       # Excel: Inputs!C45 (authoritative)
+    excel_idc_keur: float = 0.0              # Excel: Inputs!C39
+    excel_bank_fees_keur: float = 0.0        # Excel: Inputs!C41
+    excel_commitment_fees_keur: float = 0.0  # Excel: Inputs!C40
+    excel_capex_items: dict = field(default_factory=dict)  # code → {label, amount_keur}
+    excel_opex_annual: dict = field(default_factory=dict)  # code → {label, year1_keur}
+    # Senior debt — Excel source
+    excel_total_debt_keur: float = 0.0        # Excel: Inputs!D192
+    excel_senior_maturity_years: int = 0      # Excel: Inputs!D196
+    excel_senior_base_rate: float = 0.0       # Excel: Inputs!D202
+    excel_senior_margin_bps: float = 0.0      # Excel: Inputs!D203
+    excel_target_dscr: float = 0.0           # Excel: Inputs!D221
+    excel_lockup_dscr: float = 0.0           # Excel: Inputs!D223
+    # SHL — Excel source
+    shl_amount_keur: float = 0.0             # Excel: Inputs!D325
+    shl_rate: float = 0.0                    # Excel: Inputs!F328
+    shl_idc_keur: float = 0.0
+    # OPEX and CAPEX from factory (Python side — independent provenance)
+    opex_items: list[dict] = field(default_factory=list)
+    capex_items: list[dict] = field(default_factory=list)
     total_capex_keur: float = 0.0
     hard_capex_keur: float = 0.0
     idc_keur: float = 0.0
-    shl_amount_keur: float = 0.0
-    shl_rate: float = 0.0
-    shl_idc_keur: float = 0.0      # SHL IDC capitalised (from fixture)
-    # OPEX items from factory
-    opex_items: list[dict] = field(default_factory=list)
-    # CAPEX items from factory
-    capex_items: list[dict] = field(default_factory=list)
-    # SHL per-period from Excel fixture (61 rows: construction + 60 operating)
+    # SHL per-period from old fixture (retained for backward compat)
     excel_shl: list[dict] = field(default_factory=list)
     # Engine scalars
     engine_debt_size_keur: float = 0.0
     engine_binding_constraint: str | None = None
     engine_iterations: int = 0
-    # Excel summary KPIs (from oborovo_golden.json)
-    excel_total_debt_keur: float = 0.0
+    # Derived averages (computed in load_oborovo_sources)
     excel_avg_dscr: float = 0.0
     excel_min_dscr: float = 0.0
-    excel_total_capex_keur: float = 0.0
-    excel_target_dscr: float = 0.0
-    # Computed Excel senior-debt schedule (reconstructed from DS sheet + opening balance)
-    # Source: excel_total_debt_keur (opening) + DS.senior_principal_keur per period
-    # These are genuine Excel-provenance values, not legacy snapshot.
+    # Retained for backward compatibility with existing tests
     excel_sd_opening_keur: list[float | None] = field(default_factory=list)
     excel_sd_closing_keur: list[float | None] = field(default_factory=list)
 
@@ -206,63 +259,136 @@ def _float_or_none(val: Any) -> float | None:
         return None
 
 
-def _load_excel_periods() -> list[ExcelData]:
-    path = _REPO_ROOT / "tests" / "fixtures" / "excel_oborovo_full_model_extract.json"
+def _load_excel_truth() -> tuple[list[ExcelData], dict]:
+    """Load from authoritative XLSM extract (excel_oborovo_financial_truth.json).
+
+    Returns (period_list, metadata_dict).
+    Periods 1-60 (operation) only; period 0 (construction) is excluded from the list.
+    OPEX values stored as positive (absolute of workbook negative).
+    """
+    path = _REPO_ROOT / "tests" / "fixtures" / "excel_oborovo_financial_truth.json"
     raw = json.loads(path.read_text())
-    cols = raw["period_diagnostic_columns"]
-    rows = raw["period_diagnostics"]
-    # col index lookup
-    ci = {c: i for i, c in enumerate(cols)}
+
+    cf = raw["cf"]
+    ds = raw["ds"]
+    pl = raw["pl"]
+    dep = raw["dep"]
+    meta = raw.get("_meta", {})
+    inp = raw.get("inputs", {})
+
+    def fv(section: dict, key: str, p: int) -> float | None:
+        lst = section.get(key)
+        if lst is None or p >= len(lst):
+            return None
+        return _float_or_none(lst[p])
+
+    def fabs(section: dict, key: str, p: int) -> float | None:
+        v = fv(section, key, p)
+        return abs(v) if v is not None else None
+
+    def sval(section: dict, key: str, p: int) -> str | None:
+        lst = section.get(key)
+        if lst is None or p >= len(lst):
+            return None
+        return lst[p]
 
     result: list[ExcelData] = []
-    for row_idx, row in enumerate(rows):
-        def g(col_name: str) -> float | None:
-            idx = ci.get(col_name)
-            return _float_or_none(row[idx]) if idx is not None else None
+    # Periods 1-60 (operation periods in workbook; index 0 = col 7 in workbook = period 1)
+    for op_idx in range(60):
+        p = op_idx + 1      # workbook period number (1-based)
+
+        # EBITDA: direct from workbook if cached, else derived from Revenue - OPEX
+        ebitda_direct = fv(cf, "ebitda_keur", p)
+        rev = fv(cf, "operating_revenues_keur", p)
+        opex_abs = fabs(cf, "operating_expenses_keur", p)
+        ebitda_derived = None
+        if ebitda_direct is None and rev is not None and opex_abs is not None:
+            ebitda_derived = rev - opex_abs
 
         ed = ExcelData(
-            period_index=row_idx,
-            period_end=str(row[ci["date"]]),
-            # CF
-            revenue_keur=g("CF.operating_revenues_keur"),
-            opex_keur=abs(g("CF.operating_expenses_after_bank_tax_keur") or 0.0) or None,
-            ebitda_keur=g("CF.ebitda_keur"),
-            cash_tax_keur=abs(g("CF.corporate_income_tax_keur") or 0.0) or None,
-            cfads_keur=g("CF.free_cash_flow_for_banks_keur"),
-            senior_ds_keur=abs(g("CF.senior_debt_service_keur") or 0.0) or None,
-            free_cash_flow_keur=g("CF.free_cash_flow_for_distribution_keur"),
-            avg_dscr=g("CF.average_senior_dscr_period"),
-            min_dscr=g("CF.minimum_senior_dscr_period"),
-            # DS
-            dscr_target=g("DS.senior_debt_dscr_target"),
-            senior_principal_keur=_float_or_none(g("DS.senior_principal_keur")),
-            senior_interest_keur=_float_or_none(g("DS.senior_net_interest_keur")),
+            period_index=op_idx,
+            period_start=sval(cf, "bop_date", p) or "",
+            period_end=sval(cf, "eop_date", p) or "",
+            operation_period_fraction=fv(cf, "operation_period_fraction", p),
+            # Production & revenue
+            production_mwh=fv(cf, "production_mwh", p),
+            revenue_keur=rev,
+            ppa_sales_keur=fv(cf, "ppa_sales_keur", p),
+            production_to_ppa_mwh=fv(cf, "production_to_ppa_mwh", p),
+            tariff_indexed_eur_mwh=fv(cf, "tariff_indexed_eur_mwh", p),
+            # OPEX
+            opex_keur=opex_abs,
+            opex_b01_keur=fabs(cf, "opex_items_period_keur", p) if False else _opex_item(raw, "B.01", p),
+            opex_b02_keur=_opex_item(raw, "B.02", p),
+            opex_b03_keur=_opex_item(raw, "B.03", p),
+            opex_b04_keur=_opex_item(raw, "B.04", p),
+            opex_b05_keur=_opex_item(raw, "B.05", p),
+            opex_b06_keur=_opex_item(raw, "B.06", p),
+            opex_b07_keur=_opex_item(raw, "B.07", p),
+            opex_b08_keur=_opex_item(raw, "B.08", p),
+            opex_b09_keur=_opex_item(raw, "B.09", p),
+            opex_b10_keur=_opex_item(raw, "B.10", p),
+            opex_b11_keur=_opex_item(raw, "B.11", p),
+            opex_b12_keur=_opex_item(raw, "B.12", p),
+            opex_b13_keur=_opex_item(raw, "B.13", p),
+            # EBITDA
+            ebitda_keur=ebitda_direct,
+            ebitda_derived_keur=ebitda_derived,
+            # Downstream CF
+            cash_tax_keur=fabs(cf, "corporate_income_tax_keur", p),
+            cfads_keur=fv(cf, "fcf_for_banks_keur", p),
+            senior_ds_keur=fabs(cf, "senior_debt_service_keur", p),
+            # DS — senior debt (direct from DS sheet)
+            dscr_target=fv(ds, "dscr_target", p),
+            senior_principal_keur=fv(ds, "sd_principal_keur", p),
+            senior_interest_keur=fv(ds, "sd_net_interest_keur", p),
+            sd_opening_keur=fv(ds, "sd_beginning_keur", p),
+            sd_closing_keur=fv(ds, "sd_ending_keur", p),
+            sd_service_keur=fv(ds, "sd_service_keur", p),
+            # DS — SHL (direct from DS sheet)
+            shl_opening_keur=fv(ds, "shl_beginning_keur", p),
+            shl_net_interest_keur=fv(ds, "shl_net_interest_keur", p),
+            shl_interest_capitalised_keur=fv(ds, "shl_interest_capitalised_keur", p),
+            shl_closing_keur=fv(ds, "shl_ending_keur", p),
+            shl_service_keur=fv(ds, "shl_service_keur", p),
             # P&L
-            pl_revenue_keur=g("P&L.total_revenues_keur"),
-            depreciation_keur=abs(g("P&L.depreciation_keur") or 0.0) or None,
-            pl_senior_interest_keur=abs(g("P&L.senior_interests_keur") or 0.0) or None,
-            shl_interest_keur=abs(g("P&L.shareholder_loan_interests_keur") or 0.0) or None,
-            earnings_before_tax_keur=g("P&L.earnings_before_tax_keur"),
-            taxable_income_keur=g("P&L.taxable_income_keur"),
-            pl_cit_keur=abs(g("P&L.corporate_income_tax_keur") or 0.0) or None,
-            net_dividends_keur=g("P&L.net_dividends_keur"),
+            pl_revenue_keur=fv(pl, "total_revenues_keur", p),
+            depreciation_keur=fv(pl, "depreciation_keur", p),
+            pl_senior_interest_keur=fv(pl, "senior_interests_keur", p),
+            shl_interest_keur=fv(pl, "shl_interests_keur", p),
+            earnings_before_tax_keur=fv(pl, "earnings_before_tax_keur", p),
+            taxable_income_keur=fv(pl, "taxable_income_keur", p),
+            pl_cit_keur=fv(pl, "corporate_income_tax_keur", p),
+            net_dividends_keur=fv(pl, "net_dividends_keur", p),
+            net_income_keur=fv(pl, "net_income_keur", p),
             # Dep
-            dep_depreciation_keur=g("Dep.depreciation_keur"),
-            dep_cumulated_keur=g("Dep.cumulated_depreciation_keur"),
+            dep_depreciation_keur=fv(dep, "dep_total_keur", p),
+            dep_total_keur=fv(dep, "dep_total_keur", p),
         )
         result.append(ed)
-    return result
+
+    return result, meta
+
+
+def _opex_item(raw: dict, code: str, period: int) -> float | None:
+    """Extract one per-item OPEX value (stored positive) for a given period."""
+    items = raw.get("cf", {}).get("opex_items_period_keur", {})
+    lst = items.get(code)
+    if lst is None or period >= len(lst):
+        return None
+    v = _float_or_none(lst[period])
+    return abs(v) if v is not None else None
 
 
 def _load_excel_shl() -> list[dict]:
+    # Legacy SHL loader kept for backward compat; returns empty list if new fixture used
     path = _REPO_ROOT / "tests" / "fixtures" / "excel_oborovo_full_model_extract.json"
+    if not path.exists():
+        return []
     raw = json.loads(path.read_text())
-    cols = raw["shl_columns"]
-    rows = raw["shl"]
-    result = []
-    for row in rows:
-        result.append(dict(zip(cols, row)))
-    return result
+    cols = raw.get("shl_columns", [])
+    rows = raw.get("shl", [])
+    return [dict(zip(cols, row)) for row in rows]
 
 
 def _load_legacy_periods() -> list[LegacyData]:
@@ -558,92 +684,156 @@ def _load_factory_inputs() -> dict:
     }
 
 
-def _load_golden_summary() -> dict:
-    path = _REPO_ROOT / "tests" / "fixtures" / "oborovo_golden.json"
+def _load_excel_scalar_inputs() -> dict:
+    """Load scalar inputs from the authoritative XLSM extract."""
+    path = _REPO_ROOT / "tests" / "fixtures" / "excel_oborovo_financial_truth.json"
     raw = json.loads(path.read_text())
-    outputs = raw.get("outputs", {})
-    inputs = raw.get("inputs", {})
-    fin = raw.get("financing_inputs", {})
-    tax = raw.get("tax_inputs", {})
+    inp = raw.get("inputs", {})
+    cap = raw.get("capex_sheet", {})
+
+    def v(key: str) -> Any:
+        entry = inp.get(key, {})
+        return entry.get("value") if isinstance(entry, dict) else None
+
+    def fv(key: str, default: float = 0.0) -> float:
+        val = v(key)
+        return float(val) if isinstance(val, (int, float)) else default
+
+    def iv(key: str, default: int = 0) -> int:
+        val = v(key)
+        return int(val) if isinstance(val, (int, float)) else default
+
+    # Flatten capex items
+    excel_capex_items = {}
+    for code, item in inp.get("capex_items_from_inputs", {}).items():
+        excel_capex_items[code] = {
+            "label": item.get("label", ""),
+            "amount_keur": item.get("amount_keur"),
+        }
+
+    # Flatten opex annual items
+    excel_opex_annual = {}
+    for code, item in inp.get("opex_annual_items", {}).items():
+        excel_opex_annual[code] = {
+            "label": item.get("label", ""),
+            "year1_keur": item.get("year1_keur"),
+            "years_1_to_6_keur": item.get("years_1_to_6_keur", []),
+        }
+
     return {
-        "excel_total_debt_keur": float(outputs.get("total_debt_keur", 0)),
-        "excel_avg_dscr": float(outputs.get("avg_dscr", 0)),
-        "excel_min_dscr": float(outputs.get("min_dscr", 0)),
-        "excel_total_capex_keur": float(outputs.get("total_capex_keur", 0)),
-        "excel_target_dscr": float(fin.get("target_dscr", 1.15)),
-        "capacity_mw": float(inputs.get("capacity_mw", 0)),
-        "cod_date": str(inputs.get("cod_date", "")),
-        "financial_close": str(inputs.get("financial_close", "")),
-        "ppa_tariff_eur_mwh": float(inputs.get("ppa_base_tariff", 0)),
-        "ppa_term_years": int(inputs.get("ppa_term_years", 0)),
-        "ppa_index": float(inputs.get("ppa_index", 0)),
-        "horizon_years": int(inputs.get("horizon_years", 0)),
-        "construction_months": int(inputs.get("construction_months", 0)),
-        "shl_amount_keur": float(fin.get("shl_amount_keur", 0)),
-        "shl_rate": float(fin.get("shl_rate", 0)),
+        "excel_total_capex_keur": fv("total_capex_keur"),
+        "excel_total_debt_keur": fv("senior_debt_amount_keur"),
+        "excel_senior_maturity_years": iv("senior_debt_maturity_years"),
+        "excel_senior_base_rate": fv("senior_debt_base_rate"),
+        "excel_senior_margin_bps": fv("senior_debt_margin_bps"),
+        "excel_target_dscr": fv("senior_dscr_covenant", 1.15),
+        "excel_lockup_dscr": fv("senior_lockup_dscr", 1.1),
+        "excel_idc_keur": fv("total_capex_keur") - fv("total_capex_keur"),  # derived below
+        "capacity_mw": fv("capacity_mwp"),
+        "cod_date": str(v("operation_start_date") or ""),
+        "financial_close": str(v("financial_close_date") or ""),
+        "ppa_tariff_eur_mwh": fv("ppa_base_tariff_y1_eur_mwh"),
+        "ppa_term_years": iv("ppa_term_years"),
+        "ppa_index": fv("ppa_index_pa"),
+        "operating_hours_p50": iv("operating_hours_p50"),
+        "plant_availability": fv("plant_availability"),
+        "grid_availability": fv("grid_availability"),
+        "pv_degradation_pa": fv("pv_degradation_pa"),
+        "horizon_years": iv("investment_horizon_years"),
+        "construction_months": iv("construction_months"),
+        "shl_amount_keur": fv("shl_amount_keur"),
+        "shl_rate": fv("shl_interest_rate"),
+        "excel_capex_items": excel_capex_items,
+        "excel_opex_annual": excel_opex_annual,
+        # IDC directly from capex inputs
+        "excel_idc_keur": float(inp.get("capex_items_from_inputs", {})
+                                .get("C.IDC", {}).get("amount_keur") or 0.0),
+        "excel_bank_fees_keur": float(inp.get("capex_items_from_inputs", {})
+                                      .get("C.BF", {}).get("amount_keur") or 0.0),
+        "excel_commitment_fees_keur": float(inp.get("capex_items_from_inputs", {})
+                                            .get("C.CF", {}).get("amount_keur") or 0.0),
     }
 
 
 def load_oborovo_sources() -> OborovoSources:
     """Load all data sources for the Oborovo Excel↔Python reconciliation."""
-    excel = _load_excel_periods()
+    excel, excel_meta = _load_excel_truth()
     legacy = _load_legacy_periods()
     excel_shl = _load_excel_shl()
     engine_data, debt_size, binding, iters = _run_clean_engine()
     factory = _load_factory_inputs()
-    golden = _load_golden_summary()
+    excel_inp = _load_excel_scalar_inputs()
 
-    # SHL IDC from first SHL row (construction period)
-    shl_idc = 0.0
-    if excel_shl:
-        shl_idc = abs(float(excel_shl[0].get("capitalized_interest") or 0.0))
-
-    # Reconstruct Excel senior-debt opening/closing schedule from DS sheet principal.
-    # Source: excel_total_debt_keur as period-0 opening; closing = opening - principal.
-    # This is genuine Excel provenance: opening balance from golden KPI extract,
-    # per-period principal from DS.senior_principal_keur column in period_diagnostics.
-    excel_opening: list[float | None] = []
-    excel_closing: list[float | None] = []
-    _opening = golden["excel_total_debt_keur"] if golden["excel_total_debt_keur"] > 0 else None
+    # Derive average and minimum DSCR from DS sheet CFADS / SD service
+    # Active debt-service periods: opening > 0 and service > 0
+    dscr_vals: list[float] = []
     for ep in excel:
-        excel_opening.append(_opening)
-        principal = ep.senior_principal_keur
-        if _opening is not None and principal is not None:
-            _opening = _opening - principal
-            excel_closing.append(_opening)
-        else:
-            _opening = None
-            excel_closing.append(None)
+        opening = ep.sd_opening_keur
+        service = ep.sd_service_keur
+        cfads = ep.cfads_keur
+        if (opening is not None and opening > 0.01
+                and service is not None and service > 0.01
+                and cfads is not None):
+            dscr = cfads / service
+            dscr_vals.append(dscr)
+
+    avg_dscr = sum(dscr_vals) / len(dscr_vals) if dscr_vals else 0.0
+    min_dscr = min(dscr_vals) if dscr_vals else 0.0
+
+    # Excel SD opening/closing schedule — now directly from DS sheet (not reconstructed)
+    excel_opening = [ep.sd_opening_keur for ep in excel]
+    excel_closing = [ep.sd_closing_keur for ep in excel]
+
+    # SHL IDC: capitalised interest during construction (DS.shl_interest_capitalised row 128, period 0)
+    # Load directly from fixture period 0 (construction)
+    truth_path = _REPO_ROOT / "tests" / "fixtures" / "excel_oborovo_financial_truth.json"
+    truth = json.loads(truth_path.read_text())
+    shl_idc = abs(truth.get("ds", {}).get("shl_interest_capitalised_keur", [None])[0] or 0.0)
 
     return OborovoSources(
         excel=excel,
         legacy=legacy,
         engine=engine_data,
-        capacity_mw=golden["capacity_mw"],
-        cod_date=golden["cod_date"],
-        financial_close=golden["financial_close"],
-        ppa_tariff_eur_mwh=golden["ppa_tariff_eur_mwh"],
-        ppa_term_years=golden["ppa_term_years"],
-        ppa_index=golden["ppa_index"],
-        horizon_years=golden["horizon_years"],
-        construction_months=golden["construction_months"],
-        total_capex_keur=factory["total_capex_keur"],
-        hard_capex_keur=factory["hard_capex_keur"],
-        idc_keur=factory["idc_keur"],
-        shl_amount_keur=golden["shl_amount_keur"],
-        shl_rate=golden["shl_rate"],
+        excel_fixture_sha256=excel_meta.get("source_sha256", ""),
+        excel_source_filename=excel_meta.get("source_filename", ""),
+        capacity_mw=excel_inp["capacity_mw"],
+        cod_date=excel_inp["cod_date"],
+        financial_close=excel_inp["financial_close"],
+        ppa_tariff_eur_mwh=excel_inp["ppa_tariff_eur_mwh"],
+        ppa_term_years=excel_inp["ppa_term_years"],
+        ppa_index=excel_inp["ppa_index"],
+        operating_hours_p50=excel_inp["operating_hours_p50"],
+        plant_availability=excel_inp["plant_availability"],
+        grid_availability=excel_inp["grid_availability"],
+        pv_degradation_pa=excel_inp["pv_degradation_pa"],
+        horizon_years=excel_inp["horizon_years"],
+        construction_months=excel_inp["construction_months"],
+        excel_total_capex_keur=excel_inp["excel_total_capex_keur"],
+        excel_idc_keur=excel_inp["excel_idc_keur"],
+        excel_bank_fees_keur=excel_inp["excel_bank_fees_keur"],
+        excel_commitment_fees_keur=excel_inp["excel_commitment_fees_keur"],
+        excel_capex_items=excel_inp["excel_capex_items"],
+        excel_opex_annual=excel_inp["excel_opex_annual"],
+        excel_total_debt_keur=excel_inp["excel_total_debt_keur"],
+        excel_senior_maturity_years=excel_inp["excel_senior_maturity_years"],
+        excel_senior_base_rate=excel_inp["excel_senior_base_rate"],
+        excel_senior_margin_bps=excel_inp["excel_senior_margin_bps"],
+        excel_target_dscr=excel_inp["excel_target_dscr"],
+        excel_lockup_dscr=excel_inp["excel_lockup_dscr"],
+        shl_amount_keur=excel_inp["shl_amount_keur"],
+        shl_rate=excel_inp["shl_rate"],
         shl_idc_keur=shl_idc,
         opex_items=factory["opex_items"],
         capex_items=factory["capex_items"],
+        total_capex_keur=factory["total_capex_keur"],
+        hard_capex_keur=factory["hard_capex_keur"],
+        idc_keur=factory["idc_keur"],
         excel_shl=excel_shl,
         engine_debt_size_keur=debt_size,
         engine_binding_constraint=binding,
         engine_iterations=iters,
-        excel_total_debt_keur=golden["excel_total_debt_keur"],
-        excel_avg_dscr=golden["excel_avg_dscr"],
-        excel_min_dscr=golden["excel_min_dscr"],
-        excel_total_capex_keur=golden["excel_total_capex_keur"],
-        excel_target_dscr=golden["excel_target_dscr"],
+        excel_avg_dscr=avg_dscr,
+        excel_min_dscr=min_dscr,
         excel_sd_opening_keur=excel_opening,
         excel_sd_closing_keur=excel_closing,
     )

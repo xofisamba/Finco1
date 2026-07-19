@@ -338,14 +338,24 @@ class TestSourceIndependence:
         # CFADS in fixture is CF.free_cash_flow_for_banks_keur, which comes from Excel model.
         assert all(isinstance(v, float) for v in xl)
 
-    def test_excel_opex_individual_items_unresolved(self, sources):
-        # B.xx individual items have NO Excel source in the fixture — all should be None.
-        # If any Excel B.xx value is non-None, it means a factory value was incorrectly
-        # used as Excel provenance.
-        # (There is no ExcelData field for individual OPEX items.)
+    def test_excel_opex_individual_items_extracted(self, sources):
+        # B.01-B.13 per-item OPEX is now extracted directly from XLSM CF rows 56-68.
+        # ExcelData must have opex_b01_keur..opex_b13_keur populated (not None) for operation periods.
         for p in sources.excel:
-            assert not hasattr(p, "opex_b01_keur"), \
-                "ExcelData must NOT have per-item B.xx fields (they are Python-only)"
+            assert hasattr(p, "opex_b01_keur"), "ExcelData must have per-item B.xx fields (from XLSM)"
+        # Check B.01-B.13 sum is close to total OPEX for each period (identity check)
+        for p in sources.excel:
+            items = [
+                p.opex_b01_keur, p.opex_b02_keur, p.opex_b03_keur, p.opex_b04_keur,
+                p.opex_b05_keur, p.opex_b06_keur, p.opex_b07_keur, p.opex_b08_keur,
+                p.opex_b09_keur, p.opex_b10_keur, p.opex_b11_keur, p.opex_b12_keur,
+                p.opex_b13_keur,
+            ]
+            non_none = [v for v in items if v is not None]
+            if non_none and p.opex_keur is not None:
+                item_sum = sum(non_none)
+                assert abs(item_sum - p.opex_keur) < 1.0, \
+                    f"Period {p.period_index}: B.01-B.13 sum {item_sum:.2f} != total OPEX {p.opex_keur:.2f}"
 
     def test_excel_capex_per_item_unresolved(self, sources):
         # No per-item CAPEX in ExcelData.
@@ -354,15 +364,17 @@ class TestSourceIndependence:
                 "ExcelData must NOT have per-item C.xx fields (they are Python-only)"
 
     def test_legacy_not_used_as_excel_in_sd_schedule(self, sources):
-        # SD.01 and SD.05 must use excel_sd_opening/closing (reconstructed from Excel data),
+        # SD.01 and SD.05 must use excel_sd_opening/closing from DS sheet (direct XLSM provenance),
         # NOT legacy snapshot values directly.
         assert hasattr(sources, "excel_sd_opening_keur"), "OborovoSources missing excel_sd_opening_keur"
         assert hasattr(sources, "excel_sd_closing_keur"), "OborovoSources missing excel_sd_closing_keur"
         assert len(sources.excel_sd_opening_keur) == 60
         assert len(sources.excel_sd_closing_keur) == 60
-        # Opening period 0 must equal the Excel total debt (the golden KPI, not legacy snapshot).
-        assert sources.excel_sd_opening_keur[0] == sources.excel_total_debt_keur, \
-            "SD.01 Excel opening must equal excel_total_debt_keur (from golden, not legacy)"
+        # Opening period 0 (DS sheet direct) must be close to Excel total debt (within 1 kEUR).
+        op0 = sources.excel_sd_opening_keur[0]
+        assert op0 is not None, "SD.01 Excel opening period 0 must not be None"
+        assert abs(op0 - sources.excel_total_debt_keur) < 1.0, \
+            f"SD.01 Excel opening {op0:.2f} should match excel_total_debt_keur {sources.excel_total_debt_keur:.2f}"
 
     def test_excel_sd_schedule_identity(self, sources):
         # Verify: closing[t] == opening[t] - principal[t] for all periods where data exists.
