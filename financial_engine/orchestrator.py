@@ -206,29 +206,31 @@ def _compute_depreciation(inputs: OperatingModelInput, periods_meta: list) -> tu
     )
 
     dep = inputs.depreciation
-    if not dep.capex_items_for_depreciation:
+    if not dep.book_capex_items_for_depreciation and not dep.tax_capex_items_for_depreciation:
         return {}, {}
 
-    # Reconstruct finco_core CapexItem objects from the clean contract.
-    capex_items = tuple(
-        CapexItem(
-            name=item.name,
-            amount_keur=item.amount_keur,
-            asset_class=AssetClass(item.asset_class_code),
-            useful_life_override=item.useful_life_override,
+    def _build_schedule(capex_item_defs: tuple) -> dict[int, float]:
+        if not capex_item_defs:
+            return {}
+        items = tuple(
+            CapexItem(
+                name=item.name,
+                amount_keur=item.amount_keur,
+                asset_class=AssetClass(item.asset_class_code),
+                useful_life_override=item.useful_life_override,
+            )
+            for item in capex_item_defs
         )
-        for item in dep.capex_items_for_depreciation
-    )
+        annual = build_depreciation_schedule(
+            capex_items=items,
+            horizon_years=inputs.calendar.horizon_years,
+            senior_tenor_years=dep.financial_cost_useful_life_years,
+        )
+        return depreciation_per_period(annual, periods_meta)
 
-    annual_schedule = build_depreciation_schedule(
-        capex_items=capex_items,
-        horizon_years=inputs.calendar.horizon_years,
-        senior_tenor_years=dep.financial_cost_useful_life_years,
-    )
-
-    dep_by_idx = depreciation_per_period(annual_schedule, periods_meta)
-    # Both book and tax use the same formula in the Phase 2A operating core.
-    return dep_by_idx, dep_by_idx
+    book_dep_by_idx = _build_schedule(dep.book_capex_items_for_depreciation)
+    tax_dep_by_idx = _build_schedule(dep.tax_capex_items_for_depreciation)
+    return book_dep_by_idx, tax_dep_by_idx
 
 
 def run_operating_model(inputs: OperatingModelInput) -> ProjectModelResult:
