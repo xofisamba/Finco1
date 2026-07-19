@@ -121,10 +121,11 @@ def test_operating_core_v1_pass(baseline_id: str):
         )
     if baseline_id == "tuho":
         pytest.xfail(
-            "Governed drift [B3-book]: TUHO book depreciable basis now includes capitalised "
-            "bank financing costs (idc_keur=1519.56, bank_fees_keur=782.61) per the generic "
-            "CapexStructure contract that these fields represent capitalised costs. "
-            "Tax depreciation is UNCHANGED from baseline. "
+            "Expected mechanical engine drift [B3-book]: generic book_depreciable_capex_items() "
+            "architecture includes capitalised bank financing costs for all projects with "
+            "non-zero idc_keur/bank_fees_keur (TUHO: idc_keur=1519.56, bank_fees_keur=782.61). "
+            "TUHO project-specific book-depreciation financial treatment is OPEN — "
+            "not yet validated from TUHO source model. Tax depreciation UNCHANGED from baseline. "
             "Baseline refresh requires explicit governance approval."
         )
     committed = _load_baseline(baseline_id)
@@ -250,10 +251,11 @@ def test_book_depreciation_parity(baseline_id: str):
         )
     if baseline_id == "tuho":
         pytest.xfail(
-            "Governed drift [B3-book]: TUHO BOOK depreciable basis now includes capitalised "
-            "bank financing costs (idc_keur=1519.56, bank_fees_keur=782.61) per CapexStructure "
-            "field contract (these fields represent capitalised costs in the asset base). "
-            "TAX depreciation is unchanged from baseline. "
+            "Expected mechanical engine drift [B3-book]: generic book_depreciable_capex_items() "
+            "architecture includes capitalised bank financing costs for all projects with "
+            "non-zero idc_keur/bank_fees_keur (TUHO: idc_keur=1519.56, bank_fees_keur=782.61). "
+            "TUHO project-specific book-depreciation financial treatment is OPEN — "
+            "not yet validated from TUHO source model. TAX depreciation UNCHANGED from baseline. "
             "Baseline refresh requires explicit governance approval."
         )
     baseline = _load_baseline(baseline_id)

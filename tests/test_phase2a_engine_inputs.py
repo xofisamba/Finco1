@@ -78,7 +78,8 @@ def _minimal_valid_inputs(**overrides) -> OperatingModelInput:
         ),
     ))
     dep = DepreciationInput(
-        capex_items_for_depreciation=(),
+        book_capex_items_for_depreciation=(),
+        tax_capex_items_for_depreciation=(),
         financial_cost_useful_life_years=14,
     )
     src = InputProvenance(source_id="test", baseline_commit_sha="abc")
@@ -124,7 +125,8 @@ def test_opex_items_are_tuples():
 
 def test_depreciation_capex_items_are_tuples():
     inputs = _minimal_valid_inputs()
-    assert isinstance(inputs.depreciation.capex_items_for_depreciation, tuple)
+    assert isinstance(inputs.depreciation.book_capex_items_for_depreciation, tuple)
+    assert isinstance(inputs.depreciation.tax_capex_items_for_depreciation, tuple)
 
 
 def test_depreciation_input_both_fields_required():
@@ -296,7 +298,7 @@ def test_dep001_negative_amount_keur_is_error():
         asset_class_code="solar_panels",
     )
     inputs = _minimal_valid_inputs()
-    dep = dataclasses.replace(inputs.depreciation, capex_items_for_depreciation=(item,))
+    dep = dataclasses.replace(inputs.depreciation, book_capex_items_for_depreciation=(item,))
     inputs2 = dataclasses.replace(inputs, depreciation=dep)
     issues = validate_operating_model_input(inputs2)
     assert any(i.code == "DEP001" for i in issues)
@@ -311,7 +313,7 @@ def test_dep001_nan_amount_keur_is_error():
         asset_class_code="solar_panels",
     )
     inputs = _minimal_valid_inputs()
-    dep = dataclasses.replace(inputs.depreciation, capex_items_for_depreciation=(item,))
+    dep = dataclasses.replace(inputs.depreciation, book_capex_items_for_depreciation=(item,))
     inputs2 = dataclasses.replace(inputs, depreciation=dep)
     issues = validate_operating_model_input(inputs2)
     assert any(i.code == "DEP001" for i in issues)
@@ -326,7 +328,7 @@ def test_dep002_unknown_asset_class_is_error():
         asset_class_code="unicorn_tech",
     )
     inputs = _minimal_valid_inputs()
-    dep = dataclasses.replace(inputs.depreciation, capex_items_for_depreciation=(item,))
+    dep = dataclasses.replace(inputs.depreciation, book_capex_items_for_depreciation=(item,))
     inputs2 = dataclasses.replace(inputs, depreciation=dep)
     issues = validate_operating_model_input(inputs2)
     assert any(i.code == "DEP002" for i in issues)
@@ -342,7 +344,7 @@ def test_dep003_invalid_useful_life_override_is_error():
         useful_life_override=0,
     )
     inputs = _minimal_valid_inputs()
-    dep = dataclasses.replace(inputs.depreciation, capex_items_for_depreciation=(item,))
+    dep = dataclasses.replace(inputs.depreciation, book_capex_items_for_depreciation=(item,))
     inputs2 = dataclasses.replace(inputs, depreciation=dep)
     issues = validate_operating_model_input(inputs2)
     assert any(i.code == "DEP003" for i in issues)

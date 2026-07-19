@@ -108,7 +108,7 @@ def from_project_inputs(
         )
 
     # BOOK depreciable basis: hard capex + capitalised bank financing costs.
-    # Evidence (Oborovo Excel Dep sheet): dep_idc_keur, dep_commitment_fees_keur,
+    # Evidence (Excel Dep sheet): dep_idc_keur, dep_commitment_fees_keur,
     # dep_bank_fees_keur, dep_vat_keur all non-zero. SHL IDC excluded (OPEN).
     book_capex_items_for_dep = tuple(
         _to_dep_item(item) for item in inputs.capex.book_depreciable_capex_items()
