@@ -662,16 +662,51 @@ class TestCLI:
 # ---------------------------------------------------------------------------
 
 class TestScopeContaminationGuard:
-    """Ensure the Phase 2D PR does not silently modify unrelated canonical
-    mapping evidence.  Only concepts whose model column includes 'OBOROVO'
-    (or BOTH with a confirmed Oborovo extraction) may have *new* cell
-    coordinates added in verified_* columns.  Any row whose only confirmed
-    model is TUHO must not have cell coordinates introduced by this PR."""
+    """Ensure the Phase 2D PR does not introduce unverified cell coordinates
+    for TUHO-only mapping rows.
 
-    CLEAN_BASELINE = "fe7c671a"  # last clean Phase-2D-only commit
+    Governance note: verified_formula_cell_tuho for equity.investor_2_share
+    existed in prior mapping history (value C301) but is kept empty here
+    because direct TUHO workbook verification has not been performed in
+    Phase 2D.  It must remain empty until a dedicated TUHO mapping phase
+    confirms the cell address by direct source-workbook inspection.
+    """
+
     CSV_REL = "docs/model_mapping/unresolved_pack_id_evidence.csv"
 
-    def _git_show_csv(self, ref: str) -> list[str]:
+    # verified_* column names as they appear in the CSV header
+    VERIFIED_COLS = [
+        "verified_label_cell_tuho",
+        "verified_label_cell_oborovo",
+        "verified_value_cell_tuho",
+        "verified_value_cell_oborovo",
+        "verified_editable_cell_tuho",
+        "verified_editable_cell_oborovo",
+        "verified_formula_cell_tuho",
+        "verified_formula_cell_oborovo",
+        "verified_counterparty_label_cell_tuho",
+        "verified_counterparty_label_cell_oborovo",
+        "verified_formula_period_cell_tuho",
+        "verified_formula_period_cell_oborovo",
+    ]
+
+    def _parse_csv(self, text: str) -> dict[str, dict[str, str]]:
+        """Return {canonical_concept: {col_name: value}} using csv.DictReader.
+
+        Uses the csv module so that quoted fields containing embedded commas
+        are handled correctly.
+        """
+        import csv
+        import io
+        reader = csv.DictReader(io.StringIO(text))
+        rows: dict[str, dict[str, str]] = {}
+        for row in reader:
+            concept = row.get("canonical_concept", "").strip()
+            if concept:
+                rows[concept] = {k: (v or "").strip() for k, v in row.items()}
+        return rows
+
+    def _git_show_csv(self, ref: str) -> str:
         import subprocess
         result = subprocess.run(
             ["git", "show", f"{ref}:{self.CSV_REL}"],
@@ -679,63 +714,109 @@ class TestScopeContaminationGuard:
         )
         if result.returncode != 0:
             pytest.skip(f"Cannot read {ref} from git: {result.stderr.strip()}")
-        return result.stdout.splitlines()
+        return result.stdout
 
-    def _parse_rows(self, lines: list[str]) -> dict[str, list[str]]:
-        """Return {canonical_concept: [fields...]} keyed by col-0."""
-        rows: dict[str, list[str]] = {}
-        for line in lines[1:]:  # skip header
-            if not line.strip():
-                continue
-            fields = line.split(",")
-            if fields:
-                rows[fields[0]] = fields
-        return rows
+    # ------------------------------------------------------------------
+    # Parser correctness test — quoted fields with embedded commas
+    # ------------------------------------------------------------------
 
-    def test_no_tuho_only_rows_have_new_verified_cells(self):
-        """No row whose model is exclusively TUHO should have gained
-        non-empty cell coordinates in verified_* columns vs the baseline."""
-        baseline_lines = self._git_show_csv(self.CLEAN_BASELINE)
+    def test_csv_parser_handles_quoted_embedded_commas(self):
+        """csv.DictReader must correctly resolve named columns even when a
+        field value contains an embedded comma wrapped in double-quotes."""
+        import csv
+        import io
+
+        # Minimal synthetic CSV mimicking the real header + one quoted row
+        synthetic = (
+            "canonical_concept,pack_id,model,cell_role,value_kind,unit,"
+            "evidence_basis,mapping_verification_status,shared_source_id,"
+            "review_note,status,confidence,"
+            "verified_label_cell_tuho,verified_label_cell_oborovo,"
+            "verified_value_cell_tuho,verified_value_cell_oborovo,"
+            "verified_editable_cell_tuho,verified_editable_cell_oborovo,"
+            "verified_formula_cell_tuho,verified_formula_cell_oborovo,"
+            "verified_counterparty_label_cell_tuho,"
+            "verified_counterparty_label_cell_oborovo,"
+            "verified_formula_period_cell_tuho,"
+            "verified_formula_period_cell_oborovo\n"
+            'test.concept,test.concept,TUHO,EDITABLE_HARDCODE,numeric,ratio_0_1,'
+            'PROGRAMMATIC_WORKBOOK_INSPECTION,MAPPING_CONFIRMED,,'
+            '"note with, embedded comma",ENGINE_GAP,CONFIRMED,'
+            'A100,,C100,,,,C101,,,,,\n'
+        )
+        reader = csv.DictReader(io.StringIO(synthetic))
+        rows = {r["canonical_concept"]: r for r in reader}
+
+        assert "test.concept" in rows, "concept row not parsed"
+        row = rows["test.concept"]
+
+        # Quoted field with embedded comma must be a single value
+        assert row["review_note"] == "note with, embedded comma", (
+            f"Quoted field misread: {row['review_note']!r}"
+        )
+        # Named column access must be unambiguous despite the embedded comma
+        assert row["verified_formula_cell_tuho"] == "C101", (
+            f"verified_formula_cell_tuho wrong: {row['verified_formula_cell_tuho']!r}"
+        )
+        assert row["verified_value_cell_tuho"] == "C100", (
+            f"verified_value_cell_tuho wrong: {row['verified_value_cell_tuho']!r}"
+        )
+
+    # ------------------------------------------------------------------
+    # Guard: no TUHO-only row may have non-empty verified_* cells
+    # ------------------------------------------------------------------
+
+    def test_no_tuho_only_rows_have_verified_cells(self):
+        """No row whose model is exclusively TUHO may have any non-empty
+        verified_* cell coordinate in the current working-tree CSV.
+
+        This enforces the Phase 2D governance policy: TUHO cell mappings
+        require direct source-workbook verification before they may be
+        recorded as confirmed evidence.
+        """
         import pathlib
-        current_lines = pathlib.Path(self.CSV_REL).read_text().splitlines()
-
-        baseline = self._parse_rows(baseline_lines)
-        current = self._parse_rows(current_lines)
-
-        # verified_* columns are indices 12-23 (0-based)
-        VERIFIED_COLS = range(12, 24)
+        text = pathlib.Path(self.CSV_REL).read_text()
+        rows = self._parse_csv(text)
 
         violations: list[str] = []
-        for concept, cur_fields in current.items():
-            model_col = cur_fields[2].strip().upper() if len(cur_fields) > 2 else ""
-            if model_col not in ("TUHO",):
+        for concept, row in rows.items():
+            if row.get("model", "").upper() != "TUHO":
                 continue
-            base_fields = baseline.get(concept, [""] * 24)
-            for idx in VERIFIED_COLS:
-                base_val = base_fields[idx].strip() if idx < len(base_fields) else ""
-                cur_val = cur_fields[idx].strip() if idx < len(cur_fields) else ""
-                if cur_val and not base_val:
+            for col in self.VERIFIED_COLS:
+                val = row.get(col, "").strip()
+                if val:
                     violations.append(
-                        f"{concept}: col {idx} gained '{cur_val}' (was empty in baseline)"
+                        f"{concept}: {col} = '{val}' (must be empty; "
+                        "TUHO workbook verification not performed in Phase 2D)"
                     )
 
         assert not violations, (
-            "Phase 2D PR introduced cell coordinates for TUHO-only mapping rows "
-            "without source-workbook verification:\n" + "\n".join(violations)
+            "Unverified TUHO cell coordinates detected in mapping CSV:\n"
+            + "\n".join(violations)
         )
 
+    # ------------------------------------------------------------------
+    # Specific policy assertion for equity.investor_2_share
+    # ------------------------------------------------------------------
+
     def test_equity_investor_2_share_tuho_formula_cell_not_set(self):
-        """equity.investor_2_share must NOT have verified_formula_cell_tuho
-        (col 18) populated — it was added without workbook verification and
-        has been reverted by this cleanup commit."""
+        """verified_formula_cell_tuho for equity.investor_2_share must be
+        empty.
+
+        Governance: the candidate value C301 existed in prior mapping
+        history but is not confirmed here because no direct TUHO workbook
+        inspection was performed in Phase 2D.  It remains deferred pending
+        a future TUHO mapping phase.
+        """
         import pathlib
-        lines = pathlib.Path(self.CSV_REL).read_text().splitlines()
-        rows = self._parse_rows(lines)
+        text = pathlib.Path(self.CSV_REL).read_text()
+        rows = self._parse_csv(text)
+
         concept = "equity.investor_2_share"
         assert concept in rows, f"{concept} not found in CSV"
-        fields = rows[concept]
-        # col 18 = verified_formula_cell_tuho (0-based, after header split)
-        col18 = fields[18].strip() if len(fields) > 18 else ""
-        assert col18 == "", (
-            f"{concept}: verified_formula_cell_tuho (col 18) must be empty, got '{col18}'"
+
+        val = rows[concept].get("verified_formula_cell_tuho", "").strip()
+        assert val == "", (
+            f"{concept}: verified_formula_cell_tuho must be empty pending "
+            f"direct TUHO workbook verification; got '{val}'"
         )
