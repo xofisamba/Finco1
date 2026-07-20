@@ -2,21 +2,15 @@
 
 **Status**: Architecture freeze. Design only — no runtime implementation.
 
-## Overview
-
-The Oborovo financial model uses a single-selection scenario architecture for OPEX:
-
-- **Base Project Inputs** — budget values read directly from the authoritative workbook's `Scenarios!E` column, which itself is formula-driven: `=INDEX(H<row>:K<row>,0,MATCH($E$4,$H$4:$K$4,0))`. Column E resolves to whichever of the four named scenarios (H–K) is selected by the index in `Scenarios!E4`.
-- **One Selected Named Scenario** — the workbook's `Scenarios!E4` selector picks exactly one column (H=1, I=2, J=3, K=4). All `Scenarios!E` cells resolve to that scenario's values. There is no multi-layer stacking.
-- **Resolved Immutable Inputs** — the resolved `Scenarios!E` values, together with shared parameters (`Inputs!D85`, `Inputs!D196`, etc.), form a fully determined input set. These feed the clean computation engine.
-
-This document captures the structural design so it can be implemented correctly in a future sprint. It does not introduce any new runtime code.
-
 ---
 
-## Named Scenarios (Workbook)
+## A. Authoritative Excel Source Behavior
 
-The workbook defines four named scenarios in the `Scenarios` sheet, rows 3–4, columns H–K:
+This section documents what the workbook does. It is source documentation, not a design target.
+
+### Scenario selection in the workbook
+
+The workbook's `Scenarios` sheet stores four side-by-side scenario columns (H–K). Row 3 holds scenario names; row 4 holds sequential indices (1–4). Cell `Scenarios!E4` holds the active index selector.
 
 | Column | Index | Name |
 |--------|-------|------|
@@ -25,15 +19,26 @@ The workbook defines four named scenarios in the `Scenarios` sheet, rows 3–4, 
 | J | 3 | Tracker system NEW OPEX TEMPLATE |
 | K | 4 | DCSA to RTB, no DEV costs |
 
-`Scenarios!E4` holds the active index (currently `4` → column K). Every OPEX budget cell in column E is `=INDEX(H<row>:K<row>,0,MATCH($E$4,$H$4:$K$4,0))`, resolving to the K-column value when E4=4.
+Current selection: `E4 = 4` → column K ("DCSA to RTB, no DEV costs").
 
-The fixture records `scenarios.selected_index`, `scenarios.selected_column`, and per-subitem `budget.scenarios_lineage.per_scenario_values` (H/I/J/K) so all four scenarios are machine-readable without re-running the extractor.
+Every OPEX budget cell in column E resolves to the selected scenario's value via:
+```
+=INDEX(H<row>:K<row>, 0, MATCH($E$4, $H$4:$K$4, 0))
+```
 
----
+Changing `E4` switches all budget inputs atomically — exactly one scenario column is active at any time.
 
-## Scenarios Row Mapping
+### Activation flags in the workbook
 
-Every OPEX subitem whose budget is formula-driven by the Scenarios sheet has a `scenarios_row` recorded in the fixture. Key rows:
+OPEX activation flags (Y1–Y30 per subitem) are structural values on the `OpEx` sheet. Most are constants (0 or 1). Exceptions:
+
+- **B.11.3 Bank Fees** — formula-driven: `=IF(F2<=Inputs!$D$196,1,0)`, where `Inputs!D196` = senior debt tenor (= 14 years, sourced from `Scenarios!E345`). Active Y1–Y14, zero Y15–Y30.
+
+Changing structural activation flags in the current workbook requires manual editing of the `OpEx` sheet. There is no scenario-level flag override mechanism in the workbook itself.
+
+### Scenarios row mapping
+
+Every OPEX subitem whose budget formula links to the Scenarios sheet has a `scenarios_row` recorded in the fixture. Key rows:
 
 | Category | Name | Scenarios row |
 |----------|------|---------------|
@@ -58,81 +63,154 @@ Every OPEX subitem whose budget is formula-driven by the Scenarios sheet has a `
 | B.12 | Environmental & Social management | 309 |
 | B.13 | Contingencies (rate = 4%) | 315 |
 
-Full row mapping with per-scenario values is in `tests/fixtures/excel_oborovo_opex_structural_truth.json`.
+Full row mapping with per-scenario H/I/J/K values is in `tests/fixtures/excel_oborovo_opex_structural_truth.json`.
+
+### Special formula cases
+
+These deviations from the standard `budget × (1 + inf)^(year−1)` formula require explicit handling:
+
+**B.02 — Two-regime O&M with label/flag mismatch**  
+B.02.1 is labeled "Y1-2" but actual activation flags: Y1=1, Y2=0 (active Y1 only).  
+B.02.2 is labeled "Y3-30" but actual flags: Y2=1 through Y30=1 (active Y2–Y30).  
+The workbook labels are misleading; the fixture's `label_flag_mismatch` fields document the true activation.
+
+**B.07 — Pre-COD inflation base**  
+Workbook applies inflation with exponent = year (not year−1): `annual_Y1 = 204 × 1.02 = 208.08 kEUR`.
+
+**B.08 — Zero inflation, step change at Y11**  
+B.08.3 Balancing costs OFF for Y1–Y10, ON from Y11. `annual_Y1-10 = 176.86 kEUR`, `annual_Y11-30 = 549.76 kEUR`.
+
+**B.09 — Zero inflation**: Flat 14 kEUR per year.
+
+**B.10 — Auditor step-down**  
+B.10.1 (16 kEUR) active Y1–Y2 only; B.10.2 (8 kEUR) active Y3–Y30.
+
+**B.11 — Debt-tenor-driven activation**  
+B.11.3 activation formula (source cell `OpEx!F68`): `=IF(F2<=Inputs!$D$196,1,0)`, D196 = 14. Active Y1–Y14.
+
+**B.12 — Monitoring expiry**  
+B.12.3 (Fauna & Flora) and B.12.5 (E&S monitoring) active Y1–Y2 only. `annual_Y3+ = 12 kEUR` (B.12.1 + B.12.6 only).
+
+**B.13 — Contingency**  
+`annual_Yn = 0.04 × SUM(annual_Yn for B.01–B.12 + D + F)`. Claims (C) excluded. Rate cell: `OpEx!D76`. Base rows: `[3,8,26,31,35,39,45,48,53,58,65,70,82,90]`.
 
 ---
 
-## Special Formula Cases
+## B. Target Finco1 Scenario Architecture
 
-These deviations from the standard `budget * (1+inf)^(year-1)` formula must be handled explicitly:
+This section defines the intended product architecture for Finco1. It is a design target, not a description of any currently implemented runtime.
 
-### B.02 (Infrastructure Maintenance)
-**Two-regime O&M with label/flag mismatch**: B.02.1 is labeled "Y1-2" but actual activation flags show Y1=1, Y2=0 only (active Y1 only). B.02.2 is labeled "Y3-30" but actual flags show Y2=1 through Y30=1 (active Y2-Y30). The workbook labels are misleading; the fixture's `label_flag_mismatch` fields record the true activation.
-
-### B.07 (Land Leases)
-**Pre-COD inflation base**: The workbook applies inflation starting from year 0 (pre-COD), not year 1.  
-`annual_Y1 = 204 * 1.02 = 208.08 kEUR` (exponent = year, not year-1).
-
-### B.08 (Power Expenses)
-**Zero inflation, step change at Y11**: B.08.3 Balancing costs OFF for Y1–Y10, ON from Y11.  
-`annual_Y1-10 = 176.8608 kEUR`, `annual_Y11-30 = 549.7632 kEUR`.
-
-### B.09 (Fees)
-**Zero inflation**: Flat 14 kEUR per year.
-
-### B.10 (Audit Fees)
-**Auditor step-down**: B.10.1 (16 kEUR) active Y1-Y2 only; B.10.2 (8 kEUR) active Y3-Y30.  
-`annual_Y1 = 24 kEUR`, `annual_Y3+ = 16 kEUR` (before inflation).
-
-### B.11 (Bank Fees)
-**Debt-tenor-driven activation**: B.11.3 activation formula (read from `OpEx!F68`) is `=IF(F2<=Inputs!$D$196,1,0)` where `Inputs!D196` = 14 (senior debt tenor, sourced from `=Scenarios!E345`). Active Y1-Y14, zero Y15-Y30. This is not a static flag — it tracks the senior debt tenor cell.
-
-### B.12 (Environmental & Social)
-**Monitoring expiry**: B.12.3 (Fauna & Flora) and B.12.5 (E&S monitoring) active Y1-Y2 only.  
-`annual_Y1 = 32 kEUR`, `annual_Y3+ = 12 kEUR` (B.12.1 + B.12.6 only, before inflation).
-
-### B.13 (Contingencies)
-**Rate applied to annual totals, not budget**: `annual_Yn = 0.04 * sum_of_all_other_annual_Yn`.  
-Base includes B.01-B.12 + D (Salary) + F (Taxes); Claims (category C) are explicitly excluded.  
-Rate cell: `OpEx!D76`. Base rows: `[3,8,26,31,35,39,45,48,53,58,65,70,82,90]`.
-
----
-
-## Activation Flag Architecture
-
-Each subitem has a Y1-Y30 flag vector (1 = active, 0 = inactive). The annual total for a category is:
+### Model
 
 ```
-annual_Yn = SUMPRODUCT(subitem_budgets, subitem_flags_Yn) * (1 + category_inflation) ** (year - 1)
+Base Project Inputs
++
+one selected named Scenario Override
+=
+Resolved Immutable Inputs
+→
+Clean Engine
 ```
 
-Flags are structural truth captured by the extractor. Activation changes require a new structural extraction.
+A project holds many saved scenarios. Exactly **one** scenario is selected for a computation run. The selected scenario supplies sparse overrides; all non-overridden inputs inherit the Base Project Inputs unchanged.
 
-Exception: **B.11.3** — activation is formula-driven by `Inputs!D196` (debt tenor). A scenario that changes senior debt tenor implicitly changes the B.11 activation range; the formula must be re-evaluated against the scenario's debt tenor value.
+### Scenario storage
+
+A newly created scenario:
+
+- **Visually** begins as a copy of Base Case (full input set displayed to the user).
+- **Technically** stores only sparse overrides — a set of `(field, value)` pairs.
+- Does not duplicate the complete project input set.
+
+If Base Case changes after a scenario is saved:
+
+- Non-overridden scenario fields automatically inherit the new Base value.
+- Explicitly overridden fields remain unchanged.
+
+Resetting an override to Base:
+
+- Removes the override entry from the sparse set.
+- Does **not** copy the current Base value into the scenario as a new override.
+
+### No multi-scenario stacking
+
+There is no multi-scenario composition, stacking, or last-write-wins merging. One scenario is selected; its sparse overrides and the Base Project Inputs together produce one fully determined input set.
+
+### Scope of scenario overrides
+
+A selected scenario may override inputs in any module:
+
+- Timeline
+- Technical
+- Production
+- Revenue / PPA
+- OPEX (see below)
+- CAPEX
+- Senior Debt
+- Tax inputs and policies
+- SHL and reserve modules (future)
+
+### OPEX-specific overrides
+
+For OPEX, a selected scenario may override:
+
+| Override target | Description |
+|----------------|-------------|
+| Subitem amount | Budget value for an individual subitem |
+| Inflation / escalation policy | Where permitted per category |
+| Activation mode | Automatic driver or MANUAL |
+| Annual Y1–Y30 activation flags | Explicit flag vector per subitem |
+| Advanced H1/H2 activation overrides | Sub-annual activation control |
+
+**Base Case activation flags are inherited** by the scenario unless explicitly overridden. A scenario override of flags replaces the Base flags for that subitem entirely.
+
+**Bank Fees (B.11) target behavior**
+
+| Mode | Behavior |
+|------|----------|
+| Default | `SENIOR_DEBT_ACTIVE` — activation follows the senior debt tenor input |
+| Manual override | Explicit Y1–Y30 flag vector replaces the automatic driver |
+
+Manual mode fully replaces the automatic driver. The two modes must not be silently combined.
+
+### Category totals
+
+Category totals (B.01 through B.13) remain derived, read-only computed values. They are never direct scenario inputs.
+
+### UI independence
+
+The persistence architecture must support either presentation style without any financial engine or database redesign:
+
+| Style | Description |
+|-------|-------------|
+| Dropdown / editor UI | One scenario selected from a list; fields edited individually |
+| Excel-style matrix | Multiple scenarios displayed side-by-side; selection column highlighted |
+
+Switching presentation style is a UI concern only. The underlying sparse-override model and the "one selected scenario" computation contract are identical in both cases.
 
 ---
 
 ## Inflation Sources
 
-| Category | Inflation source | Rate |
-|----------|-----------------|------|
+| Category | Source | Rate |
+|----------|--------|------|
 | B.01–B.06, B.10, B.11, B.12 | `Inputs!D85` (EUR CPI) → `=D93` → 0.02 | 2% |
-| B.07 | Workbook D column (matches EUR CPI, exponent = year) | 2% |
-| B.08 | Hardcoded `D=0` | 0% |
-| B.09 | Hardcoded `D=0` | 0% |
-| B.13 | `D=0.04` (contingency rate, not CPI) | 4% rate on base |
+| B.07 | Workbook D column (EUR CPI, exponent = year) | 2% |
+| B.08 | Hardcoded 0 | 0% |
+| B.09 | Hardcoded 0 | 0% |
+| B.13 | Rate = 4% applied to annual base sum | n/a |
 
 Inflation chain is fully traced in the fixture: `inputs.inflation_rate.chain` records `OpEx!C102 → Inputs!D85 → Inputs!D93 → 0.02`.
 
 ---
 
-## What This Design Does NOT Cover
+## What This Document Does NOT Cover
 
 - No implementation of a Scenario runtime, database, or UI.
-- No multi-scenario stacking or last-write-wins composition — the workbook selects exactly one scenario.
 - No changes to `finco_core/` OPEX schedules.
 - No changes to the financial waterfall.
 - Depreciation, tax, merchant pricing, SHL, DSRA are out of scope.
+- No Recon Fix 02B.
 
 See `tests/fixtures/excel_oborovo_opex_structural_truth.json` for the machine-readable structural truth.  
 See `docs/reconciliation/oborovo_opex_structural_truth.md` for the human-readable audit report.

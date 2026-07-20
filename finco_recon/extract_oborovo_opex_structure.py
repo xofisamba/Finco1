@@ -76,6 +76,12 @@ _FIRST_NON_OPEX_ROW = 77
 _ROW_TOTAL_EXCL = 95
 _ROW_TOTAL_INCL = 96
 
+# Auxiliary base rows included in B.13 contingency that are not B.xx categories
+_AUX_BASE_ROWS: list[tuple[str, int]] = [
+    ("D", 82),   # Salary and payroll tax
+    ("F", 90),   # Taxes
+]
+
 # Inputs cells (row, col)
 _INPUTS_D85  = (85,  4)
 _INPUTS_D93  = (93,  4)
@@ -433,6 +439,21 @@ def extract(workbook_path: Path) -> dict:
         categories[cat_code] = cat_entry
 
     # ------------------------------------------------------------------
+    # Auxiliary base rows (D: Salary, F: Taxes) — included in B.13 base
+    # ------------------------------------------------------------------
+    auxiliary_rows: dict[str, dict] = {}
+    for aux_code, aux_row in _AUX_BASE_ROWS:
+        aux_name   = ws_opex_v.cell(aux_row, _COL_NAME).value
+        aux_budget = ws_opex_v.cell(aux_row, _COL_BUDGET).value
+        auxiliary_rows[aux_code] = {
+            "code": aux_code,
+            "opex_row": aux_row,
+            "name": aux_name,
+            "budget_cached": aux_budget,
+            "annual_cached_y1_y30": _annual_cached(ws_opex_v, aux_row),
+        }
+
+    # ------------------------------------------------------------------
     # Totals
     # ------------------------------------------------------------------
     totals = {
@@ -461,6 +482,7 @@ def extract(workbook_path: Path) -> dict:
         "inputs": inputs_block,
         "scenarios": scenarios_meta,
         "categories": categories,
+        "auxiliary_rows": auxiliary_rows,
         "totals": totals,
     }
 

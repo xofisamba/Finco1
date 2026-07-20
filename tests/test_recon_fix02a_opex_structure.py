@@ -327,14 +327,117 @@ def _reconstruct_category_y(cat: dict, year_idx: int) -> float:
 @pytest.mark.parametrize("cat_code", [c for c in _REQUIRED_CATEGORIES if c != "B.13"])
 @pytest.mark.parametrize("year_idx", [y - 1 for y in _CHECKPOINT_YEARS])
 def test_category_reconstruction_vs_excel(fd, cat_code, year_idx):
-    """Reconstructed SUMPRODUCT×inflation must match Excel cached annual value."""
+    """Reconstructed SUMPRODUCT×inflation must match Excel cached annual value.
+
+    Tolerance: 1e-6 kEUR (< 1 EUR).  The max observed reconstruction delta
+    across all B.01–B.12 categories at all 8 checkpoint years is ~5e-14 kEUR
+    (floating-point rounding in the escalation exponent), well below this bound.
+    """
     cat = fd["categories"][cat_code]
     reconstructed = _reconstruct_category_y(cat, year_idx)
     excel_val = cat["annual"]["cached_values_y1_y30"][year_idx] or 0.0
-    # Tolerance: 1 EUR (rounding from BESS zero rows with None flags)
-    assert abs(reconstructed - excel_val) < 1.0, (
-        f"{cat_code} Y{year_idx + 1}: reconstructed={reconstructed:.4f} ≠ excel={excel_val:.4f}"
+    assert abs(reconstructed - excel_val) < 1e-6, (
+        f"{cat_code} Y{year_idx + 1}: reconstructed={reconstructed:.10f} ≠ excel={excel_val:.10f} "
+        f"(delta={abs(reconstructed - excel_val):.2e} kEUR)"
     )
+
+
+# ---------------------------------------------------------------------------
+# 10b. B.13 reconstruction at all checkpoint years
+# ---------------------------------------------------------------------------
+
+def _b13_base_codes() -> list[str]:
+    return [
+        "B.01", "B.02", "B.03", "B.04", "B.05", "B.06",
+        "B.07", "B.08", "B.09", "B.10", "B.11", "B.12",
+        "D", "F",
+    ]
+
+
+def _reconstruct_b13_y(fd: dict, year_idx: int) -> float:
+    """
+    B.13_Yn = contingency_rate × SUM(annual_Yn for each contingency base code).
+
+    D and F annual values are read from fixture["auxiliary_rows"], not assumed zero.
+    Claims (C) are excluded (not in the base).
+    """
+    cont = fd["categories"]["B.13"]["contingency"]
+    rate = cont["contingency_rate"]
+    base_codes = cont["contingency_base_codes"]
+    cats = fd["categories"]
+    aux  = fd.get("auxiliary_rows", {})
+
+    base_sum = 0.0
+    for code in base_codes:
+        if code in cats:
+            val = cats[code]["annual"]["cached_values_y1_y30"][year_idx] or 0.0
+        elif code in aux:
+            vals = aux[code].get("annual_cached_y1_y30", [])
+            val = float(vals[year_idx] or 0) if year_idx < len(vals) else 0.0
+        else:
+            val = 0.0
+        base_sum += val
+
+    return rate * base_sum
+
+
+@pytest.mark.parametrize("year_idx", [y - 1 for y in _CHECKPOINT_YEARS])
+def test_b13_reconstruction_vs_excel(fd, year_idx):
+    """B.13_Yn = rate × SUM(base annual values) must match Excel cached value.
+
+    D and F values are read from fixture.auxiliary_rows (not hardcoded as zero).
+    Tolerance: 1e-6 kEUR.
+    """
+    reconstructed = _reconstruct_b13_y(fd, year_idx)
+    excel_val = fd["categories"]["B.13"]["annual"]["cached_values_y1_y30"][year_idx] or 0.0
+    assert abs(reconstructed - excel_val) < 1e-6, (
+        f"B.13 Y{year_idx + 1}: reconstructed={reconstructed:.10f} ≠ excel={excel_val:.10f} "
+        f"(delta={abs(reconstructed - excel_val):.2e} kEUR)"
+    )
+
+
+def test_b08_step_at_y11_propagates_into_b13(fd):
+    """B.08 activates B.08.3 at Y11; this must cause a jump in B.13."""
+    b13_annual = fd["categories"]["B.13"]["annual"]["cached_values_y1_y30"]
+    b13_y10 = b13_annual[9]
+    b13_y11 = b13_annual[10]
+    # B.08.3 = 372.90 kEUR × 4% = ~14.9 kEUR uplift in B.13 at Y11
+    assert b13_y11 > b13_y10 * 1.1, (
+        f"B.13 Y11={b13_y11:.4f} should be significantly higher than Y10={b13_y10:.4f} "
+        "due to B.08.3 activation"
+    )
+    # Reconstruction must also capture this jump
+    assert _reconstruct_b13_y(fd, 10) > _reconstruct_b13_y(fd, 9) * 1.1
+
+
+def test_b11_expiry_at_y15_propagates_into_b13(fd):
+    """B.11 expires after Y14 (debt tenor=14); B.13 must drop at Y15."""
+    b13_annual = fd["categories"]["B.13"]["annual"]["cached_values_y1_y30"]
+    tenor = fd["inputs"]["senior_debt_tenor"]["cached_value"]
+    b13_at_tenor    = b13_annual[tenor - 1]   # Y14
+    b13_after_tenor = b13_annual[tenor]        # Y15
+    # B.11.3 = 20 kEUR × (1.02)^13 ~ 26 kEUR at Y14; 4% = ~1 kEUR drop in B.13
+    # After inflation B.11 Y14 is larger than budget; B.13 Y15 must be less than Y14
+    # (inflation alone would increase B.13, so a drop proves B.11 expiry)
+    assert b13_after_tenor < b13_at_tenor, (
+        f"B.13 Y{tenor + 1}={b13_after_tenor:.4f} must be less than Y{tenor}={b13_at_tenor:.4f} "
+        "due to B.11 expiry"
+    )
+    assert _reconstruct_b13_y(fd, tenor) < _reconstruct_b13_y(fd, tenor - 1)
+
+
+def test_d_f_annual_read_from_fixture_not_hardcoded(fd):
+    """D and F auxiliary rows must be present in fixture.auxiliary_rows."""
+    aux = fd.get("auxiliary_rows", {})
+    assert "D" in aux, "Salary row D must be in fixture.auxiliary_rows"
+    assert "F" in aux, "Taxes row F must be in fixture.auxiliary_rows"
+    for code in ("D", "F"):
+        vals = aux[code]["annual_cached_y1_y30"]
+        assert len(vals) == 30, f"{code} must have 30 annual values"
+        # Values may be zero for this project, but must be explicitly extracted
+        assert isinstance(vals[0], (int, float, type(None))), (
+            f"{code} annual values must be numeric"
+        )
 
 
 # ---------------------------------------------------------------------------
