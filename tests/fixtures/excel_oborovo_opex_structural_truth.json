@@ -1,0 +1,556 @@
+{
+  "_meta": {
+    "description": "Authoritative OPEX structural truth extracted from Oborovo sensitivity workbook",
+    "source_file": "20260414_BP_Oborovo_Sensitivity_FINAL_for_PPT.xlsm",
+    "source_sha256": "15a621c4d6b79024980766e00ebc79d7235fd56f00567be7bf345c769ce57920",
+    "extraction_date": "2026-07-20",
+    "sheet": "OpEx",
+    "scenarios_sheet": "Scenarios",
+    "inputs_sheet": "Inputs",
+    "notes": [
+      "All budget values in kEUR (nominal Y1).",
+      "activation_flags is a 30-element list Y1..Y30; 1=active, 0=inactive, null=empty cell.",
+      "Category rows carry budget_keur and inflation_rate; subitem rows carry activation_flags only.",
+      "B.08 Power Expenses: inflation_rate=0 (D=0); annual values vary by Y1-Y10 vs Y11-Y30 step.",
+      "B.09 Fees: inflation_rate=0; flat 14 kEUR per year.",
+      "B.11.3 Bank Fees: activation formula =IF(year<=Inputs!$D$196,1,0); active Y1-Y14, inactive Y15-Y30.",
+      "B.13 Contingencies: rate=0.04 applied to sum of all B.01..B.12 + D(Salary) + F(Taxes); Claims excluded.",
+      "B.07 Land Leases: Y1 annual value = 208.08 kEUR = 204 * 1.02 (workbook inflates from pre-COD base).",
+      "Salary (D) = 0 for all years. Taxes (F) = 0 for all years.",
+      "Scenarios source column: E (base-case scenario), rows 237-314."
+    ]
+  },
+  "inputs": {
+    "inflation_rate": 0.02,
+    "source_cell": "Inputs!D85",
+    "senior_debt_tenor_1": 14,
+    "senior_debt_tenor_1_cell": "Inputs!D196",
+    "senior_debt_tenor_2": 7,
+    "senior_debt_tenor_2_cell": "Inputs!D259",
+    "b11_active_until_year": 14,
+    "b11_activation_formula": "=IF(year<=Inputs!$D$196,1,0)"
+  },
+  "categories": {
+    "B.01": {
+      "name": "Technical Management",
+      "budget_keur": 198.0,
+      "inflation_rate": 0.02,
+      "wht": 0,
+      "opex_row": 3,
+      "scenarios_row": 236,
+      "annual_values_y1_y30": [198.0, 201.96, 205.9992, 210.119184, 214.32156768, 218.6079990336, 222.980159014272, 227.4397621945574, 231.98855743844857, 236.62832858721754, 241.3608951589619, 246.1881130621411, 251.11187532338397, 256.13411282985163, 261.2567950864487, 266.48193098817757, 271.8115696079412, 277.2478010001, 282.792757020102, 288.448612160504, 294.2175844037141, 300.1019360917884, 306.1039748136242, 312.2260543098966, 318.47057539609455, 324.8399869040164, 331.3367866420968, 337.9635223749387, 344.72279282243755, 351.61724867888626],
+      "subitems": {
+        "B.01.1": {
+          "name": "Asset Management Contract",
+          "budget_keur": 64.0,
+          "scenarios_row": 237,
+          "opex_row": 4,
+          "activation_flags": [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+        },
+        "B.01.1b": {
+          "name": "Operation Management Contract",
+          "budget_keur": 105.0,
+          "scenarios_row": 238,
+          "opex_row": 5,
+          "note": "No letter-suffix code in workbook; sub-line of B.01.1",
+          "activation_flags": [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+        },
+        "B.01.2": {
+          "name": "Bazefield",
+          "budget_keur": 29.0,
+          "scenarios_row": 239,
+          "opex_row": 6,
+          "activation_flags": [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+        },
+        "B.01.3": {
+          "name": "Others",
+          "budget_keur": 0.0,
+          "scenarios_row": 240,
+          "opex_row": 7,
+          "activation_flags": [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+        }
+      }
+    },
+    "B.02": {
+      "name": "Infrastructure Maintenance",
+      "budget_keur": 213.0,
+      "inflation_rate": 0.02,
+      "wht": 0,
+      "opex_row": 8,
+      "scenarios_row": 241,
+      "note": "Budget cell formula: =SUM(C11:C25)+AVERAGE(C9:C10); annual SUMPRODUCT uses all rows 9-25.",
+      "annual_values_y1_y30": [244.0, 185.64000000000001, 189.3528, 193.13985599999998, 197.00265312, 200.9427061824, 204.961560306048, 209.06079151216892, 213.24200734241234, 217.50684748926056, 221.8569844390458, 226.29412412782668, 230.82000661038325, 235.4364067425909, 240.14513487744273, 244.94803757499153, 249.8469983264914, 254.84393829302124, 259.94081705888163, 265.13963340005927, 270.44242606806046, 275.8512745894217, 281.3683000812101, 286.99566608283425, 292.735579404491, 298.5902909925808, 304.5620968124324, 310.653338748681, 316.8664055236547, 323.20373363412773],
+      "subitems": {
+        "B.02.1": {
+          "name": "O&M - Preventive & Corrective Y1-2",
+          "budget_keur": 179.0,
+          "scenarios_row": 242,
+          "opex_row": 9,
+          "activation_flags": [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        },
+        "B.02.2": {
+          "name": "O&M - Preventive & Corrective Y3-30",
+          "budget_keur": 117.0,
+          "scenarios_row": 243,
+          "opex_row": 10,
+          "activation_flags": [0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+        },
+        "B.02.3": {
+          "name": "Substation & O&M Building (included in O&M)",
+          "budget_keur": 0.0,
+          "scenarios_row": 244,
+          "opex_row": 11,
+          "activation_flags": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        },
+        "B.02.4": {
+          "name": "Inverter service contract / MRA",
+          "budget_keur": 1.0,
+          "scenarios_row": 247,
+          "opex_row": 14,
+          "activation_flags": [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+        },
+        "B.02.5": {
+          "name": "Spare parts reprocurement (maintenance contract with contractors)",
+          "budget_keur": 64.0,
+          "scenarios_row": 248,
+          "opex_row": 15,
+          "activation_flags": [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+        },
+        "B.02.6": {
+          "name": "Sponsor Operation Mgt - BESS",
+          "budget_keur": 0.0,
+          "scenarios_row": 251,
+          "opex_row": 16,
+          "activation_flags": [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+        }
+      }
+    },
+    "B.03": {
+      "name": "Maintain Site",
+      "budget_keur": 45.2,
+      "inflation_rate": 0.02,
+      "wht": 0,
+      "opex_row": 26,
+      "scenarios_row": 264,
+      "annual_values_y1_y30": [45.199999999999996, 46.104, 47.02607999999999, 47.96660159999999, 48.925933631999996, 49.904452304639996, 50.9025413507328, 51.920592177747444, 52.9590040213024, 54.018184101728444, 55.09854778376302, 56.200518739438266, 57.32452911422704, 58.471019696511576, 59.640440090441814, 60.83324889225064, 62.04991387009566, 63.29091214749758, 64.55673039044753, 65.84786499825647, 67.16482229822161, 68.50811874418604, 69.87828111906975, 71.27584674145113, 72.70136367628017, 74.15539094980576, 75.6384987688019, 77.15126874417791, 78.6942941190615, 80.2681800014427],
+      "subitems": {
+        "B.03.1": {
+          "name": "Clean Site (included in O&M)",
+          "budget_keur": 29.3,
+          "scenarios_row": 265,
+          "opex_row": 27,
+          "activation_flags": [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+        },
+        "B.03.2": {
+          "name": "Repair roads (included in O&M)",
+          "budget_keur": 14.1,
+          "scenarios_row": 266,
+          "opex_row": 28,
+          "activation_flags": [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+        },
+        "B.03.3": {
+          "name": "Others",
+          "budget_keur": 0.0,
+          "scenarios_row": 268,
+          "opex_row": 30,
+          "activation_flags": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        }
+      }
+    },
+    "B.04": {
+      "name": "Clean Material",
+      "budget_keur": 40.0,
+      "inflation_rate": 0.02,
+      "wht": 0,
+      "opex_row": 31,
+      "scenarios_row": 269,
+      "annual_values_y1_y30": [40.0, 40.8, 41.616, 42.448319999999995, 43.2972864, 44.163232128000004, 45.046496770560005, 45.947426705971196, 46.86637524009062, 47.80370274489243, 48.75977679979029, 49.73497233578608, 50.72967178250181, 51.744265218151845, 52.77915052251488, 53.83473353296517, 54.91142820362448, 56.009656767696974, 57.12984990305091, 58.27244690111193, 59.43789583913417, 60.62665375591685, 61.83918683103519, 63.07597056765588, 64.337489979009, 65.62423977858919, 66.93672457416098, 68.27545906564418, 69.64096824695707, 71.0337876118962],
+      "subitems": {
+        "B.04.1": {
+          "name": "Clean Panels (included in O&M)",
+          "budget_keur": 40.0,
+          "scenarios_row": 270,
+          "opex_row": 32,
+          "activation_flags": [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+        },
+        "B.04.2": {
+          "name": "Subscription to water supply",
+          "budget_keur": 0.0,
+          "scenarios_row": 271,
+          "opex_row": 33,
+          "activation_flags": [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+        },
+        "B.04.9": {
+          "name": "Others",
+          "budget_keur": 0.0,
+          "scenarios_row": 272,
+          "opex_row": 34,
+          "activation_flags": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        }
+      }
+    },
+    "B.05": {
+      "name": "Security",
+      "budget_keur": 30.1,
+      "inflation_rate": 0.02,
+      "wht": 0,
+      "opex_row": 35,
+      "scenarios_row": 273,
+      "annual_values_y1_y30": [30.1, 30.702, 31.31604, 31.9423608, 32.581208016, 33.23283217632, 33.8974888198464, 34.57543859624332, 35.266947368168196, 35.972286315531555, 36.691732041842194, 37.425566682679026, 38.174078016332615, 38.93755957665926, 39.71631076819245, 40.51063698355629, 41.320849723227425, 42.14726671769198, 42.99021205204581, 43.850016293086725, 44.72701661894846, 45.62155695132743, 46.53398809035398, 47.46466785216105, 48.413961209204274, 49.38224043338836, 50.369885242056135, 51.377282946897246, 52.404828605835206, 53.4529251779519],
+      "subitems": {
+        "B.05.1": {
+          "name": "Surveillance systems",
+          "budget_keur": 30.1,
+          "scenarios_row": 274,
+          "opex_row": 36,
+          "activation_flags": [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+        },
+        "B.05.2": {
+          "name": "Surveillance patrols",
+          "budget_keur": 0.0,
+          "scenarios_row": 275,
+          "opex_row": 37,
+          "activation_flags": [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+        },
+        "B.05.9": {
+          "name": "Others",
+          "budget_keur": 0.0,
+          "scenarios_row": 276,
+          "opex_row": 38,
+          "activation_flags": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        }
+      }
+    },
+    "B.06": {
+      "name": "Insurance",
+      "budget_keur": 255.0,
+      "inflation_rate": 0.02,
+      "wht": 0,
+      "opex_row": 39,
+      "scenarios_row": 277,
+      "annual_values_y1_y30": [255.0, 260.1, 265.302, 270.60803999999996, 276.0202008, 281.540604816, 287.17141691232, 292.9148452505664, 298.7731421555777, 304.74860499868925, 310.84357709866305, 317.06044864063625, 323.40165761344906, 329.869690765718, 336.4670845810324, 343.19642627265296, 350.06035479810606, 357.06156189406823, 364.20279313194953, 371.4868489945885, 378.9165859744803, 386.4949176939699, 394.22481604784934, 402.10931236880623, 410.1514986161824, 418.354528588506, 426.7216191602762, 435.25605154348165, 443.9611725743514, 452.84039602583834],
+      "subitems": {
+        "B.06.1": {
+          "name": "Operation All Risk with Business Interruption (OAR-BI)",
+          "budget_keur": 250.0,
+          "scenarios_row": 278,
+          "opex_row": 40,
+          "activation_flags": [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+        },
+        "B.06.2": {
+          "name": "Third Party Liability (TPL)",
+          "budget_keur": 5.0,
+          "scenarios_row": 279,
+          "opex_row": 41,
+          "activation_flags": [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+        },
+        "B.06.3": {
+          "name": "Substation and O&M Building Coverage (DO)",
+          "budget_keur": 0.0,
+          "scenarios_row": 280,
+          "opex_row": 42,
+          "activation_flags": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        },
+        "B.06.4": {
+          "name": "Spare parts insurance",
+          "budget_keur": 0.0,
+          "scenarios_row": 281,
+          "opex_row": 43,
+          "activation_flags": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        },
+        "B.06.9": {
+          "name": "Storage Insurance",
+          "budget_keur": 0.0,
+          "scenarios_row": 263,
+          "opex_row": 44,
+          "activation_flags": [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+        }
+      }
+    },
+    "B.07": {
+      "name": "Lease & property Tax",
+      "budget_keur": 204.0,
+      "inflation_rate": 0.02,
+      "wht": 0,
+      "opex_row": 45,
+      "scenarios_row": 282,
+      "note": "Y1 actual = 208.08 = 204 * 1.02; workbook inflates from pre-COD land-lease base (effective exponent = year, not year-1).",
+      "annual_values_y1_y30": [208.08, 212.2416, 216.48643199999998, 220.81616064, 225.23248385280002, 229.737133529856, 234.33187620045308, 239.01851372446217, 243.7988839989514, 248.67486167893045, 253.64835891250902, 258.72132609075925, 263.8957526125744, 269.1736676648259, 274.55714101812237, 280.04828383848485, 285.64924951525455, 291.3622345055596, 297.1894791956708, 303.1332687795843, 309.1959341551759, 315.3798528382795, 321.687449895045, 328.1211988929459, 334.6836228708048, 341.37729532822095, 348.2048412347853, 355.1689380594811, 362.27231682067065, 369.5177631570841],
+      "subitems": {
+        "B.07.1": {
+          "name": "Land Leases",
+          "budget_keur": 204.0,
+          "scenarios_row": 283,
+          "opex_row": 46,
+          "sub_inputs": {
+            "hectares": {"scenarios_row": 284, "value": 85},
+            "rate_keur_per_ha_per_y": {"scenarios_row": 285, "value": 2.4}
+          },
+          "activation_flags": [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+        },
+        "B.07.4": {
+          "name": "Property tax",
+          "budget_keur": 0.0,
+          "scenarios_row": 286,
+          "opex_row": 47,
+          "activation_flags": [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+        }
+      }
+    },
+    "B.08": {
+      "name": "Power Expenses",
+      "budget_keur": 549.7632,
+      "inflation_rate": 0.0,
+      "wht": 0,
+      "opex_row": 48,
+      "scenarios_row": 287,
+      "note": "No inflation (D=0). Step-change at Y11: Y1-Y10=176.8608 (B.08.3 balancing OFF), Y11-Y30=549.7632 (B.08.3 ON).",
+      "annual_values_y1_y30": [176.8608, 176.8608, 176.8608, 176.8608, 176.8608, 176.8608, 176.8608, 176.8608, 176.8608, 176.8608, 549.7632, 549.7632, 549.7632, 549.7632, 549.7632, 549.7632, 549.7632, 549.7632, 549.7632, 549.7632, 549.7632, 549.7632, 549.7632, 549.7632, 549.7632, 549.7632, 549.7632, 549.7632, 549.7632, 549.7632],
+      "subitems": {
+        "B.08.1": {
+          "name": "Power consumption",
+          "budget_keur": 40.0,
+          "scenarios_row": 288,
+          "opex_row": 49,
+          "activation_flags": [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+        },
+        "B.08.2": {
+          "name": "Grid Usage fee",
+          "budget_keur": 86.8608,
+          "scenarios_row": 289,
+          "opex_row": 50,
+          "activation_flags": [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+        },
+        "B.08.3": {
+          "name": "Balancing costs",
+          "budget_keur": 372.9024,
+          "scenarios_row": 290,
+          "opex_row": 51,
+          "sub_inputs": {
+            "balancing_cost_eur_per_mwh": {"scenarios_row": 291, "value": 4}
+          },
+          "activation_flags": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+        },
+        "B.08.8": {
+          "name": "Grid usage fee Storage",
+          "budget_keur": 50.0,
+          "scenarios_row": 262,
+          "opex_row": 52,
+          "activation_flags": [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+        }
+      }
+    },
+    "B.09": {
+      "name": "Fees",
+      "budget_keur": 14.0,
+      "inflation_rate": 0.0,
+      "wht": 0,
+      "opex_row": 53,
+      "scenarios_row": 292,
+      "note": "No inflation (D=0); flat 14 kEUR/year.",
+      "annual_values_y1_y30": [14.0, 14.0, 14.0, 14.0, 14.0, 14.0, 14.0, 14.0, 14.0, 14.0, 14.0, 14.0, 14.0, 14.0, 14.0, 14.0, 14.0, 14.0, 14.0, 14.0, 14.0, 14.0, 14.0, 14.0, 14.0, 14.0, 14.0, 14.0, 14.0, 14.0],
+      "subitems": {
+        "B.09.1": {
+          "name": "Reporting Data",
+          "budget_keur": 5.0,
+          "scenarios_row": 293,
+          "opex_row": 54,
+          "activation_flags": [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+        },
+        "B.09.2": {
+          "name": "Local concession fee",
+          "budget_keur": 4.0,
+          "scenarios_row": 294,
+          "opex_row": 55,
+          "activation_flags": [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+        },
+        "B.09.3": {
+          "name": "SCADA (to be included in O&M contract)",
+          "budget_keur": 5.0,
+          "scenarios_row": 295,
+          "opex_row": 56,
+          "activation_flags": [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+        },
+        "B.09.4": {
+          "name": "Alarm/Security (included in Reporting Data)",
+          "budget_keur": 0.0,
+          "scenarios_row": 296,
+          "opex_row": 57,
+          "activation_flags": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        }
+      }
+    },
+    "B.10": {
+      "name": "Audit & Accounting & Legal Fees",
+      "budget_keur": 32.0,
+      "inflation_rate": 0.02,
+      "wht": 0,
+      "opex_row": 58,
+      "scenarios_row": 297,
+      "note": "B.10.1 active Y1-Y2 only; B.10.2 active Y3-Y30; B.10.3 active all years.",
+      "annual_values_y1_y30": [24.0, 24.48, 16.6464, 16.979328, 17.31891456, 17.6652928512, 18.018598708224, 18.378970682388477, 18.74655009603625, 19.121481097956973, 19.503910719916114, 19.893988934314432, 20.291868713000724, 20.697706087260737, 21.111660209005954, 21.533893413186068, 21.964571281449793, 22.40386270707879, 22.851939961220364, 23.30897876044477, 23.775158335653668, 24.25066150236674, 24.735674732414076, 25.230388227062353, 25.7349959916036, 26.249695911435673, 26.77468982966439, 27.310183626257672, 27.85638729878283, 28.413515044758483],
+      "subitems": {
+        "B.10.1": {
+          "name": "Auditors closing Y1&2",
+          "budget_keur": 16.0,
+          "scenarios_row": 298,
+          "opex_row": 59,
+          "activation_flags": [1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        },
+        "B.10.2": {
+          "name": "Auditors closing >=Y3",
+          "budget_keur": 8.0,
+          "scenarios_row": 299,
+          "opex_row": 60,
+          "activation_flags": [0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+        },
+        "B.10.3": {
+          "name": "Accounting closing",
+          "budget_keur": 8.0,
+          "scenarios_row": 300,
+          "opex_row": 61,
+          "activation_flags": [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+        },
+        "B.10.4": {
+          "name": "Legal closing (included in Accounting Closing)",
+          "budget_keur": 0.0,
+          "scenarios_row": 301,
+          "opex_row": 62,
+          "activation_flags": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        },
+        "B.10.5": {
+          "name": "Accounting book-keeping (included in Accounting Closing)",
+          "budget_keur": 0.0,
+          "scenarios_row": 302,
+          "opex_row": 63,
+          "activation_flags": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        }
+      }
+    },
+    "B.11": {
+      "name": "Bank Fees",
+      "budget_keur": 20.0,
+      "inflation_rate": 0.02,
+      "wht": 0,
+      "opex_row": 65,
+      "scenarios_row": 304,
+      "note": "B.11.3 activation formula-driven: =IF(year<=Inputs!$D$196,1,0) where D196=14. Active Y1-Y14, zero Y15-Y30.",
+      "annual_values_y1_y30": [20.0, 20.4, 20.808, 21.224159999999998, 21.6486432, 22.081616064000002, 22.523248385280002, 22.973713352985598, 23.43318762004531, 23.901851372446217, 24.379888399895144, 24.86748616789304, 25.364835891250905, 25.872132609075923, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+      "subitems": {
+        "B.11.1": {
+          "name": "Agency Fee (included in Bank Fees)",
+          "budget_keur": 0.0,
+          "scenarios_row": 305,
+          "opex_row": 66,
+          "activation_flags": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        },
+        "B.11.2": {
+          "name": "Bonds",
+          "budget_keur": 0.0,
+          "scenarios_row": 306,
+          "opex_row": 67,
+          "activation_flags": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        },
+        "B.11.3": {
+          "name": "Bank Fees",
+          "budget_keur": 20.0,
+          "scenarios_row": 307,
+          "opex_row": 68,
+          "activation_formula": "=IF(year<=Inputs!$D$196,1,0)",
+          "activation_driver": "SENIOR_DEBT_ACTIVE",
+          "activation_flags": [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        },
+        "B.11.4": {
+          "name": "Others",
+          "budget_keur": 0.0,
+          "scenarios_row": 308,
+          "opex_row": 69,
+          "activation_flags": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        }
+      }
+    },
+    "B.12": {
+      "name": "Environmental & Social management",
+      "budget_keur": 32.0,
+      "inflation_rate": 0.02,
+      "wht": 0,
+      "opex_row": 70,
+      "scenarios_row": 309,
+      "note": "B.12.3 and B.12.5 active Y1-Y2 only (monitoring expires). B.12.1 and B.12.6 active all years.",
+      "annual_values_y1_y30": [32.0, 32.64, 12.4848, 12.734496, 12.98918592, 13.2489696384, 13.513949031168, 13.784228011791358, 14.059912572027187, 14.34111082346773, 14.627933039937085, 14.920491700735823, 15.218901534750543, 15.523279565445552, 15.833745156754466, 16.15042005988955, 16.473428461087344, 16.802897030309094, 17.13895497091527, 17.481734070333577, 17.83136875174025, 18.187996126775055, 18.551756049310555, 18.922791170296765, 19.3012469937027, 19.687271933576753, 20.08101737224829, 20.482637719693255, 20.892290474087122, 21.310136283568863],
+      "subitems": {
+        "B.12.1": {
+          "name": "Mitigation measures",
+          "budget_keur": 10.0,
+          "scenarios_row": 310,
+          "opex_row": 71,
+          "activation_flags": [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+        },
+        "B.12.2": {
+          "name": "Agrinergie",
+          "budget_keur": 0.0,
+          "scenarios_row": 311,
+          "opex_row": 72,
+          "activation_flags": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        },
+        "B.12.3": {
+          "name": "Fauna & Flora Monitoring (Y1&2)",
+          "budget_keur": 10.0,
+          "scenarios_row": 312,
+          "opex_row": 73,
+          "activation_flags": [1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        },
+        "B.12.5": {
+          "name": "E&S monitoring (Y1&2)",
+          "budget_keur": 10.0,
+          "scenarios_row": 313,
+          "opex_row": 74,
+          "activation_flags": [1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        },
+        "B.12.6": {
+          "name": "HSE: Monthly visit + yearly visit + controls",
+          "budget_keur": 2.0,
+          "scenarios_row": 314,
+          "opex_row": 75,
+          "activation_flags": [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+        }
+      }
+    },
+    "B.13": {
+      "name": "Contingencies",
+      "budget_keur": 65.32252799999999,
+      "contingency_rate": 0.04,
+      "wht": 0,
+      "opex_row": 76,
+      "scenarios_row": 315,
+      "contingency_base_formula": "SUM(B.01..B.12) + D(Salary) + F(Taxes); Claims (C) excluded",
+      "annual_values_y1_y30": [51.489632, 49.83713600000001, 49.515942079999995, 50.353572281599995, 51.207955087232, 52.079425548976644, 52.96832541995618, 53.875003288355295, 54.799814714122405, 55.74312236840485, 71.62139217577294, 72.60280945928841, 73.60385508847418, 74.62492163024365, 74.61082649239823, 75.65203246224618, 76.71406255149111, 77.79733324252093, 78.90226934737136, 80.02930417431877, 81.17887969780517, 82.35144673176126, 83.54746510639649, 84.76740384852441, 86.0117413654949, 87.28096563280481, 88.5755743854609, 89.89607531317012, 91.24298625943354, 92.61683542462218]
+    }
+  },
+  "excluded": {
+    "C": {
+      "name": "Claims",
+      "opex_row": 78,
+      "note": "Not Applicable; excluded from B.13 contingency base. All flags = 0.",
+      "budget_keur": null
+    },
+    "D": {
+      "name": "Salary and payroll Tax",
+      "opex_row": 82,
+      "budget_keur": 0.0,
+      "note": "Zero for Oborovo; included in B.13 contingency base."
+    },
+    "F": {
+      "name": "Taxes",
+      "opex_row": 90,
+      "budget_keur": 0.0,
+      "note": "Zero for Oborovo; included in B.13 contingency base."
+    }
+  },
+  "totals": {
+    "total_opex_excl_contingencies_y1": 1287.2408,
+    "total_opex_incl_contingencies_y1": 1338.730432,
+    "total_budget_excl_contingencies": 1633.0631999999998,
+    "total_budget_incl_contingencies": 1698.3857279999997
+  }
+}
