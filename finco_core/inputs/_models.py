@@ -593,6 +593,10 @@ class ProjectInputs:
     revenue: RevenueParams
     financing: FinancingParams
     tax: TaxParams
+    # Capability field: when set, opex_schedule_period() routes through the
+    # generic hierarchical engine instead of the legacy flat-item path.
+    # Presence (non-None) is the sole dispatch signal — never check project name.
+    hierarchical_opex_model: object = None
 
 
 def hash_inputs_for_cache(inputs: "ProjectInputs") -> tuple:

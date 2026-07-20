@@ -112,7 +112,26 @@ def opex_schedule_period(
     inputs: ProjectInputs,
     engine,
 ) -> dict[int, float]:
-    """Generate period OPEX schedule using actual period day fractions."""
+    """Generate period OPEX schedule using actual period day fractions.
+
+    Dispatch:
+    - If inputs.hierarchical_opex_model is not None, route through the generic
+      hierarchical engine (compute_periods checked public API).
+    - Otherwise fall back to the legacy flat-item path.
+
+    The capability field is the only dispatch signal.  Project name/code are
+    never consulted.
+    """
+    if inputs.hierarchical_opex_model is not None:
+        return _opex_schedule_period_hierarchical(inputs, engine)
+    return _opex_schedule_period_legacy(inputs, engine)
+
+
+def _opex_schedule_period_legacy(
+    inputs: ProjectInputs,
+    engine,
+) -> dict[int, float]:
+    """Legacy flat-item OPEX period schedule."""
     schedule = {}
     annual_schedule = opex_schedule_annual(inputs, inputs.info.horizon_years)
 
@@ -124,6 +143,31 @@ def opex_schedule_period(
             schedule[period.index] = 0.0
 
     return schedule
+
+
+def _opex_schedule_period_hierarchical(
+    inputs: ProjectInputs,
+    engine,
+) -> dict[int, float]:
+    """Hierarchical-engine OPEX period schedule.
+
+    Uses compute_periods() (the checked public API) which validates all inputs
+    and raises OpexInputValidationError on any ERROR-severity issue.
+    """
+    from finco_core.opex.hierarchical import compute_periods
+    from finco_core.opex.oborovo_config import build_oborovo_opex_context
+
+    ctx = build_oborovo_opex_context(inputs.financing.senior_tenor_years)
+    periods = list(engine.periods())
+    period_results = compute_periods(inputs.hierarchical_opex_model, ctx, iter(periods))
+
+    result: dict[int, float] = {}
+    hierarchical_by_idx = {r.period_index: r.total_keur for r in period_results}
+
+    for period in periods:
+        result[period.index] = hierarchical_by_idx.get(period.index, 0.0)
+
+    return result
 
 
 def opex_breakdown_year(
