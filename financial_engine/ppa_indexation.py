@@ -66,8 +66,8 @@ def count_ppa_escalation_events(
         policy: Which escalation timing convention to apply.
         cod: Contractual Operation Date (financial_close + construction_months).
         period_end: End date of the period being priced.
-        ppa_indexation_start_date: Used only for CONTRACT_ANNIVERSARY. When None
-            and policy is CONTRACT_ANNIVERSARY, COD is used as the reference date.
+        ppa_indexation_start_date: Required when policy is CONTRACT_ANNIVERSARY.
+            Raises ValueError if None and policy is CONTRACT_ANNIVERSARY.
     """
     from dateutil.relativedelta import relativedelta
 
@@ -173,7 +173,7 @@ def compute_ppa_tariff(
         policy: Escalation timing convention.
         cod: Contractual Operation Date.
         period_end: End date of the period being priced.
-        ppa_indexation_start_date: Reference date for CONTRACT_ANNIVERSARY (None → COD).
+        ppa_indexation_start_date: Required for CONTRACT_ANNIVERSARY; raises ValueError if None.
     """
     n = count_ppa_escalation_events(policy, cod, period_end, ppa_indexation_start_date)
     return base_tariff * (1.0 + ppa_index) ** n

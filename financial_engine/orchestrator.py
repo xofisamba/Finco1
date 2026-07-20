@@ -142,7 +142,11 @@ def _build_project_inputs_proxy(inputs: OperatingModelInput, tariff_schedule: tu
         co2_sales_schedule=co2_schedule,
         balancing_cost_eur_per_mwh=rev.balancing_cost_eur_per_mwh,
         balancing_cost_schedule=balancing_schedule,
-        ppa_indexation_start_policy=rev.ppa_indexation_start_policy.value,
+        ppa_indexation_start_policy=(
+            rev.ppa_indexation_start_policy.value
+            if rev.ppa_indexation_start_policy is not None
+            else "AFTER_FIRST_FULL_OPERATING_YEAR"
+        ),
         ppa_indexation_start_date=rev.ppa_indexation_start_date,
         ppa_tariff_by_operating_period=tariff_schedule,
     )
@@ -217,6 +221,12 @@ def _build_ppa_tariff_schedule(
 
     rev = inputs.revenue
     policy = rev.ppa_indexation_start_policy
+
+    # None = not yet explicitly migrated. Return empty tuple so finco_core falls back
+    # to the legacy tariff_at_year(year_index) path — exact pre-PR behaviour preserved.
+    if policy is None:
+        return ()
+
     cod = _cod_date(inputs.calendar)
     base_tariff = rev.ppa_base_tariff_eur_mwh
     ppa_index = rev.ppa_index

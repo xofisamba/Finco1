@@ -296,8 +296,8 @@ class TestRevenueInputRoundTrip:
             co2_enabled=False,
             co2_price_eur_mwh=0.0,
         )
-        # Default should be AFTER_FIRST_FULL_OPERATING_YEAR
-        assert rev.ppa_indexation_start_policy == PpaIndexationStartPolicy.AFTER_FIRST_FULL_OPERATING_YEAR
+        # Default is None (unmigrated/legacy state, not a financial policy assumption)
+        assert rev.ppa_indexation_start_policy is None
         assert rev.ppa_indexation_start_date is None
 
     def test_revenue_input_accepts_first_full_cy_policy(self):

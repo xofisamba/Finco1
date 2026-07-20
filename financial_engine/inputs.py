@@ -58,12 +58,11 @@ class RevenueInput:
     co2_price_semiannual_eur_mwh: tuple[float, ...] = ()
     co2_price_eur_per_mwh_scalar: float = 0.0
     balancing_cost_eur_per_mwh: float = 0.0
-    # PPA indexation policy — explicit timing convention.
-    # Default: AFTER_FIRST_FULL_OPERATING_YEAR preserves legacy year-index behaviour.
-    ppa_indexation_start_policy: PpaIndexationStartPolicy = (
-        PpaIndexationStartPolicy.AFTER_FIRST_FULL_OPERATING_YEAR
-    )
-    # Required only for CONTRACT_ANNIVERSARY; None means use COD.
+    # PPA indexation policy — explicit timing convention chosen for this project.
+    # None = not yet explicitly migrated; the legacy tariff_at_year path is preserved.
+    # None is a migration state, not a financial policy assumption.
+    ppa_indexation_start_policy: PpaIndexationStartPolicy | None = None
+    # Required only for CONTRACT_ANNIVERSARY; raises ValueError if None when that policy is used.
     ppa_indexation_start_date: date | None = None
 
 

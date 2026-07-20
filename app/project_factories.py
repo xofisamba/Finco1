@@ -390,9 +390,6 @@ def create_default_tuho_wind1() -> ProjectInputs:
             0.8, 0.8, 0.8, 0.8, 0.75, 0.75, 0.75, 0.75,
             0.7, 0.7, 0.7, 0.7,
         )),
-        # COD=2030-01-01: FIRST_FULL_CALENDAR_YEAR_AS_BASE (base_year=2030, same as
-        # AFTER_FIRST_FULL_OPERATING_YEAR for Jan-1 COD) avoids intra-period anniversary splits.
-        ppa_indexation_start_policy="FIRST_FULL_CALENDAR_YEAR_AS_BASE",
     )
 
     financing = FinancingParams(
@@ -522,10 +519,7 @@ def create_default_solar_project(
     # default balancing_cost_pv=0.025 must be zeroed here to match the spec.
     revenue = RevenueParams(ppa_base_tariff=50.0, ppa_term_years=10, ppa_index=0.02,
         market_scenario="Central", market_prices_curve=solar_market_curve,
-        market_inflation=0.02, co2_enabled=False, balancing_cost_pv=0.0,
-        # COD=2031-01-01: FIRST_FULL_CALENDAR_YEAR_AS_BASE (base_year=2031, identical to
-        # AFTER_FIRST_FULL_OPERATING_YEAR for Jan-1 COD) avoids intra-period anniversary splits.
-        ppa_indexation_start_policy="FIRST_FULL_CALENDAR_YEAR_AS_BASE")
+        market_inflation=0.02, co2_enabled=False, balancing_cost_pv=0.0)
     # G1H: share_capital_keur + shl_amount_keur must fund the full
     # non-senior-debt share implied by gearing_ratio=0.75, i.e.
     # 33,000 kEUR total_capex * 0.25 = 8,250 kEUR. Previously only
@@ -601,11 +595,7 @@ def create_default_wind_project(
     revenue = RevenueParams(ppa_base_tariff=60.0, ppa_term_years=12, ppa_index=0.02,
         market_scenario="Central", market_prices_curve=wind_market_curve,
         market_inflation=0.02, balancing_cost_wind_eur_mwh=8.0,
-        co2_enabled=False, co2_price_eur=0.0, balancing_cost_pv=0.0,
-        # COD=2031-07-01: FIRST_FULL_CALENDAR_YEAR_AS_BASE (base_year=2032) avoids
-        # intra-period anniversary splits. Tariff path differs from pre-fix baseline
-        # (B4-wind governed drift: baseline predates FIRST_FULL_CALENDAR_YEAR_AS_BASE).
-        ppa_indexation_start_policy="FIRST_FULL_CALENDAR_YEAR_AS_BASE")
+        co2_enabled=False, co2_price_eur=0.0, balancing_cost_pv=0.0)
     # G1H: share_capital_keur + shl_amount_keur must fund the full
     # non-senior-debt share implied by gearing_ratio=0.75, i.e.
     # 43,000 kEUR total_capex * 0.25 = 10,750 kEUR. Previously only

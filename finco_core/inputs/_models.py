@@ -430,9 +430,9 @@ class RevenueParams:
     balancing_cost_schedule: RevenueAdjustmentSchedule | None = None
     co2_sales_schedule: RevenueAdjustmentSchedule | None = None
     first_merchant_operating_period_index: int | None = None
-    # PPA indexation policy — string name of PpaIndexationStartPolicy enum.
-    # "AFTER_FIRST_FULL_OPERATING_YEAR" preserves legacy year-index behaviour.
-    ppa_indexation_start_policy: str = "AFTER_FIRST_FULL_OPERATING_YEAR"
+    # PPA indexation policy — string name of PpaIndexationStartPolicy enum, or None.
+    # None = not yet explicitly migrated; orchestrator uses legacy tariff_at_year path.
+    ppa_indexation_start_policy: str | None = None
     ppa_indexation_start_date: date | None = None
     # Pre-computed per-operating-period tariff schedule (indexed by operating_period_index).
     # When non-empty, tariff_at_operating_period() uses this instead of the analytic formula.

@@ -128,13 +128,6 @@ def test_operating_core_v1_pass(baseline_id: str):
             "not yet validated from TUHO source model. Tax depreciation UNCHANGED from baseline. "
             "Baseline refresh requires explicit governance approval."
         )
-    if baseline_id == "generic_wind":
-        pytest.xfail(
-            "Governed drift [B4-wind]: FIRST_FULL_CALENDAR_YEAR_AS_BASE policy for COD=2031-07-01 "
-            "(base_year=2032) differs from legacy AFTER_FIRST_FULL_OPERATING_YEAR for H2 PPA-term "
-            "periods. Revenue and EBITDA drift; all other schedules are IDENTICAL. "
-            "Baseline predates B4 correction. Refresh requires explicit governance approval."
-        )
     committed = _load_baseline(baseline_id)
     candidate = get_candidate_snapshot(
         baseline_id, baseline_commit_sha=_BASELINE_COMMIT_SHA
@@ -248,44 +241,6 @@ def test_revenue_parity(baseline_id: str):
             )
         return
 
-    if baseline_id == "generic_wind":
-        # B4 governed drift: FIRST_FULL_CALENDAR_YEAR_AS_BASE (base_year=2032) for COD=2031-07-01.
-        # H2 PPA-term periods (Dec-31 period_end) drift; H1 and post-PPA periods identical.
-        # Expected drifting indices: 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24
-        _B4_DRIFT_INDICES = frozenset({2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24})
-        _B4_EXPECTED_CANDIDATE: dict[int, float] = {
-            2:  3074.621902060398,
-            4:  3154.192727823699,
-            6:  3226.762876091041,
-            8:  3300.784428259049,
-            10: 3367.061584100804,
-            12: 3453.298432256459,
-            14: 3531.850695045519,
-            16: 3611.974003239836,
-            18: 3683.607701267773,
-            20: 3777.060066316979,
-            22: 3862.087561253613,
-            24: 3948.815606026668,
-        }
-        _TOL = 1e-6
-        cand_revenues_w = [p.revenue_keur for p in op_periods]
-        actual_drift_w: set[int] = set()
-        for i, (cand_v, bl_v) in enumerate(zip(cand_revenues_w, bl_vals)):
-            if cand_v != bl_v:
-                actual_drift_w.add(i)
-        assert frozenset(actual_drift_w) == _B4_DRIFT_INDICES, (
-            f"generic_wind B4 revenue drift set mismatch.\n"
-            f"  actual:   {sorted(actual_drift_w)}\n"
-            f"  expected: {sorted(_B4_DRIFT_INDICES)}"
-        )
-        for i, expected_v in _B4_EXPECTED_CANDIDATE.items():
-            actual_v = cand_revenues_w[i]
-            assert abs(actual_v - expected_v) < _TOL, (
-                f"generic_wind B4 revenue_keur[{i}]: candidate={actual_v!r}, "
-                f"expected={expected_v!r}. Wrong magnitude in B4-governed period."
-            )
-        return
-
     for i, (my_v, bl_v) in enumerate(zip(
         [p.revenue_keur for p in op_periods], bl_vals
     )):
@@ -316,13 +271,6 @@ def test_ebitda_parity(baseline_id: str):
     if baseline_id == "oborovo":
         pytest.xfail(
             "Governed drift [B1]: EBITDA = Revenue − OPEX; oborovo OPEX corrected per B1 XLSM values. "
-            "Baseline predates correction. Refresh requires explicit governance approval."
-        )
-    if baseline_id == "generic_wind":
-        pytest.xfail(
-            "Governed drift [B4-wind]: EBITDA = Revenue − OPEX; generic_wind PPA tariff "
-            "corrected to FIRST_FULL_CALENDAR_YEAR_AS_BASE (COD=2031-07-01, base_year=2032). "
-            "H2 PPA-term ebitda drifts proportionally with B4 revenue correction. "
             "Baseline predates correction. Refresh requires explicit governance approval."
         )
     baseline = _load_baseline(baseline_id)
@@ -489,10 +437,7 @@ _GOVERNED_DRIFT_SCHEDULES: dict[str, frozenset[str]] = {
         "operating_schedules.book_depreciation_keur",
     }),
     "generic_solar": frozenset(),   # must be IDENTICAL (Jan-1 COD: FIRST_FULL_CY == AFTER_OY)
-    "generic_wind": frozenset({
-        "operating_schedules.revenue_keur",   # B4: Jul-1 COD, FIRST_FULL_CY != AFTER_OY for H2 PPA periods
-        "operating_schedules.ebitda_keur",    # B4: revenue drift propagates to ebitda
-    }),
+    "generic_wind": frozenset(),   # must be IDENTICAL (legacy unmigrated path preserved)
 }
 
 
@@ -510,8 +455,8 @@ def _drift_schedule_names(differences) -> frozenset[str]:
 def test_compare_candidate_provider_pass_all_baselines():
     """Phase 2E freeze guard: exact governed drift surface for all four baselines.
 
-    generic_solar must be IDENTICAL (Jan-1 COD: FIRST_FULL_CY == AFTER_OY, no drift).
-    generic_wind may drift only in revenue_keur and ebitda_keur (B4: Jul-1 COD).
+    generic_solar must be IDENTICAL (no policy migration; legacy path preserved).
+    generic_wind must be IDENTICAL (no policy migration; legacy path preserved).
     oborovo may drift only in opex_keur, revenue_keur, ebitda_keur, book_depreciation_keur (B1+B2+B3).
     tuho may drift only in book_depreciation_keur (B3 generic architecture; OPEN treatment).
     Any additional drift field fails this guard.
