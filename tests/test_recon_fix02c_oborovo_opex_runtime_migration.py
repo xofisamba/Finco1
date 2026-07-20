@@ -76,7 +76,7 @@ def oborovo_model():
 
 @pytest.fixture(scope="module")
 def oborovo_cap():
-    return build_oborovo_opex_capability(senior_debt_tenor_years=14)
+    return build_oborovo_opex_capability()
 
 
 @pytest.fixture(scope="module")
@@ -482,26 +482,65 @@ class TestOtherProjectsUnchanged:
         inputs = create_default_wind_project()
         assert inputs.hierarchical_opex_capability is None
 
+    # Baseline values computed against commit 516229073909d29b8a8393ca3f96169f97a875ad
+    # (parent head) using _run_waterfall on each project with no hierarchical capability.
+    # These projects use the legacy flat-item OPEX path; their outputs must be IDENTICAL
+    # across parent and this head because they have no HierarchicalOpexCapability.
+    _TUHO_REVENUE   = 423843.611377  # kEUR, tolerance 1e-6
+    _TUHO_OPEX      = 85408.274134
+    _TUHO_EBITDA    = 338435.337242
+    _SOLAR_OPEX     = 9233.000524
+    _SOLAR_REVENUE  = 94431.066857
+    _SOLAR_EBITDA   = 85198.066333
+    _WIND_OPEX      = 17617.771477
+    _WIND_REVENUE   = 213124.950832
+    _WIND_EBITDA    = 195507.179355
+    _TOL = 1e-4  # kEUR — strict equality to floating point precision
+
     def test_tuho_outputs_unchanged(self):
-        """TUHO financial outputs are identical regardless of hierarchical capability."""
+        """TUHO financial outputs are IDENTICAL to parent head (exact equality test)."""
         from app.project_factories import create_default_tuho_wind1
         inputs = create_default_tuho_wind1()
         result = _run_waterfall(inputs)
-        assert result.total_opex_keur > 0
-        assert result.total_revenue_keur > 0
-        assert result.total_ebitda_keur > 0
+        assert abs(result.total_revenue_keur - self._TUHO_REVENUE) < self._TOL, (
+            f"TUHO revenue changed: {result.total_revenue_keur:.6f} != {self._TUHO_REVENUE:.6f}"
+        )
+        assert abs(result.total_opex_keur - self._TUHO_OPEX) < self._TOL, (
+            f"TUHO opex changed: {result.total_opex_keur:.6f} != {self._TUHO_OPEX:.6f}"
+        )
+        assert abs(result.total_ebitda_keur - self._TUHO_EBITDA) < self._TOL, (
+            f"TUHO ebitda changed: {result.total_ebitda_keur:.6f} != {self._TUHO_EBITDA:.6f}"
+        )
 
     def test_generic_solar_outputs_unchanged(self):
+        """Generic solar financial outputs are IDENTICAL to parent head (exact equality test)."""
         from app.project_factories import create_default_solar_project
         inputs = create_default_solar_project()
         result = _run_waterfall(inputs)
-        assert result.total_opex_keur > 0
+        assert abs(result.total_revenue_keur - self._SOLAR_REVENUE) < self._TOL, (
+            f"Solar revenue changed: {result.total_revenue_keur:.6f} != {self._SOLAR_REVENUE:.6f}"
+        )
+        assert abs(result.total_opex_keur - self._SOLAR_OPEX) < self._TOL, (
+            f"Solar opex changed: {result.total_opex_keur:.6f} != {self._SOLAR_OPEX:.6f}"
+        )
+        assert abs(result.total_ebitda_keur - self._SOLAR_EBITDA) < self._TOL, (
+            f"Solar ebitda changed: {result.total_ebitda_keur:.6f} != {self._SOLAR_EBITDA:.6f}"
+        )
 
     def test_generic_wind_outputs_unchanged(self):
+        """Generic wind financial outputs are IDENTICAL to parent head (exact equality test)."""
         from app.project_factories import create_default_wind_project
         inputs = create_default_wind_project()
         result = _run_waterfall(inputs)
-        assert result.total_opex_keur > 0
+        assert abs(result.total_revenue_keur - self._WIND_REVENUE) < self._TOL, (
+            f"Wind revenue changed: {result.total_revenue_keur:.6f} != {self._WIND_REVENUE:.6f}"
+        )
+        assert abs(result.total_opex_keur - self._WIND_OPEX) < self._TOL, (
+            f"Wind opex changed: {result.total_opex_keur:.6f} != {self._WIND_OPEX:.6f}"
+        )
+        assert abs(result.total_ebitda_keur - self._WIND_EBITDA) < self._TOL, (
+            f"Wind ebitda changed: {result.total_ebitda_keur:.6f} != {self._WIND_EBITDA:.6f}"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -628,42 +667,147 @@ class TestTenorContextOnly:
 
 
 class TestLegacyHierarchicalDelta:
-    def test_delta_is_documented_not_zero(self, project_inputs, period_engine):
-        """Hierarchical and legacy paths produce different totals — this is expected.
+    """Compare legacy flat-item OPEX path against hierarchical engine.
 
-        The hierarchical is the Excel truth. Legacy was an approximation.
-        The total delta over 30 years must be non-zero and bounded below 10_000 kEUR.
-        """
+    Exact 30-year totals (kEUR, computed at commit 516229073909...):
+      Legacy (period sum):      48 855.8146
+      Hierarchical (period sum): 55 778.9710
+      Delta (hier − legacy):     6 923.1564 kEUR
+
+    Key structural causes of the delta:
+      B.02: mobilisation Y1-only vs flat activation in legacy
+      B.07: PRE_OPERATION_BASE adds one escalation step vs YEAR_1_AS_BASE
+      B.08.3: balancing costs activate Y11-30 (zero in legacy flat item)
+      B.10: audit subitem Y1-2/Y3+ split not captured in legacy
+      B.11: SENIOR_DEBT_TENOR_ACTIVE fee expires at Y14 — legacy ran all 30 years
+      B.12: monitoring subitems B.12.3/B.12.5 expire after Y2 in hierarchical
+      B.13: contingency propagates all of the above changes
+
+    The hierarchical path is the Excel truth.  Legacy was an approximation.
+    """
+
+    # Exact baseline (period-sum over all 60 operating semi-annual periods)
+    _EXACT_LEGACY_TOTAL      = 48_855.8146
+    _EXACT_HIER_TOTAL        = 55_778.9710
+    _EXACT_DELTA             = 6_923.1564
+    _DELTA_TOLERANCE         = 0.5   # kEUR — rounding only
+
+    def test_delta_exact_magnitude(self, project_inputs, period_engine):
+        """Hierarchical vs legacy delta must equal the documented exact value ±0.5 kEUR."""
         from finco_core.opex.projections import opex_schedule_period
         sched_h = opex_schedule_period(project_inputs, period_engine)
-
         inputs_legacy = replace(project_inputs, hierarchical_opex_capability=None)
         sched_l = opex_schedule_period(inputs_legacy, period_engine)
-
         op_periods = [p for p in period_engine.periods() if p.is_operation]
         total_h = sum(sched_h[p.index] for p in op_periods)
         total_l = sum(sched_l[p.index] for p in op_periods)
-        delta = abs(total_h - total_l)
-
-        assert 0 < delta < 10_000, (
-            f"Expected non-zero delta < 10_000 kEUR; got {delta:.2f}"
+        delta = total_h - total_l
+        assert abs(delta - self._EXACT_DELTA) < self._DELTA_TOLERANCE, (
+            f"Delta changed: got {delta:.4f}, expected {self._EXACT_DELTA:.4f} "
+            f"(±{self._DELTA_TOLERANCE}). "
+            f"Hier={total_h:.4f} Legacy={total_l:.4f}"
         )
 
-    def test_delta_direction_is_known(self, project_inputs, period_engine):
-        """The delta must be in a known range — document it, do not vaguely assert."""
+    def test_hierarchical_total_matches_baseline(self, project_inputs, period_engine):
         from finco_core.opex.projections import opex_schedule_period
         sched_h = opex_schedule_period(project_inputs, period_engine)
+        op_periods = [p for p in period_engine.periods() if p.is_operation]
+        total_h = sum(sched_h[p.index] for p in op_periods)
+        assert abs(total_h - self._EXACT_HIER_TOTAL) < self._DELTA_TOLERANCE, (
+            f"Hierarchical total changed: {total_h:.4f} != {self._EXACT_HIER_TOTAL:.4f}"
+        )
+
+    def test_legacy_total_matches_baseline(self, project_inputs, period_engine):
+        from finco_core.opex.projections import opex_schedule_period
         inputs_legacy = replace(project_inputs, hierarchical_opex_capability=None)
         sched_l = opex_schedule_period(inputs_legacy, period_engine)
         op_periods = [p for p in period_engine.periods() if p.is_operation]
-        total_h = sum(sched_h[p.index] for p in op_periods)
         total_l = sum(sched_l[p.index] for p in op_periods)
-        # The hierarchical path picks up the correct Excel totals including
-        # structural differences in B.02 and B.12 activation patterns.
-        # Total delta is expected to be bounded; compute it as documentation.
-        delta = total_h - total_l
-        # Sign can be either direction; just assert bounded magnitude:
-        assert abs(delta) < 10_000, f"Unexpected large delta: {delta:.2f} kEUR"
+        assert abs(total_l - self._EXACT_LEGACY_TOTAL) < self._DELTA_TOLERANCE, (
+            f"Legacy total changed: {total_l:.4f} != {self._EXACT_LEGACY_TOTAL:.4f}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# P2. PRE / POST / Excel downstream financial bridge
+# ---------------------------------------------------------------------------
+
+
+class TestPrePostExcelBridge:
+    """Run the full Oborovo financial model in PRE and POST modes and compare.
+
+    PRE:  hierarchical_opex_capability=None  (legacy flat-item OPEX path)
+    POST: hierarchical_opex_capability set   (hierarchical engine)
+    Excel: excel_oborovo_financial_truth.json totals where available.
+
+    Invariants (must be strict):
+      Revenue PRE == POST  (OPEX change does not touch revenue)
+      Depreciation PRE == POST  (CAPEX/depreciation unchanged)
+
+    Known deltas caused by OPEX change:
+      OPEX: POST > PRE by 6 923.16 kEUR (hierarchical Excel truth vs legacy)
+      EBITDA: POST < PRE (mirror of OPEX delta)
+      Project IRR: POST < PRE (higher OPEX burden)
+    """
+    _TOL_STRICT = 1e-6   # kEUR — Revenue/Depreciation must be identical
+    _TOL_OPEX   = 0.5    # kEUR — OPEX delta magnitude
+    _EXACT_OPEX_DELTA = 6_923.1564   # POST - PRE (hier > legacy)
+    _EXACT_PRE_OPEX  = 48_855.8146
+    _EXACT_POST_OPEX = 55_778.9710
+
+    @pytest.fixture(scope="class")
+    def pre_result(self, project_inputs):
+        inputs_pre = replace(project_inputs, hierarchical_opex_capability=None)
+        return _run_waterfall(inputs_pre)
+
+    @pytest.fixture(scope="class")
+    def post_result(self, project_inputs):
+        return _run_waterfall(project_inputs)
+
+    def test_revenue_invariant(self, pre_result, post_result):
+        """Revenue must be identical PRE and POST — OPEX does not affect revenue."""
+        assert abs(pre_result.total_revenue_keur - post_result.total_revenue_keur) < self._TOL_STRICT, (
+            f"Revenue changed: PRE={pre_result.total_revenue_keur:.6f} "
+            f"POST={post_result.total_revenue_keur:.6f}"
+        )
+
+    def test_post_opex_matches_baseline(self, post_result):
+        assert abs(post_result.total_opex_keur - self._EXACT_POST_OPEX) < self._TOL_OPEX, (
+            f"POST OPEX changed: {post_result.total_opex_keur:.4f} != {self._EXACT_POST_OPEX:.4f}"
+        )
+
+    def test_pre_opex_matches_baseline(self, pre_result):
+        assert abs(pre_result.total_opex_keur - self._EXACT_PRE_OPEX) < self._TOL_OPEX, (
+            f"PRE OPEX changed: {pre_result.total_opex_keur:.4f} != {self._EXACT_PRE_OPEX:.4f}"
+        )
+
+    def test_opex_delta_magnitude(self, pre_result, post_result):
+        delta = post_result.total_opex_keur - pre_result.total_opex_keur
+        assert abs(delta - self._EXACT_OPEX_DELTA) < self._TOL_OPEX, (
+            f"OPEX delta changed: {delta:.4f} != {self._EXACT_OPEX_DELTA:.4f}"
+        )
+
+    def test_post_ebitda_lower_than_pre(self, pre_result, post_result):
+        """Higher OPEX in POST → lower EBITDA."""
+        assert post_result.total_ebitda_keur < pre_result.total_ebitda_keur, (
+            f"POST EBITDA should be lower: PRE={pre_result.total_ebitda_keur:.2f} "
+            f"POST={post_result.total_ebitda_keur:.2f}"
+        )
+
+    def test_ebitda_delta_mirrors_opex_delta(self, pre_result, post_result):
+        opex_delta = post_result.total_opex_keur - pre_result.total_opex_keur
+        ebitda_delta = post_result.total_ebitda_keur - pre_result.total_ebitda_keur
+        # EBITDA = Revenue - OPEX; revenue is invariant, so delta should be -opex_delta
+        assert abs(ebitda_delta + opex_delta) < self._TOL_OPEX, (
+            f"EBITDA delta {ebitda_delta:.4f} should mirror OPEX delta -{opex_delta:.4f}"
+        )
+
+    def test_post_project_irr_lower_than_pre(self, pre_result, post_result):
+        """Higher OPEX burden → lower project IRR."""
+        assert post_result.project_irr < pre_result.project_irr, (
+            f"POST IRR should be lower: PRE={pre_result.project_irr:.6f} "
+            f"POST={post_result.project_irr:.6f}"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -710,6 +854,94 @@ class TestCacheCorrectness:
         key_orig = hash_inputs_for_cache(project_inputs)
         key_mod = hash_inputs_for_cache(inputs_mod)
         assert key_orig != key_mod
+
+    def test_b08_annual_flags_change_changes_cache_key(self, project_inputs):
+        """B.08 balancing costs: Y11-30 vs Y15-30 → different key."""
+        from finco_core.inputs._models import hash_inputs_for_cache
+        from finco_core.opex._capability import HierarchicalOpexCapability
+        from finco_core.opex.hierarchical._inputs import OpexActivationSchedule
+
+        cap = project_inputs.hierarchical_opex_capability
+        old_cats = cap.opex_model.categories
+        b08 = next(c for c in old_cats if c.code == "B.08")
+        # find B.08.3 — the step-activation subitem
+        b083_idx = next(i for i, si in enumerate(b08.subitems) if si.code == "B.08.3")
+        old_si = b08.subitems[b083_idx]
+        # Change from first 10 False / next 20 True → first 14 False / next 16 True
+        new_flags = tuple([False] * 14 + [True] * 16)
+        new_si = replace(old_si, activation_schedule=OpexActivationSchedule(annual_flags=new_flags))
+        new_subitems = b08.subitems[:b083_idx] + (new_si,) + b08.subitems[b083_idx + 1:]
+        new_b08 = replace(b08, subitems=new_subitems)
+        new_cats = tuple(
+            new_b08 if c.code == "B.08" else c for c in old_cats
+        )
+        new_model = replace(cap.opex_model, categories=new_cats)
+        new_cap = HierarchicalOpexCapability(opex_model=new_model, external_annual_series=cap.external_annual_series)
+        inputs_mod = replace(project_inputs, hierarchical_opex_capability=new_cap)
+        assert hash_inputs_for_cache(project_inputs) != hash_inputs_for_cache(inputs_mod), (
+            "Changing B.08.3 annual_flags must change cache key"
+        )
+
+    def test_b07_escalation_convention_change_changes_cache_key(self, project_inputs):
+        """B.07: PRE_OPERATION_BASE → YEAR_1_AS_BASE → different key."""
+        from finco_core.inputs._models import hash_inputs_for_cache
+        from finco_core.opex._capability import HierarchicalOpexCapability
+        from finco_core.opex.hierarchical import OpexEscalationConvention
+
+        cap = project_inputs.hierarchical_opex_capability
+        old_cats = cap.opex_model.categories
+        b07 = next(c for c in old_cats if c.code == "B.07")
+        new_b07 = replace(b07, escalation_convention=OpexEscalationConvention.YEAR_1_AS_BASE)
+        new_cats = tuple(new_b07 if c.code == "B.07" else c for c in old_cats)
+        new_model = replace(cap.opex_model, categories=new_cats)
+        new_cap = HierarchicalOpexCapability(opex_model=new_model, external_annual_series=cap.external_annual_series)
+        inputs_mod = replace(project_inputs, hierarchical_opex_capability=new_cap)
+        assert hash_inputs_for_cache(project_inputs) != hash_inputs_for_cache(inputs_mod), (
+            "Changing B.07 escalation_convention must change cache key"
+        )
+
+    def test_subitem_amount_basis_change_changes_cache_key(self, project_inputs):
+        """Changing amount_basis of B.01.1 must change the cache key."""
+        from finco_core.inputs._models import hash_inputs_for_cache
+        from finco_core.opex._capability import HierarchicalOpexCapability
+        from finco_core.opex.hierarchical import OpexAmountBasis
+
+        cap = project_inputs.hierarchical_opex_capability
+        old_cats = cap.opex_model.categories
+        b01 = old_cats[0]
+        si0 = b01.subitems[0]
+        # Pick a different amount_basis
+        new_basis = (
+            OpexAmountBasis.ONE_OFF
+            if si0.amount_basis != OpexAmountBasis.ONE_OFF
+            else OpexAmountBasis.ANNUAL_RUN_RATE
+        )
+        new_si = replace(si0, amount_basis=new_basis)
+        new_b01 = replace(b01, subitems=(new_si,) + b01.subitems[1:])
+        new_cats = (new_b01,) + old_cats[1:]
+        new_model = replace(cap.opex_model, categories=new_cats)
+        new_cap = HierarchicalOpexCapability(opex_model=new_model, external_annual_series=cap.external_annual_series)
+        inputs_mod = replace(project_inputs, hierarchical_opex_capability=new_cap)
+        assert hash_inputs_for_cache(project_inputs) != hash_inputs_for_cache(inputs_mod), (
+            "Changing subitem amount_basis must change cache key"
+        )
+
+    def test_external_series_values_change_changes_cache_key(self, project_inputs):
+        """Changing D series from zeros to non-zero must change the cache key."""
+        from finco_core.inputs._models import hash_inputs_for_cache
+        from finco_core.opex._capability import HierarchicalOpexCapability
+
+        cap = project_inputs.hierarchical_opex_capability
+        new_d = tuple([100.0] * 30)  # non-zero D series
+        new_series = tuple(
+            (code, new_d) if code == "D" else (code, vals)
+            for code, vals in cap.external_annual_series
+        )
+        new_cap = HierarchicalOpexCapability(opex_model=cap.opex_model, external_annual_series=new_series)
+        inputs_mod = replace(project_inputs, hierarchical_opex_capability=new_cap)
+        assert hash_inputs_for_cache(project_inputs) != hash_inputs_for_cache(inputs_mod), (
+            "Changing external D series values must change cache key"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -830,9 +1062,32 @@ class TestIdentityInvariance:
         inputs_renamed = replace(project_inputs, info=renamed_info)
         result_renamed = _run_waterfall(inputs_renamed)
 
-        assert abs(result_orig.total_revenue_keur - result_renamed.total_revenue_keur) < 1.0
-        assert abs(result_orig.total_opex_keur - result_renamed.total_opex_keur) < 1.0
-        assert abs(result_orig.total_ebitda_keur - result_renamed.total_ebitda_keur) < 1.0
+        _TOL = 1e-9  # kEUR — strict equality; name/code/company must never affect outputs
+
+        assert abs(result_orig.total_revenue_keur - result_renamed.total_revenue_keur) < _TOL, (
+            f"Revenue changed after rename: {result_orig.total_revenue_keur} vs {result_renamed.total_revenue_keur}"
+        )
+        assert abs(result_orig.total_opex_keur - result_renamed.total_opex_keur) < _TOL, (
+            f"OPEX changed after rename: {result_orig.total_opex_keur} vs {result_renamed.total_opex_keur}"
+        )
+        assert abs(result_orig.total_ebitda_keur - result_renamed.total_ebitda_keur) < _TOL, (
+            f"EBITDA changed after rename: {result_orig.total_ebitda_keur} vs {result_renamed.total_ebitda_keur}"
+        )
+        assert abs(result_orig.total_tax_keur - result_renamed.total_tax_keur) < _TOL, (
+            f"Tax changed after rename"
+        )
+        assert abs(result_orig.total_senior_ds_keur - result_renamed.total_senior_ds_keur) < _TOL, (
+            f"Senior DS changed after rename"
+        )
+        assert abs(result_orig.actual_avg_dscr - result_renamed.actual_avg_dscr) < _TOL, (
+            f"Avg DSCR changed after rename"
+        )
+        assert abs(result_orig.actual_min_dscr - result_renamed.actual_min_dscr) < _TOL, (
+            f"Min DSCR changed after rename"
+        )
+        assert abs(result_orig.project_irr - result_renamed.project_irr) < _TOL, (
+            f"Project IRR changed after rename: {result_orig.project_irr} vs {result_renamed.project_irr}"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -843,17 +1098,35 @@ class TestIdentityInvariance:
 class TestExcelPeriodReconciliation:
     """Compare Python hierarchical per-period per-category OPEX vs Excel fixture.
 
-    The fixture 'excel_oborovo_financial_truth.json' contains
-    cf.opex_items_period_keur with 61 periods (index 0 = construction).
-    Python op periods are indexed starting from the engine's first operation
-    period (engine index 2 = first half-year after COD).
+    Alignment method:
+      The fixture 'excel_oborovo_financial_truth.json' contains
+      cf.opex_items_period_keur as a list of 61 values per category:
+        index 0 = construction period (excluded)
+        indices 1..60 = 60 semi-annual operating periods
+      The fixture does NOT contain period date keys — alignment is by sequential
+      index.  The period count must match: len(op_periods) == 60.
 
-    Mapping: fixture period index i (1..60) → op_periods[i-1].
-    Excel values are negative (expense sign); Python produces positive kEUR.
-    Tolerance = 2.0 kEUR to account for minor day-fraction convention
-    differences between Excel model and Python period engine.
+    Sign convention:
+      Excel values are negative (expense sign); Python produces positive kEUR.
+      Comparison uses abs(excel_val).
+
+    Materialiy threshold = 2.0 kEUR per period per category.
+    OPEN items with delta > 2.0 kEUR are classified and listed explicitly.
+
+    Baseline diagnostics (computed at commit 516229073909...):
+      Max category-period delta: 1.502085 kEUR in B.08 period=60 (year=30)
+        Classification: TIMING — last-period day-fraction rounding
+      Average delta across all 780 (13×60) pairs: < 0.1 kEUR
+      Total Python hierarchical: 55 778.9710 kEUR
+      Total Excel: 55 782.9508 kEUR
+      Cumulative delta: 3.9798 kEUR (< 5.0 kEUR materiality)
     """
-    _TOL = 2.0  # kEUR per period per category
+    _TOL = 2.0          # kEUR per period per category
+    _TOTAL_TOL = 5.0    # kEUR cumulative 30-year total
+    _EXACT_PYTHON_TOTAL = 55_778.9710
+    _EXACT_EXCEL_TOTAL  = 55_782.9508
+    _EXACT_MAX_DELTA    = 1.502085   # kEUR — B.08 period 60
+    _EXACT_CUM_DELTA    = 3.9798     # kEUR
 
     @pytest.fixture(scope="class")
     def period_deltas(self, project_inputs, financial_fixture):
@@ -879,40 +1152,87 @@ class TestExcelPeriodReconciliation:
             for cat in cat_codes
         }
 
+        # Verify period count matches fixture (alignment by sequential index)
+        assert len(op_periods) == 60, (
+            f"Period count mismatch: engine has {len(op_periods)} op periods, fixture has 60"
+        )
+
         deltas = []
         for i, p in enumerate(op_periods):
-            fix_idx = i + 1
+            fix_idx = i + 1  # fixture index 0 = construction; 1..60 = operation
             for cat in cat_codes:
                 excel_val = abs(opex_fix[cat][fix_idx])
                 py_val = annual_by_code_year[cat][p.year_index] * p.day_fraction
                 delta = abs(excel_val - py_val)
-                deltas.append((cat, fix_idx, p.index, delta))
+                deltas.append((cat, fix_idx, p.index, p.year_index, excel_val, py_val, delta))
         return deltas
 
+    def test_period_count_matches_fixture(self, project_inputs, financial_fixture):
+        """Fixture has 61 entries (index 0 = construction, 1..60 = op); engine must have 60 op periods."""
+        from app.ui_runner import _build_period_engine
+        engine = _build_period_engine(project_inputs)
+        op_periods = [p for p in engine.periods() if p.is_operation]
+        fix_len = len(financial_fixture["cf"]["opex_items_period_keur"]["B.01"])
+        assert fix_len == 61, f"Fixture length unexpected: {fix_len}"
+        assert len(op_periods) == 60, f"Engine op period count: {len(op_periods)}"
+
     def test_max_delta_within_tolerance(self, period_deltas):
-        failing = [(cat, fix_idx, pid, d) for cat, fix_idx, pid, d in period_deltas
+        """No category-period pair may exceed 2.0 kEUR.
+
+        Known worst case: B.08 period=60 (year=30) at 1.502085 kEUR — TIMING/rounding.
+        Any new pair > 2.0 kEUR is OPEN and requires root-cause classification.
+        """
+        failing = [(cat, fix_idx, pid, yr, xv, pv, d) for cat, fix_idx, pid, yr, xv, pv, d in period_deltas
                    if d > self._TOL]
         if failing:
-            worst = sorted(failing, key=lambda x: -x[3])[:5]
+            worst = sorted(failing, key=lambda x: -x[6])[:5]
             msg = "; ".join(
-                f"{cat} fix_period={fi} engine_idx={pi} delta={d:.4f}"
-                for cat, fi, pi, d in worst
+                f"{cat} fix={fi} eng={pi} yr={yr} excel={xv:.4f} py={pv:.4f} delta={d:.4f} [OPEN — ROOT CAUSE REQUIRED]"
+                for cat, fi, pi, yr, xv, pv, d in worst
             )
-            assert False, f"Max delta exceeded {self._TOL} kEUR in {len(failing)} cases: {msg}"
+            assert False, f"Max delta exceeded {self._TOL} kEUR in {len(failing)} pairs:\n  {msg}"
 
     def test_average_delta_below_01_keur(self, period_deltas):
-        avg = sum(d for _, _, _, d in period_deltas) / len(period_deltas)
+        avg = sum(d for *_, d in period_deltas) / len(period_deltas)
         assert avg < 0.1, f"Average delta {avg:.4f} kEUR exceeds 0.1 kEUR"
+
+    def test_max_delta_matches_documented_baseline(self, period_deltas):
+        """Max category-period delta must match documented baseline ±0.01 kEUR."""
+        max_d = max(d for *_, d in period_deltas)
+        assert abs(max_d - self._EXACT_MAX_DELTA) < 0.01, (
+            f"Max delta changed: {max_d:.6f} != {self._EXACT_MAX_DELTA:.6f}"
+        )
 
     @pytest.mark.parametrize("cat_code", [
         "B.01", "B.02", "B.03", "B.04", "B.05", "B.06",
         "B.07", "B.08", "B.09", "B.10", "B.11", "B.12", "B.13",
     ])
     def test_per_category_max_delta(self, cat_code, period_deltas):
-        cat_deltas = [d for cat, _, _, d in period_deltas if cat == cat_code]
+        cat_deltas = [d for cat, *_, d in period_deltas if cat == cat_code]
         max_d = max(cat_deltas)
         assert max_d <= self._TOL, (
             f"{cat_code}: max per-period delta {max_d:.4f} kEUR exceeds {self._TOL}"
+        )
+
+    # Task 8: Explicit total OPEX period reconciliation
+    def test_total_python_matches_baseline(self, period_deltas):
+        """30-year Python hierarchical OPEX total must match documented baseline."""
+        python_total = sum(pv for *_, pv, _ in period_deltas) / 13  # sum over cats
+        # Rebuild properly: sum py_val across all cat-period pairs, then divide...
+        # Actually: sum py_val for all 780 = 13×60 pairs gives 13× the total.
+        # Let's compute the total directly per-period (sum all cats in each period).
+        python_total = sum(pv for _, _, _, _, _, pv, _ in period_deltas)
+        excel_total  = sum(xv for _, _, _, _, xv, _, _ in period_deltas)
+        cum_delta = abs(python_total - excel_total)
+        assert abs(python_total - self._EXACT_PYTHON_TOTAL) < 0.5, (
+            f"Python total changed: {python_total:.4f} != {self._EXACT_PYTHON_TOTAL:.4f}"
+        )
+        assert abs(excel_total - self._EXACT_EXCEL_TOTAL) < 0.5, (
+            f"Excel total changed: {excel_total:.4f} != {self._EXACT_EXCEL_TOTAL:.4f}"
+        )
+        assert cum_delta <= self._TOTAL_TOL, (
+            f"Cumulative delta {cum_delta:.4f} kEUR exceeds {self._TOTAL_TOL} kEUR. "
+            f"Python={python_total:.4f} Excel={excel_total:.4f}"
         )
 
 

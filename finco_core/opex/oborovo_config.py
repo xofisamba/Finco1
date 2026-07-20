@@ -247,7 +247,7 @@ def build_oborovo_hierarchical_opex_model() -> OpexModelInput:
     )
 
 
-def build_oborovo_opex_capability(senior_debt_tenor_years: int):
+def build_oborovo_opex_capability():
     """Build the HierarchicalOpexCapability for Oborovo.
 
     NOT called by generic dispatch — used only by the project factory.

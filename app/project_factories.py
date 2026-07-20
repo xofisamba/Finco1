@@ -227,7 +227,7 @@ def create_default_oborovo() -> ProjectInputs:
         revenue=revenue,
         financing=financing,
         tax=tax,
-        hierarchical_opex_capability=build_oborovo_opex_capability(financing.senior_tenor_years),
+        hierarchical_opex_capability=build_oborovo_opex_capability(),
     )
 
 
