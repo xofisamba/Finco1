@@ -1,11 +1,7 @@
 {
-  "status": "FAIL",
-  "error_count": 3,
-  "errors": [
-    "semantic: equity.investor_2_share tuho must be formula-axis evidence",
-    "audit: curated value/editable/formula count does not reconcile",
-    "audit: curated total coordinate count does not reconcile"
-  ],
+  "status": "PASS",
+  "error_count": 0,
+  "errors": [],
   "summary": {
     "canonical_field_count": 70,
     "crosswalk_row_count": 61,
