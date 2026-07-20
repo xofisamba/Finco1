@@ -192,6 +192,17 @@ def test_production_parity(baseline_id: str):
 
 @pytest.mark.parametrize("baseline_id", _ALL_BASELINES)
 def test_revenue_parity(baseline_id: str):
+    if baseline_id == "oborovo":
+        pytest.xfail(
+            "Governed drift [B2-indexation]: Oborovo PPA tariff escalation policy corrected to "
+            "FIRST_FULL_CALENDAR_YEAR_AS_BASE per authoritative Excel Indexed Model Price schedule "
+            "(2031=base year, first escalation 2032). "
+            "Legacy implicit year-index convention applied escalation at operating year 2, "
+            "which incorrectly escalated H2-2031 and H1-2032 tariff by one extra year. "
+            "Revenue drift is the natural consequence of the corrected tariff path. "
+            "EBITDA drifts proportionally (already governed). "
+            "Baseline refresh requires explicit governance approval."
+        )
     baseline = _load_baseline(baseline_id)
     adapted = _get_adapted_inputs(baseline_id)
     result = run_operating_model(adapted)
@@ -385,6 +396,7 @@ def test_period_count_change_causes_structural_drift():
 _GOVERNED_DRIFT_SCHEDULES: dict[str, frozenset[str]] = {
     "oborovo": frozenset({
         "operating_schedules.opex_keur",
+        "operating_schedules.revenue_keur",   # B2: PPA indexation policy corrected to FIRST_FULL_CALENDAR_YEAR_AS_BASE
         "operating_schedules.ebitda_keur",
         "operating_schedules.book_depreciation_keur",
     }),

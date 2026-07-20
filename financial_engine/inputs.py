@@ -12,6 +12,8 @@ from datetime import date
 from enum import Enum
 from typing import TYPE_CHECKING
 
+from financial_engine.ppa_indexation import PpaIndexationStartPolicy
+
 if TYPE_CHECKING:
     from financial_engine.policies.tax import TaxPolicy
 
@@ -56,6 +58,13 @@ class RevenueInput:
     co2_price_semiannual_eur_mwh: tuple[float, ...] = ()
     co2_price_eur_per_mwh_scalar: float = 0.0
     balancing_cost_eur_per_mwh: float = 0.0
+    # PPA indexation policy — explicit timing convention.
+    # Default: AFTER_FIRST_FULL_OPERATING_YEAR preserves legacy year-index behaviour.
+    ppa_indexation_start_policy: PpaIndexationStartPolicy = (
+        PpaIndexationStartPolicy.AFTER_FIRST_FULL_OPERATING_YEAR
+    )
+    # Required only for CONTRACT_ANNIVERSARY; None means use COD.
+    ppa_indexation_start_date: date | None = None
 
 
 @dataclass(frozen=True)
