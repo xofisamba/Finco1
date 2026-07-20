@@ -16,7 +16,7 @@ AFTER_FIRST_FULL_OPERATING_YEAR
 
 CONTRACT_ANNIVERSARY
     Escalation follows the anniversary of an explicit PPA / indexation start date.
-    When no explicit date is provided, COD is used (identical to AFTER_FIRST_FULL_OPERATING_YEAR).
+    ppa_indexation_start_date is REQUIRED — callers must supply an explicit date.
     Example: COD = 29-Jun-2030, PPA start = 01-Oct-2030 → first escalation 01-Oct-2031.
 
 Period-crossing convention
@@ -85,7 +85,12 @@ def count_ppa_escalation_events(
         return k
 
     elif policy == PpaIndexationStartPolicy.CONTRACT_ANNIVERSARY:
-        ref = ppa_indexation_start_date if ppa_indexation_start_date is not None else cod
+        if ppa_indexation_start_date is None:
+            raise ValueError(
+                "ppa_indexation_start_date is required when policy is CONTRACT_ANNIVERSARY. "
+                "Provide an explicit PPA / indexation start date."
+            )
+        ref = ppa_indexation_start_date
         k = 0
         while (ref + relativedelta(years=k + 1)) <= period_end:
             k += 1

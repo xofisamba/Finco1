@@ -188,12 +188,11 @@ class TestContractAnniversary:
         n = count_ppa_escalation_events(POLICY_CA, cod, date(2032, 10, 1), ppa_start)
         assert n == 2
 
-    def test_none_ppa_start_falls_back_to_cod(self):
+    def test_none_ppa_start_raises_for_contract_anniversary(self):
         cod = date(2030, 6, 29)
-        # With ppa_start=None, should behave identically to AFTER_FIRST_FULL_OPERATING_YEAR
-        n_ca = count_ppa_escalation_events(POLICY_CA, cod, date(2031, 6, 29), None)
-        n_oy = count_ppa_escalation_events(POLICY_OY, cod, date(2031, 6, 29))
-        assert n_ca == n_oy
+        # CONTRACT_ANNIVERSARY requires an explicit date — None must raise ValueError.
+        with pytest.raises(ValueError, match="ppa_indexation_start_date is required"):
+            count_ppa_escalation_events(POLICY_CA, cod, date(2031, 6, 29), None)
 
     def test_tariff_with_explicit_start(self):
         cod = date(2030, 6, 29)
@@ -328,6 +327,47 @@ class TestRevenueInputRoundTrip:
         proj = create_default_oborovo()
         adapted = from_project_inputs(proj)
         assert adapted.revenue.ppa_indexation_start_policy == PpaIndexationStartPolicy.FIRST_FULL_CALENDAR_YEAR_AS_BASE
+
+
+# ---------------------------------------------------------------------------
+# 6b. Invalid policy / CONTRACT_ANNIVERSARY validation
+# ---------------------------------------------------------------------------
+
+class TestValidation:
+
+    def test_invalid_policy_string_raises_in_adapter(self):
+        """Typo or unknown policy value must raise ValueError, not silently fall back."""
+        from app.project_factories import create_default_oborovo
+        from financial_engine.adapters.project_inputs import from_project_inputs
+        import dataclasses
+
+        proj = create_default_oborovo()
+        # Inject a typo policy string into revenue params
+        bad_rev = dataclasses.replace(proj.revenue, ppa_indexation_start_policy="TYPO_POLICY")
+        bad_proj = dataclasses.replace(proj, revenue=bad_rev)
+        with pytest.raises(ValueError, match="Invalid ppa_indexation_start_policy"):
+            from_project_inputs(bad_proj)
+
+    def test_empty_policy_string_raises_in_adapter(self):
+        from app.project_factories import create_default_oborovo
+        from financial_engine.adapters.project_inputs import from_project_inputs
+        import dataclasses
+
+        proj = create_default_oborovo()
+        bad_rev = dataclasses.replace(proj.revenue, ppa_indexation_start_policy="")
+        bad_proj = dataclasses.replace(proj, revenue=bad_rev)
+        with pytest.raises(ValueError, match="Invalid ppa_indexation_start_policy"):
+            from_project_inputs(bad_proj)
+
+    def test_contract_anniversary_none_date_raises(self):
+        """CONTRACT_ANNIVERSARY with no date must raise, not silently use COD."""
+        cod = date(2030, 6, 29)
+        with pytest.raises(ValueError, match="ppa_indexation_start_date is required"):
+            count_ppa_escalation_events(POLICY_CA, cod, date(2031, 10, 1), None)
+
+    def test_contract_anniversary_none_date_raises_in_compute(self):
+        with pytest.raises(ValueError, match="ppa_indexation_start_date is required"):
+            compute_ppa_tariff(57.0, 0.02, POLICY_CA, date(2030, 6, 29), date(2031, 10, 1), None)
 
 
 # ---------------------------------------------------------------------------

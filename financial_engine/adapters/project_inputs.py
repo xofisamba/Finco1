@@ -77,7 +77,10 @@ def from_project_inputs(
     try:
         _ppa_policy = PpaIndexationStartPolicy(_policy_str)
     except ValueError:
-        _ppa_policy = PpaIndexationStartPolicy.AFTER_FIRST_FULL_OPERATING_YEAR
+        raise ValueError(
+            f"Invalid ppa_indexation_start_policy: {_policy_str!r}. "
+            f"Valid values: {[e.value for e in PpaIndexationStartPolicy]}"
+        )
     _ppa_index_start_date = getattr(rev, "ppa_indexation_start_date", None)
 
     revenue = RevenueInput(

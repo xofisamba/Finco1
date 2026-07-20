@@ -192,22 +192,36 @@ def test_production_parity(baseline_id: str):
 
 @pytest.mark.parametrize("baseline_id", _ALL_BASELINES)
 def test_revenue_parity(baseline_id: str):
-    if baseline_id == "oborovo":
-        pytest.xfail(
-            "Governed drift [B2-indexation]: Oborovo PPA tariff escalation policy corrected to "
-            "FIRST_FULL_CALENDAR_YEAR_AS_BASE per authoritative Excel Indexed Model Price schedule "
-            "(2031=base year, first escalation 2032). "
-            "Legacy implicit year-index convention applied escalation at operating year 2, "
-            "which incorrectly escalated H2-2031 and H1-2032 tariff by one extra year. "
-            "Revenue drift is the natural consequence of the corrected tariff path. "
-            "EBITDA drifts proportionally (already governed). "
-            "Baseline refresh requires explicit governance approval."
-        )
     baseline = _load_baseline(baseline_id)
     adapted = _get_adapted_inputs(baseline_id)
     result = run_operating_model(adapted)
     op_periods = [p for p in result.periods if p.is_operation]
     bl_vals = baseline["operating_schedules"]["revenue_keur"]
+    if baseline_id == "oborovo":
+        # B2 governed drift: FIRST_FULL_CALENDAR_YEAR_AS_BASE policy corrects H2 PPA-term periods.
+        # H2 periods (Dec-31 period_end) during years 2031–2042 where legacy AFTER_FIRST_FULL_OPERATING_YEAR
+        # applied escalation one year early.  H1 periods and post-PPA periods are identical.
+        # Expected drifting indices: 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22
+        _B2_DRIFT_INDICES = frozenset({2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22})
+        actual_drift_indices: set[int] = set()
+        for i, (cand_v, bl_v) in enumerate(zip(
+            [p.revenue_keur for p in op_periods], bl_vals
+        )):
+            if cand_v != bl_v:
+                actual_drift_indices.add(i)
+                # All drifts must be negative (new policy has lower tariff for these periods).
+                assert cand_v < bl_v, (
+                    f"oborovo revenue_keur[{i}]: expected candidate < baseline "
+                    f"({cand_v} >= {bl_v}); drift direction wrong."
+                )
+        assert frozenset(actual_drift_indices) == _B2_DRIFT_INDICES, (
+            f"oborovo B2 revenue drift set mismatch.\n"
+            f"  actual:   {sorted(actual_drift_indices)}\n"
+            f"  expected: {sorted(_B2_DRIFT_INDICES)}\n"
+            "Unrelated revenue periods must be identical to baseline."
+        )
+        return
+
     for i, (my_v, bl_v) in enumerate(zip(
         [p.revenue_keur for p in op_periods], bl_vals
     )):
