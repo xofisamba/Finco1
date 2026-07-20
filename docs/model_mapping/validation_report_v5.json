@@ -1,7 +1,13 @@
 {
-  "status": "PASS",
-  "error_count": 0,
-  "errors": [],
+  "status": "FAIL",
+  "error_count": 5,
+  "errors": [
+    "semantic: tax.wht.reimbursed must remain absence-confirmed until distinct evidence exists",
+    "semantic: tuho:value:D419 reused without shared_source_id: ['tax.vat.reimbursed', 'tax.wht.reimbursed']",
+    "semantic: tuho:editable:D419 reused without shared_source_id: ['tax.vat.reimbursed', 'tax.wht.reimbursed']",
+    "audit: curated value/editable/formula count does not reconcile",
+    "audit: curated total coordinate count does not reconcile"
+  ],
   "summary": {
     "canonical_field_count": 70,
     "crosswalk_row_count": 61,
