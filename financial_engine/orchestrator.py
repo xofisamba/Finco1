@@ -145,7 +145,7 @@ def _build_project_inputs_proxy(inputs: OperatingModelInput, tariff_schedule: tu
         ppa_indexation_start_policy=(
             rev.ppa_indexation_start_policy.value
             if rev.ppa_indexation_start_policy is not None
-            else "AFTER_FIRST_FULL_OPERATING_YEAR"
+            else None  # preserve unmigrated state; finco_core uses tariff_at_year
         ),
         ppa_indexation_start_date=rev.ppa_indexation_start_date,
         ppa_tariff_by_operating_period=tariff_schedule,

@@ -1,21 +1,32 @@
 #!/usr/bin/env python3
 """check_protected_scope.py — Narrow governance check for protected production files.
 
-Checks that the only protected-scope changes in a diff are explicitly approved.
-Approved changes are hardcoded as a minimal set; anything outside fails.
+Recon Fix 01 approval: exactly one declarative ppa_indexation_start_policy assignment
+added to create_default_oborovo() in app/project_factories.py.
+
+Rules:
+  - app/project_factories.py is the ONLY approved protected file for this PR.
+  - No other protected-scope file may be changed.
+  - No production lines may be REMOVED from project_factories.py.
+  - The only approved non-comment, non-blank addition is:
+        ppa_indexation_start_policy="FIRST_FULL_CALENDAR_YEAR_AS_BASE",
+    and it must appear in exactly one location in the diff (the Oborovo factory).
+  - The approved addition must not be mixed with other executable content on
+    the same logical line.
+  - Duplicate assignments (same pattern appearing more than once as an addition)
+    are rejected.
 
 Usage:
     python3 check_protected_scope.py <base_ref> <head_ref>
 
 Exit codes:
-    0 — All protected-scope changes are within the approved set (or no changes).
+    0 — All protected-scope changes are within the approved set.
     1 — Unexpected protected-scope changes detected.
 """
 from __future__ import annotations
 
 import subprocess
 import sys
-import textwrap
 
 PROTECTED_SCOPE = [
     "app/",
@@ -25,38 +36,14 @@ PROTECTED_SCOPE = [
     "finco_core/waterfall/",
 ]
 
-# ---------------------------------------------------------------------------
-# Approved narrow changes for Recon Fix 01.
-# Each entry is (file, approved_diff_pattern) where approved_diff_pattern is a
-# substring that must be present in the added lines of the diff.
-# The file must be the ONLY protected-scope file changed, and its diff must
-# consist ONLY of lines matching the approved additions plus comment/blank lines.
-# ---------------------------------------------------------------------------
-_RECON_FIX_01_APPROVED: dict[str, list[str]] = {
-    "app/project_factories.py": [
-        # Oborovo: authoritative policy set to FIRST_FULL_CALENDAR_YEAR_AS_BASE
-        'ppa_indexation_start_policy="FIRST_FULL_CALENDAR_YEAR_AS_BASE"',
-        # TUHO: COD=Jan-1, identical to AFTER_OY but avoids intra-period validation
-        'ppa_indexation_start_policy="FIRST_FULL_CALENDAR_YEAR_AS_BASE"',
-        # Solar: COD=Jan-1, identical to AFTER_OY but avoids intra-period validation
-        'ppa_indexation_start_policy="FIRST_FULL_CALENDAR_YEAR_AS_BASE"',
-        # Wind: COD=Jul-1, governed B4 drift
-        'ppa_indexation_start_policy="FIRST_FULL_CALENDAR_YEAR_AS_BASE"',
-    ],
-}
+# The only file allowed to change in protected scope for Recon Fix 01.
+_APPROVED_FILE = "app/project_factories.py"
 
-# When a protected file is changed but ONLY in ways that match the approved
-# set below, it is allowed. All additions in the protected file diff must be
-# either: empty/whitespace lines, comment lines (#), or lines that contain
-# only approved content strings.
-_APPROVED_ADDITION_PATTERNS = {
-    "app/project_factories.py": {
-        # Declarative policy field: only these strings are approved as additions.
-        'ppa_indexation_start_policy="FIRST_FULL_CALENDAR_YEAR_AS_BASE"',
-        # Comment lines approved by pattern (any comment is allowed for this file)
-        # Marker: empty or whitespace-only lines
-    }
-}
+# The only approved addition pattern (must appear exactly once, standalone).
+_APPROVED_ADDITION = 'ppa_indexation_start_policy="FIRST_FULL_CALENDAR_YEAR_AS_BASE"'
+
+# The factory function that owns the approved change.
+_APPROVED_FACTORY = "def create_default_oborovo"
 
 
 def run(cmd: list[str]) -> str:
@@ -65,7 +52,6 @@ def run(cmd: list[str]) -> str:
 
 
 def get_changed_protected_files(base: str, head: str) -> list[str]:
-    """Return protected-scope files changed between base and head."""
     changed_all = run(["git", "diff", "--name-only", f"{base}...{head}"])
     changed = changed_all.split("\n") if changed_all else []
     protected: list[str] = []
@@ -83,30 +69,91 @@ def get_diff_for_file(base: str, head: str, filepath: str) -> str:
     return run(["git", "diff", f"{base}...{head}", "--", filepath])
 
 
-def is_addition_approved(line: str, approved_patterns: set[str]) -> bool:
-    """Check if an added diff line (stripped of the leading +) is approved."""
-    stripped = line.lstrip("+").strip()
-    # Empty lines and comment-only lines are always allowed
-    if not stripped or stripped.startswith("#"):
-        return True
-    # Check against approved patterns
-    return any(pat in stripped for pat in approved_patterns)
+def _is_blank_or_comment(content: str) -> bool:
+    """True if the line content (after stripping leading +/- and whitespace) is blank or a comment."""
+    return not content or content.startswith("#")
 
 
-def check_file_diff_approved(filepath: str, diff: str) -> tuple[bool, list[str]]:
-    """Return (approved, [violation_lines])."""
-    approved_patterns = _APPROVED_ADDITION_PATTERNS.get(filepath)
-    if approved_patterns is None:
-        # File not in approved set at all
-        return False, [f"File {filepath!r} has no approved-change entry."]
+def check_factories_diff(diff: str) -> tuple[bool, list[str]]:
+    """Inspect the diff for app/project_factories.py.
 
-    violations: list[str] = []
+    Returns (approved, [error_messages]).
+
+    Approval requires ALL of:
+    1. No removed production lines (lines starting with '-', excluding '---' header).
+    2. All added lines are blank, comments, or contain _APPROVED_ADDITION.
+    3. The approved addition appears exactly once in added lines.
+    4. The approved addition must be the only executable content on its line
+       (no extra statements or identifiers beside it).
+    5. The addition must appear in the _APPROVED_FACTORY hunk context.
+    """
+    errors: list[str] = []
+    addition_count = 0
+    in_approved_factory = False
+
     for line in diff.split("\n"):
-        if not line.startswith("+") or line.startswith("+++"):
-            continue  # context or removed lines
-        if not is_addition_approved(line, approved_patterns):
-            violations.append(line)
-    return len(violations) == 0, violations
+        # Track which factory function we are inside based on context/hunk lines.
+        # Context lines (not starting with + or -) reveal the surrounding code.
+        if not line.startswith("+") and not line.startswith("-"):
+            if _APPROVED_FACTORY in line:
+                in_approved_factory = True
+            elif line.startswith("diff ") or line.startswith("@@"):
+                # New hunk — reset factory context; check hunk header for factory name.
+                if "@@" in line and _APPROVED_FACTORY not in line:
+                    in_approved_factory = False
+            continue
+
+        # Skip diff header lines.
+        if line.startswith("---") or line.startswith("+++"):
+            continue
+
+        content = line[1:].strip()  # strip leading +/- and whitespace
+
+        if line.startswith("-"):
+            # Removed line: blank/comment removals are acceptable (e.g. reformatting).
+            if _is_blank_or_comment(content):
+                continue
+            errors.append(f"Unapproved removed production line: {line!r}")
+            continue
+
+        # Added line (starts with +).
+        if _is_blank_or_comment(content):
+            continue
+
+        if _APPROVED_ADDITION not in content:
+            errors.append(f"Unapproved added line: {line!r}")
+            continue
+
+        # Line contains the approved addition. Check it is not mixed with other executable content.
+        # Strip the approved pattern itself and any surrounding punctuation/whitespace.
+        remainder = content.replace(_APPROVED_ADDITION, "").replace(",", "").strip()
+        if remainder:
+            errors.append(
+                f"Approved pattern found but mixed with extra executable content: {line!r}"
+            )
+            continue
+
+        # Verify the addition is in the Oborovo factory context.
+        if not in_approved_factory:
+            errors.append(
+                f"Approved pattern found outside {_APPROVED_FACTORY}(): {line!r}"
+            )
+            continue
+
+        addition_count += 1
+
+    if addition_count == 0 and not errors:
+        errors.append(
+            f"Expected exactly one addition of {_APPROVED_ADDITION!r} "
+            f"in {_APPROVED_FACTORY}(), but found none."
+        )
+    elif addition_count > 1:
+        errors.append(
+            f"Duplicate approved addition: {_APPROVED_ADDITION!r} appears "
+            f"{addition_count} times. Only one (in {_APPROVED_FACTORY}()) is approved."
+        )
+
+    return len(errors) == 0, errors
 
 
 def main() -> int:
@@ -123,53 +170,50 @@ def main() -> int:
 
     print(f"Protected-scope files changed: {protected_changed}")
 
-    # All changed files must be in the approved set
-    unapproved_files = [f for f in protected_changed if f not in _APPROVED_ADDITION_PATTERNS]
+    # Only app/project_factories.py is approved for Recon Fix 01.
+    unapproved_files = [f for f in protected_changed if f != _APPROVED_FILE]
     if unapproved_files:
         print(
-            f"ERROR: Protected files changed that are not in the approved set:\n"
+            "ERROR: Protected files changed that are not approved for Recon Fix 01:\n"
             + "\n".join(f"  {f}" for f in unapproved_files),
             file=sys.stderr,
         )
         return 1
 
-    # Only app/project_factories.py is approved; check it's the only one changed
     if len(protected_changed) > 1:
         print(
-            f"ERROR: Multiple protected files changed. Only app/project_factories.py "
+            f"ERROR: Multiple protected files changed. Only {_APPROVED_FILE} "
             f"is approved for Recon Fix 01. Changed: {protected_changed}",
             file=sys.stderr,
         )
         return 1
 
-    # Check the diff of the approved file
-    filepath = protected_changed[0]
-    diff = get_diff_for_file(base, head, filepath)
-    approved, violations = check_file_diff_approved(filepath, diff)
+    diff = get_diff_for_file(base, head, _APPROVED_FILE)
+    approved, errors = check_factories_diff(diff)
 
     if not approved:
         print(
-            f"ERROR: {filepath} contains unapproved changes beyond the Recon Fix 01 "
-            f"declarative policy assignments.\n"
-            f"Unapproved added lines:\n"
-            + "\n".join(f"  {v}" for v in violations[:10]),
+            f"ERROR: {_APPROVED_FILE} diff fails Recon Fix 01 governance:\n"
+            + "\n".join(f"  {e}" for e in errors),
             file=sys.stderr,
         )
         print(
-            textwrap.dedent("""
-            Approved changes for Recon Fix 01:
-              - ppa_indexation_start_policy="FIRST_FULL_CALENDAR_YEAR_AS_BASE" assignments
-              - Comment lines (lines starting with #)
-              - Empty lines
-            Any formula, control-flow, dispatch, or other changes are NOT approved.
-            """),
+            "\nApproved changes for Recon Fix 01:\n"
+            f"  - Exactly one addition of {_APPROVED_ADDITION!r}\n"
+            f"    inside {_APPROVED_FACTORY}()\n"
+            "  - Comment lines (starting with #) or blank lines only\n"
+            "  - No removed production lines\n"
+            "  - No duplicate assignments\n"
+            "  - No extra executable content on the approved line\n"
+            "  - No other protected file may be changed",
             file=sys.stderr,
         )
         return 1
 
     print(
-        f"Protected production scope: {filepath} changed within Recon Fix 01 "
-        f"approved narrow surface (declarative ppa_indexation_start_policy assignments only)."
+        f"Protected production scope: {_APPROVED_FILE} changed within Recon Fix 01 "
+        f"approved narrow surface (exactly one declarative ppa_indexation_start_policy "
+        f"assignment in {_APPROVED_FACTORY}())."
     )
     return 0
 

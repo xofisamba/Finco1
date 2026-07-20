@@ -113,13 +113,20 @@ def validate_no_intraperiod_escalation(
     produces an intraperiod split — always passes without checking.
 
     AFTER_FIRST_FULL_OPERATING_YEAR and CONTRACT_ANNIVERSARY are date-anchored;
-    the anniversary may fall at any day.  If an anniversary date falls strictly
-    between period_start and period_end (exclusive), the current implementation
-    would apply one tariff to the whole period rather than splitting at the
-    anniversary — this is financially incorrect and not a supported output.
+    the anniversary may fall at any day.  If an anniversary date falls at or after
+    period_start and at or before period_end (i.e. strictly inside or at period_end),
+    the tariff escalation event is ambiguous without an intra-period split.
+
+    anniversary == period_start is safe: the whole period runs at the new tariff.
+    anniversary == period_end is NOT safe: count_ppa_escalation_events() treats the
+    event as having occurred by period_end, meaning the next period also sees the
+    escalated tariff — but the split day is the last day of this period, which is
+    equivalent to the first day of the next period. Until explicit splitting is
+    implemented this boundary is rejected.
+    anniversary > period_end: not yet escalated; safe.
 
     Raises:
-        ValueError: if an anniversary date falls strictly inside (period_start, period_end).
+        ValueError: if period_start < anniversary <= period_end.
     """
     from dateutil.relativedelta import relativedelta
 
@@ -143,14 +150,14 @@ def validate_no_intraperiod_escalation(
         anniversary = ref + relativedelta(years=k)
         if anniversary > period_end:
             break
-        if period_start < anniversary < period_end:
+        if period_start < anniversary <= period_end:
             raise ValueError(
                 f"Selected PPA indexation policy {policy.value!r} requires intra-period tariff "
                 f"splitting, which is not yet supported. Anniversary date {anniversary} falls "
-                f"strictly inside period {period_start}–{period_end}. "
+                f"inside or at the end of period {period_start}–{period_end} "
+                f"(supported boundary: anniversary == period_start only). "
                 f"Use FIRST_FULL_CALENDAR_YEAR_AS_BASE for calendar-boundary-aligned escalation, "
-                f"or choose an explicit contract anniversary date that aligns with period "
-                f"boundaries (period_start or period_end)."
+                f"or choose an explicit contract anniversary date that equals period_start."
             )
         k += 1
 

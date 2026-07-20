@@ -361,6 +361,15 @@ class TestAnniversaryFailFast:
             POLICY_OY, date(2030, 12, 31), date(2031, 12, 31), date(2032, 6, 30)
         )
 
+    def test_after_first_full_oy_anniversary_at_period_end_raises(self):
+        # Anniversary == period_end is NOT safe: escalation event counted at period_end
+        # means the split point is ambiguous. Must raise.
+        # COD=2030-06-30, anniversary k=1 = 2031-06-30 = period_end → raises.
+        with pytest.raises(ValueError, match="requires intra-period tariff splitting"):
+            validate_no_intraperiod_escalation(
+                POLICY_OY, date(2030, 6, 30), date(2030, 12, 31), date(2031, 6, 30)
+            )
+
     def test_after_first_full_oy_anniversary_after_period_end_no_raise(self):
         # Anniversary is after the period end — not yet escalated. OK.
         validate_no_intraperiod_escalation(
@@ -395,6 +404,16 @@ class TestAnniversaryFailFast:
             ppa_start
         )
 
+    def test_contract_anniversary_at_period_end_raises(self):
+        # anniversary == period_end is unsafe (event counted at period_end but split unclear).
+        # PPA start = 2030-06-30, anniversary k=1 = 2031-06-30 = period_end → raises.
+        ppa_start = date(2030, 6, 30)
+        with pytest.raises(ValueError, match="requires intra-period tariff splitting"):
+            validate_no_intraperiod_escalation(
+                POLICY_CA, date(2030, 6, 29), date(2030, 12, 31), date(2031, 6, 30),
+                ppa_start
+            )
+
     def test_contract_anniversary_none_date_raises(self):
         # CONTRACT_ANNIVERSARY requires explicit date.
         with pytest.raises(ValueError, match="ppa_indexation_start_date is required"):
@@ -417,6 +436,101 @@ class TestAnniversaryFailFast:
         adapted = from_project_inputs(bad_proj)
         with pytest.raises(ValueError, match="requires intra-period tariff splitting"):
             run_operating_model(adapted)
+
+
+class TestProtectedScopeGovernance:
+    """Negative tests for .github/scripts/check_protected_scope.py.
+
+    Exercises the script's diff-inspection logic directly via check_factories_diff(),
+    without needing a live git repo or subprocess.
+    """
+
+    def _run(self, diff: str) -> tuple[bool, list[str]]:
+        import importlib.util
+        from pathlib import Path
+        spec = importlib.util.spec_from_file_location(
+            "check_protected_scope",
+            Path(__file__).parents[1] / ".github" / "scripts" / "check_protected_scope.py",
+        )
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod.check_factories_diff(diff)
+
+    def _approved_diff(self) -> str:
+        """Minimal diff that must pass: exactly one Oborovo policy addition."""
+        return (
+            "diff --git a/app/project_factories.py b/app/project_factories.py\n"
+            "@@ -170,6 +170,8 @@ def create_default_oborovo() -> ProjectInputs:\n"
+            " def create_default_oborovo\n"
+            "+        # Authoritative Excel calendar-year indexation: base year 2031.\n"
+            '+        ppa_indexation_start_policy="FIRST_FULL_CALENDAR_YEAR_AS_BASE",\n'
+        )
+
+    def test_approved_diff_passes(self):
+        approved, errors = self._run(self._approved_diff())
+        assert approved, f"Approved diff unexpectedly rejected: {errors}"
+
+    def test_deleted_production_line_fails(self):
+        # A removed formula/production line must fail.
+        diff = (
+            "diff --git a/app/project_factories.py b/app/project_factories.py\n"
+            "@@ -170,6 +170,8 @@ def create_default_oborovo() -> ProjectInputs:\n"
+            " def create_default_oborovo\n"
+            "-        ppa_base_tariff=57.0,\n"
+            '+        ppa_indexation_start_policy="FIRST_FULL_CALENDAR_YEAR_AS_BASE",\n'
+        )
+        approved, errors = self._run(diff)
+        assert not approved
+        assert any("removed" in e.lower() for e in errors), errors
+
+    def test_duplicate_policy_assignment_fails(self):
+        # The approved addition appearing twice (e.g. added for another factory) must fail.
+        diff = (
+            "diff --git a/app/project_factories.py b/app/project_factories.py\n"
+            "@@ -170,6 +170,8 @@ def create_default_oborovo() -> ProjectInputs:\n"
+            " def create_default_oborovo\n"
+            '+        ppa_indexation_start_policy="FIRST_FULL_CALENDAR_YEAR_AS_BASE",\n'
+            '+        ppa_indexation_start_policy="FIRST_FULL_CALENDAR_YEAR_AS_BASE",\n'
+        )
+        approved, errors = self._run(diff)
+        assert not approved
+        assert any("duplicate" in e.lower() or "2 times" in e for e in errors), errors
+
+    def test_approved_string_with_extra_executable_content_fails(self):
+        # Same approved string but on a line with additional executable code.
+        diff = (
+            "diff --git a/app/project_factories.py b/app/project_factories.py\n"
+            "@@ -170,6 +170,8 @@ def create_default_oborovo() -> ProjectInputs:\n"
+            " def create_default_oborovo\n"
+            '+        ppa_indexation_start_policy="FIRST_FULL_CALENDAR_YEAR_AS_BASE", ppa_base_tariff=57.0,\n'
+        )
+        approved, errors = self._run(diff)
+        assert not approved
+        assert any("extra executable" in e for e in errors), errors
+
+    def test_policy_addition_outside_oborovo_factory_fails(self):
+        # Approved pattern added in a different factory function context must fail.
+        diff = (
+            "diff --git a/app/project_factories.py b/app/project_factories.py\n"
+            "@@ -370,6 +370,8 @@ def create_default_tuho_wind1() -> ProjectInputs:\n"
+            " def create_default_tuho_wind1\n"
+            '+        ppa_indexation_start_policy="FIRST_FULL_CALENDAR_YEAR_AS_BASE",\n'
+        )
+        approved, errors = self._run(diff)
+        assert not approved
+        assert any("outside" in e for e in errors), errors
+
+    def test_unrelated_addition_fails(self):
+        # Any other formula addition must fail.
+        diff = (
+            "diff --git a/app/project_factories.py b/app/project_factories.py\n"
+            "@@ -170,6 +170,8 @@ def create_default_oborovo() -> ProjectInputs:\n"
+            " def create_default_oborovo\n"
+            "+        ppa_base_tariff=99.0,\n"
+        )
+        approved, errors = self._run(diff)
+        assert not approved
+        assert any("unapproved added" in e.lower() for e in errors), errors
 
 
 class TestValidation:
