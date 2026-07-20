@@ -1033,6 +1033,20 @@ def test_b13_d_f_external_non_zero_propagates():
         )
 
 
+def test_unchecked_helpers_not_in_public_all():
+    """Unchecked internal helpers must not be part of the public __all__."""
+    import finco_core.opex.hierarchical as hierarchical
+    assert "_compute_annual_unchecked" not in hierarchical.__all__
+    assert "_compute_periods_unchecked" not in hierarchical.__all__
+
+
+def test_unchecked_helpers_not_exposed_as_package_attributes():
+    """Unchecked helpers must not be importable directly from the package."""
+    import finco_core.opex.hierarchical as hierarchical
+    assert not hasattr(hierarchical, "_compute_annual_unchecked")
+    assert not hasattr(hierarchical, "_compute_periods_unchecked")
+
+
 def test_production_code_does_not_import_fixture():
     """Verify production code does not import finco_recon or test fixtures."""
     import importlib
@@ -1056,8 +1070,8 @@ def test_production_code_does_not_import_fixture():
 # 11. Hardening — new validation codes and fail-fast behavior
 # ---------------------------------------------------------------------------
 
-from finco_core.opex.hierarchical import (
-    OpexInputValidationError,
+from finco_core.opex.hierarchical import OpexInputValidationError
+from finco_core.opex.hierarchical._calculator import (
     _compute_annual_unchecked,
     _compute_periods_unchecked,
 )

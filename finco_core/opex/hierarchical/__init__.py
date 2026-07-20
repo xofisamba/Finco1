@@ -17,8 +17,6 @@ from __future__ import annotations
 
 from ._calculator import (
     OpexInputValidationError,
-    _compute_annual_unchecked,
-    _compute_periods_unchecked,
     compute_annual,
     compute_periods,
 )
@@ -78,6 +76,4 @@ __all__ = [
     "compute_annual",
     "compute_periods",
     "OpexInputValidationError",
-    "_compute_annual_unchecked",
-    "_compute_periods_unchecked",
 ]

@@ -303,14 +303,7 @@ def _validate_percentage_deps(
     """Validate percentage base codes, circular/missing deps, and series length."""
     pct_codes: set[str] = {code for code, _ in percentage_cats}
 
-    # Build ext-series length lookup for short-series check (OPX072)
-    ext_lengths: dict[str, int] = {
-        code: len(vals) for code, vals in context.external_annual_series
-        if code not in {c for c, _ in context.external_annual_series
-                        if list(context.external_annual_series).count((c, None)) > 1}
-    }
-    # Simpler: walk once, keep last length (OPX070 already caught duplicates)
-    ext_lengths = {}
+    ext_lengths: dict[str, int] = {}
     for code, vals in context.external_annual_series:
         ext_lengths[code] = len(vals)
 
