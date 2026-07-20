@@ -128,6 +128,13 @@ def test_operating_core_v1_pass(baseline_id: str):
             "not yet validated from TUHO source model. Tax depreciation UNCHANGED from baseline. "
             "Baseline refresh requires explicit governance approval."
         )
+    if baseline_id == "generic_wind":
+        pytest.xfail(
+            "Governed drift [B4-wind]: FIRST_FULL_CALENDAR_YEAR_AS_BASE policy for COD=2031-07-01 "
+            "(base_year=2032) differs from legacy AFTER_FIRST_FULL_OPERATING_YEAR for H2 PPA-term "
+            "periods. Revenue and EBITDA drift; all other schedules are IDENTICAL. "
+            "Baseline predates B4 correction. Refresh requires explicit governance approval."
+        )
     committed = _load_baseline(baseline_id)
     candidate = get_candidate_snapshot(
         baseline_id, baseline_commit_sha=_BASELINE_COMMIT_SHA
@@ -199,27 +206,84 @@ def test_revenue_parity(baseline_id: str):
     bl_vals = baseline["operating_schedules"]["revenue_keur"]
     if baseline_id == "oborovo":
         # B2 governed drift: FIRST_FULL_CALENDAR_YEAR_AS_BASE policy corrects H2 PPA-term periods.
-        # H2 periods (Dec-31 period_end) during years 2031–2042 where legacy AFTER_FIRST_FULL_OPERATING_YEAR
-        # applied escalation one year early.  H1 periods and post-PPA periods are identical.
+        # H2 periods (Dec-31 period_end) during years 2031–2042 where legacy
+        # AFTER_FIRST_FULL_OPERATING_YEAR applied escalation one year early.
+        # H1 periods and post-PPA periods must be identical to baseline.
         # Expected drifting indices: 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22
         _B2_DRIFT_INDICES = frozenset({2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22})
+        # Authoritative candidate values for every B2 period (FIRST_FULL_CALENDAR_YEAR_AS_BASE,
+        # COD=29-Jun-2030, base_tariff=57.00, ppa_index=0.02).
+        # Wrong magnitude in an allowed period FAILS this guard.
+        _B2_EXPECTED_CANDIDATE: dict[int, float] = {
+            2:  3236.870791604059,
+            4:  3277.768293496598,
+            6:  3337.426835584944,
+            8:  3388.918576702460,
+            10: 3441.236626714986,
+            12: 3484.846589316390,
+            14: 3548.404376921701,
+            16: 3603.280964973387,
+            18: 3659.037644345373,
+            20: 3705.536246168231,
+            22: 3773.247440717053,
+        }
+        _TOL = 1e-6  # kEUR tolerance
         actual_drift_indices: set[int] = set()
-        for i, (cand_v, bl_v) in enumerate(zip(
-            [p.revenue_keur for p in op_periods], bl_vals
-        )):
+        cand_revenues = [p.revenue_keur for p in op_periods]
+        for i, (cand_v, bl_v) in enumerate(zip(cand_revenues, bl_vals)):
             if cand_v != bl_v:
                 actual_drift_indices.add(i)
-                # All drifts must be negative (new policy has lower tariff for these periods).
-                assert cand_v < bl_v, (
-                    f"oborovo revenue_keur[{i}]: expected candidate < baseline "
-                    f"({cand_v} >= {bl_v}); drift direction wrong."
-                )
         assert frozenset(actual_drift_indices) == _B2_DRIFT_INDICES, (
             f"oborovo B2 revenue drift set mismatch.\n"
             f"  actual:   {sorted(actual_drift_indices)}\n"
             f"  expected: {sorted(_B2_DRIFT_INDICES)}\n"
             "Unrelated revenue periods must be identical to baseline."
         )
+        for i, expected_v in _B2_EXPECTED_CANDIDATE.items():
+            actual_v = cand_revenues[i]
+            assert abs(actual_v - expected_v) < _TOL, (
+                f"oborovo B2 revenue_keur[{i}]: candidate={actual_v!r}, "
+                f"expected={expected_v!r}, delta={actual_v - expected_v!r}. "
+                f"Wrong magnitude in B2-governed period."
+            )
+        return
+
+    if baseline_id == "generic_wind":
+        # B4 governed drift: FIRST_FULL_CALENDAR_YEAR_AS_BASE (base_year=2032) for COD=2031-07-01.
+        # H2 PPA-term periods (Dec-31 period_end) drift; H1 and post-PPA periods identical.
+        # Expected drifting indices: 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24
+        _B4_DRIFT_INDICES = frozenset({2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24})
+        _B4_EXPECTED_CANDIDATE: dict[int, float] = {
+            2:  3074.621902060398,
+            4:  3154.192727823699,
+            6:  3226.762876091041,
+            8:  3300.784428259049,
+            10: 3367.061584100804,
+            12: 3453.298432256459,
+            14: 3531.850695045519,
+            16: 3611.974003239836,
+            18: 3683.607701267773,
+            20: 3777.060066316979,
+            22: 3862.087561253613,
+            24: 3948.815606026668,
+        }
+        _TOL = 1e-6
+        cand_revenues_w = [p.revenue_keur for p in op_periods]
+        actual_drift_w: set[int] = set()
+        for i, (cand_v, bl_v) in enumerate(zip(cand_revenues_w, bl_vals)):
+            if cand_v != bl_v:
+                actual_drift_w.add(i)
+        assert frozenset(actual_drift_w) == _B4_DRIFT_INDICES, (
+            f"generic_wind B4 revenue drift set mismatch.\n"
+            f"  actual:   {sorted(actual_drift_w)}\n"
+            f"  expected: {sorted(_B4_DRIFT_INDICES)}"
+        )
+        for i, expected_v in _B4_EXPECTED_CANDIDATE.items():
+            actual_v = cand_revenues_w[i]
+            assert abs(actual_v - expected_v) < _TOL, (
+                f"generic_wind B4 revenue_keur[{i}]: candidate={actual_v!r}, "
+                f"expected={expected_v!r}. Wrong magnitude in B4-governed period."
+            )
         return
 
     for i, (my_v, bl_v) in enumerate(zip(
@@ -252,6 +316,13 @@ def test_ebitda_parity(baseline_id: str):
     if baseline_id == "oborovo":
         pytest.xfail(
             "Governed drift [B1]: EBITDA = Revenue − OPEX; oborovo OPEX corrected per B1 XLSM values. "
+            "Baseline predates correction. Refresh requires explicit governance approval."
+        )
+    if baseline_id == "generic_wind":
+        pytest.xfail(
+            "Governed drift [B4-wind]: EBITDA = Revenue − OPEX; generic_wind PPA tariff "
+            "corrected to FIRST_FULL_CALENDAR_YEAR_AS_BASE (COD=2031-07-01, base_year=2032). "
+            "H2 PPA-term ebitda drifts proportionally with B4 revenue correction. "
             "Baseline predates correction. Refresh requires explicit governance approval."
         )
     baseline = _load_baseline(baseline_id)
@@ -417,8 +488,11 @@ _GOVERNED_DRIFT_SCHEDULES: dict[str, frozenset[str]] = {
     "tuho": frozenset({
         "operating_schedules.book_depreciation_keur",
     }),
-    "generic_solar": frozenset(),   # must be IDENTICAL
-    "generic_wind": frozenset(),    # must be IDENTICAL
+    "generic_solar": frozenset(),   # must be IDENTICAL (Jan-1 COD: FIRST_FULL_CY == AFTER_OY)
+    "generic_wind": frozenset({
+        "operating_schedules.revenue_keur",   # B4: Jul-1 COD, FIRST_FULL_CY != AFTER_OY for H2 PPA periods
+        "operating_schedules.ebitda_keur",    # B4: revenue drift propagates to ebitda
+    }),
 }
 
 
@@ -436,8 +510,9 @@ def _drift_schedule_names(differences) -> frozenset[str]:
 def test_compare_candidate_provider_pass_all_baselines():
     """Phase 2E freeze guard: exact governed drift surface for all four baselines.
 
-    generic_solar and generic_wind must be IDENTICAL (no differences).
-    oborovo may drift only in opex_keur, ebitda_keur, book_depreciation_keur (B1+B3).
+    generic_solar must be IDENTICAL (Jan-1 COD: FIRST_FULL_CY == AFTER_OY, no drift).
+    generic_wind may drift only in revenue_keur and ebitda_keur (B4: Jul-1 COD).
+    oborovo may drift only in opex_keur, revenue_keur, ebitda_keur, book_depreciation_keur (B1+B2+B3).
     tuho may drift only in book_depreciation_keur (B3 generic architecture; OPEN treatment).
     Any additional drift field fails this guard.
     """
@@ -494,6 +569,65 @@ def test_freeze_guard_rejects_unrelated_drift():
     # The guard must detect the injected drift
     assert "operating_schedules.production_mwh" in unexpected, (
         "Injection test failed: production_mwh mutation was not detected as unexpected drift"
+    )
+
+
+def test_b2_magnitude_guard_rejects_wrong_revenue_in_allowed_period():
+    """Proof: wrong revenue magnitude inside an allowed B2 period fails the B2 exact guard.
+
+    Even though index 2 is in _B2_DRIFT_INDICES (the set is correct), a wrong magnitude
+    must still fail.  This proves the guard is not satisfied by direction-only checks.
+    """
+    baseline = _load_baseline("oborovo")
+    adapted = _get_adapted_inputs("oborovo")
+    result = run_operating_model(adapted)
+    op_periods = [p for p in result.periods if p.is_operation]
+    bl_vals = baseline["operating_schedules"]["revenue_keur"]
+
+    # Build candidate revenues with a wrong magnitude at period 2 (a B2 period)
+    candidate_revenues = [p.revenue_keur for p in op_periods]
+    # Inject a +1 kEUR mutation at period 2 (B2 allowed period)
+    bad_revenues = list(candidate_revenues)
+    bad_revenues[2] = candidate_revenues[2] + 1.0
+
+    _B2_DRIFT_INDICES = frozenset({2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22})
+    _B2_EXPECTED_CANDIDATE = {
+        2:  3236.870791604059,
+        4:  3277.768293496598,
+        6:  3337.426835584944,
+        8:  3388.918576702460,
+        10: 3441.236626714986,
+        12: 3484.846589316390,
+        14: 3548.404376921701,
+        16: 3603.280964973387,
+        18: 3659.037644345373,
+        20: 3705.536246168231,
+        22: 3773.247440717053,
+    }
+    _TOL = 1e-6
+
+    # The drift-index set is still correct (period 2 still drifts from baseline)
+    actual_drift_indices: set[int] = set()
+    for i, (cand_v, bl_v) in enumerate(zip(bad_revenues, bl_vals)):
+        if cand_v != bl_v:
+            actual_drift_indices.add(i)
+    assert frozenset(actual_drift_indices) == _B2_DRIFT_INDICES, (
+        "Precondition: injected magnitude-only mutation should not change drift index set"
+    )
+
+    # But the magnitude check must FAIL
+    magnitude_violations = []
+    for i, expected_v in _B2_EXPECTED_CANDIDATE.items():
+        actual_v = bad_revenues[i]
+        if abs(actual_v - expected_v) >= _TOL:
+            magnitude_violations.append((i, actual_v, expected_v))
+
+    assert magnitude_violations, (
+        "Expected magnitude guard to detect wrong revenue at period 2, but it passed. "
+        "The guard must reject wrong magnitudes inside B2-allowed periods."
+    )
+    assert any(i == 2 for i, _, _ in magnitude_violations), (
+        f"Expected violation at period 2, got: {magnitude_violations}"
     )
 
 

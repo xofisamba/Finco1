@@ -65,21 +65,10 @@ jobs:
           fi
           echo "Baseline snapshots: unchanged"
 
-      - name: Check protected production scope is unchanged
+      - name: Check protected production scope (narrow governance)
         run: |
           BASE="${{ steps.base.outputs.base_sha }}"
-          CHANGED="$(git diff --name-only "$BASE"...HEAD -- \
-            app/ \
-            domain/ \
-            main_web.py \
-            main_api.py \
-            finco_core/waterfall/)"
-          if [ -n "$CHANGED" ]; then
-            echo "ERROR: Protected production files were modified:" >&2
-            echo "$CHANGED" >&2
-            exit 1
-          fi
-          echo "Protected production scope: unchanged"
+          python3 .github/scripts/check_protected_scope.py "$BASE" HEAD
 
       - name: Verify baselines generate cleanly (generate_baselines --check)
         run: |

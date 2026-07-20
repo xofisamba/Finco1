@@ -21,6 +21,7 @@ from financial_engine.ppa_indexation import (
     PpaIndexationStartPolicy,
     count_ppa_escalation_events,
     compute_ppa_tariff,
+    validate_no_intraperiod_escalation,
 )
 
 
@@ -332,6 +333,91 @@ class TestRevenueInputRoundTrip:
 # ---------------------------------------------------------------------------
 # 6b. Invalid policy / CONTRACT_ANNIVERSARY validation
 # ---------------------------------------------------------------------------
+
+class TestAnniversaryFailFast:
+    """Fail-fast behavior: anniversary policies must not return approximate results."""
+
+    # --- AFTER_FIRST_FULL_OPERATING_YEAR ---
+
+    def test_oborovo_after_first_full_oy_period1_raises(self):
+        # COD=29-Jun-2030, period [2030-12-31→2031-06-30]: anniversary 29-Jun-2031 is inside.
+        with pytest.raises(ValueError, match="requires intra-period tariff splitting"):
+            validate_no_intraperiod_escalation(
+                POLICY_OY, date(2030, 6, 29), date(2030, 12, 31), date(2031, 6, 30)
+            )
+
+    def test_after_first_full_oy_non_boundary_raises(self):
+        # Anniversary 15-Mar-2032 falls inside period [2031-12-31→2032-06-30].
+        cod = date(2031, 3, 15)
+        with pytest.raises(ValueError, match="requires intra-period tariff splitting"):
+            validate_no_intraperiod_escalation(
+                POLICY_OY, cod, date(2031, 12, 31), date(2032, 6, 30)
+            )
+
+    def test_after_first_full_oy_boundary_start_no_raise(self):
+        # Anniversary exactly on period_start — new tariff applies from start of period. OK.
+        # COD = 2030-12-31, anniversary k=1 = 2031-12-31 = period_start
+        validate_no_intraperiod_escalation(
+            POLICY_OY, date(2030, 12, 31), date(2031, 12, 31), date(2032, 6, 30)
+        )
+
+    def test_after_first_full_oy_anniversary_after_period_end_no_raise(self):
+        # Anniversary is after the period end — not yet escalated. OK.
+        validate_no_intraperiod_escalation(
+            POLICY_OY, date(2030, 6, 29), date(2029, 12, 31), date(2030, 6, 28)
+        )
+
+    def test_first_full_cy_never_raises(self):
+        # FIRST_FULL_CALENDAR_YEAR_AS_BASE is year-based; always passes.
+        validate_no_intraperiod_escalation(
+            POLICY_CY, date(2030, 6, 29), date(2030, 12, 31), date(2031, 6, 30)
+        )
+        validate_no_intraperiod_escalation(
+            POLICY_CY, date(2030, 6, 29), date(2031, 12, 31), date(2032, 6, 30)
+        )
+
+    # --- CONTRACT_ANNIVERSARY ---
+
+    def test_contract_anniversary_non_boundary_raises(self):
+        # PPA start = 01-Oct-2030, anniversary 01-Oct-2031 inside [2031-06-30→2031-12-31].
+        ppa_start = date(2030, 10, 1)
+        with pytest.raises(ValueError, match="requires intra-period tariff splitting"):
+            validate_no_intraperiod_escalation(
+                POLICY_CA, date(2030, 6, 29), date(2031, 6, 30), date(2031, 12, 31),
+                ppa_start
+            )
+
+    def test_contract_anniversary_boundary_aligned_start_no_raise(self):
+        # PPA start = 2030-12-31 (period_start), anniversary k=1 = 2031-12-31 = period_start. OK.
+        ppa_start = date(2030, 12, 31)
+        validate_no_intraperiod_escalation(
+            POLICY_CA, date(2030, 6, 29), date(2031, 12, 31), date(2032, 6, 30),
+            ppa_start
+        )
+
+    def test_contract_anniversary_none_date_raises(self):
+        # CONTRACT_ANNIVERSARY requires explicit date.
+        with pytest.raises(ValueError, match="ppa_indexation_start_date is required"):
+            validate_no_intraperiod_escalation(
+                POLICY_CA, date(2030, 6, 29), date(2031, 6, 30), date(2031, 12, 31), None
+            )
+
+    def test_engine_raises_for_after_first_full_oy_oborovo(self):
+        """Engine run_operating_model must raise when AFTER_FIRST_FULL_OPERATING_YEAR
+        is selected for Oborovo (COD=29-Jun-2030 anniversary falls inside first H2 period)."""
+        import dataclasses
+        from app.project_factories import create_default_oborovo
+        from financial_engine.adapters.project_inputs import from_project_inputs
+        from financial_engine.orchestrator import run_operating_model
+        proj = create_default_oborovo()
+        bad_rev = dataclasses.replace(
+            proj.revenue, ppa_indexation_start_policy="AFTER_FIRST_FULL_OPERATING_YEAR"
+        )
+        bad_proj = dataclasses.replace(proj, revenue=bad_rev)
+        adapted = from_project_inputs(bad_proj)
+        with pytest.raises(ValueError, match="requires intra-period tariff splitting"):
+            run_operating_model(adapted)
+
 
 class TestValidation:
 

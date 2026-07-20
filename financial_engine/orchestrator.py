@@ -209,7 +209,11 @@ def _build_ppa_tariff_schedule(
     tariff_at_year formula for a project where COD aligns with semiannual boundaries —
     but correctly handles non-aligned CODs and all three policies generically.
     """
-    from financial_engine.ppa_indexation import compute_ppa_tariff, PpaIndexationStartPolicy
+    from financial_engine.ppa_indexation import (
+        compute_ppa_tariff,
+        validate_no_intraperiod_escalation,
+        PpaIndexationStartPolicy,
+    )
 
     rev = inputs.revenue
     policy = rev.ppa_indexation_start_policy
@@ -221,6 +225,13 @@ def _build_ppa_tariff_schedule(
     op_periods = [p for p in periods_meta if p.is_operation]
     schedule: list[float] = []
     for p in op_periods:
+        validate_no_intraperiod_escalation(
+            policy=policy,
+            cod=cod,
+            period_start=p.start_date,
+            period_end=p.end_date,
+            ppa_indexation_start_date=ppa_indexation_start_date,
+        )
         t = compute_ppa_tariff(
             base_tariff=base_tariff,
             ppa_index=ppa_index,

@@ -100,6 +100,61 @@ def count_ppa_escalation_events(
         raise ValueError(f"Unknown PpaIndexationStartPolicy: {policy!r}")
 
 
+def validate_no_intraperiod_escalation(
+    policy: PpaIndexationStartPolicy,
+    cod: date,
+    period_start: date,
+    period_end: date,
+    ppa_indexation_start_date: date | None = None,
+) -> None:
+    """Raise ValueError if a PPA escalation anniversary falls strictly inside a period.
+
+    FIRST_FULL_CALENDAR_YEAR_AS_BASE is year-based (not date-anchored) and never
+    produces an intraperiod split — always passes without checking.
+
+    AFTER_FIRST_FULL_OPERATING_YEAR and CONTRACT_ANNIVERSARY are date-anchored;
+    the anniversary may fall at any day.  If an anniversary date falls strictly
+    between period_start and period_end (exclusive), the current implementation
+    would apply one tariff to the whole period rather than splitting at the
+    anniversary — this is financially incorrect and not a supported output.
+
+    Raises:
+        ValueError: if an anniversary date falls strictly inside (period_start, period_end).
+    """
+    from dateutil.relativedelta import relativedelta
+
+    if policy == PpaIndexationStartPolicy.FIRST_FULL_CALENDAR_YEAR_AS_BASE:
+        return  # year-based evaluation; never intraperiod
+
+    if policy == PpaIndexationStartPolicy.AFTER_FIRST_FULL_OPERATING_YEAR:
+        ref = cod
+    elif policy == PpaIndexationStartPolicy.CONTRACT_ANNIVERSARY:
+        if ppa_indexation_start_date is None:
+            raise ValueError(
+                "ppa_indexation_start_date is required when policy is CONTRACT_ANNIVERSARY. "
+                "Provide an explicit PPA / indexation start date."
+            )
+        ref = ppa_indexation_start_date
+    else:
+        raise ValueError(f"Unknown PpaIndexationStartPolicy: {policy!r}")
+
+    k = 1
+    while True:
+        anniversary = ref + relativedelta(years=k)
+        if anniversary > period_end:
+            break
+        if period_start < anniversary < period_end:
+            raise ValueError(
+                f"Selected PPA indexation policy {policy.value!r} requires intra-period tariff "
+                f"splitting, which is not yet supported. Anniversary date {anniversary} falls "
+                f"strictly inside period {period_start}–{period_end}. "
+                f"Use FIRST_FULL_CALENDAR_YEAR_AS_BASE for calendar-boundary-aligned escalation, "
+                f"or choose an explicit contract anniversary date that aligns with period "
+                f"boundaries (period_start or period_end)."
+            )
+        k += 1
+
+
 def compute_ppa_tariff(
     base_tariff: float,
     ppa_index: float,
