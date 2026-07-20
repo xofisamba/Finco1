@@ -1,10 +1,8 @@
 {
   "status": "FAIL",
-  "error_count": 5,
+  "error_count": 3,
   "errors": [
-    "semantic: tax.wht.reimbursed must remain absence-confirmed until distinct evidence exists",
-    "semantic: tuho:value:D419 reused without shared_source_id: ['tax.vat.reimbursed', 'tax.wht.reimbursed']",
-    "semantic: tuho:editable:D419 reused without shared_source_id: ['tax.vat.reimbursed', 'tax.wht.reimbursed']",
+    "semantic: equity.investor_2_share tuho must be formula-axis evidence",
     "audit: curated value/editable/formula count does not reconcile",
     "audit: curated total coordinate count does not reconcile"
   ],

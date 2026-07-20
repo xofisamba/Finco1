@@ -115,14 +115,14 @@ def opex_schedule_period(
     """Generate period OPEX schedule using actual period day fractions.
 
     Dispatch:
-    - If inputs.hierarchical_opex_model is not None, route through the generic
-      hierarchical engine (compute_periods checked public API).
+    - If inputs.hierarchical_opex_capability is not None, route through the
+      generic hierarchical engine (compute_periods checked public API).
     - Otherwise fall back to the legacy flat-item path.
 
     The capability field is the only dispatch signal.  Project name/code are
     never consulted.
     """
-    if inputs.hierarchical_opex_model is not None:
+    if inputs.hierarchical_opex_capability is not None:
         return _opex_schedule_period_hierarchical(inputs, engine)
     return _opex_schedule_period_legacy(inputs, engine)
 
@@ -154,19 +154,18 @@ def _opex_schedule_period_hierarchical(
     Uses compute_periods() (the checked public API) which validates all inputs
     and raises OpexInputValidationError on any ERROR-severity issue.
     """
-    from finco_core.opex.hierarchical import compute_periods
-    from finco_core.opex.oborovo_config import build_oborovo_opex_context
-
-    ctx = build_oborovo_opex_context(inputs.financing.senior_tenor_years)
+    from finco_core.opex.hierarchical import compute_periods, OpexCalculationContext
+    cap = inputs.hierarchical_opex_capability
+    ctx = OpexCalculationContext(
+        senior_debt_tenor_years=inputs.financing.senior_tenor_years,
+        external_annual_series=cap.external_annual_series,
+    )
     periods = list(engine.periods())
-    period_results = compute_periods(inputs.hierarchical_opex_model, ctx, iter(periods))
-
-    result: dict[int, float] = {}
+    period_results = compute_periods(cap.opex_model, ctx, iter(periods))
     hierarchical_by_idx = {r.period_index: r.total_keur for r in period_results}
-
+    result: dict[int, float] = {}
     for period in periods:
         result[period.index] = hierarchical_by_idx.get(period.index, 0.0)
-
     return result
 
 

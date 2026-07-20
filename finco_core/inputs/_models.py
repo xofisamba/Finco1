@@ -22,6 +22,7 @@ from finco_core.inputs.senior_sculpting import SeniorSculptingConfig
 
 if TYPE_CHECKING:
     from finco_core.inputs.bess import BessParams
+    from finco_core.opex._capability import HierarchicalOpexCapability
 
 
 class PeriodFrequency(Enum):
@@ -596,7 +597,7 @@ class ProjectInputs:
     # Capability field: when set, opex_schedule_period() routes through the
     # generic hierarchical engine instead of the legacy flat-item path.
     # Presence (non-None) is the sole dispatch signal — never check project name.
-    hierarchical_opex_model: object = None
+    hierarchical_opex_capability: "HierarchicalOpexCapability | None" = None
 
 
 def hash_inputs_for_cache(inputs: "ProjectInputs") -> tuple:
@@ -639,4 +640,16 @@ def hash_inputs_for_cache(inputs: "ProjectInputs") -> tuple:
         inputs.tax.corporate_rate,
         inputs.tax.loss_carryforward_years,
         inputs.tax.atad_ebitda_limit,
+        # Hierarchical OPEX capability — if present, include model structure in cache key
+        (
+            tuple(
+                (cat.code, cat.calculation_type, cat.inflation_rate, cat.percentage_rate,
+                 tuple(cat.percentage_base_codes),
+                 tuple((si.code, si.base_amount_keur, si.activation_mode)
+                       for si in cat.subitems))
+                for cat in inputs.hierarchical_opex_capability.opex_model.categories
+            ) if inputs.hierarchical_opex_capability is not None else None
+        ),
+        inputs.hierarchical_opex_capability.external_annual_series
+            if inputs.hierarchical_opex_capability is not None else None,
     )
