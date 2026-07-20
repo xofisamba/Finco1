@@ -173,6 +173,8 @@ def create_default_oborovo() -> ProjectInputs:
         # Source: Oborovo Excel — CO2 certificate price = 1.5 EUR/MWh (Y1 semi-annual)
         co2_certificate_price_eur_per_mwh=1.5,
         balancing_cost_eur_per_mwh=0.0,  # No explicit balancing cost in Oborovo Excel
+        # Authoritative Excel calendar-year indexation: 2031 = base year, first escalation 2032.
+        ppa_indexation_start_policy="FIRST_FULL_CALENDAR_YEAR_AS_BASE",
     )
 
     financing = FinancingParams(

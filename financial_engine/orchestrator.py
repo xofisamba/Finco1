@@ -68,7 +68,7 @@ def _build_period_engine(inputs: OperatingModelInput):
     )
 
 
-def _build_project_inputs_proxy(inputs: OperatingModelInput):
+def _build_project_inputs_proxy(inputs: OperatingModelInput, tariff_schedule: tuple[float, ...] = ()):
     """Build a minimal ProjectInputs proxy for leaf-module reuse.
 
     The proxy holds only the fields the Phase 2A leaves read.
@@ -142,6 +142,13 @@ def _build_project_inputs_proxy(inputs: OperatingModelInput):
         co2_sales_schedule=co2_schedule,
         balancing_cost_eur_per_mwh=rev.balancing_cost_eur_per_mwh,
         balancing_cost_schedule=balancing_schedule,
+        ppa_indexation_start_policy=(
+            rev.ppa_indexation_start_policy.value
+            if rev.ppa_indexation_start_policy is not None
+            else None  # preserve unmigrated state; finco_core uses tariff_at_year
+        ),
+        ppa_indexation_start_date=rev.ppa_indexation_start_date,
+        ppa_tariff_by_operating_period=tariff_schedule,
     )
 
     opex_items = tuple(
@@ -187,9 +194,64 @@ def _build_project_inputs_proxy(inputs: OperatingModelInput):
 
 
 def _cod_date(cal) -> date:
-    """Compute COD date from financial close + construction months."""
+    """Compute contractual COD from financial close + construction months (EDATE-equivalent)."""
     from dateutil.relativedelta import relativedelta
     return cal.financial_close + relativedelta(months=cal.construction_months)
+
+
+def _build_ppa_tariff_schedule(
+    inputs: OperatingModelInput,
+    periods_meta: list,
+) -> tuple[float, ...]:
+    """Compute per-operating-period PPA tariff using the explicit indexation policy.
+
+    Returns a tuple indexed by operating_period_index (0-based) covering all
+    operating periods in the horizon.  Construction periods are excluded.
+
+    When policy is AFTER_FIRST_FULL_OPERATING_YEAR and no ppa_tariff_by_operating_period
+    is pre-loaded, this function implements the same effective result as the legacy
+    tariff_at_year formula for a project where COD aligns with semiannual boundaries —
+    but correctly handles non-aligned CODs and all three policies generically.
+    """
+    from financial_engine.ppa_indexation import (
+        compute_ppa_tariff,
+        validate_no_intraperiod_escalation,
+        PpaIndexationStartPolicy,
+    )
+
+    rev = inputs.revenue
+    policy = rev.ppa_indexation_start_policy
+
+    # None = not yet explicitly migrated. Return empty tuple so finco_core falls back
+    # to the legacy tariff_at_year(year_index) path — exact pre-PR behaviour preserved.
+    if policy is None:
+        return ()
+
+    cod = _cod_date(inputs.calendar)
+    base_tariff = rev.ppa_base_tariff_eur_mwh
+    ppa_index = rev.ppa_index
+    ppa_indexation_start_date = rev.ppa_indexation_start_date
+
+    op_periods = [p for p in periods_meta if p.is_operation]
+    schedule: list[float] = []
+    for p in op_periods:
+        validate_no_intraperiod_escalation(
+            policy=policy,
+            cod=cod,
+            period_start=p.start_date,
+            period_end=p.end_date,
+            ppa_indexation_start_date=ppa_indexation_start_date,
+        )
+        t = compute_ppa_tariff(
+            base_tariff=base_tariff,
+            ppa_index=ppa_index,
+            policy=policy,
+            cod=cod,
+            period_end=p.end_date,
+            ppa_indexation_start_date=ppa_indexation_start_date,
+        )
+        schedule.append(t)
+    return tuple(schedule)
 
 
 def _compute_depreciation(inputs: OperatingModelInput, periods_meta: list) -> tuple[dict, dict]:
@@ -256,7 +318,8 @@ def run_operating_model(inputs: OperatingModelInput) -> ProjectModelResult:
         full_generation_schedule,
         full_revenue_schedule,
     )
-    proxy = _build_project_inputs_proxy(inputs)
+    tariff_schedule = _build_ppa_tariff_schedule(inputs, periods_meta)
+    proxy = _build_project_inputs_proxy(inputs, tariff_schedule)
     production_by_idx = full_generation_schedule(proxy, engine)
     revenue_by_idx = full_revenue_schedule(proxy, engine)
 

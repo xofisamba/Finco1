@@ -140,6 +140,11 @@ class EngineData:
     days_in_period: int = 0
     day_fraction: float = 0.0
     is_operation: bool = True
+    # COD semantic fields — populated from engine; contractual_cod is date from FC+construction_months
+    contractual_cod_date: str = ""          # financial_close + relativedelta(months=construction_months)
+    first_operating_period_boundary: str = ""  # first period start after near-zero stub roll
+    # PPA tariff (direct from policy computation, EUR/MWh)
+    ppa_tariff_eur_mwh: float | None = None
     # Operating
     production_mwh: float | None = None
     revenue_keur: float | None = None
@@ -539,6 +544,21 @@ def _run_clean_engine() -> tuple[list[EngineData], float, str | None, int]:
     tc = result.tax_and_cfads
     diag = sd.diagnostics if isinstance(sd.diagnostics, dict) else {}
 
+    # Compute contractual COD (EDATE-equivalent) and first operating boundary.
+    from financial_engine.ppa_indexation import compute_ppa_tariff
+    from dateutil.relativedelta import relativedelta as _rdelta
+    _cal = op_inputs.calendar
+    _contractual_cod = _cal.financial_close + _rdelta(months=_cal.construction_months)
+    _all_op = [p for p in result.periods if p.is_operation]
+    _first_op_boundary = _all_op[0].period_start if _all_op else _contractual_cod
+
+    # Per-period PPA tariff from policy.
+    _rev = op_inputs.revenue
+    _policy = _rev.ppa_indexation_start_policy
+    _base_tariff = _rev.ppa_base_tariff_eur_mwh
+    _ppa_index = _rev.ppa_index
+    _ppa_start_date = _rev.ppa_indexation_start_date
+
     # Index operating periods only
     op_periods = [p for p in result.periods if p.is_operation]
     period_idx_map = {p.period_index: i for i, p in enumerate(op_periods)}
@@ -596,6 +616,14 @@ def _run_clean_engine() -> tuple[list[EngineData], float, str | None, int]:
     engine_data: list[EngineData] = []
     for pos, p in enumerate(op_periods):
         pidx = p.period_index
+        _period_tariff = compute_ppa_tariff(
+            base_tariff=_base_tariff,
+            ppa_index=_ppa_index,
+            policy=_policy,
+            cod=_contractual_cod,
+            period_end=p.period_end,
+            ppa_indexation_start_date=_ppa_start_date,
+        )
         ed = EngineData(
             period_index=pos,
             period_start=str(p.period_start),
@@ -603,6 +631,9 @@ def _run_clean_engine() -> tuple[list[EngineData], float, str | None, int]:
             days_in_period=p.days_in_period,
             day_fraction=p.day_fraction,
             is_operation=p.is_operation,
+            contractual_cod_date=str(_contractual_cod),
+            first_operating_period_boundary=str(_first_op_boundary),
+            ppa_tariff_eur_mwh=_period_tariff,
             production_mwh=_float_or_none(p.production_mwh),
             revenue_keur=_float_or_none(p.revenue_keur),
             opex_keur=_float_or_none(p.opex_keur),

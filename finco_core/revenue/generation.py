@@ -197,7 +197,9 @@ def revenue_decomposition_schedule(
             }
             continue
 
-        tariff = inputs.revenue.tariff_at_year(period.year_index)
+        # Use per-period tariff schedule when available (policy-driven).
+        tariff_pp = inputs.revenue.tariff_at_operating_period(period.operating_period_index)
+        tariff = tariff_pp if tariff_pp is not None else inputs.revenue.tariff_at_year(period.year_index)
         market_price = inputs.revenue.market_price_at_year(period.year_index)
         ppa_active = period.is_ppa_active
         first_merchant_idx = inputs.revenue.first_merchant_operating_period_index

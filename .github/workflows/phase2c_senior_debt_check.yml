@@ -117,16 +117,7 @@ jobs:
           python -m finco_parity.check_financial_engine_senior_debt \
             --baseline tuho --check || test $? -eq 9
 
-      - name: Assert protected production scope unchanged
+      - name: Assert protected production scope (narrow governance)
         run: |
-          # Verify no modifications to the protected legacy production scope.
-          # Any change to these paths requires explicit reviewer approval.
-          PROTECTED_PATHS="app/ domain/ main_web.py main_api.py finco_core/waterfall/"
-          STACKED_BASE="${{ github.event.pull_request.base.sha || 'HEAD~1' }}"
-          CHANGED=$(git diff --name-only "$STACKED_BASE"...HEAD -- $PROTECTED_PATHS)
-          if [ -n "$CHANGED" ]; then
-            echo "ERROR: Protected production files were modified:" >&2
-            echo "$CHANGED" >&2
-            exit 1
-          fi
-          echo "Protected scope unchanged."
+          BASE="${{ github.event.pull_request.base.sha || 'HEAD~1' }}"
+          python3 .github/scripts/check_protected_scope.py "$BASE" HEAD

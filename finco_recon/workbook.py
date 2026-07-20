@@ -483,18 +483,26 @@ def _build_exec_recon(wb: Workbook, src: OborovoSources, mat: MaterialitySetting
     py_avg_dscr = sum(dscr_vals) / len(dscr_vals) if dscr_vals else None
     py_min_dscr = min(dscr_vals) if dscr_vals else None
 
-    # COD date: Excel from XLSM Inputs!D11, Python from engine first period_start
-    py_cod = src.engine[0].period_start if eng_p else None
-    cod_match = src.cod_date == py_cod
-    cod_cls = "MATCH" if cod_match else ""
+    # Contractual COD: Excel from XLSM Inputs!D11 (operation_start formula = EDATE(FC, months)).
+    # Python contractual COD = financial_close + relativedelta(months=construction_months).
+    # These are semantically equivalent and must match.
+    # First operating calculation boundary may differ (near-zero-stub roll convention).
+    py_contractual_cod = src.engine[0].contractual_cod_date if eng_p else None
+    py_first_op_boundary = src.engine[0].first_operating_period_boundary if eng_p else None
+    cod_match = src.cod_date == py_contractual_cod
+    cod_cls = "MATCH" if cod_match else "PYTHON BUG"
 
     rows_data = [
         # (section, line_item, excel_val, python_val, max_period_delta, classification, notes)
         ("TIMELINE",     "Operating periods",
          float(len(excel_p)), float(len(eng_p)), None, "MATCH", ""),
-        ("TIMELINE",     "COD date (Excel vs engine period start)",
-         src.cod_date, py_cod, None, cod_cls,
-         "Excel COD from XLSM Inputs!D11 (operation_start); Python from engine first period_start" if not cod_match else ""),
+        ("TIMELINE",     "Contractual COD (Excel EDATE vs Python EDATE-equivalent)",
+         src.cod_date, py_contractual_cod, None, cod_cls,
+         "Both use financial_close + construction_months (EDATE-equivalent). MATCH expected." if cod_match else "BUG: Python contractual COD should equal Excel EDATE result"),
+        ("TIMELINE",     "First operating calculation boundary (period convention)",
+         None, py_first_op_boundary, None, "PERIOD CONVENTION",
+         "Python rolls near-zero COD stubs ≤7 days to next Jun-30/Dec-31 boundary. "
+         "Excel CF first-period start convention may differ. Not a COD error."),
         ("PRODUCTION",   "Total net production (MWh)",
          _tot([e.production_mwh for e in excel_p]),
          _tot([e.production_mwh for e in eng_p]),
@@ -660,7 +668,12 @@ def _build_inputs_recon(wb: Workbook, src: OborovoSources, mat: MaterialitySetti
     sec("— PROJECT / TIMELINE (Excel: oborovo_golden.json) —")
     row(ws, r, "T.01", "Capacity (MW)",        src.capacity_mw,         src.capacity_mw,         KEUR_FMT); r += 1
     row(ws, r, "T.02", "Financial close",       src.financial_close,     src.financial_close,     "@"); r += 1
-    row(ws, r, "T.03", "COD date",              src.cod_date,            src.engine[0].period_start if src.engine else src.cod_date, "@"); r += 1
+    row(ws, r, "T.03", "Contractual COD (EDATE)",
+        src.cod_date,
+        src.engine[0].contractual_cod_date if src.engine else src.cod_date, "@"); r += 1
+    row(ws, r, "T.03b", "First operating calc. boundary (period conv.)",
+        None,
+        src.engine[0].first_operating_period_boundary if src.engine else None, "@"); r += 1
     row(ws, r, "T.04", "Horizon (years)",       src.horizon_years,       src.horizon_years,       INT_FMT); r += 1
     row(ws, r, "T.05", "Construction (months)", src.construction_months, src.construction_months, INT_FMT); r += 1
     row(ws, r, "T.06", "Period frequency",      "Semestrial",            "Semestrial",            "@"); r += 1
@@ -855,10 +868,14 @@ def _build_prod_rev_recon(wb: Workbook, src: OborovoSources, mat: MaterialitySet
          "python_vals": [e.production_mwh for e in src.engine],
          "item": get_item("PR.01")},
         {"type": "section", "label": (
-            "— PRICE — Excel: CF indexed tariff per period; "
-            "Python: EFFECTIVE price back-calculated as Revenue÷Production (NOT the actual PPA tariff) —"
+            "— PRICE — Excel: CF indexed tariff row (direct PPA tariff); "
+            "Python PR.03: direct PPA tariff from policy; PR.02: effective Revenue÷Production (incl CO2/balancing) —"
         )},
-        {"type": "item", "code": "PR.02", "name": "Effective revenue/MWh — Revenue÷Prod. (EUR/MWh)", "unit": "EUR/MWh",
+        {"type": "item", "code": "PR.03", "name": "PPA contract tariff (EUR/MWh) — direct policy vs Excel indexed", "unit": "EUR/MWh",
+         "excel_vals": [e.tariff_indexed_eur_mwh for e in src.excel],
+         "python_vals": [e.ppa_tariff_eur_mwh for e in src.engine],
+         "item": get_item("PR.02")},
+        {"type": "item", "code": "PR.02", "name": "Effective revenue/MWh — Revenue÷Prod. (incl CO2/balancing; NOT direct tariff)", "unit": "EUR/MWh",
          "excel_vals": [e.tariff_indexed_eur_mwh for e in src.excel],
          "python_vals": [
              (e.revenue_keur * 1000.0 / e.production_mwh)
