@@ -3,6 +3,30 @@
 Validation returns a tuple of issues and never raises.  Callers use
 has_errors() to gate calculation.  Every structural error has a machine
 code (OPXnnn) for stable programmatic matching.
+
+Error-code registry
+-------------------
+OPX001  duplicate category code
+OPX010  duplicate subitem code
+OPX011  unsupported amount_basis
+OPX012  (WARNING) negative base_amount_keur
+OPX020  SENIOR_DEBT_TENOR_ACTIVE with zero/negative tenor
+OPX030  PERCENTAGE category has subitems
+OPX031  PERCENTAGE category has no base codes
+OPX032  (WARNING) percentage_rate ≤ 0
+OPX033  self-referencing base code
+OPX034  duplicate base code within percentage_base_codes
+OPX040  inflation_rate below −1.0
+OPX050  MANUAL activation without activation_schedule
+OPX051  activation_schedule shorter than horizon
+OPX052  period override year outside horizon
+OPX053  period override half not in {1, 2}
+OPX054  duplicate (year, half) key in period_overrides
+OPX060  base code not found in categories or external_annual_series
+OPX061  chained PERCENTAGE dependency (circular risk)
+OPX070  duplicate code in external_annual_series
+OPX071  external series code collides with a category code
+OPX072  external series referenced by a percentage category is shorter than horizon
 """
 from __future__ import annotations
 
@@ -82,7 +106,10 @@ def validate_opex_model_input(
         seen_cat_codes.add(cat.code)
 
     all_cat_codes: set[str] = set(seen_cat_codes)
-    ext_codes: set[str] = {c for c, _ in context.external_annual_series}
+
+    # --- external_annual_series validation -----------------------------------
+    ext_codes: set[str] = set()
+    _validate_external_series(context, all_cat_codes, issues, ext_codes)
 
     # --- per-category validation ---------------------------------------------
     needs_tenor = False
@@ -109,9 +136,39 @@ def validate_opex_model_input(
         )
 
     # --- percentage category dependency graph --------------------------------
-    _validate_percentage_deps(percentage_cats, all_cat_codes, ext_codes, issues)
+    _validate_percentage_deps(
+        percentage_cats, all_cat_codes, ext_codes, issues, context, horizon_years
+    )
 
     return tuple(issues)
+
+
+def _validate_external_series(
+    context: OpexCalculationContext,
+    all_cat_codes: set[str],
+    issues: list[OpexValidationIssue],
+    ext_codes_out: set[str],
+) -> None:
+    """Validate external_annual_series: no duplicates, no cat-code collision."""
+    seen: set[str] = set()
+    for code, _ in context.external_annual_series:
+        p = f"context.external_annual_series[{code!r}]"
+        if code in seen:
+            issues.append(
+                _err("OPX070", p,
+                     f"Duplicate code {code!r} in external_annual_series; "
+                     "last-write-wins semantics are not permitted")
+            )
+        else:
+            seen.add(code)
+            ext_codes_out.add(code)
+
+        if code in all_cat_codes:
+            issues.append(
+                _err("OPX071", p,
+                     f"External series code {code!r} collides with a category code; "
+                     "base-code resolution would be ambiguous")
+            )
 
 
 def _validate_category(
@@ -144,6 +201,16 @@ def _validate_category(
                 _err("OPX033", f"{p}.percentage_base_codes",
                      f"Self-reference: category {cat.code!r} cannot be in its own base")
             )
+        # --- duplicate base codes within percentage_base_codes ---------------
+        seen_base: set[str] = set()
+        for base_code in cat.percentage_base_codes:
+            if base_code in seen_base:
+                issues.append(
+                    _err("OPX034", f"{p}.percentage_base_codes",
+                         f"Duplicate base code {base_code!r} in percentage_base_codes; "
+                         "would silently double-count the base category")
+                )
+            seen_base.add(base_code)
         percentage_cats.append((cat.code, cat))
         return
 
@@ -203,6 +270,7 @@ def _validate_manual_schedule(
                  f"but horizon is {horizon_years} years")
         )
 
+    seen_keys: set[tuple[int, int]] = set()
     for (year, half), _ in sched.period_overrides:
         if year < 1 or year > horizon_years:
             issues.append(
@@ -214,6 +282,14 @@ def _validate_manual_schedule(
                 _err("OPX053", f"{si_p}.activation_schedule.period_overrides",
                      f"Period override half must be 1 or 2, got {half}")
             )
+        key = (year, half)
+        if key in seen_keys:
+            issues.append(
+                _err("OPX054", f"{si_p}.activation_schedule.period_overrides",
+                     f"Duplicate period override key {key!r}; "
+                     "financial result must not depend on tuple ordering")
+            )
+        seen_keys.add(key)
 
 
 def _validate_percentage_deps(
@@ -221,9 +297,22 @@ def _validate_percentage_deps(
     all_cat_codes: set[str],
     ext_codes: set[str],
     issues: list[OpexValidationIssue],
+    context: OpexCalculationContext,
+    horizon_years: int,
 ) -> None:
-    """Validate percentage base codes and detect circular/missing dependencies."""
+    """Validate percentage base codes, circular/missing deps, and series length."""
     pct_codes: set[str] = {code for code, _ in percentage_cats}
+
+    # Build ext-series length lookup for short-series check (OPX072)
+    ext_lengths: dict[str, int] = {
+        code: len(vals) for code, vals in context.external_annual_series
+        if code not in {c for c, _ in context.external_annual_series
+                        if list(context.external_annual_series).count((c, None)) > 1}
+    }
+    # Simpler: walk once, keep last length (OPX070 already caught duplicates)
+    ext_lengths = {}
+    for code, vals in context.external_annual_series:
+        ext_lengths[code] = len(vals)
 
     for code, cat in percentage_cats:
         p = f"categories[{code}].percentage_base_codes"
@@ -242,4 +331,12 @@ def _validate_percentage_deps(
                          "Chaining PERCENTAGE_OF_SELECTED_BASES categories is not "
                          "supported; refactor base codes to reference SUBITEM_SUM "
                          "categories only")
+                )
+            # External series too short for horizon
+            if base_code in ext_lengths and ext_lengths[base_code] < horizon_years:
+                issues.append(
+                    _err("OPX072", p,
+                         f"External series {base_code!r} has {ext_lengths[base_code]} "
+                         f"values but horizon is {horizon_years} years; "
+                         "missing years must not silently resolve to zero")
                 )

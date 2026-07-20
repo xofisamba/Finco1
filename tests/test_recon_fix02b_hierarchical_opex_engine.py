@@ -920,10 +920,12 @@ def test_b11_senior_debt_tenor_active_14_years(oborovo_annual_results, oborovo_c
     assert all(abs(v) < 1e-9 for v in b11_vals[tenor:]), "B.11 must be zero Y15-Y30"
 
 
-def test_b11_tenor_change_propagates_without_flag_edit(oborovo_model):
+def test_b11_tenor_change_propagates_without_flag_edit(oborovo_model, oborovo_ctx):
     """Changing only senior_debt_tenor_years changes B.11 activation range."""
-    ctx_14 = OpexCalculationContext(senior_debt_tenor_years=14)
-    ctx_10 = OpexCalculationContext(senior_debt_tenor_years=10)
+    # oborovo_model references D/F external series; carry them in both contexts
+    ext = oborovo_ctx.external_annual_series
+    ctx_14 = OpexCalculationContext(senior_debt_tenor_years=14, external_annual_series=ext)
+    ctx_10 = OpexCalculationContext(senior_debt_tenor_years=10, external_annual_series=ext)
     r14 = compute_annual(oborovo_model, ctx_14, horizon_years=30)
     r10 = compute_annual(oborovo_model, ctx_10, horizon_years=30)
     b11_14 = [next(c.annual_keur for c in r.categories if c.code == "B.11") for r in r14]
@@ -1048,3 +1050,327 @@ def test_production_code_does_not_import_fixture():
         assert "15a621c4" not in src, (
             f"{mod.__name__} must not contain the workbook SHA256"
         )
+
+
+# ---------------------------------------------------------------------------
+# 11. Hardening — new validation codes and fail-fast behavior
+# ---------------------------------------------------------------------------
+
+from finco_core.opex.hierarchical import (
+    OpexInputValidationError,
+    _compute_annual_unchecked,
+    _compute_periods_unchecked,
+)
+
+
+# --- OPX034: duplicate percentage_base_codes --------------------------------
+
+
+def test_validate_OPX034_duplicate_percentage_base_code():
+    """Duplicate base code in percentage_base_codes must be rejected (OPX034)."""
+    base_cat = OpexCategoryInput(code="B.01", name="B01", subitems=(_always("x", 100.0),))
+    base_cat2 = OpexCategoryInput(code="B.02", name="B02", subitems=(_always("y", 100.0),))
+    pct_cat = OpexCategoryInput(
+        code="P", name="P",
+        calculation_type=OpexCategoryCalculationType.PERCENTAGE_OF_SELECTED_BASES,
+        percentage_rate=0.04,
+        percentage_base_codes=("B.01", "B.01", "B.02"),  # B.01 duplicated
+    )
+    model = OpexModelInput(categories=(base_cat, base_cat2, pct_cat))
+    issues = validate_opex_model_input(model, _CTX_ZERO, horizon_years=5)
+    assert any(i.code == "OPX034" and i.severity == ValidationSeverity.ERROR for i in issues), (
+        "Expected OPX034 for duplicate base code"
+    )
+
+
+def test_OPX034_duplicate_base_code_blocks_compute():
+    """compute_annual must raise for OPX034 — must not silently double-count."""
+    base_cat = OpexCategoryInput(code="B", name="B", subitems=(_always("x", 100.0),))
+    pct_cat = OpexCategoryInput(
+        code="P", name="P",
+        calculation_type=OpexCategoryCalculationType.PERCENTAGE_OF_SELECTED_BASES,
+        percentage_rate=0.04,
+        percentage_base_codes=("B", "B"),  # duplicate
+    )
+    model = OpexModelInput(categories=(base_cat, pct_cat))
+    with pytest.raises(OpexInputValidationError) as exc_info:
+        compute_annual(model, _CTX_ZERO, horizon_years=5)
+    assert any(i.code == "OPX034" for i in exc_info.value.issues)
+
+
+# --- OPX070: duplicate external_annual_series codes -------------------------
+
+
+def test_validate_OPX070_duplicate_external_series():
+    """Duplicate external series code must be rejected (OPX070)."""
+    ctx = OpexCalculationContext(
+        external_annual_series=(
+            ("D", (100.0,) * 5),
+            ("D", (200.0,) * 5),  # duplicate
+        )
+    )
+    model = _simple_model(_always("A", 10.0))
+    issues = validate_opex_model_input(model, ctx, horizon_years=5)
+    assert any(i.code == "OPX070" and i.severity == ValidationSeverity.ERROR for i in issues)
+
+
+def test_OPX070_duplicate_external_blocks_compute():
+    """compute_annual must raise for OPX070."""
+    pct_cat = OpexCategoryInput(
+        code="P", name="P",
+        calculation_type=OpexCategoryCalculationType.PERCENTAGE_OF_SELECTED_BASES,
+        percentage_rate=0.1,
+        percentage_base_codes=("D",),
+    )
+    model = OpexModelInput(categories=(pct_cat,))
+    ctx = OpexCalculationContext(
+        external_annual_series=(("D", (100.0,) * 5), ("D", (200.0,) * 5))
+    )
+    with pytest.raises(OpexInputValidationError) as exc_info:
+        compute_annual(model, ctx, horizon_years=5)
+    assert any(i.code == "OPX070" for i in exc_info.value.issues)
+
+
+# --- OPX071: external series code collides with category code ---------------
+
+
+def test_validate_OPX071_external_code_collides_with_category():
+    """External series code matching a category code must be rejected (OPX071)."""
+    cat = OpexCategoryInput(code="B.01", name="B01", subitems=(_always("x", 100.0),))
+    ctx = OpexCalculationContext(
+        external_annual_series=(("B.01", (50.0,) * 5),)  # collides with category
+    )
+    model = OpexModelInput(categories=(cat,))
+    issues = validate_opex_model_input(model, ctx, horizon_years=5)
+    assert any(i.code == "OPX071" and i.severity == ValidationSeverity.ERROR for i in issues)
+
+
+def test_OPX071_collision_blocks_compute():
+    """compute_annual must raise for OPX071."""
+    cat = OpexCategoryInput(code="BASE", name="B", subitems=(_always("x", 100.0),))
+    ctx = OpexCalculationContext(external_annual_series=(("BASE", (50.0,) * 5),))
+    model = OpexModelInput(categories=(cat,))
+    with pytest.raises(OpexInputValidationError) as exc_info:
+        compute_annual(model, ctx, horizon_years=5)
+    assert any(i.code == "OPX071" for i in exc_info.value.issues)
+
+
+# --- OPX072: external series shorter than required horizon ------------------
+
+
+def test_validate_OPX072_short_external_series():
+    """External series used by a pct category that is shorter than horizon must error (OPX072)."""
+    pct_cat = OpexCategoryInput(
+        code="P", name="P",
+        calculation_type=OpexCategoryCalculationType.PERCENTAGE_OF_SELECTED_BASES,
+        percentage_rate=0.04,
+        percentage_base_codes=("EXT",),
+    )
+    model = OpexModelInput(categories=(pct_cat,))
+    ctx = OpexCalculationContext(
+        external_annual_series=(("EXT", (100.0,) * 3),)  # only 3 years, horizon=10
+    )
+    issues = validate_opex_model_input(model, ctx, horizon_years=10)
+    assert any(i.code == "OPX072" and i.severity == ValidationSeverity.ERROR for i in issues)
+
+
+def test_OPX072_short_series_blocks_compute():
+    """compute_annual must raise for OPX072 — must not silently zero missing years."""
+    pct_cat = OpexCategoryInput(
+        code="P", name="P",
+        calculation_type=OpexCategoryCalculationType.PERCENTAGE_OF_SELECTED_BASES,
+        percentage_rate=0.1,
+        percentage_base_codes=("EXT",),
+    )
+    model = OpexModelInput(categories=(pct_cat,))
+    ctx = OpexCalculationContext(external_annual_series=(("EXT", (100.0,) * 2),))
+    with pytest.raises(OpexInputValidationError) as exc_info:
+        compute_annual(model, ctx, horizon_years=5)
+    assert any(i.code == "OPX072" for i in exc_info.value.issues)
+
+
+def test_OPX072_exact_horizon_length_is_valid():
+    """External series of exactly horizon_years length must pass validation."""
+    pct_cat = OpexCategoryInput(
+        code="P", name="P",
+        calculation_type=OpexCategoryCalculationType.PERCENTAGE_OF_SELECTED_BASES,
+        percentage_rate=0.04,
+        percentage_base_codes=("EXT",),
+    )
+    model = OpexModelInput(categories=(pct_cat,))
+    ctx = OpexCalculationContext(external_annual_series=(("EXT", (100.0,) * 5),))
+    issues = validate_opex_model_input(model, ctx, horizon_years=5)
+    assert not any(i.code == "OPX072" for i in issues)
+
+
+def test_OPX072_longer_than_horizon_is_valid():
+    """External series longer than horizon must not trigger OPX072."""
+    pct_cat = OpexCategoryInput(
+        code="P", name="P",
+        calculation_type=OpexCategoryCalculationType.PERCENTAGE_OF_SELECTED_BASES,
+        percentage_rate=0.04,
+        percentage_base_codes=("EXT",),
+    )
+    model = OpexModelInput(categories=(pct_cat,))
+    ctx = OpexCalculationContext(external_annual_series=(("EXT", (100.0,) * 30),))
+    issues = validate_opex_model_input(model, ctx, horizon_years=5)
+    assert not any(i.code == "OPX072" for i in issues)
+
+
+# --- OPX054: duplicate period override keys ----------------------------------
+
+
+def test_validate_OPX054_duplicate_period_override_key():
+    """Duplicate (year, half) key in period_overrides must be rejected (OPX054)."""
+    si = _manual(
+        "A", 100.0, (True,) * 5,
+        overrides=(((3, 1), True), ((3, 1), False)),  # same key, different values
+    )
+    model = _simple_model(si)
+    issues = validate_opex_model_input(model, _CTX_ZERO, horizon_years=5)
+    assert any(i.code == "OPX054" and i.severity == ValidationSeverity.ERROR for i in issues)
+
+
+def test_OPX054_duplicate_override_blocks_compute():
+    """compute_annual must raise for OPX054."""
+    si = _manual(
+        "A", 100.0, (True,) * 5,
+        overrides=(((2, 1), True), ((2, 1), False)),
+    )
+    model = _simple_model(si)
+    with pytest.raises(OpexInputValidationError) as exc_info:
+        compute_annual(model, _CTX_ZERO, horizon_years=5)
+    assert any(i.code == "OPX054" for i in exc_info.value.issues)
+
+
+def test_OPX054_different_keys_do_not_trigger():
+    """Different (year, half) pairs must not trigger OPX054."""
+    si = _manual(
+        "A", 100.0, (True,) * 5,
+        overrides=(((2, 1), True), ((2, 2), False), ((3, 1), True)),
+    )
+    model = _simple_model(si)
+    issues = validate_opex_model_input(model, _CTX_ZERO, horizon_years=5)
+    assert not any(i.code == "OPX054" for i in issues)
+
+
+# --- Fail-fast: typed exception carries all issues --------------------------
+
+
+def test_OpexInputValidationError_exposes_issues_attribute():
+    """OpexInputValidationError must expose the full issues tuple."""
+    si = OpexSubitemInput(
+        code="X", name="X", base_amount_keur=1.0,
+        activation_mode=OpexActivationMode.MANUAL,  # no schedule → OPX050
+    )
+    model = _simple_model(si)
+    with pytest.raises(OpexInputValidationError) as exc_info:
+        compute_annual(model, _CTX_ZERO, horizon_years=5)
+    err = exc_info.value
+    assert hasattr(err, "issues")
+    assert isinstance(err.issues, tuple)
+    assert len(err.issues) > 0
+    assert any(i.code == "OPX050" for i in err.issues)
+
+
+def test_OpexInputValidationError_message_contains_error_codes():
+    """Exception message must contain the error code(s)."""
+    si = OpexSubitemInput(
+        code="X", name="X", base_amount_keur=1.0,
+        activation_mode=OpexActivationMode.MANUAL,
+    )
+    model = _simple_model(si)
+    with pytest.raises(OpexInputValidationError) as exc_info:
+        compute_annual(model, _CTX_ZERO, horizon_years=5)
+    assert "OPX050" in str(exc_info.value)
+
+
+# --- Fail-fast: invalid MANUAL schedule cannot produce output ---------------
+
+
+def test_invalid_manual_schedule_cannot_produce_annual_output():
+    """MANUAL subitem with schedule shorter than horizon must not produce annual results."""
+    si = _manual("A", 100.0, (True, True))  # 2 flags, horizon=10
+    model = _simple_model(si)
+    with pytest.raises(OpexInputValidationError) as exc_info:
+        compute_annual(model, _CTX_ZERO, horizon_years=10)
+    assert any(i.code == "OPX051" for i in exc_info.value.issues)
+
+
+def test_invalid_manual_schedule_cannot_produce_period_output():
+    """MANUAL subitem with schedule shorter than horizon must not produce period results."""
+    si = _manual("A", 100.0, (True, True))  # 2 flags, horizon=5 from periods
+    model = _simple_model(si)
+    periods = _annual_periods(5)
+    with pytest.raises(OpexInputValidationError) as exc_info:
+        compute_periods(model, _CTX_ZERO, periods)
+    assert any(i.code == "OPX051" for i in exc_info.value.issues)
+
+
+# --- Fail-fast: zero tenor with SENIOR_DEBT_TENOR_ACTIVE --------------------
+
+
+def test_zero_tenor_cannot_produce_annual_output():
+    """SENIOR_DEBT_TENOR_ACTIVE with zero tenor must not produce annual output."""
+    model = _simple_model(_tenor_active("A", 100.0))
+    with pytest.raises(OpexInputValidationError) as exc_info:
+        compute_annual(model, _CTX_ZERO, horizon_years=5)
+    assert any(i.code == "OPX020" for i in exc_info.value.issues)
+
+
+def test_zero_tenor_cannot_produce_period_output():
+    """SENIOR_DEBT_TENOR_ACTIVE with zero tenor must not produce period output."""
+    model = _simple_model(_tenor_active("A", 100.0))
+    with pytest.raises(OpexInputValidationError) as exc_info:
+        compute_periods(model, _CTX_ZERO, _annual_periods(5))
+    assert any(i.code == "OPX020" for i in exc_info.value.issues)
+
+
+# --- _ext_value asserts on missing data (no silent zero) --------------------
+
+
+def test_ext_value_asserts_on_missing_code():
+    """_ext_value must raise AssertionError when the code is not in ext lookup."""
+    from finco_core.opex.hierarchical._calculator import _ext_value
+    ext = {"D": (100.0, 200.0)}
+    with pytest.raises(AssertionError, match="not in external_annual_series"):
+        _ext_value(ext, "MISSING", 0)
+
+
+def test_ext_value_asserts_on_out_of_range_year():
+    """_ext_value must raise AssertionError when year_idx is out of range."""
+    from finco_core.opex.hierarchical._calculator import _ext_value
+    ext = {"D": (100.0, 200.0)}
+    with pytest.raises(AssertionError, match="out of range"):
+        _ext_value(ext, "D", 5)
+
+
+def test_ext_value_returns_explicit_zero():
+    """An explicit 0.0 in the series is a valid value and must be returned."""
+    from finco_core.opex.hierarchical._calculator import _ext_value
+    ext = {"D": (100.0, 0.0, 50.0)}
+    assert _ext_value(ext, "D", 1) == 0.0
+
+
+def test_missing_short_external_series_cannot_silently_zero():
+    """A short external series must not silently produce zeros for missing years.
+
+    Verifies that the validation gate (OPX072) is the only path, and that
+    bypassing validation and calling _compute_annual_unchecked directly with
+    a too-short series raises AssertionError rather than silently returning 0.
+    """
+    pct_cat = OpexCategoryInput(
+        code="P", name="P",
+        calculation_type=OpexCategoryCalculationType.PERCENTAGE_OF_SELECTED_BASES,
+        percentage_rate=0.1,
+        percentage_base_codes=("EXT",),
+    )
+    model = OpexModelInput(categories=(pct_cat,))
+    ctx = OpexCalculationContext(external_annual_series=(("EXT", (100.0, 200.0)),))
+    # Public API must refuse
+    with pytest.raises(OpexInputValidationError) as exc_info:
+        compute_annual(model, ctx, horizon_years=5)
+    assert any(i.code == "OPX072" for i in exc_info.value.issues)
+    # Internal unchecked function must also fail hard, not silently return 0
+    with pytest.raises(AssertionError):
+        _compute_annual_unchecked(model, ctx, horizon_years=5)

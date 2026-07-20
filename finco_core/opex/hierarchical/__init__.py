@@ -15,7 +15,13 @@ Quick-start
 """
 from __future__ import annotations
 
-from ._calculator import compute_annual, compute_periods
+from ._calculator import (
+    OpexInputValidationError,
+    _compute_annual_unchecked,
+    _compute_periods_unchecked,
+    compute_annual,
+    compute_periods,
+)
 from ._inputs import (
     OpexActivationSchedule,
     OpexCalculationContext,
@@ -71,4 +77,7 @@ __all__ = [
     # calculation
     "compute_annual",
     "compute_periods",
+    "OpexInputValidationError",
+    "_compute_annual_unchecked",
+    "_compute_periods_unchecked",
 ]
