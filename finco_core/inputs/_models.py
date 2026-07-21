@@ -430,10 +430,31 @@ class RevenueParams:
     balancing_cost_schedule: RevenueAdjustmentSchedule | None = None
     co2_sales_schedule: RevenueAdjustmentSchedule | None = None
     first_merchant_operating_period_index: int | None = None
+    # PPA indexation policy — string name of PpaIndexationStartPolicy enum, or None.
+    # None = not yet explicitly migrated; orchestrator uses legacy tariff_at_year path.
+    ppa_indexation_start_policy: str | None = None
+    ppa_indexation_start_date: date | None = None
+    # Pre-computed per-operating-period tariff schedule (indexed by operating_period_index).
+    # When non-empty, tariff_at_operating_period() uses this instead of the analytic formula.
+    ppa_tariff_by_operating_period: tuple[float, ...] = ()
 
     def tariff_at_year(self, year: int) -> float:
-        """Return indexed contract tariff for a 1-based operating year."""
+        """Return indexed contract tariff for a 1-based operating year (legacy path).
+
+        Prefer tariff_at_operating_period() when ppa_tariff_by_operating_period is set.
+        """
         return self.ppa_base_tariff * (1 + self.ppa_index) ** (year - 1)
+
+    def tariff_at_operating_period(self, operating_period_index: int) -> float | None:
+        """Return indexed tariff for a given 0-based operating period index.
+
+        Returns None when ppa_tariff_by_operating_period is empty (caller should fall
+        back to tariff_at_year).
+        """
+        if self.ppa_tariff_by_operating_period and operating_period_index >= 0:
+            if operating_period_index < len(self.ppa_tariff_by_operating_period):
+                return self.ppa_tariff_by_operating_period[operating_period_index]
+        return None
 
     def market_price_at_year(self, year: int) -> float:
         """Return merchant market price for a 1-based operating year."""

@@ -82,17 +82,11 @@ jobs:
           fi
           echo "Baseline snapshots: unchanged"
 
-      # ── Step 5: Protected production scope unchanged ────────────────────────
-      - name: Check protected production scope unchanged
+      # ── Step 5: Protected production scope (narrow governance) ────────────────────────
+      - name: Check protected production scope (narrow governance)
         run: |
-          CHANGED=$(git diff --name-only "${{ steps.base.outputs.base_sha }}"...HEAD \
-            -- app/ domain/ main_web.py main_api.py finco_core/waterfall/)
-          if [ -n "$CHANGED" ]; then
-            echo "ERROR: Phase 2B must not modify protected production files:"
-            echo "$CHANGED"
-            exit 1
-          fi
-          echo "Protected production scope: unchanged"
+          BASE="${{ steps.base.outputs.base_sha }}"
+          python3 .github/scripts/check_protected_scope.py "$BASE" HEAD
 
       # ── Step 6: Phase 2B test suite ────────────────────────────────────────
       - name: Phase 2B test suite (tests A–J+)

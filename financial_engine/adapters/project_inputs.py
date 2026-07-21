@@ -26,6 +26,7 @@ from financial_engine.inputs import (
     TechnicalInput,
     YieldScenario,
 )
+from financial_engine.ppa_indexation import PpaIndexationStartPolicy
 
 
 def from_project_inputs(
@@ -71,6 +72,21 @@ def from_project_inputs(
     if rev.co2_sales_schedule is not None and rev.co2_sales_schedule.semiannual_values:
         co2_semiannual = tuple(rev.co2_sales_schedule.semiannual_values)
 
+    # Map PPA indexation policy from string attribute on RevenueParams.
+    # None (absent or explicit None) = not yet explicitly migrated; legacy path preserved.
+    _policy_str = getattr(rev, "ppa_indexation_start_policy", None)
+    if _policy_str is None:
+        _ppa_policy = None
+    else:
+        try:
+            _ppa_policy = PpaIndexationStartPolicy(_policy_str)
+        except ValueError:
+            raise ValueError(
+                f"Invalid ppa_indexation_start_policy: {_policy_str!r}. "
+                f"Valid values: {[e.value for e in PpaIndexationStartPolicy]}"
+            )
+    _ppa_index_start_date = getattr(rev, "ppa_indexation_start_date", None)
+
     revenue = RevenueInput(
         ppa_base_tariff_eur_mwh=rev.ppa_base_tariff,
         ppa_term_years=float(rev.ppa_term_years),
@@ -86,6 +102,8 @@ def from_project_inputs(
         co2_price_semiannual_eur_mwh=co2_semiannual,
         co2_price_eur_per_mwh_scalar=rev.co2_certificate_price_eur_per_mwh,
         balancing_cost_eur_per_mwh=rev.balancing_cost_eur_per_mwh,
+        ppa_indexation_start_policy=_ppa_policy,
+        ppa_indexation_start_date=_ppa_index_start_date,
     )
 
     opex_items = tuple(
