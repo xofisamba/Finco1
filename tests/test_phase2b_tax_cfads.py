@@ -1790,14 +1790,17 @@ class TestV_ScheduleAlignment:
 
 @pytest.mark.parametrize("baseline_id", BASELINE_IDS)
 def test_w_correction_aware_four_baseline(baseline_id: str):
-    """Model J (item 14): four-baseline correction-aware parity check.
+    """Model J (item 14): four-baseline correction-aware parity check using production exact matcher.
 
     Each baseline must be IDENTICAL or APPROVED_FINANCIAL_CORRECTION.
-    Unexplained difference count must be 0.
+    Unexplained difference count must be 0. Stale correction records must be 0.
+    Uses production load_and_validate_ledger() + match_differences() — no simplified
+    path-set check.
     """
     import json
     from pathlib import Path
 
+    from finco_parity.correction_matcher import load_and_validate_ledger, match_differences
     from finco_parity.financial_engine_tax_cfads_candidate import (
         generate_tax_cfads_candidate_snapshot,
     )
@@ -1808,14 +1811,6 @@ def test_w_correction_aware_four_baseline(baseline_id: str):
     _CORRECTIONS_PATH = (
         Path(__file__).parent.parent / "finco_parity" / "corrections" / "tax_cfads_v1_exact.json"
     )
-    approved: dict[str, set[str]] = {}
-    if _CORRECTIONS_PATH.exists():
-        ledger = json.loads(_CORRECTIONS_PATH.read_text())
-        for rec in ledger.get("corrections", []):
-            bid = rec["baseline_id"]
-            if bid not in approved:
-                approved[bid] = set()
-            approved[bid].add(rec["field_path"])
 
     profile = ComparisonProfile.TAX_CFADS_V1
     snapshot_path = SNAPSHOTS_DIR / f"{baseline_id}.json"
@@ -1827,19 +1822,19 @@ def test_w_correction_aware_four_baseline(baseline_id: str):
     candidate_proj = project_for_profile(candidate_snap, profile)
     cmp = compare_snapshots(baseline_proj, candidate_proj, baseline_id)
 
-    approved_paths = approved.get(baseline_id, set())
-    unexplained = [d for d in cmp.differences if d.path not in approved_paths]
+    ledger = load_and_validate_ledger(_CORRECTIONS_PATH)
+    result = match_differences(baseline_id, cmp.differences, ledger)
 
-    status = "IDENTICAL" if not cmp.differences else (
-        "APPROVED_FINANCIAL_CORRECTION" if not unexplained else "UNEXPLAINED_DRIFT"
+    assert len(result.unexplained) == 0, (
+        f"[{baseline_id}] {len(result.unexplained)} UNEXPLAINED_DRIFT:\n"
+        + "\n".join(f"  {d.path}: {d.kind.value}" for d in result.unexplained[:10])
     )
-
-    assert status in ("IDENTICAL", "APPROVED_FINANCIAL_CORRECTION"), (
-        f"[{baseline_id}] status={status}; {len(unexplained)} unexplained diffs"
+    assert len(result.stale_records) == 0, (
+        f"[{baseline_id}] {len(result.stale_records)} STALE_CORRECTION_RECORD(s):\n"
+        + "\n".join(f"  {r.field_path}" for r in result.stale_records[:10])
     )
-    assert len(unexplained) == 0, (
-        f"[{baseline_id}] {len(unexplained)} UNEXPLAINED_DRIFT:\n"
-        + "\n".join(f"  {d.path}: {d.kind.value}" for d in unexplained[:10])
+    assert result.status in ("IDENTICAL", "APPROVED_FINANCIAL_CORRECTION"), (
+        f"[{baseline_id}] unexpected status={result.status}"
     )
 
 
@@ -2211,6 +2206,65 @@ class TestTuhoConstructionLoss:
         assert len(construction) >= 1, "TUHO must have at least one construction period"
         assert construction[0].period_index == 0, (
             f"Expected construction period_index=0, got {construction[0].period_index}"
+        )
+
+    def test_construction_generated_carryforward_hard_fails_on_missing_fixture(
+        self, tmp_path, monkeypatch
+    ):
+        """build_construction_generated_carryforward_at_cod raises RuntimeError if fixture missing."""
+        import os
+        from finco_parity.tax_reference_inputs import build_construction_generated_carryforward_at_cod
+        # Monkeypatch os.path.exists for the fixture path
+        orig_exists = os.path.exists
+        def fake_exists(p):
+            if "tuho_construction_snapshot" in str(p):
+                return False
+            return orig_exists(p)
+        monkeypatch.setattr(os.path, "exists", fake_exists)
+        with pytest.raises(RuntimeError, match="GOVERNANCE FAILURE"):
+            build_construction_generated_carryforward_at_cod("tuho")
+
+    def test_tuho_end_to_end_exact_matcher(self):
+        """TUHO: load approved ledger, run actual candidate, assert 0 unexplained, 0 stale."""
+        import json
+        from pathlib import Path
+
+        from finco_parity.correction_matcher import load_and_validate_ledger, match_differences
+        from finco_parity.financial_engine_tax_cfads_candidate import (
+            generate_tax_cfads_candidate_snapshot,
+        )
+        from finco_parity.manifest import SNAPSHOTS_DIR
+        from finco_parity.profiles import ComparisonProfile, project_for_profile
+        from finco_parity.comparison import compare_snapshots
+
+        approved_path = Path("finco_parity/corrections/tax_cfads_v1_exact.json")
+        ledger = load_and_validate_ledger(approved_path)
+
+        # Load baseline and generate candidate using the same path as test_w,
+        # which avoids the run_candidate_provider environment check that can fail
+        # in pytest when numpy is imported from the project venv before this test.
+        profile = ComparisonProfile.TAX_CFADS_V1
+        with open(SNAPSHOTS_DIR / "tuho.json") as f:
+            baseline_snap = json.load(f)
+
+        candidate_snap = generate_tax_cfads_candidate_snapshot("tuho")
+        baseline_proj = project_for_profile(baseline_snap, profile)
+        candidate_proj = project_for_profile(candidate_snap, profile)
+        cmp = compare_snapshots(baseline_proj, candidate_proj, "tuho")
+        diffs = list(cmp.differences)
+
+        result = match_differences("tuho", diffs, ledger)
+
+        assert len(result.unexplained) == 0, (
+            f"TUHO: {len(result.unexplained)} unexplained diff(s). First: "
+            + (str(result.unexplained[0]) if result.unexplained else "")
+        )
+        assert len(result.stale_records) == 0, (
+            f"TUHO: {len(result.stale_records)} stale record(s)."
+        )
+        tuho_approved_count = len(ledger.get("tuho", []))
+        assert len(result.approved) == tuho_approved_count, (
+            f"Expected {tuho_approved_count} approved, got {len(result.approved)}"
         )
 
 
