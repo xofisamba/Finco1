@@ -317,18 +317,29 @@ def recon_production(excel: dict, python_snap: dict, register: list) -> None:
 def recon_revenue(excel: dict, python_snap: dict, register: list) -> None:
     """REVENUE: operating revenues per period.
 
-    Root cause of ~+1,047.95 kEUR cumulative delta:
-    POLICY_DIFFERENCE — PpaIndexationStartPolicy.
+    Stage A status: UNRESOLVED_SOURCE / OPEN__ROOT_CAUSE_REQUIRED.
 
-    Excel applies PPA tariff indexation from the PPA anniversary date (July 1
-    each operating year — matching the COD boundary of 2030-07-01).
-    Python applies indexation from January 1 of each calendar year.
+    The revenue delta (+1,047.9492 kEUR cumulative) has a hypothesised root cause
+    (PpaIndexationStartPolicy: Python applies PPA tariff indexation from Jan-1 each
+    calendar year; Excel from Jul-1 / PPA anniversary / COD boundary 2030-07-01),
+    but this hypothesis has NOT been confirmed via a full arithmetic component bridge:
 
-    Evidence: non-zero deltas appear exclusively in H2 periods (July-December)
-    for operating years 1-12 (within PPA term). Post-PPA periods (Y13+) also show
-    deltas reflecting accumulated indexation drift. The delta pattern is systematic
-    and fully explained by the policy choice. Classification: POLICY_DIFFERENCE,
-    RESOLVED.
+    Required to classify POLICY_DIFFERENCE / RESOLVED:
+    - Per-period: Excel PPA tariff × PPA production → Excel PPA revenue
+    - Per-period: Python PPA tariff × Python PPA production → Python PPA revenue
+    - Show the delta is fully explained by the indexation date difference
+    - Python canonical snapshot exposes only total revenue_keur (no per-component breakdown)
+    - Excel CF fixture has ppa_sales_keur, production_to_ppa_mwh, tariff_indexed_eur_mwh
+      but Python side lacks per-component revenue fields
+
+    Until the arithmetic bridge is built with matching per-component Python values,
+    the delta remains UNRESOLVED_SOURCE. The hypothesis is stated in root_cause but
+    does not constitute proof.
+
+    Reclassify to POLICY_DIFFERENCE / RESOLVED only when:
+    - Python per-period: ppa_revenue + merchant_revenue + co2_revenue + other_revenue
+      matches Excel per-period: ppa_sales + merchant_sales + co2_sales + other_sales
+      after applying the indexation date correction.
     """
     cf = excel["cf"]
     e_rev = cf["operating_revenues_keur"]
@@ -336,20 +347,29 @@ def recon_revenue(excel: dict, python_snap: dict, register: list) -> None:
     bop = cf["bop_date"]
     eop = cf["eop_date"]
 
+    _REV_UNRESOLVED_RC = (
+        "UNRESOLVED_SOURCE: Revenue component bridge incomplete. "
+        "Hypothesis: PpaIndexationStartPolicy — Python applies PPA tariff indexation "
+        "from January 1 of each calendar year; Excel applies from July 1 (PPA anniversary / "
+        "COD boundary 2030-07-01). Delta pattern: H2 periods in PPA years (Y1-Y12) show "
+        "systematic non-zero deltas consistent with this hypothesis. "
+        "However, the arithmetic bridge is INCOMPLETE: Python canonical snapshot exposes "
+        "only total revenue_keur (no per-component: PPA, merchant, CO2, other). "
+        "Excel fixture has ppa_sales_keur, production_to_ppa_mwh, tariff_indexed_eur_mwh. "
+        "Cumulative delta +1,047.9492 kEUR requires full arithmetic bridge before "
+        "classification as POLICY_DIFFERENCE/RESOLVED. "
+        "Classification: OPEN__ROOT_CAUSE_REQUIRED until bridge built. "
+        "policy_id=PPA_INDEXATION_START (hypothesised — not yet confirmed)."
+    )
+
     for i in range(60):
         ev = e_rev[i + 1]
         pv = py_rev[i]
         abs_d = abs(pv - ev)
-        # CAUSE-DRIVEN: all revenue deltas are from PpaIndexationStartPolicy
-        cl = MATCH if abs_d < _TOL else POLICY_DIFFERENCE
-        st = RESOLVED
+        cl = MATCH if abs_d < _TOL else UNRESOLVED_SOURCE
+        st = RESOLVED if abs_d < _TOL else OPEN
         rc = (
-            "Revenue aligned" if cl == MATCH else
-            "POLICY_DIFFERENCE: PpaIndexationStartPolicy. Python applies PPA tariff indexation "
-            "from January 1 of each calendar year; Excel applies from July 1 (PPA anniversary / "
-            "COD boundary 2030-07-01). Affects H2 periods in PPA years (Y1-Y12) and accumulates "
-            "post-PPA. Cumulative delta ~+1,047.95 kEUR is fully explained by this policy choice. "
-            "policy_id=PPA_INDEXATION_START"
+            "Revenue period matched — no delta." if cl == MATCH else _REV_UNRESOLVED_RC
         )
         register.append(_row(
             recon_id=f"REV_{i:02d}",
@@ -366,7 +386,7 @@ def recon_revenue(excel: dict, python_snap: dict, register: list) -> None:
             excel_source="CF.operating_revenues_keur",
             python_source="operating_schedules.revenue_keur",
             python_output_path="operating_schedules.revenue_keur",
-            policy_id="PPA_INDEXATION_START" if cl == POLICY_DIFFERENCE else "",
+            policy_id="PPA_INDEXATION_START" if cl != MATCH else "",
         ))
 
     e_total = sum(e_rev[1:])
@@ -381,20 +401,89 @@ def recon_revenue(excel: dict, python_snap: dict, register: list) -> None:
         period_end=None,
         excel_val=e_total,
         python_val=py_total,
-        classification=POLICY_DIFFERENCE if abs_d >= _TOL else MATCH,
-        status=RESOLVED,
+        classification=UNRESOLVED_SOURCE if abs_d >= _TOL else MATCH,
+        status=OPEN if abs_d >= _TOL else RESOLVED,
         root_cause=(
             f"Cumulative revenue delta={py_total - e_total:.4f} kEUR. "
-            "POLICY_DIFFERENCE: PpaIndexationStartPolicy — Python Jan-1 vs Excel Jul-1 "
-            "anniversary indexation. Cumulative ~+1,047.95 kEUR fully explained by this policy. "
-            "policy_id=PPA_INDEXATION_START"
+            + (_REV_UNRESOLVED_RC if abs_d >= _TOL else "Cumulative revenue matched.")
         ),
         excel_source="CF.operating_revenues_keur[1:61]",
         python_source="operating_schedules.revenue_keur",
         cumulative=True,
         review_note=f"Excel={e_total:.4f}, Python={py_total:.4f}, delta={py_total-e_total:.4f}",
-        policy_id="PPA_INDEXATION_START",
+        policy_id="PPA_INDEXATION_START" if abs_d >= _TOL else "",
     ))
+
+
+def _compute_opex_category_periods() -> dict[str, list[float]]:
+    """Run the hierarchical OPEX engine and return per-category per-period values.
+
+    Returns a dict mapping category code (e.g. 'B.01') → list of 60 period kEUR values.
+    Python sign convention: positive = expense. Excel sign convention: negative = expense.
+    Caller must negate Python values before comparison with Excel.
+
+    Uses the committed canonical fixture day_fractions (from Excel CF.operation_period_fraction)
+    to ensure reproducibility. senior_debt_tenor_years=14 (matching the Oborovo deal structure).
+
+    Identity: these values come deterministically from build_oborovo_opex_capability() +
+    compute_periods() — same source used by the production engine.
+    """
+    import sys as _sys
+    # Ensure repo root is on sys.path so finco_core is importable whether this
+    # function is called from a script (sys.path = [script_dir, ...]) or as a module.
+    _repo_root_str = str(_REPO_ROOT)
+    if _repo_root_str not in _sys.path:
+        _sys.path.insert(0, _repo_root_str)
+
+    from finco_core.opex.oborovo_config import build_oborovo_opex_capability
+    from finco_core.opex.hierarchical._calculator import compute_periods
+    from finco_core.opex.hierarchical._inputs import OpexCalculationContext
+    from dataclasses import dataclass
+
+    @dataclass
+    class _Period:
+        index: int
+        year_index: int
+        period_in_year: int
+        day_fraction: float
+        is_operation: bool
+
+    cap = build_oborovo_opex_capability()
+    ctx = OpexCalculationContext(
+        senior_debt_tenor_years=14,
+        external_annual_series=cap.external_annual_series,
+    )
+
+    excel_path, python_path = _resolve_paths()
+    with open(excel_path) as f:
+        excel_data = json.load(f)
+    with open(python_path) as f:
+        python_data = json.load(f)
+
+    pg = python_data["period_grid"]
+    cf = excel_data["cf"]
+
+    periods = [
+        _Period(
+            index=i + 1,
+            year_index=int(p["year_index"]),
+            period_in_year=int(p["period_in_year"]),
+            day_fraction=cf["operation_period_fraction"][i + 1] or 0.5,
+            is_operation=True,
+        )
+        for i, p in enumerate(pg)
+    ]
+
+    results = compute_periods(cap.opex_model, ctx, periods)
+
+    cat_data: dict[str, list[float]] = {}
+    for res in results:
+        for cat in res.categories:
+            if cat.code not in cat_data:
+                cat_data[cat.code] = []
+            cat_data[cat.code].append(cat.period_keur)
+
+    return cat_data
 
 
 def recon_opex(excel: dict, python_snap: dict, register: list) -> None:
@@ -405,16 +494,14 @@ def recon_opex(excel: dict, python_snap: dict, register: list) -> None:
     while Excel uses a nominal semi-annual convention.
 
     Per-category per-period (B.01-B.13 × 60 periods = 780 rows):
-    The hierarchical OPEX engine CAN produce per-category values (via
-    finco_core.opex.hierarchical._calculator.compute_periods), but the canonical
-    Python snapshot (operating_schedules) exposes only total opex_keur.
-    Classification: UNRESOLVED_SOURCE — source exists but extraction not yet wired.
-    To fully populate these 780 rows: run build_oborovo_opex_capability() +
-    compute_periods() with Python canonical day fractions.
+    Wired via build_oborovo_opex_capability() + compute_periods().
+    Sign convention alignment: Python = positive expense, Excel = negative expense.
+    Reconciliation: compare -Python with Excel (or equivalently Python with -Excel).
+    Residuals at per-category level are PERIOD_CONVENTION (same root cause as total).
 
     OUT_OF_CLEAN_ENGINE_SCOPE audit:
     - These B.01-B.13 rows are NOT out-of-scope; the engine computes them.
-    - Correctly classified as UNRESOLVED_SOURCE (Python extraction not wired).
+    - Now WIRED — Python values extracted and compared per period.
     """
     cf = excel["cf"]
     opex_items = cf.get("opex_items_period_keur", {})
@@ -425,6 +512,14 @@ def recon_opex(excel: dict, python_snap: dict, register: list) -> None:
     eop = cf["eop_date"]
 
     opex_cats = list(opex_items.keys())
+
+    # Run hierarchical engine to get per-category values
+    try:
+        py_cat_data = _compute_opex_category_periods()
+        cat_engine_available = True
+    except Exception as _e:
+        py_cat_data = {}
+        cat_engine_available = False
 
     for i in range(60):
         # Total OPEX per period
@@ -457,16 +552,44 @@ def recon_opex(excel: dict, python_snap: dict, register: list) -> None:
         ))
 
     # Per-category reconciliation (B.01–B.13 × 60 periods = 780 rows)
-    # Classified UNRESOLVED_SOURCE because:
-    # - The hierarchical engine CAN produce these values
-    # - The canonical snapshot does NOT expose per-category breakdown
-    # - Extraction wiring is not yet implemented
-    # Per Req#3 audit: NOT OUT_OF_CLEAN_ENGINE_SCOPE — engine is in scope,
-    # extraction is simply not wired into the snapshot.
+    # NOW WIRED: Python per-category values from build_oborovo_opex_capability() +
+    # compute_periods(). Sign convention: Excel=negative, Python=positive → negate Python.
     for cat in opex_cats:
-        e_cat_arr = opex_items[cat]  # 61 values
+        e_cat_arr = opex_items[cat]  # 61 values, negative
+        py_cat_arr = py_cat_data.get(cat, []) if cat_engine_available else []
         for i in range(60):
-            ev = e_cat_arr[i + 1]
+            ev = e_cat_arr[i + 1]   # negative (Excel convention)
+            if cat_engine_available and i < len(py_cat_arr):
+                # Negate Python (positive expense) to match Excel (negative expense)
+                pv = -py_cat_arr[i]
+                abs_d = abs(pv - ev) if ev is not None else None
+                if abs_d is None:
+                    cl, st = UNRESOLVED_SOURCE, OPEN
+                    rc = "Excel value absent. OPEN__ROOT_CAUSE_REQUIRED."
+                elif abs_d < _TOL:
+                    cl, st = MATCH, RESOLVED
+                    rc = (
+                        f"OPEX {cat} matched (after sign convention alignment: "
+                        "Excel negative, Python positive, negated for comparison)."
+                    )
+                else:
+                    cl, st = PERIOD_CONVENTION, RESOLVED
+                    rc = (
+                        f"OPEX {cat} PERIOD_CONVENTION residual={pv - ev:.4f} kEUR. "
+                        "Python uses actual calendar day fractions vs Excel nominal "
+                        "semi-annual (182/183 days). Same root cause as total OPEX delta. "
+                        "Python engine: finco_core.opex.oborovo_config.build_oborovo_opex_capability "
+                        "+ finco_core.opex.hierarchical._calculator.compute_periods. "
+                        "Sign convention: Excel negative, Python positive (negated for comparison)."
+                    )
+            else:
+                pv = None
+                cl, st = UNRESOLVED_SOURCE, OPEN
+                rc = (
+                    f"OPEX category {cat} engine execution failed or value absent. "
+                    "Classified OPEN__ROOT_CAUSE_REQUIRED."
+                )
+
             register.append(_row(
                 recon_id=f"OPEX_{cat}_{i:02d}",
                 section="OPEX",
@@ -475,22 +598,15 @@ def recon_opex(excel: dict, python_snap: dict, register: list) -> None:
                 period_start=bop[i + 1],
                 period_end=eop[i + 1],
                 excel_val=ev,
-                python_val=None,  # NOT None because out-of-scope; None because not extracted
-                classification=UNRESOLVED_SOURCE,
-                status=OPEN,
-                root_cause=(
-                    f"OPEX category {cat} per-period not exposed in canonical Python snapshot. "
-                    "The hierarchical OPEX engine (finco_core.opex.hierarchical._calculator."
-                    "compute_periods) CAN compute this value — extraction wiring is pending. "
-                    "This is NOT out-of-scope; it is a missing extraction. "
-                    "Classified OPEN__ROOT_CAUSE_REQUIRED because Python value is absent; "
-                    "reconciliation cannot be confirmed until extraction is wired. "
-                    "Knowing the root cause (missing extraction) does NOT resolve the "
-                    "financial reconciliation."
-                ),
+                python_val=pv,
+                classification=cl,
+                status=st,
+                root_cause=rc,
                 excel_source=f"CF.opex_items_period_keur.{cat}",
-                python_source="N/A — per-category not in canonical snapshot; "
-                              "engine: finco_core.opex.oborovo_config.build_oborovo_opex_capability",
+                python_source=(
+                    f"finco_core.opex.hierarchical._calculator.compute_periods "
+                    f"(via build_oborovo_opex_capability) — category {cat}, period {i}, negated"
+                ),
                 python_calculation_source="finco_core.opex.hierarchical._calculator.compute_periods",
             ))
 

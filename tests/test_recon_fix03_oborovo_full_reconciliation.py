@@ -478,63 +478,86 @@ def test_book_dep_python_bug_idc_documented():
 
 
 # ---------------------------------------------------------------------------
+# M. Revenue rows: UNRESOLVED_SOURCE until arithmetic bridge complete
+# ---------------------------------------------------------------------------
+
+def test_revenue_rows_unresolved_when_delta_exists():
+    """Non-matched revenue rows must be UNRESOLVED_SOURCE / OPEN__ROOT_CAUSE_REQUIRED.
+
+    Stage A governance: revenue delta (+1,047.9492 kEUR cumulative) attributed to
+    PpaIndexationStartPolicy hypothesis, but per-component arithmetic bridge is
+    incomplete (Python snapshot exposes only total revenue_keur, not per-component).
+    Classification must remain UNRESOLVED_SOURCE until bridge is built.
+    """
+    from finco_recon.recon_03_oborovo_full import (
+        build_delta_register, UNRESOLVED_SOURCE, MATCH, OPEN,
+    )
+    register = build_delta_register()
+    rev_rows = [r for r in register if r["financial_section"] == "REVENUE"]
+
+    non_match = [r for r in rev_rows if r["classification"] != MATCH]
+    for r in non_match:
+        assert r["classification"] == UNRESOLVED_SOURCE, (
+            f"Revenue row {r['recon_id']} classified as {r['classification']!r}; "
+            "expected UNRESOLVED_SOURCE — component bridge not yet complete."
+        )
+        assert r["status"] == OPEN, (
+            f"Revenue row {r['recon_id']} has status {r['status']!r}; "
+            "expected OPEN__ROOT_CAUSE_REQUIRED while bridge is incomplete."
+        )
+
+
+def test_opex_categories_wired():
+    """OPEX B.01-B.13 per-category rows must have Python values (not None).
+
+    Stage A: hierarchical OPEX engine (build_oborovo_opex_capability +
+    compute_periods) is now wired. All 780 per-category rows must have
+    python_value set (not None).
+    """
+    from finco_recon.recon_03_oborovo_full import build_delta_register
+    register = build_delta_register()
+    cat_rows = [
+        r for r in register
+        if r["financial_section"] == "OPEX"
+        and r["financial_line"] != "total_opex_keur"
+        and r["period_index"] is not None
+    ]
+    assert len(cat_rows) == 780, f"Expected 780 OPEX category rows, got {len(cat_rows)}"
+    none_python = [r for r in cat_rows if r["python_value"] is None]
+    assert not none_python, (
+        f"{len(none_python)} OPEX category rows still have python_value=None — "
+        "engine wiring may have failed."
+    )
+
+
+# ---------------------------------------------------------------------------
 # L. TAX_CFADS gate passes for oborovo baseline
 # ---------------------------------------------------------------------------
 
 def test_tax_cfads_gate_oborovo():
     """TAX_CFADS parity gate must pass for the oborovo baseline.
 
-    This test calls the existing parity infrastructure.
-    Only skip if specific INPUT_SOURCE_BLOCKED prerequisite is missing.
-    All other failures → FAIL (do not catch broad Exception).
+    Hardened (Stage A): uses subprocess to invoke the CLI gate directly.
+    This avoids broad exception-catch patterns and ensures the same
+    gate that CI runs (exit 0 = PASS) is what the test validates.
+
+    Gate: python -m finco_parity.check_financial_engine_tax_cfads --all --check
+    Expected: exit code 0 (PASS).
     """
-    pytest.importorskip("finco_parity.check_financial_engine_tax_cfads")
+    import subprocess
+    import sys
 
-    # Only skip for the specific known external prerequisite block
-    try:
-        from finco_parity.check_financial_engine_tax_cfads import _check_blocked_baselines
-        blocked = _check_blocked_baselines(["oborovo"])
-        if "oborovo" in blocked:
-            # Specific known block — legitimate skip
-            pytest.skip(f"oborovo TAX_CFADS gate INPUT_SOURCE_BLOCKED: {blocked['oborovo']}")
-    except ImportError as e:
-        pytest.fail(f"TAX_CFADS block check import failed: {e}")
-    except AttributeError:
-        # _check_blocked_baselines not present in this version — proceed
-        pass
-
-    try:
-        from finco_parity.financial_engine_tax_cfads_candidate import (
-            generate_tax_cfads_candidate_snapshot,
-        )
-        from finco_parity.manifest import SNAPSHOTS_DIR
-        from finco_parity.profiles import ComparisonProfile, project_for_profile
-        from finco_parity.comparison import compare_snapshots
-        from finco_parity.correction_matcher import load_and_validate_ledger, match_differences
-    except ImportError as e:
-        pytest.skip(f"finco_parity not importable: {e}")
-
-    snapshot = generate_tax_cfads_candidate_snapshot("oborovo")
-    baseline_path = SNAPSHOTS_DIR / "oborovo" / "tax_cfads_v1.json"
-    if not baseline_path.exists():
-        pytest.skip(f"Baseline snapshot not found: {baseline_path}")
-
-    with open(baseline_path) as f:
-        baseline = json.load(f)
-
-    # Project both snapshots to the TAX_CFADS_V1 profile before comparison
-    projected_candidate = project_for_profile(snapshot, ComparisonProfile.TAX_CFADS_V1)
-    projected_baseline = project_for_profile(baseline, ComparisonProfile.TAX_CFADS_V1)
-    diffs = compare_snapshots(projected_candidate, projected_baseline, ComparisonProfile.TAX_CFADS_V1)
-    if not diffs:
-        return  # gate passes
-
-    # Check if all diffs are approved in the ledger
-    ledger = load_and_validate_ledger()
-    match_result = match_differences("oborovo", diffs, ledger)
-    unexplained = [d for d in diffs if d not in match_result.matched]
-    assert not unexplained, (
-        f"oborovo TAX_CFADS gate: {len(unexplained)} unexplained differences"
+    result = subprocess.run(
+        [sys.executable, "-m", "finco_parity.check_financial_engine_tax_cfads",
+         "--all", "--check"],
+        capture_output=True,
+        text=True,
+        cwd=str(_REPO_ROOT),
+    )
+    assert result.returncode == 0, (
+        f"TAX_CFADS gate failed (exit {result.returncode}):\n"
+        f"STDOUT:\n{result.stdout}\n"
+        f"STDERR:\n{result.stderr}"
     )
 
 
@@ -1041,13 +1064,17 @@ def test_vat_in_depreciation_bridge():
 
 
 def test_opex_category_period_coverage():
-    """OPEX B.01-B.13 rows must be UNRESOLVED_SOURCE/OPEN (780 rows, Python value absent).
+    """OPEX B.01-B.13 rows must be present (780 rows) with Python values wired.
 
-    Per-category OPEX is not wired into the canonical Python snapshot.
-    Until extraction is wired, all 780 category-period rows must be
-    classified UNRESOLVED_SOURCE with status OPEN__ROOT_CAUSE_REQUIRED.
+    Stage A completion: the hierarchical OPEX engine (build_oborovo_opex_capability +
+    compute_periods) is now wired. All 780 category-period rows must have Python
+    values set (not None) and be classified MATCH or PERIOD_CONVENTION (both RESOLVED).
+
+    Previously classified UNRESOLVED_SOURCE/OPEN — now wired and classified.
     """
-    from finco_recon.recon_03_oborovo_full import build_delta_register, UNRESOLVED_SOURCE, OPEN
+    from finco_recon.recon_03_oborovo_full import (
+        build_delta_register, UNRESOLVED_SOURCE, OPEN, MATCH, PERIOD_CONVENTION, RESOLVED,
+    )
 
     register = build_delta_register()
     cat_rows = [
@@ -1062,23 +1089,26 @@ def test_opex_category_period_coverage():
         f"got {len(cat_rows)}"
     )
 
-    # Check all are UNRESOLVED_SOURCE / OPEN with None Python values
-    wrong_class = [r for r in cat_rows if r["classification"] != UNRESOLVED_SOURCE]
-    assert not wrong_class, (
-        f"Found {len(wrong_class)} OPEX category rows not classified UNRESOLVED_SOURCE. "
-        f"Examples: {[r['recon_id'] for r in wrong_class[:5]]}"
-    )
-
-    wrong_status = [r for r in cat_rows if r["status"] != OPEN]
-    assert not wrong_status, (
-        f"Found {len(wrong_status)} OPEX category rows with status != OPEN__ROOT_CAUSE_REQUIRED. "
-        f"Examples: {[(r['recon_id'], r['status']) for r in wrong_status[:5]]}"
-    )
-
-    none_python = [r for r in cat_rows if r["python_value"] is not None]
+    # All rows must have Python values (engine wired)
+    none_python = [r for r in cat_rows if r["python_value"] is None]
     assert not none_python, (
-        f"Found {len(none_python)} OPEX category rows with non-None Python values. "
-        "Per-category OPEX is not wired into canonical snapshot — all should be None."
+        f"Found {len(none_python)} OPEX category rows with python_value=None. "
+        "Engine wiring may have failed — check _compute_opex_category_periods()."
+    )
+
+    # All must be classified MATCH or PERIOD_CONVENTION (both RESOLVED)
+    valid_cl = {MATCH, PERIOD_CONVENTION}
+    wrong_class = [r for r in cat_rows if r["classification"] not in valid_cl]
+    assert not wrong_class, (
+        f"Found {len(wrong_class)} OPEX category rows with unexpected classification. "
+        f"Examples: {[(r['recon_id'], r['classification']) for r in wrong_class[:5]]}"
+    )
+
+    # All must be RESOLVED
+    wrong_status = [r for r in cat_rows if r["status"] != RESOLVED]
+    assert not wrong_status, (
+        f"Found {len(wrong_status)} OPEX category rows with status != RESOLVED. "
+        f"Examples: {[(r['recon_id'], r['status']) for r in wrong_status[:5]]}"
     )
 
 

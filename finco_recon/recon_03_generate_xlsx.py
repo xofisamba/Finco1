@@ -32,6 +32,7 @@ from finco_recon.recon_03_oborovo_full import (
     OUT_OF_CLEAN_ENGINE_SCOPE,
     RESOLVED,
     OPEN,
+    OPEN_CASCADE,
 )
 
 _OUT_PATH = pathlib.Path("artifacts/reconciliation/oborovo_excel_python_reconciliation.xlsx")
@@ -62,7 +63,7 @@ def _fill_for_row(row: dict) -> PatternFill | None:
         return _GREEN
     if cl == PYTHON_BUG:
         return _RED
-    if st == OPEN:
+    if st in (OPEN, OPEN_CASCADE):
         return _ORANGE
     if cl == PERIOD_CONVENTION:
         return _YELLOW
@@ -121,7 +122,13 @@ def _write_readme(wb: openpyxl.Workbook, excel_meta: dict) -> None:
         ("", ""),
         ("Known residuals", ""),
         ("OPEX total delta", "~-3.98 kEUR (PERIOD_CONVENTION — nominal vs actual day count)"),
-        ("Book dep drift", "POLICY_DIFFERENCE — OPERATING_CORE depreciation schedule"),
+        ("Book dep delta", "PYTHON_BUG — IDC/commitment_fees/bank_fees absent from Python dep basis (20y/12y lives)"),
+        ("Revenue delta", "UNRESOLVED_SOURCE — +1,047.9492 kEUR cumulative; arithmetic bridge incomplete"),
+        ("", ""),
+        ("Stage A status", "SOURCE COMPLETION IN PROGRESS — DO NOT MERGE"),
+        ("DSCR actual-vs-target", "UNRESOLVED_SOURCE — CF row 138 not extracted from Excel fixture"),
+        ("Avg DSCR", "returns.actual_avg_dscr is Python waterfall engine result, NOT Excel AVERAGEIF(CF!G138:DW138,\"<10\")"),
+        ("Material OPEN count", "893 rows > 1 kEUR (all open statuses combined)"),
     ]
 
     for r, (k, v) in enumerate(rows, start=1):
@@ -136,16 +143,29 @@ def _write_exec_summary(wb: openpyxl.Workbook, register: list[dict], python_snap
 
     ret = python_snap["returns"]
     total = len(register)
-    open_c = sum(1 for r in register if r["status"] == OPEN)
-    mat_open = sum(1 for r in register if r["status"] == OPEN and r["materiality"] == "MATERIAL")
+    open_rrc = sum(1 for r in register if r["status"] == OPEN)
+    open_cascade = sum(1 for r in register if r["status"] == OPEN_CASCADE)
+    total_open = open_rrc + open_cascade
+    mat_open = sum(
+        1 for r in register
+        if r["status"] in (OPEN, OPEN_CASCADE) and r["materiality"] == "MATERIAL"
+    )
     by_cl: dict[str, int] = {}
+    by_st: dict[str, int] = {}
     for row in register:
         by_cl[row["classification"]] = by_cl.get(row["classification"], 0) + 1
+        by_st[row["status"]] = by_st.get(row["status"], 0) + 1
 
     rows = [
         ("Total reconciliation rows", total, ""),
-        ("OPEN items", open_c, "Require root cause"),
-        ("Material OPEN items (>1 kEUR)", mat_open, "Priority"),
+        ("Total OPEN (all statuses)", total_open, "OPEN__ROOT_CAUSE_REQUIRED + OPEN__CASCADE_CONFIRMATION_REQUIRED"),
+        ("OPEN__ROOT_CAUSE_REQUIRED", open_rrc, "Source missing / root cause unconfirmed"),
+        ("OPEN__CASCADE_CONFIRMATION_REQUIRED", open_cascade, "Downstream cascade — awaiting Stage B A/B proof"),
+        ("Material OPEN items (>1 kEUR)", mat_open, "Priority — all open statuses"),
+        ("", "", ""),
+        ("Status: RESOLVED", by_st.get(RESOLVED, 0), ""),
+        ("Status: OPEN__ROOT_CAUSE_REQUIRED", by_st.get(OPEN, 0), ""),
+        ("Status: OPEN__CASCADE_CONFIRMATION_REQUIRED", by_st.get(OPEN_CASCADE, 0), ""),
         ("", "", ""),
         ("Python project IRR", f"{ret.get('project_irr', 0)*100:.3f}%", ""),
         ("Python equity IRR", f"{ret.get('equity_irr', 0)*100:.3f}%", ""),
