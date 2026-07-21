@@ -253,51 +253,49 @@ def test_opex_period_convention_residual():
 # H. STAGE A GATE: material_open_count == 0
 # ---------------------------------------------------------------------------
 
-def test_stage_a_gate_material_open_count_zero():
-    """STAGE A CLOSURE GATE: material_open_count must be exactly 0.
+def test_stage_a_honest_open_count_reported():
+    """STAGE A HONEST REPORTING: material_open_count and source_open_count are reported.
 
-    This is the primary acceptance criterion for Stage A.
-    All material deltas must be classified with a documented root cause
-    and status=RESOLVED. Any MATERIAL + OPEN__ROOT_CAUSE_REQUIRED row blocks Stage A.
+    Stage A governance correction: do NOT require material_open_count == 0 by
+    mislabelling UNRESOLVED_SOURCE rows as RESOLVED.
 
-    Root causes documented in this register:
-    - PYTHON_BUG: book dep basis missing IDC/commitment_fees/bank_fees (~1,751.89 kEUR)
+    This test verifies that:
+    - The register summary includes material_open_count (even if > 0)
+    - All UNRESOLVED_SOURCE rows are OPEN (not RESOLVED)
+    - source_open_count is computed and reported
+
+    Root causes in register:
+    - PYTHON_BUG: book dep basis missing IDC/commitment_fees/bank_fees (20y/12y lives)
     - POLICY_DIFFERENCE: PpaIndexationStartPolicy (+1,047.95 kEUR revenue delta)
     - PERIOD_CONVENTION: OPEX/production actual vs nominal day fractions (-3.98 kEUR)
-    - UNRESOLVED_SOURCE: values absent from Excel extraction (not out-of-scope)
+    - UNRESOLVED_SOURCE (OPEN): values absent from extraction (B.01-B.13, tax dep, returns, etc.)
+    - OPEN__CASCADE_CONFIRMATION_REQUIRED: downstream P&L/tax/CFADS/debt awaiting A/B proof
     """
     from finco_recon.recon_03_oborovo_full import build_delta_register, summarise, OPEN
 
     register = build_delta_register()
     summary = summarise(register)
 
+    # Verify summary has honest counts
+    assert "material_open_count" in summary, "Summary must include material_open_count"
+    assert "source_open_count" in summary, "Summary must include source_open_count"
+    assert "total_open_count" in summary, "Summary must include total_open_count"
+
     material_open = summary["material_open_count"]
-    total_open = summary["open_count"]
-    non_material_open = summary["non_material_open_count"]
+    total_open = summary["total_open_count"]
+    source_open = summary["source_open_count"]
 
-    # Report detail for diagnostics
-    if material_open > 0:
-        mat_open_rows = [
-            r for r in register
-            if r["status"] == OPEN and r["materiality"] == "MATERIAL"
-        ]
-        detail = "\n".join(
-            f"  {r['recon_id']}: delta={r['delta']}, cl={r['classification']}, "
-            f"rc={r['root_cause'][:80]}"
-            for r in mat_open_rows[:20]
-        )
-        pytest.fail(
-            f"Stage A BLOCKED: {material_open} material OPEN rows found.\n"
-            f"total_open={total_open}, material_open={material_open}, "
-            f"non_material_open={non_material_open}\n"
-            f"First {min(20, material_open)} material OPEN rows:\n{detail}"
-        )
-
-    assert material_open == 0, (
-        f"material_open_count={material_open} — Stage A gate not met"
+    # Report for information — NOT a blocking assertion
+    print(
+        f"\nHonest Stage A counts: total_open={total_open}, "
+        f"material_open={material_open}, source_open={source_open}"
     )
-    # Also report non-material for information (non-blocking)
-    # non_material_open is not a blocking criterion
+    # Source open must be > 0 (many UNRESOLVED_SOURCE rows exist)
+    assert source_open > 0, (
+        "source_open_count must be > 0 — there are many UNRESOLVED_SOURCE rows "
+        "(OPEX B.01-B.13, tax dep, returns etc). If source_open_count == 0, "
+        "UNRESOLVED_SOURCE rows are being incorrectly classified as RESOLVED."
+    )
 
 
 def test_no_undocumented_material_open_deltas():
@@ -647,14 +645,18 @@ def test_delta_register_valid_classifications():
 
 
 def test_delta_register_valid_status():
-    """All status values must be RESOLVED or OPEN__ROOT_CAUSE_REQUIRED."""
-    from finco_recon.recon_03_oborovo_full import build_delta_register, RESOLVED, OPEN
+    """All status values must be RESOLVED, OPEN__ROOT_CAUSE_REQUIRED, or OPEN__CASCADE_CONFIRMATION_REQUIRED."""
+    from finco_recon.recon_03_oborovo_full import (
+        build_delta_register, RESOLVED, OPEN, OPEN_CASCADE,
+    )
 
     register = build_delta_register()
+    valid_statuses = {RESOLVED, OPEN, OPEN_CASCADE}
     for row in register:
         st = row["status"]
-        assert st in (RESOLVED, OPEN), (
-            f"Unknown status {st!r} in row {row.get('recon_id')!r}"
+        assert st in valid_statuses, (
+            f"Unknown status {st!r} in row {row.get('recon_id')!r}. "
+            f"Valid statuses: {valid_statuses}"
         )
 
 
@@ -731,13 +733,15 @@ def test_fixtures_present():
 def test_dscr_target_vs_actual_separated():
     """target_dscr and actual_avg_dscr must be documented as distinct concepts in register.
 
-    Stage A addendum: DSCR concepts must NOT be conflated.
+    Stage A addendum (corrected): DSCR concepts must NOT be conflated.
     - ppa_target_dscr (DSCR_PPA_TARGET row): sizing parameter = 1.15
-    - actual_avg_dscr_python_vs_excel (DSCR_AVG_VS_EXCEL row): comparison with Excel AVERAGEIF
-    - actual_avg_dscr_waterfall_semantics (DSCR_ACTUAL_AVG_WATERFALL row): waterfall engine value
+    - actual_avg_dscr_python_vs_excel (DSCR_AVG_VS_EXCEL row): UNRESOLVED_SOURCE
+      (Excel CF row 138 not in fixtures; python_value = target averageif, NOT Excel fact)
+    - actual_avg_dscr_waterfall_semantics (DSCR_ACTUAL_AVG_WATERFALL row): UNRESOLVED_SOURCE
+      (Excel CF row 138 not available for comparison)
     These are documented as distinct rows with separate recon_ids.
     """
-    from finco_recon.recon_03_oborovo_full import build_delta_register
+    from finco_recon.recon_03_oborovo_full import build_delta_register, UNRESOLVED_SOURCE
 
     register = build_delta_register()
 
@@ -752,25 +756,27 @@ def test_dscr_target_vs_actual_separated():
     # actual_avg_dscr_python_vs_excel row must exist
     avg_vs_excel_row = next((r for r in register if r["recon_id"] == "DSCR_AVG_VS_EXCEL"), None)
     assert avg_vs_excel_row is not None, "DSCR_AVG_VS_EXCEL row must exist in register"
+    # Must be UNRESOLVED_SOURCE (Excel CF row 138 not available)
+    assert avg_vs_excel_row["classification"] == UNRESOLVED_SOURCE, (
+        f"DSCR_AVG_VS_EXCEL must be UNRESOLVED_SOURCE (not {avg_vs_excel_row['classification']!r})"
+    )
 
     # waterfall semantics row must exist
     waterfall_row = next(
         (r for r in register if r["recon_id"] == "DSCR_ACTUAL_AVG_WATERFALL"), None
     )
     assert waterfall_row is not None, "DSCR_ACTUAL_AVG_WATERFALL row must exist in register"
-
-    # The three rows must have DISTINCT python_values
-    ppa_pv = ppa_target_row["python_value"]
-    avg_pv = avg_vs_excel_row["python_value"]
-    waterfall_pv = waterfall_row["python_value"]
-
-    assert ppa_pv != avg_pv, (
-        f"target_dscr ({ppa_pv}) and averageif_avg ({avg_pv}) must differ — "
-        "they represent distinct DSCR concepts"
+    # Must be UNRESOLVED_SOURCE (Excel CF row 138 not available)
+    assert waterfall_row["classification"] == UNRESOLVED_SOURCE, (
+        f"DSCR_ACTUAL_AVG_WATERFALL must be UNRESOLVED_SOURCE "
+        f"(not {waterfall_row['classification']!r})"
     )
-    assert waterfall_pv != avg_pv, (
-        f"waterfall actual_avg ({waterfall_pv}) and averageif_avg ({avg_pv}) must differ — "
-        "they use different period populations and methods"
+
+    # python_values: ppa_target and waterfall actual_avg must be distinct
+    ppa_pv = ppa_target_row["python_value"]  # 1.15
+    waterfall_pv = waterfall_row["python_value"]  # 1.1786
+    assert ppa_pv != waterfall_pv, (
+        f"ppa_target ({ppa_pv}) and waterfall actual_avg ({waterfall_pv}) must differ"
     )
 
     # Each must have documented root_cause explaining the semantic difference
@@ -782,50 +788,83 @@ def test_dscr_target_vs_actual_separated():
         )
 
 
-def test_excel_avg_dscr_formula_recreated():
-    """Python AVERAGEIF(<10) on financing.senior_debt.dscr must be within 0.10 of Excel 1.24.
+def test_excel_dscr_row138_not_fabricated():
+    """DSCR_AVG_VS_EXCEL row must NOT claim a fabricated Excel CF row 138 value.
 
-    Stage A addendum: independently recompute Excel Average Senior DSCR formula
-    =SUMIF(G138:DW138,"<10")/COUNTIF(G138:DW138,"<10") using Python per-period DSCRs.
-    Result must be within ±0.10 of verified Excel value 1.24.
+    CORRECTION: financing.senior_debt.dscr[i] contains sculpting TARGET DSCRs (1.15/1.35),
+    NOT actual realized DSCRs from Excel CF tab row 138.
+    The formula (24×1.15 + 19×1.35)/43 = 1.2384 applies to Python TARGETS, not Excel row 138.
+    Excel CF row 138 actual values post-PPA expiry are ~1.77, 1.73, 1.80, 1.75 — NOT 1.35.
+
+    This test verifies:
+    1. DSCR_AVG_VS_EXCEL excel_value is None (not a fabricated 1.24 or 1.2384)
+    2. DSCR_AVG_VS_EXCEL is classified as UNRESOLVED_SOURCE (not MATCH)
+    3. No register row asserts Excel DSCR avg = 1.2384 as a verified fact
     """
-    d = _load_python()
-    py_dscr = d["financing"]["senior_debt"]["dscr"]
-
-    # Replicate Excel AVERAGEIF formula: include only values < 10 (exclude None and ≥ 10)
-    valid = [x for x in py_dscr if x is not None and x < 10]
-    assert len(valid) > 0, "No valid DSCR values found (all None or >= 10)"
-
-    python_averageif = sum(valid) / len(valid)
-    excel_avg = 1.24
-
-    assert abs(python_averageif - excel_avg) <= 0.10, (
-        f"Python AVERAGEIF(<10) = {python_averageif:.4f}, "
-        f"Excel Average Senior DSCR = {excel_avg}. "
-        f"Delta {abs(python_averageif - excel_avg):.4f} exceeds tolerance 0.10. "
-        f"Valid period count: {len(valid)}. "
-        "Check: are per-period DSCRs in financing.senior_debt.dscr correct?"
+    from finco_recon.recon_03_oborovo_full import (
+        build_delta_register, UNRESOLVED_SOURCE, OPEN,
     )
 
-    # Also verify the register row captures this correctly
-    from finco_recon.recon_03_oborovo_full import build_delta_register
     register = build_delta_register()
     avg_row = next((r for r in register if r["recon_id"] == "DSCR_AVG_VS_EXCEL"), None)
     assert avg_row is not None, "DSCR_AVG_VS_EXCEL row must exist"
-    assert avg_row["python_value"] is not None, "DSCR_AVG_VS_EXCEL python_value must not be None"
-    assert abs(avg_row["python_value"] - python_averageif) < 1e-9, (
-        f"Register DSCR_AVG_VS_EXCEL python_value {avg_row['python_value']:.6f} "
-        f"doesn't match independently computed AVERAGEIF {python_averageif:.6f}"
+
+    # Excel value must be None — CF row 138 not extracted
+    assert avg_row["excel_value"] is None, (
+        f"DSCR_AVG_VS_EXCEL excel_value must be None (CF row 138 not in committed fixtures). "
+        f"Got {avg_row['excel_value']}. Do NOT hardcode 1.24 or 1.2384 as Excel fact."
     )
+    # Must be UNRESOLVED_SOURCE, not MATCH
+    assert avg_row["classification"] == UNRESOLVED_SOURCE, (
+        f"DSCR_AVG_VS_EXCEL must be UNRESOLVED_SOURCE, got {avg_row['classification']!r}. "
+        "Cannot claim MATCH without verified Excel CF row 138 data."
+    )
+    # Must be OPEN
+    assert avg_row["status"] == OPEN, (
+        f"DSCR_AVG_VS_EXCEL must be OPEN__ROOT_CAUSE_REQUIRED, got {avg_row['status']!r}."
+    )
+
+    # Also verify the register row has Python target averageif documented
+    assert avg_row["python_value"] is not None, (
+        "DSCR_AVG_VS_EXCEL python_value should contain Python target DSCR AVERAGEIF"
+    )
+    # Python target averageif should be ~1.2384 (24×1.15 + 19×1.35)/43
+    assert abs(avg_row["python_value"] - 1.2384) < 0.01, (
+        f"DSCR_AVG_VS_EXCEL python_value={avg_row['python_value']:.4f} "
+        "should be the Python TARGET DSCR averageif ≈ 1.2384. "
+        "This is NOT an Excel CF row 138 value — it is the average of sculpting targets."
+    )
+
+
+def test_python_dscr_array_contains_targets_only():
+    """financing.senior_debt.dscr must contain only sculpting target values (1.15 or 1.35).
+
+    CORRECTION: This array holds sculpting TARGETS, not actual CF tab row 138 realized DSCRs.
+    Values should be exactly 1.15 (PPA contracted periods), 1.35 (PV merchant periods), or None.
+    """
+    d = _load_python()
+    py_dscr = d["financing"]["senior_debt"]["dscr"]
+    valid = [x for x in py_dscr if x is not None]
+
+    # All valid values should be 1.15 or 1.35 (sculpting targets)
+    for v in valid:
+        assert abs(v - 1.15) < 0.001 or abs(v - 1.35) < 0.001, (
+            f"financing.senior_debt.dscr contains value {v:.4f} which is not a "
+            f"sculpting target (1.15 or 1.35). This array contains TARGETS, not actual DSCRs. "
+            f"Actual CF row 138 values post-PPA expiry would be ~1.77, 1.73, etc."
+        )
 
 
 def test_python_dscr_semantics_documented():
     """Root cause for avg_dscr rows must explain the semantic difference between DSCR concepts.
 
-    Stage A addendum: DSCR_ACTUAL_AVG_WATERFALL row must classify as POLICY_DIFFERENCE
-    and explain why waterfall actual_avg_dscr differs from Excel Average Senior DSCR.
+    CORRECTION: DSCR_ACTUAL_AVG_WATERFALL must now be UNRESOLVED_SOURCE (not POLICY_DIFFERENCE)
+    because Excel CF row 138 is not in committed fixtures — we cannot classify the delta
+    until both sides are available.
     """
-    from finco_recon.recon_03_oborovo_full import build_delta_register, POLICY_DIFFERENCE
+    from finco_recon.recon_03_oborovo_full import (
+        build_delta_register, UNRESOLVED_SOURCE, OPEN,
+    )
 
     register = build_delta_register()
     waterfall_row = next(
@@ -833,18 +872,21 @@ def test_python_dscr_semantics_documented():
     )
     assert waterfall_row is not None, "DSCR_ACTUAL_AVG_WATERFALL row must exist"
 
-    # Must be classified as POLICY_DIFFERENCE (not PYTHON_BUG)
-    assert waterfall_row["classification"] == POLICY_DIFFERENCE, (
-        f"DSCR_ACTUAL_AVG_WATERFALL classification must be POLICY_DIFFERENCE, "
-        f"got {waterfall_row['classification']!r}. "
-        "The delta between waterfall actual_avg_dscr and Excel avg is a method/population "
-        "difference, NOT a calculation bug."
+    # Must be UNRESOLVED_SOURCE (Excel CF row 138 not in fixtures)
+    assert waterfall_row["classification"] == UNRESOLVED_SOURCE, (
+        f"DSCR_ACTUAL_AVG_WATERFALL classification must be UNRESOLVED_SOURCE "
+        f"(Excel CF row 138 not in committed fixtures), "
+        f"got {waterfall_row['classification']!r}."
+    )
+    assert waterfall_row["status"] == OPEN, (
+        f"DSCR_ACTUAL_AVG_WATERFALL status must be OPEN__ROOT_CAUSE_REQUIRED, "
+        f"got {waterfall_row['status']!r}."
     )
 
-    # Root cause must mention the semantic difference
+    # Root cause must explain the waterfall engine semantics
     rc = waterfall_row.get("root_cause", "")
-    assert "POLICY_DIFFERENCE" in rc or "policy" in rc.lower() or "different" in rc.lower(), (
-        f"DSCR_ACTUAL_AVG_WATERFALL root_cause must explain the policy/method difference. "
+    assert "waterfall" in rc.lower() or "actual" in rc.lower(), (
+        f"DSCR_ACTUAL_AVG_WATERFALL root_cause must explain waterfall engine semantics. "
         f"Got: {rc[:200]}"
     )
     assert len(rc) > 100, (
@@ -852,7 +894,7 @@ def test_python_dscr_semantics_documented():
         f"Got {len(rc)} chars: {rc[:100]}"
     )
 
-    # DSCR_AVG_DSCR_SEMANTIC must document that returns.avg_dscr is NOT actual average
+    # DSCR_AVG_DSCR_SEMANTIC must document that returns.avg_dscr is a sculpting target
     avg_semantic_row = next(
         (r for r in register if r["recon_id"] == "DSCR_AVG_DSCR_SEMANTIC"), None
     )
@@ -861,4 +903,204 @@ def test_python_dscr_semantics_documented():
     assert "sculpt" in rc2.lower() or "target" in rc2.lower() or "convergence" in rc2.lower(), (
         f"DSCR_AVG_DSCR_SEMANTIC root_cause must explain avg_dscr is a sculpting target, "
         f"not an actual average. Got: {rc2[:200]}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# New required tests (Stage A corrections)
+# ---------------------------------------------------------------------------
+
+def test_no_unresolved_source_resolved():
+    """No row may have classification=UNRESOLVED_SOURCE AND status=RESOLVED.
+
+    PROHIBITED: UNRESOLVED_SOURCE + RESOLVED.
+    Knowing the reason for missing extraction does NOT resolve the financial reconciliation.
+    UNRESOLVED_SOURCE always requires status=OPEN__ROOT_CAUSE_REQUIRED.
+    """
+    from finco_recon.recon_03_oborovo_full import (
+        build_delta_register, UNRESOLVED_SOURCE, RESOLVED,
+    )
+
+    register = build_delta_register()
+    violations = [
+        r for r in register
+        if r["classification"] == UNRESOLVED_SOURCE and r["status"] == RESOLVED
+    ]
+    assert not violations, (
+        f"Found {len(violations)} rows with PROHIBITED combination "
+        f"classification=UNRESOLVED_SOURCE + status=RESOLVED:\n"
+        + "\n".join(
+            f"  {v['recon_id']}: {v['financial_section']}.{v['financial_line']}"
+            for v in violations[:20]
+        )
+    )
+
+
+def test_dscr_actual_vs_target_distinct():
+    """financing.senior_debt.dscr must be sculpting targets only (not actual CF row 138).
+
+    The actual CF tab row 138 DSCR values are NOT in the committed fixtures.
+    The Python dscr array must be verified as containing only sculpting targets
+    (1.15 or 1.35), which are DISTINCT from actual post-PPA DSCR values (~1.77 etc).
+    """
+    d = _load_python()
+    py_dscr = d["financing"]["senior_debt"]["dscr"]
+    valid = [x for x in py_dscr if x is not None]
+
+    assert len(valid) > 0, "No non-None DSCR values in financing.senior_debt.dscr"
+
+    # All must be sculpting targets (1.15 or 1.35)
+    non_targets = [v for v in valid if abs(v - 1.15) > 0.001 and abs(v - 1.35) > 0.001]
+    assert not non_targets, (
+        f"financing.senior_debt.dscr contains non-target values: {non_targets[:5]}. "
+        "This array should contain only sculpting targets (1.15 or 1.35). "
+        "Actual CF row 138 realized DSCRs would show values like 1.77, 1.73 post-PPA."
+    )
+
+    # Must have both 1.15 and 1.35 periods for Oborovo
+    assert any(abs(v - 1.15) < 0.001 for v in valid), "Must have 1.15 (PPA target) periods"
+    assert any(abs(v - 1.35) < 0.001 for v in valid), "Must have 1.35 (PV merchant target) periods"
+
+
+def test_book_dep_excel_lives_20y_12y():
+    """Register must document 20y for hard CAPEX and 12y for financing costs (NOT 25y).
+
+    Excel Inputs sheet (manually verified):
+    - Hard CAPEX assets (Production Units, EPC, Grid, etc.) → 20-year book life
+    - Financing costs (IDC, commitment fees, bank fees) → 12-year book life
+    This test verifies the register documentation reflects correct lives.
+    """
+    from finco_recon.recon_03_oborovo_full import build_delta_register
+
+    register = build_delta_register()
+    # Check book dep cumulative row root_cause
+    cum_row = next(
+        (r for r in register
+         if r["financial_section"] == "BOOK_DEPRECIATION"
+         and "cumulative" in r["financial_line"]),
+        None,
+    )
+    assert cum_row is not None, "Book dep cumulative row must exist"
+    rc = cum_row.get("root_cause", "")
+    assert "20" in rc, (
+        f"Book dep cumulative root_cause must mention '20' (year hard CAPEX life). Got: {rc[:300]}"
+    )
+    assert "12" in rc, (
+        f"Book dep cumulative root_cause must mention '12' (year financing cost life). Got: {rc[:300]}"
+    )
+    # Must NOT claim 25y as Excel hard CAPEX life
+    assert "25" not in rc or "25-year" not in rc.lower() or "python" in rc.lower(), (
+        f"Book dep root_cause incorrectly claims 25y as Excel hard CAPEX life. "
+        f"Excel uses 20y (hard CAPEX) and 12y (financing costs). Got: {rc[:300]}"
+    )
+
+    # Check IDC per-item rows document 12y life
+    idc_rows = [
+        r for r in register
+        if "dep_idc" in r.get("financial_line", "")
+        and r["period_index"] == 0
+    ]
+    if idc_rows:
+        ef = idc_rows[0].get("excel_formula_source", "")
+        assert "12" in ef or "12y" in ef.lower() or "financing" in ef.lower(), (
+            f"IDC dep row excel_formula_source must document 12y financing life. Got: {ef}"
+        )
+
+
+def test_vat_in_depreciation_bridge():
+    """VAT must be listed as a component in the book dep basis bridge.
+
+    Excel dep_vat_keur cumulative total = 222.07 kEUR.
+    This is a candidate for the ~224.60 kEUR unexplained dep basis residual
+    (after IDC+commitment_fees+bank_fees = 1,751.89 kEUR is accounted for).
+    VAT dep life status is OPEN until confirmed from Excel Inputs sheet.
+    """
+    from finco_recon.recon_03_oborovo_full import build_delta_register
+
+    register = build_delta_register()
+    # VAT must appear in some book dep row root_cause
+    vat_mentioned = any(
+        "VAT" in r.get("root_cause", "") or "vat" in r.get("root_cause", "").lower()
+        for r in register
+        if r["financial_section"] == "BOOK_DEPRECIATION"
+    )
+    assert vat_mentioned, (
+        "VAT (dep_vat_keur) must be mentioned in at least one BOOK_DEPRECIATION root_cause. "
+        "dep_vat_keur cumulative = 222.07 kEUR is a candidate for the unexplained dep delta."
+    )
+
+    # VAT per-item rows must exist
+    vat_rows = [
+        r for r in register
+        if "dep_vat" in r.get("financial_line", "")
+    ]
+    assert len(vat_rows) > 0, (
+        "dep_vat_keur per-period rows must exist in register. "
+        "Excel Dep sheet includes dep_vat_keur as a separate line item."
+    )
+
+
+def test_opex_category_period_coverage():
+    """OPEX B.01-B.13 rows must be UNRESOLVED_SOURCE/OPEN (780 rows, Python value absent).
+
+    Per-category OPEX is not wired into the canonical Python snapshot.
+    Until extraction is wired, all 780 category-period rows must be
+    classified UNRESOLVED_SOURCE with status OPEN__ROOT_CAUSE_REQUIRED.
+    """
+    from finco_recon.recon_03_oborovo_full import build_delta_register, UNRESOLVED_SOURCE, OPEN
+
+    register = build_delta_register()
+    cat_rows = [
+        r for r in register
+        if r["financial_section"] == "OPEX"
+        and r["financial_line"] != "total_opex_keur"
+        and r["financial_line"] != "total_opex_keur_cumulative"
+        and r["period_index"] is not None
+    ]
+    assert len(cat_rows) >= 780, (
+        f"Expected at least 780 OPEX category-period rows (B.01-B.13 × 60 periods), "
+        f"got {len(cat_rows)}"
+    )
+
+    # Check all are UNRESOLVED_SOURCE / OPEN with None Python values
+    wrong_class = [r for r in cat_rows if r["classification"] != UNRESOLVED_SOURCE]
+    assert not wrong_class, (
+        f"Found {len(wrong_class)} OPEX category rows not classified UNRESOLVED_SOURCE. "
+        f"Examples: {[r['recon_id'] for r in wrong_class[:5]]}"
+    )
+
+    wrong_status = [r for r in cat_rows if r["status"] != OPEN]
+    assert not wrong_status, (
+        f"Found {len(wrong_status)} OPEX category rows with status != OPEN__ROOT_CAUSE_REQUIRED. "
+        f"Examples: {[(r['recon_id'], r['status']) for r in wrong_status[:5]]}"
+    )
+
+    none_python = [r for r in cat_rows if r["python_value"] is not None]
+    assert not none_python, (
+        f"Found {len(none_python)} OPEX category rows with non-None Python values. "
+        "Per-category OPEX is not wired into canonical snapshot — all should be None."
+    )
+
+
+def test_material_open_count_reported():
+    """Register stats must include material_open_count (even if > 0).
+
+    Stage A correction: material_open_count is reported honestly.
+    It is NOT required to be 0 — mislabelling UNRESOLVED_SOURCE as RESOLVED
+    to achieve zero is PROHIBITED.
+    """
+    from finco_recon.recon_03_oborovo_full import build_delta_register, summarise
+
+    register = build_delta_register()
+    summary = summarise(register)
+
+    assert "material_open_count" in summary, (
+        "Summary must include 'material_open_count' key"
+    )
+    assert isinstance(summary["material_open_count"], int), (
+        f"material_open_count must be int, got {type(summary['material_open_count'])}"
+    )
+    # Just verify it's reported — no assertion on the specific value
+    assert summary["material_open_count"] >= 0, (
+        "material_open_count must be non-negative"
     )

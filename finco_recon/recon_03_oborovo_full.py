@@ -69,6 +69,7 @@ OUT_OF_CLEAN_ENGINE_SCOPE = "OUT_OF_CLEAN_ENGINE_SCOPE"
 
 RESOLVED = "RESOLVED"
 OPEN = "OPEN__ROOT_CAUSE_REQUIRED"
+OPEN_CASCADE = "OPEN__CASCADE_CONFIRMATION_REQUIRED"
 
 _TOL = 0.5  # kEUR — treat as match below this
 
@@ -476,14 +477,16 @@ def recon_opex(excel: dict, python_snap: dict, register: list) -> None:
                 excel_val=ev,
                 python_val=None,  # NOT None because out-of-scope; None because not extracted
                 classification=UNRESOLVED_SOURCE,
-                status=RESOLVED,
+                status=OPEN,
                 root_cause=(
                     f"OPEX category {cat} per-period not exposed in canonical Python snapshot. "
                     "The hierarchical OPEX engine (finco_core.opex.hierarchical._calculator."
                     "compute_periods) CAN compute this value — extraction wiring is pending. "
                     "This is NOT out-of-scope; it is a missing extraction. "
-                    "Validated via cumulative total (OPEX_CUM row). "
-                    "Classified RESOLVED because the root cause (missing extraction) is known."
+                    "Classified OPEN__ROOT_CAUSE_REQUIRED because Python value is absent; "
+                    "reconciliation cannot be confirmed until extraction is wired. "
+                    "Knowing the root cause (missing extraction) does NOT resolve the "
+                    "financial reconciliation."
                 ),
                 excel_source=f"CF.opex_items_period_keur.{cat}",
                 python_source="N/A — per-category not in canonical snapshot; "
@@ -533,8 +536,8 @@ def recon_ebitda(excel: dict, python_snap: dict, register: list) -> None:
         ev = e_ebitda[i + 1] if e_ebitda[i + 1] is not None else None
         pv = py_ebitda[i]
         if ev is None:
-            cl, st = UNRESOLVED_SOURCE, RESOLVED
-            rc = "Excel EBITDA not extracted for this period"
+            cl, st = UNRESOLVED_SOURCE, OPEN
+            rc = "Excel EBITDA not extracted for this period. OPEN__ROOT_CAUSE_REQUIRED."
         else:
             abs_d = abs(pv - ev)
             # EBITDA = Revenue + OPEX: differences flow from upstream POLICY_DIFFERENCE (revenue)
@@ -599,12 +602,22 @@ def recon_book_depreciation(excel: dict, python_snap: dict, register: list) -> N
     eop = dep["eop_date"]
 
     _BOOK_DEP_BUG_RC = (
-        "PYTHON_BUG: Python book depreciation basis is missing IDC/commitment_fees/bank_fees "
-        "(Excel dep_idc_keur + dep_commitment_fees_keur + dep_bank_fees_keur = ~1,751.89 kEUR "
-        "cumulative). These financing costs are capitalized in the Excel model and depreciated "
-        "over the project life, but are absent from the CapexStructure passed to "
-        "finco_core.depreciation.canonical_wiring. Per-period delta flows from this basis gap. "
-        "DO NOT FIX HERE — diagnosis only."
+        "PYTHON_BUG: Python book depreciation basis missing financing costs. "
+        "Excel Inputs sheet (manually verified): hard CAPEX assets (Production Units, EPC Contract, "
+        "EPC other costs, Grid connection, Investments, Insurances, Project finance costs, "
+        "Commissioning, Contingencies, Project rights, VAT costs) → 20-year book life. "
+        "Financing costs (IDC, Commitment fees, Bank fees) → 12-year book life. "
+        "Python canonical_wiring appears to use 25-year life for hard CAPEX (INCORRECT). "
+        "Missing from Python dep basis: "
+        "IDC(1,086.03 kEUR) + commitment_fees(188.56 kEUR) + bank_fees(477.30 kEUR) = 1,751.89 kEUR "
+        "(depreciated over 12-year financing cost lives). "
+        "Remaining unexplained delta ~224.60 kEUR likely includes VAT costs (dep_vat_keur = 222.07 kEUR "
+        "cumulative) — VAT dep life classification is OPEN__ROOT_CAUSE_REQUIRED "
+        "(Excel Inputs dep life for VAT not confirmed in committed fixtures). "
+        "Exact basis bridge: Base CAPEX ~55,999 kEUR × 20y, IDC ~1,086 kEUR × 12y, "
+        "Commitment fees ~189 kEUR × 12y, Bank fees ~477 kEUR × 12y, VAT ~222 kEUR (life OPEN). "
+        "excel_formula_source: 'Excel Inputs sheet: 20y hard CAPEX, 12y financing costs'. "
+        "DO NOT FIX HERE — Stage A diagnosis only."
     )
 
     dep_items = [k for k in dep.keys() if k.startswith("dep_") and k != "dep_total_keur"]
@@ -662,6 +675,11 @@ def recon_book_depreciation(excel: dict, python_snap: dict, register: list) -> N
         e_arr = dep[item_key]
         for i in range(60):
             ev = e_arr[i + 1]  # may be None
+            # Determine expected dep life for this item (Excel Inputs sheet manual verification)
+            _financing_items = {"dep_idc_keur", "dep_commitment_fees_keur", "dep_bank_fees_keur"}
+            _expected_life = "12y (financing cost)" if item_key in _financing_items else "20y (hard CAPEX)"
+            if item_key == "dep_vat_keur":
+                _expected_life = "OPEN — VAT dep life not confirmed in committed fixtures"
             register.append(_row(
                 recon_id=f"BDEP_{item_key}_{i:02d}",
                 section="BOOK_DEPRECIATION",
@@ -672,14 +690,18 @@ def recon_book_depreciation(excel: dict, python_snap: dict, register: list) -> N
                 excel_val=ev,
                 python_val=None,  # per-item not exposed in canonical snapshot
                 classification=UNRESOLVED_SOURCE,
-                status=RESOLVED,
+                status=OPEN,
                 root_cause=(
                     f"Depreciation sub-item {item_key} not exposed per-period in canonical "
                     "Python snapshot. The canonical_wiring DepreciationAuditRow has per-asset-class "
                     "data but it is not surfaced in the snapshot output. "
-                    "Classification RESOLVED because root cause (missing extraction) is documented."
+                    "Classified OPEN__ROOT_CAUSE_REQUIRED — Python value absent; "
+                    "knowing the root cause (missing extraction) does NOT resolve reconciliation. "
+                    f"Excel Inputs sheet dep life for this item: {_expected_life}."
                 ),
                 excel_source=f"Dep.{item_key}",
+                excel_formula_source=f"Excel Inputs sheet: 20y hard CAPEX, 12y financing costs. "
+                                     f"This item expected life: {_expected_life}",
                 python_source="N/A — per-item not in canonical snapshot",
                 python_calculation_source="finco_core.depreciation.canonical_wiring",
             ))
@@ -711,14 +733,15 @@ def recon_tax_depreciation(excel: dict, python_snap: dict, register: list) -> No
             excel_val=None,  # genuinely absent — not extracted from Excel
             python_val=pv,
             classification=UNRESOLVED_SOURCE,
-            status=RESOLVED,
+            status=OPEN,
             root_cause=(
                 "Excel tax depreciation schedule not extracted from workbook. "
-                "Python value documented for reference. "
+                "Python value available but cannot be reconciled without Excel source. "
                 "NOT out-of-scope: the clean engine computes tax dep "
                 "(finco_core.depreciation.canonical_wiring). "
-                "Root cause = missing Excel extraction. OPEN if material items need verification; "
-                "classified RESOLVED because root cause (missing extraction) is known."
+                "Classified OPEN__ROOT_CAUSE_REQUIRED — Excel side absent; "
+                "knowing root cause (missing extraction) does NOT resolve the reconciliation. "
+                "Do NOT assume book dep = tax dep."
             ),
             excel_source="N/A — tax dep not extracted from Excel workbook",
             python_source="operating_schedules.tax_depreciation_keur",
@@ -804,8 +827,8 @@ def recon_pnl(excel: dict, python_snap: dict, register: list) -> None:
                     excel_val=ev,
                     python_val=pv,
                     classification=UNRESOLVED_SOURCE,
-                    status=RESOLVED,
-                    root_cause="Value absent in source — delta not computable",
+                    status=OPEN,
+                    root_cause="Value absent in source — delta not computable. OPEN__ROOT_CAUSE_REQUIRED.",
                     excel_source=f"P&L.{ekey}",
                     python_source=f"financial_statements.pnl.periods[{i}].{pkey}",
                 ))
@@ -819,8 +842,15 @@ def recon_pnl(excel: dict, python_snap: dict, register: list) -> None:
                 cl, st = MATCH, RESOLVED
                 rc = "P&L line matched (after sign convention alignment)"
             else:
-                cl, st = cascade_cl, RESOLVED
-                rc = cascade_rc
+                # Downstream cascade: status OPEN__CASCADE_CONFIRMATION_REQUIRED until
+                # A/B correction proves exact causality from book dep PYTHON_BUG.
+                cl, st = cascade_cl, OPEN_CASCADE
+                rc = (
+                    cascade_rc + " "
+                    "Status OPEN__CASCADE_CONFIRMATION_REQUIRED: exact causality of this "
+                    "downstream delta requires A/B correction proof from book dep PYTHON_BUG fix. "
+                    "Do NOT mark RESOLVED until Stage B correction confirms the cascade."
+                )
 
             register.append(_row(
                 recon_id=f"{prefix}_{i:02d}",
@@ -887,19 +917,23 @@ def recon_tax_lcf(excel: dict, python_snap: dict, register: list) -> None:
                     cl, st = MATCH, RESOLVED
                     rc = "Tax LCF matched"
                 else:
-                    # Tax differences cascade from dep PYTHON_BUG and revenue POLICY_DIFFERENCE
-                    cl, st = PYTHON_BUG, RESOLVED
+                    # Tax differences cascade from dep PYTHON_BUG and revenue POLICY_DIFFERENCE.
+                    # Status OPEN__CASCADE_CONFIRMATION_REQUIRED until A/B proof.
+                    cl, st = PYTHON_BUG, OPEN_CASCADE
                     rc = (
                         "Tax delta cascades from PYTHON_BUG in book dep basis "
-                        "(IDC/fees missing from Python depreciation) and "
-                        "POLICY_DIFFERENCE in revenue (PpaIndexationStartPolicy)."
+                        "(IDC/fees missing from Python depreciation, 20y/12y lives vs Python 25y) and "
+                        "POLICY_DIFFERENCE in revenue (PpaIndexationStartPolicy). "
+                        "Status OPEN__CASCADE_CONFIRMATION_REQUIRED: causality not yet confirmed "
+                        "by A/B correction. Do NOT mark RESOLVED until Stage B."
                     )
             else:
-                cl, st = UNRESOLVED_SOURCE, RESOLVED
+                cl, st = UNRESOLVED_SOURCE, OPEN
                 rc = (
                     "No Excel counterpart extracted for this tax field. "
                     "Python value available; Excel side UNRESOLVED_SOURCE. "
-                    "NOT out-of-scope — extraction pending."
+                    "NOT out-of-scope — extraction pending. "
+                    "OPEN__ROOT_CAUSE_REQUIRED: knowing root cause does not resolve reconciliation."
                 )
 
             register.append(_row(
@@ -951,10 +985,11 @@ def recon_cfads(excel: dict, python_snap: dict, register: list) -> None:
             excel_val=None,
             python_val=pv,
             classification=UNRESOLVED_SOURCE,
-            status=RESOLVED,
+            status=OPEN,
             root_cause=(
                 "cf_after_tax not directly extracted from Excel CF sheet. "
-                "NOT out-of-scope — extraction pending. Python value available."
+                "NOT out-of-scope — extraction pending. Python value available. "
+                "OPEN__ROOT_CAUSE_REQUIRED: knowing root cause does not resolve reconciliation."
             ),
             excel_source="N/A — not extracted from Excel",
             python_source=f"tax_and_cfads.cf_after_tax_keur[{i}]",
@@ -966,16 +1001,19 @@ def recon_cfads(excel: dict, python_snap: dict, register: list) -> None:
         pv2 = py_fcf_banks[i] if i < len(py_fcf_banks) else None
 
         if ev2 is None or pv2 is None:
-            cl2, st2 = UNRESOLVED_SOURCE, RESOLVED
-            rc2 = "Value absent in source — delta not computable"
+            cl2, st2 = UNRESOLVED_SOURCE, OPEN
+            rc2 = ("Value absent in source — delta not computable. "
+                   "OPEN__ROOT_CAUSE_REQUIRED.")
         else:
             abs_d = abs(pv2 - ev2)
             if abs_d < _TOL:
                 cl2, st2 = MATCH, RESOLVED
                 rc2 = "FCF for banks aligned"
             else:
-                cl2, st2 = PYTHON_BUG, RESOLVED
-                rc2 = _CFADS_CASCADE_RC
+                cl2, st2 = PYTHON_BUG, OPEN_CASCADE
+                rc2 = (_CFADS_CASCADE_RC + " "
+                       "Status OPEN__CASCADE_CONFIRMATION_REQUIRED: "
+                       "causality not confirmed until Stage B.")
 
         register.append(_row(
             recon_id=f"CFADS_FCF_{i:02d}",
@@ -1028,16 +1066,19 @@ def recon_senior_debt(excel: dict, python_snap: dict, register: list) -> None:
             pv = pv_arr[i] if i < len(pv_arr) else None
 
             if ev is None or pv is None:
-                cl, st = UNRESOLVED_SOURCE, RESOLVED
-                rc = "Value absent in source"
+                cl, st = UNRESOLVED_SOURCE, OPEN
+                rc = ("Value absent in source. "
+                      "OPEN__ROOT_CAUSE_REQUIRED.")
             else:
                 abs_d = abs(pv - ev)
                 if abs_d < _TOL:
                     cl, st = MATCH, RESOLVED
                     rc = "Senior debt matched"
                 else:
-                    cl, st = PYTHON_BUG, RESOLVED
-                    rc = _SD_CASCADE_RC
+                    cl, st = PYTHON_BUG, OPEN_CASCADE
+                    rc = (_SD_CASCADE_RC + " "
+                          "Status OPEN__CASCADE_CONFIRMATION_REQUIRED: "
+                          "causality not confirmed until Stage B.")
 
             register.append(_row(
                 recon_id=f"{prefix}_{i:02d}",
@@ -1088,16 +1129,19 @@ def recon_shl(excel: dict, python_snap: dict, register: list) -> None:
             pv = pv_arr[i] if i < len(pv_arr) else None
 
             if ev is None or pv is None:
-                cl, st = UNRESOLVED_SOURCE, RESOLVED
-                rc = "Value absent in source"
+                cl, st = UNRESOLVED_SOURCE, OPEN
+                rc = ("Value absent in source. "
+                      "OPEN__ROOT_CAUSE_REQUIRED.")
             else:
                 abs_d = abs(pv - ev)
                 if abs_d < _TOL:
                     cl, st = MATCH, RESOLVED
                     rc = "SHL matched"
                 else:
-                    cl, st = PYTHON_BUG, RESOLVED
-                    rc = _SHL_CASCADE_RC
+                    cl, st = PYTHON_BUG, OPEN_CASCADE
+                    rc = (_SHL_CASCADE_RC + " "
+                          "Status OPEN__CASCADE_CONFIRMATION_REQUIRED: "
+                          "causality not confirmed until Stage B.")
 
             register.append(_row(
                 recon_id=f"{prefix}_{i:02d}",
@@ -1188,14 +1232,16 @@ def recon_dscr(excel: dict, python_snap: dict, register: list) -> None:
             ev = None
 
         if ev is None or pv is None:
-            cl, st = UNRESOLVED_SOURCE, RESOLVED
-            rc = "DSCR not computable (zero or absent debt service)"
+            cl, st = UNRESOLVED_SOURCE, OPEN
+            rc = ("DSCR not computable (zero or absent debt service). "
+                  "OPEN__ROOT_CAUSE_REQUIRED.")
         elif abs(pv - ev) < 0.01:
             cl, st = MATCH, RESOLVED
             rc = "DSCR matched"
         else:
-            cl, st = PYTHON_BUG, RESOLVED
-            rc = _DSCR_CASCADE_RC
+            cl, st = PYTHON_BUG, OPEN_CASCADE
+            rc = (_DSCR_CASCADE_RC + " "
+                  "Status OPEN__CASCADE_CONFIRMATION_REQUIRED.")
 
         # Per-period target DSCR: 1.15 for contracted (periods 0-23), 1.35 for PV merchant (24-42)
         # Weighted formula: 1.15*contracted_share + 1.65*bess_share + 1.35*pv_merchant_share
@@ -1229,6 +1275,7 @@ def recon_dscr(excel: dict, python_snap: dict, register: list) -> None:
         ))
 
         # Target DSCR row — per-period weighted target (separate from actual)
+        _tgt_match = (target_period is not None and pv is not None and abs(pv - target_period) < 0.001)
         register.append(_row(
             recon_id=f"DSCR_TARGET_{i:02d}",
             section="DSCR",
@@ -1238,8 +1285,8 @@ def recon_dscr(excel: dict, python_snap: dict, register: list) -> None:
             period_end=eop[i + 1],
             excel_val=target_period,
             python_val=pv,  # sculpted → pv equals target
-            classification=MATCH if (target_period is not None and pv is not None and abs(pv - target_period) < 0.001) else UNRESOLVED_SOURCE,
-            status=RESOLVED,
+            classification=MATCH if _tgt_match else UNRESOLVED_SOURCE,
+            status=RESOLVED if _tgt_match else OPEN,
             root_cause=target_rc,
             excel_source=(
                 "Excel formula: =($B$22*PeriodContractedRevenueShare)"
@@ -1255,19 +1302,27 @@ def recon_dscr(excel: dict, python_snap: dict, register: list) -> None:
     # ---------------------------------------------------------------------------
     ret = python_snap["returns"]
 
-    # Compute AVERAGEIF(<10) independently from financing.senior_debt.dscr
-    # This replicates Excel formula: =SUMIF(G138:DW138,"<10")/COUNTIF(G138:DW138,"<10")
+    # Compute AVERAGEIF(<10) of Python sculpting TARGET DSCRs
+    # NOTE: financing.senior_debt.dscr[i] = sculpting TARGET DSCR (1.15 or 1.35),
+    # NOT the actual CF tab row 138 DSCR (which is FCFB / actual_debt_service per period).
+    # Excel CF row 138 actual DSCR values are NOT extracted in committed fixtures.
+    # The Excel Average Senior DSCR (≈1.24) is from AVERAGEIF on CF row 138 actual values,
+    # which post-PPA expiry show values like 1.77, 1.73, 1.80, 1.75 — NOT 1.35.
+    # DO NOT claim Python target-DSCR averageif equals Excel CF row 138 averageif.
     py_dscr_full = sd.get("dscr", [])
     valid_for_avg = [x for x in py_dscr_full if x is not None and x < 10]
-    python_averageif_lt10 = (
+    python_target_averageif_lt10 = (
         sum(valid_for_avg) / len(valid_for_avg) if valid_for_avg else None
     )
-    excel_avg_senior_dscr = 1.24  # Excel verified value
+    # Excel CF row 138 average: UNRESOLVED_SOURCE — not in committed fixtures
+    # DO NOT hardcode 1.2384 or 1.24 as a verified Excel fact.
+    # (24×1.15 + 19×1.35)/43 = 1.2384 is the Python TARGET average, not Excel row 138 data.
 
     target_dscr = ret.get("avg_dscr")        # 1.150 — sculpting convergence target
     actual_avg = ret.get("actual_avg_dscr")  # 1.1786 — waterfall engine SUM/SUM
     actual_min = ret.get("actual_min_dscr")  # 1.15 — minimum
     min_dscr_val = ret.get("min_dscr")       # 1.15 — same as actual_min
+    python_averageif_lt10 = python_target_averageif_lt10  # alias for legacy references
 
     # Row 1: ppa_target_dscr = 1.15 (Excel B22)
     register.append(_row(
@@ -1295,8 +1350,8 @@ def recon_dscr(excel: dict, python_snap: dict, register: list) -> None:
         review_note=(
             f"ppa_target=1.15, pv_merchant_target=1.35, bess_merchant_target=1.65; "
             f"actual_avg_dscr(waterfall)={actual_avg:.4f}; "
-            f"averageif_lt10(Python)={python_averageif_lt10:.4f}; "
-            f"excel_avg_senior_dscr={excel_avg_senior_dscr}"
+            f"python_target_averageif_lt10={python_target_averageif_lt10:.4f}; "
+            "excel_avg_senior_dscr=UNRESOLVED (CF row 138 not in committed fixtures)"
         ),
     ))
 
@@ -1334,56 +1389,66 @@ def recon_dscr(excel: dict, python_snap: dict, register: list) -> None:
         excel_val=1.65,
         python_val=None,
         classification=UNRESOLVED_SOURCE,
-        status=RESOLVED,
+        status=OPEN,
         root_cause=(
             "bess_merchant_target_dscr = 1.65 (Excel D22). "
             "Not applicable to Oborovo (no BESS merchant revenue in this project). "
             "Documented as sizing parameter for future projects with BESS merchant exposure. "
-            "Python: no BESS merchant periods → no dscr[i]=1.65 values in snapshot."
+            "Python: no BESS merchant periods → no dscr[i]=1.65 values in snapshot. "
+            "OPEN__ROOT_CAUSE_REQUIRED: Python value absent."
         ),
         excel_source="Excel D22 (BESS merchant target DSCR)",
         python_source="N/A — no BESS merchant periods in Oborovo",
         python_output_path="N/A",
     ))
 
-    # Row 4: Bank Case vs Base Case
+    # -------------------------------------------------------------------------
+    # Corrected Row: Bank Case vs Base Case — UNRESOLVED_SOURCE (FCFB proxy removed)
+    # -------------------------------------------------------------------------
+    # CRITICAL: Do NOT assert ebitda_keur[0] == Bank Case FCFB.
+    # FCFB = EBITDA + cash_tax + lender_adjustments + VAT/refinancing_adjustments.
+    # These components are NOT the same as EBITDA.
+    # Python canonical snapshot does NOT label scenario provenance (Bank Case vs Base Case).
+    # Inferring Bank Case from ebitda[0] matching a single period value is INSUFFICIENT.
+    # Until scenario provenance is proven from snapshot metadata: UNRESOLVED_SOURCE / OPEN.
+
+    # Row 4: Bank Case vs Base Case — UNRESOLVED_SOURCE
     register.append(_row(
         recon_id="DSCR_BANK_CASE",
         section="DSCR",
-        line="bank_case_vs_base_case",
+        line="bank_case_vs_base_case_provenance",
         period_index=None,
         period_start=None,
         period_end=None,
-        excel_val=2575.0,  # Excel Bank Case FCFB period 1 ≈ 2,575 kEUR
-        python_val=2575.0034247825092,  # Python ebitda_keur[0] (Bank Case)
-        classification=MATCH,
-        status=RESOLVED,
+        excel_val=None,  # Excel Bank Case FCFB row not extracted from committed fixtures
+        python_val=None,  # Python scenario provenance not labeled in canonical snapshot
+        classification=UNRESOLVED_SOURCE,
+        status=OPEN,
         root_cause=(
-            "Debt sizing uses Bank Case (P90-10y stress scenario). "
-            "Excel Bank Case FCFB period 1 ≈ 2,575 kEUR. "
-            "Python ebitda_keur[0] = 2,575.00 kEUR = Bank Case FCFB[0]. "
-            "Python canonical snapshot does NOT separately label 'bank_case' vs 'base_case' fields — "
-            "the canonical run uses Bank Case inputs (P90-10y) for debt sculpting. "
-            "The operating_schedules.ebitda_keur series = Bank Case FCFB used for debt sizing. "
-            "Base Case (P50) FCFB ≈ 2,993 kEUR is NOT separately stored in the canonical snapshot "
-            "→ classified UNRESOLVED_SOURCE for base_case side, MATCH for bank_case[0]. "
-            "Debt-service-capacity[t] = Bank Case FCFB[t] / target_dscr[t] (sculpted per period). "
-            "Binding constraint: DSCR capacity. Senior debt ≈ 42,852 kEUR. "
-            "Total project ≈ 57,973 kEUR. Gearing ≈ 73.92% < 80% max (gearing cap not binding)."
+            "UNRESOLVED_SOURCE: Bank Case vs Base Case scenario provenance cannot be confirmed. "
+            "CRITICAL: EBITDA is NOT the same as FCFB (Free Cash Flow to Banks). "
+            "FCFB = EBITDA + cash_tax + lender_adjustments + VAT/refinancing_adjustments. "
+            "Do NOT assert operating_schedules.ebitda_keur == Bank Case FCFB. "
+            "Python canonical snapshot does NOT separately label scenario provenance — "
+            "metadata does not confirm 'bank_case' (P90-10y) vs 'base_case' (P50). "
+            "Inferring Bank Case from a single matching period ebitda value is INSUFFICIENT. "
+            "Excel Bank Case FCFB row not extracted in committed fixtures. "
+            "Status OPEN__ROOT_CAUSE_REQUIRED until both FCFB components and scenario "
+            "provenance are confirmed from snapshot metadata."
         ),
-        excel_source="Excel Bank Case FCFB row (P90-10y stress)",
-        python_source="operating_schedules.ebitda_keur[0] (= Bank Case FCFB, used for debt sizing)",
-        python_output_path="operating_schedules.ebitda_keur",
+        excel_source="N/A — Excel Bank Case FCFB row not in committed fixtures",
+        python_source="N/A — scenario provenance not labeled in canonical snapshot",
+        python_output_path="operating_schedules.ebitda_keur (EBITDA, NOT FCFB)",
     ))
 
-    # Row 5: actual_avg_dscr Python vs Excel AVERAGEIF(<10) — THE KEY COMPARISON
-    # Excel: AVERAGEIF(dscr_range, "<10") = (24×1.15 + 19×1.35)/43 = 1.2384 ≈ 1.24
-    # Python averageif: same calculation applied to financing.senior_debt.dscr = 1.2384
-    # Python returns.actual_avg_dscr: waterfall engine SUM/SUM over different population = 1.1786
-    averageif_delta = (
-        python_averageif_lt10 - excel_avg_senior_dscr
-        if python_averageif_lt10 is not None else None
-    )
+    # Row 5: DSCR average comparison — Excel CF row 138 UNRESOLVED
+    # CRITICAL CORRECTION: financing.senior_debt.dscr[i] = sculpting TARGET DSCR (1.15 or 1.35)
+    # NOT the actual realized DSCR from Excel CF tab row 138.
+    # Excel CF row 138 actual DSCR values post-PPA expiry: 1.77, 1.73, 1.80, 1.75 (manual evidence)
+    # — these are NOT the same as the sculpting targets.
+    # The formula (24×1.15 + 19×1.35)/43 = 1.2384 applies to PYTHON TARGETS, not Excel row 138.
+    # Excel Average Senior DSCR from CF row 138 AVERAGEIF: NOT in committed fixtures.
+    # DO NOT claim 1.2384 or 1.24 as verified Excel CF row 138 values.
     register.append(_row(
         recon_id="DSCR_AVG_VS_EXCEL",
         section="DSCR",
@@ -1391,46 +1456,45 @@ def recon_dscr(excel: dict, python_snap: dict, register: list) -> None:
         period_index=None,
         period_start=None,
         period_end=None,
-        excel_val=excel_avg_senior_dscr,
-        python_val=python_averageif_lt10,
-        classification=MATCH if averageif_delta is not None and abs(averageif_delta) < 0.05 else UNRESOLVED_SOURCE,
-        status=RESOLVED,
+        excel_val=None,   # Excel CF row 138 average: UNRESOLVED_SOURCE — not in committed fixtures
+        python_val=python_target_averageif_lt10,  # Average of Python SCULPTING TARGETS (not actual)
+        classification=UNRESOLVED_SOURCE,
+        status=OPEN,
         root_cause=(
-            f"Excel Average Senior DSCR ≈ 1.24. "
-            f"Formula: =SUMIF(G138:DW138,'<10')/COUNTIF(G138:DW138,'<10') = AVERAGEIF(dscr,<10). "
-            f"This is: simple arithmetic average of per-period DSCRs below 10x. "
-            f"NOT target DSCR. NOT weighted average. NOT SUM(CFADS)/SUM(DS). "
-            f"Python AVERAGEIF recomputed from financing.senior_debt.dscr: "
-            f"{python_averageif_lt10:.4f} ({len(valid_for_avg)} periods below 10x). "
-            f"Calculation: (24×1.15 + 19×1.35)/43 = 53.25/43 = {python_averageif_lt10:.4f}. "
-            f"Delta vs Excel 1.24: {averageif_delta:+.4f} → MATCH (rounding). "
-            f"DISTINCT from returns.actual_avg_dscr={actual_avg:.4f} (waterfall SUM/SUM "
-            f"over different population including post-tenure periods). "
-            f"returns.actual_avg_dscr vs Excel 1.24: delta={actual_avg - excel_avg_senior_dscr:+.4f} "
-            f"→ POLICY_DIFFERENCE (different averaging method + different period population). "
-            f"Python returns.avg_dscr={target_dscr} = sculpting convergence target (NOT average). "
-            f"Python returns.min_dscr={min_dscr_val} = min of sculpting target DSCRs (= 1.15 PPA target)."
+            "UNRESOLVED_SOURCE: Excel Average Senior DSCR (CF tab row 138 AVERAGEIF) "
+            "is NOT extracted in committed fixtures. "
+            "CORRECTION: financing.senior_debt.dscr[i] = sculpting TARGET DSCR (1.15/1.35), "
+            "NOT the actual realized DSCR from Excel CF tab row 138. "
+            "Manual Excel evidence shows actual DSCR post-PPA expiry: 1.77, 1.73, 1.80, 1.75 "
+            "— these are NOT the sculpting targets. "
+            f"Python target AVERAGEIF(<10) = {python_target_averageif_lt10:.4f} "
+            f"({len(valid_for_avg)} periods), computed as "
+            f"(24×1.15 + 19×1.35)/{len(valid_for_avg)} = {python_target_averageif_lt10:.4f}. "
+            "This is the average of TARGET DSCRs, NOT the Excel row 138 average. "
+            "Senior debt tenor: COD(2030-07-01) + 14y = 2044-07-01 → 28 semi-annual periods "
+            "(not 43). Period population must be validated against actual debt tenor. "
+            "Status OPEN__ROOT_CAUSE_REQUIRED: Excel CF row 138 values not available; "
+            "cannot confirm or deny DSCR average reconciliation."
         ),
         excel_source=(
-            "Excel row 138: actual DSCR per period. "
-            "Average formula: =SUMIF(G138:DW138,'<10')/COUNTIF(G138:DW138,'<10')"
+            "Excel CF tab row 138: actual DSCR per period (AVERAGEIF < 10). "
+            "NOT extracted in committed fixtures → UNRESOLVED_SOURCE."
         ),
         python_source=(
-            "financing.senior_debt.dscr[0..59] filtered <10, arithmetic average. "
-            "DISTINCT from returns.actual_avg_dscr (waterfall engine SUM/SUM)."
+            f"financing.senior_debt.dscr[0..59] AVERAGEIF(<10) = {python_target_averageif_lt10:.4f}. "
+            "WARNING: this array contains SCULPTING TARGETS (1.15/1.35), not realized DSCRs."
         ),
         python_output_path="financing.senior_debt.dscr",
         review_note=(
-            f"python_averageif={python_averageif_lt10:.4f}, "
-            f"excel_avg=1.24, "
+            f"python_target_averageif={python_target_averageif_lt10:.4f} ({len(valid_for_avg)} periods), "
             f"python_actual_avg_dscr(waterfall)={actual_avg:.4f}, "
             f"python_avg_dscr(sculpting_target)={target_dscr}. "
-            "Classification for waterfall actual_avg vs Excel avg: POLICY_DIFFERENCE. "
-            "Classification for Python AVERAGEIF vs Excel AVERAGEIF: MATCH."
+            "Excel CF row 138 average: UNRESOLVED. "
+            "Senior debt tenor 14y = 28 semi-annual periods (not 43 as previously stated)."
         ),
     ))
 
-    # Row 6: Python returns.actual_avg_dscr semantics documented
+    # Row 6: Python returns.actual_avg_dscr semantics — UNRESOLVED vs Excel CF row 138
     register.append(_row(
         recon_id="DSCR_ACTUAL_AVG_WATERFALL",
         section="DSCR",
@@ -1438,35 +1502,31 @@ def recon_dscr(excel: dict, python_snap: dict, register: list) -> None:
         period_index=None,
         period_start=None,
         period_end=None,
-        excel_val=excel_avg_senior_dscr,
+        excel_val=None,  # Excel CF row 138 average: UNRESOLVED — not in committed fixtures
         python_val=actual_avg,
-        classification=POLICY_DIFFERENCE,
-        status=RESOLVED,
+        classification=UNRESOLVED_SOURCE,
+        status=OPEN,
         root_cause=(
+            f"UNRESOLVED_SOURCE: Excel Average Senior DSCR (CF tab row 138) not in committed fixtures. "
             f"returns.actual_avg_dscr = {actual_avg:.4f} (waterfall engine computation). "
-            "Semantic: SUM(d for d in all_dsrs if d != inf) / COUNT(d for d in all_dsrs if d != inf). "
+            "Semantic (source code verified — finco_core/waterfall/waterfall_engine.py line 1342): "
+            "actual_avg_dscr = SUM(d for d in all_dsrs if d != inf) / COUNT(d for d in all_dsrs if d != inf). "
             "'all_dsrs' is populated by waterfall_engine.py per operating period "
             "as ebitda_minus_tax / senior_ds (or inf when senior_ds=0). "
-            "Period population differs from Excel AVERAGEIF: "
-            "waterfall includes ALL 60 periods where senior_ds>0 (including partial periods), "
-            "while Excel AVERAGEIF filters only periods with actual DSCR < 10x (43 periods). "
-            f"Excel AVERAGEIF result ≈ 1.24. Python AVERAGEIF of financing.senior_debt.dscr = "
-            f"{python_averageif_lt10:.4f} (MATCH with Excel). "
-            f"Python waterfall actual_avg = {actual_avg:.4f} (delta vs Excel = "
-            f"{actual_avg - excel_avg_senior_dscr:+.4f}). "
-            "Root cause of delta: POLICY_DIFFERENCE — "
-            "waterfall uses actual EBITDA/DS ratio; Excel averages sculpting target DSCRs. "
-            "These measure different things: Python actual_avg measures realized cash generation "
-            "efficiency; Excel avg shows the sculpting target mix. "
-            "NOT a PYTHON_BUG — the values are consistent but represent different concepts."
+            "This is a realized cash-efficiency ratio, NOT the Excel target-DSCR average. "
+            "DISTINCT from financing.senior_debt.dscr which contains sculpting TARGETS (1.15/1.35). "
+            "Status OPEN__ROOT_CAUSE_REQUIRED: Excel CF row 138 values not available; "
+            "cannot classify DSCR average delta until both populations are confirmed. "
+            "Do NOT pre-classify as POLICY_DIFFERENCE without extracting Excel CF row 138 data."
         ),
         excel_source=(
-            "Excel Average Senior DSCR ≈ 1.24 "
-            "(AVERAGEIF formula on actual DSCR row 138, filter <10)"
+            "Excel CF tab row 138: actual DSCR per period (AVERAGEIF < 10). "
+            "NOT extracted in committed fixtures."
         ),
         python_source=(
             "returns.actual_avg_dscr = waterfall_engine.py all_dsrs SUM/SUM "
-            "(excludes inf, includes all periods with debt service > 0)"
+            "(excludes inf, includes all periods with debt service > 0). "
+            "Source: finco_core/waterfall/waterfall_engine.py line 1342."
         ),
         python_output_path="returns.actual_avg_dscr",
     ))
@@ -1482,7 +1542,7 @@ def recon_dscr(excel: dict, python_snap: dict, register: list) -> None:
         excel_val=None,
         python_val=target_dscr,
         classification=UNRESOLVED_SOURCE,
-        status=RESOLVED,
+        status=OPEN,
         root_cause=(
             f"returns.avg_dscr = {target_dscr} = sculpting convergence TARGET parameter. "
             "Semantic: the global weighted-average DSCR target that the binary search in "
@@ -1512,7 +1572,7 @@ def recon_dscr(excel: dict, python_snap: dict, register: list) -> None:
         excel_val=None,
         python_val=min_dscr_val,
         classification=UNRESOLVED_SOURCE,
-        status=RESOLVED,
+        status=OPEN,
         root_cause=(
             f"returns.min_dscr = {min_dscr_val} = minimum sculpting target DSCR. "
             "Semantic: min of valid_dsrs from sculpting_iterative.py _calculate_schedule. "
@@ -1569,13 +1629,14 @@ def recon_equity_returns(python_snap: dict, register: list) -> None:
             excel_val=ev,   # None — not extracted from Excel
             python_val=pv,  # exact from snapshot
             classification=UNRESOLVED_SOURCE,
-            status=RESOLVED,
+            status=OPEN,
             root_cause=(
                 f"Python {key}={pv} (exact from canonical snapshot). "
                 "Excel benchmark not extracted from workbook returns sheet. "
                 "Classification UNRESOLVED_SOURCE because Excel side is absent — "
                 "this is NOT out-of-scope, just missing Excel extraction. "
-                "Root cause (missing extraction) is documented → RESOLVED."
+                "OPEN__ROOT_CAUSE_REQUIRED: knowing root cause (missing extraction) "
+                "does NOT resolve the financial reconciliation."
             ),
             excel_source="N/A — returns not extracted from Excel workbook",
             python_source=f"returns.{py_key}",
@@ -1614,26 +1675,44 @@ def summarise(register: list[dict]) -> dict:
     """Return a summary dict."""
     total = len(register)
     by_class: dict[str, int] = {}
+    by_status: dict[str, int] = {}
     open_count = 0
+    cascade_open_count = 0
     material_open = 0
     non_material_open = 0
+    source_open_count = 0
 
     for row in register:
         cl = row["classification"]
+        st = row["status"]
         by_class[cl] = by_class.get(cl, 0) + 1
-        if row["status"] == OPEN:
-            open_count += 1
+        by_status[st] = by_status.get(st, 0) + 1
+
+        if st in (OPEN, OPEN_CASCADE):
+            if st == OPEN:
+                open_count += 1
+            else:
+                cascade_open_count += 1
             if row["materiality"] == "MATERIAL":
                 material_open += 1
             else:
                 non_material_open += 1
 
+        if cl == UNRESOLVED_SOURCE and st in (OPEN, OPEN_CASCADE):
+            source_open_count += 1
+
+    total_open = open_count + cascade_open_count
+
     return {
         "total_rows": total,
         "by_classification": by_class,
+        "by_status": by_status,
+        "total_open_count": total_open,
         "open_count": open_count,
+        "cascade_open_count": cascade_open_count,
         "material_open_count": material_open,
         "non_material_open_count": non_material_open,
+        "source_open_count": source_open_count,
     }
 
 
@@ -1669,7 +1748,12 @@ if __name__ == "__main__":
     summary = summarise(register)
     print(json.dumps(summary, indent=2))
     print(f"\nDelta register built: {summary['total_rows']} rows")
-    print(f"Open items: {summary['open_count']} (material: {summary['material_open_count']})")
+    print(f"Total open: {summary['total_open_count']} "
+          f"(OPEN__ROOT_CAUSE_REQUIRED={summary['open_count']}, "
+          f"OPEN__CASCADE={summary['cascade_open_count']})")
+    print(f"Material open: {summary['material_open_count']} "
+          f"(non-material: {summary['non_material_open_count']})")
+    print(f"Source open (UNRESOLVED_SOURCE+OPEN): {summary['source_open_count']}")
     print("By classification:")
     for cl, cnt in sorted(summary["by_classification"].items()):
         print(f"  {cl}: {cnt}")
