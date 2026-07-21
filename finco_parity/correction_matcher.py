@@ -74,6 +74,8 @@ APPROVED_MANUAL_TEST_REFERENCES: frozenset[str] = frozenset({
     "phase2b.lcf.fifo_vintage_expiry",                # TestD_FifoVintageExpiry + TestP_ModelE_ExactExpiry
     "phase2b.lcf.construction_loss",                  # TestK_ConstructionLoss
     "phase2b.model.no_atad_no_losses",                # TestA_NoAtadNoLosses + TestL_ModelA_Exact
+    # TUHO: opening LCF resolved to zero per manual workbook inspection
+    "phase2b.tuho.opening_lcf_zero.workbook_evidence",  # TestZ_TuhoInputSourceBlocked (resolved)
 })
 
 # ── Constants ─────────────────────────────────────────────────────────────────
@@ -122,8 +124,10 @@ _KNOWN_DRIFT_KINDS = frozenset({
 })
 
 # baseline_ids that may have approved correction records.
-# TUHO must not appear while it is INPUT_SOURCE_BLOCKED.
+# TUHO is now included: opening-loss resolved to zero per manual workbook inspection
+# (20260330_TUHO_BP_2.xlsm). Previously blocked as INPUT_SOURCE_BLOCKED.
 _APPROVED_BASELINE_IDS = frozenset({
+    "tuho",
     "oborovo",
     "generic_solar",
     "generic_wind",
@@ -136,6 +140,8 @@ _REQUIRED_PROFILE = "TAX_CFADS_V1"
 
 # Expected summary counts (exact; verified against actual records).
 _EXPECTED_SUMMARY_COUNTS: dict[str, int] = {
+    "tuho": 544,         # 544 diffs from single root cause: legacy baseline used prior_tax_loss=25k;
+                         # candidate uses zero per manual workbook inspection (20260330_TUHO_BP_2.xlsm)
     "oborovo": 610,
     "generic_solar": 314,
     "generic_wind": 510,
@@ -362,13 +368,12 @@ def load_and_validate_ledger(path: Path) -> dict[str, list[CorrectionRecord]]:
                 f"status must be APPROVED_FINANCIAL_CORRECTION, got {rec['status']!r}"
             )
 
-        # baseline_id: must be in approved set; TUHO must not appear
+        # baseline_id: must be in approved set
         bid = rec["baseline_id"]
         if bid not in _APPROVED_BASELINE_IDS:
             errors.append(
                 f"{loc}: baseline_id {bid!r} is not in the approved set "
-                f"{sorted(_APPROVED_BASELINE_IDS)}. "
-                f"TUHO must not have approved correction records while INPUT_SOURCE_BLOCKED."
+                f"{sorted(_APPROVED_BASELINE_IDS)}."
             )
 
         # Duplicate correction_id
