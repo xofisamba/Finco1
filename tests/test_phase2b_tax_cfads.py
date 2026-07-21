@@ -2184,8 +2184,8 @@ class TestTuhoConstructionLoss:
         )
         snap = generate_tax_cfads_candidate_snapshot("tuho")
         tc = snap["tax_and_cfads"]
-        # After construction SHL interest injection the first operating tax year must have
-        # some loss-used (candidate offsets operating profit against construction LCF).
+        # The candidate must consume the construction-generated carryforward supplied
+        # at the operation boundary.
         taxable_after = tc.get("taxable_profit_after_losses_audit_keur", [])
         taxable_before = tc.get("taxable_income_before_losses_audit_keur", [])
         # Some period early in operations must have before>0 but after=0 (LCF offset)
@@ -2194,8 +2194,8 @@ class TestTuhoConstructionLoss:
             for b, a in zip(taxable_before[:10], taxable_after[:10])
         )
         assert lcf_used, (
-            "Expected at least one early operating period with positive taxable income "
-            "offset to zero by construction LCF. Likely construction interest not injected."
+            "Expected an early operating period with positive taxable income offset by "
+            "the construction-generated boundary carryforward."
         )
 
     def test_tuho_origin_year_is_model_boundary_convention(self):
