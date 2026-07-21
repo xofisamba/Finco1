@@ -1,0 +1,4881 @@
+{
+  "_meta": {
+    "description": "Authoritative OPEX structural truth extracted from Oborovo sensitivity workbook",
+    "source_file": "d49af8ee-20260414_BP_Oborovo_Sensitivity_FINAL_for_PPT.xlsm",
+    "source_sha256": "15a621c4d6b79024980766e00ebc79d7235fd56f00567be7bf345c769ce57920",
+    "sheet": "OpEx",
+    "inputs_sheet": "Inputs",
+    "scenarios_sheet": "Scenarios",
+    "dual_load": "data_only=True for cached values; data_only=False for formulas"
+  },
+  "inputs": {
+    "inflation_rate": {
+      "formula_cell": "OpEx!C102",
+      "formula_text": "=Inputs!D85",
+      "chain": {
+        "Inputs!D85": "=D93",
+        "Inputs!D93": 0.02
+      },
+      "cached_value": 0.02
+    },
+    "senior_debt_tenor": {
+      "formula_cell": "Inputs!D196",
+      "formula_text": "=Scenarios!E345",
+      "cached_value": 14
+    },
+    "second_debt_tenor": {
+      "formula_cell": "Inputs!D259",
+      "cached_value": 7
+    },
+    "b11_3_activation_formula": {
+      "formula_cell": "OpEx!F68",
+      "formula_text": "=IF(F2<=Inputs!$D$196,1,0)",
+      "driver_cell": "Inputs!D196",
+      "driver_cached_value": 14
+    }
+  },
+  "scenarios": {
+    "selector_cell": "Scenarios!E4",
+    "selected_index": 4,
+    "selected_column": "K",
+    "selection_mechanism": "=INDEX(H<row>:K<row>,0,MATCH($E$4,$H$4:$K$4,0))",
+    "columns": {
+      "H": {
+        "index": 1,
+        "name": "HYBRID"
+      },
+      "I": {
+        "index": 2,
+        "name": "Fixed\nNEW OPEX TEMPLATE"
+      },
+      "J": {
+        "index": 3,
+        "name": "Tracker system \nNEW OPEX TEMPLATE"
+      },
+      "K": {
+        "index": 4,
+        "name": "DCSA to RTB, no DEV costs"
+      }
+    }
+  },
+  "categories": {
+    "B.01": {
+      "code": "B.01",
+      "opex_row": 3,
+      "name": "Technical Management",
+      "budget": {
+        "formula_cell": "OpEx!C3",
+        "cached_value": 198,
+        "formula_text": "=SUM(C4:C7)"
+      },
+      "inflation": {
+        "formula_cell": "OpEx!D3",
+        "cached_value": 0.02,
+        "formula_text": "=$C$102"
+      },
+      "wht_cached": 0,
+      "annual": {
+        "formula_template_y1": "=SUMPRODUCT($C$4:$C$7,F4:F7)*(1+$D3)^(F2-1)",
+        "formula_template_y2": "=SUMPRODUCT($C$4:$C$7,G4:G7)*(1+$D3)^(G2-1)",
+        "cached_values_y1_y30": [
+          198,
+          201.96,
+          205.9992,
+          210.119184,
+          214.32156768,
+          218.6079990336,
+          222.980159014272,
+          227.4397621945574,
+          231.98855743844857,
+          236.62832858721754,
+          241.3608951589619,
+          246.1881130621411,
+          251.11187532338397,
+          256.13411282985163,
+          261.2567950864487,
+          266.48193098817757,
+          271.8115696079412,
+          277.2478010001,
+          282.792757020102,
+          288.448612160504,
+          294.2175844037141,
+          300.1019360917884,
+          306.1039748136242,
+          312.2260543098966,
+          318.47057539609455,
+          324.8399869040164,
+          331.3367866420968,
+          337.9635223749387,
+          344.72279282243755,
+          351.61724867888626
+        ]
+      },
+      "subitems": {
+        "B.01.1": {
+          "opex_row": 4,
+          "code": "B.01.1",
+          "name": "Asset Management Contract",
+          "budget": {
+            "formula_cell": "OpEx!C4",
+            "cached_value": 64,
+            "formula_text": "=Scenarios!E237",
+            "scenarios_lineage": {
+              "scenarios_row": 237,
+              "label": "Asset Management Contract",
+              "cached_value": 64,
+              "per_scenario_values": {
+                "H": {
+                  "cached_value": 64
+                },
+                "I": {
+                  "cached_value": 68
+                },
+                "J": {
+                  "cached_value": 64
+                },
+                "K": {
+                  "cached_value": 64
+                }
+              },
+              "selector_formula": "=INDEX(H237:K237,0,MATCH($E$4,$H$4:$K$4,0))",
+              "selected_column": "K"
+            }
+          },
+          "activation_cached_y1_y30": [
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        },
+        "row_5": {
+          "opex_row": 5,
+          "code": null,
+          "name": "Operation Management Contract",
+          "budget": {
+            "formula_cell": "OpEx!C5",
+            "cached_value": 105,
+            "formula_text": "=Scenarios!E238",
+            "scenarios_lineage": {
+              "scenarios_row": 238,
+              "label": "Operation Management Contract",
+              "cached_value": 105,
+              "per_scenario_values": {
+                "H": {
+                  "cached_value": 105
+                },
+                "I": {
+                  "cached_value": 111
+                },
+                "J": {
+                  "cached_value": 105
+                },
+                "K": {
+                  "cached_value": 105
+                }
+              },
+              "selector_formula": "=INDEX(H238:K238,0,MATCH($E$4,$H$4:$K$4,0))",
+              "selected_column": "K"
+            }
+          },
+          "activation_cached_y1_y30": [
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        },
+        "B.01.2": {
+          "opex_row": 6,
+          "code": "B.01.2",
+          "name": "Bazefield",
+          "budget": {
+            "formula_cell": "OpEx!C6",
+            "cached_value": 29,
+            "formula_text": "=Scenarios!E239",
+            "scenarios_lineage": {
+              "scenarios_row": 239,
+              "label": "Bazefield",
+              "cached_value": 29,
+              "per_scenario_values": {
+                "H": {
+                  "cached_value": 29
+                },
+                "I": {
+                  "cached_value": 30
+                },
+                "J": {
+                  "cached_value": 29
+                },
+                "K": {
+                  "cached_value": 29
+                }
+              },
+              "selector_formula": "=INDEX(H239:K239,0,MATCH($E$4,$H$4:$K$4,0))",
+              "selected_column": "K"
+            }
+          },
+          "activation_cached_y1_y30": [
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        },
+        "B.01.3": {
+          "opex_row": 7,
+          "code": "B.01.3",
+          "name": "Others",
+          "budget": {
+            "formula_cell": "OpEx!C7",
+            "cached_value": 0,
+            "formula_text": "=Scenarios!E240",
+            "scenarios_lineage": {
+              "scenarios_row": 240,
+              "label": "Others",
+              "cached_value": 0,
+              "per_scenario_values": {
+                "H": {
+                  "cached_value": 0
+                },
+                "I": {
+                  "cached_value": null
+                },
+                "J": {
+                  "cached_value": 0
+                },
+                "K": {
+                  "cached_value": 0
+                }
+              },
+              "selector_formula": "=INDEX(H240:K240,0,MATCH($E$4,$H$4:$K$4,0))",
+              "selected_column": "K"
+            }
+          },
+          "activation_cached_y1_y30": [
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        }
+      }
+    },
+    "B.02": {
+      "code": "B.02",
+      "opex_row": 8,
+      "name": "Infrastructure Maintenance",
+      "budget": {
+        "formula_cell": "OpEx!C8",
+        "cached_value": 213,
+        "formula_text": "=SUM(C11:C25)+AVERAGE(C9:C10)"
+      },
+      "inflation": {
+        "formula_cell": "OpEx!D8",
+        "cached_value": 0.02,
+        "formula_text": "=$C$102"
+      },
+      "wht_cached": 0,
+      "annual": {
+        "formula_template_y1": "=(SUMPRODUCT($C$9:$C$25,F9:F25))*(1+$D8)^(F2-1)",
+        "formula_template_y2": "=(SUMPRODUCT($C$9:$C$25,G9:G25))*(1+$D8)^(G2-1)",
+        "cached_values_y1_y30": [
+          244,
+          185.64000000000001,
+          189.3528,
+          193.13985599999998,
+          197.00265312,
+          200.9427061824,
+          204.961560306048,
+          209.06079151216892,
+          213.24200734241234,
+          217.50684748926056,
+          221.8569844390458,
+          226.29412412782668,
+          230.82000661038325,
+          235.4364067425909,
+          240.14513487744273,
+          244.94803757499153,
+          249.8469983264914,
+          254.84393829302124,
+          259.94081705888163,
+          265.13963340005927,
+          270.44242606806046,
+          275.8512745894217,
+          281.3683000812101,
+          286.99566608283425,
+          292.735579404491,
+          298.5902909925808,
+          304.5620968124324,
+          310.653338748681,
+          316.8664055236547,
+          323.20373363412773
+        ]
+      },
+      "subitems": {
+        "B.02.1": {
+          "opex_row": 9,
+          "code": "B.02.1",
+          "name": "O&M – Preventive & Corrective Y1-2",
+          "budget": {
+            "formula_cell": "OpEx!C9",
+            "cached_value": 179,
+            "formula_text": "=Scenarios!E242",
+            "scenarios_lineage": {
+              "scenarios_row": 242,
+              "label": "O&M – Preventive & Corrective Y1-2",
+              "cached_value": 179,
+              "per_scenario_values": {
+                "H": {
+                  "cached_value": 179,
+                  "formula_text": "=117+62"
+                },
+                "I": {
+                  "cached_value": 167,
+                  "formula_text": "=102+65"
+                },
+                "J": {
+                  "cached_value": 179,
+                  "formula_text": "=117+62"
+                },
+                "K": {
+                  "cached_value": 179,
+                  "formula_text": "=117+62"
+                }
+              },
+              "selector_formula": "=INDEX(H242:K242,0,MATCH($E$4,$H$4:$K$4,0))",
+              "selected_column": "K"
+            }
+          },
+          "activation_cached_y1_y30": [
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "label_flag_mismatch": "WORKBOOK LABEL / YEAR-INDEX SEMANTIC MISMATCH: label says 'Y1-2' but actual active years: [1]"
+        },
+        "B.02.2": {
+          "opex_row": 10,
+          "code": "B.02.2",
+          "name": "O&M – Preventive & Corrective - Y3-30",
+          "budget": {
+            "formula_cell": "OpEx!C10",
+            "cached_value": 117,
+            "formula_text": "=Scenarios!E243",
+            "scenarios_lineage": {
+              "scenarios_row": 243,
+              "label": "O&M – Preventive & Corrective - Y3-30",
+              "cached_value": 117,
+              "per_scenario_values": {
+                "H": {
+                  "cached_value": 117
+                },
+                "I": {
+                  "cached_value": 102
+                },
+                "J": {
+                  "cached_value": 117
+                },
+                "K": {
+                  "cached_value": 117
+                }
+              },
+              "selector_formula": "=INDEX(H243:K243,0,MATCH($E$4,$H$4:$K$4,0))",
+              "selected_column": "K"
+            }
+          },
+          "activation_cached_y1_y30": [
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ],
+          "label_flag_mismatch": "WORKBOOK LABEL / YEAR-INDEX SEMANTIC MISMATCH: label says 'Y3-30' but actual active from Y2 (29 years: [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30])"
+        },
+        "B.02.3": {
+          "opex_row": 11,
+          "code": "B.02.3",
+          "name": "Substation&O&M Building (included in O&M – Preventive & Corrective)",
+          "budget": {
+            "formula_cell": "OpEx!C11",
+            "cached_value": 0,
+            "formula_text": "=Scenarios!E244",
+            "scenarios_lineage": {
+              "scenarios_row": 244,
+              "label": "Substation&O&M Building (included in O&M – Preventive & Corrective)",
+              "cached_value": 0,
+              "per_scenario_values": {
+                "H": {
+                  "cached_value": 0
+                },
+                "I": {
+                  "cached_value": 0
+                },
+                "J": {
+                  "cached_value": 0
+                },
+                "K": {
+                  "cached_value": 0
+                }
+              },
+              "selector_formula": "=INDEX(H244:K244,0,MATCH($E$4,$H$4:$K$4,0))",
+              "selected_column": "K"
+            }
+          },
+          "activation_cached_y1_y30": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        "row_12": {
+          "opex_row": 12,
+          "code": null,
+          "name": "Inverters / Kiosks / Transformers (included in O&M – Preventive & Corrective)",
+          "budget": {
+            "formula_cell": "OpEx!C12",
+            "cached_value": 0,
+            "formula_text": "=Scenarios!E245",
+            "scenarios_lineage": {
+              "scenarios_row": 245,
+              "label": "Inverters / Kiosks / Transformers (included in O&M – Preventive & Corrective)",
+              "cached_value": 0,
+              "per_scenario_values": {
+                "H": {
+                  "cached_value": 0
+                },
+                "I": {
+                  "cached_value": 0
+                },
+                "J": {
+                  "cached_value": 0
+                },
+                "K": {
+                  "cached_value": 0
+                }
+              },
+              "selector_formula": "=INDEX(H245:K245,0,MATCH($E$4,$H$4:$K$4,0))",
+              "selected_column": "K"
+            }
+          },
+          "activation_cached_y1_y30": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        "row_13": {
+          "opex_row": 13,
+          "code": null,
+          "name": "Regulatory Inspections",
+          "budget": {
+            "formula_cell": "OpEx!C13",
+            "cached_value": 0,
+            "formula_text": "=Scenarios!E246",
+            "scenarios_lineage": {
+              "scenarios_row": 246,
+              "label": "Regulatory Inspections",
+              "cached_value": 0,
+              "per_scenario_values": {
+                "H": {
+                  "cached_value": 0
+                },
+                "I": {
+                  "cached_value": 0
+                },
+                "J": {
+                  "cached_value": 0
+                },
+                "K": {
+                  "cached_value": 0
+                }
+              },
+              "selector_formula": "=INDEX(H246:K246,0,MATCH($E$4,$H$4:$K$4,0))",
+              "selected_column": "K"
+            }
+          },
+          "activation_cached_y1_y30": [
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        },
+        "B.02.4": {
+          "opex_row": 14,
+          "code": "B.02.4",
+          "name": "Inverter service contract / MRA",
+          "budget": {
+            "formula_cell": "OpEx!C14",
+            "cached_value": 1,
+            "formula_text": "=Scenarios!E247",
+            "scenarios_lineage": {
+              "scenarios_row": 247,
+              "label": "Inverter service contract / MRA",
+              "cached_value": 1,
+              "per_scenario_values": {
+                "H": {
+                  "cached_value": 1
+                },
+                "I": {
+                  "cached_value": 1
+                },
+                "J": {
+                  "cached_value": 1
+                },
+                "K": {
+                  "cached_value": 1
+                }
+              },
+              "selector_formula": "=INDEX(H247:K247,0,MATCH($E$4,$H$4:$K$4,0))",
+              "selected_column": "K"
+            }
+          },
+          "activation_cached_y1_y30": [
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        },
+        "B.02.5": {
+          "opex_row": 15,
+          "code": "B.02.5",
+          "name": "Spare parts reprocurement (maintenance contract with contractors)",
+          "budget": {
+            "formula_cell": "OpEx!C15",
+            "cached_value": 64,
+            "formula_text": "=Scenarios!E248",
+            "scenarios_lineage": {
+              "scenarios_row": 248,
+              "label": "Spare parts reprocurement (maintenance contract with contractors)",
+              "cached_value": 64,
+              "per_scenario_values": {
+                "H": {
+                  "cached_value": 64
+                },
+                "I": {
+                  "cached_value": 45
+                },
+                "J": {
+                  "cached_value": 64
+                },
+                "K": {
+                  "cached_value": 64
+                }
+              },
+              "selector_formula": "=INDEX(H248:K248,0,MATCH($E$4,$H$4:$K$4,0))",
+              "selected_column": "K"
+            }
+          },
+          "activation_cached_y1_y30": [
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        },
+        "B.02.6": {
+          "opex_row": 16,
+          "code": "B.02.6",
+          "name": "Sponsor Operation Mgt - BESS",
+          "budget": {
+            "formula_cell": "OpEx!C16",
+            "cached_value": 0,
+            "formula_text": "=Scenarios!E251",
+            "scenarios_lineage": {
+              "scenarios_row": 251,
+              "label": "Sponsor Operation Mgt - BESS",
+              "cached_value": 0,
+              "per_scenario_values": {
+                "H": {
+                  "cached_value": null
+                },
+                "I": {
+                  "cached_value": null
+                },
+                "J": {
+                  "cached_value": null
+                },
+                "K": {
+                  "cached_value": null
+                }
+              },
+              "selector_formula": "=INDEX(H251:K251,0,MATCH($E$4,$H$4:$K$4,0))",
+              "selected_column": "K"
+            }
+          },
+          "activation_cached_y1_y30": [
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        },
+        "row_17": {
+          "opex_row": 17,
+          "code": null,
+          "name": "BESS-EPC preventive and corrective maintenance - 5,5€/kW",
+          "budget": {
+            "formula_cell": "OpEx!C17",
+            "cached_value": 0,
+            "formula_text": "=Scenarios!E252",
+            "scenarios_lineage": {
+              "scenarios_row": 252,
+              "label": "BESS-EPC preventive and corrective maintenance - 5,5€/kW",
+              "cached_value": 0,
+              "per_scenario_values": {
+                "H": {
+                  "cached_value": 354.19999999999993,
+                  "formula_text": "=IF(AND(H16>0,H20>0),5.5*H21,0)"
+                },
+                "I": {
+                  "cached_value": 0,
+                  "formula_text": "=5.5*I21"
+                },
+                "J": {
+                  "cached_value": 0,
+                  "formula_text": "=5.5*J21"
+                },
+                "K": {
+                  "cached_value": 0,
+                  "formula_text": "=5.5*K21"
+                }
+              },
+              "selector_formula": "=INDEX(H252:K252,0,MATCH($E$4,$H$4:$K$4,0))",
+              "selected_column": "K"
+            }
+          },
+          "activation_cached_y1_y30": [
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        },
+        "row_18": {
+          "opex_row": 18,
+          "code": null,
+          "name": "Spare part refru (included in EPC PM & CM)",
+          "budget": {
+            "formula_cell": "OpEx!C18",
+            "cached_value": 0,
+            "formula_text": "=Scenarios!E253",
+            "scenarios_lineage": {
+              "scenarios_row": 253,
+              "label": "Spare part refru (included in EPC PM & CM)",
+              "cached_value": 0,
+              "per_scenario_values": {
+                "H": {
+                  "cached_value": 0
+                },
+                "I": {
+                  "cached_value": 0
+                },
+                "J": {
+                  "cached_value": 0
+                },
+                "K": {
+                  "cached_value": 0
+                }
+              },
+              "selector_formula": "=INDEX(H253:K253,0,MATCH($E$4,$H$4:$K$4,0))",
+              "selected_column": "K"
+            }
+          },
+          "activation_cached_y1_y30": [
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        },
+        "row_19": {
+          "opex_row": 19,
+          "code": null,
+          "name": "PCS Warranty extension (included in EPC PM & CM)",
+          "budget": {
+            "formula_cell": "OpEx!C19",
+            "cached_value": 0,
+            "formula_text": "=Scenarios!E254",
+            "scenarios_lineage": {
+              "scenarios_row": 254,
+              "label": "PCS Warranty extension (included in EPC PM & CM)",
+              "cached_value": 0,
+              "per_scenario_values": {
+                "H": {
+                  "cached_value": 0
+                },
+                "I": {
+                  "cached_value": 0
+                },
+                "J": {
+                  "cached_value": 0
+                },
+                "K": {
+                  "cached_value": 0
+                }
+              },
+              "selector_formula": "=INDEX(H254:K254,0,MATCH($E$4,$H$4:$K$4,0))",
+              "selected_column": "K"
+            }
+          },
+          "activation_cached_y1_y30": [
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        },
+        "row_20": {
+          "opex_row": 20,
+          "code": null,
+          "name": "BESS Perf guarantee ( Availability / RTE ) - 1500€/BESS",
+          "budget": {
+            "formula_cell": "OpEx!C20",
+            "cached_value": 0,
+            "formula_text": "=Scenarios!E255",
+            "scenarios_lineage": {
+              "scenarios_row": 255,
+              "label": "BESS Perf guarantee ( Availability / RTE ) - 1500€/BESS",
+              "cached_value": 0,
+              "per_scenario_values": {
+                "H": {
+                  "cached_value": 67.5,
+                  "formula_text": "=IF(AND(H16>0,H20>0),1.5*H16*1.125,0)"
+                },
+                "I": {
+                  "cached_value": 0,
+                  "formula_text": "=1.5*I16*1.125"
+                },
+                "J": {
+                  "cached_value": 0,
+                  "formula_text": "=1.5*J16*1.125"
+                },
+                "K": {
+                  "cached_value": 0,
+                  "formula_text": "=1.5*K16*1.125"
+                }
+              },
+              "selector_formula": "=INDEX(H255:K255,0,MATCH($E$4,$H$4:$K$4,0))",
+              "selected_column": "K"
+            }
+          },
+          "activation_cached_y1_y30": [
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        },
+        "row_21": {
+          "opex_row": 21,
+          "code": null,
+          "name": "BESS Preventive Maintenance (1k€/BESS)",
+          "budget": {
+            "formula_cell": "OpEx!C21",
+            "cached_value": 0,
+            "formula_text": "=Scenarios!E256",
+            "scenarios_lineage": {
+              "scenarios_row": 256,
+              "label": "BESS Preventive Maintenance (1k€/BESS)",
+              "cached_value": 0,
+              "per_scenario_values": {
+                "H": {
+                  "cached_value": 45,
+                  "formula_text": "=IF(AND(H16>0,H20>0),1*H16*1.125,0)"
+                },
+                "I": {
+                  "cached_value": 0,
+                  "formula_text": "=1*I16*1.125"
+                },
+                "J": {
+                  "cached_value": 0,
+                  "formula_text": "=1*J16*1.125"
+                },
+                "K": {
+                  "cached_value": 0,
+                  "formula_text": "=1*K16*1.125"
+                }
+              },
+              "selector_formula": "=INDEX(H256:K256,0,MATCH($E$4,$H$4:$K$4,0))",
+              "selected_column": "K"
+            }
+          },
+          "activation_cached_y1_y30": [
+            1,
+            1,
+            1,
+            1,
+            1,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null
+          ]
+        },
+        "row_22": {
+          "opex_row": 22,
+          "code": null,
+          "name": "BESS Preventive Maintenance + Warranty Extension Y6 -> 10 - (5,5k€/BESS)",
+          "budget": {
+            "formula_cell": "OpEx!C22",
+            "cached_value": 0,
+            "formula_text": "=Scenarios!E257",
+            "scenarios_lineage": {
+              "scenarios_row": 257,
+              "label": "BESS Preventive Maintenance + Warranty Extension Y6 -> 10 - (5,5k€/BESS)",
+              "cached_value": 0,
+              "per_scenario_values": {
+                "H": {
+                  "cached_value": 247.5,
+                  "formula_text": "=IF(AND(H16>0,H20>0),5.5*H16*1.125,0)"
+                },
+                "I": {
+                  "cached_value": 0,
+                  "formula_text": "=5.5*I16*1.125"
+                },
+                "J": {
+                  "cached_value": 0,
+                  "formula_text": "=5.5*J16*1.125"
+                },
+                "K": {
+                  "cached_value": 0,
+                  "formula_text": "=5.5*K16*1.125"
+                }
+              },
+              "selector_formula": "=INDEX(H257:K257,0,MATCH($E$4,$H$4:$K$4,0))",
+              "selected_column": "K"
+            }
+          },
+          "activation_cached_y1_y30": [
+            null,
+            null,
+            null,
+            null,
+            null,
+            1,
+            1,
+            1,
+            1,
+            1,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null
+          ]
+        },
+        "row_23": {
+          "opex_row": 23,
+          "code": null,
+          "name": "BESS Preventive Maintenance + Warranty Extension Y11 -> 15 - (6k€/BESS)",
+          "budget": {
+            "formula_cell": "OpEx!C23",
+            "cached_value": 0,
+            "formula_text": "=Scenarios!E258",
+            "scenarios_lineage": {
+              "scenarios_row": 258,
+              "label": "BESS Preventive Maintenance + Warranty Extension Y11 -> 15 - (6k€/BESS)",
+              "cached_value": 0,
+              "per_scenario_values": {
+                "H": {
+                  "cached_value": 270,
+                  "formula_text": "=IF(AND(H16>0,H20>0),6*H16*1.125,0)"
+                },
+                "I": {
+                  "cached_value": 0,
+                  "formula_text": "=6*I16*1.125"
+                },
+                "J": {
+                  "cached_value": 0,
+                  "formula_text": "=6*J16*1.125"
+                },
+                "K": {
+                  "cached_value": 0,
+                  "formula_text": "=6*K16*1.125"
+                }
+              },
+              "selector_formula": "=INDEX(H258:K258,0,MATCH($E$4,$H$4:$K$4,0))",
+              "selected_column": "K"
+            }
+          },
+          "activation_cached_y1_y30": [
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            1,
+            1,
+            1,
+            1,
+            1,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null
+          ]
+        },
+        "row_24": {
+          "opex_row": 24,
+          "code": null,
+          "name": "BESS Preventive Maintenance + Warranty Extension Y16 -> 20- (6,5k€/BESS)",
+          "budget": {
+            "formula_cell": "OpEx!C24",
+            "cached_value": 0,
+            "formula_text": "=Scenarios!E259",
+            "scenarios_lineage": {
+              "scenarios_row": 259,
+              "label": "BESS Preventive Maintenance + Warranty Extension Y16 -> 20- (6,5k€/BESS)",
+              "cached_value": 0,
+              "per_scenario_values": {
+                "H": {
+                  "cached_value": 292.5,
+                  "formula_text": "=IF(AND(H16>0,H20>0),6.5*H16*1.125,0)"
+                },
+                "I": {
+                  "cached_value": 0,
+                  "formula_text": "=6.5*I16*1.125"
+                },
+                "J": {
+                  "cached_value": 0,
+                  "formula_text": "=6.5*J16*1.125"
+                },
+                "K": {
+                  "cached_value": 0,
+                  "formula_text": "=6.5*K16*1.125"
+                }
+              },
+              "selector_formula": "=INDEX(H259:K259,0,MATCH($E$4,$H$4:$K$4,0))",
+              "selected_column": "K"
+            }
+          },
+          "activation_cached_y1_y30": [
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            1,
+            1,
+            1,
+            1,
+            1,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null
+          ]
+        },
+        "row_25": {
+          "opex_row": 25,
+          "code": null,
+          "name": "BESS Preventive Maintenance + Warranty Extension Y21 -> 25",
+          "budget": {
+            "formula_cell": "OpEx!C25",
+            "cached_value": 0,
+            "formula_text": "=Scenarios!E260",
+            "scenarios_lineage": {
+              "scenarios_row": 260,
+              "label": "BESS Preventive Maintenance + Warranty Extension Y21 -> 25",
+              "cached_value": 0,
+              "per_scenario_values": {
+                "H": {
+                  "cached_value": 315,
+                  "formula_text": "=IF(AND(H16>0,H20>0),7*H16*1.125,0)"
+                },
+                "I": {
+                  "cached_value": 0,
+                  "formula_text": "=7*I16*1.125"
+                },
+                "J": {
+                  "cached_value": 0,
+                  "formula_text": "=7*J16*1.125"
+                },
+                "K": {
+                  "cached_value": 0,
+                  "formula_text": "=7*K16*1.125"
+                }
+              },
+              "selector_formula": "=INDEX(H260:K260,0,MATCH($E$4,$H$4:$K$4,0))",
+              "selected_column": "K"
+            }
+          },
+          "activation_cached_y1_y30": [
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            1,
+            1,
+            1,
+            1,
+            1,
+            null,
+            null,
+            null,
+            null,
+            null
+          ]
+        }
+      }
+    },
+    "B.03": {
+      "code": "B.03",
+      "opex_row": 26,
+      "name": "Maintain Site",
+      "budget": {
+        "formula_cell": "OpEx!C26",
+        "cached_value": 45.199999999999996,
+        "formula_text": "=SUM(C27:C30)"
+      },
+      "inflation": {
+        "formula_cell": "OpEx!D26",
+        "cached_value": 0.02,
+        "formula_text": "=$C$102"
+      },
+      "wht_cached": 0,
+      "annual": {
+        "formula_template_y1": "=SUMPRODUCT($C$27:$C$30,F27:F30)*(1+$D26)^(F2-1)",
+        "formula_template_y2": "=SUMPRODUCT($C$27:$C$30,G27:G30)*(1+$D26)^(G2-1)",
+        "cached_values_y1_y30": [
+          45.199999999999996,
+          46.104,
+          47.02607999999999,
+          47.96660159999999,
+          48.925933631999996,
+          49.904452304639996,
+          50.9025413507328,
+          51.920592177747444,
+          52.9590040213024,
+          54.018184101728444,
+          55.09854778376302,
+          56.200518739438266,
+          57.32452911422704,
+          58.471019696511576,
+          59.640440090441814,
+          60.83324889225064,
+          62.04991387009566,
+          63.29091214749758,
+          64.55673039044753,
+          65.84786499825647,
+          67.16482229822161,
+          68.50811874418604,
+          69.87828111906975,
+          71.27584674145113,
+          72.70136367628017,
+          74.15539094980576,
+          75.6384987688019,
+          77.15126874417791,
+          78.6942941190615,
+          80.2681800014427
+        ]
+      },
+      "subitems": {
+        "B.03.1": {
+          "opex_row": 27,
+          "code": "B.03.1",
+          "name": "Clean Site (included in O&M – Preventive & Corrective)",
+          "budget": {
+            "formula_cell": "OpEx!C27",
+            "cached_value": 29.3,
+            "formula_text": "=Scenarios!E265",
+            "scenarios_lineage": {
+              "scenarios_row": 265,
+              "label": "Clean Site ",
+              "cached_value": 29.3,
+              "per_scenario_values": {
+                "H": {
+                  "cached_value": 29.3
+                },
+                "I": {
+                  "cached_value": 29.3
+                },
+                "J": {
+                  "cached_value": 29.3
+                },
+                "K": {
+                  "cached_value": 29.3
+                }
+              },
+              "selector_formula": "=INDEX(H265:K265,0,MATCH($E$4,$H$4:$K$4,0))",
+              "selected_column": "K"
+            }
+          },
+          "activation_cached_y1_y30": [
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        },
+        "B.03.2": {
+          "opex_row": 28,
+          "code": "B.03.2",
+          "name": "Repair roads (included in O&M – Preventive & Corrective)",
+          "budget": {
+            "formula_cell": "OpEx!C28",
+            "cached_value": 14.1,
+            "formula_text": "=Scenarios!E266",
+            "scenarios_lineage": {
+              "scenarios_row": 266,
+              "label": "Repair roads ",
+              "cached_value": 14.1,
+              "per_scenario_values": {
+                "H": {
+                  "cached_value": 14.1
+                },
+                "I": {
+                  "cached_value": 16
+                },
+                "J": {
+                  "cached_value": 14.1
+                },
+                "K": {
+                  "cached_value": 14.1
+                }
+              },
+              "selector_formula": "=INDEX(H266:K266,0,MATCH($E$4,$H$4:$K$4,0))",
+              "selected_column": "K"
+            }
+          },
+          "activation_cached_y1_y30": [
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        },
+        "row_29": {
+          "opex_row": 29,
+          "code": null,
+          "name": "Pest Control",
+          "budget": {
+            "formula_cell": "OpEx!C29",
+            "cached_value": 1.8,
+            "formula_text": "=Scenarios!E267",
+            "scenarios_lineage": {
+              "scenarios_row": 267,
+              "label": "Pest Control",
+              "cached_value": 1.8,
+              "per_scenario_values": {
+                "H": {
+                  "cached_value": 1.8
+                },
+                "I": {
+                  "cached_value": 2
+                },
+                "J": {
+                  "cached_value": 1.8
+                },
+                "K": {
+                  "cached_value": 1.8
+                }
+              },
+              "selector_formula": "=INDEX(H267:K267,0,MATCH($E$4,$H$4:$K$4,0))",
+              "selected_column": "K"
+            }
+          },
+          "activation_cached_y1_y30": [
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        },
+        "B.03.3": {
+          "opex_row": 30,
+          "code": "B.03.3",
+          "name": "Others",
+          "budget": {
+            "formula_cell": "OpEx!C30",
+            "cached_value": 0,
+            "formula_text": "=Scenarios!E268",
+            "scenarios_lineage": {
+              "scenarios_row": 268,
+              "label": "Others",
+              "cached_value": 0,
+              "per_scenario_values": {
+                "H": {
+                  "cached_value": 0
+                },
+                "I": {
+                  "cached_value": 0
+                },
+                "J": {
+                  "cached_value": 0
+                },
+                "K": {
+                  "cached_value": 0
+                }
+              },
+              "selector_formula": "=INDEX(H268:K268,0,MATCH($E$4,$H$4:$K$4,0))",
+              "selected_column": "K"
+            }
+          },
+          "activation_cached_y1_y30": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        }
+      }
+    },
+    "B.04": {
+      "code": "B.04",
+      "opex_row": 31,
+      "name": "Clean Material",
+      "budget": {
+        "formula_cell": "OpEx!C31",
+        "cached_value": 40,
+        "formula_text": "=SUM(C32:C34)"
+      },
+      "inflation": {
+        "formula_cell": "OpEx!D31",
+        "cached_value": 0.02,
+        "formula_text": "=$C$102"
+      },
+      "wht_cached": 0,
+      "annual": {
+        "formula_template_y1": "=SUMPRODUCT($C$32:$C$34,F32:F34)*(1+$D31)^(F2-1)",
+        "formula_template_y2": "=SUMPRODUCT($C$32:$C$34,G32:G34)*(1+$D31)^(G2-1)",
+        "cached_values_y1_y30": [
+          40,
+          40.8,
+          41.616,
+          42.448319999999995,
+          43.2972864,
+          44.163232128000004,
+          45.046496770560005,
+          45.947426705971196,
+          46.86637524009062,
+          47.80370274489243,
+          48.75977679979029,
+          49.73497233578608,
+          50.72967178250181,
+          51.744265218151845,
+          52.77915052251488,
+          53.83473353296517,
+          54.91142820362448,
+          56.009656767696974,
+          57.12984990305091,
+          58.27244690111193,
+          59.43789583913417,
+          60.62665375591685,
+          61.83918683103519,
+          63.07597056765588,
+          64.337489979009,
+          65.62423977858919,
+          66.93672457416098,
+          68.27545906564418,
+          69.64096824695707,
+          71.0337876118962
+        ]
+      },
+      "subitems": {
+        "B.04.1": {
+          "opex_row": 32,
+          "code": "B.04.1",
+          "name": "Clean Panels (included in O&M – Preventive & Corrective)",
+          "budget": {
+            "formula_cell": "OpEx!C32",
+            "cached_value": 40,
+            "formula_text": "=Scenarios!E270",
+            "scenarios_lineage": {
+              "scenarios_row": 270,
+              "label": "Clean Panels (included in O&M – Preventive & Corrective)",
+              "cached_value": 40,
+              "per_scenario_values": {
+                "H": {
+                  "cached_value": 40
+                },
+                "I": {
+                  "cached_value": 40
+                },
+                "J": {
+                  "cached_value": 40
+                },
+                "K": {
+                  "cached_value": 40
+                }
+              },
+              "selector_formula": "=INDEX(H270:K270,0,MATCH($E$4,$H$4:$K$4,0))",
+              "selected_column": "K"
+            }
+          },
+          "activation_cached_y1_y30": [
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        },
+        "B.04.2": {
+          "opex_row": 33,
+          "code": "B.04.2",
+          "name": "Subscription to water supply",
+          "budget": {
+            "formula_cell": "OpEx!C33",
+            "cached_value": 0,
+            "formula_text": "=Scenarios!E271",
+            "scenarios_lineage": {
+              "scenarios_row": 271,
+              "label": "Subscription to water supply",
+              "cached_value": 0,
+              "per_scenario_values": {
+                "H": {
+                  "cached_value": 0
+                },
+                "I": {
+                  "cached_value": 0
+                },
+                "J": {
+                  "cached_value": 0
+                },
+                "K": {
+                  "cached_value": 0
+                }
+              },
+              "selector_formula": "=INDEX(H271:K271,0,MATCH($E$4,$H$4:$K$4,0))",
+              "selected_column": "K"
+            }
+          },
+          "activation_cached_y1_y30": [
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        },
+        "B.04.9": {
+          "opex_row": 34,
+          "code": "B.04.9",
+          "name": "Others",
+          "budget": {
+            "formula_cell": "OpEx!C34",
+            "cached_value": 0,
+            "formula_text": "=Scenarios!E272",
+            "scenarios_lineage": {
+              "scenarios_row": 272,
+              "label": "Others",
+              "cached_value": 0,
+              "per_scenario_values": {
+                "H": {
+                  "cached_value": 0
+                },
+                "I": {
+                  "cached_value": 0
+                },
+                "J": {
+                  "cached_value": 0
+                },
+                "K": {
+                  "cached_value": 0
+                }
+              },
+              "selector_formula": "=INDEX(H272:K272,0,MATCH($E$4,$H$4:$K$4,0))",
+              "selected_column": "K"
+            }
+          },
+          "activation_cached_y1_y30": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        }
+      }
+    },
+    "B.05": {
+      "code": "B.05",
+      "opex_row": 35,
+      "name": "Security",
+      "budget": {
+        "formula_cell": "OpEx!C35",
+        "cached_value": 30.1,
+        "formula_text": "=SUM(C36:C38)"
+      },
+      "inflation": {
+        "formula_cell": "OpEx!D35",
+        "cached_value": 0.02,
+        "formula_text": "=$C$102"
+      },
+      "wht_cached": 0,
+      "annual": {
+        "formula_template_y1": "=SUMPRODUCT($C$36:$C$38,F36:F38)*(1+$D35)^(F2-1)",
+        "formula_template_y2": "=SUMPRODUCT($C$36:$C$38,G36:G38)*(1+$D35)^(G2-1)",
+        "cached_values_y1_y30": [
+          30.1,
+          30.702,
+          31.31604,
+          31.9423608,
+          32.581208016,
+          33.23283217632,
+          33.8974888198464,
+          34.57543859624332,
+          35.266947368168196,
+          35.972286315531555,
+          36.691732041842194,
+          37.425566682679026,
+          38.174078016332615,
+          38.93755957665926,
+          39.71631076819245,
+          40.51063698355629,
+          41.320849723227425,
+          42.14726671769198,
+          42.99021205204581,
+          43.850016293086725,
+          44.72701661894846,
+          45.62155695132743,
+          46.53398809035398,
+          47.46466785216105,
+          48.413961209204274,
+          49.38224043338836,
+          50.369885242056135,
+          51.377282946897246,
+          52.404828605835206,
+          53.4529251779519
+        ]
+      },
+      "subitems": {
+        "B.05.1": {
+          "opex_row": 36,
+          "code": "B.05.1",
+          "name": "Surveillance systems",
+          "budget": {
+            "formula_cell": "OpEx!C36",
+            "cached_value": 30.1,
+            "formula_text": "=Scenarios!E274",
+            "scenarios_lineage": {
+              "scenarios_row": 274,
+              "label": "Surveillance systems",
+              "cached_value": 30.1,
+              "per_scenario_values": {
+                "H": {
+                  "cached_value": 30.1
+                },
+                "I": {
+                  "cached_value": 33
+                },
+                "J": {
+                  "cached_value": 30.1
+                },
+                "K": {
+                  "cached_value": 30.1
+                }
+              },
+              "selector_formula": "=INDEX(H274:K274,0,MATCH($E$4,$H$4:$K$4,0))",
+              "selected_column": "K"
+            }
+          },
+          "activation_cached_y1_y30": [
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        },
+        "B.05.2": {
+          "opex_row": 37,
+          "code": "B.05.2",
+          "name": "Surveillance patrols",
+          "budget": {
+            "formula_cell": "OpEx!C37",
+            "cached_value": 0,
+            "formula_text": "=Scenarios!E275",
+            "scenarios_lineage": {
+              "scenarios_row": 275,
+              "label": "Surveillance patrols",
+              "cached_value": 0,
+              "per_scenario_values": {
+                "H": {
+                  "cached_value": 0
+                },
+                "I": {
+                  "cached_value": 0
+                },
+                "J": {
+                  "cached_value": 0
+                },
+                "K": {
+                  "cached_value": 0
+                }
+              },
+              "selector_formula": "=INDEX(H275:K275,0,MATCH($E$4,$H$4:$K$4,0))",
+              "selected_column": "K"
+            }
+          },
+          "activation_cached_y1_y30": [
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        },
+        "B.05.9": {
+          "opex_row": 38,
+          "code": "B.05.9",
+          "name": "Others",
+          "budget": {
+            "formula_cell": "OpEx!C38",
+            "cached_value": 0,
+            "formula_text": "=Scenarios!E276",
+            "scenarios_lineage": {
+              "scenarios_row": 276,
+              "label": "Others",
+              "cached_value": 0,
+              "per_scenario_values": {
+                "H": {
+                  "cached_value": 0
+                },
+                "I": {
+                  "cached_value": 0
+                },
+                "J": {
+                  "cached_value": 0
+                },
+                "K": {
+                  "cached_value": 0
+                }
+              },
+              "selector_formula": "=INDEX(H276:K276,0,MATCH($E$4,$H$4:$K$4,0))",
+              "selected_column": "K"
+            }
+          },
+          "activation_cached_y1_y30": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        }
+      }
+    },
+    "B.06": {
+      "code": "B.06",
+      "opex_row": 39,
+      "name": "Insurance",
+      "budget": {
+        "formula_cell": "OpEx!C39",
+        "cached_value": 255,
+        "formula_text": "=SUM(C40:C44)"
+      },
+      "inflation": {
+        "formula_cell": "OpEx!D39",
+        "cached_value": 0.02,
+        "formula_text": "=$C$102"
+      },
+      "wht_cached": 0,
+      "annual": {
+        "formula_template_y1": "=SUMPRODUCT($C$40:$C$44,F40:F44)*(1+$D39)^(F2-1)",
+        "formula_template_y2": "=SUMPRODUCT($C$40:$C$44,G40:G44)*(1+$D39)^(G2-1)",
+        "cached_values_y1_y30": [
+          255,
+          260.1,
+          265.302,
+          270.60803999999996,
+          276.0202008,
+          281.540604816,
+          287.17141691232,
+          292.9148452505664,
+          298.7731421555777,
+          304.74860499868925,
+          310.84357709866305,
+          317.06044864063625,
+          323.40165761344906,
+          329.869690765718,
+          336.4670845810324,
+          343.19642627265296,
+          350.06035479810606,
+          357.06156189406823,
+          364.20279313194953,
+          371.4868489945885,
+          378.9165859744803,
+          386.4949176939699,
+          394.22481604784934,
+          402.10931236880623,
+          410.1514986161824,
+          418.354528588506,
+          426.7216191602762,
+          435.25605154348165,
+          443.9611725743514,
+          452.84039602583834
+        ]
+      },
+      "subitems": {
+        "B.06.1": {
+          "opex_row": 40,
+          "code": "B.06.1",
+          "name": "Operation All Risk with Business Interruption (OAR-BI)",
+          "budget": {
+            "formula_cell": "OpEx!C40",
+            "cached_value": 250,
+            "formula_text": "=Scenarios!E278",
+            "scenarios_lineage": {
+              "scenarios_row": 278,
+              "label": "Operation All Risk with Business Interruption (OAR-BI)",
+              "cached_value": 250,
+              "per_scenario_values": {
+                "H": {
+                  "cached_value": 250
+                },
+                "I": {
+                  "cached_value": 250
+                },
+                "J": {
+                  "cached_value": 250
+                },
+                "K": {
+                  "cached_value": 250
+                }
+              },
+              "selector_formula": "=INDEX(H278:K278,0,MATCH($E$4,$H$4:$K$4,0))",
+              "selected_column": "K"
+            }
+          },
+          "activation_cached_y1_y30": [
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        },
+        "B.06.2": {
+          "opex_row": 41,
+          "code": "B.06.2",
+          "name": "Third Party Liability (TPL)",
+          "budget": {
+            "formula_cell": "OpEx!C41",
+            "cached_value": 5,
+            "formula_text": "=Scenarios!E279",
+            "scenarios_lineage": {
+              "scenarios_row": 279,
+              "label": "Third Party Liability (TPL)",
+              "cached_value": 5,
+              "per_scenario_values": {
+                "H": {
+                  "cached_value": 5
+                },
+                "I": {
+                  "cached_value": 5
+                },
+                "J": {
+                  "cached_value": 5
+                },
+                "K": {
+                  "cached_value": 5
+                }
+              },
+              "selector_formula": "=INDEX(H279:K279,0,MATCH($E$4,$H$4:$K$4,0))",
+              "selected_column": "K"
+            }
+          },
+          "activation_cached_y1_y30": [
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        },
+        "B.06.3": {
+          "opex_row": 42,
+          "code": "B.06.3",
+          "name": "Substation and O&M Building Coverage (DO) (TBD by the insurance team depending on project)",
+          "budget": {
+            "formula_cell": "OpEx!C42",
+            "cached_value": 0,
+            "formula_text": "=Scenarios!E280",
+            "scenarios_lineage": {
+              "scenarios_row": 280,
+              "label": "Substation and O&M Building Coverage (DO) (TBD by the insurance team depending on project)",
+              "cached_value": 0,
+              "per_scenario_values": {
+                "H": {
+                  "cached_value": 0
+                },
+                "I": {
+                  "cached_value": 0
+                },
+                "J": {
+                  "cached_value": 0
+                },
+                "K": {
+                  "cached_value": 0
+                }
+              },
+              "selector_formula": "=INDEX(H280:K280,0,MATCH($E$4,$H$4:$K$4,0))",
+              "selected_column": "K"
+            }
+          },
+          "activation_cached_y1_y30": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        "B.06.4": {
+          "opex_row": 43,
+          "code": "B.06.4",
+          "name": "Spare parts insurance (TBD by the insurance team depending on project)",
+          "budget": {
+            "formula_cell": "OpEx!C43",
+            "cached_value": 0,
+            "formula_text": "=Scenarios!E281",
+            "scenarios_lineage": {
+              "scenarios_row": 281,
+              "label": "Spare parts insurance (TBD by the insurance team depending on project)",
+              "cached_value": 0,
+              "per_scenario_values": {
+                "H": {
+                  "cached_value": 0
+                },
+                "I": {
+                  "cached_value": 0
+                },
+                "J": {
+                  "cached_value": 0
+                },
+                "K": {
+                  "cached_value": 0
+                }
+              },
+              "selector_formula": "=INDEX(H281:K281,0,MATCH($E$4,$H$4:$K$4,0))",
+              "selected_column": "K"
+            }
+          },
+          "activation_cached_y1_y30": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        "B.06.9": {
+          "opex_row": 44,
+          "code": "B.06.9",
+          "name": "Storage Insurance",
+          "budget": {
+            "formula_cell": "OpEx!C44",
+            "cached_value": 0,
+            "formula_text": "=Scenarios!E263",
+            "scenarios_lineage": {
+              "scenarios_row": 263,
+              "label": "Insurances",
+              "cached_value": 0,
+              "per_scenario_values": {
+                "H": {
+                  "cached_value": 477.27272727272725,
+                  "formula_text": "=IF(AND(H16>0,H20>0),420*H20/220,0)"
+                },
+                "I": {
+                  "cached_value": 0,
+                  "formula_text": "=420*I20/220"
+                },
+                "J": {
+                  "cached_value": 0,
+                  "formula_text": "=420*J20/220"
+                },
+                "K": {
+                  "cached_value": 0,
+                  "formula_text": "=420*K20/220"
+                }
+              },
+              "selector_formula": "=INDEX(H263:K263,0,MATCH($E$4,$H$4:$K$4,0))",
+              "selected_column": "K"
+            }
+          },
+          "activation_cached_y1_y30": [
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        }
+      }
+    },
+    "B.07": {
+      "code": "B.07",
+      "opex_row": 45,
+      "name": "Lease & property Tax",
+      "budget": {
+        "formula_cell": "OpEx!C45",
+        "cached_value": 204,
+        "formula_text": "=SUM(C46:C47)"
+      },
+      "inflation": {
+        "formula_cell": "OpEx!D45",
+        "cached_value": 0.02
+      },
+      "wht_cached": 0,
+      "annual": {
+        "formula_template_y1": "=SUMPRODUCT($C46:$C47,F46:F47)*(1+$D$45)^F$2",
+        "formula_template_y2": "=SUMPRODUCT($C46:$C47,G46:G47)*(1+$D$45)^G$2",
+        "cached_values_y1_y30": [
+          208.08,
+          212.2416,
+          216.48643199999998,
+          220.81616064,
+          225.23248385280002,
+          229.737133529856,
+          234.33187620045308,
+          239.01851372446217,
+          243.7988839989514,
+          248.67486167893045,
+          253.64835891250902,
+          258.72132609075925,
+          263.8957526125744,
+          269.1736676648259,
+          274.55714101812237,
+          280.04828383848485,
+          285.64924951525455,
+          291.3622345055596,
+          297.1894791956708,
+          303.1332687795843,
+          309.1959341551759,
+          315.3798528382795,
+          321.687449895045,
+          328.1211988929459,
+          334.6836228708048,
+          341.37729532822095,
+          348.2048412347853,
+          355.1689380594811,
+          362.27231682067065,
+          369.5177631570841
+        ]
+      },
+      "subitems": {
+        "B.07.1": {
+          "opex_row": 46,
+          "code": "B.07.1",
+          "name": "Land Leases",
+          "budget": {
+            "formula_cell": "OpEx!C46",
+            "cached_value": 204,
+            "formula_text": "=Scenarios!E283",
+            "scenarios_lineage": {
+              "scenarios_row": 283,
+              "label": "Land Leases ",
+              "cached_value": 204,
+              "per_scenario_values": {
+                "H": {
+                  "cached_value": 204,
+                  "formula_text": "=H285*H284"
+                },
+                "I": {
+                  "cached_value": 204,
+                  "formula_text": "=I285*I284"
+                },
+                "J": {
+                  "cached_value": 204,
+                  "formula_text": "=J285*J284"
+                },
+                "K": {
+                  "cached_value": 204,
+                  "formula_text": "=K285*K284"
+                }
+              },
+              "selector_formula": "=INDEX(H283:K283,0,MATCH($E$4,$H$4:$K$4,0))",
+              "selected_column": "K"
+            }
+          },
+          "activation_cached_y1_y30": [
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        },
+        "B.07.4": {
+          "opex_row": 47,
+          "code": "B.07.4",
+          "name": "Property tax",
+          "budget": {
+            "formula_cell": "OpEx!C47",
+            "cached_value": 0,
+            "formula_text": "=Scenarios!E286",
+            "scenarios_lineage": {
+              "scenarios_row": 286,
+              "label": "Property tax",
+              "cached_value": 0,
+              "per_scenario_values": {
+                "H": {
+                  "cached_value": 0
+                },
+                "I": {
+                  "cached_value": 0
+                },
+                "J": {
+                  "cached_value": 0
+                },
+                "K": {
+                  "cached_value": 0
+                }
+              },
+              "selector_formula": "=INDEX(H286:K286,0,MATCH($E$4,$H$4:$K$4,0))",
+              "selected_column": "K"
+            }
+          },
+          "activation_cached_y1_y30": [
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        }
+      }
+    },
+    "B.08": {
+      "code": "B.08",
+      "opex_row": 48,
+      "name": "Power Expenses",
+      "budget": {
+        "formula_cell": "OpEx!C48",
+        "cached_value": 549.7632,
+        "formula_text": "=SUM(C49:C52)"
+      },
+      "inflation": {
+        "formula_cell": "OpEx!D48",
+        "cached_value": 0
+      },
+      "wht_cached": 0,
+      "annual": {
+        "formula_template_y1": "=(SUMPRODUCT($C$49:$C$52,F49:F52))*(1+$D48)^(F2-1)",
+        "formula_template_y2": "=(SUMPRODUCT($C$49:$C$52,G49:G52))*(1+$D48)^(G2-1)",
+        "cached_values_y1_y30": [
+          176.8608,
+          176.8608,
+          176.8608,
+          176.8608,
+          176.8608,
+          176.8608,
+          176.8608,
+          176.8608,
+          176.8608,
+          176.8608,
+          549.7632,
+          549.7632,
+          549.7632,
+          549.7632,
+          549.7632,
+          549.7632,
+          549.7632,
+          549.7632,
+          549.7632,
+          549.7632,
+          549.7632,
+          549.7632,
+          549.7632,
+          549.7632,
+          549.7632,
+          549.7632,
+          549.7632,
+          549.7632,
+          549.7632,
+          549.7632
+        ]
+      },
+      "subitems": {
+        "B.08.1": {
+          "opex_row": 49,
+          "code": "B.08.1",
+          "name": "Power consumption",
+          "budget": {
+            "formula_cell": "OpEx!C49",
+            "cached_value": 40,
+            "formula_text": "=Scenarios!E288",
+            "scenarios_lineage": {
+              "scenarios_row": 288,
+              "label": "Power consumption",
+              "cached_value": 40,
+              "per_scenario_values": {
+                "H": {
+                  "cached_value": 40
+                },
+                "I": {
+                  "cached_value": 23
+                },
+                "J": {
+                  "cached_value": 40
+                },
+                "K": {
+                  "cached_value": 40
+                }
+              },
+              "selector_formula": "=INDEX(H288:K288,0,MATCH($E$4,$H$4:$K$4,0))",
+              "selected_column": "K"
+            }
+          },
+          "activation_cached_y1_y30": [
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        },
+        "B.08.2": {
+          "opex_row": 50,
+          "code": "B.08.2",
+          "name": "Grid Usage fee",
+          "budget": {
+            "formula_cell": "OpEx!C50",
+            "cached_value": 86.86080000000001,
+            "formula_text": "=Scenarios!E289",
+            "scenarios_lineage": {
+              "scenarios_row": 289,
+              "label": "Grid Usage fee",
+              "cached_value": 86.86080000000001,
+              "per_scenario_values": {
+                "H": {
+                  "cached_value": 86.86080000000001,
+                  "formula_text": "=0.116*H9*12"
+                },
+                "I": {
+                  "cached_value": 86.86080000000001,
+                  "formula_text": "=0.116*I9*12"
+                },
+                "J": {
+                  "cached_value": 86.86080000000001,
+                  "formula_text": "=0.116*J9*12"
+                },
+                "K": {
+                  "cached_value": 86.86080000000001,
+                  "formula_text": "=0.116*K9*12"
+                }
+              },
+              "selector_formula": "=INDEX(H289:K289,0,MATCH($E$4,$H$4:$K$4,0))",
+              "selected_column": "K"
+            }
+          },
+          "activation_cached_y1_y30": [
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        },
+        "B.08.3": {
+          "opex_row": 51,
+          "code": "B.08.3",
+          "name": "Balancing costs",
+          "budget": {
+            "formula_cell": "OpEx!C51",
+            "cached_value": 372.9024,
+            "formula_text": "=Scenarios!E290",
+            "scenarios_lineage": {
+              "scenarios_row": 290,
+              "label": "Balancing costs",
+              "cached_value": 372.9024,
+              "per_scenario_values": {
+                "H": {
+                  "cached_value": 372.9024,
+                  "formula_text": "=H291/1000*H9*H10"
+                },
+                "I": {
+                  "cached_value": 321.4848,
+                  "formula_text": "=I291/1000*I9*I10"
+                },
+                "J": {
+                  "cached_value": 372.9024,
+                  "formula_text": "=J291/1000*J9*J10"
+                },
+                "K": {
+                  "cached_value": 372.9024,
+                  "formula_text": "=K291/1000*K9*K10"
+                }
+              },
+              "selector_formula": "=INDEX(H290:K290,0,MATCH($E$4,$H$4:$K$4,0))",
+              "selected_column": "K"
+            }
+          },
+          "activation_cached_y1_y30": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        },
+        "B.08.8": {
+          "opex_row": 52,
+          "code": "B.08.8",
+          "name": "Grid usage fee Storage",
+          "budget": {
+            "formula_cell": "OpEx!C52",
+            "cached_value": 50,
+            "formula_text": "=Scenarios!E262",
+            "scenarios_lineage": {
+              "scenarios_row": 262,
+              "label": "Grid usage fees",
+              "cached_value": 50,
+              "per_scenario_values": {
+                "H": {
+                  "cached_value": 50,
+                  "formula_text": "=IF(AND(H16>0,H20>0),50,0)"
+                },
+                "I": {
+                  "cached_value": 50
+                },
+                "J": {
+                  "cached_value": 0
+                },
+                "K": {
+                  "cached_value": 50
+                }
+              },
+              "selector_formula": "=INDEX(H262:K262,0,MATCH($E$4,$H$4:$K$4,0))",
+              "selected_column": "K"
+            }
+          },
+          "activation_cached_y1_y30": [
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        }
+      }
+    },
+    "B.09": {
+      "code": "B.09",
+      "opex_row": 53,
+      "name": " Fees",
+      "budget": {
+        "formula_cell": "OpEx!C53",
+        "cached_value": 14,
+        "formula_text": "=SUM(C54:C57)"
+      },
+      "inflation": {
+        "formula_cell": "OpEx!D53",
+        "cached_value": 0
+      },
+      "wht_cached": 0,
+      "annual": {
+        "formula_template_y1": "=SUMPRODUCT($C$54:$C$57,F54:F57)*(1+$D53)^(F2-1)",
+        "formula_template_y2": "=SUMPRODUCT($C$54:$C$57,G54:G57)*(1+$D53)^(G2-1)",
+        "cached_values_y1_y30": [
+          14,
+          14,
+          14,
+          14,
+          14,
+          14,
+          14,
+          14,
+          14,
+          14,
+          14,
+          14,
+          14,
+          14,
+          14,
+          14,
+          14,
+          14,
+          14,
+          14,
+          14,
+          14,
+          14,
+          14,
+          14,
+          14,
+          14,
+          14,
+          14,
+          14
+        ]
+      },
+      "subitems": {
+        "B.09.1": {
+          "opex_row": 54,
+          "code": "B.09.1",
+          "name": "Reporting Data",
+          "budget": {
+            "formula_cell": "OpEx!C54",
+            "cached_value": 5,
+            "formula_text": "=Scenarios!E293",
+            "scenarios_lineage": {
+              "scenarios_row": 293,
+              "label": "Reporting Data",
+              "cached_value": 5,
+              "per_scenario_values": {
+                "H": {
+                  "cached_value": 2
+                },
+                "I": {
+                  "cached_value": 2
+                },
+                "J": {
+                  "cached_value": 2
+                },
+                "K": {
+                  "cached_value": 5
+                }
+              },
+              "selector_formula": "=INDEX(H293:K293,0,MATCH($E$4,$H$4:$K$4,0))",
+              "selected_column": "K"
+            }
+          },
+          "activation_cached_y1_y30": [
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        },
+        "B.09.2": {
+          "opex_row": 55,
+          "code": "B.09.2",
+          "name": "Local concession fee",
+          "budget": {
+            "formula_cell": "OpEx!C55",
+            "cached_value": 4,
+            "formula_text": "=Scenarios!E294",
+            "scenarios_lineage": {
+              "scenarios_row": 294,
+              "label": "Local Concession",
+              "cached_value": 4,
+              "per_scenario_values": {
+                "H": {
+                  "cached_value": 93.6,
+                  "formula_text": "=1.5*H9"
+                },
+                "I": {
+                  "cached_value": 93.6,
+                  "formula_text": "=1.5*I9"
+                },
+                "J": {
+                  "cached_value": 93.6,
+                  "formula_text": "=1.5*J9"
+                },
+                "K": {
+                  "cached_value": 4
+                }
+              },
+              "selector_formula": "=INDEX(H294:K294,0,MATCH($E$4,$H$4:$K$4,0))",
+              "selected_column": "K"
+            }
+          },
+          "activation_cached_y1_y30": [
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        },
+        "B.09.3": {
+          "opex_row": 56,
+          "code": "B.09.3",
+          "name": "SCADA (to be included in O&M contract)",
+          "budget": {
+            "formula_cell": "OpEx!C56",
+            "cached_value": 5,
+            "formula_text": "=Scenarios!E295",
+            "scenarios_lineage": {
+              "scenarios_row": 295,
+              "label": "SCADA (to be included in O&M contract)",
+              "cached_value": 5,
+              "per_scenario_values": {
+                "H": {
+                  "cached_value": 0
+                },
+                "I": {
+                  "cached_value": 6
+                },
+                "J": {
+                  "cached_value": 0
+                },
+                "K": {
+                  "cached_value": 5
+                }
+              },
+              "selector_formula": "=INDEX(H295:K295,0,MATCH($E$4,$H$4:$K$4,0))",
+              "selected_column": "K"
+            }
+          },
+          "activation_cached_y1_y30": [
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        },
+        "B.09.4": {
+          "opex_row": 57,
+          "code": "B.09.4",
+          "name": "Alarm/Security (included in Reporting Data)",
+          "budget": {
+            "formula_cell": "OpEx!C57",
+            "cached_value": 0,
+            "formula_text": "=Scenarios!E296",
+            "scenarios_lineage": {
+              "scenarios_row": 296,
+              "label": "Alarm/Security (included in Reporting Data)",
+              "cached_value": 0,
+              "per_scenario_values": {
+                "H": {
+                  "cached_value": 0
+                },
+                "I": {
+                  "cached_value": 0
+                },
+                "J": {
+                  "cached_value": 0
+                },
+                "K": {
+                  "cached_value": 0
+                }
+              },
+              "selector_formula": "=INDEX(H296:K296,0,MATCH($E$4,$H$4:$K$4,0))",
+              "selected_column": "K"
+            }
+          },
+          "activation_cached_y1_y30": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        }
+      }
+    },
+    "B.10": {
+      "code": "B.10",
+      "opex_row": 58,
+      "name": "Audit&Accounting&Legal Fees",
+      "budget": {
+        "formula_cell": "OpEx!C58",
+        "cached_value": 32,
+        "formula_text": "=SUM(C59:C64)"
+      },
+      "inflation": {
+        "formula_cell": "OpEx!D58",
+        "cached_value": 0.02,
+        "formula_text": "=$C$102"
+      },
+      "wht_cached": 0,
+      "annual": {
+        "formula_template_y1": "=SUMPRODUCT($C$59:$C$64,F59:F64)*(1+$D58)^(F2-1)",
+        "formula_template_y2": "=SUMPRODUCT($C$59:$C$64,G59:G64)*(1+$D58)^(G2-1)",
+        "cached_values_y1_y30": [
+          24,
+          24.48,
+          16.6464,
+          16.979328,
+          17.31891456,
+          17.6652928512,
+          18.018598708224,
+          18.378970682388477,
+          18.74655009603625,
+          19.121481097956973,
+          19.503910719916114,
+          19.893988934314432,
+          20.291868713000724,
+          20.697706087260737,
+          21.111660209005954,
+          21.533893413186068,
+          21.964571281449793,
+          22.40386270707879,
+          22.851939961220364,
+          23.30897876044477,
+          23.775158335653668,
+          24.25066150236674,
+          24.735674732414076,
+          25.230388227062353,
+          25.7349959916036,
+          26.249695911435673,
+          26.77468982966439,
+          27.310183626257672,
+          27.85638729878283,
+          28.413515044758483
+        ]
+      },
+      "subitems": {
+        "B.10.1": {
+          "opex_row": 59,
+          "code": "B.10.1",
+          "name": "Auditors closing Y1&2",
+          "budget": {
+            "formula_cell": "OpEx!C59",
+            "cached_value": 16,
+            "formula_text": "=Scenarios!E298",
+            "scenarios_lineage": {
+              "scenarios_row": 298,
+              "label": "Auditors closing Y1&2",
+              "cached_value": 16,
+              "per_scenario_values": {
+                "H": {
+                  "cached_value": 16
+                },
+                "I": {
+                  "cached_value": 16
+                },
+                "J": {
+                  "cached_value": 16
+                },
+                "K": {
+                  "cached_value": 16
+                }
+              },
+              "selector_formula": "=INDEX(H298:K298,0,MATCH($E$4,$H$4:$K$4,0))",
+              "selected_column": "K"
+            }
+          },
+          "activation_cached_y1_y30": [
+            1,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        "B.10.2": {
+          "opex_row": 60,
+          "code": "B.10.2",
+          "name": "Auditors closing >=Y3",
+          "budget": {
+            "formula_cell": "OpEx!C60",
+            "cached_value": 8,
+            "formula_text": "=Scenarios!E299",
+            "scenarios_lineage": {
+              "scenarios_row": 299,
+              "label": "Auditors closing >=Y3",
+              "cached_value": 8,
+              "per_scenario_values": {
+                "H": {
+                  "cached_value": 8
+                },
+                "I": {
+                  "cached_value": 8
+                },
+                "J": {
+                  "cached_value": 8
+                },
+                "K": {
+                  "cached_value": 8
+                }
+              },
+              "selector_formula": "=INDEX(H299:K299,0,MATCH($E$4,$H$4:$K$4,0))",
+              "selected_column": "K"
+            }
+          },
+          "activation_cached_y1_y30": [
+            0,
+            0,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        },
+        "B.10.3": {
+          "opex_row": 61,
+          "code": "B.10.3",
+          "name": "Accounting closing",
+          "budget": {
+            "formula_cell": "OpEx!C61",
+            "cached_value": 8,
+            "formula_text": "=Scenarios!E300",
+            "scenarios_lineage": {
+              "scenarios_row": 300,
+              "label": "Accounting closing",
+              "cached_value": 8,
+              "per_scenario_values": {
+                "H": {
+                  "cached_value": 8
+                },
+                "I": {
+                  "cached_value": 8
+                },
+                "J": {
+                  "cached_value": 8
+                },
+                "K": {
+                  "cached_value": 8
+                }
+              },
+              "selector_formula": "=INDEX(H300:K300,0,MATCH($E$4,$H$4:$K$4,0))",
+              "selected_column": "K"
+            }
+          },
+          "activation_cached_y1_y30": [
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        },
+        "B.10.4": {
+          "opex_row": 62,
+          "code": "B.10.4",
+          "name": "Legal closing (included in Accounting Closing)",
+          "budget": {
+            "formula_cell": "OpEx!C62",
+            "cached_value": 0,
+            "formula_text": "=Scenarios!E301",
+            "scenarios_lineage": {
+              "scenarios_row": 301,
+              "label": "Legal closing (included in Accounting Closing)",
+              "cached_value": 0,
+              "per_scenario_values": {
+                "H": {
+                  "cached_value": 0
+                },
+                "I": {
+                  "cached_value": 0
+                },
+                "J": {
+                  "cached_value": 0
+                },
+                "K": {
+                  "cached_value": 0
+                }
+              },
+              "selector_formula": "=INDEX(H301:K301,0,MATCH($E$4,$H$4:$K$4,0))",
+              "selected_column": "K"
+            }
+          },
+          "activation_cached_y1_y30": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        "B.10.5": {
+          "opex_row": 63,
+          "code": "B.10.5",
+          "name": "Accounting book-keeping (included in Accounting Closing)",
+          "budget": {
+            "formula_cell": "OpEx!C63",
+            "cached_value": 0,
+            "formula_text": "=Scenarios!E302",
+            "scenarios_lineage": {
+              "scenarios_row": 302,
+              "label": "Accounting book-keeping (included in Accounting Closing)",
+              "cached_value": 0,
+              "per_scenario_values": {
+                "H": {
+                  "cached_value": 0
+                },
+                "I": {
+                  "cached_value": 0
+                },
+                "J": {
+                  "cached_value": 0
+                },
+                "K": {
+                  "cached_value": 0
+                }
+              },
+              "selector_formula": "=INDEX(H302:K302,0,MATCH($E$4,$H$4:$K$4,0))",
+              "selected_column": "K"
+            }
+          },
+          "activation_cached_y1_y30": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        "B.10.6": {
+          "opex_row": 64,
+          "code": "B.10.6",
+          "name": "Others",
+          "budget": {
+            "formula_cell": "OpEx!C64",
+            "cached_value": 0,
+            "formula_text": "=Scenarios!E303",
+            "scenarios_lineage": {
+              "scenarios_row": 303,
+              "label": "Others",
+              "cached_value": 0,
+              "per_scenario_values": {
+                "H": {
+                  "cached_value": 0
+                },
+                "I": {
+                  "cached_value": 0
+                },
+                "J": {
+                  "cached_value": 0
+                },
+                "K": {
+                  "cached_value": 0
+                }
+              },
+              "selector_formula": "=INDEX(H303:K303,0,MATCH($E$4,$H$4:$K$4,0))",
+              "selected_column": "K"
+            }
+          },
+          "activation_cached_y1_y30": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        }
+      }
+    },
+    "B.11": {
+      "code": "B.11",
+      "opex_row": 65,
+      "name": "Bank Fees",
+      "budget": {
+        "formula_cell": "OpEx!C65",
+        "cached_value": 20,
+        "formula_text": "=SUM(C66:C69)"
+      },
+      "inflation": {
+        "formula_cell": "OpEx!D65",
+        "cached_value": 0.02,
+        "formula_text": "=$C$102"
+      },
+      "wht_cached": 0,
+      "annual": {
+        "formula_template_y1": "=SUMPRODUCT($C$66:$C$69,F66:F69)*(1+$D65)^(F2-1)",
+        "formula_template_y2": "=SUMPRODUCT($C$66:$C$69,G66:G69)*(1+$D65)^(G2-1)",
+        "cached_values_y1_y30": [
+          20,
+          20.4,
+          20.808,
+          21.224159999999998,
+          21.6486432,
+          22.081616064000002,
+          22.523248385280002,
+          22.973713352985598,
+          23.43318762004531,
+          23.901851372446217,
+          24.379888399895144,
+          24.86748616789304,
+          25.364835891250905,
+          25.872132609075923,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "subitems": {
+        "B.11.1": {
+          "opex_row": 66,
+          "code": "B.11.1",
+          "name": "Agency Fee (included in Bank Fees)",
+          "budget": {
+            "formula_cell": "OpEx!C66",
+            "cached_value": 0,
+            "formula_text": "=Scenarios!E305",
+            "scenarios_lineage": {
+              "scenarios_row": 305,
+              "label": "Agency Fee (included in Bank Fees)",
+              "cached_value": 0,
+              "per_scenario_values": {
+                "H": {
+                  "cached_value": 0
+                },
+                "I": {
+                  "cached_value": 0
+                },
+                "J": {
+                  "cached_value": 0
+                },
+                "K": {
+                  "cached_value": 0
+                }
+              },
+              "selector_formula": "=INDEX(H305:K305,0,MATCH($E$4,$H$4:$K$4,0))",
+              "selected_column": "K"
+            }
+          },
+          "activation_cached_y1_y30": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        "B.11.2": {
+          "opex_row": 67,
+          "code": "B.11.2",
+          "name": "Bonds",
+          "budget": {
+            "formula_cell": "OpEx!C67",
+            "cached_value": 0,
+            "formula_text": "=Scenarios!E306",
+            "scenarios_lineage": {
+              "scenarios_row": 306,
+              "label": "Bonds",
+              "cached_value": 0,
+              "per_scenario_values": {
+                "H": {
+                  "cached_value": 0
+                },
+                "I": {
+                  "cached_value": 0
+                },
+                "J": {
+                  "cached_value": 0
+                },
+                "K": {
+                  "cached_value": 0
+                }
+              },
+              "selector_formula": "=INDEX(H306:K306,0,MATCH($E$4,$H$4:$K$4,0))",
+              "selected_column": "K"
+            }
+          },
+          "activation_cached_y1_y30": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        "B.11.3": {
+          "opex_row": 68,
+          "code": "B.11.3",
+          "name": "Bank Fees",
+          "budget": {
+            "formula_cell": "OpEx!C68",
+            "cached_value": 20,
+            "formula_text": "=Scenarios!E307",
+            "scenarios_lineage": {
+              "scenarios_row": 307,
+              "label": "Bank Fees",
+              "cached_value": 20,
+              "per_scenario_values": {
+                "H": {
+                  "cached_value": 20
+                },
+                "I": {
+                  "cached_value": 20
+                },
+                "J": {
+                  "cached_value": 20
+                },
+                "K": {
+                  "cached_value": 20
+                }
+              },
+              "selector_formula": "=INDEX(H307:K307,0,MATCH($E$4,$H$4:$K$4,0))",
+              "selected_column": "K"
+            }
+          },
+          "activation_cached_y1_y30": [
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "activation_formula_y1": "=IF(F2<=Inputs!$D$196,1,0)"
+        },
+        "B.11.4": {
+          "opex_row": 69,
+          "code": "B.11.4",
+          "name": "Others",
+          "budget": {
+            "formula_cell": "OpEx!C69",
+            "cached_value": 0,
+            "formula_text": "=Scenarios!E308",
+            "scenarios_lineage": {
+              "scenarios_row": 308,
+              "label": "Others",
+              "cached_value": 0,
+              "per_scenario_values": {
+                "H": {
+                  "cached_value": 0
+                },
+                "I": {
+                  "cached_value": 0
+                },
+                "J": {
+                  "cached_value": 0
+                },
+                "K": {
+                  "cached_value": 0
+                }
+              },
+              "selector_formula": "=INDEX(H308:K308,0,MATCH($E$4,$H$4:$K$4,0))",
+              "selected_column": "K"
+            }
+          },
+          "activation_cached_y1_y30": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        }
+      }
+    },
+    "B.12": {
+      "code": "B.12",
+      "opex_row": 70,
+      "name": "Environmental&Social management",
+      "budget": {
+        "formula_cell": "OpEx!C70",
+        "cached_value": 32,
+        "formula_text": "=SUM(C71:C75)"
+      },
+      "inflation": {
+        "formula_cell": "OpEx!D70",
+        "cached_value": 0.02,
+        "formula_text": "=$C$102"
+      },
+      "wht_cached": 0,
+      "annual": {
+        "formula_template_y1": "=SUMPRODUCT($C$71:$C$75,F71:F75)*(1+$D70)^(F2-1)",
+        "formula_template_y2": "=SUMPRODUCT($C$71:$C$75,G71:G75)*(1+$D70)^(G2-1)",
+        "cached_values_y1_y30": [
+          32,
+          32.64,
+          12.4848,
+          12.734496,
+          12.98918592,
+          13.2489696384,
+          13.513949031168,
+          13.784228011791358,
+          14.059912572027187,
+          14.34111082346773,
+          14.627933039937085,
+          14.920491700735823,
+          15.218901534750543,
+          15.523279565445552,
+          15.833745156754466,
+          16.15042005988955,
+          16.473428461087344,
+          16.802897030309094,
+          17.13895497091527,
+          17.481734070333577,
+          17.83136875174025,
+          18.187996126775055,
+          18.551756049310555,
+          18.922791170296765,
+          19.3012469937027,
+          19.687271933576753,
+          20.08101737224829,
+          20.482637719693255,
+          20.892290474087122,
+          21.310136283568863
+        ]
+      },
+      "subitems": {
+        "B.12.1": {
+          "opex_row": 71,
+          "code": "B.12.1",
+          "name": "Mitigation measures ",
+          "budget": {
+            "formula_cell": "OpEx!C71",
+            "cached_value": 10,
+            "formula_text": "=Scenarios!E310",
+            "scenarios_lineage": {
+              "scenarios_row": 310,
+              "label": "Mitigation measures ",
+              "cached_value": 10,
+              "per_scenario_values": {
+                "H": {
+                  "cached_value": 10
+                },
+                "I": {
+                  "cached_value": 5
+                },
+                "J": {
+                  "cached_value": 5
+                },
+                "K": {
+                  "cached_value": 10
+                }
+              },
+              "selector_formula": "=INDEX(H310:K310,0,MATCH($E$4,$H$4:$K$4,0))",
+              "selected_column": "K"
+            }
+          },
+          "activation_cached_y1_y30": [
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        },
+        "B.12.2": {
+          "opex_row": 72,
+          "code": "B.12.2",
+          "name": "Agrinergie",
+          "budget": {
+            "formula_cell": "OpEx!C72",
+            "cached_value": 0,
+            "formula_text": "=Scenarios!E311",
+            "scenarios_lineage": {
+              "scenarios_row": 311,
+              "label": "Agrinergie",
+              "cached_value": 0,
+              "per_scenario_values": {
+                "H": {
+                  "cached_value": 0
+                },
+                "I": {
+                  "cached_value": 0
+                },
+                "J": {
+                  "cached_value": 0
+                },
+                "K": {
+                  "cached_value": 0
+                }
+              },
+              "selector_formula": "=INDEX(H311:K311,0,MATCH($E$4,$H$4:$K$4,0))",
+              "selected_column": "K"
+            }
+          },
+          "activation_cached_y1_y30": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        "B.12.3": {
+          "opex_row": 73,
+          "code": "B.12.3",
+          "name": "Fauna&Flaura Monitoring (Y1&2)",
+          "budget": {
+            "formula_cell": "OpEx!C73",
+            "cached_value": 10,
+            "formula_text": "=Scenarios!E312",
+            "scenarios_lineage": {
+              "scenarios_row": 312,
+              "label": "Fauna&Flaura Monitoring (Y1&2)",
+              "cached_value": 10,
+              "per_scenario_values": {
+                "H": {
+                  "cached_value": 0
+                },
+                "I": {
+                  "cached_value": 10
+                },
+                "J": {
+                  "cached_value": 10
+                },
+                "K": {
+                  "cached_value": 10
+                }
+              },
+              "selector_formula": "=INDEX(H312:K312,0,MATCH($E$4,$H$4:$K$4,0))",
+              "selected_column": "K"
+            }
+          },
+          "activation_cached_y1_y30": [
+            1,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        "B.12.5": {
+          "opex_row": 74,
+          "code": "B.12.5",
+          "name": "E&S monitoring (Y1&2)",
+          "budget": {
+            "formula_cell": "OpEx!C74",
+            "cached_value": 10,
+            "formula_text": "=Scenarios!E313",
+            "scenarios_lineage": {
+              "scenarios_row": 313,
+              "label": "E&S monitoring (Y1&2)",
+              "cached_value": 10,
+              "per_scenario_values": {
+                "H": {
+                  "cached_value": 10
+                },
+                "I": {
+                  "cached_value": 0
+                },
+                "J": {
+                  "cached_value": 0
+                },
+                "K": {
+                  "cached_value": 10
+                }
+              },
+              "selector_formula": "=INDEX(H313:K313,0,MATCH($E$4,$H$4:$K$4,0))",
+              "selected_column": "K"
+            }
+          },
+          "activation_cached_y1_y30": [
+            1,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        "B.12.6": {
+          "opex_row": 75,
+          "code": "B.12.6",
+          "name": "HSE: Monthly visit + yearly visit + elect/fire/other controls",
+          "budget": {
+            "formula_cell": "OpEx!C75",
+            "cached_value": 2,
+            "formula_text": "=Scenarios!E314",
+            "scenarios_lineage": {
+              "scenarios_row": 314,
+              "label": "HSE: Monthly visit + yearly visit + elect/fire/other controls",
+              "cached_value": 2,
+              "per_scenario_values": {
+                "H": {
+                  "cached_value": 2
+                },
+                "I": {
+                  "cached_value": 0
+                },
+                "J": {
+                  "cached_value": 0
+                },
+                "K": {
+                  "cached_value": 2
+                }
+              },
+              "selector_formula": "=INDEX(H314:K314,0,MATCH($E$4,$H$4:$K$4,0))",
+              "selected_column": "K"
+            }
+          },
+          "activation_cached_y1_y30": [
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1,
+            1
+          ]
+        }
+      }
+    },
+    "B.13": {
+      "code": "B.13",
+      "opex_row": 76,
+      "name": "Contingencies ",
+      "budget": {
+        "formula_cell": "OpEx!C76",
+        "cached_value": 65.32252799999999,
+        "formula_text": "=SUM(C82,C90,C70,C65,C58,C53,C48,C45,C39,C35,C31,C26,C8,C3)*$D$76"
+      },
+      "inflation": {
+        "formula_cell": "OpEx!D76",
+        "cached_value": 0.04
+      },
+      "wht_cached": 0,
+      "annual": {
+        "formula_template_y1": "=(F82+F90+F70+F65+F58+F53+F48+F45+F39+F35+F31+F26+F8+F3)*$D$76",
+        "formula_template_y2": "=(G82+G90+G70+G65+G58+G53+G48+G45+G39+G35+G31+G26+G8+G3)*$D$76",
+        "cached_values_y1_y30": [
+          51.489632,
+          49.83713600000001,
+          49.515942079999995,
+          50.353572281599995,
+          51.207955087232,
+          52.079425548976644,
+          52.96832541995618,
+          53.875003288355295,
+          54.799814714122405,
+          55.74312236840485,
+          71.62139217577294,
+          72.60280945928841,
+          73.60385508847418,
+          74.62492163024365,
+          74.61082649239823,
+          75.65203246224618,
+          76.71406255149111,
+          77.79733324252093,
+          78.90226934737136,
+          80.02930417431877,
+          81.17887969780517,
+          82.35144673176126,
+          83.54746510639649,
+          84.76740384852441,
+          86.0117413654949,
+          87.28096563280481,
+          88.5755743854609,
+          89.89607531317012,
+          91.24298625943354,
+          92.61683542462218
+        ]
+      },
+      "contingency": {
+        "calculation_type": "PERCENTAGE_OF_SELECTED_CATEGORIES",
+        "contingency_rate": 0.04,
+        "rate_cell": "OpEx!D76",
+        "budget_formula_cell": "OpEx!C76",
+        "budget_formula_text": "=SUM(C82,C90,C70,C65,C58,C53,C48,C45,C39,C35,C31,C26,C8,C3)*$D$76",
+        "annual_formula_template_y1": "=(F82+F90+F70+F65+F58+F53+F48+F45+F39+F35+F31+F26+F8+F3)*$D$76",
+        "contingency_base_rows": [
+          3,
+          8,
+          26,
+          31,
+          35,
+          39,
+          45,
+          48,
+          53,
+          58,
+          65,
+          70,
+          82,
+          90
+        ],
+        "contingency_base_codes": [
+          "B.01",
+          "B.02",
+          "B.03",
+          "B.04",
+          "B.05",
+          "B.06",
+          "B.07",
+          "B.08",
+          "B.09",
+          "B.10",
+          "B.11",
+          "B.12",
+          "D",
+          "F"
+        ],
+        "contingency_base": [
+          {
+            "opex_row": 3,
+            "code": "B.01",
+            "name": "Technical Management"
+          },
+          {
+            "opex_row": 8,
+            "code": "B.02",
+            "name": "Infrastructure Maintenance"
+          },
+          {
+            "opex_row": 26,
+            "code": "B.03",
+            "name": "Maintain Site"
+          },
+          {
+            "opex_row": 31,
+            "code": "B.04",
+            "name": "Clean Material"
+          },
+          {
+            "opex_row": 35,
+            "code": "B.05",
+            "name": "Security"
+          },
+          {
+            "opex_row": 39,
+            "code": "B.06",
+            "name": "Insurance"
+          },
+          {
+            "opex_row": 45,
+            "code": "B.07",
+            "name": "Lease & property Tax"
+          },
+          {
+            "opex_row": 48,
+            "code": "B.08",
+            "name": "Power Expenses"
+          },
+          {
+            "opex_row": 53,
+            "code": "B.09",
+            "name": " Fees"
+          },
+          {
+            "opex_row": 58,
+            "code": "B.10",
+            "name": "Audit&Accounting&Legal Fees"
+          },
+          {
+            "opex_row": 65,
+            "code": "B.11",
+            "name": "Bank Fees"
+          },
+          {
+            "opex_row": 70,
+            "code": "B.12",
+            "name": "Environmental&Social management"
+          },
+          {
+            "opex_row": 82,
+            "code": "D",
+            "name": "Salary and payroll Tax"
+          },
+          {
+            "opex_row": 90,
+            "code": "F",
+            "name": "Taxes"
+          }
+        ],
+        "excluded_categories": [
+          {
+            "opex_row": 78,
+            "code": "C",
+            "name": "Claims"
+          },
+          {
+            "opex_row": 79,
+            "code": "C.01",
+            "name": "Attorney"
+          },
+          {
+            "opex_row": 80,
+            "code": "C.02",
+            "name": "Technical advisor linked to the claim"
+          },
+          {
+            "opex_row": 81,
+            "code": "C.03",
+            "name": "Justice Administration fees"
+          }
+        ]
+      }
+    }
+  },
+  "auxiliary_rows": {
+    "D": {
+      "code": "D",
+      "opex_row": 82,
+      "name": "Salary and payroll Tax",
+      "budget_cached": 0,
+      "annual_cached_y1_y30": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    "F": {
+      "code": "F",
+      "opex_row": 90,
+      "name": "Taxes",
+      "budget_cached": 0,
+      "annual_cached_y1_y30": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    }
+  },
+  "totals": {
+    "total_opex_excl_contingencies": {
+      "opex_row": 95,
+      "budget_cached": 1633.0631999999998,
+      "y1_cached": 1287.2408
+    },
+    "total_opex_incl_contingencies": {
+      "opex_row": 96,
+      "budget_cached": 1698.3857279999997,
+      "y1_cached": 1338.730432
+    }
+  }
+}
