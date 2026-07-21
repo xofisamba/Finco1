@@ -76,7 +76,7 @@ APPROVED_MANUAL_TEST_REFERENCES: frozenset[str] = frozenset({
     "phase2b.model.no_atad_no_losses",                # TestA_NoAtadNoLosses + TestL_ModelA_Exact
     # TUHO: opening LCF resolved to zero per manual workbook inspection
     "phase2b.tuho.opening_lcf_zero.workbook_evidence",  # TestZ_TuhoInputSourceBlocked (resolved)
-    # TUHO: construction-period SHL interest injected via parity adapter
+    # TUHO: construction-generated carryforward at operation boundary (CONSTRUCTION_GENERATED_CARRYFORWARD_AT_OPERATION_BOUNDARY)
     "phase2b.tuho.construction_shl_interest.parity_adapter",  # TestTuhoConstructionLoss
 })
 

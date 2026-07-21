@@ -2139,11 +2139,17 @@ class TestZ_TuhoInputSourceBlocked:
 
 
 class TestTuhoConstructionLoss:
-    """Proves TUHO construction SHL interest generates tax loss at operation start.
+    """Proves TUHO construction-generated LCF is supplied at the operation boundary.
 
-    The 3,568.688 kEUR SHL IDC (from tuho_construction_snapshot.json total_shl_idc)
-    is injected for construction period_index=0 via the parity adapter.  The clean
-    tax engine generates the loss and carries it forward into operating periods.
+    Architecture: CONSTRUCTION_GENERATED_CARRYFORWARD_AT_OPERATION_BOUNDARY.
+    The 3,568.688 kEUR (from tuho_construction_snapshot.json total_shl_idc)
+    is the workbook-observed construction-generated loss amount supplied as a
+    ConstructionGeneratedVintage at the clean-engine operation boundary.
+    origin_year=2029 is a MODEL_BOUNDARY_CONVENTION (terminal year of the
+    2028-06-30→2029-12-30 source construction interval); no authoritative
+    2028/2029 tax-year split has been extracted.  TUHO economics are unaffected
+    because the loss is fully utilized before either possible expiry boundary.
+    Historical/pre-construction opening LCF = ZERO.
     The factory prior_tax_loss_keur=25,000 is NEVER used by the candidate.
     """
 
@@ -2152,8 +2158,8 @@ class TestTuhoConstructionLoss:
         from finco_parity.tax_reference_inputs import build_opening_loss_vintages
         assert build_opening_loss_vintages("tuho") == ()
 
-    def test_tuho_construction_shl_interest_supplied_to_tax_engine(self):
-        """The 3,568.688 kEUR is sourced from tuho_construction_snapshot.json total_shl_idc."""
+    def test_tuho_construction_shl_idc_sourced_from_fixture(self):
+        """Fixture total_shl_idc=3,568.688 kEUR — the construction-generated carryforward amount."""
         import json
         with open("tests/fixtures/construction_parity/tuho_construction_snapshot.json") as f:
             snap = json.load(f)
@@ -2192,21 +2198,22 @@ class TestTuhoConstructionLoss:
             "offset to zero by construction LCF. Likely construction interest not injected."
         )
 
-    def test_construction_period_index_in_parity_adapter(self):
-        """Construction period is index 0 (is_construction=True) in TUHO clean engine."""
-        from app.project_factories import create_default_tuho_wind1
-        from financial_engine.adapters.project_inputs import from_project_inputs
-        from financial_engine.orchestrator import run_operating_model
+    def test_tuho_origin_year_is_model_boundary_convention(self):
+        """origin_year=2029 is MODEL_BOUNDARY_CONVENTION — terminal year of source construction interval.
 
-        inp = create_default_tuho_wind1()
-        clean = from_project_inputs(inp, source_id="test", baseline_commit_sha="abc")
-        result = run_operating_model(clean)
-
-        construction = [p for p in result.periods if p.is_construction]
-        assert len(construction) >= 1, "TUHO must have at least one construction period"
-        assert construction[0].period_index == 0, (
-            f"Expected construction period_index=0, got {construction[0].period_index}"
-        )
+        No authoritative 2028/2029 tax-year split exists.  The convention assigns
+        the full construction-generated carryforward to 2029 (the terminal year of
+        the 2028-06-30→2029-12-30 source construction interval).  TUHO economics
+        are unaffected by the possible expiry-year distinction because the loss is
+        fully utilized before either possible expiry boundary (2033 or 2034).
+        """
+        from finco_parity.tax_reference_inputs import build_construction_generated_carryforward_at_cod
+        vintages = build_construction_generated_carryforward_at_cod("tuho")
+        assert len(vintages) == 1, f"Expected exactly one ConstructionGeneratedVintage; got {len(vintages)}"
+        v = vintages[0]
+        assert v.origin_year == 2029, f"Expected MODEL_BOUNDARY_CONVENTION origin_year=2029; got {v.origin_year}"
+        assert v.origin_label == "CONSTRUCTION_GENERATED", f"Expected CONSTRUCTION_GENERATED label; got {v.origin_label}"
+        assert abs(v.amount_keur - 3568.688) < 0.001, f"Expected 3568.688 kEUR; got {v.amount_keur}"
 
     def test_construction_generated_carryforward_hard_fails_on_missing_fixture(
         self, tmp_path, monkeypatch

@@ -67,6 +67,13 @@ class ConstructionGeneratedVintage:
     proxy period (2029-07-01 to 2030-01-01). Therefore the construction-generated
     LCF is supplied at the operation boundary rather than computed through the
     period engine.
+
+    origin_year=2029 is a MODEL_BOUNDARY_CONVENTION: the full workbook-observed
+    construction-generated carryforward is assigned to the terminal year of the
+    source construction/model period. No authoritative 2028-vs-2029 tax-year split
+    has been extracted from the workbook. TUHO economics are unaffected by any
+    possible expiry-year distinction because the loss is fully utilized before
+    either possible expiry boundary (2033 or 2034).
     """
     amount_keur: float
     origin_label: str
@@ -88,8 +95,15 @@ def build_construction_generated_carryforward_at_cod(baseline_id: str) -> tuple:
     (2029-07-01 to 2030-01-01) rather than the full 18-month source construction
     interval (2028-06-30 -> 2029-12-30).  Mapping the 18-month IDC into the
     6-month proxy period is incorrect.  Instead the construction-generated LCF
-    is supplied at the operation boundary as an opening vintage with
-    origin_tax_year=0 (model construction year).
+    is supplied at the operation boundary via
+    CONSTRUCTION_GENERATED_CARRYFORWARD_AT_OPERATION_BOUNDARY.
+
+    origin_year=2029 is a MODEL_BOUNDARY_CONVENTION: the full workbook-observed
+    construction-generated carryforward is assigned to the terminal year of the
+    source construction/model period (2029-12-30).  No authoritative 2028-vs-2029
+    tax-year split has been extracted.  TUHO economics are unaffected by the
+    possible expiry-year distinction because the loss is fully utilized before
+    either possible expiry boundary.
 
     Source: 20260330_TUHO_BP_2.xlsm (manual review,
     workbook_sha=UNAVAILABLE_NOT_CAPTURED).
