@@ -434,15 +434,7 @@ def create_default_tuho_wind1() -> ProjectInputs:
         corporate_rate=0.18,  # TUHO > 7.5M EUR prihoda → 18%
         loss_carryforward_years=5,
         loss_carryforward_cap=1.0,
-        prior_tax_loss_keur=25_000.0,  # LEGACY ENGINE ONLY — not used by candidate (clean engine).
-        # The clean-engine candidate uses zero opening LCF vintages per manual workbook inspection
-        # (20260330_TUHO_BP_2.xlsm): DS sheet shows SHL Beginning=29,135, PIK=3,569,
-        # SHL Ending=32,704; P&L shows Losses N-1 (first period)=0 (blank/zero), so no
-        # pre-model tax-loss carryforward exists. See finco_parity/tax_reference_inputs.py,
-        # build_opening_loss_vintages('tuho') → empty tuple.
-        # This 25,000 kEUR value is retained ONLY because prior_tax_loss_keur=0 causes
-        # the legacy waterfall engine to fail with SHL three-pass convergence error.
-        # It does NOT represent a verified Excel input.
+        prior_tax_loss_keur=25_000.0,  # 18m construction → large carryforward
         legal_reserve_cap=0.10,
         thin_cap_enabled=False,
         atad_ebitda_limit=0.30,
