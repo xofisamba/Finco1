@@ -722,3 +722,143 @@ def test_fixtures_present():
     """Committed fixture files must exist (no /tmp dependency)."""
     assert _EXCEL_JSON.exists(), f"Excel fixture missing: {_EXCEL_JSON}"
     assert _PYTHON_JSON.exists(), f"Python canonical fixture missing: {_PYTHON_JSON}"
+
+
+# ---------------------------------------------------------------------------
+# DSCR Source-Truth Addendum tests (Stage A — DSCR semantics)
+# ---------------------------------------------------------------------------
+
+def test_dscr_target_vs_actual_separated():
+    """target_dscr and actual_avg_dscr must be documented as distinct concepts in register.
+
+    Stage A addendum: DSCR concepts must NOT be conflated.
+    - ppa_target_dscr (DSCR_PPA_TARGET row): sizing parameter = 1.15
+    - actual_avg_dscr_python_vs_excel (DSCR_AVG_VS_EXCEL row): comparison with Excel AVERAGEIF
+    - actual_avg_dscr_waterfall_semantics (DSCR_ACTUAL_AVG_WATERFALL row): waterfall engine value
+    These are documented as distinct rows with separate recon_ids.
+    """
+    from finco_recon.recon_03_oborovo_full import build_delta_register
+
+    register = build_delta_register()
+
+    # ppa_target row must exist and document 1.15
+    ppa_target_row = next((r for r in register if r["recon_id"] == "DSCR_PPA_TARGET"), None)
+    assert ppa_target_row is not None, "DSCR_PPA_TARGET row must exist in register"
+    assert ppa_target_row["python_value"] is not None, "DSCR_PPA_TARGET python_value must not be None"
+    assert abs(ppa_target_row["excel_value"] - 1.15) < 0.001, (
+        f"DSCR_PPA_TARGET excel_value must be 1.15, got {ppa_target_row['excel_value']}"
+    )
+
+    # actual_avg_dscr_python_vs_excel row must exist
+    avg_vs_excel_row = next((r for r in register if r["recon_id"] == "DSCR_AVG_VS_EXCEL"), None)
+    assert avg_vs_excel_row is not None, "DSCR_AVG_VS_EXCEL row must exist in register"
+
+    # waterfall semantics row must exist
+    waterfall_row = next(
+        (r for r in register if r["recon_id"] == "DSCR_ACTUAL_AVG_WATERFALL"), None
+    )
+    assert waterfall_row is not None, "DSCR_ACTUAL_AVG_WATERFALL row must exist in register"
+
+    # The three rows must have DISTINCT python_values
+    ppa_pv = ppa_target_row["python_value"]
+    avg_pv = avg_vs_excel_row["python_value"]
+    waterfall_pv = waterfall_row["python_value"]
+
+    assert ppa_pv != avg_pv, (
+        f"target_dscr ({ppa_pv}) and averageif_avg ({avg_pv}) must differ — "
+        "they represent distinct DSCR concepts"
+    )
+    assert waterfall_pv != avg_pv, (
+        f"waterfall actual_avg ({waterfall_pv}) and averageif_avg ({avg_pv}) must differ — "
+        "they use different period populations and methods"
+    )
+
+    # Each must have documented root_cause explaining the semantic difference
+    for row in (ppa_target_row, avg_vs_excel_row, waterfall_row):
+        rc = row.get("root_cause", "")
+        assert len(rc) > 50, (
+            f"Row {row['recon_id']} root_cause too short ({len(rc)} chars) — "
+            "must explain semantic meaning of this DSCR concept"
+        )
+
+
+def test_excel_avg_dscr_formula_recreated():
+    """Python AVERAGEIF(<10) on financing.senior_debt.dscr must be within 0.10 of Excel 1.24.
+
+    Stage A addendum: independently recompute Excel Average Senior DSCR formula
+    =SUMIF(G138:DW138,"<10")/COUNTIF(G138:DW138,"<10") using Python per-period DSCRs.
+    Result must be within ±0.10 of verified Excel value 1.24.
+    """
+    d = _load_python()
+    py_dscr = d["financing"]["senior_debt"]["dscr"]
+
+    # Replicate Excel AVERAGEIF formula: include only values < 10 (exclude None and ≥ 10)
+    valid = [x for x in py_dscr if x is not None and x < 10]
+    assert len(valid) > 0, "No valid DSCR values found (all None or >= 10)"
+
+    python_averageif = sum(valid) / len(valid)
+    excel_avg = 1.24
+
+    assert abs(python_averageif - excel_avg) <= 0.10, (
+        f"Python AVERAGEIF(<10) = {python_averageif:.4f}, "
+        f"Excel Average Senior DSCR = {excel_avg}. "
+        f"Delta {abs(python_averageif - excel_avg):.4f} exceeds tolerance 0.10. "
+        f"Valid period count: {len(valid)}. "
+        "Check: are per-period DSCRs in financing.senior_debt.dscr correct?"
+    )
+
+    # Also verify the register row captures this correctly
+    from finco_recon.recon_03_oborovo_full import build_delta_register
+    register = build_delta_register()
+    avg_row = next((r for r in register if r["recon_id"] == "DSCR_AVG_VS_EXCEL"), None)
+    assert avg_row is not None, "DSCR_AVG_VS_EXCEL row must exist"
+    assert avg_row["python_value"] is not None, "DSCR_AVG_VS_EXCEL python_value must not be None"
+    assert abs(avg_row["python_value"] - python_averageif) < 1e-9, (
+        f"Register DSCR_AVG_VS_EXCEL python_value {avg_row['python_value']:.6f} "
+        f"doesn't match independently computed AVERAGEIF {python_averageif:.6f}"
+    )
+
+
+def test_python_dscr_semantics_documented():
+    """Root cause for avg_dscr rows must explain the semantic difference between DSCR concepts.
+
+    Stage A addendum: DSCR_ACTUAL_AVG_WATERFALL row must classify as POLICY_DIFFERENCE
+    and explain why waterfall actual_avg_dscr differs from Excel Average Senior DSCR.
+    """
+    from finco_recon.recon_03_oborovo_full import build_delta_register, POLICY_DIFFERENCE
+
+    register = build_delta_register()
+    waterfall_row = next(
+        (r for r in register if r["recon_id"] == "DSCR_ACTUAL_AVG_WATERFALL"), None
+    )
+    assert waterfall_row is not None, "DSCR_ACTUAL_AVG_WATERFALL row must exist"
+
+    # Must be classified as POLICY_DIFFERENCE (not PYTHON_BUG)
+    assert waterfall_row["classification"] == POLICY_DIFFERENCE, (
+        f"DSCR_ACTUAL_AVG_WATERFALL classification must be POLICY_DIFFERENCE, "
+        f"got {waterfall_row['classification']!r}. "
+        "The delta between waterfall actual_avg_dscr and Excel avg is a method/population "
+        "difference, NOT a calculation bug."
+    )
+
+    # Root cause must mention the semantic difference
+    rc = waterfall_row.get("root_cause", "")
+    assert "POLICY_DIFFERENCE" in rc or "policy" in rc.lower() or "different" in rc.lower(), (
+        f"DSCR_ACTUAL_AVG_WATERFALL root_cause must explain the policy/method difference. "
+        f"Got: {rc[:200]}"
+    )
+    assert len(rc) > 100, (
+        f"DSCR_ACTUAL_AVG_WATERFALL root_cause must be substantive (>100 chars). "
+        f"Got {len(rc)} chars: {rc[:100]}"
+    )
+
+    # DSCR_AVG_DSCR_SEMANTIC must document that returns.avg_dscr is NOT actual average
+    avg_semantic_row = next(
+        (r for r in register if r["recon_id"] == "DSCR_AVG_DSCR_SEMANTIC"), None
+    )
+    assert avg_semantic_row is not None, "DSCR_AVG_DSCR_SEMANTIC row must exist"
+    rc2 = avg_semantic_row.get("root_cause", "")
+    assert "sculpt" in rc2.lower() or "target" in rc2.lower() or "convergence" in rc2.lower(), (
+        f"DSCR_AVG_DSCR_SEMANTIC root_cause must explain avg_dscr is a sculpting target, "
+        f"not an actual average. Got: {rc2[:200]}"
+    )
