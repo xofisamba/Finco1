@@ -78,6 +78,8 @@ APPROVED_MANUAL_TEST_REFERENCES: frozenset[str] = frozenset({
     "phase2b.tuho.opening_lcf_zero.workbook_evidence",  # TestZ_TuhoInputSourceBlocked (resolved)
     # TUHO: construction-generated carryforward at operation boundary (CONSTRUCTION_GENERATED_CARRYFORWARD_AT_OPERATION_BOUNDARY)
     "phase2b.tuho.construction_shl_interest.parity_adapter",  # TestTuhoConstructionLoss
+    # Oborovo: hierarchical OPEX migration (#903) propagates through cf_after_tax in H1 periods
+    "phase2b.cf_after_tax.hierarchical_opex_migration",  # test_recon_fix02c_oborovo_opex_runtime_migration
 })
 
 # ── Constants ─────────────────────────────────────────────────────────────────
@@ -148,7 +150,7 @@ _EXPECTED_SUMMARY_COUNTS: dict[str, int] = {
                          # 3,568.688 kEUR (tuho_construction_snapshot.json total_shl_idc)
                          # supplied as OpeningTaxLossVintageInput(origin_tax_year=2029) at COD.
                          # 18-month source IDC is NOT mapped into the 6-month proxy period.
-    "oborovo": 610,
+    "oborovo": 614,
     "generic_solar": 314,
     "generic_wind": 510,
 }
