@@ -104,7 +104,8 @@ def _minimal_operating_input(**cal_overrides) -> OperatingModelInput:
         ),
     ))
     dep = DepreciationInput(
-        capex_items_for_depreciation=(),
+        book_capex_items_for_depreciation=(),
+        tax_capex_items_for_depreciation=(),
         financial_cost_useful_life_years=14,
     )
     src = InputProvenance(source_id="test", baseline_commit_sha="abc")

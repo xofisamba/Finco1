@@ -112,6 +112,22 @@ class _CountingProvider:
 @pytest.mark.parametrize("baseline_id", _ALL_BASELINES)
 def test_operating_core_v1_pass(baseline_id: str):
     """All four baselines must reach OPERATING_CORE_V1 IDENTICAL."""
+    if baseline_id == "oborovo":
+        pytest.xfail(
+            "Governed drift [B1+B3-book]: oborovo OPEX corrected to exact XLSM values (B1); "
+            "clean engine book depreciable basis now includes bank financing costs per Excel "
+            "Dep-sheet evidence (B3). Tax depreciation is UNCHANGED from baseline. "
+            "Baseline refresh requires explicit governance approval."
+        )
+    if baseline_id == "tuho":
+        pytest.xfail(
+            "Expected mechanical engine drift [B3-book]: generic book_depreciable_capex_items() "
+            "architecture includes capitalised bank financing costs for all projects with "
+            "non-zero idc_keur/bank_fees_keur (TUHO: idc_keur=1519.56, bank_fees_keur=782.61). "
+            "TUHO project-specific book-depreciation financial treatment is OPEN — "
+            "not yet validated from TUHO source model. Tax depreciation UNCHANGED from baseline. "
+            "Baseline refresh requires explicit governance approval."
+        )
     committed = _load_baseline(baseline_id)
     candidate = get_candidate_snapshot(
         baseline_id, baseline_commit_sha=_BASELINE_COMMIT_SHA
@@ -189,6 +205,12 @@ def test_revenue_parity(baseline_id: str):
 
 @pytest.mark.parametrize("baseline_id", _ALL_BASELINES)
 def test_opex_parity(baseline_id: str):
+    if baseline_id == "oborovo":
+        pytest.xfail(
+            "Governed drift [B1]: oborovo Y1 OPEX corrected to exact XLSM values "
+            "(B.03=45.2, B.05=30.1, B.08=176.8608, B.13=51.489632); "
+            "baseline predates correction. Refresh requires explicit governance approval."
+        )
     baseline = _load_baseline(baseline_id)
     adapted = _get_adapted_inputs(baseline_id)
     result = run_operating_model(adapted)
@@ -202,6 +224,11 @@ def test_opex_parity(baseline_id: str):
 
 @pytest.mark.parametrize("baseline_id", _ALL_BASELINES)
 def test_ebitda_parity(baseline_id: str):
+    if baseline_id == "oborovo":
+        pytest.xfail(
+            "Governed drift [B1]: EBITDA = Revenue − OPEX; oborovo OPEX corrected per B1 XLSM values. "
+            "Baseline predates correction. Refresh requires explicit governance approval."
+        )
     baseline = _load_baseline(baseline_id)
     adapted = _get_adapted_inputs(baseline_id)
     result = run_operating_model(adapted)
@@ -215,6 +242,22 @@ def test_ebitda_parity(baseline_id: str):
 
 @pytest.mark.parametrize("baseline_id", _ALL_BASELINES)
 def test_book_depreciation_parity(baseline_id: str):
+    if baseline_id == "oborovo":
+        pytest.xfail(
+            "Governed drift [B3-book]: clean engine BOOK depreciable basis now includes "
+            "bank financing costs (IDC + commitment fees + bank fees + VAT, total ~1 974 kEUR) "
+            "per Oborovo Excel Dep-sheet evidence. TAX depreciation is unchanged from baseline. "
+            "Baseline refresh requires explicit governance approval."
+        )
+    if baseline_id == "tuho":
+        pytest.xfail(
+            "Expected mechanical engine drift [B3-book]: generic book_depreciable_capex_items() "
+            "architecture includes capitalised bank financing costs for all projects with "
+            "non-zero idc_keur/bank_fees_keur (TUHO: idc_keur=1519.56, bank_fees_keur=782.61). "
+            "TUHO project-specific book-depreciation financial treatment is OPEN — "
+            "not yet validated from TUHO source model. TAX depreciation UNCHANGED from baseline. "
+            "Baseline refresh requires explicit governance approval."
+        )
     baseline = _load_baseline(baseline_id)
     adapted = _get_adapted_inputs(baseline_id)
     result = run_operating_model(adapted)
@@ -228,6 +271,8 @@ def test_book_depreciation_parity(baseline_id: str):
 
 @pytest.mark.parametrize("baseline_id", _ALL_BASELINES)
 def test_tax_depreciation_parity(baseline_id: str):
+    # No xfail: B3 changes BOOK depreciation only; TAX basis is unchanged (hard capex only).
+    # Tax treatment of capitalised financing costs is OPEN — no authoritative tax evidence.
     baseline = _load_baseline(baseline_id)
     adapted = _get_adapted_inputs(baseline_id)
     result = run_operating_model(adapted)
@@ -322,20 +367,108 @@ def test_period_count_change_causes_structural_drift():
 
 
 # ---------------------------------------------------------------------------
-# compare_candidate_provider — all four baselines pass
+# compare_candidate_provider — exact freeze guard
 # ---------------------------------------------------------------------------
 
+# Exact governed drift surface per baseline (Phase 2E freeze).
+# Each entry is the set of schedule names (path prefix before [N]) that may drift.
+# Any path outside this set causes the guard to fail.
+#
+# Oborovo: B1 authoritative OPEX source correction propagates to opex_keur and ebitda_keur;
+#          B3 book depreciation basis (financing costs included) propagates to book_depreciation_keur.
+#          No production, revenue, tax_depreciation, financing, or other schedule drift is allowed.
+#
+# TUHO: B3 generic book_depreciable_capex_items() architecture produces drift in book_depreciation_keur
+#       for all projects with non-zero idc_keur/bank_fees_keur.
+#       TUHO project-specific financial treatment is OPEN — not source-validated.
+#       No production, opex, ebitda, revenue, tax_depreciation, or other schedule drift is allowed.
+_GOVERNED_DRIFT_SCHEDULES: dict[str, frozenset[str]] = {
+    "oborovo": frozenset({
+        "operating_schedules.opex_keur",
+        "operating_schedules.ebitda_keur",
+        "operating_schedules.book_depreciation_keur",
+    }),
+    "tuho": frozenset({
+        "operating_schedules.book_depreciation_keur",
+    }),
+    "generic_solar": frozenset(),   # must be IDENTICAL
+    "generic_wind": frozenset(),    # must be IDENTICAL
+}
+
+
+def _drift_schedule_names(differences) -> frozenset[str]:
+    """Extract the schedule name (path prefix before '[N]') from each difference."""
+    names: set[str] = set()
+    for d in differences:
+        # e.g. 'operating_schedules.opex_keur[12]' → 'operating_schedules.opex_keur'
+        bracket = d.path.find("[")
+        prefix = d.path[:bracket] if bracket != -1 else d.path
+        names.add(prefix)
+    return frozenset(names)
+
+
 def test_compare_candidate_provider_pass_all_baselines():
-    """compare_candidate_provider with the real provider passes all four baselines."""
-    from finco_parity.financial_engine_candidate import FinancialEngineCandidateProvider
-    aggregate = compare_candidate_provider(
-        FinancialEngineCandidateProvider(),
-        baseline_ids=_ALL_BASELINES,
-        comparison_profile=_PROFILE,
-        verify_legacy=False,
+    """Phase 2E freeze guard: exact governed drift surface for all four baselines.
+
+    generic_solar and generic_wind must be IDENTICAL (no differences).
+    oborovo may drift only in opex_keur, ebitda_keur, book_depreciation_keur (B1+B3).
+    tuho may drift only in book_depreciation_keur (B3 generic architecture; OPEN treatment).
+    Any additional drift field fails this guard.
+    """
+    from finco_parity.manifest import SNAPSHOTS_DIR
+
+    for baseline_id in _ALL_BASELINES:
+        snap_path = SNAPSHOTS_DIR / f"{baseline_id}.json"
+        with open(snap_path) as f:
+            baseline_snap = json.load(f)
+
+        candidate = get_candidate_snapshot(
+            baseline_id, baseline_commit_sha=_BASELINE_COMMIT_SHA
+        )
+        b_proj = project_for_profile(baseline_snap, _PROFILE)
+        c_proj = project_for_profile(candidate, _PROFILE)
+        result = compare_snapshots(b_proj, c_proj, baseline_id=baseline_id)
+
+        allowed = _GOVERNED_DRIFT_SCHEDULES[baseline_id]
+        actual = _drift_schedule_names(result.differences)
+        unexpected = actual - allowed
+
+        assert not unexpected, (
+            f"[{baseline_id}] unexpected drift in schedule(s) outside governed surface: "
+            f"{sorted(unexpected)}. "
+            f"Governed surface: {sorted(allowed)}. "
+            f"Total diffs: {len(result.differences)}."
+        )
+
+
+def test_freeze_guard_rejects_unrelated_drift():
+    """Proof: injecting production_mwh drift into oborovo fails the exact freeze guard.
+
+    Demonstrates that the guard is not vacuously broad — a one-ULP production mutation
+    adds 'operating_schedules.production_mwh' to the drift set which is outside the
+    governed surface and must cause an assertion failure.
+    """
+    from finco_parity.manifest import SNAPSHOTS_DIR
+
+    baseline_id = "oborovo"
+    snap_path = SNAPSHOTS_DIR / f"{baseline_id}.json"
+    with open(snap_path) as f:
+        baseline_snap = json.load(f)
+
+    # Inject a one-ULP mutation into production_mwh at period 0
+    mutated = _candidate_with_schedule_mutation(baseline_id, "production_mwh")
+    b_proj = project_for_profile(baseline_snap, _PROFILE)
+    c_proj = project_for_profile(mutated, _PROFILE)
+    result = compare_snapshots(b_proj, c_proj, baseline_id=baseline_id)
+
+    allowed = _GOVERNED_DRIFT_SCHEDULES[baseline_id]
+    actual = _drift_schedule_names(result.differences)
+    unexpected = actual - allowed
+
+    # The guard must detect the injected drift
+    assert "operating_schedules.production_mwh" in unexpected, (
+        "Injection test failed: production_mwh mutation was not detected as unexpected drift"
     )
-    assert aggregate.overall_status == BaselineRunStatus.PASS
-    assert exit_code_for_aggregate(aggregate) == 0
 
 
 # ---------------------------------------------------------------------------

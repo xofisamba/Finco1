@@ -83,15 +83,28 @@ class CapexItemForDep:
 
 @dataclass(frozen=True)
 class DepreciationInput:
-    """CAPEX items for straight-line book/tax depreciation.
+    """CAPEX items for straight-line depreciation — book and tax treated separately.
 
-    Both fields are required — no defaults.
+    All fields are required — no defaults.
 
-    financial_cost_useful_life_years: amortization period for items with
-        asset_class_code == "financial_costs". Mapped explicitly from
-        financing.senior_tenor_years in the adapter.
+    book_capex_items_for_depreciation:
+        Items entering the BOOK depreciable basis. Includes hard capex plus
+        capitalised bank financing costs (IDC, commitment fees, bank fees, VAT)
+        where Excel Dep-sheet evidence confirms these are depreciated.
+
+    tax_capex_items_for_depreciation:
+        Items entering the TAX depreciable basis. Currently hard capex only.
+        Tax treatment of capitalised financing costs is OPEN — each item
+        requires separate authoritative tax-source evidence before inclusion.
+
+    financial_cost_useful_life_years:
+        Amortization period for items with asset_class_code == "financial_costs".
+        Mapped from financing.senior_tenor_years in the adapter.
+        OPEN: Excel Dep-sheet formula for useful life is unverified from
+        data_only extraction. Do not tune to eliminate delta.
     """
-    capex_items_for_depreciation: tuple[CapexItemForDep, ...]
+    book_capex_items_for_depreciation: tuple[CapexItemForDep, ...]
+    tax_capex_items_for_depreciation: tuple[CapexItemForDep, ...]
     financial_cost_useful_life_years: int
 
 

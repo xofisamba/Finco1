@@ -103,19 +103,19 @@ def create_default_oborovo() -> ProjectInputs:
         OpexItem(name="Technical Management", y1_amount_keur=198.0, annual_inflation=0.02),
         OpexItem(name="Infrastructure Maintenance", y1_amount_keur=244.0, annual_inflation=0.02,
                  step_changes=((2, 185.64),)),  # B.02.1 active Y1-2→B.02.2 active Y3+; Y2→185.64
-        OpexItem(name="Maintain Site", y1_amount_keur=45.0, annual_inflation=0.02),
+        OpexItem(name="Maintain Site", y1_amount_keur=45.2, annual_inflation=0.02),   # B1: XLSM Inputs row 148 authoritative value
         OpexItem(name="Clean Material", y1_amount_keur=40.0, annual_inflation=0.02),
-        OpexItem(name="Security", y1_amount_keur=30.0, annual_inflation=0.02),
+        OpexItem(name="Security", y1_amount_keur=30.1, annual_inflation=0.02),          # B1: XLSM Inputs row 150 authoritative value
         OpexItem(name="Insurance", y1_amount_keur=255.0, annual_inflation=0.02),
         OpexItem(name="Lease & Property Tax", y1_amount_keur=208.08, annual_inflation=0.02),
-        OpexItem(name="Power Expenses", y1_amount_keur=177.0, annual_inflation=0.0),  # Flat
+        OpexItem(name="Power Expenses", y1_amount_keur=176.8608, annual_inflation=0.0),  # B1: XLSM Inputs row 153 authoritative value (flat)
         OpexItem(name="Fees", y1_amount_keur=14.0, annual_inflation=0.0),  # Flat
         OpexItem(name="Audit&Accounting&Legal", y1_amount_keur=24.0, annual_inflation=0.02),
         OpexItem(name="Bank Fees", y1_amount_keur=20.0, annual_inflation=0.02),
         OpexItem(name="Environmental&Social", y1_amount_keur=32.0, annual_inflation=0.02,
                 step_changes=((3, 12.4848),)),  # B.12.3/B.12.5 inactive Y3+ → step to 12.4848 (annual, inflation resumes)
-        OpexItem(name="Contingencies", y1_amount_keur=51.0, annual_inflation=0.02,
-                percentage_of_opex=0.04),  # B.13: 4% of non-contingency OPEX
+        OpexItem(name="Contingencies", y1_amount_keur=51.489632, annual_inflation=0.02,
+                percentage_of_opex=0.04),  # B1: XLSM Inputs row 158 authoritative value; 4% of non-contingency OPEX
         OpexItem(name="Taxes", y1_amount_keur=0.0, annual_inflation=0.0),
         OpexItem(name="Salary&Payroll", y1_amount_keur=0.0, annual_inflation=0.0),
     )

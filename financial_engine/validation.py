@@ -148,23 +148,27 @@ def validate_operating_model_input(
         "civil_grid", "soft_costs", "financial_costs",
     })
 
-    for i, item in enumerate(dep.capex_items_for_depreciation):
-        if not _is_finite(item.amount_keur):
-            issues.append(_err("DEP001", f"depreciation.capex_items_for_depreciation[{i}].amount_keur",
-                               f"amount_keur for item {item.name!r} must be finite, got {item.amount_keur}"))
-        elif item.amount_keur < 0:
-            issues.append(_err("DEP001", f"depreciation.capex_items_for_depreciation[{i}].amount_keur",
-                               f"amount_keur for item {item.name!r} must be non-negative, got {item.amount_keur}"))
+    for basis_label, basis_items in (
+        ("book_capex_items_for_depreciation", dep.book_capex_items_for_depreciation),
+        ("tax_capex_items_for_depreciation", dep.tax_capex_items_for_depreciation),
+    ):
+        for i, item in enumerate(basis_items):
+            if not _is_finite(item.amount_keur):
+                issues.append(_err("DEP001", f"depreciation.{basis_label}[{i}].amount_keur",
+                                   f"amount_keur for item {item.name!r} must be finite, got {item.amount_keur}"))
+            elif item.amount_keur < 0:
+                issues.append(_err("DEP001", f"depreciation.{basis_label}[{i}].amount_keur",
+                                   f"amount_keur for item {item.name!r} must be non-negative, got {item.amount_keur}"))
 
-        if item.asset_class_code not in _RECOGNIZED_ASSET_CLASSES:
-            issues.append(_err("DEP002", f"depreciation.capex_items_for_depreciation[{i}].asset_class_code",
-                               f"asset_class_code {item.asset_class_code!r} is not recognized; "
-                               f"valid: {sorted(_RECOGNIZED_ASSET_CLASSES)}"))
+            if item.asset_class_code not in _RECOGNIZED_ASSET_CLASSES:
+                issues.append(_err("DEP002", f"depreciation.{basis_label}[{i}].asset_class_code",
+                                   f"asset_class_code {item.asset_class_code!r} is not recognized; "
+                                   f"valid: {sorted(_RECOGNIZED_ASSET_CLASSES)}"))
 
-        if item.useful_life_override is not None and item.useful_life_override <= 0:
-            issues.append(_err("DEP003", f"depreciation.capex_items_for_depreciation[{i}].useful_life_override",
-                               f"useful_life_override for item {item.name!r} must be positive "
-                               f"or None, got {item.useful_life_override}"))
+            if item.useful_life_override is not None and item.useful_life_override <= 0:
+                issues.append(_err("DEP003", f"depreciation.{basis_label}[{i}].useful_life_override",
+                                   f"useful_life_override for item {item.name!r} must be positive "
+                                   f"or None, got {item.useful_life_override}"))
 
     return tuple(issues)
 
