@@ -29,6 +29,7 @@ from domain.inputs import (
     TechnicalParams,
 )
 from domain.revenue.bess import BessParams
+from finco_core.opex.oborovo_config import build_oborovo_opex_capability
 
 
 # =============================================================================
@@ -226,6 +227,7 @@ def create_default_oborovo() -> ProjectInputs:
         revenue=revenue,
         financing=financing,
         tax=tax,
+        hierarchical_opex_capability=build_oborovo_opex_capability(),
     )
 
 

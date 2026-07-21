@@ -10,6 +10,7 @@ Classification hierarchy (most-severe wins per path, but all are reported):
   SCHEMA_DRIFT        — schema_version changed
   PROVENANCE_DRIFT    — any baseline identity / capture provenance field changed
   STRUCTURAL_DRIFT    — key added/removed, list length changed, type changed
+                        (exception: int vs float with equal value → IDENTICAL)
   AVAILABILITY_DRIFT  — populated↔None transition or unavailable_fields change
   VALUE_DRIFT         — comparable numeric/string/bool value changed
 
@@ -217,19 +218,30 @@ def _compare_values(
         ))
         return
 
-    # Type mismatch — exact types required.
+    # Type mismatch — exact types required, with one narrow exception.
     # bool must be checked before int because bool is a subclass of int in Python.
-    # True vs 1 → STRUCTURAL_DRIFT; 1 vs 1.0 → STRUCTURAL_DRIFT; 1 vs 1 → IDENTICAL.
+    # True vs 1 → STRUCTURAL_DRIFT; 1 vs 1 → IDENTICAL.
+    # Narrow numeric exception: int vs float with equal values → IDENTICAL.
+    # Rationale: 0 vs 0.0 and 1 vs 1.0 carry no financial distinction; preserving 158
+    # fake STRUCTURAL_DRIFT records for representation noise is rejected per governance review.
+    # bool is explicitly excluded (True vs 1 must remain STRUCTURAL_DRIFT).
     b_type = type(baseline)
     c_type = type(current)
     if b_type != c_type:
-        diffs.append(Difference(
-            kind=DriftKind.STRUCTURAL_DRIFT,
-            path=path,
-            baseline_value=baseline,
-            current_value=current,
-        ))
-        return
+        _both_numeric = (
+            isinstance(baseline, (int, float)) and not isinstance(baseline, bool)
+            and isinstance(current, (int, float)) and not isinstance(current, bool)
+        )
+        if _both_numeric and float(baseline) == float(current):
+            pass  # numerically equal int/float — treat as IDENTICAL, no diff
+        else:
+            diffs.append(Difference(
+                kind=DriftKind.STRUCTURAL_DRIFT,
+                path=path,
+                baseline_value=baseline,
+                current_value=current,
+            ))
+            return
 
     # Dict comparison.
     if isinstance(baseline, dict):

@@ -22,6 +22,7 @@ from finco_core.inputs.senior_sculpting import SeniorSculptingConfig
 
 if TYPE_CHECKING:
     from finco_core.inputs.bess import BessParams
+    from finco_core.opex._capability import HierarchicalOpexCapability
 
 
 class PeriodFrequency(Enum):
@@ -593,6 +594,10 @@ class ProjectInputs:
     revenue: RevenueParams
     financing: FinancingParams
     tax: TaxParams
+    # Capability field: when set, opex_schedule_period() routes through the
+    # generic hierarchical engine instead of the legacy flat-item path.
+    # Presence (non-None) is the sole dispatch signal — never check project name.
+    hierarchical_opex_capability: "HierarchicalOpexCapability | None" = None
 
 
 def hash_inputs_for_cache(inputs: "ProjectInputs") -> tuple:
@@ -635,4 +640,55 @@ def hash_inputs_for_cache(inputs: "ProjectInputs") -> tuple:
         inputs.tax.corporate_rate,
         inputs.tax.loss_carryforward_years,
         inputs.tax.atad_ebitda_limit,
+        # Hierarchical OPEX capability — if present, include full model structure in cache key.
+        # Sorted by category code, then subitem code within each category, for determinism.
+        # Does NOT include senior_tenor_years — that lives in FinancingParams above.
+        (
+            tuple(
+                (
+                    cat.code,
+                    cat.calculation_type.value,
+                    cat.inflation_rate,
+                    cat.escalation_convention.value,
+                    cat.percentage_rate,
+                    tuple(sorted(cat.percentage_base_codes)),
+                    tuple(
+                        (
+                            si.code,
+                            si.amount_basis.value,
+                            si.base_amount_keur,
+                            si.activation_mode.value,
+                            (
+                                tuple(si.activation_schedule.annual_flags)
+                                if si.activation_schedule is not None else None
+                            ),
+                            (
+                                tuple(
+                                    (yr, half, flag)
+                                    for (yr, half), flag in si.activation_schedule.period_overrides
+                                )
+                                if si.activation_schedule is not None
+                                   and si.activation_schedule.period_overrides
+                                else None
+                            ),
+                        )
+                        for si in sorted(cat.subitems, key=lambda s: s.code)
+                    ),
+                )
+                for cat in sorted(
+                    inputs.hierarchical_opex_capability.opex_model.categories,
+                    key=lambda c: c.code,
+                )
+            ) if inputs.hierarchical_opex_capability is not None else None
+        ),
+        (
+            tuple(
+                (code, tuple(vals))
+                for code, vals in sorted(
+                    inputs.hierarchical_opex_capability.external_annual_series,
+                    key=lambda kv: kv[0],
+                )
+            )
+            if inputs.hierarchical_opex_capability is not None else None
+        ),
     )

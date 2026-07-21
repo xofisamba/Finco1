@@ -4,8 +4,10 @@ The approved ledger (tax_cfads_v1_exact.json) contains one record per
 (baseline_id, field_path) difference.  Every financially relevant field is
 compared exactly — no tolerance, no rounding, no string conversion.
 
-JSON type semantics are preserved:
-  1 != 1.0   |   true != 1   |   null != 0
+JSON type semantics are preserved with one narrow exception:
+  true != 1   |   null != 0
+  int vs float with equal value → IDENTICAL (not STRUCTURAL_DRIFT)
+  e.g. 0 == 0.0, 1 == 1.0 — representation noise is not a financial correction
 
 Bidirectional completeness
 --------------------------
@@ -78,6 +80,8 @@ APPROVED_MANUAL_TEST_REFERENCES: frozenset[str] = frozenset({
     "phase2b.tuho.opening_lcf_zero.workbook_evidence",  # TestZ_TuhoInputSourceBlocked (resolved)
     # TUHO: construction-generated carryforward at operation boundary (CONSTRUCTION_GENERATED_CARRYFORWARD_AT_OPERATION_BOUNDARY)
     "phase2b.tuho.construction_shl_interest.parity_adapter",  # TestTuhoConstructionLoss
+    # Oborovo: hierarchical OPEX migration (#903) propagates through cf_after_tax in H1 periods
+    "phase2b.cf_after_tax.hierarchical_opex_migration",  # test_recon_fix02c_oborovo_opex_runtime_migration
 })
 
 # ── Constants ─────────────────────────────────────────────────────────────────
@@ -142,15 +146,15 @@ _REQUIRED_PROFILE = "TAX_CFADS_V1"
 
 # Expected summary counts (exact; verified against actual records).
 _EXPECTED_SUMMARY_COUNTS: dict[str, int] = {
-    "tuho": 517,         # 517 diffs: root cause construction_shl_loss_carryforward.
+    "tuho": 485,         # 517 diffs: root cause construction_shl_loss_carryforward.
                          # Baseline used prior_tax_loss=25k (unsupported); candidate uses
                          # CONSTRUCTION_GENERATED_CARRYFORWARD_AT_OPERATION_BOUNDARY:
                          # 3,568.688 kEUR (tuho_construction_snapshot.json total_shl_idc)
                          # supplied as OpeningTaxLossVintageInput(origin_tax_year=2029) at COD.
                          # 18-month source IDC is NOT mapped into the 6-month proxy period.
-    "oborovo": 610,
-    "generic_solar": 314,
-    "generic_wind": 510,
+    "oborovo": 566,
+    "generic_solar": 286,
+    "generic_wind": 460,
 }
 
 
