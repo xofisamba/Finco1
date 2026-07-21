@@ -323,7 +323,11 @@ def generate_tax_cfads_candidate_snapshot(
     # No construction-period PeriodInterestInput: mapping 18-month IDC into the
     # 6-month clean-engine proxy construction period is architecturally incorrect.
     # Instead the construction-generated LCF is supplied at the operation boundary
-    # as an opening vintage (origin_tax_year=0 = model construction year).
+    # (CONSTRUCTION_GENERATED_CARRYFORWARD_AT_OPERATION_BOUNDARY).
+    # For TUHO, origin_tax_year=2029 is a MODEL_BOUNDARY_CONVENTION: the full
+    # workbook-observed construction-generated carryforward is assigned to 2029,
+    # the terminal year of the 2028-06-30→2029-12-30 source construction/model period.
+    # No authoritative 2028-vs-2029 tax-year split has been extracted.
     period_interest = operating_period_interest
 
     policy = build_tax_policy(baseline_id)

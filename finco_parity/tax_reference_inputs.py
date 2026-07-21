@@ -35,7 +35,7 @@ Conclusions:
   4. Prior factory value of 25,000 kEUR is unsupported as clean-engine source truth;
      retained unchanged in the legacy factory for compatibility and explicitly excluded
      from clean-engine tax source resolution.
-  5. 3,569 kEUR must NOT be encoded as an opening vintage.
+  5. 3,569 kEUR must NOT be encoded as a historical/pre-construction opening vintage.
 
 ``build_opening_loss_vintages("tuho")`` returns an empty tuple ().
 
