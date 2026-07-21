@@ -67,3 +67,43 @@ def compute_input_fingerprint(inputs: "OperatingModelInput") -> str:
     raw = _to_canonical(dataclasses.asdict(inputs))
     canonical = json.dumps(raw, sort_keys=True, ensure_ascii=False, allow_nan=False)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def compute_tax_cfads_fingerprint(inputs: "Any") -> str:
+    """Compute a deterministic SHA-256 fingerprint of TaxCfadsModelInput.
+
+    Covers the complete operating + tax input set. Any change to:
+    - corporate tax rate, ATAD limit, ATAD threshold, LCF duration,
+      cash-tax timing, cash-tax lag, opening vintage origins/amounts,
+      any period interest component, any fiscal adjustment
+    will produce a different fingerprint.
+    """
+    import dataclasses
+
+    def _to_canonical_extended(obj: Any) -> Any:
+        """Handle TaxPolicy enum fields and property-based fields."""
+        from enum import Enum
+        if isinstance(obj, Enum):
+            return obj.value
+        if isinstance(obj, date):
+            return obj.isoformat()
+        if isinstance(obj, (bool, int, float, str, type(None))):
+            return obj
+        if isinstance(obj, (list, tuple)):
+            return [_to_canonical_extended(v) for v in obj]
+        if isinstance(obj, dict):
+            return {k: _to_canonical_extended(v) for k in sorted(obj) for v in [obj[k]]}
+        try:
+            if dataclasses.is_dataclass(obj) and not isinstance(obj, type):
+                d = dataclasses.asdict(obj)
+                # Add computed properties that affect tax calculations
+                if hasattr(obj, 'total_interest_keur'):
+                    d['_total_interest_keur'] = obj.total_interest_keur
+                return _to_canonical_extended(d)
+        except Exception:
+            pass
+        return str(obj)
+
+    raw = _to_canonical_extended(inputs)
+    canonical = json.dumps(raw, sort_keys=True, ensure_ascii=False, allow_nan=False)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
