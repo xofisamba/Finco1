@@ -76,6 +76,8 @@ APPROVED_MANUAL_TEST_REFERENCES: frozenset[str] = frozenset({
     "phase2b.model.no_atad_no_losses",                # TestA_NoAtadNoLosses + TestL_ModelA_Exact
     # TUHO: opening LCF resolved to zero per manual workbook inspection
     "phase2b.tuho.opening_lcf_zero.workbook_evidence",  # TestZ_TuhoInputSourceBlocked (resolved)
+    # TUHO: construction-period SHL interest injected via parity adapter
+    "phase2b.tuho.construction_shl_interest.parity_adapter",  # TestTuhoConstructionLoss
 })
 
 # ── Constants ─────────────────────────────────────────────────────────────────
@@ -140,8 +142,10 @@ _REQUIRED_PROFILE = "TAX_CFADS_V1"
 
 # Expected summary counts (exact; verified against actual records).
 _EXPECTED_SUMMARY_COUNTS: dict[str, int] = {
-    "tuho": 544,         # 544 diffs from single root cause: legacy baseline used prior_tax_loss=25k;
-                         # candidate uses zero per manual workbook inspection (20260330_TUHO_BP_2.xlsm)
+    "tuho": 517,         # 517 diffs: root cause construction_shl_loss_carryforward.
+                         # Baseline used prior_tax_loss=25k (unsupported); candidate injects
+                         # 3,568.688 kEUR construction-period SHL interest (tuho_construction_snapshot.json)
+                         # → generates construction-period tax loss carried into operations.
     "oborovo": 610,
     "generic_solar": 314,
     "generic_wind": 510,

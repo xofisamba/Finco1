@@ -47,6 +47,16 @@ from financial_engine.version import ENGINE_VERSION
 
 CANDIDATE_RUN_PATH_ID = "financial_engine.orchestrator.run_tax_cfads_model"
 
+# ---------------------------------------------------------------------------
+# Construction-snapshot registry (parity-adapter layer only — NOT production)
+# Maps baseline_id → repo-relative path to the construction parity fixture.
+# The clean financial_engine receives generic PeriodInterestInput entries;
+# it never sees project names or fixture paths.
+# ---------------------------------------------------------------------------
+_CONSTRUCTION_SNAPSHOT_REGISTRY: dict[str, str] = {
+    "tuho": "tests/fixtures/construction_parity/tuho_construction_snapshot.json",
+}
+
 # Waterfall rows from the baseline schema that Phase 2B does not implement.
 _WATERFALL_UNAVAILABLE: frozenset[str] = frozenset({
     "r69_fcf_banks_keur",
@@ -133,6 +143,64 @@ def _build_exogenous_interest(
             ))
 
     return tuple(interest_inputs)
+
+
+def _build_construction_period_interest(
+    baseline_id: str,
+    operating_result: Any,
+) -> tuple:
+    """Load construction-period SHL IDC from the construction snapshot and map to periods.
+
+    This is parity-adapter code.  The construction snapshot fixture is used as a
+    reference source for construction-period interest that the baseline snapshot
+    (operating-only) does not carry.  The clean engine receives generic
+    PeriodInterestInput entries indexed by period_index — no project identity is
+    passed into the engine.
+
+    The total_shl_idc amount is allocated across construction periods proportionally
+    by calendar days.  Zero-length construction periods receive zero interest.
+
+    Returns an empty tuple if no construction snapshot is registered for this baseline.
+    """
+    snapshot_rel = _CONSTRUCTION_SNAPSHOT_REGISTRY.get(baseline_id)
+    if not snapshot_rel:
+        return ()
+
+    _REPO_ROOT = Path(__file__).parent.parent
+    snapshot_path = _REPO_ROOT / snapshot_rel
+    if not snapshot_path.exists():
+        return ()
+
+    with open(snapshot_path) as f:
+        construction_snap = json.load(f)
+
+    totals = construction_snap.get("totals_keur") or {}
+    total_shl_idc = float(totals.get("total_shl_idc", 0.0))
+    if total_shl_idc <= 0.0:
+        return ()
+
+    # Find construction periods with positive duration.
+    construction_periods = [
+        p for p in operating_result.periods
+        if p.is_construction
+        and (p.period_end - p.period_start).days > 0
+    ]
+    if not construction_periods:
+        return ()
+
+    from financial_engine.inputs import PeriodInterestInput
+
+    total_days = sum((p.period_end - p.period_start).days for p in construction_periods)
+    entries: list[PeriodInterestInput] = []
+    for p in construction_periods:
+        period_days = (p.period_end - p.period_start).days
+        shl_keur = total_shl_idc * (period_days / total_days)
+        entries.append(PeriodInterestInput(
+            period_index=p.period_index,
+            shl_interest_keur=shl_keur,
+        ))
+
+    return tuple(entries)
 
 
 def _serialize_period_grid(result: Any) -> list[dict[str, Any]]:
@@ -302,7 +370,20 @@ def generate_tax_cfads_candidate_snapshot(
         build_opening_loss_vintages,
     )
 
-    period_interest = _build_exogenous_interest(baseline_snapshot)
+    operating_period_interest = _build_exogenous_interest(baseline_snapshot)
+
+    # Construction-period SHL interest (parity adapter: from construction snapshot fixture).
+    # The generic tax engine receives clean PeriodInterestInput entries; no project identity
+    # is embedded in the engine.  A pre-run of the operating model is needed to discover
+    # construction period_index values before building TaxCfadsModelInput.
+    from financial_engine.orchestrator import run_operating_model as _run_operating_model
+    _pre_result = _run_operating_model(clean_inputs)
+    construction_interest = _build_construction_period_interest(baseline_id, _pre_result)
+
+    # Operating interest entries are sorted by period_index (ascending).  Construction
+    # entries have smaller period_index values than operating entries — prepend them.
+    period_interest = construction_interest + operating_period_interest
+
     policy = build_tax_policy(baseline_id)
     from finco_parity.tax_reference_inputs import TuhoOpeningLossVintageUnresolved
     try:

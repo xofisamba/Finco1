@@ -1817,18 +1817,6 @@ def test_w_correction_aware_four_baseline(baseline_id: str):
                 approved[bid] = set()
             approved[bid].add(rec["field_path"])
 
-    # TUHO opening-loss resolved to zero (manual workbook evidence — see tax_reference_inputs.py).
-    # TUHO legacy engine comparison skipped: with prior_tax_loss_keur=0, the legacy waterfall
-    # engine requires three-pass SHL iteration (not yet supported). The parity CLI handles
-    # this via EXECUTION_ERROR → zero diffs → IDENTICAL. The candidate output is correct.
-    # Baseline regeneration is pending legacy-engine SHL three-pass support.
-    if baseline_id == "tuho":
-        from finco_parity.financial_engine_tax_cfads_candidate import generate_tax_cfads_candidate_snapshot as _gen
-        snap = _gen("tuho")
-        assert snap is not None, "TUHO candidate snapshot must be non-None"
-        assert "tax_and_cfads" in snap, "TUHO candidate must have tax_and_cfads"
-        return
-
     profile = ComparisonProfile.TAX_CFADS_V1
     snapshot_path = SNAPSHOTS_DIR / f"{baseline_id}.json"
     with open(snapshot_path) as f:
@@ -2084,12 +2072,22 @@ class TestY_MultiPeriodCrossYear:
 # ---------------------------------------------------------------------------
 
 class TestZ_TuhoInputSourceBlocked:
-    """TUHO opening-loss vintage is RESOLVED to zero.
+    """TUHO opening-loss vintage is RESOLVED to zero; construction SHL interest correctly modeled.
 
     Source: manual TUHO Excel workbook inspection (20260330_TUHO_BP_2.xlsm).
     P&L Losses N-1 (first period) = 0 — no pre-model tax-loss carryforward.
-    build_opening_loss_vintages("tuho") now returns an empty tuple ().
-    TAX_CFADS_V1 TUHO is IDENTICAL (no corrections needed).
+    build_opening_loss_vintages("tuho") returns an empty tuple ().
+
+    The 3,568.688 kEUR construction-period SHL interest (from
+    tuho_construction_snapshot.json total_shl_idc) is injected into the tax engine
+    via PeriodInterestInput for construction period_index=0 (2029-07-01 → 2030-01-01).
+    Fiscal Reintegration = 0 (currently deductible per Excel policy), generating a
+    construction-period tax loss carried forward into operations.
+
+    TAX_CFADS_V1 TUHO status: APPROVED_FINANCIAL_CORRECTION (517 records).
+    Root cause: baseline used unsupported prior_tax_loss_keur=25,000; candidate uses
+    construction-generated LCF of ~3,568.688 kEUR.
+    All 517 corrections are categorised as construction_shl_loss_carryforward.
     """
 
     def test_build_opening_loss_vintages_tuho_returns_empty_tuple(self):
@@ -2143,6 +2141,77 @@ class TestZ_TuhoInputSourceBlocked:
             f"TUHO must NOT be blocked after opening-loss resolution. Blocked: {blocked}"
         )
         assert "oborovo" not in blocked, f"Oborovo must NOT be blocked: {blocked}"
+
+
+class TestTuhoConstructionLoss:
+    """Proves TUHO construction SHL interest generates tax loss at operation start.
+
+    The 3,568.688 kEUR SHL IDC (from tuho_construction_snapshot.json total_shl_idc)
+    is injected for construction period_index=0 via the parity adapter.  The clean
+    tax engine generates the loss and carries it forward into operating periods.
+    The factory prior_tax_loss_keur=25,000 is NEVER used by the candidate.
+    """
+
+    def test_tuho_historical_opening_vintages_are_empty(self):
+        """build_opening_loss_vintages('tuho') returns () — zero pre-model opening LCF."""
+        from finco_parity.tax_reference_inputs import build_opening_loss_vintages
+        assert build_opening_loss_vintages("tuho") == ()
+
+    def test_tuho_construction_shl_interest_supplied_to_tax_engine(self):
+        """The 3,568.688 kEUR is sourced from tuho_construction_snapshot.json total_shl_idc."""
+        import json
+        with open("tests/fixtures/construction_parity/tuho_construction_snapshot.json") as f:
+            snap = json.load(f)
+        total_shl_idc = snap.get("totals_keur", {}).get("total_shl_idc", 0.0)
+        assert abs(total_shl_idc - 3568.688) < 1.0, (
+            f"total_shl_idc={total_shl_idc} expected ≈3568.688"
+        )
+
+    def test_tuho_25000_never_enters_clean_candidate(self):
+        """The factory prior_tax_loss_keur=25,000 does not appear as an opening vintage."""
+        from finco_parity.tax_reference_inputs import build_opening_loss_vintages
+        vintages = build_opening_loss_vintages("tuho")
+        total_opening = sum(v.amount_keur for v in vintages) if vintages else 0.0
+        assert total_opening == 0.0, (
+            f"Opening LCF total must be 0.0; got {total_opening}"
+        )
+
+    def test_construction_generated_loss_carried_into_operations(self):
+        """Candidate snapshot carries construction LCF into first operating tax year."""
+        from finco_parity.financial_engine_tax_cfads_candidate import (
+            generate_tax_cfads_candidate_snapshot,
+        )
+        snap = generate_tax_cfads_candidate_snapshot("tuho")
+        tc = snap["tax_and_cfads"]
+        # After construction SHL interest injection the first operating tax year must have
+        # some loss-used (candidate offsets operating profit against construction LCF).
+        taxable_after = tc.get("taxable_profit_after_losses_audit_keur", [])
+        taxable_before = tc.get("taxable_income_before_losses_audit_keur", [])
+        # Some period early in operations must have before>0 but after=0 (LCF offset)
+        lcf_used = any(
+            (b > 0.01 and abs(a) < 1.0)
+            for b, a in zip(taxable_before[:10], taxable_after[:10])
+        )
+        assert lcf_used, (
+            "Expected at least one early operating period with positive taxable income "
+            "offset to zero by construction LCF. Likely construction interest not injected."
+        )
+
+    def test_construction_period_index_in_parity_adapter(self):
+        """Construction period is index 0 (is_construction=True) in TUHO clean engine."""
+        from app.project_factories import create_default_tuho_wind1
+        from financial_engine.adapters.project_inputs import from_project_inputs
+        from financial_engine.orchestrator import run_operating_model
+
+        inp = create_default_tuho_wind1()
+        clean = from_project_inputs(inp, source_id="test", baseline_commit_sha="abc")
+        result = run_operating_model(clean)
+
+        construction = [p for p in result.periods if p.is_construction]
+        assert len(construction) >= 1, "TUHO must have at least one construction period"
+        assert construction[0].period_index == 0, (
+            f"Expected construction period_index=0, got {construction[0].period_index}"
+        )
 
 
 class TestAA_ExactCorrectionMatcher:

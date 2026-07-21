@@ -10,7 +10,7 @@
   "summary": {
     "tuho": {
       "status": "PENDING_REVIEW",
-      "n_pending_review": 544
+      "n_pending_review": 517
     },
     "oborovo": {
       "status": "PENDING_REVIEW",
@@ -72,16 +72,6 @@
       "baseline_value": 3591.7422056814107,
       "candidate_value": 3273.3474153480984,
       "delta": -318.39479033331236,
-      "drift_kind": "VALUE_DRIFT",
-      "observed_reason": "Phase 2B candidate vs baseline",
-      "status": "PENDING_REVIEW"
-    },
-    {
-      "baseline_id": "tuho",
-      "field_path": "tax_and_cfads.cash_tax_bridge_reconciliation_keur[1]",
-      "baseline_value": 3121.08138176636,
-      "candidate_value": 2968.874857599595,
-      "delta": -152.20652416676512,
       "drift_kind": "VALUE_DRIFT",
       "observed_reason": "Phase 2B candidate vs baseline",
       "status": "PENDING_REVIEW"
@@ -188,16 +178,6 @@
     },
     {
       "baseline_id": "tuho",
-      "field_path": "tax_and_cfads.cash_tax_bridge_reconciliation_keur[3]",
-      "baseline_value": 3156.84179835198,
-      "candidate_value": 2993.7618614761573,
-      "delta": -163.07993687582257,
-      "drift_kind": "VALUE_DRIFT",
-      "observed_reason": "Phase 2B candidate vs baseline",
-      "status": "PENDING_REVIEW"
-    },
-    {
-      "baseline_id": "tuho",
       "field_path": "tax_and_cfads.cash_tax_bridge_reconciliation_keur[41]",
       "baseline_value": 4587.295233807939,
       "candidate_value": 5011.295712658191,
@@ -298,16 +278,6 @@
     },
     {
       "baseline_id": "tuho",
-      "field_path": "tax_and_cfads.cash_tax_bridge_reconciliation_keur[5]",
-      "baseline_value": 3185.0539764782507,
-      "candidate_value": 3008.7727481322354,
-      "delta": -176.28122834601527,
-      "drift_kind": "VALUE_DRIFT",
-      "observed_reason": "Phase 2B candidate vs baseline",
-      "status": "PENDING_REVIEW"
-    },
-    {
-      "baseline_id": "tuho",
       "field_path": "tax_and_cfads.cash_tax_bridge_reconciliation_keur[60]",
       "baseline_value": 56.12442601729508,
       "candidate_value": -2468.2016477183465,
@@ -320,8 +290,8 @@
       "baseline_id": "tuho",
       "field_path": "tax_and_cfads.cash_tax_bridge_reconciliation_keur[7]",
       "baseline_value": 3231.911791162714,
-      "candidate_value": 3042.027089695314,
-      "delta": -189.8847014674002,
+      "candidate_value": 3090.4594003067104,
+      "delta": -141.4523908560036,
       "drift_kind": "VALUE_DRIFT",
       "observed_reason": "Phase 2B candidate vs baseline",
       "status": "PENDING_REVIEW"
@@ -382,16 +352,6 @@
       "baseline_value": 0.0,
       "candidate_value": 318.3947903333124,
       "delta": 318.3947903333124,
-      "drift_kind": "VALUE_DRIFT",
-      "observed_reason": "Phase 2B candidate vs baseline",
-      "status": "PENDING_REVIEW"
-    },
-    {
-      "baseline_id": "tuho",
-      "field_path": "tax_and_cfads.cash_tax_current_period_audit_keur[1]",
-      "baseline_value": 0.0,
-      "candidate_value": 152.2065241667651,
-      "delta": 152.2065241667651,
       "drift_kind": "VALUE_DRIFT",
       "observed_reason": "Phase 2B candidate vs baseline",
       "status": "PENDING_REVIEW"
@@ -498,16 +458,6 @@
     },
     {
       "baseline_id": "tuho",
-      "field_path": "tax_and_cfads.cash_tax_current_period_audit_keur[3]",
-      "baseline_value": 0.0,
-      "candidate_value": 163.07993687582254,
-      "delta": 163.07993687582254,
-      "drift_kind": "VALUE_DRIFT",
-      "observed_reason": "Phase 2B candidate vs baseline",
-      "status": "PENDING_REVIEW"
-    },
-    {
-      "baseline_id": "tuho",
       "field_path": "tax_and_cfads.cash_tax_current_period_audit_keur[41]",
       "baseline_value": 2547.6356454875868,
       "candidate_value": 2123.6351666373344,
@@ -608,16 +558,6 @@
     },
     {
       "baseline_id": "tuho",
-      "field_path": "tax_and_cfads.cash_tax_current_period_audit_keur[5]",
-      "baseline_value": 0.0,
-      "candidate_value": 176.28122834601535,
-      "delta": 176.28122834601535,
-      "drift_kind": "VALUE_DRIFT",
-      "observed_reason": "Phase 2B candidate vs baseline",
-      "status": "PENDING_REVIEW"
-    },
-    {
-      "baseline_id": "tuho",
       "field_path": "tax_and_cfads.cash_tax_current_period_audit_keur[60]",
       "baseline_value": 0.0,
       "candidate_value": 2524.326073735642,
@@ -630,8 +570,8 @@
       "baseline_id": "tuho",
       "field_path": "tax_and_cfads.cash_tax_current_period_audit_keur[7]",
       "baseline_value": 0.0,
-      "candidate_value": 189.88470146740036,
-      "delta": 189.88470146740036,
+      "candidate_value": 141.4523908560034,
+      "delta": 141.4523908560034,
       "drift_kind": "VALUE_DRIFT",
       "observed_reason": "Phase 2B candidate vs baseline",
       "status": "PENDING_REVIEW"
@@ -692,16 +632,6 @@
       "baseline_value": 3591.7422056814107,
       "candidate_value": 3273.3474153480984,
       "delta": -318.39479033331236,
-      "drift_kind": "VALUE_DRIFT",
-      "observed_reason": "Phase 2B candidate vs baseline",
-      "status": "PENDING_REVIEW"
-    },
-    {
-      "baseline_id": "tuho",
-      "field_path": "tax_and_cfads.cf_after_tax_keur[1]",
-      "baseline_value": 3121.08138176636,
-      "candidate_value": 2968.874857599595,
-      "delta": -152.20652416676512,
       "drift_kind": "VALUE_DRIFT",
       "observed_reason": "Phase 2B candidate vs baseline",
       "status": "PENDING_REVIEW"
@@ -808,16 +738,6 @@
     },
     {
       "baseline_id": "tuho",
-      "field_path": "tax_and_cfads.cf_after_tax_keur[3]",
-      "baseline_value": 3156.84179835198,
-      "candidate_value": 2993.7618614761573,
-      "delta": -163.07993687582257,
-      "drift_kind": "VALUE_DRIFT",
-      "observed_reason": "Phase 2B candidate vs baseline",
-      "status": "PENDING_REVIEW"
-    },
-    {
-      "baseline_id": "tuho",
       "field_path": "tax_and_cfads.cf_after_tax_keur[41]",
       "baseline_value": 5011.444473807939,
       "candidate_value": 5011.295712658191,
@@ -918,16 +838,6 @@
     },
     {
       "baseline_id": "tuho",
-      "field_path": "tax_and_cfads.cf_after_tax_keur[5]",
-      "baseline_value": 3185.0539764782507,
-      "candidate_value": 3008.7727481322354,
-      "delta": -176.28122834601527,
-      "drift_kind": "VALUE_DRIFT",
-      "observed_reason": "Phase 2B candidate vs baseline",
-      "status": "PENDING_REVIEW"
-    },
-    {
-      "baseline_id": "tuho",
       "field_path": "tax_and_cfads.cf_after_tax_keur[60]",
       "baseline_value": 56.12442601729508,
       "candidate_value": -2468.2016477183465,
@@ -940,8 +850,8 @@
       "baseline_id": "tuho",
       "field_path": "tax_and_cfads.cf_after_tax_keur[7]",
       "baseline_value": 3231.911791162714,
-      "candidate_value": 3042.027089695314,
-      "delta": -189.8847014674002,
+      "candidate_value": 3090.4594003067104,
+      "delta": -141.4523908560036,
       "drift_kind": "VALUE_DRIFT",
       "observed_reason": "Phase 2B candidate vs baseline",
       "status": "PENDING_REVIEW"
@@ -962,13 +872,13 @@
       "baseline_value": "<missing>",
       "candidate_value": [
         3070.194185324519,
-        2968.874857599595,
+        3121.08138176636,
         3105.371551639719,
-        2993.7618614761573,
+        3156.84179835198,
         3150.43382456001,
-        3008.7727481322354,
+        3185.0539764782507,
         3179.217577176366,
-        3042.027089695314,
+        3090.4594003067104,
         3210.0430500223083,
         3062.1431810280747,
         3272.20689200768,
@@ -1025,16 +935,6 @@
       ],
       "delta": null,
       "drift_kind": "STRUCTURAL_DRIFT",
-      "observed_reason": "Phase 2B candidate vs baseline",
-      "status": "PENDING_REVIEW"
-    },
-    {
-      "baseline_id": "tuho",
-      "field_path": "tax_and_cfads.cit_accrual_audit_keur[0]",
-      "baseline_value": 0.0,
-      "candidate_value": 50.642244254015594,
-      "delta": 50.642244254015594,
-      "drift_kind": "VALUE_DRIFT",
       "observed_reason": "Phase 2B candidate vs baseline",
       "status": "PENDING_REVIEW"
     },
@@ -1134,16 +1034,6 @@
       "baseline_value": 0.0,
       "candidate_value": 159.19981153195783,
       "delta": 159.19981153195783,
-      "drift_kind": "VALUE_DRIFT",
-      "observed_reason": "Phase 2B candidate vs baseline",
-      "status": "PENDING_REVIEW"
-    },
-    {
-      "baseline_id": "tuho",
-      "field_path": "tax_and_cfads.cit_accrual_audit_keur[1]",
-      "baseline_value": 0.0,
-      "candidate_value": 50.642244254015594,
-      "delta": 50.642244254015594,
       "drift_kind": "VALUE_DRIFT",
       "observed_reason": "Phase 2B candidate vs baseline",
       "status": "PENDING_REVIEW"
@@ -1250,16 +1140,6 @@
     },
     {
       "baseline_id": "tuho",
-      "field_path": "tax_and_cfads.cit_accrual_audit_keur[2]",
-      "baseline_value": 0.0,
-      "candidate_value": 81.37049358968176,
-      "delta": 81.37049358968176,
-      "drift_kind": "VALUE_DRIFT",
-      "observed_reason": "Phase 2B candidate vs baseline",
-      "status": "PENDING_REVIEW"
-    },
-    {
-      "baseline_id": "tuho",
       "field_path": "tax_and_cfads.cit_accrual_audit_keur[30]",
       "baseline_value": 588.8747851140726,
       "candidate_value": 773.1671618468598,
@@ -1354,16 +1234,6 @@
       "baseline_value": 938.7351401393878,
       "candidate_value": 1034.6008027418754,
       "delta": 95.86566260248765,
-      "drift_kind": "VALUE_DRIFT",
-      "observed_reason": "Phase 2B candidate vs baseline",
-      "status": "PENDING_REVIEW"
-    },
-    {
-      "baseline_id": "tuho",
-      "field_path": "tax_and_cfads.cit_accrual_audit_keur[3]",
-      "baseline_value": 0.0,
-      "candidate_value": 81.54120608599102,
-      "delta": 81.54120608599102,
       "drift_kind": "VALUE_DRIFT",
       "observed_reason": "Phase 2B candidate vs baseline",
       "status": "PENDING_REVIEW"
@@ -1470,16 +1340,6 @@
     },
     {
       "baseline_id": "tuho",
-      "field_path": "tax_and_cfads.cit_accrual_audit_keur[4]",
-      "baseline_value": 0.0,
-      "candidate_value": 88.10302324467699,
-      "delta": 88.10302324467699,
-      "drift_kind": "VALUE_DRIFT",
-      "observed_reason": "Phase 2B candidate vs baseline",
-      "status": "PENDING_REVIEW"
-    },
-    {
-      "baseline_id": "tuho",
       "field_path": "tax_and_cfads.cit_accrual_audit_keur[50]",
       "baseline_value": 1404.8513405055182,
       "candidate_value": 1204.3017327995633,
@@ -1580,16 +1440,6 @@
     },
     {
       "baseline_id": "tuho",
-      "field_path": "tax_and_cfads.cit_accrual_audit_keur[5]",
-      "baseline_value": 0.0,
-      "candidate_value": 88.13927637815038,
-      "delta": 88.13927637815038,
-      "drift_kind": "VALUE_DRIFT",
-      "observed_reason": "Phase 2B candidate vs baseline",
-      "status": "PENDING_REVIEW"
-    },
-    {
-      "baseline_id": "tuho",
       "field_path": "tax_and_cfads.cit_accrual_audit_keur[60]",
       "baseline_value": 10.102396683113113,
       "candidate_value": 842.9945006386553,
@@ -1602,8 +1452,8 @@
       "baseline_id": "tuho",
       "field_path": "tax_and_cfads.cit_accrual_audit_keur[6]",
       "baseline_value": 0.0,
-      "candidate_value": 94.90476468753693,
-      "delta": 94.90476468753693,
+      "candidate_value": 70.33544296707352,
+      "delta": 70.33544296707352,
       "drift_kind": "VALUE_DRIFT",
       "observed_reason": "Phase 2B candidate vs baseline",
       "status": "PENDING_REVIEW"
@@ -1612,8 +1462,8 @@
       "baseline_id": "tuho",
       "field_path": "tax_and_cfads.cit_accrual_audit_keur[7]",
       "baseline_value": 0.0,
-      "candidate_value": 94.94235073370018,
-      "delta": 94.94235073370018,
+      "candidate_value": 70.7261954280017,
+      "delta": 70.7261954280017,
       "drift_kind": "VALUE_DRIFT",
       "observed_reason": "Phase 2B candidate vs baseline",
       "status": "PENDING_REVIEW"
@@ -1622,8 +1472,8 @@
       "baseline_id": "tuho",
       "field_path": "tax_and_cfads.cit_accrual_audit_keur[8]",
       "baseline_value": 0.0,
-      "candidate_value": 100.52150590350932,
-      "delta": 100.52150590350932,
+      "candidate_value": 100.38771499021817,
+      "delta": 100.38771499021817,
       "drift_kind": "VALUE_DRIFT",
       "observed_reason": "Phase 2B candidate vs baseline",
       "status": "PENDING_REVIEW"
@@ -1684,16 +1534,6 @@
       "baseline_value": 0.0,
       "candidate_value": 318.3947903333124,
       "delta": 318.3947903333124,
-      "drift_kind": "VALUE_DRIFT",
-      "observed_reason": "Phase 2B candidate vs baseline",
-      "status": "PENDING_REVIEW"
-    },
-    {
-      "baseline_id": "tuho",
-      "field_path": "tax_and_cfads.corporate_tax_cash_keur[1]",
-      "baseline_value": 0.0,
-      "candidate_value": 152.2065241667651,
-      "delta": 152.2065241667651,
       "drift_kind": "VALUE_DRIFT",
       "observed_reason": "Phase 2B candidate vs baseline",
       "status": "PENDING_REVIEW"
@@ -1800,16 +1640,6 @@
     },
     {
       "baseline_id": "tuho",
-      "field_path": "tax_and_cfads.corporate_tax_cash_keur[3]",
-      "baseline_value": 0.0,
-      "candidate_value": 163.07993687582254,
-      "delta": 163.07993687582254,
-      "drift_kind": "VALUE_DRIFT",
-      "observed_reason": "Phase 2B candidate vs baseline",
-      "status": "PENDING_REVIEW"
-    },
-    {
-      "baseline_id": "tuho",
       "field_path": "tax_and_cfads.corporate_tax_cash_keur[41]",
       "baseline_value": 2547.6356454875868,
       "candidate_value": 2123.6351666373344,
@@ -1910,16 +1740,6 @@
     },
     {
       "baseline_id": "tuho",
-      "field_path": "tax_and_cfads.corporate_tax_cash_keur[5]",
-      "baseline_value": 0.0,
-      "candidate_value": 176.28122834601535,
-      "delta": 176.28122834601535,
-      "drift_kind": "VALUE_DRIFT",
-      "observed_reason": "Phase 2B candidate vs baseline",
-      "status": "PENDING_REVIEW"
-    },
-    {
-      "baseline_id": "tuho",
       "field_path": "tax_and_cfads.corporate_tax_cash_keur[60]",
       "baseline_value": 0.0,
       "candidate_value": 2524.326073735642,
@@ -1932,8 +1752,8 @@
       "baseline_id": "tuho",
       "field_path": "tax_and_cfads.corporate_tax_cash_keur[7]",
       "baseline_value": 0.0,
-      "candidate_value": 189.88470146740036,
-      "delta": 189.88470146740036,
+      "candidate_value": 141.4523908560034,
+      "delta": 141.4523908560034,
       "drift_kind": "VALUE_DRIFT",
       "observed_reason": "Phase 2B candidate vs baseline",
       "status": "PENDING_REVIEW"
@@ -2190,16 +2010,6 @@
     },
     {
       "baseline_id": "tuho",
-      "field_path": "tax_and_cfads.tax_keur[0]",
-      "baseline_value": 0.0,
-      "candidate_value": 50.642244254015594,
-      "delta": 50.642244254015594,
-      "drift_kind": "VALUE_DRIFT",
-      "observed_reason": "Phase 2B candidate vs baseline",
-      "status": "PENDING_REVIEW"
-    },
-    {
-      "baseline_id": "tuho",
       "field_path": "tax_and_cfads.tax_keur[10]",
       "baseline_value": 0.0,
       "candidate_value": 111.76997105968566,
@@ -2294,16 +2104,6 @@
       "baseline_value": 0.0,
       "candidate_value": 159.19981153195783,
       "delta": 159.19981153195783,
-      "drift_kind": "VALUE_DRIFT",
-      "observed_reason": "Phase 2B candidate vs baseline",
-      "status": "PENDING_REVIEW"
-    },
-    {
-      "baseline_id": "tuho",
-      "field_path": "tax_and_cfads.tax_keur[1]",
-      "baseline_value": 0.0,
-      "candidate_value": 50.642244254015594,
-      "delta": 50.642244254015594,
       "drift_kind": "VALUE_DRIFT",
       "observed_reason": "Phase 2B candidate vs baseline",
       "status": "PENDING_REVIEW"
@@ -2410,16 +2210,6 @@
     },
     {
       "baseline_id": "tuho",
-      "field_path": "tax_and_cfads.tax_keur[2]",
-      "baseline_value": 0.0,
-      "candidate_value": 81.37049358968176,
-      "delta": 81.37049358968176,
-      "drift_kind": "VALUE_DRIFT",
-      "observed_reason": "Phase 2B candidate vs baseline",
-      "status": "PENDING_REVIEW"
-    },
-    {
-      "baseline_id": "tuho",
       "field_path": "tax_and_cfads.tax_keur[30]",
       "baseline_value": 588.8747851140726,
       "candidate_value": 773.1671618468598,
@@ -2514,16 +2304,6 @@
       "baseline_value": 938.7351401393878,
       "candidate_value": 1034.6008027418754,
       "delta": 95.86566260248765,
-      "drift_kind": "VALUE_DRIFT",
-      "observed_reason": "Phase 2B candidate vs baseline",
-      "status": "PENDING_REVIEW"
-    },
-    {
-      "baseline_id": "tuho",
-      "field_path": "tax_and_cfads.tax_keur[3]",
-      "baseline_value": 0.0,
-      "candidate_value": 81.54120608599102,
-      "delta": 81.54120608599102,
       "drift_kind": "VALUE_DRIFT",
       "observed_reason": "Phase 2B candidate vs baseline",
       "status": "PENDING_REVIEW"
@@ -2630,16 +2410,6 @@
     },
     {
       "baseline_id": "tuho",
-      "field_path": "tax_and_cfads.tax_keur[4]",
-      "baseline_value": 0.0,
-      "candidate_value": 88.10302324467699,
-      "delta": 88.10302324467699,
-      "drift_kind": "VALUE_DRIFT",
-      "observed_reason": "Phase 2B candidate vs baseline",
-      "status": "PENDING_REVIEW"
-    },
-    {
-      "baseline_id": "tuho",
       "field_path": "tax_and_cfads.tax_keur[50]",
       "baseline_value": 1404.8513405055182,
       "candidate_value": 1204.3017327995633,
@@ -2740,16 +2510,6 @@
     },
     {
       "baseline_id": "tuho",
-      "field_path": "tax_and_cfads.tax_keur[5]",
-      "baseline_value": 0.0,
-      "candidate_value": 88.13927637815038,
-      "delta": 88.13927637815038,
-      "drift_kind": "VALUE_DRIFT",
-      "observed_reason": "Phase 2B candidate vs baseline",
-      "status": "PENDING_REVIEW"
-    },
-    {
-      "baseline_id": "tuho",
       "field_path": "tax_and_cfads.tax_keur[60]",
       "baseline_value": 10.102396683113113,
       "candidate_value": 842.9945006386553,
@@ -2762,8 +2522,8 @@
       "baseline_id": "tuho",
       "field_path": "tax_and_cfads.tax_keur[6]",
       "baseline_value": 0.0,
-      "candidate_value": 94.90476468753693,
-      "delta": 94.90476468753693,
+      "candidate_value": 70.33544296707352,
+      "delta": 70.33544296707352,
       "drift_kind": "VALUE_DRIFT",
       "observed_reason": "Phase 2B candidate vs baseline",
       "status": "PENDING_REVIEW"
@@ -2772,8 +2532,8 @@
       "baseline_id": "tuho",
       "field_path": "tax_and_cfads.tax_keur[7]",
       "baseline_value": 0.0,
-      "candidate_value": 94.94235073370018,
-      "delta": 94.94235073370018,
+      "candidate_value": 70.7261954280017,
+      "delta": 70.7261954280017,
       "drift_kind": "VALUE_DRIFT",
       "observed_reason": "Phase 2B candidate vs baseline",
       "status": "PENDING_REVIEW"
@@ -2782,8 +2542,8 @@
       "baseline_id": "tuho",
       "field_path": "tax_and_cfads.tax_keur[8]",
       "baseline_value": 0.0,
-      "candidate_value": 100.52150590350932,
-      "delta": 100.52150590350932,
+      "candidate_value": 100.38771499021817,
+      "delta": 100.38771499021817,
       "drift_kind": "VALUE_DRIFT",
       "observed_reason": "Phase 2B candidate vs baseline",
       "status": "PENDING_REVIEW"
@@ -3002,9 +2762,9 @@
       "baseline_id": "tuho",
       "field_path": "tax_and_cfads.tax_loss_closing_audit_keur[2]",
       "baseline_value": 3634.928820549154,
-      "candidate_value": 0,
-      "delta": -3634.928820549154,
-      "drift_kind": "STRUCTURAL_DRIFT",
+      "candidate_value": 1248.4085497634019,
+      "delta": -2386.520270785752,
+      "drift_kind": "VALUE_DRIFT",
       "observed_reason": "Phase 2B candidate vs baseline",
       "status": "PENDING_REVIEW"
     },
@@ -3122,9 +2882,9 @@
       "baseline_id": "tuho",
       "field_path": "tax_and_cfads.tax_loss_closing_audit_keur[4]",
       "baseline_value": 5919.442429938848,
-      "candidate_value": 0,
-      "delta": -5919.442429938848,
-      "drift_kind": "STRUCTURAL_DRIFT",
+      "candidate_value": 269.0683922855387,
+      "delta": -5650.37403765331,
+      "drift_kind": "VALUE_DRIFT",
       "observed_reason": "Phase 2B candidate vs baseline",
       "status": "PENDING_REVIEW"
     },
@@ -3432,9 +3192,9 @@
       "baseline_id": "tuho",
       "field_path": "tax_and_cfads.tax_loss_opening_audit_keur[2]",
       "baseline_value": 2445.2596475300234,
-      "candidate_value": 0,
-      "delta": -2445.2596475300234,
-      "drift_kind": "STRUCTURAL_DRIFT",
+      "candidate_value": 2154.408199073527,
+      "delta": -290.8514484564962,
+      "drift_kind": "VALUE_DRIFT",
       "observed_reason": "Phase 2B candidate vs baseline",
       "status": "PENDING_REVIEW"
     },
@@ -3552,9 +3312,9 @@
       "baseline_id": "tuho",
       "field_path": "tax_and_cfads.tax_loss_opening_audit_keur[4]",
       "baseline_value": 4786.27793960481,
-      "candidate_value": 0,
-      "delta": -4786.27793960481,
-      "drift_kind": "STRUCTURAL_DRIFT",
+      "candidate_value": 1248.4085497634019,
+      "delta": -3537.869389841408,
+      "drift_kind": "VALUE_DRIFT",
       "observed_reason": "Phase 2B candidate vs baseline",
       "status": "PENDING_REVIEW"
     },
@@ -3622,9 +3382,9 @@
       "baseline_id": "tuho",
       "field_path": "tax_and_cfads.tax_loss_opening_audit_keur[6]",
       "baseline_value": 7023.020740478265,
-      "candidate_value": 0,
-      "delta": -7023.020740478265,
-      "drift_kind": "STRUCTURAL_DRIFT",
+      "candidate_value": 269.0683922855387,
+      "delta": -6753.952348192726,
+      "drift_kind": "VALUE_DRIFT",
       "observed_reason": "Phase 2B candidate vs baseline",
       "status": "PENDING_REVIEW"
     },
@@ -3694,6 +3454,36 @@
       "baseline_value": 2005.066016357857,
       "candidate_value": 0.0,
       "delta": -2005.066016357857,
+      "drift_kind": "VALUE_DRIFT",
+      "observed_reason": "Phase 2B candidate vs baseline",
+      "status": "PENDING_REVIEW"
+    },
+    {
+      "baseline_id": "tuho",
+      "field_path": "tax_and_cfads.tax_loss_used_audit_keur[2]",
+      "baseline_value": 0.0,
+      "candidate_value": 905.9996493101253,
+      "delta": 905.9996493101253,
+      "drift_kind": "VALUE_DRIFT",
+      "observed_reason": "Phase 2B candidate vs baseline",
+      "status": "PENDING_REVIEW"
+    },
+    {
+      "baseline_id": "tuho",
+      "field_path": "tax_and_cfads.tax_loss_used_audit_keur[4]",
+      "baseline_value": 0.0,
+      "candidate_value": 979.3401574778632,
+      "delta": 979.3401574778632,
+      "drift_kind": "VALUE_DRIFT",
+      "observed_reason": "Phase 2B candidate vs baseline",
+      "status": "PENDING_REVIEW"
+    },
+    {
+      "baseline_id": "tuho",
+      "field_path": "tax_and_cfads.tax_loss_used_audit_keur[6]",
+      "baseline_value": 0.0,
+      "candidate_value": 269.0683922855387,
+      "delta": 269.0683922855387,
       "drift_kind": "VALUE_DRIFT",
       "observed_reason": "Phase 2B candidate vs baseline",
       "status": "PENDING_REVIEW"
@@ -4310,16 +4100,6 @@
     },
     {
       "baseline_id": "tuho",
-      "field_path": "tax_and_cfads.taxable_profit_after_losses_audit_keur[0]",
-      "baseline_value": 0.0,
-      "candidate_value": 281.3458014111978,
-      "delta": 281.3458014111978,
-      "drift_kind": "VALUE_DRIFT",
-      "observed_reason": "Phase 2B candidate vs baseline",
-      "status": "PENDING_REVIEW"
-    },
-    {
-      "baseline_id": "tuho",
       "field_path": "tax_and_cfads.taxable_profit_after_losses_audit_keur[10]",
       "baseline_value": 0.0,
       "candidate_value": 620.9442836649204,
@@ -4414,16 +4194,6 @@
       "baseline_value": 0.0,
       "candidate_value": 884.4433973997658,
       "delta": 884.4433973997658,
-      "drift_kind": "VALUE_DRIFT",
-      "observed_reason": "Phase 2B candidate vs baseline",
-      "status": "PENDING_REVIEW"
-    },
-    {
-      "baseline_id": "tuho",
-      "field_path": "tax_and_cfads.taxable_profit_after_losses_audit_keur[1]",
-      "baseline_value": 0.0,
-      "candidate_value": 281.3458014111978,
-      "delta": 281.3458014111978,
       "drift_kind": "VALUE_DRIFT",
       "observed_reason": "Phase 2B candidate vs baseline",
       "status": "PENDING_REVIEW"
@@ -4530,16 +4300,6 @@
     },
     {
       "baseline_id": "tuho",
-      "field_path": "tax_and_cfads.taxable_profit_after_losses_audit_keur[2]",
-      "baseline_value": 0.0,
-      "candidate_value": 452.0582977204542,
-      "delta": 452.0582977204542,
-      "drift_kind": "VALUE_DRIFT",
-      "observed_reason": "Phase 2B candidate vs baseline",
-      "status": "PENDING_REVIEW"
-    },
-    {
-      "baseline_id": "tuho",
       "field_path": "tax_and_cfads.taxable_profit_after_losses_audit_keur[30]",
       "baseline_value": 3271.5265839670697,
       "candidate_value": 4295.373121371444,
@@ -4634,16 +4394,6 @@
       "baseline_value": 5215.195222996599,
       "candidate_value": 5747.782237454864,
       "delta": 532.587014458265,
-      "drift_kind": "VALUE_DRIFT",
-      "observed_reason": "Phase 2B candidate vs baseline",
-      "status": "PENDING_REVIEW"
-    },
-    {
-      "baseline_id": "tuho",
-      "field_path": "tax_and_cfads.taxable_profit_after_losses_audit_keur[3]",
-      "baseline_value": 0.0,
-      "candidate_value": 453.00670047772786,
-      "delta": 453.00670047772786,
       "drift_kind": "VALUE_DRIFT",
       "observed_reason": "Phase 2B candidate vs baseline",
       "status": "PENDING_REVIEW"
@@ -4750,16 +4500,6 @@
     },
     {
       "baseline_id": "tuho",
-      "field_path": "tax_and_cfads.taxable_profit_after_losses_audit_keur[4]",
-      "baseline_value": 0.0,
-      "candidate_value": 489.4612402482055,
-      "delta": 489.4612402482055,
-      "drift_kind": "VALUE_DRIFT",
-      "observed_reason": "Phase 2B candidate vs baseline",
-      "status": "PENDING_REVIEW"
-    },
-    {
-      "baseline_id": "tuho",
       "field_path": "tax_and_cfads.taxable_profit_after_losses_audit_keur[50]",
       "baseline_value": 7804.729669475102,
       "candidate_value": 6690.565182219796,
@@ -4860,16 +4600,6 @@
     },
     {
       "baseline_id": "tuho",
-      "field_path": "tax_and_cfads.taxable_profit_after_losses_audit_keur[5]",
-      "baseline_value": 0.0,
-      "candidate_value": 489.66264654528,
-      "delta": 489.66264654528,
-      "drift_kind": "VALUE_DRIFT",
-      "observed_reason": "Phase 2B candidate vs baseline",
-      "status": "PENDING_REVIEW"
-    },
-    {
-      "baseline_id": "tuho",
       "field_path": "tax_and_cfads.taxable_profit_after_losses_audit_keur[60]",
       "baseline_value": 56.12442601729508,
       "candidate_value": 4683.302781325863,
@@ -4882,8 +4612,8 @@
       "baseline_id": "tuho",
       "field_path": "tax_and_cfads.taxable_profit_after_losses_audit_keur[6]",
       "baseline_value": 0.0,
-      "candidate_value": 527.2486927085384,
-      "delta": 527.2486927085384,
+      "candidate_value": 390.7524609281862,
+      "delta": 390.7524609281862,
       "drift_kind": "VALUE_DRIFT",
       "observed_reason": "Phase 2B candidate vs baseline",
       "status": "PENDING_REVIEW"
@@ -4892,8 +4622,8 @@
       "baseline_id": "tuho",
       "field_path": "tax_and_cfads.taxable_profit_after_losses_audit_keur[7]",
       "baseline_value": 0.0,
-      "candidate_value": 527.4575040761122,
-      "delta": 527.4575040761122,
+      "candidate_value": 392.9233079333428,
+      "delta": 392.9233079333428,
       "drift_kind": "VALUE_DRIFT",
       "observed_reason": "Phase 2B candidate vs baseline",
       "status": "PENDING_REVIEW"
@@ -4902,8 +4632,8 @@
       "baseline_id": "tuho",
       "field_path": "tax_and_cfads.taxable_profit_after_losses_audit_keur[8]",
       "baseline_value": 0.0,
-      "candidate_value": 558.4528105750519,
-      "delta": 558.4528105750519,
+      "candidate_value": 557.7095277234343,
+      "delta": 557.7095277234343,
       "drift_kind": "VALUE_DRIFT",
       "observed_reason": "Phase 2B candidate vs baseline",
       "status": "PENDING_REVIEW"
