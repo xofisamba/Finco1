@@ -1,0 +1,90 @@
+{
+  "schema": "tax_cfads_corrections_v1",
+  "profile": "TAX_CFADS_V1",
+  "description": "Per-field correction ledger for Phase 2B tax and CFADS parity (TAX_CFADS_V1 profile). Documents the known, intentional deviations between the legacy engine and the Phase 2B clean engine for all four baselines.",
+  "policy_references": {
+    "canonical_phase2b_hr": {
+      "policy_id": "canonical_phase2b_hr",
+      "corporate_rate": 0.18,
+      "loss_carryforward_years": 5,
+      "atad_enabled": true,
+      "atad_ebitda_limit": 0.30,
+      "atad_de_minimis_threshold_keur_annual": 3000.0,
+      "cash_tax_timing": "tax_year_last_period",
+      "cash_tax_payment_lag_periods": 0
+    }
+  },
+  "systematic_deviations": [
+    {
+      "deviation_id": "DEV001",
+      "title": "Annual aggregation vs per-period taxable income",
+      "fields_affected": [
+        "taxable_profit_keur",
+        "taxable_income_before_losses_audit_keur",
+        "taxable_profit_after_losses_audit_keur",
+        "cit_accrual_audit_keur",
+        "tax_keur"
+      ],
+      "baselines_affected": ["tuho", "oborovo", "generic_solar", "generic_wind"],
+      "financial_reason": "The clean engine aggregates all period inputs (EBITDA, depreciation, interest) into an annual TaxYearCalculationBasis before computing taxable income. The annual result is then prorated equally across all periods in the year. The legacy engine computes taxable income per-period independently, resulting in H1 and H2 having different taxable profit values. The clean engine's annual approach matches the Croatian tax filing model (annual CIT return).",
+      "policy_id": "canonical_phase2b_hr",
+      "manual_test_reference": "TestA_NoAtadNoLosses.test_annual_taxable_income_equals_annual_ebitda_minus_dep"
+    },
+    {
+      "deviation_id": "DEV002",
+      "title": "Canonical TaxPolicy vs project-specific legacy parameters",
+      "fields_affected": [
+        "taxable_profit_keur",
+        "taxable_income_before_losses_audit_keur",
+        "taxable_profit_after_losses_audit_keur",
+        "cit_accrual_audit_keur",
+        "tax_keur",
+        "tax_loss_opening_audit_keur",
+        "tax_loss_used_audit_keur",
+        "tax_loss_closing_audit_keur",
+        "corporate_tax_cash_keur",
+        "cash_tax_current_period_audit_keur"
+      ],
+      "baselines_affected": ["tuho", "oborovo", "generic_solar", "generic_wind"],
+      "financial_reason": "The clean engine applies a canonical Croatian TaxPolicy (18% CIT, 5-year LCF, ATAD at 30% EBITDA cap, de-minimis EUR 3M annual). The legacy engine uses project-specific parameters that may differ in depreciation schedules, opening loss carryforward positions, and ATAD fixture data. TUHO in particular uses a hard-coded R30/R31 depreciation fixture and a per-period interest limitation schedule from historical Excel models.",
+      "policy_id": "canonical_phase2b_hr",
+      "manual_test_reference": "TestJ_FourBaselineSmoke"
+    },
+    {
+      "deviation_id": "DEV003",
+      "title": "fiscal_reintegration_audit_keur: ATAD-based vs fixture-based",
+      "fields_affected": ["fiscal_reintegration_audit_keur"],
+      "baselines_affected": ["tuho"],
+      "financial_reason": "TUHO legacy uses a hard-coded per-period interest limitation fixture (_tuho_interest_limitation_by_period) derived from Excel model rows. The clean engine computes ATAD limitation annually from canonical parameters (30% EBITDA, EUR 3M de-minimis). The clean engine's ATAD computation is based on exogenous interest from the baseline snapshot, which may differ from the per-period fixture values used in the legacy TUHO bridge.",
+      "policy_id": "canonical_phase2b_hr",
+      "manual_test_reference": "TestB_AtadAnnualThreshold"
+    },
+    {
+      "deviation_id": "DEV004",
+      "title": "cash_tax_bridge_reconciliation_keur: EBITDA - cash_tax (matches legacy semantics)",
+      "fields_affected": ["cash_tax_bridge_reconciliation_keur"],
+      "baselines_affected": ["tuho", "oborovo", "generic_solar", "generic_wind"],
+      "financial_reason": "The clean engine computes cash_tax_bridge_reconciliation_keur = EBITDA - corporate_tax_cash_keur, matching the TUHO bridge legacy definition. For non-TUHO baselines, the legacy engine leaves this field at 0 (default), while the clean engine computes the correct EBITDA-minus-cash-tax value. The resulting values match TUHO baseline logic but differ from non-TUHO baselines which have 0.",
+      "policy_id": "canonical_phase2b_hr",
+      "manual_test_reference": "TestA_NoAtadNoLosses.test_cfads_equals_ebitda_minus_cash_tax"
+    },
+    {
+      "deviation_id": "DEV005",
+      "title": "cf_after_tax_keur: EBITDA - cash_tax (matching canonical CFADS)",
+      "fields_affected": ["cf_after_tax_keur"],
+      "baselines_affected": ["tuho"],
+      "financial_reason": "For TUHO, the legacy cf_after_tax_keur is NOT updated by the bridge function — it retains the pre-bridge value from the main waterfall (EBITDA - per_period_accrual where H1 accrual=0 and H2=H1+H2 annual). The clean engine sets cf_after_tax_keur = EBITDA - cash_tax, which matches the non-TUHO legacy definition (Oborovo, generic_solar, generic_wind). This difference is confined to TUHO due to the bridge architecture.",
+      "policy_id": "canonical_phase2b_hr",
+      "manual_test_reference": "TestA_NoAtadNoLosses.test_cfads_equals_ebitda_minus_cash_tax"
+    },
+    {
+      "deviation_id": "DEV006",
+      "title": "tax_depreciation_audit_keur: clean-engine vs TUHO fixture",
+      "fields_affected": ["tax_depreciation_audit_keur"],
+      "baselines_affected": ["tuho"],
+      "financial_reason": "TUHO legacy uses a 40-period (20 year) tax depreciation schedule computed from TUHO_TAX_TOTAL = 70691.5 kEUR fixture. The clean engine uses the same depreciation adapter as the operating model, which applies the finco_core straight-line schedule. Numeric differences arise from different asset class groupings and period counts.",
+      "policy_id": "canonical_phase2b_hr",
+      "manual_test_reference": "TestA_NoAtadNoLosses"
+    }
+  ]
+}

@@ -1,5 +1,5 @@
 """
-financial_engine.inputs — Immutable Phase 2A input contract.
+financial_engine.inputs — Immutable input contracts (Phase 2A + 2B).
 
 All types are frozen dataclasses. No mutable state.
 No imports from app, finco_core, fastapi, jinja2, requests, openpyxl, pandas.
@@ -10,6 +10,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date
 from enum import Enum
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from financial_engine.policies.tax import TaxPolicy
 
 
 class YieldScenario(str, Enum):
@@ -91,6 +95,72 @@ class DepreciationInput:
     financial_cost_useful_life_years: int
 
 
+# ---------------------------------------------------------------------------
+# Phase 2B tax input contracts
+# ---------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class OpeningTaxLossVintageInput:
+    """One pre-existing loss vintage carried into the model start.
+
+    origin_tax_year : 0-based index of the tax year in which the loss was
+        generated. Must be negative (losses generated before the model) or
+        0 (first model tax year). Use negative integers for pre-model losses
+        (e.g. -3 = three tax years before the model start).
+    amount_keur : outstanding loss (must be non-negative and finite)
+    source_label : optional human-readable label for audit trail
+    """
+    origin_tax_year: int
+    amount_keur: float
+    source_label: str = ""
+
+
+@dataclass(frozen=True)
+class PeriodInterestInput:
+    """Exogenous interest expense for one model period.
+
+    Phase 2B does not size debt — interest is provided externally.
+
+    All three components are optional (default 0). At least one must be
+    provided for the period to carry non-zero interest.
+    """
+    period_index: int
+    senior_interest_keur: float = 0.0
+    shl_interest_keur: float = 0.0
+    other_interest_keur: float = 0.0
+
+    @property
+    def total_interest_keur(self) -> float:
+        return self.senior_interest_keur + self.shl_interest_keur + self.other_interest_keur
+
+
+@dataclass(frozen=True)
+class PeriodTaxAdjustmentInput:
+    """Additional fiscal adjustments for one model period.
+
+    other_fiscal_reintegration_keur : addbacks not already captured by the
+        ATAD interest-limitation mechanism. Positive = addback to taxable income.
+    """
+    period_index: int
+    other_fiscal_reintegration_keur: float = 0.0
+
+
+@dataclass(frozen=True)
+class TaxCalculationInput:
+    """All tax-specific inputs for a Phase 2B run.
+
+    policy : the jurisdiction's TaxPolicy
+    opening_loss_vintages : pre-model loss pool in vintage order (oldest first)
+    period_interest : one entry per model period that carries interest; periods
+        not listed default to zero interest
+    period_adjustments : optional per-period fiscal adjustments
+    """
+    policy: "TaxPolicy"
+    opening_loss_vintages: tuple[OpeningTaxLossVintageInput, ...]
+    period_interest: tuple[PeriodInterestInput, ...]
+    period_adjustments: tuple[PeriodTaxAdjustmentInput, ...] = ()
+
+
 @dataclass(frozen=True)
 class InputProvenance:
     source_id: str
@@ -105,3 +175,14 @@ class OperatingModelInput:
     opex: OpexInput
     depreciation: DepreciationInput
     source: InputProvenance
+
+
+@dataclass(frozen=True)
+class TaxCfadsModelInput:
+    """Phase 2B input: operating core inputs + tax inputs.
+
+    operating: the Phase 2A OperatingModelInput
+    tax: tax policy and per-period interest / adjustment inputs
+    """
+    operating: OperatingModelInput
+    tax: TaxCalculationInput
