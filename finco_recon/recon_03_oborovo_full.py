@@ -518,7 +518,11 @@ def _compute_opex_category_periods() -> dict[str, list[float]]:
             year_days = 366 if _calendar.isleap(bop_d.year) else 365
             py_fracs.append(inc_days / year_days)
         else:
-            py_fracs.append(0.5)  # fallback (should not occur with valid BOP chain)
+            raise ValueError(
+                f"OPEX canonical period {idx}: cannot construct BOP — "
+                "prev_eop_d is None. Canonical period_grid must have valid 'date' fields "
+                "for all periods. Do not use a default fraction; fix the data source."
+            )
 
     periods = [
         _Period(
@@ -818,8 +822,9 @@ def recon_book_depreciation(excel: dict, python_snap: dict, register: list) -> N
       - Remaining unexplained: ~224.60 kEUR (possibly VAT treatment difference
           or production-units depreciation basis difference).
 
-    Classification: PYTHON_BUG (financing costs) + OPEN (VAT component).
-    Status: OPEN__CASCADE_CONFIRMATION_REQUIRED — cannot mark RESOLVED until VAT is confirmed.
+    Classification: PYTHON_BUG — ALL four financing-cost components PROVEN absent from Python basis.
+    VAT dep life: 20y MANUAL_WORKBOOK_SOURCE_EVIDENCE (Inputs sheet screenshot confirmed 2026-07-22).
+    Status: OPEN__CASCADE_CONFIRMATION_REQUIRED — Stage B fix required; diagnosis only here.
     DO NOT FIX: diagnosis only per task constraint.
     """
     dep = excel["dep"]
@@ -829,23 +834,29 @@ def recon_book_depreciation(excel: dict, python_snap: dict, register: list) -> N
     eop = dep["eop_date"]
 
     _BOOK_DEP_BUG_RC = (
-        "PYTHON_BUG (PROVEN, financing-cost component): Python book depreciation basis missing "
-        "financing costs. "
-        "Excel Inputs sheet (manually verified): hard CAPEX assets (Production Units, EPC Contract, "
-        "EPC other costs, Grid connection, Investments, Insurances, Project finance costs, "
-        "Commissioning, Contingencies, Project rights, VAT costs) → 20-year book life. "
+        "PYTHON_BUG (ALL COMPONENTS PROVEN): Python book depreciation basis is missing all "
+        "four financing-cost components. "
+        "Root code path: app/waterfall_core.py:355 calls inputs.capex.capex_items() which returns "
+        "only CapexItem entries (hard capex). The float fields idc_keur, commitment_fees_keur, "
+        "bank_fees_keur, vat_costs_keur on CapexStructure are NOT CapexItems and are excluded. "
+        "book_depreciable_capex_items() (which bundles all four into one CapexItem) is NOT called. "
+        "Excel Inputs sheet (MANUAL_WORKBOOK_SOURCE_EVIDENCE): "
+        "Hard CAPEX (Production Units, EPC Contract, EPC other costs, Grid connection, Investments, "
+        "Insurances, Project finance costs, Commissioning, Contingencies, Project rights, VAT costs) "
+        "→ 20-year book life. "
         "Financing costs (IDC, Commitment fees, Bank fees) → 12-year book life. "
-        "Python canonical_wiring: _BOOK_LIFE_YEARS=25 (finco_core/depreciation/canonical_wiring.py line 45). "
-        "PROVEN PYTHON_BUG components: "
-        "IDC(1,086.03 kEUR × 12y) + commitment_fees(188.56 kEUR × 12y) + bank_fees(477.30 kEUR × 12y) = 1,751.89 kEUR. "
-        "OPEN component: VAT costs (dep_vat_keur = 222.07 kEUR cumulative) — "
-        "VAT dep life NOT confirmed in committed fixtures (OPEN__ROOT_CAUSE_REQUIRED). "
-        "Total delta = 1,751.89 kEUR (proven) + 222.07 kEUR (VAT, OPEN) + residual. "
-        "Exact basis bridge: Base CAPEX ~55,999 kEUR × 20y, IDC ~1,086 kEUR × 12y, "
-        "Commitment fees ~189 kEUR × 12y, Bank fees ~477 kEUR × 12y, VAT ~222 kEUR (life OPEN). "
-        "excel_formula_source: 'Excel Inputs sheet: 20y hard CAPEX, 12y financing costs'. "
-        "TOTAL row status: OPEN__CASCADE_CONFIRMATION_REQUIRED — contains both proven "
-        "and OPEN components; total cannot be RESOLVED until VAT is confirmed. "
+        "VAT costs → 20-year book life (PROVEN: Inputs sheet screenshot 2026-07-22). "
+        "Excel dep formula: =AND(H$3>0;H$3<=$B7)*($C7/$B7)*H$5 "
+        "(straight-line with year guard and period day-fraction proration). "
+        "PROVEN PYTHON_BUG bridge: "
+        "IDC(1,086.03 kEUR × 20y Excel, absent Python) "
+        "+ commitment_fees(188.56 kEUR × 12y Excel, absent Python) "
+        "+ bank_fees(477.30 kEUR × 12y Excel, absent Python) "
+        "+ VAT(222.07 kEUR × 20y Excel, absent Python) "
+        "= 1,973.96 kEUR PYTHON_BUG. "
+        "Residual delta ~2.53 kEUR = TIMING_ROUNDING (period day-fraction convention). "
+        "Total delta ≈ 1,976.49 kEUR = 1,973.96 kEUR (PYTHON_BUG) + 2.53 kEUR (TIMING_ROUNDING). "
+        "Status: OPEN__CASCADE_CONFIRMATION_REQUIRED — Stage B A/B correction required; "
         "DO NOT FIX HERE — Stage A diagnosis only."
     )
 
@@ -866,7 +877,7 @@ def recon_book_depreciation(excel: dict, python_snap: dict, register: list) -> N
             python_val=pv,
             classification=PYTHON_BUG if _bdep_has_delta else MATCH,
             # TOTAL must NOT be RESOLVED — contains both proven PYTHON_BUG (IDC/fees)
-            # and OPEN VAT component. Use OPEN_CASCADE: cannot confirm total until VAT resolved.
+            # All components PROVEN PYTHON_BUG. OPEN_CASCADE until Stage B fix confirmed.
             status=OPEN_CASCADE if _bdep_has_delta else RESOLVED,
             root_cause=_BOOK_DEP_BUG_RC if _bdep_has_delta else "Book dep aligned",
             excel_source="Dep.dep_total_keur",
@@ -889,7 +900,7 @@ def recon_book_depreciation(excel: dict, python_snap: dict, register: list) -> N
         excel_val=e_cum,
         python_val=py_cum,
         classification=PYTHON_BUG if abs_d >= _TOL else MATCH,
-        # CUMULATIVE TOTAL must NOT be RESOLVED — contains OPEN VAT component.
+        # CUMULATIVE TOTAL: all components PROVEN PYTHON_BUG; OPEN_CASCADE until Stage B.
         status=OPEN_CASCADE if abs_d >= _TOL else RESOLVED,
         root_cause=(
             f"Cumulative book dep delta={py_cum - e_cum:.4f} kEUR. "
@@ -912,7 +923,7 @@ def recon_book_depreciation(excel: dict, python_snap: dict, register: list) -> N
             _financing_items = {"dep_idc_keur", "dep_commitment_fees_keur", "dep_bank_fees_keur"}
             _expected_life = "12y (financing cost)" if item_key in _financing_items else "20y (hard CAPEX)"
             if item_key == "dep_vat_keur":
-                _expected_life = "OPEN — VAT dep life not confirmed in committed fixtures"
+                _expected_life = "20y MANUAL_WORKBOOK_SOURCE_EVIDENCE (Inputs sheet screenshot 2026-07-22)"
             register.append(_row(
                 recon_id=f"BDEP_{item_key}_{i:02d}",
                 section="BOOK_DEPRECIATION",
@@ -928,13 +939,22 @@ def recon_book_depreciation(excel: dict, python_snap: dict, register: list) -> N
                     f"Depreciation sub-item {item_key} not exposed per-period in canonical "
                     "Python snapshot. The canonical_wiring DepreciationAuditRow has per-asset-class "
                     "data but it is not surfaced in the snapshot output. "
-                    "Classified OPEN__ROOT_CAUSE_REQUIRED — Python value absent; "
-                    "knowing the root cause (missing extraction) does NOT resolve reconciliation. "
-                    f"Excel Inputs sheet dep life for this item: {_expected_life}."
+                    "PYTHON_BUG root cause PROVEN: waterfall_core.py:355 calls capex_items() "
+                    "(hard capex only), not book_depreciable_capex_items(); financing float fields "
+                    "(idc_keur, commitment_fees_keur, bank_fees_keur, vat_costs_keur) are excluded. "
+                    "Classified OPEN__ROOT_CAUSE_REQUIRED — Python per-period value absent; "
+                    "root cause PROVEN but reconciliation not RESOLVED until Stage B fix and A/B confirmation. "
+                    f"Excel Inputs sheet dep life for this item: {_expected_life}. "
+                    "Excel dep formula: =AND(H$3>0;H$3<=$B7)*($C7/$B7)*H$5 "
+                    "(straight-line, year guard, period day-fraction proration)."
                 ),
                 excel_source=f"Dep.{item_key}",
-                excel_formula_source=f"Excel Inputs sheet: 20y hard CAPEX, 12y financing costs. "
-                                     f"This item expected life: {_expected_life}",
+                excel_formula_source=(
+                    "Excel Inputs sheet: 20y hard CAPEX, 12y financing costs (IDC/commit/bank), "
+                    "20y VAT (MANUAL_WORKBOOK_SOURCE_EVIDENCE). "
+                    f"This item expected life: {_expected_life}. "
+                    "Formula: =AND(H$3>0;H$3<=$B7)*($C7/$B7)*H$5"
+                ),
                 python_source="N/A — per-item not in canonical snapshot",
                 python_calculation_source="finco_core.depreciation.canonical_wiring",
             ))
@@ -998,7 +1018,7 @@ def recon_pnl(excel: dict, python_snap: dict, register: list) -> None:
     Known root causes of residuals after sign fix:
     - operating_expenses delta: PERIOD_CONVENTION (OPEX day-fraction convention)
     - depreciation delta: PYTHON_BUG (IDC/fees missing from dep basis)
-    - revenues delta: POLICY_DIFFERENCE (PpaIndexationStartPolicy)
+    - revenues delta: UNRESOLVED_SOURCE (PpaIndexationStartPolicy hypothesis — not yet confirmed)
     - ebit, ebt, net_income: cascade from above
     - senior_interest: cascade from debt sculpting (driven by dep PYTHON_BUG affecting CFADS)
     - shl_interest: cascade from senior debt restructuring
@@ -1011,8 +1031,9 @@ def recon_pnl(excel: dict, python_snap: dict, register: list) -> None:
     # (prefix, excel_key, python_key, sign_flip, cascade_classification, cascade_rc)
     line_map = [
         ("PNL_REV",  "total_revenues_keur",        "revenues_keur",               False,
-         POLICY_DIFFERENCE,
-         "Revenue delta: POLICY_DIFFERENCE PpaIndexationStartPolicy (Jan-1 vs Jul-1 indexation)"),
+         UNRESOLVED_SOURCE,
+         "Revenue delta: UNRESOLVED_SOURCE — PpaIndexationStartPolicy hypothesis (Jan-1 vs Jul-1 "
+         "indexation) not yet confirmed; arithmetic component bridge incomplete"),
         ("PNL_OPEX", "operating_expenses_keur",     "operating_expenses_keur",     True,
          PERIOD_CONVENTION,
          "OPEX delta: PERIOD_CONVENTION (actual calendar day fractions vs nominal semi-annual)"),
@@ -1021,7 +1042,8 @@ def recon_pnl(excel: dict, python_snap: dict, register: list) -> None:
          "Dep delta: PYTHON_BUG — IDC/commitment_fees/bank_fees absent from Python dep basis"),
         ("PNL_EBIT", "ebit_keur",                   "ebit_keur",                   False,
          PYTHON_BUG,
-         "EBIT cascade: PYTHON_BUG in dep basis (IDC/fees missing) + POLICY_DIFFERENCE in revenue"),
+         "EBIT cascade: PYTHON_BUG in dep basis (IDC/fees/VAT absent from Python) "
+         "+ UNRESOLVED_SOURCE in revenue (PpaIndexationStartPolicy hypothesis)"),
         ("PNL_SINT", "senior_interests_keur",        "senior_interest_expense_keur", True,
          PYTHON_BUG,
          "Senior interest cascade: PYTHON_BUG in dep → lower tax shield → different CFADS sculpting"),
@@ -1030,13 +1052,13 @@ def recon_pnl(excel: dict, python_snap: dict, register: list) -> None:
          "SHL interest cascade: PYTHON_BUG in dep → different senior debt → different SHL service"),
         ("PNL_EBT",  "earnings_before_tax_keur",    "earnings_before_tax_keur",    False,
          PYTHON_BUG,
-         "EBT cascade: PYTHON_BUG in dep + POLICY_DIFFERENCE in revenue"),
+         "EBT cascade: PYTHON_BUG in dep (IDC/fees/VAT absent) + UNRESOLVED_SOURCE in revenue"),
         ("PNL_CIT",  "corporate_income_tax_keur",   "cit_accrual_keur",            False,
          PYTHON_BUG,
-         "CIT cascade: PYTHON_BUG in dep (tax base affected) + POLICY_DIFFERENCE in revenue"),
+         "CIT cascade: PYTHON_BUG in dep (tax base affected) + UNRESOLVED_SOURCE in revenue"),
         ("PNL_NI",   "net_income_keur",             "net_income_keur",             False,
          PYTHON_BUG,
-         "Net income cascade: PYTHON_BUG in dep + POLICY_DIFFERENCE in revenue"),
+         "Net income cascade: PYTHON_BUG in dep (IDC/fees/VAT absent) + UNRESOLVED_SOURCE in revenue"),
     ]
 
     for i in range(60):
@@ -1155,8 +1177,8 @@ def recon_tax_lcf(excel: dict, python_snap: dict, register: list) -> None:
                     cl, st = PYTHON_BUG, OPEN_CASCADE
                     rc = (
                         "Tax delta cascades from PYTHON_BUG in book dep basis "
-                        "(IDC/fees missing from Python depreciation, 20y/12y lives vs Python 25y) and "
-                        "POLICY_DIFFERENCE in revenue (PpaIndexationStartPolicy). "
+                        "(IDC/fees/VAT absent from Python capex_items() call — waterfall_core.py:355) and "
+                        "UNRESOLVED_SOURCE in revenue (PpaIndexationStartPolicy hypothesis). "
                         "Status OPEN__CASCADE_CONFIRMATION_REQUIRED: causality not yet confirmed "
                         "by A/B correction. Do NOT mark RESOLVED until Stage B."
                     )
@@ -1201,7 +1223,7 @@ def recon_cfads(excel: dict, python_snap: dict, register: list) -> None:
     _CFADS_CASCADE_RC = (
         "CFADS delta cascades from: "
         "(1) PYTHON_BUG in book dep basis (IDC/fees → different tax shield → different CFADS); "
-        "(2) POLICY_DIFFERENCE in revenue (PpaIndexationStartPolicy → different EBITDA); "
+        "(2) UNRESOLVED_SOURCE in revenue (PpaIndexationStartPolicy hypothesis — not yet confirmed); "
         "(3) PERIOD_CONVENTION in OPEX. All upstream causes RESOLVED."
     )
 
@@ -1424,7 +1446,8 @@ def recon_dscr(excel: dict, python_snap: dict, register: list) -> None:
        averages over ALL periods including post-sculpting-tenor periods (different population
        from Excel AVERAGEIF). Formula in waterfall_engine.py:
          sum(d for d in all_dsrs if d != inf) / count(d for d in all_dsrs if d != inf)
-       This is SUM/SUM over a different period population → POLICY_DIFFERENCE vs Excel AVERAGEIF.
+       This is SUM/SUM over a different period population → UNRESOLVED_SOURCE vs Excel AVERAGEIF
+       (population mismatch hypothesis; not confirmed until Excel CF row 138 is extracted).
     H. Bank Case: Python canonical uses EBITDA[0] = 2,575 kEUR as the first-period FCFB value.
        Excel Bank Case FCFB ≈ 2,575 kEUR (P90-10y stress). Base Case FCFB ≈ 2,993 kEUR (P50).
        The Python canonical snapshot does NOT separately label "bank_case" vs "base_case" —
