@@ -16,7 +16,7 @@ D. Total OPEX within 10 kEUR of Excel (sanity guard only — not proof of reconc
 E. Total revenue gross sanity guard (within 2000 kEUR)
 F. Production total within 1% of Excel (sanity guard)
 G. OPEX residual -3.9798 kEUR ± 1.0 kEUR confirmed
-H. STAGE A GATE: material_open_count == 0
+H. STAGE A HONEST OPEN-COUNT GOVERNANCE
 I. Identity invariance (engine-level: same financial outputs with renamed project)
 J. Deterministic register (register content stable across repeated calls)
 K. Book depreciation PYTHON_BUG documented
@@ -174,10 +174,11 @@ def test_total_opex_within_10_keur():
 def test_total_revenue_gross_sanity():
     """SANITY GUARD: total revenue Python vs Excel within 2000 kEUR gross threshold.
 
-    Known documented delta: ~+1,047.95 kEUR (POLICY_DIFFERENCE: PpaIndexationStartPolicy —
-    Python indexes from January 1, Excel from July 1 PPA anniversary).
+    Known observed delta: ~+1,047.95 kEUR (currently UNRESOLVED_SOURCE).
+    PpaIndexationStartPolicy (Python Jan-1 vs Excel Jul-1 indexation) is a candidate
+    hypothesis only — not yet confirmed via arithmetic component bridge.
     This test guards against gross errors (>2000 kEUR) only.
-    Exact root-cause classification is in the delta register (REV_CUM row).
+    Exact classification is in the delta register (REV_CUM row): UNRESOLVED_SOURCE.
     """
     excel = _load_excel()
     python = _load_python()
@@ -191,7 +192,8 @@ def test_total_revenue_gross_sanity():
     assert abs(delta) <= 2000.0, (
         f"Revenue total delta {delta:.4f} kEUR exceeds 2000 kEUR gross-error threshold. "
         f"Excel CF={e_total:.4f}, Python={py_total:.4f}. "
-        "Known delta ~+1,047.95 kEUR is POLICY_DIFFERENCE (PpaIndexationStartPolicy)."
+        "Known observed delta ~+1,047.95 kEUR is UNRESOLVED_SOURCE "
+        "(PpaIndexationStartPolicy is a hypothesis only — arithmetic bridge incomplete)."
     )
 
 
@@ -250,7 +252,7 @@ def test_opex_period_convention_residual():
 
 
 # ---------------------------------------------------------------------------
-# H. STAGE A GATE: material_open_count == 0
+# H. STAGE A HONEST OPEN-COUNT GOVERNANCE
 # ---------------------------------------------------------------------------
 
 def test_stage_a_honest_open_count_reported():
@@ -265,11 +267,11 @@ def test_stage_a_honest_open_count_reported():
     - source_open_count is computed and reported
 
     Root causes in register:
-    - PYTHON_BUG: book dep basis missing IDC/commitment_fees/bank_fees (20y/12y lives)
-    - POLICY_DIFFERENCE: PpaIndexationStartPolicy (+1,047.95 kEUR revenue delta)
+    - PYTHON_BUG: book dep basis missing IDC(12y)/commitment(12y)/bank(12y)/VAT(20y) = 1,973.96 kEUR PROVEN
+    - UNRESOLVED_SOURCE: Revenue +1,047.95 kEUR (PpaIndexationStartPolicy hypothesis; bridge incomplete)
     - PERIOD_CONVENTION: OPEX/production actual vs nominal day fractions (-3.98 kEUR)
-    - UNRESOLVED_SOURCE (OPEN): values absent from extraction (B.01-B.13, tax dep, returns, etc.)
-    - OPEN__CASCADE_CONFIRMATION_REQUIRED: downstream P&L/tax/CFADS/debt awaiting A/B proof
+    - UNRESOLVED_SOURCE (OPEN): values absent from extraction (tax dep, CF row 138, scenario provenance)
+    - OPEN__CASCADE_CONFIRMATION_REQUIRED: downstream P&L/tax/CFADS/debt awaiting Stage B A/B proof
     """
     from finco_recon.recon_03_oborovo_full import build_delta_register, summarise, OPEN
 
@@ -1854,3 +1856,105 @@ def test_ebitda_not_described_as_fcfb():
             f"Row {row['recon_id']} incorrectly equates ebitda_keur with Bank Case FCFB. "
             "EBITDA != FCFB. Python FCFB source: tax_and_cfads.r69_fcf_banks_keur."
         )
+
+
+# ---------------------------------------------------------------------------
+# Stage A Final Metadata Closure tests
+# ---------------------------------------------------------------------------
+
+def test_xlsx_readme_counts_are_dynamic():
+    """XLSX README must derive OPEN counts from register, not hardcode '893' or other values."""
+    import inspect
+    import finco_recon.recon_03_generate_xlsx as gen
+    src = inspect.getsource(gen._write_readme)
+    # Must not contain any hardcoded count like "893"
+    assert "893" not in src, (
+        "_write_readme must not hardcode '893' as material OPEN count. "
+        "Counts must be derived dynamically from the live register."
+    )
+    # Must compute total_open or mat_open dynamically
+    assert "mat_open" in src or "total_open" in src, (
+        "_write_readme must compute open/material-open counts dynamically from register argument."
+    )
+
+
+def test_xlsx_readme_accepts_register_arg():
+    """_write_readme must accept a register argument (not just excel_meta)."""
+    import inspect
+    import finco_recon.recon_03_generate_xlsx as gen
+    sig = inspect.signature(gen._write_readme)
+    params = list(sig.parameters.keys())
+    assert "register" in params, (
+        "_write_readme must accept 'register' parameter so counts are derived dynamically."
+    )
+
+
+def test_no_revenue_policy_difference_proven_in_test_wording():
+    """No test docstring or assert message may claim Revenue is proven POLICY_DIFFERENCE.
+
+    Checks that stale wording claiming Revenue is POLICY_DIFFERENCE (proven) has been
+    removed. The phrases below must not appear as non-comment prose in test assertions,
+    docstrings, or error messages (excluding this list itself).
+    """
+    import pathlib
+    src = pathlib.Path("tests/test_recon_fix03_oborovo_full_reconciliation.py").read_text()
+    # Remove this function's own body from the search to avoid self-match
+    fn_start = src.find("def test_no_revenue_policy_difference_proven_in_test_wording")
+    fn_end = src.find("\ndef test_", fn_start + 1)
+    src_without_self = src[:fn_start] + (src[fn_end:] if fn_end > 0 else "")
+    # These phrases indicate stale Revenue=POLICY_DIFFERENCE claims
+    stale_phrases = [
+        "Known delta ~+1,047.95 kEUR is POLICY_DIFFERENCE",
+        "Known documented delta: ~+1,047.95 kEUR (POLICY_DIFFERENCE",
+    ]
+    for phrase in stale_phrases:
+        assert phrase not in src_without_self, (
+            f"Stale phrase found in test file: '{phrase}'. "
+            "Revenue is UNRESOLVED_SOURCE — PpaIndexationStartPolicy is a hypothesis only."
+        )
+
+
+def test_no_stale_stage_a_gate_header():
+    """Test file must not contain stale 'material_open_count == 0' governance header."""
+    import pathlib
+    src = pathlib.Path("tests/test_recon_fix03_oborovo_full_reconciliation.py").read_text()
+    fn_start = src.find("def test_no_stale_stage_a_gate_header")
+    fn_end = src.find("\ndef test_", fn_start + 1)
+    src_without_self = src[:fn_start] + (src[fn_end:] if fn_end > 0 else "")
+    stale = "STAGE A GATE: material_open_count == 0"
+    assert stale not in src_without_self, (
+        f"Stale section header '{stale}' found in test file outside this test. "
+        "Stage A does not require zero OPEN — use STAGE A HONEST OPEN-COUNT GOVERNANCE."
+    )
+
+
+def test_actual_avg_dscr_wording_is_arithmetic_mean():
+    """actual_avg_dscr semantic must be documented as arithmetic mean of per-period DSCR."""
+    import finco_recon.recon_03_oborovo_full as r03
+    excel, snap = r03.load_data()
+    register = r03.build_register(excel, snap)
+    row = next((r for r in register if r.get("recon_id") == "DSCR_ACTUAL_AVG_WATERFALL"), None)
+    assert row is not None, "DSCR_ACTUAL_AVG_WATERFALL row must exist."
+    rc = row.get("root_cause") or ""
+    # Must contain arithmetic mean description
+    assert "arithmetic mean" in rc.lower() or "per-period realized DSCR" in rc, (
+        "DSCR_ACTUAL_AVG_WATERFALL root_cause must describe actual_avg_dscr as "
+        "arithmetic mean of per-period realized DSCR values. "
+        f"Got: {rc[:200]}"
+    )
+    # Must NOT say "SUM/SUM" (misleading aggregate ratio framing)
+    assert "SUM/SUM" not in rc, (
+        "DSCR_ACTUAL_AVG_WATERFALL root_cause must not say 'SUM/SUM'. "
+        "Use 'arithmetic mean of per-period realized DSCR values' instead."
+    )
+
+
+def test_no_sum_over_sum_wording_in_recon():
+    """recon_03_oborovo_full.py must not describe actual_avg_dscr as 'SUM/SUM'."""
+    import pathlib
+    src = pathlib.Path("finco_recon/recon_03_oborovo_full.py").read_text()
+    # "SUM/SUM" as a description of aggregate ratio (not per-period mean) is banned
+    assert "SUM/SUM" not in src, (
+        "recon_03_oborovo_full.py must not use 'SUM/SUM' to describe actual_avg_dscr. "
+        "Use 'arithmetic mean of per-period realized DSCR values' instead."
+    )

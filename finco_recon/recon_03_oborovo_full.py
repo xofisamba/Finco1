@@ -1448,12 +1448,14 @@ def recon_dscr(excel: dict, python_snap: dict, register: list) -> None:
        SCULPTING TARGETS, NOT the Excel CF row 138 actual DSCR average.
     F. returns.avg_dscr = 1.15 — sculpting convergence parameter (the global weighted-average
        target the binary search converges to; represents PPA contracted target)
-    G. returns.actual_avg_dscr = 1.1786 — waterfall engine computes EBITDA/DS per period and
-       averages over ALL periods including post-sculpting-tenor periods (different population
-       from Excel AVERAGEIF). Formula in waterfall_engine.py:
-         sum(d for d in all_dsrs if d != inf) / count(d for d in all_dsrs if d != inf)
-       This is SUM/SUM over a different period population → UNRESOLVED_SOURCE vs Excel AVERAGEIF
-       (population mismatch hypothesis; not confirmed until Excel CF row 138 is extracted).
+    G. returns.actual_avg_dscr = 1.1786 — waterfall engine computes per-period realized DSCR
+       as (EBITDA_t - cash_tax_t) / senior_ds_t (or inf when senior_ds_t = 0), then takes the
+       arithmetic mean of finite values:
+         SUM(per-period realized DSCR_t) / COUNT(finite periods)
+       Source: finco_core/waterfall/waterfall_engine.py.
+       This is NOT a ratio of aggregate CFADS / aggregate debt service.
+       Population differs from Excel AVERAGEIF(CF row 138) → UNRESOLVED_SOURCE.
+       (Population mismatch hypothesis; not confirmed until Excel CF row 138 is extracted.)
     H. FCFB sources: EBITDA != FCFB. Python FCFB source: tax_and_cfads.r69_fcf_banks_keur.
        Excel FCFB source: cf.fcf_for_banks_keur. Do NOT equate ebitda_keur with FCFB.
        Bank Case vs Base Case scenario provenance: UNRESOLVED_SOURCE unless proven by
@@ -1570,7 +1572,7 @@ def recon_dscr(excel: dict, python_snap: dict, register: list) -> None:
     # (24×1.15 + 19×1.35)/43 = 1.2384 is the Python TARGET average, not Excel row 138 data.
 
     target_dscr = ret.get("avg_dscr")        # 1.150 — sculpting convergence target
-    actual_avg = ret.get("actual_avg_dscr")  # 1.1786 — waterfall engine SUM/SUM
+    actual_avg = ret.get("actual_avg_dscr")  # 1.1786 — arithmetic mean of per-period realized DSCR
     actual_min = ret.get("actual_min_dscr")  # 1.15 — minimum
     min_dscr_val = ret.get("min_dscr")       # 1.15 — same as actual_min
     python_averageif_lt10 = python_target_averageif_lt10  # alias for legacy references
@@ -1761,10 +1763,13 @@ def recon_dscr(excel: dict, python_snap: dict, register: list) -> None:
             f"UNRESOLVED_SOURCE: Excel Average Senior DSCR (CF tab row 138) not in committed fixtures. "
             f"returns.actual_avg_dscr = {actual_avg:.4f} (waterfall engine computation). "
             "Semantic (source code verified — finco_core/waterfall/waterfall_engine.py line 1342): "
-            "actual_avg_dscr = SUM(d for d in all_dsrs if d != inf) / COUNT(d for d in all_dsrs if d != inf). "
-            "'all_dsrs' is populated by waterfall_engine.py per operating period "
-            "as ebitda_minus_tax / senior_ds (or inf when senior_ds=0). "
-            "This is a realized cash-efficiency ratio, NOT the Excel target-DSCR average. "
+            "actual_avg_dscr = arithmetic mean of finite per-period realized DSCR values: "
+            "SUM(per-period DSCR_t) / COUNT(finite periods). "
+            "Per-period DSCR_t = (EBITDA_t - cash_tax_t) / senior_ds_t "
+            "(inf when senior_ds_t = 0; inf values excluded). "
+            "Source: finco_core/waterfall/waterfall_engine.py. "
+            "NOT a ratio of aggregate CFADS / aggregate debt service. "
+            "This is a realized per-period cash-efficiency ratio, NOT the Excel target-DSCR average. "
             "DISTINCT from financing.senior_debt.dscr which contains sculpting TARGETS (1.15/1.35). "
             "Status OPEN__ROOT_CAUSE_REQUIRED: Excel CF row 138 values not available; "
             "cannot classify DSCR average delta until both populations are confirmed. "
@@ -1775,9 +1780,12 @@ def recon_dscr(excel: dict, python_snap: dict, register: list) -> None:
             "NOT extracted in committed fixtures."
         ),
         python_source=(
-            "returns.actual_avg_dscr = waterfall_engine.py all_dsrs SUM/SUM "
-            "(excludes inf, includes all periods with debt service > 0). "
-            "Source: finco_core/waterfall/waterfall_engine.py line 1342."
+            "returns.actual_avg_dscr = arithmetic mean of finite per-period realized DSCR values: "
+            "SUM(per-period DSCR_t) / COUNT(finite periods). "
+            "Per-period DSCR_t = (EBITDA_t - cash_tax_t) / senior_ds_t "
+            "(inf when senior_ds_t = 0; inf values excluded from mean). "
+            "Source: finco_core/waterfall/waterfall_engine.py. "
+            "NOT a ratio of aggregate CFADS / aggregate debt service."
         ),
         python_output_path="returns.actual_avg_dscr",
     ))

@@ -90,10 +90,20 @@ def _set_col_widths(ws, widths: dict[str, float]) -> None:
 # Sheet writers
 # ---------------------------------------------------------------------------
 
-def _write_readme(wb: openpyxl.Workbook, excel_meta: dict) -> None:
+def _write_readme(wb: openpyxl.Workbook, excel_meta: dict, register: list[dict]) -> None:
     ws = wb.create_sheet("00_README")
     ws.column_dimensions["A"].width = 25
     ws.column_dimensions["B"].width = 60
+
+    # Derive all counts dynamically from live register — never hardcode mutable values
+    total_rows = len(register)
+    open_rrc = sum(1 for r in register if r["status"] == OPEN)
+    open_cascade = sum(1 for r in register if r["status"] == OPEN_CASCADE)
+    total_open = open_rrc + open_cascade
+    mat_open = sum(
+        1 for r in register
+        if r["status"] in (OPEN, OPEN_CASCADE) and r.get("materiality") == "MATERIAL"
+    )
 
     rows = [
         ("Reconciliation Title", "Oborovo — Excel ↔ Python Full Financial Reconciliation"),
@@ -122,13 +132,35 @@ def _write_readme(wb: openpyxl.Workbook, excel_meta: dict) -> None:
         ("", ""),
         ("Known residuals", ""),
         ("OPEX total delta", "~-3.98 kEUR (PERIOD_CONVENTION — nominal vs actual day count)"),
-        ("Book dep delta", "PYTHON_BUG — IDC/commitment_fees/bank_fees absent from Python dep basis (20y/12y lives)"),
-        ("Revenue delta", "UNRESOLVED_SOURCE — +1,047.9492 kEUR cumulative; arithmetic bridge incomplete"),
+        ("Book dep delta",
+         "PYTHON_BUG — all four financing-cost float fields absent from Python dep basis: "
+         "IDC(1,086.03 kEUR × 12y) + commitment_fees(188.56 kEUR × 12y) + "
+         "bank_fees(477.30 kEUR × 12y) + VAT(222.07 kEUR × 20y) = 1,973.96 kEUR PROVEN. "
+         "Residual ~2.53 kEUR = TIMING_ROUNDING. "
+         "Root path: waterfall_core.py calls capex_items() not book_depreciable_capex_items()."),
+        ("Revenue delta",
+         "UNRESOLVED_SOURCE — +1,047.9492 kEUR cumulative; arithmetic component bridge incomplete. "
+         "PpaIndexationStartPolicy is a hypothesis only — not yet confirmed."),
         ("", ""),
-        ("Stage A status", "SOURCE COMPLETION IN PROGRESS — DO NOT MERGE"),
-        ("DSCR actual-vs-target", "UNRESOLVED_SOURCE — CF row 138 not extracted from Excel fixture"),
-        ("Avg DSCR", "returns.actual_avg_dscr is Python waterfall engine result, NOT Excel AVERAGEIF(CF!G138:DW138,\"<10\")"),
-        ("Material OPEN count", "893 rows > 1 kEUR (all open statuses combined)"),
+        ("Stage A status",
+         "STAGE A DIAGNOSIS COMPLETE — READY FOR STAGE B / INDEPENDENT REVIEW. "
+         "Remaining OPEN rows are intentionally carried into Stage B (financial correction), "
+         "Revenue source extraction, Excel CF row 138 DSCR extraction, and scenario provenance work."),
+        ("DSCR actual-vs-target",
+         "Separated: DSCR_TARGET_* rows compare target vs target (RESOLVED where proven). "
+         "DSCR_ACTUAL_* rows: UNRESOLVED_SOURCE — CF row 138 not in committed fixtures."),
+        ("returns.actual_avg_dscr",
+         "Arithmetic mean of finite per-period realized DSCR values: "
+         "SUM(per-period DSCR_t) / COUNT(finite periods). "
+         "Source: waterfall_engine.py. NOT the Excel AVERAGEIF(CF row 138). "
+         "Excel CF row 138 average: UNRESOLVED_SOURCE."),
+        ("", ""),
+        ("Register totals (dynamic)", ""),
+        ("Total register rows", str(total_rows)),
+        ("Total OPEN", str(total_open)),
+        ("OPEN__ROOT_CAUSE_REQUIRED", str(open_rrc)),
+        ("OPEN__CASCADE_CONFIRMATION_REQUIRED", str(open_cascade)),
+        ("Material OPEN (>1 kEUR)", str(mat_open)),
     ]
 
     for r, (k, v) in enumerate(rows, start=1):
@@ -366,7 +398,7 @@ def generate() -> None:
     wb.remove(wb.active)
 
     print("Writing sheets...")
-    _write_readme(wb, excel)
+    _write_readme(wb, excel, register)
     _write_exec_summary(wb, register, python_snap)
 
     # Period grids
