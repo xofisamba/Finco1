@@ -190,12 +190,36 @@ Every tax assumption — whether in a Tax Policy record or a project override �
 - `reviewed_date: date` — when the source was verified.
 - `reviewer: str | None` — future governance field.
 
-Example (Oborovo CIT rate):
+Acceptable source classes (future governance):
+- Primary legislation / tax code
+- Secondary regulation / implementing act
+- Official tax authority guidance / circular
+- Authoritative tax legal opinion or memorandum
+
+Example schema (placeholder — no values are authoritative until source-reviewed and approved):
 
 ```
-source_provenance: "Croatian Corporate Income Tax Act (NN 177/04 et seq.), Art. 3; rate = 10% for small taxpayers / 18% standard; project uses 10% per financial model reviewed 2026-07-22"
-reviewed_date: 2026-07-22
+source_provenance: <AUTHORITATIVE_SOURCE_REQUIRED>
+reviewed_date: <REVIEW_DATE_REQUIRED>
+reviewer: <REVIEWER_IDENTITY_REQUIRED_WHEN_GOVERNANCE_IMPLEMENTED>
 ```
+
+---
+
+## 7a. Source Governance Rule (future enforcement)
+
+**No Tax Policy value may become APPROVED or LOCKED unless it has ALL of the following**:
+
+1. `source_provenance` — specific citation (legislation, regulation, or approved legal opinion)
+2. `effective_from` date — when the rule took effect in the jurisdiction
+3. `jurisdiction` — ISO country code or sub-jurisdiction identifier
+4. `reviewed_date` — date the source was verified against the primary text
+5. `reviewer` identity — when the governance role infrastructure is implemented
+
+Tax values without these fields remain in DRAFT status only and must not be used in
+production financial models.
+
+This rule is a **future governance contract**. It is NOT enforced in Stage B1 or B2.
 
 ---
 
@@ -280,28 +304,64 @@ project-by-project as policy records are created and approved.
 
 ---
 
-## 11. Example Country Policy Records (Illustrative — NOT Authoritative)
+## 11. Policy Record Structure — Generic Template (No Real Tax Values)
 
-These are illustrative examples only. Actual policy records must be created by a Tax Editor
+The following is a structural template only. It contains NO real tax rates or jurisdiction-specific
+values. Actual policy records must be created by a Tax Editor with authoritative source citations
 and approved by a Tax Approver before use in production models.
 
 ```
-Croatia Tax Policy v2026.1:
-  jurisdiction: "HR"
-  cit_rate: 0.10  # small taxpayer; 0.18 standard
-  tax_depreciation_mode: BOOK_BASED_PERCENTAGE
-  tax_deductible_book_dep_pct: 1.0
-  loss_carryforward_years: 5
-  effective_from: 2026-01-01
-  source_provenance: "Croatian CIT Act (NN 177/04 et seq.), verified 2026-07-22"
+Tax Policy Template:
+  jurisdiction: <ISO_COUNTRY_CODE_OR_SUB_JURISDICTION>
+  sub_jurisdiction: <ENTITY_TYPE_OR_REGION_IF_APPLICABLE>
+  version: "<JURISDICTION>/<YEAR>.<MINOR>"
+  effective_from: <SOURCE_REQUIRED>
+  effective_to: <SOURCE_REQUIRED_OR_NULL_IF_CURRENT>
 
-Montenegro Tax Policy v2026.1:
-  jurisdiction: "ME"
-  cit_rate: 0.09
-  tax_depreciation_mode: STATUTORY_TAX_SCHEDULE  # (engine capability pending Stage B3+)
-  loss_carryforward_years: 5
-  effective_from: 2026-01-01
-  source_provenance: "Law on Income Tax of Legal Entities (Montenegro), verified 2026-07-22"
+  cit_rate: <SOURCE_REQUIRED>
+  cit_rules: <SOURCE_REQUIRED>
+
+  tax_depreciation_mode: <SOURCE_REQUIRED>   # BOOK_BASED_PERCENTAGE | STATUTORY_TAX_SCHEDULE | CUSTOM_SCHEDULE
+  tax_asset_groups: <SOURCE_REQUIRED_FOR_STATUTORY_SCHEDULE>
+  tax_deductible_book_dep_pct: <SOURCE_REQUIRED_FOR_BOOK_BASED>
+
+  loss_carryforward_years: <SOURCE_REQUIRED>
+  loss_carryforward_cap: <SOURCE_REQUIRED>
+
+  wht_dividends: <SOURCE_REQUIRED>
+  wht_interest_to_sponsor: <SOURCE_REQUIRED>
+
+  vat_rate: <SOURCE_REQUIRED>
+
+  source_provenance: <AUTHORITATIVE_SOURCE_REQUIRED>
+  reviewed_date: <REVIEW_DATE_REQUIRED>
+  reviewer: <REVIEWER_IDENTITY_REQUIRED_WHEN_GOVERNANCE_IMPLEMENTED>
 ```
 
-**Stage B1 does NOT implement Montenegro rules.** This example is illustrative only.
+**No country-specific tax values appear in this architecture document.** Values are only
+introduced once a Tax Editor has produced a record with authoritative sources and a Tax Approver
+has moved it to APPROVED status. Stage B1 contains no approved Tax Policy records.
+
+---
+
+## 12. Oborovo Tax Treatment: Project Calibration Source Truth
+
+Oborovo currently uses:
+- `tax_depreciation_mode = BOOK_BASED_PERCENTAGE`
+- `tax_deductible_book_dep_pct = 1.0` (100%)
+
+This is **PROJECT CALIBRATION SOURCE TRUTH** — the source workbook (reviewed 2026-07-22)
+shows no depreciation add-back in the Fiscal Reintegration bridge, supporting 100%
+deductibility for this specific project.
+
+This is NOT a validated country Tax Policy Library record. It is:
+- a project-level calibration assumption
+- supported by source workbook evidence
+- not yet validated against the primary tax legislation
+
+Future migration path:
+1. Tax Editor creates a jurisdictional Tax Policy record with authoritative sources
+2. Tax Approver approves and locks the record
+3. Oborovo project pins the approved policy version
+4. Any deviation (e.g. if the project-specific rate differs from the standard policy) becomes
+   an explicit project override with documented reason and source provenance

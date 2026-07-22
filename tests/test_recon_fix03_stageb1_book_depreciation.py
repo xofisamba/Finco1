@@ -671,3 +671,189 @@ class TestTaxPolicyArchitectureGovernance:
             f"GFA proxy changed after architecture cleanup: {gfa_approx:.3f} kEUR. "
             "Expected ~57,971.667 kEUR (pre-head 4884cbe4 value)."
         )
+
+
+class TestStageB2SourceMathContract:
+    """Tests proving Stage B2 contract contains correct source-math semantics (Section L)."""
+
+    B2 = Path("docs/stage_b2_construction_idc_runtime_contract.md")
+
+    def _text(self):
+        return self.B2.read_text()
+
+    def test_senior_idc_uses_opening_balance_not_cumulative_draw(self):
+        """Stage B2 contract must NOT define Senior IDC from current cumulative_senior_draw[t].
+
+        Source formula H57 uses G48 (prior/opening column), not current closing draw.
+        """
+        text = self._text()
+        # Must not describe the incorrect simplified form
+        assert "cumulative_senior_draw[t]" not in text, (
+            "Stage B2 contract must not use cumulative_senior_draw[t] as IDC basis; "
+            "source uses opening/prior-period drawn balance (G48 = prior column)"
+        )
+        # Must document opening balance basis
+        assert "Opening_Drawn_Balance" in text or "opening_drawn_balance" in text or "opening balance" in text.lower(), (
+            "Stage B2 contract must document Senior IDC uses opening/prior-period drawn balance"
+        )
+
+    def test_senior_idc_source_formula_documented(self):
+        """Stage B2 contract must document the source workbook formula cell reference."""
+        text = self._text()
+        assert "H57" in text or "G48" in text, (
+            "Stage B2 contract must reference source formula (H57 = ... × G48 × G6 × H5)"
+        )
+
+    def test_senior_commitment_fee_uses_opening_undrawn_basis(self):
+        """Stage B2 contract must document commitment fee uses opening/prior undrawn basis.
+
+        Source formula H58 uses (Total_Facility - G48), where G48 is prior column.
+        """
+        text = self._text()
+        assert "Opening_Undrawn_Commitment" in text or "opening_undrawn" in text or "opening/prior" in text.lower(), (
+            "Stage B2 contract must document Senior commitment fee uses opening/prior undrawn balance"
+        )
+
+    def test_senior_commitment_fee_source_formula_documented(self):
+        """Stage B2 contract must document the commitment-fee source formula cell reference."""
+        text = self._text()
+        assert "H58" in text or ("G48" in text and "commitment" in text.lower()), (
+            "Stage B2 contract must reference commitment fee source formula (H58 = C58 × (D195 - G48) × G6 × H5)"
+        )
+
+    def test_vat_facility_formulas_separately_documented(self):
+        """VAT Facility IDC and commitment fee must be documented separately from Senior Debt."""
+        text = self._text()
+        # Source cell references
+        assert "=$C68" in text or "C68" in text, (
+            "Stage B2 contract must document VAT Facility IDC source formula"
+        )
+        assert "$D$67" in text or "D67" in text or "Max_VAT_Facility" in text, (
+            "Stage B2 contract must document VAT Facility commitment fee source formula"
+        )
+
+    def test_vat_facility_uses_current_period_not_opening_balance(self):
+        """VAT Facility IDC uses current-period requirement, not prior/opening balance."""
+        text = self._text()
+        assert "Current_VAT_Facility_Requirement" in text or "current-period" in text.lower() or "H67" in text, (
+            "Stage B2 contract must document that VAT Facility IDC uses current-period requirement"
+        )
+        # Must note the distinction from Senior Debt
+        assert "differs from" in text.lower() or "distinct from" in text.lower() or "separately proven" in text.lower(), (
+            "Stage B2 contract must explicitly note VAT Facility timing differs from Senior Debt"
+        )
+
+    def test_convergence_is_vector_not_only_idc(self):
+        """Fixed-point convergence must be defined over a vector of all circular outputs."""
+        text = self._text()
+        assert "vector" in text.lower() or "circular_outputs_vector" in text or "residual_vector" in text, (
+            "Stage B2 contract must define convergence over a vector/set of circular outputs"
+        )
+        # Must NOT be limited to just IDC
+        assert "ALL circular" in text or "all circular" in text.lower() or "every financing" in text.lower(), (
+            "Stage B2 contract must state convergence covers ALL circular construction outputs"
+        )
+
+    def test_convergence_source_formula_documented(self):
+        """Stage B2 must document the source Macro!E10 convergence check structure."""
+        text = self._text()
+        assert "Macro!E10" in text or "Macro" in text, (
+            "Stage B2 contract must document that source convergence check is multi-output (Macro!E10)"
+        )
+
+    def test_unsupported_iteration_count_claim_removed(self):
+        """The unsupported '3-5 iterations' claim must be absent from Stage B2 contract."""
+        text = self._text()
+        assert "3–5 iterations" not in text and "3-5 iterations" not in text, (
+            "Stage B2 contract must not claim 'Typical convergence: 3-5 iterations' — "
+            "no machine-verifiable source evidence supports this specific claim"
+        )
+
+    def test_non_convergence_fail_fast_documented(self):
+        """Stage B2 contract must specify fail-fast behavior on non-convergence."""
+        text = self._text()
+        assert "ConstructionFinancingNotConverged" in text or "NOT_CONVERGED" in text or "fail-fast" in text.lower(), (
+            "Stage B2 contract must document fail-fast exception on non-convergence"
+        )
+        # Must explicitly forbid silent use of last-iteration values
+        assert "silently" in text.lower() or "MUST NOT" in text or "must not" in text.lower(), (
+            "Stage B2 contract must forbid silent use of last-iteration values on non-convergence"
+        )
+
+    def test_facility_period_state_contract_present(self):
+        """Stage B2 contract must define a FacilityPeriodState with opening/closing fields."""
+        text = self._text()
+        assert "FacilityPeriodState" in text or "facility_period_state" in text.lower(), (
+            "Stage B2 contract must define a FacilityPeriodState record"
+        )
+        assert "opening_drawn_balance" in text, (
+            "FacilityPeriodState must include opening_drawn_balance"
+        )
+        assert "closing_drawn_balance" in text, (
+            "FacilityPeriodState must include closing_drawn_balance"
+        )
+
+    def test_balance_basis_policy_defined(self):
+        """Stage B2 contract must define explicit balance basis policy (OPENING/AVERAGE/CLOSING)."""
+        text = self._text()
+        assert "OPENING" in text and "CLOSING" in text, (
+            "Stage B2 contract must define interest_balance_basis options including OPENING and CLOSING"
+        )
+        assert "interest_balance_basis" in text, (
+            "Stage B2 contract must name the interest_balance_basis policy field"
+        )
+
+
+class TestTaxPolicySourceGovernance:
+    """Tests for tax policy source governance (Section H, I)."""
+
+    TAX_DOC = Path("docs/tax_policy_library_future_contract.md")
+
+    def _text(self):
+        return self.TAX_DOC.read_text()
+
+    def test_no_real_country_tax_values_as_authoritative(self):
+        """Tax Policy document must not present real country tax rates as validated facts.
+
+        Real rates like 'cit_rate: 0.10' or 'cit_rate: 0.09' must not appear
+        in a context that implies they are authoritative policy values.
+        """
+        text = self._text()
+        # The illustrative section must not contain specific numeric tax rate values
+        # paired with real jurisdiction codes as if authoritative
+        assert "cit_rate: 0.10" not in text and "cit_rate: 0.09" not in text, (
+            "Tax Policy doc must not contain specific numeric tax rates presented as authoritative "
+            "country policy values — use <SOURCE_REQUIRED> placeholders instead"
+        )
+
+    def test_real_country_examples_replaced_with_placeholders(self):
+        """Country-specific tax examples must use SOURCE_REQUIRED placeholders, not real values."""
+        text = self._text()
+        assert "SOURCE_REQUIRED" in text, (
+            "Tax Policy doc must use <SOURCE_REQUIRED> placeholders where values require authoritative sources"
+        )
+
+    def test_source_governance_rule_present(self):
+        """Tax Policy doc must state the source governance rule for APPROVED/LOCKED status."""
+        text = self._text()
+        assert "APPROVED" in text and ("LOCKED" in text or "source_provenance" in text), (
+            "Tax Policy doc must include source governance rule for APPROVED/LOCKED status"
+        )
+        assert "authoritative source" in text.lower() or "AUTHORITATIVE_SOURCE_REQUIRED" in text, (
+            "Tax Policy doc must require authoritative source for approval"
+        )
+
+    def test_oborovo_documented_as_project_calibration_not_country_policy(self):
+        """Oborovo 100% book-based tax treatment must be documented as PROJECT CALIBRATION SOURCE TRUTH."""
+        text = self._text()
+        assert "PROJECT CALIBRATION SOURCE TRUTH" in text or "project calibration" in text.lower(), (
+            "Tax Policy doc must document Oborovo tax treatment as PROJECT CALIBRATION SOURCE TRUTH, "
+            "not as a validated country Tax Policy Library record"
+        )
+
+    def test_oborovo_not_validated_country_record(self):
+        """Tax Policy doc must note Oborovo tax assumption is not yet a validated country record."""
+        text = self._text()
+        assert "not yet" in text.lower() or "not a validated" in text.lower(), (
+            "Tax Policy doc must state Oborovo assumption is not yet a validated country Tax Policy record"
+        )
