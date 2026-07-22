@@ -1301,3 +1301,137 @@ def test_material_open_count_derived():
         f"Stats material_open_count {stats['material_open_count']} != manual {manual}. "
         "material_open_count must be derived from register, never hardcoded."
     )
+
+
+# ---------------------------------------------------------------------------
+# Section A7: OPEX canonical identity tests
+# ---------------------------------------------------------------------------
+
+def test_opex_category_sum_equals_canonical_per_period():
+    """Python B.01-B.13 sum must equal canonical opex_keur per period (within 0.01 kEUR).
+
+    The MANDATORY IDENTITY: SUM(B.01-B.13 Python values for period p) == opex_keur[p].
+    This confirms the OPEX engine is run with fracs that reproduce the production engine.
+    Day_fraction convention: actual/actual (inclusive days / days_in_BOP_year).
+    """
+    import finco_recon.recon_03_oborovo_full as r03
+    excel, snap = r03.load_data()
+    register = r03.build_register(excel, snap)
+    canonical_opex = snap["operating_schedules"]["opex_keur"]  # 60 values, positive magnitudes
+
+    for period_idx in range(60):
+        cat_rows = [r for r in register
+                    if r["financial_section"] == "OPEX"
+                    and r.get("period_index") == period_idx
+                    and r["financial_line"] not in ("total_opex_keur", "total_opex_keur_cumulative")
+                    and r.get("python_value") is not None]
+        if not cat_rows:
+            continue
+        # python_value is negated (sign-matched to Excel, negative). |python_value| = magnitude.
+        cat_sum = sum(abs(r["python_value"]) for r in cat_rows)
+        canonical_abs = abs(canonical_opex[period_idx])
+        assert abs(cat_sum - canonical_abs) < 0.01, (
+            f"Period {period_idx}: category sum {cat_sum:.6f} != canonical {canonical_abs:.6f} "
+            f"(diff={abs(cat_sum - canonical_abs):.6f} kEUR). "
+            "OPEX identity broken — check _compute_opex_category_periods() day_fraction convention."
+        )
+
+
+def test_opex_category_delta_sum_approx_total_delta():
+    """SUM(B.01-B.13 category-period deltas) must approximate total OPEX Python-vs-Excel delta.
+
+    With corrected actual/actual day_fractions (inclusive days / leap-aware year):
+    - SUM(categories per period) == canonical_opex[period] exactly
+    - Total OPEX delta = SUM(canonical_opex) - SUM(excel_opex) ≈ -3.98 kEUR (PERIOD_CONVENTION)
+    - Category delta sum should match total delta within 0.5 kEUR.
+    """
+    import finco_recon.recon_03_oborovo_full as r03
+    excel, snap = r03.load_data()
+    register = r03.build_register(excel, snap)
+
+    # Sum of all B.01-B.13 period-level deltas (not total/cumulative rows)
+    cat_rows = [r for r in register
+                if r["financial_section"] == "OPEX"
+                and r.get("period_index") is not None
+                and r["financial_line"] not in ("total_opex_keur", "total_opex_keur_cumulative")
+                and r.get("delta") is not None]
+    cat_delta_sum = sum(r["delta"] for r in cat_rows)
+
+    # Total OPEX delta (sum of period-level total rows)
+    total_rows = [r for r in register
+                  if r["financial_section"] == "OPEX"
+                  and r["financial_line"] == "total_opex_keur"
+                  and r.get("period_index") is not None
+                  and r.get("delta") is not None]
+    total_delta = sum(r["delta"] for r in total_rows)
+
+    TOLERANCE = 0.5  # kEUR
+    assert abs(cat_delta_sum - total_delta) < TOLERANCE, (
+        f"Category delta sum {cat_delta_sum:.4f} kEUR differs from total delta {total_delta:.4f} kEUR "
+        f"by {abs(cat_delta_sum - total_delta):.4f} kEUR (tolerance {TOLERANCE} kEUR). "
+        "OPEX arithmetic identity broken — category rows and total rows must have consistent deltas."
+    )
+
+
+# ---------------------------------------------------------------------------
+# Section B5: DSCR semantic consistency tests
+# ---------------------------------------------------------------------------
+
+def test_dscr_no_stale_target_actual_conflation():
+    """No DSCR row root_cause may conflate target with actual DSCR."""
+    import finco_recon.recon_03_oborovo_full as r03
+    excel, snap = r03.load_data()
+    register = r03.build_register(excel, snap)
+    dscr_rows = [r for r in register if r["financial_section"] == "DSCR"]
+    stale_phrases = [
+        "target = actual",
+        "actual = target",
+        "target dscr = actual dscr",
+        "actual dscr = target",
+        "perfectly sculpted",
+    ]
+    for row in dscr_rows:
+        rc = (row.get("root_cause") or "").lower()
+        for phrase in stale_phrases:
+            assert phrase not in rc, (
+                f"Stale phrase '{phrase}' found in DSCR row {row['recon_id']}: "
+                f"{(row.get('root_cause') or '')[:120]}"
+            )
+
+
+def test_1384_not_excel_actual():
+    """1.2384 must not be described as Excel actual average DSCR."""
+    import finco_recon.recon_03_oborovo_full as r03
+    excel, snap = r03.load_data()
+    register = r03.build_register(excel, snap)
+    dscr_rows = [r for r in register if r["financial_section"] == "DSCR"]
+    for row in dscr_rows:
+        rc = (row.get("root_cause") or "").lower()
+        if "1.2384" in rc or "1.24" in rc:
+            # Must not claim it's an Excel actual CF row 138 value
+            assert "excel actual" not in rc, (
+                f"Row {row['recon_id']} incorrectly claims 1.2384/1.24 as Excel actual: "
+                f"{(row.get('root_cause') or '')[:160]}"
+            )
+
+
+# ---------------------------------------------------------------------------
+# Section C4: Book dep bridge test
+# ---------------------------------------------------------------------------
+
+def test_book_dep_bridge_has_open_component():
+    """Book dep total must not be classified RESOLVED while VAT component is OPEN."""
+    import finco_recon.recon_03_oborovo_full as r03
+    excel, snap = r03.load_data()
+    register = r03.build_register(excel, snap)
+    # Cumulative book dep rows with material delta
+    cumul_dep_rows = [r for r in register
+                      if r["financial_section"] == "BOOK_DEPRECIATION"
+                      and "cumul" in r["financial_line"].lower()
+                      and r.get("absolute_delta") is not None and r["absolute_delta"] > 100]
+    for row in cumul_dep_rows:
+        assert row.get("status") != "RESOLVED", (
+            f"Cumulative book dep row {row['recon_id']} must not be RESOLVED while VAT is OPEN. "
+            f"Current status: {row.get('status')}. "
+            "VAT dep life not confirmed in committed fixtures — status must be OPEN_CASCADE."
+        )

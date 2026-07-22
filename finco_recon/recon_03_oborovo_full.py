@@ -426,8 +426,19 @@ def _compute_opex_category_periods() -> dict[str, list[float]]:
     Python sign convention: positive = expense. Excel sign convention: negative = expense.
     Caller must negate Python values before comparison with Excel.
 
-    Uses the committed canonical fixture day_fractions (from Excel CF.operation_period_fraction)
-    to ensure reproducibility. senior_debt_tenor_years=14 (matching the Oborovo deal structure).
+    Uses actual/actual day_fractions (inclusive calendar days / days_in_BOP_year, where
+    days_in_BOP_year = 366 for leap years, 365 otherwise) to reproduce the production engine
+    output exactly. senior_debt_tenor_years=14 (matching the Oborovo deal structure).
+
+    Day_fraction derivation (source-proven):
+      BOP period 0 = Excel cf.bop_date[1] = COD = 2030-07-01 (Oborovo project COD; same value
+        in Python engine and Excel model — independently set in both from project configuration).
+      BOP period i>0 = EOP[i-1] + 1 day (chain from COD).
+      Inclusive days = (EOP - BOP).days + 1 (inclusive of both endpoints).
+      Year_days = 366 if calendar.isleap(BOP.year) else 365.
+      day_fraction = inclusive_days / year_days.
+    This reproduces the production engine's actual/actual convention exactly, confirmed by:
+      max(|SUM(categories per period) - canonical_opex_keur[period]|) < 0.01 kEUR.
 
     Identity: these values come deterministically from build_oborovo_opex_capability() +
     compute_periods() — same source used by the production engine.
@@ -467,11 +478,22 @@ def _compute_opex_category_periods() -> dict[str, list[float]]:
     pg = python_data["period_grid"]
     cf = excel_data["cf"]
 
-    # Compute Python day_fractions from the Python canonical snapshot's period_grid.
-    # Since start_date is not exposed in the canonical snapshot (unavailable_fields),
-    # derive BOP for each period as the previous period's EOP + 1 day.
-    # Period 0 has no previous period → fallback 0.5.
-    # This ensures Python day_fraction is INDEPENDENT of Excel operation_period_fraction.
+    # Compute Python day_fractions using actual/actual convention:
+    #   day_fraction = inclusive_calendar_days / days_in_BOP_year
+    # where days_in_BOP_year = 366 for leap year, 365 otherwise.
+    #
+    # BOP chain:
+    #   Period 0: BOP = COD = Excel cf.bop_date[1] = 2030-07-01 (Oborovo project COD;
+    #             this equals the Python engine's COD — same project configuration).
+    #   Period i>0: BOP = EOP[i-1] + 1 day.
+    #
+    # This reproduces the production engine's actual/actual convention and ensures:
+    #   SUM(category values per period) == canonical_opex_keur[period]  (within 0.01 kEUR).
+    # The convention differs from Excel's operation_period_fraction for H2 of leap years:
+    #   Python: 184/366 ≈ 0.50273 for Jul-Dec in leap year
+    #   Excel:  184/365 ≈ 0.50411 for same period (Excel uses 365 for H2 of leap years)
+    # This is the PERIOD_CONVENTION root cause for per-category deltas.
+    import calendar as _calendar
     from datetime import date as _dt_date, timedelta as _timedelta
 
     def _parse_pg_date(s: str | None) -> _dt_date | None:
@@ -479,27 +501,31 @@ def _compute_opex_category_periods() -> dict[str, list[float]]:
             return None
         return _dt_date.fromisoformat(str(s)[:10])
 
+    # Period 0 BOP = COD from Excel fixture (Oborovo COD = 2030-07-01, same in Python engine)
+    _period0_bop_str = cf.get("bop_date", [None])[1]  # Excel bop_date[1] = COD = 2030-07-01
+    _period0_bop = _parse_pg_date(_period0_bop_str)
+
     py_fracs: list[float] = []
     for idx, _p in enumerate(pg):
         eop_d = _parse_pg_date(_p.get("date") or _p.get("eop"))
-        bop_d = _parse_pg_date(_p.get("start_date") or _p.get("bop"))
-        if bop_d is None and idx > 0:
-            # Derive BOP from previous period's EOP + 1 day
-            prev_eop_d = _parse_pg_date(pg[idx - 1].get("date") or pg[idx - 1].get("eop"))
-            if prev_eop_d:
-                bop_d = prev_eop_d + _timedelta(days=1)
-        if bop_d and eop_d:
-            days = (eop_d - bop_d).days
-            py_fracs.append(days / 365.0)
+        if idx == 0:
+            bop_d = _period0_bop  # COD — same in Python engine and Excel
         else:
-            py_fracs.append(0.5)  # fallback (period 0 — no BOP available)
+            prev_eop_d = _parse_pg_date(pg[idx - 1].get("date") or pg[idx - 1].get("eop"))
+            bop_d = (prev_eop_d + _timedelta(days=1)) if prev_eop_d else None
+        if bop_d and eop_d:
+            inc_days = (eop_d - bop_d).days + 1  # inclusive of both endpoints
+            year_days = 366 if _calendar.isleap(bop_d.year) else 365
+            py_fracs.append(inc_days / year_days)
+        else:
+            py_fracs.append(0.5)  # fallback (should not occur with valid BOP chain)
 
     periods = [
         _Period(
             index=i + 1,
             year_index=int(p["year_index"]),
             period_in_year=int(p["period_in_year"]),
-            day_fraction=py_fracs[i],   # Python-derived fraction — independent of Excel
+            day_fraction=py_fracs[i],   # Actual/actual fraction: inclusive_days/year_days
             is_operation=True,
         )
         for i, p in enumerate(pg)
@@ -792,7 +818,8 @@ def recon_book_depreciation(excel: dict, python_snap: dict, register: list) -> N
       - Remaining unexplained: ~224.60 kEUR (possibly VAT treatment difference
           or production-units depreciation basis difference).
 
-    Classification: PYTHON_BUG, RESOLVED (bug is precisely documented).
+    Classification: PYTHON_BUG (financing costs) + OPEN (VAT component).
+    Status: OPEN__CASCADE_CONFIRMATION_REQUIRED — cannot mark RESOLVED until VAT is confirmed.
     DO NOT FIX: diagnosis only per task constraint.
     """
     dep = excel["dep"]
@@ -808,7 +835,7 @@ def recon_book_depreciation(excel: dict, python_snap: dict, register: list) -> N
         "EPC other costs, Grid connection, Investments, Insurances, Project finance costs, "
         "Commissioning, Contingencies, Project rights, VAT costs) → 20-year book life. "
         "Financing costs (IDC, Commitment fees, Bank fees) → 12-year book life. "
-        "Python canonical_wiring appears to use 25-year life for hard CAPEX (INCORRECT). "
+        "Python canonical_wiring: _BOOK_LIFE_YEARS=25 (finco_core/depreciation/canonical_wiring.py line 45). "
         "PROVEN PYTHON_BUG components: "
         "IDC(1,086.03 kEUR × 12y) + commitment_fees(188.56 kEUR × 12y) + bank_fees(477.30 kEUR × 12y) = 1,751.89 kEUR. "
         "OPEN component: VAT costs (dep_vat_keur = 222.07 kEUR cumulative) — "
@@ -1381,14 +1408,16 @@ def recon_dscr(excel: dict, python_snap: dict, register: list) -> None:
                         + 1.65 × bess_merchant_share[t]
                         + 1.35 × pv_merchant_share[t]
        Oborovo revenue mix: periods 0-23 → contracted (1.15), periods 24-42 → PV merchant (1.35)
-       financing.senior_debt.dscr[i] = per-period sculpting TARGET DSCR = actual DSCR
-       (in a perfectly sculpted schedule the achieved DSCR equals the target by construction)
+       financing.senior_debt.dscr[i] = per-period sculpting TARGET DSCR (1.15 or 1.35).
+       SOURCE: sculpting_iterative.py sets target_dscr[t] and debt_service[t]=FCFB[t]/target_dscr[t].
+       DO NOT conflate with actual realized DSCR from Excel CF tab row 138 (UNRESOLVED_SOURCE).
     C. covenant_dscr = 1.15 (covenant trigger); lockup_dscr = 1.10 (lockup trigger)
-    D. actual_dscr[t] = financing.senior_debt.dscr[t]  (same array — sculpted = target)
-    E. excel_avg_senior_dscr ≈ 1.24 formula: =SUMIF(G138:DW138,"<10")/COUNTIF(G138:DW138,"<10")
-       = AVERAGEIF(actual_dscr_range, "<10")
-       = simple arithmetic average of per-period DSCRs below 10x
-       = (24 × 1.15 + 19 × 1.35) / 43 = 53.25 / 43 ≈ 1.2384
+    D. actual_dscr[t] — DISTINCT from financing.senior_debt.dscr[t] (which is TARGET).
+       Actual realized DSCR per period from Excel CF tab row 138: NOT in committed fixtures.
+       Post-PPA expiry actual values ~1.77, 1.73, 1.80, 1.75 (manual evidence, not extracted).
+    E. excel_avg_senior_dscr from CF row 138 AVERAGEIF: NOT in committed fixtures (UNRESOLVED_SOURCE).
+       NOTE: (24 × 1.15 + 19 × 1.35) / 43 = 53.25 / 43 ≈ 1.2384 is the average of Python
+       SCULPTING TARGETS, NOT the Excel CF row 138 actual DSCR average.
     F. returns.avg_dscr = 1.15 — sculpting convergence parameter (the global weighted-average
        target the binary search converges to; represents PPA contracted target)
     G. returns.actual_avg_dscr = 1.1786 — waterfall engine computes EBITDA/DS per period and
@@ -1458,8 +1487,9 @@ def recon_dscr(excel: dict, python_snap: dict, register: list) -> None:
             f"Periods 0-23 = 100% contracted (target 1.15), "
             f"periods 24-42 = 100% PV merchant (target 1.35), "
             f"periods 43-59 = post-tenor (no debt service, target N/A). "
-            "financing.senior_debt.dscr[i] = sculpting target DSCR = actual DSCR "
-            "(perfectly sculpted → target achieved by construction). "
+            "financing.senior_debt.dscr[i] = sculpting TARGET DSCR (1.15 or 1.35). "
+            "Source: sculpting_iterative.py sets debt_service[t] = FCFB[t] / target_dscr[t]. "
+            "DISTINCT from actual realized DSCR (Excel CF row 138) which is UNRESOLVED_SOURCE. "
             "Source: Excel B22=1.15 (PPA target), C22=1.35 (PV merchant), D22=1.65 (BESS merchant)."
         )
 
