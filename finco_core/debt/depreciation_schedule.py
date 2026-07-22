@@ -33,7 +33,10 @@ def build_depreciation_schedule(
     schedule = {y: 0.0 for y in range(1, horizon_years + 1)}
 
     for item in capex_items:
-        if item.asset_class == AssetClass.FINANCIAL_COSTS:
+        if item.asset_class == AssetClass.FINANCIAL_COSTS and item.useful_life_override is None:
+            # Fall back to senior_tenor_years only when no per-item override is provided.
+            # When useful_life_override is set (e.g. IDC=12y, VAT=20y from
+            # book_depreciable_capex_items()), honour the per-component evidence.
             life = senior_tenor_years
         else:
             life = useful_life_for_item(item)

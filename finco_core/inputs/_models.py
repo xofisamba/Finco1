@@ -266,16 +266,42 @@ class CapexStructure:
         SHL IDC is excluded — it is on FinancingStructure, not CapexStructure,
         and its book/tax treatment is OPEN.
 
-        Useful-life convention for the financing-cost bundle is OPEN:
-        currently mapped from senior_tenor_years in the adapter.
+        Useful-life evidence (Oborovo Inputs sheet, MANUAL_WORKBOOK_SOURCE_EVIDENCE,
+        confirmed 2026-07-22): IDC, commitment fees, bank fees → 12-year book life;
+        VAT costs → 20-year book life. Each component is returned as a separate
+        CapexItem with useful_life_override set to the proven per-component year count
+        so canonical_wiring.py can apply distinct straight-line schedules.
         """
         items = list(self.capex_items())
-        fin_total = self.idc_keur + self.commitment_fees_keur + self.bank_fees_keur + self.vat_costs_keur
-        if fin_total > 0:
+        # Each financing component has a distinct proven book useful life;
+        # use_life_override carries the year count to canonical_wiring.
+        if self.idc_keur > 0:
             items.append(CapexItem(
-                name="Bank Financing Costs (IDC + Commitment + Bank + VAT)",
-                amount_keur=fin_total,
+                name="IDC (Interest During Construction)",
+                amount_keur=self.idc_keur,
                 asset_class=AssetClass.FINANCIAL_COSTS,
+                useful_life_override=12,
+            ))
+        if self.commitment_fees_keur > 0:
+            items.append(CapexItem(
+                name="Commitment Fees",
+                amount_keur=self.commitment_fees_keur,
+                asset_class=AssetClass.FINANCIAL_COSTS,
+                useful_life_override=12,
+            ))
+        if self.bank_fees_keur > 0:
+            items.append(CapexItem(
+                name="Bank Fees",
+                amount_keur=self.bank_fees_keur,
+                asset_class=AssetClass.FINANCIAL_COSTS,
+                useful_life_override=12,
+            ))
+        if self.vat_costs_keur > 0:
+            items.append(CapexItem(
+                name="VAT Costs",
+                amount_keur=self.vat_costs_keur,
+                asset_class=AssetClass.FINANCIAL_COSTS,
+                useful_life_override=20,
             ))
         return tuple(items)
 

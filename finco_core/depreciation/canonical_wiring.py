@@ -177,15 +177,21 @@ def build_canonical_depreciation_wiring(
 
     for item in active_items:
         asset_class_str = item.asset_class.value if hasattr(item.asset_class, 'value') else str(item.asset_class)
-        book_life_periods = horizon_years * 2  # semiannual
         tax_life_periods = _tax_life_for_asset_class(asset_class_str) * 2
 
-        #placed_in_service = 0  # at COD = period 0 of operating life
-        # depreciation_start = cod_period  # start depreciating at COD
+        # When an item carries useful_life_override, use item.name as the policy key so
+        # items with the same asset_class but different proven book lives (e.g. IDC=12y,
+        # VAT=20y, both financial_costs) each get their own straight-line schedule.
+        if getattr(item, 'useful_life_override', None) is not None:
+            policy_key = f"{asset_class_str}:{item.name}"
+            book_life_periods = item.useful_life_override * 2  # semiannual
+        else:
+            policy_key = asset_class_str
+            book_life_periods = horizon_years * 2  # semiannual
 
         asset_configs.append(
             AssetClassConfig(
-                asset_class=asset_class_str,
+                asset_class=policy_key,
                 gross_asset_basis_keur=item.amount_keur,
                 book_depreciable_basis_keur=item.amount_keur,
                 tax_depreciable_basis_keur=item.amount_keur,
@@ -196,8 +202,8 @@ def build_canonical_depreciation_wiring(
         )
 
         # Add policy if not already explicit
-        if asset_class_str not in policies:
-            policies[asset_class_str] = DepreciationPolicy(
+        if policy_key not in policies:
+            policies[policy_key] = DepreciationPolicy(
                 method="straight_line",
                 useful_life_book_periods=book_life_periods,
                 useful_life_tax_periods=tax_life_periods,

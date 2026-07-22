@@ -196,10 +196,11 @@ def run_waterfall_v3_core(
             for y in range(len(advanced_capex_depreciation_schedule.total_by_period))
         }
     else:
-        # Legacy path: derive from CapexItem asset classes
-        capex_items = inputs.capex.capex_items()
+        # Use book_depreciable_capex_items() so financing-cost components (IDC,
+        # commitment fees, bank fees, VAT) enter the depreciable basis with their
+        # correct per-item useful lives encoded via useful_life_override.
         dep_schedule_annual = build_depreciation_schedule(
-            capex_items=capex_items,
+            capex_items=inputs.capex.book_depreciable_capex_items(),
             horizon_years=horizon_years,
             senior_tenor_years=inputs.financing.senior_tenor_years,
         )
@@ -352,7 +353,7 @@ def run_waterfall_v3_core(
         from domain.depreciation.canonical_wiring import build_canonical_depreciation_wiring
         dep_wiring = build_canonical_depreciation_wiring(
             project_name=getattr(inputs.info, 'name', 'Project'),
-            capex_items=inputs.capex.capex_items(),
+            capex_items=inputs.capex.book_depreciable_capex_items(),
             horizon_years=horizon_years,
             cod_period=2,  # semiannual: COD = period 2 (first operating period)
             period_frequency="semiannual",

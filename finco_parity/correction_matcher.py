@@ -82,6 +82,11 @@ APPROVED_MANUAL_TEST_REFERENCES: frozenset[str] = frozenset({
     "phase2b.tuho.construction_shl_interest.parity_adapter",  # TestTuhoConstructionLoss
     # Oborovo: hierarchical OPEX migration (#903) propagates through cf_after_tax in H1 periods
     "phase2b.cf_after_tax.hierarchical_opex_migration",  # test_recon_fix02c_oborovo_opex_runtime_migration
+    # Stage B1: book depreciation correction — financing costs (IDC/commit/bank/VAT) now included
+    # in depreciable basis via book_depreciable_capex_items() with per-component useful lives.
+    # Affects tax_depreciation_audit, tax_loss audit fields where Phase 2B and legacy now differ
+    # by a changed amount relative to the corrected legacy baseline.
+    "phase2b.book_dep_correction.stageb1",  # test_stageb1_book_dep_correction_correction_approved
 })
 
 # ── Constants ─────────────────────────────────────────────────────────────────
@@ -146,13 +151,12 @@ _REQUIRED_PROFILE = "TAX_CFADS_V1"
 
 # Expected summary counts (exact; verified against actual records).
 _EXPECTED_SUMMARY_COUNTS: dict[str, int] = {
-    "tuho": 485,         # 517 diffs: root cause construction_shl_loss_carryforward.
-                         # Baseline used prior_tax_loss=25k (unsupported); candidate uses
-                         # CONSTRUCTION_GENERATED_CARRYFORWARD_AT_OPERATION_BOUNDARY:
-                         # 3,568.688 kEUR (tuho_construction_snapshot.json total_shl_idc)
-                         # supplied as OpeningTaxLossVintageInput(origin_tax_year=2029) at COD.
-                         # 18-month source IDC is NOT mapped into the 6-month proxy period.
-    "oborovo": 566,
+    "tuho": 509,         # 485 original + 24 Stage B1 (book dep correction): financing costs
+                         # (IDC/commit/bank/VAT) now included via book_depreciable_capex_items().
+                         # New corrections cover tax_depreciation_audit fields that shifted
+                         # as the legacy baseline book dep increased by 1,973.96 kEUR.
+                         # Original 485: construction_shl_loss_carryforward root cause.
+    "oborovo": 607,      # 566 original + 43 Stage B1 (book dep correction) − 2 resolved stale.
     "generic_solar": 286,
     "generic_wind": 460,
 }
