@@ -241,9 +241,16 @@ def run_waterfall_v3_core(
     if _tax_dep_mode == TaxDepreciationMode.BOOK_BASED_PERCENTAGE:
         tax_depreciation_schedule: list[float] = [d * _tax_dep_pct for d in depreciation_schedule]
     else:
-        # STATUTORY_TAX_SCHEDULE / CUSTOM_SCHEDULE: not yet implemented generically;
-        # fall back to book dep so existing behaviour is preserved.
-        tax_depreciation_schedule = list(depreciation_schedule)
+        # STATUTORY_TAX_SCHEDULE and CUSTOM_SCHEDULE are not yet implemented.
+        # Failing fast here prevents silent incorrect output — no fallback to book dep.
+        # To use these modes, supply a pre-computed schedule or implement the required runtime.
+        raise NotImplementedError(
+            f"TaxDepreciationMode.{_tax_dep_mode.name} is not yet implemented. "
+            "Only BOOK_BASED_PERCENTAGE is currently supported. "
+            "Supply a BOOK_BASED_PERCENTAGE configuration, or implement the required "
+            "schedule logic before activating this mode. "
+            "No silent fallback to book depreciation is permitted."
+        )
 
     # Resolve total_capex — use advanced CAPEX if provided, else fall back to inputs
     total_capex_for_waterfall = (

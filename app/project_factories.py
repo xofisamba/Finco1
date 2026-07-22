@@ -43,37 +43,128 @@ def create_default_oborovo() -> ProjectInputs:
     Returns:
         ProjectInputs with Oborovo-specific defaults.
     """
-    # CAPEX items (from Oborovo Excel Inputs rows 23-37).
-    # useful_life_override=20: Oborovo Depreciation sheet proves 20-year book life for all
-    # hard CAPEX components. Generic per-item override; no project-name dispatch.
+    # ── Oborovo hard CAPEX — source-mapped line items ──────────────────────────
+    # Source: Oborovo workbook CAPEX / Depreciation tab (reviewed 2026-07-22).
+    # Useful life = 20y for all hard CAPEX (workbook Dep tab column B confirmed).
+    # Payment schedules: equal monthly spread (12-month construction) unless
+    # workbook proves a different pattern (upfront, milestone, completion).
+    # NO balancing plug — all items are auditable to source rows.
+    # Sum = ~55,999 kEUR (slight rounding gap vs 55,999.0855 due to source extraction
+    # integer precision; see test_hard_capex_sum_matches_source).
     _OBR_HARD_LIFE = 20  # source: Oborovo Dep tab, column B, confirmed 2026-07-22
-    epc_contract = CapexItem(
-        name="EPC Contract",
-        amount_keur=26430.0,
-        y0_share=0.0,
-        spending_profile=(1/12, 1/12, 1/12, 1/12, 1/12, 1/12, 1/12, 1/12, 1/12, 1/12, 1/12, 1/12),
-        useful_life_override=_OBR_HARD_LIFE,
-    )
+    _EQ = tuple(1/12 for _ in range(12))  # equal 12-month construction spread (default)
+
+    # Source row: "Production Units" — solar panels, inverters, trackers
     production_units = CapexItem(
         name="Production Units",
-        amount_keur=10912.7,
-        y0_share=0.0,
-        spending_profile=(1/12, 1/12, 1/12, 1/12, 1/12, 1/12, 1/12, 1/12, 1/12, 1/12, 1/12, 1/12),
+        amount_keur=10912.7,  # source ≈10,913 kEUR
+        spending_profile=_EQ,
         useful_life_override=_OBR_HARD_LIFE,
     )
-    epc_other = CapexItem(name="Other EPC", amount_keur=3200.0, y0_share=0.0, spending_profile=(0.5, 0.5), useful_life_override=_OBR_HARD_LIFE)
-    grid_connection = CapexItem(name="Grid Connection", amount_keur=1800.0, y0_share=0.5, spending_profile=(0.5,), useful_life_override=_OBR_HARD_LIFE)
-    ops_prep = CapexItem(name="Operations Preparation", amount_keur=500.0, y0_share=0.5, spending_profile=(0.5,), useful_life_override=_OBR_HARD_LIFE)
-    insurances = CapexItem(name="Insurances", amount_keur=400.0, y0_share=1.0, useful_life_override=_OBR_HARD_LIFE)
-    lease_tax = CapexItem(name="Lease & Property Tax", amount_keur=200.0, y0_share=1.0, useful_life_override=_OBR_HARD_LIFE)
-    construction_mgmt_a = CapexItem(name="Construction Management A", amount_keur=800.0, y0_share=0.5, spending_profile=(0.5,), useful_life_override=_OBR_HARD_LIFE)
-    commissioning = CapexItem(name="Commissioning", amount_keur=300.0, y0_share=0.5, spending_profile=(0.5,), useful_life_override=_OBR_HARD_LIFE)
-    audit_legal = CapexItem(name="Audit & Legal", amount_keur=200.0, y0_share=0.5, spending_profile=(0.5,), useful_life_override=_OBR_HARD_LIFE)
-    construction_mgmt_b = CapexItem(name="Construction Management B", amount_keur=400.0, y0_share=0.5, spending_profile=(0.5,), useful_life_override=_OBR_HARD_LIFE)
-    contingencies = CapexItem(name="Contingencies", amount_keur=6681.89, y0_share=1.0, useful_life_override=_OBR_HARD_LIFE)
-    taxes = CapexItem(name="Taxes & Duties", amount_keur=150.0, y0_share=1.0, useful_life_override=_OBR_HARD_LIFE)
-    project_acquisition = CapexItem(name="Project Acquisition", amount_keur=1000.0, y0_share=0.5, spending_profile=(0.5,), useful_life_override=_OBR_HARD_LIFE)
-    project_rights = CapexItem(name="Project Rights", amount_keur=3024.5, y0_share=1.0, useful_life_override=_OBR_HARD_LIFE)
+    # Source row: "EPC Contract" — main civil/structural EPC
+    epc_contract = CapexItem(
+        name="EPC Contract",
+        amount_keur=26430.0,  # source ≈26,430 kEUR
+        spending_profile=_EQ,
+        useful_life_override=_OBR_HARD_LIFE,
+    )
+    # Source row: "EPC other costs" — additional EPC scope items
+    epc_other = CapexItem(
+        name="EPC Other Costs",
+        amount_keur=2014.0,  # source ≈2,014 kEUR (previously 3,200 — wrong)
+        spending_profile=_EQ,
+        useful_life_override=_OBR_HARD_LIFE,
+    )
+    # Source row: "Grid connection" — grid infrastructure
+    grid_connection = CapexItem(
+        name="Grid Connection",
+        amount_keur=4050.0,  # source ≈4,050 kEUR (previously 1,800 — wrong)
+        spending_profile=_EQ,
+        useful_life_override=_OBR_HARD_LIFE,
+    )
+    # Source row: "Investments to prepare operation phase"
+    ops_prep = CapexItem(
+        name="Investments to Prepare Operation Phase",
+        amount_keur=150.0,  # source ≈150 kEUR (previously 500 — wrong)
+        spending_profile=(0.5, 0.5),  # split across construction: H1/H2
+        useful_life_override=_OBR_HARD_LIFE,
+    )
+    # Source row: "Insurances"
+    insurances = CapexItem(
+        name="Insurances",
+        amount_keur=320.0,  # source ≈320 kEUR (previously 400 — wrong)
+        y0_share=1.0,  # typically upfront at financial close
+        useful_life_override=_OBR_HARD_LIFE,
+    )
+    # Source row: "Project finance costs due at closing"
+    # Compatibility mapping: CapexStructure.lease_tax slot repurposed for this row.
+    # These are financing advisory/legal costs capitalised at financial close.
+    # Compatibility aggregation note: no lease or property tax is included here.
+    lease_tax = CapexItem(
+        name="Project Finance Costs at Closing",
+        amount_keur=355.0,  # source ≈355 kEUR (previously 200 — wrong, was lease/property tax)
+        y0_share=1.0,  # paid at financial close
+        useful_life_override=_OBR_HARD_LIFE,
+    )
+    # Source row: "Construction Management" — full amount in primary slot
+    construction_mgmt_a = CapexItem(
+        name="Construction Management",
+        amount_keur=1151.0,  # source ≈1,151 kEUR (previously split incorrectly)
+        spending_profile=_EQ,
+        useful_life_override=_OBR_HARD_LIFE,
+    )
+    # Source row: "Commissioning"
+    commissioning = CapexItem(
+        name="Commissioning",
+        amount_keur=17.0,  # source ≈17 kEUR (previously 300 — wrong)
+        spending_profile=(1.0,),  # completion/commissioning at end of construction
+        useful_life_override=_OBR_HARD_LIFE,
+    )
+    # Source row: "Audit & Accounting & Legal Fees"
+    audit_legal = CapexItem(
+        name="Audit Accounting and Legal Fees",
+        amount_keur=70.0,  # source ≈70 kEUR (previously 200 — wrong)
+        spending_profile=(0.5, 0.5),
+        useful_life_override=_OBR_HARD_LIFE,
+    )
+    # Source row: not a separate row — secondary construction mgmt slot unused
+    construction_mgmt_b = CapexItem(
+        name="Construction Management (Secondary)",
+        amount_keur=0.0,  # no separate source row; amount moved to construction_mgmt_a
+        useful_life_override=_OBR_HARD_LIFE,
+    )
+    # Source row: "Contingencies"
+    contingencies = CapexItem(
+        name="Contingencies",
+        amount_keur=1986.0,  # source ≈1,986 kEUR (previously 6,681.89 — was balancing plug)
+        y0_share=1.0,
+        useful_life_override=_OBR_HARD_LIFE,
+    )
+    # Source row: no separate "taxes/duties" line in the source depreciation map
+    taxes = CapexItem(
+        name="Taxes and Duties",
+        amount_keur=0.0,  # no separate source row (previously 150 — wrong)
+        y0_share=1.0,
+        useful_life_override=_OBR_HARD_LIFE,
+    )
+    # Source row: "Project Acquisition / Development"
+    project_acquisition = CapexItem(
+        name="Project Acquisition and Development",
+        amount_keur=18.0,  # source ≈18 kEUR (previously 1,000 — wrong)
+        y0_share=1.0,  # pre-construction development cost
+        useful_life_override=_OBR_HARD_LIFE,
+    )
+    # Source row: "Project Rights"
+    project_rights = CapexItem(
+        name="Project Rights",
+        amount_keur=8524.0,  # source ≈8,524 kEUR (previously 3,024.5 — wrong)
+        y0_share=1.0,  # acquired pre-construction
+        useful_life_override=_OBR_HARD_LIFE,
+    )
+    # Hard CAPEX sum check (for documentation):
+    # 10912.7+26430+2014+4050+150+320+355+1151+17+70+0+1986+0+18+8524 = 55997.7 kEUR
+    # Target: 55,999.0855 kEUR. Gap of ~1.39 kEUR = source-extraction integer rounding.
+    # No balancing plug. Exact workbook decimal values would close this gap precisely.
 
     capex = CapexStructure(
         epc_contract=epc_contract,
@@ -91,15 +182,24 @@ def create_default_oborovo() -> ProjectInputs:
         taxes=taxes,
         project_acquisition=project_acquisition,
         project_rights=project_rights,
-        # Capitalized financing costs — separate components with distinct book lives.
-        # Source: Oborovo workbook Uses & Sources / IDC calculation tab (2026-07-22).
-        idc_keur=1086.03,        # Senior Debt IDC, 12y book life (via book_depreciable_capex_items)
-        commitment_fees_keur=188.56,  # Senior Debt commitment fees, 12y book life
-        bank_fees_keur=477.30,   # Structuring / arrangement fees, 12y book life
-        # VAT-facility financing costs: IDC 208 kEUR + commitment fees 14 kEUR = 222 kEUR, 20y book life.
-        # NOT the 7,665 kEUR construction VAT (a working-capital VAT-facility drawdown, not a GFA item).
-        vat_costs_keur=222.0,
-        reserve_accounts_keur=0.0,  # DSRA tracked in the waterfall, not the capex anchor
+        # ── SOURCE-DERIVED CALIBRATION VALUES ──────────────────────────────────
+        # These financing costs are DERIVED OUTPUTS from the Oborovo workbook
+        # construction-funding model (reviewed 2026-07-22). They are carried here
+        # as calibration inputs ONLY pending the generic monthly Construction/IDC
+        # runtime (Stage B2). They must NOT be treated as permanent primary inputs,
+        # hardcoded engine constants, or generic defaults for other projects.
+        #
+        # Future: ConstructionFinancingEngine → capitalized_financing_costs →
+        # → BookDepreciableAssetBasis (automatically computed from rates/schedules).
+        idc_keur=1086.032,        # DERIVED: Senior Debt IDC (debt draws × rate × day-fraction)
+        commitment_fees_keur=188.563,  # DERIVED: Senior Debt commitment fee (undrawn × rate)
+        bank_fees_keur=477.303,   # DERIVED: Structuring/arrangement fee (rate × facility basis)
+        # vat_costs_keur = VAT-facility FINANCING COSTS only (not construction VAT 7,665 kEUR)
+        # = vat_facility_idc_keur (208.448) + vat_facility_commitment_fee_keur (13.622) = 222.070
+        vat_costs_keur=222.070,       # total VAT-facility capitalised financing cost
+        vat_facility_idc_keur=208.448,      # DERIVED: VAT Facility IDC
+        vat_facility_commitment_fee_keur=13.622,  # DERIVED: VAT Facility commitment fee
+        reserve_accounts_keur=0.0,
     )
 
     # OpEx from Excel CF sheet — verified per Sprint 11 brief

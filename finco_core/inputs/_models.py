@@ -167,6 +167,11 @@ class CapexItem:
     spending_profile: tuple[float, ...] = ()
     asset_class: AssetClass = AssetClass.CIVIL_GRID
     useful_life_override: Optional[int] = None
+    # Asset-level depreciable flag driven by source asset/CAPEX treatment.
+    # True (default) for all standard hard-CAPEX items in Oborovo.
+    # Set False for land or explicitly non-depreciable items.
+    # Filters book_depreciable_capex_items() when False.
+    is_depreciable: bool = True
 
     @property
     def total_spending_shares(self) -> float:
@@ -224,17 +229,27 @@ class CapexStructure:
     project_acquisition: CapexItem
     project_rights: CapexItem
 
-    idc_keur: float = 0.0
-    commitment_fees_keur: float = 0.0
+    # SOURCE-DERIVED CALIBRATION VALUES — pending generic monthly Construction/IDC runtime.
+    # These fields hold DERIVED OUTPUTS from the workbook construction financing model,
+    # temporarily carried as calibration inputs. They are NOT permanent primary inputs and
+    # MUST NOT be generalised as hardcoded engine constants for other projects.
+    # Future: computed by generic ConstructionFinancingEngine → BookDepreciableAssetBasis.
+    idc_keur: float = 0.0          # Senior Debt IDC (derived from debt draws × rate × day-count)
+    commitment_fees_keur: float = 0.0  # Senior Debt commitment fees (derived from undrawn × rate)
     # Structuring / arrangement fees paid to lenders, capitalised into Gross Fixed Assets.
+    # Derived from fee_rate × facility basis — NOT a universal fixed input.
     bank_fees_keur: float = 0.0
     other_financial_keur: float = 0.0
-    # VAT-facility financing costs (IDC + commitment fees on the VAT facility), capitalised.
-    # Semantic: this field holds the FINANCING COST burden on the VAT credit facility,
-    # NOT the gross construction VAT itself (which is a working-capital flow, not a GFA item).
-    # Oborovo source evidence: VAT Facility IDC ≈208 kEUR + VAT Facility Commitment Fees ≈14 kEUR = 222 kEUR.
-    # The 7,665 kEUR construction VAT payable is a separate VAT-facility drawdown / repayment, not depreciated.
-    vat_costs_keur: float = 0.0
+    # VAT-facility financing costs — explicitly decomposed sub-fields.
+    # Semantic distinction (MANDATORY — do not conflate):
+    #   vat_costs_keur              = TOTAL capitalised VAT-facility financing cost = idc + commitment
+    #   vat_facility_idc_keur       = VAT Facility IDC (derived: VAT facility req × rate × day-count)
+    #   vat_facility_commitment_fee_keur = VAT Facility commitment fee (derived: undrawn × rate)
+    #   Construction VAT payable    ≈ 7,665 kEUR (a separate working-capital flow, NOT in GFA)
+    # Oborovo source: vat_facility_idc_keur=208.448 + vat_facility_commitment_fee_keur=13.622 = 222.070.
+    vat_costs_keur: float = 0.0  # total VAT-facility capitalised financing = idc + commitment
+    vat_facility_idc_keur: float = 0.0        # derived sub-component
+    vat_facility_commitment_fee_keur: float = 0.0  # derived sub-component
     reserve_accounts_keur: float = 0.0
 
     _CAPEX_ITEM_FIELDS = (
@@ -278,7 +293,7 @@ class CapexStructure:
         CapexItem with useful_life_override set to the proven per-component year count
         so canonical_wiring.py can apply distinct straight-line schedules.
         """
-        items = list(self.capex_items())
+        items = [i for i in self.capex_items() if i.is_depreciable]
         # Each financing component has a distinct proven book useful life;
         # use_life_override carries the year count to canonical_wiring.
         if self.idc_keur > 0:
