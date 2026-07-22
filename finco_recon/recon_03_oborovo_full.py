@@ -1454,12 +1454,10 @@ def recon_dscr(excel: dict, python_snap: dict, register: list) -> None:
          sum(d for d in all_dsrs if d != inf) / count(d for d in all_dsrs if d != inf)
        This is SUM/SUM over a different period population → UNRESOLVED_SOURCE vs Excel AVERAGEIF
        (population mismatch hypothesis; not confirmed until Excel CF row 138 is extracted).
-    H. Bank Case: Python canonical uses EBITDA[0] = 2,575 kEUR as the first-period FCFB value.
-       Excel Bank Case FCFB ≈ 2,575 kEUR (P90-10y stress). Base Case FCFB ≈ 2,993 kEUR (P50).
-       The Python canonical snapshot does NOT separately label "bank_case" vs "base_case" —
-       the canonical run uses the Bank Case inputs (P90-10y) for debt sizing. The `ebitda_keur`
-       series in operating_schedules represents the Bank Case FCFB used for sculpting.
-       Debt-service-capacity = Bank Case FCFB / target_dscr[t] (sculpted by period).
+    H. FCFB sources: EBITDA != FCFB. Python FCFB source: tax_and_cfads.r69_fcf_banks_keur.
+       Excel FCFB source: cf.fcf_for_banks_keur. Do NOT equate ebitda_keur with FCFB.
+       Bank Case vs Base Case scenario provenance: UNRESOLVED_SOURCE unless proven by
+       snapshot metadata. Do NOT claim ebitda_keur series = Bank Case FCFB.
     I. Binding constraint: DSCR capacity is binding. Senior debt ≈ 42,852 kEUR. Total project
        funding ≈ 57,973 kEUR. Actual gearing ≈ 73.92%. Max gearing = 80% (not binding).
        Debt is sized to the DSCR capacity constraint, not the gearing cap.
@@ -1475,37 +1473,10 @@ def recon_dscr(excel: dict, python_snap: dict, register: list) -> None:
     bop = ds["bop_date"]
     eop = ds["eop_date"]
 
-    e_cfads = ds.get("cfads_for_sd_keur", [None] * 61)
-    e_ds_svc = ds.get("sd_service_keur", [None] * 61)
     py_dscr = sd.get("dscr", [])
-
-    _DSCR_CASCADE_RC = (
-        "DSCR delta cascades from PYTHON_BUG in book dep "
-        "(different CFADS → different computed DSCR). Root cause RESOLVED."
-    )
 
     for i in range(60):
         pv = py_dscr[i] if i < len(py_dscr) else None
-
-        e_cfads_p = e_cfads[i + 1] if i + 1 < len(e_cfads) else None
-        e_ds_p = e_ds_svc[i + 1] if i + 1 < len(e_ds_svc) else None
-
-        if e_ds_p and e_ds_p != 0 and e_cfads_p is not None:
-            ev = e_cfads_p / e_ds_p
-        else:
-            ev = None
-
-        if ev is None or pv is None:
-            cl, st = UNRESOLVED_SOURCE, OPEN
-            rc = ("DSCR not computable (zero or absent debt service). "
-                  "OPEN__ROOT_CAUSE_REQUIRED.")
-        elif abs(pv - ev) < 0.01:
-            cl, st = MATCH, RESOLVED
-            rc = "DSCR matched"
-        else:
-            cl, st = PYTHON_BUG, OPEN_CASCADE
-            rc = (_DSCR_CASCADE_RC + " "
-                  "Status OPEN__CASCADE_CONFIRMATION_REQUIRED.")
 
         # Per-period target DSCR: 1.15 for contracted (periods 0-23), 1.35 for PV merchant (24-42)
         # Weighted formula: 1.15*contracted_share + 1.65*bess_share + 1.35*pv_merchant_share
@@ -1522,24 +1493,7 @@ def recon_dscr(excel: dict, python_snap: dict, register: list) -> None:
             "Source: Excel B22=1.15 (PPA target), C22=1.35 (PV merchant), D22=1.65 (BESS merchant)."
         )
 
-        register.append(_row(
-            recon_id=f"DSCR_{i:02d}",
-            section="DSCR",
-            line="dscr",
-            period_index=i,
-            period_start=bop[i + 1],
-            period_end=eop[i + 1],
-            excel_val=ev,
-            python_val=pv,
-            classification=cl,
-            status=st,
-            root_cause=rc,
-            excel_source="DS.cfads_for_sd_keur / DS.sd_service_keur",
-            python_source=f"financing.senior_debt.dscr[{i}]",
-            python_output_path="financing.senior_debt.dscr",
-        ))
-
-        # Target DSCR row — per-period weighted target (separate from actual)
+        # Target DSCR row — per-period weighted target (target vs target comparison)
         _tgt_match = (target_period is not None and pv is not None and abs(pv - target_period) < 0.001)
         register.append(_row(
             recon_id=f"DSCR_TARGET_{i:02d}",
@@ -1559,6 +1513,38 @@ def recon_dscr(excel: dict, python_snap: dict, register: list) -> None:
                 "B22=1.15 (PPA), C22=1.35 (PV merchant), D22=1.65 (BESS merchant)."
             ),
             python_source=f"financing.senior_debt.dscr[{i}] (= sculpting target by construction)",
+            python_output_path="financing.senior_debt.dscr",
+        ))
+
+        # DSCR_ACTUAL row — per-period realized DSCR (UNRESOLVED_SOURCE)
+        # Excel source: CF row 138 actual DSCR — NOT in committed fixtures.
+        # Python: financing.senior_debt.dscr[i] is the sculpting TARGET, NOT realized actual DSCR.
+        # Per-period realized DSCR is not available in the Python snapshot.
+        register.append(_row(
+            recon_id=f"DSCR_ACTUAL_{i:02d}",
+            section="DSCR",
+            line="actual_dscr_per_period",
+            period_index=i,
+            period_start=bop[i + 1],
+            period_end=eop[i + 1],
+            excel_val=None,
+            python_val=None,
+            classification=UNRESOLVED_SOURCE,
+            status=OPEN,
+            root_cause=(
+                f"Period {i}: Excel actual DSCR source = CF row 138 (UNRESOLVED_SOURCE — "
+                "not in committed fixtures). Python financing.senior_debt.dscr[i] is the "
+                "sculpting TARGET DSCR (1.15 or 1.35), NOT the realized actual DSCR. "
+                "Python snapshot has no per-period realized DSCR. "
+                "OPEN__ROOT_CAUSE_REQUIRED: actual vs actual comparison not possible "
+                "until Excel CF row 138 is extracted into fixtures."
+            ),
+            excel_source="CF row 138 actual DSCR (UNRESOLVED_SOURCE — not in committed fixtures)",
+            python_source=(
+                "NO per-period realized DSCR in snapshot. "
+                "financing.senior_debt.dscr[i] = sculpting TARGET (not actual). "
+                "UNRESOLVED_SOURCE."
+            ),
             python_output_path="financing.senior_debt.dscr",
         ))
 

@@ -1721,3 +1721,136 @@ def test_pnl_revenue_cascade_wording():
             "'POLICY_DIFFERENCE in revenue'. Must say UNRESOLVED_SOURCE. "
             f"rc[:120]: {rc[:120]}"
         )
+
+
+def test_idc_life_12y_in_bridge():
+    """IDC dep life must be documented as 12y (not 20y) in book dep bridge."""
+    import finco_recon.recon_03_oborovo_full as r03
+    excel, snap = r03.load_data()
+    register = r03.build_register(excel, snap)
+    dep_rows = [r for r in register if r["financial_section"] == "BOOK_DEPRECIATION"]
+    for row in dep_rows:
+        rc = row.get("root_cause") or ""
+        ef = row.get("excel_formula_source") or ""
+        # IDC must NOT be described as 20y
+        assert "IDC(1,086" not in rc or "12y" in rc or "20y" not in rc.split("IDC")[1][:20], (
+            f"IDC is described with wrong life in row {row['recon_id']}. "
+            "IDC dep life = 12y per manual workbook evidence."
+        )
+
+
+def test_no_idc_20y_stale_wording():
+    """No BOOK_DEPRECIATION row may assign 20y to IDC."""
+    import finco_recon.recon_03_oborovo_full as r03
+    excel, snap = r03.load_data()
+    register = r03.build_register(excel, snap)
+    dep_rows = [r for r in register if r["financial_section"] == "BOOK_DEPRECIATION"]
+    for row in dep_rows:
+        rc = row.get("root_cause") or ""
+        # If IDC is mentioned with 20y immediately after — that's the stale error
+        import re
+        # Find "IDC" followed within 30 chars by "20y"
+        if re.search(r"IDC[^)]{0,30}20y", rc):
+            assert False, (
+                f"Row {row['recon_id']} assigns 20y to IDC — must be 12y. "
+                f"rc snippet: {rc[:200]}"
+            )
+
+
+def test_dscr_target_rows_use_target_sources():
+    """DSCR_TARGET rows must use target-vs-target sources only."""
+    import finco_recon.recon_03_oborovo_full as r03
+    excel, snap = r03.load_data()
+    register = r03.build_register(excel, snap)
+    target_rows = [r for r in register
+                   if r["financial_section"] == "DSCR"
+                   and r.get("recon_id", "").startswith("DSCR_TARGET_")]
+    assert len(target_rows) > 0, "DSCR_TARGET_* rows must exist."
+    for row in target_rows:
+        # Python source must be financing.senior_debt.dscr (sculpting target)
+        ps = row.get("python_source") or ""
+        assert "senior_debt.dscr" in ps or "target" in ps.lower(), (
+            f"DSCR_TARGET row {row['recon_id']} python_source must reference sculpting target DSCR. "
+            f"Got: {ps}"
+        )
+        # Must not use CFADS/debt-service ratio as python value
+        assert "cfads" not in ps.lower(), (
+            f"DSCR_TARGET row {row['recon_id']} must not reference CFADS as python source."
+        )
+
+
+def test_dscr_actual_rows_never_use_target_as_actual():
+    """DSCR_ACTUAL rows must not use financing.senior_debt.dscr as Python actual DSCR."""
+    import finco_recon.recon_03_oborovo_full as r03
+    excel, snap = r03.load_data()
+    register = r03.build_register(excel, snap)
+    actual_rows = [r for r in register
+                   if r["financial_section"] == "DSCR"
+                   and r.get("recon_id", "").startswith("DSCR_ACTUAL_")]
+    # If actual rows exist, they must be OPEN/UNRESOLVED
+    for row in actual_rows:
+        status = row.get("status") or ""
+        cl = row.get("classification") or ""
+        assert "OPEN" in status or cl == "UNRESOLVED_SOURCE", (
+            f"DSCR_ACTUAL row {row['recon_id']} must be OPEN/UNRESOLVED_SOURCE. "
+            f"Got status={status}, classification={cl}"
+        )
+        # Must not claim financing.senior_debt.dscr as realized actual
+        ps = row.get("python_source") or ""
+        assert "senior_debt.dscr" not in ps or "TARGET" in ps or "target" in ps.lower(), (
+            f"DSCR_ACTUAL row {row['recon_id']} must not use senior_debt.dscr as actual DSCR. "
+            "financing.senior_debt.dscr contains SCULPTING TARGETS, not realized values."
+        )
+
+
+def test_no_old_dscr_actual_vs_target_row_family():
+    """Legacy DSCR_00..DSCR_59 row family must not compare Excel actual vs Python target."""
+    import finco_recon.recon_03_oborovo_full as r03
+    excel, snap = r03.load_data()
+    register = r03.build_register(excel, snap)
+    dscr_rows = [r for r in register if r["financial_section"] == "DSCR"]
+    for row in dscr_rows:
+        rid = row.get("recon_id") or ""
+        # Legacy DSCR_00..DSCR_59 format (two-digit number only)
+        import re
+        if re.match(r"^DSCR_\d{2}$", rid):
+            # If this row exists, it must NOT be comparing Excel CFADS/DS ratio to Python target
+            es = (row.get("excel_source") or "").lower()
+            ps = (row.get("python_source") or "").lower()
+            assert not ("cfads" in es and "senior_debt.dscr" in ps), (
+                f"Legacy row {rid} compares Excel CFADS/DS actual ratio to Python target DSCR. "
+                "This comparison is semantically invalid. Remove or reclassify."
+            )
+
+
+def test_no_open_cascade_says_all_upstream_resolved():
+    """No OPEN_CASCADE row may claim 'All upstream causes RESOLVED' or 'Root cause RESOLVED'."""
+    import finco_recon.recon_03_oborovo_full as r03
+    excel, snap = r03.load_data()
+    register = r03.build_register(excel, snap)
+    stale_phrases = [
+        "All upstream causes RESOLVED",
+        "upstream causes RESOLVED",
+    ]
+    for row in register:
+        if row.get("status") == "OPEN__CASCADE_CONFIRMATION_REQUIRED":
+            rc = row.get("root_cause") or ""
+            for phrase in stale_phrases:
+                assert phrase not in rc, (
+                    f"Row {row['recon_id']} is OPEN__CASCADE_CONFIRMATION_REQUIRED but says "
+                    f"'{phrase}'. Remove — Revenue is still UNRESOLVED_SOURCE. "
+                    f"rc[:160]: {rc[:160]}"
+                )
+
+
+def test_ebitda_not_described_as_fcfb():
+    """No row may claim ebitda_keur == Bank Case FCFB."""
+    import finco_recon.recon_03_oborovo_full as r03
+    excel, snap = r03.load_data()
+    register = r03.build_register(excel, snap)
+    for row in register:
+        rc = row.get("root_cause") or ""
+        assert "ebitda_keur series in operating_schedules represents the Bank Case FCFB" not in rc, (
+            f"Row {row['recon_id']} incorrectly equates ebitda_keur with Bank Case FCFB. "
+            "EBITDA != FCFB. Python FCFB source: tax_and_cfads.r69_fcf_banks_keur."
+        )
