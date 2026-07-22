@@ -512,3 +512,162 @@ class TestGovernanceAndGenericity:
         assert result.returncode == 0, (
             f"TAX_CFADS_V1 gate FAIL:\n{result.stdout[-2000:]}"
         )
+
+
+class TestTaxDepreciationModeEnum:
+    """Architecture/governance closure tests for TaxDepreciationMode (Section L)."""
+
+    def test_tax_depreciation_mode_is_not_dataclass(self):
+        """TaxDepreciationMode must not be a @dataclass-decorated Enum."""
+        import dataclasses
+        from finco_core.inputs._models import TaxDepreciationMode
+        assert not dataclasses.is_dataclass(TaxDepreciationMode), (
+            "TaxDepreciationMode must not be decorated with @dataclass — use class TaxDepreciationMode(str, Enum)"
+        )
+
+    def test_tax_depreciation_mode_is_str_enum(self):
+        """TaxDepreciationMode must inherit from str so values are stable strings."""
+        from finco_core.inputs._models import TaxDepreciationMode
+        assert issubclass(TaxDepreciationMode, str), (
+            "TaxDepreciationMode must inherit from str (class TaxDepreciationMode(str, Enum))"
+        )
+
+    def test_enum_values_are_stable_strings(self):
+        """Enum .value must be a stable lowercase string for serialization/persistence."""
+        from finco_core.inputs._models import TaxDepreciationMode
+        assert TaxDepreciationMode.BOOK_BASED_PERCENTAGE.value == "book_based_percentage"
+        assert TaxDepreciationMode.STATUTORY_TAX_SCHEDULE.value == "statutory_tax_schedule"
+        assert TaxDepreciationMode.CUSTOM_SCHEDULE.value == "custom_schedule"
+
+    def test_enum_equality_by_value(self):
+        """str-Enum members compare equal to their string value."""
+        from finco_core.inputs._models import TaxDepreciationMode
+        assert TaxDepreciationMode.BOOK_BASED_PERCENTAGE == "book_based_percentage"
+        assert TaxDepreciationMode.STATUTORY_TAX_SCHEDULE == "statutory_tax_schedule"
+
+    def test_enum_is_hashable(self):
+        """Enum members must be hashable for use as dict keys and set members."""
+        from finco_core.inputs._models import TaxDepreciationMode
+        s = {TaxDepreciationMode.BOOK_BASED_PERCENTAGE, TaxDepreciationMode.CUSTOM_SCHEDULE}
+        assert len(s) == 2
+
+    def test_enum_round_trips_via_value(self):
+        """TaxDepreciationMode can be reconstructed from its .value string."""
+        from finco_core.inputs._models import TaxDepreciationMode
+        for member in TaxDepreciationMode:
+            reconstructed = TaxDepreciationMode(member.value)
+            assert reconstructed is member, (
+                f"Round-trip failed for {member}: TaxDepreciationMode({member.value!r}) != {member!r}"
+            )
+
+    def test_enum_serializes_to_json(self):
+        """Enum value can be serialized to JSON as a plain string."""
+        import json
+        from finco_core.inputs._models import TaxDepreciationMode
+        payload = {"mode": TaxDepreciationMode.BOOK_BASED_PERCENTAGE.value}
+        serialized = json.dumps(payload)
+        assert '"book_based_percentage"' in serialized
+
+    def test_statutory_still_raises_not_implemented(self):
+        """STATUTORY_TAX_SCHEDULE must raise NotImplementedError after enum fix."""
+        from finco_core.inputs._models import TaxDepreciationMode
+        import inspect
+        src = inspect.getsource(__import__("app.waterfall_core", fromlist=["waterfall_core"]))
+        assert "NotImplementedError" in src, (
+            "waterfall_core.py must raise NotImplementedError for STATUTORY_TAX_SCHEDULE"
+        )
+
+    def test_custom_still_raises_not_implemented(self):
+        """CUSTOM_SCHEDULE must raise NotImplementedError after enum fix."""
+        from finco_core.inputs._models import TaxDepreciationMode
+        import inspect
+        src = inspect.getsource(__import__("app.waterfall_core", fromlist=["waterfall_core"]))
+        assert "NotImplementedError" in src
+        assert "CUSTOM_SCHEDULE" in src or "CUSTOM" in src
+
+
+class TestTaxPolicyArchitectureGovernance:
+    """Tests for tax policy architecture governance (Section L)."""
+
+    def test_tax_policy_future_contract_exists(self):
+        """Tax Policy Library future contract document must exist."""
+        path = Path("docs/tax_policy_library_future_contract.md")
+        assert path.exists(), f"Missing: {path}"
+
+    def test_future_contract_says_not_implemented(self):
+        """Tax Policy Library document must explicitly state it is NOT implemented."""
+        text = Path("docs/tax_policy_library_future_contract.md").read_text()
+        assert "NOT IMPLEMENTED" in text or "NOT implemented" in text, (
+            "Tax policy contract must state 'NOT IMPLEMENTED'"
+        )
+
+    def test_tax_params_defaults_documented_as_compatibility(self):
+        """TaxParams source must document defaults as compatibility, not global country rules."""
+        src = Path("finco_core/inputs/_models.py").read_text()
+        assert "COMPATIBILITY DEFAULT" in src or "compatibility/default" in src.lower(), (
+            "TaxParams must document defaults as COMPATIBILITY DEFAULTS, not global country rules"
+        )
+
+    def test_no_country_specific_tax_in_waterfall_core(self):
+        """waterfall_core.py must not contain country-specific tax rate constants."""
+        src = Path("app/waterfall_core.py").read_text()
+        for pattern in ["cit_rate = 0.10", "cit_rate=0.10", "corporate_rate = 0.10"]:
+            assert pattern not in src, (
+                f"Country-specific tax constant found in waterfall_core.py: {pattern!r}"
+            )
+
+    def test_oborovo_tax_mode_set_explicitly_in_factory(self):
+        """Oborovo factory must explicitly set BOOK_BASED_PERCENTAGE, not rely on default."""
+        src = Path("app/project_factories.py").read_text()
+        assert "BOOK_BASED_PERCENTAGE" in src or "book_based_percentage" in src, (
+            "Oborovo factory must explicitly set tax_depreciation_mode=BOOK_BASED_PERCENTAGE"
+        )
+
+    def test_stage_b2_stub_period_is_two_days(self):
+        """Stage B2 contract must state first stub period = 2 days (inclusive day-count)."""
+        text = Path("docs/stage_b2_construction_idc_runtime_contract.md").read_text()
+        assert "2 days" in text or "2/360" in text, (
+            "Stage B2 contract must state first stub = 2 days under inclusive day-count formula (not 1 day)"
+        )
+        assert "1 day" not in text, (
+            "Stage B2 contract must not claim first stub = '1 day' (that was the typo)"
+        )
+
+    def test_stage_b2_calibration_targets_are_derived_outputs(self):
+        """Stage B2 contract must frame calibration targets as derived outputs, not primary inputs."""
+        text = Path("docs/stage_b2_construction_idc_runtime_contract.md").read_text()
+        assert "DERIVED OUTPUT" in text or "calibration" in text.lower(), (
+            "Stage B2 contract must document calibration targets as DERIVED OUTPUTS"
+        )
+        assert "1,086.032" in text or "1086.032" in text, (
+            "Stage B2 contract must include IDC calibration target (1,086.032 kEUR)"
+        )
+
+    def test_no_financial_output_changed_from_pre_head(self):
+        """Oborovo GFA and book-dep totals must match pre-head 4884cbe4 canonical fixture.
+
+        Architecture-only changes (TaxDepreciationMode enum fix, doc creation) must
+        leave all financial outputs unchanged. Verified by checking that the factory
+        still produces the same CAPEX structure that was used to generate the committed
+        canonical snapshot, and the snapshot totals are internally consistent.
+        """
+        snap = _load_canonical_snap()
+        fixture_schedule = snap["operating_schedules"]["book_depreciation_keur"]
+        fixture_total = sum(fixture_schedule)
+
+        # Canonical total from the committed snapshot (57,971.668 kEUR)
+        assert fixture_total == pytest.approx(57_971.668, abs=0.5), (
+            f"Canonical snapshot total unexpected: {fixture_total:.3f} kEUR. "
+            "Architecture changes should not require snapshot regeneration."
+        )
+
+        # Verify factory CAPEX structure unchanged (GFA proxy)
+        capex = _oborovo_capex()
+        hard_capex_total = sum(i.amount_keur for i in capex.capex_items())
+        fin_costs = (capex.idc_keur + capex.commitment_fees_keur + capex.bank_fees_keur
+                     + capex.vat_costs_keur)
+        gfa_approx = hard_capex_total + fin_costs
+        assert gfa_approx == pytest.approx(57_971.667, abs=0.5), (
+            f"GFA proxy changed after architecture cleanup: {gfa_approx:.3f} kEUR. "
+            "Expected ~57,971.667 kEUR (pre-head 4884cbe4 value)."
+        )

@@ -601,17 +601,23 @@ class FinancingParams:
         return f"{mode.value}"
 
 
-@dataclass(frozen=True)
-class TaxDepreciationMode(Enum):
-    """How tax-deductible depreciation is derived for the waterfall CIT calculation.
+class TaxDepreciationMode(str, Enum):
+    """Engine capability: how tax-deductible depreciation is derived for CIT.
+
+    This is an ENGINE CAPABILITY enum — not a country tax policy.
+    Which mode a project uses is determined by its selected Tax Policy
+    (future: versioned country/jurisdiction policy library) plus any
+    project-level overrides. See docs/tax_policy_library_future_contract.md.
 
     BOOK_BASED_PERCENTAGE: tax_dep = book_dep * tax_deductible_book_dep_pct.
-        Used when the tax authority allows deduction based on accounting depreciation
-        (possibly at a percentage). Oborovo source workbook shows 100% deductibility
-        with no add-back in the Fiscal Reintegration bridge.
-    STATUTORY_TAX_SCHEDULE: independent tax-asset-group schedule, separate from book.
-        Used when statutory lives/methods differ from IFRS book lives.
+        Used when the tax authority allows deduction based on accounting
+        depreciation (possibly at a percentage). Oborovo source workbook shows
+        100% deductibility with no add-back in the Fiscal Reintegration bridge.
+    STATUTORY_TAX_SCHEDULE: independent tax-asset-group schedule, separate from
+        book. Used when statutory lives/methods differ from IFRS book lives.
+        NOT YET IMPLEMENTED — raises NotImplementedError.
     CUSTOM_SCHEDULE: externally supplied period-by-period tax depreciation.
+        NOT YET IMPLEMENTED — raises NotImplementedError.
     """
     BOOK_BASED_PERCENTAGE = "book_based_percentage"
     STATUTORY_TAX_SCHEDULE = "statutory_tax_schedule"
@@ -643,10 +649,18 @@ class TaxParams:
 
     # Explicit tax-depreciation policy — governs how the waterfall derives the
     # depreciation deduction passed to compute_period_tax().
-    # Default BOOK_BASED_PERCENTAGE at 100% preserves legacy behaviour where
-    # book dep and tax dep are numerically equal, but makes the policy explicit.
+    #
+    # COMPATIBILITY DEFAULT — NOT A GLOBAL COUNTRY TAX RULE:
+    # The default BOOK_BASED_PERCENTAGE at 100% preserves legacy behaviour where
+    # book dep and tax dep are numerically equal. This default does NOT mean that
+    # all countries or all projects use 100% book-based tax depreciation. Future
+    # projects must receive these assumptions through a selected versioned Tax
+    # Policy plus project-level overrides (see docs/tax_policy_library_future_contract.md).
+    # Oborovo explicitly sets BOOK_BASED_PERCENTAGE = 100% because the source
+    # workbook calibration supports that project policy.
     tax_depreciation_mode: TaxDepreciationMode = TaxDepreciationMode.BOOK_BASED_PERCENTAGE
     # Fraction of book depreciation that is tax-deductible (1.0 = 100%).
+    # COMPATIBILITY DEFAULT — NOT A GLOBAL COUNTRY TAX RULE.
     # Oborovo: source workbook P&L shows no depreciation add-back in Fiscal
     # Reintegration bridge → 100% of book dep is tax-deductible for this project.
     tax_deductible_book_dep_pct: float = 1.0

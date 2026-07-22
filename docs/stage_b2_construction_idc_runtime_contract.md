@@ -55,8 +55,8 @@ cumulative_uses[t] = SUM(monthly_uses[0:t])
 
 ### 2.5 Interest/day-count convention
 - Day-count: Actual/360 (source: Oborovo workbook formulas, reviewed 2026-07-22)
-- Interest period fraction: `(EOP - BOP + 1) / 360` per construction month
-- First stub period: 29-Jun-2029 → 30-Jun-2029 (1 day)
+- Interest period fraction: `(EOP - BOP + 1) / 360` per construction month (inclusive both endpoints)
+- First stub period: 29-Jun-2029 → 30-Jun-2029 → **2 days** under inclusive formula (30 − 29 + 1 = 2), day fraction = 2/360 ≈ 0.5556%
 - Construction months: monthly periods thereafter
 
 ### 2.6 Senior Debt IDC
@@ -226,9 +226,29 @@ Stage B2 should document the P&L treatment path for SHL IDC separately.
 
 ---
 
-## 9. Checklist for Stage B2 implementation
+## 9. Source-Provenance Distinctions (Oborovo vs Generic Engine)
 
-- [ ] Monthly construction period grid (date-based)
+The following table separates SOURCE WORKBOOK BEHAVIOR (Oborovo-specific) from
+GENERIC CLEAN-ENGINE POLICY (what the generic engine should expose):
+
+| Aspect | Oborovo Source Workbook | Generic Engine Policy |
+|--------|------------------------|-----------------------|
+| Construction duration | 12 months | Configurable input (`construction_months: int`) |
+| Default payment schedule | Equal 8.33%/month (1/12) | `100% / N` per month, user-editable per item |
+| Funding priority | Equity → SHL → Senior Debt | Configurable funding policy; source sequence documented separately |
+| Commitment-fee rate | Derived via workbook-specific formula | Explicit economically-meaningful rate input; do not replicate workbook formula as universal rule |
+| VAT reimbursement lag | 6 months (Oborovo assumption) | Configurable input (`vat_reimbursement_lag_months: int`) |
+| Calibration targets | IDC 1,086.032; commitment 188.563; structuring 477.303; VAT IDC 208.448; VAT commitment 13.622 kEUR | Evidence only — generic engine reproduces via correct inputs, not hardcoded targets |
+| First stub period | 29-Jun-2029 → 30-Jun-2029 (Oborovo-specific date) | Generic engine computes from `construction_start_date` |
+
+Parent CAPEX payment schedules are always DERIVED (SUMPRODUCT of child amounts × child
+schedules / parent amount) — never independently editable.
+
+---
+
+## 10. Checklist for Stage B2 implementation
+
+- [ ] Monthly construction period grid (date-based, from `construction_start_date`)
 - [ ] Per-item payment schedules with validation (sum = 100%)
 - [ ] Monthly Uses aggregation
 - [ ] Equity/SHL/senior funding draw waterfall
