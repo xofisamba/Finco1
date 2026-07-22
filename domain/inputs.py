@@ -23,6 +23,7 @@ from finco_core.inputs import (  # noqa: F401
     RevenueParams,
     FinancingParams,
     TaxParams,
+    TaxDepreciationMode,
     ProjectInputs,
     hash_inputs_for_cache,
 )

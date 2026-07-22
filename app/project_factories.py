@@ -26,6 +26,7 @@ from domain.inputs import (
     RevenueParams,
     SHLRepaymentMethod,
     TaxParams,
+    TaxDepreciationMode,
     TechnicalParams,
 )
 from domain.revenue.bess import BessParams
@@ -42,36 +43,37 @@ def create_default_oborovo() -> ProjectInputs:
     Returns:
         ProjectInputs with Oborovo-specific defaults.
     """
-    # CAPEX items (from Oborovo Excel Inputs rows 23-37)
+    # CAPEX items (from Oborovo Excel Inputs rows 23-37).
+    # useful_life_override=20: Oborovo Depreciation sheet proves 20-year book life for all
+    # hard CAPEX components. Generic per-item override; no project-name dispatch.
+    _OBR_HARD_LIFE = 20  # source: Oborovo Dep tab, column B, confirmed 2026-07-22
     epc_contract = CapexItem(
         name="EPC Contract",
         amount_keur=26430.0,
         y0_share=0.0,
         spending_profile=(1/12, 1/12, 1/12, 1/12, 1/12, 1/12, 1/12, 1/12, 1/12, 1/12, 1/12, 1/12),
+        useful_life_override=_OBR_HARD_LIFE,
     )
     production_units = CapexItem(
         name="Production Units",
         amount_keur=10912.7,
         y0_share=0.0,
         spending_profile=(1/12, 1/12, 1/12, 1/12, 1/12, 1/12, 1/12, 1/12, 1/12, 1/12, 1/12, 1/12),
+        useful_life_override=_OBR_HARD_LIFE,
     )
-    epc_other = CapexItem(name="Other EPC", amount_keur=3200.0, y0_share=0.0, spending_profile=(0.5, 0.5))
-    grid_connection = CapexItem(name="Grid Connection", amount_keur=1800.0, y0_share=0.5, spending_profile=(0.5,))
-    ops_prep = CapexItem(name="Operations Preparation", amount_keur=500.0, y0_share=0.5, spending_profile=(0.5,))
-    insurances = CapexItem(name="Insurances", amount_keur=400.0, y0_share=1.0)
-    lease_tax = CapexItem(name="Lease & Property Tax", amount_keur=200.0, y0_share=1.0)
-    construction_mgmt_a = CapexItem(name="Construction Management A", amount_keur=800.0, y0_share=0.5, spending_profile=(0.5,))
-    commissioning = CapexItem(name="Commissioning", amount_keur=300.0, y0_share=0.5, spending_profile=(0.5,))
-    audit_legal = CapexItem(name="Audit & Legal", amount_keur=200.0, y0_share=0.5, spending_profile=(0.5,))
-    construction_mgmt_b = CapexItem(name="Construction Management B", amount_keur=400.0, y0_share=0.5, spending_profile=(0.5,))
-    contingencies = CapexItem(name="Contingencies", amount_keur=6681.89, y0_share=1.0)
-    taxes = CapexItem(name="Taxes & Duties", amount_keur=150.0, y0_share=1.0)
-    project_acquisition = CapexItem(name="Project Acquisition", amount_keur=1000.0, y0_share=0.5, spending_profile=(0.5,))
-    project_rights = CapexItem(name="Project Rights", amount_keur=3024.5, y0_share=1.0)
-    # Note: total hard_capex gap vs Excel = 4,695.49 kEUR
-    # This is the difference between our 15-item sum (51,303.60) and Excel hard_capex (55,999.09)
-    # All additional Excel items (development fees, construction supervision, etc.) are already
-    # included in this gap - we just need to increase contingencies by 4,695.49 kEUR
+    epc_other = CapexItem(name="Other EPC", amount_keur=3200.0, y0_share=0.0, spending_profile=(0.5, 0.5), useful_life_override=_OBR_HARD_LIFE)
+    grid_connection = CapexItem(name="Grid Connection", amount_keur=1800.0, y0_share=0.5, spending_profile=(0.5,), useful_life_override=_OBR_HARD_LIFE)
+    ops_prep = CapexItem(name="Operations Preparation", amount_keur=500.0, y0_share=0.5, spending_profile=(0.5,), useful_life_override=_OBR_HARD_LIFE)
+    insurances = CapexItem(name="Insurances", amount_keur=400.0, y0_share=1.0, useful_life_override=_OBR_HARD_LIFE)
+    lease_tax = CapexItem(name="Lease & Property Tax", amount_keur=200.0, y0_share=1.0, useful_life_override=_OBR_HARD_LIFE)
+    construction_mgmt_a = CapexItem(name="Construction Management A", amount_keur=800.0, y0_share=0.5, spending_profile=(0.5,), useful_life_override=_OBR_HARD_LIFE)
+    commissioning = CapexItem(name="Commissioning", amount_keur=300.0, y0_share=0.5, spending_profile=(0.5,), useful_life_override=_OBR_HARD_LIFE)
+    audit_legal = CapexItem(name="Audit & Legal", amount_keur=200.0, y0_share=0.5, spending_profile=(0.5,), useful_life_override=_OBR_HARD_LIFE)
+    construction_mgmt_b = CapexItem(name="Construction Management B", amount_keur=400.0, y0_share=0.5, spending_profile=(0.5,), useful_life_override=_OBR_HARD_LIFE)
+    contingencies = CapexItem(name="Contingencies", amount_keur=6681.89, y0_share=1.0, useful_life_override=_OBR_HARD_LIFE)
+    taxes = CapexItem(name="Taxes & Duties", amount_keur=150.0, y0_share=1.0, useful_life_override=_OBR_HARD_LIFE)
+    project_acquisition = CapexItem(name="Project Acquisition", amount_keur=1000.0, y0_share=0.5, spending_profile=(0.5,), useful_life_override=_OBR_HARD_LIFE)
+    project_rights = CapexItem(name="Project Rights", amount_keur=3024.5, y0_share=1.0, useful_life_override=_OBR_HARD_LIFE)
 
     capex = CapexStructure(
         epc_contract=epc_contract,
@@ -89,11 +91,15 @@ def create_default_oborovo() -> ProjectInputs:
         taxes=taxes,
         project_acquisition=project_acquisition,
         project_rights=project_rights,
-        idc_keur=1086.0,  # IDC from Oborovo Excel
-        commitment_fees_keur=188.6,  # Commitment fees
-        bank_fees_keur=665.87,  # Bank fees
-        vat_costs_keur=33.49265737862265,  # Calibrates Inputs!C45 total capex anchor
-        reserve_accounts_keur=0.0,  # DSRA is tracked in the waterfall, not the capex anchor
+        # Capitalized financing costs — separate components with distinct book lives.
+        # Source: Oborovo workbook Uses & Sources / IDC calculation tab (2026-07-22).
+        idc_keur=1086.03,        # Senior Debt IDC, 12y book life (via book_depreciable_capex_items)
+        commitment_fees_keur=188.56,  # Senior Debt commitment fees, 12y book life
+        bank_fees_keur=477.30,   # Structuring / arrangement fees, 12y book life
+        # VAT-facility financing costs: IDC 208 kEUR + commitment fees 14 kEUR = 222 kEUR, 20y book life.
+        # NOT the 7,665 kEUR construction VAT (a working-capital VAT-facility drawdown, not a GFA item).
+        vat_costs_keur=222.0,
+        reserve_accounts_keur=0.0,  # DSRA tracked in the waterfall, not the capex anchor
     )
 
     # OpEx from Excel CF sheet — verified per Sprint 11 brief
@@ -217,6 +223,10 @@ def create_default_oborovo() -> ProjectInputs:
         wht_sponsor_dividends=0.05,
         wht_sponsor_shl_interest=0.0,
         shl_cap_applies=True,
+        # Oborovo source workbook P&L: no depreciation add-back in Fiscal Reintegration.
+        # 100% of book depreciation is tax-deductible for this project.
+        tax_depreciation_mode=TaxDepreciationMode.BOOK_BASED_PERCENTAGE,
+        tax_deductible_book_dep_pct=1.0,
     )
 
     return ProjectInputs(

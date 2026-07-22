@@ -110,6 +110,7 @@ def run_waterfall_v3_core(
     from domain.revenue.generation import full_revenue_schedule, full_generation_schedule, revenue_decomposition_schedule
     from domain.opex.projections import opex_schedule_period
     from domain.financing.depreciation_schedule import build_depreciation_schedule
+    from finco_core.inputs._models import TaxDepreciationMode
 
     _ = use_tuho_r99_input_engine  # C1a intentionally leaves runtime behavior unchanged.
     construction_diagnostic = None
@@ -232,6 +233,18 @@ def run_waterfall_v3_core(
         depreciation_schedule.append(dep)
         opex_schedule.append(opex)
 
+    # Explicit tax-depreciation schedule derived from policy in inputs.tax.
+    # BOOK_BASED_PERCENTAGE: tax_dep = book_dep * deductible_pct.
+    # Oborovo: 100% (source workbook P&L shows no dep add-back in Fiscal Reintegration).
+    _tax_dep_mode = getattr(inputs.tax, 'tax_depreciation_mode', TaxDepreciationMode.BOOK_BASED_PERCENTAGE)
+    _tax_dep_pct = getattr(inputs.tax, 'tax_deductible_book_dep_pct', 1.0)
+    if _tax_dep_mode == TaxDepreciationMode.BOOK_BASED_PERCENTAGE:
+        tax_depreciation_schedule: list[float] = [d * _tax_dep_pct for d in depreciation_schedule]
+    else:
+        # STATUTORY_TAX_SCHEDULE / CUSTOM_SCHEDULE: not yet implemented generically;
+        # fall back to book dep so existing behaviour is preserved.
+        tax_depreciation_schedule = list(depreciation_schedule)
+
     # Resolve total_capex — use advanced CAPEX if provided, else fall back to inputs
     total_capex_for_waterfall = (
         total_capex_override if total_capex_override is not None
@@ -284,6 +297,7 @@ def run_waterfall_v3_core(
             tuho_shl_principal_eligibility_start_period
         ),
         co2_cit_bridge_by_period=co2_cit_bridge_by_period,
+        tax_depreciation_schedule=tax_depreciation_schedule,
     )
     result.project_code = getattr(inputs.info, "code", "")
     # Phase 9 CO2 revenue bridge audit metadata.

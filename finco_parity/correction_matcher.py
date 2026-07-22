@@ -87,6 +87,9 @@ APPROVED_MANUAL_TEST_REFERENCES: frozenset[str] = frozenset({
     # Affects tax_depreciation_audit, tax_loss audit fields where Phase 2B and legacy now differ
     # by a changed amount relative to the corrected legacy baseline.
     "phase2b.book_dep_correction.stageb1",  # test_stageb1_book_dep_correction_correction_approved
+    # Stage B1 corrective closure: source-truth CAPEX fix (GFA=57,973, hard CAPEX 20y, vat=222 kEUR).
+    # 24 new records for tax_loss period fields; 88 stale records removed (drift resolved).
+    "phase2b.book_dep_correction.stageb1_corrective_closure",  # test_recon_fix03_stageb1_book_depreciation
 })
 
 # ── Constants ─────────────────────────────────────────────────────────────────
@@ -126,6 +129,7 @@ _KNOWN_POLICY_IDS = frozenset({
     "hr_standard_factory_v1",
     "hr_reduced_factory_v1",
     "de_demo_factory_v1",
+    "book_dep_correction_b1_closure",  # Stage B1 corrective closure: source-truth CAPEX fix
 })
 
 _KNOWN_DRIFT_KINDS = frozenset({
@@ -156,7 +160,9 @@ _EXPECTED_SUMMARY_COUNTS: dict[str, int] = {
                          # New corrections cover tax_depreciation_audit fields that shifted
                          # as the legacy baseline book dep increased by 1,973.96 kEUR.
                          # Original 485: construction_shl_loss_carryforward root cause.
-    "oborovo": 607,      # 566 original + 43 Stage B1 (book dep correction) − 2 resolved stale.
+    "oborovo": 543,      # Stage B1 corrective closure: 543 records after removing 88 stale (drift
+                         # resolved by source-truth CAPEX fix) and adding 24 new tax_loss period fields.
+                         # Source-truth basis: GFA=57,973 kEUR, hard CAPEX 20y life, vat_costs=222 kEUR.
     "generic_solar": 286,
     "generic_wind": 460,
 }

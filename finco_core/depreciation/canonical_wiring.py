@@ -155,6 +155,7 @@ def build_canonical_depreciation_wiring(
     from finco_core.depreciation.engine import DepreciationEngine, DepreciationEngineInputs
     from finco_core.depreciation.asset import AssetClassConfig
     from finco_core.depreciation.schedule import DepreciationPolicy
+    from finco_core.debt.depreciation_schedule import useful_life_for_item
 
     # Filter to non-zero capex items
     active_items = [item for item in capex_items if item.amount_keur > 0]
@@ -187,7 +188,10 @@ def build_canonical_depreciation_wiring(
             book_life_periods = item.useful_life_override * 2  # semiannual
         else:
             policy_key = asset_class_str
-            book_life_periods = horizon_years * 2  # semiannual
+            # Use per-asset-class policy from ASSET_CLASS_USEFUL_LIFE, not model horizon.
+            # Horizon-based default was incorrect: a 20y-life asset in a 30y model
+            # was getting a 30y book life. Each asset class now carries its own book life.
+            book_life_periods = useful_life_for_item(item) * 2  # semiannual
 
         asset_configs.append(
             AssetClassConfig(

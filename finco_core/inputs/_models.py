@@ -226,8 +226,14 @@ class CapexStructure:
 
     idc_keur: float = 0.0
     commitment_fees_keur: float = 0.0
+    # Structuring / arrangement fees paid to lenders, capitalised into Gross Fixed Assets.
     bank_fees_keur: float = 0.0
     other_financial_keur: float = 0.0
+    # VAT-facility financing costs (IDC + commitment fees on the VAT facility), capitalised.
+    # Semantic: this field holds the FINANCING COST burden on the VAT credit facility,
+    # NOT the gross construction VAT itself (which is a working-capital flow, not a GFA item).
+    # Oborovo source evidence: VAT Facility IDC ≈208 kEUR + VAT Facility Commitment Fees ≈14 kEUR = 222 kEUR.
+    # The 7,665 kEUR construction VAT payable is a separate VAT-facility drawdown / repayment, not depreciated.
     vat_costs_keur: float = 0.0
     reserve_accounts_keur: float = 0.0
 
@@ -581,6 +587,23 @@ class FinancingParams:
 
 
 @dataclass(frozen=True)
+class TaxDepreciationMode(Enum):
+    """How tax-deductible depreciation is derived for the waterfall CIT calculation.
+
+    BOOK_BASED_PERCENTAGE: tax_dep = book_dep * tax_deductible_book_dep_pct.
+        Used when the tax authority allows deduction based on accounting depreciation
+        (possibly at a percentage). Oborovo source workbook shows 100% deductibility
+        with no add-back in the Fiscal Reintegration bridge.
+    STATUTORY_TAX_SCHEDULE: independent tax-asset-group schedule, separate from book.
+        Used when statutory lives/methods differ from IFRS book lives.
+    CUSTOM_SCHEDULE: externally supplied period-by-period tax depreciation.
+    """
+    BOOK_BASED_PERCENTAGE = "book_based_percentage"
+    STATUTORY_TAX_SCHEDULE = "statutory_tax_schedule"
+    CUSTOM_SCHEDULE = "custom_schedule"
+
+
+@dataclass(frozen=True)
 class TaxParams:
     """Tax, withholding, and interest-deductibility assumptions."""
     corporate_rate: float = 0.10
@@ -602,6 +625,16 @@ class TaxParams:
     shl_cap_applies: bool = True
 
     cit_cash_tax_start_operating_index: int | None = None
+
+    # Explicit tax-depreciation policy — governs how the waterfall derives the
+    # depreciation deduction passed to compute_period_tax().
+    # Default BOOK_BASED_PERCENTAGE at 100% preserves legacy behaviour where
+    # book dep and tax dep are numerically equal, but makes the policy explicit.
+    tax_depreciation_mode: TaxDepreciationMode = TaxDepreciationMode.BOOK_BASED_PERCENTAGE
+    # Fraction of book depreciation that is tax-deductible (1.0 = 100%).
+    # Oborovo: source workbook P&L shows no depreciation add-back in Fiscal
+    # Reintegration bridge → 100% of book dep is tax-deductible for this project.
+    tax_deductible_book_dep_pct: float = 1.0
 
     @property
     def initial_tax_loss_keur(self) -> float:
