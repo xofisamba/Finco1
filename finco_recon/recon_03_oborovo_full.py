@@ -849,7 +849,7 @@ def recon_book_depreciation(excel: dict, python_snap: dict, register: list) -> N
         "Excel dep formula: =AND(H$3>0;H$3<=$B7)*($C7/$B7)*H$5 "
         "(straight-line with year guard and period day-fraction proration). "
         "PROVEN PYTHON_BUG bridge: "
-        "IDC(1,086.03 kEUR × 20y Excel, absent Python) "
+        "IDC(1,086.03 kEUR × 12y Excel, absent Python) "
         "+ commitment_fees(188.56 kEUR × 12y Excel, absent Python) "
         "+ bank_fees(477.30 kEUR × 12y Excel, absent Python) "
         "+ VAT(222.07 kEUR × 20y Excel, absent Python) "
@@ -1224,7 +1224,9 @@ def recon_cfads(excel: dict, python_snap: dict, register: list) -> None:
         "CFADS delta cascades from: "
         "(1) PYTHON_BUG in book dep basis (IDC/fees → different tax shield → different CFADS); "
         "(2) UNRESOLVED_SOURCE in revenue (PpaIndexationStartPolicy hypothesis — not yet confirmed); "
-        "(3) PERIOD_CONVENTION in OPEX. All upstream causes RESOLVED."
+        "(3) PERIOD_CONVENTION in OPEX. "
+        "Upstream Revenue remains UNRESOLVED_SOURCE (PpaIndexationStartPolicy hypothesis). "
+        "Downstream causality OPEN__CASCADE_CONFIRMATION_REQUIRED pending Stage B/source completion."
     )
 
     for i in range(60):
@@ -1298,7 +1300,9 @@ def recon_senior_debt(excel: dict, python_snap: dict, register: list) -> None:
     _SD_CASCADE_RC = (
         "Senior debt delta cascades from PYTHON_BUG in book dep basis "
         "(IDC/fees missing → different tax shield → different CFADS → different debt sculpting). "
-        "Root cause RESOLVED (documented PYTHON_BUG)."
+        "Upstream book-dep PYTHON_BUG proven (IDC/fees/VAT absent). "
+        "Upstream Revenue UNRESOLVED_SOURCE. "
+        "Downstream delta not fully explained until Stage B A/B proof."
     )
 
     line_map = [
@@ -1363,7 +1367,9 @@ def recon_shl(excel: dict, python_snap: dict, register: list) -> None:
     _SHL_CASCADE_RC = (
         "SHL delta cascades from PYTHON_BUG in book dep basis "
         "(IDC/fees → different CFADS → different senior debt waterfall → different SHL service). "
-        "Root cause RESOLVED (documented PYTHON_BUG)."
+        "Upstream book-dep PYTHON_BUG proven (IDC/fees/VAT absent). "
+        "Upstream Revenue UNRESOLVED_SOURCE. "
+        "Downstream delta not fully explained until Stage B A/B proof."
     )
 
     line_map = [
