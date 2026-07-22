@@ -36,6 +36,10 @@ _FIXTURES_DIR = _REPO_ROOT / "tests" / "fixtures"
 _EXCEL_FIXTURE = _FIXTURES_DIR / "excel_oborovo_financial_truth.json"
 _PYTHON_FIXTURE = _FIXTURES_DIR / "oborovo_python_canonical.json"
 
+# Public path constants (used by tests)
+EXCEL_JSON = str(_EXCEL_FIXTURE)
+PYTHON_JSON = str(_PYTHON_FIXTURE)
+
 # /tmp paths — only used when RECON_OBOROVO_USE_TMP=1
 _TMP_EXCEL = pathlib.Path("/tmp/oborovo_excel_truth_fresh.json")
 _TMP_PYTHON = pathlib.Path("/tmp/oborovo_python_canonical.json")
@@ -463,12 +467,39 @@ def _compute_opex_category_periods() -> dict[str, list[float]]:
     pg = python_data["period_grid"]
     cf = excel_data["cf"]
 
+    # Compute Python day_fractions from the Python canonical snapshot's period_grid.
+    # Since start_date is not exposed in the canonical snapshot (unavailable_fields),
+    # derive BOP for each period as the previous period's EOP + 1 day.
+    # Period 0 has no previous period → fallback 0.5.
+    # This ensures Python day_fraction is INDEPENDENT of Excel operation_period_fraction.
+    from datetime import date as _dt_date, timedelta as _timedelta
+
+    def _parse_pg_date(s: str | None) -> _dt_date | None:
+        if not s:
+            return None
+        return _dt_date.fromisoformat(str(s)[:10])
+
+    py_fracs: list[float] = []
+    for idx, _p in enumerate(pg):
+        eop_d = _parse_pg_date(_p.get("date") or _p.get("eop"))
+        bop_d = _parse_pg_date(_p.get("start_date") or _p.get("bop"))
+        if bop_d is None and idx > 0:
+            # Derive BOP from previous period's EOP + 1 day
+            prev_eop_d = _parse_pg_date(pg[idx - 1].get("date") or pg[idx - 1].get("eop"))
+            if prev_eop_d:
+                bop_d = prev_eop_d + _timedelta(days=1)
+        if bop_d and eop_d:
+            days = (eop_d - bop_d).days
+            py_fracs.append(days / 365.0)
+        else:
+            py_fracs.append(0.5)  # fallback (period 0 — no BOP available)
+
     periods = [
         _Period(
             index=i + 1,
             year_index=int(p["year_index"]),
             period_in_year=int(p["period_in_year"]),
-            day_fraction=cf["operation_period_fraction"][i + 1] or 0.5,
+            day_fraction=py_fracs[i],   # Python-derived fraction — independent of Excel
             is_operation=True,
         )
         for i, p in enumerate(pg)
@@ -641,32 +672,85 @@ def recon_opex(excel: dict, python_snap: dict, register: list) -> None:
 
 
 def recon_ebitda(excel: dict, python_snap: dict, register: list) -> None:
-    """EBITDA: derived identity = revenue + opex."""
+    """EBITDA: derived identity = revenue + opex.
+
+    Governance: EBITDA cannot be RESOLVED while Revenue upstream is OPEN.
+    For any period where Revenue delta >= _TOL (Revenue OPEN), EBITDA must be
+    OPEN__CASCADE_CONFIRMATION_REQUIRED.
+
+    Arithmetic identity: EBITDA_delta = Revenue_delta + OPEX_signed_delta
+    (OPEX_signed_delta = Python_opex - Excel_opex, both in matching sign convention)
+    """
     cf = excel["cf"]
     e_ebitda = cf.get("ebitda_keur", [None] * 61)
     py_ebitda = python_snap["operating_schedules"]["ebitda_keur"]
     bop = cf["bop_date"]
     eop = cf["eop_date"]
 
+    # Pre-compute per-period Revenue deltas for cascade governance
+    e_rev = cf.get("operating_revenues_keur", [None] * 61)
+    py_rev = python_snap["operating_schedules"]["revenue_keur"]
+    # Pre-compute per-period OPEX deltas (Python neg-magnitude minus Excel neg-value)
+    e_opex_arr = cf.get("operating_expenses_keur", [None] * 61)
+    py_opex_total = python_snap["operating_schedules"]["opex_keur"]
+
     for i in range(60):
         ev = e_ebitda[i + 1] if e_ebitda[i + 1] is not None else None
         pv = py_ebitda[i]
+
+        # Upstream Revenue delta for this period
+        e_rev_p = e_rev[i + 1] if i + 1 < len(e_rev) else None
+        py_rev_p = py_rev[i] if i < len(py_rev) else None
+        rev_delta = (py_rev_p - e_rev_p) if (e_rev_p is not None and py_rev_p is not None) else None
+        revenue_open = (rev_delta is not None and abs(rev_delta) >= _TOL)
+
+        # OPEX signed delta (Python negative - Excel negative = Python_keur_positive negate - Excel_neg)
+        e_opex_p = e_opex_arr[i + 1] if i + 1 < len(e_opex_arr) else None
+        py_opex_p = -py_opex_total[i] if i < len(py_opex_total) else None
+        opex_delta = (py_opex_p - e_opex_p) if (e_opex_p is not None and py_opex_p is not None) else None
+
         if ev is None:
             cl, st = UNRESOLVED_SOURCE, OPEN
             rc = "Excel EBITDA not extracted for this period. OPEN__ROOT_CAUSE_REQUIRED."
         else:
             abs_d = abs(pv - ev)
-            # EBITDA = Revenue + OPEX: differences flow from upstream POLICY_DIFFERENCE (revenue)
-            # and PERIOD_CONVENTION (OPEX)
-            cl = MATCH if abs_d < _TOL else PERIOD_CONVENTION
-            st = RESOLVED
-            rc = (
-                "EBITDA identity match" if cl == MATCH else
-                "EBITDA difference flows from upstream: "
-                "POLICY_DIFFERENCE in revenue (PpaIndexationStartPolicy) and "
-                "PERIOD_CONVENTION in OPEX (calendar day fraction convention). "
-                "Both upstream causes are RESOLVED."
-            )
+            if abs_d < _TOL:
+                cl, st = MATCH, RESOLVED
+                rc = "EBITDA identity match"
+            elif revenue_open:
+                # Revenue upstream is OPEN → EBITDA MUST be OPEN_CASCADE
+                # (cannot be RESOLVED while material upstream is unresolved)
+                cl = PERIOD_CONVENTION
+                st = OPEN_CASCADE
+                # Arithmetic identity verification
+                _rev_d_str = f"{rev_delta:+.4f}" if rev_delta is not None else "N/A"
+                _opex_d_str = f"{opex_delta:+.4f}" if opex_delta is not None else "N/A"
+                _ebitda_d = pv - ev
+                _identity = (
+                    f"EBITDA_delta={_ebitda_d:+.4f}, "
+                    f"Revenue_delta={_rev_d_str}, "
+                    f"OPEX_signed_delta={_opex_d_str}"
+                )
+                rc = (
+                    "OPEN__CASCADE_CONFIRMATION_REQUIRED: "
+                    "Cascade from unresolved Revenue delta + PERIOD_CONVENTION OPEX delta. "
+                    "EBITDA = Revenue + OPEX (arithmetic identity). "
+                    "Revenue upstream is OPEN__ROOT_CAUSE_REQUIRED "
+                    "(PPA component bridge incomplete; per-component Python revenue absent). "
+                    "EBITDA status cannot be RESOLVED while Revenue upstream is OPEN. "
+                    f"Arithmetic identity: {_identity}. "
+                    "Reclassify to RESOLVED only after Revenue upstream is resolved and "
+                    "EBITDA identity is confirmed."
+                )
+            else:
+                # Revenue matched for this period; delta from OPEX PERIOD_CONVENTION only
+                cl = PERIOD_CONVENTION
+                st = RESOLVED
+                rc = (
+                    "EBITDA difference flows from PERIOD_CONVENTION in OPEX "
+                    "(actual calendar day fractions vs nominal semi-annual). "
+                    "Revenue matched for this period."
+                )
         register.append(_row(
             recon_id=f"EBITDA_{i:02d}",
             section="EBITDA",
@@ -718,21 +802,23 @@ def recon_book_depreciation(excel: dict, python_snap: dict, register: list) -> N
     eop = dep["eop_date"]
 
     _BOOK_DEP_BUG_RC = (
-        "PYTHON_BUG: Python book depreciation basis missing financing costs. "
+        "PYTHON_BUG (PROVEN, financing-cost component): Python book depreciation basis missing "
+        "financing costs. "
         "Excel Inputs sheet (manually verified): hard CAPEX assets (Production Units, EPC Contract, "
         "EPC other costs, Grid connection, Investments, Insurances, Project finance costs, "
         "Commissioning, Contingencies, Project rights, VAT costs) → 20-year book life. "
         "Financing costs (IDC, Commitment fees, Bank fees) → 12-year book life. "
         "Python canonical_wiring appears to use 25-year life for hard CAPEX (INCORRECT). "
-        "Missing from Python dep basis: "
-        "IDC(1,086.03 kEUR) + commitment_fees(188.56 kEUR) + bank_fees(477.30 kEUR) = 1,751.89 kEUR "
-        "(depreciated over 12-year financing cost lives). "
-        "Remaining unexplained delta ~224.60 kEUR likely includes VAT costs (dep_vat_keur = 222.07 kEUR "
-        "cumulative) — VAT dep life classification is OPEN__ROOT_CAUSE_REQUIRED "
-        "(Excel Inputs dep life for VAT not confirmed in committed fixtures). "
+        "PROVEN PYTHON_BUG components: "
+        "IDC(1,086.03 kEUR × 12y) + commitment_fees(188.56 kEUR × 12y) + bank_fees(477.30 kEUR × 12y) = 1,751.89 kEUR. "
+        "OPEN component: VAT costs (dep_vat_keur = 222.07 kEUR cumulative) — "
+        "VAT dep life NOT confirmed in committed fixtures (OPEN__ROOT_CAUSE_REQUIRED). "
+        "Total delta = 1,751.89 kEUR (proven) + 222.07 kEUR (VAT, OPEN) + residual. "
         "Exact basis bridge: Base CAPEX ~55,999 kEUR × 20y, IDC ~1,086 kEUR × 12y, "
         "Commitment fees ~189 kEUR × 12y, Bank fees ~477 kEUR × 12y, VAT ~222 kEUR (life OPEN). "
         "excel_formula_source: 'Excel Inputs sheet: 20y hard CAPEX, 12y financing costs'. "
+        "TOTAL row status: OPEN__CASCADE_CONFIRMATION_REQUIRED — contains both proven "
+        "and OPEN components; total cannot be RESOLVED until VAT is confirmed. "
         "DO NOT FIX HERE — Stage A diagnosis only."
     )
 
@@ -741,6 +827,7 @@ def recon_book_depreciation(excel: dict, python_snap: dict, register: list) -> N
     for i in range(60):
         ev = e_dep_total[i + 1]  # may be None
         pv = py_dep[i]
+        _bdep_has_delta = (ev is not None and abs(pv - ev) >= _TOL)
         register.append(_row(
             recon_id=f"BDEP_{i:02d}",
             section="BOOK_DEPRECIATION",
@@ -750,9 +837,11 @@ def recon_book_depreciation(excel: dict, python_snap: dict, register: list) -> N
             period_end=eop[i + 1] if eop[i + 1] else None,
             excel_val=ev,
             python_val=pv,
-            classification=PYTHON_BUG if (ev is not None and abs(pv - ev) >= _TOL) else MATCH,
-            status=RESOLVED,
-            root_cause=_BOOK_DEP_BUG_RC if (ev is not None and abs(pv - ev) >= _TOL) else "Book dep aligned",
+            classification=PYTHON_BUG if _bdep_has_delta else MATCH,
+            # TOTAL must NOT be RESOLVED — contains both proven PYTHON_BUG (IDC/fees)
+            # and OPEN VAT component. Use OPEN_CASCADE: cannot confirm total until VAT resolved.
+            status=OPEN_CASCADE if _bdep_has_delta else RESOLVED,
+            root_cause=_BOOK_DEP_BUG_RC if _bdep_has_delta else "Book dep aligned",
             excel_source="Dep.dep_total_keur",
             python_source="operating_schedules.book_depreciation_keur",
             python_output_path="operating_schedules.book_depreciation_keur",
@@ -773,7 +862,8 @@ def recon_book_depreciation(excel: dict, python_snap: dict, register: list) -> N
         excel_val=e_cum,
         python_val=py_cum,
         classification=PYTHON_BUG if abs_d >= _TOL else MATCH,
-        status=RESOLVED,
+        # CUMULATIVE TOTAL must NOT be RESOLVED — contains OPEN VAT component.
+        status=OPEN_CASCADE if abs_d >= _TOL else RESOLVED,
         root_cause=(
             f"Cumulative book dep delta={py_cum - e_cum:.4f} kEUR. "
             + (_BOOK_DEP_BUG_RC if abs_d >= _TOL else "Cumulative book dep matched.")
@@ -1761,30 +1851,80 @@ def recon_equity_returns(python_snap: dict, register: list) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Main reconciliation entry point
+# Main reconciliation entry points
 # ---------------------------------------------------------------------------
+
+def build_register(excel: dict, snap: dict) -> list[dict]:
+    """Build and return the full delta register from pre-loaded data dicts.
+
+    Separated from load_data() so tests can pass fixture data directly.
+    """
+    register: list[dict] = []
+
+    recon_timeline(excel, snap, register)
+    recon_production(excel, snap, register)
+    recon_revenue(excel, snap, register)
+    recon_opex(excel, snap, register)
+    recon_ebitda(excel, snap, register)
+    recon_book_depreciation(excel, snap, register)
+    recon_tax_depreciation(excel, snap, register)
+    recon_pnl(excel, snap, register)
+    recon_tax_lcf(excel, snap, register)
+    recon_cfads(excel, snap, register)
+    recon_senior_debt(excel, snap, register)
+    recon_shl(excel, snap, register)
+    recon_dscr(excel, snap, register)
+    recon_equity_returns(snap, register)
+
+    return register
+
 
 def build_delta_register() -> list[dict]:
     """Build and return the full delta register."""
     excel, python_snap = load_data()
-    register: list[dict] = []
+    return build_register(excel, python_snap)
 
-    recon_timeline(excel, python_snap, register)
-    recon_production(excel, python_snap, register)
-    recon_revenue(excel, python_snap, register)
-    recon_opex(excel, python_snap, register)
-    recon_ebitda(excel, python_snap, register)
-    recon_book_depreciation(excel, python_snap, register)
-    recon_tax_depreciation(excel, python_snap, register)
-    recon_pnl(excel, python_snap, register)
-    recon_tax_lcf(excel, python_snap, register)
-    recon_cfads(excel, python_snap, register)
-    recon_senior_debt(excel, python_snap, register)
-    recon_shl(excel, python_snap, register)
-    recon_dscr(excel, python_snap, register)
-    recon_equity_returns(python_snap, register)
 
-    return register
+def compute_register_stats(register: list[dict]) -> dict:
+    """Return a statistics dict derived from the register.
+
+    Keys returned:
+      total_rows, classification_counts, status_counts,
+      total_open, material_open_count, source_open_count
+
+    material_open_count: rows where 'OPEN' in status AND absolute_delta > 1.0.
+    This is derived dynamically from the register — never hardcoded.
+    """
+    total_rows = len(register)
+    classification_counts: dict[str, int] = {}
+    status_counts: dict[str, int] = {}
+    total_open = 0
+    material_open_count = 0
+    source_open_count = 0
+
+    for row in register:
+        cl = row.get("classification", "")
+        st = row.get("status", "")
+        classification_counts[cl] = classification_counts.get(cl, 0) + 1
+        status_counts[st] = status_counts.get(st, 0) + 1
+
+        if "OPEN" in st:
+            total_open += 1
+            abs_d = row.get("absolute_delta")
+            if abs_d is not None and abs_d > 1.0:
+                material_open_count += 1
+
+        if cl == UNRESOLVED_SOURCE and "OPEN" in st:
+            source_open_count += 1
+
+    return {
+        "total_rows": total_rows,
+        "classification_counts": classification_counts,
+        "status_counts": status_counts,
+        "total_open": total_open,
+        "material_open_count": material_open_count,
+        "source_open_count": source_open_count,
+    }
 
 
 def summarise(register: list[dict]) -> dict:
