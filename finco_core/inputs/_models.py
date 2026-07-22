@@ -167,6 +167,11 @@ class CapexItem:
     spending_profile: tuple[float, ...] = ()
     asset_class: AssetClass = AssetClass.CIVIL_GRID
     useful_life_override: Optional[int] = None
+    # Asset-level depreciable flag driven by source asset/CAPEX treatment.
+    # True (default) for all standard hard-CAPEX items in Oborovo.
+    # Set False for land or explicitly non-depreciable items.
+    # Filters book_depreciable_capex_items() when False.
+    is_depreciable: bool = True
 
     @property
     def total_spending_shares(self) -> float:
@@ -224,11 +229,27 @@ class CapexStructure:
     project_acquisition: CapexItem
     project_rights: CapexItem
 
-    idc_keur: float = 0.0
-    commitment_fees_keur: float = 0.0
+    # SOURCE-DERIVED CALIBRATION VALUES — pending generic monthly Construction/IDC runtime.
+    # These fields hold DERIVED OUTPUTS from the workbook construction financing model,
+    # temporarily carried as calibration inputs. They are NOT permanent primary inputs and
+    # MUST NOT be generalised as hardcoded engine constants for other projects.
+    # Future: computed by generic ConstructionFinancingEngine → BookDepreciableAssetBasis.
+    idc_keur: float = 0.0          # Senior Debt IDC (derived from debt draws × rate × day-count)
+    commitment_fees_keur: float = 0.0  # Senior Debt commitment fees (derived from undrawn × rate)
+    # Structuring / arrangement fees paid to lenders, capitalised into Gross Fixed Assets.
+    # Derived from fee_rate × facility basis — NOT a universal fixed input.
     bank_fees_keur: float = 0.0
     other_financial_keur: float = 0.0
-    vat_costs_keur: float = 0.0
+    # VAT-facility financing costs — explicitly decomposed sub-fields.
+    # Semantic distinction (MANDATORY — do not conflate):
+    #   vat_costs_keur              = TOTAL capitalised VAT-facility financing cost = idc + commitment
+    #   vat_facility_idc_keur       = VAT Facility IDC (derived: VAT facility req × rate × day-count)
+    #   vat_facility_commitment_fee_keur = VAT Facility commitment fee (derived: undrawn × rate)
+    #   Construction VAT payable    ≈ 7,665 kEUR (a separate working-capital flow, NOT in GFA)
+    # Oborovo source: vat_facility_idc_keur=208.448 + vat_facility_commitment_fee_keur=13.622 = 222.070.
+    vat_costs_keur: float = 0.0  # total VAT-facility capitalised financing = idc + commitment
+    vat_facility_idc_keur: float = 0.0        # derived sub-component
+    vat_facility_commitment_fee_keur: float = 0.0  # derived sub-component
     reserve_accounts_keur: float = 0.0
 
     _CAPEX_ITEM_FIELDS = (
@@ -266,16 +287,42 @@ class CapexStructure:
         SHL IDC is excluded — it is on FinancingStructure, not CapexStructure,
         and its book/tax treatment is OPEN.
 
-        Useful-life convention for the financing-cost bundle is OPEN:
-        currently mapped from senior_tenor_years in the adapter.
+        Useful-life evidence (Oborovo Inputs sheet, MANUAL_WORKBOOK_SOURCE_EVIDENCE,
+        confirmed 2026-07-22): IDC, commitment fees, bank fees → 12-year book life;
+        VAT costs → 20-year book life. Each component is returned as a separate
+        CapexItem with useful_life_override set to the proven per-component year count
+        so canonical_wiring.py can apply distinct straight-line schedules.
         """
-        items = list(self.capex_items())
-        fin_total = self.idc_keur + self.commitment_fees_keur + self.bank_fees_keur + self.vat_costs_keur
-        if fin_total > 0:
+        items = [i for i in self.capex_items() if i.is_depreciable]
+        # Each financing component has a distinct proven book useful life;
+        # use_life_override carries the year count to canonical_wiring.
+        if self.idc_keur > 0:
             items.append(CapexItem(
-                name="Bank Financing Costs (IDC + Commitment + Bank + VAT)",
-                amount_keur=fin_total,
+                name="IDC (Interest During Construction)",
+                amount_keur=self.idc_keur,
                 asset_class=AssetClass.FINANCIAL_COSTS,
+                useful_life_override=12,
+            ))
+        if self.commitment_fees_keur > 0:
+            items.append(CapexItem(
+                name="Commitment Fees",
+                amount_keur=self.commitment_fees_keur,
+                asset_class=AssetClass.FINANCIAL_COSTS,
+                useful_life_override=12,
+            ))
+        if self.bank_fees_keur > 0:
+            items.append(CapexItem(
+                name="Bank Fees",
+                amount_keur=self.bank_fees_keur,
+                asset_class=AssetClass.FINANCIAL_COSTS,
+                useful_life_override=12,
+            ))
+        if self.vat_costs_keur > 0:
+            items.append(CapexItem(
+                name="VAT Costs",
+                amount_keur=self.vat_costs_keur,
+                asset_class=AssetClass.FINANCIAL_COSTS,
+                useful_life_override=20,
             ))
         return tuple(items)
 
@@ -554,6 +601,29 @@ class FinancingParams:
         return f"{mode.value}"
 
 
+class TaxDepreciationMode(str, Enum):
+    """Engine capability: how tax-deductible depreciation is derived for CIT.
+
+    This is an ENGINE CAPABILITY enum — not a country tax policy.
+    Which mode a project uses is determined by its selected Tax Policy
+    (future: versioned country/jurisdiction policy library) plus any
+    project-level overrides. See docs/tax_policy_library_future_contract.md.
+
+    BOOK_BASED_PERCENTAGE: tax_dep = book_dep * tax_deductible_book_dep_pct.
+        Used when the tax authority allows deduction based on accounting
+        depreciation (possibly at a percentage). Oborovo source workbook shows
+        100% deductibility with no add-back in the Fiscal Reintegration bridge.
+    STATUTORY_TAX_SCHEDULE: independent tax-asset-group schedule, separate from
+        book. Used when statutory lives/methods differ from IFRS book lives.
+        NOT YET IMPLEMENTED — raises NotImplementedError.
+    CUSTOM_SCHEDULE: externally supplied period-by-period tax depreciation.
+        NOT YET IMPLEMENTED — raises NotImplementedError.
+    """
+    BOOK_BASED_PERCENTAGE = "book_based_percentage"
+    STATUTORY_TAX_SCHEDULE = "statutory_tax_schedule"
+    CUSTOM_SCHEDULE = "custom_schedule"
+
+
 @dataclass(frozen=True)
 class TaxParams:
     """Tax, withholding, and interest-deductibility assumptions."""
@@ -576,6 +646,24 @@ class TaxParams:
     shl_cap_applies: bool = True
 
     cit_cash_tax_start_operating_index: int | None = None
+
+    # Explicit tax-depreciation policy — governs how the waterfall derives the
+    # depreciation deduction passed to compute_period_tax().
+    #
+    # COMPATIBILITY DEFAULT — NOT A GLOBAL COUNTRY TAX RULE:
+    # The default BOOK_BASED_PERCENTAGE at 100% preserves legacy behaviour where
+    # book dep and tax dep are numerically equal. This default does NOT mean that
+    # all countries or all projects use 100% book-based tax depreciation. Future
+    # projects must receive these assumptions through a selected versioned Tax
+    # Policy plus project-level overrides (see docs/tax_policy_library_future_contract.md).
+    # Oborovo explicitly sets BOOK_BASED_PERCENTAGE = 100% because the source
+    # workbook calibration supports that project policy.
+    tax_depreciation_mode: TaxDepreciationMode = TaxDepreciationMode.BOOK_BASED_PERCENTAGE
+    # Fraction of book depreciation that is tax-deductible (1.0 = 100%).
+    # COMPATIBILITY DEFAULT — NOT A GLOBAL COUNTRY TAX RULE.
+    # Oborovo: source workbook P&L shows no depreciation add-back in Fiscal
+    # Reintegration bridge → 100% of book dep is tax-deductible for this project.
+    tax_deductible_book_dep_pct: float = 1.0
 
     @property
     def initial_tax_loss_keur(self) -> float:

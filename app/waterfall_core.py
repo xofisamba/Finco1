@@ -110,6 +110,7 @@ def run_waterfall_v3_core(
     from domain.revenue.generation import full_revenue_schedule, full_generation_schedule, revenue_decomposition_schedule
     from domain.opex.projections import opex_schedule_period
     from domain.financing.depreciation_schedule import build_depreciation_schedule
+    from finco_core.inputs._models import TaxDepreciationMode
 
     _ = use_tuho_r99_input_engine  # C1a intentionally leaves runtime behavior unchanged.
     construction_diagnostic = None
@@ -196,10 +197,11 @@ def run_waterfall_v3_core(
             for y in range(len(advanced_capex_depreciation_schedule.total_by_period))
         }
     else:
-        # Legacy path: derive from CapexItem asset classes
-        capex_items = inputs.capex.capex_items()
+        # Use book_depreciable_capex_items() so financing-cost components (IDC,
+        # commitment fees, bank fees, VAT) enter the depreciable basis with their
+        # correct per-item useful lives encoded via useful_life_override.
         dep_schedule_annual = build_depreciation_schedule(
-            capex_items=capex_items,
+            capex_items=inputs.capex.book_depreciable_capex_items(),
             horizon_years=horizon_years,
             senior_tenor_years=inputs.financing.senior_tenor_years,
         )
@@ -230,6 +232,25 @@ def run_waterfall_v3_core(
         ebitda_schedule.append(ebitda)
         depreciation_schedule.append(dep)
         opex_schedule.append(opex)
+
+    # Explicit tax-depreciation schedule derived from policy in inputs.tax.
+    # BOOK_BASED_PERCENTAGE: tax_dep = book_dep * deductible_pct.
+    # Oborovo: 100% (source workbook P&L shows no dep add-back in Fiscal Reintegration).
+    _tax_dep_mode = getattr(inputs.tax, 'tax_depreciation_mode', TaxDepreciationMode.BOOK_BASED_PERCENTAGE)
+    _tax_dep_pct = getattr(inputs.tax, 'tax_deductible_book_dep_pct', 1.0)
+    if _tax_dep_mode == TaxDepreciationMode.BOOK_BASED_PERCENTAGE:
+        tax_depreciation_schedule: list[float] = [d * _tax_dep_pct for d in depreciation_schedule]
+    else:
+        # STATUTORY_TAX_SCHEDULE and CUSTOM_SCHEDULE are not yet implemented.
+        # Failing fast here prevents silent incorrect output — no fallback to book dep.
+        # To use these modes, supply a pre-computed schedule or implement the required runtime.
+        raise NotImplementedError(
+            f"TaxDepreciationMode.{_tax_dep_mode.name} is not yet implemented. "
+            "Only BOOK_BASED_PERCENTAGE is currently supported. "
+            "Supply a BOOK_BASED_PERCENTAGE configuration, or implement the required "
+            "schedule logic before activating this mode. "
+            "No silent fallback to book depreciation is permitted."
+        )
 
     # Resolve total_capex — use advanced CAPEX if provided, else fall back to inputs
     total_capex_for_waterfall = (
@@ -283,6 +304,7 @@ def run_waterfall_v3_core(
             tuho_shl_principal_eligibility_start_period
         ),
         co2_cit_bridge_by_period=co2_cit_bridge_by_period,
+        tax_depreciation_schedule=tax_depreciation_schedule,
     )
     result.project_code = getattr(inputs.info, "code", "")
     # Phase 9 CO2 revenue bridge audit metadata.
@@ -352,7 +374,7 @@ def run_waterfall_v3_core(
         from domain.depreciation.canonical_wiring import build_canonical_depreciation_wiring
         dep_wiring = build_canonical_depreciation_wiring(
             project_name=getattr(inputs.info, 'name', 'Project'),
-            capex_items=inputs.capex.capex_items(),
+            capex_items=inputs.capex.book_depreciable_capex_items(),
             horizon_years=horizon_years,
             cod_period=2,  # semiannual: COD = period 2 (first operating period)
             period_frequency="semiannual",

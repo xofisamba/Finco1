@@ -325,6 +325,11 @@ def run_waterfall(
     # Must be used with use_co2_revenue_bridge=False to avoid double-counting.
     # R99/R102: BLOCKED — only taxable income is affected.
     co2_cit_bridge_by_period: dict[int, float] | None = None,
+    # Explicit tax-depreciation schedule (per period, kEUR). When provided, this value is
+    # passed to compute_period_tax() as the fiscal deduction, decoupling tax from book dep.
+    # When None, falls back to depreciation_schedule (book dep = tax dep, legacy behaviour).
+    # Set by waterfall_core when inputs.tax.tax_depreciation_mode is not None.
+    tax_depreciation_schedule: list[float] | None = None,
 ) -> WaterfallResult:
     """Run full waterfall with iterative debt sculpting.
 
@@ -682,6 +687,11 @@ def run_waterfall(
         gen = generation_schedule[i] if i < len(generation_schedule) else 0
         ebitda = ebitda_schedule[i]
         dep = depreciation_schedule[i] if i < len(depreciation_schedule) else 0
+        # Explicit tax depreciation: use policy-derived schedule if provided (BOOK_BASED_PERCENTAGE
+        # or STATUTORY_TAX_SCHEDULE). Falls back to book dep for legacy callers.
+        tax_dep = (tax_depreciation_schedule[i]
+                   if tax_depreciation_schedule and i < len(tax_depreciation_schedule)
+                   else dep)
 
         # Senior debt service - compute from balance schedule + fixed DS
         # For fixed_ds_keur approach: interest = balance * rate, principal = fixed_ds - interest
@@ -762,7 +772,7 @@ def run_waterfall(
         # ── Pass 1: provisional tax (shl_interest = 0) ──────────────────────────
         _tax_result_p1: TaxPeriodResult = compute_period_tax(
             ebitda_keur=ebitda,
-            depreciation_keur=dep,
+            depreciation_keur=tax_dep,
             senior_interest_keur=si,
             shl_interest_keur=0.0,
             loss_carryforward_keur=prior_tax_loss,
@@ -885,7 +895,7 @@ def run_waterfall(
         total_interest = si + shi
         tax_result: TaxPeriodResult = compute_period_tax(
             ebitda_keur=ebitda,
-            depreciation_keur=dep,
+            depreciation_keur=tax_dep,
             senior_interest_keur=si,
             shl_interest_keur=shi,
             loss_carryforward_keur=prior_tax_loss,

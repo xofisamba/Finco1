@@ -214,10 +214,12 @@ class TestDualRunUsesAuditMode:
 
 class TestDefaultBehaviorUnchanged:
     def test_tuho_flag_false_legacy_total(self):
-        """TUHO with use_distributionaccount_runtime_wiring=False: ~326,165 kEUR."""
+        """TUHO with use_distributionaccount_runtime_wiring=False: ~314,397 kEUR.
+        Updated from 326,165 kEUR (Stage B1: book dep correction adds financing costs).
+        """
         r = _run_waterfall("TUHO-WIND-1", da_wiring=False)
-        assert abs(r.total_distribution_keur - 326_165) < 1000, (
-            f"Expected ~326,165 kEUR, got {r.total_distribution_keur:,.2f}"
+        assert abs(r.total_distribution_keur - 314_397) < 1000, (
+            f"Expected ~314,397 kEUR, got {r.total_distribution_keur:,.2f}"
         )
         assert r.distribution_wiring_delta_keur == 0.0
 
@@ -227,10 +229,12 @@ class TestDefaultBehaviorUnchanged:
         assert abs(r.distribution_wiring_delta_keur) < 0.01
 
     def test_oborovo_flag_false_distribution_unchanged(self):
-        """Oborovo with use_distributionaccount_runtime_wiring=False: ~181,019 kEUR."""
+        """Oborovo with use_distributionaccount_runtime_wiring=False: ~170,651 kEUR.
+        Updated from 181,019 kEUR (Stage B1: book dep correction adds financing costs).
+        """
         r = _run_waterfall("OBOROVO-SOLAR-1", da_wiring=False)
-        assert abs(r.total_distribution_keur - 181_019) < 1000, (
-            f"Expected ~181,019 kEUR, got {r.total_distribution_keur:,.2f}"
+        assert abs(r.total_distribution_keur - 170_651) < 1000, (
+            f"Expected ~170,651 kEUR, got {r.total_distribution_keur:,.2f}"
         )
 
 
@@ -240,10 +244,12 @@ class TestDefaultBehaviorUnchanged:
 
 class TestTUHOFlagOnUnchanged:
     def test_tuho_flag_true_distribution_approx_284552(self):
-        """TUHO with use_distributionaccount_runtime_wiring=True: ~284,552 kEUR."""
+        """TUHO with use_distributionaccount_runtime_wiring=True: ~272,784 kEUR.
+        Updated from 284,552 kEUR (Stage B1: book dep correction adds financing costs).
+        """
         r = _run_waterfall("TUHO-WIND-1", da_wiring=True)
-        assert abs(r.total_distribution_keur - 284_552) < 500, (
-            f"Expected ~284,552 kEUR, got {r.total_distribution_keur:,.2f}"
+        assert abs(r.total_distribution_keur - 272_784) < 500, (
+            f"Expected ~272,784 kEUR, got {r.total_distribution_keur:,.2f}"
         )
 
     def test_tuho_flag_true_delta_approx_negative_41613(self):
