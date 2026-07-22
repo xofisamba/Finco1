@@ -27,11 +27,12 @@ from __future__ import annotations
 from datetime import date
 from typing import TYPE_CHECKING
 
-from financial_engine.inputs import OperatingModelInput, TaxCfadsModelInput, YieldScenario
+from financial_engine.inputs import OperatingModelInput, TaxCfadsModelInput, SeniorDebtModelInput, YieldScenario
 from financial_engine.results import (
     OperatingPeriodResult,
     OperatingSchedules,
     ProjectModelResult,
+    SeniorDebtSchedules as _SeniorDebtSchedulesResult,
     TaxAndCfadsSchedules,
 )
 from financial_engine.validation import validate_operating_model_input, has_errors
@@ -39,6 +40,8 @@ from financial_engine.provenance import (
     EngineProvenance,
     DerivationEvidence,
     compute_input_fingerprint,
+    compute_tax_cfads_fingerprint,
+    compute_senior_debt_fingerprint,
 )
 from financial_engine.version import ENGINE_VERSION
 
@@ -370,6 +373,97 @@ def run_operating_model(inputs: OperatingModelInput) -> ProjectModelResult:
 TAX_CFADS_RUN_PATH_ID = "financial_engine.orchestrator.run_tax_cfads_model"
 
 
+def _assemble_tax_cfads_schedules(
+    base_result: "ProjectModelResult",
+    tax_result,
+    period_results,
+    cfads_results,
+) -> "TaxAndCfadsSchedules":
+    """Assemble a TaxAndCfadsSchedules from authoritative tax and CFADS results.
+
+    Extracted so that run_tax_cfads_model and run_senior_debt_model share identical
+    assembly logic regardless of which solver iteration produced the final values.
+    """
+    annual_map = {ar.tax_year: ar for ar in tax_result.annual_results}
+    # Use primary_tax_year (display-only) for audit lookups that need a single year per period.
+    period_to_annual_tax_year: dict[int, int] = {
+        pr.period_index: pr.primary_tax_year for pr in period_results
+    }
+
+    def _per_period_annual_share(attr: str) -> tuple[float, ...]:
+        """Allocate an annual attribute to periods using normalised allocation fractions."""
+        out: list[float] = []
+        for pr in period_results:
+            if pr.tax_year_allocations:
+                total = sum(
+                    getattr(annual_map[a.tax_year], attr) * a.allocation_fraction
+                    for a in pr.tax_year_allocations
+                    if a.tax_year in annual_map
+                )
+            else:
+                total = 0.0
+            out.append(total)
+        return tuple(out)
+
+    period_indices = tuple(pr.period_index for pr in period_results)
+    cit_accrual_per_period = tuple(pr.cit_accrual_share_keur for pr in period_results)
+    corporate_tax_cash = tuple(pr.cash_tax_keur for pr in period_results)
+    cfads = tuple(cr.cfads_keur for cr in cfads_results)
+
+    tax_loss_opening: list[float] = []
+    tax_loss_closing: list[float] = []
+    tax_loss_used: list[float] = []
+    for pr in period_results:
+        tax_year = period_to_annual_tax_year.get(pr.period_index, -999999)
+        ar = annual_map.get(tax_year)
+        if ar is None:
+            tax_loss_opening.append(0.0)
+            tax_loss_closing.append(0.0)
+            tax_loss_used.append(0.0)
+        else:
+            first_idx = ar.period_indices[0] if ar.period_indices else -1
+            if pr.period_index == first_idx:
+                tax_loss_opening.append(ar.loss_opening_keur)
+                tax_loss_closing.append(ar.loss_closing_keur)
+                tax_loss_used.append(ar.loss_used_keur)
+            else:
+                tax_loss_opening.append(0.0)
+                tax_loss_closing.append(0.0)
+                tax_loss_used.append(0.0)
+
+    taxable_profit = tuple(pr.taxable_income_before_lcf_share_keur for pr in period_results)
+    taxable_after_lcf = _per_period_annual_share("taxable_income_after_lcf_keur")
+    ebitda_per_period = tuple(cr.ebitda_keur for cr in cfads_results)
+    tax_dep_per_period = tuple(
+        p.tax_depreciation_keur for p in base_result.periods  # type: ignore[attr-defined]
+    )
+
+    return TaxAndCfadsSchedules(
+        period_indices=period_indices,
+        taxable_profit_keur=taxable_profit,
+        taxable_income_before_losses_audit_keur=taxable_profit,
+        taxable_profit_after_losses_audit_keur=taxable_after_lcf,
+        tax_keur=cit_accrual_per_period,
+        corporate_tax_cash_keur=corporate_tax_cash,
+        cit_accrual_audit_keur=cit_accrual_per_period,
+        cash_tax_bridge_reconciliation_keur=tuple(
+            e - c for e, c in zip(ebitda_per_period, corporate_tax_cash)
+        ),
+        cash_tax_current_period_audit_keur=corporate_tax_cash,
+        tax_loss_opening_audit_keur=tuple(tax_loss_opening),
+        tax_loss_closing_audit_keur=tuple(tax_loss_closing),
+        tax_loss_used_audit_keur=tuple(tax_loss_used),
+        fiscal_reintegration_audit_keur=tuple(
+            pr.disallowed_interest_keur + pr.other_fiscal_reintegration_keur
+            for pr in period_results
+        ),
+        tax_depreciation_audit_keur=tax_dep_per_period,
+        cf_after_tax_keur=cfads,
+        cfads_keur=cfads,
+        terminal_unpaid_tax_keur=tax_result.terminal_unpaid_tax_keur,
+    )
+
+
 def run_tax_cfads_model(inputs: TaxCfadsModelInput) -> ProjectModelResult:
     """Phase 2B orchestrator: operating core + annual tax + canonical CFADS.
 
@@ -415,100 +509,9 @@ def run_tax_cfads_model(inputs: TaxCfadsModelInput) -> ProjectModelResult:
     cfads_results = calculate_canonical_cfads(base_result.periods, period_results)
 
     # Step 7: Assemble TaxAndCfadsSchedules
-    annual_map = {ar.tax_year: ar for ar in tax_result.annual_results}
-    # Use primary_tax_year (display-only) for audit lookups that need a single year per period.
-    period_to_annual_tax_year: dict[int, int] = {
-        pr.period_index: pr.primary_tax_year for pr in period_results
-    }
-
-    def _per_period_annual_share(attr: str) -> tuple[float, ...]:
-        """Allocate an annual attribute to periods using normalised allocation fractions.
-
-        For cross-year periods, the attribute is split across all years the period
-        contributes to, weighted by the normalised allocation fraction stored on each
-        PeriodTaxYearAllocation.  This ensures the per-period sum equals the sum of
-        all annual values.
-        """
-        out: list[float] = []
-        for pr in period_results:
-            if pr.tax_year_allocations:
-                total = sum(
-                    getattr(annual_map[a.tax_year], attr) * a.allocation_fraction
-                    for a in pr.tax_year_allocations
-                    if a.tax_year in annual_map
-                )
-            else:
-                total = 0.0
-            out.append(total)
-        return tuple(out)
-
-    period_indices = tuple(pr.period_index for pr in period_results)
-    # CIT accrual is already correctly computed per-period in engine.py.
-    cit_accrual_per_period = tuple(pr.cit_accrual_share_keur for pr in period_results)
-    corporate_tax_cash = tuple(pr.cash_tax_keur for pr in period_results)
-
-    # Canonical CFADS from calculate_canonical_cfads (authoritative)
-    cfads = tuple(cr.cfads_keur for cr in cfads_results)
-
-    # LCF audit trail: annual values shown in first period of each year, 0 thereafter
-    tax_loss_opening: list[float] = []
-    tax_loss_closing: list[float] = []
-    tax_loss_used: list[float] = []
-    for pr in period_results:
-        tax_year = period_to_annual_tax_year.get(pr.period_index, -999999)
-        ar = annual_map.get(tax_year)
-        if ar is None:
-            tax_loss_opening.append(0.0)
-            tax_loss_closing.append(0.0)
-            tax_loss_used.append(0.0)
-        else:
-            first_idx = ar.period_indices[0] if ar.period_indices else -1
-            if pr.period_index == first_idx:
-                tax_loss_opening.append(ar.loss_opening_keur)
-                tax_loss_closing.append(ar.loss_closing_keur)
-                tax_loss_used.append(ar.loss_used_keur)
-            else:
-                tax_loss_opening.append(0.0)
-                tax_loss_closing.append(0.0)
-                tax_loss_used.append(0.0)
-
-    taxable_profit = tuple(pr.taxable_income_before_lcf_share_keur for pr in period_results)
-    taxable_after_lcf = _per_period_annual_share("taxable_income_after_lcf_keur")
-    ebitda_per_period = tuple(cr.ebitda_keur for cr in cfads_results)
-    tax_dep_per_period = tuple(
-        p.tax_depreciation_keur for p in base_result.periods  # type: ignore[attr-defined]
-    )
-
-    # cf_after_tax_keur sources from the canonical CFADS tuple (not recalculated)
-    cf_after_tax = cfads
-
-    tax_and_cfads = TaxAndCfadsSchedules(
-        period_indices=period_indices,
-        taxable_profit_keur=taxable_profit,
-        taxable_income_before_losses_audit_keur=taxable_profit,
-        taxable_profit_after_losses_audit_keur=taxable_after_lcf,
-        tax_keur=cit_accrual_per_period,
-        corporate_tax_cash_keur=corporate_tax_cash,
-        cit_accrual_audit_keur=cit_accrual_per_period,
-        cash_tax_bridge_reconciliation_keur=tuple(
-            e - c for e, c in zip(ebitda_per_period, corporate_tax_cash)
-        ),
-        cash_tax_current_period_audit_keur=corporate_tax_cash,
-        tax_loss_opening_audit_keur=tuple(tax_loss_opening),
-        tax_loss_closing_audit_keur=tuple(tax_loss_closing),
-        tax_loss_used_audit_keur=tuple(tax_loss_used),
-        fiscal_reintegration_audit_keur=tuple(
-            pr.disallowed_interest_keur + pr.other_fiscal_reintegration_keur
-            for pr in period_results
-        ),
-        tax_depreciation_audit_keur=tax_dep_per_period,
-        cf_after_tax_keur=cf_after_tax,
-        cfads_keur=cfads,
-        terminal_unpaid_tax_keur=tax_result.terminal_unpaid_tax_keur,
-    )
+    tax_and_cfads = _assemble_tax_cfads_schedules(base_result, tax_result, period_results, cfads_results)
 
     # Step 8: Phase 2B provenance
-    from financial_engine.provenance import compute_tax_cfads_fingerprint
     fingerprint = compute_tax_cfads_fingerprint(inputs)
     evidence = base_result.provenance.derivation_evidence + (
         DerivationEvidence(
@@ -562,5 +565,198 @@ def run_tax_cfads_model(inputs: TaxCfadsModelInput) -> ProjectModelResult:
         tax_and_cfads=tax_and_cfads,
         unavailable_sections=_PHASE_2B_UNAVAILABLE,
         validation_issues=all_issues,
+        warnings=warnings,
+    )
+
+
+SENIOR_DEBT_RUN_PATH_ID = "financial_engine.orchestrator.run_senior_debt_model"
+
+# Sections still out of scope in Phase 2C.
+_PHASE_2C_UNAVAILABLE = ("financial_statements", "returns")
+
+
+def run_senior_debt_model(inputs: SeniorDebtModelInput) -> ProjectModelResult:
+    """Phase 2C orchestrator: operating core + tax + canonical CFADS + senior debt.
+
+    The fixed-point solver calls back into the Phase 2B tax/CFADS calculation on
+    each iteration, passing the current period senior interest.  There is one
+    authoritative tax/CFADS result per iteration; no separate CFADS formula exists.
+
+    Calculation order:
+      1.  Run Phase 2B tax+CFADS model (initial pass with zero senior interest).
+      2.  Build rate map and period metadata from operating periods.
+      3.  Define tax_cfads_fn: given senior_interest_by_period, rebuild
+          TaxCalculationInput with updated PeriodInterestInput, call calculate_tax
+          and calculate_canonical_cfads, return (cfads_by_period, cash_tax_by_period).
+      4.  Call solve_senior_debt() with this callback.
+      5.  Assemble SeniorDebtSchedules result.
+      6.  Attach Phase 2C provenance.
+
+    Non-converged results are returned with diagnostics.converged=False.
+    Callers must check senior_debt.diagnostics["converged"].
+    """
+    from financial_engine.inputs import TaxCalculationInput, PeriodInterestInput
+    from financial_engine.tax.engine import calculate_tax
+    from financial_engine.cfads import calculate_canonical_cfads
+    from financial_engine.senior_debt.solver import solve_senior_debt
+    from financial_engine.senior_debt.policy import SeniorDebtPolicy
+    from financial_engine.senior_debt.inputs import SeniorDebtInputs
+
+    policy: SeniorDebtPolicy = inputs.senior_debt_policy  # type: ignore[assignment]
+    sd_inputs: SeniorDebtInputs = inputs.senior_debt_inputs  # type: ignore[assignment]
+
+    # Step 1: Phase 2B base run (with any pre-existing interest in inputs.tax)
+    phase2b_inputs = TaxCfadsModelInput(operating=inputs.operating, tax=inputs.tax)
+    phase2b_result = run_tax_cfads_model(phase2b_inputs)
+
+    # Closure over base inputs for tax feedback
+    base_tax_input = inputs.tax
+
+    # Mutable container to capture the final authoritative tax/CFADS state from
+    # the last solver iteration.
+    _last_tax_state: list = []
+
+    def tax_cfads_fn(
+        senior_interest_by_period: dict[int, float],
+    ) -> tuple[dict[int, float], dict[int, float]]:
+        """Rebuild tax + CFADS with updated senior interest on each solver iteration."""
+        # Merge solver-provided senior interest into PeriodInterestInput
+        merged_interest: dict[int, "PeriodInterestInput"] = {}
+        for pi in base_tax_input.period_interest:
+            merged_interest[pi.period_index] = pi
+        for idx, senior_keur in senior_interest_by_period.items():
+            existing = merged_interest.get(idx)
+            if existing is not None:
+                merged_interest[idx] = PeriodInterestInput(
+                    period_index=idx,
+                    senior_interest_keur=senior_keur,
+                    shl_interest_keur=existing.shl_interest_keur,
+                    other_interest_keur=existing.other_interest_keur,
+                )
+            else:
+                merged_interest[idx] = PeriodInterestInput(
+                    period_index=idx,
+                    senior_interest_keur=senior_keur,
+                )
+
+        updated_tax_input = TaxCalculationInput(
+            policy=base_tax_input.policy,
+            opening_loss_vintages=base_tax_input.opening_loss_vintages,
+            period_interest=tuple(merged_interest.values()),
+            period_adjustments=base_tax_input.period_adjustments,
+        )
+        tax_result = calculate_tax(phase2b_result.periods, updated_tax_input)
+        cfads_results = calculate_canonical_cfads(phase2b_result.periods, tax_result.period_results)
+        # Capture this iteration's authoritative state so that after solve_senior_debt
+        # returns we can assemble final TaxAndCfadsSchedules from the last iteration.
+        _last_tax_state.clear()
+        _last_tax_state.append((tax_result, tax_result.period_results, cfads_results))
+        cfads_by_period = {cr.period_index: cr.cfads_keur for cr in cfads_results}
+        cash_tax_by_period = {
+            pr.period_index: pr.cash_tax_keur for pr in tax_result.period_results
+        }
+        return cfads_by_period, cash_tax_by_period
+
+    # Step 4: Fixed-point solver
+    sd_result = solve_senior_debt(
+        policy=policy,
+        inputs=sd_inputs,
+        periods=phase2b_result.periods,
+        tax_cfads_fn=tax_cfads_fn,
+    )
+
+    # Issue 4: Block non-authoritative results from being returned as valid ProjectModelResult.
+    # Downstream waterfall/FS/returns code must never receive a non-authoritative debt result.
+    if not sd_result.diagnostics.is_authoritative:
+        from financial_engine.senior_debt.models import SeniorDebtNonConvergenceError
+        raise SeniorDebtNonConvergenceError(
+            f"Senior debt solver terminated with non-authoritative result: "
+            f"termination_reason={sd_result.diagnostics.termination_reason!r}, "
+            f"iteration_count={sd_result.diagnostics.iteration_count}, "
+            f"max_abs_diff={sd_result.diagnostics.maximum_absolute_difference_keur:.6f} kEUR. "
+            f"Downstream waterfall/FS/returns code must not receive non-authoritative debt results."
+        )
+
+    # Step 5: Assemble result-layer SeniorDebtSchedules
+    diag_dict = {
+        "converged": sd_result.diagnostics.converged,
+        "is_authoritative": sd_result.diagnostics.is_authoritative,
+        "iteration_count": sd_result.diagnostics.iteration_count,
+        "initial_debt_guess_keur": sd_result.diagnostics.initial_debt_guess_keur,
+        "final_debt_size_keur": sd_result.diagnostics.final_debt_size_keur,
+        "maximum_absolute_difference_keur": sd_result.diagnostics.maximum_absolute_difference_keur,
+        "maximum_relative_difference": sd_result.diagnostics.maximum_relative_difference,
+        "binding_constraint": sd_result.diagnostics.binding_constraint,
+        "termination_reason": sd_result.diagnostics.termination_reason,
+    }
+    result_schedules = _SeniorDebtSchedulesResult(
+        period_indices=sd_result.period_indices,
+        senior_debt_opening_keur=sd_result.senior_debt_opening_keur,
+        senior_interest_keur=sd_result.senior_interest_keur,
+        senior_principal_keur=sd_result.senior_principal_keur,
+        senior_debt_service_keur=sd_result.senior_debt_service_keur,
+        senior_debt_closing_keur=sd_result.senior_debt_closing_keur,
+        senior_dscr=sd_result.senior_dscr,
+        debt_size_keur=sd_result.debt_size_keur,
+        binding_constraint=sd_result.binding_constraint,
+        diagnostics=diag_dict,
+    )
+
+    # Assemble final authoritative tax/CFADS from last solver iteration (if authoritative).
+    if sd_result.diagnostics.is_authoritative and _last_tax_state:
+        tax_r, period_r, cfads_r = _last_tax_state[0]
+        final_tax_cfads = _assemble_tax_cfads_schedules(phase2b_result, tax_r, period_r, cfads_r)
+    else:
+        final_tax_cfads = phase2b_result.tax_and_cfads
+
+    # Step 6: Phase 2C provenance
+    fingerprint = compute_senior_debt_fingerprint(inputs)
+    evidence = phase2b_result.provenance.derivation_evidence + (
+        DerivationEvidence(
+            output_path="senior_debt.senior_interest_keur",
+            source_module="financial_engine.senior_debt.interest",
+            source_function="period_interest",
+            input_paths=("senior_debt_inputs.period_rates", "senior_debt_policy"),
+            notes=("interest = opening_balance × annual_rate × day_count_fraction",),
+        ),
+        DerivationEvidence(
+            output_path="senior_debt.senior_principal_keur",
+            source_module="financial_engine.senior_debt.sculpting",
+            source_function="build_schedule",
+            input_paths=("tax_and_cfads.cfads_keur", "senior_debt_policy.target_dscr"),
+            notes=("principal = max(0, cfads/target_dscr - interest), capped at opening",),
+        ),
+        DerivationEvidence(
+            output_path="senior_debt.debt_size_keur",
+            source_module="financial_engine.senior_debt.solver",
+            source_function="solve_senior_debt",
+            input_paths=("senior_debt_inputs", "senior_debt_policy"),
+            notes=(
+                f"fixed-point sizing; termination={sd_result.diagnostics.termination_reason}; "
+                f"iterations={sd_result.diagnostics.iteration_count}",
+            ),
+        ),
+    )
+    provenance = EngineProvenance(
+        engine_version=ENGINE_VERSION,
+        run_path_id=SENIOR_DEBT_RUN_PATH_ID,
+        input_fingerprint=fingerprint,
+        derivation_evidence=evidence,
+    )
+
+    validation_issues = phase2b_result.validation_issues
+    warnings = phase2b_result.warnings + tuple(
+        f"{i.code} {i.path}: {i.message}" for i in validation_issues
+        if i.severity.value == "WARNING"
+    )
+
+    return ProjectModelResult(
+        provenance=provenance,
+        periods=phase2b_result.periods,
+        operating_schedules=phase2b_result.operating_schedules,
+        tax_and_cfads=final_tax_cfads,
+        senior_debt=result_schedules,
+        unavailable_sections=_PHASE_2C_UNAVAILABLE,
+        validation_issues=validation_issues,
         warnings=warnings,
     )

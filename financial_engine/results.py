@@ -93,6 +93,27 @@ class TaxAndCfadsSchedules:
 
 
 @dataclass(frozen=True)
+class SeniorDebtSchedules:
+    """Phase 2C per-period senior debt schedules.
+
+    senior_dscr: None where debt service is zero (avoids division by zero).
+    debt_size_keur: final sized/solved opening debt balance at COD.
+    binding_constraint: "DSCR", "GEARING", "BOTH", or None.
+    diagnostics: solver convergence metadata (dict for JSON serialisability).
+    """
+    period_indices: tuple[int, ...]
+    senior_debt_opening_keur: tuple[float, ...]
+    senior_interest_keur: tuple[float, ...]
+    senior_principal_keur: tuple[float, ...]
+    senior_debt_service_keur: tuple[float, ...]
+    senior_debt_closing_keur: tuple[float, ...]
+    senior_dscr: tuple[float | None, ...]
+    debt_size_keur: float
+    binding_constraint: str | None
+    diagnostics: dict  # SolverDiagnostics serialised to dict
+
+
+@dataclass(frozen=True)
 class ProjectModelResult:
     """Top-level immutable result for a clean engine run.
 
@@ -107,3 +128,4 @@ class ProjectModelResult:
     validation_issues: tuple["ValidationIssue", ...]
     warnings: tuple[str, ...]
     tax_and_cfads: TaxAndCfadsSchedules | None = None
+    senior_debt: "SeniorDebtSchedules | None" = None
