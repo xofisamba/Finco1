@@ -37,7 +37,7 @@ def test_run_stage_b2_reports_converged_vector_residual_audit():
 
     assert result.iterations > 1
     assert result.final_residual_keur == pytest.approx(0.0, abs=1e-8)
-    assert {row.component for row in result.residual_audit} == {"senior_idc", "senior_commitment_fee"}
+    assert {row.component for row in result.residual_audit} == {"senior_idc", "senior_commitment_fee", "vat_financing_costs"}
 
 
 def test_stage_b2_vector_residual_catches_same_total_different_timing():
@@ -52,8 +52,9 @@ def test_stage_b2_initial_guess_independence_for_synthetic_case():
     seeded = base.__class__(
         **{
             **base.__dict__,
-            "initial_senior_idc_vector_keur": (10.0,) * 12,
-            "initial_senior_commitment_fee_vector_keur": (3.0,) * 12,
+            "initial_senior_idc_funded_uses_keur": (10.0,) * 12,
+            "initial_senior_commitment_fee_funded_uses_keur": (3.0,) * 12,
+            "initial_vat_financing_funded_uses_keur": (2.0,) * 12,
         }
     )
 

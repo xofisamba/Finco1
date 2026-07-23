@@ -78,6 +78,29 @@ SOURCE_TOTAL_USES_VALIDATION_KEUR: tuple[float, ...] = (
     3847.494,
 )
 
+
+OBOROVO_SOURCE_VAT_PAYABLE_KEUR: tuple[float, ...] = (
+    2560.7482783333344,
+    463.44833333333344,
+    463.44833333333344,
+    463.44833333333344,
+    463.44833333333344,
+    463.44833333333344,
+    463.44833333333344,
+    463.44833333333344,
+    463.44833333333344,
+    466.3383333333334,
+    463.44833333333344,
+    466.56392333333343,
+)
+
+VAT_COSTS_SPENDING_PROFILE: tuple[float, ...] = (0.25, 0.15, 0.15, 0.15, 0.15, 0.15, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+VAT_INTEREST_FRACTIONS: tuple[float, ...] = (
+    2 / 360, 31 / 360, 31 / 360, 30 / 360, 31 / 360, 30 / 360,
+    31 / 360, 31 / 360, 28 / 360, 31 / 360, 30 / 360, 31 / 360,
+    30 / 360, 31 / 360, 31 / 360, 30 / 360, 31 / 360, 30 / 360,
+)
+
 OBOROVO_SOURCE_CUMULATIVE_SENIOR_KEUR: tuple[float, ...] = (
     1384.663018,
     5056.409904,
@@ -143,8 +166,8 @@ def oborovo_capex_schedule() -> CapexScheduleSet:
         CapexPaymentItem("C.08", "Construction Management", 1151.134, M1_ONLY, vat),
         CapexPaymentItem("C.09", "Contingencies", 1986.440, M1_ONLY, vat),
         CapexPaymentItem("C.16", "Project Rights", 8524.4845, M1_ONLY, vat),
-        CapexPaymentItem("C.10", "Commissioning", 17.000, (0.0,)*11 + (1.0,), vat, provenance_classification="DIRECT_SOURCE"),
-        CapexPaymentItem("C.11", "Project Acquisition / Project Development", 18.327, M1_ONLY, vat, provenance_classification="DIRECT_SOURCE"),
+        CapexPaymentItem("C.10", "Commissioning", 17.000, (0.0,)*9 + (1.0,) + (0.0,)*2, vat, provenance_classification="DIRECT_SOURCE"),
+        CapexPaymentItem("C.11", "Project Acquisition / Project Development", 18.327, (0.0,)*11 + (1.0,), vat, provenance_classification="DIRECT_SOURCE"),
     ))
 
 
@@ -162,10 +185,15 @@ def oborovo_source_config() -> ConstructionRuntimeConfig:
         senior_commitment_fee_rate=0.0105,
         structuring_fee_rate=0.01,
         structuring_fee_basis_keur=47_730.2687,
-        vat_facility_interest_rate=0.0742,
-        vat_facility_commitment_fee_rate=0.0060,
-        vat_facility_commitment_keur=7_664.685535,
+        vat_facility_interest_rate=0.0565,
+        vat_facility_commitment_fee_rate=0.009275,
+        vat_facility_commitment_keur=4_877.989945,
+        vat_interest_period_fractions=VAT_INTEREST_FRACTIONS,
+        vat_commitment_fee_active_periods=12,
+        senior_idc_spending_profile=(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0),
+        senior_commitment_fee_spending_profile=(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0),
+        vat_financing_cost_spending_profile=VAT_COSTS_SPENDING_PROFILE,
     )
 
 
-__all__ = [name for name in globals() if name.startswith("OBOROVO") or name in {"SOURCE_TOTAL_USES_VALIDATION_KEUR", "EQUAL_12", "M1_ONLY", "oborovo_capex_schedule", "oborovo_source_config", "oborovo_timeline"}]
+__all__ = [name for name in globals() if name.startswith("OBOROVO") or name in {"SOURCE_TOTAL_USES_VALIDATION_KEUR", "OBOROVO_SOURCE_VAT_PAYABLE_KEUR", "VAT_COSTS_SPENDING_PROFILE", "VAT_INTEREST_FRACTIONS", "EQUAL_12", "M1_ONLY", "oborovo_capex_schedule", "oborovo_source_config", "oborovo_timeline"}]

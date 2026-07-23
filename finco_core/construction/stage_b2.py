@@ -108,8 +108,14 @@ class ConstructionRuntimeConfig:
     vat_facility_interest_rate: float = 0.0
     vat_facility_commitment_fee_rate: float = 0.0
     vat_facility_commitment_keur: float = 0.0
-    initial_senior_idc_vector_keur: tuple[float, ...] = field(default_factory=tuple)
-    initial_senior_commitment_fee_vector_keur: tuple[float, ...] = field(default_factory=tuple)
+    vat_interest_period_fractions: tuple[float, ...] = field(default_factory=tuple)
+    vat_commitment_fee_active_periods: int = 12
+    senior_idc_spending_profile: tuple[float, ...] = field(default_factory=tuple)
+    senior_commitment_fee_spending_profile: tuple[float, ...] = field(default_factory=tuple)
+    vat_financing_cost_spending_profile: tuple[float, ...] = field(default_factory=tuple)
+    initial_senior_idc_funded_uses_keur: tuple[float, ...] = field(default_factory=tuple)
+    initial_senior_commitment_fee_funded_uses_keur: tuple[float, ...] = field(default_factory=tuple)
+    initial_vat_financing_funded_uses_keur: tuple[float, ...] = field(default_factory=tuple)
     convergence_tolerance_keur: float = 1e-9
     max_iterations: int = 100
 
@@ -213,8 +219,28 @@ def _pad_12(values: tuple[float, ...]) -> tuple[float, ...]:
     if not values:
         return (0.0,) * 12
     if len(values) != 12:
-        raise ValueError("initial circular vectors must have 12 periods")
+        raise ValueError("circular vectors must have 12 periods")
     return values
+
+
+def _profile_12(values: tuple[float, ...], *, default_period: int | None = None) -> tuple[float, ...]:
+    if not values:
+        if default_period is None:
+            return (0.0,) * 12
+        return tuple(1.0 if idx == default_period else 0.0 for idx in range(12))
+    if len(values) != 12:
+        raise ValueError("financing-cost spending profiles must have 12 periods")
+    if abs(sum(values) - 1.0) > 1e-9:
+        raise ValueError("financing-cost spending profiles must sum to 100%")
+    return values
+
+
+def _vat_fractions(config: ConstructionRuntimeConfig, horizon: int) -> tuple[float, ...]:
+    if config.vat_interest_period_fractions:
+        if len(config.vat_interest_period_fractions) != horizon:
+            raise ValueError("VAT interest-period fraction vector must match VAT horizon")
+        return config.vat_interest_period_fractions
+    return tuple((config.timeline[idx].interest_fraction if idx < len(config.timeline) else 30 / 360) for idx in range(horizon))
 
 
 def _waterfall_senior_draws(period_uses: tuple[float, ...], equity: float, shl: float) -> tuple[float, ...]:
@@ -247,41 +273,75 @@ def run_stage_b2(config: ConstructionRuntimeConfig) -> ConstructionRuntimeResult
         config.structuring_fee_rate * config.structuring_fee_basis_keur,
     )
 
-    senior_idc = _pad_12(config.initial_senior_idc_vector_keur)
-    senior_fee = _pad_12(config.initial_senior_commitment_fee_vector_keur)
+    idc_profile = _profile_12(config.senior_idc_spending_profile)
+    fee_profile = _profile_12(config.senior_commitment_fee_spending_profile)
+    vat_financing_profile = _profile_12(config.vat_financing_cost_spending_profile)
+    senior_idc_uses = _pad_12(config.initial_senior_idc_funded_uses_keur)
+    senior_fee_uses = _pad_12(config.initial_senior_commitment_fee_funded_uses_keur)
+    vat_financing_uses = _pad_12(config.initial_vat_financing_funded_uses_keur)
     residual = float("inf")
     audit: tuple[VectorResidualAudit, ...] = ()
     senior_period_draws = (0.0,) * 12
+    senior_idc_total = 0.0
+    senior_fee_total = 0.0
+    vat_idc = 0.0
+    vat_fee = 0.0
 
     for iteration in range(1, config.max_iterations + 1):
         period_uses = tuple(
-            hard_capex[idx] + structuring[idx] + senior_idc[idx] + senior_fee[idx]
+            hard_capex[idx] + structuring[idx] + senior_idc_uses[idx] + senior_fee_uses[idx] + vat_financing_uses[idx]
             for idx in range(12)
         )
         senior_period_draws = _waterfall_senior_draws(
             period_uses, config.equity_available_keur, config.shl_available_keur
         )
 
-        new_idc: list[float] = []
-        new_fee: list[float] = []
+        idc_calc: list[float] = []
+        fee_calc: list[float] = []
         opening_senior = 0.0
         for idx, draw in enumerate(senior_period_draws):
             opening_undrawn = max(0.0, config.senior_commitment_keur - opening_senior)
             fraction = config.timeline[idx].interest_fraction
             if config.timeline[idx].senior_idc_active:
-                new_idc.append(opening_senior * config.senior_interest_rate * fraction)
-                new_fee.append(opening_undrawn * config.senior_commitment_fee_rate * fraction)
+                idc_calc.append(opening_senior * config.senior_interest_rate * fraction)
+                fee_calc.append(opening_undrawn * config.senior_commitment_fee_rate * fraction)
             else:
-                new_idc.append(0.0)
-                new_fee.append(0.0)
+                idc_calc.append(0.0)
+                fee_calc.append(0.0)
             opening_senior += draw
 
-        residual, audit = convergence_audit(
-            {"senior_idc": tuple(new_idc), "senior_commitment_fee": tuple(new_fee)},
-            {"senior_idc": senior_idc, "senior_commitment_fee": senior_fee},
+        senior_idc_total = sum(idc_calc)
+        senior_fee_total = sum(fee_calc)
+        vat_fractions = _vat_fractions(config, len(vat_schedule))
+        vat_idc = sum(
+            row.vat_requirement_keur * config.vat_facility_interest_rate * vat_fractions[idx]
+            for idx, row in enumerate(vat_schedule)
         )
-        senior_idc = tuple(new_idc)
-        senior_fee = tuple(new_fee)
+        vat_fee = sum(
+            max(0.0, config.vat_facility_commitment_keur - row.vat_requirement_keur)
+            * config.vat_facility_commitment_fee_rate
+            * vat_fractions[idx]
+            for idx, row in enumerate(vat_schedule[: config.vat_commitment_fee_active_periods])
+        )
+
+        new_idc_uses = tuple(senior_idc_total * weight for weight in idc_profile)
+        new_fee_uses = tuple(senior_fee_total * weight for weight in fee_profile)
+        new_vat_financing_uses = tuple((vat_idc + vat_fee) * weight for weight in vat_financing_profile)
+        residual, audit = convergence_audit(
+            {
+                "senior_idc": new_idc_uses,
+                "senior_commitment_fee": new_fee_uses,
+                "vat_financing_costs": new_vat_financing_uses,
+            },
+            {
+                "senior_idc": senior_idc_uses,
+                "senior_commitment_fee": senior_fee_uses,
+                "vat_financing_costs": vat_financing_uses,
+            },
+        )
+        senior_idc_uses = new_idc_uses
+        senior_fee_uses = new_fee_uses
+        vat_financing_uses = new_vat_financing_uses
         if residual <= config.convergence_tolerance_keur:
             break
     else:
@@ -291,7 +351,7 @@ def run_stage_b2(config: ConstructionRuntimeConfig) -> ConstructionRuntimeResult
         )
 
     period_uses = tuple(
-        hard_capex[idx] + structuring[idx] + senior_idc[idx] + senior_fee[idx]
+        hard_capex[idx] + structuring[idx] + senior_idc_uses[idx] + senior_fee_uses[idx] + vat_financing_uses[idx]
         for idx in range(12)
     )
     senior_period_draws = _waterfall_senior_draws(
@@ -303,15 +363,9 @@ def run_stage_b2(config: ConstructionRuntimeConfig) -> ConstructionRuntimeResult
         running += draw
         cumulative_senior.append(running)
 
-    vat_idc = sum(row.vat_requirement_keur for row in vat_schedule) * config.vat_facility_interest_rate * (30 / 360)
-    vat_fee = sum(
-        max(0.0, config.vat_facility_commitment_keur - row.vat_requirement_keur)
-        for row in vat_schedule
-    ) * config.vat_facility_commitment_fee_rate * (30 / 360)
-
     financing = CapitalizedFinancingCosts(
-        senior_idc_keur=sum(senior_idc),
-        senior_commitment_fee_keur=sum(senior_fee),
+        senior_idc_keur=senior_idc_total,
+        senior_commitment_fee_keur=senior_fee_total,
         structuring_fee_keur=sum(structuring),
         vat_idc_keur=vat_idc,
         vat_commitment_fee_keur=vat_fee,

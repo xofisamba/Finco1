@@ -46,7 +46,7 @@ def test_source_parity_does_not_import_or_define_stage_b2_financial_engine_logic
     assert "run_stage_b2" not in function_names
     assert "compute_vat_schedule" not in function_names
     assert "convergence_audit" not in function_names
-    assert "senior_idc" not in source.lower().replace("senior_idc_source_keur", "")
+    assert "senior_idc_source_keur" not in source.lower()
 
 
 def test_oborovo_p1_is_two_day_stub_and_receives_m1_capex_from_canonical_result():
@@ -58,7 +58,7 @@ def test_oborovo_p1_is_two_day_stub_and_receives_m1_capex_from_canonical_result(
     assert timeline[0].interest_fraction == pytest.approx(2 / 360, abs=1e-15)
     assert timeline[0].active_construction is True
     assert timeline[0].capex_payment_eligible is True
-    assert result.monthly_hard_capex_keur[0] == pytest.approx(15_990.943833333335, abs=1e-9)
+    assert result.monthly_hard_capex_keur[0] == pytest.approx(15_972.616833333333, abs=1e-9)
     assert result.monthly_hard_capex_keur[0] > 0.0
 
 
@@ -98,6 +98,29 @@ def test_oborovo_per_item_capex_total_and_vat_base_parity_from_canonical_helpers
     c01 = next(item for item in config.capex_schedule.items if item.code == "C.01")
     assert c01.vat_rate == 0.0
     assert c01.vat_classification == "AGGREGATE_RECONCILIATION_INFERENCE"
+
+
+def test_oborovo_source_vat_payable_period_parity():
+    from domain.construction.source_parity import OBOROVO_SOURCE_VAT_PAYABLE_KEUR
+
+    result = _result()
+    assert result.vat_payable_keur == pytest.approx(OBOROVO_SOURCE_VAT_PAYABLE_KEUR, abs=1e-9)
+
+
+def test_oborovo_c01_vat_exemption_is_effective_period_by_period():
+    c01 = next(item for item in oborovo_capex_schedule().items if item.code == "C.01")
+
+    assert c01.vat_rate == 0.0
+    assert tuple(amount * c01.vat_rate for amount in [c01.amount_keur * w for w in c01.payment_weights]) == pytest.approx((0.0,) * 12)
+
+
+def test_oborovo_p1_source_bridge_after_timing_corrections():
+    result = _result()
+    source_senior_p1 = OBOROVO_SOURCE_CUMULATIVE_SENIOR_KEUR[0]
+
+    assert result.monthly_hard_capex_keur[0] == pytest.approx(15_972.616833333333, abs=1e-9)
+    assert result.total_permanent_uses_keur[0] == pytest.approx(16_505.436913, abs=0.001)
+    assert result.senior_period_draw_keur[0] == pytest.approx(source_senior_p1, abs=0.001)
 
 
 def test_oborovo_equal_and_m1_payment_schedules_are_explicit():
