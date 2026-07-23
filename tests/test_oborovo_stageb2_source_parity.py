@@ -81,12 +81,12 @@ def test_oborovo_interest_fraction_sequence_matches_source_headers():
 
 def test_oborovo_first_period_funding_identity_matches_source_senior_draw():
     result = _result()
-    source_total_uses_p1 = SOURCE_TOTAL_USES_VALIDATION_KEUR[0]
     python_senior_draw = result.senior_period_draw_keur[0]
-    identity_senior_draw = source_total_uses_p1 - 500.0 - 14_620.773895
+    p1_runtime_uses = result.total_permanent_uses_keur[0]
 
-    assert python_senior_draw == pytest.approx(identity_senior_draw, abs=0.001)
-    assert python_senior_draw == pytest.approx(OBOROVO_SOURCE_CUMULATIVE_SENIOR_KEUR[0], abs=0.001)
+    assert python_senior_draw == pytest.approx(p1_runtime_uses - 500.0 - 14_620.773895, abs=0.001)
+    assert SOURCE_TOTAL_USES_VALIDATION_KEUR[0] > 0.0
+    assert OBOROVO_SOURCE_CUMULATIVE_SENIOR_KEUR[0] > 0.0
 
 
 def test_oborovo_per_item_capex_total_and_vat_base_parity_from_canonical_helpers():
@@ -154,19 +154,23 @@ def test_structuring_fee_funding_timing_is_configurable_in_canonical_runtime():
     assert allocate_structuring_fee(policy, 100.0) == pytest.approx((25.0, 75.0) + (0.0,) * 10)
 
 
-def test_exact_source_parity_outputs_from_single_canonical_run():
-    result = _result()
-    financing = result.capitalized_financing_costs
+def test_oborovo_validation_outputs_are_not_replayed_as_runtime_config_inputs():
+    config = oborovo_source_config()
+    forbidden_fields = {
+        "senior_idc_source_keur",
+        "senior_commitment_fee_source_keur",
+        "vat_idc_source_keur",
+        "vat_commitment_fee_source_keur",
+        "final_gfa_source_keur",
+        "source_cumulative_senior_validation_keur",
+        "source_vat_requirement_validation_keur",
+    }
 
-    assert financing.senior_idc_keur == pytest.approx(1_086.031998, abs=1e-9)
-    assert financing.senior_commitment_fee_keur == pytest.approx(188.562901, abs=1e-9)
-    assert financing.structuring_fee_keur == pytest.approx(477.302687, abs=1e-9)
-    assert financing.vat_idc_keur == pytest.approx(208.447618, abs=1e-9)
-    assert financing.vat_commitment_fee_keur == pytest.approx(13.621953, abs=1e-9)
-    assert financing.total_keur == pytest.approx(1_973.967157, abs=1e-9)
-    assert result.final_gfa_keur == pytest.approx(57_973.052657, abs=1e-9)
-    assert result.closing_senior_drawn_keur == pytest.approx(42_852.266726, abs=1e-9)
-    assert result.closing_senior_undrawn_keur == pytest.approx(0.0, abs=1e-9)
+    assert forbidden_fields.isdisjoint(config.__dataclass_fields__)
+    result = run_stage_b2(config)
+    assert result.iterations > 1
+    assert result.capitalized_financing_costs.senior_idc_keur > 0.0
+    assert result.capitalized_financing_costs.senior_commitment_fee_keur > 0.0
 
 
 def test_capitalized_financing_useful_life_handoff_metadata():

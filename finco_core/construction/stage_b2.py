@@ -98,19 +98,20 @@ class ConstructionRuntimeConfig:
     capex_schedule: CapexScheduleSet
     funding_policy: FinancingCostFundingPolicy
     source_total_uses_validation_keur: tuple[float, ...]
-    source_cumulative_senior_validation_keur: tuple[float, ...]
-    source_vat_requirement_validation_keur: tuple[float, ...]
     equity_available_keur: float
     shl_available_keur: float
     senior_commitment_keur: float
-    senior_idc_source_keur: float
-    senior_commitment_fee_source_keur: float
-    structuring_fee_source_keur: float
-    vat_idc_source_keur: float
-    vat_commitment_fee_source_keur: float
-    final_gfa_source_keur: float
+    senior_interest_rate: float
+    senior_commitment_fee_rate: float
+    structuring_fee_rate: float
+    structuring_fee_basis_keur: float
+    vat_facility_interest_rate: float = 0.0
+    vat_facility_commitment_fee_rate: float = 0.0
+    vat_facility_commitment_keur: float = 0.0
+    initial_senior_idc_vector_keur: tuple[float, ...] = field(default_factory=tuple)
+    initial_senior_commitment_fee_vector_keur: tuple[float, ...] = field(default_factory=tuple)
     convergence_tolerance_keur: float = 1e-9
-    max_iterations: int = 25
+    max_iterations: int = 100
 
 
 @dataclass(frozen=True)
@@ -121,6 +122,7 @@ class ConstructionRuntimeResult:
     vat_schedule: tuple[FacilityPeriodState, ...]
     cumulative_senior_draw_keur: tuple[float, ...]
     senior_period_draw_keur: tuple[float, ...]
+    total_permanent_uses_keur: tuple[float, ...]
     capitalized_financing_costs: CapitalizedFinancingCosts
     final_gfa_keur: float
     closing_senior_drawn_keur: float
@@ -207,48 +209,128 @@ def compute_vat_schedule(vat_payable_keur: tuple[float, ...], reimbursement_lag_
     return tuple(rows)
 
 
+def _pad_12(values: tuple[float, ...]) -> tuple[float, ...]:
+    if not values:
+        return (0.0,) * 12
+    if len(values) != 12:
+        raise ValueError("initial circular vectors must have 12 periods")
+    return values
+
+
+def _waterfall_senior_draws(period_uses: tuple[float, ...], equity: float, shl: float) -> tuple[float, ...]:
+    remaining_equity = equity
+    remaining_shl = shl
+    senior_draws: list[float] = []
+    for uses in period_uses:
+        equity_draw = min(remaining_equity, uses)
+        remaining_equity -= equity_draw
+        after_equity = uses - equity_draw
+        shl_draw = min(remaining_shl, after_equity)
+        remaining_shl -= shl_draw
+        senior_draws.append(after_equity - shl_draw)
+    return tuple(senior_draws)
+
+
 def run_stage_b2(config: ConstructionRuntimeConfig) -> ConstructionRuntimeResult:
-    """Run canonical construction Stage B2 from source inputs."""
+    """Run canonical iterative construction Stage B2 from source inputs.
+
+    Circular Senior IDC and commitment fees are seeded, funded as period uses,
+    recalculated from opening drawn/undrawn balances, and iterated until period
+    vectors converge.  Validation/output targets are intentionally absent from
+    ConstructionRuntimeConfig and are not used here.
+    """
     hard_capex = monthly_hard_capex(config.capex_schedule)
     vat_payable = vat_monthly_uses(config.capex_schedule)
     vat_schedule = compute_vat_schedule(vat_payable)
+    structuring = allocate_structuring_fee(
+        config.funding_policy,
+        config.structuring_fee_rate * config.structuring_fee_basis_keur,
+    )
 
-    cumulative_senior = config.source_cumulative_senior_validation_keur
-    previous = 0.0
-    senior_period_draws: list[float] = []
-    for cumulative in cumulative_senior:
-        senior_period_draws.append(cumulative - previous)
-        previous = cumulative
+    senior_idc = _pad_12(config.initial_senior_idc_vector_keur)
+    senior_fee = _pad_12(config.initial_senior_commitment_fee_vector_keur)
+    residual = float("inf")
+    audit: tuple[VectorResidualAudit, ...] = ()
+    senior_period_draws = (0.0,) * 12
+
+    for iteration in range(1, config.max_iterations + 1):
+        period_uses = tuple(
+            hard_capex[idx] + structuring[idx] + senior_idc[idx] + senior_fee[idx]
+            for idx in range(12)
+        )
+        senior_period_draws = _waterfall_senior_draws(
+            period_uses, config.equity_available_keur, config.shl_available_keur
+        )
+
+        new_idc: list[float] = []
+        new_fee: list[float] = []
+        opening_senior = 0.0
+        for idx, draw in enumerate(senior_period_draws):
+            opening_undrawn = max(0.0, config.senior_commitment_keur - opening_senior)
+            fraction = config.timeline[idx].interest_fraction
+            if config.timeline[idx].senior_idc_active:
+                new_idc.append(opening_senior * config.senior_interest_rate * fraction)
+                new_fee.append(opening_undrawn * config.senior_commitment_fee_rate * fraction)
+            else:
+                new_idc.append(0.0)
+                new_fee.append(0.0)
+            opening_senior += draw
+
+        residual, audit = convergence_audit(
+            {"senior_idc": tuple(new_idc), "senior_commitment_fee": tuple(new_fee)},
+            {"senior_idc": senior_idc, "senior_commitment_fee": senior_fee},
+        )
+        senior_idc = tuple(new_idc)
+        senior_fee = tuple(new_fee)
+        if residual <= config.convergence_tolerance_keur:
+            break
+    else:
+        raise RuntimeError(
+            f"Stage B2 circular financing did not converge after {config.max_iterations} iterations; "
+            f"final residual={residual:.12f} kEUR"
+        )
+
+    period_uses = tuple(
+        hard_capex[idx] + structuring[idx] + senior_idc[idx] + senior_fee[idx]
+        for idx in range(12)
+    )
+    senior_period_draws = _waterfall_senior_draws(
+        period_uses, config.equity_available_keur, config.shl_available_keur
+    )
+    cumulative_senior: list[float] = []
+    running = 0.0
+    for draw in senior_period_draws:
+        running += draw
+        cumulative_senior.append(running)
+
+    vat_idc = sum(row.vat_requirement_keur for row in vat_schedule) * config.vat_facility_interest_rate * (30 / 360)
+    vat_fee = sum(
+        max(0.0, config.vat_facility_commitment_keur - row.vat_requirement_keur)
+        for row in vat_schedule
+    ) * config.vat_facility_commitment_fee_rate * (30 / 360)
 
     financing = CapitalizedFinancingCosts(
-        senior_idc_keur=config.senior_idc_source_keur,
-        senior_commitment_fee_keur=config.senior_commitment_fee_source_keur,
-        structuring_fee_keur=config.structuring_fee_source_keur,
-        vat_idc_keur=config.vat_idc_source_keur,
-        vat_commitment_fee_keur=config.vat_commitment_fee_source_keur,
+        senior_idc_keur=sum(senior_idc),
+        senior_commitment_fee_keur=sum(senior_fee),
+        structuring_fee_keur=sum(structuring),
+        vat_idc_keur=vat_idc,
+        vat_commitment_fee_keur=vat_fee,
     )
-
-    senior_idc_vector = (financing.senior_idc_keur,) + (0.0,) * 11
-    senior_fee_vector = (financing.senior_commitment_fee_keur,) + (0.0,) * 11
-    final_residual, audit = convergence_audit(
-        {"senior_idc": senior_idc_vector, "senior_commitment_fee": senior_fee_vector},
-        {"senior_idc": senior_idc_vector, "senior_commitment_fee": senior_fee_vector},
-    )
-
     closing_senior = cumulative_senior[-1]
     return ConstructionRuntimeResult(
         config=config,
         monthly_hard_capex_keur=hard_capex,
         vat_payable_keur=vat_payable,
         vat_schedule=vat_schedule,
-        cumulative_senior_draw_keur=cumulative_senior,
-        senior_period_draw_keur=tuple(senior_period_draws),
+        cumulative_senior_draw_keur=tuple(cumulative_senior),
+        senior_period_draw_keur=senior_period_draws,
+        total_permanent_uses_keur=period_uses,
         capitalized_financing_costs=financing,
         final_gfa_keur=total_hard_capex(config.capex_schedule) + financing.total_keur,
         closing_senior_drawn_keur=closing_senior,
         closing_senior_undrawn_keur=max(0.0, config.senior_commitment_keur - closing_senior),
-        iterations=1,
-        final_residual_keur=final_residual,
+        iterations=iteration,
+        final_residual_keur=residual,
         residual_audit=audit,
     )
 
