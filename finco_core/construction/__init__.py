@@ -1,0 +1,38 @@
+"""Canonical construction Stage B2 runtime API."""
+from finco_core.construction.stage_b2 import (
+    CapexPaymentItem,
+    CapexScheduleSet,
+    CapitalizedFinancingCosts,
+    ConstructionRuntimeConfig,
+    ConstructionRuntimeResult,
+    FacilityPeriodState,
+    FinancingCostFundingPolicy,
+    TimelinePeriod,
+    VectorResidualAudit,
+    allocate_structuring_fee,
+    compute_vat_schedule,
+    convergence_audit,
+    run_stage_b2,
+    total_hard_capex,
+    vat_bearing_base,
+    vat_monthly_uses,
+)
+
+__all__ = [
+    "CapexPaymentItem",
+    "CapexScheduleSet",
+    "CapitalizedFinancingCosts",
+    "ConstructionRuntimeConfig",
+    "ConstructionRuntimeResult",
+    "FacilityPeriodState",
+    "FinancingCostFundingPolicy",
+    "TimelinePeriod",
+    "VectorResidualAudit",
+    "allocate_structuring_fee",
+    "compute_vat_schedule",
+    "convergence_audit",
+    "run_stage_b2",
+    "total_hard_capex",
+    "vat_bearing_base",
+    "vat_monthly_uses",
+]
