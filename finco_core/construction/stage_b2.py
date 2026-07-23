@@ -335,6 +335,27 @@ def run_stage_b2(config: ConstructionRuntimeConfig) -> ConstructionRuntimeResult
     )
 
 
+def apply_capitalized_financing_costs(capex_structure, financing: CapitalizedFinancingCosts):
+    """Return a CapexStructure carrying canonical Stage B2 financing outputs.
+
+    The adapter is generic and immutable: it maps Stage B2 financing components to
+    the existing CapexStructure financing fields consumed by
+    book_depreciable_capex_items().
+    """
+    from dataclasses import replace
+
+    vat_costs = financing.vat_idc_keur + financing.vat_commitment_fee_keur
+    return replace(
+        capex_structure,
+        idc_keur=financing.senior_idc_keur,
+        commitment_fees_keur=financing.senior_commitment_fee_keur,
+        bank_fees_keur=financing.structuring_fee_keur,
+        vat_costs_keur=vat_costs,
+        vat_facility_idc_keur=financing.vat_idc_keur,
+        vat_facility_commitment_fee_keur=financing.vat_commitment_fee_keur,
+    )
+
+
 __all__ = [
     "CapexPaymentItem",
     "CapexScheduleSet",
@@ -346,6 +367,7 @@ __all__ = [
     "TimelinePeriod",
     "VectorResidualAudit",
     "allocate_structuring_fee",
+    "apply_capitalized_financing_costs",
     "compute_vat_schedule",
     "convergence_audit",
     "monthly_hard_capex",

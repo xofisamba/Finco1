@@ -64,3 +64,43 @@ def test_stage_b2_initial_guess_independence_for_synthetic_case():
     assert a.capitalized_financing_costs.senior_commitment_fee_keur == pytest.approx(b.capitalized_financing_costs.senior_commitment_fee_keur, abs=1e-7)
     assert a.closing_senior_drawn_keur == pytest.approx(b.closing_senior_drawn_keur, abs=1e-7)
     assert a.final_gfa_keur == pytest.approx(b.final_gfa_keur, abs=1e-7)
+
+
+def test_capitalized_financing_adapter_populates_real_capex_structure_fields():
+    from finco_core.construction import apply_capitalized_financing_costs
+    from finco_core.inputs import CapexItem, CapexStructure
+
+    zero = CapexItem("zero", 0.0)
+    hard = CapexItem("hard", 100.0)
+    capex = CapexStructure(
+        epc_contract=hard,
+        production_units=zero,
+        epc_other=zero,
+        grid_connection=zero,
+        ops_prep=zero,
+        insurances=zero,
+        lease_tax=zero,
+        construction_mgmt_a=zero,
+        commissioning=zero,
+        audit_legal=zero,
+        construction_mgmt_b=zero,
+        contingencies=zero,
+        taxes=zero,
+        project_acquisition=zero,
+        project_rights=zero,
+    )
+    result = run_stage_b2(oborovo_source_config())
+    updated = apply_capitalized_financing_costs(capex, result.capitalized_financing_costs)
+
+    assert updated.idc_keur == pytest.approx(result.capitalized_financing_costs.senior_idc_keur)
+    assert updated.commitment_fees_keur == pytest.approx(result.capitalized_financing_costs.senior_commitment_fee_keur)
+    assert updated.bank_fees_keur == pytest.approx(result.capitalized_financing_costs.structuring_fee_keur)
+    assert updated.vat_costs_keur == pytest.approx(
+        result.capitalized_financing_costs.vat_idc_keur
+        + result.capitalized_financing_costs.vat_commitment_fee_keur
+    )
+    names = {item.name: item for item in updated.book_depreciable_capex_items()}
+    assert names["IDC (Interest During Construction)"].useful_life_override == 12
+    assert names["Commitment Fees"].useful_life_override == 12
+    assert names["Bank Fees"].useful_life_override == 12
+    assert names["VAT Costs"].useful_life_override == 20
