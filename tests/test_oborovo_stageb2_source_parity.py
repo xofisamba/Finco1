@@ -204,3 +204,28 @@ def test_capitalized_financing_useful_life_handoff_metadata():
     assert lives["structuring_fee"] == 12
     assert lives["vat_idc"] == 20
     assert lives["vat_commitment_fee"] == 20
+
+
+def test_oborovo_senior_cumulative_parity_and_source_residual():
+    result = _result()
+
+    assert result.cumulative_senior_draw_keur == pytest.approx(OBOROVO_SOURCE_CUMULATIVE_SENIOR_KEUR, abs=0.001)
+    assert result.config.senior_commitment_keur - result.closing_senior_drawn_keur == pytest.approx(
+        0.01203653512, abs=0.001
+    )
+
+
+def test_oborovo_senior_financing_allocated_totals_not_displayed_scalars():
+    from domain.construction.source_parity import (
+        OBOROVO_SOURCE_COMMITMENT_FEE_MONTHLY_KEUR,
+        OBOROVO_SOURCE_SENIOR_IDC_MONTHLY_KEUR,
+    )
+
+    result = _result()
+    financing = result.capitalized_financing_costs
+
+    assert financing.senior_idc_keur == pytest.approx(sum(OBOROVO_SOURCE_SENIOR_IDC_MONTHLY_KEUR), abs=0.001)
+    assert financing.senior_commitment_fee_keur == pytest.approx(
+        sum(OBOROVO_SOURCE_COMMITMENT_FEE_MONTHLY_KEUR), abs=0.001
+    )
+    assert financing.senior_idc_keur != pytest.approx(1_086.031998482634, abs=0.001)

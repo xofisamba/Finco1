@@ -116,6 +116,39 @@ OBOROVO_SOURCE_CUMULATIVE_SENIOR_KEUR: tuple[float, ...] = (
     42852.266726,
 )
 
+OBOROVO_SOURCE_SENIOR_IDC_MONTHLY_KEUR: tuple[float, ...] = (
+    0.4591727190782273,
+    25.921011186937996,
+    44.91902875508069,
+    61.850405371468995,
+    82.88834967436476,
+    98.60960062692023,
+    120.73665778368682,
+    139.62630574656134,
+    143.21644526250267,
+    177.5484978642168,
+    190.2418795645771,
+)
+
+OBOROVO_SOURCE_COMMITMENT_FEE_MONTHLY_KEUR: tuple[float, ...] = (
+    2.4189442517422766,
+    34.173764759252414,
+    30.802160220675983,
+    26.532025935792237,
+    24.019245506686577,
+    19.94062681682447,
+    17.21097455368268,
+    13.799096243055418,
+    9.369363115256743,
+    6.932738954237139,
+    3.3665675898950647,
+)
+
+OBOROVO_SENIOR_INTEREST_RATE_SCHEDULE: tuple[float, ...] = (
+    0.0596904, 0.059532, 0.059376, 0.0592344, 0.0591, 0.05898,
+    0.0588696, 0.0587688, 0.05868, 0.0586008, 0.0585288, 0.0585288,
+)
+
 OBOROVO_SOURCE_VAT_REQUIREMENT_KEUR: tuple[float, ...] = (
     2560.748278,
     3024.196612,
@@ -180,9 +213,14 @@ def oborovo_source_config() -> ConstructionRuntimeConfig:
         source_total_uses_validation_keur=SOURCE_TOTAL_USES_VALIDATION_KEUR,
         equity_available_keur=500.0,
         shl_available_keur=14_620.773895,
-        senior_commitment_keur=42_852.266726,
-        senior_interest_rate=0.05169,
+        senior_commitment_keur=42_852.27876256299,
+        senior_interest_rate=0.0,
         senior_commitment_fee_rate=0.0105,
+        senior_interest_rate_schedule=OBOROVO_SENIOR_INTEREST_RATE_SCHEDULE,
+        senior_idc_balance_basis="CURRENT_CLOSING_DRAWN",
+        senior_commitment_fee_balance_basis="CURRENT_CLOSING_UNDRAWN",
+        senior_idc_capitalization_timing="NEXT_PERIOD",
+        senior_commitment_fee_capitalization_timing="NEXT_PERIOD",
         structuring_fee_rate=0.01,
         structuring_fee_basis_keur=47_730.2687,
         vat_facility_interest_rate=0.0565,
@@ -190,10 +228,8 @@ def oborovo_source_config() -> ConstructionRuntimeConfig:
         vat_facility_commitment_keur=4_877.989945,
         vat_interest_period_fractions=VAT_INTEREST_FRACTIONS,
         vat_commitment_fee_active_periods=12,
-        senior_idc_spending_profile=(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0),
-        senior_commitment_fee_spending_profile=(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0),
         vat_financing_cost_spending_profile=VAT_COSTS_SPENDING_PROFILE,
     )
 
 
-__all__ = [name for name in globals() if name.startswith("OBOROVO") or name in {"SOURCE_TOTAL_USES_VALIDATION_KEUR", "OBOROVO_SOURCE_VAT_PAYABLE_KEUR", "VAT_COSTS_SPENDING_PROFILE", "VAT_INTEREST_FRACTIONS", "EQUAL_12", "M1_ONLY", "oborovo_capex_schedule", "oborovo_source_config", "oborovo_timeline"}]
+__all__ = [name for name in globals() if name.startswith("OBOROVO") or name in {"SOURCE_TOTAL_USES_VALIDATION_KEUR", "OBOROVO_SOURCE_VAT_PAYABLE_KEUR", "VAT_COSTS_SPENDING_PROFILE", "VAT_INTEREST_FRACTIONS", "OBOROVO_SOURCE_SENIOR_IDC_MONTHLY_KEUR", "OBOROVO_SOURCE_COMMITMENT_FEE_MONTHLY_KEUR", "OBOROVO_SENIOR_INTEREST_RATE_SCHEDULE", "EQUAL_12", "M1_ONLY", "oborovo_capex_schedule", "oborovo_source_config", "oborovo_timeline"}]
