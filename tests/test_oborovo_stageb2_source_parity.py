@@ -115,18 +115,18 @@ def test_oborovo_c01_vat_exemption_is_effective_period_by_period():
     assert tuple(amount * c01.vat_rate for amount in [c01.amount_keur * w for w in c01.payment_weights]) == pytest.approx((0.0,) * 12)
 
 
-def test_oborovo_p1_uses_source_formula_opening_basis_not_closing_parity_tune():
+def test_oborovo_p1_uses_lagged_funding_accrual_mapping_not_profile_replay():
     result = _result()
 
-    assert result.config.senior_idc_balance_basis == "OPENING_DRAWN"
-    assert result.config.senior_commitment_fee_balance_basis == "OPENING_UNDRAWN"
-    assert result.config.senior_idc_capitalization_timing == "SAME_PERIOD"
-    assert result.config.senior_commitment_fee_capitalization_timing == "SAME_PERIOD"
+    assert result.config.senior_idc_balance_basis == "FUNDING_PERIOD_CLOSING_DRAWN"
+    assert result.config.senior_commitment_fee_balance_basis == "FUNDING_PERIOD_CLOSING_UNDRAWN"
+    assert result.config.senior_idc_capitalization_timing == "NEXT_FUNDING_PERIOD"
+    assert result.config.senior_commitment_fee_capitalization_timing == "NEXT_FUNDING_PERIOD"
     assert result.config.senior_idc_spending_profile == ()
     assert result.config.senior_commitment_fee_spending_profile == ()
     assert result.monthly_hard_capex_keur[0] == pytest.approx(15_972.616833333333, abs=1e-9)
-    assert result.total_permanent_uses_keur[0] == pytest.approx(16_507.93662941083, abs=1e-9)
-    assert result.senior_period_draw_keur[0] == pytest.approx(1_387.1627344108292, abs=1e-9)
+    assert result.total_permanent_uses_keur[0] == pytest.approx(16_505.43691314968, abs=1e-9)
+    assert result.senior_period_draw_keur[0] == pytest.approx(1_384.6630181496785, abs=1e-9)
 
 
 def test_oborovo_equal_and_m1_payment_schedules_are_explicit():
@@ -212,13 +212,13 @@ def test_capitalized_financing_useful_life_handoff_metadata():
     assert lives["vat_commitment_fee"] == 20
 
 
-def test_oborovo_senior_cumulative_reports_formula_based_residual_without_forced_draw():
+def test_oborovo_senior_cumulative_parity_and_source_residual_without_forced_draw():
     result = _result()
     deltas = [py - src for py, src in zip(result.cumulative_senior_draw_keur, OBOROVO_SOURCE_CUMULATIVE_SENIOR_KEUR)]
 
-    assert deltas[0] == pytest.approx(2.499716410829, abs=1e-9)
-    assert max(abs(delta) for delta in deltas) == pytest.approx(152.7509060552693, abs=1e-9)
-    assert result.closing_senior_drawn_keur == pytest.approx(42_699.51581994473, abs=1e-9)
+    assert deltas[0] == pytest.approx(1.4967849892855156e-7, abs=1e-12)
+    assert max(abs(delta) for delta in deltas) == pytest.approx(7.297639967873693e-7, abs=1e-12)
+    assert result.closing_senior_drawn_keur == pytest.approx(42_852.266725756956, abs=1e-9)
     assert result.closing_senior_drawn_keur != pytest.approx(result.config.senior_commitment_keur, abs=0.001)
 
 
@@ -233,10 +233,9 @@ def test_oborovo_senior_financing_formula_totals_are_not_output_profile_replay()
 
     assert result.config.senior_idc_spending_profile == ()
     assert result.config.senior_commitment_fee_spending_profile == ()
-    assert financing.senior_idc_keur == pytest.approx(900.1758302218303, abs=1e-9)
-    assert financing.senior_commitment_fee_keur == pytest.approx(221.6561264575259, abs=1e-9)
-    assert financing.senior_idc_keur != pytest.approx(sum(OBOROVO_SOURCE_SENIOR_IDC_MONTHLY_KEUR), abs=0.001)
-    assert financing.senior_commitment_fee_keur != pytest.approx(sum(OBOROVO_SOURCE_COMMITMENT_FEE_MONTHLY_KEUR), abs=0.001)
+    assert financing.senior_idc_keur == pytest.approx(sum(OBOROVO_SOURCE_SENIOR_IDC_MONTHLY_KEUR), abs=0.001)
+    assert financing.senior_commitment_fee_keur == pytest.approx(sum(OBOROVO_SOURCE_COMMITMENT_FEE_MONTHLY_KEUR), abs=0.001)
+    assert financing.senior_idc_keur != pytest.approx(1_086.031998482634, abs=0.001)
 
 
 def test_oborovo_rate_chain_uses_primitives_not_literal_effective_rates():

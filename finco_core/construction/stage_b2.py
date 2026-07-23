@@ -276,7 +276,7 @@ def _next_period_capitalized_uses(calculated: tuple[float, ...]) -> tuple[float,
 
 
 def _capitalized_uses(total: float, profile: tuple[float, ...], calculated: tuple[float, ...], timing: str) -> tuple[float, ...]:
-    if timing == "NEXT_PERIOD":
+    if timing in {"NEXT_PERIOD", "NEXT_FUNDING_PERIOD"}:
         return _next_period_capitalized_uses(calculated)
     if timing == "PROFILE":
         return tuple(total * weight for weight in profile)
@@ -352,14 +352,14 @@ def run_stage_b2(config: ConstructionRuntimeConfig) -> ConstructionRuntimeResult
         opening_senior = 0.0
         for idx, draw in enumerate(senior_period_draws):
             closing_senior = opening_senior + draw
-            if config.senior_idc_balance_basis == "CURRENT_CLOSING_DRAWN":
+            if config.senior_idc_balance_basis in {"CURRENT_CLOSING_DRAWN", "FUNDING_PERIOD_CLOSING_DRAWN"}:
                 idc_basis = closing_senior
             elif config.senior_idc_balance_basis == "OPENING_DRAWN":
                 idc_basis = opening_senior
             else:
                 raise ValueError(f"Unsupported Senior IDC balance basis: {config.senior_idc_balance_basis}")
 
-            if config.senior_commitment_fee_balance_basis == "CURRENT_CLOSING_UNDRAWN":
+            if config.senior_commitment_fee_balance_basis in {"CURRENT_CLOSING_UNDRAWN", "FUNDING_PERIOD_CLOSING_UNDRAWN"}:
                 fee_drawn_basis = closing_senior
             elif config.senior_commitment_fee_balance_basis == "OPENING_UNDRAWN":
                 fee_drawn_basis = opening_senior

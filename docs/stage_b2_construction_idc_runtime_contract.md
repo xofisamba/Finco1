@@ -174,7 +174,7 @@ Direct Oborovo workbook evidence shows the IDC and commitment-fee percentage row
 =IF(SUM($D56;$D58)=0;0;SUM(I56;I58)/SUM($D56;$D58))
 ```
 
-These rows divide same-column period financing-cost values by total financing costs. They are audit/display outputs, not primary payment-schedule inputs. The canonical runtime must calculate Senior IDC and Senior commitment fees by period from source balance/rate formulas and include them as same-period capitalized Uses unless a different direct source formula proves otherwise.
+These rows divide same-column period financing-cost values by total financing costs. They are audit/display outputs, not primary payment-schedule inputs. In funding-period terms, the engine must fund construction Uses in period `t`, calculate financing cost on the resulting funded balance for the source accrual interval, and capitalize that financing cost in funding period `t+1`.
 
 ### 5.2 Senior period-rate formula chain
 

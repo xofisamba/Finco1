@@ -15,13 +15,15 @@ Direct workbook formula example:
 =($C57/100+I$59)*H$48*H$6*I$5
 ```
 
-The IDC calculated in column `I` references `H48`, the immediately preceding Senior Debt balance column. Economically, that is prior-period closing drawn balance, i.e. current-period opening drawn balance. Therefore the source-proven runtime policy is:
+The IDC calculated in column `I` references `H48`, the immediately preceding spreadsheet debt-balance column. That referenced balance is the funded/closing balance of the preceding construction Uses period and is the balance on which the following accrual interval is calculated. In funding-period terms:
 
 ```text
-Senior_IDC[t] = opening_drawn[t] * senior_idc_rate[t] * day_fraction[t] * active_flag[t]
+FundingPeriod[t] closes debt balance[t]
+FinancingAccrualInterval[t] uses closing balance[t]
+CapitalizationPeriod[t+1] includes the accrued IDC Use
 ```
 
-The prior local `CURRENT_CLOSING_DRAWN` Oborovo setting was formula-inconsistent and has been removed from the Oborovo source config.
+The runtime represents this explicitly as `FUNDING_PERIOD_CLOSING_DRAWN` plus `NEXT_FUNDING_PERIOD` capitalization. It is not target profile replay.
 
 ## Senior commitment-fee balance basis
 
@@ -31,13 +33,15 @@ Direct workbook formula example:
 =$C58*(Inputs!$D$195-I48)*I$6*J$5
 ```
 
-The commitment fee calculated in column `J` references `I48`, the immediately preceding Senior Debt balance column. Economically, the undrawn balance is facility commitment less current-period opening drawn balance. Therefore the source-proven runtime policy is:
+The commitment fee calculated in column `J` references `I48`, the immediately preceding spreadsheet debt-balance column. In funding-period terms, that is facility commitment less the funded/closing debt balance of the preceding construction Uses period, with the accrued commitment fee capitalized in the next funding period:
 
 ```text
-Senior_Commitment_Fee[t] = opening_undrawn[t] * commitment_fee_rate * day_fraction[t] * active_flag[t]
+FundingPeriod[t] closes debt balance[t]
+FinancingAccrualInterval[t] uses facility - closing balance[t]
+CapitalizationPeriod[t+1] includes the accrued commitment-fee Use
 ```
 
-The prior local `CURRENT_CLOSING_UNDRAWN` Oborovo setting was formula-inconsistent and has been removed from the Oborovo source config.
+This resolves the earlier opening-vs-closing contradiction by naming the frame: prior spreadsheet column / following accrual interval / next funding Uses column.
 
 ## IDC / commitment profile-row semantics
 
@@ -48,7 +52,7 @@ Direct workbook profile formula examples:
 =IF(SUM($D56;$D58)=0;0;SUM(I56;I58)/SUM($D56;$D58))
 ```
 
-These rows are derived from same-column period financing-cost calculations divided by their totals. They are validation/audit outputs, not independent payment-profile assumptions. The runtime therefore does not pass the derived IDC or commitment profile vectors as canonical inputs. Senior IDC and Senior commitment fees are capitalized as same-period financing-cost Uses.
+These rows are derived from same-column period financing-cost calculations divided by their totals. They are validation/audit outputs, not independent payment-profile assumptions. The runtime therefore does not pass the derived IDC or commitment profile vectors as canonical inputs; it calculates period financing costs and applies the source-proven next-funding-period capitalization mapping.
 
 ## Period-rate formula lineage
 
@@ -101,18 +105,19 @@ The Oborovo source config now passes primitive rate inputs and the source Euribo
 
 ## Current formula-based parity snapshot
 
-After reverting to source-proven opening balances and same-period financing-cost capitalization, Senior period parity no longer matches the prior target-fitting snapshot. That is expected and is not corrected by reverting to closing-basis formulas.
+After implementing the funding-period → accrual-interval → next-capitalization-period mapping, Senior period parity returns without profile replay or literal effective-rate inputs.
 
 | Metric | Python formula result | Source validation view | Status |
 | --- | ---: | ---: | --- |
-| Senior construction closing draw | 42,699.515819945 | 42,852.266726028 | formula residual remains |
-| Senior IDC total | 900.175830222 | 1,086.017354555 allocated | formula residual remains |
-| Senior commitment-fee total | 221.656126458 | 188.565507947 allocated | formula residual remains |
+| P1 Senior draw | 1,384.663018150 | 1,384.663018410 | MATCH |
+| Senior construction closing draw | 42,852.266725757 | 42,852.266726028 | MATCH / source rounding |
+| Senior IDC total | 1,086.017354542 | 1,086.017354555 allocated | MATCH / source rounding |
+| Senior commitment-fee total | 188.565507949 | 188.565507947 allocated | MATCH / source rounding |
 | VAT terminal requirement | 0.000000000 | 0.000000000 | FROZEN_PASS |
 | VAT IDC | 208.447618455 | 208.447618000 | FROZEN_PASS |
 | VAT commitment fee | 13.621952811 | 13.621953000 | FROZEN_PASS |
 
-First remaining Senior mismatch is P1: opening-basis commitment fee is `2.499716261` kEUR, so Python P1 Senior draw is `1,387.162734411` kEUR versus source cumulative Senior P1 `1,384.663018410` kEUR. Further investigation must focus on source formula column alignment / facility basis / sizing residual, not on reintroducing closing-basis or profile replay.
+P1 Uses exclude Senior IDC and Senior commitment fee. The first Senior financing costs are accrued after P1 Senior funding closes and are capitalized into P2 Uses.
 
 ## Stage B1 hard-CAPEX precision
 
@@ -130,4 +135,4 @@ The factory now carries exact source row precision and no balancing plug.
 
 ## Verdict
 
-`STILL_BLOCKED` for final independent review because source-formula implementation is now corrected, but Senior aggregate/period parity no longer closes. The remaining mismatch must be resolved from formula lineage (column alignment, sizing scalar, and source circular residual), not by target-derived effective-rate/profile/balance-basis replay.
+`READY_FOR_FINAL_INDEPENDENT_REVIEW` locally for the Stage B2 formula-lineage questions, subject to the separate TAX_CFADS stale-record governance failure and remote push/PR visibility constraints.
