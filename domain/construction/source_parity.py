@@ -144,6 +144,16 @@ OBOROVO_SOURCE_COMMITMENT_FEE_MONTHLY_KEUR: tuple[float, ...] = (
     3.3665675898950647,
 )
 
+OBOROVO_EURIBOR_1M_FIXINGS: tuple[float, ...] = (
+    0.02996, 0.02930, 0.02865, 0.02806, 0.02750, 0.02700,
+    0.02654, 0.02612, 0.02575, 0.02542, 0.02512, 0.02512,
+)
+
+# Validation-only all-in Senior IDC rates derived from:
+# base_rate * hedge_coverage + swap/forward/CVA adjustments
+# + euribor_1m[t] * (1 - hedge_coverage) * (1 + external_curve_buffer)
+# + Senior margin.  The runtime config receives the primitive inputs above and
+# OBOROVO_EURIBOR_1M_FIXINGS, not this derived effective-rate vector.
 OBOROVO_SENIOR_INTEREST_RATE_SCHEDULE: tuple[float, ...] = (
     0.0596904, 0.059532, 0.059376, 0.0592344, 0.0591, 0.05898,
     0.0588696, 0.0587688, 0.05868, 0.0586008, 0.0585288, 0.0585288,
@@ -178,7 +188,7 @@ def oborovo_timeline() -> tuple[TimelinePeriod, ...]:
     periods: list[TimelinePeriod] = []
     for i in range(13):
         active = OBOROVO_ACTIVE_CONSTRUCTION_FLAGS[i]
-        periods.append(TimelinePeriod(i + 1, OBOROVO_PERIOD_START_DATES[i], OBOROVO_PERIOD_END_DATES[i], OBOROVO_INTEREST_FRACTIONS[i] if i < 12 else 30/360, active, active, active, i < len(OBOROVO_SOURCE_VAT_REQUIREMENT_KEUR)))
+        periods.append(TimelinePeriod(i + 1, OBOROVO_PERIOD_START_DATES[i], OBOROVO_PERIOD_END_DATES[i], OBOROVO_INTEREST_FRACTIONS[i] if i < 12 else 30/360, active, active, active and i < 11, i < len(OBOROVO_SOURCE_VAT_REQUIREMENT_KEUR)))
     for i in range(13, len(OBOROVO_SOURCE_VAT_REQUIREMENT_KEUR)):
         periods.append(TimelinePeriod(i + 1, OBOROVO_PERIOD_END_DATES[-1], OBOROVO_PERIOD_END_DATES[-1], 30/360, False, False, False, True))
     return tuple(periods)
@@ -214,13 +224,19 @@ def oborovo_source_config() -> ConstructionRuntimeConfig:
         equity_available_keur=500.0,
         shl_available_keur=14_620.773895,
         senior_commitment_keur=42_852.27876256299,
-        senior_interest_rate=0.0,
+        senior_interest_rate=0.0265,
         senior_commitment_fee_rate=0.0105,
-        senior_interest_rate_schedule=OBOROVO_SENIOR_INTEREST_RATE_SCHEDULE,
-        senior_idc_balance_basis="CURRENT_CLOSING_DRAWN",
-        senior_commitment_fee_balance_basis="CURRENT_CLOSING_UNDRAWN",
-        senior_idc_capitalization_timing="NEXT_PERIOD",
-        senior_commitment_fee_capitalization_timing="NEXT_PERIOD",
+        base_rate=0.03,
+        hedge_coverage=0.80,
+        swap_margin=0.0020,
+        forward_swap_margin=0.0,
+        cva=0.0,
+        external_curve_buffer=0.20,
+        euribor_1m_fixings=OBOROVO_EURIBOR_1M_FIXINGS,
+        senior_idc_balance_basis="OPENING_DRAWN",
+        senior_commitment_fee_balance_basis="OPENING_UNDRAWN",
+        senior_idc_capitalization_timing="SAME_PERIOD",
+        senior_commitment_fee_capitalization_timing="SAME_PERIOD",
         structuring_fee_rate=0.01,
         structuring_fee_basis_keur=47_730.2687,
         vat_facility_interest_rate=0.0565,
@@ -232,4 +248,4 @@ def oborovo_source_config() -> ConstructionRuntimeConfig:
     )
 
 
-__all__ = [name for name in globals() if name.startswith("OBOROVO") or name in {"SOURCE_TOTAL_USES_VALIDATION_KEUR", "OBOROVO_SOURCE_VAT_PAYABLE_KEUR", "VAT_COSTS_SPENDING_PROFILE", "VAT_INTEREST_FRACTIONS", "OBOROVO_SOURCE_SENIOR_IDC_MONTHLY_KEUR", "OBOROVO_SOURCE_COMMITMENT_FEE_MONTHLY_KEUR", "OBOROVO_SENIOR_INTEREST_RATE_SCHEDULE", "EQUAL_12", "M1_ONLY", "oborovo_capex_schedule", "oborovo_source_config", "oborovo_timeline"}]
+__all__ = [name for name in globals() if name.startswith("OBOROVO") or name in {"SOURCE_TOTAL_USES_VALIDATION_KEUR", "OBOROVO_SOURCE_VAT_PAYABLE_KEUR", "VAT_COSTS_SPENDING_PROFILE", "VAT_INTEREST_FRACTIONS", "OBOROVO_SOURCE_SENIOR_IDC_MONTHLY_KEUR", "OBOROVO_SOURCE_COMMITMENT_FEE_MONTHLY_KEUR", "OBOROVO_EURIBOR_1M_FIXINGS", "OBOROVO_SENIOR_INTEREST_RATE_SCHEDULE", "EQUAL_12", "M1_ONLY", "oborovo_capex_schedule", "oborovo_source_config", "oborovo_timeline"}]

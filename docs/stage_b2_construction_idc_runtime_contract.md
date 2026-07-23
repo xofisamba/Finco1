@@ -165,6 +165,38 @@ not the closing undrawn. This is consistent with the interest balance convention
 
 Calibration target (Oborovo): ≈188.563 kEUR cumulative.
 
+### 5.1 IDC and commitment percentage/profile rows are derived outputs
+
+Direct Oborovo workbook evidence shows the IDC and commitment-fee percentage rows use formulas such as:
+
+```excel
+=IF(SUM($D55;$D57)=0;0;SUM(I55;I57)/SUM($D55;$D57))
+=IF(SUM($D56;$D58)=0;0;SUM(I56;I58)/SUM($D56;$D58))
+```
+
+These rows divide same-column period financing-cost values by total financing costs. They are audit/display outputs, not primary payment-schedule inputs. The canonical runtime must calculate Senior IDC and Senior commitment fees by period from source balance/rate formulas and include them as same-period capitalized Uses unless a different direct source formula proves otherwise.
+
+### 5.2 Senior period-rate formula chain
+
+Direct Oborovo workbook evidence shows:
+
+```excel
+All-in base rate[t] = $C59 + row60[t]
+C59 = Inputs!$D$202 * Inputs!$D$230 + SUM(Inputs!$D$232:$D$234)/100
+row60[t] = IF(Inputs!C$301>0; Inputs!C$301 * $C60; 0)
+```
+
+Generic implementation:
+
+```text
+hedged_component = base_rate * hedge_coverage + swap_margin + forward_swap_margin + cva
+floating_weight = (1 - hedge_coverage) * (1 + external_curve_buffer)
+row60[t] = euribor_1m_fixing[t] * floating_weight
+senior_idc_rate[t] = hedged_component + row60[t] + senior_margin
+```
+
+For Oborovo, C59 is 2.60% from 3.00% base rate × 80% hedge coverage + 20 bps swap margin. The literal effective-rate vector is validation evidence only; runtime inputs are primitive rate assumptions plus the Euribor 1m fixing curve.
+
 ---
 
 ## 6. Structuring / arrangement fee

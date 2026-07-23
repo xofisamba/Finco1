@@ -104,6 +104,13 @@ class ConstructionRuntimeConfig:
     senior_interest_rate: float
     senior_commitment_fee_rate: float
     senior_interest_rate_schedule: tuple[float, ...] = field(default_factory=tuple)
+    base_rate: float = 0.0
+    hedge_coverage: float = 0.0
+    swap_margin: float = 0.0
+    forward_swap_margin: float = 0.0
+    cva: float = 0.0
+    external_curve_buffer: float = 0.0
+    euribor_1m_fixings: tuple[float, ...] = field(default_factory=tuple)
     senior_idc_balance_basis: str = "OPENING_DRAWN"
     senior_commitment_fee_balance_basis: str = "OPENING_UNDRAWN"
     senior_idc_capitalization_timing: str = "PROFILE"
@@ -241,6 +248,20 @@ def _profile_12(values: tuple[float, ...], *, default_period: int | None = None)
 
 
 def _period_rates(config: ConstructionRuntimeConfig) -> tuple[float, ...]:
+    if config.euribor_1m_fixings:
+        if len(config.euribor_1m_fixings) != 12:
+            raise ValueError("Euribor 1m fixing schedule must have 12 periods")
+        hedged_component = (
+            config.base_rate * config.hedge_coverage
+            + config.swap_margin
+            + config.forward_swap_margin
+            + config.cva
+        )
+        floating_weight = (1.0 - config.hedge_coverage) * (1.0 + config.external_curve_buffer)
+        return tuple(
+            hedged_component + fixing * floating_weight + config.senior_interest_rate
+            for fixing in config.euribor_1m_fixings
+        )
     if config.senior_interest_rate_schedule:
         if len(config.senior_interest_rate_schedule) != 12:
             raise ValueError("Senior interest-rate schedule must have 12 periods")

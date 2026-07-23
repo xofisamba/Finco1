@@ -105,3 +105,68 @@ def test_capitalized_financing_adapter_populates_real_capex_structure_fields():
     assert names["Commitment Fees"].useful_life_override == 12
     assert names["Bank Fees"].useful_life_override == 12
     assert names["VAT Costs"].useful_life_override == 20
+
+
+def _synthetic_config(**overrides):
+    cfg = oborovo_source_config()
+    return cfg.__class__(
+        **{
+            **cfg.__dict__,
+            "capex_schedule": stage_b2.CapexScheduleSet((
+                stage_b2.CapexPaymentItem("A", "Asset", 1_200.0, (1 / 12,) * 12, 0.0),
+            )),
+            "funding_policy": stage_b2.FinancingCostFundingPolicy((1.0,) + (0.0,) * 11),
+            "source_total_uses_validation_keur": (),
+            "equity_available_keur": 0.0,
+            "shl_available_keur": 0.0,
+            "senior_commitment_keur": 2_000.0,
+            "senior_interest_rate": 0.06,
+            "senior_commitment_fee_rate": 0.012,
+            "senior_interest_rate_schedule": (),
+            "base_rate": 0.0,
+            "hedge_coverage": 0.0,
+            "swap_margin": 0.0,
+            "forward_swap_margin": 0.0,
+            "cva": 0.0,
+            "external_curve_buffer": 0.0,
+            "euribor_1m_fixings": (),
+            "senior_idc_balance_basis": "OPENING_DRAWN",
+            "senior_commitment_fee_balance_basis": "OPENING_UNDRAWN",
+            "senior_idc_capitalization_timing": "SAME_PERIOD",
+            "senior_commitment_fee_capitalization_timing": "SAME_PERIOD",
+            "structuring_fee_rate": 0.0,
+            "structuring_fee_basis_keur": 0.0,
+            "vat_facility_interest_rate": 0.0,
+            "vat_facility_commitment_fee_rate": 0.0,
+            "vat_facility_commitment_keur": 0.0,
+            "vat_financing_cost_spending_profile": (),
+            **overrides,
+        }
+    )
+
+
+def test_opening_basis_and_same_period_capitalization_are_runtime_policies():
+    result = run_stage_b2(_synthetic_config(max_iterations=200))
+
+    assert result.capitalized_financing_costs.senior_idc_keur > 0.0
+    assert result.capitalized_financing_costs.senior_commitment_fee_keur > 0.0
+    # First period IDC uses zero opening drawn balance and is therefore zero.
+    assert result.total_permanent_uses_keur[0] == pytest.approx(100.0 + 2_000.0 * 0.012 * (2 / 360), abs=1e-9)
+
+
+def test_period_rate_schedule_can_be_derived_from_hedge_and_euribor_primitives():
+    cfg = _synthetic_config(
+        senior_interest_rate=0.0265,
+        base_rate=0.03,
+        hedge_coverage=0.80,
+        swap_margin=0.002,
+        external_curve_buffer=0.20,
+        euribor_1m_fixings=(0.02996,) * 12,
+    )
+    result = run_stage_b2(cfg)
+    first_period_fee = 2_000.0 * 0.012 * (2 / 360)
+    second_opening = 100.0 + first_period_fee
+    expected_rate = 0.03 * 0.80 + 0.002 + 0.02996 * 0.24 + 0.0265
+    expected_p2_idc = second_opening * expected_rate * (31 / 360)
+
+    assert result.total_permanent_uses_keur[1] == pytest.approx(100.0 + expected_p2_idc + (2_000.0 - second_opening) * 0.012 * (31 / 360), abs=1e-6)
