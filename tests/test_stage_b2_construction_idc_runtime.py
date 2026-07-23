@@ -170,3 +170,135 @@ def test_period_rate_schedule_can_be_derived_from_hedge_and_euribor_primitives()
     expected_p2_idc = second_opening * expected_rate * (31 / 360)
 
     assert result.total_permanent_uses_keur[1] == pytest.approx(100.0 + expected_p2_idc + (2_000.0 - second_opening) * 0.012 * (31 / 360), abs=1e-6)
+
+
+def test_capex_equal_and_custom_schedules_drive_monthly_uses_generically():
+    cfg = _synthetic_config(
+        capex_schedule=stage_b2.CapexScheduleSet((
+            stage_b2.CapexPaymentItem("EQ", "Equal", 120.0, (1 / 12,) * 12, 0.10),
+            stage_b2.CapexPaymentItem("CUSTOM", "Custom", 80.0, (0.0, 0.5, 0.5) + (0.0,) * 9, 0.20),
+        )),
+        senior_commitment_keur=500.0,
+        max_iterations=200,
+    )
+    result = run_stage_b2(cfg)
+
+    assert result.monthly_hard_capex_keur[0] == pytest.approx(10.0)
+    assert result.monthly_hard_capex_keur[1] == pytest.approx(50.0)
+    assert result.vat_payable_keur[0] == pytest.approx(1.0)
+    assert result.vat_payable_keur[1] == pytest.approx(9.0)
+
+
+def test_capex_schedule_sum_validation_rejects_malformed_profile():
+    bad = stage_b2.CapexScheduleSet((
+        stage_b2.CapexPaymentItem("BAD", "Bad", 100.0, (0.5,) + (0.0,) * 11, 0.0),
+    ))
+
+    with pytest.raises(ValueError, match="payment weights"):
+        stage_b2.monthly_hard_capex(bad)
+
+
+def test_funding_waterfall_consumes_equity_then_shl_before_senior():
+    cfg = _synthetic_config(
+        capex_schedule=stage_b2.CapexScheduleSet((
+            stage_b2.CapexPaymentItem("A", "Asset", 1_200.0, (1 / 12,) * 12, 0.0),
+        )),
+        equity_available_keur=50.0,
+        shl_available_keur=75.0,
+        senior_commitment_keur=2_000.0,
+        senior_interest_rate=0.0,
+        senior_commitment_fee_rate=0.0,
+        max_iterations=20,
+    )
+    result = run_stage_b2(cfg)
+
+    assert result.senior_period_draw_keur[0] == pytest.approx(0.0)
+    assert result.senior_period_draw_keur[1] == pytest.approx(75.0)
+
+
+def test_vat_reimbursement_lag_rolls_requirement_forward_generically():
+    schedule = stage_b2.compute_vat_schedule((10.0, 20.0), reimbursement_lag_periods=2)
+
+    assert [row.vat_requirement_keur for row in schedule] == pytest.approx([10.0, 30.0, 20.0, 0.0])
+    assert [row.vat_reimbursement_keur for row in schedule] == pytest.approx([0.0, 0.0, 10.0, 20.0])
+
+
+def test_hedge_coverage_zero_and_full_change_derived_rates_generically():
+    floating = run_stage_b2(_synthetic_config(
+        senior_interest_rate=0.01,
+        base_rate=0.03,
+        hedge_coverage=0.0,
+        external_curve_buffer=0.20,
+        euribor_1m_fixings=(0.04,) * 12,
+        senior_commitment_fee_rate=0.0,
+        max_iterations=200,
+    ))
+    fixed = run_stage_b2(_synthetic_config(
+        senior_interest_rate=0.01,
+        base_rate=0.03,
+        hedge_coverage=1.0,
+        external_curve_buffer=0.20,
+        euribor_1m_fixings=(0.04,) * 12,
+        senior_commitment_fee_rate=0.0,
+        max_iterations=200,
+    ))
+
+    assert floating.capitalized_financing_costs.senior_idc_keur > fixed.capitalized_financing_costs.senior_idc_keur
+
+
+def test_swap_forward_and_cva_adjustments_affect_period_rate_generically():
+    base = run_stage_b2(_synthetic_config(
+        senior_interest_rate=0.01,
+        base_rate=0.03,
+        hedge_coverage=1.0,
+        euribor_1m_fixings=(0.02,) * 12,
+        senior_commitment_fee_rate=0.0,
+        max_iterations=200,
+    ))
+    adjusted = run_stage_b2(_synthetic_config(
+        senior_interest_rate=0.01,
+        base_rate=0.03,
+        hedge_coverage=1.0,
+        swap_margin=0.002,
+        forward_swap_margin=0.001,
+        cva=0.0005,
+        euribor_1m_fixings=(0.02,) * 12,
+        senior_commitment_fee_rate=0.0,
+        max_iterations=200,
+    ))
+
+    assert adjusted.capitalized_financing_costs.senior_idc_keur > base.capitalized_financing_costs.senior_idc_keur
+
+
+def test_same_period_and_next_funding_period_capitalization_differ_generically():
+    same = run_stage_b2(_synthetic_config(
+        senior_idc_balance_basis="FUNDING_PERIOD_CLOSING_DRAWN",
+        senior_commitment_fee_balance_basis="FUNDING_PERIOD_CLOSING_UNDRAWN",
+        senior_idc_capitalization_timing="SAME_PERIOD",
+        senior_commitment_fee_capitalization_timing="SAME_PERIOD",
+        max_iterations=200,
+    ))
+    lagged = run_stage_b2(_synthetic_config(
+        senior_idc_balance_basis="FUNDING_PERIOD_CLOSING_DRAWN",
+        senior_commitment_fee_balance_basis="FUNDING_PERIOD_CLOSING_UNDRAWN",
+        senior_idc_capitalization_timing="NEXT_FUNDING_PERIOD",
+        senior_commitment_fee_capitalization_timing="NEXT_FUNDING_PERIOD",
+        max_iterations=200,
+    ))
+
+    assert same.total_permanent_uses_keur[0] > lagged.total_permanent_uses_keur[0]
+    assert lagged.total_permanent_uses_keur[1] > 100.0
+
+
+def test_non_convergence_fail_fast_for_generic_circular_case():
+    with pytest.raises(RuntimeError, match="did not converge"):
+        run_stage_b2(_synthetic_config(max_iterations=1, convergence_tolerance_keur=0.0))
+
+
+def test_runtime_config_has_no_project_identity_or_approved_delta_fields():
+    fields = set(stage_b2.ConstructionRuntimeConfig.__dataclass_fields__)
+
+    assert "project_name" not in fields
+    assert "project_code" not in fields
+    assert "approved_delta" not in fields
+    assert "balancing_plug" not in fields
