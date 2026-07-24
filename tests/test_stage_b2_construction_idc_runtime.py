@@ -5,7 +5,7 @@ import pytest
 
 from domain.construction.source_parity import oborovo_source_config
 import finco_core.construction as construction_api
-from finco_core.construction import convergence_audit, run_stage_b2
+from finco_core.construction import FundingShortfallError, convergence_audit, run_stage_b2
 from finco_core.construction import stage_b2
 
 
@@ -107,6 +107,20 @@ def test_capitalized_financing_adapter_populates_real_capex_structure_fields():
     assert names["VAT Costs"].useful_life_override == 20
 
 
+def test_stage_b2_financing_useful_lives_are_explicit_config_metadata():
+    result = run_stage_b2(_synthetic_config(
+        senior_interest_rate=0.0,
+        senior_commitment_fee_rate=0.0,
+        senior_financing_useful_life_years=15,
+        vat_financing_useful_life_years=25,
+        max_iterations=20,
+    ))
+
+    assert result.capitalized_financing_costs.useful_lives_years()["senior_idc"] == 15
+    assert result.capitalized_financing_costs.useful_lives_years()["structuring_fee"] == 15
+    assert result.capitalized_financing_costs.useful_lives_years()["vat_idc"] == 25
+
+
 def _synthetic_config(**overrides):
     cfg = oborovo_source_config()
     return cfg.__class__(
@@ -179,6 +193,7 @@ def test_capex_equal_and_custom_schedules_drive_monthly_uses_generically():
             stage_b2.CapexPaymentItem("CUSTOM", "Custom", 80.0, (0.0, 0.5, 0.5) + (0.0,) * 9, 0.20),
         )),
         senior_commitment_keur=500.0,
+        vat_facility_commitment_keur=25.0,
         max_iterations=200,
     )
     result = run_stage_b2(cfg)
@@ -216,11 +231,112 @@ def test_funding_waterfall_consumes_equity_then_shl_before_senior():
     assert result.senior_period_draw_keur[1] == pytest.approx(75.0)
 
 
+def test_senior_funding_allows_exactly_at_commitment():
+    cfg = _synthetic_config(
+        senior_commitment_keur=1_200.0,
+        senior_interest_rate=0.0,
+        senior_commitment_fee_rate=0.0,
+        max_iterations=20,
+    )
+    result = run_stage_b2(cfg)
+
+    assert result.closing_senior_drawn_keur == pytest.approx(1_200.0)
+    assert result.closing_senior_undrawn_keur == pytest.approx(0.0)
+
+
+def test_senior_funding_allows_below_commitment_without_forced_final_draw():
+    cfg = _synthetic_config(
+        senior_commitment_keur=1_500.0,
+        senior_interest_rate=0.0,
+        senior_commitment_fee_rate=0.0,
+        max_iterations=20,
+    )
+    result = run_stage_b2(cfg)
+
+    assert result.closing_senior_drawn_keur == pytest.approx(1_200.0)
+    assert result.closing_senior_undrawn_keur == pytest.approx(300.0)
+    assert result.senior_period_draw_keur[-1] == pytest.approx(100.0)
+
+
+def test_senior_funding_breach_fails_fast_without_capping_shortfall():
+    cfg = _synthetic_config(
+        senior_commitment_keur=1_199.0,
+        senior_interest_rate=0.0,
+        senior_commitment_fee_rate=0.0,
+        max_iterations=20,
+    )
+
+    with pytest.raises(FundingShortfallError, match="Senior facility commitment breached"):
+        run_stage_b2(cfg)
+
+
 def test_vat_reimbursement_lag_rolls_requirement_forward_generically():
-    schedule = stage_b2.compute_vat_schedule((10.0, 20.0), reimbursement_lag_periods=2)
+    schedule = stage_b2.compute_vat_schedule(
+        (10.0, 20.0),
+        reimbursement_lag_periods=2,
+        vat_facility_commitment_keur=30.0,
+    )
 
     assert [row.vat_requirement_keur for row in schedule] == pytest.approx([10.0, 30.0, 20.0, 0.0])
     assert [row.vat_reimbursement_keur for row in schedule] == pytest.approx([0.0, 0.0, 10.0, 20.0])
+    assert [row.vat_drawn_keur for row in schedule] == pytest.approx([10.0, 30.0, 20.0, 0.0])
+    assert [row.vat_undrawn_keur for row in schedule] == pytest.approx([20.0, 0.0, 10.0, 30.0])
+
+
+def test_vat_requirement_breach_fails_against_explicit_commitment():
+    with pytest.raises(FundingShortfallError, match="VAT facility commitment breached"):
+        stage_b2.compute_vat_schedule(
+            (10.0, 20.0),
+            reimbursement_lag_periods=2,
+            vat_facility_commitment_keur=29.0,
+        )
+
+
+def test_inactive_construction_periods_are_not_capex_payment_eligible():
+    cfg = _synthetic_config(
+        capex_schedule=stage_b2.CapexScheduleSet((
+            stage_b2.CapexPaymentItem("P1", "P1 Asset", 120.0, (1.0,) + (0.0,) * 11, 0.0),
+        )),
+        timeline=tuple(
+            cfg_period.__class__(
+                **{
+                    **cfg_period.__dict__,
+                    "active_construction": False,
+                    "capex_payment_eligible": True,
+                }
+            )
+            if idx == 0 else cfg_period
+            for idx, cfg_period in enumerate(oborovo_source_config().timeline)
+        ),
+        senior_interest_rate=0.0,
+        senior_commitment_fee_rate=0.0,
+        max_iterations=20,
+    )
+    result = run_stage_b2(cfg)
+
+    assert result.monthly_hard_capex_keur[0] == pytest.approx(0.0)
+    assert result.senior_period_draw_keur[0] == pytest.approx(0.0)
+
+
+def test_inactive_vat_facility_rejects_positive_requirement():
+    timeline = tuple(
+        period.__class__(**{**period.__dict__, "vat_facility_active": False})
+        if idx == 0 else period
+        for idx, period in enumerate(oborovo_source_config().timeline)
+    )
+    cfg = _synthetic_config(
+        capex_schedule=stage_b2.CapexScheduleSet((
+            stage_b2.CapexPaymentItem("VAT", "VAT Asset", 120.0, (1.0,) + (0.0,) * 11, 0.10),
+        )),
+        timeline=timeline,
+        vat_facility_commitment_keur=12.0,
+        senior_interest_rate=0.0,
+        senior_commitment_fee_rate=0.0,
+        max_iterations=20,
+    )
+
+    with pytest.raises(FundingShortfallError, match="VAT facility inactive"):
+        run_stage_b2(cfg)
 
 
 def test_hedge_coverage_zero_and_full_change_derived_rates_generically():

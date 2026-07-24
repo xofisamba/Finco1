@@ -103,6 +103,19 @@ Do NOT assume one universal balance convention across all facilities.
 
 ## 4. Senior Debt IDC — source-proven timing semantics
 
+### 4.0 Senior commitment enforcement
+
+The generic funding waterfall must treat `senior_commitment_keur` as a hard
+facility capacity. It tracks cumulative Senior requirement period by period and
+raises a typed funding-shortfall error when required Senior funding exceeds the
+commitment beyond tolerance.
+
+The engine must not cap Senior draws to hide a breach, must not create a forced
+final draw to consume unused commitment, and must not use validation targets to
+rebalance the facility. For Oborovo, the frozen closing Senior draw remains
+approximately `42,852.266725757 kEUR`, below the configured commitment, preserving
+the known source circular residual rather than forcing a final commitment draw.
+
 ### Source workbook formula (Oborovo, reviewed 2026-07-22)
 
 ```
@@ -217,6 +230,17 @@ Calibration target (Oborovo): ≈477.303 kEUR.
 Do NOT apply the Senior Debt opening-balance convention to VAT Facility without separate
 workbook evidence.
 
+The VAT facility commitment is an explicit facility input. The VAT schedule uses
+the actual period requirement as `vat_drawn_keur`, calculates `vat_undrawn_keur`
+as `vat_facility_commitment_keur - vat_requirement_keur`, and raises a typed
+funding-shortfall error if the peak requirement exceeds commitment beyond
+tolerance. It must not use total VAT payable as the facility commitment.
+
+For Oborovo, the maximum VAT requirement remains `4,877.989945 kEUR`, terminal
+VAT requirement remains zero, VAT IDC remains approximately
+`208.44761845456716 kEUR`, and VAT commitment fee remains approximately
+`13.6219528108125 kEUR`.
+
 ### 7.1 VAT construction timing
 - `monthly_vat_payable[t]` = monthly_uses[t] × applicable_vat_rate (where VAT applies)
 - `monthly_vat_collected[t]` = derived from revenue/income (typically 0 during construction)
@@ -265,6 +289,15 @@ Calibration target (Oborovo): ≈13.622 kEUR cumulative.
 ---
 
 ## 8. Fixed-point convergence requirement
+
+### 8.0 Timeline policy flags
+
+`active_construction`, `capex_payment_eligible`, `senior_idc_active`, and
+`vat_facility_active` are runtime-policy flags, not decorative public metadata.
+CAPEX and VAT payable are only materialized for periods where construction is
+active and CAPEX payment is eligible. Senior IDC and Senior commitment fee accrue
+only while `senior_idc_active` is true. A positive VAT requirement during an
+inactive VAT facility period is a funding shortfall.
 
 **CRITICAL**: The construction financing model contains a circular dependency:
 
@@ -397,6 +430,12 @@ per-component useful-life logic:
 | VAT facility commitment fee | 20y |
 
 No changes required to `book_depreciable_capex_items()` or `canonical_wiring.py`.
+
+The construction result does not hard-code these lives as Oborovo identity logic:
+the Senior-financing and VAT-financing useful lives are explicit accounting
+adapter metadata inputs on the Stage B2 configuration. Oborovo provides 12-year
+Senior financing and 20-year VAT financing lives to preserve confirmed output
+behavior.
 
 ---
 

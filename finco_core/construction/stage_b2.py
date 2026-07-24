@@ -10,6 +10,10 @@ from dataclasses import dataclass, field
 from datetime import date
 
 
+class FundingShortfallError(ValueError):
+    """Raised when a configured construction facility is too small for required draws."""
+
+
 @dataclass(frozen=True)
 class TimelinePeriod:
     index: int
@@ -71,6 +75,8 @@ class CapitalizedFinancingCosts:
     structuring_fee_keur: float
     vat_idc_keur: float
     vat_commitment_fee_keur: float
+    senior_financing_useful_life_years: int
+    vat_financing_useful_life_years: int
 
     @property
     def total_keur(self) -> float:
@@ -84,11 +90,11 @@ class CapitalizedFinancingCosts:
 
     def useful_lives_years(self) -> dict[str, int]:
         return {
-            "senior_idc": 12,
-            "senior_commitment_fee": 12,
-            "structuring_fee": 12,
-            "vat_idc": 20,
-            "vat_commitment_fee": 20,
+            "senior_idc": self.senior_financing_useful_life_years,
+            "senior_commitment_fee": self.senior_financing_useful_life_years,
+            "structuring_fee": self.senior_financing_useful_life_years,
+            "vat_idc": self.vat_financing_useful_life_years,
+            "vat_commitment_fee": self.vat_financing_useful_life_years,
         }
 
 
@@ -103,6 +109,8 @@ class ConstructionRuntimeConfig:
     senior_commitment_keur: float
     senior_interest_rate: float
     senior_commitment_fee_rate: float
+    senior_financing_useful_life_years: int
+    vat_financing_useful_life_years: int
     senior_interest_rate_schedule: tuple[float, ...] = field(default_factory=tuple)
     base_rate: float = 0.0
     hedge_coverage: float = 0.0
@@ -138,6 +146,8 @@ class ConstructionRuntimeResult:
     monthly_hard_capex_keur: tuple[float, ...]
     vat_payable_keur: tuple[float, ...]
     vat_schedule: tuple[FacilityPeriodState, ...]
+    senior_idc_accrual_keur: tuple[float, ...]
+    senior_commitment_fee_accrual_keur: tuple[float, ...]
     cumulative_senior_draw_keur: tuple[float, ...]
     senior_period_draw_keur: tuple[float, ...]
     total_permanent_uses_keur: tuple[float, ...]
@@ -204,24 +214,44 @@ def convergence_audit(new_vectors: dict[str, tuple[float, ...]], previous_vector
     return final_residual, tuple(audits)
 
 
-def compute_vat_schedule(vat_payable_keur: tuple[float, ...], reimbursement_lag_periods: int = 6) -> tuple[FacilityPeriodState, ...]:
+def compute_vat_schedule(
+    vat_payable_keur: tuple[float, ...],
+    reimbursement_lag_periods: int = 6,
+    *,
+    vat_facility_commitment_keur: float | None = None,
+    tolerance_keur: float = 1e-9,
+) -> tuple[FacilityPeriodState, ...]:
     """Compute generic VAT schedule with a post-CAPEX reimbursement/runoff tail."""
     horizon = len(vat_payable_keur) + reimbursement_lag_periods
     requirement = 0.0
-    rows: list[FacilityPeriodState] = []
-    max_requirement = sum(vat_payable_keur)
+    raw_rows: list[tuple[int, float, float, float]] = []
+    peak_requirement = 0.0
     for idx in range(horizon):
         payable = vat_payable_keur[idx] if idx < len(vat_payable_keur) else 0.0
         reimbursement = vat_payable_keur[idx - reimbursement_lag_periods] if idx >= reimbursement_lag_periods else 0.0
         requirement = max(0.0, requirement + payable - reimbursement)
+        peak_requirement = max(peak_requirement, requirement)
+        raw_rows.append((idx + 1, payable, reimbursement, requirement))
+
+    commitment = peak_requirement if vat_facility_commitment_keur is None else vat_facility_commitment_keur
+    if commitment < -tolerance_keur:
+        raise ValueError("VAT facility commitment cannot be negative")
+    if peak_requirement > commitment + tolerance_keur:
+        raise FundingShortfallError(
+            "VAT facility commitment breached: "
+            f"peak requirement {peak_requirement:.12f} kEUR exceeds commitment {commitment:.12f} kEUR"
+        )
+
+    rows: list[FacilityPeriodState] = []
+    for period, payable, reimbursement, requirement in raw_rows:
         rows.append(
             FacilityPeriodState(
-                period=idx + 1,
+                period=period,
                 vat_payable_keur=payable,
                 vat_reimbursement_keur=reimbursement,
                 vat_requirement_keur=requirement,
                 vat_drawn_keur=requirement,
-                vat_undrawn_keur=max(0.0, max_requirement - requirement),
+                vat_undrawn_keur=max(0.0, commitment - requirement),
             )
         )
     return tuple(rows)
@@ -269,6 +299,43 @@ def _period_rates(config: ConstructionRuntimeConfig) -> tuple[float, ...]:
     return (config.senior_interest_rate,) * 12
 
 
+def _senior_financing_accruals(
+    config: ConstructionRuntimeConfig,
+    senior_period_draws: tuple[float, ...],
+    senior_rates: tuple[float, ...],
+) -> tuple[tuple[float, ...], tuple[float, ...]]:
+    idc_calc: list[float] = []
+    fee_calc: list[float] = []
+    opening_senior = 0.0
+    for idx, draw in enumerate(senior_period_draws):
+        closing_senior = opening_senior + draw
+        if config.senior_idc_balance_basis in {"CURRENT_CLOSING_DRAWN", "FUNDING_PERIOD_CLOSING_DRAWN"}:
+            idc_basis = closing_senior
+        elif config.senior_idc_balance_basis == "OPENING_DRAWN":
+            idc_basis = opening_senior
+        else:
+            raise ValueError(f"Unsupported Senior IDC balance basis: {config.senior_idc_balance_basis}")
+
+        if config.senior_commitment_fee_balance_basis in {"CURRENT_CLOSING_UNDRAWN", "FUNDING_PERIOD_CLOSING_UNDRAWN"}:
+            fee_drawn_basis = closing_senior
+        elif config.senior_commitment_fee_balance_basis == "OPENING_UNDRAWN":
+            fee_drawn_basis = opening_senior
+        else:
+            raise ValueError(
+                f"Unsupported Senior commitment-fee balance basis: {config.senior_commitment_fee_balance_basis}"
+            )
+        fee_undrawn_basis = max(0.0, config.senior_commitment_keur - fee_drawn_basis)
+        fraction = config.timeline[idx].interest_fraction
+        if config.timeline[idx].senior_idc_active:
+            idc_calc.append(idc_basis * senior_rates[idx] * fraction)
+            fee_calc.append(fee_undrawn_basis * config.senior_commitment_fee_rate * fraction)
+        else:
+            idc_calc.append(0.0)
+            fee_calc.append(0.0)
+        opening_senior = closing_senior
+    return tuple(idc_calc), tuple(fee_calc)
+
+
 def _next_period_capitalized_uses(calculated: tuple[float, ...]) -> tuple[float, ...]:
     if len(calculated) != 12:
         raise ValueError("calculated financing vectors must have 12 periods")
@@ -293,17 +360,57 @@ def _vat_fractions(config: ConstructionRuntimeConfig, horizon: int) -> tuple[flo
     return tuple((config.timeline[idx].interest_fraction if idx < len(config.timeline) else 30 / 360) for idx in range(horizon))
 
 
-def _waterfall_senior_draws(period_uses: tuple[float, ...], equity: float, shl: float) -> tuple[float, ...]:
+def _eligible_12(values: tuple[float, ...], timeline: tuple[TimelinePeriod, ...]) -> tuple[float, ...]:
+    if len(timeline) < 12:
+        raise ValueError("construction timeline must expose at least 12 construction periods")
+    return tuple(
+        value if timeline[idx].active_construction and timeline[idx].capex_payment_eligible else 0.0
+        for idx, value in enumerate(values)
+    )
+
+
+def _validate_vat_facility_active(
+    vat_schedule: tuple[FacilityPeriodState, ...],
+    timeline: tuple[TimelinePeriod, ...],
+    tolerance_keur: float,
+) -> None:
+    for idx, row in enumerate(vat_schedule):
+        active = timeline[idx].vat_facility_active if idx < len(timeline) else False
+        if not active and row.vat_requirement_keur > tolerance_keur:
+            raise FundingShortfallError(
+                "VAT facility inactive while VAT funding is required: "
+                f"period {row.period}, requirement {row.vat_requirement_keur:.12f} kEUR"
+            )
+
+
+def _waterfall_senior_draws(
+    period_uses: tuple[float, ...],
+    equity: float,
+    shl: float,
+    senior_commitment_keur: float,
+    tolerance_keur: float,
+) -> tuple[float, ...]:
     remaining_equity = equity
     remaining_shl = shl
+    cumulative_senior = 0.0
     senior_draws: list[float] = []
-    for uses in period_uses:
+    for idx, uses in enumerate(period_uses):
         equity_draw = min(remaining_equity, uses)
         remaining_equity -= equity_draw
         after_equity = uses - equity_draw
         shl_draw = min(remaining_shl, after_equity)
         remaining_shl -= shl_draw
-        senior_draws.append(after_equity - shl_draw)
+        senior_required = after_equity - shl_draw
+        if cumulative_senior + senior_required > senior_commitment_keur + tolerance_keur:
+            shortfall = cumulative_senior + senior_required - senior_commitment_keur
+            raise FundingShortfallError(
+                "Senior facility commitment breached: "
+                f"period {idx + 1}, required cumulative senior "
+                f"{cumulative_senior + senior_required:.12f} kEUR exceeds commitment "
+                f"{senior_commitment_keur:.12f} kEUR by {shortfall:.12f} kEUR"
+            )
+        cumulative_senior += senior_required
+        senior_draws.append(senior_required)
     return tuple(senior_draws)
 
 
@@ -315,9 +422,14 @@ def run_stage_b2(config: ConstructionRuntimeConfig) -> ConstructionRuntimeResult
     vectors converge.  Validation/output targets are intentionally absent from
     ConstructionRuntimeConfig and are not used here.
     """
-    hard_capex = monthly_hard_capex(config.capex_schedule)
-    vat_payable = vat_monthly_uses(config.capex_schedule)
-    vat_schedule = compute_vat_schedule(vat_payable)
+    hard_capex = _eligible_12(monthly_hard_capex(config.capex_schedule), config.timeline)
+    vat_payable = _eligible_12(vat_monthly_uses(config.capex_schedule), config.timeline)
+    vat_schedule = compute_vat_schedule(
+        vat_payable,
+        vat_facility_commitment_keur=config.vat_facility_commitment_keur,
+        tolerance_keur=config.convergence_tolerance_keur,
+    )
+    _validate_vat_facility_active(vat_schedule, config.timeline, config.convergence_tolerance_keur)
     structuring = allocate_structuring_fee(
         config.funding_policy,
         config.structuring_fee_rate * config.structuring_fee_basis_keur,
@@ -344,38 +456,14 @@ def run_stage_b2(config: ConstructionRuntimeConfig) -> ConstructionRuntimeResult
             for idx in range(12)
         )
         senior_period_draws = _waterfall_senior_draws(
-            period_uses, config.equity_available_keur, config.shl_available_keur
+            period_uses,
+            config.equity_available_keur,
+            config.shl_available_keur,
+            config.senior_commitment_keur,
+            config.convergence_tolerance_keur,
         )
 
-        idc_calc: list[float] = []
-        fee_calc: list[float] = []
-        opening_senior = 0.0
-        for idx, draw in enumerate(senior_period_draws):
-            closing_senior = opening_senior + draw
-            if config.senior_idc_balance_basis in {"CURRENT_CLOSING_DRAWN", "FUNDING_PERIOD_CLOSING_DRAWN"}:
-                idc_basis = closing_senior
-            elif config.senior_idc_balance_basis == "OPENING_DRAWN":
-                idc_basis = opening_senior
-            else:
-                raise ValueError(f"Unsupported Senior IDC balance basis: {config.senior_idc_balance_basis}")
-
-            if config.senior_commitment_fee_balance_basis in {"CURRENT_CLOSING_UNDRAWN", "FUNDING_PERIOD_CLOSING_UNDRAWN"}:
-                fee_drawn_basis = closing_senior
-            elif config.senior_commitment_fee_balance_basis == "OPENING_UNDRAWN":
-                fee_drawn_basis = opening_senior
-            else:
-                raise ValueError(
-                    f"Unsupported Senior commitment-fee balance basis: {config.senior_commitment_fee_balance_basis}"
-                )
-            fee_undrawn_basis = max(0.0, config.senior_commitment_keur - fee_drawn_basis)
-            fraction = config.timeline[idx].interest_fraction
-            if config.timeline[idx].senior_idc_active:
-                idc_calc.append(idc_basis * senior_rates[idx] * fraction)
-                fee_calc.append(fee_undrawn_basis * config.senior_commitment_fee_rate * fraction)
-            else:
-                idc_calc.append(0.0)
-                fee_calc.append(0.0)
-            opening_senior = closing_senior
+        idc_calc, fee_calc = _senior_financing_accruals(config, senior_period_draws, senior_rates)
 
         senior_idc_total = sum(idc_calc)
         senior_fee_total = sum(fee_calc)
@@ -426,13 +514,20 @@ def run_stage_b2(config: ConstructionRuntimeConfig) -> ConstructionRuntimeResult
         for idx in range(12)
     )
     senior_period_draws = _waterfall_senior_draws(
-        period_uses, config.equity_available_keur, config.shl_available_keur
+        period_uses,
+        config.equity_available_keur,
+        config.shl_available_keur,
+        config.senior_commitment_keur,
+        config.convergence_tolerance_keur,
     )
     cumulative_senior: list[float] = []
     running = 0.0
     for draw in senior_period_draws:
         running += draw
         cumulative_senior.append(running)
+    senior_idc_accruals, senior_fee_accruals = _senior_financing_accruals(
+        config, senior_period_draws, senior_rates
+    )
 
     financing = CapitalizedFinancingCosts(
         senior_idc_keur=sum(senior_idc_uses),
@@ -440,6 +535,8 @@ def run_stage_b2(config: ConstructionRuntimeConfig) -> ConstructionRuntimeResult
         structuring_fee_keur=sum(structuring),
         vat_idc_keur=vat_idc,
         vat_commitment_fee_keur=vat_fee,
+        senior_financing_useful_life_years=config.senior_financing_useful_life_years,
+        vat_financing_useful_life_years=config.vat_financing_useful_life_years,
     )
     closing_senior = cumulative_senior[-1]
     return ConstructionRuntimeResult(
@@ -447,6 +544,8 @@ def run_stage_b2(config: ConstructionRuntimeConfig) -> ConstructionRuntimeResult
         monthly_hard_capex_keur=hard_capex,
         vat_payable_keur=vat_payable,
         vat_schedule=vat_schedule,
+        senior_idc_accrual_keur=senior_idc_accruals,
+        senior_commitment_fee_accrual_keur=senior_fee_accruals,
         cumulative_senior_draw_keur=tuple(cumulative_senior),
         senior_period_draw_keur=senior_period_draws,
         total_permanent_uses_keur=period_uses,
@@ -488,6 +587,7 @@ __all__ = [
     "ConstructionRuntimeConfig",
     "ConstructionRuntimeResult",
     "FacilityPeriodState",
+    "FundingShortfallError",
     "FinancingCostFundingPolicy",
     "TimelinePeriod",
     "VectorResidualAudit",

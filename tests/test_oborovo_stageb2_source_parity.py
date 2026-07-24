@@ -9,7 +9,9 @@ import pytest
 from domain.construction.source_parity import (
     OBOROVO_EURIBOR_1M_FIXINGS,
     OBOROVO_INTEREST_FRACTIONS,
+    OBOROVO_SOURCE_COMMITMENT_FEE_MONTHLY_KEUR,
     OBOROVO_SOURCE_CUMULATIVE_SENIOR_KEUR,
+    OBOROVO_SOURCE_SENIOR_IDC_MONTHLY_KEUR,
     OBOROVO_SOURCE_VAT_REQUIREMENT_KEUR,
     SOURCE_TOTAL_USES_VALIDATION_KEUR,
     oborovo_capex_schedule,
@@ -222,12 +224,47 @@ def test_oborovo_senior_cumulative_parity_and_source_residual_without_forced_dra
     assert result.closing_senior_drawn_keur != pytest.approx(result.config.senior_commitment_keur, abs=0.001)
 
 
-def test_oborovo_senior_financing_formula_totals_are_not_output_profile_replay():
-    from domain.construction.source_parity import (
-        OBOROVO_SOURCE_COMMITMENT_FEE_MONTHLY_KEUR,
-        OBOROVO_SOURCE_SENIOR_IDC_MONTHLY_KEUR,
-    )
+def test_oborovo_full_senior_cumulative_vector_is_frozen_without_final_draw():
+    result = _result()
 
+    assert result.cumulative_senior_draw_keur == pytest.approx(OBOROVO_SOURCE_CUMULATIVE_SENIOR_KEUR, abs=1e-6)
+    assert result.senior_period_draw_keur[0] == pytest.approx(1_384.6630181496785, abs=1e-9)
+    assert result.closing_senior_drawn_keur == pytest.approx(42_852.266725756956, abs=1e-9)
+    assert result.closing_senior_drawn_keur < result.config.senior_commitment_keur
+
+
+def test_oborovo_full_vat_requirement_vector_and_commitment_audit_are_frozen():
+    result = _result()
+    requirements = tuple(row.vat_requirement_keur for row in result.vat_schedule)
+
+    assert requirements == pytest.approx(OBOROVO_SOURCE_VAT_REQUIREMENT_KEUR, abs=1e-6)
+    assert max(requirements) == pytest.approx(4_877.989945, abs=1e-9)
+    assert result.vat_schedule[-1].vat_requirement_keur == pytest.approx(0.0, abs=1e-9)
+    assert result.vat_schedule[5].vat_drawn_keur == pytest.approx(4_877.989945, abs=1e-9)
+    assert result.vat_schedule[5].vat_undrawn_keur == pytest.approx(0.0, abs=1e-9)
+
+
+def test_oborovo_senior_financing_accrual_vectors_are_audit_outputs_not_inputs():
+    result = _result()
+    expected_idc = OBOROVO_SOURCE_SENIOR_IDC_MONTHLY_KEUR + (0.0,)
+    expected_fee = OBOROVO_SOURCE_COMMITMENT_FEE_MONTHLY_KEUR + (0.0,)
+
+    assert result.senior_idc_accrual_keur == pytest.approx(expected_idc, abs=1e-8)
+    assert result.senior_commitment_fee_accrual_keur == pytest.approx(expected_fee, abs=1e-8)
+    assert "source_senior_idc_accrual_validation_keur" not in result.config.__dataclass_fields__
+    assert "source_senior_commitment_fee_accrual_validation_keur" not in result.config.__dataclass_fields__
+
+
+def test_oborovo_vat_financing_totals_and_hard_capex_fingerprint_are_frozen():
+    result = _result()
+    financing = result.capitalized_financing_costs
+
+    assert financing.vat_idc_keur == pytest.approx(208.44761845456716, abs=1e-12)
+    assert financing.vat_commitment_fee_keur == pytest.approx(13.6219528108125, abs=1e-12)
+    assert total_hard_capex(result.config.capex_schedule) == pytest.approx(55_999.0855, abs=1e-9)
+
+
+def test_oborovo_senior_financing_formula_totals_are_not_output_profile_replay():
     result = _result()
     financing = result.capitalized_financing_costs
 

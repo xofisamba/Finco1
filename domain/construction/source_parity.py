@@ -226,6 +226,8 @@ def oborovo_source_config() -> ConstructionRuntimeConfig:
         senior_commitment_keur=42_852.27876256299,
         senior_interest_rate=0.0265,
         senior_commitment_fee_rate=0.0105,
+        senior_financing_useful_life_years=12,
+        vat_financing_useful_life_years=20,
         base_rate=0.03,
         hedge_coverage=0.80,
         swap_margin=0.0020,
