@@ -294,10 +294,14 @@ Calibration target (Oborovo): ≈13.622 kEUR cumulative.
 
 `active_construction`, `capex_payment_eligible`, `senior_idc_active`, and
 `vat_facility_active` are runtime-policy flags, not decorative public metadata.
-CAPEX and VAT payable are only materialized for periods where construction is
-active and CAPEX payment is eligible. Senior IDC and Senior commitment fee accrue
-only while `senior_idc_active` is true. A positive VAT requirement during an
-inactive VAT facility period is a funding shortfall.
+Scheduled CAPEX and VAT-generating CAPEX must occur only in periods where
+construction is active and CAPEX payment is eligible. If a positive scheduled
+amount appears in an inactive or ineligible period, the runtime must fail fast
+before financing calculations begin. It must not silently drop project costs or
+make final GFA internally inconsistent with the scheduled CAPEX source. Senior
+IDC and Senior commitment fee accrue only while `senior_idc_active` is true. A
+positive VAT requirement during an inactive VAT facility period is a funding
+shortfall.
 
 **CRITICAL**: The construction financing model contains a circular dependency:
 
@@ -418,8 +422,9 @@ This output replaces the current calibration fields in `CapexStructure`:
 
 ## 10. Book depreciation handoff
 
-`CapitalizedFinancingCosts` feeds `book_depreciable_capex_items()` through the same
-per-component useful-life logic:
+`CapitalizedFinancingCosts` is an amount-only construction output. It feeds
+`book_depreciable_capex_items()` through the existing `CapexStructure` financing
+fields, but Stage B2 does not own or expose accounting useful-life policy.
 
 | Component | Book life |
 |-----------|-----------|
@@ -431,11 +436,10 @@ per-component useful-life logic:
 
 No changes required to `book_depreciable_capex_items()` or `canonical_wiring.py`.
 
-The construction result does not hard-code these lives as Oborovo identity logic:
-the Senior-financing and VAT-financing useful lives are explicit accounting
-adapter metadata inputs on the Stage B2 configuration. Oborovo provides 12-year
-Senior financing and 20-year VAT financing lives to preserve confirmed output
-behavior.
+The 12-year Senior financing and 20-year VAT financing lives are preserved as
+existing accounting/book-depreciation behavior outside Stage B2. Construction
+Stage B2 calculates financing amounts only; the accounting layer owns useful-life
+classification and any future configurability.
 
 ---
 

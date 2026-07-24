@@ -100,6 +100,7 @@ def test_capitalized_financing_adapter_populates_real_capex_structure_fields():
         result.capitalized_financing_costs.vat_idc_keur
         + result.capitalized_financing_costs.vat_commitment_fee_keur
     )
+    # Useful-life policy is owned by the accounting layer; Stage B2 hands off amounts only.
     names = {item.name: item for item in updated.book_depreciable_capex_items()}
     assert names["IDC (Interest During Construction)"].useful_life_override == 12
     assert names["Commitment Fees"].useful_life_override == 12
@@ -107,18 +108,24 @@ def test_capitalized_financing_adapter_populates_real_capex_structure_fields():
     assert names["VAT Costs"].useful_life_override == 20
 
 
-def test_stage_b2_financing_useful_lives_are_explicit_config_metadata():
+def test_stage_b2_financing_costs_do_not_expose_accounting_useful_life_policy():
     result = run_stage_b2(_synthetic_config(
         senior_interest_rate=0.0,
         senior_commitment_fee_rate=0.0,
-        senior_financing_useful_life_years=15,
-        vat_financing_useful_life_years=25,
         max_iterations=20,
     ))
 
-    assert result.capitalized_financing_costs.useful_lives_years()["senior_idc"] == 15
-    assert result.capitalized_financing_costs.useful_lives_years()["structuring_fee"] == 15
-    assert result.capitalized_financing_costs.useful_lives_years()["vat_idc"] == 25
+    assert "senior_financing_useful_life_years" not in result.config.__dataclass_fields__
+    assert "vat_financing_useful_life_years" not in result.config.__dataclass_fields__
+    assert (
+        "senior_financing_useful_life_years"
+        not in result.capitalized_financing_costs.__dataclass_fields__
+    )
+    assert (
+        "vat_financing_useful_life_years"
+        not in result.capitalized_financing_costs.__dataclass_fields__
+    )
+    assert not hasattr(result.capitalized_financing_costs, "useful_lives_years")
 
 
 def _synthetic_config(**overrides):
@@ -292,7 +299,7 @@ def test_vat_requirement_breach_fails_against_explicit_commitment():
         )
 
 
-def test_inactive_construction_periods_are_not_capex_payment_eligible():
+def test_positive_capex_in_inactive_construction_period_fails_fast():
     cfg = _synthetic_config(
         capex_schedule=stage_b2.CapexScheduleSet((
             stage_b2.CapexPaymentItem("P1", "P1 Asset", 120.0, (1.0,) + (0.0,) * 11, 0.0),
@@ -312,10 +319,61 @@ def test_inactive_construction_periods_are_not_capex_payment_eligible():
         senior_commitment_fee_rate=0.0,
         max_iterations=20,
     )
+
+    with pytest.raises(ValueError, match="CAPEX scheduled in inactive construction period 1"):
+        run_stage_b2(cfg)
+
+
+def test_zero_scheduled_capex_in_inactive_construction_period_is_valid():
+    cfg = _synthetic_config(
+        capex_schedule=stage_b2.CapexScheduleSet((
+            stage_b2.CapexPaymentItem("P2", "P2 Asset", 120.0, (0.0, 1.0) + (0.0,) * 10, 0.0),
+        )),
+        timeline=tuple(
+            cfg_period.__class__(
+                **{
+                    **cfg_period.__dict__,
+                    "active_construction": False,
+                    "capex_payment_eligible": False,
+                }
+            )
+            if idx == 0 else cfg_period
+            for idx, cfg_period in enumerate(oborovo_source_config().timeline)
+        ),
+        senior_interest_rate=0.0,
+        senior_commitment_fee_rate=0.0,
+        max_iterations=20,
+    )
     result = run_stage_b2(cfg)
 
     assert result.monthly_hard_capex_keur[0] == pytest.approx(0.0)
-    assert result.senior_period_draw_keur[0] == pytest.approx(0.0)
+    assert result.monthly_hard_capex_keur[1] == pytest.approx(120.0)
+
+
+def test_positive_vat_generating_capex_in_ineligible_period_fails_fast():
+    cfg = _synthetic_config(
+        capex_schedule=stage_b2.CapexScheduleSet((
+            stage_b2.CapexPaymentItem("VAT", "VAT Asset", 120.0, (1.0,) + (0.0,) * 11, 0.10),
+        )),
+        timeline=tuple(
+            cfg_period.__class__(
+                **{
+                    **cfg_period.__dict__,
+                    "active_construction": True,
+                    "capex_payment_eligible": False,
+                }
+            )
+            if idx == 0 else cfg_period
+            for idx, cfg_period in enumerate(oborovo_source_config().timeline)
+        ),
+        vat_facility_commitment_keur=12.0,
+        senior_interest_rate=0.0,
+        senior_commitment_fee_rate=0.0,
+        max_iterations=20,
+    )
+
+    with pytest.raises(ValueError, match="VAT-generating CAPEX scheduled in ineligible CAPEX payment period 1"):
+        run_stage_b2(cfg)
 
 
 def test_inactive_vat_facility_rejects_positive_requirement():

@@ -204,14 +204,14 @@ def test_oborovo_validation_outputs_are_not_replayed_as_runtime_config_inputs():
     assert result.capitalized_financing_costs.senior_commitment_fee_keur > 0.0
 
 
-def test_capitalized_financing_useful_life_handoff_metadata():
-    lives = _result().capitalized_financing_costs.useful_lives_years()
+def test_stage_b2_financing_result_is_amount_only_not_accounting_useful_life_policy():
+    result = _result()
 
-    assert lives["senior_idc"] == 12
-    assert lives["senior_commitment_fee"] == 12
-    assert lives["structuring_fee"] == 12
-    assert lives["vat_idc"] == 20
-    assert lives["vat_commitment_fee"] == 20
+    assert "senior_financing_useful_life_years" not in result.config.__dataclass_fields__
+    assert "vat_financing_useful_life_years" not in result.config.__dataclass_fields__
+    assert not hasattr(result.capitalized_financing_costs, "useful_lives_years")
+    assert result.capitalized_financing_costs.senior_idc_keur > 0.0
+    assert result.capitalized_financing_costs.vat_idc_keur > 0.0
 
 
 def test_oborovo_senior_cumulative_parity_and_source_residual_without_forced_draw():

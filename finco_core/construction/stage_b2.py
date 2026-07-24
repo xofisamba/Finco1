@@ -75,8 +75,6 @@ class CapitalizedFinancingCosts:
     structuring_fee_keur: float
     vat_idc_keur: float
     vat_commitment_fee_keur: float
-    senior_financing_useful_life_years: int
-    vat_financing_useful_life_years: int
 
     @property
     def total_keur(self) -> float:
@@ -87,15 +85,6 @@ class CapitalizedFinancingCosts:
             + self.vat_idc_keur
             + self.vat_commitment_fee_keur
         )
-
-    def useful_lives_years(self) -> dict[str, int]:
-        return {
-            "senior_idc": self.senior_financing_useful_life_years,
-            "senior_commitment_fee": self.senior_financing_useful_life_years,
-            "structuring_fee": self.senior_financing_useful_life_years,
-            "vat_idc": self.vat_financing_useful_life_years,
-            "vat_commitment_fee": self.vat_financing_useful_life_years,
-        }
 
 
 @dataclass(frozen=True)
@@ -109,8 +98,6 @@ class ConstructionRuntimeConfig:
     senior_commitment_keur: float
     senior_interest_rate: float
     senior_commitment_fee_rate: float
-    senior_financing_useful_life_years: int
-    vat_financing_useful_life_years: int
     senior_interest_rate_schedule: tuple[float, ...] = field(default_factory=tuple)
     base_rate: float = 0.0
     hedge_coverage: float = 0.0
@@ -360,13 +347,38 @@ def _vat_fractions(config: ConstructionRuntimeConfig, horizon: int) -> tuple[flo
     return tuple((config.timeline[idx].interest_fraction if idx < len(config.timeline) else 30 / 360) for idx in range(horizon))
 
 
-def _eligible_12(values: tuple[float, ...], timeline: tuple[TimelinePeriod, ...]) -> tuple[float, ...]:
+def _validate_capex_timeline(
+    hard_capex: tuple[float, ...],
+    vat_payable: tuple[float, ...],
+    timeline: tuple[TimelinePeriod, ...],
+    tolerance_keur: float,
+) -> None:
     if len(timeline) < 12:
         raise ValueError("construction timeline must expose at least 12 construction periods")
-    return tuple(
-        value if timeline[idx].active_construction and timeline[idx].capex_payment_eligible else 0.0
-        for idx, value in enumerate(values)
-    )
+    if len(hard_capex) != 12 or len(vat_payable) != 12:
+        raise ValueError("construction CAPEX and VAT vectors must expose exactly 12 periods")
+
+    for idx, (hard, vat) in enumerate(zip(hard_capex, vat_payable)):
+        period = timeline[idx]
+        if hard <= tolerance_keur and vat <= tolerance_keur:
+            continue
+
+        inactive = not period.active_construction
+        ineligible = not period.capex_payment_eligible
+        if not inactive and not ineligible:
+            continue
+
+        reason = "inactive construction" if inactive else "ineligible CAPEX payment"
+        if vat > tolerance_keur:
+            raise ValueError(
+                "VAT-generating CAPEX scheduled in "
+                f"{reason} period {idx + 1}: VAT payable {vat:.12f} kEUR; "
+                f"hard CAPEX {hard:.12f} kEUR"
+            )
+        raise ValueError(
+            f"CAPEX scheduled in {reason} period {idx + 1}: "
+            f"{hard:.12f} kEUR"
+        )
 
 
 def _validate_vat_facility_active(
@@ -422,8 +434,14 @@ def run_stage_b2(config: ConstructionRuntimeConfig) -> ConstructionRuntimeResult
     vectors converge.  Validation/output targets are intentionally absent from
     ConstructionRuntimeConfig and are not used here.
     """
-    hard_capex = _eligible_12(monthly_hard_capex(config.capex_schedule), config.timeline)
-    vat_payable = _eligible_12(vat_monthly_uses(config.capex_schedule), config.timeline)
+    hard_capex = monthly_hard_capex(config.capex_schedule)
+    vat_payable = vat_monthly_uses(config.capex_schedule)
+    _validate_capex_timeline(
+        hard_capex,
+        vat_payable,
+        config.timeline,
+        config.convergence_tolerance_keur,
+    )
     vat_schedule = compute_vat_schedule(
         vat_payable,
         vat_facility_commitment_keur=config.vat_facility_commitment_keur,
@@ -535,8 +553,6 @@ def run_stage_b2(config: ConstructionRuntimeConfig) -> ConstructionRuntimeResult
         structuring_fee_keur=sum(structuring),
         vat_idc_keur=vat_idc,
         vat_commitment_fee_keur=vat_fee,
-        senior_financing_useful_life_years=config.senior_financing_useful_life_years,
-        vat_financing_useful_life_years=config.vat_financing_useful_life_years,
     )
     closing_senior = cumulative_senior[-1]
     return ConstructionRuntimeResult(
