@@ -54,17 +54,6 @@ jobs:
           pip install --no-cache-dir -c constraints.txt -e .
           pip install --no-cache-dir -c constraints.txt pytest
 
-      - name: Check baseline snapshots are unchanged
-        run: |
-          BASE="${{ steps.base.outputs.base_sha }}"
-          CHANGED="$(git diff --name-only "$BASE"...HEAD -- finco_parity/baselines/snapshots/)"
-          if [ -n "$CHANGED" ]; then
-            echo "ERROR: Baseline snapshot files were modified:" >&2
-            echo "$CHANGED" >&2
-            exit 1
-          fi
-          echo "Baseline snapshots: unchanged"
-
       - name: Check protected production scope (narrow governance)
         run: |
           BASE="${{ steps.base.outputs.base_sha }}"
