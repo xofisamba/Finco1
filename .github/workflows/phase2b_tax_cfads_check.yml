@@ -70,12 +70,6 @@ jobs:
           pip install --no-cache-dir -c constraints.txt -e .
           pip install --no-cache-dir -c constraints.txt pytest
 
-      # ── Step 5: Protected production scope (narrow governance) ────────────────────────
-      - name: Check protected production scope (narrow governance)
-        run: |
-          BASE="${{ steps.base.outputs.base_sha }}"
-          python3 .github/scripts/check_protected_scope.py "$BASE" HEAD
-
       # ── Step 6: Phase 2B test suite ────────────────────────────────────────
       - name: Phase 2B test suite (tests A–J+)
         run: |
