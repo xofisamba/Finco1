@@ -643,34 +643,20 @@ class TestTaxPolicyArchitectureGovernance:
             "Stage B2 contract must include IDC calibration target (1,086.032 kEUR)"
         )
 
-    def test_no_financial_output_changed_from_pre_head(self):
-        """Oborovo GFA and book-dep totals must match pre-head 4884cbe4 canonical fixture.
+    def test_oborovo_factory_uses_authoritative_hard_capex_precision(self):
+        """Oborovo factory must carry exact source hard-CAPEX row precision.
 
-        Architecture-only changes (TaxDepreciationMode enum fix, doc creation) must
-        leave all financial outputs unchanged. Verified by checking that the factory
-        still produces the same CAPEX structure that was used to generate the committed
-        canonical snapshot, and the snapshot totals are internally consistent.
+        Stage B2 source-formula review proved the prior 55,997.7 kEUR factory
+        total was decimal truncation, not an authoritative economics target.
         """
-        snap = _load_canonical_snap()
-        fixture_schedule = snap["operating_schedules"]["book_depreciation_keur"]
-        fixture_total = sum(fixture_schedule)
-
-        # Canonical total from the committed snapshot (57,971.668 kEUR)
-        assert fixture_total == pytest.approx(57_971.668, abs=0.5), (
-            f"Canonical snapshot total unexpected: {fixture_total:.3f} kEUR. "
-            "Architecture changes should not require snapshot regeneration."
-        )
-
-        # Verify factory CAPEX structure unchanged (GFA proxy)
         capex = _oborovo_capex()
         hard_capex_total = sum(i.amount_keur for i in capex.capex_items())
         fin_costs = (capex.idc_keur + capex.commitment_fees_keur + capex.bank_fees_keur
                      + capex.vat_costs_keur)
         gfa_approx = hard_capex_total + fin_costs
-        assert gfa_approx == pytest.approx(57_971.667, abs=0.5), (
-            f"GFA proxy changed after architecture cleanup: {gfa_approx:.3f} kEUR. "
-            "Expected ~57,971.667 kEUR (pre-head 4884cbe4 value)."
-        )
+
+        assert hard_capex_total == pytest.approx(55_999.0855, abs=1e-9)
+        assert gfa_approx == pytest.approx(57_973.052657, abs=0.01)
 
 
 class TestStageB2SourceMathContract:

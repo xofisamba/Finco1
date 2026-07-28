@@ -49,8 +49,7 @@ def create_default_oborovo() -> ProjectInputs:
     # Payment schedules: equal monthly spread (12-month construction) unless
     # workbook proves a different pattern (upfront, milestone, completion).
     # NO balancing plug — all items are auditable to source rows.
-    # Sum = ~55,999 kEUR (slight rounding gap vs 55,999.0855 due to source extraction
-    # integer precision; see test_hard_capex_sum_matches_source).
+    # Sum = 55,999.0855 kEUR from exact workbook row precision.
     _OBR_HARD_LIFE = 20  # source: Oborovo Dep tab, column B, confirmed 2026-07-22
     _EQ = tuple(1/12 for _ in range(12))  # equal 12-month construction spread (default)
 
@@ -109,7 +108,7 @@ def create_default_oborovo() -> ProjectInputs:
     # Source row: "Construction Management" — full amount in primary slot
     construction_mgmt_a = CapexItem(
         name="Construction Management",
-        amount_keur=1151.0,  # source ≈1,151 kEUR (previously split incorrectly)
+        amount_keur=1151.134,  # exact source 1,151.134 kEUR
         spending_profile=_EQ,
         useful_life_override=_OBR_HARD_LIFE,
     )
@@ -136,7 +135,7 @@ def create_default_oborovo() -> ProjectInputs:
     # Source row: "Contingencies"
     contingencies = CapexItem(
         name="Contingencies",
-        amount_keur=1986.0,  # source ≈1,986 kEUR (previously 6,681.89 — was balancing plug)
+        amount_keur=1986.440,  # exact source 1,986.440 kEUR
         y0_share=1.0,
         useful_life_override=_OBR_HARD_LIFE,
     )
@@ -150,21 +149,21 @@ def create_default_oborovo() -> ProjectInputs:
     # Source row: "Project Acquisition / Development"
     project_acquisition = CapexItem(
         name="Project Acquisition and Development",
-        amount_keur=18.0,  # source ≈18 kEUR (previously 1,000 — wrong)
+        amount_keur=18.327,  # exact source 18.327 kEUR
         y0_share=1.0,  # pre-construction development cost
         useful_life_override=_OBR_HARD_LIFE,
     )
     # Source row: "Project Rights"
     project_rights = CapexItem(
         name="Project Rights",
-        amount_keur=8524.0,  # source ≈8,524 kEUR (previously 3,024.5 — wrong)
+        amount_keur=8524.4845,  # exact source 8,524.4845 kEUR
         y0_share=1.0,  # acquired pre-construction
         useful_life_override=_OBR_HARD_LIFE,
     )
-    # Hard CAPEX sum check (for documentation):
-    # 10912.7+26430+2014+4050+150+320+355+1151+17+70+0+1986+0+18+8524 = 55997.7 kEUR
-    # Target: 55,999.0855 kEUR. Gap of ~1.39 kEUR = source-extraction integer rounding.
-    # No balancing plug. Exact workbook decimal values would close this gap precisely.
+    # Hard CAPEX sum check: exact source rows sum to 55,999.0855 kEUR.
+    # The former 55,997.7 kEUR narrative was decimal truncation across
+    # Construction Management, Contingencies, Project Acquisition/Development,
+    # and Project Rights — no balancing plug is used.
 
     capex = CapexStructure(
         epc_contract=epc_contract,

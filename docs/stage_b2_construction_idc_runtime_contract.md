@@ -103,6 +103,19 @@ Do NOT assume one universal balance convention across all facilities.
 
 ## 4. Senior Debt IDC — source-proven timing semantics
 
+### 4.0 Senior commitment enforcement
+
+The generic funding waterfall must treat `senior_commitment_keur` as a hard
+facility capacity. It tracks cumulative Senior requirement period by period and
+raises a typed funding-shortfall error when required Senior funding exceeds the
+commitment beyond tolerance.
+
+The engine must not cap Senior draws to hide a breach, must not create a forced
+final draw to consume unused commitment, and must not use validation targets to
+rebalance the facility. For Oborovo, the frozen closing Senior draw remains
+approximately `42,852.266725757 kEUR`, below the configured commitment, preserving
+the known source circular residual rather than forcing a final commitment draw.
+
 ### Source workbook formula (Oborovo, reviewed 2026-07-22)
 
 ```
@@ -165,6 +178,38 @@ not the closing undrawn. This is consistent with the interest balance convention
 
 Calibration target (Oborovo): ≈188.563 kEUR cumulative.
 
+### 5.1 IDC and commitment percentage/profile rows are derived outputs
+
+Direct Oborovo workbook evidence shows the IDC and commitment-fee percentage rows use formulas such as:
+
+```excel
+=IF(SUM($D55;$D57)=0;0;SUM(I55;I57)/SUM($D55;$D57))
+=IF(SUM($D56;$D58)=0;0;SUM(I56;I58)/SUM($D56;$D58))
+```
+
+These rows divide same-column period financing-cost values by total financing costs. They are audit/display outputs, not primary payment-schedule inputs. In funding-period terms, the engine must fund construction Uses in period `t`, calculate financing cost on the resulting funded balance for the source accrual interval, and capitalize that financing cost in funding period `t+1`.
+
+### 5.2 Senior period-rate formula chain
+
+Direct Oborovo workbook evidence shows:
+
+```excel
+All-in base rate[t] = $C59 + row60[t]
+C59 = Inputs!$D$202 * Inputs!$D$230 + SUM(Inputs!$D$232:$D$234)/100
+row60[t] = IF(Inputs!C$301>0; Inputs!C$301 * $C60; 0)
+```
+
+Generic implementation:
+
+```text
+hedged_component = base_rate * hedge_coverage + swap_margin + forward_swap_margin + cva
+floating_weight = (1 - hedge_coverage) * (1 + external_curve_buffer)
+row60[t] = euribor_1m_fixing[t] * floating_weight
+senior_idc_rate[t] = hedged_component + row60[t] + senior_margin
+```
+
+For Oborovo, C59 is 2.60% from 3.00% base rate × 80% hedge coverage + 20 bps swap margin. The literal effective-rate vector is validation evidence only; runtime inputs are primitive rate assumptions plus the Euribor 1m fixing curve.
+
 ---
 
 ## 6. Structuring / arrangement fee
@@ -184,6 +229,17 @@ Calibration target (Oborovo): ≈477.303 kEUR.
 **VAT Facility formulas use their own source timing convention, distinct from Senior Debt.**
 Do NOT apply the Senior Debt opening-balance convention to VAT Facility without separate
 workbook evidence.
+
+The VAT facility commitment is an explicit facility input. The VAT schedule uses
+the actual period requirement as `vat_drawn_keur`, calculates `vat_undrawn_keur`
+as `vat_facility_commitment_keur - vat_requirement_keur`, and raises a typed
+funding-shortfall error if the peak requirement exceeds commitment beyond
+tolerance. It must not use total VAT payable as the facility commitment.
+
+For Oborovo, the maximum VAT requirement remains `4,877.989945 kEUR`, terminal
+VAT requirement remains zero, VAT IDC remains approximately
+`208.44761845456716 kEUR`, and VAT commitment fee remains approximately
+`13.6219528108125 kEUR`.
 
 ### 7.1 VAT construction timing
 - `monthly_vat_payable[t]` = monthly_uses[t] × applicable_vat_rate (where VAT applies)
@@ -233,6 +289,19 @@ Calibration target (Oborovo): ≈13.622 kEUR cumulative.
 ---
 
 ## 8. Fixed-point convergence requirement
+
+### 8.0 Timeline policy flags
+
+`active_construction`, `capex_payment_eligible`, `senior_idc_active`, and
+`vat_facility_active` are runtime-policy flags, not decorative public metadata.
+Scheduled CAPEX and VAT-generating CAPEX must occur only in periods where
+construction is active and CAPEX payment is eligible. If a positive scheduled
+amount appears in an inactive or ineligible period, the runtime must fail fast
+before financing calculations begin. It must not silently drop project costs or
+make final GFA internally inconsistent with the scheduled CAPEX source. Senior
+IDC and Senior commitment fee accrue only while `senior_idc_active` is true. A
+positive VAT requirement during an inactive VAT facility period is a funding
+shortfall.
 
 **CRITICAL**: The construction financing model contains a circular dependency:
 
@@ -353,8 +422,9 @@ This output replaces the current calibration fields in `CapexStructure`:
 
 ## 10. Book depreciation handoff
 
-`CapitalizedFinancingCosts` feeds `book_depreciable_capex_items()` through the same
-per-component useful-life logic:
+`CapitalizedFinancingCosts` is an amount-only construction output. It feeds
+`book_depreciable_capex_items()` through the existing `CapexStructure` financing
+fields, but Stage B2 does not own or expose accounting useful-life policy.
 
 | Component | Book life |
 |-----------|-----------|
@@ -365,6 +435,11 @@ per-component useful-life logic:
 | VAT facility commitment fee | 20y |
 
 No changes required to `book_depreciable_capex_items()` or `canonical_wiring.py`.
+
+The 12-year Senior financing and 20-year VAT financing lives are preserved as
+existing accounting/book-depreciation behavior outside Stage B2. Construction
+Stage B2 calculates financing amounts only; the accounting layer owns useful-life
+classification and any future configurability.
 
 ---
 
