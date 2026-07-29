@@ -58,22 +58,23 @@
   {# ── Local navigation ──────────────────────────────────────────────── #}
   <nav class="v2-inputs-nav" aria-label="Revenue sections">
     <a href="#nav-rev-commercial">Commercial</a>
-    <a href="#nav-rev-balancing">Balancing</a>
+    <a href="#nav-rev-balancing">Balancing &amp; CO2</a>
+    <a href="#nav-rev-merchant">Merchant Curve</a>
     <a href="#nav-rev-outputs">Outputs</a>
-    <a href="#nav-rev-planned">Planned</a>
     <a href="#nav-rev-future">Future</a>
   </nav>
 
-  {# ── 1. Commercial Structure (BOUND fields) ───────────────────────── #}
+  {# ── 1. Commercial Structure ──────────────────────────────────────── #}
+  {# Revenue Model V1: single PPA plus residual merchant.               #}
+  {# All ppa section BOUND fields are live — canonical rev_ppa_*        #}
+  {# keys win over legacy tariff_eur_mwh / ppa_term_years in the        #}
+  {# snapshot adapter (C2B2).                                            #}
   <details class="v2-inputs-section" open>
     {{ section_anchor("commercial", "1. Commercial Structure") }}
     <div class="v2-section-fields">
 
-      {# All ppa section fields — render_field decides BOUND→editable / PARTIAL→read-only badge #}
-      {# revenue.ppa.base_tariff is BOUND in registry but NOT wired in V2 _snapshot_to_dict   #}
-      {# (engine reads legacy tariff_eur_mwh key). It is shown in section 4 Planned inputs.   #}
       {% for f in revenue_fields %}
-        {% if f.section_id == "ppa" and f.field_id != "revenue.ppa.base_tariff" %}
+        {% if f.section_id == "ppa" and f.binding_status.value != "PARTIAL" %}
           {{ render_field(f, project_code, workbook_version, content_hash, project_editable,
                           hx_target="#v2-sheet-revenue", sheet_id="revenue") }}
         {% endif %}
@@ -83,8 +84,12 @@
   </details>
 
   {# ── 2. Balancing & CO2 ────────────────────────────────────────────── #}
-  <details class="v2-inputs-section">
-    {{ section_anchor("balancing", "2. Balancing & CO2") }}
+  {# Two separate balancing concepts:                                     #}
+  {# • Merchant Balancing %: fraction of spot sales (Oborovo CF row 40)  #}
+  {# • Balancing EUR/MWh: flat per-MWh cost (wind projects)              #}
+  {# CO2 price is EUR/MWh applied to total generation (not EUR/tCO2).    #}
+  <details class="v2-inputs-section" open>
+    {{ section_anchor("balancing", "2. Balancing &amp; CO2") }}
     <div class="v2-section-fields">
 
       {% for f in revenue_fields %}
@@ -97,14 +102,33 @@
     </div>
   </details>
 
-  {# ── 3. Revenue Outputs ────────────────────────────────────────────── #}
+  {# ── 3. Merchant Price Curve ────────────────────────────────────────── #}
+  {# Calendar-year price schedule stored as JSON array.                   #}
+  {# Format: [{"year": 2042, "price_eur_mwh": 75.12}, ...]               #}
+  {# Matches Excel Inputs row 106 / CF row 30. When present wins over     #}
+  {# the legacy market_prices_curve (operating-year indexed).             #}
+  <details class="v2-inputs-section">
+    {{ section_anchor("merchant", "3. Merchant Price Curve") }}
+    <div class="v2-section-fields">
+
+      {% for f in revenue_fields %}
+        {% if f.section_id == "merchant" %}
+          {{ render_field(f, project_code, workbook_version, content_hash, project_editable,
+                          hx_target="#v2-sheet-revenue", sheet_id="revenue") }}
+        {% endif %}
+      {% endfor %}
+
+    </div>
+  </details>
+
+  {# ── 4. Revenue Outputs ────────────────────────────────────────────── #}
   {#
     Data authority: runtime_summary["revenue_derivation"] from persisted RuntimeResult.
     No arithmetic, no totals, no annualisation in this template.
     State classification uses the same four states as Debt / Tax / FS.
   #}
   <details class="v2-inputs-section" open>
-    {{ section_anchor("outputs", "3. Revenue Outputs") }}
+    {{ section_anchor("outputs", "4. Revenue Outputs") }}
     <div class="v2-section-fields">
 
       {# State badge #}
@@ -199,25 +223,6 @@
         {% endif %}
       {% endif %}
 
-    </div>
-  </details>
-
-  {# ── 4. Planned inputs (collapsed) ────────────────────────────────── #}
-  <details class="v2-inputs-section">
-    {{ section_anchor("planned", "4. Planned inputs") }}
-    <div class="v2-section-fields">
-      {# revenue.ppa.base_tariff: stored in draft but not wired to V2 engine (reads tariff_eur_mwh) #}
-      {{ placeholder_row("PPA Base Tariff (EUR/MWh)", "Not wired in V2 engine — use project creation") }}
-      {{ placeholder_row("Offtake Type") }}
-      {{ placeholder_row("Merchant %") }}
-      {{ placeholder_row("Contract Count") }}
-      {{ placeholder_row("CfD Strike Price") }}
-      {{ placeholder_row("Corporate PPA") }}
-      {{ placeholder_row("Merchant Price") }}
-      {{ placeholder_row("Indexation") }}
-      {{ placeholder_row("Price Curve") }}
-      {{ placeholder_row("Reference Market") }}
-      {{ placeholder_row("Inflation Link") }}
     </div>
   </details>
 

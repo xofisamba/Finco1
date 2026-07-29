@@ -105,6 +105,65 @@ def _set_revenue_ppa_term(proj: "ProjectInputs", value: int) -> "ProjectInputs":
     )
 
 
+def _set_revenue_ppa_index(proj: "ProjectInputs", value: float) -> "ProjectInputs":
+    return dc_replace(proj, revenue=dc_replace(proj.revenue, ppa_index=value))
+
+
+def _set_revenue_ppa_production_share(proj: "ProjectInputs", value: float) -> "ProjectInputs":
+    return dc_replace(proj, revenue=dc_replace(proj.revenue, ppa_production_share=value))
+
+
+def _set_revenue_ppa_indexation_policy(proj: "ProjectInputs", value: str) -> "ProjectInputs":
+    return dc_replace(proj, revenue=dc_replace(proj.revenue, ppa_indexation_start_policy=value))
+
+
+def _set_revenue_merchant_balancing_pct(proj: "ProjectInputs", value: float) -> "ProjectInputs":
+    """Set balancing_cost_pv (% of merchant revenue as fraction 0–1)."""
+    return dc_replace(proj, revenue=dc_replace(proj.revenue, balancing_cost_pv=value / 100.0))
+
+
+def _set_revenue_balancing_eur_per_mwh(proj: "ProjectInputs", value: float) -> "ProjectInputs":
+    return dc_replace(proj, revenue=dc_replace(proj.revenue, balancing_cost_eur_per_mwh=value))
+
+
+def _set_revenue_co2_enabled(proj: "ProjectInputs", value: bool) -> "ProjectInputs":
+    return dc_replace(proj, revenue=dc_replace(proj.revenue, co2_enabled=bool(value)))
+
+
+def _set_revenue_co2_price_eur_mwh(proj: "ProjectInputs", value: float) -> "ProjectInputs":
+    """Set canonical co2_certificate_price_eur_per_mwh (EUR/MWh applied to generation)."""
+    return dc_replace(proj, revenue=dc_replace(proj.revenue, co2_certificate_price_eur_per_mwh=value))
+
+
+def _set_revenue_merchant_price_curve_json(proj: "ProjectInputs", curve_json: str) -> "ProjectInputs":
+    """Parse JSON merchant price curve and wire into market_prices_by_calendar_year_eur_mwh.
+
+    Expected format: [{"year": 2042, "price_eur_mwh": 75.12}, ...]
+    Items are sorted ascending by year; the first year becomes market_price_calendar_start_year.
+    """
+    import json as _json
+    try:
+        items = _json.loads(curve_json)
+    except (_json.JSONDecodeError, TypeError):
+        return proj
+    if not isinstance(items, list) or not items:
+        return proj
+    try:
+        sorted_items = sorted(items, key=lambda x: int(x["year"]))
+        start_year = int(sorted_items[0]["year"])
+        prices = tuple(float(x["price_eur_mwh"]) for x in sorted_items)
+    except (KeyError, TypeError, ValueError):
+        return proj
+    return dc_replace(
+        proj,
+        revenue=dc_replace(
+            proj.revenue,
+            market_price_calendar_start_year=start_year,
+            market_prices_by_calendar_year_eur_mwh=prices,
+        ),
+    )
+
+
 def _zero_financial_capex_subfields(proj: "ProjectInputs") -> "ProjectInputs":
     """Zero out the financial cost sub-fields on the
     capex structure.
@@ -171,6 +230,14 @@ def _resolve_user_inputs(
     horizon_years: int = None,
     tariff_eur_mwh: float = None,
     ppa_term_years: int = None,
+    rev_ppa_index: float = None,
+    rev_ppa_production_share: float = None,
+    rev_ppa_indexation_start_policy: str = None,
+    rev_merchant_balancing_pct: float = None,
+    rev_balancing_cost_eur_per_mwh: float = None,
+    rev_co2_enabled: bool = None,
+    rev_co2_price_eur_mwh: float = None,
+    rev_merchant_price_curve_json: str = None,
     p50_hours: float = None,
     operating_hours_p90_10y: float = None,
     operating_hours_p99_1y: float = None,
@@ -287,6 +354,23 @@ def _resolve_user_inputs(
         proj = _set_revenue_tariff(proj, tariff_eur_mwh)
     if ppa_term_years is not None:
         proj = _set_revenue_ppa_term(proj, ppa_term_years)
+    # Canonical V2 revenue fields (C2B2) — applied after legacy fields so canonical wins.
+    if rev_ppa_index is not None:
+        proj = _set_revenue_ppa_index(proj, rev_ppa_index)
+    if rev_ppa_production_share is not None:
+        proj = _set_revenue_ppa_production_share(proj, rev_ppa_production_share)
+    if rev_ppa_indexation_start_policy is not None:
+        proj = _set_revenue_ppa_indexation_policy(proj, rev_ppa_indexation_start_policy)
+    if rev_merchant_balancing_pct is not None:
+        proj = _set_revenue_merchant_balancing_pct(proj, rev_merchant_balancing_pct)
+    if rev_balancing_cost_eur_per_mwh is not None:
+        proj = _set_revenue_balancing_eur_per_mwh(proj, rev_balancing_cost_eur_per_mwh)
+    if rev_co2_enabled is not None:
+        proj = _set_revenue_co2_enabled(proj, rev_co2_enabled)
+    if rev_co2_price_eur_mwh is not None:
+        proj = _set_revenue_co2_price_eur_mwh(proj, rev_co2_price_eur_mwh)
+    if rev_merchant_price_curve_json is not None:
+        proj = _set_revenue_merchant_price_curve_json(proj, rev_merchant_price_curve_json)
 
     # ── CAPEX (shared resolver) ──────────────────────────────
     # When using a seeded base (TUHO / Oborovo factory), only zero
@@ -456,7 +540,21 @@ def _snapshot_to_dict(snapshot: dict) -> dict:
     """Convert a saved user-project snapshot dict to the
     same shape as _schema_to_dict. Required fields are
     validated by build_projectinputs_from_snapshot before
-    this function is called."""
+    this function is called.
+
+    C2B2: canonical rev_* keys win over legacy keys when both present.
+    """
+    # Canonical key wins over legacy when both present (C2B2).
+    _canonical_tariff = _snapshot_float_opt(snapshot, "rev_ppa_base_tariff", non_negative=True)
+    _legacy_tariff = _snapshot_float(snapshot, "tariff_eur_mwh", non_negative=True)
+
+    _canonical_ppa_term = (
+        _snapshot_float_opt(snapshot, "rev_ppa_term_years")
+        if str(snapshot.get("rev_ppa_term_years", "") or "").strip()
+        else None
+    )
+    _legacy_ppa_term = _snapshot_int(snapshot, "ppa_term_years", positive=True)
+
     return {
         "project_type": _snapshot_text(snapshot, "project_type").title(),
         "project_name": _snapshot_text(snapshot, "project_name"),
@@ -477,12 +575,10 @@ def _snapshot_to_dict(snapshot: dict) -> dict:
         "horizon_years": _snapshot_int(
             snapshot, "horizon_years", positive=True
         ),
-        "tariff_eur_mwh": _snapshot_float(
-            snapshot, "tariff_eur_mwh", non_negative=True
-        ),
-        "ppa_term_years": _snapshot_int(
-            snapshot, "ppa_term_years", positive=True
-        ),
+        # Canonical rev_ppa_base_tariff wins over legacy tariff_eur_mwh.
+        "tariff_eur_mwh": _canonical_tariff if _canonical_tariff is not None else _legacy_tariff,
+        # Canonical rev_ppa_term_years wins over legacy ppa_term_years.
+        "ppa_term_years": int(_canonical_ppa_term) if _canonical_ppa_term is not None else _legacy_ppa_term,
         "p50_hours": _snapshot_float(
             snapshot, "p50_hours", positive=True
         ),
@@ -522,6 +618,15 @@ def _snapshot_to_dict(snapshot: dict) -> dict:
             if str(snapshot.get("tax_loss_carryforward_years", "") or "").strip()
             else None
         ),
+        # C2B2 canonical revenue fields — optional; absent means inherit factory/template.
+        "rev_ppa_index": _snapshot_float_opt(snapshot, "rev_ppa_index", non_negative=True),
+        "rev_ppa_production_share": _snapshot_float_opt(snapshot, "rev_ppa_production_share", non_negative=True),
+        "rev_ppa_indexation_start_policy": _snapshot_str_opt(snapshot, "rev_ppa_indexation_start_policy"),
+        "rev_merchant_balancing_pct": _snapshot_float_opt(snapshot, "rev_merchant_balancing_pct", non_negative=True),
+        "rev_balancing_cost_eur_per_mwh": _snapshot_float_opt(snapshot, "rev_balancing_cost_eur_per_mwh", non_negative=True),
+        "rev_co2_enabled": _snapshot_bool_opt(snapshot, "rev_co2_enabled"),
+        "rev_co2_price_eur_mwh": _snapshot_float_opt(snapshot, "rev_co2_price_eur_mwh", non_negative=True),
+        "rev_merchant_price_curve_json": _snapshot_str_opt(snapshot, "rev_merchant_price_curve_json"),
     }
 
 
@@ -578,6 +683,38 @@ REQUIRED_USER_PROJECT_SNAPSHOT_FIELDS = (
     "tenor_years",
     "target_dscr",
 )
+
+
+def _snapshot_float_opt(snapshot: dict, key: str, *, non_negative: bool = False) -> "float | None":
+    """Read an optional float from a snapshot — returns None when absent or non-numeric."""
+    raw = snapshot.get(key)
+    if raw is None or str(raw).strip() == "":
+        return None
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        return None
+    if non_negative and value < 0:
+        return None
+    return value
+
+
+def _snapshot_bool_opt(snapshot: dict, key: str) -> "bool | None":
+    """Read an optional bool from a snapshot — returns None when absent."""
+    raw = snapshot.get(key)
+    if raw is None or str(raw).strip() == "":
+        return None
+    if isinstance(raw, bool):
+        return raw
+    return str(raw).strip().lower() in ("true", "1", "yes")
+
+
+def _snapshot_str_opt(snapshot: dict, key: str) -> "str | None":
+    """Read an optional string from a snapshot — returns None when absent or empty."""
+    raw = snapshot.get(key)
+    if raw is None or str(raw).strip() == "":
+        return None
+    return str(raw).strip()
 
 
 def _snapshot_text(snapshot: dict, key: str) -> str:

@@ -48,7 +48,7 @@ REQUIRED_SNAPSHOT_KEYS = {
     "capex_epc_contract_keur", "capex_grid_connection_keur", "capex_contingencies_keur",
     "opex_technical_management_y1_keur", "opex_insurance_y1_keur", "opex_contingencies_y1_keur",
     "rev_ppa_base_tariff", "rev_ppa_index", "rev_ppa_term_years",
-    "rev_co2_enabled", "rev_co2_price",
+    "rev_co2_enabled", "rev_co2_price_eur_mwh",
     "gearing_pct", "target_dscr", "interest_rate_pct", "tenor_years",
     "total_capex_keur", "opex_y1_keur",
 }
@@ -100,7 +100,7 @@ class TestWorkbookSpecStructure:
         assert isinstance(WORKBOOK, WorkbookSpec)
 
     def test_version_is_set(self):
-        assert WORKBOOK.version == "2.1.0"
+        assert WORKBOOK.version == "2.2.0"
 
     def test_expected_sheets_present(self):
         actual = {s.sheet_id for s in WORKBOOK.sheets}
