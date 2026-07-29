@@ -572,12 +572,13 @@ _rv_ppa = _section("ppa", "PPA / Commercial", _RV, order=0, fields=[
        excel_tuho="Inputs!Revenue!B4", excel_oborovo="Inputs!Revenue!B4",
        export_mapping="PPA Base Tariff (EUR/MWh)", order=0),
 
-    _f(f"{_RV}.ppa.index", "PPA Escalation Index", "rev_ppa_index", FieldType.FLOAT, _RV, "ppa",
+    _f(f"{_RV}.ppa.index", "PPA Escalation Index", "rev_ppa_index", FieldType.PCT, _RV, "ppa",
        kind=FieldKind.INPUT, persisted=True, source_of_truth=SourceOfTruth.INPUT_SET,
        engine_path="revenue.ppa_index",
        scenario_policy=ScenarioPolicy.OVERRIDE, binding_status=BindingStatus.BOUND,
        editable=True,
        unit="%/yr", decimals=2,
+       description="Stored as UI percentage (e.g. 2.0); adapter divides by 100 before engine (→ 0.02).",
        excel_tuho="Inputs!Revenue!B5", excel_oborovo="Inputs!Revenue!B5", order=1),
 
     _f(f"{_RV}.ppa.term_years", "PPA Term", "rev_ppa_term_years", FieldType.YEARS, _RV, "ppa",
@@ -588,12 +589,14 @@ _rv_ppa = _section("ppa", "PPA / Commercial", _RV, order=0, fields=[
        unit="years", min_value=1, max_value=50,
        excel_tuho="Inputs!Revenue!B6", excel_oborovo="Inputs!Revenue!B6", order=2),
 
-    _f(f"{_RV}.ppa.production_share", "Production Share", "rev_ppa_production_share", FieldType.FLOAT, _RV, "ppa",
+    _f(f"{_RV}.ppa.production_share", "Production Share", "rev_ppa_production_share", FieldType.PCT, _RV, "ppa",
        kind=FieldKind.INPUT, persisted=True, source_of_truth=SourceOfTruth.INPUT_SET,
        engine_path="revenue.ppa_production_share",
        scenario_policy=ScenarioPolicy.OVERRIDE, binding_status=BindingStatus.BOUND,
        editable=True,
-       unit="%", decimals=1, min_value=0, max_value=100, order=3),
+       unit="%", decimals=1, min_value=0, max_value=100,
+       description="Stored as UI percentage (e.g. 50.0 or 100.0); adapter divides by 100 before engine (→ 0.50 / 1.00).",
+       order=3),
 
     _f(f"{_RV}.ppa.indexation_policy", "Escalation Base Year Policy", "rev_ppa_indexation_start_policy",
        FieldType.SELECT, _RV, "ppa",
@@ -605,8 +608,20 @@ _rv_ppa = _section("ppa", "PPA / Commercial", _RV, order=0, fields=[
        description="Determines how PPA tariff escalation is applied: "
                    "FIRST_FULL_CALENDAR_YEAR_AS_BASE = escalation starts from the first full "
                    "calendar year after COD (Oborovo convention); "
-                   "CONTRACT_ANNIVERSARY = escalation applies each contract-year anniversary.",
+                   "CONTRACT_ANNIVERSARY = escalation applies each contract-year anniversary "
+                   "and requires rev_ppa_indexation_start_date to be set.",
        excel_oborovo="Inputs!Revenue!B7", order=4),
+
+    _f(f"{_RV}.ppa.indexation_start_date", "Indexation Start Date", "rev_ppa_indexation_start_date",
+       FieldType.DATE, _RV, "ppa",
+       kind=FieldKind.INPUT, persisted=True, source_of_truth=SourceOfTruth.INPUT_SET,
+       engine_path="revenue.ppa_indexation_start_date",
+       scenario_policy=ScenarioPolicy.OVERRIDE, binding_status=BindingStatus.BOUND,
+       editable=True,
+       description="Required when Escalation Base Year Policy is CONTRACT_ANNIVERSARY. "
+                   "ISO-8601 date (YYYY-MM-DD) of the first contract anniversary. "
+                   "Omit or leave blank when using FIRST_FULL_CALENDAR_YEAR_AS_BASE.",
+       order=5),
 
     # Legacy snapshot keys — persist for backward compatibility; canonical rev_ppa_* keys win.
     _f(f"{_RV}.ppa.tariff_legacy", "Tariff (legacy key)", "tariff_eur_mwh", FieldType.FLOAT, _RV, "ppa",
@@ -617,7 +632,7 @@ _rv_ppa = _section("ppa", "PPA / Commercial", _RV, order=0, fields=[
        unit="EUR/MWh", decimals=2,
        description="Legacy snapshot key. Canonical key rev_ppa_base_tariff wins when present; "
                    "this field is the fallback for snapshots pre-dating C2B2.",
-       order=5),
+       order=6),
 
     _f(f"{_RV}.ppa.ppa_term_legacy", "PPA Term (legacy key)", "ppa_term_years", FieldType.YEARS, _RV, "ppa",
        kind=FieldKind.INPUT, persisted=True, source_of_truth=SourceOfTruth.INPUT_SET,
@@ -625,7 +640,7 @@ _rv_ppa = _section("ppa", "PPA / Commercial", _RV, order=0, fields=[
        scenario_policy=ScenarioPolicy.NOT_ALLOWED, binding_status=BindingStatus.PARTIAL,
        editable=True,
        description="Legacy snapshot key. Canonical key rev_ppa_term_years wins when present.",
-       order=6),
+       order=7),
 ])
 
 _rv_balancing = _section("balancing", "Balancing & CO2", _RV, order=1, fields=[
@@ -805,7 +820,7 @@ _SHEET_TAX = _sheet(_TX, "Tax", [_tx_assumptions], icon="📋", order=5)
 # ---------------------------------------------------------------------------
 
 WORKBOOK = WorkbookSpec(
-    version="2.2.0",
+    version="2.3.0",
     sheets=(
         _SHEET_PROJECT_SETUP,
         _SHEET_CAPEX,

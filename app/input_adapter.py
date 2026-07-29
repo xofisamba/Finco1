@@ -106,15 +106,29 @@ def _set_revenue_ppa_term(proj: "ProjectInputs", value: int) -> "ProjectInputs":
 
 
 def _set_revenue_ppa_index(proj: "ProjectInputs", value: float) -> "ProjectInputs":
-    return dc_replace(proj, revenue=dc_replace(proj.revenue, ppa_index=value))
+    """UI stores human-readable % (e.g. 2.0); engine expects fraction (0.02)."""
+    return dc_replace(proj, revenue=dc_replace(proj.revenue, ppa_index=value / 100.0))
 
 
 def _set_revenue_ppa_production_share(proj: "ProjectInputs", value: float) -> "ProjectInputs":
-    return dc_replace(proj, revenue=dc_replace(proj.revenue, ppa_production_share=value))
+    """UI stores human-readable % (e.g. 50.0); engine expects fraction (0.50)."""
+    return dc_replace(proj, revenue=dc_replace(proj.revenue, ppa_production_share=value / 100.0))
 
 
 def _set_revenue_ppa_indexation_policy(proj: "ProjectInputs", value: str) -> "ProjectInputs":
     return dc_replace(proj, revenue=dc_replace(proj.revenue, ppa_indexation_start_policy=value))
+
+
+def _set_revenue_ppa_indexation_start_date(proj: "ProjectInputs", value: str) -> "ProjectInputs":
+    """Parse ISO-8601 date string (YYYY-MM-DD) and set ppa_indexation_start_date."""
+    from datetime import date as _date
+    if not value or str(value).strip() == "":
+        return dc_replace(proj, revenue=dc_replace(proj.revenue, ppa_indexation_start_date=None))
+    try:
+        parsed = _date.fromisoformat(str(value).strip())
+    except ValueError as exc:
+        raise ValueError(f"rev_ppa_indexation_start_date must be YYYY-MM-DD, got {value!r}") from exc
+    return dc_replace(proj, revenue=dc_replace(proj.revenue, ppa_indexation_start_date=parsed))
 
 
 def _set_revenue_merchant_balancing_pct(proj: "ProjectInputs", value: float) -> "ProjectInputs":
@@ -135,25 +149,74 @@ def _set_revenue_co2_price_eur_mwh(proj: "ProjectInputs", value: float) -> "Proj
     return dc_replace(proj, revenue=dc_replace(proj.revenue, co2_certificate_price_eur_per_mwh=value))
 
 
+def validate_merchant_curve_json(curve_json: str) -> list:
+    """Validate and parse a merchant price curve JSON string.
+
+    Expected format: [{"year": 2042, "price_eur_mwh": 75.12}, ...]
+    Returns sorted list of dicts on success; raises ValueError with a descriptive
+    message on any validation failure.
+    """
+    import json as _json
+    import math as _math
+
+    try:
+        items = _json.loads(curve_json)
+    except (_json.JSONDecodeError, TypeError) as exc:
+        raise ValueError(f"Invalid JSON: {exc}") from exc
+
+    if not isinstance(items, list):
+        raise ValueError("Merchant curve must be a JSON array")
+    if not items:
+        raise ValueError("Merchant curve must not be empty")
+
+    parsed = []
+    for i, item in enumerate(items):
+        if not isinstance(item, dict):
+            raise ValueError(f"Item {i} is not an object")
+        if "year" not in item:
+            raise ValueError(f"Item {i} missing 'year'")
+        if "price_eur_mwh" not in item:
+            raise ValueError(f"Item {i} missing 'price_eur_mwh'")
+        try:
+            year = int(item["year"])
+        except (TypeError, ValueError):
+            raise ValueError(f"Item {i} 'year' must be an integer, got {item['year']!r}")
+        try:
+            price = float(item["price_eur_mwh"])
+        except (TypeError, ValueError):
+            raise ValueError(f"Item {i} 'price_eur_mwh' must be numeric, got {item['price_eur_mwh']!r}")
+        if _math.isnan(price) or _math.isinf(price):
+            raise ValueError(f"Item {i} 'price_eur_mwh' must be finite, got {price}")
+        if price < 0:
+            raise ValueError(f"Item {i} 'price_eur_mwh' must be non-negative, got {price}")
+        parsed.append({"year": year, "price_eur_mwh": price})
+
+    sorted_items = sorted(parsed, key=lambda x: x["year"])
+
+    # Duplicate year check
+    years = [x["year"] for x in sorted_items]
+    if len(years) != len(set(years)):
+        raise ValueError("Merchant curve contains duplicate years")
+
+    # Contiguous year check — gaps would corrupt the calendar-year tuple index
+    for j in range(1, len(years)):
+        if years[j] != years[j - 1] + 1:
+            raise ValueError(
+                f"Merchant curve years must be contiguous; gap between {years[j-1]} and {years[j]}"
+            )
+
+    return sorted_items
+
+
 def _set_revenue_merchant_price_curve_json(proj: "ProjectInputs", curve_json: str) -> "ProjectInputs":
     """Parse JSON merchant price curve and wire into market_prices_by_calendar_year_eur_mwh.
 
     Expected format: [{"year": 2042, "price_eur_mwh": 75.12}, ...]
-    Items are sorted ascending by year; the first year becomes market_price_calendar_start_year.
+    Raises ValueError for malformed input; caller should catch and surface to user.
     """
-    import json as _json
-    try:
-        items = _json.loads(curve_json)
-    except (_json.JSONDecodeError, TypeError):
-        return proj
-    if not isinstance(items, list) or not items:
-        return proj
-    try:
-        sorted_items = sorted(items, key=lambda x: int(x["year"]))
-        start_year = int(sorted_items[0]["year"])
-        prices = tuple(float(x["price_eur_mwh"]) for x in sorted_items)
-    except (KeyError, TypeError, ValueError):
-        return proj
+    sorted_items = validate_merchant_curve_json(curve_json)
+    start_year = sorted_items[0]["year"]
+    prices = tuple(x["price_eur_mwh"] for x in sorted_items)
     return dc_replace(
         proj,
         revenue=dc_replace(
@@ -233,6 +296,7 @@ def _resolve_user_inputs(
     rev_ppa_index: float = None,
     rev_ppa_production_share: float = None,
     rev_ppa_indexation_start_policy: str = None,
+    rev_ppa_indexation_start_date: str = None,
     rev_merchant_balancing_pct: float = None,
     rev_balancing_cost_eur_per_mwh: float = None,
     rev_co2_enabled: bool = None,
@@ -361,6 +425,8 @@ def _resolve_user_inputs(
         proj = _set_revenue_ppa_production_share(proj, rev_ppa_production_share)
     if rev_ppa_indexation_start_policy is not None:
         proj = _set_revenue_ppa_indexation_policy(proj, rev_ppa_indexation_start_policy)
+    if rev_ppa_indexation_start_date is not None:
+        proj = _set_revenue_ppa_indexation_start_date(proj, rev_ppa_indexation_start_date)
     if rev_merchant_balancing_pct is not None:
         proj = _set_revenue_merchant_balancing_pct(proj, rev_merchant_balancing_pct)
     if rev_balancing_cost_eur_per_mwh is not None:
@@ -622,6 +688,7 @@ def _snapshot_to_dict(snapshot: dict) -> dict:
         "rev_ppa_index": _snapshot_float_opt(snapshot, "rev_ppa_index", non_negative=True),
         "rev_ppa_production_share": _snapshot_float_opt(snapshot, "rev_ppa_production_share", non_negative=True),
         "rev_ppa_indexation_start_policy": _snapshot_str_opt(snapshot, "rev_ppa_indexation_start_policy"),
+        "rev_ppa_indexation_start_date": _snapshot_str_opt(snapshot, "rev_ppa_indexation_start_date"),
         "rev_merchant_balancing_pct": _snapshot_float_opt(snapshot, "rev_merchant_balancing_pct", non_negative=True),
         "rev_balancing_cost_eur_per_mwh": _snapshot_float_opt(snapshot, "rev_balancing_cost_eur_per_mwh", non_negative=True),
         "rev_co2_enabled": _snapshot_bool_opt(snapshot, "rev_co2_enabled"),

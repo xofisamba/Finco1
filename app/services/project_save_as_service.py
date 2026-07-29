@@ -304,6 +304,48 @@ async def execute_project_save_as_route(
     working_copy_snapshot["project_origin"] = "user_created"
     working_copy_snapshot["project_name"] = new_record.project_name
 
+    # Materialize canonical rev_* defaults for Oborovo working copies so that
+    # UI fields show actual values rather than blank fields backed by invisible
+    # factory inheritance.  Only seed keys that are absent — never overwrite a
+    # value already in the source snapshot.
+    if (source.template_source or "").lower() == "oborovo":
+        import json as _json
+        _OBOROVO_CANONICAL_REV_DEFAULTS = {
+            "rev_ppa_base_tariff": "57.0",
+            "rev_ppa_index": "2.0",          # UI % — adapter divides by 100
+            "rev_ppa_term_years": "12",
+            "rev_ppa_production_share": "100.0",  # UI % — adapter divides by 100
+            "rev_ppa_indexation_start_policy": "FIRST_FULL_CALENDAR_YEAR_AS_BASE",
+            "rev_merchant_balancing_pct": "2.5",   # UI % — adapter divides by 100
+            "rev_balancing_cost_eur_per_mwh": "0.0",
+            "rev_co2_enabled": "true",
+            "rev_co2_price_eur_mwh": "1.5",
+            "rev_merchant_price_curve_json": _json.dumps([
+                {"year": 2042, "price_eur_mwh": 75.12095149999999},
+                {"year": 2043, "price_eur_mwh": 75.83325399999998},
+                {"year": 2044, "price_eur_mwh": 76.03517249999999},
+                {"year": 2045, "price_eur_mwh": 74.10767},
+                {"year": 2046, "price_eur_mwh": 75.790071},
+                {"year": 2047, "price_eur_mwh": 77.47963299999999},
+                {"year": 2048, "price_eur_mwh": 79.1593215},
+                {"year": 2049, "price_eur_mwh": 80.86288},
+                {"year": 2050, "price_eur_mwh": 82.57359949999999},
+                {"year": 2051, "price_eur_mwh": 84.78114049999999},
+                {"year": 2052, "price_eur_mwh": 86.50704999999999},
+                {"year": 2053, "price_eur_mwh": 88.22135},
+                {"year": 2054, "price_eur_mwh": 90.4723995},
+                {"year": 2055, "price_eur_mwh": 92.20113},
+                {"year": 2056, "price_eur_mwh": 93.63116},
+                {"year": 2057, "price_eur_mwh": 95.01388399999999},
+                {"year": 2058, "price_eur_mwh": 95.8876345},
+                {"year": 2059, "price_eur_mwh": 97.2187125},
+                {"year": 2060, "price_eur_mwh": 98.543606},
+            ]),
+        }
+        for key, default_val in _OBOROVO_CANONICAL_REV_DEFAULTS.items():
+            if not working_copy_snapshot.get(key):
+                working_copy_snapshot[key] = default_val
+
     # Initialize the new workspace (Quirk: draft=saved=baseline, dirty=False)
     deps.save_workspace_state(
         user_id=user.user_id,

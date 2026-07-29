@@ -100,7 +100,7 @@ class TestWorkbookSpecStructure:
         assert isinstance(WORKBOOK, WorkbookSpec)
 
     def test_version_is_set(self):
-        assert WORKBOOK.version == "2.2.0"
+        assert WORKBOOK.version == "2.3.0"
 
     def test_expected_sheets_present(self):
         actual = {s.sheet_id for s in WORKBOOK.sheets}

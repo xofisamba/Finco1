@@ -114,18 +114,13 @@ class TestAcceptanceCMerchantCurve:
         assert proj.revenue.market_price_calendar_start_year == 2050
         assert proj.revenue.market_prices_by_calendar_year_eur_mwh == (88.0, 90.0)
 
-    def test_invalid_json_is_silently_skipped(self):
-        from app.project_factories import create_default_oborovo
-        from app.input_adapter import _snapshot_to_dict, _resolve_user_inputs
+    def test_invalid_json_raises_value_error(self):
+        """Invalid JSON must be rejected with ValueError — not silently skipped."""
+        import pytest
+        from app.input_adapter import validate_merchant_curve_json
 
-        base = create_default_oborovo()
-        snap = _oborovo_snapshot_base(base)
-        snap["rev_merchant_price_curve_json"] = "NOT_JSON"
-
-        kwargs = _snapshot_to_dict(snap)
-        # Should not raise; falls back to factory curve.
-        proj = _resolve_user_inputs(base_inputs=base, **kwargs)
-        assert proj.revenue.market_price_calendar_start_year == base.revenue.market_price_calendar_start_year
+        with pytest.raises(ValueError, match="Invalid JSON"):
+            validate_merchant_curve_json("NOT_JSON")
 
     def test_absent_curve_preserves_factory_schedule(self):
         from app.project_factories import create_default_oborovo
@@ -181,7 +176,7 @@ class TestAcceptanceDPpaFields:
 
         base = create_default_oborovo()
         snap = _oborovo_snapshot_base(base)
-        snap["rev_ppa_index"] = "0.025"  # 2.5%
+        snap["rev_ppa_index"] = "2.5"  # UI % → adapter divides by 100 → engine 0.025
 
         kwargs = _snapshot_to_dict(snap)
         proj = _resolve_user_inputs(base_inputs=base, **kwargs)
@@ -209,9 +204,9 @@ class TestAcceptanceDPpaFields:
 class TestAcceptanceERegistrySemantics:
     """Registry version, field contracts, and balancing semantic separation."""
 
-    def test_workbook_version_is_2_2_0(self):
+    def test_workbook_version_is_2_3_0(self):
         from app.workbook.registry import WORKBOOK
-        assert WORKBOOK.version == "2.2.0"
+        assert WORKBOOK.version == "2.3.0"
 
     def test_merchant_balancing_pct_field_maps_to_balancing_cost_pv(self):
         from app.workbook.registry import WORKBOOK
@@ -244,14 +239,38 @@ class TestAcceptanceERegistrySemantics:
         assert field.snapshot_key == "rev_merchant_price_curve_json"
 
     def test_no_project_dispatch_in_resolver(self):
-        """Revenue resolution must not branch on project name or code."""
+        """Revenue resolution must not branch on project name or code.
+
+        Behavioral proof: clone Oborovo with different name/code and verify
+        identical revenue parameters — proving the resolver is project-agnostic.
+        """
+        from app.project_factories import create_default_oborovo
+        from app.input_adapter import _snapshot_to_dict, _resolve_user_inputs
+
+        base = create_default_oborovo()
+
+        snap_a = _oborovo_snapshot_base(base)
+        snap_a["project_name"] = "Oborovo"
+        snap_a["project_code"] = "OBR-001"
+
+        snap_b = _oborovo_snapshot_base(base)
+        snap_b["project_name"] = "NotOborovo"
+        snap_b["project_code"] = "XYZ-999"
+
+        proj_a = _resolve_user_inputs(base_inputs=base, **_snapshot_to_dict(snap_a))
+        proj_b = _resolve_user_inputs(base_inputs=base, **_snapshot_to_dict(snap_b))
+
+        rev_a = proj_a.revenue
+        rev_b = proj_b.revenue
+        assert abs(rev_a.ppa_base_tariff - rev_b.ppa_base_tariff) < 1e-9
+        assert abs(rev_a.ppa_index - rev_b.ppa_index) < 1e-9
+        assert abs(rev_a.ppa_production_share - rev_b.ppa_production_share) < 1e-9
+        assert abs(rev_a.balancing_cost_pv - rev_b.balancing_cost_pv) < 1e-9
+        assert rev_a.ppa_indexation_start_policy == rev_b.ppa_indexation_start_policy
+
         import inspect
         from app import input_adapter
         source = inspect.getsource(input_adapter._resolve_user_inputs)
-        # Ensure no project-specific string dispatch in the resolver.
-        for bad in ("oborovo", "tuho", "OBOROVO", "TUHO"):
-            assert bad.lower() not in source.lower() or True  # factory names may appear in comments
-        # The real check: no `if project_code` style branches on revenue fields.
         assert "if project_code" not in source
 
 
@@ -291,3 +310,353 @@ def _oborovo_snapshot_base(factory_proj) -> dict:
         "target_dscr": str(fin.target_dscr),
         "template_source": "oborovo",
     }
+
+
+# ---------------------------------------------------------------------------
+# C2B3 — Blocker 1: Percentage unit contract boundary tests
+# ---------------------------------------------------------------------------
+
+class TestPercentageUnitContract:
+    """UI % → engine fraction conversion happens exactly once in adapter."""
+
+    def _resolve(self, snap_overrides):
+        from app.project_factories import create_default_oborovo
+        from app.input_adapter import _snapshot_to_dict, _resolve_user_inputs
+        base = create_default_oborovo()
+        snap = _oborovo_snapshot_base(base)
+        snap.update(snap_overrides)
+        return _resolve_user_inputs(base_inputs=base, **_snapshot_to_dict(snap))
+
+    def test_ppa_index_zero_percent(self):
+        proj = self._resolve({"rev_ppa_index": "0.0"})
+        assert abs(proj.revenue.ppa_index - 0.0) < 1e-12
+
+    def test_ppa_index_two_percent(self):
+        proj = self._resolve({"rev_ppa_index": "2.0"})
+        assert abs(proj.revenue.ppa_index - 0.02) < 1e-9
+
+    def test_ppa_index_two_point_five_percent(self):
+        proj = self._resolve({"rev_ppa_index": "2.5"})
+        assert abs(proj.revenue.ppa_index - 0.025) < 1e-9
+
+    def test_ppa_index_100_percent(self):
+        proj = self._resolve({"rev_ppa_index": "100.0"})
+        assert abs(proj.revenue.ppa_index - 1.0) < 1e-9
+
+    def test_ppa_index_no_double_division(self):
+        """2.0 UI % must yield 0.02, not 0.0002 (double-divided)."""
+        proj = self._resolve({"rev_ppa_index": "2.0"})
+        assert proj.revenue.ppa_index > 0.019
+        assert proj.revenue.ppa_index < 0.021
+
+    def test_ppa_production_share_50_percent(self):
+        proj = self._resolve({"rev_ppa_production_share": "50.0"})
+        assert abs(proj.revenue.ppa_production_share - 0.50) < 1e-9
+
+    def test_ppa_production_share_100_percent(self):
+        proj = self._resolve({"rev_ppa_production_share": "100.0"})
+        assert abs(proj.revenue.ppa_production_share - 1.0) < 1e-9
+
+    def test_ppa_production_share_zero_percent(self):
+        proj = self._resolve({"rev_ppa_production_share": "0.0"})
+        assert abs(proj.revenue.ppa_production_share - 0.0) < 1e-12
+
+    def test_merchant_balancing_already_divides_by_100(self):
+        """Confirm merchant balancing pct also converts correctly (regression guard)."""
+        proj = self._resolve({"rev_merchant_balancing_pct": "2.5"})
+        assert abs(proj.revenue.balancing_cost_pv - 0.025) < 1e-9
+
+
+# ---------------------------------------------------------------------------
+# C2B3 — Blocker 2: Indexation start date field
+# ---------------------------------------------------------------------------
+
+class TestIndexationStartDate:
+    """rev_ppa_indexation_start_date wires through adapter as date object."""
+
+    def _resolve(self, snap_overrides):
+        from app.project_factories import create_default_oborovo
+        from app.input_adapter import _snapshot_to_dict, _resolve_user_inputs
+        base = create_default_oborovo()
+        snap = _oborovo_snapshot_base(base)
+        snap.update(snap_overrides)
+        return _resolve_user_inputs(base_inputs=base, **_snapshot_to_dict(snap))
+
+    def test_iso_date_string_parsed(self):
+        from datetime import date
+        proj = self._resolve({"rev_ppa_indexation_start_date": "2031-01-01"})
+        assert proj.revenue.ppa_indexation_start_date == date(2031, 1, 1)
+
+    def test_absent_date_is_none(self):
+        proj = self._resolve({})
+        # Factory default is None (no indexation start date in factory)
+        assert proj.revenue.ppa_indexation_start_date is None
+
+    def test_empty_string_yields_none(self):
+        proj = self._resolve({"rev_ppa_indexation_start_date": ""})
+        assert proj.revenue.ppa_indexation_start_date is None
+
+    def test_invalid_date_raises(self):
+        import pytest
+        from app.input_adapter import _set_revenue_ppa_indexation_start_date
+        from app.project_factories import create_default_oborovo
+        base = create_default_oborovo()
+        with pytest.raises(ValueError, match="YYYY-MM-DD"):
+            _set_revenue_ppa_indexation_start_date(base, "not-a-date")
+
+
+# ---------------------------------------------------------------------------
+# C2B3 — Blocker 3: Merchant curve validation matrix
+# ---------------------------------------------------------------------------
+
+class TestMerchantCurveValidation:
+    """validate_merchant_curve_json rejects all specified invalid inputs."""
+
+    def _validate(self, json_str):
+        from app.input_adapter import validate_merchant_curve_json
+        return validate_merchant_curve_json(json_str)
+
+    def test_valid_curve_returns_sorted_list(self):
+        import json
+        curve = [{"year": 2050, "price_eur_mwh": 88.0}, {"year": 2051, "price_eur_mwh": 90.0}]
+        result = self._validate(json.dumps(curve))
+        assert result[0]["year"] == 2050
+        assert result[1]["year"] == 2051
+
+    def test_malformed_json_raises(self):
+        import pytest
+        with pytest.raises(ValueError, match="Invalid JSON"):
+            self._validate("{not json}")
+
+    def test_empty_array_raises(self):
+        import pytest
+        with pytest.raises(ValueError, match="empty"):
+            self._validate("[]")
+
+    def test_non_array_raises(self):
+        import pytest
+        with pytest.raises(ValueError, match="array"):
+            self._validate('{"year": 2050, "price_eur_mwh": 88.0}')
+
+    def test_duplicate_years_raises(self):
+        import json, pytest
+        curve = [{"year": 2050, "price_eur_mwh": 88.0}, {"year": 2050, "price_eur_mwh": 90.0}]
+        with pytest.raises(ValueError, match="duplicate"):
+            self._validate(json.dumps(curve))
+
+    def test_non_integer_year_raises(self):
+        import json, pytest
+        curve = [{"year": "twenty-fifty", "price_eur_mwh": 88.0}]
+        with pytest.raises(ValueError, match="integer"):
+            self._validate(json.dumps(curve))
+
+    def test_gap_in_years_raises(self):
+        import json, pytest
+        curve = [{"year": 2042, "price_eur_mwh": 75.0}, {"year": 2044, "price_eur_mwh": 76.0}]
+        with pytest.raises(ValueError, match="contiguous"):
+            self._validate(json.dumps(curve))
+
+    def test_negative_price_raises(self):
+        import json, pytest
+        curve = [{"year": 2050, "price_eur_mwh": -1.0}]
+        with pytest.raises(ValueError, match="non-negative"):
+            self._validate(json.dumps(curve))
+
+    def test_nan_price_raises(self):
+        import json, pytest
+        import math
+        with pytest.raises((ValueError, Exception)):
+            self._validate('[{"year": 2050, "price_eur_mwh": NaN}]')
+
+    def test_missing_year_field_raises(self):
+        import json, pytest
+        curve = [{"price_eur_mwh": 88.0}]
+        with pytest.raises(ValueError, match="year"):
+            self._validate(json.dumps(curve))
+
+    def test_missing_price_field_raises(self):
+        import json, pytest
+        curve = [{"year": 2050}]
+        with pytest.raises(ValueError, match="price"):
+            self._validate(json.dumps(curve))
+
+    def test_unsorted_input_is_accepted_and_sorted(self):
+        import json
+        curve = [{"year": 2052, "price_eur_mwh": 90.0}, {"year": 2051, "price_eur_mwh": 88.0}]
+        result = self._validate(json.dumps(curve))
+        assert result[0]["year"] == 2051
+        assert result[1]["year"] == 2052
+
+
+# ---------------------------------------------------------------------------
+# C2B3 — Blocker 1: Percentage unit contract boundary tests
+# ---------------------------------------------------------------------------
+
+class TestPercentageUnitContract:
+    """UI % → engine fraction conversion happens exactly once in adapter."""
+
+    def _resolve(self, snap_overrides):
+        from app.project_factories import create_default_oborovo
+        from app.input_adapter import _snapshot_to_dict, _resolve_user_inputs
+        base = create_default_oborovo()
+        snap = _oborovo_snapshot_base(base)
+        snap.update(snap_overrides)
+        return _resolve_user_inputs(base_inputs=base, **_snapshot_to_dict(snap))
+
+    def test_ppa_index_zero_percent(self):
+        proj = self._resolve({"rev_ppa_index": "0.0"})
+        assert abs(proj.revenue.ppa_index - 0.0) < 1e-12
+
+    def test_ppa_index_two_percent(self):
+        proj = self._resolve({"rev_ppa_index": "2.0"})
+        assert abs(proj.revenue.ppa_index - 0.02) < 1e-9
+
+    def test_ppa_index_two_point_five_percent(self):
+        proj = self._resolve({"rev_ppa_index": "2.5"})
+        assert abs(proj.revenue.ppa_index - 0.025) < 1e-9
+
+    def test_ppa_index_100_percent(self):
+        proj = self._resolve({"rev_ppa_index": "100.0"})
+        assert abs(proj.revenue.ppa_index - 1.0) < 1e-9
+
+    def test_ppa_index_no_double_division(self):
+        """2.0 UI % must yield 0.02, not 0.0002 (double-divided)."""
+        proj = self._resolve({"rev_ppa_index": "2.0"})
+        assert proj.revenue.ppa_index > 0.019
+        assert proj.revenue.ppa_index < 0.021
+
+    def test_ppa_production_share_50_percent(self):
+        proj = self._resolve({"rev_ppa_production_share": "50.0"})
+        assert abs(proj.revenue.ppa_production_share - 0.50) < 1e-9
+
+    def test_ppa_production_share_100_percent(self):
+        proj = self._resolve({"rev_ppa_production_share": "100.0"})
+        assert abs(proj.revenue.ppa_production_share - 1.0) < 1e-9
+
+    def test_ppa_production_share_zero_percent(self):
+        proj = self._resolve({"rev_ppa_production_share": "0.0"})
+        assert abs(proj.revenue.ppa_production_share - 0.0) < 1e-12
+
+    def test_merchant_balancing_already_divides_by_100(self):
+        """Confirm merchant balancing pct also converts correctly (regression guard)."""
+        proj = self._resolve({"rev_merchant_balancing_pct": "2.5"})
+        assert abs(proj.revenue.balancing_cost_pv - 0.025) < 1e-9
+
+
+# ---------------------------------------------------------------------------
+# C2B3 — Blocker 2: Indexation start date field
+# ---------------------------------------------------------------------------
+
+class TestIndexationStartDate:
+    """rev_ppa_indexation_start_date wires through adapter as date object."""
+
+    def _resolve(self, snap_overrides):
+        from app.project_factories import create_default_oborovo
+        from app.input_adapter import _snapshot_to_dict, _resolve_user_inputs
+        base = create_default_oborovo()
+        snap = _oborovo_snapshot_base(base)
+        snap.update(snap_overrides)
+        return _resolve_user_inputs(base_inputs=base, **_snapshot_to_dict(snap))
+
+    def test_iso_date_string_parsed(self):
+        from datetime import date
+        proj = self._resolve({"rev_ppa_indexation_start_date": "2031-01-01"})
+        assert proj.revenue.ppa_indexation_start_date == date(2031, 1, 1)
+
+    def test_absent_date_is_none(self):
+        proj = self._resolve({})
+        assert proj.revenue.ppa_indexation_start_date is None
+
+    def test_empty_string_yields_none(self):
+        proj = self._resolve({"rev_ppa_indexation_start_date": ""})
+        assert proj.revenue.ppa_indexation_start_date is None
+
+    def test_invalid_date_raises(self):
+        import pytest
+        from app.input_adapter import _set_revenue_ppa_indexation_start_date
+        from app.project_factories import create_default_oborovo
+        base = create_default_oborovo()
+        with pytest.raises(ValueError, match="YYYY-MM-DD"):
+            _set_revenue_ppa_indexation_start_date(base, "not-a-date")
+
+
+# ---------------------------------------------------------------------------
+# C2B3 — Blocker 3: Merchant curve validation matrix
+# ---------------------------------------------------------------------------
+
+class TestMerchantCurveValidation:
+    """validate_merchant_curve_json rejects all specified invalid inputs."""
+
+    def _validate(self, json_str):
+        from app.input_adapter import validate_merchant_curve_json
+        return validate_merchant_curve_json(json_str)
+
+    def test_valid_curve_returns_sorted_list(self):
+        import json
+        curve = [{"year": 2050, "price_eur_mwh": 88.0}, {"year": 2051, "price_eur_mwh": 90.0}]
+        result = self._validate(json.dumps(curve))
+        assert result[0]["year"] == 2050
+        assert result[1]["year"] == 2051
+
+    def test_malformed_json_raises(self):
+        import pytest
+        with pytest.raises(ValueError, match="Invalid JSON"):
+            self._validate("{not json}")
+
+    def test_empty_array_raises(self):
+        import pytest
+        with pytest.raises(ValueError, match="empty"):
+            self._validate("[]")
+
+    def test_non_array_raises(self):
+        import pytest
+        with pytest.raises(ValueError, match="array"):
+            self._validate('{"year": 2050, "price_eur_mwh": 88.0}')
+
+    def test_duplicate_years_raises(self):
+        import json, pytest
+        curve = [{"year": 2050, "price_eur_mwh": 88.0}, {"year": 2050, "price_eur_mwh": 90.0}]
+        with pytest.raises(ValueError, match="duplicate"):
+            self._validate(json.dumps(curve))
+
+    def test_non_integer_year_raises(self):
+        import json, pytest
+        curve = [{"year": "twenty-fifty", "price_eur_mwh": 88.0}]
+        with pytest.raises(ValueError, match="integer"):
+            self._validate(json.dumps(curve))
+
+    def test_gap_in_years_raises(self):
+        import json, pytest
+        curve = [{"year": 2042, "price_eur_mwh": 75.0}, {"year": 2044, "price_eur_mwh": 76.0}]
+        with pytest.raises(ValueError, match="contiguous"):
+            self._validate(json.dumps(curve))
+
+    def test_negative_price_raises(self):
+        import json, pytest
+        curve = [{"year": 2050, "price_eur_mwh": -1.0}]
+        with pytest.raises(ValueError, match="non-negative"):
+            self._validate(json.dumps(curve))
+
+    def test_nan_price_raises(self):
+        import pytest
+        with pytest.raises((ValueError, Exception)):
+            self._validate('[{"year": 2050, "price_eur_mwh": NaN}]')
+
+    def test_missing_year_field_raises(self):
+        import json, pytest
+        curve = [{"price_eur_mwh": 88.0}]
+        with pytest.raises(ValueError, match="year"):
+            self._validate(json.dumps(curve))
+
+    def test_missing_price_field_raises(self):
+        import json, pytest
+        curve = [{"year": 2050}]
+        with pytest.raises(ValueError, match="price"):
+            self._validate(json.dumps(curve))
+
+    def test_unsorted_input_is_accepted_and_sorted(self):
+        import json
+        curve = [{"year": 2052, "price_eur_mwh": 90.0}, {"year": 2051, "price_eur_mwh": 88.0}]
+        result = self._validate(json.dumps(curve))
+        assert result[0]["year"] == 2051
+        assert result[1]["year"] == 2052

@@ -111,12 +111,162 @@
     {{ section_anchor("merchant", "3. Merchant Price Curve") }}
     <div class="v2-section-fields">
 
+      {# Locate the merchant price curve field #}
+      {% set mcf = namespace(field=none) %}
       {% for f in revenue_fields %}
-        {% if f.section_id == "merchant" %}
-          {{ render_field(f, project_code, workbook_version, content_hash, project_editable,
-                          hx_target="#v2-sheet-revenue", sheet_id="revenue") }}
+        {% if f.field_id == "revenue.merchant.price_curve_json" %}
+          {% set mcf.field = f %}
         {% endif %}
       {% endfor %}
+
+      {% if mcf.field is not none %}
+        {% if mcf.field.binding_label == "bound" and project_editable %}
+          {# Excel-style Year | Merchant Price grid #}
+          <div class="v2-merchant-grid-wrapper" data-field-id="{{ mcf.field.field_id }}">
+            <form id="v2-merchant-curve-form"
+                  method="post" action="/v2/workbook/update"
+                  autocomplete="off"
+                  hx-post="/v2/workbook/update"
+                  hx-target="#v2-sheet-revenue"
+                  hx-swap="outerHTML">
+              <input type="hidden" name="sheet_id"        value="revenue">
+              <input type="hidden" name="field_id"         value="{{ mcf.field.field_id }}">
+              <input type="hidden" name="project"          value="{{ project_code }}">
+              <input type="hidden" name="workbook_version" value="{{ workbook_version }}">
+              <input type="hidden" name="content_hash"     value="{{ content_hash }}">
+              {# Hidden textarea that holds the serialised JSON submitted with the form #}
+              <textarea id="v2-merchant-json-value" name="value"
+                        style="display:none" aria-hidden="true"></textarea>
+
+              {# Store raw JSON in a data attribute; JS populates rows on load #}
+              <table class="v2-merchant-grid" aria-label="Merchant Price Curve"
+                     id="v2-merchant-grid-table"
+                     data-curve-json="{{ mcf.field.value | e if mcf.field.value else '[]' }}">
+                <thead>
+                  <tr>
+                    <th class="v2-mg-col-year">Year</th>
+                    <th class="v2-mg-col-price">Merchant Price (EUR/MWh)</th>
+                    <th class="v2-mg-col-action" aria-label="Actions"></th>
+                  </tr>
+                </thead>
+                <tbody id="v2-merchant-grid-body">
+                  {# Rows injected by v2MerchantGridInit() on DOMContentLoaded #}
+                </tbody>
+              </table>
+
+              <div class="v2-merchant-grid-controls">
+                <button type="button" class="v2-mg-add-row" onclick="v2MerchantAddRow()">
+                  + Add Year
+                </button>
+                <button type="submit" class="v2-field-save v2-mg-save"
+                        onclick="v2MerchantSerialise(event)"
+                        aria-label="Save merchant price curve">
+                  Save Curve &#10003;
+                </button>
+              </div>
+            </form>
+          </div>
+
+          <script>
+          (function () {
+            function getRows() {
+              return Array.from(document.querySelectorAll('#v2-merchant-grid-body .v2-mg-row'));
+            }
+
+            function makeRow(year, price) {
+              var tr = document.createElement('tr');
+              tr.className = 'v2-mg-row';
+              tr.dataset.year = year;
+              tr.innerHTML =
+                '<td class="v2-mg-cell-year">' + year + '</td>' +
+                '<td class="v2-mg-cell-price">' +
+                  '<input type="number" step="0.01" class="v2-mg-price-input" ' +
+                  'value="' + (price !== null && price !== undefined ? price : '') + '" ' +
+                  'aria-label="Price for ' + year + '" onchange="v2MerchantGridChanged()">' +
+                '</td>' +
+                '<td class="v2-mg-cell-action">' +
+                  '<button type="button" class="v2-mg-delete-row" ' +
+                  'onclick="v2MerchantDeleteRow(this)" aria-label="Delete ' + year + '">&#10005;</button>' +
+                '</td>';
+              return tr;
+            }
+
+            function v2MerchantGridInit() {
+              var table = document.getElementById('v2-merchant-grid-table');
+              if (!table) return;
+              var jsonStr = table.dataset.curveJson || '[]';
+              var tbody = document.getElementById('v2-merchant-grid-body');
+              try {
+                var items = JSON.parse(jsonStr);
+                items.sort(function (a, b) { return a.year - b.year; });
+                items.forEach(function (item) {
+                  tbody.appendChild(makeRow(item.year, item.price_eur_mwh));
+                });
+              } catch (e) {
+                // Invalid JSON — leave grid empty; user must re-enter.
+              }
+            }
+
+            if (document.readyState === 'loading') {
+              document.addEventListener('DOMContentLoaded', v2MerchantGridInit);
+            } else {
+              v2MerchantGridInit();
+            }
+
+            window.v2MerchantGridChanged = function () {
+              var btn = document.querySelector('.v2-mg-save');
+              if (btn) btn.classList.add('v2-field-save--pending');
+            };
+
+            window.v2MerchantDeleteRow = function (btn) {
+              btn.closest('tr').remove();
+              v2MerchantGridChanged();
+            };
+
+            window.v2MerchantAddRow = function () {
+              var rows = getRows();
+              var lastYear = rows.length > 0
+                ? parseInt(rows[rows.length - 1].dataset.year, 10)
+                : 2042;
+              var newYear = lastYear + 1;
+              var tbody = document.getElementById('v2-merchant-grid-body');
+              var tr = makeRow(newYear, '');
+              tbody.appendChild(tr);
+              tr.querySelector('input').focus();
+              v2MerchantGridChanged();
+            };
+
+            window.v2MerchantSerialise = function (evt) {
+              var rows = getRows();
+              var curve = rows.map(function (tr) {
+                var yearCell = tr.querySelector('.v2-mg-cell-year');
+                var priceInput = tr.querySelector('.v2-mg-price-input');
+                return {
+                  year: parseInt(yearCell.textContent.trim(), 10),
+                  price_eur_mwh: parseFloat(priceInput.value)
+                };
+              });
+              var textarea = document.getElementById('v2-merchant-json-value');
+              textarea.value = JSON.stringify(curve);
+            };
+          })();
+          </script>
+
+        {% else %}
+          {# Read-only: show compact summary #}
+          <div class="v2-field-row v2-field-readonly" data-field-id="{{ mcf.field.field_id }}">
+            <span class="v2-field-label">{{ mcf.field.label }}</span>
+            <span class="v2-field-value">
+              {% if mcf.field.value %}
+                <span class="v2-runtime-mono">{{ mcf.field.value | truncate(60) }}</span>
+              {% else %}
+                <span class="v2-field-empty">—</span>
+              {% endif %}
+            </span>
+            <span class="v2-binding-badge v2-binding-{{ mcf.field.binding_label }}">{{ mcf.field.binding_label }}</span>
+          </div>
+        {% endif %}
+      {% endif %}
 
     </div>
   </details>
