@@ -1418,8 +1418,13 @@ async def v2_workbook_run(
     # scalar values the user saw and approved when they clicked Run.
     try:
         override = WorkbookService.to_projectinputs(pis_draft)
-    except Exception:
+    except Exception as _build_exc:
         import logging
+        from app.revenue_input_validation import RevenueInputError
+        if isinstance(_build_exc, RevenueInputError):
+            # Cross-field contract violation — surface to user, do not log as error.
+            _rev_err_msg = str(_build_exc)
+            return _htmx_error(_rev_err_msg, ws) if is_htmx else _non_htmx_error(_rev_err_msg)
         logging.getLogger(__name__).exception(
             "v2_workbook_run: build_project_inputs failed project=%s user=%s",
             project, user.user_id,

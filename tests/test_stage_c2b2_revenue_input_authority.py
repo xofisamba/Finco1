@@ -190,6 +190,7 @@ class TestAcceptanceDPpaFields:
         base = create_default_oborovo()
         snap = _oborovo_snapshot_base(base)
         snap["rev_ppa_indexation_start_policy"] = "CONTRACT_ANNIVERSARY"
+        snap["rev_ppa_indexation_start_date"] = "2024-01-01"  # required for CONTRACT_ANNIVERSARY
 
         kwargs = _snapshot_to_dict(snap)
         proj = _resolve_user_inputs(base_inputs=base, **kwargs)
@@ -660,3 +661,24 @@ class TestMerchantCurveValidation:
         result = self._validate(json.dumps(curve))
         assert result[0]["year"] == 2051
         assert result[1]["year"] == 2052
+
+    def test_float_year_with_fraction_raises(self):
+        """2042.5 must be rejected — fractional years silently truncated to 2042 before."""
+        import json, pytest
+        curve = [{"year": 2042.5, "price_eur_mwh": 75.0}]
+        with pytest.raises(ValueError, match="whole-number"):
+            self._validate(json.dumps(curve))
+
+    def test_float_year_whole_number_accepted(self):
+        """2042.0 is an acceptable representation of 2042."""
+        import json
+        curve = [{"year": 2042.0, "price_eur_mwh": 75.0}]
+        result = self._validate(json.dumps(curve))
+        assert result[0]["year"] == 2042
+
+    def test_boolean_year_raises(self):
+        """true/false as year must be rejected (JSON booleans are ints in Python)."""
+        import json, pytest
+        curve = [{"year": True, "price_eur_mwh": 75.0}]
+        with pytest.raises(ValueError):
+            self._validate(json.dumps(curve))

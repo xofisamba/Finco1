@@ -604,12 +604,15 @@ _rv_ppa = _section("ppa", "PPA / Commercial", _RV, order=0, fields=[
        engine_path="revenue.ppa_indexation_start_policy",
        scenario_policy=ScenarioPolicy.OVERRIDE, binding_status=BindingStatus.BOUND,
        editable=True,
-       options=("FIRST_FULL_CALENDAR_YEAR_AS_BASE", "CONTRACT_ANNIVERSARY"),
-       description="Determines how PPA tariff escalation is applied: "
-                   "FIRST_FULL_CALENDAR_YEAR_AS_BASE = escalation starts from the first full "
-                   "calendar year after COD (Oborovo convention); "
-                   "CONTRACT_ANNIVERSARY = escalation applies each contract-year anniversary "
-                   "and requires rev_ppa_indexation_start_date to be set.",
+       options=("FIRST_FULL_CALENDAR_YEAR_AS_BASE", "AFTER_FIRST_FULL_OPERATING_YEAR", "CONTRACT_ANNIVERSARY"),
+       description="Determines when PPA tariff escalation begins. "
+                   "FIRST_FULL_CALENDAR_YEAR_AS_BASE: escalation starts from the first full "
+                   "calendar year after COD (1 Jan boundary, Oborovo convention). "
+                   "AFTER_FIRST_FULL_OPERATING_YEAR: first escalation exactly one year after COD "
+                   "(date-anchored COD anniversaries). "
+                   "CONTRACT_ANNIVERSARY: escalation follows annual anniversaries of the explicit "
+                   "PPA / indexation reference start date (rev_ppa_indexation_start_date, required). "
+                   "The first escalation occurs on the first anniversary after that reference date.",
        excel_oborovo="Inputs!Revenue!B7", order=4),
 
     _f(f"{_RV}.ppa.indexation_start_date", "Indexation Start Date", "rev_ppa_indexation_start_date",
@@ -619,8 +622,11 @@ _rv_ppa = _section("ppa", "PPA / Commercial", _RV, order=0, fields=[
        scenario_policy=ScenarioPolicy.OVERRIDE, binding_status=BindingStatus.BOUND,
        editable=True,
        description="Required when Escalation Base Year Policy is CONTRACT_ANNIVERSARY. "
-                   "ISO-8601 date (YYYY-MM-DD) of the first contract anniversary. "
-                   "Omit or leave blank when using FIRST_FULL_CALENDAR_YEAR_AS_BASE.",
+                   "ISO-8601 date (YYYY-MM-DD) that is the PPA / indexation reference start date "
+                   "(the date from which annual anniversaries are counted). "
+                   "The first escalation occurs on the first anniversary after this date. "
+                   "Omit or leave blank when using FIRST_FULL_CALENDAR_YEAR_AS_BASE or "
+                   "AFTER_FIRST_FULL_OPERATING_YEAR.",
        order=5),
 
     # Legacy snapshot keys — persist for backward compatibility; canonical rev_ppa_* keys win.

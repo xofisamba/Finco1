@@ -155,11 +155,10 @@
               </table>
 
               <div class="v2-merchant-grid-controls">
-                <button type="button" class="v2-mg-add-row" onclick="v2MerchantAddRow()">
+                <button type="button" class="v2-mg-add-row">
                   + Add Year
                 </button>
                 <button type="submit" class="v2-field-save v2-mg-save"
-                        onclick="v2MerchantSerialise(event)"
                         aria-label="Save merchant price curve">
                   Save Curve &#10003;
                 </button>
@@ -168,88 +167,11 @@
           </div>
 
           <script>
-          (function () {
-            function getRows() {
-              return Array.from(document.querySelectorAll('#v2-merchant-grid-body .v2-mg-row'));
-            }
-
-            function makeRow(year, price) {
-              var tr = document.createElement('tr');
-              tr.className = 'v2-mg-row';
-              tr.dataset.year = year;
-              tr.innerHTML =
-                '<td class="v2-mg-cell-year">' + year + '</td>' +
-                '<td class="v2-mg-cell-price">' +
-                  '<input type="number" step="0.01" class="v2-mg-price-input" ' +
-                  'value="' + (price !== null && price !== undefined ? price : '') + '" ' +
-                  'aria-label="Price for ' + year + '" onchange="v2MerchantGridChanged()">' +
-                '</td>' +
-                '<td class="v2-mg-cell-action">' +
-                  '<button type="button" class="v2-mg-delete-row" ' +
-                  'onclick="v2MerchantDeleteRow(this)" aria-label="Delete ' + year + '">&#10005;</button>' +
-                '</td>';
-              return tr;
-            }
-
-            function v2MerchantGridInit() {
-              var table = document.getElementById('v2-merchant-grid-table');
-              if (!table) return;
-              var jsonStr = table.dataset.curveJson || '[]';
-              var tbody = document.getElementById('v2-merchant-grid-body');
-              try {
-                var items = JSON.parse(jsonStr);
-                items.sort(function (a, b) { return a.year - b.year; });
-                items.forEach(function (item) {
-                  tbody.appendChild(makeRow(item.year, item.price_eur_mwh));
-                });
-              } catch (e) {
-                // Invalid JSON — leave grid empty; user must re-enter.
-              }
-            }
-
-            if (document.readyState === 'loading') {
-              document.addEventListener('DOMContentLoaded', v2MerchantGridInit);
-            } else {
-              v2MerchantGridInit();
-            }
-
-            window.v2MerchantGridChanged = function () {
-              var btn = document.querySelector('.v2-mg-save');
-              if (btn) btn.classList.add('v2-field-save--pending');
-            };
-
-            window.v2MerchantDeleteRow = function (btn) {
-              btn.closest('tr').remove();
-              v2MerchantGridChanged();
-            };
-
-            window.v2MerchantAddRow = function () {
-              var rows = getRows();
-              var lastYear = rows.length > 0
-                ? parseInt(rows[rows.length - 1].dataset.year, 10)
-                : 2042;
-              var newYear = lastYear + 1;
-              var tbody = document.getElementById('v2-merchant-grid-body');
-              var tr = makeRow(newYear, '');
-              tbody.appendChild(tr);
-              tr.querySelector('input').focus();
-              v2MerchantGridChanged();
-            };
-
-            window.v2MerchantSerialise = function (evt) {
-              var rows = getRows();
-              var curve = rows.map(function (tr) {
-                var yearCell = tr.querySelector('.v2-mg-cell-year');
-                var priceInput = tr.querySelector('.v2-mg-price-input');
-                return {
-                  year: parseInt(yearCell.textContent.trim(), 10),
-                  price_eur_mwh: parseFloat(priceInput.value)
-                };
-              });
-              var textarea = document.getElementById('v2-merchant-json-value');
-              textarea.value = JSON.stringify(curve);
-            };
-          })();
+          // Merchant grid initialized by static/js/workbook_v2.js merchantGridInit().
+          // After HTMX swap, workbook_v2.js re-initializes via htmx:afterSwap.
+          if (typeof window.v2MerchantGridInit === 'function') {
+            window.v2MerchantGridInit();
+          }
           </script>
 
         {% else %}

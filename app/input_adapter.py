@@ -177,10 +177,32 @@ def validate_merchant_curve_json(curve_json: str) -> list:
             raise ValueError(f"Item {i} missing 'year'")
         if "price_eur_mwh" not in item:
             raise ValueError(f"Item {i} missing 'price_eur_mwh'")
-        try:
-            year = int(item["year"])
-        except (TypeError, ValueError):
-            raise ValueError(f"Item {i} 'year' must be an integer, got {item['year']!r}")
+        raw_year = item["year"]
+        if isinstance(raw_year, bool):
+            raise ValueError(f"Item {i} 'year' must be an integer, got {raw_year!r}")
+        if isinstance(raw_year, float):
+            if raw_year != int(raw_year):
+                raise ValueError(
+                    f"Item {i} 'year' must be a whole-number calendar year, "
+                    f"got {raw_year!r} (fractional years are not supported)"
+                )
+            year = int(raw_year)
+        elif isinstance(raw_year, int):
+            year = raw_year
+        elif isinstance(raw_year, str):
+            stripped = raw_year.strip()
+            try:
+                as_float = float(stripped)
+            except (TypeError, ValueError):
+                raise ValueError(f"Item {i} 'year' must be an integer, got {raw_year!r}")
+            if as_float != int(as_float):
+                raise ValueError(
+                    f"Item {i} 'year' must be a whole-number calendar year, "
+                    f"got {raw_year!r} (fractional years are not supported)"
+                )
+            year = int(as_float)
+        else:
+            raise ValueError(f"Item {i} 'year' must be an integer, got {raw_year!r}")
         try:
             price = float(item["price_eur_mwh"])
         except (TypeError, ValueError):
@@ -427,6 +449,14 @@ def _resolve_user_inputs(
         proj = _set_revenue_ppa_indexation_policy(proj, rev_ppa_indexation_start_policy)
     if rev_ppa_indexation_start_date is not None:
         proj = _set_revenue_ppa_indexation_start_date(proj, rev_ppa_indexation_start_date)
+    # Cross-field: CONTRACT_ANNIVERSARY requires a date at runtime.
+    # Only enforce when policy was explicitly set (not inherited from factory).
+    if rev_ppa_indexation_start_policy is not None:
+        from app.revenue_input_validation import validate_revenue_ppa_cross_field
+        validate_revenue_ppa_cross_field(
+            ppa_indexation_start_policy=proj.revenue.ppa_indexation_start_policy,
+            ppa_indexation_start_date=proj.revenue.ppa_indexation_start_date,
+        )
     if rev_merchant_balancing_pct is not None:
         proj = _set_revenue_merchant_balancing_pct(proj, rev_merchant_balancing_pct)
     if rev_balancing_cost_eur_per_mwh is not None:
@@ -684,15 +714,16 @@ def _snapshot_to_dict(snapshot: dict) -> dict:
             if str(snapshot.get("tax_loss_carryforward_years", "") or "").strip()
             else None
         ),
-        # C2B2 canonical revenue fields — optional; absent means inherit factory/template.
-        "rev_ppa_index": _snapshot_float_opt(snapshot, "rev_ppa_index", non_negative=True),
-        "rev_ppa_production_share": _snapshot_float_opt(snapshot, "rev_ppa_production_share", non_negative=True),
+        # C2B2/C2B3 canonical revenue fields — optional; absent/empty → inherit factory.
+        # Non-empty invalid values raise SnapshotInputError (strict helpers).
+        "rev_ppa_index": _snapshot_float_strict(snapshot, "rev_ppa_index", non_negative=True, max_value=100.0),
+        "rev_ppa_production_share": _snapshot_float_strict(snapshot, "rev_ppa_production_share", non_negative=True, max_value=100.0),
         "rev_ppa_indexation_start_policy": _snapshot_str_opt(snapshot, "rev_ppa_indexation_start_policy"),
         "rev_ppa_indexation_start_date": _snapshot_str_opt(snapshot, "rev_ppa_indexation_start_date"),
-        "rev_merchant_balancing_pct": _snapshot_float_opt(snapshot, "rev_merchant_balancing_pct", non_negative=True),
-        "rev_balancing_cost_eur_per_mwh": _snapshot_float_opt(snapshot, "rev_balancing_cost_eur_per_mwh", non_negative=True),
-        "rev_co2_enabled": _snapshot_bool_opt(snapshot, "rev_co2_enabled"),
-        "rev_co2_price_eur_mwh": _snapshot_float_opt(snapshot, "rev_co2_price_eur_mwh", non_negative=True),
+        "rev_merchant_balancing_pct": _snapshot_float_strict(snapshot, "rev_merchant_balancing_pct", non_negative=True, max_value=100.0),
+        "rev_balancing_cost_eur_per_mwh": _snapshot_float_strict(snapshot, "rev_balancing_cost_eur_per_mwh", non_negative=True),
+        "rev_co2_enabled": _snapshot_bool_strict(snapshot, "rev_co2_enabled"),
+        "rev_co2_price_eur_mwh": _snapshot_float_strict(snapshot, "rev_co2_price_eur_mwh", non_negative=True),
         "rev_merchant_price_curve_json": _snapshot_str_opt(snapshot, "rev_merchant_price_curve_json"),
     }
 
@@ -764,6 +795,46 @@ def _snapshot_float_opt(snapshot: dict, key: str, *, non_negative: bool = False)
     if non_negative and value < 0:
         return None
     return value
+
+
+def _snapshot_float_strict(snapshot: dict, key: str, *, non_negative: bool = False, max_value: float | None = None) -> "float | None":
+    """Read an optional float from a snapshot — strict version.
+
+    Unlike _snapshot_float_opt, raises SnapshotInputError when a non-empty value
+    is present but cannot be parsed or violates range constraints.
+    Returns None only when the key is absent or empty.
+    """
+    raw = snapshot.get(key)
+    if raw is None or str(raw).strip() == "":
+        return None
+    try:
+        value = float(raw)
+    except (TypeError, ValueError) as exc:
+        raise SnapshotInputError(f"{key}: invalid numeric value {raw!r}") from exc
+    if non_negative and value < 0:
+        raise SnapshotInputError(f"{key}: value must be non-negative, got {value}")
+    if max_value is not None and value > max_value:
+        raise SnapshotInputError(f"{key}: value must be ≤ {max_value}, got {value}")
+    return value
+
+
+def _snapshot_bool_strict(snapshot: dict, key: str) -> "bool | None":
+    """Read an optional bool from a snapshot — strict version.
+
+    Raises SnapshotInputError when a non-empty value is present but cannot be
+    interpreted as a boolean.  Returns None only when the key is absent or empty.
+    """
+    raw = snapshot.get(key)
+    if raw is None or str(raw).strip() == "":
+        return None
+    if isinstance(raw, bool):
+        return raw
+    s = str(raw).strip().lower()
+    if s in ("true", "1", "yes"):
+        return True
+    if s in ("false", "0", "no"):
+        return False
+    raise SnapshotInputError(f"{key}: invalid boolean value {raw!r}; expected true/false")
 
 
 def _snapshot_bool_opt(snapshot: dict, key: str) -> "bool | None":
