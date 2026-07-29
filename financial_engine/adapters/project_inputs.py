@@ -104,6 +104,10 @@ def from_project_inputs(
         balancing_cost_eur_per_mwh=rev.balancing_cost_eur_per_mwh,
         ppa_indexation_start_policy=_ppa_policy,
         ppa_indexation_start_date=_ppa_index_start_date,
+        merchant_price_calendar_start_year=rev.market_price_calendar_start_year,
+        merchant_prices_by_calendar_year_eur_mwh=tuple(
+            rev.market_prices_by_calendar_year_eur_mwh
+        ),
     )
 
     opex_items = tuple(

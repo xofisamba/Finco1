@@ -64,6 +64,11 @@ class RevenueInput:
     ppa_indexation_start_policy: PpaIndexationStartPolicy | None = None
     # Required only for CONTRACT_ANNIVERSARY; raises ValueError if None when that policy is used.
     ppa_indexation_start_date: date | None = None
+    # Calendar-year merchant price schedule (matches Excel CF row 30 / Inputs row 106).
+    # When supplied, the orchestrator passes these through to RevenueParams instead of
+    # market_prices_curve_eur_mwh.  market_inflation is NOT re-applied.
+    merchant_price_calendar_start_year: int | None = None
+    merchant_prices_by_calendar_year_eur_mwh: tuple[float, ...] = ()
 
 
 @dataclass(frozen=True)
