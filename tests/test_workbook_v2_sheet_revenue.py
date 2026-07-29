@@ -122,10 +122,10 @@ class TestRevenueBuildSheetFields(unittest.TestCase):
         self.assertFalse(dupes, f"Duplicate field_ids: {dupes}")
 
     def test_seven_bound_fields(self):
-        """Exactly 7 BOUND fields in the revenue sheet."""
+        """BOUND fields in the revenue sheet (ppa×5 + balancing×4 + merchant×1 = 10)."""
         rows = _build_sheet_fields("revenue", _fake_pis())
         bound = [r for r in rows if r["binding_label"] == "bound"]
-        self.assertEqual(len(bound), 7, f"expected 7 BOUND, got {len(bound)}: {[r['field_id'] for r in bound]}")
+        self.assertEqual(len(bound), 10, f"expected 10 BOUND, got {len(bound)}: {[r['field_id'] for r in bound]}")
 
     def test_two_partial_fields(self):
         """Exactly 2 PARTIAL fields (the legacy keys)."""
@@ -152,14 +152,16 @@ class TestRevenueBuildSheetFields(unittest.TestCase):
             self.assertFalse(missing, f"Row {row['field_id']} missing keys: {missing}")
 
     def test_ppa_section_has_six_fields(self):
+        # C2B2: added rev_ppa_indexation_start_policy → 7 fields (5 BOUND + 2 PARTIAL).
         rows = _build_sheet_fields("revenue", _fake_pis())
         ppa_rows = [r for r in rows if r["section_id"] == "ppa"]
-        self.assertEqual(len(ppa_rows), 6)
+        self.assertEqual(len(ppa_rows), 7)
 
     def test_balancing_section_has_three_fields(self):
+        # C2B2: split balancing into merchant_pct + cost_eur_per_mwh → 4 fields.
         rows = _build_sheet_fields("revenue", _fake_pis())
         bal_rows = [r for r in rows if r["section_id"] == "balancing"]
-        self.assertEqual(len(bal_rows), 3)
+        self.assertEqual(len(bal_rows), 4)
 
 
 # ---------------------------------------------------------------------------
