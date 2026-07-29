@@ -251,17 +251,39 @@ def create_default_oborovo() -> ProjectInputs:
         bess_enabled=False,
     )
 
-    # Market price curve — POST-PPA MERCHANT PERIOD ONLY (Y13-Y30)
-    # PPA years (Y1-Y12) use ppa_base_tariff indexed 2% and ignore this curve
-    # AFRY Central Q1 2026 — 4h Degraded scenario, nominal EUR/MWh
-    # Source: Oborovo Excel Inputs row 100 (Market price - AFRY Central curve)
-    # Years 1-12 = 0 (unused during PPA), Years 13-30 = AFRY values
-    _afry_central_y13_y30 = (
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  # Y1-Y12 = PPA (unused)
-        73.50, 75.12, 75.83, 76.04, 74.11, 75.79, 77.48, 79.16, 80.86,  # Y13-Y21
-        82.57, 84.78, 86.51, 88.22, 90.47, 92.20, 93.63, 95.01, 95.89, 97.22,  # Y22-Y30
+    # Stage C2B — source-correct calendar-year merchant price schedule.
+    # Workbook: d49af8ee-20260414_BP_Oborovo_Sensitivity_FINAL_for_PPT.xlsm
+    # SHA-256:  15a621c4d6b79024980766e00ebc79d7235fd56f00567be7bf345c769ce57920
+    #
+    # Excel formula chain (CF row 30 → Inputs row 106):
+    #   CF!G30 = INDEX(Inputs!$D$106:$AH$106, 1, MATCH(YEAR(G3), Inputs!$D$96:$AH$96))
+    #   Inputs row 107 = row108 * 1.085  (Central case Trackers = GMPV * 8.5% uplift)
+    #   Inputs row 108 = AFRY Q1 2026 4h Degraded GMPV Central (hardcoded)
+    #   Inputs row 116 = calendar-year inflation index (CY2030=1.10, rising to CY2060=1.99)
+    #   Inputs row 106 = row107 * row116  (selected-scenario nominal prices, CY-indexed)
+    #
+    # Exact cached values from Inputs row 106 (data_only=True extraction, CY2042–CY2060):
+    _merchant_prices_cy2042_cy2060 = (
+        75.12095149999999,   # CY2042
+        75.83325399999998,   # CY2043
+        76.03517249999999,   # CY2044
+        74.10767,            # CY2045
+        75.790071,           # CY2046
+        77.47963299999999,   # CY2047
+        79.1593215,          # CY2048
+        80.86288,            # CY2049
+        82.57359949999999,   # CY2050
+        84.78114049999999,   # CY2051
+        86.50704999999999,   # CY2052
+        88.22135,            # CY2053
+        90.4723995,          # CY2054
+        92.20113,            # CY2055
+        93.63116,            # CY2056
+        95.01388399999999,   # CY2057
+        95.8876345,          # CY2058
+        97.2187125,          # CY2059
+        98.543606,           # CY2060
     )
-    market_prices = _afry_central_y13_y30
 
     revenue = RevenueParams(
         ppa_base_tariff=57.0,
@@ -269,16 +291,22 @@ def create_default_oborovo() -> ProjectInputs:
         ppa_index=0.02,
         ppa_production_share=1.0,
         market_scenario="Central",
-        market_prices_curve=market_prices,
+        # Legacy operating-year curve left empty; calendar-year schedule is authoritative.
+        market_prices_curve=(),
         market_inflation=0.02,
-        balancing_cost_pv=0.0,  # 0.025 in inputs, but Excel PPA revenue has NO balancing cost deduction
+        # CF row 40: = -Inputs!D114 * Spot_Sales_kEUR; D114 = 0.025
+        # Applied to gross merchant/spot electricity revenue only (zero during PPA).
+        balancing_cost_pv=0.025,
         balancing_cost_bess=0.025,
-        co2_enabled=True,  # Excel has CO2 certificate revenue (83 kEUR semi-annual)
+        # CF row 46: = CO2_price * total_production_MWh / 1000; CO2_price = 1.5 EUR/MWh (constant)
+        # CF row 47: HLOOKUP on Inputs E140:AH141; all values = 1.5 for periods 1-30.
+        co2_enabled=True,
         co2_price_eur=1.5,
-        # Phase 7: explicit EUR/MWh inputs for revenue split display
-        # Source: Oborovo Excel — CO2 certificate price = 1.5 EUR/MWh (Y1 semi-annual)
         co2_certificate_price_eur_per_mwh=1.5,
-        balancing_cost_eur_per_mwh=0.0,  # No explicit balancing cost in Oborovo Excel
+        balancing_cost_eur_per_mwh=0.0,
+        # Stage C2B: calendar-year price schedule (Inputs row 106, CY2042–CY2060).
+        market_price_calendar_start_year=2042,
+        market_prices_by_calendar_year_eur_mwh=_merchant_prices_cy2042_cy2060,
         # Authoritative Excel calendar-year indexation: 2031 = base year, first escalation 2032.
         ppa_indexation_start_policy="FIRST_FULL_CALENDAR_YEAR_AS_BASE",
     )
