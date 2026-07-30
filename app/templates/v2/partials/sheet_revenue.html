@@ -74,7 +74,7 @@
     <div class="v2-section-fields">
 
       {% for f in revenue_fields %}
-        {% if f.section_id == "ppa" and f.binding_status.value != "PARTIAL" %}
+        {% if f.section_id == "ppa" and f.binding_label != "partial" %}
           {{ render_field(f, project_code, workbook_version, content_hash, project_editable,
                           hx_target="#v2-sheet-revenue", sheet_id="revenue") }}
         {% endif %}

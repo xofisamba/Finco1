@@ -295,7 +295,9 @@ def _apply_capex_total(proj: "ProjectInputs", target: float) -> "ProjectInputs":
         for f in proj.capex.__dataclass_fields__.values()
         if f.name not in ("idc_keur", "commitment_fees_keur", "bank_fees_keur",
                           "other_financial_keur", "vat_costs_keur", "reserve_accounts_keur",
+                          "vat_facility_idc_keur", "vat_facility_commitment_fee_keur",
                           "epc_contract")
+        and hasattr(getattr(proj.capex, f.name), "amount_keur")
         and getattr(proj.capex, f.name).amount_keur > 0
     )
     epc_target = max(target - other_keur, 0.0)
