@@ -533,6 +533,7 @@ def _project_baseline_snapshot(project_type: str, template_source: str) -> dict:
 
     if normalized_source == "oborovo":
         project_inputs = create_default_oborovo()
+        from app.revenue_snapshot_utils import materialize_revenue_snapshot_defaults
         baseline.update(
             {
                 "active_project": "oborovo",
@@ -557,6 +558,7 @@ def _project_baseline_snapshot(project_type: str, template_source: str) -> dict:
                 "ppa_term_years": str(int(project_inputs.revenue.ppa_term_years)),
             }
         )
+        baseline.update(materialize_revenue_snapshot_defaults(project_inputs.revenue))
         return baseline
 
     if normalized_source == "generic_solar":

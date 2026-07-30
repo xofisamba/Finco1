@@ -413,7 +413,18 @@ def _build_opex_vm_ctx(project_record, pis) -> dict:
     canonical effective OPEX — no separate display-layer recomputation.
     """
     from app.workbook.service import WorkbookService
-    effective_pi = WorkbookService.to_projectinputs(pis)
+    from app.revenue_input_validation import RevenueInputError
+    try:
+        effective_pi = WorkbookService.to_projectinputs(pis)
+    except RevenueInputError:
+        # Cross-field revenue validation (e.g. CONTRACT_ANNIVERSARY without a
+        # date) must not break the OPEX display path — OPEX is independent of
+        # PPA indexation policy.  Strip the incomplete revenue policy from the
+        # snapshot and retry so the OPEX view model renders normally.
+        _snap = dict(pis.to_snapshot())
+        _snap.pop("rev_ppa_indexation_start_policy", None)
+        from app.input_adapter import build_projectinputs_from_snapshot
+        effective_pi = build_projectinputs_from_snapshot(_snap)
     snapshot = pis.to_snapshot()
     project_ctx = build_project_context_for_record(
         project_code=project_record.project_code,
@@ -606,7 +617,14 @@ def _build_tax_ctx(pis, ws, projection=None) -> dict:
     # This path never calls the engine, never hard-codes a rate, never
     # writes to the snapshot, and never marks the workspace dirty.
     if any(f["value"] is None for f in raw_fields):
-        effective_tax = pis.to_projectinputs().tax
+        from app.revenue_input_validation import RevenueInputError
+        try:
+            effective_tax = pis.to_projectinputs().tax
+        except RevenueInputError:
+            _snap = dict(pis.to_snapshot())
+            _snap.pop("rev_ppa_indexation_start_policy", None)
+            from app.input_adapter import build_projectinputs_from_snapshot
+            effective_tax = build_projectinputs_from_snapshot(_snap).tax
         _TAX_FIELD_MAP = {
             "tax.assumptions.cit_rate_pct": lambda tx: round(tx.corporate_rate * 100, 10),
             "tax.assumptions.loss_carryforward_years": lambda tx: tx.loss_carryforward_years,
