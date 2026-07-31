@@ -577,7 +577,7 @@ _rv_ppa = _section("ppa", "PPA / Commercial", _RV, order=0, fields=[
        engine_path="revenue.ppa_index",
        scenario_policy=ScenarioPolicy.OVERRIDE, binding_status=BindingStatus.BOUND,
        editable=True,
-       unit="%/yr", decimals=2,
+       unit="%/yr", decimals=2, min_value=0, max_value=100,
        description="Stored as UI percentage (e.g. 2.0); adapter divides by 100 before engine (→ 0.02).",
        excel_tuho="Inputs!Revenue!B5", excel_oborovo="Inputs!Revenue!B5", order=1),
 

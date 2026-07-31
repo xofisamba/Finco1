@@ -845,6 +845,15 @@ async def v2_workbook(request: Request, project: Optional[str] = None, sheet: Op
     if ws is None:
         return RedirectResponse(url="/library", status_code=302)
 
+    # Migration: backfill missing canonical revenue keys for old Oborovo working
+    # copies created before C2B3 (idempotent — only writes when keys are absent).
+    try:
+        from app.services.revenue_backfill import persist_revenue_backfill
+        if persist_revenue_backfill(project_record.project_id, workspace_owner, project_record):
+            ws = get_workspace_state(user_id=workspace_owner, project_id=project_record.project_id) or ws
+    except Exception:
+        pass  # migration failure must never block page render
+
     pis = _build_pis_with_composite_identity(ws, project_record, workspace_owner)
     hydration_script = WorkbookService.runtime_hydration_script(ws)
 

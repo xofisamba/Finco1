@@ -643,13 +643,12 @@ def _snapshot_to_dict(snapshot: dict) -> dict:
     C2B2: canonical rev_* keys win over legacy keys when both present.
     """
     # Canonical key wins over legacy when both present (C2B2).
-    _canonical_tariff = _snapshot_float_opt(snapshot, "rev_ppa_base_tariff", non_negative=True)
+    # Strict: non-empty invalid values raise SnapshotInputError; absent/empty → None (use legacy).
+    _canonical_tariff = _snapshot_float_strict(snapshot, "rev_ppa_base_tariff", non_negative=True)
     _legacy_tariff = _snapshot_float(snapshot, "tariff_eur_mwh", non_negative=True)
 
-    _canonical_ppa_term = (
-        _snapshot_float_opt(snapshot, "rev_ppa_term_years")
-        if str(snapshot.get("rev_ppa_term_years", "") or "").strip()
-        else None
+    _canonical_ppa_term = _snapshot_float_strict(
+        snapshot, "rev_ppa_term_years", min_value=1, max_value=50
     )
     _legacy_ppa_term = _snapshot_int(snapshot, "ppa_term_years", positive=True)
 
@@ -799,7 +798,14 @@ def _snapshot_float_opt(snapshot: dict, key: str, *, non_negative: bool = False)
     return value
 
 
-def _snapshot_float_strict(snapshot: dict, key: str, *, non_negative: bool = False, max_value: float | None = None) -> "float | None":
+def _snapshot_float_strict(
+    snapshot: dict,
+    key: str,
+    *,
+    non_negative: bool = False,
+    min_value: float | None = None,
+    max_value: float | None = None,
+) -> "float | None":
     """Read an optional float from a snapshot — strict version.
 
     Unlike _snapshot_float_opt, raises SnapshotInputError when a non-empty value
@@ -815,6 +821,8 @@ def _snapshot_float_strict(snapshot: dict, key: str, *, non_negative: bool = Fal
         raise SnapshotInputError(f"{key}: invalid numeric value {raw!r}") from exc
     if non_negative and value < 0:
         raise SnapshotInputError(f"{key}: value must be non-negative, got {value}")
+    if min_value is not None and value < min_value:
+        raise SnapshotInputError(f"{key}: value must be ≥ {min_value}, got {value}")
     if max_value is not None and value > max_value:
         raise SnapshotInputError(f"{key}: value must be ≤ {max_value}, got {value}")
     return value
