@@ -137,6 +137,11 @@ def validate_operating_model_input(
             issues.append(_err("OPEX002", f"opex.items[{i}].annual_inflation",
                                f"annual_inflation for item {item.name!r} is not finite"))
 
+    if opex.hierarchical_external_annual_series and opex.hierarchical_model is None:
+        issues.append(_err("OPEX003", "opex.hierarchical_external_annual_series",
+                           "hierarchical_external_annual_series supplied without hierarchical_model; "
+                           "supply hierarchical_model or clear the external series"))
+
     # Depreciation
     if dep.financial_cost_useful_life_years <= 0:
         issues.append(_err("DEP004", "depreciation.financial_cost_useful_life_years",

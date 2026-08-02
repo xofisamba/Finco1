@@ -164,7 +164,20 @@ def _build_project_inputs_proxy(inputs: OperatingModelInput, tariff_schedule: tu
         for item in opex_in.items
     )
 
+    # Rebuild HierarchicalOpexCapability for opex_schedule_period dispatch.
+    # Presence of hierarchical_model in clean OpexInput is the sole signal.
+    _hier_cap = None
+    if opex_in.hierarchical_model is not None:
+        from finco_core.opex._capability import HierarchicalOpexCapability
+        _hier_cap = HierarchicalOpexCapability(
+            opex_model=opex_in.hierarchical_model,
+            external_annual_series=opex_in.hierarchical_external_annual_series,
+        )
+
     # Stub capex/financing/tax — not consumed by Phase 2A leaves.
+    # senior_tenor_years is sourced from depreciation (same origin as financing.senior_tenor_years
+    # in the adapter) so that OpexCalculationContext receives the correct value for
+    # SENIOR_DEBT_TENOR_ACTIVE subitems when the hierarchical path is active.
     stub_capex_item = CapexItem(name="stub", amount_keur=0.0)
     stub_capex = CapexStructure(
         epc_contract=stub_capex_item,
@@ -190,8 +203,11 @@ def _build_project_inputs_proxy(inputs: OperatingModelInput, tariff_schedule: tu
         capex=stub_capex,
         opex=opex_items,
         revenue=revenue,
-        financing=FinancingParams(),
+        financing=FinancingParams(
+            senior_tenor_years=inputs.depreciation.financial_cost_useful_life_years,
+        ),
         tax=TaxParams(),
+        hierarchical_opex_capability=_hier_cap,
     )
 
 

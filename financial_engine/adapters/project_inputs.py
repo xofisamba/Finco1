@@ -121,6 +121,14 @@ def from_project_inputs(
         for item in inputs.opex
     )
 
+    # Carry hierarchical OPEX capability through the clean contract when present.
+    # Presence is the sole dispatch signal — no project-name or code inspection.
+    _hcap = inputs.hierarchical_opex_capability
+    _hier_model = _hcap.opex_model if _hcap is not None else None
+    _hier_ext: tuple[tuple[str, tuple[float, ...]], ...] = (
+        _hcap.external_annual_series if _hcap is not None else ()
+    )
+
     def _to_dep_item(item) -> CapexItemForDep:
         return CapexItemForDep(
             name=item.name,
@@ -151,7 +159,11 @@ def from_project_inputs(
         calendar=calendar,
         technical=technical,
         revenue=revenue,
-        opex=OpexInput(items=opex_items),
+        opex=OpexInput(
+            items=opex_items,
+            hierarchical_model=_hier_model,
+            hierarchical_external_annual_series=_hier_ext,
+        ),
         depreciation=DepreciationInput(
             book_capex_items_for_depreciation=book_capex_items_for_dep,
             tax_capex_items_for_depreciation=tax_capex_items_for_dep,
