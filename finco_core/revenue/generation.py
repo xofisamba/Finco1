@@ -153,6 +153,31 @@ def _period_energy_revenue_keur(
     return generation_mwh * market_price / 1000
 
 
+def _period_merchant_revenue_keur(
+    *,
+    generation_mwh: float,
+    ppa_tariff: float,
+    market_price: float,
+    ppa_active: bool,
+    ppa_share: float,
+) -> tuple[float, float, float, float]:
+    """Return (ppa_revenue_keur, gross_merchant_revenue_keur, ppa_mwh, merchant_mwh).
+
+    Splits gross electricity revenue into PPA and merchant components for
+    accurate merchant-only balancing deduction (Excel CF row 40).
+    """
+    bounded_ppa_share = min(max(ppa_share, 0.0), 1.0)
+    if ppa_active:
+        ppa_mwh = generation_mwh * bounded_ppa_share
+        merchant_mwh = generation_mwh - ppa_mwh
+    else:
+        ppa_mwh = 0.0
+        merchant_mwh = generation_mwh
+    ppa_rev = ppa_mwh * ppa_tariff / 1000
+    merchant_rev = merchant_mwh * market_price / 1000
+    return ppa_rev, merchant_rev, ppa_mwh, merchant_mwh
+
+
 def _certificate_revenue_keur(*, generation_mwh: float, enabled: bool, price_eur_mwh: float) -> float:
     """Return certificate/CO2 revenue for one period.
 
@@ -183,6 +208,11 @@ def revenue_decomposition_schedule(
                 "generation_mwh": 0.0,
                 "ppa_tariff_eur_mwh": 0.0,
                 "market_price_eur_mwh": 0.0,
+                "ppa_generation_mwh": 0.0,
+                "merchant_generation_mwh": 0.0,
+                "ppa_revenue_keur": 0.0,
+                "gross_merchant_revenue_keur": 0.0,
+                "gross_electricity_revenue_keur": 0.0,
                 "electricity_revenue_keur": 0.0,
                 "co2_certificate_revenue_keur": 0.0,
                 "balancing_cost_keur": 0.0,
@@ -200,18 +230,28 @@ def revenue_decomposition_schedule(
         # Use per-period tariff schedule when available (policy-driven).
         tariff_pp = inputs.revenue.tariff_at_operating_period(period.operating_period_index)
         tariff = tariff_pp if tariff_pp is not None else inputs.revenue.tariff_at_year(period.year_index)
-        market_price = inputs.revenue.market_price_at_year(period.year_index)
+        # Calendar-year price lookup when schedule is present (matches Excel CF row 30);
+        # falls back to operating-year lookup for projects without a CY schedule.
+        period_end_year = period.end_date.year
+        market_price = inputs.revenue.market_price_for_period(
+            period_end_year=period_end_year,
+            operating_year=period.year_index,
+        )
         ppa_active = period.is_ppa_active
         first_merchant_idx = inputs.revenue.first_merchant_operating_period_index
         if first_merchant_idx is not None:
             ppa_active = period.operating_period_index < first_merchant_idx
-        energy_revenue_keur = _period_energy_revenue_keur(
-            generation_mwh=generation_mwh,
-            ppa_tariff=tariff,
-            market_price=market_price,
-            ppa_active=ppa_active,
-            ppa_share=inputs.revenue.ppa_production_share,
+        ppa_revenue_keur, gross_merchant_revenue_keur, ppa_generation_mwh, merchant_generation_mwh = (
+            _period_merchant_revenue_keur(
+                generation_mwh=generation_mwh,
+                ppa_tariff=tariff,
+                market_price=market_price,
+                ppa_active=ppa_active,
+                ppa_share=inputs.revenue.ppa_production_share,
+            )
         )
+        energy_revenue_keur = ppa_revenue_keur + gross_merchant_revenue_keur
+        gross_electricity_revenue_keur = energy_revenue_keur
         # Phase 7: explicit certificate and balancing cost inputs (EUR/MWh)
         # Fallback priority (per PR #90 backward-compat requirement):
         #   schedule > co2_certificate_price_eur_per_mwh > co2_price_eur
@@ -243,7 +283,10 @@ def revenue_decomposition_schedule(
             balancing_eur_mwh = inputs.revenue.balancing_cost_eur_per_mwh
         else:
             balancing_eur_mwh = inputs.revenue.balancing_cost_wind_eur_mwh
-        balancing_cost_pv_keur = energy_revenue_keur * inputs.revenue.balancing_cost_pv
+        # Balancing deduction applied ONLY to gross merchant electricity revenue,
+        # matching Excel CF row 40: = -Inputs!D114 * Spot_Sales_kEUR.
+        # PPA revenue and CO2 revenue are not included in the deduction basis.
+        balancing_cost_pv_keur = gross_merchant_revenue_keur * inputs.revenue.balancing_cost_pv
         balancing_cost_wind_keur = generation_mwh * balancing_eur_mwh / 1000
         balancing_cost_keur = balancing_cost_pv_keur + balancing_cost_wind_keur
         # Net revenue after all deductions
@@ -262,6 +305,12 @@ def revenue_decomposition_schedule(
             "generation_mwh": generation_mwh,
             "ppa_tariff_eur_mwh": tariff,
             "market_price_eur_mwh": market_price,
+            # Merchant decomposition (Stage C2B — Excel CF row 30 / row 40 lineage)
+            "ppa_generation_mwh": ppa_generation_mwh,
+            "merchant_generation_mwh": merchant_generation_mwh,
+            "ppa_revenue_keur": ppa_revenue_keur,
+            "gross_merchant_revenue_keur": gross_merchant_revenue_keur,
+            "gross_electricity_revenue_keur": gross_electricity_revenue_keur,
             # Phase 7: explicit revenue split
             "electricity_revenue_keur": energy_revenue_keur,
             "co2_certificate_revenue_keur": co2_certificate_revenue_keur,

@@ -304,6 +304,19 @@ async def execute_project_save_as_route(
     working_copy_snapshot["project_origin"] = "user_created"
     working_copy_snapshot["project_name"] = new_record.project_name
 
+    # Materialize canonical rev_* defaults for Oborovo working copies so that
+    # UI fields show actual values rather than blank fields backed by invisible
+    # factory inheritance.  Only seed keys that are absent — never overwrite a
+    # value already in the source snapshot.
+    if (source.template_source or "").lower() == "oborovo":
+        from app.project_factories import create_default_oborovo
+        from app.revenue_snapshot_utils import materialize_revenue_snapshot_defaults
+        _oborovo_factory = create_default_oborovo()
+        _rev_defaults = materialize_revenue_snapshot_defaults(_oborovo_factory.revenue)
+        for key, default_val in _rev_defaults.items():
+            if not working_copy_snapshot.get(key):
+                working_copy_snapshot[key] = default_val
+
     # Initialize the new workspace (Quirk: draft=saved=baseline, dirty=False)
     deps.save_workspace_state(
         user_id=user.user_id,

@@ -1,0 +1,76 @@
+{
+  "description": "Stage C2B source evidence: Oborovo merchant price, balancing, CO2",
+  "workbook": {
+    "filename": "d49af8ee-20260414_BP_Oborovo_Sensitivity_FINAL_for_PPT.xlsm",
+    "sha256": "15a621c4d6b79024980766e00ebc79d7235fd56f00567be7bf345c769ce57920"
+  },
+  "formula_sources": {
+    "merchant_price": {
+      "cf_row": 30,
+      "formula": "=INDEX(Inputs!$D$106:$AH$106,1,MATCH(YEAR(G3),Inputs!$D$96:$AH$96))",
+      "inputs_row_96_description": "Calendar years 2030\u20132060 (model year axis)",
+      "inputs_row_106_description": "Selected scenario price = GMPV * 1.085 (tracker) * inflation_index",
+      "inputs_row_107_formula": "=row108*(1+$B$107) where B107=0.085",
+      "inputs_row_108_description": "AFRY Q1 2026 4h Degraded GMPV Central (hardcoded)",
+      "inputs_row_116_description": "Calendar-year inflation index (CY2030=1.10, ..., CY2060=1.99)",
+      "indexing": "CALENDAR-YEAR via YEAR(period_end)"
+    },
+    "balancing_deduction": {
+      "cf_row": 40,
+      "formula": "=-Inputs!$D$114*CF!H28",
+      "inputs_d114_value": 0.025,
+      "inputs_d114_label": "Balancing PV rate",
+      "cf_h28_description": "Spot Sales kEUR for the same period",
+      "interpretation": "2.5% of gross merchant/spot electricity revenue; zero during PPA"
+    },
+    "co2_revenue": {
+      "cf_row": 46,
+      "formula": "=G47*G21/1000",
+      "cf_row_47_formula": "=IF(G6,HLOOKUP(G4,Inputs!$E$140:$AH$141,2,FALSE),0)",
+      "co2_rate_eur_mwh": 1.5,
+      "co2_table": "Inputs E140:AH141 periods 1-30 all = 1.5",
+      "basis": "Total CF production (row 21), all operating periods, constant rate"
+    }
+  },
+  "merchant_prices_by_calendar_year": {
+    "source": "Inputs row 106 (data_only=True cached values)",
+    "calendar_start_year": 2042,
+    "values_eur_mwh": {
+      "2042": 75.12095149999999,
+      "2043": 75.83325399999998,
+      "2044": 76.03517249999999,
+      "2045": 74.10767,
+      "2046": 75.790071,
+      "2047": 77.47963299999999,
+      "2048": 79.1593215,
+      "2049": 80.86288,
+      "2050": 82.57359949999999,
+      "2051": 84.78114049999999,
+      "2052": 86.50704999999999,
+      "2053": 88.22135,
+      "2054": 90.4723995,
+      "2055": 92.20113,
+      "2056": 93.63116,
+      "2057": 95.01388399999999,
+      "2058": 95.8876345,
+      "2059": 97.2187125,
+      "2060": 98.543606
+    }
+  },
+  "source_parameters": {
+    "balancing_fraction": 0.025,
+    "co2_price_eur_mwh": 1.5,
+    "ppa_base_tariff_eur_mwh": 57.0,
+    "ppa_term_years": 12
+  },
+  "source_revenue_keur": {
+    "excel_total_operating_revenue": 237686.922,
+    "source": "CF sheet row 23 sum over all 60 operating periods (30 semi-annual years)"
+  },
+  "source_correct_diagnostic": {
+    "description": "Clean engine with CY prices + 2.5% balancing (Case 5)",
+    "clean_engine_revenue_keur": 237672.841,
+    "delta_vs_excel_keur": -14.081,
+    "residual_attribution": "Period-boundary production allocation difference (COD 2030-06-29 \u2192 Python start 2030-06-30 vs Excel bop 2030-07-01)"
+  }
+}

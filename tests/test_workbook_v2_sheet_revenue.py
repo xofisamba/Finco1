@@ -122,10 +122,10 @@ class TestRevenueBuildSheetFields(unittest.TestCase):
         self.assertFalse(dupes, f"Duplicate field_ids: {dupes}")
 
     def test_seven_bound_fields(self):
-        """Exactly 7 BOUND fields in the revenue sheet."""
+        """BOUND fields in the revenue sheet (ppa×5 + balancing×4 + merchant×1 = 10)."""
         rows = _build_sheet_fields("revenue", _fake_pis())
         bound = [r for r in rows if r["binding_label"] == "bound"]
-        self.assertEqual(len(bound), 7, f"expected 7 BOUND, got {len(bound)}: {[r['field_id'] for r in bound]}")
+        self.assertEqual(len(bound), 11, f"expected 11 BOUND, got {len(bound)}: {[r['field_id'] for r in bound]}")
 
     def test_two_partial_fields(self):
         """Exactly 2 PARTIAL fields (the legacy keys)."""
@@ -151,15 +151,17 @@ class TestRevenueBuildSheetFields(unittest.TestCase):
             missing = required_keys - row.keys()
             self.assertFalse(missing, f"Row {row['field_id']} missing keys: {missing}")
 
-    def test_ppa_section_has_six_fields(self):
+    def test_ppa_section_has_eight_fields(self):
+        # C2B3: added rev_ppa_indexation_start_date → 8 fields (6 BOUND + 2 PARTIAL).
         rows = _build_sheet_fields("revenue", _fake_pis())
         ppa_rows = [r for r in rows if r["section_id"] == "ppa"]
-        self.assertEqual(len(ppa_rows), 6)
+        self.assertEqual(len(ppa_rows), 8)
 
     def test_balancing_section_has_three_fields(self):
+        # C2B2: split balancing into merchant_pct + cost_eur_per_mwh → 4 fields.
         rows = _build_sheet_fields("revenue", _fake_pis())
         bal_rows = [r for r in rows if r["section_id"] == "balancing"]
-        self.assertEqual(len(bal_rows), 3)
+        self.assertEqual(len(bal_rows), 4)
 
 
 # ---------------------------------------------------------------------------
@@ -206,10 +208,10 @@ class TestRevenueAllFieldsRendered(unittest.TestCase):
         self.assertFalse(dupes, f"Duplicate field_ids in DOM: {dupes}")
 
     def test_seven_editable_controls(self):
-        """6 BOUND fields rendered as editable rows (base_tariff moved to planned placeholder)."""
+        """7 BOUND fields rendered as editable rows (base_tariff moved to planned placeholder)."""
         editable = self.rev.find_all(class_="v2-field-editable")
-        self.assertEqual(len(editable), 6,
-                         f"expected 6 editable (base_tariff is a placeholder), got {len(editable)}")
+        self.assertEqual(len(editable), 7,
+                         f"expected 7 editable (base_tariff is a placeholder), got {len(editable)}")
 
     def test_two_partial_rows_in_dom(self):
         """Both PARTIAL legacy fields appear as read-only rows with PARTIAL badge."""
@@ -351,10 +353,10 @@ class TestRevenueSheetEditable(unittest.TestCase):
         cls.rev = cls.soup.find(id="v2-sheet-revenue")
 
     def test_exactly_seven_editable_controls(self):
-        """6 BOUND fields → 6 editable rows (base_tariff is a planned placeholder)."""
+        """7 BOUND fields → 7 editable rows (base_tariff is a planned placeholder)."""
         editable = self.rev.find_all(class_="v2-field-editable")
-        self.assertEqual(len(editable), 6,
-                         f"expected 6 (base_tariff excluded from editables), got {len(editable)}")
+        self.assertEqual(len(editable), 7,
+                         f"expected 7 (base_tariff excluded from editables), got {len(editable)}")
 
     def test_forms_target_revenue_sheet(self):
         forms = self.rev.find_all("form", class_="v2-field-form")

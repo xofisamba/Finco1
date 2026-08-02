@@ -58,22 +58,23 @@
   {# ── Local navigation ──────────────────────────────────────────────── #}
   <nav class="v2-inputs-nav" aria-label="Revenue sections">
     <a href="#nav-rev-commercial">Commercial</a>
-    <a href="#nav-rev-balancing">Balancing</a>
+    <a href="#nav-rev-balancing">Balancing &amp; CO2</a>
+    <a href="#nav-rev-merchant">Merchant Curve</a>
     <a href="#nav-rev-outputs">Outputs</a>
-    <a href="#nav-rev-planned">Planned</a>
     <a href="#nav-rev-future">Future</a>
   </nav>
 
-  {# ── 1. Commercial Structure (BOUND fields) ───────────────────────── #}
+  {# ── 1. Commercial Structure ──────────────────────────────────────── #}
+  {# Revenue Model V1: single PPA plus residual merchant.               #}
+  {# All ppa section BOUND fields are live — canonical rev_ppa_*        #}
+  {# keys win over legacy tariff_eur_mwh / ppa_term_years in the        #}
+  {# snapshot adapter (C2B2).                                            #}
   <details class="v2-inputs-section" open>
     {{ section_anchor("commercial", "1. Commercial Structure") }}
     <div class="v2-section-fields">
 
-      {# All ppa section fields — render_field decides BOUND→editable / PARTIAL→read-only badge #}
-      {# revenue.ppa.base_tariff is BOUND in registry but NOT wired in V2 _snapshot_to_dict   #}
-      {# (engine reads legacy tariff_eur_mwh key). It is shown in section 4 Planned inputs.   #}
       {% for f in revenue_fields %}
-        {% if f.section_id == "ppa" and f.field_id != "revenue.ppa.base_tariff" %}
+        {% if f.section_id == "ppa" and f.binding_label != "partial" %}
           {{ render_field(f, project_code, workbook_version, content_hash, project_editable,
                           hx_target="#v2-sheet-revenue", sheet_id="revenue") }}
         {% endif %}
@@ -83,8 +84,12 @@
   </details>
 
   {# ── 2. Balancing & CO2 ────────────────────────────────────────────── #}
-  <details class="v2-inputs-section">
-    {{ section_anchor("balancing", "2. Balancing & CO2") }}
+  {# Two separate balancing concepts:                                     #}
+  {# • Merchant Balancing %: fraction of spot sales (Oborovo CF row 40)  #}
+  {# • Balancing EUR/MWh: flat per-MWh cost (wind projects)              #}
+  {# CO2 price is EUR/MWh applied to total generation (not EUR/tCO2).    #}
+  <details class="v2-inputs-section" open>
+    {{ section_anchor("balancing", "2. Balancing &amp; CO2") }}
     <div class="v2-section-fields">
 
       {% for f in revenue_fields %}
@@ -97,14 +102,105 @@
     </div>
   </details>
 
-  {# ── 3. Revenue Outputs ────────────────────────────────────────────── #}
+  {# ── 3. Merchant Price Curve ────────────────────────────────────────── #}
+  {# Calendar-year price schedule stored as JSON array.                   #}
+  {# Format: [{"year": 2042, "price_eur_mwh": 75.12}, ...]               #}
+  {# Matches Excel Inputs row 106 / CF row 30. When present wins over     #}
+  {# the legacy market_prices_curve (operating-year indexed).             #}
+  <details class="v2-inputs-section">
+    {{ section_anchor("merchant", "3. Merchant Price Curve") }}
+    <div class="v2-section-fields">
+
+      {# Locate the merchant price curve field #}
+      {% set mcf = namespace(field=none) %}
+      {% for f in revenue_fields %}
+        {% if f.field_id == "revenue.merchant.price_curve_json" %}
+          {% set mcf.field = f %}
+        {% endif %}
+      {% endfor %}
+
+      {% if mcf.field is not none %}
+        {% if mcf.field.binding_label == "bound" and project_editable %}
+          {# Excel-style Year | Merchant Price grid #}
+          <div class="v2-merchant-grid-wrapper" data-field-id="{{ mcf.field.field_id }}">
+            <form id="v2-merchant-curve-form"
+                  method="post" action="/v2/workbook/update"
+                  autocomplete="off"
+                  hx-post="/v2/workbook/update"
+                  hx-target="#v2-sheet-revenue"
+                  hx-swap="outerHTML">
+              <input type="hidden" name="sheet_id"        value="revenue">
+              <input type="hidden" name="field_id"         value="{{ mcf.field.field_id }}">
+              <input type="hidden" name="project"          value="{{ project_code }}">
+              <input type="hidden" name="workbook_version" value="{{ workbook_version }}">
+              <input type="hidden" name="content_hash"     value="{{ content_hash }}">
+              {# Hidden textarea that holds the serialised JSON submitted with the form #}
+              <textarea id="v2-merchant-json-value" name="value"
+                        style="display:none" aria-hidden="true"></textarea>
+
+              {# Store raw JSON in a data attribute; JS populates rows on load #}
+              <table class="v2-merchant-grid" aria-label="Merchant Price Curve"
+                     id="v2-merchant-grid-table"
+                     data-curve-json="{{ mcf.field.value | e if mcf.field.value else '[]' }}">
+                <thead>
+                  <tr>
+                    <th class="v2-mg-col-year">Year</th>
+                    <th class="v2-mg-col-price">Merchant Price (EUR/MWh)</th>
+                    <th class="v2-mg-col-action" aria-label="Actions"></th>
+                  </tr>
+                </thead>
+                <tbody id="v2-merchant-grid-body">
+                  {# Rows injected by v2MerchantGridInit() on DOMContentLoaded #}
+                </tbody>
+              </table>
+
+              <div class="v2-merchant-grid-controls">
+                <button type="button" class="v2-mg-add-row">
+                  + Add Year
+                </button>
+                <button type="submit" class="v2-field-save v2-mg-save"
+                        aria-label="Save merchant price curve">
+                  Save Curve &#10003;
+                </button>
+              </div>
+            </form>
+          </div>
+
+          <script>
+          // Merchant grid initialized by static/js/workbook_v2.js merchantGridInit().
+          // After HTMX swap, workbook_v2.js re-initializes via htmx:afterSwap.
+          if (typeof window.v2MerchantGridInit === 'function') {
+            window.v2MerchantGridInit();
+          }
+          </script>
+
+        {% else %}
+          {# Read-only: show compact summary #}
+          <div class="v2-field-row v2-field-readonly" data-field-id="{{ mcf.field.field_id }}">
+            <span class="v2-field-label">{{ mcf.field.label }}</span>
+            <span class="v2-field-value">
+              {% if mcf.field.value %}
+                <span class="v2-runtime-mono">{{ mcf.field.value | truncate(60) }}</span>
+              {% else %}
+                <span class="v2-field-empty">—</span>
+              {% endif %}
+            </span>
+            <span class="v2-binding-badge v2-binding-{{ mcf.field.binding_label }}">{{ mcf.field.binding_label }}</span>
+          </div>
+        {% endif %}
+      {% endif %}
+
+    </div>
+  </details>
+
+  {# ── 4. Revenue Outputs ────────────────────────────────────────────── #}
   {#
     Data authority: runtime_summary["revenue_derivation"] from persisted RuntimeResult.
     No arithmetic, no totals, no annualisation in this template.
     State classification uses the same four states as Debt / Tax / FS.
   #}
   <details class="v2-inputs-section" open>
-    {{ section_anchor("outputs", "3. Revenue Outputs") }}
+    {{ section_anchor("outputs", "4. Revenue Outputs") }}
     <div class="v2-section-fields">
 
       {# State badge #}
@@ -199,25 +295,6 @@
         {% endif %}
       {% endif %}
 
-    </div>
-  </details>
-
-  {# ── 4. Planned inputs (collapsed) ────────────────────────────────── #}
-  <details class="v2-inputs-section">
-    {{ section_anchor("planned", "4. Planned inputs") }}
-    <div class="v2-section-fields">
-      {# revenue.ppa.base_tariff: stored in draft but not wired to V2 engine (reads tariff_eur_mwh) #}
-      {{ placeholder_row("PPA Base Tariff (EUR/MWh)", "Not wired in V2 engine — use project creation") }}
-      {{ placeholder_row("Offtake Type") }}
-      {{ placeholder_row("Merchant %") }}
-      {{ placeholder_row("Contract Count") }}
-      {{ placeholder_row("CfD Strike Price") }}
-      {{ placeholder_row("Corporate PPA") }}
-      {{ placeholder_row("Merchant Price") }}
-      {{ placeholder_row("Indexation") }}
-      {{ placeholder_row("Price Curve") }}
-      {{ placeholder_row("Reference Market") }}
-      {{ placeholder_row("Inflation Link") }}
     </div>
   </details>
 

@@ -755,6 +755,7 @@ def _compute_baseline_snapshot(project_type: str, template_source: str) -> dict[
 
     if normalized_source == "oborovo":
         pi = create_default_oborovo()
+        from app.revenue_snapshot_utils import materialize_revenue_snapshot_defaults
         baseline.update({
             "active_project": "oborovo-baseline",
             "project_name": pi.info.name,
@@ -776,6 +777,7 @@ def _compute_baseline_snapshot(project_type: str, template_source: str) -> dict[
             "capacity_factor": f"{(pi.technical.operating_hours_p50 / 8760) * 100:.2f}",
             "ppa_term_years": str(int(pi.revenue.ppa_term_years)),
         })
+        baseline.update(materialize_revenue_snapshot_defaults(pi.revenue))
         return baseline
 
     # generic_wind / generic_solar fallback

@@ -407,3 +407,135 @@ document.addEventListener('htmx:afterSettle', function (e) {
   if (!fsPanel && !document.getElementById('v2-sheet-financial-statements')) return;
   _v2FsRestoreState();
 });
+
+// ── Merchant Price Curve grid ────────────────────────────────────────────
+(function () {
+  'use strict';
+
+  function getMerchantRows() {
+    return Array.from(document.querySelectorAll('#v2-merchant-grid-body .v2-mg-row'));
+  }
+
+  function buildMerchantRow(year, price) {
+    var tr = document.createElement('tr');
+    tr.className = 'v2-mg-row';
+    tr.dataset.year = String(year);
+    tr.innerHTML =
+      '<td class="v2-mg-cell-year">' + year + '</td>' +
+      '<td class="v2-mg-cell-price">' +
+        '<input type="number" step="0.01" class="v2-mg-price-input" ' +
+        'value="' + (price != null ? price : '') + '" ' +
+        'aria-label="Price for ' + year + '">' +
+      '</td>' +
+      '<td class="v2-mg-cell-action">' +
+        '<button type="button" class="v2-mg-delete-row" ' +
+        'aria-label="Delete year ' + year + '">&#10005;</button>' +
+      '</td>';
+    tr.querySelector('.v2-mg-delete-row').addEventListener('click', function () {
+      tr.remove();
+      merchantGridMarkDirty();
+    });
+    tr.querySelector('.v2-mg-price-input').addEventListener('change', merchantGridMarkDirty);
+    tr.querySelector('.v2-mg-price-input').addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        merchantGridSerialise();
+        var form = document.getElementById('v2-merchant-curve-form');
+        if (form) form.requestSubmit ? form.requestSubmit() : form.submit();
+      }
+    });
+    return tr;
+  }
+
+  function merchantGridMarkDirty() {
+    var btn = document.querySelector('.v2-mg-save');
+    if (btn) btn.classList.add('v2-field-save--pending');
+  }
+
+  function merchantGridSerialise() {
+    var rows = getMerchantRows();
+    var curve = rows.map(function (tr) {
+      var yearCell = tr.querySelector('.v2-mg-cell-year');
+      var priceInput = tr.querySelector('.v2-mg-price-input');
+      return {
+        year: parseInt(yearCell.textContent.trim(), 10),
+        price_eur_mwh: parseFloat(priceInput.value)
+      };
+    });
+    var textarea = document.getElementById('v2-merchant-json-value');
+    if (textarea) textarea.value = JSON.stringify(curve);
+  }
+
+  function merchantGridInit() {
+    var table = document.getElementById('v2-merchant-grid-table');
+    if (!table) return;
+    var jsonStr = table.dataset.curveJson || '[]';
+    var tbody = document.getElementById('v2-merchant-grid-body');
+    if (!tbody) return;
+    try {
+      var items = JSON.parse(jsonStr);
+      items.sort(function (a, b) { return a.year - b.year; });
+      items.forEach(function (item) {
+        tbody.appendChild(buildMerchantRow(item.year, item.price_eur_mwh));
+      });
+    } catch (e) {
+      // Invalid JSON — leave grid empty; user must re-enter.
+    }
+
+    // Add Year button
+    var addBtn = document.querySelector('.v2-mg-add-row');
+    if (addBtn) {
+      addBtn.addEventListener('click', function () {
+        var rows = getMerchantRows();
+        var lastYear = rows.length > 0
+          ? parseInt(rows[rows.length - 1].dataset.year, 10)
+          : 2042;
+        var newRow = buildMerchantRow(lastYear + 1, '');
+        tbody.appendChild(newRow);
+        newRow.querySelector('.v2-mg-price-input').focus();
+        merchantGridMarkDirty();
+      });
+    }
+
+    // Bind serialise to form submit event (handles both button click and Enter key)
+    var form = document.getElementById('v2-merchant-curve-form');
+    if (form) {
+      form.addEventListener('submit', function (e) {
+        merchantGridSerialise();
+        // Allow htmx to handle submission normally.
+      });
+    }
+
+    // Save button onclick fallback (belt-and-suspenders for HTMX flows)
+    var saveBtn = document.querySelector('.v2-mg-save');
+    if (saveBtn) {
+      saveBtn.addEventListener('click', function () {
+        merchantGridSerialise();
+      });
+    }
+  }
+
+  // Expose for HTMX re-render re-initialization
+  window.v2MerchantGridInit = merchantGridInit;
+
+  // Initialize on first load
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', merchantGridInit);
+  } else {
+    merchantGridInit();
+  }
+
+  // Re-initialize after HTMX outerHTML swap
+  document.addEventListener('htmx:afterSwap', function (e) {
+    if (e.target && e.target.id === 'v2-sheet-revenue') {
+      merchantGridInit();
+    }
+  });
+
+  // Also handle htmx:afterSettle for cases where swap doesn't fire target directly
+  document.addEventListener('htmx:afterSettle', function () {
+    if (document.getElementById('v2-merchant-grid-table')) {
+      merchantGridInit();
+    }
+  });
+})();

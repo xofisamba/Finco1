@@ -149,6 +149,8 @@ def _build_project_inputs_proxy(inputs: OperatingModelInput, tariff_schedule: tu
         ),
         ppa_indexation_start_date=rev.ppa_indexation_start_date,
         ppa_tariff_by_operating_period=tariff_schedule,
+        market_price_calendar_start_year=rev.merchant_price_calendar_start_year,
+        market_prices_by_calendar_year_eur_mwh=rev.merchant_prices_by_calendar_year_eur_mwh,
     )
 
     opex_items = tuple(

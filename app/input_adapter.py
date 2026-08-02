@@ -105,6 +105,150 @@ def _set_revenue_ppa_term(proj: "ProjectInputs", value: int) -> "ProjectInputs":
     )
 
 
+def _set_revenue_ppa_index(proj: "ProjectInputs", value: float) -> "ProjectInputs":
+    """UI stores human-readable % (e.g. 2.0); engine expects fraction (0.02)."""
+    return dc_replace(proj, revenue=dc_replace(proj.revenue, ppa_index=value / 100.0))
+
+
+def _set_revenue_ppa_production_share(proj: "ProjectInputs", value: float) -> "ProjectInputs":
+    """UI stores human-readable % (e.g. 50.0); engine expects fraction (0.50)."""
+    return dc_replace(proj, revenue=dc_replace(proj.revenue, ppa_production_share=value / 100.0))
+
+
+def _set_revenue_ppa_indexation_policy(proj: "ProjectInputs", value: str) -> "ProjectInputs":
+    return dc_replace(proj, revenue=dc_replace(proj.revenue, ppa_indexation_start_policy=value))
+
+
+def _set_revenue_ppa_indexation_start_date(proj: "ProjectInputs", value: str) -> "ProjectInputs":
+    """Parse ISO-8601 date string (YYYY-MM-DD) and set ppa_indexation_start_date."""
+    from datetime import date as _date
+    if not value or str(value).strip() == "":
+        return dc_replace(proj, revenue=dc_replace(proj.revenue, ppa_indexation_start_date=None))
+    try:
+        parsed = _date.fromisoformat(str(value).strip())
+    except ValueError as exc:
+        raise ValueError(f"rev_ppa_indexation_start_date must be YYYY-MM-DD, got {value!r}") from exc
+    return dc_replace(proj, revenue=dc_replace(proj.revenue, ppa_indexation_start_date=parsed))
+
+
+def _set_revenue_merchant_balancing_pct(proj: "ProjectInputs", value: float) -> "ProjectInputs":
+    """Set balancing_cost_pv (% of merchant revenue as fraction 0–1)."""
+    return dc_replace(proj, revenue=dc_replace(proj.revenue, balancing_cost_pv=value / 100.0))
+
+
+def _set_revenue_balancing_eur_per_mwh(proj: "ProjectInputs", value: float) -> "ProjectInputs":
+    return dc_replace(proj, revenue=dc_replace(proj.revenue, balancing_cost_eur_per_mwh=value))
+
+
+def _set_revenue_co2_enabled(proj: "ProjectInputs", value: bool) -> "ProjectInputs":
+    return dc_replace(proj, revenue=dc_replace(proj.revenue, co2_enabled=bool(value)))
+
+
+def _set_revenue_co2_price_eur_mwh(proj: "ProjectInputs", value: float) -> "ProjectInputs":
+    """Set canonical co2_certificate_price_eur_per_mwh (EUR/MWh applied to generation)."""
+    return dc_replace(proj, revenue=dc_replace(proj.revenue, co2_certificate_price_eur_per_mwh=value))
+
+
+def validate_merchant_curve_json(curve_json: str) -> list:
+    """Validate and parse a merchant price curve JSON string.
+
+    Expected format: [{"year": 2042, "price_eur_mwh": 75.12}, ...]
+    Returns sorted list of dicts on success; raises ValueError with a descriptive
+    message on any validation failure.
+    """
+    import json as _json
+    import math as _math
+
+    try:
+        items = _json.loads(curve_json)
+    except (_json.JSONDecodeError, TypeError) as exc:
+        raise ValueError(f"Invalid JSON: {exc}") from exc
+
+    if not isinstance(items, list):
+        raise ValueError("Merchant curve must be a JSON array")
+    if not items:
+        raise ValueError("Merchant curve must not be empty")
+
+    parsed = []
+    for i, item in enumerate(items):
+        if not isinstance(item, dict):
+            raise ValueError(f"Item {i} is not an object")
+        if "year" not in item:
+            raise ValueError(f"Item {i} missing 'year'")
+        if "price_eur_mwh" not in item:
+            raise ValueError(f"Item {i} missing 'price_eur_mwh'")
+        raw_year = item["year"]
+        if isinstance(raw_year, bool):
+            raise ValueError(f"Item {i} 'year' must be an integer, got {raw_year!r}")
+        if isinstance(raw_year, float):
+            if raw_year != int(raw_year):
+                raise ValueError(
+                    f"Item {i} 'year' must be a whole-number calendar year, "
+                    f"got {raw_year!r} (fractional years are not supported)"
+                )
+            year = int(raw_year)
+        elif isinstance(raw_year, int):
+            year = raw_year
+        elif isinstance(raw_year, str):
+            stripped = raw_year.strip()
+            try:
+                as_float = float(stripped)
+            except (TypeError, ValueError):
+                raise ValueError(f"Item {i} 'year' must be an integer, got {raw_year!r}")
+            if as_float != int(as_float):
+                raise ValueError(
+                    f"Item {i} 'year' must be a whole-number calendar year, "
+                    f"got {raw_year!r} (fractional years are not supported)"
+                )
+            year = int(as_float)
+        else:
+            raise ValueError(f"Item {i} 'year' must be an integer, got {raw_year!r}")
+        try:
+            price = float(item["price_eur_mwh"])
+        except (TypeError, ValueError):
+            raise ValueError(f"Item {i} 'price_eur_mwh' must be numeric, got {item['price_eur_mwh']!r}")
+        if _math.isnan(price) or _math.isinf(price):
+            raise ValueError(f"Item {i} 'price_eur_mwh' must be finite, got {price}")
+        if price < 0:
+            raise ValueError(f"Item {i} 'price_eur_mwh' must be non-negative, got {price}")
+        parsed.append({"year": year, "price_eur_mwh": price})
+
+    sorted_items = sorted(parsed, key=lambda x: x["year"])
+
+    # Duplicate year check
+    years = [x["year"] for x in sorted_items]
+    if len(years) != len(set(years)):
+        raise ValueError("Merchant curve contains duplicate years")
+
+    # Contiguous year check — gaps would corrupt the calendar-year tuple index
+    for j in range(1, len(years)):
+        if years[j] != years[j - 1] + 1:
+            raise ValueError(
+                f"Merchant curve years must be contiguous; gap between {years[j-1]} and {years[j]}"
+            )
+
+    return sorted_items
+
+
+def _set_revenue_merchant_price_curve_json(proj: "ProjectInputs", curve_json: str) -> "ProjectInputs":
+    """Parse JSON merchant price curve and wire into market_prices_by_calendar_year_eur_mwh.
+
+    Expected format: [{"year": 2042, "price_eur_mwh": 75.12}, ...]
+    Raises ValueError for malformed input; caller should catch and surface to user.
+    """
+    sorted_items = validate_merchant_curve_json(curve_json)
+    start_year = sorted_items[0]["year"]
+    prices = tuple(x["price_eur_mwh"] for x in sorted_items)
+    return dc_replace(
+        proj,
+        revenue=dc_replace(
+            proj.revenue,
+            market_price_calendar_start_year=start_year,
+            market_prices_by_calendar_year_eur_mwh=prices,
+        ),
+    )
+
+
 def _zero_financial_capex_subfields(proj: "ProjectInputs") -> "ProjectInputs":
     """Zero out the financial cost sub-fields on the
     capex structure.
@@ -151,7 +295,9 @@ def _apply_capex_total(proj: "ProjectInputs", target: float) -> "ProjectInputs":
         for f in proj.capex.__dataclass_fields__.values()
         if f.name not in ("idc_keur", "commitment_fees_keur", "bank_fees_keur",
                           "other_financial_keur", "vat_costs_keur", "reserve_accounts_keur",
+                          "vat_facility_idc_keur", "vat_facility_commitment_fee_keur",
                           "epc_contract")
+        and hasattr(getattr(proj.capex, f.name), "amount_keur")
         and getattr(proj.capex, f.name).amount_keur > 0
     )
     epc_target = max(target - other_keur, 0.0)
@@ -171,6 +317,15 @@ def _resolve_user_inputs(
     horizon_years: int = None,
     tariff_eur_mwh: float = None,
     ppa_term_years: int = None,
+    rev_ppa_index: float = None,
+    rev_ppa_production_share: float = None,
+    rev_ppa_indexation_start_policy: str = None,
+    rev_ppa_indexation_start_date: str = None,
+    rev_merchant_balancing_pct: float = None,
+    rev_balancing_cost_eur_per_mwh: float = None,
+    rev_co2_enabled: bool = None,
+    rev_co2_price_eur_mwh: float = None,
+    rev_merchant_price_curve_json: str = None,
     p50_hours: float = None,
     operating_hours_p90_10y: float = None,
     operating_hours_p99_1y: float = None,
@@ -287,6 +442,33 @@ def _resolve_user_inputs(
         proj = _set_revenue_tariff(proj, tariff_eur_mwh)
     if ppa_term_years is not None:
         proj = _set_revenue_ppa_term(proj, ppa_term_years)
+    # Canonical V2 revenue fields (C2B2) — applied after legacy fields so canonical wins.
+    if rev_ppa_index is not None:
+        proj = _set_revenue_ppa_index(proj, rev_ppa_index)
+    if rev_ppa_production_share is not None:
+        proj = _set_revenue_ppa_production_share(proj, rev_ppa_production_share)
+    if rev_ppa_indexation_start_policy is not None:
+        proj = _set_revenue_ppa_indexation_policy(proj, rev_ppa_indexation_start_policy)
+    if rev_ppa_indexation_start_date is not None:
+        proj = _set_revenue_ppa_indexation_start_date(proj, rev_ppa_indexation_start_date)
+    # Cross-field: CONTRACT_ANNIVERSARY requires a date at runtime.
+    # Only enforce when policy was explicitly set (not inherited from factory).
+    if rev_ppa_indexation_start_policy is not None:
+        from app.revenue_input_validation import validate_revenue_ppa_cross_field
+        validate_revenue_ppa_cross_field(
+            ppa_indexation_start_policy=proj.revenue.ppa_indexation_start_policy,
+            ppa_indexation_start_date=proj.revenue.ppa_indexation_start_date,
+        )
+    if rev_merchant_balancing_pct is not None:
+        proj = _set_revenue_merchant_balancing_pct(proj, rev_merchant_balancing_pct)
+    if rev_balancing_cost_eur_per_mwh is not None:
+        proj = _set_revenue_balancing_eur_per_mwh(proj, rev_balancing_cost_eur_per_mwh)
+    if rev_co2_enabled is not None:
+        proj = _set_revenue_co2_enabled(proj, rev_co2_enabled)
+    if rev_co2_price_eur_mwh is not None:
+        proj = _set_revenue_co2_price_eur_mwh(proj, rev_co2_price_eur_mwh)
+    if rev_merchant_price_curve_json is not None:
+        proj = _set_revenue_merchant_price_curve_json(proj, rev_merchant_price_curve_json)
 
     # ── CAPEX (shared resolver) ──────────────────────────────
     # When using a seeded base (TUHO / Oborovo factory), only zero
@@ -456,7 +638,20 @@ def _snapshot_to_dict(snapshot: dict) -> dict:
     """Convert a saved user-project snapshot dict to the
     same shape as _schema_to_dict. Required fields are
     validated by build_projectinputs_from_snapshot before
-    this function is called."""
+    this function is called.
+
+    C2B2: canonical rev_* keys win over legacy keys when both present.
+    """
+    # Canonical key wins over legacy when both present (C2B2).
+    # Strict: non-empty invalid values raise SnapshotInputError; absent/empty → None (use legacy).
+    _canonical_tariff = _snapshot_float_strict(snapshot, "rev_ppa_base_tariff", non_negative=True)
+    _legacy_tariff = _snapshot_float(snapshot, "tariff_eur_mwh", non_negative=True)
+
+    _canonical_ppa_term = _snapshot_float_strict(
+        snapshot, "rev_ppa_term_years", min_value=1, max_value=50
+    )
+    _legacy_ppa_term = _snapshot_int(snapshot, "ppa_term_years", positive=True)
+
     return {
         "project_type": _snapshot_text(snapshot, "project_type").title(),
         "project_name": _snapshot_text(snapshot, "project_name"),
@@ -477,12 +672,10 @@ def _snapshot_to_dict(snapshot: dict) -> dict:
         "horizon_years": _snapshot_int(
             snapshot, "horizon_years", positive=True
         ),
-        "tariff_eur_mwh": _snapshot_float(
-            snapshot, "tariff_eur_mwh", non_negative=True
-        ),
-        "ppa_term_years": _snapshot_int(
-            snapshot, "ppa_term_years", positive=True
-        ),
+        # Canonical rev_ppa_base_tariff wins over legacy tariff_eur_mwh.
+        "tariff_eur_mwh": _canonical_tariff if _canonical_tariff is not None else _legacy_tariff,
+        # Canonical rev_ppa_term_years wins over legacy ppa_term_years.
+        "ppa_term_years": int(_canonical_ppa_term) if _canonical_ppa_term is not None else _legacy_ppa_term,
         "p50_hours": _snapshot_float(
             snapshot, "p50_hours", positive=True
         ),
@@ -522,6 +715,17 @@ def _snapshot_to_dict(snapshot: dict) -> dict:
             if str(snapshot.get("tax_loss_carryforward_years", "") or "").strip()
             else None
         ),
+        # C2B2/C2B3 canonical revenue fields — optional; absent/empty → inherit factory.
+        # Non-empty invalid values raise SnapshotInputError (strict helpers).
+        "rev_ppa_index": _snapshot_float_strict(snapshot, "rev_ppa_index", non_negative=True, max_value=100.0),
+        "rev_ppa_production_share": _snapshot_float_strict(snapshot, "rev_ppa_production_share", non_negative=True, max_value=100.0),
+        "rev_ppa_indexation_start_policy": _snapshot_str_opt(snapshot, "rev_ppa_indexation_start_policy"),
+        "rev_ppa_indexation_start_date": _snapshot_str_opt(snapshot, "rev_ppa_indexation_start_date"),
+        "rev_merchant_balancing_pct": _snapshot_float_strict(snapshot, "rev_merchant_balancing_pct", non_negative=True, max_value=100.0),
+        "rev_balancing_cost_eur_per_mwh": _snapshot_float_strict(snapshot, "rev_balancing_cost_eur_per_mwh", non_negative=True),
+        "rev_co2_enabled": _snapshot_bool_strict(snapshot, "rev_co2_enabled"),
+        "rev_co2_price_eur_mwh": _snapshot_float_strict(snapshot, "rev_co2_price_eur_mwh", non_negative=True),
+        "rev_merchant_price_curve_json": _snapshot_str_opt(snapshot, "rev_merchant_price_curve_json"),
     }
 
 
@@ -578,6 +782,87 @@ REQUIRED_USER_PROJECT_SNAPSHOT_FIELDS = (
     "tenor_years",
     "target_dscr",
 )
+
+
+def _snapshot_float_opt(snapshot: dict, key: str, *, non_negative: bool = False) -> "float | None":
+    """Read an optional float from a snapshot — returns None when absent or non-numeric."""
+    raw = snapshot.get(key)
+    if raw is None or str(raw).strip() == "":
+        return None
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        return None
+    if non_negative and value < 0:
+        return None
+    return value
+
+
+def _snapshot_float_strict(
+    snapshot: dict,
+    key: str,
+    *,
+    non_negative: bool = False,
+    min_value: float | None = None,
+    max_value: float | None = None,
+) -> "float | None":
+    """Read an optional float from a snapshot — strict version.
+
+    Unlike _snapshot_float_opt, raises SnapshotInputError when a non-empty value
+    is present but cannot be parsed or violates range constraints.
+    Returns None only when the key is absent or empty.
+    """
+    raw = snapshot.get(key)
+    if raw is None or str(raw).strip() == "":
+        return None
+    try:
+        value = float(raw)
+    except (TypeError, ValueError) as exc:
+        raise SnapshotInputError(f"{key}: invalid numeric value {raw!r}") from exc
+    if non_negative and value < 0:
+        raise SnapshotInputError(f"{key}: value must be non-negative, got {value}")
+    if min_value is not None and value < min_value:
+        raise SnapshotInputError(f"{key}: value must be ≥ {min_value}, got {value}")
+    if max_value is not None and value > max_value:
+        raise SnapshotInputError(f"{key}: value must be ≤ {max_value}, got {value}")
+    return value
+
+
+def _snapshot_bool_strict(snapshot: dict, key: str) -> "bool | None":
+    """Read an optional bool from a snapshot — strict version.
+
+    Raises SnapshotInputError when a non-empty value is present but cannot be
+    interpreted as a boolean.  Returns None only when the key is absent or empty.
+    """
+    raw = snapshot.get(key)
+    if raw is None or str(raw).strip() == "":
+        return None
+    if isinstance(raw, bool):
+        return raw
+    s = str(raw).strip().lower()
+    if s in ("true", "1", "yes"):
+        return True
+    if s in ("false", "0", "no"):
+        return False
+    raise SnapshotInputError(f"{key}: invalid boolean value {raw!r}; expected true/false")
+
+
+def _snapshot_bool_opt(snapshot: dict, key: str) -> "bool | None":
+    """Read an optional bool from a snapshot — returns None when absent."""
+    raw = snapshot.get(key)
+    if raw is None or str(raw).strip() == "":
+        return None
+    if isinstance(raw, bool):
+        return raw
+    return str(raw).strip().lower() in ("true", "1", "yes")
+
+
+def _snapshot_str_opt(snapshot: dict, key: str) -> "str | None":
+    """Read an optional string from a snapshot — returns None when absent or empty."""
+    raw = snapshot.get(key)
+    if raw is None or str(raw).strip() == "":
+        return None
+    return str(raw).strip()
 
 
 def _snapshot_text(snapshot: dict, key: str) -> str:

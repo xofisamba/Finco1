@@ -485,6 +485,13 @@ class RevenueParams:
     # Pre-computed per-operating-period tariff schedule (indexed by operating_period_index).
     # When non-empty, tariff_at_operating_period() uses this instead of the analytic formula.
     ppa_tariff_by_operating_period: tuple[float, ...] = ()
+    # Calendar-year merchant price schedule.  When supplied, market_price_for_period()
+    # uses YEAR(period_end) as the lookup key, matching Excel CF row 30 semantics.
+    # market_price_calendar_start_year must be set when this tuple is non-empty.
+    # Values are already-nominal selected-scenario prices; market_inflation is NOT
+    # re-applied to them.
+    market_price_calendar_start_year: int | None = None
+    market_prices_by_calendar_year_eur_mwh: tuple[float, ...] = ()
 
     def tariff_at_year(self, year: int) -> float:
         """Return indexed contract tariff for a 1-based operating year (legacy path).
@@ -505,7 +512,7 @@ class RevenueParams:
         return None
 
     def market_price_at_year(self, year: int) -> float:
-        """Return merchant market price for a 1-based operating year."""
+        """Return merchant market price for a 1-based operating year (legacy path)."""
         idx = year - 1
         if idx < len(self.market_prices_curve):
             return self.market_prices_curve[idx]
@@ -513,6 +520,46 @@ class RevenueParams:
             base = self.market_prices_curve[-1]
             return base * (1 + self.market_inflation) ** (idx - len(self.market_prices_curve) + 1)
         return self.ppa_base_tariff
+
+    def market_price_for_period(self, period_end_year: int, operating_year: int) -> float:
+        """Return merchant market price for a period.
+
+        When market_prices_by_calendar_year_eur_mwh is supplied, looks up the price
+        for period_end_year (calendar year of the period end date), matching Excel
+        CF row 30: INDEX(row106, MATCH(YEAR(period_end), row96)).
+
+        Falls back to market_price_at_year(operating_year) when no calendar-year
+        schedule is present, preserving existing behavior for all other projects.
+
+        Raises ValueError on invalid combinations (curve without start year, or
+        period_end_year outside the supplied range).
+        """
+        if self.market_prices_by_calendar_year_eur_mwh:
+            if self.market_price_calendar_start_year is None:
+                raise ValueError(
+                    "market_prices_by_calendar_year_eur_mwh is set but "
+                    "market_price_calendar_start_year is None"
+                )
+            idx = period_end_year - self.market_price_calendar_start_year
+            n = len(self.market_prices_by_calendar_year_eur_mwh)
+            if idx < 0:
+                # Period falls before the merchant start year (e.g. PPA years).
+                # Spot price is irrelevant here; caller is responsible for using
+                # ppa_active to skip merchant revenue calculation.
+                return 0.0
+            if idx >= n:
+                # Beyond the supplied calendar-year range: extrapolate from the
+                # last entry using market_inflation, matching the documented
+                # fallback behavior of market_price_at_year().
+                base = self.market_prices_by_calendar_year_eur_mwh[-1]
+                return base * (1 + self.market_inflation) ** (idx - n + 1)
+            return self.market_prices_by_calendar_year_eur_mwh[idx]
+        if self.market_price_calendar_start_year is not None and not self.market_prices_by_calendar_year_eur_mwh:
+            raise ValueError(
+                "market_price_calendar_start_year is set but "
+                "market_prices_by_calendar_year_eur_mwh is empty"
+            )
+        return self.market_price_at_year(operating_year)
 
 
 @dataclass(frozen=True)

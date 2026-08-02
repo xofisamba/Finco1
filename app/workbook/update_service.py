@@ -235,6 +235,18 @@ class WorkbookUpdateService:
                     error=f"{spec.label} must be ≤ {spec.max_value} (got {typed})."
                 )
 
+        # --- 6. Merchant curve semantic validation -----------------------
+        if field_id == "revenue.merchant.price_curve_json" and typed is not None:
+            from app.input_adapter import validate_merchant_curve_json
+            try:
+                validate_merchant_curve_json(str(typed))
+            except ValueError as exc:
+                return FieldValidationResult(
+                    field_id=field_id, raw_value=raw_value, typed_value=None,
+                    spec=spec,
+                    error=f"Merchant Price Curve: {exc}",
+                )
+
         return FieldValidationResult(
             field_id=field_id, raw_value=raw_value, typed_value=typed, spec=spec
         )
