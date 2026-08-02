@@ -3,9 +3,9 @@
   "error_count": 0,
   "errors": [],
   "summary": {
-    "canonical_field_count": 70,
-    "crosswalk_row_count": 61,
-    "matrix_row_count": 61,
+    "canonical_field_count": 74,
+    "crosswalk_row_count": 65,
+    "matrix_row_count": 65,
     "pack_evidence_count": 68,
     "unresolved_pack_id_count": 36,
     "tuho_inputs_row_count": 347,
@@ -15,13 +15,13 @@
     "runtime_binding_status_counts": {
       "RUNTIME_FULLY_BOUND": 39,
       "TEMPLATE_LOCKED": 5,
-      "RUNTIME_PARTIALLY_BOUND": 10,
+      "RUNTIME_PARTIALLY_BOUND": 14,
       "DISPLAY_ONLY": 5,
       "DERIVED_ONLY": 2
     },
     "excel_mapping_status_counts": {
       "VERIFIED_BOTH_MODELS": 4,
-      "SOURCE_COORDINATE_UNRESOLVED": 23,
+      "SOURCE_COORDINATE_UNRESOLVED": 27,
       "REGISTRY_HINT_ONLY": 34
     },
     "tuho_inputs_classification": {
@@ -51,28 +51,28 @@
       "ENGINE_OUTPUT": 16
     },
     "registry_backed_canonical": {
-      "count": 61,
+      "count": 65,
       "by_runtime_binding_status": {
         "RUNTIME_FULLY_BOUND": 39,
         "TEMPLATE_LOCKED": 5,
-        "RUNTIME_PARTIALLY_BOUND": 10,
+        "RUNTIME_PARTIALLY_BOUND": 14,
         "DISPLAY_ONLY": 5,
         "DERIVED_ONLY": 2
       },
       "by_excel_mapping_status": {
         "VERIFIED_BOTH_MODELS": 4,
-        "SOURCE_COORDINATE_UNRESOLVED": 23,
+        "SOURCE_COORDINATE_UNRESOLVED": 27,
         "REGISTRY_HINT_ONLY": 34
       },
       "by_runtime_validation_status": {
         "GENERIC_ROUTE_ONLY": 14,
-        "UNRESOLVED": 21,
+        "UNRESOLVED": 25,
         "SHARED_PIPELINE_PROVEN": 24,
         "FIELD_SPECIFIC_E2E_PROVEN": 1,
         "DISPLAY_ONLY_PROVEN": 1
       },
       "by_scenario_mapping_status": {
-        "SOURCE_COORDINATE_UNRESOLVED": 60,
+        "SOURCE_COORDINATE_UNRESOLVED": 64,
         "VERIFIED_TUHO_ONLY": 1
       },
       "by_cell_role": {
