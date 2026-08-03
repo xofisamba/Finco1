@@ -128,6 +128,12 @@ def from_project_inputs(
     _hier_ext: tuple[tuple[str, tuple[float, ...]], ...] = (
         _hcap.external_annual_series if _hcap is not None else ()
     )
+    # Map senior debt tenor explicitly from financing — semantically distinct from
+    # financial_cost_useful_life_years (depreciation amortization driver).
+    # None for flat projects where the field is not consulted by the OPEX leaf.
+    _senior_tenor: int | None = (
+        inputs.financing.senior_tenor_years if _hcap is not None else None
+    )
 
     def _to_dep_item(item) -> CapexItemForDep:
         return CapexItemForDep(
@@ -163,6 +169,7 @@ def from_project_inputs(
             items=opex_items,
             hierarchical_model=_hier_model,
             hierarchical_external_annual_series=_hier_ext,
+            senior_debt_tenor_years=_senior_tenor,
         ),
         depreciation=DepreciationInput(
             book_capex_items_for_depreciation=book_capex_items_for_dep,

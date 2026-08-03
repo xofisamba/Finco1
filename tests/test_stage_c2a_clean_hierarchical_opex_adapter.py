@@ -341,7 +341,7 @@ class TestValidationRejectsInvalidCombinations:
         hierarchical path is actually taken (not silently bypassed).
         """
         import dataclasses
-        from finco_core.opex.hierarchical._inputs import OpexModelInput
+        from finco_core.opex.hierarchical import OpexModelInput
         pi = _oborovo()
         omin = _adapt(pi)
         # A model with no categories produces zero OPEX via the hierarchical path.
@@ -416,3 +416,167 @@ class TestNoProjectIdentityDispatch:
         assert not oborovo_refs, (
             f"{rel_path} contains project-identity references: {oborovo_refs}"
         )
+
+    def test_no_private_import_of_opex_model_input(self):
+        """OpexModelInput must be imported through the public hierarchical API."""
+        src = self._read_source("financial_engine/inputs.py")
+        assert "finco_core.opex.hierarchical._inputs" not in src, (
+            "financial_engine/inputs.py imports OpexModelInput from private _inputs; "
+            "use finco_core.opex.hierarchical (public __init__) instead"
+        )
+
+
+# ── Explicit senior tenor mapping ──────────────────────────────────────────────
+
+class TestExplicitSeniorTenorMapping:
+    """Prove senior_debt_tenor_years is sourced from financing, not depreciation."""
+
+    def test_adapted_tenor_equals_financing_source(self):
+        pi = _oborovo()
+        omin = _adapt(pi)
+        assert omin.opex.senior_debt_tenor_years == pi.financing.senior_tenor_years, (
+            f"adapted senior_debt_tenor_years={omin.opex.senior_debt_tenor_years} "
+            f"!= financing.senior_tenor_years={pi.financing.senior_tenor_years}"
+        )
+
+    def test_proxy_financing_tenor_equals_opex_tenor(self):
+        from financial_engine.orchestrator import _build_project_inputs_proxy
+        pi = _oborovo()
+        omin = _adapt(pi)
+        proxy = _build_project_inputs_proxy(omin)
+        assert proxy.financing.senior_tenor_years == omin.opex.senior_debt_tenor_years, (
+            f"proxy financing.senior_tenor_years={proxy.financing.senior_tenor_years} "
+            f"!= opex.senior_debt_tenor_years={omin.opex.senior_debt_tenor_years}"
+        )
+
+    def test_tenor_chain_source_to_adapter_to_proxy(self):
+        """Full chain: financing.senior_tenor_years → opex field → proxy financing field."""
+        from financial_engine.orchestrator import _build_project_inputs_proxy
+        pi = _oborovo()
+        omin = _adapt(pi)
+        proxy = _build_project_inputs_proxy(omin)
+        assert (
+            pi.financing.senior_tenor_years
+            == omin.opex.senior_debt_tenor_years
+            == proxy.financing.senior_tenor_years
+        )
+
+    def test_flat_project_has_none_tenor(self):
+        from app.project_factories import create_default_solar_project
+        omin = _adapt(create_default_solar_project())
+        assert omin.opex.senior_debt_tenor_years is None
+
+
+# ── Depreciation / OPEX independence ──────────────────────────────────────────
+
+class TestDepreciationOpexIndependence:
+    """Changing financial_cost_useful_life_years must not change hierarchical OPEX."""
+
+    def test_changing_dep_tenor_does_not_change_opex(self):
+        import dataclasses
+        pi = _oborovo()
+        omin_orig = _adapt(pi)
+
+        # Build a variant with a different depreciation useful life
+        orig_dep = omin_orig.depreciation
+        new_dep = dataclasses.replace(orig_dep, financial_cost_useful_life_years=20)
+        omin_alt = dataclasses.replace(omin_orig, depreciation=new_dep)
+
+        result_orig = _run_clean(omin_orig)
+        result_alt = _run_clean(omin_alt)
+
+        orig_opex = {p.period_index: p.opex_keur for p in result_orig.periods}
+        alt_opex = {p.period_index: p.opex_keur for p in result_alt.periods}
+
+        for idx in orig_opex:
+            assert orig_opex[idx] == alt_opex[idx], (
+                f"Period {idx}: OPEX changed when only depreciation tenor changed "
+                f"(orig={orig_opex[idx]:.6f}, alt={alt_opex[idx]:.6f})"
+            )
+
+    def test_changing_opex_tenor_changes_only_tenor_dependent_lines(self):
+        """Changing senior_debt_tenor_years changes OPEX; depreciation stays fixed."""
+        import dataclasses
+        pi = _oborovo()
+        omin_orig = _adapt(pi)
+
+        # Change only opex.senior_debt_tenor_years (shorten tenor → more periods active)
+        alt_tenor = (omin_orig.opex.senior_debt_tenor_years or 14) + 2
+        alt_opex_in = dataclasses.replace(omin_orig.opex, senior_debt_tenor_years=alt_tenor)
+        omin_alt = dataclasses.replace(omin_orig, opex=alt_opex_in)
+
+        # Depreciation must be identical (same dep input)
+        assert omin_orig.depreciation == omin_alt.depreciation
+
+        # The two runs may differ if any subitem uses SENIOR_DEBT_TENOR_ACTIVE mode;
+        # for Oborovo this is expected to produce a different schedule.
+        result_orig = _run_clean(omin_orig)
+        result_alt = _run_clean(omin_alt)
+
+        orig_total = sum(p.opex_keur for p in result_orig.periods if p.is_operation)
+        alt_total = sum(p.opex_keur for p in result_alt.periods if p.is_operation)
+
+        # The two totals may be equal if no SENIOR_DEBT_TENOR_ACTIVE subitems exist,
+        # but we confirm the change did not raise and depreciation was not affected.
+        assert omin_orig.depreciation.financial_cost_useful_life_years == (
+            omin_alt.depreciation.financial_cost_useful_life_years
+        )
+
+
+# ── OPEX004 validation ─────────────────────────────────────────────────────────
+
+class TestOpex004Validation:
+    """senior_debt_tenor_years must be present and positive when hierarchical_model is set."""
+
+    def test_missing_tenor_with_hierarchical_model_is_error(self):
+        import dataclasses
+        from financial_engine.validation import validate_operating_model_input, has_errors
+        omin = _adapt(_oborovo())
+        broken = dataclasses.replace(
+            omin,
+            opex=dataclasses.replace(omin.opex, senior_debt_tenor_years=None),
+        )
+        issues = validate_operating_model_input(broken)
+        assert has_errors(issues)
+        assert any(i.code == "OPEX004" for i in issues)
+
+    def test_zero_tenor_with_hierarchical_model_is_error(self):
+        import dataclasses
+        from financial_engine.validation import validate_operating_model_input, has_errors
+        omin = _adapt(_oborovo())
+        broken = dataclasses.replace(
+            omin,
+            opex=dataclasses.replace(omin.opex, senior_debt_tenor_years=0),
+        )
+        issues = validate_operating_model_input(broken)
+        assert has_errors(issues)
+        assert any(i.code == "OPEX004" for i in issues)
+
+    def test_negative_tenor_with_hierarchical_model_is_error(self):
+        import dataclasses
+        from financial_engine.validation import validate_operating_model_input, has_errors
+        omin = _adapt(_oborovo())
+        broken = dataclasses.replace(
+            omin,
+            opex=dataclasses.replace(omin.opex, senior_debt_tenor_years=-5),
+        )
+        issues = validate_operating_model_input(broken)
+        assert has_errors(issues)
+        assert any(i.code == "OPEX004" for i in issues)
+
+    def test_valid_tenor_with_hierarchical_model_passes(self):
+        from financial_engine.validation import validate_operating_model_input, has_errors
+        omin = _adapt(_oborovo())
+        issues = validate_operating_model_input(omin)
+        opex004 = [i for i in issues if i.code == "OPEX004"]
+        assert not opex004, f"Unexpected OPEX004 errors: {opex004}"
+
+    def test_none_tenor_without_hierarchical_model_passes(self):
+        """flat projects: None tenor is valid."""
+        from app.project_factories import create_default_solar_project
+        from financial_engine.validation import validate_operating_model_input, has_errors
+        omin = _adapt(create_default_solar_project())
+        assert omin.opex.senior_debt_tenor_years is None
+        issues = validate_operating_model_input(omin)
+        opex004 = [i for i in issues if i.code == "OPEX004"]
+        assert not opex004

@@ -197,6 +197,13 @@ def _build_project_inputs_proxy(inputs: OperatingModelInput, tariff_schedule: tu
         project_rights=stub_capex_item,
     )
 
+    # senior_tenor_years for the proxy is sourced from opex_in.senior_debt_tenor_years —
+    # an explicit field mapped from financing.senior_tenor_years in the adapter.
+    # This decouples OPEX tenor from the depreciation contract.
+    # When senior_debt_tenor_years is None (flat projects), FinancingParams default (0) is fine
+    # because opex_schedule_period() takes the flat path and never reads financing.
+    _proxy_senior_tenor = opex_in.senior_debt_tenor_years or 0
+
     return ProjectInputs(
         info=info,
         technical=technical,
@@ -204,7 +211,7 @@ def _build_project_inputs_proxy(inputs: OperatingModelInput, tariff_schedule: tu
         opex=opex_items,
         revenue=revenue,
         financing=FinancingParams(
-            senior_tenor_years=inputs.depreciation.financial_cost_useful_life_years,
+            senior_tenor_years=_proxy_senior_tenor,
         ),
         tax=TaxParams(),
         hierarchical_opex_capability=_hier_cap,

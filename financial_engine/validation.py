@@ -142,6 +142,16 @@ def validate_operating_model_input(
                            "hierarchical_external_annual_series supplied without hierarchical_model; "
                            "supply hierarchical_model or clear the external series"))
 
+    if opex.hierarchical_model is not None:
+        if opex.senior_debt_tenor_years is None:
+            issues.append(_err("OPEX004", "opex.senior_debt_tenor_years",
+                               "senior_debt_tenor_years is required when hierarchical_model is present; "
+                               "map from financing.senior_tenor_years in the adapter"))
+        elif opex.senior_debt_tenor_years <= 0:
+            issues.append(_err("OPEX004", "opex.senior_debt_tenor_years",
+                               f"senior_debt_tenor_years must be a positive integer, "
+                               f"got {opex.senior_debt_tenor_years}"))
+
     # Depreciation
     if dep.financial_cost_useful_life_years <= 0:
         issues.append(_err("DEP004", "depreciation.financial_cost_useful_life_years",

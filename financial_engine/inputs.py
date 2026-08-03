@@ -16,7 +16,7 @@ from financial_engine.ppa_indexation import PpaIndexationStartPolicy
 
 if TYPE_CHECKING:
     from financial_engine.policies.tax import TaxPolicy
-    from finco_core.opex.hierarchical._inputs import OpexModelInput
+    from finco_core.opex.hierarchical import OpexModelInput
 
 
 class YieldScenario(str, Enum):
@@ -89,6 +89,10 @@ class OpexInput:
     # TYPE_CHECKING import only; no runtime finco_core dependency at import time.
     hierarchical_model: "OpexModelInput | None" = None
     hierarchical_external_annual_series: "tuple[tuple[str, tuple[float, ...]], ...]" = ()
+    # Senior debt tenor in years — required when hierarchical_model is present (OPEX004),
+    # ignored for flat projects.  Explicit field decouples OPEX activation from the
+    # depreciation contract (financial_cost_useful_life_years is a different concept).
+    senior_debt_tenor_years: "int | None" = None
 
 
 @dataclass(frozen=True)
