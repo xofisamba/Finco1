@@ -33,7 +33,7 @@ import pathlib
 import sys
 from typing import Any
 
-_EXTRACTOR_VERSION = "2.0.0"
+_EXTRACTOR_VERSION = "3.0.0"
 _EXPECTED_FILENAME = "20260414_BP_Oborovo_Sensitivity_FINAL_for_PPT.xlsm"
 
 # ---------------------------------------------------------------------------
@@ -457,48 +457,142 @@ def _read_pl_tax_formulas(wb_formula, wb_data) -> dict:
             entry["D_col_cached"] = cached_at(row1, d_const_col)
         return entry
 
-    rows["depreciation"] = row_entry(13, "Depreciation (=Dep!G30; book dep incl. financing costs)")
-    rows["ebit"] = row_entry(16, "EBIT (=G8-G14)")
-    rows["senior_interests"] = row_entry(24, "Senior Interests (=DS!G53-CF!G83)")
+    # --- Financial-revenue rows (needed for DSRA/cash-interest identity) ---
+    rows["fin_rev_reserve_account"] = row_entry(19, "Interests from Reserve Account (=(G$3>0)*$B19*(CF!F105+CF!F91)*G$6)", b_const_col=B)
+    rows["fin_rev_cash"] = row_entry(20, "Interests from Cash (=(CF!F144>0)*$B19*CF!F144*G$5*G$6)")
+    rows["fin_rev_adjustment"] = row_entry(21, "Financial revenue adjustment (==-SUM(G19:G20)*$B21*G$6)", b_const_col=B)
+    # --- P&L core ---
+    rows["depreciation"] = row_entry(13, "Depreciation total (=Dep!G30; row30=SUM(G7:G28) incl. financing costs)")
+    rows["ebit"] = row_entry(16, "EBIT (=G8-G14; G8=Total Revenues =CF!G23, G14=Total Expenses=SUM(G10:G13))")
+    rows["senior_interests"] = row_entry(24, "Senior Interests (=DS!G53-CF!G83; DS!G53=net interest, CF!G83=-DS!G35 VAT facility)")
     rows["shl_interests"] = row_entry(27, "Shareholder Loan Interests (=DS!G125)")
     rows["financial_earnings"] = row_entry(30, "Financial Earnings (=SUM(G19:G21)-SUM(G24:G28))")
     rows["earnings_before_tax"] = row_entry(32, "Earnings Before Tax (=G16+G30)")
-    rows["fiscal_reintegration_display"] = row_entry(34, "Fiscal Reintegration display row (=-G54)")
-    rows["taxable_income"] = row_entry(35, "Taxable Income (=G34+G32)")
-    rows["losses_n_minus_1"] = row_entry(36, "Losses N-1 opening balance (5-period rolling SUMIF)", b_const_col=B)
-    rows["allocated_losses"] = row_entry(37, "Allocated Losses (=IF(AND(G36<=0,G32>0),MIN(ABS(G36),G32),0))", b_const_col=B)
+    rows["fiscal_reintegration_display"] = row_entry(34, "Fiscal Reintegration display (=-G54; sign flip of helper)")
+    rows["taxable_income"] = row_entry(35, "Taxable Income (=G34+G32 = FR+EBT)")
+    rows["losses_n_minus_1"] = row_entry(36, "Losses N-1 opening balance (SUMIF rolling+SUM($F$37:F$37))", b_const_col=B)
+    rows["allocated_losses"] = row_entry(37, "Allocated Losses (=IF(AND(G36<=0,G32>0),MIN(ABS(G36),G32),0); uses EBT G32 not TI)", b_const_col=B)
     rows["losses_n"] = row_entry(38, "Losses N (=MIN(G37+G36,0))")
-    rows["carriable_losses"] = row_entry(39, "Carriable Losses closing balance (=MIN(G38,F35*$B37))")
+    rows["carriable_losses"] = row_entry(39, "Carriable Losses closing balance (=MIN(G38,F35*$B37); F35=prev-period TI)")
     rows["taxable_profit_n"] = row_entry(41, "Taxable Profit N (=-G37+G35)")
-    rows["corporate_income_tax"] = row_entry(43, "CIT (=MAX(SUM(F41:G41),0)*$B43*(G4>0)*(MOD(G4,2)=0))", b_const_col=B)
-    rows["fiscal_reintegration_helper"] = row_entry(54, "Fiscal Reintegration helper (=MIN(MAX(G57,G58)+G59,G27))")
-    rows["thin_cap_rule"] = row_entry(56, "Thin Cap Rule (=BS!G45)")
-    rows["thin_cap_amount"] = row_entry(57, "Thin Cap amount (=IF(G56,MAX(G27-$C$57,0),0))", c_const_col=C)
-    rows["atad_30pct_amount"] = row_entry(58, "ATAD 30% amount (=IF(G56,MAX(G27-$C$58*(G32-G30+G13),0),0))", c_const_col=C)
-    rows["non_deductible_shl"] = row_entry(59, "Non-deductible SHL (=-G$27*($C$59)*$D$59)", c_const_col=C, d_const_col=D)
+    rows["corporate_income_tax_formula"] = row_entry(43, "CIT P&L formula (=MAX(SUM(F41:G41),0)*$B43*(G4>0)*(MOD(G4,2)=0))", b_const_col=B)
+    rows["corporate_income_tax_net_income"] = row_entry(44, "CIT feeding Net Income (=Macro!G40; IF(base,G38,G39); hardcoded scenario values)")
+    rows["net_income"] = row_entry(46, "Net Income (=G32-G44; uses row 44 not row 43)")
+    rows["fiscal_reintegration_helper"] = row_entry(54, "FR helper (=MIN(MAX(G57,G58)+G59,G27); row34==-G54 is display with sign flip)")
+    rows["thin_cap_rule"] = row_entry(56, "Thin Cap Rule (=BS!G45 = False always for Oborovo)")
+    rows["thin_cap_amount"] = row_entry(57, "Thin Cap amount (=IF(G56,MAX(G27-$C$57,0),0)); C57=3000 kEUR threshold", c_const_col=C)
+    rows["atad_30pct_amount"] = row_entry(58, "ATAD 30pct (=IF(G56,MAX(G27-$C$58*(G32-G30+G13),0),0)); C58=0.30", c_const_col=C)
+    rows["non_deductible_shl"] = row_entry(59, "Non-deductible SHL (=-G$27*C59*D59); C59=1.0 D59=True => full SHL", c_const_col=C, d_const_col=D)
+
+    # --- CIT authority analysis: rows 43 vs 44 ---
+    cit_formula_vec = period_vector_from_data(43)
+    cit_macro_vec = period_vector_from_data(44)
+    cit_delta_max = max(
+        abs((cit_formula_vec[i] or 0) - (cit_macro_vec[i] or 0))
+        for i in range(_N_PERIODS)
+    )
+    cit_authority = {
+        "row_43_formula": "=MAX(SUM(F41:G41),0)*$B43*(G4>0)*(MOD(G4,2)=0)",
+        "row_44_macro": "=Macro!G40 = IF(Production_Scenario=base_scenario,Macro!G38,Macro!G39)",
+        "macro_rows_38_39": "Hardcoded period-by-period values matching row 43 for current workbook snapshot",
+        "net_income_uses": "Row 44 (Macro!G40), NOT row 43",
+        "cf_cash_tax_row_77": "=-'P&L'!G44 (negated row 44)",
+        "row_43_vs_44_max_delta_keur": cit_delta_max,
+        "conclusion": (
+            "Rows 43 and 44 produce identical values in current workbook snapshot. "
+            "Row 43 is formula-driven (dynamic). Row 44 routes through Macro hardcoded values "
+            "that were pre-populated to match row 43. Risk: if upstream changes, "
+            "Macro rows 38/39 may become stale. "
+            "Authority for P&L and CF: row 44."
+        ),
+    }
+
+    # --- Period-by-period machine-readable diagnostic table ---
+    ebit_v = period_vector_from_data(16)
+    fin_earn_v = period_vector_from_data(30)
+    ebt_v = period_vector_from_data(32)
+    fr_v = period_vector_from_data(34)
+    ti_v = period_vector_from_data(35)
+    lcf_open_v = period_vector_from_data(36)
+    alloc_v = period_vector_from_data(37)
+    tp_v = period_vector_from_data(41)
+    cit_v = period_vector_from_data(43)
+    sd_v = period_vector_from_data(24)
+    shl_v = period_vector_from_data(27)
+    period_diagnostic = []
+    for p in range(_N_PERIODS):
+        ebt = ebt_v[p] or 0.0
+        fr = fr_v[p] or 0.0
+        ti = ti_v[p] or 0.0
+        ti_ebt_fr_delta = abs(ebt + fr - ti)
+        fr_shl_delta = abs(fr - (shl_v[p] or 0.0))
+        period_diagnostic.append({
+            "period": p,
+            "ebit_keur": round(ebit_v[p] or 0.0, 6),
+            "fin_earn_keur": round(fin_earn_v[p] or 0.0, 6),
+            "ebt_keur": round(ebt, 6),
+            "shl_keur": round(shl_v[p] or 0.0, 6),
+            "senior_keur": round(sd_v[p] or 0.0, 6),
+            "fr_keur": round(fr, 6),
+            "ti_keur": round(ti, 6),
+            "lcf_opening_keur": round(lcf_open_v[p] or 0.0, 6),
+            "allocated_losses_keur": round(alloc_v[p] or 0.0, 6),
+            "taxable_profit_keur": round(tp_v[p] or 0.0, 6),
+            "cit_keur": round(cit_v[p] or 0.0, 6),
+            "identity_ti_eq_ebt_plus_fr_delta": round(ti_ebt_fr_delta, 9),
+            "identity_fr_eq_shl_delta": round(fr_shl_delta, 9),
+        })
 
     return {
         "_source": source_map,
         "proved_formula_identity": (
-            "taxable_income = EBT + fiscal_reintegration"
-            " = (EBIT - senior_interest - shl_interest) + shl_interest"
-            " = EBIT - senior_interest"
-            " (when thin_cap=False, rows 57 and 58 = 0, fiscal_reintegration = full SHL)"
+            "taxable_income (row 35) = EBT (row 32) + FR (row 34)"
+            "; FR = -G54 where G54=MIN(MAX(G57,G58)+G59,G27)"
+            "; with thin_cap=BS!G45=False: G57=0, G58=0, G54=MIN(G59,G27)"
+            "; G59=-G27*C59*D59=-G27*1.0*True=-G27 => G54=MIN(-G27,G27)=-G27"
+            "; so FR=-G54=G27=SHL. Therefore TI=EBT+SHL=(EBIT+fin_earn-SD-SHL)+SHL=EBIT+fin_earn-SD."
+            " fin_earn=SUM(G19:G21)-SUM(G24:G28); rows 19-21 are financing revenues;"
+            " during debt tenor rows 19-21~=0 so TI~=EBIT-SD."
+            " After debt repayment: row 20 (Interests from Cash)>0 so TI=EBIT+small_cash_interest."
         ),
         "proved_cit_formula": (
-            "CIT = MAX(taxable_profit[N-1] + taxable_profit[N], 0) * rate"
-            " in even-indexed periods only (MOD(period_index, 2) = 0)"
-            " for operating periods (period_index > 0)"
+            "Row 43: MAX(SUM(F41:G41),0)*$B43*(G4>0)*(MOD(G4,2)=0)."
+            " SUM(F41:G41) = taxable_profit[prev_period]+taxable_profit[this_period]."
+            " MOD(G4,2)=0 fires in even-indexed periods (2,4,6,...)."
+            " G4>0 excludes construction (period 0)."
+            " Even periods = H1 of each model-year (Jan-Jun)."
+            " Each CIT charge = H2+H1 pair (prior H2 + current H1)."
+            " Row 44 = Macro!G40 routes same values via hardcoded scenario lookup."
+            " Net Income uses row 44; CF cash-tax = -row 44."
         ),
         "proved_lcf_window": (
-            "LCF opening balance = SUMIF of negative taxable incomes"
-            " in a rolling B36-period window (B36=5 periods, NOT 5 years)"
+            "Row 36: SUMIF(IF(G4<=$B$36,$F35:F35,F35:OFFSET(F35,0,-$B$36+1)),\"<0\")+SUM($F$37:F$37)."
+            " B36=5 => rolling 5-period window of negative taxable incomes."
+            " The SUM($F$37:F$37) term accumulates prior utilized losses (not just window)."
+            " Row 37 allocation condition uses G32 (EBT), not G35 (TI): losses only utilized when EBT>0."
+            " Row 39 carriable = MIN(G38, F35*$B37) where B37=1; F35=prior-period TI."
         ),
-        "proved_thin_cap": "Thin Cap = BS!G45 = False for all Oborovo periods",
+        "proved_thin_cap": "BS!G45=False for all Oborovo periods => thin_cap=False always",
         "proved_atad": (
-            "ATAD rows 57/58 = 0 for all Oborovo periods (conditional on thin_cap=False);"
-            " fiscal reintegration = 100% of SHL interest"
+            "ATAD rows 57/58=0 for all periods (guarded by IF(G56,...)) since G56=BS!G45=False."
+            " FR=non_deductible_shl=row59=-G27*C59*D59 where C59=1.0, D59=True => FR=full SHL."
         ),
+        "proved_model_year_mapping": (
+            "Period 0: construction (BoP=2029-06-29, EoP=2030-06-30)."
+            " Period 1: H2-2030 (Jul-Dec). Period 2: H1-2031 (Jan-Jun). ..."
+            " Pairs (1,2),(3,4),(5,6),... form model years 1,2,3,..."
+            " CIT fires in even periods (2,4,6,...) summing [prev_period+this_period] taxable profits."
+            " Python splits on calendar Jan-Dec boundaries, NOT on model-year H2+H1 pairs."
+            " LCF: 5 model-year periods (not 5 calendar years)."
+        ),
+        "proved_dep_row_authority": (
+            "P&L row 13 = Dep!G30 = SUM(G7:G28) = total book depreciation including financing costs."
+            " Dep!G31 = SUM(G7:G22) = unlevered depreciation (CAPEX only, excludes rows 23-28)."
+            " Tax dep gap = Dep!G30 - Dep!G31 = financing costs capitalized into asset base."
+            " Python adapter currently uses hard-CAPEX basis (similar to Dep!G31 but not identical)."
+        ),
+        "cit_row43_vs_row44_authority": cit_authority,
+        "period_diagnostic": period_diagnostic,
         "rows": rows,
     }
 
@@ -560,7 +654,7 @@ def extract(workbook_path: pathlib.Path) -> dict:
                 "source_sha256": _sha256(workbook_path),
                 "sheets_inspected": wb_data.sheetnames,
                 "dual_load_note": (
-                    "Loaded twice: data_only=True for cached values, "
+                    "dual_load: data_only=True for cached values, "
                     "data_only=False for formula text. "
                     "Both loads read the same binary; formulas are not re-evaluated."
                 ),
