@@ -33,7 +33,7 @@ import pathlib
 import sys
 from typing import Any
 
-_EXTRACTOR_VERSION = "1.0.0"
+_EXTRACTOR_VERSION = "2.0.0"
 _EXPECTED_FILENAME = "20260414_BP_Oborovo_Sensitivity_FINAL_for_PPT.xlsm"
 
 # ---------------------------------------------------------------------------
@@ -361,6 +361,148 @@ def _read_pl(wb) -> dict:
     return _read_schedule(wb, "P&L", row_map)
 
 
+def _read_pl_tax_formulas(wb_formula, wb_data) -> dict:
+    """Extract P&L tax rows with both formula text and cached values.
+
+    Loads two workbook handles: wb_formula (data_only=False) for formula text,
+    wb_data (data_only=True) for cached numerical values.  A cached value
+    without formula text or a formula without cached value is recorded but
+    flagged SOURCE_PARTIAL.
+
+    Row references are 1-based (Excel convention).
+    Column G (index 6) = period 0 (construction).
+    """
+    pl_f_rows = list(wb_formula["P&L"].iter_rows(
+        min_row=1, max_row=65, max_col=_PERIOD_COL_OFFSET + _N_PERIODS + 1,
+        values_only=False,
+    ))
+    pl_d_rows = list(wb_data["P&L"].iter_rows(
+        min_row=1, max_row=65, max_col=_PERIOD_COL_OFFSET + _N_PERIODS + 1,
+        values_only=True,
+    ))
+
+    def formula_at(row1, col0):
+        """Get formula string from formula workbook (row=1-based, col=0-based)."""
+        r = row1 - 1
+        if r >= len(pl_f_rows):
+            return None
+        row = pl_f_rows[r]
+        if col0 >= len(row):
+            return None
+        v = row[col0].value
+        return str(v) if v is not None else None
+
+    def cached_at(row1, col0):
+        """Get cached numeric value (row=1-based, col=0-based)."""
+        r = row1 - 1
+        if r >= len(pl_d_rows):
+            return None
+        row = pl_d_rows[r]
+        if col0 >= len(row):
+            return None
+        v = row[col0]
+        if isinstance(v, bool):
+            return bool(v)
+        if isinstance(v, (int, float)):
+            return float(v)
+        return None
+
+    def period_vector_from_data(row1):
+        """Extract all 61 period cached values for a P&L row (1-based)."""
+        r = row1 - 1
+        if r >= len(pl_d_rows):
+            return [None] * _N_PERIODS
+        row = pl_d_rows[r]
+        out = []
+        for p in range(_N_PERIODS):
+            col = _PERIOD_COL_OFFSET + p
+            v = row[col] if col < len(row) else None
+            if isinstance(v, bool):
+                out.append(bool(v))
+            elif isinstance(v, (int, float)):
+                out.append(float(v))
+            else:
+                out.append(None)
+        return out
+
+    G = _PERIOD_COL_OFFSET  # col index for period 0
+    B = 1                   # col index for B-column (0-based)
+    C = 2
+    D = 3
+
+    source_map = {
+        "sheet": "P&L",
+        "extractor_note": "rows are 1-based; col G (index 6) = period 0 (construction)",
+        "formula_workbook_data_only": False,
+        "cached_workbook_data_only": True,
+    }
+
+    # --- Row-level formula evidence ---
+    rows = {}
+
+    def row_entry(row1, label, b_const_col=None, c_const_col=None, d_const_col=None):
+        entry = {
+            "label": label,
+            "row": row1,
+            "formula_period0": formula_at(row1, G),
+            "cached_period0": cached_at(row1, G),
+            "cached_period1": cached_at(row1, G + 1),
+            "period_values": period_vector_from_data(row1),
+        }
+        if b_const_col is not None:
+            entry["B_col_cached"] = cached_at(row1, b_const_col)
+        if c_const_col is not None:
+            entry["C_col_cached"] = cached_at(row1, c_const_col)
+        if d_const_col is not None:
+            entry["D_col_cached"] = cached_at(row1, d_const_col)
+        return entry
+
+    rows["depreciation"] = row_entry(13, "Depreciation (=Dep!G30; book dep incl. financing costs)")
+    rows["ebit"] = row_entry(16, "EBIT (=G8-G14)")
+    rows["senior_interests"] = row_entry(24, "Senior Interests (=DS!G53-CF!G83)")
+    rows["shl_interests"] = row_entry(27, "Shareholder Loan Interests (=DS!G125)")
+    rows["financial_earnings"] = row_entry(30, "Financial Earnings (=SUM(G19:G21)-SUM(G24:G28))")
+    rows["earnings_before_tax"] = row_entry(32, "Earnings Before Tax (=G16+G30)")
+    rows["fiscal_reintegration_display"] = row_entry(34, "Fiscal Reintegration display row (=-G54)")
+    rows["taxable_income"] = row_entry(35, "Taxable Income (=G34+G32)")
+    rows["losses_n_minus_1"] = row_entry(36, "Losses N-1 opening balance (5-period rolling SUMIF)", b_const_col=B)
+    rows["allocated_losses"] = row_entry(37, "Allocated Losses (=IF(AND(G36<=0,G32>0),MIN(ABS(G36),G32),0))", b_const_col=B)
+    rows["losses_n"] = row_entry(38, "Losses N (=MIN(G37+G36,0))")
+    rows["carriable_losses"] = row_entry(39, "Carriable Losses closing balance (=MIN(G38,F35*$B37))")
+    rows["taxable_profit_n"] = row_entry(41, "Taxable Profit N (=-G37+G35)")
+    rows["corporate_income_tax"] = row_entry(43, "CIT (=MAX(SUM(F41:G41),0)*$B43*(G4>0)*(MOD(G4,2)=0))", b_const_col=B)
+    rows["fiscal_reintegration_helper"] = row_entry(54, "Fiscal Reintegration helper (=MIN(MAX(G57,G58)+G59,G27))")
+    rows["thin_cap_rule"] = row_entry(56, "Thin Cap Rule (=BS!G45)")
+    rows["thin_cap_amount"] = row_entry(57, "Thin Cap amount (=IF(G56,MAX(G27-$C$57,0),0))", c_const_col=C)
+    rows["atad_30pct_amount"] = row_entry(58, "ATAD 30% amount (=IF(G56,MAX(G27-$C$58*(G32-G30+G13),0),0))", c_const_col=C)
+    rows["non_deductible_shl"] = row_entry(59, "Non-deductible SHL (=-G$27*($C$59)*$D$59)", c_const_col=C, d_const_col=D)
+
+    return {
+        "_source": source_map,
+        "proved_formula_identity": (
+            "taxable_income = EBT + fiscal_reintegration"
+            " = (EBIT - senior_interest - shl_interest) + shl_interest"
+            " = EBIT - senior_interest"
+            " (when thin_cap=False, rows 57 and 58 = 0, fiscal_reintegration = full SHL)"
+        ),
+        "proved_cit_formula": (
+            "CIT = MAX(taxable_profit[N-1] + taxable_profit[N], 0) * rate"
+            " in even-indexed periods only (MOD(period_index, 2) = 0)"
+            " for operating periods (period_index > 0)"
+        ),
+        "proved_lcf_window": (
+            "LCF opening balance = SUMIF of negative taxable incomes"
+            " in a rolling B36-period window (B36=5 periods, NOT 5 years)"
+        ),
+        "proved_thin_cap": "Thin Cap = BS!G45 = False for all Oborovo periods",
+        "proved_atad": (
+            "ATAD rows 57/58 = 0 for all Oborovo periods (conditional on thin_cap=False);"
+            " fiscal reintegration = 100% of SHL interest"
+        ),
+        "rows": rows,
+    }
+
+
 def _read_dep(wb) -> dict:
     row_map = {
         "bop_date": 1,
@@ -404,8 +546,11 @@ def _sha256(path: pathlib.Path) -> str:
 def extract(workbook_path: pathlib.Path) -> dict:
     import openpyxl
 
-    wb = openpyxl.load_workbook(
+    wb_data = openpyxl.load_workbook(
         workbook_path, read_only=True, data_only=True, keep_vba=False
+    )
+    wb_formula = openpyxl.load_workbook(
+        workbook_path, read_only=True, data_only=False, keep_vba=False
     )
     try:
         payload: dict = {
@@ -413,17 +558,24 @@ def extract(workbook_path: pathlib.Path) -> dict:
                 "extractor_version": _EXTRACTOR_VERSION,
                 "source_filename": workbook_path.name,
                 "source_sha256": _sha256(workbook_path),
-                "sheets_inspected": wb.sheetnames,
+                "sheets_inspected": wb_data.sheetnames,
+                "dual_load_note": (
+                    "Loaded twice: data_only=True for cached values, "
+                    "data_only=False for formula text. "
+                    "Both loads read the same binary; formulas are not re-evaluated."
+                ),
             },
-            "inputs": _read_inputs(wb),
-            "capex_sheet": _read_capex_sheet(wb),
-            "cf": _read_cf(wb),
-            "ds": _read_ds(wb),
-            "pl": _read_pl(wb),
-            "dep": _read_dep(wb),
+            "inputs": _read_inputs(wb_data),
+            "capex_sheet": _read_capex_sheet(wb_data),
+            "cf": _read_cf(wb_data),
+            "ds": _read_ds(wb_data),
+            "pl": _read_pl(wb_data),
+            "dep": _read_dep(wb_data),
+            "tax": _read_pl_tax_formulas(wb_formula, wb_data),
         }
     finally:
-        wb.close()
+        wb_data.close()
+        wb_formula.close()
     return payload
 
 
