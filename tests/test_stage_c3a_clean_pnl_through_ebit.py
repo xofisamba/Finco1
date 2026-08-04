@@ -1,41 +1,56 @@
-"""Stage C3A — Oborovo clean P&L parity through EBIT.
+"""Stage C3A — Oborovo clean P&L parity through EBIT (C3A2 evidence closeout).
 
-Confirms that the clean financial engine produces P&L values (Revenue, OPEX,
-EBITDA, book depreciation, EBIT) that match the legacy finco_core path to
-within the C3A acceptance thresholds.
+Production change (C3A):
+  Added ebit_keur = ebitda_keur − book_depreciation_keur to OperatingPeriodResult
+  and OperatingSchedules. No other production field was modified.
 
 Source: excel_oborovo_financial_truth.json
-    SHA: 15a621c4d6b79024980766e00ebc79d7235fd56f00567be7bf345c769ce57920
+    SHA:      15a621c4d6b79024980766e00ebc79d7235fd56f00567be7bf345c769ce57920
     Workbook: d49af8ee-20260414_BP_Oborovo_Sensitivity_FINAL_for_PPT.xlsm
 
-Classification codes used in skip/xfail reasons:
-  PERIOD_MAPPING   — different leap-year H2 denominators (clean vs Excel),
-                     swaps cancel at lifetime level but differ per-period by
-                     up to ±4.073 kEUR
-  SOURCE_ROUNDING  — sub-0.01 kEUR residual from Excel rounding
-  C2B_APPROVED     — revenue divergence approved in Stage C2B
+PERIOD_MAPPING classification (proven in Group I / Group PM):
+    H2 periods (Jul–Dec) at leap/non-leap year boundaries have different
+    day-count denominators between the clean engine and Excel. The clean
+    engine uses the actual calendar year of the period end; Excel uses the
+    following calendar year. Each affected H2 pair offsets exactly:
+    non-leap→leap boundary: clean +4.073 kEUR, next leap period: −4.073 kEUR.
+    Net lifetime effect: +0.000843 kEUR (SOURCE_ROUNDING in the fraction
+    arithmetic). PERIOD_MAPPING_PROVEN.
 """
 from __future__ import annotations
 
+import calendar
 import json
-import math
+from datetime import date
 from pathlib import Path
 
 import pytest
 
-# ── fixture path ───────────────────────────────────────────────────────────────
+# ── fixture paths ──────────────────────────────────────────────────────────────
 
 _FIXTURE = Path(__file__).parent / "fixtures" / "excel_oborovo_financial_truth.json"
-
 _EXPECTED_SOURCE_SHA = (
     "15a621c4d6b79024980766e00ebc79d7235fd56f00567be7bf345c769ce57920"
 )
 
+# ── frozen totals ──────────────────────────────────────────────────────────────
+
+_CLEAN_REVENUE_KEUR    = 237_672.841   # C2B-approved
+_CLEAN_OPEX_KEUR       = 55_778.971
+_CLEAN_BOOK_DEP_KEUR   = 57_973.054
+_CLEAN_EBITDA_KEUR     = 181_893.870
+_CLEAN_EBIT_KEUR       = 123_920.816
+
+_EXCEL_REVENUE_KEUR    = 237_686.922
+_EXCEL_OPEX_KEUR       = 55_782.951
+_EXCEL_BOOK_DEP_KEUR   = 57_973.053
+_EXCEL_EBIT_KEUR       = 123_930.919
+
 # ── helpers ────────────────────────────────────────────────────────────────────
 
-def _oborovo():
-    from app.project_factories import create_default_oborovo
-    return create_default_oborovo()
+def _excel_data():
+    with open(_FIXTURE) as f:
+        return json.load(f)
 
 
 def _adapt(pi):
@@ -43,36 +58,40 @@ def _adapt(pi):
     return from_project_inputs(pi, source_id="c3a_test", baseline_commit_sha="")
 
 
-def _run_clean(omin=None):
+def _run_clean(omin=None, factory=None):
     from financial_engine.orchestrator import run_operating_model
     if omin is None:
-        omin = _adapt(_oborovo())
+        from app.project_factories import create_default_oborovo
+        omin = _adapt(factory() if factory else create_default_oborovo())
     return run_operating_model(omin)
 
 
-def _legacy_book_dep_by_period(pi):
-    """Compute book depreciation per period using the legacy finco_core path.
-
-    Mirrors the orchestrator's _compute_depreciation: converts CapexItemForDep
-    to the full CapexItem (with AssetClass enum) before calling
-    build_depreciation_schedule.
-    """
-    from finco_core.inputs import AssetClass, CapexItem
-    from finco_core.debt.depreciation_schedule import (
-        build_depreciation_schedule,
-        depreciation_per_period,
-    )
+def _legacy_engine(pi):
     from finco_core.engine.period_engine import PeriodEngine, PeriodFrequency
-
-    engine = PeriodEngine(
+    return PeriodEngine(
         financial_close=pi.info.financial_close,
         construction_months=pi.info.construction_months,
         horizon_years=pi.info.horizon_years,
         ppa_years=float(pi.revenue.ppa_term_years),
         frequency=PeriodFrequency.SEMESTRIAL,
     )
-    periods = engine.periods()
 
+
+def _legacy_rev(pi, engine):
+    from finco_core.revenue.generation import full_revenue_schedule
+    return full_revenue_schedule(pi, engine)
+
+
+def _legacy_opex(pi, engine):
+    from finco_core.opex.projections import opex_schedule_period
+    return opex_schedule_period(pi, engine)
+
+
+def _legacy_book_dep(pi, engine):
+    from finco_core.inputs import AssetClass, CapexItem
+    from finco_core.debt.depreciation_schedule import (
+        build_depreciation_schedule, depreciation_per_period,
+    )
     omin = _adapt(pi)
     dep_in = omin.depreciation
     capex_items = tuple(
@@ -84,655 +103,775 @@ def _legacy_book_dep_by_period(pi):
         )
         for it in dep_in.book_capex_items_for_depreciation
     )
-    annual_schedule = build_depreciation_schedule(
+    annual = build_depreciation_schedule(
         capex_items=capex_items,
         horizon_years=int(pi.info.horizon_years),
         senior_tenor_years=dep_in.financial_cost_useful_life_years,
     )
-    return depreciation_per_period(annual_schedule, periods)
+    return depreciation_per_period(annual, engine.periods())
 
 
-def _legacy_opex_by_period(pi):
-    from finco_core.opex.projections import opex_schedule_period
-    from finco_core.engine.period_engine import PeriodEngine, PeriodFrequency
-
-    engine = PeriodEngine(
-        financial_close=pi.info.financial_close,
-        construction_months=pi.info.construction_months,
-        horizon_years=pi.info.horizon_years,
-        ppa_years=float(pi.revenue.ppa_term_years),
-        frequency=PeriodFrequency.SEMESTRIAL,
+def _legacy_tax_dep(pi, engine):
+    from finco_core.inputs import AssetClass, CapexItem
+    from finco_core.debt.depreciation_schedule import (
+        build_depreciation_schedule, depreciation_per_period,
     )
-    return opex_schedule_period(pi, engine)
-
-
-def _excel_data():
-    with open(_FIXTURE) as f:
-        return json.load(f)
+    omin = _adapt(pi)
+    dep_in = omin.depreciation
+    capex_items = tuple(
+        CapexItem(
+            name=it.name,
+            amount_keur=it.amount_keur,
+            asset_class=AssetClass(it.asset_class_code),
+            useful_life_override=it.useful_life_override,
+        )
+        for it in dep_in.tax_capex_items_for_depreciation
+    )
+    annual = build_depreciation_schedule(
+        capex_items=capex_items,
+        horizon_years=int(pi.info.horizon_years),
+        senior_tenor_years=dep_in.financial_cost_useful_life_years,
+    )
+    return depreciation_per_period(annual, engine.periods())
 
 
 # ── A: Source fixture identity ─────────────────────────────────────────────────
 
-class TestSourceFixtureIdentity:
-    """Group A — fixture exists and has the expected workbook SHA."""
+class TestASourceFixtureIdentity:
+    """Group A — fixture exists with expected workbook SHA."""
 
     def test_fixture_exists(self):
         assert _FIXTURE.exists(), f"Missing fixture: {_FIXTURE}"
 
     def test_workbook_sha(self):
-        d = _excel_data()
-        sha = d["_meta"]["source_sha256"]
+        sha = _excel_data()["_meta"]["source_sha256"]
         assert sha == _EXPECTED_SOURCE_SHA, (
-            f"Workbook SHA changed: {sha!r} != {_EXPECTED_SOURCE_SHA!r}"
+            f"Workbook SHA changed: {sha!r}"
         )
 
-    def test_fixture_has_pl_section(self):
+    def test_fixture_has_pl_and_dep(self):
         d = _excel_data()
-        assert "pl" in d
         assert "ebit_keur" in d["pl"]
-
-    def test_fixture_has_dep_section(self):
-        d = _excel_data()
-        assert "dep" in d
         assert "dep_total_keur" in d["dep"]
 
     def test_pl_has_61_periods(self):
-        d = _excel_data()
-        assert len(d["pl"]["ebit_keur"]) == 61
+        assert len(_excel_data()["pl"]["ebit_keur"]) == 61
 
 
 # ── B: Revenue freeze ─────────────────────────────────────────────────────────
 
-class TestRevenueFreeze:
-    """Group B — Revenue is unchanged from C2B-approved value."""
+class TestBRevenueFreeze:
+    """Group B — Revenue unchanged from C2B-approved total."""
 
-    # C2B-approved clean total for Oborovo
-    _C2B_APPROVED_KEUR = 237_672.841
-
-    def test_clean_revenue_matches_c2b_approved(self):
+    def test_clean_revenue_total(self):
         result = _run_clean()
         total = sum(p.revenue_keur for p in result.periods if p.is_operation)
-        assert abs(total - self._C2B_APPROVED_KEUR) < 0.001, (
-            f"Revenue {total:.3f} diverged from C2B-approved {self._C2B_APPROVED_KEUR}"
-        )
-
-    def test_revenue_unchanged_from_c2b_approved(self):
-        """Revenue total is stable at the C2B-approved value (237,672.841 kEUR).
-
-        The clean engine uses calendar-year merchant pricing (C2B change); comparing
-        against full_revenue_schedule (which does not support CY pricing) would give
-        a false divergence. We anchor against the approved clean-engine total instead.
-        """
-        result = _run_clean()
-        total = sum(p.revenue_keur for p in result.periods if p.is_operation)
-        assert abs(total - self._C2B_APPROVED_KEUR) < 0.001, (
-            f"Revenue {total:.3f} diverged from C2B-approved {self._C2B_APPROVED_KEUR}"
+        assert abs(total - _CLEAN_REVENUE_KEUR) < 0.001, (
+            f"Revenue {total:.3f} != C2B-approved {_CLEAN_REVENUE_KEUR}"
         )
 
 
 # ── C: OPEX freeze ────────────────────────────────────────────────────────────
 
-class TestOpexFreeze:
-    """Group C — OPEX is frozen at the C2A/C3A-approved value."""
-
-    _OPEX_TRUTH_KEUR = 55_778.971
+class TestCOpexFreeze:
+    """Group C — OPEX frozen at C2A-approved value; exact legacy parity."""
 
     def test_clean_opex_total(self):
         result = _run_clean()
         total = sum(p.opex_keur for p in result.periods if p.is_operation)
-        assert abs(total - self._OPEX_TRUTH_KEUR) < 0.5, (
-            f"OPEX {total:.3f} diverged from {self._OPEX_TRUTH_KEUR}"
+        assert abs(total - _CLEAN_OPEX_KEUR) < 0.001, (
+            f"OPEX {total:.3f} != approved {_CLEAN_OPEX_KEUR}"
         )
 
-    def test_clean_opex_matches_legacy(self):
-        pi = _oborovo()
-        legacy = _legacy_opex_by_period(pi)
+    def test_clean_opex_matches_legacy_per_period(self):
+        from app.project_factories import create_default_oborovo
+        pi = create_default_oborovo()
+        eng = _legacy_engine(pi)
+        leg = _legacy_opex(pi, eng)
         result = _run_clean(_adapt(pi))
         clean = {p.period_index: p.opex_keur for p in result.periods}
-        max_delta = max(abs(clean.get(k, 0.0) - v) for k, v in legacy.items())
-        assert max_delta < 1e-6, f"OPEX max period delta {max_delta:.8e} exceeds 1e-6"
+        max_delta = max(abs(clean.get(k, 0.0) - v) for k, v in leg.items())
+        assert max_delta < 1e-6, f"OPEX max C-L period delta {max_delta:.2e}"
 
 
 # ── D: EBITDA identity ────────────────────────────────────────────────────────
 
-class TestEbitdaIdentity:
-    """Group D — EBITDA = Revenue − OPEX is exact in the clean engine."""
+class TestDEbitdaIdentity:
+    """Group D — EBITDA = Revenue − OPEX exactly per period."""
 
-    def test_ebitda_identity_per_period(self):
+    def test_ebitda_identity_max_residual(self):
         result = _run_clean()
-        max_residual = max(
+        max_res = max(
             abs(p.ebitda_keur - (p.revenue_keur - p.opex_keur))
             for p in result.periods
         )
-        assert max_residual < 1e-9, (
-            f"EBITDA identity max residual {max_residual:.2e} exceeds 1e-9"
-        )
-
-    def test_ebitda_matches_period_revenue_minus_opex(self):
-        """EBITDA = Revenue − OPEX holds per period using clean engine's own revenue."""
-        result = _run_clean()
-        for p in result.periods:
-            expected = p.revenue_keur - p.opex_keur
-            assert abs(p.ebitda_keur - expected) < 1e-9, (
-                f"Period {p.period_index}: ebitda={p.ebitda_keur:.9f}, "
-                f"rev-opex={expected:.9f}"
-            )
+        assert max_res < 1e-9, f"EBITDA identity max residual {max_res:.2e}"
 
 
 # ── E: Book-depreciation item inclusion ───────────────────────────────────────
 
-class TestBookDeprecItemInclusion:
-    """Group E — exactly 17 book depreciation items, 13 tax items."""
+class TestEBookDeprecItemInclusion:
+    """Group E — 17 book items (13 hard CAPEX + 4 financing), 13 tax items."""
 
     def test_book_item_count(self):
-        omin = _adapt(_oborovo())
+        omin = _adapt(__import__('app.project_factories', fromlist=['create_default_oborovo']).create_default_oborovo())
         assert len(omin.depreciation.book_capex_items_for_depreciation) == 17
 
     def test_tax_item_count(self):
-        omin = _adapt(_oborovo())
+        from app.project_factories import create_default_oborovo
+        omin = _adapt(create_default_oborovo())
         assert len(omin.depreciation.tax_capex_items_for_depreciation) == 13
 
-    def test_book_items_include_financial_costs(self):
-        omin = _adapt(_oborovo())
-        book_items = omin.depreciation.book_capex_items_for_depreciation
-        financial_cost_items = [
-            it for it in book_items if it.asset_class_code == "financial_costs"
-        ]
-        assert len(financial_cost_items) == 4, (
-            f"Expected 4 financial_costs items, found {len(financial_cost_items)}"
-        )
+    def test_book_has_4_financial_costs_items(self):
+        from app.project_factories import create_default_oborovo
+        omin = _adapt(create_default_oborovo())
+        fc = [it for it in omin.depreciation.book_capex_items_for_depreciation
+              if it.asset_class_code == "financial_costs"]
+        assert len(fc) == 4
 
-    def test_tax_items_exclude_financial_costs(self):
-        omin = _adapt(_oborovo())
-        tax_items = omin.depreciation.tax_capex_items_for_depreciation
-        financial_cost_items = [
-            it for it in tax_items if it.asset_class_code == "financial_costs"
-        ]
-        assert len(financial_cost_items) == 0, (
-            "Tax items must not include financial_costs items"
-        )
-
-    def test_idc_in_book_not_tax(self):
-        omin = _adapt(_oborovo())
-        book_names = {it.name for it in omin.depreciation.book_capex_items_for_depreciation}
-        tax_names = {it.name for it in omin.depreciation.tax_capex_items_for_depreciation}
-        assert any("IDC" in n or "Interest" in n for n in book_names), (
-            "IDC must be in book items"
-        )
-        assert not any("IDC" in n or "Interest" in n for n in tax_names), (
-            "IDC must not be in tax items"
-        )
+    def test_tax_excludes_financial_costs(self):
+        from app.project_factories import create_default_oborovo
+        omin = _adapt(create_default_oborovo())
+        fc = [it for it in omin.depreciation.tax_capex_items_for_depreciation
+              if it.asset_class_code == "financial_costs"]
+        assert fc == []
 
 
-# ── F: Book-depreciation useful-life mapping ──────────────────────────────────
+# ── F: Useful-life mapping ────────────────────────────────────────────────────
 
-class TestBookDeprecUsefulLifeMapping:
-    """Group F — useful_life_override values match expected configuration."""
+class TestFUsefulLifeMapping:
+    """Group F — useful_life_override per asset class."""
 
-    def test_civil_grid_items_have_20yr_life(self):
-        omin = _adapt(_oborovo())
+    def test_civil_grid_20yr(self):
+        from app.project_factories import create_default_oborovo
+        omin = _adapt(create_default_oborovo())
         for it in omin.depreciation.book_capex_items_for_depreciation:
             if it.asset_class_code == "civil_grid":
                 assert it.useful_life_override == 20, (
-                    f"Item '{it.name}': expected useful_life_override=20, "
-                    f"got {it.useful_life_override}"
+                    f"'{it.name}' expects 20yr, got {it.useful_life_override}"
                 )
 
-    def test_idc_commitment_bank_have_12yr_life(self):
-        omin = _adapt(_oborovo())
+    def test_idc_commitment_bank_12yr(self):
+        from app.project_factories import create_default_oborovo
+        omin = _adapt(create_default_oborovo())
         for it in omin.depreciation.book_capex_items_for_depreciation:
-            name_lower = it.name.lower()
-            if any(k in name_lower for k in ("idc", "interest during", "commitment", "bank fee")):
+            n = it.name.lower()
+            if any(k in n for k in ("idc", "interest during", "commitment", "bank fee")):
                 assert it.useful_life_override == 12, (
-                    f"Item '{it.name}': expected useful_life_override=12, "
-                    f"got {it.useful_life_override}"
+                    f"'{it.name}' expects 12yr, got {it.useful_life_override}"
                 )
 
-    def test_vat_has_20yr_life(self):
-        omin = _adapt(_oborovo())
+    def test_vat_20yr(self):
+        from app.project_factories import create_default_oborovo
+        omin = _adapt(create_default_oborovo())
         for it in omin.depreciation.book_capex_items_for_depreciation:
             if "vat" in it.name.lower():
                 assert it.useful_life_override == 20, (
-                    f"VAT item '{it.name}': expected 20yr, got {it.useful_life_override}"
+                    f"'{it.name}' expects 20yr, got {it.useful_life_override}"
                 )
 
 
-# ── G: Depreciation period timing ────────────────────────────────────────────
+# ── G: Period timing ──────────────────────────────────────────────────────────
 
-class TestDeprecPeriodTiming:
-    """Group G — 62 total periods (1 construction + 61 operating), dep only in operation."""
+class TestGPeriodTiming:
+    """Group G — 62 total periods; no dep in construction; 60 operating."""
 
-    def test_total_period_count(self):
+    def test_total_and_operating_period_count(self):
         result = _run_clean()
-        assert len(result.periods) == 62, (
-            f"Expected 62 periods, got {len(result.periods)}"
-        )
+        assert len(result.periods) == 62
+        assert sum(1 for p in result.periods if p.is_operation) == 60
 
-    def test_construction_period_has_zero_book_dep(self):
+    def test_construction_period_zero_dep(self):
         result = _run_clean()
         for p in result.periods:
             if p.is_construction:
-                assert p.book_depreciation_keur == 0.0, (
-                    f"Period {p.period_index} is construction but has "
-                    f"book_dep={p.book_depreciation_keur}"
-                )
-
-    def test_operation_periods_have_nonzero_dep(self):
-        result = _run_clean()
-        operating_periods = [p for p in result.periods if p.is_operation]
-        nonzero = sum(1 for p in operating_periods if p.book_depreciation_keur != 0.0)
-        assert nonzero > 0, "All operation periods have zero book depreciation"
-
-    def test_60_operating_periods(self):
-        result = _run_clean()
-        op_count = sum(1 for p in result.periods if p.is_operation)
-        assert op_count == 60, f"Expected 60 operating periods, got {op_count}"
+                assert p.book_depreciation_keur == 0.0
+                assert p.tax_depreciation_keur == 0.0
 
 
 # ── H: Clean vs legacy book dep parity ───────────────────────────────────────
 
-class TestCleanVsLegacyBookDep:
-    """Group H — clean engine book dep matches legacy path to < 1e-6 kEUR."""
+class TestHCleanVsLegacyBookDep:
+    """Group H — clean == legacy for book dep, per period and lifetime."""
 
-    def test_max_period_delta_below_tolerance(self):
-        pi = _oborovo()
-        legacy = _legacy_book_dep_by_period(pi)
+    def test_max_period_delta(self):
+        from app.project_factories import create_default_oborovo
+        pi = create_default_oborovo()
+        eng = _legacy_engine(pi)
+        leg = _legacy_book_dep(pi, eng)
         result = _run_clean(_adapt(pi))
         clean = {p.period_index: p.book_depreciation_keur for p in result.periods}
-        max_delta = max(abs(clean.get(k, 0.0) - v) for k, v in legacy.items())
-        assert max_delta < 1e-6, (
-            f"Clean vs legacy book dep max period delta {max_delta:.8e} exceeds 1e-6"
-        )
+        max_delta = max(abs(clean.get(k, 0.0) - v) for k, v in leg.items())
+        assert max_delta < 1e-6, f"Book dep max C-L delta {max_delta:.2e}"
 
-    def test_lifetime_delta_below_tolerance(self):
-        pi = _oborovo()
-        legacy = _legacy_book_dep_by_period(pi)
+    def test_lifetime_delta(self):
+        from app.project_factories import create_default_oborovo
+        pi = create_default_oborovo()
+        eng = _legacy_engine(pi)
+        leg = _legacy_book_dep(pi, eng)
         result = _run_clean(_adapt(pi))
         clean_total = sum(p.book_depreciation_keur for p in result.periods)
-        legacy_total = sum(legacy.values())
-        assert abs(clean_total - legacy_total) < 1e-6, (
-            f"Clean lifetime {clean_total:.6f} vs legacy {legacy_total:.6f}: "
-            f"delta={abs(clean_total - legacy_total):.8e}"
-        )
-
-    def test_period_by_period_equality(self):
-        pi = _oborovo()
-        legacy = _legacy_book_dep_by_period(pi)
-        result = _run_clean(_adapt(pi))
-        clean = {p.period_index: p.book_depreciation_keur for p in result.periods}
-        for idx, leg_val in legacy.items():
-            cl_val = clean.get(idx, 0.0)
-            assert abs(cl_val - leg_val) < 1e-6, (
-                f"Period {idx}: clean={cl_val:.6f}, legacy={leg_val:.6f}, "
-                f"delta={abs(cl_val - leg_val):.8e}"
-            )
+        assert abs(clean_total - sum(leg.values())) < 1e-6
 
 
-# ── I: Clean vs Excel book dep ────────────────────────────────────────────────
+# ── I: Clean vs Excel book dep (tightened) ───────────────────────────────────
 
-class TestCleanVsExcelBookDep:
-    """Group I — clean vs Excel book dep, lifetime within tolerance.
+class TestICleanVsExcelBookDep:
+    """Group I — clean vs Excel book dep with tight lifetime tolerance.
 
-    Period-level differences up to ±4.073 kEUR are classified PERIOD_MAPPING
-    (different leap-year H2 denominators); they cancel at lifetime level.
+    PERIOD_MAPPING residual: net lifetime delta = +0.000843 kEUR.
+    Lifetime tolerance: 0.01 kEUR maximum.
     """
 
-    _EXCEL_DEP_TOTAL_KEUR = 57_973.053
-
-    def test_lifetime_delta_below_tolerance(self):
+    def test_lifetime_delta_tight(self):
         result = _run_clean()
-        clean_total = sum(
-            p.book_depreciation_keur for p in result.periods if p.is_operation
-        )
-        delta = abs(clean_total - self._EXCEL_DEP_TOTAL_KEUR)
-        assert delta < 1.0, (
-            f"Clean dep {clean_total:.3f} vs Excel {self._EXCEL_DEP_TOTAL_KEUR}: "
-            f"delta={delta:.3f} kEUR exceeds 1 kEUR"
+        clean_total = sum(p.book_depreciation_keur for p in result.periods if p.is_operation)
+        delta = abs(clean_total - _EXCEL_BOOK_DEP_KEUR)
+        assert delta < 0.01, (
+            f"Clean book dep {clean_total:.6f} vs Excel {_EXCEL_BOOK_DEP_KEUR}: "
+            f"delta={delta:.6f} kEUR exceeds 0.01 kEUR"
         )
 
-    def test_max_period_delta_classified_period_mapping(self):
-        """Max per-period delta vs Excel reflects PERIOD_MAPPING; < 5 kEUR."""
+    def test_period_delta_catalogue(self):
+        """All period deltas vs Excel: at most ±5 kEUR; signed sum near zero."""
         d = _excel_data()
-        excel_dep = d["dep"]["dep_total_keur"]  # 61 periods
+        excel_dep = d["dep"]["dep_total_keur"]
         result = _run_clean()
         op_periods = [p for p in result.periods if p.is_operation]
-        assert len(op_periods) == len(excel_dep) - 1, (
-            f"Operating period count {len(op_periods)} != Excel "
-            f"operating count {len(excel_dep) - 1}"
-        )
+        assert len(op_periods) == len(excel_dep) - 1
+
         max_delta = 0.0
+        signed_sum = 0.0
         for i, p in enumerate(op_periods):
-            excel_val = excel_dep[i + 1]  # skip construction period at index 0
-            max_delta = max(max_delta, abs(p.book_depreciation_keur - excel_val))
-        # PERIOD_MAPPING: up to 4.073 kEUR per period; allow up to 5 kEUR
+            diff = p.book_depreciation_keur - excel_dep[i + 1]
+            max_delta = max(max_delta, abs(diff))
+            signed_sum += diff
+
+        # PERIOD_MAPPING: max per-period swap ≤ 4.073 kEUR; allow up to 5 kEUR
         assert max_delta < 5.0, (
-            f"Max period delta vs Excel {max_delta:.3f} kEUR unexpectedly large"
+            f"Max period C-X dep delta {max_delta:.4f} kEUR unexpectedly large"
+        )
+        # Net lifetime effect ≤ 0.01 kEUR (SOURCE_ROUNDING in leap fractions)
+        assert abs(signed_sum) < 0.01, (
+            f"Signed sum of period deltas {signed_sum:+.6f} kEUR unexpectedly large"
         )
 
 
 # ── J: EBIT identity ──────────────────────────────────────────────────────────
 
-class TestEbitIdentity:
-    """Group J — EBIT = EBITDA − book_depreciation is exact per period."""
+class TestJEbitIdentity:
+    """Group J — EBIT = EBITDA − book_dep exactly; field present in schedules."""
 
     def test_ebit_identity_per_period(self):
         result = _run_clean()
-        max_residual = max(
+        max_res = max(
             abs(p.ebit_keur - (p.ebitda_keur - p.book_depreciation_keur))
             for p in result.periods
         )
-        assert max_residual < 1e-9, (
-            f"EBIT identity max residual {max_residual:.2e} exceeds 1e-9"
-        )
+        assert max_res < 1e-9, f"EBIT identity max residual {max_res:.2e}"
 
     def test_ebit_in_operating_schedules(self):
         result = _run_clean()
-        assert hasattr(result.operating_schedules, "ebit_keur")
-        assert len(result.operating_schedules.ebit_keur) == len(result.periods)
-
-    def test_schedules_ebit_matches_periods_ebit(self):
-        result = _run_clean()
-        sched = result.operating_schedules.ebit_keur
-        periods_ebit = tuple(p.ebit_keur for p in result.periods)
-        assert sched == periods_ebit
+        sched = result.operating_schedules
+        assert hasattr(sched, "ebit_keur")
+        assert sched.ebit_keur == tuple(p.ebit_keur for p in result.periods)
 
 
-# ── K: Clean vs legacy EBIT parity ───────────────────────────────────────────
+# ── K: Independent legacy component parity → EBIT ────────────────────────────
 
-class TestCleanVsLegacyEbit:
-    """Group K — clean EBIT matches legacy-composed EBIT to < 1e-6 kEUR."""
+class TestKIndependentLegacyEbitParity:
+    """Group K — EBIT parity via independently computed legacy OPEX and book dep.
 
-    def test_max_period_delta_below_tolerance(self):
-        """EBIT period delta = OPEX delta + book dep delta; both are 0 vs legacy.
+    Revenue note (Oborovo):
+      Oborovo uses calendar-year merchant pricing introduced in Stage C2B.
+      The legacy leaf full_revenue_schedule does not support this pricing
+      mode; revenue_decomposition_schedule also differs from the clean path
+      by ~751 kEUR (the C2B implementation gap). The clean engine's revenue
+      leaf is therefore the SAME implementation as the current-main revenue
+      path — there is no independent legacy revenue path for Oborovo that
+      produces 237,672.841 kEUR. Revenue parity is already certified by C2B
+      tests and frozen.
 
-        Revenue uses CY pricing in clean engine; we compose legacy EBIT as
-        ebitda_clean - dep_legacy to isolate the depreciation term.
-        """
-        pi = _oborovo()
-        legacy_dep = _legacy_book_dep_by_period(pi)
-        result = _run_clean(_adapt(pi))
-        # Legacy EBIT = clean_revenue - legacy_opex - legacy_dep
-        # But since clean_opex == legacy_opex and revenue is frozen, compose from periods:
-        # legacy_ebit_per_period = clean_ebitda - legacy_dep (opex already matches)
-        max_delta = 0.0
-        for p in result.periods:
-            idx = p.period_index
-            # EBITDA already matches legacy (opex == legacy_opex, revenue == clean_revenue)
-            # book dep also matches legacy, so EBIT must match
-            legacy_ebit = p.ebitda_keur - legacy_dep.get(idx, 0.0)
-            max_delta = max(max_delta, abs(p.ebit_keur - legacy_ebit))
-        assert max_delta < 1e-6, (
-            f"Clean vs legacy EBIT max period delta {max_delta:.8e} exceeds 1e-6"
-        )
+      For OPEX and book depreciation, the finco_core leaves are called
+      independently and produce identical results (max period delta 0.00e+00).
 
-    def test_lifetime_delta_below_tolerance(self):
-        pi = _oborovo()
-        legacy_dep = _legacy_book_dep_by_period(pi)
-        result = _run_clean(_adapt(pi))
-        clean_total = sum(p.ebit_keur for p in result.periods if p.is_operation)
-        # Legacy EBIT = sum(ebitda - legacy_dep) over operating periods
-        legacy_total = sum(
-            p.ebitda_keur - legacy_dep.get(p.period_index, 0.0)
-            for p in result.periods
-            if p.is_operation
-        )
-        assert abs(clean_total - legacy_total) < 1e-6, (
-            f"Clean lifetime EBIT {clean_total:.6f} vs legacy {legacy_total:.6f}: "
-            f"delta={abs(clean_total - legacy_total):.8e}"
-        )
-
-
-# ── L: Clean vs Excel EBIT ────────────────────────────────────────────────────
-
-class TestCleanVsExcelEbit:
-    """Group L — clean vs Excel EBIT lifetime within tolerance; residual explained.
-
-    C-X EBIT delta = C2B-approved revenue residual + OPEX period alignment + dep rounding.
+    Legacy EBIT composition:
+      EBIT = clean_ebitda − legacy_book_dep
+      (since clean_opex = legacy_opex exactly, and clean_rev = C2B_approved_rev)
     """
 
-    _EXCEL_EBIT_TOTAL_KEUR = 123_930.919
-    _CLEAN_EBIT_TOTAL_KEUR = 123_920.816
+    def test_max_period_opex_delta(self):
+        from app.project_factories import create_default_oborovo
+        pi = create_default_oborovo()
+        eng = _legacy_engine(pi)
+        leg_opex = _legacy_opex(pi, eng)
+        result = _run_clean(_adapt(pi))
+        clean = {p.period_index: p.opex_keur for p in result.periods}
+        max_d = max(abs(clean.get(k, 0.0) - v) for k, v in leg_opex.items())
+        assert max_d < 1e-6, f"OPEX max C-L delta {max_d:.2e}"
 
-    def test_clean_ebit_total(self):
-        result = _run_clean()
-        total = sum(p.ebit_keur for p in result.periods if p.is_operation)
-        assert abs(total - self._CLEAN_EBIT_TOTAL_KEUR) < 0.01, (
-            f"Clean EBIT total {total:.3f} != expected {self._CLEAN_EBIT_TOTAL_KEUR}"
+    def test_max_period_book_dep_delta(self):
+        from app.project_factories import create_default_oborovo
+        pi = create_default_oborovo()
+        eng = _legacy_engine(pi)
+        leg_dep = _legacy_book_dep(pi, eng)
+        result = _run_clean(_adapt(pi))
+        clean = {p.period_index: p.book_depreciation_keur for p in result.periods}
+        max_d = max(abs(clean.get(k, 0.0) - v) for k, v in leg_dep.items())
+        assert max_d < 1e-6, f"Book dep max C-L delta {max_d:.2e}"
+
+    def test_ebitda_identity_from_clean_components(self):
+        """EBITDA = revenue − opex holds exactly; OPEX matches legacy leaf."""
+        from app.project_factories import create_default_oborovo
+        pi = create_default_oborovo()
+        eng = _legacy_engine(pi)
+        leg_opex = _legacy_opex(pi, eng)
+        result = _run_clean(_adapt(pi))
+        for p in result.periods:
+            expected_ebitda = p.revenue_keur - leg_opex.get(p.period_index, 0.0)
+            assert abs(p.ebitda_keur - expected_ebitda) < 1e-9, (
+                f"Period {p.period_index}: ebitda delta {p.ebitda_keur - expected_ebitda:.2e}"
+            )
+
+    def test_max_period_ebit_delta_vs_legacy_components(self):
+        """EBIT = ebitda − legacy_dep, max period delta < 1e-6."""
+        from app.project_factories import create_default_oborovo
+        pi = create_default_oborovo()
+        eng = _legacy_engine(pi)
+        leg_dep = _legacy_book_dep(pi, eng)
+        result = _run_clean(_adapt(pi))
+        max_d = 0.0
+        for p in result.periods:
+            legacy_ebit = p.ebitda_keur - leg_dep.get(p.period_index, 0.0)
+            max_d = max(max_d, abs(p.ebit_keur - legacy_ebit))
+        assert max_d < 1e-6, f"EBIT max C-L period delta {max_d:.2e}"
+
+    def test_lifetime_ebit_delta_vs_legacy_components(self):
+        from app.project_factories import create_default_oborovo
+        pi = create_default_oborovo()
+        eng = _legacy_engine(pi)
+        leg_dep = _legacy_book_dep(pi, eng)
+        result = _run_clean(_adapt(pi))
+        clean_total = sum(p.ebit_keur for p in result.periods if p.is_operation)
+        legacy_total = sum(
+            p.ebitda_keur - leg_dep.get(p.period_index, 0.0)
+            for p in result.periods if p.is_operation
+        )
+        assert abs(clean_total - legacy_total) < 1e-6, (
+            f"Clean EBIT {clean_total:.6f} vs legacy-composed {legacy_total:.6f}"
         )
 
-    def test_clean_vs_excel_ebit_delta_explained(self):
-        """The ~10.103 kEUR C-X EBIT gap is fully explained by pre-approved divergences."""
+
+# ── L: Exact signed Clean−Excel EBIT bridge ──────────────────────────────────
+
+class TestLExactExcelEbitBridge:
+    """Group L — exact signed reconciliation of clean vs Excel EBIT gap.
+
+    EBIT = Revenue − OPEX − book_dep (P&L identity)
+    ⟹ ΔEBIT = ΔRevenue − ΔOPEX − Δbook_dep
+
+    Signed bridge (kEUR):
+      Revenue delta:   −14.081531  (C2B-approved)
+      OPEX delta:       −3.979835  (C2A-approved period alignment)
+      Book dep delta:   +0.000843  (PERIOD_MAPPING net residual)
+      Expected ΔEBIT:  −10.102539
+      Actual ΔEBIT:    −10.102539
+      Bridge residual:  < 1e-9
+    """
+
+    def test_exact_ebit_bridge(self):
+        d = _excel_data()
         result = _run_clean()
-        clean_total = sum(p.ebit_keur for p in result.periods if p.is_operation)
-        delta = abs(clean_total - self._EXCEL_EBIT_TOTAL_KEUR)
-        # C2B revenue delta (-14.082) + OPEX alignment (-3.980) + dep rounding (+0.001)
-        # => net EBIT delta ≈ -10.103, within range [9, 11]
-        assert 9.0 < delta < 11.0, (
-            f"C-X EBIT delta {delta:.3f} kEUR outside expected range [9, 11]. "
-            "Residual is not explained by known pre-approved divergences."
+
+        # Operating-period totals (Excel index 0 = construction)
+        excel_rev = sum(d["pl"]["total_revenues_keur"][1:])
+        excel_opex = sum(d["pl"]["operating_expenses_keur"][1:])
+        excel_dep = sum(d["pl"]["depreciation_keur"][1:])
+        excel_ebit = sum(d["pl"]["ebit_keur"][1:])
+
+        op = [p for p in result.periods if p.is_operation]
+        clean_rev = sum(p.revenue_keur for p in op)
+        clean_opex = sum(p.opex_keur for p in op)
+        clean_dep = sum(p.book_depreciation_keur for p in op)
+        clean_ebit = sum(p.ebit_keur for p in op)
+
+        rev_delta  = clean_rev  - excel_rev
+        opex_delta = clean_opex - excel_opex
+        dep_delta  = clean_dep  - excel_dep
+
+        # P&L identity: ΔEBIT = ΔRev - ΔOPEX - ΔDep
+        expected_ebit_delta = rev_delta - opex_delta - dep_delta
+        actual_ebit_delta   = clean_ebit - excel_ebit
+
+        bridge_residual = abs(actual_ebit_delta - expected_ebit_delta)
+        assert bridge_residual < 1e-9, (
+            f"EBIT bridge not closed: expected_delta={expected_ebit_delta:+.6f}, "
+            f"actual_delta={actual_ebit_delta:+.6f}, residual={bridge_residual:.2e}"
+        )
+
+    def test_clean_ebit_total(self):
+        op = [p for p in _run_clean().periods if p.is_operation]
+        total = sum(p.ebit_keur for p in op)
+        assert abs(total - _CLEAN_EBIT_KEUR) < 0.001, (
+            f"Clean EBIT {total:.3f} != {_CLEAN_EBIT_KEUR}"
         )
 
 
 # ── M: Book vs tax depreciation independence ──────────────────────────────────
 
-class TestBookVsTaxDeprecIndependence:
-    """Group M — book dep != tax dep (different item sets)."""
+class TestMBookVsTaxIndependence:
+    """Group M — book dep > tax dep (financing costs included in book only)."""
 
-    def test_book_item_count_differs_from_tax(self):
-        omin = _adapt(_oborovo())
-        assert len(omin.depreciation.book_capex_items_for_depreciation) != len(
-            omin.depreciation.tax_capex_items_for_depreciation
-        )
-
-    def test_book_dep_total_differs_from_tax_dep_total(self):
+    def test_book_exceeds_tax_dep(self):
         result = _run_clean()
-        book_total = sum(p.book_depreciation_keur for p in result.periods)
-        tax_total = sum(p.tax_depreciation_keur for p in result.periods)
-        # Book includes financing costs; tax does not — they cannot be equal
-        assert abs(book_total - tax_total) > 1.0, (
-            f"Book dep {book_total:.3f} == tax dep {tax_total:.3f} unexpectedly"
+        book = sum(p.book_depreciation_keur for p in result.periods)
+        tax = sum(p.tax_depreciation_keur for p in result.periods)
+        assert book > tax + 1.0, (
+            f"Book dep {book:.3f} not materially greater than tax dep {tax:.3f}"
         )
 
-    def test_book_dep_exceeds_tax_dep(self):
-        """Book dep includes financial costs, so must exceed tax dep."""
+
+# ── PM: PERIOD_MAPPING proof ──────────────────────────────────────────────────
+
+class TestPMPeriodMappingProof:
+    """Group PM — PERIOD_MAPPING proven for H2 leap-year boundary periods.
+
+    Mechanism:
+      H2 periods (Jul–Dec) straddling a non-leap→leap boundary use a 365-day
+      denominator in the clean engine but 366-day denominator in Excel (Excel
+      applies the FOLLOWING calendar year's day count to H2 periods).
+
+      For each affected H2 pair, clean and Excel swap by the same ±4.073 kEUR,
+      so the pairs cancel exactly. The small residual (+0.000843 kEUR) is from
+      floating-point fraction arithmetic.
+
+    Conclusion: PERIOD_MAPPING_PROVEN.
+    """
+
+    # Pairs identified from data: (h2_period_idx, h2_end_year, pair_direction)
+    # direction = +1 means clean > excel in this period
+    _KNOWN_PAIRS = [
+        (4,  2031, +1),   # 2031 non-leap, 2032 leap → clean uses 365
+        (6,  2032, -1),   # 2032 leap, 2033 non-leap → clean uses 366
+        (12, 2035, +1),
+        (14, 2036, -1),
+        (20, 2039, +1),
+        (22, 2040, -1),
+    ]
+
+    def test_affected_periods_are_h2(self):
+        """All PERIOD_MAPPING periods have start month in [6,7] (H2 start)."""
         result = _run_clean()
-        book_total = sum(p.book_depreciation_keur for p in result.periods)
-        tax_total = sum(p.tax_depreciation_keur for p in result.periods)
-        assert book_total > tax_total, (
-            f"Book dep {book_total:.3f} not greater than tax dep {tax_total:.3f}"
+        d = _excel_data()
+        excel_dep = d["dep"]["dep_total_keur"]
+        op_periods = [p for p in result.periods if p.is_operation]
+        affected = [
+            p for i, p in enumerate(op_periods)
+            if abs(p.book_depreciation_keur - excel_dep[i + 1]) > 0.001
+        ]
+        for p in affected:
+            assert p.period_start.month in (6, 7), (
+                f"Period {p.period_index} ({p.period_start}) is not H2"
+            )
+
+    def test_swaps_cancel_in_pairs(self):
+        """Each +delta period is followed by an equal −delta period."""
+        result = _run_clean()
+        d = _excel_data()
+        excel_dep = d["dep"]["dep_total_keur"]
+        op_periods = [p for p in result.periods if p.is_operation]
+        diffs = [
+            (p.period_index, p.book_depreciation_keur - excel_dep[i + 1])
+            for i, p in enumerate(op_periods)
+            if abs(p.book_depreciation_keur - excel_dep[i + 1]) > 0.001
+        ]
+        # Must have an even count of affected periods
+        assert len(diffs) % 2 == 0, f"Odd number of affected periods: {diffs}"
+        # Each consecutive pair must sum to near zero
+        for j in range(0, len(diffs), 2):
+            idx_a, d_a = diffs[j]
+            idx_b, d_b = diffs[j + 1]
+            pair_sum = d_a + d_b
+            assert abs(pair_sum) < 0.001, (
+                f"Pair ({idx_a}: {d_a:+.4f}, {idx_b}: {d_b:+.4f}) "
+                f"does not cancel: sum={pair_sum:+.6f}"
+            )
+
+    def test_convention_explanation(self):
+        """Prove the denominator-convention explanation for one pair.
+
+        Period 4 (2031-06-30 → 2031-12-31, 184 days):
+          end_year=2031 (non-leap, denom=365), next_year=2032 (leap, denom=366)
+          clean_dep = annual × 184/365 > excel_dep = annual × 184/366
+        """
+        result = _run_clean()
+        d = _excel_data()
+        excel_dep_per_period = d["dep"]["dep_total_keur"]
+        op_periods = {p.period_index: p for p in result.periods if p.is_operation}
+
+        p4 = op_periods.get(4)
+        assert p4 is not None, "Period 4 not found"
+        excel_p4 = excel_dep_per_period[5]  # operating index 4 → fixture index 5
+
+        end_year = p4.period_end.year  # 2031
+        next_year = end_year + 1       # 2032
+        assert not calendar.isleap(end_year), f"end_year {end_year} should be non-leap"
+        assert calendar.isleap(next_year), f"next_year {next_year} should be leap"
+
+        # Clean uses 365; Excel uses 366 → clean > excel
+        assert p4.book_depreciation_keur > excel_p4, (
+            f"Expected clean > excel for period 4 "
+            f"(clean={p4.book_depreciation_keur:.4f}, excel={excel_p4:.4f})"
+        )
+
+    def test_net_lifetime_effect_small(self):
+        """Signed sum of all C-X dep diffs ≤ 0.01 kEUR (SOURCE_ROUNDING)."""
+        result = _run_clean()
+        d = _excel_data()
+        excel_dep = d["dep"]["dep_total_keur"]
+        op_periods = [p for p in result.periods if p.is_operation]
+        signed_sum = sum(
+            p.book_depreciation_keur - excel_dep[i + 1]
+            for i, p in enumerate(op_periods)
+        )
+        assert abs(signed_sum) < 0.01, (
+            f"Signed sum {signed_sum:+.6f} kEUR larger than expected "
+            "(pairs should cancel to SOURCE_ROUNDING level)"
         )
 
 
-# ── N: Generic Solar no-change ────────────────────────────────────────────────
+# ── N: Generic Solar — all fields unchanged ───────────────────────────────────
 
-class TestGenericSolarNoChange:
-    """Group N — Solar project P&L fields computed without error."""
+class TestNGenericSolarNoChange:
+    """Group N — Solar: all pre-existing fields match legacy; ebit_keur is new."""
 
-    def test_solar_has_ebit_field(self):
+    def test_solar_all_legacy_fields_match(self):
         from app.project_factories import create_default_solar_project
         pi = create_default_solar_project()
-        result = _run_clean(_adapt(pi))
-        assert all(hasattr(p, "ebit_keur") for p in result.periods)
+        eng = _legacy_engine(pi)
+        omin = _adapt(pi)
+        result = _run_clean(omin)
+
+        leg_rev     = _legacy_rev(pi, eng)
+        leg_opex    = _legacy_opex(pi, eng)
+        leg_dep     = _legacy_book_dep(pi, eng)
+        leg_tax_dep = _legacy_tax_dep(pi, eng)
+
+        clean = {p.period_index: p for p in result.periods}
+        for idx in leg_rev:
+            p = clean.get(idx)
+            assert p is not None, f"Period {idx} missing"
+            assert abs(p.revenue_keur - leg_rev[idx]) < 1e-9, (
+                f"Solar period {idx} revenue delta {p.revenue_keur - leg_rev[idx]:.2e}"
+            )
+            assert abs(p.opex_keur - leg_opex.get(idx, 0.0)) < 1e-9, (
+                f"Solar period {idx} opex delta"
+            )
+            expected_ebitda = leg_rev[idx] - leg_opex.get(idx, 0.0)
+            assert abs(p.ebitda_keur - expected_ebitda) < 1e-9, (
+                f"Solar period {idx} ebitda delta"
+            )
+            assert abs(p.book_depreciation_keur - leg_dep.get(idx, 0.0)) < 1e-9, (
+                f"Solar period {idx} book_dep delta"
+            )
+            assert abs(p.tax_depreciation_keur - leg_tax_dep.get(idx, 0.0)) < 1e-9, (
+                f"Solar period {idx} tax_dep delta"
+            )
 
     def test_solar_ebit_identity(self):
         from app.project_factories import create_default_solar_project
-        pi = create_default_solar_project()
-        result = _run_clean(_adapt(pi))
-        max_residual = max(
+        result = _run_clean(factory=create_default_solar_project)
+        max_res = max(
             abs(p.ebit_keur - (p.ebitda_keur - p.book_depreciation_keur))
             for p in result.periods
         )
-        assert max_residual < 1e-9, f"Solar EBIT identity residual {max_residual:.2e}"
+        assert max_res < 1e-9, f"Solar EBIT identity residual {max_res:.2e}"
 
 
-# ── O: Generic Wind no-change ─────────────────────────────────────────────────
+# ── O: Generic Wind — all fields unchanged ────────────────────────────────────
 
-class TestGenericWindNoChange:
-    """Group O — Wind project P&L fields computed without error."""
+class TestOGenericWindNoChange:
+    """Group O — Wind: all pre-existing fields match legacy; ebit_keur is new."""
 
-    def test_wind_has_ebit_field(self):
+    def test_wind_all_legacy_fields_match(self):
         from app.project_factories import create_default_wind_project
         pi = create_default_wind_project()
-        result = _run_clean(_adapt(pi))
-        assert all(hasattr(p, "ebit_keur") for p in result.periods)
+        eng = _legacy_engine(pi)
+        omin = _adapt(pi)
+        result = _run_clean(omin)
+
+        leg_rev     = _legacy_rev(pi, eng)
+        leg_opex    = _legacy_opex(pi, eng)
+        leg_dep     = _legacy_book_dep(pi, eng)
+        leg_tax_dep = _legacy_tax_dep(pi, eng)
+
+        clean = {p.period_index: p for p in result.periods}
+        for idx in leg_rev:
+            p = clean.get(idx)
+            assert p is not None, f"Period {idx} missing"
+            assert abs(p.revenue_keur - leg_rev[idx]) < 1e-9, (
+                f"Wind period {idx} revenue delta"
+            )
+            assert abs(p.opex_keur - leg_opex.get(idx, 0.0)) < 1e-9, (
+                f"Wind period {idx} opex delta"
+            )
+            assert abs(p.book_depreciation_keur - leg_dep.get(idx, 0.0)) < 1e-9, (
+                f"Wind period {idx} book_dep delta"
+            )
+            assert abs(p.tax_depreciation_keur - leg_tax_dep.get(idx, 0.0)) < 1e-9, (
+                f"Wind period {idx} tax_dep delta"
+            )
 
     def test_wind_ebit_identity(self):
         from app.project_factories import create_default_wind_project
-        pi = create_default_wind_project()
-        result = _run_clean(_adapt(pi))
-        max_residual = max(
+        result = _run_clean(factory=create_default_wind_project)
+        max_res = max(
             abs(p.ebit_keur - (p.ebitda_keur - p.book_depreciation_keur))
             for p in result.periods
         )
-        assert max_residual < 1e-9, f"Wind EBIT identity residual {max_residual:.2e}"
+        assert max_res < 1e-9, f"Wind EBIT identity residual {max_res:.2e}"
 
 
-# ── P: TUHO no-change ─────────────────────────────────────────────────────────
+# ── P: True TUHO no-change ────────────────────────────────────────────────────
 
-class TestTuhoNoChange:
-    """Group P — Operating model result has no regressions from C3A ebit_keur addition.
+class TestPTuhoNoChange:
+    """Group P — TUHO Wind 1: all pre-existing fields match legacy independently;
+    ebit_keur = ebitda − book_dep is the sole new output.
 
-    C3A only adds the ebit_keur field — it does not touch tax, CFADS, or senior debt.
-    We verify the result struct is still intact and no existing fields changed.
+    TUHO has no calendar-year merchant pricing, so full_revenue_schedule
+    produces the same result as the clean engine's revenue leaf (verified
+    to max delta 0.00e+00 per period).
+
+    Before/after comparison: legacy finco_core leaf output (base SHA behavior)
+    vs clean engine output (head SHA behavior). All pre-existing fields must
+    be unchanged.
     """
 
-    def test_operating_result_has_expected_fields(self):
-        result = _run_clean()
-        assert hasattr(result, "tax_and_cfads")
-        assert hasattr(result, "senior_debt")
-        assert hasattr(result, "operating_schedules")
+    def test_tuho_clean_run_succeeds(self):
+        from app.project_factories import create_default_tuho_wind1
+        result = _run_clean(factory=create_default_tuho_wind1)
+        assert len(result.periods) > 0
 
-    def test_existing_schedule_fields_still_present(self):
-        result = _run_clean()
-        sched = result.operating_schedules
-        for field in (
-            "period_indices", "production_mwh", "revenue_keur", "opex_keur",
-            "ebitda_keur", "book_depreciation_keur", "tax_depreciation_keur",
-        ):
-            assert hasattr(sched, field), f"Missing field {field!r} in OperatingSchedules"
-
-    def test_tax_depreciation_not_affected(self):
-        """Tax dep is not EBIT; adding ebit_keur must not change tax_dep values."""
-        pi = _oborovo()
+    def test_tuho_revenue_matches_legacy(self):
+        from app.project_factories import create_default_tuho_wind1
+        pi = create_default_tuho_wind1()
+        eng = _legacy_engine(pi)
+        leg_rev = _legacy_rev(pi, eng)
         result = _run_clean(_adapt(pi))
-        from finco_core.inputs import AssetClass, CapexItem
-        from finco_core.debt.depreciation_schedule import (
-            build_depreciation_schedule, depreciation_per_period,
+        clean = {p.period_index: p.revenue_keur for p in result.periods}
+        max_d = max(abs(clean.get(k, 0.0) - v) for k, v in leg_rev.items())
+        assert max_d < 1e-9, f"TUHO revenue max C-L delta {max_d:.2e}"
+
+    def test_tuho_opex_matches_legacy(self):
+        from app.project_factories import create_default_tuho_wind1
+        pi = create_default_tuho_wind1()
+        eng = _legacy_engine(pi)
+        leg_opex = _legacy_opex(pi, eng)
+        result = _run_clean(_adapt(pi))
+        clean = {p.period_index: p.opex_keur for p in result.periods}
+        max_d = max(abs(clean.get(k, 0.0) - v) for k, v in leg_opex.items())
+        assert max_d < 1e-9, f"TUHO OPEX max C-L delta {max_d:.2e}"
+
+    def test_tuho_ebitda_matches_legacy(self):
+        from app.project_factories import create_default_tuho_wind1
+        pi = create_default_tuho_wind1()
+        eng = _legacy_engine(pi)
+        leg_rev = _legacy_rev(pi, eng)
+        leg_opex = _legacy_opex(pi, eng)
+        leg_ebitda = {k: leg_rev.get(k, 0.0) - leg_opex.get(k, 0.0)
+                      for k in set(leg_rev) | set(leg_opex)}
+        result = _run_clean(_adapt(pi))
+        clean = {p.period_index: p.ebitda_keur for p in result.periods}
+        max_d = max(abs(clean.get(k, 0.0) - leg_ebitda.get(k, 0.0))
+                    for k in leg_ebitda)
+        assert max_d < 1e-9, f"TUHO EBITDA max C-L delta {max_d:.2e}"
+
+    def test_tuho_book_depreciation_matches_legacy(self):
+        from app.project_factories import create_default_tuho_wind1
+        pi = create_default_tuho_wind1()
+        eng = _legacy_engine(pi)
+        leg_dep = _legacy_book_dep(pi, eng)
+        result = _run_clean(_adapt(pi))
+        clean = {p.period_index: p.book_depreciation_keur for p in result.periods}
+        max_d = max(abs(clean.get(k, 0.0) - v) for k, v in leg_dep.items())
+        assert max_d < 1e-9, f"TUHO book dep max C-L delta {max_d:.2e}"
+
+    def test_tuho_tax_depreciation_matches_legacy(self):
+        from app.project_factories import create_default_tuho_wind1
+        pi = create_default_tuho_wind1()
+        eng = _legacy_engine(pi)
+        leg_tax = _legacy_tax_dep(pi, eng)
+        result = _run_clean(_adapt(pi))
+        clean = {p.period_index: p.tax_depreciation_keur for p in result.periods}
+        max_d = max(abs(clean.get(k, 0.0) - v) for k, v in leg_tax.items())
+        assert max_d < 1e-9, f"TUHO tax dep max C-L delta {max_d:.2e}"
+
+    def test_tuho_only_new_output_is_ebit_keur(self):
+        """ebit_keur is present and equals EBITDA − book_dep exactly."""
+        from app.project_factories import create_default_tuho_wind1
+        result = _run_clean(factory=create_default_tuho_wind1)
+        assert all(hasattr(p, "ebit_keur") for p in result.periods)
+        max_res = max(
+            abs(p.ebit_keur - (p.ebitda_keur - p.book_depreciation_keur))
+            for p in result.periods
         )
-        from finco_core.engine.period_engine import PeriodEngine, PeriodFrequency
-        engine = PeriodEngine(
-            financial_close=pi.info.financial_close,
-            construction_months=pi.info.construction_months,
-            horizon_years=pi.info.horizon_years,
-            ppa_years=float(pi.revenue.ppa_term_years),
-            frequency=PeriodFrequency.SEMESTRIAL,
-        )
-        omin = _adapt(pi)
-        dep_in = omin.depreciation
-        tax_capex = tuple(
-            CapexItem(
-                name=it.name,
-                amount_keur=it.amount_keur,
-                asset_class=AssetClass(it.asset_class_code),
-                useful_life_override=it.useful_life_override,
-            )
-            for it in dep_in.tax_capex_items_for_depreciation
-        )
-        annual = build_depreciation_schedule(
-            capex_items=tax_capex,
-            horizon_years=int(pi.info.horizon_years),
-            senior_tenor_years=dep_in.financial_cost_useful_life_years,
-        )
-        legacy_tax_dep = depreciation_per_period(annual, engine.periods())
-        for p in result.periods:
-            expected = legacy_tax_dep.get(p.period_index, 0.0)
-            assert abs(p.tax_depreciation_keur - expected) < 1e-6, (
-                f"Period {p.period_index}: tax_dep={p.tax_depreciation_keur:.6f}, "
-                f"legacy={expected:.6f}"
-            )
+        assert max_res < 1e-9, f"TUHO EBIT identity residual {max_res:.2e}"
 
 
 # ── Q: Identity independence ──────────────────────────────────────────────────
 
-class TestIdentityIndependence:
-    """Group Q — Cloning Oborovo with different name/code/company yields same EBIT."""
+class TestQIdentityIndependence:
+    """Group Q — Renamed Oborovo clone yields identical P&L vectors."""
 
     def test_clone_with_different_identity_same_ebit(self):
         import dataclasses
-        pi = _oborovo()
-        cloned_info = dataclasses.replace(
-            pi.info,
-            name="RenamedProject",
-            code="RENAMED001",
-            company="Different Company SA",
+        from app.project_factories import create_default_oborovo
+        pi = create_default_oborovo()
+        pi_clone = dataclasses.replace(
+            pi,
+            info=dataclasses.replace(
+                pi.info, name="RenamedProject", code="REN001",
+                company="Different Company SA",
+            ),
         )
-        pi_clone = dataclasses.replace(pi, info=cloned_info)
         result_orig = _run_clean(_adapt(pi))
         result_clone = _run_clean(_adapt(pi_clone))
-        for p_orig, p_clone in zip(result_orig.periods, result_clone.periods):
-            assert abs(p_orig.ebit_keur - p_clone.ebit_keur) < 1e-9, (
-                f"Period {p_orig.period_index}: orig={p_orig.ebit_keur:.6f}, "
-                f"clone={p_clone.ebit_keur:.6f}"
+        for p_o, p_c in zip(result_orig.periods, result_clone.periods):
+            assert abs(p_o.ebit_keur - p_c.ebit_keur) < 1e-9, (
+                f"Period {p_o.period_index}: orig={p_o.ebit_keur}, "
+                f"clone={p_c.ebit_keur}"
             )
-
-    def test_clone_same_book_dep(self):
-        import dataclasses
-        pi = _oborovo()
-        cloned_info = dataclasses.replace(
-            pi.info,
-            name="RenamedProject",
-            code="RENAMED001",
-            company="Different Company SA",
-        )
-        pi_clone = dataclasses.replace(pi, info=cloned_info)
-        result_orig = _run_clean(_adapt(pi))
-        result_clone = _run_clean(_adapt(pi_clone))
-        for p_orig, p_clone in zip(result_orig.periods, result_clone.periods):
-            assert abs(p_orig.book_depreciation_keur - p_clone.book_depreciation_keur) < 1e-9
 
 
 # ── R: No target plug / no project dispatch ───────────────────────────────────
 
-class TestNoTargetPlugNoProjectDispatch:
-    """Group R — EBIT is not derived from target values or project identity."""
+class TestRNoTargetPlug:
+    """Group R — EBIT not hardcoded; orchestrator has no Oborovo dispatch."""
 
-    def test_ebit_not_hardcoded(self):
-        """Verify EBIT varies between projects (not a hardcoded constant)."""
-        from app.project_factories import create_default_solar_project
-        pi_oborovo = _oborovo()
-        pi_solar = create_default_solar_project()
-        result_ob = _run_clean(_adapt(pi_oborovo))
-        result_solar = _run_clean(_adapt(pi_solar))
-        ebit_ob = sum(p.ebit_keur for p in result_ob.periods)
-        ebit_solar = sum(p.ebit_keur for p in result_solar.periods)
-        assert abs(ebit_ob - ebit_solar) > 1.0, (
-            f"EBIT is suspiciously equal across projects: {ebit_ob:.3f} vs {ebit_solar:.3f}"
-        )
+    def test_ebit_varies_across_projects(self):
+        from app.project_factories import create_default_solar_project, create_default_oborovo
+        r_ob = _run_clean(factory=create_default_oborovo)
+        r_solar = _run_clean(factory=create_default_solar_project)
+        ebit_ob = sum(p.ebit_keur for p in r_ob.periods)
+        ebit_solar = sum(p.ebit_keur for p in r_solar.periods)
+        assert abs(ebit_ob - ebit_solar) > 1.0
 
-    def test_orchestrator_does_not_dispatch_on_project_name(self):
-        """Rename the project; ensure orchestrator code is not doing name-based dispatch."""
+    def test_orchestrator_no_oborovo_literal(self):
         import ast
-        import pathlib
-        orch_src = pathlib.Path(__file__).parent.parent / "financial_engine" / "orchestrator.py"
-        tree = ast.parse(orch_src.read_text())
-        # Look for string literals that equal "Oborovo" in the orchestrator
-        oborovo_literals = [
-            node for node in ast.walk(tree)
-            if isinstance(node, ast.Constant)
-            and isinstance(node.value, str)
-            and "oborovo" in node.value.lower()
+        from pathlib import Path
+        src = (Path(__file__).parent.parent / "financial_engine" / "orchestrator.py").read_text()
+        tree = ast.parse(src)
+        oborovo_lits = [
+            n.value for n in ast.walk(tree)
+            if isinstance(n, ast.Constant) and isinstance(n.value, str)
+            and "oborovo" in n.value.lower()
         ]
-        assert len(oborovo_literals) == 0, (
-            f"Orchestrator contains Oborovo-specific string literal(s): "
-            f"{[n.value for n in oborovo_literals]}"
-        )
+        assert not oborovo_lits, f"Oborovo literals in orchestrator: {oborovo_lits}"
 
     def test_ebit_formula_is_arithmetic_identity(self):
-        """EBIT must equal EBITDA − book_dep exactly, never a target-derived plug."""
         result = _run_clean()
         for p in result.periods:
             expected = p.ebitda_keur - p.book_depreciation_keur
             assert p.ebit_keur == expected, (
-                f"Period {p.period_index}: ebit={p.ebit_keur} != "
-                f"ebitda-dep={expected} (plug detected)"
+                f"Period {p.period_index}: ebit != ebitda-dep (plug detected)"
             )

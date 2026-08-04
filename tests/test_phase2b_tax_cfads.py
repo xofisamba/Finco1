@@ -952,6 +952,7 @@ class TestL_ModelA_Exact:
             ebitda_keur=self._EBITDA,
             book_depreciation_keur=0.0,
             tax_depreciation_keur=self._TAX_DEP,
+            ebit_keur=self._EBITDA,
         )
         tax_input = TaxCalculationInput(
             policy=_flat_policy(rate=self._RATE, atad_enabled=False),
@@ -1275,6 +1276,7 @@ class TestQ_ModelG_ExactTiming:
             is_ppa_active=True, days_in_period=181, day_fraction=0.5,
             production_mwh=0.0, revenue_keur=0.0, opex_keur=0.0,
             ebitda_keur=500.0, book_depreciation_keur=0.0, tax_depreciation_keur=0.0,
+            ebit_keur=500.0,
         )
         p1 = OperatingPeriodResult(
             period_index=1, period_start=date(2030, 7, 1), period_end=date(2031, 1, 1),
@@ -1282,6 +1284,7 @@ class TestQ_ModelG_ExactTiming:
             is_ppa_active=True, days_in_period=184, day_fraction=0.5,
             production_mwh=0.0, revenue_keur=0.0, opex_keur=0.0,
             ebitda_keur=500.0, book_depreciation_keur=0.0, tax_depreciation_keur=0.0,
+            ebit_keur=500.0,
         )
         # EBITDA=1000 annual, rate=18% → CIT=180 kEUR
         policy = TaxPolicy(
@@ -1351,6 +1354,7 @@ class TestR_ModelH_CanonicalCFADS:
             is_ppa_active=True, days_in_period=365, day_fraction=1.0,
             production_mwh=0.0, revenue_keur=0.0, opex_keur=0.0,
             ebitda_keur=100.0, book_depreciation_keur=0.0, tax_depreciation_keur=100.0,
+            ebit_keur=100.0,
         )
         p1 = OperatingPeriodResult(
             period_index=1, period_start=date(2030, 1, 1), period_end=date(2031, 1, 1),
@@ -1358,6 +1362,7 @@ class TestR_ModelH_CanonicalCFADS:
             is_ppa_active=True, days_in_period=365, day_fraction=1.0,
             production_mwh=0.0, revenue_keur=0.0, opex_keur=0.0,
             ebitda_keur=120.0, book_depreciation_keur=0.0, tax_depreciation_keur=20.0,
+            ebit_keur=120.0,
         )
         # tax_dep=100 for p0: taxable=0 → CIT=0; tax_dep=20 for p1: taxable=100 → CIT=18
         policy = _flat_policy(rate=0.18, atad_enabled=False,
@@ -1623,6 +1628,7 @@ class TestT_CalendarDateBoundary:
             is_ppa_active=True, days_in_period=181, day_fraction=0.5,
             production_mwh=0.0, revenue_keur=0.0, opex_keur=0.0,
             ebitda_keur=100.0, book_depreciation_keur=0.0, tax_depreciation_keur=0.0,
+            ebit_keur=100.0,
         )
         # Period 1: purely in 2030 (also year_index=0 — same operating year, different calendar)
         p1 = OperatingPeriodResult(
@@ -1631,6 +1637,7 @@ class TestT_CalendarDateBoundary:
             is_ppa_active=True, days_in_period=181, day_fraction=0.5,
             production_mwh=0.0, revenue_keur=0.0, opex_keur=0.0,
             ebitda_keur=200.0, book_depreciation_keur=0.0, tax_depreciation_keur=0.0,
+            ebit_keur=200.0,
         )
         bases = build_tax_year_bases((p0, p1), {}, {})
         tax_year_map = {b.tax_year: b for b in bases}
@@ -1870,6 +1877,7 @@ class TestX_CrossYearAllocation:
             is_ppa_active=True, days_in_period=181, day_fraction=1.0,
             production_mwh=0.0, revenue_keur=0.0, opex_keur=0.0,
             ebitda_keur=181.0, book_depreciation_keur=0.0, tax_depreciation_keur=0.0,
+            ebit_keur=181.0,
         )
         tax_input = TaxCalculationInput(
             policy=_flat_policy(rate=0.10, atad_enabled=False),
@@ -1939,6 +1947,7 @@ class TestX_CrossYearAllocation:
             is_ppa_active=True, days_in_period=181, day_fraction=1.0,
             production_mwh=0.0, revenue_keur=0.0, opex_keur=0.0,
             ebitda_keur=181.0, book_depreciation_keur=0.0, tax_depreciation_keur=0.0,
+            ebit_keur=181.0,
         )
         bases = build_tax_year_bases((p,), {}, {})
         total_ebitda = sum(b.ebitda_keur for b in bases)
@@ -1988,6 +1997,7 @@ class TestY_MultiPeriodCrossYear:
             is_ppa_active=True, days_in_period=273, day_fraction=0.75,
             production_mwh=0.0, revenue_keur=0.0, opex_keur=0.0,
             ebitda_keur=100.0, book_depreciation_keur=0.0, tax_depreciation_keur=0.0,
+            ebit_keur=100.0,
         )
         pB = OperatingPeriodResult(
             period_index=1, period_start=date(2029, 10, 1), period_end=date(2030, 4, 1),
@@ -1995,6 +2005,7 @@ class TestY_MultiPeriodCrossYear:
             is_ppa_active=True, days_in_period=182, day_fraction=0.5,
             production_mwh=0.0, revenue_keur=0.0, opex_keur=0.0,
             ebitda_keur=50.0, book_depreciation_keur=0.0, tax_depreciation_keur=0.0,
+            ebit_keur=50.0,
         )
         pC = OperatingPeriodResult(
             period_index=2, period_start=date(2030, 4, 1), period_end=date(2030, 10, 1),
@@ -2002,6 +2013,7 @@ class TestY_MultiPeriodCrossYear:
             is_ppa_active=True, days_in_period=183, day_fraction=0.5,
             production_mwh=0.0, revenue_keur=0.0, opex_keur=0.0,
             ebitda_keur=200.0, book_depreciation_keur=0.0, tax_depreciation_keur=0.0,
+            ebit_keur=200.0,
         )
         return build_tax_year_bases((pA, pB, pC), {}, {})
 

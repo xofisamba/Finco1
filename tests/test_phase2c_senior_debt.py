@@ -126,6 +126,7 @@ def _make_op_period(
         ebitda_keur=ebitda,
         book_depreciation_keur=0.0,
         tax_depreciation_keur=0.0,
+        ebit_keur=ebitda,
     )
 
 
@@ -2123,6 +2124,7 @@ class TestExactHandshake:
                 production_mwh=0.0, revenue_keur=5000.0, opex_keur=1000.0,
                 ebitda_keur=4000.0, book_depreciation_keur=500.0,
                 tax_depreciation_keur=500.0,
+                ebit_keur=3500.0,
             ))
         return tuple(periods)
 
@@ -2280,6 +2282,7 @@ class TestFinalisationNotConverged:
                 production_mwh=0.0, revenue_keur=5000.0, opex_keur=1000.0,
                 ebitda_keur=4000.0, book_depreciation_keur=500.0,
                 tax_depreciation_keur=500.0,
+                ebit_keur=3500.0,
             ))
         return tuple(periods)
 
