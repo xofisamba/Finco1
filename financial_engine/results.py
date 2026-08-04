@@ -39,6 +39,7 @@ class OperatingPeriodResult:
     ebitda_keur: float
     book_depreciation_keur: float
     tax_depreciation_keur: float
+    ebit_keur: float
 
 
 @dataclass(frozen=True)
@@ -51,6 +52,7 @@ class OperatingSchedules:
     ebitda_keur: tuple[float, ...]
     book_depreciation_keur: tuple[float, ...]
     tax_depreciation_keur: tuple[float, ...]
+    ebit_keur: tuple[float, ...]
 
 
 @dataclass(frozen=True)
