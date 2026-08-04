@@ -382,6 +382,7 @@ def run_operating_model(inputs: OperatingModelInput) -> ProjectModelResult:
             ebitda_keur=ebitda_by_idx.get(idx, 0.0),
             book_depreciation_keur=book_dep_by_idx.get(idx, 0.0),
             tax_depreciation_keur=tax_dep_by_idx.get(idx, 0.0),
+            ebit_keur=ebitda_by_idx.get(idx, 0.0) - book_dep_by_idx.get(idx, 0.0),
         ))
 
     periods_tuple = tuple(period_results)
@@ -394,6 +395,7 @@ def run_operating_model(inputs: OperatingModelInput) -> ProjectModelResult:
         ebitda_keur=tuple(p.ebitda_keur for p in periods_tuple),
         book_depreciation_keur=tuple(p.book_depreciation_keur for p in periods_tuple),
         tax_depreciation_keur=tuple(p.tax_depreciation_keur for p in periods_tuple),
+        ebit_keur=tuple(p.ebit_keur for p in periods_tuple),
     )
 
     # Step 9: Attach immutable provenance.
