@@ -1,6 +1,6 @@
 # Oborovo Tax Source Truth — Stage C3B1 Diagnostic Report
 
-**Extractor version**: 3.2.0 (dual-load; adds `lcf_rollforward`, `tax_milestones`, `periodisation_mismatch`, `debt_sizing_comparison`)
+**Extractor version**: 3.3.0 (dual-load; adds `lcf_rollforward`, `tax_milestones`, `periodisation_mismatch`, `croatian_calendar_year_lcf_proforma`, evidence-based `debt_sizing_evidence`)
 
 ## 1. Base Commit and Branch
 
@@ -14,9 +14,9 @@
 
 | File | Change |
 |------|--------|
-| `finco_recon/extract_oborovo_excel.py` | v3.2.0; adds `lcf_rollforward`, `tax_milestones`, `periodisation_mismatch`; corrects LCF period/year language |
-| `tests/fixtures/excel_oborovo_financial_truth.json` | Regenerated; adds `lcf_rollforward` (60 rows), `tax_milestones`, `periodisation_mismatch`, `debt_sizing_comparison` |
-| `tests/test_stage_c3b1_oborovo_tax_source_truth.py` | 113 tests (A–S); adds Groups Q (tax milestones), R (periodisation mismatch), S (debt sizing) |
+| `finco_recon/extract_oborovo_excel.py` | v3.3.0; adds `_derive_croatian_legal_lcf_proforma()`, `_derive_debt_sizing_from_workbook()`; renames `lcf_balance_exhausted_from_window` → `workbook_rolling_window_balance_reaches_zero`; adds `WORKBOOK_LCF_MECHANICS_PROVED`; fixes periodisation_mismatch text |
+| `tests/fixtures/excel_oborovo_financial_truth.json` | Updated v3.3.0; adds `croatian_calendar_year_lcf_proforma`, replaces `debt_sizing_comparison` with `debt_sizing_evidence`; renames milestone key |
+| `tests/test_stage_c3b1_oborovo_tax_source_truth.py` | 121 tests (A–S); Group Q adds 7 tests (workbook LCF classification, Croatian pro forma); Group S replaced with evidence-based tests |
 | `docs/reconciliation/oborovo_tax_source_truth.md` | This file |
 | `.github/workflows/c3b1_diagnostic_check.yml` | New CI workflow running only `test_stage_c3b1_oborovo_tax_source_truth.py` |
 
@@ -337,7 +337,7 @@ Row 43 (formula) ≠ production authority. Row 44 (Macro hardcoded) is actual au
 - No `oborovo` string in `financial_engine/`
 - Parity layer (`finco_parity/`) uses `baseline_id` routing — permitted
 
-## 17a. Tax Loss Carry-Forward — Roll-Forward Mechanics (Proved)
+## 17a. Tax Loss Carry-Forward — Workbook Mechanics (WORKBOOK_LCF_MECHANICS_PROVED)
 
 ### LCF Formula Chain
 
@@ -363,16 +363,19 @@ Row 43 (formula) ≠ production authority. Row 44 (Macro hardcoded) is actual au
 | "5" means | 5 semi-annual model periods (~2.5 calendar years, NOT 5 tax years) |
 | Losses ever utilized? | **Never** — EBT remains negative throughout all loss-carrying periods |
 
-### Tax Milestones (Derived)
+### Tax Milestones (Workbook — WORKBOOK_LCF_MECHANICS_PROVED)
+
+Key `workbook_rolling_window_balance_reaches_zero` (formerly `lcf_balance_exhausted_from_window`).
 
 | Milestone | Period | Date | Value | Note |
 |-----------|--------|------|-------|------|
-| First positive TI (before losses) | 6 | 2033-01-01 | 92.7 kEUR | H1-2033 |
-| First loss utilization | — | Never | 0 kEUR | EBT<0 blocks row 37 |
-| First positive TP after losses | 6 | 2033-01-01 | 92.7 kEUR | TP=TI since alloc=0 always |
-| First CIT expense | 6 | 2033-01-01 | 8.9 kEUR | Pair 5_6: (-3.7+92.7)×10% |
-| First cash tax outflow | 6 | 2033-01-01 | −8.9 kEUR | No payment lag |
-| LCF window fully exhausted | After p10 | 2035-06-30 | 0 kEUR | p5 TI (−3.7) drops from window |
+| WORKBOOK_FIRST_POSITIVE_TI | 6 | 2033-01-01 | 92.7 kEUR | H1-2033 |
+| WORKBOOK_FIRST_LOSS_UTILIZATION | — | Never | 0 kEUR | EBT<0 blocks row 37 |
+| WORKBOOK_FIRST_CIT_YEAR (period) | 6 | 2033-01-01 | 8.9 kEUR | Pair 5_6: (-3.7+92.7)×10% |
+| WORKBOOK_FIRST_CASH_TAX_PERIOD | 6 | 2033-01-01 | −8.9 kEUR | No payment lag |
+| WORKBOOK_ROLLING_WINDOW_REACHES_ZERO | After p10 | 2035-06-30 | 0 kEUR | p5 TI (−3.7) drops from window |
+
+See Section 17c for the legal pro forma milestones (Article 17 calendar-year LCF).
 
 **EBT < 0 during all loss periods**: SHL interest (>600 kEUR/period) keeps EBT negative even when EBIT > 0 and TI > 0. The loss-allocation gate in row 37 is therefore permanently closed. All accumulated losses (−581.7 kEUR peak at start of period 6) expire naturally through the rolling window, period by period.
 
@@ -388,27 +391,51 @@ The LCF mechanism never reduces taxable profit in Oborovo. CIT fires from period
 
 The workbook pairs H2 of year N with H1 of year N+1 in its CIT formula (`SUM(F41:G41)` fires in even periods). This straddles the Jan 1 boundary. It is a **modelling convention**, NOT evidence of a July fiscal year.
 
-| Correct calendar-year aggregation | Workbook pairing convention |
-|-----------------------------------|-----------------------------|
-| Year 2033: H1-2033 (p6) + H2-2033 (p7) = 200.1 kEUR TI → CIT 20.0 kEUR | Pair 5_6: H2-2032 (p5) + H1-2033 (p6) = 89.0 kEUR TI → CIT 8.9 kEUR |
-| Year 2034: H1-2034 (p8) + H2-2034 (p9) = 427.8 kEUR TI → CIT 42.8 kEUR | Pair 7_8: H2-2033 (p7) + H1-2034 (p8) = 313.4 kEUR TI → CIT 31.3 kEUR |
+| Calendar-year aggregation (naive, no LCF) | Workbook pairing convention |
+|-------------------------------------------|-----------------------------|
+| Year 2033: H1-2033 (p6) + H2-2033 (p7) = 200.1 kEUR TI → naive CIT 20.0 kEUR | Pair 5_6: H2-2032 (p5) + H1-2033 (p6) = 89.0 kEUR TI → CIT 8.9 kEUR |
+| Year 2034: H1-2034 (p8) + H2-2034 (p9) = 427.8 kEUR TI → naive CIT 42.8 kEUR | Pair 7_8: H2-2033 (p7) + H1-2034 (p8) = 313.4 kEUR TI → CIT 31.3 kEUR |
+
+**Important**: the "naive calendar-year CIT" column above applies no LCF offset. With Article 17 LCF applied (see Section 17c), calendar year 2033 CIT = **0** (losses fully offset TI), and 2034 CIT = **4.615 kEUR** (partial offset). Do NOT cite 20.0 kEUR as "the correct 2033 CIT".
 
 **Classification: `WORKBOOK_PERIODISATION_MISMATCH`**
 
-| Year | Calendar-year TI | Calendar-year CIT | Workbook CIT | Delta |
-|------|-----------------|-------------------|--------------|-------|
-| 2033 | 200.1 kEUR | 20.0 kEUR | 8.9 kEUR | −11.1 kEUR |
-| 2034 | 427.8 kEUR | 42.8 kEUR | 31.3 kEUR | −11.4 kEUR |
-| 2035 | 661.0 kEUR | 66.1 kEUR | 54.5 kEUR | −11.6 kEUR |
-| 2036 | 912.3 kEUR | 91.2 kEUR | 78.2 kEUR | −13.0 kEUR |
+The `calendar_vs_workbook_table` in the fixture shows naive calendar-year CIT (no LCF) vs workbook CIT, illustrating the timing shift only. For the legally accurate (Article 17 LCF-adjusted) comparison, see `croatian_calendar_year_lcf_proforma` in the fixture.
 
 **Impact summary:**
 - CIT timing shifts ~6 months (workbook CIT falls in H1 of year N+1, not H2 of year N)
-- First tax year understated by ~55% (8.9 vs 20.0 kEUR)
 - No impact on LCF window exhaustion date (losses expire by window, not by offset)
 - Production `tax_year_start_month = 1`; the H2+H1 pairing is a workbook shortcut
+- Do NOT use `tax_payment_frequency = "semi_annual_pair"` — this terminology does not exist in Croatian tax law
 
 **Do not** use `tax_year_start_month = 7`. Do not implement `MODEL_YEAR_PAIR` as a typed enum. The correct production parameter is `tax_year_start_month = 1` combined with the semi-annual period layout.
+
+---
+
+## 17c. Croatian Legal LCF Pro Forma — Article 17 Calendar-Year Treatment
+
+This section proves what the Croatian Article 17 LCF would yield on the same income stream. The **workbook does NOT implement Article 17** — it uses a rolling 5-period window (WORKBOOK_LCF_MECHANICS_PROVED). This pro forma is diagnostic only.
+
+**Article 17 rules:** 5 calendar-year expiry per vintage; oldest-first utilization; no EBT gate.
+
+| Year | Calendar TI | Opening LCF | New Loss | Utilized (oldest-first) | Taxable Base | CIT |
+|------|------------|-------------|----------|------------------------|--------------|-----|
+| 2030 | −219.2 | 0 | 219.2 | 0 | 0 | 0 |
+| 2031 | −320.1 | 219.2 | 320.1 | 0 | 0 | 0 |
+| 2032 | −42.5 | 539.3 | 42.5 | 0 | 0 | 0 |
+| **2033** | **200.1** | **581.7** | **0** | **200.1 (from 2030)** | **0.0** | **0** |
+| **2034** | **427.8** | **381.6** | **0** | **381.6 (exhaust all)** | **46.15** | **4.615** |
+| 2035+ | 661+ | 0 | 0 | 0 | full TI | normal |
+
+**Key milestones (legal pro forma):**
+
+| Milestone | Year |
+|-----------|------|
+| LEGAL_PROFORMA_FIRST_LOSS_UTILIZATION_YEAR | 2033 |
+| LEGAL_PROFORMA_FIRST_CIT_YEAR | 2034 |
+| LEGAL_PROFORMA_LCF_EXHAUSTION_YEAR | 2034 |
+
+**Contrast with workbook:** The workbook's rolling-window shortcut blocks utilization entirely (EBT gate) and expires losses through the window (not by time-horizon). The legal treatment would yield: 2033 CIT = 0 (vs workbook 8.9), 2034 CIT = 4.6 (vs workbook 31.3). The C3B2 LCF design must choose which treatment to implement — the workbook shortcut or the Croatian legal treatment — and document the choice explicitly.
 
 ---
 
@@ -429,7 +456,7 @@ underlying economic intent as generic inputs:
 | Economic parameter | Derived from workbook | Recommended input name | Notes |
 |--------------------|----------------------|------------------------|-------|
 | Fiscal year start month | Croatian CIT year is 1 Jan–31 Dec. The H2+H1 pairing is a workbook modelling convention, NOT a July fiscal year. Pairs straddle Jan 1. | `tax_year_start_month = 1` | Use calendar year unless separately evidenced non-calendar fiscal period is provided |
-| CIT payment frequency | CIT fires in even semi-annual periods (every 2 periods) | `tax_payment_frequency = "semi_annual_pair"` | Semi-annual pairing derives from the model periodisation convention, not from a fiscal year offset |
+| CIT assessment frequency | CIT fires in even semi-annual periods (every 2 periods) | `tax_assessment_frequency = "ANNUAL"`, `tax_assessment_period = "CALENDAR_YEAR"`, `cash_tax_booking_period = "TAX_YEAR_LAST_MODEL_PERIOD"` | Annual assessment on calendar year; cash booking in last model period of the tax year |
 | Loss carry-forward window | B36 = 5 semi-annual periods | `loss_expiry_count = 5`, `loss_expiry_unit = "periods"` | A 5-period window on semi-annual model ≈ 2.5 calendar years, NOT 3 years |
 | Loss utilisation limit | No cap in workbook | `loss_utilization_limit_pct = 1.0` | No partial-year limit in current Oborovo model |
 
@@ -439,7 +466,8 @@ underlying economic intent as generic inputs:
 3. **Workbook shortcut** (implementation artefact): B36=5 window count, B43 MOD pairing — these are derivable from layers 1+2 and must not become named enums in production code
 
 **Prohibited in C3B2 production code:**
-- `MODEL_YEAR_PAIR` as a named enum — use `tax_year_start_month` + `tax_payment_frequency`
+- `MODEL_YEAR_PAIR` as a named enum — use `tax_year_start_month` + `tax_assessment_frequency` + `cash_tax_booking_period`
+- `tax_payment_frequency = "semi_annual_pair"` — this terminology does not exist in Croatian tax law and conflates modelling convention with legal assessment policy
 - `MODEL_PERIODS` as a named enum — use `loss_expiry_count` + `loss_expiry_unit`
 - `loss_carryforward_years = 3` — this is a year-count approximation, not source parity
 - Any string dispatch on `"oborovo"` or project name
@@ -474,23 +502,40 @@ Additional (low-risk, no runtime impact for Oborovo):
 - Adding an Oborovo-specific sizing branch
 - Modifying engine outputs to match Excel totals
 
-### Debt-Sizing Input Comparison
+### Debt-Sizing Evidence (Extractor-Generated)
 
-| Parameter | Excel source | Excel value | Phase 2C source | Phase 2C value | Match | Impact |
-|-----------|-------------|-------------|-----------------|----------------|-------|--------|
-| Sizing mode | Inputs!D192 (scalar) | FIXED_AMOUNT | `_CALIBRATION['oborovo']` | DSCR_SCULPTED | ✗ | Core mismatch |
-| Debt amount (kEUR) | Inputs!D192 | 42,852 | Engine output | 45,873 | ✗ | +3,021 kEUR (7.1%) |
-| All-in rate (%) | D202+D203 | 5.65% | `annual_fixed_rate` | 5.65% | ✓ | — |
-| DSCR target (initial) | DS row 22 | 1.15 | `target_dscr` | 1.15 | ✓ | — |
-| DSCR step-up | DS row 22 | 1.35 at period 25 | none | none (constant 1.15) | ✗ | Phase 2C sustains higher debt in late periods |
-| Maturity (periods) | Inputs!D196 | 28 (14 years × 2) | `maturity_period_index` | 29−2+1=28 | ≈ | Approximately aligned |
-| Total CAPEX (kEUR) | Inputs!D45 | 57,973 | `project_inputs.capex` | TBD — must verify | ? | Proportional impact on DSCR sculpt |
+The fixture now contains `debt_sizing_evidence` (generated by `_derive_debt_sizing_from_workbook()`) with D192 dual-load evidence and DS row 22 dual-load evidence.
 
-**Debt sizing conclusion: `DEBT_SIZING_POLICY_MISMATCH_IDENTIFIED`**
+**D192 (Inputs!D192 = senior debt amount):**
+- Cached value: 42,852.279 kEUR
+- Formula-mode content: `SOURCE_UNRESOLVED` (workbook binary required for formula-mode inspection)
+- Classification: `SOURCE_UNRESOLVED`
 
-Two identifiable policy mismatches:
-1. Excel treats debt amount as a fixed input (42,852 kEUR); Phase 2C derives debt from DSCR sculpting.
-2. Excel applies DSCR step-up 1.15 → 1.35 at period 25; Phase 2C uses constant 1.15.
+**DS row 22 (DSCR target):**
+- Cached distinct values: [1.15, 1.35] — step-up observed at period 25
+- Formula-mode content: `SOURCE_UNRESOLVED`
+- DSCR role classification: `SOURCE_UNRESOLVED` (formula chain not readable without workbook binary)
+
+**Debt sizing verdict: `DEBT_SIZING_SOURCE_UNRESOLVED_MANUAL_CHECK_REQUIRED`**
+
+Manual inspection of the workbook is required to determine:
+1. Whether D192 = 42,852 kEUR is a literal input, a formula result, or a frozen Goal Seek/macro result
+2. Whether DS row 22's 1.15 → 1.35 step-up is a hardcoded formula or a lookup
+3. Whether there is a circular reference requiring iterative calculation in the DS repayment rows
+
+See manual_check_pack in `debt_sizing_evidence` for the 10-item verification list.
+
+**Observable from cached values (not resolution):**
+
+| Parameter | Excel cached value | Phase 2C source | Phase 2C value | Notes |
+|-----------|-------------------|-----------------|----------------|-------|
+| Debt amount (kEUR) | D192 = 42,852 | Engine output | 45,873 | Source of D192 unresolved |
+| All-in rate (%) | D202+D203 = 5.65% | `annual_fixed_rate` | 5.65% | Match |
+| DSCR target (initial) | DS row 22 = 1.15 (periods 1-24) | `target_dscr` | 1.15 | Match |
+| DSCR step-up | DS row 22 = 1.35 (period 25+) | none | constant 1.15 | Policy mismatch observable |
+| Maturity | Inputs!D196 = 14 years | `maturity_period_index` | 28 periods | Approximately aligned |
+
+The DSCR step-up 1.15 → 1.35 is observable from cached values and likely explains part of the Phase 2C over-sizing. But this cannot be confirmed as the root cause until D192's origin is resolved.
 
 Manual check required before any conclusion is hardened (see Section 20b).
 

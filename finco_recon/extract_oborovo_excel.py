@@ -33,7 +33,7 @@ import pathlib
 import sys
 from typing import Any
 
-_EXTRACTOR_VERSION = "3.2.0"
+_EXTRACTOR_VERSION = "3.3.0"
 _EXPECTED_FILENAME = "20260414_BP_Oborovo_Sensitivity_FINAL_for_PPT.xlsm"
 
 # ---------------------------------------------------------------------------
@@ -770,6 +770,7 @@ def _read_pl_tax_formulas(wb_formula, wb_data) -> dict:
         "period_diagnostic": period_diagnostic,
         "rows": rows,
         **_derive_lcf_rollforward(period_diagnostic),
+        "croatian_calendar_year_lcf_proforma": _derive_croatian_legal_lcf_proforma(period_diagnostic),
     }
 
 
@@ -869,7 +870,7 @@ def _derive_lcf_rollforward(period_diagnostic: list[dict]) -> dict:
             "period_bop_date": first_cash["period_bop_date"] if first_cash else None,
             "cash_keur": round(first_cash["excel_cf_cash_tax_keur"], 3) if first_cash else None,
         },
-        "lcf_balance_exhausted_from_window": {
+        "workbook_rolling_window_balance_reaches_zero": {
             "after_period": lcf_exhaust_prev["period"] if lcf_exhaust_prev else None,
             "after_period_eop": lcf_exhaust_prev["period_eop_date"] if lcf_exhaust_prev else None,
             "note": (
@@ -877,6 +878,7 @@ def _derive_lcf_rollforward(period_diagnostic: list[dict]) -> dict:
                 "Losses expired; not utilized. LCF opening = 0 from this period onward."
             ),
         },
+        "workbook_lcf_classification": "WORKBOOK_LCF_MECHANICS_PROVED",
         "losses_ever_utilized": False,
         "utilization_blocked_reason": (
             "Row 37: allocated_losses = IF(AND(G36<=0, G32>0), MIN(ABS(G36), G32), 0). "
@@ -927,24 +929,29 @@ def _derive_lcf_rollforward(period_diagnostic: list[dict]) -> dict:
             "Prev period = H2(yr N, Jul-Dec), this period = H1(yr N+1, Jan-Jun). "
             "Example: pair 5_6 = H2-2032 (p5) + H1-2033 (p6). Straddles Jan 1."
         ),
-        "correct_calendar_year_aggregation": (
-            "Each calendar year should combine H1(yr N, Jan-Jun) + H2(yr N, Jul-Dec). "
+        "calendar_year_aggregation_note": (
+            "Each calendar year aggregates H1(yr N, Jan-Jun) + H2(yr N, Jul-Dec). "
             "Example year 2033: p6(H1-2033) + p7(H2-2033) = 92.7 + 107.4 = 200.1 kEUR TI. "
-            "Calendar-year CIT = 200.1 × 10% = 20.0 kEUR."
+            "The calendar_vs_workbook_table shows naive calendar-year CIT (TI × 10%, no LCF offset) "
+            "vs workbook CIT, illustrating the timing shift only. "
+            "For LCF-adjusted calendar-year CIT see the croatian_calendar_year_lcf_proforma section."
         ),
-        "workbook_vs_correct_first_tax_year": (
+        "workbook_first_tax_period_note": (
             "Workbook pair 5_6: TI = -3.7 + 92.7 = 89.0 → CIT = 8.9 kEUR, booked H1-2033. "
-            "Correct calendar year 2033: TI = 200.1 → CIT = 20.0 kEUR. "
-            "Delta: -11.1 kEUR (workbook understates by 55% in first tax year)."
+            "Naive calendar year 2033 TI = 200.1 kEUR → naive CIT = 20.0 kEUR (no LCF). "
+            "With Article 17 LCF applied (see croatian_calendar_year_lcf_proforma), "
+            "2033 taxable base = 0 → CIT = 0. Do not treat 20.0 kEUR as 'correct 2033 CIT'."
         ),
         "impact_on_tax_shield_exhaustion": (
             "No impact on LCF window exhaustion date: losses expire by rolling window, "
             "not by utilization offset. Exhaustion date is independent of CIT aggregation."
         ),
-        "impact_on_lifetime_cit": (
-            "Periodisation shifts CIT timing by approximately 6 months. "
-            "Lifetime CIT total is approximately equal (zero-sum over whole life) "
-            "but first-year underpayment is ~11 kEUR; timing differs every year."
+        "impact_on_cit_timing": (
+            "Periodisation shifts CIT booking by approximately 6 months relative to a "
+            "calendar-year assessment without LCF. With LCF applied the timing and amounts "
+            "both change materially (first CIT under Article 17 pro forma: 2034). "
+            "The workbook LCF shortcut (rolling window, no utilization) and the "
+            "H2+H1 pairing compound to produce a different pattern from the legal treatment."
         ),
         "calendar_vs_workbook_table": cal_vs_wb_table,
     }
@@ -953,6 +960,244 @@ def _derive_lcf_rollforward(period_diagnostic: list[dict]) -> dict:
         "lcf_rollforward": rollforward,
         "tax_milestones": tax_milestones,
         "periodisation_mismatch": periodisation_mismatch,
+    }
+
+
+def _derive_croatian_legal_lcf_proforma(period_diagnostic: list[dict]) -> dict:
+    """Croatian Article 17 CIT Act: 5 calendar-year expiry, oldest-first, NO EBT gate.
+
+    This is the legal pro forma — entirely distinct from the workbook's rolling 5-period
+    window (WORKBOOK_LCF_MECHANICS_PROVED). The workbook does NOT implement Article 17.
+    """
+    CIT_RATE = 0.10
+    EXPIRY_YEARS = 5
+
+    # Aggregate TI per calendar year from period_diagnostic (operating periods only)
+    cal_year_ti: dict[int, float] = {}
+    for r in period_diagnostic:
+        if r["period"] == 0:
+            continue
+        yr = r["python_calendar_tax_year"]
+        if yr is None:
+            continue
+        cal_year_ti[yr] = cal_year_ti.get(yr, 0.0) + r["excel_taxable_income_keur"]
+
+    years = sorted(cal_year_ti.keys())
+    vintages: dict[int, float] = {}  # origin_year → balance_keur
+    proforma_rows = []
+
+    for yr in years:
+        ti = cal_year_ti[yr]
+        opening_vintages = {k: round(v, 6) for k, v in sorted(vintages.items())}
+
+        # Expire vintages whose 5-year horizon has passed
+        expired_by_vintage: dict[int, float] = {}
+        for orig_yr in sorted(list(vintages.keys())):
+            if yr - orig_yr >= EXPIRY_YEARS:
+                expired_by_vintage[orig_yr] = vintages.pop(orig_yr)
+
+        # Accumulate new loss (negative TI → new vintage)
+        new_loss = max(0.0, -ti)
+        if new_loss > 0.001:
+            vintages[yr] = vintages.get(yr, 0.0) + new_loss
+
+        # Utilize losses oldest-first (no EBT gate — Article 17 pro forma)
+        utilized_by_vintage: dict[int, float] = {}
+        remaining = max(0.0, ti)
+        if remaining > 0.001:
+            for orig_yr in sorted(list(vintages.keys())):
+                if remaining <= 0.001:
+                    break
+                avail = vintages[orig_yr]
+                used = min(avail, remaining)
+                utilized_by_vintage[orig_yr] = round(used, 6)
+                vintages[orig_yr] -= used
+                remaining -= used
+            vintages = {k: v for k, v in vintages.items() if v > 0.001}
+
+        total_utilized = sum(utilized_by_vintage.values())
+        taxable_base = max(0.0, ti - total_utilized) if ti > 0 else 0.0
+        cit = taxable_base * CIT_RATE
+        closing_vintages = {k: round(v, 6) for k, v in sorted(vintages.items())}
+
+        proforma_rows.append({
+            "calendar_year": yr,
+            "calendar_year_ti_keur": round(ti, 3),
+            "opening_lcf_by_vintage_keur": {str(k): round(v, 3) for k, v in opening_vintages.items()},
+            "opening_lcf_total_keur": round(sum(opening_vintages.values()), 3),
+            "new_loss_keur": round(new_loss, 3),
+            "expired_by_vintage_keur": {str(k): round(v, 3) for k, v in expired_by_vintage.items()},
+            "utilized_by_vintage_keur": {str(k): round(v, 3) for k, v in utilized_by_vintage.items()},
+            "total_utilized_keur": round(total_utilized, 3),
+            "taxable_base_keur": round(taxable_base, 3),
+            "cit_keur": round(cit, 3),
+            "closing_lcf_by_vintage_keur": {str(k): round(v, 3) for k, v in closing_vintages.items()},
+            "closing_lcf_total_keur": round(sum(closing_vintages.values()), 3),
+        })
+
+    first_util = next((r for r in proforma_rows if r["total_utilized_keur"] > 0), None)
+    first_cit = next((r for r in proforma_rows if r["cit_keur"] > 0), None)
+    exhaustion = next(
+        (r for r in proforma_rows if r["total_utilized_keur"] > 0 and r["closing_lcf_total_keur"] < 0.001),
+        None,
+    )
+
+    return {
+        "legal_basis": "Croatian CIT Act Article 17: 5 calendar-year expiry, oldest-first utilization, no EBT gate",
+        "proforma_classification": "LEGAL_PROFORMA_NOT_WORKBOOK_IMPLEMENTATION",
+        "note": (
+            "Pro forma only — the workbook does NOT implement Article 17. "
+            "Calendar-year TI sums are derived from period_diagnostic excel_taxable_income_keur. "
+            "Loss utilization uses oldest-first and no EBT gate, unlike workbook row 37."
+        ),
+        "proforma_rows": proforma_rows,
+        "milestones": {
+            "LEGAL_PROFORMA_FIRST_LOSS_UTILIZATION_YEAR": first_util["calendar_year"] if first_util else None,
+            "LEGAL_PROFORMA_FIRST_CIT_YEAR": first_cit["calendar_year"] if first_cit else None,
+            "LEGAL_PROFORMA_LCF_EXHAUSTION_YEAR": exhaustion["calendar_year"] if exhaustion else None,
+        },
+    }
+
+
+def _derive_debt_sizing_from_workbook(wb_formula, wb_data) -> dict:
+    """Extract D192 (Inputs!D192 = senior debt amount) in dual-load mode.
+
+    Classifies the debt-sizing source methodology from formula-mode content.
+    When formula-mode content is unavailable (workbook absent in test environment),
+    source_classification defaults to SOURCE_UNRESOLVED and the debt verdict
+    is DEBT_SIZING_SOURCE_UNRESOLVED_MANUAL_CHECK_REQUIRED.
+
+    Valid source_classification values:
+      LITERAL_VALUE_IN_CURRENT_WORKBOOK  — D192 contains a numeric literal (no formula)
+      FORMULA_DERIVED                    — D192 contains an Excel formula
+      MACRO_OR_GOAL_SEEK_HISTORY_NOT_OBSERVABLE — formula text references Goal Seek or macro
+      SOURCE_UNRESOLVED                  — formula-mode content not available for inspection
+    """
+    D192_ROW = 192
+    D192_COL_1 = 4  # col D = 1-based column 4
+
+    d192_formula: str | None = None
+    d192_cached: float | None = None
+
+    try:
+        ws_f = wb_formula["Inputs"]
+        for row in ws_f.iter_rows(min_row=D192_ROW, max_row=D192_ROW,
+                                   min_col=D192_COL_1, max_col=D192_COL_1,
+                                   values_only=False):
+            if row:
+                v = row[0].value
+                d192_formula = str(v) if v is not None else None
+    except Exception:
+        pass
+
+    try:
+        ws_d = wb_data["Inputs"]
+        for row in ws_d.iter_rows(min_row=D192_ROW, max_row=D192_ROW,
+                                   min_col=D192_COL_1, max_col=D192_COL_1,
+                                   values_only=True):
+            if row:
+                v = row[0]
+                if isinstance(v, (int, float)) and not isinstance(v, bool):
+                    d192_cached = float(v)
+    except Exception:
+        pass
+
+    if d192_formula is None:
+        d192_source = "SOURCE_UNRESOLVED"
+    elif not d192_formula.startswith("="):
+        d192_source = "LITERAL_VALUE_IN_CURRENT_WORKBOOK"
+    elif any(kw in d192_formula.upper() for kw in ("GOAL", "MACRO")):
+        d192_source = "MACRO_OR_GOAL_SEEK_HISTORY_NOT_OBSERVABLE"
+    else:
+        d192_source = "FORMULA_DERIVED"
+
+    # DS row 22 (dscr_target): dual-load for DSCR classification
+    DS_DSCR_ROW = 22
+    ds_dscr_formula_p1: str | None = None
+    ds_dscr_cached_distinct: list[float] = []
+
+    try:
+        ws_ds_f = wb_formula["DS"]
+        for row in ws_ds_f.iter_rows(min_row=DS_DSCR_ROW, max_row=DS_DSCR_ROW,
+                                      max_col=_PERIOD_COL_OFFSET + _N_PERIODS + 1,
+                                      values_only=False):
+            col = _PERIOD_COL_OFFSET + 1  # period 1 (0-based)
+            if col < len(row):
+                v = row[col].value
+                ds_dscr_formula_p1 = str(v) if v is not None else None
+    except Exception:
+        pass
+
+    try:
+        ws_ds_d = wb_data["DS"]
+        vals: list[float] = []
+        for row in ws_ds_d.iter_rows(min_row=DS_DSCR_ROW, max_row=DS_DSCR_ROW,
+                                      max_col=_PERIOD_COL_OFFSET + _N_PERIODS + 1,
+                                      values_only=True):
+            for p in range(_N_PERIODS):
+                col = _PERIOD_COL_OFFSET + p
+                v = row[col] if col < len(row) else None
+                if isinstance(v, (int, float)) and not isinstance(v, bool) and v > 0:
+                    vals.append(float(v))
+        ds_dscr_cached_distinct = sorted(set(round(v, 3) for v in vals))
+    except Exception:
+        pass
+
+    dscr_classification = (
+        "SOURCE_UNRESOLVED"
+        if ds_dscr_formula_p1 is None
+        else "SOURCE_UNRESOLVED"  # formula present but role requires full DS chain analysis
+    )
+    dscr_role_evidence = (
+        "Formula-mode content for DS row 22 not available; cannot classify DSCR role"
+        if ds_dscr_formula_p1 is None
+        else f"Formula extracted (period 1): {ds_dscr_formula_p1}; role classification requires full DS chain analysis"
+    )
+
+    # Verdict: SOURCE_UNRESOLVED unless formula-mode content proves a literal
+    if d192_source == "LITERAL_VALUE_IN_CURRENT_WORKBOOK":
+        verdict = "DEBT_SIZING_SOURCE_UNRESOLVED_MANUAL_CHECK_REQUIRED"
+        verdict_rationale = (
+            f"D192 is a LITERAL_VALUE (no formula): {d192_formula}. "
+            "This confirms the amount was entered directly, but does not prove it was not "
+            "previously determined by Goal Seek or macro. Manual verification required "
+            "to confirm whether this is an original input or a frozen Goal Seek result."
+        )
+    elif d192_source == "FORMULA_DERIVED":
+        verdict = "DEBT_SIZING_SOURCE_UNRESOLVED_MANUAL_CHECK_REQUIRED"
+        verdict_rationale = (
+            f"D192 is FORMULA_DERIVED: {d192_formula}. "
+            "Formula chain must be traced to confirm sizing methodology. "
+            "Manual verification required."
+        )
+    else:
+        verdict = "DEBT_SIZING_SOURCE_UNRESOLVED_MANUAL_CHECK_REQUIRED"
+        verdict_rationale = (
+            "D192 formula-mode content is SOURCE_UNRESOLVED: workbook binary required for "
+            "formula-mode inspection. Cannot classify whether D192 is a literal, formula-derived, "
+            "or Goal Seek/macro result. Manual inspection required (see manual_check_pack)."
+        )
+
+    return {
+        "d192_evidence": {
+            "sheet": "Inputs",
+            "row": D192_ROW,
+            "col": "D",
+            "formula_mode_content": d192_formula,
+            "cached_value_keur": d192_cached,
+            "source_classification": d192_source,
+        },
+        "ds_dscr_row22_evidence": {
+            "sheet": "DS",
+            "row": DS_DSCR_ROW,
+            "col": "G-onward (period axis)",
+            "formula_mode_period1": ds_dscr_formula_p1,
+            "cached_distinct_values": ds_dscr_cached_distinct,
+            "dscr_classification": dscr_classification,
+            "dscr_role_evidence": dscr_role_evidence,
+        },
+        "debt_sizing_verdict": verdict,
+        "verdict_rationale": verdict_rationale,
     }
 
 
@@ -1025,6 +1270,7 @@ def extract(workbook_path: pathlib.Path) -> dict:
             "pl": _read_pl(wb_data),
             "dep": _read_dep(wb_data),
             "tax": _read_pl_tax_formulas(wb_formula, wb_data),
+            "debt_sizing_evidence": _derive_debt_sizing_from_workbook(wb_formula, wb_data),
         }
     finally:
         wb_data.close()

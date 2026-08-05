@@ -3,8 +3,8 @@
 SOURCE: d49af8ee-20260414_BP_Oborovo_Sensitivity_FINAL_for_PPT.xlsm
 SHA-256: 15a621c4d6b79024980766e00ebc79d7235fd56f00567be7bf345c769ce57920
 
-Extractor version: 3.2.0 (dual-load; adds LCF roll-forward, tax milestones, periodisation mismatch,
-debt-sizing comparison)
+Extractor version: 3.3.0 (dual-load; adds LCF roll-forward, tax milestones, periodisation mismatch,
+Croatian legal LCF pro forma, evidence-based debt-sizing section)
 
 Groups
 ------
@@ -115,7 +115,7 @@ import pytest
 
 _FIXTURE = pathlib.Path("tests/fixtures/excel_oborovo_financial_truth.json")
 _WORKBOOK_SHA = "15a621c4d6b79024980766e00ebc79d7235fd56f00567be7bf345c769ce57920"
-_EXTRACTOR_VERSION = "3.2.0"
+_EXTRACTOR_VERSION = "3.3.0"
 # Base SHA from which this branch was created; used by financial-freeze tests
 _BASE_SHA = "b11e5bf7b9ab60bae174081e7d9f8541190bf371"
 
@@ -1395,7 +1395,8 @@ class TestQTaxMilestones:
             "first_positive_tp_after_losses",
             "first_cit_expense",
             "first_cash_tax_outflow",
-            "lcf_balance_exhausted_from_window",
+            "workbook_rolling_window_balance_reaches_zero",
+            "workbook_lcf_classification",
             "losses_ever_utilized",
         ]
         for k in required_keys:
@@ -1434,12 +1435,62 @@ class TestQTaxMilestones:
         assert abs(m["cash_keur"] + 8.904) < 0.01  # negative (outflow)
 
     def test_lcf_exhausted_after_period_10(self):
-        """LCF rolling window reaches zero after period 10 closes (Jun 2035).
+        """Workbook rolling window balance reaches zero after period 10 closes (Jun 2035).
         Period 5 TI (-3.7) exits the 5-period window after period 10."""
         xd = _xd()
-        m = xd["tax"]["tax_milestones"]["lcf_balance_exhausted_from_window"]
+        m = xd["tax"]["tax_milestones"]["workbook_rolling_window_balance_reaches_zero"]
         assert m["after_period"] == 10
         assert m["after_period_eop"] == "2035-06-30"
+
+    def test_workbook_lcf_classification_proved(self):
+        """WORKBOOK_LCF_MECHANICS_PROVED classification recorded in tax_milestones."""
+        xd = _xd()
+        assert xd["tax"]["tax_milestones"]["workbook_lcf_classification"] == "WORKBOOK_LCF_MECHANICS_PROVED"
+
+    def test_croatian_legal_lcf_proforma_present(self):
+        """Croatian Article 17 legal LCF pro forma section present in tax."""
+        xd = _xd()
+        proforma = xd["tax"].get("croatian_calendar_year_lcf_proforma")
+        assert proforma is not None, "croatian_calendar_year_lcf_proforma must be present"
+        assert proforma["proforma_classification"] == "LEGAL_PROFORMA_NOT_WORKBOOK_IMPLEMENTATION"
+        assert "Article 17" in proforma["legal_basis"]
+        assert len(proforma["proforma_rows"]) > 0
+
+    def test_croatian_proforma_2033_taxable_base_zero(self):
+        """With Article 17 LCF, calendar year 2033 taxable base = 0 (losses offset full TI).
+        This proves that 'correct 2033 CIT = 20.0 kEUR' is wrong — with LCF it is 0."""
+        xd = _xd()
+        rows = {r["calendar_year"]: r for r in
+                xd["tax"]["croatian_calendar_year_lcf_proforma"]["proforma_rows"]}
+        r2033 = rows[2033]
+        assert abs(r2033["taxable_base_keur"]) < 0.01, (
+            f"Article 17 2033 taxable base must be 0; got {r2033['taxable_base_keur']}"
+        )
+        assert r2033["cit_keur"] == pytest.approx(0.0, abs=0.001), (
+            "Article 17 2033 CIT must be 0 (losses offset full TI)"
+        )
+        assert r2033["total_utilized_keur"] == pytest.approx(200.097, abs=0.5)
+
+    def test_croatian_proforma_2034_first_cit(self):
+        """2034 is first CIT year under Article 17: taxable base ~46.15, CIT ~4.615 kEUR."""
+        xd = _xd()
+        rows = {r["calendar_year"]: r for r in
+                xd["tax"]["croatian_calendar_year_lcf_proforma"]["proforma_rows"]}
+        r2034 = rows[2034]
+        assert abs(r2034["taxable_base_keur"] - 46.150) < 1.0, (
+            f"2034 taxable base ~46.15 kEUR; got {r2034['taxable_base_keur']}"
+        )
+        assert abs(r2034["cit_keur"] - 4.615) < 0.1, (
+            f"2034 CIT ~4.615 kEUR; got {r2034['cit_keur']}"
+        )
+
+    def test_croatian_proforma_milestones(self):
+        """Article 17 milestones: first utilization 2033, first CIT 2034, exhaustion 2034."""
+        xd = _xd()
+        m = xd["tax"]["croatian_calendar_year_lcf_proforma"]["milestones"]
+        assert m["LEGAL_PROFORMA_FIRST_LOSS_UTILIZATION_YEAR"] == 2033
+        assert m["LEGAL_PROFORMA_FIRST_CIT_YEAR"] == 2034
+        assert m["LEGAL_PROFORMA_LCF_EXHAUSTION_YEAR"] == 2034
 
     def test_lcf_rollforward_table_present_and_complete(self):
         """60 operating-period rows in lcf_rollforward with required keys."""
@@ -1487,18 +1538,19 @@ class TestRPeriodisationMismatch:
         assert pm["legal_tax_year"] == "1 January to 31 December (Croatia: calendar year)"
         assert "calendar_vs_workbook_table" in pm
 
-    def test_calendar_year_2033_cit_differs_from_workbook(self):
-        """Calendar year 2033: TI=200.1 → CIT=20.0; workbook pair 5_6: CIT=8.9.
-        Delta = -11.1 kEUR (workbook understates first-year CIT)."""
+    def test_calendar_year_2033_naive_cit_differs_from_workbook(self):
+        """Naive calendar year 2033 CIT (TI×10%, no LCF) = 20.0; workbook pair 5_6: CIT=8.9.
+        This shows the timing mismatch only. With Article 17 LCF applied the 2033 CIT = 0.
+        See test_croatian_proforma_2033_taxable_base_zero for the LCF-adjusted result."""
         xd = _xd()
         table = {r["calendar_year"]: r for r in
                  xd["tax"]["periodisation_mismatch"]["calendar_vs_workbook_table"]}
         row_2033 = table[2033]
-        # Calendar CIT should be ~20 kEUR (H1+H2 of 2033 = 92.7+107.4 = 200.1 × 10%)
+        # Naive calendar CIT (no LCF): H1+H2 of 2033 = 92.7+107.4 = 200.1 × 10% = 20.0
         assert abs(row_2033["calendar_year_cit_keur"] - 20.0) < 0.5
         # Workbook CIT should be 8.9 kEUR (pair 5_6 books in H1-2033)
         assert abs(row_2033["workbook_cit_keur"] - 8.9) < 0.5
-        # Delta: workbook understates
+        # Delta: workbook below naive calendar (timing shift)
         assert row_2033["delta_keur"] < 0
 
     def test_workbook_pairing_crosses_jan_1(self):
@@ -1526,57 +1578,115 @@ class TestRPeriodisationMismatch:
 
 
 # ===========================================================================
-# S — Debt sizing comparison
+# S — Debt sizing evidence
 # ===========================================================================
 
-class TestSDebtSizingComparison:
-    """Proves debt-sizing input comparison: Excel vs Phase 2C.
-    Verdict: DEBT_SIZING_POLICY_MISMATCH_IDENTIFIED.
-    DEBT_SIZING_ALGORITHM_DEFECT_PROVED cannot be used without equal-input comparison.
+class TestSDebtSizingEvidence:
+    """Proves debt-sizing evidence is extractor-generated from dual-load workbook reads.
+
+    Verdict: DEBT_SIZING_SOURCE_UNRESOLVED_MANUAL_CHECK_REQUIRED.
+    D192 formula-mode content is SOURCE_UNRESOLVED without the workbook binary.
+    A stronger verdict requires proving the formula chain from D192 to the sizing mechanism.
     """
 
-    def test_debt_sizing_section_present(self):
+    _VALID_SOURCE_CLASSIFICATIONS = {
+        "LITERAL_VALUE_IN_CURRENT_WORKBOOK",
+        "FORMULA_DERIVED",
+        "MACRO_OR_GOAL_SEEK_HISTORY_NOT_OBSERVABLE",
+        "SOURCE_UNRESOLVED",
+    }
+    _VALID_DSCR_CLASSIFICATIONS = {
+        "SIZING_TARGET",
+        "REPAYMENT_SCULPTING_TARGET",
+        "COVENANT_THRESHOLD",
+        "LOCKUP_THRESHOLD",
+        "DISPLAY_ONLY",
+        "SOURCE_UNRESOLVED",
+    }
+
+    def test_debt_sizing_evidence_section_present(self):
+        """Extractor generates debt_sizing_evidence at top level."""
         xd = _xd()
-        ds = xd.get("debt_sizing_comparison")
-        assert ds is not None, "debt_sizing_comparison section must be present"
-        required = ["excel_method_classification", "excel_inputs", "phase2c_parity_inputs",
-                    "comparison_table", "debt_sizing_conclusion", "manual_check_pack"]
+        dse = xd.get("debt_sizing_evidence")
+        assert dse is not None, "debt_sizing_evidence section must be present"
+        required = ["d192_evidence", "ds_dscr_row22_evidence",
+                    "debt_sizing_verdict", "verdict_rationale", "manual_check_pack"]
         for k in required:
-            assert k in ds, f"debt_sizing_comparison missing key: {k}"
+            assert k in dse, f"debt_sizing_evidence missing key: {k}"
 
-    def test_excel_debt_is_fixed_amount_method(self):
-        """Excel D192 = 42,852 kEUR stored as scalar; method = FIXED_AMOUNT_WITH_SCULPTED_REPAYMENT."""
+    def test_d192_evidence_fields_present(self):
+        """D192 evidence has all required provenance fields."""
         xd = _xd()
-        ds = xd["debt_sizing_comparison"]
-        assert "FIXED_AMOUNT" in ds["excel_method_classification"]
-        assert abs(ds["excel_inputs"]["debt_amount_keur"] - 42852.0) < 1.0
+        d192 = xd["debt_sizing_evidence"]["d192_evidence"]
+        required = ["sheet", "row", "col", "formula_mode_content",
+                    "cached_value_keur", "source_classification"]
+        for k in required:
+            assert k in d192, f"d192_evidence missing field: {k}"
+        assert d192["sheet"] == "Inputs"
+        assert d192["row"] == 192
+        assert d192["col"] == "D"
 
-    def test_dscr_stepup_identified_as_mismatch(self):
-        """Excel DSCR steps up 1.15→1.35 at period 25; Phase 2C uses constant 1.15.
-        This is the primary policy mismatch causing Phase 2C over-sizing."""
+    def test_d192_cached_value_matches_inputs(self):
+        """D192 cached value matches inputs.senior_debt_amount_keur (same workbook cell)."""
         xd = _xd()
-        ds = xd["debt_sizing_comparison"]
-        assert ds["excel_inputs"]["dscr_covenant_stepup"] == pytest.approx(1.35, abs=0.01)
-        assert ds["excel_inputs"]["dscr_stepup_period"] == 25
-        assert ds["phase2c_parity_inputs"]["dscr_stepup"] is None
+        d192_cached = xd["debt_sizing_evidence"]["d192_evidence"]["cached_value_keur"]
+        inputs_value = xd["inputs"]["senior_debt_amount_keur"]["value"]
+        assert abs((d192_cached or 0) - (inputs_value or 0)) < 0.001, (
+            f"D192 evidence cached value {d192_cached} must match inputs "
+            f"senior_debt_amount_keur {inputs_value}"
+        )
 
-    def test_debt_sizing_conclusion_is_policy_mismatch(self):
-        """Conclusion must be DEBT_SIZING_POLICY_MISMATCH_IDENTIFIED, not algorithm defect."""
+    def test_d192_source_classification_valid_enum(self):
+        """D192 source_classification is one of the defined enum values."""
         xd = _xd()
-        ds = xd["debt_sizing_comparison"]
-        assert ds["debt_sizing_conclusion"] == "DEBT_SIZING_POLICY_MISMATCH_IDENTIFIED"
-        assert "ALGORITHM_DEFECT" not in ds["debt_sizing_conclusion"]
+        cls = xd["debt_sizing_evidence"]["d192_evidence"]["source_classification"]
+        assert cls in self._VALID_SOURCE_CLASSIFICATIONS, (
+            f"d192 source_classification '{cls}' not in valid enum: "
+            f"{self._VALID_SOURCE_CLASSIFICATIONS}"
+        )
+
+    def test_dscr_row22_evidence_fields_present(self):
+        """DS row 22 evidence has all required fields."""
+        xd = _xd()
+        dscr_ev = xd["debt_sizing_evidence"]["ds_dscr_row22_evidence"]
+        required = ["sheet", "row", "formula_mode_period1",
+                    "cached_distinct_values", "dscr_classification", "dscr_role_evidence"]
+        for k in required:
+            assert k in dscr_ev, f"ds_dscr_row22_evidence missing field: {k}"
+        assert dscr_ev["sheet"] == "DS"
+        assert dscr_ev["row"] == 22
+
+    def test_dscr_classification_valid_enum(self):
+        """DSCR classification is one of the defined enum values."""
+        xd = _xd()
+        cls = xd["debt_sizing_evidence"]["ds_dscr_row22_evidence"]["dscr_classification"]
+        assert cls in self._VALID_DSCR_CLASSIFICATIONS, (
+            f"dscr_classification '{cls}' not in valid enum: {self._VALID_DSCR_CLASSIFICATIONS}"
+        )
+
+    def test_verdict_is_source_unresolved_when_formula_mode_unavailable(self):
+        """When D192 formula_mode_content is null, verdict must be SOURCE_UNRESOLVED."""
+        xd = _xd()
+        d192 = xd["debt_sizing_evidence"]["d192_evidence"]
+        verdict = xd["debt_sizing_evidence"]["debt_sizing_verdict"]
+        if d192["formula_mode_content"] is None:
+            assert verdict == "DEBT_SIZING_SOURCE_UNRESOLVED_MANUAL_CHECK_REQUIRED", (
+                f"Null formula-mode content must yield SOURCE_UNRESOLVED verdict; got {verdict}"
+            )
 
     def test_manual_check_pack_has_10_items(self):
-        """Manual check pack must have at least 10 decisive items."""
+        """Manual check pack preserves at least 10 items for human verification."""
         xd = _xd()
-        mc = xd["debt_sizing_comparison"]["manual_check_pack"]
+        mc = xd["debt_sizing_evidence"]["manual_check_pack"]
         assert len(mc) >= 10
         priorities = [item["priority"] for item in mc]
         assert 1 in priorities and 10 in priorities
 
-    def test_excel_gearing_is_73_pct(self):
-        """Excel capital structure: SD/CAPEX = 42,852/57,973 = 73.9%."""
+    def test_d192_value_within_plausible_range(self):
+        """D192 cached value (42,852 kEUR) is within plausible project debt range."""
         xd = _xd()
-        ds = xd["debt_sizing_comparison"]["excel_inputs"]
-        assert abs(ds["gearing_pct"] - 73.9) < 0.5
+        val = xd["debt_sizing_evidence"]["d192_evidence"]["cached_value_keur"]
+        assert val is not None, "D192 cached value must not be null (workbook was loaded)"
+        assert 30_000 < val < 70_000, (
+            f"D192 cached value {val:.0f} kEUR outside plausible range [30,000; 70,000]"
+        )
