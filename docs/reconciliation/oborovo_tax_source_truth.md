@@ -8,7 +8,7 @@
 |------|-------|
 | Base SHA | `b11e5bf7b9ab60bae174081e7d9f8541190bf371` |
 | Branch | `stage-c3b1-oborovo-tax-source-truth` |
-| Final verdict | `C3B1_TAX_BLOCKED_BY_INTEREST_DEPENDENCY` |
+| Final verdict | `C3B1_SOURCE_TRUTH_COMPLETE_INTEREST_POLICY_UNRESOLVED` |
 
 ## 2. Changed Files
 
@@ -160,7 +160,15 @@ result — **not from the frozen CSV**.
 
 **Classification**: `INTEREST_DEPENDENCY_BLOCKS_TAX`
 
-A per-period delta of up to 90 kEUR in senior interest translates to ≈9 kEUR error in annual CIT (10% rate). This makes Phase 2C-based tax calculation meaningfully incorrect relative to Excel. C3B2 requires a Phase 2C calibration step that produces the same debt size as the Excel workbook, OR the Excel-derived interest vector must be directly injected.
+A per-period delta of up to 90 kEUR in senior interest translates to ≈9 kEUR difference in annual CIT (10% rate). This source diagnostic does not prove an algorithm defect in Phase 2C. It proves a debt-sizing-policy mismatch or input mismatch between the Phase 2C configuration used here and the Excel case.
+
+Before modifying the engine, the next stage must determine whether the Excel workbook uses FIXED_AMOUNT, DSCR_SCULPTED, MAX_GEARING, MIN_OF_CONSTRAINTS, or another explicit sizing method — and must compare Phase 2C and Excel under equal inputs and equal sizing policy. Only after confirming a genuine algorithm defect should formulas be changed.
+
+**Explicitly prohibited in C3B2:**
+- Hardcoding 42,852 kEUR as the debt target
+- Loading the frozen Excel repayment schedule into the production runtime
+- Adding an Oborovo-specific sizing branch
+- Modifying outputs until they hit an Excel target total
 
 **Note on frozen phase23q CSV**: `reports/phase23q_oborovo_senior_debt_sizing_extraction.csv` is a historical extraction from the Excel workbook, not a Phase 2C runtime output. It matches Excel to 0.0000 kEUR for all 43 operating periods (verified in `test_phase23q_frozen_extraction_matches_excel_senior_interest_period_by_period`). It is properly labelled "frozen historical extraction" and must not be substituted for a live Phase 2C runtime result.
 
@@ -331,40 +339,48 @@ Row 43 (formula) ≠ production authority. Row 44 (Macro hardcoded) is actual au
 
 ## 18. Exact Recommended C3B2 Scope
 
-### Typed Policy Contracts (no project-name dispatch permitted)
+> **THIS PARITY HARNESS IS NOT AN APPROVED PRODUCTION RUNTIME PATH.**
+> C3B2 production implementations must not depend on: Oborovo baseline IDs; frozen
+> baseline snapshots; private parity helpers (`finco_parity.*`); or fixture-backed
+> debt schedules. All C3B2 policy inputs must be explicit generic economic inputs
+> derivable from project parameters — not Excel-layout terminology.
 
-C3B2 must introduce explicit typed policy inputs. No project name, string dispatch, or hardcoded values:
+### Generic Economic Inputs (not Excel-layout terminology)
 
-```python
-class TaxAggregationBasis(Enum):
-    CALENDAR_YEAR = "CALENDAR_YEAR"          # Python current default
-    MODEL_YEAR_PAIR = "MODEL_YEAR_PAIR"      # required for Oborovo source parity
-    CUSTOM_PERIOD_GROUPING = "CUSTOM_PERIOD_GROUPING"  # only if genuinely required
+The Oborovo workbook structure (H2+H1 period pairs, B36=5 window) reflects
+**workbook modelling conventions**, not legal tax policy. C3B2 must expose the
+underlying economic intent as generic inputs:
 
-class LossCarryforwardBasis(Enum):
-    TAX_YEARS = "TAX_YEARS"                  # Python current default (5 calendar years)
-    MODEL_PERIODS = "MODEL_PERIODS"          # required for Oborovo source parity (B36=5)
-```
+| Economic parameter | Derived from workbook | Recommended input name | Notes |
+|--------------------|----------------------|------------------------|-------|
+| Fiscal year start month | H2 period covers Jul–Dec; H1 covers Jan–Jun; pairs straddle Jan 1 → July fiscal year | `tax_year_start_month = 7` | Legal distinction: this is the fiscal year start, not a "model-year pair" |
+| CIT payment frequency | CIT fires in even semi-annual periods (every 2 periods) | `tax_payment_frequency = "semi_annual_pair"` | The H2+H1 pairing is a consequence of a July fiscal year on semi-annual periods |
+| Loss carry-forward window | B36 = 5 semi-annual periods | `loss_expiry_count = 5`, `loss_expiry_unit = "periods"` | A 5-period window on semi-annual model ≈ 2.5 calendar years, NOT 3 years |
+| Loss utilisation limit | No cap in workbook | `loss_utilization_limit_pct = 1.0` | No partial-year limit in current Oborovo model |
 
-**For Oborovo source parity:**
-- `tax_aggregation_basis = MODEL_YEAR_PAIR` (H2 + H1 pairs as in Excel B43 MOD pairing)
-- `loss_carryforward_basis = MODEL_PERIODS`, `n_periods = 5` (Excel B36 = 5)
+**Distinguish three layers:**
+1. **Legal tax policy** (external fact): fiscal year start = 1 July; CIT rate; LCF window in tax years
+2. **Modelling convention** (internal choice): semi-annual periods; how fiscal year straddle maps to period pairs
+3. **Workbook shortcut** (implementation artefact): B36=5 window count, B43 MOD pairing — these are derivable from layers 1+2 and must not become named enums in production code
 
-**Prohibited approaches:**
-- `loss_carryforward_years = 3` — this is a year-count approximation, not source parity. Do not use.
-- Defer the H2+H1 model-year difference as "sub-1% approximation" — if C3B2 is intended to establish source parity, the model-year pairing is required, not optional.
+**Prohibited in C3B2 production code:**
+- `MODEL_YEAR_PAIR` as a named enum — use `tax_year_start_month` + `tax_payment_frequency`
+- `MODEL_PERIODS` as a named enum — use `loss_expiry_count` + `loss_expiry_unit`
+- `loss_carryforward_years = 3` — this is a year-count approximation, not source parity
+- Any string dispatch on `"oborovo"` or project name
+- Any hardcoded period count referencing Oborovo-specific layout
 
 ### Six Required C3B2 Changes
 
 1. **Fix adapter** (`financial_engine/adapters/project_inputs.py`): when `tax_depreciation_mode = BOOK_BASED_PERCENTAGE`, compute `tax_dep = book_dep × tax_deductible_book_dep_pct`. This eliminates the 1,974 kEUR tax dep gap.
 
-2. **Wire senior interest from Phase 2C** that matches Excel debt sizing: pass `PeriodInterestInput.senior_interest_keur`. The current Phase 2C runtime diverges by up to 90 kEUR/period because it sizes the debt to 45,873 kEUR vs Excel 42,852 kEUR. C3B2 must either calibrate Phase 2C to match the Excel debt size or inject the Excel-extracted interest vector directly.
+2. **Wire senior interest from Phase 2C** that matches Excel debt sizing: pass `PeriodInterestInput.senior_interest_keur`. The current Phase 2C runtime diverges by up to 90 kEUR/period because it sizes the debt to 45,873 kEUR vs Excel 42,852 kEUR. C3B2 must calibrate Phase 2C to equal inputs and equal sizing policy before any formula changes — the divergence is a sizing-policy mismatch, not a proven algorithm defect.
 
 3. **Add SHL fiscal reintegration**: populate `PeriodTaxAdjustmentInput.other_fiscal_reintegration_keur = SHL_interest` per period (thin_cap=False path; full SHL is non-deductible).
 
-4. **Fix LCF basis**: set `loss_carryforward_basis = MODEL_PERIODS, n_periods = 5`. Do not approximate with calendar-year counts.
+4. **Fix LCF basis**: use `loss_expiry_count = 5`, `loss_expiry_unit = "periods"`. Do not approximate with calendar-year counts.
 
-5. **Fix CIT aggregation basis**: set `tax_aggregation_basis = MODEL_YEAR_PAIR`. Each CIT charge sums `taxable_profit[pair_period_1] + taxable_profit[pair_period_2]` for the H2+H1 pair.
+5. **Fix CIT aggregation basis**: derive from `tax_year_start_month = 7` on semi-annual periods. Each CIT charge sums `taxable_profit[period_H2] + taxable_profit[period_H1]` for the fiscal-year pair.
 
 6. **Fix CIT formula**: implement the row-43 economic formula `MAX(SUM(tp_prev + tp_curr), 0) × rate × (is_operating) × (is_even_period)`. Do not reproduce Macro row-44 hardcoded values — row 44 is workbook routing evidence and a staleness risk.
 
@@ -374,15 +390,41 @@ Additional (low-risk, no runtime impact for Oborovo):
 
 ## 19. Interest Prerequisite
 
-**Yes — Phase 2C is required before C3B2 can produce correct tax numbers.** Furthermore, the Phase 2C result must match the Excel debt sizing (42,852 kEUR). The current Phase 2C runtime produces a valid vector but with 7.9% higher debt, causing maximum 90 kEUR per-period interest error.
+**Yes — Phase 2C is required before C3B2 can produce correct tax numbers.** The current Phase 2C runtime produces a valid senior interest vector but with 7.9% higher debt sizing (45,873 kEUR vs Excel 42,852 kEUR), causing up to 90 kEUR per-period interest error.
+
+**This is a sizing-policy mismatch, not a proven algorithm defect.** The Phase 2C engine sizes debt by DSCR sculpting against current operating inputs. The Excel debt (42,852 kEUR) was sized under different inputs or a different policy. Before any engine formula is modified, C3B2 must demonstrate that equal inputs + equal policy produce a divergent result. Prohibited:
+
+- Hardcoding 42,852 kEUR as a debt target
+- Loading the frozen Excel repayment schedule into the runtime engine
+- Adding an Oborovo-specific sizing branch
+- Modifying engine outputs to match Excel totals
 
 ### Acceptable C3B2 Approaches for Interest Input
 
-**Option A** (preferred): Calibrate Phase 2C to reproduce Excel debt size → freeze resulting schedule → use as `PeriodInterestInput`.
+**Option A** (preferred for production): Identify the exact sizing policy that reproduces the Excel debt under equal inputs → implement that policy generically → run Phase 2C → use resulting schedule as `PeriodInterestInput`.
 
-**Option B**: Inject the Excel DS!G53 vector directly as exogenous interest for validation purposes. Clearly label as "Excel-sourced" (not Phase 2C modeled).
+**Option B** (adequate for initial parity proof): Inject the Excel DS!G53 vector directly as exogenous interest. Clearly label as "Excel-sourced" (not Phase 2C modeled). Must not reach production runtime.
 
-Option B is adequate for initial parity proof; Option A is required for production accuracy.
+## 20a. Final PR Positioning
+
+**PR #912 is SOURCE-TRUTH / AUDIT EVIDENCE ONLY.**
+
+This PR establishes the Oborovo Excel tax source map and identifies the senior-debt interest dependency. It does **not**:
+
+- Approve the C3B2 production implementation
+- Approve wiring frozen Excel schedules into the runtime engine
+- Prove a Senior Debt algorithm defect (the divergence is a sizing-policy mismatch)
+- Establish that the Phase 2C engine is wrong
+- Authorize any of the six C3B2 items for immediate implementation
+
+C3B2 requires a separate design review that: (a) resolves the debt sizing policy question under equal inputs; (b) defines generic tax policy inputs without Excel-layout terminology; (c) is reviewed as a production code change, not as a diagnostic audit.
+
+**Permanent guardrails (retained):**
+- No project-name string dispatch in `financial_engine/`
+- No frozen fixtures consumed by production runtime
+- No target plugs (`approved_delta`, `tax.*plug`, `cit.*target`)
+- No production formula changes without equal-input comparison
+- Deterministic output from explicit inputs only
 
 ## 20. Test Matrix
 
@@ -426,7 +468,7 @@ This PR targets `main`. The following matrix covers all workflows that trigger o
 | Workflow | File | Base SHA (`b11e5bf7`) | PR HEAD (`478a0f8b`) | Classification | Root Cause |
 |----------|------|----------------------|----------------------|----------------|------------|
 | CI | `ci.yml` | Phase 2A failures (5); Oborovo distribution failures | Phase 2A failures (5); Oborovo distribution failures | **PRE_EXISTING_ON_BASE** | Phase 2A failures predated C3B1; Oborovo distribution test gap predated C3B1 |
-| Phase 1B Baseline Check | `phase1b_baseline_check.yml` | PASS | PASS | — | — |
+| Phase 1B Baseline Check | `phase1b_baseline_check.yml` | 1 FAIL (`test_int_vs_float_is_structural_drift`) | 1 FAIL (same) | PRE_EXISTING_ON_BASE | Float representation drift in snapshot comparison; predated this branch |
 | Phase 2A Clean Engine Check | `phase2a_clean_engine_check.yml` | **5 FAIL** | **5 FAIL** | **PRE_EXISTING_ON_BASE** | 5 test failures existed on base SHA b11e5bf7 before this branch was created |
 | Phase 2B Tax and CFADS Check | `phase2b_tax_cfads_check.yml` | `test_w_correction_aware_four_baseline[oborovo]` FAIL | Same FAIL | **PRE_EXISTING_ON_BASE** | cash_tax_bridge_reconciliation drift, not approved in parity layer |
 | Phase 2C Senior Debt Check | `phase2c_senior_debt_check.yml` | **BLOCKED** by Phase 2A regression step | **BLOCKED** by Phase 2A regression step | **PRE_EXISTING_ON_BASE** | Phase 2C workflow runs Phase 2A suite as prerequisite; Phase 2A failures block Phase 2C tests from executing |
@@ -464,8 +506,8 @@ git diff b11e5bf7b9ab60bae174081e7d9f8541190bf371 HEAD -- app/               # e
 ## Final Verdict
 
 ```
-C3B1_TAX_BLOCKED_BY_INTEREST_DEPENDENCY
+C3B1_SOURCE_TRUTH_COMPLETE_INTEREST_POLICY_UNRESOLVED
 ```
 
-All source evidence items are resolved. The taxable income formula is proved to machine precision:
-`TI = EBT + FR = EBIT + taxable_financial_income − Senior_Interest`. CF row 77 (`=-P&L!row44`) is confirmed from workbook dual-load. BS has no tax payable row. Phase 2C produces a valid senior interest vector but diverges from Excel by up to 90.29 kEUR/period due to different debt sizing (45,873 vs 42,852 kEUR). C3B2 requires either calibrating Phase 2C to match Excel debt or injecting the Excel-extracted vector. Typed policy contracts (`MODEL_YEAR_PAIR`, `MODEL_PERIODS n=5`) replace year-count approximations. C3B2 scope: 6 mandatory items.
+All C3B1 source evidence items are resolved. The taxable income formula is proved to machine precision:
+`TI = EBT + FR = EBIT + taxable_financial_income − Senior_Interest`. CF row 77 (`=-P&L!row44`) is confirmed from workbook dual-load. BS has no tax payable row. Phase 2C produces a valid senior interest vector but diverges from Excel by up to 90.29 kEUR/period due to a sizing-policy mismatch (Phase 2C: 45,873 kEUR; Excel: 42,852 kEUR) — this is not a proven algorithm defect. C3B2 requires generic economic policy inputs (`tax_year_start_month=7`, `loss_expiry_count=5`, `loss_expiry_unit="periods"`) derived from underlying legal tax policy, not Excel-layout terminology. The debt sizing policy question is unresolved and must be addressed with equal-input comparison before any engine formula is modified. C3B2 scope: 6 mandatory items pending separate design review.

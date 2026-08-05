@@ -570,6 +570,28 @@ def _read_pl_tax_formulas(wb_formula, wb_data) -> dict:
         abs((cf_cash_tax_v[i] or 0.0) + (cit_macro_vec[i] or 0.0))
         for i in range(_N_PERIODS)
     )
+
+    # --- BS label inventory (evidence-based) ---
+    _BS_MAX_ROW = 55
+    bs_d_rows = list(wb_data["BS"].iter_rows(
+        min_row=1, max_row=_BS_MAX_ROW, max_col=4, values_only=True,
+    ))
+    _TAX_LABEL_PATTERNS = (
+        "tax payable", "corporate income tax payable", "tax receivable",
+        "prepaid tax", "income tax payable", "deferred tax", "current tax",
+        "cit payable", "tax balance",
+    )
+    bs_label_inventory = []
+    bs_tax_matches = []
+    for row_idx, row_data in enumerate(bs_d_rows, start=1):
+        label = row_data[0]
+        if label is not None:
+            label_str = str(label).strip()
+            bs_label_inventory.append({"row": row_idx, "label": label_str})
+            lower = label_str.lower()
+            if any(pat in lower for pat in _TAX_LABEL_PATTERNS):
+                bs_tax_matches.append({"row": row_idx, "label": label_str})
+    bs_tax_payable_exists = len(bs_tax_matches) > 0
     cf_tax_chain = {
         "cf_row_77_formula_period1": cf_row77_formula_first_operating,
         "cf_row_77_sign_convention": "Negative (cash outflow); equals -P&L!row44",
@@ -578,17 +600,18 @@ def _read_pl_tax_formulas(wb_formula, wb_data) -> dict:
         "cf_vs_pl44_max_delta_keur": round(cf_vs_pl44_max_delta, 9),
         "payment_lag_periods": 0,
         "payment_timing": "CIT is settled within the same semi-annual period it accrues; no lag",
-        "bs_tax_payable_row_exists": False,
+        "bs_label_inventory": bs_label_inventory,
+        "bs_tax_label_matches": bs_tax_matches,
+        "bs_tax_payable_row_exists": bs_tax_payable_exists,
         "bs_tax_payable_conclusion": (
-            "The BS sheet contains no tax payable or tax receivable row. "
-            "Full BS inventory: Gross Fixed Assets, Accumulated Depreciation, DSRA, J-DSRA, "
-            "Distribution Account, Cash, Capital at Financial close, Legal Reserve, "
-            "Retained Earnings, Shareholder Loan, Sponsor Carbon Fund, Senior Debt, Refinancing, "
-            "Short term loan, Thin Cap rows. "
-            "CIT is fully settled within each accrual period (CF row 77 = -P&L row 44). "
-            "No BS tax balance accumulates across periods."
+            "NO_SEPARATE_BS_TAX_BALANCE_ROW_FOUND"
+            if not bs_tax_payable_exists else
+            f"TAX_RELATED_BS_ROWS_FOUND: {[m['label'] for m in bs_tax_matches]}"
         ),
-        "terminal_bs_tax_balance_keur": 0.0,
+        "terminal_bs_tax_balance_keur": None,
+        "terminal_bs_tax_balance_note": (
+            "null — no BS tax balance row exists; balance cannot be derived from absence"
+        ),
         "cf_cash_tax_period_values": [round(v or 0.0, 6) for v in cf_cash_tax_v],
     }
 
@@ -607,7 +630,6 @@ def _read_pl_tax_formulas(wb_formula, wb_data) -> dict:
     sd_v = period_vector_from_data(24)
     shl_v = period_vector_from_data(27)
 
-    cumulative_delta = 0.0
     period_diagnostic = []
     for p in range(_N_PERIODS):
         ebt = ebt_v[p] or 0.0
@@ -639,9 +661,10 @@ def _read_pl_tax_formulas(wb_formula, wb_data) -> dict:
             except (ValueError, TypeError):
                 pass
 
-        signed_delta = 0.0  # No clean runtime available to compare
-        abs_delta = 0.0
-        cumulative_delta += signed_delta
+        # Deltas are null when clean runtime values are unavailable — not zero.
+        # Zero would misrepresent "not compared" as "perfect match".
+        signed_delta = None
+        abs_delta = None
         classification = "NOT_AVAILABLE_IN_CURRENT_RUNTIME" if p > 0 else "CONSTRUCTION_PERIOD"
 
         period_diagnostic.append({
@@ -684,9 +707,9 @@ def _read_pl_tax_formulas(wb_formula, wb_data) -> dict:
             "clean_current_tax_keur": None,
             "clean_cash_tax_keur": None,
             # Reconciliation
-            "signed_delta_keur": round(signed_delta, 6),
-            "abs_delta_keur": round(abs_delta, 6),
-            "cumulative_delta_keur": round(cumulative_delta, 6),
+            "signed_delta_keur": None,   # null: no clean runtime available for comparison
+            "abs_delta_keur": None,
+            "cumulative_delta_keur": None,
             "classification": classification,
             # Identity checks (all zero = proved)
             "identity_ti_eq_ebt_plus_fr_delta": round(ti_ebt_fr_delta, 9),

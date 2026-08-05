@@ -73,6 +73,24 @@ Minimum C3B2 scope (6 items):
     5. Fix CIT aggregation: use MODEL_YEAR_PAIR (not CALENDAR_YEAR).
     6. Fix CIT formula: implement row-43 economic formula; treat row-44 as staleness risk.
 
+PARITY HARNESS BOUNDARY
+-----------------------
+Where tests below invoke private finco_parity helpers such as
+_load_project_inputs("oborovo"), _load_baseline_snapshot("oborovo"),
+_build_senior_debt_policy("oborovo"), build_tax_policy("oborovo") etc.,
+those calls are DIAGNOSTIC ONLY. They exist to exercise the audit comparison.
+
+THIS PARITY HARNESS IS NOT AN APPROVED PRODUCTION RUNTIME PATH.
+
+C3B2 and later production implementations must not depend on:
+- baseline IDs or project names ("oborovo");
+- frozen baseline snapshots;
+- private parity helpers;
+- fixture-backed debt schedules.
+
+The product goal remains: validated user inputs → generic financial engine
+→ calculated outputs. Excel fixtures are external validation oracles only.
+
 Known contract conflicts (section 11A)
 ---------------------------------------
 11A-A: TAX_DEP_BOTH_ARE_INCOMPLETE
@@ -174,8 +192,9 @@ class TestAProvenance:
         xd = _xd()
         chain = xd["tax"].get("cf_tax_chain", {})
         assert chain.get("bs_tax_payable_row_exists") is False, (
-            "BS tax payable row must be confirmed absent"
+            "BS tax payable row must be confirmed absent (from label inventory)"
         )
+        assert "bs_label_inventory" in chain, "BS label inventory required"
         assert chain.get("payment_lag_periods") == 0
         assert chain.get("cf_vs_pl44_max_delta_keur") == 0.0, (
             "CF row 77 must equal -P&L row 44 for all periods"
@@ -184,6 +203,8 @@ class TestAProvenance:
         assert formula and "P&L" in formula, (
             f"CF row 77 formula from dual-load must reference P&L; got: {formula!r}"
         )
+        # terminal balance must be null, not zero (no row to derive from)
+        assert chain.get("terminal_bs_tax_balance_keur") is None
 
     def test_cit_authority_section_present(self):
         xd = _xd()
@@ -703,9 +724,21 @@ class TestEInterestDependency:
             f"Expected Phase 2C vs Excel delta > 1 kEUR; got {max_delta:.4f} kEUR. "
             "If delta is unexpectedly small, re-check debt sizing."
         )
-        # Classify the blocker
-        classification = "INTEREST_DEPENDENCY_BLOCKS_TAX"
-        assert classification == "INTEREST_DEPENDENCY_BLOCKS_TAX"
+        # Classification is derived from measurable thresholds — not from a hardcoded string.
+        # A per-period interest delta > 5 kEUR propagates to > 0.5 kEUR CIT error per period (10% rate),
+        # which is material for source parity and blocks tax parity.
+        _BLOCKS_TAX_THRESHOLD_KEUR = 5.0
+        assert max_delta > _BLOCKS_TAX_THRESHOLD_KEUR, (
+            f"Phase 2C vs Excel max interest delta {max_delta:.4f} kEUR exceeds "
+            f"{_BLOCKS_TAX_THRESHOLD_KEUR} kEUR threshold → INTEREST_DEPENDENCY_BLOCKS_TAX. "
+            f"Debt-sizing mismatch: Phase2C={sd.debt_size_keur:.0f} vs Excel=42,852 kEUR."
+        )
+        _LIFETIME_THRESHOLD_KEUR = 500.0
+        p2c_vs_excel_lifetime = abs(p2c_lifetime - 20_133.079)
+        assert p2c_vs_excel_lifetime > _LIFETIME_THRESHOLD_KEUR, (
+            f"Phase 2C vs Excel lifetime interest delta {p2c_vs_excel_lifetime:.1f} kEUR "
+            f"exceeds {_LIFETIME_THRESHOLD_KEUR} kEUR → dependency is material"
+        )
 
 
 # ===========================================================================
@@ -1008,12 +1041,21 @@ class TestICashTaxTiming:
         )
 
     def test_bs_no_tax_payable_row_exists(self):
-        """The BS sheet has no tax payable or tax receivable row.
-        CIT settles within each period: no BS tax balance accumulates."""
+        """The BS sheet was inventoried from the dual-loaded workbook.
+        No tax payable, tax receivable, or deferred tax row was found.
+        Conclusion is derived from actual label matches, not hardcoded."""
         xd = _xd()
         chain = xd["tax"]["cf_tax_chain"]
-        assert chain["bs_tax_payable_row_exists"] is False
-        assert chain["terminal_bs_tax_balance_keur"] == 0.0
+        # Conclusion derived from actual BS label inventory
+        assert "bs_label_inventory" in chain, "BS label inventory must be captured from workbook"
+        assert len(chain["bs_label_inventory"]) > 0, "BS label inventory must be non-empty"
+        assert chain["bs_tax_payable_row_exists"] is False, (
+            f"Expected no tax balance row in BS; matches found: {chain.get('bs_tax_label_matches')}"
+        )
+        assert chain["bs_tax_payable_conclusion"] == "NO_SEPARATE_BS_TAX_BALANCE_ROW_FOUND"
+        assert chain["terminal_bs_tax_balance_keur"] is None, (
+            "Terminal BS tax balance must be null (no row to read from)"
+        )
         assert chain["payment_lag_periods"] == 0
 
 
@@ -1163,6 +1205,7 @@ class TestLFinancialFreeze:
             "tests/fixtures/excel_oborovo_financial_truth.json",
             "tests/test_stage_c3b1_oborovo_tax_source_truth.py",
             "docs/reconciliation/oborovo_tax_source_truth.md",
+            ".github/workflows/c3b1_diagnostic_check.yml",
         }
         unexpected = changed - allowed
         assert not unexpected, (
