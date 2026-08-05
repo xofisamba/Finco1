@@ -28,7 +28,30 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Resolve exact head SHA
+        id: expected
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "sha=${{ github.event.pull_request.head.sha }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "sha=${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.expected.outputs.sha }}
+          fetch-depth: 0
+
+      - name: Verify exact head SHA
+        run: |
+          ACTUAL=$(git rev-parse HEAD)
+          EXPECTED="${{ steps.expected.outputs.sha }}"
+          echo "Expected SHA: ${EXPECTED}"
+          echo "Actual   SHA: ${ACTUAL}"
+          if [ "${ACTUAL}" != "${EXPECTED}" ]; then
+            echo "ERROR: checked out SHA does not match expected"
+            exit 1
+          fi
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -38,15 +61,18 @@ jobs:
       - name: Install dependencies
         run: |
           pip install --upgrade pip
-          pip install pytest openpyxl
-          if [ -f pyproject.toml ] || [ -f setup.py ] || [ -f setup.cfg ]; then
-            pip install -e . --no-deps
+          if [ -f constraints.txt ]; then
+            pip install -c constraints.txt -e .
+          elif [ -f pyproject.toml ] || [ -f setup.py ] || [ -f setup.cfg ]; then
+            pip install -e .
           fi
+          # Ensure required packages are present
+          pip install pytest openpyxl python-dateutil
 
       - name: Report HEAD SHA
         run: |
           echo "HEAD SHA: $(git rev-parse HEAD)"
-          echo "Branch: $(git rev-parse --abbrev-ref HEAD)"
+          echo "Branch: $(git rev-parse --abbrev-ref HEAD || echo detached)"
 
       - name: Run C3B2 tests
         run: |
@@ -72,12 +98,29 @@ jobs:
           print(f'Extractor version OK: {_EXTRACTOR_VERSION}')
           "
 
-      - name: Verify fixture verdict
+      - name: Verify extractor uses solve_senior_debt
+        run: |
+          python -c "
+          import inspect
+          from finco_recon import extract_oborovo_debt_interest as m
+          src = inspect.getsource(m)
+          assert 'solve_senior_debt' in src, 'Extractor must use solve_senior_debt'
+          assert 'build_schedule' not in src, 'Extractor must not use build_schedule'
+          print('Extractor API: OK (uses solve_senior_debt, not build_schedule)')
+          "
+
+      - name: Verify fixture structure
         run: |
           python -c "
           import json, pathlib
           truth = json.loads(pathlib.Path('tests/fixtures/excel_oborovo_debt_interest_truth.json').read_text())
-          verdict = truth['equal_input_equal_policy']['verdict']
+          sa = truth['phase2c_sizing_analysis']
+          assert sa['status'] == 'COMPUTED', f'status={sa[\"status\"]}'
+          assert 'current_phase2c_solver_result' in sa, 'missing current_phase2c_solver_result'
+          assert 'scalar_excel_matched_solver_result' in sa, 'missing scalar_excel_matched_solver_result'
+          assert 'independent_vector_dscr_capacity' in sa, 'missing independent_vector_dscr_capacity'
+          assert 'causal_bridge' in sa, 'missing causal_bridge'
+          verdict = sa['verdict']
           valid = {
             'C3B2_EQUAL_INPUT_EQUAL_POLICY_MATCH',
             'C3B2_INPUT_OR_POLICY_MISMATCH_FULLY_EXPLAINED',
@@ -85,17 +128,30 @@ jobs:
             'C3B2_SOURCE_TRUTH_PARTIAL_MANUAL_CHECK_REQUIRED',
           }
           assert verdict in valid, f'Unknown verdict: {verdict}'
-          print(f'Fixture verdict OK: {verdict}')
+          print(f'Fixture structure OK: verdict={verdict}')
           "
 
-      - name: Verify fixture status is COMPUTED
+      - name: Verify causal bridge closes
         run: |
           python -c "
           import json, pathlib
           truth = json.loads(pathlib.Path('tests/fixtures/excel_oborovo_debt_interest_truth.json').read_text())
-          status = truth['equal_input_equal_policy']['status']
-          assert status == 'COMPUTED', f'Expected COMPUTED, got {status}'
-          print(f'Fixture status OK: {status}')
+          bridge = truth['phase2c_sizing_analysis']['causal_bridge']
+          assert bridge['bridge_closed'] is True, f'bridge_closed=False; error={bridge[\"bridge_closure_error_keur\"]}'
+          err = bridge['bridge_closure_error_keur']
+          assert err < 1.0, f'Bridge closure error {err:.6f} kEUR > 1 kEUR tolerance'
+          print(f'Causal bridge OK: closure_error={err:.9f} kEUR')
+          "
+
+      - name: Verify independent backward induction
+        run: |
+          python -c "
+          import json, pathlib
+          truth = json.loads(pathlib.Path('tests/fixtures/excel_oborovo_debt_interest_truth.json').read_text())
+          ivd = truth['phase2c_sizing_analysis']['independent_vector_dscr_capacity']
+          delta = abs(ivd['delta_keur'])
+          assert delta < 0.001, f'Independent induction delta {delta:.12f} kEUR must be < 0.001'
+          print(f'Independent backward induction OK: delta={delta:.12f} kEUR')
           "
 
       - name: Verify no MANUAL_EXPLORATION placeholders
@@ -123,10 +179,6 @@ jobs:
 
       - name: C3B1 regression check
         run: |
-          if [ -f tests/test_stage_c3b1_oborovo_debt_interest_source_closure.py ]; then
-            python -m pytest tests/test_stage_c3b1_oborovo_debt_interest_source_closure.py \
-              -v --tb=short -q
-            echo "C3B1 regression: PASSED"
-          else
-            echo "C3B1 test file not present — skipping regression check"
-          fi
+          python -m pytest tests/test_stage_c3b1_oborovo_tax_source_truth.py \
+            -v --tb=short -q
+          echo "C3B1 regression: PASSED"

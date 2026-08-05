@@ -386,143 +386,298 @@ class TestWorkstreamE_InterestRate:
 
 
 # ---------------------------------------------------------------------------
-# Equal-input / equal-policy comparison
+# Phase 2C sizing analysis (C3B2 — uses actual solve_senior_debt solver)
 # ---------------------------------------------------------------------------
 
-class TestEqualInputEqualPolicy:
+class TestPhase2CSizingAnalysis:
     def test_section_present(self, truth):
-        assert "equal_input_equal_policy" in truth
-
-    def test_status_is_computed(self, truth):
-        status = truth["equal_input_equal_policy"]["status"]
-        assert status == "COMPUTED", (
-            f"Equal-input comparison must be COMPUTED, got {status!r}"
+        assert "phase2c_sizing_analysis" in truth, (
+            "Fixture must contain 'phase2c_sizing_analysis' (renamed from 'equal_input_equal_policy'). "
+            "Regenerate fixture from workbook."
         )
 
-    def test_phase2c_api_documented(self, truth):
-        api = truth["equal_input_equal_policy"].get("phase2c_api", "")
-        assert "build_schedule" in api or "sculpting" in api
+    def test_status_is_computed(self, truth):
+        status = truth["phase2c_sizing_analysis"]["status"]
+        assert status == "COMPUTED", f"Status must be COMPUTED, got {status!r}"
+
+    def test_api_is_solve_senior_debt(self, truth):
+        api = truth["phase2c_sizing_analysis"].get("phase2c_api", "")
+        assert "solve_senior_debt" in api, (
+            f"phase2c_api must reference solve_senior_debt, got {api!r}. "
+            "build_schedule is a schedule builder, not a solver — Blocker 1."
+        )
+
+    def test_old_build_schedule_api_not_used(self, truth):
+        api = truth["phase2c_sizing_analysis"].get("phase2c_api", "")
+        assert "build_schedule" not in api, (
+            "phase2c_api must not reference build_schedule — debt must be an OUTPUT of the solver."
+        )
 
     def test_verdict_is_valid_classification(self, truth):
-        verdict = truth["equal_input_equal_policy"]["verdict"]
+        verdict = truth["phase2c_sizing_analysis"]["verdict"]
         assert verdict in VALID_VERDICTS, f"Unknown verdict: {verdict!r}"
 
-    def test_verdict_supported_by_evidence(self, truth):
-        """Evidence must determine the verdict, not an assertion about a fixed string."""
-        eq = truth["equal_input_equal_policy"]
-        verdict = eq["verdict"]
-        periods_outside = eq.get("periods_outside_1keur_tolerance", [])
-        max_delta = eq.get("maximum_absolute_period_delta_closing", 0.0)
+    def test_verdict_is_mismatch_fully_explained(self, truth):
+        verdict = truth["phase2c_sizing_analysis"]["verdict"]
+        assert verdict == "C3B2_INPUT_OR_POLICY_MISMATCH_FULLY_EXPLAINED", (
+            f"Verdict must be MISMATCH_FULLY_EXPLAINED (bridge closes), got {verdict!r}"
+        )
 
-        if verdict == "C3B2_EQUAL_INPUT_EQUAL_POLICY_MATCH":
-            assert max_delta < 1.0, (
-                f"Verdict is MATCH but max delta = {max_delta:.3f} kEUR (≥ 1 kEUR). "
-                "Evidence contradicts verdict."
-            )
-        elif verdict == "C3B2_INPUT_OR_POLICY_MISMATCH_FULLY_EXPLAINED":
-            assert len(periods_outside) > 0 or max_delta > 0.1, (
-                "Verdict is MISMATCH_FULLY_EXPLAINED but no periods outside tolerance found. "
-                "Evidence does not support verdict."
-            )
-            # Causal attribution must be present
-            causes = eq.get("causal_attribution", [])
-            assert len(causes) > 0, "Verdict MISMATCH_EXPLAINED requires causal_attribution"
-        elif verdict == "C3B2_SOURCE_TRUTH_PARTIAL_MANUAL_CHECK_REQUIRED":
-            pass  # Always acceptable; no numeric constraint to verify
-        elif verdict == "C3B2_EQUAL_INPUT_EQUAL_POLICY_DIVERGENCE_PROVED":
-            assert max_delta > 0.1, "DIVERGENCE_PROVED requires measurable delta"
+    def test_no_build_schedule_in_extractor(self):
+        import inspect
+        from finco_recon import extract_oborovo_debt_interest as m
+        src = inspect.getsource(m)
+        assert "build_schedule" not in src, (
+            "Extractor must not call build_schedule — use solve_senior_debt."
+        )
 
     def test_excel_debt_not_hardcoded_in_extractor(self):
-        """Verify extractor does not hardcode the Excel debt amount."""
         import inspect
         from finco_recon import extract_oborovo_debt_interest as m
         src = inspect.getsource(m)
         assert "42852.279" not in src, (
-            "Extractor must not hardcode the Excel debt value 42852.279. "
-            "Read it from the fixture or workbook."
-        )
-
-    def test_all_required_metrics_present(self, truth):
-        eq = truth["equal_input_equal_policy"]
-        required = [
-            "excel_total_debt_keur",
-            "phase2c_total_debt_keur",
-            "total_debt_delta_keur",
-            "maximum_absolute_period_delta_closing",
-            "maximum_absolute_period_delta_interest",
-            "maximum_absolute_period_delta_principal",
-            "signed_cumulative_delta_keur",
-            "first_differing_period",
-            "maximum_delta_period",
-            "periods_outside_1keur_tolerance",
-            "active_periods_count",
-            "period_comparison",
-        ]
-        for key in required:
-            assert key in eq, f"Required metric missing: {key}"
-
-    def test_period_comparison_covers_all_active(self, truth):
-        eq = truth["equal_input_equal_policy"]
-        n_active = eq["active_periods_count"]
-        n_comparison = len(eq["period_comparison"])
-        assert n_comparison == n_active, (
-            f"period_comparison has {n_comparison} entries; expected {n_active}"
-        )
-
-    def test_first_differing_period_is_period25(self, truth):
-        """DSCR band switches at period 25; divergence must start there."""
-        fd = truth["equal_input_equal_policy"]["first_differing_period"]
-        if fd is not None:
-            assert fd == 25, f"First differing period expected 25, got {fd}"
-
-    def test_per_period_dscr_validation_exact_match(self, truth):
-        """When per-period DSCR is matched, the schedule must be exact."""
-        pp = truth["equal_input_equal_policy"].get("per_period_dscr_validation", {})
-        assert pp.get("exact_match") is True, (
-            "Per-period DSCR forward pass must match Excel exactly. "
-            f"max_delta={pp.get('max_absolute_delta_keur')}"
-        )
-
-    def test_causal_attribution_mentions_dscr_banding(self, truth):
-        causes = truth["equal_input_equal_policy"].get("causal_attribution", [])
-        cause_ids = [c.get("cause", "") for c in causes]
-        assert any("DSCR" in c for c in cause_ids), (
-            "Causal attribution must mention DSCR banding"
-        )
-
-    def test_inputs_used_no_hardcoded_debt(self, truth):
-        inputs = truth["equal_input_equal_policy"].get("inputs_used", {})
-        hardcoded = inputs.get("hardcoded_values", "")
-        assert "NONE" in hardcoded or "none" in hardcoded.lower(), (
-            "inputs_used must declare no hardcoded values"
-        )
-
-    def test_rate_convention_no_doubling(self, truth):
-        inputs = truth["equal_input_equal_policy"].get("inputs_used", {})
-        rate_note = inputs.get("rate_source", "") + inputs.get("rate_convention", "")
-        assert "factor-of-2" not in rate_note.lower().replace("no factor-of-2", "") \
-            or "no factor" in rate_note.lower(), (
-            f"Rate convention must not imply doubling: {rate_note!r}"
+            "Extractor must not hardcode the Excel debt value 42852.279."
         )
 
     def test_no_project_name_dispatch(self):
-        """Extractor must not contain project-name dispatch logic."""
         from finco_recon import extract_oborovo_debt_interest as m
         import inspect
         src = inspect.getsource(m)
-        forbidden = ["if project", "if oborovo", "if 'oborovo'"]
-        for kw in forbidden:
-            assert kw.lower() not in src.lower(), (
-                f"Extractor contains project-name dispatch: {kw!r}"
+        for pat in ["if project", "if oborovo", "if 'oborovo'"]:
+            assert pat.lower() not in src.lower(), (
+                f"Extractor contains project-name dispatch: {pat!r}"
             )
 
     def test_no_approved_delta_or_plug(self):
-        """Extractor must not contain approved_delta, plug, or target override logic."""
         from finco_recon import extract_oborovo_debt_interest as m
         import inspect
         src = inspect.getsource(m)
         for kw in ["approved_delta", "target_override", "frozen_schedule"]:
             assert kw not in src, f"Extractor contains forbidden pattern: {kw!r}"
+
+    def test_inputs_used_no_hardcoded_values(self, truth):
+        inputs = truth["phase2c_sizing_analysis"].get("inputs_used", {})
+        hardcoded = inputs.get("hardcoded_values", "")
+        assert "NONE" in hardcoded or "none" in hardcoded.lower(), (
+            "inputs_used must declare no hardcoded values"
+        )
+
+
+class TestCurrentPhase2CSolverResult:
+    """Case 0: current production Phase 2C config — debt is an OUTPUT."""
+
+    def _section(self, truth):
+        return truth["phase2c_sizing_analysis"]["current_phase2c_solver_result"]
+
+    def test_section_present(self, truth):
+        assert "current_phase2c_solver_result" in truth["phase2c_sizing_analysis"]
+
+    def test_debt_is_computed_output(self, truth):
+        """Debt must come from solver, not from Excel supply."""
+        s = self._section(truth)
+        debt = s["debt_size_keur"]
+        excel_debt = truth["phase2c_sizing_analysis"]["excel_total_debt_keur"]
+        assert debt != excel_debt, (
+            "current_phase2c_solver_result debt must be a COMPUTED output, not Excel debt. "
+            f"Got {debt:.3f} which equals Excel {excel_debt:.3f}."
+        )
+
+    def test_converged(self, truth):
+        s = self._section(truth)
+        assert s["converged"] is True, "Case 0 solver must converge"
+
+    def test_debt_plausible(self, truth):
+        s = self._section(truth)
+        debt = s["debt_size_keur"]
+        assert 40_000 < debt < 60_000, f"Case 0 debt implausible: {debt:.3f}"
+
+    def test_terminal_closing_near_zero(self, truth):
+        s = self._section(truth)
+        t = s.get("terminal_closing_keur", None)
+        if t is not None:
+            assert abs(t) < 1.0, f"Terminal closing should be near zero, got {t:.6f}"
+
+    def test_rate_is_565_bps(self, truth):
+        s = self._section(truth)
+        rate = s["config"]["annual_fixed_rate"]
+        assert abs(rate - 0.0565) < 1e-6, f"Case 0 rate must be 5.65%, got {rate}"
+
+    def test_day_count_is_act365(self, truth):
+        s = self._section(truth)
+        assert s["config"]["day_count"] == "ACT_365"
+
+    def test_debt_substantially_above_excel(self, truth):
+        """Current Phase 2C uses 5.65% vs Excel ~5.95% → larger debt capacity."""
+        s = self._section(truth)
+        excel_debt = truth["phase2c_sizing_analysis"]["excel_total_debt_keur"]
+        debt = s["debt_size_keur"]
+        assert debt > excel_debt + 1_000, (
+            f"Case 0 debt {debt:.3f} should be substantially above Excel {excel_debt:.3f} "
+            "(lower rate → higher debt capacity)"
+        )
+
+
+class TestScalarExcelMatchedSolverResult:
+    """Case 3: Excel inputs + ACT_360 + scalar DSCR=1.15."""
+
+    def _section(self, truth):
+        return truth["phase2c_sizing_analysis"]["scalar_excel_matched_solver_result"]
+
+    def test_section_present(self, truth):
+        assert "scalar_excel_matched_solver_result" in truth["phase2c_sizing_analysis"]
+
+    def test_converged(self, truth):
+        s = self._section(truth)
+        assert s["converged"] is True, "Case 3 solver must converge"
+
+    def test_debt_between_case0_and_excel(self, truth):
+        s = self._section(truth)
+        debt = s["debt_size_keur"]
+        excel_debt = truth["phase2c_sizing_analysis"]["excel_total_debt_keur"]
+        c0 = truth["phase2c_sizing_analysis"]["current_phase2c_solver_result"]["debt_size_keur"]
+        assert excel_debt < debt < c0, (
+            f"Case 3 debt {debt:.3f} should be between Excel {excel_debt:.3f} and Case0 {c0:.3f} "
+            "(residual from DSCR banding)"
+        )
+
+    def test_day_count_is_act360(self, truth):
+        s = self._section(truth)
+        assert s["config"]["day_count"] == "ACT_360"
+
+    def test_terminal_closing_near_zero(self, truth):
+        s = self._section(truth)
+        t = s.get("terminal_closing_keur", None)
+        if t is not None:
+            assert abs(t) < 1.0, f"Terminal closing should be near zero, got {t:.6f}"
+
+
+class TestIndependentVectorDSRCapacity:
+    """Backward induction using only DS!row46, row44, row6 — no Excel debt inputs."""
+
+    def _section(self, truth):
+        return truth["phase2c_sizing_analysis"]["independent_vector_dscr_capacity"]
+
+    def test_section_present(self, truth):
+        assert "independent_vector_dscr_capacity" in truth["phase2c_sizing_analysis"]
+
+    def test_capacity_matches_excel_debt(self, truth):
+        s = self._section(truth)
+        cap = s["capacity_keur"]
+        excel_debt = s["excel_debt_keur"]
+        assert abs(cap - excel_debt) < 0.001, (
+            f"Independent backward induction {cap:.9f} must match Excel {excel_debt:.9f} "
+            f"(delta={cap-excel_debt:.12f}). Backward induction inputs: row46=CFADS/row22, "
+            "row44=annual rate, row6=day frac — all source-correct."
+        )
+
+    def test_delta_is_zero(self, truth):
+        s = self._section(truth)
+        assert abs(s["delta_keur"]) < 0.001, (
+            f"Independent induction delta must be 0.000, got {s['delta_keur']:.12f}"
+        )
+
+    def test_proof_status(self, truth):
+        s = self._section(truth)
+        assert s["proof_status"] == "INDEPENDENT_VECTOR_DSCR_CAPACITY_PROOF", (
+            f"proof_status must be INDEPENDENT_VECTOR_DSCR_CAPACITY_PROOF, got {s['proof_status']!r}"
+        )
+
+    def test_formula_documented(self, truth):
+        s = self._section(truth)
+        formula = s.get("formula", "")
+        assert "row46" in formula and "row44" in formula and "row6" in formula, (
+            f"Formula must reference row46, row44, row6 — got {formula!r}"
+        )
+
+
+class TestCausalBridge:
+    """Causal bridge: Case 0 → Case 1 → Case 2 → Case 3 → Excel."""
+
+    def _section(self, truth):
+        return truth["phase2c_sizing_analysis"]["causal_bridge"]
+
+    def test_section_present(self, truth):
+        assert "causal_bridge" in truth["phase2c_sizing_analysis"]
+
+    def test_bridge_closed(self, truth):
+        s = self._section(truth)
+        assert s["bridge_closed"] is True, (
+            f"Causal bridge must close: error={s.get('bridge_closure_error_keur'):.6f} kEUR"
+        )
+
+    def test_bridge_closure_error_sub_keur(self, truth):
+        s = self._section(truth)
+        err = s["bridge_closure_error_keur"]
+        assert err < 1.0, f"Bridge closure error {err:.6f} kEUR exceeds 1 kEUR tolerance"
+
+    def test_rate_delta_is_negative(self, truth):
+        """Higher rate (Excel ~5.95%) → lower debt capacity: delta must be negative."""
+        s = self._section(truth)
+        assert s["delta_rate_keur"] < 0, (
+            f"Rate delta must be negative (Excel rate > prod rate), got {s['delta_rate_keur']:.3f}"
+        )
+
+    def test_cfads_delta_is_negative(self, truth):
+        """Excel CFADS < Phase2A EBITDA → lower debt capacity: delta must be negative."""
+        s = self._section(truth)
+        assert s["delta_cfads_keur"] < 0, (
+            f"CFADS delta must be negative, got {s['delta_cfads_keur']:.3f}"
+        )
+
+    def test_daycount_delta_is_negative(self, truth):
+        """ACT_360 > ACT_365 day fracs → more interest per period → less principal → delta negative."""
+        s = self._section(truth)
+        assert s["delta_daycount_keur"] < 0, (
+            f"Day-count delta must be negative (ACT_360 reduces capacity), got {s['delta_daycount_keur']:.3f}"
+        )
+
+    def test_dscr_banding_residual_negative(self, truth):
+        """Excel uses 1.35 DSCR at P25-28; scalar 1.15 overstates capacity: residual negative."""
+        s = self._section(truth)
+        assert s["dscr_banding_residual_keur"] < 0, (
+            f"DSCR banding residual must be negative, got {s['dscr_banding_residual_keur']:.3f}"
+        )
+
+    def test_case0_debt_is_largest(self, truth):
+        s = self._section(truth)
+        c0 = s["case0_current_phase2c_keur"]
+        c1 = s["case1_excel_rates_keur"]
+        c2 = s["case2_excel_cfads_keur"]
+        c3 = s["case3_act360_keur"]
+        excel = s["excel_debt_keur"]
+        assert c0 > c1 > c2 > c3 > excel, (
+            f"Cases must be strictly decreasing: {c0:.3f} > {c1:.3f} > {c2:.3f} > {c3:.3f} > {excel:.3f}"
+        )
+
+
+class TestConvergenceInvariance:
+    """Case 0 must produce same debt regardless of initial guess."""
+
+    def _section(self, truth):
+        return truth["phase2c_sizing_analysis"]["convergence_invariance"]
+
+    def test_section_present(self, truth):
+        assert "convergence_invariance" in truth["phase2c_sizing_analysis"]
+
+    def test_deterministic(self, truth):
+        s = self._section(truth)
+        assert s["deterministic"] is True, (
+            "Solver must produce same result for all initial guesses. "
+            f"Unique values: {s.get('unique_converged_values')}"
+        )
+
+    def test_all_runs_converged(self, truth):
+        s = self._section(truth)
+        for run in s["runs"]:
+            assert run["converged"] is True, (
+                f"Run with guess={run['initial_guess_keur']} did not converge"
+            )
+
+    def test_unique_values_singleton(self, truth):
+        s = self._section(truth)
+        assert len(s["unique_converged_values"]) == 1, (
+            f"Expected one unique converged debt, got {s['unique_converged_values']}"
+        )
 
 
 # ---------------------------------------------------------------------------
