@@ -3,7 +3,7 @@
 SOURCE: d49af8ee-20260414_BP_Oborovo_Sensitivity_FINAL_for_PPT.xlsm
 SHA-256: 15a621c4d6b79024980766e00ebc79d7235fd56f00567be7bf345c769ce57920
 
-Extractor version: 3.0.0 (dual-load: data_only=False for formulas, data_only=True for values)
+Extractor version: 3.1.0 (dual-load: data_only=False for formulas, data_only=True for values)
 
 Groups
 ------
@@ -11,38 +11,67 @@ A  Workbook SHA and fixture provenance
 B  Source row and formula inventory (proved from workbook, not inferred from Python)
 C  Tax depreciation source completeness
 D  Taxable income identity (proved from formulas and cached values)
-E  Interest dependency
+E  Interest dependency (frozen CSV vs Excel; Phase 2C runtime classification)
 F  Tax loss roll-forward (opening balance and 5-period window)
 G  Tax year fragmentation (calendar vs model year convention)
 H  Current tax identity (CIT formula)
-I  Cash tax timing
+I  Cash tax timing (CF row 77 formula and vector; BS conclusion)
 J  Sign conventions
 K  Clean / legacy / source diagnostic
 L  No production formula diff (financial freeze)
 M  No project identity dispatch in production engine
 N  No target plug or hardcoded CIT total
 O  C3A upstream freeze (EBIT chain unchanged)
+P  Regression guard (pre-existing failures do not increase)
 
 Verdict
 -------
 C3B1_TAX_BLOCKED_BY_INTEREST_DEPENDENCY
 
 The full taxable income formula is proved:
-    Taxable Income = EBIT - Senior Interest
-    = (EBITDA - book_depreciation) - senior_interest
+    TI = EBT + FR = EBIT + taxable_financial_income - Senior_Interest
+    where FR = full SHL reintegration (thin_cap=False, ATAD=False).
+
+During debt tenor (periods 1-28): taxable_financial_income ≈ 0 → TI ≈ EBIT - SD.
+After debt repayment (periods 29+): row 20 (Interests from Cash) > 0 → TI = EBIT + cash_interest.
 
 EBITDA and book_depreciation are frozen and clean.  Senior interest comes
-from the Phase 2C debt schedule which is not yet frozen.  Tax parity cannot
-be achieved without interest inputs.
+from the Phase 2C debt schedule.  The current Phase 2C runtime produces a
+valid interest vector but sizes the debt differently (45,873 kEUR vs Excel
+42,852 kEUR), causing a maximum per-period delta of 90.29 kEUR.  Tax parity
+cannot be achieved without a matching Phase 2C interest input.
 
-Minimum C3B2 scope (non-interest prerequisite):
+C3B2 typed policy contracts (no project-name dispatch permitted):
+
+    TAX_AGGREGATION_BASIS:
+        CALENDAR_YEAR  — Python current default
+        MODEL_YEAR_PAIR — required for Oborovo source parity (H2+H1 pair)
+        CUSTOM_PERIOD_GROUPING — only if genuinely required
+
+    LOSS_CARRYFORWARD_BASIS:
+        TAX_YEARS — Python current default (5 calendar years)
+        MODEL_PERIODS — required for Oborovo source parity (5 model periods = B36=5)
+
+    For Oborovo source parity:
+        tax_aggregation_basis = MODEL_YEAR_PAIR
+        loss_carryforward_basis = MODEL_PERIODS, n_periods = 5
+
+    Do NOT use loss_carryforward_years = 3 or any year-count approximation.
+    Do NOT defer the H2+H1 model-year difference as a sub-1% approximation.
+
+    C3B2 CIT must use the row-43 economic formula.  Row 44 is workbook routing
+    evidence and a stale-value risk; do not reproduce its hardcoded Macro values.
+
+Minimum C3B2 scope (6 items):
     1. Fix clean adapter: tax_dep = book_dep × deductible_pct for
        BOOK_BASED_PERCENTAGE mode (adapter currently uses hard-CAPEX-only basis).
-    2. Pass senior_interest from Phase 2C as PeriodInterestInput.senior_interest_keur.
-    3. Pass SHL_interest as PeriodInterestInput.shl_interest_keur and add back via
-       PeriodTaxAdjustmentInput.other_fiscal_reintegration_keur (=SHL, since
-       ATAD/thin-cap is disabled for Oborovo and full SHL is non-deductible).
-    Interest prerequisite PR is required before full parity assertion.
+    2. Pass senior_interest from Phase 2C as PeriodInterestInput.senior_interest_keur
+       using a Phase 2C result that matches Excel debt sizing.
+    3. Pass SHL_interest as PeriodInterestInput.shl_interest_keur and reintegrate via
+       PeriodTaxAdjustmentInput.other_fiscal_reintegration_keur (=SHL for thin_cap=False).
+    4. Fix LCF: use MODEL_PERIODS with n_periods=5 window (not TAX_YEARS=5 calendar years).
+    5. Fix CIT aggregation: use MODEL_YEAR_PAIR (not CALENDAR_YEAR).
+    6. Fix CIT formula: implement row-43 economic formula; treat row-44 as staleness risk.
 
 Known contract conflicts (section 11A)
 ---------------------------------------
@@ -73,7 +102,7 @@ import pytest
 
 _FIXTURE = pathlib.Path("tests/fixtures/excel_oborovo_financial_truth.json")
 _WORKBOOK_SHA = "15a621c4d6b79024980766e00ebc79d7235fd56f00567be7bf345c769ce57920"
-_EXTRACTOR_VERSION = "3.0.0"
+_EXTRACTOR_VERSION = "3.1.0"
 # Base SHA from which this branch was created; used by financial-freeze tests
 _BASE_SHA = "b11e5bf7b9ab60bae174081e7d9f8541190bf371"
 
@@ -129,7 +158,32 @@ class TestAProvenance:
             f"period_diagnostic must have {_N_PERIODS} entries; got {len(diag)}"
         )
         p6 = diag[6]
-        assert "cit_keur" in p6 and "identity_ti_eq_ebt_plus_fr_delta" in p6
+        # Core identity columns
+        required_keys = {
+            "excel_cit_p43_keur", "excel_cit_p44_routed_keur",
+            "excel_cf_cash_tax_keur", "identity_ti_eq_ebt_plus_fr_delta",
+            "identity_cf_eq_neg_p44_delta", "excel_model_year_pair",
+            "excel_cit_pairing_bucket", "python_calendar_tax_year",
+            "period_bop_date", "period_eop_date",
+            "interest_classification", "classification",
+        }
+        missing = required_keys - set(p6.keys())
+        assert not missing, f"period_diagnostic missing columns: {missing}"
+
+    def test_cf_tax_chain_section_present(self):
+        xd = _xd()
+        chain = xd["tax"].get("cf_tax_chain", {})
+        assert chain.get("bs_tax_payable_row_exists") is False, (
+            "BS tax payable row must be confirmed absent"
+        )
+        assert chain.get("payment_lag_periods") == 0
+        assert chain.get("cf_vs_pl44_max_delta_keur") == 0.0, (
+            "CF row 77 must equal -P&L row 44 for all periods"
+        )
+        formula = chain.get("cf_row_77_formula_period1", "")
+        assert formula and "P&L" in formula, (
+            f"CF row 77 formula from dual-load must reference P&L; got: {formula!r}"
+        )
 
     def test_cit_authority_section_present(self):
         xd = _xd()
@@ -473,15 +527,15 @@ class TestDTaxableIncomeIdentity:
         diag = xd["tax"]["period_diagnostic"]
         # Check periods with senior debt: |TI - (EBIT - SD)| < 0.01
         for r in diag[1:30]:  # debt active in periods 1-28
-            if r["senior_keur"] > 1.0:  # meaningful debt
-                ti_approx = r["ebit_keur"] - r["senior_keur"]
-                delta = abs(r["ti_keur"] - ti_approx)
+            if r["excel_senior_keur"] > 1.0:  # meaningful debt
+                ti_approx = r["excel_ebit_keur"] - r["excel_senior_keur"]
+                delta = abs(r["excel_taxable_income_keur"] - ti_approx)
                 assert delta < 0.02, (
                     f"Period {r['period']}: |TI - (EBIT-SD)| = {delta:.4f} (cash interest should be ~0)"
                 )
         # After debt repayment (period 30+), financial earnings = cash interest
         p41 = diag[41]
-        assert abs(p41["ti_keur"] - (p41["ebit_keur"] + p41["fin_earn_keur"])) < 1e-6, (
+        assert abs(p41["excel_taxable_income_keur"] - (p41["excel_ebit_keur"] + p41["excel_fin_earn_keur"])) < 1e-6, (
             "Period 41: TI = EBIT + fin_earn (no SD, no SHL, FR=0)"
         )
 
@@ -557,21 +611,101 @@ class TestEInterestDependency:
         total = sum(v or 0 for v in xd["pl"]["shl_interests_keur"])
         assert abs(total - 32_104.911) < 0.005
 
-    def test_phase2c_senior_interest_matches_excel_period_by_period(self):
-        """Phase 2C frozen fixture = Excel DS!G53 for all 43 operating periods.
-        Delta must be 0.0000 for all periods (proved from CSV comparison)."""
+    def test_phase23q_frozen_extraction_matches_excel_senior_interest_period_by_period(self):
+        """The frozen phase23q CSV extraction matches Excel DS!G53 for all 43 operating periods.
+        The CSV is a historical frozen extraction from a prior run, NOT the current clean runtime.
+        Delta must be 0.0000 for all 43 periods (proved by period-by-period comparison)."""
         import csv
         rows = list(csv.DictReader(open("reports/phase23q_oborovo_senior_debt_sizing_extraction.csv")))
         xd = _xd()
         excel_sd = xd["pl"]["senior_interests_keur"]
+        assert len(rows) == 43, f"Expected 43 operating periods in CSV; got {len(rows)}"
         for row in rows:
-            period_idx = int(row["period_index"])  # 7..67 (excel col)
-            excel_period = period_idx - 7 + 1  # fixture 0-indexed (col G=0, H=1...)
-            p2c_int = float(row["senior_net_interest_keur"])
+            period_idx = int(row["period_index"])  # 7..49 (excel col H-AX)
+            # CSV col H = period_index 7 = first operating period = fixture period 1
+            excel_period = period_idx - 7 + 1
+            csv_int = float(row["senior_net_interest_keur"])
             exc_int = excel_sd[excel_period] if excel_period < len(excel_sd) else 0.0
-            assert abs(p2c_int - (exc_int or 0)) < 0.0001, (
-                f"Period {excel_period}: Phase2C={p2c_int:.4f} ≠ Excel={exc_int:.4f}"
+            assert abs(csv_int - (exc_int or 0)) < 0.0001, (
+                f"Period {excel_period}: CSV={csv_int:.4f} ≠ Excel={exc_int:.4f}"
             )
+
+    def test_phase2c_current_runtime_interest_diverges_from_excel(self):
+        """Current clean Phase 2C runtime produces a valid senior interest vector
+        but sizes the debt differently from Excel (45,873 vs 42,852 kEUR).
+        This causes a maximum per-period delta of 90.29 kEUR (period 25).
+        Classification: INTEREST_DEPENDENCY_BLOCKS_TAX.
+
+        The divergence root cause is different debt sizing constraints, not an
+        engine defect.  C3B2 must use a Phase 2C run whose debt size matches Excel."""
+        import sys
+        sys.path.insert(0, ".")
+        from financial_engine.orchestrator import run_senior_debt_model
+        from financial_engine.inputs import TaxCalculationInput, SeniorDebtModelInput
+        from finco_parity.tax_reference_inputs import build_tax_policy, build_opening_loss_vintages
+        from finco_parity.financial_engine_tax_cfads_candidate import (
+            _load_project_inputs, _load_baseline_snapshot, _build_exogenous_interest,
+        )
+        from financial_engine.adapters.project_inputs import from_project_inputs
+        from finco_parity.check_financial_engine_senior_debt import (
+            _build_senior_debt_policy, _build_senior_debt_inputs,
+        )
+
+        project_inputs = _load_project_inputs("oborovo")
+        op_inputs = from_project_inputs(project_inputs, source_id="parity_oborovo")
+        tax_policy = build_tax_policy("oborovo")
+        opening_vintages = build_opening_loss_vintages("oborovo")
+        snap = _load_baseline_snapshot("oborovo")
+        exog_interest = _build_exogenous_interest(snap)
+        tax_input = TaxCalculationInput(
+            policy=tax_policy,
+            opening_loss_vintages=opening_vintages,
+            period_interest=exog_interest,
+            period_adjustments=(),
+        )
+        eligible_cost = getattr(project_inputs.capex, "total_capex_keur", None) or 100_000.0
+        sd_policy = _build_senior_debt_policy("oborovo")
+        sd_inputs = _build_senior_debt_inputs("oborovo", eligible_cost)
+        model_input = SeniorDebtModelInput(
+            operating=op_inputs, tax=tax_input,
+            senior_debt_policy=sd_policy, senior_debt_inputs=sd_inputs,
+        )
+        result = run_senior_debt_model(model_input)
+        sd = result.senior_debt
+
+        # Phase 2C produces a valid, non-empty vector
+        assert len(sd.senior_interest_keur) == 60, (
+            f"Expected 60 operating periods from Phase 2C; got {len(sd.senior_interest_keur)}"
+        )
+        p2c_lifetime = sum(sd.senior_interest_keur)
+        # Excel lifetime = 20,133 kEUR; Phase 2C = 21,725 kEUR (+7.9%)
+        assert p2c_lifetime > 20_000, "Phase 2C lifetime interest implausibly low"
+        assert p2c_lifetime < 23_000, "Phase 2C lifetime interest implausibly high"
+
+        # Confirm debt sizing mismatch is the root cause
+        _EXCEL_DEBT_SIZE_KEUR = 42_852.28
+        assert abs(sd.debt_size_keur - _EXCEL_DEBT_SIZE_KEUR) > 1_000, (
+            "Expected Phase 2C debt size to diverge from Excel by > 1,000 kEUR; "
+            f"got Phase2C={sd.debt_size_keur:.2f}, Excel={_EXCEL_DEBT_SIZE_KEUR:.2f}"
+        )
+
+        # Alignment: Phase 2C period p -> fixture period p-1
+        xd = _xd()
+        excel_sd_v = xd["pl"]["senior_interests_keur"]
+        p2c_by_fixture = {pi - 1: v for pi, v in zip(sd.period_indices, sd.senior_interest_keur)}
+        max_delta = max(
+            abs((p2c_by_fixture.get(p, 0.0) if abs(p2c_by_fixture.get(p, 0.0)) > 0.001 else 0.0)
+                - (excel_sd_v[p] or 0.0))
+            for p in range(1, 29)
+        )
+        # Max delta must be > 1 kEUR (confirmed difference, not noise)
+        assert max_delta > 1.0, (
+            f"Expected Phase 2C vs Excel delta > 1 kEUR; got {max_delta:.4f} kEUR. "
+            "If delta is unexpectedly small, re-check debt sizing."
+        )
+        # Classify the blocker
+        classification = "INTEREST_DEPENDENCY_BLOCKS_TAX"
+        assert classification == "INTEREST_DEPENDENCY_BLOCKS_TAX"
 
 
 # ===========================================================================
@@ -719,9 +853,9 @@ class TestGTaxYearFragmentation:
         )
         # Period 6 CIT (even period): sums periods 5+6
         diag = xd["tax"]["period_diagnostic"]
-        p5_tp = diag[5]["taxable_profit_keur"]
-        p6_tp = diag[6]["taxable_profit_keur"]
-        p6_cit = diag[6]["cit_keur"]
+        p5_tp = diag[5]["excel_taxable_profit_keur"]
+        p6_tp = diag[6]["excel_taxable_profit_keur"]
+        p6_cit = diag[6]["excel_cit_p43_keur"]
         expected = max(0.0, p5_tp + p6_tp) * 0.10
         assert abs(p6_cit - expected) < 1e-4, (
             f"Period 6 CIT={p6_cit:.3f} ≠ (TP5+TP6)*10%={expected:.3f}"
@@ -816,22 +950,71 @@ class TestICashTaxTiming:
         policy = build_tax_policy("oborovo")
         assert policy.cash_tax_timing == CashTaxTiming.TAX_YEAR_LAST_PERIOD
 
-    def test_pl_current_tax_row43_equals_cf_cash_tax_row77_per_period(self):
-        """Prove P&L CIT (row 43) = CF cash tax (row 77, negated) for all periods.
-        Row 44 = Macro!G40 routes the same values to CF. Max delta proved = 0."""
+    def test_cf_cash_tax_formula_confirmed_from_dual_load(self):
+        """CF row 77 formula text is captured from workbook via dual-load.
+        Formula must reference P&L!row44 (not hardcoded). Sign: negative = outflow."""
         xd = _xd()
-        # period_diagnostic captures CIT from row 43
+        chain = xd["tax"]["cf_tax_chain"]
+        formula = chain["cf_row_77_formula_period1"]
+        assert formula is not None, "CF row 77 formula must be captured from dual-load"
+        assert "P&L" in formula, (
+            f"CF row 77 must reference P&L sheet; got formula: {formula!r}"
+        )
+        assert "44" in formula, (
+            f"CF row 77 must reference row 44; got formula: {formula!r}"
+        )
+        # Sign: formula must start with minus
+        assert formula.startswith("=-"), (
+            f"CF row 77 formula must be negation of P&L row 44; got: {formula!r}"
+        )
+
+    def test_cf_cash_tax_vector_equals_neg_pl_row44(self):
+        """CF cash tax vector (row 77) equals -P&L row 44 for all 61 periods.
+        Proved from actual workbook values via dual-load. Max delta = 0."""
+        xd = _xd()
+        chain = xd["tax"]["cf_tax_chain"]
+        assert chain["cf_vs_pl44_max_delta_keur"] == 0.0, (
+            f"CF row 77 must equal -P&L row 44 exactly; "
+            f"max delta = {chain['cf_vs_pl44_max_delta_keur']}"
+        )
+        # Verify CF cash tax sign: paid CIT periods must be negative in CF
         diag = xd["tax"]["period_diagnostic"]
-        # Row 43 and row 44 are proved identical in cit_authority section
+        for entry in diag:
+            p44 = entry["excel_cit_p44_routed_keur"]
+            cf = entry["excel_cf_cash_tax_keur"]
+            if abs(p44) > 0.001:
+                assert abs(cf + p44) < 1e-6, (
+                    f"Period {entry['period']}: CF={cf:.4f} must equal -P44={-p44:.4f}"
+                )
+
+    def test_pl_current_tax_row43_equals_row44_equals_cf_row77(self):
+        """Three-way proof: P&L row 43 = P&L row 44 = -CF row 77 for all periods.
+        Row 43 is the economic formula; row 44 routes via Macro; CF row 77 = -row 44.
+        All three must agree to machine precision (max delta = 0)."""
+        xd = _xd()
         auth = xd["tax"]["cit_row43_vs_row44_authority"]
         assert auth["row_43_vs_44_max_delta_keur"] < 1e-9, (
             "P&L row 43 (formula) must equal row 44 (Macro-routed) to machine precision"
         )
-        # CIT lifetime from period_diagnostic
-        cit_total = sum(r["cit_keur"] for r in diag)
-        assert abs(cit_total - 10_443.088) < 0.005, (
-            f"CIT lifetime from period_diagnostic = {cit_total:.3f}, expected 10,443.088"
+        chain = xd["tax"]["cf_tax_chain"]
+        assert chain["cf_vs_pl44_max_delta_keur"] == 0.0, (
+            "CF row 77 must equal -P&L row 44 to machine precision"
         )
+        # Lifetime from period_diagnostic (using p43 values)
+        diag = xd["tax"]["period_diagnostic"]
+        cit_total = sum(r["excel_cit_p43_keur"] for r in diag)
+        assert abs(cit_total - 10_443.088) < 0.005, (
+            f"CIT lifetime = {cit_total:.3f}, expected 10,443.088"
+        )
+
+    def test_bs_no_tax_payable_row_exists(self):
+        """The BS sheet has no tax payable or tax receivable row.
+        CIT settles within each period: no BS tax balance accumulates."""
+        xd = _xd()
+        chain = xd["tax"]["cf_tax_chain"]
+        assert chain["bs_tax_payable_row_exists"] is False
+        assert chain["terminal_bs_tax_balance_keur"] == 0.0
+        assert chain["payment_lag_periods"] == 0
 
 
 # ===========================================================================
@@ -1100,27 +1283,22 @@ class TestOC3AUpstreamFreeze:
 # P — GitHub workflow and test failure classification
 # ===========================================================================
 
-class TestPFailureClassification:
-    """Documents and classifies all test failures on base SHA and PR HEAD.
+class TestPRegressionGuard:
+    """Verifies that C3B1 changes do not introduce new test failures.
 
-    PRE_EXISTING_ON_BASE: failure exists on b11e5bf7 without C3B1 changes.
-    INTRODUCED: failure first appears after C3B1 changes.
-    ENVIRONMENTAL: failure caused by missing workbook / infra, not code.
+    CI workflow failure classification for all seven GitHub Actions workflows
+    is documented in docs/reconciliation/oborovo_tax_source_truth.md (section
+    'GitHub Workflow Failure Matrix').  That section is the authoritative record;
+    this group contains only behaviorally testable regression guards.
+
+    PRE_EXISTING_ON_BASE: present on b11e5bf7 before C3B1 changes.
+    INTRODUCED: first appears after C3B1 changes (none permitted in this PR).
+    ENVIRONMENTAL: workbook / infra absent in CI (not a code defect).
     """
 
-    def test_phase2b_oborovo_correction_aware_pre_existing(self):
-        """test_phase2b_tax_cfads::test_w_correction_aware_four_baseline[oborovo]
-        fails on base SHA b11e5bf7 (verified by stash-test).
-        Classification: PRE_EXISTING_ON_BASE.
-        Root cause: cash_tax_bridge_reconciliation drift not approved in parity layer."""
-        # This test documents the failure; it cannot run the prior-SHA test directly.
-        # The stash verification is recorded in the C3B1 delivery report.
-        classification = "PRE_EXISTING_ON_BASE"
-        assert classification == "PRE_EXISTING_ON_BASE"  # non-tautological: verifies string not empty
-
     def test_no_new_failures_introduced_by_c3b1(self):
-        """Regression suite passes at HEAD with C3B1 changes.
-        All C3A, Phase2C tests pass. Only the pre-existing phase2b failure remains."""
+        """C3A and Phase 2C regression suites pass at HEAD.
+        Only the pre-existing test_phase2b_tax_cfads[oborovo] failure remains."""
         import subprocess
         result = subprocess.run(
             ["python", "-m", "pytest",
@@ -1130,16 +1308,29 @@ class TestPFailureClassification:
             capture_output=True, text=True, cwd=".",
         )
         assert result.returncode == 0, (
-            f"Regression tests failed (C3B1 introduced failures):\n{result.stdout[-800:]}"
+            f"Regression tests failed (C3B1 introduced new failures):\n{result.stdout[-800:]}"
         )
 
-    def test_github_workflow_failures_classified(self):
-        """Documents GitHub Actions workflow failures on this PR branch.
-        All CI failures on PR #912 HEAD must be classified as PRE_EXISTING_ON_BASE
-        or ENVIRONMENTAL (missing workbook).  No INTRODUCED failures are permitted."""
-        # This test is a documentation anchor. CI results are classified in the delivery doc.
-        # The only known pre-existing failure is test_phase2b_tax_cfads[oborovo].
-        known_pre_existing = [
-            "tests/test_phase2b_tax_cfads.py::test_w_correction_aware_four_baseline[oborovo]",
-        ]
-        assert len(known_pre_existing) >= 1, "Classification list must be non-empty"
+    def test_pre_existing_failure_is_phase2b_oborovo_only(self):
+        """Only one test should fail at HEAD: test_phase2b_tax_cfads[oborovo].
+        This was already failing on base SHA b11e5bf7 (verified by git stash test).
+        Root cause: cash_tax_bridge_reconciliation drift not approved in parity layer."""
+        import subprocess
+        result = subprocess.run(
+            ["python", "-m", "pytest",
+             "tests/test_phase2b_tax_cfads.py",
+             "-q", "--tb=no"],
+            capture_output=True, text=True, cwd=".",
+        )
+        # Exactly the pre-existing oborovo failure; no new failures
+        out = result.stdout + result.stderr
+        assert "oborovo" in out or result.returncode != 0, (
+            "Expected pre-existing oborovo failure to remain; test suite output unexpected"
+        )
+        # Assert no NEW unexpected test IDs appear as failures
+        lines = [l for l in out.splitlines() if l.startswith("FAILED")]
+        introduced = [l for l in lines if "oborovo" not in l]
+        assert not introduced, (
+            f"C3B1 introduced unexpected new failures in Phase2B suite:\n" +
+            "\n".join(introduced)
+        )

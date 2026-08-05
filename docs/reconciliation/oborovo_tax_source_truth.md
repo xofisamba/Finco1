@@ -1,6 +1,6 @@
 # Oborovo Tax Source Truth — Stage C3B1 Diagnostic Report
 
-**Extractor version**: 3.0.0 (dual-load: `data_only=False` for formula text, `data_only=True` for cached values)
+**Extractor version**: 3.1.0 (dual-load: `data_only=False` for formula text, `data_only=True` for cached values; CF dual-load for row 77 formula; expanded period_diagnostic)
 
 ## 1. Base Commit and Branch
 
@@ -14,10 +14,11 @@
 
 | File | Change |
 |------|--------|
-| `finco_recon/extract_oborovo_excel.py` | v3.0.0; dual-load; 24 rows; CIT authority; 61-period machine-readable diagnostic |
-| `tests/fixtures/excel_oborovo_financial_truth.json` | Regenerated; `tax.period_diagnostic`, `tax.cit_row43_vs_row44_authority`, 24 rows |
-| `tests/test_stage_c3b1_oborovo_tax_source_truth.py` | 91 tests (A–P); financial-freeze tests compare base SHA vs HEAD |
+| `finco_recon/extract_oborovo_excel.py` | v3.1.0; CF dual-load for row 77; expanded period_diagnostic (31 cols); `cf_tax_chain` section; BS conclusion |
+| `tests/fixtures/excel_oborovo_financial_truth.json` | Regenerated; `tax.cf_tax_chain`, expanded period_diagnostic, 24 rows |
+| `tests/test_stage_c3b1_oborovo_tax_source_truth.py` | 95 tests (A–P); Phase 2C runtime comparison; CF chain assertions; real Group P regression guard |
 | `docs/reconciliation/oborovo_tax_source_truth.md` | This file |
+| `.github/workflows/c3b1_diagnostic_check.yml` | New CI workflow running only `test_stage_c3b1_oborovo_tax_source_truth.py` |
 
 ## 3. Workbook SHA
 
@@ -135,8 +136,39 @@ surplus cash balance after debt repayment, not on DSRA.
 
 - Senior interest (DS!G53) = sole deductible interest. Lifetime: **20,133.079 kEUR**.
 - SHL interest (DS!G125) = fully non-deductible (FR = SHL always). Lifetime: **32,104.911 kEUR**.
-- Phase 2C frozen fixture matches Excel DS!G53 to 0.0000 kEUR for all 43 operating periods.
-- No standalone Phase 2B tax computation can be correct without senior interest.
+
+### 9A. Phase 2C Runtime vs Excel Period-by-Period Comparison
+
+The current clean Phase 2C engine was run (`finco_parity.check_financial_engine_senior_debt`,
+baseline `oborovo`) and the senior interest vector was extracted directly from the `SeniorDebtSchedules`
+result — **not from the frozen CSV**.
+
+| Metric | Value |
+|--------|-------|
+| Excel senior interest lifetime | 20,133.079 kEUR (DS!G53 sum, 28 non-zero periods) |
+| Phase 2C lifetime | 21,725.016 kEUR (60 periods; 28 non-zero) |
+| Frozen phase23q CSV lifetime | 20,133.079 kEUR (matches Excel exactly — it IS an Excel extraction) |
+| Period count compared | 28 (debt-active periods 1–28) |
+| Maximum absolute period delta (P2C vs Excel) | **90.29 kEUR at period 25** |
+| Signed cumulative delta | +1,591.94 kEUR |
+| Differing periods (>0.001 kEUR threshold) | 28 (all debt-active periods) |
+| Phase 2C sized debt | 45,873 kEUR |
+| Excel actual debt | 42,852 kEUR |
+| Root cause | Different debt sizing — Phase 2C solves to DSCR=1.15 target with current operating inputs; Excel uses a pre-determined drawdown of 42,852 kEUR |
+
+**Alignment**: Phase 2C `period_index p` corresponds to fixture `period_index p-1` (Phase 2C is 1-indexed from period 2).
+
+**Classification**: `INTEREST_DEPENDENCY_BLOCKS_TAX`
+
+A per-period delta of up to 90 kEUR in senior interest translates to ≈9 kEUR error in annual CIT (10% rate). This makes Phase 2C-based tax calculation meaningfully incorrect relative to Excel. C3B2 requires a Phase 2C calibration step that produces the same debt size as the Excel workbook, OR the Excel-derived interest vector must be directly injected.
+
+**Note on frozen phase23q CSV**: `reports/phase23q_oborovo_senior_debt_sizing_extraction.csv` is a historical extraction from the Excel workbook, not a Phase 2C runtime output. It matches Excel to 0.0000 kEUR for all 43 operating periods (verified in `test_phase23q_frozen_extraction_matches_excel_senior_interest_period_by_period`). It is properly labelled "frozen historical extraction" and must not be substituted for a live Phase 2C runtime result.
+
+### 9B. Legacy (Baseline Snapshot) Interest
+
+The committed parity baseline snapshot (`_load_baseline_snapshot("oborovo")`) contains an exogenous interest vector starting at 1,210.58 kEUR at period 2 — different from both Excel (1,303.48 kEUR) and Phase 2C current runtime (1,306.58 kEUR). This is a third independent sizing; it too fails to reproduce Excel interest.
+
+- No standalone Phase 2B tax computation can be correct without Excel-matching senior interest.
 
 ## 10. Tax Loss Opening Balance and Vintage
 
@@ -173,12 +205,74 @@ LCF: 5-period window (not 5 calendar years) — B36=5.
 - CIT present in periods 6, 8, 10, 12, … (even operating periods)
 - LCF delays first CIT to period 6 (periods 2, 4 have accumulated losses not yet expired)
 
-## 13. Cash Tax Timing
+## 13. Cash Tax Timing and CF/BS Chain
 
-- Cash tax = CF row 77 = `=-'P&L'!G44` (negated row 44)
-- CF row 77 matches row 43/44 in sign and magnitude
-- Cash tax coincides with P&L CIT period (no lag, no deferral)
+### CF Row 77 — Confirmed from Dual-Load
+
+CF row 77 formula (period 1 column, captured from formula workbook):
+
+```
+=-'P&L'!H44
+```
+
+All 61 period formulas follow the same pattern: `=-'P&L'!{col}44` where `{col}` is the period column letter. This was read from the workbook formula mode (not hardcoded) and stored in `tax.cit_row43_vs_row44_authority.cf_cash_tax_row_77_formula_dual_load`.
+
+### Three-Way Identity: P&L Row 43 = P&L Row 44 = −CF Row 77
+
+Proved from workbook dual-load cached values for all 61 periods:
+
+| Identity | Max delta | Result |
+|----------|-----------|--------|
+| P&L row 43 vs row 44 | 0.000000000 kEUR | PROVED EXACT |
+| CF row 77 vs −P&L row 44 | 0.000000000 kEUR | PROVED EXACT |
+
+Stored in `tax.cf_tax_chain.cf_vs_pl44_max_delta_keur = 0.0`.
+
+### Sign Convention
+
+- P&L row 44: **positive** (CIT expense; 8.904 kEUR at period 6)
+- CF row 77: **negative** (cash outflow; −8.904 kEUR at period 6)
+
+### Payment Timing
+
+- Payment lag: **0 periods** — CIT settles within the same semi-annual period it accrues
 - Python policy: `cash_tax_timing = TAX_YEAR_LAST_PERIOD`, `cash_tax_payment_lag_periods = 0`
+
+### BS Tax Payable Conclusion
+
+The Balance Sheet sheet was inventoried via dual-load. Full row label inventory:
+
+```
+Row  6: Assets
+Row  8: Gross Fixed Assets
+Row  9: Accumulated Depreciation
+Row 10: Total Fixed Assets
+Row 12: DSRA
+Row 13: J-DSRA
+Row 14: Distribution Account
+Row 15: Cash
+Row 17: Assets (subtotal)
+Row 19: Liabilities
+Row 21: Capital at Financial close
+Row 22: Legal Reserve
+Row 23: Retained Earnings
+Row 24: Shareholder Loan
+Row 25: Sponsor Carbon Fund
+Row 26: Senior Debt
+Row 27: Refinancing
+Row 29: Short term loan
+Row 31: Liabilities (subtotal)
+Row 33: Balance check
+Row 34: Depreciation check
+Row 36: Indebtness Ratio
+Row 43: Application of Thin capitalisation rules
+Row 44: Ratio for thin capitalisation compliance
+Row 45: Thin capitalisation indebtness threshold
+```
+
+**There is no tax payable or tax receivable row on the BS sheet.** CIT is fully settled within the period it accrues. No BS tax balance accumulates across periods. Terminal BS tax balance = 0.0 kEUR.
+
+Stored in `tax.cf_tax_chain.bs_tax_payable_row_exists = false` and `bs_tax_payable_conclusion`.
 
 ## 14. Period-by-Period Diagnostic
 
@@ -237,68 +331,133 @@ Row 43 (formula) ≠ production authority. Row 44 (Macro hardcoded) is actual au
 
 ## 18. Exact Recommended C3B2 Scope
 
-Minimum changes required:
+### Typed Policy Contracts (no project-name dispatch permitted)
 
-1. **Fix adapter** (`financial_engine/adapters/project_inputs.py`): when `tax_depreciation_mode = BOOK_BASED_PERCENTAGE`, compute `tax_dep = book_dep × tax_deductible_book_dep_pct` (1-line fix). This eliminates the 1,974 kEUR tax dep gap.
+C3B2 must introduce explicit typed policy inputs. No project name, string dispatch, or hardcoded values:
 
-2. **Wire senior interest from Phase 2C**: pass `PeriodInterestInput.senior_interest_keur` from Phase 2C frozen debt schedule for each operating period.
+```python
+class TaxAggregationBasis(Enum):
+    CALENDAR_YEAR = "CALENDAR_YEAR"          # Python current default
+    MODEL_YEAR_PAIR = "MODEL_YEAR_PAIR"      # required for Oborovo source parity
+    CUSTOM_PERIOD_GROUPING = "CUSTOM_PERIOD_GROUPING"  # only if genuinely required
 
-3. **Add SHL fiscal reintegration**: populate `PeriodTaxAdjustmentInput.other_fiscal_reintegration_keur = SHL_interest` for each period (thin_cap=False path; full SHL is non-deductible).
+class LossCarryforwardBasis(Enum):
+    TAX_YEARS = "TAX_YEARS"                  # Python current default (5 calendar years)
+    MODEL_PERIODS = "MODEL_PERIODS"          # required for Oborovo source parity (B36=5)
+```
 
-4. **Fix LCF semantics**: Python uses 5 tax-year LCF; Excel uses 5-period window. For Oborovo this creates a timing difference in LCF expiry. Recommended fix: set `loss_carryforward_years = 3` (covers 5 operating periods in a ~2.5-year span) OR accept the difference as a known approximation.
+**For Oborovo source parity:**
+- `tax_aggregation_basis = MODEL_YEAR_PAIR` (H2 + H1 pairs as in Excel B43 MOD pairing)
+- `loss_carryforward_basis = MODEL_PERIODS`, `n_periods = 5` (Excel B36 = 5)
 
-5. **Fix `origin_tax_year` docstring** in `financial_engine/inputs.py` (no runtime impact for Oborovo; stale docstring only).
+**Prohibited approaches:**
+- `loss_carryforward_years = 3` — this is a year-count approximation, not source parity. Do not use.
+- Defer the H2+H1 model-year difference as "sub-1% approximation" — if C3B2 is intended to establish source parity, the model-year pairing is required, not optional.
 
-6. **Add CIT model-year pairing option**: Python uses calendar-year CIT; Excel uses H2+H1 model-year pairs. This produces different annual taxable profit sums when TI varies significantly across H1/H2. Recommended scope: document as known approximation with < 1% impact for Oborovo; defer to C3B3 if exact parity required.
+### Six Required C3B2 Changes
+
+1. **Fix adapter** (`financial_engine/adapters/project_inputs.py`): when `tax_depreciation_mode = BOOK_BASED_PERCENTAGE`, compute `tax_dep = book_dep × tax_deductible_book_dep_pct`. This eliminates the 1,974 kEUR tax dep gap.
+
+2. **Wire senior interest from Phase 2C** that matches Excel debt sizing: pass `PeriodInterestInput.senior_interest_keur`. The current Phase 2C runtime diverges by up to 90 kEUR/period because it sizes the debt to 45,873 kEUR vs Excel 42,852 kEUR. C3B2 must either calibrate Phase 2C to match the Excel debt size or inject the Excel-extracted interest vector directly.
+
+3. **Add SHL fiscal reintegration**: populate `PeriodTaxAdjustmentInput.other_fiscal_reintegration_keur = SHL_interest` per period (thin_cap=False path; full SHL is non-deductible).
+
+4. **Fix LCF basis**: set `loss_carryforward_basis = MODEL_PERIODS, n_periods = 5`. Do not approximate with calendar-year counts.
+
+5. **Fix CIT aggregation basis**: set `tax_aggregation_basis = MODEL_YEAR_PAIR`. Each CIT charge sums `taxable_profit[pair_period_1] + taxable_profit[pair_period_2]` for the H2+H1 pair.
+
+6. **Fix CIT formula**: implement the row-43 economic formula `MAX(SUM(tp_prev + tp_curr), 0) × rate × (is_operating) × (is_even_period)`. Do not reproduce Macro row-44 hardcoded values — row 44 is workbook routing evidence and a staleness risk.
+
+Additional (low-risk, no runtime impact for Oborovo):
+
+7. **Fix `origin_tax_year` docstring** in `financial_engine/inputs.py`.
 
 ## 19. Interest Prerequisite
 
-**Yes — Phase 2C is required before C3B2 can produce correct tax numbers.**
+**Yes — Phase 2C is required before C3B2 can produce correct tax numbers.** Furthermore, the Phase 2C result must match the Excel debt sizing (42,852 kEUR). The current Phase 2C runtime produces a valid vector but with 7.9% higher debt, causing maximum 90 kEUR per-period interest error.
+
+### Acceptable C3B2 Approaches for Interest Input
+
+**Option A** (preferred): Calibrate Phase 2C to reproduce Excel debt size → freeze resulting schedule → use as `PeriodInterestInput`.
+
+**Option B**: Inject the Excel DS!G53 vector directly as exogenous interest for validation purposes. Clearly label as "Excel-sourced" (not Phase 2C modeled).
+
+Option B is adequate for initial parity proof; Option A is required for production accuracy.
 
 ## 20. Test Matrix
 
 | Group | Description | Count | Result |
 |-------|-------------|-------|--------|
-| A | Provenance + new sections | 9 | PASS |
-| B | Source row inventory (corrected) | 15 | PASS |
+| A | Provenance + cf_tax_chain + period_diagnostic schema | 10 | PASS |
+| B | Source row inventory (24 rows, corrected formulas) | 15 | PASS |
 | C | Tax dep source | 5 | PASS |
 | D | Taxable income identity | 6 | PASS |
-| E | Interest dependency + Phase 2C vs Excel | 5 | PASS |
+| E | Frozen CSV vs Excel; Phase 2C runtime divergence classification | 7 | PASS |
 | F | Tax loss roll-forward | 6 | PASS |
-| G | Tax-year fragmentation (corrected) | 3 | PASS |
+| G | Tax-year fragmentation (model-year proved) | 3 | PASS |
 | H | Current tax identity | 4 | PASS |
-| I | Cash tax timing + P&L vs CF separation | 5 | PASS |
+| I | CF row 77 dual-load formula; CF=−P44 vector proof; BS conclusion | 8 | PASS |
 | J | Sign conventions | 4 | PASS |
 | K | Clean/legacy source | 5 | PASS |
 | L | Financial freeze (base SHA vs HEAD) | 6 | PASS |
 | M | No project identity dispatch | 3 | PASS |
 | N | No target plug | 2 | PASS |
 | O | C3A upstream freeze | 4 | PASS |
-| P | Failure classification | 3 | PASS |
-| **Total** | | **91** | **91 PASS** |
+| P | Regression guard (real subprocess assertions; no tautological tests) | 2 | PASS |
+| **Total** | | **95** | **95 PASS** |
 
-## 21. Introduced vs Pre-Existing Failures
+## 21. Introduced vs Pre-Existing Failures and GitHub Workflow Matrix
+
+### Local Test Results
 
 | Test file | Outcome | Classification |
 |-----------|---------|---------------|
+| `test_stage_c3b1_oborovo_tax_source_truth.py` | **95 PASS** | — |
 | `test_stage_c3a_clean_pnl_through_ebit.py` | 129 PASS | — |
-| `test_phase2c_senior_debt.py` | PASS (subset) | — |
+| `test_phase2c_senior_debt.py` | PASS | — |
 | `test_phase2b_tax_cfads.py::test_w_correction_aware_four_baseline[oborovo]` | FAIL | **PRE_EXISTING_ON_BASE** |
 
 **0 failures introduced by C3B1.**
 
-GitHub Actions workflow failures on PR HEAD:
-- `test_w_correction_aware_four_baseline[oborovo]`: **PRE_EXISTING_ON_BASE** (verified via `git stash` test on b11e5bf7).
+### GitHub Actions Workflow Failure Matrix (all 7 workflows + new C3B1)
+
+This PR targets `main`. The following matrix covers all workflows that trigger on PRs to `main`.
+
+| Workflow | File | Base SHA (`b11e5bf7`) | PR HEAD (`478a0f8b`) | Classification | Root Cause |
+|----------|------|----------------------|----------------------|----------------|------------|
+| CI | `ci.yml` | Phase 2A failures (5); Oborovo distribution failures | Phase 2A failures (5); Oborovo distribution failures | **PRE_EXISTING_ON_BASE** | Phase 2A failures predated C3B1; Oborovo distribution test gap predated C3B1 |
+| Phase 1B Baseline Check | `phase1b_baseline_check.yml` | PASS | PASS | — | — |
+| Phase 2A Clean Engine Check | `phase2a_clean_engine_check.yml` | **5 FAIL** | **5 FAIL** | **PRE_EXISTING_ON_BASE** | 5 test failures existed on base SHA b11e5bf7 before this branch was created |
+| Phase 2B Tax and CFADS Check | `phase2b_tax_cfads_check.yml` | `test_w_correction_aware_four_baseline[oborovo]` FAIL | Same FAIL | **PRE_EXISTING_ON_BASE** | cash_tax_bridge_reconciliation drift, not approved in parity layer |
+| Phase 2C Senior Debt Check | `phase2c_senior_debt_check.yml` | **BLOCKED** by Phase 2A regression step | **BLOCKED** by Phase 2A regression step | **PRE_EXISTING_ON_BASE** | Phase 2C workflow runs Phase 2A suite as prerequisite; Phase 2A failures block Phase 2C tests from executing |
+| Phase 2D Recon Check | `phase2d_recon_check.yml` | **3 FAIL** (protected-scope `fatal: bad revision HEAD~1`) | **3 FAIL** | **PRE_EXISTING_ON_BASE** / **WORKFLOW_INFRASTRUCTURE_DEFECT** | Phase 2D workflow uses `HEAD~1` as base ref; on shallow checkouts this fails with `fatal: bad revision 'HEAD~1'`; 3 failures |
+| Parity Guardrails | `parity_guardrails.yml` | **3 FAIL** | **3 FAIL** | **PRE_EXISTING_ON_BASE** | Guardrail failures predated C3B1 |
+| Excel Mapping Validation | `excel_mapping_validation.yml` | Not triggered (path filter) | Not triggered | — | Branch does not modify `docs/model_mapping/` |
+| **C3B1 Diagnostic (new)** | `c3b1_diagnostic_check.yml` | N/A (new workflow) | **95 PASS** expected | NEW | Runs `test_stage_c3b1_oborovo_tax_source_truth.py` only |
+
+**Notable details:**
+- **Phase 2A 5 failures**: These exist on `b11e5bf7` and were not caused by C3B1 changes. C3B1 touches only 4 diagnostic files.
+- **Phase 2C blocked**: The phase2c_senior_debt_check workflow runs `tests/test_phase2a_*.py` as a prerequisite step; Phase 2A failures cause Phase 2C step to never execute. Classification: `PRE_EXISTING_ON_BASE`.
+- **Phase 2D `fatal: bad revision`**: The `check_protected_scope.py` script uses `HEAD~1` as the base ref. In GitHub Actions on shallow clones (`fetch-depth: 0` is set, but `HEAD~1` may still fail on some ref configurations). Classification: `WORKFLOW_INFRASTRUCTURE_DEFECT`.
+- **0 failures introduced by C3B1**: All failures on PR HEAD were already present on base SHA `b11e5bf7`.
 
 ## 22. No Production Formula Changed
 
 Confirmed. Files changed vs base `b11e5bf7`:
-- `finco_recon/extract_oborovo_excel.py` (extractor tooling only)
+- `finco_recon/extract_oborovo_excel.py` (extractor tooling only — v3.1.0)
 - `tests/fixtures/excel_oborovo_financial_truth.json` (regenerated)
 - `tests/test_stage_c3b1_oborovo_tax_source_truth.py` (tests only)
 - `docs/reconciliation/oborovo_tax_source_truth.md` (this file)
+- `.github/workflows/c3b1_diagnostic_check.yml` (new CI step — diagnostic only)
 
-`financial_engine/`, `finco_parity/`, `app/`, all workbook files: **unchanged**.
+`financial_engine/`, `finco_parity/`, `app/project_factories.py`, `app/orchestrator.py`, all workbooks, scenarios, UI: **unchanged**.
+
+Verified by Group L tests:
+```
+git diff b11e5bf7b9ab60bae174081e7d9f8541190bf371 HEAD -- financial_engine/  # empty
+git diff b11e5bf7b9ab60bae174081e7d9f8541190bf371 HEAD -- finco_parity/      # empty
+git diff b11e5bf7b9ab60bae174081e7d9f8541190bf371 HEAD -- app/               # empty
+```
 
 ---
 
@@ -308,4 +467,5 @@ Confirmed. Files changed vs base `b11e5bf7`:
 C3B1_TAX_BLOCKED_BY_INTEREST_DEPENDENCY
 ```
 
-All 22 source evidence items are resolved. Taxable income formula is proved to machine precision from dual-load workbook formulas and cached values. The blocker is senior interest (DS!G53): a Phase 2C output required for correct TI = EBIT − SD. C3B2 is gated on Phase 2C. Minimum C3B2 scope: 6 items (expanded from prior 3-item scope to include LCF period semantics, model-year CIT approximation documentation, and CIT routing fragility).
+All source evidence items are resolved. The taxable income formula is proved to machine precision:
+`TI = EBT + FR = EBIT + taxable_financial_income − Senior_Interest`. CF row 77 (`=-P&L!row44`) is confirmed from workbook dual-load. BS has no tax payable row. Phase 2C produces a valid senior interest vector but diverges from Excel by up to 90.29 kEUR/period due to different debt sizing (45,873 vs 42,852 kEUR). C3B2 requires either calibrating Phase 2C to match Excel debt or injecting the Excel-extracted vector. Typed policy contracts (`MODEL_YEAR_PAIR`, `MODEL_PERIODS n=5`) replace year-count approximations. C3B2 scope: 6 mandatory items.

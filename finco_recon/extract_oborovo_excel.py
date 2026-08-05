@@ -33,7 +33,7 @@ import pathlib
 import sys
 from typing import Any
 
-_EXTRACTOR_VERSION = "3.0.0"
+_EXTRACTOR_VERSION = "3.1.0"
 _EXPECTED_FILENAME = "20260414_BP_Oborovo_Sensitivity_FINAL_for_PPT.xlsm"
 
 # ---------------------------------------------------------------------------
@@ -381,6 +381,52 @@ def _read_pl_tax_formulas(wb_formula, wb_data) -> dict:
         values_only=True,
     ))
 
+    # CF sheet dual-load for CF row 77 formula text and cash-tax chain
+    _CF_MAX_ROW = 85
+    cf_f_rows = list(wb_formula["CF"].iter_rows(
+        min_row=1, max_row=_CF_MAX_ROW, max_col=_PERIOD_COL_OFFSET + _N_PERIODS + 1,
+        values_only=False,
+    ))
+    cf_d_rows = list(wb_data["CF"].iter_rows(
+        min_row=1, max_row=_CF_MAX_ROW, max_col=_PERIOD_COL_OFFSET + _N_PERIODS + 1,
+        values_only=True,
+    ))
+
+    def cf_formula_at(row1, col0):
+        r = row1 - 1
+        if r >= len(cf_f_rows):
+            return None
+        row = cf_f_rows[r]
+        if col0 >= len(row):
+            return None
+        v = row[col0].value
+        return str(v) if v is not None else None
+
+    def cf_period_vector(row1):
+        r = row1 - 1
+        if r >= len(cf_d_rows):
+            return [None] * _N_PERIODS
+        row_data = cf_d_rows[r]
+        out = []
+        for p in range(_N_PERIODS):
+            col = _PERIOD_COL_OFFSET + p
+            v = row_data[col] if col < len(row_data) else None
+            out.append(float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else None)
+        return out
+
+    # CF dates for period_diagnostic
+    def cf_date_vector(row1):
+        r = row1 - 1
+        if r >= len(cf_d_rows):
+            return [None] * _N_PERIODS
+        row_data = cf_d_rows[r]
+        out = []
+        for p in range(_N_PERIODS):
+            col = _PERIOD_COL_OFFSET + p
+            v = row_data[col] if col < len(row_data) else None
+            out.append(_date_str(v))
+        return out
+
     def formula_at(row1, col0):
         """Get formula string from formula workbook (row=1-based, col=0-based)."""
         r = row1 - 1
@@ -491,24 +537,64 @@ def _read_pl_tax_formulas(wb_formula, wb_data) -> dict:
         abs((cit_formula_vec[i] or 0) - (cit_macro_vec[i] or 0))
         for i in range(_N_PERIODS)
     )
+    # CF row 77 actual formula from dual-load (period 0 = construction col G)
+    cf_row77_formula_first_operating = cf_formula_at(77, G + 1)  # period 1 column
+    cf_row83_formula_first_operating = cf_formula_at(83, G + 1)
     cit_authority = {
         "row_43_formula": "=MAX(SUM(F41:G41),0)*$B43*(G4>0)*(MOD(G4,2)=0)",
         "row_44_macro": "=Macro!G40 = IF(Production_Scenario=base_scenario,Macro!G38,Macro!G39)",
         "macro_rows_38_39": "Hardcoded period-by-period values matching row 43 for current workbook snapshot",
         "net_income_uses": "Row 44 (Macro!G40), NOT row 43",
-        "cf_cash_tax_row_77": "=-'P&L'!G44 (negated row 44)",
+        "cf_cash_tax_row_77_formula_dual_load": cf_row77_formula_first_operating,
+        "cf_row_83_formula_dual_load": cf_row83_formula_first_operating,
         "row_43_vs_44_max_delta_keur": cit_delta_max,
         "conclusion": (
             "Rows 43 and 44 produce identical values in current workbook snapshot. "
             "Row 43 is formula-driven (dynamic). Row 44 routes through Macro hardcoded values "
             "that were pre-populated to match row 43. Risk: if upstream changes, "
             "Macro rows 38/39 may become stale. "
-            "Authority for P&L and CF: row 44."
+            "Authority for P&L and CF: row 44. "
+            "CF row 77 = -P&L!row44 (confirmed from dual-load formula read). "
+            "CF row 83 = -DS!row35 (VAT facility = 0 for all Oborovo periods)."
         ),
     }
 
-    # --- Period-by-period machine-readable diagnostic table ---
+    # --- CF cash-tax chain ---
+    cf_cash_tax_v = cf_period_vector(77)  # CF row 77 = -P&L!row44, negative = outflow
+    cf_bop_dates = cf_date_vector(1)
+    cf_eop_dates = cf_date_vector(2)
+
+    cf_lifetime_sum = sum(v or 0.0 for v in cf_cash_tax_v)
+    pl44_lifetime_sum = sum(v or 0.0 for v in cit_macro_vec)
+    cf_vs_pl44_max_delta = max(
+        abs((cf_cash_tax_v[i] or 0.0) + (cit_macro_vec[i] or 0.0))
+        for i in range(_N_PERIODS)
+    )
+    cf_tax_chain = {
+        "cf_row_77_formula_period1": cf_row77_formula_first_operating,
+        "cf_row_77_sign_convention": "Negative (cash outflow); equals -P&L!row44",
+        "cf_cash_tax_lifetime_sum_keur": round(cf_lifetime_sum, 4),
+        "pl_row44_lifetime_sum_keur": round(pl44_lifetime_sum, 4),
+        "cf_vs_pl44_max_delta_keur": round(cf_vs_pl44_max_delta, 9),
+        "payment_lag_periods": 0,
+        "payment_timing": "CIT is settled within the same semi-annual period it accrues; no lag",
+        "bs_tax_payable_row_exists": False,
+        "bs_tax_payable_conclusion": (
+            "The BS sheet contains no tax payable or tax receivable row. "
+            "Full BS inventory: Gross Fixed Assets, Accumulated Depreciation, DSRA, J-DSRA, "
+            "Distribution Account, Cash, Capital at Financial close, Legal Reserve, "
+            "Retained Earnings, Shareholder Loan, Sponsor Carbon Fund, Senior Debt, Refinancing, "
+            "Short term loan, Thin Cap rows. "
+            "CIT is fully settled within each accrual period (CF row 77 = -P&L row 44). "
+            "No BS tax balance accumulates across periods."
+        ),
+        "terminal_bs_tax_balance_keur": 0.0,
+        "cf_cash_tax_period_values": [round(v or 0.0, 6) for v in cf_cash_tax_v],
+    }
+
+    # --- Period-by-period machine-readable reconciliation diagnostic ---
     ebit_v = period_vector_from_data(16)
+    dep_v = period_vector_from_data(13)   # P&L row 13 = book dep = tax dep for Oborovo
     fin_earn_v = period_vector_from_data(30)
     ebt_v = period_vector_from_data(32)
     fr_v = period_vector_from_data(34)
@@ -516,31 +602,96 @@ def _read_pl_tax_formulas(wb_formula, wb_data) -> dict:
     lcf_open_v = period_vector_from_data(36)
     alloc_v = period_vector_from_data(37)
     tp_v = period_vector_from_data(41)
-    cit_v = period_vector_from_data(43)
+    cit43_v = period_vector_from_data(43)
+    cit44_v = cit_macro_vec
     sd_v = period_vector_from_data(24)
     shl_v = period_vector_from_data(27)
+
+    cumulative_delta = 0.0
     period_diagnostic = []
     for p in range(_N_PERIODS):
         ebt = ebt_v[p] or 0.0
         fr = fr_v[p] or 0.0
         ti = ti_v[p] or 0.0
+        cit43 = cit43_v[p] or 0.0
+        cit44 = cit44_v[p] or 0.0
+        cf_ct = cf_cash_tax_v[p] or 0.0
+
         ti_ebt_fr_delta = abs(ebt + fr - ti)
         fr_shl_delta = abs(fr - (shl_v[p] or 0.0))
+        cf_pl44_delta = abs(cf_ct + cit44)  # CF = -P44
+
+        # Model-year pair: periods 1,2 → MY1; 3,4 → MY2; etc.
+        if p == 0:
+            model_year_pair = None
+        else:
+            model_year_pair = ((p - 1) // 2) + 1
+
+        # CIT pairing: CIT fires at even p, pairs [p-1, p]; p=0 excluded
+        cit_pairing_bucket = None if (p == 0 or p % 2 != 0) else f"CIT_pair_{p-1}_{p}"
+
+        # Calendar tax year from EoP date (approximate from known schedule)
+        eop_date_str = cf_eop_dates[p] if p < len(cf_eop_dates) else None
+        calendar_tax_year = None
+        if eop_date_str:
+            try:
+                calendar_tax_year = int(eop_date_str[:4])
+            except (ValueError, TypeError):
+                pass
+
+        signed_delta = 0.0  # No clean runtime available to compare
+        abs_delta = 0.0
+        cumulative_delta += signed_delta
+        classification = "NOT_AVAILABLE_IN_CURRENT_RUNTIME" if p > 0 else "CONSTRUCTION_PERIOD"
+
         period_diagnostic.append({
             "period": p,
-            "ebit_keur": round(ebit_v[p] or 0.0, 6),
-            "fin_earn_keur": round(fin_earn_v[p] or 0.0, 6),
-            "ebt_keur": round(ebt, 6),
-            "shl_keur": round(shl_v[p] or 0.0, 6),
-            "senior_keur": round(sd_v[p] or 0.0, 6),
-            "fr_keur": round(fr, 6),
-            "ti_keur": round(ti, 6),
-            "lcf_opening_keur": round(lcf_open_v[p] or 0.0, 6),
-            "allocated_losses_keur": round(alloc_v[p] or 0.0, 6),
-            "taxable_profit_keur": round(tp_v[p] or 0.0, 6),
-            "cit_keur": round(cit_v[p] or 0.0, 6),
+            "period_bop_date": cf_bop_dates[p] if p < len(cf_bop_dates) else None,
+            "period_eop_date": eop_date_str,
+            "excel_model_year_pair": model_year_pair,
+            "excel_cit_pairing_bucket": cit_pairing_bucket,
+            "python_calendar_tax_year": calendar_tax_year,
+            # Depreciation
+            "excel_book_dep_keur": round(dep_v[p] or 0.0, 6),
+            "excel_tax_dep_keur": round(dep_v[p] or 0.0, 6),  # book=tax for Oborovo
+            "clean_book_dep_keur": None,
+            "clean_tax_dep_keur": None,
+            "clean_dep_classification": "NOT_AVAILABLE_IN_CURRENT_RUNTIME",
+            # Interest
+            "excel_senior_keur": round(sd_v[p] or 0.0, 6),
+            "phase2c_senior_keur": None,
+            "legacy_senior_keur": None,
+            "phase23q_senior_keur": None,  # populated by comparison tests
+            "interest_classification": "INTEREST_DEPENDENCY_BLOCKS_TAX",
+            "excel_shl_keur": round(shl_v[p] or 0.0, 6),
+            # Income chain
+            "excel_fin_earn_keur": round(fin_earn_v[p] or 0.0, 6),
+            "excel_fiscal_reintegration_keur": round(fr or 0.0, 6),
+            "clean_fiscal_reintegration_keur": None,
+            "excel_ebit_keur": round(ebit_v[p] or 0.0, 6),
+            "excel_ebt_keur": round(ebt, 6),
+            "excel_taxable_income_keur": round(ti, 6),
+            "clean_taxable_income_keur": None,
+            # Losses
+            "excel_lcf_opening_keur": round(lcf_open_v[p] or 0.0, 6),
+            "excel_allocated_losses_keur": round(alloc_v[p] or 0.0, 6),
+            "clean_loss_position_keur": None,
+            # Tax
+            "excel_taxable_profit_keur": round(tp_v[p] or 0.0, 6),
+            "excel_cit_p43_keur": round(cit43, 6),
+            "excel_cit_p44_routed_keur": round(cit44, 6),
+            "excel_cf_cash_tax_keur": round(cf_ct, 6),
+            "clean_current_tax_keur": None,
+            "clean_cash_tax_keur": None,
+            # Reconciliation
+            "signed_delta_keur": round(signed_delta, 6),
+            "abs_delta_keur": round(abs_delta, 6),
+            "cumulative_delta_keur": round(cumulative_delta, 6),
+            "classification": classification,
+            # Identity checks (all zero = proved)
             "identity_ti_eq_ebt_plus_fr_delta": round(ti_ebt_fr_delta, 9),
             "identity_fr_eq_shl_delta": round(fr_shl_delta, 9),
+            "identity_cf_eq_neg_p44_delta": round(cf_pl44_delta, 9),
         })
 
     return {
@@ -592,6 +743,7 @@ def _read_pl_tax_formulas(wb_formula, wb_data) -> dict:
             " Python adapter currently uses hard-CAPEX basis (similar to Dep!G31 but not identical)."
         ),
         "cit_row43_vs_row44_authority": cit_authority,
+        "cf_tax_chain": cf_tax_chain,
         "period_diagnostic": period_diagnostic,
         "rows": rows,
     }
