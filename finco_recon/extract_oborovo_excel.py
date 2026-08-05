@@ -33,7 +33,7 @@ import pathlib
 import sys
 from typing import Any
 
-_EXTRACTOR_VERSION = "3.3.0"
+_EXTRACTOR_VERSION = "3.4.0"
 _EXPECTED_FILENAME = "20260414_BP_Oborovo_Sensitivity_FINAL_for_PPT.xlsm"
 
 # ---------------------------------------------------------------------------
@@ -1279,6 +1279,83 @@ def _derive_debt_sizing_from_workbook(wb_formula, wb_data) -> dict:
         },
         "debt_sizing_verdict": verdict,
         "verdict_rationale": verdict_rationale,
+        "manual_check_pack": [
+            # Items marked RESOLVED were answered by dual-load formula chain evidence.
+            # Items marked OPEN still require workbook inspection or equal-input comparison.
+            {
+                "priority": 1, "sheet": "Inputs", "cell": "D192",
+                "current_value": 42852.279,
+                "question": "Is D192 a hardcoded input or the result of Goal Seek / macro?",
+                "status": "RESOLVED",
+                "resolution": "D192 = '=DS!D51' (FORMULA_DERIVED). Not a literal or Goal Seek result.",
+            },
+            {
+                "priority": 2, "sheet": "DS", "cell": "Row 22 (DSCR target)",
+                "current_value": "1.15 (p1-24), 1.35 (p25-28)",
+                "question": "Is the DSCR step-up at period 25 a hardcoded formula or a lookup from Inputs?",
+                "status": "RESOLVED",
+                "resolution": "DS!G22 = '=($B$22*G15)+(G16*$D$22)+(G17*$C$22)'. "
+                              "Step-up targets: B22=1.15, C22=1.35, D22=1.65. Formula-derived from named cells.",
+            },
+            {
+                "priority": 3, "sheet": "DS", "cell": "Row 20 (CFADS)",
+                "current_value": "2,575 kEUR (p1)",
+                "question": "Does CFADS include / exclude DSRA movements? Is SHL service below the line?",
+                "status": "OPEN",
+            },
+            {
+                "priority": 4, "sheet": "Inputs", "cell": "D45 (Total CAPEX)",
+                "current_value": 57973.053,
+                "question": "Is the eligible debt base the full CAPEX (57,973) or a sub-item?",
+                "status": "RESOLVED",
+                "resolution": "Inputs!G171 = SUM(G165:G170) = 57,973.053 kEUR; gearing cap = D230×G171 = 46,378 kEUR. "
+                              "Full CAPEX confirmed as the gearing base.",
+            },
+            {
+                "priority": 5, "sheet": "DS", "cell": "Row 50/51",
+                "current_value": "Opening 0 → 42,852 at p0 drawdown",
+                "question": "Does DS row 51 drawdown formula reference =Inputs!D192 directly?",
+                "status": "RESOLVED",
+                "resolution": "DS!G51 = '=G62+G72'; DS!B62 = '=Inputs!$D$195*B60'. "
+                              "D51 does NOT reference D192 directly; D192 reads DS!D51. "
+                              "Sizing flows Inputs!D195 → DS!B62 → DS!G62 → DS!G51 → DS!D51 → Inputs!D192.",
+            },
+            {
+                "priority": 6, "sheet": "DS", "cell": "Principal rows 52/53",
+                "current_value": "Circular sculpted schedule",
+                "question": "Does the repayment schedule contain a circular reference? Is D192 driven by or driving the schedule?",
+                "status": "OPEN",
+                "note": "DS!G47 has iterative backward reference (H47 in period G column). "
+                        "Circular resolution not fully traceable from static formula inspection.",
+            },
+            {
+                "priority": 7, "sheet": "Inputs", "cell": "Gearing cap input",
+                "current_value": "Actual gearing = 73.9%",
+                "question": "Is there an explicit gearing cap cell that determined 42,852?",
+                "status": "RESOLVED",
+                "resolution": "Inputs!D230 = '=Scenarios!E348' = 0.80 (80% gearing cap). "
+                              "Gearing cap = 46,378 kEUR > DS!D47 = 42,852 kEUR → NOT binding. "
+                              "Binding constraint is DSCR sculpting.",
+            },
+            {
+                "priority": 8, "sheet": "DS", "cell": "DSRA rows",
+                "current_value": "Unknown",
+                "question": "Is there a DSRA? How is it funded — does it reduce CFADS?",
+                "status": "OPEN",
+            },
+            {
+                "priority": 9, "sheet": "IDC", "cell": "IDC total",
+                "current_value": "1,086 kEUR (from CAPEX inputs)",
+                "question": "Are IDC and commitment fees (1,275 kEUR) included in the eligible debt base?",
+                "status": "OPEN",
+            },
+            {
+                "priority": 10, "sheet": "Inputs / DS", "cell": "Hedge percentage",
+                "current_value": "Unknown",
+                "question": "Is 5.65% a fixed all-in rate or hedged vs unhedged split?",
+                "status": "OPEN",
+            },
+        ],
     }
 
 

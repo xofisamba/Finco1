@@ -1,7 +1,7 @@
 {
-  "_extraction_timestamp_utc": "2026-08-05T08:41:39.340052Z",
+  "_extraction_timestamp_utc": "2026-08-05T15:28:25.951493Z",
   "_meta": {
-    "extractor_version": "3.3.0",
+    "extractor_version": "3.4.0",
     "source_filename": "d49af8ee-20260414_BP_Oborovo_Sensitivity_FINAL_for_PPT.xlsm",
     "source_sha256": "15a621c4d6b79024980766e00ebc79d7235fd56f00567be7bf345c769ce57920",
     "sheets_inspected": [
@@ -6837,7 +6837,7 @@
     "proved_lcf_window": "Row 36: SUMIF(IF(G4<=$B$36,$F35:F35,F35:OFFSET(F35,0,-$B$36+1)),\"<0\")+SUM($F$37:F$37). B36=5 => rolling 5-period window of negative taxable incomes. The SUM($F$37:F$37) term accumulates prior utilized losses (not just window). Row 37 allocation condition uses G32 (EBT), not G35 (TI): losses only utilized when EBT>0. Row 39 carriable = MIN(G38, F35*$B37) where B37=1; F35=prior-period TI.",
     "proved_thin_cap": "BS!G45=False for all Oborovo periods => thin_cap=False always",
     "proved_atad": "ATAD rows 57/58=0 for all periods (guarded by IF(G56,...)) since G56=BS!G45=False. FR=non_deductible_shl=row59=-G27*C59*D59 where C59=1.0, D59=True => FR=full SHL.",
-    "proved_model_year_mapping": "Period 0: construction (BoP=2029-06-29, EoP=2030-06-30). Period 1: H2-2030 (Jul-Dec). Period 2: H1-2031 (Jan-Jun). ... Pairs (1,2),(3,4),(5,6),... form model years 1,2,3,... CIT fires in even periods (2,4,6,...) summing [prev_period+this_period] taxable profits. Python splits on calendar Jan-Dec boundaries, NOT on model-year H2+H1 pairs. LCF: 5 model-year periods (not 5 calendar years).",
+    "proved_model_year_mapping": "Period 0: construction (BoP=2029-06-29, EoP=2030-06-30). Period 1: H2-2030 (Jul-Dec). Period 2: H1-2031 (Jan-Jun). ... Pairs (1,2),(3,4),(5,6),... form model years 1,2,3,... CIT fires in even periods (2,4,6,...) summing [prev_period+this_period] taxable profits. Python splits on calendar Jan-Dec boundaries, NOT on model-year H2+H1 pairs. LCF: B36=5 = 5 semi-annual model periods (~2.5 calendar years, not 5 tax years).",
     "proved_dep_row_authority": "P&L row 13 = Dep!G30 = SUM(G7:G28) = total book depreciation including financing costs. Dep!G31 = SUM(G7:G22) = unlevered depreciation (CAPEX only, excludes rows 23-28). Tax dep gap = Dep!G30 - Dep!G31 = financing costs capitalized into asset base. Python adapter currently uses hard-CAPEX basis (similar to Dep!G31 but not identical).",
     "cit_row43_vs_row44_authority": {
       "row_43_formula": "=MAX(SUM(F41:G41),0)*$B43*(G4>0)*(MOD(G4,2)=0)",
@@ -12245,20 +12245,23 @@
         "period_bop_date": "2033-01-01",
         "cash_keur": -8.904
       },
-      "losses_ever_utilized": false,
-      "utilization_blocked_reason": "Row 37: allocated_losses = IF(AND(G36<=0, G32>0), MIN(ABS(G36), G32), 0). G32 = EBT. EBT is negative throughout all loss-carrying periods (p1-p10) because SHL interest (>600 kEUR/period) exceeds EBIT even when EBIT>0. LCF balance declines solely through rolling-window expiry: the earliest loss period (p1 TI=-219.2) drops out of the 5-period window after period 6, reducing the balance from -581.7 to -362.6 kEUR. CIT fires at period 6 directly on paired taxable profits (not after loss offset).",
       "workbook_rolling_window_balance_reaches_zero": {
         "after_period": 10,
         "after_period_eop": "2035-06-30",
         "note": "Rolling 5-period window no longer contains any negative TI period. Losses expired; not utilized. LCF opening = 0 from this period onward."
       },
-      "workbook_lcf_classification": "WORKBOOK_LCF_MECHANICS_PROVED"
+      "workbook_lcf_classification": "WORKBOOK_LCF_MECHANICS_PROVED",
+      "losses_ever_utilized": false,
+      "utilization_blocked_reason": "Row 37: allocated_losses = IF(AND(G36<=0, G32>0), MIN(ABS(G36), G32), 0). G32 = EBT. EBT is negative throughout all loss-carrying periods (p1-p10) because SHL interest (>600 kEUR/period) exceeds EBIT even when EBIT>0. LCF balance declines solely through rolling-window expiry: the earliest loss period (p1 TI=-219.2) drops out of the 5-period window after period 6, reducing the balance from -581.7 to -362.6 kEUR. CIT fires at period 6 directly on paired taxable profits (not after loss offset)."
     },
     "periodisation_mismatch": {
       "classification": "WORKBOOK_PERIODISATION_MISMATCH",
       "legal_tax_year": "1 January to 31 December (Croatia: calendar year)",
       "workbook_pairing_convention": "Even period CIT fires on SUM(F41:G41) = TP[prev_period] + TP[this_period]. Prev period = H2(yr N, Jul-Dec), this period = H1(yr N+1, Jan-Jun). Example: pair 5_6 = H2-2032 (p5) + H1-2033 (p6). Straddles Jan 1.",
+      "calendar_year_aggregation_note": "Each calendar year aggregates H1(yr N, Jan-Jun) + H2(yr N, Jul-Dec). Example year 2033: p6(H1-2033) + p7(H2-2033) = 92.7 + 107.4 = 200.1 kEUR TI. The calendar_vs_workbook_table shows naive calendar-year CIT (TI \u00d7 10%, no LCF offset) vs workbook CIT, illustrating the timing shift only. For LCF-adjusted calendar-year CIT see the croatian_calendar_year_lcf_proforma section.",
+      "workbook_first_tax_period_note": "Workbook pair 5_6: TI = -3.7 + 92.7 = 89.0 \u2192 CIT = 8.9 kEUR, booked H1-2033. Naive calendar year 2033 TI = 200.1 kEUR \u2192 naive CIT = 20.0 kEUR (no LCF). With Article 17 LCF applied (see croatian_calendar_year_lcf_proforma), 2033 taxable base = 0 \u2192 CIT = 0. Do not treat 20.0 kEUR as 'correct 2033 CIT'.",
       "impact_on_tax_shield_exhaustion": "No impact on LCF window exhaustion date: losses expire by rolling window, not by utilization offset. Exhaustion date is independent of CIT aggregation.",
+      "impact_on_cit_timing": "Periodisation shifts CIT booking by approximately 6 months relative to a calendar-year assessment without LCF. With LCF applied the timing and amounts both change materially (first CIT under Article 17 pro forma: 2034). The workbook LCF shortcut (rolling window, no utilization) and the H2+H1 pairing compound to produce a different pattern from the legal treatment.",
       "calendar_vs_workbook_table": [
         {
           "calendar_year": 2030,
@@ -12599,10 +12602,7 @@
           "workbook_cit_keur": 710.716,
           "delta_keur": 354.132
         }
-      ],
-      "calendar_year_aggregation_note": "Each calendar year aggregates H1(yr N, Jan-Jun) + H2(yr N, Jul-Dec). Example year 2033: p6(H1-2033) + p7(H2-2033) = 92.7 + 107.4 = 200.1 kEUR TI. The calendar_vs_workbook_table shows naive calendar-year CIT (TI \u00d7 10%, no LCF offset) vs workbook CIT, illustrating the timing shift only. For LCF-adjusted calendar-year CIT see the croatian_calendar_year_lcf_proforma section.",
-      "workbook_first_tax_period_note": "Workbook pair 5_6: TI = -3.7 + 92.7 = 89.0 \u2192 CIT = 8.9 kEUR, booked H1-2033. Naive calendar year 2033 TI = 200.1 kEUR \u2192 naive CIT = 20.0 kEUR (no LCF). With Article 17 LCF applied (see croatian_calendar_year_lcf_proforma), 2033 taxable base = 0 \u2192 CIT = 0. Do not treat 20.0 kEUR as 'correct 2033 CIT'.",
-      "impact_on_cit_timing": "Periodisation shifts CIT booking by approximately 6 months relative to a calendar-year assessment without LCF. With LCF applied the timing and amounts both change materially (first CIT under Article 17 pro forma: 2034). The workbook LCF shortcut (rolling window, no utilization) and the H2+H1 pairing compound to produce a different pattern from the legal treatment."
+      ]
     },
     "croatian_calendar_year_lcf_proforma": {
       "legal_basis": "Croatian CIT Act Article 17: 5 calendar-year expiry, oldest-first utilization, no EBT gate",
@@ -13123,13 +13123,13 @@
       "ds_d47": {
         "formula": "=MAX($G$47:$DW$47)",
         "cached_keur": 42852.27876256299,
-        "note": "MAX(G47:DW47) — peak DSCR-sculpted debt capacity; iterative ref in G47"
+        "note": "MAX(G47:DW47) \u2014 peak DSCR-sculpted debt capacity; iterative ref in G47"
       },
       "gearing_cap": {
         "inputs_d230_formula": "=Scenarios!E348",
         "inputs_d230_cached": 0.8,
         "inputs_g171_formula": "=SUM(G165:G170)",
-        "inputs_g171_cached_keur": 57973.053,
+        "inputs_g171_cached_keur": 57973.05265737863,
         "gearing_cap_keur": 46378.442,
         "note": "Gearing cap = Inputs!D230 (=Scenarios!E348=0.80) * total CAPEX; NOT binding"
       },
@@ -13139,86 +13139,106 @@
       "sheet": "DS",
       "row": 22,
       "col": "G-onward (period axis)",
-      "formula_mode_period1": "=($B$22*G15)+(G16*$D$22)+(G17*$C$22)",
+      "formula_mode_period1": "=($B$22*H15)+(H16*$D$22)+(H17*$C$22)",
       "cached_distinct_values": [
         1.15,
         1.35
       ],
-      "dscr_step_up_targets": {"B22": 1.15, "C22": 1.35, "D22": 1.65},
-      "dscr_role_evidence": "Formula extracted (period 1): =($B$22*G15)+(G16*$D$22)+(G17*$C$22); step-up targets B22=1.15, C22=1.35, D22=1.65"
+      "dscr_step_up_targets": {
+        "B22": 1.15,
+        "C22": 1.35,
+        "D22": 1.65
+      },
+      "dscr_role_evidence": "Formula extracted (period 1): =($B$22*H15)+(H16*$D$22)+(H17*$C$22); step-up targets B22=1.15, C22=1.35, D22=1.65"
     },
     "debt_sizing_verdict": "DEBT_SIZING_FORMULA_CHAIN_PARTIALLY_PROVED",
-    "verdict_rationale": "D192==DS!D51 → SUM(G51:DW51) → DS!G62=(G3=0)*$B$62 → DS!B62=Inputs!$D$195*B60 → Inputs!D195=MIN(DS!$D$47=42852.279 kEUR, CAPEX*gearing=46378.442 kEUR). Binding constraint: DSCR_SCULPTING (DS!D47=42852.279 < gearing cap=46378.442). DS!G47 contains iterative reference (sculpting loop) not fully resolvable from static formula inspection; chain is PARTIALLY_PROVED. No Goal Seek / macro evidence found.",
+    "verdict_rationale": "D192==DS!D51 \u2192 DS!D51==SUM(G51:DW51) \u2192 SUM of drawdown row \u2192 DS!G62==(G3=0)*$B$62 \u2192 DS!B62==Inputs!$D$195*B60 \u2192 Inputs!D195==MIN(DS!$D$47,G171*$D$230) = MIN(DS!D47=42852.279 kEUR, CAPEX\u00d7gearing=46378.442 kEUR). Binding constraint: DSCR_SCULPTING (DS!D47=42852.279 < gearing cap=46378.442). DS!G47 contains iterative reference (sculpting loop) not fully resolvable from static formula inspection; chain is PARTIALLY_PROVED. No Goal Seek / macro evidence found.",
     "manual_check_pack": [
       {
         "priority": 1,
         "sheet": "Inputs",
         "cell": "D192",
         "current_value": 42852.279,
-        "question": "Is this a hardcoded input or the result of a Goal Seek / macro that sized the debt?"
+        "question": "Is D192 a hardcoded input or the result of Goal Seek / macro?",
+        "status": "RESOLVED",
+        "resolution": "D192 = '=DS!D51' (FORMULA_DERIVED). Not a literal or Goal Seek result."
       },
       {
         "priority": 2,
         "sheet": "DS",
         "cell": "Row 22 (DSCR target)",
         "current_value": "1.15 (p1-24), 1.35 (p25-28)",
-        "question": "Is the DSCR step-up from 1.15 to 1.35 at period 25 a hardcoded formula or a lookup from Inputs?"
+        "question": "Is the DSCR step-up at period 25 a hardcoded formula or a lookup from Inputs?",
+        "status": "RESOLVED",
+        "resolution": "DS!G22 = '=($B$22*G15)+(G16*$D$22)+(G17*$C$22)'. Step-up targets: B22=1.15, C22=1.35, D22=1.65. Formula-derived from named cells."
       },
       {
         "priority": 3,
         "sheet": "DS",
         "cell": "Row 20 (CFADS)",
         "current_value": "2,575 kEUR (p1)",
-        "question": "Does CFADS include / exclude DSRA movements and is SHL service below the line?"
+        "question": "Does CFADS include / exclude DSRA movements? Is SHL service below the line?",
+        "status": "OPEN"
       },
       {
         "priority": 4,
         "sheet": "Inputs",
         "cell": "D45 (Total CAPEX)",
         "current_value": 57973.053,
-        "question": "Is the eligible debt base the full CAPEX (57,973) or a sub-item?"
+        "question": "Is the eligible debt base the full CAPEX (57,973) or a sub-item?",
+        "status": "RESOLVED",
+        "resolution": "Inputs!G171 = SUM(G165:G170) = 57,973.053 kEUR; gearing cap = D230\u00d7G171 = 46,378 kEUR. Full CAPEX confirmed as the gearing base."
       },
       {
         "priority": 5,
         "sheet": "DS",
-        "cell": "SD repayment formula rows 52/53",
-        "current_value": "Circular sculpted schedule",
-        "question": "Does the repayment schedule contain a circular reference that requires iterative calculation? Is debt sizing driven by a sculpting loop or by the FIXED D192 input?"
+        "cell": "Row 50/51",
+        "current_value": "Opening 0 \u2192 42,852 at p0 drawdown",
+        "question": "Does DS row 51 drawdown formula reference =Inputs!D192 directly?",
+        "status": "RESOLVED",
+        "resolution": "DS!G51 = '=G62+G72'; DS!B62 = '=Inputs!$D$195*B60'. D51 does NOT reference D192 directly; D192 reads DS!D51. Sizing flows Inputs!D195 \u2192 DS!B62 \u2192 DS!G62 \u2192 DS!G51 \u2192 DS!D51 \u2192 Inputs!D192."
       },
       {
         "priority": 6,
         "sheet": "DS",
-        "cell": "Row 50 / 51",
-        "current_value": "Opening 0 \u2192 42,852 at p0 drawdown",
-        "question": "Is the single-tranche construction drawdown formula =Inputs!D192, confirming D192 drives the entire schedule?"
+        "cell": "Principal rows 52/53",
+        "current_value": "Circular sculpted schedule",
+        "question": "Does the repayment schedule contain a circular reference? Is D192 driven by or driving the schedule?",
+        "status": "OPEN",
+        "note": "DS!G47 has iterative backward reference (H47 in period G column). Circular resolution not fully traceable from static formula inspection."
       },
       {
         "priority": 7,
         "sheet": "Inputs",
-        "cell": "Check for gearing cap input",
+        "cell": "Gearing cap input",
         "current_value": "Actual gearing = 73.9%",
-        "question": "Is there an explicit gearing cap (e.g., 74% of CAPEX) that determined the 42,852 figure?"
+        "question": "Is there an explicit gearing cap cell that determined 42,852?",
+        "status": "RESOLVED",
+        "resolution": "Inputs!D230 = '=Scenarios!E348' = 0.80 (80% gearing cap). Gearing cap = 46,378 kEUR > DS!D47 = 42,852 kEUR \u2192 NOT binding. Binding constraint is DSCR sculpting."
       },
       {
         "priority": 8,
         "sheet": "DS",
         "cell": "DSRA rows",
         "current_value": "Unknown",
-        "question": "Is there a Debt Service Reserve Account? If yes, how is it funded and does it reduce CFADS?"
+        "question": "Is there a DSRA? How is it funded \u2014 does it reduce CFADS?",
+        "status": "OPEN"
       },
       {
         "priority": 9,
         "sheet": "IDC",
         "cell": "IDC total",
         "current_value": "1,086 kEUR (from CAPEX inputs)",
-        "question": "Are IDC and commitment fees (1,275 kEUR) included in the eligible debt base or excluded?"
+        "question": "Are IDC and commitment fees (1,275 kEUR) included in the eligible debt base?",
+        "status": "OPEN"
       },
       {
         "priority": 10,
         "sheet": "Inputs / DS",
         "cell": "Hedge percentage",
         "current_value": "Unknown",
-        "question": "Is the interest rate fixed (5.65%) or does it include a hedged vs unhedged split?"
+        "question": "Is 5.65% a fixed all-in rate or hedged vs unhedged split?",
+        "status": "OPEN"
       }
     ]
   }

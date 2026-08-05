@@ -3,8 +3,7 @@
 SOURCE: d49af8ee-20260414_BP_Oborovo_Sensitivity_FINAL_for_PPT.xlsm
 SHA-256: 15a621c4d6b79024980766e00ebc79d7235fd56f00567be7bf345c769ce57920
 
-Extractor version: 3.3.0 (dual-load; adds LCF roll-forward, tax milestones, periodisation mismatch,
-Croatian legal LCF pro forma, evidence-based debt-sizing section)
+Extractor version: see _EXTRACTOR_VERSION constant below.
 
 Groups
 ------
@@ -115,7 +114,7 @@ import pytest
 
 _FIXTURE = pathlib.Path("tests/fixtures/excel_oborovo_financial_truth.json")
 _WORKBOOK_SHA = "15a621c4d6b79024980766e00ebc79d7235fd56f00567be7bf345c769ce57920"
-_EXTRACTOR_VERSION = "3.3.0"
+_EXTRACTOR_VERSION = "3.4.0"
 # Base SHA from which this branch was created; used by financial-freeze tests
 _BASE_SHA = "b11e5bf7b9ab60bae174081e7d9f8541190bf371"
 
@@ -1839,4 +1838,39 @@ class TestSDebtSizingEvidence:
         assert val is not None, "D192 cached value must not be null (workbook was loaded)"
         assert 30_000 < val < 70_000, (
             f"D192 cached value {val:.0f} kEUR outside plausible range [30,000; 70,000]"
+        )
+
+    def test_direct_cell_access_returns_formula_not_none(self):
+        """Synthetic: wb[sheet][cell].value with data_only=False returns formula string, not None.
+
+        Proves the direct-access pattern used by _derive_debt_sizing_from_workbook() is correct.
+        Uses openpyxl directly on the workbook if available; skips gracefully in CI.
+        """
+        import importlib.util
+        if importlib.util.find_spec("openpyxl") is None:
+            pytest.skip("openpyxl not installed")
+
+        workbook_path = (
+            "/root/.claude/uploads/"
+            "cf21b552-592a-5e8f-9047-8b832e416372/"
+            "d49af8ee-20260414_BP_Oborovo_Sensitivity_FINAL_for_PPT.xlsm"
+        )
+        import pathlib
+        if not pathlib.Path(workbook_path).exists():
+            pytest.skip("Workbook binary not present in this environment")
+
+        import openpyxl
+        wb_formula = openpyxl.load_workbook(workbook_path, data_only=False)
+        # Direct cell access must return formula string, not None
+        val = wb_formula["Inputs"]["D192"].value
+        wb_formula.close()
+        assert val is not None, (
+            "wb_formula['Inputs']['D192'].value returned None — "
+            "direct cell access failed; iter_rows fallback would also return None"
+        )
+        assert isinstance(val, str) and val.startswith("="), (
+            f"Expected formula string starting with '='; got {val!r}"
+        )
+        assert val == "=DS!D51", (
+            f"Inputs!D192 direct-access formula must be '=DS!D51'; got {val!r}"
         )
