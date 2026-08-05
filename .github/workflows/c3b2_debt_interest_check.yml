@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - stage-c3b2-oborovo-debt-interest-source-closure
+      - claude/festive-cerf-uaq5hb
       - main
     paths:
       - finco_recon/extract_oborovo_debt_interest.py
@@ -37,20 +38,37 @@ jobs:
       - name: Install dependencies
         run: |
           pip install --upgrade pip
-          pip install -e ".[dev]" 2>/dev/null || pip install -r requirements.txt 2>/dev/null || pip install pytest openpyxl
+          pip install pytest openpyxl
+          if [ -f pyproject.toml ] || [ -f setup.py ] || [ -f setup.cfg ]; then
+            pip install -e . --no-deps
+          fi
+
+      - name: Report HEAD SHA
+        run: |
+          echo "HEAD SHA: $(git rev-parse HEAD)"
+          echo "Branch: $(git rev-parse --abbrev-ref HEAD)"
 
       - name: Run C3B2 tests
         run: |
           python -m pytest tests/test_stage_c3b2_oborovo_debt_interest_source_closure.py \
             -v \
-            --tb=short \
-            -q
+            --tb=short
+
+      - name: Report exact test count
+        run: |
+          COUNT=$(python -m pytest tests/test_stage_c3b2_oborovo_debt_interest_source_closure.py \
+            --collect-only -q 2>&1 | grep -E '^[0-9]+ test' | awk '{print $1}')
+          echo "Tests collected: ${COUNT}"
+          if [ "${COUNT}" -lt 80 ]; then
+            echo "ERROR: Expected >= 80 tests, found ${COUNT}"
+            exit 1
+          fi
 
       - name: Verify extractor version
         run: |
           python -c "
           from finco_recon.extract_oborovo_debt_interest import _EXTRACTOR_VERSION
-          assert _EXTRACTOR_VERSION == '1.0.0', f'Expected 1.0.0, got {_EXTRACTOR_VERSION}'
+          assert _EXTRACTOR_VERSION == '2.0.0', f'Expected 2.0.0, got {_EXTRACTOR_VERSION}'
           print(f'Extractor version OK: {_EXTRACTOR_VERSION}')
           "
 
@@ -69,3 +87,46 @@ jobs:
           assert verdict in valid, f'Unknown verdict: {verdict}'
           print(f'Fixture verdict OK: {verdict}')
           "
+
+      - name: Verify fixture status is COMPUTED
+        run: |
+          python -c "
+          import json, pathlib
+          truth = json.loads(pathlib.Path('tests/fixtures/excel_oborovo_debt_interest_truth.json').read_text())
+          status = truth['equal_input_equal_policy']['status']
+          assert status == 'COMPUTED', f'Expected COMPUTED, got {status}'
+          print(f'Fixture status OK: {status}')
+          "
+
+      - name: Verify no MANUAL_EXPLORATION placeholders
+        run: |
+          python -c "
+          import json, pathlib
+          text = pathlib.Path('tests/fixtures/excel_oborovo_debt_interest_truth.json').read_text()
+          assert 'MANUAL_EXPLORATION' not in text, 'Fixture contains MANUAL_EXPLORATION placeholder'
+          print('No MANUAL_EXPLORATION placeholders found')
+          "
+
+      - name: Verify production paths untouched
+        run: |
+          BASE_SHA="1fb4943a4319eff8f4ac7a22add6f65f14bd8cec"
+          CHANGED=$(git diff "${BASE_SHA}...HEAD" --name-only 2>/dev/null || git diff HEAD~1 --name-only)
+          echo "Changed files:"
+          echo "${CHANGED}"
+          FORBIDDEN=$(echo "${CHANGED}" | grep -E '^(financial_engine/|app/|finco_core/)' || true)
+          if [ -n "${FORBIDDEN}" ]; then
+            echo "ERROR: Production paths modified:"
+            echo "${FORBIDDEN}"
+            exit 1
+          fi
+          echo "Production paths untouched: OK"
+
+      - name: C3B1 regression check
+        run: |
+          if [ -f tests/test_stage_c3b1_oborovo_debt_interest_source_closure.py ]; then
+            python -m pytest tests/test_stage_c3b1_oborovo_debt_interest_source_closure.py \
+              -v --tb=short -q
+            echo "C3B1 regression: PASSED"
+          else
+            echo "C3B1 test file not present — skipping regression check"
+          fi
