@@ -16,7 +16,7 @@
 |------|--------|
 | `finco_recon/extract_oborovo_excel.py` | v3.4.0; fixes LCF expiry boundary (`yr > orig_yr + 5`); rewrites `_derive_debt_sizing_from_workbook()` with direct cell access and DS!D51 chain evidence; v3.3.0: adds `_derive_croatian_legal_lcf_proforma()`, `WORKBOOK_LCF_MECHANICS_PROVED`, `periodisation_mismatch` |
 | `tests/fixtures/excel_oborovo_financial_truth.json` | Regenerated v3.4.0; `d192_evidence.formula_mode_content = "=DS!D51"`, `source_classification = FORMULA_DERIVED`; new `ds_d51_chain` section; verdict `DEBT_SIZING_FORMULA_CHAIN_PARTIALLY_PROVED` |
-| `tests/test_stage_c3b1_oborovo_tax_source_truth.py` | 133 tests (A–S + Q2); Group Q2: 2 LCF boundary synthetic tests; Group S: D192 formula/chain/verdict assertions, direct-cell-access synthetic test |
+| `tests/test_stage_c3b1_oborovo_tax_source_truth.py` | 132 tests (A–S + Q2); Group Q2: 2 LCF boundary synthetic tests; Group S: D192 formula/chain/verdict assertions, direct-cell-access synthetic test (tmp_path, CI-portable) |
 | `docs/reconciliation/oborovo_tax_source_truth.md` | This file |
 | `.github/workflows/c3b1_diagnostic_check.yml` | New CI workflow running only `test_stage_c3b1_oborovo_tax_source_truth.py` |
 

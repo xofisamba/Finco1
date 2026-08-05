@@ -26,7 +26,7 @@ P  Regression guard (pre-existing failures do not increase)
 
 Verdict
 -------
-C3B1_SOURCE_TRUTH_COMPLETE_INTEREST_POLICY_UNRESOLVED
+C3B1_SOURCE_TRUTH_PARTIAL_MANUAL_CHECK_REQUIRED
 
 The full taxable income formula is proved:
     TI = EBT + FR = EBIT + taxable_financial_income - Senior_Interest
@@ -114,7 +114,9 @@ import pytest
 
 _FIXTURE = pathlib.Path("tests/fixtures/excel_oborovo_financial_truth.json")
 _WORKBOOK_SHA = "15a621c4d6b79024980766e00ebc79d7235fd56f00567be7bf345c769ce57920"
-_EXTRACTOR_VERSION = "3.4.0"
+# Single source of truth: import version constant from the extractor itself.
+# The test fails if the extractor version changes without fixture regeneration.
+from finco_recon.extract_oborovo_excel import _EXTRACTOR_VERSION
 # Base SHA from which this branch was created; used by financial-freeze tests
 _BASE_SHA = "b11e5bf7b9ab60bae174081e7d9f8541190bf371"
 
@@ -1840,37 +1842,38 @@ class TestSDebtSizingEvidence:
             f"D192 cached value {val:.0f} kEUR outside plausible range [30,000; 70,000]"
         )
 
-    def test_direct_cell_access_returns_formula_not_none(self):
+    def test_direct_cell_access_returns_formula_not_none(self, tmp_path):
         """Synthetic: wb[sheet][cell].value with data_only=False returns formula string, not None.
 
-        Proves the direct-access pattern used by _derive_debt_sizing_from_workbook() is correct.
-        Uses openpyxl directly on the workbook if available; skips gracefully in CI.
+        Proves the direct-access pattern used by _derive_debt_sizing_from_workbook().
+        Creates a minimal in-memory workbook — no absolute paths, runs identically in CI.
         """
-        import importlib.util
-        if importlib.util.find_spec("openpyxl") is None:
-            pytest.skip("openpyxl not installed")
-
-        workbook_path = (
-            "/root/.claude/uploads/"
-            "cf21b552-592a-5e8f-9047-8b832e416372/"
-            "d49af8ee-20260414_BP_Oborovo_Sensitivity_FINAL_for_PPT.xlsm"
-        )
-        import pathlib
-        if not pathlib.Path(workbook_path).exists():
-            pytest.skip("Workbook binary not present in this environment")
-
         import openpyxl
-        wb_formula = openpyxl.load_workbook(workbook_path, data_only=False)
-        # Direct cell access must return formula string, not None
+
+        # Build a minimal workbook that mirrors the relevant cell layout
+        wb = openpyxl.Workbook()
+        wb.active.title = "Inputs"
+        ws_inp = wb["Inputs"]
+        ws_ds = wb.create_sheet("DS")
+
+        # Write formula strings (openpyxl stores formula text when data_only=False)
+        ws_inp["D192"] = "=DS!D51"
+        ws_ds["D51"] = "=SUM(G51:DW51)"
+
+        wb_path = tmp_path / "synthetic_test.xlsx"
+        wb.save(str(wb_path))
+        wb.close()
+
+        # Reload with data_only=False — formula text must be returned by direct cell access
+        wb_formula = openpyxl.load_workbook(str(wb_path), data_only=False)
         val = wb_formula["Inputs"]["D192"].value
         wb_formula.close()
+
         assert val is not None, (
             "wb_formula['Inputs']['D192'].value returned None — "
-            "direct cell access failed; iter_rows fallback would also return None"
-        )
-        assert isinstance(val, str) and val.startswith("="), (
-            f"Expected formula string starting with '='; got {val!r}"
+            "direct cell access with data_only=False must return formula text"
         )
         assert val == "=DS!D51", (
-            f"Inputs!D192 direct-access formula must be '=DS!D51'; got {val!r}"
+            f"Expected '=DS!D51'; got {val!r}. "
+            "Direct cell access pattern used by _derive_debt_sizing_from_workbook() is broken."
         )
