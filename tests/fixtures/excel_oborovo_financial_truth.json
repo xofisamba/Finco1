@@ -1,7 +1,7 @@
 {
   "_extraction_timestamp_utc": "2026-08-05T08:41:39.340052Z",
   "_meta": {
-    "extractor_version": "3.1.0",
+    "extractor_version": "3.2.0",
     "source_filename": "d49af8ee-20260414_BP_Oborovo_Sensitivity_FINAL_for_PPT.xlsm",
     "source_sha256": "15a621c4d6b79024980766e00ebc79d7235fd56f00567be7bf345c769ce57920",
     "sheets_inspected": [
@@ -11314,6 +11314,1459 @@
         "C_col_cached": 1.0,
         "D_col_cached": true
       }
+    },
+    "lcf_rollforward": [
+      {
+        "period": 1,
+        "period_bop_date": "2030-07-01",
+        "period_eop_date": "2030-12-31",
+        "calendar_tax_year": 2030,
+        "taxable_income_keur": -219.157,
+        "lcf_opening_keur": 0.0,
+        "allocated_losses_keur": 0.0,
+        "losses_expired_keur": 0.0,
+        "lcf_closing_keur": -219.157,
+        "taxable_profit_keur": -219.157,
+        "cit_keur": 0.0,
+        "cash_tax_keur": 0.0,
+        "cit_pairing_bucket": null
+      },
+      {
+        "period": 2,
+        "period_bop_date": "2031-01-01",
+        "period_eop_date": "2031-06-30",
+        "calendar_tax_year": 2031,
+        "taxable_income_keur": -187.587,
+        "lcf_opening_keur": -219.157,
+        "allocated_losses_keur": 0.0,
+        "losses_expired_keur": 0.0,
+        "lcf_closing_keur": -406.744,
+        "taxable_profit_keur": -187.587,
+        "cit_keur": 0.0,
+        "cash_tax_keur": 0.0,
+        "cit_pairing_bucket": "CIT_pair_1_2"
+      },
+      {
+        "period": 3,
+        "period_bop_date": "2031-07-01",
+        "period_eop_date": "2031-12-31",
+        "calendar_tax_year": 2031,
+        "taxable_income_keur": -132.505,
+        "lcf_opening_keur": -406.744,
+        "allocated_losses_keur": 0.0,
+        "losses_expired_keur": 0.0,
+        "lcf_closing_keur": -539.248,
+        "taxable_profit_keur": -132.505,
+        "cit_keur": 0.0,
+        "cash_tax_keur": 0.0,
+        "cit_pairing_bucket": null
+      },
+      {
+        "period": 4,
+        "period_bop_date": "2032-01-01",
+        "period_eop_date": "2032-06-30",
+        "calendar_tax_year": 2032,
+        "taxable_income_keur": -38.795,
+        "lcf_opening_keur": -539.248,
+        "allocated_losses_keur": 0.0,
+        "losses_expired_keur": 0.0,
+        "lcf_closing_keur": -578.044,
+        "taxable_profit_keur": -38.795,
+        "cit_keur": 0.0,
+        "cash_tax_keur": 0.0,
+        "cit_pairing_bucket": "CIT_pair_3_4"
+      },
+      {
+        "period": 5,
+        "period_bop_date": "2032-07-01",
+        "period_eop_date": "2032-12-31",
+        "calendar_tax_year": 2032,
+        "taxable_income_keur": -3.675,
+        "lcf_opening_keur": -578.044,
+        "allocated_losses_keur": 0.0,
+        "losses_expired_keur": 0.0,
+        "lcf_closing_keur": -581.719,
+        "taxable_profit_keur": -3.675,
+        "cit_keur": 0.0,
+        "cash_tax_keur": 0.0,
+        "cit_pairing_bucket": null
+      },
+      {
+        "period": 6,
+        "period_bop_date": "2033-01-01",
+        "period_eop_date": "2033-06-30",
+        "calendar_tax_year": 2033,
+        "taxable_income_keur": 92.716,
+        "lcf_opening_keur": -581.719,
+        "allocated_losses_keur": 0.0,
+        "losses_expired_keur": 219.157,
+        "lcf_closing_keur": -362.562,
+        "taxable_profit_keur": 92.716,
+        "cit_keur": 8.904,
+        "cash_tax_keur": -8.904,
+        "cit_pairing_bucket": "CIT_pair_5_6"
+      },
+      {
+        "period": 7,
+        "period_bop_date": "2033-07-01",
+        "period_eop_date": "2033-12-31",
+        "calendar_tax_year": 2033,
+        "taxable_income_keur": 107.381,
+        "lcf_opening_keur": -362.562,
+        "allocated_losses_keur": 0.0,
+        "losses_expired_keur": 187.587,
+        "lcf_closing_keur": -174.976,
+        "taxable_profit_keur": 107.381,
+        "cit_keur": 0.0,
+        "cash_tax_keur": 0.0,
+        "cit_pairing_bucket": null
+      },
+      {
+        "period": 8,
+        "period_bop_date": "2034-01-01",
+        "period_eop_date": "2034-06-30",
+        "calendar_tax_year": 2034,
+        "taxable_income_keur": 205.988,
+        "lcf_opening_keur": -174.976,
+        "allocated_losses_keur": 0.0,
+        "losses_expired_keur": 132.505,
+        "lcf_closing_keur": -42.471,
+        "taxable_profit_keur": 205.988,
+        "cit_keur": 31.337,
+        "cash_tax_keur": -31.337,
+        "cit_pairing_bucket": "CIT_pair_7_8"
+      },
+      {
+        "period": 9,
+        "period_bop_date": "2034-07-01",
+        "period_eop_date": "2034-12-31",
+        "calendar_tax_year": 2034,
+        "taxable_income_keur": 221.784,
+        "lcf_opening_keur": -42.471,
+        "allocated_losses_keur": 0.0,
+        "losses_expired_keur": 38.795,
+        "lcf_closing_keur": -3.675,
+        "taxable_profit_keur": 221.784,
+        "cit_keur": 0.0,
+        "cash_tax_keur": 0.0,
+        "cit_pairing_bucket": null
+      },
+      {
+        "period": 10,
+        "period_bop_date": "2035-01-01",
+        "period_eop_date": "2035-06-30",
+        "calendar_tax_year": 2035,
+        "taxable_income_keur": 322.76,
+        "lcf_opening_keur": -3.675,
+        "allocated_losses_keur": 0.0,
+        "losses_expired_keur": 3.675,
+        "lcf_closing_keur": 0,
+        "taxable_profit_keur": 322.76,
+        "cit_keur": 54.454,
+        "cash_tax_keur": -54.454,
+        "cit_pairing_bucket": "CIT_pair_9_10"
+      },
+      {
+        "period": 11,
+        "period_bop_date": "2035-07-01",
+        "period_eop_date": "2035-12-31",
+        "calendar_tax_year": 2035,
+        "taxable_income_keur": 338.271,
+        "lcf_opening_keur": 0.0,
+        "allocated_losses_keur": 0.0,
+        "losses_expired_keur": -0.0,
+        "lcf_closing_keur": 0,
+        "taxable_profit_keur": 338.271,
+        "cit_keur": 0.0,
+        "cash_tax_keur": 0.0,
+        "cit_pairing_bucket": null
+      },
+      {
+        "period": 12,
+        "period_bop_date": "2036-01-01",
+        "period_eop_date": "2036-06-30",
+        "calendar_tax_year": 2036,
+        "taxable_income_keur": 443.885,
+        "lcf_opening_keur": 0.0,
+        "allocated_losses_keur": 0.0,
+        "losses_expired_keur": -0.0,
+        "lcf_closing_keur": 0,
+        "taxable_profit_keur": 443.885,
+        "cit_keur": 78.216,
+        "cash_tax_keur": -78.216,
+        "cit_pairing_bucket": "CIT_pair_11_12"
+      },
+      {
+        "period": 13,
+        "period_bop_date": "2036-07-01",
+        "period_eop_date": "2036-12-31",
+        "calendar_tax_year": 2036,
+        "taxable_income_keur": 468.382,
+        "lcf_opening_keur": 0.0,
+        "allocated_losses_keur": 0.0,
+        "losses_expired_keur": -0.0,
+        "lcf_closing_keur": 0,
+        "taxable_profit_keur": 468.382,
+        "cit_keur": 0.0,
+        "cash_tax_keur": 0.0,
+        "cit_pairing_bucket": null
+      },
+      {
+        "period": 14,
+        "period_bop_date": "2037-01-01",
+        "period_eop_date": "2037-06-30",
+        "calendar_tax_year": 2037,
+        "taxable_income_keur": 574.526,
+        "lcf_opening_keur": 0.0,
+        "allocated_losses_keur": 0.0,
+        "losses_expired_keur": -0.0,
+        "lcf_closing_keur": 0,
+        "taxable_profit_keur": 574.526,
+        "cit_keur": 104.291,
+        "cash_tax_keur": -104.291,
+        "cit_pairing_bucket": "CIT_pair_13_14"
+      },
+      {
+        "period": 15,
+        "period_bop_date": "2037-07-01",
+        "period_eop_date": "2037-12-31",
+        "calendar_tax_year": 2037,
+        "taxable_income_keur": 603.095,
+        "lcf_opening_keur": 0.0,
+        "allocated_losses_keur": 0.0,
+        "losses_expired_keur": -0.0,
+        "lcf_closing_keur": 0,
+        "taxable_profit_keur": 603.095,
+        "cit_keur": 0.0,
+        "cash_tax_keur": 0.0,
+        "cit_pairing_bucket": null
+      },
+      {
+        "period": 16,
+        "period_bop_date": "2038-01-01",
+        "period_eop_date": "2038-06-30",
+        "calendar_tax_year": 2038,
+        "taxable_income_keur": 712.019,
+        "lcf_opening_keur": 0.0,
+        "allocated_losses_keur": 0.0,
+        "losses_expired_keur": -0.0,
+        "lcf_closing_keur": 0,
+        "taxable_profit_keur": 712.019,
+        "cit_keur": 131.511,
+        "cash_tax_keur": -131.511,
+        "cit_pairing_bucket": "CIT_pair_15_16"
+      },
+      {
+        "period": 17,
+        "period_bop_date": "2038-07-01",
+        "period_eop_date": "2038-12-31",
+        "calendar_tax_year": 2038,
+        "taxable_income_keur": 746.277,
+        "lcf_opening_keur": 0.0,
+        "allocated_losses_keur": 0.0,
+        "losses_expired_keur": -0.0,
+        "lcf_closing_keur": 0,
+        "taxable_profit_keur": 746.277,
+        "cit_keur": 0.0,
+        "cash_tax_keur": 0.0,
+        "cit_pairing_bucket": null
+      },
+      {
+        "period": 18,
+        "period_bop_date": "2039-01-01",
+        "period_eop_date": "2039-06-30",
+        "calendar_tax_year": 2039,
+        "taxable_income_keur": 858.104,
+        "lcf_opening_keur": 0.0,
+        "allocated_losses_keur": 0.0,
+        "losses_expired_keur": -0.0,
+        "lcf_closing_keur": 0,
+        "taxable_profit_keur": 858.104,
+        "cit_keur": 160.438,
+        "cash_tax_keur": -160.438,
+        "cit_pairing_bucket": "CIT_pair_17_18"
+      },
+      {
+        "period": 19,
+        "period_bop_date": "2039-07-01",
+        "period_eop_date": "2039-12-31",
+        "calendar_tax_year": 2039,
+        "taxable_income_keur": 894.346,
+        "lcf_opening_keur": 0.0,
+        "allocated_losses_keur": 0.0,
+        "losses_expired_keur": -0.0,
+        "lcf_closing_keur": 0,
+        "taxable_profit_keur": 894.346,
+        "cit_keur": 0.0,
+        "cash_tax_keur": 0.0,
+        "cit_pairing_bucket": null
+      },
+      {
+        "period": 20,
+        "period_bop_date": "2040-01-01",
+        "period_eop_date": "2040-06-30",
+        "calendar_tax_year": 2040,
+        "taxable_income_keur": 1014.444,
+        "lcf_opening_keur": 0.0,
+        "allocated_losses_keur": 0.0,
+        "losses_expired_keur": -0.0,
+        "lcf_closing_keur": 0,
+        "taxable_profit_keur": 1014.444,
+        "cit_keur": 190.879,
+        "cash_tax_keur": -190.879,
+        "cit_pairing_bucket": "CIT_pair_19_20"
+      },
+      {
+        "period": 21,
+        "period_bop_date": "2040-07-01",
+        "period_eop_date": "2040-12-31",
+        "calendar_tax_year": 2040,
+        "taxable_income_keur": 864.088,
+        "lcf_opening_keur": 0.0,
+        "allocated_losses_keur": 0.0,
+        "losses_expired_keur": -0.0,
+        "lcf_closing_keur": 0,
+        "taxable_profit_keur": 864.088,
+        "cit_keur": 0.0,
+        "cash_tax_keur": 0.0,
+        "cit_pairing_bucket": null
+      },
+      {
+        "period": 22,
+        "period_bop_date": "2041-01-01",
+        "period_eop_date": "2041-06-30",
+        "calendar_tax_year": 2041,
+        "taxable_income_keur": 980.261,
+        "lcf_opening_keur": 0.0,
+        "allocated_losses_keur": 0.0,
+        "losses_expired_keur": -0.0,
+        "lcf_closing_keur": 0,
+        "taxable_profit_keur": 980.261,
+        "cit_keur": 184.435,
+        "cash_tax_keur": -184.435,
+        "cit_pairing_bucket": "CIT_pair_21_22"
+      },
+      {
+        "period": 23,
+        "period_bop_date": "2041-07-01",
+        "period_eop_date": "2041-12-31",
+        "calendar_tax_year": 2041,
+        "taxable_income_keur": 1026.081,
+        "lcf_opening_keur": 0.0,
+        "allocated_losses_keur": 0.0,
+        "losses_expired_keur": -0.0,
+        "lcf_closing_keur": 0,
+        "taxable_profit_keur": 1026.081,
+        "cit_keur": 0.0,
+        "cash_tax_keur": 0.0,
+        "cit_pairing_bucket": null
+      },
+      {
+        "period": 24,
+        "period_bop_date": "2042-01-01",
+        "period_eop_date": "2042-06-30",
+        "calendar_tax_year": 2042,
+        "taxable_income_keur": 1145.347,
+        "lcf_opening_keur": 0.0,
+        "allocated_losses_keur": 0.0,
+        "losses_expired_keur": -0.0,
+        "lcf_closing_keur": 0,
+        "taxable_profit_keur": 1145.347,
+        "cit_keur": 217.143,
+        "cash_tax_keur": -217.143,
+        "cit_pairing_bucket": "CIT_pair_23_24"
+      },
+      {
+        "period": 25,
+        "period_bop_date": "2042-07-01",
+        "period_eop_date": "2042-12-31",
+        "calendar_tax_year": 2042,
+        "taxable_income_keur": 1396.61,
+        "lcf_opening_keur": 0.0,
+        "allocated_losses_keur": 0.0,
+        "losses_expired_keur": -0.0,
+        "lcf_closing_keur": 0,
+        "taxable_profit_keur": 1396.61,
+        "cit_keur": 0.0,
+        "cash_tax_keur": 0.0,
+        "cit_pairing_bucket": null
+      },
+      {
+        "period": 26,
+        "period_bop_date": "2043-01-01",
+        "period_eop_date": "2043-06-30",
+        "calendar_tax_year": 2043,
+        "taxable_income_keur": 1454.457,
+        "lcf_opening_keur": 0.0,
+        "allocated_losses_keur": 0.0,
+        "losses_expired_keur": -0.0,
+        "lcf_closing_keur": 0,
+        "taxable_profit_keur": 1454.457,
+        "cit_keur": 285.107,
+        "cash_tax_keur": -285.107,
+        "cit_pairing_bucket": "CIT_pair_25_26"
+      },
+      {
+        "period": 27,
+        "period_bop_date": "2043-07-01",
+        "period_eop_date": "2043-12-31",
+        "calendar_tax_year": 2043,
+        "taxable_income_keur": 1487.801,
+        "lcf_opening_keur": 0.0,
+        "allocated_losses_keur": 0.0,
+        "losses_expired_keur": -0.0,
+        "lcf_closing_keur": 0,
+        "taxable_profit_keur": 1487.801,
+        "cit_keur": 0.0,
+        "cash_tax_keur": 0.0,
+        "cit_pairing_bucket": null
+      },
+      {
+        "period": 28,
+        "period_bop_date": "2044-01-01",
+        "period_eop_date": "2044-06-30",
+        "calendar_tax_year": 2044,
+        "taxable_income_keur": 1528.377,
+        "lcf_opening_keur": 0.0,
+        "allocated_losses_keur": 0.0,
+        "losses_expired_keur": -0.0,
+        "lcf_closing_keur": 0,
+        "taxable_profit_keur": 1528.377,
+        "cit_keur": 301.618,
+        "cash_tax_keur": -301.618,
+        "cit_pairing_bucket": "CIT_pair_27_28"
+      },
+      {
+        "period": 29,
+        "period_bop_date": "2044-07-01",
+        "period_eop_date": "2044-12-31",
+        "calendar_tax_year": 2044,
+        "taxable_income_keur": 1577.467,
+        "lcf_opening_keur": 0.0,
+        "allocated_losses_keur": 0.0,
+        "losses_expired_keur": -0.0,
+        "lcf_closing_keur": 0,
+        "taxable_profit_keur": 1577.467,
+        "cit_keur": 0.0,
+        "cash_tax_keur": 0.0,
+        "cit_pairing_bucket": null
+      },
+      {
+        "period": 30,
+        "period_bop_date": "2045-01-01",
+        "period_eop_date": "2045-06-30",
+        "calendar_tax_year": 2045,
+        "taxable_income_keur": 1454.651,
+        "lcf_opening_keur": 0.0,
+        "allocated_losses_keur": 0.0,
+        "losses_expired_keur": -0.0,
+        "lcf_closing_keur": 0,
+        "taxable_profit_keur": 1454.651,
+        "cit_keur": 303.212,
+        "cash_tax_keur": -303.212,
+        "cit_pairing_bucket": "CIT_pair_29_30"
+      },
+      {
+        "period": 31,
+        "period_bop_date": "2045-07-01",
+        "period_eop_date": "2045-12-31",
+        "calendar_tax_year": 2045,
+        "taxable_income_keur": 1449.62,
+        "lcf_opening_keur": 0.0,
+        "allocated_losses_keur": 0.0,
+        "losses_expired_keur": -0.0,
+        "lcf_closing_keur": 0,
+        "taxable_profit_keur": 1449.62,
+        "cit_keur": 0.0,
+        "cash_tax_keur": 0.0,
+        "cit_pairing_bucket": null
+      },
+      {
+        "period": 32,
+        "period_bop_date": "2046-01-01",
+        "period_eop_date": "2046-06-30",
+        "calendar_tax_year": 2046,
+        "taxable_income_keur": 1510.395,
+        "lcf_opening_keur": 0.0,
+        "allocated_losses_keur": 0.0,
+        "losses_expired_keur": -0.0,
+        "lcf_closing_keur": 0,
+        "taxable_profit_keur": 1510.395,
+        "cit_keur": 296.001,
+        "cash_tax_keur": -296.001,
+        "cit_pairing_bucket": "CIT_pair_31_32"
+      },
+      {
+        "period": 33,
+        "period_bop_date": "2046-07-01",
+        "period_eop_date": "2046-12-31",
+        "calendar_tax_year": 2046,
+        "taxable_income_keur": 1505.733,
+        "lcf_opening_keur": 0.0,
+        "allocated_losses_keur": 0.0,
+        "losses_expired_keur": -0.0,
+        "lcf_closing_keur": 0,
+        "taxable_profit_keur": 1505.733,
+        "cit_keur": 0.0,
+        "cash_tax_keur": 0.0,
+        "cit_pairing_bucket": null
+      },
+      {
+        "period": 34,
+        "period_bop_date": "2047-01-01",
+        "period_eop_date": "2047-06-30",
+        "calendar_tax_year": 2047,
+        "taxable_income_keur": 1565.613,
+        "lcf_opening_keur": 0.0,
+        "allocated_losses_keur": 0.0,
+        "losses_expired_keur": -0.0,
+        "lcf_closing_keur": 0,
+        "taxable_profit_keur": 1565.613,
+        "cit_keur": 307.135,
+        "cash_tax_keur": -307.135,
+        "cit_pairing_bucket": "CIT_pair_33_34"
+      },
+      {
+        "period": 35,
+        "period_bop_date": "2047-07-01",
+        "period_eop_date": "2047-12-31",
+        "calendar_tax_year": 2047,
+        "taxable_income_keur": 1557.042,
+        "lcf_opening_keur": 0.0,
+        "allocated_losses_keur": 0.0,
+        "losses_expired_keur": -0.0,
+        "lcf_closing_keur": 0,
+        "taxable_profit_keur": 1557.042,
+        "cit_keur": 0.0,
+        "cash_tax_keur": 0.0,
+        "cit_pairing_bucket": null
+      },
+      {
+        "period": 36,
+        "period_bop_date": "2048-01-01",
+        "period_eop_date": "2048-06-30",
+        "calendar_tax_year": 2048,
+        "taxable_income_keur": 1623.951,
+        "lcf_opening_keur": 0.0,
+        "allocated_losses_keur": 0.0,
+        "losses_expired_keur": -0.0,
+        "lcf_closing_keur": 0,
+        "taxable_profit_keur": 1623.951,
+        "cit_keur": 318.099,
+        "cash_tax_keur": -318.099,
+        "cit_pairing_bucket": "CIT_pair_35_36"
+      },
+      {
+        "period": 37,
+        "period_bop_date": "2048-07-01",
+        "period_eop_date": "2048-12-31",
+        "calendar_tax_year": 2048,
+        "taxable_income_keur": 1615.481,
+        "lcf_opening_keur": 0.0,
+        "allocated_losses_keur": 0.0,
+        "losses_expired_keur": -0.0,
+        "lcf_closing_keur": 0,
+        "taxable_profit_keur": 1615.481,
+        "cit_keur": 0.0,
+        "cash_tax_keur": 0.0,
+        "cit_pairing_bucket": null
+      },
+      {
+        "period": 38,
+        "period_bop_date": "2049-01-01",
+        "period_eop_date": "2049-06-30",
+        "calendar_tax_year": 2049,
+        "taxable_income_keur": 1673.591,
+        "lcf_opening_keur": 0.0,
+        "allocated_losses_keur": 0.0,
+        "losses_expired_keur": -0.0,
+        "lcf_closing_keur": 0,
+        "taxable_profit_keur": 1673.591,
+        "cit_keur": 328.907,
+        "cash_tax_keur": -328.907,
+        "cit_pairing_bucket": "CIT_pair_37_38"
+      },
+      {
+        "period": 39,
+        "period_bop_date": "2049-07-01",
+        "period_eop_date": "2049-12-31",
+        "calendar_tax_year": 2049,
+        "taxable_income_keur": 1669.948,
+        "lcf_opening_keur": 0.0,
+        "allocated_losses_keur": 0.0,
+        "losses_expired_keur": -0.0,
+        "lcf_closing_keur": 0,
+        "taxable_profit_keur": 1669.948,
+        "cit_keur": 0.0,
+        "cash_tax_keur": 0.0,
+        "cit_pairing_bucket": null
+      },
+      {
+        "period": 40,
+        "period_bop_date": "2050-01-01",
+        "period_eop_date": "2050-06-30",
+        "calendar_tax_year": 2050,
+        "taxable_income_keur": 1727.187,
+        "lcf_opening_keur": 0.0,
+        "allocated_losses_keur": 0.0,
+        "losses_expired_keur": -0.0,
+        "lcf_closing_keur": 0,
+        "taxable_profit_keur": 1727.187,
+        "cit_keur": 339.714,
+        "cash_tax_keur": -339.714,
+        "cit_pairing_bucket": "CIT_pair_39_40"
+      },
+      {
+        "period": 41,
+        "period_bop_date": "2050-07-01",
+        "period_eop_date": "2050-12-31",
+        "calendar_tax_year": 2050,
+        "taxable_income_keur": 3143.713,
+        "lcf_opening_keur": 0.0,
+        "allocated_losses_keur": 0.0,
+        "losses_expired_keur": -0.0,
+        "lcf_closing_keur": 0,
+        "taxable_profit_keur": 3143.713,
+        "cit_keur": 0.0,
+        "cash_tax_keur": 0.0,
+        "cit_pairing_bucket": null
+      },
+      {
+        "period": 42,
+        "period_bop_date": "2051-01-01",
+        "period_eop_date": "2051-06-30",
+        "calendar_tax_year": 2051,
+        "taxable_income_keur": 3201.018,
+        "lcf_opening_keur": 0.0,
+        "allocated_losses_keur": 0.0,
+        "losses_expired_keur": -0.0,
+        "lcf_closing_keur": 0,
+        "taxable_profit_keur": 3201.018,
+        "cit_keur": 634.473,
+        "cash_tax_keur": -634.473,
+        "cit_pairing_bucket": "CIT_pair_41_42"
+      },
+      {
+        "period": 43,
+        "period_bop_date": "2051-07-01",
+        "period_eop_date": "2051-12-31",
+        "calendar_tax_year": 2051,
+        "taxable_income_keur": 3212.641,
+        "lcf_opening_keur": 0.0,
+        "allocated_losses_keur": 0.0,
+        "losses_expired_keur": -0.0,
+        "lcf_closing_keur": 0,
+        "taxable_profit_keur": 3212.641,
+        "cit_keur": 0.0,
+        "cash_tax_keur": 0.0,
+        "cit_pairing_bucket": null
+      },
+      {
+        "period": 44,
+        "period_bop_date": "2052-01-01",
+        "period_eop_date": "2052-06-30",
+        "calendar_tax_year": 2052,
+        "taxable_income_keur": 3262.492,
+        "lcf_opening_keur": 0.0,
+        "allocated_losses_keur": 0.0,
+        "losses_expired_keur": -0.0,
+        "lcf_closing_keur": 0,
+        "taxable_profit_keur": 3262.492,
+        "cit_keur": 647.513,
+        "cash_tax_keur": -647.513,
+        "cit_pairing_bucket": "CIT_pair_43_44"
+      },
+      {
+        "period": 45,
+        "period_bop_date": "2052-07-01",
+        "period_eop_date": "2052-12-31",
+        "calendar_tax_year": 2052,
+        "taxable_income_keur": 3274.168,
+        "lcf_opening_keur": 0.0,
+        "allocated_losses_keur": 0.0,
+        "losses_expired_keur": -0.0,
+        "lcf_closing_keur": 0,
+        "taxable_profit_keur": 3274.168,
+        "cit_keur": 0.0,
+        "cash_tax_keur": 0.0,
+        "cit_pairing_bucket": null
+      },
+      {
+        "period": 46,
+        "period_bop_date": "2053-01-01",
+        "period_eop_date": "2053-06-30",
+        "calendar_tax_year": 2053,
+        "taxable_income_keur": 3304.416,
+        "lcf_opening_keur": 0.0,
+        "allocated_losses_keur": 0.0,
+        "losses_expired_keur": -0.0,
+        "lcf_closing_keur": 0,
+        "taxable_profit_keur": 3304.416,
+        "cit_keur": 657.858,
+        "cash_tax_keur": -657.858,
+        "cit_pairing_bucket": "CIT_pair_45_46"
+      },
+      {
+        "period": 47,
+        "period_bop_date": "2053-07-01",
+        "period_eop_date": "2053-12-31",
+        "calendar_tax_year": 2053,
+        "taxable_income_keur": 3325.39,
+        "lcf_opening_keur": 0.0,
+        "allocated_losses_keur": 0.0,
+        "losses_expired_keur": -0.0,
+        "lcf_closing_keur": 0,
+        "taxable_profit_keur": 3325.39,
+        "cit_keur": 0.0,
+        "cash_tax_keur": 0.0,
+        "cit_pairing_bucket": null
+      },
+      {
+        "period": 48,
+        "period_bop_date": "2054-01-01",
+        "period_eop_date": "2054-06-30",
+        "calendar_tax_year": 2054,
+        "taxable_income_keur": 3380.548,
+        "lcf_opening_keur": 0.0,
+        "allocated_losses_keur": 0.0,
+        "losses_expired_keur": -0.0,
+        "lcf_closing_keur": 0,
+        "taxable_profit_keur": 3380.548,
+        "cit_keur": 670.594,
+        "cash_tax_keur": -670.594,
+        "cit_pairing_bucket": "CIT_pair_47_48"
+      },
+      {
+        "period": 49,
+        "period_bop_date": "2054-07-01",
+        "period_eop_date": "2054-12-31",
+        "calendar_tax_year": 2054,
+        "taxable_income_keur": 3402.091,
+        "lcf_opening_keur": 0.0,
+        "allocated_losses_keur": 0.0,
+        "losses_expired_keur": -0.0,
+        "lcf_closing_keur": 0,
+        "taxable_profit_keur": 3402.091,
+        "cit_keur": 0.0,
+        "cash_tax_keur": 0.0,
+        "cit_pairing_bucket": null
+      },
+      {
+        "period": 50,
+        "period_bop_date": "2055-01-01",
+        "period_eop_date": "2055-06-30",
+        "calendar_tax_year": 2055,
+        "taxable_income_keur": 3430.284,
+        "lcf_opening_keur": 0.0,
+        "allocated_losses_keur": 0.0,
+        "losses_expired_keur": -0.0,
+        "lcf_closing_keur": 0,
+        "taxable_profit_keur": 3430.284,
+        "cit_keur": 683.237,
+        "cash_tax_keur": -683.237,
+        "cit_pairing_bucket": "CIT_pair_49_50"
+      },
+      {
+        "period": 51,
+        "period_bop_date": "2055-07-01",
+        "period_eop_date": "2055-12-31",
+        "calendar_tax_year": 2055,
+        "taxable_income_keur": 3442.625,
+        "lcf_opening_keur": 0.0,
+        "allocated_losses_keur": 0.0,
+        "losses_expired_keur": -0.0,
+        "lcf_closing_keur": 0,
+        "taxable_profit_keur": 3442.625,
+        "cit_keur": 0.0,
+        "cash_tax_keur": 0.0,
+        "cit_pairing_bucket": null
+      },
+      {
+        "period": 52,
+        "period_bop_date": "2056-01-01",
+        "period_eop_date": "2056-06-30",
+        "calendar_tax_year": 2056,
+        "taxable_income_keur": 3474.326,
+        "lcf_opening_keur": 0.0,
+        "allocated_losses_keur": 0.0,
+        "losses_expired_keur": -0.0,
+        "lcf_closing_keur": 0,
+        "taxable_profit_keur": 3474.326,
+        "cit_keur": 691.695,
+        "cash_tax_keur": -691.695,
+        "cit_pairing_bucket": "CIT_pair_51_52"
+      },
+      {
+        "period": 53,
+        "period_bop_date": "2056-07-01",
+        "period_eop_date": "2056-12-31",
+        "calendar_tax_year": 2056,
+        "taxable_income_keur": 3486.507,
+        "lcf_opening_keur": 0.0,
+        "allocated_losses_keur": 0.0,
+        "losses_expired_keur": -0.0,
+        "lcf_closing_keur": 0,
+        "taxable_profit_keur": 3486.507,
+        "cit_keur": 0.0,
+        "cash_tax_keur": 0.0,
+        "cit_pairing_bucket": null
+      },
+      {
+        "period": 54,
+        "period_bop_date": "2057-01-01",
+        "period_eop_date": "2057-06-30",
+        "calendar_tax_year": 2057,
+        "taxable_income_keur": 3496.044,
+        "lcf_opening_keur": 0.0,
+        "allocated_losses_keur": 0.0,
+        "losses_expired_keur": -0.0,
+        "lcf_closing_keur": 0,
+        "taxable_profit_keur": 3496.044,
+        "cit_keur": 698.255,
+        "cash_tax_keur": -698.255,
+        "cit_pairing_bucket": "CIT_pair_53_54"
+      },
+      {
+        "period": 55,
+        "period_bop_date": "2057-07-01",
+        "period_eop_date": "2057-12-31",
+        "calendar_tax_year": 2057,
+        "taxable_income_keur": 3517.834,
+        "lcf_opening_keur": 0.0,
+        "allocated_losses_keur": 0.0,
+        "losses_expired_keur": -0.0,
+        "lcf_closing_keur": 0,
+        "taxable_profit_keur": 3517.834,
+        "cit_keur": 0.0,
+        "cash_tax_keur": 0.0,
+        "cit_pairing_bucket": null
+      },
+      {
+        "period": 56,
+        "period_bop_date": "2058-01-01",
+        "period_eop_date": "2058-06-30",
+        "calendar_tax_year": 2058,
+        "taxable_income_keur": 3502.257,
+        "lcf_opening_keur": 0.0,
+        "allocated_losses_keur": 0.0,
+        "losses_expired_keur": -0.0,
+        "lcf_closing_keur": 0,
+        "taxable_profit_keur": 3502.257,
+        "cit_keur": 702.009,
+        "cash_tax_keur": -702.009,
+        "cit_pairing_bucket": "CIT_pair_55_56"
+      },
+      {
+        "period": 57,
+        "period_bop_date": "2058-07-01",
+        "period_eop_date": "2058-12-31",
+        "calendar_tax_year": 2058,
+        "taxable_income_keur": 3523.709,
+        "lcf_opening_keur": 0.0,
+        "allocated_losses_keur": 0.0,
+        "losses_expired_keur": -0.0,
+        "lcf_closing_keur": 0,
+        "taxable_profit_keur": 3523.709,
+        "cit_keur": 0.0,
+        "cash_tax_keur": 0.0,
+        "cit_pairing_bucket": null
+      },
+      {
+        "period": 58,
+        "period_bop_date": "2059-01-01",
+        "period_eop_date": "2059-06-30",
+        "calendar_tax_year": 2059,
+        "taxable_income_keur": 3529.65,
+        "lcf_opening_keur": 0.0,
+        "allocated_losses_keur": 0.0,
+        "losses_expired_keur": -0.0,
+        "lcf_closing_keur": 0,
+        "taxable_profit_keur": 3529.65,
+        "cit_keur": 705.336,
+        "cash_tax_keur": -705.336,
+        "cit_pairing_bucket": "CIT_pair_57_58"
+      },
+      {
+        "period": 59,
+        "period_bop_date": "2059-07-01",
+        "period_eop_date": "2059-12-31",
+        "calendar_tax_year": 2059,
+        "taxable_income_keur": 3541.318,
+        "lcf_opening_keur": 0.0,
+        "allocated_losses_keur": 0.0,
+        "losses_expired_keur": -0.0,
+        "lcf_closing_keur": 0,
+        "taxable_profit_keur": 3541.318,
+        "cit_keur": 0.0,
+        "cash_tax_keur": 0.0,
+        "cit_pairing_bucket": null
+      },
+      {
+        "period": 60,
+        "period_bop_date": "2060-01-01",
+        "period_eop_date": "2060-06-30",
+        "calendar_tax_year": 2060,
+        "taxable_income_keur": 3565.846,
+        "lcf_opening_keur": 0.0,
+        "allocated_losses_keur": 0.0,
+        "losses_expired_keur": -0.0,
+        "lcf_closing_keur": 0,
+        "taxable_profit_keur": 3565.846,
+        "cit_keur": 710.716,
+        "cash_tax_keur": -710.716,
+        "cit_pairing_bucket": "CIT_pair_59_60"
+      }
+    ],
+    "tax_milestones": {
+      "first_positive_ti_before_losses": {
+        "period": 6,
+        "period_bop_date": "2033-01-01",
+        "ti_keur": 92.716
+      },
+      "first_loss_utilized": {
+        "period": null,
+        "note": "NEVER \u2014 row 37 condition AND(G36<=0,G32>0) uses EBT (G32). EBT remains negative throughout all loss-carrying periods (SHL interest keeps EBT below zero even when TI turns positive). Losses expire through the rolling 5-period window, never allocated."
+      },
+      "first_positive_tp_after_losses": {
+        "period": 6,
+        "period_bop_date": "2033-01-01",
+        "tp_keur": 92.716,
+        "note": "TP = TI because allocated_losses = 0 for all periods; no loss offset applied"
+      },
+      "first_cit_expense": {
+        "period": 6,
+        "period_bop_date": "2033-01-01",
+        "cit_keur": 8.904,
+        "pairing_bucket": "CIT_pair_5_6",
+        "calendar_year_of_booking": 2033
+      },
+      "first_cash_tax_outflow": {
+        "period": 6,
+        "period_bop_date": "2033-01-01",
+        "cash_keur": -8.904
+      },
+      "lcf_balance_exhausted_from_window": {
+        "after_period": 10,
+        "after_period_eop": "2035-06-30",
+        "note": "Rolling 5-period window no longer contains any negative TI period. Losses expired; not utilized. LCF opening = 0 from this period onward."
+      },
+      "losses_ever_utilized": false,
+      "utilization_blocked_reason": "Row 37: allocated_losses = IF(AND(G36<=0, G32>0), MIN(ABS(G36), G32), 0). G32 = EBT. EBT is negative throughout all loss-carrying periods (p1-p10) because SHL interest (>600 kEUR/period) exceeds EBIT even when EBIT>0. LCF balance declines solely through rolling-window expiry: the earliest loss period (p1 TI=-219.2) drops out of the 5-period window after period 6, reducing the balance from -581.7 to -362.6 kEUR. CIT fires at period 6 directly on paired taxable profits (not after loss offset)."
+    },
+    "periodisation_mismatch": {
+      "classification": "WORKBOOK_PERIODISATION_MISMATCH",
+      "legal_tax_year": "1 January to 31 December (Croatia: calendar year)",
+      "workbook_pairing_convention": "Even period CIT fires on SUM(F41:G41) = TP[prev_period] + TP[this_period]. Prev period = H2(yr N, Jul-Dec), this period = H1(yr N+1, Jan-Jun). Example: pair 5_6 = H2-2032 (p5) + H1-2033 (p6). Straddles Jan 1.",
+      "correct_calendar_year_aggregation": "Each calendar year should combine H1(yr N, Jan-Jun) + H2(yr N, Jul-Dec). Example year 2033: p6(H1-2033) + p7(H2-2033) = 92.7 + 107.4 = 200.1 kEUR TI. Calendar-year CIT = 200.1 \u00d7 10% = 20.0 kEUR.",
+      "workbook_vs_correct_first_tax_year": "Workbook pair 5_6: TI = -3.7 + 92.7 = 89.0 \u2192 CIT = 8.9 kEUR, booked H1-2033. Correct calendar year 2033: TI = 200.1 \u2192 CIT = 20.0 kEUR. Delta: -11.1 kEUR (workbook understates by 55% in first tax year).",
+      "impact_on_tax_shield_exhaustion": "No impact on LCF window exhaustion date: losses expire by rolling window, not by utilization offset. Exhaustion date is independent of CIT aggregation.",
+      "impact_on_lifetime_cit": "Periodisation shifts CIT timing by approximately 6 months. Lifetime CIT total is approximately equal (zero-sum over whole life) but first-year underpayment is ~11 kEUR; timing differs every year.",
+      "calendar_vs_workbook_table": [
+        {
+          "calendar_year": 2030,
+          "periods": [
+            1
+          ],
+          "calendar_year_ti_keur": -219.157,
+          "calendar_year_cit_keur": 0.0,
+          "workbook_cit_keur": 0.0,
+          "delta_keur": 0.0
+        },
+        {
+          "calendar_year": 2031,
+          "periods": [
+            2,
+            3
+          ],
+          "calendar_year_ti_keur": -320.092,
+          "calendar_year_cit_keur": 0.0,
+          "workbook_cit_keur": 0.0,
+          "delta_keur": 0.0
+        },
+        {
+          "calendar_year": 2032,
+          "periods": [
+            4,
+            5
+          ],
+          "calendar_year_ti_keur": -42.471,
+          "calendar_year_cit_keur": 0.0,
+          "workbook_cit_keur": 0.0,
+          "delta_keur": 0.0
+        },
+        {
+          "calendar_year": 2033,
+          "periods": [
+            6,
+            7
+          ],
+          "calendar_year_ti_keur": 200.097,
+          "calendar_year_cit_keur": 20.01,
+          "workbook_cit_keur": 8.904,
+          "delta_keur": -11.106
+        },
+        {
+          "calendar_year": 2034,
+          "periods": [
+            8,
+            9
+          ],
+          "calendar_year_ti_keur": 427.772,
+          "calendar_year_cit_keur": 42.777,
+          "workbook_cit_keur": 31.337,
+          "delta_keur": -11.44
+        },
+        {
+          "calendar_year": 2035,
+          "periods": [
+            10,
+            11
+          ],
+          "calendar_year_ti_keur": 661.031,
+          "calendar_year_cit_keur": 66.103,
+          "workbook_cit_keur": 54.454,
+          "delta_keur": -11.649
+        },
+        {
+          "calendar_year": 2036,
+          "periods": [
+            12,
+            13
+          ],
+          "calendar_year_ti_keur": 912.267,
+          "calendar_year_cit_keur": 91.227,
+          "workbook_cit_keur": 78.216,
+          "delta_keur": -13.011
+        },
+        {
+          "calendar_year": 2037,
+          "periods": [
+            14,
+            15
+          ],
+          "calendar_year_ti_keur": 1177.621,
+          "calendar_year_cit_keur": 117.762,
+          "workbook_cit_keur": 104.291,
+          "delta_keur": -13.471
+        },
+        {
+          "calendar_year": 2038,
+          "periods": [
+            16,
+            17
+          ],
+          "calendar_year_ti_keur": 1458.296,
+          "calendar_year_cit_keur": 145.83,
+          "workbook_cit_keur": 131.511,
+          "delta_keur": -14.318
+        },
+        {
+          "calendar_year": 2039,
+          "periods": [
+            18,
+            19
+          ],
+          "calendar_year_ti_keur": 1752.45,
+          "calendar_year_cit_keur": 175.245,
+          "workbook_cit_keur": 160.438,
+          "delta_keur": -14.807
+        },
+        {
+          "calendar_year": 2040,
+          "periods": [
+            20,
+            21
+          ],
+          "calendar_year_ti_keur": 1878.532,
+          "calendar_year_cit_keur": 187.853,
+          "workbook_cit_keur": 190.879,
+          "delta_keur": 3.026
+        },
+        {
+          "calendar_year": 2041,
+          "periods": [
+            22,
+            23
+          ],
+          "calendar_year_ti_keur": 2006.343,
+          "calendar_year_cit_keur": 200.634,
+          "workbook_cit_keur": 184.435,
+          "delta_keur": -16.199
+        },
+        {
+          "calendar_year": 2042,
+          "periods": [
+            24,
+            25
+          ],
+          "calendar_year_ti_keur": 2541.958,
+          "calendar_year_cit_keur": 254.196,
+          "workbook_cit_keur": 217.143,
+          "delta_keur": -37.053
+        },
+        {
+          "calendar_year": 2043,
+          "periods": [
+            26,
+            27
+          ],
+          "calendar_year_ti_keur": 2942.258,
+          "calendar_year_cit_keur": 294.226,
+          "workbook_cit_keur": 285.107,
+          "delta_keur": -9.119
+        },
+        {
+          "calendar_year": 2044,
+          "periods": [
+            28,
+            29
+          ],
+          "calendar_year_ti_keur": 3105.844,
+          "calendar_year_cit_keur": 310.584,
+          "workbook_cit_keur": 301.618,
+          "delta_keur": -8.967
+        },
+        {
+          "calendar_year": 2045,
+          "periods": [
+            30,
+            31
+          ],
+          "calendar_year_ti_keur": 2904.271,
+          "calendar_year_cit_keur": 290.427,
+          "workbook_cit_keur": 303.212,
+          "delta_keur": 12.785
+        },
+        {
+          "calendar_year": 2046,
+          "periods": [
+            32,
+            33
+          ],
+          "calendar_year_ti_keur": 3016.128,
+          "calendar_year_cit_keur": 301.613,
+          "workbook_cit_keur": 296.001,
+          "delta_keur": -5.611
+        },
+        {
+          "calendar_year": 2047,
+          "periods": [
+            34,
+            35
+          ],
+          "calendar_year_ti_keur": 3122.656,
+          "calendar_year_cit_keur": 312.266,
+          "workbook_cit_keur": 307.135,
+          "delta_keur": -5.131
+        },
+        {
+          "calendar_year": 2048,
+          "periods": [
+            36,
+            37
+          ],
+          "calendar_year_ti_keur": 3239.432,
+          "calendar_year_cit_keur": 323.943,
+          "workbook_cit_keur": 318.099,
+          "delta_keur": -5.844
+        },
+        {
+          "calendar_year": 2049,
+          "periods": [
+            38,
+            39
+          ],
+          "calendar_year_ti_keur": 3343.54,
+          "calendar_year_cit_keur": 334.354,
+          "workbook_cit_keur": 328.907,
+          "delta_keur": -5.447
+        },
+        {
+          "calendar_year": 2050,
+          "periods": [
+            40,
+            41
+          ],
+          "calendar_year_ti_keur": 4870.9,
+          "calendar_year_cit_keur": 487.09,
+          "workbook_cit_keur": 339.714,
+          "delta_keur": -147.377
+        },
+        {
+          "calendar_year": 2051,
+          "periods": [
+            42,
+            43
+          ],
+          "calendar_year_ti_keur": 6413.659,
+          "calendar_year_cit_keur": 641.366,
+          "workbook_cit_keur": 634.473,
+          "delta_keur": -6.893
+        },
+        {
+          "calendar_year": 2052,
+          "periods": [
+            44,
+            45
+          ],
+          "calendar_year_ti_keur": 6536.66,
+          "calendar_year_cit_keur": 653.666,
+          "workbook_cit_keur": 647.513,
+          "delta_keur": -6.153
+        },
+        {
+          "calendar_year": 2053,
+          "periods": [
+            46,
+            47
+          ],
+          "calendar_year_ti_keur": 6629.806,
+          "calendar_year_cit_keur": 662.981,
+          "workbook_cit_keur": 657.858,
+          "delta_keur": -5.122
+        },
+        {
+          "calendar_year": 2054,
+          "periods": [
+            48,
+            49
+          ],
+          "calendar_year_ti_keur": 6782.639,
+          "calendar_year_cit_keur": 678.264,
+          "workbook_cit_keur": 670.594,
+          "delta_keur": -7.67
+        },
+        {
+          "calendar_year": 2055,
+          "periods": [
+            50,
+            51
+          ],
+          "calendar_year_ti_keur": 6872.909,
+          "calendar_year_cit_keur": 687.291,
+          "workbook_cit_keur": 683.237,
+          "delta_keur": -4.053
+        },
+        {
+          "calendar_year": 2056,
+          "periods": [
+            52,
+            53
+          ],
+          "calendar_year_ti_keur": 6960.833,
+          "calendar_year_cit_keur": 696.083,
+          "workbook_cit_keur": 691.695,
+          "delta_keur": -4.388
+        },
+        {
+          "calendar_year": 2057,
+          "periods": [
+            54,
+            55
+          ],
+          "calendar_year_ti_keur": 7013.878,
+          "calendar_year_cit_keur": 701.388,
+          "workbook_cit_keur": 698.255,
+          "delta_keur": -3.133
+        },
+        {
+          "calendar_year": 2058,
+          "periods": [
+            56,
+            57
+          ],
+          "calendar_year_ti_keur": 7025.966,
+          "calendar_year_cit_keur": 702.597,
+          "workbook_cit_keur": 702.009,
+          "delta_keur": -0.588
+        },
+        {
+          "calendar_year": 2059,
+          "periods": [
+            58,
+            59
+          ],
+          "calendar_year_ti_keur": 7070.968,
+          "calendar_year_cit_keur": 707.097,
+          "workbook_cit_keur": 705.336,
+          "delta_keur": -1.761
+        },
+        {
+          "calendar_year": 2060,
+          "periods": [
+            60
+          ],
+          "calendar_year_ti_keur": 3565.846,
+          "calendar_year_cit_keur": 356.585,
+          "workbook_cit_keur": 710.716,
+          "delta_keur": 354.132
+        }
+      ]
     }
+  },
+  "debt_sizing_comparison": {
+    "excel_method_classification": "FIXED_AMOUNT_WITH_SCULPTED_REPAYMENT",
+    "classification_basis": "Inputs!D192 contains a scalar value (42,852 kEUR) extracted as a number, not a formula text. The DS sheet sculpts the repayment schedule to satisfy DSCR >= 1.15 (periods 1-24) and >= 1.35 (periods 25-28). The debt amount itself is a direct input, not the output of DSCR-sized sculpting. Manual confirmation needed: whether D192 was ever the result of a Goal Seek or a manually entered figure.",
+    "manual_check_pack": [
+      {
+        "priority": 1,
+        "sheet": "Inputs",
+        "cell": "D192",
+        "current_value": 42852.279,
+        "question": "Is this a hardcoded input or the result of a Goal Seek / macro that sized the debt?"
+      },
+      {
+        "priority": 2,
+        "sheet": "DS",
+        "cell": "Row 22 (DSCR target)",
+        "current_value": "1.15 (p1-24), 1.35 (p25-28)",
+        "question": "Is the DSCR step-up from 1.15 to 1.35 at period 25 a hardcoded formula or a lookup from Inputs?"
+      },
+      {
+        "priority": 3,
+        "sheet": "DS",
+        "cell": "Row 20 (CFADS)",
+        "current_value": "2,575 kEUR (p1)",
+        "question": "Does CFADS include / exclude DSRA movements and is SHL service below the line?"
+      },
+      {
+        "priority": 4,
+        "sheet": "Inputs",
+        "cell": "D45 (Total CAPEX)",
+        "current_value": 57973.053,
+        "question": "Is the eligible debt base the full CAPEX (57,973) or a sub-item?"
+      },
+      {
+        "priority": 5,
+        "sheet": "DS",
+        "cell": "SD repayment formula rows 52/53",
+        "current_value": "Circular sculpted schedule",
+        "question": "Does the repayment schedule contain a circular reference that requires iterative calculation? Is debt sizing driven by a sculpting loop or by the FIXED D192 input?"
+      },
+      {
+        "priority": 6,
+        "sheet": "DS",
+        "cell": "Row 50 / 51",
+        "current_value": "Opening 0 \u2192 42,852 at p0 drawdown",
+        "question": "Is the single-tranche construction drawdown formula =Inputs!D192, confirming D192 drives the entire schedule?"
+      },
+      {
+        "priority": 7,
+        "sheet": "Inputs",
+        "cell": "Check for gearing cap input",
+        "current_value": "Actual gearing = 73.9%",
+        "question": "Is there an explicit gearing cap (e.g., 74% of CAPEX) that determined the 42,852 figure?"
+      },
+      {
+        "priority": 8,
+        "sheet": "DS",
+        "cell": "DSRA rows",
+        "current_value": "Unknown",
+        "question": "Is there a Debt Service Reserve Account? If yes, how is it funded and does it reduce CFADS?"
+      },
+      {
+        "priority": 9,
+        "sheet": "IDC",
+        "cell": "IDC total",
+        "current_value": "1,086 kEUR (from CAPEX inputs)",
+        "question": "Are IDC and commitment fees (1,275 kEUR) included in the eligible debt base or excluded?"
+      },
+      {
+        "priority": 10,
+        "sheet": "Inputs / DS",
+        "cell": "Hedge percentage",
+        "current_value": "Unknown",
+        "question": "Is the interest rate fixed (5.65%) or does it include a hedged vs unhedged split?"
+      }
+    ],
+    "excel_inputs": {
+      "source_cell": "Inputs!D192",
+      "debt_amount_keur": 42852.279,
+      "total_capex_keur": 57973.053,
+      "gearing_pct": 73.92,
+      "base_rate_pct": 3.0,
+      "margin_bps": 265,
+      "all_in_rate_pct": 5.65,
+      "dscr_covenant_initial": 1.15,
+      "dscr_covenant_stepup": 1.35,
+      "dscr_stepup_period": 25,
+      "maturity_years": 14,
+      "last_repayment_date": "2044-06-28",
+      "total_net_interest_keur": 20133.079,
+      "single_tranche_drawdown_period": 0,
+      "repayment_start_period": 1,
+      "repayment_end_period": 28
+    },
+    "phase2c_parity_inputs": {
+      "source": "finco_parity/check_financial_engine_senior_debt.py _CALIBRATION['oborovo']",
+      "sizing_mode": "DSCR_SCULPTED",
+      "target_dscr": 1.15,
+      "dscr_stepup": null,
+      "all_in_rate_pct": 5.65,
+      "repayment_start_period_index": 2,
+      "maturity_period_index": 29,
+      "result_debt_keur": 45873.0,
+      "eligible_project_cost_note": "Uses getattr(project_inputs.capex, 'total_capex_keur', None) or 100_000.0. If project_inputs.capex.total_capex_keur != 57,973 kEUR, eligible cost differs."
+    },
+    "comparison_table": [
+      {
+        "parameter": "Sizing mode",
+        "excel_value": "FIXED_AMOUNT (D192 is direct input)",
+        "phase2c_value": "DSCR_SCULPTED",
+        "match": false,
+        "impact": "Core mismatch: Excel holds amount fixed and sculpts repayment; Phase 2C sculpts to find amount"
+      },
+      {
+        "parameter": "Debt amount (kEUR)",
+        "excel_value": 42852.3,
+        "phase2c_value": 45873.0,
+        "match": false,
+        "impact": "Delta = 3021 kEUR (7.0% higher in Phase 2C)"
+      },
+      {
+        "parameter": "All-in rate (%)",
+        "excel_value": 5.65,
+        "phase2c_value": 5.65,
+        "match": true,
+        "impact": "No impact"
+      },
+      {
+        "parameter": "DSCR target (initial)",
+        "excel_value": 1.15,
+        "phase2c_value": 1.15,
+        "match": true,
+        "impact": "Same initial target"
+      },
+      {
+        "parameter": "DSCR step-up",
+        "excel_value": "1.35 from period 25",
+        "phase2c_value": "None (constant 1.15)",
+        "match": false,
+        "impact": "Phase 2C over-sizes debt: no tighter DSCR constraint in late periods"
+      },
+      {
+        "parameter": "Maturity (periods)",
+        "excel_value": 28,
+        "phase2c_value": 28,
+        "match": true,
+        "impact": "Approximately aligned"
+      },
+      {
+        "parameter": "Repayment start period",
+        "excel_value": 1,
+        "phase2c_value": 2,
+        "match": true,
+        "impact": "Approximately aligned"
+      },
+      {
+        "parameter": "Total CAPEX / eligible cost",
+        "excel_value": 57973.1,
+        "phase2c_value": "TBD \u2014 depends on project_inputs.capex",
+        "match": "UNKNOWN",
+        "impact": "If different, DSCR sculpted amount differs proportionally"
+      }
+    ],
+    "debt_sizing_conclusion": "DEBT_SIZING_POLICY_MISMATCH_IDENTIFIED",
+    "conclusion_rationale": "The Excel workbook stores the senior debt amount as a direct input (Inputs!D192 = 42,852 kEUR). The DS repayment schedule is sculpted around this fixed amount to satisfy DSCR >= 1.15 (p1-24) and >= 1.35 (p25-28). The Phase 2C engine uses DSCR_SCULPTED mode with a constant 1.15 target through period 29, producing 45,873 kEUR. Two identifiable policy mismatches: (1) Excel treats debt amount as a fixed input; Phase 2C derives it from DSCR sculpting. (2) Excel applies a DSCR step-up from 1.15 to 1.35 at period 25; Phase 2C does not. The absence of the step-up constraint allows Phase 2C to sustain higher debt in later periods. DEBT_SIZING_ALGORITHM_DEFECT_PROVED cannot be used: equal-input, equal-policy comparison has not been performed. Manual check of D192 and the DS sculpting loop is required."
   }
 }

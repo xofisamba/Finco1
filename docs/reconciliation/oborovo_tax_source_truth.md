@@ -1,6 +1,6 @@
 # Oborovo Tax Source Truth — Stage C3B1 Diagnostic Report
 
-**Extractor version**: 3.1.0 (dual-load: `data_only=False` for formula text, `data_only=True` for cached values; CF dual-load for row 77 formula; expanded period_diagnostic)
+**Extractor version**: 3.2.0 (dual-load; adds `lcf_rollforward`, `tax_milestones`, `periodisation_mismatch`, `debt_sizing_comparison`)
 
 ## 1. Base Commit and Branch
 
@@ -14,9 +14,9 @@
 
 | File | Change |
 |------|--------|
-| `finco_recon/extract_oborovo_excel.py` | v3.1.0; CF dual-load for row 77; expanded period_diagnostic (31 cols); `cf_tax_chain` section; BS conclusion |
-| `tests/fixtures/excel_oborovo_financial_truth.json` | Regenerated; `tax.cf_tax_chain`, expanded period_diagnostic, 24 rows |
-| `tests/test_stage_c3b1_oborovo_tax_source_truth.py` | 95 tests (A–P); Phase 2C runtime comparison; CF chain assertions; real Group P regression guard |
+| `finco_recon/extract_oborovo_excel.py` | v3.2.0; adds `lcf_rollforward`, `tax_milestones`, `periodisation_mismatch`; corrects LCF period/year language |
+| `tests/fixtures/excel_oborovo_financial_truth.json` | Regenerated; adds `lcf_rollforward` (60 rows), `tax_milestones`, `periodisation_mismatch`, `debt_sizing_comparison` |
+| `tests/test_stage_c3b1_oborovo_tax_source_truth.py` | 113 tests (A–S); adds Groups Q (tax milestones), R (periodisation mismatch), S (debt sizing) |
 | `docs/reconciliation/oborovo_tax_source_truth.md` | This file |
 | `.github/workflows/c3b1_diagnostic_check.yml` | New CI workflow running only `test_stage_c3b1_oborovo_tax_source_truth.py` |
 
@@ -337,6 +337,81 @@ Row 43 (formula) ≠ production authority. Row 44 (Macro hardcoded) is actual au
 - No `oborovo` string in `financial_engine/`
 - Parity layer (`finco_parity/`) uses `baseline_id` routing — permitted
 
+## 17a. Tax Loss Carry-Forward — Roll-Forward Mechanics (Proved)
+
+### LCF Formula Chain
+
+| P&L Row | Label | Formula (col G) | Key finding |
+|---------|-------|-----------------|-------------|
+| 36 | Opening LCF (losses N-1) | `=SUMIF(IF(G4<=$B$36,$F35:F35,F35:OFFSET(F35,0,-$B$36+1)),"<0")+SUM($F$37:F$37)` | Rolling 5-period SUMIF of negative TI in window; **not** a vintage ledger |
+| 37 | Allocated losses | `=IF(AND(G36<=0,G32>0),MIN(ABS(G36),G32),0)` | **Uses EBT (G32)**, NOT TI. Zero for ALL periods (EBT<0 while losses exist). |
+| 38 | Current-period loss | `=MIN(G37+G36,0)` | Equals row 36 since row 37=0 |
+| 39 | Carriable losses | `=MIN(G38,F35*$B37)` | B37=1; caps by prior-period TI (effectively no cap here) |
+| 41 | Taxable profit N | `=-G37+G35` | = TI since row 37=0; no loss offset applied |
+
+**B36 = 5**: rolling window of **5 semi-annual model periods** ≈ 2.5 calendar years. This is **not** a 5-year or 5-tax-year window.
+
+### LCF Taxonomy
+
+| Question | Answer |
+|----------|--------|
+| Losses stored as positive or negative? | Negative (TI is negative; SUMIF accumulates negative values) |
+| Oldest-first consumption? | Not applicable — losses expire by falling out of the rolling window |
+| Explicit vintage tracking? | No — SUMIF formula only; no per-vintage ledger |
+| Utilization trigger | EBT > 0 (row 37 uses G32=EBT, NOT G35=TI) |
+| Utilization cap | 100% of TI (B37=1) |
+| "5" means | 5 semi-annual model periods (~2.5 calendar years, NOT 5 tax years) |
+| Losses ever utilized? | **Never** — EBT remains negative throughout all loss-carrying periods |
+
+### Tax Milestones (Derived)
+
+| Milestone | Period | Date | Value | Note |
+|-----------|--------|------|-------|------|
+| First positive TI (before losses) | 6 | 2033-01-01 | 92.7 kEUR | H1-2033 |
+| First loss utilization | — | Never | 0 kEUR | EBT<0 blocks row 37 |
+| First positive TP after losses | 6 | 2033-01-01 | 92.7 kEUR | TP=TI since alloc=0 always |
+| First CIT expense | 6 | 2033-01-01 | 8.9 kEUR | Pair 5_6: (-3.7+92.7)×10% |
+| First cash tax outflow | 6 | 2033-01-01 | −8.9 kEUR | No payment lag |
+| LCF window fully exhausted | After p10 | 2035-06-30 | 0 kEUR | p5 TI (−3.7) drops from window |
+
+**EBT < 0 during all loss periods**: SHL interest (>600 kEUR/period) keeps EBT negative even when EBIT > 0 and TI > 0. The loss-allocation gate in row 37 is therefore permanently closed. All accumulated losses (−581.7 kEUR peak at start of period 6) expire naturally through the rolling window, period by period.
+
+### Consequence for C3B2
+
+The LCF mechanism never reduces taxable profit in Oborovo. CIT fires from period 6 onward on the raw paired taxable income (no loss offset). C3B2 must reproduce this EBT-gated utilization condition, NOT a simpler "offset against positive TI" mechanism.
+
+---
+
+## 17b. Tax Year Interpretation — WORKBOOK_PERIODISATION_MISMATCH
+
+**Croatian corporate income tax year: 1 January to 31 December.**
+
+The workbook pairs H2 of year N with H1 of year N+1 in its CIT formula (`SUM(F41:G41)` fires in even periods). This straddles the Jan 1 boundary. It is a **modelling convention**, NOT evidence of a July fiscal year.
+
+| Correct calendar-year aggregation | Workbook pairing convention |
+|-----------------------------------|-----------------------------|
+| Year 2033: H1-2033 (p6) + H2-2033 (p7) = 200.1 kEUR TI → CIT 20.0 kEUR | Pair 5_6: H2-2032 (p5) + H1-2033 (p6) = 89.0 kEUR TI → CIT 8.9 kEUR |
+| Year 2034: H1-2034 (p8) + H2-2034 (p9) = 427.8 kEUR TI → CIT 42.8 kEUR | Pair 7_8: H2-2033 (p7) + H1-2034 (p8) = 313.4 kEUR TI → CIT 31.3 kEUR |
+
+**Classification: `WORKBOOK_PERIODISATION_MISMATCH`**
+
+| Year | Calendar-year TI | Calendar-year CIT | Workbook CIT | Delta |
+|------|-----------------|-------------------|--------------|-------|
+| 2033 | 200.1 kEUR | 20.0 kEUR | 8.9 kEUR | −11.1 kEUR |
+| 2034 | 427.8 kEUR | 42.8 kEUR | 31.3 kEUR | −11.4 kEUR |
+| 2035 | 661.0 kEUR | 66.1 kEUR | 54.5 kEUR | −11.6 kEUR |
+| 2036 | 912.3 kEUR | 91.2 kEUR | 78.2 kEUR | −13.0 kEUR |
+
+**Impact summary:**
+- CIT timing shifts ~6 months (workbook CIT falls in H1 of year N+1, not H2 of year N)
+- First tax year understated by ~55% (8.9 vs 20.0 kEUR)
+- No impact on LCF window exhaustion date (losses expire by window, not by offset)
+- Production `tax_year_start_month = 1`; the H2+H1 pairing is a workbook shortcut
+
+**Do not** use `tax_year_start_month = 7`. Do not implement `MODEL_YEAR_PAIR` as a typed enum. The correct production parameter is `tax_year_start_month = 1` combined with the semi-annual period layout.
+
+---
+
 ## 18. Exact Recommended C3B2 Scope
 
 > **THIS PARITY HARNESS IS NOT AN APPROVED PRODUCTION RUNTIME PATH.**
@@ -353,13 +428,13 @@ underlying economic intent as generic inputs:
 
 | Economic parameter | Derived from workbook | Recommended input name | Notes |
 |--------------------|----------------------|------------------------|-------|
-| Fiscal year start month | H2 period covers Jul–Dec; H1 covers Jan–Jun; pairs straddle Jan 1 → July fiscal year | `tax_year_start_month = 7` | Legal distinction: this is the fiscal year start, not a "model-year pair" |
-| CIT payment frequency | CIT fires in even semi-annual periods (every 2 periods) | `tax_payment_frequency = "semi_annual_pair"` | The H2+H1 pairing is a consequence of a July fiscal year on semi-annual periods |
+| Fiscal year start month | Croatian CIT year is 1 Jan–31 Dec. The H2+H1 pairing is a workbook modelling convention, NOT a July fiscal year. Pairs straddle Jan 1. | `tax_year_start_month = 1` | Use calendar year unless separately evidenced non-calendar fiscal period is provided |
+| CIT payment frequency | CIT fires in even semi-annual periods (every 2 periods) | `tax_payment_frequency = "semi_annual_pair"` | Semi-annual pairing derives from the model periodisation convention, not from a fiscal year offset |
 | Loss carry-forward window | B36 = 5 semi-annual periods | `loss_expiry_count = 5`, `loss_expiry_unit = "periods"` | A 5-period window on semi-annual model ≈ 2.5 calendar years, NOT 3 years |
 | Loss utilisation limit | No cap in workbook | `loss_utilization_limit_pct = 1.0` | No partial-year limit in current Oborovo model |
 
 **Distinguish three layers:**
-1. **Legal tax policy** (external fact): fiscal year start = 1 July; CIT rate; LCF window in tax years
+1. **Legal tax policy** (external fact): fiscal year = 1 January–31 December (calendar year, Croatia); CIT rate; LCF window in tax years
 2. **Modelling convention** (internal choice): semi-annual periods; how fiscal year straddle maps to period pairs
 3. **Workbook shortcut** (implementation artefact): B36=5 window count, B43 MOD pairing — these are derivable from layers 1+2 and must not become named enums in production code
 
@@ -380,7 +455,7 @@ underlying economic intent as generic inputs:
 
 4. **Fix LCF basis**: use `loss_expiry_count = 5`, `loss_expiry_unit = "periods"`. Do not approximate with calendar-year counts.
 
-5. **Fix CIT aggregation basis**: derive from `tax_year_start_month = 7` on semi-annual periods. Each CIT charge sums `taxable_profit[period_H2] + taxable_profit[period_H1]` for the fiscal-year pair.
+5. **Fix CIT aggregation basis**: derive from `tax_year_start_month = 1` and semi-annual period layout. The workbook convention (H2[yr N] + H1[yr N+1]) straddles Jan 1 — classify as `WORKBOOK_PERIODISATION_MISMATCH`; do not reinterpret as a July fiscal year.
 
 6. **Fix CIT formula**: implement the row-43 economic formula `MAX(SUM(tp_prev + tp_curr), 0) × rate × (is_operating) × (is_even_period)`. Do not reproduce Macro row-44 hardcoded values — row 44 is workbook routing evidence and a staleness risk.
 
@@ -399,11 +474,48 @@ Additional (low-risk, no runtime impact for Oborovo):
 - Adding an Oborovo-specific sizing branch
 - Modifying engine outputs to match Excel totals
 
+### Debt-Sizing Input Comparison
+
+| Parameter | Excel source | Excel value | Phase 2C source | Phase 2C value | Match | Impact |
+|-----------|-------------|-------------|-----------------|----------------|-------|--------|
+| Sizing mode | Inputs!D192 (scalar) | FIXED_AMOUNT | `_CALIBRATION['oborovo']` | DSCR_SCULPTED | ✗ | Core mismatch |
+| Debt amount (kEUR) | Inputs!D192 | 42,852 | Engine output | 45,873 | ✗ | +3,021 kEUR (7.1%) |
+| All-in rate (%) | D202+D203 | 5.65% | `annual_fixed_rate` | 5.65% | ✓ | — |
+| DSCR target (initial) | DS row 22 | 1.15 | `target_dscr` | 1.15 | ✓ | — |
+| DSCR step-up | DS row 22 | 1.35 at period 25 | none | none (constant 1.15) | ✗ | Phase 2C sustains higher debt in late periods |
+| Maturity (periods) | Inputs!D196 | 28 (14 years × 2) | `maturity_period_index` | 29−2+1=28 | ≈ | Approximately aligned |
+| Total CAPEX (kEUR) | Inputs!D45 | 57,973 | `project_inputs.capex` | TBD — must verify | ? | Proportional impact on DSCR sculpt |
+
+**Debt sizing conclusion: `DEBT_SIZING_POLICY_MISMATCH_IDENTIFIED`**
+
+Two identifiable policy mismatches:
+1. Excel treats debt amount as a fixed input (42,852 kEUR); Phase 2C derives debt from DSCR sculpting.
+2. Excel applies DSCR step-up 1.15 → 1.35 at period 25; Phase 2C uses constant 1.15.
+
+Manual check required before any conclusion is hardened (see Section 20b).
+
 ### Acceptable C3B2 Approaches for Interest Input
 
 **Option A** (preferred for production): Identify the exact sizing policy that reproduces the Excel debt under equal inputs → implement that policy generically → run Phase 2C → use resulting schedule as `PeriodInterestInput`.
 
 **Option B** (adequate for initial parity proof): Inject the Excel DS!G53 vector directly as exogenous interest. Clearly label as "Excel-sourced" (not Phase 2C modeled). Must not reach production runtime.
+
+## 20b. Manual Verification Pack (Debt Sizing)
+
+The following items require manual workbook inspection to harden the debt-sizing conclusion. Maximum 10 decisive checks:
+
+| Priority | Sheet | Cell / Row | Current value | Question |
+|----------|-------|------------|---------------|----------|
+| 1 | Inputs | D192 | 42,852.279 kEUR | Hardcoded input or result of Goal Seek / macro? |
+| 2 | DS | Row 22 (DSCR target) | 1.15 (p1-24), 1.35 (p25-28) | Is the 1.35 step-up from a named Inputs cell or hard-wired in DS? |
+| 3 | DS | Row 20 (CFADS) | 2,575 kEUR (p1) | Does CFADS include/exclude DSRA movements? Is SHL service below the line? |
+| 4 | Inputs | D45 (Total CAPEX) | 57,973 kEUR | Is this the eligible debt base, or a different sub-total? |
+| 5 | DS | Row 50/51 | Opening 0 → 42,852 at p0 | Does DS row 51 drawdown formula reference `=Inputs!D192` directly? |
+| 6 | DS | Principal rows 52/53 | Sculpted repayment | Circular reference or explicit sculpting loop? Does D192 drive the schedule or is D192 an output? |
+| 7 | Inputs | Gearing cap input | Actual = 73.9% | Is there an explicit gearing cap cell that determined 42,852? |
+| 8 | DS | DSRA rows | Unknown | Is there a DSRA? How is it funded — does it reduce CFADS available for DSCR? |
+| 9 | IDC / Inputs | IDC total | 1,086 kEUR (C.IDC) | Are IDC + commitment fees (1,275 kEUR) included in the eligible debt base? |
+| 10 | Inputs / DS | Hedge | Unknown | Is 5.65% a fixed all-in rate or hedged rate + unhedged split? |
 
 ## 20a. Final PR Positioning
 
@@ -435,7 +547,7 @@ C3B2 requires a separate design review that: (a) resolves the debt sizing policy
 | C | Tax dep source | 5 | PASS |
 | D | Taxable income identity | 6 | PASS |
 | E | Frozen CSV vs Excel; Phase 2C runtime divergence classification | 7 | PASS |
-| F | Tax loss roll-forward | 6 | PASS |
+| F | Tax loss roll-forward (opening balance, 5-period window, expiry) | 6 | PASS |
 | G | Tax-year fragmentation (model-year proved) | 3 | PASS |
 | H | Current tax identity | 4 | PASS |
 | I | CF row 77 dual-load formula; CF=−P44 vector proof; BS conclusion | 8 | PASS |
@@ -446,7 +558,10 @@ C3B2 requires a separate design review that: (a) resolves the debt sizing policy
 | N | No target plug | 2 | PASS |
 | O | C3A upstream freeze | 4 | PASS |
 | P | Regression guard (real subprocess assertions; no tautological tests) | 2 | PASS |
-| **Total** | | **95** | **95 PASS** |
+| Q | Tax milestones (first CIT, first cash, LCF exhaustion, loss utilization) | 8 | PASS |
+| R | Periodisation mismatch (WORKBOOK_PERIODISATION_MISMATCH, no July FY) | 4 | PASS |
+| S | Debt sizing comparison (FIXED_AMOUNT method, DSCR step-up, policy mismatch) | 6 | PASS |
+| **Total** | | **113** | **113 PASS** |
 
 ## 21. Introduced vs Pre-Existing Failures and GitHub Workflow Matrix
 
@@ -454,7 +569,7 @@ C3B2 requires a separate design review that: (a) resolves the debt sizing policy
 
 | Test file | Outcome | Classification |
 |-----------|---------|---------------|
-| `test_stage_c3b1_oborovo_tax_source_truth.py` | **95 PASS** | — |
+| `test_stage_c3b1_oborovo_tax_source_truth.py` | **113 PASS** | — |
 | `test_stage_c3a_clean_pnl_through_ebit.py` | 129 PASS | — |
 | `test_phase2c_senior_debt.py` | PASS | — |
 | `test_phase2b_tax_cfads.py::test_w_correction_aware_four_baseline[oborovo]` | FAIL | **PRE_EXISTING_ON_BASE** |
@@ -475,7 +590,7 @@ This PR targets `main`. The following matrix covers all workflows that trigger o
 | Phase 2D Recon Check | `phase2d_recon_check.yml` | **3 FAIL** (protected-scope `fatal: bad revision HEAD~1`) | **3 FAIL** | **PRE_EXISTING_ON_BASE** / **WORKFLOW_INFRASTRUCTURE_DEFECT** | Phase 2D workflow uses `HEAD~1` as base ref; on shallow checkouts this fails with `fatal: bad revision 'HEAD~1'`; 3 failures |
 | Parity Guardrails | `parity_guardrails.yml` | **3 FAIL** | **3 FAIL** | **PRE_EXISTING_ON_BASE** | Guardrail failures predated C3B1 |
 | Excel Mapping Validation | `excel_mapping_validation.yml` | Not triggered (path filter) | Not triggered | — | Branch does not modify `docs/model_mapping/` |
-| **C3B1 Diagnostic (new)** | `c3b1_diagnostic_check.yml` | N/A (new workflow) | **95 PASS** expected | NEW | Runs `test_stage_c3b1_oborovo_tax_source_truth.py` only |
+| **C3B1 Diagnostic (new)** | `c3b1_diagnostic_check.yml` | N/A (new workflow) | **113 PASS** expected | NEW | Runs `test_stage_c3b1_oborovo_tax_source_truth.py` only |
 
 **Notable details:**
 - **Phase 2A 5 failures**: These exist on `b11e5bf7` and were not caused by C3B1 changes. C3B1 touches only 4 diagnostic files.
@@ -509,5 +624,16 @@ git diff b11e5bf7b9ab60bae174081e7d9f8541190bf371 HEAD -- app/               # e
 C3B1_SOURCE_TRUTH_COMPLETE_INTEREST_POLICY_UNRESOLVED
 ```
 
-All C3B1 source evidence items are resolved. The taxable income formula is proved to machine precision:
-`TI = EBT + FR = EBIT + taxable_financial_income − Senior_Interest`. CF row 77 (`=-P&L!row44`) is confirmed from workbook dual-load. BS has no tax payable row. Phase 2C produces a valid senior interest vector but diverges from Excel by up to 90.29 kEUR/period due to a sizing-policy mismatch (Phase 2C: 45,873 kEUR; Excel: 42,852 kEUR) — this is not a proven algorithm defect. C3B2 requires generic economic policy inputs (`tax_year_start_month=7`, `loss_expiry_count=5`, `loss_expiry_unit="periods"`) derived from underlying legal tax policy, not Excel-layout terminology. The debt sizing policy question is unresolved and must be addressed with equal-input comparison before any engine formula is modified. C3B2 scope: 6 mandatory items pending separate design review.
+All C3B1 source evidence items are resolved.
+
+**Tax formula**: `TI = EBT + FR = EBIT + taxable_financial_income − Senior_Interest` proved to machine precision. CF row 77 (`=-P&L!row44`) confirmed from dual-load. BS has no tax payable row.
+
+**LCF mechanics**: B36=5 is a 5-semi-annual-period rolling window (~2.5 calendar years). Allocated losses = 0 for ALL periods because row 37 requires EBT > 0, and EBT remains negative throughout all loss-carrying periods (SHL interest blocks utilization). Losses expire naturally from the window; never utilized. `TAX_LOSS_ROLLFORWARD_SOURCE_PROVED`.
+
+**Tax milestones**: First positive TI = period 6 (Jan-Jun 2033). First CIT = 8.9 kEUR at period 6. LCF window exhausted after period 10 (Jun 2035). No losses utilized.
+
+**Periodisation**: Workbook pairs H2(yr N) + H1(yr N+1) — `WORKBOOK_PERIODISATION_MISMATCH`. Croatian CIT year is Jan–Dec. Do not treat as July fiscal year. Production: `tax_year_start_month = 1`. Use generic `loss_expiry_count = 5`, `loss_expiry_unit = "periods"`.
+
+**Debt sizing**: Excel Inputs!D192 = 42,852 kEUR (scalar input); DS schedule sculpted to DSCR ≥ 1.15 (p1-24) and ≥ 1.35 (p25-28). Phase 2C: DSCR_SCULPTED at constant 1.15 → 45,873 kEUR. Two policy mismatches: (1) fixed vs. sculpted amount, (2) DSCR step-up absent in Phase 2C. Classification: `DEBT_SIZING_POLICY_MISMATCH_IDENTIFIED`. Manual check of D192 formula chain required before hardening.
+
+C3B2 scope: 6 mandatory items pending separate design review with equal-input comparison.

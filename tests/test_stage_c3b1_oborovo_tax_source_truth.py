@@ -3,7 +3,8 @@
 SOURCE: d49af8ee-20260414_BP_Oborovo_Sensitivity_FINAL_for_PPT.xlsm
 SHA-256: 15a621c4d6b79024980766e00ebc79d7235fd56f00567be7bf345c769ce57920
 
-Extractor version: 3.1.0 (dual-load: data_only=False for formulas, data_only=True for values)
+Extractor version: 3.2.0 (dual-load; adds LCF roll-forward, tax milestones, periodisation mismatch,
+debt-sizing comparison)
 
 Groups
 ------
@@ -26,7 +27,7 @@ P  Regression guard (pre-existing failures do not increase)
 
 Verdict
 -------
-C3B1_TAX_BLOCKED_BY_INTEREST_DEPENDENCY
+C3B1_SOURCE_TRUTH_COMPLETE_INTEREST_POLICY_UNRESOLVED
 
 The full taxable income formula is proved:
     TI = EBT + FR = EBIT + taxable_financial_income - Senior_Interest
@@ -41,36 +42,30 @@ valid interest vector but sizes the debt differently (45,873 kEUR vs Excel
 42,852 kEUR), causing a maximum per-period delta of 90.29 kEUR.  Tax parity
 cannot be achieved without a matching Phase 2C interest input.
 
-C3B2 typed policy contracts (no project-name dispatch permitted):
+C3B2 generic economic inputs (no Excel-layout terminology, no project-name dispatch):
 
-    TAX_AGGREGATION_BASIS:
-        CALENDAR_YEAR  — Python current default
-        MODEL_YEAR_PAIR — required for Oborovo source parity (H2+H1 pair)
-        CUSTOM_PERIOD_GROUPING — only if genuinely required
+    Croatian corporate income tax year: 1 January to 31 December.
+    The workbook pairs H2(yr N) + H1(yr N+1) — a modelling convention, NOT a July fiscal year.
+    Do NOT use tax_year_start_month = 7 as a production input.
+    For production: tax_year_start_month = 1 (unless separately evidenced non-calendar fiscal year).
 
-    LOSS_CARRYFORWARD_BASIS:
-        TAX_YEARS — Python current default (5 calendar years)
-        MODEL_PERIODS — required for Oborovo source parity (5 model periods = B36=5)
+    LCF: B36=5 = five semi-annual model periods ≈ 2.5 calendar years.
+    Recommended: loss_expiry_count=5, loss_expiry_unit="periods"
+    Do NOT use loss_carryforward_years=3 or any year-count approximation.
+    Do NOT use typed enum MODEL_PERIODS — use generic count/unit inputs.
 
-    For Oborovo source parity:
-        tax_aggregation_basis = MODEL_YEAR_PAIR
-        loss_carryforward_basis = MODEL_PERIODS, n_periods = 5
-
-    Do NOT use loss_carryforward_years = 3 or any year-count approximation.
-    Do NOT defer the H2+H1 model-year difference as a sub-1% approximation.
-
-    C3B2 CIT must use the row-43 economic formula.  Row 44 is workbook routing
-    evidence and a stale-value risk; do not reproduce its hardcoded Macro values.
+    CIT aggregation: derived from tax_year_start_month + tax_payment_frequency on semi-annual model.
+    Do NOT use typed enum MODEL_YEAR_PAIR — derive the pairing from generic fiscal parameters.
 
 Minimum C3B2 scope (6 items):
     1. Fix clean adapter: tax_dep = book_dep × deductible_pct for
        BOOK_BASED_PERCENTAGE mode (adapter currently uses hard-CAPEX-only basis).
     2. Pass senior_interest from Phase 2C as PeriodInterestInput.senior_interest_keur
-       using a Phase 2C result that matches Excel debt sizing.
+       (requires equal-input equal-policy comparison before any engine formula change).
     3. Pass SHL_interest as PeriodInterestInput.shl_interest_keur and reintegrate via
        PeriodTaxAdjustmentInput.other_fiscal_reintegration_keur (=SHL for thin_cap=False).
-    4. Fix LCF: use MODEL_PERIODS with n_periods=5 window (not TAX_YEARS=5 calendar years).
-    5. Fix CIT aggregation: use MODEL_YEAR_PAIR (not CALENDAR_YEAR).
+    4. Fix LCF: use loss_expiry_count=5, loss_expiry_unit="periods" (not 5 calendar years).
+    5. Fix CIT aggregation: derive from tax_year_start_month=1, semi-annual period pairing.
     6. Fix CIT formula: implement row-43 economic formula; treat row-44 as staleness risk.
 
 PARITY HARNESS BOUNDARY
@@ -120,7 +115,7 @@ import pytest
 
 _FIXTURE = pathlib.Path("tests/fixtures/excel_oborovo_financial_truth.json")
 _WORKBOOK_SHA = "15a621c4d6b79024980766e00ebc79d7235fd56f00567be7bf345c769ce57920"
-_EXTRACTOR_VERSION = "3.1.0"
+_EXTRACTOR_VERSION = "3.2.0"
 # Base SHA from which this branch was created; used by financial-freeze tests
 _BASE_SHA = "b11e5bf7b9ab60bae174081e7d9f8541190bf371"
 
@@ -1377,3 +1372,211 @@ class TestPRegressionGuard:
             f"C3B1 introduced unexpected new failures in Phase2B suite:\n" +
             "\n".join(introduced)
         )
+
+
+# ===========================================================================
+# Q — Tax milestones (derived from LCF roll-forward)
+# ===========================================================================
+
+class TestQTaxMilestones:
+    """Proves derived tax-start milestones from the LCF roll-forward analysis.
+
+    Tax year: Croatian legal — 1 January to 31 December.
+    LCF losses expire through the rolling 5-period window; no explicit utilization.
+    """
+
+    def test_tax_milestones_section_present(self):
+        xd = _xd()
+        milestones = xd["tax"].get("tax_milestones")
+        assert milestones is not None, "tax_milestones section must be present"
+        required_keys = [
+            "first_positive_ti_before_losses",
+            "first_loss_utilized",
+            "first_positive_tp_after_losses",
+            "first_cit_expense",
+            "first_cash_tax_outflow",
+            "lcf_balance_exhausted_from_window",
+            "losses_ever_utilized",
+        ]
+        for k in required_keys:
+            assert k in milestones, f"tax_milestones missing key: {k}"
+
+    def test_first_positive_ti_is_period_6(self):
+        """First positive taxable income occurs in period 6 (Jan-Jun 2033)."""
+        xd = _xd()
+        m = xd["tax"]["tax_milestones"]["first_positive_ti_before_losses"]
+        assert m["period"] == 6, f"Expected period 6, got {m['period']}"
+        assert m["period_bop_date"] == "2033-01-01"
+        assert abs(m["ti_keur"] - 92.716) < 0.1
+
+    def test_losses_never_utilized(self):
+        """allocated_losses = 0 for all periods; EBT<0 blocks row 37 utilization."""
+        xd = _xd()
+        m = xd["tax"]["tax_milestones"]
+        assert m["losses_ever_utilized"] is False
+        assert m["first_loss_utilized"]["period"] is None
+        assert "EBT" in m["first_loss_utilized"]["note"]
+
+    def test_first_cit_is_period_6_pair_5_6(self):
+        """First CIT fires in period 6 (H1-2033), pairing p5+p6 = -3.7+92.7 = 89.0 kEUR."""
+        xd = _xd()
+        m = xd["tax"]["tax_milestones"]["first_cit_expense"]
+        assert m["period"] == 6
+        assert m["pairing_bucket"] == "CIT_pair_5_6"
+        assert abs(m["cit_keur"] - 8.904) < 0.01
+        assert m["calendar_year_of_booking"] == 2033
+
+    def test_first_cash_tax_is_period_6(self):
+        """Cash tax outflow matches CIT at period 6 (no payment lag)."""
+        xd = _xd()
+        m = xd["tax"]["tax_milestones"]["first_cash_tax_outflow"]
+        assert m["period"] == 6
+        assert abs(m["cash_keur"] + 8.904) < 0.01  # negative (outflow)
+
+    def test_lcf_exhausted_after_period_10(self):
+        """LCF rolling window reaches zero after period 10 closes (Jun 2035).
+        Period 5 TI (-3.7) exits the 5-period window after period 10."""
+        xd = _xd()
+        m = xd["tax"]["tax_milestones"]["lcf_balance_exhausted_from_window"]
+        assert m["after_period"] == 10
+        assert m["after_period_eop"] == "2035-06-30"
+
+    def test_lcf_rollforward_table_present_and_complete(self):
+        """60 operating-period rows in lcf_rollforward with required keys."""
+        xd = _xd()
+        rf = xd["tax"].get("lcf_rollforward")
+        assert rf is not None, "lcf_rollforward section must be present"
+        assert len(rf) == 60, f"Expected 60 operating periods; got {len(rf)}"
+        required = ["period", "taxable_income_keur", "lcf_opening_keur",
+                    "allocated_losses_keur", "losses_expired_keur", "lcf_closing_keur",
+                    "taxable_profit_keur", "cit_keur"]
+        for k in required:
+            assert k in rf[0], f"lcf_rollforward row missing key: {k}"
+
+    def test_lcf_rollforward_expiry_arithmetic(self):
+        """Expiry at period 6 = |TI_p1| = 219.157 kEUR (period 1 drops from window)."""
+        xd = _xd()
+        rf = {r["period"]: r for r in xd["tax"]["lcf_rollforward"]}
+        # Period 6: window covers p2-p6; p1 drops out → expiry = |TI_p1|
+        ti_p1 = xd["tax"]["period_diagnostic"][1]["excel_taxable_income_keur"]
+        assert abs(rf[6]["losses_expired_keur"] - abs(ti_p1)) < 0.1
+        # Period 10: window covers p6-p10; p5 drops → expiry = |TI_p5|
+        ti_p5 = xd["tax"]["period_diagnostic"][5]["excel_taxable_income_keur"]
+        assert abs(rf[10]["losses_expired_keur"] - abs(ti_p5)) < 0.1
+        # Period 11+: no more negative TI in window → lcf_closing = 0
+        assert rf[11]["lcf_closing_keur"] == pytest.approx(0.0, abs=0.01)
+
+
+# ===========================================================================
+# R — Periodisation mismatch
+# ===========================================================================
+
+class TestRPeriodisationMismatch:
+    """Proves the workbook H2+H1 pairing straddles Jan 1 (WORKBOOK_PERIODISATION_MISMATCH).
+
+    Croatian legal tax year: 1 January to 31 December.
+    The workbook pairs H2(yr N) with H1(yr N+1) — this is a modelling convention only.
+    Do NOT interpret as a July fiscal year start.
+    """
+
+    def test_periodisation_mismatch_section_present(self):
+        xd = _xd()
+        pm = xd["tax"].get("periodisation_mismatch")
+        assert pm is not None, "periodisation_mismatch section must be present"
+        assert pm["classification"] == "WORKBOOK_PERIODISATION_MISMATCH"
+        assert pm["legal_tax_year"] == "1 January to 31 December (Croatia: calendar year)"
+        assert "calendar_vs_workbook_table" in pm
+
+    def test_calendar_year_2033_cit_differs_from_workbook(self):
+        """Calendar year 2033: TI=200.1 → CIT=20.0; workbook pair 5_6: CIT=8.9.
+        Delta = -11.1 kEUR (workbook understates first-year CIT)."""
+        xd = _xd()
+        table = {r["calendar_year"]: r for r in
+                 xd["tax"]["periodisation_mismatch"]["calendar_vs_workbook_table"]}
+        row_2033 = table[2033]
+        # Calendar CIT should be ~20 kEUR (H1+H2 of 2033 = 92.7+107.4 = 200.1 × 10%)
+        assert abs(row_2033["calendar_year_cit_keur"] - 20.0) < 0.5
+        # Workbook CIT should be 8.9 kEUR (pair 5_6 books in H1-2033)
+        assert abs(row_2033["workbook_cit_keur"] - 8.9) < 0.5
+        # Delta: workbook understates
+        assert row_2033["delta_keur"] < 0
+
+    def test_workbook_pairing_crosses_jan_1(self):
+        """Pair 5_6 = period 5 (Jul-Dec 2032) + period 6 (Jan-Jun 2033) — straddles Jan 1."""
+        xd = _xd()
+        diag = xd["tax"]["period_diagnostic"]
+        p5 = next(r for r in diag if r["period"] == 5)
+        p6 = next(r for r in diag if r["period"] == 6)
+        # p5 ends in 2032, p6 begins in 2033
+        assert p5["python_calendar_tax_year"] == 2032
+        assert p6["python_calendar_tax_year"] == 2033
+        # They belong to the same CIT pairing bucket (model-year pair 3)
+        assert p6["excel_cit_pairing_bucket"] == "CIT_pair_5_6"
+        assert p5["excel_cit_pairing_bucket"] is None  # odd period has no bucket
+
+    def test_no_july_fiscal_year_in_fixture(self):
+        """The periodisation mismatch section must not claim July as the legal fiscal year."""
+        xd = _xd()
+        pm = xd["tax"]["periodisation_mismatch"]
+        legal = pm["legal_tax_year"].lower()
+        assert "july" not in legal and "1 july" not in legal and "jul" not in legal, (
+            f"Legal tax year must not reference July: {pm['legal_tax_year']}"
+        )
+        assert "january" in legal or "1 january" in legal or "jan" in legal
+
+
+# ===========================================================================
+# S — Debt sizing comparison
+# ===========================================================================
+
+class TestSDebtSizingComparison:
+    """Proves debt-sizing input comparison: Excel vs Phase 2C.
+    Verdict: DEBT_SIZING_POLICY_MISMATCH_IDENTIFIED.
+    DEBT_SIZING_ALGORITHM_DEFECT_PROVED cannot be used without equal-input comparison.
+    """
+
+    def test_debt_sizing_section_present(self):
+        xd = _xd()
+        ds = xd.get("debt_sizing_comparison")
+        assert ds is not None, "debt_sizing_comparison section must be present"
+        required = ["excel_method_classification", "excel_inputs", "phase2c_parity_inputs",
+                    "comparison_table", "debt_sizing_conclusion", "manual_check_pack"]
+        for k in required:
+            assert k in ds, f"debt_sizing_comparison missing key: {k}"
+
+    def test_excel_debt_is_fixed_amount_method(self):
+        """Excel D192 = 42,852 kEUR stored as scalar; method = FIXED_AMOUNT_WITH_SCULPTED_REPAYMENT."""
+        xd = _xd()
+        ds = xd["debt_sizing_comparison"]
+        assert "FIXED_AMOUNT" in ds["excel_method_classification"]
+        assert abs(ds["excel_inputs"]["debt_amount_keur"] - 42852.0) < 1.0
+
+    def test_dscr_stepup_identified_as_mismatch(self):
+        """Excel DSCR steps up 1.15→1.35 at period 25; Phase 2C uses constant 1.15.
+        This is the primary policy mismatch causing Phase 2C over-sizing."""
+        xd = _xd()
+        ds = xd["debt_sizing_comparison"]
+        assert ds["excel_inputs"]["dscr_covenant_stepup"] == pytest.approx(1.35, abs=0.01)
+        assert ds["excel_inputs"]["dscr_stepup_period"] == 25
+        assert ds["phase2c_parity_inputs"]["dscr_stepup"] is None
+
+    def test_debt_sizing_conclusion_is_policy_mismatch(self):
+        """Conclusion must be DEBT_SIZING_POLICY_MISMATCH_IDENTIFIED, not algorithm defect."""
+        xd = _xd()
+        ds = xd["debt_sizing_comparison"]
+        assert ds["debt_sizing_conclusion"] == "DEBT_SIZING_POLICY_MISMATCH_IDENTIFIED"
+        assert "ALGORITHM_DEFECT" not in ds["debt_sizing_conclusion"]
+
+    def test_manual_check_pack_has_10_items(self):
+        """Manual check pack must have at least 10 decisive items."""
+        xd = _xd()
+        mc = xd["debt_sizing_comparison"]["manual_check_pack"]
+        assert len(mc) >= 10
+        priorities = [item["priority"] for item in mc]
+        assert 1 in priorities and 10 in priorities
+
+    def test_excel_gearing_is_73_pct(self):
+        """Excel capital structure: SD/CAPEX = 42,852/57,973 = 73.9%."""
+        xd = _xd()
+        ds = xd["debt_sizing_comparison"]["excel_inputs"]
+        assert abs(ds["gearing_pct"] - 73.9) < 0.5

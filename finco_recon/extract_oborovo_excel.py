@@ -33,7 +33,7 @@ import pathlib
 import sys
 from typing import Any
 
-_EXTRACTOR_VERSION = "3.1.0"
+_EXTRACTOR_VERSION = "3.2.0"
 _EXPECTED_FILENAME = "20260414_BP_Oborovo_Sensitivity_FINAL_for_PPT.xlsm"
 
 # ---------------------------------------------------------------------------
@@ -757,7 +757,7 @@ def _read_pl_tax_formulas(wb_formula, wb_data) -> dict:
             " Pairs (1,2),(3,4),(5,6),... form model years 1,2,3,..."
             " CIT fires in even periods (2,4,6,...) summing [prev_period+this_period] taxable profits."
             " Python splits on calendar Jan-Dec boundaries, NOT on model-year H2+H1 pairs."
-            " LCF: 5 model-year periods (not 5 calendar years)."
+            " LCF: B36=5 = 5 semi-annual model periods (~2.5 calendar years, not 5 tax years)."
         ),
         "proved_dep_row_authority": (
             "P&L row 13 = Dep!G30 = SUM(G7:G28) = total book depreciation including financing costs."
@@ -769,6 +769,190 @@ def _read_pl_tax_formulas(wb_formula, wb_data) -> dict:
         "cf_tax_chain": cf_tax_chain,
         "period_diagnostic": period_diagnostic,
         "rows": rows,
+        **_derive_lcf_rollforward(period_diagnostic),
+    }
+
+
+def _derive_lcf_rollforward(period_diagnostic: list[dict]) -> dict:
+    """Compute LCF roll-forward table, tax milestones, and periodisation mismatch.
+
+    Derived entirely from period_diagnostic rows — no workbook re-read required.
+    Croatian CIT year: 1 January – 31 December. The workbook pairs H2(yr N) + H1(yr N+1);
+    that is a modelling convention (WORKBOOK_PERIODISATION_MISMATCH), NOT a July fiscal year.
+    """
+    LCF_WINDOW = 5  # B36 = 5 semi-annual model periods
+    CIT_RATE = 0.10  # B43 = 10%
+
+    op_rows = [r for r in period_diagnostic if r["period"] > 0]
+
+    # --- LCF roll-forward table ---
+    rollforward = []
+    for r in op_rows:
+        p = r["period"]
+        ti = r["excel_taxable_income_keur"]
+        lcf_op = r["excel_lcf_opening_keur"]
+        alloc = r["excel_allocated_losses_keur"]
+        tp = r["excel_taxable_profit_keur"]
+        cit = r["excel_cit_p43_keur"]
+        cash = r["excel_cf_cash_tax_keur"]
+
+        # LCF closing = SUMIF negative TI in rolling window [p-LCF_WINDOW+1 .. p]
+        window_start = max(1, p - LCF_WINDOW + 1)
+        window_tis = [rr["excel_taxable_income_keur"] for rr in op_rows
+                      if window_start <= rr["period"] <= p]
+        lcf_cl = sum(t for t in window_tis if t < 0)
+
+        # Losses expired = negative TI that fell out of the window this period
+        if p >= LCF_WINDOW + 1:
+            dropped_p = p - LCF_WINDOW
+            dropped_ti = next((rr["excel_taxable_income_keur"] for rr in period_diagnostic
+                               if rr["period"] == dropped_p), 0.0)
+            expiry = -min(dropped_ti, 0.0)
+        else:
+            expiry = 0.0
+
+        rollforward.append({
+            "period": p,
+            "period_bop_date": r["period_bop_date"],
+            "period_eop_date": r["period_eop_date"],
+            "calendar_tax_year": r["python_calendar_tax_year"],
+            "taxable_income_keur": round(ti, 3),
+            "lcf_opening_keur": round(lcf_op, 3),
+            "allocated_losses_keur": round(alloc, 3),
+            "losses_expired_keur": round(expiry, 3),
+            "lcf_closing_keur": round(lcf_cl, 3),
+            "taxable_profit_keur": round(tp, 3),
+            "cit_keur": round(cit, 3),
+            "cash_tax_keur": round(cash, 3),
+            "cit_pairing_bucket": r.get("excel_cit_pairing_bucket"),
+        })
+
+    # --- Tax milestones ---
+    first_pos_ti = next((r for r in op_rows if r["excel_taxable_income_keur"] > 0), None)
+    first_loss_util = next((r for r in op_rows if r["excel_allocated_losses_keur"] > 0), None)
+    first_pos_tp = next((r for r in op_rows if r["excel_taxable_profit_keur"] > 0), None)
+    first_cit = next((r for r in op_rows if r["excel_cit_p43_keur"] > 0), None)
+    first_cash = next((r for r in op_rows if r["excel_cf_cash_tax_keur"] < 0), None)
+    lcf_exhaust = next((r for r in op_rows if r["period"] > 5 and r["excel_lcf_opening_keur"] == 0.0), None)
+    lcf_exhaust_prev = next((r for r in op_rows if lcf_exhaust and r["period"] == lcf_exhaust["period"] - 1), None)
+
+    tax_milestones = {
+        "first_positive_ti_before_losses": {
+            "period": first_pos_ti["period"] if first_pos_ti else None,
+            "period_bop_date": first_pos_ti["period_bop_date"] if first_pos_ti else None,
+            "ti_keur": round(first_pos_ti["excel_taxable_income_keur"], 3) if first_pos_ti else None,
+        },
+        "first_loss_utilized": {
+            "period": first_loss_util["period"] if first_loss_util else None,
+            "note": (
+                "NEVER — row 37 condition AND(G36<=0,G32>0) uses EBT (G32). "
+                "EBT remains negative throughout all loss-carrying periods "
+                "(SHL interest keeps EBT below zero even when TI turns positive). "
+                "Losses expire through the rolling 5-period window, never allocated."
+            ),
+        },
+        "first_positive_tp_after_losses": {
+            "period": first_pos_tp["period"] if first_pos_tp else None,
+            "period_bop_date": first_pos_tp["period_bop_date"] if first_pos_tp else None,
+            "tp_keur": round(first_pos_tp["excel_taxable_profit_keur"], 3) if first_pos_tp else None,
+            "note": "TP = TI because allocated_losses = 0 for all periods; no loss offset applied",
+        },
+        "first_cit_expense": {
+            "period": first_cit["period"] if first_cit else None,
+            "period_bop_date": first_cit["period_bop_date"] if first_cit else None,
+            "cit_keur": round(first_cit["excel_cit_p43_keur"], 3) if first_cit else None,
+            "pairing_bucket": first_cit.get("excel_cit_pairing_bucket") if first_cit else None,
+            "calendar_year_of_booking": first_cit["python_calendar_tax_year"] if first_cit else None,
+        },
+        "first_cash_tax_outflow": {
+            "period": first_cash["period"] if first_cash else None,
+            "period_bop_date": first_cash["period_bop_date"] if first_cash else None,
+            "cash_keur": round(first_cash["excel_cf_cash_tax_keur"], 3) if first_cash else None,
+        },
+        "lcf_balance_exhausted_from_window": {
+            "after_period": lcf_exhaust_prev["period"] if lcf_exhaust_prev else None,
+            "after_period_eop": lcf_exhaust_prev["period_eop_date"] if lcf_exhaust_prev else None,
+            "note": (
+                "Rolling 5-period window no longer contains any negative TI period. "
+                "Losses expired; not utilized. LCF opening = 0 from this period onward."
+            ),
+        },
+        "losses_ever_utilized": False,
+        "utilization_blocked_reason": (
+            "Row 37: allocated_losses = IF(AND(G36<=0, G32>0), MIN(ABS(G36), G32), 0). "
+            "G32 = EBT. EBT is negative throughout all loss-carrying periods (p1-p10) "
+            "because SHL interest (>600 kEUR/period) exceeds EBIT even when EBIT>0. "
+            "LCF balance declines solely through rolling-window expiry: the earliest "
+            "loss period (p1 TI=-219.2) drops out of the 5-period window after period 6, "
+            "reducing the balance from -581.7 to -362.6 kEUR. "
+            "CIT fires at period 6 directly on paired taxable profits (not after loss offset)."
+        ),
+    }
+
+    # --- Calendar-year CIT vs workbook pairing comparison ---
+    cal_years: dict = {}
+    for r in op_rows:
+        yr = r["python_calendar_tax_year"]
+        if yr not in cal_years:
+            cal_years[yr] = {"periods": [], "ti_sum": 0.0}
+        cal_years[yr]["periods"].append(r["period"])
+        cal_years[yr]["ti_sum"] += r["excel_taxable_income_keur"]
+
+    wb_cit_by_year: dict = {}
+    for r in op_rows:
+        cit = r["excel_cit_p43_keur"]
+        if cit > 0:
+            yr = r["python_calendar_tax_year"]
+            wb_cit_by_year[yr] = wb_cit_by_year.get(yr, 0.0) + cit
+
+    cal_vs_wb_table = []
+    for yr in sorted(cal_years.keys()):
+        cal_ti = cal_years[yr]["ti_sum"]
+        cal_cit = max(cal_ti, 0.0) * CIT_RATE
+        wb_cit = wb_cit_by_year.get(yr, 0.0)
+        cal_vs_wb_table.append({
+            "calendar_year": yr,
+            "periods": cal_years[yr]["periods"],
+            "calendar_year_ti_keur": round(cal_ti, 3),
+            "calendar_year_cit_keur": round(cal_cit, 3),
+            "workbook_cit_keur": round(wb_cit, 3),
+            "delta_keur": round(wb_cit - cal_cit, 3),
+        })
+
+    periodisation_mismatch = {
+        "classification": "WORKBOOK_PERIODISATION_MISMATCH",
+        "legal_tax_year": "1 January to 31 December (Croatia: calendar year)",
+        "workbook_pairing_convention": (
+            "Even period CIT fires on SUM(F41:G41) = TP[prev_period] + TP[this_period]. "
+            "Prev period = H2(yr N, Jul-Dec), this period = H1(yr N+1, Jan-Jun). "
+            "Example: pair 5_6 = H2-2032 (p5) + H1-2033 (p6). Straddles Jan 1."
+        ),
+        "correct_calendar_year_aggregation": (
+            "Each calendar year should combine H1(yr N, Jan-Jun) + H2(yr N, Jul-Dec). "
+            "Example year 2033: p6(H1-2033) + p7(H2-2033) = 92.7 + 107.4 = 200.1 kEUR TI. "
+            "Calendar-year CIT = 200.1 × 10% = 20.0 kEUR."
+        ),
+        "workbook_vs_correct_first_tax_year": (
+            "Workbook pair 5_6: TI = -3.7 + 92.7 = 89.0 → CIT = 8.9 kEUR, booked H1-2033. "
+            "Correct calendar year 2033: TI = 200.1 → CIT = 20.0 kEUR. "
+            "Delta: -11.1 kEUR (workbook understates by 55% in first tax year)."
+        ),
+        "impact_on_tax_shield_exhaustion": (
+            "No impact on LCF window exhaustion date: losses expire by rolling window, "
+            "not by utilization offset. Exhaustion date is independent of CIT aggregation."
+        ),
+        "impact_on_lifetime_cit": (
+            "Periodisation shifts CIT timing by approximately 6 months. "
+            "Lifetime CIT total is approximately equal (zero-sum over whole life) "
+            "but first-year underpayment is ~11 kEUR; timing differs every year."
+        ),
+        "calendar_vs_workbook_table": cal_vs_wb_table,
+    }
+
+    return {
+        "lcf_rollforward": rollforward,
+        "tax_milestones": tax_milestones,
+        "periodisation_mismatch": periodisation_mismatch,
     }
 
 
