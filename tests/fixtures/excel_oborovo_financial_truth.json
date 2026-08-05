@@ -13088,24 +13088,67 @@
       "sheet": "Inputs",
       "row": 192,
       "col": "D",
-      "formula_mode_content": null,
+      "formula_mode_content": "=DS!D51",
       "cached_value_keur": 42852.27876256299,
-      "source_classification": "SOURCE_UNRESOLVED"
+      "source_classification": "FORMULA_DERIVED",
+      "dependency_classification": "LINKED_VALUE",
+      "precedent": "DS!D51"
+    },
+    "ds_d51_chain": {
+      "ds_d51": {
+        "formula": "=SUM(G51:DW51)",
+        "cached_keur": 42852.27876256299,
+        "note": "SUM of all period drawdowns (G51:DW51); equals total senior debt"
+      },
+      "ds_g51": {
+        "formula": "=G62+G72",
+        "cached_keur": 42852.27876256299,
+        "note": "Period-0 drawdown = tranche-1 (G62) + tranche-2 (G72)"
+      },
+      "ds_g62": {
+        "formula": "=(G3=0)*$B$62",
+        "cached_keur": 42852.27876256299,
+        "note": "Tranche-1 drawdown during construction (G3=0 guard)"
+      },
+      "ds_b62": {
+        "formula": "=Inputs!$D$195*B60",
+        "cached_keur": 42852.27876256299,
+        "note": "Tranche-1 total = Inputs!D195 * tranche proportion (B60=Inputs!D209=1.0)"
+      },
+      "inputs_d195": {
+        "formula": "=MIN(DS!$D$47,G171*$D$230)",
+        "cached_keur": 42852.27876256299,
+        "note": "MIN(DSCR-sculpted capacity DS!D47, CAPEX*gearing_cap)"
+      },
+      "ds_d47": {
+        "formula": "=MAX($G$47:$DW$47)",
+        "cached_keur": 42852.27876256299,
+        "note": "MAX(G47:DW47) — peak DSCR-sculpted debt capacity; iterative ref in G47"
+      },
+      "gearing_cap": {
+        "inputs_d230_formula": "=Scenarios!E348",
+        "inputs_d230_cached": 0.8,
+        "inputs_g171_formula": "=SUM(G165:G170)",
+        "inputs_g171_cached_keur": 57973.053,
+        "gearing_cap_keur": 46378.442,
+        "note": "Gearing cap = Inputs!D230 (=Scenarios!E348=0.80) * total CAPEX; NOT binding"
+      },
+      "binding_constraint": "DSCR_SCULPTING"
     },
     "ds_dscr_row22_evidence": {
       "sheet": "DS",
       "row": 22,
       "col": "G-onward (period axis)",
-      "formula_mode_period1": null,
+      "formula_mode_period1": "=($B$22*G15)+(G16*$D$22)+(G17*$C$22)",
       "cached_distinct_values": [
         1.15,
         1.35
       ],
-      "dscr_classification": "SOURCE_UNRESOLVED",
-      "dscr_role_evidence": "Formula-mode content for DS row 22 not available; cannot classify DSCR role"
+      "dscr_step_up_targets": {"B22": 1.15, "C22": 1.35, "D22": 1.65},
+      "dscr_role_evidence": "Formula extracted (period 1): =($B$22*G15)+(G16*$D$22)+(G17*$C$22); step-up targets B22=1.15, C22=1.35, D22=1.65"
     },
-    "debt_sizing_verdict": "DEBT_SIZING_SOURCE_UNRESOLVED_MANUAL_CHECK_REQUIRED",
-    "verdict_rationale": "D192 formula-mode content is SOURCE_UNRESOLVED: workbook binary required for formula-mode inspection. Cannot classify whether D192 is a literal, formula-derived, or Goal Seek/macro result. Manual inspection required (see manual_check_pack).",
+    "debt_sizing_verdict": "DEBT_SIZING_FORMULA_CHAIN_PARTIALLY_PROVED",
+    "verdict_rationale": "D192==DS!D51 → SUM(G51:DW51) → DS!G62=(G3=0)*$B$62 → DS!B62=Inputs!$D$195*B60 → Inputs!D195=MIN(DS!$D$47=42852.279 kEUR, CAPEX*gearing=46378.442 kEUR). Binding constraint: DSCR_SCULPTING (DS!D47=42852.279 < gearing cap=46378.442). DS!G47 contains iterative reference (sculpting loop) not fully resolvable from static formula inspection; chain is PARTIALLY_PROVED. No Goal Seek / macro evidence found.",
     "manual_check_pack": [
       {
         "priority": 1,

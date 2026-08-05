@@ -1519,6 +1519,73 @@ class TestQTaxMilestones:
 
 
 # ===========================================================================
+# Q2 — Croatian legal LCF expiry boundary (synthetic unit tests)
+# ===========================================================================
+
+class TestQ2CroatianLcfExpiryBoundary:
+    """Synthetic tests for the Article 17 LCF expiry boundary condition.
+
+    Article 17 rule: a loss from year N is usable in years N+1 … N+5 (inclusive).
+    It expires before year N+6.  The extractor condition must be:
+        current_year > orig_yr + EXPIRY_YEARS   (EXPIRY_YEARS = 5)
+    NOT:
+        current_year - orig_yr >= EXPIRY_YEARS  (would expire one year too early)
+    """
+
+    @staticmethod
+    def _make_period_rows(cal_year_ti: dict) -> list:
+        """Build minimal period_diagnostic rows matching the extractor's expected keys."""
+        rows = []
+        period = 1
+        for yr in sorted(cal_year_ti.keys()):
+            rows.append({
+                "period": period,
+                "python_calendar_tax_year": yr,
+                "excel_taxable_income_keur": cal_year_ti[yr],
+            })
+            period += 1
+        return rows
+
+    def test_n_plus_5_is_inclusive_2030_vintage(self):
+        """2030 loss is still usable in 2035 (N+5 is inclusive under Article 17)."""
+        sys.path.insert(0, ".")
+        from finco_recon.extract_oborovo_excel import _derive_croatian_legal_lcf_proforma
+
+        # Year 2030: loss of 100; 2031-2034: no income; 2035: income of 50
+        period_rows = self._make_period_rows({
+            2030: -100.0, 2031: 0.0, 2032: 0.0, 2033: 0.0, 2034: 0.0, 2035: 50.0,
+        })
+        result = _derive_croatian_legal_lcf_proforma(period_rows)
+        rows = {r["calendar_year"]: r for r in result["proforma_rows"]}
+        r2035 = rows[2035]
+        # 2030 vintage is usable in 2035 (N+5); taxable base should be zero after full offset
+        assert abs(r2035["taxable_base_keur"]) < 0.01, (
+            f"2030 vintage must be usable in 2035 (N+5 inclusive); "
+            f"taxable_base_keur={r2035['taxable_base_keur']:.3f} (expected 0.0). "
+            "Check expiry condition: must be yr > orig_yr + 5, not yr - orig_yr >= 5."
+        )
+
+    def test_n_plus_6_is_exclusive_2030_vintage(self):
+        """2030 loss must NOT be usable in 2036 (N+6 is exclusive under Article 17)."""
+        sys.path.insert(0, ".")
+        from finco_recon.extract_oborovo_excel import _derive_croatian_legal_lcf_proforma
+
+        # Year 2030: loss of 100; 2031-2035: no income; 2036: income of 50
+        period_rows = self._make_period_rows({
+            2030: -100.0, 2031: 0.0, 2032: 0.0, 2033: 0.0, 2034: 0.0, 2035: 0.0, 2036: 50.0,
+        })
+        result = _derive_croatian_legal_lcf_proforma(period_rows)
+        rows = {r["calendar_year"]: r for r in result["proforma_rows"]}
+        r2036 = rows[2036]
+        # 2030 vintage has expired before 2036; full income is taxable
+        assert abs(r2036["taxable_base_keur"] - 50.0) < 0.01, (
+            f"2030 vintage must be expired by 2036 (N+6 exclusive); "
+            f"taxable_base_keur={r2036['taxable_base_keur']:.3f} (expected 50.0). "
+            "Check expiry condition: must be yr > orig_yr + 5."
+        )
+
+
+# ===========================================================================
 # R — Periodisation mismatch
 # ===========================================================================
 
@@ -1582,11 +1649,12 @@ class TestRPeriodisationMismatch:
 # ===========================================================================
 
 class TestSDebtSizingEvidence:
-    """Proves debt-sizing evidence is extractor-generated from dual-load workbook reads.
+    """Proves debt-sizing evidence from dual-load workbook reads.
 
-    Verdict: DEBT_SIZING_SOURCE_UNRESOLVED_MANUAL_CHECK_REQUIRED.
-    D192 formula-mode content is SOURCE_UNRESOLVED without the workbook binary.
-    A stronger verdict requires proving the formula chain from D192 to the sizing mechanism.
+    D192 = =DS!D51 (FORMULA_DERIVED, LINKED_VALUE). Chain traced to
+    Inputs!D195 = MIN(DS!D47, CAPEX*gearing). DS!D47 (42,852 kEUR) < gearing cap
+    (46,378 kEUR), so DSCR sculpting is the binding constraint.
+    Verdict: DEBT_SIZING_FORMULA_CHAIN_PARTIALLY_PROVED (DS!G47 has iterative ref).
     """
 
     _VALID_SOURCE_CLASSIFICATIONS = {
@@ -1595,13 +1663,10 @@ class TestSDebtSizingEvidence:
         "MACRO_OR_GOAL_SEEK_HISTORY_NOT_OBSERVABLE",
         "SOURCE_UNRESOLVED",
     }
-    _VALID_DSCR_CLASSIFICATIONS = {
-        "SIZING_TARGET",
-        "REPAYMENT_SCULPTING_TARGET",
-        "COVENANT_THRESHOLD",
-        "LOCKUP_THRESHOLD",
-        "DISPLAY_ONLY",
-        "SOURCE_UNRESOLVED",
+    _VALID_VERDICTS = {
+        "DEBT_SIZING_FORMULA_CHAIN_PROVED",
+        "DEBT_SIZING_FORMULA_CHAIN_PARTIALLY_PROVED",
+        "DEBT_SIZING_SOURCE_UNRESOLVED_MANUAL_CHECK_REQUIRED",
     }
 
     def test_debt_sizing_evidence_section_present(self):
@@ -1626,6 +1691,37 @@ class TestSDebtSizingEvidence:
         assert d192["row"] == 192
         assert d192["col"] == "D"
 
+    def test_d192_formula_content_is_ds_d51(self):
+        """D192 formula-mode content must be '=DS!D51' (proved from workbook binary)."""
+        xd = _xd()
+        d192 = xd["debt_sizing_evidence"]["d192_evidence"]
+        fc = d192["formula_mode_content"]
+        assert fc is not None, "formula_mode_content must not be null — workbook binary was loaded"
+        assert fc == "=DS!D51", (
+            f"Inputs!D192 formula expected '=DS!D51', got '{fc}'. "
+            "Fixture or extractor must be regenerated from workbook binary."
+        )
+
+    def test_d192_source_classification_is_formula_derived(self):
+        """D192 source_classification must be FORMULA_DERIVED (not SOURCE_UNRESOLVED)."""
+        xd = _xd()
+        cls = xd["debt_sizing_evidence"]["d192_evidence"]["source_classification"]
+        assert cls == "FORMULA_DERIVED", (
+            f"D192 source_classification must be FORMULA_DERIVED; got '{cls}'. "
+            "Check that dual-load workbook was used when generating the fixture."
+        )
+
+    def test_d192_dependency_and_precedent(self):
+        """D192 evidence records dependency_classification=LINKED_VALUE and precedent=DS!D51."""
+        xd = _xd()
+        d192 = xd["debt_sizing_evidence"]["d192_evidence"]
+        assert d192.get("dependency_classification") == "LINKED_VALUE", (
+            f"dependency_classification must be LINKED_VALUE; got {d192.get('dependency_classification')}"
+        )
+        assert d192.get("precedent") == "DS!D51", (
+            f"precedent must be 'DS!D51'; got {d192.get('precedent')}"
+        )
+
     def test_d192_cached_value_matches_inputs(self):
         """D192 cached value matches inputs.senior_debt_amount_keur (same workbook cell)."""
         xd = _xd()
@@ -1634,6 +1730,42 @@ class TestSDebtSizingEvidence:
         assert abs((d192_cached or 0) - (inputs_value or 0)) < 0.001, (
             f"D192 evidence cached value {d192_cached} must match inputs "
             f"senior_debt_amount_keur {inputs_value}"
+        )
+
+    def test_d192_cached_matches_ds_d51_cached(self):
+        """Inputs!D192 cached == DS!D51 cached (LINKED_VALUE consistency check)."""
+        xd = _xd()
+        d192_cached = xd["debt_sizing_evidence"]["d192_evidence"]["cached_value_keur"]
+        chain = xd["debt_sizing_evidence"].get("ds_d51_chain", {})
+        ds_d51 = chain.get("ds_d51", {})
+        ds_d51_cached = ds_d51.get("cached_keur")
+        assert ds_d51_cached is not None, "ds_d51_chain.ds_d51.cached_keur must be present"
+        assert abs((d192_cached or 0) - ds_d51_cached) < 0.001, (
+            f"Inputs!D192 cached ({d192_cached}) must equal DS!D51 cached ({ds_d51_cached})"
+        )
+
+    def test_ds_d51_chain_section_present(self):
+        """ds_d51_chain section is present with all required chain steps."""
+        xd = _xd()
+        chain = xd["debt_sizing_evidence"].get("ds_d51_chain")
+        assert chain is not None, "ds_d51_chain section must be present"
+        required = ["ds_d51", "ds_g51", "ds_g62", "ds_b62", "inputs_d195",
+                    "ds_d47", "gearing_cap", "binding_constraint"]
+        for k in required:
+            assert k in chain, f"ds_d51_chain missing key: {k}"
+
+    def test_binding_constraint_is_dscr_sculpting(self):
+        """DS!D47 (DSCR capacity) is less than gearing cap → DSCR_SCULPTING is binding."""
+        xd = _xd()
+        chain = xd["debt_sizing_evidence"]["ds_d51_chain"]
+        assert chain["binding_constraint"] == "DSCR_SCULPTING", (
+            f"binding_constraint must be DSCR_SCULPTING; got {chain['binding_constraint']}"
+        )
+        dscr_cap = chain["ds_d47"]["cached_keur"]
+        gear_cap = chain["gearing_cap"]["gearing_cap_keur"]
+        assert dscr_cap is not None and gear_cap is not None
+        assert dscr_cap < gear_cap, (
+            f"DS!D47={dscr_cap} must be < gearing cap={gear_cap} to confirm DSCR is binding"
         )
 
     def test_d192_source_classification_valid_enum(self):
@@ -1650,18 +1782,36 @@ class TestSDebtSizingEvidence:
         xd = _xd()
         dscr_ev = xd["debt_sizing_evidence"]["ds_dscr_row22_evidence"]
         required = ["sheet", "row", "formula_mode_period1",
-                    "cached_distinct_values", "dscr_classification", "dscr_role_evidence"]
+                    "cached_distinct_values", "dscr_role_evidence"]
         for k in required:
             assert k in dscr_ev, f"ds_dscr_row22_evidence missing field: {k}"
         assert dscr_ev["sheet"] == "DS"
         assert dscr_ev["row"] == 22
 
-    def test_dscr_classification_valid_enum(self):
-        """DSCR classification is one of the defined enum values."""
+    def test_verdict_is_partially_proved(self):
+        """Debt verdict is FORMULA_CHAIN_PARTIALLY_PROVED (chain traced; G47 iterative ref)."""
         xd = _xd()
-        cls = xd["debt_sizing_evidence"]["ds_dscr_row22_evidence"]["dscr_classification"]
-        assert cls in self._VALID_DSCR_CLASSIFICATIONS, (
-            f"dscr_classification '{cls}' not in valid enum: {self._VALID_DSCR_CLASSIFICATIONS}"
+        verdict = xd["debt_sizing_evidence"]["debt_sizing_verdict"]
+        assert verdict == "DEBT_SIZING_FORMULA_CHAIN_PARTIALLY_PROVED", (
+            f"Expected DEBT_SIZING_FORMULA_CHAIN_PARTIALLY_PROVED; got '{verdict}'"
+        )
+
+    def test_verdict_cannot_exceed_partially_proved_without_full_chain(self):
+        """Verdict must not claim FULLY_PROVED unless DS!G47 iterative ref is resolved."""
+        xd = _xd()
+        verdict = xd["debt_sizing_evidence"]["debt_sizing_verdict"]
+        assert verdict != "DEBT_SIZING_FORMULA_CHAIN_PROVED", (
+            "Verdict must not be DEBT_SIZING_FORMULA_CHAIN_PROVED: DS!G47 contains an "
+            "iterative reference (sculpting loop) that cannot be fully resolved from static "
+            "formula inspection alone."
+        )
+
+    def test_verdict_is_valid_enum(self):
+        """debt_sizing_verdict is one of the allowed verdict strings."""
+        xd = _xd()
+        verdict = xd["debt_sizing_evidence"]["debt_sizing_verdict"]
+        assert verdict in self._VALID_VERDICTS, (
+            f"debt_sizing_verdict '{verdict}' not in {self._VALID_VERDICTS}"
         )
 
     def test_verdict_is_source_unresolved_when_formula_mode_unavailable(self):
