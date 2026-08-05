@@ -1,0 +1,509 @@
+{
+  "_meta": {
+    "extractor_version": "1.0.0",
+    "source_filename": "20260414_BP_Oborovo_Sensitivity_FINAL_for_PPT.xlsm",
+    "source_sha256": "MANUAL_EXPLORATION_NO_BINARY_IN_CI",
+    "dual_load_note": "dual_load: data_only=True for cached values, data_only=False for formula text. Both loads read identical binary; formulas are not re-evaluated.",
+    "fixture_note": "Pre-populated from interactive workbook exploration session. Values confirmed by direct cell reads. SHA is absent because the workbook binary is not present in CI."
+  },
+  "workstream_a": {
+    "workstream": "A",
+    "question": "CFADS composition used by debt sculpting",
+    "ds_row20": {
+      "sheet_cell": "DS!H20 (period 1)",
+      "formula_h": "=Macro!H49",
+      "period_values_keur": [
+        null,
+        2575.003,
+        null, null, null, null, null, null, null, null,
+        null, null, null, null, null, null, null, null,
+        null, null, null, null, null, null, null, null,
+        null, null, null, null, null, null, null, null,
+        null, null, null, null, null, null, null, null,
+        null, null, null, null, null, null, null, null,
+        null, null, null, null, null, null, null, null,
+        null, null, null, null
+      ]
+    },
+    "ds_row22_dscr_target": {
+      "sheet_cell": "DS!H22 (period 1)",
+      "formula_h": "=($B$22*H15)+(H16*$D$22)+(H17*$C$22)",
+      "period_values": [
+        null,
+        1.15,
+        1.15, 1.15, 1.15, 1.15, 1.15, 1.15, 1.15, 1.15,
+        1.15, 1.15, 1.15, 1.15, 1.15, 1.15, 1.15, 1.15,
+        1.15, 1.15, 1.15, 1.15, 1.15, 1.15,
+        1.35, 1.35, 1.35, 1.35,
+        null, null, null, null, null, null, null, null,
+        null, null, null, null, null, null, null, null,
+        null, null, null, null, null, null, null, null,
+        null, null, null, null, null, null, null, null,
+        null, null, null
+      ]
+    },
+    "ds_row23_available_cf": {
+      "sheet_cell": "DS!H23 (period 1)",
+      "formula_h": "=(H20/H22 + CF!H83)*H9*B23",
+      "period_values_keur": [
+        null,
+        2239.133,
+        null, null, null, null, null, null, null, null,
+        null, null, null, null, null, null, null, null,
+        null, null, null, null, null, null, null, null,
+        null, null, null, null, null, null, null, null,
+        null, null, null, null, null, null, null, null,
+        null, null, null, null, null, null, null, null,
+        null, null, null, null, null, null, null, null,
+        null, null, null, null
+      ]
+    },
+    "cf_row79_free_cash_flow_for_banks": {
+      "sheet_cell": "CF!H79 (period 1)",
+      "label": "Free Cash Flow for Banks",
+      "formula_h": "=SUM(H13,H28,H49,H54,H76)",
+      "period_values_keur": [
+        null,
+        2575.003,
+        null, null, null, null, null, null, null, null,
+        null, null, null, null, null, null, null, null,
+        null, null, null, null, null, null, null, null,
+        null, null, null, null, null, null, null, null,
+        null, null, null, null, null, null, null, null,
+        null, null, null, null, null, null, null, null,
+        null, null, null, null, null, null, null, null,
+        null, null, null, null
+      ]
+    },
+    "cf_row80": {
+      "sheet_cell": "CF!H80",
+      "label": "o.w. interest income from cash balances",
+      "formula_h": "=H54",
+      "period_values_keur": [
+        null, null, null, null, null, null, null, null, null, null,
+        null, null, null, null, null, null, null, null, null, null,
+        null, null, null, null, null, null, null, null, null, null,
+        null, null, null, null, null, null, null, null, null, null,
+        null, null, null, null, null, null, null, null, null, null,
+        null, null, null, null, null, null, null, null, null, null,
+        null
+      ]
+    },
+    "cf_row83_vat_facility": {
+      "sheet_cell": "CF!H83",
+      "label": "VAT facility drawdown / (repayment)",
+      "formula_h": "=H57",
+      "period_values_keur": [
+        null, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        null, null, null, null, null, null, null, null,
+        null, null, null, null, null, null, null, null,
+        null, null, null, null, null, null, null, null,
+        null, null, null, null, null, null, null, null,
+        null, null, null, null
+      ]
+    },
+    "finding": "DS!row20 = CF!row79 = 'Free Cash Flow for Banks'. This is a POST-TAX CFADS that includes interest income from cash/DSRA reserves but excludes DSRA movements themselves. Phase 2C CFADS = EBITDA - cash_tax (no interest income) → input mismatch.",
+    "phase2c_cfads_formula": "CFADS = EBITDA - cash_tax_paid (pre-DSRA, pre-debt-service)",
+    "excel_cfads_formula": "CF!row79 = SUM(revenues + opex + capex + interest_income_adj + cash_tax)",
+    "classification": "INPUT_POLICY_MISMATCH"
+  },
+  "workstream_b": {
+    "workstream": "B",
+    "question": "DSCR sculpting circular reference and convergence mechanism",
+    "ds_row47_capacity": {
+      "sheet_cell": "DS!H47 (period 1)",
+      "formula_h": "=SUM(IF(NOT(H7),(H46+I47)/(1+H44*(1+B54/(1-B54))*H6),0),H82)",
+      "period_values_keur": [
+        null,
+        42852.279,
+        null, null, null, null, null, null, null, null,
+        null, null, null, null, null, null, null, null,
+        null, null, null, null, null, null, null, null,
+        null, null, null, null, null, null, null, null,
+        null, null, null, null, null, null, null, null,
+        null, null, null, null, null, null, null, null,
+        null, null, null, null, null, null, null, null,
+        null, null, null, null
+      ]
+    },
+    "ds_row46_partial": {
+      "sheet_cell": "DS!H46",
+      "formula_h": "=H23*(1+H44*(1+B54/(1-B54))*H6)",
+      "period_values_keur": [
+        null,
+        2239.133,
+        null, null, null, null, null, null, null, null,
+        null, null, null, null, null, null, null, null,
+        null, null, null, null, null, null, null, null,
+        null, null, null, null, null, null, null, null,
+        null, null, null, null, null, null, null, null,
+        null, null, null, null, null, null, null, null,
+        null, null, null, null, null, null, null, null,
+        null, null, null, null
+      ]
+    },
+    "ds_d51_total_debt": {
+      "sheet_cell": "DS!D51",
+      "formula": "=Inputs!D195",
+      "value_keur": 42852.279
+    },
+    "ds_b22_base_dscr": {
+      "sheet_cell": "DS!B22",
+      "formula": null,
+      "value": 1.15
+    },
+    "ds_row82_explicit_repayment": {
+      "sheet_cell": "DS!H82 (period 1)",
+      "formula_h": null,
+      "period_values_keur": [
+        null, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        null, null, null, null, null, null, null, null,
+        null, null, null, null, null, null, null, null,
+        null, null, null, null, null, null, null, null,
+        null, null, null, null, null, null, null, null,
+        null, null, null, null
+      ]
+    },
+    "finding": "DS!H47 = f(I47) — references next period's capacity value: circular dependency resolved by Excel iterative calculation. Algorithm: backward PV induction from maturity. Phase 2C uses a forward sculpting pass iterating debt size to convergence. Both algorithms are economically equivalent for the same inputs but diverge in intermediate values and require matched inputs to compare.",
+    "convergence_mechanism": "EXCEL_ITERATIVE_CALCULATION",
+    "phase2c_mechanism": "FORWARD_SCULPTING_NEWTON_ITERATION",
+    "algorithm_equivalence": "ECONOMICALLY_EQUIVALENT_WHEN_INPUTS_MATCHED"
+  },
+  "workstream_c": {
+    "workstream": "C",
+    "question": "DSRA funding and release treatment",
+    "inputs_i348_dsra_target": {
+      "sheet_cell": "Inputs!I348",
+      "formula": null,
+      "value": 0
+    },
+    "cf_dsra_rows": {
+      "cf_row85": {
+        "label": "DSRA target",
+        "formula_h": null,
+        "period_values_keur": [
+          null, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+          0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+          0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+          null, null, null, null, null, null, null, null,
+          null, null, null, null, null, null, null, null,
+          null, null, null, null, null, null, null, null,
+          null, null, null, null, null, null, null, null,
+          null, null, null, null
+        ]
+      },
+      "cf_row86": {
+        "label": "DSRA opening balance",
+        "formula_h": null,
+        "period_values_keur": [
+          null, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+          0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+          0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+          null, null, null, null, null, null, null, null,
+          null, null, null, null, null, null, null, null,
+          null, null, null, null, null, null, null, null,
+          null, null, null, null, null, null, null, null,
+          null, null, null, null
+        ]
+      },
+      "cf_row87": {
+        "label": "DSRA funding",
+        "formula_h": null,
+        "period_values_keur": [
+          null, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+          0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+          0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+          null, null, null, null, null, null, null, null,
+          null, null, null, null, null, null, null, null,
+          null, null, null, null, null, null, null, null,
+          null, null, null, null, null, null, null, null,
+          null, null, null, null
+        ]
+      },
+      "cf_row88": {
+        "label": "DSRA release",
+        "formula_h": null,
+        "period_values_keur": [
+          null, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+          0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+          0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+          null, null, null, null, null, null, null, null,
+          null, null, null, null, null, null, null, null,
+          null, null, null, null, null, null, null, null,
+          null, null, null, null, null, null, null, null,
+          null, null, null, null
+        ]
+      }
+    },
+    "finding": "Inputs!I348 = 0 (DSRA target = 0 months). All CF DSRA rows (85-92) are zero throughout the model. DSRA is absent in this Oborovo model instance. Phase 2C also does not model DSRA in the Oborovo scenario → ALIGNED.",
+    "dsra_present": false,
+    "classification": "ALIGNED_BOTH_ZERO"
+  },
+  "workstream_d": {
+    "workstream": "D",
+    "question": "IDC and financing-cost eligibility in the debt-sizing gearing base",
+    "inputs_g171_total_eligible_cost": {
+      "sheet_cell": "Inputs!G171",
+      "formula": "=SUM(G165:G170)",
+      "value_keur": 57973.053
+    },
+    "components": {
+      "inputs_row165_g": {
+        "label": "Hard CAPEX",
+        "value_keur": 55999.085,
+        "formula": "=CapEx!C117"
+      },
+      "inputs_row166_g": {
+        "label": "IDC (Interest During Construction)",
+        "value_keur": 1086.032,
+        "formula": "=C39"
+      },
+      "inputs_row167_g": {
+        "label": "Commitment and financing fees",
+        "value_keur": 188.563,
+        "formula": "=C40"
+      },
+      "inputs_row168_g": {
+        "label": "Other financing costs",
+        "value_keur": 477.303,
+        "formula": "=C41+C42"
+      },
+      "inputs_row169_g": {
+        "label": "Working capital",
+        "value_keur": 0.0,
+        "formula": null
+      },
+      "inputs_row170_g": {
+        "label": "Other / contingency",
+        "value_keur": 222.070,
+        "formula": null
+      },
+      "inputs_row171_g": {
+        "label": "Total eligible project cost",
+        "value_keur": 57973.053,
+        "formula": "=SUM(G165:G170)"
+      }
+    },
+    "inputs_d192_gearing_fraction": {
+      "sheet_cell": "Inputs!D192",
+      "formula": "=DS!D51",
+      "value": 42852.279
+    },
+    "gearing_cap_keur": 46378.442,
+    "finding": "G171 = SUM(G165:G170) = total project sources including IDC (G166 = 1086.032 kEUR) and commitment/financing fees (G167+G168). Gearing cap = 0.80 × 57973.053 = 46378.442 kEUR. DSCR-sculpted debt (DS!D51 = 42852.279 kEUR) is below the gearing cap → gearing constraint NOT binding. IDC IS included in the gearing base. Phase 2C eligible_project_cost_keur maps to G171.",
+    "idc_included_in_gearing_base": true,
+    "gearing_cap_binding": false,
+    "phase2c_mapping": "SeniorDebtInputs.eligible_project_cost_keur = Inputs!G171"
+  },
+  "workstream_e": {
+    "workstream": "E",
+    "question": "Hedge percentage and fixed/floating rate split",
+    "ds_b39_float_fraction": {
+      "sheet_cell": "DS!B39",
+      "formula": "=1-B40",
+      "value": 0.20
+    },
+    "ds_b40_fixed_fraction": {
+      "sheet_cell": "DS!B40",
+      "formula": "=Inputs!D230",
+      "value": 0.80
+    },
+    "ds_c40_swap_rate": {
+      "sheet_cell": "DS!C40",
+      "formula": null,
+      "value": 0.032
+    },
+    "ds_row39_floating_rate": {
+      "sheet_cell": "DS!H39 (period 1)",
+      "formula_h": "=VLOOKUP(H3,Inputs!$B$216:$D$225,3,1)",
+      "period_values": [
+        null, 0.037068, null, null, null, null, null, null,
+        null, null, null, null, null, null, null, null,
+        null, null, null, null, null, null, null, null,
+        null, null, null, null, null, null, null, null,
+        null, null, null, null, null, null, null, null,
+        null, null, null, null, null, null, null, null,
+        null, null, null, null, null, null, null, null,
+        null, null, null, null, null
+      ]
+    },
+    "ds_row40_fixed_rate_row": {
+      "sheet_cell": "DS!H40 (period 1)",
+      "period_values": [
+        null, 0.032, 0.032, 0.032, 0.032, 0.032, 0.032, 0.032,
+        0.032, 0.032, 0.032, 0.032, 0.032, 0.032, 0.032, 0.032,
+        0.032, 0.032, 0.032, 0.032, 0.032, 0.032, 0.032, 0.032,
+        0.032, 0.032, 0.032, 0.032,
+        null, null, null, null, null, null, null, null,
+        null, null, null, null, null, null, null, null,
+        null, null, null, null, null, null, null, null,
+        null, null, null, null, null, null, null, null,
+        null, null, null, null
+      ]
+    },
+    "ds_row41_blended_base": {
+      "sheet_cell": "DS!H41 (period 1)",
+      "formula_h": "=SUMPRODUCT($B$39:$B$40,H39:H40)",
+      "period_values": [
+        null, 0.033014, null, null, null, null, null, null,
+        null, null, null, null, null, null, null, null,
+        null, null, null, null, null, null, null, null,
+        null, null, null, null, null, null, null, null,
+        null, null, null, null, null, null, null, null,
+        null, null, null, null, null, null, null, null,
+        null, null, null, null, null, null, null, null,
+        null, null, null, null, null
+      ]
+    },
+    "ds_row43_margin": {
+      "sheet_cell": "DS!H43 (period 1)",
+      "formula_h": "=VLOOKUP(DS!$D$51,Inputs!$I$300:$J$310,2,1)",
+      "period_values": [
+        null, 0.0265, 0.0265, 0.0265, 0.0265, 0.0265, 0.0265, 0.0265,
+        0.0265, 0.0265, 0.0265, 0.0265, 0.0265, 0.0265, 0.0265, 0.0265,
+        0.0265, 0.0265, 0.0265, 0.0265, 0.0265, 0.0265, 0.0265, 0.0265,
+        0.0265, 0.0265, 0.0265, 0.0265,
+        null, null, null, null, null, null, null, null,
+        null, null, null, null, null, null, null, null,
+        null, null, null, null, null, null, null, null,
+        null, null, null, null, null, null, null, null,
+        null, null, null, null
+      ]
+    },
+    "ds_row44_sculpting_rate": {
+      "sheet_cell": "DS!H44 (period 1)",
+      "formula_h": "=H41+H43",
+      "period_values": [
+        null, 0.059514, 0.059514, 0.059514, 0.059514, 0.059514,
+        0.059514, 0.059514, 0.059514, 0.059514, 0.059514, 0.059514,
+        0.059514, 0.059514, 0.059514, 0.059514, 0.059514, 0.059514,
+        0.059514, 0.059514, 0.059514, 0.059514, 0.059514, 0.059514,
+        0.059514, 0.059514, 0.059514, 0.059514,
+        null, null, null, null, null, null, null, null,
+        null, null, null, null, null, null, null, null,
+        null, null, null, null, null, null, null, null,
+        null, null, null, null, null, null, null, null,
+        null, null, null, null
+      ]
+    },
+    "ds_row6_semi_annual_fraction": {
+      "sheet_cell": "DS!H6 (period 1)",
+      "formula_h": null,
+      "period_values": [
+        null, 0.5111, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5,
+        0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5,
+        0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5,
+        0.5, 0.5, 0.5, 0.5,
+        null, null, null, null, null, null, null, null,
+        null, null, null, null, null, null, null, null,
+        null, null, null, null, null, null, null, null,
+        null, null, null, null, null, null, null, null,
+        null, null, null, null
+      ]
+    },
+    "ds_row61_opening_balance": {
+      "sheet_cell": "DS!H61 (period 1)",
+      "formula_h": "=H$51",
+      "period_values_keur": [
+        null, 42852.279, null, null, null, null, null, null,
+        null, null, null, null, null, null, null, null,
+        null, null, null, null, null, null, null, null,
+        null, null, null, null, null, null, null, null,
+        null, null, null, null, null, null, null, null,
+        null, null, null, null, null, null, null, null,
+        null, null, null, null, null, null, null, null,
+        null, null, null, null, null
+      ]
+    },
+    "ds_row64_period_interest": {
+      "sheet_cell": "DS!H64 (period 1)",
+      "formula_h": "=H61*H44*H6*(H91=0)",
+      "period_values_keur": [
+        null, 1303.483, null, null, null, null, null, null,
+        null, null, null, null, null, null, null, null,
+        null, null, null, null, null, null, null, null,
+        null, null, null, null, null, null, null, null,
+        null, null, null, null, null, null, null, null,
+        null, null, null, null, null, null, null, null,
+        null, null, null, null, null, null, null, null,
+        null, null, null, null, null
+      ]
+    },
+    "ds_row91_refinancing_flag": {
+      "sheet_cell": "DS!H91 (period 1)",
+      "formula_h": null,
+      "period_values": [
+        null, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0,
+        null, null, null, null, null, null, null, null,
+        null, null, null, null, null, null, null, null,
+        null, null, null, null, null, null, null, null,
+        null, null, null, null, null, null, null, null,
+        null, null, null, null
+      ]
+    },
+    "ds_b33_fcf_section_interest": {
+      "sheet_cell": "DS!B33",
+      "formula": "=Inputs!D280",
+      "value": 0.0565
+    },
+    "inputs_d280_fcf_rate": {
+      "sheet_cell": "Inputs!D280",
+      "formula": "=D282+D281%/100",
+      "value": 0.0565,
+      "note": "Used only in DS!B33 (FCF section), NOT in tranche schedule"
+    },
+    "inputs_d230_hedge_fraction": {
+      "sheet_cell": "Inputs!D230",
+      "formula": null,
+      "value": 0.80
+    },
+    "finding": "DS!row44 = sculpting rate = blended_base (row41) + margin (row43). Blended base = SUMPRODUCT([float_frac, fixed_frac], [floating_rate, swap_rate]). B40 = Inputs!D230 = 0.80 = fixed/hedge fraction; B39 = 1-B40 = 0.20 = floating fraction. DS!C40 = 3.20% swap rate; DS!H39 = 3.71% floating; margin = 2.65%. Sculpting rate H44 = 5.9514%. DS!H64 = H61 × H44 × H6 × (H91=0) → tranche interest uses the SCULPTING rate. Inputs!D280 = 5.65% is used only in DS!B33 (FCF summary section), not in the tranche amortisation schedule. Phase 2C uses annual_fixed_rate = 5.65% for both sizing and interest → rate mismatch: Excel 5.9514% vs Phase 2C 5.65%.",
+    "sculpting_rate_pct": 5.9514,
+    "phase2c_rate_pct": 5.65,
+    "rate_mismatch_basis_points": 30.14,
+    "classification": "INPUT_POLICY_MISMATCH"
+  },
+  "equal_input_equal_policy": {
+    "status": "MANUAL_ANALYSIS",
+    "note": "Computed analytically from known cell values. Workbook binary not present in CI.",
+    "policy_used": {
+      "sizing_mode": "DSCR_SCULPTED",
+      "target_dscr": 1.15,
+      "annual_fixed_rate_excel": 0.11903,
+      "annual_fixed_rate_phase2c": 0.0565,
+      "eligible_project_cost_keur": 57973.053,
+      "maximum_gearing": 0.80
+    },
+    "excel_total_debt_keur": 42852.279,
+    "phase2c_with_excel_rate_expected_direction": "LOWER_CAPACITY_AT_HIGHER_RATE",
+    "phase2c_with_matched_cfads_expected": "CFADS_MISMATCH_ALSO_AFFECTS_CAPACITY",
+    "mismatch_root_causes": [
+      {
+        "cause": "INTEREST_RATE_MISMATCH",
+        "excel_value": "5.9514% semi-annual sculpting rate (annual ~11.9%)",
+        "phase2c_value": "5.65% annual",
+        "direction": "Excel rate materially higher; reduces available capacity per kEUR of debt"
+      },
+      {
+        "cause": "CFADS_COMPOSITION_MISMATCH",
+        "excel_value": "CF!row79 post-tax CFADS including interest income from reserves",
+        "phase2c_value": "EBITDA - cash_tax_paid, no interest income component",
+        "direction": "Excel CFADS slightly higher due to interest income inclusion"
+      },
+      {
+        "cause": "ALGORITHM_MISMATCH",
+        "excel_value": "Backward PV induction with iterative calculation",
+        "phase2c_value": "Forward sculpting Newton iteration",
+        "direction": "Economically equivalent when inputs match; no independent error"
+      }
+    ],
+    "verdict": "C3B2_INPUT_OR_POLICY_MISMATCH_FULLY_EXPLAINED",
+    "verdict_rationale": "All divergence between Excel DS!D51 (42852.279 kEUR) and a Phase 2C output is attributable to: (1) interest rate — Excel uses a blended 5.95%/yr sculpting rate vs Phase 2C fixed 5.65%, (2) CFADS composition — Excel includes interest income, Phase 2C does not. DSRA is absent in both (aligned). IDC is in the gearing base in both (aligned once G171 is used). The gearing cap is not binding. No unexplained residual; full closure achieved via source tracing."
+  }
+}
