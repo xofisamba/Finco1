@@ -6995,7 +6995,7 @@
       "bs_tax_payable_row_exists": false,
       "bs_tax_payable_conclusion": "NO_SEPARATE_BS_TAX_BALANCE_ROW_FOUND",
       "terminal_bs_tax_balance_keur": null,
-      "terminal_bs_tax_balance_note": "null \u2014 no BS tax balance row exists; balance cannot be derived from absence",
+      "terminal_bs_tax_balance_note": "null — no BS tax balance row exists; balance cannot be derived from absence",
       "cf_cash_tax_period_values": [
         0.0,
         0.0,
@@ -7102,11 +7102,12 @@
         "identity_ti_eq_ebt_plus_fr_delta": 0.0,
         "identity_fr_eq_shl_delta": 0.0,
         "identity_cf_eq_neg_p44_delta": 0.0,
-        "taxable_financial_income_keur": -1169.661912,
         "full_formula_residual_keur": null,
         "simplified_formula_residual_keur": null,
         "simplified_identity_applicable": null,
-        "simplified_identity_reason": "CONSTRUCTION_PERIOD_NO_TAXATION"
+        "simplified_identity_reason": "CONSTRUCTION_PERIOD_NO_TAXATION",
+        "net_taxable_financial_items_before_senior_keur": null,
+        "alternative_full_formula_residual_keur": null
       },
       {
         "period": 1,
@@ -7149,11 +7150,12 @@
         "identity_ti_eq_ebt_plus_fr_delta": 0.0,
         "identity_fr_eq_shl_delta": 0.0,
         "identity_cf_eq_neg_p44_delta": 0.0,
-        "taxable_financial_income_keur": -1303.483282,
-        "full_formula_residual_keur": 0.0,
+        "full_formula_residual_keur": -0.0,
         "simplified_formula_residual_keur": -0.0,
         "simplified_identity_applicable": true,
-        "simplified_identity_reason": "TAXABLE_CASH_INTEREST_AFTER_DEBT_REPAYMENT"
+        "simplified_identity_reason": "ZERO_NET_TAXABLE_FINANCIAL_ITEMS_BEFORE_SENIOR_INTEREST",
+        "net_taxable_financial_items_before_senior_keur": 0.0,
+        "alternative_full_formula_residual_keur": -0.0
       },
       {
         "period": 2,
@@ -7196,11 +7198,12 @@
         "identity_ti_eq_ebt_plus_fr_delta": 0.0,
         "identity_fr_eq_shl_delta": 0.0,
         "identity_cf_eq_neg_p44_delta": 0.0,
-        "taxable_financial_income_keur": -1254.234206,
-        "full_formula_residual_keur": 0.0,
+        "full_formula_residual_keur": -0.0,
         "simplified_formula_residual_keur": 0.0,
         "simplified_identity_applicable": true,
-        "simplified_identity_reason": "TAXABLE_CASH_INTEREST_AFTER_DEBT_REPAYMENT"
+        "simplified_identity_reason": "ZERO_NET_TAXABLE_FINANCIAL_ITEMS_BEFORE_SENIOR_INTEREST",
+        "net_taxable_financial_items_before_senior_keur": 0.0,
+        "alternative_full_formula_residual_keur": -0.0
       },
       {
         "period": 3,
@@ -7243,11 +7246,12 @@
         "identity_ti_eq_ebt_plus_fr_delta": 0.0,
         "identity_fr_eq_shl_delta": 0.0,
         "identity_cf_eq_neg_p44_delta": 0.0,
-        "taxable_financial_income_keur": -1222.504574,
-        "full_formula_residual_keur": 0.0,
+        "full_formula_residual_keur": -0.0,
         "simplified_formula_residual_keur": 1e-06,
         "simplified_identity_applicable": true,
-        "simplified_identity_reason": "TAXABLE_CASH_INTEREST_AFTER_DEBT_REPAYMENT"
+        "simplified_identity_reason": "ZERO_NET_TAXABLE_FINANCIAL_ITEMS_BEFORE_SENIOR_INTEREST",
+        "net_taxable_financial_items_before_senior_keur": 1e-06,
+        "alternative_full_formula_residual_keur": -0.0
       },
       {
         "period": 4,
@@ -7290,11 +7294,12 @@
         "identity_ti_eq_ebt_plus_fr_delta": 0.0,
         "identity_fr_eq_shl_delta": 0.0,
         "identity_cf_eq_neg_p44_delta": 0.0,
-        "taxable_financial_income_keur": -1179.16864,
-        "full_formula_residual_keur": 0.0,
+        "full_formula_residual_keur": 1e-06,
         "simplified_formula_residual_keur": 1e-06,
         "simplified_identity_applicable": true,
-        "simplified_identity_reason": "TAXABLE_CASH_INTEREST_AFTER_DEBT_REPAYMENT"
+        "simplified_identity_reason": "ZERO_NET_TAXABLE_FINANCIAL_ITEMS_BEFORE_SENIOR_INTEREST",
+        "net_taxable_financial_items_before_senior_keur": 0.0,
+        "alternative_full_formula_residual_keur": 1e-06
       },
       {
         "period": 5,
@@ -7337,11 +7342,12 @@
         "identity_ti_eq_ebt_plus_fr_delta": 0.0,
         "identity_fr_eq_shl_delta": 0.0,
         "identity_cf_eq_neg_p44_delta": 0.0,
-        "taxable_financial_income_keur": -1150.749105,
         "full_formula_residual_keur": 0.0,
         "simplified_formula_residual_keur": 1e-06,
         "simplified_identity_applicable": true,
-        "simplified_identity_reason": "TAXABLE_CASH_INTEREST_AFTER_DEBT_REPAYMENT"
+        "simplified_identity_reason": "ZERO_NET_TAXABLE_FINANCIAL_ITEMS_BEFORE_SENIOR_INTEREST",
+        "net_taxable_financial_items_before_senior_keur": 1e-06,
+        "alternative_full_formula_residual_keur": -0.0
       },
       {
         "period": 6,
@@ -7384,11 +7390,12 @@
         "identity_ti_eq_ebt_plus_fr_delta": 0.0,
         "identity_fr_eq_shl_delta": 0.0,
         "identity_cf_eq_neg_p44_delta": 0.0,
-        "taxable_financial_income_keur": -1098.692226,
-        "full_formula_residual_keur": 0.0,
+        "full_formula_residual_keur": -1e-06,
         "simplified_formula_residual_keur": 0.0,
         "simplified_identity_applicable": true,
-        "simplified_identity_reason": "TAXABLE_CASH_INTEREST_AFTER_DEBT_REPAYMENT"
+        "simplified_identity_reason": "ZERO_NET_TAXABLE_FINANCIAL_ITEMS_BEFORE_SENIOR_INTEREST",
+        "net_taxable_financial_items_before_senior_keur": 1e-06,
+        "alternative_full_formula_residual_keur": -1e-06
       },
       {
         "period": 7,
@@ -7431,11 +7438,12 @@
         "identity_ti_eq_ebt_plus_fr_delta": 0.0,
         "identity_fr_eq_shl_delta": 0.0,
         "identity_cf_eq_neg_p44_delta": 0.0,
-        "taxable_financial_income_keur": -1079.391877,
-        "full_formula_residual_keur": 0.0,
+        "full_formula_residual_keur": -1e-06,
         "simplified_formula_residual_keur": -1e-06,
         "simplified_identity_applicable": true,
-        "simplified_identity_reason": "TAXABLE_CASH_INTEREST_AFTER_DEBT_REPAYMENT"
+        "simplified_identity_reason": "ZERO_NET_TAXABLE_FINANCIAL_ITEMS_BEFORE_SENIOR_INTEREST",
+        "net_taxable_financial_items_before_senior_keur": 0.0,
+        "alternative_full_formula_residual_keur": -1e-06
       },
       {
         "period": 8,
@@ -7478,11 +7486,12 @@
         "identity_ti_eq_ebt_plus_fr_delta": 0.0,
         "identity_fr_eq_shl_delta": 0.0,
         "identity_cf_eq_neg_p44_delta": 0.0,
-        "taxable_financial_income_keur": -1025.475912,
         "full_formula_residual_keur": 0.0,
         "simplified_formula_residual_keur": 0.0,
         "simplified_identity_applicable": true,
-        "simplified_identity_reason": "TAXABLE_CASH_INTEREST_AFTER_DEBT_REPAYMENT"
+        "simplified_identity_reason": "ZERO_NET_TAXABLE_FINANCIAL_ITEMS_BEFORE_SENIOR_INTEREST",
+        "net_taxable_financial_items_before_senior_keur": 0.0,
+        "alternative_full_formula_residual_keur": -0.0
       },
       {
         "period": 9,
@@ -7525,11 +7534,12 @@
         "identity_ti_eq_ebt_plus_fr_delta": 0.0,
         "identity_fr_eq_shl_delta": 0.0,
         "identity_cf_eq_neg_p44_delta": 0.0,
-        "taxable_financial_income_keur": -1005.283082,
-        "full_formula_residual_keur": 0.0,
+        "full_formula_residual_keur": -1e-06,
         "simplified_formula_residual_keur": 0.0,
         "simplified_identity_applicable": true,
-        "simplified_identity_reason": "TAXABLE_CASH_INTEREST_AFTER_DEBT_REPAYMENT"
+        "simplified_identity_reason": "ZERO_NET_TAXABLE_FINANCIAL_ITEMS_BEFORE_SENIOR_INTEREST",
+        "net_taxable_financial_items_before_senior_keur": 1e-06,
+        "alternative_full_formula_residual_keur": -1e-06
       },
       {
         "period": 10,
@@ -7572,11 +7582,12 @@
         "identity_ti_eq_ebt_plus_fr_delta": 0.0,
         "identity_fr_eq_shl_delta": 0.0,
         "identity_cf_eq_neg_p44_delta": 0.0,
-        "taxable_financial_income_keur": -949.360348,
         "full_formula_residual_keur": 0.0,
         "simplified_formula_residual_keur": 0.0,
         "simplified_identity_applicable": true,
-        "simplified_identity_reason": "TAXABLE_CASH_INTEREST_AFTER_DEBT_REPAYMENT"
+        "simplified_identity_reason": "ZERO_NET_TAXABLE_FINANCIAL_ITEMS_BEFORE_SENIOR_INTEREST",
+        "net_taxable_financial_items_before_senior_keur": 0.0,
+        "alternative_full_formula_residual_keur": 0.0
       },
       {
         "period": 11,
@@ -7619,11 +7630,12 @@
         "identity_ti_eq_ebt_plus_fr_delta": 0.0,
         "identity_fr_eq_shl_delta": 0.0,
         "identity_cf_eq_neg_p44_delta": 0.0,
-        "taxable_financial_income_keur": -926.227427,
-        "full_formula_residual_keur": 0.0,
+        "full_formula_residual_keur": 1e-06,
         "simplified_formula_residual_keur": 1e-06,
         "simplified_identity_applicable": true,
-        "simplified_identity_reason": "TAXABLE_CASH_INTEREST_AFTER_DEBT_REPAYMENT"
+        "simplified_identity_reason": "ZERO_NET_TAXABLE_FINANCIAL_ITEMS_BEFORE_SENIOR_INTEREST",
+        "net_taxable_financial_items_before_senior_keur": 0.0,
+        "alternative_full_formula_residual_keur": 1e-06
       },
       {
         "period": 12,
@@ -7666,11 +7678,12 @@
         "identity_ti_eq_ebt_plus_fr_delta": 0.0,
         "identity_fr_eq_shl_delta": 0.0,
         "identity_cf_eq_neg_p44_delta": 0.0,
-        "taxable_financial_income_keur": -873.148013,
-        "full_formula_residual_keur": 0.0,
+        "full_formula_residual_keur": -0.0,
         "simplified_formula_residual_keur": 0.0,
         "simplified_identity_applicable": true,
-        "simplified_identity_reason": "TAXABLE_CASH_INTEREST_AFTER_DEBT_REPAYMENT"
+        "simplified_identity_reason": "ZERO_NET_TAXABLE_FINANCIAL_ITEMS_BEFORE_SENIOR_INTEREST",
+        "net_taxable_financial_items_before_senior_keur": 0.0,
+        "alternative_full_formula_residual_keur": 0.0
       },
       {
         "period": 13,
@@ -7713,11 +7726,12 @@
         "identity_ti_eq_ebt_plus_fr_delta": 0.0,
         "identity_fr_eq_shl_delta": 0.0,
         "identity_cf_eq_neg_p44_delta": 0.0,
-        "taxable_financial_income_keur": -841.087608,
         "full_formula_residual_keur": 0.0,
         "simplified_formula_residual_keur": 0.0,
         "simplified_identity_applicable": true,
-        "simplified_identity_reason": "TAXABLE_CASH_INTEREST_AFTER_DEBT_REPAYMENT"
+        "simplified_identity_reason": "ZERO_NET_TAXABLE_FINANCIAL_ITEMS_BEFORE_SENIOR_INTEREST",
+        "net_taxable_financial_items_before_senior_keur": 0.0,
+        "alternative_full_formula_residual_keur": 0.0
       },
       {
         "period": 14,
@@ -7760,11 +7774,12 @@
         "identity_ti_eq_ebt_plus_fr_delta": 0.0,
         "identity_fr_eq_shl_delta": 0.0,
         "identity_cf_eq_neg_p44_delta": 0.0,
-        "taxable_financial_income_keur": -780.741458,
         "full_formula_residual_keur": 0.0,
         "simplified_formula_residual_keur": 0.0,
         "simplified_identity_applicable": true,
-        "simplified_identity_reason": "TAXABLE_CASH_INTEREST_AFTER_DEBT_REPAYMENT"
+        "simplified_identity_reason": "ZERO_NET_TAXABLE_FINANCIAL_ITEMS_BEFORE_SENIOR_INTEREST",
+        "net_taxable_financial_items_before_senior_keur": 0.0,
+        "alternative_full_formula_residual_keur": 0.0
       },
       {
         "period": 15,
@@ -7807,11 +7822,12 @@
         "identity_ti_eq_ebt_plus_fr_delta": 0.0,
         "identity_fr_eq_shl_delta": 0.0,
         "identity_cf_eq_neg_p44_delta": 0.0,
-        "taxable_financial_income_keur": -748.50121,
-        "full_formula_residual_keur": 0.0,
+        "full_formula_residual_keur": 1e-06,
         "simplified_formula_residual_keur": 1e-06,
         "simplified_identity_applicable": true,
-        "simplified_identity_reason": "TAXABLE_CASH_INTEREST_AFTER_DEBT_REPAYMENT"
+        "simplified_identity_reason": "ZERO_NET_TAXABLE_FINANCIAL_ITEMS_BEFORE_SENIOR_INTEREST",
+        "net_taxable_financial_items_before_senior_keur": 0.0,
+        "alternative_full_formula_residual_keur": 1e-06
       },
       {
         "period": 16,
@@ -7854,11 +7870,12 @@
         "identity_ti_eq_ebt_plus_fr_delta": 0.0,
         "identity_fr_eq_shl_delta": 0.0,
         "identity_cf_eq_neg_p44_delta": 0.0,
-        "taxable_financial_income_keur": -685.75707,
-        "full_formula_residual_keur": 0.0,
+        "full_formula_residual_keur": 1e-06,
         "simplified_formula_residual_keur": -0.0,
         "simplified_identity_applicable": true,
-        "simplified_identity_reason": "TAXABLE_CASH_INTEREST_AFTER_DEBT_REPAYMENT"
+        "simplified_identity_reason": "ZERO_NET_TAXABLE_FINANCIAL_ITEMS_BEFORE_SENIOR_INTEREST",
+        "net_taxable_financial_items_before_senior_keur": -1e-06,
+        "alternative_full_formula_residual_keur": 1e-06
       },
       {
         "period": 17,
@@ -7901,11 +7918,12 @@
         "identity_ti_eq_ebt_plus_fr_delta": 0.0,
         "identity_fr_eq_shl_delta": 0.0,
         "identity_cf_eq_neg_p44_delta": 0.0,
-        "taxable_financial_income_keur": -648.073958,
         "full_formula_residual_keur": 0.0,
         "simplified_formula_residual_keur": -0.0,
         "simplified_identity_applicable": true,
-        "simplified_identity_reason": "TAXABLE_CASH_INTEREST_AFTER_DEBT_REPAYMENT"
+        "simplified_identity_reason": "ZERO_NET_TAXABLE_FINANCIAL_ITEMS_BEFORE_SENIOR_INTEREST",
+        "net_taxable_financial_items_before_senior_keur": -0.0,
+        "alternative_full_formula_residual_keur": -0.0
       },
       {
         "period": 18,
@@ -7948,11 +7966,12 @@
         "identity_ti_eq_ebt_plus_fr_delta": 0.0,
         "identity_fr_eq_shl_delta": 0.0,
         "identity_cf_eq_neg_p44_delta": 0.0,
-        "taxable_financial_income_keur": -582.816456,
-        "full_formula_residual_keur": 0.0,
+        "full_formula_residual_keur": -1e-06,
         "simplified_formula_residual_keur": -1e-06,
         "simplified_identity_applicable": true,
-        "simplified_identity_reason": "TAXABLE_CASH_INTEREST_AFTER_DEBT_REPAYMENT"
+        "simplified_identity_reason": "ZERO_NET_TAXABLE_FINANCIAL_ITEMS_BEFORE_SENIOR_INTEREST",
+        "net_taxable_financial_items_before_senior_keur": 0.0,
+        "alternative_full_formula_residual_keur": -1e-06
       },
       {
         "period": 19,
@@ -7995,11 +8014,12 @@
         "identity_ti_eq_ebt_plus_fr_delta": 0.0,
         "identity_fr_eq_shl_delta": 0.0,
         "identity_cf_eq_neg_p44_delta": 0.0,
-        "taxable_financial_income_keur": -539.469794,
         "full_formula_residual_keur": 0.0,
         "simplified_formula_residual_keur": -0.0,
         "simplified_identity_applicable": true,
-        "simplified_identity_reason": "TAXABLE_CASH_INTEREST_AFTER_DEBT_REPAYMENT"
+        "simplified_identity_reason": "ZERO_NET_TAXABLE_FINANCIAL_ITEMS_BEFORE_SENIOR_INTEREST",
+        "net_taxable_financial_items_before_senior_keur": -0.0,
+        "alternative_full_formula_residual_keur": -0.0
       },
       {
         "period": 20,
@@ -8042,11 +8062,12 @@
         "identity_ti_eq_ebt_plus_fr_delta": 0.0,
         "identity_fr_eq_shl_delta": 0.0,
         "identity_cf_eq_neg_p44_delta": 0.0,
-        "taxable_financial_income_keur": -474.388903,
-        "full_formula_residual_keur": 0.0,
+        "full_formula_residual_keur": -0.0,
         "simplified_formula_residual_keur": 0.0,
         "simplified_identity_applicable": true,
-        "simplified_identity_reason": "TAXABLE_CASH_INTEREST_AFTER_DEBT_REPAYMENT"
+        "simplified_identity_reason": "ZERO_NET_TAXABLE_FINANCIAL_ITEMS_BEFORE_SENIOR_INTEREST",
+        "net_taxable_financial_items_before_senior_keur": 0.0,
+        "alternative_full_formula_residual_keur": 0.0
       },
       {
         "period": 21,
@@ -8089,11 +8110,12 @@
         "identity_ti_eq_ebt_plus_fr_delta": 0.0,
         "identity_fr_eq_shl_delta": 0.0,
         "identity_cf_eq_neg_p44_delta": 0.0,
-        "taxable_financial_income_keur": -422.192446,
-        "full_formula_residual_keur": 0.0,
+        "full_formula_residual_keur": -0.0,
         "simplified_formula_residual_keur": 0.0,
         "simplified_identity_applicable": true,
-        "simplified_identity_reason": "TAXABLE_CASH_INTEREST_AFTER_DEBT_REPAYMENT"
+        "simplified_identity_reason": "ZERO_NET_TAXABLE_FINANCIAL_ITEMS_BEFORE_SENIOR_INTEREST",
+        "net_taxable_financial_items_before_senior_keur": 0.0,
+        "alternative_full_formula_residual_keur": -0.0
       },
       {
         "period": 22,
@@ -8136,11 +8158,12 @@
         "identity_ti_eq_ebt_plus_fr_delta": 0.0,
         "identity_fr_eq_shl_delta": 0.0,
         "identity_cf_eq_neg_p44_delta": 0.0,
-        "taxable_financial_income_keur": -356.574667,
-        "full_formula_residual_keur": 0.0,
+        "full_formula_residual_keur": -0.0,
         "simplified_formula_residual_keur": 1e-06,
         "simplified_identity_applicable": true,
-        "simplified_identity_reason": "TAXABLE_CASH_INTEREST_AFTER_DEBT_REPAYMENT"
+        "simplified_identity_reason": "ZERO_NET_TAXABLE_FINANCIAL_ITEMS_BEFORE_SENIOR_INTEREST",
+        "net_taxable_financial_items_before_senior_keur": 1e-06,
+        "alternative_full_formula_residual_keur": -0.0
       },
       {
         "period": 23,
@@ -8183,11 +8206,12 @@
         "identity_ti_eq_ebt_plus_fr_delta": 0.0,
         "identity_fr_eq_shl_delta": 0.0,
         "identity_cf_eq_neg_p44_delta": 0.0,
-        "taxable_financial_income_keur": -304.895193,
         "full_formula_residual_keur": 0.0,
         "simplified_formula_residual_keur": 0.0,
         "simplified_identity_applicable": true,
-        "simplified_identity_reason": "TAXABLE_CASH_INTEREST_AFTER_DEBT_REPAYMENT"
+        "simplified_identity_reason": "ZERO_NET_TAXABLE_FINANCIAL_ITEMS_BEFORE_SENIOR_INTEREST",
+        "net_taxable_financial_items_before_senior_keur": -0.0,
+        "alternative_full_formula_residual_keur": 0.0
       },
       {
         "period": 24,
@@ -8230,11 +8254,12 @@
         "identity_ti_eq_ebt_plus_fr_delta": 0.0,
         "identity_fr_eq_shl_delta": 0.0,
         "identity_cf_eq_neg_p44_delta": 0.0,
-        "taxable_financial_income_keur": -236.59445,
         "full_formula_residual_keur": 0.0,
         "simplified_formula_residual_keur": 0.0,
         "simplified_identity_applicable": true,
-        "simplified_identity_reason": "TAXABLE_CASH_INTEREST_AFTER_DEBT_REPAYMENT"
+        "simplified_identity_reason": "ZERO_NET_TAXABLE_FINANCIAL_ITEMS_BEFORE_SENIOR_INTEREST",
+        "net_taxable_financial_items_before_senior_keur": -0.0,
+        "alternative_full_formula_residual_keur": 0.0
       },
       {
         "period": 25,
@@ -8277,11 +8302,12 @@
         "identity_ti_eq_ebt_plus_fr_delta": 0.0,
         "identity_fr_eq_shl_delta": 0.0,
         "identity_cf_eq_neg_p44_delta": 0.0,
-        "taxable_financial_income_keur": -178.833122,
         "full_formula_residual_keur": 0.0,
         "simplified_formula_residual_keur": 0.0,
         "simplified_identity_applicable": true,
-        "simplified_identity_reason": "TAXABLE_CASH_INTEREST_AFTER_DEBT_REPAYMENT"
+        "simplified_identity_reason": "ZERO_NET_TAXABLE_FINANCIAL_ITEMS_BEFORE_SENIOR_INTEREST",
+        "net_taxable_financial_items_before_senior_keur": 0.0,
+        "alternative_full_formula_residual_keur": 0.0
       },
       {
         "period": 26,
@@ -8324,11 +8350,12 @@
         "identity_ti_eq_ebt_plus_fr_delta": 0.0,
         "identity_fr_eq_shl_delta": 0.0,
         "identity_cf_eq_neg_p44_delta": 0.0,
-        "taxable_financial_income_keur": -131.470442,
         "full_formula_residual_keur": 0.0,
         "simplified_formula_residual_keur": 0.0,
         "simplified_identity_applicable": true,
-        "simplified_identity_reason": "TAXABLE_CASH_INTEREST_AFTER_DEBT_REPAYMENT"
+        "simplified_identity_reason": "ZERO_NET_TAXABLE_FINANCIAL_ITEMS_BEFORE_SENIOR_INTEREST",
+        "net_taxable_financial_items_before_senior_keur": -0.0,
+        "alternative_full_formula_residual_keur": 0.0
       },
       {
         "period": 27,
@@ -8371,11 +8398,12 @@
         "identity_ti_eq_ebt_plus_fr_delta": 0.0,
         "identity_fr_eq_shl_delta": 0.0,
         "identity_cf_eq_neg_p44_delta": 0.0,
-        "taxable_financial_income_keur": -90.728687,
-        "full_formula_residual_keur": 0.0,
+        "full_formula_residual_keur": 1e-06,
         "simplified_formula_residual_keur": 0.0,
         "simplified_identity_applicable": true,
-        "simplified_identity_reason": "TAXABLE_CASH_INTEREST_AFTER_DEBT_REPAYMENT"
+        "simplified_identity_reason": "ZERO_NET_TAXABLE_FINANCIAL_ITEMS_BEFORE_SENIOR_INTEREST",
+        "net_taxable_financial_items_before_senior_keur": -1e-06,
+        "alternative_full_formula_residual_keur": 1e-06
       },
       {
         "period": 28,
@@ -8418,11 +8446,12 @@
         "identity_ti_eq_ebt_plus_fr_delta": 0.0,
         "identity_fr_eq_shl_delta": 0.0,
         "identity_cf_eq_neg_p44_delta": 0.0,
-        "taxable_financial_income_keur": -43.235133,
         "full_formula_residual_keur": 0.0,
         "simplified_formula_residual_keur": 0.0,
         "simplified_identity_applicable": true,
-        "simplified_identity_reason": "TAXABLE_CASH_INTEREST_AFTER_DEBT_REPAYMENT"
+        "simplified_identity_reason": "ZERO_NET_TAXABLE_FINANCIAL_ITEMS_BEFORE_SENIOR_INTEREST",
+        "net_taxable_financial_items_before_senior_keur": -0.0,
+        "alternative_full_formula_residual_keur": 0.0
       },
       {
         "period": 29,
@@ -8465,11 +8494,12 @@
         "identity_ti_eq_ebt_plus_fr_delta": 0.0,
         "identity_fr_eq_shl_delta": 0.0,
         "identity_cf_eq_neg_p44_delta": 0.0,
-        "taxable_financial_income_keur": 0.0,
         "full_formula_residual_keur": 0.0,
         "simplified_formula_residual_keur": 0.0,
         "simplified_identity_applicable": true,
-        "simplified_identity_reason": "ZERO_TAXABLE_FINANCIAL_INCOME"
+        "simplified_identity_reason": "ZERO_NET_TAXABLE_FINANCIAL_ITEMS_BEFORE_SENIOR_INTEREST",
+        "net_taxable_financial_items_before_senior_keur": 0.0,
+        "alternative_full_formula_residual_keur": 0.0
       },
       {
         "period": 30,
@@ -8512,11 +8542,12 @@
         "identity_ti_eq_ebt_plus_fr_delta": 0.0,
         "identity_fr_eq_shl_delta": 0.0,
         "identity_cf_eq_neg_p44_delta": 0.0,
-        "taxable_financial_income_keur": 0.0,
         "full_formula_residual_keur": 0.0,
         "simplified_formula_residual_keur": 0.0,
         "simplified_identity_applicable": true,
-        "simplified_identity_reason": "ZERO_TAXABLE_FINANCIAL_INCOME"
+        "simplified_identity_reason": "ZERO_NET_TAXABLE_FINANCIAL_ITEMS_BEFORE_SENIOR_INTEREST",
+        "net_taxable_financial_items_before_senior_keur": 0.0,
+        "alternative_full_formula_residual_keur": 0.0
       },
       {
         "period": 31,
@@ -8559,11 +8590,12 @@
         "identity_ti_eq_ebt_plus_fr_delta": 0.0,
         "identity_fr_eq_shl_delta": 0.0,
         "identity_cf_eq_neg_p44_delta": 0.0,
-        "taxable_financial_income_keur": 0.0,
         "full_formula_residual_keur": 0.0,
         "simplified_formula_residual_keur": 0.0,
         "simplified_identity_applicable": true,
-        "simplified_identity_reason": "ZERO_TAXABLE_FINANCIAL_INCOME"
+        "simplified_identity_reason": "ZERO_NET_TAXABLE_FINANCIAL_ITEMS_BEFORE_SENIOR_INTEREST",
+        "net_taxable_financial_items_before_senior_keur": 0.0,
+        "alternative_full_formula_residual_keur": 0.0
       },
       {
         "period": 32,
@@ -8606,11 +8638,12 @@
         "identity_ti_eq_ebt_plus_fr_delta": 0.0,
         "identity_fr_eq_shl_delta": 0.0,
         "identity_cf_eq_neg_p44_delta": 0.0,
-        "taxable_financial_income_keur": 0.0,
         "full_formula_residual_keur": 0.0,
         "simplified_formula_residual_keur": 0.0,
         "simplified_identity_applicable": true,
-        "simplified_identity_reason": "ZERO_TAXABLE_FINANCIAL_INCOME"
+        "simplified_identity_reason": "ZERO_NET_TAXABLE_FINANCIAL_ITEMS_BEFORE_SENIOR_INTEREST",
+        "net_taxable_financial_items_before_senior_keur": 0.0,
+        "alternative_full_formula_residual_keur": 0.0
       },
       {
         "period": 33,
@@ -8653,11 +8686,12 @@
         "identity_ti_eq_ebt_plus_fr_delta": 0.0,
         "identity_fr_eq_shl_delta": 0.0,
         "identity_cf_eq_neg_p44_delta": 0.0,
-        "taxable_financial_income_keur": 0.0,
         "full_formula_residual_keur": 0.0,
         "simplified_formula_residual_keur": 0.0,
         "simplified_identity_applicable": true,
-        "simplified_identity_reason": "ZERO_TAXABLE_FINANCIAL_INCOME"
+        "simplified_identity_reason": "ZERO_NET_TAXABLE_FINANCIAL_ITEMS_BEFORE_SENIOR_INTEREST",
+        "net_taxable_financial_items_before_senior_keur": 0.0,
+        "alternative_full_formula_residual_keur": 0.0
       },
       {
         "period": 34,
@@ -8700,11 +8734,12 @@
         "identity_ti_eq_ebt_plus_fr_delta": 0.0,
         "identity_fr_eq_shl_delta": 0.0,
         "identity_cf_eq_neg_p44_delta": 0.0,
-        "taxable_financial_income_keur": 0.0,
         "full_formula_residual_keur": 0.0,
         "simplified_formula_residual_keur": 0.0,
         "simplified_identity_applicable": true,
-        "simplified_identity_reason": "ZERO_TAXABLE_FINANCIAL_INCOME"
+        "simplified_identity_reason": "ZERO_NET_TAXABLE_FINANCIAL_ITEMS_BEFORE_SENIOR_INTEREST",
+        "net_taxable_financial_items_before_senior_keur": 0.0,
+        "alternative_full_formula_residual_keur": 0.0
       },
       {
         "period": 35,
@@ -8747,11 +8782,12 @@
         "identity_ti_eq_ebt_plus_fr_delta": 0.0,
         "identity_fr_eq_shl_delta": 0.0,
         "identity_cf_eq_neg_p44_delta": 0.0,
-        "taxable_financial_income_keur": 0.0,
         "full_formula_residual_keur": 0.0,
         "simplified_formula_residual_keur": 0.0,
         "simplified_identity_applicable": true,
-        "simplified_identity_reason": "ZERO_TAXABLE_FINANCIAL_INCOME"
+        "simplified_identity_reason": "ZERO_NET_TAXABLE_FINANCIAL_ITEMS_BEFORE_SENIOR_INTEREST",
+        "net_taxable_financial_items_before_senior_keur": 0.0,
+        "alternative_full_formula_residual_keur": 0.0
       },
       {
         "period": 36,
@@ -8794,11 +8830,12 @@
         "identity_ti_eq_ebt_plus_fr_delta": 0.0,
         "identity_fr_eq_shl_delta": 0.0,
         "identity_cf_eq_neg_p44_delta": 0.0,
-        "taxable_financial_income_keur": 0.0,
-        "full_formula_residual_keur": 0.0,
+        "full_formula_residual_keur": -0.0,
         "simplified_formula_residual_keur": 0.0,
         "simplified_identity_applicable": true,
-        "simplified_identity_reason": "ZERO_TAXABLE_FINANCIAL_INCOME"
+        "simplified_identity_reason": "ZERO_NET_TAXABLE_FINANCIAL_ITEMS_BEFORE_SENIOR_INTEREST",
+        "net_taxable_financial_items_before_senior_keur": 0.0,
+        "alternative_full_formula_residual_keur": 0.0
       },
       {
         "period": 37,
@@ -8841,11 +8878,12 @@
         "identity_ti_eq_ebt_plus_fr_delta": 0.0,
         "identity_fr_eq_shl_delta": 0.0,
         "identity_cf_eq_neg_p44_delta": 0.0,
-        "taxable_financial_income_keur": 0.0,
         "full_formula_residual_keur": 0.0,
         "simplified_formula_residual_keur": 0.0,
         "simplified_identity_applicable": true,
-        "simplified_identity_reason": "ZERO_TAXABLE_FINANCIAL_INCOME"
+        "simplified_identity_reason": "ZERO_NET_TAXABLE_FINANCIAL_ITEMS_BEFORE_SENIOR_INTEREST",
+        "net_taxable_financial_items_before_senior_keur": 0.0,
+        "alternative_full_formula_residual_keur": 0.0
       },
       {
         "period": 38,
@@ -8888,11 +8926,12 @@
         "identity_ti_eq_ebt_plus_fr_delta": 0.0,
         "identity_fr_eq_shl_delta": 0.0,
         "identity_cf_eq_neg_p44_delta": 0.0,
-        "taxable_financial_income_keur": 0.0,
         "full_formula_residual_keur": 0.0,
         "simplified_formula_residual_keur": 0.0,
         "simplified_identity_applicable": true,
-        "simplified_identity_reason": "ZERO_TAXABLE_FINANCIAL_INCOME"
+        "simplified_identity_reason": "ZERO_NET_TAXABLE_FINANCIAL_ITEMS_BEFORE_SENIOR_INTEREST",
+        "net_taxable_financial_items_before_senior_keur": 0.0,
+        "alternative_full_formula_residual_keur": 0.0
       },
       {
         "period": 39,
@@ -8935,11 +8974,12 @@
         "identity_ti_eq_ebt_plus_fr_delta": 0.0,
         "identity_fr_eq_shl_delta": 0.0,
         "identity_cf_eq_neg_p44_delta": 0.0,
-        "taxable_financial_income_keur": 0.0,
         "full_formula_residual_keur": 0.0,
         "simplified_formula_residual_keur": 0.0,
         "simplified_identity_applicable": true,
-        "simplified_identity_reason": "ZERO_TAXABLE_FINANCIAL_INCOME"
+        "simplified_identity_reason": "ZERO_NET_TAXABLE_FINANCIAL_ITEMS_BEFORE_SENIOR_INTEREST",
+        "net_taxable_financial_items_before_senior_keur": 0.0,
+        "alternative_full_formula_residual_keur": 0.0
       },
       {
         "period": 40,
@@ -8982,11 +9022,12 @@
         "identity_ti_eq_ebt_plus_fr_delta": 0.0,
         "identity_fr_eq_shl_delta": 0.0,
         "identity_cf_eq_neg_p44_delta": 0.0,
-        "taxable_financial_income_keur": 0.0,
         "full_formula_residual_keur": 0.0,
         "simplified_formula_residual_keur": 0.0,
         "simplified_identity_applicable": true,
-        "simplified_identity_reason": "ZERO_TAXABLE_FINANCIAL_INCOME"
+        "simplified_identity_reason": "ZERO_NET_TAXABLE_FINANCIAL_ITEMS_BEFORE_SENIOR_INTEREST",
+        "net_taxable_financial_items_before_senior_keur": 0.0,
+        "alternative_full_formula_residual_keur": 0.0
       },
       {
         "period": 41,
@@ -9029,11 +9070,12 @@
         "identity_ti_eq_ebt_plus_fr_delta": 0.0,
         "identity_fr_eq_shl_delta": 0.0,
         "identity_cf_eq_neg_p44_delta": 0.0,
-        "taxable_financial_income_keur": 2.772603,
         "full_formula_residual_keur": 0.0,
         "simplified_formula_residual_keur": 2.772603,
         "simplified_identity_applicable": false,
-        "simplified_identity_reason": "TAXABLE_CASH_INTEREST_AFTER_DEBT_REPAYMENT"
+        "simplified_identity_reason": "TAXABLE_CASH_INTEREST_AFTER_DEBT_REPAYMENT",
+        "net_taxable_financial_items_before_senior_keur": 2.772603,
+        "alternative_full_formula_residual_keur": 0.0
       },
       {
         "period": 42,
@@ -9076,11 +9118,12 @@
         "identity_ti_eq_ebt_plus_fr_delta": 0.0,
         "identity_fr_eq_shl_delta": 0.0,
         "identity_cf_eq_neg_p44_delta": 0.0,
-        "taxable_financial_income_keur": 2.727397,
-        "full_formula_residual_keur": 0.0,
+        "full_formula_residual_keur": 1e-06,
         "simplified_formula_residual_keur": 2.727398,
         "simplified_identity_applicable": false,
-        "simplified_identity_reason": "TAXABLE_CASH_INTEREST_AFTER_DEBT_REPAYMENT"
+        "simplified_identity_reason": "TAXABLE_CASH_INTEREST_AFTER_DEBT_REPAYMENT",
+        "net_taxable_financial_items_before_senior_keur": 2.727397,
+        "alternative_full_formula_residual_keur": 1e-06
       },
       {
         "period": 43,
@@ -9123,11 +9166,12 @@
         "identity_ti_eq_ebt_plus_fr_delta": 0.0,
         "identity_fr_eq_shl_delta": 0.0,
         "identity_cf_eq_neg_p44_delta": 0.0,
-        "taxable_financial_income_keur": 2.765027,
-        "full_formula_residual_keur": 0.0,
+        "full_formula_residual_keur": 1e-06,
         "simplified_formula_residual_keur": 2.765028,
         "simplified_identity_applicable": false,
-        "simplified_identity_reason": "TAXABLE_CASH_INTEREST_AFTER_DEBT_REPAYMENT"
+        "simplified_identity_reason": "TAXABLE_CASH_INTEREST_AFTER_DEBT_REPAYMENT",
+        "net_taxable_financial_items_before_senior_keur": 2.765027,
+        "alternative_full_formula_residual_keur": 1e-06
       },
       {
         "period": 44,
@@ -9170,11 +9214,12 @@
         "identity_ti_eq_ebt_plus_fr_delta": 0.0,
         "identity_fr_eq_shl_delta": 0.0,
         "identity_cf_eq_neg_p44_delta": 0.0,
-        "taxable_financial_income_keur": 2.734973,
-        "full_formula_residual_keur": 0.0,
+        "full_formula_residual_keur": -1e-06,
         "simplified_formula_residual_keur": 2.734972,
         "simplified_identity_applicable": false,
-        "simplified_identity_reason": "TAXABLE_CASH_INTEREST_AFTER_DEBT_REPAYMENT"
+        "simplified_identity_reason": "TAXABLE_CASH_INTEREST_AFTER_DEBT_REPAYMENT",
+        "net_taxable_financial_items_before_senior_keur": 2.734973,
+        "alternative_full_formula_residual_keur": -1e-06
       },
       {
         "period": 45,
@@ -9217,11 +9262,12 @@
         "identity_ti_eq_ebt_plus_fr_delta": 0.0,
         "identity_fr_eq_shl_delta": 0.0,
         "identity_cf_eq_neg_p44_delta": 0.0,
-        "taxable_financial_income_keur": 2.772603,
-        "full_formula_residual_keur": 0.0,
+        "full_formula_residual_keur": -1e-06,
         "simplified_formula_residual_keur": 2.772602,
         "simplified_identity_applicable": false,
-        "simplified_identity_reason": "TAXABLE_CASH_INTEREST_AFTER_DEBT_REPAYMENT"
+        "simplified_identity_reason": "TAXABLE_CASH_INTEREST_AFTER_DEBT_REPAYMENT",
+        "net_taxable_financial_items_before_senior_keur": 2.772603,
+        "alternative_full_formula_residual_keur": -1e-06
       },
       {
         "period": 46,
@@ -9264,11 +9310,12 @@
         "identity_ti_eq_ebt_plus_fr_delta": 0.0,
         "identity_fr_eq_shl_delta": 0.0,
         "identity_cf_eq_neg_p44_delta": 0.0,
-        "taxable_financial_income_keur": 2.727397,
         "full_formula_residual_keur": 0.0,
         "simplified_formula_residual_keur": 2.727397,
         "simplified_identity_applicable": false,
-        "simplified_identity_reason": "TAXABLE_CASH_INTEREST_AFTER_DEBT_REPAYMENT"
+        "simplified_identity_reason": "TAXABLE_CASH_INTEREST_AFTER_DEBT_REPAYMENT",
+        "net_taxable_financial_items_before_senior_keur": 2.727397,
+        "alternative_full_formula_residual_keur": 0.0
       },
       {
         "period": 47,
@@ -9311,11 +9358,12 @@
         "identity_ti_eq_ebt_plus_fr_delta": 0.0,
         "identity_fr_eq_shl_delta": 0.0,
         "identity_cf_eq_neg_p44_delta": 0.0,
-        "taxable_financial_income_keur": 2.772603,
         "full_formula_residual_keur": 0.0,
         "simplified_formula_residual_keur": 2.772603,
         "simplified_identity_applicable": false,
-        "simplified_identity_reason": "TAXABLE_CASH_INTEREST_AFTER_DEBT_REPAYMENT"
+        "simplified_identity_reason": "TAXABLE_CASH_INTEREST_AFTER_DEBT_REPAYMENT",
+        "net_taxable_financial_items_before_senior_keur": 2.772603,
+        "alternative_full_formula_residual_keur": 0.0
       },
       {
         "period": 48,
@@ -9358,11 +9406,12 @@
         "identity_ti_eq_ebt_plus_fr_delta": 0.0,
         "identity_fr_eq_shl_delta": 0.0,
         "identity_cf_eq_neg_p44_delta": 0.0,
-        "taxable_financial_income_keur": 2.727397,
-        "full_formula_residual_keur": 0.0,
+        "full_formula_residual_keur": -0.0,
         "simplified_formula_residual_keur": 2.727397,
         "simplified_identity_applicable": false,
-        "simplified_identity_reason": "TAXABLE_CASH_INTEREST_AFTER_DEBT_REPAYMENT"
+        "simplified_identity_reason": "TAXABLE_CASH_INTEREST_AFTER_DEBT_REPAYMENT",
+        "net_taxable_financial_items_before_senior_keur": 2.727397,
+        "alternative_full_formula_residual_keur": -0.0
       },
       {
         "period": 49,
@@ -9405,11 +9454,12 @@
         "identity_ti_eq_ebt_plus_fr_delta": 0.0,
         "identity_fr_eq_shl_delta": 0.0,
         "identity_cf_eq_neg_p44_delta": 0.0,
-        "taxable_financial_income_keur": 2.772603,
         "full_formula_residual_keur": 0.0,
         "simplified_formula_residual_keur": 2.772603,
         "simplified_identity_applicable": false,
-        "simplified_identity_reason": "TAXABLE_CASH_INTEREST_AFTER_DEBT_REPAYMENT"
+        "simplified_identity_reason": "TAXABLE_CASH_INTEREST_AFTER_DEBT_REPAYMENT",
+        "net_taxable_financial_items_before_senior_keur": 2.772603,
+        "alternative_full_formula_residual_keur": 0.0
       },
       {
         "period": 50,
@@ -9452,11 +9502,12 @@
         "identity_ti_eq_ebt_plus_fr_delta": 0.0,
         "identity_fr_eq_shl_delta": 0.0,
         "identity_cf_eq_neg_p44_delta": 0.0,
-        "taxable_financial_income_keur": 2.727397,
         "full_formula_residual_keur": 0.0,
         "simplified_formula_residual_keur": 2.727397,
         "simplified_identity_applicable": false,
-        "simplified_identity_reason": "TAXABLE_CASH_INTEREST_AFTER_DEBT_REPAYMENT"
+        "simplified_identity_reason": "TAXABLE_CASH_INTEREST_AFTER_DEBT_REPAYMENT",
+        "net_taxable_financial_items_before_senior_keur": 2.727397,
+        "alternative_full_formula_residual_keur": 0.0
       },
       {
         "period": 51,
@@ -9499,11 +9550,12 @@
         "identity_ti_eq_ebt_plus_fr_delta": 0.0,
         "identity_fr_eq_shl_delta": 0.0,
         "identity_cf_eq_neg_p44_delta": 0.0,
-        "taxable_financial_income_keur": 2.765027,
         "full_formula_residual_keur": 0.0,
         "simplified_formula_residual_keur": 2.765027,
         "simplified_identity_applicable": false,
-        "simplified_identity_reason": "TAXABLE_CASH_INTEREST_AFTER_DEBT_REPAYMENT"
+        "simplified_identity_reason": "TAXABLE_CASH_INTEREST_AFTER_DEBT_REPAYMENT",
+        "net_taxable_financial_items_before_senior_keur": 2.765027,
+        "alternative_full_formula_residual_keur": 0.0
       },
       {
         "period": 52,
@@ -9546,11 +9598,12 @@
         "identity_ti_eq_ebt_plus_fr_delta": 0.0,
         "identity_fr_eq_shl_delta": 0.0,
         "identity_cf_eq_neg_p44_delta": 0.0,
-        "taxable_financial_income_keur": 2.734973,
-        "full_formula_residual_keur": 0.0,
+        "full_formula_residual_keur": -0.0,
         "simplified_formula_residual_keur": 2.734973,
         "simplified_identity_applicable": false,
-        "simplified_identity_reason": "TAXABLE_CASH_INTEREST_AFTER_DEBT_REPAYMENT"
+        "simplified_identity_reason": "TAXABLE_CASH_INTEREST_AFTER_DEBT_REPAYMENT",
+        "net_taxable_financial_items_before_senior_keur": 2.734973,
+        "alternative_full_formula_residual_keur": -0.0
       },
       {
         "period": 53,
@@ -9593,11 +9646,12 @@
         "identity_ti_eq_ebt_plus_fr_delta": 0.0,
         "identity_fr_eq_shl_delta": 0.0,
         "identity_cf_eq_neg_p44_delta": 0.0,
-        "taxable_financial_income_keur": 2.772603,
         "full_formula_residual_keur": 0.0,
         "simplified_formula_residual_keur": 2.772603,
         "simplified_identity_applicable": false,
-        "simplified_identity_reason": "TAXABLE_CASH_INTEREST_AFTER_DEBT_REPAYMENT"
+        "simplified_identity_reason": "TAXABLE_CASH_INTEREST_AFTER_DEBT_REPAYMENT",
+        "net_taxable_financial_items_before_senior_keur": 2.772603,
+        "alternative_full_formula_residual_keur": 0.0
       },
       {
         "period": 54,
@@ -9640,11 +9694,12 @@
         "identity_ti_eq_ebt_plus_fr_delta": 0.0,
         "identity_fr_eq_shl_delta": 0.0,
         "identity_cf_eq_neg_p44_delta": 0.0,
-        "taxable_financial_income_keur": 2.727397,
-        "full_formula_residual_keur": 0.0,
+        "full_formula_residual_keur": 1e-06,
         "simplified_formula_residual_keur": 2.727398,
         "simplified_identity_applicable": false,
-        "simplified_identity_reason": "TAXABLE_CASH_INTEREST_AFTER_DEBT_REPAYMENT"
+        "simplified_identity_reason": "TAXABLE_CASH_INTEREST_AFTER_DEBT_REPAYMENT",
+        "net_taxable_financial_items_before_senior_keur": 2.727397,
+        "alternative_full_formula_residual_keur": 1e-06
       },
       {
         "period": 55,
@@ -9687,11 +9742,12 @@
         "identity_ti_eq_ebt_plus_fr_delta": 0.0,
         "identity_fr_eq_shl_delta": 0.0,
         "identity_cf_eq_neg_p44_delta": 0.0,
-        "taxable_financial_income_keur": 2.772603,
         "full_formula_residual_keur": 0.0,
         "simplified_formula_residual_keur": 2.772603,
         "simplified_identity_applicable": false,
-        "simplified_identity_reason": "TAXABLE_CASH_INTEREST_AFTER_DEBT_REPAYMENT"
+        "simplified_identity_reason": "TAXABLE_CASH_INTEREST_AFTER_DEBT_REPAYMENT",
+        "net_taxable_financial_items_before_senior_keur": 2.772603,
+        "alternative_full_formula_residual_keur": 0.0
       },
       {
         "period": 56,
@@ -9734,11 +9790,12 @@
         "identity_ti_eq_ebt_plus_fr_delta": 0.0,
         "identity_fr_eq_shl_delta": 0.0,
         "identity_cf_eq_neg_p44_delta": 0.0,
-        "taxable_financial_income_keur": 2.727397,
         "full_formula_residual_keur": 0.0,
         "simplified_formula_residual_keur": 2.727397,
         "simplified_identity_applicable": false,
-        "simplified_identity_reason": "TAXABLE_CASH_INTEREST_AFTER_DEBT_REPAYMENT"
+        "simplified_identity_reason": "TAXABLE_CASH_INTEREST_AFTER_DEBT_REPAYMENT",
+        "net_taxable_financial_items_before_senior_keur": 2.727397,
+        "alternative_full_formula_residual_keur": 0.0
       },
       {
         "period": 57,
@@ -9781,11 +9838,12 @@
         "identity_ti_eq_ebt_plus_fr_delta": 0.0,
         "identity_fr_eq_shl_delta": 0.0,
         "identity_cf_eq_neg_p44_delta": 0.0,
-        "taxable_financial_income_keur": 2.772603,
-        "full_formula_residual_keur": 0.0,
+        "full_formula_residual_keur": -1e-06,
         "simplified_formula_residual_keur": 2.772602,
         "simplified_identity_applicable": false,
-        "simplified_identity_reason": "TAXABLE_CASH_INTEREST_AFTER_DEBT_REPAYMENT"
+        "simplified_identity_reason": "TAXABLE_CASH_INTEREST_AFTER_DEBT_REPAYMENT",
+        "net_taxable_financial_items_before_senior_keur": 2.772603,
+        "alternative_full_formula_residual_keur": -1e-06
       },
       {
         "period": 58,
@@ -9828,11 +9886,12 @@
         "identity_ti_eq_ebt_plus_fr_delta": 0.0,
         "identity_fr_eq_shl_delta": 0.0,
         "identity_cf_eq_neg_p44_delta": 0.0,
-        "taxable_financial_income_keur": 2.727397,
-        "full_formula_residual_keur": 0.0,
+        "full_formula_residual_keur": 1e-06,
         "simplified_formula_residual_keur": 2.727398,
         "simplified_identity_applicable": false,
-        "simplified_identity_reason": "TAXABLE_CASH_INTEREST_AFTER_DEBT_REPAYMENT"
+        "simplified_identity_reason": "TAXABLE_CASH_INTEREST_AFTER_DEBT_REPAYMENT",
+        "net_taxable_financial_items_before_senior_keur": 2.727397,
+        "alternative_full_formula_residual_keur": 1e-06
       },
       {
         "period": 59,
@@ -9875,11 +9934,12 @@
         "identity_ti_eq_ebt_plus_fr_delta": 0.0,
         "identity_fr_eq_shl_delta": 0.0,
         "identity_cf_eq_neg_p44_delta": 0.0,
-        "taxable_financial_income_keur": 2.765027,
-        "full_formula_residual_keur": 0.0,
+        "full_formula_residual_keur": 1e-06,
         "simplified_formula_residual_keur": 2.765028,
         "simplified_identity_applicable": false,
-        "simplified_identity_reason": "TAXABLE_CASH_INTEREST_AFTER_DEBT_REPAYMENT"
+        "simplified_identity_reason": "TAXABLE_CASH_INTEREST_AFTER_DEBT_REPAYMENT",
+        "net_taxable_financial_items_before_senior_keur": 2.765027,
+        "alternative_full_formula_residual_keur": 1e-06
       },
       {
         "period": 60,
@@ -9922,11 +9982,12 @@
         "identity_ti_eq_ebt_plus_fr_delta": 0.0,
         "identity_fr_eq_shl_delta": 0.0,
         "identity_cf_eq_neg_p44_delta": 0.0,
-        "taxable_financial_income_keur": 2.734973,
         "full_formula_residual_keur": 0.0,
         "simplified_formula_residual_keur": 2.734973,
         "simplified_identity_applicable": false,
-        "simplified_identity_reason": "TAXABLE_CASH_INTEREST_AFTER_DEBT_REPAYMENT"
+        "simplified_identity_reason": "TAXABLE_CASH_INTEREST_AFTER_DEBT_REPAYMENT",
+        "net_taxable_financial_items_before_senior_keur": 2.734973,
+        "alternative_full_formula_residual_keur": 0.0
       }
     ],
     "rows": {
@@ -12530,7 +12591,7 @@
       },
       "first_loss_utilized": {
         "period": null,
-        "note": "NEVER \u2014 row 37 condition AND(G36<=0,G32>0) uses EBT (G32). EBT remains negative throughout all loss-carrying periods (SHL interest keeps EBT below zero even when TI turns positive). Losses expire through the rolling 5-period window, never allocated."
+        "note": "NEVER — row 37 condition AND(G36<=0,G32>0) uses EBT (G32). EBT remains negative throughout all loss-carrying periods (SHL interest keeps EBT below zero even when TI turns positive). Losses expire through the rolling 5-period window, never allocated."
       },
       "first_positive_tp_after_losses": {
         "period": 6,
@@ -12563,8 +12624,8 @@
       "classification": "WORKBOOK_PERIODISATION_MISMATCH",
       "legal_tax_year": "1 January to 31 December (Croatia: calendar year)",
       "workbook_pairing_convention": "Even period CIT fires on SUM(F41:G41) = TP[prev_period] + TP[this_period]. Prev period = H2(yr N, Jul-Dec), this period = H1(yr N+1, Jan-Jun). Example: pair 5_6 = H2-2032 (p5) + H1-2033 (p6). Straddles Jan 1.",
-      "calendar_year_aggregation_note": "Each calendar year aggregates H1(yr N, Jan-Jun) + H2(yr N, Jul-Dec). Example year 2033: p6(H1-2033) + p7(H2-2033) = 92.7 + 107.4 = 200.1 kEUR TI. The calendar_vs_workbook_table shows naive calendar-year CIT (TI \u00d7 10%, no LCF offset) vs workbook CIT, illustrating the timing shift only. For LCF-adjusted calendar-year CIT see the croatian_calendar_year_lcf_proforma section.",
-      "workbook_first_tax_period_note": "Workbook pair 5_6: TI = -3.7 + 92.7 = 89.0 \u2192 CIT = 8.9 kEUR, booked H1-2033. Naive calendar year 2033 TI = 200.1 kEUR \u2192 naive CIT = 20.0 kEUR (no LCF). With Article 17 LCF applied (see croatian_calendar_year_lcf_proforma), 2033 taxable base = 0 \u2192 CIT = 0. Do not treat 20.0 kEUR as 'correct 2033 CIT'.",
+      "calendar_year_aggregation_note": "Each calendar year aggregates H1(yr N, Jan-Jun) + H2(yr N, Jul-Dec). Example year 2033: p6(H1-2033) + p7(H2-2033) = 92.7 + 107.4 = 200.1 kEUR TI. The calendar_vs_workbook_table shows naive calendar-year CIT (TI × 10%, no LCF offset) vs workbook CIT, illustrating the timing shift only. For LCF-adjusted calendar-year CIT see the croatian_calendar_year_lcf_proforma section.",
+      "workbook_first_tax_period_note": "Workbook pair 5_6: TI = -3.7 + 92.7 = 89.0 → CIT = 8.9 kEUR, booked H1-2033. Naive calendar year 2033 TI = 200.1 kEUR → naive CIT = 20.0 kEUR (no LCF). With Article 17 LCF applied (see croatian_calendar_year_lcf_proforma), 2033 taxable base = 0 → CIT = 0. Do not treat 20.0 kEUR as 'correct 2033 CIT'.",
       "impact_on_tax_shield_exhaustion": "No impact on LCF window exhaustion date: losses expire by rolling window, not by utilization offset. Exhaustion date is independent of CIT aggregation.",
       "impact_on_cit_timing": "Periodisation shifts CIT booking by approximately 6 months relative to a calendar-year assessment without LCF. With LCF applied the timing and amounts both change materially (first CIT under Article 17 pro forma: 2034). The workbook LCF shortcut (rolling window, no utilization) and the H2+H1 pairing compound to produce a different pattern from the legal treatment.",
       "calendar_vs_workbook_table": [
@@ -12912,7 +12973,7 @@
     "croatian_calendar_year_lcf_proforma": {
       "legal_basis": "Croatian CIT Act Article 17: 5 calendar-year expiry, oldest-first utilization, no EBT gate",
       "proforma_classification": "LEGAL_PROFORMA_NOT_WORKBOOK_IMPLEMENTATION",
-      "note": "Pro forma only \u2014 the workbook does NOT implement Article 17. Calendar-year TI sums are derived from period_diagnostic excel_taxable_income_keur. Loss utilization uses oldest-first and no EBT gate, unlike workbook row 37.",
+      "note": "Pro forma only — the workbook does NOT implement Article 17. Calendar-year TI sums are derived from period_diagnostic excel_taxable_income_keur. Loss utilization uses oldest-first and no EBT gate, unlike workbook row 37.",
       "proforma_rows": [
         {
           "calendar_year": 2030,
@@ -13388,10 +13449,11 @@
       }
     },
     "ti_formula_period_summary": {
-      "_note": "Generated per instruction 4",
-      "full_formula": "TI = EBT + Fiscal_Reintegration (proved exact all operational periods)",
-      "simplified_formula": "TI = EBIT - Senior_Interest (valid when taxable_financial_income = 0)",
-      "taxable_financial_income_definition": "fin_earn + SHL (row 20 cash interest after debt repayment)",
+      "_derivation_note": "All values derived from excel_fin_earn_keur, excel_shl_keur, excel_senior_keur, excel_ebit_keur, excel_taxable_income_keur. Not hardcoded.",
+      "full_formula": "TI = EBT + Fiscal_Reintegration = EBIT + Financial_Earnings + Fiscal_Reintegration (proved exact all operational periods via identity_ti_eq_ebt_plus_fr_delta)",
+      "alternative_full_formula": "TI = EBIT + net_taxable_financial_items_before_senior - Senior_Interest (algebraically identical to full formula)",
+      "simplified_formula": "TI = EBIT - Senior_Interest (valid only when net_taxable_financial_items_before_senior = 0)",
+      "net_taxable_financial_items_before_senior_definition": "Financial_Earnings + Fiscal_Reintegration + Senior_Interest = fin_earn + SHL + senior. During debt-active periods: fin_earn = -(SHL + senior) => net = 0. After repayment (SHL=0, senior=0): net = fin_earn = P&L row 20 cash interest.",
       "simplified_applicable_periods": [
         1,
         2,
@@ -13437,8 +13499,10 @@
       "simplified_applicable_count": 40,
       "first_non_applicable_period": 41,
       "max_simplified_residual_keur": 2.772603,
+      "maximum_residual_period": 41,
       "residual_source_component": "TAXABLE_CASH_INTEREST_AFTER_DEBT_REPAYMENT",
-      "residual_note": "P&L row 20 (Interests from Cash on surplus cash) becomes positive after debt repayment"
+      "cash_interest_residual_period_count": 20,
+      "residual_note": "P&L row 20 (Interests from Cash on surplus cash) becomes positive after SHL and senior debt are both fully repaid."
     },
     "source_truth_verdict": "C3B1_SOURCE_TRUTH_PARTIAL_MANUAL_CHECK_REQUIRED",
     "source_truth_verdict_rationale": "Tax formula identity proved to machine precision. Material upstream dependencies prevent full runtime parity: SENIOR_INTEREST_DEPENDENCY, SHL_REINTEGRATION_INPUT_DEPENDENCY, TAX_DEPRECIATION_ADAPTER_SEMANTIC_LOSS, WORKBOOK_LCF_POLICY_MISMATCH, CIT_PERIODISATION_MISMATCH, ROW44_MACRO_STALENESS_RISK. Resolution requires cross-stage contract closure.",
@@ -13459,6 +13523,21 @@
       "cumulative_stage_base_sha": "b11e5bf7b9ab60bae174081e7d9f8541190bf371",
       "actual_pr_base_sha": "1fb4943a4319eff8f4ac7a22add6f65f14bd8cec",
       "note": "actual_pr_base_sha is the GitHub merge-base for PR #914. cumulative_stage_base_sha is the C3B1 task start point."
+    },
+    "_ti_governance_derivation": {
+      "derivation_version": "1.0.0",
+      "derivation_script": "finco_recon/derive_c3b1_ti_governance.py",
+      "source_fixture_path": "tests/fixtures/excel_oborovo_financial_truth.json",
+      "source_fixture_sha256_before_derivation": "719479dab0910449e7bca210dc1703eba94d425ab056f11571a947e0959b9599",
+      "derivation_timestamp_utc": "2026-08-06T12:36:46.014897+00:00",
+      "tolerance_keur": 0.01,
+      "field_renamed": {
+        "old": "taxable_financial_income_keur",
+        "new": "net_taxable_financial_items_before_senior_keur",
+        "formula_old": "fin_earn + SHL  (misleading: equals -senior during debt-active periods)",
+        "formula_new": "fin_earn + SHL + senior  (zero when simplified identity holds)"
+      },
+      "_content_sha256": "5cd313865d639b9e5e0ff38a264ae638cd0f0c41b2590e045dc50865184df67b"
     }
   },
   "debt_sizing_evidence": {
@@ -13501,7 +13580,7 @@
       "ds_d47": {
         "formula": "=MAX($G$47:$DW$47)",
         "cached_keur": 42852.27876256299,
-        "note": "MAX(G47:DW47) \u2014 peak DSCR-sculpted debt capacity; iterative ref in G47"
+        "note": "MAX(G47:DW47) — peak DSCR-sculpted debt capacity; iterative ref in G47"
       },
       "gearing_cap": {
         "inputs_d230_formula": "=Scenarios!E348",
@@ -13530,7 +13609,7 @@
       "dscr_role_evidence": "Formula extracted (period 1): =($B$22*H15)+(H16*$D$22)+(H17*$C$22); step-up targets B22=1.15, C22=1.35, D22=1.65"
     },
     "debt_sizing_verdict": "DEBT_SIZING_FORMULA_CHAIN_PARTIALLY_PROVED",
-    "verdict_rationale": "D192==DS!D51 \u2192 DS!D51==SUM(G51:DW51) \u2192 SUM of drawdown row \u2192 DS!G62==(G3=0)*$B$62 \u2192 DS!B62==Inputs!$D$195*B60 \u2192 Inputs!D195==MIN(DS!$D$47,G171*$D$230) = MIN(DS!D47=42852.279 kEUR, CAPEX\u00d7gearing=46378.442 kEUR). Binding constraint: DSCR_SCULPTING (DS!D47=42852.279 < gearing cap=46378.442). DS!G47 contains iterative reference (sculpting loop) not fully resolvable from static formula inspection; chain is PARTIALLY_PROVED. No Goal Seek / macro evidence found.",
+    "verdict_rationale": "D192==DS!D51 → DS!D51==SUM(G51:DW51) → SUM of drawdown row → DS!G62==(G3=0)*$B$62 → DS!B62==Inputs!$D$195*B60 → Inputs!D195==MIN(DS!$D$47,G171*$D$230) = MIN(DS!D47=42852.279 kEUR, CAPEX×gearing=46378.442 kEUR). Binding constraint: DSCR_SCULPTING (DS!D47=42852.279 < gearing cap=46378.442). DS!G47 contains iterative reference (sculpting loop) not fully resolvable from static formula inspection; chain is PARTIALLY_PROVED. No Goal Seek / macro evidence found.",
     "manual_check_pack": [
       {
         "priority": 1,
@@ -13565,16 +13644,16 @@
         "current_value": 57973.053,
         "question": "Is the eligible debt base the full CAPEX (57,973) or a sub-item?",
         "status": "RESOLVED",
-        "resolution": "Inputs!G171 = SUM(G165:G170) = 57,973.053 kEUR; gearing cap = D230\u00d7G171 = 46,378 kEUR. Full CAPEX confirmed as the gearing base."
+        "resolution": "Inputs!G171 = SUM(G165:G170) = 57,973.053 kEUR; gearing cap = D230×G171 = 46,378 kEUR. Full CAPEX confirmed as the gearing base."
       },
       {
         "priority": 5,
         "sheet": "DS",
         "cell": "Row 50/51",
-        "current_value": "Opening 0 \u2192 42,852 at p0 drawdown",
+        "current_value": "Opening 0 → 42,852 at p0 drawdown",
         "question": "Does DS row 51 drawdown formula reference =Inputs!D192 directly?",
         "status": "RESOLVED",
-        "resolution": "DS!G51 = '=G62+G72'; DS!B62 = '=Inputs!$D$195*B60'. D51 does NOT reference D192 directly; D192 reads DS!D51. Sizing flows Inputs!D195 \u2192 DS!B62 \u2192 DS!G62 \u2192 DS!G51 \u2192 DS!D51 \u2192 Inputs!D192."
+        "resolution": "DS!G51 = '=G62+G72'; DS!B62 = '=Inputs!$D$195*B60'. D51 does NOT reference D192 directly; D192 reads DS!D51. Sizing flows Inputs!D195 → DS!B62 → DS!G62 → DS!G51 → DS!D51 → Inputs!D192."
       },
       {
         "priority": 6,
@@ -13592,14 +13671,14 @@
         "current_value": "Actual gearing = 73.9%",
         "question": "Is there an explicit gearing cap cell that determined 42,852?",
         "status": "RESOLVED",
-        "resolution": "Inputs!D230 = '=Scenarios!E348' = 0.80 (80% gearing cap). Gearing cap = 46,378 kEUR > DS!D47 = 42,852 kEUR \u2192 NOT binding. Binding constraint is DSCR sculpting."
+        "resolution": "Inputs!D230 = '=Scenarios!E348' = 0.80 (80% gearing cap). Gearing cap = 46,378 kEUR > DS!D47 = 42,852 kEUR → NOT binding. Binding constraint is DSCR sculpting."
       },
       {
         "priority": 8,
         "sheet": "DS",
         "cell": "DSRA rows",
         "current_value": "Unknown",
-        "question": "Is there a DSRA? How is it funded \u2014 does it reduce CFADS?",
+        "question": "Is there a DSRA? How is it funded — does it reduce CFADS?",
         "status": "OPEN"
       },
       {

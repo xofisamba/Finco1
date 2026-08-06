@@ -142,14 +142,29 @@ G54 = MIN(MAX(G57, G58) + G59, G27)
     FR = -G54 = G27 = SHL interest
 
 Therefore:
-  TI = EBT + SHL = (EBIT + fin_earn - SD - SHL) + SHL = EBIT + fin_earn - SD
+  TI = EBT + Fiscal_Reintegration
+     = EBIT + Financial_Earnings + Fiscal_Reintegration
+     = EBIT + fin_earn + SHL
 
-During debt tenor (SD > 0):
-  fin_earn ≈ 0 (rows 19-21 all zero for Oborovo)  →  TI ≈ EBIT - SD  (< 0.02 kEUR gap)
+  net_taxable_financial_items_before_senior
+     = Financial_Earnings + Fiscal_Reintegration + Senior_Interest
+     = fin_earn + SHL + senior
 
-After debt repayment (SD = 0, SHL = 0, FR = 0):
-  fin_earn = row 20 (Interests from Cash) ≈ +2.77 kEUR/period
-  TI = EBIT + cash_interest_on_surplus_cash
+  Simplified identity:  TI = EBIT − Senior_Interest
+  Simplified residual:  TI − (EBIT − senior) = net_taxable_financial_items_before_senior
+
+During debt-active periods (senior > 0):
+  fin_earn = −(SHL + senior)  →  net = fin_earn + SHL + senior = 0
+  TI = EBIT − Senior_Interest  (simplified identity holds; residual = 0)
+
+During SHL-wind-down periods (senior = 0, SHL > 0):
+  fin_earn = −SHL  →  net = fin_earn + SHL + 0 = 0
+  TI = EBIT  (senior = 0, simplified identity still holds)
+
+After full debt repayment (SHL = 0, senior = 0):
+  fin_earn = row 20 (Interests from Cash on surplus) ≈ +2.77 kEUR/period
+  net = fin_earn ≠ 0  →  TI = EBIT + cash_interest_on_surplus_cash
+  Reason: TAXABLE_CASH_INTEREST_AFTER_DEBT_REPAYMENT
 
 Note: Oborovo earns ZERO interest on DSRA (row 19 = 0). Cash interest (row 20) is on
 surplus cash balance after debt repayment, not on DSRA.
@@ -715,7 +730,7 @@ C3B1_SOURCE_TRUTH_PARTIAL_MANUAL_CHECK_REQUIRED
 
 All C3B1 source evidence items are resolved.
 
-**Tax formula**: `TI = EBT + FR = EBIT + taxable_financial_income − Senior_Interest` proved to machine precision. CF row 77 (`=-P&L!row44`) confirmed from dual-load. BS has no tax payable row.
+**Tax formula**: `TI = EBT + FR = EBIT + Financial_Earnings + Fiscal_Reintegration` proved to machine precision. Simplified `TI = EBIT − Senior` holds when `net_taxable_financial_items_before_senior = fin_earn + SHL + senior = 0` (all debt-active periods). CF row 77 (`=-P&L!row44`) confirmed from dual-load. BS has no tax payable row.
 
 **LCF mechanics**: B36=5 is a 5-semi-annual-period rolling window (~2.5 calendar years). Allocated losses = 0 for ALL periods because row 37 requires EBT > 0, and EBT remains negative throughout all loss-carrying periods (SHL interest blocks utilization). Losses expire naturally from the window; never utilized. `TAX_LOSS_ROLLFORWARD_SOURCE_PROVED`.
 

@@ -29,11 +29,14 @@ Verdict
 C3B1_SOURCE_TRUTH_PARTIAL_MANUAL_CHECK_REQUIRED
 
 The full taxable income formula is proved:
-    TI = EBT + FR = EBIT + taxable_financial_income - Senior_Interest
-    where FR = full SHL reintegration (thin_cap=False, ATAD=False).
+    TI = EBT + FR = EBIT + Financial_Earnings + Fiscal_Reintegration
+    where FR = SHL interest reintegration (thin_cap=False, ATAD=False).
 
-During debt tenor (periods 1-28): taxable_financial_income ≈ 0 → TI ≈ EBIT - SD.
-After debt repayment (periods 29+): row 20 (Interests from Cash) > 0 → TI = EBIT + cash_interest.
+    net_taxable_financial_items_before_senior = fin_earn + SHL + senior
+    Simplified: TI = EBIT - Senior  (valid when net = 0)
+
+During debt-active periods: fin_earn = -(SHL + senior) → net = 0 → TI = EBIT - Senior.
+After repayment (SHL=0, senior=0): net = fin_earn = row 20 cash interest → TI = EBIT + cash_interest.
 
 EBITDA and book_depreciation are frozen and clean.  Senior interest comes
 from the Phase 2C debt schedule.  The current Phase 2C runtime produces a
@@ -2030,71 +2033,287 @@ class TestUContradictionGuards:
 # ---------------------------------------------------------------------------
 
 class TestVTIFormulaPeriodClassification:
-    """Instruction 4: machine-readable per-period classification for simplified TI identity."""
+    """Evidence-driven TI formula classification tests.
 
-    def test_fixture_has_ti_formula_period_summary(self):
-        assert "ti_formula_period_summary" in _xd()["tax"]
+    All counts, transition periods, and residuals are derived independently
+    from the source row vectors (excel_fin_earn_keur, excel_shl_keur,
+    excel_senior_keur, excel_ebit_keur, excel_taxable_income_keur).
+    No fixture summary value is accepted on trust alone.
 
-    def test_simplified_identity_applicable_count(self):
-        """Simplified TI = EBIT - Senior holds exactly for 40 operational periods (P2-P41, 0-indexed 1-40)."""
-        summary = _xd()["tax"]["ti_formula_period_summary"]
-        assert summary["simplified_applicable_count"] == 40, (
-            f"Expected 40 exact periods (P2-P41), got {summary['simplified_applicable_count']}"
-        )
+    Correct component identity
+    --------------------------
+        net_taxable_financial_items_before_senior
+            = Financial_Earnings + Fiscal_Reintegration + Senior_Interest
+            = fin_earn + SHL + senior
 
-    def test_first_non_applicable_period(self):
-        """Simplified identity first fails at period 41 (0-indexed) = P42 in 1-indexed Excel."""
-        summary = _xd()["tax"]["ti_formula_period_summary"]
-        assert summary["first_non_applicable_period"] == 41, (
-            f"Expected first non-applicable period index 41, got {summary['first_non_applicable_period']}"
-        )
+        During debt-active periods: fin_earn = -(SHL + senior) => net = 0
+        After repayment (SHL=0, senior=0):  net = fin_earn = P&L row 20
 
-    def test_max_simplified_residual_classified(self):
-        summary = _xd()["tax"]["ti_formula_period_summary"]
-        assert summary["max_simplified_residual_keur"] > 2.5, "Residual should be > 2.5 kEUR"
-        assert summary["max_simplified_residual_keur"] < 5.0, "Residual should be < 5.0 kEUR"
+        full formula residual:       TI - (EBIT + fin_earn + SHL)   <= tolerance
+        alt full formula residual:   TI - (EBIT + net - senior)      <= tolerance
+        simplified formula residual: TI - (EBIT - senior)            = net
+    """
 
-    def test_residual_source_component_classified(self):
-        summary = _xd()["tax"]["ti_formula_period_summary"]
-        assert summary["residual_source_component"] == "TAXABLE_CASH_INTEREST_AFTER_DEBT_REPAYMENT"
+    _TOL = 0.01  # kEUR
 
-    def test_period_diagnostic_has_classification_fields(self):
-        """Every period entry must have the five new per-period classification fields (may be None for construction)."""
+    @staticmethod
+    def _operational_periods():
+        return [
+            p for p in _xd()["tax"]["period_diagnostic"]
+            if p["classification"] != "CONSTRUCTION_PERIOD"
+        ]
+
+    @staticmethod
+    def _compute_net(p):
+        return p["excel_fin_earn_keur"] + p["excel_shl_keur"] + p["excel_senior_keur"]
+
+    @staticmethod
+    def _compute_full_res(p):
+        return (p["excel_taxable_income_keur"]
+                - (p["excel_ebit_keur"] + p["excel_fin_earn_keur"] + p["excel_shl_keur"]))
+
+    @staticmethod
+    def _compute_alt_full_res(p):
+        net = p["excel_fin_earn_keur"] + p["excel_shl_keur"] + p["excel_senior_keur"]
+        return (p["excel_taxable_income_keur"]
+                - (p["excel_ebit_keur"] + net - p["excel_senior_keur"]))
+
+    @staticmethod
+    def _compute_simp_res(p):
+        return p["excel_taxable_income_keur"] - (p["excel_ebit_keur"] - p["excel_senior_keur"])
+
+    # ------------------------------------------------------------------
+    # Guard 1: net_taxable_financial_items_before_senior field correct
+    # ------------------------------------------------------------------
+
+    def test_fixture_has_correct_field_name(self):
+        """Old misleading field name must not appear; correct name must be present."""
         pd_list = _xd()["tax"]["period_diagnostic"]
+        for p in pd_list:
+            assert "taxable_financial_income_keur" not in p, (
+                f"Period {p['period']}: old field 'taxable_financial_income_keur' still present"
+            )
+            assert "net_taxable_financial_items_before_senior_keur" in p, (
+                f"Period {p['period']}: missing 'net_taxable_financial_items_before_senior_keur'"
+            )
+
+    def test_net_taxable_financial_items_formula(self):
+        """Guard 1: net = fin_earn + FR + senior, independently verified per period."""
+        for p in self._operational_periods():
+            computed = self._compute_net(p)
+            stored = p["net_taxable_financial_items_before_senior_keur"]
+            assert abs(computed - stored) < self._TOL, (
+                f"Period {p['period']}: net computed={computed:.6f} stored={stored:.6f}"
+            )
+
+    # ------------------------------------------------------------------
+    # Guard 2: early debt-active periods must not carry cash-interest label
+    # ------------------------------------------------------------------
+
+    def test_no_cash_interest_label_while_senior_active(self):
+        """Guard 2: periods where senior_interest > 0 cannot be TAXABLE_CASH_INTEREST_AFTER_DEBT_REPAYMENT."""
+        for p in self._operational_periods():
+            if p["excel_senior_keur"] > self._TOL:
+                assert p["simplified_identity_reason"] != "TAXABLE_CASH_INTEREST_AFTER_DEBT_REPAYMENT", (
+                    f"Period {p['period']}: senior={p['excel_senior_keur']:.3f} kEUR but labelled "
+                    f"TAXABLE_CASH_INTEREST_AFTER_DEBT_REPAYMENT"
+                )
+
+    # ------------------------------------------------------------------
+    # Guard 3: every cash-interest residual period has positive P&L row 20
+    # ------------------------------------------------------------------
+
+    def test_cash_interest_periods_have_positive_fin_earn(self):
+        """Guard 3: every period classified TAXABLE_CASH_INTEREST must have fin_earn > tolerance."""
+        for p in _xd()["tax"]["period_diagnostic"]:
+            if p.get("simplified_identity_reason") == "TAXABLE_CASH_INTEREST_AFTER_DEBT_REPAYMENT":
+                assert p["excel_fin_earn_keur"] > self._TOL, (
+                    f"Period {p['period']}: classified cash-interest but "
+                    f"fin_earn={p['excel_fin_earn_keur']:.6f}"
+                )
+
+    # ------------------------------------------------------------------
+    # Guard 4: every applicable period has net within tolerance
+    # ------------------------------------------------------------------
+
+    def test_applicable_periods_have_zero_net(self):
+        """Guard 4: every period with simplified_identity_applicable=True has |net| <= tolerance."""
+        for p in self._operational_periods():
+            if p["simplified_identity_applicable"]:
+                net = self._compute_net(p)
+                assert abs(net) <= self._TOL, (
+                    f"Period {p['period']}: applicable=True but net={net:.6f}"
+                )
+
+    # ------------------------------------------------------------------
+    # Guard 5: every non-applicable period has material non-zero net
+    # ------------------------------------------------------------------
+
+    def test_non_applicable_periods_have_nonzero_net(self):
+        """Guard 5: every period with simplified_identity_applicable=False has |net| > tolerance."""
+        for p in self._operational_periods():
+            if p["simplified_identity_applicable"] is False:
+                net = self._compute_net(p)
+                assert abs(net) > self._TOL, (
+                    f"Period {p['period']}: applicable=False but |net|={abs(net):.6f} <= tolerance"
+                )
+
+    # ------------------------------------------------------------------
+    # Guard 6: summary applicable_count derived from period flags
+    # ------------------------------------------------------------------
+
+    def test_summary_count_matches_period_flags(self):
+        """Guard 6: summary count equals periods where simplified_identity_applicable=True."""
+        operational = self._operational_periods()
+        computed_count = sum(1 for p in operational if p["simplified_identity_applicable"])
+        summary_count = _xd()["tax"]["ti_formula_period_summary"]["simplified_applicable_count"]
+        assert computed_count == summary_count, (
+            f"Summary count {summary_count} != computed count {computed_count} from period flags"
+        )
+
+    # ------------------------------------------------------------------
+    # Guard 7: first non-applicable period derived from period flags
+    # ------------------------------------------------------------------
+
+    def test_first_non_applicable_derived_from_flags(self):
+        """Guard 7: first_non_applicable_period matches first period where applicable=False."""
+        operational = self._operational_periods()
+        non_app = [p for p in operational if p["simplified_identity_applicable"] is False]
+        assert non_app, "No non-applicable operational period found"
+        computed_first = non_app[0]["period"]
+        summary_first = _xd()["tax"]["ti_formula_period_summary"]["first_non_applicable_period"]
+        assert computed_first == summary_first, (
+            f"Summary first_non_applicable={summary_first} != computed {computed_first}"
+        )
+
+    # ------------------------------------------------------------------
+    # Guard 8: maximum residual derived from residual vector
+    # ------------------------------------------------------------------
+
+    def test_max_residual_derived_from_vector(self):
+        """Guard 8: summary max_simplified_residual equals max |net| from non-applicable periods."""
+        operational = self._operational_periods()
+        non_app = [p for p in operational if p["simplified_identity_applicable"] is False]
+        computed_max = max(abs(self._compute_net(p)) for p in non_app)
+        summary_max = _xd()["tax"]["ti_formula_period_summary"]["max_simplified_residual_keur"]
+        assert abs(computed_max - summary_max) < self._TOL, (
+            f"Summary max={summary_max:.6f} != computed max={computed_max:.6f}"
+        )
+
+    # ------------------------------------------------------------------
+    # Guard 9: full and alternative full residuals match
+    # ------------------------------------------------------------------
+
+    def test_full_formula_residual_near_zero(self):
+        """Full formula TI = EBIT + fin_earn + FR holds to tolerance for all operational periods."""
+        for p in self._operational_periods():
+            res = self._compute_full_res(p)
+            assert abs(res) < self._TOL, (
+                f"Period {p['period']}: full_formula_residual={res:.6f}"
+            )
+            stored = p["full_formula_residual_keur"]
+            assert abs(stored) < self._TOL, (
+                f"Period {p['period']}: stored full_formula_residual={stored:.6f}"
+            )
+
+    def test_alternative_full_formula_residual_near_zero(self):
+        """Alternative full formula TI = EBIT + net - senior holds to tolerance."""
+        for p in self._operational_periods():
+            res = self._compute_alt_full_res(p)
+            assert abs(res) < self._TOL, (
+                f"Period {p['period']}: alt_full_formula_residual={res:.6f}"
+            )
+            stored = p["alternative_full_formula_residual_keur"]
+            assert abs(stored) < self._TOL, (
+                f"Period {p['period']}: stored alt_full_formula_residual={stored:.6f}"
+            )
+
+    def test_alt_full_equals_full_formula_residual(self):
+        """Alternative full formula residual must equal full formula residual (algebraic identity)."""
+        for p in self._operational_periods():
+            full = self._compute_full_res(p)
+            alt = self._compute_alt_full_res(p)
+            assert abs(full - alt) < 1e-6, (
+                f"Period {p['period']}: full={full:.9f} alt={alt:.9f}"
+            )
+
+    def test_simplified_formula_residual_equals_net(self):
+        """Simplified residual = net_taxable_financial_items_before_senior (algebraic identity)."""
+        for p in self._operational_periods():
+            net = self._compute_net(p)
+            simp = self._compute_simp_res(p)
+            # Allow 5e-6 kEUR for double-precision floating point accumulation
+            assert abs(simp - net) < 5e-6, (
+                f"Period {p['period']}: simp_res={simp:.9f} net={net:.9f}"
+            )
+
+    # ------------------------------------------------------------------
+    # Guard 10: regeneration produces no uncommitted diff in fixture
+    # ------------------------------------------------------------------
+
+    def test_derivation_script_is_idempotent(self):
+        """Guard 10: running derive_c3b1_ti_governance twice leaves fixture unchanged on second run."""
+        import hashlib, subprocess
+        repo_root = str(pathlib.Path(__file__).parent.parent)
+        fixture_path = pathlib.Path(repo_root) / "tests/fixtures/excel_oborovo_financial_truth.json"
+
+        # First run: may or may not write (depends on current state)
+        r1 = subprocess.run(
+            [sys.executable, "-m", "finco_recon.derive_c3b1_ti_governance"],
+            capture_output=True, text=True, cwd=repo_root,
+        )
+        assert r1.returncode == 0, f"Derivation script (run 1) failed:\n{r1.stderr}"
+
+        sha_after_r1 = hashlib.sha256(fixture_path.read_bytes()).hexdigest()
+
+        # Second run: must be a no-op (content hash matches)
+        r2 = subprocess.run(
+            [sys.executable, "-m", "finco_recon.derive_c3b1_ti_governance"],
+            capture_output=True, text=True, cwd=repo_root,
+        )
+        assert r2.returncode == 0, f"Derivation script (run 2) failed:\n{r2.stderr}"
+        assert "already up-to-date" in r2.stdout, (
+            f"Second run should report 'already up-to-date':\n{r2.stdout}"
+        )
+
+        sha_after_r2 = hashlib.sha256(fixture_path.read_bytes()).hexdigest()
+        assert sha_after_r1 == sha_after_r2, (
+            "derive_c3b1_ti_governance.py is not idempotent — fixture changed on second run"
+        )
+
+    # ------------------------------------------------------------------
+    # Additional: period diagnostic fields present
+    # ------------------------------------------------------------------
+
+    def test_period_diagnostic_has_required_fields(self):
+        """All period entries have the corrected governance fields."""
         required = {
-            "taxable_financial_income_keur",
+            "net_taxable_financial_items_before_senior_keur",
             "full_formula_residual_keur",
+            "alternative_full_formula_residual_keur",
             "simplified_formula_residual_keur",
             "simplified_identity_applicable",
             "simplified_identity_reason",
         }
-        for entry in pd_list:
-            missing = required - set(entry.keys())
-            assert not missing, f"Period {entry['period']} missing fields: {missing}"
-            # construction periods have None; operational periods have numeric values
-            if entry["simplified_identity_applicable"] is not None:
-                assert isinstance(entry["full_formula_residual_keur"], float)
+        for p in _xd()["tax"]["period_diagnostic"]:
+            missing = required - set(p.keys())
+            assert not missing, f"Period {p['period']} missing fields: {missing}"
 
-    def test_late_period_residuals_classified_cash_interest(self):
-        """P42+ periods (period_diagnostic index 41+) must be classified as cash-interest residual."""
-        pd_list = _xd()["tax"]["period_diagnostic"]
-        for entry in pd_list:
-            if entry["period"] >= 41 and not entry["simplified_identity_applicable"]:
-                assert entry["simplified_identity_reason"] == "TAXABLE_CASH_INTEREST_AFTER_DEBT_REPAYMENT", (
-                    f"Period {entry['period']}: expected TAXABLE_CASH_INTEREST_AFTER_DEBT_REPAYMENT, "
-                    f"got {entry['simplified_identity_reason']}"
-                )
+    def test_applicable_periods_reason_is_zero_net(self):
+        """All applicable periods carry ZERO_NET_TAXABLE_FINANCIAL_ITEMS_BEFORE_SENIOR_INTEREST."""
+        for p in self._operational_periods():
+            if p["simplified_identity_applicable"]:
+                assert p["simplified_identity_reason"] == (
+                    "ZERO_NET_TAXABLE_FINANCIAL_ITEMS_BEFORE_SENIOR_INTEREST"
+                ), f"Period {p['period']}: wrong reason {p['simplified_identity_reason']}"
 
-    def test_full_formula_residual_near_zero_for_operational_periods(self):
-        """Full formula TI = EBT + FR holds to < 0.01 kEUR for all operational periods."""
-        pd_list = _xd()["tax"]["period_diagnostic"]
-        for entry in pd_list:
-            # Skip construction periods (None means formula not applicable)
-            if entry["full_formula_residual_keur"] is None:
-                continue
-            assert abs(entry["full_formula_residual_keur"]) < 0.01, (
-                f"Period {entry['period']}: full_formula_residual = {entry['full_formula_residual_keur']:.6f}"
-            )
+    def test_derivation_metadata_present(self):
+        """Fixture must record derivation provenance."""
+        assert "_ti_governance_derivation" in _xd()["tax"]
+        meta = _xd()["tax"]["_ti_governance_derivation"]
+        assert "derivation_version" in meta
+        assert "derivation_script" in meta
+        assert "source_fixture_sha256_before_derivation" in meta
 
 
 # ---------------------------------------------------------------------------
