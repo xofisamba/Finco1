@@ -1202,6 +1202,7 @@ class TestLFinancialFreeze:
         changed = set(result.stdout.strip().splitlines())
         allowed = {
             "finco_recon/extract_oborovo_excel.py",
+            "finco_recon/derive_c3b1_ti_governance.py",
             "tests/fixtures/excel_oborovo_financial_truth.json",
             "tests/test_stage_c3b1_oborovo_tax_source_truth.py",
             "docs/reconciliation/oborovo_tax_source_truth.md",
