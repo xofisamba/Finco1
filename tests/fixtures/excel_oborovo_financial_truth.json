@@ -13453,7 +13453,7 @@
       "full_formula": "TI = EBT + Fiscal_Reintegration = EBIT + Financial_Earnings + Fiscal_Reintegration (proved exact all operational periods via identity_ti_eq_ebt_plus_fr_delta)",
       "alternative_full_formula": "TI = EBIT + net_taxable_financial_items_before_senior - Senior_Interest (algebraically identical to full formula)",
       "simplified_formula": "TI = EBIT - Senior_Interest (valid only when net_taxable_financial_items_before_senior = 0)",
-      "net_taxable_financial_items_before_senior_definition": "Financial_Earnings + Fiscal_Reintegration + Senior_Interest = fin_earn + SHL + senior. During debt-active periods: fin_earn = -(SHL + senior) => net = 0. After repayment (SHL=0, senior=0): net = fin_earn = P&L row 20 cash interest.",
+      "net_taxable_financial_items_before_senior_definition": "Financial_Earnings + Fiscal_Reintegration + Senior_Interest = fin_earn + SHL + senior. During debt-active periods: fin_earn = -(SHL + senior) => net = 0. After repayment (|SHL|<=TOL, |senior|<=TOL): net = fin_earn = P&L row 20 cash interest.",
       "simplified_applicable_periods": [
         1,
         2,
@@ -13502,7 +13502,8 @@
       "maximum_residual_period": 41,
       "residual_source_component": "TAXABLE_CASH_INTEREST_AFTER_DEBT_REPAYMENT",
       "cash_interest_residual_period_count": 20,
-      "residual_note": "P&L row 20 (Interests from Cash on surplus cash) becomes positive after SHL and senior debt are both fully repaid."
+      "other_non_applicable_periods": [],
+      "residual_note": "P&L row 20 (Interests from Cash on surplus cash) becomes positive after SHL and senior debt are both within tolerance of zero."
     },
     "source_truth_verdict": "C3B1_SOURCE_TRUTH_PARTIAL_MANUAL_CHECK_REQUIRED",
     "source_truth_verdict_rationale": "Tax formula identity proved to machine precision. Material upstream dependencies prevent full runtime parity: SENIOR_INTEREST_DEPENDENCY, SHL_REINTEGRATION_INPUT_DEPENDENCY, TAX_DEPRECIATION_ADAPTER_SEMANTIC_LOSS, WORKBOOK_LCF_POLICY_MISMATCH, CIT_PERIODISATION_MISMATCH, ROW44_MACRO_STALENESS_RISK. Resolution requires cross-stage contract closure.",
@@ -13525,11 +13526,12 @@
       "note": "actual_pr_base_sha is the GitHub merge-base for PR #914. cumulative_stage_base_sha is the C3B1 task start point."
     },
     "_ti_governance_derivation": {
-      "derivation_version": "1.0.0",
+      "derivation_version": "1.1.0",
       "derivation_script": "finco_recon/derive_c3b1_ti_governance.py",
       "source_fixture_path": "tests/fixtures/excel_oborovo_financial_truth.json",
-      "source_fixture_sha256_before_derivation": "719479dab0910449e7bca210dc1703eba94d425ab056f11571a947e0959b9599",
-      "derivation_timestamp_utc": "2026-08-06T12:36:46.014897+00:00",
+      "source_fixture_sha256_before_derivation": "2d58e2b1169ac835328aac4f64e18c0cc40cf9ef5173f38d3de11ea406aa882c",
+      "source_vectors_sha256": "54302224b548c7b438ded908fb90ab69452b59511aaac4d8484b390eb09ea1b9",
+      "derivation_timestamp_utc": "2026-08-06T13:26:26.365677+00:00",
       "tolerance_keur": 0.01,
       "field_renamed": {
         "old": "taxable_financial_income_keur",
@@ -13537,7 +13539,7 @@
         "formula_old": "fin_earn + SHL  (misleading: equals -senior during debt-active periods)",
         "formula_new": "fin_earn + SHL + senior  (zero when simplified identity holds)"
       },
-      "_content_sha256": "5cd313865d639b9e5e0ff38a264ae638cd0f0c41b2590e045dc50865184df67b"
+      "_content_sha256": "d87a9d45e2e0dbce2e3552ea4670afa3f7fce90f0223ac09cb0eb62bb874239f"
     }
   },
   "debt_sizing_evidence": {

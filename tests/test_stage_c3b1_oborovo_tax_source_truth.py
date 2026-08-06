@@ -2252,34 +2252,179 @@ class TestVTIFormulaPeriodClassification:
     # Guard 10: regeneration produces no uncommitted diff in fixture
     # ------------------------------------------------------------------
 
-    def test_derivation_script_is_idempotent(self):
-        """Guard 10: running derive_c3b1_ti_governance twice leaves fixture unchanged on second run."""
+    def test_derivation_first_run_is_noop(self):
+        """Guard 10 (primary): the committed fixture must already be fully regenerated.
+
+        The first run must report 'already up-to-date' and must not change the
+        fixture SHA.  If the first run writes anything, the committed fixture is
+        stale relative to the derivation script.
+        """
         import hashlib, subprocess
         repo_root = str(pathlib.Path(__file__).parent.parent)
         fixture_path = pathlib.Path(repo_root) / "tests/fixtures/excel_oborovo_financial_truth.json"
 
-        # First run: may or may not write (depends on current state)
+        sha_before = hashlib.sha256(fixture_path.read_bytes()).hexdigest()
+
         r1 = subprocess.run(
             [sys.executable, "-m", "finco_recon.derive_c3b1_ti_governance"],
             capture_output=True, text=True, cwd=repo_root,
         )
-        assert r1.returncode == 0, f"Derivation script (run 1) failed:\n{r1.stderr}"
+        assert r1.returncode == 0, f"Derivation script failed:\n{r1.stderr}"
+        assert "already up-to-date" in r1.stdout, (
+            f"First run must report 'already up-to-date' — committed fixture is stale:\n{r1.stdout}"
+        )
 
+        sha_after = hashlib.sha256(fixture_path.read_bytes()).hexdigest()
+        assert sha_before == sha_after, (
+            f"First run changed fixture SHA:\n  before={sha_before}\n  after={sha_after}\n"
+            f"Commit the regenerated fixture before pushing."
+        )
+
+        # Also verify git diff is clean
+        diff = subprocess.run(
+            ["git", "diff", "--exit-code",
+             "--", "tests/fixtures/excel_oborovo_financial_truth.json"],
+            capture_output=True, text=True, cwd=repo_root,
+        )
+        assert diff.returncode == 0, (
+            "git diff shows fixture is modified after first-run derivation — fixture is stale"
+        )
+
+    def test_derivation_second_run_is_noop(self):
+        """Guard 10 (supplementary): second run is also a no-op."""
+        import hashlib, subprocess
+        repo_root = str(pathlib.Path(__file__).parent.parent)
+        fixture_path = pathlib.Path(repo_root) / "tests/fixtures/excel_oborovo_financial_truth.json"
+
+        r1 = subprocess.run(
+            [sys.executable, "-m", "finco_recon.derive_c3b1_ti_governance"],
+            capture_output=True, text=True, cwd=repo_root,
+        )
+        assert r1.returncode == 0
         sha_after_r1 = hashlib.sha256(fixture_path.read_bytes()).hexdigest()
 
-        # Second run: must be a no-op (content hash matches)
         r2 = subprocess.run(
             [sys.executable, "-m", "finco_recon.derive_c3b1_ti_governance"],
             capture_output=True, text=True, cwd=repo_root,
         )
-        assert r2.returncode == 0, f"Derivation script (run 2) failed:\n{r2.stderr}"
-        assert "already up-to-date" in r2.stdout, (
-            f"Second run should report 'already up-to-date':\n{r2.stdout}"
+        assert r2.returncode == 0
+        assert "already up-to-date" in r2.stdout
+        sha_after_r2 = hashlib.sha256(fixture_path.read_bytes()).hexdigest()
+        assert sha_after_r1 == sha_after_r2, "Second run changed fixture — script not idempotent"
+
+    # ------------------------------------------------------------------
+    # Guard 2 (item 2): source-vector hash independently verified
+    # ------------------------------------------------------------------
+
+    def test_source_vectors_sha256_matches_independent_computation(self):
+        """Guard 2 (item 2): independently reconstruct source-vector hash and compare with stored."""
+        import hashlib as _hl
+        pd_list = _xd()["tax"]["period_diagnostic"]
+        _SVF = (
+            "period", "classification",
+            "excel_fin_earn_keur", "excel_shl_keur", "excel_senior_keur",
+            "excel_ebit_keur", "excel_taxable_income_keur",
+        )
+        vectors = [{k: p[k] for k in _SVF if k in p} for p in pd_list]
+        serialised = json.dumps(vectors, sort_keys=True, separators=(",", ":"),
+                                ensure_ascii=False)
+        computed = _hl.sha256(serialised.encode()).hexdigest()
+        stored = _xd()["tax"]["_ti_governance_derivation"]["source_vectors_sha256"]
+        assert computed == stored, (
+            f"source_vectors_sha256 mismatch:\n  computed={computed}\n  stored={stored}"
         )
 
-        sha_after_r2 = hashlib.sha256(fixture_path.read_bytes()).hexdigest()
-        assert sha_after_r1 == sha_after_r2, (
-            "derive_c3b1_ti_governance.py is not idempotent — fixture changed on second run"
+    # ------------------------------------------------------------------
+    # Item 3: tolerance-based classification
+    # ------------------------------------------------------------------
+
+    def test_tolerance_based_debt_repayment_classification(self):
+        """Item 3: cash-interest classification uses abs(shl) <= TOL, abs(senior) <= TOL."""
+        # Import the derivation module's _compute_period function directly
+        import importlib
+        mod = importlib.import_module("finco_recon.derive_c3b1_ti_governance")
+        _TOL = mod._TOLERANCE
+
+        # Synthetic period: tiny SHL and senior residuals (within tolerance), real cash interest
+        synthetic = {
+            "classification": "NOT_AVAILABLE_IN_CURRENT_RUNTIME",
+            "excel_fin_earn_keur": 3.0,        # positive cash interest > TOL
+            "excel_shl_keur": 1e-9,            # tiny SHL residual, within tolerance
+            "excel_senior_keur": -1e-9,        # tiny senior residual, within tolerance
+            "excel_ebit_keur": 100.0,
+            "excel_taxable_income_keur": 103.0,  # TI = EBIT + fin_earn = 100 + 3
+        }
+        result = mod._compute_period(synthetic)
+
+        # net = 3.0 + 1e-9 + (-1e-9) ≈ 3.0 > TOL => not applicable
+        assert result["simplified_identity_applicable"] is False
+        # SHL and senior are within tolerance => classified as cash interest
+        assert result["simplified_identity_reason"] == "TAXABLE_CASH_INTEREST_AFTER_DEBT_REPAYMENT", (
+            f"Synthetic period with |shl|={1e-9} <= TOL and |senior|={1e-9} <= TOL and "
+            f"fin_earn=3.0 > TOL should be TAXABLE_CASH_INTEREST_AFTER_DEBT_REPAYMENT, "
+            f"got {result['simplified_identity_reason']}"
+        )
+
+    def test_exact_zero_shl_senior_also_classified_cash_interest(self):
+        """Exact-zero SHL and senior also produce TAXABLE_CASH_INTEREST_AFTER_DEBT_REPAYMENT."""
+        import importlib
+        mod = importlib.import_module("finco_recon.derive_c3b1_ti_governance")
+        synthetic = {
+            "classification": "NOT_AVAILABLE_IN_CURRENT_RUNTIME",
+            "excel_fin_earn_keur": 2.773,
+            "excel_shl_keur": 0.0,
+            "excel_senior_keur": 0.0,
+            "excel_ebit_keur": 3140.0,
+            "excel_taxable_income_keur": 3142.773,
+        }
+        result = mod._compute_period(synthetic)
+        assert result["simplified_identity_reason"] == "TAXABLE_CASH_INTEREST_AFTER_DEBT_REPAYMENT"
+
+    # ------------------------------------------------------------------
+    # Item 4: complete reason-classification invariants
+    # ------------------------------------------------------------------
+
+    def test_all_non_applicable_are_cash_interest(self):
+        """Item 4: every non-applicable operational period must have TAXABLE_CASH_INTEREST_AFTER_DEBT_REPAYMENT."""
+        violations = []
+        for p in self._operational_periods():
+            if p["simplified_identity_applicable"] is False:
+                if p["simplified_identity_reason"] != "TAXABLE_CASH_INTEREST_AFTER_DEBT_REPAYMENT":
+                    violations.append(
+                        (p["period"], p["simplified_identity_reason"])
+                    )
+        assert not violations, (
+            f"Non-applicable periods with unexpected reason (must all be TAXABLE_CASH_INTEREST):\n"
+            + "\n".join(f"  period {pr}: {rsn}" for pr, rsn in violations)
+        )
+
+    def test_non_applicable_count_equals_cash_interest_count(self):
+        """Item 4: non-applicable operational period count == cash_interest_residual_period_count."""
+        operational = self._operational_periods()
+        non_applicable_count = sum(
+            1 for p in operational if p["simplified_identity_applicable"] is False
+        )
+        stored_count = _xd()["tax"]["ti_formula_period_summary"]["cash_interest_residual_period_count"]
+        assert non_applicable_count == stored_count, (
+            f"Non-applicable periods: {non_applicable_count}, "
+            f"cash_interest_residual_period_count: {stored_count}"
+        )
+
+    def test_no_non_zero_net_reason_present(self):
+        """Item 4: NON_ZERO_NET_TAXABLE_FINANCIAL_ITEMS must not appear for any Oborovo period."""
+        bad = [
+            p["period"] for p in _xd()["tax"]["period_diagnostic"]
+            if p.get("simplified_identity_reason") == "NON_ZERO_NET_TAXABLE_FINANCIAL_ITEMS"
+        ]
+        assert not bad, (
+            f"Periods with NON_ZERO_NET_TAXABLE_FINANCIAL_ITEMS reason (unexpected for Oborovo): {bad}"
+        )
+
+    def test_other_non_applicable_summary_is_empty(self):
+        """Summary other_non_applicable_periods must be empty for Oborovo."""
+        other = _xd()["tax"]["ti_formula_period_summary"].get("other_non_applicable_periods", [])
+        assert other == [], (
+            f"other_non_applicable_periods is not empty: {other}"
         )
 
     # ------------------------------------------------------------------
@@ -2309,12 +2454,13 @@ class TestVTIFormulaPeriodClassification:
                 ), f"Period {p['period']}: wrong reason {p['simplified_identity_reason']}"
 
     def test_derivation_metadata_present(self):
-        """Fixture must record derivation provenance."""
+        """Fixture must record derivation provenance including source_vectors_sha256."""
         assert "_ti_governance_derivation" in _xd()["tax"]
         meta = _xd()["tax"]["_ti_governance_derivation"]
-        assert "derivation_version" in meta
-        assert "derivation_script" in meta
-        assert "source_fixture_sha256_before_derivation" in meta
+        for field in ("derivation_version", "derivation_script",
+                      "source_fixture_sha256_before_derivation",
+                      "source_vectors_sha256", "_content_sha256"):
+            assert field in meta, f"Missing field in _ti_governance_derivation: {field}"
 
 
 # ---------------------------------------------------------------------------

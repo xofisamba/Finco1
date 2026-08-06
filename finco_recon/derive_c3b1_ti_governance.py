@@ -15,13 +15,30 @@ Usage::
 
     python -m finco_recon.derive_c3b1_ti_governance [--fixture PATH] [--dry-run]
 
-The script is idempotent: running it twice on the same fixture produces the
-same output.
+The script is fully idempotent: if the committed fixture already contains the
+correct derived state, the first run reports "already up-to-date" and writes
+nothing.  A test that calls the script on a committed fixture must observe
+this behaviour.
+
+Idempotency anchor
+------------------
+Two hashes guard freshness:
+
+``source_vectors_sha256``
+    Canonical hash of the immutable extracted calculation inputs
+    (period, classification, fin_earn, shl, senior, ebit, ti) for every
+    period.  Any change to the source vectors invalidates the derived state.
+
+``_content_sha256``
+    Hash of all derived governance fields (per-period values + summary)
+    together with ``source_vectors_sha256`` and ``_DERIVATION_VERSION``.
+    This is the write-guard: if the stored ``_content_sha256`` matches the
+    freshly recomputed one, the fixture is up-to-date.
 
 Component identities used
--------------------------
+--------------------------
     TI  = EBT + Fiscal_Reintegration
-        = EBIT + Financial_Earnings + Fiscal_Reintegration   (proved by identity_ti_eq_ebt_plus_fr_delta ≈ 0)
+        = EBIT + Financial_Earnings + Fiscal_Reintegration
 
     net_taxable_financial_items_before_senior
         = Financial_Earnings + Fiscal_Reintegration + Senior_Interest
@@ -30,8 +47,17 @@ Component identities used
     Simplified identity:  TI = EBIT - Senior_Interest
     Simplified residual:  TI - (EBIT - senior)  =  net_taxable_financial_items_before_senior
 
-    During debt-active periods:   fin_earn = -(SHL + senior)  ⇒  net = 0
-    After debt repayment:         SHL = 0, senior = 0          ⇒  net = fin_earn  (P&L row 20)
+    During debt-active periods:   fin_earn = -(SHL + senior)  =>  net = 0
+    After debt repayment:         |SHL| <= TOL, |senior| <= TOL  =>  net = fin_earn (P&L row 20)
+
+Reason classification
+---------------------
+    net within tolerance    -> ZERO_NET_TAXABLE_FINANCIAL_ITEMS_BEFORE_SENIOR_INTEREST  (applicable=True)
+    fin > TOL, |shl| <= TOL, |senior| <= TOL  -> TAXABLE_CASH_INTEREST_AFTER_DEBT_REPAYMENT (applicable=False)
+    otherwise               -> NON_ZERO_NET_TAXABLE_FINANCIAL_ITEMS  (applicable=False)
+
+The tolerance guard on shl and senior uses abs() <= _TOLERANCE (not == 0.0)
+so tiny floating-point residuals near zero do not misclassify periods.
 """
 
 import argparse
@@ -41,15 +67,36 @@ import pathlib
 import sys
 from datetime import datetime, timezone
 
-_DERIVATION_VERSION = "1.0.0"
+_DERIVATION_VERSION = "1.1.0"
 _TOLERANCE = 0.01  # kEUR — threshold for "effectively zero"
 _DEFAULT_FIXTURE = pathlib.Path("tests/fixtures/excel_oborovo_financial_truth.json")
 
+# Fields extracted from the workbook that serve as calculation inputs.
+# These are the only fields that affect governance outputs.
+_SOURCE_VECTOR_FIELDS = (
+    "period",
+    "classification",
+    "excel_fin_earn_keur",
+    "excel_shl_keur",
+    "excel_senior_keur",
+    "excel_ebit_keur",
+    "excel_taxable_income_keur",
+)
 
-def _sha256(path: pathlib.Path) -> str:
-    h = hashlib.sha256()
-    h.update(path.read_bytes())
-    return h.hexdigest()
+
+def _source_vectors_sha256(pd_list: list) -> str:
+    """Canonical hash of the immutable extracted calculation inputs.
+
+    Serialised with sort_keys and compact separators so the hash is stable
+    across Python versions and dict-ordering differences.
+    """
+    vectors = [
+        {k: p[k] for k in _SOURCE_VECTOR_FIELDS if k in p}
+        for p in pd_list
+    ]
+    serialised = json.dumps(vectors, sort_keys=True, separators=(",", ":"),
+                            ensure_ascii=False)
+    return hashlib.sha256(serialised.encode()).hexdigest()
 
 
 def _compute_period(p: dict) -> dict:
@@ -90,8 +137,10 @@ def _compute_period(p: dict) -> dict:
 
     if applicable:
         reason = "ZERO_NET_TAXABLE_FINANCIAL_ITEMS_BEFORE_SENIOR_INTEREST"
-    elif fin > _TOLERANCE and shl == 0.0 and senior == 0.0:
-        # Only classify as post-repayment cash interest when both SHL and senior are zero
+    elif (fin > _TOLERANCE
+          and abs(shl) <= _TOLERANCE
+          and abs(senior) <= _TOLERANCE):
+        # Post-repayment cash interest: SHL and senior are both within tolerance of zero
         reason = "TAXABLE_CASH_INTEREST_AFTER_DEBT_REPAYMENT"
     else:
         reason = "NON_ZERO_NET_TAXABLE_FINANCIAL_ITEMS"
@@ -123,18 +172,23 @@ def _derive_summary(pd_list: list) -> dict:
 
     # max residual among non-applicable periods
     if non_applicable:
-        max_entry = max(non_applicable, key=lambda p: abs(p["_gov"]["simplified_formula_residual_keur"]))
+        max_entry = max(non_applicable,
+                        key=lambda p: abs(p["_gov"]["simplified_formula_residual_keur"]))
         max_res = abs(max_entry["_gov"]["simplified_formula_residual_keur"])
         max_period = max_entry["period"]
     else:
         max_res = 0.0
         max_period = None
 
-    # Determine residual source component for non-applicable periods
     cash_interest_count = sum(
         1 for p in non_applicable
         if p["_gov"]["simplified_identity_reason"] == "TAXABLE_CASH_INTEREST_AFTER_DEBT_REPAYMENT"
     )
+    other_non_applicable = [
+        {"period": p["period"], "reason": p["_gov"]["simplified_identity_reason"]}
+        for p in non_applicable
+        if p["_gov"]["simplified_identity_reason"] != "TAXABLE_CASH_INTEREST_AFTER_DEBT_REPAYMENT"
+    ]
 
     return {
         "_derivation_note": (
@@ -158,7 +212,7 @@ def _derive_summary(pd_list: list) -> dict:
             "Financial_Earnings + Fiscal_Reintegration + Senior_Interest "
             "= fin_earn + SHL + senior. "
             "During debt-active periods: fin_earn = -(SHL + senior) => net = 0. "
-            "After repayment (SHL=0, senior=0): net = fin_earn = P&L row 20 cash interest."
+            "After repayment (|SHL|<=TOL, |senior|<=TOL): net = fin_earn = P&L row 20 cash interest."
         ),
         "simplified_applicable_periods": applicable_periods,
         "simplified_applicable_count": len(applicable_periods),
@@ -167,21 +221,25 @@ def _derive_summary(pd_list: list) -> dict:
         "maximum_residual_period": max_period,
         "residual_source_component": "TAXABLE_CASH_INTEREST_AFTER_DEBT_REPAYMENT",
         "cash_interest_residual_period_count": cash_interest_count,
+        "other_non_applicable_periods": other_non_applicable,
         "residual_note": (
             "P&L row 20 (Interests from Cash on surplus cash) becomes positive after "
-            "SHL and senior debt are both fully repaid."
+            "SHL and senior debt are both within tolerance of zero."
         ),
     }
 
 
-def derive(fixture_path: pathlib.Path, dry_run: bool = False) -> dict:
+def derive(fixture_path: pathlib.Path) -> dict:
     """Read fixture, compute governance fields, return updated fixture dict."""
     raw = fixture_path.read_bytes()
     data = json.loads(raw)
-    source_sha = hashlib.sha256(raw).hexdigest()
+    source_sha_before = hashlib.sha256(raw).hexdigest()
 
     tax = data["tax"]
     pd_list = tax["period_diagnostic"]
+
+    # Compute source-vector hash from immutable extracted inputs
+    sv_sha = _source_vectors_sha256(pd_list)
 
     # Attach _gov scratch key, then update entries
     for p in pd_list:
@@ -194,9 +252,7 @@ def derive(fixture_path: pathlib.Path, dry_run: bool = False) -> dict:
     _old_field = "taxable_financial_income_keur"
     for p in pd_list:
         gov = p.pop("_gov")
-        # Remove old misleading field name
         p.pop(_old_field, None)
-        # Insert corrected fields (preserve existing ordering for other keys)
         p.update(gov)
 
     # Update summary
@@ -207,7 +263,8 @@ def derive(fixture_path: pathlib.Path, dry_run: bool = False) -> dict:
         "derivation_version": _DERIVATION_VERSION,
         "derivation_script": "finco_recon/derive_c3b1_ti_governance.py",
         "source_fixture_path": str(fixture_path),
-        "source_fixture_sha256_before_derivation": source_sha,
+        "source_fixture_sha256_before_derivation": source_sha_before,
+        "source_vectors_sha256": sv_sha,
         "derivation_timestamp_utc": datetime.now(timezone.utc).isoformat(),
         "tolerance_keur": _TOLERANCE,
         "field_renamed": {
@@ -223,10 +280,11 @@ def derive(fixture_path: pathlib.Path, dry_run: bool = False) -> dict:
 
 
 def _content_hash(data: dict) -> str:
-    """Hash derived governance fields only — excludes run-varying provenance fields.
+    """Hash derived governance fields + source-vector hash + version.
 
-    Covers per-period computed values and the summary, but not timestamps or
-    source_fixture_sha256 (which changes on every write).
+    Excludes run-varying fields (timestamp, source_fixture_sha256_before_derivation).
+    Including source_vectors_sha256 means any change to the extracted inputs
+    also invalidates the derived state.
     """
     gov_fields = [
         {k: p[k] for k in p if k in {
@@ -240,11 +298,15 @@ def _content_hash(data: dict) -> str:
         for p in data["tax"]["period_diagnostic"]
     ]
     summary = data["tax"].get("ti_formula_period_summary", {})
-    # Exclude derivation-only note keys from summary hash
     summary_stable = {k: v for k, v in summary.items() if not k.startswith("_")}
+    sv_sha = data["tax"]["_ti_governance_derivation"]["source_vectors_sha256"]
     combined = json.dumps(
-        {"summary": summary_stable, "periods": gov_fields,
-         "derivation_version": _DERIVATION_VERSION},
+        {
+            "source_vectors_sha256": sv_sha,
+            "summary": summary_stable,
+            "periods": gov_fields,
+            "derivation_version": _DERIVATION_VERSION,
+        },
         sort_keys=True,
     )
     return hashlib.sha256(combined.encode()).hexdigest()
@@ -262,7 +324,7 @@ def main(argv=None):
         print(f"ERROR: fixture not found: {fixture_path}", file=sys.stderr)
         sys.exit(1)
 
-    data = derive(fixture_path, dry_run=args.dry_run)
+    data = derive(fixture_path)
 
     tax = data["tax"]
     summary = tax["ti_formula_period_summary"]
@@ -271,12 +333,13 @@ def main(argv=None):
     print(f"  first non-applicable period: {summary['first_non_applicable_period']}")
     print(f"  max simplified residual: {summary['max_simplified_residual_keur']:.6f} kEUR")
     print(f"  cash-interest residual periods: {summary['cash_interest_residual_period_count']}")
+    print(f"  source_vectors_sha256: {tax['_ti_governance_derivation']['source_vectors_sha256'][:16]}…")
 
     if args.dry_run:
         print("DRY-RUN: fixture not written")
         return
 
-    # Idempotency: read existing fixture and compare content hash
+    # Idempotency guard: compare content hash of new data vs stored in existing fixture
     existing_raw = fixture_path.read_bytes()
     try:
         existing_data = json.loads(existing_raw)
