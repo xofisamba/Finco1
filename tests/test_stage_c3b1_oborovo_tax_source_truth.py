@@ -107,6 +107,7 @@ Known contract conflicts (section 11A)
 from __future__ import annotations
 
 import json
+import os
 import pathlib
 import sys
 
@@ -699,8 +700,8 @@ class TestEInterestDependency:
         assert p2c_lifetime > 20_000, "Phase 2C lifetime interest implausibly low"
         assert p2c_lifetime < 23_000, "Phase 2C lifetime interest implausibly high"
 
-        # Confirm debt sizing mismatch is the root cause
-        _EXCEL_DEBT_SIZE_KEUR = 42_852.28
+        # Confirm debt sizing mismatch is the root cause — use fixture-derived value, not hardcoded
+        _EXCEL_DEBT_SIZE_KEUR = _xd()["debt_sizing_evidence"]["d192_evidence"]["cached_value_keur"]
         assert abs(sd.debt_size_keur - _EXCEL_DEBT_SIZE_KEUR) > 1_000, (
             "Expected Phase 2C debt size to diverge from Excel by > 1,000 kEUR; "
             f"got Phase2C={sd.debt_size_keur:.2f}, Excel={_EXCEL_DEBT_SIZE_KEUR:.2f}"
@@ -1877,3 +1878,256 @@ class TestSDebtSizingEvidence:
             f"Expected '=DS!D51'; got {val!r}. "
             "Direct cell access pattern used by _derive_debt_sizing_from_workbook() is broken."
         )
+
+
+# ---------------------------------------------------------------------------
+# TestT — Governance: verdict consistency, SHA provenance, contradiction guards
+# ---------------------------------------------------------------------------
+
+class TestTGovernanceVerdictAndSHA:
+    """Instruction 1 + 5: one verdict everywhere; actual vs cumulative-stage SHA."""
+
+    CUMULATIVE_STAGE_BASE_SHA = "b11e5bf7b9ab60bae174081e7d9f8541190bf371"
+    ACTUAL_PR_BASE_SHA = "1fb4943a4319eff8f4ac7a22add6f65f14bd8cec"
+    EXPECTED_VERDICT = "C3B1_SOURCE_TRUTH_PARTIAL_MANUAL_CHECK_REQUIRED"
+
+    def test_fixture_verdict_matches_required(self):
+        assert _xd()["tax"]["source_truth_verdict"] == self.EXPECTED_VERDICT
+
+    def test_fixture_verdict_not_blocked_only(self):
+        """Overall verdict must NOT be C3B1_TAX_BLOCKED_BY_INTEREST_DEPENDENCY."""
+        verdict = _xd()["tax"]["source_truth_verdict"]
+        assert verdict != "C3B1_TAX_BLOCKED_BY_INTEREST_DEPENDENCY", (
+            "Overall verdict must not claim a single blocker; use PARTIAL_MANUAL_CHECK_REQUIRED"
+        )
+
+    def test_fixture_runtime_dependencies_list(self):
+        deps = _xd()["tax"]["runtime_dependencies"]
+        required = {
+            "SENIOR_INTEREST_DEPENDENCY",
+            "TAX_DEPRECIATION_ADAPTER_SEMANTIC_LOSS",
+            "SHL_REINTEGRATION_INPUT_DEPENDENCY",
+            "WORKBOOK_LCF_POLICY_MISMATCH",
+            "CIT_PERIODISATION_MISMATCH",
+            "ROW44_MACRO_STALENESS_RISK",
+        }
+        assert required <= set(deps), f"Missing deps: {required - set(deps)}"
+
+    def test_doc_has_required_verdict_string(self):
+        doc_path = os.path.join(os.path.dirname(__file__), "..", "docs", "reconciliation",
+                                "oborovo_tax_source_truth.md")
+        with open(doc_path) as f:
+            doc = f.read()
+        assert self.EXPECTED_VERDICT in doc, (
+            f"Reconciliation doc must contain verdict '{self.EXPECTED_VERDICT}'"
+        )
+
+    def test_fixture_sha_provenance_present(self):
+        sha = _xd()["tax"]["sha_provenance"]
+        assert sha["actual_pr_base_sha"] == self.ACTUAL_PR_BASE_SHA
+        assert sha["cumulative_stage_base_sha"] == self.CUMULATIVE_STAGE_BASE_SHA
+
+    def test_actual_pr_base_production_diff_empty(self):
+        """financial_engine/, app/, finco_core/ must be unchanged vs actual PR base."""
+        import subprocess
+        result = subprocess.run(
+            ["git", "diff", "--name-only", self.ACTUAL_PR_BASE_SHA, "HEAD", "--",
+             "financial_engine/", "app/", "finco_core/"],
+            capture_output=True, text=True,
+            cwd=os.path.join(os.path.dirname(__file__), ".."),
+        )
+        changed = [f for f in result.stdout.strip().splitlines() if f]
+        assert len(changed) == 0, (
+            f"Production paths changed vs actual PR base {self.ACTUAL_PR_BASE_SHA}: {changed}"
+        )
+
+    def test_cumulative_stage_production_diff_empty(self):
+        """financial_engine/, app/, finco_core/ must be unchanged vs cumulative-stage base."""
+        import subprocess
+        result = subprocess.run(
+            ["git", "diff", "--name-only", self.CUMULATIVE_STAGE_BASE_SHA, "HEAD", "--",
+             "financial_engine/", "app/", "finco_core/"],
+            capture_output=True, text=True,
+            cwd=os.path.join(os.path.dirname(__file__), ".."),
+        )
+        changed = [f for f in result.stdout.strip().splitlines() if f]
+        assert len(changed) == 0, (
+            f"Production paths changed vs cumulative-stage base {self.CUMULATIVE_STAGE_BASE_SHA}: {changed}"
+        )
+
+    def test_test_module_header_has_correct_verdict(self):
+        """Test module docstring must include the correct verdict, not a wrong one."""
+        import tests.test_stage_c3b1_oborovo_tax_source_truth as mod
+        doc = mod.__doc__ or ""
+        assert self.EXPECTED_VERDICT in doc, (
+            f"Test module docstring must reference '{self.EXPECTED_VERDICT}'"
+        )
+
+
+# ---------------------------------------------------------------------------
+# TestU — Contradiction guards: no unsupported lag/absorption/claim
+# ---------------------------------------------------------------------------
+
+class TestUContradictionGuards:
+    """Instruction 2 + 3: no lag=1 claim, no 'absorbed', no 'utilized' for workbook losses."""
+
+    def test_no_lag1_in_fixture_tax_section(self):
+        tax = _xd()["tax"]
+        raw = json.dumps(tax)
+        for bad in ["lag=1", "lag = 1", "one-period lag", "one period lag"]:
+            assert bad.lower() not in raw.lower(), (
+                f"Unsupported statement '{bad}' found in fixture tax section"
+            )
+
+    def test_fixture_confirms_payment_lag_zero(self):
+        assert _xd()["tax"]["cf_tax_chain"]["payment_lag_periods"] == 0
+
+    def test_no_absorbed_language_in_fixture_tax(self):
+        raw = json.dumps(_xd()["tax"])
+        assert "absorbed" not in raw.lower(), (
+            "Word 'absorbed' must not appear in fixture tax section for workbook losses"
+        )
+
+    def test_losses_classified_as_expired_not_utilized(self):
+        ms = _xd()["tax"]["tax_milestones"]
+        assert ms["losses_ever_utilized"] is False
+        # Classification must not claim utilization
+        classification = ms.get("workbook_lcf_classification", "")
+        assert "UTILIZED" not in classification.upper() or "NEVER" in classification.upper()
+
+    def test_no_hardcoded_excel_debt_assignment_in_test_source(self):
+        """No line must assign _EXCEL_DEBT_SIZE_KEUR to a numeric literal."""
+        src_path = os.path.join(os.path.dirname(__file__),
+                                "test_stage_c3b1_oborovo_tax_source_truth.py")
+        with open(src_path) as f:
+            lines = f.readlines()
+        import re
+        bad_lines = [
+            (i + 1, ln.strip()) for i, ln in enumerate(lines)
+            if re.search(r"_EXCEL_DEBT_SIZE_KEUR\s*=\s*\d", ln)
+        ]
+        assert not bad_lines, (
+            f"Hardcoded debt assignment found — use fixture-derived value:\n" +
+            "\n".join(f"  line {no}: {txt}" for no, txt in bad_lines)
+        )
+
+    def test_excel_debt_sourced_from_fixture(self):
+        """Excel debt comparator is read from fixture, not hardcoded."""
+        excel_debt = _xd()["debt_sizing_evidence"]["d192_evidence"]["cached_value_keur"]
+        assert abs(excel_debt - 42852.278) < 1.0, f"Unexpected fixture debt value: {excel_debt}"
+
+    def test_doc_has_correct_excel_payment_lag(self):
+        doc_path = os.path.join(os.path.dirname(__file__), "..", "docs", "reconciliation",
+                                "oborovo_tax_source_truth.md")
+        with open(doc_path) as f:
+            doc = f.read().lower()
+        for bad in ["excel lag = 1", "excel has a one-period", "lag=1"]:
+            assert bad not in doc, f"Unsupported lag=1 claim '{bad}' in reconciliation doc"
+
+
+# ---------------------------------------------------------------------------
+# TestV — TI formula period-by-period classification
+# ---------------------------------------------------------------------------
+
+class TestVTIFormulaPeriodClassification:
+    """Instruction 4: machine-readable per-period classification for simplified TI identity."""
+
+    def test_fixture_has_ti_formula_period_summary(self):
+        assert "ti_formula_period_summary" in _xd()["tax"]
+
+    def test_simplified_identity_applicable_count(self):
+        """Simplified TI = EBIT - Senior holds exactly for 40 operational periods (P2-P41, 0-indexed 1-40)."""
+        summary = _xd()["tax"]["ti_formula_period_summary"]
+        assert summary["simplified_applicable_count"] == 40, (
+            f"Expected 40 exact periods (P2-P41), got {summary['simplified_applicable_count']}"
+        )
+
+    def test_first_non_applicable_period(self):
+        """Simplified identity first fails at period 41 (0-indexed) = P42 in 1-indexed Excel."""
+        summary = _xd()["tax"]["ti_formula_period_summary"]
+        assert summary["first_non_applicable_period"] == 41, (
+            f"Expected first non-applicable period index 41, got {summary['first_non_applicable_period']}"
+        )
+
+    def test_max_simplified_residual_classified(self):
+        summary = _xd()["tax"]["ti_formula_period_summary"]
+        assert summary["max_simplified_residual_keur"] > 2.5, "Residual should be > 2.5 kEUR"
+        assert summary["max_simplified_residual_keur"] < 5.0, "Residual should be < 5.0 kEUR"
+
+    def test_residual_source_component_classified(self):
+        summary = _xd()["tax"]["ti_formula_period_summary"]
+        assert summary["residual_source_component"] == "TAXABLE_CASH_INTEREST_AFTER_DEBT_REPAYMENT"
+
+    def test_period_diagnostic_has_classification_fields(self):
+        """Every period entry must have the five new per-period classification fields (may be None for construction)."""
+        pd_list = _xd()["tax"]["period_diagnostic"]
+        required = {
+            "taxable_financial_income_keur",
+            "full_formula_residual_keur",
+            "simplified_formula_residual_keur",
+            "simplified_identity_applicable",
+            "simplified_identity_reason",
+        }
+        for entry in pd_list:
+            missing = required - set(entry.keys())
+            assert not missing, f"Period {entry['period']} missing fields: {missing}"
+            # construction periods have None; operational periods have numeric values
+            if entry["simplified_identity_applicable"] is not None:
+                assert isinstance(entry["full_formula_residual_keur"], float)
+
+    def test_late_period_residuals_classified_cash_interest(self):
+        """P42+ periods (period_diagnostic index 41+) must be classified as cash-interest residual."""
+        pd_list = _xd()["tax"]["period_diagnostic"]
+        for entry in pd_list:
+            if entry["period"] >= 41 and not entry["simplified_identity_applicable"]:
+                assert entry["simplified_identity_reason"] == "TAXABLE_CASH_INTEREST_AFTER_DEBT_REPAYMENT", (
+                    f"Period {entry['period']}: expected TAXABLE_CASH_INTEREST_AFTER_DEBT_REPAYMENT, "
+                    f"got {entry['simplified_identity_reason']}"
+                )
+
+    def test_full_formula_residual_near_zero_for_operational_periods(self):
+        """Full formula TI = EBT + FR holds to < 0.01 kEUR for all operational periods."""
+        pd_list = _xd()["tax"]["period_diagnostic"]
+        for entry in pd_list:
+            # Skip construction periods (None means formula not applicable)
+            if entry["full_formula_residual_keur"] is None:
+                continue
+            assert abs(entry["full_formula_residual_keur"]) < 0.01, (
+                f"Period {entry['period']}: full_formula_residual = {entry['full_formula_residual_keur']:.6f}"
+            )
+
+
+# ---------------------------------------------------------------------------
+# TestW — Layer boundary: workbook / legal / production-policy separation
+# ---------------------------------------------------------------------------
+
+class TestWLayerBoundary:
+    """Instruction 8: three distinct layers must be documented and not conflated."""
+
+    def test_fixture_has_layer_boundary(self):
+        assert "layer_boundary" in _xd()["tax"]
+
+    def test_layer_boundary_has_three_keys(self):
+        lb = _xd()["tax"]["layer_boundary"]
+        assert "workbook_mechanics" in lb
+        assert "legal_proforma" in lb
+        assert "production_policy_recommendation" in lb
+
+    def test_legal_proforma_boundary_stated(self):
+        lb = _xd()["tax"]["layer_boundary"]
+        assert "LEGAL_PROFORMA_NOT_WORKBOOK_IMPLEMENTATION" in lb["legal_proforma"]
+
+    def test_croatian_proforma_section_separate(self):
+        """Croatian legal LCF pro forma lives under its own key, not inside workbook_mechanics."""
+        tax = _xd()["tax"]
+        assert "croatian_calendar_year_lcf_proforma" in tax, "Legal proforma section missing"
+        # The workbook lcf rollforward must also be separately keyed
+        assert "lcf_rollforward" in tax, "Workbook lcf_rollforward section missing"
+
+    def test_c3b2_alignment_statement_in_doc(self):
+        """Reconciliation doc must state C3B2 responsibility for debt sizing."""
+        doc_path = os.path.join(os.path.dirname(__file__), "..", "docs", "reconciliation",
+                                "oborovo_tax_source_truth.md")
+        with open(doc_path) as f:
+            doc = f.read()
+        assert "C3B2" in doc, "Reconciliation doc must reference C3B2 for debt sizing"

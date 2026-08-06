@@ -6,9 +6,34 @@
 
 | Item | Value |
 |------|-------|
-| Base SHA | `b11e5bf7b9ab60bae174081e7d9f8541190bf371` |
+| Actual PR base SHA | `1fb4943a4319eff8f4ac7a22add6f65f14bd8cec` |
+| Historical cumulative-stage base SHA | `b11e5bf7b9ab60bae174081e7d9f8541190bf371` |
 | Branch | `stage-c3b1-oborovo-tax-source-truth` |
+| PR | `#914 DRAFT — DO NOT MERGE` |
 | Final verdict | `C3B1_SOURCE_TRUTH_PARTIAL_MANUAL_CHECK_REQUIRED` |
+
+**SHA provenance note**: `1fb4943a` is the GitHub merge-base used by PR #914 to compute the diff. `b11e5bf7` is the C3B1 task start point (after C3A, before any C3B1 commits). Both production-path diffs (financial_engine/, app/, finco_core/) must be empty vs both SHAs.
+
+## 1a. Runtime Dependency Map
+
+The following upstream dependencies prevent full runtime parity. Each is classified separately — no single blocker:
+
+| Dependency | Classification | Required Resolution |
+|---|---|---|
+| Senior interest vectors | `SENIOR_INTEREST_DEPENDENCY` | Phase 2C debt model feeds interest into tax model |
+| SHL fiscal reintegration | `SHL_REINTEGRATION_INPUT_DEPENDENCY` | Tax policy must configure SHL non-deductibility |
+| Tax depreciation basis | `TAX_DEPRECIATION_ADAPTER_SEMANTIC_LOSS` | Adapter must include IDC/fee components |
+| LCF policy (rolling-window vs FIFO) | `WORKBOOK_LCF_POLICY_MISMATCH` | Workbook uses rolling-window expiry; clean engine uses FIFO |
+| CIT periodisation (H2+H1 pairing) | `CIT_PERIODISATION_MISMATCH` | Workbook uses model-year pairs; clean engine uses calendar years |
+| Row 44 Macro staleness risk | `ROW44_MACRO_STALENESS_RISK` | Macro rows 38/39 are hardcoded; risk of staleness if P&L formulas change |
+
+## 1b. C3B2 Alignment
+
+C3B1 proves the tax formula and identifies required upstream interest inputs.
+C3B2 is responsible for proving the source-correct senior-debt sizing and interest vector.
+A later implementation PR may consume the accepted C3B2 contract.
+
+The approximately 45,873 kEUR Phase 2C diagnostic result is a parity-harness runtime value under current ACT/365 policy. It is NOT the Excel target (42,852 kEUR). C3B2 must resolve the sizing discrepancy before any tax-formula changes are made.
 
 ## 2. Changed Files
 
@@ -16,7 +41,7 @@
 |------|--------|
 | `finco_recon/extract_oborovo_excel.py` | v3.4.0; fixes LCF expiry boundary (`yr > orig_yr + 5`); rewrites `_derive_debt_sizing_from_workbook()` with direct cell access and DS!D51 chain evidence; v3.3.0: adds `_derive_croatian_legal_lcf_proforma()`, `WORKBOOK_LCF_MECHANICS_PROVED`, `periodisation_mismatch` |
 | `tests/fixtures/excel_oborovo_financial_truth.json` | Regenerated v3.4.0; `d192_evidence.formula_mode_content = "=DS!D51"`, `source_classification = FORMULA_DERIVED`; new `ds_d51_chain` section; verdict `DEBT_SIZING_FORMULA_CHAIN_PARTIALLY_PROVED` |
-| `tests/test_stage_c3b1_oborovo_tax_source_truth.py` | 132 tests (A–S + Q2); Group Q2: 2 LCF boundary synthetic tests; Group S: D192 formula/chain/verdict assertions, direct-cell-access synthetic test (tmp_path, CI-portable) |
+| `tests/test_stage_c3b1_oborovo_tax_source_truth.py` | 160 tests (A–S + Q2 + T/U/V/W governance additions); Group T: verdict/SHA provenance; Group U: contradiction guards; Group V: TI formula period classification; Group W: layer boundary |
 | `docs/reconciliation/oborovo_tax_source_truth.md` | This file |
 | `.github/workflows/c3b1_diagnostic_check.yml` | New CI workflow running only `test_stage_c3b1_oborovo_tax_source_truth.py` |
 
