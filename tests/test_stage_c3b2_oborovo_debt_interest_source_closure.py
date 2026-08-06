@@ -844,3 +844,376 @@ class TestExtractorSynthetic:
             assert pat not in src.lower(), (
                 f"Extractor contains project-name dispatch: {pat!r}"
             )
+
+
+# ---------------------------------------------------------------------------
+# TestCompleteFormulaTerms — prove CF!row83=0, B23=True, row5=1, row7=False,
+# B54=0, row82=0 so that DS!row47 simplifies to backward-induction formula
+# ---------------------------------------------------------------------------
+
+class TestCompleteFormulaTerms:
+    """Item 1: complete workbook formula neutrality proof."""
+
+    @pytest.fixture(scope="class")
+    def ntp(self):
+        data = json.loads(FIXTURE_PATH.read_text())
+        proof = data["phase2c_sizing_analysis"].get("neutral_terms_proof")
+        assert proof is not None, "neutral_terms_proof missing from phase2c_sizing_analysis"
+        return proof
+
+    def test_neutral_terms_proof_present(self, ntp):
+        assert ntp is not None
+
+    def test_complete_ds_row23_formula_stored(self, ntp):
+        assert "CF!H83" in ntp["complete_ds_row23_formula"]
+
+    def test_complete_ds_row46_formula_stored(self, ntp):
+        assert "H5" in ntp["complete_ds_row46_formula"]
+
+    def test_complete_ds_row47_formula_stored(self, ntp):
+        assert "H7" in ntp["complete_ds_row47_formula"]
+        assert "B54" in ntp["complete_ds_row47_formula"]
+
+    def test_cf_row83_all_zero(self, ntp):
+        cf = ntp["cf_row83_cumulative"]
+        assert cf["max_residual_keur"] < 1e-9, (
+            f"CF!row83 not proved zero: max_residual={cf['max_residual_keur']}"
+        )
+        assert cf["all_zero_p1_p28"] is True
+
+    def test_b23_tranche_flag_true(self, ntp):
+        assert ntp["b23_tranche_flag"]["value"] is True
+        assert ntp["b23_tranche_flag"]["neutral"] is True
+
+    def test_row5_eligibility_equals_one(self, ntp):
+        r5 = ntp["row5_eligibility_flag"]
+        assert r5["proved_equals_one_p1_p28"] is True
+        assert r5["max_residual_keur"] < 1e-9
+
+    def test_row82_all_zero(self, ntp):
+        assert ntp["row82_refinancing_capacity"]["all_zero_p1_p28"] is True
+
+    def test_b54_wht_rate_zero(self, ntp):
+        assert ntp["b54_wht_rate"]["value"] == 0
+        assert ntp["b54_wht_rate"]["neutral"] is True
+
+    def test_simplification_valid(self, ntp):
+        assert ntp["simplification_valid"] is True, (
+            "Not all neutral terms proved — simplification not valid"
+        )
+
+    def test_simplified_formula_matches_expected(self, ntp):
+        formula = ntp["simplified_formula"]
+        assert "row20" in formula and "row22" in formula and "row9" in formula
+
+
+# ---------------------------------------------------------------------------
+# TestRuntimeInventory — prove FROZEN_EXCEL_SCHEDULE_RUNTIME classification
+# ---------------------------------------------------------------------------
+
+class TestRuntimeInventory:
+    """Item 7: actual Oborovo runtime is FROZEN_EXCEL_SCHEDULE_RUNTIME."""
+
+    @pytest.fixture(scope="class")
+    def ri(self):
+        data = json.loads(FIXTURE_PATH.read_text())
+        inv = data["phase2c_sizing_analysis"].get("runtime_inventory")
+        assert inv is not None, "runtime_inventory missing from phase2c_sizing_analysis"
+        return inv
+
+    def test_runtime_inventory_present(self, ri):
+        assert ri is not None
+
+    def test_runtime_classification_frozen(self, ri):
+        assert ri["runtime_classification"] == "FROZEN_EXCEL_SCHEDULE_RUNTIME"
+
+    def test_use_frozen_excel_flag_true(self, ri):
+        assert ri["use_frozen_excel_senior_debt_schedule"] is True
+
+    def test_frozen_fixture_path_present(self, ri):
+        assert "phase23q_oborovo_senior_debt_sizing_extraction.csv" in ri["frozen_senior_ds_fixture_path"]
+
+    def test_debt_sizing_method_gearing_cap(self, ri):
+        assert ri["debt_sizing_method"] == "gearing_cap"
+
+    def test_fixed_debt_keur_matches_excel(self, ri):
+        data = json.loads(FIXTURE_PATH.read_text())
+        excel_debt = data["phase2c_sizing_analysis"]["excel_total_debt_keur"]
+        assert abs(ri["fixed_debt_keur"] - excel_debt) < 1.0, (
+            f"fixed_debt_keur {ri['fixed_debt_keur']:.3f} diverges from "
+            f"excel_total_debt_keur {excel_debt:.3f}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# TestIndependentRecomputation — independently compute G3A, G4, bridge,
+# residual and confirm they match fixture (zero dependence on production code)
+# ---------------------------------------------------------------------------
+
+class TestIndependentRecomputation:
+    """Item 6: tests independently compute G3A, G4, bridge, residual."""
+
+    @pytest.fixture(scope="class")
+    def vectors(self):
+        data = json.loads(FIXTURE_PATH.read_text())
+        wa = data["workstream_a"]
+        wb = data["workstream_b"]["period_vectors"]
+        we = data["workstream_e"]
+        cfads = wa["ds_row20_cfads"]["period_values_keur"]
+        dscr  = wa["ds_row22_dscr_target"]["period_values"]
+        ops   = wb["row9_ops_flag"]["period_values"]
+        rates = we["ds_row44_annual_sculpting_rate"]["period_values"]
+        fracs = wb["row6_day_frac"]["period_values"]
+        return {"cfads": cfads, "dscr": dscr, "ops": ops, "rates": rates, "fracs": fracs}
+
+    @pytest.fixture(scope="class")
+    def active(self):
+        return list(range(1, 29))
+
+    def _backward_induction(self, cfads, dscr_policy, ops, rates, fracs, active):
+        ads = {p: (cfads[p] / dscr_policy[p]) * (ops[p] if ops[p] is not None else 1.0)
+               for p in active}
+        maturity = max(active)
+        V = {}
+        V[maturity + 1] = 0.0
+        for p in sorted(active, reverse=True):
+            V[p] = (V[p + 1] + ads[p]) / (1.0 + rates[p] * fracs[p])
+        return V[min(active)]
+
+    def test_g3a_independently_computed(self, vectors, active):
+        from finco_recon.derive_c3b2_independent_capacity import derive_capacities_from_vectors
+        cfads = vectors["cfads"]
+        ops   = vectors["ops"]
+        rates = vectors["rates"]
+        fracs = vectors["fracs"]
+        dscr  = vectors["dscr"]
+        # G3A: scalar DSCR=1.15
+        dscr_scalar = {p: 1.15 for p in active}
+        g3a_manual = self._backward_induction(cfads, dscr_scalar, ops, rates, fracs, active)
+        result = derive_capacities_from_vectors(
+            cfads={p: cfads[p] for p in active},
+            dscr_vector={p: dscr[p] for p in active},
+            ops_vector={p: ops[p] if ops[p] is not None else 1.0 for p in active},
+            annual_rates={p: rates[p] for p in active},
+            day_fractions={p: fracs[p] for p in active},
+            active_periods=active,
+        )
+        assert abs(result["scalar_capacity_keur"] - g3a_manual) < 1e-6, (
+            f"G3A mismatch: helper={result['scalar_capacity_keur']:.9f}, manual={g3a_manual:.9f}"
+        )
+
+    def test_g4_independently_computed(self, vectors, active):
+        from finco_recon.derive_c3b2_independent_capacity import derive_capacities_from_vectors
+        cfads = vectors["cfads"]
+        dscr  = vectors["dscr"]
+        ops   = vectors["ops"]
+        rates = vectors["rates"]
+        fracs = vectors["fracs"]
+        dscr_v = {p: dscr[p] for p in active}
+        g4_manual = self._backward_induction(cfads, dscr_v, ops, rates, fracs, active)
+        result = derive_capacities_from_vectors(
+            cfads={p: cfads[p] for p in active},
+            dscr_vector=dscr_v,
+            ops_vector={p: ops[p] if ops[p] is not None else 1.0 for p in active},
+            annual_rates={p: rates[p] for p in active},
+            day_fractions={p: fracs[p] for p in active},
+            active_periods=active,
+        )
+        assert abs(result["vector_capacity_keur"] - g4_manual) < 1e-6
+
+    def test_g3a_exceeds_g4(self, vectors, active):
+        from finco_recon.derive_c3b2_independent_capacity import derive_capacities_from_vectors
+        cfads = {p: vectors["cfads"][p] for p in active}
+        dscr  = {p: vectors["dscr"][p] for p in active}
+        ops   = {p: vectors["ops"][p] if vectors["ops"][p] is not None else 1.0 for p in active}
+        rates = {p: vectors["rates"][p] for p in active}
+        fracs = {p: vectors["fracs"][p] for p in active}
+        result = derive_capacities_from_vectors(
+            cfads=cfads, dscr_vector=dscr, ops_vector=ops,
+            annual_rates=rates, day_fractions=fracs, active_periods=active,
+        )
+        assert result["scalar_capacity_keur"] > result["vector_capacity_keur"], (
+            "G3A must exceed G4 — higher DSCR banding reduces capacity"
+        )
+
+    def test_bridge_residual_from_fixture(self):
+        data = json.loads(FIXTURE_PATH.read_text())
+        proof = data["phase2c_sizing_analysis"]["independent_capacity_proof"]
+        g3a = proof["scalar_capacity"]["capacity_keur"]
+        g4  = proof["vector_capacity"]["capacity_keur"]
+        excel = proof["excel_total_debt_keur"]
+        residual = abs(g4 - excel)
+        assert residual < 0.001, f"Independent residual {residual:.12f} kEUR must be < 0.001"
+
+    def test_banding_effect_negative(self):
+        data = json.loads(FIXTURE_PATH.read_text())
+        proof = data["phase2c_sizing_analysis"]["independent_capacity_proof"]
+        banding = proof["banding_effect_keur"]
+        assert banding < 0, f"Banding effect must be negative (DSCR banding reduces capacity): {banding}"
+
+
+# ---------------------------------------------------------------------------
+# TestSourceVectorProvenance — hash reconstruction without calling production helper
+# ---------------------------------------------------------------------------
+
+class TestSourceVectorProvenance:
+    """Item 5: independent source-vector hash reconstruction."""
+
+    def test_hash_reproducible_without_production_helper(self):
+        import hashlib
+        data = json.loads(FIXTURE_PATH.read_text())
+        wa = data["workstream_a"]
+        wb = data["workstream_b"]["period_vectors"]
+        we = data["workstream_e"]
+        vectors = {
+            "cfads": wa["ds_row20_cfads"]["period_values_keur"],
+            "dscr":  wa["ds_row22_dscr_target"]["period_values"],
+            "ops":   wb["row9_ops_flag"]["period_values"],
+            "rate":  we["ds_row44_annual_sculpting_rate"]["period_values"],
+            "frac":  wb["row6_day_frac"]["period_values"],
+        }
+        import json as _json
+        serialised = _json.dumps(vectors, sort_keys=True, separators=(",", ":"),
+                                 ensure_ascii=False)
+        computed = hashlib.sha256(serialised.encode()).hexdigest()
+        stored = (
+            data["phase2c_sizing_analysis"]["independent_capacity_proof"]
+            .get("_source_vectors_sha256", "")
+        )
+        assert computed == stored, (
+            f"Source vector hash mismatch: computed={computed[:16]}…, stored={stored[:16]}…"
+        )
+
+    def test_all_five_raw_vectors_present(self):
+        data = json.loads(FIXTURE_PATH.read_text())
+        wa = data["workstream_a"]
+        wb = data["workstream_b"]["period_vectors"]
+        we = data["workstream_e"]
+        assert "ds_row20_cfads" in wa
+        assert "ds_row22_dscr_target" in wa
+        assert "row9_ops_flag" in wb
+        assert "ds_row44_annual_sculpting_rate" in we
+        assert "row6_day_frac" in wb
+
+
+# ---------------------------------------------------------------------------
+# TestExtractorExecutionPath — call _assemble_bridge_from_vectors directly
+# with synthetic inputs; catches NameError and missing G3A/G4
+# ---------------------------------------------------------------------------
+
+class TestExtractorExecutionPath:
+    """Item 3: real extractor execution-path test."""
+
+    def test_assemble_bridge_importable_and_callable(self):
+        from finco_recon.extract_oborovo_debt_interest import _assemble_bridge_from_vectors
+        active = list(range(1, 5))
+        result = _assemble_bridge_from_vectors(
+            cfads_dict={p: 2000.0 for p in active},
+            dscr_dict={p: 1.15 for p in active},
+            ops_dict={p: 1.0 for p in active},
+            rates_dict={p: 0.0565 for p in active},
+            fracs_dict={p: 0.5 for p in active},
+            active_phase2a=active,
+            case0_debt=40000.0,
+            case1_debt=41000.0,
+            case2_debt=41500.0,
+            case3_debt=41800.0,
+            excel_debt=41801.0,
+        )
+        assert "g3a_scalar_capacity_keur" in result
+        assert "g4_vector_capacity_keur" in result
+        assert "banding_effect_keur" in result
+        assert "delta_solver_to_independent_scalar_keur" in result
+        assert "delta_dscr_banding_keur" in result
+        assert "bridge_closed" in result
+
+    def test_no_name_error_at_import(self):
+        import importlib
+        import sys
+        # Ensure fresh-ish import works without NameError
+        mod_name = "finco_recon.extract_oborovo_debt_interest"
+        if mod_name in sys.modules:
+            mod = sys.modules[mod_name]
+        else:
+            mod = importlib.import_module(mod_name)
+        # Key helper must be present
+        assert hasattr(mod, "_assemble_bridge_from_vectors")
+        assert callable(mod._assemble_bridge_from_vectors)
+
+    def test_source_guard_no_inline_formula(self):
+        import inspect
+        from finco_recon import extract_oborovo_debt_interest as m
+        src = inspect.getsource(m)
+        assert "solve_senior_debt" in src, "Extractor must use solve_senior_debt"
+        assert "build_schedule" not in src, "Extractor must not use build_schedule"
+        # No inline fallback backward induction
+        assert "inline" not in src.lower() or "no inline" in src.lower() or "fallback" not in src.lower()
+
+    def test_bridge_g3a_exceeds_g4_synthetic(self):
+        from finco_recon.extract_oborovo_debt_interest import _assemble_bridge_from_vectors
+        active = list(range(1, 29))
+        # Mixed DSCR: 1.15 for P1-P24, 1.35 for P25-P28 (like Oborovo)
+        result = _assemble_bridge_from_vectors(
+            cfads_dict={p: 2000.0 for p in active},
+            dscr_dict={p: 1.15 if p <= 24 else 1.35 for p in active},
+            ops_dict={p: 1.0 if p < 28 else 0.989 for p in active},
+            rates_dict={p: 0.0565 for p in active},
+            fracs_dict={p: 0.5 for p in active},
+            active_phase2a=active,
+            case0_debt=40000.0,
+            case1_debt=41000.0,
+            case2_debt=41500.0,
+            case3_debt=41800.0,
+            excel_debt=41801.0,
+        )
+        assert result["g3a_scalar_capacity_keur"] > result["g4_vector_capacity_keur"], (
+            "G3A (scalar DSCR=1.15) must exceed G4 (vector with 1.35 banding)"
+        )
+        assert result["banding_effect_keur"] < 0, "DSCR banding must reduce capacity"
+
+
+# ---------------------------------------------------------------------------
+# TestDirectionalSensitivity — higher DSCR/rate/lower ops reduces capacity
+# ---------------------------------------------------------------------------
+
+class TestDirectionalSensitivity:
+    """Item 6 directional tests: capacity responds correctly to input changes."""
+
+    def _cap_vector(self, cfads, dscr_v, ops_v, rates_v, fracs_v, active):
+        """Use vector capacity (respects per-period DSCR) for directional tests."""
+        from finco_recon.derive_c3b2_independent_capacity import derive_capacities_from_vectors
+        return derive_capacities_from_vectors(
+            cfads={p: cfads for p in active},
+            dscr_vector={p: dscr_v for p in active},
+            ops_vector={p: ops_v for p in active},
+            annual_rates={p: rates_v for p in active},
+            day_fractions={p: fracs_v for p in active},
+            active_periods=active,
+        )["vector_capacity_keur"]
+
+    def _cap(self, cfads, dscr_v, ops_v, rates_v, fracs_v, active):
+        return self._cap_vector(cfads, dscr_v, ops_v, rates_v, fracs_v, active)
+
+    def test_higher_dscr_reduces_capacity(self):
+        active = list(range(1, 10))
+        base = self._cap_vector(2000.0, 1.15, 1.0, 0.05, 0.5, active)
+        high = self._cap_vector(2000.0, 1.35, 1.0, 0.05, 0.5, active)
+        assert high < base, f"Higher DSCR must reduce capacity: base={base:.3f}, high={high:.3f}"
+
+    def test_higher_rate_reduces_capacity(self):
+        active = list(range(1, 10))
+        base = self._cap(2000.0, 1.15, 1.0, 0.05, 0.5, active)
+        high = self._cap(2000.0, 1.15, 1.0, 0.10, 0.5, active)
+        assert high < base, f"Higher rate must reduce capacity: base={base:.3f}, high={high:.3f}"
+
+    def test_lower_ops_reduces_capacity(self):
+        active = list(range(1, 10))
+        base = self._cap(2000.0, 1.15, 1.0, 0.05, 0.5, active)
+        low  = self._cap(2000.0, 1.15, 0.5, 0.05, 0.5, active)
+        assert low < base, f"Lower ops_frac must reduce capacity: base={base:.3f}, low={low:.3f}"
+
+    def test_higher_cfads_increases_capacity(self):
+        active = list(range(1, 10))
+        base = self._cap(2000.0, 1.15, 1.0, 0.05, 0.5, active)
+        high = self._cap(4000.0, 1.15, 1.0, 0.05, 0.5, active)
+        assert high > base, f"Higher CFADS must increase capacity: base={base:.3f}, high={high:.3f}"

@@ -87,8 +87,8 @@ jobs:
           COUNT=$(python -m pytest tests/test_stage_c3b2_oborovo_debt_interest_source_closure.py \
             --collect-only -q 2>&1 | grep -E '^[0-9]+ test' | awk '{print $1}')
           echo "Tests collected: ${COUNT}"
-          if [ "${COUNT}" -lt 80 ]; then
-            echo "ERROR: Expected >= 80 tests, found ${COUNT}"
+          if [ "${COUNT}" -lt 140 ]; then
+            echo "ERROR: Expected >= 140 tests, found ${COUNT}"
             exit 1
           fi
 
@@ -146,14 +146,34 @@ jobs:
           python -m finco_recon.derive_c3b2_independent_capacity --dry-run
           echo "Derivation dry-run: OK"
 
-      - name: Idempotency check
+      - name: First-run no-op check
         run: |
-          cp tests/fixtures/excel_oborovo_debt_interest_truth.json \
-             /tmp/fixture_before.json
+          FIXTURE="tests/fixtures/excel_oborovo_debt_interest_truth.json"
+          SHA_BEFORE=$(sha256sum "${FIXTURE}" | awk '{print $1}')
+          OUTPUT=$(python -m finco_recon.derive_c3b2_independent_capacity 2>&1)
+          echo "${OUTPUT}"
+          echo "${OUTPUT}" | grep -q "already up-to-date" || {
+            echo "ERROR: First run on committed fixture must print 'already up-to-date'"
+            exit 1
+          }
+          SHA_AFTER=$(sha256sum "${FIXTURE}" | awk '{print $1}')
+          if [ "${SHA_BEFORE}" != "${SHA_AFTER}" ]; then
+            echo "ERROR: First run modified fixture (not idempotent)"
+            exit 1
+          fi
+          git diff --exit-code -- "${FIXTURE}" || {
+            echo "ERROR: git diff shows fixture modified"
+            exit 1
+          }
+          echo "First-run no-op: OK (hash ${SHA_BEFORE:0:16}...)"
+
+      - name: Second-run idempotency check
+        run: |
+          FIXTURE="tests/fixtures/excel_oborovo_debt_interest_truth.json"
           python -m finco_recon.derive_c3b2_independent_capacity
-          SHA1=$(sha256sum tests/fixtures/excel_oborovo_debt_interest_truth.json | awk '{print $1}')
+          SHA1=$(sha256sum "${FIXTURE}" | awk '{print $1}')
           python -m finco_recon.derive_c3b2_independent_capacity
-          SHA2=$(sha256sum tests/fixtures/excel_oborovo_debt_interest_truth.json | awk '{print $1}')
+          SHA2=$(sha256sum "${FIXTURE}" | awk '{print $1}')
           if [ "${SHA1}" != "${SHA2}" ]; then
             echo "ERROR: Derivation is not idempotent — fixture changed on second run"
             exit 1

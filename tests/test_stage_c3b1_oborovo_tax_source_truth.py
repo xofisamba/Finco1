@@ -122,7 +122,7 @@ _WORKBOOK_SHA = "15a621c4d6b79024980766e00ebc79d7235fd56f00567be7bf345c769ce5792
 # The test fails if the extractor version changes without fixture regeneration.
 from finco_recon.extract_oborovo_excel import _EXTRACTOR_VERSION
 # Base SHA from which this branch was created; used by financial-freeze tests
-_BASE_SHA = "b11e5bf7b9ab60bae174081e7d9f8541190bf371"
+_BASE_SHA = "c5f0b1f1643aad07df2f2d9e07acd21943328841"
 
 _N_PERIODS = 61  # 0=construction, 1-60=operating
 

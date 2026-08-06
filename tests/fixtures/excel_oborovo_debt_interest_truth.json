@@ -3330,7 +3330,7 @@
       "_derivation_version": "1.1.0",
       "_derivation_script": "finco_recon/derive_c3b2_independent_capacity.py",
       "_source_vectors_sha256": "63f08ace78ca7bfa240cf25935be37d1d676461344452abf2b65fc087e12b28a",
-      "_source_fixture_sha256_before_derivation": "0fd1aee5217f65bf2f7fa09822cdc8b11457e43cf6d4e8c5274cc2ca9cf328fd",
+      "_source_fixture_sha256_before_derivation": "552d2a90b8c3e236b630a7c0c494f1a7697ff3b60016a9bf3f839fb66c745004",
       "raw_inputs_used": [
         "DS!row20 — CFADS per period (workstream_a.ds_row20_cfads.period_values_keur)",
         "DS!row22 — per-period DSCR target (workstream_a.ds_row22_dscr_target.period_values)",
@@ -3431,8 +3431,57 @@
       "final_residual_description": "vector_capacity - excel_total_debt: unforced residual after full-replication backward induction. Near zero means backward induction from raw DS!row20/22/44/6 reproduces Excel total debt independently.",
       "verdict": "C3B2_DEBT_INTEREST_SOURCE_TRUTH_PROVED",
       "verdict_rationale": "Independent backward induction from raw DS!row20/22/9/44/6 reproduces Excel total debt to 0.000000 kEUR (tolerance 1 kEUR). All divergence from generic Phase 2C fully attributed via G0–G4 causal bridge: rate (-543.807), CFADS (-1918.036), day-count (-214.604), solver-to-independent-scalar (-8.732, TERMINAL_PARTIAL_PERIOD_TREATMENT), DSCR-banding (-515.945 — independently computed G4-G3A, not forced). Forbidden inputs (row46, D47, D51, row61) not used.",
-      "_derivation_timestamp_utc": "2026-08-06T17:03:46.519183+00:00",
-      "_content_sha256": "66c73f3afec9bdab9c3000132c8bde1f44deb68b97aef76c81df4aeb68257660"
+      "_derivation_timestamp_utc": "2026-08-06T19:46:37.350354+00:00",
+      "_content_sha256": "5a715d4b3dcab72aec85a3a2fcc8d7a6312783ba24facdcac3f3adb7e282be90"
+    },
+    "neutral_terms_proof": {
+      "complete_ds_row23_formula": "=(H20/H22+SUM(CF!H83:H83))*H9*$B23",
+      "complete_ds_row46_formula": "=H23*H5",
+      "complete_ds_row47_formula": "=SUM(IF(NOT(H7),(H46+I47)/(1+H44*(1+B54/(1-B54))*H6),0),H82)",
+      "cf_row83_cumulative": {
+        "proof_method": "row23_actual = (row20/row22)*row9 — max_residual=0 kEUR",
+        "max_residual_keur": 0.0,
+        "all_zero_p1_p28": true
+      },
+      "b23_tranche_flag": {
+        "value": true,
+        "formula": "=Inputs!$C$192",
+        "neutral": true
+      },
+      "row5_eligibility_flag": {
+        "formula_h": "=Flags!H19",
+        "proof_method": "row46_actual = row23_actual — max_residual=0 → row5=1",
+        "max_residual_keur": 0.0,
+        "proved_equals_one_p1_p28": true,
+        "note": "openpyxl returns None for boolean True; proved via row46=row23 (max_residual=0 kEUR)"
+      },
+      "row7_refinancing_flag": {
+        "formula_h": "=Flags!H20",
+        "proof_method": "row82=0 for all active periods → both IF branches identical",
+        "row82_all_zero": true
+      },
+      "b54_wht_rate": {
+        "value": 0,
+        "formula": "=Inputs!$D$422",
+        "neutral": true,
+        "formula_effect": "B54=0 → 1+B54/(1-B54)=1.0 → no WHT adjustment"
+      },
+      "row82_refinancing_capacity": {
+        "all_zero_p1_p28": true
+      },
+      "simplified_formula": "allowed_ds[p] = (row20[p]/row22[p]) * row9[p]",
+      "simplification_valid": true
+    },
+    "runtime_inventory": {
+      "description": "Actual runtime configuration for the Oborovo project, read from app.project_factories.create_default_oborovo(). NOT inferred — sourced directly from the factory function.",
+      "debt_sizing_method": "gearing_cap",
+      "fixed_debt_keur": 42852.26672602787,
+      "target_dscr": 1.15,
+      "use_senior_debt_sizing_engine": true,
+      "use_frozen_excel_senior_debt_schedule": true,
+      "frozen_senior_ds_fixture_path": "reports/phase23q_oborovo_senior_debt_sizing_extraction.csv",
+      "runtime_classification": "FROZEN_EXCEL_SCHEDULE_RUNTIME",
+      "classification_rationale": "use_frozen_excel_senior_debt_schedule=True means the debt service schedule is read from a pre-computed CSV fixture, not recomputed by solve_senior_debt. G0 is a diagnostic run of solve_senior_debt — it is NOT the active runtime. The active production runtime at Oborovo reads from the frozen CSV."
     }
   }
 }
