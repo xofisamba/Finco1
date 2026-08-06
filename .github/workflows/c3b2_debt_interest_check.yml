@@ -104,7 +104,7 @@ jobs:
         run: |
           python -c "
           from finco_recon.derive_c3b2_independent_capacity import _DERIVATION_VERSION
-          assert _DERIVATION_VERSION == '1.1.0', f'Expected 1.1.0, got {_DERIVATION_VERSION}'
+          assert _DERIVATION_VERSION == '1.2.0', f'Expected 1.2.0, got {_DERIVATION_VERSION}'
           print(f'Derivation version OK: {_DERIVATION_VERSION}')
           "
 

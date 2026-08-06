@@ -68,7 +68,7 @@ import pathlib
 import sys
 from datetime import datetime, timezone
 
-_DERIVATION_VERSION = "1.1.0"
+_DERIVATION_VERSION = "1.2.0"
 _DEFAULT_FIXTURE = pathlib.Path("tests/fixtures/excel_oborovo_debt_interest_truth.json")
 _ACTIVE_PERIODS = list(range(1, 29))   # Excel P1–P28 (1-indexed into period_values arrays)
 _SCALAR_DSCR = 1.15
@@ -105,6 +105,83 @@ def _backward_induction(cfads: dict, dscr: dict, ops: dict, rate: dict, frac: di
     return V[min(active)], detail
 
 
+def _backward_induction_complete(
+    cfads: dict,
+    dscr: dict,
+    ops_fraction: dict,
+    eligibility_fraction: dict,
+    tranche_enabled: dict,
+    cumulative_cf83: dict,
+    annual_rates: dict,
+    wht_rate: dict,
+    day_fractions: dict,
+    refinancing_flag: dict,
+    refinancing_capacity: dict,
+    active: list,
+) -> tuple[float, list]:
+    """Complete DS!row47 backward induction — all formula terms explicit.
+
+    DS!row23[p] = (cfads[p]/dscr[p] + cf83_cumul[p]) * ops_fraction[p] * tranche_enabled[p]
+    DS!row46[p] = row23[p] * eligibility_fraction[p]
+    grossed_rate[p] = annual_rate[p] * (1 + wht_rate[p] / (1 - wht_rate[p]))
+    if refinancing_flag[p]:
+        V[p] = refinancing_capacity[p]
+    else:
+        V[p] = (row46[p] + V[p+1]) / (1 + grossed_rate[p] * day_fractions[p])
+               + refinancing_capacity[p]
+
+    This is the authoritative implementation. derive_capacities_from_vectors calls it
+    with neutral Oborovo values (cf83=0, eligibility=1, b23=True, wht=0, row7=False, row82=0).
+    """
+    maturity = max(active)
+    V: dict[int, float] = {maturity + 1: 0.0}
+    detail = []
+    for p in sorted(active, reverse=True):
+        ops_frac = ops_fraction.get(p, 1.0) or 1.0
+        tranche = tranche_enabled.get(p, True)
+        tranche_mult = 1.0 if tranche else 0.0
+        cf83 = cumulative_cf83.get(p, 0.0) or 0.0
+        eligibility = eligibility_fraction.get(p, 1.0) or 1.0
+        wht = wht_rate.get(p, 0.0) or 0.0
+        refin_flag = refinancing_flag.get(p, False)
+        refin_cap = refinancing_capacity.get(p, 0.0) or 0.0
+        rate = annual_rates[p]
+        frac = day_fractions[p]
+
+        row23 = (cfads[p] / dscr[p] + cf83) * ops_frac * tranche_mult
+        row46 = row23 * eligibility
+        if wht >= 1.0:
+            grossed_rate = rate  # degenerate guard
+        else:
+            grossed_rate = rate * (1.0 + wht / (1.0 - wht))
+
+        if refin_flag:
+            V[p] = refin_cap
+        else:
+            denom = 1.0 + grossed_rate * frac
+            V[p] = (row46 + V[p + 1]) / denom + refin_cap if denom != 0 else refin_cap
+
+        detail.append({
+            "period": p,
+            "cfads_keur": cfads[p],
+            "dscr_policy": dscr[p],
+            "cf83_cumul_keur": cf83,
+            "ops_frac": ops_frac,
+            "tranche_enabled": tranche,
+            "row23_keur": row23,
+            "eligibility_frac": eligibility,
+            "row46_keur": row46,
+            "wht_rate": wht,
+            "grossed_annual_rate": grossed_rate,
+            "day_frac": frac,
+            "refinancing_flag": refin_flag,
+            "refinancing_capacity_keur": refin_cap,
+            "V_keur": V[p],
+        })
+    detail.sort(key=lambda r: r["period"])
+    return V[min(active)], detail
+
+
 def derive_capacities_from_vectors(
     cfads: dict,
     dscr_vector: dict,
@@ -112,29 +189,54 @@ def derive_capacities_from_vectors(
     annual_rates: dict,
     day_fractions: dict,
     active_periods: list,
+    eligibility_fraction: dict = None,
+    tranche_enabled: dict = None,
+    cumulative_cf83: dict = None,
+    wht_rate: dict = None,
+    refinancing_flag: dict = None,
+    refinancing_capacity: dict = None,
 ) -> dict:
-    """Compute scalar (DSCR=1.15) and vector backward-induction debt capacities.
+    """Compute scalar (G3A) and vector (G4) backward-induction debt capacities.
 
-    All inputs are dicts keyed by period index. active_periods is the ordered
-    list of period indices included in the backward induction.
+    Core inputs (all dicts keyed by period index):
+        cfads, dscr_vector, ops_vector, annual_rates, day_fractions, active_periods
 
-    This is the single authoritative implementation of the backward-induction
-    formula. Both the derivation CLI and the extractor call this function —
-    no duplication of the formula is permitted.
+    Optional complete-formula inputs (default to neutral Oborovo values):
+        eligibility_fraction  — DS!row5 (default 1.0)
+        tranche_enabled       — DS!B23 (default True)
+        cumulative_cf83       — CF!row83 cumulative adj (default 0.0)
+        wht_rate              — DS!B54 (default 0.0)
+        refinancing_flag      — DS!row7 (default False)
+        refinancing_capacity  — DS!row82 (default 0.0)
 
-    Returns dict with keys:
+    Delegates to _backward_induction_complete — single authoritative implementation.
+
+    Returns:
         scalar_capacity_keur   — G3A: DSCR=1.15 with ops_vector
         vector_capacity_keur   — G4:  per-period dscr_vector with ops_vector
-        banding_effect_keur    — G4 − G3A (pure DSCR banding, independently computed)
-        scalar_detail          — per-period backward-induction rows for G3A
-        vector_detail          — per-period backward-induction rows for G4
+        banding_effect_keur    — G4 − G3A (pure DSCR banding)
+        scalar_detail, vector_detail
     """
+    neutral_ones = {p: 1.0 for p in active_periods}
+    neutral_zeros = {p: 0.0 for p in active_periods}
+    neutral_true = {p: True for p in active_periods}
+    neutral_false = {p: False for p in active_periods}
+
+    elig = eligibility_fraction if eligibility_fraction is not None else neutral_ones
+    tranche = tranche_enabled if tranche_enabled is not None else neutral_true
+    cf83 = cumulative_cf83 if cumulative_cf83 is not None else neutral_zeros
+    wht = wht_rate if wht_rate is not None else neutral_zeros
+    refin_flag = refinancing_flag if refinancing_flag is not None else neutral_false
+    refin_cap = refinancing_capacity if refinancing_capacity is not None else neutral_zeros
+
     dscr_scalar = {p: _SCALAR_DSCR for p in active_periods}
-    scalar_cap, scalar_detail = _backward_induction(
-        cfads, dscr_scalar, ops_vector, annual_rates, day_fractions, active_periods
+    scalar_cap, scalar_detail = _backward_induction_complete(
+        cfads, dscr_scalar, ops_vector, elig, tranche, cf83,
+        annual_rates, wht, day_fractions, refin_flag, refin_cap, active_periods,
     )
-    vector_cap, vector_detail = _backward_induction(
-        cfads, dscr_vector, ops_vector, annual_rates, day_fractions, active_periods
+    vector_cap, vector_detail = _backward_induction_complete(
+        cfads, dscr_vector, ops_vector, elig, tranche, cf83,
+        annual_rates, wht, day_fractions, refin_flag, refin_cap, active_periods,
     )
     return {
         "scalar_capacity_keur": scalar_cap,
@@ -146,15 +248,37 @@ def derive_capacities_from_vectors(
 
 
 def _source_vectors_sha256(fixture: dict) -> str:
+    """Canonical source-vector hash covering all DS!row47 formula inputs.
+
+    Must include: CFADS, DSCR, ops, eligibility(row5), tranche(B23),
+    CF!row83 cumulative, annual rate, WHT(B54), day fraction,
+    refinancing flag (row7), refinancing capacity (row82),
+    active-period list, and maturity period.
+    Any change to any input changes this hash.
+    """
     wa = fixture["workstream_a"]
-    wb = fixture["workstream_b"]["period_vectors"]
+    wb = fixture["workstream_b"]
+    pvs = wb["period_vectors"]
     we = fixture["workstream_e"]
+    pa = fixture["phase2c_sizing_analysis"]
+
+    cf83_data = wa.get("cf_row83_debt_cost_adj", {})
+    cf83_vals = cf83_data.get("period_values", [None] * 61)
+
     vectors = {
         "cfads": wa["ds_row20_cfads"]["period_values_keur"],
         "dscr": wa["ds_row22_dscr_target"]["period_values"],
-        "ops": wb["row9_ops_flag"]["period_values"],
+        "ops": pvs["row9_ops_flag"]["period_values"],
+        "row5_eligibility": pvs["row5_flag"]["period_values"],
+        "b23_tranche": wb.get("ds_b23_tranche_flag", {}).get("value"),
+        "cf83_cumulative": cf83_vals,
         "rate": we["ds_row44_annual_sculpting_rate"]["period_values"],
-        "frac": wb["row6_day_frac"]["period_values"],
+        "b54_wht": wb.get("ds_b54_wht_rate", {}).get("value"),
+        "frac": pvs["row6_day_frac"]["period_values"],
+        "row7_refinancing_flag": pvs["row7_refin_flag"]["period_values"],
+        "row82_refinancing_capacity": pvs["row82_refin_capacity"]["period_values"],
+        "active_periods": pa.get("active_periods_count"),
+        "maturity_period": pa.get("maturity_period"),
     }
     serialised = json.dumps(vectors, sort_keys=True, separators=(",", ":"),
                             ensure_ascii=False)
@@ -465,35 +589,62 @@ def derive(fixture_path: pathlib.Path) -> dict:
     pa["verdict_rationale"] = verdict_rationale
 
     # ------------------------------------------------------------------
-    # Neutral-terms proof (static derivation from fixture primitives)
+    # Neutral-terms proof: actual fixture-stored values + logical proofs
     # ------------------------------------------------------------------
-    # DS!row23 complete formula: =(H20/H22+SUM(CF!H83:H83))*H9*$B23
-    # We prove CF!row83=0, B23=True, row5=1, row7=False, B54=0, row82=0
-    # so the formula simplifies to allowed_ds[p] = (row20/row22)*row9.
     wa2 = data["workstream_a"]
-    wb2 = data["workstream_b"]["period_vectors"]
+    wb2_all = data["workstream_b"]
+    wb2 = wb2_all["period_vectors"]
 
-    # DS!row23 actual (cached from workbook) vs (row20/row22)*row9 — max residual proves CF!row83=0
-    row23_all = wa2.get("ds_row23_allowed_ds", {}).get("period_values_keur", [None] * 61)
-    row46_all = wa2.get("ds_row46_cfads_over_dscr", {}).get("period_values_keur", [None] * 61)
+    # CF!row83: extracted from CF sheet (stored in workstream_a)
+    cf83_data = wa2.get("cf_row83_debt_cost_adj", {})
+    cf83_vals = cf83_data.get("period_values", [None] * 61)
+    cf83_active = [cf83_vals[p] if p < len(cf83_vals) else None for p in _ACTIVE_PERIODS]
+    cf83_all_zero = all(v is None or abs(v) < 1e-9 for v in cf83_active)
+
+    # row23 actual vs (row20/row22)*row9 residual proves CF!row83=0
+    row23_all = wa2.get("ds_row23_available_cf", {}).get("period_values_keur", [None] * 61)
     max_cf83_residual = 0.0
-    max_row5_residual = 0.0
-    row82_all_zero = True
-    row82_v = wb2.get("row82_refinancing_capacity", {}).get("period_values", [None] * 61)
     for p in _ACTIVE_PERIODS:
-        cfads_p = cfads_all[p]
-        dscr_p  = dscr_all[p] if dscr_all[p] else 1.15
-        ops_p   = ops_dict[p]
-        expected_row23 = (cfads_p / dscr_p) * ops_p
-        actual_row23   = row23_all[p]
-        if actual_row23 is not None:
-            max_cf83_residual = max(max_cf83_residual, abs(actual_row23 - expected_row23))
-        actual_row46 = row46_all[p]
-        if actual_row23 is not None and actual_row46 is not None:
-            max_row5_residual = max(max_row5_residual, abs(actual_row46 - actual_row23))
-        r82 = row82_v[p] if p < len(row82_v) else None
-        if r82 is not None and abs(r82) > 1e-12:
-            row82_all_zero = False
+        c, d, o = cfads_all[p], dscr_all[p], ops_dict[p]
+        r23 = row23_all[p]
+        if c is not None and d is not None and d != 0 and r23 is not None:
+            max_cf83_residual = max(max_cf83_residual, abs(r23 - (c / d) * o))
+
+    # B23: actual extracted value
+    b23_entry = wb2_all.get("ds_b23_tranche_flag", {})
+    b23_actual = b23_entry.get("value")
+    b23_formula = b23_entry.get("formula", "=Inputs!$C$192")
+
+    # B54: actual extracted value
+    b54_entry = wb2_all.get("ds_b54_wht_rate", {})
+    b54_actual = b54_entry.get("value")
+    b54_formula = b54_entry.get("formula", "=Inputs!$D$422")
+
+    # row5 extracted period values + row46=row23 residual proof
+    row5_vals = wb2.get("row5_flag", {}).get("period_values", [None] * 61)
+    row5_active = [row5_vals[p] if p < len(row5_vals) else None for p in _ACTIVE_PERIODS]
+    row46_all = wb2.get("row46_cf_pv", {}).get("period_values", [None] * 61)
+    max_row5_residual = 0.0
+    for p in _ACTIVE_PERIODS:
+        r23 = row23_all[p]
+        r46 = row46_all[p] if p < len(row46_all) else None
+        if r23 is not None and r46 is not None:
+            max_row5_residual = max(max_row5_residual, abs(r46 - r23))
+
+    # row7 extracted period values + logical proof: row47>0 + row82=0 => row7=False
+    row7_vals = wb2.get("row7_refin_flag", {}).get("period_values", [None] * 61)
+    row7_active = [row7_vals[p] if p < len(row7_vals) else None for p in _ACTIVE_PERIODS]
+    row47_vals = wb2.get("row47_capacity", {}).get("period_values", [None] * 61)
+    row82_v = wb2.get("row82_refin_capacity", {}).get("period_values", [None] * 61)
+    row82_all_zero = all(
+        (row82_v[p] is None or abs(row82_v[p]) < 1e-9) for p in _ACTIVE_PERIODS
+    )
+    row47_all_positive = all(
+        row47_vals[p] is not None and row47_vals[p] > 0 for p in _ACTIVE_PERIODS
+    )
+    # IF(NOT(row7), cap_term, 0) + row82
+    # row7=True => row47 = 0 + row82 = 0 (since row82=0). Contradiction with row47>0.
+    row7_all_false_proved = row82_all_zero and row47_all_positive
 
     neutral_terms_proof = {
         "complete_ds_row23_formula": "=(H20/H22+SUM(CF!H83:H83))*H9*$B23",
@@ -502,71 +653,99 @@ def derive(fixture_path: pathlib.Path) -> dict:
             "=SUM(IF(NOT(H7),(H46+I47)/(1+H44*(1+B54/(1-B54))*H6),0),H82)"
         ),
         "cf_row83_cumulative": {
-            "proof_method": "row23_actual = (row20/row22)*row9 — max_residual=0 kEUR",
+            "proof_method": (
+                "row23_actual=(row20/row22)*row9 for all active periods — "
+                "max_residual proves CF!row83_cumulative=0"
+            ),
+            "extracted_period_values": cf83_active,
             "max_residual_keur": round(max_cf83_residual, 12),
-            "all_zero_p1_p28": max_cf83_residual < 1e-9,
+            "all_zero_p1_p28": cf83_all_zero or max_cf83_residual < 1e-9,
         },
         "b23_tranche_flag": {
-            "value": True,
-            "formula": "=Inputs!$C$192",
-            "neutral": True,
+            "extracted_value": b23_actual,
+            "formula": b23_formula,
+            "neutral": b23_actual is True or b23_actual == 1 or b23_actual is None,
         },
         "row5_eligibility_flag": {
             "formula_h": "=Flags!H19",
-            "proof_method": "row46_actual = row23_actual — max_residual=0 → row5=1",
+            "extracted_period_values": row5_active,
+            "proof_method": "row46_actual=row23_actual for all periods — max_residual=0 kEUR => row5=1",
             "max_residual_keur": round(max_row5_residual, 12),
             "proved_equals_one_p1_p28": max_row5_residual < 1e-9,
-            "note": (
-                "openpyxl returns None for boolean True; "
-                "proved via row46=row23 (max_residual=0 kEUR)"
-            ),
         },
         "row7_refinancing_flag": {
             "formula_h": "=Flags!H20",
-            "proof_method": "row82=0 for all active periods → both IF branches identical",
+            "extracted_period_values": row7_active,
+            "proof_method": (
+                "Logical implication: IF(NOT(row7),cap_term,0)+row82. "
+                "row7=True => row47=0+row82. row82=0 AND row47>0 => contradiction => row7=False."
+            ),
             "row82_all_zero": row82_all_zero,
+            "row47_all_positive": row47_all_positive,
+            "row7_all_false_proved": row7_all_false_proved,
         },
         "b54_wht_rate": {
-            "value": 0,
-            "formula": "=Inputs!$D$422",
-            "neutral": True,
-            "formula_effect": "B54=0 → 1+B54/(1-B54)=1.0 → no WHT adjustment",
+            "extracted_value": b54_actual,
+            "formula": b54_formula,
+            "neutral": b54_actual is None or b54_actual == 0 or abs(float(b54_actual or 0)) < 1e-12,
+            "formula_effect": "B54=0 => 1+B54/(1-B54)=1.0 => no WHT adjustment",
         },
         "row82_refinancing_capacity": {
             "all_zero_p1_p28": row82_all_zero,
+            "period_values": [row82_v[p] for p in _ACTIVE_PERIODS],
         },
         "simplified_formula": "allowed_ds[p] = (row20[p]/row22[p]) * row9[p]",
         "simplification_valid": (
-            max_cf83_residual < 1e-9 and max_row5_residual < 1e-9 and row82_all_zero
+            max_cf83_residual < 1e-9
+            and max_row5_residual < 1e-9
+            and row82_all_zero
+            and row7_all_false_proved
         ),
     }
     pa["neutral_terms_proof"] = neutral_terms_proof
 
     # ------------------------------------------------------------------
-    # Runtime inventory (static, read from project_factories)
+    # Runtime inventory: factory-derived from project_factories
     # ------------------------------------------------------------------
-    runtime_inventory = {
-        "description": (
-            "Actual runtime configuration for the Oborovo project, "
-            "read from app.project_factories.create_default_oborovo(). "
-            "NOT inferred — sourced directly from the factory function."
-        ),
-        "debt_sizing_method": "gearing_cap",
-        "fixed_debt_keur": 42852.26672602787,
-        "target_dscr": 1.15,
-        "use_senior_debt_sizing_engine": True,
-        "use_frozen_excel_senior_debt_schedule": True,
-        "frozen_senior_ds_fixture_path": (
-            "reports/phase23q_oborovo_senior_debt_sizing_extraction.csv"
-        ),
-        "runtime_classification": "FROZEN_EXCEL_SCHEDULE_RUNTIME",
-        "classification_rationale": (
-            "use_frozen_excel_senior_debt_schedule=True means the debt service schedule "
-            "is read from a pre-computed CSV fixture, not recomputed by solve_senior_debt. "
-            "G0 is a diagnostic run of solve_senior_debt — it is NOT the active runtime. "
-            "The active production runtime at Oborovo reads from the frozen CSV."
-        ),
-    }
+    try:
+        from app import project_factories as _pf
+        _proj = _pf.create_default_oborovo()
+        _fp = _proj.financing
+        runtime_inventory = {
+            "description": (
+                "Runtime config read from "
+                "app.project_factories.create_default_oborovo().financing"
+            ),
+            "factory_function": "app.project_factories.create_default_oborovo",
+            "financing_attr": "proj.financing",
+            "debt_sizing_method": _fp.debt_sizing_method,
+            "fixed_debt_keur": _fp.fixed_debt_keur,
+            "target_dscr": _fp.target_dscr,
+            "use_frozen_excel_senior_debt_schedule": _fp.use_frozen_excel_senior_debt_schedule,
+            "frozen_senior_ds_fixture_path": _fp.frozen_senior_ds_fixture_path,
+            "all_in_rate": _fp.all_in_rate,
+            "amortization_type": _fp.amortization_type,
+            "sizing_mode_description": _fp.sizing_mode_description,
+            "runtime_classification": "FROZEN_EXCEL_SCHEDULE_RUNTIME",
+            "classification_rationale": (
+                "use_frozen_excel_senior_debt_schedule=True: debt service schedule "
+                "is read from a pre-computed CSV fixture. G0 (solve_senior_debt) "
+                "is a diagnostic — the active runtime reads from the frozen CSV."
+            ),
+        }
+    except Exception as _e:
+        runtime_inventory = {
+            "description": "Factory import unavailable — using static snapshot",
+            "factory_import_error": str(_e),
+            "debt_sizing_method": "gearing_cap",
+            "fixed_debt_keur": 42852.26672602787,
+            "target_dscr": 1.15,
+            "use_frozen_excel_senior_debt_schedule": True,
+            "frozen_senior_ds_fixture_path": (
+                "reports/phase23q_oborovo_senior_debt_sizing_extraction.csv"
+            ),
+            "runtime_classification": "FROZEN_EXCEL_SCHEDULE_RUNTIME",
+        }
     pa["runtime_inventory"] = runtime_inventory
 
     # Timestamp

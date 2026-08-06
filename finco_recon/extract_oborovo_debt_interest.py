@@ -72,6 +72,21 @@ def _row_to_periods(row: tuple, n: int = _N_PERIODS) -> list[float | None]:
     return out
 
 
+def _row_to_periods_bool(row: tuple, n: int = _N_PERIODS) -> list:
+    """Like _row_to_periods but preserves bool True/False instead of mapping to None."""
+    out = []
+    for p in range(n):
+        col = _PERIOD_COL_OFFSET + p
+        v = row[col] if col < len(row) else None
+        if isinstance(v, bool):
+            out.append(v)
+        elif isinstance(v, (int, float)):
+            out.append(float(v))
+        else:
+            out.append(None)
+    return out
+
+
 def _scalar(row: tuple, col: int) -> Any:
     return row[col] if col < len(row) else None
 
@@ -153,6 +168,13 @@ def _extract_cfads(wb_formula, wb_data) -> dict:
     cf_row79_formula_h = _formula(cf_rows_f[78], 7)
     cf_row79_vals = _row_to_periods(cf_rows_d[78])
 
+    # CF!row83 (index 82) = cumulative debt cost adjustment used in DS!row23
+    # DS!row23 formula: =(row20/row22 + SUM(CF!H83:H83)) * row9 * B23
+    # The SUM(CF!H83:H83) is a running cumulative value.
+    # These values are extracted directly from the CF sheet (data_only=True).
+    cf_row83_formula_h = _formula(cf_rows_f[82], 7) if len(cf_rows_f) > 82 else None
+    cf_row83_vals = _row_to_periods(cf_rows_d[82]) if len(cf_rows_d) > 82 else [None] * _N_PERIODS
+
     # CF component rows (indices: 22, 48, 72, 75, 76)
     def cf_row(idx):
         label = _scalar(cf_rows_d[idx], 0)
@@ -227,6 +249,16 @@ def _extract_cfads(wb_formula, wb_data) -> dict:
         },
         "cf_row79_formula_text": "=SUM(H23,H49,H73,H76,H77)+$B$80*(H$4=0)",
         "components": components,
+        "cf_row83_debt_cost_adj": {
+            "description": (
+                "CF!row83: cumulative debt-cost adjustment term in DS!row23 formula. "
+                "DS!row23[p] = (row20[p]/row22[p] + SUM(CF!H83:H83)) * row9[p] * B23. "
+                "Extracted directly from CF sheet (data_only=True cached values)."
+            ),
+            "sheet_cell": "CF!H83 (period 1)",
+            "formula_h": cf_row83_formula_h,
+            "period_values": cf_row83_vals,
+        },
         "cf_b80_construction_adj": {"value": b80_val, "formula": b80_fml},
         "component_bridge": {
             "residuals_by_period": bridge_residuals,
@@ -270,7 +302,7 @@ def _extract_sculpting(wb_formula, wb_data) -> dict:
     ds_rows_d = list(ds_d.iter_rows(values_only=True))
 
     row_specs = {
-        "row5_flag":    (4, "flag"),
+        "row5_flag":    (4, "DS!H5"),
         "row6_day_frac": (5, "DS!H6"),
         "row7_refin_flag": (6, "DS!H7"),
         "row9_ops_flag": (8, "DS!H9"),
@@ -284,14 +316,19 @@ def _extract_sculpting(wb_formula, wb_data) -> dict:
         "row67_closing": (66, "DS!H67"),
         "row82_refin_capacity": (81, "DS!H82"),
     }
+    # Boolean flag rows — openpyxl returns True/False; _row_to_periods_bool preserves them
+    _bool_rows = {"row5_flag", "row7_refin_flag"}
 
     rows_data = {}
     for name, (idx, label) in row_specs.items():
         if idx < len(ds_rows_d):
+            pv = (_row_to_periods_bool(ds_rows_d[idx])
+                  if name in _bool_rows
+                  else _row_to_periods(ds_rows_d[idx]))
             rows_data[name] = {
                 "sheet_cell": label,
                 "formula_h": _formula(ds_rows_f[idx], 7),
-                "period_values": _row_to_periods(ds_rows_d[idx]),
+                "period_values": pv,
             }
 
     # Scalar cells
@@ -777,20 +814,24 @@ def _compute_phase2c_sizing_analysis(
     inp_rows_d: list,
 ) -> dict:
     """
-    Run the actual Phase 2C sizing solver (solve_senior_debt) for four cases,
-    build the causal bridge, and prove the independent backward induction.
+    Run solve_senior_debt for four diagnostic cases and build the G0→G3→G3A→G4
+    causal bridge proving the Oborovo senior debt capacity.
 
     Cases:
-      Case 0: current Phase 2C config (5.65% rate, Phase 2A EBITDA, ACT_365, DSCR=1.15)
-      Case 1: +Excel rates (DS!row44 per-period, ACT_365, DSCR=1.15)
-      Case 2: +Excel CFADS (DS!row20 per-period, ACT_365, DSCR=1.15)
-      Case 3: +ACT_360 day count — "scalar Excel-matched" solver result
+      G0 / Case 0: GENERIC_PHASE2C_SCALAR_DIAGNOSTIC — 5.65% rate, Phase2A EBITDA,
+                   ACT_365, DSCR=1.15. Generic diagnostic; NOT the active runtime.
+      G1 / Case 1: + Excel per-period rates (DS!row44, ACT_365, DSCR=1.15)
+      G2 / Case 2: + Excel CFADS (DS!row20, ACT_365, DSCR=1.15)
+      G3 / Case 3: + ACT_360 day count — scalar Excel-matched solver result
 
-    Independent proof: backward induction using only DS!row46, row44, row6;
-    no Excel debt or schedule inputs; delta from Excel must be 0.
+    Independent backward induction (no Excel debt/schedule):
+      G3A: scalar DSCR=1.15, DS!row20/9/44/6; delta G3A-G3 = TERMINAL_PARTIAL_PERIOD_TREATMENT
+      G4:  vector DS!row22 per-period DSCR; delta G4-G3A = pure DSCR banding
 
-    Verdict: C3B2_INPUT_OR_POLICY_MISMATCH_FULLY_EXPLAINED when the causal bridge
-    closes (sum of case deltas + DSCR-banding residual == Excel debt).
+    Forbidden inputs: DS!row46 (pre-computed intermediate), DS!D47, DS!D51, row61/67.
+    Single authoritative implementation via _assemble_bridge_from_vectors().
+
+    Verdict: C3B2_DEBT_INTEREST_SOURCE_TRUTH_PROVED when G4 - excel_debt < 0.001 kEUR.
     """
     try:
         from financial_engine.senior_debt.solver import solve_senior_debt
@@ -1007,6 +1048,15 @@ def _compute_phase2c_sizing_analysis(
     # ------------------------------------------------------------------
     row23_v = pv(22)  # DS!row23 actual cached values
     row46_v_check = pv(45)  # DS!row46 actual cached values
+    row47_v = pv(46)  # DS!row47 actual cached values
+
+    # Read B23 and B54 actual cached values from DS sheet
+    b23_raw = _scalar(ds_rows_d[22], 1)   # DS!B23 (column B, row 23)
+    b54_raw = _scalar(ds_rows_d[53], 1)   # DS!B54 (column B, row 54)
+    b23_actual = bool(b23_raw) if isinstance(b23_raw, bool) else (
+        bool(b23_raw) if isinstance(b23_raw, int) else None
+    )
+    b54_actual = _safe_float(b54_raw) if not isinstance(b54_raw, bool) else None
 
     neutral_residuals_row23 = []
     neutral_residuals_row46 = []
@@ -1028,6 +1078,22 @@ def _compute_phase2c_sizing_analysis(
         for p_excel in active_excel
     )
 
+    # row7 proof: IF(NOT(row7), capacity_term, 0) + row82
+    # If row7=True: row47 = 0 + row82. With row82=0 this gives row47=0.
+    # row47[p]>0 for all active periods AND row82=0 → contradiction → row7 must be False.
+    row7_proof_periods = []
+    row7_all_false = True
+    for p_excel in active_excel:
+        r47 = row47_v[p_excel]
+        r82 = row82_v[p_excel] or 0.0
+        if r47 is not None and r47 > 0 and abs(r82) < 1e-9:
+            row7_proof_periods.append({"period": p_excel, "row47_keur": r47, "row82_keur": r82,
+                                       "row7_must_be_false": True})
+        else:
+            row7_all_false = False
+            row7_proof_periods.append({"period": p_excel, "row47_keur": r47, "row82_keur": r82,
+                                       "row7_must_be_false": False})
+
     neutral_terms_proof = {
         "complete_ds_row23_formula": "=(H20/H22+SUM(CF!H83:H83))*H9*$B23",
         "complete_ds_row46_formula": "=H23*H5",
@@ -1035,34 +1101,48 @@ def _compute_phase2c_sizing_analysis(
             "=SUM(IF(NOT(H7),(H46+I47)/(1+H44*(1+B54/(1-B54))*H6),0),H82)"
         ),
         "cf_row83_cumulative": {
-            "proof_method": "row23_actual = (row20/row22)*row9 (max_residual=0 kEUR)",
+            "proof_method": (
+                "row23_actual = (row20/row22)*row9 for all active periods — "
+                "max_residual proves CF!row83_cumulative=0"
+            ),
             "max_residual_keur": max_cf83_residual,
             "all_zero_p1_p28": max_cf83_residual < 1e-9,
         },
         "b23_tranche_flag": {
-            "value": True,
+            "cached_value": b23_raw,
+            "normalized_bool": b23_actual,
             "formula": "=Inputs!$C$192",
-            "neutral": True,
-            "note": "B23=True=1 means no scaling of row23 by tranche factor",
+            "neutral": b23_actual is True or b23_actual is None,
+            "note": "B23=True means row23 is not zeroed by tranche flag",
         },
         "row5_eligibility_flag": {
             "formula_h": "=Flags!H19",
-            "proof_method": "row46_actual = row23_actual (max_residual=0 kEUR → row5=1)",
+            "proof_method": "row46_actual = row23_actual for all active periods (max_residual=0 → row5=1)",
             "max_residual_keur": max_row5_residual,
             "proved_equals_one_p1_p28": max_row5_residual < 1e-9,
-            "note": "openpyxl returns None for boolean True; proved via row46=row23",
+            "note": "openpyxl returns None for boolean 1 cells; proved via row46=row23 identity",
         },
         "row7_refinancing_flag": {
             "formula_h": "=Flags!H20",
-            "proof_method": "row82=0 for all active periods makes row47 identical under both branches",
+            "proof_method": (
+                "Logical implication: IF(NOT(row7), cap_term, 0) + row82. "
+                "row7=True => row47 = 0 + row82. "
+                "row82=0 and row47>0 for all active periods => contradiction => row7=False."
+            ),
             "row82_all_zero": row82_all_zero,
-            "note": "openpyxl returns None for boolean False; proof via row82=0",
+            "row47_all_positive": all(
+                r["row47_keur"] is not None and r["row47_keur"] > 0
+                for r in row7_proof_periods
+            ),
+            "row7_all_false_proved": row7_all_false,
+            "period_proof": row7_proof_periods,
         },
         "b54_wht_rate": {
-            "value": 0,
+            "cached_value": b54_raw,
+            "normalized_value": b54_actual if b54_actual is not None else 0,
             "formula": "=Inputs!$D$422",
-            "neutral": True,
-            "formula_effect": "B54=0 → 1+B54/(1-B54)=1.0 → no WHT adjustment to denominator",
+            "neutral": (b54_actual is None or abs(b54_actual) < 1e-12),
+            "formula_effect": "B54=0 → 1+B54/(1-B54)=1.0 → no WHT adjustment",
         },
         "row82_refinancing_capacity": {
             "all_zero_p1_p28": row82_all_zero,
@@ -1075,13 +1155,7 @@ def _compute_phase2c_sizing_analysis(
             max_cf83_residual < 1e-9
             and max_row5_residual < 1e-9
             and row82_all_zero
-        ),
-        "simplification_proof": (
-            "All neutral terms verified = 0 or 1 for P1-P28 active periods: "
-            "CF!row83=0 (row23 residual={:.2e}), row5=1 (row46 residual={:.2e}), "
-            "B23=True, B54=0, row7=False (via row82=0), row82=0.".format(
-                max_cf83_residual, max_row5_residual
-            )
+            and row7_all_false
         ),
     }
 

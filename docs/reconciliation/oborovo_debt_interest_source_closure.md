@@ -4,7 +4,7 @@
 **PR**: #913 (Draft — DO NOT MERGE)
 **Base SHA**: `c5f0b1f1643aad07df2f2d9e07acd21943328841` (post-C3B1 main)
 **Verdict**: `C3B2_DEBT_INTEREST_SOURCE_TRUTH_PROVED`
-**Tests**: 149 C3B2 + 177 C3B1 = 326 total (all passing)
+**Tests**: 169 C3B2 + 177 C3B1 = 346 total (all passing)
 
 ---
 
@@ -25,8 +25,9 @@ use_frozen_excel_senior_debt_schedule = True
 frozen_senior_ds_fixture_path = "reports/phase23q_oborovo_senior_debt_sizing_extraction.csv"
 ```
 
+Derived from `app.project_factories.create_default_oborovo()` → `proj.financing` attributes.
 The debt service schedule is read from a pre-computed CSV fixture — **not** recomputed at
-runtime by `solve_senior_debt`. G0 (`solve_senior_debt` at 5.65% / DSCR=1.15) is a generic
+runtime by `solve_senior_debt`. G0 (`solve_senior_debt` at generic Phase 2C inputs) is a
 diagnostic, not the active production configuration.
 
 ---
@@ -50,11 +51,11 @@ All supplementary formula terms are proved neutral for the Oborovo workbook:
 
 | Term | Value | Proof method |
 |------|-------|--------------|
-| `CF!row83` | 0 for all P1-P28 | `row23_actual = (row20/row22)×row9` — max residual = 0.000 kEUR |
-| `B23` (tranche enabled) | `True` | `=Inputs!$C$192`; confirmed from workbook cell |
+| `CF!row83` | 0 for all P1-P28 | Extracted from workbook; `row23_actual = (row20/row22)×row9` — max residual = 0.000 kEUR |
+| `B23` (tranche enabled) | `True` | Extracted from workbook cell `DS!B23 = Inputs!$C$192`; `extracted_value=True` |
 | `row5` (eligibility flag) | `1` for all P1-P28 | `row46_actual = row23_actual` — max residual = 0.000 kEUR |
-| `row7` (refinancing flag) | `False` for all P1-P28 | `row82=0` → both IF branches identical |
-| `B54` (WHT rate) | `0` | `=Inputs!$D$422`; `B54=0 → 1+B54/(1-B54)=1.0` |
+| `row7` (refinancing flag) | `False` for all P1-P28 | Logical implication: `row47[p]>0` AND `row82[p]=0` → `IF(NOT(True), x, 0)+0=0` contradicts `row47>0`; therefore `row7=False` for all P1-P28 |
+| `B54` (WHT rate) | `0` | Extracted from workbook cell `DS!B54 = Inputs!$D$422`; `extracted_value=0`; `B54=0 → 1+B54/(1-B54)=1.0` |
 | `row82` (refinancing capacity) | `0` for all P1-P28 | Confirmed from cached fixture values |
 
 **Simplified formula** (valid because all supplementary terms are neutral):
@@ -108,16 +109,18 @@ P28 is the only partial terminal period. `DS!row9[28] < 1.0` (approx 0.989).
 ## 5. Causal Bridge (G0 to G4)
 
 ```
-G0  (generic Phase2C diagnostic)      43,376.955 kEUR
-  + delta_rate      (Excel rates)         +754.765 kEUR
-  + delta_cfads     (DS!row20)           -984.597 kEUR
-  + delta_daycount  (ACT_360)            -169.143 kEUR
-= G3  (Excel rates + CFADS + ACT_360)  43,376.956 kEUR  [solver]
-  + delta_solver_to_independent_scalar    -8.732 kEUR   [TERMINAL_PARTIAL_PERIOD_TREATMENT]
-= G3A (scalar backward induction)       43,368.224 kEUR
-  + delta_dscr_banding_g3a_to_g4       -515.945 kEUR   [pure DSCR banding: 1.35 at P25-P28]
-= G4  (vector backward induction)       42,852.279 kEUR
-  = Excel total debt                    42,852.279 kEUR  [residual = 0.000 kEUR]
+G0  (GENERIC_PHASE2C_SCALAR_DIAGNOSTIC)    46,053.402 kEUR
+  + delta_rate      (Excel rates)            -543.807 kEUR
+= G1  (Excel rates applied)                45,509.595 kEUR
+  + delta_cfads     (DS!row20)            -1,918.036 kEUR
+= G2  (Excel rates + CFADS)               43,591.559 kEUR
+  + delta_daycount  (ACT_360)               -214.604 kEUR
+= G3  (Excel rates + CFADS + ACT_360)     43,376.955 kEUR  [solver]
+  + delta_solver_to_independent_scalar       -8.732 kEUR   [TERMINAL_PARTIAL_PERIOD_TREATMENT]
+= G3A (scalar backward induction)         43,368.224 kEUR
+  + delta_dscr_banding_g3a_to_g4           -515.945 kEUR   [pure DSCR banding: 1.35 at P25-P28]
+= G4  (vector backward induction)         42,852.279 kEUR
+  = Excel total debt                       42,852.279 kEUR  [residual = 0.000 kEUR]
 ```
 
 Bridge closed: `bridge_closure_error = 0.000 kEUR < 1.0 kEUR tolerance`.
@@ -131,13 +134,22 @@ Bridge closed: `bridge_closure_error = 0.000 kEUR < 1.0 kEUR tolerance`.
 - Version `2.0.0`
 - `_assemble_bridge_from_vectors()` — pure module-level callable; **mandatory** import of
   `derive_capacities_from_vectors`; no inline fallback; import failure fails loudly
+- Extracts CF!row83 from workbook (`cf_row83_debt_cost_adj` key)
+- Reads B23 and B54 from actual workbook cells (not hardcoded)
+- `_row_to_periods_bool()` helper preserves `True`/`False` for boolean rows (row5, row7)
 - Returns `neutral_terms_proof` and `runtime_inventory` in `phase2c_sizing_analysis`
 - Uses `solve_senior_debt` API; never uses `build_schedule`
 
 ### `finco_recon/derive_c3b2_independent_capacity.py`
 
-- Version `1.1.0`
-- Public API: `derive_capacities_from_vectors(cfads, dscr_vector, ops_vector, annual_rates, day_fractions, active_periods)`
+- Version `1.2.0`
+- `_backward_induction_complete()` — authoritative single implementation accepting all 11
+  formula parameters (cfads, dscr, ops_fraction, eligibility_fraction, tranche_enabled,
+  cumulative_cf83, annual_rates, wht_rate, day_fractions, refinancing_flag,
+  refinancing_capacity, active)
+- Public API: `derive_capacities_from_vectors(cfads, dscr_vector, ops_vector, annual_rates, day_fractions, active_periods, eligibility_fraction=None, tranche_enabled=None, cumulative_cf83=None, wht_rate=None, refinancing_flag=None, refinancing_capacity=None)`
+- Source vector hash: 13-field canonical payload (cfads, dscr, ops, row5_eligibility, b23_tranche, cf83_cumulative, rate, b54_wht, frac, row7_refinancing_flag, row82_refinancing_capacity, active_periods, maturity_period)
+- Runtime inventory factory-derived: `app.project_factories.create_default_oborovo()` → `proj.financing`
 - Idempotency guard: `_content_sha256` covers `independent_capacity_proof` + `neutral_terms_proof` + `runtime_inventory`
 - First run on a committed fixture prints "already up-to-date"; fixture SHA unchanged
 
@@ -148,16 +160,16 @@ Key sections in `phase2c_sizing_analysis`:
 | Key | Description |
 |-----|-------------|
 | `independent_capacity_proof` | G3A/G4, banding, P28 proof, residual, verdict |
-| `neutral_terms_proof` | CF!row83=0, B23=True, row5=1, row7=False, B54=0, row82=0 |
-| `runtime_inventory` | FROZEN_EXCEL_SCHEDULE_RUNTIME classification |
-| `causal_bridge` | G0 to G3 to G3A to G4 decomposition, bridge_closed=True |
+| `neutral_terms_proof` | CF!row83=0, B23=True (extracted), row5=1, row7=False (logical proof), B54=0 (extracted), row82=0 |
+| `runtime_inventory` | FROZEN_EXCEL_SCHEDULE_RUNTIME, factory-derived from `proj.financing` |
+| `causal_bridge` | G0 to G1 to G2 to G3 to G3A to G4 decomposition, bridge_closed=True |
 | `current_phase2c_solver_result` | G0 (GENERIC_PHASE2C_SCALAR_DIAGNOSTIC, not production runtime) |
 
 ---
 
 ## 7. Test Coverage
 
-**149 C3B2 tests** across 20 classes:
+**169 C3B2 tests** across 22 classes:
 
 - `TestExtractorVersion` — version 2.0.0
 - `TestWorkstreamA_CFADS` — DS!row20, DS!row22 raw values
@@ -168,18 +180,21 @@ Key sections in `phase2c_sizing_analysis`:
 - `TestPhase2CSizingAnalysis` — top-level structure and verdict
 - `TestCurrentPhase2CSolverResult` — G0 diagnostic label
 - `TestScalarExcelMatchedSolverResult` — G3 convergence
-- `TestIndependentVectorDSRCapacity` — fixture placeholder check
+- `TestIndependentVectorDSRCapacity` — G3A/G4 fixture values
 - `TestCausalBridge` — bridge closure, G3A/G4 deltas
 - `TestConvergenceInvariance` — deterministic convergence
 - `TestSizingConstraintIdentity` — algebraic identities
 - `TestProductionFileIntegrity` — source-guard (solve_senior_debt, not build_schedule)
 - `TestExtractorSynthetic` — import/callable checks
-- `TestCompleteFormulaTerms` — neutrality of all 6 formula terms
+- `TestCompleteFormulaTerms` — neutrality of all 6 formula terms (including extracted B23, B54, logical row7 proof)
 - `TestRuntimeInventory` — FROZEN_EXCEL_SCHEDULE_RUNTIME classification
 - `TestIndependentRecomputation` — G3A/G4/bridge/residual computed independently
-- `TestSourceVectorProvenance` — source-vector SHA reconstruction without production helper
+- `TestSourceVectorProvenance` — 13-field source-vector SHA reconstruction
 - `TestExtractorExecutionPath` — `_assemble_bridge_from_vectors` with synthetic inputs
 - `TestDirectionalSensitivity` — higher DSCR/rate/lower ops reduces capacity
+- `TestRuntimeInventoryFactory` — factory function recorded, fields match live factory
+- `TestCausalBridgeIntermediateIdentities` — G0→G1→G2→G3→G3A→G4 step identities
+- `TestCompleteHelperDirectional` — 9 directional tests for complete formula helper
 
 ---
 
@@ -187,10 +202,12 @@ Key sections in `phase2c_sizing_analysis`:
 
 `C3B2_DEBT_INTEREST_SOURCE_TRUTH_PROVED` is used because:
 
-1. All 6 supplementary formula terms proved neutral (max residual = 0.000 kEUR)
+1. All 6 supplementary formula terms proved neutral (max residual = 0.000 kEUR), with B23 and B54 extracted from actual workbook cells and row7=False proved by logical implication
 2. Independent backward induction (G4) matches Excel debt exactly (residual = 0.000 kEUR < 0.001 tolerance)
-3. Causal bridge closed (closure error < 1.0 kEUR)
+3. Causal bridge closed (closure error < 1.0 kEUR); G0=46,053.402 kEUR correctly labelled GENERIC_PHASE2C_SCALAR_DIAGNOSTIC
 4. No production code modified; `financial_engine/`, `app/`, `finco_core/` diffs are empty
+5. Runtime inventory factory-derived (not hardcoded)
+6. Source vector hash covers all 13 formula inputs
 
 ---
 

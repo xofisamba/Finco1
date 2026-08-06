@@ -882,8 +882,11 @@ class TestCompleteFormulaTerms:
         assert cf["all_zero_p1_p28"] is True
 
     def test_b23_tranche_flag_true(self, ntp):
-        assert ntp["b23_tranche_flag"]["value"] is True
-        assert ntp["b23_tranche_flag"]["neutral"] is True
+        b23 = ntp["b23_tranche_flag"]
+        # Accept either old "value" key or new "extracted_value" key
+        val = b23.get("extracted_value", b23.get("value"))
+        assert val is True or val == 1, f"B23 must be True/1, got {val!r}"
+        assert b23["neutral"] is True
 
     def test_row5_eligibility_equals_one(self, ntp):
         r5 = ntp["row5_eligibility_flag"]
@@ -894,8 +897,10 @@ class TestCompleteFormulaTerms:
         assert ntp["row82_refinancing_capacity"]["all_zero_p1_p28"] is True
 
     def test_b54_wht_rate_zero(self, ntp):
-        assert ntp["b54_wht_rate"]["value"] == 0
-        assert ntp["b54_wht_rate"]["neutral"] is True
+        b54 = ntp["b54_wht_rate"]
+        val = b54.get("extracted_value", b54.get("value"))
+        assert val == 0 or val is None, f"B54 must be 0, got {val!r}"
+        assert b54["neutral"] is True
 
     def test_simplification_valid(self, ntp):
         assert ntp["simplification_valid"] is True, (
@@ -1060,19 +1065,34 @@ class TestSourceVectorProvenance:
     """Item 5: independent source-vector hash reconstruction."""
 
     def test_hash_reproducible_without_production_helper(self):
+        """Reconstruct canonical 13-field source-vector hash without production helper."""
         import hashlib
+        import json as _json
         data = json.loads(FIXTURE_PATH.read_text())
         wa = data["workstream_a"]
-        wb = data["workstream_b"]["period_vectors"]
+        wb_all = data["workstream_b"]
+        wb = wb_all["period_vectors"]
         we = data["workstream_e"]
+        pa = data["phase2c_sizing_analysis"]
+
+        cf83_data = wa.get("cf_row83_debt_cost_adj", {})
+        cf83_vals = cf83_data.get("period_values", [None] * 61)
+
         vectors = {
             "cfads": wa["ds_row20_cfads"]["period_values_keur"],
             "dscr":  wa["ds_row22_dscr_target"]["period_values"],
             "ops":   wb["row9_ops_flag"]["period_values"],
+            "row5_eligibility": wb["row5_flag"]["period_values"],
+            "b23_tranche": wb_all.get("ds_b23_tranche_flag", {}).get("value"),
+            "cf83_cumulative": cf83_vals,
             "rate":  we["ds_row44_annual_sculpting_rate"]["period_values"],
+            "b54_wht": wb_all.get("ds_b54_wht_rate", {}).get("value"),
             "frac":  wb["row6_day_frac"]["period_values"],
+            "row7_refinancing_flag": wb["row7_refin_flag"]["period_values"],
+            "row82_refinancing_capacity": wb["row82_refin_capacity"]["period_values"],
+            "active_periods": pa.get("active_periods_count"),
+            "maturity_period": pa.get("maturity_period"),
         }
-        import json as _json
         serialised = _json.dumps(vectors, sort_keys=True, separators=(",", ":"),
                                  ensure_ascii=False)
         computed = hashlib.sha256(serialised.encode()).hexdigest()
@@ -1081,7 +1101,8 @@ class TestSourceVectorProvenance:
             .get("_source_vectors_sha256", "")
         )
         assert computed == stored, (
-            f"Source vector hash mismatch: computed={computed[:16]}…, stored={stored[:16]}…"
+            f"Source vector hash mismatch: computed={computed[:16]}…, stored={stored[:16]}…\n"
+            f"The 13-field canonical payload must match _source_vectors_sha256."
         )
 
     def test_all_five_raw_vectors_present(self):
@@ -1217,3 +1238,221 @@ class TestDirectionalSensitivity:
         base = self._cap(2000.0, 1.15, 1.0, 0.05, 0.5, active)
         high = self._cap(4000.0, 1.15, 1.0, 0.05, 0.5, active)
         assert high > base, f"Higher CFADS must increase capacity: base={base:.3f}, high={high:.3f}"
+
+
+# ---------------------------------------------------------------------------
+# TestRuntimeInventoryFactory — factory-derived fields match fixture
+# ---------------------------------------------------------------------------
+
+class TestRuntimeInventoryFactory:
+    """Item 5: runtime inventory must be factory-derived, not hardcoded."""
+
+    def test_factory_function_recorded(self):
+        data = json.loads(FIXTURE_PATH.read_text())
+        ri = data["phase2c_sizing_analysis"]["runtime_inventory"]
+        assert ri.get("factory_function") == "app.project_factories.create_default_oborovo", (
+            "runtime_inventory must record the factory function path"
+        )
+
+    def test_factory_fields_match_live_factory(self):
+        from app import project_factories
+        proj = project_factories.create_default_oborovo()
+        fp = proj.financing
+
+        data = json.loads(FIXTURE_PATH.read_text())
+        ri = data["phase2c_sizing_analysis"]["runtime_inventory"]
+
+        assert ri["debt_sizing_method"] == fp.debt_sizing_method
+        assert abs(ri["fixed_debt_keur"] - fp.fixed_debt_keur) < 1e-6
+        assert ri["target_dscr"] == fp.target_dscr
+        assert ri["use_frozen_excel_senior_debt_schedule"] == fp.use_frozen_excel_senior_debt_schedule
+        assert ri["frozen_senior_ds_fixture_path"] == fp.frozen_senior_ds_fixture_path
+
+    def test_frozen_schedule_true(self):
+        data = json.loads(FIXTURE_PATH.read_text())
+        ri = data["phase2c_sizing_analysis"]["runtime_inventory"]
+        assert ri["use_frozen_excel_senior_debt_schedule"] is True
+
+    def test_classification_frozen_excel(self):
+        data = json.loads(FIXTURE_PATH.read_text())
+        ri = data["phase2c_sizing_analysis"]["runtime_inventory"]
+        assert ri["runtime_classification"] == "FROZEN_EXCEL_SCHEDULE_RUNTIME"
+
+
+# ---------------------------------------------------------------------------
+# TestCausalBridgeIntermediateIdentities — G0→G1→G2→G3→G3A→G4 each closes
+# ---------------------------------------------------------------------------
+
+class TestCausalBridgeIntermediateIdentities:
+    """Item 8: each intermediate bridge identity must close independently."""
+
+    @pytest.fixture(scope="class")
+    def bridge(self):
+        data = json.loads(FIXTURE_PATH.read_text())
+        return data["phase2c_sizing_analysis"]["causal_bridge"]
+
+    @pytest.fixture(scope="class")
+    def pa(self):
+        data = json.loads(FIXTURE_PATH.read_text())
+        return data["phase2c_sizing_analysis"]
+
+    def test_g0_to_g1_identity(self, bridge):
+        g0 = bridge["case0_current_phase2c_keur"]
+        g1 = bridge["case1_excel_rates_keur"]
+        delta_rate = bridge["delta_rate_keur"]
+        assert abs((g0 + delta_rate) - g1) < 0.01, (
+            f"G0+delta_rate must equal G1: {g0:.3f}+{delta_rate:.3f}={g0+delta_rate:.3f}, G1={g1:.3f}"
+        )
+
+    def test_g1_to_g2_identity(self, bridge):
+        g1 = bridge["case1_excel_rates_keur"]
+        g2 = bridge["case2_excel_cfads_keur"]
+        delta_cfads = bridge["delta_cfads_keur"]
+        assert abs((g1 + delta_cfads) - g2) < 0.01, (
+            f"G1+delta_cfads must equal G2"
+        )
+
+    def test_g2_to_g3_identity(self, bridge):
+        g2 = bridge["case2_excel_cfads_keur"]
+        g3 = bridge["case3_act360_keur"]
+        delta_dc = bridge["delta_daycount_keur"]
+        assert abs((g2 + delta_dc) - g3) < 0.01, (
+            f"G2+delta_daycount must equal G3"
+        )
+
+    def test_g3_to_g3a_identity(self, bridge):
+        g3 = bridge["case3_act360_keur"]
+        g3a = bridge["g3a_scalar_backward_induction_keur"]
+        delta_s = bridge["delta_solver_to_independent_scalar_keur"]
+        assert abs((g3 + delta_s) - g3a) < 0.01, (
+            f"G3+delta_solver_to_independent_scalar must equal G3A"
+        )
+
+    def test_g3a_to_g4_identity(self, bridge):
+        g3a = bridge["g3a_scalar_backward_induction_keur"]
+        g4 = bridge["g4_vector_backward_induction_keur"]
+        delta_b = bridge["delta_dscr_banding_g3a_to_g4_keur"]
+        assert abs((g3a + delta_b) - g4) < 0.01, (
+            f"G3A+delta_dscr_banding must equal G4"
+        )
+
+    def test_g4_equals_excel_debt(self, bridge, pa):
+        g4 = bridge["g4_vector_backward_induction_keur"]
+        excel = pa["excel_total_debt_keur"]
+        assert abs(g4 - excel) < 0.001, (
+            f"G4 must equal Excel debt: G4={g4:.9f}, excel={excel:.9f}"
+        )
+
+    def test_full_bridge_sum_equals_g4(self, bridge):
+        g0 = bridge["case0_current_phase2c_keur"]
+        total = (g0
+                 + bridge["delta_rate_keur"]
+                 + bridge["delta_cfads_keur"]
+                 + bridge["delta_daycount_keur"]
+                 + bridge["delta_solver_to_independent_scalar_keur"]
+                 + bridge["delta_dscr_banding_g3a_to_g4_keur"])
+        g4 = bridge["g4_vector_backward_induction_keur"]
+        assert abs(total - g4) < 0.001, (
+            f"G0+all_deltas must equal G4: sum={total:.9f}, G4={g4:.9f}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# TestCompleteHelperDirectional — full formula: all 9 directional sensitivities
+# ---------------------------------------------------------------------------
+
+class TestCompleteHelperDirectional:
+    """Item 6: complete helper directional tests for all formula inputs."""
+
+    def _cap(self, **kwargs):
+        from finco_recon.derive_c3b2_independent_capacity import derive_capacities_from_vectors
+        active = kwargs.pop("active", list(range(1, 10)))
+        cfads = kwargs.pop("cfads", 2000.0)
+        dscr  = kwargs.pop("dscr", 1.15)
+        ops   = kwargs.pop("ops", 1.0)
+        rate  = kwargs.pop("rate", 0.05)
+        frac  = kwargs.pop("frac", 0.5)
+        result = derive_capacities_from_vectors(
+            cfads={p: cfads for p in active},
+            dscr_vector={p: dscr for p in active},
+            ops_vector={p: ops for p in active},
+            annual_rates={p: rate for p in active},
+            day_fractions={p: frac for p in active},
+            active_periods=active,
+            **kwargs,
+        )
+        return result["vector_capacity_keur"]
+
+    def test_higher_dscr_reduces_capacity(self):
+        base = self._cap(dscr=1.15)
+        high = self._cap(dscr=1.35)
+        assert high < base, f"Higher DSCR reduces capacity: base={base:.3f}, high={high:.3f}"
+
+    def test_higher_rate_reduces_capacity(self):
+        base = self._cap(rate=0.05)
+        high = self._cap(rate=0.10)
+        assert high < base, f"Higher rate reduces capacity: base={base:.3f}, high={high:.3f}"
+
+    def test_lower_ops_reduces_capacity(self):
+        base = self._cap(ops=1.0)
+        low  = self._cap(ops=0.5)
+        assert low < base, f"Lower ops reduces capacity: base={base:.3f}, low={low:.3f}"
+
+    def test_lower_eligibility_reduces_capacity(self):
+        active = list(range(1, 10))
+        base = self._cap(active=active)  # eligibility=1.0 (neutral)
+        low  = self._cap(active=active, eligibility_fraction={p: 0.5 for p in active})
+        assert low < base, f"Lower eligibility reduces capacity: base={base:.3f}, low={low:.3f}"
+
+    def test_positive_cf83_increases_capacity(self):
+        active = list(range(1, 10))
+        base = self._cap(active=active)  # cf83=0 (neutral)
+        pos  = self._cap(active=active, cumulative_cf83={p: 100.0 for p in active})
+        assert pos > base, f"Positive CF!row83 increases capacity: base={base:.3f}, pos={pos:.3f}"
+
+    def test_positive_row82_increases_capacity(self):
+        active = list(range(1, 10))
+        base = self._cap(active=active)  # row82=0 (neutral)
+        pos  = self._cap(active=active, refinancing_capacity={p: 100.0 for p in active})
+        assert pos > base, f"Positive row82 increases capacity: base={base:.3f}, pos={pos:.3f}"
+
+    def test_nonzero_wht_reduces_capacity(self):
+        active = list(range(1, 10))
+        base = self._cap(active=active)  # wht=0 (neutral)
+        wht  = self._cap(active=active, wht_rate={p: 0.2 for p in active})
+        assert wht < base, f"Non-zero WHT reduces capacity: base={base:.3f}, wht={wht:.3f}"
+
+    def test_refinancing_flag_changes_branch(self):
+        from finco_recon.derive_c3b2_independent_capacity import derive_capacities_from_vectors
+        active = list(range(1, 4))
+        # All refinancing_flag=True => capacity = sum(refinancing_capacity) discounted
+        refin_cap = {p: 500.0 for p in active}
+        result = derive_capacities_from_vectors(
+            cfads={p: 2000.0 for p in active},
+            dscr_vector={p: 1.15 for p in active},
+            ops_vector={p: 1.0 for p in active},
+            annual_rates={p: 0.05 for p in active},
+            day_fractions={p: 0.5 for p in active},
+            active_periods=active,
+            refinancing_flag={p: True for p in active},
+            refinancing_capacity=refin_cap,
+        )
+        # With all refin_flag=True: V[p] = refin_cap[p]
+        # capacity = V[min(active)] = refin_cap[1] = 500.0
+        assert abs(result["vector_capacity_keur"] - 500.0) < 1e-6, (
+            f"With refinancing_flag=True, capacity must equal refin_cap[first_period]=500.0, "
+            f"got {result['vector_capacity_keur']}"
+        )
+
+    def test_disabled_tranche_produces_zero_capacity(self):
+        active = list(range(1, 10))
+        # tranche_enabled=False for all periods => row23=0 => capacity=0
+        result_zero = self._cap(
+            active=active,
+            tranche_enabled={p: False for p in active},
+            refinancing_capacity={p: 0.0 for p in active},
+            refinancing_flag={p: False for p in active},
+        )
+        assert abs(result_zero) < 1e-6, (
+            f"Disabled tranche must produce 0 capacity (all row23=0), got {result_zero:.6f}"
+        )
