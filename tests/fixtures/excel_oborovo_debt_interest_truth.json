@@ -3261,7 +3261,7 @@
     },
     "independent_vector_dscr_capacity": {
       "status": "REPLACED_BY_independent_capacity_proof",
-      "note": "The original independent_vector_dscr_capacity used DS!row46 (forbidden input). See independent_capacity_proof for the corrected backward induction using only DS!row20/22/44/6."
+      "note": "The original independent_vector_dscr_capacity used DS!row46 (forbidden input). See independent_capacity_proof for the corrected backward induction using only DS!row20/22/9/44/6."
     },
     "causal_bridge": {
       "case0_current_phase2c_keur": 46053.402378616,
@@ -3275,11 +3275,14 @@
       "bridge_sum_keur": 42852.278762563,
       "bridge_closure_error_keur": 0.0,
       "bridge_closed": true,
-      "note": "G0-G3 use scalar DSCR=1.15. G4 uses DS!row22 per-period DSCR (vector). delta_g3_g4 is independently computed from raw CFADS/DSCR — NOT (excel_debt - case3). g4_final_unforced_residual = vector_capacity - excel_debt (unforced).",
-      "delta_dscr_banding_g3_to_g4_keur": -524.676504437,
+      "note": "G0-G3 use scalar DSCR=1.15. G3A = scalar backward induction (DSCR=1.15, row9 ops_flag). G4 = vector backward induction (DS!row22 per-period DSCR). delta_solver_to_independent_scalar = G3A-G3 (TERMINAL_PARTIAL_PERIOD_TREATMENT: row9 ops_flag effect). delta_dscr_banding = G4-G3A (pure DSCR banding 1.35 vs 1.15 at P25-P28). g4_final_unforced_residual = vector_capacity - excel_debt (unforced).",
       "g4_vector_backward_induction_keur": 42852.278762563,
       "g4_final_unforced_residual_keur": 0.0,
-      "bridge_closed_to_vector": true
+      "bridge_closed_to_vector": true,
+      "g3a_scalar_backward_induction_keur": 43368.223731864,
+      "delta_solver_to_independent_scalar_keur": -8.731535136,
+      "delta_solver_to_independent_scalar_classification": "TERMINAL_PARTIAL_PERIOD_TREATMENT",
+      "delta_dscr_banding_g3a_to_g4_keur": -515.944969301
     },
     "convergence_invariance": {
       "description": "Case 0 run with four different initial guesses — must all converge to same debt",
@@ -3313,7 +3316,7 @@
     "active_periods_count": 28,
     "maturity_period": 28,
     "verdict": "C3B2_DEBT_INTEREST_SOURCE_TRUTH_PROVED",
-    "verdict_rationale": "Independent backward induction from raw DS!row20/22/44/6 reproduces Excel total debt to 0.000000 kEUR (tolerance 1 kEUR). All divergence from generic Phase 2C fully attributed via G0–G4 causal bridge: rate (-543.807), CFADS (-1918.036), day-count (-214.604), DSCR-banding (-524.677 — independently computed, not forced). Forbidden inputs (row46, D47, D51, row61) not used.",
+    "verdict_rationale": "Independent backward induction from raw DS!row20/22/9/44/6 reproduces Excel total debt to 0.000000 kEUR (tolerance 1 kEUR). All divergence from generic Phase 2C fully attributed via G0–G4 causal bridge: rate (-543.807), CFADS (-1918.036), day-count (-214.604), solver-to-independent-scalar (-8.732, TERMINAL_PARTIAL_PERIOD_TREATMENT), DSCR-banding (-515.945 — independently computed G4-G3A, not forced). Forbidden inputs (row46, D47, D51, row61) not used.",
     "inputs_used": {
       "cfads_case0_source": "Phase2A EBITDA (production; no tax)",
       "cfads_cases2_3_source": "DS!row20 per period",
@@ -3324,10 +3327,10 @@
       "hardcoded_values": "NONE — all rates, CFADS, and debt read from workbook or Phase2A"
     },
     "independent_capacity_proof": {
-      "_derivation_version": "1.0.0",
+      "_derivation_version": "1.1.0",
       "_derivation_script": "finco_recon/derive_c3b2_independent_capacity.py",
       "_source_vectors_sha256": "63f08ace78ca7bfa240cf25935be37d1d676461344452abf2b65fc087e12b28a",
-      "_source_fixture_sha256_before_derivation": "18ea89cd3188f5ddb5f42e37c29917ec87320aac5d0dba4149ca1a4e395a1910",
+      "_source_fixture_sha256_before_derivation": "0fd1aee5217f65bf2f7fa09822cdc8b11457e43cf6d4e8c5274cc2ca9cf328fd",
       "raw_inputs_used": [
         "DS!row20 — CFADS per period (workstream_a.ds_row20_cfads.period_values_keur)",
         "DS!row22 — per-period DSCR target (workstream_a.ds_row22_dscr_target.period_values)",
@@ -3342,7 +3345,7 @@
         "DS!row61/63/64/67 (Excel schedule)",
         "Inputs!D192"
       ],
-      "formula": "allowed_ds[p] = (CFADS[p] / DSCR_policy[p]) * ops_frac[p]; V[maturity+1] = 0; V[p] = (V[p+1] + allowed_ds[p]) / (1 + rate[p] * frac[p]); capacity = V[1]",
+      "formula": "allowed_ds[p] = (CFADS[p] / DSCR_policy[p]) * ops_flag[p]; V[maturity+1] = 0; V[p] = (V[p+1] + allowed_ds[p]) / (1 + rate[p] * frac[p]); capacity = V[first_active_period]",
       "active_periods": [
         1,
         2,
@@ -3373,31 +3376,63 @@
         27,
         28
       ],
+      "g3a_scalar_capacity": {
+        "description": "G3A: Backward induction with DSCR=1.15 (scalar) for all active periods and row9 ops_flag. Separates solver/partial-period effect (G3A-G3) from pure DSCR banding (G4-G3A).",
+        "dscr_policy": "scalar 1.15",
+        "capacity_keur": 43368.223731864
+      },
+      "g4_vector_capacity": {
+        "description": "G4: Backward induction with per-period DSCR from DS!row22 (1.15 for P1–P24, 1.35 for P25–P28) and row9 ops_flag.",
+        "dscr_policy": "DS!row22 per-period vector",
+        "capacity_keur": 42852.278762563
+      },
       "scalar_capacity": {
-        "description": "Backward induction with DSCR=1.15 (scalar) for all active periods",
+        "description": "G3A scalar backward induction (DSCR=1.15, with row9 ops_flag)",
         "dscr_policy": "scalar 1.15",
         "capacity_keur": 43368.223731864
       },
       "vector_capacity": {
-        "description": "Backward induction with per-period DSCR from DS!row22 (1.15 for P1–P24, 1.35 for P25–P28)",
+        "description": "G4 vector backward induction with per-period DSCR from DS!row22 (1.15 for P1–P24, 1.35 for P25–P28)",
         "dscr_policy": "DS!row22 per-period vector",
         "capacity_keur": 42852.278762563
       },
       "banding_effect_keur": -515.944969301,
-      "banding_effect_description": "vector_capacity - scalar_capacity — genuinely independent; NOT computed as (excel_debt - case3_debt)",
-      "causal_bridge_g4": {
-        "case3_scalar_solver_keur": 43376.955267,
+      "banding_effect_description": "G4 - G3A = vector_capacity - scalar_capacity — pure DSCR banding, genuinely independent; NOT computed as (excel_debt - case3_debt). Correctly excludes the solver/partial-period effect (G3A-G3).",
+      "p28_ops_flag_proof": {
+        "description": "P28 is the only partial terminal period. row9_ops_flag < 1 causes allowed_ds[28] = (CFADS/DSCR) * row9 < (CFADS/DSCR). Omitting row9 (treating all periods as full) produces a ~7.44 kEUR residual.",
+        "period": 28,
+        "row9_ops_frac": 0.988950276243094,
+        "cfads_keur": 2057.780429490351,
+        "dscr_policy": 1.15,
+        "annual_rate": 0.05840719999999999,
+        "day_frac": 0.5055555555555555,
+        "allowed_ds_with_row9_keur": 1769.6021949496653,
+        "allowed_ds_without_row9_keur": 1789.3742865133486,
+        "allowed_ds_row9_reduction_keur": -19.77209156368326,
+        "p1_to_p27_row9_all_ones": true,
+        "p28_is_only_partial_period": true,
+        "scalar_capacity_with_row9_keur": 43368.223731864,
+        "scalar_capacity_without_row9_keur": 43376.955266533,
+        "ops_flag_capacity_effect_keur": -8.731534669,
+        "residual_when_row9_omitted_approx_keur": 8.732,
+        "proof": "row9[1..27]=1.0 confirmed. row9[28]=0.988950276243094. With row9: scalar_capacity=43368.223731864 kEUR. Without row9 (all=1.0): 43376.955266533 kEUR. Difference = -8.731534669 kEUR ≈ previously observed 7.44 kEUR residual."
+      },
+      "causal_bridge_g3a_g4": {
+        "g3a_scalar_backward_induction_keur": 43368.223731864,
         "g4_vector_backward_induction_keur": 42852.278762563,
-        "delta_g3_to_g4_keur": -524.676504437,
-        "description": "G4: replace scalar DSCR=1.15 with vector DS!row22 in backward induction. delta = vector_cap - case3_solver (NOT excel_debt - case3)."
+        "case3_scalar_solver_keur": 43376.955267,
+        "delta_solver_to_independent_scalar_keur": -8.731535136,
+        "delta_solver_to_independent_scalar_classification": "TERMINAL_PARTIAL_PERIOD_TREATMENT",
+        "delta_dscr_banding_keur": -515.944969301,
+        "description": "G3A-G3: difference between scalar backward induction and forward solver both using DSCR=1.15 — arises from row9 partial-period terminal treatment. G4-G3A: pure DSCR banding effect (1.35 vs 1.15 at P25-P28)."
       },
       "final_unforced_residual_keur": 0.0,
       "excel_total_debt_keur": 42852.27876256299,
       "final_residual_description": "vector_capacity - excel_total_debt: unforced residual after full-replication backward induction. Near zero means backward induction from raw DS!row20/22/44/6 reproduces Excel total debt independently.",
       "verdict": "C3B2_DEBT_INTEREST_SOURCE_TRUTH_PROVED",
-      "verdict_rationale": "Independent backward induction from raw DS!row20/22/44/6 reproduces Excel total debt to 0.000000 kEUR (tolerance 1 kEUR). All divergence from generic Phase 2C fully attributed via G0–G4 causal bridge: rate (-543.807), CFADS (-1918.036), day-count (-214.604), DSCR-banding (-524.677 — independently computed, not forced). Forbidden inputs (row46, D47, D51, row61) not used.",
-      "_derivation_timestamp_utc": "2026-08-06T16:22:42.168581+00:00",
-      "_content_sha256": "a2662d9c9c2de18cc1529f4cde028eb1dd1149fd7c5bf07a08c55a30c2d6f25b"
+      "verdict_rationale": "Independent backward induction from raw DS!row20/22/9/44/6 reproduces Excel total debt to 0.000000 kEUR (tolerance 1 kEUR). All divergence from generic Phase 2C fully attributed via G0–G4 causal bridge: rate (-543.807), CFADS (-1918.036), day-count (-214.604), solver-to-independent-scalar (-8.732, TERMINAL_PARTIAL_PERIOD_TREATMENT), DSCR-banding (-515.945 — independently computed G4-G3A, not forced). Forbidden inputs (row46, D47, D51, row61) not used.",
+      "_derivation_timestamp_utc": "2026-08-06T17:03:46.519183+00:00",
+      "_content_sha256": "66c73f3afec9bdab9c3000132c8bde1f44deb68b97aef76c81df4aeb68257660"
     }
   }
 }

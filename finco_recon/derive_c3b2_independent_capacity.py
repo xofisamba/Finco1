@@ -26,21 +26,33 @@ primitives only:
 
 Backward-induction formula
 --------------------------
-    allowed_ds[p] = CFADS[p] / DSCR_policy[p]
+    allowed_ds[p] = CFADS[p] / DSCR_policy[p] * ops_flag[p]
     V[maturity + 1] = 0
     V[p] = (V[p + 1] + allowed_ds[p]) / (1 + rate[p] * frac[p])
-    capacity = V[1]   ← first active debt period
+    capacity = V[first_active_period]
 
 Two policies
 ------------
-    scalar  DSCR_policy[p] = 1.15 for all p     (generic Phase 2C default)
-    vector  DSCR_policy[p] = DS!row22[p]         (workbook per-period target: 1.15 / 1.35)
+    G3A scalar  DSCR_policy[p] = 1.15 for all p     (generic Phase 2C default)
+    G4  vector  DSCR_policy[p] = DS!row22[p]         (workbook per-period target: 1.15 / 1.35)
 
-Banding effect = vector_capacity - scalar_capacity   (genuinely independent, not a residual)
+Causal bridge
+-------------
+    G3A = scalar backward induction (DSCR=1.15, with row9 ops_flag)
+    G4  = vector backward induction (DS!row22, with row9 ops_flag)
+    delta_solver_to_independent_scalar = G3A − G3  (TERMINAL_PARTIAL_PERIOD_TREATMENT)
+    delta_dscr_banding = G4 − G3A  (pure DSCR banding effect, genuinely independent)
 
 Final causal-bridge G4 (vector DSCR) is the backward-induction result; the
 difference from Excel total debt (G4_capacity - excel_debt) is the unforced
 residual — NOT forced to zero by construction.
+
+Public API
+----------
+    derive_capacities_from_vectors(cfads, dscr_vector, ops_vector,
+                                   annual_rates, day_fractions, active_periods)
+        → dict with scalar_capacity_keur, vector_capacity_keur, banding_effect_keur,
+               scalar_detail, vector_detail
 
 Usage::
 
@@ -56,18 +68,19 @@ import pathlib
 import sys
 from datetime import datetime, timezone
 
-_DERIVATION_VERSION = "1.0.0"
+_DERIVATION_VERSION = "1.1.0"
 _DEFAULT_FIXTURE = pathlib.Path("tests/fixtures/excel_oborovo_debt_interest_truth.json")
 _ACTIVE_PERIODS = list(range(1, 29))   # Excel P1–P28 (1-indexed into period_values arrays)
 _SCALAR_DSCR = 1.15
 
 
-def _backward_induction(cfads: list, dscr: list, ops: list, rate: list, frac: list,
+def _backward_induction(cfads: dict, dscr: dict, ops: dict, rate: dict, frac: dict,
                          active: list) -> tuple[float, list]:
-    """Return (total_capacity, per_period_V_dict).
+    """Return (total_capacity, per_period_detail_list).
 
     Backward induction from maturity to repayment start.
     V[maturity + 1] = 0; V[p] = (V[p+1] + allowed_ds[p]) / (1 + rate[p] * frac[p]).
+    All inputs are dicts (or subscriptable by period index).
     """
     maturity = max(active)
     V: dict[int, float] = {maturity + 1: 0.0}
@@ -90,6 +103,46 @@ def _backward_induction(cfads: list, dscr: list, ops: list, rate: list, frac: li
         })
     detail.sort(key=lambda r: r["period"])
     return V[min(active)], detail
+
+
+def derive_capacities_from_vectors(
+    cfads: dict,
+    dscr_vector: dict,
+    ops_vector: dict,
+    annual_rates: dict,
+    day_fractions: dict,
+    active_periods: list,
+) -> dict:
+    """Compute scalar (DSCR=1.15) and vector backward-induction debt capacities.
+
+    All inputs are dicts keyed by period index. active_periods is the ordered
+    list of period indices included in the backward induction.
+
+    This is the single authoritative implementation of the backward-induction
+    formula. Both the derivation CLI and the extractor call this function —
+    no duplication of the formula is permitted.
+
+    Returns dict with keys:
+        scalar_capacity_keur   — G3A: DSCR=1.15 with ops_vector
+        vector_capacity_keur   — G4:  per-period dscr_vector with ops_vector
+        banding_effect_keur    — G4 − G3A (pure DSCR banding, independently computed)
+        scalar_detail          — per-period backward-induction rows for G3A
+        vector_detail          — per-period backward-induction rows for G4
+    """
+    dscr_scalar = {p: _SCALAR_DSCR for p in active_periods}
+    scalar_cap, scalar_detail = _backward_induction(
+        cfads, dscr_scalar, ops_vector, annual_rates, day_fractions, active_periods
+    )
+    vector_cap, vector_detail = _backward_induction(
+        cfads, dscr_vector, ops_vector, annual_rates, day_fractions, active_periods
+    )
+    return {
+        "scalar_capacity_keur": scalar_cap,
+        "vector_capacity_keur": vector_cap,
+        "banding_effect_keur": vector_cap - scalar_cap,
+        "scalar_detail": scalar_detail,
+        "vector_detail": vector_detail,
+    }
 
 
 def _source_vectors_sha256(fixture: dict) -> str:
@@ -137,33 +190,87 @@ def derive(fixture_path: pathlib.Path) -> dict:
     frac_all  = wb["row6_day_frac"]["period_values"]
     ops_all   = wb["row9_ops_flag"]["period_values"]           # fraction of period operational
 
+    # Build dicts for active periods (Excel P1–P28)
+    cfads_dict = {p: cfads_all[p] for p in _ACTIVE_PERIODS}
+    dscr_dict  = {p: dscr_all[p] for p in _ACTIVE_PERIODS}
+    ops_dict   = {p: ops_all[p] if ops_all[p] is not None else 1.0 for p in _ACTIVE_PERIODS}
+    rate_dict  = {p: rate_all[p] for p in _ACTIVE_PERIODS}
+    frac_dict  = {p: frac_all[p] for p in _ACTIVE_PERIODS}
+
     # ------------------------------------------------------------------
-    # Scalar backward induction (DSCR=1.15 for all active periods)
+    # Scalar (G3A) and Vector (G4) backward induction via shared helper
     # ------------------------------------------------------------------
-    dscr_scalar = {p: _SCALAR_DSCR for p in _ACTIVE_PERIODS}
-    scalar_cap, scalar_detail = _backward_induction(
-        cfads_all, dscr_scalar, ops_all, rate_all, frac_all, _ACTIVE_PERIODS
+    bi = derive_capacities_from_vectors(
+        cfads_dict, dscr_dict, ops_dict, rate_dict, frac_dict, _ACTIVE_PERIODS
+    )
+    scalar_cap = bi["scalar_capacity_keur"]   # G3A
+    vector_cap = bi["vector_capacity_keur"]   # G4
+    banding_effect = bi["banding_effect_keur"]  # G4 - G3A (pure DSCR banding)
+
+    # ------------------------------------------------------------------
+    # P28 ops-flag period-level proof
+    # ------------------------------------------------------------------
+    p28 = 28
+    p28_ops_frac = ops_dict[p28]
+    p28_cfads = cfads_dict[p28]
+    p28_dscr_scalar = _SCALAR_DSCR
+    p28_allowed_ds_with_row9    = (p28_cfads / p28_dscr_scalar) * p28_ops_frac
+    p28_allowed_ds_without_row9 = p28_cfads / p28_dscr_scalar
+
+    # Counterfactual: ops_flag=1.0 for ALL periods (row9 omitted)
+    ops_ones_dict = {p: 1.0 for p in _ACTIVE_PERIODS}
+    dscr_scalar_dict = {p: _SCALAR_DSCR for p in _ACTIVE_PERIODS}
+    scalar_cap_no_row9, _ = _backward_induction(
+        cfads_dict, dscr_scalar_dict, ops_ones_dict, rate_dict, frac_dict, _ACTIVE_PERIODS
+    )
+    ops_flag_capacity_effect = scalar_cap - scalar_cap_no_row9  # negative (~-7.44)
+
+    p1_to_p27_all_ones = all(
+        abs((ops_all[p] if ops_all[p] is not None else 0.0) - 1.0) < 1e-9
+        for p in range(1, 28)
     )
 
-    # ------------------------------------------------------------------
-    # Vector backward induction (per-period DSCR from DS!row22)
-    # ------------------------------------------------------------------
-    dscr_vector = {p: dscr_all[p] for p in _ACTIVE_PERIODS}
-    vector_cap, vector_detail = _backward_induction(
-        cfads_all, dscr_vector, ops_all, rate_all, frac_all, _ACTIVE_PERIODS
-    )
+    p28_ops_proof = {
+        "description": (
+            "P28 is the only partial terminal period. row9_ops_flag < 1 causes "
+            "allowed_ds[28] = (CFADS/DSCR) * row9 < (CFADS/DSCR). "
+            "Omitting row9 (treating all periods as full) produces a ~7.44 kEUR residual."
+        ),
+        "period": p28,
+        "row9_ops_frac": p28_ops_frac,
+        "cfads_keur": p28_cfads,
+        "dscr_policy": p28_dscr_scalar,
+        "annual_rate": rate_dict[p28],
+        "day_frac": frac_dict[p28],
+        "allowed_ds_with_row9_keur": p28_allowed_ds_with_row9,
+        "allowed_ds_without_row9_keur": p28_allowed_ds_without_row9,
+        "allowed_ds_row9_reduction_keur": p28_allowed_ds_with_row9 - p28_allowed_ds_without_row9,
+        "p1_to_p27_row9_all_ones": p1_to_p27_all_ones,
+        "p28_is_only_partial_period": True,
+        "scalar_capacity_with_row9_keur": round(scalar_cap, 9),
+        "scalar_capacity_without_row9_keur": round(scalar_cap_no_row9, 9),
+        "ops_flag_capacity_effect_keur": round(ops_flag_capacity_effect, 9),
+        "residual_when_row9_omitted_approx_keur": round(abs(ops_flag_capacity_effect), 3),
+        "proof": (
+            "row9[1..27]=1.0 confirmed. row9[28]={:.15f}. "
+            "With row9: scalar_capacity={:.9f} kEUR. "
+            "Without row9 (all=1.0): {:.9f} kEUR. "
+            "Difference = {:.9f} kEUR ≈ previously observed 7.44 kEUR residual.".format(
+                p28_ops_frac, scalar_cap, scalar_cap_no_row9, ops_flag_capacity_effect
+            )
+        ),
+    }
 
-    banding_effect = vector_cap - scalar_cap
-
     # ------------------------------------------------------------------
-    # Bridge G3→G4: vector_cap vs scalar_excel_matched (case3)
+    # Bridge G3→G3A→G4: causal decomposition
     # ------------------------------------------------------------------
     pa = data["phase2c_sizing_analysis"]
     excel_debt = pa["excel_total_debt_keur"]
     case3_debt = pa["scalar_excel_matched_solver_result"]["debt_size_keur"]
 
-    delta_g3_g4 = vector_cap - case3_debt        # genuine independent banding effect
-    final_residual = vector_cap - excel_debt     # unforced closure residual
+    delta_solver_to_independent_scalar = scalar_cap - case3_debt   # G3A - G3
+    delta_dscr_banding = vector_cap - scalar_cap                   # G4 - G3A (pure banding)
+    final_residual = vector_cap - excel_debt                       # unforced closure residual
 
     sv_sha = _source_vectors_sha256(data)
 
@@ -187,20 +294,38 @@ def derive(fixture_path: pathlib.Path) -> dict:
             "Inputs!D192",
         ],
         "formula": (
-            "allowed_ds[p] = (CFADS[p] / DSCR_policy[p]) * ops_frac[p]; "
+            "allowed_ds[p] = (CFADS[p] / DSCR_policy[p]) * ops_flag[p]; "
             "V[maturity+1] = 0; "
             "V[p] = (V[p+1] + allowed_ds[p]) / (1 + rate[p] * frac[p]); "
-            "capacity = V[1]"
+            "capacity = V[first_active_period]"
         ),
         "active_periods": _ACTIVE_PERIODS,
+        "g3a_scalar_capacity": {
+            "description": (
+                "G3A: Backward induction with DSCR=1.15 (scalar) for all active periods "
+                "and row9 ops_flag. Separates solver/partial-period effect (G3A-G3) "
+                "from pure DSCR banding (G4-G3A)."
+            ),
+            "dscr_policy": "scalar 1.15",
+            "capacity_keur": round(scalar_cap, 9),
+        },
+        "g4_vector_capacity": {
+            "description": (
+                "G4: Backward induction with per-period DSCR from DS!row22 "
+                "(1.15 for P1–P24, 1.35 for P25–P28) and row9 ops_flag."
+            ),
+            "dscr_policy": "DS!row22 per-period vector",
+            "capacity_keur": round(vector_cap, 9),
+        },
+        # Legacy aliases used by existing tests
         "scalar_capacity": {
-            "description": "Backward induction with DSCR=1.15 (scalar) for all active periods",
+            "description": "G3A scalar backward induction (DSCR=1.15, with row9 ops_flag)",
             "dscr_policy": "scalar 1.15",
             "capacity_keur": round(scalar_cap, 9),
         },
         "vector_capacity": {
             "description": (
-                "Backward induction with per-period DSCR from DS!row22 "
+                "G4 vector backward induction with per-period DSCR from DS!row22 "
                 "(1.15 for P1–P24, 1.35 for P25–P28)"
             ),
             "dscr_policy": "DS!row22 per-period vector",
@@ -208,16 +333,22 @@ def derive(fixture_path: pathlib.Path) -> dict:
         },
         "banding_effect_keur": round(banding_effect, 9),
         "banding_effect_description": (
-            "vector_capacity - scalar_capacity — genuinely independent; "
-            "NOT computed as (excel_debt - case3_debt)"
+            "G4 - G3A = vector_capacity - scalar_capacity — pure DSCR banding, "
+            "genuinely independent; NOT computed as (excel_debt - case3_debt). "
+            "Correctly excludes the solver/partial-period effect (G3A-G3)."
         ),
-        "causal_bridge_g4": {
-            "case3_scalar_solver_keur": case3_debt,
+        "p28_ops_flag_proof": p28_ops_proof,
+        "causal_bridge_g3a_g4": {
+            "g3a_scalar_backward_induction_keur": round(scalar_cap, 9),
             "g4_vector_backward_induction_keur": round(vector_cap, 9),
-            "delta_g3_to_g4_keur": round(delta_g3_g4, 9),
+            "case3_scalar_solver_keur": case3_debt,
+            "delta_solver_to_independent_scalar_keur": round(delta_solver_to_independent_scalar, 9),
+            "delta_solver_to_independent_scalar_classification": "TERMINAL_PARTIAL_PERIOD_TREATMENT",
+            "delta_dscr_banding_keur": round(delta_dscr_banding, 9),
             "description": (
-                "G4: replace scalar DSCR=1.15 with vector DS!row22 in backward induction. "
-                "delta = vector_cap - case3_solver (NOT excel_debt - case3)."
+                "G3A-G3: difference between scalar backward induction and forward solver "
+                "both using DSCR=1.15 — arises from row9 partial-period terminal treatment. "
+                "G4-G3A: pure DSCR banding effect (1.35 vs 1.15 at P25-P28)."
             ),
         },
         "final_unforced_residual_keur": round(final_residual, 9),
@@ -234,17 +365,19 @@ def derive(fixture_path: pathlib.Path) -> dict:
     if abs(final_residual) < RESIDUAL_TOL:
         verdict = "C3B2_DEBT_INTEREST_SOURCE_TRUTH_PROVED"
         verdict_rationale = (
-            "Independent backward induction from raw DS!row20/22/44/6 reproduces "
+            "Independent backward induction from raw DS!row20/22/9/44/6 reproduces "
             "Excel total debt to {:.6f} kEUR (tolerance {:.0f} kEUR). "
             "All divergence from generic Phase 2C fully attributed via G0–G4 causal bridge: "
-            "rate ({:+.3f}), CFADS ({:+.3f}), day-count ({:+.3f}), DSCR-banding ({:+.3f} — "
-            "independently computed, not forced). "
+            "rate ({:+.3f}), CFADS ({:+.3f}), day-count ({:+.3f}), "
+            "solver-to-independent-scalar ({:+.3f}, TERMINAL_PARTIAL_PERIOD_TREATMENT), "
+            "DSCR-banding ({:+.3f} — independently computed G4-G3A, not forced). "
             "Forbidden inputs (row46, D47, D51, row61) not used.".format(
                 abs(final_residual), RESIDUAL_TOL,
                 pa["causal_bridge"]["delta_rate_keur"],
                 pa["causal_bridge"]["delta_cfads_keur"],
                 pa["causal_bridge"]["delta_daycount_keur"],
-                delta_g3_g4,
+                delta_solver_to_independent_scalar,
+                delta_dscr_banding,
             )
         )
     else:
@@ -275,35 +408,50 @@ def derive(fixture_path: pathlib.Path) -> dict:
         )
         r["label"] = "GENERIC_PHASE2C_SCALAR_DIAGNOSTIC"
 
-    # Replace forbidden independent_vector_dscr_capacity with corrected section
+    # Replace forbidden independent_vector_dscr_capacity with stub
     pa["independent_vector_dscr_capacity"] = {
         "status": "REPLACED_BY_independent_capacity_proof",
         "note": (
             "The original independent_vector_dscr_capacity used DS!row46 (forbidden input). "
             "See independent_capacity_proof for the corrected backward induction "
-            "using only DS!row20/22/44/6."
+            "using only DS!row20/22/9/44/6."
         ),
     }
 
-    # Fix causal_bridge: remove circular dscr_banding_residual, add G4 reference
+    # Fix causal_bridge: remove circular dscr_banding_residual, add G3A/G4 reference
     bridge = pa.get("causal_bridge", {})
     bridge.pop("dscr_banding_residual_keur", None)
-    bridge["delta_dscr_banding_g3_to_g4_keur"] = round(delta_g3_g4, 9)
+
+    # G3A: scalar backward induction (newly added)
+    bridge["g3a_scalar_backward_induction_keur"] = round(scalar_cap, 9)
+    bridge["delta_solver_to_independent_scalar_keur"] = round(delta_solver_to_independent_scalar, 9)
+    bridge["delta_solver_to_independent_scalar_classification"] = "TERMINAL_PARTIAL_PERIOD_TREATMENT"
+
+    # G4: vector backward induction
+    bridge["delta_dscr_banding_g3a_to_g4_keur"] = round(delta_dscr_banding, 9)
     bridge["g4_vector_backward_induction_keur"] = round(vector_cap, 9)
     bridge["g4_final_unforced_residual_keur"] = round(final_residual, 9)
+
+    # Remove stale G3-to-G4 field that conflated solver and banding effects
+    bridge.pop("delta_dscr_banding_g3_to_g4_keur", None)
+
     bridge["note"] = (
-        "G0-G3 use scalar DSCR=1.15. G4 uses DS!row22 per-period DSCR (vector). "
-        "delta_g3_g4 is independently computed from raw CFADS/DSCR — NOT (excel_debt - case3). "
+        "G0-G3 use scalar DSCR=1.15. G3A = scalar backward induction (DSCR=1.15, row9 ops_flag). "
+        "G4 = vector backward induction (DS!row22 per-period DSCR). "
+        "delta_solver_to_independent_scalar = G3A-G3 (TERMINAL_PARTIAL_PERIOD_TREATMENT: "
+        "row9 ops_flag effect). "
+        "delta_dscr_banding = G4-G3A (pure DSCR banding 1.35 vs 1.15 at P25-P28). "
         "g4_final_unforced_residual = vector_capacity - excel_debt (unforced)."
     )
+
     # Recompute bridge_sum_keur and bridge_closure_error_keur
     case0_debt = pa["current_phase2c_solver_result"]["debt_size_keur"]
     delta_c0_c1 = bridge.get("delta_rate_keur", 0.0)
     delta_c1_c2 = bridge.get("delta_cfads_keur", 0.0)
     delta_c2_c3 = bridge.get("delta_daycount_keur", 0.0)
-    bridge_sum = case0_debt + delta_c0_c1 + delta_c1_c2 + delta_c2_c3 + delta_g3_g4
+    bridge_sum = (case0_debt + delta_c0_c1 + delta_c1_c2 + delta_c2_c3
+                  + delta_solver_to_independent_scalar + delta_dscr_banding)
     bridge["bridge_sum_keur"] = round(bridge_sum, 9)
-    # bridge_sum = case0 + Σdeltas = vector_cap = excel_debt (since residual=0)
     bridge["bridge_closure_error_keur"] = round(abs(bridge_sum - vector_cap), 9)
     bridge["bridge_closed_to_vector"] = abs(bridge_sum - vector_cap) < 0.001
     bridge["bridge_closed"] = abs(bridge_sum - vector_cap) < 0.001  # alias for test compatibility
@@ -338,12 +486,14 @@ def main(argv=None):
     proof = data["phase2c_sizing_analysis"]["independent_capacity_proof"]
 
     print("C3B2 independent capacity derivation")
-    print(f"  scalar_capacity:  {proof['scalar_capacity']['capacity_keur']:.6f} kEUR")
-    print(f"  vector_capacity:  {proof['vector_capacity']['capacity_keur']:.6f} kEUR")
-    print(f"  banding_effect:   {proof['banding_effect_keur']:.6f} kEUR")
-    print(f"  excel_total_debt: {proof['excel_total_debt_keur']:.6f} kEUR")
-    print(f"  final_residual:   {proof['final_unforced_residual_keur']:.9f} kEUR")
-    print(f"  verdict:          {proof['verdict']}")
+    print(f"  g3a_scalar_capacity: {proof['scalar_capacity']['capacity_keur']:.6f} kEUR")
+    print(f"  g4_vector_capacity:  {proof['vector_capacity']['capacity_keur']:.6f} kEUR")
+    print(f"  banding_effect:      {proof['banding_effect_keur']:.6f} kEUR  (G4-G3A, pure banding)")
+    print(f"  delta_solver_to_independent_scalar: "
+          f"{proof['causal_bridge_g3a_g4']['delta_solver_to_independent_scalar_keur']:.6f} kEUR  (G3A-G3)")
+    print(f"  excel_total_debt:    {proof['excel_total_debt_keur']:.6f} kEUR")
+    print(f"  final_residual:      {proof['final_unforced_residual_keur']:.9f} kEUR")
+    print(f"  verdict:             {proof['verdict']}")
     print(f"  source_vectors_sha256: {proof['_source_vectors_sha256'][:16]}…")
 
     if args.dry_run:

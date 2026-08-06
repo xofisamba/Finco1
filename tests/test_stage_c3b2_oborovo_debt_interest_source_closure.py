@@ -665,13 +665,18 @@ class TestCausalBridge:
         )
 
     def test_dscr_banding_g4_is_negative(self, truth):
-        """Vector DSCR (1.35 at P25-28) reduces capacity vs scalar 1.15: G4 delta must be negative."""
+        """Vector DSCR (1.35 at P25-28) reduces capacity vs scalar 1.15: G4-G3A delta must be negative."""
         s = self._section(truth)
-        delta = s.get("delta_dscr_banding_g3_to_g4_keur")
-        assert delta is not None, "delta_dscr_banding_g3_to_g4_keur must be present"
+        # Field was renamed: delta_dscr_banding_g3a_to_g4_keur (G4-G3A, pure banding)
+        # Accept either name for backwards compatibility during transition
+        delta = s.get("delta_dscr_banding_g3a_to_g4_keur") or s.get("delta_dscr_banding_g3_to_g4_keur")
+        assert delta is not None, (
+            "delta_dscr_banding_g3a_to_g4_keur (or legacy delta_dscr_banding_g3_to_g4_keur) "
+            "must be present in causal_bridge"
+        )
         assert delta < 0, (
-            f"DSCR banding G4 delta (vector_cap - case3_solver) must be negative "
-            f"(1.35 banding reduces allowed debt service), got {delta:.3f}"
+            f"DSCR banding delta (G4-G3A, pure banding: 1.35 vs 1.15 at P25-28) must be negative, "
+            f"got {delta:.3f}"
         )
 
     def test_case0_debt_is_largest(self, truth):
