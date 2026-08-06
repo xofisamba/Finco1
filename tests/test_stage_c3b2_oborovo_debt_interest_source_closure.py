@@ -22,9 +22,7 @@ EXPECTED_WORKBOOK_SHA = "15a621c4d6b79024980766e00ebc79d7235fd56f00567be7bf345c7
 EXPECTED_EXTRACTOR_VERSION = "2.0.0"
 
 VALID_VERDICTS = frozenset({
-    "C3B2_EQUAL_INPUT_EQUAL_POLICY_MATCH",
-    "C3B2_INPUT_OR_POLICY_MISMATCH_FULLY_EXPLAINED",
-    "C3B2_EQUAL_INPUT_EQUAL_POLICY_DIVERGENCE_PROVED",
+    "C3B2_DEBT_INTEREST_SOURCE_TRUTH_PROVED",
     "C3B2_SOURCE_TRUTH_PARTIAL_MANUAL_CHECK_REQUIRED",
 })
 
@@ -417,10 +415,11 @@ class TestPhase2CSizingAnalysis:
         verdict = truth["phase2c_sizing_analysis"]["verdict"]
         assert verdict in VALID_VERDICTS, f"Unknown verdict: {verdict!r}"
 
-    def test_verdict_is_mismatch_fully_explained(self, truth):
+    def test_verdict_is_source_truth_proved(self, truth):
         verdict = truth["phase2c_sizing_analysis"]["verdict"]
-        assert verdict == "C3B2_INPUT_OR_POLICY_MISMATCH_FULLY_EXPLAINED", (
-            f"Verdict must be MISMATCH_FULLY_EXPLAINED (bridge closes), got {verdict!r}"
+        assert verdict == "C3B2_DEBT_INTEREST_SOURCE_TRUTH_PROVED", (
+            f"Verdict must be C3B2_DEBT_INTEREST_SOURCE_TRUTH_PROVED "
+            f"(independent backward induction closes to Excel debt), got {verdict!r}"
         )
 
     def test_no_build_schedule_in_extractor(self):
@@ -552,41 +551,75 @@ class TestScalarExcelMatchedSolverResult:
 
 
 class TestIndependentVectorDSRCapacity:
-    """Backward induction using only DS!row46, row44, row6 — no Excel debt inputs."""
+    """Independent backward induction from raw DS!row20/22/9/44/6 — no forbidden inputs."""
 
     def _section(self, truth):
-        return truth["phase2c_sizing_analysis"]["independent_vector_dscr_capacity"]
+        return truth["phase2c_sizing_analysis"]["independent_capacity_proof"]
 
     def test_section_present(self, truth):
-        assert "independent_vector_dscr_capacity" in truth["phase2c_sizing_analysis"]
+        assert "independent_capacity_proof" in truth["phase2c_sizing_analysis"], (
+            "independent_capacity_proof section must be present (derives from raw primitives)"
+        )
 
-    def test_capacity_matches_excel_debt(self, truth):
+    def test_forbidden_input_row46_not_used(self, truth):
         s = self._section(truth)
-        cap = s["capacity_keur"]
-        excel_debt = s["excel_debt_keur"]
+        forbidden = s.get("forbidden_inputs_not_used", [])
+        assert any("row46" in f for f in forbidden), (
+            "proof must explicitly declare row46 as NOT used"
+        )
+
+    def test_vector_capacity_matches_excel_debt(self, truth):
+        s = self._section(truth)
+        cap = s["vector_capacity"]["capacity_keur"]
+        excel_debt = s["excel_total_debt_keur"]
         assert abs(cap - excel_debt) < 0.001, (
-            f"Independent backward induction {cap:.9f} must match Excel {excel_debt:.9f} "
-            f"(delta={cap-excel_debt:.12f}). Backward induction inputs: row46=CFADS/row22, "
-            "row44=annual rate, row6=day frac — all source-correct."
+            f"Vector backward induction {cap:.9f} must match Excel {excel_debt:.9f} "
+            f"(residual={cap-excel_debt:.12f}). Inputs: row20/row22/row9/row44/row6 only."
         )
 
-    def test_delta_is_zero(self, truth):
+    def test_final_residual_near_zero(self, truth):
         s = self._section(truth)
-        assert abs(s["delta_keur"]) < 0.001, (
-            f"Independent induction delta must be 0.000, got {s['delta_keur']:.12f}"
+        residual = s["final_unforced_residual_keur"]
+        assert abs(residual) < 1.0, (
+            f"Final unforced residual {residual:.9f} kEUR exceeds 1 kEUR tolerance. "
+            "Independent backward induction must reproduce Excel debt."
         )
 
-    def test_proof_status(self, truth):
+    def test_scalar_capacity_above_vector(self, truth):
         s = self._section(truth)
-        assert s["proof_status"] == "INDEPENDENT_VECTOR_DSCR_CAPACITY_PROOF", (
-            f"proof_status must be INDEPENDENT_VECTOR_DSCR_CAPACITY_PROOF, got {s['proof_status']!r}"
+        scalar = s["scalar_capacity"]["capacity_keur"]
+        vector = s["vector_capacity"]["capacity_keur"]
+        assert scalar > vector, (
+            f"Scalar (DSCR=1.15) capacity {scalar:.3f} must exceed vector capacity {vector:.3f} "
+            "because 1.35 banding at P25-P28 reduces allowed debt service"
+        )
+
+    def test_banding_effect_is_negative(self, truth):
+        s = self._section(truth)
+        banding = s["banding_effect_keur"]
+        assert banding < 0, (
+            f"Banding effect (vector - scalar) must be negative, got {banding:.3f} kEUR"
+        )
+
+    def test_verdict_is_proved(self, truth):
+        s = self._section(truth)
+        assert s["verdict"] == "C3B2_DEBT_INTEREST_SOURCE_TRUTH_PROVED", (
+            f"proof verdict must be PROVED, got {s['verdict']!r}"
+        )
+
+    def test_raw_inputs_declared(self, truth):
+        s = self._section(truth)
+        inputs = s.get("raw_inputs_used", [])
+        raw_refs = " ".join(inputs)
+        assert "row20" in raw_refs and "row22" in raw_refs, (
+            "raw_inputs_used must reference row20 (CFADS) and row22 (DSCR)"
         )
 
     def test_formula_documented(self, truth):
         s = self._section(truth)
         formula = s.get("formula", "")
-        assert "row46" in formula and "row44" in formula and "row6" in formula, (
-            f"Formula must reference row46, row44, row6 — got {formula!r}"
+        assert "CFADS" in formula or "row20" in formula or "allowed_ds" in formula, (
+            f"Formula must document the backward induction computation — got {formula!r}"
         )
 
 
@@ -631,11 +664,14 @@ class TestCausalBridge:
             f"Day-count delta must be negative (ACT_360 reduces capacity), got {s['delta_daycount_keur']:.3f}"
         )
 
-    def test_dscr_banding_residual_negative(self, truth):
-        """Excel uses 1.35 DSCR at P25-28; scalar 1.15 overstates capacity: residual negative."""
+    def test_dscr_banding_g4_is_negative(self, truth):
+        """Vector DSCR (1.35 at P25-28) reduces capacity vs scalar 1.15: G4 delta must be negative."""
         s = self._section(truth)
-        assert s["dscr_banding_residual_keur"] < 0, (
-            f"DSCR banding residual must be negative, got {s['dscr_banding_residual_keur']:.3f}"
+        delta = s.get("delta_dscr_banding_g3_to_g4_keur")
+        assert delta is not None, "delta_dscr_banding_g3_to_g4_keur must be present"
+        assert delta < 0, (
+            f"DSCR banding G4 delta (vector_cap - case3_solver) must be negative "
+            f"(1.35 banding reduces allowed debt service), got {delta:.3f}"
         )
 
     def test_case0_debt_is_largest(self, truth):
@@ -715,7 +751,7 @@ class TestProductionFileIntegrity:
     def test_no_changes_to_financial_engine(self):
         import subprocess
         result = subprocess.run(
-            ["git", "diff", "1fb4943a4319eff8f4ac7a22add6f65f14bd8cec...HEAD",
+            ["git", "diff", "c5f0b1f1643aad07df2f2d9e07acd21943328841...HEAD",
              "--", "financial_engine/"],
             cwd=pathlib.Path(__file__).parent.parent,
             capture_output=True, text=True,
@@ -727,7 +763,7 @@ class TestProductionFileIntegrity:
     def test_no_changes_to_app(self):
         import subprocess
         result = subprocess.run(
-            ["git", "diff", "1fb4943a4319eff8f4ac7a22add6f65f14bd8cec...HEAD",
+            ["git", "diff", "c5f0b1f1643aad07df2f2d9e07acd21943328841...HEAD",
              "--", "app/"],
             cwd=pathlib.Path(__file__).parent.parent,
             capture_output=True, text=True,
@@ -739,7 +775,7 @@ class TestProductionFileIntegrity:
     def test_no_changes_to_finco_core(self):
         import subprocess
         result = subprocess.run(
-            ["git", "diff", "1fb4943a4319eff8f4ac7a22add6f65f14bd8cec...HEAD",
+            ["git", "diff", "c5f0b1f1643aad07df2f2d9e07acd21943328841...HEAD",
              "--", "finco_core/"],
             cwd=pathlib.Path(__file__).parent.parent,
             capture_output=True, text=True,

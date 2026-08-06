@@ -1201,16 +1201,25 @@ class TestLFinancialFreeze:
         )
         changed = set(result.stdout.strip().splitlines())
         allowed = {
+            # C3B1 files
             "finco_recon/extract_oborovo_excel.py",
             "finco_recon/derive_c3b1_ti_governance.py",
             "tests/fixtures/excel_oborovo_financial_truth.json",
             "tests/test_stage_c3b1_oborovo_tax_source_truth.py",
             "docs/reconciliation/oborovo_tax_source_truth.md",
             ".github/workflows/c3b1_diagnostic_check.yml",
+            # C3B2 files (subsequent diagnostic stage; financial_engine/ remains unchanged)
+            "finco_recon/extract_oborovo_debt_interest.py",
+            "finco_recon/derive_c3b2_independent_capacity.py",
+            "tests/fixtures/excel_oborovo_debt_interest_truth.json",
+            "tests/test_stage_c3b2_oborovo_debt_interest_source_closure.py",
+            "docs/reconciliation/oborovo_debt_interest_source_truth.md",
+            "docs/reconciliation/oborovo_debt_interest_source_closure.md",
+            ".github/workflows/c3b2_debt_interest_check.yml",
         }
         unexpected = changed - allowed
         assert not unexpected, (
-            f"C3B1 modified files outside allowed set: {unexpected}"
+            f"C3B1+C3B2 modified files outside allowed set vs base {_BASE_SHA[:8]}: {unexpected}"
         )
 
 

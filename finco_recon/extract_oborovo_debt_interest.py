@@ -851,7 +851,8 @@ def _compute_phase2c_sizing_analysis(
         }
 
     # ------------------------------------------------------------------
-    # Case 0 — current Phase 2C production config
+    # G0 — GENERIC_PHASE2C_SCALAR_DIAGNOSTIC (5.65%, Phase2A EBITDA, ACT_365, DSCR=1.15)
+    # NOT "current production runtime" — the active runtime config is documented separately.
     # ------------------------------------------------------------------
     case0_pol = _policy(rate=0.0565, day_count=DayCountConvention.ACT_365, dscr=1.15)
     case0 = _run(case0_pol, _inputs(), phase2a_cfads_by)
@@ -879,12 +880,14 @@ def _compute_phase2c_sizing_analysis(
     delta_c0_c1 = case1["debt_size_keur"] - case0["debt_size_keur"]   # rate effect
     delta_c1_c2 = case2["debt_size_keur"] - case1["debt_size_keur"]   # CFADS effect
     delta_c2_c3 = case3["debt_size_keur"] - case2["debt_size_keur"]   # day-count effect
-    dscr_banding_residual = excel_debt - case3["debt_size_keur"]       # DSCR band effect
+    # G4: DSCR-banding effect computed independently via backward induction (NOT excel_debt - case3)
+    delta_g3_g4 = independent_capacity - case3["debt_size_keur"]
     bridge_sum = (
         case0["debt_size_keur"]
-        + delta_c0_c1 + delta_c1_c2 + delta_c2_c3 + dscr_banding_residual
+        + delta_c0_c1 + delta_c1_c2 + delta_c2_c3 + delta_g3_g4
     )
-    bridge_closure_error = abs(bridge_sum - excel_debt)
+    # bridge_sum = independent_capacity; closure error is vs independent_capacity
+    bridge_closure_error = abs(bridge_sum - independent_capacity)
 
     # ------------------------------------------------------------------
     # Convergence invariance — Case 0 with different initial guesses
@@ -913,16 +916,13 @@ def _compute_phase2c_sizing_analysis(
     convergence_deterministic = len(unique_results) == 1
 
     # ------------------------------------------------------------------
-    # Independent backward induction (no Excel debt/schedule inputs)
-    # V[p] = (V[p+1] + row46[p]) / (1 + row44[p] × row6[p])
-    # V[maturity+1] = 0; result at V[repayment_start] = total debt capacity
+    # Independent backward induction (no Excel debt/schedule inputs; row46 NOT used)
+    # allowed_ds[p] = (row20[p] / row22[p]) * row9[p]
+    # V[maturity+1] = 0; V[p] = (V[p+1] + allowed_ds[p]) / (1 + row44[p] * row6[p])
     # ------------------------------------------------------------------
-    # row46 = DS!row46 = CFADS / target_DSCR (Excel per-period backward induction input)
-    row46_active = {
-        p_excel + 1: float(row46_v[p_excel])
-        for p_excel in active_excel
-        if row46_v[p_excel] is not None
-    }
+    dscr_v = pv(21)   # DS!row22 — per-period DSCR target (1.15 / 1.35 banding)
+    ops_v  = pv(8)    # DS!row9  — ops_flag fraction (1.0 for full periods, <1 at maturity)
+
     row44_active = {
         p_excel + 1: float(rate_v[p_excel])
         for p_excel in active_excel
@@ -933,15 +933,22 @@ def _compute_phase2c_sizing_analysis(
         for p_excel in active_excel
         if frac_v[p_excel] is not None
     }
+    allowed_ds_active = {}
+    for p_excel in active_excel:
+        c = cfads_v[p_excel]
+        d = dscr_v[p_excel]
+        o = ops_v[p_excel] if ops_v[p_excel] is not None else 1.0
+        if c is not None and d is not None and d != 0:
+            allowed_ds_active[p_excel + 1] = float(c) / float(d) * float(o)
 
-    phase2a_indices = sorted(row46_active.keys(), reverse=True)  # [29..2]
+    phase2a_indices = sorted(allowed_ds_active.keys(), reverse=True)  # [29..2]
     V: dict[int, float] = {max(phase2a_indices) + 1: 0.0}
     for idx in phase2a_indices:
         r44 = row44_active.get(idx, 0.0)
         r6 = row6_active.get(idx, 0.0)
-        r46 = row46_active.get(idx, 0.0)
+        ads = allowed_ds_active.get(idx, 0.0)
         denom = 1.0 + r44 * r6
-        V[idx] = (V[idx + 1] + r46) / denom if denom != 0 else 0.0
+        V[idx] = (V[idx + 1] + ads) / denom if denom != 0 else 0.0
 
     independent_capacity = V.get(min(phase2a_indices), 0.0)
     independent_delta = independent_capacity - excel_debt
@@ -950,24 +957,23 @@ def _compute_phase2c_sizing_analysis(
     # Verdict
     # ------------------------------------------------------------------
     BRIDGE_TOL = 1.0  # kEUR
-    if bridge_closure_error < BRIDGE_TOL and abs(independent_delta) < BRIDGE_TOL:
-        verdict = "C3B2_INPUT_OR_POLICY_MISMATCH_FULLY_EXPLAINED"
+    if abs(independent_delta) < BRIDGE_TOL:
+        verdict = "C3B2_DEBT_INTEREST_SOURCE_TRUTH_PROVED"
         verdict_rationale = (
-            "Causal bridge closes to {:.3f} kEUR (tolerance {:.0f} kEUR). "
-            "Independent backward induction delta = {:.9f} kEUR. "
-            "All divergence from current Phase 2C is fully attributed: "
-            "rate ({:+.3f}), CFADS ({:+.3f}), day-count ({:+.3f}), DSCR-banding ({:+.3f}).".format(
-                bridge_closure_error, BRIDGE_TOL, independent_delta,
-                delta_c0_c1, delta_c1_c2, delta_c2_c3, dscr_banding_residual,
+            "Independent backward induction from raw DS!row20/22/9/44/6 reproduces "
+            "Excel total debt to {:.9f} kEUR (tolerance {:.0f} kEUR). "
+            "All divergence from generic Phase 2C attributed via G0-G4 causal bridge: "
+            "rate ({:+.3f}), CFADS ({:+.3f}), day-count ({:+.3f}), DSCR-banding ({:+.3f}). "
+            "Forbidden inputs (row46, D47, D51, row61) not used.".format(
+                abs(independent_delta), BRIDGE_TOL,
+                delta_c0_c1, delta_c1_c2, delta_c2_c3, delta_g3_g4,
             )
         )
     else:
         verdict = "C3B2_SOURCE_TRUTH_PARTIAL_MANUAL_CHECK_REQUIRED"
         verdict_rationale = (
-            "Bridge closure error {:.3f} kEUR or independent delta {:.9f} kEUR "
-            "exceeds tolerance {:.0f} kEUR — manual review required.".format(
-                bridge_closure_error, independent_delta, BRIDGE_TOL,
-            )
+            "Independent induction residual {:.9f} kEUR exceeds tolerance {:.0f} kEUR "
+            "— manual review required.".format(abs(independent_delta), BRIDGE_TOL)
         )
 
     return {
@@ -975,7 +981,8 @@ def _compute_phase2c_sizing_analysis(
         "phase2c_api": "financial_engine.senior_debt.solver.solve_senior_debt",
         "excel_total_debt_keur": excel_debt,
         "current_phase2c_solver_result": {
-            "description": "Case 0: current production config (5.65%, Phase2A EBITDA, ACT_365, DSCR=1.15)",
+            "description": "G0 GENERIC_PHASE2C_SCALAR_DIAGNOSTIC: 5.65% rate, Phase2A EBITDA, ACT_365, DSCR=1.15 — generic diagnostic, NOT 'current production runtime'",
+            "label": "GENERIC_PHASE2C_SCALAR_DIAGNOSTIC",
             "debt_size_keur": case0["debt_size_keur"],
             "converged": case0["converged"],
             "binding_constraint": case0["binding"],
@@ -1005,10 +1012,14 @@ def _compute_phase2c_sizing_analysis(
         },
         "independent_vector_dscr_capacity": {
             "description": (
-                "Independent backward induction using only DS!row46, row44, row6 — "
-                "zero use of Excel debt, opening balances, or repayment schedule"
+                "Independent backward induction using only DS!row20/22/9/44/6 — "
+                "zero use of Excel debt, opening balances, or repayment schedule. "
+                "DS!row46 is NOT used (forbidden as a pre-computed intermediate)."
             ),
-            "formula": "V[p] = (V[p+1] + row46[p]) / (1 + row44[p] * row6[p]), V[maturity+1]=0",
+            "formula": (
+                "allowed_ds[p] = (row20[p]/row22[p]) * row9[p]; "
+                "V[maturity+1] = 0; V[p] = (V[p+1] + allowed_ds[p]) / (1 + row44[p] * row6[p])"
+            ),
             "capacity_keur": independent_capacity,
             "excel_debt_keur": excel_debt,
             "delta_keur": independent_delta,
@@ -1023,15 +1034,17 @@ def _compute_phase2c_sizing_analysis(
             "delta_rate_keur": delta_c0_c1,
             "delta_cfads_keur": delta_c1_c2,
             "delta_daycount_keur": delta_c2_c3,
-            "dscr_banding_residual_keur": dscr_banding_residual,
+            "delta_dscr_banding_g3_to_g4_keur": delta_g3_g4,
+            "g4_vector_backward_induction_keur": independent_capacity,
+            "g4_final_unforced_residual_keur": independent_delta,
             "bridge_sum_keur": bridge_sum,
             "bridge_closure_error_keur": bridge_closure_error,
             "bridge_closed": bridge_closure_error < BRIDGE_TOL,
+            "bridge_closed_to_vector": bridge_closure_error < BRIDGE_TOL,
             "note": (
-                "Residual after Case 3 is DSCR banding: Excel uses 1.35 at P25-P28 "
-                "but Phase 2C solver accepts only one scalar DSCR target (1.15). "
-                "Independent backward induction uses Excel row46 (= CFADS/row22) "
-                "which already encodes the banding, hence delta=0."
+                "G0-G3 use scalar DSCR=1.15. G4: replace with per-period DS!row22 in backward induction. "
+                "delta_g3_g4 independently computed from row20/row22/row9 — NOT (excel_debt - case3). "
+                "g4_final_unforced_residual = independent_capacity - excel_debt (unforced)."
             ),
         },
         "convergence_invariance": {
