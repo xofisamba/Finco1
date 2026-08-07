@@ -68,7 +68,7 @@ jobs:
       - name: Install dependencies
         run: |
           pip install --no-cache-dir -c constraints.txt \
-            pytest openpyxl numpy pandas scipy
+            pytest openpyxl numpy pandas scipy itsdangerous bcrypt
 
       - name: git diff --check
         run: git diff --check ${{ github.event.pull_request.base.sha || 'HEAD~1' }}..HEAD
