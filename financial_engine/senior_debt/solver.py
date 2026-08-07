@@ -184,6 +184,40 @@ def _compute_max_abs_diff(
 
 
 # ---------------------------------------------------------------------------
+# Resolution helpers — build period maps from inputs + policy fallbacks
+# ---------------------------------------------------------------------------
+
+def build_dscr_target_map(
+    policy: SeniorDebtPolicy,
+    inputs: "SeniorDebtInputs",
+    period_indices: tuple[int, ...],
+) -> dict[int, float]:
+    """Resolve the per-period DSCR ratio used in backward induction and sculpting.
+
+    Per-period PeriodDscrTarget values override the scalar policy fallback.
+    Periods not covered by the schedule use policy.target_dscr.
+    """
+    overrides = {dt.period_index: dt.target_dscr for dt in inputs.period_dscr_targets}
+    return {idx: overrides.get(idx, policy.target_dscr) for idx in period_indices}
+
+
+def build_debt_service_availability_map(
+    inputs: "SeniorDebtInputs",
+    period_indices: tuple[int, ...],
+) -> dict[int, float]:
+    """Resolve per-period debt-service availability fraction.
+
+    Explicit PeriodDebtServiceAvailability entries override the default.
+    Periods with no explicit entry fall back to 1.0 (full availability).
+    """
+    explicit = {
+        av.period_index: av.availability_fraction
+        for av in inputs.period_debt_service_availability
+    }
+    return {idx: explicit.get(idx, 1.0) for idx in period_indices}
+
+
+# ---------------------------------------------------------------------------
 # BLOCKER 1: Backward DSCR capacity via backward induction
 # ---------------------------------------------------------------------------
 
@@ -193,12 +227,15 @@ def _backward_dscr_capacity(
     period_start_end: dict[int, tuple],
     period_indices: tuple[int, ...],
     policy: SeniorDebtPolicy,
+    dscr_map: dict[int, float] | None = None,
+    availability_map: dict[int, float] | None = None,
 ) -> float:
     """Compute maximum debt capacity via backward induction.
 
     Starting from closing_maturity = 0, work backwards:
-      opening_t = (closing_t + ds_t) / (1 + f_t)
-    where ds_t = max(0, cfads_t / target_dscr) and f_t = rate_t * day_frac_t.
+      allowed_ds_t = max(0, cfads_t / resolved_dscr_t) * resolved_availability_t
+      opening_t    = (closing_t + allowed_ds_t) / (1 + f_t)
+    where f_t = rate_t * day_frac_t.
     """
     repayment_ids = [
         idx for idx in period_indices
@@ -209,7 +246,10 @@ def _backward_dscr_capacity(
 
     closing = 0.0
     for idx in reversed(repayment_ids):
-        ds = max(0.0, cfads_by.get(idx, 0.0) / policy.target_dscr) if policy.target_dscr > 0 else 0.0
+        target_dscr = dscr_map[idx] if dscr_map is not None else policy.target_dscr
+        availability = availability_map[idx] if availability_map is not None else 1.0
+        cfads = cfads_by.get(idx, 0.0)
+        ds = max(0.0, cfads / target_dscr) * availability if target_dscr > 0 else 0.0
         rate = rate_map.get(idx, 0.0)
         start, end = period_start_end[idx]
         f = rate * period_day_fraction(start, end, policy.day_count_convention)
@@ -233,10 +273,15 @@ def _forward_roll(
     policy: SeniorDebtPolicy,
     repayment_method_str: str,
     explicit_by: dict[int, float] | None = None,
+    dscr_map: dict[int, float] | None = None,
+    availability_map: dict[int, float] | None = None,
 ) -> tuple[PeriodDebtRow, ...]:
     """Single-pass authoritative forward roll.
 
     Interest is computed from the rolling balance — the identity of this function.
+    For dscr_sculpted repayment:
+      allowed_ds[p] = max(0, CFADS[p] / resolved_dscr[p]) * resolved_availability[p]
+      principal[p]  = max(0, min(allowed_ds[p] - interest[p], balance[p]))
     """
     rows: list[PeriodDebtRow] = []
     balance = opening_keur
@@ -262,7 +307,9 @@ def _forward_roll(
             principal = 0.0
         elif repayment_method_str == "dscr_sculpted":
             cfads = cfads_by.get(idx, 0.0)
-            ds = max(0.0, cfads / policy.target_dscr) if policy.target_dscr > 0 else 0.0
+            target_dscr = dscr_map[idx] if dscr_map is not None else policy.target_dscr
+            availability = availability_map[idx] if availability_map is not None else 1.0
+            ds = max(0.0, cfads / target_dscr) * availability if target_dscr > 0 else 0.0
             principal = max(0.0, ds - interest)
             principal = min(principal, balance)  # safety floor
         elif repayment_method_str == "level_principal":
@@ -311,6 +358,8 @@ def _finalise_authoritative(
     repayment_str: str,
     tax_cfads_fn: TaxCfadsCallable,
     explicit_by: dict[int, float] | None = None,
+    dscr_map: dict[int, float] | None = None,
+    availability_map: dict[int, float] | None = None,
 ) -> tuple[tuple[PeriodDebtRow, ...], dict[int, float], dict[int, float], bool]:
     """After outer loop convergence, ensure schedule is self-consistent with tax/CFADS.
 
@@ -330,6 +379,7 @@ def _finalise_authoritative(
         candidate_rows = _forward_roll(
             D, period_indices, rate_map, period_start_end,
             cfads_by, policy, repayment_str, explicit_by=explicit_by,
+            dscr_map=dscr_map, availability_map=availability_map,
         )
         # Last tax call with candidate interest — new_cfads is RESPONSE to candidate_rows
         candidate_interest = {r.period_index: r.interest_keur for r in candidate_rows}
@@ -338,6 +388,7 @@ def _finalise_authoritative(
         verify_rows = _forward_roll(
             D, period_indices, rate_map, period_start_end,
             new_cfads, policy, repayment_str, explicit_by=explicit_by,
+            dscr_map=dscr_map, availability_map=availability_map,
         )
         # Converged when candidate_rows ≈ verify_rows across ALL fields (same contract as outer loop)
         if _schedules_converged(
@@ -357,6 +408,7 @@ def _finalise_authoritative(
     candidate_rows = _forward_roll(
         D, period_indices, rate_map, period_start_end,
         cfads_by, policy, repayment_str, explicit_by=explicit_by,
+        dscr_map=dscr_map, availability_map=availability_map,
     )
     return candidate_rows, cfads_by, prev_cash_tax, False
 
@@ -466,6 +518,8 @@ def solve_senior_debt(
         return _to_schedules(_zero_rows(period_indices), 0.0, None, diag)
 
     rate_map = build_rate_map(inputs.period_rates, period_indices, policy.annual_fixed_rate)
+    dscr_map = build_dscr_target_map(policy, inputs, period_indices)
+    availability_map = build_debt_service_availability_map(inputs, period_indices)
     mode = policy.sizing_mode
 
     if mode == SeniorDebtSizingMode.EXPLICIT_SCHEDULE:
@@ -484,13 +538,14 @@ def solve_senior_debt(
         return _solve_dscr(
             policy=policy, inputs=inputs, period_indices=period_indices,
             period_start_end=period_start_end, rate_map=rate_map, tax_cfads_fn=tax_cfads_fn,
-            binding_constraint="DSCR",
+            binding_constraint="DSCR", dscr_map=dscr_map, availability_map=availability_map,
         )
 
     if mode == SeniorDebtSizingMode.COMBINED_MINIMUM:
         return _solve_combined(
             policy=policy, inputs=inputs, period_indices=period_indices,
             period_start_end=period_start_end, rate_map=rate_map, tax_cfads_fn=tax_cfads_fn,
+            dscr_map=dscr_map, availability_map=availability_map,
         )
 
     raise ValueError(f"Unsupported sizing_mode: {mode!r}")
@@ -509,6 +564,8 @@ def _solve_dscr(
     rate_map: dict[int, float],
     tax_cfads_fn: TaxCfadsCallable,
     binding_constraint: str,
+    dscr_map: dict[int, float] | None = None,
+    availability_map: dict[int, float] | None = None,
 ) -> SeniorDebtSchedules:
     """Fixed-point iteration for DSCR_SCULPTED sizing using backward induction.
 
@@ -535,6 +592,7 @@ def _solve_dscr(
         rows = _forward_roll(
             D, period_indices, rate_map, period_start_end,
             cfads_by, policy, "dscr_sculpted",
+            dscr_map=dscr_map, availability_map=availability_map,
         )
         interest_by = {r.period_index: r.interest_keur for r in rows}
 
@@ -544,6 +602,7 @@ def _solve_dscr(
         # Step 3: backward capacity from updated CFADS
         dscr_capacity = _backward_dscr_capacity(
             new_cfads, rate_map, period_start_end, period_indices, policy,
+            dscr_map=dscr_map, availability_map=availability_map,
         )
 
         # Zero capacity short-circuit (first iteration only)
@@ -566,6 +625,7 @@ def _solve_dscr(
             new_rows_check = _forward_roll(
                 new_D, period_indices, rate_map, period_start_end,
                 new_cfads, policy, "dscr_sculpted",
+                dscr_map=dscr_map, availability_map=availability_map,
             )
             converged = _schedules_converged(
                 rows, new_rows_check,
@@ -586,6 +646,7 @@ def _solve_dscr(
                 final_rows, final_cfads, final_cash_tax, fin_ok = _finalise_authoritative(
                     new_D, period_indices, rate_map, period_start_end,
                     new_cfads, policy, "dscr_sculpted", tax_cfads_fn,
+                    dscr_map=dscr_map, availability_map=availability_map,
                 )
                 if not fin_ok:
                     diag = _make_diag(
@@ -616,6 +677,7 @@ def _solve_dscr(
     final_rows = _forward_roll(
         D, period_indices, rate_map, period_start_end,
         cfads_by, policy, "dscr_sculpted",
+        dscr_map=dscr_map, availability_map=availability_map,
     )
     diag = _make_diag(
         converged=False, iteration=max_iter,
@@ -685,6 +747,8 @@ def _solve_combined(
     period_start_end: dict[int, tuple],
     rate_map: dict[int, float],
     tax_cfads_fn: TaxCfadsCallable,
+    dscr_map: dict[int, float] | None = None,
+    availability_map: dict[int, float] | None = None,
 ) -> SeniorDebtSchedules:
     """COMBINED_MINIMUM: run DSCR loop to get dscr_capacity, apply gearing cap, take min.
 
@@ -698,7 +762,7 @@ def _solve_combined(
     dscr_result = _solve_dscr(
         policy=policy, inputs=inputs, period_indices=period_indices,
         period_start_end=period_start_end, rate_map=rate_map, tax_cfads_fn=tax_cfads_fn,
-        binding_constraint="DSCR",
+        binding_constraint="DSCR", dscr_map=dscr_map, availability_map=availability_map,
     )
     if not dscr_result.diagnostics.is_authoritative:
         return dscr_result
@@ -721,6 +785,7 @@ def _solve_combined(
     final_rows, final_cfads, final_cash_tax, fin_ok = _finalise_authoritative(
         final_d, period_indices, rate_map, period_start_end,
         init_cfads, policy, "dscr_sculpted", tax_cfads_fn,
+        dscr_map=dscr_map, availability_map=availability_map,
     )
     if not fin_ok:
         diag = _make_diag(

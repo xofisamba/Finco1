@@ -173,6 +173,8 @@ def compute_senior_debt_fingerprint(inputs: "Any") -> str:
             "opening_debt_balance_keur": sd.opening_debt_balance_keur,
             "period_rates": [{"period_index": pr.period_index, "annual_rate": pr.annual_rate} for pr in sd.period_rates],
             "explicit_principal": [{"period_index": pp.period_index, "principal_keur": pp.principal_keur} for pp in (sd.explicit_principal_schedule or ())],
+            "period_dscr_targets": [{"period_index": dt.period_index, "target_dscr": dt.target_dscr} for dt in sd.period_dscr_targets],
+            "period_debt_service_availability": [{"period_index": av.period_index, "availability_fraction": av.availability_fraction} for av in sd.period_debt_service_availability],
         },
     }
     canonical = json.dumps(payload, sort_keys=True, ensure_ascii=False, allow_nan=False, separators=(",", ":"))
