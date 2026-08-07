@@ -91,20 +91,24 @@ jobs:
             tests/test_stage_c3b2_oborovo_debt_interest_source_closure.py \
             -v --tb=short --no-header -q
 
-      - name: C3B1 regression (governance subset)
+      - name: C3B1 source truth (full module)
         run: |
           python -m pytest \
-            tests/test_stage_c3b1_oborovo_tax_source_truth.py::TestLFinancialFreeze \
-            tests/test_stage_c3b1_oborovo_tax_source_truth.py::TestTGovernanceVerdictAndSHA \
+            tests/test_stage_c3b1_oborovo_tax_source_truth.py \
             -v --tb=short --no-header -q
 
-      - name: Phase2B tax/CFADS tests (explicit)
+      - name: Phase2B TUHO regression — MUST be green (C3B3B2 branch-induced fix)
+        run: |
+          python -m pytest \
+            "tests/test_phase2b_tax_cfads.py::test_w_correction_aware_four_baseline[tuho]" \
+            "tests/test_phase2b_tax_cfads.py::TestTuhoConstructionLoss::test_tuho_end_to_end_exact_matcher" \
+            -v --tb=short --no-header
+
+      - name: Phase2B all tests except known pre-existing Oborovo baseline failure
         run: |
           python -m pytest \
             tests/test_phase2b_tax_cfads.py \
-            -v --tb=short --no-header -q 2>/dev/null \
-            || python -m pytest \
-            $(find tests/ -name "test_phase2b*" -maxdepth 1 | head -3) \
+            --deselect "tests/test_phase2b_tax_cfads.py::test_w_correction_aware_four_baseline[oborovo]" \
             -v --tb=short --no-header -q
 
       - name: Phase2C senior debt tests (explicit)

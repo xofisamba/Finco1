@@ -718,6 +718,17 @@ class TaxParams:
     # Reintegration bridge → 100% of book dep is tax-deductible for this project.
     tax_deductible_book_dep_pct: float = 1.0
 
+    # SOURCE-OWNERSHIP FLAG — explicit opt-in to book-depreciable-basis tax dep.
+    # When True: the clean adapter uses book_depreciable_capex_items() (hard capex
+    # + capitalised financial costs) as the tax depreciation asset list.
+    # When False (default): uses tax_depreciable_capex_items() (hard capex only).
+    # Must only be set True when source workbook evidence proves the book basis
+    # applies to tax depreciation for this specific project. Set in factory data;
+    # the financial engine must not inspect project identity to derive this value.
+    # Oborovo: C3B1 fixture proves excel_tax_dep == excel_book_dep → True.
+    # All other projects: retain legacy tax_depreciable_capex_items() path → False.
+    tax_dep_basis_source_owned: bool = False
+
     @property
     def initial_tax_loss_keur(self) -> float:
         """Initial tax loss carryforward available at commercial operation."""

@@ -150,12 +150,28 @@ def from_project_inputs(
         _to_dep_item(item) for item in inputs.capex.book_depreciable_capex_items()
     )
 
-    # TAX depreciable basis: dispatch on TaxDepreciationMode.
-    # BOOK_BASED_PERCENTAGE: tax_dep = book_dep × pct — use the same asset list as book.
-    # C3B1 evidence: Oborovo sets tax_depreciation_mode=BOOK_BASED_PERCENTAGE, pct=1.0,
-    # and excel_tax_dep == excel_book_dep for all 28 operating periods.
+    # TAX depreciable basis: dispatch only on explicit source-ownership flag.
+    # tax_dep_basis_source_owned=True: C3B1 proves tax_dep = book_dep (asset list
+    # = book_depreciable_capex_items). Validate pct==1.0 — partial pct not yet modeled.
+    # Default (False): use tax_depreciable_capex_items() — legacy/compatibility path,
+    # preserves base behavior for all projects without proven book-dep basis.
+    # BOOK_BASED_PERCENTAGE mode alone does NOT trigger the book-dep asset switch;
+    # it is a compatibility default and must not silently opt all projects into a new basis.
     from finco_core.inputs._models import TaxDepreciationMode
-    if inputs.tax.tax_depreciation_mode == TaxDepreciationMode.BOOK_BASED_PERCENTAGE:
+    if inputs.tax.tax_dep_basis_source_owned:
+        if inputs.tax.tax_depreciation_mode != TaxDepreciationMode.BOOK_BASED_PERCENTAGE:
+            raise ValueError(
+                f"tax_dep_basis_source_owned=True but tax_depreciation_mode is "
+                f"{inputs.tax.tax_depreciation_mode!r}; only BOOK_BASED_PERCENTAGE "
+                f"is supported for source-owned book-dep basis."
+            )
+        pct = inputs.tax.tax_deductible_book_dep_pct
+        if abs(pct - 1.0) > 1e-9:
+            raise ValueError(
+                f"tax_dep_basis_source_owned=True with tax_deductible_book_dep_pct={pct!r}. "
+                f"Only pct=1.0 is source-proven for the book-based tax dep path. "
+                f"Partial-percentage book-based tax depreciation is not yet modeled."
+            )
         tax_capex_items_for_dep = book_capex_items_for_dep
     else:
         tax_capex_items_for_dep = tuple(

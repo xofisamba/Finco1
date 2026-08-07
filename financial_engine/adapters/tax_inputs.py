@@ -55,6 +55,20 @@ def build_tax_contract_from_project_inputs(
       because for ATAD=False projects it cancels with fiscal reintegration.
     * period_adjustments is returned EMPTY for the same reason.
     * Callers that need SHL in the tax input must merge it after this call.
+
+    Fail-closed conditions (raises rather than silently computing wrong results):
+    * ATAD enabled with empty period_interest: raises NotImplementedError.
+      ATAD requires complete financing interest; this adapter only supplies the
+      empty stub — callers must merge full interest before computing ATAD.
+    * Nonzero initial_tax_loss_keur: raises NotImplementedError.
+      A vintage origin_tax_year cannot be generically inferred.
+    * Unsupported period_frequency: raises ValueError.
+      Only SEMESTRIAL (2 periods/year) is supported.
+    * Cash-tax timing is TAX_YEAR_LAST_PERIOD, lag=0. This is Oborovo's
+      source-proven timing. For projects where this is not source-proven the
+      adapter still applies the same value — this is a known limitation and is
+      documented here until a generic cash-tax timing field is added to
+      ProjectInputs.
     """
     from financial_engine.inputs import TaxCalculationInput, OpeningTaxLossVintageInput
     from financial_engine.policies.tax import TaxPolicy, CashTaxTiming
@@ -62,7 +76,7 @@ def build_tax_contract_from_project_inputs(
     tax = project_inputs.tax
     info = project_inputs.info
 
-    # Periods per tax year from period frequency
+    # Periods per tax year from period frequency — fail-closed for unsupported values.
     freq = info.period_frequency
     if freq == PeriodFrequency.SEMESTRIAL:
         periods_per_tax_year = 2
@@ -76,6 +90,21 @@ def build_tax_contract_from_project_inputs(
     # C3B1 evidence: G56=BS!G45=thin_cap_enabled; Oborovo thin_cap=False → ATAD=False.
     atad_enabled: bool = tax.thin_cap_enabled
 
+    # FAIL-CLOSED: ATAD with empty period_interest is silently wrong.
+    # This adapter always returns period_interest=() — the fixed-point solver
+    # fills in senior_interest_by_period during iteration, but SHL and other
+    # financing interest are NOT supplied by this adapter.
+    # If ATAD is enabled, the computation requires complete interest inputs;
+    # the caller must merge full interest into the TaxCalculationInput before
+    # running the ATAD calculation.
+    if atad_enabled:
+        raise NotImplementedError(
+            "build_tax_contract_from_project_inputs: atad_enabled=True (thin_cap_enabled=True) "
+            "is not supported by this adapter. ATAD calculation requires complete financing "
+            "interest inputs (senior + SHL + other). This adapter only supplies the empty "
+            "period_interest stub. Merge full interest explicitly before enabling ATAD."
+        )
+
     policy = TaxPolicy(
         policy_id=_POLICY_ID,
         policy_version=_POLICY_VERSION,
@@ -85,12 +114,15 @@ def build_tax_contract_from_project_inputs(
         atad_enabled=atad_enabled,
         atad_ebitda_limit=tax.atad_ebitda_limit,
         atad_de_minimis_threshold_keur_annual=tax.atad_min_interest_keur,
+        # Cash-tax timing: TAX_YEAR_LAST_PERIOD, lag=0 is Oborovo source-proven.
+        # Generic timing selection is a known limitation until a cash_tax_timing
+        # field is added to ProjectInputs / TaxParams.
         cash_tax_timing=CashTaxTiming.TAX_YEAR_LAST_PERIOD,
         cash_tax_payment_lag_periods=0,
     )
 
-    # Opening loss vintages from project inputs.
-    # For projects with initial_tax_loss_keur = 0, this is an empty tuple.
+    # Opening loss vintages — fail closed for non-zero amounts.
+    # A vintage origin_tax_year cannot be generically derived from ProjectInputs.
     if tax.initial_tax_loss_keur > 0:
         raise NotImplementedError(
             "build_tax_contract_from_project_inputs: non-zero initial_tax_loss_keur "

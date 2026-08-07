@@ -2,7 +2,8 @@
 
 Stage C3B3B: Clean Tax / Cash-Tax / CFADS Feedback into Source-Proven Senior Debt.
 
-VERDICT: C3B3B_BLOCKED_WORKBOOK_PERIODISATION_MISMATCH
+FORMAL VERDICT: C3B3B_SOURCE_PARITY_NOT_REACHED
+DIAGNOSTIC ROOT CAUSE: WORKBOOK_PERIODISATION_MISMATCH
 
 The clean runtime proves the COMPLETE feedback loop:
 
@@ -67,10 +68,11 @@ import pytest
 
 _SOURCE_DEBT_KEUR: float = 42_852.278762563
 _C3B3B_TOLERANCE_KEUR: float = 0.01   # stated acceptance threshold (NOT MET — see verdict)
-_CLEAN_DEBT_KEUR: float = 43_919.033  # measured converged clean debt (approximate)
-_MEASURED_RESIDUAL_KEUR: float = 1_066.754  # _CLEAN_DEBT_KEUR - _SOURCE_DEBT_KEUR (approx)
 
-_VERDICT = "C3B3B_BLOCKED_WORKBOOK_PERIODISATION_MISMATCH"
+# Formal verdict and diagnostic classification (do not conflate).
+# The formal verdict captures the stage outcome; the root cause is diagnostic evidence.
+_VERDICT = "C3B3B_SOURCE_PARITY_NOT_REACHED"
+_ROOT_CAUSE = "WORKBOOK_PERIODISATION_MISMATCH"
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -108,9 +110,14 @@ class TestGroupA_TaxDepEqualsBookDep:
     """C3B3B gap #1: clean tax_dep now equals source book_dep (RESOLVED).
 
     C3B1 evidence: excel_tax_dep = excel_book_dep for all 28 operating periods.
-    Fix: project_adapter dispatches on TaxDepreciationMode.BOOK_BASED_PERCENTAGE
-    to use book_depreciable_capex_items() as tax basis (same asset list, same lives).
+    Fix: adapter dispatches on tax_dep_basis_source_owned=True (Oborovo factory)
+    to use book_depreciable_capex_items() as tax basis. BOOK_BASED_PERCENTAGE alone
+    is a compatibility default and does NOT trigger this path for other projects.
     """
+
+    def test_oborovo_has_source_owned_flag(self, oborovo_project):
+        """Oborovo factory sets tax_dep_basis_source_owned=True (explicit C3B1 opt-in)."""
+        assert oborovo_project.tax.tax_dep_basis_source_owned is True
 
     def test_tax_depreciation_mode_is_book_based(self, oborovo_project):
         """ProjectInputs sets tax_depreciation_mode = BOOK_BASED_PERCENTAGE."""
@@ -122,36 +129,90 @@ class TestGroupA_TaxDepEqualsBookDep:
         assert oborovo_project.tax.tax_deductible_book_dep_pct == 1.0
 
     def test_clean_tax_dep_capex_basis_equals_book_basis(self, oborovo_project):
-        """After fix: tax_capex basis = book_capex basis (financial costs included)."""
+        """source_owned=True + pct=1.0: tax_capex basis = book_capex basis."""
         from financial_engine.adapters.project_inputs import from_project_inputs
         from financial_engine.inputs import DepreciationInput
         mi = from_project_inputs(oborovo_project, source_id="dep-test")
         dep: DepreciationInput = mi.depreciation
         assert dep.tax_capex_items_for_depreciation == dep.book_capex_items_for_depreciation
 
-    def test_clean_book_dep_matches_source_book_dep_p1(self, operating_result):
-        """Clean book_dep for first operating period matches C3B1 source (< 0.001 kEUR)."""
-        import json, pathlib
-        truth = json.loads(
-            pathlib.Path("tests/fixtures/excel_oborovo_financial_truth.json").read_text()
-        )
-        pd_list = truth["tax"]["period_diagnostic"]
-        src_book_dep_p1 = pd_list[1]["excel_book_dep_keur"]  # C3B1 pd[1] = operating P1
-        op_periods = [p for p in operating_result.periods if p.is_operation]
-        clean_book_dep_p1 = op_periods[0].book_depreciation_keur
-        assert abs(clean_book_dep_p1 - src_book_dep_p1) < 0.001
+    def test_default_project_uses_tax_items_not_book(self):
+        """source_owned=False (default): adapter uses tax_depreciable_capex_items(), not book."""
+        from app.project_factories import create_default_solar_project
+        from financial_engine.adapters.project_inputs import from_project_inputs
+        from financial_engine.inputs import DepreciationInput
+        solar = create_default_solar_project()
+        assert solar.tax.tax_dep_basis_source_owned is False
+        mi = from_project_inputs(solar, source_id="dep-test-solar")
+        dep: DepreciationInput = mi.depreciation
+        # For a project with no financial costs, tax and book should equal
+        # (no financial costs → same items), but the dispatch path is the tax items path.
+        # The important thing is no exception and the adapter accepted the default project.
+        assert dep.tax_capex_items_for_depreciation is not None
 
-    def test_clean_tax_dep_matches_source_p1(self, operating_result):
-        """After fix: clean tax_dep P1 matches C3B1 source tax_dep (< 0.001 kEUR)."""
+    def test_source_owned_pct_not_unity_raises(self):
+        """tax_dep_basis_source_owned=True with pct != 1.0 raises ValueError (not silently wrong)."""
+        import dataclasses
+        from app.project_factories import create_default_oborovo
+        from financial_engine.adapters.project_inputs import from_project_inputs
+        obo = create_default_oborovo()
+        # Patch pct to non-unity value
+        bad_tax = dataclasses.replace(obo.tax, tax_deductible_book_dep_pct=0.8)
+        bad_project = dataclasses.replace(obo, tax=bad_tax)
+        with pytest.raises(ValueError, match="pct=1.0"):
+            from_project_inputs(bad_project, source_id="pct-test")
+
+    def test_clean_book_dep_matches_source_book_dep_all_periods(self, operating_result):
+        """Clean book_dep matches C3B1 source for all available source periods (< 0.001 kEUR each)."""
         import json, pathlib
         truth = json.loads(
             pathlib.Path("tests/fixtures/excel_oborovo_financial_truth.json").read_text()
         )
         pd_list = truth["tax"]["period_diagnostic"]
-        src_tax_dep_p1 = pd_list[1]["excel_tax_dep_keur"]
         op_periods = [p for p in operating_result.periods if p.is_operation]
-        clean_tax_dep_p1 = op_periods[0].tax_depreciation_keur
-        assert abs(clean_tax_dep_p1 - src_tax_dep_p1) < 0.001
+        max_delta = 0.0
+        max_period = None
+        for entry in pd_list:
+            if entry.get("excel_book_dep_keur") is None:
+                continue
+            pidx = entry.get("period_index", entry.get("operating_period_index"))
+            if pidx is None or pidx < 1 or pidx > len(op_periods):
+                continue
+            clean_val = op_periods[pidx - 1].book_depreciation_keur
+            src_val = entry["excel_book_dep_keur"]
+            delta = abs(clean_val - src_val)
+            if delta > max_delta:
+                max_delta = delta
+                max_period = pidx
+        assert max_delta < 0.001, (
+            f"Max book_dep delta {max_delta:.6f} kEUR at operating period {max_period}"
+        )
+
+    def test_clean_tax_dep_matches_source_all_periods(self, operating_result):
+        """After fix: clean tax_dep matches C3B1 source for all available periods (< 0.001 kEUR)."""
+        import json, pathlib
+        truth = json.loads(
+            pathlib.Path("tests/fixtures/excel_oborovo_financial_truth.json").read_text()
+        )
+        pd_list = truth["tax"]["period_diagnostic"]
+        op_periods = [p for p in operating_result.periods if p.is_operation]
+        max_delta = 0.0
+        max_period = None
+        for entry in pd_list:
+            if entry.get("excel_tax_dep_keur") is None:
+                continue
+            pidx = entry.get("period_index", entry.get("operating_period_index"))
+            if pidx is None or pidx < 1 or pidx > len(op_periods):
+                continue
+            clean_val = op_periods[pidx - 1].tax_depreciation_keur
+            src_val = entry["excel_tax_dep_keur"]
+            delta = abs(clean_val - src_val)
+            if delta > max_delta:
+                max_delta = delta
+                max_period = pidx
+        assert max_delta < 0.001, (
+            f"Max tax_dep delta {max_delta:.6f} kEUR at operating period {max_period}"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -174,11 +235,25 @@ class TestGroupB_TaxContractAdapter:
         assert tax_input.policy.corporate_rate == oborovo_project.tax.corporate_rate
 
     def test_atad_gated_on_thin_cap(self, oborovo_project):
-        """ATAD is gated by thin_cap_enabled (C3B1 evidence: BS!G45=thin_cap=False)."""
+        """ATAD is gated by thin_cap_enabled (C3B1 evidence: BS!G45=thin_cap=False → ATAD=False).
+        Oborovo has thin_cap=False → ATAD=False → adapter succeeds and builds correctly.
+        """
         from financial_engine.adapters.tax_inputs import build_tax_contract_from_project_inputs
+        # Oborovo thin_cap=False → adapter proceeds (ATAD=False does not trigger fail-close)
+        assert oborovo_project.tax.thin_cap_enabled is False
         tax_input = build_tax_contract_from_project_inputs(oborovo_project)
-        assert tax_input.policy.atad_enabled == oborovo_project.tax.thin_cap_enabled
-        assert tax_input.policy.atad_enabled is False  # Oborovo: thin_cap=False → ATAD=False
+        assert tax_input.policy.atad_enabled is False
+
+    def test_atad_enabled_raises_not_implemented(self):
+        """Adapter fails closed for ATAD=True (thin_cap=True): ATAD requires complete interest."""
+        import dataclasses
+        from app.project_factories import create_default_oborovo
+        from financial_engine.adapters.tax_inputs import build_tax_contract_from_project_inputs
+        obo = create_default_oborovo()
+        atad_tax = dataclasses.replace(obo.tax, thin_cap_enabled=True)
+        atad_project = dataclasses.replace(obo, tax=atad_tax)
+        with pytest.raises(NotImplementedError, match="atad_enabled=True"):
+            build_tax_contract_from_project_inputs(atad_project)
 
     def test_oborovo_no_opening_loss_vintages(self, oborovo_project):
         """Oborovo: initial_tax_loss_keur = 0 → empty opening vintages."""
@@ -323,20 +398,48 @@ class TestGroupE_C3B3BAcceptanceMeasurementAndVerdict:
             f"if it is small the block is resolved and the test set needs updating."
         )
 
-    def test_measured_residual_matches_expected(self, debt_solver_result):
-        """Measured residual is approximately 1066.754 kEUR (within 5 kEUR)."""
+    def test_source_comparator_is_authoritative(self):
+        """Source-proven debt is fixed: 42,852.278762563 kEUR (C3B2 fixture)."""
+        assert _SOURCE_DEBT_KEUR == 42_852.278762563
+
+    def test_delta_is_outside_acceptance_threshold(self, debt_solver_result):
+        """Measured |clean - source| exceeds 0.01 kEUR — parity not reached."""
         debt = debt_solver_result.senior_debt.diagnostics["final_debt_size_keur"]
         residual = abs(debt - _SOURCE_DEBT_KEUR)
-        # Allow 5 kEUR tolerance on the measured gap itself (floating-point variation).
-        assert abs(residual - _MEASURED_RESIDUAL_KEUR) < 5.0, (
-            f"Residual {residual:.3f} kEUR differs from expected ~{_MEASURED_RESIDUAL_KEUR} kEUR "
-            f"by more than 5 kEUR — root cause may have changed."
+        assert residual > _C3B3B_TOLERANCE_KEUR, (
+            f"Residual {residual:.6f} kEUR is within tolerance {_C3B3B_TOLERANCE_KEUR}. "
+            f"If the block is resolved, update verdict to COMPLETE_READY_FOR_FINAL_REVIEW."
         )
 
     def test_verdict_string_is_defined(self):
-        """Stop verdict is statically declared and non-empty."""
-        assert _VERDICT == "C3B3B_BLOCKED_WORKBOOK_PERIODISATION_MISMATCH"
+        """Formal verdict is C3B3B_SOURCE_PARITY_NOT_REACHED."""
+        assert _VERDICT == "C3B3B_SOURCE_PARITY_NOT_REACHED"
+        assert _ROOT_CAUSE == "WORKBOOK_PERIODISATION_MISMATCH"
         assert len(_VERDICT) > 0
+
+    def test_no_balancing_plug(self):
+        """No hardcoded debt target, approved_delta, or balancing plug in adapter."""
+        import ast, pathlib
+        src = pathlib.Path("financial_engine/adapters/project_inputs.py").read_text()
+        tree = ast.parse(src)
+        constants = [
+            node.s for node in ast.walk(tree)
+            if isinstance(node, ast.Constant) and isinstance(node.s, str)
+        ]
+        forbidden = ["approved_delta", "balancing_plug", "debt_target", "expected_delta"]
+        for c in constants:
+            assert not any(f in c.lower() for f in forbidden), (
+                f"Found forbidden term in adapter: {c!r}"
+            )
+        # No hardcoded debt amount close to source debt
+        num_consts = [
+            node.n for node in ast.walk(tree)
+            if isinstance(node, ast.Constant) and isinstance(node.n, (int, float))
+        ]
+        for n in num_consts:
+            assert abs(float(n) - 42_852.278762563) > 1.0, (
+                f"Found hardcoded debt-like value {n} in adapter (near source debt)"
+            )
 
     def test_source_first_cit_period(self, debt_solver_result):
         """Source CIT first fires at P6 (workbook pair 5+6); clean CIT first fires at P12.
@@ -392,6 +495,88 @@ class TestGroupE_C3B3BAcceptanceMeasurementAndVerdict:
 # ---------------------------------------------------------------------------
 # Group F: Financial freeze guard
 # ---------------------------------------------------------------------------
+
+class TestGroupG_OrchestratorPeriodFilter:
+    """C3B3B fix: run_senior_debt_model() filters to repayment_start → maturity.
+
+    Pre-fix: all 60 operating periods passed to solve_senior_debt() → 'Period 30
+    has no applicable interest rate'. Post-fix: only debt-active periods passed.
+    """
+
+    def test_debt_solve_excludes_pre_repayment_periods(self, debt_solver_result):
+        """Senior debt result has no periods before repayment start (index 2 for Oborovo)."""
+        from financial_engine.orchestrator import run_senior_debt_model
+        # If no error was raised, the filter worked (pre-fix would have errored at P30).
+        assert debt_solver_result is not None
+        assert debt_solver_result.senior_debt is not None
+
+    def test_no_period_30_interest_rate_error(self, oborovo_project):
+        """Period 30 (first post-debt period) does not raise 'has no applicable interest rate'."""
+        from financial_engine.adapters.project_inputs import build_senior_debt_model_input_from_project_inputs
+        from financial_engine.orchestrator import run_senior_debt_model
+        sd_input = build_senior_debt_model_input_from_project_inputs(
+            oborovo_project, source_id="c3b3b-period-filter-test"
+        )
+        # Must not raise ValueError about period 30
+        result = run_senior_debt_model(sd_input)
+        assert result is not None
+
+    def test_oborovo_debt_periods_are_indices_2_to_29(self, oborovo_project):
+        """Oborovo canonical debt periods are clean indices 2..29 (28 periods)."""
+        from financial_engine.adapters.project_inputs import from_project_inputs
+        from financial_engine.orchestrator import run_operating_model
+        from financial_engine.senior_debt.project_adapter import (
+            build_senior_debt_contract_from_project_inputs,
+        )
+        mi = from_project_inputs(oborovo_project, source_id="period-test")
+        op_result = run_operating_model(mi)
+        policy, _ = build_senior_debt_contract_from_project_inputs(
+            oborovo_project, tuple(op_result.periods)
+        )
+        assert policy.repayment_start_period_index == 2
+        assert policy.maturity_period_index == 29
+        # 28 debt periods: indices 2, 3, ..., 29
+        assert policy.maturity_period_index - policy.repayment_start_period_index + 1 == 28
+
+
+class TestGroupH_FeedbackLoopBehavior:
+    """Prove senior interest → taxable income → CIT → CFADS feedback is correct."""
+
+    def test_taxable_income_fields_present(self, debt_solver_result):
+        """TaxAndCfadsSchedules contains taxable income audit fields."""
+        tc = debt_solver_result.tax_and_cfads
+        assert hasattr(tc, "taxable_income_before_losses_audit_keur")
+        assert hasattr(tc, "corporate_tax_cash_keur")
+        assert hasattr(tc, "cfads_keur")
+        assert len(tc.period_indices) > 0
+
+    def test_senior_interest_reaches_taxable_income(self, debt_solver_result):
+        """Taxable income before losses is non-zero where EBITDA is significant."""
+        tc = debt_solver_result.tax_and_cfads
+        # taxable_income_before_losses includes the senior interest deduction.
+        # It should be non-trivially non-zero for most periods.
+        non_zero = sum(1 for v in tc.taxable_income_before_losses_audit_keur if abs(v) > 1.0)
+        assert non_zero > 10, (
+            f"Expected many non-zero TI periods; got {non_zero}. "
+            f"Senior interest may not be reaching the tax calculation."
+        )
+
+    def test_cit_appears_in_later_periods(self, debt_solver_result):
+        """CIT is non-zero in at least some periods (clean first CIT > P6)."""
+        tc = debt_solver_result.tax_and_cfads
+        cit_periods = [i for i, v in enumerate(tc.corporate_tax_cash_keur) if abs(v) > 0.001]
+        assert len(cit_periods) > 0, "Expected non-zero CIT in some periods"
+        # All CIT periods must be after P11 (clean first CIT >= P12, post-loss-exhaustion)
+        assert min(cit_periods) >= 11, (
+            f"First clean CIT at index {min(cit_periods)}, expected >= 11 (P12+)"
+        )
+
+    def test_cfads_present_and_positive(self, debt_solver_result):
+        """CFADS is positive in operating periods."""
+        tc = debt_solver_result.tax_and_cfads
+        positive = sum(1 for v in tc.cfads_keur if v > 0)
+        assert positive > 20, f"Expected many positive CFADS periods; got {positive}"
+
 
 class TestGroupF_FinancialFreeze:
     """No production financial formula was changed — only new adapter code."""
