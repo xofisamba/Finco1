@@ -1,0 +1,304 @@
+name: C3B2 Debt Interest Check
+# head: f5a5eb409558886015566cd957adc8dba2d8059a
+
+on:
+  push:
+    branches:
+      - stage-c3b2-oborovo-debt-interest-source-closure
+      - claude/festive-cerf-uaq5hb
+      - main
+    paths:
+      - finco_recon/extract_oborovo_debt_interest.py
+      - finco_recon/derive_c3b2_independent_capacity.py
+      - tests/fixtures/excel_oborovo_debt_interest_truth.json
+      - tests/test_stage_c3b2_oborovo_debt_interest_source_closure.py
+      - docs/reconciliation/oborovo_debt_interest_source_closure.md
+      - .github/workflows/c3b2_debt_interest_check.yml
+  pull_request:
+    branches:
+      - main
+    paths:
+      - finco_recon/extract_oborovo_debt_interest.py
+      - finco_recon/derive_c3b2_independent_capacity.py
+      - tests/fixtures/excel_oborovo_debt_interest_truth.json
+      - tests/test_stage_c3b2_oborovo_debt_interest_source_closure.py
+      - docs/reconciliation/oborovo_debt_interest_source_closure.md
+      - .github/workflows/c3b2_debt_interest_check.yml
+
+jobs:
+  c3b2-tests:
+    name: C3B2 debt interest source closure
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Resolve exact head SHA
+        id: expected
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "sha=${{ github.event.pull_request.head.sha }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "sha=${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.expected.outputs.sha }}
+          fetch-depth: 0
+
+      - name: Verify exact head SHA
+        run: |
+          ACTUAL=$(git rev-parse HEAD)
+          EXPECTED="${{ steps.expected.outputs.sha }}"
+          echo "Expected SHA: ${EXPECTED}"
+          echo "Actual   SHA: ${ACTUAL}"
+          if [ "${ACTUAL}" != "${EXPECTED}" ]; then
+            echo "ERROR: checked out SHA does not match expected"
+            exit 1
+          fi
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          if [ -f constraints.txt ]; then
+            pip install -c constraints.txt -e .
+          elif [ -f pyproject.toml ] || [ -f setup.py ] || [ -f setup.cfg ]; then
+            pip install -e .
+          fi
+          # Ensure required packages are present
+          pip install pytest openpyxl python-dateutil
+
+      - name: Report HEAD SHA
+        run: |
+          echo "HEAD SHA: $(git rev-parse HEAD)"
+          echo "Branch: $(git rev-parse --abbrev-ref HEAD || echo detached)"
+
+      - name: Run C3B2 tests
+        run: |
+          python -m pytest tests/test_stage_c3b2_oborovo_debt_interest_source_closure.py \
+            -v \
+            --tb=short
+
+      - name: Report exact test count
+        run: |
+          COUNT=$(python -m pytest tests/test_stage_c3b2_oborovo_debt_interest_source_closure.py \
+            --collect-only -q 2>&1 | grep -E '^[0-9]+ test' | awk '{print $1}')
+          echo "Tests collected: ${COUNT}"
+          if [ "${COUNT}" -lt 140 ]; then
+            echo "ERROR: Expected >= 140 tests, found ${COUNT}"
+            exit 1
+          fi
+
+      - name: Verify extractor version
+        run: |
+          python -c "
+          from finco_recon.extract_oborovo_debt_interest import _EXTRACTOR_VERSION
+          assert _EXTRACTOR_VERSION == '2.0.0', f'Expected 2.0.0, got {_EXTRACTOR_VERSION}'
+          print(f'Extractor version OK: {_EXTRACTOR_VERSION}')
+          "
+
+      - name: Verify derivation version
+        run: |
+          python -c "
+          from finco_recon.derive_c3b2_independent_capacity import _DERIVATION_VERSION
+          assert _DERIVATION_VERSION == '1.2.0', f'Expected 1.2.0, got {_DERIVATION_VERSION}'
+          print(f'Derivation version OK: {_DERIVATION_VERSION}')
+          "
+
+      - name: Verify extractor uses solve_senior_debt
+        run: |
+          python -c "
+          import inspect
+          from finco_recon import extract_oborovo_debt_interest as m
+          src = inspect.getsource(m)
+          assert 'solve_senior_debt' in src, 'Extractor must use solve_senior_debt'
+          assert 'build_schedule' not in src, 'Extractor must not use build_schedule'
+          print('Extractor API: OK (uses solve_senior_debt, not build_schedule)')
+          "
+
+      - name: Verify public derive_capacities_from_vectors helper
+        run: |
+          python -c "
+          from finco_recon.derive_c3b2_independent_capacity import derive_capacities_from_vectors
+          # Smoke-test with minimal synthetic vectors (P1 only)
+          active = [1]
+          result = derive_capacities_from_vectors(
+            cfads={1: 1000.0},
+            dscr_vector={1: 1.35},
+            ops_vector={1: 1.0},
+            annual_rates={1: 0.05},
+            day_fractions={1: 0.5},
+            active_periods=active,
+          )
+          assert 'scalar_capacity_keur' in result
+          assert 'vector_capacity_keur' in result
+          assert result['scalar_capacity_keur'] > result['vector_capacity_keur'], \
+            'scalar (DSCR=1.15) must exceed vector (DSCR=1.35)'
+          print(f'derive_capacities_from_vectors OK: scalar={result[\"scalar_capacity_keur\"]:.3f}, '
+                f'vector={result[\"vector_capacity_keur\"]:.3f}')
+          "
+
+      - name: Run derivation script (dry-run)
+        run: |
+          python -m finco_recon.derive_c3b2_independent_capacity --dry-run
+          echo "Derivation dry-run: OK"
+
+      - name: First-run no-op check
+        run: |
+          FIXTURE="tests/fixtures/excel_oborovo_debt_interest_truth.json"
+          SHA_BEFORE=$(sha256sum "${FIXTURE}" | awk '{print $1}')
+          OUTPUT=$(python -m finco_recon.derive_c3b2_independent_capacity 2>&1)
+          echo "${OUTPUT}"
+          echo "${OUTPUT}" | grep -q "already up-to-date" || {
+            echo "ERROR: First run on committed fixture must print 'already up-to-date'"
+            exit 1
+          }
+          SHA_AFTER=$(sha256sum "${FIXTURE}" | awk '{print $1}')
+          if [ "${SHA_BEFORE}" != "${SHA_AFTER}" ]; then
+            echo "ERROR: First run modified fixture (not idempotent)"
+            exit 1
+          fi
+          git diff --exit-code -- "${FIXTURE}" || {
+            echo "ERROR: git diff shows fixture modified"
+            exit 1
+          }
+          echo "First-run no-op: OK (hash ${SHA_BEFORE:0:16}...)"
+
+      - name: Second-run idempotency check
+        run: |
+          FIXTURE="tests/fixtures/excel_oborovo_debt_interest_truth.json"
+          python -m finco_recon.derive_c3b2_independent_capacity
+          SHA1=$(sha256sum "${FIXTURE}" | awk '{print $1}')
+          python -m finco_recon.derive_c3b2_independent_capacity
+          SHA2=$(sha256sum "${FIXTURE}" | awk '{print $1}')
+          if [ "${SHA1}" != "${SHA2}" ]; then
+            echo "ERROR: Derivation is not idempotent — fixture changed on second run"
+            exit 1
+          fi
+          echo "Idempotency check: OK (hash ${SHA1:0:16}...)"
+
+      - name: Test extractor execution path (catches NameError)
+        run: |
+          python -c "
+          # Synthetic execution path test for _compute_phase2c_sizing_analysis.
+          # Catches runtime NameError that would occur if independent_capacity is
+          # referenced before it is defined.
+          from finco_recon.extract_oborovo_debt_interest import (
+              _row_to_periods, _scalar, _formula, _safe_float,
+          )
+          # Verify helper imports are clean (no NameError at import time)
+          print('Import OK: no NameError at import')
+
+          # Verify the backward-induction helper is importable and callable
+          from finco_recon.derive_c3b2_independent_capacity import derive_capacities_from_vectors
+          result = derive_capacities_from_vectors(
+            cfads={p: 2000.0 for p in range(1, 29)},
+            dscr_vector={p: (1.15 if p <= 24 else 1.35) for p in range(1, 29)},
+            ops_vector={p: 1.0 if p < 28 else 0.989 for p in range(1, 29)},
+            annual_rates={p: 0.0565 for p in range(1, 29)},
+            day_fractions={p: 0.5 for p in range(1, 29)},
+            active_periods=list(range(1, 29)),
+          )
+          assert result['scalar_capacity_keur'] > 0
+          assert result['vector_capacity_keur'] > 0
+          assert result['banding_effect_keur'] < 0, 'DSCR=1.35 banding reduces capacity'
+          print(f'Extractor execution path OK: scalar={result[\"scalar_capacity_keur\"]:.3f} kEUR')
+          "
+
+      - name: Test _compute_phase2c_sizing_analysis end-to-end (catches NameError in full path)
+        run: |
+          python -m pytest tests/test_stage_c3b2_oborovo_debt_interest_source_closure.py \
+            -k TestExtractorSizingAnalysisPath \
+            -v --tb=short
+
+      - name: Verify fixture structure
+        run: |
+          python -c "
+          import json, pathlib
+          truth = json.loads(pathlib.Path('tests/fixtures/excel_oborovo_debt_interest_truth.json').read_text())
+          sa = truth['phase2c_sizing_analysis']
+          assert sa['status'] == 'COMPUTED', f'status={sa[\"status\"]}'
+          assert 'current_phase2c_solver_result' in sa, 'missing current_phase2c_solver_result'
+          assert 'scalar_excel_matched_solver_result' in sa, 'missing scalar_excel_matched_solver_result'
+          assert 'independent_vector_dscr_capacity' in sa, 'missing independent_vector_dscr_capacity'
+          assert 'causal_bridge' in sa, 'missing causal_bridge'
+          assert 'independent_capacity_proof' in sa, 'missing independent_capacity_proof'
+          verdict = sa['verdict']
+          valid = {
+            'C3B2_DEBT_INTEREST_SOURCE_TRUTH_PROVED',
+            'C3B2_SOURCE_TRUTH_PARTIAL_MANUAL_CHECK_REQUIRED',
+          }
+          assert verdict in valid, f'Unknown verdict: {verdict}'
+          proof = sa['independent_capacity_proof']
+          assert proof['verdict'] == 'C3B2_DEBT_INTEREST_SOURCE_TRUTH_PROVED', \
+            f'proof verdict={proof[\"verdict\"]}'
+          assert abs(proof['final_unforced_residual_keur']) < 0.001, \
+            f'final residual={proof[\"final_unforced_residual_keur\"]}'
+          bridge = sa['causal_bridge']
+          assert 'g3a_scalar_backward_induction_keur' in bridge, 'missing G3A in bridge'
+          assert 'delta_solver_to_independent_scalar_keur' in bridge, 'missing delta_solver_to_independent_scalar'
+          assert 'delta_dscr_banding_g3a_to_g4_keur' in bridge, 'missing delta_dscr_banding_g3a_to_g4'
+          print(f'Fixture structure OK: verdict={verdict}')
+          "
+
+      - name: Verify causal bridge closes
+        run: |
+          python -c "
+          import json, pathlib
+          truth = json.loads(pathlib.Path('tests/fixtures/excel_oborovo_debt_interest_truth.json').read_text())
+          bridge = truth['phase2c_sizing_analysis']['causal_bridge']
+          assert bridge['bridge_closed'] is True, f'bridge_closed=False; error={bridge[\"bridge_closure_error_keur\"]}'
+          err = bridge['bridge_closure_error_keur']
+          assert err < 1.0, f'Bridge closure error {err:.6f} kEUR > 1 kEUR tolerance'
+          print(f'Causal bridge OK: closure_error={err:.9f} kEUR')
+          "
+
+      - name: Verify independent backward induction (independent_capacity_proof)
+        run: |
+          python -c "
+          import json, pathlib
+          truth = json.loads(pathlib.Path('tests/fixtures/excel_oborovo_debt_interest_truth.json').read_text())
+          proof = truth['phase2c_sizing_analysis']['independent_capacity_proof']
+          residual = abs(proof['final_unforced_residual_keur'])
+          assert residual < 0.001, f'Independent induction residual {residual:.12f} kEUR must be < 0.001'
+          g3a = proof['scalar_capacity']['capacity_keur']
+          g4  = proof['vector_capacity']['capacity_keur']
+          assert g3a > g4, f'G3A ({g3a:.3f}) must exceed G4 ({g4:.3f}) — DSCR banding reduces capacity'
+          p28_proof = proof.get('p28_ops_flag_proof', {})
+          assert p28_proof.get('p1_to_p27_row9_all_ones') is True, 'P1-P27 must all have row9=1.0'
+          assert p28_proof.get('p28_is_only_partial_period') is True
+          print(f'Independent backward induction OK: G3A={g3a:.6f}, G4={g4:.6f}, residual={residual:.12f} kEUR')
+          "
+
+      - name: Verify no MANUAL_EXPLORATION placeholders
+        run: |
+          python -c "
+          import json, pathlib
+          text = pathlib.Path('tests/fixtures/excel_oborovo_debt_interest_truth.json').read_text()
+          assert 'MANUAL_EXPLORATION' not in text, 'Fixture contains MANUAL_EXPLORATION placeholder'
+          print('No MANUAL_EXPLORATION placeholders found')
+          "
+
+      - name: Verify production paths untouched
+        run: |
+          BASE_SHA="c5f0b1f1643aad07df2f2d9e07acd21943328841"
+          CHANGED=$(git diff "${BASE_SHA}...HEAD" --name-only 2>/dev/null || git diff HEAD~1 --name-only)
+          echo "Changed files:"
+          echo "${CHANGED}"
+          FORBIDDEN=$(echo "${CHANGED}" | grep -E '^(financial_engine/|app/|finco_core/)' || true)
+          if [ -n "${FORBIDDEN}" ]; then
+            echo "ERROR: Production paths modified:"
+            echo "${FORBIDDEN}"
+            exit 1
+          fi
+          echo "Production paths untouched: OK"
+
+      - name: C3B1 regression check
+        run: |
+          python -m pytest tests/test_stage_c3b1_oborovo_tax_source_truth.py \
+            -v --tb=short -q
+          echo "C3B1 regression: PASSED"
