@@ -139,7 +139,7 @@
       "verified_empty_cells": "",
       "verified_label_or_presentation_cells": "",
       "storage_verification_basis": "PROGRAMMATIC_WORKBOOK_INSPECTION",
-      "verified_active_cell_storage_kind": "FORMULA"
+      "verified_active_cell_storage_kind": "HARDCODE"
     },
     {
       "model_id": "TUHO",
@@ -661,7 +661,7 @@
       "team": "",
       "domain": "capex",
       "technology": "Common",
-      "label": "Cost of MV grid (k€/km)",
+      "label": "Cost of MV grid (k\u20ac/km)",
       "field_id_candidate": "capex.cost_of_mv_grid_k_km",
       "active_cell": "E26",
       "active_value_kind": "numeric",
@@ -1851,7 +1851,7 @@
       "team": "",
       "domain": "capex",
       "technology": "Common",
-      "label": "Acquisition costs if any (k€)",
+      "label": "Acquisition costs if any (k\u20ac)",
       "field_id_candidate": "capex.acquisition_costs_if_any_k",
       "active_cell": "E61",
       "active_value_kind": "numeric",
@@ -4571,7 +4571,7 @@
       "team": "",
       "domain": "opex",
       "technology": "Common",
-      "label": "Balancing cost €/MWh",
+      "label": "Balancing cost \u20ac/MWh",
       "field_id_candidate": "opex.balancing_cost_mwh",
       "active_cell": "E142",
       "active_value_kind": "numeric",

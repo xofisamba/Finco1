@@ -7,8 +7,8 @@
     "PRELIMINARY_PACKAGE_INVENTORY"
   ],
   "inputs": {
-    "package_rows": 705,
-    "manifest_rows": 705,
+    "package_rows": 706,
+    "manifest_rows": 706,
     "missing_rows": 0,
     "extra_rows": 0,
     "structural_mismatches": 0,

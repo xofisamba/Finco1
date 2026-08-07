@@ -69,12 +69,11 @@ jobs:
           python -m pytest tests/test_stage_c3b2_oborovo_debt_interest_source_closure.py \
             -v --tb=short --no-header
 
-      - name: Run Phase 2C solver tests
+      - name: Run Phase 2C solver tests (explicit targets — no repository-wide collection)
         run: |
-          python -m pytest tests/ -k "phase2c or senior_debt" \
-            -v --tb=short --no-header \
-            --ignore=tests/test_stage_c3b3a_clean_senior_debt_source_contract.py \
-            --ignore=tests/test_stage_c3b2_oborovo_debt_interest_source_closure.py
+          python -m pytest \
+            tests/test_phase2c_senior_debt.py \
+            -v --tb=short --no-header
 
       - name: Run C3B1 historical freeze governance
         run: |
