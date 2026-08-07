@@ -913,46 +913,223 @@ class TestGroupN_ActualVsTargetDscr:
 
 
 # ===========================================================================
-# GROUP O — Fingerprint sensitivity
+# GROUP O — Fingerprint sensitivity (behavioral — calls function directly)
 # ===========================================================================
 
+def _make_minimal_senior_debt_model_input(
+    *,
+    dscr_targets=None,
+    availability=None,
+    annual_rate_override=None,
+    day_count_override=None,
+    target_dscr_override=None,
+):
+    """Build a SeniorDebtModelInput for fingerprint mutation tests.
+
+    Uses create_default_oborovo() for the operating core and a minimal zero-tax policy.
+    Returns a SeniorDebtModelInput usable with compute_senior_debt_fingerprint().
+    """
+    from app.project_factories import create_default_oborovo
+    from financial_engine.adapters.project_inputs import from_project_inputs
+    from financial_engine.orchestrator import run_operating_model
+    from financial_engine.inputs import (
+        TaxCalculationInput, SeniorDebtModelInput,
+    )
+    from financial_engine.policies.tax import TaxPolicy, CashTaxTiming
+    from financial_engine.senior_debt.inputs import (
+        PeriodRate, PeriodDscrTarget, PeriodDebtServiceAvailability, SeniorDebtInputs,
+    )
+    from financial_engine.senior_debt.policy import (
+        SeniorDebtPolicy, SeniorDebtSizingMode, DayCountConvention,
+    )
+
+    proj = create_default_oborovo()
+    model_in = from_project_inputs(proj, source_id="fp-test", baseline_commit_sha="")
+    result = run_operating_model(model_in)
+    op_only = [p for p in result.periods if p.is_operation][:28]
+
+    d = _oborovo_data()
+    rate = annual_rate_override if annual_rate_override is not None else 0.0589
+    period_rates = tuple(
+        PeriodRate(p.period_index, rate)
+        for p in op_only
+    )
+
+    if dscr_targets is None:
+        dscr_t = tuple(
+            PeriodDscrTarget(p.period_index, 1.15)
+            for p in op_only
+        )
+    else:
+        dscr_t = dscr_targets
+
+    if availability is None:
+        avail = tuple(
+            PeriodDebtServiceAvailability(p.period_index, 1.0)
+            for p in op_only
+        )
+    else:
+        avail = availability
+
+    dc = day_count_override if day_count_override is not None else DayCountConvention.ACT_360
+    td = target_dscr_override if target_dscr_override is not None else 1.15
+
+    policy = SeniorDebtPolicy(
+        policy_id="fp-test-policy",
+        policy_version="1.0",
+        sizing_mode=SeniorDebtSizingMode.DSCR_SCULPTED,
+        target_dscr=td,
+        maximum_gearing=None,
+        annual_fixed_rate=None,
+        periods_per_year=2,
+        day_count_convention=dc,
+        repayment_start_period_index=op_only[0].period_index,
+        maturity_period_index=op_only[-1].period_index,
+        convergence_tolerance_keur=1e-4,
+        convergence_relative_tolerance=1e-9,
+        maximum_iterations=100,
+        permit_terminal_balloon=True,
+        damping_alpha=1.0,
+    )
+    sd_inputs = SeniorDebtInputs(
+        eligible_project_cost_keur=0.0,
+        initial_debt_guess_keur=43_000.0,
+        period_rates=period_rates,
+        explicit_principal_schedule=None,
+        period_dscr_targets=dscr_t,
+        period_debt_service_availability=avail,
+    )
+    tax_policy = TaxPolicy(
+        policy_id="test-zero-tax",
+        policy_version="1.0",
+        corporate_rate=0.0,
+        periods_per_tax_year=2,
+        loss_carryforward_years=0,
+        atad_enabled=False,
+        atad_ebitda_limit=0.3,
+        atad_de_minimis_threshold_keur_annual=0.0,
+        cash_tax_timing=CashTaxTiming.TAX_YEAR_LAST_PERIOD,
+        cash_tax_payment_lag_periods=0,
+    )
+    tax_input = TaxCalculationInput(
+        policy=tax_policy,
+        opening_loss_vintages=(),
+        period_interest=(),
+        period_adjustments=(),
+    )
+    return SeniorDebtModelInput(
+        operating=model_in,
+        tax=tax_input,
+        senior_debt_policy=policy,
+        senior_debt_inputs=sd_inputs,
+    )
+
+
 class TestGroupO_FingerprintSensitivity:
-    """Behavioral fingerprint: PeriodDscrTarget and PeriodDebtServiceAvailability are
-    captured in the provenance payload (verified by testing the serialized payload fields).
+    """Behavioral fingerprint tests: call compute_senior_debt_fingerprint(SeniorDebtModelInput)
+    directly. Six mutation assertions (A–F) prove the function is sensitive to the right inputs
+    and invariant to the right non-inputs.
     """
 
     def test_fingerprint_function_importable(self):
         from financial_engine.provenance import compute_senior_debt_fingerprint
         assert callable(compute_senior_debt_fingerprint)
 
-    def test_dscr_targets_appear_in_provenance_payload(self):
-        """The provenance module serializes period_dscr_targets into the payload dict."""
-        import json
-        from financial_engine.senior_debt.inputs import (
-            PeriodDscrTarget, PeriodDebtServiceAvailability, PeriodRate, SeniorDebtInputs
+    def test_mutation_A_same_inputs_same_fingerprint(self):
+        """A: two independently built identical SeniorDebtModelInputs → same fingerprint."""
+        from financial_engine.provenance import compute_senior_debt_fingerprint
+        m1 = _make_minimal_senior_debt_model_input()
+        m2 = _make_minimal_senior_debt_model_input()
+        fp1 = compute_senior_debt_fingerprint(m1)
+        fp2 = compute_senior_debt_fingerprint(m2)
+        assert fp1 == fp2, "Identical inputs must produce identical fingerprint"
+
+    def test_mutation_B_rate_change_different_fingerprint(self):
+        """B: changing annual rate → different fingerprint."""
+        from financial_engine.provenance import compute_senior_debt_fingerprint
+        m_base = _make_minimal_senior_debt_model_input(annual_rate_override=0.0589)
+        m_mut = _make_minimal_senior_debt_model_input(annual_rate_override=0.0700)
+        fp_base = compute_senior_debt_fingerprint(m_base)
+        fp_mut = compute_senior_debt_fingerprint(m_mut)
+        assert fp_base != fp_mut, "Rate change must produce different fingerprint"
+
+    def test_mutation_C_dscr_change_different_fingerprint(self):
+        """C: changing per-period DSCR target → different fingerprint."""
+        from financial_engine.provenance import compute_senior_debt_fingerprint
+        from financial_engine.senior_debt.inputs import PeriodDscrTarget
+
+        proj_base = _make_minimal_senior_debt_model_input()
+        op_only = [p for p in _oborovo_real_periods()]
+
+        # Higher DSCR for last 4 periods
+        dscr_mut = tuple(
+            PeriodDscrTarget(p.period_index, 1.35 if i >= 24 else 1.15)
+            for i, p in enumerate(op_only)
         )
-        sd = SeniorDebtInputs(
-            eligible_project_cost_keur=0.0,
-            initial_debt_guess_keur=43_000.0,
-            period_rates=(PeriodRate(2, 0.056),),
-            explicit_principal_schedule=None,
-            period_dscr_targets=(PeriodDscrTarget(2, 1.35),),
-            period_debt_service_availability=(PeriodDebtServiceAvailability(29, 0.989),),
+        m_mut = _make_minimal_senior_debt_model_input(dscr_targets=dscr_mut)
+        fp_base = compute_senior_debt_fingerprint(proj_base)
+        fp_mut = compute_senior_debt_fingerprint(m_mut)
+        assert fp_base != fp_mut, "DSCR change must produce different fingerprint"
+
+    def test_mutation_D_availability_change_different_fingerprint(self):
+        """D: changing availability fraction → different fingerprint."""
+        from financial_engine.provenance import compute_senior_debt_fingerprint
+        from financial_engine.senior_debt.inputs import PeriodDebtServiceAvailability
+
+        op_only = list(_oborovo_real_periods())
+        avail_base = tuple(
+            PeriodDebtServiceAvailability(p.period_index, 1.0)
+            for p in op_only
         )
-        # The provenance payload dict is built by the same logic; verify field presence
-        # by checking the serialized structure directly (mirrors provenance.py lines 176-177)
-        period_dscr_targets_payload = [
-            {"period_index": dt.period_index, "target_dscr": dt.target_dscr}
-            for dt in sd.period_dscr_targets
-        ]
-        avail_payload = [
-            {"period_index": av.period_index, "availability_fraction": av.availability_fraction}
-            for av in sd.period_debt_service_availability
-        ]
-        assert len(period_dscr_targets_payload) == 1
-        assert period_dscr_targets_payload[0]["period_index"] == 2
-        assert period_dscr_targets_payload[0]["target_dscr"] == pytest.approx(1.35)
-        assert avail_payload[0]["availability_fraction"] == pytest.approx(0.989)
+        avail_mut = tuple(
+            PeriodDebtServiceAvailability(p.period_index, 0.988950276243094 if i == 27 else 1.0)
+            for i, p in enumerate(op_only)
+        )
+        m_base = _make_minimal_senior_debt_model_input(availability=avail_base)
+        m_mut = _make_minimal_senior_debt_model_input(availability=avail_mut)
+        fp_base = compute_senior_debt_fingerprint(m_base)
+        fp_mut = compute_senior_debt_fingerprint(m_mut)
+        assert fp_base != fp_mut, "Availability change must produce different fingerprint"
+
+    def test_mutation_E_day_count_act360_vs_act365_different_fingerprint(self):
+        """E: ACT_360 vs ACT_365 day-count convention → different fingerprint."""
+        from financial_engine.provenance import compute_senior_debt_fingerprint
+        from financial_engine.senior_debt.policy import DayCountConvention
+        m_360 = _make_minimal_senior_debt_model_input(day_count_override=DayCountConvention.ACT_360)
+        m_365 = _make_minimal_senior_debt_model_input(day_count_override=DayCountConvention.ACT_365)
+        fp_360 = compute_senior_debt_fingerprint(m_360)
+        fp_365 = compute_senior_debt_fingerprint(m_365)
+        assert fp_360 != fp_365, "ACT_360 vs ACT_365 must produce different fingerprint"
+
+    def test_mutation_F_initial_guess_invariance(self):
+        """F: initial_debt_guess_keur is excluded from the fingerprint — must be same."""
+        from financial_engine.provenance import compute_senior_debt_fingerprint
+        from financial_engine.inputs import SeniorDebtModelInput
+        from financial_engine.senior_debt.inputs import SeniorDebtInputs
+
+        m = _make_minimal_senior_debt_model_input()
+        # Rebuild with a different initial guess
+        sd = m.senior_debt_inputs
+        sd_new = SeniorDebtInputs(
+            eligible_project_cost_keur=sd.eligible_project_cost_keur,
+            initial_debt_guess_keur=99_999.0,  # very different
+            period_rates=sd.period_rates,
+            explicit_principal_schedule=sd.explicit_principal_schedule,
+            period_dscr_targets=sd.period_dscr_targets,
+            period_debt_service_availability=sd.period_debt_service_availability,
+        )
+        m_new = SeniorDebtModelInput(
+            operating=m.operating,
+            tax=m.tax,
+            senior_debt_policy=m.senior_debt_policy,
+            senior_debt_inputs=sd_new,
+        )
+        fp_base = compute_senior_debt_fingerprint(m)
+        fp_new = compute_senior_debt_fingerprint(m_new)
+        assert fp_base == fp_new, (
+            "initial_debt_guess_keur must be excluded from fingerprint; "
+            "changing it must NOT change the fingerprint"
+        )
 
     def test_dscr_target_changes_solver_result(self):
         """Adding a lower DSCR target for specific periods must change the debt amount."""
@@ -1022,6 +1199,15 @@ class TestGroupP_Provenance:
             {"period_index": 26, "target_dscr": 1.35},
             {"period_index": 27, "target_dscr": 1.35},
         ]
+
+    def test_fingerprint_function_called_directly_returns_hex_sha256(self):
+        """compute_senior_debt_fingerprint(SeniorDebtModelInput) returns 64-char hex SHA-256."""
+        from financial_engine.provenance import compute_senior_debt_fingerprint
+        m = _make_minimal_senior_debt_model_input()
+        fp = compute_senior_debt_fingerprint(m)
+        assert isinstance(fp, str)
+        assert len(fp) == 64
+        assert all(c in "0123456789abcdef" for c in fp)
 
 
 # ===========================================================================
@@ -1205,6 +1391,101 @@ class TestGroupT_IdentityCloneInvariance:
         assert r_generic.debt_size_keur == pytest.approx(r_manual.debt_size_keur, abs=0.001), (
             f"Generic builder debt {r_generic.debt_size_keur:.6f} kEUR ≠ "
             f"manual {r_manual.debt_size_keur:.6f} kEUR"
+        )
+
+    def test_renamed_clone_all_economic_fields_equal_and_fingerprint_equal(self):
+        """TRUE renamed-clone test: mutate project identity (name, code, company) while keeping
+        all economic inputs identical. Verify ALL economic debt-contract fields equal AND
+        fingerprint equal.
+
+        Identity mutations:
+            name: "Oborovo Wind" → "Renamed Clone Wind"
+            code: "OBR-001" → "CLONE-999"
+            company: "Finco Energy d.o.o." → "Clone Energy LLC"
+
+        Economic inputs: unchanged (same rates, DSCR targets, availability, tenor, dates).
+        """
+        import dataclasses
+        from app.project_factories import create_default_oborovo
+        from financial_engine.adapters.project_inputs import from_project_inputs
+        from financial_engine.orchestrator import run_operating_model
+        from financial_engine.senior_debt.project_adapter import (
+            build_senior_debt_contract_from_project_inputs,
+        )
+        from financial_engine.senior_debt.solver import solve_senior_debt
+        from financial_engine.provenance import compute_senior_debt_fingerprint
+        from financial_engine.inputs import (
+            TaxCalculationInput, SeniorDebtModelInput,
+        )
+        from financial_engine.policies.tax import TaxPolicy, CashTaxTiming
+
+        # Build original project
+        proj_orig = create_default_oborovo()
+
+        # Build renamed clone — mutate ONLY identity fields
+        orig_info = proj_orig.info
+        renamed_info = dataclasses.replace(
+            orig_info,
+            name="Renamed Clone Wind",
+            code="CLONE-999",
+            company="Clone Energy LLC",
+        )
+        proj_clone = dataclasses.replace(proj_orig, info=renamed_info)
+
+        # Verify identity fields differ
+        assert proj_orig.info.name != proj_clone.info.name
+        assert proj_orig.info.code != proj_clone.info.code
+        assert proj_orig.info.company != proj_clone.info.company
+
+        # Run operating model for both
+        model_orig = from_project_inputs(proj_orig, source_id="rename-test", baseline_commit_sha="")
+        model_clone = from_project_inputs(proj_clone, source_id="rename-test", baseline_commit_sha="")
+        result_orig = run_operating_model(model_orig)
+        result_clone = run_operating_model(model_clone)
+
+        # Build senior debt contract for both
+        policy_orig, inputs_orig = build_senior_debt_contract_from_project_inputs(proj_orig, result_orig.periods)
+        policy_clone, inputs_clone = build_senior_debt_contract_from_project_inputs(proj_clone, result_clone.periods)
+
+        # Run solver on ORIGINAL periods (same CFADS)
+        d = _oborovo_data()
+        periods = _oborovo_real_periods()
+        cfads_map = {p.period_index: d["cfads"][p.period_index - 1] for p in periods}
+
+        r_orig = solve_senior_debt(inputs=inputs_orig, policy=policy_orig, periods=periods, tax_cfads_fn=_no_tax_fn(cfads_map))
+        r_clone = solve_senior_debt(inputs=inputs_clone, policy=policy_clone, periods=periods, tax_cfads_fn=_no_tax_fn(cfads_map))
+
+        # ALL economic debt-contract fields must be equal
+        assert r_orig.debt_size_keur == pytest.approx(r_clone.debt_size_keur, rel=1e-10), (
+            f"debt_size_keur: orig={r_orig.debt_size_keur:.6f} clone={r_clone.debt_size_keur:.6f}"
+        )
+        for i in range(len(r_orig.period_indices)):
+            assert r_orig.senior_debt_opening_keur[i] == pytest.approx(r_clone.senior_debt_opening_keur[i], rel=1e-10), f"opening period {i}"
+            assert r_orig.senior_interest_keur[i] == pytest.approx(r_clone.senior_interest_keur[i], rel=1e-10), f"interest period {i}"
+            assert r_orig.senior_principal_keur[i] == pytest.approx(r_clone.senior_principal_keur[i], rel=1e-10), f"principal period {i}"
+            assert r_orig.senior_debt_closing_keur[i] == pytest.approx(r_clone.senior_debt_closing_keur[i], rel=1e-10), f"closing period {i}"
+
+        # Fingerprint must also be equal (identity is excluded)
+        zero_tax_policy = TaxPolicy(
+            policy_id="test-zero-tax", policy_version="1.0",
+            corporate_rate=0.0, periods_per_tax_year=2, loss_carryforward_years=0,
+            atad_enabled=False, atad_ebitda_limit=0.3,
+            atad_de_minimis_threshold_keur_annual=0.0,
+            cash_tax_timing=CashTaxTiming.TAX_YEAR_LAST_PERIOD,
+            cash_tax_payment_lag_periods=0,
+        )
+        tax_input = TaxCalculationInput(
+            policy=zero_tax_policy, opening_loss_vintages=(), period_interest=(), period_adjustments=(),
+        )
+        sdi_orig = SeniorDebtModelInput(operating=model_orig, tax=tax_input, senior_debt_policy=policy_orig, senior_debt_inputs=inputs_orig)
+        sdi_clone = SeniorDebtModelInput(operating=model_clone, tax=tax_input, senior_debt_policy=policy_clone, senior_debt_inputs=inputs_clone)
+        fp_orig = compute_senior_debt_fingerprint(sdi_orig)
+        fp_clone = compute_senior_debt_fingerprint(sdi_clone)
+        assert fp_orig == fp_clone, (
+            f"Renamed clone must have same fingerprint as original.\n"
+            f"  Identity mutations: name/code/company changed\n"
+            f"  orig fp:  {fp_orig}\n"
+            f"  clone fp: {fp_clone}"
         )
 
 
@@ -1412,6 +1693,87 @@ class TestGroupY_GenericBuilder:
         assert r_generic.debt_size_keur == pytest.approx(42852.279, abs=0.001), (
             f"Generic builder debt {r_generic.debt_size_keur:.6f} kEUR ≠ 42852.279 kEUR"
         )
+
+# ===========================================================================
+# GROUP Z — Day-count fail-closed (C3B3A3)
+# ===========================================================================
+
+class TestGroupZ_DayCountFailClosed:
+    """build_senior_debt_contract_from_project_inputs: ACT_360/ACT_365 map correctly;
+    unsupported conventions (FIXED_SEMIANNUAL, EXPLICIT_FRACTIONS) raise ValueError.
+    """
+
+    def _make_proj_with_day_count(self, day_count_value):
+        """Build a create_default_oborovo()-based project with day_count overridden."""
+        import dataclasses
+        from app.project_factories import create_default_oborovo
+        from finco_core.inputs.senior_rate_schedule import SeniorDayCountConvention, SeniorDebtInterestConfig, SeniorRateMode, SeniorRateSchedule
+
+        proj = create_default_oborovo()
+        orig_cfg = proj.financing.senior_debt_interest_config
+        new_cfg = SeniorDebtInterestConfig(
+            enabled=orig_cfg.enabled,
+            rate_schedule=orig_cfg.rate_schedule,
+            day_count=day_count_value,
+        )
+        new_fin = dataclasses.replace(proj.financing, senior_debt_interest_config=new_cfg)
+        return dataclasses.replace(proj, financing=new_fin)
+
+    def _run_builder(self, proj):
+        from financial_engine.adapters.project_inputs import from_project_inputs
+        from financial_engine.orchestrator import run_operating_model
+        from financial_engine.senior_debt.project_adapter import build_senior_debt_contract_from_project_inputs
+
+        model_in = from_project_inputs(proj, source_id="dc-test", baseline_commit_sha="")
+        result = run_operating_model(model_in)
+        return build_senior_debt_contract_from_project_inputs(proj, result.periods)
+
+    def test_act_360_maps_correctly(self):
+        """ACT_360 day-count produces a valid policy with DayCountConvention.ACT_360."""
+        from finco_core.inputs.senior_rate_schedule import SeniorDayCountConvention
+        from financial_engine.senior_debt.policy import DayCountConvention
+
+        proj = self._make_proj_with_day_count(SeniorDayCountConvention.ACT_360)
+        policy, _ = self._run_builder(proj)
+        assert policy.day_count_convention == DayCountConvention.ACT_360
+
+    def test_act_365_maps_correctly(self):
+        """ACT_365 day-count produces a valid policy with DayCountConvention.ACT_365."""
+        from finco_core.inputs.senior_rate_schedule import SeniorDayCountConvention
+        from financial_engine.senior_debt.policy import DayCountConvention
+
+        proj = self._make_proj_with_day_count(SeniorDayCountConvention.ACT_365)
+        policy, _ = self._run_builder(proj)
+        assert policy.day_count_convention == DayCountConvention.ACT_365
+
+    def test_fixed_semiannual_raises_value_error(self):
+        """FIXED_SEMIANNUAL day-count raises ValueError (fail-closed)."""
+        from finco_core.inputs.senior_rate_schedule import SeniorDayCountConvention
+
+        proj = self._make_proj_with_day_count(SeniorDayCountConvention.FIXED_SEMIANNUAL)
+        with pytest.raises(ValueError, match="unsupported day-count"):
+            self._run_builder(proj)
+
+    def test_explicit_fractions_raises_value_error(self):
+        """EXPLICIT_FRACTIONS day-count raises ValueError (fail-closed)."""
+        from finco_core.inputs.senior_rate_schedule import SeniorDayCountConvention
+
+        proj = self._make_proj_with_day_count(SeniorDayCountConvention.EXPLICIT_FRACTIONS)
+        with pytest.raises(ValueError, match="unsupported day-count"):
+            self._run_builder(proj)
+
+    def test_error_message_names_unsupported_convention(self):
+        """ValueError message for unsupported day-count names the offending convention."""
+        from finco_core.inputs.senior_rate_schedule import SeniorDayCountConvention
+
+        proj = self._make_proj_with_day_count(SeniorDayCountConvention.FIXED_SEMIANNUAL)
+        with pytest.raises(ValueError) as exc:
+            self._run_builder(proj)
+        msg = str(exc.value)
+        assert "FIXED_SEMIANNUAL" in msg or "fixed_semiannual" in msg.lower(), (
+            f"ValueError should name the unsupported convention; got: {msg}"
+        )
+
 
 class TestGroupW_C3B1C3B2FixtureFreeze:
     def test_c3b2_verdict_intact(self):

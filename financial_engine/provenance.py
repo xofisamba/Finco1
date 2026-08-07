@@ -127,8 +127,10 @@ def compute_senior_debt_fingerprint(inputs: "Any") -> str:
                                     if p in period_debt_service_availability else 1.0
         allowed_debt_service[p]  = max(0, CFADS[p] / resolved_target_dscr[p])
                                     * resolved_availability[p]
-        principal[p]             = allowed_debt_service[p] - interest[p]
-                                   (subject to opening balance cap at maturity)
+        principal[p]             = min(
+                                       opening_balance[p],
+                                       max(0, allowed_debt_service[p] - interest[p])
+                                   )
     """
     import dataclasses
     from enum import Enum

@@ -24,7 +24,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
+
+      - name: Verify exact head SHA
+        run: |
+          EXPECTED="${{ github.event.pull_request.head.sha || github.sha }}"
+          ACTUAL=$(git rev-parse HEAD)
+          echo "Expected SHA: $EXPECTED"
+          echo "Actual SHA:   $ACTUAL"
+          if [ "$EXPECTED" != "$ACTUAL" ]; then
+            echo "ERROR: HEAD SHA mismatch — not running on the exact PR head commit"
+            exit 1
+          fi
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -33,11 +45,18 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install -e ".[dev]" --quiet
+          python -m pip install --upgrade pip
+          if [ -f constraints.txt ]; then
+            pip install -c constraints.txt -e .
+            pip install -c constraints.txt pytest
+          else
+            pip install -e .
+            pip install pytest
+          fi
 
       - name: git diff --check (no trailing whitespace)
         run: |
-          git diff --check HEAD~1..HEAD || true
+          git diff --check ${{ github.event.pull_request.base.sha || 'HEAD~1' }}..HEAD
 
       - name: Run C3B3A clean senior debt tests
         run: |

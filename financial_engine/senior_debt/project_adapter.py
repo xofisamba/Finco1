@@ -79,7 +79,11 @@ def build_senior_debt_contract_from_project_inputs(
     elif finco_dc == SeniorDayCountConvention.ACT_365:
         day_count = DayCountConvention.ACT_365
     else:
-        day_count = DayCountConvention.ACT_360
+        raise ValueError(
+            f"build_senior_debt_contract_from_project_inputs: unsupported day-count "
+            f"convention {finco_dc!r}. Only ACT_360 and ACT_365 are supported. "
+            f"FIXED_SEMIANNUAL and EXPLICIT_FRACTIONS are not yet supported."
+        )
 
     # --- Period selection ---
     # Select operating-only periods; map to debt tenor (first N of those).
@@ -150,7 +154,7 @@ def build_senior_debt_contract_from_project_inputs(
         )
 
     policy = SeniorDebtPolicy(
-        policy_id=f"project-{project_inputs.info.code}",
+        policy_id="clean-project-senior-debt-v1",
         policy_version="1.0.0",
         sizing_mode=sizing_mode,
         target_dscr=fin.target_dscr,
