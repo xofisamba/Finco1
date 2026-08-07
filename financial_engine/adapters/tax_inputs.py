@@ -64,11 +64,9 @@ def build_tax_contract_from_project_inputs(
       A vintage origin_tax_year cannot be generically inferred.
     * Unsupported period_frequency: raises ValueError.
       Only SEMESTRIAL (2 periods/year) is supported.
-    * Cash-tax timing is TAX_YEAR_LAST_PERIOD, lag=0. This is Oborovo's
-      source-proven timing. For projects where this is not source-proven the
-      adapter still applies the same value — this is a known limitation and is
-      documented here until a generic cash-tax timing field is added to
-      ProjectInputs.
+    * Cash-tax timing not source-owned: raises NotImplementedError.
+      TAX_YEAR_LAST_PERIOD, lag=0 is only source-proven for Oborovo (C3B1).
+      Projects without cash_tax_timing_source_owned=True fail closed.
     """
     from financial_engine.inputs import TaxCalculationInput, OpeningTaxLossVintageInput
     from financial_engine.policies.tax import TaxPolicy, CashTaxTiming
@@ -105,6 +103,21 @@ def build_tax_contract_from_project_inputs(
             "period_interest stub. Merge full interest explicitly before enabling ATAD."
         )
 
+    # Cash-tax timing — fail-closed for projects without source-proven timing.
+    # TAX_YEAR_LAST_PERIOD, lag=0 is Oborovo source-proven (C3B1 evidence).
+    # This is a CLEAN ENGINE CONVENTION for annual CIT accrual placement, NOT
+    # a payment lag. The workbook H2+H1 periodisation difference is a separate
+    # architectural issue (C3B3B_SOURCE_PARITY_NOT_REACHED root cause).
+    if not tax.cash_tax_timing_source_owned:
+        raise NotImplementedError(
+            "build_tax_contract_from_project_inputs: cash_tax_timing_source_owned=False. "
+            "Cash-tax timing (TAX_YEAR_LAST_PERIOD, lag=0) is only source-proven for "
+            "Oborovo (C3B1 evidence). Projects without an explicitly supported timing "
+            "configuration must not silently inherit Oborovo timing. "
+            "Set cash_tax_timing_source_owned=True in TaxParams only after proving "
+            "the timing applies to this project from source workbook data."
+        )
+
     policy = TaxPolicy(
         policy_id=_POLICY_ID,
         policy_version=_POLICY_VERSION,
@@ -115,8 +128,8 @@ def build_tax_contract_from_project_inputs(
         atad_ebitda_limit=tax.atad_ebitda_limit,
         atad_de_minimis_threshold_keur_annual=tax.atad_min_interest_keur,
         # Cash-tax timing: TAX_YEAR_LAST_PERIOD, lag=0 is Oborovo source-proven.
-        # Generic timing selection is a known limitation until a cash_tax_timing
-        # field is added to ProjectInputs / TaxParams.
+        # This is a clean engine periodisation convention (annual CIT in last period
+        # of each tax year), not a payment lag. Workbook H2+H1 is a separate issue.
         cash_tax_timing=CashTaxTiming.TAX_YEAR_LAST_PERIOD,
         cash_tax_payment_lag_periods=0,
     )

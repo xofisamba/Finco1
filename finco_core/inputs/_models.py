@@ -729,6 +729,14 @@ class TaxParams:
     # All other projects: retain legacy tax_depreciable_capex_items() path → False.
     tax_dep_basis_source_owned: bool = False
 
+    # SOURCE-OWNERSHIP FLAG — explicit opt-in to Oborovo-proven cash-tax timing.
+    # When True: the tax adapter applies TAX_YEAR_LAST_PERIOD, lag=0.
+    # When False (default): the tax adapter raises NotImplementedError (fail-closed).
+    # Must only be set True when source workbook evidence proves TAX_YEAR_LAST_PERIOD
+    # applies to this project. Oborovo: C3B1 fixture proves this timing.
+    # All other projects: fail-closed until timing is explicitly source-proven.
+    cash_tax_timing_source_owned: bool = False
+
     @property
     def initial_tax_loss_keur(self) -> float:
         """Initial tax loss carryforward available at commercial operation."""
