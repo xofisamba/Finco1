@@ -963,9 +963,9 @@ def _compute_phase2c_sizing_analysis(
         diag = result.diagnostics
         return {
             "debt_size_keur": result.debt_size_keur,
-            "converged": diag.get("is_authoritative", False),
-            "iterations": diag.get("iteration_count"),
-            "binding": diag.get("binding_constraint"),
+            "converged": getattr(diag, "is_authoritative", False),
+            "iterations": getattr(diag, "iteration_count", None),
+            "binding": getattr(diag, "binding_constraint", None),
             "terminal_closing_keur": (
                 result.senior_debt_closing_keur[-1]
                 if result.senior_debt_closing_keur else None
@@ -1228,7 +1228,7 @@ def _compute_phase2c_sizing_analysis(
         convergence_proof.append({
             "initial_guess_keur": guess,
             "converged_debt_keur": res_g.debt_size_keur,
-            "converged": res_g.diagnostics.get("is_authoritative", False),
+            "converged": getattr(res_g.diagnostics, "is_authoritative", False),
         })
 
     unique_results = set(round(r["converged_debt_keur"], 3) for r in convergence_proof)

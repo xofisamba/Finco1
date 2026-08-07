@@ -209,6 +209,12 @@ jobs:
           print(f'Extractor execution path OK: scalar={result[\"scalar_capacity_keur\"]:.3f} kEUR')
           "
 
+      - name: Test _compute_phase2c_sizing_analysis end-to-end (catches NameError in full path)
+        run: |
+          python -m pytest tests/test_stage_c3b2_oborovo_debt_interest_source_closure.py \
+            -k TestExtractorSizingAnalysisPath \
+            -v --tb=short
+
       - name: Verify fixture structure
         run: |
           python -c "

@@ -1456,3 +1456,190 @@ class TestCompleteHelperDirectional:
         assert abs(result_zero) < 1e-6, (
             f"Disabled tranche must produce 0 capacity (all row23=0), got {result_zero:.6f}"
         )
+
+
+# ---------------------------------------------------------------------------
+# TestExtractorSizingAnalysisPath — exercises the full _compute_phase2c_sizing_analysis
+# execution path with synthetic workbook rows.  This is the canonical CI-portable
+# guard against NameError / reference-before-assignment regressions: if
+# `independent_capacity` or any other variable is referenced before it is
+# assigned, these tests will raise NameError and fail.
+# ---------------------------------------------------------------------------
+
+def _make_ds_rows(n_rows: int = 100, n_cols: int = 45,
+                  cfads: float = 2000.0, dscr: float = 1.15,
+                  rate: float = 0.0565, frac: float = 0.5,
+                  ops: float = 1.0, n_active: int = 10) -> dict:
+    """Build a minimal synthetic ds_rows_d with n_active active Excel periods (1..n_active).
+
+    _PERIOD_COL_OFFSET = 6, so Excel period P occupies column index 6+P.
+    Columns 0-6 hold metadata; P1=col7 .. P(n_active)=col(6+n_active).
+    We need at least 6+n_active+1 columns.
+    """
+    n_cols_actual = max(n_cols, 6 + n_active + 1)
+    base = [None] * n_cols_actual
+
+    def _row(**kwargs):
+        r = list(base)
+        for col, val in kwargs.items():
+            r[col] = val
+        return tuple(r)
+
+    rows = {i: tuple(base) for i in range(n_rows)}
+
+    allowed_ds = cfads / dscr * ops  # row23 value per period
+
+    for p in range(1, n_active + 1):
+        c = 6 + p  # column index for this period
+
+        rows[19] = _put(rows[19], c, cfads)             # DS!row20 — CFADS
+        rows[21] = _put(rows[21], c, dscr)              # DS!row22 — DSCR target
+        rows[22] = _put(rows[22], c, allowed_ds)        # DS!row23 — allowed CF
+        rows[43] = _put(rows[43], c, rate)              # DS!row44 — annual rate
+        rows[5]  = _put(rows[5],  c, frac)              # DS!row6  — day fraction
+        rows[60] = _put(rows[60], c, 1.0)               # DS!row61 — opening balance > 0 (active)
+        rows[45] = _put(rows[45], c, allowed_ds)        # DS!row46 — row23 * row5 (row5=1)
+        rows[8]  = _put(rows[8],  c, ops)               # DS!row9  — ops fraction
+        rows[4]  = _put(rows[4],  c, None)              # DS!row5  — eligibility (openpyxl None = 1)
+        rows[6]  = _put(rows[6],  c, None)              # DS!row7  — refinancing flag (None = False)
+        rows[46] = _put(rows[46], c, 15000.0)           # DS!row47 — > 0 proves row7=False
+        rows[81] = _put(rows[81], c, 0.0)               # DS!row82 — refinancing capacity = 0
+
+    # B23 = True at col 1 of row 22; B54 = 0 at col 1 of row 53
+    rows[22] = _put(rows[22], 1, True)
+    rows[53] = _put(rows[53], 1, 0)
+
+    return rows
+
+
+def _put(row: tuple, col: int, val) -> tuple:
+    lst = list(row)
+    while len(lst) <= col:
+        lst.append(None)
+    lst[col] = val
+    return tuple(lst)
+
+
+def _make_inp_rows(n_rows: int = 200, excel_debt: float = 20000.0) -> dict:
+    """Build a minimal synthetic inp_rows_d.  DS!D51 is at inp_rows[194][3]."""
+    base = [None] * 10
+    rows = {i: tuple(base) for i in range(n_rows)}
+    lst = list(rows[194])
+    while len(lst) <= 3:
+        lst.append(None)
+    lst[3] = excel_debt
+    rows[194] = tuple(lst)
+    return rows
+
+
+class TestExtractorSizingAnalysisPath:
+    """Execute _compute_phase2c_sizing_analysis with synthetic workbook rows.
+
+    Guards against NameError / reference-before-assignment in the full
+    sizing analysis function path (Case 0 → Case 1 → Case 2 → Case 3 →
+    G3A scalar backward induction → G4 vector backward induction →
+    causal bridge → verdict).
+    """
+
+    VALID_VERDICTS = {
+        "C3B2_DEBT_INTEREST_SOURCE_TRUTH_PROVED",
+        "C3B2_SOURCE_TRUTH_PARTIAL_MANUAL_CHECK_REQUIRED",
+    }
+
+    @classmethod
+    def _run(cls, n_active: int = 10, excel_debt: float = 20000.0,
+             dscr: float = 1.15):
+        from finco_recon.extract_oborovo_debt_interest import (
+            _compute_phase2c_sizing_analysis,
+        )
+        ds_rows_d  = _make_ds_rows(n_active=n_active, dscr=dscr)
+        inp_rows_d = _make_inp_rows(excel_debt=excel_debt)
+        return _compute_phase2c_sizing_analysis({}, ds_rows_d, inp_rows_d)
+
+    def test_no_name_error_on_execution(self):
+        """Function must complete without NameError (independent_capacity defined before use)."""
+        result = self._run()
+        assert result is not None, "Function returned None"
+
+    def test_status_computed(self):
+        result = self._run()
+        assert result.get("status") == "COMPUTED", (
+            f"Expected status=COMPUTED, got {result.get('status')}"
+        )
+
+    def test_required_top_level_keys(self):
+        result = self._run()
+        required = {
+            "current_phase2c_solver_result",
+            "scalar_excel_matched_solver_result",
+            "g3a_scalar_backward_induction",
+            "independent_vector_dscr_capacity",
+            "causal_bridge",
+            "verdict",
+        }
+        missing = required - set(result.keys())
+        assert not missing, f"Missing keys in sizing_analysis result: {missing}"
+
+    def test_verdict_is_valid(self):
+        result = self._run()
+        verdict = result.get("verdict")
+        assert verdict in self.VALID_VERDICTS, (
+            f"Unexpected verdict: {verdict!r}; valid={self.VALID_VERDICTS}"
+        )
+
+    def test_causal_bridge_closed(self):
+        result = self._run()
+        bridge = result.get("causal_bridge", {})
+        assert bridge.get("bridge_closed") is True, (
+            f"Causal bridge not closed; error={bridge.get('bridge_closure_error_keur')}"
+        )
+
+    def test_independent_capacity_proof_present(self):
+        result = self._run()
+        # G3A scalar and G4 vector capacities are stored as separate top-level keys
+        g3a = result.get("g3a_scalar_backward_induction", {})
+        g4  = result.get("independent_vector_dscr_capacity", {})
+        assert g3a.get("capacity_keur") is not None, (
+            "g3a_scalar_backward_induction.capacity_keur missing"
+        )
+        assert g4.get("capacity_keur") is not None, (
+            "independent_vector_dscr_capacity.capacity_keur missing"
+        )
+
+    def test_g3a_exceeds_g4_for_uniform_dscr(self):
+        """With uniform DSCR=1.15, G3A >= G4 (scalar induction >= vector induction)."""
+        result = self._run(dscr=1.15)
+        g3a_cap = result.get("g3a_scalar_backward_induction", {}).get("capacity_keur")
+        g4_cap  = result.get("independent_vector_dscr_capacity", {}).get("capacity_keur")
+        assert g3a_cap is not None and g4_cap is not None, (
+            f"G3A={g3a_cap}, G4={g4_cap} — capacity values missing"
+        )
+        # With identical scalar and vector DSCR both = 1.15, G3A >= G4
+        assert g3a_cap >= g4_cap - 0.1, (
+            f"G3A ({g3a_cap:.3f}) must be >= G4 ({g4_cap:.3f}) for uniform DSCR"
+        )
+
+    def test_neutral_terms_proof_present(self):
+        result = self._run()
+        assert "neutral_terms_proof" in result, "neutral_terms_proof missing from result"
+
+    def test_no_missing_d51_error(self):
+        """Correct inp_rows_d must not return MISSING_D51 status."""
+        result = self._run(excel_debt=30000.0)
+        assert result.get("status") != "MISSING_D51", "D51 extraction failed with valid inp_rows_d"
+
+    def test_missing_d51_returns_error_status(self):
+        """Omitting D51 must return a non-COMPUTED status (not crash)."""
+        from finco_recon.extract_oborovo_debt_interest import (
+            _compute_phase2c_sizing_analysis,
+        )
+        ds_rows_d  = _make_ds_rows()
+        inp_rows_d = _make_inp_rows(excel_debt=None)
+        # Patch D51 to None
+        lst = list(inp_rows_d[194])
+        lst[3] = None
+        inp_rows_d[194] = tuple(lst)
+        result = _compute_phase2c_sizing_analysis({}, ds_rows_d, inp_rows_d)
+        assert result.get("status") in {"MISSING_D51", "NO_ACTIVE_PERIODS", "ERROR"}, (
+            f"Expected error status with missing D51, got {result.get('status')}"
+        )
