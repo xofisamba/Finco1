@@ -749,11 +749,20 @@ def run_senior_debt_model(inputs: SeniorDebtModelInput) -> ProjectModelResult:
         }
         return cfads_by_period, cash_tax_by_period
 
-    # Step 4: Fixed-point solver
+    # Step 4: Fixed-point solver.
+    # Pass only debt-tenor periods to the solver: operating periods with index in
+    # [repayment_start_period_index, maturity_period_index].  Post-maturity operating
+    # periods have no rate entry and would raise in build_rate_map.
+    debt_start = policy.repayment_start_period_index
+    debt_end = policy.maturity_period_index
+    debt_periods = tuple(
+        p for p in phase2b_result.periods
+        if p.is_operation and debt_start <= p.period_index <= debt_end
+    )
     sd_result = solve_senior_debt(
         policy=policy,
         inputs=sd_inputs,
-        periods=phase2b_result.periods,
+        periods=debt_periods,
         tax_cfads_fn=tax_cfads_fn,
     )
 

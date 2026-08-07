@@ -150,11 +150,17 @@ def from_project_inputs(
         _to_dep_item(item) for item in inputs.capex.book_depreciable_capex_items()
     )
 
-    # TAX depreciable basis: hard capex only. Tax treatment of capitalised
-    # financing costs is OPEN — no authoritative tax-source evidence validated yet.
-    tax_capex_items_for_dep = tuple(
-        _to_dep_item(item) for item in inputs.capex.tax_depreciable_capex_items()
-    )
+    # TAX depreciable basis: dispatch on TaxDepreciationMode.
+    # BOOK_BASED_PERCENTAGE: tax_dep = book_dep × pct — use the same asset list as book.
+    # C3B1 evidence: Oborovo sets tax_depreciation_mode=BOOK_BASED_PERCENTAGE, pct=1.0,
+    # and excel_tax_dep == excel_book_dep for all 28 operating periods.
+    from finco_core.inputs._models import TaxDepreciationMode
+    if inputs.tax.tax_depreciation_mode == TaxDepreciationMode.BOOK_BASED_PERCENTAGE:
+        tax_capex_items_for_dep = book_capex_items_for_dep
+    else:
+        tax_capex_items_for_dep = tuple(
+            _to_dep_item(item) for item in inputs.capex.tax_depreciable_capex_items()
+        )
 
     # Explicit mapping of financing tenor → book depreciation driver.
     # OPEN: Excel Dep-sheet formula for useful life is unverified from data_only extraction.
@@ -180,4 +186,62 @@ def from_project_inputs(
             source_id=source_id,
             baseline_commit_sha=baseline_commit_sha,
         ),
+    )
+
+
+def build_senior_debt_model_input_from_project_inputs(
+    project_inputs: "ProjectInputs",
+    source_id: str = "",
+    baseline_commit_sha: str = "",
+) -> object:
+    """Assemble a complete SeniorDebtModelInput from canonical ProjectInputs.
+
+    Runs the three-stage assembly:
+      1. Operating input  — from_project_inputs()
+      2. Tax input        — build_tax_contract_from_project_inputs()
+      3. Senior debt      — build_senior_debt_contract_from_project_inputs()
+
+    The result is ready for run_senior_debt_model(), which runs the fixed-point
+    solver integrating tax → CFADS → senior debt → interest → tax feedback.
+
+    Parameters
+    ----------
+    project_inputs:
+        Canonical project inputs (finco_core.inputs.ProjectInputs).
+    source_id:
+        Provenance source identifier (passed to from_project_inputs).
+    baseline_commit_sha:
+        Provenance SHA (passed to from_project_inputs).
+
+    Returns
+    -------
+    SeniorDebtModelInput
+    """
+    from financial_engine.inputs import SeniorDebtModelInput
+    from financial_engine.adapters.tax_inputs import build_tax_contract_from_project_inputs
+    from financial_engine.senior_debt.project_adapter import (
+        build_senior_debt_contract_from_project_inputs,
+    )
+    from financial_engine.orchestrator import run_operating_model
+
+    # Phase 2A: operating model
+    operating = from_project_inputs(
+        project_inputs, source_id=source_id, baseline_commit_sha=baseline_commit_sha
+    )
+    op_result = run_operating_model(operating)
+    operating_periods = tuple(op_result.periods)
+
+    # Phase 2B tax contract
+    tax = build_tax_contract_from_project_inputs(project_inputs)
+
+    # Phase 2C senior debt contract
+    policy, inputs = build_senior_debt_contract_from_project_inputs(
+        project_inputs, operating_periods
+    )
+
+    return SeniorDebtModelInput(
+        operating=operating,
+        tax=tax,
+        senior_debt_policy=policy,
+        senior_debt_inputs=inputs,
     )
