@@ -752,41 +752,43 @@ class TestSizingConstraintIdentity:
 # Production file integrity
 # ---------------------------------------------------------------------------
 
+# Historical range: C3B2 base → C3B2 squash-merge commit (closed range).
+# This asserts that C3B2 itself introduced no production changes to these
+# directories.  It does NOT assert anything about later stages.
+_C3B2_BASE_SHA = "c5f0b1f1643aad07df2f2d9e07acd21943328841"
+_C3B2_MERGE_SHA = "ce462bbedf460d6ff7f98a144b9406a5a0fcc04e"
+
+
+def _historical_diff(path: str) -> str:
+    import subprocess
+    result = subprocess.run(
+        ["git", "diff", f"{_C3B2_BASE_SHA}...{_C3B2_MERGE_SHA}", "--", path],
+        cwd=pathlib.Path(__file__).parent.parent,
+        capture_output=True, text=True,
+    )
+    return result.stdout
+
+
 class TestProductionFileIntegrity:
     def test_no_changes_to_financial_engine(self):
-        import subprocess
-        result = subprocess.run(
-            ["git", "diff", "c5f0b1f1643aad07df2f2d9e07acd21943328841...HEAD",
-             "--", "financial_engine/"],
-            cwd=pathlib.Path(__file__).parent.parent,
-            capture_output=True, text=True,
-        )
-        assert result.stdout == "", (
-            "financial_engine/ must not be modified:\n" + result.stdout[:500]
+        diff = _historical_diff("financial_engine/")
+        assert diff == "", (
+            f"C3B2 historical range ({_C3B2_BASE_SHA[:8]}...{_C3B2_MERGE_SHA[:8]}) "
+            f"must show no changes to financial_engine/:\n" + diff[:500]
         )
 
     def test_no_changes_to_app(self):
-        import subprocess
-        result = subprocess.run(
-            ["git", "diff", "c5f0b1f1643aad07df2f2d9e07acd21943328841...HEAD",
-             "--", "app/"],
-            cwd=pathlib.Path(__file__).parent.parent,
-            capture_output=True, text=True,
-        )
-        assert result.stdout == "", (
-            "app/ must not be modified:\n" + result.stdout[:500]
+        diff = _historical_diff("app/")
+        assert diff == "", (
+            f"C3B2 historical range ({_C3B2_BASE_SHA[:8]}...{_C3B2_MERGE_SHA[:8]}) "
+            f"must show no changes to app/:\n" + diff[:500]
         )
 
     def test_no_changes_to_finco_core(self):
-        import subprocess
-        result = subprocess.run(
-            ["git", "diff", "c5f0b1f1643aad07df2f2d9e07acd21943328841...HEAD",
-             "--", "finco_core/"],
-            cwd=pathlib.Path(__file__).parent.parent,
-            capture_output=True, text=True,
-        )
-        assert result.stdout == "", (
-            "finco_core/ must not be modified:\n" + result.stdout[:500]
+        diff = _historical_diff("finco_core/")
+        assert diff == "", (
+            f"C3B2 historical range ({_C3B2_BASE_SHA[:8]}...{_C3B2_MERGE_SHA[:8]}) "
+            f"must show no changes to finco_core/:\n" + diff[:500]
         )
 
 
