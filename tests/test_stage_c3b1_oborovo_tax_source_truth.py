@@ -705,10 +705,12 @@ class TestEInterestDependency:
         # C3B3B2 orchestrator fix: periods filtered to debt tenor (28 periods: indices 2–29).
         # Pre-fix: 60 operating periods were passed → rate error for P30+.
         # Post-fix: 28 debt-active periods only.
-        assert len(sd.senior_interest_keur) in (28, 60), (
-            f"Expected 28 (debt-filtered) or 60 operating periods; got {len(sd.senior_interest_keur)}"
+        # C3B3B orchestrator fix: filtered to debt-active periods only (indices 2–29).
+        assert len(sd.senior_interest_keur) == 28, (
+            f"Expected 28 debt-active periods (indices 2–29); got {len(sd.senior_interest_keur)}. "
+            "Pre-C3B3B: 60 operating periods caused rate error at P30+. "
+            "Post-C3B3B: orchestrator filters to repayment_start→maturity only."
         )
-        assert len(sd.senior_interest_keur) > 0, "Phase 2C produced no senior interest periods"
         p2c_lifetime = sum(sd.senior_interest_keur)
         # Excel lifetime = 20,133 kEUR; Phase 2C = 21,725 kEUR (+7.9%)
         assert p2c_lifetime > 20_000, "Phase 2C lifetime interest implausibly low"

@@ -423,10 +423,12 @@ def create_default_oborovo() -> ProjectInputs:
         tax_depreciation_mode=TaxDepreciationMode.BOOK_BASED_PERCENTAGE,
         tax_deductible_book_dep_pct=1.0,
         tax_dep_basis_source_owned=True,
-        # C3B1 evidence: cash tax timing = TAX_YEAR_LAST_PERIOD, lag=0.
-        # This is a clean engine convention for annual CIT accrual in last period
-        # of each tax year — not a payment lag. Source-ownership explicitly set.
-        cash_tax_timing_source_owned=True,
+        # C3B1 evidence: cash-tax payment lag relative to source CIT = 0 periods.
+        # TAX_YEAR_LAST_PERIOD is the clean engine's convention; the workbook uses
+        # H2+H1 pairing — these are structurally different (WORKBOOK_PERIODISATION_MISMATCH).
+        # This flag enables the clean convention for Oborovo; it does NOT assert
+        # that TAX_YEAR_LAST_PERIOD itself matches the workbook periodisation.
+        clean_cash_tax_timing_enabled=True,
     )
 
     return ProjectInputs(

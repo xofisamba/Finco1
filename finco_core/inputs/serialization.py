@@ -331,7 +331,7 @@ def project_inputs_to_dict(inputs: ProjectInputs) -> dict:
             "tax_depreciation_mode": tax.tax_depreciation_mode.value,
             "tax_deductible_book_dep_pct": tax.tax_deductible_book_dep_pct,
             "tax_dep_basis_source_owned": tax.tax_dep_basis_source_owned,
-            "cash_tax_timing_source_owned": tax.cash_tax_timing_source_owned,
+            "clean_cash_tax_timing_enabled": tax.clean_cash_tax_timing_enabled,
         },
     }
 
@@ -596,7 +596,11 @@ def project_inputs_from_dict(d: dict) -> ProjectInputs:
         ),
         tax_deductible_book_dep_pct=tax_d.get("tax_deductible_book_dep_pct", 1.0),
         tax_dep_basis_source_owned=tax_d.get("tax_dep_basis_source_owned", False),
-        cash_tax_timing_source_owned=tax_d.get("cash_tax_timing_source_owned", False),
+        # Backward-compat: also accept old name from C3B3B3 payloads.
+        clean_cash_tax_timing_enabled=tax_d.get(
+            "clean_cash_tax_timing_enabled",
+            tax_d.get("cash_tax_timing_source_owned", False),
+        ),
     )
 
     return ProjectInputs(

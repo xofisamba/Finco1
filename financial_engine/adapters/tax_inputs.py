@@ -64,9 +64,11 @@ def build_tax_contract_from_project_inputs(
       A vintage origin_tax_year cannot be generically inferred.
     * Unsupported period_frequency: raises ValueError.
       Only SEMESTRIAL (2 periods/year) is supported.
-    * Cash-tax timing not source-owned: raises NotImplementedError.
-      TAX_YEAR_LAST_PERIOD, lag=0 is only source-proven for Oborovo (C3B1).
-      Projects without cash_tax_timing_source_owned=True fail closed.
+    * Clean cash-tax timing not enabled: raises NotImplementedError.
+      The clean engine uses TAX_YEAR_LAST_PERIOD (calendar-year CIT accrual), lag=0.
+      The payment lag of 0 is source-proven for Oborovo (C3B1). TAX_YEAR_LAST_PERIOD
+      itself differs from workbook H2+H1 pairing (WORKBOOK_PERIODISATION_MISMATCH).
+      Projects without clean_cash_tax_timing_enabled=True fail closed.
     """
     from financial_engine.inputs import TaxCalculationInput, OpeningTaxLossVintageInput
     from financial_engine.policies.tax import TaxPolicy, CashTaxTiming
@@ -103,19 +105,26 @@ def build_tax_contract_from_project_inputs(
             "period_interest stub. Merge full interest explicitly before enabling ATAD."
         )
 
-    # Cash-tax timing — fail-closed for projects without source-proven timing.
-    # TAX_YEAR_LAST_PERIOD, lag=0 is Oborovo source-proven (C3B1 evidence).
-    # This is a CLEAN ENGINE CONVENTION for annual CIT accrual placement, NOT
-    # a payment lag. The workbook H2+H1 periodisation difference is a separate
-    # architectural issue (C3B3B_SOURCE_PARITY_NOT_REACHED root cause).
-    if not tax.cash_tax_timing_source_owned:
+    # Clean cash-tax timing — fail-closed for projects without explicit opt-in.
+    #
+    # Two separate facts:
+    #   (1) SOURCE-PROVEN: cash-tax payment lag = 0 periods (Oborovo, C3B1 evidence).
+    #   (2) CLEAN ENGINE CONVENTION: annual CIT placed in last period of calendar
+    #       year (TAX_YEAR_LAST_PERIOD). The workbook uses H2+H1 model-year pairing —
+    #       a structurally different periodisation measured by WORKBOOK_PERIODISATION_MISMATCH.
+    #       TAX_YEAR_LAST_PERIOD is NOT source-proven for Oborovo; it is the engine convention.
+    #
+    # clean_cash_tax_timing_enabled=True means: "this project is explicitly permitted to
+    # use the currently supported clean tax timing convention". It does NOT claim that
+    # TAX_YEAR_LAST_PERIOD matches the workbook periodisation.
+    if not tax.clean_cash_tax_timing_enabled:
         raise NotImplementedError(
-            "build_tax_contract_from_project_inputs: cash_tax_timing_source_owned=False. "
-            "Cash-tax timing (TAX_YEAR_LAST_PERIOD, lag=0) is only source-proven for "
-            "Oborovo (C3B1 evidence). Projects without an explicitly supported timing "
-            "configuration must not silently inherit Oborovo timing. "
-            "Set cash_tax_timing_source_owned=True in TaxParams only after proving "
-            "the timing applies to this project from source workbook data."
+            "build_tax_contract_from_project_inputs: clean_cash_tax_timing_enabled=False. "
+            "Projects must explicitly opt in to the clean engine's cash-tax timing convention "
+            "(TAX_YEAR_LAST_PERIOD, lag=0). The payment lag of 0 periods is source-proven "
+            "for Oborovo (C3B1); TAX_YEAR_LAST_PERIOD is the engine's periodisation convention "
+            "and differs from the workbook H2+H1 model-year pairing. "
+            "Set clean_cash_tax_timing_enabled=True in TaxParams after confirming payment lag."
         )
 
     policy = TaxPolicy(
@@ -127,9 +136,9 @@ def build_tax_contract_from_project_inputs(
         atad_enabled=atad_enabled,
         atad_ebitda_limit=tax.atad_ebitda_limit,
         atad_de_minimis_threshold_keur_annual=tax.atad_min_interest_keur,
-        # Cash-tax timing: TAX_YEAR_LAST_PERIOD, lag=0 is Oborovo source-proven.
-        # This is a clean engine periodisation convention (annual CIT in last period
-        # of each tax year), not a payment lag. Workbook H2+H1 is a separate issue.
+        # Clean engine convention: annual CIT in last period of each calendar year.
+        # SOURCE-PROVEN (C3B1): payment lag = 0 periods.
+        # NOT SOURCE-PROVEN: TAX_YEAR_LAST_PERIOD periodisation (workbook uses H2+H1).
         cash_tax_timing=CashTaxTiming.TAX_YEAR_LAST_PERIOD,
         cash_tax_payment_lag_periods=0,
     )

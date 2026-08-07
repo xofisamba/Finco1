@@ -729,13 +729,25 @@ class TaxParams:
     # All other projects: retain legacy tax_depreciable_capex_items() path → False.
     tax_dep_basis_source_owned: bool = False
 
-    # SOURCE-OWNERSHIP FLAG — explicit opt-in to Oborovo-proven cash-tax timing.
-    # When True: the tax adapter applies TAX_YEAR_LAST_PERIOD, lag=0.
-    # When False (default): the tax adapter raises NotImplementedError (fail-closed).
-    # Must only be set True when source workbook evidence proves TAX_YEAR_LAST_PERIOD
-    # applies to this project. Oborovo: C3B1 fixture proves this timing.
-    # All other projects: fail-closed until timing is explicitly source-proven.
-    cash_tax_timing_source_owned: bool = False
+    # CLEAN ENGINE OPT-IN — explicit permission to use the currently supported
+    # clean cash-tax timing convention (TAX_YEAR_LAST_PERIOD, lag=0).
+    #
+    # What is source-proven for Oborovo (C3B1 evidence):
+    #   cash-tax payment lag relative to source CIT accrual = 0 periods.
+    #
+    # What is a CLEAN ENGINE CONVENTION (not source-proven):
+    #   annual CIT is placed in the last period of the calendar year
+    #   (TAX_YEAR_LAST_PERIOD). The workbook uses H2+H1 model-year pairing,
+    #   which is a structurally different periodisation — the C3B3B
+    #   WORKBOOK_PERIODISATION_MISMATCH directly measures this gap.
+    #
+    # These are SEPARATE facts. This flag gates only whether the project is
+    # explicitly permitted to use the clean convention; it does NOT assert that
+    # TAX_YEAR_LAST_PERIOD itself matches the workbook.
+    #
+    # When False (default): adapter raises NotImplementedError (fail-closed).
+    # All projects without an explicit opt-in must not silently inherit this convention.
+    clean_cash_tax_timing_enabled: bool = False
 
     @property
     def initial_tax_loss_keur(self) -> float:
