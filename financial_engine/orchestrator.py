@@ -815,8 +815,24 @@ def run_senior_debt_model(inputs: SeniorDebtModelInput) -> ProjectModelResult:
             output_path="senior_debt.senior_principal_keur",
             source_module="financial_engine.senior_debt.sculpting",
             source_function="build_schedule",
-            input_paths=("tax_and_cfads.cfads_keur", "senior_debt_policy.target_dscr"),
-            notes=("principal = max(0, cfads/target_dscr - interest), capped at opening",),
+            input_paths=(
+                "tax_and_cfads.cfads_keur",
+                "senior_debt_inputs.period_rates",
+                "senior_debt_inputs.period_dscr_targets",
+                "senior_debt_inputs.period_debt_service_availability",
+                "senior_debt_policy.target_dscr",
+                "senior_debt_policy.day_count_convention",
+            ),
+            notes=(
+                "C3B3A algorithm: "
+                "resolved_target_dscr[p] = period_dscr_targets[p].target_dscr "
+                "if p in period_dscr_targets else policy.target_dscr; "
+                "resolved_availability[p] = period_debt_service_availability[p].availability_fraction "
+                "if p in period_debt_service_availability else 1.0; "
+                "allowed_debt_service[p] = max(0, CFADS[p] / resolved_target_dscr[p]) "
+                "* resolved_availability[p]; "
+                "principal[p] = min(opening_balance[p], max(0, allowed_debt_service[p] - interest[p]))",
+            ),
         ),
         DerivationEvidence(
             output_path="senior_debt.debt_size_keur",

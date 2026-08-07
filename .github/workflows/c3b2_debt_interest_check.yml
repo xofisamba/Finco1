@@ -105,7 +105,7 @@ jobs:
         run: |
           python -c "
           from finco_recon.derive_c3b2_independent_capacity import _DERIVATION_VERSION
-          assert _DERIVATION_VERSION == '1.2.0', f'Expected 1.2.0, got {_DERIVATION_VERSION}'
+          assert _DERIVATION_VERSION == '1.3.0', f'Expected 1.3.0, got {_DERIVATION_VERSION}'
           print(f'Derivation version OK: {_DERIVATION_VERSION}')
           "
 
@@ -283,19 +283,23 @@ jobs:
           print('No MANUAL_EXPLORATION placeholders found')
           "
 
-      - name: Verify production paths untouched
+      - name: Verify production paths untouched (C3B2 closed range only)
         run: |
+          # Scope: c5f0b1f (C3B2 base) … ce462bbe (C3B2 merge) — closed range.
+          # C3B3A legitimately modifies production paths beyond ce462bbe;
+          # this check must not evaluate HEAD as the range end.
           BASE_SHA="c5f0b1f1643aad07df2f2d9e07acd21943328841"
-          CHANGED=$(git diff "${BASE_SHA}...HEAD" --name-only 2>/dev/null || git diff HEAD~1 --name-only)
-          echo "Changed files:"
+          MERGE_SHA="ce462bbedf460d6ff7f98a144b9406a5a0fcc04e"
+          CHANGED=$(git diff "${BASE_SHA}...${MERGE_SHA}" --name-only 2>/dev/null)
+          echo "Changed files in C3B2 range (${BASE_SHA:0:8}...${MERGE_SHA:0:8}):"
           echo "${CHANGED}"
           FORBIDDEN=$(echo "${CHANGED}" | grep -E '^(financial_engine/|app/|finco_core/)' || true)
           if [ -n "${FORBIDDEN}" ]; then
-            echo "ERROR: Production paths modified:"
+            echo "ERROR: Production paths modified in C3B2 closed range:"
             echo "${FORBIDDEN}"
             exit 1
           fi
-          echo "Production paths untouched: OK"
+          echo "Production paths untouched in C3B2 range: OK"
 
       - name: C3B1 regression check
         run: |

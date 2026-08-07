@@ -52,10 +52,9 @@ class DebtSizingMode(Enum):
     behavior by treating the Excel-derived debt amount and per-period service
     schedule as frozen inputs. DSCR is an outcome.
 
-    Mode A (MINIMUM_DSCR_SCULPTED) and Mode B (FLAT_DSCR_SCULPTED) are future
-    modes that require new solvers and are not yet implemented.
-    Selecting them raises NotImplementedError unless explicitly marked
-    as implemented in the codebase.
+    Mode B (FLAT_DSCR_SCULPTED) is supported via the clean senior-debt
+    source-contract adapter for SEMESTRIAL projects (C3B3A).
+    Mode A (MINIMUM_DSCR_SCULPTED) is not yet implemented.
 
     Attributes:
         FROZEN_EXCEL_SCHEDULE: Debt amount and/or per-period service schedule
@@ -66,8 +65,15 @@ class DebtSizingMode(Enum):
             so that the minimum DSCR across all periods meets a target
             (e.g. ~1.45). Per-period service uses the DSCR divisor schedule
             (1.20 during PPA, ~1.41 during merchant). NOT YET IMPLEMENTED.
-        FLAT_DSCR_SCULPTED: Oborovo-style solver with a flat target DSCR
-            (e.g. 1.15). NOT YET IMPLEMENTED.
+        FLAT_DSCR_SCULPTED: Sculpted solver with a configurable target DSCR.
+            Supported by the clean senior-debt source-contract adapter
+            (build_senior_debt_contract_from_project_inputs). The clean solver
+            supports a scalar policy.target_dscr fallback plus explicit
+            per-period target_dscr_schedule overrides. Oborovo source truth
+            uses 1.15x for periods P1–P24 and 1.35x for periods P25–P28.
+            This does NOT imply legacy runtime promotion or support for every
+            project or period frequency — the FROZEN_EXCEL_SCHEDULE runtime path
+            remains unaffected.
     """
 
     FROZEN_EXCEL_SCHEDULE = "frozen_excel_schedule"

@@ -3327,10 +3327,10 @@
       "hardcoded_values": "NONE — all rates, CFADS, and debt read from workbook or Phase2A"
     },
     "independent_capacity_proof": {
-      "_derivation_version": "1.2.0",
+      "_derivation_version": "1.3.0",
       "_derivation_script": "finco_recon/derive_c3b2_independent_capacity.py",
       "_source_vectors_sha256": "f8f244c0660495bfb4115d4e32ba329c291ab829d1d0693e614c889457b5add7",
-      "_source_fixture_sha256_before_derivation": "67db06cdf2433f60b720b10dd9e94469dcee7969fd91669d32d55061cf9eab3e",
+      "_source_fixture_sha256_before_derivation": "3adc57ffb0719b5911d6efcb5a5437fcd649248dddbe8b0911f3abbb15e412c2",
       "raw_inputs_used": [
         "DS!row20 — CFADS per period (workstream_a.ds_row20_cfads.period_values_keur)",
         "DS!row22 — per-period DSCR target (workstream_a.ds_row22_dscr_target.period_values)",
@@ -3431,8 +3431,8 @@
       "final_residual_description": "vector_capacity - excel_total_debt: unforced residual after full-replication backward induction. Near zero means backward induction from raw DS!row20/22/44/6 reproduces Excel total debt independently.",
       "verdict": "C3B2_DEBT_INTEREST_SOURCE_TRUTH_PROVED",
       "verdict_rationale": "Independent backward induction from raw DS!row20/22/9/44/6 reproduces Excel total debt to 0.000000 kEUR (tolerance 1 kEUR). All divergence from generic Phase 2C fully attributed via G0–G4 causal bridge: rate (-543.807), CFADS (-1918.036), day-count (-214.604), solver-to-independent-scalar (-8.732, TERMINAL_PARTIAL_PERIOD_TREATMENT), DSCR-banding (-515.945 — independently computed G4-G3A, not forced). Forbidden inputs (row46, D47, D51, row61) not used.",
-      "_derivation_timestamp_utc": "2026-08-06T20:22:34.426645+00:00",
-      "_content_sha256": "33ce559d97ad5b572bdb8b8a329aee8cceb2e70b7f3bece45860dfca00bb0e65"
+      "_derivation_timestamp_utc": "2026-08-07T13:04:14.596700+00:00",
+      "_content_sha256": "6fe0b50d810a806305a75f401a45c006eeb3d2f2228c4de306cd37f980d448eb"
     },
     "neutral_terms_proof": {
       "complete_ds_row23_formula": "=(H20/H22+SUM(CF!H83:H83))*H9*$B23",
@@ -3594,19 +3594,29 @@
       "simplification_valid": true
     },
     "runtime_inventory": {
-      "description": "Runtime config read from app.project_factories.create_default_oborovo().financing",
+      "description": "C3B3A two-layer runtime inventory: legacy_runtime (FROZEN_EXCEL_SCHEDULE still active) + clean_senior_debt_contract (FLAT_DSCR_SCULPTED source-proven, not promoted)",
       "factory_function": "app.project_factories.create_default_oborovo",
-      "financing_attr": "proj.financing",
-      "debt_sizing_method": "gearing_cap",
-      "fixed_debt_keur": 42852.26672602787,
-      "target_dscr": 1.15,
-      "use_frozen_excel_senior_debt_schedule": true,
-      "frozen_senior_ds_fixture_path": "reports/phase23q_oborovo_senior_debt_sizing_extraction.csv",
-      "all_in_rate": 0.056499999999999995,
-      "amortization_type": "sculpted",
-      "sizing_mode_description": "FROZEN_EXCEL_SCHEDULE — DSCR is computed from fixed service schedule",
-      "runtime_classification": "FROZEN_EXCEL_SCHEDULE_RUNTIME",
-      "classification_rationale": "use_frozen_excel_senior_debt_schedule=True: debt service schedule is read from a pre-computed CSV fixture. G0 (solve_senior_debt) is a diagnostic — the active runtime reads from the frozen CSV."
+      "legacy_runtime": {
+        "runtime_classification": "FROZEN_EXCEL_SCHEDULE_RUNTIME",
+        "use_frozen_excel_senior_debt_schedule": true,
+        "frozen_senior_ds_fixture_path": "reports/phase23q_oborovo_senior_debt_sizing_extraction.csv",
+        "debt_sizing_method": "gearing_cap",
+        "fixed_debt_keur": 42852.26672602787,
+        "all_in_rate": 0.056499999999999995,
+        "amortization_type": "sculpted",
+        "classification_rationale": "use_frozen_excel_senior_debt_schedule=True: the active legacy waterfall reads the debt service schedule from a frozen CSV fixture. DSCR is a backward-computed outcome. No runtime promotion occurred."
+      },
+      "clean_senior_debt_contract": {
+        "runtime_classification": "CLEAN_SOURCE_CONTRACT_CONFIGURED_NOT_LEGACY_RUNTIME_PROMOTED",
+        "debt_sizing_mode": "DebtSizingMode.FLAT_DSCR_SCULPTED",
+        "target_dscr": 1.15,
+        "senior_rate_mode": "SeniorRateMode.EXPLICIT_ALL_IN_SCHEDULE",
+        "day_count": "SeniorDayCountConvention.ACT_360",
+        "senior_sculpting_enabled": true,
+        "dscr_schedule_period_count": 28,
+        "availability_schedule_period_count": 28,
+        "classification_rationale": "debt_sizing_mode=FLAT_DSCR_SCULPTED is now implemented by the clean senior-debt source-contract adapter (C3B3A). The clean solver is source-proven for Oborovo (SEMESTRIAL, ACT_360, 14-year tenor, 28 periods). Runtime promotion to the legacy waterfall is a separate future stage — use_frozen_excel_senior_debt_schedule remains True."
+      }
     }
   }
 }

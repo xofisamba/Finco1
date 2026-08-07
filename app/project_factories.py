@@ -30,6 +30,14 @@ from domain.inputs import (
     TechnicalParams,
 )
 from domain.revenue.bess import BessParams
+from finco_core.inputs._models import DebtSizingMode
+from finco_core.inputs.senior_rate_schedule import (
+    SeniorDayCountConvention,
+    SeniorDebtInterestConfig,
+    SeniorRateMode,
+    SeniorRateSchedule,
+)
+from finco_core.inputs.senior_sculpting import SeniorSculptingConfig
 from finco_core.opex.oborovo_config import build_oborovo_opex_capability
 
 
@@ -311,6 +319,49 @@ def create_default_oborovo() -> ProjectInputs:
         ppa_indexation_start_policy="FIRST_FULL_CALENDAR_YEAR_AS_BASE",
     )
 
+    # --- C3B3A: canonical all-in annual rates from DS!row44 (P1..P28 → debt periods 2..29) ---
+    # Source: excel_oborovo_debt_interest_truth.json workstream_e.ds_row44_annual_sculpting_rate
+    # Formula: base_rate(t) + credit_spread(t) + hedge_cost(t), fully source-proven.
+    _OBR_ANNUAL_RATES = (
+        0.0595136,        # P1  (clean period 2)
+        0.0595136,        # P2  (clean period 3)
+        0.05838319999,    # P3  (clean period 4)
+        0.05838319999,    # P4  (clean period 5)
+        0.05793919999,    # P5  (clean period 6)
+        0.05793919999,    # P6  (clean period 7)
+        0.0578408,        # P7  (clean period 8)
+        0.0578408,        # P8  (clean period 9)
+        0.0579008,        # P9  (clean period 10)
+        0.0579008,        # P10 (clean period 11)
+        0.05803279999,    # P11 (clean period 12)
+        0.05803279999,    # P12 (clean period 13)
+        0.0581936,        # P13 (clean period 14)
+        0.0581936,        # P14 (clean period 15)
+        0.05834,          # P15 (clean period 16)
+        0.05834,          # P16 (clean period 17)
+        0.0584624,        # P17 (clean period 18)
+        0.0584624,        # P18 (clean period 19)
+        0.05856559999,    # P19 (clean period 20)
+        0.05856559999,    # P20 (clean period 21)
+        0.058628,         # P21 (clean period 22)
+        0.058628,         # P22 (clean period 23)
+        0.0586208,        # P23 (clean period 24)
+        0.0586208,        # P24 (clean period 25)
+        0.0585488,        # P25 (clean period 26)
+        0.0585488,        # P26 (clean period 27)
+        0.05840719999,    # P27 (clean period 28)
+        0.05840719999,    # P28 (clean period 29)
+    )
+    # --- DSCR target schedule: 1.15x for P1..P24, 1.35x for P25..P28 ---
+    # Source: DS!row22 (workstream_a.ds_row22_dscr_target)
+    _OBR_DSCR_SCHEDULE = (1.15,) * 24 + (1.35,) * 4
+
+    # --- Debt-service availability: EXPLICIT_INPUT (classified C3B3A) ---
+    # DS!row9 ops_flag for P28 = 179/181 = 0.988950276243094 (partial final period).
+    # NOT derivable from COD + relativedelta(years=14) which yields 1.0.
+    # Source: excel_oborovo_debt_interest_truth.json workstream_b.period_vectors.row9_ops_flag
+    _OBR_AVAIL_SCHEDULE = (1.0,) * 27 + (0.988950276243094,)
+
     financing = FinancingParams(
         share_capital_keur=500.0,
         share_premium_keur=0.0,
@@ -331,12 +382,26 @@ def create_default_oborovo() -> ProjectInputs:
         min_llcr=1.15,
         dsra_months=6,
         equity_irr_method="shl_plus_dividends",  # Stack O: Golden Excel equity IRR = SHL interest while SHL outstanding + dividends after; "combined" (capex-debt base, distributions only) gave 6.24% vs golden 10.60%
-        debt_sizing_method="gearing_cap",  # Oborovo: gearing-based sizing (not DSCR-sculpted)
-        fixed_debt_keur=42852.26672602787,  # Excel senior debt anchor, Outputs!H11
+        debt_sizing_method="gearing_cap",  # legacy field; clean solver uses debt_sizing_mode
+        debt_sizing_mode=DebtSizingMode.FLAT_DSCR_SCULPTED,  # C3B3A: clean DSCR-sculpted solver path
+        fixed_debt_keur=42852.26672602787,  # Excel senior debt anchor, Outputs!H11 (legacy; clean solver derives this as output)
         shl_idc_keur=1169.0,  # IDC from construction — opening SHL balance = 14,621 + 1,169 = 15,790
         shl_tenor_years=20,  # Oborovo Excel: SHL is a 20-year bullet (Excel BS clears at 2050-06-30); previously fell back to senior_tenor_years=14, firing 6 years early
-        use_frozen_excel_senior_debt_schedule=True,  # Phase 23R: fixture-backed frozen senior DS opt-in after Phase 23Q parity proof
+        use_frozen_excel_senior_debt_schedule=True,  # Phase 23R: frozen path for legacy engine; clean solver ignores this flag
         frozen_senior_ds_fixture_path="reports/phase23q_oborovo_senior_debt_sizing_extraction.csv",  # Stack AC: capability-driven fixture path
+        senior_debt_interest_config=SeniorDebtInterestConfig(
+            enabled=True,
+            rate_schedule=SeniorRateSchedule(
+                mode=SeniorRateMode.EXPLICIT_ALL_IN_SCHEDULE,
+                explicit_all_in_rates=_OBR_ANNUAL_RATES,
+            ),
+            day_count=SeniorDayCountConvention.ACT_360,
+        ),
+        senior_sculpting_config=SeniorSculptingConfig(
+            enabled=True,
+            target_dscr_schedule=_OBR_DSCR_SCHEDULE,
+            debt_service_availability_schedule=_OBR_AVAIL_SCHEDULE,
+        ),
     )
 
     tax = TaxParams(

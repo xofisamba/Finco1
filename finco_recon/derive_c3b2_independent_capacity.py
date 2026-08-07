@@ -68,7 +68,7 @@ import pathlib
 import sys
 from datetime import datetime, timezone
 
-_DERIVATION_VERSION = "1.2.0"
+_DERIVATION_VERSION = "1.3.0"
 _DEFAULT_FIXTURE = pathlib.Path("tests/fixtures/excel_oborovo_debt_interest_truth.json")
 _ACTIVE_PERIODS = list(range(1, 29))   # Excel P1–P28 (1-indexed into period_values arrays)
 _SCALAR_DSCR = 1.15
@@ -705,46 +705,90 @@ def derive(fixture_path: pathlib.Path) -> dict:
     pa["neutral_terms_proof"] = neutral_terms_proof
 
     # ------------------------------------------------------------------
-    # Runtime inventory: factory-derived from project_factories
+    # Runtime inventory: two-layer — legacy active runtime + clean contract
     # ------------------------------------------------------------------
+    # C3B3A transition: the factory now carries debt_sizing_mode=FLAT_DSCR_SCULPTED
+    # while use_frozen_excel_senior_debt_schedule=True remains for the legacy
+    # waterfall runtime. These are two separate layers:
+    #   A. legacy_runtime  — FROZEN_EXCEL_SCHEDULE_RUNTIME (still active)
+    #   B. clean_senior_debt_contract — FLAT_DSCR_SCULPTED, source-proven,
+    #      NOT yet promoted to the legacy waterfall runtime path.
     try:
         from app import project_factories as _pf
+        from finco_core.inputs.senior_rate_schedule import SeniorRateMode
         _proj = _pf.create_default_oborovo()
         _fp = _proj.financing
-        runtime_inventory = {
-            "description": (
-                "Runtime config read from "
-                "app.project_factories.create_default_oborovo().financing"
-            ),
-            "factory_function": "app.project_factories.create_default_oborovo",
-            "financing_attr": "proj.financing",
-            "debt_sizing_method": _fp.debt_sizing_method,
-            "fixed_debt_keur": _fp.fixed_debt_keur,
-            "target_dscr": _fp.target_dscr,
+        _sc = _fp.senior_sculpting_config
+        _rc = _fp.senior_debt_interest_config
+
+        legacy_runtime = {
+            "runtime_classification": "FROZEN_EXCEL_SCHEDULE_RUNTIME",
             "use_frozen_excel_senior_debt_schedule": _fp.use_frozen_excel_senior_debt_schedule,
             "frozen_senior_ds_fixture_path": _fp.frozen_senior_ds_fixture_path,
+            "debt_sizing_method": str(_fp.debt_sizing_method),
+            "fixed_debt_keur": _fp.fixed_debt_keur,
             "all_in_rate": _fp.all_in_rate,
-            "amortization_type": _fp.amortization_type,
-            "sizing_mode_description": _fp.sizing_mode_description,
-            "runtime_classification": "FROZEN_EXCEL_SCHEDULE_RUNTIME",
+            "amortization_type": str(_fp.amortization_type),
             "classification_rationale": (
-                "use_frozen_excel_senior_debt_schedule=True: debt service schedule "
-                "is read from a pre-computed CSV fixture. G0 (solve_senior_debt) "
-                "is a diagnostic — the active runtime reads from the frozen CSV."
+                "use_frozen_excel_senior_debt_schedule=True: the active legacy "
+                "waterfall reads the debt service schedule from a frozen CSV fixture. "
+                "DSCR is a backward-computed outcome. No runtime promotion occurred."
             ),
+        }
+
+        _dsm = _fp.debt_sizing_mode
+        _rate_mode = str(_rc.rate_schedule.mode) if _rc and _rc.rate_schedule else "unknown"
+        _dc = str(_rc.day_count) if _rc else "unknown"
+        _dscr_sched_count = len(_sc.target_dscr_schedule) if _sc and _sc.target_dscr_schedule else 0
+        _avail_sched_count = len(_sc.debt_service_availability_schedule) if _sc and _sc.debt_service_availability_schedule else 0
+
+        clean_senior_debt_contract = {
+            "runtime_classification": "CLEAN_SOURCE_CONTRACT_CONFIGURED_NOT_LEGACY_RUNTIME_PROMOTED",
+            "debt_sizing_mode": str(_dsm),
+            "target_dscr": _fp.target_dscr,
+            "senior_rate_mode": _rate_mode,
+            "day_count": _dc,
+            "senior_sculpting_enabled": _sc is not None,
+            "dscr_schedule_period_count": _dscr_sched_count,
+            "availability_schedule_period_count": _avail_sched_count,
+            "classification_rationale": (
+                "debt_sizing_mode=FLAT_DSCR_SCULPTED is now implemented by the clean "
+                "senior-debt source-contract adapter (C3B3A). The clean solver is "
+                "source-proven for Oborovo (SEMESTRIAL, ACT_360, 14-year tenor, "
+                "28 periods). Runtime promotion to the legacy waterfall is a separate "
+                "future stage — use_frozen_excel_senior_debt_schedule remains True."
+            ),
+        }
+
+        runtime_inventory = {
+            "description": (
+                "C3B3A two-layer runtime inventory: "
+                "legacy_runtime (FROZEN_EXCEL_SCHEDULE still active) + "
+                "clean_senior_debt_contract (FLAT_DSCR_SCULPTED source-proven, not promoted)"
+            ),
+            "factory_function": "app.project_factories.create_default_oborovo",
+            "legacy_runtime": legacy_runtime,
+            "clean_senior_debt_contract": clean_senior_debt_contract,
         }
     except Exception as _e:
         runtime_inventory = {
-            "description": "Factory import unavailable — using static snapshot",
+            "description": "Factory import unavailable — using static snapshot (C3B3A transition)",
+            "factory_function": "app.project_factories.create_default_oborovo",
             "factory_import_error": str(_e),
-            "debt_sizing_method": "gearing_cap",
-            "fixed_debt_keur": 42852.26672602787,
-            "target_dscr": 1.15,
-            "use_frozen_excel_senior_debt_schedule": True,
-            "frozen_senior_ds_fixture_path": (
-                "reports/phase23q_oborovo_senior_debt_sizing_extraction.csv"
-            ),
-            "runtime_classification": "FROZEN_EXCEL_SCHEDULE_RUNTIME",
+            "legacy_runtime": {
+                "runtime_classification": "FROZEN_EXCEL_SCHEDULE_RUNTIME",
+                "use_frozen_excel_senior_debt_schedule": True,
+                "frozen_senior_ds_fixture_path": (
+                    "reports/phase23q_oborovo_senior_debt_sizing_extraction.csv"
+                ),
+                "debt_sizing_method": "gearing_cap",
+                "fixed_debt_keur": 42852.26672602787,
+            },
+            "clean_senior_debt_contract": {
+                "runtime_classification": "CLEAN_SOURCE_CONTRACT_CONFIGURED_NOT_LEGACY_RUNTIME_PROMOTED",
+                "debt_sizing_mode": "flat_dscr_sculpted",
+                "target_dscr": 1.15,
+            },
         }
     pa["runtime_inventory"] = runtime_inventory
 

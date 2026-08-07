@@ -56,6 +56,7 @@ class SeniorSculptingConfig:
     explicit_principal_schedule: tuple[float, ...] = ()
     target_dscr_schedule: tuple[float, ...] = ()
     available_senior_cfads_schedule: tuple[float, ...] = ()
+    debt_service_availability_schedule: tuple[float, ...] = ()
     final_repayment_policy: SeniorFinalRepaymentPolicy = SeniorFinalRepaymentPolicy.LEGACY_RESIDUAL
     principal_cap_policy: SeniorPrincipalCapPolicy = SeniorPrincipalCapPolicy.CAP_AT_OPENING_BALANCE
     reserve_treatment: SeniorReserveTreatment = SeniorReserveTreatment.LEGACY

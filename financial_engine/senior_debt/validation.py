@@ -157,6 +157,76 @@ def validate_senior_debt_inputs(
                 f"sizing_mode={policy.sizing_mode.value} requires maximum_gearing to be set"
             )
 
+    # --- PeriodDscrTarget ---
+    seen_dscr_periods: set[int] = set()
+    for dt in inputs.period_dscr_targets:
+        if isinstance(dt.period_index, bool):
+            errors.append(
+                f"PeriodDscrTarget period_index must not be a boolean, got {dt.period_index!r}"
+            )
+            continue
+        if isinstance(dt.target_dscr, bool):
+            errors.append(
+                f"PeriodDscrTarget period_index={dt.period_index}: "
+                "target_dscr must not be a boolean"
+            )
+        elif dt.period_index in seen_dscr_periods:
+            errors.append(
+                f"Duplicate PeriodDscrTarget for period_index={dt.period_index}"
+            )
+        else:
+            if known_period_indices and dt.period_index not in known_period_indices:
+                errors.append(
+                    f"PeriodDscrTarget references unknown period_index={dt.period_index}"
+                )
+            if not math.isfinite(dt.target_dscr):
+                errors.append(
+                    f"PeriodDscrTarget period_index={dt.period_index}: "
+                    f"target_dscr must be finite, got {dt.target_dscr}"
+                )
+            elif dt.target_dscr <= 1.0:
+                errors.append(
+                    f"PeriodDscrTarget period_index={dt.period_index}: "
+                    f"target_dscr must be > 1.0, got {dt.target_dscr}"
+                )
+        seen_dscr_periods.add(dt.period_index)
+
+    # --- PeriodDebtServiceAvailability ---
+    seen_avail_periods: set[int] = set()
+    for av in inputs.period_debt_service_availability:
+        if isinstance(av.period_index, bool):
+            errors.append(
+                f"PeriodDebtServiceAvailability period_index must not be a boolean, got {av.period_index!r}"
+            )
+            continue
+        if isinstance(av.availability_fraction, bool):
+            errors.append(
+                f"PeriodDebtServiceAvailability period_index={av.period_index}: "
+                "availability_fraction must not be a boolean"
+            )
+        elif av.period_index in seen_avail_periods:
+            errors.append(
+                f"Duplicate PeriodDebtServiceAvailability for period_index={av.period_index}"
+            )
+        else:
+            if known_period_indices and av.period_index not in known_period_indices:
+                errors.append(
+                    f"PeriodDebtServiceAvailability references unknown "
+                    f"period_index={av.period_index}"
+                )
+            if not math.isfinite(av.availability_fraction):
+                errors.append(
+                    f"PeriodDebtServiceAvailability period_index={av.period_index}: "
+                    f"availability_fraction must be finite, got {av.availability_fraction}"
+                )
+            elif not (0.0 <= av.availability_fraction <= 1.0):
+                errors.append(
+                    f"PeriodDebtServiceAvailability period_index={av.period_index}: "
+                    f"availability_fraction must be in [0.0, 1.0], "
+                    f"got {av.availability_fraction}"
+                )
+        seen_avail_periods.add(av.period_index)
+
     # --- EXPLICIT_SCHEDULE requires principal schedule ---
     if policy.sizing_mode == SeniorDebtSizingMode.EXPLICIT_SCHEDULE:
         if inputs.explicit_principal_schedule is None:
