@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     from finco_core.inputs import ProjectInputs
     from financial_engine.results import OperatingPeriodResult
 
+from finco_core.inputs._models import PeriodFrequency
 from financial_engine.senior_debt.inputs import (
     PeriodDebtServiceAvailability,
     PeriodDscrTarget,
@@ -88,7 +89,16 @@ def build_senior_debt_contract_from_project_inputs(
     # --- Period selection ---
     # Select operating-only periods; map to debt tenor (first N of those).
     op_only = [p for p in operating_periods if p.is_operation]
-    periods_per_year = 2 if project_inputs.info.period_frequency.value.lower() == "semestrial" else 1
+    frequency = project_inputs.info.period_frequency
+    if frequency == PeriodFrequency.SEMESTRIAL:
+        periods_per_year = 2
+    else:
+        raise ValueError(
+            f"build_senior_debt_contract_from_project_inputs: unsupported period "
+            f"frequency {frequency!r}. Only SEMESTRIAL (2 periods/year) is supported "
+            f"by the clean senior-debt source contract. ANNUAL and QUARTERLY require "
+            f"end-to-end operating-period proof before enablement."
+        )
     tenor_periods = fin.senior_tenor_years * periods_per_year
 
     debt_periods = op_only[:tenor_periods]

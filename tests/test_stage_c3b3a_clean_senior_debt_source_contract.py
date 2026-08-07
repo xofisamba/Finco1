@@ -1800,3 +1800,131 @@ class TestGroupW_C3B1C3B2FixtureFreeze:
         d = _load_fixture()
         for ws in ("workstream_a", "workstream_b", "workstream_e", "phase2c_sizing_analysis"):
             assert ws in d, f"Missing workstream: {ws}"
+
+
+# ===========================================================================
+# GROUP AA — Period-frequency fail-closed (C3B3A6)
+# ===========================================================================
+
+class TestGroupAA_PeriodFrequencyFailClosed:
+    """build_senior_debt_contract_from_project_inputs: SEMESTRIAL maps to 2 periods/year;
+    QUARTERLY and ANNUAL raise ValueError (fail-closed — no silent fallback).
+    """
+
+    def _make_proj_with_frequency(self, frequency):
+        """Build a create_default_oborovo()-based project with period_frequency overridden."""
+        import dataclasses
+        from app.project_factories import create_default_oborovo
+        from finco_core.inputs._models import PeriodFrequency
+
+        proj = create_default_oborovo()
+        new_info = dataclasses.replace(proj.info, period_frequency=frequency)
+        return dataclasses.replace(proj, info=new_info)
+
+    def _run_builder(self, proj):
+        from financial_engine.adapters.project_inputs import from_project_inputs
+        from financial_engine.orchestrator import run_operating_model
+        from financial_engine.senior_debt.project_adapter import build_senior_debt_contract_from_project_inputs
+
+        model_in = from_project_inputs(proj, source_id="freq-test", baseline_commit_sha="")
+        result = run_operating_model(model_in)
+        return build_senior_debt_contract_from_project_inputs(proj, result.periods)
+
+    def test_semestrial_maps_to_2_periods_per_year(self):
+        """SEMESTRIAL frequency produces periods_per_year = 2 in the resulting policy."""
+        from finco_core.inputs._models import PeriodFrequency
+
+        proj = self._make_proj_with_frequency(PeriodFrequency.SEMESTRIAL)
+        policy, _ = self._run_builder(proj)
+        assert policy.periods_per_year == 2
+
+    def test_semestrial_produces_28_debt_periods(self):
+        """SEMESTRIAL Oborovo (14-year tenor × 2) → 28 debt periods → indices 2..29."""
+        from finco_core.inputs._models import PeriodFrequency
+
+        proj = self._make_proj_with_frequency(PeriodFrequency.SEMESTRIAL)
+        policy, inputs = self._run_builder(proj)
+        assert len(inputs.period_rates) == 28
+        assert policy.repayment_start_period_index == 2
+        assert policy.maturity_period_index == 29
+
+    def test_semestrial_debt_size_unchanged(self):
+        """SEMESTRIAL Oborovo debt remains 42,852.279 kEUR within 0.001 kEUR tolerance."""
+        import pytest
+        from finco_core.inputs._models import PeriodFrequency
+        from financial_engine.senior_debt.solver import solve_senior_debt
+
+        proj = self._make_proj_with_frequency(PeriodFrequency.SEMESTRIAL)
+        policy, inputs = self._run_builder(proj)
+        periods = _oborovo_real_periods()
+        d = _oborovo_data()
+        cfads_map = {p.period_index: d["cfads"][p.period_index - 1] for p in periods}
+        result = solve_senior_debt(
+            inputs=inputs,
+            policy=policy,
+            periods=periods,
+            tax_cfads_fn=_no_tax_fn(cfads_map),
+        )
+        assert result.debt_size_keur == pytest.approx(42852.278762563, abs=0.001), (
+            f"Oborovo debt after frequency fix: {result.debt_size_keur:.6f} kEUR "
+            f"≠ 42852.279 kEUR source truth"
+        )
+
+    def test_quarterly_raises_value_error(self):
+        """QUARTERLY frequency raises ValueError — must not silently map to 1 period/year."""
+        import pytest
+        from finco_core.inputs._models import PeriodFrequency
+
+        proj = self._make_proj_with_frequency(PeriodFrequency.QUARTERLY)
+        with pytest.raises(ValueError, match="unsupported period frequency"):
+            self._run_builder(proj)
+
+    def test_quarterly_error_message_names_quarterly(self):
+        """ValueError message for QUARTERLY names the unsupported frequency."""
+        import pytest
+        from finco_core.inputs._models import PeriodFrequency
+
+        proj = self._make_proj_with_frequency(PeriodFrequency.QUARTERLY)
+        with pytest.raises(ValueError) as exc:
+            self._run_builder(proj)
+        msg = str(exc.value)
+        assert "QUARTERLY" in msg or "quarterly" in msg.lower(), (
+            f"ValueError must name QUARTERLY frequency; got: {msg}"
+        )
+
+    def test_annual_raises_value_error(self):
+        """ANNUAL frequency raises ValueError — no end-to-end annual solver proof exists."""
+        import pytest
+        from finco_core.inputs._models import PeriodFrequency
+
+        proj = self._make_proj_with_frequency(PeriodFrequency.ANNUAL)
+        with pytest.raises(ValueError, match="unsupported period frequency"):
+            self._run_builder(proj)
+
+    def test_annual_error_message_names_annual(self):
+        """ValueError message for ANNUAL names the unsupported frequency."""
+        import pytest
+        from finco_core.inputs._models import PeriodFrequency
+
+        proj = self._make_proj_with_frequency(PeriodFrequency.ANNUAL)
+        with pytest.raises(ValueError) as exc:
+            self._run_builder(proj)
+        msg = str(exc.value)
+        assert "ANNUAL" in msg or "annual" in msg.lower(), (
+            f"ValueError must name ANNUAL frequency; got: {msg}"
+        )
+
+    def test_adapter_has_no_catch_all_else_1_pattern(self):
+        """AST/source guard: adapter must not contain a string-based 'else 1' catch-all."""
+        import inspect
+        from financial_engine.senior_debt import project_adapter
+
+        src = inspect.getsource(project_adapter)
+        # The old pattern was:  ... == "semestrial" else 1
+        assert 'else 1' not in src, (
+            "project_adapter contains 'else 1' catch-all pattern — "
+            "unsupported frequencies silently mapped to 1 period/year"
+        )
+        assert '.value.lower() ==' not in src, (
+            "project_adapter still uses string-based frequency dispatch"
+        )
