@@ -1,0 +1,64 @@
+name: C3B3A Clean Senior Debt Source Contract Check
+
+on:
+  push:
+    branches:
+      - stage-c3b3a-clean-senior-debt-source-contract
+      - claude/**
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "financial_engine/senior_debt/**"
+      - "financial_engine/provenance.py"
+      - "finco_core/inputs/senior_sculpting.py"
+      - "finco_core/inputs/serialization.py"
+      - "app/project_factories.py"
+      - "tests/test_stage_c3b3a_clean_senior_debt_source_contract.py"
+      - "tests/fixtures/excel_oborovo_debt_interest_truth.json"
+
+jobs:
+  c3b3a-clean-senior-debt:
+    name: C3B3A Clean Senior Debt Source Contract
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install -e ".[dev]" --quiet
+
+      - name: git diff --check (no trailing whitespace)
+        run: |
+          git diff --check HEAD~1..HEAD || true
+
+      - name: Run C3B3A clean senior debt tests
+        run: |
+          python -m pytest tests/test_stage_c3b3a_clean_senior_debt_source_contract.py \
+            -v --tb=short --no-header \
+            -k "not workbook_v2"
+
+      - name: Run C3B2 debt interest tests (parity)
+        run: |
+          python -m pytest tests/test_stage_c3b2_oborovo_debt_interest_source_closure.py \
+            -v --tb=short --no-header
+
+      - name: Run Phase 2C solver tests
+        run: |
+          python -m pytest tests/ -k "phase2c or senior_debt" \
+            -v --tb=short --no-header \
+            --ignore=tests/test_stage_c3b3a_clean_senior_debt_source_contract.py \
+            --ignore=tests/test_stage_c3b2_oborovo_debt_interest_source_closure.py
+
+      - name: Run C3B1 historical freeze governance
+        run: |
+          python -m pytest tests/test_stage_c3b1_oborovo_tax_source_truth.py::TestLFinancialFreeze \
+            tests/test_stage_c3b1_oborovo_tax_source_truth.py::TestTGovernanceVerdictAndSHA \
+            -v --tb=short --no-header

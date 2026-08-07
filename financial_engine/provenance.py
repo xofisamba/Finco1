@@ -119,6 +119,16 @@ def compute_senior_debt_fingerprint(inputs: "Any") -> str:
     Two runs differing only in target_dscr, annual_fixed_rate, maximum_gearing,
     maturity, opening_debt_balance_keur, or explicit_principal produce different
     fingerprints. Two identical runs produce the same fingerprint.
+
+    Per-period formula (C3B3A provenance):
+        resolved_target_dscr[p] = period_dscr_targets[p].target_dscr
+                                   if p in period_dscr_targets else policy.target_dscr
+        resolved_availability[p] = period_debt_service_availability[p].availability_fraction
+                                    if p in period_debt_service_availability else 1.0
+        allowed_debt_service[p]  = max(0, CFADS[p] / resolved_target_dscr[p])
+                                    * resolved_availability[p]
+        principal[p]             = allowed_debt_service[p] - interest[p]
+                                   (subject to opening balance cap at maturity)
     """
     import dataclasses
     from enum import Enum

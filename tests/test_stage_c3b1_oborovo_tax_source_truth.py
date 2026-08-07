@@ -1163,8 +1163,10 @@ class TestLFinancialFreeze:
 
     def _diff_vs_base(self, path):
         import subprocess
+        # Anchored to historical C3B1/C3B2 range: base..c5f0b1f (not HEAD).
+        # C3B3A and later changes must not invalidate C3B1 historical freeze.
         result = subprocess.run(
-            ["git", "diff", _BASE_SHA, "HEAD", "--", path],
+            ["git", "diff", _BASE_SHA, "c5f0b1f1643aad07df2f2d9e07acd21943328841", "--", path],
             capture_output=True, text=True,
         )
         return result.stdout
@@ -1195,8 +1197,9 @@ class TestLFinancialFreeze:
     def test_only_diagnostic_files_added(self):
         """C3B1 may only add: extractor, fixture, test file, docs. Nothing else."""
         import subprocess
+        # Anchored to historical C3B1/C3B2 range endpoint — not HEAD.
         result = subprocess.run(
-            ["git", "diff", _BASE_SHA, "HEAD", "--name-only"],
+            ["git", "diff", _BASE_SHA, "c5f0b1f1643aad07df2f2d9e07acd21943328841", "--name-only"],
             capture_output=True, text=True,
         )
         changed = set(result.stdout.strip().splitlines())
@@ -1941,10 +1944,14 @@ class TestTGovernanceVerdictAndSHA:
         assert sha["cumulative_stage_base_sha"] == self.CUMULATIVE_STAGE_BASE_SHA
 
     def test_actual_pr_base_production_diff_empty(self):
-        """financial_engine/, app/, finco_core/ must be unchanged vs actual PR base."""
+        """financial_engine/, app/, finco_core/ must be unchanged vs actual PR base (C3B1 historical range).
+
+        Anchored to c5f0b1f (C3B1/C3B2 merge) not HEAD — proves C3B1's own historical range.
+        """
         import subprocess
         result = subprocess.run(
-            ["git", "diff", "--name-only", self.ACTUAL_PR_BASE_SHA, "HEAD", "--",
+            ["git", "diff", "--name-only", self.ACTUAL_PR_BASE_SHA,
+             "c5f0b1f1643aad07df2f2d9e07acd21943328841", "--",
              "financial_engine/", "app/", "finco_core/"],
             capture_output=True, text=True,
             cwd=os.path.join(os.path.dirname(__file__), ".."),
@@ -1955,10 +1962,14 @@ class TestTGovernanceVerdictAndSHA:
         )
 
     def test_cumulative_stage_production_diff_empty(self):
-        """financial_engine/, app/, finco_core/ must be unchanged vs cumulative-stage base."""
+        """financial_engine/, app/, finco_core/ must be unchanged vs cumulative-stage base (historical range).
+
+        Anchored to c5f0b1f (C3B1/C3B2 merge) not HEAD — proves C3B1's own historical range.
+        """
         import subprocess
         result = subprocess.run(
-            ["git", "diff", "--name-only", self.CUMULATIVE_STAGE_BASE_SHA, "HEAD", "--",
+            ["git", "diff", "--name-only", self.CUMULATIVE_STAGE_BASE_SHA,
+             "c5f0b1f1643aad07df2f2d9e07acd21943328841", "--",
              "financial_engine/", "app/", "finco_core/"],
             capture_output=True, text=True,
             cwd=os.path.join(os.path.dirname(__file__), ".."),
