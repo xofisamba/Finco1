@@ -919,7 +919,12 @@ class TestCompleteFormulaTerms:
 # ---------------------------------------------------------------------------
 
 class TestRuntimeInventory:
-    """Item 7: actual Oborovo runtime is FROZEN_EXCEL_SCHEDULE_RUNTIME."""
+    """Item 7: actual Oborovo runtime is FROZEN_EXCEL_SCHEDULE_RUNTIME.
+
+    C3B3A transition: runtime_inventory is now a two-layer structure.
+    legacy_runtime carries the frozen-schedule layer (still active).
+    clean_senior_debt_contract carries the C3B3A source-proven layer (not yet promoted).
+    """
 
     @pytest.fixture(scope="class")
     def ri(self):
@@ -928,27 +933,53 @@ class TestRuntimeInventory:
         assert inv is not None, "runtime_inventory missing from phase2c_sizing_analysis"
         return inv
 
+    @pytest.fixture(scope="class")
+    def legacy(self, ri):
+        lr = ri.get("legacy_runtime")
+        assert lr is not None, "runtime_inventory.legacy_runtime missing (C3B3A two-layer structure)"
+        return lr
+
     def test_runtime_inventory_present(self, ri):
         assert ri is not None
 
-    def test_runtime_classification_frozen(self, ri):
-        assert ri["runtime_classification"] == "FROZEN_EXCEL_SCHEDULE_RUNTIME"
+    def test_legacy_runtime_layer_present(self, ri):
+        assert "legacy_runtime" in ri, "Two-layer structure requires legacy_runtime key"
 
-    def test_use_frozen_excel_flag_true(self, ri):
-        assert ri["use_frozen_excel_senior_debt_schedule"] is True
+    def test_clean_contract_layer_present(self, ri):
+        assert "clean_senior_debt_contract" in ri, "Two-layer structure requires clean_senior_debt_contract key"
 
-    def test_frozen_fixture_path_present(self, ri):
-        assert "phase23q_oborovo_senior_debt_sizing_extraction.csv" in ri["frozen_senior_ds_fixture_path"]
+    def test_runtime_classification_frozen(self, legacy):
+        assert legacy["runtime_classification"] == "FROZEN_EXCEL_SCHEDULE_RUNTIME"
 
-    def test_debt_sizing_method_gearing_cap(self, ri):
-        assert ri["debt_sizing_method"] == "gearing_cap"
+    def test_use_frozen_excel_flag_true(self, legacy):
+        assert legacy["use_frozen_excel_senior_debt_schedule"] is True
 
-    def test_fixed_debt_keur_matches_excel(self, ri):
+    def test_frozen_fixture_path_present(self, legacy):
+        assert "phase23q_oborovo_senior_debt_sizing_extraction.csv" in legacy["frozen_senior_ds_fixture_path"]
+
+    def test_debt_sizing_method_gearing_cap(self, legacy):
+        assert "gearing_cap" in str(legacy["debt_sizing_method"])
+
+    def test_fixed_debt_keur_matches_excel(self, legacy):
         data = json.loads(FIXTURE_PATH.read_text())
         excel_debt = data["phase2c_sizing_analysis"]["excel_total_debt_keur"]
-        assert abs(ri["fixed_debt_keur"] - excel_debt) < 1.0, (
-            f"fixed_debt_keur {ri['fixed_debt_keur']:.3f} diverges from "
+        assert abs(legacy["fixed_debt_keur"] - excel_debt) < 1.0, (
+            f"fixed_debt_keur {legacy['fixed_debt_keur']:.3f} diverges from "
             f"excel_total_debt_keur {excel_debt:.3f}"
+        )
+
+    def test_clean_contract_classification(self, ri):
+        cc = ri["clean_senior_debt_contract"]
+        assert cc["runtime_classification"] == "CLEAN_SOURCE_CONTRACT_CONFIGURED_NOT_LEGACY_RUNTIME_PROMOTED"
+
+    def test_clean_contract_debt_sizing_mode(self, ri):
+        cc = ri["clean_senior_debt_contract"]
+        assert "FLAT_DSCR_SCULPTED" in str(cc["debt_sizing_mode"]) or "flat_dscr_sculpted" in str(cc["debt_sizing_mode"])
+
+    def test_clean_contract_not_implying_legacy_promotion(self, ri):
+        legacy = ri["legacy_runtime"]
+        assert legacy["use_frozen_excel_senior_debt_schedule"] is True, (
+            "Legacy runtime frozen flag must remain True — clean contract is not yet promoted"
         )
 
 
@@ -1247,7 +1278,11 @@ class TestDirectionalSensitivity:
 # ---------------------------------------------------------------------------
 
 class TestRuntimeInventoryFactory:
-    """Item 5: runtime inventory must be factory-derived, not hardcoded."""
+    """Item 5: runtime inventory must be factory-derived, not hardcoded.
+
+    C3B3A transition: two-layer structure. Legacy fields live in legacy_runtime;
+    clean contract fields in clean_senior_debt_contract.
+    """
 
     def test_factory_function_recorded(self):
         data = json.loads(FIXTURE_PATH.read_text())
@@ -1256,29 +1291,38 @@ class TestRuntimeInventoryFactory:
             "runtime_inventory must record the factory function path"
         )
 
-    def test_factory_fields_match_live_factory(self):
+    def test_legacy_layer_fields_match_live_factory(self):
         from app import project_factories
         proj = project_factories.create_default_oborovo()
         fp = proj.financing
 
         data = json.loads(FIXTURE_PATH.read_text())
         ri = data["phase2c_sizing_analysis"]["runtime_inventory"]
+        lr = ri["legacy_runtime"]
 
-        assert ri["debt_sizing_method"] == fp.debt_sizing_method
-        assert abs(ri["fixed_debt_keur"] - fp.fixed_debt_keur) < 1e-6
-        assert ri["target_dscr"] == fp.target_dscr
-        assert ri["use_frozen_excel_senior_debt_schedule"] == fp.use_frozen_excel_senior_debt_schedule
-        assert ri["frozen_senior_ds_fixture_path"] == fp.frozen_senior_ds_fixture_path
+        assert "gearing_cap" in str(lr["debt_sizing_method"])
+        assert abs(lr["fixed_debt_keur"] - fp.fixed_debt_keur) < 1e-6
+        assert lr["use_frozen_excel_senior_debt_schedule"] == fp.use_frozen_excel_senior_debt_schedule
+        assert lr["frozen_senior_ds_fixture_path"] == fp.frozen_senior_ds_fixture_path
+
+    def test_clean_contract_target_dscr_matches_factory(self):
+        from app import project_factories
+        proj = project_factories.create_default_oborovo()
+        fp = proj.financing
+
+        data = json.loads(FIXTURE_PATH.read_text())
+        cc = data["phase2c_sizing_analysis"]["runtime_inventory"]["clean_senior_debt_contract"]
+        assert cc["target_dscr"] == fp.target_dscr
 
     def test_frozen_schedule_true(self):
         data = json.loads(FIXTURE_PATH.read_text())
         ri = data["phase2c_sizing_analysis"]["runtime_inventory"]
-        assert ri["use_frozen_excel_senior_debt_schedule"] is True
+        assert ri["legacy_runtime"]["use_frozen_excel_senior_debt_schedule"] is True
 
     def test_classification_frozen_excel(self):
         data = json.loads(FIXTURE_PATH.read_text())
         ri = data["phase2c_sizing_analysis"]["runtime_inventory"]
-        assert ri["runtime_classification"] == "FROZEN_EXCEL_SCHEDULE_RUNTIME"
+        assert ri["legacy_runtime"]["runtime_classification"] == "FROZEN_EXCEL_SCHEDULE_RUNTIME"
 
 
 # ---------------------------------------------------------------------------

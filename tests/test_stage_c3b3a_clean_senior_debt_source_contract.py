@@ -1928,3 +1928,107 @@ class TestGroupAA_PeriodFrequencyFailClosed:
         assert '.value.lower() ==' not in src, (
             "project_adapter still uses string-based frequency dispatch"
         )
+
+
+# ===========================================================================
+# GROUP AB — C3B2→C3B3A Runtime-Inventory Transition Guards (C3B3A7)
+# ===========================================================================
+
+class TestGroupAB_RuntimeTransitionGuards:
+    """Prove the C3B3A transition state: legacy runtime frozen, clean contract configured."""
+
+    def _load_fixture(self):
+        import pathlib, json
+        p = pathlib.Path("tests/fixtures/excel_oborovo_debt_interest_truth.json")
+        return json.loads(p.read_text())
+
+    def _ri(self):
+        return self._load_fixture()["phase2c_sizing_analysis"]["runtime_inventory"]
+
+    def test_legacy_runtime_explicitly_classified_frozen(self):
+        """A: legacy runtime layer must be explicitly FROZEN_EXCEL_SCHEDULE_RUNTIME."""
+        ri = self._ri()
+        lr = ri["legacy_runtime"]
+        assert lr["runtime_classification"] == "FROZEN_EXCEL_SCHEDULE_RUNTIME"
+
+    def test_clean_contract_explicitly_classified_flat_dscr_sculpted(self):
+        """B: clean senior-debt contract layer must carry FLAT_DSCR_SCULPTED classification."""
+        ri = self._ri()
+        cc = ri["clean_senior_debt_contract"]
+        assert "FLAT_DSCR_SCULPTED" in str(cc["debt_sizing_mode"]) or \
+               "flat_dscr_sculpted" in str(cc["debt_sizing_mode"])
+
+    def test_clean_contract_does_not_imply_legacy_promotion(self):
+        """C: clean contract classification must NOT claim legacy runtime promotion."""
+        ri = self._ri()
+        cc = ri["clean_senior_debt_contract"]
+        assert "NOT_LEGACY_RUNTIME_PROMOTED" in cc["runtime_classification"], (
+            f"Clean contract classification must contain 'NOT_LEGACY_RUNTIME_PROMOTED'; "
+            f"got: {cc['runtime_classification']}"
+        )
+        assert ri["legacy_runtime"]["use_frozen_excel_senior_debt_schedule"] is True
+
+    def test_legacy_use_frozen_flag_true(self):
+        """D: use_frozen_excel_senior_debt_schedule=True in legacy_runtime layer."""
+        ri = self._ri()
+        assert ri["legacy_runtime"]["use_frozen_excel_senior_debt_schedule"] is True
+
+    def test_clean_contract_has_explicit_rate_schedule(self):
+        """E1: clean contract has explicit all-in rate schedule."""
+        ri = self._ri()
+        cc = ri["clean_senior_debt_contract"]
+        assert "EXPLICIT_ALL_IN_SCHEDULE" in str(cc["senior_rate_mode"]) or \
+               "explicit_all_in_schedule" in str(cc["senior_rate_mode"]).lower()
+
+    def test_clean_contract_has_act_360(self):
+        """E2: clean contract has ACT_360 day-count."""
+        ri = self._ri()
+        cc = ri["clean_senior_debt_contract"]
+        assert "ACT_360" in str(cc["day_count"]) or "act_360" in str(cc["day_count"]).lower()
+
+    def test_clean_contract_has_dscr_schedule(self):
+        """E3: clean contract has per-period DSCR schedule (28 periods)."""
+        ri = self._ri()
+        cc = ri["clean_senior_debt_contract"]
+        assert cc["dscr_schedule_period_count"] == 28
+
+    def test_clean_contract_has_availability_schedule(self):
+        """E4: clean contract has debt-service availability schedule (28 periods)."""
+        ri = self._ri()
+        cc = ri["clean_senior_debt_contract"]
+        assert cc["availability_schedule_period_count"] == 28
+
+    def test_source_vectors_sha256_unchanged(self):
+        """F: source_vectors_sha256 must remain the original C3B2 hash."""
+        d = self._load_fixture()
+        icp = d["phase2c_sizing_analysis"]["independent_capacity_proof"]
+        assert icp["_source_vectors_sha256"] == (
+            "f8f244c0660495bfb4115d4e32ba329c291ab829d1d0693e614c889457b5add7"
+        ), f"source_vectors_sha256 changed: {icp['_source_vectors_sha256']}"
+
+    def test_g4_debt_source_proven(self):
+        """G: G4 (vector capacity) remains exactly source-proven at 42,852.278762563 kEUR."""
+        import pytest
+        d = self._load_fixture()
+        g4 = d["phase2c_sizing_analysis"]["independent_capacity_proof"]["g4_vector_capacity"]["capacity_keur"]
+        assert g4 == pytest.approx(42852.278762563, rel=1e-9)
+
+    def test_first_run_derivation_is_noop(self):
+        """H: first-run derivation must produce 'Fixture already up-to-date' (no write)."""
+        import subprocess, pathlib
+        import hashlib
+        fixture = pathlib.Path("tests/fixtures/excel_oborovo_debt_interest_truth.json")
+        sha_before = hashlib.sha256(fixture.read_bytes()).hexdigest()
+        result = subprocess.run(
+            ["python", "-m", "finco_recon.derive_c3b2_independent_capacity"],
+            capture_output=True, text=True,
+            cwd=pathlib.Path(__file__).parent.parent,
+        )
+        sha_after = hashlib.sha256(fixture.read_bytes()).hexdigest()
+        assert sha_before == sha_after, (
+            f"First-run derivation rewrote the fixture — not idempotent. "
+            f"SHA before={sha_before[:16]}... after={sha_after[:16]}..."
+        )
+        assert "up-to-date" in result.stdout or "up-to-date" in result.stderr, (
+            f"Expected 'up-to-date' in derivation output; got stdout={result.stdout!r}"
+        )
