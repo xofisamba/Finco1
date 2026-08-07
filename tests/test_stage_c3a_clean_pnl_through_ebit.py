@@ -218,9 +218,11 @@ class TestEBookDeprecItemInclusion:
         assert len(omin.depreciation.book_capex_items_for_depreciation) == 17
 
     def test_tax_item_count(self):
+        # C3B3B2 source-proven correction: Oborovo sets tax_dep_basis_source_owned=True.
+        # C3B1 proves excel_tax_dep == excel_book_dep → tax uses book asset list (17 items).
         from app.project_factories import create_default_oborovo
         omin = _adapt(create_default_oborovo())
-        assert len(omin.depreciation.tax_capex_items_for_depreciation) == 13
+        assert len(omin.depreciation.tax_capex_items_for_depreciation) == 17
 
     def test_book_has_4_financial_costs_items(self):
         from app.project_factories import create_default_oborovo
@@ -229,12 +231,16 @@ class TestEBookDeprecItemInclusion:
               if it.asset_class_code == "financial_costs"]
         assert len(fc) == 4
 
-    def test_tax_excludes_financial_costs(self):
+    def test_tax_includes_financial_costs_source_proven(self):
+        # C3B3B2 source-proven correction: C3B1 proves excel_tax_dep == excel_book_dep.
+        # Oborovo factory sets tax_dep_basis_source_owned=True → financial costs included.
         from app.project_factories import create_default_oborovo
         omin = _adapt(create_default_oborovo())
         fc = [it for it in omin.depreciation.tax_capex_items_for_depreciation
               if it.asset_class_code == "financial_costs"]
-        assert fc == []
+        assert len(fc) == 4, (
+            f"Expected 4 financial_costs items in tax dep basis (C3B1-proven); got {len(fc)}"
+        )
 
 
 # ── F: Useful-life mapping ────────────────────────────────────────────────────
@@ -520,14 +526,22 @@ class TestLExactExcelEbitBridge:
 # ── M: Book vs tax depreciation independence ──────────────────────────────────
 
 class TestMBookVsTaxIndependence:
-    """Group M — book dep > tax dep (financing costs included in book only)."""
+    """Group M — book dep and tax dep relationship.
 
-    def test_book_exceeds_tax_dep(self):
+    C3B3B2 source-proven correction: C3B1 proves excel_tax_dep == excel_book_dep
+    for all Oborovo operating periods. Oborovo factory sets tax_dep_basis_source_owned=True
+    → adapter uses book_depreciable_capex_items() for both book and tax dep.
+    Book total == tax total within floating-point tolerance.
+    """
+
+    def test_book_equals_tax_dep_source_proven(self):
+        # C3B1 evidence: excel_tax_dep == excel_book_dep for all 28 Oborovo debt periods.
+        # C3B3B2 fix: tax_dep_basis_source_owned=True → book items used for tax dep.
         result = _run_clean()
         book = sum(p.book_depreciation_keur for p in result.periods)
         tax = sum(p.tax_depreciation_keur for p in result.periods)
-        assert book > tax + 1.0, (
-            f"Book dep {book:.3f} not materially greater than tax dep {tax:.3f}"
+        assert abs(book - tax) < 0.01, (
+            f"Book dep {book:.6f} should equal tax dep {tax:.6f} (C3B1-proven, Oborovo)"
         )
 
 

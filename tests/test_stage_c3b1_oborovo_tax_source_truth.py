@@ -453,8 +453,14 @@ class TestCTaxDepreciationSource:
             f"Clean book_dep lifetime {total_book:.3f} ≠ Excel 57,973.053"
         )
 
-    def test_clean_tax_dep_differs_from_excel(self):
-        """Clean adapter produces tax_dep from hard-CAPEX only; -1,973.967 kEUR gap."""
+    def test_clean_tax_dep_matches_excel_after_c3b3b2_fix(self):
+        """C3B3B2 fix: tax_dep_basis_source_owned=True → clean tax_dep ≈ source book_dep.
+
+        Pre-fix (C3B1 diagnostic): clean tax dep used hard-CAPEX only → delta ≈ -1,974 kEUR.
+        Post-fix (C3B3B2): Oborovo factory sets tax_dep_basis_source_owned=True → adapter
+        uses book_depreciable_capex_items() → clean tax_dep ≈ 57,973.053 kEUR → delta ≈ 0.
+        C3B1 source evidence: excel_tax_dep == excel_book_dep for all 28 debt periods.
+        """
         sys.path.insert(0, ".")
         from app.project_factories import create_default_oborovo
         from financial_engine.orchestrator import run_operating_model
@@ -465,8 +471,9 @@ class TestCTaxDepreciationSource:
         result = run_operating_model(omin)
         total_tax = sum(p.tax_depreciation_keur for p in result.periods)
         delta = total_tax - 57_973.053
-        assert abs(delta - (-1_973.967)) < 0.5, (
-            f"Expected clean tax_dep delta ≈ -1,973.967 kEUR; got {delta:.3f}"
+        assert abs(delta) < 0.5, (
+            f"Expected clean tax_dep delta ≈ 0 (C3B3B2 fix applied); got {delta:.3f}. "
+            f"Pre-fix delta was ≈ -1,973.967 kEUR (hard-CAPEX-only basis)."
         )
 
     def test_tax_dep_gap_equals_financing_cost_dep(self):
@@ -694,9 +701,15 @@ class TestEInterestDependency:
         result = run_senior_debt_model(model_input)
         sd = result.senior_debt
 
-        # Phase 2C produces a valid, non-empty vector
-        assert len(sd.senior_interest_keur) == 60, (
-            f"Expected 60 operating periods from Phase 2C; got {len(sd.senior_interest_keur)}"
+        # Phase 2C produces a valid, non-empty vector.
+        # C3B3B2 orchestrator fix: periods filtered to debt tenor (28 periods: indices 2–29).
+        # Pre-fix: 60 operating periods were passed → rate error for P30+.
+        # Post-fix: 28 debt-active periods only.
+        # C3B3B orchestrator fix: filtered to debt-active periods only (indices 2–29).
+        assert len(sd.senior_interest_keur) == 28, (
+            f"Expected 28 debt-active periods (indices 2–29); got {len(sd.senior_interest_keur)}. "
+            "Pre-C3B3B: 60 operating periods caused rate error at P30+. "
+            "Post-C3B3B: orchestrator filters to repayment_start→maturity only."
         )
         p2c_lifetime = sum(sd.senior_interest_keur)
         # Excel lifetime = 20,133 kEUR; Phase 2C = 21,725 kEUR (+7.9%)
@@ -1109,6 +1122,9 @@ class TestKCleanLegacySourceDiagnostic:
         assert abs(total_book - 57_973.053) < 0.005
 
     def test_clean_tax_dep_vs_excel_delta(self):
+        # C3B3B2 source-proven correction: delta is now ≈ 0 (gap closed).
+        # Pre-fix C3B1 diagnostic: delta ≈ -1,974 kEUR (hard-CAPEX-only basis).
+        # Post-fix: Oborovo tax_dep_basis_source_owned=True → delta ≈ 0.
         sys.path.insert(0, ".")
         from app.project_factories import create_default_oborovo
         from financial_engine.orchestrator import run_operating_model
@@ -1118,8 +1134,9 @@ class TestKCleanLegacySourceDiagnostic:
         result = run_operating_model(omin)
         total_tax = sum(p.tax_depreciation_keur for p in result.periods)
         delta = total_tax - 57_973.053
-        assert -2_000.0 < delta < -1_900.0, (
-            f"Clean tax_dep delta expected ≈ -1,974; got {delta:.3f}"
+        assert abs(delta) < 0.5, (
+            f"C3B3B2-fixed: clean tax_dep delta expected ≈ 0; got {delta:.3f}. "
+            f"Pre-fix value was ≈ -1,974 (hard-CAPEX-only)."
         )
 
     def test_clean_has_two_construction_periods(self):
@@ -1354,7 +1371,14 @@ class TestPRegressionGuard:
 
     def test_no_new_failures_introduced_by_c3b1(self):
         """C3A and Phase 2C regression suites pass at HEAD.
-        Only the pre-existing test_phase2b_tax_cfads[oborovo] failure remains."""
+
+        C3B3B2 intentionally changed C3A tests to reflect source-proven state:
+        - test_tax_item_count: 17 (was 13 pre-fix — now uses book items)
+        - test_tax_includes_financial_costs: 4 items (was 0 pre-fix)
+        - test_book_equals_tax_dep: delta < 0.01 (was book > tax pre-fix)
+        These are source-proven corrections (C3B1: excel_tax_dep == excel_book_dep),
+        not new regressions. C3A module must pass fully after C3B3B2 updates.
+        """
         import subprocess
         result = subprocess.run(
             ["python", "-m", "pytest",
@@ -1364,7 +1388,7 @@ class TestPRegressionGuard:
             capture_output=True, text=True, cwd=".",
         )
         assert result.returncode == 0, (
-            f"Regression tests failed (C3B1 introduced new failures):\n{result.stdout[-800:]}"
+            f"Regression tests failed (new failures detected):\n{result.stdout[-800:]}"
         )
 
     def test_pre_existing_failure_is_phase2b_oborovo_only(self):

@@ -33,6 +33,7 @@ from finco_core.inputs._models import (
     RevenueAdjustmentSchedule,
     RevenueParams,
     SHLRepaymentMethod,
+    TaxDepreciationMode,
     TaxParams,
     TechnicalParams,
     YieldScenario,
@@ -327,6 +328,10 @@ def project_inputs_to_dict(inputs: ProjectInputs) -> dict:
             "wht_sponsor_shl_interest": tax.wht_sponsor_shl_interest,
             "shl_cap_applies": tax.shl_cap_applies,
             "cit_cash_tax_start_operating_index": tax.cit_cash_tax_start_operating_index,
+            "tax_depreciation_mode": tax.tax_depreciation_mode.value,
+            "tax_deductible_book_dep_pct": tax.tax_deductible_book_dep_pct,
+            "tax_dep_basis_source_owned": tax.tax_dep_basis_source_owned,
+            "clean_cash_tax_timing_enabled": tax.clean_cash_tax_timing_enabled,
         },
     }
 
@@ -586,6 +591,16 @@ def project_inputs_from_dict(d: dict) -> ProjectInputs:
         wht_sponsor_shl_interest=tax_d.get("wht_sponsor_shl_interest", 0.0),
         shl_cap_applies=tax_d.get("shl_cap_applies", True),
         cit_cash_tax_start_operating_index=tax_d.get("cit_cash_tax_start_operating_index"),
+        tax_depreciation_mode=TaxDepreciationMode(
+            tax_d.get("tax_depreciation_mode", TaxDepreciationMode.BOOK_BASED_PERCENTAGE.value)
+        ),
+        tax_deductible_book_dep_pct=tax_d.get("tax_deductible_book_dep_pct", 1.0),
+        tax_dep_basis_source_owned=tax_d.get("tax_dep_basis_source_owned", False),
+        # Backward-compat: also accept old name from C3B3B3 payloads.
+        clean_cash_tax_timing_enabled=tax_d.get(
+            "clean_cash_tax_timing_enabled",
+            tax_d.get("cash_tax_timing_source_owned", False),
+        ),
     )
 
     return ProjectInputs(
