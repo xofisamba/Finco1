@@ -932,6 +932,15 @@ class TaxParams:
     def __post_init__(self) -> None:
         mode = self.shl_interest_deductibility
         pct = self.shl_interest_deductible_pct
+        # ── numeric validation for shl_interest_deductible_pct ──────────────────
+        if pct is not None:
+            import math as _math
+            if isinstance(pct, bool):
+                raise ValueError("shl_interest_deductible_pct must be a float, not bool.")
+            pct_f = float(pct)
+            if _math.isnan(pct_f) or _math.isinf(pct_f):
+                raise ValueError(f"shl_interest_deductible_pct must be finite, got {pct!r}")
+
         if mode == ShlInterestDeductibilityMode.CUSTOM_DEDUCTIBLE_PERCENTAGE:
             if pct is None:
                 raise ValueError(
@@ -954,13 +963,25 @@ class TaxParams:
                     f"shl_interest_deductible_pct must be absent or 0.0 for "
                     f"FULLY_NON_DEDUCTIBLE, got {pct}"
                 )
-        if (
-            self.tax_periodisation_mode == TaxPeriodisationMode.WORKBOOK_MODEL_YEAR_PAIRING
-            and self.clean_cash_tax_timing_enabled
-        ):
+        # ── SUBJECT_TO_LIMITATIONS requires a limitation mechanism ────────────
+        if mode == ShlInterestDeductibilityMode.SUBJECT_TO_LIMITATIONS:
+            if not self.thin_cap_enabled:
+                raise ValueError(
+                    "shl_interest_deductibility=SUBJECT_TO_LIMITATIONS requires at least "
+                    "one explicit limitation mechanism (thin_cap_enabled=True)."
+                )
+        # ── foreign_shl_interest_cap_enabled consistency ──────────────────────
+        if self.foreign_shl_interest_cap_enabled:
+            if mode != ShlInterestDeductibilityMode.FULLY_NON_DEDUCTIBLE:
+                raise ValueError(
+                    "foreign_shl_interest_cap_enabled=True requires "
+                    "shl_interest_deductibility=FULLY_NON_DEDUCTIBLE."
+                )
+        # ── WORKBOOK_MODEL_YEAR_PAIRING unconditionally blocked ───────────────
+        if self.tax_periodisation_mode == TaxPeriodisationMode.WORKBOOK_MODEL_YEAR_PAIRING:
             raise ValueError(
                 "WORKBOOK_MODEL_YEAR_PAIRING is unsupported in production. "
-                "Do not combine with clean_cash_tax_timing_enabled=True."
+                "Only CALENDAR_TAX_YEAR is supported."
             )
 
     @property

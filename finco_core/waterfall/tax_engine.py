@@ -1,4 +1,21 @@
-"""Tax engine — period-based tax computation with ATAD, loss carryforward, and fiscal reintegration."""
+"""Tax engine — period-based tax computation with ATAD, loss carryforward, and fiscal reintegration.
+
+C3B3C arithmetic identity (deductible-only method):
+    taxable_income = EBITDA - dep - deductible_interest + ATAD_disallowed + reintegration
+    where deductible_interest = ATAD_cap(senior_interest + SHL_deductible_fraction)
+
+    shl_non_deductible_keur is an audit field ONLY — it is NOT added to taxable income.
+
+Controlled example (no ATAD binding):
+    ebitda=5000, dep=1000, senior=500, SHL=300
+    FULLY_DEDUCTIBLE:     TI = 5000-1000-800 = 3200
+    FULLY_NON_DEDUCTIBLE: TI = 5000-1000-500 = 3500  (SHL simply not deducted)
+    CUSTOM 50%:           TI = 5000-1000-650 = 3350
+
+Equivalence with accounting-EBT method:
+    FULLY_NON_DEDUCTIBLE: (5000-1000-500-300) + 300 = 3500  same result ✓
+    CUSTOM 50%:           (5000-1000-500-300) + 150 = 3350  same result ✓
+"""
 
 from __future__ import annotations
 
@@ -12,7 +29,7 @@ if TYPE_CHECKING:
 @dataclass(frozen=True)
 class TaxPeriodResult:
     """Result of tax calculation for a single period.
-    
+
     All fields in kEUR for auditability.
     """
     # Pre-loss taxable income components
@@ -22,13 +39,15 @@ class TaxPeriodResult:
     deductible_interest_keur: float
     disallowed_interest_keur: float  # ATAD addback
     fiscal_reintegration_keur: float  # Construction-period cost add-back (HR tax law)
-    shl_non_deductible_addback_keur: float  # C3B3C: SHL interest addback per deductibility mode
-    
+    # C3B3C audit field: non-deductible SHL kEUR (NOT added to taxable income).
+    # = shl_interest_keur * (1 - deductible_pct). For FULLY_NON_DEDUCTIBLE = full SHL.
+    shl_non_deductible_keur: float
+
     # Loss carryforward application
     taxable_income_before_losses_keur: float  # Before loss CF application
     loss_carryforward_applied_keur: float
     loss_carryforward_remaining_keur: float
-    
+
     # Final taxable income and tax
     taxable_income_keur: float  # After loss CF
     tax_keur: float
@@ -46,63 +65,65 @@ def compute_period_tax(
     atad_ebitda_limit: float = 0.30,
     atad_min_threshold_keur: float = 3000.0,
     loss_carryforward_cap: float = 1.0,
-    co2_revenue_keur: float = 0.0,  # Phase 9: CO2 CIT bridge — adds to EBITDA for taxable income
+    co2_revenue_keur: float = 0.0,
     shl_interest_deductibility: "ShlInterestDeductibilityMode | None" = None,
     shl_interest_deductible_pct: float | None = None,
 ) -> TaxPeriodResult:
-    """
-    Compute tax for a single period.
-    
-    Taxable income = EBITDA - depreciation - interest + ATAD addback + fiscal_reintegration - loss_carryforward
+    """Compute tax for a single period.
+
+    Taxable income = EBITDA - depreciation - deductible_interest + ATAD_disallowed
+                     + fiscal_reintegration - loss_carryforward
     Tax = max(0, taxable_income) * tax_rate
-    
+
+    SHL deductibility (C3B3C deductible-only method):
+        Only the deductible fraction of SHL interest enters the ATAD pool.
+        The non-deductible fraction is simply never deducted — no addback required.
+        shl_non_deductible_keur in TaxPeriodResult is an audit field only.
+
     Args:
         ebitda_keur: EBITDA in kEUR
         depreciation_keur: Depreciation in kEUR
         senior_interest_keur: Senior debt interest in kEUR
-        shl_interest_keur: SHL interest in kEUR
+        shl_interest_keur: SHL interest in kEUR (gross accounting amount)
         loss_carryforward_keur: Prior tax losses available to apply
         tax_rate: Corporate tax rate (e.g., 0.10 for 10%)
         fiscal_reintegration_keur: Construction-period cost add-back (IDC, bank fees, etc.)
         atad_applies: Whether ATAD interest limitation applies (default True)
         atad_ebitda_limit: ATAD EBITDA limit (default 30%)
         atad_min_threshold_keur: ATAD minimum interest threshold (default 3000.0 kEUR)
-        loss_carryforward_cap: Max % of profit that can be offset by losses (default 1.0 = 100%)
+        loss_carryforward_cap: Max % of profit that can be offset by losses (default 1.0)
+        co2_revenue_keur: Phase 9 CO2 CIT bridge — added to EBITDA for taxable income
         shl_interest_deductibility: C3B3C typed SHL deductibility mode. When None,
-            falls back to legacy behavior (SHL fully deductible, included in total_interest).
+            falls back to legacy behavior (SHL fully deductible).
         shl_interest_deductible_pct: Required for CUSTOM_DEDUCTIBLE_PERCENTAGE mode.
 
     Returns:
         TaxPeriodResult with full audit trail
     """
-    # ── C3B3C: SHL non-deductible addback ──────────────────────────────────────
-    # Compute the SHL fiscal addback and how much SHL interest enters the ATAD pool.
-    # Senior interest is ALWAYS in the ATAD pool (never non-deductible via SHL rule).
-    # SHL interest treatment depends on shl_interest_deductibility mode.
+    # ── C3B3C: deductible-only SHL split ──────────────────────────────────────
+    # Only the deductible fraction enters the ATAD pool alongside senior interest.
+    # Senior interest is ALWAYS fully in the ATAD pool.
     from finco_core.inputs._models import ShlInterestDeductibilityMode as _ShlMode
 
-    shl_non_deductible_addback = 0.0
-    shl_in_atad_pool = shl_interest_keur  # default: SHL enters ATAD pool (legacy)
+    shl_deductible_keur = shl_interest_keur   # default: SHL fully deductible (legacy/None)
+    shl_non_deductible_keur = 0.0             # audit field only
 
     if shl_interest_deductibility is not None:
-        if shl_interest_deductibility == _ShlMode.FULLY_NON_DEDUCTIBLE:
-            # SHL interest is entirely non-deductible: add back full amount,
-            # remove from ATAD deductible pool.
-            shl_non_deductible_addback = shl_interest_keur
-            shl_in_atad_pool = 0.0
-        elif shl_interest_deductibility == _ShlMode.FULLY_DEDUCTIBLE:
-            # SHL interest is fully deductible: no addback, enters ATAD pool normally.
-            shl_non_deductible_addback = 0.0
-            shl_in_atad_pool = shl_interest_keur
+        if shl_interest_deductibility == _ShlMode.FULLY_DEDUCTIBLE:
+            shl_deductible_keur = shl_interest_keur
+            shl_non_deductible_keur = 0.0
+        elif shl_interest_deductibility == _ShlMode.FULLY_NON_DEDUCTIBLE:
+            # SHL interest is entirely non-deductible: zero enters the ATAD pool.
+            # No addback needed — the amount was never deducted in the first place.
+            shl_deductible_keur = 0.0
+            shl_non_deductible_keur = shl_interest_keur
         elif shl_interest_deductibility == _ShlMode.CUSTOM_DEDUCTIBLE_PERCENTAGE:
             pct = shl_interest_deductible_pct if shl_interest_deductible_pct is not None else 0.0
-            non_ded_frac = 1.0 - pct
-            shl_non_deductible_addback = shl_interest_keur * non_ded_frac
-            shl_in_atad_pool = shl_interest_keur * pct
+            shl_deductible_keur = shl_interest_keur * pct
+            shl_non_deductible_keur = shl_interest_keur * (1.0 - pct)
         elif shl_interest_deductibility == _ShlMode.SUBJECT_TO_LIMITATIONS:
             # FAIL CLOSED: limitation engine (thin-cap/ATAD interaction for SHL)
-            # is not yet implemented generically. Callers must resolve SHL
-            # deductibility externally and pass the result as CUSTOM mode.
+            # is not yet implemented. C3B3C_BLOCKED_TUHO_THIN_CAP_FORMULA.
             raise NotImplementedError(
                 "C3B3C_BLOCKED_TUHO_THIN_CAP_FORMULA: "
                 "SUBJECT_TO_LIMITATIONS SHL deductibility requires an interest "
@@ -110,13 +131,14 @@ def compute_period_tax(
                 "Set thin_cap_enabled=True only when the formula is proven."
             )
 
-    total_interest = senior_interest_keur + shl_in_atad_pool
-    
+    # Only deductible SHL fraction enters the ATAD pool.
+    total_interest = senior_interest_keur + shl_deductible_keur
+
     # ATAD: limit interest deduction
     if atad_applies:
         ebitda_limit = ebitda_keur * atad_ebitda_limit
         deductible_interest_limit = max(ebitda_limit, atad_min_threshold_keur)
-        
+
         if total_interest <= deductible_interest_limit:
             deductible_interest = total_interest
             disallowed_interest = 0.0
@@ -126,10 +148,10 @@ def compute_period_tax(
     else:
         deductible_interest = total_interest
         disallowed_interest = 0.0
-    
-    # Taxable income before losses (but after all deductables and addbacks)
-    # Phase 9: CO2 CIT bridge — co2_revenue_keur is added to EBITDA for taxable income
-    # C3B3C: shl_non_deductible_addback adds back the non-deductible SHL fraction
+
+    # Taxable income before losses.
+    # Phase 9: CO2 CIT bridge — co2_revenue_keur added to EBITDA for taxable income.
+    # shl_non_deductible_keur is an audit field ONLY — NOT added here.
     taxable_before_losses = (
         ebitda_keur
         + co2_revenue_keur
@@ -137,20 +159,19 @@ def compute_period_tax(
         - deductible_interest
         + disallowed_interest
         + fiscal_reintegration_keur
-        + shl_non_deductible_addback
     )
-    
+
     # Apply loss carryforward (capped at loss_carryforward_cap of profit)
     max_offset = taxable_before_losses * loss_carryforward_cap if taxable_before_losses > 0 else 0.0
     loss_used = min(loss_carryforward_keur, max(0.0, max_offset))
     remaining_loss_cf = max(0.0, loss_carryforward_keur - loss_used)
-    
+
     # Final taxable income
     taxable_income = max(0.0, taxable_before_losses - loss_used)
-    
+
     # Tax
     tax_keur = taxable_income * tax_rate
-    
+
     return TaxPeriodResult(
         ebitda_keur=ebitda_keur,
         co2_cit_bridge_keur=co2_revenue_keur,
@@ -158,7 +179,7 @@ def compute_period_tax(
         deductible_interest_keur=deductible_interest,
         disallowed_interest_keur=disallowed_interest,
         fiscal_reintegration_keur=fiscal_reintegration_keur,
-        shl_non_deductible_addback_keur=shl_non_deductible_addback,
+        shl_non_deductible_keur=shl_non_deductible_keur,
         taxable_income_before_losses_keur=max(0.0, taxable_before_losses),
         loss_carryforward_applied_keur=loss_used,
         loss_carryforward_remaining_keur=remaining_loss_cf,
