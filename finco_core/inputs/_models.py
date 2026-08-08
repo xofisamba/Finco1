@@ -654,6 +654,157 @@ class FinancingParams:
         return f"{mode.value}"
 
 
+class ShlInterestDeductibilityMode(str, Enum):
+    """How SHL (Shareholder Loan) interest is treated for corporate income tax.
+
+    This is a TAX POLICY enum — not a model/workbook convention.
+
+    Deductible-only arithmetic (C3B3C):
+        Only the deductible fraction of SHL interest enters the ATAD pool.
+        The non-deductible fraction is simply never deducted — it is not
+        added back to taxable income. shl_non_deductible_keur in TaxPeriodResult
+        is an audit field only.
+
+    FULLY_DEDUCTIBLE:
+        SHL interest is treated identically to senior interest for CIT purposes.
+        The full SHL gross amount enters the ATAD pool alongside senior interest.
+        shl_interest_deductible_pct must be absent or 1.0.
+
+    FULLY_NON_DEDUCTIBLE:
+        SHL interest is entirely non-deductible. Zero SHL interest enters the ATAD
+        pool. The gross SHL amount is never deducted — no fiscal addback is required.
+        Oborovo source: C59=100%, D59=TRUE → zero SHL deduction for all periods
+        (proved from C3B1 fixture). shl_interest_deductible_pct must be absent or 0.0.
+
+    SUBJECT_TO_LIMITATIONS:
+        SHL deductibility is subject to active interest limitation mechanisms
+        (thin-cap, ATAD, or both). Deductible amount is determined by whichever
+        enabled limitation engine fires. Requires at least one limitation enabled.
+        thin_cap_enabled=True + unsupported formula → FAIL CLOSED (C3B3C).
+
+        SOURCE_POLICY_CAPTURED_RUNTIME_NOT_PROMOTED: this mode stores source
+        metadata only. It has no legacy-waterfall runtime implementation.
+        The legacy engine preserves prior SHL-fully-deductible behavior until
+        the thin-cap formula is proven and explicitly activated.
+
+    CUSTOM_DEDUCTIBLE_PERCENTAGE:
+        A fixed fraction of SHL interest is deductible. Only that fraction enters
+        the ATAD pool; the non-deductible fraction is never deducted (no addback).
+        shl_interest_deductible_pct is required (0.0 ≤ pct ≤ 1.0).
+    """
+    FULLY_DEDUCTIBLE = "fully_deductible"
+    FULLY_NON_DEDUCTIBLE = "fully_non_deductible"
+    SUBJECT_TO_LIMITATIONS = "subject_to_limitations"
+    CUSTOM_DEDUCTIBLE_PERCENTAGE = "custom_deductible_percentage"
+
+    @property
+    def legacy_runtime_supported(self) -> bool:
+        """Whether the legacy waterfall engine can execute this deductibility mode.
+
+        SUBJECT_TO_LIMITATIONS has no legacy implementation (thin-cap formula not yet
+        proven). Source metadata may be stored but must not be promoted to the legacy
+        runtime. The legacy engine defaults to SHL-fully-deductible behavior instead.
+
+        SOURCE_POLICY_CAPTURED_RUNTIME_NOT_PROMOTED applies to SUBJECT_TO_LIMITATIONS.
+        """
+        return self != ShlInterestDeductibilityMode.SUBJECT_TO_LIMITATIONS
+
+
+class TaxLossUtilisationGate(str, Enum):
+    """Gate condition that must be satisfied before tax losses can be utilised.
+
+    This is a MODEL CONVENTION enum — not a universal tax law.
+
+    TAXABLE_INCOME_POSITIVE:
+        Canonical mode. Loss carryforward can be applied only when taxable
+        income before losses is positive. This is the standard conceptual rule.
+        Generic/default projects should use this mode unless source evidence
+        proves otherwise.
+
+    EBT_POSITIVE:
+        Workbook convention observed in Oborovo and TUHO Excel models.
+        Source workbook formula: IF(AND(losses_available<=0, EBT>0), ...).
+        Loss carryforward can be applied only when EBT (Earnings Before Tax,
+        i.e. EBIT minus all financing interest) is positive.
+
+        This differs from TAXABLE_INCOME_POSITIVE: a project can have positive
+        taxable income but negative EBT (e.g. due to non-deductible SHL interest
+        that is excluded from the ATAD pool but also not an addback).
+        For Oborovo, EBT stays negative during debt service due to SHL interest,
+        so allocated_losses=0 always under EBT_POSITIVE gate.
+
+        IMPORTANT: do not call this Croatian tax law. It is a workbook model
+        convention. The clean engine fails closed on EBT_POSITIVE unless
+        explicitly supported — see TaxParams.tax_loss_utilisation_gate.
+    """
+    TAXABLE_INCOME_POSITIVE = "taxable_income_positive"
+    EBT_POSITIVE = "ebt_positive"
+
+
+class TaxPeriodisationMode(str, Enum):
+    """How CIT annual amounts are periodised in a semi-annual model.
+
+    This is a MODEL CONVENTION enum.
+
+    CALENDAR_TAX_YEAR:
+        Clean engine convention. Annual CIT is aggregated on a calendar-year
+        (Jan–Dec) basis and placed in the last semi-annual period of that year
+        (TAX_YEAR_LAST_PERIOD). This is the supported production mode.
+
+    WORKBOOK_MODEL_YEAR_PAIRING:
+        Source workbook convention (Oborovo, TUHO). Each fiscal year is formed
+        by pairing H2(year N) + H1(year N+1). CIT fires in the even period
+        (H1 of the model year). This is structurally different from CALENDAR_TAX_YEAR
+        and is the root cause of WORKBOOK_PERIODISATION_MISMATCH.
+
+        UNSUPPORTED IN PRODUCTION — fail closed. May appear as source metadata
+        or calibration annotation only. Do not expose as an editable runtime input.
+    """
+    CALENDAR_TAX_YEAR = "calendar_tax_year"
+    WORKBOOK_MODEL_YEAR_PAIRING = "workbook_model_year_pairing"
+
+
+class ShlAccountingTreatment(str, Enum):
+    """How SHL (Shareholder Loan) construction-period interest is accounted for.
+
+    Separates the ACCOUNTING question from the PAYMENT question.
+    See also ShlPaymentMethod.
+
+    EXPENSE_TO_PNL:
+        SHL construction interest is recorded as an expense in the P&L
+        (interest expense line). It is NOT capitalised into the depreciable
+        asset basis (GFA). This is the treatment for Oborovo and TUHO:
+        SHL construction interest flows through P&L, not into GFA.
+
+    CAPITALIZE_TO_ASSET:
+        SHL construction interest is capitalised into the qualifying asset
+        (GFA / depreciable basis). This increases the asset cost and therefore
+        depreciation. NOT applicable to Oborovo or TUHO as proven by source.
+    """
+    EXPENSE_TO_PNL = "expense_to_pnl"
+    CAPITALIZE_TO_ASSET = "capitalize_to_asset"
+
+
+class ShlPaymentMethod(str, Enum):
+    """How SHL interest is settled (cash vs capitalisation into the liability).
+
+    Separates the PAYMENT question from the ACCOUNTING question.
+    See also ShlAccountingTreatment.
+
+    PIK_TO_SHL_BALANCE:
+        SHL interest is not paid in cash during the accrual period.
+        It is added (PIK = Payment In Kind) to the SHL liability balance.
+        Oborovo and TUHO: SHL construction interest accretes into the SHL
+        balance (opening SHL + PIK → closing SHL). NOT the same as
+        capitalisation into the asset (ShlAccountingTreatment.CAPITALIZE_TO_ASSET).
+
+    CASH_PAID:
+        SHL interest is settled in cash in the period it accrues.
+    """
+    PIK_TO_SHL_BALANCE = "pik_to_shl_balance"
+    CASH_PAID = "cash_paid"
+
+
 class TaxDepreciationMode(str, Enum):
     """Engine capability: how tax-deductible depreciation is derived for CIT.
 
@@ -696,7 +847,60 @@ class TaxParams:
     wht_sponsor_dividends: float = 0.05
     wht_sponsor_shl_interest: float = 0.0
 
+    # DEPRECATED — preserved for backward compatibility with serialised payloads.
+    # Use shl_interest_deductibility instead.
+    # When shl_interest_deductibility is not set, shl_cap_applies=True was the
+    # prior signal for "some SHL restriction applies" but was never wired to the engine.
     shl_cap_applies: bool = True
+
+    # ── SHL Interest Deductibility Policy (C3B3C) ──────────────────────────────
+    # Typed replacement for the ambiguous shl_cap_applies boolean.
+    # Governs what fraction of gross SHL interest enters the ATAD pool.
+    # Deductible-only method: only the deductible fraction is deducted from
+    # taxable income; the non-deductible fraction is simply never deducted
+    # (no addback required).
+    #
+    # DEFAULT FULLY_DEDUCTIBLE preserves backward-compatibility for projects
+    # that have not been explicitly calibrated. It is NOT a global tax law.
+    # Calibrated projects must receive the correct mode via their factory.
+    #
+    # Oborovo (C3B1-proved): FULLY_NON_DEDUCTIBLE
+    #   C59=100%, D59=TRUE → zero SHL deduction for all periods.
+    # TUHO: SUBJECT_TO_LIMITATIONS (source metadata only — thin-cap formula not
+    #   yet proven; legacy runtime preserves SHL-fully-deductible behavior until
+    #   the formula is explicitly activated — C3B3C_BLOCKED_TUHO_THIN_CAP_FORMULA).
+    shl_interest_deductibility: ShlInterestDeductibilityMode = ShlInterestDeductibilityMode.FULLY_DEDUCTIBLE
+
+    # Fraction of SHL interest that is deductible (0.0–1.0).
+    # Required when shl_interest_deductibility == CUSTOM_DEDUCTIBLE_PERCENTAGE.
+    # Must be None or absent for FULLY_DEDUCTIBLE (pct=1.0) and FULLY_NON_DEDUCTIBLE (pct=0.0).
+    shl_interest_deductible_pct: float | None = None
+
+    # Whether the foreign-shareholder SHL interest cap (Oborovo D59=TRUE) applies.
+    # Distinct from thin-cap. Provenance flag — must be consistent with shl_interest_deductibility.
+    # When True, shl_interest_deductibility must be FULLY_NON_DEDUCTIBLE.
+    # Oborovo: True. TUHO: False.
+    foreign_shl_interest_cap_enabled: bool = False
+
+    # Loss utilisation gate convention (C3B3C).
+    # Controls when tax losses may be offset against taxable income.
+    # Default TAXABLE_INCOME_POSITIVE is the canonical clean-engine mode.
+    # EBT_POSITIVE matches workbook convention for Oborovo/TUHO but is NOT
+    # supported in production execution unless explicitly implemented.
+    # When EBT_POSITIVE is set, the engine raises NotImplementedError unless
+    # the EBT gate execution path is proven and activated.
+    tax_loss_utilisation_gate: TaxLossUtilisationGate = TaxLossUtilisationGate.TAXABLE_INCOME_POSITIVE
+
+    # Tax periodisation mode (C3B3C).
+    # CALENDAR_TAX_YEAR is the only supported production mode.
+    # WORKBOOK_MODEL_YEAR_PAIRING must be UNSUPPORTED — fail closed.
+    tax_periodisation_mode: TaxPeriodisationMode = TaxPeriodisationMode.CALENDAR_TAX_YEAR
+
+    # SHL construction accounting and payment treatment (C3B3C).
+    # Source-proved for Oborovo and TUHO: EXPENSE_TO_PNL + PIK_TO_SHL_BALANCE.
+    # These are SEPARATE dimensions — PIK into liability ≠ capitalise into asset.
+    shl_construction_accounting: ShlAccountingTreatment = ShlAccountingTreatment.EXPENSE_TO_PNL
+    shl_construction_payment: ShlPaymentMethod = ShlPaymentMethod.PIK_TO_SHL_BALANCE
 
     cit_cash_tax_start_operating_index: int | None = None
 
@@ -748,6 +952,87 @@ class TaxParams:
     # When False (default): adapter raises NotImplementedError (fail-closed).
     # All projects without an explicit opt-in must not silently inherit this convention.
     clean_cash_tax_timing_enabled: bool = False
+
+    def __post_init__(self) -> None:
+        mode = self.shl_interest_deductibility
+        pct = self.shl_interest_deductible_pct
+        # ── numeric validation for shl_interest_deductible_pct ──────────────────
+        if pct is not None:
+            import math as _math
+            if isinstance(pct, bool):
+                raise ValueError("shl_interest_deductible_pct must be a float, not bool.")
+            pct_f = float(pct)
+            if _math.isnan(pct_f) or _math.isinf(pct_f):
+                raise ValueError(f"shl_interest_deductible_pct must be finite, got {pct!r}")
+
+        if mode == ShlInterestDeductibilityMode.CUSTOM_DEDUCTIBLE_PERCENTAGE:
+            if pct is None:
+                raise ValueError(
+                    "shl_interest_deductible_pct is required when "
+                    "shl_interest_deductibility == CUSTOM_DEDUCTIBLE_PERCENTAGE"
+                )
+            if not (0.0 <= pct <= 1.0):
+                raise ValueError(
+                    f"shl_interest_deductible_pct must be in [0, 1], got {pct}"
+                )
+        if mode == ShlInterestDeductibilityMode.FULLY_DEDUCTIBLE and pct is not None:
+            if abs(pct - 1.0) > 1e-9:
+                raise ValueError(
+                    f"shl_interest_deductible_pct must be absent or 1.0 for "
+                    f"FULLY_DEDUCTIBLE, got {pct}"
+                )
+        if mode == ShlInterestDeductibilityMode.FULLY_NON_DEDUCTIBLE and pct is not None:
+            if abs(pct) > 1e-9:
+                raise ValueError(
+                    f"shl_interest_deductible_pct must be absent or 0.0 for "
+                    f"FULLY_NON_DEDUCTIBLE, got {pct}"
+                )
+        # ── SUBJECT_TO_LIMITATIONS requires a limitation mechanism ────────────
+        if mode == ShlInterestDeductibilityMode.SUBJECT_TO_LIMITATIONS:
+            if not self.thin_cap_enabled:
+                raise ValueError(
+                    "shl_interest_deductibility=SUBJECT_TO_LIMITATIONS requires at least "
+                    "one explicit limitation mechanism (thin_cap_enabled=True)."
+                )
+        # ── foreign_shl_interest_cap_enabled consistency ──────────────────────
+        if self.foreign_shl_interest_cap_enabled:
+            if mode != ShlInterestDeductibilityMode.FULLY_NON_DEDUCTIBLE:
+                raise ValueError(
+                    "foreign_shl_interest_cap_enabled=True requires "
+                    "shl_interest_deductibility=FULLY_NON_DEDUCTIBLE."
+                )
+        # ── WORKBOOK_MODEL_YEAR_PAIRING unconditionally blocked ───────────────
+        if self.tax_periodisation_mode == TaxPeriodisationMode.WORKBOOK_MODEL_YEAR_PAIRING:
+            raise ValueError(
+                "WORKBOOK_MODEL_YEAR_PAIRING is unsupported in production. "
+                "Only CALENDAR_TAX_YEAR is supported."
+            )
+
+    @property
+    def shl_non_deductible_fraction(self) -> float:
+        """Non-deductible fraction of gross SHL interest for this tax policy.
+
+        Under the deductible-only method: only shl_deductible_fraction enters the
+        ATAD pool; the non-deductible fraction is simply never deducted (no addback).
+        This property is used only for audit reporting or rate-based analysis.
+
+        Returns 0.0 for FULLY_DEDUCTIBLE (full gross amount is deductible).
+        Returns 1.0 for FULLY_NON_DEDUCTIBLE (zero gross amount is deductible).
+        Returns (1 - pct) for CUSTOM_DEDUCTIBLE_PERCENTAGE.
+        Raises NotImplementedError for SUBJECT_TO_LIMITATIONS (limitation engine required).
+        """
+        mode = self.shl_interest_deductibility
+        if mode == ShlInterestDeductibilityMode.FULLY_DEDUCTIBLE:
+            return 0.0
+        if mode == ShlInterestDeductibilityMode.FULLY_NON_DEDUCTIBLE:
+            return 1.0
+        if mode == ShlInterestDeductibilityMode.CUSTOM_DEDUCTIBLE_PERCENTAGE:
+            pct = self.shl_interest_deductible_pct
+            return 1.0 - (pct if pct is not None else 0.0)
+        raise NotImplementedError(
+            "shl_non_deductible_fraction is not defined for SUBJECT_TO_LIMITATIONS; "
+            "use the interest limitation engine to derive the addback."
+        )
 
     @property
     def initial_tax_loss_keur(self) -> float:

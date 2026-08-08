@@ -24,6 +24,11 @@ from finco_core.inputs import (  # noqa: F401
     FinancingParams,
     TaxParams,
     TaxDepreciationMode,
+    ShlInterestDeductibilityMode,
+    TaxLossUtilisationGate,
+    TaxPeriodisationMode,
+    ShlAccountingTreatment,
+    ShlPaymentMethod,
     ProjectInputs,
     hash_inputs_for_cache,
 )
