@@ -330,6 +330,9 @@ def run_waterfall(
     # When None, falls back to depreciation_schedule (book dep = tax dep, legacy behaviour).
     # Set by waterfall_core when inputs.tax.tax_depreciation_mode is not None.
     tax_depreciation_schedule: list[float] | None = None,
+    # C3B3C: SHL interest deductibility mode — passed to compute_period_tax() for addback logic.
+    shl_interest_deductibility: object | None = None,
+    shl_interest_deductible_pct: float | None = None,
 ) -> WaterfallResult:
     """Run full waterfall with iterative debt sculpting.
 
@@ -783,6 +786,8 @@ def run_waterfall(
             atad_min_threshold_keur=3000.0,
             loss_carryforward_cap=loss_carryforward_cap,
             co2_revenue_keur=co2_cit_bridge_keur,
+            shl_interest_deductibility=shl_interest_deductibility,
+            shl_interest_deductible_pct=shl_interest_deductible_pct,
         )
         _tax_p1 = _tax_result_p1.tax_keur
         # NOTE: prior_tax_loss is NOT updated from Pass 1 — Pass 2 owns the update
@@ -906,6 +911,8 @@ def run_waterfall(
             atad_min_threshold_keur=3000.0,
             loss_carryforward_cap=loss_carryforward_cap,
             co2_revenue_keur=co2_cit_bridge_keur,
+            shl_interest_deductibility=shl_interest_deductibility,
+            shl_interest_deductible_pct=shl_interest_deductible_pct,
         )
 
         # Use Pass 2 result — SHL interest is now correctly deductible
@@ -1516,6 +1523,16 @@ def cached_run_waterfall(
         tuho_shl_principal_eligibility_start_period=getattr(
             inputs.financing,
             "tuho_shl_principal_eligibility_start_period",
+            None,
+        ),
+        shl_interest_deductibility=getattr(
+            inputs.tax,
+            "shl_interest_deductibility",
+            None,
+        ),
+        shl_interest_deductible_pct=getattr(
+            inputs.tax,
+            "shl_interest_deductible_pct",
             None,
         ),
     )

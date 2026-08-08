@@ -34,6 +34,11 @@ from finco_core.inputs._models import (
     RevenueParams,
     SHLRepaymentMethod,
     TaxDepreciationMode,
+    ShlInterestDeductibilityMode,
+    TaxLossUtilisationGate,
+    TaxPeriodisationMode,
+    ShlAccountingTreatment,
+    ShlPaymentMethod,
     TaxParams,
     TechnicalParams,
     YieldScenario,
@@ -332,6 +337,14 @@ def project_inputs_to_dict(inputs: ProjectInputs) -> dict:
             "tax_deductible_book_dep_pct": tax.tax_deductible_book_dep_pct,
             "tax_dep_basis_source_owned": tax.tax_dep_basis_source_owned,
             "clean_cash_tax_timing_enabled": tax.clean_cash_tax_timing_enabled,
+            # C3B3C typed tax policy fields
+            "shl_interest_deductibility": tax.shl_interest_deductibility.value,
+            "shl_interest_deductible_pct": tax.shl_interest_deductible_pct,
+            "foreign_shl_interest_cap_enabled": tax.foreign_shl_interest_cap_enabled,
+            "tax_loss_utilisation_gate": tax.tax_loss_utilisation_gate.value,
+            "tax_periodisation_mode": tax.tax_periodisation_mode.value,
+            "shl_construction_accounting": tax.shl_construction_accounting.value,
+            "shl_construction_payment": tax.shl_construction_payment.value,
         },
     }
 
@@ -600,6 +613,24 @@ def project_inputs_from_dict(d: dict) -> ProjectInputs:
         clean_cash_tax_timing_enabled=tax_d.get(
             "clean_cash_tax_timing_enabled",
             tax_d.get("cash_tax_timing_source_owned", False),
+        ),
+        # C3B3C typed tax policy fields (backward-compat defaults preserve prior behaviour)
+        shl_interest_deductibility=ShlInterestDeductibilityMode(
+            tax_d.get("shl_interest_deductibility", ShlInterestDeductibilityMode.FULLY_DEDUCTIBLE.value)
+        ),
+        shl_interest_deductible_pct=tax_d.get("shl_interest_deductible_pct", None),
+        foreign_shl_interest_cap_enabled=tax_d.get("foreign_shl_interest_cap_enabled", False),
+        tax_loss_utilisation_gate=TaxLossUtilisationGate(
+            tax_d.get("tax_loss_utilisation_gate", TaxLossUtilisationGate.TAXABLE_INCOME_POSITIVE.value)
+        ),
+        tax_periodisation_mode=TaxPeriodisationMode(
+            tax_d.get("tax_periodisation_mode", TaxPeriodisationMode.CALENDAR_TAX_YEAR.value)
+        ),
+        shl_construction_accounting=ShlAccountingTreatment(
+            tax_d.get("shl_construction_accounting", ShlAccountingTreatment.EXPENSE_TO_PNL.value)
+        ),
+        shl_construction_payment=ShlPaymentMethod(
+            tax_d.get("shl_construction_payment", ShlPaymentMethod.PIK_TO_SHL_BALANCE.value)
         ),
     )
 

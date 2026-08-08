@@ -51,6 +51,11 @@ from finco_core.inputs._models import (
     FinancingParams,
     TaxParams,
     TaxDepreciationMode,
+    ShlInterestDeductibilityMode,
+    TaxLossUtilisationGate,
+    TaxPeriodisationMode,
+    ShlAccountingTreatment,
+    ShlPaymentMethod,
     ProjectInputs,
     hash_inputs_for_cache,
 )
@@ -93,6 +98,11 @@ __all__ = [
     "FinancingParams",
     "TaxParams",
     "TaxDepreciationMode",
+    "ShlInterestDeductibilityMode",
+    "TaxLossUtilisationGate",
+    "TaxPeriodisationMode",
+    "ShlAccountingTreatment",
+    "ShlPaymentMethod",
     "ProjectInputs",
     # BESS input model
     "BessParams",

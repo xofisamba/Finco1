@@ -27,6 +27,11 @@ from domain.inputs import (
     SHLRepaymentMethod,
     TaxParams,
     TaxDepreciationMode,
+    ShlInterestDeductibilityMode,
+    TaxLossUtilisationGate,
+    TaxPeriodisationMode,
+    ShlAccountingTreatment,
+    ShlPaymentMethod,
     TechnicalParams,
 )
 from domain.revenue.bess import BessParams
@@ -429,6 +434,18 @@ def create_default_oborovo() -> ProjectInputs:
         # This flag enables the clean convention for Oborovo; it does NOT assert
         # that TAX_YEAR_LAST_PERIOD itself matches the workbook periodisation.
         clean_cash_tax_timing_enabled=True,
+        # C3B3C: Oborovo source facts (Section 2C, 2E, 2F, 2G)
+        # - foreign SHL cap = TRUE → SHL interest 100% non-deductible for CIT
+        # - thin cap = FALSE (no thin-cap formula for Oborovo)
+        # - loss utilisation gate = EBT_POSITIVE (workbook uses EBT>0, not TI>0)
+        # - tax periodisation = CALENDAR_TAX_YEAR
+        # - SHL construction: EXPENSE_TO_PNL + PIK_TO_SHL_BALANCE (not capitalized)
+        shl_interest_deductibility=ShlInterestDeductibilityMode.FULLY_NON_DEDUCTIBLE,
+        foreign_shl_interest_cap_enabled=True,
+        tax_loss_utilisation_gate=TaxLossUtilisationGate.EBT_POSITIVE,
+        tax_periodisation_mode=TaxPeriodisationMode.CALENDAR_TAX_YEAR,
+        shl_construction_accounting=ShlAccountingTreatment.EXPENSE_TO_PNL,
+        shl_construction_payment=ShlPaymentMethod.PIK_TO_SHL_BALANCE,
     )
 
     return ProjectInputs(
@@ -652,13 +669,26 @@ def create_default_tuho_wind1() -> ProjectInputs:
         loss_carryforward_cap=1.0,
         prior_tax_loss_keur=25_000.0,  # 18m construction → large carryforward
         legal_reserve_cap=0.10,
-        thin_cap_enabled=False,
+        thin_cap_enabled=True,
         atad_ebitda_limit=0.30,
         atad_min_interest_keur=3000.0,
         wht_sponsor_dividends=0.05,
         wht_sponsor_shl_interest=0.0,  # 0% WHT on SHL interest per Excel R406
         shl_cap_applies=True,
         cit_cash_tax_start_operating_index=25,  # TUHO Excel: first non-zero R67 at P25
+        # C3B3C: TUHO source facts (Section 2D, 2E, 2F, 2G)
+        # - foreign SHL cap = FALSE (TUHO uses thin-cap formula, not 100% cap)
+        # - thin cap = TRUE but formula unproven → SUBJECT_TO_LIMITATIONS fails closed
+        # - loss utilisation gate = EBT_POSITIVE (workbook uses EBT>0, not TI>0)
+        # - SHL construction: EXPENSE_TO_PNL + PIK_TO_SHL_BALANCE (not capitalized)
+        # WARNING: SUBJECT_TO_LIMITATIONS raises NotImplementedError when called —
+        # TUHO thin-cap formula is not yet implemented (C3B3C_BLOCKED_TUHO_THIN_CAP_FORMULA).
+        shl_interest_deductibility=ShlInterestDeductibilityMode.SUBJECT_TO_LIMITATIONS,
+        foreign_shl_interest_cap_enabled=False,
+        tax_loss_utilisation_gate=TaxLossUtilisationGate.EBT_POSITIVE,
+        tax_periodisation_mode=TaxPeriodisationMode.CALENDAR_TAX_YEAR,
+        shl_construction_accounting=ShlAccountingTreatment.EXPENSE_TO_PNL,
+        shl_construction_payment=ShlPaymentMethod.PIK_TO_SHL_BALANCE,
     )
 
     return ProjectInputs(
