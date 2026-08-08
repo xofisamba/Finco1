@@ -659,17 +659,22 @@ class ShlInterestDeductibilityMode(str, Enum):
 
     This is a TAX POLICY enum — not a model/workbook convention.
 
+    Deductible-only arithmetic (C3B3C):
+        Only the deductible fraction of SHL interest enters the ATAD pool.
+        The non-deductible fraction is simply never deducted — it is not
+        added back to taxable income. shl_non_deductible_keur in TaxPeriodResult
+        is an audit field only.
+
     FULLY_DEDUCTIBLE:
         SHL interest is treated identically to senior interest for CIT purposes.
-        No fiscal addback on account of SHL deductibility restriction.
+        The full SHL gross amount enters the ATAD pool alongside senior interest.
         shl_interest_deductible_pct must be absent or 1.0.
 
     FULLY_NON_DEDUCTIBLE:
-        SHL interest is entirely non-deductible. The full SHL interest is added
-        back to taxable income as fiscal reintegration (SHL non-deductible addback).
-        Oborovo source: C59=100%, D59=TRUE → addback = full SHL interest for
-        ALL periods (proved from C3B1 fixture). shl_interest_deductible_pct must
-        be absent or 0.0.
+        SHL interest is entirely non-deductible. Zero SHL interest enters the ATAD
+        pool. The gross SHL amount is never deducted — no fiscal addback is required.
+        Oborovo source: C59=100%, D59=TRUE → zero SHL deduction for all periods
+        (proved from C3B1 fixture). shl_interest_deductible_pct must be absent or 0.0.
 
     SUBJECT_TO_LIMITATIONS:
         SHL deductibility is subject to active interest limitation mechanisms
@@ -677,15 +682,32 @@ class ShlInterestDeductibilityMode(str, Enum):
         enabled limitation engine fires. Requires at least one limitation enabled.
         thin_cap_enabled=True + unsupported formula → FAIL CLOSED (C3B3C).
 
+        SOURCE_POLICY_CAPTURED_RUNTIME_NOT_PROMOTED: this mode stores source
+        metadata only. It has no legacy-waterfall runtime implementation.
+        The legacy engine preserves prior SHL-fully-deductible behavior until
+        the thin-cap formula is proven and explicitly activated.
+
     CUSTOM_DEDUCTIBLE_PERCENTAGE:
-        A fixed fraction of SHL interest is deductible. The non-deductible
-        fraction (1 − pct) is added back as fiscal reintegration.
+        A fixed fraction of SHL interest is deductible. Only that fraction enters
+        the ATAD pool; the non-deductible fraction is never deducted (no addback).
         shl_interest_deductible_pct is required (0.0 ≤ pct ≤ 1.0).
     """
     FULLY_DEDUCTIBLE = "fully_deductible"
     FULLY_NON_DEDUCTIBLE = "fully_non_deductible"
     SUBJECT_TO_LIMITATIONS = "subject_to_limitations"
     CUSTOM_DEDUCTIBLE_PERCENTAGE = "custom_deductible_percentage"
+
+    @property
+    def legacy_runtime_supported(self) -> bool:
+        """Whether the legacy waterfall engine can execute this deductibility mode.
+
+        SUBJECT_TO_LIMITATIONS has no legacy implementation (thin-cap formula not yet
+        proven). Source metadata may be stored but must not be promoted to the legacy
+        runtime. The legacy engine defaults to SHL-fully-deductible behavior instead.
+
+        SOURCE_POLICY_CAPTURED_RUNTIME_NOT_PROMOTED applies to SUBJECT_TO_LIMITATIONS.
+        """
+        return self != ShlInterestDeductibilityMode.SUBJECT_TO_LIMITATIONS
 
 
 class TaxLossUtilisationGate(str, Enum):
@@ -706,7 +728,8 @@ class TaxLossUtilisationGate(str, Enum):
         i.e. EBIT minus all financing interest) is positive.
 
         This differs from TAXABLE_INCOME_POSITIVE: a project can have positive
-        taxable income (after non-deductible addbacks) but negative EBT.
+        taxable income but negative EBT (e.g. due to non-deductible SHL interest
+        that is excluded from the ATAD pool but also not an addback).
         For Oborovo, EBT stays negative during debt service due to SHL interest,
         so allocated_losses=0 always under EBT_POSITIVE gate.
 
@@ -832,19 +855,20 @@ class TaxParams:
 
     # ── SHL Interest Deductibility Policy (C3B3C) ──────────────────────────────
     # Typed replacement for the ambiguous shl_cap_applies boolean.
-    # Governs how SHL interest enters taxable income via the fiscal reintegration
-    # addback in compute_period_tax().
+    # Governs what fraction of gross SHL interest enters the ATAD pool.
+    # Deductible-only method: only the deductible fraction is deducted from
+    # taxable income; the non-deductible fraction is simply never deducted
+    # (no addback required).
     #
     # DEFAULT FULLY_DEDUCTIBLE preserves backward-compatibility for projects
     # that have not been explicitly calibrated. It is NOT a global tax law.
     # Calibrated projects must receive the correct mode via their factory.
     #
     # Oborovo (C3B1-proved): FULLY_NON_DEDUCTIBLE
-    #   C59=100%, D59=TRUE → addback = full SHL for all periods.
-    # TUHO: SUBJECT_TO_LIMITATIONS (thin-cap gate)
-    #   foreign SHL cap disabled → no 100% addback from that switch;
-    #   thin_cap_enabled=True → SUBJECT_TO_LIMITATIONS, but thin-cap formula
-    #   unproven → engine fails closed (C3B3C_BLOCKED_TUHO_THIN_CAP_FORMULA).
+    #   C59=100%, D59=TRUE → zero SHL deduction for all periods.
+    # TUHO: SUBJECT_TO_LIMITATIONS (source metadata only — thin-cap formula not
+    #   yet proven; legacy runtime preserves SHL-fully-deductible behavior until
+    #   the formula is explicitly activated — C3B3C_BLOCKED_TUHO_THIN_CAP_FORMULA).
     shl_interest_deductibility: ShlInterestDeductibilityMode = ShlInterestDeductibilityMode.FULLY_DEDUCTIBLE
 
     # Fraction of SHL interest that is deductible (0.0–1.0).
@@ -853,8 +877,8 @@ class TaxParams:
     shl_interest_deductible_pct: float | None = None
 
     # Whether the foreign-shareholder SHL interest cap (Oborovo D59=TRUE) applies.
-    # Distinct from thin-cap. When True and mode is not already FULLY_NON_DEDUCTIBLE,
-    # the engine interprets this as 100% non-deductibility addback.
+    # Distinct from thin-cap. Provenance flag — must be consistent with shl_interest_deductibility.
+    # When True, shl_interest_deductibility must be FULLY_NON_DEDUCTIBLE.
     # Oborovo: True. TUHO: False.
     foreign_shl_interest_cap_enabled: bool = False
 
@@ -986,12 +1010,16 @@ class TaxParams:
 
     @property
     def shl_non_deductible_fraction(self) -> float:
-        """Fraction of SHL interest that is non-deductible (for addback computation).
+        """Non-deductible fraction of gross SHL interest for this tax policy.
 
-        Returns 0.0 for FULLY_DEDUCTIBLE (no addback).
-        Returns 1.0 for FULLY_NON_DEDUCTIBLE (full addback).
+        Under the deductible-only method: only shl_deductible_fraction enters the
+        ATAD pool; the non-deductible fraction is simply never deducted (no addback).
+        This property is used only for audit reporting or rate-based analysis.
+
+        Returns 0.0 for FULLY_DEDUCTIBLE (full gross amount is deductible).
+        Returns 1.0 for FULLY_NON_DEDUCTIBLE (zero gross amount is deductible).
         Returns (1 - pct) for CUSTOM_DEDUCTIBLE_PERCENTAGE.
-        Raises NotImplementedError for SUBJECT_TO_LIMITATIONS (computed by engine).
+        Raises NotImplementedError for SUBJECT_TO_LIMITATIONS (limitation engine required).
         """
         mode = self.shl_interest_deductibility
         if mode == ShlInterestDeductibilityMode.FULLY_DEDUCTIBLE:

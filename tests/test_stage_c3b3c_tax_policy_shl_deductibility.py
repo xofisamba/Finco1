@@ -339,7 +339,11 @@ class TestOborovoTaxPolicy:
     def test_non_deductible_fraction_is_100pct(self):
         assert create_default_oborovo().tax.shl_non_deductible_fraction == 1.0
 
-    def test_oborovo_shl_idc_source_evidence(self):
+    def test_oborovo_shl_idc_factory_contract(self):
+        # SOURCE_EVIDENCE_PARTIAL: this is a factory-configuration contract test,
+        # not an independent source-vector proof. The SHL IDC value originates from
+        # the project factory, not from an independently extracted C3B1/C3B2 fixture.
+        # Genuine source comparison requires the workbook extraction fixture.
         shl_idc = create_default_oborovo().financing.shl_idc_keur
         assert abs(shl_idc - 1169.662) < 1.0, f"Oborovo SHL IDC = {shl_idc:.3f} kEUR, expected ~1169.662"
 
@@ -375,7 +379,10 @@ class TestTuhoTaxPolicy:
     def test_loss_gate_ebt_positive(self):
         assert create_default_tuho_wind1().tax.tax_loss_utilisation_gate == TaxLossUtilisationGate.EBT_POSITIVE
 
-    def test_tuho_shl_idc_source_evidence(self):
+    def test_tuho_shl_idc_factory_contract(self):
+        # SOURCE_EVIDENCE_PARTIAL: factory-configuration contract only, not an
+        # independent source-vector proof. Genuine source comparison requires the
+        # TUHO workbook extraction fixture.
         shl_idc = create_default_tuho_wind1().financing.shl_idc_keur
         assert abs(shl_idc - 3568.688) < 1.0, f"TUHO SHL IDC = {shl_idc:.3f} kEUR, expected ~3568.688"
 
@@ -397,6 +404,29 @@ class TestTuhoTaxPolicy:
         assert tuho.tax.shl_interest_deductibility != oborovo.tax.shl_interest_deductibility
         assert tuho.tax.foreign_shl_interest_cap_enabled is False
         assert oborovo.tax.foreign_shl_interest_cap_enabled is True
+
+
+class TestEbtPositiveGateSourceOnly:
+    """EBT_POSITIVE is source/workbook metadata — not an active runtime mode.
+
+    Both Oborovo and TUHO carry tax_loss_utilisation_gate=EBT_POSITIVE as
+    source-workbook evidence. The legacy runtime does NOT execute EBT_POSITIVE
+    logic — it continues with TAXABLE_INCOME_POSITIVE behavior unchanged.
+
+    SOURCE_POLICY_CAPTURED_RUNTIME_NOT_PROMOTED.
+    Do not expose EBT_POSITIVE as BOUND until the execution path is proven.
+    """
+
+    def test_oborovo_ebt_positive_is_source_metadata(self):
+        p = create_default_oborovo()
+        assert p.tax.tax_loss_utilisation_gate == TaxLossUtilisationGate.EBT_POSITIVE
+
+    def test_tuho_ebt_positive_is_source_metadata(self):
+        p = create_default_tuho_wind1()
+        assert p.tax.tax_loss_utilisation_gate == TaxLossUtilisationGate.EBT_POSITIVE
+
+    def test_ebt_positive_not_equal_taxable_income_positive(self):
+        assert TaxLossUtilisationGate.EBT_POSITIVE != TaxLossUtilisationGate.TAXABLE_INCOME_POSITIVE
 
 
 class TestCanonicalCleanEngineBlock:

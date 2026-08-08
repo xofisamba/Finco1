@@ -330,7 +330,8 @@ def run_waterfall(
     # When None, falls back to depreciation_schedule (book dep = tax dep, legacy behaviour).
     # Set by waterfall_core when inputs.tax.tax_depreciation_mode is not None.
     tax_depreciation_schedule: list[float] | None = None,
-    # C3B3C: SHL interest deductibility mode — passed to compute_period_tax() for addback logic.
+    # C3B3C: SHL interest deductibility mode — governs which fraction of gross SHL interest
+    # enters the ATAD pool. SUBJECT_TO_LIMITATIONS is not implemented; pass None for that mode.
     shl_interest_deductibility: object | None = None,
     shl_interest_deductible_pct: float | None = None,
 ) -> WaterfallResult:
@@ -1412,6 +1413,28 @@ def print_waterfall_summary(result: WaterfallResult) -> str:
     return "\n".join(lines)
 
 # CACHED WRAPPER moved to utils/cache.py (v3 refactoring)
+def _resolve_shl_deductibility_for_legacy_runtime(mode: object) -> object:
+    """Return the SHL deductibility mode for the legacy waterfall runtime.
+
+    Modes that have no legacy implementation (SUBJECT_TO_LIMITATIONS) must not be
+    promoted to compute_period_tax() — doing so would raise NotImplementedError at
+    runtime. For those modes, return None to preserve legacy SHL-fully-deductible
+    behavior.
+
+    SOURCE_POLICY_CAPTURED_RUNTIME_NOT_PROMOTED: SUBJECT_TO_LIMITATIONS stores
+    source metadata only. The legacy runtime continues with unchanged behavior until
+    the thin-cap formula is implemented and explicitly promoted.
+    """
+    if mode is None:
+        return None
+    # Use the typed property when available; fall back to name-based check.
+    legacy_ok = getattr(mode, "legacy_runtime_supported", None)
+    if legacy_ok is not None:
+        return mode if legacy_ok else None
+    # Fallback for unrecognized objects — pass through unchanged.
+    return mode
+
+
 # See utils/cache.py:cached_run_waterfall_v3()
 def cached_run_waterfall(
     inputs: "ProjectInputs",
@@ -1525,10 +1548,13 @@ def cached_run_waterfall(
             "tuho_shl_principal_eligibility_start_period",
             None,
         ),
-        shl_interest_deductibility=getattr(
-            inputs.tax,
-            "shl_interest_deductibility",
-            None,
+        # SOURCE_POLICY_CAPTURED_RUNTIME_NOT_PROMOTED:
+        # Only promote modes that have a legacy implementation. SUBJECT_TO_LIMITATIONS
+        # stores source metadata but has no legacy-engine implementation; passing None
+        # preserves legacy SHL-fully-deductible behavior until the thin-cap formula is
+        # proven and explicitly activated (C3B3C_BLOCKED_TUHO_THIN_CAP_FORMULA).
+        shl_interest_deductibility=_resolve_shl_deductibility_for_legacy_runtime(
+            getattr(inputs.tax, "shl_interest_deductibility", None)
         ),
         shl_interest_deductible_pct=getattr(
             inputs.tax,
