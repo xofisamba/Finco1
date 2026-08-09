@@ -218,7 +218,7 @@ def derive(write: bool = True) -> dict:
                 ],
             },
             "day_count_status": (
-                "OPERATING_SHL_DAY_COUNT_SOURCE_PROVEN_ACTUAL_365_INCLUSIVE: "
+                "OPERATING_SHL_DAY_COUNT_SOURCE_VECTOR_PROVEN_ACTUAL_365_INCLUSIVE: "
                 "C3B3D2B0-R1 proved convention is actual/365 with inclusive end date. "
                 "dcf = ((end_date - start_date).days + 1) / 365. "
                 "Denominator always 365 (fixed, even in leap years). "
@@ -229,7 +229,7 @@ def derive(write: bool = True) -> dict:
             ),
             "c3b3d2b0_r1": {
                 "status": "C3B3D2B0_CLEAN_SHL_FORMULA_PARITY_PROVEN",
-                "dcf_convention": "OPERATING_SHL_DAY_COUNT_SOURCE_PROVEN_ACTUAL_365_INCLUSIVE",
+                "dcf_convention": "OPERATING_SHL_DAY_COUNT_SOURCE_VECTOR_PROVEN_ACTUAL_365_INCLUSIVE",
                 "dcf_formula": "((period_end_date - period_start_date).days + 1) / 365",
                 "dcf_independence": "proven: DCF does not read gross_accrued_interest_keur",
                 "max_gross_delta_keur": "2.27e-13",
@@ -342,7 +342,7 @@ def derive(write: bool = True) -> dict:
         },
         "day_count_convention": {
             "shl_operating_basis": "actual/365-inclusive",
-            "shl_operating_convention_label": "OPERATING_SHL_DAY_COUNT_SOURCE_PROVEN_ACTUAL_365_INCLUSIVE",
+            "shl_operating_convention_label": "OPERATING_SHL_DAY_COUNT_SOURCE_VECTOR_PROVEN_ACTUAL_365_INCLUSIVE",
             "shl_operating_formula": "dcf = ((period_end_date - period_start_date).days + 1) / 365",
             "shl_operating_denominator": 365,
             "shl_operating_denominator_note": (

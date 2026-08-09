@@ -26,10 +26,10 @@
         "shl_dcf_derived_actual_365 (= gross / ((opening + drawdown) * shl_rate_from_Inputs_F328))"
       ]
     },
-    "day_count_status": "OPERATING_SHL_DAY_COUNT_SOURCE_PROVEN_ACTUAL_365_INCLUSIVE: C3B3D2B0-R1 proved convention is actual/365 with inclusive end date. dcf = ((end_date - start_date).days + 1) / 365. Denominator always 365 (fixed, even in leap years). Max delta vs source-derived DCF: 1.11e-16 across all 40 operating periods. CONSTRUCTION_SHL_DCF_SOURCE_IMPLIED_1_0: construction DCF=1.0 is implied by arithmetic (gross/(draw*rate)=1.0). Senior debt day-count (actual/360) is in sd_period_fraction_actual_360.",
+    "day_count_status": "OPERATING_SHL_DAY_COUNT_SOURCE_VECTOR_PROVEN_ACTUAL_365_INCLUSIVE: C3B3D2B0-R1 proved convention is actual/365 with inclusive end date. dcf = ((end_date - start_date).days + 1) / 365. Denominator always 365 (fixed, even in leap years). Max delta vs source-derived DCF: 1.11e-16 across all 40 operating periods. CONSTRUCTION_SHL_DCF_SOURCE_IMPLIED_1_0: construction DCF=1.0 is implied by arithmetic (gross/(draw*rate)=1.0). Senior debt day-count (actual/360) is in sd_period_fraction_actual_360.",
     "c3b3d2b0_r1": {
       "status": "C3B3D2B0_CLEAN_SHL_FORMULA_PARITY_PROVEN",
-      "dcf_convention": "OPERATING_SHL_DAY_COUNT_SOURCE_PROVEN_ACTUAL_365_INCLUSIVE",
+      "dcf_convention": "OPERATING_SHL_DAY_COUNT_SOURCE_VECTOR_PROVEN_ACTUAL_365_INCLUSIVE",
       "dcf_formula": "((period_end_date - period_start_date).days + 1) / 365",
       "dcf_independence": "proven: DCF does not read gross_accrued_interest_keur",
       "max_gross_delta_keur": "2.27e-13",
@@ -99,7 +99,7 @@
   },
   "day_count_convention": {
     "shl_operating_basis": "actual/365-inclusive",
-    "shl_operating_convention_label": "OPERATING_SHL_DAY_COUNT_SOURCE_PROVEN_ACTUAL_365_INCLUSIVE",
+    "shl_operating_convention_label": "OPERATING_SHL_DAY_COUNT_SOURCE_VECTOR_PROVEN_ACTUAL_365_INCLUSIVE",
     "shl_operating_formula": "dcf = ((period_end_date - period_start_date).days + 1) / 365",
     "shl_operating_denominator": 365,
     "shl_operating_denominator_note": "Denominator is always 365 regardless of leap years (actual/365-Fixed convention).",

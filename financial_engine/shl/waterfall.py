@@ -20,10 +20,11 @@ Operating periods: no drawdown. Construction is handled by the C3B3D1 primitive
 No hardcoded period boundaries or project-specific constants.
 No imports from app, finco_core waterfall, or any production runtime.
 
-Day-count convention (OPERATING_SHL_DAY_COUNT_SOURCE_PROVEN_ACTUAL_365_INCLUSIVE):
-    dcf = (end_date - start_date).days + 1) / 365
-Proven independently for all 40 operating periods (max delta vs source-derived
-DCF: 1.11e-16, machine epsilon). Denominator is always 365 even in leap years.
+Day-count convention (OPERATING_SHL_DAY_COUNT_SOURCE_VECTOR_PROVEN_ACTUAL_365_INCLUSIVE):
+    dcf = ((end_date - start_date).days + 1) / 365
+Proven against all 40 operating periods via independent source period dates
+(max delta vs source-derived oracle: 1.11e-16, machine epsilon).
+Denominator is always 365 even in leap years (actual/365-Fixed).
 Use compute_shl_dcf_actual_365_inclusive() to compute it.
 """
 from __future__ import annotations
@@ -92,7 +93,7 @@ def compute_shl_dcf_actual_365_inclusive(
     Returns
     -------
     float
-        Day-count fraction = (end - start).days + 1) / 365.
+        Day-count fraction = ((end - start).days + 1) / 365.
 
     Raises
     ------

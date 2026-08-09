@@ -3,7 +3,7 @@
 **Status**: `C3B3D2B0_CLEAN_SHL_FORMULA_PARITY_PROVEN`
 **Branch**: `stage-c3b3d2b0-clean-shl-formula-parity`
 **Base**: `b9a7fec27ea2be061d169162d24bd48af3b78120` (main after C3B3D2A squash-merge)
-**DO NOT MERGE**: Proof-of-concept only. Wiring to Tax/CFADS/senior-debt deferred to C3B3D2B1+.
+**Scope boundary**: Formula and parity approved for merge. Production wiring of Tax/CFADS/senior-debt deferred to C3B3D2B1+.
 
 ---
 
@@ -46,7 +46,7 @@ def compute_shl_dcf_actual_365_inclusive(period_start: date, period_end: date) -
     return ((period_end - period_start).days + 1) / 365
 ```
 
-**Provenance**: `OPERATING_SHL_DAY_COUNT_SOURCE_PROVEN_ACTUAL_365_INCLUSIVE`
+**Provenance**: `OPERATING_SHL_DAY_COUNT_SOURCE_VECTOR_PROVEN_ACTUAL_365_INCLUSIVE`
 
 **Evidence**: Computed independently from `period_start_date` and `period_end_date`
 (from `tests/fixtures/interest_limitation/oborovo_interest_limitation_fixture.json`,
@@ -210,7 +210,7 @@ actual/365) but is not proven from committed construction dates.
 ## 9. Test Suite
 
 **File**: `tests/test_stage_c3b3d2b0_clean_shl_formula_parity.py`
-**Count**: 80 tests, all passing
+**Count**: 80 test functions, 80 pytest-collected cases, all passing
 
 | Class | Tests | Description |
 |---|---|---|

@@ -106,7 +106,7 @@ class TestA_DerivedDcfNotUsedAsParity:
         # The field still exists in the fixture but is labelled as diagnostic
         dc = d2a["day_count_convention"]
         # The proven label must be the independent one
-        assert "SOURCE_PROVEN" in dc.get("shl_operating_convention_label", "")
+        assert "SOURCE_VECTOR_PROVEN" in dc.get("shl_operating_convention_label", "")
 
     def test_derived_dcf_differs_from_independent_for_exclusive_dates(self, d2a_periods):
         # If exclusive dates were used, DS[1] would give 183/365 != source-derived
@@ -149,7 +149,7 @@ class TestB_SourceDcfFormulaDocumented:
 
     def test_convention_label_is_proven(self, d2a):
         dc = d2a["day_count_convention"]
-        assert "SOURCE_PROVEN" in dc.get("shl_operating_convention_label", "")
+        assert "SOURCE_VECTOR_PROVEN" in dc.get("shl_operating_convention_label", "")
 
     def test_denominator_is_365_fixed(self, d2a):
         dc = d2a["day_count_convention"]
