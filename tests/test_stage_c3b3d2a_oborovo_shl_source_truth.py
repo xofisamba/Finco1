@@ -276,10 +276,11 @@ class TestQ_ConstructionPikProof:
         assert p["cash_interest_keur"] == pytest.approx(0.0, abs=_TOL)
         assert p["principal_repaid_keur"] == pytest.approx(0.0, abs=_TOL)
 
-    def test_construction_idc_formula(self, d2a_periods):
-        """Construction IDC = draw x 0.08 x 1.0 (DCF=1.0 for 365-day period)."""
+    def test_construction_idc_formula(self, source_truth, d2a_periods):
+        """Construction IDC = draw * rate * 1.0 (rate from Inputs!F328, DCF=1.0 implied)."""
         p = d2a_periods[0]
-        expected_idc = p["drawdown_keur"] * _RATE * 1.0
+        rate = source_truth["inputs"]["shl_interest_rate"]["value"]
+        expected_idc = p["drawdown_keur"] * rate * 1.0
         assert p["gross_accrued_interest_keur"] == pytest.approx(expected_idc, abs=_TOL)
 
 
@@ -317,23 +318,52 @@ class TestR_DS1PartialCashPikProof:
         assert d2a_periods[1]["payment_mode"] == "PARTIAL_CASH_PARTIAL_PIK"
 
 
-class TestS_DS25ZeroCapClassification:
-    """S: DS[25..40] all have pik=0 (CASH_PAID); DS[0..24] have pik>0."""
+class TestS_PaymentModeBoundaryDiscovery:
+    """S: payment-mode boundary is discovered from source values, not hardcoded index.
 
-    def test_ds0_to_ds24_pik_nonzero(self, d2a_periods):
-        for p in d2a_periods[:25]:
-            assert p["pik_interest_keur"] > 0, (
-                f"Expected pik>0 at DS[{p['ds_index']}]"
+    DS25 is the RESULT of classifying cap vs gross; the test discovers it,
+    not presupposes it.
+    """
+
+    def test_all_pik_nonzero_before_cash_paid_boundary(self, source_ds, d2a_periods):
+        """All periods with pik>0 come before all periods with cap=0."""
+        pik_indices = [p["ds_index"] for p in d2a_periods if p["pik_interest_keur"] > _TOL]
+        cash_indices = [p["ds_index"] for p in d2a_periods if p["pik_interest_keur"] <= _TOL]
+        # All pik periods should precede all zero-cap periods (exclusive of DS[0])
+        if pik_indices and cash_indices:
+            assert max(pik_indices) < min(cash_indices), (
+                "Non-contiguous payment mode boundary detected"
             )
 
-    def test_ds25_to_ds40_pik_zero(self, d2a_periods):
+    def test_first_cash_paid_discovered_as_ds25(self, d2a_periods):
+        """First period with cap=0 is DS[25] — discovered from data, not assumed."""
+        first_cash = next(
+            (p["ds_index"] for p in d2a_periods if p["pik_interest_keur"] <= _TOL),
+            None,
+        )
+        assert first_cash == 25, (
+            f"Expected first CASH_PAID at DS[25]; discovered DS[{first_cash}]"
+        )
+
+    def test_first_cash_paid_recorded_in_fixture(self, d2a):
+        """Fixture records the discovered first_cash_paid_ds_index."""
+        pc = d2a["payment_mode_classification"]
+        assert pc["first_cash_paid_ds_index_discovered"] == 25
+
+    def test_ds0_payment_mode_pik(self, d2a_periods):
+        assert d2a_periods[0]["payment_mode"] == "PIK"
+
+    def test_ds1_to_ds24_payment_mode_partial(self, d2a_periods):
+        for p in d2a_periods[1:25]:
+            assert p["payment_mode"] == "PARTIAL_CASH_PARTIAL_PIK", (
+                f"Expected PARTIAL at DS[{p['ds_index']}]"
+            )
+
+    def test_ds25_to_ds40_payment_mode_cash_paid(self, d2a_periods):
         for p in d2a_periods[25:]:
-            assert p["pik_interest_keur"] == pytest.approx(0.0, abs=_TOL), (
-                f"Expected pik=0 at DS[{p['ds_index']}]"
+            assert p["payment_mode"] == "CASH_PAID", (
+                f"Expected CASH_PAID at DS[{p['ds_index']}]"
             )
-
-    def test_ds25_payment_mode(self, d2a_periods):
-        assert d2a_periods[25]["payment_mode"] == "CASH_PAID"
 
 
 class TestT_PrincipalRepaymentBeforeMaturity:
@@ -346,9 +376,15 @@ class TestT_PrincipalRepaymentBeforeMaturity:
                 f"Unexpected principal at DS[{p['ds_index']}]"
             )
 
-    def test_first_nonzero_principal_at_ds25(self, d2a_periods):
-        """DS[25] is the first period with principal_repaid > 0 (sweep starts)."""
-        assert d2a_periods[25]["principal_repaid_keur"] > _TOL
+    def test_first_nonzero_principal_discovered_at_ds25(self, d2a_periods):
+        """First period with principal_repaid > 0 is DS[25] — discovered from data."""
+        first_principal = next(
+            (p["ds_index"] for p in d2a_periods if p["principal_repaid_keur"] > _TOL),
+            None,
+        )
+        assert first_principal == 25, (
+            f"Expected first principal at DS[25]; discovered DS[{first_principal}]"
+        )
 
     def test_nonzero_principal_before_ds40(self, d2a_periods):
         """Guard: source is a sweep, not a bullet — principal appears before DS[40]."""
@@ -427,3 +463,73 @@ class TestILCrossCheck:
             assert d2a_gross == pytest.approx(il_gross, abs=_TOL), (
                 f"Cross-check mismatch at DS[{ds_idx}]: D2A={d2a_gross} IL={il_gross}"
             )
+
+
+class TestGovernanceSourceConflict:
+    """Governance: factory vs Excel source conflict is KNOWN and labeled (not a parity target).
+
+    KNOWN_SOURCE_CONFLICT: factory shl_amount_keur=13547.2 vs Excel 14620.77.
+    This is intentional at D2A scope (parity-baseline calibration reversion).
+    These tests assert the conflict EXISTS and is documented — NOT that factory == Excel.
+    """
+
+    _FACTORY_SHL = 13547.2
+    _EXCEL_SHL = 14620.773894815633
+
+    def test_factory_value_differs_from_excel_source(self):
+        """Factory 13547.2 != Excel 14620.77 — intentional KNOWN_SOURCE_CONFLICT."""
+        assert abs(self._FACTORY_SHL - self._EXCEL_SHL) > 1000, (
+            "Factory and Excel values unexpectedly converged — conflict must be explicit"
+        )
+
+    def test_excel_source_value_from_fixture(self, source_truth):
+        """Excel Inputs!D325 fixture value is authoritative = 14620.773894815633."""
+        val = source_truth["inputs"]["shl_amount_keur"]["value"]
+        assert val == pytest.approx(self._EXCEL_SHL, abs=1e-9)
+
+    def test_d2a_fixture_documents_conflict_status(self, d2a):
+        """D2A fixture must document the known conflict with a provenance label."""
+        note = d2a["python_factory_note"]
+        assert note["status"] == "C3B3D2A_FACTORY_CALIBRATION_REVERSION_PROVEN"
+        assert note["conflict_status"] == "C3B3D2A_FACTORY_VALUE_CONFLICTS_WITH_AUTHORITATIVE_SOURCE"
+
+    def test_d2a_fixture_documents_pr_chronology(self, d2a):
+        """Provenance chronology must reference both PR #309 and PR #752."""
+        chron = d2a["python_factory_note"]["provenance_chronology"]
+        assert "PR #309" in chron
+        assert "PR #752" in chron
+        assert "34ed6d0b" in chron
+        assert "099e4a14" in chron
+
+    def test_rate_sourced_from_fixture_not_hardcoded(self, source_truth, d2a):
+        """Rate used in derivation must match Inputs!F328 from source fixture."""
+        fixture_rate = source_truth["inputs"]["shl_interest_rate"]["value"]
+        d2a_rate = d2a["workbook_inputs"]["shl_annual_rate"]["value"]
+        assert fixture_rate == pytest.approx(d2a_rate, abs=1e-9)
+
+
+class TestGovernanceConstructionDCF:
+    """Governance: construction DCF=1.0 is implied by arithmetic (SOURCE_IMPLIED),
+    not claimed from a specific 365-calendar-day date range.
+    """
+
+    def test_construction_dcf_implied_by_arithmetic(self, source_truth, d2a_periods):
+        """gross / (draw * rate) == 1.0 for DS[0] — this is the DCF proof."""
+        draw = source_truth["ds"]["shl_funding_keur"][0]
+        gross = source_truth["ds"]["shl_net_interest_keur"][0]
+        rate = source_truth["inputs"]["shl_interest_rate"]["value"]
+        dcf_implied = gross / (draw * rate)
+        assert dcf_implied == pytest.approx(1.0, abs=1e-9)
+
+    def test_construction_dcf_label_in_fixture(self, d2a):
+        """Fixture must use CONSTRUCTION_SHL_DCF_SOURCE_IMPLIED_1_0 label."""
+        cp = d2a["construction_period"]
+        assert "CONSTRUCTION_SHL_DCF_SOURCE_IMPLIED_1_0" in cp["dcf_note"]
+
+    def test_no_false_365_calendar_day_claim(self, d2a):
+        """Fixture must NOT claim '365 calendar days / 365 = 1.0' as the proof."""
+        dcf_note = d2a["construction_period"]["dcf_note"]
+        # Must not assert a specific calendar-day count as the causal proof
+        assert "365/365" not in dcf_note, (
+            "Remove false '365/365' calendar-day claim — use arithmetic implication"
+        )

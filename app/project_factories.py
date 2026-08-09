@@ -370,7 +370,7 @@ def create_default_oborovo() -> ProjectInputs:
     financing = FinancingParams(
         share_capital_keur=500.0,
         share_premium_keur=0.0,
-        shl_amount_keur=13547.2,  # Legacy Python calibration value. Authoritative Excel Inputs!D325 = 14,620.773895 kEUR. Difference ~1073.6 kEUR remains C3B3D2A_FACTORY_VALUE_UNEXPLAINED_GAP. No runtime value change in D2A.
+        shl_amount_keur=13547.2,  # C3B3D2A_FACTORY_CALIBRATION_REVERSION_PROVEN / KNOWN_SOURCE_CONFLICT. Excel Inputs!D325=14620.77 kEUR. PR #309 (34ed6d0b) corrected to 14621; PR #752 (099e4a14) reverted to 13547.2 to match oborovo_baseline.json parity. No runtime value change in D2A.
         shl_rate=0.08,  # Oborovo: 8% SHL rate (different from TUHO 5.95%)
         gearing_ratio=0.7524,  # Excel: 75.24%
         senior_tenor_years=14,
@@ -390,7 +390,7 @@ def create_default_oborovo() -> ProjectInputs:
         debt_sizing_method="gearing_cap",  # legacy field; clean solver uses debt_sizing_mode
         debt_sizing_mode=DebtSizingMode.FLAT_DSCR_SCULPTED,  # C3B3A: clean DSCR-sculpted solver path
         fixed_debt_keur=42852.26672602787,  # Excel senior debt anchor, Outputs!H11 (legacy; clean solver derives this as output)
-        shl_idc_keur=1169.0,  # C3B3D2A: Excel construction IDC=1169.66 (14620.77×0.08×1.0); rounded here. factory shl_amount_keur=13547.2 differs from Excel Inputs!D325=14620.77 by ~1073.6 kEUR (C3B3D2A_FACTORY_VALUE_UNEXPLAINED_GAP)
+        shl_idc_keur=1169.0,  # C3B3D2A: Excel construction IDC=1169.66 (14620.77×0.08×1.0); rounded here. factory shl_amount_keur=13547.2 conflicts with Excel Inputs!D325=14620.77 (KNOWN_SOURCE_CONFLICT, C3B3D2A_FACTORY_CALIBRATION_REVERSION_PROVEN)
         shl_tenor_years=20,  # Legacy Python field. Source SHL clears at 2050-06-30 (Excel DS[40]). Source repayment is incremental FCF sweep (DS[25..40]), NOT a contractual bullet. No runtime value change in D2A.
         use_frozen_excel_senior_debt_schedule=True,  # Phase 23R: frozen path for legacy engine; clean solver ignores this flag
         frozen_senior_ds_fixture_path="reports/phase23q_oborovo_senior_debt_sizing_extraction.csv",  # Stack AC: capability-driven fixture path

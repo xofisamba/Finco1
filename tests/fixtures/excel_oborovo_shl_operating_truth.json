@@ -23,10 +23,10 @@
       "DETERMINISTIC_DERIVATION_FROM_SOURCE_VALUES": [
         "cash_interest_keur (= gross_accrued_interest_keur - pik_interest_keur)",
         "principal_repaid_keur (= shl_service_keur - cash_interest_keur)",
-        "shl_dcf_derived_actual_365 (= gross / ((opening + drawdown) * 0.08))"
+        "shl_dcf_derived_actual_365 (= gross / ((opening + drawdown) * shl_rate_from_Inputs_F328))"
       ]
     },
-    "day_count_status": "SHL_DAY_COUNT_DERIVED_FROM_SOURCE_VALUES: actual/365 is INFERRED from gross / ((opening + drawdown) * 0.08) matching actual_days/365, NOT directly proven by committed workbook formula text. Senior debt day-count (actual/360) is in sd_period_fraction_actual_360."
+    "day_count_status": "OPERATING_SHL_DAY_COUNT_DERIVED_FROM_SOURCE_VALUES: actual/365 is INFERRED from gross / ((opening + drawdown) * shl_rate) matching actual_days/365 for all operating periods. NOT directly proven by committed workbook formula text. CONSTRUCTION_SHL_DCF_SOURCE_IMPLIED_1_0: construction DCF=1.0 is implied by arithmetic (gross/(draw*rate)=1.0) \u2014 the exact construction interval dates are not directly committed in this fixture. Senior debt day-count (actual/360) is in sd_period_fraction_actual_360."
   },
   "workbook_inputs": {
     "shl_draw_keur": {
@@ -44,9 +44,10 @@
   },
   "python_factory_note": {
     "shl_amount_keur_in_factory": 13547.2,
-    "status": "C3B3D2A_FACTORY_VALUE_UNEXPLAINED_GAP",
+    "status": "C3B3D2A_FACTORY_CALIBRATION_REVERSION_PROVEN",
+    "conflict_status": "C3B3D2A_FACTORY_VALUE_CONFLICTS_WITH_AUTHORITATIVE_SOURCE",
     "gap_vs_excel_keur": 1073.573895,
-    "comment": "app/project_factories.py uses 13547.2 kEUR as shl_amount_keur (described as legacy Python calibration; origin unresolved). Authoritative Excel Inputs!D325 = 14620.773895 kEUR. Difference ~1073.6 kEUR origin deferred to C3B3D2B. No factory numeric change in D2A."
+    "provenance_chronology": "PR #309 (Phase 23L, commit 34ed6d0b22084e16d4c42d2c7fbf0ea68b1ac5fe): 13547.2 \u2192 14621 (toward Excel source). PR #752 (Stack D, commit 099e4a14f920cf618b06d850f567374c0c8b9a95): 14621 \u2192 13547.2 (reversion to match oborovo_baseline.json parity). Current value 13547.2 is a deliberate parity-baseline calibration value, NOT an unresolved gap. The conflict with Excel Inputs!D325=14620.77 is a KNOWN_SOURCE_CONFLICT deferred to C3B3D2B. Do NOT change shl_amount_keur=13547.2 in D2A."
   },
   "construction_period": {
     "ds_index": 0,
@@ -59,7 +60,7 @@
     "principal_repaid_keur": 0.0,
     "closing_balance_keur": 15790.435806400885,
     "shl_dcf_derived_actual_365": 1.0,
-    "dcf_note": "Construction period = 365 calendar days; DCF = 1.0 exactly (365/365). gross_interest = 14620.773895 * 0.08 * 1.0 = 1169.661912.",
+    "dcf_note": "CONSTRUCTION_SHL_DCF_SOURCE_IMPLIED_1_0: gross / (draw * rate) = 1169.661912 / (14620.773895 * 0.08) = 1.0 exactly. This implies a full-year construction period. The exact interval dates are NOT directly committed in this fixture (construction_parity: 2029-06-29 \u2192 2030-06-29; IL DS[1].start: 2030-07-01 \u2014 potential 2-day gap at seam). DCF=1.0 is proven by arithmetic, NOT by a claimed 365 calendar-day count.",
     "sd_period_fraction_actual_360": 1.0194444444444444,
     "day_count_mismatch_note": "SHL_SOURCE_DAY_COUNT_MISMATCH: SHL uses actual/365 (derived); senior debt uses actual/360 (sd_period_fraction). These two conventions are distinct. Do NOT unify."
   },
@@ -73,7 +74,9 @@
     "operating_ds25_to_ds40": "CASH_PAID \u2014 cap = 0.0 exactly for all 16 periods",
     "pik_to_cash_switch_at_ds25": "DS[25] is first period with cap=0 (period_end_date 2042-12-31). Switch is driven by FCF waterfall availability (legacy engine: pik_switch_triggered = cf_for_shl > shl_balance * shl_rate). shl_pik_switch_period field is NOT the trigger \u2014 it is unused by any runtime.",
     "source_semantics_status": "C3B3D2A_OBOROVO_PAYMENT_SOURCE_SEMANTICS_PROVEN",
-    "canonical_runtime_status": "C3B3D2B_CANONICAL_SHL_RUNTIME_BLOCKED_BY_WATERFALL_COUPLING \u2014 the canonical financial_engine/shl/engine.py supports only CASH_PAID or PIK (full). PARTIAL_CASH_PARTIAL_PIK (DS[1..24]) requires FCF waterfall coupling. The canonical engine cannot reproduce the Oborovo operating schedule for DS[1..24] without waterfall integration (C3B3D2B scope)."
+    "canonical_runtime_status": "C3B3D2B_CANONICAL_SHL_RUNTIME_BLOCKED_BY_WATERFALL_COUPLING \u2014 the canonical financial_engine/shl/engine.py supports only CASH_PAID or PIK (full). PARTIAL_CASH_PARTIAL_PIK (DS[1..24]) requires FCF waterfall coupling. The canonical engine cannot reproduce the Oborovo operating schedule for DS[1..24] without waterfall integration (C3B3D2B scope).",
+    "first_cash_paid_ds_index_discovered": 25,
+    "payment_mode_discovery_note": "DS boundaries are DISCOVERED from source values (cap vs gross tolerance), NOT asserted by hardcoded index comparisons. first_cash_paid DS discovered as DS[25]. first_nonzero_principal DS discovered as DS[25]."
   },
   "maturity": {
     "ds_index": 40,
@@ -86,15 +89,15 @@
   "day_count_convention": {
     "shl_basis": "actual/365",
     "shl_evidence_type": "SHL_DAY_COUNT_DERIVED_FROM_SOURCE_VALUES",
-    "shl_evidence_note": "Inferred: gross_interest / ((opening + drawdown) * 0.08) matches actual calendar days / 365 for all periods. NOT proven by committed workbook formula text.",
+    "shl_evidence_note": "OPERATING_SHL_DAY_COUNT_DERIVED_FROM_SOURCE_VALUES: gross_interest / ((opening + drawdown) * shl_rate_from_Inputs_F328) matches actual calendar days / 365 for all operating periods. NOT proven by committed workbook formula text. CONSTRUCTION_SHL_DCF_SOURCE_IMPLIED_1_0: DCF=1.0 implied by arithmetic; construction interval dates not directly committed.",
     "senior_debt_basis": "actual/360",
     "senior_debt_evidence": "sd_period_fraction column (SOURCE_RAW_CACHED_VALUE)",
     "mismatch_status": "SHL_SOURCE_DAY_COUNT_MISMATCH",
     "note": "Two different day-count bases confirmed in same workbook. Do not unify."
   },
   "period_mapping": {
-    "status": "C3B3D2A_PERIOD_MAPPING_FULL_HORIZON_PROVEN",
-    "note": "All 40 operating period dates (DS[1..40] = Excel P1..P40) are source-proven from tests/fixtures/interest_limitation/oborovo_interest_limitation_fixture.json. P1..P12 also independently verified in excel_oborovo_periods.json.",
+    "status": "C3B3D2A_PERIOD_MAPPING_FULL_HORIZON_COMMITTED_FIXTURE_PROVEN",
+    "note": "All 40 operating period dates (DS[1..40] = Excel P1..P40) are proven from tests/fixtures/interest_limitation/oborovo_interest_limitation_fixture.json (a committed fixture). P1..P12 also independently verified in excel_oborovo_periods.json. NOTE: the IL fixture uses source_workbook filename '20260414_BP_Oborovo_Sensitivity_FINAL for PPT (1).xlsm' with no SHA; the primary fixture uses SHA 15a621c4d6b79024980766e00ebc79d7235fd56f00567be7bf345c769ce57920. The fixtures are cross-verified via exact gross interest match (r27) for all 40 operating periods but are not cryptographically tied to a single binary workbook identity.",
     "c3b2_clean_index_offset": "DS[n] \u2192 clean_period_index = n+1 for operating periods (DS[1] = clean_idx 2, DS[40] = clean_idx 41)",
     "proven_through_ds_index": 40
   },
@@ -113,7 +116,7 @@
     "summary": "The Oborovo gross SHL interest vector CANNOT be generated from the standalone C3B3D1 canonical schedule using only opening_balance, rate, and day_count_fraction. The balance trajectory depends on prior-period waterfall outcome (partial PIK DS[1..24], then principal sweep DS[25..40]). D2B must NOT simply inject the Excel SHL vector as a static exogenous input and must NOT assume run_shl_schedule() \u2192 static gross interest vector \u2192 Tax is sufficient for Oborovo. D2B must design the generic causal seam before any runtime promotion."
   },
   "unresolved_items": {
-    "factory_gap": "C3B3D2A_FACTORY_VALUE_UNEXPLAINED_GAP: shl_amount_keur=13547.2 in factory vs Excel 14620.77 (~1073.6 kEUR). Origin deferred to C3B3D2B.",
+    "known_source_conflict": "KNOWN_SOURCE_CONFLICT (C3B3D2A_FACTORY_CALIBRATION_REVERSION_PROVEN): factory shl_amount_keur=13547.2 (oborovo_baseline.json parity) vs Excel Inputs!D325=14620.77. Provenance documented. Resolution deferred to C3B3D2B.",
     "partial_cash_pik_canonical": "PARTIAL_CASH_PARTIAL_PIK for DS[1..24] cannot be modelled by canonical SHL engine in C3B3D1. Requires waterfall integration (C3B3D2B scope).",
     "pik_switch_trigger": "Exact FCF waterfall trigger for PIK\u2192CASH switch at DS[25] not formalized in canonical engine.",
     "tuho": "TUHO_SHL_BALANCE_LINEAGE_UNRESOLVED: TUHO uses pik_then_sweep repayment \u2014 blocked at C3B3D1 adapter; deferred to later SHL/waterfall scope.",

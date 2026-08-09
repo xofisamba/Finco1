@@ -31,13 +31,13 @@ DETERMINISTIC_DERIVATION_FROM_SOURCE_VALUES:
     cash_interest_keur         = gross_accrued_interest_keur - pik_interest_keur
     principal_repaid_keur      = shl_service_keur - cash_interest_keur
 
-Payment mode:
-    DS[0]      PIK            (cap == gross exactly)
-    DS[1..24]  PARTIAL_CASH_PARTIAL_PIK (0 < cap < gross, waterfall-driven)
-    DS[25..40] CASH_PAID      (cap == 0 for all 16 periods)
+Payment mode classification is VALUE-DERIVED from the source DS vectors:
+    cap >= gross (tol 1e-9)  → PIK            (DS[0]: 100% PIK)
+    cap > 0 and cash > 0     → PARTIAL_CASH_PARTIAL_PIK (DS[1..24]: waterfall-driven)
+    cap == 0 (tol 1e-9)      → CASH_PAID      (DS[25..40])
 
-DS25 is first period with cap=0; switch is driven by FCF waterfall availability,
-NOT by shl_pik_switch_period (which is unused by any runtime).
+The DS25 boundary is DISCOVERED from data (first period where cap=0),
+NOT asserted by a hardcoded index comparison.
 """
 from __future__ import annotations
 
@@ -49,7 +49,6 @@ _SOURCE_TRUTH = _REPO_ROOT / "tests/fixtures/excel_oborovo_financial_truth.json"
 _IL_FIXTURE = _REPO_ROOT / "tests/fixtures/interest_limitation/oborovo_interest_limitation_fixture.json"
 _OUTPUT = _REPO_ROOT / "tests/fixtures/excel_oborovo_shl_operating_truth.json"
 
-_RATE = 0.08
 _TOL = 1e-9
 
 
@@ -74,6 +73,9 @@ def derive(write: bool = True) -> dict:
     meta = truth["_meta"]
     ds = truth["ds"]
     inp = truth["inputs"]
+
+    # Rate sourced from committed fixture: Excel Inputs!F328 (SOURCE_RAW_CACHED_VALUE)
+    shl_rate = inp["shl_interest_rate"]["value"]
 
     # ── period date map from interest_limitation fixture ─────────────────────
     # il.periods[i] = DS[i+1] (operating period, 0-based index in IL = DS[1] in SHL)
@@ -115,17 +117,28 @@ def derive(write: bool = True) -> dict:
         # DERIVED: principal_repaid = svc - cash_interest
         principal_repaid = svc - cash_int
 
-        # Payment mode
-        if ds_idx == 0:
+        # Payment mode: value-derived from cap vs gross (NOT from ds_idx boundary).
+        # DS25 boundary is discovered from data; the index is a consequence, not an input.
+        if cap >= gross - _TOL and cash_int <= _TOL:
             payment_mode = "PIK"
-        elif ds_idx <= 24:
+        elif cap > _TOL and cash_int > _TOL:
             payment_mode = "PARTIAL_CASH_PARTIAL_PIK"
-        else:
+        elif cap <= _TOL and cash_int >= gross - _TOL:
             payment_mode = "CASH_PAID"
+        else:
+            raise ValueError(
+                f"UNRESOLVED payment mode at DS[{ds_idx}]: "
+                f"gross={gross}, cap={cap}, cash={cash_int}"
+            )
 
-        # Day-count fraction for SHL (actual/365): DERIVED from source values
-        # dcf = gross / ((beg + fund) * rate); not extracted from workbook formula
-        dcf_shl_derived = gross / ((beg + fund) * _RATE) if (beg + fund) > 0 else None
+        # Day-count fraction for SHL (actual/365): DERIVED from source values.
+        # Rate sourced from inp["shl_interest_rate"]["value"] (Excel Inputs!F328),
+        # NOT from a hardcoded constant. DCF = gross / ((beg + fund) * rate).
+        # CONSTRUCTION_SHL_DCF_SOURCE_IMPLIED_1_0: for DS[0], gross/(draw*rate) = 1.0
+        # exactly, implying the construction period is treated as a full year. The
+        # exact construction interval dates are not directly committed in this fixture
+        # (construction_parity shows 2029-06-29→2030-06-29; IL DS[1].start=2030-07-01).
+        dcf_shl_derived = gross / ((beg + fund) * shl_rate) if (beg + fund) > 0 else None
 
         rec: dict = {
             "ds_index": ds_idx,
@@ -156,7 +169,7 @@ def derive(write: bool = True) -> dict:
 
     # ── workbook inputs (raw cached values from Inputs sheet) ────────────────
     shl_draw = inp["shl_amount_keur"]["value"]
-    shl_rate = inp["shl_interest_rate"]["value"]
+    # shl_rate already bound above from inp["shl_interest_rate"]["value"]
 
     # ── assemble fixture ──────────────────────────────────────────────────────
     fixture = {
@@ -198,13 +211,20 @@ def derive(write: bool = True) -> dict:
                 "DETERMINISTIC_DERIVATION_FROM_SOURCE_VALUES": [
                     "cash_interest_keur (= gross_accrued_interest_keur - pik_interest_keur)",
                     "principal_repaid_keur (= shl_service_keur - cash_interest_keur)",
-                    "shl_dcf_derived_actual_365 (= gross / ((opening + drawdown) * 0.08))",
+                    (
+                        "shl_dcf_derived_actual_365 "
+                        "(= gross / ((opening + drawdown) * shl_rate_from_Inputs_F328))"
+                    ),
                 ],
             },
             "day_count_status": (
-                "SHL_DAY_COUNT_DERIVED_FROM_SOURCE_VALUES: actual/365 is INFERRED "
-                "from gross / ((opening + drawdown) * 0.08) matching actual_days/365, "
-                "NOT directly proven by committed workbook formula text. "
+                "OPERATING_SHL_DAY_COUNT_DERIVED_FROM_SOURCE_VALUES: actual/365 is "
+                "INFERRED from gross / ((opening + drawdown) * shl_rate) matching "
+                "actual_days/365 for all operating periods. NOT directly proven by "
+                "committed workbook formula text. "
+                "CONSTRUCTION_SHL_DCF_SOURCE_IMPLIED_1_0: construction DCF=1.0 is "
+                "implied by arithmetic (gross/(draw*rate)=1.0) — the exact construction "
+                "interval dates are not directly committed in this fixture. "
                 "Senior debt day-count (actual/360) is in sd_period_fraction_actual_360."
             ),
         },
@@ -224,14 +244,18 @@ def derive(write: bool = True) -> dict:
         },
         "python_factory_note": {
             "shl_amount_keur_in_factory": 13547.2,
-            "status": "C3B3D2A_FACTORY_VALUE_UNEXPLAINED_GAP",
+            "status": "C3B3D2A_FACTORY_CALIBRATION_REVERSION_PROVEN",
+            "conflict_status": "C3B3D2A_FACTORY_VALUE_CONFLICTS_WITH_AUTHORITATIVE_SOURCE",
             "gap_vs_excel_keur": round(shl_draw - 13547.2, 6),
-            "comment": (
-                "app/project_factories.py uses 13547.2 kEUR as shl_amount_keur "
-                "(described as legacy Python calibration; origin unresolved). "
-                "Authoritative Excel Inputs!D325 = 14620.773895 kEUR. "
-                "Difference ~1073.6 kEUR origin deferred to C3B3D2B. "
-                "No factory numeric change in D2A."
+            "provenance_chronology": (
+                "PR #309 (Phase 23L, commit 34ed6d0b22084e16d4c42d2c7fbf0ea68b1ac5fe): "
+                "13547.2 → 14621 (toward Excel source). "
+                "PR #752 (Stack D, commit 099e4a14f920cf618b06d850f567374c0c8b9a95): "
+                "14621 → 13547.2 (reversion to match oborovo_baseline.json parity). "
+                "Current value 13547.2 is a deliberate parity-baseline calibration value, "
+                "NOT an unresolved gap. The conflict with Excel Inputs!D325=14620.77 is a "
+                "KNOWN_SOURCE_CONFLICT deferred to C3B3D2B. "
+                "Do NOT change shl_amount_keur=13547.2 in D2A."
             ),
         },
         "construction_period": {
@@ -246,9 +270,12 @@ def derive(write: bool = True) -> dict:
             "closing_balance_keur": ds["shl_ending_keur"][0],
             "shl_dcf_derived_actual_365": 1.0,
             "dcf_note": (
-                "Construction period = 365 calendar days; "
-                "DCF = 1.0 exactly (365/365). "
-                "gross_interest = 14620.773895 * 0.08 * 1.0 = 1169.661912."
+                "CONSTRUCTION_SHL_DCF_SOURCE_IMPLIED_1_0: "
+                "gross / (draw * rate) = 1169.661912 / (14620.773895 * 0.08) = 1.0 exactly. "
+                "This implies a full-year construction period. The exact interval dates are "
+                "NOT directly committed in this fixture (construction_parity: 2029-06-29 "
+                "→ 2030-06-29; IL DS[1].start: 2030-07-01 — potential 2-day gap at seam). "
+                "DCF=1.0 is proven by arithmetic, NOT by a claimed 365 calendar-day count."
             ),
             "sd_period_fraction_actual_360": ds["sd_period_fraction"][0],
             "day_count_mismatch_note": (
@@ -306,9 +333,12 @@ def derive(write: bool = True) -> dict:
             "shl_basis": "actual/365",
             "shl_evidence_type": "SHL_DAY_COUNT_DERIVED_FROM_SOURCE_VALUES",
             "shl_evidence_note": (
-                "Inferred: gross_interest / ((opening + drawdown) * 0.08) "
-                "matches actual calendar days / 365 for all periods. "
-                "NOT proven by committed workbook formula text."
+                "OPERATING_SHL_DAY_COUNT_DERIVED_FROM_SOURCE_VALUES: "
+                "gross_interest / ((opening + drawdown) * shl_rate_from_Inputs_F328) "
+                "matches actual calendar days / 365 for all operating periods. "
+                "NOT proven by committed workbook formula text. "
+                "CONSTRUCTION_SHL_DCF_SOURCE_IMPLIED_1_0: DCF=1.0 implied by arithmetic; "
+                "construction interval dates not directly committed."
             ),
             "senior_debt_basis": "actual/360",
             "senior_debt_evidence": "sd_period_fraction column (SOURCE_RAW_CACHED_VALUE)",
@@ -316,12 +346,19 @@ def derive(write: bool = True) -> dict:
             "note": "Two different day-count bases confirmed in same workbook. Do not unify.",
         },
         "period_mapping": {
-            "status": "C3B3D2A_PERIOD_MAPPING_FULL_HORIZON_PROVEN",
+            "status": "C3B3D2A_PERIOD_MAPPING_FULL_HORIZON_COMMITTED_FIXTURE_PROVEN",
             "note": (
                 "All 40 operating period dates (DS[1..40] = Excel P1..P40) are "
-                "source-proven from tests/fixtures/interest_limitation/"
-                "oborovo_interest_limitation_fixture.json. "
-                "P1..P12 also independently verified in excel_oborovo_periods.json."
+                "proven from tests/fixtures/interest_limitation/"
+                "oborovo_interest_limitation_fixture.json (a committed fixture). "
+                "P1..P12 also independently verified in excel_oborovo_periods.json. "
+                "NOTE: the IL fixture uses source_workbook filename "
+                "'20260414_BP_Oborovo_Sensitivity_FINAL for PPT (1).xlsm' with no SHA; "
+                "the primary fixture uses SHA "
+                "15a621c4d6b79024980766e00ebc79d7235fd56f00567be7bf345c769ce57920. "
+                "The fixtures are cross-verified via exact gross interest match (r27) "
+                "for all 40 operating periods but are not cryptographically tied to "
+                "a single binary workbook identity."
             ),
             "c3b2_clean_index_offset": (
                 "DS[n] → clean_period_index = n+1 for operating periods "
@@ -363,10 +400,11 @@ def derive(write: bool = True) -> dict:
             ),
         },
         "unresolved_items": {
-            "factory_gap": (
-                "C3B3D2A_FACTORY_VALUE_UNEXPLAINED_GAP: "
-                "shl_amount_keur=13547.2 in factory vs Excel 14620.77 (~1073.6 kEUR). "
-                "Origin deferred to C3B3D2B."
+            "known_source_conflict": (
+                "KNOWN_SOURCE_CONFLICT (C3B3D2A_FACTORY_CALIBRATION_REVERSION_PROVEN): "
+                "factory shl_amount_keur=13547.2 (oborovo_baseline.json parity) vs "
+                "Excel Inputs!D325=14620.77. Provenance documented. "
+                "Resolution deferred to C3B3D2B."
             ),
             "partial_cash_pik_canonical": (
                 "PARTIAL_CASH_PARTIAL_PIK for DS[1..24] cannot be modelled by canonical "
@@ -388,13 +426,24 @@ def derive(write: bool = True) -> dict:
         "periods": periods,
     }
 
-    # ── find first nonzero principal repayment period ────────────────────────
+    # ── discover payment-mode boundaries from data ───────────────────────────
     first_principal_ds = None
+    first_cash_paid_ds = None
     for p in periods:
-        if p["principal_repaid_keur"] > _TOL:
+        if first_principal_ds is None and p["principal_repaid_keur"] > _TOL:
             first_principal_ds = p["ds_index"]
-            break
+        if first_cash_paid_ds is None and p["payment_mode"] == "CASH_PAID":
+            first_cash_paid_ds = p["ds_index"]
     fixture["maturity"]["first_nonzero_principal_ds_index"] = first_principal_ds
+    fixture["payment_mode_classification"]["first_cash_paid_ds_index_discovered"] = (
+        first_cash_paid_ds
+    )
+    fixture["payment_mode_classification"]["payment_mode_discovery_note"] = (
+        "DS boundaries are DISCOVERED from source values (cap vs gross tolerance), "
+        "NOT asserted by hardcoded index comparisons. "
+        f"first_cash_paid DS discovered as DS[{first_cash_paid_ds}]. "
+        f"first_nonzero_principal DS discovered as DS[{first_principal_ds}]."
+    )
 
     if write:
         with open(_OUTPUT, "w") as f:
