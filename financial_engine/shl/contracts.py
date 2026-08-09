@@ -11,6 +11,31 @@ from enum import Enum
 from typing import Sequence
 
 
+class ShlDayCountConvention(str, Enum):
+    """Typed day-count convention for SHL interest accrual (C3B3D2B1).
+
+    SHL uses INCLUSIVE end-date convention: the last calendar day of the period
+    IS counted as a full calendar day.  This differs from Senior Debt, which uses
+    an EXCLUSIVE end-date convention.  Do NOT share a DCF implementation between
+    Senior Debt and SHL.
+
+    Conventions
+    -----------
+    ACT_365_FIXED : SOURCE_PROVEN_FOR_OBOROVO_OPERATING_SHL
+        day_count_fraction = actual_period_days_inclusive / 365
+        Denominator is always 365, even in leap years (actual/365-Fixed).
+        Proven against all 40 Oborovo operating periods; max source-oracle
+        delta = 1.11e-16 (machine epsilon), C3B3D2B0.
+
+    ACT_360 : GENERIC_ENGINE_CAPABILITY
+        day_count_fraction = actual_period_days_inclusive / 360
+        Same inclusive day-boundary semantics as ACT_365_FIXED.
+        No Oborovo SHL source proof for this convention; capability only.
+    """
+    ACT_365_FIXED = "ACT_365_FIXED"
+    ACT_360 = "ACT_360"
+
+
 class ShlInterestRateMode(str, Enum):
     """Supported interest rate mode for canonical SHL."""
     FIXED = "FIXED"
@@ -145,3 +170,51 @@ class ShlPeriodResult:
 
 # Immutable collection alias for a full schedule
 ShlScheduleResult = tuple[ShlPeriodResult, ...]
+
+
+@dataclass(frozen=True)
+class ShlWaterfallPolicy:
+    """Policy governing the clean SHL waterfall formula (C3B3D2B1).
+
+    Covers operating-period computation only.  Construction is handled by the
+    C3B3D1 engine (compute_shl_period with opening=0, drawdown_keur, DCF=1.0,
+    payment_mode=PIK).
+
+    This policy is per-instrument: Senior Debt has its own DayCountConvention
+    inside SeniorDebtPolicy.  Changing ShlWaterfallPolicy.day_count_convention
+    does NOT affect Senior Debt, and vice versa.
+
+    Fields
+    ------
+    annual_rate : float
+        Annual simple interest rate (e.g. 0.08 for 8%). Must be >= 0 and finite.
+    day_count_convention : ShlDayCountConvention
+        How day-count fractions are derived from period calendar dates.
+        ACT_365_FIXED is source-proven for Oborovo operating SHL (C3B3D2B0).
+        ACT_360 is a generic engine capability without Oborovo SHL source proof.
+    """
+    annual_rate: float
+    day_count_convention: ShlDayCountConvention
+
+    def __post_init__(self) -> None:
+        if isinstance(self.annual_rate, bool):
+            raise ValueError(
+                f"annual_rate must be a float, not bool: {self.annual_rate!r}"
+            )
+        if not isinstance(self.annual_rate, (int, float)):
+            raise ValueError(
+                f"annual_rate must be numeric, got {type(self.annual_rate).__name__}"
+            )
+        if not math.isfinite(self.annual_rate):
+            raise ValueError(
+                f"annual_rate must be finite, got {self.annual_rate!r}"
+            )
+        if self.annual_rate < 0:
+            raise ValueError(
+                f"annual_rate must be non-negative, got {self.annual_rate!r}"
+            )
+        if not isinstance(self.day_count_convention, ShlDayCountConvention):
+            raise ValueError(
+                f"day_count_convention must be ShlDayCountConvention, "
+                f"got {self.day_count_convention!r}"
+            )

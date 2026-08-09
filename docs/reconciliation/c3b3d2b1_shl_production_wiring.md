@@ -1,0 +1,230 @@
+# C3B3D2B1 — Production SHL Wiring + Instrument Day-Count Convention
+
+**Status**: `C3B3D2B1_READY_FOR_INDEPENDENT_REVIEW`
+**Branch**: `stage-c3b3d2b1-shl-production-wiring`
+**Base**: `2afdffbc1796d3b042f7b63c61c2750ec264924e` (main after C3B3D2B0 squash-merge)
+**Scope boundary**: Production SHL schedule chaining + typed instrument day-count convention. Tax feedback loop (SHL→tax→CFADS→SHL) deferred to C3B3D2B2.
+
+---
+
+## 1. Scope
+
+C3B3D2B1 delivers:
+
+1. **`ShlDayCountConvention` typed enum** — instrument-level, independent of Senior Debt convention.
+2. **`ShlWaterfallPolicy` dataclass** — `annual_rate` + `day_count_convention`.
+3. **`compute_shl_dcf()` typed dispatch** — routes ACT_365_FIXED and ACT_360; delegates ACT_365_FIXED to governance-locked C3B3D2B0 function.
+4. **`compute_shl_schedule()` production chainer** — links C3B3D1 construction (opening=0, draw, DCF=1.0, PIK) and C3B3D2B0 operating waterfall (natural formula, no mode dispatch) into a single call.
+5. **`compute_shl_cash_from_phase2c()` seam adapter** — derives `cash_available_for_shl_keur` per period from Phase 2C result without reading any Excel fixture.
+6. **91 test functions** covering conventions, parity, seam, governance.
+7. **This reconciliation document**.
+
+Not in scope: DSRA, distributions, Sponsor, R99/R102, SHL→tax fixed-point loop.
+
+---
+
+## 2. Source Inputs
+
+| Input | Source | Classification |
+|---|---|---|
+| `shl_draw_keur` | D2A fixture workbook_inputs (Excel Inputs!D325) | SOURCE_RAW_CACHED_VALUE |
+| `shl_annual_rate` | D2A fixture workbook_inputs (Excel Inputs!F328) | SOURCE_RAW_CACHED_VALUE |
+| Period dates | `oborovo_interest_limitation_fixture.json` (committed) | SOURCE_RAW_CACHED_VALUE |
+| `free_cash_flow_for_shl_keur` | `excel_oborovo_financial_truth.json` CF section | SOURCE_RAW_CACHED_VALUE (test oracle only) |
+
+The `free_cash_flow_for_shl_keur` vector is used **only as a test oracle**. It is NOT a production input. The production derivation is `CFADS − senior_debt_service` via the seam adapter.
+
+---
+
+## 3. Day-Count Conventions
+
+### 3.1 Instrument-Level Independence
+
+Senior Debt and SHL are configured with **independent** typed conventions:
+
+| Instrument | Convention | Location |
+|---|---|---|
+| Senior Debt | `DayCountConvention.ACT_365` / `ACT_360` | `SeniorDebtPolicy.day_count_convention` |
+| SHL | `ShlDayCountConvention.ACT_365_FIXED` / `ACT_360` | `ShlWaterfallPolicy.day_count_convention` |
+
+These are distinct Python enum types. Changing one does not affect the other. A project can simultaneously have Senior Debt = ACT/360 and SHL = ACT/365 Fixed (Oborovo).
+
+### 3.2 Date Interval Semantics Differ
+
+**Do NOT unify Senior Debt and SHL DCF implementations.**
+
+| Dimension | Senior Debt | SHL |
+|---|---|---|
+| End-date treatment | EXCLUSIVE (= start of next period) | INCLUSIVE (= last calendar day of period) |
+| Formula | `(end − start).days / denominator` | `((end − start).days + 1) / denominator` |
+| DS[1] days | 183 | 184 |
+| DS[1] DCF (365 basis) | 183/365 = 0.50137 | 184/365 = 0.50411 |
+
+The D2A fixture documents this explicitly: `SHL_SOURCE_DAY_COUNT_MISMATCH` — two different day-count bases in the same Oborovo workbook. Do not unify.
+
+### 3.3 SHL Conventions
+
+**ACT_365_FIXED**: `SOURCE_PROVEN_FOR_OBOROVO_OPERATING_SHL`
+
+```
+day_count_fraction = ((period_end − period_start).days + 1) / 365
+```
+
+Denominator always 365, even in leap years. Proven in C3B3D2B0 across all 40 Oborovo operating periods including 5 leap-year periods (DS[4, 12, 20, 28, 36]). Max source-oracle delta: 1.11e-16 (machine epsilon).
+
+**ACT_360**: `GENERIC_ENGINE_CAPABILITY`
+
+```
+day_count_fraction = ((period_end − period_start).days + 1) / 360
+```
+
+Same inclusive end-date semantics. Denominator 360. No Oborovo SHL source evidence. Not labelled source-proven.
+
+---
+
+## 4. Construction DCF Evidence Limitation
+
+Construction `DCF = 1.0` remains:
+
+- **ARITHMETIC_SOURCE_IMPLIED**: `gross / (draw × rate) = 1169.661912 / (14620.773895 × 0.08) = 1.0`
+- **CALENDAR_CONVENTION_UNRESOLVED**: Exact calendar interval unconfirmed. Potential 2-day gap at construction/operating seam (`cf.bop_date[0]=2029-06-29`, `cf.eop_date[0]=2030-06-30`, `IL DS[1].start=2030-07-01`).
+
+Do NOT infer ACT_365 or ACT_360 from operating periods for construction. The `ShlConstructionInput.dcf` field defaults to 1.0 and must not be overridden without calendar-date proof.
+
+---
+
+## 5. Production Input Lineage
+
+### Cash Available for SHL
+
+Production lineage:
+
+```
+Revenue
+OPEX
+EBITDA = Revenue − OPEX
+− cash_tax                    → CFADS  (pre-debt)
+− senior_interest             ↘
+− senior_principal            → cash_available_for_shl
+− shl_cash_interest           ↘
+− shl_principal_repayment     → post-SHL cash
+[DSRA, distributions — downstream, not modelled in C3B3D2B1]
+```
+
+Formula: `cash_available_for_shl[p] = max(0, CFADS[p] − senior_debt_service[p])`
+
+- Construction period: 0.0 (SHL is PIK)
+- Post-maturity periods (senior_ds = 0): CFADS
+- DSRA is downstream of SHL and does not reduce `cash_available_for_shl`
+
+Implemented in: `financial_engine.adapters.shl_cash_seam.compute_shl_cash_from_phase2c()`
+
+### Oborovo Verification (DS[1])
+
+```
+CFADS[1]    = 2575.00 kEUR
+senior_ds[1] = 2239.13 kEUR
+cash_for_shl[1] = 335.87 kEUR  ✓ (matches fixture)
+```
+
+---
+
+## 6. Tax Interaction
+
+SHL gross accrued interest is deductible (subject to `TaxPolicy.shl_deductibility_mode` per C3B3C contracts). The `PeriodInterestInput.shl_interest_keur` field already exists in the clean tax engine.
+
+**In C3B3D2B1**, SHL interest is NOT fed back into the Phase 2C fixed-point loop. This approximation is documented as `SHL_OUTSIDE_FIXED_POINT`.
+
+Approximation magnitude: `≈ shl_gross_interest × tax_rate` per period. For Oborovo DS[1]: `636.81 × 0.19 ≈ 121 kEUR` tax reduction, which reduces cash_tax by ~121 kEUR, increasing CFADS by ~121 kEUR. The senior debt fixed-point was computed without this, so the senior debt schedule is based on a CFADS that is ~121 kEUR lower than fully-correct. This approximation does not affect the SHL schedule produced in C3B3D2B1 (SHL uses the Phase 2C CFADS − senior_ds, which is already converged without SHL interest correction).
+
+Full SHL→tax circular resolution is deferred to C3B3D2B2.
+
+---
+
+## 7. Fixed-Point Boundary
+
+| What | Inside fixed point? |
+|---|---|
+| Senior interest → tax → CFADS → senior debt sizing | **Yes** (Phase 2C solver) |
+| SHL gross interest → tax | **No** (C3B3D2B1: SHL_OUTSIDE_FIXED_POINT) |
+| SHL cash service → cash_available_for_shl | **Downstream** (post-convergence) |
+| DSRA → cash_available_for_shl | **Not modelled** (C3B3D2B2+) |
+
+---
+
+## 8. Parity Results
+
+### Construction Period
+
+| Field | Source | Computed | Delta |
+|---|---|---|---|
+| opening_balance_keur | 0.000000 | 0.000000 | 0.000000 |
+| drawdown_keur | 14620.773895 | 14620.773895 | — |
+| gross_accrued_interest_keur | 1169.661912 | 1169.661912 | < 1e-6 |
+| pik_interest_keur | 1169.661912 | 1169.661912 | < 1e-6 |
+| closing_balance_keur | 15790.435806 | 15790.435806 | < 1e-6 |
+
+**Construction DCF = 1.0**: arithmetic-implied (calendar convention unresolved).
+
+### Operating Periods (40 periods)
+
+| Vector | Max delta (kEUR) |
+|---|---|
+| gross_accrued_interest_keur | 2.27e-13 |
+| cash_interest_keur | 2.27e-13 |
+| pik_interest_keur | 2.27e-13 |
+| principal_repaid_keur | 3.64e-12 |
+| closing_balance_keur | 3.64e-12 |
+
+DS[40] closing balance: **0.000000 kEUR**
+First principal sweep: **DS[25]** (discovered from cash > gross; not hardcoded)
+
+---
+
+## 9. Test Suite
+
+**File**: `tests/test_stage_c3b3d2b1_shl_production_wiring.py`
+**Count**: 91 test functions, 91 collected cases, all passing
+
+| Class | Tests | Description |
+|---|---|---|
+| TestA_ShlDayCountConventionContract | 6 | Enum exists, correct values, independent of Senior Debt |
+| TestB_ShlWaterfallPolicyContract | 8 | Policy dataclass, frozen, validation |
+| TestC_ComputeShlDcfAct365Fixed | 5 | DS[1] value, governance-locked delegate, all 40 Oborovo DCFs |
+| TestD_ComputeShlDcfAct360 | 5 | ACT/360 value, differs from ACT/365, typed convention |
+| TestE_LeapYearDenominator365 | 3 | Denominator 365 in all 5 leap periods; ACT/360 uses 360 |
+| TestF_InstrumentConventionIndependence | 5 | SHL and Senior Debt conventions independent; exclusive vs inclusive |
+| TestG_ConstructionPeriodSemantics | 8 | opening=0, draw, PIK, DCF=1.0 arithmetic-implied |
+| TestH_OperatingChainRollForward | 6 | First operating opening = construction closing; roll-forward identity |
+| TestI_OborovoConstructionParity | 5 | All construction fields match D2A fixture |
+| TestJ_OborovoOperatingParity | 8 | All 40 operating periods match D2A fixture < 1e-6 kEUR |
+| TestK_ShlCashSeamAdapter | 7 | Cash derivation from Phase 2C result; construction=0; DS[1] lineage |
+| TestL_CashWaterfallOrdering | 3 | Docstring documents CFADS-senior_ds; DSRA downstream; no fixture reads |
+| TestM_FixedPointBoundary | 5 | SHL outside Phase 2C loop; separate vectors; tax doc |
+| TestN_SeparateVectors | 5 | gross≠cash in partial periods; pik=gross-cash; service=cash+principal |
+| TestO_Governance | 11 | No 13547.2; no DS25/DS40 bounds; no project dispatch; no finco_core imports |
+
+---
+
+## 10. Unresolved Items (Deferred to C3B3D2B2+)
+
+| Item | Status |
+|---|---|
+| CONSTRUCTION_DATE_CONVENTION_UNRESOLVED | DCF=1.0 arithmetic-implied; calendar proof deferred |
+| SHL_OUTSIDE_FIXED_POINT | SHL→tax→CFADS→SHL circular dependency documented; resolution deferred to C3B3D2B2 |
+| SHL_INTEREST_NOT_FED_INTO_TAX | PeriodInterestInput.shl_interest_keur remains 0 in Phase 2C; deferred |
+| DSRA_NOT_MODELLED | DSRA is downstream of SHL; not modelled in C3B3D2B1 |
+| DISTRIBUTIONS_NOT_MODELLED | Deferred |
+| ACT_360_SHL_NOT_SOURCE_PROVEN | ACT/360 for SHL is generic capability only; Oborovo uses ACT/365 Fixed |
+
+---
+
+## 11. D2B2 Prerequisites
+
+A. Wire `shl_interest_keur` into `PeriodInterestInput` in the Phase 2C solver callback (adds SHL to the tax fixed-point loop).
+
+B. Prove whether the resulting CFADS change materially affects senior debt sizing (if below convergence tolerance, document as within tolerance; otherwise expand the fixed-point to 2D).
+
+C. Resolve construction calendar convention (is DCF=1.0 from exact 365-day interval?).
+
+D. Wire `post_shl_cash` into the DSRA / distribution calculation (C3B3D2B2+).
