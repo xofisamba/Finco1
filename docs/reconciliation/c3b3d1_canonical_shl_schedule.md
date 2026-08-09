@@ -64,8 +64,8 @@ Invariant: `closing_balance >= 0` (absorbed for floating-point dust with `max(·
 | Effect on closing balance | none (cash out) | +gross (capitalised) |
 
 The canonical schedule does not model mixed (PIK-then-cash) modes — these are
-deferred to C3B3D2 via `shl_pik_switch_period > 0` detection in the adapter
-(fail-closed: `C3B3D1_BLOCKED_MIXED_PAYMENT_MODE`).
+deferred to a later stage via `shl_pik_switch_period > 0` detection in the
+adapter (fail-closed: `C3B3D1_BLOCKED_MIXED_PAYMENT_MODE`).
 
 ---
 
@@ -82,18 +82,15 @@ deferred to C3B3D2 via `shl_pik_switch_period > 0` detection in the adapter
 
 The following repayment modes raise `NotImplementedError` in C3B3D1:
 
-- `FCF_WATERFALL` — requires D2 cash-waterfall integration
-- `CASH_SWEEP` — requires D2 cash-waterfall integration
-- `PIK_THEN_SWEEP` — requires D2 period-level mode switching
-- `PARTIAL_PAY_SWEEP` — requires D2 cash integration
+- `FCF_WATERFALL` — requires later-stage cash-waterfall integration
+- `CASH_SWEEP` — requires later-stage cash-waterfall integration
+- `PIK_THEN_SWEEP` — requires later-stage period-level mode switching
+- `PARTIAL_PAY_SWEEP` — requires later-stage cash integration
 - `pik` / `accrued` method strings — no source evidence maps these to
   EXPLICIT_SCHEDULE period-principal semantics (`C3B3D1_BLOCKED_LEGACY_REPAYMENT_SEMANTICS`)
 
-Error label: `C3B3D1_DEFERRED: FCF-waterfall repayment requires D2 cash integration`
-
-These are detected in `build_shl_schedule_policy_from_project_inputs` via
-`_FCF_WATERFALL_METHODS` and raise `NotImplementedError` with label
-`C3B3D1_BLOCKED_FCF_REPAYMENT`. They are never silently treated as BULLET.
+The fail-closed set is `_FCF_WATERFALL_METHODS` in the adapter. These are never
+silently treated as BULLET.
 
 ---
 
@@ -109,16 +106,39 @@ policy question outside C3B3D1 scope.
 
 ---
 
-## 8. Construction → operating opening-balance seam (C3B3D2)
+## 8. Payment mode status: C3B3D1_BLOCKED_PAYMENT_MODE_SEMANTICS
+
+`shl_pik_switch_period` is defined in `FinancingParams` (default 0) but is
+**not consumed by any runtime code** outside serialization.
+
+The legacy waterfall engine computes `pik_switch_triggered` at runtime from:
+
+    pik_switch_triggered = (cf_for_shl > shl_balance × shl_rate)
+
+It does NOT read `shl_pik_switch_period`. Therefore `shl_pik_switch_period=0`
+has no proven semantic mapping to `CASH_PAID` for every operating period.
+
+C3B3D1 adapter status: **BLOCKED**. Payment mode cannot be derived safely
+from `FinancingParams` without committed source evidence. The adapter raises
+`C3B3D1_BLOCKED_PAYMENT_MODE_SEMANTICS` for all projects including those with
+`shl_pik_switch_period=0`.
+
+The pure canonical engine (`financial_engine/shl/engine.py`) is complete and
+accepts any `ShlInterestPaymentMode` — the block is at the
+`FinancingParams → policy` adapter layer only.
+
+---
+
+## 9. Construction → operating opening-balance seam
 
 The construction → operating opening balance transition is labelled
-`C3B3D2_CONSTRUCTION_SEAM` and is deferred to C3B3D2.
+`C3B3D2_CONSTRUCTION_SEAM` and is deferred to the next stage.
 The C3B3D1 adapter does NOT use `shl_amount_keur` as an opening balance — it
 is referenced only for validation.
 
 ---
 
-## 9. Tax boundary
+## 10. Tax boundary
 
 The canonical schedule exposes `gross_accrued_interest_keur` per period. This
 feeds `PeriodInterestInput.shl_interest_keur` in the clean tax engine (D2 wiring).
@@ -130,24 +150,21 @@ mechanics in TaxPolicy — a separate concern from accrual computation.
 
 ---
 
-## 10. Oborovo SHL balance lineage status
+## 11. Oborovo SHL balance lineage status
 
 **Status: `OBOROVO_SHL_BALANCE_LINEAGE_UNRESOLVED`**
 
-The construction → operating opening balance transition for Oborovo cannot be
-proven from committed source evidence alone:
+Existing repository values represent different SHL states across construction
+and operating phases. The exact construction-closing → operating-opening
+liability lineage has not yet been proven from committed source evidence.
+C3B3D1 therefore does not select an opening balance for Oborovo.
 
-- SHL commitment: `13,547.2 kEUR` (project_factories.py, sourced from oborovo_baseline.json)
-- IDC: `1,169.0 kEUR` (project_factories.py comment: "IDC from construction")
-- Construction PIK: not independently computed from committed source evidence
-- Excel BS row for operating opening balance: not extracted in C3B1/C3B2 fixtures
-
-The C3B3D1 adapter does NOT promote Oborovo to the canonical SHL schedule runtime.
-This is acceptable — Oborovo continues to run via the legacy waterfall path unchanged.
+The C3B3D1 adapter does NOT promote Oborovo to the canonical SHL schedule
+runtime. Oborovo continues to run via the legacy waterfall path unchanged.
 
 ---
 
-## 11. TUHO lineage/runtime status
+## 12. TUHO lineage/runtime status
 
 **Status: `TUHO_SHL_BALANCE_LINEAGE_UNRESOLVED` + `C3B3D1_BLOCKED_FCF_REPAYMENT`**
 
@@ -158,16 +175,36 @@ TUHO continues to run via the legacy waterfall path unchanged.
 
 ---
 
-## 12. Deferred work for C3B3D2
+## 13. Deferred work: C3B3D2 immediate scope
 
 | Item | Label |
 |---|---|
-| Wire canonical SHL schedule into orchestrator.py | C3B3D2_ORCHESTRATOR_WIRING |
-| Construction → operating balance seam | C3B3D2_CONSTRUCTION_SEAM |
-| Feed gross_accrued_interest into PeriodInterestInput | C3B3D2_TAX_WIRING |
-| PIK-then-cash mixed mode (shl_pik_switch_period > 0) | C3B3D2_MIXED_MODE |
-| WHT modelling | C3B3D2_WHT |
-| Oborovo opening balance proof | C3B3D2_OBOROVO_BALANCE_PROOF |
-| TUHO pik_then_sweep classification | C3B3D2_TUHO_SWEEP |
-| FCF waterfall cash-waterfall integration | C3B3D2_FCF_WATERFALL |
+| Authoritative SHL opening balance seam (where proven) | C3B3D2_CONSTRUCTION_SEAM |
+| Run canonical SHL accrual schedule in orchestrator | C3B3D2_ORCHESTRATOR_WIRING |
+| Map gross_accrued_interest → PeriodInterestInput.shl_interest_keur | C3B3D2_TAX_WIRING |
+| Clean Tax runtime integration | C3B3D2_TAX_INTEGRATION |
+| Controlled Tax/CFADS/debt diagnostics | C3B3D2_DIAGNOSTICS |
+| Payment mode source evidence (pik_switch_period semantics) | C3B3D2_PAYMENT_MODE_SEMANTICS |
 | pik/accrued repayment method source evidence | C3B3D2_LEGACY_METHOD_SEMANTICS |
+| Oborovo opening balance proof | C3B3D2_OBOROVO_BALANCE_PROOF |
+
+---
+
+## 14. Deferred work: later SHL/waterfall scope
+
+| Item | Notes |
+|---|---|
+| FCF repayment | Requires cash-waterfall integration |
+| Cash sweep | Requires cash-waterfall integration |
+| R99 | TUHO-specific waterfall mechanics |
+| R102 / distribution account | Waterfall-specific |
+| TUHO sweep mechanics | C3B3D1_BLOCKED_FCF_REPAYMENT |
+| PIK-then-cash mixed mode | Period-level mode switching |
+
+---
+
+## 15. Deferred work: later tax scope
+
+| Item | Notes |
+|---|---|
+| WHT modelling | Separate from SHL accrual mechanics |

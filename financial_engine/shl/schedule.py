@@ -82,11 +82,21 @@ def run_shl_schedule(
 
     # ── period-index contiguity validation ─────────────────────────────────
     for idx, p_input in enumerate(period_inputs):
-        if p_input.period_index != idx:
+        pi = p_input.period_index
+        if isinstance(pi, bool) or not isinstance(pi, int):
+            raise TypeError(
+                f"period_index must be int (not bool, not float): "
+                f"got {type(pi).__name__!r} at position {idx}"
+            )
+        if pi < 0:
+            raise ValueError(
+                f"period_index must be >= 0: got {pi!r} at position {idx}"
+            )
+        if pi != idx:
             raise ValueError(
                 f"period_inputs must be contiguous starting at 0: "
                 f"expected period_index={idx} at position {idx}, "
-                f"got period_index={p_input.period_index}"
+                f"got period_index={pi}"
             )
 
     results: list[ShlPeriodResult] = []

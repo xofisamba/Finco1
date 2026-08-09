@@ -591,12 +591,25 @@ class TestAdapterShlInputs:
         with pytest.raises(NotImplementedError, match="C3B3D1_BLOCKED_FCF_REPAYMENT"):
             build_shl_schedule_policy_from_project_inputs(p)
 
-    def test_oborovo_returns_bullet(self):
-        """Oborovo has shl_repayment_method=bullet, pik_switch=0 → BULLET policy."""
-        policy = self._oborovo_policy()
-        assert policy is not None
-        assert policy.repayment_mode == ShlRepaymentMode.BULLET
-        assert policy.annual_rate == pytest.approx(0.08)
+    def test_oborovo_payment_mode_blocked(self):
+        """Oborovo bullet repayment is mapped, but payment mode is blocked.
+
+        shl_pik_switch_period=0 has no proven mapping to CASH_PAID (the field
+        is unused by runtime). Full policy build raises C3B3D1_BLOCKED_PAYMENT_MODE_SEMANTICS.
+        """
+        from app.project_factories import create_default_oborovo
+        from financial_engine.adapters.shl_inputs import build_shl_schedule_policy_from_project_inputs
+        p = create_default_oborovo()
+        with pytest.raises(NotImplementedError, match="C3B3D1_BLOCKED_PAYMENT_MODE_SEMANTICS"):
+            build_shl_schedule_policy_from_project_inputs(p)
+
+    def test_oborovo_repayment_mode_is_bullet(self):
+        """Oborovo bullet repayment is correctly identified as BULLET."""
+        from app.project_factories import create_default_oborovo
+        from financial_engine.adapters.shl_inputs import build_shl_repayment_mode_from_project_inputs
+        p = create_default_oborovo()
+        mode = build_shl_repayment_mode_from_project_inputs(p)
+        assert mode == ShlRepaymentMode.BULLET
 
     def test_adapter_not_wired_into_orchestrator(self):
         """Governance: shl_inputs adapter must not be imported in orchestrator."""
@@ -742,8 +755,13 @@ class TestR1ContractHardening:
         with pytest.raises(NotImplementedError):
             result = build_shl_schedule_policy_from_project_inputs(FakeProjectFCF())
 
-    def test_R_bullet_policy_pik_switch_zero(self):
-        """R — bullet + pik_switch=0 produces valid BULLET CASH_PAID policy."""
+    def test_R_bullet_pik_switch_zero_blocked_payment_mode(self):
+        """R — bullet + pik_switch=0 raises C3B3D1_BLOCKED_PAYMENT_MODE_SEMANTICS.
+
+        shl_pik_switch_period=0 has no proven semantic: the legacy waterfall
+        derives pik_switch_triggered at runtime from (cf_for_shl > balance × rate),
+        not from this field. Cannot silently assume CASH_PAID.
+        """
         from financial_engine.adapters.shl_inputs import build_shl_schedule_policy_from_project_inputs
 
         class FakeFinancing:
@@ -754,11 +772,8 @@ class TestR1ContractHardening:
         class FakeProject:
             financing = FakeFinancing()
 
-        policy = build_shl_schedule_policy_from_project_inputs(FakeProject())
-        assert isinstance(policy, ShlSchedulePolicy)
-        assert policy.repayment_mode == ShlRepaymentMode.BULLET
-        assert policy.payment_mode == ShlInterestPaymentMode.CASH_PAID
-        assert policy.annual_rate == pytest.approx(0.10)
+        with pytest.raises(NotImplementedError, match="C3B3D1_BLOCKED_PAYMENT_MODE_SEMANTICS"):
+            build_shl_schedule_policy_from_project_inputs(FakeProject())
 
     def test_S_contiguous_three_periods_ok(self):
         """S — three contiguous period_inputs [0,1,2] pass validation."""
@@ -802,3 +817,84 @@ class TestR1ContractHardening:
         # Whether 0, 50, or 80 kEUR is deductible is TaxPolicy's concern, not ours.
         assert r.cash_interest_keur == pytest.approx(80.0, rel=1e-12)
         assert r.pik_interest_keur == pytest.approx(0.0, abs=1e-12)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 8. TestR2PeriodIndexTypeEnforcement — bool/type guard on period_index
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestR2PeriodIndexTypeEnforcement:
+    """R2: period_index must be real int — bool, float, negative, and gap all rejected.
+
+    Python treats False==0 and True==1, so contiguity checks alone are not
+    sufficient. Type must be validated explicitly.
+    """
+
+    _POLICY = ShlSchedulePolicy(
+        annual_rate=0.08,
+        payment_mode=ShlInterestPaymentMode.CASH_PAID,
+        repayment_mode=ShlRepaymentMode.EXPLICIT_SCHEDULE,
+    )
+
+    def _run(self, period_inputs):
+        return run_shl_schedule(
+            opening_balance_keur=100.0,
+            period_inputs=period_inputs,
+            policy=self._POLICY,
+        )
+
+    def test_U_bool_indices_False_True_rejected(self):
+        """U — [False, True] must be rejected (False==0, True==1 in Python)."""
+        period_inputs = [
+            ShlPeriodInput(period_index=False, day_count_fraction=0.5),  # type: ignore[arg-type]
+            ShlPeriodInput(period_index=True, day_count_fraction=0.5),   # type: ignore[arg-type]
+        ]
+        with pytest.raises(TypeError, match="bool"):
+            self._run(period_inputs)
+
+    def test_V_negative_index_rejected(self):
+        """V — [-1, 0] must be rejected (period_index must be >= 0)."""
+        period_inputs = [
+            ShlPeriodInput(period_index=-1, day_count_fraction=0.5),
+            ShlPeriodInput(period_index=0, day_count_fraction=0.5),
+        ]
+        with pytest.raises(ValueError, match=">= 0"):
+            self._run(period_inputs)
+
+    def test_W_duplicate_index_rejected(self):
+        """W — [0, 0] must be rejected (non-contiguous / gap)."""
+        period_inputs = [
+            ShlPeriodInput(period_index=0, day_count_fraction=0.5),
+            ShlPeriodInput(period_index=0, day_count_fraction=0.5),
+        ]
+        with pytest.raises(ValueError, match="contiguous"):
+            self._run(period_inputs)
+
+    def test_X_out_of_order_rejected(self):
+        """X — [0, 2, 1] must be rejected (non-contiguous)."""
+        period_inputs = [
+            ShlPeriodInput(period_index=0, day_count_fraction=0.5),
+            ShlPeriodInput(period_index=2, day_count_fraction=0.5),
+            ShlPeriodInput(period_index=1, day_count_fraction=0.5),
+        ]
+        with pytest.raises(ValueError, match="contiguous"):
+            self._run(period_inputs)
+
+    def test_Y_starting_at_one_rejected(self):
+        """Y — [1, 2] must be rejected (must start at 0)."""
+        period_inputs = [
+            ShlPeriodInput(period_index=1, day_count_fraction=0.5),
+            ShlPeriodInput(period_index=2, day_count_fraction=0.5),
+        ]
+        with pytest.raises(ValueError, match="contiguous"):
+            self._run(period_inputs)
+
+    def test_Z_contiguous_zero_one_two_accepted(self):
+        """Z — [0, 1, 2] must pass validation."""
+        period_inputs = [
+            ShlPeriodInput(period_index=i, day_count_fraction=0.5)
+            for i in range(3)
+        ]
+        results = self._run(period_inputs)
+        assert len(results) == 3
+        assert all(r.closing_balance_keur >= 0 for r in results)
