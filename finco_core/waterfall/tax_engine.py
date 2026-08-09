@@ -1,20 +1,50 @@
 """Tax engine — period-based tax computation with ATAD, loss carryforward, and fiscal reintegration.
 
-C3B3C arithmetic identity (deductible-only method):
-    taxable_income = EBITDA - dep - deductible_interest + ATAD_disallowed + reintegration
+C3B3D0 arithmetic identity (deductible-only, correct):
+    taxable_income = EBITDA - dep - deductible_interest + reintegration
     where deductible_interest = ATAD_cap(senior_interest + SHL_deductible_fraction)
+
+    Equivalently expressed using gross interest:
+    taxable_income = EBITDA - dep - gross_interest + disallowed_interest + reintegration
+    where gross_interest = senior_interest + SHL_deductible_fraction
+          disallowed_interest = max(0, gross_interest - ATAD_cap)
+
+    These two formulations are algebraically identical:
+        EBITDA - dep - deductible + reint
+      = EBITDA - dep - (gross - disallowed) + reint
+      = EBITDA - dep - gross + disallowed + reint  ✓
+
+    Why the old identity (C3B3C) was UNSAFE when ATAD binds:
+        old: taxable = EBITDA - dep - deductible_interest + disallowed_interest + reint
+        When ATAD doesn't bind: deductible=gross, disallowed=0 → correct.
+        When ATAD DOES bind: deductible=ATAD_cap < gross, disallowed=gross-ATAD_cap.
+            old = EBITDA - dep - ATAD_cap + (gross - ATAD_cap) + reint
+                = EBITDA - dep + gross - 2*ATAD_cap + reint  ← DOUBLE-COUNTS non-deductible
+        The correct result = EBITDA - dep - ATAD_cap + reint (deductible-only).
+        The old formula was dormant in production (ATAD min threshold > senior interest),
+        but structurally wrong whenever ATAD binds. Removed in C3B3D0.
+
+    disallowed_interest_keur is an AUDIT FIELD ONLY (like shl_non_deductible_keur).
+    It is NOT added to taxable income.
 
     shl_non_deductible_keur is an audit field ONLY — it is NOT added to taxable income.
 
-Controlled example (no ATAD binding):
-    ebitda=5000, dep=1000, senior=500, SHL=300
-    FULLY_DEDUCTIBLE:     TI = 5000-1000-800 = 3200
-    FULLY_NON_DEDUCTIBLE: TI = 5000-1000-500 = 3500  (SHL simply not deducted)
-    CUSTOM 50%:           TI = 5000-1000-650 = 3350
+ATAD and thin-cap are INDEPENDENT policies (C3B3D0):
+    atad_enabled in TaxParams controls ATAD interest limitation (Art. 4 ATAD).
+    thin_cap_enabled controls the thin-capitalisation limitation (separate mechanism).
+    Neither is derived from the other.
 
-Equivalence with accounting-EBT method:
-    FULLY_NON_DEDUCTIBLE: (5000-1000-500-300) + 300 = 3500  same result ✓
-    CUSTOM 50%:           (5000-1000-500-300) + 150 = 3350  same result ✓
+Controlled examples:
+    No ATAD binding (ebitda=5000, dep=1000, senior=500, SHL=300):
+        FULLY_DEDUCTIBLE:     TI = 5000-1000-800 = 3200
+        FULLY_NON_DEDUCTIBLE: TI = 5000-1000-500 = 3500  (SHL simply not deducted)
+        CUSTOM 50%:           TI = 5000-1000-650 = 3350
+
+    ATAD binding (ebitda=5000, dep=1000, gross_interest=2000, atad_min=1000):
+        ebitda_limit = 5000*0.30 = 1500; deductible_limit = max(1500, 1000) = 1500
+        2000 > 1500 → ATAD binds: deductible=1500, disallowed=500
+        TI = 5000 - 1000 - 1500 = 2500
+        Gross check: 5000 - 1000 - 2000 + 500 = 2500 ✓
 """
 
 from __future__ import annotations
@@ -37,7 +67,7 @@ class TaxPeriodResult:
     co2_cit_bridge_keur: float  # CO2 revenue included in EBITDA for CIT (Phase 9)
     depreciation_keur: float
     deductible_interest_keur: float
-    disallowed_interest_keur: float  # ATAD addback
+    disallowed_interest_keur: float  # AUDIT ONLY — not added to taxable income (C3B3D0)
     fiscal_reintegration_keur: float  # Construction-period cost add-back (HR tax law)
     # C3B3C audit field: non-deductible SHL kEUR (NOT added to taxable income).
     # = shl_interest_keur * (1 - deductible_pct). For FULLY_NON_DEDUCTIBLE = full SHL.
@@ -71,9 +101,12 @@ def compute_period_tax(
 ) -> TaxPeriodResult:
     """Compute tax for a single period.
 
-    Taxable income = EBITDA - depreciation - deductible_interest + ATAD_disallowed
-                     + fiscal_reintegration - loss_carryforward
+    Taxable income = EBITDA - depreciation - deductible_interest + fiscal_reintegration
+                     - loss_carryforward
     Tax = max(0, taxable_income) * tax_rate
+
+    disallowed_interest is an AUDIT FIELD ONLY — it is NOT added to taxable income.
+    See module docstring for why adding it back is wrong when ATAD binds (C3B3D0).
 
     SHL deductibility (C3B3C deductible-only method):
         Only the deductible fraction of SHL interest enters the ATAD pool.
@@ -149,15 +182,15 @@ def compute_period_tax(
         deductible_interest = total_interest
         disallowed_interest = 0.0
 
-    # Taxable income before losses.
+    # Taxable income before losses (C3B3D0 deductible-only identity).
     # Phase 9: CO2 CIT bridge — co2_revenue_keur added to EBITDA for taxable income.
-    # shl_non_deductible_keur is an audit field ONLY — NOT added here.
+    # disallowed_interest is an AUDIT FIELD ONLY — NOT added here.
+    # shl_non_deductible_keur is an AUDIT FIELD ONLY — NOT added here.
     taxable_before_losses = (
         ebitda_keur
         + co2_revenue_keur
         - depreciation_keur
         - deductible_interest
-        + disallowed_interest
         + fiscal_reintegration_keur
     )
 

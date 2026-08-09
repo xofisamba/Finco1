@@ -259,12 +259,16 @@ class TestGroupB_TaxContractAdapter:
         assert tax_input.policy.atad_enabled is False
 
     def test_atad_enabled_raises_not_implemented(self):
-        """Adapter fails closed for ATAD=True (thin_cap=True): ATAD requires complete interest."""
+        """Adapter fails closed for atad_enabled=True: ATAD requires complete interest.
+        C3B3D0: atad_enabled is now an explicit field independent of thin_cap_enabled.
+        The fail-closed is triggered by atad_enabled=True (not thin_cap_enabled).
+        """
         import dataclasses
         from app.project_factories import create_default_oborovo
         from financial_engine.adapters.tax_inputs import build_tax_contract_from_project_inputs
         obo = create_default_oborovo()
-        atad_tax = dataclasses.replace(obo.tax, thin_cap_enabled=True)
+        # C3B3D0: set atad_enabled=True explicitly (independent of thin_cap_enabled)
+        atad_tax = dataclasses.replace(obo.tax, atad_enabled=True)
         atad_project = dataclasses.replace(obo, tax=atad_tax)
         with pytest.raises(NotImplementedError, match="atad_enabled=True"):
             build_tax_contract_from_project_inputs(atad_project)
