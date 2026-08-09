@@ -846,7 +846,7 @@ class TaxParams:
     # INDEPENDENT of thin_cap_enabled — neither is derived from the other (C3B3D0).
     # Default True for backward compatibility (ATAD was always active in production
     # waterfall path via atad_applies=True in waterfall_engine.py).
-    atad_enabled: bool = True
+    atad_enabled: bool = False
 
     atad_ebitda_limit: float = 0.30
     atad_min_interest_keur: float = 3000.0

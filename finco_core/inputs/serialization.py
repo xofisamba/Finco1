@@ -599,7 +599,7 @@ def project_inputs_from_dict(d: dict) -> ProjectInputs:
         construction_pl=_deser_construction_pl(tax_d.get("construction_pl")),
         thin_cap_enabled=tax_d.get("thin_cap_enabled", False),
         thin_cap_de_ratio=tax_d.get("thin_cap_de_ratio", 0.8),
-        atad_enabled=tax_d.get("atad_enabled", True),  # default True: backward compat
+        atad_enabled=tax_d.get("atad_enabled", tax_d.get("thin_cap_enabled", False)),
         atad_ebitda_limit=tax_d.get("atad_ebitda_limit", 0.30),
         atad_min_interest_keur=tax_d.get("atad_min_interest_keur", 3000.0),
         wht_sponsor_dividends=tax_d.get("wht_sponsor_dividends", 0.05),

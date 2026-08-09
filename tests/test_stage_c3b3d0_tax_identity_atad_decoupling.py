@@ -123,10 +123,11 @@ class TestAtadEnabledField:
         assert tp.atad_enabled is True
         assert tp.thin_cap_enabled is True
 
-    def test_default_atad_enabled_true(self):
+    def test_default_atad_enabled_false(self):
+        """Generic TaxParams() must NOT silently activate jurisdiction-specific ATAD."""
         from finco_core.inputs._models import TaxParams
         tp = TaxParams()
-        assert tp.atad_enabled is True
+        assert tp.atad_enabled is False
 
     def test_atad_enabled_not_derived_from_thin_cap(self):
         """Changing thin_cap_enabled must not affect atad_enabled."""
@@ -136,9 +137,9 @@ class TestAtadEnabledField:
                          shl_interest_deductibility=__import__(
                              "finco_core.inputs._models", fromlist=["ShlInterestDeductibilityMode"]
                          ).ShlInterestDeductibilityMode.FULLY_DEDUCTIBLE)
-        # atad_enabled should be True in both cases (default)
-        assert tp_a.atad_enabled is True
-        assert tp_b.atad_enabled is True
+        # atad_enabled should be False in both cases (default)
+        assert tp_a.atad_enabled is False
+        assert tp_b.atad_enabled is False
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -174,18 +175,34 @@ class TestAtadEnabledSerialization:
         p3 = deserialize_inputs(json.loads(json.dumps(payload)))
         assert p3.tax.atad_enabled is True
 
-    def test_old_payload_without_atad_enabled_deserializes_to_true(self):
-        """Old payloads without atad_enabled key should default to True."""
+    def test_old_payload_thin_cap_false_gives_atad_false(self):
+        """Old payload without atad_enabled + thin_cap=False → atad=False."""
         import json
         from app.project_factories import create_default_oborovo
         from finco_core.inputs.serialization import project_inputs_to_dict as serialize_inputs, project_inputs_from_dict as deserialize_inputs
         p = create_default_oborovo()
         payload = serialize_inputs(p)
-        # Remove atad_enabled to simulate old payload
+        # thin_cap_enabled=False for Oborovo
         if "atad_enabled" in payload.get("tax", {}):
             del payload["tax"]["atad_enabled"]
+        assert payload["tax"]["thin_cap_enabled"] is False
         p2 = deserialize_inputs(json.loads(json.dumps(payload)))
-        assert p2.tax.atad_enabled is True
+        assert p2.tax.atad_enabled is False
+
+    def test_old_payload_thin_cap_true_gives_atad_true(self):
+        """Old payload without atad_enabled + thin_cap=True → atad=True."""
+        import json
+        import dataclasses
+        from app.project_factories import create_default_oborovo
+        from finco_core.inputs.serialization import project_inputs_to_dict as serialize_inputs, project_inputs_from_dict as deserialize_inputs
+        p = create_default_oborovo()
+        # Force thin_cap=True, keep FULLY_NON_DEDUCTIBLE (compatible)
+        p2 = dataclasses.replace(p, tax=dataclasses.replace(p.tax, thin_cap_enabled=True, atad_enabled=True))
+        payload = serialize_inputs(p2)
+        del payload["tax"]["atad_enabled"]
+        assert payload["tax"]["thin_cap_enabled"] is True
+        p3 = deserialize_inputs(json.loads(json.dumps(payload)))
+        assert p3.tax.atad_enabled is True
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -296,3 +313,72 @@ class TestDisallowedInterestAuditOnly:
         )
         # deductible + disallowed = gross_interest
         assert r.deductible_interest_keur + r.disallowed_interest_keur == pytest.approx(2000.0)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 7. Generic Solar/Wind — atad_enabled is False
+# ─────────────────────────────────────────────────────────────────────────────
+class TestGenericProjectAtad:
+    """Generic Solar and Wind projects must not silently activate ATAD."""
+
+    def test_solar_atad_disabled(self):
+        from app.project_factories import create_default_solar_project
+        p = create_default_solar_project()
+        assert p.tax.atad_enabled is False
+
+    def test_wind_atad_disabled(self):
+        from app.project_factories import create_default_wind_project
+        p = create_default_wind_project()
+        assert p.tax.atad_enabled is False
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 8. No financial drift — Solar and Wind
+# ─────────────────────────────────────────────────────────────────────────────
+class TestNoFinancialDriftGeneric:
+    """Solar and Wind financial outputs must match C3B3D0 BASE values exactly."""
+
+    BASE = {
+        "solar": dict(
+            tax=9432.701033,
+            dist=19858.410252,
+            senior_ds=36928.460619,
+            proj_irr=0.07188301,
+            eq_irr=0.16286268,
+        ),
+        "wind": dict(
+            tax=31098.189755,
+            dist=72995.889074,
+            senior_ds=49147.882569,
+            proj_irr=0.10503502,
+            eq_irr=0.26204906,
+        ),
+    }
+
+    def _run(self, factory):
+        from app.ui_runner import _build_period_engine
+        from app.waterfall_runner import WaterfallRunConfig, WaterfallRunner
+        p = factory()
+        engine = _build_period_engine(p)
+        config = WaterfallRunConfig.from_inputs(p, engine)
+        return WaterfallRunner(p, engine).run(config)
+
+    def test_solar_no_drift(self):
+        from app.project_factories import create_default_solar_project
+        r = self._run(create_default_solar_project)
+        b = self.BASE["solar"]
+        assert r.total_tax_keur == pytest.approx(b["tax"], abs=0.001)
+        assert r.total_distribution_keur == pytest.approx(b["dist"], abs=0.001)
+        assert r.total_senior_ds_keur == pytest.approx(b["senior_ds"], abs=0.001)
+        assert r.project_irr == pytest.approx(b["proj_irr"], abs=1e-6)
+        assert r.equity_irr == pytest.approx(b["eq_irr"], abs=1e-6)
+
+    def test_wind_no_drift(self):
+        from app.project_factories import create_default_wind_project
+        r = self._run(create_default_wind_project)
+        b = self.BASE["wind"]
+        assert r.total_tax_keur == pytest.approx(b["tax"], abs=0.001)
+        assert r.total_distribution_keur == pytest.approx(b["dist"], abs=0.001)
+        assert r.total_senior_ds_keur == pytest.approx(b["senior_ds"], abs=0.001)
+        assert r.project_irr == pytest.approx(b["proj_irr"], abs=1e-6)
+        assert r.equity_irr == pytest.approx(b["eq_irr"], abs=1e-6)
