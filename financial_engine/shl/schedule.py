@@ -7,11 +7,13 @@ Supported repayment modes:
   BULLET            — full principal at maturity_period_index
   EXPLICIT_SCHEDULE — per-period scheduled_principal_keur from ShlPeriodInput
 
-Unsupported (fail-closed):
-  FCF_WATERFALL / CASH_SWEEP — require D2 cash-waterfall integration
+Unsupported (fail-closed, later SHL/waterfall scope):
+  FCF_WATERFALL / CASH_SWEEP / PIK-then-cash mixed mode — require cash-waterfall
+  integration (later SHL/waterfall scope, not C3B3D2 immediate).
 """
 from __future__ import annotations
 
+import math
 from typing import Sequence
 
 from financial_engine.shl.contracts import (
@@ -53,17 +55,39 @@ def run_shl_schedule(
     Raises
     ------
     NotImplementedError
-        When repayment_mode is FCF_WATERFALL or CASH_SWEEP (C3B3D1_DEFERRED).
+        When repayment_mode is not BULLET or EXPLICIT_SCHEDULE (C3B3D1 scope).
+    TypeError
+        When opening_balance_keur is bool, or maturity_period_index is not int.
     ValueError
+        When opening_balance_keur is not finite or is negative.
         When BULLET mode is used without maturity_period_index, or
-        maturity_period_index is out of range.
+        maturity_period_index is out of range or negative.
     """
+    # ── opening balance validation ───────────────────────────────────────────
+    if isinstance(opening_balance_keur, bool):
+        raise TypeError(
+            f"opening_balance_keur must be a float, not bool: {opening_balance_keur!r}"
+        )
+    if not isinstance(opening_balance_keur, (int, float)):
+        raise TypeError(
+            f"opening_balance_keur must be numeric, got {type(opening_balance_keur).__name__}"
+        )
+    if not math.isfinite(opening_balance_keur):
+        raise ValueError(
+            f"opening_balance_keur must be finite, got {opening_balance_keur!r}"
+        )
+    if opening_balance_keur < 0:
+        raise ValueError(
+            f"opening_balance_keur must be >= 0, got {opening_balance_keur!r}"
+        )
+
     if policy.repayment_mode not in (
         ShlRepaymentMode.BULLET,
         ShlRepaymentMode.EXPLICIT_SCHEDULE,
     ):
         raise NotImplementedError(
-            f"C3B3D1_DEFERRED: FCF-waterfall repayment requires D2 cash integration. "
+            f"C3B3D1_DEFERRED: FCF-waterfall repayment requires cash-waterfall "
+            f"integration (later SHL/waterfall scope). "
             f"repayment_mode={policy.repayment_mode!r} is not supported in C3B3D1. "
             "Use ShlRepaymentMode.BULLET or ShlRepaymentMode.EXPLICIT_SCHEDULE."
         )
@@ -73,8 +97,22 @@ def run_shl_schedule(
             raise ValueError(
                 "maturity_period_index is required when repayment_mode == BULLET"
             )
+        # Reject bool before numeric range check (False==0, True==1 in Python)
+        if isinstance(maturity_period_index, bool):
+            raise TypeError(
+                f"maturity_period_index must be int, not bool: {maturity_period_index!r}"
+            )
+        if not isinstance(maturity_period_index, int):
+            raise TypeError(
+                f"maturity_period_index must be int, got "
+                f"{type(maturity_period_index).__name__!r}: {maturity_period_index!r}"
+            )
+        if maturity_period_index < 0:
+            raise ValueError(
+                f"maturity_period_index must be >= 0, got {maturity_period_index!r}"
+            )
         n = len(period_inputs)
-        if not (0 <= maturity_period_index < n):
+        if maturity_period_index >= n:
             raise ValueError(
                 f"maturity_period_index={maturity_period_index} is out of range "
                 f"for {n} period_inputs (valid: 0 to {n - 1})"

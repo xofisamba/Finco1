@@ -898,3 +898,139 @@ class TestR2PeriodIndexTypeEnforcement:
         results = self._run(period_inputs)
         assert len(results) == 3
         assert all(r.closing_balance_keur >= 0 for r in results)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 9. TestR3BoundaryValidation — maturity_period_index type + opening balance
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestR3BoundaryValidation:
+    """R3: maturity_period_index type enforcement + opening_balance_keur validation.
+
+    maturity_period_index must be a real int (not bool, not float, not str).
+    opening_balance_keur must be numeric, not bool, finite, and >= 0 — validated
+    before iterating so empty EXPLICIT_SCHEDULE does not bypass the guard.
+    """
+
+    _BULLET_POLICY = ShlSchedulePolicy(
+        annual_rate=0.08,
+        payment_mode=ShlInterestPaymentMode.CASH_PAID,
+        repayment_mode=ShlRepaymentMode.BULLET,
+    )
+    _EXPLICIT_POLICY = ShlSchedulePolicy(
+        annual_rate=0.08,
+        payment_mode=ShlInterestPaymentMode.CASH_PAID,
+        repayment_mode=ShlRepaymentMode.EXPLICIT_SCHEDULE,
+    )
+
+    def _one_period(self):
+        return [ShlPeriodInput(period_index=0, day_count_fraction=0.5)]
+
+    # ── maturity_period_index type tests ────────────────────────────────────
+
+    def test_A_maturity_bool_False_rejected(self):
+        """A — maturity_period_index=False must be rejected (False==0 in Python)."""
+        with pytest.raises(TypeError, match="bool"):
+            run_shl_schedule(
+                opening_balance_keur=100.0,
+                period_inputs=self._one_period(),
+                policy=self._BULLET_POLICY,
+                maturity_period_index=False,  # type: ignore[arg-type]
+            )
+
+    def test_B_maturity_bool_True_rejected(self):
+        """B — maturity_period_index=True must be rejected (True==1 in Python)."""
+        with pytest.raises(TypeError, match="bool"):
+            run_shl_schedule(
+                opening_balance_keur=100.0,
+                period_inputs=self._one_period(),
+                policy=self._BULLET_POLICY,
+                maturity_period_index=True,  # type: ignore[arg-type]
+            )
+
+    def test_C_maturity_float_rejected(self):
+        """C — maturity_period_index=1.0 must be rejected (float, not int)."""
+        with pytest.raises(TypeError):
+            run_shl_schedule(
+                opening_balance_keur=100.0,
+                period_inputs=self._one_period(),
+                policy=self._BULLET_POLICY,
+                maturity_period_index=1.0,  # type: ignore[arg-type]
+            )
+
+    def test_D_maturity_string_rejected(self):
+        """D — maturity_period_index='1' must be rejected (string, not int)."""
+        with pytest.raises(TypeError):
+            run_shl_schedule(
+                opening_balance_keur=100.0,
+                period_inputs=self._one_period(),
+                policy=self._BULLET_POLICY,
+                maturity_period_index="1",  # type: ignore[arg-type]
+            )
+
+    def test_E_maturity_valid_int_passes(self):
+        """E — maturity_period_index=0 (valid int) passes for a one-period schedule."""
+        results = run_shl_schedule(
+            opening_balance_keur=100.0,
+            period_inputs=self._one_period(),
+            policy=self._BULLET_POLICY,
+            maturity_period_index=0,
+        )
+        assert len(results) == 1
+        assert results[0].closing_balance_keur == pytest.approx(0.0, abs=1e-9)
+
+    # ── opening_balance_keur validation tests ───────────────────────────────
+
+    def test_F_negative_opening_empty_schedule_fails(self):
+        """F — opening_balance=-1 with empty EXPLICIT_SCHEDULE must fail before iteration."""
+        with pytest.raises(ValueError, match=">= 0"):
+            run_shl_schedule(
+                opening_balance_keur=-1.0,
+                period_inputs=[],
+                policy=self._EXPLICIT_POLICY,
+            )
+
+    def test_G_nan_opening_empty_schedule_fails(self):
+        """G — opening_balance=NaN with empty EXPLICIT_SCHEDULE must fail before iteration."""
+        with pytest.raises(ValueError, match="finite"):
+            run_shl_schedule(
+                opening_balance_keur=float("nan"),
+                period_inputs=[],
+                policy=self._EXPLICIT_POLICY,
+            )
+
+    def test_H_inf_opening_empty_schedule_fails(self):
+        """H — opening_balance=Inf with empty EXPLICIT_SCHEDULE must fail before iteration."""
+        with pytest.raises(ValueError, match="finite"):
+            run_shl_schedule(
+                opening_balance_keur=float("inf"),
+                period_inputs=[],
+                policy=self._EXPLICIT_POLICY,
+            )
+
+    def test_I_bool_opening_empty_schedule_fails(self):
+        """I — opening_balance=True must be rejected (bool, not float)."""
+        with pytest.raises(TypeError, match="bool"):
+            run_shl_schedule(
+                opening_balance_keur=True,  # type: ignore[arg-type]
+                period_inputs=[],
+                policy=self._EXPLICIT_POLICY,
+            )
+
+    def test_J_zero_opening_empty_explicit_schedule_returns_empty(self):
+        """J — opening_balance=0, period_inputs=[] with EXPLICIT_SCHEDULE returns ()."""
+        results = run_shl_schedule(
+            opening_balance_keur=0.0,
+            period_inputs=[],
+            policy=self._EXPLICIT_POLICY,
+        )
+        assert results == ()
+
+    def test_K_positive_opening_empty_explicit_schedule_returns_empty(self):
+        """K — opening_balance=100, period_inputs=[] with EXPLICIT_SCHEDULE returns ()."""
+        results = run_shl_schedule(
+            opening_balance_keur=100.0,
+            period_inputs=[],
+            policy=self._EXPLICIT_POLICY,
+        )
+        assert results == ()
