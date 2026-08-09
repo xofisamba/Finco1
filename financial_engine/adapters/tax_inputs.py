@@ -13,8 +13,6 @@ Tax policy is derived exclusively from project input fields:
 
 C3B1 source evidence (Oborovo):
   - ATAD gated by BS!G45 = thin_cap_enabled = False → atad_enabled=False for Oborovo
-  - FR = full SHL reintegration (thin_cap_enabled=False → C59=1.0, D59=True)
-  - For ATAD=False + thin_cap=False: TI = EBITDA - tax_dep - senior_interest (SHL cancels)
   - cash_tax_timing = TAX_YEAR_LAST_PERIOD, lag=0
 
 C3B3D0: atad_enabled and thin_cap_enabled are independent. This adapter reads
@@ -54,9 +52,12 @@ def build_tax_contract_from_project_inputs(
     Notes
     -----
     * period_interest is returned EMPTY — senior interest is supplied by the
-      fixed-point solver in run_senior_debt_model(); SHL interest is excluded
-      because for ATAD=False projects it cancels with fiscal reintegration.
-    * period_adjustments is returned EMPTY for the same reason.
+      fixed-point solver in run_senior_debt_model(); SHL interest is omitted
+      because no authoritative canonical per-period SHL interest source existed
+      before C3B3D1/D2B. Once D2B supplies gross_accrued_interest_keur, TaxPolicy
+      determines deductibility (for Oborovo: FULLY_NON_DEDUCTIBLE → deductible=0).
+      This is NOT a "cancellation through fiscal reintegration."
+    * period_adjustments is returned EMPTY.
     * Callers that need SHL in the tax input must merge it after this call.
 
     Fail-closed conditions (raises rather than silently computing wrong results):

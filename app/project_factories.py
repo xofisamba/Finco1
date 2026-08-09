@@ -390,7 +390,7 @@ def create_default_oborovo() -> ProjectInputs:
         debt_sizing_method="gearing_cap",  # legacy field; clean solver uses debt_sizing_mode
         debt_sizing_mode=DebtSizingMode.FLAT_DSCR_SCULPTED,  # C3B3A: clean DSCR-sculpted solver path
         fixed_debt_keur=42852.26672602787,  # Excel senior debt anchor, Outputs!H11 (legacy; clean solver derives this as output)
-        shl_idc_keur=1169.0,  # IDC from construction — opening SHL balance = 14,621 + 1,169 = 15,790
+        shl_idc_keur=1169.0,  # C3B3D2A: Excel construction IDC=1169.66 (14620.77×0.08×1.0); rounded here. factory shl_amount_keur=13547.2 differs from Excel Inputs!D325=14620.77 by ~1073.6 kEUR (C3B3D2A_FACTORY_VALUE_UNEXPLAINED_GAP)
         shl_tenor_years=20,  # Oborovo Excel: SHL is a 20-year bullet (Excel BS clears at 2050-06-30); previously fell back to senior_tenor_years=14, firing 6 years early
         use_frozen_excel_senior_debt_schedule=True,  # Phase 23R: frozen path for legacy engine; clean solver ignores this flag
         frozen_senior_ds_fixture_path="reports/phase23q_oborovo_senior_debt_sizing_extraction.csv",  # Stack AC: capability-driven fixture path
