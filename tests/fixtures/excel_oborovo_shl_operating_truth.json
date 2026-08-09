@@ -26,7 +26,18 @@
         "shl_dcf_derived_actual_365 (= gross / ((opening + drawdown) * shl_rate_from_Inputs_F328))"
       ]
     },
-    "day_count_status": "OPERATING_SHL_DAY_COUNT_DERIVED_FROM_SOURCE_VALUES: actual/365 is INFERRED from gross / ((opening + drawdown) * shl_rate) matching actual_days/365 for all operating periods. NOT directly proven by committed workbook formula text. CONSTRUCTION_SHL_DCF_SOURCE_IMPLIED_1_0: construction DCF=1.0 is implied by arithmetic (gross/(draw*rate)=1.0) \u2014 the exact construction interval dates are not directly committed in this fixture. Senior debt day-count (actual/360) is in sd_period_fraction_actual_360."
+    "day_count_status": "OPERATING_SHL_DAY_COUNT_SOURCE_PROVEN_ACTUAL_365_INCLUSIVE: C3B3D2B0-R1 proved convention is actual/365 with inclusive end date. dcf = ((end_date - start_date).days + 1) / 365. Denominator always 365 (fixed, even in leap years). Max delta vs source-derived DCF: 1.11e-16 across all 40 operating periods. CONSTRUCTION_SHL_DCF_SOURCE_IMPLIED_1_0: construction DCF=1.0 is implied by arithmetic (gross/(draw*rate)=1.0). Senior debt day-count (actual/360) is in sd_period_fraction_actual_360.",
+    "c3b3d2b0_r1": {
+      "status": "C3B3D2B0_CLEAN_SHL_FORMULA_PARITY_PROVEN",
+      "dcf_convention": "OPERATING_SHL_DAY_COUNT_SOURCE_PROVEN_ACTUAL_365_INCLUSIVE",
+      "dcf_formula": "((period_end_date - period_start_date).days + 1) / 365",
+      "dcf_independence": "proven: DCF does not read gross_accrued_interest_keur",
+      "max_gross_delta_keur": "2.27e-13",
+      "max_closing_delta_keur": "0.00e+00",
+      "final_ds40_closing_keur": "0.000000",
+      "construction_path": "C3B3D1 compute_shl_period(opening=0, drawdown=draw, dcf=1.0)",
+      "sweep_provenance": "SOURCE_VECTOR_DERIVED_AND_FULL_HORIZON_RECONCILED"
+    }
   },
   "workbook_inputs": {
     "shl_draw_keur": {
@@ -87,13 +98,21 @@
     "first_nonzero_principal_ds_index": 25
   },
   "day_count_convention": {
-    "shl_basis": "actual/365",
-    "shl_evidence_type": "SHL_DAY_COUNT_DERIVED_FROM_SOURCE_VALUES",
-    "shl_evidence_note": "OPERATING_SHL_DAY_COUNT_DERIVED_FROM_SOURCE_VALUES: gross_interest / ((opening + drawdown) * shl_rate_from_Inputs_F328) matches actual calendar days / 365 for all operating periods. NOT proven by committed workbook formula text. CONSTRUCTION_SHL_DCF_SOURCE_IMPLIED_1_0: DCF=1.0 implied by arithmetic; construction interval dates not directly committed.",
+    "shl_operating_basis": "actual/365-inclusive",
+    "shl_operating_convention_label": "OPERATING_SHL_DAY_COUNT_SOURCE_PROVEN_ACTUAL_365_INCLUSIVE",
+    "shl_operating_formula": "dcf = ((period_end_date - period_start_date).days + 1) / 365",
+    "shl_operating_denominator": 365,
+    "shl_operating_denominator_note": "Denominator is always 365 regardless of leap years (actual/365-Fixed convention).",
+    "shl_operating_evidence_type": "SOURCE_VECTOR_PROVEN_ALL_40_PERIODS",
+    "shl_operating_evidence_note": "C3B3D2B0-R1: computed independently from period_start_date and period_end_date (from interest_limitation fixture) using (end - start).days + 1) / 365. Max delta vs source-derived DCF: 1.11e-16 (machine epsilon) across all 40 operating periods including 5 leap-year periods (DS[4,12,20,28,36]). Proved NOT circular: DCF input does not read gross_accrued_interest_keur. Previous date-exclusive formula (end - start).days / 365 produced 1/365 error per period (~3.46 kEUR gross error at DS[1], ~387 kEUR recursive closing error at DS[40]).",
+    "shl_operating_previous_error_explanation": "Using (end_date - start_date).days / 365 (exclusive end) gives 183/365=0.50137 for DS[1] vs correct 184/365=0.50411. Error = opening*rate*(1/365) = 15790.44*0.08/365 = 3.46 kEUR per period. Recursive compounding through 40 PIK/sweep periods reached ~387 kEUR closing delta by DS[40]. Resolution: end date is INCLUSIVE in the Excel actual/365 convention.",
+    "shl_construction_basis": "DCF=1.0 (implied)",
+    "shl_construction_convention_label": "CONSTRUCTION_SHL_DCF_SOURCE_IMPLIED_1_0",
+    "shl_construction_evidence_note": "DCF=1.0 proven by arithmetic: gross/(draw*rate)=1169.661912/(14620.773895*0.08)=1.0. Not proven by calendar date count (construction interval dates have a potential 2-day gap at the seam: cf.bop_date[0]=2029-06-29, cf.eop_date[0]=2030-06-30, IL DS[1].start=2030-07-01). The construction period uses C3B3D1 compute_shl_period with opening=0, drawdown_keur=draw, dcf=1.0.",
     "senior_debt_basis": "actual/360",
     "senior_debt_evidence": "sd_period_fraction column (SOURCE_RAW_CACHED_VALUE)",
     "mismatch_status": "SHL_SOURCE_DAY_COUNT_MISMATCH",
-    "note": "Two different day-count bases confirmed in same workbook. Do not unify."
+    "mismatch_note": "Two different day-count bases confirmed in same workbook. Do not unify."
   },
   "period_mapping": {
     "status": "C3B3D2A_PERIOD_MAPPING_FULL_HORIZON_COMMITTED_FIXTURE_PROVEN",
@@ -117,10 +136,11 @@
   },
   "unresolved_items": {
     "known_source_conflict": "KNOWN_SOURCE_CONFLICT (C3B3D2A_FACTORY_CALIBRATION_REVERSION_PROVEN): factory shl_amount_keur=13547.2 (oborovo_baseline.json parity) vs Excel Inputs!D325=14620.77. Provenance documented. Resolution deferred to C3B3D2B.",
-    "partial_cash_pik_canonical": "PARTIAL_CASH_PARTIAL_PIK for DS[1..24] cannot be modelled by canonical SHL engine in C3B3D1. Requires waterfall integration (C3B3D2B scope).",
-    "pik_switch_trigger": "Exact FCF waterfall trigger for PIK\u2192CASH switch at DS[25] not formalized in canonical engine.",
+    "partial_cash_pik_canonical": "PARTIAL_CASH_PARTIAL_PIK for DS[1..24] cannot be modelled by canonical SHL engine in C3B3D1. Handled by C3B3D2B0 waterfall formula.",
+    "pik_switch_trigger": "Sweep provenance: SOURCE_VECTOR_DERIVED_AND_FULL_HORIZON_RECONCILED. Identity cash_available > gross (period interest) triggers principal sweep. Proven by vector identity for all 40 periods. No direct workbook formula text committed for the sweep row formula.",
     "tuho": "TUHO_SHL_BALANCE_LINEAGE_UNRESOLVED: TUHO uses pik_then_sweep repayment \u2014 blocked at C3B3D1 adapter; deferred to later SHL/waterfall scope.",
-    "construction_period_start_date": "DS[0] construction period start date is not directly committed in any source fixture. End date inferred as day before DS[1].start."
+    "construction_period_start_date": "DS[0] construction start=2029-06-29 (cf.bop_date[0]), end=2030-06-30 (cf.eop_date[0]). DCF=1.0 is arithmetic-implied, not calendar-derived. The 2-day gap between eop_date[0]=2030-06-30 and IL DS[1].start=2030-07-01 is unresolved. Construction handled by C3B3D1 engine (opening=0, drawdown=draw).",
+    "cash_vector_not_wired_to_runtime": "free_cash_flow_for_shl_keur used as test driver only; not wired to production FCF waterfall. Production wiring deferred to C3B3D2B1+."
   },
   "periods": [
     {

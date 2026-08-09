@@ -75,10 +75,15 @@ jobs:
             tests/test_stage_c3b3d0_tax_identity_atad_decoupling.py \
             -v --tb=short --no-header -q
 
-      - name: C3B3C contract regression
+      - name: C3B3C contract — typed SHL tax-policy schema
         run: |
           python -m pytest \
             tests/test_stage_c3b3c_tax_policy_shl_deductibility.py \
+            -v --tb=short --no-header -q
+
+      - name: C3B3C runtime safety — TUHO + Oborovo production path
+        run: |
+          python -m pytest \
             tests/test_stage_c3b3c_legacy_runtime_safety.py \
             -v --tb=short --no-header -q
 
