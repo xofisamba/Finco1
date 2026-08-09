@@ -676,8 +676,9 @@ def create_default_tuho_wind1() -> ProjectInputs:
         prior_tax_loss_keur=25_000.0,  # 18m construction → large carryforward
         legal_reserve_cap=0.10,
         thin_cap_enabled=True,
-        # C3B3D0: atad_enabled is independent of thin_cap_enabled. Explicit True.
-        # ATAD provisions exist under Croatian law; thin_cap is a separate mechanism.
+        # C3B3D0: explicit TUHO source/calibration policy setting.
+        # ATAD and thin-cap are independent. TUHO SUBJECT_TO_LIMITATIONS mechanics
+        # remain source-unproven and fail-closed until the dedicated evidence stage.
         atad_enabled=True,
         atad_ebitda_limit=0.30,
         atad_min_interest_keur=3000.0,

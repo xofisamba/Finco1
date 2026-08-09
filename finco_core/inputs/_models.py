@@ -844,8 +844,9 @@ class TaxParams:
 
     # ATAD interest limitation (Article 4 ATAD). True = apply 30%/€3m cap.
     # INDEPENDENT of thin_cap_enabled — neither is derived from the other (C3B3D0).
-    # Default True for backward compatibility (ATAD was always active in production
-    # waterfall path via atad_applies=True in waterfall_engine.py).
+    # Default False: generic/multi-jurisdiction projects must not silently activate
+    # a jurisdiction-specific limitation. Old-payload backward compatibility is
+    # handled by the deserialization fallback (→ thin_cap_enabled), not by this default.
     atad_enabled: bool = False
 
     atad_ebitda_limit: float = 0.30

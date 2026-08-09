@@ -91,7 +91,9 @@ def build_tax_contract_from_project_inputs(
 
     # C3B3D0: Read atad_enabled directly from TaxParams — independent of thin_cap_enabled.
     # Previously this adapter derived atad_enabled from thin_cap_enabled (wrong coupling).
-    # Now atad_enabled is an explicit field on TaxParams (default True for backward compat).
+    # Field default is False (generic/multi-jurisdiction safe). Old payloads without
+    # atad_enabled fall back to the serialised thin_cap_enabled value via deserialization;
+    # after materialisation the two fields are fully independent.
     atad_enabled: bool = tax.atad_enabled
 
     # FAIL-CLOSED: ATAD with empty period_interest is silently wrong.
