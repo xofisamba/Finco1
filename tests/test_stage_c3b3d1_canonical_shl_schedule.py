@@ -580,14 +580,6 @@ class TestAdapterShlInputs:
         p = create_default_oborovo()
         return build_shl_schedule_policy_from_project_inputs(p)
 
-    def test_oborovo_returns_none_or_bullet(self):
-        """Oborovo has shl_repayment_method=bullet → should return ShlSchedulePolicy."""
-        policy = self._oborovo_policy()
-        # Oborovo bullet: returns a policy (not None) since pik_switch_period=0
-        assert policy is not None
-        assert policy.repayment_mode == ShlRepaymentMode.BULLET
-        assert policy.annual_rate == pytest.approx(0.08)
-
     def test_tuho_fcf_returns_none(self):
         """TUHO pik_then_sweep is FCF-adjacent — raises NotImplementedError."""
         from app.project_factories import create_default_tuho_wind1
@@ -599,9 +591,15 @@ class TestAdapterShlInputs:
         with pytest.raises(NotImplementedError, match="C3B3D1_BLOCKED_FCF_REPAYMENT"):
             build_shl_schedule_policy_from_project_inputs(p)
 
+    def test_oborovo_returns_bullet(self):
+        """Oborovo has shl_repayment_method=bullet, pik_switch=0 → BULLET policy."""
+        policy = self._oborovo_policy()
+        assert policy is not None
+        assert policy.repayment_mode == ShlRepaymentMode.BULLET
+        assert policy.annual_rate == pytest.approx(0.08)
+
     def test_adapter_not_wired_into_orchestrator(self):
         """Governance: shl_inputs adapter must not be imported in orchestrator."""
-        import ast
         import pathlib
 
         orch_path = pathlib.Path("financial_engine/orchestrator.py")
@@ -611,3 +609,196 @@ class TestAdapterShlInputs:
                 "financial_engine/orchestrator.py imports shl_inputs — "
                 "C3B3D1 adapter must NOT be wired into production runtime."
             )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 7. TestR1ContractHardening — new tests I through T
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestR1ContractHardening:
+    """R1 additions: enum validation, contiguity, legacy method blocking."""
+
+    def test_I_invalid_payment_mode_enum_raises(self):
+        """I — ShlSchedulePolicy rejects non-enum payment_mode."""
+        with pytest.raises(ValueError, match="payment_mode must be ShlInterestPaymentMode"):
+            ShlSchedulePolicy(
+                annual_rate=0.08,
+                payment_mode="CASH_PAID",  # type: ignore[arg-type]
+                repayment_mode=ShlRepaymentMode.BULLET,
+            )
+
+    def test_J_invalid_repayment_mode_enum_raises(self):
+        """J — ShlSchedulePolicy rejects non-enum repayment_mode."""
+        with pytest.raises(ValueError, match="repayment_mode must be ShlRepaymentMode"):
+            ShlSchedulePolicy(
+                annual_rate=0.08,
+                payment_mode=ShlInterestPaymentMode.CASH_PAID,
+                repayment_mode="BULLET",  # type: ignore[arg-type]
+            )
+
+    def test_K_invalid_rate_mode_enum_raises(self):
+        """K — ShlSchedulePolicy rejects non-enum rate_mode."""
+        with pytest.raises(ValueError, match="rate_mode must be ShlInterestRateMode"):
+            ShlSchedulePolicy(
+                annual_rate=0.08,
+                rate_mode="FIXED",  # type: ignore[arg-type]
+                payment_mode=ShlInterestPaymentMode.CASH_PAID,
+                repayment_mode=ShlRepaymentMode.BULLET,
+            )
+
+    def test_L_period_index_non_contiguous_raises(self):
+        """L — run_shl_schedule raises on non-contiguous period_index."""
+        policy = ShlSchedulePolicy(
+            annual_rate=0.08,
+            payment_mode=ShlInterestPaymentMode.CASH_PAID,
+            repayment_mode=ShlRepaymentMode.EXPLICIT_SCHEDULE,
+        )
+        period_inputs = [
+            ShlPeriodInput(period_index=0, day_count_fraction=0.5),
+            ShlPeriodInput(period_index=2, day_count_fraction=0.5),  # gap!
+        ]
+        with pytest.raises(ValueError, match="contiguous"):
+            run_shl_schedule(
+                opening_balance_keur=100.0,
+                period_inputs=period_inputs,
+                policy=policy,
+            )
+
+    def test_M_period_index_not_starting_at_zero_raises(self):
+        """M — run_shl_schedule raises when first period_index != 0."""
+        policy = ShlSchedulePolicy(
+            annual_rate=0.08,
+            payment_mode=ShlInterestPaymentMode.CASH_PAID,
+            repayment_mode=ShlRepaymentMode.EXPLICIT_SCHEDULE,
+        )
+        period_inputs = [
+            ShlPeriodInput(period_index=1, day_count_fraction=0.5),
+        ]
+        with pytest.raises(ValueError, match="contiguous"):
+            run_shl_schedule(
+                opening_balance_keur=100.0,
+                period_inputs=period_inputs,
+                policy=policy,
+            )
+
+    def test_N_legacy_pik_method_raises_not_implemented(self):
+        """N — shl_repayment_method='pik' raises C3B3D1_BLOCKED_LEGACY_REPAYMENT_SEMANTICS."""
+        from financial_engine.adapters.shl_inputs import build_shl_schedule_policy_from_project_inputs
+
+        class FakeFinancing:
+            shl_rate = 0.08
+            shl_repayment_method = "pik"
+            shl_pik_switch_period = 0
+
+        class FakeProject:
+            financing = FakeFinancing()
+
+        with pytest.raises(NotImplementedError, match="C3B3D1_BLOCKED_LEGACY_REPAYMENT_SEMANTICS"):
+            build_shl_schedule_policy_from_project_inputs(FakeProject())
+
+    def test_O_legacy_accrued_method_raises_not_implemented(self):
+        """O — shl_repayment_method='accrued' raises C3B3D1_BLOCKED_LEGACY_REPAYMENT_SEMANTICS."""
+        from financial_engine.adapters.shl_inputs import build_shl_schedule_policy_from_project_inputs
+
+        class FakeFinancing:
+            shl_rate = 0.08
+            shl_repayment_method = "accrued"
+            shl_pik_switch_period = 0
+
+        class FakeProject:
+            financing = FakeFinancing()
+
+        with pytest.raises(NotImplementedError, match="C3B3D1_BLOCKED_LEGACY_REPAYMENT_SEMANTICS"):
+            build_shl_schedule_policy_from_project_inputs(FakeProject())
+
+    def test_P_pik_switch_positive_raises_not_implemented(self):
+        """P — shl_pik_switch_period > 0 raises C3B3D1_BLOCKED_MIXED_PAYMENT_MODE."""
+        from financial_engine.adapters.shl_inputs import build_shl_schedule_policy_from_project_inputs
+
+        class FakeFinancing:
+            shl_rate = 0.08
+            shl_repayment_method = "bullet"
+            shl_pik_switch_period = 5
+
+        class FakeProject:
+            financing = FakeFinancing()
+
+        with pytest.raises(NotImplementedError, match="C3B3D1_BLOCKED_MIXED_PAYMENT_MODE"):
+            build_shl_schedule_policy_from_project_inputs(FakeProject())
+
+    def test_Q_no_silent_none_from_adapter(self):
+        """Q — adapter never returns None; it raises for unsupported configs."""
+        from financial_engine.adapters.shl_inputs import build_shl_schedule_policy_from_project_inputs
+
+        class FakeFinancingFCF:
+            shl_rate = 0.08
+            shl_repayment_method = "cash_sweep"
+            shl_pik_switch_period = 0
+
+        class FakeProjectFCF:
+            financing = FakeFinancingFCF()
+
+        # Must raise, not return None
+        with pytest.raises(NotImplementedError):
+            result = build_shl_schedule_policy_from_project_inputs(FakeProjectFCF())
+
+    def test_R_bullet_policy_pik_switch_zero(self):
+        """R — bullet + pik_switch=0 produces valid BULLET CASH_PAID policy."""
+        from financial_engine.adapters.shl_inputs import build_shl_schedule_policy_from_project_inputs
+
+        class FakeFinancing:
+            shl_rate = 0.10
+            shl_repayment_method = "bullet"
+            shl_pik_switch_period = 0
+
+        class FakeProject:
+            financing = FakeFinancing()
+
+        policy = build_shl_schedule_policy_from_project_inputs(FakeProject())
+        assert isinstance(policy, ShlSchedulePolicy)
+        assert policy.repayment_mode == ShlRepaymentMode.BULLET
+        assert policy.payment_mode == ShlInterestPaymentMode.CASH_PAID
+        assert policy.annual_rate == pytest.approx(0.10)
+
+    def test_S_contiguous_three_periods_ok(self):
+        """S — three contiguous period_inputs [0,1,2] pass validation."""
+        policy = ShlSchedulePolicy(
+            annual_rate=0.08,
+            payment_mode=ShlInterestPaymentMode.CASH_PAID,
+            repayment_mode=ShlRepaymentMode.BULLET,
+        )
+        period_inputs = [
+            ShlPeriodInput(period_index=i, day_count_fraction=0.5)
+            for i in range(3)
+        ]
+        results = run_shl_schedule(
+            opening_balance_keur=100.0,
+            period_inputs=period_inputs,
+            policy=policy,
+            maturity_period_index=2,
+        )
+        assert len(results) == 3
+        assert results[2].closing_balance_keur == pytest.approx(0.0, abs=1e-9)
+
+    def test_T_gross_interest_is_not_deductible_interest(self):
+        """T — gross_accrued_interest_keur is gross accounting, not deductible.
+
+        The canonical SHL schedule computes gross accrual. TaxPolicy determines
+        deductibility separately. This test verifies the gross value is returned
+        regardless of deductibility classification.
+        """
+        r = compute_shl_period(
+            opening_balance_keur=1000.0,
+            drawdown_keur=0.0,
+            day_count_fraction=1.0,
+            annual_rate=0.08,
+            payment_mode=ShlInterestPaymentMode.CASH_PAID,
+            scheduled_principal_keur=0.0,
+            period_index=0,
+        )
+        # Gross = 1000 * 0.08 * 1.0 = 80
+        assert r.gross_accrued_interest_keur == pytest.approx(80.0, rel=1e-12)
+        # The gross value is independent of any deductibility determination.
+        # Whether 0, 50, or 80 kEUR is deductible is TaxPolicy's concern, not ours.
+        assert r.cash_interest_keur == pytest.approx(80.0, rel=1e-12)
+        assert r.pik_interest_keur == pytest.approx(0.0, abs=1e-12)

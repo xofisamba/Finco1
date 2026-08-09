@@ -1,7 +1,7 @@
 # C3B3D1 — Canonical SHL Accrual/Balance Schedule
 
-**Stage:** C3B3D1  
-**Branch:** `stage-c3b3d1-canonical-shl-schedule`  
+**Stage:** C3B3D1
+**Branch:** `stage-c3b3d1-canonical-shl-schedule`
 **Blocker removed:** `NO_GENERIC_CANONICAL_PERIOD_SHL_INTEREST_SOURCE`
 
 ---
@@ -32,8 +32,11 @@ The canonical schedule is:
 - **CASH-WATERFALL-INDEPENDENT**: no post_senior_cash input
 - **DETERMINISTIC**: given fixed opening balance and policy, output is fully determined
 
-Tax-authority line: `gross_accrued_interest_keur` is the deductible interest
-expense that flows into `PeriodInterestInput.shl_interest_keur` (C3B3D2 wiring scope).
+D2 wiring: `ShlPeriodResult.gross_accrued_interest_keur` flows into
+`PeriodInterestInput.shl_interest_keur`. Deductibility is then determined by
+`ShlInterestDeductibilityMode` / ATAD / thin-cap / other TaxPolicy mechanics —
+NOT by this schedule. Gross SHL interest is not deductible interest; TaxPolicy
+decides how much is deductible.
 
 ---
 
@@ -61,7 +64,8 @@ Invariant: `closing_balance >= 0` (absorbed for floating-point dust with `max(·
 | Effect on closing balance | none (cash out) | +gross (capitalised) |
 
 The canonical schedule does not model mixed (PIK-then-cash) modes — these are
-deferred to C3B3D2 via `shl_pik_switch_period > 0` detection in the adapter.
+deferred to C3B3D2 via `shl_pik_switch_period > 0` detection in the adapter
+(fail-closed: `C3B3D1_BLOCKED_MIXED_PAYMENT_MODE`).
 
 ---
 
@@ -82,6 +86,8 @@ The following repayment modes raise `NotImplementedError` in C3B3D1:
 - `CASH_SWEEP` — requires D2 cash-waterfall integration
 - `PIK_THEN_SWEEP` — requires D2 period-level mode switching
 - `PARTIAL_PAY_SWEEP` — requires D2 cash integration
+- `pik` / `accrued` method strings — no source evidence maps these to
+  EXPLICIT_SCHEDULE period-principal semantics (`C3B3D1_BLOCKED_LEGACY_REPAYMENT_SEMANTICS`)
 
 Error label: `C3B3D1_DEFERRED: FCF-waterfall repayment requires D2 cash integration`
 
@@ -91,43 +97,36 @@ These are detected in `build_shl_schedule_policy_from_project_inputs` via
 
 ---
 
-## 7. Construction → operating opening-balance seam (C3B3D2)
+## 7. Interest settlement vs accounting classification
 
-The canonical opening balance at operating period 1 is:
+CASH_PAID and PIK are **settlement mechanics** — how interest is settled
+each period (cash out vs capitalised into principal). They are NOT accounting
+classification policy (income-statement expense vs. asset capitalisation).
 
-```
-SHL_commitment + construction_PIK = operating_opening_balance
-```
+The SHL schedule does not determine accounting classification. Whether accrued
+SHL interest is expensed to P&L or capitalised to an asset is an accounting
+policy question outside C3B3D1 scope.
 
-For Oborovo: `13,547.2 kEUR + 1,169.0 kEUR IDC = ~14,716.2 kEUR` (approximate;
-exact construction PIK computation is NOT source-proven from committed evidence).
+---
 
-This seam is labelled `C3B3D2_CONSTRUCTION_SEAM` and is deferred to C3B3D2.
+## 8. Construction → operating opening-balance seam (C3B3D2)
+
+The construction → operating opening balance transition is labelled
+`C3B3D2_CONSTRUCTION_SEAM` and is deferred to C3B3D2.
 The C3B3D1 adapter does NOT use `shl_amount_keur` as an opening balance — it
 is referenced only for validation.
 
 ---
 
-## 8. Tax boundary
+## 9. Tax boundary
 
 The canonical schedule exposes `gross_accrued_interest_keur` per period. This
 feeds `PeriodInterestInput.shl_interest_keur` in the clean tax engine (D2 wiring).
 
-For projects where `atad_enabled=False` and `shl_interest_deductibility=FULLY_NON_DEDUCTIBLE`
-(Oborovo): the gross SHL interest cancels entirely with fiscal reintegration —
-the net effect on taxable income is zero. The canonical schedule still computes
-the correct gross for audit purposes.
-
----
-
-## 9. Accounting boundary
-
-The canonical SHL schedule models **financial accounting** (balance sheet + P&L):
-- PIK is capitalised into the SHL liability balance
-- Cash interest is an income-statement expense
-
-No asset/liability netting, no deferred tax, no withholding tax modelling in C3B3D1.
-WHT modelling is deferred to C3B3D2 via `ShlTaxInterface` in `finco_core.shl.inputs`.
+`gross_accrued_interest_keur` answers: "what gross SHL interest accrued this period?"
+It does NOT answer: "how much SHL interest is deductible?" Deductibility is
+governed by `ShlInterestDeductibilityMode` / ATAD / thin-cap / reintegration
+mechanics in TaxPolicy — a separate concern from accrual computation.
 
 ---
 
@@ -171,3 +170,4 @@ TUHO continues to run via the legacy waterfall path unchanged.
 | Oborovo opening balance proof | C3B3D2_OBOROVO_BALANCE_PROOF |
 | TUHO pik_then_sweep classification | C3B3D2_TUHO_SWEEP |
 | FCF waterfall cash-waterfall integration | C3B3D2_FCF_WATERFALL |
+| pik/accrued repayment method source evidence | C3B3D2_LEGACY_METHOD_SEMANTICS |

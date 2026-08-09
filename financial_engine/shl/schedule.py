@@ -80,6 +80,15 @@ def run_shl_schedule(
                 f"for {n} period_inputs (valid: 0 to {n - 1})"
             )
 
+    # ── period-index contiguity validation ─────────────────────────────────
+    for idx, p_input in enumerate(period_inputs):
+        if p_input.period_index != idx:
+            raise ValueError(
+                f"period_inputs must be contiguous starting at 0: "
+                f"expected period_index={idx} at position {idx}, "
+                f"got period_index={p_input.period_index}"
+            )
+
     results: list[ShlPeriodResult] = []
     balance = opening_balance_keur
 

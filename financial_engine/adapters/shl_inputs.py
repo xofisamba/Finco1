@@ -1,7 +1,6 @@
 """financial_engine.adapters.shl_inputs — ProjectInputs → ShlSchedulePolicy adapter (C3B3D1).
 
 Maps canonical ProjectInputs.financing to ShlSchedulePolicy.
-Returns None if the financing params cannot be mapped cleanly (fail-closed).
 
 IMPORTANT: This adapter is NOT wired into orchestrator.py, waterfall_engine.py,
 or any existing production path. It is adapter foundation only.
@@ -38,13 +37,10 @@ _FCF_WATERFALL_METHODS = frozenset({
 # SHL repayment method strings that map to BULLET.
 _BULLET_METHODS = frozenset({"bullet"})
 
-# SHL repayment method strings that map to EXPLICIT_SCHEDULE.
-_EXPLICIT_SCHEDULE_METHODS = frozenset({"accrued", "pik"})
-
 
 def build_shl_schedule_policy_from_project_inputs(
     project: "ProjectInputs",
-) -> ShlSchedulePolicy | None:
+) -> ShlSchedulePolicy:
     """Map ProjectInputs.financing to ShlSchedulePolicy.
 
     Parameters
@@ -54,27 +50,31 @@ def build_shl_schedule_policy_from_project_inputs(
 
     Returns
     -------
-    ShlSchedulePolicy or None.
-        None is returned when the repayment method requires FCF-waterfall cash
-        integration (C3B3D1_BLOCKED_FCF_REPAYMENT). The caller must handle None
-        as "canonical SHL schedule not available for this configuration."
+    ShlSchedulePolicy
+        Policy derived from the project's financing parameters.
 
     Notes
     -----
     * shl_amount_keur is used only for validation/reference. The canonical
       opening balance is NOT shl_amount_keur — it comes from the construction
       output (seam deferred to C3B3D2, labelled C3B3D2_CONSTRUCTION_SEAM).
-    * shl_pik_switch_period > 0 signals a future mixed PIK→cash mode. This is
-      documented as DEFERRED for D2. The adapter defaults to CASH_PAID when
-      shl_pik_switch_period == 0 or None.
+    * shl_pik_switch_period > 0 signals a mixed PIK→cash mode. This is
+      fail-closed in C3B3D1 (C3B3D1_BLOCKED_MIXED_PAYMENT_MODE).
     * No project.name or project.code dispatch. Policy is derived solely from
       financing field values.
 
     Raises
     ------
     NotImplementedError
-        When repayment method is FCF_WATERFALL/CASH_SWEEP (C3B3D1_BLOCKED_FCF_REPAYMENT).
-        This is fail-closed, not silent.
+        C3B3D1_BLOCKED_FCF_REPAYMENT — repayment method requires FCF-waterfall
+          cash integration (fcf_waterfall, cash_sweep, partial_pay_sweep,
+          pik_then_sweep).
+        C3B3D1_BLOCKED_LEGACY_REPAYMENT_SEMANTICS — repayment method string
+          ("pik", "accrued") has no proven mapping to EXPLICIT_SCHEDULE
+          period-principal semantics in this codebase.
+        C3B3D1_BLOCKED_MIXED_PAYMENT_MODE — shl_pik_switch_period > 0 requires
+          period-level payment mode switching (C3B3D2 scope).
+        C3B3D1_BLOCKED_UNKNOWN_REPAYMENT — unrecognised repayment method string.
     ValueError
         When shl_rate is not finite or is negative.
     """
@@ -96,8 +96,16 @@ def build_shl_schedule_policy_from_project_inputs(
         )
     elif method in _BULLET_METHODS:
         repayment_mode = ShlRepaymentMode.BULLET
-    elif method in _EXPLICIT_SCHEDULE_METHODS:
-        repayment_mode = ShlRepaymentMode.EXPLICIT_SCHEDULE
+    elif method in ("pik", "accrued"):
+        # These strings appear in legacy SHL inputs but do NOT map to
+        # EXPLICIT_SCHEDULE period-by-period principal semantics — no source
+        # evidence proves that mapping. Fail closed.
+        raise NotImplementedError(
+            f"C3B3D1_BLOCKED_LEGACY_REPAYMENT_SEMANTICS: shl_repayment_method={method_raw!r} "
+            "has no proven mapping to ShlRepaymentMode.EXPLICIT_SCHEDULE. "
+            "Canonical adapter cannot silently assume period-principal semantics "
+            "for this method string. Deferred to C3B3D2 with source evidence."
+        )
     else:
         # Unknown method — fail closed.
         raise NotImplementedError(
@@ -107,13 +115,15 @@ def build_shl_schedule_policy_from_project_inputs(
         )
 
     # ── interest payment mode ────────────────────────────────────────────────
-    # shl_pik_switch_period == 0 or None → default CASH_PAID.
-    # shl_pik_switch_period > 0 → mixed PIK→cash mode, DEFERRED to D2.
+    # shl_pik_switch_period == 0 or None → CASH_PAID (period-0 cash convention).
+    # shl_pik_switch_period > 0 → mixed PIK→cash mode, fail-closed in C3B3D1.
     pik_switch: int = getattr(financing, "shl_pik_switch_period", 0) or 0
     if pik_switch > 0:
-        # DEFERRED: mixed mode requires period-level payment switching (D2 scope).
-        # Return None so the caller skips canonical SHL schedule for this project.
-        return None
+        raise NotImplementedError(
+            f"C3B3D1_BLOCKED_MIXED_PAYMENT_MODE: shl_pik_switch_period={pik_switch!r} "
+            "requires period-level payment mode switching (C3B3D2 scope). "
+            "Canonical SHL schedule cannot model PIK→cash transitions in C3B3D1."
+        )
 
     payment_mode = ShlInterestPaymentMode.CASH_PAID
 

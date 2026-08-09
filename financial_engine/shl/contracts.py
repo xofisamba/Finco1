@@ -69,6 +69,18 @@ class ShlSchedulePolicy:
             raise ValueError(
                 f"annual_rate must be non-negative, got {self.annual_rate!r}"
             )
+        if not isinstance(self.rate_mode, ShlInterestRateMode):
+            raise ValueError(
+                f"rate_mode must be ShlInterestRateMode, got {self.rate_mode!r}"
+            )
+        if not isinstance(self.payment_mode, ShlInterestPaymentMode):
+            raise ValueError(
+                f"payment_mode must be ShlInterestPaymentMode, got {self.payment_mode!r}"
+            )
+        if not isinstance(self.repayment_mode, ShlRepaymentMode):
+            raise ValueError(
+                f"repayment_mode must be ShlRepaymentMode, got {self.repayment_mode!r}"
+            )
 
 
 @dataclass(frozen=True)
@@ -111,7 +123,8 @@ class ShlPeriodResult:
         SHL balance at the start of the period (before drawdown).
     gross_accrued_interest_keur : float
         Interest accrued on (opening + drawdown) × annual_rate × day_count_fraction.
-        This is the tax-authority line — the deductible / gross interest for PeriodInterestInput.
+        This is the gross accounting SHL interest — flows into PeriodInterestInput.shl_interest_keur
+        as an input to the tax engine; deductibility is determined by TaxPolicy, not here.
     cash_interest_keur : float
         Cash settled interest. Equals gross when CASH_PAID, 0 when PIK.
     pik_interest_keur : float
