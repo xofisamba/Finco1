@@ -415,10 +415,12 @@ def create_default_oborovo() -> ProjectInputs:
         loss_carryforward_cap=1.0,
         legal_reserve_cap=0.10,
         thin_cap_enabled=False,
-        # C3B3D0: atad_enabled is independent of thin_cap_enabled. Explicit True.
-        # ATAD provisions exist under Croatian law (Art. 31a) but the ATAD min threshold
-        # (€3m) exceeds Oborovo senior interest in all periods → ATAD doesn't bind.
-        atad_enabled=True,
+        # C3B3D0: atad_enabled is independent of thin_cap_enabled. Explicit False.
+        # Source workbook evidence (C3B1): BS!G45=thin_cap_enabled=False gates ATAD=False
+        # for Oborovo. The field is now explicit rather than derived. The legacy waterfall
+        # engine applies atad_applies=True with min_threshold=3000kEUR (never binds for
+        # Oborovo's senior interest levels), so financial outputs are unaffected.
+        atad_enabled=False,
         atad_ebitda_limit=0.30,
         atad_min_interest_keur=3000.0,
         wht_sponsor_dividends=0.05,

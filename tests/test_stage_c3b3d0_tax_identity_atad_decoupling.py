@@ -154,22 +154,25 @@ class TestAtadEnabledSerialization:
         raw = json.dumps(payload)
         return deserialize_inputs(json.loads(raw))
 
-    def test_atad_enabled_true_roundtrip(self):
+    def test_atad_enabled_oborovo_roundtrip(self):
+        """Oborovo atad_enabled=False (workbook BS!G45=False) survives round-trip."""
         from app.project_factories import create_default_oborovo
         p = create_default_oborovo()
+        assert p.tax.atad_enabled is False  # C3B1 source: workbook ATAD=False for Oborovo
         p2 = self._roundtrip(p)
-        assert p2.tax.atad_enabled is True
+        assert p2.tax.atad_enabled is False
 
-    def test_atad_enabled_false_roundtrip(self):
+    def test_atad_enabled_true_explicit_roundtrip(self):
+        """atad_enabled=True survives round-trip when set explicitly."""
         import dataclasses
         import json
         from app.project_factories import create_default_oborovo
         from finco_core.inputs.serialization import project_inputs_to_dict as serialize_inputs, project_inputs_from_dict as deserialize_inputs
         p = create_default_oborovo()
-        p2 = dataclasses.replace(p, tax=dataclasses.replace(p.tax, atad_enabled=False))
+        p2 = dataclasses.replace(p, tax=dataclasses.replace(p.tax, atad_enabled=True))
         payload = serialize_inputs(p2)
         p3 = deserialize_inputs(json.loads(json.dumps(payload)))
-        assert p3.tax.atad_enabled is False
+        assert p3.tax.atad_enabled is True
 
     def test_old_payload_without_atad_enabled_deserializes_to_true(self):
         """Old payloads without atad_enabled key should default to True."""

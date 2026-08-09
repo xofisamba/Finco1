@@ -1,0 +1,43 @@
+name: C3B3D0 Tax Identity & ATAD Decoupling
+
+on:
+  push:
+    branches: [main, stage-c3b3d0-*]
+  pull_request:
+    branches: [main]
+
+jobs:
+  tax-identity-atad-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -e ".[dev]"
+      - name: C3B3D0 — Tax identity and ATAD decoupling tests
+        run: |
+          python -m pytest tests/test_stage_c3b3d0_tax_identity_atad_decoupling.py \
+            -q --tb=short
+      - name: C3B3C regression — SHL deductibility and legacy safety
+        run: |
+          python -m pytest \
+            tests/test_stage_c3b3c_tax_policy_shl_deductibility.py \
+            tests/test_stage_c3b3c_legacy_runtime_safety.py \
+            -q --tb=short
+      - name: C3B3B regression — clean tax CFADs and debt feedback
+        run: |
+          python -m pytest tests/test_stage_c3b3b_clean_tax_cfads_debt_feedback.py \
+            -q --tb=short
+      - name: C3B3A regression — clean senior debt source contract
+        run: |
+          python -m pytest tests/test_stage_c3b3a_clean_senior_debt_source_contract.py \
+            -q --tb=short
+      - name: C3B2 regression — Oborovo debt interest source closure
+        run: |
+          python -m pytest tests/test_stage_c3b2_oborovo_debt_interest_source_closure.py \
+            -q --tb=short
+      - name: C3B1 regression — Oborovo tax source truth
+        run: |
+          python -m pytest tests/test_stage_c3b1_oborovo_tax_source_truth.py \
+            -q --tb=short
