@@ -5,7 +5,7 @@ No project-name dispatch, no snapshot loading, no factory invocations.
 
 Tax policy is derived exclusively from project input fields:
   - corporate_rate        → TaxPolicy.corporate_rate
-  - thin_cap_enabled      → TaxPolicy.atad_enabled (workbook gates ATAD on thin_cap flag)
+  - atad_enabled          → TaxPolicy.atad_enabled (C3B3D0: independent of thin_cap_enabled)
   - atad_ebitda_limit     → TaxPolicy.atad_ebitda_limit
   - atad_min_interest_keur→ TaxPolicy.atad_de_minimis_threshold_keur_annual
   - loss_carryforward_years → TaxPolicy.loss_carryforward_years
@@ -16,6 +16,9 @@ C3B1 source evidence (Oborovo):
   - FR = full SHL reintegration (thin_cap_enabled=False → C59=1.0, D59=True)
   - For ATAD=False + thin_cap=False: TI = EBITDA - tax_dep - senior_interest (SHL cancels)
   - cash_tax_timing = TAX_YEAR_LAST_PERIOD, lag=0
+
+C3B3D0: atad_enabled and thin_cap_enabled are independent. This adapter reads
+  tax.atad_enabled directly — it no longer derives ATAD from thin_cap_enabled.
 
 Opening loss vintages: derived from project inputs.tax.initial_tax_loss_keur.
 For Oborovo: initial_tax_loss_keur = 0.0 → empty tuple.
@@ -86,9 +89,10 @@ def build_tax_contract_from_project_inputs(
             f"{freq!r}. Only SEMESTRIAL (2 periods/year) is supported."
         )
 
-    # ATAD gated on thin_cap_enabled (workbook: ATAD rows guarded by thin_cap flag).
-    # C3B1 evidence: G56=BS!G45=thin_cap_enabled; Oborovo thin_cap=False → ATAD=False.
-    atad_enabled: bool = tax.thin_cap_enabled
+    # C3B3D0: Read atad_enabled directly from TaxParams — independent of thin_cap_enabled.
+    # Previously this adapter derived atad_enabled from thin_cap_enabled (wrong coupling).
+    # Now atad_enabled is an explicit field on TaxParams (default True for backward compat).
+    atad_enabled: bool = tax.atad_enabled
 
     # FAIL-CLOSED: ATAD with empty period_interest is silently wrong.
     # This adapter always returns period_interest=() — the fixed-point solver
@@ -99,10 +103,9 @@ def build_tax_contract_from_project_inputs(
     # running the ATAD calculation.
     if atad_enabled:
         raise NotImplementedError(
-            "build_tax_contract_from_project_inputs: atad_enabled=True (thin_cap_enabled=True) "
-            "is not supported by this adapter. ATAD calculation requires complete financing "
-            "interest inputs (senior + SHL + other). This adapter only supplies the empty "
-            "period_interest stub. Merge full interest explicitly before enabling ATAD."
+            "build_tax_contract_from_project_inputs: atad_enabled=True requires complete "
+            "financing interest inputs (senior + SHL + other). This adapter only supplies "
+            "the empty period_interest stub. Merge full interest explicitly before enabling ATAD."
         )
 
     # Clean cash-tax timing — fail-closed for projects without explicit opt-in.

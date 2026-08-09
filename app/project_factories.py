@@ -415,6 +415,10 @@ def create_default_oborovo() -> ProjectInputs:
         loss_carryforward_cap=1.0,
         legal_reserve_cap=0.10,
         thin_cap_enabled=False,
+        # C3B3D0: atad_enabled is independent of thin_cap_enabled. Explicit True.
+        # ATAD provisions exist under Croatian law (Art. 31a) but the ATAD min threshold
+        # (€3m) exceeds Oborovo senior interest in all periods → ATAD doesn't bind.
+        atad_enabled=True,
         atad_ebitda_limit=0.30,
         atad_min_interest_keur=3000.0,
         wht_sponsor_dividends=0.05,
@@ -670,6 +674,9 @@ def create_default_tuho_wind1() -> ProjectInputs:
         prior_tax_loss_keur=25_000.0,  # 18m construction → large carryforward
         legal_reserve_cap=0.10,
         thin_cap_enabled=True,
+        # C3B3D0: atad_enabled is independent of thin_cap_enabled. Explicit True.
+        # ATAD provisions exist under Croatian law; thin_cap is a separate mechanism.
+        atad_enabled=True,
         atad_ebitda_limit=0.30,
         atad_min_interest_keur=3000.0,
         wht_sponsor_dividends=0.05,
