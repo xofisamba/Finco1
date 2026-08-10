@@ -42,7 +42,9 @@ Governance constants:
 
 No project-name dispatch. No DS25/DS40 hardcoding. No calibration plugs.
 No production-engine modifications. No source fixture vectors in production paths.
-DSRA_ORDERING_UNRESOLVED. CONSTRUCTION_DATE_CONVENTION_UNRESOLVED.
+Oborovo DSRA: DSRA_NOT_CAUSAL_FOR_OBOROVO_CURRENT_RESIDUAL_SOURCE_PROVEN (Inputs!I348=0).
+Generic Finco DSRA capability: GENERIC_DSRA_WATERFALL_ORDERING_NOT_IMPLEMENTED.
+CONSTRUCTION_DATE_CONVENTION_UNRESOLVED.
 """
 from __future__ import annotations
 
@@ -1612,5 +1614,9 @@ def format_causal_attribution_table(result: DiagnosticGridResult) -> str:
         rows.append(row)
 
     rows.append(sep)
-    rows.append("Cause status: CURRENT_CAUSE_UNRESOLVED. DSRA_ORDERING_UNRESOLVED.")
+    rows.append(
+        "Cause status: CURRENT_CAUSE_UNRESOLVED. "
+        "Oborovo DSRA: DSRA_NOT_CAUSAL_FOR_OBOROVO_CURRENT_RESIDUAL_SOURCE_PROVEN. "
+        "Generic DSRA: GENERIC_DSRA_WATERFALL_ORDERING_NOT_IMPLEMENTED."
+    )
     return "\n".join(rows)

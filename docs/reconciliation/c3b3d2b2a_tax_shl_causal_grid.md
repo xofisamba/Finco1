@@ -140,13 +140,22 @@ derived from B/C/D/E arm comparisons.
 
 **Conclusion**: CURRENT_CAUSE_UNRESOLVED. Causal attribution requires GRID-WS0 validation first.
 
-### FINDING-3: EBT gate prevents all loss utilisation for Oborovo
+### FINDING-3: EBT gate blocks loss utilisation for the observed Oborovo source profile
 
-Oborovo's EBT is always negative (SHL interest exceeds taxable income).
-The EBT gate (Row 37) therefore prevents ALL loss carryforward utilisation.
-When active, expired losses → higher CIT → lower CFADS → less cash available
-for SHL → **larger** DS[40] residual. This is qualitatively confirmed by
-GRID-C (+62 kEUR vs GRID-0) and GRID-BCD (+32 kEUR).
+The source formula (Row 37: `=IF(AND(G36<=0, G32>0), MIN(ABS(G36), G32), 0)`) uses
+EBT > 0 as the allocation gate. For the Oborovo source profile, EBT is negative
+throughout the loss period (SHL interest dominates), so the gate prevents
+all loss carryforward utilisation.
+
+Within the tax-surrogate harness, enabling this mechanic changes tax, CFADS, and DS[40]
+in the observed direction (GRID-C DS[40] = 2780.13, GRID-BCD DS[40] = 2750.49).
+
+**Classification: WITHIN_TAX_SURROGATE_ONLY**
+
+Because GRID-WS0 has not been validated as equivalent to GRID-0, this result must NOT
+be interpreted as evidence that the EBT gate increases or decreases the current
+production GRID-0 residual. The source-proven Excel formula is preserved for
+diagnostic replay; no causal production attribution is claimed.
 
 ### FINDING-4: Row-39 cap does not bind for Oborovo
 
@@ -266,8 +275,9 @@ production paths — correctly excluded from the diagnostic per FINDING-1.
    the current GRID-0. Do not cite the historical bridge as explaining the current gap.
    See `c3b3d2b2a_cfads_dscr_source_mapping.md` Section 5.
 
-4. **DSRA**: DSRA_NOT_CAUSAL_FOR_OBOROVO_CURRENT_RESIDUAL_SOURCE_PROVEN — DSRA=0 in
-   source. DSRA_ORDERING_UNRESOLVED is resolved for Oborovo. Do NOT rank as contributor.
+4. **DSRA (Oborovo)**: DSRA_NOT_CAUSAL_FOR_OBOROVO_CURRENT_RESIDUAL_SOURCE_PROVEN —
+   DSRA=0 in source (`Inputs!I348=0`); Do NOT rank as contributor.
+   Generic Finco DSRA ordering: GENERIC_DSRA_WATERFALL_ORDERING_NOT_IMPLEMENTED (not in scope for D2B2).
 
 5. **Do NOT attempt SHL feedback wiring**: FINDING-1 confirms this has zero TI
    effect for Oborovo and would complicate the engine for no analytical gain.

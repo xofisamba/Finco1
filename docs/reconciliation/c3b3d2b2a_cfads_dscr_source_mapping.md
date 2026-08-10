@@ -189,7 +189,7 @@ generating Macro!row50. The VBA transformation direction is CF79 → Macro49 →
 
 ### 4.1 CURRENT_GRID0_PRODUCTION_CANDIDATE
 
-The current runtime GRID-0 (as of R4 head SHA) produces **43,919.032698 kEUR**
+The current runtime GRID-0 at the R5/R5.1 reviewed baseline produces **43,919.032698 kEUR**
 senior debt. This is the relevant baseline for the DS[40] SHL residual ≈ 2,718.02 kEUR.
 
 Delta vs source: **+1,066.754 kEUR** (CURRENT_UPSTREAM_CLEAN_CASH_RESIDUAL context)
@@ -249,7 +249,7 @@ Likely contributing factors (directional, from historical bridge evidence):
 
 A properly built current GRID-0 bridge would require running Phase2C counterfactuals
 starting from the CURRENT GRID-0 baseline, changing one factor at a time. This has
-not been done in R4. Do not substitute the historical bridge for the current one.
+not been done in C3B3D2B2A and remains intentionally deferred. Do not substitute the historical bridge for the current one.
 
 ---
 

@@ -349,9 +349,13 @@ class TestGridB:
 class TestGridC:
     """GRID-C: EBT gate for loss utilisation only.
 
-    For Oborovo: EBT is always negative (SHL interest dominates).
-    EBT gate prevents ALL loss utilisation → losses expire → higher tax
-    relative to GRID-0 canonical.
+    Source formula (Row 37): IF(AND(G36<=0, G32>0), MIN(ABS(G36), G32), 0)
+    For the Oborovo source profile, EBT is negative throughout the loss period
+    (SHL interest dominates), so the gate prevents loss carryforward utilisation.
+
+    Classification: WITHIN_TAX_SURROGATE_ONLY
+    GRID-WS0 has not been validated against GRID-0. Results within this surrogate
+    must NOT be interpreted as causal evidence for the production GRID-0 residual.
     """
 
     def test_arm_id(self, grid):
@@ -1466,9 +1470,10 @@ class TestTaxWindowClassification:
         not eliminate all CIT across the operating life)."""
         assert grid.grid0.total_cash_tax_keur > 0
 
-    def test_dsra_ordering_resolved_for_oborovo(self):
-        """DSRA_ORDERING_UNRESOLVED resolves to NOT_CAUSAL for Oborovo specifically.
-        DSRA=0 in source → ordering is moot; DSRA cannot be ranked as a driver."""
+    def test_dsra_not_causal_for_oborovo(self):
+        """DSRA_NOT_CAUSAL_FOR_OBOROVO_CURRENT_RESIDUAL_SOURCE_PROVEN:
+        DSRA=0 in source (Inputs!I348=0) → DSRA cannot be ranked as a driver.
+        Generic Finco DSRA waterfall ordering: GENERIC_DSRA_WATERFALL_ORDERING_NOT_IMPLEMENTED."""
         wc = _load_oborovo_debt_interest_fixture()["workstream_c"]
         assert wc["all_cached_values_zero"] is True
 
