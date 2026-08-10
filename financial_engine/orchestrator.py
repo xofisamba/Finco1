@@ -745,17 +745,38 @@ def run_senior_debt_model(inputs: SeniorDebtModelInput) -> ProjectModelResult:
         and _bank_scenario.yield_scenario != inputs.operating.technical.yield_scenario
     )
 
+    # Revenue-regime authority for bank splice.
+    # The revenue leaf in the operating model already applies first_merchant_operating_period_index
+    # (when set) to override the calendar-driven is_ppa_active flag for revenue purposes.
+    # To ensure the bank scenario splice uses the SAME effective PPA/merchant boundary as
+    # the revenue engine, we derive the splice criterion from first_merchant_operating_period_index
+    # when it is set, rather than relying solely on period.is_ppa_active.
+    _fmopi = inputs.operating.revenue.first_merchant_operating_period_index
+    if _fmopi is not None:
+        # Build a sorted list of operating-period global indices to derive 0-based rank.
+        _op_sorted = sorted(p.period_index for p in phase2b_result.periods if p.is_operation)
+        _op_rank = {pidx: rank for rank, pidx in enumerate(_op_sorted)}
+
+    def _is_ppa_for_bank_splice(period: "OperatingPeriodResult") -> bool:
+        """True if this period should use base (PPA) production in the bank splice."""
+        if _fmopi is not None:
+            return _op_rank.get(period.period_index, 0) < _fmopi
+        return period.is_ppa_active
+
     if _has_bank_scenario:
         from financial_engine.inputs import ProductionScenarioScope as _PSS
         _bank_op_input = _derive_bank_operating_input(inputs.operating, _bank_scenario)
         _bank_op_result = run_operating_model(_bank_op_input)
         if _bank_scenario.scope == _PSS.MERCHANT_ONLY:
-            # PPA periods: use base (P50 — contractually locked).
-            # Merchant periods: use bank (P90 downside).
+            # OBOROVO_MERCHANT_ONLY_BANK_CASE_RULE_CANDIDATE_ONLY:
+            # PPA periods → base (P50 production).  Merchant periods → bank (P90 downside).
+            # Splice criterion uses the same revenue-regime authority as the revenue engine.
+            # BANK_CASE_TRANSFORMATION_MECHANISM_UNRESOLVED: this candidate does NOT
+            # reproduce source Macro50/DS!row20.  Classification: CANDIDATE, not source-proven.
             _base_period_map = {p.period_index: p for p in phase2b_result.periods}
             _bank_period_map = {p.period_index: p for p in _bank_op_result.periods}
             _bank_periods = tuple(
-                _base_period_map[p.period_index] if p.is_ppa_active
+                _base_period_map[p.period_index] if _is_ppa_for_bank_splice(p)
                 else _bank_period_map.get(p.period_index, p)
                 for p in phase2b_result.periods
             )
@@ -854,14 +875,31 @@ def run_senior_debt_model(inputs: SeniorDebtModelInput) -> ProjectModelResult:
     #
     # Base path: _last_tax_state already holds the authoritative base-case state.
     _bank_sizing_cfads_keur: tuple | None = None
+    _bank_sizing_dscr: tuple | None = None
+    _actual_base_dscr: tuple | None = None  # base P50 CFADS / debt service (post-convergence)
 
     if sd_result.diagnostics.is_authoritative and _last_tax_state:
         if _has_bank_scenario:
-            # Bank path: extract bank CFADS for audit, then recompute base final tax.
+            # Bank path: extract bank CFADS for audit (fail-closed), then recompute base.
             _, _, bank_cfads_r = _last_tax_state[0]
             _bank_cfads_by_idx = {cr.period_index: cr.cfads_keur for cr in bank_cfads_r}
+            # Fail-closed: every debt period MUST have a bank CFADS value.
+            def _require_bank_cfads(period_idx: int) -> float:
+                val = _bank_cfads_by_idx.get(period_idx)
+                if val is None:
+                    raise ValueError(
+                        f"BANK_SIZING_CFADS_REQUIRED_PERIOD_MISSING: "
+                        f"period_index={period_idx} has no bank CFADS entry. "
+                        f"All debt-tenor periods must contribute a bank CFADS value."
+                    )
+                return val
             _bank_sizing_cfads_keur = tuple(
-                _bank_cfads_by_idx.get(i, 0.0) for i in sd_result.period_indices
+                _require_bank_cfads(i) for i in sd_result.period_indices
+            )
+            # Bank-sizing DSCR: bank CFADS / debt service (sizing/bank viewpoint).
+            _bank_sizing_dscr = tuple(
+                (bk / ds if ds > 0 else None)
+                for bk, ds in zip(_bank_sizing_cfads_keur, sd_result.senior_debt_service_keur)
             )
             # Recompute base-case final tax/CFADS with converged senior interest.
             _final_senior_interest = dict(
@@ -876,14 +914,18 @@ def run_senior_debt_model(inputs: SeniorDebtModelInput) -> ProjectModelResult:
                 phase2b_result, _final_base_tax_r,
                 _final_base_tax_r.period_results, _final_base_cfads_r,
             )
+            # Actual/base DSCR: base P50 CFADS / debt service (economic project DSCR).
+            _base_cfads_by_idx = {cr.period_index: cr.cfads_keur for cr in _final_base_cfads_r}
+            _actual_base_dscr = tuple(
+                (_base_cfads_by_idx.get(pidx, 0.0) / ds if ds > 0 else None)
+                for pidx, ds in zip(sd_result.period_indices, sd_result.senior_debt_service_keur)
+            )
         else:
             # Base path: last state is already the authoritative base-case.
             tax_r, period_r, cfads_r = _last_tax_state[0]
             final_tax_cfads = _assemble_tax_cfads_schedules(
                 phase2b_result, tax_r, period_r, cfads_r
             )
-    else:
-        final_tax_cfads = phase2b_result.tax_and_cfads
 
     # Step 5b: Assemble result-layer SeniorDebtSchedules
     diag_dict = {
@@ -897,6 +939,14 @@ def run_senior_debt_model(inputs: SeniorDebtModelInput) -> ProjectModelResult:
         "binding_constraint": sd_result.diagnostics.binding_constraint,
         "termination_reason": sd_result.diagnostics.termination_reason,
     }
+    # DSCR semantics:
+    # When bank scenario is active:
+    #   senior_dscr       = actual/base DSCR (base P50 CFADS / debt service) — economic authority
+    #   bank_sizing_dscr  = sizing/bank DSCR (bank CFADS / debt service) — audit only
+    # When no bank scenario:
+    #   senior_dscr       = CFADS / debt service (unchanged, backward-compatible)
+    #   bank_sizing_dscr  = None
+    _result_dscr = _actual_base_dscr if _has_bank_scenario else sd_result.senior_dscr
     result_schedules = _SeniorDebtSchedulesResult(
         period_indices=sd_result.period_indices,
         senior_debt_opening_keur=sd_result.senior_debt_opening_keur,
@@ -904,11 +954,12 @@ def run_senior_debt_model(inputs: SeniorDebtModelInput) -> ProjectModelResult:
         senior_principal_keur=sd_result.senior_principal_keur,
         senior_debt_service_keur=sd_result.senior_debt_service_keur,
         senior_debt_closing_keur=sd_result.senior_debt_closing_keur,
-        senior_dscr=sd_result.senior_dscr,
+        senior_dscr=_result_dscr,
         debt_size_keur=sd_result.debt_size_keur,
         binding_constraint=sd_result.binding_constraint,
         diagnostics=diag_dict,
         bank_sizing_cfads_keur=_bank_sizing_cfads_keur,
+        bank_sizing_dscr=_bank_sizing_dscr,
     )
 
     # Step 6: Phase 2C provenance
@@ -954,7 +1005,10 @@ def run_senior_debt_model(inputs: SeniorDebtModelInput) -> ProjectModelResult:
                 f"iterations={sd_result.diagnostics.iteration_count}; "
                 + (
                     f"bank_sizing_scenario={_bank_scenario.yield_scenario.value!r} "
-                    f"(debt sized from bank CFADS; tax_and_cfads is base/economic authority)"
+                    f"scope={_bank_scenario.scope.value!r} "
+                    f"(debt sized from bank CFADS; "
+                    f"senior_dscr=actual/base-P50; bank_sizing_dscr=sizing; "
+                    f"tax_and_cfads is base/economic authority)"
                     if _has_bank_scenario else
                     "bank_sizing_scenario=None (debt sized from base CFADS)"
                 ),

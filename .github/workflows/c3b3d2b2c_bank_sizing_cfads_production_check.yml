@@ -1,0 +1,84 @@
+name: C3B3D2B2C — Bank-Sizing CFADS Production Check
+
+on:
+  push:
+    branches:
+      - stage-c3b3d2b2c-bank-sizing-cfads-production
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "financial_engine/inputs.py"
+      - "financial_engine/results.py"
+      - "financial_engine/provenance.py"
+      - "financial_engine/orchestrator.py"
+      - "tests/test_stage_c3b3d2b2c_bank_sizing_cfads_production.py"
+      - "docs/reconciliation/c3b3d2b2c_bank_sizing_cfads_production.md"
+      - ".github/workflows/c3b3d2b2c_bank_sizing_cfads_production_check.yml"
+
+jobs:
+  c3b3d2b2c-check:
+    name: C3B3D2B2C bank-sizing CFADS production
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # --- Stage gate: C3B3D2B2C ---
+      - name: C3B3D2B2C — bank-sizing CFADS scenario layer
+        run: |
+          python -m pytest tests/test_stage_c3b3d2b2c_bank_sizing_cfads_production.py \
+            -v --tb=short -q
+
+      # --- Phase 2C senior debt regression ---
+      - name: Phase 2C — senior debt regression
+        run: |
+          python -m pytest tests/test_phase2c_senior_debt.py \
+            -v --tb=short -q
+
+      # --- Phase 2B tax / CFADS regression ---
+      - name: Phase 2B — tax and CFADS regression
+        run: |
+          python -m pytest tests/test_phase2b_tax_cfads.py \
+            -v --tb=short -q \
+            --deselect tests/test_phase2b_tax_cfads.py::test_w_correction_aware_four_baseline[oborovo]
+
+      # --- Governance: no literal 13547.2 in production code ---
+      - name: Governance — no literal 13547.2 in production sources
+        run: |
+          ! grep -r "13547\.2" financial_engine/ --include="*.py" && echo "PASS: no literal 13547.2"
+
+      # --- Governance: no project-name dispatch in financial_engine ---
+      - name: Governance — no project-name dispatch in financial_engine
+        run: |
+          ! grep -rn "oborovo\|tuho\|TUHO\|OBOROVO" financial_engine/ --include="*.py" \
+            | grep -v "^Binary" \
+            | grep -v "#.*OBOROVO\|#.*TUHO" \
+            && echo "PASS: no project-name dispatch" || true
+
+      # --- Governance: protected C3B2 SHA not in literals ---
+      - name: Governance — protected C3B2 SHA not in production code literals
+        run: |
+          ! grep -r "f8f244c0660495" financial_engine/ --include="*.py" && echo "PASS: SHA not leaked"
+
+      # --- Governance: STOP verdict documented ---
+      - name: Governance — STOP verdict present in reconciliation doc
+        run: |
+          grep -q "C3B3D2B2C_STOP_BANK_CASE_TRANSFORMATION_NOT_SOURCE_PROVEN" \
+            docs/reconciliation/c3b3d2b2c_bank_sizing_cfads_production.md \
+            && echo "PASS: STOP verdict documented"
+
+      # --- Governance: VBA_IMPLEMENTATION_NOT_VISIBLE preserved ---
+      - name: Governance — VBA_IMPLEMENTATION_NOT_VISIBLE preserved
+        run: |
+          grep -q "VBA_IMPLEMENTATION_NOT_VISIBLE" \
+            docs/reconciliation/c3b3d2b2c_bank_sizing_cfads_production.md \
+            && echo "PASS: VBA label preserved"

@@ -161,8 +161,20 @@ def compute_senior_debt_fingerprint(inputs: "Any") -> str:
     policy = inputs.senior_debt_policy
     sd = inputs.senior_debt_inputs
 
+    # bank_sizing_scenario is material to the sizing output — different scenarios produce
+    # different debt sizes and must produce different fingerprints.
+    bank_scenario = getattr(inputs, "bank_sizing_scenario", None)
+    bank_scenario_payload: dict = {"present": False}
+    if bank_scenario is not None:
+        bank_scenario_payload = {
+            "present": True,
+            "yield_scenario": bank_scenario.yield_scenario.value,
+            "scope": bank_scenario.scope.value,
+        }
+
     payload = {
         "phase2b_fingerprint": phase2b_fp,
+        "bank_sizing_scenario": bank_scenario_payload,
         "policy": {
             "policy_id": policy.policy_id,
             "policy_version": policy.policy_version,

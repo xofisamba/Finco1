@@ -116,6 +116,10 @@ class SeniorDebtSchedules:
     # Bank-sizing CFADS audit (one entry per debt period, aligned to period_indices).
     # None when no bank_sizing_scenario was provided (base = bank, current behaviour).
     bank_sizing_cfads_keur: tuple[float, ...] | None = None
+    # Bank-sizing DSCR: bank_sizing_cfads[p] / senior_debt_service[p].
+    # Populated only when bank_sizing_scenario is active.  None entries where DS = 0.
+    # Semantics: this is the SIZING/bank DSCR, not the actual/economic project DSCR.
+    bank_sizing_dscr: tuple[float | None, ...] | None = None
 
 
 @dataclass(frozen=True)
