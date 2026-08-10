@@ -268,6 +268,31 @@ def _source_shl_cash_by_period_d2b1(fixture: dict) -> dict[int, float]:
     return {i + 1: v for i, v in enumerate(vals)}
 
 
+def _aligned_source_dicts(
+    clean_op_indices: list[int],
+    source_fixture: dict,
+) -> tuple[dict[int, float], dict[int, float], dict[int, float]]:
+    """Build position-aligned source comparison dicts for CFADS, senior DS, and CIT.
+
+    Maps k-th source DS[1..40] value to k-th clean operating period_index.
+    Required because the clean Oborovo model has 2 construction periods
+    (period_index 0 and 1) while the source fixture has 1, causing the
+    first clean operating period to be at period_index 2, not 1.
+
+    Returns (cfads_src, sd_src, cit_src) keyed by clean period_index.
+    """
+    cfads_vals = _source_cfads_ds1_40(source_fixture)
+    sd_vals = _source_senior_ds_ds1_40(source_fixture)
+    raw_cit = source_fixture["tax"]["cf_tax_chain"]["cf_cash_tax_period_values"]
+    cit_vals = [abs(v) for v in raw_cit[1:41]]
+
+    n = min(40, len(clean_op_indices))
+    cfads_src = {clean_op_indices[k]: cfads_vals[k] for k in range(min(n, len(cfads_vals)))}
+    sd_src = {clean_op_indices[k]: sd_vals[k] for k in range(min(n, len(sd_vals)))}
+    cit_src = {clean_op_indices[k]: cit_vals[k] for k in range(min(n, len(cit_vals)))}
+    return cfads_src, sd_src, cit_src
+
+
 def _source_shl_schedule(fixture: dict) -> tuple[list[float], list[float], list[float], list[float], list[float]]:
     """Return (gross, cash_interest, pik, principal, closing) source SHL vectors."""
     ds = fixture["ds"]
@@ -476,11 +501,16 @@ def _compute_workbook_lcf(
         else:
             allocated = 0.0
 
-        losses_n = min(allocated + losses_available, 0.0)
+        losses_n_uncapped = min(allocated + losses_available, 0.0)
+        losses_n = losses_n_uncapped
 
         if config.row39_cap and ti_history:
             prior_ti = ti_history[-1][1]
-            losses_n = min(losses_n, prior_ti)
+            losses_n = min(losses_n_uncapped, prior_ti)
+            # If cap reduced the carryforward (losses_n > losses_n_uncapped, i.e. less negative),
+            # feed the expired portion back into cumulative_used so future windows shrink correctly.
+            if losses_n > losses_n_uncapped:
+                cumulative_used += (losses_n - losses_n_uncapped)
 
         tp = ti - allocated
         taxable_profit[pidx] = tp
@@ -615,17 +645,19 @@ def _collect_shl_metrics(
 
     ds40_closing = shl_result.operating[-1].closing_balance_keur if shl_result.operating else 0.0
 
-    shl_cash_src = _source_shl_cash_by_period_d2b1(source_fixture)
-    seam_op = [s for s in seam if not s.is_construction]
-    shl_cash_deltas = []
-    shl_cash_signed = 0.0
-    for s in seam_op:
-        if s.period_index not in shl_cash_src:
-            continue
-        src_v = shl_cash_src[s.period_index]
-        delta = s.cash_available_for_shl_keur - src_v
-        shl_cash_deltas.append(abs(delta))
-        shl_cash_signed += delta
+    shl_src_list = _source_candidate_shl_cash_ds1_40(source_fixture)
+    seam_op = sorted(
+        [s for s in seam if not s.is_construction], key=lambda s: s.period_index
+    )
+    n_shl = min(len(seam_op), len(shl_src_list), 40)
+    shl_cash_deltas = [
+        abs(seam_op[k].cash_available_for_shl_keur - shl_src_list[k])
+        for k in range(n_shl)
+    ]
+    shl_cash_signed = sum(
+        seam_op[k].cash_available_for_shl_keur - shl_src_list[k]
+        for k in range(n_shl)
+    )
 
     return {
         "gross_interest_max_delta": max(gross_deltas) if gross_deltas else 0.0,
@@ -716,24 +748,28 @@ def run_grid_0(source_fixture: dict) -> GridArmResult:
     cit_by_pidx = dict(zip(tac_pidx, tac_cit))
     cfads_by_pidx = dict(zip(tac_pidx, tac_cfads))
 
-    # D2B1-exact source comparators -- DS[1..40]
-    cit_src = _source_cash_tax_by_period(source_fixture)
-    cfads_src = _source_cfads_by_period_d2b1(source_fixture)
-    sd_src = _source_senior_ds_by_period_d2b1(source_fixture)
+    # Position-aligned source comparison: k-th clean operating period maps to
+    # k-th source DS[1..40] value. Required because clean model has 2 construction
+    # periods (period_index 0 and 1), so first operating period_index = 2.
+    seam_op_sorted = sorted(
+        [s for s in seam if not s.is_construction], key=lambda s: s.period_index
+    )
+    clean_op_indices = [s.period_index for s in seam_op_sorted]
+    cfads_src, sd_src, cit_src = _aligned_source_dicts(clean_op_indices, source_fixture)
+    n_op = len(clean_op_indices[:40])
 
-    op_range = range(1, 41)
-    total_cit = sum(cit_by_pidx.get(i, 0.0) for i in op_range)
-    tax_deltas = [abs(cit_by_pidx.get(i, 0.0) - cit_src.get(i, 0.0)) for i in op_range]
-    signed_tax = sum(cit_by_pidx.get(i, 0.0) - cit_src.get(i, 0.0) for i in op_range)
+    total_cit = sum(cit_by_pidx.get(idx, 0.0) for idx in clean_op_indices[:40])
+    tax_deltas = [abs(cit_by_pidx.get(clean_op_indices[k], 0.0) - cit_src.get(clean_op_indices[k], 0.0)) for k in range(n_op)]
+    signed_tax = sum(cit_by_pidx.get(clean_op_indices[k], 0.0) - cit_src.get(clean_op_indices[k], 0.0) for k in range(n_op))
 
-    cfads_deltas_abs = [abs(cfads_by_pidx.get(i, 0.0) - cfads_src.get(i, 0.0)) for i in op_range]
-    cfads_signed = sum(cfads_by_pidx.get(i, 0.0) - cfads_src.get(i, 0.0) for i in op_range)
-    total_cfads = sum(cfads_by_pidx.get(i, 0.0) for i in op_range)
-    source_total_cfads = sum(cfads_src.get(i, 0.0) for i in op_range)
+    cfads_deltas_abs = [abs(cfads_by_pidx.get(clean_op_indices[k], 0.0) - cfads_src.get(clean_op_indices[k], 0.0)) for k in range(n_op)]
+    cfads_signed = sum(cfads_by_pidx.get(clean_op_indices[k], 0.0) - cfads_src.get(clean_op_indices[k], 0.0) for k in range(n_op))
+    total_cfads = sum(cfads_by_pidx.get(idx, 0.0) for idx in clean_op_indices[:40])
+    source_total_cfads = sum(cfads_src.values())
 
     sd_service_by_pidx = dict(zip(sd.period_indices, sd.senior_debt_service_keur))
-    sd_deltas = [abs(sd_service_by_pidx.get(i, 0.0) - sd_src.get(i, 0.0)) for i in op_range]
-    sd_signed = sum(sd_service_by_pidx.get(i, 0.0) - sd_src.get(i, 0.0) for i in op_range)
+    sd_deltas = [abs(sd_service_by_pidx.get(clean_op_indices[k], 0.0) - sd_src.get(clean_op_indices[k], 0.0)) for k in range(n_op)]
+    sd_signed = sum(sd_service_by_pidx.get(clean_op_indices[k], 0.0) - sd_src.get(clean_op_indices[k], 0.0) for k in range(n_op))
 
     clean_debt = sd.diagnostics.get("final_debt_size_keur", 0.0)
 
@@ -824,19 +860,6 @@ def run_grid_s0(source_fixture: dict, grid0: GridArmResult) -> GridArmResult:
     final_senior_int = dict(zip(sd_result.period_indices, sd_result.senior_interest_keur))
     cfads_final, cit_final = tax_cfads_fn(final_senior_int)
 
-    cit_src = _source_cash_tax_by_period(source_fixture)
-    cfads_src = _source_cfads_by_period_d2b1(source_fixture)
-    sd_src = _source_senior_ds_by_period_d2b1(source_fixture)
-
-    op_range = range(1, 41)
-    total_cit = sum(cit_final.get(i, 0.0) for i in op_range)
-    total_cfads_val = sum(cfads_final.get(i, 0.0) for i in op_range)
-    source_total_cfads = sum(cfads_src.get(i, 0.0) for i in op_range)
-    tax_deltas = [abs(cit_final.get(i, 0.0) - cit_src.get(i, 0.0)) for i in op_range]
-    signed_tax = sum(cit_final.get(i, 0.0) - cit_src.get(i, 0.0) for i in op_range)
-    cfads_deltas = [abs(cfads_final.get(i, 0.0) - cfads_src.get(i, 0.0)) for i in op_range]
-    cfads_signed = sum(cfads_final.get(i, 0.0) - cfads_src.get(i, 0.0) for i in op_range)
-
     phase2c_proxy = _build_phase2c_proxy(
         op_periods=op_periods,
         cfads_by_pidx=cfads_final,
@@ -846,9 +869,22 @@ def run_grid_s0(source_fixture: dict, grid0: GridArmResult) -> GridArmResult:
     )
     shl_result, seam = _build_shl_schedule_from_phase2c(phase2c_proxy)
 
+    # Position-aligned source comparison
+    clean_op_indices = sorted([p.period_index for p in op_periods if p.is_operation])
+    cfads_src, sd_src, cit_src = _aligned_source_dicts(clean_op_indices, source_fixture)
+    n_op = len(clean_op_indices[:40])
+
+    total_cit = sum(cit_final.get(idx, 0.0) for idx in clean_op_indices[:40])
+    total_cfads_val = sum(cfads_final.get(idx, 0.0) for idx in clean_op_indices[:40])
+    source_total_cfads = sum(cfads_src.values())
+    tax_deltas = [abs(cit_final.get(clean_op_indices[k], 0.0) - cit_src.get(clean_op_indices[k], 0.0)) for k in range(n_op)]
+    signed_tax = sum(cit_final.get(clean_op_indices[k], 0.0) - cit_src.get(clean_op_indices[k], 0.0) for k in range(n_op))
+    cfads_deltas = [abs(cfads_final.get(clean_op_indices[k], 0.0) - cfads_src.get(clean_op_indices[k], 0.0)) for k in range(n_op)]
+    cfads_signed = sum(cfads_final.get(clean_op_indices[k], 0.0) - cfads_src.get(clean_op_indices[k], 0.0) for k in range(n_op))
+
     sd_service_by_pidx = dict(zip(sd_result.period_indices, sd_result.senior_debt_service_keur))
-    sd_deltas = [abs(sd_service_by_pidx.get(i, 0.0) - sd_src.get(i, 0.0)) for i in op_range]
-    sd_signed = sum(sd_service_by_pidx.get(i, 0.0) - sd_src.get(i, 0.0) for i in op_range)
+    sd_deltas = [abs(sd_service_by_pidx.get(clean_op_indices[k], 0.0) - sd_src.get(clean_op_indices[k], 0.0)) for k in range(n_op)]
+    sd_signed = sum(sd_service_by_pidx.get(clean_op_indices[k], 0.0) - sd_src.get(clean_op_indices[k], 0.0) for k in range(n_op))
     clean_debt = sd_result.diagnostics.final_debt_size_keur
 
     ds40_closing = shl_result.operating[-1].closing_balance_keur if shl_result.operating else 0.0
@@ -1015,6 +1051,7 @@ def run_grid_a(
         merged = {}
         for pi in base_tax_input.period_interest:
             merged[pi.period_index] = pi
+        # Debt tenor periods: inject senior_interest + shl_interest together
         for idx, sr in senior_interest_by_period.items():
             existing = merged.get(idx)
             gross_shl = shl_gross_by_pidx.get(idx, 0.0)
@@ -1025,11 +1062,26 @@ def run_grid_a(
                 shl_interest_keur=shl_keur,
                 other_interest_keur=existing.other_interest_keur if existing else 0.0,
             )
+        # Full horizon: also inject shl_interest for post-maturity SHL periods.
+        # Both shl_interest (deduction) and reintegration (addback below) are needed
+        # so the net TI effect stays 0 for all periods, not just debt tenor.
+        for idx in set(shl_gross_by_pidx.keys()) - set(senior_interest_by_period.keys()):
+            gross_shl = shl_gross_by_pidx.get(idx, 0.0)
+            if gross_shl == 0.0:
+                continue
+            existing = merged.get(idx)
+            shl_keur = (existing.shl_interest_keur if existing else 0.0) + gross_shl
+            merged[idx] = PeriodInterestInput(
+                period_index=idx,
+                senior_interest_keur=existing.senior_interest_keur if existing else 0.0,
+                shl_interest_keur=shl_keur,
+                other_interest_keur=existing.other_interest_keur if existing else 0.0,
+            )
 
         if PeriodTaxAdjustmentInput is not None:
             existing_adj = {a.period_index: a for a in (base_tax_input.period_adjustments or ())}
             new_adj = list(existing_adj.values())
-            injected_periods = set(senior_interest_by_period.keys())
+            injected_periods = set(senior_interest_by_period.keys()) | set(shl_gross_by_pidx.keys())
             for idx in injected_periods:
                 gross_shl = shl_gross_by_pidx.get(idx, 0.0)
                 if gross_shl == 0.0:
@@ -1077,19 +1129,6 @@ def run_grid_a(
     final_senior_int = dict(zip(sd_result.period_indices, sd_result.senior_interest_keur))
     cfads_final, cit_final = tax_cfads_fn_a(final_senior_int)
 
-    cit_src = _source_cash_tax_by_period(source_fixture)
-    cfads_src = _source_cfads_by_period_d2b1(source_fixture)
-    sd_src = _source_senior_ds_by_period_d2b1(source_fixture)
-
-    op_range = range(1, 41)
-    total_cit = sum(cit_final.get(i, 0.0) for i in op_range)
-    total_cfads_val = sum(cfads_final.get(i, 0.0) for i in op_range)
-    source_total_cfads = sum(cfads_src.get(i, 0.0) for i in op_range)
-    tax_deltas = [abs(cit_final.get(i, 0.0) - cit_src.get(i, 0.0)) for i in op_range]
-    signed_tax = sum(cit_final.get(i, 0.0) - cit_src.get(i, 0.0) for i in op_range)
-    cfads_deltas = [abs(cfads_final.get(i, 0.0) - cfads_src.get(i, 0.0)) for i in op_range]
-    cfads_signed = sum(cfads_final.get(i, 0.0) - cfads_src.get(i, 0.0) for i in op_range)
-
     phase2c_proxy = _build_phase2c_proxy(
         op_periods=op_periods,
         cfads_by_pidx=cfads_final,
@@ -1099,9 +1138,22 @@ def run_grid_a(
     )
     shl_result, seam = _build_shl_schedule_from_phase2c(phase2c_proxy)
 
+    # Position-aligned source comparison
+    clean_op_indices = sorted([p.period_index for p in op_periods if p.is_operation])
+    cfads_src, sd_src, cit_src = _aligned_source_dicts(clean_op_indices, source_fixture)
+    n_op = len(clean_op_indices[:40])
+
+    total_cit = sum(cit_final.get(idx, 0.0) for idx in clean_op_indices[:40])
+    total_cfads_val = sum(cfads_final.get(idx, 0.0) for idx in clean_op_indices[:40])
+    source_total_cfads = sum(cfads_src.values())
+    tax_deltas = [abs(cit_final.get(clean_op_indices[k], 0.0) - cit_src.get(clean_op_indices[k], 0.0)) for k in range(n_op)]
+    signed_tax = sum(cit_final.get(clean_op_indices[k], 0.0) - cit_src.get(clean_op_indices[k], 0.0) for k in range(n_op))
+    cfads_deltas = [abs(cfads_final.get(clean_op_indices[k], 0.0) - cfads_src.get(clean_op_indices[k], 0.0)) for k in range(n_op)]
+    cfads_signed = sum(cfads_final.get(clean_op_indices[k], 0.0) - cfads_src.get(clean_op_indices[k], 0.0) for k in range(n_op))
+
     sd_service_by_pidx = dict(zip(sd_result.period_indices, sd_result.senior_debt_service_keur))
-    sd_deltas = [abs(sd_service_by_pidx.get(i, 0.0) - sd_src.get(i, 0.0)) for i in op_range]
-    sd_signed = sum(sd_service_by_pidx.get(i, 0.0) - sd_src.get(i, 0.0) for i in op_range)
+    sd_deltas = [abs(sd_service_by_pidx.get(clean_op_indices[k], 0.0) - sd_src.get(clean_op_indices[k], 0.0)) for k in range(n_op)]
+    sd_signed = sum(sd_service_by_pidx.get(clean_op_indices[k], 0.0) - sd_src.get(clean_op_indices[k], 0.0) for k in range(n_op))
     clean_debt = sd_result.diagnostics.final_debt_size_keur
 
     ds40_closing = shl_result.operating[-1].closing_balance_keur if shl_result.operating else 0.0
@@ -1245,8 +1297,6 @@ def _run_workbook_arm(
         p.period_index: p.ebitda_keur - cit_final.get(p.period_index, 0.0)
         for p in op_sorted
     }
-    total_cit = sum(cit_final.values())
-
     phase2c_proxy = _build_phase2c_proxy(
         op_periods=op_periods,
         cfads_by_pidx=cfads_final,
@@ -1256,21 +1306,22 @@ def _run_workbook_arm(
     )
     shl_result, seam = _build_shl_schedule_from_phase2c(phase2c_proxy)
 
-    cit_src = _source_cash_tax_by_period(source_fixture)
-    cfads_src = _source_cfads_by_period_d2b1(source_fixture)
-    sd_src = _source_senior_ds_by_period_d2b1(source_fixture)
+    # Position-aligned source comparison; total_cit restricted to DS[1..40] (first 40 op periods)
+    n_first40 = min(40, len(sorted_op_pidx))
+    first40_pidx = sorted_op_pidx[:n_first40]
+    cfads_src, sd_src, cit_src = _aligned_source_dicts(first40_pidx, source_fixture)
 
-    op_range = range(1, 41)
-    tax_deltas = [abs(cit_final.get(i, 0.0) - cit_src.get(i, 0.0)) for i in op_range]
-    signed_tax = sum(cit_final.get(i, 0.0) - cit_src.get(i, 0.0) for i in op_range)
-    cfads_deltas = [abs(cfads_final.get(i, 0.0) - cfads_src.get(i, 0.0)) for i in op_range]
-    signed_cfads = sum(cfads_final.get(i, 0.0) - cfads_src.get(i, 0.0) for i in op_range)
-    total_cfads = sum(cfads_final.get(i, 0.0) for i in op_range)
-    source_total_cfads = sum(cfads_src.get(i, 0.0) for i in op_range)
+    total_cit = sum(cit_final.get(idx, 0.0) for idx in first40_pidx)
+    tax_deltas = [abs(cit_final.get(first40_pidx[k], 0.0) - cit_src.get(first40_pidx[k], 0.0)) for k in range(n_first40)]
+    signed_tax = sum(cit_final.get(first40_pidx[k], 0.0) - cit_src.get(first40_pidx[k], 0.0) for k in range(n_first40))
+    cfads_deltas = [abs(cfads_final.get(first40_pidx[k], 0.0) - cfads_src.get(first40_pidx[k], 0.0)) for k in range(n_first40)]
+    signed_cfads = sum(cfads_final.get(first40_pidx[k], 0.0) - cfads_src.get(first40_pidx[k], 0.0) for k in range(n_first40))
+    total_cfads = sum(cfads_final.get(idx, 0.0) for idx in first40_pidx)
+    source_total_cfads = sum(cfads_src.values())
 
     sd_service_by_pidx = dict(zip(sd_result.period_indices, sd_result.senior_debt_service_keur))
-    sd_deltas = [abs(sd_service_by_pidx.get(i, 0.0) - sd_src.get(i, 0.0)) for i in op_range]
-    signed_sd = sum(sd_service_by_pidx.get(i, 0.0) - sd_src.get(i, 0.0) for i in op_range)
+    sd_deltas = [abs(sd_service_by_pidx.get(first40_pidx[k], 0.0) - sd_src.get(first40_pidx[k], 0.0)) for k in range(n_first40)]
+    signed_sd = sum(sd_service_by_pidx.get(first40_pidx[k], 0.0) - sd_src.get(first40_pidx[k], 0.0) for k in range(n_first40))
     clean_debt = sd_result.diagnostics.final_debt_size_keur
 
     ds40_closing = shl_result.operating[-1].closing_balance_keur if shl_result.operating else 0.0
@@ -1464,8 +1515,11 @@ def run_diagnostic_grid() -> DiagnosticGridResult:
     )
     grid_abcd = _run_workbook_arm(
         "GRID-ABCD", "SHL feedback + H2+H1 + EBT gate + rolling window",
-        "SOURCE_PROVEN: A=non-deductible (zero effect) + B/C/D source-proven",
-        WorkbookTaxConfig(h2h1_pairing=True, ebt_gate=True, rolling_window=True),
+        (
+            "SOURCE_PROVEN: A=non-deductible (zero TI effect, FIXED_POINT_COLLAPSES_ANALYTICALLY_TO_IDENTITY_FOR_OBOROVO). "
+            "GRID-ABCD derived from BCD with A=0 identity. shl_netting_in_tax=True reflects A wiring."
+        ),
+        WorkbookTaxConfig(h2h1_pairing=True, ebt_gate=True, rolling_window=True, shl_netting_in_tax=True),
         fixture, grid0, shl_gross,
     )
     grid_abcde = _run_workbook_arm(

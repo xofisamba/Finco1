@@ -1,7 +1,7 @@
 # C3B3D2B2A — Tax / SHL Causal Diagnostic Grid
 
 **Stage**: C3B3D2B2A
-**Status**: CAUSAL_GRID_READY_FOR_INDEPENDENT_REVIEW
+**Status**: CAUSAL_GRID_R2_READY_FOR_INDEPENDENT_REVIEW
 **Base**: C3B3D2B1 main (`7cd1366c4e81a35e55c529c324a7809e9a78eef4`)
 **Branch**: `stage-c3b3d2b2a-tax-shl-causal-grid`
 
@@ -131,9 +131,10 @@ No arm combination closes the gap to source 0.00 kEUR.
 | GRID-E | 2746.80 | +28.78 | increases residual |
 | GRID-ABCDE | 2750.49 | +32.47 | increases residual |
 
-**Conclusion**: The CURRENT_UPSTREAM_CLEAN_CASH_RESIDUAL is **not attributable**
-to any of the 5 source-proven tax / SHL mechanics tested. The causal driver lies
-upstream of the tax computation.
+**Conclusion**: CURRENT_CAUSE_UNRESOLVED. No arm combination explains the
+2718.02 kEUR residual. The workbook harness itself has not yet been validated
+against GRID-0 at per-vector level (GRID-WS0 vs GRID-0 gate pending classification).
+Causal attribution claims cannot be made until the baseline is classified.
 
 ### FINDING-3: EBT gate prevents all loss utilisation for Oborovo
 
@@ -149,32 +150,41 @@ GRID-ABCDE = GRID-ABCD (< 0.01 kEUR difference). The carriable-loss cap
 (MIN(row38, prior_TI × B37)) does not bind for Oborovo's TI profile.
 The row-39 contribution to the residual is effectively zero.
 
-### FINDING-5: Residual driver is upstream of tax — likely CFADS/waterfall ordering
+### FINDING-5: Residual cause is unresolved (CURRENT_CAUSE_UNRESOLVED)
 
-Since all 5 mechanics individually and jointly fail to explain 2718 kEUR, the
-primary driver must be elsewhere. Candidates for D2B2:
+All 5 mechanics individually and jointly fail to explain the 2718.02 kEUR
+residual when tested relative to GRID-WS0. The GRID-WS0 vs GRID-0 gate
+classification is pending — until that baseline is validated, no causal
+attribution about the residual vs the clean engine can be made from B/C/D/E arms.
 
-1. **DSRA/reserve movement ordering** (DSRA_ORDERING_UNRESOLVED): reserve
-   cash movements are not yet implemented in the clean waterfall. Source may
-   credit reserve releases before SHL repayment.
-2. **Clean CFADS composition vs source**: the clean engine CFADS max abs delta
-   vs source is 3121.16 kEUR (GRID-0 diagnostic). This exceeds the 2718 kEUR
-   residual — the CFADS driver alone could explain the residual.
-3. **Senior debt sizing difference**: clean debt 43,919 kEUR vs source 42,852
-   kEUR (+1067 kEUR). Higher debt service reduces cash available for SHL.
+Remaining candidates for D2B2 (unranked):
+1. **Clean CFADS composition vs source**: CFADS signed total +347 kEUR.
+2. **Senior debt sizing difference**: clean debt 43,919 kEUR vs source 42,852 kEUR (+1,067 kEUR).
+3. **DSRA/reserve movement ordering** (DSRA_ORDERING_UNRESOLVED): no DSRA implemented; position unknown.
+4. **GRID-WS0 baseline gap**: if GRID-WS0 ≢ GRID-0, the workbook callback itself has structural differences from the clean engine that must be resolved first.
 
 ---
 
-## 8. GRID-0 baseline metrics
+## 8. GRID-0 baseline metrics (R2 position-aligned)
 
 | Metric | Clean (GRID-0) | Source | Delta |
 |---|---|---|---|
-| Total CIT (kEUR) | 10,261.25 | 10,443.09 | -181.84 |
+| Total CIT (kEUR) | 3,294.31 | 3,641.40 | -347.09 |
 | Clean debt size (kEUR) | 43,919.03 | 42,852.28 | +1,066.75 |
-| CFADS max abs delta (kEUR) | — | — | 3,121.16 |
-| SHL cash signed delta (kEUR) | — | — | -2,125.29 |
+| CFADS max abs delta (kEUR) | — | — | 339.71 |
+| CFADS signed total delta (kEUR) | — | — | +347.11 |
+| Senior DS max abs delta (kEUR) | — | — | 667.86 |
+| Senior DS signed total delta (kEUR) | — | — | +2,242.03 |
+| SHL cash max abs delta (kEUR) | — | — | 622.69 |
+| SHL cash signed total delta (kEUR) | — | — | -1,894.91 |
 | DS[40] closing (kEUR) | 2,718.02 | 0.00 | +2,718.02 |
 | SHL closing max abs delta (kEUR) | — | — | 1,901.65 |
+
+**R2 position-alignment note**: Clean Oborovo model has 2 construction periods
+(period_index 0 and 1); source fixture has 1. R1 used `{i+1: v}` mapping
+(period_index = source index + 1), producing spurious max deltas of ~2575 kEUR.
+R2 maps k-th source DS[1..40] value to k-th clean operating period by sequence
+position, giving correct values above.
 
 Solver convergence: achieved, iterations reported per arm.
 
@@ -214,25 +224,26 @@ production paths — correctly excluded from the diagnostic per FINDING-1.
 
 ## 10. D2B2 recommendations
 
-1. **Resolve DSRA ordering**: source-prove the relative ordering of DSRA/reserve
-   cash movements vs SHL repayments in the workbook waterfall. This is the
-   most likely explanation for the 2718 kEUR residual given FINDING-2 and FINDING-5.
+1. **Classify GRID-WS0 vs GRID-0 gate first**: validate whether the workbook
+   callback surrogate (all flags False) is equivalent to the clean engine.
+   Until classified, B/C/D/E arm results are within-surrogate experiments only.
+   Status: CURRENT_CAUSE_UNRESOLVED.
 
-2. **Trace CFADS driver at period resolution**: the 3121 kEUR max CFADS delta
-   dwarfs the 2718 kEUR SHL residual. Source-prove which specific periods
-   drive the CFADS difference and whether it flows from depreciation, revenue,
-   or opex differences.
+2. **Trace CFADS driver at period resolution**: CFADS signed total +347 kEUR
+   across DS[1..40]. Source-prove which specific periods drive the difference.
 
-3. **Senior debt sizing gap**: the +1067 kEUR clean vs source debt gap increases
+3. **Senior debt sizing gap**: the +1,067 kEUR clean vs source debt gap increases
    debt service, reducing SHL cash. Confirm the sizing difference is fully
    accounted for by the WORKBOOK_PERIODISATION_MISMATCH identified in C3B3B.
 
-4. **Do NOT attempt SHL feedback wiring**: FINDING-1 confirms this has zero TI
+4. **DSRA ordering** (DSRA_ORDERING_UNRESOLVED): investigate only AFTER GRID-WS0
+   gate is classified. Do NOT rank DSRA as primary cause without causal evidence.
+
+5. **Do NOT attempt SHL feedback wiring**: FINDING-1 confirms this has zero TI
    effect for Oborovo and would complicate the engine for no analytical gain.
 
-5. **Do NOT apply EBT gate to production**: FINDING-3 confirms EBT gate
-   increases the residual and is not the driver. It must remain in the
-   diagnostic-only grid.
+6. **Do NOT apply EBT gate to production**: EBT gate increases the residual and
+   is not the driver. It must remain in the diagnostic-only grid.
 
 ---
 
@@ -249,7 +260,7 @@ production paths — correctly excluded from the diagnostic per FINDING-1.
 
 ## 12. Test suite
 
-`tests/test_stage_c3b3d2b2a_tax_shl_causal_grid.py` — 85 test functions.
+`tests/test_stage_c3b3d2b2a_tax_shl_causal_grid.py` — 149 test functions (R2).
 
 | Class | Count | Coverage |
 |---|---|---|
@@ -266,18 +277,30 @@ production paths — correctly excluded from the diagnostic per FINDING-1.
 | TestCausalAttributionFindings | 9 | Key findings verification |
 | TestShlInputAuthority | 3 | 14620.77 authoritative, 13547.2 absent |
 | TestFormatCausalAttributionTable | 3 | Output formatter |
+| TestD2B1ExactComparators | 10 | D2B1 contract, backward-compat aliases |
+| TestGridAActualExecution | 4 | GRID-A typed execution, full horizon |
+| TestGrid0NumericalReproduction | 13 | R2 tight assertions (339.71/667.86/622.69/-1894.91) |
+| TestGridS0VectorContract | 5 | GRID-S0 ≡ GRID-0 within solver tolerance |
+| TestGridWS0VsGrid0Gate | 5 | GRID-WS0 baseline gate classification |
+| TestSourceReplayRows | 7 | Per-row SOURCE_REPLAY_PROVEN rows 36-43 |
+| TestRow39StateRepaired | 3 | Row39 cap state propagation fix verified |
+| TestGridAFullHorizon | 3 | Full-horizon SHL injection (debt tenor + post-maturity) |
+| TestGridABCDSemanticsHonest | 4 | GRID-ABCD shl_netting_in_tax=True + A=0 identity |
 
 ---
 
 ## 13. Final verdict
 
 ```
-C3B3D2B2A_CAUSAL_GRID_READY_FOR_INDEPENDENT_REVIEW
+C3B3D2B2A_CAUSAL_GRID_R2_READY_FOR_INDEPENDENT_REVIEW
 ```
 
 **Evidence delivered**:
-- GRID-A ≡ GRID-0: SHL_OUTSIDE_FIXED_POINT = 0 for Oborovo (CONFIRMED)
-- No workbook tax mechanic combination explains the 2718.02 kEUR residual
-- All 5 mechanics individually increase the residual or have negligible effect
-- Residual causal driver is upstream of tax: DSRA ordering or CFADS composition
-- D2B2 has a clear, bounded problem statement: waterfall ordering investigation
+- GRID-A ≡ GRID-0 (full-horizon injection, sub-milli-kEUR delta): CONFIRMED
+- Position-aligned comparators: CFADS max delta 339.71, SD max delta 667.86, SHL cash max delta 622.69 kEUR
+- Row39 state propagation fix implemented; ROW39_CAP_NON_BINDING_FOR_OBOROVO confirmed
+- GRID-ABCD shl_netting_in_tax=True: semantically honest (A=0 identity proven)
+- Source replay rows 36/37/38/39/41/43: SOURCE_REPLAY_PROVEN classification
+- CURRENT_CAUSE_UNRESOLVED: no mechanic combination explains the 2718.02 kEUR residual
+- GRID-WS0 baseline gate pending classification before causal claims can be made
+- DSRA_ORDERING_UNRESOLVED — no ranking without causal evidence

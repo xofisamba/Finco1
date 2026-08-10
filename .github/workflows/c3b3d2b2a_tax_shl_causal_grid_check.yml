@@ -19,7 +19,7 @@ on:
 
 jobs:
   c3b3d2b2a-check:
-    name: C3B3D2B2A Tax/SHL causal diagnostic grid (85 test functions)
+    name: C3B3D2B2A Tax/SHL causal diagnostic grid (149 test functions)
     runs-on: ubuntu-latest
 
     steps:
@@ -49,9 +49,9 @@ jobs:
             pytest openpyxl numpy pandas scipy itsdangerous bcrypt
 
       - name: git diff --check
-        run: git diff --check ${{ github.event.pull_request.base.sha || 'HEAD~1' }}..HEAD
+        run: git diff --check ${{ github.event.pull_request.base.sha || '7cd1366c4e81a35e55c529c324a7809e9a78eef4' }}..HEAD
 
-      - name: C3B3D2B2A causal grid (85 test functions)
+      - name: C3B3D2B2A causal grid (149 test functions)
         run: |
           python -m pytest \
             tests/test_stage_c3b3d2b2a_tax_shl_causal_grid.py \
