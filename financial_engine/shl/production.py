@@ -38,11 +38,12 @@ Cash available lineage
 The caller is responsible for providing cash_available_for_shl_keur per period.
 In production this comes from financial_engine.adapters.shl_cash_seam:
 
-    cash_for_shl[p] = CFADS[p] - senior_debt_service[p]
+    candidate_cash[p] = CFADS[p] - senior_debt_service[p]
 
 where CFADS = EBITDA - cash_tax (Phase 2B) and senior_debt_service is from
-Phase 2C.  DSRA and distributions are downstream of SHL and do not reduce
-cash_available_for_shl.
+Phase 2C.  The Phase 2C-derived figure is candidate cash before unresolved
+reserve adjustments.  The ordering of DSRA relative to SHL is not source-proven
+in C3B3D2B1 (DSRA_ORDERING_UNRESOLVED).
 
 Fixed-point boundary
 --------------------

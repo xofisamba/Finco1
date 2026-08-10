@@ -125,6 +125,14 @@ def compute_shl_cash_from_phase2c(
     sd = phase2c_result.senior_debt
     periods = phase2c_result.periods
 
+    # Fail closed on duplicate period indices in the top-level periods list.
+    all_period_indices = [p.period_index for p in periods]
+    if len(all_period_indices) != len(set(all_period_indices)):
+        raise ValueError(
+            "compute_shl_cash_from_phase2c: duplicate period_index values in "
+            "phase2c_result.periods — each model period must appear exactly once"
+        )
+
     if tac is None:
         raise ValueError(
             "compute_shl_cash_from_phase2c: tax_and_cfads is None — "
@@ -136,9 +144,17 @@ def compute_shl_cash_from_phase2c(
             "Phase 2C result must include SeniorDebtSchedules"
         )
 
-    # Build lookup maps keyed by period_index — fail closed on duplicates.
+    # Build lookup maps keyed by period_index — fail closed on parallel-vector length
+    # mismatch (prevents zip() truncation from silently converting malformed data)
+    # and on duplicate indices.
     tac_indices = list(tac.period_indices)
     tac_cfads = list(tac.cfads_keur)
+    if len(tac_indices) != len(tac_cfads):
+        raise ValueError(
+            f"compute_shl_cash_from_phase2c: tax_and_cfads parallel-vector length "
+            f"mismatch — period_indices has {len(tac_indices)} entries but "
+            f"cfads_keur has {len(tac_cfads)} entries; these must be equal"
+        )
     if len(tac_indices) != len(set(tac_indices)):
         raise ValueError(
             "compute_shl_cash_from_phase2c: duplicate period indices in "
@@ -148,6 +164,12 @@ def compute_shl_cash_from_phase2c(
 
     sd_indices = list(sd.period_indices)
     sd_service = list(sd.senior_debt_service_keur)
+    if len(sd_indices) != len(sd_service):
+        raise ValueError(
+            f"compute_shl_cash_from_phase2c: senior_debt parallel-vector length "
+            f"mismatch — period_indices has {len(sd_indices)} entries but "
+            f"senior_debt_service_keur has {len(sd_service)} entries; these must be equal"
+        )
     if len(sd_indices) != len(set(sd_indices)):
         raise ValueError(
             "compute_shl_cash_from_phase2c: duplicate period indices in "

@@ -1,6 +1,6 @@
 # C3B3D2B1 — Production SHL Wiring + Instrument Day-Count Convention
 
-**Status**: `C3B3D2B1_R1_READY_FOR_INDEPENDENT_REVIEW`
+**Status**: `C3B3D2B1_R2_READY_FOR_INDEPENDENT_REVIEW`
 **Branch**: `stage-c3b3d2b1-shl-production-wiring`
 **Base**: `2afdffbc1796d3b042f7b63c61c2750ec264924e` (main after C3B3D2B0 squash-merge)
 **Scope boundary**: Production SHL schedule chaining + typed instrument day-count convention. Tax feedback loop (SHL→tax→CFADS→SHL) deferred to C3B3D2B2.
@@ -16,7 +16,7 @@ C3B3D2B1 delivers:
 3. **`compute_shl_dcf()` typed dispatch** — routes ACT_365_FIXED and ACT_360; delegates ACT_365_FIXED to governance-locked C3B3D2B0 function.
 4. **`compute_shl_schedule()` production chainer** — links C3B3D1 construction (opening=0, draw, DCF=1.0, PIK) and C3B3D2B0 operating waterfall (natural formula, no mode dispatch) into a single call. Fails closed on rate mismatch between construction and operating policy, and on non-zero operating drawdown.
 5. **`compute_shl_cash_from_phase2c()` seam adapter** — derives `candidate_cash_before_unresolved_reserve_adjustments` per period from Phase 2C result without reading any Excel fixture. Fails closed on missing CFADS entries and on period indices within the debt tenor that are absent from the senior debt schedule. DSRA ordering is `DSRA_ORDERING_UNRESOLVED`.
-6. **110 test functions** covering conventions, parity, seam, governance, fail-closed alignment, rate consistency, real Phase2C integration, and source vector identity.
+6. **116 test functions** covering conventions, parity, seam, governance, fail-closed alignment, parallel-vector length validation, rate consistency, real Phase2C integration with full diagnostic metrics, and source vector identity.
 7. **This reconciliation document**.
 
 Not in scope: DSRA, distributions, Sponsor, R99/R102, SHL→tax fixed-point loop.
@@ -105,10 +105,11 @@ OPEX
 EBITDA = Revenue − OPEX
 − cash_tax                    → CFADS  (pre-debt)
 − senior_interest             ↘
-− senior_principal            → cash_available_for_shl
-− shl_cash_interest           ↘
-− shl_principal_repayment     → post-SHL cash
-[DSRA, distributions — downstream, not modelled in C3B3D2B1]
+− senior_principal            → candidate_cash_before_unresolved_reserve_adjustments
+− shl_cash_interest           ↘  [DSRA_ORDERING_UNRESOLVED — position of DSRA
+− shl_principal_repayment     →   relative to SHL not source-proven in C3B3D2B1]
+[DSRA — DSRA_ORDERING_UNRESOLVED, not modelled in C3B3D2B1]
+[distributions — not modelled in C3B3D2B1]
 ```
 
 Formula: `candidate_cash_before_unresolved_reserve_adjustments[p] = max(0, CFADS[p] − senior_debt_service[p])`
@@ -184,7 +185,7 @@ First principal sweep: **DS[25]** (discovered from cash > gross; not hardcoded)
 ## 9. Test Suite
 
 **File**: `tests/test_stage_c3b3d2b1_shl_production_wiring.py`
-**Count**: 91 test functions, 91 collected cases, all passing
+**Count**: 116 test functions, 116 collected cases, all passing (R2)
 
 | Class | Tests | Description |
 |---|---|---|
@@ -197,12 +198,18 @@ First principal sweep: **DS[25]** (discovered from cash > gross; not hardcoded)
 | TestG_ConstructionPeriodSemantics | 8 | opening=0, draw, PIK, DCF=1.0 arithmetic-implied |
 | TestH_OperatingChainRollForward | 6 | First operating opening = construction closing; roll-forward identity |
 | TestI_OborovoConstructionParity | 5 | All construction fields match D2A fixture |
-| TestJ_OborovoOperatingParity | 8 | All 40 operating periods match D2A fixture < 1e-6 kEUR |
+| TestJ_OborovoOperatingParity (SHL_FORMULA_PARITY_WITH_SOURCE_CASH_ORACLE) | 8 | All 40 operating periods match D2A fixture < 1e-6 kEUR; source cash as oracle |
 | TestK_ShlCashSeamAdapter | 7 | Cash derivation from Phase 2C result; construction=0; DS[1] lineage |
-| TestL_CashWaterfallOrdering | 3 | Docstring documents CFADS-senior_ds; DSRA downstream; no fixture reads |
+| TestK2_SeamFailClosed | 5 | Missing CFADS, duplicate indices, within-tenor gap, post-maturity 0.0 |
+| TestK2 additions (R2) | +2 | Parallel-vector length mismatch (CFADS and SD) |
+| TestK3_RateConsistency | 2 | Rate mismatch raises; matching rate accepted |
+| TestK4_OperatingDrawdownGuard | 2 | Non-zero drawdown raises; zero accepted |
+| TestL_CashWaterfallOrdering | 3 | CFADS-senior_ds in docstring; DSRA_ORDERING_UNRESOLVED; no fixture reads |
 | TestM_FixedPointBoundary | 5 | SHL outside Phase 2C loop; separate vectors; tax doc |
 | TestN_SeparateVectors | 5 | gross≠cash in partial periods; pik=gross-cash; service=cash+principal |
 | TestO_Governance | 11 | No 13547.2; no DS25/DS40 bounds; no project dispatch; no finco_core imports |
+| TestP_RealPhase2CIntegration (EXPECTED_PRE_D2B2_UPSTREAM_CLEAN_CASH_RESIDUAL) | ~10 | Real Oborovo Phase2C → seam → SHL; full diagnostic metrics |
+| TestQ_SourceVectorIdentity (SOURCE_VECTOR_IDENTITY_FOR_OBOROVO) | 3 | CFADS−sd≈FCF_for_SHL from source fixture |
 
 ---
 
@@ -225,8 +232,37 @@ First principal sweep: **DS[25]** (discovered from cash > gross; not hardcoded)
 |---|---|---|
 | Clean engine CFADS for Oborovo | CLEAN_PRODUCTION_CANDIDATE | Differs from source by WORKBOOK_PERIODISATION_MISMATCH (C3B3B) |
 | Clean engine senior_ds for Oborovo | CLEAN_PRODUCTION_CANDIDATE | Clean debt 43,919 vs source 42,852 kEUR (C3B3B) |
-| Resulting clean cash_available_for_shl | CLEAN_PRODUCTION_CANDIDATE | Residual labelled EXPECTED_PRE_D2B2_UPSTREAM_CLEAN_CASH_RESIDUAL |
+| Resulting clean candidate cash | CLEAN_PRODUCTION_CANDIDATE | Residual labelled EXPECTED_PRE_D2B2_UPSTREAM_CLEAN_CASH_RESIDUAL |
 | Full SHL schedule from clean Phase2C | CLEAN_PRODUCTION_CANDIDATE | SHL arithmetic proven; cash driver is clean engine, not source |
+
+#### R2 Diagnostic Metrics — Real Clean Phase2C → SHL (DS[1..40] comparison)
+
+These residuals are **not calibration targets**. They are diagnostic evidence of the
+WORKBOOK_PERIODISATION_MISMATCH (C3B3B) propagating through the clean engine.
+
+```
+REAL CLEAN PHASE2C → SHL DIAGNOSTIC (DS[1..40], signs normalised to positive outflow)
+
+Upstream cash residuals:
+  CFADS                         max abs delta:   339.71 kEUR    signed total: +347.11 kEUR
+  Senior Debt Service           max abs delta:   667.86 kEUR    signed total: +2242.03 kEUR
+  Candidate cash for SHL        max abs delta:   622.69 kEUR    signed total: -1894.91 kEUR
+
+SHL schedule residuals (clean cash driver vs D2A source oracle):
+  gross_accrued_interest        max abs delta:   139.17 kEUR
+  cash_interest                 max abs delta:   366.82 kEUR
+  pik_interest                  max abs delta:   401.37 kEUR
+  principal_repaid              max abs delta:   790.19 kEUR
+  closing_balance               max abs delta:  3508.20 kEUR
+
+Final balance:
+  clean DS[40] closing:    2718.02 kEUR   (EXPECTED_PRE_D2B2_UPSTREAM_CLEAN_CASH_RESIDUAL)
+  source DS[40] closing:      0.00 kEUR
+  delta:                   2718.02 kEUR
+```
+
+The non-zero final closing balance is **diagnostic evidence for D2B2/DGRID**, not a formula failure.
+SHL arithmetic is separately source-proven via TestJ (SHL_FORMULA_PARITY_WITH_SOURCE_CASH_ORACLE).
 
 ### UNRESOLVED
 
@@ -246,7 +282,7 @@ First principal sweep: **DS[25]** (discovered from cash > gross; not hardcoded)
 | CONSTRUCTION_DATE_CONVENTION_UNRESOLVED | DCF=1.0 arithmetic-implied; calendar proof deferred |
 | SHL_OUTSIDE_FIXED_POINT | SHL→tax→CFADS→SHL circular dependency documented; resolution deferred to C3B3D2B2 |
 | SHL_INTEREST_NOT_FED_INTO_TAX | PeriodInterestInput.shl_interest_keur remains 0 in Phase 2C; deferred |
-| DSRA_NOT_MODELLED | DSRA is downstream of SHL; not modelled in C3B3D2B1 |
+| DSRA_NOT_MODELLED + DSRA_ORDERING_UNRESOLVED | DSRA position relative to SHL is not source-proven; not modelled in C3B3D2B1 |
 | DISTRIBUTIONS_NOT_MODELLED | Deferred |
 | ACT_360_SHL_NOT_SOURCE_PROVEN | ACT/360 for SHL is generic capability only; Oborovo uses ACT/365 Fixed |
 
