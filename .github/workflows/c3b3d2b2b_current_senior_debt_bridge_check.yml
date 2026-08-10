@@ -1,0 +1,49 @@
+name: C3B3D2B2B Current Senior Debt Bridge Check
+
+on:
+  push:
+    branches:
+      - stage-c3b3d2b2b-current-senior-debt-bridge
+      - claude/festive-cerf-uaq5hb
+    paths:
+      - 'finco_recon/diagnose_c3b3d2b2b_current_senior_debt_bridge.py'
+      - 'tests/test_stage_c3b3d2b2b_current_senior_debt_bridge.py'
+      - 'docs/reconciliation/c3b3d2b2b_current_senior_debt_bridge.md'
+      - '.github/workflows/c3b3d2b2b_current_senior_debt_bridge_check.yml'
+  pull_request:
+    paths:
+      - 'finco_recon/diagnose_c3b3d2b2b_current_senior_debt_bridge.py'
+      - 'tests/test_stage_c3b3d2b2b_current_senior_debt_bridge.py'
+      - 'docs/reconciliation/c3b3d2b2b_current_senior_debt_bridge.md'
+      - '.github/workflows/c3b3d2b2b_current_senior_debt_bridge_check.yml'
+
+jobs:
+  c3b3d2b2b-bridge-check:
+    name: C3B3D2B2B — 60 test functions (current senior debt bridge)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -e ".[dev]"
+
+      - name: Run C3B3D2B2B focused tests (60 functions)
+        run: |
+          python -m pytest tests/test_stage_c3b3d2b2b_current_senior_debt_bridge.py \
+            -v --tb=short -q
+
+      - name: Run C3B3D2B2A regression (prior stage — must not regress)
+        run: |
+          python -m pytest tests/test_stage_c3b3d2b2a_tax_shl_causal_grid.py \
+            -q --tb=short
+
+      - name: Run C3B3D2B1 regression (SHL production wiring — must not regress)
+        run: |
+          python -m pytest tests/test_stage_c3b3d2b1_shl_production_wiring.py \
+            -q --tb=short
