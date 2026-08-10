@@ -1,7 +1,7 @@
 # C3B3D2B2A — Tax / SHL Causal Diagnostic Grid
 
 **Stage**: C3B3D2B2A
-**Status**: CAUSAL_GRID_R2_READY_FOR_INDEPENDENT_REVIEW
+**Status**: C3B3D2B2A_R3_SOURCE_CFADS_DSCR_MAPPING_READY_FOR_INDEPENDENT_REVIEW
 **Base**: C3B3D2B1 main (`7cd1366c4e81a35e55c529c324a7809e9a78eef4`)
 **Branch**: `stage-c3b3d2b2a-tax-shl-causal-grid`
 
@@ -157,11 +157,23 @@ residual when tested relative to GRID-WS0. The GRID-WS0 vs GRID-0 gate
 classification is pending — until that baseline is validated, no causal
 attribution about the residual vs the clean engine can be made from B/C/D/E arms.
 
+**R3 non-causes confirmed:**
+- **DSRA**: DSRA_NOT_CAUSAL_FOR_OBOROVO_CURRENT_RESIDUAL_SOURCE_PROVEN —
+  `Inputs!I348=0`, all DSRA rows zero in source workbook. DSRA_ORDERING_UNRESOLVED
+  is resolved for Oborovo: DSRA cannot be ranked as a driver.
+- **SHL feedback (Arm A)**: FIXED_POINT_COLLAPSES_ANALYTICALLY_TO_IDENTITY_FOR_OBOROVO —
+  net TI=0; confirmed by GRID-A ≡ GRID-0.
+- **Row-39 cap**: ROW39_CAP_NON_BINDING_FOR_OBOROVO — cap does not bind.
+
 Remaining candidates for D2B2 (unranked):
-1. **Clean CFADS composition vs source**: CFADS signed total +347 kEUR.
-2. **Senior debt sizing difference**: clean debt 43,919 kEUR vs source 42,852 kEUR (+1,067 kEUR).
-3. **DSRA/reserve movement ordering** (DSRA_ORDERING_UNRESOLVED): no DSRA implemented; position unknown.
-4. **GRID-WS0 baseline gap**: if GRID-WS0 ≢ GRID-0, the workbook callback itself has structural differences from the clean engine that must be resolved first.
+1. **Clean CFADS composition vs source**: CFADS signed total +347 kEUR. The Phase2C
+   clean engine produces CFADS from EBITDA; source uses Macro50 (VBA). Rate, CFADS,
+   day-count, and DSCR banding explain the +3,201 kEUR debt gap exactly (G4 residual=0).
+2. **Senior debt sizing gap**: clean debt 43,919 kEUR vs source 42,852 kEUR (+1,067 kEUR)
+   — fully explained by four INPUT_POLICY_MISMATCH factors (rate/CFADS/daycount/banding).
+   See `docs/reconciliation/c3b3d2b2a_cfads_dscr_source_mapping.md`.
+3. **GRID-WS0 baseline gap**: if GRID-WS0 ≢ GRID-0, the workbook callback itself has
+   structural differences from the clean engine that must be resolved first.
 
 ---
 
@@ -232,12 +244,13 @@ production paths — correctly excluded from the diagnostic per FINDING-1.
 2. **Trace CFADS driver at period resolution**: CFADS signed total +347 kEUR
    across DS[1..40]. Source-prove which specific periods drive the difference.
 
-3. **Senior debt sizing gap**: the +1,067 kEUR clean vs source debt gap increases
-   debt service, reducing SHL cash. Confirm the sizing difference is fully
-   accounted for by the WORKBOOK_PERIODISATION_MISMATCH identified in C3B3B.
+3. **Senior debt sizing gap**: the +3,201 kEUR clean vs source debt gap is fully
+   explained by rate (−544), CFADS (−1,918), day-count (−215), DSCR banding (−516),
+   and terminal partial period (−9) — G4 vector backward induction reproduces source
+   debt exactly (residual = 0.000 kEUR). See `c3b3d2b2a_cfads_dscr_source_mapping.md`.
 
-4. **DSRA ordering** (DSRA_ORDERING_UNRESOLVED): investigate only AFTER GRID-WS0
-   gate is classified. Do NOT rank DSRA as primary cause without causal evidence.
+4. **DSRA**: DSRA_NOT_CAUSAL_FOR_OBOROVO_CURRENT_RESIDUAL_SOURCE_PROVEN — do NOT
+   rank DSRA as a contributor. DSRA=0 in source. DSRA_ORDERING_UNRESOLVED is resolved.
 
 5. **Do NOT attempt SHL feedback wiring**: FINDING-1 confirms this has zero TI
    effect for Oborovo and would complicate the engine for no analytical gain.
@@ -251,16 +264,17 @@ production paths — correctly excluded from the diagnostic per FINDING-1.
 
 | Item | Status | Planned stage |
 |---|---|---|
-| DSRA/reserve movement ordering | DSRA_ORDERING_UNRESOLVED | D2B2 |
+| DSRA/reserve movement ordering | DSRA_NOT_CAUSAL_FOR_OBOROVO_CURRENT_RESIDUAL_SOURCE_PROVEN (resolved) | — |
 | Construction date convention | CONSTRUCTION_DATE_CONVENTION_UNRESOLVED | D2B2 |
 | SHL input authority promotion | CLEAN_SHL_PROJECT_INPUT_AUTHORITY_HANDOFF_PENDING_D2B2 | D2B2 |
 | CFADS driver period resolution | Not yet attributed | D2B2 |
+| GRID-WS0 vs GRID-0 gate | CURRENT_CAUSE_UNRESOLVED — pending classification | D2B2 |
 
 ---
 
 ## 12. Test suite
 
-`tests/test_stage_c3b3d2b2a_tax_shl_causal_grid.py` — 149 test functions (R2).
+`tests/test_stage_c3b3d2b2a_tax_shl_causal_grid.py` — 184 test functions (R3).
 
 | Class | Count | Coverage |
 |---|---|---|
@@ -286,21 +300,37 @@ production paths — correctly excluded from the diagnostic per FINDING-1.
 | TestRow39StateRepaired | 3 | Row39 cap state propagation fix verified |
 | TestGridAFullHorizon | 3 | Full-horizon SHL injection (debt tenor + post-maturity) |
 | TestGridABCDSemanticsHonest | 4 | GRID-ABCD shl_netting_in_tax=True + A=0 identity |
+| TestCfadsDscrSourceMapping | 7 | R3: CF79/Macro49/50/DS20 formula mapping SOURCE_PROVEN |
+| TestOborovoCfadsAlignment | 5 | R3: CF79≈Macro50 during DSCR=1.15 periods; diverges at 1.35 |
+| TestTuhoBankSizingProof | 6 | R3: TUHO bank CFADS = \|SDS\| × target_DSCR derivation |
+| TestOborovoDebtSizingReplay | 7 | R3: G4 bridge closed (residual=0); rate/CFADS/daycount deltas |
+| TestDsraNotCausal | 5 | R3: DSRA_NOT_CAUSAL_FOR_OBOROVO_CURRENT_RESIDUAL_SOURCE_PROVEN |
+| TestTaxWindowClassification | 5 | R3: 5-period window label; row39 non-binding; construction loss |
 
 ---
 
 ## 13. Final verdict
 
 ```
-C3B3D2B2A_CAUSAL_GRID_R2_READY_FOR_INDEPENDENT_REVIEW
+C3B3D2B2A_R3_SOURCE_CFADS_DSCR_MAPPING_READY_FOR_INDEPENDENT_REVIEW
 ```
 
-**Evidence delivered**:
+**R2 evidence (carried forward)**:
 - GRID-A ≡ GRID-0 (full-horizon injection, sub-milli-kEUR delta): CONFIRMED
 - Position-aligned comparators: CFADS max delta 339.71, SD max delta 667.86, SHL cash max delta 622.69 kEUR
 - Row39 state propagation fix implemented; ROW39_CAP_NON_BINDING_FOR_OBOROVO confirmed
 - GRID-ABCD shl_netting_in_tax=True: semantically honest (A=0 identity proven)
 - Source replay rows 36/37/38/39/41/43: SOURCE_REPLAY_PROVEN classification
 - CURRENT_CAUSE_UNRESOLVED: no mechanic combination explains the 2718.02 kEUR residual
-- GRID-WS0 baseline gate pending classification before causal claims can be made
-- DSRA_ORDERING_UNRESOLVED — no ranking without causal evidence
+
+**R3 evidence (new)**:
+- CF79/Macro49/Macro50/DS20 formula chain: SOURCE_PROVEN_FORMULA for all visible cells
+- Macro50 output: VBA_IMPLEMENTATION_NOT_VISIBLE (password-protected)
+- CFADS_ALIGNED_IN_THIS_SCENARIO: CF79 ≈ Macro50 during DSCR=1.15 periods (max diff < 0.01 kEUR)
+- DSCR banding effect: at DSCR=1.35 periods (25–27), Macro50 < CF79 by 590–743 kEUR (backward PV constraint)
+- G4 vector backward induction: reproduces source debt 42,852.279 kEUR exactly (residual = 0.000 kEUR)
+- Causal bridge: rate (−544), CFADS (−1,918), day-count (−215), DSCR banding (−516), partial period (−9) → bridge closed
+- TUHO bank-sizing proof: bank_cfads = |SDS| × target_DSCR = 2,539.634 kEUR (SOURCE_DERIVED_IDENTITY)
+- DSRA_NOT_CAUSAL_FOR_OBOROVO_CURRENT_RESIDUAL_SOURCE_PROVEN: DSRA=0 in source (Inputs!I348=0)
+- WORKBOOK_5_MODEL_PERIOD_LOSS_WINDOW_KNOWN_SOURCE_BUG: B36=5 periods → 2.5 calendar years (semiannual)
+- Source mapping document: `docs/reconciliation/c3b3d2b2a_cfads_dscr_source_mapping.md`

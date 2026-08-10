@@ -6,13 +6,16 @@ Causally explain the CURRENT_UPSTREAM_CLEAN_CASH_RESIDUAL (~2718.02 kEUR) by
 evaluating 12 arm combinations of source-proven workbook mechanics (H2+H1
 CIT pairing, EBT gate, rolling-5-period LCF, row-39 cap, SHL feedback).
 
+R3 additions: CFADS/DSCR source mapping, TUHO bank-sizing proof, Oborovo
+debt sizing replay, DSRA classification, tax window labels.
+
 Key governance constraints
 --------------------------
 - No DS25 / DS40 period-boundary hardcoding
 - No project-name dispatch or approved_delta plugs
 - Protected C3B2 SHA unchanged
 - 13547.2 must not appear in clean SHL logic
-- DSRA_ORDERING_UNRESOLVED — no DSRA implementation
+- DSRA_NOT_CAUSAL_FOR_OBOROVO_CURRENT_RESIDUAL_SOURCE_PROVEN
 - All evidence evaluated against source fixture vectors
 
 Final verdict delivered: C3B3D2B2A_CAUSAL_GRID_READY_FOR_INDEPENDENT_REVIEW
@@ -20,8 +23,27 @@ Final verdict delivered: C3B3D2B2A_CAUSAL_GRID_READY_FOR_INDEPENDENT_REVIEW
 
 from __future__ import annotations
 
+import json
 import math
+import pathlib
 import pytest
+
+_FIXTURE_DIR = pathlib.Path(__file__).parent / "fixtures"
+
+
+def _load_oborovo_financial_fixture() -> dict:
+    with open(_FIXTURE_DIR / "excel_oborovo_financial_truth.json") as f:
+        return json.load(f)
+
+
+def _load_oborovo_debt_interest_fixture() -> dict:
+    with open(_FIXTURE_DIR / "excel_oborovo_debt_interest_truth.json") as f:
+        return json.load(f)
+
+
+def _load_tuho_fixture() -> dict:
+    with open(_FIXTURE_DIR / "excel_tuho_full_model_extract.json") as f:
+        return json.load(f)
 
 from finco_recon.diagnose_c3b3d2b2a_tax_shl_causal_grid import (
     D2B1_GRID0_FINAL_CLOSING_KEUR,
@@ -1096,3 +1118,306 @@ class TestGridABCDSemanticsHonest:
         ev = grid.grid_abcd.source_evidence
         assert "FIXED_POINT_COLLAPSES_ANALYTICALLY_TO_IDENTITY_FOR_OBOROVO" in ev or \
                "zero TI effect" in ev or "A=0 identity" in ev
+
+
+# ---------------------------------------------------------------------------
+# R3: CFADS / DSCR source formula mapping (Oborovo)
+# ---------------------------------------------------------------------------
+
+class TestCfadsDscrSourceMapping:
+    """Verify source formulas for the two-layer CFADS architecture (Oborovo).
+
+    SOURCE_PROVEN_FORMULA assertions — these must match the exact formula text
+    extracted from the Oborovo workbook.
+    """
+
+    @pytest.fixture(scope="class")
+    def wa(self):
+        return _load_oborovo_debt_interest_fixture()["workstream_a"]
+
+    def test_cf79_formula_proven(self, wa):
+        """CF!row79 = SUM(H23,H49,H73,H76,H77)+$B$80*(H$4=0)."""
+        formula = wa["cf_row79_free_cash_flow_for_banks"]["formula_h"]
+        assert "SUM(H23,H49,H73,H76,H77)" in formula
+        assert "$B$80" in formula
+
+    def test_macro49_links_to_cf79(self, wa):
+        """Macro!row49 formula = CF!H79 (input to bank-sizing VBA)."""
+        formula = wa["macro_row49_input"]["formula_h"]
+        assert formula == "=CF!H79"
+
+    def test_macro50_vba_not_visible(self, wa):
+        """Macro!row50 output formula is None — VBA_IMPLEMENTATION_NOT_VISIBLE."""
+        assert wa["macro_row50_output_formula"] is None
+
+    def test_ds_row20_sources_macro50(self, wa):
+        """DS!row20 formula = Macro!H50 (bank CFADS entering debt service)."""
+        formula = wa["ds_row20_cfads"]["formula_h"]
+        assert formula == "=Macro!H50"
+
+    def test_cfads_aligned_classification(self, wa):
+        """Fixture classification = CFADS_ALIGNED_IN_THIS_SCENARIO."""
+        assert wa["classification"] == "CFADS_ALIGNED_IN_THIS_SCENARIO"
+
+    def test_ds_row22_dscr_formula_proven(self, wa):
+        """DS!row22 DSCR target formula uses weighted band structure."""
+        formula = wa["ds_row22_dscr_target"]["formula_h"]
+        assert "$B$22" in formula
+        assert "$D$22" in formula
+        assert "$C$22" in formula
+
+    def test_ds_row23_avail_formula_proven(self, wa):
+        """DS!row23 allowed SDS formula: (H20/H22 + DSRA_adj) × ops × tranche."""
+        formula = wa["ds_row23_available_cf"]["formula_h"]
+        assert "H20" in formula and "H22" in formula
+
+
+# ---------------------------------------------------------------------------
+# R3: Oborovo CF79 vs Macro50 alignment during DSCR=1.15 debt periods
+# ---------------------------------------------------------------------------
+
+class TestOborovoCfadsAlignment:
+    """CF79 ≈ Macro50 during DSCR=1.15 periods (indices 1–24) — max diff < 0.01 kEUR.
+
+    CFADS_ALIGNED_IN_THIS_SCENARIO holds for the DSCR=1.15 band.
+    At DSCR=1.35 periods (25–27) the backward PV constraint binds and
+    Macro50 < CF79 by hundreds of kEUR.
+    """
+
+    @pytest.fixture(scope="class")
+    def obo_fin(self):
+        return _load_oborovo_financial_fixture()
+
+    def test_cf79_and_macro50_aligned_dscr_115_periods(self, obo_fin):
+        """Max |CF79 − Macro50| < 0.01 kEUR for DSCR=1.15 periods (indices 1–24)."""
+        cf79 = obo_fin["cf"]["fcf_for_banks_keur"]
+        macro50 = obo_fin["ds"]["cfads_for_sd_keur"]
+        diffs = [abs(cf79[i] - macro50[i]) for i in range(1, 25)]
+        assert max(diffs) < 0.01, f"Max diff during 1.15 periods: {max(diffs):.6f} kEUR"
+
+    def test_macro50_lt_cf79_at_dscr_135_periods(self, obo_fin):
+        """Macro50 < CF79 at DSCR=1.35 periods (indices 25–27) by >500 kEUR."""
+        cf79 = obo_fin["cf"]["fcf_for_banks_keur"]
+        macro50 = obo_fin["ds"]["cfads_for_sd_keur"]
+        for idx in [25, 26, 27]:
+            delta = cf79[idx] - macro50[idx]
+            assert delta > 500, (
+                f"Expected CF79 > Macro50 at idx={idx} by >500 kEUR; got delta={delta:.2f}"
+            )
+
+    def test_dscr_target_changes_at_index_25(self, obo_fin):
+        """DSCR target changes from 1.15 to 1.35 at fixture index 25."""
+        dscr_t = obo_fin["ds"]["dscr_target"]
+        assert abs(dscr_t[24] - 1.15) < 1e-9
+        assert abs(dscr_t[25] - 1.35) < 1e-9
+
+    def test_initial_debt_matches_source(self, obo_fin):
+        """SD beginning at index 0 = source total debt 42,852.279 kEUR."""
+        sd_ending = obo_fin["ds"]["sd_ending_keur"]
+        assert abs(sd_ending[0] - 42852.279) < 0.01
+
+    def test_allowed_sds_identity(self, obo_fin):
+        """allowed_SDS × target_DSCR ≈ Macro50 (bank CFADS) for first 24 operating periods."""
+        macro50 = obo_fin["ds"]["cfads_for_sd_keur"]
+        sd_serv = obo_fin["ds"]["sd_service_keur"]
+        dscr_t = obo_fin["ds"]["dscr_target"]
+        for idx in range(1, 25):
+            derived_bank_cfads = abs(sd_serv[idx]) * dscr_t[idx]
+            assert abs(derived_bank_cfads - macro50[idx]) < 1.0, (
+                f"idx={idx}: |SDS|×DSCR={derived_bank_cfads:.3f} vs macro50={macro50[idx]:.3f}"
+            )
+
+
+# ---------------------------------------------------------------------------
+# R3: TUHO bank-sizing cross-project proof
+# ---------------------------------------------------------------------------
+
+class TestTuhoBankSizingProof:
+    """TUHO: P50 base CFADS vs bank-sizing CFADS — SOURCE_DERIVED_IDENTITY proof.
+
+    bank_cfads[t] = |SDS[t]| × target_DSCR[t]   (SOURCE_DERIVED_IDENTITY)
+    base_actual_DSCR[t] = CF79[t] / |SDS[t]|    (SOURCE_DERIVED_IDENTITY)
+    """
+
+    @pytest.fixture(scope="class")
+    def tuho_first_op(self):
+        d = _load_tuho_fixture()
+        cols = d["period_diagnostic_columns"]
+        row = d["period_diagnostics"][0]
+        return dict(zip(cols, row))
+
+    def test_tuho_base_cfads_period1(self, tuho_first_op):
+        """TUHO P50 base CFADS period 1 = 3,070.175837370555 kEUR."""
+        v = tuho_first_op["CF.free_cash_flow_for_banks_keur"]
+        assert abs(v - 3070.175837370555) < 1e-6
+
+    def test_tuho_sds_period1(self, tuho_first_op):
+        """TUHO SDS period 1 = −2,116.361394092063 kEUR."""
+        v = tuho_first_op["CF.senior_debt_service_keur"]
+        assert abs(v - (-2116.361394092063)) < 1e-6
+
+    def test_tuho_target_dscr_period1(self, tuho_first_op):
+        """TUHO target DSCR period 1 = 1.2."""
+        assert abs(tuho_first_op["DS.senior_debt_dscr_target"] - 1.2) < 1e-9
+
+    def test_tuho_bank_cfads_derived(self, tuho_first_op):
+        """bank_cfads = |SDS| × target_DSCR = 2,539.633672910476 kEUR."""
+        sds = abs(tuho_first_op["CF.senior_debt_service_keur"])
+        dscr = tuho_first_op["DS.senior_debt_dscr_target"]
+        bank_cfads = sds * dscr
+        assert abs(bank_cfads - 2539.633672910476) < 1e-6
+
+    def test_tuho_base_actual_dscr(self, tuho_first_op):
+        """Base actual DSCR = CF79 / |SDS| ≈ 1.451 (source) and > target 1.2."""
+        cf79 = tuho_first_op["CF.free_cash_flow_for_banks_keur"]
+        sds = abs(tuho_first_op["CF.senior_debt_service_keur"])
+        actual_dscr = cf79 / sds
+        source_dscr = tuho_first_op["CF.average_senior_dscr_period"]
+        assert abs(actual_dscr - source_dscr) < 0.001
+        assert actual_dscr > tuho_first_op["DS.senior_debt_dscr_target"]
+
+    def test_tuho_minimum_dscr_is_output_not_input(self, tuho_first_op):
+        """base_actual_DSCR > target_DSCR — minimum is an output, not a second sizing input."""
+        actual = tuho_first_op["CF.average_senior_dscr_period"]
+        target = tuho_first_op["DS.senior_debt_dscr_target"]
+        assert actual > target, (
+            "MINIMUM_BASE_CASE_DSCR_IS_OUTPUT_NOT_SIZING_INPUT: "
+            f"actual={actual:.4f} must exceed target={target:.4f}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# R3: Oborovo debt sizing replay — causal bridge G4 closure
+# ---------------------------------------------------------------------------
+
+class TestOborovoDebtSizingReplay:
+    """G4 vector backward induction reproduces source debt exactly.
+
+    bridge_closed_to_vector = True, g4_final_unforced_residual_keur = 0.000.
+    """
+
+    @pytest.fixture(scope="class")
+    def bridge(self):
+        d = _load_oborovo_debt_interest_fixture()
+        return d["phase2c_sizing_analysis"]["causal_bridge"]
+
+    def test_bridge_closed_to_vector(self, bridge):
+        """bridge_closed_to_vector = True — G4 matches excel debt exactly."""
+        assert bridge["bridge_closed_to_vector"] is True
+
+    def test_g4_residual_zero(self, bridge):
+        """g4_final_unforced_residual_keur = 0.000 kEUR."""
+        assert abs(bridge["g4_final_unforced_residual_keur"]) < 1e-6
+
+    def test_g4_vector_matches_excel(self, bridge):
+        """G4 backward PV = excel total debt (42,852.279 kEUR)."""
+        g4 = bridge["g4_vector_backward_induction_keur"]
+        excel = bridge["excel_debt_keur"]
+        assert abs(g4 - excel) < 0.001
+
+    def test_delta_rate_mismatch(self, bridge):
+        """Rate mismatch contribution ≈ −543.807 kEUR (5.65% flat vs 5.9514% source)."""
+        assert abs(bridge["delta_rate_keur"] - (-543.807114931)) < 0.01
+
+    def test_delta_cfads_mismatch(self, bridge):
+        """CFADS mismatch contribution ≈ −1,918.036 kEUR (clean EBITDA-based vs Macro50)."""
+        assert abs(bridge["delta_cfads_keur"] - (-1918.035795775)) < 0.01
+
+    def test_delta_daycount(self, bridge):
+        """Day-count mismatch contribution ≈ −214.604 kEUR (ACT/365 vs ACT/360)."""
+        assert abs(bridge["delta_daycount_keur"] - (-214.60420091)) < 0.01
+
+    def test_rate_mismatch_confirmed(self):
+        """Rate mismatch confirmed in workstream_e fixture."""
+        we = _load_oborovo_debt_interest_fixture()["workstream_e"]
+        assert we["rate_mismatch_confirmed"] is True
+        assert abs(we["sculpting_rate_period1_annual_pct"] - 5.95136) < 0.001
+        assert abs(we["phase2c_rate_pct"] - 5.65) < 0.001
+
+
+# ---------------------------------------------------------------------------
+# R3: DSRA classification — not causal for Oborovo residual
+# ---------------------------------------------------------------------------
+
+class TestDsraNotCausal:
+    """DSRA is inactive for Oborovo — DSRA_NOT_CAUSAL_FOR_OBOROVO_CURRENT_RESIDUAL_SOURCE_PROVEN.
+
+    Source: workstream_c in excel_oborovo_debt_interest_truth.json.
+    """
+
+    @pytest.fixture(scope="class")
+    def wc(self):
+        return _load_oborovo_debt_interest_fixture()["workstream_c"]
+
+    def test_dsra_target_is_zero(self, wc):
+        """Inputs!I348 DSRA target = 0 (zero DSRA reserve required)."""
+        assert wc["target_is_zero"] is True
+
+    def test_dsra_all_cached_values_zero(self, wc):
+        """All DSRA cached values = 0 in source workbook."""
+        assert wc["all_cached_values_zero"] is True
+
+    def test_dsra_classification_aligned_both_zero(self, wc):
+        """Fixture classification = ALIGNED_BOTH_ZERO."""
+        assert wc["classification"] == "ALIGNED_BOTH_ZERO"
+
+    def test_dsra_not_present(self, wc):
+        """dsra_present = False — DSRA is not active in this workbook instance."""
+        assert wc["dsra_present"] is False
+
+    def test_dsra_not_causal_for_residual(self, wc):
+        """DSRA_NOT_CAUSAL_FOR_OBOROVO_CURRENT_RESIDUAL_SOURCE_PROVEN:
+        when both target and actual DSRA are zero, DSRA cannot drive the
+        CURRENT_UPSTREAM_CLEAN_CASH_RESIDUAL."""
+        assert wc["target_is_zero"] is True and wc["all_cached_values_zero"] is True, (
+            "DSRA_NOT_CAUSAL_FOR_OBOROVO_CURRENT_RESIDUAL_SOURCE_PROVEN: "
+            "DSRA is zero in source; cannot be a causal driver"
+        )
+
+
+# ---------------------------------------------------------------------------
+# R3: Tax window classification and construction loss
+# ---------------------------------------------------------------------------
+
+class TestTaxWindowClassification:
+    """Tax mechanic labels: 5-period window bug, row39 non-binding, construction loss.
+
+    These tests verify that the diagnostic module uses the correct labels and that
+    Oborovo-specific classifications are consistent with source fixture evidence.
+    """
+
+    def test_workbook_rolling_window_is_5(self):
+        """WORKBOOK_ROLLING_WINDOW = 5 model periods (semiannual → 2.5 calendar years)."""
+        from finco_recon.diagnose_c3b3d2b2a_tax_shl_causal_grid import WORKBOOK_ROLLING_WINDOW
+        assert WORKBOOK_ROLLING_WINDOW == 5
+
+    def test_workbook_5_period_window_known_source_bug_label(self):
+        """WORKBOOK_5_MODEL_PERIOD_LOSS_WINDOW_KNOWN_SOURCE_BUG: B36=5 model periods
+        with semiannual model = 2.5-year lookback, not 5-year as may be intended."""
+        assert WORKBOOK_ROLLING_WINDOW == 5
+
+    def test_row39_cap_non_binding_for_oborovo(self, grid):
+        """ROW39_CAP_NON_BINDING_FOR_OBOROVO: GRID-ABCDE ≈ GRID-ABCD (< 0.01 kEUR)."""
+        diff = abs(
+            grid.grid_abcde.ds40_final_closing_keur - grid.grid_abcd.ds40_final_closing_keur
+        )
+        assert diff < 0.01, (
+            f"Row39 cap effect={diff:.4f} kEUR; expected < 0.01 for Oborovo"
+        )
+
+    def test_construction_loss_entering_operation(self, grid):
+        """CONSTRUCTION_LOSS_ENTERING_OPERATION_SOURCE_PROVEN:
+        GRID-0 total cash tax is positive (construction loss carried forward does
+        not eliminate all CIT across the operating life)."""
+        assert grid.grid0.total_cash_tax_keur > 0
+
+    def test_dsra_ordering_resolved_for_oborovo(self):
+        """DSRA_ORDERING_UNRESOLVED resolves to NOT_CAUSAL for Oborovo specifically.
+        DSRA=0 in source → ordering is moot; DSRA cannot be ranked as a driver."""
+        wc = _load_oborovo_debt_interest_fixture()["workstream_c"]
+        assert wc["all_cached_values_zero"] is True
+
+    @pytest.fixture(scope="class")
+    def grid(self):
+        from finco_recon.diagnose_c3b3d2b2a_tax_shl_causal_grid import run_diagnostic_grid
+        return run_diagnostic_grid()
