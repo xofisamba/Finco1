@@ -1,8 +1,8 @@
 # C3B3D2B2A — Tax / SHL Causal Diagnostic Grid
 
-**Stage**: C3B3D2B2A  
-**Status**: CAUSAL_GRID_READY_FOR_INDEPENDENT_REVIEW  
-**Base**: C3B3D2B1 main (`7cd1366c4e81a35e55c529c324a7809e9a78eef4`)  
+**Stage**: C3B3D2B2A
+**Status**: CAUSAL_GRID_READY_FOR_INDEPENDENT_REVIEW
+**Base**: C3B3D2B1 main (`7cd1366c4e81a35e55c529c324a7809e9a78eef4`)
 **Branch**: `stage-c3b3d2b2a-tax-shl-causal-grid`
 
 ---
@@ -14,7 +14,7 @@ clean DS[40] SHL closing balance vs 0.00 kEUR source) by evaluating 12
 arm combinations of source-proven workbook mechanics against the clean engine
 baseline.
 
-Evidence priority: **source fixture vectors over implementation assumptions**.  
+Evidence priority: **source fixture vectors over implementation assumptions**.
 No production-engine modifications. No source fixture vectors in production paths.
 
 ---
