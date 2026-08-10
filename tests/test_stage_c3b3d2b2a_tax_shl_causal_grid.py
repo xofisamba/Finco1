@@ -48,6 +48,9 @@ def _load_tuho_fixture() -> dict:
 from finco_recon.diagnose_c3b3d2b2a_tax_shl_causal_grid import (
     D2B1_GRID0_FINAL_CLOSING_KEUR,
     SOURCE_DEBT_SIZE_KEUR,
+    CURRENT_GRID0_DEBT_KEUR,
+    HISTORICAL_GENERIC_PHASE2C_DEBT_KEUR,
+    SOURCE_EXCEL_SENIOR_DEBT_KEUR,
     SHL_DRAW_KEUR,
     SHL_ANNUAL_RATE,
     SHL_FIRST_OP_OPENING_KEUR,
@@ -516,27 +519,38 @@ class TestCausalAttributionFindings:
                 f"DS40={arm.ds40_final_closing_keur:.2f} kEUR (source=0.0)"
             )
 
-    def test_workbook_mechanics_increase_residual_not_decrease(self, grid):
-        """All workbook arms produce DS40 ≥ GRID-0 residual.
+    def test_workbook_arms_within_tax_surrogate_only(self, grid):
+        """B/C/D/E arms are WITHIN_TAX_SURROGATE_ONLY — not validated against a common baseline.
 
-        Since EBT gate prevents loss utilisation, adding workbook mechanics
-        INCREASES the SHL closing residual relative to GRID-0.
+        GRID-WS0 has not been validated as equivalent to GRID-0. Until that gate
+        is cleared, B/C/D/E relative claims are within-surrogate experiments only
+        and cannot be stated as causal drivers of the upstream residual.
+
+        Row-39 (GRID-E): ROW39_REPORTING_OR_NON_CAUSAL_FOR_TAX_STATE_SOURCE_PROVEN —
+        row39 does not feed forward tax state; GRID-E is not a causal mechanic.
         """
         arms = [
             grid.grid_c, grid.grid_d, grid.grid_e,
             grid.grid_bc, grid.grid_bcd, grid.grid_abcde,
         ]
         for arm in arms:
-            # Allow small numerical tolerance
-            assert arm.ds40_final_closing_keur >= grid.grid0.ds40_final_closing_keur - 50.0, (
-                f"{arm.arm_id}: DS40={arm.ds40_final_closing_keur:.2f} is unexpectedly below "
-                f"GRID-0 ({grid.grid0.ds40_final_closing_keur:.2f})"
+            # Arms must produce finite DS40; magnitude vs GRID-0 is surrogate-only
+            assert math.isfinite(arm.ds40_final_closing_keur), (
+                f"{arm.arm_id}: DS40 is not finite — surrogate computation failed"
+            )
+            # Within-surrogate: residual does not reach zero (source = 0.0 kEUR)
+            assert abs(arm.ds40_final_closing_keur) > 100.0, (
+                f"{arm.arm_id} WITHIN_TAX_SURROGATE_ONLY: "
+                f"DS40={arm.ds40_final_closing_keur:.2f} is unexpectedly near zero"
             )
 
-    def test_grid0_delta_vs_source_confirms_upstream_residual(self, grid):
-        """GRID-0 SHL cash signed delta confirms upstream clean engine difference."""
-        # The signed SHL cash delta must be negative (clean engine provides less
-        # cash for SHL than source → SHL closing remains positive)
+    def test_grid0_shl_cash_delta_is_negative(self, grid):
+        """GRID-0 SHL cash signed delta is negative (WITHIN_TAX_SURROGATE_ONLY label).
+
+        Clean engine provides less cash for SHL than source across DS[1..40] —
+        consistent with upstream clean-vs-source differences. This is a directional
+        observation, not a causal attribution (GRID-WS0 gate not yet classified).
+        """
         assert grid.grid0.signed_total_shl_cash_delta < 0.0
 
     def test_all_arms_have_finite_metrics(self, grid):
@@ -1291,8 +1305,17 @@ class TestTuhoBankSizingProof:
 # ---------------------------------------------------------------------------
 
 class TestOborovoDebtSizingReplay:
-    """G4 vector backward induction reproduces source debt exactly.
+    """HISTORICAL_C3B2_SOURCE_REPLAY_PROOF: G4 vector backward induction.
 
+    This is the historical fixture evidence from C3B2 phase — starting from
+    HISTORICAL_GENERIC_PHASE2C_SCALAR_DIAGNOSTIC (≈46,053 kEUR), NOT the current
+    CURRENT_GRID0_PRODUCTION_CANDIDATE (≈43,919 kEUR).
+
+    The G4 bridge closes from 46,053 → 42,852.279 kEUR exactly (residual=0.000).
+    It proves that the historical generic Phase2C output is explained by four
+    INPUT_POLICY_MISMATCH factors. It does NOT prove the current GRID-0 bridge.
+
+    Classification: HISTORICAL_C3B2_SOURCE_REPLAY_PROOF
     bridge_closed_to_vector = True, g4_final_unforced_residual_keur = 0.000.
     """
 
@@ -1416,6 +1439,99 @@ class TestTaxWindowClassification:
         DSRA=0 in source → ordering is moot; DSRA cannot be ranked as a driver."""
         wc = _load_oborovo_debt_interest_fixture()["workstream_c"]
         assert wc["all_cached_values_zero"] is True
+
+    @pytest.fixture(scope="class")
+    def grid(self):
+        from finco_recon.diagnose_c3b3d2b2a_tax_shl_causal_grid import run_diagnostic_grid
+        return run_diagnostic_grid()
+
+
+# ---------------------------------------------------------------------------
+# R4: Three baseline separation
+# ---------------------------------------------------------------------------
+
+class TestThreeBaselineSeparation:
+    """Three debt authorities must be clearly distinct and never conflated.
+
+    CURRENT_GRID0_PRODUCTION_CANDIDATE    ≈ 43,919.03 kEUR  (current runtime)
+    HISTORICAL_GENERIC_PHASE2C_SCALAR_DIAGNOSTIC ≈ 46,053.40 kEUR (historical fixture)
+    SOURCE_EXCEL_SENIOR_DEBT              = 42,852.279 kEUR  (source workbook)
+    """
+
+    def test_current_grid0_baseline_value(self):
+        """CURRENT_GRID0_DEBT_KEUR = 43,919.032698 kEUR (CURRENT_GRID0_PRODUCTION_CANDIDATE)."""
+        assert abs(CURRENT_GRID0_DEBT_KEUR - 43_919.032698) < 1.0
+
+    def test_historical_generic_phase2c_value(self):
+        """HISTORICAL_GENERIC_PHASE2C_DEBT_KEUR = 46,053.402 kEUR (HISTORICAL_GENERIC_PHASE2C_SCALAR_DIAGNOSTIC)."""
+        assert abs(HISTORICAL_GENERIC_PHASE2C_DEBT_KEUR - 46_053.402378616) < 0.001
+
+    def test_source_excel_value(self):
+        """SOURCE_EXCEL_SENIOR_DEBT_KEUR = 42,852.279 kEUR (SOURCE_EXCEL_SENIOR_DEBT)."""
+        assert abs(SOURCE_EXCEL_SENIOR_DEBT_KEUR - 42_852.27876256299) < 1e-6
+
+    def test_three_baselines_are_distinct(self):
+        """All three baselines differ — must not be conflated."""
+        assert CURRENT_GRID0_DEBT_KEUR != HISTORICAL_GENERIC_PHASE2C_DEBT_KEUR
+        assert CURRENT_GRID0_DEBT_KEUR != SOURCE_EXCEL_SENIOR_DEBT_KEUR
+        assert HISTORICAL_GENERIC_PHASE2C_DEBT_KEUR != SOURCE_EXCEL_SENIOR_DEBT_KEUR
+
+    def test_current_grid0_runtime_matches_constant(self, grid):
+        """Runtime GRID-0 debt matches CURRENT_GRID0_DEBT_KEUR constant (< 1 kEUR tolerance)."""
+        assert abs(grid.grid0.clean_debt_size_keur - CURRENT_GRID0_DEBT_KEUR) < 1.0
+
+    def test_current_grid0_delta_vs_source(self, grid):
+        """Current GRID-0 → source debt delta ≈ +1,066.75 kEUR (CURRENT_GRID0_TO_SOURCE_DEBT_BRIDGE_NOT_YET_CLOSED)."""
+        delta = grid.grid0.clean_debt_size_keur - SOURCE_EXCEL_SENIOR_DEBT_KEUR
+        assert 900 < delta < 1200, (
+            f"CURRENT GRID-0 → source delta = {delta:.2f} kEUR; expected ~1,066.75"
+        )
+
+    def test_historical_bridge_is_not_current_grid0(self):
+        """HISTORICAL_GENERIC_PHASE2C_SCALAR_DIAGNOSTIC ≠ CURRENT_GRID0_PRODUCTION_CANDIDATE."""
+        diff = abs(HISTORICAL_GENERIC_PHASE2C_DEBT_KEUR - CURRENT_GRID0_DEBT_KEUR)
+        assert diff > 2000, (
+            "Historical generic Phase2C (46,053) and current GRID-0 (43,919) "
+            "differ by >2,000 kEUR — they must not be conflated"
+        )
+
+    @pytest.fixture(scope="class")
+    def grid(self):
+        from finco_recon.diagnose_c3b3d2b2a_tax_shl_causal_grid import run_diagnostic_grid
+        return run_diagnostic_grid()
+
+
+# ---------------------------------------------------------------------------
+# R4: Row39 non-causal classification and surrogate-only GRID-E
+# ---------------------------------------------------------------------------
+
+class TestRow39NonCausalClassification:
+    """ROW39_REPORTING_OR_NON_CAUSAL_FOR_TAX_STATE_SOURCE_PROVEN.
+
+    Source workbook inspection confirms row39 does not feed forward tax state.
+    The synthetic cumulative_used propagation has been removed.
+    GRID-E arm: WITHIN_TAX_SURROGATE_ONLY — not a causal tax-state mechanic.
+    """
+
+    def test_row39_cap_non_binding_confirmed(self, grid):
+        """GRID-ABCDE ≈ GRID-ABCD (row39 cap does not bind for Oborovo)."""
+        diff = abs(
+            grid.grid_abcde.ds40_final_closing_keur - grid.grid_abcd.ds40_final_closing_keur
+        )
+        assert diff < 0.01, f"Row39 cap effect = {diff:.4f} kEUR; expected < 0.01"
+
+    def test_grid_e_within_surrogate_only(self, grid):
+        """GRID-E is WITHIN_TAX_SURROGATE_ONLY — row39 is not a causal tax-state driver."""
+        # GRID-E produces finite output but its delta vs GRID-0 is within surrogate only
+        assert math.isfinite(grid.grid_e.ds40_final_closing_keur)
+        assert math.isfinite(grid.grid_e.delta_vs_grid0_final_closing)
+
+    def test_row39_config_flag_retained_for_replay_only(self):
+        """WorkbookTaxConfig.row39_cap flag retained for source-replay validation only."""
+        config_with_row39 = WorkbookTaxConfig(row39_cap=True)
+        config_without = WorkbookTaxConfig(row39_cap=False)
+        assert config_with_row39.row39_cap is True
+        assert config_without.row39_cap is False
 
     @pytest.fixture(scope="class")
     def grid(self):

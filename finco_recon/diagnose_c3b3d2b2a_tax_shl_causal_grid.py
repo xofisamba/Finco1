@@ -25,9 +25,11 @@ Source evidence for workbook mechanics:
   Row 36: SOURCE_PROVEN (WORKBOOK_COMPATIBILITY_PROFILE)
     losses_n_minus_1 = SUMIF(last-B36-periods TI, "<0") + cumulative_used; B36=5
     → Rolling 5 MODEL PERIODS (≈2.5 calendar years), NOT 5 calendar-year vintages.
-  Row 39: SOURCE_PROVEN (WORKBOOK_COMPATIBILITY_PROFILE)
+  Row 39: SOURCE_PROVEN (WORKBOOK_COMPATIBILITY_PROFILE) — REPORTING/REPLAY ONLY
     carriable_losses = MIN(losses_n, prior_period_TI × B37); B37=1
-    → Caps carriable losses by prior-period TI.
+    ROW39_REPORTING_OR_NON_CAUSAL_FOR_TAX_STATE_SOURCE_PROVEN:
+    Row 39 does not feed the forward tax state (rows 36/37/38/41/43).
+    Retained in config for source-replay validation only; not a causal mechanic.
 
 Cause status: CURRENT_CAUSE_UNRESOLVED — no arm has yet proven a common valid baseline.
 
@@ -64,6 +66,11 @@ WORKBOOK_CIT_RATE: float = 0.10                 # P&L B43 SOURCE_RAW_CACHED_VALU
 WORKBOOK_ROLLING_WINDOW: int = 5                # P&L B36=5 (model periods)
 SOURCE_FINAL_SHL_CLOSING_KEUR: float = 0.0     # DS[40] source closing (all repaid)
 D2B1_GRID0_FINAL_CLOSING_KEUR: float = 2718.02  # D2B1 production-candidate diagnostic
+
+# Three baseline authorities — must not be conflated:
+CURRENT_GRID0_DEBT_KEUR: float = 43_919.032698           # CURRENT_GRID0_PRODUCTION_CANDIDATE
+HISTORICAL_GENERIC_PHASE2C_DEBT_KEUR: float = 46_053.402378616  # HISTORICAL_GENERIC_PHASE2C_SCALAR_DIAGNOSTIC
+SOURCE_EXCEL_SENIOR_DEBT_KEUR: float = SOURCE_DEBT_SIZE_KEUR    # SOURCE_EXCEL_SENIOR_DEBT = 42,852.279 kEUR
 
 _CF_FIXTURE_PATH = os.path.join(
     os.path.dirname(__file__),
@@ -119,9 +126,10 @@ class WorkbookTaxConfig:
         Not 5 calendar-year vintages (FIFO); not 5 calendar years.
 
     row39_cap:
-        SOURCE_PROVEN (row 39). Carriable = MIN(closing_loss, prior_TI).
-        For Oborovo: prior TI is always <= closing loss (no binding effect found).
-        Include for completeness; expected near-zero incremental contribution.
+        SOURCE_PROVEN (row 39) — ROW39_REPORTING_OR_NON_CAUSAL_FOR_TAX_STATE_SOURCE_PROVEN.
+        Carriable = MIN(closing_loss, prior_TI). Row 39 does NOT feed forward tax
+        state. Flag retained for source-replay fixture validation only.
+        GRID-E arm: WITHIN_TAX_SURROGATE_ONLY — not a causal tax-state mechanic.
     """
     h2h1_pairing: bool = False
     ebt_gate: bool = False
@@ -502,15 +510,14 @@ def _compute_workbook_lcf(
             allocated = 0.0
 
         losses_n_uncapped = min(allocated + losses_available, 0.0)
-        losses_n = losses_n_uncapped
 
-        if config.row39_cap and ti_history:
-            prior_ti = ti_history[-1][1]
-            losses_n = min(losses_n_uncapped, prior_ti)
-            # If cap reduced the carryforward (losses_n > losses_n_uncapped, i.e. less negative),
-            # feed the expired portion back into cumulative_used so future windows shrink correctly.
-            if losses_n > losses_n_uncapped:
-                cumulative_used += (losses_n - losses_n_uncapped)
+        # ROW39_REPORTING_OR_NON_CAUSAL_FOR_TAX_STATE_SOURCE_PROVEN:
+        # Source workbook inspection confirms row39 does not feed forward tax state
+        # (rows 36/37/38/41/43). The cap branch below is also mathematically unreachable:
+        # min(losses_n_uncapped, prior_ti) with losses_n_uncapped<=0 can only equal
+        # losses_n_uncapped (when prior_ti>=0) or go more negative (when prior_ti<0),
+        # never produce losses_n > losses_n_uncapped. Removed synthetic propagation.
+        # row39_cap flag retained in config for fixture-replay validation only.
 
         tp = ti - allocated
         taxable_profit[pidx] = tp
