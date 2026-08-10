@@ -1,6 +1,6 @@
 # C3B3D2B1 — Production SHL Wiring + Instrument Day-Count Convention
 
-**Status**: `C3B3D2B1_READY_FOR_INDEPENDENT_REVIEW`
+**Status**: `C3B3D2B1_R1_READY_FOR_INDEPENDENT_REVIEW`
 **Branch**: `stage-c3b3d2b1-shl-production-wiring`
 **Base**: `2afdffbc1796d3b042f7b63c61c2750ec264924e` (main after C3B3D2B0 squash-merge)
 **Scope boundary**: Production SHL schedule chaining + typed instrument day-count convention. Tax feedback loop (SHL→tax→CFADS→SHL) deferred to C3B3D2B2.
@@ -14,9 +14,9 @@ C3B3D2B1 delivers:
 1. **`ShlDayCountConvention` typed enum** — instrument-level, independent of Senior Debt convention.
 2. **`ShlWaterfallPolicy` dataclass** — `annual_rate` + `day_count_convention`.
 3. **`compute_shl_dcf()` typed dispatch** — routes ACT_365_FIXED and ACT_360; delegates ACT_365_FIXED to governance-locked C3B3D2B0 function.
-4. **`compute_shl_schedule()` production chainer** — links C3B3D1 construction (opening=0, draw, DCF=1.0, PIK) and C3B3D2B0 operating waterfall (natural formula, no mode dispatch) into a single call.
-5. **`compute_shl_cash_from_phase2c()` seam adapter** — derives `cash_available_for_shl_keur` per period from Phase 2C result without reading any Excel fixture.
-6. **91 test functions** covering conventions, parity, seam, governance.
+4. **`compute_shl_schedule()` production chainer** — links C3B3D1 construction (opening=0, draw, DCF=1.0, PIK) and C3B3D2B0 operating waterfall (natural formula, no mode dispatch) into a single call. Fails closed on rate mismatch between construction and operating policy, and on non-zero operating drawdown.
+5. **`compute_shl_cash_from_phase2c()` seam adapter** — derives `candidate_cash_before_unresolved_reserve_adjustments` per period from Phase 2C result without reading any Excel fixture. Fails closed on missing CFADS entries and on period indices within the debt tenor that are absent from the senior debt schedule. DSRA ordering is `DSRA_ORDERING_UNRESOLVED`.
+6. **110 test functions** covering conventions, parity, seam, governance, fail-closed alignment, rate consistency, real Phase2C integration, and source vector identity.
 7. **This reconciliation document**.
 
 Not in scope: DSRA, distributions, Sponsor, R99/R102, SHL→tax fixed-point loop.
@@ -111,11 +111,11 @@ EBITDA = Revenue − OPEX
 [DSRA, distributions — downstream, not modelled in C3B3D2B1]
 ```
 
-Formula: `cash_available_for_shl[p] = max(0, CFADS[p] − senior_debt_service[p])`
+Formula: `candidate_cash_before_unresolved_reserve_adjustments[p] = max(0, CFADS[p] − senior_debt_service[p])`
 
 - Construction period: 0.0 (SHL is PIK)
 - Post-maturity periods (senior_ds = 0): CFADS
-- DSRA is downstream of SHL and does not reduce `cash_available_for_shl`
+- DSRA_ORDERING_UNRESOLVED: whether DSRA is deducted before or after SHL is not source-proven; seam output is a candidate cash figure pending resolution.
 
 Implemented in: `financial_engine.adapters.shl_cash_seam.compute_shl_cash_from_phase2c()`
 
@@ -206,7 +206,40 @@ First principal sweep: **DS[25]** (discovered from cash > gross; not hardcoded)
 
 ---
 
-## 10. Unresolved Items (Deferred to C3B3D2B2+)
+## 10. Provenance Classification
+
+### PROVEN (SOURCE_PROVEN)
+
+| Item | Evidence |
+|---|---|
+| SHL inclusive end-date: `((end-start).days + 1)` | C3B3D2B0: 40 Oborovo periods, max delta 1.11e-16 |
+| ACT_365_FIXED convention for Oborovo SHL | C3B3D2B0: SOURCE_PROVEN_FOR_OBOROVO_OPERATING_SHL |
+| Construction DCF=1.0 arithmetic identity | `gross / (draw × rate) = 1.0`; calendar convention UNRESOLVED |
+| Oborovo construction parity | TestI: all fields < 1e-6 kEUR |
+| Oborovo operating SHL formula parity | TestJ: SHL_FORMULA_PARITY_WITH_SOURCE_CASH_ORACLE (source cash as waterfall driver) |
+| Source vector identity: CFADS − senior_ds = FCF_for_SHL | TestQ: SOURCE_VECTOR_IDENTITY_FOR_OBOROVO; max delta < 0.01 kEUR |
+
+### CLEAN PRODUCTION CANDIDATE (EXPECTED_PRE_D2B2_UPSTREAM_CLEAN_CASH_RESIDUAL)
+
+| Item | Status | Note |
+|---|---|---|
+| Clean engine CFADS for Oborovo | CLEAN_PRODUCTION_CANDIDATE | Differs from source by WORKBOOK_PERIODISATION_MISMATCH (C3B3B) |
+| Clean engine senior_ds for Oborovo | CLEAN_PRODUCTION_CANDIDATE | Clean debt 43,919 vs source 42,852 kEUR (C3B3B) |
+| Resulting clean cash_available_for_shl | CLEAN_PRODUCTION_CANDIDATE | Residual labelled EXPECTED_PRE_D2B2_UPSTREAM_CLEAN_CASH_RESIDUAL |
+| Full SHL schedule from clean Phase2C | CLEAN_PRODUCTION_CANDIDATE | SHL arithmetic proven; cash driver is clean engine, not source |
+
+### UNRESOLVED
+
+| Item | Status |
+|---|---|
+| DSRA waterfall position relative to SHL | `DSRA_ORDERING_UNRESOLVED` |
+| Construction calendar convention | `CALENDAR_CONVENTION_UNRESOLVED` — DCF=1.0 arithmetic-implied only |
+| SHL→tax→CFADS→SHL feedback loop | `SHL_OUTSIDE_FIXED_POINT` — deferred to C3B3D2B2 |
+| ACT/360 SHL convention source proof | `GENERIC_ENGINE_CAPABILITY` only; no Oborovo source evidence |
+
+---
+
+## 11. Unresolved Items (Deferred to C3B3D2B2+)
 
 | Item | Status |
 |---|---|
@@ -219,7 +252,7 @@ First principal sweep: **DS[25]** (discovered from cash > gross; not hardcoded)
 
 ---
 
-## 11. D2B2 Prerequisites
+## 12. D2B2 Prerequisites
 
 A. Wire `shl_interest_keur` into `PeriodInterestInput` in the Phase 2C solver callback (adds SHL to the tax fixed-point loop).
 

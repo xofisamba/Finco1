@@ -2,22 +2,26 @@
 
 Derives cash_available_for_shl_keur per period from a Phase 2C (senior debt) result.
 
-Production cash lineage (Oborovo-proven, generic)
--------------------------------------------------
+Production cash lineage (Oborovo SOURCE_VECTOR_IDENTITY_FOR_OBOROVO)
+---------------------------------------------------------------------
     CFADS[p]              = EBITDA[p] - cash_tax[p]        (Phase 2B)
     senior_ds[p]          = interest[p] + principal[p]     (Phase 2C)
-    cash_for_shl[p]       = CFADS[p] - senior_ds[p]        (this seam)
+    candidate_cash[p]     = CFADS[p] - senior_ds[p]        (this seam)
 
-Waterfall ordering:
+The output is labelled candidate_cash_before_unresolved_reserve_adjustments
+because waterfall ordering between SHL and DSRA is DSRA_ORDERING_UNRESOLVED.
+
+Waterfall ordering (partially proven for Oborovo):
     Revenue
     OPEX
     EBITDA
-    − cash_tax                     → CFADS (pre-debt)
+    − cash_tax                     → CFADS (pre-debt)  [SOURCE_VECTOR_IDENTITY_FOR_OBOROVO]
     − senior_interest              ↘
-    − senior_principal             → post-senior-debt cash = cash_for_shl
-    − shl_cash_interest            ↘
-    − shl_principal_repayment      → post-SHL cash
-    [DSRA, distributions — downstream, not modelled in C3B3D2B1]
+    − senior_principal             → CFADS − senior_ds_keur
+    − shl_cash_interest            ↘  [DSRA_ORDERING_UNRESOLVED — position of DSRA
+    − shl_principal_repayment      →   relative to SHL not source-proven]
+    [DSRA — DSRA_ORDERING_UNRESOLVED, not modelled in C3B3D2B1]
+    [distributions — not modelled in C3B3D2B1]
 
 Construction period treatment
 ------------------------------
@@ -27,12 +31,22 @@ The construction SHL period is PIK (no cash service required).
 Post-senior-maturity treatment
 -------------------------------
 For operating periods after senior debt maturity (senior_ds = 0), the full
-CFADS is available for SHL service: cash_for_shl = CFADS.
+CFADS is available for SHL service: candidate_cash = CFADS.
 
-DSRA boundary
--------------
-DSRA movements are downstream of SHL and do NOT reduce cash_available_for_shl.
-This seam does not model DSRA.
+DSRA_ORDERING_UNRESOLVED
+------------------------
+Whether DSRA movements are deducted before or after SHL service is NOT
+source-proven in C3B3D2B1.  The seam output is a candidate cash figure
+pending resolution of DSRA ordering.  Do not claim DSRA is downstream
+of SHL without source evidence.  This is deferred to C3B3D2B2+.
+
+Period alignment contract
+--------------------------
+Every model period in phase2c_result.periods MUST appear in both
+tax_and_cfads.period_indices and (for operating periods) senior_debt.period_indices.
+Silently treating a missing period as zero is structurally dangerous and is
+NOT permitted.  A missing period raises ValueError.  Duplicate period indices
+in either schedule also raise ValueError.
 
 Tax interaction
 ---------------
@@ -122,27 +136,63 @@ def compute_shl_cash_from_phase2c(
             "Phase 2C result must include SeniorDebtSchedules"
         )
 
-    # Build lookup maps keyed by period_index.
-    cfads_by_idx: dict[int, float] = dict(zip(tac.period_indices, tac.cfads_keur))
-    sd_service_by_idx: dict[int, float] = dict(
-        zip(sd.period_indices, sd.senior_debt_service_keur)
-    )
+    # Build lookup maps keyed by period_index — fail closed on duplicates.
+    tac_indices = list(tac.period_indices)
+    tac_cfads = list(tac.cfads_keur)
+    if len(tac_indices) != len(set(tac_indices)):
+        raise ValueError(
+            "compute_shl_cash_from_phase2c: duplicate period indices in "
+            "tax_and_cfads.period_indices"
+        )
+    cfads_by_idx: dict[int, float] = dict(zip(tac_indices, tac_cfads))
+
+    sd_indices = list(sd.period_indices)
+    sd_service = list(sd.senior_debt_service_keur)
+    if len(sd_indices) != len(set(sd_indices)):
+        raise ValueError(
+            "compute_shl_cash_from_phase2c: duplicate period indices in "
+            "senior_debt.period_indices"
+        )
+    sd_service_by_idx: dict[int, float] = dict(zip(sd_indices, sd_service))
+
+    # The senior debt schedule covers only the debt tenor [min..max].
+    # Operating periods outside this range (pre-debt or post-maturity) legitimately
+    # have zero service and are not listed.  Within the tenor, a missing entry is
+    # a contract violation and fails closed.
+    sd_tenor_min = min(sd_indices) if sd_indices else None
+    sd_tenor_max = max(sd_indices) if sd_indices else None
 
     results: list[ShlCashAvailableByPeriod] = []
     for p in periods:
         idx = p.period_index
         is_constr: bool = p.is_construction
 
-        cfads = cfads_by_idx.get(idx, 0.0)
-        senior_ds = sd_service_by_idx.get(idx, 0.0)
+        # Fail closed: every period must be present in CFADS schedule.
+        if idx not in cfads_by_idx:
+            raise ValueError(
+                f"compute_shl_cash_from_phase2c: period_index={idx} is missing "
+                f"from tax_and_cfads.period_indices — all periods are required"
+            )
+        cfads = cfads_by_idx[idx]
 
         if is_constr:
-            # Construction SHL is PIK: no cash service, regardless of any
-            # positive CFADS that may appear in the construction period.
+            # Construction SHL is PIK: no cash service required.
+            senior_ds = 0.0
             cash_for_shl = 0.0
         else:
-            # Operating: cash_for_shl = CFADS - senior_debt_service.
-            # senior_ds is already >= 0 (sum of interest + principal, both >= 0).
+            if idx in sd_service_by_idx:
+                senior_ds = sd_service_by_idx[idx]
+            elif sd_tenor_min is not None and sd_tenor_min <= idx <= sd_tenor_max:
+                # Within the debt tenor but missing — contract violation.
+                raise ValueError(
+                    f"compute_shl_cash_from_phase2c: operating period_index={idx} "
+                    f"is within the senior debt tenor [{sd_tenor_min}..{sd_tenor_max}] "
+                    f"but absent from senior_debt.period_indices — missing periods "
+                    f"within the tenor are a contract violation"
+                )
+            else:
+                # Pre-debt or post-maturity: senior_ds = 0.0 (no active debt).
+                senior_ds = 0.0
             cash_for_shl = max(0.0, cfads - senior_ds)
 
         results.append(ShlCashAvailableByPeriod(

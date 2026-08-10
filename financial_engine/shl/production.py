@@ -226,6 +226,16 @@ def compute_shl_schedule(
             f"policy must be ShlWaterfallPolicy, got {type(policy).__name__}"
         )
 
+    # Rate consistency: construction and operating must use the same annual rate.
+    # For FIXED rate mode, a silently diverging rate introduces unauditable errors.
+    if construction.annual_rate != policy.annual_rate:
+        raise ValueError(
+            f"compute_shl_schedule: construction.annual_rate "
+            f"({construction.annual_rate!r}) != policy.annual_rate "
+            f"({policy.annual_rate!r}). For FIXED SHL rate mode both must "
+            f"be identical. Correct the caller; do not introduce a patch rate."
+        )
+
     # Step 1: Construction period via C3B3D1 engine.
     # opening=0, drawdown=draw, DCF=construction.dcf, PIK, principal=0
     constr_result = compute_shl_period(
@@ -245,21 +255,24 @@ def compute_shl_schedule(
     for op in operating_periods:
         # Validate operating period inputs
         _check_finite("cash_available_for_shl_keur", op.cash_available_for_shl_keur)
-        _check_finite("drawdown_keur", op.drawdown_keur)
+        _check_finite("drawdown_keur", op.drawdown_keur)  # type check before value check below
         if op.cash_available_for_shl_keur < 0:
             raise ValueError(
                 f"cash_available_for_shl_keur must be >= 0, got "
                 f"{op.cash_available_for_shl_keur!r} (period_index={op.period_index})"
             )
-        if op.drawdown_keur < 0:
+        # Fail closed on non-zero operating draws: post-construction SHL draws
+        # require an auditable roll-forward proof not yet implemented.
+        # Oborovo: drawdown_keur = 0 for all 40 operating periods (proven).
+        if op.drawdown_keur != 0.0:
             raise ValueError(
-                f"drawdown_keur must be >= 0, got "
-                f"{op.drawdown_keur!r} (period_index={op.period_index})"
+                f"compute_shl_schedule: operating period drawdown_keur must be "
+                f"0.0 (post-construction SHL draws are not yet supported). "
+                f"Got {op.drawdown_keur!r} at period_index={op.period_index}. "
+                f"Support for operating draws is deferred to a future stage."
             )
 
-        # Additional draw: applied to opening before waterfall (increases basis).
-        # For Oborovo, drawdown_keur = 0 for all operating periods.
-        effective_opening = opening + op.drawdown_keur
+        effective_opening = opening
 
         # Compute day-count fraction from calendar dates via typed convention.
         dcf = compute_shl_dcf(op.period_start, op.period_end, policy.day_count_convention)
