@@ -667,6 +667,38 @@ SENIOR_DEBT_RUN_PATH_ID = "financial_engine.orchestrator.run_senior_debt_model"
 _PHASE_2C_UNAVAILABLE = ("financial_statements", "returns")
 
 
+def _derive_bank_operating_input(
+    base: "OperatingModelInput",
+    scenario: "object",  # DebtSizingScenario, typed loosely to avoid circular import at module level
+) -> "OperatingModelInput":
+    """Pure, deterministic transformer: derive bank-sizing OperatingModelInput.
+
+    Swaps only yield_scenario from the base input. All other fields — calendar,
+    revenue tariffs, OPEX, depreciation, source — are inherited unchanged.
+    The base input is never mutated (both are frozen dataclasses).
+
+    No project identity, no source fixtures, no hidden defaults.
+    """
+    from financial_engine.inputs import TechnicalInput as _TI
+    bank_technical = _TI(
+        capacity_mw=base.technical.capacity_mw,
+        yield_scenario=scenario.yield_scenario,
+        operating_hours_p50=base.technical.operating_hours_p50,
+        operating_hours_p90_10y=base.technical.operating_hours_p90_10y,
+        pv_degradation=base.technical.pv_degradation,
+        plant_availability=base.technical.plant_availability,
+        grid_availability=base.technical.grid_availability,
+    )
+    return OperatingModelInput(
+        calendar=base.calendar,
+        technical=bank_technical,
+        revenue=base.revenue,
+        opex=base.opex,
+        depreciation=base.depreciation,
+        source=base.source,
+    )
+
+
 def run_senior_debt_model(inputs: SeniorDebtModelInput) -> ProjectModelResult:
     """Phase 2C orchestrator: operating core + tax + canonical CFADS + senior debt.
 
@@ -704,43 +736,78 @@ def run_senior_debt_model(inputs: SeniorDebtModelInput) -> ProjectModelResult:
     # Closure over base inputs for tax feedback
     base_tax_input = inputs.tax
 
-    # Mutable container to capture the final authoritative tax/CFADS state from
-    # the last solver iteration.
+    # Bank-sizing scenario: run the operating model under the bank scenario to get
+    # bank-case operating periods. The solver then calls tax_cfads_fn with bank periods.
+    # Base scenario is used only when bank_sizing_scenario is absent or identical.
+    _bank_scenario = inputs.bank_sizing_scenario
+    _has_bank_scenario = (
+        _bank_scenario is not None
+        and _bank_scenario.yield_scenario != inputs.operating.technical.yield_scenario
+    )
+
+    if _has_bank_scenario:
+        from financial_engine.inputs import ProductionScenarioScope as _PSS
+        _bank_op_input = _derive_bank_operating_input(inputs.operating, _bank_scenario)
+        _bank_op_result = run_operating_model(_bank_op_input)
+        if _bank_scenario.scope == _PSS.MERCHANT_ONLY:
+            # PPA periods: use base (P50 — contractually locked).
+            # Merchant periods: use bank (P90 downside).
+            _base_period_map = {p.period_index: p for p in phase2b_result.periods}
+            _bank_period_map = {p.period_index: p for p in _bank_op_result.periods}
+            _bank_periods = tuple(
+                _base_period_map[p.period_index] if p.is_ppa_active
+                else _bank_period_map.get(p.period_index, p)
+                for p in phase2b_result.periods
+            )
+        else:
+            # ALL_PRODUCTION: P90 downside for every operating period.
+            _bank_periods = _bank_op_result.periods
+    else:
+        _bank_periods = phase2b_result.periods
+
+    # Mutable container to capture the final authoritative bank tax/CFADS state.
     _last_tax_state: list = []
 
-    def tax_cfads_fn(
+    def _merge_senior_interest(
         senior_interest_by_period: dict[int, float],
-    ) -> tuple[dict[int, float], dict[int, float]]:
-        """Rebuild tax + CFADS with updated senior interest on each solver iteration."""
-        # Merge solver-provided senior interest into PeriodInterestInput
-        merged_interest: dict[int, "PeriodInterestInput"] = {}
+    ) -> "TaxCalculationInput":
+        """Merge solver-provided senior interest into a fresh TaxCalculationInput."""
+        merged: dict[int, "PeriodInterestInput"] = {}
         for pi in base_tax_input.period_interest:
-            merged_interest[pi.period_index] = pi
+            merged[pi.period_index] = pi
         for idx, senior_keur in senior_interest_by_period.items():
-            existing = merged_interest.get(idx)
+            existing = merged.get(idx)
             if existing is not None:
-                merged_interest[idx] = PeriodInterestInput(
+                merged[idx] = PeriodInterestInput(
                     period_index=idx,
                     senior_interest_keur=senior_keur,
                     shl_interest_keur=existing.shl_interest_keur,
                     other_interest_keur=existing.other_interest_keur,
                 )
             else:
-                merged_interest[idx] = PeriodInterestInput(
+                merged[idx] = PeriodInterestInput(
                     period_index=idx,
                     senior_interest_keur=senior_keur,
                 )
-
-        updated_tax_input = TaxCalculationInput(
+        return TaxCalculationInput(
             policy=base_tax_input.policy,
             opening_loss_vintages=base_tax_input.opening_loss_vintages,
-            period_interest=tuple(merged_interest.values()),
+            period_interest=tuple(merged.values()),
             period_adjustments=base_tax_input.period_adjustments,
         )
-        tax_result = calculate_tax(phase2b_result.periods, updated_tax_input)
-        cfads_results = calculate_canonical_cfads(phase2b_result.periods, tax_result.period_results)
-        # Capture this iteration's authoritative state so that after solve_senior_debt
-        # returns we can assemble final TaxAndCfadsSchedules from the last iteration.
+
+    def tax_cfads_fn(
+        senior_interest_by_period: dict[int, float],
+    ) -> tuple[dict[int, float], dict[int, float]]:
+        """Rebuild tax + CFADS with updated senior interest on each solver iteration.
+
+        Uses _bank_periods (bank-case EBITDA) when a bank sizing scenario is active;
+        uses base periods otherwise. This is the single source-of-truth for sizing CFADS.
+        """
+        updated_tax_input = _merge_senior_interest(senior_interest_by_period)
+        tax_result = calculate_tax(_bank_periods, updated_tax_input)
+        cfads_results = calculate_canonical_cfads(_bank_periods, tax_result.period_results)
+        # Capture this iteration's authoritative state.
         _last_tax_state.clear()
         _last_tax_state.append((tax_result, tax_result.period_results, cfads_results))
         cfads_by_period = {cr.period_index: cr.cfads_keur for cr in cfads_results}
@@ -778,7 +845,47 @@ def run_senior_debt_model(inputs: SeniorDebtModelInput) -> ProjectModelResult:
             f"Downstream waterfall/FS/returns code must not receive non-authoritative debt results."
         )
 
-    # Step 5: Assemble result-layer SeniorDebtSchedules
+    # Step 5a: Assemble final authoritative tax/CFADS and bank CFADS audit.
+    #
+    # Bank sizing path: the last solver iteration's _last_tax_state holds BANK-case
+    # tax/CFADS (used for sizing). The BASE-case final tax/CFADS must be separately
+    # computed from converged senior interest so that ProjectModelResult.tax_and_cfads
+    # reports economic (base) CFADS — not bank CFADS.
+    #
+    # Base path: _last_tax_state already holds the authoritative base-case state.
+    _bank_sizing_cfads_keur: tuple | None = None
+
+    if sd_result.diagnostics.is_authoritative and _last_tax_state:
+        if _has_bank_scenario:
+            # Bank path: extract bank CFADS for audit, then recompute base final tax.
+            _, _, bank_cfads_r = _last_tax_state[0]
+            _bank_cfads_by_idx = {cr.period_index: cr.cfads_keur for cr in bank_cfads_r}
+            _bank_sizing_cfads_keur = tuple(
+                _bank_cfads_by_idx.get(i, 0.0) for i in sd_result.period_indices
+            )
+            # Recompute base-case final tax/CFADS with converged senior interest.
+            _final_senior_interest = dict(
+                zip(sd_result.period_indices, sd_result.senior_interest_keur)
+            )
+            _final_base_tax_input = _merge_senior_interest(_final_senior_interest)
+            _final_base_tax_r = calculate_tax(phase2b_result.periods, _final_base_tax_input)
+            _final_base_cfads_r = calculate_canonical_cfads(
+                phase2b_result.periods, _final_base_tax_r.period_results
+            )
+            final_tax_cfads = _assemble_tax_cfads_schedules(
+                phase2b_result, _final_base_tax_r,
+                _final_base_tax_r.period_results, _final_base_cfads_r,
+            )
+        else:
+            # Base path: last state is already the authoritative base-case.
+            tax_r, period_r, cfads_r = _last_tax_state[0]
+            final_tax_cfads = _assemble_tax_cfads_schedules(
+                phase2b_result, tax_r, period_r, cfads_r
+            )
+    else:
+        final_tax_cfads = phase2b_result.tax_and_cfads
+
+    # Step 5b: Assemble result-layer SeniorDebtSchedules
     diag_dict = {
         "converged": sd_result.diagnostics.converged,
         "is_authoritative": sd_result.diagnostics.is_authoritative,
@@ -801,14 +908,8 @@ def run_senior_debt_model(inputs: SeniorDebtModelInput) -> ProjectModelResult:
         debt_size_keur=sd_result.debt_size_keur,
         binding_constraint=sd_result.binding_constraint,
         diagnostics=diag_dict,
+        bank_sizing_cfads_keur=_bank_sizing_cfads_keur,
     )
-
-    # Assemble final authoritative tax/CFADS from last solver iteration (if authoritative).
-    if sd_result.diagnostics.is_authoritative and _last_tax_state:
-        tax_r, period_r, cfads_r = _last_tax_state[0]
-        final_tax_cfads = _assemble_tax_cfads_schedules(phase2b_result, tax_r, period_r, cfads_r)
-    else:
-        final_tax_cfads = phase2b_result.tax_and_cfads
 
     # Step 6: Phase 2C provenance
     fingerprint = compute_senior_debt_fingerprint(inputs)
@@ -850,7 +951,13 @@ def run_senior_debt_model(inputs: SeniorDebtModelInput) -> ProjectModelResult:
             input_paths=("senior_debt_inputs", "senior_debt_policy"),
             notes=(
                 f"fixed-point sizing; termination={sd_result.diagnostics.termination_reason}; "
-                f"iterations={sd_result.diagnostics.iteration_count}",
+                f"iterations={sd_result.diagnostics.iteration_count}; "
+                + (
+                    f"bank_sizing_scenario={_bank_scenario.yield_scenario.value!r} "
+                    f"(debt sized from bank CFADS; tax_and_cfads is base/economic authority)"
+                    if _has_bank_scenario else
+                    "bank_sizing_scenario=None (debt sized from base CFADS)"
+                ),
             ),
         ),
     )

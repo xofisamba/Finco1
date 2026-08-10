@@ -207,19 +207,67 @@ class InputProvenance:
 # Phase 2C senior debt input contracts
 # ---------------------------------------------------------------------------
 
+class ProductionScenarioScope(str, Enum):
+    """Scope of the bank-sizing production scenario.
+
+    ALL_PRODUCTION:
+        The bank-scenario yield applies to all operating periods — PPA and
+        merchant alike. Use when source evidence shows P90 applies uniformly
+        (e.g. TUHO: bank CFADS P1 = P90 × all revenues).
+
+    MERCHANT_ONLY:
+        The bank-scenario yield applies only to periods where is_ppa_active
+        is False (merchant/post-PPA periods). PPA periods retain the base-case
+        yield because PPA revenues are contractually locked.
+        Use when source evidence shows PPA-period bank CFADS ≈ base CFADS
+        (e.g. Oborovo: Macro50 bank CFADS P1-P24 ≈ base CFADS).
+    """
+    ALL_PRODUCTION = "all_production"
+    MERCHANT_ONLY = "merchant_only"
+
+
+@dataclass(frozen=True)
+class DebtSizingScenario:
+    """Explicit bank-sizing scenario for senior debt sculpting.
+
+    yield_scenario: the production scenario used for bank-sizing CFADS.
+    scope: which periods the downside yield applies to (required; no hidden default).
+
+    All other operating assumptions (OPEX, calendar, revenue tariffs, depreciation)
+    are inherited from the base OperatingModelInput unchanged.
+
+    When absent from SeniorDebtModelInput (None), debt sizing uses the base
+    operating scenario — preserving backward-compatible behaviour for all
+    projects without an explicit bank-sizing scenario.
+
+    Source classification (Oborovo):
+      BANK_SIZING_SCENARIO_P90_10Y_REVIEWER_CONFIRMED_NOT_COMMITTED
+    Source proof (TUHO):
+      BANK_SIZING_SCENARIO_P90_10Y_TUHO_CFADS_PROVEN (ALL_PRODUCTION)
+    """
+    yield_scenario: YieldScenario
+    scope: ProductionScenarioScope
+
+
 @dataclass(frozen=True)
 class SeniorDebtModelInput:
     """Phase 2C input: Phase 2B inputs + senior debt policy + senior debt inputs.
 
-    operating: Phase 2A OperatingModelInput
+    operating: Phase 2A OperatingModelInput (base/economic scenario)
     tax: Phase 2B TaxCalculationInput (interest from Phase 2C solver feeds back here)
     senior_debt_policy: SeniorDebtPolicy (sizing mode, DSCR target, rates, etc.)
     senior_debt_inputs: SeniorDebtInputs (cost base, initial guess, rate schedule, etc.)
+    bank_sizing_scenario: DebtSizingScenario or None.
+        When not None, senior debt is sized from BANK-case CFADS (derived by
+        running the operating model under bank_sizing_scenario.yield_scenario).
+        The base/economic CFADS remains the result authority for ProjectModelResult.
+        When None, sizing CFADS = base CFADS (current behaviour, backward compatible).
     """
     operating: "OperatingModelInput"
     tax: "TaxCalculationInput"
     senior_debt_policy: object   # SeniorDebtPolicy (avoid circular imports)
     senior_debt_inputs: object   # SeniorDebtInputs
+    bank_sizing_scenario: "DebtSizingScenario | None" = None
 
 
 @dataclass(frozen=True)

@@ -113,6 +113,9 @@ class SeniorDebtSchedules:
     debt_size_keur: float
     binding_constraint: str | None
     diagnostics: dict  # SolverDiagnostics serialised to dict
+    # Bank-sizing CFADS audit (one entry per debt period, aligned to period_indices).
+    # None when no bank_sizing_scenario was provided (base = bank, current behaviour).
+    bank_sizing_cfads_keur: tuple[float, ...] | None = None
 
 
 @dataclass(frozen=True)
