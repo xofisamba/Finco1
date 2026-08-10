@@ -1,6 +1,6 @@
 # C3B3D2B1 — Production SHL Wiring + Instrument Day-Count Convention
 
-**Status**: `C3B3D2B1_R2_READY_FOR_INDEPENDENT_REVIEW`
+**Status**: `C3B3D2B1_MERGED_PRODUCTION_SHL_FOUNDATION`
 **Branch**: `stage-c3b3d2b1-shl-production-wiring`
 **Base**: `2afdffbc1796d3b042f7b63c61c2750ec264924e` (main after C3B3D2B0 squash-merge)
 **Scope boundary**: Production SHL schedule chaining + typed instrument day-count convention. Tax feedback loop (SHL→tax→CFADS→SHL) deferred to C3B3D2B2.
@@ -16,7 +16,7 @@ C3B3D2B1 delivers:
 3. **`compute_shl_dcf()` typed dispatch** — routes ACT_365_FIXED and ACT_360; delegates ACT_365_FIXED to governance-locked C3B3D2B0 function.
 4. **`compute_shl_schedule()` production chainer** — links C3B3D1 construction (opening=0, draw, DCF=1.0, PIK) and C3B3D2B0 operating waterfall (natural formula, no mode dispatch) into a single call. Fails closed on rate mismatch between construction and operating policy, and on non-zero operating drawdown.
 5. **`compute_shl_cash_from_phase2c()` seam adapter** — derives `candidate_cash_before_unresolved_reserve_adjustments` per period from Phase 2C result without reading any Excel fixture. Fails closed on missing CFADS entries and on period indices within the debt tenor that are absent from the senior debt schedule. DSRA ordering is `DSRA_ORDERING_UNRESOLVED`.
-6. **116 test functions** covering conventions, parity, seam, governance, fail-closed alignment, parallel-vector length validation, rate consistency, real Phase2C integration with full diagnostic metrics, and source vector identity.
+6. **125 test functions** covering conventions, parity, seam, governance, fail-closed alignment, parallel-vector length validation, rate consistency, real Phase2C integration with full deterministic diagnostic metrics (shared helper), and source vector identity.
 7. **This reconciliation document**.
 
 Not in scope: DSRA, distributions, Sponsor, R99/R102, SHL→tax fixed-point loop.
@@ -185,7 +185,7 @@ First principal sweep: **DS[25]** (discovered from cash > gross; not hardcoded)
 ## 9. Test Suite
 
 **File**: `tests/test_stage_c3b3d2b1_shl_production_wiring.py`
-**Count**: 116 test functions, 116 collected cases, all passing (R2)
+**Count**: 125 test functions, 125 collected cases, all passing (R3)
 
 | Class | Tests | Description |
 |---|---|---|
@@ -208,8 +208,9 @@ First principal sweep: **DS[25]** (discovered from cash > gross; not hardcoded)
 | TestM_FixedPointBoundary | 5 | SHL outside Phase 2C loop; separate vectors; tax doc |
 | TestN_SeparateVectors | 5 | gross≠cash in partial periods; pik=gross-cash; service=cash+principal |
 | TestO_Governance | 11 | No 13547.2; no DS25/DS40 bounds; no project dispatch; no finco_core imports |
-| TestP_RealPhase2CIntegration (EXPECTED_PRE_D2B2_UPSTREAM_CLEAN_CASH_RESIDUAL) | ~10 | Real Oborovo Phase2C → seam → SHL; full diagnostic metrics |
+| TestP_RealPhase2CIntegration (CURRENT_UPSTREAM_CLEAN_CASH_RESIDUAL) | 10 | Real Oborovo Phase2C → seam → SHL; deterministic upstream + SHL metrics |
 | TestQ_SourceVectorIdentity (SOURCE_VECTOR_IDENTITY_FOR_OBOROVO) | 3 | CFADS−sd≈FCF_for_SHL from source fixture |
+| TestR_ReproducibleResidualMetrics | 9 | Shared helper; all 5 SHL residual metrics; structural assertions only |
 
 ---
 
@@ -237,8 +238,9 @@ First principal sweep: **DS[25]** (discovered from cash > gross; not hardcoded)
 
 #### R2 Diagnostic Metrics — Real Clean Phase2C → SHL (DS[1..40] comparison)
 
-These residuals are **not calibration targets**. They are diagnostic evidence of the
-WORKBOOK_PERIODISATION_MISMATCH (C3B3B) propagating through the clean engine.
+These residuals are **not calibration targets**. They are `CURRENT_UPSTREAM_CLEAN_CASH_RESIDUAL` —
+causal attribution deferred to C3B3D2B2/DGRID. `WORKBOOK_PERIODISATION_MISMATCH` and
+`SHL_OUTSIDE_FIXED_POINT` are known candidate contributors; their individual attribution is not yet proven.
 
 ```
 REAL CLEAN PHASE2C → SHL DIAGNOSTIC (DS[1..40], signs normalised to positive outflow)
@@ -296,4 +298,21 @@ B. Prove whether the resulting CFADS change materially affects senior debt sizin
 
 C. Resolve construction calendar convention (is DCF=1.0 from exact 365-day interval?).
 
-D. Wire `post_shl_cash` into the DSRA / distribution calculation (C3B3D2B2+).
+D. Resolve the source-proven ordering of DSRA/reserve movements relative to Senior Debt, SHL and distributions before wiring reserve-account cash movements into the clean waterfall.
+
+---
+
+## 13. SHL Input Authority Boundary
+
+**Status**: `CLEAN_SHL_PROJECT_INPUT_AUTHORITY_HANDOFF_PENDING_D2B2`
+
+The legacy factory `create_default_oborovo()` sets `shl_amount_keur=13547.2`. This value is a known source conflict and is **not the authoritative SHL draw for the clean engine**. The authoritative source draw is `14,620.773894815633 kEUR` (Excel Inputs!D325, cached in the D2A fixture).
+
+The value `13,547.2` MUST NOT appear in any clean SHL calculation logic, fallbacks, or defaults in C3B3D2B2+.
+
+The clean SHL input path (ProjectInputs → typed adapter → `ShlConstructionInput` / `ShlWaterfallPolicy`) has NOT been promoted in C3B3D2B1. Before SHL interest is wired into the Tax/CFADS fixed-point loop in C3B3D2B2, an explicit typed project-input adapter must obtain the authoritative SHL draw and rate from a source-proven path — not from the legacy `shl_amount_keur` field.
+
+| Field | Authoritative source value | Legacy factory value (do not use) |
+|---|---|---|
+| `draw_keur` | 14,620.773894815633 kEUR (Inputs!D325) | 13,547.2 kEUR (`shl_amount_keur`) |
+| `annual_rate` | 0.08 (Inputs!F328) | — |

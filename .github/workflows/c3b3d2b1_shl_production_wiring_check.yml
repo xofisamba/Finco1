@@ -59,7 +59,7 @@ jobs:
       - name: git diff --check
         run: git diff --check ${{ github.event.pull_request.base.sha || 'HEAD~1' }}..HEAD
 
-      - name: C3B3D2B1 production SHL wiring (116 test functions, 116 collected cases)
+      - name: C3B3D2B1 production SHL wiring (125 test functions, 125 collected cases)
         run: |
           python -m pytest \
             tests/test_stage_c3b3d2b1_shl_production_wiring.py \

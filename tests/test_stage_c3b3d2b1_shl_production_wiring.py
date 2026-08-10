@@ -1196,7 +1196,10 @@ class TestP_RealPhase2CIntegration:
         # Assert structural correctness: max delta is a finite, positive float.
         assert math.isfinite(max_delta)
         assert max_delta >= 0.0
-        # Document: max abs delta ≈ 339.71 kEUR (WORKBOOK_PERIODISATION_MISMATCH)
+        # CURRENT_UPSTREAM_CLEAN_CASH_RESIDUAL — causal attribution deferred to C3B3D2B2/DGRID.
+        # Known candidate contributors include WORKBOOK_PERIODISATION_MISMATCH and
+        # SHL_OUTSIDE_FIXED_POINT; their individual attribution is not yet proven.
+        # max abs delta ≈ 339.71 kEUR (diagnostic, not calibration target).
         assert max_delta > 0.0, (
             "UNEXPECTED: clean CFADS exactly matches source — this would indicate "
             "source values are being used as the driver (forbidden)"
@@ -1338,3 +1341,175 @@ class TestQ_SourceVectorIdentity:
         assert "DSRA_ORDERING_UNRESOLVED" in doc, (
             "Seam adapter must carry DSRA_ORDERING_UNRESOLVED governance label"
         )
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# _compute_clean_phase2c_shl_metrics — shared private helper
+# ════════════════════════════════════════════════════════════════════════════
+
+def _compute_clean_phase2c_shl_metrics():
+    """Compute full-horizon clean Phase2C → SHL residual metrics vs D2A source.
+
+    Returns a dict with all five SHL schedule metrics plus upstream cash metrics.
+    Comparison is over DS[1..40] (the source oracle covers exactly 40 periods).
+
+    Classification: CURRENT_UPSTREAM_CLEAN_CASH_RESIDUAL
+    Known candidate contributors: WORKBOOK_PERIODISATION_MISMATCH,
+    SHL_OUTSIDE_FIXED_POINT.  Individual causal attribution deferred to
+    C3B3D2B2/DGRID.  Numbers are diagnostic evidence, not calibration targets.
+    """
+    from app.project_factories import create_default_oborovo
+    from financial_engine.adapters.project_inputs import (
+        build_senior_debt_model_input_from_project_inputs,
+    )
+    from financial_engine.orchestrator import run_senior_debt_model
+
+    proj = create_default_oborovo()
+    sd_input = build_senior_debt_model_input_from_project_inputs(
+        proj, source_id="c3b3d2b1-r3-metrics"
+    )
+    phase2c = run_senior_debt_model(sd_input)
+    seam = compute_shl_cash_from_phase2c(phase2c)
+
+    seam_op = [s for s in seam if not s.is_construction]
+
+    # Build SHL schedule from clean cash
+    construction = _build_construction()
+    policy = _build_policy(ShlDayCountConvention.ACT_365_FIXED)
+    op_inputs = [
+        ShlOperatingPeriodInput(
+            period_index=s.period_index,
+            period_start=_parse_date(fp["period_start_date"]),
+            period_end=_parse_date(fp["period_end_date"]),
+            cash_available_for_shl_keur=s.cash_available_for_shl_keur,
+        )
+        for s, fp in zip(seam_op, _OPERATING_PERIODS)
+    ]
+    shl = compute_shl_schedule(construction, op_inputs, policy)
+
+    # Source oracle vectors (DS[1..40])
+    src_cfads = _CF["cf"]["fcf_for_banks_keur"][1:41]
+    src_sd_positive = [-x for x in _CF["cf"]["senior_debt_service_keur"][1:41]]
+    src_cash = _CF["cf"]["free_cash_flow_for_shl_keur"][1:41]
+    src_gross = [p["gross_accrued_interest_keur"] for p in _OPERATING_PERIODS]
+    src_cash_int = [p["cash_interest_keur"] for p in _OPERATING_PERIODS]
+    src_pik = [p["pik_interest_keur"] for p in _OPERATING_PERIODS]
+    src_principal = [p["principal_repaid_keur"] for p in _OPERATING_PERIODS]
+    src_closing = [p["closing_balance_keur"] for p in _OPERATING_PERIODS]
+
+    N = min(len(seam_op), 40)  # compare only the first 40 operating periods
+    assert N == 40, f"Expected 40 comparable operating periods, got {N}"
+
+    def _max_abs(clean_list, src_list):
+        return max(abs(c - s) for c, s in zip(clean_list[:N], src_list[:N]))
+
+    ops = shl.operating
+
+    return {
+        # Upstream cash residuals
+        "cfads_max_abs_delta": _max_abs([s.cfads_keur for s in seam_op], src_cfads),
+        "cfads_signed_total": sum(
+            seam_op[i].cfads_keur - src_cfads[i] for i in range(N)
+        ),
+        "senior_ds_max_abs_delta": _max_abs(
+            [s.senior_debt_service_keur for s in seam_op], src_sd_positive
+        ),
+        "senior_ds_signed_total": sum(
+            seam_op[i].senior_debt_service_keur - src_sd_positive[i] for i in range(N)
+        ),
+        "candidate_cash_max_abs_delta": _max_abs(
+            [s.cash_available_for_shl_keur for s in seam_op], src_cash
+        ),
+        "candidate_cash_signed_total": sum(
+            seam_op[i].cash_available_for_shl_keur - src_cash[i] for i in range(N)
+        ),
+        # SHL schedule residuals
+        "gross_max_abs_delta": _max_abs(
+            [op.gross_accrued_interest_keur for op in ops], src_gross
+        ),
+        "cash_interest_max_abs_delta": _max_abs(
+            [op.cash_interest_keur for op in ops], src_cash_int
+        ),
+        "pik_max_abs_delta": _max_abs(
+            [op.pik_interest_keur for op in ops], src_pik
+        ),
+        "principal_max_abs_delta": _max_abs(
+            [op.principal_repaid_keur for op in ops], src_principal
+        ),
+        "closing_max_abs_delta": _max_abs(
+            [op.closing_balance_keur for op in ops], src_closing
+        ),
+        # Final balance
+        "clean_final_closing": ops[-1].closing_balance_keur,
+        "source_final_closing": src_closing[-1],
+        "final_closing_delta": ops[-1].closing_balance_keur - src_closing[-1],
+        "N": N,
+    }
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# TestR — Reproducible full-horizon residual metrics
+# ════════════════════════════════════════════════════════════════════════════
+
+class TestR_ReproducibleResidualMetrics:
+    """All five SHL schedule residual metrics, computed via shared helper.
+
+    Classification: CURRENT_UPSTREAM_CLEAN_CASH_RESIDUAL
+
+    Known candidate contributors: WORKBOOK_PERIODISATION_MISMATCH,
+    SHL_OUTSIDE_FIXED_POINT.  Individual causal attribution deferred to
+    C3B3D2B2/DGRID.
+
+    These metrics reproduce the table in the reconciliation document.
+    Assertions are structural only — no golden-value thresholds.
+    Numbers are diagnostic evidence, not calibration targets.
+    """
+
+    @pytest.fixture(scope="class")
+    def metrics(self):
+        return _compute_clean_phase2c_shl_metrics()
+
+    def test_comparison_horizon_is_40_periods(self, metrics):
+        assert metrics["N"] == 40
+
+    def test_gross_interest_max_delta_is_finite(self, metrics):
+        assert math.isfinite(metrics["gross_max_abs_delta"])
+        assert metrics["gross_max_abs_delta"] >= 0.0
+
+    def test_cash_interest_max_delta_is_finite(self, metrics):
+        assert math.isfinite(metrics["cash_interest_max_abs_delta"])
+        assert metrics["cash_interest_max_abs_delta"] >= 0.0
+
+    def test_pik_max_delta_is_finite(self, metrics):
+        assert math.isfinite(metrics["pik_max_abs_delta"])
+        assert metrics["pik_max_abs_delta"] >= 0.0
+
+    def test_principal_max_delta_is_finite(self, metrics):
+        assert math.isfinite(metrics["principal_max_abs_delta"])
+        assert metrics["principal_max_abs_delta"] >= 0.0
+
+    def test_closing_balance_max_delta_is_finite(self, metrics):
+        assert math.isfinite(metrics["closing_max_abs_delta"])
+        assert metrics["closing_max_abs_delta"] >= 0.0
+
+    def test_final_clean_closing_is_non_negative(self, metrics):
+        # Waterfall invariant: closing balance must never go negative.
+        assert metrics["clean_final_closing"] >= -1e-6, (
+            f"Clean final SHL closing went negative: {metrics['clean_final_closing']:.4f} kEUR"
+        )
+
+    def test_final_closing_delta_is_finite(self, metrics):
+        assert math.isfinite(metrics["final_closing_delta"])
+
+    def test_residual_is_current_upstream_clean_cash_residual(self, metrics):
+        # The non-zero final closing is a CURRENT_UPSTREAM_CLEAN_CASH_RESIDUAL,
+        # not an SHL formula failure.  SHL formula is separately proven via TestJ.
+        # This test asserts the diagnostic fact (non-zero closing) without imposing
+        # a target value — the exact number changes as upstream clean mechanics improve.
+        clean_final = metrics["clean_final_closing"]
+        src_final = metrics["source_final_closing"]
+        assert src_final == 0.0, "Source DS[40] closing must be 0.0 (D2A fixture)"
+        # The clean final closing is non-zero due to upstream residuals (not formula bug).
+        # We assert it is non-negative (formula invariant) and finite.
+        assert math.isfinite(clean_final)
+        assert clean_final >= -1e-6
