@@ -1,6 +1,6 @@
 # C3B3D2B2B: Current Senior Debt Sizing Bridge
 
-**Status:** R1 — BRIDGE CLOSED  
+**Status:** R2 — SOURCE-CONTAMINATION FIXED, DAY-FRACTION ARM ADDED, BRIDGE CLOSED  
 **Stage:** current-senior-debt-bridge  
 **Branch:** stage-c3b3d2b2b-current-senior-debt-bridge  
 **Base:** main at `4dfdc3bb579f959ce8e7b7348862a3f6c0e7aacb` (C3B3D2B2A merged)
@@ -15,13 +15,26 @@ Decompose the `CURRENT_GRID0_TO_SOURCE_DEBT_BRIDGE_NOT_YET_CLOSED` gap (+1,066.7
 |---|---|---|
 | `CURRENT_GRID0_PRODUCTION_CANDIDATE` | 43,919.032698 | Clean engine runtime |
 | `SOURCE_EXCEL_SENIOR_DEBT` | 42,852.278763 | DS!D51, source workbook |
-| Gap | +1,066.754 | To be decomposed |
+| Gap | +1,066.754 | Decomposed in this stage |
 
-The `HISTORICAL_GENERIC_PHASE2C_SCALAR_DIAGNOSTIC` (46,053.402379 kEUR) is the starting point of the C3B2 historical bridge and is NOT used as a baseline here.
+The `HISTORICAL_GENERIC_PHASE2C_SCALAR_DIAGNOSTIC` (46,053.402379 kEUR) is the C3B2 historical baseline and is NOT used here.
 
 ---
 
-## 2. Governance
+## 2. R2 Fixes Applied
+
+| R1 issue | R2 fix |
+|---|---|
+| `capture_current_grid0_snapshot()` read source fixture (day fracs) | Removed: day fracs now derived from `period_day_fraction(period_start, period_end, convention)` |
+| No explicit CF3 (day-count) arm | Added CF3: source DS!row6 vs current ACT/360 derived fracs |
+| Baseline lock tolerance 5 kEUR (guard) / 1 kEUR (test) | Tightened to 1e-3 kEUR (tight, deterministic solver) |
+| Silent `.get(..., default)` for required vector entries | Fail-closed: raises `CURRENT_GRID0_SNAPSHOT_REQUIRED_VECTOR_MISSING` |
+| No per-period vector equality gates | Added: DSCR, day-frac, ops, rate each compared per-period |
+| CI used `pip install -e ".[dev]"` (no 'dev' extra exists) | Fixed: `pip install -c constraints.txt pytest openpyxl numpy ...` |
+
+---
+
+## 3. Governance
 
 | Constraint | Status |
 |---|---|
@@ -33,133 +46,91 @@ The `HISTORICAL_GENERIC_PHASE2C_SCALAR_DIAGNOSTIC` (46,053.402379 kEUR) is the s
 | 13547.2 MUST NOT appear in clean SHL | ENFORCED |
 | No DSRA implementation | ENFORCED |
 | No production financial-engine modifications | ENFORCED |
-| CURRENT_CAUSE_UNRESOLVED (Macro50 mechanism) | RECORDED |
+| BANK_CASE_TRANSFORMATION_MECHANISM_UNRESOLVED | RECORDED |
+| MISSING_GENERIC_BANK_SIZING_CFADS_SCENARIO_LAYER | RECORDED (future architecture) |
 
 ---
 
-## 3. Gate 1: CURRENT_GRID0_RUNTIME_BASELINE_REPRODUCED
+## 4. Gate 1: CURRENT_GRID0_RUNTIME_BASELINE_REPRODUCED
 
-The current clean engine is invoked via the production API:
-
-```
-create_default_oborovo()
-→ build_senior_debt_model_input_from_project_inputs()
-→ run_senior_debt_model()
-→ sd.diagnostics["final_debt_size_keur"] = 43,919.032698 kEUR
-```
-
-Independent backward induction from the captured snapshot reproduces this within < 1e-6 kEUR:
+The current clean engine is invoked via the production API. The snapshot captures all sizing vectors from current runtime only — no source fixture is read.
 
 ```
-BI from snapshot:  43,919.032697 kEUR
-Engine actual:     43,919.032698 kEUR
-Independence delta: −5.2e-7 kEUR
+Engine debt:            43,919.032698 kEUR  (locked baseline)
+BI from current-only:   43,919.032697 kEUR  (independent)
+Independence delta:     < 1e-6 kEUR
+Lock tolerance:         1e-3 kEUR
+
+Day-count convention:   ACT_360
+Day-frac provenance:    period_day_fraction(period_start, period_end, ACT_360)
+                        NOT read from any Excel fixture
 ```
 
 **Classification: CURRENT_GRID0_RUNTIME_BASELINE_REPRODUCED**
 
 ---
 
-## 4. Gate 2: SOURCE_SENIOR_DEBT_CAPACITY_REPLAY_PROVEN
+## 5. Gate 2: SOURCE_SENIOR_DEBT_CAPACITY_REPLAY_PROVEN
 
-Backward induction from committed C3B2 source vectors reproduces the workbook:
+Backward induction from committed C3B2 source vectors:
 
 ```
-G4 vector backward induction from DS!row20/22/9/44/6 = 42,852.278763 kEUR
-DS!D51 fixture value                                  = 42,852.278763 kEUR
-Replay residual                                       = 0.000 kEUR
+G4 BI from DS!row20/22/9/44/6:  42,852.278763 kEUR
+DS!D51 fixture:                  42,852.278763 kEUR
+Replay residual:                 0.000 kEUR
 ```
 
 **Classification: SOURCE_SENIOR_DEBT_CAPACITY_REPLAY_PROVEN**
 
-Source vectors used (all from `excel_oborovo_debt_interest_truth.json`):
+---
 
-| Vector | Fixture path | Description |
-|---|---|---|
-| DS!row20 | `workstream_a.ds_row20_cfads.period_values_keur` | CFADS (Macro50 output) |
-| DS!row22 | `workstream_a.ds_row22_dscr_target.period_values` | DSCR target (1.15/1.35) |
-| DS!row9 | `workstream_b.period_vectors.row9_ops_flag.period_values` | Ops fraction |
-| DS!row44 | `workstream_e.ds_row44_annual_sculpting_rate.period_values` | Annual sculpting rate |
-| DS!row6 | `workstream_b.period_vectors.row6_day_frac.period_values` | Day fraction |
+## 6. Vector Equality Gates (R2 — per-period, not inferred from debt delta)
+
+Before asserting a vector contributes zero delta, R2 proves input equality directly:
+
+| Vector | Current source | Source fixture | Max per-period delta | Classification |
+|---|---|---|---|---|
+| DSCR | `SeniorDebtInputs.period_dscr_targets` | DS!row22 | 0.000e+00 | `VECTOR_ALREADY_SOURCE_MATCHED` |
+| Day fraction | `period_day_fraction(ACT_360)` | DS!row6 | 0.000e+00 | `VECTOR_ALREADY_SOURCE_MATCHED` |
+| Ops fraction | `SeniorDebtInputs.period_debt_service_availability` | DS!row9 | 0.000e+00 | `VECTOR_ALREADY_SOURCE_MATCHED` |
+| Annual rate | `SeniorDebtInputs.period_rates` | DS!row44 | 0.000e+00 | `VECTOR_ALREADY_SOURCE_MATCHED` |
+
+All four non-CFADS vectors are exactly source-matched. This is proven at input level, not inferred from debt deltas.
 
 ---
 
-## 5. One-Factor Counterfactuals from CURRENT_GRID0
+## 7. One-Factor Counterfactuals from CURRENT_GRID0 (R2 ordering)
 
-Each counterfactual swaps exactly one vector from clean engine to source while holding all others at current engine values.
+Each arm swaps exactly one vector; all others remain at pure current engine values.
 
-Period mapping: engine period_index p → source period index (p − 1). The clean engine operates on period_indices [2..29]; source periods are [1..28].
+| CF | Vector swapped | From | To | Debt delta (kEUR) | Classification |
+|---|---|---|---|---|---|
+| CF1 | CFADS | Phase2A EBITDA | DS!row20 (Macro50) | **−1,066.754** | `VECTOR_DIFFERENCE_CONFIRMED` |
+| CF2 | DSCR | current 1.15/1.35 | DS!row22 (1.15/1.35) | 0.000 | `VECTOR_ALREADY_SOURCE_MATCHED` |
+| CF3 | Day fractions | ACT/360 derived | DS!row6 | 0.000 | `VECTOR_ALREADY_SOURCE_MATCHED` |
+| CF4 | Ops fraction | current vector | DS!row9 | 0.000 | `VECTOR_ALREADY_SOURCE_MATCHED` |
+| CF5 | Annual rate | current vector | DS!row44 | 0.000 | `VECTOR_ALREADY_SOURCE_MATCHED` |
 
-### 5.1 CF1: Source CFADS (DS!row20 / Macro50)
-
-| | Value |
-|---|---|
-| Baseline (clean engine) | 43,919.033 kEUR |
-| CF1 (source CFADS) | 42,852.279 kEUR |
-| Delta | −1,066.754 kEUR |
-| Classification | `CF1_CFADS_CLOSES_CURRENT_GRID0_TO_SOURCE_BRIDGE` |
-
-**CF1 alone closes the entire +1,066.754 kEUR gap.**
-
-The clean engine uses Phase2A EBITDA − canonical cash_tax as CFADS. The source DS!row20 reflects the Macro50 bank/P90 transformation output, which is lower in later periods.
-
-Per-period CFADS delta profile:
-- Early periods (P1–P5): differences < 10 kEUR
-- Middle periods (P9–P20): alternating positive/negative (no systematic bias)
-- Late periods (P24–P28): clean CFADS consistently higher by 200–900 kEUR
-
-**Macro50 mechanism: BANK_CASE_TRANSFORMATION_MECHANISM_UNRESOLVED**  
-The VBA implementation is password-protected (`VBA_IMPLEMENTATION_NOT_VISIBLE`). The Macro50 cell transforms the bank/P90-10Y CFADS scenario. The specific adjustment applied is not decomposed in this stage.  
-**BANK_SIZING_SCENARIO_P90_10Y_REVIEWER_CONFIRMED_NOT_COMMITTED**
-
-### 5.2 CF2: DSCR Banding (DS!row22)
-
-| | Value |
-|---|---|
-| Delta | 0.000 kEUR |
-| Classification | `VECTOR_ALREADY_SOURCE_MATCHED` |
-
-The current clean engine already applies the source DSCR banding:
-- Periods P1–P24 (engine P2–P25): DSCR = 1.15
-- Periods P25–P28 (engine P26–P29): DSCR = 1.35
-
-### 5.3 CF3: Ops Fraction (DS!row9)
-
-| | Value |
-|---|---|
-| Delta | 0.000 kEUR |
-| Classification | `VECTOR_ALREADY_SOURCE_MATCHED` |
-
-The current engine availability fractions already match DS!row9.
-
-### 5.4 CF4: Annual Rate (DS!row44)
-
-| | Value |
-|---|---|
-| Delta | 0.000 kEUR |
-| Classification | `VECTOR_ALREADY_SOURCE_MATCHED` |
-
-The current engine uses DS!row44 per-period rates directly (already source-matched). ACT/360 day-count convention is also already in use.
+**CF1 alone accounts for 100% of the +1,066.754 kEUR gap.**
 
 ---
 
-## 6. Sequential Bridge: CURRENT_GRID0 → SOURCE_ALL
+## 8. Sequential Bridge: CURRENT_GRID0 → SOURCE_ALL (R2)
 
-| Step | Vector Applied | Cumulative (kEUR) | Step Delta |
+| Step | Vector applied | Cumulative (kEUR) | Step delta |
 |---|---|---|---|
 | 0 (baseline) | CURRENT_GRID0 snapshot | 43,919.033 | — |
 | 1 | CF1: Source CFADS (DS!row20) | 42,852.279 | −1,066.754 |
 | 2 | CF2: Source DSCR (DS!row22) | 42,852.279 | 0.000 |
-| 3 | CF3: Source Ops (DS!row9) | 42,852.279 | 0.000 |
-| 4 | CF4: Source Rate (DS!row44) | 42,852.279 | 0.000 |
-
-CF1 accounts for 100% of the total gap. Steps 2–4 contribute zero delta (vectors already matched).
+| 3 | CF3: Source day fracs (DS!row6) | 42,852.279 | 0.000 |
+| 4 | CF4: Source ops (DS!row9) | 42,852.279 | 0.000 |
+| 5 | CF5: Source rates (DS!row44) | 42,852.279 | 0.000 |
 
 ---
 
-## 7. SOURCE_ALL Gate
+## 9. SOURCE_ALL Gate
 
-Apply all source vectors (CF1–CF4 simultaneously):
+Apply all five source vectors simultaneously:
 
 | | Value |
 |---|---|
@@ -168,118 +139,120 @@ Apply all source vectors (CF1–CF4 simultaneously):
 | Residual | 0.000 kEUR |
 | Bridge closed | **TRUE** |
 
-**Verdict: `CURRENT_GRID0_TO_SOURCE_SIZING_INPUT_BRIDGE_CLOSED`**
+---
 
-The sizing input bridge from CURRENT_GRID0 to SOURCE_EXCEL is fully closed. The clean engine, once supplied with source DS!row20 CFADS (Macro50 output), reproduces the Excel senior debt exactly.
+## 10. R2 Causal Classification
+
+**Proven:**
+
+```
+CURRENT SENIOR DEBT SIZING INPUT GAP
+= BASE/CANONICAL CFADS AUTHORITY vs SOURCE BANK-SIZING CFADS AUTHORITY
+```
+
+The entire +1,066.754 kEUR gap is explained by the difference between:
+- Clean engine CFADS: Phase2A EBITDA − canonical cash_tax (no bank scenario)
+- Source DS!row20: Macro50 bank/P90 scenario output (bank-adjusted CFADS)
+
+**Still unresolved:**
+
+```
+HOW Macro50 transforms base CFADS into bank-sizing CFADS
+BANK_CASE_TRANSFORMATION_MECHANISM_UNRESOLVED
+VBA_IMPLEMENTATION_NOT_VISIBLE
+BANK_SIZING_SCENARIO_P90_10Y_REVIEWER_CONFIRMED_NOT_COMMITTED
+```
+
+**Future architecture (not this PR):**
+
+```
+MISSING_GENERIC_BANK_SIZING_CFADS_SCENARIO_LAYER
+```
+
+The production engine does not yet implement a generic bank-sizing CFADS scenario. Future architecture should distinguish:
+- `base_case_cfads` — clean Phase2A EBITDA (current)
+- `bank_sizing_cfads` — Macro50 bank/P90 transformation output
+- `debt_sizing_scenario` — allows a lender/P90 CFADS policy
+
+No such architecture change is implemented or proposed in PR #924.
 
 ---
 
-## 8. CFADS Gap Interpretation
-
-The CFADS gap is the difference between two legitimate representations of project CFADS:
-
-| Representation | Source | Typical late-period range |
-|---|---|---|
-| Clean engine (Phase2A EBITDA) | `tac.cfads_keur` — EBITDA minus canonical cash tax | Higher (no bank scenario adjustment) |
-| Source DS!row20 (Macro50) | Excel bank/P90-10Y scenario output | Lower in late periods |
-
-The clean engine operates with standard Phase2A EBITDA inputs without the Macro50 bank scenario transformation. The Macro50 transformation is specific to the bank sizing scenario and is not implemented in the clean engine (which uses a scenario-neutral CFADS for sizing).
-
-**No calibration of the clean engine to source is performed or proposed here.**  
-**No production engine change is made or implied by this diagnostic.**  
-The diagnostic identifies the source of the gap for audit purposes only.
-
----
-
-## 9. Three-Baseline Separation
-
-| Label | Value (kEUR) | Role |
-|---|---|---|
-| `CURRENT_GRID0_PRODUCTION_CANDIDATE` | 43,919.032698 | Bridge start — clean engine |
-| `SOURCE_EXCEL_SENIOR_DEBT` | 42,852.278763 | Bridge target — DS!D51 |
-| `HISTORICAL_GENERIC_PHASE2C_SCALAR_DIAGNOSTIC` | 46,053.402379 | Historical only — C3B2 bridge start |
-
-The historical bridge (C3B2: 46,053 → 42,852 = −3,201 kEUR) is distinct from and must not be confused with the current bridge (C3B3D2B2B: 43,919 → 42,852 = −1,067 kEUR).
-
----
-
-## 10. Acceptance Report (46 items)
+## 11. R2 Acceptance Report (46 items)
 
 **Governance gates:**
 
-1. ✅ CURRENT_GRID0_RUNTIME_BASELINE_REPRODUCED — engine = 43,919.032698 kEUR confirmed
+1. ✅ CURRENT_GRID0_RUNTIME_BASELINE_REPRODUCED — engine = 43,919.032698 kEUR
 2. ✅ SOURCE_SENIOR_DEBT_CAPACITY_REPLAY_PROVEN — G4 BI = 42,852.278763 = DS!D51
 3. ✅ Three baseline authorities distinct and not conflated
-4. ✅ No DS25/DS40 hardcoding in module (AST-verified)
+4. ✅ No DS25/DS40 hardcoding (AST-verified)
 5. ✅ No project-name dispatch
-6. ✅ No approved_delta / balancing plug (AST-verified)
+6. ✅ No approved_delta/plug (AST-verified)
 7. ✅ No calibration of clean engine to source
 8. ✅ Protected C3B2 SHA unchanged
-9. ✅ 13547.2 not present as literal in module (AST-verified)
+9. ✅ 13547.2 not present as literal (AST-verified)
 10. ✅ No DSRA implementation
 11. ✅ No production financial-engine file modifications
-12. ✅ CURRENT_CAUSE_UNRESOLVED for Macro50 mechanism — recorded, no false attribution
+12. ✅ BANK_CASE_TRANSFORMATION_MECHANISM_UNRESOLVED recorded
+13. ✅ MISSING_GENERIC_BANK_SIZING_CFADS_SCENARIO_LAYER documented
 
-**Gate 1 (CURRENT_GRID0 baseline):**
+**R2 source-contamination fix:**
 
-13. ✅ engine debt = 43,919.032698 kEUR
-14. ✅ snapshot debt ≈ 43,919 (not 46,053)
-15. ✅ independent BI from snapshot matches engine < 1e-3 kEUR
-16. ✅ 28 active source periods in snapshot
-17. ✅ all snapshot CFADS positive
-18. ✅ all snapshot rates positive
-19. ✅ all snapshot DSCR >= 1.15
+14. ✅ `capture_current_grid0_snapshot()` does not open/read Excel debt fixture
+15. ✅ Day fractions derived via `period_day_fraction(period_start, period_end, ACT_360)`
+16. ✅ Fail-closed: `CURRENT_GRID0_SNAPSHOT_REQUIRED_VECTOR_MISSING` on missing vector
+17. ✅ Baseline lock tightened to 1e-3 kEUR
 
-**Gate 2 (source capacity replay):**
+**Gate 1 (current snapshot):**
 
-20. ✅ source capacity BI matches DS!D51 within 1 kEUR
-21. ✅ source capacity matches SOURCE_EXCEL_SENIOR_DEBT_KEUR constant
-22. ✅ source vectors cover 28 periods
-23. ✅ DSCR banding: 1.15 P1–P24, 1.35 P25–P28
-24. ✅ all source CFADS positive
-25. ✅ DS!D51 fixture = 42,852.278763 kEUR
+18. ✅ engine debt = 43,919.032698 kEUR (within 1e-3 of locked constant)
+19. ✅ independent BI from pure current snapshot < 1e-3 kEUR from engine
+20. ✅ 28 active source periods captured
+21. ✅ all CFADS explicitly present and positive
+22. ✅ all rates explicitly present and positive
+23. ✅ all DSCR explicitly present and >= 1.15
+24. ✅ all ops explicitly present
+25. ✅ all day fracs explicitly present and positive
+26. ✅ day-count convention = ACT_360
 
-**CF1 (source CFADS):**
+**Gate 2 (source replay):**
 
-26. ✅ CF1 moves debt to ~42,852 — closes gap
-27. ✅ CF1 delta = −1,066.754 kEUR (matches gap constant)
-28. ✅ CF1 classified as real difference (not VECTOR_ALREADY_SOURCE_MATCHED)
-29. ✅ source CFADS total < clean CFADS total
-30. ✅ late-period CFADS differences > 100 kEUR max
+27. ✅ source capacity BI = DS!D51 within 1 kEUR
+28. ✅ DSCR banding: 1.15 P1–P24, 1.35 P25–P28
+29. ✅ all source CFADS positive
+30. ✅ DS!D51 fixture = 42,852.278763 kEUR
 
-**CF2–CF4 (already matched vectors):**
+**Vector equality gates (R2):**
 
-31. ✅ CF2 (DSCR) delta = 0.000 kEUR — VECTOR_ALREADY_SOURCE_MATCHED
-32. ✅ CF2 classification = VECTOR_ALREADY_SOURCE_MATCHED
-33. ✅ engine DSCR matches source DS!row22 for all 28 periods
-34. ✅ CF3 (ops) delta = 0.000 kEUR — VECTOR_ALREADY_SOURCE_MATCHED
-35. ✅ CF3 classification = VECTOR_ALREADY_SOURCE_MATCHED
-36. ✅ CF4 (rate) delta = 0.000 kEUR — VECTOR_ALREADY_SOURCE_MATCHED
-37. ✅ CF4 classification = VECTOR_ALREADY_SOURCE_MATCHED
-38. ✅ engine rates match source DS!row44 for all 28 periods
+31. ✅ DSCR vector max delta = 0.000 → VECTOR_ALREADY_SOURCE_MATCHED
+32. ✅ Day-fraction vector max delta = 0.000 → VECTOR_ALREADY_SOURCE_MATCHED
+33. ✅ Ops vector max delta = 0.000 → VECTOR_ALREADY_SOURCE_MATCHED
+34. ✅ Rate vector max delta = 0.000 → VECTOR_ALREADY_SOURCE_MATCHED
+35. ✅ Per-period DSCR equality: 28 periods confirmed
+36. ✅ Per-period day-frac equality: 28 periods confirmed
+37. ✅ Per-period ops equality: 28 periods confirmed
+38. ✅ Per-period rate equality: 28 periods confirmed
 
-**Sequential bridge:**
+**CF1–CF5 counterfactuals:**
 
-39. ✅ bridge has 4 steps
-40. ✅ step 1 closes entire gap to ~42,852 kEUR
-41. ✅ step 1 delta = −1,066.754 kEUR (full gap)
-42. ✅ steps 2–4 each contribute < 1.0 kEUR
-43. ✅ final step reaches SOURCE_EXCEL_SENIOR_DEBT within 1 kEUR
-44. ✅ step 1 delta > 10× all subsequent steps combined
+39. ✅ CF1 moves debt to ~42,852 — closes gap (delta = −1,066.754)
+40. ✅ CF2 (DSCR) delta = 0.000 kEUR
+41. ✅ CF3 (day fracs) delta = 0.000 kEUR — R2 explicit arm
+42. ✅ CF4 (ops) delta = 0.000 kEUR
+43. ✅ CF5 (rate) delta = 0.000 kEUR
 
-**SOURCE_ALL gate:**
+**Sequential bridge and SOURCE_ALL:**
 
+44. ✅ 5-step bridge, step 1 closes entire gap
 45. ✅ SOURCE_ALL capacity = 42,852.278763 kEUR (residual = 0.000)
-46. ✅ Verdict: `CURRENT_GRID0_TO_SOURCE_SIZING_INPUT_BRIDGE_CLOSED`
+46. ✅ Verdict: `C3B3D2B2B_R2_BANK_SIZING_CFADS_AUTHORITY_SOLE_GAP_READY_FOR_INDEPENDENT_REVIEW`
 
 ---
 
-## 11. Summary Verdict
+## 12. Summary Verdict
 
-**`CURRENT_GRID0_TO_SOURCE_SIZING_INPUT_BRIDGE_CLOSED`**
+**`C3B3D2B2B_R2_BANK_SIZING_CFADS_AUTHORITY_SOLE_GAP_READY_FOR_INDEPENDENT_REVIEW`**
 
-The full +1,066.754 kEUR senior debt sizing gap between CURRENT_GRID0 and SOURCE_EXCEL is explained by a single factor: **CF1 — the CFADS vector (DS!row20 Macro50 output vs clean Phase2A EBITDA)**. All other sizing parameters (rates, DSCR banding, ops fraction, day-count convention) are already source-matched in the current clean engine.
+The entire +1,066.754 kEUR senior debt sizing gap between CURRENT_GRID0 and SOURCE_EXCEL is explained by **CF1 — the CFADS vector** (DS!row20 Macro50/bank output vs clean Phase2A EBITDA). Per-period vector equality gates confirm that DSCR banding, day-count fractions, ops fraction, and annual rates are already source-matched exactly.
 
-The Macro50 bank/P90 transformation mechanism remains `BANK_CASE_TRANSFORMATION_MECHANISM_UNRESOLVED`. No production engine changes are proposed. No calibration is performed.
-
-**`C3B3D2B2B_CURRENT_SENIOR_DEBT_BRIDGE_CLOSED_READY_FOR_INDEPENDENT_REVIEW`**
+The Macro50 bank/P90 transformation mechanism remains `BANK_CASE_TRANSFORMATION_MECHANISM_UNRESOLVED`. The future production gap is `MISSING_GENERIC_BANK_SIZING_CFADS_SCENARIO_LAYER`. No production engine changes are proposed or made.

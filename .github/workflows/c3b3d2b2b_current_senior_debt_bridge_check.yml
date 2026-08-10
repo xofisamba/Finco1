@@ -19,11 +19,24 @@ on:
 
 jobs:
   c3b3d2b2b-bridge-check:
-    name: C3B3D2B2B — 60 test functions (current senior debt bridge)
+    name: C3B3D2B2B R2 — 83 focused + full regression chain
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Verify exact head SHA
+        run: |
+          EXPECTED="${{ github.event.pull_request.head.sha || github.sha }}"
+          ACTUAL=$(git rev-parse HEAD)
+          if [ "$EXPECTED" != "$ACTUAL" ]; then
+            echo "ERROR: HEAD mismatch. Expected=$EXPECTED Actual=$ACTUAL"
+            exit 1
+          fi
+          echo "HEAD verified: $ACTUAL"
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -31,19 +44,95 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: pip install -e ".[dev]"
-
-      - name: Run C3B3D2B2B focused tests (60 functions)
         run: |
-          python -m pytest tests/test_stage_c3b3d2b2b_current_senior_debt_bridge.py \
-            -v --tb=short -q
+          pip install --no-cache-dir -c constraints.txt \
+            pytest openpyxl numpy pandas scipy itsdangerous bcrypt
 
-      - name: Run C3B3D2B2A regression (prior stage — must not regress)
+      - name: git diff --check vs base
         run: |
-          python -m pytest tests/test_stage_c3b3d2b2a_tax_shl_causal_grid.py \
-            -q --tb=short
+          git diff --check 4dfdc3bb579f959ce8e7b7348862a3f6c0e7aacb..HEAD
 
-      - name: Run C3B3D2B1 regression (SHL production wiring — must not regress)
+      - name: C3B3D2B2B focused tests R2 (83 functions)
         run: |
-          python -m pytest tests/test_stage_c3b3d2b1_shl_production_wiring.py \
-            -q --tb=short
+          python -m pytest \
+            tests/test_stage_c3b3d2b2b_current_senior_debt_bridge.py \
+            -v --tb=short --no-header
+
+      - name: C3B3D2B2A regression — tax/SHL causal grid
+        run: |
+          python -m pytest \
+            tests/test_stage_c3b3d2b2a_tax_shl_causal_grid.py \
+            -q --tb=short --no-header
+
+      - name: C3B3D2B1 regression — SHL production wiring
+        run: |
+          python -m pytest \
+            tests/test_stage_c3b3d2b1_shl_production_wiring.py \
+            -q --tb=short --no-header
+
+      - name: C3B3D2B0 regression — clean SHL formula parity
+        run: |
+          python -m pytest \
+            tests/test_stage_c3b3d2b0_clean_shl_formula_parity.py \
+            -q --tb=short --no-header
+
+      - name: C3B3D2A regression — Oborovo SHL source truth
+        run: |
+          python -m pytest \
+            tests/test_stage_c3b3d2a_oborovo_shl_source_truth.py \
+            -q --tb=short --no-header
+
+      - name: C3B3D1 regression — canonical SHL schedule
+        run: |
+          python -m pytest \
+            tests/test_stage_c3b3d1_canonical_shl_schedule.py \
+            -q --tb=short --no-header
+
+      - name: C3B3D0 regression — tax identity and ATAD decoupling
+        run: |
+          python -m pytest \
+            tests/test_stage_c3b3d0_tax_identity_atad_decoupling.py \
+            -q --tb=short --no-header
+
+      - name: C3B3C contract — typed SHL tax-policy schema
+        run: |
+          python -m pytest \
+            tests/test_stage_c3b3c_tax_policy_shl_deductibility.py \
+            -q --tb=short --no-header
+
+      - name: C3B3C runtime — TUHO + Oborovo production path
+        run: |
+          python -m pytest \
+            tests/test_stage_c3b3c_legacy_runtime_safety.py \
+            -q --tb=short --no-header
+
+      - name: C3B3B regression — clean tax/CFADS/debt feedback
+        run: |
+          python -m pytest \
+            tests/test_stage_c3b3b_clean_tax_cfads_debt_feedback.py \
+            -q --tb=short --no-header
+
+      - name: C3B3A regression — clean senior debt source contract
+        run: |
+          python -m pytest \
+            tests/test_stage_c3b3a_clean_senior_debt_source_contract.py \
+            -q --tb=short --no-header
+
+      - name: C3B2 regression — Oborovo debt interest source closure
+        run: |
+          python -m pytest \
+            tests/test_stage_c3b2_oborovo_debt_interest_source_closure.py \
+            -q --tb=short --no-header
+
+      - name: C3B1 governance — Oborovo tax source truth
+        run: |
+          python -m pytest \
+            tests/test_stage_c3b1_oborovo_tax_source_truth.py \
+            -q --tb=short --no-header
+
+      - name: TUHO regression — Phase2B tax/CFADS
+        run: |
+          python -m pytest \
+            "tests/test_phase2b_tax_cfads.py::test_w_correction_aware_four_baseline[tuho]" \
+            "tests/test_phase2b_tax_cfads.py::TestTuhoConstructionLoss::test_tuho_end_to_end_exact_matcher" \
+            -v --tb=short --no-header
