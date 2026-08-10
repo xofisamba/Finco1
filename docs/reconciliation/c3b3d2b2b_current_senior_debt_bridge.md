@@ -1,8 +1,8 @@
 # C3B3D2B2B: Current Senior Debt Sizing Bridge
 
-**Status:** R2 — SOURCE-CONTAMINATION FIXED, DAY-FRACTION ARM ADDED, BRIDGE CLOSED  
-**Stage:** current-senior-debt-bridge  
-**Branch:** stage-c3b3d2b2b-current-senior-debt-bridge  
+**Status:** R2 — SOURCE-CONTAMINATION FIXED, DAY-FRACTION ARM ADDED, BRIDGE CLOSED
+**Stage:** current-senior-debt-bridge
+**Branch:** stage-c3b3d2b2b-current-senior-debt-bridge
 **Base:** main at `4dfdc3bb579f959ce8e7b7348862a3f6c0e7aacb` (C3B3D2B2A merged)
 
 ---
