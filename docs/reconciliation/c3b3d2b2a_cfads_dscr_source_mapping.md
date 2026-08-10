@@ -1,7 +1,7 @@
 # C3B3D2B2A — CFADS / DSCR / Senior Debt Source Mapping
 
-**Stage**: C3B3D2B2A (R4)
-**Status**: C3B3D2B2A_R4_SOURCE_SCENARIO_BASELINE_CLOSURE_READY_FOR_INDEPENDENT_REVIEW
+**Stage**: C3B3D2B2A (R5)
+**Status**: C3B3D2B2A_R5_DIAGNOSTIC_MAPPING_READY_FOR_MERGE_REVIEW
 **Authority**: Source fixture vectors; no production-engine modifications; no VBA reverse-engineering.
 
 ---
@@ -25,6 +25,7 @@ Evidence classification labels:
 | BANK_CASE_TRANSFORMATION_MECHANISM_UNRESOLVED | VBA transforms base→bank CFADS; exact algorithm unknown |
 | EARLY_P50_P90_CFADS_ALIGNMENT_REASON_UNRESOLVED | Why CF79≈Macro50 in early periods is not source-proven |
 | BANK_SIZING_SCENARIO_NOT_IN_COMMITTED_OBOROVO_FIXTURES | Bank scenario not confirmed from committed source fixtures |
+| BANK_SIZING_SCENARIO_P90_10Y_REVIEWER_CONFIRMED_NOT_COMMITTED | Bank-sizing scenario P90-10y asserted by reviewer; not extracted into committed fixtures |
 | CURRENT_GRID0_PRODUCTION_CANDIDATE | Current runtime GRID-0 debt ≈ 43,919.03 kEUR |
 | HISTORICAL_GENERIC_PHASE2C_SCALAR_DIAGNOSTIC | Historical C3B2 fixture starting point ≈ 46,053.40 kEUR (NOT current runtime) |
 | SOURCE_EXCEL_SENIOR_DEBT | Source workbook debt = 42,852.279 kEUR |
@@ -50,14 +51,18 @@ Evidence classification labels:
 |---|---|---|
 | Bank-sizing scenario cell in Oborovo fixtures | Not extracted | BANK_SIZING_SCENARIO_NOT_IN_COMMITTED_OBOROVO_FIXTURES |
 | Macro!row50 output formula | VBA (not visible) | VBA_IMPLEMENTATION_NOT_VISIBLE |
-| Bank-sizing scenario (asserted by reviewer) | P90-10y | BANK_SIZING_SCENARIO_P90_10Y_SOURCE_PROVEN |
+| Bank-sizing scenario (asserted by reviewer) | P90-10y | BANK_SIZING_SCENARIO_P90_10Y_REVIEWER_CONFIRMED_NOT_COMMITTED |
 
 The reviewer specification states the bank-sizing scenario is P90-10y. This is
-consistent with TUHO's cross-project proof (see Section 6) where bank CFADS < base
+consistent with TUHO's cross-project proof (see Section 8) where bank CFADS < base
 CFADS in a way that is consistent with a more conservative production scenario.
-However, the exact Oborovo Inputs/Scenarios cell confirming P90-10y has not been
-extracted into committed fixtures. To add it, extract `Inputs/Scenarios` sheet
-cells for the bank-sizing scenario flag.
+However, the exact Oborovo Inputs/Scenarios cell confirming P90-10y has **not** been
+extracted into committed fixtures. To upgrade to SOURCE_PROVEN, extract the
+`Inputs/Scenarios` sheet bank-sizing scenario selector cell and commit it.
+
+**BANK_SIZING_SCENARIO_P90_10Y_REVIEWER_CONFIRMED_NOT_COMMITTED**: reviewer-asserted
+information is not SOURCE_PROVEN. Never label reviewer-supplied assertions as
+SOURCE_PROVEN.
 
 ### 2.3 Why CF79 ≈ Macro50 in early periods (UNRESOLVED)
 
@@ -132,7 +137,7 @@ CF!row79 (base CFADS)   ─────►   Macro!row49 (input)
 | Item | Value | Status |
 |---|---|---|
 | Formula | `None` (VBA, password-protected) | VBA_IMPLEMENTATION_NOT_VISIBLE |
-| Production scenario | P90-10y (asserted; BANK_SIZING_SCENARIO_NOT_IN_COMMITTED_OBOROVO_FIXTURES) | — |
+| Production scenario | P90-10y (asserted; BANK_SIZING_SCENARIO_P90_10Y_REVIEWER_CONFIRMED_NOT_COMMITTED) | — |
 | Transformation mechanism | Unknown | BANK_CASE_TRANSFORMATION_MECHANISM_UNRESOLVED |
 | Period 1 value | 2,575.003 kEUR (≈ CF79[1]) | SOURCE_PROVEN_VALUE |
 | Periods 1–24 | CF79 ≈ Macro50, diff < 0.01 kEUR | EARLY_P50_P90_CFADS_ALIGNMENT_REASON_UNRESOLVED |
@@ -250,14 +255,49 @@ not been done in R4. Do not substitute the historical bridge for the current one
 
 ## 6. FCF-for-SHL identity (Oborovo)
 
-DSRA is inactive (`Inputs!I348=0`, all DSRA rows zero). Therefore:
+The CF waterfall is:
 
 ```
-FCF_for_SHL = CF!row79 + DS!row23
-            = base_CFADS + signed_SDS (SDS < 0)
+CF!row79  (base CFADS / FCF for banks)
+  +
+CF!row80  (signed actual Senior Debt Service, negative cash outflow)
+  +
+CF!row92  (DSRA movement, = 0 for Oborovo since DSRA inactive)
+  =
+CF!row94  (FCF after senior debt service)
+  → gates / junior / SHL cash  →
+CF!row112 (FCF for SHL)
 ```
 
-This identity holds period by period when DSRA=0.
+DSRA is inactive (`Inputs!I348=0`, all DSRA rows zero). Therefore CF!row92 = 0, and:
+
+```
+FCF_for_SHL ≈ CF!row79 + CF!row80
+            = base_CFADS + signed_actual_SDS   (signed_actual_SDS < 0)
+```
+
+This identity holds period by period when DSRA=0.  Verified from source fixture:
+`cf["fcf_for_banks_keur"][t] + cf["senior_debt_service_keur"][t] ≈ cf["free_cash_flow_for_shl_keur"][t]`
+with delta < 1e-9 kEUR for all operating periods.
+
+**Important**: Do NOT substitute DS!row23 for CF!row80 in this identity.
+- **DS!row23** = `(bank_cfads / target_DSCR + DSRA_adj) × ops_flag × tranche_flag` — a POSITIVE
+  allowed debt-service capacity used in sculpting. It is not the signed cash-flow SDS row.
+- **CF!row80** = signed actual Senior Debt Service — a NEGATIVE cash outflow. This is the
+  correct term in the FCF waterfall identity.
+
+When DSRA=0, `|CF!row80| = DS!row23` in magnitude (because the allowed capacity is fully drawn),
+but the signs differ. Using DS!row23 in place of CF!row80 would produce
+`FCF_for_SHL = CF79 + positive_DS23 > CF79`, which is incorrect.
+
+| Row | Field in fixture | Sign | Role |
+|---|---|---|---|
+| CF!row79 | `cf["fcf_for_banks_keur"]` | positive | Base CFADS |
+| CF!row80 | `cf["senior_debt_service_keur"]` | **negative** | Signed actual SDS (CF waterfall) |
+| DS!row23 | `ds["sd_service_keur"]` | **positive** | Allowed SDS capacity (sizing input) |
+| CF!row112 | `cf["free_cash_flow_for_shl_keur"]` | positive | FCF for SHL |
+
+Classification: **FCF_FOR_SHL_LINEAGE_CF79_CF80_CF92_CF94_CF112_SOURCE_PROVEN**
 
 ---
 

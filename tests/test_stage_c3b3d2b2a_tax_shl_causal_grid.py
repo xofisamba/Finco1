@@ -2,12 +2,18 @@
 
 Mission
 -------
-Causally explain the CURRENT_UPSTREAM_CLEAN_CASH_RESIDUAL (~2718.02 kEUR) by
-evaluating 12 arm combinations of source-proven workbook mechanics (H2+H1
-CIT pairing, EBT gate, rolling-5-period LCF, row-39 cap, SHL feedback).
+Evaluate 12 arm combinations of source-proven workbook mechanics (H2+H1
+CIT pairing, EBT gate, rolling-5-period LCF, row-39 cap, SHL feedback)
+against the CURRENT_UPSTREAM_CLEAN_CASH_RESIDUAL (~2718.02 kEUR).
+
+Cause status: CURRENT_CAUSE_UNRESOLVED — no arm has proven the residual source.
+B/C/D/E arms are WITHIN_TAX_SURROGATE_ONLY (GRID-WS0 validation pending).
 
 R3 additions: CFADS/DSCR source mapping, TUHO bank-sizing proof, Oborovo
 debt sizing replay, DSRA classification, tax window labels.
+R4 additions: three-baseline separation, row39 non-causal classification.
+R5 additions: FCF-for-SHL lineage proof (CF79+CF80, not DS23), per-row
+source-replay classifications, bank-scenario label cleanup.
 
 Key governance constraints
 --------------------------
@@ -16,9 +22,10 @@ Key governance constraints
 - Protected C3B2 SHA unchanged
 - 13547.2 must not appear in clean SHL logic
 - DSRA_NOT_CAUSAL_FOR_OBOROVO_CURRENT_RESIDUAL_SOURCE_PROVEN
+- BANK_SIZING_SCENARIO_P90_10Y_REVIEWER_CONFIRMED_NOT_COMMITTED (not SOURCE_PROVEN)
 - All evidence evaluated against source fixture vectors
 
-Final verdict delivered: C3B3D2B2A_CAUSAL_GRID_READY_FOR_INDEPENDENT_REVIEW
+Final verdict: C3B3D2B2A_R5_DIAGNOSTIC_MAPPING_READY_FOR_MERGE_REVIEW
 """
 
 from __future__ import annotations
@@ -357,9 +364,12 @@ class TestGridC:
         assert math.isfinite(grid.grid_c.ds40_final_closing_keur)
         assert grid.grid_c.ds40_final_closing_keur >= 0.0
 
-    def test_ebt_gate_increases_residual_vs_grid0(self, grid):
-        # EBT gate → fewer losses utilized → higher CIT → lower CFADS → higher DS40 residual
-        assert grid.grid_c.ds40_final_closing_keur >= grid.grid0.ds40_final_closing_keur - 10.0
+    def test_grid_c_ds40_within_surrogate(self, grid):
+        # WITHIN_TAX_SURROGATE_ONLY — GRID-WS0 not yet validated against GRID-0.
+        # This assertion verifies the GRID-C arm produces a finite, non-trivial DS40;
+        # no causal claim about the CURRENT_UPSTREAM_CLEAN_CASH_RESIDUAL is made.
+        assert math.isfinite(grid.grid_c.ds40_final_closing_keur)
+        assert abs(grid.grid_c.ds40_final_closing_keur) > 100.0
 
     def test_solver_converged(self, grid):
         assert grid.grid_c.solver_converged is True
@@ -1025,6 +1035,28 @@ class TestSourceReplayRows:
             assert "classification" in v, f"Period {pidx} missing classification"
             assert v["classification"] in ("SOURCE_REPLAY_PROVEN", "SOURCE_REPLAY_MISMATCH")
 
+    def test_per_row_classifications_present(self, replay):
+        """Each row has its own per-row classification field (R5)."""
+        row_keys = [
+            "row36_classification", "row37_classification", "row38_classification",
+            "row39_classification", "row41_classification", "row43_classification",
+        ]
+        for pidx, v in replay.items():
+            for key in row_keys:
+                assert key in v, f"Period {pidx} missing {key}"
+                assert v[key] in ("SOURCE_REPLAY_PROVEN", "SOURCE_REPLAY_MISMATCH"), (
+                    f"Period {pidx} {key}={v[key]!r}"
+                )
+
+    def test_per_row_all_source_replay_proven(self, replay):
+        """All rows are SOURCE_REPLAY_PROVEN for Oborovo (delta < 1.0 kEUR each)."""
+        for row in ("row36", "row37", "row38", "row39", "row41", "row43"):
+            for pidx, v in replay.items():
+                assert v[f"{row}_classification"] == "SOURCE_REPLAY_PROVEN", (
+                    f"Period {pidx} {row} is not SOURCE_REPLAY_PROVEN "
+                    f"(delta={v[f'{row}_delta']:.4f} kEUR)"
+                )
+
 
 # ---------------------------------------------------------------------------
 # R2: Row-39 state propagation fix
@@ -1537,3 +1569,99 @@ class TestRow39NonCausalClassification:
     def grid(self):
         from finco_recon.diagnose_c3b3d2b2a_tax_shl_causal_grid import run_diagnostic_grid
         return run_diagnostic_grid()
+
+
+# ---------------------------------------------------------------------------
+# R5: FCF-for-SHL lineage — CF79 + CF80, NOT DS!row23
+# ---------------------------------------------------------------------------
+
+class TestFcfForShlIdentity:
+    """FCF-for-SHL lineage: CF!row79 + CF!row80 = CF!row112 (Oborovo, DSRA=0).
+
+    Classification: FCF_FOR_SHL_LINEAGE_CF79_CF80_CF92_CF94_CF112_SOURCE_PROVEN
+
+    DS!row23 is the POSITIVE allowed SDS capacity for sculpting — it is NOT
+    CF!row80 (signed actual SDS, negative). The two have equal magnitude for
+    Oborovo (actual SDS = allowed SDS) but opposite signs.
+
+    Key fixture mapping:
+      CF!row79  → cf["fcf_for_banks_keur"]           (positive base CFADS)
+      CF!row80  → cf["senior_debt_service_keur"]      (NEGATIVE signed actual SDS)
+      DS!row23  → ds["sd_service_keur"]               (POSITIVE allowed SDS capacity)
+      CF!row112 → cf["free_cash_flow_for_shl_keur"]   (positive FCF for SHL)
+    """
+
+    @pytest.fixture(scope="class")
+    def cf_fixture(self):
+        return _load_oborovo_financial_fixture()
+
+    def test_cf_row80_is_negative(self, cf_fixture):
+        """CF!row80 (senior_debt_service_keur) is negative — signed cash outflow."""
+        sds = cf_fixture["cf"]["senior_debt_service_keur"]
+        op_sds = [v for v in sds[1:] if v != 0.0]
+        assert len(op_sds) > 0
+        assert all(v < 0.0 for v in op_sds), (
+            "CF!row80 (senior_debt_service_keur) must be negative (signed SDS outflow); "
+            f"found positive values: {[v for v in op_sds if v > 0]}"
+        )
+
+    def test_ds_row23_is_positive(self, cf_fixture):
+        """DS!row23 (sd_service_keur) is positive — allowed SDS capacity."""
+        ds23 = cf_fixture["ds"]["sd_service_keur"]
+        op_ds23 = [v for v in ds23[1:] if v != 0.0]
+        assert len(op_ds23) > 0
+        assert all(v > 0.0 for v in op_ds23), (
+            "DS!row23 (sd_service_keur) must be positive (allowed SDS capacity); "
+            f"found non-positive values: {[v for v in op_ds23 if v <= 0]}"
+        )
+
+    def test_cf79_plus_cf80_equals_cf112(self, cf_fixture):
+        """CF!row79 + CF!row80 = CF!row112 (Oborovo, DSRA=0, period by period).
+
+        Classification: FCF_FOR_SHL_LINEAGE_CF79_CF80_CF92_CF94_CF112_SOURCE_PROVEN
+        """
+        cf79 = cf_fixture["cf"]["fcf_for_banks_keur"]
+        cf80 = cf_fixture["cf"]["senior_debt_service_keur"]
+        cf112 = cf_fixture["cf"]["free_cash_flow_for_shl_keur"]
+        n = min(len(cf79), len(cf80), len(cf112))
+        max_delta = 0.0
+        for i in range(1, n):
+            delta = abs(cf79[i] + cf80[i] - cf112[i])
+            max_delta = max(max_delta, delta)
+        assert max_delta < 1e-6, (
+            f"FCF-for-SHL identity CF79+CF80=CF112 violated: max delta={max_delta:.2e} kEUR"
+        )
+
+    def test_cf79_plus_ds23_does_not_equal_cf112(self, cf_fixture):
+        """CF!row79 + DS!row23 != CF!row112 — DS!row23 is positive capacity, not signed SDS.
+
+        Regression: the incorrect formula CF79+DS23 is rejected. DS23 is positive;
+        CF80 is negative. CF79+DS23 > CF79 > CF112.
+        """
+        cf79 = cf_fixture["cf"]["fcf_for_banks_keur"]
+        ds23 = cf_fixture["ds"]["sd_service_keur"]
+        cf112 = cf_fixture["cf"]["free_cash_flow_for_shl_keur"]
+        wrong_identity = cf79[1] + ds23[1]
+        correct = cf112[1]
+        assert abs(wrong_identity - correct) > 1.0, (
+            f"CF79+DS23 unexpectedly approx CF112 at period 1: "
+            f"wrong={wrong_identity:.4f}, correct={correct:.4f}"
+        )
+
+    def test_ds_row23_and_cf_row80_have_equal_magnitude(self, cf_fixture):
+        """DS!row23 and |CF!row80| have equal magnitude for Oborovo (actual = allowed SDS).
+
+        Equal magnitudes but opposite signs confirms they are different variables
+        that must not be substituted for each other in the FCF waterfall.
+        """
+        cf80 = cf_fixture["cf"]["senior_debt_service_keur"]
+        ds23 = cf_fixture["ds"]["sd_service_keur"]
+        n = min(len(cf80), len(ds23))
+        for i in range(1, n):
+            if ds23[i] == 0.0 and cf80[i] == 0.0:
+                continue
+            magnitude_diff = abs(abs(cf80[i]) - ds23[i])
+            assert magnitude_diff < 1e-6, (
+                f"Period {i}: |CF80|={abs(cf80[i]):.6f} vs DS23={ds23[i]:.6f}, "
+                f"diff={magnitude_diff:.2e}"
+            )

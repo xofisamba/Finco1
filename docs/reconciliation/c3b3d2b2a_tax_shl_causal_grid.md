@@ -1,7 +1,7 @@
 # C3B3D2B2A — Tax / SHL Causal Diagnostic Grid
 
 **Stage**: C3B3D2B2A
-**Status**: C3B3D2B2A_R4_SOURCE_SCENARIO_BASELINE_CLOSURE_READY_FOR_INDEPENDENT_REVIEW
+**Status**: C3B3D2B2A_R5_DIAGNOSTIC_MAPPING_READY_FOR_MERGE_REVIEW
 **Base**: C3B3D2B1 main (`7cd1366c4e81a35e55c529c324a7809e9a78eef4`)
 **Branch**: `stage-c3b3d2b2a-tax-shl-causal-grid`
 
@@ -43,7 +43,8 @@ not a formula failure — SHL arithmetic is separately source-proven via TestJ.
 | No calibration of clean engine to source | ENFORCED |
 | Protected C3B2 SHA unchanged | ENFORCED |
 | 13547.2 absent from clean SHL logic | ENFORCED |
-| DSRA_ORDERING_UNRESOLVED | ACKNOWLEDGED — no DSRA implementation |
+| DSRA (Oborovo): DSRA_NOT_CAUSAL_FOR_OBOROVO_CURRENT_RESIDUAL_SOURCE_PROVEN | Inputs!I348=0; DSRA_NOT_CAUSAL confirmed |
+| DSRA waterfall ordering (generic Finco) | GENERIC_DSRA_WATERFALL_ORDERING_NOT_IMPLEMENTED — separate from Oborovo result |
 | CONSTRUCTION_DATE_CONVENTION_UNRESOLVED | ACKNOWLEDGED — DCF=1.0 arithmetic-implied |
 
 ---
@@ -117,24 +118,27 @@ to `other_fiscal_reintegration` produces **net TI delta = 0**.
 - The outer SHL→tax fixed-point loop converges in 1 iteration
 - SHL feedback is **not a contributor** to the 2718.02 kEUR residual
 
-### FINDING-2: Tax mechanics increase the residual (do not reduce it)
+### FINDING-2: B/C/D/E arm results are WITHIN_TAX_SURROGATE_ONLY
 
-All workbook mechanic combinations produce DS[40] ≥ GRID-0 (2718.02 kEUR).
+All workbook mechanic combinations produce DS[40] in a range near GRID-0 (2718.02 kEUR).
 No arm combination closes the gap to source 0.00 kEUR.
 
-| Arm | DS[40] | Delta vs GRID-0 | Direction |
+| Arm | DS[40] | Delta vs GRID-0 | Classification |
 |---|---|---|---|
-| GRID-0 | 2718.02 | 0.00 | baseline |
-| GRID-B | 2717.55 | -0.47 | negligible |
-| GRID-C | 2780.13 | +62.11 | increases residual |
-| GRID-D | 2767.39 | +49.37 | increases residual |
-| GRID-E | 2746.80 | +28.78 | increases residual |
-| GRID-ABCDE | 2750.49 | +32.47 | increases residual |
+| GRID-0 | 2718.02 | 0.00 | CURRENT_GRID0_PRODUCTION_CANDIDATE |
+| GRID-B | 2717.55 | -0.47 | WITHIN_TAX_SURROGATE_ONLY |
+| GRID-C | 2780.13 | +62.11 | WITHIN_TAX_SURROGATE_ONLY |
+| GRID-D | 2767.39 | +49.37 | WITHIN_TAX_SURROGATE_ONLY |
+| GRID-E | 2746.80 | +28.78 | WITHIN_TAX_SURROGATE_ONLY |
+| GRID-ABCDE | 2750.49 | +32.47 | WITHIN_TAX_SURROGATE_ONLY |
 
-**Conclusion**: CURRENT_CAUSE_UNRESOLVED. No arm combination explains the
-2718.02 kEUR residual. The workbook harness itself has not yet been validated
-against GRID-0 at per-vector level (GRID-WS0 vs GRID-0 gate pending classification).
-Causal attribution claims cannot be made until the baseline is classified.
+**Classification: WITHIN_TAX_SURROGATE_ONLY** — GRID-WS0 has not been validated
+as equivalent to GRID-0 at per-vector level. Until that gate is cleared, B/C/D/E
+arm results are within-surrogate experiments and cannot be stated as causal drivers
+of the CURRENT_UPSTREAM_CLEAN_CASH_RESIDUAL. No cross-baseline causal claim may be
+derived from B/C/D/E arm comparisons.
+
+**Conclusion**: CURRENT_CAUSE_UNRESOLVED. Causal attribution requires GRID-WS0 validation first.
 
 ### FINDING-3: EBT gate prevents all loss utilisation for Oborovo
 
@@ -169,7 +173,7 @@ attribution about the residual vs the clean engine can be made from B/C/D/E arms
 - R3 stated "backward PV constraint causes Macro50 divergence" — REMOVED. Mechanism
   is VBA_IMPLEMENTATION_NOT_VISIBLE; BANK_CASE_TRANSFORMATION_MECHANISM_UNRESOLVED.
 - R3 stated "CF79 ≈ Macro50 (both P50)" — CORRECTED. Base = P50 (SOURCE_PROVEN);
-  bank-sizing = P90-10y (asserted by reviewer; BANK_SIZING_SCENARIO_NOT_IN_COMMITTED_OBOROVO_FIXTURES).
+  bank-sizing = P90-10y (asserted by reviewer; BANK_SIZING_SCENARIO_P90_10Y_REVIEWER_CONFIRMED_NOT_COMMITTED).
   Early alignment reason: EARLY_P50_P90_CFADS_ALIGNMENT_REASON_UNRESOLVED.
 - R3 stated G4 bridge "fully explains current clean → source gap" — CORRECTED.
   The G4 bridge is HISTORICAL_C3B2_SOURCE_REPLAY_PROOF starting from historical
@@ -253,10 +257,14 @@ production paths — correctly excluded from the diagnostic per FINDING-1.
 2. **Trace CFADS driver at period resolution**: CFADS signed total +347 kEUR
    across DS[1..40]. Source-prove which specific periods drive the difference.
 
-3. **Senior debt sizing gap**: the +3,201 kEUR clean vs source debt gap is fully
-   explained by rate (−544), CFADS (−1,918), day-count (−215), DSCR banding (−516),
-   and terminal partial period (−9) — G4 vector backward induction reproduces source
-   debt exactly (residual = 0.000 kEUR). See `c3b3d2b2a_cfads_dscr_source_mapping.md`.
+3. **Senior debt sizing gap**: the current GRID-0 → source debt delta is **+1,066.754 kEUR**
+   (CURRENT_GRID0: 43,919.032 kEUR vs SOURCE_EXCEL: 42,852.279 kEUR).
+   This is **CURRENT_GRID0_TO_SOURCE_DEBT_BRIDGE_NOT_YET_CLOSED** — the current bridge has
+   not been decomposed factor-by-factor starting from the current GRID-0 baseline.
+   The historical G0→G4 bridge (46,053→42,852 kEUR, **HISTORICAL_C3B2_SOURCE_REPLAY_PROOF**)
+   is internally consistent but starts from the historical generic Phase2C scalar, not from
+   the current GRID-0. Do not cite the historical bridge as explaining the current gap.
+   See `c3b3d2b2a_cfads_dscr_source_mapping.md` Section 5.
 
 4. **DSRA**: DSRA_NOT_CAUSAL_FOR_OBOROVO_CURRENT_RESIDUAL_SOURCE_PROVEN — DSRA=0 in
    source. DSRA_ORDERING_UNRESOLVED is resolved for Oborovo. Do NOT rank as contributor.
@@ -273,7 +281,8 @@ production paths — correctly excluded from the diagnostic per FINDING-1.
 
 | Item | Status | Planned stage |
 |---|---|---|
-| DSRA/reserve movement ordering | DSRA_NOT_CAUSAL_FOR_OBOROVO_CURRENT_RESIDUAL_SOURCE_PROVEN (resolved) | — |
+| DSRA ordering (Oborovo-specific) | DSRA_NOT_CAUSAL_FOR_OBOROVO_CURRENT_RESIDUAL_SOURCE_PROVEN — fully resolved | — |
+| DSRA waterfall ordering (generic) | GENERIC_DSRA_WATERFALL_ORDERING_NOT_IMPLEMENTED — distinct from Oborovo result | D2B2+ |
 | Construction date convention | CONSTRUCTION_DATE_CONVENTION_UNRESOLVED | D2B2 |
 | SHL input authority promotion | CLEAN_SHL_PROJECT_INPUT_AUTHORITY_HANDOFF_PENDING_D2B2 | D2B2 |
 | CFADS driver period resolution | Not yet attributed | D2B2 |
@@ -283,7 +292,7 @@ production paths — correctly excluded from the diagnostic per FINDING-1.
 
 ## 12. Test suite
 
-`tests/test_stage_c3b3d2b2a_tax_shl_causal_grid.py` — 194 test functions (R4).
+`tests/test_stage_c3b3d2b2a_tax_shl_causal_grid.py` — 201 test functions (R5).
 
 | Class | Count | Coverage |
 |---|---|---|
@@ -305,7 +314,7 @@ production paths — correctly excluded from the diagnostic per FINDING-1.
 | TestGrid0NumericalReproduction | 13 | R2 tight assertions (339.71/667.86/622.69/-1894.91) |
 | TestGridS0VectorContract | 5 | GRID-S0 ≡ GRID-0 within solver tolerance |
 | TestGridWS0VsGrid0Gate | 5 | GRID-WS0 baseline gate classification |
-| TestSourceReplayRows | 7 | Per-row SOURCE_REPLAY_PROVEN rows 36-43 |
+| TestSourceReplayRows | 9 | R5: Per-row classification fields; SOURCE_REPLAY_PROVEN all rows 36-43 |
 | TestRow39StateRepaired | 3 | Row39 cap state propagation (synthetic propagation removed) |
 | TestGridAFullHorizon | 3 | Full-horizon SHL injection (debt tenor + post-maturity) |
 | TestGridABCDSemanticsHonest | 4 | GRID-ABCD shl_netting_in_tax=True + A=0 identity |
@@ -317,13 +326,14 @@ production paths — correctly excluded from the diagnostic per FINDING-1.
 | TestTaxWindowClassification | 5 | R3: 5-period window label; row39 non-binding; construction loss |
 | TestThreeBaselineSeparation | 7 | R4: CURRENT_GRID0 / HISTORICAL / SOURCE_EXCEL distinct |
 | TestRow39NonCausalClassification | 3 | R4: ROW39_REPORTING_OR_NON_CAUSAL; GRID-E WITHIN_SURROGATE |
+| TestFcfForShlIdentity | 5 | R5: CF79+CF80=CF112; DS23≠CF80 regression; equal magnitude/opposite sign |
 
 ---
 
 ## 13. Final verdict
 
 ```
-C3B3D2B2A_R4_SOURCE_SCENARIO_BASELINE_CLOSURE_READY_FOR_INDEPENDENT_REVIEW
+C3B3D2B2A_R5_DIAGNOSTIC_MAPPING_READY_FOR_MERGE_REVIEW
 ```
 
 **R2 evidence (carried forward)**:
@@ -343,7 +353,7 @@ C3B3D2B2A_R4_SOURCE_SCENARIO_BASELINE_CLOSURE_READY_FOR_INDEPENDENT_REVIEW
 
 **R4 corrections and new evidence**:
 - Oborovo base scenario: P50 (SOURCE_PROVEN, Inputs!D52)
-- Oborovo bank scenario: P90-10y (asserted; BANK_SIZING_SCENARIO_NOT_IN_COMMITTED_OBOROVO_FIXTURES)
+- Oborovo bank scenario: P90-10y (BANK_SIZING_SCENARIO_P90_10Y_REVIEWER_CONFIRMED_NOT_COMMITTED)
 - Macro50 divergence mechanism: BANK_CASE_TRANSFORMATION_MECHANISM_UNRESOLVED (not "backward PV")
 - Early CF79≈Macro50: EARLY_P50_P90_CFADS_ALIGNMENT_REASON_UNRESOLVED
 - Three baselines separated: CURRENT_GRID0 (43,919) / HISTORICAL (46,053) / SOURCE_EXCEL (42,852)

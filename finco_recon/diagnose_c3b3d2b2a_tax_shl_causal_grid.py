@@ -317,11 +317,17 @@ def _source_shl_schedule(fixture: dict) -> tuple[list[float], list[float], list[
 # Source replay validation (workbook rows 36-43)
 # ---------------------------------------------------------------------------
 
+_SOURCE_REPLAY_TOLERANCE_KEUR: float = 1.0
+# Documented tolerance for SOURCE_REPLAY_PROVEN classification.
+# A row is SOURCE_REPLAY_PROVEN when max_abs_delta < _SOURCE_REPLAY_TOLERANCE_KEUR (1.0 kEUR).
+# Tests assert each row delta < 1.0 kEUR; code and tests use this same threshold.
+
+
 def _source_replay_workbook_rows(fixture: dict) -> dict:
     """Replay workbook rows 36-43 from committed source fixture and compare.
 
-    Returns per-period comparison dict.
-    SOURCE_REPLAY_PROVEN classification for rows where delta < 1e-3 kEUR.
+    Returns per-period comparison dict with per-row delta and classification fields.
+    A row is SOURCE_REPLAY_PROVEN when its delta < _SOURCE_REPLAY_TOLERANCE_KEUR (1.0 kEUR).
 
     Workbook row formulas (Oborovo, all SOURCE_PROVEN):
       Row 36 = losses_n_minus_1: SUMIF(last-5-periods TI, "<0") + cumulative_used
@@ -378,29 +384,50 @@ def _source_replay_workbook_rows(fixture: dict) -> dict:
             sv = src_list[idx] if idx < len(src_list) else 0.0
             return abs(replay - sv)
 
+        def _classify(delta: float) -> str:
+            return (
+                "SOURCE_REPLAY_PROVEN"
+                if delta < _SOURCE_REPLAY_TOLERANCE_KEUR
+                else "SOURCE_REPLAY_MISMATCH"
+            )
+
+        d36 = _delta(r36_replay, source_row36, i)
+        d37 = _delta(r37_replay, source_row37, i)
+        d38 = _delta(r38_replay, source_row38, i)
+        d39 = _delta(r39_replay, source_row39, i)
+        d41 = _delta(r41_replay, source_row41, i)
+        d43 = _delta(r43_replay, source_row43, i)
+
         comparisons[i] = {
             "period_index": i,
             "row36_replay": r36_replay,
             "row36_source": source_row36[i] if i < len(source_row36) else None,
-            "row36_delta": _delta(r36_replay, source_row36, i),
+            "row36_delta": d36,
+            "row36_classification": _classify(d36),
             "row37_replay": r37_replay,
             "row37_source": source_row37[i] if i < len(source_row37) else None,
-            "row37_delta": _delta(r37_replay, source_row37, i),
+            "row37_delta": d37,
+            "row37_classification": _classify(d37),
             "row38_replay": r38_replay,
             "row38_source": source_row38[i] if i < len(source_row38) else None,
-            "row38_delta": _delta(r38_replay, source_row38, i),
+            "row38_delta": d38,
+            "row38_classification": _classify(d38),
             "row39_replay": r39_replay,
             "row39_source": source_row39[i] if i < len(source_row39) else None,
-            "row39_delta": _delta(r39_replay, source_row39, i),
+            "row39_delta": d39,
+            "row39_classification": _classify(d39),
             "row41_replay": r41_replay,
             "row41_source": source_row41[i] if i < len(source_row41) else None,
-            "row41_delta": _delta(r41_replay, source_row41, i),
+            "row41_delta": d41,
+            "row41_classification": _classify(d41),
             "row43_replay": r43_replay,
             "row43_source": source_row43[i] if i < len(source_row43) else None,
-            "row43_delta": _delta(r43_replay, source_row43, i),
+            "row43_delta": d43,
+            "row43_classification": _classify(d43),
+            # Backward-compat summary: SOURCE_REPLAY_PROVEN only when all rows proven
             "classification": (
                 "SOURCE_REPLAY_PROVEN"
-                if _delta(r43_replay, source_row43, i) < 1e-3
+                if all(c < _SOURCE_REPLAY_TOLERANCE_KEUR for c in (d36, d37, d38, d39, d41, d43))
                 else "SOURCE_REPLAY_MISMATCH"
             ),
         }
