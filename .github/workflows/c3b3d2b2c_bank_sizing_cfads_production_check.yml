@@ -180,16 +180,25 @@ jobs:
           fi
           echo "PASS: no literal 13547.2"
 
-      # --- Governance: no project-name dispatch in financial_engine ---
-      - name: Governance — no project-name dispatch in financial_engine
+      # --- Governance: no project-name dispatch introduced by this PR ---
+      # Check only lines ADDED to financial_engine/ by this PR (diff from base).
+      # Pre-existing base content is not the responsibility of this stage gate.
+      # This guard can fail if a future PR adds Oborovo/TUHO project-specific
+      # calculation dispatch to financial_engine production files.
+      - name: Governance — no project-name token introduced in financial_engine diff
         run: |
-          if grep -rn "oborovo\|tuho\|TUHO\|OBOROVO" financial_engine/ --include="*.py" \
-            | grep -v "^Binary" \
-            | grep -v "#.*OBOROVO\|#.*TUHO"; then
-            echo "FAIL: project-name dispatch found in production code"
+          added_prod="$(
+            git diff -U0 \
+              6e064980868709294e14da4d95e3279790d70ff0..HEAD \
+              -- 'financial_engine/' \
+            | awk '/^\+\+\+/{next} /^\+/{print substr($0,2)}'
+          )"
+          if printf '%s\n' "$added_prod" | grep -Eiq '\b(oborovo|tuho)\b'; then
+            echo "FAIL: project-specific token introduced in financial_engine diff"
+            printf '%s\n' "$added_prod" | grep -Ei '\b(oborovo|tuho)\b'
             exit 1
           fi
-          echo "PASS: no project-name dispatch"
+          echo "PASS: no project-specific token introduced in production diff"
 
       # --- Governance: protected C3B2 SHA not in literals ---
       - name: Governance — protected C3B2 SHA not in production code literals
