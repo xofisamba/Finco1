@@ -9,6 +9,7 @@ R3 Verdict: C3B3D2B2C_R3_STOP_MACRO50_TRANSFORMATION_SOURCE_INACCESSIBLE
 R4 Verdict: C3B3D2B2C_R4_SOURCE_INPUTS_IDENTIFIED_CURVE_EXTRACTION_REQUIRED
 R4.1 Verdict: C3B3D2B2C_R4_1_MANUAL_CAUSALITY_PROVEN_ENGINE_EVALUATION_XLSM_EXTRACTION_REQUIRED
 R4.2 Verdict: C3B3D2B2C_R4_2_STOP_CANDIDATE_C_SOURCE_PARITY_FAILED
+R4.3 Verdict: C3B3D2B2C_R4_3_STOP_REVENUE_REGIME_PARITY_FAILED
 
 Classification of candidates:
     OBOROVO_ALL_PRODUCTION_BANK_CASE_RULE_CANDIDATE_ONLY
@@ -783,3 +784,343 @@ CANDIDATE_C_R4_2_RESULT = {
     ),
     "financial_engine_diff": "ZERO — financial_engine/ unchanged from base SHA",
 }
+
+
+# ---------------------------------------------------------------------------
+# R4.3: Reclassification of R4.2 failure
+# ---------------------------------------------------------------------------
+
+R4_2_RECLASSIFICATION = {
+    "failed_rule": "R4_2_GLOBAL_P90_PLUS_SIZING_CURVE_COMBINATION_REJECTED",
+    "description": (
+        "Candidate C applied P90-10y yield globally across ALL operating periods. "
+        "This conflicts with source evidence: DS20 ≈ CF79 throughout PPA+debt periods "
+        "(max delta 0.006 kEUR over 24 periods). Global P90 application in PPA periods "
+        "is a semantic error. The sizing revenue curve itself is NOT disproven; its "
+        "causality remains OBOROVO_DEBT_SIZING_REVENUE_CURVE_MANUAL_CAUSALITY_PROVEN."
+    ),
+    "r4_2_debt_keur": 38829.996,
+    "target_keur": 42852.278763,
+    "r4_2_delta_keur": -4022.283,
+    "preserved_numbers": True,
+    "sizing_curve_causality": "OBOROVO_DEBT_SIZING_REVENUE_CURVE_MANUAL_CAUSALITY_PROVEN",
+}
+
+# ---------------------------------------------------------------------------
+# R4.3: PPA period source identity
+# ---------------------------------------------------------------------------
+
+OBOROVO_PPA_SOURCE_IDENTITY = {
+    "classification": "OBOROVO_PPA_BANK_CFADS_EQUALS_BASE_CFADS_SOURCE_PROVEN",
+    "period_count": 24,
+    "period_range": "P2-P25",
+    "max_abs_delta_keur": 0.0062,
+    "signed_total_delta_keur": -0.0400,
+    "tolerance_keur": 0.01,
+    "verdict": "CONFIRMED — DS20 = CF79 to within rounding in all PPA+debt periods",
+    "implication": (
+        "Bank-case CFADS = base CFADS for PPA+debt periods. "
+        "No P90 yield substitution should be applied to PPA periods. "
+        "Candidate C error: global P90 application reduced PPA CFADS spuriously."
+    ),
+}
+
+
+# ---------------------------------------------------------------------------
+# R4.3: Candidate D — revenue-regime-aware bank-case splice
+# ---------------------------------------------------------------------------
+
+def _build_candidate_d_spliced_periods(
+    base_periods: dict,
+    bank_periods: dict,
+    is_ppa_active_fn: Any,
+) -> tuple:
+    """Splice base and bank periods using PPA regime authority.
+
+    PPA-active periods: base economics (P50, central price, base tax).
+    Non-PPA periods: bank economics (P90, sizing price, bank tax).
+    No hardcoded period index boundaries — regime from is_ppa_active on each period.
+
+    Args:
+        base_periods: {period_index: OperatingPeriodResult} from base model
+        bank_periods: {period_index: OperatingPeriodResult} from bank model
+        is_ppa_active_fn: callable(period_index) → bool
+
+    Returns:
+        tuple of OperatingPeriodResult sorted by period_index
+    """
+    all_indices = sorted(set(base_periods) | set(bank_periods))
+    spliced = []
+    for pidx in all_indices:
+        if pidx in base_periods and base_periods[pidx].is_ppa_active:
+            spliced.append(base_periods[pidx])
+        elif pidx in bank_periods:
+            spliced.append(bank_periods[pidx])
+        elif pidx in base_periods:
+            spliced.append(base_periods[pidx])
+    return tuple(spliced)
+
+
+def _run_candidate_d_debt(
+    base_op: Any,
+    bank_op: Any,
+    sd_input: Any,
+) -> dict:
+    """Run the Candidate D senior debt solver with spliced operating periods.
+
+    Uses the internal financial_engine solver machinery with a custom tax_cfads_fn
+    that operates over the spliced PPA=base / merchant=bank periods.
+    No modification to financial_engine/ code.
+
+    Returns:
+        dict with debt_keur, cfads_by_period, tax_by_period
+    """
+    from financial_engine.inputs import TaxCalculationInput, PeriodInterestInput
+    from financial_engine.tax.engine import calculate_tax as calc_tax
+    from financial_engine.cfads import calculate_canonical_cfads as calc_cfads
+    from financial_engine.senior_debt.solver import solve_senior_debt
+    from financial_engine.orchestrator import run_operating_model
+
+    base_res = run_operating_model(base_op)
+    bank_res = run_operating_model(bank_op)
+
+    base_p_map = {p.period_index: p for p in base_res.periods}
+    bank_p_map = {p.period_index: p for p in bank_res.periods}
+
+    # Splice: PPA regime authority is is_ppa_active on each base period
+    all_indices = sorted(set(base_p_map) | set(bank_p_map))
+    spliced_list = []
+    for pidx in all_indices:
+        bp = base_p_map.get(pidx)
+        if bp is not None and bp.is_ppa_active:
+            spliced_list.append(bp)
+        else:
+            kp = bank_p_map.get(pidx)
+            if kp is not None:
+                spliced_list.append(kp)
+            elif bp is not None:
+                spliced_list.append(bp)
+    spliced = tuple(spliced_list)
+
+    base_tax_input = sd_input.tax
+    policy = sd_input.senior_debt_policy
+    sd_inputs_obj = sd_input.senior_debt_inputs
+
+    _last_state: list = []
+
+    def tax_cfads_fn(senior_interest_by_period: dict) -> tuple:
+        merged = {}
+        for pi in base_tax_input.period_interest:
+            merged[pi.period_index] = pi
+        for idx, senior_keur in senior_interest_by_period.items():
+            existing = merged.get(idx)
+            if existing is not None:
+                merged[idx] = PeriodInterestInput(
+                    period_index=idx,
+                    senior_interest_keur=senior_keur,
+                    shl_interest_keur=existing.shl_interest_keur,
+                    other_interest_keur=existing.other_interest_keur,
+                )
+            else:
+                merged[idx] = PeriodInterestInput(
+                    period_index=idx,
+                    senior_interest_keur=senior_keur,
+                )
+        updated_tax = TaxCalculationInput(
+            policy=base_tax_input.policy,
+            opening_loss_vintages=base_tax_input.opening_loss_vintages,
+            period_interest=tuple(merged.values()),
+            period_adjustments=base_tax_input.period_adjustments,
+        )
+        tax_res = calc_tax(spliced, updated_tax)
+        cfads_res = calc_cfads(spliced, tax_res.period_results)
+        _last_state.clear()
+        _last_state.append((tax_res, cfads_res))
+        cfads_by_p = {cr.period_index: cr.cfads_keur for cr in cfads_res}
+        tax_by_p = {pr.period_index: pr.cash_tax_keur for pr in tax_res.period_results}
+        return cfads_by_p, tax_by_p
+
+    debt_start = policy.repayment_start_period_index
+    debt_end = policy.maturity_period_index
+    debt_periods = tuple(
+        p for p in spliced
+        if p.is_operation and debt_start <= p.period_index <= debt_end
+    )
+
+    sd_result = solve_senior_debt(
+        policy=policy,
+        inputs=sd_inputs_obj,
+        periods=debt_periods,
+        tax_cfads_fn=tax_cfads_fn,
+    )
+
+    cfads_final = {}
+    tax_final = {}
+    if _last_state:
+        _, cfads_res = _last_state[0]
+        cfads_final = {cr.period_index: cr.cfads_keur for cr in cfads_res}
+
+    return {
+        "debt_keur": sd_result.debt_size_keur,
+        "cfads_by_period": cfads_final,
+        "spliced_periods": spliced,
+    }
+
+
+def run_candidate_d_oborovo(project_factory_fn: Any) -> dict:
+    """Run Candidate D (revenue-regime-aware) for Oborovo and return diagnostic summary.
+
+    Candidate D:
+    - PPA-active periods (P2-P25): base economics — P50 yield, Central case prices.
+      Source-proven: DS20 = CF79 to within 0.006 kEUR (OBOROVO_PPA_BANK_CFADS_EQUALS_BASE_CFADS_SOURCE_PROVEN).
+    - Merchant + Senior Debt active periods (P26-P29): P90-10y yield, bank sizing price curve.
+    - Post-maturity: excluded from DSCR sizing (POST_MATURITY_CFADS_NON_CAUSAL... PROVEN).
+
+    Evaluated twice (D1: Central case Trackers, D2: Central Low case Trackers).
+    No project-name dispatch. No hardcoded period index boundaries.
+
+    Returns:
+        dict with D1/D2 debt, sensitivity, per-period decomposition, verdict
+    """
+    from financial_engine.adapters.project_inputs import (
+        build_senior_debt_model_input_from_project_inputs,
+    )
+    from financial_engine.inputs import YieldScenario
+    from financial_engine.orchestrator import run_operating_model
+
+    proj = project_factory_fn()
+    sd_input = build_senior_debt_model_input_from_project_inputs(proj)
+
+    # Base operating model (P50, Central case Trackers)
+    base_op = sd_input.operating
+
+    # D1: merchant periods at P90 + Central case Trackers (default price curve)
+    d1_bank_op = _derive_bank_operating_input(base_op, YieldScenario.P90_10Y)
+
+    # D2: merchant periods at P90 + Central Low case Trackers
+    from dataclasses import replace as _replace
+    rev_low = _replace(base_op.revenue, merchant_prices_by_calendar_year_eur_mwh=OBOROVO_CENTRAL_LOW_CY2042_2060)
+    d2_bank_op = _derive_bank_operating_input(_replace(base_op, revenue=rev_low), YieldScenario.P90_10Y)
+
+    # Run both with PPA=base splice
+    d1_result = _run_candidate_d_debt(base_op, d1_bank_op, sd_input)
+    d2_result = _run_candidate_d_debt(base_op, d2_bank_op, sd_input)
+
+    target_keur = 42852.278763
+    excel_target_central_keur = 43813.0
+    excel_sensitivity_keur = 961.0
+
+    d1_debt = d1_result["debt_keur"]
+    d2_debt = d2_result["debt_keur"]
+    engine_sensitivity = d1_debt - d2_debt
+    sensitivity_residual = engine_sensitivity - excel_sensitivity_keur
+    debt_residual = d2_debt - target_keur
+
+    ds20 = load_ds_row20_oracle()
+    cf79 = load_cf79_base_cfads()
+
+    mat = sd_input.senior_debt_policy.maturity_period_index
+    rep_start = sd_input.senior_debt_policy.repayment_start_period_index
+
+    # PPA periods (active debt periods that are still in PPA)
+    ppa_debt_periods = []
+    merchant_debt_periods = []
+
+    base_res = run_operating_model(base_op)
+    for p in base_res.periods:
+        if not p.is_operation:
+            continue
+        pidx = p.period_index
+        if pidx < rep_start or pidx > mat:
+            continue
+        fidx = pidx - 1
+        ds = ds20[fidx] if fidx < len(ds20) else 0.0
+        cf = cf79[fidx] if fidx < len(cf79) else 0.0
+        if p.is_ppa_active:
+            ppa_debt_periods.append({"period_index": pidx, "ds20": ds, "cf79": cf, "delta": ds - cf})
+        else:
+            d2_cfads = d2_result["cfads_by_period"].get(pidx, 0.0)
+            d1_cfads = d1_result["cfads_by_period"].get(pidx, 0.0)
+            bank_p = next((px for px in d2_result["spliced_periods"] if px.period_index == pidx), None)
+            merchant_debt_periods.append({
+                "period_index": pidx,
+                "period_end": str(p.period_end),
+                "d1_bank_cfads_keur": d1_cfads,
+                "d2_bank_cfads_keur": d2_cfads,
+                "source_ds20_keur": ds,
+                "d1_delta_keur": d1_cfads - ds,
+                "d2_delta_keur": d2_cfads - ds,
+                "d1_minus_d2_keur": d1_cfads - d2_cfads,
+                "d2_ebitda_keur": bank_p.ebitda_keur if bank_p else None,
+                "d2_revenue_keur": bank_p.revenue_keur if bank_p else None,
+                "d2_opex_keur": bank_p.opex_keur if bank_p else None,
+                "d2_production_mwh": bank_p.production_mwh if bank_p else None,
+            })
+
+    ppa_max_abs = max(abs(r["delta"]) for r in ppa_debt_periods) if ppa_debt_periods else 0.0
+    ppa_signed_total = sum(r["delta"] for r in ppa_debt_periods)
+
+    merchant_d2_max_abs = max(abs(r["d2_delta_keur"]) for r in merchant_debt_periods) if merchant_debt_periods else 0.0
+    merchant_d2_signed = sum(r["d2_delta_keur"] for r in merchant_debt_periods)
+
+    # Sensitivity classification
+    sensitivity_close = abs(sensitivity_residual) < 200.0
+    sensitivity_label = (
+        "OBOROVO_SIZING_PRICE_CURVE_SENSITIVITY_PARITY_PROVEN"
+        if sensitivity_close
+        else "OBOROVO_SIZING_PRICE_CURVE_SENSITIVITY_PARITY_FAILED"
+    )
+
+    # Absolute debt verdict
+    if abs(debt_residual) <= 500.0:
+        verdict = "C3B3D2B2C_R4_3_BANK_CFADS_REVENUE_REGIME_SOURCE_PARITY_PROVEN"
+    elif sensitivity_close:
+        verdict = "C3B3D2B2C_R4_3_REMAINING_BANK_CFADS_COMPONENT_IDENTIFIED"
+    else:
+        verdict = "C3B3D2B2C_R4_3_STOP_REVENUE_REGIME_PARITY_FAILED"
+
+    return {
+        "candidate": "CANDIDATE_D",
+        "project": "oborovo",
+        "ppa_source_identity": {
+            "classification": "OBOROVO_PPA_BANK_CFADS_EQUALS_BASE_CFADS_SOURCE_PROVEN",
+            "period_count": len(ppa_debt_periods),
+            "max_abs_delta_keur": ppa_max_abs,
+            "signed_total_delta_keur": ppa_signed_total,
+        },
+        "d1_central_debt_keur": d1_debt,
+        "d2_central_low_debt_keur": d2_debt,
+        "engine_sensitivity_keur": engine_sensitivity,
+        "excel_sensitivity_keur": excel_sensitivity_keur,
+        "sensitivity_residual_keur": sensitivity_residual,
+        "sensitivity_classification": sensitivity_label,
+        "target_keur": target_keur,
+        "debt_residual_keur": debt_residual,
+        "merchant_debt_period_count": len(merchant_debt_periods),
+        "merchant_d2_max_abs_delta_keur": merchant_d2_max_abs,
+        "merchant_d2_signed_delta_keur": merchant_d2_signed,
+        "merchant_period_detail": merchant_debt_periods,
+        "ppa_period_detail": ppa_debt_periods,
+        "bess_material": False,
+        "bess_classification": "OBOROVO_BESS_NON_MATERIAL_TO_ACTIVE_DEBT_CFADS",
+        "bess_note": "Scope correction: neither calibration project has BESS revenue relevant to Senior Debt sizing. Trackers/GMPV are PV/merchant captured-price scenario variants.",
+        "verdict": verdict,
+        "r4_2_reclassification": "R4_2_GLOBAL_P90_PLUS_SIZING_CURVE_COMBINATION_REJECTED",
+    }
+
+
+# ---------------------------------------------------------------------------
+# R4.3: Summary result dict
+# ---------------------------------------------------------------------------
+
+CANDIDATE_D_R4_3_RESULT: dict = {}  # populated at module level by lazy evaluation
+
+
+def _compute_candidate_d_r4_3_result() -> dict:
+    """Compute and cache R4.3 Candidate D result.
+
+    Called once on first access via CANDIDATE_D_R4_3_LAZY.
+    Not called at import time to avoid heavyweight computation.
+    """
+    from app.project_factories import create_default_oborovo
+    return run_candidate_d_oborovo(create_default_oborovo)

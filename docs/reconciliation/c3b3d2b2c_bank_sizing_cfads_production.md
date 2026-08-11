@@ -13,6 +13,7 @@
 | **R4 Verdict** | `C3B3D2B2C_R4_SOURCE_INPUTS_IDENTIFIED_CURVE_EXTRACTION_REQUIRED` |
 | **R4.1 Verdict** | `C3B3D2B2C_R4_1_MANUAL_CAUSALITY_PROVEN_ENGINE_EVALUATION_XLSM_EXTRACTION_REQUIRED` |
 | **R4.2 Verdict** | `C3B3D2B2C_R4_2_STOP_CANDIDATE_C_SOURCE_PARITY_FAILED` |
+| **R4.3 Verdict** | `C3B3D2B2C_R4_3_STOP_REVENUE_REGIME_PARITY_FAILED` |
 
 ---
 
@@ -515,7 +516,115 @@ Total: 145 tests (101 prior + 44 new), all passing.
 
 ---
 
-## 12. Next steps for future stages
+## 12. R4.3: Revenue-regime bank case + Candidate D
+
+### R4.2 failure reclassification
+
+R4.2 Candidate C applied P90-10y yield **globally** across all operating periods, including PPA periods. This was a semantic error. The correct classification is:
+
+```
+R4_2_GLOBAL_P90_PLUS_SIZING_CURVE_COMBINATION_REJECTED
+```
+
+The sizing revenue curve causality remains `OBOROVO_DEBT_SIZING_REVENUE_CURVE_MANUAL_CAUSALITY_PROVEN` — the failure was in the production scenario semantics, not the revenue curve.
+
+### PPA period source identity (proven)
+
+| Metric | Value |
+|---|---|
+| Period range | P2–P25 (24 periods) |
+| Max abs DS20–CF79 delta | 0.0062 kEUR |
+| Signed total delta | −0.040 kEUR |
+| **Classification** | **`OBOROVO_PPA_BANK_CFADS_EQUALS_BASE_CFADS_SOURCE_PROVEN`** |
+
+Bank-case CFADS = base CFADS in all PPA+debt periods to within rounding. No P90 yield substitution should be applied to PPA periods.
+
+### Candidate D: revenue-regime-aware splice
+
+**Architecture:**
+- PPA-active periods (P2–P25): base economics — P50 yield, Central case Trackers prices, base tax
+- Merchant + Senior Debt active periods (P26–P29): P90-10y yield, sizing price curve, bank tax
+- Post-maturity (P30+): excluded from DSCR sizing (runtime-proven non-causal, R4.2)
+- No hardcoded period boundaries — regime from `is_ppa_active` on each period
+
+### Candidate D results
+
+| Scenario | Engine debt (kEUR) | Reference (kEUR) | Delta (kEUR) |
+|---|---|---|---|
+| D1 (Central case Trackers) | 43,621.556 | ~43,813.000 (Excel) | −191.444 |
+| D2 (Central Low case Trackers) | 41,496.226 | 42,852.279 (DS!D51) | −1,356.053 |
+| **Engine sensitivity D1−D2** | **2,125.330** | **~961.000 (Excel)** | **Residual 1,164.330** |
+
+D1 is now within 192 kEUR of the Excel Central reference (significant improvement from Candidate C). D2 still misses by 1,356 kEUR. Engine sensitivity (2,125 kEUR) is 2.21× the Excel observation (961 kEUR).
+
+### Merchant + debt period bridge (D2 Central Low)
+
+| Period | End | D1 bank CFADS (kEUR) | D2 bank CFADS (kEUR) | DS20 (kEUR) | D1−DS20 | D2−DS20 |
+|---|---|---|---|---|---|---|
+| P26 | 2042-12-31 | 2,546.129 | 1,163.569 | 2,279.787 | +266.342 | −1,116.218 |
+| P27 | 2043-06-30 | 2,759.002 | 1,195.041 | 2,103.844 | +655.158 | −908.803 |
+| P28 | 2043-12-31 | 2,531.386 | 1,192.747 | 2,248.763 | +282.623 | −1,056.016 |
+| P29 | 2044-06-30 | 2,748.256 | 1,123.846 | 2,057.780 | +690.476 | −933.934 |
+
+DS20 is bracketed: D1 (Central) lies above DS20 in all four periods; D2 (Central Low) lies below DS20. The source bank case uses an intermediate pricing mechanism not reproduced by direct curve substitution.
+
+### BESS revenue (scope correction)
+
+Neither Oborovo nor TUHO calibration project has BESS/storage revenue relevant to Senior Debt sizing. Trackers/GMPV are PV/merchant captured-price scenario variants, not storage technologies.
+
+**Classification:** `OBOROVO_BESS_NON_MATERIAL_TO_ACTIVE_DEBT_CFADS`
+
+### TUHO revenue-regime finding
+
+**Key result:** TUHO engine P2 (oracle P1) with P90 yield + MidLow prices matches oracle bank CFADS to within 0.018 kEUR.
+
+| Metric | Value |
+|---|---|
+| Base EBITDA P2 (engine) | 3,070.194 kEUR |
+| Oracle base CFADS | 3,070.176 kEUR |
+| Bank EBITDA P2 (P90+MidLow) | 2,539.652 kEUR |
+| Oracle bank CFADS | 2,539.634 kEUR |
+| Difference (both) | +0.018 kEUR (oracle precision offset) |
+
+**Critical clarification of the R4.1 "0.9515 residual price ratio":**
+
+TUHO P2 is PPA-active. Revenue = PPA tariff × production. MidLow prices are irrelevant in PPA periods. The bank/base EBITDA ratio (0.8272) is explained entirely by P90 production reduction (0.8694) applied against fixed OPEX — a leverage effect, not a price ratio:
+
+```
+EBITDA_leverage_factor = bank/base_EBITDA_ratio / P90_P50_prod_ratio
+                       = 0.8272 / 0.8694 = 0.9515
+```
+
+The 0.9515 in R4.1 was diagnostic algebra. It is NOT a price-curve reduction. MidLow prices matter only in TUHO merchant periods (beyond PPA term).
+
+**Architecture:** `DebtSizingCase(production_case=P90, revenue_case_by_stream=by_stream)` — generic; normal revenue engine determines PPA vs merchant stream semantics per period. No project-name dispatch.
+
+### R4.3 test coverage
+
+26 new tests across four classes:
+
+| Class | Tests | Coverage |
+|---|---|---|
+| `TestR4_3Reclassification` | 4 | R4.2 reclassification label, preserved numbers, causality |
+| `TestR4_3PPASourceIdentity` | 5 | PPA identity source-proven, runtime verified |
+| `TestR4_3CandidateD` | 12 | D1/D2 debt, sensitivity, merchant decomp, BESS, verdict |
+| `TestR4_3TuhoRevenueRegime` | 5 | Oracle match, EBITDA leverage, no dispatch |
+
+Total: 171 tests (145 prior + 26 new), all passing.
+
+### R4.3 verdict
+
+```
+C3B3D2B2C_R4_3_STOP_REVENUE_REGIME_PARITY_FAILED
+```
+
+The PPA correction improved D2 debt from 38,830 kEUR (R4.2) to 41,496 kEUR (+2,666 kEUR closer). D1 Central is within 192 kEUR of the Excel reference. Engine sensitivity (2,125 kEUR) is 2.21× Excel's observed 961 kEUR. The VBA applies Central Low case Trackers through a mechanism that produces ~2.2× less effect than direct merchant price substitution. `VBA_IMPLEMENTATION_NOT_VISIBLE` remains the fundamental blocker.
+
+`financial_engine/` zero-diff from base SHA — no production changes.
+
+---
+
+## 14. Next steps for future stages
 
 A source-proven bank-sizing rule can only be identified by one of:
 1. Access to the VBA source code for the Macro50 procedure
@@ -527,7 +636,7 @@ Until one of these is available, production adapter wiring is prohibited.
 
 ---
 
-## 13. Governance constraints observed
+## 15. Governance constraints observed
 
 - No DS25/DS40 period boundary hardcoding — ENFORCED
 - No project-name dispatch in production code — ENFORCED
