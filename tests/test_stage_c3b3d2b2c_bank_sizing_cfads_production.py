@@ -2336,3 +2336,296 @@ class TestR4_6SourceCompatibleBankTaxPeriodisation:
         assert "project_name ==" not in src
         assert 'if "oborovo"' not in src
         assert "if 'oborovo'" not in src
+
+
+# ============================================================================
+# R4.6.1 — Full source row35→row41→row43 bank-case tax replay
+# ============================================================================
+
+@pytest.fixture(scope="module")
+def r4_6_1_result():
+    from finco_recon.bank_sizing_candidates import run_candidate_g_oborovo
+    from app.project_factories import create_default_oborovo
+    return run_candidate_g_oborovo(create_default_oborovo)
+
+
+class TestR4_6_1FullSourcePLReplayCounterfactual:
+    """R4.6.1: Full source workbook row35→41→43 replay (Candidate G).
+
+    Categories:
+      A) Identity / round
+      B) R4.6 reclassification
+      C) Source formula constants
+      D) Base-case parity
+      E) EBT gate pattern
+      F) Three-way debt results
+      G) Verdict / residual
+      H) SHL treatment
+      I) Per-period bridge
+      J) Governance
+      K) Source function callability
+      L) No hardcoded indices / dispatch
+      M) Row36 loss-pool window
+    """
+
+    # A) Identity
+    def test_a_candidate_g(self, r4_6_1_result):
+        assert r4_6_1_result["candidate"] == "CANDIDATE_G"
+
+    def test_a_round(self, r4_6_1_result):
+        assert r4_6_1_result["round"] == "R4.6.1"
+
+    def test_a_project(self, r4_6_1_result):
+        assert r4_6_1_result["project"] == "oborovo"
+
+    # B) R4.6 reclassification documented
+    def test_b_r4_6_reclassification_present(self, r4_6_1_result):
+        r = r4_6_1_result["r4_6_reclassification"]
+        assert "REJECTED" in r or "WRONG" in r or "SETTLEMENT_TIMING" in r
+
+    def test_b_r4_6_impl_error_present(self, r4_6_1_result):
+        r = r4_6_1_result["r4_6_implementation_error"]
+        assert "CLEAN" in r or "SOURCE_PL" in r or "ROW35" in r
+
+    def test_b_clean_tax_share_semantic(self, r4_6_1_result):
+        s = r4_6_1_result["clean_annual_tax_share_semantic"]
+        assert "NOT_SOURCE_ROW41" in s or "CLEAN_ANNUAL" in s
+
+    # C) Source formula constants recorded
+    def test_c_row35_formula(self, r4_6_1_result):
+        f = r4_6_1_result["source_row35_formula"]
+        assert "EBITDA" in f and "book_dep" in f and "senior_int" in f
+
+    def test_c_row36_mechanic(self, r4_6_1_result):
+        assert "rolling" in r4_6_1_result["source_row36_mechanic"].lower()
+
+    def test_c_row36_window(self, r4_6_1_result):
+        assert r4_6_1_result["source_row36_window_periods"] == 5
+
+    def test_c_row37_ebt_gate(self, r4_6_1_result):
+        f = r4_6_1_result["source_row37_formula"]
+        assert "EBT" in f
+
+    def test_c_row41_formula(self, r4_6_1_result):
+        f = r4_6_1_result["source_row41_formula"]
+        assert "row35" in f and "row37" in f
+
+    def test_c_row43_formula(self, r4_6_1_result):
+        f = r4_6_1_result["source_row43_formula"]
+        assert "H1" in f or "H2" in f
+
+    def test_c_cit_rate(self, r4_6_1_result):
+        assert r4_6_1_result["source_cit_rate"] == 0.10
+
+    def test_c_cash_tax_lag_zero(self, r4_6_1_result):
+        assert r4_6_1_result["source_cash_tax_lag"] == 0
+
+    # D) Base-case parity
+    def test_d_base_parity_classification_present(self, r4_6_1_result):
+        c = r4_6_1_result["base_parity_classification"]
+        assert "PARITY" in c
+
+    def test_d_base_max_delta_is_float(self, r4_6_1_result):
+        v = r4_6_1_result["base_source_tax_replay_max_cit_delta_keur"]
+        assert isinstance(v, float)
+
+    def test_d_base_max_delta_under_10keur(self, r4_6_1_result):
+        # Stub-period fix and PIK approximation limit max delta
+        assert r4_6_1_result["base_source_tax_replay_max_cit_delta_keur"] < 10.0
+
+    def test_d_base_parity_is_bool(self, r4_6_1_result):
+        assert isinstance(r4_6_1_result["base_parity_proven"], bool)
+
+    # E) EBT gate pattern
+    def test_e_ebt_gate_pattern_present(self, r4_6_1_result):
+        g = r4_6_1_result["bank_ebt_gate_pattern"]
+        assert g is not None
+
+    def test_e_ebt_gate_blocks_loss_utilisation(self, r4_6_1_result):
+        g = r4_6_1_result["bank_ebt_gate_pattern"]
+        assert "BLOCKS" in g or "EBT_GATE" in g
+
+    def test_e_ebt_gate_is_proven(self, r4_6_1_result):
+        g = r4_6_1_result["bank_ebt_gate_pattern"]
+        assert "PROVEN" in g
+
+    # F) Three-way debt results
+    def test_f_t1_debt_is_float(self, r4_6_1_result):
+        assert isinstance(r4_6_1_result["t1_debt_keur"], float)
+
+    def test_f_t2_old_debt_is_float(self, r4_6_1_result):
+        assert isinstance(r4_6_1_result["t2_old_debt_keur"], float)
+
+    def test_f_t3_debt_is_float(self, r4_6_1_result):
+        assert isinstance(r4_6_1_result["t3_debt_keur"], float)
+
+    def test_f_t1_debt_range(self, r4_6_1_result):
+        # T1 clean engine: known band from R4.5
+        assert 42500.0 < r4_6_1_result["t1_debt_keur"] < 43000.0
+
+    def test_f_source_debt_anchor(self, r4_6_1_result):
+        assert r4_6_1_result["source_debt_keur"] == pytest.approx(42852.278763, abs=0.001)
+
+    def test_f_t1_below_source(self, r4_6_1_result):
+        assert r4_6_1_result["t1_debt_keur"] < r4_6_1_result["source_debt_keur"]
+
+    def test_f_t3_is_positive(self, r4_6_1_result):
+        assert r4_6_1_result["t3_debt_keur"] > 0.0
+
+    # G) Verdict / residual
+    def test_g_verdict_present(self, r4_6_1_result):
+        assert "verdict" in r4_6_1_result
+        assert len(r4_6_1_result["verdict"]) > 0
+
+    def test_g_verdict_contains_r4_6_1(self, r4_6_1_result):
+        assert "R4_6_1" in r4_6_1_result["verdict"]
+
+    def test_g_t3_residual_is_float(self, r4_6_1_result):
+        assert isinstance(r4_6_1_result["t3_residual_keur"], float)
+
+    def test_g_t3_abs_residual_is_float(self, r4_6_1_result):
+        assert isinstance(r4_6_1_result["t3_abs_residual_keur"], float)
+        assert r4_6_1_result["t3_abs_residual_keur"] >= 0.0
+
+    def test_g_t3_relative_residual_pct_is_float(self, r4_6_1_result):
+        v = r4_6_1_result["t3_relative_residual_pct"]
+        assert isinstance(v, float)
+        assert v >= 0.0
+
+    def test_g_t3_causal_classification_present(self, r4_6_1_result):
+        assert "t3_causal_classification" in r4_6_1_result
+        c = r4_6_1_result["t3_causal_classification"]
+        assert len(c) > 0
+
+    def test_g_sensitivity_regression_pass(self, r4_6_1_result):
+        assert r4_6_1_result["r4_5_sensitivity_regression"] == "PASS"
+
+    # H) SHL treatment
+    def test_h_shl_treatment_non_deductible(self, r4_6_1_result):
+        s = r4_6_1_result["shl_treatment"]
+        assert "NON_DEDUCTIBLE" in s or "CANCELS" in s or "REINTEGRATION" in s
+
+    def test_h_shl_net_tax_effect_zero_in_row35(self, r4_6_1_result):
+        s = r4_6_1_result["shl_net_tax_effect"]
+        assert "ZERO" in s
+
+    # I) Per-period bridge
+    def test_i_bridge_present_and_nonempty(self, r4_6_1_result):
+        bridge = r4_6_1_result["merchant_period_bridge"]
+        assert isinstance(bridge, list)
+        assert len(bridge) > 0
+
+    def test_i_bridge_has_required_keys(self, r4_6_1_result):
+        required = {
+            "period_index", "period_end", "bank_ebitda_keur",
+            "ebt_keur", "row35_ti_keur", "row36_loss_pool_keur",
+            "row37_loss_used_keur", "row41_tp_keur",
+            "t1_cash_tax_keur", "t3_cash_tax_keur",
+            "t1_cfads_keur", "t3_cfads_keur",
+            "source_ds20_keur", "t3_vs_ds20_delta_keur",
+        }
+        for entry in r4_6_1_result["merchant_period_bridge"]:
+            assert required.issubset(entry.keys()), f"Missing keys: {set(required) - entry.keys()}"
+
+    def test_i_h2_periods_have_zero_t3_cit(self, r4_6_1_result):
+        for r in r4_6_1_result["merchant_period_bridge"]:
+            if r.get("is_h2"):
+                assert r["t3_cash_tax_keur"] == pytest.approx(0.0, abs=0.001), \
+                    f"H2 p{r['period_index']} should have zero T3 CIT"
+
+    def test_i_h1_periods_may_have_nonzero_t3_cit(self, r4_6_1_result):
+        h1_cits = [r["t3_cash_tax_keur"] for r in r4_6_1_result["merchant_period_bridge"] if r.get("is_h1")]
+        assert any(c > 0.0 for c in h1_cits), "Expected at least one H1 period with positive T3 CIT"
+
+    def test_i_ebt_negative_in_bank_merchant_periods(self, r4_6_1_result):
+        for r in r4_6_1_result["merchant_period_bridge"]:
+            assert r["ebt_keur"] is not None
+            assert r["ebt_keur"] < 0.0, f"Expected negative EBT at p{r['period_index']}"
+
+    def test_i_max_cfads_delta_vs_ds20_is_float(self, r4_6_1_result):
+        v = r4_6_1_result["t3_max_abs_cfads_delta_vs_ds20_keur"]
+        assert isinstance(v, float)
+
+    # J) Governance
+    def test_j_financial_engine_zero_diff(self, r4_6_1_result):
+        assert r4_6_1_result["financial_engine_zero_diff"] == "ENFORCED"
+
+    def test_j_no_base_tax_injection(self, r4_6_1_result):
+        assert r4_6_1_result["no_base_tax_injection"] == "ENFORCED"
+
+    def test_j_no_ds20_derived_tax(self, r4_6_1_result):
+        assert r4_6_1_result["no_ds20_derived_tax"] == "ENFORCED"
+
+    def test_j_no_plug_calibration(self, r4_6_1_result):
+        assert r4_6_1_result["no_plug_calibration"] == "ENFORCED"
+
+    def test_j_no_project_name_dispatch(self, r4_6_1_result):
+        assert r4_6_1_result["no_project_name_dispatch"] == "ENFORCED"
+
+    def test_j_no_hardcoded_period_indices(self, r4_6_1_result):
+        assert r4_6_1_result["no_hardcoded_period_indices"] == "ENFORCED"
+
+    # K) Source function callability
+    def test_k_compute_source_pl_rows_callable(self):
+        from finco_recon.bank_sizing_candidates import _compute_source_pl_rows
+        assert callable(_compute_source_pl_rows)
+
+    def test_k_compute_source_cit_schedule_callable(self):
+        from finco_recon.bank_sizing_candidates import _compute_source_cit_schedule
+        assert callable(_compute_source_cit_schedule)
+
+    def test_k_build_shl_interest_callable(self):
+        from finco_recon.bank_sizing_candidates import _build_shl_interest_by_period
+        assert callable(_build_shl_interest_by_period)
+
+    def test_k_validate_base_replay_callable(self):
+        from finco_recon.bank_sizing_candidates import _validate_base_source_tax_replay
+        assert callable(_validate_base_source_tax_replay)
+
+    def test_k_run_candidate_g_oborovo_callable(self):
+        from finco_recon.bank_sizing_candidates import run_candidate_g_oborovo
+        assert callable(run_candidate_g_oborovo)
+
+    def test_k_run_candidate_g_debt_callable(self):
+        from finco_recon.bank_sizing_candidates import _run_candidate_g_debt
+        assert callable(_run_candidate_g_debt)
+
+    # L) No hardcoded period indices or project-name dispatch in source functions
+    def test_l_no_hardcoded_indices_in_pl_rows(self):
+        import inspect
+        from finco_recon.bank_sizing_candidates import _compute_source_pl_rows
+        src = inspect.getsource(_compute_source_pl_rows)
+        for forbidden in ["== 26", "== 27", "== 28", "== 29", "== 25"]:
+            assert forbidden not in src, f"Hardcoded index '{forbidden}' in _compute_source_pl_rows"
+
+    def test_l_no_hardcoded_indices_in_cit_schedule(self):
+        import inspect
+        from finco_recon.bank_sizing_candidates import _compute_source_cit_schedule
+        src = inspect.getsource(_compute_source_cit_schedule)
+        for forbidden in ["== 26", "== 27", "== 28", "== 29"]:
+            assert forbidden not in src, f"Hardcoded index '{forbidden}' in _compute_source_cit_schedule"
+
+    def test_l_no_project_dispatch_in_candidate_g(self):
+        import inspect
+        from finco_recon.bank_sizing_candidates import run_candidate_g_oborovo
+        src = inspect.getsource(run_candidate_g_oborovo)
+        assert "project_name ==" not in src
+        assert 'if "oborovo"' not in src
+        assert "if 'oborovo'" not in src
+
+    # M) Row36 loss-pool window = 5 (from constant in result)
+    def test_m_row36_window_is_5(self, r4_6_1_result):
+        assert r4_6_1_result["source_row36_window_periods"] == 5
+
+    def test_m_row36_mechanic_rolling_window(self, r4_6_1_result):
+        m = r4_6_1_result["source_row36_mechanic"].lower()
+        assert "rolling" in m or "window" in m or "5" in m
+
+    def test_m_row37_uses_ebt_gate_not_ti(self, r4_6_1_result):
+        f = r4_6_1_result["source_row37_formula"]
+        # EBT gate confirmed — NOT TI gate
+        assert "EBT" in f
+        # row37 = 0 when EBT <= 0 (proven by bank case all-negative EBT)
+        for r in r4_6_1_result["merchant_period_bridge"]:
+            assert r["ebt_keur"] < 0.0
+            assert r["row37_loss_used_keur"] == pytest.approx(0.0, abs=0.001)

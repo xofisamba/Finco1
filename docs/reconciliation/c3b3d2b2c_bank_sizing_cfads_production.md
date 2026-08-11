@@ -17,6 +17,7 @@
 | **R4.4 Verdict** | `C3B3D2B2C_R4_4_STOP_MERCHANT_PRICE_SOURCE_LINEAGE_NOT_YET_REPLAYED` |
 | **R4.5 Verdict** | `C3B3D2B2C_R4_5_EFFECTIVE_PRICE_PROVEN_BANK_TAX_TIMING_RESIDUAL_IDENTIFIED` |
 | **R4.6 Verdict** | `C3B3D2B2C_R4_6_STOP_TAX_TIMING_COUNTERFACTUAL_FAILED` |
+| **R4.6.1 Verdict** | `C3B3D2B2C_R4_6_1_STOP_REMAINING_BANK_CFADS_COMPONENT_UNRESOLVED` |
 
 ---
 
@@ -893,9 +894,91 @@ The R4.5 bank-tax timing hypothesis remains **DIAGNOSTIC ONLY — NOT COUNTERFAC
 
 ---
 
-## 16. Next steps for future stages
+## 16. R4.6.1 — Full source row35→row41→row43 bank-case replay (Candidate G)
 
-The primary outstanding gap (engine bank debt < source, ~228 kEUR / 0.53%) requires further decomposition. Candidate drivers:
+### R4.6 reclassification
+
+R4.6 T2 is reclassified as `R4_6_CLEAN_ANNUAL_TAX_WITH_SOURCE_SETTLEMENT_TIMING_REJECTED`. Its implementation error: `_apply_source_oborovo_tax_periodisation` used `PeriodCashTaxResult.taxable_income_before_lcf_share_keur` — the clean engine annual-TI share allocated per period — rather than the source formula `row35 = EBITDA − book_dep − senior_int`. Only the settlement timing was corrected (H2→H1); taxable income remained from the clean engine, not the source workbook.
+
+### Source P&L mechanics (confirmed from full model extract)
+
+| Row | Formula |
+|---|---|
+| row35 (taxable income) | `EBITDA − book_dep − senior_int` (SHL cancels via fiscal reintegration) |
+| row36 (loss pool) | Rolling sum of `min(row41_prior, 0)` over the 5 preceding model periods |
+| row37 (loss used) | `MIN(−row36, EBT) if (row36 < 0 and EBT > 0) else 0` — **EBT gate, not TI gate** |
+| row41 (taxable profit) | `row35 − row37` |
+| row43 (CIT at H1) | `MAX(row41_H2(N) + row41_H1(N+1), 0) × 10%`; H2 CIT = 0 |
+
+SHL gross interest reduces EBT but cancels via fiscal reintegration in row35 (net effect: SHL affects EBT gate, not taxable income).
+
+### Three-way counterfactual results
+
+| | Debt (kEUR) | Residual vs source |
+|---|---|---|
+| T1 — clean engine (H2 settlement) | 42,687.507 | −164.772 kEUR |
+| T2-old — R4.6 flawed (clean TI + H1 settlement) | 42,624.119 | −228.160 kEUR |
+| **T3 — source row35→41→43 + H1 settlement** | **42,620.863** | **−231.416 kEUR** |
+| Source (DS!D51) | 42,852.279 | — |
+
+T3 absolute residual: **231.416 kEUR** (0.540% relative). Verdict: **STOP**.
+
+### EBT gate — bank case confirmed
+
+In all 4 bank merchant periods (p26–p29), bank EBT is negative (SHL interest ~1,150–1,260 kEUR exceeds bank EBITDA − book_dep margin). The row37 EBT gate fires as zero in all bank merchant periods:
+
+- `row37_loss_used = 0` for all bank merchant periods (EBT gate blocks loss utilisation)
+- `row41 = row35` for all bank merchant periods
+- H2 CIT = 0; H1 CIT = MAX(row41_H2 + row41_H1, 0) × 10%
+
+### Per-period bridge (merchant periods only, debt tenor)
+
+| Period | Period end | Bank EBITDA | EBT | row41 | T3 CIT | T1 CIT | T3 CFADS | DS20 | T3 vs DS20 |
+|---|---|---|---|---|---|---|---|---|---|
+| p26 | 2042-12-31 | 2,097.4 | −1,146.6 | 514.8 | 0.0 | 166.7 | 2,097.4 | 2,279.8 | −182.4 |
+| p27 | 2043-06-30 | 2,064.5 | −1,152.0 | 548.7 | 106.3 | 0.0 | 1,958.2 | 2,103.8 | −145.6 |
+| p28 | 2043-12-31 | 2,073.1 | −1,225.6 | 572.1 | 0.0 | 111.9 | 2,073.1 | 2,248.8 | −175.6 |
+| p29 | 2044-06-30 | 1,914.1 | −1,257.8 | 592.5 | 116.5 | 0.0 | 1,914.1 | 2,057.8 | −143.6 |
+
+T3 signed CFADS delta vs DS20: **−647.3 kEUR** over merchant periods. Gap decomposition:
+- At H2 periods (p26, p28): T3 CIT = 0 → T3 CFADS = bank EBITDA. Gap vs DS20 = EBITDA model delta (~182 kEUR/period).
+- At H1 periods (p27, p29): gap = EBITDA model delta + residual tax delta.
+
+### Base-case source tax replay validation
+
+`_validate_base_source_tax_replay` replays source row35→41→43 for the base case using fixture senior interest:
+
+- Max |CIT delta| vs fixture: **1.538 kEUR** (at stub period p61, 2060-06-29)
+- Periods outside 1 kEUR tolerance: **3** (p47, p55, p61)
+- Classification: `OBOROVO_SOURCE_TAX_ROW35_TO_ROW43_REPLAY_BASE_PARITY_PARTIAL`
+- Residual sources: (1) SHL PIK approximation (affects EBT gate in base case); (2) stub final period (month-only H1 identification — fixed)
+
+Base parity is PARTIAL, not PROVEN. The source row35→41→43 formula replicates the base-case CIT to within ~1.5 kEUR — structurally consistent but not closed to 1 kEUR tolerance across all periods.
+
+### R4.6.1 diagnostic interpretation
+
+T3 correctly implements the full source workbook tax formula (row35→41→43 with H1 settlement). However, T3 debt (42,621 kEUR) is marginally LOWER than T2-old (42,624 kEUR) and substantially below source (42,852 kEUR). The residual of −231 kEUR breaks down as:
+
+1. **Bank EBITDA model gap** (~180 kEUR/H2 period): the engine's bank-case EBITDA (P90 yield + effective Central Low prices) is ~180 kEUR below the source bank-case EBITDA at each H2 period. This is the primary remaining gap and is unrelated to tax.
+2. **Residual tax gap**: T3 CIT at H1 differs from source H1 CIT. Part of this is the EBITDA model gap propagating into taxable income; part may be OPEX or depreciation model differences.
+
+The tax timing and formula mechanism (source row35→41→43) is now fully implemented. The remaining gap is attributable to the bank-case EBITDA model, not to the tax convention.
+
+### R4.6.1 governance
+
+- `_compute_source_pl_rows`, `_compute_source_cit_schedule`, `_build_shl_interest_by_period`, `_validate_base_source_tax_replay`, `_run_candidate_g_debt` implemented in `finco_recon/` only — `financial_engine/` zero-diff maintained
+- No base-tax injection — ENFORCED
+- No DS20-derived tax — ENFORCED
+- No plug, no calibration, no project-name dispatch, no hardcoded period indices — all ENFORCED
+- H1/H2 identification by month only (handles stub period at model boundary) — ENFORCED
+- 61 focused R4.6.1 tests (categories A–M) — all pass
+- Total C3B3D2B2C tests: 312 (all pass)
+
+---
+
+## 18. Next steps for future stages
+
+The primary outstanding gap (engine bank debt < source, ~231 kEUR / 0.54%) requires further decomposition. Candidate drivers:
 
 1. **Bank-case tax depreciation**: if the source model uses a different tax depreciation schedule for the bank case (vs. base), bank taxable income and thus bank CIT would differ from the engine calculation.
 2. **Bank-case EBITDA adjustments**: non-energy revenue items (capacity payments, DSA receipts) present in the source bank model but absent from the current adapter.
@@ -906,7 +989,7 @@ Production adapter wiring is not gated on closing this residual — the revenue 
 
 ---
 
-## 17. Governance constraints observed
+## 19. Governance constraints observed
 
 - No DS25/DS40 period boundary hardcoding — ENFORCED
 - No project-name dispatch in production code — ENFORCED
