@@ -16,6 +16,7 @@
 | **R4.3 Verdict** | `C3B3D2B2C_R4_3_STOP_REVENUE_REGIME_PARITY_FAILED` |
 | **R4.4 Verdict** | `C3B3D2B2C_R4_4_STOP_MERCHANT_PRICE_SOURCE_LINEAGE_NOT_YET_REPLAYED` |
 | **R4.5 Verdict** | `C3B3D2B2C_R4_5_EFFECTIVE_PRICE_PROVEN_BANK_TAX_TIMING_RESIDUAL_IDENTIFIED` |
+| **R4.6 Verdict** | `C3B3D2B2C_R4_6_STOP_TAX_TIMING_COUNTERFACTUAL_FAILED` |
 
 ---
 
@@ -835,15 +836,77 @@ The inflation transform is source-proven to machine precision. The engine sensit
 
 ---
 
-## 15. Next steps for future stages
+## 15. R4.6 — Source-Compatible Bank Tax Periodisation Counterfactual (STOP)
 
-**R4.6 (if pursued):** Confirm bank tax timing convention from source Excel (which period the annual income-tax payment falls in). If source charges tax in Jun-30 (H1), a timing-corrected bank CFADS would close the remaining 164 kEUR gap. This requires either (a) formula inspection of the bank CFADS calculation on the DS sheet, or (b) VBA access for the Macro50 cash-tax allocation.
+### R4.6 objective
 
-Production adapter wiring is not gated on closing this 0.38% residual — the revenue mechanism (P90 yield + effective Central Low price) is fully identified. The bank-tax timing gap is a period-allocation difference that does not affect the total debt sizing by more than 0.5%.
+R4.6 implements a **counterfactual (T2)**: replace the engine's `TAX_YEAR_LAST_PERIOD` convention (cash tax in H2/Dec-31) with the source Oborovo pairing convention (H2 taxable + H1 taxable → settle at H1/Jun-30) and re-run the locked Senior Debt solver. If T2 closes to within 1 kEUR of the source debt (42,852.279 kEUR), the R4.5 hypothesis is proven.
+
+### Source CIT convention locked
+
+| Attribute | Value |
+|---|---|
+| CIT rate | 10% |
+| Pairing | `bank_cash_tax[H1(N+1)] = MAX(ti_H2(N) + ti_H1(N+1), 0) × 10%` |
+| H2 cash tax | 0.0 kEUR (zero) |
+| Cash tax lag | 0 periods |
+| Classification | SOURCE_PROVEN (from base-case evidence) |
+
+Base-case source tax evidence (not injected into bank calculation):
+
+| Period | Source cash tax (kEUR) |
+|---|---|
+| 2043-06-30 (H1) | 285.107 |
+| 2043-12-31 (H2) | 0.000 |
+| 2044-06-30 (H1) | 301.618 |
+| 2044-12-31 (H2) | 0.000 |
+
+### Counterfactual results
+
+| Metric | Value |
+|---|---|
+| T1 debt (engine H2 settlement) | 42,687.507 kEUR |
+| T2 debt (source H1 settlement) | 42,624.119 kEUR |
+| Source debt | 42,852.279 kEUR |
+| T2 residual vs source | −228.159 kEUR |
+| T2 absolute residual | 228.159 kEUR |
+| T2 relative residual | 0.532% |
+| Verdict | **STOP** — counterfactual failed |
+
+### Diagnostic interpretation
+
+T2 (H1 settlement) moves debt **further** from source than T1 (H2 settlement): T1 residual = −164.8 kEUR, T2 residual = −228.2 kEUR. The source H2+H1 pairing hypothesis does not close the debt gap; the residual worsens. This implies at least one additional source mechanism is not yet identified — likely related to bank-case taxable income inputs (EBITDA or tax depreciation) rather than settlement timing alone.
+
+Both T1 and T2 underestimate the source debt. The direction of the remaining gap (engine < source) is consistent across both timing conventions, indicating that the revenue/EBITDA mechanism — not tax timing — is the primary outstanding driver.
+
+### R4.5 reclassification
+
+The R4.5 bank-tax timing hypothesis remains **DIAGNOSTIC ONLY — NOT COUNTERFACTUALLY PROVEN**. The timing asymmetry (engine H2 vs source H1) is real and structurally consistent, but it does not explain the observed debt residual in the bank case. R4.5's price mechanism findings (P90 yield + effective Central Low, 2.80% sensitivity residual) are **preserved and unaffected**.
+
+### R4.6 governance
+
+- `_apply_source_oborovo_tax_periodisation()` implemented in `finco_recon/` only — `financial_engine/` zero-diff maintained
+- No base-tax injection — source tax is evidence-only
+- No DS20-derived tax — bank taxable income computed from bank EBITDA
+- No plug, no calibration, no project-name dispatch, no hardcoded period indices
+- 29 focused R4.6 tests (categories A–CC) — all pass
 
 ---
 
-## 16. Governance constraints observed
+## 16. Next steps for future stages
+
+The primary outstanding gap (engine bank debt < source, ~228 kEUR / 0.53%) requires further decomposition. Candidate drivers:
+
+1. **Bank-case tax depreciation**: if the source model uses a different tax depreciation schedule for the bank case (vs. base), bank taxable income and thus bank CIT would differ from the engine calculation.
+2. **Bank-case EBITDA adjustments**: non-energy revenue items (capacity payments, DSA receipts) present in the source bank model but absent from the current adapter.
+3. **DSRA interest income**: if source models DSRA interest income as taxable, bank CFADS and tax would differ from engine results.
+4. **Loan fee / financing cost deductibility**: source may model capitalised arrangement fees as tax-deductible amortisation.
+
+Production adapter wiring is not gated on closing this residual — the revenue mechanism (P90 yield + effective Central Low price) is fully identified at 2.80% sensitivity residual.
+
+---
+
+## 17. Governance constraints observed
 
 - No DS25/DS40 period boundary hardcoding — ENFORCED
 - No project-name dispatch in production code — ENFORCED

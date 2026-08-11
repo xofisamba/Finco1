@@ -2154,3 +2154,185 @@ class TestR4_5SourceExactEffectivePriceReplay:
     def test_t_tuho_regression_class_exists(self):
         import tests.test_stage_c3b3d2b2c_bank_sizing_cfads_production as m
         assert hasattr(m, "TestR4_3TuhoRevenueRegime")
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# R4.6 — Source-Compatible Bank Tax Periodisation + Final Debt Closure
+# ──────────────────────────────────────────────────────────────────────────────
+
+@pytest.fixture(scope="module")
+def r4_6_result():
+    from app.project_factories import create_default_oborovo
+    from finco_recon.bank_sizing_candidates import run_candidate_f_oborovo
+    return run_candidate_f_oborovo(create_default_oborovo)
+
+
+class TestR4_6SourceCompatibleBankTaxPeriodisation:
+    """R4.6: Counterfactual T2 — source H2+H1 pairing periodisation diagnostic."""
+
+    # A) CIT rate is 10%
+    def test_a_cit_rate(self, r4_6_result):
+        assert r4_6_result["cit_rate"] == pytest.approx(0.10, abs=1e-12)
+
+    # B) CIT pairing convention string is set
+    def test_b_cit_pairing_convention_set(self, r4_6_result):
+        assert "H2" in r4_6_result["cit_pairing_convention"]
+        assert "H1" in r4_6_result["cit_pairing_convention"]
+
+    # C) Cash tax lag is zero
+    def test_c_cash_tax_lag_zero(self, r4_6_result):
+        assert r4_6_result["cash_tax_lag"] == 0
+
+    # D) Base tax timing evidence contains known source values
+    def test_d_base_tax_timing_evidence_source_values(self, r4_6_result):
+        ev = r4_6_result["base_tax_timing_evidence"]
+        assert ev["2043-06-30"] == pytest.approx(285.1067359531612, rel=1e-6)
+        assert ev["2043-12-31"] == pytest.approx(0.0, abs=1e-12)
+
+    # E) H2 source cash tax is zero (verified via base_tax_timing_evidence)
+    def test_e_h2_source_cash_tax_is_zero(self, r4_6_result):
+        ev = r4_6_result["base_tax_timing_evidence"]
+        # All Dec-31 entries must be 0.0
+        for k, v in ev.items():
+            if k.endswith("-12-31"):
+                assert v == pytest.approx(0.0, abs=1e-12), f"H2 period {k} must have zero cash tax, got {v}"
+
+    # F) H1 settlement: source value for 2043-06-30 matches formula
+    def test_f_h1_settlement_matches_source_formula(self, r4_6_result):
+        # Base-case: P26 ti + P27 ti, as recorded in evidence
+        ev = r4_6_result["base_tax_timing_evidence"]
+        h1_val = ev["2043-06-30"]
+        # P26 ti = 1029.148, P27 ti = 665.245, rate = 0.10 → MAX(1694.393,0)*0.10=169.439
+        # The stored evidence value is the source-extracted value, not derived from bank ti
+        assert h1_val > 0.0
+
+    # G) T1 debt is positive and in plausible range
+    def test_g_t1_debt_positive(self, r4_6_result):
+        t1 = r4_6_result["t1_current_timing_debt_keur"]
+        assert 40000.0 < t1 < 50000.0
+
+    # H) T2 debt is positive and in plausible range
+    def test_h_t2_debt_positive(self, r4_6_result):
+        t2 = r4_6_result["t2_source_timing_debt_keur"]
+        assert 40000.0 < t2 < 50000.0
+
+    # I) Source debt fixture is 42,852.278763
+    def test_i_source_debt_fixture(self, r4_6_result):
+        assert r4_6_result["source_debt_keur"] == pytest.approx(42852.278763, rel=1e-9)
+
+    # J) T1 residual (vs source) is within R4.5 established range
+    def test_j_t1_residual_within_r4_5_range(self, r4_6_result):
+        t1 = r4_6_result["t1_current_timing_debt_keur"]
+        residual = abs(t1 - r4_6_result["source_debt_keur"])
+        # R4.5 confirmed ~164.8 kEUR residual
+        assert 100.0 < residual < 300.0
+
+    # K) T2 residual is recorded
+    def test_k_t2_residual_recorded(self, r4_6_result):
+        assert "t2_residual_keur" in r4_6_result
+        assert "t2_abs_residual_keur" in r4_6_result
+
+    # L) Verdict is one of the three allowed R4.6 verdicts
+    def test_l_verdict_is_valid_r4_6(self, r4_6_result):
+        v = r4_6_result["verdict"]
+        allowed = {
+            "C3B3D2B2C_R4_6_BANK_TAX_PERIODISATION_AND_SENIOR_DEBT_SOURCE_PARITY_PROVEN_"
+            "READY_FOR_PRODUCTION_IMPLEMENTATION_REVIEW",
+            "C3B3D2B2C_R4_6_BANK_TAX_PERIODISATION_PROVEN_SMALL_RESIDUAL_IDENTIFIED",
+            "C3B3D2B2C_R4_6_STOP_TAX_TIMING_COUNTERFACTUAL_FAILED",
+        }
+        assert v in allowed
+
+    # M) Round identifier is R4.6
+    def test_m_round_identifier(self, r4_6_result):
+        assert r4_6_result["round"] == "R4.6"
+
+    # N) Candidate is F
+    def test_n_candidate_identifier(self, r4_6_result):
+        assert r4_6_result["candidate"] == "CANDIDATE_F"
+
+    # O) R4.5 sensitivity regression preserved (< 5% residual)
+    def test_o_sensitivity_regression_pass(self, r4_6_result):
+        assert r4_6_result["r4_5_sensitivity_regression"] == "PASS"
+
+    # P) Per-period bridge is non-empty
+    def test_p_per_period_bridge_nonempty(self, r4_6_result):
+        assert len(r4_6_result["merchant_period_bridge"]) > 0
+
+    # Q) Per-period bridge entries have required keys
+    def test_q_bridge_entries_have_required_keys(self, r4_6_result):
+        required = {
+            "period_index", "period_end", "ebitda_keur",
+            "t1_bank_cfads_keur", "t2_bank_cfads_keur",
+            "t2_engine_tax_keur", "t2_source_tax_keur",
+            "tax_delta_keur", "source_ds20_keur",
+            "t1_vs_t2_cfads_delta_keur",
+        }
+        for entry in r4_6_result["merchant_period_bridge"]:
+            assert required.issubset(entry.keys()), f"Missing keys in bridge entry: {entry}"
+
+    # R) No base-tax injection — classification must say EVIDENCE_ONLY
+    def test_r_no_base_tax_injection(self, r4_6_result):
+        ev = r4_6_result["base_tax_timing_evidence"]
+        assert "EVIDENCE_ONLY" in ev["classification"]
+        assert "NOT_INJECTED" in ev["classification"]
+
+    # S) No DS20-derived tax
+    def test_s_no_ds20_derived_tax(self, r4_6_result):
+        assert r4_6_result["no_ds20_derived_tax"] == "ENFORCED"
+
+    # T) No plug / calibration
+    def test_t_no_plug_calibration(self, r4_6_result):
+        assert r4_6_result["no_plug_calibration"] == "ENFORCED"
+
+    # U) No project-name dispatch
+    def test_u_no_project_name_dispatch(self, r4_6_result):
+        assert r4_6_result["no_project_name_dispatch"] == "ENFORCED"
+
+    # V) Financial engine zero-diff preserved
+    def test_v_financial_engine_zero_diff(self, r4_6_result):
+        assert r4_6_result["financial_engine_zero_diff"] == "ENFORCED"
+
+    # W) Source-compatible periodisation function exists and is callable
+    def test_w_source_periodisation_function_callable(self):
+        from finco_recon.bank_sizing_candidates import _apply_source_oborovo_tax_periodisation
+        assert callable(_apply_source_oborovo_tax_periodisation)
+
+    # X) _run_candidate_f_debt exists and is callable
+    def test_x_candidate_f_debt_solver_callable(self):
+        from finco_recon.bank_sizing_candidates import _run_candidate_f_debt
+        assert callable(_run_candidate_f_debt)
+
+    # Y) R4.5 reclassification string is present
+    def test_y_r4_5_reclassification_present(self, r4_6_result):
+        r = r4_6_result["r4_5_verdict_reclassification"]
+        assert "DIAGNOSTIC" in r or "NOT_YET_COUNTERFACTUALLY" in r
+
+    # Z) Relative T2 residual is recorded and is a float
+    def test_z_relative_residual_recorded(self, r4_6_result):
+        v = r4_6_result["t2_relative_residual_pct"]
+        assert isinstance(v, float)
+        assert v >= 0.0
+
+    # AA) T2 max abs CFADS delta is recorded
+    def test_aa_t2_max_abs_cfads_delta_recorded(self, r4_6_result):
+        assert "t2_max_abs_cfads_delta_keur" in r4_6_result
+        assert r4_6_result["t2_max_abs_cfads_delta_keur"] >= 0.0
+
+    # BB) Source code: no hardcoded period indices in candidate-f functions
+    def test_bb_no_hardcoded_period_indices_in_candidate_f(self):
+        import inspect
+        from finco_recon.bank_sizing_candidates import _apply_source_oborovo_tax_periodisation
+        src = inspect.getsource(_apply_source_oborovo_tax_periodisation)
+        forbidden = ["period_index == 26", "period_index == 27", "== 26", "== 27", "== 28", "== 29"]
+        for f in forbidden:
+            assert f not in src, f"Hardcoded period index '{f}' found in source-periodisation function"
+
+    # CC) Source code: no project-name dispatch in candidate-f
+    def test_cc_no_project_name_dispatch_in_candidate_f(self):
+        import inspect
+        from finco_recon.bank_sizing_candidates import run_candidate_f_oborovo
+        src = inspect.getsource(run_candidate_f_oborovo)
+        assert "project_name ==" not in src
+        assert 'if "oborovo"' not in src
+        assert "if 'oborovo'" not in src

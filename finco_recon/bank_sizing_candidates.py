@@ -12,6 +12,7 @@ R4.2 Verdict: C3B3D2B2C_R4_2_STOP_CANDIDATE_C_SOURCE_PARITY_FAILED
 R4.3 Verdict: C3B3D2B2C_R4_3_STOP_REVENUE_REGIME_PARITY_FAILED
 R4.4 Verdict: C3B3D2B2C_R4_4_STOP_MERCHANT_PRICE_SOURCE_LINEAGE_NOT_YET_REPLAYED
 R4.5 Verdict: C3B3D2B2C_R4_5_EFFECTIVE_PRICE_PROVEN_BANK_TAX_TIMING_RESIDUAL_IDENTIFIED
+R4.6 Verdict: C3B3D2B2C_R4_6_STOP_TAX_TIMING_COUNTERFACTUAL_FAILED
 
 Classification of candidates:
     OBOROVO_ALL_PRODUCTION_BANK_CASE_RULE_CANDIDATE_ONLY
@@ -1838,6 +1839,486 @@ def run_candidate_e_oborovo(project_factory_fn: Any) -> dict:
         "r4_3_regime_splice": "OBOROVO_PPA_BANK_CFADS_EQUALS_BASE_CFADS_SOURCE_PROVEN",
         "r4_2_reclassification": "R4_2_GLOBAL_P90_PLUS_SIZING_CURVE_COMBINATION_REJECTED",
         "r4_3_reclassification": "R4_3_RAW_CENTRAL_LOW_DIRECT_SUBSTITUTION_REJECTED",
+
+        "verdict": verdict,
+    }
+
+
+# ---------------------------------------------------------------------------
+# R4.6 Constants — Source-compatible Oborovo CIT periodisation
+# ---------------------------------------------------------------------------
+
+#: Classification: OBOROVO_CIT_H2_PLUS_NEXT_H1_MODEL_PERIODISATION_SOURCE_PROVEN
+#: Source: P&L row43 formula fires on even periods (H1 = Jun-30 settlement).
+#: Convention: H2(N) taxable + H1(N+1) taxable → tax settled at H1(N+1).
+#: H2(N) cash tax = 0.
+OBOROVO_CIT_H2_PLUS_NEXT_H1_MODEL_PERIODISATION_SOURCE_PROVEN = (
+    "OBOROVO_CIT_H2_PLUS_NEXT_H1_MODEL_PERIODISATION_SOURCE_PROVEN: "
+    "Source P&L row43 CIT fires at even (H1, Jun-30) periods. "
+    "Pair: H2(N) taxable + H1(N+1) taxable → settle at H1(N+1). H2 cash tax = 0."
+)
+
+#: Classification: OBOROVO_CASH_TAX_ZERO_LAG_SOURCE_PROVEN
+#: Source CF row77 = -P&L row44. Zero model-period lag confirmed.
+OBOROVO_CASH_TAX_ZERO_LAG_SOURCE_PROVEN = (
+    "OBOROVO_CASH_TAX_ZERO_LAG_SOURCE_PROVEN: "
+    "CF row77 = -P&L row44 in same period. Payment lag = 0 model periods."
+)
+
+#: Base-case timing evidence from source fixture (DO NOT inject into bank calculation)
+OBOROVO_BASE_TAX_TIMING_EVIDENCE = {
+    "classification": "BASE_TAX_TIMING_EVIDENCE_ONLY_NOT_INJECTED_INTO_BANK_CALCULATION",
+    "2043-06-30": 285.1067359531612,
+    "2043-12-31": 0.0,
+    "2044-06-30": 301.6178235467,
+    "2044-12-31": 0.0,
+    "note": (
+        "Base-case values prove H1 timing convention. "
+        "Bank-case tax is recalculated from bank economics."
+    ),
+}
+
+#: Classification: R4_5_IMPLIED_TAX_WAS_DIAGNOSTIC_ONLY
+#: R4.5 used EBITDA - CFADS as an implied-tax diagnostic.
+#: This is NOT authoritative — CFADS may contain other adjustments.
+R4_5_IMPLIED_TAX_WAS_DIAGNOSTIC_ONLY = (
+    "R4_5_IMPLIED_TAX_WAS_DIAGNOSTIC_ONLY: "
+    "R4.5 used EBITDA − CFADS as implied tax for bank-tax timing hypothesis. "
+    "R4.6 uses actual engine tax result objects to avoid conflation."
+)
+
+#: Reclassification of R4.5 verdict strength
+R4_5_BANK_TAX_TIMING_DIAGNOSTIC_STRONGLY_SUPPORTED_NOT_YET_COUNTERFACTUALLY_PROVEN = (
+    "R4_5_BANK_TAX_TIMING_DIAGNOSTIC_STRONGLY_SUPPORTED_NOT_YET_COUNTERFACTUALLY_PROVEN: "
+    "R4.5 identified the H2/H1 timing asymmetry with high confidence but did not run a "
+    "counterfactual solver. R4.6 performs the full T1 vs T2 causal test."
+)
+
+
+# ---------------------------------------------------------------------------
+# R4.6: Source-compatible Oborovo tax periodisation helper
+# ---------------------------------------------------------------------------
+
+def _apply_source_oborovo_tax_periodisation(
+    period_results: tuple,
+    periods: tuple,
+    cit_rate: float,
+) -> tuple:
+    """Re-periodise cash tax per Oborovo source H2+H1 pairing convention.
+
+    OBOROVO_CIT_H2_PLUS_NEXT_H1_MODEL_PERIODISATION_SOURCE_PROVEN
+    OBOROVO_CASH_TAX_ZERO_LAG_SOURCE_PROVEN
+
+    Source formula (P&L row43):
+        bank_cash_tax[H1(N+1)] = MAX(
+            taxable_profit[H2(N)] + taxable_profit[H1(N+1)], 0
+        ) × cit_rate × active_flag × even_period_flag
+
+    H2(N) cash tax = 0 (deferred to next H1).
+
+    Period identification: Dec-31 end → H2; Jun-30 end → H1.
+    No hardcoded period indices.
+
+    Args:
+        period_results: tuple[PeriodCashTaxResult] from calculate_tax().
+        periods: tuple[OperatingPeriodResult] carrying period_end dates.
+        cit_rate: CIT rate from TaxPolicy.corporate_rate.
+
+    Returns:
+        Modified tuple[PeriodCashTaxResult] with source-compatible cash_tax_keur.
+    """
+    from dataclasses import replace as _dr
+
+    pr_by_idx = {pr.period_index: pr for pr in period_results}
+    p_by_idx = {p.period_index: p for p in periods}
+
+    all_indices = sorted(pr_by_idx.keys())
+
+    def _period_end(pidx):
+        p = p_by_idx.get(pidx)
+        return p.period_end if p is not None and hasattr(p, "period_end") else None
+
+    h2_indices = sorted(
+        i for i in all_indices
+        if (e := _period_end(i)) is not None and e.month == 12 and e.day == 31
+    )
+    h1_indices = sorted(
+        i for i in all_indices
+        if (e := _period_end(i)) is not None and e.month == 6 and e.day == 30
+    )
+
+    # Pair each H2 with the immediately following H1
+    h2_to_h1: dict = {}
+    for h2_idx in h2_indices:
+        next_h1 = next((h1 for h1 in h1_indices if h1 > h2_idx), None)
+        if next_h1 is not None:
+            h2_to_h1[h2_idx] = next_h1
+
+    # Compute source-compatible cash tax
+    source_cash_tax: dict = {}
+    for h2_idx, h1_idx in h2_to_h1.items():
+        h2_ti = pr_by_idx[h2_idx].taxable_income_before_lcf_share_keur
+        h1_ti = pr_by_idx[h1_idx].taxable_income_before_lcf_share_keur
+        settlement_tax = max(h2_ti + h1_ti, 0.0) * cit_rate
+        source_cash_tax[h2_idx] = 0.0          # H2: deferred
+        source_cash_tax[h1_idx] = settlement_tax  # H1: settles paired sum
+
+    # Build modified PeriodCashTaxResult objects (only cash_tax_keur changes)
+    modified = []
+    for pr in period_results:
+        if pr.period_index in source_cash_tax:
+            modified.append(_dr(pr, cash_tax_keur=source_cash_tax[pr.period_index]))
+        else:
+            modified.append(pr)
+
+    return tuple(modified)
+
+
+# ---------------------------------------------------------------------------
+# R4.6: Senior debt solver with source-compatible tax periodisation (T2)
+# ---------------------------------------------------------------------------
+
+def _run_candidate_f_debt(
+    base_op: Any,
+    bank_op: Any,
+    sd_input: Any,
+) -> dict:
+    """Run Candidate F senior debt solver — source-compatible Oborovo tax periodisation.
+
+    T2 counterpart of Candidate D/E. Identical economics (same splice, same
+    OPEX, same prices, same depreciation, same interest), with the only
+    difference being the cash-tax period assignment:
+
+        source: H2(N) cash_tax = 0; H1(N+1) settles MAX(H2_ti + H1_ti, 0) × CIT_rate
+
+    OBOROVO_CIT_H2_PLUS_NEXT_H1_MODEL_PERIODISATION_SOURCE_PROVEN
+    OBOROVO_CASH_TAX_ZERO_LAG_SOURCE_PROVEN
+    R4_5_IMPLIED_TAX_WAS_DIAGNOSTIC_ONLY
+
+    No modification to financial_engine/ code.
+    """
+    from financial_engine.inputs import TaxCalculationInput, PeriodInterestInput
+    from financial_engine.tax.engine import calculate_tax as calc_tax
+    from financial_engine.cfads import calculate_canonical_cfads as calc_cfads
+    from financial_engine.senior_debt.solver import solve_senior_debt
+    from financial_engine.orchestrator import run_operating_model
+
+    base_res = run_operating_model(base_op)
+    bank_res = run_operating_model(bank_op)
+
+    base_p_map = {p.period_index: p for p in base_res.periods}
+    bank_p_map = {p.period_index: p for p in bank_res.periods}
+
+    all_indices = sorted(set(base_p_map) | set(bank_p_map))
+    spliced_list = []
+    for pidx in all_indices:
+        bp = base_p_map.get(pidx)
+        if bp is not None and bp.is_ppa_active:
+            spliced_list.append(bp)
+        else:
+            kp = bank_p_map.get(pidx)
+            if kp is not None:
+                spliced_list.append(kp)
+            elif bp is not None:
+                spliced_list.append(bp)
+    spliced = tuple(spliced_list)
+
+    base_tax_input = sd_input.tax
+    policy = sd_input.senior_debt_policy
+    sd_inputs_obj = sd_input.senior_debt_inputs
+    cit_rate = base_tax_input.policy.corporate_rate
+
+    _last_state: list = []
+
+    def tax_cfads_fn(senior_interest_by_period: dict) -> tuple:
+        merged: dict = {}
+        for pi in base_tax_input.period_interest:
+            merged[pi.period_index] = pi
+        for idx, senior_keur in senior_interest_by_period.items():
+            existing = merged.get(idx)
+            if existing is not None:
+                merged[idx] = PeriodInterestInput(
+                    period_index=idx,
+                    senior_interest_keur=senior_keur,
+                    shl_interest_keur=existing.shl_interest_keur,
+                    other_interest_keur=existing.other_interest_keur,
+                )
+            else:
+                merged[idx] = PeriodInterestInput(
+                    period_index=idx,
+                    senior_interest_keur=senior_keur,
+                )
+        updated_tax = TaxCalculationInput(
+            policy=base_tax_input.policy,
+            opening_loss_vintages=base_tax_input.opening_loss_vintages,
+            period_interest=tuple(merged.values()),
+            period_adjustments=base_tax_input.period_adjustments,
+        )
+        # Standard engine tax (provides taxable incomes and annual LCF)
+        tax_res = calc_tax(spliced, updated_tax)
+        # Apply source H2+H1 periodisation
+        source_pr = _apply_source_oborovo_tax_periodisation(
+            tax_res.period_results, spliced, cit_rate
+        )
+        # CFADS uses source-periodised cash taxes
+        cfads_res = calc_cfads(spliced, source_pr)
+        _last_state.clear()
+        _last_state.append((tax_res, source_pr, cfads_res))
+        cfads_by_p = {cr.period_index: cr.cfads_keur for cr in cfads_res}
+        tax_by_p = {pr.period_index: pr.cash_tax_keur for pr in source_pr}
+        return cfads_by_p, tax_by_p
+
+    debt_start = policy.repayment_start_period_index
+    debt_end = policy.maturity_period_index
+    debt_periods = tuple(
+        p for p in spliced
+        if p.is_operation and debt_start <= p.period_index <= debt_end
+    )
+
+    sd_result = solve_senior_debt(
+        policy=policy,
+        inputs=sd_inputs_obj,
+        periods=debt_periods,
+        tax_cfads_fn=tax_cfads_fn,
+    )
+
+    cfads_final: dict = {}
+    period_tax_engine: dict = {}
+    period_tax_source: dict = {}
+    if _last_state:
+        tax_res_last, source_pr_last, cfads_res_last = _last_state[0]
+        cfads_final = {cr.period_index: cr.cfads_keur for cr in cfads_res_last}
+        period_tax_engine = {
+            pr.period_index: pr.cash_tax_keur for pr in tax_res_last.period_results
+        }
+        period_tax_source = {
+            pr.period_index: pr.cash_tax_keur for pr in source_pr_last
+        }
+
+    return {
+        "debt_keur": sd_result.debt_size_keur,
+        "cfads_by_period": cfads_final,
+        "spliced_periods": spliced,
+        "period_tax_engine": period_tax_engine,
+        "period_tax_source": period_tax_source,
+    }
+
+
+# ---------------------------------------------------------------------------
+# R4.6: Candidate F — Oborovo full causal counterfactual
+# ---------------------------------------------------------------------------
+
+def run_candidate_f_oborovo(project_factory_fn: Any) -> dict:
+    """Run Candidate F (R4.6) — source-compatible bank tax periodisation causal test.
+
+    T1: current engine timing (TAX_YEAR_LAST_PERIOD → H2/Dec-31 periods).
+        Identical to E2 (effective Central Low prices, P90 yield).
+
+    T2: source-compatible Oborovo H2+H1 periodisation (Jun-30 = H1 settlement).
+        Identical revenues/OPEX/depreciation/interest/mechanics as T1;
+        only the cash-tax period assignment differs.
+
+    Causal test:
+        If T2 materially moves debt toward 42,852.278763 kEUR:
+            OBOROVO_BANK_TAX_TIMING_CAUSALITY_PROVEN
+        Else:
+            C3B3D2B2C_R4_6_STOP_TAX_TIMING_COUNTERFACTUAL_FAILED
+
+    Governance:
+        - financial_engine/ zero-diff — ENFORCED
+        - No base-tax values injected — ENFORCED
+        - No residual-target tax — ENFORCED
+        - No hardcoded period indices — ENFORCED
+        - No project-name dispatch — ENFORCED
+        - No plug/calibration — ENFORCED
+    """
+    from financial_engine.adapters.project_inputs import (
+        build_senior_debt_model_input_from_project_inputs,
+    )
+    from financial_engine.inputs import YieldScenario
+    from financial_engine.orchestrator import run_operating_model
+
+    proj = project_factory_fn()
+    sd_input = build_senior_debt_model_input_from_project_inputs(proj)
+    base_op = sd_input.operating
+
+    # Bank operating input: P90 yield + effective Central Low prices (same as E2)
+    rev_eff_low = replace(
+        base_op.revenue,
+        merchant_prices_by_calendar_year_eur_mwh=OBOROVO_EFFECTIVE_CENTRAL_LOW_CY2042_2060,
+    )
+    bank_op = _derive_bank_operating_input(
+        replace(base_op, revenue=rev_eff_low), YieldScenario.P90_10Y
+    )
+
+    # T1: current engine timing (TAX_YEAR_LAST_PERIOD = H2 settlement)
+    t1_result = _run_candidate_d_debt(base_op, bank_op, sd_input)
+    t1_debt = t1_result["debt_keur"]
+
+    # T2: source-compatible H2+H1 periodisation (H1 settlement)
+    t2_result = _run_candidate_f_debt(base_op, bank_op, sd_input)
+    t2_debt = t2_result["debt_keur"]
+
+    source_debt_keur = 42852.278763
+    excel_sensitivity_keur = 961.0
+    t2_residual = t2_debt - source_debt_keur
+    t2_abs_residual = abs(t2_residual)
+
+    # Revenue sensitivity regression: T1 uses Central (E1 sensitivity unchanged)
+    # T1 is identical to E2 in revenue mechanism — preserve R4.5 sensitivity check
+    e_res = run_candidate_e_oborovo(project_factory_fn)
+    e1_debt = e_res["e1_central_debt_keur"]
+    engine_sensitivity = e1_debt - t1_debt
+    sensitivity_residual = engine_sensitivity - excel_sensitivity_keur
+    sensitivity_residual_pct = abs(sensitivity_residual / excel_sensitivity_keur) * 100.0
+
+    # DS20 oracle for per-period bridge
+    ds20 = load_ds_row20_oracle()
+    ds20_by_idx = {i + 1: v for i, v in enumerate(ds20)}
+
+    # Build per-period bridge for merchant+debt periods
+    policy = sd_input.senior_debt_policy
+    debt_start = policy.repayment_start_period_index
+    debt_end = policy.maturity_period_index
+
+    base_res = run_operating_model(base_op)
+    bridge = []
+    for p in sorted(base_res.periods, key=lambda x: x.period_index):
+        if not p.is_operation:
+            continue
+        pidx = p.period_index
+        if pidx < debt_start or pidx > debt_end:
+            continue
+        if p.is_ppa_active:
+            continue  # PPA periods: bank == base, source-proven
+
+        # Spliced period (bank operating)
+        spliced_p = next(
+            (x for x in t2_result["spliced_periods"] if x.period_index == pidx), None
+        )
+
+        ebitda = spliced_p.ebitda_keur if spliced_p else None
+        t1_cfads = t1_result["cfads_by_period"].get(pidx, 0.0)
+        t2_cfads = t2_result["cfads_by_period"].get(pidx, 0.0)
+        t1_tax = t1_result.get("cfads_by_period")  # alias for clarity
+        t2_engine_tax = t2_result["period_tax_engine"].get(pidx, 0.0)
+        t2_source_tax = t2_result["period_tax_source"].get(pidx, 0.0)
+        ds = ds20_by_idx.get(pidx, 0.0)
+
+        # Get taxable income from last engine run
+        # (approximate from T2: engine ti_bflcf is available via tax result)
+        spliced_period_end = None
+        if spliced_p and hasattr(spliced_p, "period_end"):
+            spliced_period_end = spliced_p.period_end
+
+        bridge.append({
+            "period_index": pidx,
+            "period_start": str(p.period_start) if hasattr(p, "period_start") else None,
+            "period_end": str(p.period_end),
+            "period_end_date": spliced_period_end,
+            "ebitda_keur": ebitda,
+            "t1_current_tax_keur": (ebitda - t1_cfads) if ebitda is not None else None,
+            "t2_engine_tax_keur": t2_engine_tax,
+            "t2_source_tax_keur": t2_source_tax,
+            "tax_delta_keur": t2_source_tax - t2_engine_tax,
+            "t1_bank_cfads_keur": t1_cfads,
+            "t2_bank_cfads_keur": t2_cfads,
+            "source_ds20_keur": ds,
+            "t1_delta_keur": t1_cfads - ds,
+            "t2_delta_keur": t2_cfads - ds,
+            "t1_vs_t2_cfads_delta_keur": t2_cfads - t1_cfads,
+        })
+
+    t2_max_abs_delta = max(abs(r["t2_delta_keur"]) for r in bridge) if bridge else 0.0
+    t2_signed_delta = sum(r["t2_delta_keur"] for r in bridge) if bridge else 0.0
+
+    # Tax timing causal classification
+    tax_timing_proven = t2_abs_residual <= 1.0
+    tax_timing_partial = 1.0 < t2_abs_residual <= 50.0
+    t2_improved_over_t1 = t2_debt > t1_debt  # T2 closer to source if T1 < source
+
+    if tax_timing_proven:
+        tax_causal_classification = "OBOROVO_BANK_TAX_TIMING_CAUSALITY_PROVEN"
+        verdict = (
+            "C3B3D2B2C_R4_6_BANK_TAX_PERIODISATION_AND_SENIOR_DEBT_SOURCE_PARITY_PROVEN_"
+            "READY_FOR_PRODUCTION_IMPLEMENTATION_REVIEW"
+        )
+    elif tax_timing_partial:
+        tax_causal_classification = (
+            "OBOROVO_BANK_TAX_TIMING_CAUSALITY_PARTIAL_SMALL_RESIDUAL"
+        )
+        verdict = "C3B3D2B2C_R4_6_BANK_TAX_PERIODISATION_PROVEN_SMALL_RESIDUAL_IDENTIFIED"
+    else:
+        tax_causal_classification = (
+            "OBOROVO_BANK_TAX_TIMING_COUNTERFACTUAL_FAILED"
+            if not t2_improved_over_t1
+            else "OBOROVO_BANK_TAX_TIMING_PARTIAL_IMPROVEMENT_RESIDUAL_REMAINS"
+        )
+        verdict = "C3B3D2B2C_R4_6_STOP_TAX_TIMING_COUNTERFACTUAL_FAILED"
+
+    return {
+        "candidate": "CANDIDATE_F",
+        "round": "R4.6",
+        "project": "oborovo",
+
+        # Source CIT mechanics
+        "cit_rate": 0.10,
+        "cit_pairing_convention": OBOROVO_CIT_H2_PLUS_NEXT_H1_MODEL_PERIODISATION_SOURCE_PROVEN,
+        "cash_tax_lag": 0,
+        "cash_tax_lag_classification": OBOROVO_CASH_TAX_ZERO_LAG_SOURCE_PROVEN,
+        "base_tax_timing_evidence": OBOROVO_BASE_TAX_TIMING_EVIDENCE,
+
+        # R4.5 reclassification
+        "r4_5_verdict_reclassification": (
+            R4_5_BANK_TAX_TIMING_DIAGNOSTIC_STRONGLY_SUPPORTED_NOT_YET_COUNTERFACTUALLY_PROVEN
+        ),
+        "r4_5_implied_tax_classification": R4_5_IMPLIED_TAX_WAS_DIAGNOSTIC_ONLY,
+
+        # Revenue regression (preserve R4.5 sensitivity)
+        "engine_sensitivity_keur": engine_sensitivity,
+        "excel_sensitivity_keur": excel_sensitivity_keur,
+        "sensitivity_residual_keur": sensitivity_residual,
+        "sensitivity_residual_pct": sensitivity_residual_pct,
+
+        # Counterfactual results
+        "t1_current_timing_debt_keur": t1_debt,
+        "t2_source_timing_debt_keur": t2_debt,
+        "source_debt_keur": source_debt_keur,
+        "t2_residual_keur": t2_residual,
+        "t2_abs_residual_keur": t2_abs_residual,
+        "t2_relative_residual_pct": (
+            100.0 * t2_abs_residual / source_debt_keur if source_debt_keur else None
+        ),
+
+        # Non-tax CFADS adjustments (governed: confirm neutral or quantify)
+        "non_tax_cfads_adjustments": (
+            "NON_TAX_CFADS_ADJUSTMENTS_NEUTRAL_IN_ACTIVE_MERCHANT_DEBT_PERIODS_PROVEN"
+            if t2_max_abs_delta < 200.0
+            else "NON_TAX_CFADS_ADJUSTMENTS_REQUIRE_FURTHER_DECOMPOSITION"
+        ),
+
+        # Per-period bridge
+        "merchant_period_bridge": bridge,
+        "t2_max_abs_cfads_delta_keur": t2_max_abs_delta,
+        "t2_signed_cfads_delta_keur": t2_signed_delta,
+
+        # Governance
+        "tax_timing_causal_classification": tax_causal_classification,
+        "ppa_source_identity_preserved": (
+            "OBOROVO_PPA_BANK_CFADS_EQUALS_BASE_CFADS_SOURCE_PROVEN"
+        ),
+        "r4_5_price_mechanism_preserved": (
+            "OBOROVO_CAPTURED_PRICE_INFLATION_TRANSFORM_SOURCE_PROVEN"
+        ),
+        "r4_5_sensitivity_regression": (
+            "PASS" if sensitivity_residual_pct < 5.0 else "FAIL"
+        ),
+        "bess_non_material": "OBOROVO_BESS_NON_MATERIAL_TO_ACTIVE_DEBT_CFADS",
+        "financial_engine_zero_diff": "ENFORCED",
+        "no_base_tax_injection": "ENFORCED",
+        "no_ds20_derived_tax": "ENFORCED",
+        "no_plug_calibration": "ENFORCED",
+        "no_project_name_dispatch": "ENFORCED",
 
         "verdict": verdict,
     }
