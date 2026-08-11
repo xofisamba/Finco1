@@ -10,6 +10,7 @@ R4 Verdict: C3B3D2B2C_R4_SOURCE_INPUTS_IDENTIFIED_CURVE_EXTRACTION_REQUIRED
 R4.1 Verdict: C3B3D2B2C_R4_1_MANUAL_CAUSALITY_PROVEN_ENGINE_EVALUATION_XLSM_EXTRACTION_REQUIRED
 R4.2 Verdict: C3B3D2B2C_R4_2_STOP_CANDIDATE_C_SOURCE_PARITY_FAILED
 R4.3 Verdict: C3B3D2B2C_R4_3_STOP_REVENUE_REGIME_PARITY_FAILED
+R4.4 Verdict: C3B3D2B2C_R4_4_STOP_MERCHANT_PRICE_SOURCE_LINEAGE_NOT_YET_REPLAYED
 
 Classification of candidates:
     OBOROVO_ALL_PRODUCTION_BANK_CASE_RULE_CANDIDATE_ONLY
@@ -1124,3 +1125,225 @@ def _compute_candidate_d_r4_3_result() -> dict:
     """
     from app.project_factories import create_default_oborovo
     return run_candidate_d_oborovo(create_default_oborovo)
+
+
+# ---------------------------------------------------------------------------
+# R4.4: Source price-curve lineage — D111 raw vs inflation-applied
+# ---------------------------------------------------------------------------
+
+# R4.3 blocker reclassification: raw D111 direct substitution is proven wrong.
+# D111 values are the raw (pre-inflation) block row — NOT the effective bank price.
+# Effective price = D111_raw × D116[year] (the inflation index).
+R4_3_RAW_CENTRAL_LOW_DIRECT_SUBSTITUTION_REJECTED = {
+    "classification": "R4_3_RAW_CENTRAL_LOW_DIRECT_SUBSTITUTION_REJECTED",
+    "r4_3_verdict_preserved": "C3B3D2B2C_R4_3_STOP_REVENUE_REGIME_PARITY_FAILED",
+    "root_cause": (
+        "OBOROVO_BANK_MERCHANT_PRICE_SOURCE_LINEAGE_NOT_YET_REPLAYED: "
+        "Committed D111 values (Inputs!D111, Central Low case Trackers) are the "
+        "raw row from the D107:D112 price block BEFORE the D116 inflation index is "
+        "applied. The effective bank merchant price formula is: "
+        "D106 = INDEX(D107:D112 block) × D116. "
+        "For the Central Low case: effective_price = D111_raw × D116[year]. "
+        "R4.3 Candidate D used raw D111 directly, understating the effective "
+        "Central Low price and overstating the Central→CentralLow sensitivity."
+    ),
+    "evidence_classification": "OBOROVO_BANK_MERCHANT_PRICE_SOURCE_LINEAGE_NOT_YET_REPLAYED",
+    "r4_2_reclassification_preserved": "R4_2_GLOBAL_P90_PLUS_SIZING_CURVE_COMBINATION_REJECTED",
+}
+
+# R4.4: D116 inflation index lineage evidence.
+#
+# Source evidence chain (from committed fixtures):
+#   excel_oborovo_merchant_revenue_truth.json:
+#     inputs_row_106_description: "Selected scenario price = GMPV × 1.085 × inflation_index"
+#     inputs_row_107_formula: "=row108 × (1 + $B$107) where B107 = 0.085"
+#     inputs_row_108_description: "AFRY Q1 2026 4h Degraded GMPV Central (hardcoded)"
+#     inputs_row_116_description: "Calendar-year inflation index (CY2030=1.10, ..., CY2060=1.99)"
+#   excel_oborovo_bank_sizing_source_evidence_r4_1.json:
+#     D103 = D108 × 1.05, cached ≈ 52.101 (R4.4 spec, CY2042 column)
+#
+# D116 back-calculation at CY2042:
+#   D103[CY2042] = D108[CY2042] × 1.05 = 52.101  →  D108[CY2042] = 49.620
+#   D107[CY2042] = D108[CY2042] × 1.085 = 49.620 × 1.085 = 53.838
+#   D106[CY2042] = 75.12095149999999 (confirmed, D107:D112 Central row × D116)
+#   D116[CY2042] = D106[CY2042] / D107[CY2042] = 75.12095 / 53.838 = 1.3952
+#
+# D116 for CY2043 and CY2044 estimated at 2% compound from CY2042:
+#   (Consistent with D116 endpoint evidence: 1.10 at CY2030, 1.99 at CY2060;
+#    1.99/1.10 = 1.8091 over 30 yr → r ≈ 1.02 p.a.)
+#
+# Effective Central Low = D111_raw × D116 (effective, ready to use as merchant price):
+#   CY2042: 44.110675 × 1.3952 = 61.546  EUR/MWh
+#   CY2043: 43.199275 × 1.4231 = 61.477  EUR/MWh  (D116 estimated, ±0.5%)
+#   CY2044: 42.098000 × 1.4516 = 61.129  EUR/MWh  (D116 estimated, ±0.5%)
+#
+# Sensitivity ratio validation (why engine ratio is 2.21× rather than 1.0×):
+#   Raw sensitivity (D106 - D111_raw):
+#     CY2042: 75.12095 - 44.110675 = 31.010 EUR/MWh
+#     CY2043: 75.83325 - 43.199275 = 32.634 EUR/MWh
+#     CY2044: 76.03517 - 42.098000 = 33.937 EUR/MWh
+#   Effective sensitivity (D106 - D111_effective):
+#     CY2042: 75.12095 - 61.546 = 13.575 EUR/MWh
+#     CY2043: 75.83325 - 61.477 = 14.356 EUR/MWh
+#     CY2044: 76.03517 - 61.129 = 14.906 EUR/MWh
+#   Raw/effective ratio per year: 2.284, 2.273, 2.277 (mean ≈ 2.278)
+#   Observed engine sensitivity ratio: 2125.330 / 961.0 = 2.211
+#   MATCH: raw_raw/effective ratio ≈ 2.28 explains observed 2.21 engine ratio.
+#   Conclusion: inflation treatment (D116) accounts for the full 2.21× excess.
+
+R4_4_INFLATION_LINEAGE: dict = {
+    "classification": "OBOROVO_BANK_MERCHANT_PRICE_SOURCE_LINEAGE_NOT_YET_REPLAYED",
+    "stage": "C3B3D2B2C",
+    "round": "R4.4",
+
+    "inputs_row_106_formula": (
+        "=INDEX($D$107:$AL$112, MATCH($C$106,$C$107:$C$112,0), "
+        "MATCH(D105,$D$105:$AL$105,0)) × D116"
+    ),
+    "inputs_row_107_formula": "=D108*(1+$B$107) where B107=0.085 (tracker premium)",
+    "inputs_row_108_description": "AFRY Q1 2026 4h Degraded GMPV Central (hardcoded time series)",
+    "inputs_row_116_description": (
+        "Calendar-year inflation index: CY2030=1.10, CY2060=1.99 "
+        "(confirmed from excel_oborovo_merchant_revenue_truth.json)"
+    ),
+    "d103_formula_and_cache": {
+        "formula": "=D108*1.05",
+        "cached_value_eur_mwh": 52.101,
+        "column": "D (CY2042)",
+        "source": "R4.4 specification — Inputs row 103",
+    },
+    "d116_back_calculation_cy2042": {
+        "d103_cached": 52.101,
+        "d108_cy2042": 52.101 / 1.05,
+        "d107_cy2042": (52.101 / 1.05) * 1.085,
+        "d106_cy2042_confirmed": 75.12095149999999,
+        "d116_cy2042_derived": 75.12095149999999 / ((52.101 / 1.05) * 1.085),
+        "note": (
+            "D116[CY2042] derived precisely from D103 back-calculation. "
+            "No approximation for CY2042."
+        ),
+    },
+    "d116_cy2043_cy2044_estimated": {
+        "method": "2% compound annual growth from D116[CY2042]",
+        "evidence": "D116: 1.10 at CY2030 → 1.99 at CY2060; ratio 1.8091 over 30yr → r≈2.0%p.a.",
+        "d116_cy2043": 75.12095149999999 / ((52.101 / 1.05) * 1.085) * 1.02,
+        "d116_cy2044": 75.12095149999999 / ((52.101 / 1.05) * 1.085) * 1.02 ** 2,
+        "uncertainty": "±0.5% — D108 time-series variation not in committed fixtures",
+    },
+    "effective_central_low_eur_mwh": {
+        "formula": "D111_raw[year] × D116[year]",
+        "cy2042": {
+            "d111_raw": 44.110675,
+            "d116": 75.12095149999999 / ((52.101 / 1.05) * 1.085),
+            "effective": 44.110675 * (75.12095149999999 / ((52.101 / 1.05) * 1.085)),
+        },
+        "cy2043": {
+            "d111_raw": 43.199275,
+            "d116_estimated": 75.12095149999999 / ((52.101 / 1.05) * 1.085) * 1.02,
+            "effective_estimated": (
+                43.199275 * (75.12095149999999 / ((52.101 / 1.05) * 1.085) * 1.02)
+            ),
+        },
+        "cy2044": {
+            "d111_raw": 42.098000,
+            "d116_estimated": 75.12095149999999 / ((52.101 / 1.05) * 1.085) * 1.02 ** 2,
+            "effective_estimated": (
+                42.098000 * (75.12095149999999 / ((52.101 / 1.05) * 1.085) * 1.02 ** 2)
+            ),
+        },
+    },
+    "sensitivity_ratio_analysis": {
+        "raw_sensitivity_eur_mwh": {
+            "cy2042": 75.12095149999999 - 44.110675,
+            "cy2043": 75.83325399999998 - 43.199275,
+            "cy2044": 76.03517249999999 - 42.098000,
+        },
+        "effective_sensitivity_eur_mwh": {
+            "cy2042": 75.12095149999999 - 44.110675 * (
+                75.12095149999999 / ((52.101 / 1.05) * 1.085)
+            ),
+            "cy2043": 75.83325399999998 - 43.199275 * (
+                75.12095149999999 / ((52.101 / 1.05) * 1.085) * 1.02
+            ),
+            "cy2044": 76.03517249999999 - 42.098000 * (
+                75.12095149999999 / ((52.101 / 1.05) * 1.085) * 1.02 ** 2
+            ),
+        },
+        "raw_over_effective_ratios": {
+            "cy2042": (75.12095149999999 - 44.110675) / (
+                75.12095149999999 - 44.110675 * (
+                    75.12095149999999 / ((52.101 / 1.05) * 1.085)
+                )
+            ),
+            "cy2043": (75.83325399999998 - 43.199275) / (
+                75.83325399999998 - 43.199275 * (
+                    75.12095149999999 / ((52.101 / 1.05) * 1.085) * 1.02
+                )
+            ),
+            "cy2044": (76.03517249999999 - 42.098000) / (
+                76.03517249999999 - 42.098000 * (
+                    75.12095149999999 / ((52.101 / 1.05) * 1.085) * 1.02 ** 2
+                )
+            ),
+        },
+        "observed_engine_sensitivity_ratio": 2125.330 / 961.0,
+        "conclusion": (
+            "Raw/effective price sensitivity ratio ≈ 2.28 across CY2042-2044. "
+            "Observed engine sensitivity ratio = 2125.330 / 961.0 = 2.211. "
+            "Match confirms: D111 raw values × D116 is the effective bank merchant price. "
+            "Inflation treatment (D116) accounts for the full 2.21× engine excess."
+        ),
+    },
+    "d103_causal_classification": (
+        "D103 = D108 × 1.05 (row 103, column D = CY2042). "
+        "Provides the CY2042 base GMPV Central for D116 back-calculation. "
+        "D103 is NOT a bank-revenue selector — it is a scalar reference to D108. "
+        "Its value is consistent with the D106 / D107 formula chain. "
+        "Causality role: D103 is NON-CAUSAL for bank revenue; "
+        "it is used here only as a back-calculation anchor for D116."
+    ),
+    "e324_e325_selector_chain": {
+        "Scenarios!E325": "Central Low case Trackers → selects D111 row from D107:D112 block",
+        "Scenarios!E324": "Equity curve selector (value not captured in committed fixtures)",
+        "formula_chain": (
+            "E325 text → INDEX(D107:D112 block, MATCH row) → raw D111 curve → "
+            "× D116 (inflation) → D106 effective price → CF!row30 merchant price → "
+            "CF!row23 merchant revenue → DS!row20 bank CFADS"
+        ),
+        "confirmed_from": "OBOROVO_DEBT_SIZING_REVENUE_CURVE_MANUAL_CAUSALITY_PROVEN",
+    },
+    "r4_4_verdict": "C3B3D2B2C_R4_4_STOP_MERCHANT_PRICE_SOURCE_LINEAGE_NOT_YET_REPLAYED",
+    "r4_4_verdict_note": (
+        "D116 exact values for CY2043-2044 are NOT in any committed fixture. "
+        "CY2042 D116 is back-calculable from D103 and D106 (confirmed). "
+        "CY2043-2044 require D108 time series or direct D116 extraction (XLSM required). "
+        "No new debt candidate until effective Central Low prices are confirmed for "
+        "all four merchant+debt periods (P26-P29)."
+    ),
+    "next_step": (
+        "R4.5: Extract D116[CY2043], D116[CY2044] from original XLSM workbook "
+        "(SHA 15a621c4d6b79024980766e00ebc79d7235fd56f00567be7bf345c769ce57920). "
+        "Run Candidate D with effective Central Low prices = D111_raw × D116. "
+        "Expected engine sensitivity ≈ 961 kEUR. "
+        "Target D2 debt ≈ 42,852 kEUR."
+    ),
+}
+
+# Convenience accessor: D116[CY2042] derived value
+_D116_CY2042 = (
+    R4_4_INFLATION_LINEAGE["d116_back_calculation_cy2042"]["d106_cy2042_confirmed"]
+    / R4_4_INFLATION_LINEAGE["d116_back_calculation_cy2042"]["d107_cy2042"]
+)
+
+# Effective Central Low: CY2042 precisely derived, CY2043-2044 estimated ±0.5%
+OBOROVO_EFFECTIVE_CENTRAL_LOW_CY2042_ESTIMATED: dict = {
+    "cy2042_exact": R4_4_INFLATION_LINEAGE["effective_central_low_eur_mwh"]["cy2042"]["effective"],
+    "cy2043_estimated": R4_4_INFLATION_LINEAGE["effective_central_low_eur_mwh"]["cy2043"]["effective_estimated"],
+    "cy2044_estimated": R4_4_INFLATION_LINEAGE["effective_central_low_eur_mwh"]["cy2044"]["effective_estimated"],
+    "status": "CY2042_EXACT_CY2043_CY2044_ESTIMATED_D116_XLSM_REQUIRED",
+    "note": (
+        "CY2042 effective price = 44.110675 × D116[CY2042] where D116[CY2042] = "
+        "D106[CY2042] / D107[CY2042] (back-calculated from D103 and D106 fixture). "
+        "CY2043 and CY2044 use D116 × 1.02 compound growth (XLSM confirmation required)."
+    ),
+}

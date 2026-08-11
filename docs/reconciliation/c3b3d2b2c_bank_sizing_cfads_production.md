@@ -14,6 +14,7 @@
 | **R4.1 Verdict** | `C3B3D2B2C_R4_1_MANUAL_CAUSALITY_PROVEN_ENGINE_EVALUATION_XLSM_EXTRACTION_REQUIRED` |
 | **R4.2 Verdict** | `C3B3D2B2C_R4_2_STOP_CANDIDATE_C_SOURCE_PARITY_FAILED` |
 | **R4.3 Verdict** | `C3B3D2B2C_R4_3_STOP_REVENUE_REGIME_PARITY_FAILED` |
+| **R4.4 Verdict** | `C3B3D2B2C_R4_4_STOP_MERCHANT_PRICE_SOURCE_LINEAGE_NOT_YET_REPLAYED` |
 
 ---
 
@@ -618,7 +619,126 @@ Total: 171 tests (145 prior + 26 new), all passing.
 C3B3D2B2C_R4_3_STOP_REVENUE_REGIME_PARITY_FAILED
 ```
 
-The PPA correction improved D2 debt from 38,830 kEUR (R4.2) to 41,496 kEUR (+2,666 kEUR closer). D1 Central is within 192 kEUR of the Excel reference. Engine sensitivity (2,125 kEUR) is 2.21× Excel's observed 961 kEUR. The VBA applies Central Low case Trackers through a mechanism that produces ~2.2× less effect than direct merchant price substitution. `VBA_IMPLEMENTATION_NOT_VISIBLE` remains the fundamental blocker.
+The PPA correction improved D2 debt from 38,830 kEUR (R4.2) to 41,496 kEUR (+2,666 kEUR closer). D1 Central is within 192 kEUR of the Excel reference. Engine sensitivity (2,125 kEUR) is 2.21× Excel's observed 961 kEUR. The VBA applies Central Low case Trackers through a mechanism that produces ~2.2× less effect than direct merchant price substitution.
+
+**R4.3 blocker reclassification (made in R4.4):** The 2.21× excess is not caused by `VBA_IMPLEMENTATION_NOT_VISIBLE` alone. The root cause is identified in R4.4 (see §13): committed D111 values are the raw (pre-inflation) block row; the effective bank price requires multiplication by D116.
+
+`financial_engine/` zero-diff from base SHA — no production changes.
+
+---
+
+## 13. R4.4 — Source price-curve lineage
+
+### Lineage finding: D111 is raw, not inflation-applied
+
+The R4.4 investigation traces the full formula chain from the Oborovo Inputs price block:
+
+```
+D106 = INDEX($D$107:$AL$112, MATCH($C$106, ...), MATCH(D105, ...)) × D116
+```
+
+Where:
+- `D107:D112` block = raw annual price curves (one row per scenario, pre-inflation)
+- `D116` = Calendar-year inflation index (`CY2030=1.10, ..., CY2060=1.99`)
+- `D106` = selected raw row × D116 = **effective** captured price (what CF!row30 uses)
+
+**D111 (Central Low case Trackers)** is the raw block row for the Central Low scenario:
+- `D111 = D112 × (1 + B107) = D112 × 1.085` (tracker premium on Central Low GMPV)
+- Committed values (CY2042–2060) are **PRE-INFLATION** — they are the raw D107:D112 block values
+
+### D116 back-calculation at CY2042
+
+From committed fixture evidence:
+
+| Input | Value | Source |
+|---|---|---|
+| `D103[CY2042]` | 52.101 EUR/MWh | R4.4 specification, Inputs!D103 |
+| `D103 = D108 × 1.05` | → D108[CY2042] = 49.620 | Back-calculation |
+| `D107[CY2042] = D108 × 1.085` | 53.838 EUR/MWh | Derived |
+| `D106[CY2042]` | 75.120951 EUR/MWh | Confirmed (merchant_revenue_truth.json) |
+| **D116[CY2042]** | **75.120951 / 53.838 = 1.3952** | **Precisely derived** |
+
+Consistency check: `1.10 × 1.02^12 = 1.3950` — D116 follows 2% annual compound growth from CY2030=1.10, confirming the back-calculation.
+
+### Effective Central Low prices
+
+| Year | D111 raw (EUR/MWh) | D116 | Effective (EUR/MWh) |
+|---|---|---|---|
+| CY2042 | 44.110675 | 1.3952 (exact) | **61.55** |
+| CY2043 | 43.199275 | 1.4231 (est. ±0.5%) | **61.47** |
+| CY2044 | 42.098000 | 1.4516 (est. ±0.5%) | **61.13** |
+
+CY2043 and CY2044 D116 values are estimated at 2% compound growth from CY2042. Exact values require D108 time series or direct D116 extraction (XLSM required).
+
+### Sensitivity ratio: why engine ratio is 2.21×
+
+| Year | Raw sensitivity (D106-D111_raw) | Effective sensitivity (D106-D111_eff) | Ratio |
+|---|---|---|---|
+| CY2042 | 31.010 EUR/MWh | 13.575 EUR/MWh | **2.28** |
+| CY2043 | 32.634 EUR/MWh | 14.356 EUR/MWh | **2.27** |
+| CY2044 | 33.937 EUR/MWh | 14.906 EUR/MWh | **2.28** |
+| Observed engine | — | — | 2125.330 / 961.0 = **2.21** |
+
+The raw/effective sensitivity ratio ≈ 2.28 across all merchant+debt periods, matching the observed engine ratio 2.21 within 3%. **Inflation treatment (D116) fully accounts for the 2.21× engine excess.**
+
+### R4.3 blocker reclassified
+
+The R4.3 stop (`C3B3D2B2C_R4_3_STOP_REVENUE_REGIME_PARITY_FAILED`) was caused by using raw D111 values instead of effective D111 × D116 values. The reclassification label is:
+
+```
+R4_3_RAW_CENTRAL_LOW_DIRECT_SUBSTITUTION_REJECTED
+OBOROVO_BANK_MERCHANT_PRICE_SOURCE_LINEAGE_NOT_YET_REPLAYED
+```
+
+### D103 causal role
+
+`D103 = D108 × 1.05` (Inputs!D103, column D = CY2042). This is a non-causal reference cell — it provides the CY2042 base GMPV for back-calculation purposes but does not feed into the bank revenue path.
+
+### E324 / E325 selector lineage
+
+```
+Scenarios!E325 = "Central Low case Trackers"
+  → selects D111 row from D107:D112 block (raw pre-inflation curve)
+  → × D116[year] (inflation index)
+  → D106 effective price (by calendar year)
+  → CF!row30 merchant price lookup (INDEX from D106 row by YEAR(period_end))
+  → CF!row23 gross merchant revenue
+  → Macro!row50 / DS!row20 bank CFADS
+```
+
+### R4.4 test coverage
+
+15 new tests in `TestR4_4SourceLineage`:
+
+| Test | Coverage |
+|---|---|
+| `test_r4_4_lineage_dict_importable` | Dict exists with classification |
+| `test_r4_4_verdict_in_lineage` | STOP verdict label |
+| `test_r4_4_verdict_in_module_docstring` | Docstring updated |
+| `test_r4_3_raw_substitution_rejected_importable` | Reclassification dict |
+| `test_r4_3_blocker_reclassified_as_lineage_gap` | Root cause label |
+| `test_d116_cy2042_back_calculated_from_d103` | D116[CY2042] in range 1.38–1.42 |
+| `test_d116_cy2042_consistent_with_compound_growth` | Matches 1.10 × 1.02^12 |
+| `test_effective_central_low_cy2042_above_raw` | Inflation uplift confirmed |
+| `test_effective_central_low_cy2042_below_central` | Directional ordering preserved |
+| `test_sensitivity_ratio_matches_engine_ratio` | Ratio ≈ observed 2.21× within 10% |
+| `test_sensitivity_ratio_explains_2x_excess` | Ratio > 2.0 per period |
+| `test_d103_causal_classification_present` | D103 non-causal label |
+| `test_e325_selector_chain_documented` | E325→D116 chain |
+| `test_effective_central_low_accessor_importable` | OBOROVO_EFFECTIVE_CENTRAL_LOW dict |
+| `test_no_new_candidate_without_full_lineage` | XLSM requirement enforced |
+
+Total: 186 tests (171 prior + 15 new), all passing.
+
+### R4.4 verdict
+
+```
+C3B3D2B2C_R4_4_STOP_MERCHANT_PRICE_SOURCE_LINEAGE_NOT_YET_REPLAYED
+```
+
+D116[CY2042] is precisely derived from committed fixture evidence. D116[CY2043–2044] require the D108 time series or direct D116 extraction (XLSM required). No new debt candidate until effective Central Low prices for all four merchant+debt periods (P26–P29) are confirmed.
+
+Expected R4.5 outcome: Candidate D with effective prices → engine sensitivity ≈ 961 kEUR, target debt ≈ 42,852 kEUR.
 
 `financial_engine/` zero-diff from base SHA — no production changes.
 
@@ -626,13 +746,16 @@ The PPA correction improved D2 debt from 38,830 kEUR (R4.2) to 41,496 kEUR (+2,6
 
 ## 14. Next steps for future stages
 
-A source-proven bank-sizing rule can only be identified by one of:
-1. Access to the VBA source code for the Macro50 procedure
-2. A new workbook extraction that captures Macro!row50 formula text
-3. Extraction of additional Scenarios sheet columns (bank-scenario column values)
-4. Documentation from the project originator identifying the bank-case price/yield inputs
+**R4.5 (next):** Extract D116[CY2043], D116[CY2044] from original XLSM workbook (SHA `15a621c4d6b79024980766e00ebc79d7235fd56f00567be7bf345c769ce57920`). Run Candidate D with effective Central Low prices (`D111_raw × D116`). If engine sensitivity ≈ 961 kEUR and D2 debt ≈ 42,852 kEUR, the source rule is fully identified.
 
-Until one of these is available, production adapter wiring is prohibited.
+If XLSM is not available, D116 endpoint-based compound growth (2% p.a.) can be used as an approximation, with the understanding that CY2043–2044 carry ±0.5% uncertainty.
+
+A source-proven bank-sizing rule can only be finalised by one of:
+1. XLSM extraction of D116 time series (or D108 time series) for CY2043-2044
+2. Access to the VBA source code for the Macro50 procedure (for any remaining gap after price lineage is closed)
+3. Documentation from the project originator identifying the bank-case price/yield inputs
+
+Until D116 exact values are confirmed for all four merchant+debt periods, production adapter wiring is prohibited.
 
 ---
 

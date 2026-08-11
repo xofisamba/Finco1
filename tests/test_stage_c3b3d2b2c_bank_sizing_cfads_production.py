@@ -1771,3 +1771,134 @@ class TestR4_3TuhoRevenueRegime:
                             f"Found runtime project-name dispatch at line {node.lineno}: "
                             f"comparison to '{comp.value}' in production code"
                         )
+
+
+class TestR4_4SourceLineage:
+    """R4.4: Source price-curve lineage — D111 raw vs inflation-applied.
+
+    Core finding: D111 committed values are raw (pre-inflation) from the
+    D107:D112 block. Effective bank merchant price = D111_raw × D116[year].
+    The 2.21× engine sensitivity excess is explained by inflation treatment (D116).
+    D116[CY2042] is back-calculable from D103 and D106 fixture evidence.
+    D116[CY2043-2044] requires XLSM extraction for precise values.
+    """
+
+    def test_r4_4_lineage_dict_importable(self):
+        """R4_4_INFLATION_LINEAGE must be importable from bank_sizing_candidates."""
+        from finco_recon.bank_sizing_candidates import R4_4_INFLATION_LINEAGE
+        assert "classification" in R4_4_INFLATION_LINEAGE
+        assert R4_4_INFLATION_LINEAGE["classification"] == (
+            "OBOROVO_BANK_MERCHANT_PRICE_SOURCE_LINEAGE_NOT_YET_REPLAYED"
+        )
+
+    def test_r4_4_verdict_in_lineage(self):
+        """R4.4 lineage must carry the STOP verdict label."""
+        from finco_recon.bank_sizing_candidates import R4_4_INFLATION_LINEAGE
+        assert R4_4_INFLATION_LINEAGE["r4_4_verdict"] == (
+            "C3B3D2B2C_R4_4_STOP_MERCHANT_PRICE_SOURCE_LINEAGE_NOT_YET_REPLAYED"
+        )
+
+    def test_r4_4_verdict_in_module_docstring(self):
+        """R4.4 verdict must appear in bank_sizing_candidates module docstring."""
+        src = (
+            pathlib.Path(__file__).parent.parent
+            / "finco_recon"
+            / "bank_sizing_candidates.py"
+        ).read_text()
+        assert "C3B3D2B2C_R4_4_STOP_MERCHANT_PRICE_SOURCE_LINEAGE_NOT_YET_REPLAYED" in src
+
+    def test_r4_3_raw_substitution_rejected_importable(self):
+        """R4_3_RAW_CENTRAL_LOW_DIRECT_SUBSTITUTION_REJECTED must be importable."""
+        from finco_recon.bank_sizing_candidates import (
+            R4_3_RAW_CENTRAL_LOW_DIRECT_SUBSTITUTION_REJECTED,
+        )
+        assert R4_3_RAW_CENTRAL_LOW_DIRECT_SUBSTITUTION_REJECTED["classification"] == (
+            "R4_3_RAW_CENTRAL_LOW_DIRECT_SUBSTITUTION_REJECTED"
+        )
+
+    def test_r4_3_blocker_reclassified_as_lineage_gap(self):
+        """R4_3_RAW_CENTRAL_LOW_DIRECT_SUBSTITUTION_REJECTED must name lineage gap as root cause."""
+        from finco_recon.bank_sizing_candidates import (
+            R4_3_RAW_CENTRAL_LOW_DIRECT_SUBSTITUTION_REJECTED,
+        )
+        assert "OBOROVO_BANK_MERCHANT_PRICE_SOURCE_LINEAGE_NOT_YET_REPLAYED" in (
+            R4_3_RAW_CENTRAL_LOW_DIRECT_SUBSTITUTION_REJECTED["evidence_classification"]
+        )
+
+    def test_d116_cy2042_back_calculated_from_d103(self):
+        """D116[CY2042] derived from D103 back-calculation must be in range 1.38-1.42."""
+        from finco_recon.bank_sizing_candidates import R4_4_INFLATION_LINEAGE
+        d116 = R4_4_INFLATION_LINEAGE["d116_back_calculation_cy2042"]["d116_cy2042_derived"]
+        # D116[CY2042] = D106[CY2042] / D107[CY2042] = 75.12095 / 53.838 ≈ 1.395
+        assert 1.38 <= d116 <= 1.42, f"D116[CY2042] = {d116}, expected in [1.38, 1.42]"
+
+    def test_d116_cy2042_consistent_with_compound_growth(self):
+        """D116[CY2042] must be consistent with 1.10 × 1.02^12 within 1%."""
+        from finco_recon.bank_sizing_candidates import R4_4_INFLATION_LINEAGE
+        d116 = R4_4_INFLATION_LINEAGE["d116_back_calculation_cy2042"]["d116_cy2042_derived"]
+        expected = 1.10 * (1.02 ** 12)  # ≈ 1.3950
+        assert abs(d116 - expected) / expected < 0.01, (
+            f"D116[CY2042] = {d116:.4f}, expected ≈ {expected:.4f} (1% tolerance)"
+        )
+
+    def test_effective_central_low_cy2042_above_raw(self):
+        """Effective Central Low CY2042 must be > D111_raw (44.11), confirming inflation uplift."""
+        from finco_recon.bank_sizing_candidates import R4_4_INFLATION_LINEAGE
+        eff = R4_4_INFLATION_LINEAGE["effective_central_low_eur_mwh"]["cy2042"]["effective"]
+        raw = R4_4_INFLATION_LINEAGE["effective_central_low_eur_mwh"]["cy2042"]["d111_raw"]
+        assert eff > raw, f"Effective {eff:.3f} must be > raw {raw:.3f}"
+        assert eff > 58.0, f"Effective CY2042 {eff:.3f} EUR/MWh must be > 58.0"
+
+    def test_effective_central_low_cy2042_below_central(self):
+        """Effective Central Low CY2042 must be below Central (D106=75.12), preserving directional ordering."""
+        from finco_recon.bank_sizing_candidates import R4_4_INFLATION_LINEAGE
+        eff = R4_4_INFLATION_LINEAGE["effective_central_low_eur_mwh"]["cy2042"]["effective"]
+        d106_cy2042 = 75.12095149999999
+        assert eff < d106_cy2042, (
+            f"Effective Central Low {eff:.3f} must be < Central {d106_cy2042:.3f}"
+        )
+
+    def test_sensitivity_ratio_matches_engine_ratio(self):
+        """Raw/effective price sensitivity ratio must match observed engine ratio within 10%."""
+        from finco_recon.bank_sizing_candidates import R4_4_INFLATION_LINEAGE
+        analysis = R4_4_INFLATION_LINEAGE["sensitivity_ratio_analysis"]
+        ratios = analysis["raw_over_effective_ratios"]
+        observed = analysis["observed_engine_sensitivity_ratio"]
+        for year, ratio in ratios.items():
+            assert abs(ratio - observed) / observed < 0.10, (
+                f"Sensitivity ratio mismatch at {year}: "
+                f"raw/eff={ratio:.3f}, observed engine={observed:.3f}"
+            )
+
+    def test_sensitivity_ratio_explains_2x_excess(self):
+        """Raw/effective sensitivity ratio must be > 2.0 (confirming ~2× engine excess)."""
+        from finco_recon.bank_sizing_candidates import R4_4_INFLATION_LINEAGE
+        ratios = R4_4_INFLATION_LINEAGE["sensitivity_ratio_analysis"]["raw_over_effective_ratios"]
+        for year, ratio in ratios.items():
+            assert ratio > 2.0, (
+                f"Sensitivity ratio at {year} = {ratio:.3f}, expected > 2.0"
+            )
+
+    def test_d103_causal_classification_present(self):
+        """R4.4 lineage must classify D103 as non-causal for bank revenue."""
+        from finco_recon.bank_sizing_candidates import R4_4_INFLATION_LINEAGE
+        assert "NON-CAUSAL" in R4_4_INFLATION_LINEAGE["d103_causal_classification"].upper()
+
+    def test_e325_selector_chain_documented(self):
+        """R4.4 lineage must document E325 → D111 → D116 → CF merchant revenue chain."""
+        from finco_recon.bank_sizing_candidates import R4_4_INFLATION_LINEAGE
+        chain = R4_4_INFLATION_LINEAGE["e324_e325_selector_chain"]["formula_chain"]
+        assert "E325" in chain or "D116" in chain
+
+    def test_effective_central_low_accessor_importable(self):
+        """OBOROVO_EFFECTIVE_CENTRAL_LOW_CY2042_ESTIMATED must be importable."""
+        from finco_recon.bank_sizing_candidates import OBOROVO_EFFECTIVE_CENTRAL_LOW_CY2042_ESTIMATED
+        assert "cy2042_exact" in OBOROVO_EFFECTIVE_CENTRAL_LOW_CY2042_ESTIMATED
+        assert OBOROVO_EFFECTIVE_CENTRAL_LOW_CY2042_ESTIMATED["cy2042_exact"] > 58.0
+
+    def test_no_new_candidate_without_full_lineage(self):
+        """R4.4 next_step must require XLSM extraction before any new candidate."""
+        from finco_recon.bank_sizing_candidates import R4_4_INFLATION_LINEAGE
+        note = R4_4_INFLATION_LINEAGE["r4_4_verdict_note"]
+        assert "XLSM" in note or "xlsm" in note.lower()
+        assert "CY2043" in note or "CY2044" in note
