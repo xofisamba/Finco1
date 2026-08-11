@@ -6,52 +6,122 @@
 |---|---|
 | Stage | C3B3D2B2C |
 | Branch | `stage-c3b3d2b2c-bank-sizing-cfads-production` |
-| Base SHA (C3B3D2B2B locked) | `6e06498…` |
+| Base SHA (C3B3D2B2B locked) | `6e064980868709294e14da4d95e3279790d70ff0` |
 | Protected C3B2 SHA | `f8f244c0660495bfb4115d4e32ba329c291ab829d1d0693e614c889457b5add7` |
 | PR | #925 (DRAFT — DO NOT MERGE without explicit instruction) |
+| **R3 Final Verdict** | `C3B3D2B2C_R3_STOP_MACRO50_TRANSFORMATION_SOURCE_INACCESSIBLE` |
 
 ---
 
 ## 1. Problem statement
 
-Prior stage C3B3D2B2B (PR #924, locked) proved that the Oborovo senior-debt sizing gap
-to the source Excel (42,852 kEUR) is entirely explained by the bank-case CFADS, not by
-mechanics (ACT/360, DSCR rounding, opex, rates).
+Prior stage C3B3D2B2B (PR #924, locked) proved:
 
-Specifically:
-- CF2 (DSCR mechanics) = 0 kEUR
-- CF3 (ACT/360 day-count) = 0 kEUR
-- CF4 (operating assumptions) = 0 kEUR
-- CF5 (interest rate) = 0 kEUR
+- CF2 (DSCR mechanics) = 0 kEUR — source-matched in current engine
+- CF3 (ACT/360 day-count) = 0 kEUR — source-matched in current engine
+- CF4 (operating assumptions) = 0 kEUR — source-matched
+- CF5 (interest rate) = 0 kEUR — source-matched
 - CF1 (CFADS / bank case) = **sole source of the sizing gap**
 
 Classification: `BANK_SIZING_CFADS_AUTHORITY_IS_SOLE_CURRENT_SIZING_GAP_SOURCE_PROVEN`
 
-This stage (C3B3D2B2C) implements a generic typed bank-sizing CFADS scenario layer and
-investigates whether any candidate rule reproduces the source Macro50 CFADS vector.
+This stage (C3B3D2B2C) was tasked with implementing a generic typed bank-sizing CFADS
+scenario layer, identifying the source-proven Macro50 merchant-period transformation, and
+wiring canonical production if a source rule was found.
 
 ---
 
-## 2. Source evidence
+## 2. Source evidence inspected (R3)
 
-**Source oracle**: DS!row20 = Macro!row50, loaded from
-`tests/fixtures/excel_oborovo_debt_interest_truth.json`
-key path: `workstream_a.ds_row20_cfads.period_values_keur`
+### Workbook identity
 
-The fixture contains 61 values:
-- Index [0]: 0.0 (construction, not used for sizing)
-- Index [1–24]: 2,533–2,920 kEUR (PPA periods — approximately equal to base P50 CFADS)
-- Index [25–29]: 2,279 / 2,104 / 2,249 / 2,058 / 2,226 kEUR (merchant periods — substantially lower)
+| Field | Value |
+|---|---|
+| Filename | `d49af8ee-20260414_BP_Oborovo_Sensitivity_FINAL_for_PPT.xlsm` |
+| SHA-256 | `15a621c4d6b79024980766e00ebc79d7235fd56f00567be7bf345c769ce57920` |
 
-Excel total debt (source): **42,852.279 kEUR**
+### Fixtures inspected
+
+- `tests/fixtures/excel_oborovo_debt_interest_truth.json` — DS/Macro/CF formulas and values
+- `tests/fixtures/excel_oborovo_financial_truth.json` — P&L, Inputs, tax formulas
+- `tests/fixtures/excel_oborovo_merchant_revenue_truth.json` — CF!row30 price formula
+- `tests/fixtures/excel_oborovo_full_model_extract.json` — period diagnostics
+- `tests/fixtures/excel_golden_oborovo.json` — worksheet metadata
+- `tests/fixtures/excel_oborovo_opex_structural_truth.json` — Scenarios!E4, opex template selector
+- `tests/fixtures/oborovo_baseline.json` — baseline inputs
+
+### Scenario selectors found
+
+| Cell | Value | Role |
+|---|---|---|
+| `Inputs!D52` | `P_50` | Base production scenario |
+| `Inputs!D89` | `Fixed` | Base market price scenario |
+| `Scenarios!E345` | `14` | Senior debt maturity (years) |
+| `Scenarios!E348` | `0.80` | Gearing/hedge coverage |
+| `Scenarios!E350` | `1.15` | DSCR band 1 (contracted) |
+| `Scenarios!E351` | `1.35` | DSCR band 2 (merchant/BESS) |
+| `Scenarios!E352` | `1.65` | DSCR band 3 (merchant PV) |
+| `Scenarios!E4` | opex template | OpEx scenario selector (`INDEX/MATCH`) |
+
+**Not found:** bank production selector, bank market price selector, lender/capture/haircut selector.
 
 ---
 
-## 3. Candidate rules investigated
+## 3. Macro!row50 forensics
+
+### DS!H20 provenance chain
+
+```
+DS!H20  formula: =Macro!H50        (confirmed, dual-load extraction)
+Macro!H49 formula: =CF!H79         (confirmed — base P50 CFADS)
+Macro!H50 formula: None            (no formula element in XML)
+```
+
+`macro_row50_output_formula: None` means Macro!row50 cells contain only `<v>` (cached
+value) elements with no `<f>` (formula) element. This is the signature of VBA-hardcoded
+values — the VBA macro (Macro50 procedure) ran a scenario and stored results directly into
+the worksheet cells via `Range(...).Value = ...`.
+
+### Macro!row38/39/40 precedent
+
+From `financial_truth.json` (P&L sheet):
+```
+P&L!row44 = Macro!G40
+Macro!G40 = IF(Production_Scenario=base_scenario, Macro!G38, Macro!G39)
+```
+
+Macro!row38 = base scenario CIT; row39 = alternative CIT; row40 switches on scenario.
+Both rows 38 and 39 contain hardcoded values matching row43 in the current snapshot.
+
+This establishes the Macro sheet architectural pattern (IF/scenario-switch), but
+Macro!row50's formula is None — it does NOT follow the formula-driven pattern.
+
+### PPA vs merchant period behaviour
+
+| Period range | DS!row20 vs CF!row79 | Interpretation |
+|---|---|---|
+| 1–24 (PPA) | ≈ identical (< 1 kEUR) | Bank CFADS ≈ base CFADS (contractual revenue unchanged) |
+| 25–60 (merchant) | DS20 << CF79 by 590–1,117 kEUR | Bank CFADS substantially lower; VBA-computed |
+
+The gap grows over the merchant tenor, suggesting compounding effects.
+
+### Candidate analysis (per-period merchant deltas)
+
+| Period | CF79 / Macro49 | DS20 / Macro50 | CF79 − DS20 |
+|---|---|---|---|
+| 25 | 2,992.5 | 2,279.8 | +712.7 |
+| 26 | 2,694.8 | 2,103.8 | +591.0 |
+| 27 | 2,991.7 | 2,248.8 | +743.0 |
+| 28 | 2,667.8 | 2,057.8 | +610.1 |
+| 29 | 2,994.5 | 2,226.8 | +767.8 |
+
+---
+
+## 4. Candidate rules investigated
 
 ### Candidate A — ALL_PRODUCTION (P90-10y for all periods)
 
-All operating periods (PPA and merchant) use the P90-10y yield scenario.
+All operating periods use P90-10y yield scenario.
 
 | Metric | Value |
 |---|---|
@@ -59,16 +129,13 @@ All operating periods (PPA and merchant) use the P90-10y yield scenario.
 | Max \|delta\| vs DS!row20 | **690 kEUR** |
 | Gap to Excel debt | −1,902 kEUR |
 
-Result: `OBOROVO_ALL_PRODUCTION_BANK_CASE_RULE_CANDIDATE_ONLY`
+Result: `OBOROVO_ALL_PRODUCTION_BANK_CASE_RULE_CANDIDATE_ONLY` — **REJECTED**
 
-The gap is large and systematic: P90 applied to PPA periods produces CFADS below
-the source (DS!row20 PPA periods ≈ base P50, not P90). The candidate rule
-contradicts source evidence.
+P90 applied to PPA periods produces CFADS below source (DS!row20 PPA ≈ base P50, not P90).
 
 ### Candidate B — MERCHANT_ONLY (P90-10y for merchant periods only)
 
-PPA periods (rank < `first_merchant_operating_period_index`) retain base P50 yield.
-Merchant periods use P90-10y yield.
+PPA periods retain base P50 yield. Merchant periods use P90-10y yield.
 
 | Metric | Value |
 |---|---|
@@ -76,145 +143,110 @@ Merchant periods use P90-10y yield.
 | Max \|delta\| vs DS!row20 | **690 kEUR** |
 | Gap to Excel debt | +770 kEUR |
 
-Per-period merchant delta (bank CFADS − source):
+Merchant period deltas (bank CFADS − DS!row20):
 
-| Period | Bank CFADS (kEUR) | Source DS!row20 (kEUR) | Delta (kEUR) |
+| Period | Bank CFADS | Source DS20 | Delta |
 |---|---|---|---|
 | 26 | 2,546 | 2,280 | +266 |
 | 27 | 2,759 | 2,104 | +655 |
 | 28 | 2,531 | 2,249 | +283 |
 | 29 | 2,748 | 2,058 | +690 |
 
-Result: `OBOROVO_MERCHANT_ONLY_BANK_CASE_RULE_CANDIDATE_ONLY`
+Result: `OBOROVO_MERCHANT_ONLY_BANK_CASE_RULE_CANDIDATE_ONLY` — **REJECTED**
 
-The PPA period match is good (delta ≈ 0). The merchant period mismatch is large and
-positive — our P90-10y CFADS exceeds the source Macro50 by 266–690 kEUR per period.
-The source applies an additional merchant-period downside not captured by yield-scenario
+PPA period match is good (delta ≈ 0). Merchant periods: P90 CFADS systematically exceeds
+source Macro50. The VBA applies additional merchant downside not captured by yield-scenario
 substitution alone.
 
 ---
 
-## 4. Root cause of merchant period gap
+## 5. Implied merchant bank revenue analysis (R3)
 
-### PPA periods
-
-For PPA periods (1–24), DS!row20 decomposition from CF-sheet components confirms:
+For H2 merchant periods (odd, CIT = 0), the implied bank revenue given source opex is:
 
 ```
-source_cfads[p] ≈ revenue_component[p] − opex_component[p] − cit_component[p]
+bank_rev[p] = DS20[p] − source_opex[p]
 ```
 
-The sum matches DS!row20 within fixture precision. This confirms that for PPA periods,
-the source bank CFADS equals the clean-engine base-case CFADS (P50).
+Ratios vs base P50 source revenue (Candidate B, P90 production):
 
-Classification: source bank CFADS ≈ base CFADS for PPA periods.
+| Period | P50 prod | P90 prod | Impl rev | P90 rev | Impl/P90 |
+|---|---|---|---|---|---|
+| P25 | 52,291 | 49,351 | 3,244.5 | 3,571.6 | 0.908 |
+| P27 | 52,081 | 49,153 | 3,224.2 | 3,708.0 | 0.870 |
+| P29 | 52,017 | 49,093 | 3,204.7 | 3,713.1 | 0.863 |
+| P31 | 51,666 | 48,761 | 3,053.6 | 3,596.3 | 0.849 |
+| P35 | 51,253 | 48,371 | 3,173.5 | 3,726.7 | 0.852 |
 
-### Merchant periods
+No constant ratio. The implied price (given P90 production) varies from 65.4 to 65.9 EUR/MWh
+vs base 75–78 EUR/MWh. The pattern is not consistent with any simple multiplier or flat
+price floor.
 
-For merchant periods (25+), the CF-sheet component sum is substantially **higher** than DS!row20:
-
-```
-revenue_component[25] + opex_component[25] + cit_component[25] >> DS!row20[25]
-```
-
-The additional downside is applied by the Excel VBA Macro50 macro to the merchant
-revenue/CFADS rows. The exact transformation mechanism is not visible in the
-data-only worksheet extraction.
-
-Classification: `VBA_IMPLEMENTATION_NOT_VISIBLE`
-`BANK_CASE_TRANSFORMATION_MECHANISM_UNRESOLVED`
+No bank price scenario, capture-price discount, lender haircut, or downside price curve was
+found in the inspected fixture data. The Scenarios sheet column structure (beyond the base
+E-column values) was not captured in the extraction artifacts.
 
 ---
 
-## 5. Stop verdict
+## 6. Stop verdict
 
 ```
-C3B3D2B2C_STOP_BANK_CASE_TRANSFORMATION_NOT_SOURCE_PROVEN
+C3B3D2B2C_R3_STOP_MACRO50_TRANSFORMATION_SOURCE_INACCESSIBLE
 ```
 
-Neither Candidate A (ALL_PRODUCTION) nor Candidate B (MERCHANT_ONLY) reproduces the
-source DS!row20 / Macro50 vector. The VBA merchant transformation mechanism is not
-identifiable from data-only worksheet extraction.
+The Macro!row50 formula is absent (VBA-hardcoded values). No formula, Scenarios cell, or
+price-curve evidence has been found that would uniquely identify the bank-case CFADS
+transformation. The VBA procedure (Macro50) is password-protected and not accessible.
 
-**Consequences:**
-
-1. The generic bank-sizing CFADS layer (inputs, orchestrator, results, provenance) is
-   implemented and tested but NOT wired into the canonical adapter
-   (`build_senior_debt_model_input_from_project_inputs`) for any project.
-
-2. Production adapter wiring is BLOCKED until a source-proven rule is identified.
-
-3. The STOP verdict is the authoritative output of this stage.
+No source-proven rule can be established from the available extraction artifacts.
 
 ---
 
-## 6. Architecture implemented
+## 7. Production impact (R3 revert)
 
-### New input types (`financial_engine/inputs.py`)
+Per R3 specification §10 (STOP case):
 
-- `ProductionScenarioScope` (Enum): `ALL_PRODUCTION` | `MERCHANT_ONLY`
-- `DebtSizingScenario` (frozen dataclass): `yield_scenario` + `scope` (both required)
-- `SeniorDebtModelInput.bank_sizing_scenario`: `DebtSizingScenario | None = None`
+**Reverted from `financial_engine/` production files:**
+- `inputs.py`: `ProductionScenarioScope` removed; `DebtSizingScenario.scope` removed;
+  `SeniorDebtModelInput.bank_sizing_scenario` removed
+- `results.py`: `SeniorDebtSchedules.bank_sizing_cfads_keur` removed;
+  `SeniorDebtSchedules.bank_sizing_dscr` removed
+- `provenance.py`: `bank_sizing_scenario` payload removed from fingerprint
+- `orchestrator.py`: `_derive_bank_operating_input`, `_is_ppa_for_bank_splice`,
+  fail-closed bank CFADS audit, bank DSCR computation — all removed
 
-### Orchestrator (`financial_engine/orchestrator.py`)
+**Moved to `finco_recon/bank_sizing_candidates.py` (diagnostic-only):**
+- `_derive_bank_operating_input()` — pure transformer for candidate evaluation
+- `run_candidate_a_all_production()` — Candidate A evaluation
+- `run_candidate_b_merchant_only()` — Candidate B evaluation
+- `MACRO50_FORENSICS` — forensic summary dict
+- `load_ds_row20_oracle()` — DS!row20 oracle loader
 
-- `_derive_bank_operating_input()`: pure transformer — swaps only `yield_scenario`;
-  all other fields shared by reference from base `OperatingModelInput`
-- `_is_ppa_for_bank_splice()`: uses `first_merchant_operating_period_index` (same
-  authority as revenue engine) rather than `is_ppa_active` (calendar-based)
-- `MERCHANT_ONLY` path: PPA periods take base P50 periods; merchant periods take P90 periods
-- Fail-closed: raises `BANK_SIZING_CFADS_REQUIRED_PERIOD_MISSING` — no 0.0 fallback
-- `bank_sizing_dscr`: bank CFADS / debt service (sizing DSCR)
-- `senior_dscr`: base P50 CFADS / debt service (actual/economic DSCR) when bank active
-- Base economic authority: after solver convergence, re-runs base-case tax/CFADS;
-  `ProjectModelResult.tax_and_cfads` is always P50 economic CFADS
-
-### Results (`financial_engine/results.py`)
-
-`SeniorDebtSchedules` additions:
-- `bank_sizing_cfads_keur: tuple[float, ...] | None = None`
-- `bank_sizing_dscr: tuple[float | None, ...] | None = None`
-
-### Provenance (`financial_engine/provenance.py`)
-
-`compute_senior_debt_fingerprint` includes `bank_sizing_scenario.yield_scenario` +
-`.scope` in the payload. Two runs differing only in bank scenario produce different
-fingerprints.
+All 79 Phase 2C tests pass. All 169 Phase 2B tests pass (1 pre-existing Oborovo baseline failure, not from this PR).
 
 ---
 
-## 7. Revenue-regime authority
+## 8. Evidence labels preserved
 
-The bank splice boundary uses `first_merchant_operating_period_index` (an explicit
-input field that drives the revenue engine) rather than `is_ppa_active` (which reflects
-calendar-based PPA date computation and may diverge from the revenue engine's boundary).
-
-This is critical for projects where the PPA contract date creates a half-period boundary
-that `is_ppa_active` resolves differently from the revenue engine.
-
----
-
-## 8. DSCR semantics (when bank scenario active)
-
-| Field | Definition | Populated when |
-|---|---|---|
-| `senior_dscr` | base P50 CFADS / debt service | always |
-| `bank_sizing_dscr` | bank CFADS / debt service | bank scenario active |
-
-The `bank_sizing_dscr` is the SIZING/bank DSCR (what the solver targets).
-The `senior_dscr` is the ACTUAL/economic DSCR (for project economic assessment).
-
-For Oborovo MERCHANT_ONLY merchant periods:
-- `bank_sizing_dscr` ≈ 1.35 (solver target)
-- `senior_dscr` ≈ 1.45–1.47 (actual P50)
+- `BANK_SIZING_CFADS_AUTHORITY_IS_SOLE_CURRENT_SIZING_GAP_SOURCE_PROVEN`
+- `OBOROVO_ALL_PRODUCTION_BANK_CASE_RULE_CANDIDATE_ONLY`
+- `OBOROVO_MERCHANT_ONLY_BANK_CASE_RULE_CANDIDATE_ONLY`
+- `BANK_CASE_TRANSFORMATION_MECHANISM_UNRESOLVED`
+- `VBA_IMPLEMENTATION_NOT_VISIBLE`
+- `C3B3D2B2C_STOP_BANK_CASE_TRANSFORMATION_NOT_SOURCE_PROVEN` (R2 finding, preserved)
+- `C3B3D2B2C_R3_STOP_MACRO50_TRANSFORMATION_SOURCE_INACCESSIBLE` (R3 final verdict)
 
 ---
 
-## 9. C3B3D2B2B regression lock
+## 9. Next steps for future stages
 
-The protected C3B2 SHA `f8f244c0660495bfb4115d4e32ba329c291ab829d1d0693e614c889457b5add7`
-must not appear in any production output (no literal). The C3B3D2B2B findings
-(CF2=CF3=CF4=CF5=0) are preserved and locked.
+A source-proven bank-sizing rule can only be identified by one of:
+1. Access to the VBA source code for the Macro50 procedure
+2. A new workbook extraction that captures Macro!row50 formula text
+3. Extraction of additional Scenarios sheet columns (bank-scenario column values)
+4. Documentation from the project originator identifying the bank-case price/yield inputs
+
+Until one of these is available, production adapter wiring is prohibited.
 
 ---
 
@@ -225,6 +257,7 @@ must not appear in any production output (no literal). The C3B3D2B2B findings
 - No approved_delta or balancing plug — ENFORCED
 - No calibration of clean engine to source — ENFORCED
 - `13547.2` does not appear as a literal — ENFORCED
+- Protected C3B2 SHA not in production code literals — ENFORCED
 - No DSRA implementation — ENFORCED
 - Source Macro50 is test oracle only — no runtime fixture reads in production code
 - `BANK_CASE_TRANSFORMATION_MECHANISM_UNRESOLVED` — preserved
