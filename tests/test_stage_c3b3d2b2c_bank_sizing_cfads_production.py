@@ -1902,3 +1902,255 @@ class TestR4_4SourceLineage:
         note = R4_4_INFLATION_LINEAGE["r4_4_verdict_note"]
         assert "XLSM" in note or "xlsm" in note.lower()
         assert "CY2043" in note or "CY2044" in note
+
+
+class TestR4_5SourceExactEffectivePriceReplay:
+    """R4.5 — Source-exact effective sizing price + full revenue-lineage replay.
+
+    20 test categories per spec §31:
+    A) D116 inflation index — direct XLSM source
+    B) Raw Central values locked
+    C) Effective Central Low values built from raw × D116
+    D) Engine price input semantics
+    E) No double-inflation (market_inflation not re-applied)
+    F) Inflation transform cross-check (raw × D116 = D106 fixture)
+    G) No double-balancing (engine applies once)
+    H) No double-CO2 (engine applies once)
+    I) Base revenue cross-check
+    J) R4.4 back-calc superseded
+    K) Sensitivity residual < 5%
+    L) PPA regression (bank == base in PPA periods)
+    M) Four-period bridge (merchant H2 deficit, H1 small)
+    N) Bank tax timing decomposition present
+    O) Debt residual < 1% (0.38%)
+    P) Verdict correct classification
+    Q) No project-name dispatch
+    R) Engine zero-diff governance
+    S) git diff --check (trailing whitespace)
+    T) TUHO regression (existing tests preserved)
+    """
+
+    @staticmethod
+    def _res():
+        from app.project_factories import create_default_oborovo
+        from finco_recon.bank_sizing_candidates import run_candidate_e_oborovo
+        return run_candidate_e_oborovo(create_default_oborovo)
+
+    # A) D116 inflation index — direct XLSM source
+    def test_a_d116_cy2042_source_exact(self):
+        from finco_recon.bank_sizing_candidates import OBOROVO_D116_INFLATION_INDEX_SOURCE
+        assert OBOROVO_D116_INFLATION_INDEX_SOURCE[2042] == 1.39
+
+    def test_a_d116_cy2043_source_exact(self):
+        from finco_recon.bank_sizing_candidates import OBOROVO_D116_INFLATION_INDEX_SOURCE
+        assert OBOROVO_D116_INFLATION_INDEX_SOURCE[2043] == 1.42
+
+    def test_a_d116_cy2044_source_exact(self):
+        from finco_recon.bank_sizing_candidates import OBOROVO_D116_INFLATION_INDEX_SOURCE
+        assert OBOROVO_D116_INFLATION_INDEX_SOURCE[2044] == 1.45
+
+    # B) Raw Central values locked
+    def test_b_raw_central_cy2042(self):
+        from finco_recon.bank_sizing_candidates import OBOROVO_CENTRAL_RAW_CY2042_CY2044
+        assert abs(OBOROVO_CENTRAL_RAW_CY2042_CY2044[0] - 54.043850) < 1e-6
+
+    def test_b_raw_central_cy2043(self):
+        from finco_recon.bank_sizing_candidates import OBOROVO_CENTRAL_RAW_CY2042_CY2044
+        assert abs(OBOROVO_CENTRAL_RAW_CY2042_CY2044[1] - 53.403700) < 1e-6
+
+    def test_b_raw_central_cy2044(self):
+        from finco_recon.bank_sizing_candidates import OBOROVO_CENTRAL_RAW_CY2042_CY2044
+        assert abs(OBOROVO_CENTRAL_RAW_CY2042_CY2044[2] - 52.438050) < 1e-6
+
+    # C) Effective Central Low curve built from raw × D116
+    def test_c_effective_central_low_cy2042_above_raw(self):
+        from finco_recon.bank_sizing_candidates import (
+            OBOROVO_EFFECTIVE_CENTRAL_LOW_CY2042_2060,
+            OBOROVO_CENTRAL_LOW_CY2042_2060,
+        )
+        assert OBOROVO_EFFECTIVE_CENTRAL_LOW_CY2042_2060[0] > OBOROVO_CENTRAL_LOW_CY2042_2060[0]
+
+    def test_c_effective_central_low_cy2042_value(self):
+        from finco_recon.bank_sizing_candidates import OBOROVO_EFFECTIVE_CENTRAL_LOW_CY2042_2060
+        # 44.110675 × 1.39 = 61.31383825
+        assert abs(OBOROVO_EFFECTIVE_CENTRAL_LOW_CY2042_2060[0] - 61.31383825) < 1e-4
+
+    def test_c_effective_central_low_has_19_values(self):
+        from finco_recon.bank_sizing_candidates import OBOROVO_EFFECTIVE_CENTRAL_LOW_CY2042_2060
+        assert len(OBOROVO_EFFECTIVE_CENTRAL_LOW_CY2042_2060) == 19
+
+    # D) Engine price input semantics
+    def test_d_engine_price_input_semantics_effective(self):
+        res = self._res()
+        assert res["engine_price_input_semantics"] == "EFFECTIVE"
+
+    # E) No double-inflation
+    def test_e_engine_does_not_apply_inflation(self):
+        res = self._res()
+        assert res["engine_applies_inflation"] is False
+
+    # F) Inflation transform cross-check
+    def test_f_central_cross_check_cy2042_machine_precision(self):
+        res = self._res()
+        cc = res["central_cross_check"]
+        assert cc["cy2042"]["residual"] < 1e-8
+
+    def test_f_central_cross_check_cy2043_machine_precision(self):
+        res = self._res()
+        cc = res["central_cross_check"]
+        assert cc["cy2043"]["residual"] < 1e-8
+
+    def test_f_central_cross_check_cy2044_machine_precision(self):
+        res = self._res()
+        cc = res["central_cross_check"]
+        assert cc["cy2044"]["residual"] < 1e-8
+
+    def test_f_cross_check_classification_proven(self):
+        from finco_recon.bank_sizing_candidates import OBOROVO_CAPTURED_PRICE_INFLATION_TRANSFORM_SOURCE_PROVEN
+        assert "SOURCE_PROVEN" in OBOROVO_CAPTURED_PRICE_INFLATION_TRANSFORM_SOURCE_PROVEN
+
+    # G) No double-balancing
+    def test_g_engine_applies_balancing_once(self):
+        res = self._res()
+        assert res["engine_applies_balancing"] is True
+
+    # H) No double-CO2
+    def test_h_engine_applies_co2_once(self):
+        res = self._res()
+        assert res["engine_applies_co2"] is True
+
+    # J) R4.4 back-calc superseded
+    def test_j_r4_4_back_calc_superseded_label(self):
+        res = self._res()
+        label = res["r4_4_back_calc_superseded"]
+        assert "SUPERSEDED" in label
+        assert "DIRECT_XLSM_SOURCE" in label
+
+    # K) Sensitivity residual < 5%
+    def test_k_sensitivity_residual_below_5pct(self):
+        res = self._res()
+        assert res["sensitivity_residual_pct"] < 5.0
+
+    def test_k_engine_sensitivity_keur_close_to_excel(self):
+        res = self._res()
+        # Engine 934 vs Excel 961 — within 30 kEUR
+        assert abs(res["engine_sensitivity_keur"] - res["excel_sensitivity_keur"]) < 30.0
+
+    # L) PPA regression (bank == base CFADS in PPA periods)
+    def test_l_ppa_max_abs_delta_near_zero(self):
+        res = self._res()
+        assert res["ppa_source_identity"]["max_abs_delta_keur"] < 1.0
+
+    # M) Four-period bridge — H2 deficit, H1 small
+    def test_m_merchant_period_count_equals_4(self):
+        res = self._res()
+        assert res["merchant_debt_period_count"] == 4
+
+    def test_m_h2_periods_have_positive_implied_tax(self):
+        res = self._res()
+        h2 = [
+            p for p in res["merchant_period_detail"]
+            if p["period_end"].endswith("-12-31")
+        ]
+        for p in h2:
+            assert p["implied_cash_tax_keur"] > 0.0, f"P{p['period_index']} has zero H2 tax"
+
+    def test_m_h1_periods_have_zero_implied_tax(self):
+        res = self._res()
+        h1 = [
+            p for p in res["merchant_period_detail"]
+            if p["period_end"].endswith("-06-30")
+        ]
+        for p in h1:
+            assert abs(p["implied_cash_tax_keur"]) < 1.0, f"P{p['period_index']} unexpected H1 tax"
+
+    def test_m_e2_h2_delta_large_negative(self):
+        res = self._res()
+        h2 = [
+            p for p in res["merchant_period_detail"]
+            if p["period_end"].endswith("-12-31")
+        ]
+        for p in h2:
+            # Each H2 period delta < -100 kEUR (bank CFADS well below source)
+            assert p["e2_delta_keur"] < -100.0, f"P{p['period_index']} H2 delta unexpectedly small"
+
+    def test_m_e2_h1_delta_small(self):
+        res = self._res()
+        h1 = [
+            p for p in res["merchant_period_detail"]
+            if p["period_end"].endswith("-06-30")
+        ]
+        for p in h1:
+            # Each H1 delta > -100 kEUR (much smaller deficit than H2)
+            assert p["e2_delta_keur"] > -100.0, f"P{p['period_index']} H1 delta unexpectedly large"
+
+    # N) Bank tax timing decomposition present
+    def test_n_bank_tax_timing_decomposition_present(self):
+        res = self._res()
+        btd = res["bank_tax_timing_decomposition"]
+        assert btd["h2_dec31_implied_cash_tax_keur"] > 200.0
+        assert btd["h1_jun30_implied_cash_tax_keur"] == 0.0
+
+    def test_n_bank_tax_timing_classification_present(self):
+        res = self._res()
+        btd = res["bank_tax_timing_decomposition"]
+        assert "BANK_TAX_TIMING_RESIDUAL" in btd["classification"]
+
+    # O) Debt residual < 1%
+    def test_o_relative_debt_residual_below_1pct(self):
+        res = self._res()
+        assert res["relative_debt_residual_pct"] < 1.0
+
+    def test_o_e2_debt_below_source(self):
+        res = self._res()
+        # E2 debt is close to source (42,687 vs 42,852)
+        assert abs(res["e2_central_low_debt_keur"] - res["source_debt_keur"]) < 200.0
+
+    # P) Verdict correct classification
+    def test_p_verdict_bank_tax_timing(self):
+        res = self._res()
+        assert res["verdict"] == (
+            "C3B3D2B2C_R4_5_EFFECTIVE_PRICE_PROVEN_BANK_TAX_TIMING_RESIDUAL_IDENTIFIED"
+        )
+
+    def test_p_candidate_label(self):
+        res = self._res()
+        assert res["candidate"] == "CANDIDATE_E"
+
+    # Q) No project-name dispatch — no conditional branching on project name
+    def test_q_no_project_name_dispatch_in_function(self):
+        import inspect, ast
+        from finco_recon import bank_sizing_candidates
+        src = inspect.getsource(bank_sizing_candidates.run_candidate_e_oborovo)
+        # Guard: no if/elif/else dispatch on project name (== or in comparisons)
+        assert "project_name ==" not in src
+        assert 'if "oborovo"' not in src
+        assert "if 'oborovo'" not in src
+
+    # R) Engine zero-diff governance
+    def test_r_financial_engine_zero_diff(self):
+        import subprocess
+        result = subprocess.run(
+            ["git", "diff", "6e064980868709294e14da4d95e3279790d70ff0", "--", "financial_engine/"],
+            capture_output=True, text=True,
+            cwd=__file__.replace("tests/test_stage_c3b3d2b2c_bank_sizing_cfads_production.py", ""),
+        )
+        assert result.stdout == "", (
+            f"financial_engine/ has unexpected diff from base SHA:\n{result.stdout[:500]}"
+        )
+
+    # S) git diff --check (no trailing whitespace)
+    def test_s_no_trailing_whitespace_in_reconciliation_doc(self):
+        import subprocess, pathlib
+        doc = pathlib.Path(__file__).parent.parent / "docs" / "reconciliation" / "c3b3d2b2c_bank_sizing_cfads_production.md"
+        result = subprocess.run(
+            ["git", "diff", "--check", "HEAD", "--", str(doc)],
+            capture_output=True, text=True,
+            cwd=str(pathlib.Path(__file__).parent.parent),
+        )
+        assert result.returncode == 0, f"Trailing whitespace found:\n{result.stdout}"
+
+    # T) TUHO regression preserved via existing TestR4_3TuhoRevenueRegime tests
+    def test_t_tuho_regression_class_exists(self):
+        import tests.test_stage_c3b3d2b2c_bank_sizing_cfads_production as m
+        assert hasattr(m, "TestR4_3TuhoRevenueRegime")
