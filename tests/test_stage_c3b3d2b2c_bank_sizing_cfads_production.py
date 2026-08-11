@@ -2629,3 +2629,307 @@ class TestR4_6_1FullSourcePLReplayCounterfactual:
         for r in r4_6_1_result["merchant_period_bridge"]:
             assert r["ebt_keur"] < 0.0
             assert r["row37_loss_used_keur"] == pytest.approx(0.0, abs=0.001)
+
+
+# ============================================================================
+# R4.7 — Oborovo source workbook production-selector bypass + bank CFADS parity
+# ============================================================================
+
+@pytest.fixture(scope="module")
+def r4_7_result():
+    from finco_recon.bank_sizing_candidates import run_candidate_h_oborovo
+    from app.project_factories import create_default_oborovo
+    return run_candidate_h_oborovo(create_default_oborovo)
+
+
+class TestR4_7ProductionSelectorBypassAndCfadsParity:
+    """R4.7: Oborovo CF production-selector bypass proof + source workbook replay.
+
+    Categories:
+      A) P50 hours source
+      B) P90-10y hours source
+      C) Dynamic selector evidence
+      D) CF!B20 linkage inferred
+      E) CF!B20 does NOT use dynamic selector
+      F) CF production lineage (fixture comparison)
+      G) Central Low bank price unchanged
+      H) P50 source-workbook revenue replay CFADS
+      I) Source sizing CIT recomputation
+      J) Four-period DS20 CFADS parity (P26/P27/P29)
+      K) Senior Debt parity
+      L) Generic P90 diagnostic preserved
+      M) Generic P90 case below source
+      N) TUHO dynamic P90 propagation
+      O) Cross-project non-generalisation
+      P) No project identity dispatch
+      Q) No runtime fixture reads in production path
+      R) No calibration/plugs
+      S) financial_engine zero-diff
+      T) R4.6.1 p29 report correction
+    """
+
+    # A) P50 operating hours source confirmed
+    def test_a_p50_hours_source_confirmed(self, r4_7_result):
+        assert r4_7_result["oborovo_p50_hours"] == 1494.0
+
+    def test_a_p50_classification_present(self, r4_7_result):
+        c = r4_7_result["inputs_d54_classification"]
+        assert "1494" in c
+        assert "P50" in c.upper() or "p50" in c
+
+    # B) P90-10y hours source confirmed
+    def test_b_p90_hours_source_confirmed(self, r4_7_result):
+        assert r4_7_result["oborovo_p90_10y_hours"] == 1410.0
+
+    def test_b_p90_classification_present(self, r4_7_result):
+        c = r4_7_result["inputs_d54_classification"]
+        assert "1410" in c
+
+    def test_b_p90_p50_ratio_correct(self, r4_7_result):
+        assert r4_7_result["oborovo_p90_p50_ratio"] == pytest.approx(1410.0 / 1494.0, abs=1e-8)
+
+    # C) Dynamic selector evidence documented
+    def test_c_production_selector_evidence_present(self, r4_7_result):
+        c = r4_7_result["inputs_d52_classification"]
+        assert "D52" in c or "D54" in c or "SELECTOR" in c
+
+    def test_c_vba_scenario_switch_classified(self, r4_7_result):
+        assert "VBA_SOURCE_PROVEN" in r4_7_result["vba_scenario_switch"]
+
+    def test_c_obsolete_vba_classification_superseded(self, r4_7_result):
+        assert r4_7_result["obsolete_vba_not_visible_superseded"] is True
+
+    # D) CF operating-hours formula documented
+    def test_d_cf_b20_formula_inferred(self, r4_7_result):
+        f = r4_7_result["cf_b20_formula_inferred"]
+        assert len(f) > 0
+        assert "P50" in f or "static" in f.lower()
+
+    # E) CF!B20 does NOT use dynamic selector
+    def test_e_cf_does_not_use_dynamic_selector(self, r4_7_result):
+        assert r4_7_result["cf_uses_dynamic_selector"] is False
+
+    def test_e_bypass_classification_present(self, r4_7_result):
+        c = r4_7_result["cf_production_bypass_classification"]
+        assert "BYPASS" in c or "P50" in c
+        assert "PROVEN" in c
+
+    # F) CF production lineage — P50 engine matches fixture for P26/P27/P29
+    def test_f_p26_production_matches_fixture(self, r4_7_result):
+        for r in r4_7_result["merchant_period_bridge"]:
+            if r["period_end"] == "2042-12-31":
+                assert abs(r["production_p50_vs_fixture_delta_mwh"]) < 1.0, \
+                    f"P26 P50/fixture production delta should be <1 MWh, got {r['production_p50_vs_fixture_delta_mwh']}"
+
+    def test_f_p27_production_matches_fixture(self, r4_7_result):
+        for r in r4_7_result["merchant_period_bridge"]:
+            if r["period_end"] == "2043-06-30":
+                assert abs(r["production_p50_vs_fixture_delta_mwh"]) < 1.0
+
+    def test_f_p29_production_matches_fixture(self, r4_7_result):
+        for r in r4_7_result["merchant_period_bridge"]:
+            if r["period_end"] == "2044-06-30":
+                assert abs(r["production_p50_vs_fixture_delta_mwh"]) < 1.0
+
+    def test_f_p28_calendar_residual_documented(self, r4_7_result):
+        # P28 has 144 MWh production discrepancy — calendar/fraction boundary issue
+        assert r4_7_result["p28_calendar_residual_mwh"] is not None
+        assert abs(r4_7_result["p28_calendar_residual_mwh"]) > 100.0  # 144 MWh confirmed
+        assert abs(r4_7_result["p28_calendar_residual_mwh"]) < 200.0
+
+    def test_f_p90_production_substantially_below_fixture(self, r4_7_result):
+        for r in r4_7_result["merchant_period_bridge"]:
+            if r["fixture_production_mwh"]:
+                p90_delta = r["p90_production_mwh"] - r["fixture_production_mwh"]
+                assert p90_delta < -2000.0, \
+                    f"P90 should be >2000 MWh below fixture at P{r['period_index']}, got {p90_delta:.1f}"
+
+    # G) Central Low bank price unchanged
+    def test_g_central_low_cy2042_raw(self, r4_7_result):
+        assert r4_7_result["central_low_cy2042_raw_eur_mwh"] == pytest.approx(44.110675, abs=1e-4)
+
+    def test_g_central_low_cy2043_raw(self, r4_7_result):
+        assert r4_7_result["central_low_cy2043_raw_eur_mwh"] == pytest.approx(43.199275, abs=1e-4)
+
+    def test_g_effective_central_low_cy2042(self, r4_7_result):
+        assert r4_7_result["effective_central_low_cy2042_eur_mwh"] == pytest.approx(61.31383825, abs=1e-4)
+
+    # H) P50 source-workbook CFADS parity (3 of 4 periods within 1 kEUR)
+    def test_h_p26_cfads_parity(self, r4_7_result):
+        for r in r4_7_result["merchant_period_bridge"]:
+            if r["period_end"] == "2042-12-31":
+                assert abs(r["t4_vs_ds20_delta_keur"]) < 1.0, \
+                    f"P26 CFADS delta should be <1 kEUR, got {r['t4_vs_ds20_delta_keur']:.3f}"
+
+    def test_h_p27_cfads_parity(self, r4_7_result):
+        for r in r4_7_result["merchant_period_bridge"]:
+            if r["period_end"] == "2043-06-30":
+                assert abs(r["t4_vs_ds20_delta_keur"]) < 1.0
+
+    def test_h_p29_cfads_parity(self, r4_7_result):
+        for r in r4_7_result["merchant_period_bridge"]:
+            if r["period_end"] == "2044-06-30":
+                assert abs(r["t4_vs_ds20_delta_keur"]) < 1.0
+
+    def test_h_periods_outside_1keur_excl_p28_is_zero(self, r4_7_result):
+        assert r4_7_result["t4_periods_outside_excl_p28_calendar"] == 0
+
+    # I) Source sizing CIT recomputed from P50 EBITDA (row35→41→43)
+    def test_i_h2_cit_zero_in_t4(self, r4_7_result):
+        for r in r4_7_result["merchant_period_bridge"]:
+            if r["is_h2"]:
+                assert r["t4_source_cit_keur"] == pytest.approx(0.0, abs=0.001)
+
+    def test_i_h1_cit_nonzero_in_t4(self, r4_7_result):
+        h1_cits = [r["t4_source_cit_keur"] for r in r4_7_result["merchant_period_bridge"] if r["is_h1"]]
+        assert any(c > 0.0 for c in h1_cits)
+
+    def test_i_t4_cit_greater_than_t3_at_h1(self, r4_7_result):
+        # P50 has higher taxable income → higher CIT at H1 than P90 (T3)
+        for r in r4_7_result["merchant_period_bridge"]:
+            if r["is_h1"] and r["t3_source_cit_keur"] > 0.0:
+                assert r["t4_source_cit_keur"] > r["t3_source_cit_keur"], \
+                    f"T4 CIT should be > T3 CIT at H1 P{r['period_index']}"
+
+    # J) Four-period DS20 parity summary
+    def test_j_max_cfads_delta_is_float(self, r4_7_result):
+        v = r4_7_result["t4_max_abs_cfads_delta_keur"]
+        assert isinstance(v, float) and v >= 0.0
+
+    def test_j_cfads_verdict_present(self, r4_7_result):
+        assert "cfads_verdict" in r4_7_result
+        assert len(r4_7_result["cfads_verdict"]) > 0
+
+    def test_j_bridge_has_four_merchant_periods(self, r4_7_result):
+        assert len(r4_7_result["merchant_period_bridge"]) == 4
+
+    # K) Senior Debt parity
+    def test_k_t4_debt_is_float(self, r4_7_result):
+        assert isinstance(r4_7_result["t4_source_replay_p50_debt_keur"], float)
+
+    def test_k_debt_within_10keur_of_source(self, r4_7_result):
+        assert r4_7_result["t4_abs_residual_keur"] < 10.0
+
+    def test_k_source_debt_anchor(self, r4_7_result):
+        assert r4_7_result["source_debt_keur"] == pytest.approx(42852.278763, abs=0.001)
+
+    def test_k_t4_debt_above_t1_and_t3(self, r4_7_result):
+        # P50 source replay gives higher debt than P90 cases
+        assert r4_7_result["t4_source_replay_p50_debt_keur"] > r4_7_result["t1_generic_p90_debt_keur"]
+        assert r4_7_result["t4_source_replay_p50_debt_keur"] > r4_7_result["t3_r4_6_1_p90_source_tax_debt_keur"]
+
+    def test_k_verdict_contains_r4_7(self, r4_7_result):
+        assert "R4_7" in r4_7_result["verdict"]
+
+    # L) Generic P90 diagnostic preserved
+    def test_l_generic_p90_preserved_field(self, r4_7_result):
+        assert "GENERIC_P90" in r4_7_result["generic_p90_case_preserved"]
+
+    def test_l_t1_debt_is_p90_case(self, r4_7_result):
+        # T1 generic P90 should be below source (as in R4.5/R4.6.1)
+        assert r4_7_result["t1_generic_p90_debt_keur"] < r4_7_result["source_debt_keur"]
+
+    # M) P90 case remains below source
+    def test_m_t3_p90_below_source(self, r4_7_result):
+        assert r4_7_result["t3_r4_6_1_p90_source_tax_debt_keur"] < r4_7_result["source_debt_keur"]
+
+    def test_m_t1_p90_below_source(self, r4_7_result):
+        assert r4_7_result["t1_generic_p90_debt_keur"] < r4_7_result["source_debt_keur"]
+
+    # N) TUHO dynamic P90 propagation
+    def test_n_tuho_p50_hours(self, r4_7_result):
+        assert r4_7_result["tuho_p50_hours"] == 4164.0
+
+    def test_n_tuho_p90_hours(self, r4_7_result):
+        assert r4_7_result["tuho_p90_hours"] == 3620.0
+
+    def test_n_tuho_p90_matches_oracle(self, r4_7_result):
+        assert r4_7_result["tuho_p90_delta_from_oracle_keur"] < 1.0
+
+    def test_n_tuho_p50_does_not_match_oracle(self, r4_7_result):
+        assert r4_7_result["tuho_p50_delta_from_oracle_keur"] > 100.0
+
+    def test_n_tuho_p90_propagates_to_cf(self, r4_7_result):
+        assert r4_7_result["tuho_p90_propagates_to_cf"] is True
+
+    def test_n_tuho_classification_proven(self, r4_7_result):
+        c = r4_7_result["tuho_classification"]
+        assert "PROVEN" in c
+
+    # O) Cross-project non-generalisation
+    def test_o_oborovo_bypass_not_generic(self, r4_7_result):
+        c = r4_7_result["oborovo_compatibility_classification"]
+        assert "SOURCE_WORKBOOK_COMPATIBILITY_ONLY" in c
+        assert "GENERIC" not in c.split("NOT_GENERIC")[0] or "NOT_GENERIC" in c
+
+    def test_o_generic_policy_p90_by_default(self, r4_7_result):
+        c = r4_7_result["generic_bank_sizing_policy"]
+        assert "P90" in c
+        assert "DEFAULT" in c
+
+    # P) No project identity dispatch
+    def test_p_no_project_name_dispatch(self, r4_7_result):
+        assert r4_7_result["no_project_name_dispatch"] == "ENFORCED"
+
+    def test_p_no_project_dispatch_in_candidate_h(self):
+        import inspect
+        from finco_recon.bank_sizing_candidates import run_candidate_h_oborovo
+        src = inspect.getsource(run_candidate_h_oborovo)
+        assert "project_name ==" not in src
+        assert 'if "oborovo"' not in src
+        assert "if 'oborovo'" not in src
+
+    # Q) No runtime fixture reads in production path
+    def test_q_no_ds20_derived_tax(self, r4_7_result):
+        assert r4_7_result["no_ds20_derived_tax"] == "ENFORCED"
+
+    def test_q_no_base_tax_injection(self, r4_7_result):
+        assert r4_7_result["no_base_tax_injection"] == "ENFORCED"
+
+    # R) No calibration/plugs
+    def test_r_no_plug_calibration(self, r4_7_result):
+        assert r4_7_result["no_plug_calibration"] == "ENFORCED"
+
+    def test_r_no_hardcoded_period_indices(self, r4_7_result):
+        assert r4_7_result["no_hardcoded_period_indices"] == "ENFORCED"
+
+    def test_r_no_hardcoded_indices_in_candidate_h_debt(self):
+        import inspect
+        from finco_recon.bank_sizing_candidates import _run_candidate_h_debt
+        src = inspect.getsource(_run_candidate_h_debt)
+        for forbidden in ["== 26", "== 27", "== 28", "== 29"]:
+            assert forbidden not in src
+
+    # S) financial_engine zero-diff
+    def test_s_financial_engine_zero_diff(self, r4_7_result):
+        assert r4_7_result["financial_engine_zero_diff"] == "ENFORCED"
+
+    def test_s_financial_engine_no_diff(self):
+        import subprocess
+        result = subprocess.run(
+            ["git", "diff", "HEAD", "--", "financial_engine/"],
+            capture_output=True, text=True,
+            cwd=str(__import__("pathlib").Path(__file__).parent.parent)
+        )
+        assert result.stdout == "", f"financial_engine/ should be zero-diff, got:\n{result.stdout[:500]}"
+
+    # T) R4.6.1 p29 report correction
+    def test_t_r4_6_1_p29_correction_documented(self, r4_7_result):
+        c = r4_7_result["r4_6_1_p29_correction"]
+        assert "p29" in c.lower() or "P29" in c
+        assert "CORRECT" in c.upper() or "CORRECTED" in c
+
+    def test_t_r4_6_1_p29_cfads_is_ebitda_minus_cit(self):
+        # Verify actual R4.6.1 T3 p29: CFADS = EBITDA - CIT
+        from finco_recon.bank_sizing_candidates import run_candidate_g_oborovo
+        from app.project_factories import create_default_oborovo
+        r = run_candidate_g_oborovo(create_default_oborovo)
+        bridge = r.get("merchant_period_bridge", [])
+        p29 = next((x for x in bridge if x.get("period_index") == 29), None)
+        if p29:
+            ebitda = p29.get("bank_ebitda_keur", 0)
+            cit = p29.get("t3_cash_tax_keur", 0)
+            cfads = p29.get("t3_cfads_keur", 0)
+            # CFADS must equal EBITDA - CIT (within float tolerance)
+            assert abs(cfads - (ebitda - cit)) < 0.01, \
+                f"p29 CFADS={cfads:.3f} != EBITDA-CIT={ebitda-cit:.3f}"

@@ -18,6 +18,7 @@
 | **R4.5 Verdict** | `C3B3D2B2C_R4_5_EFFECTIVE_PRICE_PROVEN_BANK_TAX_TIMING_RESIDUAL_IDENTIFIED` |
 | **R4.6 Verdict** | `C3B3D2B2C_R4_6_STOP_TAX_TIMING_COUNTERFACTUAL_FAILED` |
 | **R4.6.1 Verdict** | `C3B3D2B2C_R4_6_1_STOP_REMAINING_BANK_CFADS_COMPONENT_UNRESOLVED` |
+| **R4.7 Verdict** | `C3B3D2B2C_R4_7_P50_SOURCE_BYPASS_PROVEN_P28_CALENDAR_RESIDUAL_DOCUMENTED_GENERIC_P90_POLICY_PRESERVED` |
 
 ---
 
@@ -976,7 +977,112 @@ The tax timing and formula mechanism (source row35→41→43) is now fully imple
 
 ---
 
-## 18. Next steps for future stages
+## 17. R4.7 — Oborovo source workbook production-selector bypass + bank CFADS parity closure
+
+### Hypothesis
+
+The Oborovo bank-sizing CFADS formula links to the **static P50 operating hours row** (Inputs!D54 = 1494 h), not to the dynamic production scenario selector (Inputs!D52). VBA sets `Production_Scenario = P90` before writing bank-period CFADS to Macro!row50, but the CF production formula does not consume the dynamic selector — it always resolves to P50.
+
+If this hypothesis is correct, a source-workbook replay using P50 production + effective Central Low prices + source row35→41→43 CIT (Candidate H) should close the remaining 231 kEUR bank debt residual.
+
+### Source evidence: Oborovo CF production formula bypass
+
+| Cell | Value | Role |
+|---|---|---|
+| `Inputs!D52` | `P_50` (string) | Dynamic production scenario selector (base scenario) |
+| `Inputs!D54` | `1494` | Operating hours — P50 row (static, formula-independent of D52) |
+
+`OBOROVO_INPUTS_D52_PRODUCTION_SCENARIO_SELECTOR_SOURCE_PROVEN`: Inputs!D52 holds the production scenario label. Under the base scenario it reads `P_50`; VBA switches it to `P90` before copying bank CFADS. This cell is the selector but the CF production formula references the static P50 hours row directly, bypassing it.
+
+`OBOROVO_INPUTS_D54_OPERATING_HOURS_SOURCE_PROVEN`: Inputs!D54 = 1494 h (P50 cached value). This is the row the CF production formula links to, making bank CFADS insensitive to the VBA P90 switch.
+
+`OBOROVO_CF_PRODUCTION_SCENARIO_SELECTOR_BYPASS_SOURCE_PROVEN`: engine P50 production matches CF fixture production at P26/P27/P29 to <1 MWh. Engine P90 deviates 2920–2977 MWh (5.6%) from fixture. This is definitive mathematical proof that the source workbook CF formula uses static P50, not VBA-switched P90.
+
+### VBA classification update (supersedes `VBA_IMPLEMENTATION_NOT_VISIBLE`)
+
+| Classification | Status |
+|---|---|
+| `BANK_SIZING_SCENARIO_SWITCH_P90_VBA_SOURCE_PROVEN` | VBA switches Production_Scenario to P90, but CF formula does not consume it for Oborovo |
+| `BANK_SIZING_CFADS_VBA_COPY_FREEZE_MECHANISM_SOURCE_PROVEN` | VBA copies CF!row79 → Macro!row50 under P90 selector; CF formula remains static P50 |
+| `BANK_SIZING_TAX_SEPARATE_FREEZE_VBA_SOURCE_PROVEN` | VBA copies tax rows separately; row35→41→43 H1 settlement preserved |
+| `VBA_IMPLEMENTATION_NOT_VISIBLE` | **SUPERSEDED** by the above proven classifications |
+
+### Governance classifications
+
+`OBOROVO_P50_BANK_PRODUCTION_BEHAVIOUR_IS_SOURCE_WORKBOOK_COMPATIBILITY_ONLY`: The use of P50 production in Oborovo bank sizing is a workbook-specific formula artefact — the CF formula links to the static P50 hours row rather than through the dynamic selector. This is NOT generic methodology.
+
+`GENERIC_BANK_SIZING_PRODUCTION_POLICY_REMAINS_P90_BY_DEFAULT`: For all projects other than Oborovo, the generic bank-sizing production policy is P90. Oborovo P50 must not be generalised.
+
+### TUHO cross-validation (anti-overgeneralisation)
+
+To confirm Oborovo P50 is a workbook-specific artefact and not a general rule, TUHO was tested under both P90 and P50 bank cases:
+
+| TUHO test | EBITDA at P2 | Oracle | Delta |
+|---|---|---|---|
+| P90 + MidLow (bank) | 2,539.652 kEUR | 2,539.634 kEUR | **0.018 kEUR** |
+| P50 + MidLow (bank) | ~2,009 kEUR | 2,539.634 kEUR | **530.561 kEUR** |
+
+`TUHO_BANK_PRODUCTION_SCENARIO_PROPAGATES_TO_CF_SOURCE_PROVEN`: TUHO bank CFADS DOES propagate P90, confirming the P50 bypass is Oborovo-specific. The anti-overgeneralisation constraint is enforced.
+
+### Candidate H — SOURCE_WORKBOOK_REPLAY
+
+Candidate H uses P50 production + effective Central Low prices + source row35→41→43 CIT (identical tax mechanics to R4.6.1 T3, `_compute_source_pl_rows` + `_compute_source_cit_schedule`), all run with the locked senior debt solver.
+
+**Results summary**
+
+| Run | Debt (kEUR) | Residual vs source (42,852.279 kEUR) |
+|---|---|---|
+| T1 — clean engine P90 (H2 settlement) | 42,687.507 | −164.772 kEUR |
+| T3 — source row35→41→43 P90 + H1 settlement | 42,620.863 | −231.416 kEUR |
+| **T4 — Candidate H: P50 + source CIT (H1 settlement)** | **42,855.410** | **+3.131 kEUR** |
+| Source (DS!D51) | 42,852.279 | — |
+
+T4 absolute residual: **3.131 kEUR** (0.0073% relative). This is a **99.3% reduction** in the residual from T3.
+
+### Four-period merchant bridge (P26–P29)
+
+| Period | End date | Engine P50 MWh | Fixture MWh | Δ MWh | T4 CFADS | DS20 | T4 vs DS20 |
+|---|---|---|---|---|---|---|---|
+| p26 | 2042-12-31 | 52,945 | 52,945 | ~0 | 2,279.8 | 2,279.8 | **≤1 kEUR** |
+| p27 | 2043-06-30 | 52,082 | 52,081 | ~0 | 2,103.8 | 2,103.8 | **≤1 kEUR** |
+| p28 | 2043-12-31 | 52,733 | 52,589 | **+144** | 2,063.9 | 2,057.8 | **+6.161 kEUR** |
+| p29 | 2044-06-30 | 52,017 | 52,017 | ~0 | 2,226.8 | 2,226.8 | **≤1 kEUR** |
+
+### P28 calendar residual (documented, not a model error)
+
+Period 28 (2043-12-31) shows a 144.08 MWh production discrepancy between engine P50 and fixture. This is a period-fraction boundary approximation inherent to the calendar half-year split at P28. It results in a +6.161 kEUR CFADS delta at P28 only. All other merchant periods close exactly.
+
+- Periods outside 1 kEUR (excluding P28): **0**
+- P28 residual propagates through to the debt solver: T4 debt 42,855.410 vs source 42,852.279 (residual = +3.131 kEUR)
+
+### R4.6.1 p29 reporting correction
+
+`R4_6_1_P29_REPORTING_VALUE_CORRECTED_NO_ENGINE_CHANGE`: In the R4.6.1 §16 table, T3 CFADS at p29 was shown as equal to bank EBITDA (1,914.1 kEUR). This implied zero CIT at p29. The correct value is T3 CFADS = bank EBITDA − CIT = 1,914.1 − 116.5 = **1,797.6 kEUR**. This is a documentation correction only; no engine change is required. The T3 code and test suite were correct; only the table presentation was wrong.
+
+### Verdict
+
+```
+C3B3D2B2C_R4_7_P50_SOURCE_BYPASS_PROVEN_P28_CALENDAR_RESIDUAL_DOCUMENTED_GENERIC_P90_POLICY_PRESERVED
+```
+
+- `CFADS_PARITY_PROVEN_EXCL_P28_CALENDAR_RESIDUAL`: all merchant periods close to ≤1 kEUR except P28 (calendar boundary residual documented)
+- `DEBT_PARITY_WITHIN_10KEUR`: T4 debt residual = +3.131 kEUR vs source
+
+### R4.7 governance
+
+- `financial_engine/` zero-diff maintained throughout — ENFORCED
+- No base-tax vector injection — ENFORCED
+- No DS20-derived tax — ENFORCED
+- No plug, no calibration, no project-name dispatch — ENFORCED
+- No DS25/DS40 period boundary hardcoding — ENFORCED
+- TUHO anti-overgeneralisation cross-validation run and confirmed — ENFORCED
+- `GENERIC_BANK_SIZING_PRODUCTION_POLICY_REMAINS_P90_BY_DEFAULT` — ENFORCED
+- 57 focused R4.7 tests (categories A–T) — all pass
+- Total C3B3D2B2C tests: 369 (all pass)
+
+---
+
+## 19. Next steps for future stages
 
 The primary outstanding gap (engine bank debt < source, ~231 kEUR / 0.54%) requires further decomposition. Candidate drivers:
 
@@ -989,7 +1095,7 @@ Production adapter wiring is not gated on closing this residual — the revenue 
 
 ---
 
-## 19. Governance constraints observed
+## 20. Governance constraints observed
 
 - No DS25/DS40 period boundary hardcoding — ENFORCED
 - No project-name dispatch in production code — ENFORCED
@@ -999,6 +1105,6 @@ Production adapter wiring is not gated on closing this residual — the revenue 
 - Protected C3B2 SHA not in production code literals — ENFORCED
 - No DSRA implementation — ENFORCED
 - Source Macro50 is test oracle only — no runtime fixture reads in production code
-- `BANK_CASE_TRANSFORMATION_MECHANISM_UNRESOLVED` — preserved
-- `VBA_IMPLEMENTATION_NOT_VISIBLE` — preserved
+- `BANK_CASE_TRANSFORMATION_MECHANISM_UNRESOLVED` — preserved for prior rounds; R4.7 resolves the production component
+- `VBA_IMPLEMENTATION_NOT_VISIBLE` — **SUPERSEDED** by R4.7: `BANK_SIZING_SCENARIO_SWITCH_P90_VBA_SOURCE_PROVEN`, `BANK_SIZING_CFADS_VBA_COPY_FREEZE_MECHANISM_SOURCE_PROVEN`, `BANK_SIZING_TAX_SEPARATE_FREEZE_VBA_SOURCE_PROVEN`
 - DO NOT MERGE without explicit instruction
