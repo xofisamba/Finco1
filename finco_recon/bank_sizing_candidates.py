@@ -1,11 +1,12 @@
-"""finco_recon.bank_sizing_candidates — C3B3D2B2C diagnostic A/B candidate evaluation.
+"""finco_recon.bank_sizing_candidates — C3B3D2B2C diagnostic A/B/C candidate evaluation.
 
 EVIDENCE-ONLY DIAGNOSTIC. NOT a production module.
 No production financial_engine modifications. No project-name dispatch.
 No fixture reads at runtime — oracle vectors loaded from committed fixture only.
 
 Stage: C3B3D2B2C
-Verdict: C3B3D2B2C_R3_STOP_MACRO50_TRANSFORMATION_SOURCE_INACCESSIBLE
+R3 Verdict: C3B3D2B2C_R3_STOP_MACRO50_TRANSFORMATION_SOURCE_INACCESSIBLE
+R4 Verdict: C3B3D2B2C_R4_SOURCE_INPUTS_IDENTIFIED_CURVE_EXTRACTION_REQUIRED
 
 Classification of candidates:
     OBOROVO_ALL_PRODUCTION_BANK_CASE_RULE_CANDIDATE_ONLY
@@ -299,3 +300,69 @@ MACRO50_FORENSICS = {
     ),
     "r3_verdict": "C3B3D2B2C_R3_STOP_MACRO50_TRANSFORMATION_SOURCE_INACCESSIBLE",
 }
+
+
+# ---------------------------------------------------------------------------
+# R4: Candidate C source evidence summary
+# ---------------------------------------------------------------------------
+
+CANDIDATE_C_SOURCE_EVIDENCE = {
+    "candidate": "PRODUCTION_REVENUE_SIZING",
+    "round": "R4",
+    "r4_verdict": "C3B3D2B2C_R4_SOURCE_INPUTS_IDENTIFIED_CURVE_EXTRACTION_REQUIRED",
+    "description": (
+        "Candidate C: P90-10y production + bank/sizing revenue scenario. "
+        "Evaluated over active Senior Debt horizon only (generic derivation from policy). "
+        "No hardcoded period boundaries. No project-name dispatch."
+    ),
+    "oborovo": {
+        "equity_cell": "Inputs!D102",
+        "equity_label": "Equity case revenues",
+        "sizing_cell": "Inputs!D103",
+        "sizing_label": "Debt sizing revenues curve",
+        "scenarios_equity": "Scenarios!E324",
+        "scenarios_sizing": "Scenarios!E325",
+        "central_low_case_cell": "Inputs!D111",
+        "central_low_case_label": "Central Low case Trackers",
+        "low_gmpv_cell": "Inputs!D110",
+        "status": "CURVE_EXTRACTION_REQUIRED_FOR_D110_D111",
+    },
+    "tuho": {
+        "equity_cell": "Inputs!D107",
+        "equity_label": "Equity scenario",
+        "sizing_cell": "Inputs!D108",
+        "sizing_label": "Sizing scenario",
+        "scenarios_equity": "Scenarios!E182",
+        "scenarios_sizing": "Scenarios!E183",
+        "mid_low_cell": "Inputs!D109",
+        "mid_low_label": "MidLow",
+        "status": "CURVE_EXTRACTION_REQUIRED_FOR_D109",
+    },
+    "active_horizon": {
+        "derivation": "GENERIC_FROM_SENIOR_DEBT_POLICY_NOT_HARDCODED",
+        "classification": "POST_MATURITY_CFADS_NON_CAUSAL_FOR_INITIAL_DSCR_SIZING",
+        "note": (
+            "Active debt period count derived from "
+            "policy.maturity_period_index - policy.repayment_start_period_index + 1. "
+            "Post-maturity periods are excluded from the DSCR schedule and cannot be "
+            "the binding constraint. POST_MATURITY_CFADS_NON_CAUSAL_FOR_INITIAL_DSCR_SIZING."
+        ),
+    },
+    "blocked_reason": (
+        "D111 (Oborovo Central Low case Trackers time series), "
+        "D110 (Oborovo Low case GMPV), and D109 (TUHO MidLow) values are not "
+        "present in any committed fixture. Candidate C evaluation requires "
+        "curve extraction before source comparison is possible."
+    ),
+}
+
+
+def derive_active_debt_period_count(sd_input: "Any") -> int:
+    """Return the active Senior Debt period count from policy fields.
+
+    Generic — no hardcoded period boundary integers.
+    Derivation: maturity_period_index - repayment_start_period_index + 1
+    Classification: GENERIC_FROM_SENIOR_DEBT_POLICY_NOT_HARDCODED
+    """
+    policy = sd_input.senior_debt_policy
+    return policy.maturity_period_index - policy.repayment_start_period_index + 1

@@ -254,7 +254,75 @@ All 79 Phase 2C tests pass. All 169 Phase 2B tests pass (1 pre-existing Oborovo 
 
 ---
 
-## 9. Next steps for future stages
+## 9. R4 — Debt-Horizon Bank Revenue Sizing Case Source Proof
+
+### R4 verdict
+
+```
+C3B3D2B2C_R4_SOURCE_INPUTS_IDENTIFIED_CURVE_EXTRACTION_REQUIRED
+```
+
+### Active Senior Debt horizon (generic derivation)
+
+| Field | Value |
+|---|---|
+| `repayment_start_period_index` | 2 |
+| `maturity_period_index` | 29 |
+| Active period count | **28** |
+| Merchant+debt periods | **4** (period indices 26, 27, 28, 29) |
+| Derivation | `GENERIC_FROM_SENIOR_DEBT_POLICY_NOT_HARDCODED` |
+
+No hardcoded period boundary integers (25, 28, or 2044). Active period count is
+derived as `maturity_period_index − repayment_start_period_index + 1`.
+
+### Post-maturity causality
+
+```
+POST_MATURITY_CFADS_NON_CAUSAL_FOR_INITIAL_DSCR_SIZING
+```
+
+The DSCR schedule is confined to periods within `[repayment_start_period_index,
+maturity_period_index]`. Periods 30–61 (post-maturity) do not appear in the DSCR
+schedule and cannot be the binding constraint for debt sizing. This is confirmed
+by inspection of the schedule's `period_indices` field.
+
+### Candidate C — PRODUCTION_REVENUE_SIZING (architecture defined, blocked)
+
+| Field | Value |
+|---|---|
+| Yield scenario | P90-10y |
+| Revenue scenario | Central Low case Trackers (D111) / MidLow (TUHO D109) |
+| Evaluation scope | Active debt periods only (generic from policy) |
+| Status | `BLOCKED_PENDING_CURVE_EXTRACTION` |
+
+**Source cell identifiers confirmed:**
+
+| Project | Cell | Label | Status |
+|---|---|---|---|
+| Oborovo | `Inputs!D102` | Equity case revenues | Confirmed |
+| Oborovo | `Inputs!D103` | Debt sizing revenues curve | Confirmed |
+| Oborovo | `Inputs!D111` | Central Low case Trackers | Cell confirmed; **curve not in fixture** |
+| Oborovo | `Inputs!D110` | Low case GMPV (hardcoded) | Cell confirmed; **value not in fixture** |
+| Oborovo | `Scenarios!E324` | Equity case revenues | Confirmed |
+| Oborovo | `Scenarios!E325` | Debt sizing revenues curve | Confirmed |
+| TUHO | `Inputs!D107` | Equity scenario | Confirmed |
+| TUHO | `Inputs!D108` | Sizing scenario | Confirmed |
+| TUHO | `Inputs!D109` | MidLow | Cell confirmed; **curve not in fixture** |
+| TUHO | `Scenarios!E182` | Equity case Afry curve | Confirmed |
+| TUHO | `Scenarios!E183` | Sizing case Afry curve | Confirmed |
+
+**Why Candidate C cannot be evaluated yet:**
+- `Inputs!D111` (Oborovo Central Low case Trackers): time-series values not in any committed fixture
+- `Inputs!D110` (Oborovo Low case GMPV): hardcoded base value not extracted
+- `Inputs!D109` (TUHO MidLow): time-series values not in any committed fixture
+
+Candidate C will be source-proven only when these curves are extracted and
+a bank CFADS vector built from P90 production + sizing revenue curve matches
+DS!row20 (or narrows the gap to within a toleranced acceptance criterion).
+
+---
+
+## 10. Next steps for future stages
 
 A source-proven bank-sizing rule can only be identified by one of:
 1. Access to the VBA source code for the Macro50 procedure
@@ -266,7 +334,7 @@ Until one of these is available, production adapter wiring is prohibited.
 
 ---
 
-## 10. Governance constraints observed
+## 11. Governance constraints observed
 
 - No DS25/DS40 period boundary hardcoding — ENFORCED
 - No project-name dispatch in production code — ENFORCED

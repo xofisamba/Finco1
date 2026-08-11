@@ -1,0 +1,93 @@
+{
+  "stage": "C3B3D2B2C",
+  "round": "R4",
+  "classification": "C3B3D2B2C_R4_SOURCE_INPUTS_IDENTIFIED_CURVE_EXTRACTION_REQUIRED",
+  "workbook_sha256": "15a621c4d6b79024980766e00ebc79d7235fd56f00567be7bf345c769ce57920",
+  "workbook_filename": "d49af8ee-20260414_BP_Oborovo_Sensitivity_FINAL_for_PPT.xlsm",
+
+  "active_debt_horizon": {
+    "repayment_start_period_index": 2,
+    "maturity_period_index": 29,
+    "active_period_count": 28,
+    "derivation": "GENERIC_FROM_SENIOR_DEBT_POLICY_NOT_HARDCODED",
+    "note": "Active period count = maturity_period_index - repayment_start_period_index + 1. No hardcoded 28 or 2044."
+  },
+
+  "merchant_debt_periods": {
+    "period_indices": [26, 27, 28, 29],
+    "count": 4,
+    "note": "Operating periods within active debt horizon where is_ppa_active=False. These are the 4 causal merchant periods for bank-sizing CFADS.",
+    "ppa_debt_period_count": 24,
+    "classification": "MERCHANT_DEBT_CAUSAL_PERIOD_COUNT_4_CONFIRMED"
+  },
+
+  "post_maturity_causality": {
+    "classification": "POST_MATURITY_CFADS_NON_CAUSAL_FOR_INITIAL_DSCR_SIZING",
+    "note": "Periods 30-61 are outside the active Senior Debt horizon. The DSCR solver computes the minimum DSCR only over active debt periods (2-29). Post-maturity periods are not inputs to the DSCR binding constraint computation. The debt_size_keur is determined by the binding DSCR period within the active horizon.",
+    "binding_constraint_period_range": "within [repayment_start_period_index, maturity_period_index]",
+    "post_maturity_period_indices": "30-61 (not included in DSCR sizing)"
+  },
+
+  "oborovo_revenue_scenario_evidence": {
+    "equity_scenario_cell": "Inputs!D102",
+    "sizing_scenario_cell": "Inputs!D103",
+    "central_case_trackers_row": 106,
+    "central_case_trackers_cell": "Inputs!D106",
+    "low_case_trackers_row": 109,
+    "low_case_trackers_cell": "Inputs!D109",
+    "low_case_gmpv_row": 110,
+    "low_case_gmpv_cell": "Inputs!D110",
+    "central_low_case_trackers_row": 111,
+    "central_low_case_trackers_cell": "Inputs!D111",
+    "scenarios_equity_cell": "Scenarios!E324",
+    "scenarios_debt_sizing_cell": "Scenarios!E325",
+    "equity_label_confirmed": "Equity case revenues",
+    "debt_sizing_label_confirmed": "Debt sizing revenues curve",
+    "central_case_trackers_label_confirmed": "Central case Trackers",
+    "low_case_trackers_label": "Low case Trackers",
+    "central_low_case_trackers_label": "Central Low case Trackers",
+    "central_case_values_available": true,
+    "low_case_values_available": false,
+    "central_low_case_values_available": false,
+    "extraction_status": "CURVE_EXTRACTION_REQUIRED_FOR_D110_D111_D109",
+    "note": "D106 (Central case Trackers) confirmed with CY2042-2060 values. D109 (Low case Trackers), D110 (Low GMPV hardcoded input), D111 (Central Low case Trackers) cell labels are confirmed from model mapping v2, but the actual time-series values are NOT present in any committed fixture. Curve extraction required before Candidate C can be tested."
+  },
+
+  "tuho_revenue_scenario_evidence": {
+    "equity_scenario_cell": "Inputs!D107",
+    "sizing_scenario_cell": "Inputs!D108",
+    "equity_label_confirmed": "Equity scenario",
+    "sizing_label_confirmed": "Sizing scenario",
+    "scenarios_equity_cell": "Scenarios!E182",
+    "scenarios_sizing_cell": "Scenarios!E183",
+    "equity_scenario_value_confirmed": "Equity case Afry curve",
+    "sizing_scenario_value_confirmed": "Sizing case Afry curve",
+    "mid_low_row": 109,
+    "mid_low_cell": "Inputs!D109",
+    "mid_low_label": "MidLow",
+    "mid_low_values_available": false,
+    "extraction_status": "CURVE_EXTRACTION_REQUIRED_FOR_TUHO_D109",
+    "note": "D107 (Equity) and D108 (Sizing) cell identifiers confirmed. D109 (MidLow) label confirmed but time-series values not in fixture. Candidate C cannot be evaluated for TUHO without curve extraction."
+  },
+
+  "candidate_c_feasibility": {
+    "candidate": "PRODUCTION_REVENUE_SIZING",
+    "yield_scenario": "P90_10Y",
+    "revenue_scenario": "Central Low case Trackers (D111 / D109)",
+    "active_horizon_only": true,
+    "status": "BLOCKED_PENDING_CURVE_EXTRACTION",
+    "classification": "C3B3D2B2C_R4_SOURCE_INPUTS_IDENTIFIED_CURVE_EXTRACTION_REQUIRED",
+    "what_is_confirmed": [
+      "Cell identifiers for equity and sizing revenue scenarios",
+      "Active debt horizon = 28 periods (generic)",
+      "4 causal merchant+debt periods (26-29)",
+      "POST_MATURITY_CFADS_NON_CAUSAL_FOR_INITIAL_DSCR_SIZING",
+      "Generic orchestrator already slices active periods from policy fields"
+    ],
+    "what_requires_extraction": [
+      "D110 (Oborovo Low case GMPV hardcoded value)",
+      "D111 (Oborovo Central Low case Trackers time series, CY2042-2060)",
+      "D109 (TUHO MidLow time series)"
+    ]
+  }
+}

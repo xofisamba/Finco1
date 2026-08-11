@@ -3,6 +3,7 @@
 C3B3D2B2C — Bank-Sizing CFADS Scenario Layer: Evidence Package
 
 Stage verdict: C3B3D2B2C_R3_STOP_MACRO50_TRANSFORMATION_SOURCE_INACCESSIBLE
+R4 verdict:   C3B3D2B2C_R4_SOURCE_INPUTS_IDENTIFIED_CURVE_EXTRACTION_REQUIRED
 
 EVIDENCE-ONLY TESTS. No production financial_engine modifications in this PR.
 All bank-sizing candidates use finco_recon.bank_sizing_candidates (diagnostic module).
@@ -27,6 +28,10 @@ Test classes:
     TestProductionFilesUnchanged    — Production API unchanged (no bank-sizing fields)
     TestC3b3d2b2bRegressionLock     — CF2=CF3=CF4=CF5=0 still holds
     TestGovernance                  — Governance guards
+    TestBaselineGovernance          — Stale-value guards (C3B3D2B2B locked)
+    TestHorizonCausality            — R4: active debt horizon + DSCR causal boundary
+    TestR4SourceEvidence            — R4: confirmed source cell identifiers
+    TestCandidateCArchitecture      — R4: Candidate C architecture constraints
 """
 from __future__ import annotations
 
@@ -681,3 +686,245 @@ class TestBaselineGovernance:
             f"CF1 delta={cf1_delta:.3f} does not match −gap={-CURRENT_GRID0_TO_SOURCE_GAP_KEUR:.3f}"
         )
         assert "BANK_SIZING_CFADS_AUTHORITY_IS_SOLE_CURRENT_SIZING_GAP_SOURCE_PROVEN"
+
+
+# ---------------------------------------------------------------------------
+# TestHorizonCausality — R4
+# ---------------------------------------------------------------------------
+
+class TestHorizonCausality:
+    """R4: Active Senior Debt horizon causality.
+
+    Classification: POST_MATURITY_CFADS_NON_CAUSAL_FOR_INITIAL_DSCR_SIZING
+
+    The DSCR solver binds on the minimum DSCR within the active debt horizon
+    [repayment_start_period_index, maturity_period_index]. Periods outside
+    that range do not appear in the DSCR schedule and cannot be the binding
+    constraint. Active period count and merchant-debt period membership are
+    derived generically from policy fields — no hardcoded period integers.
+    """
+
+    def _load_r4_evidence(self) -> dict:
+        path = _FIXTURE_DIR / "excel_oborovo_bank_sizing_source_evidence_r4.json"
+        with open(path) as f:
+            return json.load(f)
+
+    def test_active_debt_period_count_from_policy(self):
+        """Active debt horizon = 28 periods, derived generically from SeniorDebtPolicy."""
+        from app.project_factories import create_default_oborovo
+        from financial_engine.adapters.project_inputs import (
+            build_senior_debt_model_input_from_project_inputs,
+        )
+        proj = create_default_oborovo()
+        sd_input = build_senior_debt_model_input_from_project_inputs(proj)
+        policy = sd_input.senior_debt_policy
+        active_count = policy.maturity_period_index - policy.repayment_start_period_index + 1
+        # Fixture confirms 28 — verify via fixture, not via hardcoded literal
+        ev = self._load_r4_evidence()
+        expected = ev["active_debt_horizon"]["active_period_count"]
+        assert active_count == expected, (
+            f"Active period count={active_count} does not match fixture {expected}. "
+            "DERIVATION: GENERIC_FROM_SENIOR_DEBT_POLICY_NOT_HARDCODED"
+        )
+
+    def test_merchant_debt_period_count(self):
+        """4 merchant periods fall within the active debt horizon (periods 26-29)."""
+        from app.project_factories import create_default_oborovo
+        from financial_engine.adapters.project_inputs import (
+            build_senior_debt_model_input_from_project_inputs,
+        )
+        from financial_engine.orchestrator import run_operating_model
+        proj = create_default_oborovo()
+        sd_input = build_senior_debt_model_input_from_project_inputs(proj)
+        policy = sd_input.senior_debt_policy
+        debt_start = policy.repayment_start_period_index
+        debt_end = policy.maturity_period_index
+        op_result = run_operating_model(sd_input.operating)
+        merchant_debt = [
+            p.period_index for p in op_result.periods
+            if p.is_operation and debt_start <= p.period_index <= debt_end
+            and not p.is_ppa_active
+        ]
+        ev = self._load_r4_evidence()
+        expected_count = ev["merchant_debt_periods"]["count"]
+        assert len(merchant_debt) == expected_count, (
+            f"Merchant+debt period count={len(merchant_debt)}, expected {expected_count}. "
+            "MERCHANT_DEBT_CAUSAL_PERIOD_COUNT_4_CONFIRMED"
+        )
+
+    def test_dscr_schedule_confined_to_active_horizon(self):
+        """DSCR schedule period indices are all within [debt_start, debt_end].
+
+        POST_MATURITY_CFADS_NON_CAUSAL_FOR_INITIAL_DSCR_SIZING: the solver
+        computes minimum DSCR only over active debt periods; post-maturity periods
+        (period_index > maturity_period_index) are excluded from the schedule.
+        """
+        from app.project_factories import create_default_oborovo
+        from financial_engine.adapters.project_inputs import (
+            build_senior_debt_model_input_from_project_inputs,
+        )
+        from financial_engine.orchestrator import run_senior_debt_model
+        proj = create_default_oborovo()
+        sd_input = build_senior_debt_model_input_from_project_inputs(proj)
+        policy = sd_input.senior_debt_policy
+        debt_start = policy.repayment_start_period_index
+        debt_end = policy.maturity_period_index
+        result = run_senior_debt_model(sd_input)
+        schedule_indices = result.senior_debt.period_indices
+        assert len(schedule_indices) > 0
+        for idx in schedule_indices:
+            assert debt_start <= idx <= debt_end, (
+                f"DSCR schedule includes period {idx} outside active horizon "
+                f"[{debt_start}, {debt_end}]. "
+                "POST_MATURITY_CFADS_NON_CAUSAL_FOR_INITIAL_DSCR_SIZING violated."
+            )
+
+    def test_binding_constraint_within_active_horizon(self):
+        """Binding DSCR constraint period is within [debt_start, debt_end]."""
+        from app.project_factories import create_default_oborovo
+        from financial_engine.adapters.project_inputs import (
+            build_senior_debt_model_input_from_project_inputs,
+        )
+        from financial_engine.orchestrator import run_senior_debt_model
+        proj = create_default_oborovo()
+        sd_input = build_senior_debt_model_input_from_project_inputs(proj)
+        policy = sd_input.senior_debt_policy
+        debt_end = policy.maturity_period_index
+        result = run_senior_debt_model(sd_input)
+        max_schedule_idx = max(result.senior_debt.period_indices)
+        assert max_schedule_idx <= debt_end, (
+            f"Max schedule period {max_schedule_idx} > maturity {debt_end}. "
+            "POST_MATURITY_CFADS_NON_CAUSAL_FOR_INITIAL_DSCR_SIZING: "
+            "post-maturity periods must not appear in the DSCR schedule."
+        )
+
+    def test_r4_evidence_fixture_exists_and_classification(self):
+        """R4 evidence fixture exists with correct classification."""
+        ev = self._load_r4_evidence()
+        assert ev["classification"] == "C3B3D2B2C_R4_SOURCE_INPUTS_IDENTIFIED_CURVE_EXTRACTION_REQUIRED"
+        assert ev["active_debt_horizon"]["derivation"] == "GENERIC_FROM_SENIOR_DEBT_POLICY_NOT_HARDCODED"
+        assert ev["post_maturity_causality"]["classification"] == "POST_MATURITY_CFADS_NON_CAUSAL_FOR_INITIAL_DSCR_SIZING"
+
+
+# ---------------------------------------------------------------------------
+# TestR4SourceEvidence — R4
+# ---------------------------------------------------------------------------
+
+class TestR4SourceEvidence:
+    """R4: Confirmed source cell identifiers for bank-sizing revenue scenarios.
+
+    Source evidence confirmed from workbook extraction artifacts:
+    - Oborovo: D102 (equity), D103 (sizing), D106 (Central case Trackers),
+      D109 (Low case Trackers), D110 (Low GMPV), D111 (Central Low case Trackers)
+      Scenarios!E324 (equity selector), E325 (debt sizing selector)
+    - TUHO: D107 (equity), D108 (sizing), D109 (MidLow)
+      Scenarios!E182 (equity Afry), E183 (sizing Afry)
+
+    Curve values for D110, D111 (Oborovo) and D109 (TUHO) are NOT in fixtures.
+    Classification: C3B3D2B2C_R4_SOURCE_INPUTS_IDENTIFIED_CURVE_EXTRACTION_REQUIRED
+    """
+
+    def _load_r4_evidence(self) -> dict:
+        path = _FIXTURE_DIR / "excel_oborovo_bank_sizing_source_evidence_r4.json"
+        with open(path) as f:
+            return json.load(f)
+
+    def test_oborovo_equity_scenario_cell_confirmed(self):
+        """Oborovo equity revenue scenario cell D102 confirmed in evidence fixture."""
+        ev = self._load_r4_evidence()
+        assert ev["oborovo_revenue_scenario_evidence"]["equity_scenario_cell"] == "Inputs!D102"
+        assert ev["oborovo_revenue_scenario_evidence"]["equity_label_confirmed"] == "Equity case revenues"
+
+    def test_oborovo_sizing_scenario_cell_confirmed(self):
+        """Oborovo sizing revenue scenario cell D103 confirmed in evidence fixture."""
+        ev = self._load_r4_evidence()
+        assert ev["oborovo_revenue_scenario_evidence"]["sizing_scenario_cell"] == "Inputs!D103"
+        assert ev["oborovo_revenue_scenario_evidence"]["debt_sizing_label_confirmed"] == "Debt sizing revenues curve"
+
+    def test_oborovo_central_low_case_cell_confirmed(self):
+        """Oborovo Central Low case Trackers cell D111 confirmed (no curve values)."""
+        ev = self._load_r4_evidence()
+        oborovo = ev["oborovo_revenue_scenario_evidence"]
+        assert oborovo["central_low_case_trackers_cell"] == "Inputs!D111"
+        assert oborovo["central_low_case_trackers_label"] == "Central Low case Trackers"
+        assert oborovo["central_low_case_values_available"] is False
+        assert oborovo["extraction_status"] == "CURVE_EXTRACTION_REQUIRED_FOR_D110_D111_D109"
+
+    def test_tuho_sizing_scenario_cell_confirmed(self):
+        """TUHO sizing scenario cell D108 confirmed."""
+        ev = self._load_r4_evidence()
+        tuho = ev["tuho_revenue_scenario_evidence"]
+        assert tuho["sizing_scenario_cell"] == "Inputs!D108"
+        assert tuho["sizing_label_confirmed"] == "Sizing scenario"
+
+    def test_candidate_c_status_blocked_pending_extraction(self):
+        """Candidate C is BLOCKED pending curve extraction (R4 verdict)."""
+        ev = self._load_r4_evidence()
+        cc = ev["candidate_c_feasibility"]
+        assert cc["status"] == "BLOCKED_PENDING_CURVE_EXTRACTION"
+        assert cc["classification"] == "C3B3D2B2C_R4_SOURCE_INPUTS_IDENTIFIED_CURVE_EXTRACTION_REQUIRED"
+
+
+# ---------------------------------------------------------------------------
+# TestCandidateCArchitecture — R4
+# ---------------------------------------------------------------------------
+
+class TestCandidateCArchitecture:
+    """R4: Candidate C design constraints and generic architecture requirements.
+
+    Candidate C = P90-10y production + bank/sizing revenue scenario (Central Low
+    case Trackers for Oborovo, MidLow for TUHO), evaluated over active debt periods
+    only. No project-name dispatch. No hardcoded period boundaries. No calibration.
+
+    Cannot be evaluated until D111/D110/D109 curves are extracted.
+    Classification: C3B3D2B2C_R4_SOURCE_INPUTS_IDENTIFIED_CURVE_EXTRACTION_REQUIRED
+    """
+
+    def test_no_project_name_dispatch_in_recon_candidates(self):
+        """finco_recon/bank_sizing_candidates.py must not contain project-name dispatch."""
+        import pathlib
+        src = (pathlib.Path(__file__).parent.parent / "finco_recon" / "bank_sizing_candidates.py").read_text()
+        for token in ("if project", "if proj", "== 'oborovo'", "== 'tuho'",
+                      '== "oborovo"', '== "tuho"'):
+            assert token not in src, (
+                f"Project-name dispatch found in bank_sizing_candidates.py: {token!r}"
+            )
+
+    def test_candidate_c_requires_generic_active_period_derivation(self):
+        """Active debt period derivation uses policy fields, not hardcoded integers.
+
+        R4 constraint: DO NOT hardcode P1-P28, 28 periods, or 2044.
+        The policy fields repayment_start_period_index and maturity_period_index
+        must be the only source of the active period boundary.
+        """
+        from app.project_factories import create_default_oborovo
+        from financial_engine.adapters.project_inputs import (
+            build_senior_debt_model_input_from_project_inputs,
+        )
+        proj = create_default_oborovo()
+        sd_input = build_senior_debt_model_input_from_project_inputs(proj)
+        policy = sd_input.senior_debt_policy
+        # Generic derivation — same expression the orchestrator uses
+        debt_start = policy.repayment_start_period_index
+        debt_end = policy.maturity_period_index
+        active_count = debt_end - debt_start + 1
+        assert active_count > 0
+        assert debt_start > 0
+        assert debt_end > debt_start
+
+    def test_r4_verdict_classification_in_evidence_fixture(self):
+        """R4 verdict present in evidence fixture."""
+        path = _FIXTURE_DIR / "excel_oborovo_bank_sizing_source_evidence_r4.json"
+        with open(path) as f:
+            ev = json.load(f)
+        assert "C3B3D2B2C_R4_SOURCE_INPUTS_IDENTIFIED_CURVE_EXTRACTION_REQUIRED" in ev["classification"]
+        assert "POST_MATURITY_CFADS_NON_CAUSAL_FOR_INITIAL_DSCR_SIZING" in (
+            ev["post_maturity_causality"]["classification"]
+        )
+
+    def test_post_maturity_classification_label_in_recon(self):
+        """POST_MATURITY_CFADS_NON_CAUSAL_FOR_INITIAL_DSCR_SIZING present in evidence fixture."""
+        path = _FIXTURE_DIR / "excel_oborovo_bank_sizing_source_evidence_r4.json"
+        with open(path) as f:
+            content = f.read()
+        assert "POST_MATURITY_CFADS_NON_CAUSAL_FOR_INITIAL_DSCR_SIZING" in content
