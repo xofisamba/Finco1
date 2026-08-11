@@ -12,6 +12,7 @@
 | **R3 Final Verdict** | `C3B3D2B2C_R3_STOP_MACRO50_TRANSFORMATION_SOURCE_INACCESSIBLE` |
 | **R4 Verdict** | `C3B3D2B2C_R4_SOURCE_INPUTS_IDENTIFIED_CURVE_EXTRACTION_REQUIRED` |
 | **R4.1 Verdict** | `C3B3D2B2C_R4_1_MANUAL_CAUSALITY_PROVEN_ENGINE_EVALUATION_XLSM_EXTRACTION_REQUIRED` |
+| **R4.2 Verdict** | `C3B3D2B2C_R4_2_STOP_CANDIDATE_C_SOURCE_PARITY_FAILED` |
 
 ---
 
@@ -409,6 +410,108 @@ No project-name dispatch. No hardcoded period boundaries.
 Original XLSM files (`20260414_BP_Oborovo_Sensitivity_FINAL for PPT.xlsm`, `20260330_TUHO_BP.xlsm`) are not present in the execution environment. Searched: `/home`, `/root`, `/data`, `/mnt`, `/home/user/attach`. D110, D111 (Oborovo) and D109 (TUHO) are not in any committed fixture. Productionization gate cannot be cleared without engine evaluation of Candidate C.
 
 **Evidence fixture:** `tests/fixtures/excel_oborovo_bank_sizing_source_evidence_r4_1.json`
+
+---
+
+## 11. R4.2: Source curve fixture + Candidate C engine closure
+
+### Source price curves committed (R4.2)
+
+Fixture: `tests/fixtures/excel_bank_sizing_revenue_curves_r4_2.json`
+
+| Project | Curve | Cell | Calendar range | Values |
+|---|---|---|---|---|
+| Oborovo | Central Low case Trackers | Inputs!D111 | CY2030–2060 | 31 values committed |
+| TUHO | MidLow | Inputs!D109 | CY2029–2060 | 32 values committed |
+
+**Oborovo sample values (EUR/MWh):** CY2042 = 44.1107, CY2044 = 42.0980, CY2060 = 37.6441  
+**TUHO sample values (EUR/MWh):** CY2029 = 74.040, CY2042 = 65.895, CY2059 = 55.610
+
+Engine slices extracted: `OBOROVO_CENTRAL_LOW_CY2042_2060` (19 values), `TUHO_MIDLOW_Y1_Y30` (30 values).
+
+### Candidate C engine evaluation — Oborovo
+
+**Configuration:** P90-10y yield + Central Low case Trackers (D111) as `merchant_prices_by_calendar_year_eur_mwh`
+
+| Scenario | Debt (kEUR) |
+|---|---|
+| Base (P50 + Central case) | 43,919.033 |
+| P90-10y yield only | 40,949.947 |
+| Central Low prices only (P50 yield) | 41,677.278 |
+| **Candidate C (P90 + Central Low)** | **38,829.996** |
+| **Target (DS!D51)** | **42,852.279** |
+| **Delta** | **−4,022.283 kEUR** |
+| Tolerance | 500 kEUR |
+| **Result** | **FAIL — STOP** |
+
+**Verdict:** `C3B3D2B2C_R4_2_STOP_CANDIDATE_C_SOURCE_PARITY_FAILED`
+
+#### Per-period merchant decomposition (first four periods)
+
+| Period | Bank CFADS (kEUR) | Source DS!row20 (kEUR) | Delta (kEUR) |
+|---|---|---|---|
+| P26 (CY2042 half) | 1,137.713 | 2,279.787 | −1,142.075 |
+| P27 (CY2043 half) | 1,195.041 | 2,103.844 | −908.803 |
+| P28 (CY2043 half) | 1,192.747 | 2,248.763 | −1,056.016 |
+| P29 (CY2044 half) | 1,123.846 | 2,057.780 | −933.934 |
+
+All merchant period deltas are negative — engine bank CFADS is systematically below source DS!row20.
+
+#### Analysis of the engine–Excel sensitivity disparity
+
+| Perturbation | Engine delta (kEUR) | Excel delta (kEUR) | Ratio |
+|---|---|---|---|
+| Central → Central Low prices | ~−5,089 | −961 | ~5.3× |
+
+Direct substitution of D111 as the merchant price gives engine sensitivity ~5.3× larger than Excel's observed 961 kEUR response. This proves the VBA does NOT apply D111 as a simple price-curve replacement. The exact mechanism remains inaccessible.
+
+**Classification: `VBA_IMPLEMENTATION_NOT_VISIBLE` — unchanged from R3.**
+
+### Candidate C engine evaluation — TUHO
+
+**Blocker:** `build_tax_contract_from_project_inputs` raises `NotImplementedError` for `atad_enabled=True`. Full debt sizing not possible without complete interest schedule.
+
+Operating model run with P90-10y yield + MidLow (D109) confirmed; bank CFADS for P2 (oracle P1) computed but full debt sizing blocked.
+
+**Oracle target:** 2,539.633673 kEUR (back-calculated: DS_P1 × 1.2 = 2116.361394 × 1.2)
+
+**Result:** `BLOCKED_ATAD`
+
+### Post-maturity runtime causality proof
+
+**Method:** Perturb merchant prices after Senior Debt maturity (CY2045+) by ×2.0 and ×0.5; measure debt delta.
+
+| Perturbation | Debt delta (kEUR) |
+|---|---|
+| Post-maturity ×2.0 (CY2045+) | **0.000** |
+| Post-maturity ×0.5 (CY2045+) | **0.000** |
+| Active period ×1.1 (CY2042–2044) | +518.545 |
+
+**Classification proven at runtime:**  
+`POST_MATURITY_CFADS_NON_CAUSAL_FOR_INITIAL_DSCR_SIZING_RUNTIME_PROVEN`
+
+Post-maturity CFADS are provably inert for DSCR debt sizing. Only the 3 active merchant periods (CY2042–2044, within the Senior Debt horizon) are causal. This eliminates any hypothesis that extending the merchant price horizon would change the sizing outcome.
+
+### R4.2 governance gate decision
+
+```
+STOP: Candidate C engine gives 38,830 kEUR vs source 42,852 kEUR (delta −4,022 kEUR).
+Exceeds 500 kEUR tolerance. No calibration applied.
+VBA mechanism not visible — cannot advance to production without resolution.
+financial_engine/ zero-diff from base SHA — NO production changes.
+```
+
+### R4.2 test coverage
+
+44 new tests across three classes:
+
+| Class | Tests | Coverage |
+|---|---|---|
+| `TestR4_2SourceCurves` | 22 | Fixture existence, curve lengths, verbatim values, constants |
+| `TestR4_2CandidateC` | 14 | STOP verdict, delta, decomposition, zero-diff guard |
+| `TestR4_2PostMaturityCausality` | 8 | Runtime proof — zero delta for CY2045+, nonzero for CY2042–2044 |
+
+Total: 145 tests (101 prior + 44 new), all passing.
 
 ---
 

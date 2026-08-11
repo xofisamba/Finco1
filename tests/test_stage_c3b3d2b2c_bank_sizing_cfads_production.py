@@ -1161,3 +1161,330 @@ class TestR4_1ProductContract:
             / "bank_sizing_candidates.py"
         ).read_text()
         assert "C3B3D2B2C_R4_1_MANUAL_CAUSALITY_PROVEN_ENGINE_EVALUATION_XLSM_EXTRACTION_REQUIRED" in src
+
+
+class TestR4_2SourceCurves:
+    """R4.2: Source price curve fixture validation.
+
+    Tests that excel_bank_sizing_revenue_curves_r4_2.json exists and contains
+    the correct verbatim values for Oborovo Central Low case Trackers (D111)
+    and TUHO MidLow (D109).
+    """
+
+    _FIXTURE_PATH = (
+        pathlib.Path(__file__).parent / "fixtures" / "excel_bank_sizing_revenue_curves_r4_2.json"
+    )
+
+    def _load(self) -> dict:
+        with open(self._FIXTURE_PATH) as f:
+            return json.load(f)
+
+    def test_fixture_exists(self):
+        """R4.2 source curve fixture must exist."""
+        assert self._FIXTURE_PATH.exists(), f"Missing fixture: {self._FIXTURE_PATH}"
+
+    def test_fixture_stage_and_round(self):
+        """Fixture must declare stage C3B3D2B2C and round R4.2."""
+        data = self._load()
+        assert data["stage"] == "C3B3D2B2C"
+        assert data["round"] == "R4.2"
+
+    def test_oborovo_d111_curve_present(self):
+        """Oborovo Central Low case Trackers (D111) must be in the fixture."""
+        data = self._load()
+        assert "oborovo_central_low_case_trackers_d111" in data
+
+    def test_oborovo_d111_curve_length(self):
+        """Oborovo D111 curve must have 31 calendar year entries (CY2030-2060)."""
+        data = self._load()
+        vals = data["oborovo_central_low_case_trackers_d111"]["values_eur_mwh"]
+        assert len(vals) == 31
+
+    def test_oborovo_d111_start_year_2030(self):
+        """Oborovo D111 curve must start at CY2030."""
+        data = self._load()
+        curve = data["oborovo_central_low_case_trackers_d111"]
+        assert curve["calendar_start_year"] == 2030
+        assert "2030" in curve["values_eur_mwh"]
+
+    def test_oborovo_d111_value_cy2042(self):
+        """Oborovo D111 CY2042 value must equal 44.110675 EUR/MWh."""
+        data = self._load()
+        vals = data["oborovo_central_low_case_trackers_d111"]["values_eur_mwh"]
+        assert abs(vals["2042"] - 44.110675) < 1e-6
+
+    def test_oborovo_d111_value_cy2060(self):
+        """Oborovo D111 CY2060 value must equal 37.644075 EUR/MWh."""
+        data = self._load()
+        vals = data["oborovo_central_low_case_trackers_d111"]["values_eur_mwh"]
+        assert abs(vals["2060"] - 37.644075) < 1e-6
+
+    def test_oborovo_d111_engine_slice_length(self):
+        """Oborovo D111 engine slice must have 19 values (CY2042-2060)."""
+        data = self._load()
+        slc = data["oborovo_central_low_case_trackers_d111"]["engine_slice_cy2042_cy2060"]
+        assert len(slc["values_eur_mwh"]) == 19
+
+    def test_oborovo_d111_confirmed_causal(self):
+        """Oborovo D111 must be confirmed active in source."""
+        data = self._load()
+        curve = data["oborovo_central_low_case_trackers_d111"]
+        assert curve["confirmed_active_in_source"] is True
+
+    def test_tuho_d109_curve_present(self):
+        """TUHO MidLow (D109) must be in the fixture."""
+        data = self._load()
+        assert "tuho_mid_low_d109" in data
+
+    def test_tuho_d109_curve_length(self):
+        """TUHO D109 curve must have 32 calendar year entries (CY2029-2060)."""
+        data = self._load()
+        vals = data["tuho_mid_low_d109"]["values_eur_mwh"]
+        assert len(vals) == 32
+
+    def test_tuho_d109_start_year_2029(self):
+        """TUHO D109 curve must start at CY2029."""
+        data = self._load()
+        curve = data["tuho_mid_low_d109"]
+        assert curve["calendar_start_year"] == 2029
+        assert "2029" in curve["values_eur_mwh"]
+
+    def test_tuho_d109_value_cy2029(self):
+        """TUHO D109 CY2029 value must equal 74.040 EUR/MWh."""
+        data = self._load()
+        vals = data["tuho_mid_low_d109"]["values_eur_mwh"]
+        assert abs(vals["2029"] - 74.040) < 1e-6
+
+    def test_tuho_d109_value_cy2042(self):
+        """TUHO D109 CY2042 value must equal 65.895 EUR/MWh."""
+        data = self._load()
+        vals = data["tuho_mid_low_d109"]["values_eur_mwh"]
+        assert abs(vals["2042"] - 65.895) < 1e-6
+
+    def test_tuho_d109_engine_slice_length(self):
+        """TUHO D109 engine slice must have 30 values (Y1-Y30 = CY2030-2059)."""
+        data = self._load()
+        slc = data["tuho_mid_low_d109"]["engine_slice_y1_y30"]
+        assert len(slc["values_eur_mwh"]) == 30
+
+    def test_tuho_d109_engine_slice_y1_is_cy2030(self):
+        """TUHO D109 engine Y1 must equal CY2030 value = 75.790."""
+        data = self._load()
+        slc = data["tuho_mid_low_d109"]["engine_slice_y1_y30"]["values_eur_mwh"]
+        assert abs(slc[0] - 75.790) < 1e-6
+
+    def test_oborovo_selector_confirmed(self):
+        """Oborovo sizing selector must be confirmed Central Low case Trackers."""
+        data = self._load()
+        sel = data["confirmed_revenue_selectors"]["oborovo"]
+        assert sel["sizing_active_value"] == "Central Low case Trackers"
+        assert sel["sizing_cell"] == "Scenarios!E325"
+
+    def test_oborovo_central_low_constant_length(self):
+        """OBOROVO_CENTRAL_LOW_CY2042_2060 must have 19 values."""
+        from finco_recon.bank_sizing_candidates import OBOROVO_CENTRAL_LOW_CY2042_2060
+        assert len(OBOROVO_CENTRAL_LOW_CY2042_2060) == 19
+
+    def test_oborovo_central_low_constant_first_value(self):
+        """OBOROVO_CENTRAL_LOW_CY2042_2060[0] = 44.110675 (CY2042)."""
+        from finco_recon.bank_sizing_candidates import OBOROVO_CENTRAL_LOW_CY2042_2060
+        assert abs(OBOROVO_CENTRAL_LOW_CY2042_2060[0] - 44.110675) < 1e-6
+
+    def test_tuho_midlow_constant_length(self):
+        """TUHO_MIDLOW_Y1_Y30 must have 30 values."""
+        from finco_recon.bank_sizing_candidates import TUHO_MIDLOW_Y1_Y30
+        assert len(TUHO_MIDLOW_Y1_Y30) == 30
+
+    def test_tuho_midlow_constant_first_value(self):
+        """TUHO_MIDLOW_Y1_Y30[0] = 75.790 (Y1 = CY2030)."""
+        from finco_recon.bank_sizing_candidates import TUHO_MIDLOW_Y1_Y30
+        assert abs(TUHO_MIDLOW_Y1_Y30[0] - 75.790) < 1e-6
+
+    def test_r4_2_evidence_fixture_path_constant(self):
+        """R4_2_EVIDENCE_FIXTURE_PATH must point to the committed fixture."""
+        from finco_recon.bank_sizing_candidates import R4_2_EVIDENCE_FIXTURE_PATH
+        path = pathlib.Path(__file__).parent.parent / R4_2_EVIDENCE_FIXTURE_PATH
+        assert path.exists(), f"R4.2 evidence fixture not found at {path}"
+
+
+class TestR4_2CandidateC:
+    """R4.2: Candidate C engine evaluation.
+
+    Tests the STOP verdict for Candidate C — engine delta far exceeds tolerance.
+    No calibration; VBA mechanism not reproduced.
+    """
+
+    def test_candidate_c_result_dict_present(self):
+        """CANDIDATE_C_R4_2_RESULT must be importable."""
+        from finco_recon.bank_sizing_candidates import CANDIDATE_C_R4_2_RESULT
+        assert CANDIDATE_C_R4_2_RESULT["stage"] == "C3B3D2B2C"
+        assert CANDIDATE_C_R4_2_RESULT["round"] == "R4.2"
+
+    def test_candidate_c_verdict_stop(self):
+        """R4.2 top-level verdict must be STOP (source parity failed)."""
+        from finco_recon.bank_sizing_candidates import CANDIDATE_C_R4_2_RESULT
+        assert CANDIDATE_C_R4_2_RESULT["verdict"] == "C3B3D2B2C_R4_2_STOP_CANDIDATE_C_SOURCE_PARITY_FAILED"
+
+    def test_candidate_c_oborovo_result_is_fail(self):
+        """Oborovo Candidate C must be classified FAIL."""
+        from finco_recon.bank_sizing_candidates import CANDIDATE_C_R4_2_RESULT
+        assert CANDIDATE_C_R4_2_RESULT["oborovo"]["result"] == "FAIL"
+
+    def test_candidate_c_oborovo_delta_exceeds_tolerance(self):
+        """Oborovo Candidate C delta must exceed 500 kEUR tolerance."""
+        from finco_recon.bank_sizing_candidates import CANDIDATE_C_R4_2_RESULT
+        assert abs(CANDIDATE_C_R4_2_RESULT["oborovo"]["delta_keur"]) > 500.0
+
+    def test_candidate_c_oborovo_engine_debt_reasonable(self):
+        """Oborovo Candidate C engine debt must be in plausible range 35,000-45,000 kEUR."""
+        from finco_recon.bank_sizing_candidates import CANDIDATE_C_R4_2_RESULT
+        debt = CANDIDATE_C_R4_2_RESULT["oborovo"]["engine_debt_keur"]
+        assert 35000.0 < debt < 45000.0
+
+    def test_candidate_c_oborovo_target_matches_source(self):
+        """Oborovo target must be DS!D51 = 42,852.278763 kEUR."""
+        from finco_recon.bank_sizing_candidates import CANDIDATE_C_R4_2_RESULT
+        assert abs(CANDIDATE_C_R4_2_RESULT["oborovo"]["target_debt_keur"] - 42852.278763) < 1e-3
+
+    def test_candidate_c_run_oborovo_function(self):
+        """run_candidate_c_oborovo must run and return STOP verdict."""
+        from finco_recon.bank_sizing_candidates import run_candidate_c_oborovo
+        from app.project_factories import create_default_oborovo
+        result = run_candidate_c_oborovo(create_default_oborovo)
+        assert result["verdict"] == "C3B3D2B2C_R4_2_STOP_CANDIDATE_C_SOURCE_PARITY_FAILED"
+        assert abs(result["delta_keur"]) > 500.0
+
+    def test_candidate_c_oborovo_merchant_decomposition_present(self):
+        """run_candidate_c_oborovo must return per-period merchant decomposition."""
+        from finco_recon.bank_sizing_candidates import run_candidate_c_oborovo
+        from app.project_factories import create_default_oborovo
+        result = run_candidate_c_oborovo(create_default_oborovo)
+        decomp = result["merchant_period_decomposition"]
+        assert len(decomp) >= 3
+        assert "period_index" in decomp[0]
+        assert "bank_cfads_keur" in decomp[0]
+        assert "source_cfads_keur" in decomp[0]
+        assert "delta_keur" in decomp[0]
+
+    def test_candidate_c_oborovo_merchant_periods_all_negative_delta(self):
+        """All merchant period deltas must be negative (engine < source)."""
+        from finco_recon.bank_sizing_candidates import run_candidate_c_oborovo
+        from app.project_factories import create_default_oborovo
+        result = run_candidate_c_oborovo(create_default_oborovo)
+        for item in result["merchant_period_decomposition"]:
+            assert item["delta_keur"] < 0, (
+                f"Period {item['period_index']}: expected negative delta, got {item['delta_keur']}"
+            )
+
+    def test_candidate_c_tuho_blocked_atad(self):
+        """TUHO Candidate C must be classified BLOCKED_ATAD."""
+        from finco_recon.bank_sizing_candidates import CANDIDATE_C_R4_2_RESULT
+        assert CANDIDATE_C_R4_2_RESULT["tuho"]["result"] == "BLOCKED_ATAD"
+
+    def test_candidate_c_financial_engine_unchanged(self):
+        """financial_engine/ must be zero-diff from base SHA (no production changes)."""
+        from finco_recon.bank_sizing_candidates import CANDIDATE_C_R4_2_RESULT
+        assert CANDIDATE_C_R4_2_RESULT["financial_engine_diff"] == "ZERO — financial_engine/ unchanged from base SHA"
+
+    def test_r4_2_verdict_in_recon_module(self):
+        """R4.2 verdict label must be present in bank_sizing_candidates module docstring."""
+        src = (
+            pathlib.Path(__file__).parent.parent
+            / "finco_recon"
+            / "bank_sizing_candidates.py"
+        ).read_text()
+        assert "C3B3D2B2C_R4_2_STOP_CANDIDATE_C_SOURCE_PARITY_FAILED" in src
+
+    def test_no_calibration_constant(self):
+        """bank_sizing_candidates must not contain calibration variable assignments."""
+        import ast
+        src = (
+            pathlib.Path(__file__).parent.parent
+            / "finco_recon"
+            / "bank_sizing_candidates.py"
+        ).read_text()
+        # Calibration variables must not be assigned anywhere (comments/docstrings allowed)
+        tree = ast.parse(src)
+        assigned_names = {
+            node.id if isinstance(node, ast.Name) else ""
+            for node in ast.walk(tree)
+            if isinstance(node, (ast.Assign,))
+            for target in (node.targets if hasattr(node, "targets") else [])
+            for node in ast.walk(target)
+            if isinstance(node, ast.Name)
+        }
+        assert "approved_delta" not in assigned_names
+        assert "balancing_plug" not in assigned_names
+
+    def test_financial_engine_zero_diff(self):
+        """financial_engine/ must have zero diff from base SHA 6e064980."""
+        import subprocess
+        result = subprocess.run(
+            ["git", "diff", "--name-only", "6e064980868709294e14da4d95e3279790d70ff0", "--", "financial_engine/"],
+            capture_output=True, text=True,
+            cwd=pathlib.Path(__file__).parent.parent,
+        )
+        assert result.returncode == 0
+        assert result.stdout.strip() == "", (
+            f"financial_engine/ has unexpected diff:\n{result.stdout}"
+        )
+
+
+class TestR4_2PostMaturityCausality:
+    """R4.2: Post-maturity non-causality runtime proof.
+
+    Tests that post-maturity CFADS are provably non-causal for initial DSCR sizing.
+    CY2045+ perturbation (×2.0, ×0.5) must give debt delta = 0.
+    """
+
+    def test_post_maturity_verdict_in_result_dict(self):
+        """CANDIDATE_C_R4_2_RESULT must declare post-maturity causality verdict."""
+        from finco_recon.bank_sizing_candidates import CANDIDATE_C_R4_2_RESULT
+        pm = CANDIDATE_C_R4_2_RESULT["post_maturity_causality"]
+        assert pm["verdict"] == "POST_MATURITY_CFADS_NON_CAUSAL_FOR_INITIAL_DSCR_SIZING_RUNTIME_PROVEN"
+
+    def test_post_maturity_x2_delta_zero(self):
+        """Post-maturity ×2.0 perturbation must give debt delta = 0 kEUR."""
+        from finco_recon.bank_sizing_candidates import CANDIDATE_C_R4_2_RESULT
+        pm = CANDIDATE_C_R4_2_RESULT["post_maturity_causality"]
+        assert abs(pm["post_maturity_x2_delta_keur"]) < 0.01
+
+    def test_post_maturity_x05_delta_zero(self):
+        """Post-maturity ×0.5 perturbation must give debt delta = 0 kEUR."""
+        from finco_recon.bank_sizing_candidates import CANDIDATE_C_R4_2_RESULT
+        pm = CANDIDATE_C_R4_2_RESULT["post_maturity_causality"]
+        assert abs(pm["post_maturity_x05_delta_keur"]) < 0.01
+
+    def test_active_period_perturbation_nonzero(self):
+        """Active period ×1.1 perturbation (CY2042-2044) must give debt delta > 0."""
+        from finco_recon.bank_sizing_candidates import CANDIDATE_C_R4_2_RESULT
+        pm = CANDIDATE_C_R4_2_RESULT["post_maturity_causality"]
+        assert pm["active_period_x11_delta_keur"] > 100.0
+
+    def test_run_post_maturity_sensitivity_function(self):
+        """run_post_maturity_sensitivity must run and return RUNTIME_PROVEN verdict."""
+        from finco_recon.bank_sizing_candidates import run_post_maturity_sensitivity
+        from app.project_factories import create_default_oborovo
+        result = run_post_maturity_sensitivity(create_default_oborovo)
+        assert result["verdict"] == "POST_MATURITY_CFADS_NON_CAUSAL_FOR_INITIAL_DSCR_SIZING_RUNTIME_PROVEN"
+
+    def test_runtime_post_maturity_x2_delta_zero(self):
+        """Runtime: post-maturity ×2.0 debt delta must be < 0.01 kEUR."""
+        from finco_recon.bank_sizing_candidates import run_post_maturity_sensitivity
+        from app.project_factories import create_default_oborovo
+        result = run_post_maturity_sensitivity(create_default_oborovo)
+        assert abs(result["post_maturity_x2_delta_keur"]) < 0.01
+
+    def test_runtime_post_maturity_x05_delta_zero(self):
+        """Runtime: post-maturity ×0.5 debt delta must be < 0.01 kEUR."""
+        from finco_recon.bank_sizing_candidates import run_post_maturity_sensitivity
+        from app.project_factories import create_default_oborovo
+        result = run_post_maturity_sensitivity(create_default_oborovo)
+        assert abs(result["post_maturity_x05_delta_keur"]) < 0.01
+
+    def test_runtime_active_period_sensitivity(self):
+        """Runtime: active period ×1.1 debt delta must be > 100 kEUR."""
+        from finco_recon.bank_sizing_candidates import run_post_maturity_sensitivity
+        from app.project_factories import create_default_oborovo
+        result = run_post_maturity_sensitivity(create_default_oborovo)
+        assert result["active_period_x11_delta_keur"] > 100.0
