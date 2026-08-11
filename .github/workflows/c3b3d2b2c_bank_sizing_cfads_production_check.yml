@@ -1,4 +1,4 @@
-name: C3B3D2B2C — Bank-Sizing CFADS Production Check (R3 hardened)
+name: C3B3D2B2C — Bank-Sizing CFADS Production Check (R3.1 hardened)
 
 on:
   push:
@@ -19,7 +19,7 @@ on:
 
 jobs:
   c3b3d2b2c-check:
-    name: C3B3D2B2C bank-sizing CFADS production (R3)
+    name: C3B3D2B2C bank-sizing CFADS production (R3.1)
     runs-on: ubuntu-latest
 
     steps:
@@ -35,29 +35,38 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      # --- SHA verification: confirm base is still reachable and C3B3D2B2B is locked ---
+      # --- Exact-head SHA print ---
+      - name: Exact-head SHA
+        run: |
+          HEAD_SHA=$(git rev-parse HEAD)
+          echo "HEAD_SHA=${HEAD_SHA}"
+          echo "Checked-out SHA: ${HEAD_SHA}"
+
+      # --- SHA verification: C3B3D2B2B base locked ---
       - name: SHA verification — C3B3D2B2B base locked at 6e064980
         run: |
           git merge-base --is-ancestor 6e064980868709294e14da4d95e3279790d70ff0 HEAD \
             && echo "PASS: base SHA 6e064980 is ancestor of HEAD"
 
-      # --- Production file diff: ensure no unproven additions beyond base ---
-      - name: Production diff — no unproven bank-case code in financial_engine
+      # --- Zero production diff (R3.1 §1) ---
+      - name: Zero production diff — financial_engine exactly at base
         run: |
-          git diff 6e064980868709294e14da4d95e3279790d70ff0..HEAD \
+          git diff --exit-code \
+            6e064980868709294e14da4d95e3279790d70ff0..HEAD \
             -- financial_engine/inputs.py \
                financial_engine/results.py \
                financial_engine/provenance.py \
                financial_engine/orchestrator.py \
-            | grep -c '^+' | xargs -I{} echo "Production diff additions: {}"
-          git diff --check 6e064980868709294e14da4d95e3279790d70ff0..HEAD \
-            -- financial_engine/inputs.py \
-               financial_engine/results.py \
-               financial_engine/provenance.py \
-               financial_engine/orchestrator.py \
-            && echo "PASS: no whitespace errors in production diff"
+            && echo "PASS: R3_STOP_PRODUCTION_REVERT_EXACTLY_BASE_PROVEN"
 
-      # --- Stage gate: C3B3D2B2C (R3 evidence-only) ---
+      # --- Full PR diff check (whitespace, entire PR) ---
+      - name: Full PR diff check — entire changeset
+        run: |
+          git diff --check \
+            6e064980868709294e14da4d95e3279790d70ff0..HEAD \
+            && echo "PASS: no whitespace errors in PR diff"
+
+      # --- Stage gate: C3B3D2B2C (R3.1 evidence-only) ---
       - name: C3B3D2B2C — bank-sizing CFADS evidence-only suite
         run: |
           python -m pytest tests/test_stage_c3b3d2b2c_bank_sizing_cfads_production.py \
@@ -141,11 +150,13 @@ jobs:
           python -m pytest tests/test_stage_c3b1_oborovo_tax_source_truth.py \
             -v --tb=short
 
-      # --- TUHO relevant regression ---
-      - name: TUHO — senior debt diagnostic regression
+      # --- TUHO relevant regression (from merged C3B3D2B2B/#924 workflow) ---
+      - name: TUHO regression — Phase2B tax/CFADS (TUHO_RELEVANT_REGRESSION_GREEN)
         run: |
-          python -m pytest tests/test_tuho_senior_debt_diagnostic.py \
-            -v --tb=short
+          python -m pytest \
+            "tests/test_phase2b_tax_cfads.py::test_w_correction_aware_four_baseline[tuho]" \
+            "tests/test_phase2b_tax_cfads.py::TestTuhoConstructionLoss::test_tuho_end_to_end_exact_matcher" \
+            -v --tb=short --no-header
 
       # --- Phase 2C senior debt regression ---
       - name: Phase 2C — senior debt regression
@@ -207,7 +218,7 @@ jobs:
           fi
           echo "PASS: no ProductionScenarioScope"
 
-      # --- Governance: STOP verdict documented ---
+      # --- Governance: R3 STOP verdict documented ---
       - name: Governance — R3 STOP verdict present in reconciliation doc
         run: |
           grep -q "C3B3D2B2C_R3_STOP_MACRO50_TRANSFORMATION_SOURCE_INACCESSIBLE" \
@@ -235,7 +246,7 @@ jobs:
             docs/reconciliation/c3b3d2b2c_bank_sizing_cfads_production.md \
             && echo "PASS: mechanism label preserved"
 
-      # --- Governance: finco_recon is evidence-only, not imported from financial_engine ---
+      # --- Governance: financial_engine does not import finco_recon ---
       - name: Governance — financial_engine does not import finco_recon
         run: |
           if grep -rn "finco_recon" financial_engine/ --include="*.py"; then

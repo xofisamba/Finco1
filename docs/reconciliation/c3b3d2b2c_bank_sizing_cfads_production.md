@@ -15,15 +15,27 @@
 
 ## 1. Problem statement
 
+### Current authoritative baseline (C3B3D2B2B locked, PR #924)
+
+| Constant | Value |
+|---|---|
+| `CURRENT_GRID0_PRODUCTION_CANDIDATE` | **43,919.032698 kEUR** |
+| `SOURCE_EXCEL_SENIOR_DEBT` (DS!D51) | **42,852.278763 kEUR** |
+| Current gap (CF1 only) | **+1,066.754 kEUR** |
+
 Prior stage C3B3D2B2B (PR #924, locked) proved:
 
 - CF2 (DSCR mechanics) = 0 kEUR — source-matched in current engine
 - CF3 (ACT/360 day-count) = 0 kEUR — source-matched in current engine
 - CF4 (operating assumptions) = 0 kEUR — source-matched
 - CF5 (interest rate) = 0 kEUR — source-matched
-- CF1 (CFADS / bank case) = **sole source of the sizing gap**
+- CF1 (CFADS / bank case) = **−1,066.754 kEUR** — sole source of the current sizing gap
 
 Classification: `BANK_SIZING_CFADS_AUTHORITY_IS_SOLE_CURRENT_SIZING_GAP_SOURCE_PROVEN`
+
+> **Historical note**: earlier pre-C3B3D2B2B analysis referenced a 13,547.2 kEUR sizing
+> gap and a 29,305 kEUR engine debt figure. These are historical-only values from prior
+> diagnostic stages and do NOT represent the current C3B3D2B2B-locked baseline.
 
 This stage (C3B3D2B2C) was tasked with implementing a generic typed bank-sizing CFADS
 scenario layer, identifying the source-proven Macro50 merchant-period transformation, and
@@ -78,9 +90,13 @@ Macro!H50 formula: None            (no formula element in XML)
 ```
 
 `macro_row50_output_formula: None` means Macro!row50 cells contain only `<v>` (cached
-value) elements with no `<f>` (formula) element. This is the signature of VBA-hardcoded
-values — the VBA macro (Macro50 procedure) ran a scenario and stored results directly into
-the worksheet cells via `Range(...).Value = ...`.
+value) elements with no `<f>` (formula) element. The workbook architecture indicates
+Macro/VBA involvement, but the exact VBA procedure and assignment mechanism are not visible
+and must not be inferred. The source evidence proves only that no worksheet formula is
+present in the inspected extraction; the VBA source code is password-protected.
+
+`VBA_IMPLEMENTATION_NOT_VISIBLE`: the exact transformation cannot be determined from the
+available artifacts. `BANK_CASE_TRANSFORMATION_MECHANISM_UNRESOLVED`.
 
 ### Macro!row38/39/40 precedent
 
@@ -101,7 +117,7 @@ Macro!row50's formula is None — it does NOT follow the formula-driven pattern.
 | Period range | DS!row20 vs CF!row79 | Interpretation |
 |---|---|---|
 | 1–24 (PPA) | ≈ identical (< 1 kEUR) | Bank CFADS ≈ base CFADS (contractual revenue unchanged) |
-| 25–60 (merchant) | DS20 << CF79 by 590–1,117 kEUR | Bank CFADS substantially lower; VBA-computed |
+| 25–60 (merchant) | DS20 << CF79 by 590–1,117 kEUR | Bank CFADS substantially lower; transformation mechanism unresolved |
 
 The gap grows over the merchant tenor, suggesting compounding effects.
 

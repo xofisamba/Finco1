@@ -16,7 +16,7 @@ Neither candidate reproduces source Macro50 (DS!row20).
 Macro!row50 forensics:
     - DS!H20 formula: =Macro!H50  (confirmed from dual-load extraction)
     - Macro!H49 formula: =CF!H79   (base P50 CFADS, confirmed)
-    - Macro!H50 formula: None      (no formula element in XML — VBA-hardcoded values)
+    - Macro!H50 formula: None      (no formula element in XML; no <f> element present)
     - PPA periods 1-24: DS20 ≈ CF79 (component identity confirmed)
     - Merchant periods 25+: DS20 << CF79 by 590–1117 kEUR per period
     - VBA_IMPLEMENTATION_NOT_VISIBLE: VBA source is password-protected
@@ -238,8 +238,9 @@ def run_candidate_b_merchant_only(project_factory_fn: Any) -> dict:
         "verdict": "REJECTED",
         "rejection_reason": (
             "VBA_IMPLEMENTATION_NOT_VISIBLE: "
-            "Macro!row50 for merchant periods reflects VBA-hardcoded values "
-            "with additional downside beyond P90 yield substitution."
+            "Macro!row50 has no worksheet formula in the inspected extraction. "
+            "Merchant period values cannot be reproduced by P90 yield substitution alone. "
+            "VBA_IMPLEMENTATION_NOT_VISIBLE: the exact mechanism is not accessible."
         ),
         "max_abs_delta_keur": max_abs,
         "signed_total_delta_keur": signed_total,
@@ -258,8 +259,11 @@ MACRO50_FORENSICS = {
     "sheet_cell": "Macro!H50 (period 1 column)",
     "formula_h": None,
     "formula_note": (
-        "No formula element present in workbook XML. "
-        "Values are VBA-hardcoded (paste-values output of Macro50 VBA procedure)."
+        "Macro!row50 has no worksheet formula in the inspected extraction. "
+        "No <f> element is present; only cached/output values are visible. "
+        "The workbook architecture indicates Macro/VBA involvement, but the exact "
+        "VBA procedure and assignment mechanism are not visible and must not be inferred. "
+        "VBA_IMPLEMENTATION_NOT_VISIBLE: source code is password-protected."
     ),
     "upstream_confirmed": "DS!H20 = Macro!H50 (formula confirmed from dual-load extraction)",
     "sibling_row49": "Macro!H49 = CF!H79 (base P50 CFADS, formula confirmed)",
