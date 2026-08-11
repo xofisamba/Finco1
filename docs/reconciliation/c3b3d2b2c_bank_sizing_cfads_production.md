@@ -10,6 +10,8 @@
 | Protected C3B2 SHA | `f8f244c0660495bfb4115d4e32ba329c291ab829d1d0693e614c889457b5add7` |
 | PR | #925 (DRAFT — DO NOT MERGE without explicit instruction) |
 | **R3 Final Verdict** | `C3B3D2B2C_R3_STOP_MACRO50_TRANSFORMATION_SOURCE_INACCESSIBLE` |
+| **R4 Verdict** | `C3B3D2B2C_R4_SOURCE_INPUTS_IDENTIFIED_CURVE_EXTRACTION_REQUIRED` |
+| **R4.1 Verdict** | `C3B3D2B2C_R4_1_MANUAL_CAUSALITY_PROVEN_ENGINE_EVALUATION_XLSM_EXTRACTION_REQUIRED` |
 
 ---
 
@@ -322,7 +324,95 @@ DS!row20 (or narrows the gap to within a toleranced acceptance criterion).
 
 ---
 
-## 10. Next steps for future stages
+## 10. R4.1 — Manual Causality Evidence and Environment Status
+
+### R4.1 verdict
+
+```
+C3B3D2B2C_R4_1_MANUAL_CAUSALITY_PROVEN_ENGINE_EVALUATION_XLSM_EXTRACTION_REQUIRED
+```
+
+### Manual black-box causality (PROVEN)
+
+| Observation | Scenarios!E325 value | Inputs cell | Resulting debt (kEUR) | Matches DS!D51? |
+|---|---|---|---|---|
+| 1 | Central Low case Trackers | D111 | **42,852.278763** | **Yes** (exact) |
+| 2 | Central case Trackers | D106 | 43,813.000 | No (+961 kEUR) |
+
+**Classification:** `OBOROVO_DEBT_SIZING_REVENUE_CURVE_MANUAL_CAUSALITY_PROVEN`
+
+Revenue curve selector `Scenarios!E325` is causally proven for debt sizing. `D111` (Central Low case Trackers) reproduces the source debt exactly. Switching to `D106` (equity curve) increases debt by +961 kEUR. The mechanism is revenue scenario selection, not yield scenario alone.
+
+**Oborovo confirmed selectors:**
+- `Scenarios!E324` (equity): cell confirmed HARDCODE; active value not in any fixture
+- `Scenarios!E325` (sizing): active value = **"Central Low case Trackers"** — confirmed from manual causality observation 1
+
+**TUHO confirmed selectors (from `tuho_scenario_manifest_v5.json`):**
+- `Scenarios!E182` (equity): **"Equity case Afry curve"** — confirmed
+- `Scenarios!E183` (sizing): **"Sizing case Afry curve"** — confirmed
+
+### TUHO bank CFADS oracle back-calculation
+
+```
+bank_cfads_P1 = senior_debt_service_P1 × DSCR_target
+              = 2,116.361394 × 1.20
+              = 2,539.633673 kEUR
+
+bank/base ratio   = 2539.633673 / 3070.175837 = 0.8272
+P90/P50 yield     = 3620 / 4164 = 0.8694
+Residual (price)  = 0.8272 / 0.8694 = 0.9515
+```
+
+**Classification:** `TUHO_BANK_CFADS_ORACLE_BACK_CALCULATED_FROM_DEBT_SERVICE`
+
+The residual factor (0.9515) confirms a price-scenario reduction is applied alongside yield downscaling, consistent with MidLow/Central price ratio.
+
+### Confirmed yield cases
+
+| Project | P50 (h) | P90-10y (h) | P90/P50 ratio |
+|---|---|---|---|
+| Oborovo | 1,494 | 1,410 | 0.9438 |
+| TUHO | 4,164 | 3,620 | 0.8694 |
+
+P75/P95/P99 cases: not in any committed fixture — XLSM required.
+
+### Confirmed price curves
+
+| Project | Curve | Cell | Status |
+|---|---|---|---|
+| Oborovo | Central case Trackers | D106 | **Values in fixture** (CY2042–2060) |
+| Oborovo | Central Low case Trackers | D111 | **Not in fixture** — XLSM required |
+| Oborovo | Low case GMPV | D110 | **Not in fixture** — XLSM required |
+| TUHO | Central | D106 | Not in fixture |
+| TUHO | MidLow | D109 | **Not in fixture** — XLSM required |
+
+### Candidate C status
+
+| Project | Yield | Revenue curve | Manual causality | Engine evaluation |
+|---|---|---|---|---|
+| Oborovo | P90-10y | D111 (Central Low case Trackers) | **PROVEN** | BLOCKED — XLSM required |
+| TUHO | P90-10y | D109 (MidLow) | Oracle derivable | BLOCKED — XLSM required |
+
+### Product contract design (draft)
+
+| Schema | Key fields | UX contract |
+|---|---|---|
+| `YieldCase` | `p50_hours`, `p90_10y_hours`, `p90_p50_ratio` (derived) | Both P50 and P90 user-editable; ratio is display-only |
+| `PriceCurve` | `curve_id`, `label`, `calendar_start_year`, `values_eur_mwh` | Named library; CRUD operations; selector by `curve_id` |
+| `RevenueCaseSelection` | `equity_curve_id`, `sizing_curve_id`, `bess_curve_id` (optional) | Scenario tab exposes two selectors; engine uses `sizing_curve_id` for bank CFADS |
+
+Scenario tab sections: Production / Yield → Revenue Curves → BESS Revenue (if applicable).
+No project-name dispatch. No hardcoded period boundaries.
+
+### Environment status
+
+Original XLSM files (`20260414_BP_Oborovo_Sensitivity_FINAL for PPT.xlsm`, `20260330_TUHO_BP.xlsm`) are not present in the execution environment. Searched: `/home`, `/root`, `/data`, `/mnt`, `/home/user/attach`. D110, D111 (Oborovo) and D109 (TUHO) are not in any committed fixture. Productionization gate cannot be cleared without engine evaluation of Candidate C.
+
+**Evidence fixture:** `tests/fixtures/excel_oborovo_bank_sizing_source_evidence_r4_1.json`
+
+---
+
+## 12. Next steps for future stages
 
 A source-proven bank-sizing rule can only be identified by one of:
 1. Access to the VBA source code for the Macro50 procedure
@@ -334,7 +424,7 @@ Until one of these is available, production adapter wiring is prohibited.
 
 ---
 
-## 11. Governance constraints observed
+## 13. Governance constraints observed
 
 - No DS25/DS40 period boundary hardcoding — ENFORCED
 - No project-name dispatch in production code — ENFORCED

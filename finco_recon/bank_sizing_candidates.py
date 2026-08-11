@@ -7,6 +7,7 @@ No fixture reads at runtime — oracle vectors loaded from committed fixture onl
 Stage: C3B3D2B2C
 R3 Verdict: C3B3D2B2C_R3_STOP_MACRO50_TRANSFORMATION_SOURCE_INACCESSIBLE
 R4 Verdict: C3B3D2B2C_R4_SOURCE_INPUTS_IDENTIFIED_CURVE_EXTRACTION_REQUIRED
+R4.1 Verdict: C3B3D2B2C_R4_1_MANUAL_CAUSALITY_PROVEN_ENGINE_EVALUATION_XLSM_EXTRACTION_REQUIRED
 
 Classification of candidates:
     OBOROVO_ALL_PRODUCTION_BANK_CASE_RULE_CANDIDATE_ONLY
@@ -355,6 +356,75 @@ CANDIDATE_C_SOURCE_EVIDENCE = {
         "curve extraction before source comparison is possible."
     ),
 }
+
+
+# ---------------------------------------------------------------------------
+# R4.1: Manual causality evidence and product contract design
+# ---------------------------------------------------------------------------
+
+MANUAL_CAUSALITY_EVIDENCE = {
+    "classification": "OBOROVO_DEBT_SIZING_REVENUE_CURVE_MANUAL_CAUSALITY_PROVEN",
+    "method": "BLACK_BOX_WORKBOOK_OBSERVATION",
+    "observation_d111": {
+        "scenarios_e325": "Central Low case Trackers",
+        "inputs_cell": "Inputs!D111",
+        "resulting_debt_keur": 42852.278763,
+        "matches_ds_d51": True,
+    },
+    "observation_d106": {
+        "scenarios_e325": "Central case Trackers",
+        "inputs_cell": "Inputs!D106",
+        "resulting_debt_keur": 43813.0,
+        "matches_ds_d51": False,
+    },
+    "delta_keur": 961.0,
+    "causal_conclusion": (
+        "Revenue curve selector Scenarios!E325 IS causal for debt sizing. "
+        "D111 (Central Low case Trackers) produces DS!D51 exactly. "
+        "D106 (Central case Trackers, equity curve) produces +961 kEUR. "
+        "OBOROVO_DEBT_SIZING_REVENUE_CURVE_MANUAL_CAUSALITY_PROVEN."
+    ),
+    "r4_1_verdict": "C3B3D2B2C_R4_1_MANUAL_CAUSALITY_PROVEN_ENGINE_EVALUATION_XLSM_EXTRACTION_REQUIRED",
+}
+
+TUHO_ORACLE_DERIVATION = {
+    "classification": "TUHO_BANK_CFADS_ORACLE_BACK_CALCULATED_FROM_DEBT_SERVICE",
+    "senior_debt_service_p1_keur": 2116.361394092063,
+    "dscr_target": 1.2,
+    "bank_cfads_p1_keur": 2539.633672910476,
+    "base_cfads_p1_keur": 3070.175837370555,
+    "bank_base_ratio": 2539.633672910476 / 3070.175837370555,
+    "p90_p50_yield_ratio": 3620 / 4164,
+    "residual_price_ratio": (2539.633672910476 / 3070.175837370555) / (3620 / 4164),
+    "source_fixture": "tests/fixtures/excel_tuho_periods.json",
+}
+
+PRODUCT_CONTRACT_DESIGN = {
+    "classification": "C3B3D2B2C_R4_1_PRODUCT_CONTRACT_DESIGN_DRAFT",
+    "yield_case": {
+        "fields": ["p50_hours", "p90_10y_hours", "p90_p50_ratio (derived)", "label"],
+        "ux_contract": "P50 and P90 both user-editable. Ratio is derived display-only.",
+    },
+    "price_curve": {
+        "fields": ["curve_id", "label", "calendar_start_year", "values_eur_mwh"],
+        "ux_contract": "Named library; CRUD operations; selector by curve_id.",
+    },
+    "revenue_case_selection": {
+        "fields": ["equity_curve_id", "sizing_curve_id", "bess_curve_id (optional)"],
+        "ux_contract": "Scenario tab exposes two selectors; engine uses sizing_curve_id for bank CFADS.",
+    },
+    "scenario_tab_sections": [
+        "Production / Yield (p50, p90)",
+        "Revenue Curves (equity_curve_id, sizing_curve_id)",
+        "BESS Revenue if applicable (bess_curve_id)",
+    ],
+    "no_project_name_dispatch": True,
+    "no_hardcoded_period_boundaries": True,
+}
+
+R4_1_EVIDENCE_FIXTURE_PATH = (
+    "tests/fixtures/excel_oborovo_bank_sizing_source_evidence_r4_1.json"
+)
 
 
 def derive_active_debt_period_count(sd_input: "Any") -> int:

@@ -1,0 +1,247 @@
+{
+  "stage": "C3B3D2B2C",
+  "round": "R4.1",
+  "classification": "C3B3D2B2C_R4_1_MANUAL_CAUSALITY_PROVEN_ENGINE_EVALUATION_XLSM_EXTRACTION_REQUIRED",
+  "workbook_sha256": "15a621c4d6b79024980766e00ebc79d7235fd56f00567be7bf345c769ce57920",
+  "workbook_filename": "d49af8ee-20260414_BP_Oborovo_Sensitivity_FINAL_for_PPT.xlsm",
+
+  "manual_causality_evidence": {
+    "classification": "OBOROVO_DEBT_SIZING_REVENUE_CURVE_MANUAL_CAUSALITY_PROVEN",
+    "method": "BLACK_BOX_WORKBOOK_OBSERVATION",
+    "observation_d111": {
+      "revenue_curve_cell": "Scenarios!E325",
+      "revenue_curve_value": "Central Low case Trackers",
+      "source_input_cell": "Inputs!D111",
+      "resulting_debt_keur": 42852.278763,
+      "matches_ds_d51": true,
+      "note": "With sizing revenue = Central Low case Trackers (D111): debt = 42,852.278763 kEUR = DS!D51 (source). Exact match."
+    },
+    "observation_d106": {
+      "revenue_curve_cell": "Scenarios!E325",
+      "revenue_curve_value": "Central case Trackers",
+      "source_input_cell": "Inputs!D106",
+      "resulting_debt_keur": 43813.0,
+      "matches_ds_d51": false,
+      "note": "With sizing revenue changed to Central case Trackers (D106): debt increases to 43,813 kEUR. Delta = +961 kEUR vs source."
+    },
+    "delta_keur": 961.0,
+    "causal_conclusion": "Revenue curve selector Scenarios!E325 IS causal for debt sizing. D111 (Central Low case Trackers) produces the source debt. D106 (Central case Trackers) produces the equity-case debt. The mechanism is revenue scenario selection, not yield scenario alone.",
+    "verdict": "OBOROVO_DEBT_SIZING_REVENUE_CURVE_MANUAL_CAUSALITY_PROVEN"
+  },
+
+  "confirmed_yield_cases": {
+    "oborovo": {
+      "p50_hours": 1494.0,
+      "p90_10y_hours": 1410.0,
+      "p90_p50_ratio": 0.9437751004016064,
+      "source": "tests/fixtures/oborovo_baseline.json + app/project_factories.py",
+      "p75_hours": null,
+      "p95_hours": null,
+      "p99_hours": null,
+      "other_cases_status": "NOT_IN_FIXTURES_XLSM_REQUIRED"
+    },
+    "tuho": {
+      "p50_hours": 4164.0,
+      "p90_10y_hours": 3620.0,
+      "p90_p50_ratio": 0.8693563880883766,
+      "source": "app/project_factories.py create_default_tuho_wind1()",
+      "p75_hours": null,
+      "other_cases_status": "NOT_IN_FIXTURES_XLSM_REQUIRED"
+    }
+  },
+
+  "confirmed_price_curves": {
+    "oborovo_central_case_trackers_d106": {
+      "label": "Central case Trackers",
+      "cell": "Inputs!D106",
+      "formula": "=D108*(1+B107) * inflation_index[year] where B107=0.085",
+      "calendar_start_year": 2042,
+      "values_eur_mwh": {
+        "2042": 75.12095149999999,
+        "2043": 75.83325399999998,
+        "2044": 76.03517249999999,
+        "2045": 74.10767,
+        "2046": 75.790071,
+        "2047": 77.47963299999999,
+        "2048": 79.1593215,
+        "2049": 80.86288,
+        "2050": 82.57359949999999,
+        "2051": 84.78114049999999,
+        "2052": 86.50704999999999,
+        "2053": 88.22135,
+        "2054": 90.4723995,
+        "2055": 92.20113,
+        "2056": 93.63116,
+        "2057": 95.01388399999999,
+        "2058": 95.8876345,
+        "2059": 97.2187125,
+        "2060": 98.543606
+      },
+      "source_fixture": "tests/fixtures/excel_oborovo_merchant_revenue_truth.json",
+      "status": "CONFIRMED_VALUES_IN_FIXTURE"
+    },
+    "oborovo_central_low_case_trackers_d111": {
+      "label": "Central Low case Trackers",
+      "cell": "Inputs!D111",
+      "formula": "=D112*(1+B107) * inflation_index[year] where D112 = Central Low GMPV",
+      "values_status": "NOT_IN_ANY_COMMITTED_FIXTURE",
+      "extraction_required": true,
+      "note": "D111 values are confirmed causal (manual observation) but not extracted. XLSM required."
+    },
+    "oborovo_low_gmpv_d110": {
+      "label": "Low case GMPV",
+      "cell": "Inputs!D110",
+      "type": "HARDCODED_SERIES",
+      "values_status": "NOT_IN_ANY_COMMITTED_FIXTURE",
+      "extraction_required": true
+    },
+    "oborovo_central_low_gmpv_d112": {
+      "label": "Central Low case GMPV",
+      "cell": "Inputs!D112",
+      "formula_note": "Derived formula — likely average of D108 and D110 but not confirmed",
+      "values_status": "NOT_IN_ANY_COMMITTED_FIXTURE",
+      "extraction_required": true
+    }
+  },
+
+  "confirmed_revenue_selectors": {
+    "oborovo": {
+      "equity_cell": "Scenarios!E324",
+      "equity_label_row": "Equity case revenues",
+      "equity_active_value": null,
+      "equity_active_value_status": "TEXT_VALUE_NOT_CAPTURED_IN_ANY_FIXTURE",
+      "sizing_cell": "Scenarios!E325",
+      "sizing_label_row": "Debt sizing revenues curve",
+      "sizing_active_value": "Central Low case Trackers",
+      "sizing_active_value_status": "CONFIRMED_FROM_MANUAL_CAUSALITY_EVIDENCE",
+      "note": "E325 = 'Central Low case Trackers' confirmed because observation_1 (D111) reproduces DS!D51 exactly."
+    },
+    "tuho": {
+      "equity_cell": "Scenarios!E182",
+      "equity_active_value": "Equity case Afry curve",
+      "equity_active_value_status": "CONFIRMED_FROM_TUHO_SCENARIO_MANIFEST_V5",
+      "sizing_cell": "Scenarios!E183",
+      "sizing_active_value": "Sizing case Afry curve",
+      "sizing_active_value_status": "CONFIRMED_FROM_TUHO_SCENARIO_MANIFEST_V5"
+    }
+  },
+
+  "tuho_oracle_derivation": {
+    "classification": "TUHO_BANK_CFADS_ORACLE_BACK_CALCULATED_FROM_DEBT_SERVICE",
+    "method": "bank_cfads = senior_debt_service_p1 * dscr_target",
+    "senior_debt_service_p1_keur": 2116.361394092063,
+    "dscr_target": 1.2,
+    "bank_cfads_p1_keur": 2539.633672910476,
+    "base_cfads_p1_keur": 3070.175837370555,
+    "bank_base_ratio": 0.82719500,
+    "p90_p50_yield_ratio": 0.86945254,
+    "residual_price_ratio": 0.95150289,
+    "interpretation": "Bank/base CFADS ratio = 0.8272. Yield P90/P50 alone = 0.8695. Residual = 0.9515 = implied MidLow/Central price ratio for period 1. This confirms a price-scenario reduction is applied alongside the yield reduction.",
+    "source_fixture": "tests/fixtures/excel_tuho_periods.json period_index=1"
+  },
+
+  "tuho_price_curves": {
+    "central_d106": {
+      "label": "Central",
+      "cell": "Inputs!D106",
+      "values_status": "NOT_IN_FIXTURES_XLSM_REQUIRED"
+    },
+    "mid_low_d109": {
+      "label": "MidLow",
+      "cell": "Inputs!D109",
+      "values_status": "NOT_IN_FIXTURES_XLSM_REQUIRED",
+      "extraction_required": true
+    }
+  },
+
+  "candidate_c_status": {
+    "oborovo": {
+      "yield_scenario": "P90_10Y",
+      "revenue_curve": "Central Low case Trackers (D111)",
+      "revenue_curve_values": "NOT_IN_FIXTURE",
+      "manual_causality": "PROVEN",
+      "engine_evaluation": "BLOCKED_XLSM_EXTRACTION_REQUIRED",
+      "expected_result_keur": 42852.278763,
+      "note": "Manual causality proves D111 reproduces DS!D51 in the workbook. Engine cannot be verified without D111 values."
+    },
+    "tuho": {
+      "yield_scenario": "P90_10Y",
+      "revenue_curve": "Sizing case Afry curve (D109 MidLow)",
+      "revenue_curve_values": "NOT_IN_FIXTURE",
+      "oracle_derivable": true,
+      "bank_cfads_p1_oracle": 2539.633672910476,
+      "engine_evaluation": "BLOCKED_XLSM_EXTRACTION_REQUIRED"
+    }
+  },
+
+  "bess_curves": {
+    "status": "NOT_IN_ANY_COMMITTED_FIXTURE",
+    "identified_cells": {
+      "row_122": "EMS curve 1 label (Inputs sheet)",
+      "row_123": "EMS curve 2 label",
+      "row_124": "EMS curve 3 label",
+      "row_125": "EMS curve 4 label",
+      "row_126": "EMS curve 5 label",
+      "row_127": "EMS curve 6 label"
+    },
+    "unit": "kEUR/MW",
+    "note": "BESS/EMS curves identified in source manifest but no numeric values in any committed fixture. XLSM required."
+  },
+
+  "environment_status": {
+    "xlsm_oborovo_present": false,
+    "xlsm_tuho_present": false,
+    "xlsm_search_locations": ["/home", "/root", "/data", "/mnt", "/home/user/attach"],
+    "extraction_blocker": "XLSM_FILES_NOT_IN_CONTAINER_ENVIRONMENT",
+    "note": "Original workbook files are not present in the execution environment. All curve values must come from committed JSON fixtures. D110, D111 (Oborovo) and D109 (TUHO) are not in any committed fixture."
+  },
+
+  "product_contract_design": {
+    "classification": "C3B3D2B2C_R4_1_PRODUCT_CONTRACT_DESIGN_DRAFT",
+    "yield_case_schema": {
+      "name": "YieldCase",
+      "fields": {
+        "p50_hours": "float — P50 annual yield (user-editable)",
+        "p90_10y_hours": "float — P90-10y annual yield (user-editable)",
+        "p90_p50_ratio": "float — derived (p90_10y_hours / p50_hours, read-only)",
+        "label": "str — display label (e.g. 'P50 base', 'P90-10y')"
+      },
+      "ux_contract": "P50 editable, P90 editable independently. Ratio is derived display-only field. No enum lock — both values are free numeric inputs."
+    },
+    "price_curve_schema": {
+      "name": "PriceCurve",
+      "fields": {
+        "curve_id": "str — library identifier (e.g. 'central_case_trackers', 'central_low_case_trackers')",
+        "label": "str — display name",
+        "calendar_start_year": "int — first year of the time series",
+        "values_eur_mwh": "list[float] — ordered annual EUR/MWh values from calendar_start_year"
+      },
+      "ux_contract": "Named curve library. CRUD operations on the library. Selector chooses one entry by curve_id. No hardcoded curve names in engine."
+    },
+    "revenue_case_selection_schema": {
+      "name": "RevenueCaseSelection",
+      "fields": {
+        "equity_curve_id": "str — references PriceCurve.curve_id",
+        "sizing_curve_id": "str — references PriceCurve.curve_id",
+        "bess_curve_id": "Optional[str] — for storage-augmented projects"
+      },
+      "ux_contract": "Scenario tab exposes two selectors: Equity curve and Sizing curve. Both reference the named library. Engine uses sizing_curve_id for bank-case CFADS evaluation."
+    },
+    "scenario_tab_contract": {
+      "sections": [
+        {"label": "Production / Yield", "fields": ["yield_case_p50", "yield_case_bank"]},
+        {"label": "Revenue Curves", "fields": ["equity_curve_id", "sizing_curve_id"]},
+        {"label": "BESS Revenue (if applicable)", "fields": ["bess_curve_id"]}
+      ],
+      "note": "Scenario tab aggregates the YieldCase and RevenueCaseSelection inputs. No project-name dispatch. Generic for any solar/wind + optional BESS project."
+    },
+    "technology_specific_streams": {
+      "solar_pv": ["merchant_revenue", "bess_ems_revenue (optional)"],
+      "wind": ["merchant_revenue"],
+      "note": "Technology-specific streams are configured via the project's RevenueParams. No hardcoded stream logic in the generic scenario contract."
+    }
+  },
+
+  "r4_1_verdict": "C3B3D2B2C_R4_1_MANUAL_CAUSALITY_PROVEN_ENGINE_EVALUATION_XLSM_EXTRACTION_REQUIRED",
+  "r4_1_verdict_note": "Revenue curve selector causality is manually proven for Oborovo (D111 reproduces DS!D51). TUHO oracle is back-calculable. Engine evaluation of Candidate C is blocked pending extraction of D110, D111 (Oborovo) and D109 (TUHO) from original XLSM files. Productionization gate cannot be cleared without successful cross-project engine evaluation."
+}

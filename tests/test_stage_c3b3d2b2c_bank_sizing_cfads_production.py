@@ -4,6 +4,7 @@ C3B3D2B2C — Bank-Sizing CFADS Scenario Layer: Evidence Package
 
 Stage verdict: C3B3D2B2C_R3_STOP_MACRO50_TRANSFORMATION_SOURCE_INACCESSIBLE
 R4 verdict:   C3B3D2B2C_R4_SOURCE_INPUTS_IDENTIFIED_CURVE_EXTRACTION_REQUIRED
+R4.1 verdict: C3B3D2B2C_R4_1_MANUAL_CAUSALITY_PROVEN_ENGINE_EVALUATION_XLSM_EXTRACTION_REQUIRED
 
 EVIDENCE-ONLY TESTS. No production financial_engine modifications in this PR.
 All bank-sizing candidates use finco_recon.bank_sizing_candidates (diagnostic module).
@@ -32,6 +33,8 @@ Test classes:
     TestHorizonCausality            — R4: active debt horizon + DSCR causal boundary
     TestR4SourceEvidence            — R4: confirmed source cell identifiers
     TestCandidateCArchitecture      — R4: Candidate C architecture constraints
+    TestR4_1ManualCausality         — R4.1: manual causality evidence + TUHO oracle
+    TestR4_1ProductContract         — R4.1: product contract design constraints
 """
 from __future__ import annotations
 
@@ -928,3 +931,233 @@ class TestCandidateCArchitecture:
         with open(path) as f:
             content = f.read()
         assert "POST_MATURITY_CFADS_NON_CAUSAL_FOR_INITIAL_DSCR_SIZING" in content
+
+
+# ---------------------------------------------------------------------------
+# R4.1 tests
+# ---------------------------------------------------------------------------
+
+class TestR4_1ManualCausality:
+    """R4.1: Manual black-box causality evidence and TUHO oracle back-calculation.
+
+    R4.1 verdict: C3B3D2B2C_R4_1_MANUAL_CAUSALITY_PROVEN_ENGINE_EVALUATION_XLSM_EXTRACTION_REQUIRED
+
+    Manual observation: Oborovo Scenarios!E325 = 'Central Low case Trackers' (D111)
+    produces DS!D51 = 42,852.278763 kEUR exactly. Switching to D106 (Central case
+    Trackers) gives 43,813 kEUR. Delta = +961 kEUR. Revenue curve selector is causal.
+
+    TUHO: bank CFADS P1 = senior_debt_service_P1 * DSCR_target = 2539.633673 kEUR.
+    """
+
+    def _load_r4_1_fixture(self):
+        path = _FIXTURE_DIR / "excel_oborovo_bank_sizing_source_evidence_r4_1.json"
+        with open(path) as f:
+            return json.load(f)
+
+    def test_r4_1_fixture_exists(self):
+        """R4.1 evidence fixture must exist."""
+        path = _FIXTURE_DIR / "excel_oborovo_bank_sizing_source_evidence_r4_1.json"
+        assert path.exists(), "R4.1 evidence fixture not found"
+
+    def test_r4_1_classification(self):
+        """R4.1 fixture carries correct intermediate verdict."""
+        ev = self._load_r4_1_fixture()
+        assert ev["r4_1_verdict"] == (
+            "C3B3D2B2C_R4_1_MANUAL_CAUSALITY_PROVEN_ENGINE_EVALUATION_XLSM_EXTRACTION_REQUIRED"
+        )
+
+    def test_manual_causality_d111_reproduces_source_debt(self):
+        """Manual observation: D111 (Central Low case Trackers) = DS!D51 = 42,852.278763 kEUR."""
+        ev = self._load_r4_1_fixture()
+        obs = ev["manual_causality_evidence"]["observation_d111"]
+        assert obs["matches_ds_d51"] is True
+        assert abs(obs["resulting_debt_keur"] - 42852.278763) < 0.001
+
+    def test_manual_causality_d106_gives_equity_debt(self):
+        """Manual observation: D106 (Central case Trackers) gives 43,813 kEUR — equity-case debt."""
+        ev = self._load_r4_1_fixture()
+        obs = ev["manual_causality_evidence"]["observation_d106"]
+        assert obs["matches_ds_d51"] is False
+        assert obs["resulting_debt_keur"] > 43000.0
+
+    def test_manual_causality_delta_positive(self):
+        """Delta (D106 − D111) must be positive: equity curve gives higher debt than sizing."""
+        ev = self._load_r4_1_fixture()
+        mc = ev["manual_causality_evidence"]
+        assert mc["delta_keur"] > 0
+        delta = mc["observation_d106"]["resulting_debt_keur"] - mc["observation_d111"]["resulting_debt_keur"]
+        assert abs(delta - mc["delta_keur"]) < 1.0
+
+    def test_manual_causality_classification_label(self):
+        """OBOROVO_DEBT_SIZING_REVENUE_CURVE_MANUAL_CAUSALITY_PROVEN in fixture."""
+        ev = self._load_r4_1_fixture()
+        assert ev["manual_causality_evidence"]["classification"] == (
+            "OBOROVO_DEBT_SIZING_REVENUE_CURVE_MANUAL_CAUSALITY_PROVEN"
+        )
+
+    def test_manual_causality_in_recon_module(self):
+        """MANUAL_CAUSALITY_EVIDENCE dict in bank_sizing_candidates carries classification."""
+        from finco_recon.bank_sizing_candidates import MANUAL_CAUSALITY_EVIDENCE
+        assert MANUAL_CAUSALITY_EVIDENCE["classification"] == (
+            "OBOROVO_DEBT_SIZING_REVENUE_CURVE_MANUAL_CAUSALITY_PROVEN"
+        )
+        assert MANUAL_CAUSALITY_EVIDENCE["observation_d111"]["matches_ds_d51"] is True
+        assert abs(
+            MANUAL_CAUSALITY_EVIDENCE["observation_d111"]["resulting_debt_keur"] - 42852.278763
+        ) < 0.001
+
+    def test_oborovo_e325_sizing_selector_confirmed(self):
+        """Oborovo Scenarios!E325 sizing selector confirmed as 'Central Low case Trackers'."""
+        ev = self._load_r4_1_fixture()
+        sel = ev["confirmed_revenue_selectors"]["oborovo"]
+        assert sel["sizing_active_value"] == "Central Low case Trackers"
+        assert sel["sizing_active_value_status"] == "CONFIRMED_FROM_MANUAL_CAUSALITY_EVIDENCE"
+
+    def test_tuho_e182_e183_selectors_confirmed(self):
+        """TUHO Scenarios!E182/E183 selectors confirmed from manifest."""
+        ev = self._load_r4_1_fixture()
+        sel = ev["confirmed_revenue_selectors"]["tuho"]
+        assert sel["equity_active_value"] == "Equity case Afry curve"
+        assert sel["sizing_active_value"] == "Sizing case Afry curve"
+        assert "CONFIRMED" in sel["equity_active_value_status"]
+        assert "CONFIRMED" in sel["sizing_active_value_status"]
+
+    def test_tuho_oracle_back_calculation(self):
+        """TUHO bank CFADS P1 = senior_debt_service_P1 * DSCR_target."""
+        with open(_FIXTURE_DIR / "excel_tuho_periods.json") as f:
+            tuho = json.load(f)
+        periods = tuho.get("periods", tuho.get("period_results", []))
+        p1 = next(p for p in periods if p["period_index"] == 1)
+        sds = abs(p1["CF"]["senior_debt_service_keur"])
+        dscr_target = p1["DS"]["senior_debt_dscr_target"]
+        bank_cfads = sds * dscr_target
+        assert abs(bank_cfads - 2539.633673) < 0.001, (
+            f"Expected 2539.633673, got {bank_cfads}"
+        )
+
+    def test_tuho_oracle_in_recon_module(self):
+        """TUHO_ORACLE_DERIVATION dict in bank_sizing_candidates is consistent."""
+        from finco_recon.bank_sizing_candidates import TUHO_ORACLE_DERIVATION
+        sds = TUHO_ORACLE_DERIVATION["senior_debt_service_p1_keur"]
+        target = TUHO_ORACLE_DERIVATION["dscr_target"]
+        expected = TUHO_ORACLE_DERIVATION["bank_cfads_p1_keur"]
+        assert abs(sds * target - expected) < 0.001
+
+    def test_tuho_residual_price_ratio_below_one(self):
+        """TUHO residual price ratio (MidLow/Central) < 1 for period 1."""
+        from finco_recon.bank_sizing_candidates import TUHO_ORACLE_DERIVATION
+        ratio = TUHO_ORACLE_DERIVATION["residual_price_ratio"]
+        assert 0.8 < ratio < 1.0, f"Residual ratio {ratio} outside expected range (0.8, 1.0)"
+
+    def test_oborovo_yield_cases_confirmed(self):
+        """Oborovo P50=1494, P90=1410 confirmed in R4.1 fixture."""
+        ev = self._load_r4_1_fixture()
+        obo = ev["confirmed_yield_cases"]["oborovo"]
+        assert obo["p50_hours"] == 1494.0
+        assert obo["p90_10y_hours"] == 1410.0
+        assert abs(obo["p90_p50_ratio"] - 1410 / 1494) < 1e-9
+
+    def test_tuho_yield_cases_confirmed(self):
+        """TUHO P50=4164, P90=3620 confirmed in R4.1 fixture."""
+        ev = self._load_r4_1_fixture()
+        tuho = ev["confirmed_yield_cases"]["tuho"]
+        assert tuho["p50_hours"] == 4164.0
+        assert tuho["p90_10y_hours"] == 3620.0
+        assert abs(tuho["p90_p50_ratio"] - 3620 / 4164) < 1e-9
+
+    def test_oborovo_central_curve_values_present(self):
+        """Oborovo Central case Trackers (D106) CY2042-2060 values are in R4.1 fixture."""
+        ev = self._load_r4_1_fixture()
+        curve = ev["confirmed_price_curves"]["oborovo_central_case_trackers_d106"]
+        assert curve["status"] == "CONFIRMED_VALUES_IN_FIXTURE"
+        vals = curve["values_eur_mwh"]
+        assert len(vals) == 19
+        assert abs(vals["2042"] - 75.12095149999999) < 1e-6
+
+    def test_candidate_c_blocked_d111_extraction_required(self):
+        """Candidate C for Oborovo is blocked: D111 not in fixture."""
+        ev = self._load_r4_1_fixture()
+        obo_c = ev["candidate_c_status"]["oborovo"]
+        assert obo_c["revenue_curve_values"] == "NOT_IN_FIXTURE"
+        assert obo_c["manual_causality"] == "PROVEN"
+        assert obo_c["engine_evaluation"] == "BLOCKED_XLSM_EXTRACTION_REQUIRED"
+
+    def test_candidate_c_blocked_tuho_d109_extraction_required(self):
+        """Candidate C for TUHO is blocked: D109 MidLow not in fixture."""
+        ev = self._load_r4_1_fixture()
+        tuho_c = ev["candidate_c_status"]["tuho"]
+        assert tuho_c["revenue_curve_values"] == "NOT_IN_FIXTURE"
+        assert tuho_c["engine_evaluation"] == "BLOCKED_XLSM_EXTRACTION_REQUIRED"
+
+
+class TestR4_1ProductContract:
+    """R4.1: Product contract design constraints.
+
+    Tests that the PRODUCT_CONTRACT_DESIGN dict in bank_sizing_candidates encodes
+    the correct architecture: generic YieldCase, named PriceCurve library,
+    RevenueCaseSelection with equity/sizing selectors, no project-name dispatch,
+    no hardcoded period boundaries.
+    """
+
+    def test_product_contract_dict_present(self):
+        """PRODUCT_CONTRACT_DESIGN must be importable from bank_sizing_candidates."""
+        from finco_recon.bank_sizing_candidates import PRODUCT_CONTRACT_DESIGN
+        assert "yield_case" in PRODUCT_CONTRACT_DESIGN
+        assert "price_curve" in PRODUCT_CONTRACT_DESIGN
+        assert "revenue_case_selection" in PRODUCT_CONTRACT_DESIGN
+
+    def test_product_contract_no_project_dispatch(self):
+        """PRODUCT_CONTRACT_DESIGN must assert no_project_name_dispatch=True."""
+        from finco_recon.bank_sizing_candidates import PRODUCT_CONTRACT_DESIGN
+        assert PRODUCT_CONTRACT_DESIGN["no_project_name_dispatch"] is True
+
+    def test_product_contract_no_hardcoded_period_boundaries(self):
+        """PRODUCT_CONTRACT_DESIGN must assert no_hardcoded_period_boundaries=True."""
+        from finco_recon.bank_sizing_candidates import PRODUCT_CONTRACT_DESIGN
+        assert PRODUCT_CONTRACT_DESIGN["no_hardcoded_period_boundaries"] is True
+
+    def test_yield_case_has_p90_p50_ratio_derived(self):
+        """YieldCase UX contract: p90_p50_ratio is derived, not a free input."""
+        from finco_recon.bank_sizing_candidates import PRODUCT_CONTRACT_DESIGN
+        fields = PRODUCT_CONTRACT_DESIGN["yield_case"]["fields"]
+        ratio_field = [f for f in fields if "p90_p50_ratio" in f]
+        assert len(ratio_field) == 1
+        assert "derived" in ratio_field[0].lower()
+
+    def test_price_curve_has_curve_id_and_values(self):
+        """PriceCurve schema must include curve_id and values_eur_mwh."""
+        from finco_recon.bank_sizing_candidates import PRODUCT_CONTRACT_DESIGN
+        fields = PRODUCT_CONTRACT_DESIGN["price_curve"]["fields"]
+        assert any("curve_id" in f for f in fields)
+        assert any("values_eur_mwh" in f for f in fields)
+
+    def test_revenue_case_selection_has_equity_and_sizing(self):
+        """RevenueCaseSelection must have equity_curve_id and sizing_curve_id."""
+        from finco_recon.bank_sizing_candidates import PRODUCT_CONTRACT_DESIGN
+        fields = PRODUCT_CONTRACT_DESIGN["revenue_case_selection"]["fields"]
+        assert any("equity_curve_id" in f for f in fields)
+        assert any("sizing_curve_id" in f for f in fields)
+
+    def test_scenario_tab_has_production_and_revenue_sections(self):
+        """Scenario tab contract must have at least Production and Revenue sections."""
+        from finco_recon.bank_sizing_candidates import PRODUCT_CONTRACT_DESIGN
+        sections = PRODUCT_CONTRACT_DESIGN["scenario_tab_sections"]
+        assert any("Production" in s or "Yield" in s for s in sections)
+        assert any("Revenue" in s for s in sections)
+
+    def test_r4_1_evidence_fixture_path_constant(self):
+        """R4_1_EVIDENCE_FIXTURE_PATH must point to the committed fixture."""
+        from finco_recon.bank_sizing_candidates import R4_1_EVIDENCE_FIXTURE_PATH
+        import pathlib
+        path = pathlib.Path(__file__).parent.parent / R4_1_EVIDENCE_FIXTURE_PATH
+        assert path.exists(), f"R4.1 evidence fixture not found at {path}"
+
+    def test_r4_1_verdict_in_recon_module(self):
+        """R4.1 verdict label present in bank_sizing_candidates module docstring."""
+        import pathlib
+        src = (
+            pathlib.Path(__file__).parent.parent
+            / "finco_recon"
+            / "bank_sizing_candidates.py"
+        ).read_text()
+        assert "C3B3D2B2C_R4_1_MANUAL_CAUSALITY_PROVEN_ENGINE_EVALUATION_XLSM_EXTRACTION_REQUIRED" in src
