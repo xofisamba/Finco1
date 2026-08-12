@@ -202,6 +202,40 @@ class PostSeniorCashSchedules:
 
 
 @dataclass(frozen=True)
+class ShareholderLoanDiagnostics:
+    """Convergence diagnostics for the SHL + tax + senior-debt fixed point."""
+    converged: bool
+    is_authoritative: bool
+    iteration_count: int
+    max_iterations: int
+    convergence_tolerance_keur: float
+    convergence_relative_tolerance: float
+    max_closing_delta_keur: float
+    max_interest_delta_keur: float
+    termination_reason: str
+
+
+@dataclass(frozen=True)
+class ShareholderLoanSchedules:
+    """Immutable SHL audit vectors.
+
+    POST_SHL_CASH_IS_PRE_RESERVE: cash remaining after SHL is still before any
+    DSRA/reserve/distribution layer. It must not be labelled distributable cash.
+    """
+    period_indices: tuple[int, ...]
+    shl_opening_keur: tuple[float, ...]
+    shl_gross_interest_keur: tuple[float, ...]
+    shl_cash_interest_keur: tuple[float, ...]
+    shl_pik_interest_keur: tuple[float, ...]
+    shl_principal_keur: tuple[float, ...]
+    shl_debt_service_keur: tuple[float, ...]
+    shl_closing_keur: tuple[float, ...]
+    cash_available_for_shl_before_reserves_keur: tuple[float, ...]
+    cash_remaining_after_shl_before_reserves_keur: tuple[float, ...]
+    diagnostics: ShareholderLoanDiagnostics
+
+
+@dataclass(frozen=True)
 class ProjectModelResult:
     """Top-level immutable result for a clean engine run.
 
@@ -220,3 +254,4 @@ class ProjectModelResult:
     senior_debt: "SeniorDebtSchedules | None" = None
     debt_sizing: "DebtSizingSchedules | None" = None
     post_senior_cash: "PostSeniorCashSchedules | None" = None
+    shareholder_loan: "ShareholderLoanSchedules | None" = None
