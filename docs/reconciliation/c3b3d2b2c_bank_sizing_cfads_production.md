@@ -19,6 +19,7 @@
 | **R4.6 Verdict** | `C3B3D2B2C_R4_6_STOP_TAX_TIMING_COUNTERFACTUAL_FAILED` |
 | **R4.6.1 Verdict** | `C3B3D2B2C_R4_6_1_STOP_REMAINING_BANK_CFADS_COMPONENT_UNRESOLVED` |
 | **R4.7 Verdict** | `C3B3D2B2C_R4_7_P50_SOURCE_BYPASS_PROVEN_P28_CALENDAR_RESIDUAL_DOCUMENTED_GENERIC_P90_POLICY_PRESERVED` |
+| **R4.7.1 Verdict** | `C3B3D2B2C_R4_7_1_STOP_CALENDAR_REPLAY_FAILED` |
 
 ---
 
@@ -1077,8 +1078,103 @@ C3B3D2B2C_R4_7_P50_SOURCE_BYPASS_PROVEN_P28_CALENDAR_RESIDUAL_DOCUMENTED_GENERIC
 - No DS25/DS40 period boundary hardcoding — ENFORCED
 - TUHO anti-overgeneralisation cross-validation run and confirmed — ENFORCED
 - `GENERIC_BANK_SIZING_PRODUCTION_POLICY_REMAINS_P90_BY_DEFAULT` — ENFORCED
-- 57 focused R4.7 tests (categories A–T) — all pass
-- Total C3B3D2B2C tests: 369 (all pass)
+- 57 focused R4.7 tests (categories A–T) — all pass (superseded by R4.7.1 count below)
+- R4.7.1 adds 54 further tests (categories A–V): 423 total, all pass
+
+---
+
+## 17.1 R4.7.1 — P28 calendar source closure + full-horizon diagnostic + stage closeout
+
+### Input cell lineage correction (no calculation change)
+
+`R4_7_INPUT_CELL_LINEAGE_DOCUMENTATION_CORRECTED_NO_CALCULATION_CHANGE`: Prior R4.7 wording described Inputs!D54 as "static P50 row". Correct structure:
+
+| Cell | Role | Value |
+|---|---|---|
+| `Inputs!D52` | Production Scenario selector label | `P_50` (base) |
+| `Inputs!D54` | Dynamic scenario-selected operating-hours result (INDEX/MATCH) | 1494 h when P50 active |
+| `Inputs!D64` | **Static P50 operating hours source row** | **1494 h** |
+| `Inputs!D68` | **Static P90-10y operating hours source row** | **1410 h** |
+| `CF!B20` | CF operating hours reference | `=Inputs!D64` (static, bypasses D52/D54) |
+
+`CF!B20 = Inputs!D64` (not D52→D54) is the root cause: CF production bypasses the dynamic selector entirely.
+
+### Source period-fraction formula proven
+
+`OBOROVO_OPERATING_PERIOD_FRACTION_SOURCE_FORMULA_PROVEN`: Source convention (paired annual model cycle):
+
+- **H2 period** (ending Dec 31 of year Y): denominator = 366 if isleap(Y+1) else 365
+- **H1 period** (ending Jun 30 of year Y): denominator = 366 if isleap(Y) else 365
+
+Proven against all 60 fixture operating periods to 10 decimal places.
+
+**Finco current convention**: denominator = 366 if isleap(end.year) else 365.  
+Difference: H2 periods only. Finco uses Y (period end year); source uses Y+1 (following year).
+
+### Affected periods: 15 H2 leap-boundary periods
+
+| Type | Count | Description | Effect |
+|---|---|---|---|
+| Pre-leap H2 (Y non-leap, Y+1 leap) | 8 | 2031, 2035, 2039, 2043, 2047, 2051, 2055, 2059 | Source denom=366 > Finco denom=365 → T5 < T4 (production reduced) |
+| Post-leap H2 (Y leap, Y+1 non-leap) | 7 | 2032, 2036, 2040, 2044, 2048, 2052, 2056 | Source denom=365 < Finco denom=366 → T5 > T4 (production increased) |
+
+### T5 — SOURCE_CALENDAR_REPLAY results
+
+| Run | Debt (kEUR) | Residual vs source |
+|---|---|---|
+| T4 — Candidate H (P50 + source CIT) | 42,855.410 | +3.131 kEUR |
+| **T5 — T4 + source calendar fractions** | **42,851.250** | **−1.028 kEUR** |
+| Source (DS!D51) | 42,852.279 | — |
+
+### Four-period merchant bridge (T5)
+
+| Period | End | T5 production | Fixture | Δ MWh | T5 CFADS | DS20 | T5 vs DS20 |
+|---|---|---|---|---|---|---|---|
+| p26 | 2042-12-31 | 52,944.667 | 52,944.667 | 0.000 | 2,279.787 | 2,279.787 | **0.000 kEUR** ✓ |
+| p27 | 2043-06-30 | 52,081.439 | 52,081.439 | 0.000 | 2,103.835 | 2,103.844 | **−0.008 kEUR** ✓ |
+| p28 | 2043-12-31 | 52,588.809 | 52,588.809 | **0.000** | 2,246.091 | 2,248.763 | **−2.672 kEUR** ✗ |
+| p29 | 2044-06-30 | 52,017.192 | 52,017.192 | 0.000 | 2,058.432 | 2,057.780 | **+0.651 kEUR** ✓ |
+
+### p28 analysis — STOP
+
+T5 closes **production** at p28 to 0.000 MWh delta (confirmed). The remaining −2.672 kEUR CFADS gap is an **EBITDA model residual** (H2 CIT = 0, so CFADS = EBITDA):
+
+- T5_EBITDA at p28 = 2,246.091 kEUR
+- Source EBITDA (DS20) at p28 = 2,248.763 kEUR
+- Residual = −2.672 kEUR
+
+Implied price gap: 2,672 EUR ÷ 52,588.809 MWh ≈ 0.051 EUR/MWh (0.083% of effective Central Low CY2043 = 61.343 EUR/MWh). P26 (H2 2042, same H2 type) has zero gap → the residual is CY2043-specific, not systemic opex error.
+
+**First remaining causal component**: effective Central Low price precision at CY2043 (or equivalent opex escalation model difference). The 61.343 EUR/MWh value used requires additional decimal precision, or a period-specific price calculation.
+
+### Verdict
+
+```
+C3B3D2B2C_R4_7_1_STOP_CALENDAR_REPLAY_FAILED
+```
+
+- `OBOROVO_OPERATING_PERIOD_FRACTION_SOURCE_FORMULA_PROVEN`: calendar convention fully proven
+- `T5_PRODUCTION_PARITY_PROVEN`: all four merchant periods match fixture to <1 MWh
+- `CALENDAR_REPLAY_FAILED_EBITDA_RESIDUAL_REMAINS`: p28 CFADS −2.672 kEUR outside ±1 kEUR
+- T5 debt residual: −1.028 kEUR (improved from T4's +3.131 kEUR; within 2 kEUR but outside ≤1 kEUR)
+
+### Parity layer separation
+
+`ASSET_PERFORMANCE_PARITY_AND_DEBT_SIZING_PARITY_ARE_SEPARATE_ACCEPTANCE_LAYERS`: The Macro50/DebtCF_in bank-sizing layer is a lender-sizing audit layer only. Future full parity work must separately compare Excel Base/Equity Case vs Finco Base/Equity Case from COD to project end.
+
+`OBOROVO_BASE_PERFORMANCE_PRODUCTION_RESIDUAL_CALENDAR_CONVENTION_IDENTIFIED`: The same calendar convention affects 15 H2 periods in the Base Case production. This is an input to future asset-performance parity, not proof of full Base Case parity.
+
+### Calendar rule classification
+
+`EXCEL_COMPATIBILITY_ONLY_PENDING_GENERIC_REVIEW`: The paired-annual-cycle convention matches Oborovo exactly. Whether to adopt as `GENERIC_FINCO_CORRECTNESS_CANDIDATE` requires cross-project validation (TUHO, other projects) and production-design review. Implemented in `finco_recon` only — no `financial_engine/` change.
+
+### R4.7.1 governance
+
+- `financial_engine/` zero-diff: **ENFORCED** (confirmed by git diff)
+- No hardcoded p28/year exception — source calendar formula applied uniformly to all 60 periods: **ENFORCED**
+- No plug, no calibration, no project-name dispatch: **ENFORCED**
+- 54 focused R4.7.1 tests (categories A–V) — all pass
+- Total C3B3D2B2C tests: 423 (all pass)
 
 ---
 

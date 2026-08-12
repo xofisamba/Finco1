@@ -2933,3 +2933,374 @@ class TestR4_7ProductionSelectorBypassAndCfadsParity:
             # CFADS must equal EBITDA - CIT (within float tolerance)
             assert abs(cfads - (ebitda - cit)) < 0.01, \
                 f"p29 CFADS={cfads:.3f} != EBITDA-CIT={ebitda-cit:.3f}"
+
+
+# ===========================================================================
+# R4.7.1 — P28 Calendar Source Closure + Full-Horizon Diagnostic
+# ===========================================================================
+
+class TestR4_71CalendarSourceClosureAndStageCloseout:
+    """R4.7.1 tests — categories A through V.
+
+    A: corrected D52 lineage
+    B: corrected D54 dynamic selector
+    C: D64 = P50 1494 h (static source row)
+    D: D68 = P90-10y 1410 h
+    E: CF!B20 = D64
+    F: source period-fraction formula proven
+    G: p28 source fraction value
+    H: p28 Finco fraction differs from source
+    I: causal explanation of +144 MWh (T4) → calendar convention
+    J: full-horizon production diagnostic
+    K: recurring leap-boundary pattern (15 affected H2 periods)
+    L: T5 source-calendar replay — calendar corrections applied
+    M: p26 CFADS parity (T5 ≤ 1 kEUR)
+    N: p27 CFADS parity (T5 ≤ 1 kEUR)
+    O: p28 CFADS parity (T5 STOP — documents EBITDA residual)
+    P: p29 CFADS parity (T5 ≤ 1 kEUR)
+    Q: final Senior Debt (T5 STOP — documents partial improvement)
+    R: no hardcoded p28/year exception
+    S: financial_engine zero-diff
+    T: TUHO regression / no overgeneralisation
+    U: R4.6.1 p29 documentation correction carried forward
+    V: no identity dispatch / plugs
+    """
+
+    @pytest.fixture(scope="class")
+    def r4_71_result(self):
+        from app.project_factories import create_default_oborovo
+        from finco_recon.bank_sizing_candidates import run_candidate_h_oborovo_r471
+        return run_candidate_h_oborovo_r471(create_default_oborovo)
+
+    # A) Corrected D52 lineage
+    def test_a_d52_is_selector_label(self, r4_71_result):
+        sem = r4_71_result["d52_semantic"]
+        assert "selector" in sem.lower() or "label" in sem.lower()
+        assert "D52" in sem
+
+    def test_a_input_cell_correction_documented(self, r4_71_result):
+        c = r4_71_result["input_cell_correction"]
+        assert "D54" in c
+        assert "D64" in c
+        assert "CORRECTED" in c.upper() or "CORRECTED" in c
+
+    # B) Corrected D54 dynamic selector result
+    def test_b_d54_is_dynamic_not_static(self, r4_71_result):
+        sem = r4_71_result["d54_semantic"]
+        assert "dynamic" in sem.lower()
+        assert "D54" in sem
+
+    def test_b_d54_dynamic_constant_documented(self):
+        from finco_recon.bank_sizing_candidates import (
+            OBOROVO_INPUTS_D54_DYNAMIC_SELECTOR_RESULT_SOURCE_PROVEN,
+        )
+        c = OBOROVO_INPUTS_D54_DYNAMIC_SELECTOR_RESULT_SOURCE_PROVEN
+        assert "D54" in c
+        assert "dynamic" in c.lower()
+
+    # C) D64 = P50 1494 h
+    def test_c_d64_value_is_1494(self, r4_71_result):
+        assert r4_71_result["d64_value_h"] == 1494
+
+    def test_c_d64_semantic(self, r4_71_result):
+        assert "D64" in r4_71_result["d64_semantic"]
+        assert "1494" in r4_71_result["d64_semantic"]
+
+    def test_c_d64_constant_documented(self):
+        from finco_recon.bank_sizing_candidates import (
+            OBOROVO_INPUTS_D64_P50_STATIC_OPERATING_HOURS_SOURCE_PROVEN,
+        )
+        assert "D64" in OBOROVO_INPUTS_D64_P50_STATIC_OPERATING_HOURS_SOURCE_PROVEN
+        assert "1494" in OBOROVO_INPUTS_D64_P50_STATIC_OPERATING_HOURS_SOURCE_PROVEN
+
+    # D) D68 = P90-10y 1410 h
+    def test_d_d68_value_is_1410(self, r4_71_result):
+        assert r4_71_result["d68_value_h"] == 1410
+
+    def test_d_d68_constant_documented(self):
+        from finco_recon.bank_sizing_candidates import (
+            OBOROVO_INPUTS_D68_P90_10Y_STATIC_OPERATING_HOURS_SOURCE_PROVEN,
+        )
+        assert "D68" in OBOROVO_INPUTS_D68_P90_10Y_STATIC_OPERATING_HOURS_SOURCE_PROVEN
+        assert "1410" in OBOROVO_INPUTS_D68_P90_10Y_STATIC_OPERATING_HOURS_SOURCE_PROVEN
+
+    # E) CF!B20 = D64
+    def test_e_cf_b20_links_to_d64(self, r4_71_result):
+        formula = r4_71_result["cf_b20_formula"]
+        assert "D64" in formula
+
+    def test_e_cf_b20_constant_documented(self):
+        from finco_recon.bank_sizing_candidates import (
+            OBOROVO_CF_B20_LINKS_TO_D64_STATIC_P50_SOURCE_PROVEN,
+        )
+        c = OBOROVO_CF_B20_LINKS_TO_D64_STATIC_P50_SOURCE_PROVEN
+        assert "B20" in c
+        assert "D64" in c
+
+    # F) Source period-fraction formula proven against all 60 fixture periods
+    def test_f_fraction_formula_classification(self, r4_71_result):
+        assert "PROVEN" in r4_71_result["fraction_formula_classification"]
+
+    def test_f_all_fixture_periods_match(self, r4_71_result):
+        assert r4_71_result["fixture_periods_verified"] == 60
+        assert r4_71_result["fixture_periods_all_match"] is True
+
+    def test_f_source_fraction_formula_matches_all_60_periods(self):
+        import json, calendar
+        from datetime import date
+        from finco_recon.bank_sizing_candidates import _source_period_fraction_denom
+        with open("tests/fixtures/excel_oborovo_financial_truth.json") as f:
+            ft = json.load(f)
+        cf = ft["cf"]
+        eops = cf["eop_date"]
+        fracs = cf["operation_period_fraction"]
+        mismatches = []
+        for i, (eop, sf) in enumerate(zip(eops, fracs)):
+            if i == 0:
+                continue
+            end = date.fromisoformat(eop)
+            sd = _source_period_fraction_denom(end)
+            days = 184 if end.month == 12 else (182 if calendar.isleap(end.year) else 181)
+            calc = days / sd
+            if abs(calc - sf) > 1e-9:
+                mismatches.append(f"idx={i} eop={eop} calc={calc:.10f} fixture={sf:.10f}")
+        assert len(mismatches) == 0, f"Fraction mismatches: {mismatches}"
+
+    # G) p28 source fraction
+    def test_g_p28_source_fraction_is_184_over_366(self):
+        import json
+        with open("tests/fixtures/excel_oborovo_financial_truth.json") as f:
+            ft = json.load(f)
+        # fixture idx 27 = p28 (2043-12-31)
+        frac = ft["cf"]["operation_period_fraction"][27]
+        expected = 184 / 366
+        assert abs(frac - expected) < 1e-9
+
+    def test_g_p28_source_denom_is_366(self):
+        from datetime import date
+        from finco_recon.bank_sizing_candidates import _source_period_fraction_denom
+        assert _source_period_fraction_denom(date(2043, 12, 31)) == 366.0
+
+    # H) p28 Finco fraction uses 365 denominator (differs from source)
+    def test_h_p28_finco_denom_is_365(self):
+        from datetime import date
+        from finco_recon.bank_sizing_candidates import _finco_period_fraction_denom
+        assert _finco_period_fraction_denom(date(2043, 12, 31)) == 365.0
+
+    def test_h_p28_finco_and_source_denoms_differ(self):
+        from datetime import date
+        from finco_recon.bank_sizing_candidates import (
+            _source_period_fraction_denom,
+            _finco_period_fraction_denom,
+        )
+        end = date(2043, 12, 31)
+        assert _finco_period_fraction_denom(end) != _source_period_fraction_denom(end)
+
+    def test_h_p28_denominator_difference_from_result(self, r4_71_result):
+        assert r4_71_result["p28_finco_denom"] == 365
+        assert r4_71_result["p28_source_denom"] == 366
+
+    # I) Causal explanation of +144 MWh T4 production delta at p28
+    def test_i_t4_p28_production_overstates_fixture(self, r4_71_result):
+        t4_delta = r4_71_result["p28_t4_vs_fixture_delta_mwh"]
+        # T4 production > fixture at p28 (Finco uses 365, source uses 366)
+        assert t4_delta is not None
+        assert t4_delta > 100.0  # ~144 MWh
+        assert t4_delta < 200.0
+
+    def test_i_t5_p28_production_matches_fixture(self, r4_71_result):
+        t5_delta = r4_71_result["p28_t5_vs_fixture_delta_mwh"]
+        assert t5_delta is not None
+        assert abs(t5_delta) < 1.0  # T5 closes production to <1 MWh
+
+    def test_i_calendar_convention_causes_production_gap(self):
+        # 2043 is not leap; 2044 IS leap → Finco uses 365, source uses 366 → Finco overproduces
+        import calendar
+        assert not calendar.isleap(2043)  # Finco uses end.year = 2043 → 365
+        assert calendar.isleap(2044)       # source uses next year = 2044 → 366
+
+    # J) Full-horizon production diagnostic
+    def test_j_full_horizon_diagnostic_covers_all_operating_periods(self, r4_71_result):
+        diag = r4_71_result["full_horizon_diagnostic"]
+        assert len(diag) >= 60  # at least 60 operating periods
+
+    def test_j_periods_outside_1mwh_are_calendar_affected(self, r4_71_result):
+        outside = r4_71_result["periods_outside_1mwh_before_t5"]
+        calendar_affected = r4_71_result["calendar_affected_periods_count"]
+        # All large production deltas should be calendar-convention H2 periods
+        assert outside <= calendar_affected
+
+    # K) Recurring leap-boundary pattern: 15 affected H2 periods
+    def test_k_15_calendar_corrections_applied(self, r4_71_result):
+        assert r4_71_result["calendar_affected_periods_count"] == 15
+
+    def test_k_all_corrections_are_h2_periods(self, r4_71_result):
+        for corr in r4_71_result["calendar_corrections"]:
+            # H2 periods end in December (month=12)
+            from datetime import date
+            end = date.fromisoformat(corr["period_end"])
+            assert end.month == 12, f"Expected H2 period, got {corr['period_end']}"
+
+    def test_k_corrections_alternate_scale_signs(self, r4_71_result):
+        # Pre-leap H2: finco_denom=365 < src_denom=366 → scale < 1 (T5 < T4)
+        # Post-leap H2: finco_denom=366 > src_denom=365 → scale > 1 (T5 > T4)
+        corrections = r4_71_result["calendar_corrections"]
+        pre_leap = [c for c in corrections if c["finco_denom"] < c["source_denom"]]
+        post_leap = [c for c in corrections if c["finco_denom"] > c["source_denom"]]
+        assert len(pre_leap) > 0
+        assert len(post_leap) > 0
+        # Pre-leap: T5 production < T4 production
+        for c in pre_leap:
+            assert c["t5_prod"] < c["finco_prod"]
+        # Post-leap: T5 production > T4 production
+        for c in post_leap:
+            assert c["t5_prod"] > c["finco_prod"]
+
+    # L) T5 source-calendar replay
+    def test_l_t5_debt_reduced_vs_t4(self, r4_71_result):
+        # T5 moves debt closer to source vs T4
+        t4_res = abs(r4_71_result["t4_residual_keur"])
+        t5_res = abs(r4_71_result["t5_residual_keur"])
+        assert t5_res < t4_res
+
+    def test_l_t5_debt_value(self, r4_71_result):
+        assert 42848.0 < r4_71_result["t5_debt_keur"] < 42856.0
+
+    # M) p26 CFADS parity (T5 ≤ 1 kEUR)
+    def test_m_p26_t5_cfads_within_1keur(self, r4_71_result):
+        bridge = r4_71_result["merchant_period_bridge"]
+        p26 = next(r for r in bridge if r["period_end"] == "2042-12-31")
+        assert abs(p26["t5_vs_ds20_delta_keur"]) <= 1.0, \
+            f"p26 CFADS delta = {p26['t5_vs_ds20_delta_keur']:+.4f} kEUR"
+
+    # N) p27 CFADS parity (T5 ≤ 1 kEUR)
+    def test_n_p27_t5_cfads_within_1keur(self, r4_71_result):
+        bridge = r4_71_result["merchant_period_bridge"]
+        p27 = next(r for r in bridge if r["period_end"] == "2043-06-30")
+        assert abs(p27["t5_vs_ds20_delta_keur"]) <= 1.0, \
+            f"p27 CFADS delta = {p27['t5_vs_ds20_delta_keur']:+.4f} kEUR"
+
+    # O) p28 CFADS — STOP: documents EBITDA residual of -2.672 kEUR
+    def test_o_p28_production_closed_by_t5(self, r4_71_result):
+        assert r4_71_result["p28_production_closed_by_t5"] is True
+
+    def test_o_p28_t5_cfads_improved_vs_t4(self, r4_71_result):
+        # T5 improves p28 CFADS from T4's +6.161 kEUR to ~-2.672 kEUR
+        # Both are outside ±1 kEUR but T5 is smaller in magnitude
+        t4_delta = r4_71_result["p28_t4_cfads_delta_keur"]
+        t5_delta = r4_71_result["p28_t5_cfads_delta_keur"]
+        assert abs(t5_delta) < abs(t4_delta), \
+            f"T5 p28 delta ({t5_delta:.3f}) should be smaller than T4 ({t4_delta:.3f})"
+
+    def test_o_p28_ebitda_residual_documented(self, r4_71_result):
+        # Remaining gap is EBITDA model residual, not production/calendar
+        residual = r4_71_result["p28_ebitda_residual_keur"]
+        assert residual is not None
+        # Between -4 and 0 kEUR (production closed, small EBITDA gap remains)
+        assert -4.0 < residual < 0.0
+
+    def test_o_p28_remaining_causal_component_documented(self, r4_71_result):
+        component = r4_71_result["remaining_causal_component"]
+        assert "EBITDA" in component or "ebitda" in component.lower()
+
+    def test_o_p28_stop_verdict(self, r4_71_result):
+        # Production closed but EBITDA gap keeps verdict as STOP
+        verdict = r4_71_result["verdict"]
+        assert "STOP" in verdict
+
+    # P) p29 CFADS parity (T5 ≤ 1 kEUR)
+    def test_p_p29_t5_cfads_within_1keur(self, r4_71_result):
+        bridge = r4_71_result["merchant_period_bridge"]
+        p29 = next(r for r in bridge if r["period_end"] == "2044-06-30")
+        assert abs(p29["t5_vs_ds20_delta_keur"]) <= 1.0, \
+            f"p29 CFADS delta = {p29['t5_vs_ds20_delta_keur']:+.4f} kEUR"
+
+    # Q) Senior Debt — T5 shows partial improvement
+    def test_q_t5_debt_closer_to_source_than_t4(self, r4_71_result):
+        t4_abs = abs(r4_71_result["t4_residual_keur"])
+        t5_abs = r4_71_result["t5_abs_residual_keur"]
+        assert t5_abs < t4_abs
+
+    def test_q_t5_debt_residual_within_2keur(self, r4_71_result):
+        # T5 residual < 2 kEUR (partial improvement — STOP, not full parity)
+        assert r4_71_result["t5_abs_residual_keur"] < 2.0
+
+    def test_q_stop_verdict_is_calendar_replay_failed(self, r4_71_result):
+        verdict = r4_71_result["verdict"]
+        assert "CALENDAR_REPLAY_FAILED" in verdict
+
+    # R) No hardcoded p28/year exception — formula applied uniformly
+    def test_r_no_hardcoded_p28_exception(self):
+        import inspect
+        from finco_recon.bank_sizing_candidates import _run_candidate_t5_debt
+        src = inspect.getsource(_run_candidate_t5_debt)
+        for forbidden in ["== 28", "2043", "== 27", "p28"]:
+            assert forbidden not in src, \
+                f"Found forbidden hardcoded value '{forbidden}' in _run_candidate_t5_debt"
+
+    def test_r_no_hardcoded_year_in_source_fraction(self):
+        import inspect
+        from finco_recon.bank_sizing_candidates import _source_period_fraction_denom
+        src = inspect.getsource(_source_period_fraction_denom)
+        for forbidden_year in ["2043", "2044", "2031", "2032"]:
+            assert forbidden_year not in src
+
+    def test_r_t5_correction_applied_uniformly(self, r4_71_result):
+        assert r4_71_result["no_hardcoded_period_indices"] == "ENFORCED"
+
+    # S) financial_engine zero-diff
+    def test_s_financial_engine_zero_diff(self, r4_71_result):
+        assert r4_71_result["financial_engine_zero_diff"] == "ENFORCED"
+
+    def test_s_financial_engine_no_diff_subprocess(self):
+        import subprocess
+        result = subprocess.run(
+            ["git", "diff", "HEAD", "--", "financial_engine/"],
+            capture_output=True, text=True,
+            cwd=str(__import__("pathlib").Path(__file__).parent.parent),
+        )
+        assert result.stdout == "", f"financial_engine/ must be zero-diff:\n{result.stdout[:500]}"
+
+    # T) TUHO regression — P90 propagation still confirmed (no overgeneralisation)
+    def test_t_tuho_regression_status(self, r4_71_result):
+        assert r4_71_result["tuho_p90_propagates"] is True
+
+    def test_t_tuho_cached_delta_within_1keur(self, r4_71_result):
+        assert r4_71_result["tuho_p90_delta_keur_cached"] < 1.0
+
+    def test_t_generic_p90_policy_preserved(self, r4_71_result):
+        policy = r4_71_result["generic_p90_policy"]
+        assert "P90_BY_DEFAULT" in policy or "P90" in policy
+
+    # U) R4.6.1 p29 documentation correction carried forward
+    def test_u_r4_6_1_correction_in_result(self, r4_71_result):
+        c = r4_71_result["r4_6_1_p29_correction"]
+        assert "CORRECT" in c.upper()
+
+    # V) No identity dispatch / plugs
+    def test_v_no_project_name_dispatch(self, r4_71_result):
+        assert r4_71_result["no_project_name_dispatch"] == "ENFORCED"
+
+    def test_v_no_plug_calibration(self, r4_71_result):
+        assert r4_71_result["no_plug_calibration"] == "ENFORCED"
+
+    def test_v_no_identity_dispatch_in_t5(self):
+        import inspect
+        from finco_recon.bank_sizing_candidates import _run_candidate_t5_debt
+        src = inspect.getsource(_run_candidate_t5_debt)
+        for forbidden in ["project_name", "oborovo", "Oborovo", "OBOROVO_ONLY"]:
+            assert forbidden not in src, \
+                f"Found identity dispatch '{forbidden}' in _run_candidate_t5_debt"
+
+    def test_v_parity_layer_separation_documented(self, r4_71_result):
+        sep = r4_71_result["parity_layer_separation"]
+        assert "SEPARATE" in sep
+        assert "DEBT_SIZING" in sep or "debt_sizing" in sep.lower()
+
+    def test_v_no_base_performance_parity_claimed(self, r4_71_result):
+        # Classification constant must identify the calendar convention, not claim full parity
+        impl = r4_71_result["base_performance_implication"]
+        assert "IDENTIFIED" in impl
+        # The constant name itself must not assert parity (checks the classification key name)
+        classification_name = impl.split(":")[0]
+        assert "PARITY_PROVEN" not in classification_name
