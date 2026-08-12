@@ -73,8 +73,6 @@ def from_project_inputs(
     if rev.co2_sales_schedule is not None and rev.co2_sales_schedule.semiannual_values:
         co2_semiannual = tuple(rev.co2_sales_schedule.semiannual_values)
 
-    # Map PPA indexation policy from string attribute on RevenueParams.
-    # None (absent or explicit None) = not yet explicitly migrated; legacy path preserved.
     _policy_str = getattr(rev, "ppa_indexation_start_policy", None)
     if _policy_str is None:
         _ppa_policy = None
@@ -122,16 +120,11 @@ def from_project_inputs(
         for item in inputs.opex
     )
 
-    # Carry hierarchical OPEX capability through the clean contract when present.
-    # Presence is the sole dispatch signal — no project-name or code inspection.
     _hcap = inputs.hierarchical_opex_capability
     _hier_model = _hcap.opex_model if _hcap is not None else None
     _hier_ext: tuple[tuple[str, tuple[float, ...]], ...] = (
         _hcap.external_annual_series if _hcap is not None else ()
     )
-    # Map senior debt tenor explicitly from financing — semantically distinct from
-    # financial_cost_useful_life_years (depreciation amortization driver).
-    # None for flat projects where the field is not consulted by the OPEX leaf.
     _senior_tenor: int | None = (
         inputs.financing.senior_tenor_years if _hcap is not None else None
     )
@@ -144,20 +137,10 @@ def from_project_inputs(
             useful_life_override=item.useful_life_override,
         )
 
-    # BOOK depreciable basis: hard capex + capitalised bank financing costs.
-    # Evidence (Excel Dep sheet): dep_idc_keur, dep_commitment_fees_keur,
-    # dep_bank_fees_keur, dep_vat_keur all non-zero. SHL IDC excluded (OPEN).
     book_capex_items_for_dep = tuple(
         _to_dep_item(item) for item in inputs.capex.book_depreciable_capex_items()
     )
 
-    # TAX depreciable basis: dispatch only on explicit source-ownership flag.
-    # tax_dep_basis_source_owned=True: C3B1 proves tax_dep = book_dep (asset list
-    # = book_depreciable_capex_items). Validate pct==1.0 — partial pct not yet modeled.
-    # Default (False): use tax_depreciable_capex_items() — legacy/compatibility path,
-    # preserves base behavior for all projects without proven book-dep basis.
-    # BOOK_BASED_PERCENTAGE mode alone does NOT trigger the book-dep asset switch;
-    # it is a compatibility default and must not silently opt all projects into a new basis.
     from finco_core.inputs._models import TaxDepreciationMode
     if inputs.tax.tax_dep_basis_source_owned:
         if inputs.tax.tax_depreciation_mode != TaxDepreciationMode.BOOK_BASED_PERCENTAGE:
@@ -179,9 +162,6 @@ def from_project_inputs(
             _to_dep_item(item) for item in inputs.capex.tax_depreciable_capex_items()
         )
 
-    # Explicit mapping of financing tenor → book depreciation driver.
-    # OPEN: Excel Dep-sheet formula for useful life is unverified from data_only extraction.
-    # No silent default: if the field is absent the AttributeError surfaces immediately.
     financial_cost_useful_life_years: int = inputs.financing.senior_tenor_years
 
     return OperatingModelInput(
@@ -210,29 +190,19 @@ def build_senior_debt_model_input_from_project_inputs(
     project_inputs: "ProjectInputs",
     source_id: str = "",
     baseline_commit_sha: str = "",
+    *,
+    debt_sizing_case: DebtSizingCaseInput | None = None,
 ) -> object:
     """Assemble a complete SeniorDebtModelInput from canonical ProjectInputs.
 
-    Runs the three-stage assembly:
-      1. Operating input  — from_project_inputs()
-      2. Tax input        — build_tax_contract_from_project_inputs()
-      3. Senior debt      — build_senior_debt_contract_from_project_inputs()
+    The Base operating/tax/debt fundamentals are adapted from ``project_inputs``.
+    ``debt_sizing_case`` is the explicit production-runtime bank-case seam: callers
+    may supply a lender yield scenario and optional lender merchant-price curve
+    without changing the Base/equity performance inputs. When omitted, the generic
+    default is P90-10y production with Base merchant pricing inherited unchanged.
 
-    The result is ready for run_senior_debt_model(), which runs the fixed-point
-    solver integrating tax → CFADS → senior debt → interest → tax feedback.
-
-    Parameters
-    ----------
-    project_inputs:
-        Canonical project inputs (finco_core.inputs.ProjectInputs).
-    source_id:
-        Provenance source identifier (passed to from_project_inputs).
-    baseline_commit_sha:
-        Provenance SHA (passed to from_project_inputs).
-
-    Returns
-    -------
-    SeniorDebtModelInput
+    This argument is deliberately project-identity-free. It is the smallest clean
+    runtime contract required before persistence/UI surfaces own the same fields.
     """
     from financial_engine.inputs import SeniorDebtModelInput
     from financial_engine.adapters.tax_inputs import build_tax_contract_from_project_inputs
@@ -241,24 +211,19 @@ def build_senior_debt_model_input_from_project_inputs(
     )
     from financial_engine.orchestrator import run_operating_model
 
-    # Phase 2A: operating model
     operating = from_project_inputs(
         project_inputs, source_id=source_id, baseline_commit_sha=baseline_commit_sha
     )
     op_result = run_operating_model(operating)
     operating_periods = tuple(op_result.periods)
 
-    # Phase 2B tax contract
     tax = build_tax_contract_from_project_inputs(project_inputs)
 
-    # Phase 2C senior debt contract
     policy, inputs = build_senior_debt_contract_from_project_inputs(
         project_inputs, operating_periods
     )
 
-    # Generic bank case: P90-10y yield scenario (GENERIC_BANK_SIZING_DEFAULT_POLICY_IS_P90_10Y).
-    # No merchant price override — inherited from Base revenue assumptions.
-    debt_sizing_case = DebtSizingCaseInput(
+    resolved_debt_sizing_case = debt_sizing_case or DebtSizingCaseInput(
         production_yield_scenario=YieldScenario.P90_10Y,
         source_label="generic_bank_case_p90_10y",
     )
@@ -268,5 +233,5 @@ def build_senior_debt_model_input_from_project_inputs(
         tax=tax,
         senior_debt_policy=policy,
         senior_debt_inputs=inputs,
-        debt_sizing_case=debt_sizing_case,
+        debt_sizing_case=resolved_debt_sizing_case,
     )
