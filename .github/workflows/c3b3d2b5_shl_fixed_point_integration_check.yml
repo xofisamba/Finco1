@@ -15,6 +15,9 @@ on:
       - financial_engine/tax/engine.py
       - financial_engine/tax/models.py
       - financial_engine/tax/tax_year.py
+      - finco_core/inputs/_models.py
+      - finco_core/inputs/serialization.py
+      - app/project_factories.py
       - tests/test_stage_c3b3d2b5_shl_fixed_point_integration.py
       - docs/architecture/c3b3d2b5_shl_fixed_point_inventory.md
       - .github/workflows/c3b3d2b5_shl_fixed_point_integration_check.yml
@@ -33,6 +36,9 @@ on:
       - financial_engine/tax/engine.py
       - financial_engine/tax/models.py
       - financial_engine/tax/tax_year.py
+      - finco_core/inputs/_models.py
+      - finco_core/inputs/serialization.py
+      - app/project_factories.py
       - tests/test_stage_c3b3d2b5_shl_fixed_point_integration.py
       - docs/architecture/c3b3d2b5_shl_fixed_point_inventory.md
       - .github/workflows/c3b3d2b5_shl_fixed_point_integration_check.yml
@@ -58,6 +64,15 @@ jobs:
           fi
           echo "SHA verified: ${ACTUAL}"
 
+      - name: Verify reviewed base ancestry
+        run: |
+          BASE_SHA="8c8f8357c56025d156bbe7e19f319040e4ba476b"
+          if ! git merge-base --is-ancestor "$BASE_SHA" HEAD; then
+            echo "ERROR: reviewed base ${BASE_SHA} is not an ancestor of HEAD"
+            exit 1
+          fi
+          echo "Reviewed base ancestry verified: ${BASE_SHA}"
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -71,10 +86,43 @@ jobs:
       - name: git diff --check
         run: git diff --check ${{ github.event.pull_request.base.sha || 'HEAD~1' }}..HEAD
 
-      - name: C3B3D2B5 fixed-point authority, tax ownership, and production wiring
+      - name: C3B3D2B5 full suite including production SHL input authority
         run: |
           PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest \
             tests/test_stage_c3b3d2b5_shl_fixed_point_integration.py \
+            -v --tb=short --no-header
+
+      - name: C3B3D2B4 post-senior cash authority regression
+        run: |
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest \
+            tests/test_stage_c3b3d2b4_dscr_post_senior_cash_authority.py \
+            -v --tb=short --no-header
+
+      - name: C3B3D2B4.2 solver proof subset
+        run: |
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest \
+            tests/test_stage_c3b3d2b4_dscr_post_senior_cash_authority.py \
+            -k "TestO_ or TestP_ or TestQ_ or TestR_ or TestS_ or TestT_ or TestU_ or TestV_ or TestW_ or TestX_ or TestY_ or TestZ_" \
+            -v --tb=short --no-header
+
+      - name: C3B3D2B3 production debt sizing regression
+        run: |
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest \
+            tests/test_stage_c3b3d2b3_debt_sizing_case_production.py \
+            tests/test_stage_c3b3d2b3_hardening_completion.py \
+            -v --tb=short --no-header
+
+      - name: C3B3A clean senior debt regression
+        run: |
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest \
+            tests/test_stage_c3b3a_clean_senior_debt_source_contract.py \
+            -v --tb=short --no-header
+
+      - name: C3B1 source tax regression
+        run: |
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest \
+            tests/test_stage_c3b1_oborovo_tax_source_truth.py \
+            -k "not TestMNoProjectIdentityDispatch and not TestNNoTargetPlug and not TestPRegressionGuard" \
             -v --tb=short --no-header
 
       - name: C3B3D1 canonical SHL schedule regression
@@ -94,3 +142,41 @@ jobs:
           PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest \
             tests/test_stage_c3b3c_tax_policy_shl_deductibility.py \
             -v --tb=short --no-header -q
+
+      - name: Production governance scans
+        run: |
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python - <<'PY'
+          from pathlib import Path
+
+          files = [
+              Path("financial_engine/adapters/project_inputs.py"),
+              Path("financial_engine/orchestrator.py"),
+              Path("financial_engine/shl/production.py"),
+          ]
+          forbidden = (
+              "project.name",
+              "project.code",
+              "approved_delta",
+              "expected_delta",
+              "balancing plug",
+              "source schedule replay",
+              "target fitting",
+              "backsolved",
+              "terminal top-up",
+              "forced principal",
+              "maturity_period_index=last_period",
+              "tuho_shl_principal_eligibility_start_period",
+          )
+          failures = []
+          for path in files:
+              text = path.read_text(encoding="utf-8").lower()
+              for token in forbidden:
+                  if token in text:
+                      failures.append(f"{path}: {token}")
+          adapter = Path("financial_engine/adapters/project_inputs.py").read_text(encoding="utf-8")
+          if "shl_idc_keur" in adapter:
+              failures.append("financial_engine/adapters/project_inputs.py: shl_idc_keur")
+          if failures:
+              raise SystemExit("FAIL: forbidden production token(s): " + "; ".join(failures))
+          print("PASS: production mapping has no identity dispatch, target replay, backsolved DCF, plugs, terminal top-up, or forced principal")
+          PY

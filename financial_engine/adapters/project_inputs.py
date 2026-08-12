@@ -32,6 +32,29 @@ from financial_engine.ppa_indexation import PpaIndexationStartPolicy
 from financial_engine.shl.contracts import ShlDayCountConvention
 
 
+_SUPPORTED_CLEAN_SHL_REPAYMENT_METHODS = frozenset({
+    "cash_sweep",
+    "partial_pay_sweep",
+})
+
+
+def _coerce_shl_day_count(raw: object) -> ShlDayCountConvention:
+    text = str(raw or "").strip().upper().replace("/", "_").replace("-", "_").replace(" ", "_")
+    aliases = {
+        "ACT_365_FIXED": ShlDayCountConvention.ACT_365_FIXED,
+        "ACT_365_FIXED_INCLUSIVE": ShlDayCountConvention.ACT_365_FIXED,
+        "ACTUAL_365_FIXED": ShlDayCountConvention.ACT_365_FIXED,
+        "ACT_360": ShlDayCountConvention.ACT_360,
+        "ACTUAL_360": ShlDayCountConvention.ACT_360,
+    }
+    if text in aliases:
+        return aliases[text]
+    raise ValueError(
+        "SHL_DAY_COUNT_CONVENTION_EXPLICIT_INPUT_REQUIRED: "
+        f"unsupported shl_day_count_convention={raw!r}"
+    )
+
+
 def from_project_inputs(
     inputs: "ProjectInputs",
     *,
@@ -257,36 +280,79 @@ def _build_shareholder_loan_model_input_from_project_inputs(
     principal produces ``None`` so the senior-debt-only path remains unchanged.
     """
     financing = project_inputs.financing
-    amount = float(getattr(financing, "shl_amount_keur", 0.0) or 0.0)
+
+    clean_principal = getattr(financing, "clean_shl_principal_keur", None)
+    if clean_principal is None:
+        legacy_amount = float(getattr(financing, "shl_amount_keur", 0.0) or 0.0)
+        legacy_method = str(getattr(financing, "shl_repayment_method", "") or "").strip().lower()
+        if legacy_amount > 0.0 and legacy_method in (
+            _SUPPORTED_CLEAN_SHL_REPAYMENT_METHODS | {"pik_then_sweep", "fcf_waterfall"}
+        ):
+            raise ValueError(
+                "CLEAN_SHL_CONTRACT_AUTHORITY_REQUIRED: "
+                "positive legacy SHL with cash-sweep mechanics requires explicit "
+                "clean_shl_principal_keur and generic clean SHL contract fields"
+            )
+        return None
+    amount = float(clean_principal or 0.0)
     if amount <= 0.0:
         return None
 
     rate = float(getattr(financing, "shl_rate", 0.0) or 0.0)
-    shl_idc = float(getattr(financing, "shl_idc_keur", 0.0) or 0.0)
-    construction_dcf = 1.0
-    if shl_idc > 0.0:
-        if rate <= 0.0:
-            raise ValueError(
-                "ProjectInputs SHL has positive shl_idc_keur but non-positive shl_rate"
-            )
-        construction_dcf = shl_idc / (amount * rate)
+    if rate <= 0.0:
+        raise ValueError("ProjectInputs clean SHL requires positive shl_rate")
+
+    method_raw = (
+        getattr(financing, "clean_shl_repayment_method", None)
+        or getattr(financing, "shl_repayment_method", None)
+    )
+    method = str(method_raw or "").strip().lower()
+    if method not in _SUPPORTED_CLEAN_SHL_REPAYMENT_METHODS:
+        raise ValueError(
+            "UNSUPPORTED_SHL_REPAYMENT_MODE_FAILS_CLOSED: "
+            f"clean SHL supports {sorted(_SUPPORTED_CLEAN_SHL_REPAYMENT_METHODS)}, "
+            f"got {method_raw!r}"
+        )
+
+    construction_dcf_raw = getattr(financing, "shl_construction_day_count_fraction", None)
+    if construction_dcf_raw is None:
+        raise ValueError(
+            "SHL_CONSTRUCTION_DCF_IS_EXPLICIT_INPUT_NOT_BACKSOLVED_FROM_IDC: "
+            "shl_construction_day_count_fraction is required for clean SHL"
+        )
+    construction_dcf = float(construction_dcf_raw)
+
+    repayment_start = getattr(financing, "shl_principal_eligibility_start_period", None)
+    if repayment_start is None:
+        raise ValueError(
+            "SHL_PRINCIPAL_ELIGIBILITY_START_PERIOD_EXPLICIT_INPUT_REQUIRED"
+        )
+
+    maturity = getattr(financing, "shl_maturity_period_index", None)
+    if maturity is None:
+        raise ValueError(
+            "SHL_MATURITY_PERIOD_EXPLICIT_INPUT_REQUIRED: "
+            "do not infer maturity from model horizon"
+        )
 
     first_operating = next((p.period_index for p in periods if p.is_operation), None)
     if first_operating is None:
         raise ValueError("ProjectInputs SHL requires at least one operating period")
-    last_period = max(p.period_index for p in periods)
-    repayment_start = (
-        getattr(financing, "tuho_shl_principal_eligibility_start_period", None)
-        or first_operating
-    )
+    if int(repayment_start) < int(first_operating):
+        raise ValueError(
+            "SHL_PRINCIPAL_ELIGIBILITY_START_PERIOD_INVALID: "
+            "repayment start must not precede first operating period"
+        )
 
     return ShareholderLoanModelInput(
         initial_principal_keur=amount,
         annual_fixed_rate=rate,
-        day_count_convention=ShlDayCountConvention.ACT_365_FIXED,
+        day_count_convention=_coerce_shl_day_count(
+            getattr(financing, "shl_day_count_convention", None)
+        ),
         construction_day_count_fraction=construction_dcf,
         repayment_start_period_index=int(repayment_start),
-        maturity_period_index=last_period,
+        maturity_period_index=int(maturity),
         convergence_tolerance_keur=1e-4,
         convergence_relative_tolerance=1e-9,
         maximum_iterations=50,

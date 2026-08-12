@@ -36,7 +36,7 @@ Oborovo source anchors:
 - Final source closing balance: zero
 
 Construction DCF classification:
-`CONSTRUCTION_SHL_DAY_FRACTION_SOURCE_CONFIGURED_NOT_INFERRED`.
+`SHL_CONSTRUCTION_DCF_IS_EXPLICIT_INPUT_NOT_BACKSOLVED_FROM_IDC`.
 
 Oborovo tax classification:
 `OBOROVO_SHL_INTEREST_AND_FISCAL_REINTEGRATION_CAUSAL_CHAIN_PROVEN`.
@@ -114,8 +114,51 @@ The source-oracle SHL tests use source cash as validation evidence only. Runtime
 `build_senior_debt_model_input_from_project_inputs()` maps configured
 `ProjectInputs.financing` SHL fields into `ShareholderLoanModelInput` without
 project-name or project-code dispatch. The mapping is generic: if the canonical
-project input has no positive SHL principal, the SHL input is absent and the
-existing senior-debt-only path is used.
+project input has no explicit `clean_shl_principal_keur`, the SHL input is
+absent and the existing senior-debt-only path is used.
+
+The clean production contract deliberately does not promote legacy
+`shl_amount_keur` to the B5 fixed-point layer. That field remains a legacy
+template/runtime assumption with known baseline sensitivity. The clean SHL
+contract uses explicit generic authority fields instead:
+
+- `clean_shl_principal_keur`
+- `clean_shl_repayment_method` (falling back to `shl_repayment_method` only
+  when the clean override is absent)
+- `shl_day_count_convention`
+- `shl_construction_day_count_fraction`
+- `shl_principal_eligibility_start_period`
+- `shl_maturity_period_index`
+
+For Oborovo, this resolves the source conflict by wiring the clean contract to
+`Inputs!D325 = 14,620.773894815633 kEUR` while leaving the legacy
+`shl_amount_keur = 13,547.2 kEUR` untouched. Classification:
+`OBOROVO_CLEAN_SHL_PRINCIPAL_AUTHORITY_IS_SOURCE_CORRECT`.
+
+Oborovo clean SHL production parameters are:
+
+- principal: `14,620.773894815633 kEUR`
+- annual rate: `8.00%`
+- operating day count: inclusive `ACT_365_FIXED`
+- construction DCF: explicit `1.0`
+- construction PIK: `1,169.6619115852516 kEUR`
+- first operating opening: `15,790.435806400885 kEUR`
+- principal eligibility start: `DS25`
+- maturity/clearance: `DS40`
+- repayment mode: `partial_pay_sweep`
+
+Classification:
+`OBOROVO_SHL_CONTRACT_SOURCE_PARAMETERS_PRODUCTION_WIRED`.
+
+Unsupported clean SHL repayment modes fail closed. The B5 production mapping
+supports the natural partial-pay/cash-sweep contract only; it does not silently
+convert `bullet`, `PIK`, `accrued`, or unknown modes into sweep behavior.
+Classification: `UNSUPPORTED_SHL_REPAYMENT_MODE_FAILS_CLOSED`.
+
+TUHO remains blocked at the production adapter boundary because the required
+generic clean SHL contract fields are not yet authoritative for that factory.
+The manually constructed TUHO fixture remains formula evidence only, not a
+production-wiring proof.
 
 ## Maturity Boundary
 
@@ -123,3 +166,27 @@ The SHL production schedule has no terminal top-up or forced final draw. If a
 positive balance remains at the configured maturity or final clearance boundary,
 the runtime raises `SHL_MATURITY_RESIDUAL_FAILS_CLOSED` instead of hiding the
 shortfall.
+
+Maturity is never inferred from the model horizon. A 30-year model horizon does
+not silently extend a 20-year SHL; clean SHL mapping requires explicit
+`shl_maturity_period_index` authority (or a future independently specified
+tenor-to-period rule).
+
+## Production Acceptance
+
+Two parity classes are tracked separately:
+
+- `SHL_FORMULA_SOURCE_ORACLE_PARITY`: source cash plus the canonical SHL formula
+  reproduces the source SHL schedule at machine precision. Source fixtures are
+  used only as test oracles.
+- `SHL_PRODUCTION_RUNTIME_PARITY`: actual production runtime cash through
+  `create_default_oborovo()` and
+  `build_senior_debt_model_input_from_project_inputs()` compared to the source
+  SHL fixture.
+
+The production path now proves the clean input authority and construction
+identity without `replace(model, shareholder_loan=...)` and without source cash
+replay. The remaining production SHL vector difference is classified by first
+cause: current backend post-senior cash available for SHL diverges from source
+`free_cash_flow_for_shl_keur` at DS1. The SHL layer does not compensate for that
+upstream cash difference.

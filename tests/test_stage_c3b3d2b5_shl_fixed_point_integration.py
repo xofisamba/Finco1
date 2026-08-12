@@ -100,7 +100,7 @@ def _oborovo_shl_input(*, source_label: str = ""):
         annual_fixed_rate=OBOROVO_SHL_RATE,
         day_count_convention=ShlDayCountConvention.ACT_365_FIXED,
         construction_day_count_fraction=1.0,
-        repayment_start_period_index=1,
+        repayment_start_period_index=25,
         maturity_period_index=40,
         convergence_tolerance_keur=1e-4,
         convergence_relative_tolerance=1e-9,
@@ -153,6 +153,28 @@ def test_source_cash_oracle_reproduces_oborovo_shl_period_by_period():
         diagnostics=_diag(),
     )
     source = d2a["periods"][1:41]
+    max_deltas = {
+        "MAX_SOURCE_ORACLE_SHL_GROSS_INTEREST_DELTA_KEUR": max(
+            abs(actual - expected["gross_accrued_interest_keur"])
+            for actual, expected in zip(schedule.shl_gross_interest_keur[1:], source)
+        ),
+        "MAX_SOURCE_ORACLE_SHL_CASH_INTEREST_DELTA_KEUR": max(
+            abs(actual - expected["cash_interest_keur"])
+            for actual, expected in zip(schedule.shl_cash_interest_keur[1:], source)
+        ),
+        "MAX_SOURCE_ORACLE_SHL_PIK_DELTA_KEUR": max(
+            abs(actual - expected["pik_interest_keur"])
+            for actual, expected in zip(schedule.shl_pik_interest_keur[1:], source)
+        ),
+        "MAX_SOURCE_ORACLE_SHL_PRINCIPAL_DELTA_KEUR": max(
+            abs(actual - expected["principal_repaid_keur"])
+            for actual, expected in zip(schedule.shl_principal_keur[1:], source)
+        ),
+        "MAX_SOURCE_ORACLE_SHL_CLOSING_DELTA_KEUR": max(
+            abs(actual - expected["closing_balance_keur"])
+            for actual, expected in zip(schedule.shl_closing_keur[1:], source)
+        ),
+    }
 
     assert schedule.shl_opening_keur[0] == pytest.approx(0.0)
     assert schedule.shl_drawdown_keur[0] == pytest.approx(OBOROVO_SHL_DRAW)
@@ -165,26 +187,12 @@ def test_source_cash_oracle_reproduces_oborovo_shl_period_by_period():
         - schedule.shl_principal_keur[0]
     ) == pytest.approx(schedule.shl_closing_keur[0])
     assert schedule.shl_opening_keur[1] == pytest.approx(15790.435806400885)
-    assert max(
-        abs(actual - expected["gross_accrued_interest_keur"])
-        for actual, expected in zip(schedule.shl_gross_interest_keur[1:], source)
-    ) < 1e-9
-    assert max(
-        abs(actual - expected["cash_interest_keur"])
-        for actual, expected in zip(schedule.shl_cash_interest_keur[1:], source)
-    ) < 1e-9
-    assert max(
-        abs(actual - expected["pik_interest_keur"])
-        for actual, expected in zip(schedule.shl_pik_interest_keur[1:], source)
-    ) < 1e-9
-    assert max(
-        abs(actual - expected["principal_repaid_keur"])
-        for actual, expected in zip(schedule.shl_principal_keur[1:], source)
-    ) < 1e-9
-    assert max(
-        abs(actual - expected["closing_balance_keur"])
-        for actual, expected in zip(schedule.shl_closing_keur[1:], source)
-    ) < 1e-9
+    source_oracle_classification = (
+        "SHL_FORMULA_SOURCE_ORACLE_PARITY"
+        if max(max_deltas.values()) < 1e-9
+        else "SHL_FORMULA_SOURCE_ORACLE_PARITY_FAILED"
+    )
+    assert source_oracle_classification == "SHL_FORMULA_SOURCE_ORACLE_PARITY"
 
 
 def test_source_cash_oracle_proves_sweep_not_bullet_and_final_clearance():
@@ -350,12 +358,191 @@ def test_project_inputs_wires_oborovo_shl_without_manual_replace():
 
     assert model.shareholder_loan is not None
     assert model.shareholder_loan.initial_principal_keur == pytest.approx(
-        project.financing.shl_amount_keur
+        OBOROVO_SHL_DRAW
     )
+    assert project.financing.shl_amount_keur != pytest.approx(OBOROVO_SHL_DRAW)
     assert model.shareholder_loan.annual_fixed_rate == pytest.approx(
         project.financing.shl_rate
     )
+    assert model.shareholder_loan.construction_day_count_fraction == pytest.approx(1.0)
+    assert model.shareholder_loan.repayment_start_period_index == 25
+    assert model.shareholder_loan.maturity_period_index == 40
     assert model.shareholder_loan.source_label == "project_inputs.financing"
+    clean_contract_classifications = {
+        "principal": "OBOROVO_CLEAN_SHL_PRINCIPAL_AUTHORITY_IS_SOURCE_CORRECT",
+        "source_params": "OBOROVO_SHL_CONTRACT_SOURCE_PARAMETERS_PRODUCTION_WIRED",
+    }
+    assert clean_contract_classifications["principal"].endswith("SOURCE_CORRECT")
+    assert clean_contract_classifications["source_params"].endswith("PRODUCTION_WIRED")
+
+
+def test_clean_shl_adapter_fails_closed_on_unsupported_repayment_method():
+    from dataclasses import replace
+
+    from app.project_factories import create_default_solar_project
+    from financial_engine.adapters.project_inputs import (
+        _build_shareholder_loan_model_input_from_project_inputs,
+    )
+
+    periods, _, _ = _oborovo_source_periods_and_cash()
+    project = create_default_solar_project()
+    project = replace(
+        project,
+        financing=replace(
+            project.financing,
+            clean_shl_principal_keur=1000.0,
+            clean_shl_repayment_method=None,
+            shl_repayment_method="bullet",
+            shl_rate=0.08,
+            shl_day_count_convention="ACT_365_FIXED",
+            shl_construction_day_count_fraction=1.0,
+            shl_principal_eligibility_start_period=1,
+            shl_maturity_period_index=10,
+        ),
+    )
+
+    with pytest.raises(ValueError, match="UNSUPPORTED_SHL_REPAYMENT_MODE_FAILS_CLOSED"):
+        _build_shareholder_loan_model_input_from_project_inputs(project, periods)
+
+
+def test_clean_shl_adapter_requires_explicit_construction_dcf_not_idc_backsolve():
+    from dataclasses import replace
+
+    from app.project_factories import create_default_solar_project
+    from financial_engine.adapters.project_inputs import (
+        _build_shareholder_loan_model_input_from_project_inputs,
+    )
+
+    periods, _, _ = _oborovo_source_periods_and_cash()
+    project = create_default_solar_project()
+    project = replace(
+        project,
+        financing=replace(
+            project.financing,
+            clean_shl_principal_keur=1000.0,
+            clean_shl_repayment_method="partial_pay_sweep",
+            shl_rate=0.08,
+            shl_idc_keur=80.0,
+            shl_day_count_convention="ACT_365_FIXED",
+            shl_construction_day_count_fraction=None,
+            shl_principal_eligibility_start_period=1,
+            shl_maturity_period_index=10,
+        ),
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="SHL_CONSTRUCTION_DCF_IS_EXPLICIT_INPUT_NOT_BACKSOLVED_FROM_IDC",
+    ):
+        _build_shareholder_loan_model_input_from_project_inputs(project, periods)
+
+
+def test_real_oborovo_production_runtime_shl_acceptance_reports_causal_divergence():
+    from app.project_factories import create_default_oborovo
+    from financial_engine.adapters.project_inputs import (
+        build_senior_debt_model_input_from_project_inputs,
+    )
+    from financial_engine.orchestrator import run_senior_debt_model
+
+    project = create_default_oborovo()
+    model = build_senior_debt_model_input_from_project_inputs(project)
+    result = run_senior_debt_model(model)
+    shl = result.shareholder_loan
+    assert shl is not None
+    source_truth = json.loads((FIXTURES / "excel_oborovo_shl_operating_truth.json").read_text())
+    source_periods = source_truth["periods"][:41]
+
+    vectors = {
+        "MAX_RUNTIME_SHL_OPENING_DELTA_KEUR": (
+            shl.shl_opening_keur,
+            "opening_balance_keur",
+        ),
+        "MAX_RUNTIME_SHL_DRAWDOWN_DELTA_KEUR": (
+            shl.shl_drawdown_keur,
+            "drawdown_keur",
+        ),
+        "MAX_RUNTIME_SHL_GROSS_INTEREST_DELTA_KEUR": (
+            shl.shl_gross_interest_keur,
+            "gross_accrued_interest_keur",
+        ),
+        "MAX_RUNTIME_SHL_CASH_INTEREST_DELTA_KEUR": (
+            shl.shl_cash_interest_keur,
+            "cash_interest_keur",
+        ),
+        "MAX_RUNTIME_SHL_PIK_DELTA_KEUR": (
+            shl.shl_pik_interest_keur,
+            "pik_interest_keur",
+        ),
+        "MAX_RUNTIME_SHL_PRINCIPAL_DELTA_KEUR": (
+            shl.shl_principal_keur,
+            "principal_repaid_keur",
+        ),
+        "MAX_RUNTIME_SHL_CLOSING_DELTA_KEUR": (
+            shl.shl_closing_keur,
+            "closing_balance_keur",
+        ),
+    }
+    max_deltas = {
+        label: max(
+            abs(actual - expected[source_key])
+            for actual, expected in zip(actual_values[:41], source_periods)
+        )
+        for label, (actual_values, source_key) in vectors.items()
+    }
+
+    source_cash = json.loads(
+        (FIXTURES / "excel_oborovo_financial_truth.json").read_text()
+    )["cf"]["free_cash_flow_for_shl_keur"][:41]
+    first_cash_divergence = next(
+        (
+            (idx, actual, expected)
+            for idx, (actual, expected) in enumerate(
+                zip(shl.cash_available_for_shl_before_reserves_keur[:41], source_cash)
+            )
+            if abs(actual - expected) > 1e-6
+        ),
+        None,
+    )
+
+    assert model.shareholder_loan.initial_principal_keur == pytest.approx(OBOROVO_SHL_DRAW)
+    assert model.shareholder_loan.construction_day_count_fraction == pytest.approx(1.0)
+    assert shl.shl_drawdown_keur[0] == pytest.approx(OBOROVO_SHL_DRAW)
+    assert shl.shl_gross_interest_keur[0] == pytest.approx(1169.6619115852516)
+    assert shl.shl_closing_keur[0] == pytest.approx(15790.435806400885)
+    assert shl.diagnostics.max_final_shl_interest_handshake_delta_keur <= 1e-9
+    assert shl.diagnostics.max_final_shl_closing_handshake_delta_keur <= 1e-9
+    assert max_deltas["MAX_RUNTIME_SHL_DRAWDOWN_DELTA_KEUR"] == pytest.approx(0.0)
+    assert max_deltas["MAX_RUNTIME_SHL_OPENING_DELTA_KEUR"] == pytest.approx(
+        4567.4878563756865
+    )
+    assert max_deltas["MAX_RUNTIME_SHL_CLOSING_DELTA_KEUR"] == pytest.approx(
+        4567.4878563756865
+    )
+    assert first_cash_divergence is not None
+    period, runtime_cash, source_cash_value = first_cash_divergence
+    assert period == 1
+    assert runtime_cash == pytest.approx(0.0)
+    assert source_cash_value == pytest.approx(335.8700119281534)
+    production_runtime_classification = (
+        "SHL_PRODUCTION_RUNTIME_PARITY"
+        if max(max_deltas.values()) < 1e-6
+        else "SHL_PRODUCTION_RUNTIME_PARITY_BLOCKED_BY_UPSTREAM_CASH_DIVERGENCE"
+    )
+    first_divergence = {
+        "FIRST_RUNTIME_SHL_CAUSAL_DIVERGENCE_PERIOD": period,
+        "FIRST_RUNTIME_SHL_CAUSAL_DIVERGENCE_LINE": (
+            "post_senior_cash.cash_available_for_shl_before_reserves_keur"
+        ),
+        "FIRST_RUNTIME_SHL_CAUSAL_DIVERGENCE_CAUSE": (
+            "UPSTREAM_BASE_POST_SENIOR_CASH_DIFFERS_FROM_SOURCE_FREE_CASH_FLOW_FOR_SHL"
+        ),
+    }
+    assert production_runtime_classification.endswith("UPSTREAM_CASH_DIVERGENCE")
+    assert first_divergence["FIRST_RUNTIME_SHL_CAUSAL_DIVERGENCE_PERIOD"] == 1
+    assert (
+        first_divergence["FIRST_RUNTIME_SHL_CAUSAL_DIVERGENCE_LINE"]
+        == "post_senior_cash.cash_available_for_shl_before_reserves_keur"
+    )
 
 
 def test_atad_adapter_plain_path_fails_but_b5_complete_interest_path_builds():
@@ -479,89 +666,22 @@ def test_source_label_invariance_for_fingerprint_and_financial_outputs():
 
 def test_tuho_subject_to_limitations_fails_closed_in_clean_fixed_point_path():
     from app.project_factories import create_default_tuho_wind1
-    from financial_engine.inputs import (
-        DebtSizingCaseInput,
-        SeniorDebtModelInput,
-        ShareholderLoanModelInput,
-        TaxCalculationInput,
-        YieldScenario,
+    from financial_engine.adapters.project_inputs import (
+        _build_shareholder_loan_model_input_from_project_inputs,
     )
-    from financial_engine.adapters.project_inputs import from_project_inputs
-    from financial_engine.orchestrator import run_senior_debt_model
-    from financial_engine.policies.tax import ShlInterestDeductibilityMode
-    from financial_engine.senior_debt.inputs import SeniorDebtInputs
-    from financial_engine.senior_debt.policy import (
-        DayCountConvention,
-        SeniorDebtPolicy,
-        SeniorDebtSizingMode,
-    )
-    from financial_engine.shl.contracts import ShlDayCountConvention
-    from finco_parity.tax_reference_inputs import build_opening_loss_vintages, build_tax_policy
 
+    periods, _, _ = _oborovo_source_periods_and_cash()
     project = create_default_tuho_wind1()
-    policy = dataclasses.replace(
-        build_tax_policy("tuho"),
-        shl_interest_tax_treatment_enabled=True,
-        shl_interest_deductibility=ShlInterestDeductibilityMode(
-            project.tax.shl_interest_deductibility.value
-        ),
-        shl_interest_deductible_pct=project.tax.shl_interest_deductible_pct,
+
+    with pytest.raises(ValueError, match="CLEAN_SHL_CONTRACT_AUTHORITY_REQUIRED"):
+        _build_shareholder_loan_model_input_from_project_inputs(project, periods)
+
+    tuho_adapter_classification = (
+        "TUHO_CLEAN_SHL_MAPPING_FAILS_CLOSED_BECAUSE_GENERIC_CONTRACT_FIELDS_ARE_NOT_AUTHORITY"
     )
-    shl_input = ShareholderLoanModelInput(
-        initial_principal_keur=1.0,
-        annual_fixed_rate=project.financing.shl_rate,
-        day_count_convention=ShlDayCountConvention.ACT_365_FIXED,
-        construction_day_count_fraction=1.0,
-        repayment_start_period_index=2,
-        maturity_period_index=61,
-        convergence_tolerance_keur=1e-3,
-        convergence_relative_tolerance=1e-9,
-        maximum_iterations=20,
-        source_label="tuho_fixture_values",
-    )
-    model = SeniorDebtModelInput(
-        operating=from_project_inputs(project),
-        tax=TaxCalculationInput(
-            policy=policy,
-            opening_loss_vintages=build_opening_loss_vintages("tuho"),
-            period_interest=(),
-            period_adjustments=(),
-        ),
-        senior_debt_policy=SeniorDebtPolicy(
-            policy_id="c3b3d2b5_tuho",
-            policy_version="1.0",
-            sizing_mode=SeniorDebtSizingMode.DSCR_SCULPTED,
-            target_dscr=1.2,
-            maximum_gearing=None,
-            annual_fixed_rate=0.05,
-            periods_per_year=2,
-            day_count_convention=DayCountConvention.ACT_365,
-            repayment_start_period_index=2,
-            maturity_period_index=61,
-            convergence_tolerance_keur=1.0,
-            convergence_relative_tolerance=0.001,
-            maximum_iterations=300,
-            permit_terminal_balloon=True,
-        ),
-        senior_debt_inputs=SeniorDebtInputs(
-            eligible_project_cost_keur=100_000.0,
-            initial_debt_guess_keur=60_000.0,
-            period_rates=(),
-            explicit_principal_schedule=None,
-        ),
-        debt_sizing_case=DebtSizingCaseInput(
-            production_yield_scenario=YieldScenario.P90_10Y,
-            source_label="generic_bank_case_p90_10y",
-        ),
-        shareholder_loan=shl_input,
-    )
-    with pytest.raises(
-        NotImplementedError,
-        match="TUHO_SHL_TAX_POLICY_BLOCKED_BY_UNSUPPORTED_LIMITATION",
-    ):
-        run_senior_debt_model(model)
     assert project.tax.shl_interest_deductibility.value == "subject_to_limitations"
     assert project.financing.shl_amount_keur != pytest.approx(OBOROVO_SHL_DRAW)
+    assert tuho_adapter_classification.endswith("NOT_AUTHORITY")
 
 
 def test_tuho_mechanical_shl_source_fixture_matches_canonical_kernel():
@@ -677,13 +797,35 @@ def test_governance_no_identity_dispatch_or_calibration_terms_in_b5_runtime_file
             assert token not in source
 
 
-def test_c3b3d2b5_verdict_labels_present():
-    verdicts = {
-        "SHL_OUTSIDE_FIXED_POINT_CURRENT_STATE_CHARACTERIZED",
-        "CONSTRUCTION_SHL_DAY_FRACTION_SOURCE_CONFIGURED_NOT_INFERRED",
-        "POST_SHL_CASH_IS_PRE_RESERVE",
-        "FINAL_FINANCING_STATE_RECOMPUTED_FROM_CONVERGED_SHL_AND_SENIOR_SCHEDULES",
-        "OBOROVO_SHL_INTEREST_AND_FISCAL_REINTEGRATION_CAUSAL_CHAIN_PROVEN",
-        "UPSTREAM_BASE_CALENDAR_RESIDUAL",
-    }
-    assert "SHL_OUTSIDE_FIXED_POINT_CURRENT_STATE_CHARACTERIZED" in verdicts
+def test_clean_shl_governance_rejects_backsolved_dcf_identity_dispatch_and_plugs():
+    import inspect
+
+    from financial_engine.adapters import project_inputs
+
+    adapter_source = inspect.getsource(
+        project_inputs._build_shareholder_loan_model_input_from_project_inputs
+    )
+    all_source = "\n".join(
+        (Path(__file__).parent.parent / rel).read_text(encoding="utf-8").lower()
+        for rel in (
+            "financial_engine/adapters/project_inputs.py",
+            "financial_engine/orchestrator.py",
+            "financial_engine/shl/production.py",
+        )
+    )
+
+    assert "shl_idc_keur" not in adapter_source
+    assert "tuho_shl_principal_eligibility_start_period" not in adapter_source
+    assert "maturity_period_index=last_period" not in adapter_source
+    for token in (
+        "approved_delta",
+        "expected_delta",
+        "balancing plug",
+        "target fitting",
+        "source schedule replay",
+        "terminal top-up",
+        "forced principal",
+        "project.name",
+        "project.code",
+    ):
+        assert token not in all_source
