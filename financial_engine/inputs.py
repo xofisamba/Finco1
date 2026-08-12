@@ -10,7 +10,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date
 from enum import Enum
-from typing import TYPE_CHECKING
+import math
+from typing import TYPE_CHECKING, Any
 
 from financial_engine.ppa_indexation import PpaIndexationStartPolicy
 
@@ -90,7 +91,7 @@ class OpexInput:
     hierarchical_model: "OpexModelInput | None" = None
     hierarchical_external_annual_series: "tuple[tuple[str, tuple[float, ...]], ...]" = ()
     # Senior debt tenor in years — required when hierarchical_model is present (OPEX004),
-    # ignored for flat projects.  Explicit field decouples OPEX activation from the
+    # ignored for flat projects. Explicit field decouples OPEX activation from the
     # depreciation contract (financial_cost_useful_life_years is a different concept).
     senior_debt_tenor_years: "int | None" = None
 
@@ -176,6 +177,13 @@ class PeriodTaxAdjustmentInput:
 
     other_fiscal_reintegration_keur : addbacks not already captured by the
         ATAD interest-limitation mechanism. Positive = addback to taxable income.
+
+    Contract note for debt sizing:
+        This is an explicit fiscal-policy/value input, not an operating-model
+        derived output. When supplied to SeniorDebtModelInput it is therefore
+        intentionally shared by Base and Bank cases. A Base-case-derived
+        adjustment must not be encoded here; it requires its own derived
+        bank-case calculation contract.
     """
     period_index: int
     other_fiscal_reintegration_keur: float = 0.0
@@ -189,7 +197,8 @@ class TaxCalculationInput:
     opening_loss_vintages : pre-model loss pool in vintage order (oldest first)
     period_interest : one entry per model period that carries interest; periods
         not listed default to zero interest
-    period_adjustments : optional per-period fiscal adjustments
+    period_adjustments : explicit case-invariant fiscal adjustments only; do not
+        place Base-case-derived economics here when running a separate bank case
     """
     policy: "TaxPolicy"
     opening_loss_vintages: tuple[OpeningTaxLossVintageInput, ...]
@@ -208,18 +217,115 @@ class InputProvenance:
 # ---------------------------------------------------------------------------
 
 @dataclass(frozen=True)
+class DebtSizingCaseInput:
+    """Bank/debt-sizing economic case — assumptions that differ from the Base case.
+
+    Contains ONLY the fields that deviate from the Base/equity performance case.
+    All project fundamentals (calendar, opex, capex, PPA, tax policy, etc.) are
+    inherited from the Base OperatingModelInput unchanged.
+
+    GENERIC_DEBT_SIZING_CASE_IS_EXPLICIT_AND_PROJECT_IDENTITY_FREE:
+    No project-name dispatch, no project-code dispatch. The bank case is
+    described entirely by explicit user-supplied field values.
+
+    production_yield_scenario:
+        Yield scenario for the bank/debt-sizing case (typically P90_10Y).
+        Replaces technical.yield_scenario from the Base operating input.
+        GENERIC_BANK_SIZING_DEFAULT_POLICY_IS_P90_10Y.
+
+    merchant_price_calendar_start_year / merchant_prices_by_calendar_year_eur_mwh:
+        Optional calendar-year merchant price override for the bank case.
+        When supplied, replaces the Base merchant price curve. market_inflation
+        is NOT re-applied. Mirror of RevenueInput.merchant_price_calendar_start_year.
+        Mutually exclusive with market_prices_curve_eur_mwh.
+
+    market_prices_curve_eur_mwh:
+        Optional relative (inflation-grown) merchant price curve override.
+        When empty AND merchant_price_calendar_start_year is None, Base revenue
+        merchant price assumptions are inherited unchanged.
+
+    source_label:
+        Audit-only label (e.g. "p90_10y_lender_case"). Never used in any
+        financial calculation; present solely for human-readable provenance.
+        Excluded from the engine fingerprint.
+    """
+    production_yield_scenario: YieldScenario
+    merchant_price_calendar_start_year: int | None = None
+    merchant_prices_by_calendar_year_eur_mwh: tuple[float, ...] = ()
+    market_prices_curve_eur_mwh: tuple[float, ...] = ()
+    source_label: str = ""
+
+    def __post_init__(self) -> None:
+        has_calendar = (
+            self.merchant_price_calendar_start_year is not None
+            or bool(self.merchant_prices_by_calendar_year_eur_mwh)
+        )
+        has_curve = bool(self.market_prices_curve_eur_mwh)
+        if has_calendar and has_curve:
+            raise ValueError(
+                "DebtSizingCaseInput: merchant_prices_by_calendar_year_eur_mwh / "
+                "merchant_price_calendar_start_year and market_prices_curve_eur_mwh "
+                "are mutually exclusive. Supply at most one form."
+            )
+        if (
+            self.merchant_price_calendar_start_year is not None
+            and not self.merchant_prices_by_calendar_year_eur_mwh
+        ):
+            raise ValueError(
+                "DebtSizingCaseInput: merchant_price_calendar_start_year is set but "
+                "merchant_prices_by_calendar_year_eur_mwh is empty. Both must be supplied together."
+            )
+        if (
+            self.merchant_prices_by_calendar_year_eur_mwh
+            and self.merchant_price_calendar_start_year is None
+        ):
+            raise ValueError(
+                "DebtSizingCaseInput: merchant_prices_by_calendar_year_eur_mwh is supplied but "
+                "merchant_price_calendar_start_year is None. Both must be supplied together."
+            )
+        if self.merchant_price_calendar_start_year is not None:
+            if isinstance(self.merchant_price_calendar_start_year, bool) or not isinstance(
+                self.merchant_price_calendar_start_year, int
+            ):
+                raise ValueError(
+                    "DebtSizingCaseInput: merchant_price_calendar_start_year must be an integer year."
+                )
+            if self.merchant_price_calendar_start_year < 1:
+                raise ValueError(
+                    "DebtSizingCaseInput: merchant_price_calendar_start_year must be >= 1."
+                )
+        for field_name, values in (
+            (
+                "merchant_prices_by_calendar_year_eur_mwh",
+                self.merchant_prices_by_calendar_year_eur_mwh,
+            ),
+            ("market_prices_curve_eur_mwh", self.market_prices_curve_eur_mwh),
+        ):
+            for i, value in enumerate(values):
+                if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+                    raise ValueError(
+                        f"DebtSizingCaseInput: {field_name}[{i}] must be a finite numeric value, "
+                        f"got {value!r}."
+                    )
+
+
+@dataclass(frozen=True)
 class SeniorDebtModelInput:
     """Phase 2C input: Phase 2B inputs + senior debt policy + senior debt inputs.
 
-    operating: Phase 2A OperatingModelInput
+    operating: Phase 2A OperatingModelInput (Base/equity performance case)
     tax: Phase 2B TaxCalculationInput (interest from Phase 2C solver feeds back here)
     senior_debt_policy: SeniorDebtPolicy (sizing mode, DSCR target, rates, etc.)
     senior_debt_inputs: SeniorDebtInputs (cost base, initial guess, rate schedule, etc.)
+    debt_sizing_case: DebtSizingCaseInput (bank-case assumptions differing from Base)
+        Required. Use DebtSizingCaseInput(production_yield_scenario=YieldScenario.P90_10Y)
+        for the generic bank case (GENERIC_BANK_SIZING_DEFAULT_POLICY_IS_P90_10Y).
     """
     operating: "OperatingModelInput"
     tax: "TaxCalculationInput"
     senior_debt_policy: object   # SeniorDebtPolicy (avoid circular imports)
     senior_debt_inputs: object   # SeniorDebtInputs
+    debt_sizing_case: "DebtSizingCaseInput"
 
 
 @dataclass(frozen=True)

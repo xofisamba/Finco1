@@ -669,7 +669,7 @@ class TestEInterestDependency:
         import sys
         sys.path.insert(0, ".")
         from financial_engine.orchestrator import run_senior_debt_model
-        from financial_engine.inputs import TaxCalculationInput, SeniorDebtModelInput
+        from financial_engine.inputs import TaxCalculationInput, SeniorDebtModelInput, DebtSizingCaseInput
         from finco_parity.tax_reference_inputs import build_tax_policy, build_opening_loss_vintages
         from finco_parity.financial_engine_tax_cfads_candidate import (
             _load_project_inputs, _load_baseline_snapshot, _build_exogenous_interest,
@@ -697,6 +697,9 @@ class TestEInterestDependency:
         model_input = SeniorDebtModelInput(
             operating=op_inputs, tax=tax_input,
             senior_debt_policy=sd_policy, senior_debt_inputs=sd_inputs,
+            debt_sizing_case=DebtSizingCaseInput(
+                production_yield_scenario=op_inputs.technical.yield_scenario,
+            ),
         )
         result = run_senior_debt_model(model_input)
         sd = result.senior_debt

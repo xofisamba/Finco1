@@ -116,11 +116,34 @@ class SeniorDebtSchedules:
 
 
 @dataclass(frozen=True)
+class DebtSizingSchedules:
+    """Phase 2C bank/debt-sizing case economic schedules.
+
+    Captures the bank-case operating and CFADS outputs used as inputs to the
+    DSCR sizing constraint.  The Base case results remain in operating_schedules
+    and tax_and_cfads; these schedules reflect the debt-sizing yield scenario
+    (and optional merchant price override) from DebtSizingCaseInput.
+
+    bank_cfads_keur:
+        Canonical bank-case CFADS (bank EBITDA − bank cash tax) used as the
+        DSCR denominator in the senior debt sculpting algorithm.  NOT Base CFADS.
+    """
+    period_indices: tuple[int, ...]
+    bank_production_mwh: tuple[float, ...]
+    bank_revenue_keur: tuple[float, ...]
+    bank_opex_keur: tuple[float, ...]
+    bank_ebitda_keur: tuple[float, ...]
+    bank_cash_tax_keur: tuple[float, ...]
+    bank_cfads_keur: tuple[float, ...]
+
+
+@dataclass(frozen=True)
 class ProjectModelResult:
     """Top-level immutable result for a clean engine run.
 
     Phase 2A populates: period_grid, operating_schedules.
     Phase 2B additionally populates: tax_and_cfads.
+    Phase 2C additionally populates: senior_debt, debt_sizing.
     Sections declared unavailable: financing, financial_statements, returns.
     """
     provenance: "EngineProvenance"
@@ -131,3 +154,4 @@ class ProjectModelResult:
     warnings: tuple[str, ...]
     tax_and_cfads: TaxAndCfadsSchedules | None = None
     senior_debt: "SeniorDebtSchedules | None" = None
+    debt_sizing: "DebtSizingSchedules | None" = None

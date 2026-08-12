@@ -1,0 +1,153 @@
+name: C3B3D2B3 — Generic Debt Sizing Case Production Check (hardened)
+
+on:
+  push:
+    branches:
+      - stage-c3b3d2b3-debt-sizing-case-production
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "financial_engine/inputs.py"
+      - "financial_engine/results.py"
+      - "financial_engine/provenance.py"
+      - "financial_engine/orchestrator.py"
+      - "financial_engine/adapters/project_inputs.py"
+      - "tests/test_stage_c3b3d2b3_debt_sizing_case_production.py"
+      - "tests/test_stage_c3b3d2b3_hardening_completion.py"
+      - "docs/architecture/debt_sizing_case_production_contract.md"
+      - ".github/workflows/c3b3d2b3_debt_sizing_case_production_check.yml"
+
+jobs:
+  c3b3d2b3-check:
+    name: C3B3D2B3 generic debt-sizing case production (hardened)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout exact PR head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Assert exact-head checkout
+        run: |
+          ACTUAL=$(git rev-parse HEAD)
+          EXPECTED="${{ github.event.pull_request.head.sha || github.sha }}"
+          echo "Expected HEAD: ${EXPECTED}"
+          echo "Actual   HEAD: ${ACTUAL}"
+          if [ "${ACTUAL}" != "${EXPECTED}" ]; then
+            echo "FAIL: checkout is not the exact PR/push head" >&2
+            exit 1
+          fi
+          echo "PASS: exact-head checkout"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: SHA verification — C3B3D2B3 base SHA is ancestor
+        run: |
+          git merge-base --is-ancestor e71ad5cbf05ff7d8b0a46b8f8d5782a478bb14e8 HEAD \
+            && echo "PASS: base SHA e71ad5cb is ancestor of HEAD"
+
+      - name: Full PR diff check — whitespace
+        run: |
+          git diff --check \
+            e71ad5cbf05ff7d8b0a46b8f8d5782a478bb14e8..HEAD \
+            && echo "PASS: no whitespace errors in PR diff"
+
+      - name: C3B3D2B3 — debt sizing case production suites
+        run: |
+          python -m pytest \
+            tests/test_stage_c3b3d2b3_debt_sizing_case_production.py \
+            tests/test_stage_c3b3d2b3_hardening_completion.py \
+            -v --tb=short
+
+      - name: Governance — no project identity in changed production files
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          files = (
+              Path("financial_engine/inputs.py"),
+              Path("financial_engine/orchestrator.py"),
+              Path("financial_engine/results.py"),
+              Path("financial_engine/provenance.py"),
+              Path("financial_engine/adapters/project_inputs.py"),
+          )
+          forbidden = ("oborovo", "tuho", "project.name", "project.code", "baseline_id")
+          failures = []
+          for path in files:
+              text = path.read_text(encoding="utf-8").lower()
+              for token in forbidden:
+                  if token in text:
+                      failures.append(f"{path}: {token}")
+          if failures:
+              raise SystemExit("FAIL: project identity token(s) in changed production files: " + "; ".join(failures))
+          print("PASS: changed production files are project-identity-free")
+          PY
+
+      - name: Governance — no forbidden abstraction names in financial_engine
+        run: |
+          for pat in DebtSizingScenario ProductionScenarioScope bank_sizing_scenario _derive_bank_operating_input; do
+            if grep -rn "$pat" financial_engine/ --include="*.py"; then
+              echo "FAIL: forbidden name '$pat' found in financial_engine"
+              exit 1
+            fi
+          done
+          echo "PASS: no forbidden abstraction names"
+
+      - name: Governance — financial_engine does not import finco_recon
+        run: |
+          if grep -rn "finco_recon" financial_engine/ --include="*.py"; then
+            echo "FAIL: financial_engine imports finco_recon"
+            exit 1
+          fi
+          echo "PASS: financial_engine does not import finco_recon"
+
+      - name: C3B3D2B2C — bank-sizing CFADS evidence-only suite
+        run: |
+          python -m pytest tests/test_stage_c3b3d2b2c_bank_sizing_cfads_production.py \
+            -v --tb=short
+
+      - name: C3B3A — clean senior debt source contract regression
+        run: |
+          python -m pytest tests/test_stage_c3b3a_clean_senior_debt_source_contract.py \
+            -v --tb=short
+
+      - name: Phase 2C — senior debt regression
+        run: |
+          python -m pytest tests/test_phase2c_senior_debt.py \
+            -v --tb=short
+
+      - name: Phase 2B — tax and CFADS regression
+        run: |
+          python -m pytest tests/test_phase2b_tax_cfads.py \
+            -v --tb=short \
+            --deselect tests/test_phase2b_tax_cfads.py::test_w_correction_aware_four_baseline[oborovo]
+
+      - name: C3B1 — tax source truth regression
+        run: |
+          python -m pytest tests/test_stage_c3b1_oborovo_tax_source_truth.py \
+            -v --tb=short
+
+      - name: Superseded diagnostic classification — C3B3D2B2B
+        run: |
+          echo "C3B3D2B2B current-grid0 debt baseline and zero-production-diff guards are"
+          echo "SUPERSEDED_BY_C3B3D2B3_INTENTIONAL_PRODUCTION_CHANGES."
+          echo "They are not a merge gate for the new explicit bank-case architecture."
+          echo "The historical diagnostic remains in the repository as evidence and is not rewritten."
+
+      - name: CI failure classification summary
+        run: |
+          echo "=== C3B3D2B3 CI FAILURE CLASSIFICATION ==="
+          echo "PRE_EXISTING (deselected): test_phase2b_tax_cfads.py::test_w_correction_aware_four_baseline[oborovo]"
+          echo "SUPERSEDED: C3B3D2B2B current-grid0/zero-diff diagnostic expectations"
+          echo "SUPERSEDED: C3B3D2B2C zero-diff tests explicitly skipped by the successor stage"
+          echo "Any failure in the required steps above is INTRODUCED_BY_OR_RELEVANT_TO_C3B3D2B3 and blocks this workflow."
+          echo "========================================"

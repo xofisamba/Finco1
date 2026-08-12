@@ -1170,7 +1170,7 @@ class TestO_ThreeRunnableBaselines:
             _load_project_inputs,
         )
         from financial_engine.adapters.project_inputs import from_project_inputs
-        from financial_engine.inputs import TaxCalculationInput, SeniorDebtModelInput
+        from financial_engine.inputs import TaxCalculationInput, SeniorDebtModelInput, DebtSizingCaseInput
         from financial_engine.senior_debt.inputs import SeniorDebtInputs
         from financial_engine.orchestrator import run_senior_debt_model
 
@@ -1204,6 +1204,9 @@ class TestO_ThreeRunnableBaselines:
             tax=tax_input,
             senior_debt_policy=self._make_simple_policy(),
             senior_debt_inputs=sd_inputs,
+            debt_sizing_case=DebtSizingCaseInput(
+                production_yield_scenario=op_inputs.technical.yield_scenario,
+            ),
         )
         result = run_senior_debt_model(model_input)
         return result, False
@@ -1397,7 +1400,7 @@ class TestFinalTaxCfads:
             _load_baseline_snapshot,
         )
         from financial_engine.adapters.project_inputs import from_project_inputs
-        from financial_engine.inputs import TaxCalculationInput, SeniorDebtModelInput
+        from financial_engine.inputs import TaxCalculationInput, SeniorDebtModelInput, DebtSizingCaseInput
         from financial_engine.senior_debt.inputs import SeniorDebtInputs
         from financial_engine.orchestrator import run_senior_debt_model
 
@@ -1424,6 +1427,9 @@ class TestFinalTaxCfads:
             tax=tax_input,
             senior_debt_policy=self._build_simple_policy(),
             senior_debt_inputs=sd_inputs,
+            debt_sizing_case=DebtSizingCaseInput(
+                production_yield_scenario=op_inputs.technical.yield_scenario,
+            ),
         )
         result = run_senior_debt_model(model_input)
 
@@ -1959,7 +1965,7 @@ class TestNonAuthoritativeBlocking:
     def _run_with_max_iter_one(self):
         """Force MAX_ITERATIONS_REACHED by capping at max_iterations=1."""
         from financial_engine.orchestrator import run_senior_debt_model
-        from financial_engine.inputs import TaxCalculationInput, SeniorDebtModelInput
+        from financial_engine.inputs import TaxCalculationInput, SeniorDebtModelInput, DebtSizingCaseInput
         from financial_engine.senior_debt.inputs import SeniorDebtInputs
         from finco_parity.tax_reference_inputs import build_tax_policy, build_opening_loss_vintages
         from finco_parity.financial_engine_tax_cfads_candidate import _load_project_inputs
@@ -1992,6 +1998,9 @@ class TestNonAuthoritativeBlocking:
         model_input = SeniorDebtModelInput(
             operating=op_inputs, tax=tax_input,
             senior_debt_policy=policy, senior_debt_inputs=sd_inputs,
+            debt_sizing_case=DebtSizingCaseInput(
+                production_yield_scenario=op_inputs.technical.yield_scenario,
+            ),
         )
         return run_senior_debt_model(model_input)
 
@@ -2006,7 +2015,7 @@ class TestNonAuthoritativeBlocking:
     def test_orchestrator_raises_on_invalid_input(self):
         """run_senior_debt_model raises SeniorDebtNonConvergenceError on INVALID_INPUT."""
         from financial_engine.orchestrator import run_senior_debt_model
-        from financial_engine.inputs import TaxCalculationInput, SeniorDebtModelInput
+        from financial_engine.inputs import TaxCalculationInput, SeniorDebtModelInput, DebtSizingCaseInput
         from financial_engine.senior_debt.inputs import SeniorDebtInputs
         from financial_engine.senior_debt.models import SeniorDebtNonConvergenceError
         from finco_parity.tax_reference_inputs import build_tax_policy, build_opening_loss_vintages
@@ -2041,6 +2050,9 @@ class TestNonAuthoritativeBlocking:
         model_input = SeniorDebtModelInput(
             operating=op_inputs, tax=tax_input,
             senior_debt_policy=policy, senior_debt_inputs=sd_inputs,
+            debt_sizing_case=DebtSizingCaseInput(
+                production_yield_scenario=op_inputs.technical.yield_scenario,
+            ),
         )
         with pytest.raises(SeniorDebtNonConvergenceError):
             run_senior_debt_model(model_input)
@@ -2048,7 +2060,7 @@ class TestNonAuthoritativeBlocking:
     def test_result_diag_dict_contains_is_authoritative(self):
         """Result-layer diagnostics dict must include is_authoritative."""
         from financial_engine.orchestrator import run_senior_debt_model
-        from financial_engine.inputs import TaxCalculationInput, SeniorDebtModelInput
+        from financial_engine.inputs import TaxCalculationInput, SeniorDebtModelInput, DebtSizingCaseInput
         from financial_engine.senior_debt.inputs import SeniorDebtInputs
         from finco_parity.tax_reference_inputs import build_tax_policy, build_opening_loss_vintages
         from finco_parity.financial_engine_tax_cfads_candidate import _load_project_inputs
@@ -2078,6 +2090,9 @@ class TestNonAuthoritativeBlocking:
         model_input = SeniorDebtModelInput(
             operating=op_inputs, tax=tax_input,
             senior_debt_policy=policy, senior_debt_inputs=sd_inputs,
+            debt_sizing_case=DebtSizingCaseInput(
+                production_yield_scenario=op_inputs.technical.yield_scenario,
+            ),
         )
         result = run_senior_debt_model(model_input)
         assert result.senior_debt is not None
