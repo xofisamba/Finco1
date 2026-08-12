@@ -217,6 +217,62 @@ def test_source_cash_oracle_proves_sweep_not_bullet_and_final_clearance():
     assert sum(1 for principal in schedule.shl_principal_keur if principal > 1e-6) > 1
 
 
+def test_pre_repayment_excess_cash_is_preserved_pre_reserve():
+    from financial_engine.inputs import ShareholderLoanModelInput
+    from financial_engine.shl.contracts import ShlDayCountConvention
+    from financial_engine.shl.production import compute_shareholder_loan_schedules
+
+    periods = (
+        _period(0, date(2030, 1, 1), date(2030, 12, 31), construction=True),
+        _period(1, date(2031, 1, 1), date(2031, 12, 31), construction=False),
+        _period(2, date(2032, 1, 1), date(2032, 12, 30), construction=False),
+    )
+    raw_cash = (0.0, 1000.0, 1000.0)
+    shl_input = ShareholderLoanModelInput(
+        initial_principal_keur=10_000.0,
+        annual_fixed_rate=0.06,
+        day_count_convention=ShlDayCountConvention.ACT_365_FIXED,
+        construction_day_count_fraction=1.0,
+        repayment_start_period_index=2,
+        maturity_period_index=2,
+        convergence_tolerance_keur=20_000.0,
+        convergence_relative_tolerance=1e-9,
+        maximum_iterations=20,
+        source_label="pre_repayment_cash_preservation_test",
+    )
+
+    schedule = compute_shareholder_loan_schedules(
+        periods,
+        shl_input,
+        raw_cash,
+        diagnostics=_diag(),
+    )
+    pre_gross = schedule.shl_gross_interest_keur[1]
+    post_gross = schedule.shl_gross_interest_keur[2]
+
+    assert pre_gross == pytest.approx(636.0)
+    assert schedule.cash_available_for_shl_before_reserves_keur[1] == pytest.approx(1000.0)
+    assert schedule.shl_cash_interest_keur[1] == pytest.approx(pre_gross)
+    assert schedule.shl_principal_keur[1] == pytest.approx(0.0)
+    assert schedule.cash_remaining_after_shl_before_reserves_keur[1] == pytest.approx(
+        1000.0 - pre_gross
+    )
+
+    assert schedule.cash_available_for_shl_before_reserves_keur[2] == pytest.approx(1000.0)
+    assert schedule.shl_cash_interest_keur[2] == pytest.approx(post_gross)
+    assert schedule.shl_principal_keur[2] > 0.0
+    assert schedule.cash_remaining_after_shl_before_reserves_keur[2] == pytest.approx(
+        1000.0 - schedule.shl_cash_interest_keur[2] - schedule.shl_principal_keur[2]
+    )
+    preservation_classification = (
+        "PRE_REPAYMENT_EXCESS_CASH_IS_PRESERVED_PRE_RESERVE"
+        if schedule.cash_remaining_after_shl_before_reserves_keur[1] > 0.0
+        and schedule.shl_principal_keur[1] == pytest.approx(0.0)
+        else "PRE_REPAYMENT_EXCESS_CASH_PRESERVATION_FAILED"
+    )
+    assert preservation_classification == "PRE_REPAYMENT_EXCESS_CASH_IS_PRESERVED_PRE_RESERVE"
+
+
 def test_shl_fixed_point_result_exposes_immutable_audit_vectors():
     result = _run_oborovo(shl_input=_oborovo_shl_input())
     shl = result.shareholder_loan

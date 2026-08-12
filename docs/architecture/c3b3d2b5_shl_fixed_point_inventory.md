@@ -94,6 +94,16 @@ source-proven clean fixed-point support.
 SHL output cash classification:
 `POST_SHL_CASH_IS_PRE_RESERVE`.
 
+Pre-repayment principal eligibility is enforced without mutating the
+authoritative cash audit vector. Before `repayment_start_period_index`, the SHL
+kernel receives cash eligible for current SHL service capped at gross interest,
+so principal remains zero. The returned
+`cash_available_for_shl_before_reserves_keur` still preserves the raw incoming
+Base post-Senior cash, and
+`cash_remaining_after_shl_before_reserves_keur = raw cash - cash interest -
+principal`. Classification:
+`PRE_REPAYMENT_EXCESS_CASH_IS_PRESERVED_PRE_RESERVE`.
+
 Accounting boundary classification:
 construction Stage B5 calculates SHL amounts only. Useful-life policy for
 capitalized financing costs remains owned by the accounting/book-depreciation

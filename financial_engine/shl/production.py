@@ -396,14 +396,14 @@ def compute_shareholder_loan_schedules(
             principal = construction_result.scheduled_principal_keur
             service = cash_interest + principal
             closing = construction_result.closing_balance_keur
-            cash_available = 0.0
+            cash_eligible_for_current_shl_service = 0.0
         else:
             if construction_result is None:
                 raise ValueError(
                     "compute_shareholder_loan_schedules: construction period "
                     "must precede operating periods for current single-draw SHL"
                 )
-            cash_available = raw_cash
+            cash_eligible_for_current_shl_service = raw_cash
             if p.period_index < shl_input.repayment_start_period_index:
                 preliminary = compute_shl_schedule(
                     construction=ShlConstructionInput(
@@ -417,7 +417,7 @@ def compute_shareholder_loan_schedules(
                             period_index=p.period_index,
                             period_start=p.period_start,
                             period_end=p.period_end,
-                            cash_available_for_shl_keur=cash_available,
+                            cash_available_for_shl_keur=cash_eligible_for_current_shl_service,
                         )
                     ]),
                     policy=ShlWaterfallPolicy(
@@ -425,13 +425,16 @@ def compute_shareholder_loan_schedules(
                         day_count_convention=shl_input.day_count_convention,
                     ),
                 ).operating[-1]
-                cash_available = min(cash_available, preliminary.gross_accrued_interest_keur)
+                cash_eligible_for_current_shl_service = min(
+                    raw_cash,
+                    preliminary.gross_accrued_interest_keur,
+                )
 
             op_input = ShlOperatingPeriodInput(
                 period_index=p.period_index,
                 period_start=p.period_start,
                 period_end=p.period_end,
-                cash_available_for_shl_keur=cash_available,
+                cash_available_for_shl_keur=cash_eligible_for_current_shl_service,
             )
             operating_inputs.append(op_input)
             schedule = compute_shl_schedule(
@@ -474,8 +477,8 @@ def compute_shareholder_loan_schedules(
         principal_values.append(principal)
         service_values.append(service)
         closing_values.append(closing)
-        cash_available_values.append(cash_available)
-        cash_remaining_values.append(max(0.0, cash_available - service))
+        cash_available_values.append(raw_cash)
+        cash_remaining_values.append(raw_cash - service)
 
     return ShareholderLoanSchedules(
         period_indices=tuple(period_indices),
