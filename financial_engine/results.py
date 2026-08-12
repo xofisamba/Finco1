@@ -98,7 +98,10 @@ class TaxAndCfadsSchedules:
 class SeniorDebtSchedules:
     """Phase 2C per-period senior debt schedules.
 
-    senior_dscr: None where debt service is zero (avoids division by zero).
+    base_dscr: Base-case actual DSCR (base_cfads / senior_ds) per period.
+        None where debt service is zero (avoids division by zero).
+        C3B3D2B4: renamed from senior_dscr (which was Bank DSCR — a misnomer).
+        The backward-compat property senior_dscr is preserved below.
     debt_size_keur: final sized/solved opening debt balance at COD.
     binding_constraint: "DSCR", "GEARING", "BOTH", or None.
     diagnostics: solver convergence metadata (dict for JSON serialisability).
@@ -109,10 +112,15 @@ class SeniorDebtSchedules:
     senior_principal_keur: tuple[float, ...]
     senior_debt_service_keur: tuple[float, ...]
     senior_debt_closing_keur: tuple[float, ...]
-    senior_dscr: tuple[float | None, ...]
+    base_dscr: tuple[float | None, ...]
     debt_size_keur: float
     binding_constraint: str | None
     diagnostics: dict  # SolverDiagnostics serialised to dict
+
+    @property
+    def senior_dscr(self) -> tuple[float | None, ...]:
+        """Backward-compat alias for base_dscr.  C3B3D2B4: use base_dscr."""
+        return self.base_dscr
 
 
 @dataclass(frozen=True)
@@ -127,6 +135,10 @@ class DebtSizingSchedules:
     bank_cfads_keur:
         Canonical bank-case CFADS (bank EBITDA − bank cash tax) used as the
         DSCR denominator in the senior debt sculpting algorithm.  NOT Base CFADS.
+    bank_sizing_dscr:
+        Bank-case sizing DSCR per period (bank_cfads / senior_ds).
+        None where debt service is zero. This is the lender constraint metric.
+        NOT the Base actual DSCR — see SeniorDebtSchedules.base_dscr for that.
     """
     period_indices: tuple[int, ...]
     bank_production_mwh: tuple[float, ...]
@@ -135,6 +147,35 @@ class DebtSizingSchedules:
     bank_ebitda_keur: tuple[float, ...]
     bank_cash_tax_keur: tuple[float, ...]
     bank_cfads_keur: tuple[float, ...]
+    bank_sizing_dscr: tuple[float | None, ...]
+
+
+@dataclass(frozen=True)
+class PostSeniorCashSchedules:
+    """Phase 2C post-senior-debt cash schedules (C3B3D2B4).
+
+    Captures Base-case cash remaining after senior debt service — the explicit
+    authority for SHL / distribution cash.  Bank CFADS is NOT included here;
+    it is sizing-only and confined to DebtSizingSchedules.
+
+    All fields are parallel arrays indexed by period_index (all model periods,
+    including construction).
+
+    cash_after_senior_before_reserves_keur:
+        Signed: base_cfads − senior_ds.  Negative = CFADS insufficient to
+        cover senior debt service.  DSRA_NOT_IMPLEMENTED: this is pre-reserve
+        (DSRA ordering is unresolved in C3B3D2B4).
+
+    cash_available_for_shl_before_reserves_keur:
+        max(0, cash_after_senior_before_reserves_keur).  Clips negative cash
+        to zero — represents cash actually available for downstream waterfall.
+        DSRA_NOT_IMPLEMENTED.
+    """
+    period_indices: tuple[int, ...]
+    base_cfads_keur: tuple[float, ...]
+    senior_debt_service_keur: tuple[float, ...]
+    cash_after_senior_before_reserves_keur: tuple[float, ...]
+    cash_available_for_shl_before_reserves_keur: tuple[float, ...]
 
 
 @dataclass(frozen=True)
@@ -143,7 +184,7 @@ class ProjectModelResult:
 
     Phase 2A populates: period_grid, operating_schedules.
     Phase 2B additionally populates: tax_and_cfads.
-    Phase 2C additionally populates: senior_debt, debt_sizing.
+    Phase 2C additionally populates: senior_debt, debt_sizing, post_senior_cash.
     Sections declared unavailable: financing, financial_statements, returns.
     """
     provenance: "EngineProvenance"
@@ -155,3 +196,4 @@ class ProjectModelResult:
     tax_and_cfads: TaxAndCfadsSchedules | None = None
     senior_debt: "SeniorDebtSchedules | None" = None
     debt_sizing: "DebtSizingSchedules | None" = None
+    post_senior_cash: "PostSeniorCashSchedules | None" = None

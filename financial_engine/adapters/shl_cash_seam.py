@@ -100,10 +100,79 @@ class ShlCashAvailableByPeriod:
     cash_available_for_shl_keur: float
 
 
+def _compute_shl_cash_from_post_senior_cash(
+    phase2c_result: "ProjectModelResult",
+) -> tuple[ShlCashAvailableByPeriod, ...]:
+    """Fast path: consume PostSeniorCashSchedules when present (C3B3D2B4).
+
+    PostSeniorCashSchedules is the authoritative Base-CFADS-derived cash schedule.
+    Bank CFADS (debt_sizing.bank_cfads_keur) is never read here.
+    """
+    psc = phase2c_result.post_senior_cash
+    periods = phase2c_result.periods
+
+    all_period_indices = [p.period_index for p in periods]
+    if len(all_period_indices) != len(set(all_period_indices)):
+        raise ValueError(
+            "compute_shl_cash_from_phase2c: duplicate period_index values in "
+            "phase2c_result.periods — each model period must appear exactly once"
+        )
+
+    psc_len = len(psc.period_indices)
+    for name, vec in (
+        ("base_cfads_keur", psc.base_cfads_keur),
+        ("senior_debt_service_keur", psc.senior_debt_service_keur),
+        ("cash_after_senior_before_reserves_keur", psc.cash_after_senior_before_reserves_keur),
+        ("cash_available_for_shl_before_reserves_keur", psc.cash_available_for_shl_before_reserves_keur),
+    ):
+        if len(vec) != psc_len:
+            raise ValueError(
+                f"compute_shl_cash_from_phase2c: post_senior_cash.{name} length "
+                f"mismatch — expected {psc_len}, got {len(vec)}"
+            )
+    if len(psc.period_indices) != len(set(psc.period_indices)):
+        raise ValueError(
+            "compute_shl_cash_from_phase2c: duplicate period indices in "
+            "post_senior_cash.period_indices"
+        )
+
+    psc_cfads = dict(zip(psc.period_indices, psc.base_cfads_keur))
+    psc_sds = dict(zip(psc.period_indices, psc.senior_debt_service_keur))
+    psc_avail = dict(zip(psc.period_indices, psc.cash_available_for_shl_before_reserves_keur))
+
+    periods_meta = {p.period_index: p for p in periods}
+    results: list[ShlCashAvailableByPeriod] = []
+    for idx in all_period_indices:
+        if idx not in psc_cfads:
+            raise ValueError(
+                f"compute_shl_cash_from_phase2c: period_index={idx} is missing "
+                f"from post_senior_cash.period_indices — all periods are required"
+            )
+        p = periods_meta[idx]
+        is_constr = p.is_construction
+        cfads = psc_cfads[idx]
+        senior_ds = psc_sds[idx]
+        cash_for_shl = 0.0 if is_constr else psc_avail[idx]
+        results.append(ShlCashAvailableByPeriod(
+            period_index=idx,
+            is_construction=is_constr,
+            cfads_keur=cfads,
+            senior_debt_service_keur=senior_ds,
+            cash_available_for_shl_keur=cash_for_shl,
+        ))
+    return tuple(results)
+
+
 def compute_shl_cash_from_phase2c(
     phase2c_result: "ProjectModelResult",
 ) -> tuple[ShlCashAvailableByPeriod, ...]:
     """Derive cash_available_for_shl_keur from a Phase 2C result.
+
+    When post_senior_cash is present (C3B3D2B4+), consumes it directly — it is
+    the authoritative Base-CFADS-derived cash schedule.  Bank CFADS
+    (debt_sizing.bank_cfads_keur) is NEVER read by this function.
+
+    Falls back to the legacy tac+sd path when post_senior_cash is absent.
 
     Parameters
     ----------
@@ -119,8 +188,13 @@ def compute_shl_cash_from_phase2c(
     Raises
     ------
     ValueError
-        If tax_and_cfads or senior_debt sections are missing from the result.
+        If required sections are missing from the result.
     """
+    # Fast path: post_senior_cash is the explicit Base-CFADS authority (C3B3D2B4+).
+    if phase2c_result.post_senior_cash is not None:
+        return _compute_shl_cash_from_post_senior_cash(phase2c_result)
+
+    # Legacy path: derive from tax_and_cfads + senior_debt directly.
     tac = phase2c_result.tax_and_cfads
     sd = phase2c_result.senior_debt
     periods = phase2c_result.periods

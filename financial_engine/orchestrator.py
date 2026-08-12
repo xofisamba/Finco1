@@ -38,6 +38,7 @@ from financial_engine.results import (
     DebtSizingSchedules,
     OperatingPeriodResult,
     OperatingSchedules,
+    PostSeniorCashSchedules,
     ProjectModelResult,
     SeniorDebtSchedules as _SeniorDebtSchedulesResult,
     TaxAndCfadsSchedules,
@@ -891,10 +892,28 @@ def run_senior_debt_model(inputs: SeniorDebtModelInput) -> ProjectModelResult:
         final_tax_cfads = phase2b_result.tax_and_cfads
 
     # Step 7: Assemble DebtSizingSchedules from bank case.
+    # Compute bank_sizing_dscr per debt period (bank CFADS / senior DS).
+    # sd_result.senior_dscr is Bank DSCR from the solver (bank CFADS denominator).
+    _sd_service_by_idx: dict[int, float] = dict(
+        zip(sd_result.period_indices, sd_result.senior_debt_service_keur)
+    )
     if _last_bank_tax_state:
+        import math as _math
         _bank_tax_r, _bank_period_r, _bank_cfads_r = _last_bank_tax_state[0]
         _bank_cash_tax_by_idx = {pr.period_index: pr.cash_tax_keur for pr in _bank_period_r}
+        _bank_cfads_by_idx = {cr.period_index: cr.cfads_keur for cr in _bank_cfads_r}
         _ops_indices = bank_phase2a_result.operating_schedules.period_indices
+        # Bank sizing DSCR: bank_cfads / senior_ds per debt period, None elsewhere.
+        _bank_sizing_dscr: tuple[float | None, ...] = tuple(
+            (
+                _bank_cfads_by_idx.get(i, 0.0) / _sd_service_by_idx[i]
+                if i in _sd_service_by_idx
+                and _sd_service_by_idx[i] > 0.0
+                and _math.isfinite(_bank_cfads_by_idx.get(i, 0.0))
+                else None
+            )
+            for i in _ops_indices
+        )
         debt_sizing_schedules: DebtSizingSchedules | None = DebtSizingSchedules(
             period_indices=_ops_indices,
             bank_production_mwh=bank_phase2a_result.operating_schedules.production_mwh,
@@ -903,11 +922,27 @@ def run_senior_debt_model(inputs: SeniorDebtModelInput) -> ProjectModelResult:
             bank_ebitda_keur=bank_phase2a_result.operating_schedules.ebitda_keur,
             bank_cash_tax_keur=tuple(_bank_cash_tax_by_idx.get(i, 0.0) for i in _ops_indices),
             bank_cfads_keur=tuple(cr.cfads_keur for cr in _bank_cfads_r),
+            bank_sizing_dscr=_bank_sizing_dscr,
         )
     else:
         debt_sizing_schedules = None
 
     # Step 8: Assemble result-layer SeniorDebtSchedules.
+    # base_dscr = Base CFADS / senior DS per period (Base actual DSCR, NOT Bank sizing DSCR).
+    # final_tax_cfads.cfads_keur is the authoritative Base CFADS (recomputed with final interest).
+    import math as _math
+    _base_cfads_by_idx: dict[int, float] = dict(
+        zip(final_tax_cfads.period_indices, final_tax_cfads.cfads_keur)
+    )
+    _base_dscr: tuple[float | None, ...] = tuple(
+        (
+            _base_cfads_by_idx.get(idx, 0.0) / ds
+            if (ds := _sd_service_by_idx.get(idx, 0.0)) > 0.0
+            and _math.isfinite(_base_cfads_by_idx.get(idx, 0.0))
+            else None
+        )
+        for idx in sd_result.period_indices
+    )
     diag_dict = {
         "converged": sd_result.diagnostics.converged,
         "is_authoritative": sd_result.diagnostics.is_authoritative,
@@ -926,10 +961,31 @@ def run_senior_debt_model(inputs: SeniorDebtModelInput) -> ProjectModelResult:
         senior_principal_keur=sd_result.senior_principal_keur,
         senior_debt_service_keur=sd_result.senior_debt_service_keur,
         senior_debt_closing_keur=sd_result.senior_debt_closing_keur,
-        senior_dscr=sd_result.senior_dscr,
+        base_dscr=_base_dscr,
         debt_size_keur=sd_result.debt_size_keur,
         binding_constraint=sd_result.binding_constraint,
         diagnostics=diag_dict,
+    )
+
+    # Build PostSeniorCashSchedules: Base CFADS authority for cash after senior debt.
+    # All model periods (construction + operating). Bank CFADS is NOT read here.
+    _all_period_indices = tuple(p.period_index for p in phase2b_result.periods)
+    _cash_after: list[float] = []
+    _cash_avail: list[float] = []
+    for _idx in _all_period_indices:
+        _bcfads = _base_cfads_by_idx.get(_idx, 0.0)
+        _sds = _sd_service_by_idx.get(_idx, 0.0)
+        _after = _bcfads - _sds
+        _cash_after.append(_after)
+        _cash_avail.append(max(0.0, _after))
+    _base_cfads_all = tuple(_base_cfads_by_idx.get(i, 0.0) for i in _all_period_indices)
+    _sd_service_all = tuple(_sd_service_by_idx.get(i, 0.0) for i in _all_period_indices)
+    post_senior_cash = PostSeniorCashSchedules(
+        period_indices=_all_period_indices,
+        base_cfads_keur=_base_cfads_all,
+        senior_debt_service_keur=_sd_service_all,
+        cash_after_senior_before_reserves_keur=tuple(_cash_after),
+        cash_available_for_shl_before_reserves_keur=tuple(_cash_avail),
     )
 
     # Step 9: Phase 2C provenance.
@@ -947,7 +1003,7 @@ def run_senior_debt_model(inputs: SeniorDebtModelInput) -> ProjectModelResult:
             source_module="financial_engine.senior_debt.sculpting",
             source_function="build_schedule",
             input_paths=(
-                "tax_and_cfads.cfads_keur",
+                "debt_sizing.bank_cfads_keur",
                 "senior_debt_inputs.period_rates",
                 "senior_debt_inputs.period_dscr_targets",
                 "senior_debt_inputs.period_debt_service_availability",
@@ -960,9 +1016,24 @@ def run_senior_debt_model(inputs: SeniorDebtModelInput) -> ProjectModelResult:
                 "if p in period_dscr_targets else policy.target_dscr; "
                 "resolved_availability[p] = period_debt_service_availability[p].availability_fraction "
                 "if p in period_debt_service_availability else 1.0; "
-                "allowed_debt_service[p] = max(0, CFADS[p] / resolved_target_dscr[p]) "
+                "allowed_debt_service[p] = max(0, bank_cfads[p] / resolved_target_dscr[p]) "
                 "* resolved_availability[p]; "
                 "principal[p] = min(opening_balance[p], max(0, allowed_debt_service[p] - interest[p]))",
+            ),
+        ),
+        DerivationEvidence(
+            output_path="post_senior_cash",
+            source_module="financial_engine.orchestrator",
+            source_function="run_senior_debt_model",
+            input_paths=(
+                "tax_and_cfads.cfads_keur",
+                "senior_debt.senior_debt_service_keur",
+            ),
+            notes=(
+                "post_senior_cash uses Base CFADS (tax_and_cfads.cfads_keur), NOT bank CFADS; "
+                "cash_after_senior = base_cfads - senior_ds (signed); "
+                "cash_available_for_shl = max(0, cash_after_senior); "
+                "DSRA_NOT_IMPLEMENTED: pre-reserve figures; DSRA ordering unresolved",
             ),
         ),
         DerivationEvidence(
@@ -996,6 +1067,7 @@ def run_senior_debt_model(inputs: SeniorDebtModelInput) -> ProjectModelResult:
         tax_and_cfads=final_tax_cfads,
         senior_debt=result_schedules,
         debt_sizing=debt_sizing_schedules,
+        post_senior_cash=post_senior_cash,
         unavailable_sections=_PHASE_2C_UNAVAILABLE,
         validation_issues=validation_issues,
         warnings=warnings,

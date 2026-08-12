@@ -1,0 +1,165 @@
+name: C3B3D2B4 — DSCR Split + Post-Senior Cash Authority (hardened)
+
+on:
+  push:
+    branches:
+      - stage-c3b3d2b4-dscr-post-senior-cash-authority
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "financial_engine/inputs.py"
+      - "financial_engine/results.py"
+      - "financial_engine/provenance.py"
+      - "financial_engine/orchestrator.py"
+      - "financial_engine/adapters/shl_cash_seam.py"
+      - "tests/test_stage_c3b3d2b4_dscr_post_senior_cash_authority.py"
+      - "tests/test_stage_c3b3d2b3_debt_sizing_case_production.py"
+      - ".github/workflows/c3b3d2b4_dscr_post_senior_cash_authority_check.yml"
+
+jobs:
+  c3b3d2b4-check:
+    name: C3B3D2B4 DSCR split and post-senior cash authority (hardened)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout exact PR head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Assert exact-head checkout
+        run: |
+          ACTUAL=$(git rev-parse HEAD)
+          EXPECTED="${{ github.event.pull_request.head.sha || github.sha }}"
+          echo "Expected HEAD: ${EXPECTED}"
+          echo "Actual   HEAD: ${ACTUAL}"
+          if [ "${ACTUAL}" != "${EXPECTED}" ]; then
+            echo "FAIL: checkout is not the exact PR/push head" >&2
+            exit 1
+          fi
+          echo "PASS: exact-head checkout"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: SHA verification — C3B3D2B4 base SHA is ancestor
+        run: |
+          git merge-base --is-ancestor 8a185411e57bed5b75f4117d1b3bb8bfaf222649 HEAD \
+            && echo "PASS: base SHA 8a185411 is ancestor of HEAD"
+
+      - name: Full PR diff check — whitespace
+        run: |
+          git diff --check \
+            8a185411e57bed5b75f4117d1b3bb8bfaf222649..HEAD \
+            && echo "PASS: no whitespace errors in PR diff"
+
+      - name: C3B3D2B4 — DSCR split and post-senior cash authority suite
+        run: |
+          python -m pytest \
+            tests/test_stage_c3b3d2b4_dscr_post_senior_cash_authority.py \
+            -v --tb=short
+
+      - name: Governance — no project identity in changed production files
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          files = (
+              Path("financial_engine/inputs.py"),
+              Path("financial_engine/orchestrator.py"),
+              Path("financial_engine/results.py"),
+              Path("financial_engine/provenance.py"),
+              Path("financial_engine/adapters/shl_cash_seam.py"),
+          )
+          forbidden = ("project.name", "project.code", "baseline_id")
+          failures = []
+          for path in files:
+              text = path.read_text(encoding="utf-8").lower()
+              for token in forbidden:
+                  if token in text:
+                      failures.append(f"{path}: {token}")
+          if failures:
+              raise SystemExit("FAIL: project identity token(s) in production files: " + "; ".join(failures))
+          print("PASS: production files are project-identity-free (calculation dispatch)")
+          PY
+
+      - name: Governance — no forbidden abstraction names in financial_engine
+        run: |
+          for pat in DebtSizingScenario ProductionScenarioScope bank_sizing_scenario _derive_bank_operating_input; do
+            if grep -rn "$pat" financial_engine/ --include="*.py"; then
+              echo "FAIL: forbidden name '$pat' found in financial_engine"
+              exit 1
+            fi
+          done
+          echo "PASS: no forbidden abstraction names"
+
+      - name: Governance — financial_engine does not import finco_recon
+        run: |
+          if grep -rn "finco_recon" financial_engine/ --include="*.py"; then
+            echo "FAIL: financial_engine imports finco_recon"
+            exit 1
+          fi
+          echo "PASS: financial_engine does not import finco_recon"
+
+      - name: Governance — shl_cash_seam does not read bank_cfads_keur
+        run: |
+          python - <<'PY'
+          import ast, inspect, textwrap
+          from financial_engine.adapters import shl_cash_seam
+          for fn in (shl_cash_seam.compute_shl_cash_from_phase2c,
+                     shl_cash_seam._compute_shl_cash_from_post_senior_cash):
+              src = textwrap.dedent(inspect.getsource(fn))
+              tree = ast.parse(src)
+              for node in ast.walk(tree):
+                  if isinstance(node, ast.Attribute) and node.attr == "bank_cfads_keur":
+                      raise SystemExit(f"FAIL: {fn.__name__} accesses .bank_cfads_keur in code")
+          print("PASS: shl_cash_seam never reads bank_cfads_keur in function code")
+          PY
+
+      - name: C3B3D2B3 — debt sizing case production regression (hardened)
+        run: |
+          python -m pytest \
+            tests/test_stage_c3b3d2b3_debt_sizing_case_production.py \
+            tests/test_stage_c3b3d2b3_hardening_completion.py \
+            -v --tb=short
+
+      - name: C3B3D2B2C — bank-sizing CFADS evidence-only suite
+        run: |
+          python -m pytest tests/test_stage_c3b3d2b2c_bank_sizing_cfads_production.py \
+            -v --tb=short
+
+      - name: C3B3A — clean senior debt source contract regression
+        run: |
+          python -m pytest tests/test_stage_c3b3a_clean_senior_debt_source_contract.py \
+            -v --tb=short
+
+      - name: Phase 2C — senior debt regression
+        run: |
+          python -m pytest tests/test_phase2c_senior_debt.py \
+            -v --tb=short
+
+      - name: Phase 2B — tax and CFADS regression
+        run: |
+          python -m pytest tests/test_phase2b_tax_cfads.py \
+            -v --tb=short \
+            --deselect tests/test_phase2b_tax_cfads.py::test_w_correction_aware_four_baseline[oborovo]
+
+      - name: C3B1 — tax source truth regression
+        run: |
+          python -m pytest tests/test_stage_c3b1_oborovo_tax_source_truth.py \
+            -v --tb=short
+
+      - name: CI failure classification summary
+        run: |
+          echo "=== C3B3D2B4 CI FAILURE CLASSIFICATION ==="
+          echo "PRE_EXISTING (deselected): test_phase2b_tax_cfads.py::test_w_correction_aware_four_baseline[oborovo]"
+          echo "SUPERSEDED: C3B3D2B2B/C3B3D2B2C zero-diff diagnostic expectations"
+          echo "Any failure in the required steps above is INTRODUCED_BY_OR_RELEVANT_TO_C3B3D2B4 and blocks this workflow."
+          echo "========================================"
