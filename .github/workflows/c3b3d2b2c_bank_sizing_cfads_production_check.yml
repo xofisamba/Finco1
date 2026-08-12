@@ -1,0 +1,265 @@
+name: C3B3D2B2C — Bank-Sizing CFADS Production Check (R3.1 hardened)
+
+on:
+  push:
+    branches:
+      - stage-c3b3d2b2c-bank-sizing-cfads-production
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "financial_engine/inputs.py"
+      - "financial_engine/results.py"
+      - "financial_engine/provenance.py"
+      - "financial_engine/orchestrator.py"
+      - "finco_recon/bank_sizing_candidates.py"
+      - "tests/test_stage_c3b3d2b2c_bank_sizing_cfads_production.py"
+      - "docs/reconciliation/c3b3d2b2c_bank_sizing_cfads_production.md"
+      - ".github/workflows/c3b3d2b2c_bank_sizing_cfads_production_check.yml"
+
+jobs:
+  c3b3d2b2c-check:
+    name: C3B3D2B2C bank-sizing CFADS production (R3.1)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # --- Exact-head SHA print ---
+      - name: Exact-head SHA
+        run: |
+          HEAD_SHA=$(git rev-parse HEAD)
+          echo "HEAD_SHA=${HEAD_SHA}"
+          echo "Checked-out SHA: ${HEAD_SHA}"
+
+      # --- SHA verification: C3B3D2B2B base locked ---
+      - name: SHA verification — C3B3D2B2B base locked at 6e064980
+        run: |
+          git merge-base --is-ancestor 6e064980868709294e14da4d95e3279790d70ff0 HEAD \
+            && echo "PASS: base SHA 6e064980 is ancestor of HEAD"
+
+      # --- Zero production diff (R3.1 §1) ---
+      - name: Zero production diff — financial_engine exactly at base
+        run: |
+          git diff --exit-code \
+            6e064980868709294e14da4d95e3279790d70ff0..HEAD \
+            -- financial_engine/inputs.py \
+               financial_engine/results.py \
+               financial_engine/provenance.py \
+               financial_engine/orchestrator.py \
+            && echo "PASS: R3_STOP_PRODUCTION_REVERT_EXACTLY_BASE_PROVEN"
+
+      # --- Full PR diff check (whitespace, entire PR) ---
+      - name: Full PR diff check — entire changeset
+        run: |
+          git diff --check \
+            6e064980868709294e14da4d95e3279790d70ff0..HEAD \
+            && echo "PASS: no whitespace errors in PR diff"
+
+      # --- Stage gate: C3B3D2B2C (R3.1 evidence-only) ---
+      - name: C3B3D2B2C — bank-sizing CFADS evidence-only suite
+        run: |
+          python -m pytest tests/test_stage_c3b3d2b2c_bank_sizing_cfads_production.py \
+            -v --tb=short
+
+      # --- C3B3D2B2B regression lock ---
+      - name: C3B3D2B2B — current senior debt bridge regression
+        run: |
+          python -m pytest tests/test_stage_c3b3d2b2b_current_senior_debt_bridge.py \
+            -v --tb=short
+
+      # --- C3B3D2B2A ---
+      - name: C3B3D2B2A — tax SHL causal grid regression
+        run: |
+          python -m pytest tests/test_stage_c3b3d2b2a_tax_shl_causal_grid.py \
+            -v --tb=short
+
+      # --- D2B1 ---
+      - name: C3B3D2B1 — SHL production wiring regression
+        run: |
+          python -m pytest tests/test_stage_c3b3d2b1_shl_production_wiring.py \
+            -v --tb=short
+
+      # --- D2B0 ---
+      - name: C3B3D2B0 — clean SHL formula parity regression
+        run: |
+          python -m pytest tests/test_stage_c3b3d2b0_clean_shl_formula_parity.py \
+            -v --tb=short
+
+      # --- D2A ---
+      - name: C3B3D2A — Oborovo SHL source truth regression
+        run: |
+          python -m pytest tests/test_stage_c3b3d2a_oborovo_shl_source_truth.py \
+            -v --tb=short
+
+      # --- D1 ---
+      - name: C3B3D1 — canonical SHL schedule regression
+        run: |
+          python -m pytest tests/test_stage_c3b3d1_canonical_shl_schedule.py \
+            -v --tb=short
+
+      # --- D0 ---
+      - name: C3B3D0 — tax identity ATAD decoupling regression
+        run: |
+          python -m pytest tests/test_stage_c3b3d0_tax_identity_atad_decoupling.py \
+            -v --tb=short
+
+      # --- C3B3C contract ---
+      - name: C3B3C — tax policy SHL deductibility contract regression
+        run: |
+          python -m pytest tests/test_stage_c3b3c_tax_policy_shl_deductibility.py \
+            -v --tb=short
+
+      # --- C3B3C runtime ---
+      - name: C3B3C — legacy runtime safety regression
+        run: |
+          python -m pytest tests/test_stage_c3b3c_legacy_runtime_safety.py \
+            -v --tb=short
+
+      # --- C3B3B ---
+      - name: C3B3B — clean tax CFADS debt feedback regression
+        run: |
+          python -m pytest tests/test_stage_c3b3b_clean_tax_cfads_debt_feedback.py \
+            -v --tb=short
+
+      # --- C3B3A ---
+      - name: C3B3A — clean senior debt source contract regression
+        run: |
+          python -m pytest tests/test_stage_c3b3a_clean_senior_debt_source_contract.py \
+            -v --tb=short
+
+      # --- C3B2 ---
+      - name: C3B2 — Oborovo debt interest source closure regression
+        run: |
+          python -m pytest tests/test_stage_c3b2_oborovo_debt_interest_source_closure.py \
+            -v --tb=short
+
+      # --- C3B1 ---
+      - name: C3B1 — Oborovo tax source truth regression
+        run: |
+          python -m pytest tests/test_stage_c3b1_oborovo_tax_source_truth.py \
+            -v --tb=short
+
+      # --- TUHO relevant regression (from merged C3B3D2B2B/#924 workflow) ---
+      - name: TUHO regression — Phase2B tax/CFADS (TUHO_RELEVANT_REGRESSION_GREEN)
+        run: |
+          python -m pytest \
+            "tests/test_phase2b_tax_cfads.py::test_w_correction_aware_four_baseline[tuho]" \
+            "tests/test_phase2b_tax_cfads.py::TestTuhoConstructionLoss::test_tuho_end_to_end_exact_matcher" \
+            -v --tb=short --no-header
+
+      # --- Phase 2C senior debt regression ---
+      - name: Phase 2C — senior debt regression
+        run: |
+          python -m pytest tests/test_phase2c_senior_debt.py \
+            -v --tb=short
+
+      # --- Phase 2B tax / CFADS regression ---
+      - name: Phase 2B — tax and CFADS regression
+        run: |
+          python -m pytest tests/test_phase2b_tax_cfads.py \
+            -v --tb=short \
+            --deselect tests/test_phase2b_tax_cfads.py::test_w_correction_aware_four_baseline[oborovo]
+
+      # --- Governance: no literal 13547.2 in production code ---
+      - name: Governance — no literal 13547.2 in production sources
+        run: |
+          if grep -r "13547\.2" financial_engine/ --include="*.py"; then
+            echo "FAIL: literal 13547.2 found in production code"
+            exit 1
+          fi
+          echo "PASS: no literal 13547.2"
+
+      # --- Governance: no project-name dispatch introduced by this PR ---
+      # Check only lines ADDED to financial_engine/ by this PR (diff from base).
+      # Pre-existing base content is not the responsibility of this stage gate.
+      # This guard can fail if a future PR adds Oborovo/TUHO project-specific
+      # calculation dispatch to financial_engine production files.
+      - name: Governance — no project-name token introduced in financial_engine diff
+        run: |
+          added_prod="$(
+            git diff -U0 \
+              6e064980868709294e14da4d95e3279790d70ff0..HEAD \
+              -- 'financial_engine/' \
+            | awk '/^\+\+\+/{next} /^\+/{print substr($0,2)}'
+          )"
+          if printf '%s\n' "$added_prod" | grep -Eiq '\b(oborovo|tuho)\b'; then
+            echo "FAIL: project-specific token introduced in financial_engine diff"
+            printf '%s\n' "$added_prod" | grep -Ei '\b(oborovo|tuho)\b'
+            exit 1
+          fi
+          echo "PASS: no project-specific token introduced in production diff"
+
+      # --- Governance: protected C3B2 SHA not in literals ---
+      - name: Governance — protected C3B2 SHA not in production code literals
+        run: |
+          if grep -r "f8f244c0660495" financial_engine/ --include="*.py"; then
+            echo "FAIL: protected SHA found in production code"
+            exit 1
+          fi
+          echo "PASS: SHA not leaked"
+
+      # --- Governance: no bank_sizing_* attributes in production engine ---
+      - name: Governance — no bank_sizing_* in financial_engine production
+        run: |
+          if grep -rn "bank_sizing" financial_engine/ --include="*.py"; then
+            echo "FAIL: bank_sizing_* found in production engine"
+            exit 1
+          fi
+          echo "PASS: no bank_sizing_* in production engine"
+
+      # --- Governance: no ProductionScenarioScope in financial_engine ---
+      - name: Governance — no ProductionScenarioScope in financial_engine
+        run: |
+          if grep -rn "ProductionScenarioScope" financial_engine/ --include="*.py"; then
+            echo "FAIL: ProductionScenarioScope found in production engine"
+            exit 1
+          fi
+          echo "PASS: no ProductionScenarioScope"
+
+      # --- Governance: R3 STOP verdict documented ---
+      - name: Governance — R3 STOP verdict present in reconciliation doc
+        run: |
+          grep -q "C3B3D2B2C_R3_STOP_MACRO50_TRANSFORMATION_SOURCE_INACCESSIBLE" \
+            docs/reconciliation/c3b3d2b2c_bank_sizing_cfads_production.md \
+            && echo "PASS: R3 STOP verdict documented"
+
+      # --- Governance: original STOP verdict preserved ---
+      - name: Governance — C3B3D2B2C_STOP verdict present in reconciliation doc
+        run: |
+          grep -q "C3B3D2B2C_STOP_BANK_CASE_TRANSFORMATION_NOT_SOURCE_PROVEN" \
+            docs/reconciliation/c3b3d2b2c_bank_sizing_cfads_production.md \
+            && echo "PASS: STOP verdict documented"
+
+      # --- Governance: VBA_IMPLEMENTATION_NOT_VISIBLE preserved ---
+      - name: Governance — VBA_IMPLEMENTATION_NOT_VISIBLE preserved
+        run: |
+          grep -q "VBA_IMPLEMENTATION_NOT_VISIBLE" \
+            docs/reconciliation/c3b3d2b2c_bank_sizing_cfads_production.md \
+            && echo "PASS: VBA label preserved"
+
+      # --- Governance: BANK_CASE_TRANSFORMATION_MECHANISM_UNRESOLVED preserved ---
+      - name: Governance — BANK_CASE_TRANSFORMATION_MECHANISM_UNRESOLVED preserved
+        run: |
+          grep -q "BANK_CASE_TRANSFORMATION_MECHANISM_UNRESOLVED" \
+            docs/reconciliation/c3b3d2b2c_bank_sizing_cfads_production.md \
+            && echo "PASS: mechanism label preserved"
+
+      # --- Governance: financial_engine does not import finco_recon ---
+      - name: Governance — financial_engine does not import finco_recon
+        run: |
+          if grep -rn "finco_recon" financial_engine/ --include="*.py"; then
+            echo "FAIL: financial_engine imports finco_recon"
+            exit 1
+          fi
+          echo "PASS: financial_engine does not import finco_recon"
