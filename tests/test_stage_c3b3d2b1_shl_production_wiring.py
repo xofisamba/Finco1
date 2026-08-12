@@ -629,6 +629,8 @@ class TestK_ShlCashSeamAdapter:
         mock_result.tax_and_cfads = mock_tac
         mock_result.senior_debt = mock_sd
         mock_result.periods = mock_periods
+        # Ensure the legacy tac+sd path is taken (not the post_senior_cash fast path).
+        mock_result.post_senior_cash = None
         return mock_result
 
     def test_construction_period_returns_zero(self):
@@ -666,6 +668,7 @@ class TestK_ShlCashSeamAdapter:
 
     def test_raises_if_tax_and_cfads_is_none(self):
         mock_result = MagicMock()
+        mock_result.post_senior_cash = None  # force legacy path
         mock_result.tax_and_cfads = None
         mock_result.senior_debt = MagicMock()
         with pytest.raises(ValueError, match="tax_and_cfads"):
@@ -673,6 +676,7 @@ class TestK_ShlCashSeamAdapter:
 
     def test_raises_if_senior_debt_is_none(self):
         mock_result = MagicMock()
+        mock_result.post_senior_cash = None  # force legacy path
         mock_result.tax_and_cfads = MagicMock()
         mock_result.senior_debt = None
         with pytest.raises(ValueError, match="senior_debt"):
@@ -946,6 +950,8 @@ class TestK2_SeamFailClosed:
         mock_result.tax_and_cfads = mock_tac
         mock_result.senior_debt = mock_sd
         mock_result.periods = mock_periods
+        # Ensure the legacy tac+sd path is taken (not the post_senior_cash fast path).
+        mock_result.post_senior_cash = None
         return mock_result
 
     def test_raises_on_cfads_parallel_vector_length_mismatch(self):

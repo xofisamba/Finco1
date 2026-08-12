@@ -123,6 +123,105 @@ jobs:
           print("PASS: shl_cash_seam never reads bank_cfads_keur in function code")
           PY
 
+      - name: Governance — senior_dscr is a property, not a dataclass field
+        run: |
+          python - <<'PY'
+          import dataclasses
+          from financial_engine.results import SeniorDebtSchedules
+          fields = {f.name for f in dataclasses.fields(SeniorDebtSchedules)}
+          if "senior_dscr" in fields:
+              raise SystemExit("FAIL: senior_dscr must be a property, not a dataclass field")
+          if "base_dscr" not in fields:
+              raise SystemExit("FAIL: base_dscr must be a dataclass field")
+          prop = SeniorDebtSchedules.__dict__.get("senior_dscr")
+          if not isinstance(prop, property):
+              raise SystemExit("FAIL: senior_dscr must be a @property on SeniorDebtSchedules")
+          print("PASS: senior_dscr is a compat property; base_dscr is the authoritative field")
+          PY
+
+      - name: Governance — serialization contract (asdict includes base_dscr, not senior_dscr)
+        run: |
+          python - <<'PY'
+          import dataclasses
+          from financial_engine.results import SeniorDebtSchedules
+          dummy = SeniorDebtSchedules(
+              period_indices=(1,), senior_debt_opening_keur=(100.0,),
+              senior_interest_keur=(5.0,), senior_principal_keur=(10.0,),
+              senior_debt_service_keur=(15.0,), senior_debt_closing_keur=(90.0,),
+              base_dscr=(1.35,), debt_size_keur=100.0,
+              binding_constraint="DSCR", diagnostics={},
+          )
+          d = dataclasses.asdict(dummy)
+          if "base_dscr" not in d:
+              raise SystemExit("FAIL: base_dscr not in asdict output")
+          if "senior_dscr" in d:
+              raise SystemExit("FAIL: senior_dscr must NOT appear in asdict (it is a property)")
+          print("PASS: asdict includes base_dscr; senior_dscr property excluded")
+          PY
+
+      - name: Governance — CONSTRUCTION_SHL_AVAILABLE_CASH_IS_ZERO_BY_CONTRACT
+        run: |
+          python - <<'PY'
+          from app.project_factories import create_default_tuho_wind1
+          from financial_engine.adapters.project_inputs import from_project_inputs
+          from financial_engine.inputs import (
+              TaxCalculationInput, YieldScenario, DebtSizingCaseInput, SeniorDebtModelInput,
+          )
+          from financial_engine.orchestrator import run_senior_debt_model
+          from financial_engine.senior_debt.policy import SeniorDebtPolicy, SeniorDebtSizingMode, DayCountConvention
+          from financial_engine.senior_debt.inputs import SeniorDebtInputs
+          from finco_parity.tax_reference_inputs import build_tax_policy, build_opening_loss_vintages
+
+          base_op = from_project_inputs(create_default_tuho_wind1())
+          policy = build_tax_policy("tuho")
+          vintages = build_opening_loss_vintages("tuho")
+          tax_input = TaxCalculationInput(
+              policy=policy, opening_loss_vintages=vintages, period_interest=(), period_adjustments=()
+          )
+          sd_policy = SeniorDebtPolicy(
+              policy_id="ci_construction_check", policy_version="1.0",
+              sizing_mode=SeniorDebtSizingMode.DSCR_SCULPTED,
+              target_dscr=1.2, maximum_gearing=None, annual_fixed_rate=0.05,
+              periods_per_year=2, day_count_convention=DayCountConvention.ACT_365,
+              repayment_start_period_index=2, maturity_period_index=61,
+              convergence_tolerance_keur=1.0, convergence_relative_tolerance=0.001,
+              maximum_iterations=300, permit_terminal_balloon=True,
+          )
+          sd_inputs = SeniorDebtInputs(
+              eligible_project_cost_keur=100_000.0, initial_debt_guess_keur=60_000.0,
+              period_rates=(), explicit_principal_schedule=None,
+          )
+          result = run_senior_debt_model(SeniorDebtModelInput(
+              operating=base_op, tax=tax_input,
+              senior_debt_policy=sd_policy, senior_debt_inputs=sd_inputs,
+              debt_sizing_case=DebtSizingCaseInput(
+                  production_yield_scenario=YieldScenario.P90_10Y,
+                  source_label="ci_construction_check",
+              ),
+          ))
+          psc = result.post_senior_cash
+          periods_meta = {p.period_index: p for p in result.periods}
+          failures = []
+          for idx, avail in zip(psc.period_indices, psc.cash_available_for_shl_before_reserves_keur):
+              if periods_meta[idx].is_construction and avail != 0.0:
+                  failures.append(f"period {idx}: avail={avail}")
+          if failures:
+              raise SystemExit("FAIL: construction SHL available cash is not zero: " + "; ".join(failures))
+          print("PASS: CONSTRUCTION_SHL_AVAILABLE_CASH_IS_ZERO_BY_CONTRACT")
+          PY
+
+      - name: C3B3D2B4.1 — Groups O–Z hardening suite
+        run: |
+          python -m pytest \
+            tests/test_stage_c3b3d2b4_dscr_post_senior_cash_authority.py \
+            -k "TestO_ or TestP_ or TestQ_ or TestR_ or TestS_ or TestT_ or TestU_ or TestV_ or TestW_ or TestX_ or TestY_ or TestZ_" \
+            -v --tb=short
+
+      - name: SHL production wiring regression
+        run: |
+          python -m pytest tests/test_stage_c3b3d2b1_shl_production_wiring.py \
+            -v --tb=short
+
       - name: C3B3D2B3 — debt sizing case production regression (hardened)
         run: |
           python -m pytest \

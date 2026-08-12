@@ -119,7 +119,18 @@ class SeniorDebtSchedules:
 
     @property
     def senior_dscr(self) -> tuple[float | None, ...]:
-        """Backward-compat alias for base_dscr.  C3B3D2B4: use base_dscr."""
+        """Backward-compat alias for base_dscr.
+
+        SENIOR_DSCR_LEGACY_NAME_MIGRATED_TO_BASE_ACTUAL_DSCR (C3B3D2B4):
+        All callers compare against Base-case Excel DSCR rows; the migration
+        from ``senior_dscr`` (which was inadvertently Bank DSCR) to
+        ``base_dscr`` is semantically correct.  Prefer ``base_dscr`` in new code.
+
+        Serialization contract: dataclasses.asdict() serialises dataclass
+        FIELDS only; ``senior_dscr`` is a property and is NOT included in
+        asdict output.  ``base_dscr`` (the field) IS included.  Callers that
+        require the value in serialised form must use ``base_dscr`` directly.
+        """
         return self.base_dscr
 
 
@@ -155,21 +166,25 @@ class PostSeniorCashSchedules:
     """Phase 2C post-senior-debt cash schedules (C3B3D2B4).
 
     Captures Base-case cash remaining after senior debt service — the explicit
-    authority for SHL / distribution cash.  Bank CFADS is NOT included here;
+    pre-reserve downstream cash authority.  Bank CFADS is NOT included here;
     it is sizing-only and confined to DebtSizingSchedules.
+
+    DSRA_NOT_IMPLEMENTED_IN_THIS_STAGE_POST_SENIOR_CASH_IS_PRE_RESERVE:
+    DSRA ordering is unresolved; these figures are pre-reserve.  Do not label
+    them as SHL cash or distributable cash without further waterfall evidence.
 
     All fields are parallel arrays indexed by period_index (all model periods,
     including construction).
 
     cash_after_senior_before_reserves_keur:
         Signed: base_cfads − senior_ds.  Negative = CFADS insufficient to
-        cover senior debt service.  DSRA_NOT_IMPLEMENTED: this is pre-reserve
-        (DSRA ordering is unresolved in C3B3D2B4).
+        cover senior debt service.  Pre-reserve; DSRA ordering unresolved.
 
     cash_available_for_shl_before_reserves_keur:
-        max(0, cash_after_senior_before_reserves_keur).  Clips negative cash
-        to zero — represents cash actually available for downstream waterfall.
-        DSRA_NOT_IMPLEMENTED.
+        max(0, cash_after_senior_before_reserves_keur) for operating periods.
+        CONSTRUCTION_SHL_AVAILABLE_CASH_IS_ZERO_BY_CONTRACT: construction
+        periods return 0.0 regardless of CFADS (SHL is PIK during construction).
+        Pre-reserve; DSRA ordering unresolved.
     """
     period_indices: tuple[int, ...]
     base_cfads_keur: tuple[float, ...]
