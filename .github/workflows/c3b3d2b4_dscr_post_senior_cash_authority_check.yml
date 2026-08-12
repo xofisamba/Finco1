@@ -210,7 +210,20 @@ jobs:
           print("PASS: CONSTRUCTION_SHL_AVAILABLE_CASH_IS_ZERO_BY_CONTRACT")
           PY
 
-      - name: C3B3D2B4.1 — Groups O–Z hardening suite
+      - name: Governance — solver_bank_dscr field present in DebtSizingSchedules
+        run: |
+          python - <<'PY'
+          import dataclasses
+          from financial_engine.results import DebtSizingSchedules
+          fields = {f.name for f in dataclasses.fields(DebtSizingSchedules)}
+          if "solver_bank_dscr" not in fields:
+              raise SystemExit("FAIL: solver_bank_dscr must be a dataclass field on DebtSizingSchedules")
+          if "bank_sizing_dscr" not in fields:
+              raise SystemExit("FAIL: bank_sizing_dscr must be a dataclass field on DebtSizingSchedules")
+          print("PASS: solver_bank_dscr and bank_sizing_dscr are fields on DebtSizingSchedules")
+          PY
+
+      - name: C3B3D2B4.2 — Solver handshake + fixture acceptance + Groups O–Z suite
         run: |
           python -m pytest \
             tests/test_stage_c3b3d2b4_dscr_post_senior_cash_authority.py \

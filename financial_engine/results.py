@@ -159,6 +159,14 @@ class DebtSizingSchedules:
     bank_cash_tax_keur: tuple[float, ...]
     bank_cfads_keur: tuple[float, ...]
     bank_sizing_dscr: tuple[float | None, ...]
+    solver_bank_dscr: tuple[float | None, ...]
+    """Solver-internal Bank DSCR at convergence (sd_result.senior_dscr per period).
+
+    SOLVER_BANK_DSCR_HANDSHAKE_PROOF (C3B3D2B4.2):
+    The solver populates senior_dscr as bank_cfads / senior_ds from its internal
+    fixed-point iterations.  Exposing it here enables period-by-period handshake:
+    solver_bank_dscr[p] * senior_ds[p] ≈ bank_cfads_keur[p]  (within solver tolerance).
+    """
 
 
 @dataclass(frozen=True)

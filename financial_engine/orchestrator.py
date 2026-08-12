@@ -933,6 +933,16 @@ def run_senior_debt_model(inputs: SeniorDebtModelInput) -> ProjectModelResult:
         )
         for i in _ops_indices
     )
+    # SOLVER_BANK_DSCR_HANDSHAKE_PROOF (C3B3D2B4.2):
+    # Capture solver-internal Bank DSCR at convergence (sd_result.senior_dscr = bank_cfads/senior_ds
+    # from the solver's fixed-point iterations).  Mapped to _ops_indices; None for periods outside
+    # the solver's period_indices (e.g. construction periods not in the debt schedule).
+    _solver_dscr_by_idx: dict[int, float | None] = dict(
+        zip(sd_result.period_indices, sd_result.senior_dscr)
+    )
+    _solver_bank_dscr: tuple[float | None, ...] = tuple(
+        _solver_dscr_by_idx.get(i, None) for i in _ops_indices
+    )
     debt_sizing_schedules: DebtSizingSchedules | None = DebtSizingSchedules(
         period_indices=_ops_indices,
         bank_production_mwh=bank_phase2a_result.operating_schedules.production_mwh,
@@ -942,6 +952,7 @@ def run_senior_debt_model(inputs: SeniorDebtModelInput) -> ProjectModelResult:
         bank_cash_tax_keur=tuple(_final_bank_cash_tax_by_idx.get(i, 0.0) for i in _ops_indices),
         bank_cfads_keur=tuple(cr.cfads_keur for cr in final_bank_cfads_results),
         bank_sizing_dscr=_bank_sizing_dscr,
+        solver_bank_dscr=_solver_bank_dscr,
     )
 
     # Step 8: Assemble result-layer SeniorDebtSchedules.
