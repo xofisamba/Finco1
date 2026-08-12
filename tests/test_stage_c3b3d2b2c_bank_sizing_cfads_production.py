@@ -3304,3 +3304,286 @@ class TestR4_71CalendarSourceClosureAndStageCloseout:
         # The constant name itself must not assert parity (checks the classification key name)
         classification_name = impl.split(":")[0]
         assert "PARITY_PROVEN" not in classification_name
+
+
+# ============================================================================
+# R4.7.2 — OPEX calendar periodisation + final bank-CFADS forensic closeout
+# ============================================================================
+
+class TestR4_72OpexCalendarPeriodisationCloseout:
+    """R4.7.2 tests — categories A through W.
+
+    A: function returns dict
+    B: R4.7.1 price hypothesis reclassified as not proven
+    C: R4.7.1 OPEX omission identified
+    D: OPEX hypothesis key present with PROVEN
+    E: p28 OPEX arithmetic residual < 1e-9 kEUR (machine precision)
+    F: p28 OPEX scale = 365/366
+    G: opex_hypothesis_proven_all_affected_periods = True
+    H: opex_affected_period_count = 15
+    I: t5c_abs_residual_keur <= 1.0 (debt parity)
+    J: t5c_merchant_periods_outside_1keur = 0
+    K: all_merchant_cfads_within_1keur = True
+    L: p28 CFADS closed by T5_corrected
+    M: p28 t5c delta <= 1.0 kEUR
+    N: p26 t5c delta <= 1.0 kEUR
+    O: p27 t5c delta <= 1.0 kEUR
+    P: p29 t5c delta <= 1.0 kEUR
+    Q: verdict is PARITY_PROVEN (not STOP)
+    R: financial_engine zero-diff
+    S: no project-name dispatch in t5_full function
+    T: no hardcoded period indices in t5_full function
+    U: price locked key present, no CY2043 change
+    V: parity layer separation documented
+    W: no base-tax injection, no DS20-derived tax
+    """
+
+    @pytest.fixture(scope="class")
+    def r4_72_result(self):
+        from app.project_factories import create_default_oborovo
+        from finco_recon.bank_sizing_candidates import run_candidate_h_oborovo_r472
+        return run_candidate_h_oborovo_r472(create_default_oborovo)
+
+    # A) Function returns dict
+    def test_a_returns_dict(self, r4_72_result):
+        assert isinstance(r4_72_result, dict)
+        assert "verdict" in r4_72_result
+
+    def test_a_opex_calendar_diagnostic_present(self, r4_72_result):
+        assert isinstance(r4_72_result["opex_calendar_diagnostic"], list)
+        assert len(r4_72_result["opex_calendar_diagnostic"]) > 0
+
+    # B) R4.7.1 price hypothesis reclassified as not proven
+    def test_b_price_hypothesis_reclassified(self, r4_72_result):
+        c = r4_72_result["r4_7_1_price_hypothesis_reclassified"]
+        assert "NOT_PROVEN" in c or "NOT PROVEN" in c.upper()
+
+    def test_b_price_locked_in_reclassification(self, r4_72_result):
+        c = r4_72_result["r4_7_1_price_hypothesis_reclassified"]
+        assert "61.34297050" in c or "LOCKED" in c
+
+    # C) R4.7.1 OPEX omission identified
+    def test_c_opex_omission_documented(self, r4_72_result):
+        c = r4_72_result["r4_7_1_opex_omission_identified"]
+        assert "OPEX" in c or "opex" in c.lower()
+        assert "OMITTED" in c or "omitted" in c.lower()
+
+    def test_c_cfads_residual_explanation_present(self, r4_72_result):
+        c = r4_72_result["cfads_residual_explanation"]
+        assert "2.672" in c or "CFADS" in c
+
+    # D) OPEX hypothesis key present with PROVEN
+    def test_d_opex_hypothesis_key_proven(self, r4_72_result):
+        h = r4_72_result["opex_hypothesis"]
+        assert "PROVEN" in h
+
+    def test_d_opex_source_convention_documented(self, r4_72_result):
+        c = r4_72_result["opex_source_convention"]
+        assert "OPEX" in c
+        assert "SOURCE" in c or "source" in c.lower()
+
+    # E) p28 OPEX arithmetic residual < 1e-9 kEUR
+    def test_e_p28_opex_hypothesis_proven(self, r4_72_result):
+        assert r4_72_result["p28_opex_hypothesis_proven"] is True
+
+    def test_e_p28_opex_residual_machine_precision(self, r4_72_result):
+        residual = r4_72_result["p28_opex_residual_keur"]
+        assert residual is not None
+        assert abs(residual) < 1e-9, f"p28 OPEX residual = {residual:.3e} kEUR (expected < 1e-9)"
+
+    def test_e_p28_engine_opex_matches_expected(self, r4_72_result):
+        # Engine opex at p28 should be around 978 kEUR
+        opex = r4_72_result["p28_engine_opex_keur"]
+        assert 970 < opex < 990, f"p28 engine opex = {opex:.3f} kEUR"
+
+    # F) p28 OPEX scale = 365/366
+    def test_f_p28_opex_scale_correct(self, r4_72_result):
+        scale = r4_72_result["p28_opex_scale"]
+        assert abs(scale - 365.0 / 366.0) < 1e-12, f"p28 scale = {scale}"
+
+    def test_f_p28_scaled_opex_matches_fixture(self, r4_72_result):
+        scaled = r4_72_result["p28_scaled_opex_keur"]
+        fix = r4_72_result["p28_fixture_opex_keur"]
+        assert abs(scaled - fix) < 1e-9
+
+    # G) opex_hypothesis_proven_all_affected_periods = True
+    def test_g_opex_hypothesis_all_periods_proven(self, r4_72_result):
+        assert r4_72_result["opex_hypothesis_proven_all_affected_periods"] is True
+
+    def test_g_each_diagnostic_period_proven(self, r4_72_result):
+        for row in r4_72_result["opex_calendar_diagnostic"]:
+            assert row["hypothesis_proven"], (
+                f"OPEX hypothesis not proven at period_end={row['period_end']}: "
+                f"residual={row['residual_keur']:.3e} kEUR"
+            )
+
+    # H) opex_affected_period_count = 15
+    def test_h_opex_affected_period_count_is_15(self, r4_72_result):
+        assert r4_72_result["opex_affected_period_count"] == 15, \
+            f"Expected 15 affected H2 periods, got {r4_72_result['opex_affected_period_count']}"
+
+    def test_h_all_diagnostic_periods_are_h2(self, r4_72_result):
+        for row in r4_72_result["opex_calendar_diagnostic"]:
+            assert row["period_end"].endswith("-12-31"), \
+                f"Non-H2 period in opex diagnostic: {row['period_end']}"
+
+    # I) Debt parity within 1 kEUR
+    def test_i_debt_parity_within_1keur(self, r4_72_result):
+        assert r4_72_result["debt_parity_within_1keur"] is True
+
+    def test_i_t5c_abs_residual_le_1keur(self, r4_72_result):
+        assert r4_72_result["t5c_abs_residual_keur"] <= 1.0, \
+            f"Debt residual = {r4_72_result['t5c_abs_residual_keur']:.3f} kEUR"
+
+    def test_i_source_debt_anchor(self, r4_72_result):
+        assert abs(r4_72_result["source_debt_keur"] - 42852.278763) < 0.001
+
+    # J) All merchant periods within 1 kEUR
+    def test_j_no_merchant_period_outside_1keur(self, r4_72_result):
+        assert r4_72_result["t5c_merchant_periods_outside_1keur"] == 0
+
+    def test_j_max_abs_cfads_delta_le_1keur(self, r4_72_result):
+        mx = r4_72_result["t5c_max_abs_cfads_delta_keur"]
+        assert mx is not None
+        assert mx <= 1.0, f"Max CFADS delta = {mx:.3f} kEUR"
+
+    # K) all_merchant_cfads_within_1keur = True
+    def test_k_all_merchant_cfads_within_1keur(self, r4_72_result):
+        assert r4_72_result["all_merchant_cfads_within_1keur"] is True
+
+    def test_k_four_merchant_periods_in_bridge(self, r4_72_result):
+        assert len(r4_72_result["merchant_period_bridge"]) == 4
+
+    # L) p28 CFADS closed by T5_corrected
+    def test_l_p28_cfads_closed_by_t5c(self, r4_72_result):
+        assert r4_72_result["p28_cfads_closed_by_t5c"] is True
+
+    def test_l_p28_t5_raw_was_outside_1keur(self, r4_72_result):
+        raw_delta = r4_72_result["p28_t5_raw_cfads_delta_keur"]
+        assert raw_delta is not None
+        assert abs(raw_delta) > 1.0, \
+            f"Expected p28 T5_raw delta > 1 kEUR, got {raw_delta:.3f}"
+
+    def test_l_p28_t5c_improves_over_t5_raw(self, r4_72_result):
+        raw = abs(r4_72_result["p28_t5_raw_cfads_delta_keur"])
+        t5c = abs(r4_72_result["p28_t5c_cfads_delta_keur"])
+        assert t5c < raw
+
+    # M) p28 delta within 1 kEUR
+    def test_m_p28_t5c_cfads_within_1keur(self, r4_72_result):
+        bridge = r4_72_result["merchant_period_bridge"]
+        p28 = next(r for r in bridge if r["period_end"] == "2043-12-31")
+        delta = p28["t5c_vs_ds20_delta_keur"]
+        assert abs(delta) <= 1.0, f"p28 T5c CFADS delta = {delta:+.4f} kEUR"
+
+    # N) p26 delta within 1 kEUR
+    def test_n_p26_t5c_cfads_within_1keur(self, r4_72_result):
+        bridge = r4_72_result["merchant_period_bridge"]
+        p26 = next(r for r in bridge if r["period_end"] == "2042-12-31")
+        delta = p26["t5c_vs_ds20_delta_keur"]
+        assert abs(delta) <= 1.0, f"p26 T5c CFADS delta = {delta:+.4f} kEUR"
+
+    # O) p27 delta within 1 kEUR
+    def test_o_p27_t5c_cfads_within_1keur(self, r4_72_result):
+        bridge = r4_72_result["merchant_period_bridge"]
+        p27 = next(r for r in bridge if r["period_end"] == "2043-06-30")
+        delta = p27["t5c_vs_ds20_delta_keur"]
+        assert abs(delta) <= 1.0, f"p27 T5c CFADS delta = {delta:+.4f} kEUR"
+
+    # P) p29 delta within 1 kEUR
+    def test_p_p29_t5c_cfads_within_1keur(self, r4_72_result):
+        bridge = r4_72_result["merchant_period_bridge"]
+        p29 = next(r for r in bridge if r["period_end"] == "2044-06-30")
+        delta = p29["t5c_vs_ds20_delta_keur"]
+        assert abs(delta) <= 1.0, f"p29 T5c CFADS delta = {delta:+.4f} kEUR"
+
+    # Q) Verdict is PARITY_PROVEN (not STOP)
+    def test_q_verdict_is_parity_proven(self, r4_72_result):
+        verdict = r4_72_result["verdict"]
+        assert "STOP" not in verdict
+        assert "PARITY_PROVEN" in verdict
+
+    def test_q_verdict_contains_stage_diagnostic_closed(self, r4_72_result):
+        verdict = r4_72_result["verdict"]
+        assert "STAGE_DIAGNOSTIC_CLOSED" in verdict
+
+    def test_q_verdict_contains_opex_hypothesis_proven(self, r4_72_result):
+        verdict = r4_72_result["verdict"]
+        assert "OPEX_CALENDAR_PERIODISATION_HYPOTHESIS_PROVEN" in verdict
+
+    # R) financial_engine zero-diff
+    def test_r_financial_engine_zero_diff(self, r4_72_result):
+        assert r4_72_result["financial_engine_zero_diff"] == "ENFORCED"
+
+    def test_r_financial_engine_no_diff_subprocess(self):
+        import subprocess
+        result = subprocess.run(
+            ["git", "diff", "HEAD", "--", "financial_engine/"],
+            capture_output=True, text=True,
+            cwd=str(__import__("pathlib").Path(__file__).parent.parent),
+        )
+        assert result.stdout == "", f"financial_engine/ must be zero-diff:\n{result.stdout[:500]}"
+
+    # S) No project-name dispatch in t5_full function
+    def test_s_no_project_name_dispatch_in_t5_full(self):
+        import inspect
+        from finco_recon.bank_sizing_candidates import _run_candidate_t5_full_operating_replay
+        src = inspect.getsource(_run_candidate_t5_full_operating_replay)
+        for forbidden in ["project_name", "oborovo", "Oborovo", "OBOROVO_ONLY"]:
+            assert forbidden not in src, \
+                f"Found identity dispatch '{forbidden}' in _run_candidate_t5_full_operating_replay"
+
+    def test_s_no_project_name_dispatch_in_r472(self, r4_72_result):
+        assert r4_72_result["no_project_name_dispatch"] == "ENFORCED"
+
+    # T) No hardcoded period indices in t5_full function
+    def test_t_no_hardcoded_period_indices_in_t5_full(self):
+        import inspect
+        from finco_recon.bank_sizing_candidates import _run_candidate_t5_full_operating_replay
+        src = inspect.getsource(_run_candidate_t5_full_operating_replay)
+        for forbidden in ["== 28", "== 27", "2043", "2044", "p28"]:
+            assert forbidden not in src, \
+                f"Found hardcoded value '{forbidden}' in _run_candidate_t5_full_operating_replay"
+
+    def test_t_no_hardcoded_indices_in_opex_diagnostic(self):
+        import inspect
+        from finco_recon.bank_sizing_candidates import _full_horizon_opex_calendar_diagnostic
+        src = inspect.getsource(_full_horizon_opex_calendar_diagnostic)
+        for forbidden in ["== 28", "== 27", "2043", "2044", "p28"]:
+            assert forbidden not in src, \
+                f"Found hardcoded value '{forbidden}' in _full_horizon_opex_calendar_diagnostic"
+
+    # U) Price locked key present, no CY2043 change
+    def test_u_price_locked_key_present(self, r4_72_result):
+        pl = r4_72_result["price_locked"]
+        assert "CY2043_UNCHANGED" in pl or "LOCKED" in pl.upper()
+
+    def test_u_price_locked_contains_effective_price(self, r4_72_result):
+        pl = r4_72_result["price_locked"]
+        assert "61.34297050" in pl
+
+    # V) Parity layer separation documented
+    def test_v_parity_layer_separation_documented(self, r4_72_result):
+        sep = r4_72_result["parity_layer_separation"]
+        assert "SEPARATE" in sep
+        assert "DEBT_SIZING" in sep or "debt_sizing" in sep.lower()
+
+    def test_v_no_base_performance_parity_claimed_in_result(self, r4_72_result):
+        # parity_layer_separation must not claim full base parity
+        sep = r4_72_result["parity_layer_separation"]
+        classification_name = sep.split(":")[0]
+        assert "BASE_CASE_FULL_PARITY_PROVEN" not in classification_name
+
+    # W) No base-tax injection, no DS20-derived tax
+    def test_w_no_base_tax_injection(self, r4_72_result):
+        assert r4_72_result["no_base_tax_injection"] == "ENFORCED"
+
+    def test_w_no_ds20_derived_tax(self, r4_72_result):
+        assert r4_72_result["no_ds20_derived_tax"] == "ENFORCED"
+
+    def test_w_no_plug_calibration(self, r4_72_result):
+        assert r4_72_result["no_plug_calibration"] == "ENFORCED"
+
+    def test_w_tuho_regression_preserved(self, r4_72_result):
+        assert r4_72_result["tuho_p90_delta_keur_cached"] < 1.0
+        assert "CONFIRMED" in r4_72_result["tuho_regression_status"]

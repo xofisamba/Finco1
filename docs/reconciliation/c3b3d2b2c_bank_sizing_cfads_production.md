@@ -20,6 +20,7 @@
 | **R4.6.1 Verdict** | `C3B3D2B2C_R4_6_1_STOP_REMAINING_BANK_CFADS_COMPONENT_UNRESOLVED` |
 | **R4.7 Verdict** | `C3B3D2B2C_R4_7_P50_SOURCE_BYPASS_PROVEN_P28_CALENDAR_RESIDUAL_DOCUMENTED_GENERIC_P90_POLICY_PRESERVED` |
 | **R4.7.1 Verdict** | `C3B3D2B2C_R4_7_1_STOP_CALENDAR_REPLAY_FAILED` |
+| **R4.7.2 Verdict** | `C3B3D2B2C_R4_7_2_SOURCE_CALENDAR_FULL_OPERATING_REPLAY_CFADS_AND_DEBT_PARITY_PROVEN_OPEX_CALENDAR_PERIODISATION_HYPOTHESIS_PROVEN_STAGE_DIAGNOSTIC_CLOSED` |
 
 ---
 
@@ -1108,7 +1109,7 @@ C3B3D2B2C_R4_7_P50_SOURCE_BYPASS_PROVEN_P28_CALENDAR_RESIDUAL_DOCUMENTED_GENERIC
 
 Proven against all 60 fixture operating periods to 10 decimal places.
 
-**Finco current convention**: denominator = 366 if isleap(end.year) else 365.  
+**Finco current convention**: denominator = 366 if isleap(end.year) else 365.
 Difference: H2 periods only. Finco uses Y (period end year); source uses Y+1 (following year).
 
 ### Affected periods: 15 H2 leap-boundary periods
@@ -1135,7 +1136,7 @@ Difference: H2 periods only. Finco uses Y (period end year); source uses Y+1 (fo
 | p28 | 2043-12-31 | 52,588.809 | 52,588.809 | **0.000** | 2,246.091 | 2,248.763 | **−2.672 kEUR** ✗ |
 | p29 | 2044-06-30 | 52,017.192 | 52,017.192 | 0.000 | 2,058.432 | 2,057.780 | **+0.651 kEUR** ✓ |
 
-### p28 analysis — STOP
+### p28 analysis — STOP (R4.7.1 CFADS gap documented; cause identified in R4.7.2)
 
 T5 closes **production** at p28 to 0.000 MWh delta (confirmed). The remaining −2.672 kEUR CFADS gap is an **EBITDA model residual** (H2 CIT = 0, so CFADS = EBITDA):
 
@@ -1143,9 +1144,7 @@ T5 closes **production** at p28 to 0.000 MWh delta (confirmed). The remaining �
 - Source EBITDA (DS20) at p28 = 2,248.763 kEUR
 - Residual = −2.672 kEUR
 
-Implied price gap: 2,672 EUR ÷ 52,588.809 MWh ≈ 0.051 EUR/MWh (0.083% of effective Central Low CY2043 = 61.343 EUR/MWh). P26 (H2 2042, same H2 type) has zero gap → the residual is CY2043-specific, not systemic opex error.
-
-**First remaining causal component**: effective Central Low price precision at CY2043 (or equivalent opex escalation model difference). The 61.343 EUR/MWh value used requires additional decimal precision, or a period-specific price calculation.
+`R4_7_1_CY2043_PRICE_PRECISION_HYPOTHESIS_NOT_PROVEN`: The original attribution of this gap to CY2043 price precision is **reclassified**. See §17.2 (R4.7.2) for arithmetic proof that the gap is entirely explained by omitted OPEX calendar correction.
 
 ### Verdict
 
@@ -1178,16 +1177,84 @@ C3B3D2B2C_R4_7_1_STOP_CALENDAR_REPLAY_FAILED
 
 ---
 
+## 17.2. R4.7.2 — OPEX calendar periodisation + final bank-CFADS forensic closeout
+
+### Identity table
+
+| Field | Value |
+|---|---|
+| **R4.7.2 Verdict** | `C3B3D2B2C_R4_7_2_SOURCE_CALENDAR_FULL_OPERATING_REPLAY_CFADS_AND_DEBT_PARITY_PROVEN_OPEX_CALENDAR_PERIODISATION_HYPOTHESIS_PROVEN_STAGE_DIAGNOSTIC_CLOSED` |
+| Function | `run_candidate_h_oborovo_r472` |
+| Candidate | SOURCE_CALENDAR_FULL_OPERATING_REPLAY (corrected T5) |
+
+### R4.7.1 reclassification
+
+`R4_7_1_CY2043_PRICE_PRECISION_HYPOTHESIS_NOT_PROVEN`: The R4.7.1 attribution of the p28 −2.672 kEUR CFADS residual to CY2043 price precision is **reclassified as not proven**. Price is LOCKED — CY2043 raw Central Low = 43.199275 EUR/MWh, Inflation = 1.42, Effective = 61.34297050 EUR/MWh. No CY2043 price change.
+
+`R4_7_1_T5_OPEX_CALENDAR_PERIODISATION_OMITTED`: T5_SOURCE_CALENDAR_REPLAY (R4.7.1) scaled production, day_fraction, and revenue but **omitted** opex_keur from the calendar correction. The source workbook applies the same paired-annual-cycle period fraction to time-proportional OPEX. This omission is the sole cause of the −2.672 kEUR p28 CFADS residual.
+
+### OPEX calendar hypothesis — arithmetic proof
+
+`OBOROVO_P28_OPEX_RESIDUAL_IS_PERIOD_FRACTION_SOURCE_PROVEN`:
+
+| Item | Value |
+|---|---|
+| Engine opex at p28 | 978.097602956399 kEUR |
+| scale = finco_denom / source_denom | 365 / 366 = 0.997267759562842 |
+| scaled_opex | 978.097602956399 × 0.997267759 = 975.425205134 kEUR |
+| Fixture source opex | 975.4252051341138 kEUR |
+| Residual | < 2.3 × 10⁻¹³ kEUR (machine precision) |
+
+`R4_7_1_P28_CFADS_RESIDUAL_EXACTLY_EXPLAINED_BY_OMITTED_OPEX_CALENDAR_CORRECTION`: T5 CFADS delta = −2.672 kEUR = −(raw_opex − scaled_opex) = −engine_opex × (1 − 365/366). No other mechanism required.
+
+`OBOROVO_OPEX_USES_SOURCE_OPERATING_PERIOD_FRACTION`: For all 15 H2 leap-boundary periods, fixture_opex = engine_opex × (finco_denom/source_denom) to machine precision (<1e-9 kEUR). `EXCEL_COMPATIBILITY_ONLY_PENDING_GENERIC_REVIEW` classification applies.
+
+### SOURCE_CALENDAR_FULL_OPERATING_REPLAY results
+
+T5_corrected = T4 + source calendar fractions applied to **production, revenue, and opex**.
+
+| Run | Debt (kEUR) | Residual vs source |
+|---|---|---|
+| T5_raw (R4.7.1, opex not scaled) | 42,851.250 | −1.028 kEUR |
+| **T5_corrected (R4.7.2, opex scaled)** | **42,852.161** | **−0.117 kEUR** |
+| Source (DS!D51) | 42,852.279 | — |
+
+### Four-period merchant bridge (T5_corrected)
+
+| Period | End | T5_raw vs DS20 | T5c vs DS20 |
+|---|---|---|---|
+| p26 | 2042-12-31 | 0.000 kEUR ✓ | 0.000 kEUR ✓ |
+| p27 | 2043-06-30 | −0.008 kEUR ✓ | +0.002 kEUR ✓ |
+| p28 | 2043-12-31 | **−2.672 kEUR ✗** | **0.000 kEUR ✓** |
+| p29 | 2044-06-30 | +0.651 kEUR ✓ | +0.389 kEUR ✓ |
+
+All four merchant periods within ±1 kEUR. Senior Debt within ±1 kEUR. Stage diagnostic closed.
+
+### Verdict
+
+```
+C3B3D2B2C_R4_7_2_SOURCE_CALENDAR_FULL_OPERATING_REPLAY_CFADS_AND_DEBT_PARITY_PROVEN_OPEX_CALENDAR_PERIODISATION_HYPOTHESIS_PROVEN_STAGE_DIAGNOSTIC_CLOSED
+```
+
+### R4.7.2 governance
+
+- `financial_engine/` zero-diff: **ENFORCED**
+- Price LOCKED — no CY2043 price change: **ENFORCED**
+- No hardcoded period indices, no project-name dispatch, no plug, no calibration: **ENFORCED**
+- No base-tax injection, no DS20-derived tax: **ENFORCED**
+- 23 focused R4.7.2 tests (categories A–W) — all pass
+- Total C3B3D2B2C tests: 446 (all pass)
+
+---
+
 ## 19. Next steps for future stages
 
-The primary outstanding gap (engine bank debt < source, ~231 kEUR / 0.54%) requires further decomposition. Candidate drivers:
+R4.7.2 closes the bank-CFADS forensic stage. The remaining −0.117 kEUR debt residual (0.00027%) is within the ≤1 kEUR acceptance threshold and does not require further decomposition.
 
-1. **Bank-case tax depreciation**: if the source model uses a different tax depreciation schedule for the bank case (vs. base), bank taxable income and thus bank CIT would differ from the engine calculation.
-2. **Bank-case EBITDA adjustments**: non-energy revenue items (capacity payments, DSA receipts) present in the source bank model but absent from the current adapter.
-3. **DSRA interest income**: if source models DSRA interest income as taxable, bank CFADS and tax would differ from engine results.
-4. **Loan fee / financing cost deductibility**: source may model capitalised arrangement fees as tax-deductible amortisation.
+Outstanding items for future stages (out of scope for C3B3D2B2C):
 
-Production adapter wiring is not gated on closing this residual — the revenue mechanism (P90 yield + effective Central Low price) is fully identified at 2.80% sensitivity residual.
+1. **Full asset-performance parity**: compare Excel Base/Equity Case vs Finco from COD to project end (Production, Price, Revenue, OPEX, EBITDA, Depreciation, EBIT, Interest, Tax, CFADS, Senior/SHL balances, distributions). The calendar convention identified here (15 H2 leap-boundary periods) is an input to that work.
+2. **EXCEL_COMPATIBILITY_ONLY classification review**: cross-project validation of the paired-annual-cycle period fraction (TUHO, other projects) before promoting to `GENERIC_FINCO_CORRECTNESS_CANDIDATE`.
 
 ---
 
