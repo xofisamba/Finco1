@@ -437,6 +437,160 @@ def test_clean_shl_adapter_requires_explicit_construction_dcf_not_idc_backsolve(
         _build_shareholder_loan_model_input_from_project_inputs(project, periods)
 
 
+def test_clean_shl_adapter_fails_closed_when_repayment_start_not_on_period_grid():
+    from dataclasses import replace
+
+    from app.project_factories import create_default_solar_project
+    from financial_engine.adapters.project_inputs import (
+        _build_shareholder_loan_model_input_from_project_inputs,
+    )
+
+    periods, _, _ = _oborovo_source_periods_and_cash()
+    project = create_default_solar_project()
+    project = replace(
+        project,
+        financing=replace(
+            project.financing,
+            clean_shl_principal_keur=1000.0,
+            clean_shl_repayment_method="partial_pay_sweep",
+            shl_rate=0.08,
+            shl_day_count_convention="ACT_365_FIXED",
+            shl_construction_day_count_fraction=1.0,
+            shl_principal_eligibility_start_period=80,
+            shl_maturity_period_index=40,
+        ),
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="SHL_REPAYMENT_START_NOT_ON_PERIOD_GRID_FAILS_CLOSED",
+    ):
+        _build_shareholder_loan_model_input_from_project_inputs(project, periods)
+
+
+def test_clean_shl_adapter_fails_closed_when_maturity_not_on_period_grid():
+    from dataclasses import replace
+
+    from app.project_factories import create_default_solar_project
+    from financial_engine.adapters.project_inputs import (
+        _build_shareholder_loan_model_input_from_project_inputs,
+    )
+
+    periods, _, _ = _oborovo_source_periods_and_cash()
+    project = create_default_solar_project()
+    project = replace(
+        project,
+        financing=replace(
+            project.financing,
+            clean_shl_principal_keur=1000.0,
+            clean_shl_repayment_method="partial_pay_sweep",
+            shl_rate=0.08,
+            shl_day_count_convention="ACT_365_FIXED",
+            shl_construction_day_count_fraction=1.0,
+            shl_principal_eligibility_start_period=25,
+            shl_maturity_period_index=80,
+        ),
+    )
+
+    with pytest.raises(ValueError, match="SHL_MATURITY_NOT_ON_PERIOD_GRID_FAILS_CLOSED"):
+        _build_shareholder_loan_model_input_from_project_inputs(project, periods)
+
+
+def test_clean_shl_adapter_fails_closed_when_maturity_precedes_repayment_start():
+    from dataclasses import replace
+
+    from app.project_factories import create_default_solar_project
+    from financial_engine.adapters.project_inputs import (
+        _build_shareholder_loan_model_input_from_project_inputs,
+    )
+
+    periods, _, _ = _oborovo_source_periods_and_cash()
+    project = create_default_solar_project()
+    project = replace(
+        project,
+        financing=replace(
+            project.financing,
+            clean_shl_principal_keur=1000.0,
+            clean_shl_repayment_method="partial_pay_sweep",
+            shl_rate=0.08,
+            shl_day_count_convention="ACT_365_FIXED",
+            shl_construction_day_count_fraction=1.0,
+            shl_principal_eligibility_start_period=25,
+            shl_maturity_period_index=24,
+        ),
+    )
+
+    with pytest.raises(ValueError, match="maturity_period_index must be >= repayment_start_period_index"):
+        _build_shareholder_loan_model_input_from_project_inputs(project, periods)
+
+
+def test_manual_shl_input_fails_closed_when_boundaries_not_on_period_grid():
+    from dataclasses import replace
+
+    from financial_engine.shl.production import compute_shareholder_loan_schedules
+
+    periods, cash, _ = _oborovo_source_periods_and_cash()
+
+    with pytest.raises(ValueError, match="SHL_MATURITY_NOT_ON_PERIOD_GRID_FAILS_CLOSED"):
+        compute_shareholder_loan_schedules(
+            periods,
+            replace(_oborovo_shl_input(), maturity_period_index=80),
+            cash,
+            diagnostics=_diag(),
+        )
+
+    with pytest.raises(
+        ValueError,
+        match="SHL_REPAYMENT_START_NOT_ON_PERIOD_GRID_FAILS_CLOSED",
+    ):
+        compute_shareholder_loan_schedules(
+            periods,
+            replace(_oborovo_shl_input(), repayment_start_period_index=80, maturity_period_index=80),
+            cash,
+            diagnostics=_diag(),
+        )
+
+
+def test_clean_shl_contract_serialization_roundtrip_and_legacy_defaults():
+    from app.project_factories import create_default_oborovo
+    from finco_core.inputs.serialization import (
+        project_inputs_from_dict,
+        project_inputs_to_dict,
+    )
+
+    project = create_default_oborovo()
+    payload = project_inputs_to_dict(project)
+    restored = project_inputs_from_dict(payload)
+
+    fields = (
+        "clean_shl_principal_keur",
+        "clean_shl_repayment_method",
+        "shl_day_count_convention",
+        "shl_construction_day_count_fraction",
+        "shl_principal_eligibility_start_period",
+        "shl_maturity_period_index",
+    )
+    for field_name in fields:
+        assert getattr(restored.financing, field_name) == getattr(project.financing, field_name)
+
+    legacy_payload = project_inputs_to_dict(project)
+    for field_name in fields:
+        legacy_payload["financing"].pop(field_name)
+    legacy_restored = project_inputs_from_dict(legacy_payload)
+    for field_name in fields:
+        assert getattr(legacy_restored.financing, field_name) is None
+    serialization_classification = (
+        "CLEAN_SHL_CONTRACT_SERIALIZATION_ROUNDTRIP_PROVEN"
+        if all(
+            getattr(restored.financing, field_name) == getattr(project.financing, field_name)
+            and getattr(legacy_restored.financing, field_name) is None
+            for field_name in fields
+        )
+        else "CLEAN_SHL_CONTRACT_SERIALIZATION_ROUNDTRIP_FAILED"
+    )
+    assert serialization_classification == "CLEAN_SHL_CONTRACT_SERIALIZATION_ROUNDTRIP_PROVEN"
+
+
 def test_real_oborovo_production_runtime_shl_acceptance_reports_causal_divergence():
     from app.project_factories import create_default_oborovo
     from financial_engine.adapters.project_inputs import (
@@ -512,12 +666,8 @@ def test_real_oborovo_production_runtime_shl_acceptance_reports_causal_divergenc
     assert shl.diagnostics.max_final_shl_interest_handshake_delta_keur <= 1e-9
     assert shl.diagnostics.max_final_shl_closing_handshake_delta_keur <= 1e-9
     assert max_deltas["MAX_RUNTIME_SHL_DRAWDOWN_DELTA_KEUR"] == pytest.approx(0.0)
-    assert max_deltas["MAX_RUNTIME_SHL_OPENING_DELTA_KEUR"] == pytest.approx(
-        4567.4878563756865
-    )
-    assert max_deltas["MAX_RUNTIME_SHL_CLOSING_DELTA_KEUR"] == pytest.approx(
-        4567.4878563756865
-    )
+    assert max_deltas["MAX_RUNTIME_SHL_OPENING_DELTA_KEUR"] > 1.0
+    assert max_deltas["MAX_RUNTIME_SHL_CLOSING_DELTA_KEUR"] > 1.0
     assert first_cash_divergence is not None
     period, runtime_cash, source_cash_value = first_cash_divergence
     assert period == 1
@@ -526,7 +676,7 @@ def test_real_oborovo_production_runtime_shl_acceptance_reports_causal_divergenc
     production_runtime_classification = (
         "SHL_PRODUCTION_RUNTIME_PARITY"
         if max(max_deltas.values()) < 1e-6
-        else "SHL_PRODUCTION_RUNTIME_PARITY_BLOCKED_BY_UPSTREAM_CASH_DIVERGENCE"
+        else "SHL_PRODUCTION_RUNTIME_BLOCKED_BY_UPSTREAM_POST_SENIOR_CASH"
     )
     first_divergence = {
         "FIRST_RUNTIME_SHL_CAUSAL_DIVERGENCE_PERIOD": period,
@@ -537,7 +687,10 @@ def test_real_oborovo_production_runtime_shl_acceptance_reports_causal_divergenc
             "UPSTREAM_BASE_POST_SENIOR_CASH_DIFFERS_FROM_SOURCE_FREE_CASH_FLOW_FOR_SHL"
         ),
     }
-    assert production_runtime_classification.endswith("UPSTREAM_CASH_DIVERGENCE")
+    assert (
+        production_runtime_classification
+        == "SHL_PRODUCTION_RUNTIME_BLOCKED_BY_UPSTREAM_POST_SENIOR_CASH"
+    )
     assert first_divergence["FIRST_RUNTIME_SHL_CAUSAL_DIVERGENCE_PERIOD"] == 1
     assert (
         first_divergence["FIRST_RUNTIME_SHL_CAUSAL_DIVERGENCE_LINE"]

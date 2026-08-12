@@ -335,6 +335,17 @@ def compute_shareholder_loan_schedules(
     if not periods:
         raise ValueError("compute_shareholder_loan_schedules: at least one period is required")
     _validate_shareholder_loan_input(shl_input)
+    period_index_set = frozenset(p.period_index for p in periods)
+    if shl_input.repayment_start_period_index not in period_index_set:
+        raise ValueError(
+            "SHL_REPAYMENT_START_NOT_ON_PERIOD_GRID_FAILS_CLOSED: "
+            f"repayment_start_period_index={shl_input.repayment_start_period_index}"
+        )
+    if shl_input.maturity_period_index not in period_index_set:
+        raise ValueError(
+            "SHL_MATURITY_NOT_ON_PERIOD_GRID_FAILS_CLOSED: "
+            f"maturity_period_index={shl_input.maturity_period_index}"
+        )
 
     period_indices: list[int] = []
     opening_values: list[float] = []

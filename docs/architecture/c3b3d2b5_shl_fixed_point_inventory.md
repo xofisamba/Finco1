@@ -172,6 +172,19 @@ not silently extend a 20-year SHL; clean SHL mapping requires explicit
 `shl_maturity_period_index` authority (or a future independently specified
 tenor-to-period rule).
 
+Both the ProjectInputs adapter and the clean production schedule require the
+configured repayment start and maturity to exist on the authoritative period
+grid. The runtime fails closed instead of shifting to the next available period
+or allowing maturity beyond the model horizon:
+
+- `SHL_REPAYMENT_START_NOT_ON_PERIOD_GRID_FAILS_CLOSED`
+- `SHL_MATURITY_NOT_ON_PERIOD_GRID_FAILS_CLOSED`
+
+The repayment start must be on-grid, maturity must be on-grid, maturity must
+not precede first operation, and maturity must be greater than or equal to the
+repayment start. This protects manually constructed `ShareholderLoanModelInput`
+objects as well as ProjectInputs adapter callers.
+
 ## Production Acceptance
 
 Two parity classes are tracked separately:
@@ -190,3 +203,7 @@ replay. The remaining production SHL vector difference is classified by first
 cause: current backend post-senior cash available for SHL diverges from source
 `free_cash_flow_for_shl_keur` at DS1. The SHL layer does not compensate for that
 upstream cash difference.
+
+The production diagnostic reports current deltas dynamically, but those wrong
+downstream magnitudes are not approved baselines. Classification:
+`SHL_PRODUCTION_RUNTIME_BLOCKED_BY_UPSTREAM_POST_SENIOR_CASH`.

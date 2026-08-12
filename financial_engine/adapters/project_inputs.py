@@ -338,11 +338,30 @@ def _build_shareholder_loan_model_input_from_project_inputs(
     first_operating = next((p.period_index for p in periods if p.is_operation), None)
     if first_operating is None:
         raise ValueError("ProjectInputs SHL requires at least one operating period")
-    if int(repayment_start) < int(first_operating):
+    period_indices = frozenset(p.period_index for p in periods)
+    repayment_start_index = int(repayment_start)
+    maturity_index = int(maturity)
+    if repayment_start_index not in period_indices:
+        raise ValueError(
+            "SHL_REPAYMENT_START_NOT_ON_PERIOD_GRID_FAILS_CLOSED: "
+            f"repayment_start_period_index={repayment_start_index}"
+        )
+    if maturity_index not in period_indices:
+        raise ValueError(
+            "SHL_MATURITY_NOT_ON_PERIOD_GRID_FAILS_CLOSED: "
+            f"maturity_period_index={maturity_index}"
+        )
+    if repayment_start_index < int(first_operating):
         raise ValueError(
             "SHL_PRINCIPAL_ELIGIBILITY_START_PERIOD_INVALID: "
             "repayment start must not precede first operating period"
         )
+    if maturity_index < int(first_operating):
+        raise ValueError(
+            "SHL_MATURITY_PERIOD_INVALID: maturity must not precede first operating period"
+        )
+    if repayment_start_index > maturity_index:
+        raise ValueError("maturity_period_index must be >= repayment_start_period_index")
 
     return ShareholderLoanModelInput(
         initial_principal_keur=amount,
@@ -351,8 +370,8 @@ def _build_shareholder_loan_model_input_from_project_inputs(
             getattr(financing, "shl_day_count_convention", None)
         ),
         construction_day_count_fraction=construction_dcf,
-        repayment_start_period_index=int(repayment_start),
-        maturity_period_index=int(maturity),
+        repayment_start_period_index=repayment_start_index,
+        maturity_period_index=maturity_index,
         convergence_tolerance_keur=1e-4,
         convergence_relative_tolerance=1e-9,
         maximum_iterations=50,
