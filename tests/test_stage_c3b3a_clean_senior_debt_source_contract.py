@@ -933,7 +933,7 @@ def _make_minimal_senior_debt_model_input(
     from financial_engine.adapters.project_inputs import from_project_inputs
     from financial_engine.orchestrator import run_operating_model
     from financial_engine.inputs import (
-        TaxCalculationInput, SeniorDebtModelInput,
+        TaxCalculationInput, SeniorDebtModelInput, DebtSizingCaseInput,
     )
     from financial_engine.policies.tax import TaxPolicy, CashTaxTiming
     from financial_engine.senior_debt.inputs import (
@@ -1022,6 +1022,9 @@ def _make_minimal_senior_debt_model_input(
         tax=tax_input,
         senior_debt_policy=policy,
         senior_debt_inputs=sd_inputs,
+        debt_sizing_case=DebtSizingCaseInput(
+            production_yield_scenario=model_in.technical.yield_scenario,
+        ),
     )
 
 
@@ -1123,6 +1126,7 @@ class TestGroupO_FingerprintSensitivity:
             tax=m.tax,
             senior_debt_policy=m.senior_debt_policy,
             senior_debt_inputs=sd_new,
+            debt_sizing_case=m.debt_sizing_case,
         )
         fp_base = compute_senior_debt_fingerprint(m)
         fp_new = compute_senior_debt_fingerprint(m_new)
@@ -1415,7 +1419,7 @@ class TestGroupT_IdentityCloneInvariance:
         from financial_engine.senior_debt.solver import solve_senior_debt
         from financial_engine.provenance import compute_senior_debt_fingerprint
         from financial_engine.inputs import (
-            TaxCalculationInput, SeniorDebtModelInput,
+            TaxCalculationInput, SeniorDebtModelInput, DebtSizingCaseInput,
         )
         from financial_engine.policies.tax import TaxPolicy, CashTaxTiming
 
@@ -1477,8 +1481,9 @@ class TestGroupT_IdentityCloneInvariance:
         tax_input = TaxCalculationInput(
             policy=zero_tax_policy, opening_loss_vintages=(), period_interest=(), period_adjustments=(),
         )
-        sdi_orig = SeniorDebtModelInput(operating=model_orig, tax=tax_input, senior_debt_policy=policy_orig, senior_debt_inputs=inputs_orig)
-        sdi_clone = SeniorDebtModelInput(operating=model_clone, tax=tax_input, senior_debt_policy=policy_clone, senior_debt_inputs=inputs_clone)
+        _dsc = DebtSizingCaseInput(production_yield_scenario=model_orig.technical.yield_scenario)
+        sdi_orig = SeniorDebtModelInput(operating=model_orig, tax=tax_input, senior_debt_policy=policy_orig, senior_debt_inputs=inputs_orig, debt_sizing_case=_dsc)
+        sdi_clone = SeniorDebtModelInput(operating=model_clone, tax=tax_input, senior_debt_policy=policy_clone, senior_debt_inputs=inputs_clone, debt_sizing_case=_dsc)
         fp_orig = compute_senior_debt_fingerprint(sdi_orig)
         fp_clone = compute_senior_debt_fingerprint(sdi_clone)
         assert fp_orig == fp_clone, (

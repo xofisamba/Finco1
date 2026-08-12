@@ -27,8 +27,15 @@ from __future__ import annotations
 from datetime import date
 from typing import TYPE_CHECKING
 
-from financial_engine.inputs import OperatingModelInput, TaxCfadsModelInput, SeniorDebtModelInput, YieldScenario
+from financial_engine.inputs import (
+    DebtSizingCaseInput,
+    OperatingModelInput,
+    TaxCfadsModelInput,
+    SeniorDebtModelInput,
+    YieldScenario,
+)
 from financial_engine.results import (
+    DebtSizingSchedules,
     OperatingPeriodResult,
     OperatingSchedules,
     ProjectModelResult,
@@ -318,6 +325,60 @@ def _compute_depreciation(inputs: OperatingModelInput, periods_meta: list) -> tu
     book_dep_by_idx = _build_schedule(dep.book_capex_items_for_depreciation)
     tax_dep_by_idx = _build_schedule(dep.tax_capex_items_for_depreciation)
     return book_dep_by_idx, tax_dep_by_idx
+
+
+def derive_debt_sizing_operating_input(
+    base_op: OperatingModelInput,
+    debt_sizing_case: DebtSizingCaseInput,
+) -> OperatingModelInput:
+    """Derive the bank/debt-sizing operating input from the Base operating input.
+
+    Pure immutable transformer: inherits all Base project fundamentals (calendar,
+    opex, capex, PPA, tax structure, etc.) and overrides only the fields present
+    in DebtSizingCaseInput:
+    - technical.yield_scenario → debt_sizing_case.production_yield_scenario
+    - revenue merchant price schedule → bank-case override (when provided)
+
+    When no merchant price override is provided, Base revenue assumptions are
+    inherited completely unchanged.
+
+    GENERIC_DEBT_SIZING_CASE_IS_EXPLICIT_AND_PROJECT_IDENTITY_FREE:
+    No project-name dispatch, no project-code dispatch, no hardcoded schedules,
+    no Excel-compatibility quirks.
+
+    Merchant price override precedence (mutually exclusive):
+    1. calendar-year form (merchant_price_calendar_start_year is not None
+       OR merchant_prices_by_calendar_year_eur_mwh is non-empty)
+    2. relative curve form (market_prices_curve_eur_mwh non-empty)
+    3. Base revenue inherited unchanged (neither provided)
+    """
+    from dataclasses import replace as _replace
+
+    new_technical = _replace(
+        base_op.technical,
+        yield_scenario=debt_sizing_case.production_yield_scenario,
+    )
+
+    if (
+        debt_sizing_case.merchant_price_calendar_start_year is not None
+        or debt_sizing_case.merchant_prices_by_calendar_year_eur_mwh
+    ):
+        new_revenue = _replace(
+            base_op.revenue,
+            merchant_price_calendar_start_year=debt_sizing_case.merchant_price_calendar_start_year,
+            merchant_prices_by_calendar_year_eur_mwh=debt_sizing_case.merchant_prices_by_calendar_year_eur_mwh,
+        )
+    elif debt_sizing_case.market_prices_curve_eur_mwh:
+        new_revenue = _replace(
+            base_op.revenue,
+            market_prices_curve_eur_mwh=debt_sizing_case.market_prices_curve_eur_mwh,
+            merchant_price_calendar_start_year=None,
+            merchant_prices_by_calendar_year_eur_mwh=(),
+        )
+    else:
+        new_revenue = base_op.revenue
+
+    return _replace(base_op, technical=new_technical, revenue=new_revenue)
 
 
 def run_operating_model(inputs: OperatingModelInput) -> ProjectModelResult:
@@ -670,22 +731,28 @@ _PHASE_2C_UNAVAILABLE = ("financial_statements", "returns")
 def run_senior_debt_model(inputs: SeniorDebtModelInput) -> ProjectModelResult:
     """Phase 2C orchestrator: operating core + tax + canonical CFADS + senior debt.
 
-    The fixed-point solver calls back into the Phase 2B tax/CFADS calculation on
-    each iteration, passing the current period senior interest.  There is one
-    authoritative tax/CFADS result per iteration; no separate CFADS formula exists.
+    Two distinct economic cases flow through this orchestrator:
+    - Base/equity case:  inputs.operating (e.g. P50 yield scenario)
+    - Bank/debt-sizing case: derived from inputs.operating + inputs.debt_sizing_case
+      (typically P90-10y yield scenario, per GENERIC_BANK_SIZING_DEFAULT_POLICY_IS_P90_10Y)
+
+    The DSCR sizing constraint is applied to BANK CFADS (bank EBITDA − bank cash tax),
+    not to Base CFADS. After the solver converges, the Base CFADS is recomputed using
+    the final senior interest so that tax_and_cfads in the result reflects the correct
+    Base-case post-interest CFADS.
 
     Calculation order:
-      1.  Run Phase 2B tax+CFADS model (initial pass with zero senior interest).
-      2.  Build rate map and period metadata from operating periods.
-      3.  Define tax_cfads_fn: given senior_interest_by_period, rebuild
-          TaxCalculationInput with updated PeriodInterestInput, call calculate_tax
-          and calculate_canonical_cfads, return (cfads_by_period, cash_tax_by_period).
-      4.  Call solve_senior_debt() with this callback.
-      5.  Assemble SeniorDebtSchedules result.
-      6.  Attach Phase 2C provenance.
+      1.  Derive bank operating input from Base + DebtSizingCaseInput.
+      2.  Run Phase 2B tax+CFADS model on Base (for base periods/provenance).
+      3.  Run Phase 2A operating model on bank case (bank EBITDA for CFADS sizing).
+      4.  Define tax_cfads_fn using bank periods (sizing CFADS from bank EBITDA).
+      5.  Call solve_senior_debt() with bank-CFADS callback.
+      6.  Recompute Base CFADS with final senior interest (authoritative base result).
+      7.  Assemble DebtSizingSchedules from bank schedules.
+      8.  Assemble SeniorDebtSchedules result.
+      9.  Attach Phase 2C provenance.
 
-    Non-converged results are returned with diagnostics.converged=False.
-    Callers must check senior_debt.diagnostics["converged"].
+    Non-converged results raise SeniorDebtNonConvergenceError.
     """
     from financial_engine.inputs import TaxCalculationInput, PeriodInterestInput
     from financial_engine.tax.engine import calculate_tax
@@ -697,22 +764,30 @@ def run_senior_debt_model(inputs: SeniorDebtModelInput) -> ProjectModelResult:
     policy: SeniorDebtPolicy = inputs.senior_debt_policy  # type: ignore[assignment]
     sd_inputs: SeniorDebtInputs = inputs.senior_debt_inputs  # type: ignore[assignment]
 
-    # Step 1: Phase 2B base run (with any pre-existing interest in inputs.tax)
+    # Step 1: Derive bank operating input.
+    bank_op = derive_debt_sizing_operating_input(inputs.operating, inputs.debt_sizing_case)
+
+    # Step 2: Phase 2B base run (base operating + base tax, any pre-existing interest).
     phase2b_inputs = TaxCfadsModelInput(operating=inputs.operating, tax=inputs.tax)
     phase2b_result = run_tax_cfads_model(phase2b_inputs)
 
-    # Closure over base inputs for tax feedback
+    # Step 3: Bank Phase 2A result — bank EBITDA is the CFADS sizing input.
+    bank_phase2a_result = run_operating_model(bank_op)
+
     base_tax_input = inputs.tax
 
-    # Mutable container to capture the final authoritative tax/CFADS state from
-    # the last solver iteration.
-    _last_tax_state: list = []
+    # Mutable container: captures bank-case tax/CFADS state from the last solver iteration.
+    _last_bank_tax_state: list = []
 
     def tax_cfads_fn(
         senior_interest_by_period: dict[int, float],
     ) -> tuple[dict[int, float], dict[int, float]]:
-        """Rebuild tax + CFADS with updated senior interest on each solver iteration."""
-        # Merge solver-provided senior interest into PeriodInterestInput
+        """Rebuild bank-case tax + CFADS with updated senior interest on each iteration.
+
+        Uses bank operating periods (bank_phase2a_result.periods) so that EBITDA
+        entering the tax base reflects the bank-case yield scenario, not Base.
+        """
+        # Merge solver-provided senior interest into PeriodInterestInput.
         merged_interest: dict[int, "PeriodInterestInput"] = {}
         for pi in base_tax_input.period_interest:
             merged_interest[pi.period_index] = pi
@@ -737,26 +812,22 @@ def run_senior_debt_model(inputs: SeniorDebtModelInput) -> ProjectModelResult:
             period_interest=tuple(merged_interest.values()),
             period_adjustments=base_tax_input.period_adjustments,
         )
-        tax_result = calculate_tax(phase2b_result.periods, updated_tax_input)
-        cfads_results = calculate_canonical_cfads(phase2b_result.periods, tax_result.period_results)
-        # Capture this iteration's authoritative state so that after solve_senior_debt
-        # returns we can assemble final TaxAndCfadsSchedules from the last iteration.
-        _last_tax_state.clear()
-        _last_tax_state.append((tax_result, tax_result.period_results, cfads_results))
+        # Tax and CFADS computed against bank periods (bank EBITDA drives taxable income).
+        tax_result = calculate_tax(bank_phase2a_result.periods, updated_tax_input)
+        cfads_results = calculate_canonical_cfads(bank_phase2a_result.periods, tax_result.period_results)
+        _last_bank_tax_state.clear()
+        _last_bank_tax_state.append((tax_result, tax_result.period_results, cfads_results))
         cfads_by_period = {cr.period_index: cr.cfads_keur for cr in cfads_results}
         cash_tax_by_period = {
             pr.period_index: pr.cash_tax_keur for pr in tax_result.period_results
         }
         return cfads_by_period, cash_tax_by_period
 
-    # Step 4: Fixed-point solver.
-    # Pass only debt-tenor periods to the solver: operating periods with index in
-    # [repayment_start_period_index, maturity_period_index].  Post-maturity operating
-    # periods have no rate entry and would raise in build_rate_map.
+    # Step 5: Fixed-point solver against bank periods.
     debt_start = policy.repayment_start_period_index
     debt_end = policy.maturity_period_index
     debt_periods = tuple(
-        p for p in phase2b_result.periods
+        p for p in bank_phase2a_result.periods
         if p.is_operation and debt_start <= p.period_index <= debt_end
     )
     sd_result = solve_senior_debt(
@@ -766,8 +837,7 @@ def run_senior_debt_model(inputs: SeniorDebtModelInput) -> ProjectModelResult:
         tax_cfads_fn=tax_cfads_fn,
     )
 
-    # Issue 4: Block non-authoritative results from being returned as valid ProjectModelResult.
-    # Downstream waterfall/FS/returns code must never receive a non-authoritative debt result.
+    # Block non-authoritative results from reaching downstream modules.
     if not sd_result.diagnostics.is_authoritative:
         from financial_engine.senior_debt.models import SeniorDebtNonConvergenceError
         raise SeniorDebtNonConvergenceError(
@@ -778,7 +848,61 @@ def run_senior_debt_model(inputs: SeniorDebtModelInput) -> ProjectModelResult:
             f"Downstream waterfall/FS/returns code must not receive non-authoritative debt results."
         )
 
-    # Step 5: Assemble result-layer SeniorDebtSchedules
+    # Step 6: Recompute Base CFADS with final senior interest (authoritative base result).
+    # The solver converged on bank CFADS; now update the Base tax/CFADS using the same
+    # final senior interest so that result.tax_and_cfads is the correct Base CFADS.
+    if _last_bank_tax_state:
+        final_senior_interest = dict(
+            zip(sd_result.period_indices, sd_result.senior_interest_keur)
+        )
+        merged_base: dict[int, "PeriodInterestInput"] = {}
+        for pi in base_tax_input.period_interest:
+            merged_base[pi.period_index] = pi
+        for idx, senior_keur in final_senior_interest.items():
+            existing = merged_base.get(idx)
+            if existing is not None:
+                merged_base[idx] = PeriodInterestInput(
+                    period_index=idx,
+                    senior_interest_keur=senior_keur,
+                    shl_interest_keur=existing.shl_interest_keur,
+                    other_interest_keur=existing.other_interest_keur,
+                )
+            else:
+                merged_base[idx] = PeriodInterestInput(
+                    period_index=idx,
+                    senior_interest_keur=senior_keur,
+                )
+        base_updated_tax = TaxCalculationInput(
+            policy=base_tax_input.policy,
+            opening_loss_vintages=base_tax_input.opening_loss_vintages,
+            period_interest=tuple(merged_base.values()),
+            period_adjustments=base_tax_input.period_adjustments,
+        )
+        base_tax_result = calculate_tax(phase2b_result.periods, base_updated_tax)
+        base_cfads_results = calculate_canonical_cfads(
+            phase2b_result.periods, base_tax_result.period_results
+        )
+        final_tax_cfads = _assemble_tax_cfads_schedules(
+            phase2b_result, base_tax_result, base_tax_result.period_results, base_cfads_results
+        )
+    else:
+        final_tax_cfads = phase2b_result.tax_and_cfads
+
+    # Step 7: Assemble DebtSizingSchedules from bank case.
+    if _last_bank_tax_state:
+        _bank_tax_r, _bank_period_r, _bank_cfads_r = _last_bank_tax_state[0]
+        debt_sizing_schedules: DebtSizingSchedules | None = DebtSizingSchedules(
+            period_indices=bank_phase2a_result.operating_schedules.period_indices,
+            bank_production_mwh=bank_phase2a_result.operating_schedules.production_mwh,
+            bank_revenue_keur=bank_phase2a_result.operating_schedules.revenue_keur,
+            bank_opex_keur=bank_phase2a_result.operating_schedules.opex_keur,
+            bank_ebitda_keur=bank_phase2a_result.operating_schedules.ebitda_keur,
+            bank_cfads_keur=tuple(cr.cfads_keur for cr in _bank_cfads_r),
+        )
+    else:
+        debt_sizing_schedules = None
+
+    # Step 8: Assemble result-layer SeniorDebtSchedules.
     diag_dict = {
         "converged": sd_result.diagnostics.converged,
         "is_authoritative": sd_result.diagnostics.is_authoritative,
@@ -803,14 +927,7 @@ def run_senior_debt_model(inputs: SeniorDebtModelInput) -> ProjectModelResult:
         diagnostics=diag_dict,
     )
 
-    # Assemble final authoritative tax/CFADS from last solver iteration (if authoritative).
-    if sd_result.diagnostics.is_authoritative and _last_tax_state:
-        tax_r, period_r, cfads_r = _last_tax_state[0]
-        final_tax_cfads = _assemble_tax_cfads_schedules(phase2b_result, tax_r, period_r, cfads_r)
-    else:
-        final_tax_cfads = phase2b_result.tax_and_cfads
-
-    # Step 6: Phase 2C provenance
+    # Step 9: Phase 2C provenance.
     fingerprint = compute_senior_debt_fingerprint(inputs)
     evidence = phase2b_result.provenance.derivation_evidence + (
         DerivationEvidence(
@@ -873,6 +990,7 @@ def run_senior_debt_model(inputs: SeniorDebtModelInput) -> ProjectModelResult:
         operating_schedules=phase2b_result.operating_schedules,
         tax_and_cfads=final_tax_cfads,
         senior_debt=result_schedules,
+        debt_sizing=debt_sizing_schedules,
         unavailable_sections=_PHASE_2C_UNAVAILABLE,
         validation_issues=validation_issues,
         warnings=warnings,

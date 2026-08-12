@@ -158,11 +158,23 @@ def compute_senior_debt_fingerprint(inputs: "Any") -> str:
         TaxCfadsModelInput(operating=inputs.operating, tax=inputs.tax)
     )
 
+    # Include debt_sizing_case in fingerprint (source_label excluded — audit-only).
+    debt_case_payload = None
+    dc = getattr(inputs, "debt_sizing_case", None)
+    if dc is not None:
+        debt_case_payload = {
+            "production_yield_scenario": dc.production_yield_scenario.value,
+            "merchant_price_calendar_start_year": dc.merchant_price_calendar_start_year,
+            "merchant_prices_by_calendar_year_eur_mwh": list(dc.merchant_prices_by_calendar_year_eur_mwh),
+            "market_prices_curve_eur_mwh": list(dc.market_prices_curve_eur_mwh),
+        }
+
     policy = inputs.senior_debt_policy
     sd = inputs.senior_debt_inputs
 
     payload = {
         "phase2b_fingerprint": phase2b_fp,
+        "debt_sizing_case": debt_case_payload,
         "policy": {
             "policy_id": policy.policy_id,
             "policy_version": policy.policy_version,

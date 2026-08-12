@@ -208,18 +208,62 @@ class InputProvenance:
 # ---------------------------------------------------------------------------
 
 @dataclass(frozen=True)
+class DebtSizingCaseInput:
+    """Bank/debt-sizing economic case — assumptions that differ from the Base case.
+
+    Contains ONLY the fields that deviate from the Base/equity performance case.
+    All project fundamentals (calendar, opex, capex, PPA, tax policy, etc.) are
+    inherited from the Base OperatingModelInput unchanged.
+
+    GENERIC_DEBT_SIZING_CASE_IS_EXPLICIT_AND_PROJECT_IDENTITY_FREE:
+    No project-name dispatch, no project-code dispatch. The bank case is
+    described entirely by explicit user-supplied field values.
+
+    production_yield_scenario:
+        Yield scenario for the bank/debt-sizing case (typically P90_10Y).
+        Replaces technical.yield_scenario from the Base operating input.
+        GENERIC_BANK_SIZING_DEFAULT_POLICY_IS_P90_10Y.
+
+    merchant_price_calendar_start_year / merchant_prices_by_calendar_year_eur_mwh:
+        Optional calendar-year merchant price override for the bank case.
+        When supplied, replaces the Base merchant price curve. market_inflation
+        is NOT re-applied. Mirror of RevenueInput.merchant_price_calendar_start_year.
+        Mutually exclusive with market_prices_curve_eur_mwh.
+
+    market_prices_curve_eur_mwh:
+        Optional relative (inflation-grown) merchant price curve override.
+        When empty AND merchant_price_calendar_start_year is None, Base revenue
+        merchant price assumptions are inherited unchanged.
+
+    source_label:
+        Audit-only label (e.g. "TUHO P90-10y bank case"). Never used in any
+        financial calculation; present solely for human-readable provenance.
+        Excluded from the engine fingerprint.
+    """
+    production_yield_scenario: YieldScenario
+    merchant_price_calendar_start_year: int | None = None
+    merchant_prices_by_calendar_year_eur_mwh: tuple[float, ...] = ()
+    market_prices_curve_eur_mwh: tuple[float, ...] = ()
+    source_label: str = ""
+
+
+@dataclass(frozen=True)
 class SeniorDebtModelInput:
     """Phase 2C input: Phase 2B inputs + senior debt policy + senior debt inputs.
 
-    operating: Phase 2A OperatingModelInput
+    operating: Phase 2A OperatingModelInput (Base/equity performance case)
     tax: Phase 2B TaxCalculationInput (interest from Phase 2C solver feeds back here)
     senior_debt_policy: SeniorDebtPolicy (sizing mode, DSCR target, rates, etc.)
     senior_debt_inputs: SeniorDebtInputs (cost base, initial guess, rate schedule, etc.)
+    debt_sizing_case: DebtSizingCaseInput (bank-case assumptions differing from Base)
+        Required. Use DebtSizingCaseInput(production_yield_scenario=YieldScenario.P90_10Y)
+        for the generic bank case (GENERIC_BANK_SIZING_DEFAULT_POLICY_IS_P90_10Y).
     """
     operating: "OperatingModelInput"
     tax: "TaxCalculationInput"
     senior_debt_policy: object   # SeniorDebtPolicy (avoid circular imports)
     senior_debt_inputs: object   # SeniorDebtInputs
+    debt_sizing_case: "DebtSizingCaseInput"
 
 
 @dataclass(frozen=True)

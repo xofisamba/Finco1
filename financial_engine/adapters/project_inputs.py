@@ -17,6 +17,7 @@ if TYPE_CHECKING:
 from financial_engine.inputs import (
     CalendarInput,
     CapexItemForDep,
+    DebtSizingCaseInput,
     DepreciationInput,
     InputProvenance,
     OpexInput,
@@ -255,9 +256,17 @@ def build_senior_debt_model_input_from_project_inputs(
         project_inputs, operating_periods
     )
 
+    # Generic bank case: P90-10y yield scenario (GENERIC_BANK_SIZING_DEFAULT_POLICY_IS_P90_10Y).
+    # No merchant price override — inherited from Base revenue assumptions.
+    debt_sizing_case = DebtSizingCaseInput(
+        production_yield_scenario=YieldScenario.P90_10Y,
+        source_label="generic_bank_case_p90_10y",
+    )
+
     return SeniorDebtModelInput(
         operating=operating,
         tax=tax,
         senior_debt_policy=policy,
         senior_debt_inputs=inputs,
+        debt_sizing_case=debt_sizing_case,
     )

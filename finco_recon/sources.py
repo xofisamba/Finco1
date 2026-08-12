@@ -481,7 +481,7 @@ def _load_legacy_periods() -> list[LegacyData]:
 def _run_clean_engine() -> tuple[list[EngineData], float, str | None, int]:
     """Run run_senior_debt_model for oborovo and return (engine_data, debt_size, binding, iters)."""
     from financial_engine.orchestrator import run_senior_debt_model
-    from financial_engine.inputs import TaxCalculationInput, SeniorDebtModelInput
+    from financial_engine.inputs import TaxCalculationInput, SeniorDebtModelInput, DebtSizingCaseInput, YieldScenario
     from financial_engine.senior_debt.inputs import SeniorDebtInputs
     from financial_engine.senior_debt.policy import (
         SeniorDebtPolicy, SeniorDebtSizingMode, DayCountConvention,
@@ -537,6 +537,10 @@ def _run_clean_engine() -> tuple[list[EngineData], float, str | None, int]:
         tax=tax_input,
         senior_debt_policy=sd_policy,
         senior_debt_inputs=sd_inputs,
+        debt_sizing_case=DebtSizingCaseInput(
+            production_yield_scenario=YieldScenario.P90_10Y,
+            source_label="generic_bank_case_p90_10y",
+        ),
     )
     result = run_senior_debt_model(model_input)
 

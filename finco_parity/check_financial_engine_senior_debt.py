@@ -163,7 +163,7 @@ def _run_baseline_phase2c(baseline_id: str) -> dict:
       error          : error message (FAIL only)
     """
     from financial_engine.orchestrator import run_senior_debt_model
-    from financial_engine.inputs import TaxCalculationInput, SeniorDebtModelInput
+    from financial_engine.inputs import TaxCalculationInput, SeniorDebtModelInput, DebtSizingCaseInput, YieldScenario
     from financial_engine.senior_debt.models import SeniorDebtNonConvergenceError
     from finco_parity.tax_reference_inputs import build_tax_policy, build_opening_loss_vintages
     from finco_parity.financial_engine_tax_cfads_candidate import (
@@ -202,6 +202,10 @@ def _run_baseline_phase2c(baseline_id: str) -> dict:
         tax=tax_input,
         senior_debt_policy=sd_policy,
         senior_debt_inputs=sd_inputs,
+        debt_sizing_case=DebtSizingCaseInput(
+            production_yield_scenario=YieldScenario.P90_10Y,
+            source_label="generic_bank_case_p90_10y",
+        ),
     )
 
     # Step 4: Run Phase 2C
