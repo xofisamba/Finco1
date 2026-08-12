@@ -133,6 +133,7 @@ class DebtSizingSchedules:
     bank_revenue_keur: tuple[float, ...]
     bank_opex_keur: tuple[float, ...]
     bank_ebitda_keur: tuple[float, ...]
+    bank_cash_tax_keur: tuple[float, ...]
     bank_cfads_keur: tuple[float, ...]
 
 

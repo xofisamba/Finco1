@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date
 from enum import Enum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from financial_engine.ppa_indexation import PpaIndexationStartPolicy
 
@@ -236,7 +236,7 @@ class DebtSizingCaseInput:
         merchant price assumptions are inherited unchanged.
 
     source_label:
-        Audit-only label (e.g. "TUHO P90-10y bank case"). Never used in any
+        Audit-only label (e.g. "p90_10y_lender_case"). Never used in any
         financial calculation; present solely for human-readable provenance.
         Excluded from the engine fingerprint.
     """
@@ -245,6 +245,37 @@ class DebtSizingCaseInput:
     merchant_prices_by_calendar_year_eur_mwh: tuple[float, ...] = ()
     market_prices_curve_eur_mwh: tuple[float, ...] = ()
     source_label: str = ""
+
+    def __post_init__(self) -> None:
+        # Merchant-price mutual exclusivity: calendar-year and curve forms are exclusive.
+        has_calendar = (
+            self.merchant_price_calendar_start_year is not None
+            or bool(self.merchant_prices_by_calendar_year_eur_mwh)
+        )
+        has_curve = bool(self.market_prices_curve_eur_mwh)
+        if has_calendar and has_curve:
+            raise ValueError(
+                "DebtSizingCaseInput: merchant_prices_by_calendar_year_eur_mwh / "
+                "merchant_price_calendar_start_year and market_prices_curve_eur_mwh "
+                "are mutually exclusive. Supply at most one form."
+            )
+        # Partial calendar-year pair guard: start_year without values or values without start_year.
+        if (
+            self.merchant_price_calendar_start_year is not None
+            and not self.merchant_prices_by_calendar_year_eur_mwh
+        ):
+            raise ValueError(
+                "DebtSizingCaseInput: merchant_price_calendar_start_year is set but "
+                "merchant_prices_by_calendar_year_eur_mwh is empty. Both must be supplied together."
+            )
+        if (
+            self.merchant_prices_by_calendar_year_eur_mwh
+            and self.merchant_price_calendar_start_year is None
+        ):
+            raise ValueError(
+                "DebtSizingCaseInput: merchant_prices_by_calendar_year_eur_mwh is supplied but "
+                "merchant_price_calendar_start_year is None. Both must be supplied together."
+            )
 
 
 @dataclass(frozen=True)

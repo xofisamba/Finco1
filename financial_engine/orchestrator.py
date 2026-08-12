@@ -363,10 +363,12 @@ def derive_debt_sizing_operating_input(
         debt_sizing_case.merchant_price_calendar_start_year is not None
         or debt_sizing_case.merchant_prices_by_calendar_year_eur_mwh
     ):
+        # Apply calendar-year override; clear curve form to prevent dual representation.
         new_revenue = _replace(
             base_op.revenue,
             merchant_price_calendar_start_year=debt_sizing_case.merchant_price_calendar_start_year,
             merchant_prices_by_calendar_year_eur_mwh=debt_sizing_case.merchant_prices_by_calendar_year_eur_mwh,
+            market_prices_curve_eur_mwh=(),
         )
     elif debt_sizing_case.market_prices_curve_eur_mwh:
         new_revenue = _replace(
@@ -891,12 +893,15 @@ def run_senior_debt_model(inputs: SeniorDebtModelInput) -> ProjectModelResult:
     # Step 7: Assemble DebtSizingSchedules from bank case.
     if _last_bank_tax_state:
         _bank_tax_r, _bank_period_r, _bank_cfads_r = _last_bank_tax_state[0]
+        _bank_cash_tax_by_idx = {pr.period_index: pr.cash_tax_keur for pr in _bank_period_r}
+        _ops_indices = bank_phase2a_result.operating_schedules.period_indices
         debt_sizing_schedules: DebtSizingSchedules | None = DebtSizingSchedules(
-            period_indices=bank_phase2a_result.operating_schedules.period_indices,
+            period_indices=_ops_indices,
             bank_production_mwh=bank_phase2a_result.operating_schedules.production_mwh,
             bank_revenue_keur=bank_phase2a_result.operating_schedules.revenue_keur,
             bank_opex_keur=bank_phase2a_result.operating_schedules.opex_keur,
             bank_ebitda_keur=bank_phase2a_result.operating_schedules.ebitda_keur,
+            bank_cash_tax_keur=tuple(_bank_cash_tax_by_idx.get(i, 0.0) for i in _ops_indices),
             bank_cfads_keur=tuple(cr.cfads_keur for cr in _bank_cfads_r),
         )
     else:

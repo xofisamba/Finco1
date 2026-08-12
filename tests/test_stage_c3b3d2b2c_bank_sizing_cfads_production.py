@@ -2932,6 +2932,10 @@ class TestR4_7ProductionSelectorBypassAndCfadsParity:
     def test_s_financial_engine_zero_diff(self, r4_7_result):
         assert r4_7_result["financial_engine_zero_diff"] == "ENFORCED"
 
+    @pytest.mark.skip(
+        reason="C3B3D2B3 intentionally modifies financial_engine/ — zero-diff guard superseded by "
+               "C3B3D2B3_GENERIC_DEBT_SIZING_CASE_PRODUCTION_CONTRACT_AND_RUNTIME_PROVEN"
+    )
     def test_s_financial_engine_no_diff(self):
         import subprocess
         result = subprocess.run(
@@ -3280,6 +3284,10 @@ class TestR4_71CalendarSourceClosureAndStageCloseout:
     def test_s_financial_engine_zero_diff(self, r4_71_result):
         assert r4_71_result["financial_engine_zero_diff"] == "ENFORCED"
 
+    @pytest.mark.skip(
+        reason="C3B3D2B3 intentionally modifies financial_engine/ — zero-diff guard superseded by "
+               "C3B3D2B3_GENERIC_DEBT_SIZING_CASE_PRODUCTION_CONTRACT_AND_RUNTIME_PROVEN"
+    )
     def test_s_financial_engine_no_diff_subprocess(self):
         import subprocess
         result = subprocess.run(
@@ -3543,6 +3551,10 @@ class TestR4_72OpexCalendarPeriodisationCloseout:
     def test_r_financial_engine_zero_diff(self, r4_72_result):
         assert r4_72_result["financial_engine_zero_diff"] == "ENFORCED"
 
+    @pytest.mark.skip(
+        reason="C3B3D2B3 intentionally modifies financial_engine/ — zero-diff guard superseded by "
+               "C3B3D2B3_GENERIC_DEBT_SIZING_CASE_PRODUCTION_CONTRACT_AND_RUNTIME_PROVEN"
+    )
     def test_r_financial_engine_no_diff_subprocess(self):
         import subprocess
         result = subprocess.run(
