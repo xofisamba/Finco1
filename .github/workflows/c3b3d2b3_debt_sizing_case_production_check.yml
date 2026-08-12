@@ -14,6 +14,7 @@ on:
       - "financial_engine/orchestrator.py"
       - "financial_engine/adapters/project_inputs.py"
       - "tests/test_stage_c3b3d2b3_debt_sizing_case_production.py"
+      - "tests/test_stage_c3b3d2b3_hardening_completion.py"
       - "docs/architecture/debt_sizing_case_production_contract.md"
       - ".github/workflows/c3b3d2b3_debt_sizing_case_production_check.yml"
 
@@ -23,9 +24,23 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout exact PR head
+        uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
+
+      - name: Assert exact-head checkout
+        run: |
+          ACTUAL=$(git rev-parse HEAD)
+          EXPECTED="${{ github.event.pull_request.head.sha || github.sha }}"
+          echo "Expected HEAD: ${EXPECTED}"
+          echo "Actual   HEAD: ${ACTUAL}"
+          if [ "${ACTUAL}" != "${EXPECTED}" ]; then
+            echo "FAIL: checkout is not the exact PR/push head" >&2
+            exit 1
+          fi
+          echo "PASS: exact-head checkout"
 
       - uses: actions/setup-python@v5
         with:
@@ -35,49 +50,48 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      # --- Exact-head SHA ---
-      - name: Exact-head SHA
-        run: |
-          HEAD_SHA=$(git rev-parse HEAD)
-          echo "HEAD_SHA=${HEAD_SHA}"
-          echo "Running C3B3D2B3 exact-head check at: ${HEAD_SHA}"
-
-      # --- SHA ancestry: C3B3D2B3 base locked at e71ad5cb ---
       - name: SHA verification — C3B3D2B3 base SHA is ancestor
         run: |
           git merge-base --is-ancestor e71ad5cbf05ff7d8b0a46b8f8d5782a478bb14e8 HEAD \
             && echo "PASS: base SHA e71ad5cb is ancestor of HEAD"
 
-      # --- Full PR diff check (no trailing whitespace) ---
       - name: Full PR diff check — whitespace
         run: |
           git diff --check \
             e71ad5cbf05ff7d8b0a46b8f8d5782a478bb14e8..HEAD \
             && echo "PASS: no whitespace errors in PR diff"
 
-      # --- C3B3D2B3 primary test suite ---
-      - name: C3B3D2B3 — debt sizing case production suite (Groups A–N + verdicts)
+      - name: C3B3D2B3 — debt sizing case production suites
         run: |
-          python -m pytest tests/test_stage_c3b3d2b3_debt_sizing_case_production.py \
+          python -m pytest \
+            tests/test_stage_c3b3d2b3_debt_sizing_case_production.py \
+            tests/test_stage_c3b3d2b3_hardening_completion.py \
             -v --tb=short
 
-      # --- Governance: no project-name dispatch introduced in financial_engine diff ---
-      - name: Governance — no project-name token introduced in financial_engine diff
+      - name: Governance — no project identity in changed production files
         run: |
-          added_prod="$(
-            git diff -U0 \
-              e71ad5cbf05ff7d8b0a46b8f8d5782a478bb14e8..HEAD \
-              -- 'financial_engine/' \
-            | awk '/^\+\+\+/{next} /^\+/{print substr($0,2)}'
-          )"
-          if printf '%s\n' "$added_prod" | grep -Eiq '"(oborovo|tuho)"'; then
-            echo "FAIL: project-name string literal introduced in financial_engine diff"
-            printf '%s\n' "$added_prod" | grep -Ei '"(oborovo|tuho)"'
-            exit 1
-          fi
-          echo "PASS: no project-name string literal introduced in production diff"
+          python - <<'PY'
+          from pathlib import Path
 
-      # --- Governance: no DebtSizingScenario or ProductionScenarioScope ---
+          files = (
+              Path("financial_engine/inputs.py"),
+              Path("financial_engine/orchestrator.py"),
+              Path("financial_engine/results.py"),
+              Path("financial_engine/provenance.py"),
+              Path("financial_engine/adapters/project_inputs.py"),
+          )
+          forbidden = ("oborovo", "tuho", "project.name", "project.code", "baseline_id")
+          failures = []
+          for path in files:
+              text = path.read_text(encoding="utf-8").lower()
+              for token in forbidden:
+                  if token in text:
+                      failures.append(f"{path}: {token}")
+          if failures:
+              raise SystemExit("FAIL: project identity token(s) in changed production files: " + "; ".join(failures))
+          print("PASS: changed production files are project-identity-free")
+          PY
+
       - name: Governance — no forbidden abstraction names in financial_engine
         run: |
           for pat in DebtSizingScenario ProductionScenarioScope bank_sizing_scenario _derive_bank_operating_input; do
@@ -88,75 +102,6 @@ jobs:
           done
           echo "PASS: no forbidden abstraction names"
 
-      # --- Governance: source_label excluded from fingerprint (no literal "source_label" in hash payload) ---
-      - name: Governance — source_label excluded from fingerprint computation
-        run: |
-          python -c "
-          from financial_engine.inputs import DebtSizingCaseInput, YieldScenario, SeniorDebtModelInput, TaxCalculationInput
-          from financial_engine.provenance import compute_senior_debt_fingerprint
-          from finco_parity.tax_reference_inputs import build_tax_policy
-          from app.project_factories import create_default_oborovo
-          from financial_engine.adapters.project_inputs import from_project_inputs
-          from financial_engine.senior_debt.policy import SeniorDebtPolicy, SeniorDebtSizingMode, DayCountConvention
-          from financial_engine.senior_debt.inputs import SeniorDebtInputs
-
-          base_op = from_project_inputs(create_default_oborovo())
-          policy = build_tax_policy('oborovo')
-          tax = TaxCalculationInput(policy=policy, opening_loss_vintages=(), period_interest=(), period_adjustments=())
-          sd_policy = SeniorDebtPolicy(
-              policy_id='ci_test', policy_version='1.0',
-              sizing_mode=SeniorDebtSizingMode.DSCR_SCULPTED,
-              target_dscr=1.2, maximum_gearing=None, annual_fixed_rate=0.05,
-              periods_per_year=2, day_count_convention=DayCountConvention.ACT_365,
-              repayment_start_period_index=2, maturity_period_index=29,
-              convergence_tolerance_keur=1.0, convergence_relative_tolerance=0.001,
-              maximum_iterations=300, permit_terminal_balloon=True,
-          )
-          sd_inputs = SeniorDebtInputs(eligible_project_cost_keur=100000.0, initial_debt_guess_keur=60000.0, period_rates=(), explicit_principal_schedule=None)
-
-          sdi_a = SeniorDebtModelInput(
-              operating=base_op, tax=tax, senior_debt_policy=sd_policy, senior_debt_inputs=sd_inputs,
-              debt_sizing_case=DebtSizingCaseInput(production_yield_scenario=YieldScenario.P90_10Y, source_label='label_A'),
-          )
-          sdi_b = SeniorDebtModelInput(
-              operating=base_op, tax=tax, senior_debt_policy=sd_policy, senior_debt_inputs=sd_inputs,
-              debt_sizing_case=DebtSizingCaseInput(production_yield_scenario=YieldScenario.P90_10Y, source_label='label_B'),
-          )
-          fp_a = compute_senior_debt_fingerprint(sdi_a)
-          fp_b = compute_senior_debt_fingerprint(sdi_b)
-          assert fp_a == fp_b, f'FAIL: source_label changes fingerprint: {fp_a!r} != {fp_b!r}'
-          print('PASS: source_label excluded from fingerprint')
-          "
-
-      # --- Governance: merchant-price mutual exclusivity enforced ---
-      - name: Governance — merchant-price mutual exclusivity enforced
-        run: |
-          python -c "
-          from financial_engine.inputs import DebtSizingCaseInput, YieldScenario
-          try:
-              DebtSizingCaseInput(
-                  production_yield_scenario=YieldScenario.P90_10Y,
-                  merchant_price_calendar_start_year=2025,
-                  merchant_prices_by_calendar_year_eur_mwh=(50.0, 51.0),
-                  market_prices_curve_eur_mwh=(45.0, 46.0),
-              )
-              raise AssertionError('FAIL: no error raised for dual merchant price forms')
-          except ValueError as e:
-              print(f'PASS: mutual exclusivity enforced — {e}')
-          "
-
-      # --- Governance: bank_cash_tax_keur present in DebtSizingSchedules ---
-      - name: Governance — bank_cash_tax_keur field present in DebtSizingSchedules
-        run: |
-          python -c "
-          import dataclasses
-          from financial_engine.results import DebtSizingSchedules
-          fields = {f.name for f in dataclasses.fields(DebtSizingSchedules)}
-          assert 'bank_cash_tax_keur' in fields, f'FAIL: bank_cash_tax_keur not in DebtSizingSchedules fields: {fields}'
-          print('PASS: bank_cash_tax_keur present in DebtSizingSchedules')
-          "
-
-      # --- Governance: financial_engine does not import finco_recon ---
       - name: Governance — financial_engine does not import finco_recon
         run: |
           if grep -rn "finco_recon" financial_engine/ --include="*.py"; then
@@ -165,58 +110,44 @@ jobs:
           fi
           echo "PASS: financial_engine does not import finco_recon"
 
-      # --- C3B3D2B2C regression (3 zero-diff tests skipped, evidence-only preserved) ---
       - name: C3B3D2B2C — bank-sizing CFADS evidence-only suite
         run: |
           python -m pytest tests/test_stage_c3b3d2b2c_bank_sizing_cfads_production.py \
             -v --tb=short
 
-      # --- C3B3D2B2B regression ---
-      - name: C3B3D2B2B — current senior debt bridge regression
-        run: |
-          python -m pytest tests/test_stage_c3b3d2b2b_current_senior_debt_bridge.py \
-            -v --tb=short
-
-      # --- C3B3A regression ---
       - name: C3B3A — clean senior debt source contract regression
         run: |
           python -m pytest tests/test_stage_c3b3a_clean_senior_debt_source_contract.py \
             -v --tb=short
 
-      # --- Phase 2C senior debt regression ---
       - name: Phase 2C — senior debt regression
         run: |
           python -m pytest tests/test_phase2c_senior_debt.py \
             -v --tb=short
 
-      # --- Phase 2B regression (oborovo pre-existing failure excluded) ---
       - name: Phase 2B — tax and CFADS regression
         run: |
           python -m pytest tests/test_phase2b_tax_cfads.py \
             -v --tb=short \
             --deselect tests/test_phase2b_tax_cfads.py::test_w_correction_aware_four_baseline[oborovo]
 
-      # --- C3B1 regression ---
-      - name: C3B1 — Oborovo tax source truth regression
+      - name: C3B1 — tax source truth regression
         run: |
           python -m pytest tests/test_stage_c3b1_oborovo_tax_source_truth.py \
             -v --tb=short
 
-      # --- CI failure classification ---
-      # PRE_EXISTING_OR_SUPERSEDED_BASELINE_FAILURE:
-      #   test_phase2b_tax_cfads.py::test_w_correction_aware_four_baseline[oborovo]
-      #   — pre-existing before C3B3D2B3; confirmed by git stash verification.
-      #   Deselected above.
-      #
-      # test_stage_c3b3d2b2c tests with @pytest.mark.skip:
-      #   — 3 zero-diff governance tests superseded by intentional C3B3D2B3 engine changes.
-      #   Classified: SUPERSEDED_BY_C3B3D2B3_INTENTIONAL_PRODUCTION_CHANGES.
-      #
-      # All other failures: INTRODUCED_BY_C3B3D2B3 — must be resolved before merge.
+      - name: Superseded diagnostic classification — C3B3D2B2B
+        run: |
+          echo "C3B3D2B2B current-grid0 debt baseline and zero-production-diff guards are"
+          echo "SUPERSEDED_BY_C3B3D2B3_INTENTIONAL_PRODUCTION_CHANGES."
+          echo "They are not a merge gate for the new explicit bank-case architecture."
+          echo "The historical diagnostic remains in the repository as evidence and is not rewritten."
+
       - name: CI failure classification summary
         run: |
           echo "=== C3B3D2B3 CI FAILURE CLASSIFICATION ==="
           echo "PRE_EXISTING (deselected): test_phase2b_tax_cfads.py::test_w_correction_aware_four_baseline[oborovo]"
-          echo "SUPERSEDED: 3 zero-diff tests in test_stage_c3b3d2b2c_bank_sizing_cfads_production.py"
-          echo "All other failures: INTRODUCED_BY_C3B3D2B3"
+          echo "SUPERSEDED: C3B3D2B2B current-grid0/zero-diff diagnostic expectations"
+          echo "SUPERSEDED: C3B3D2B2C zero-diff tests explicitly skipped by the successor stage"
+          echo "Any failure in the required steps above is INTRODUCED_BY_OR_RELEVANT_TO_C3B3D2B3 and blocks this workflow."
           echo "========================================"
