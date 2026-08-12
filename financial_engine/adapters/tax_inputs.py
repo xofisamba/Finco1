@@ -37,6 +37,8 @@ _POLICY_VERSION = "1.0.0"
 
 def build_tax_contract_from_project_inputs(
     project_inputs: "ProjectInputs",
+    *,
+    complete_financing_interest_will_be_injected: bool = False,
 ) -> object:
     """Map canonical ProjectInputs to a TaxCalculationInput.
 
@@ -61,7 +63,8 @@ def build_tax_contract_from_project_inputs(
     * Callers that need SHL in the tax input must merge it after this call.
 
     Fail-closed conditions (raises rather than silently computing wrong results):
-    * ATAD enabled with empty period_interest: raises NotImplementedError.
+    * ATAD enabled with empty period_interest and no explicit complete-interest
+      injection contract: raises NotImplementedError.
       ATAD requires complete financing interest; this adapter only supplies the
       empty stub — callers must merge full interest before computing ATAD.
     * Nonzero initial_tax_loss_keur: raises NotImplementedError.
@@ -75,7 +78,11 @@ def build_tax_contract_from_project_inputs(
       Projects without clean_cash_tax_timing_enabled=True fail closed.
     """
     from financial_engine.inputs import TaxCalculationInput, OpeningTaxLossVintageInput
-    from financial_engine.policies.tax import TaxPolicy, CashTaxTiming
+    from financial_engine.policies.tax import (
+        CashTaxTiming,
+        ShlInterestDeductibilityMode,
+        TaxPolicy,
+    )
 
     tax = project_inputs.tax
     info = project_inputs.info
@@ -104,7 +111,7 @@ def build_tax_contract_from_project_inputs(
     # If ATAD is enabled, the computation requires complete interest inputs;
     # the caller must merge full interest into the TaxCalculationInput before
     # running the ATAD calculation.
-    if atad_enabled:
+    if atad_enabled and not complete_financing_interest_will_be_injected:
         raise NotImplementedError(
             "build_tax_contract_from_project_inputs: atad_enabled=True requires complete "
             "financing interest inputs (senior + SHL + other). This adapter only supplies "
@@ -147,6 +154,11 @@ def build_tax_contract_from_project_inputs(
         # NOT SOURCE-PROVEN: TAX_YEAR_LAST_PERIOD periodisation (workbook uses H2+H1).
         cash_tax_timing=CashTaxTiming.TAX_YEAR_LAST_PERIOD,
         cash_tax_payment_lag_periods=0,
+        shl_interest_tax_treatment_enabled=complete_financing_interest_will_be_injected,
+        shl_interest_deductibility=ShlInterestDeductibilityMode(
+            tax.shl_interest_deductibility.value
+        ),
+        shl_interest_deductible_pct=tax.shl_interest_deductible_pct,
     )
 
     # Opening loss vintages — fail closed for non-zero amounts.

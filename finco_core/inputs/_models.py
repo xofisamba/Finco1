@@ -616,6 +616,12 @@ class FinancingParams:
     shl_pik_switch_period: int = 0
     shl_tenor_years: int = 0
     shl_idc_keur: float = 0.0
+    clean_shl_principal_keur: float | None = None
+    clean_shl_repayment_method: str | None = None
+    shl_day_count_convention: str | None = None
+    shl_construction_day_count_fraction: float | None = None
+    shl_principal_eligibility_start_period: int | None = None
+    shl_maturity_period_index: int | None = None
     shl_fcf_waterfall_cash_schedule_keur: tuple[float, ...] = ()
     shl_fcf_waterfall_minimum_cash_retained_keur: float = 0.0
 

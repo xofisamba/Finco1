@@ -311,6 +311,12 @@ def project_inputs_to_dict(inputs: ProjectInputs) -> dict:
             "shl_pik_switch_period": fin.shl_pik_switch_period,
             "shl_tenor_years": fin.shl_tenor_years,
             "shl_idc_keur": fin.shl_idc_keur,
+            "clean_shl_principal_keur": fin.clean_shl_principal_keur,
+            "clean_shl_repayment_method": fin.clean_shl_repayment_method,
+            "shl_day_count_convention": fin.shl_day_count_convention,
+            "shl_construction_day_count_fraction": fin.shl_construction_day_count_fraction,
+            "shl_principal_eligibility_start_period": fin.shl_principal_eligibility_start_period,
+            "shl_maturity_period_index": fin.shl_maturity_period_index,
             "shl_fcf_waterfall_cash_schedule_keur": list(fin.shl_fcf_waterfall_cash_schedule_keur),
             "shl_fcf_waterfall_minimum_cash_retained_keur": fin.shl_fcf_waterfall_minimum_cash_retained_keur,
             "use_senior_sweep_cash_cap_for_shl": fin.use_senior_sweep_cash_cap_for_shl,
@@ -576,6 +582,16 @@ def project_inputs_from_dict(d: dict) -> ProjectInputs:
         shl_pik_switch_period=fin_d.get("shl_pik_switch_period", 0),
         shl_tenor_years=fin_d.get("shl_tenor_years", 0),
         shl_idc_keur=fin_d.get("shl_idc_keur", 0.0),
+        clean_shl_principal_keur=fin_d.get("clean_shl_principal_keur"),
+        clean_shl_repayment_method=fin_d.get("clean_shl_repayment_method"),
+        shl_day_count_convention=fin_d.get("shl_day_count_convention"),
+        shl_construction_day_count_fraction=fin_d.get(
+            "shl_construction_day_count_fraction"
+        ),
+        shl_principal_eligibility_start_period=fin_d.get(
+            "shl_principal_eligibility_start_period"
+        ),
+        shl_maturity_period_index=fin_d.get("shl_maturity_period_index"),
         shl_fcf_waterfall_cash_schedule_keur=tuple(
             fin_d.get("shl_fcf_waterfall_cash_schedule_keur", [])
         ),

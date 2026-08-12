@@ -41,6 +41,8 @@ from financial_engine.results import (
     PostSeniorCashSchedules,
     ProjectModelResult,
     SeniorDebtSchedules as _SeniorDebtSchedulesResult,
+    ShareholderLoanDiagnostics,
+    ShareholderLoanSchedules,
     TaxAndCfadsSchedules,
 )
 from financial_engine.validation import validate_operating_model_input, has_errors
@@ -610,7 +612,9 @@ def _assemble_tax_cfads_schedules(
         tax_loss_closing_audit_keur=tuple(tax_loss_closing),
         tax_loss_used_audit_keur=tuple(tax_loss_used),
         fiscal_reintegration_audit_keur=tuple(
-            pr.disallowed_interest_keur + pr.other_fiscal_reintegration_keur
+            pr.disallowed_interest_keur
+            + pr.other_fiscal_reintegration_keur
+            + pr.shl_non_deductible_interest_keur
             for pr in period_results
         ),
         tax_depreciation_audit_keur=tax_dep_per_period,
@@ -731,6 +735,560 @@ SENIOR_DEBT_RUN_PATH_ID = "financial_engine.orchestrator.run_senior_debt_model"
 _PHASE_2C_UNAVAILABLE = ("financial_statements", "returns")
 
 
+def _merge_financing_tax_input(
+    base_tax_input: object,
+    senior_interest_by_period: dict[int, float] | None = None,
+    shl_interest_by_period: dict[int, float] | None = None,
+) -> object:
+    """Merge Senior + SHL interest into tax input without mutating the source.
+
+    Components are overridden only when explicitly supplied by the caller.
+    SHL tax treatment is owned by TaxPolicy; this function does not create
+    fiscal reintegration addbacks.
+    """
+    from financial_engine.inputs import (
+        PeriodInterestInput,
+        TaxCalculationInput,
+    )
+
+    senior_interest_by_period = senior_interest_by_period or {}
+    shl_interest_by_period = shl_interest_by_period or {}
+    merged_interest: dict[int, PeriodInterestInput] = {
+        pi.period_index: pi for pi in base_tax_input.period_interest
+    }
+    for idx in set(senior_interest_by_period) | set(shl_interest_by_period):
+        existing = merged_interest.get(idx)
+        merged_interest[idx] = PeriodInterestInput(
+            period_index=idx,
+            senior_interest_keur=(
+                senior_interest_by_period[idx]
+                if idx in senior_interest_by_period
+                else (existing.senior_interest_keur if existing else 0.0)
+            ),
+            shl_interest_keur=(
+                shl_interest_by_period[idx]
+                if idx in shl_interest_by_period
+                else (existing.shl_interest_keur if existing else 0.0)
+            ),
+            other_interest_keur=existing.other_interest_keur if existing else 0.0,
+        )
+
+    return TaxCalculationInput(
+        policy=base_tax_input.policy,
+        opening_loss_vintages=base_tax_input.opening_loss_vintages,
+        period_interest=tuple(merged_interest[idx] for idx in sorted(merged_interest)),
+        period_adjustments=base_tax_input.period_adjustments,
+    )
+
+
+def _assemble_post_senior_cash_schedules(
+    periods: tuple[OperatingPeriodResult, ...],
+    tax_and_cfads: TaxAndCfadsSchedules,
+    senior_debt_result: object,
+) -> PostSeniorCashSchedules:
+    """Build Base post-senior cash schedules from authoritative Base CFADS."""
+    sd_service_by_idx: dict[int, float] = dict(
+        zip(
+            senior_debt_result.period_indices,
+            senior_debt_result.senior_debt_service_keur,
+        )
+    )
+    base_cfads_by_idx: dict[int, float] = dict(
+        zip(tax_and_cfads.period_indices, tax_and_cfads.cfads_keur)
+    )
+    period_is_constr: dict[int, bool] = {p.period_index: p.is_construction for p in periods}
+    all_period_indices = tuple(p.period_index for p in periods)
+    cash_after: list[float] = []
+    cash_avail: list[float] = []
+    for idx in all_period_indices:
+        base_cfads = base_cfads_by_idx.get(idx, 0.0)
+        senior_service = sd_service_by_idx.get(idx, 0.0)
+        after = base_cfads - senior_service
+        cash_after.append(after)
+        cash_avail.append(0.0 if period_is_constr.get(idx, False) else max(0.0, after))
+
+    return PostSeniorCashSchedules(
+        period_indices=all_period_indices,
+        base_cfads_keur=tuple(base_cfads_by_idx.get(i, 0.0) for i in all_period_indices),
+        senior_debt_service_keur=tuple(sd_service_by_idx.get(i, 0.0) for i in all_period_indices),
+        cash_after_senior_before_reserves_keur=tuple(cash_after),
+        cash_available_for_shl_before_reserves_keur=tuple(cash_avail),
+    )
+
+
+def _field_converged_local(a: float, b: float, abs_tol: float, rel_tol: float) -> bool:
+    diff = abs(a - b)
+    if diff <= abs_tol:
+        return True
+    if rel_tol > 0.0:
+        return diff / max(abs(a), abs(b), 1.0) <= rel_tol
+    return False
+
+
+def _max_vector_delta(
+    a: tuple[float, ...],
+    b: tuple[float, ...],
+) -> float:
+    n = min(len(a), len(b))
+    if n == 0:
+        return float("inf")
+    return max(abs(a[i] - b[i]) for i in range(n))
+
+
+def _build_debt_sizing_schedules_from_bank(
+    *,
+    bank_phase2a_result: ProjectModelResult,
+    final_bank_tax_result: object,
+    final_bank_cfads_results: tuple,
+    senior_debt_result: object,
+) -> DebtSizingSchedules:
+    import math as _math
+
+    sd_service_by_idx: dict[int, float] = dict(
+        zip(
+            senior_debt_result.period_indices,
+            senior_debt_result.senior_debt_service_keur,
+        )
+    )
+    final_bank_cash_tax_by_idx = {
+        pr.period_index: pr.cash_tax_keur for pr in final_bank_tax_result.period_results
+    }
+    final_bank_cfads_by_idx = {
+        cr.period_index: cr.cfads_keur for cr in final_bank_cfads_results
+    }
+    ops_indices = bank_phase2a_result.operating_schedules.period_indices
+    bank_sizing_dscr: tuple[float | None, ...] = tuple(
+        (
+            final_bank_cfads_by_idx.get(i, 0.0) / sd_service_by_idx[i]
+            if i in sd_service_by_idx
+            and sd_service_by_idx[i] > 0.0
+            and _math.isfinite(final_bank_cfads_by_idx.get(i, 0.0))
+            else None
+        )
+        for i in ops_indices
+    )
+    solver_dscr_by_idx: dict[int, float | None] = dict(
+        zip(senior_debt_result.period_indices, senior_debt_result.senior_dscr)
+    )
+    solver_bank_dscr: tuple[float | None, ...] = tuple(
+        solver_dscr_by_idx.get(i, None) for i in ops_indices
+    )
+    return DebtSizingSchedules(
+        period_indices=ops_indices,
+        bank_production_mwh=bank_phase2a_result.operating_schedules.production_mwh,
+        bank_revenue_keur=bank_phase2a_result.operating_schedules.revenue_keur,
+        bank_opex_keur=bank_phase2a_result.operating_schedules.opex_keur,
+        bank_ebitda_keur=bank_phase2a_result.operating_schedules.ebitda_keur,
+        bank_cash_tax_keur=tuple(final_bank_cash_tax_by_idx.get(i, 0.0) for i in ops_indices),
+        bank_cfads_keur=tuple(cr.cfads_keur for cr in final_bank_cfads_results),
+        bank_sizing_dscr=bank_sizing_dscr,
+        solver_bank_dscr=solver_bank_dscr,
+    )
+
+
+def _build_result_senior_debt_schedules(
+    *,
+    senior_debt_result: object,
+    final_tax_cfads: TaxAndCfadsSchedules,
+) -> _SeniorDebtSchedulesResult:
+    import math as _math
+
+    sd_service_by_idx: dict[int, float] = dict(
+        zip(
+            senior_debt_result.period_indices,
+            senior_debt_result.senior_debt_service_keur,
+        )
+    )
+    base_cfads_by_idx: dict[int, float] = dict(
+        zip(final_tax_cfads.period_indices, final_tax_cfads.cfads_keur)
+    )
+    base_dscr: tuple[float | None, ...] = tuple(
+        (
+            base_cfads_by_idx.get(idx, 0.0) / ds
+            if (ds := sd_service_by_idx.get(idx, 0.0)) > 0.0
+            and _math.isfinite(base_cfads_by_idx.get(idx, 0.0))
+            else None
+        )
+        for idx in senior_debt_result.period_indices
+    )
+    diag_dict = {
+        "converged": senior_debt_result.diagnostics.converged,
+        "is_authoritative": senior_debt_result.diagnostics.is_authoritative,
+        "iteration_count": senior_debt_result.diagnostics.iteration_count,
+        "initial_debt_guess_keur": senior_debt_result.diagnostics.initial_debt_guess_keur,
+        "final_debt_size_keur": senior_debt_result.diagnostics.final_debt_size_keur,
+        "maximum_absolute_difference_keur": senior_debt_result.diagnostics.maximum_absolute_difference_keur,
+        "maximum_relative_difference": senior_debt_result.diagnostics.maximum_relative_difference,
+        "binding_constraint": senior_debt_result.diagnostics.binding_constraint,
+        "termination_reason": senior_debt_result.diagnostics.termination_reason,
+    }
+    return _SeniorDebtSchedulesResult(
+        period_indices=senior_debt_result.period_indices,
+        senior_debt_opening_keur=senior_debt_result.senior_debt_opening_keur,
+        senior_interest_keur=senior_debt_result.senior_interest_keur,
+        senior_principal_keur=senior_debt_result.senior_principal_keur,
+        senior_debt_service_keur=senior_debt_result.senior_debt_service_keur,
+        senior_debt_closing_keur=senior_debt_result.senior_debt_closing_keur,
+        base_dscr=base_dscr,
+        debt_size_keur=senior_debt_result.debt_size_keur,
+        binding_constraint=senior_debt_result.binding_constraint,
+        diagnostics=diag_dict,
+    )
+
+
+def _run_senior_debt_model_with_shl(inputs: SeniorDebtModelInput) -> ProjectModelResult:
+    """Phase B5: Senior debt + SHL + tax fixed-point integration."""
+    from financial_engine.cfads import calculate_canonical_cfads
+    from financial_engine.inputs import TaxCfadsModelInput
+    from financial_engine.senior_debt.inputs import SeniorDebtInputs
+    from financial_engine.senior_debt.models import SeniorDebtNonConvergenceError
+    from financial_engine.senior_debt.policy import SeniorDebtPolicy
+    from financial_engine.senior_debt.solver import solve_senior_debt
+    from financial_engine.shl.production import compute_shareholder_loan_schedules
+    from financial_engine.tax.engine import calculate_tax
+
+    policy: SeniorDebtPolicy = inputs.senior_debt_policy  # type: ignore[assignment]
+    sd_inputs: SeniorDebtInputs = inputs.senior_debt_inputs  # type: ignore[assignment]
+    shl_input = inputs.shareholder_loan
+    assert shl_input is not None
+
+    bank_op = derive_debt_sizing_operating_input(inputs.operating, inputs.debt_sizing_case)
+    phase2b_result = run_tax_cfads_model(TaxCfadsModelInput(operating=inputs.operating, tax=inputs.tax))
+    bank_phase2a_result = run_operating_model(bank_op)
+    base_tax_input = inputs.tax
+
+    debt_start = policy.repayment_start_period_index
+    debt_end = policy.maturity_period_index
+    debt_periods = tuple(
+        p for p in bank_phase2a_result.periods
+        if p.is_operation and debt_start <= p.period_index <= debt_end
+    )
+
+    shl_interest_guess: dict[int, float] = {}
+    previous_shl: ShareholderLoanSchedules | None = None
+    last_max_closing_delta = float("inf")
+    last_max_interest_delta = float("inf")
+
+    for iteration in range(1, shl_input.maximum_iterations + 1):
+        def tax_cfads_fn(
+            senior_interest_by_period: dict[int, float],
+        ) -> tuple[dict[int, float], dict[int, float]]:
+            tax_input = _merge_financing_tax_input(
+                base_tax_input,
+                senior_interest_by_period,
+                shl_interest_guess,
+            )
+            tax_result = calculate_tax(bank_phase2a_result.periods, tax_input)
+            cfads_results = calculate_canonical_cfads(
+                bank_phase2a_result.periods,
+                tax_result.period_results,
+            )
+            return (
+                {cr.period_index: cr.cfads_keur for cr in cfads_results},
+                {pr.period_index: pr.cash_tax_keur for pr in tax_result.period_results},
+            )
+
+        senior_result = solve_senior_debt(
+            policy=policy,
+            inputs=sd_inputs,
+            periods=debt_periods,
+            tax_cfads_fn=tax_cfads_fn,
+        )
+        if not senior_result.diagnostics.is_authoritative:
+            raise SeniorDebtNonConvergenceError(
+                "Senior debt failed inside SHL fixed point: "
+                f"termination_reason={senior_result.diagnostics.termination_reason!r}"
+            )
+
+        senior_interest = dict(
+            zip(senior_result.period_indices, senior_result.senior_interest_keur)
+        )
+        base_tax = calculate_tax(
+            phase2b_result.periods,
+            _merge_financing_tax_input(
+                base_tax_input,
+                senior_interest,
+                shl_interest_guess,
+            ),
+        )
+        base_cfads = calculate_canonical_cfads(phase2b_result.periods, base_tax.period_results)
+        tax_cfads = _assemble_tax_cfads_schedules(
+            phase2b_result,
+            base_tax,
+            base_tax.period_results,
+            base_cfads,
+        )
+        post_senior_cash = _assemble_post_senior_cash_schedules(
+            phase2b_result.periods,
+            tax_cfads,
+            senior_result,
+        )
+        provisional_diag = ShareholderLoanDiagnostics(
+            converged=False,
+            is_authoritative=False,
+            iteration_count=iteration,
+            max_iterations=shl_input.maximum_iterations,
+            convergence_tolerance_keur=shl_input.convergence_tolerance_keur,
+            convergence_relative_tolerance=shl_input.convergence_relative_tolerance,
+            max_closing_delta_keur=last_max_closing_delta,
+            max_interest_delta_keur=last_max_interest_delta,
+            termination_reason="ITERATING",
+        )
+        shl_schedule = compute_shareholder_loan_schedules(
+            phase2b_result.periods,
+            shl_input,
+            post_senior_cash.cash_available_for_shl_before_reserves_keur,
+            diagnostics=provisional_diag,
+        )
+        new_interest = dict(
+            zip(shl_schedule.period_indices, shl_schedule.shl_gross_interest_keur)
+        )
+
+        if previous_shl is not None:
+            last_max_closing_delta = _max_vector_delta(
+                previous_shl.shl_closing_keur,
+                shl_schedule.shl_closing_keur,
+            )
+            last_max_interest_delta = _max_vector_delta(
+                tuple(shl_interest_guess.get(i, 0.0) for i in shl_schedule.period_indices),
+                shl_schedule.shl_gross_interest_keur,
+            )
+            if _field_converged_local(
+                last_max_closing_delta,
+                0.0,
+                shl_input.convergence_tolerance_keur,
+                shl_input.convergence_relative_tolerance,
+            ) and _field_converged_local(
+                last_max_interest_delta,
+                0.0,
+                shl_input.convergence_tolerance_keur,
+                shl_input.convergence_relative_tolerance,
+            ):
+                previous_shl = shl_schedule
+                shl_interest_guess = new_interest
+                break
+
+        previous_shl = shl_schedule
+        shl_interest_guess = new_interest
+    else:
+        raise SeniorDebtNonConvergenceError(
+            "SHL fixed point terminated without an authoritative result: "
+            f"iteration_count={shl_input.maximum_iterations}; "
+            "termination_reason='MAX_ITERATIONS_REACHED'"
+        )
+
+    # FINAL_FINANCING_STATE_RECOMPUTED_FROM_CONVERGED_SHL_AND_SENIOR_SCHEDULES
+    final_shl_interest = dict(
+        zip(previous_shl.period_indices, previous_shl.shl_gross_interest_keur)
+    )
+
+    def final_tax_cfads_fn(
+        senior_interest_by_period: dict[int, float],
+    ) -> tuple[dict[int, float], dict[int, float]]:
+        tax_input = _merge_financing_tax_input(
+            base_tax_input,
+            senior_interest_by_period,
+            final_shl_interest,
+        )
+        tax_result = calculate_tax(bank_phase2a_result.periods, tax_input)
+        cfads_results = calculate_canonical_cfads(
+            bank_phase2a_result.periods,
+            tax_result.period_results,
+        )
+        return (
+            {cr.period_index: cr.cfads_keur for cr in cfads_results},
+            {pr.period_index: pr.cash_tax_keur for pr in tax_result.period_results},
+        )
+
+    final_senior_result = solve_senior_debt(
+        policy=policy,
+        inputs=sd_inputs,
+        periods=debt_periods,
+        tax_cfads_fn=final_tax_cfads_fn,
+    )
+    if not final_senior_result.diagnostics.is_authoritative:
+        raise SeniorDebtNonConvergenceError(
+            "Final senior debt recomputation failed inside SHL fixed point: "
+            f"termination_reason={final_senior_result.diagnostics.termination_reason!r}"
+        )
+
+    final_senior_interest = dict(
+        zip(final_senior_result.period_indices, final_senior_result.senior_interest_keur)
+    )
+    final_base_tax_input = _merge_financing_tax_input(
+        base_tax_input,
+        final_senior_interest,
+        final_shl_interest,
+    )
+    final_base_tax = calculate_tax(phase2b_result.periods, final_base_tax_input)
+    final_base_cfads = calculate_canonical_cfads(
+        phase2b_result.periods,
+        final_base_tax.period_results,
+    )
+    final_tax_cfads = _assemble_tax_cfads_schedules(
+        phase2b_result,
+        final_base_tax,
+        final_base_tax.period_results,
+        final_base_cfads,
+    )
+    final_post_senior_cash = _assemble_post_senior_cash_schedules(
+        phase2b_result.periods,
+        final_tax_cfads,
+        final_senior_result,
+    )
+    handshake_probe_diag = ShareholderLoanDiagnostics(
+        converged=False,
+        is_authoritative=False,
+        iteration_count=iteration,
+        max_iterations=shl_input.maximum_iterations,
+        convergence_tolerance_keur=shl_input.convergence_tolerance_keur,
+        convergence_relative_tolerance=shl_input.convergence_relative_tolerance,
+        max_closing_delta_keur=last_max_closing_delta,
+        max_interest_delta_keur=last_max_interest_delta,
+        termination_reason="FINAL_HANDSHAKE_PROBE",
+    )
+    handshake_shl_schedule = compute_shareholder_loan_schedules(
+        phase2b_result.periods,
+        shl_input,
+        final_post_senior_cash.cash_available_for_shl_before_reserves_keur,
+        diagnostics=handshake_probe_diag,
+    )
+
+    final_bank_tax_input = _merge_financing_tax_input(
+        base_tax_input,
+        final_senior_interest,
+        final_shl_interest,
+    )
+    final_bank_tax = calculate_tax(bank_phase2a_result.periods, final_bank_tax_input)
+    final_bank_cfads = calculate_canonical_cfads(
+        bank_phase2a_result.periods,
+        final_bank_tax.period_results,
+    )
+    final_base_tax_shl = {
+        pi.period_index: pi.shl_interest_keur
+        for pi in final_base_tax_input.period_interest
+    }
+    final_bank_tax_shl = {
+        pi.period_index: pi.shl_interest_keur
+        for pi in final_bank_tax_input.period_interest
+    }
+    authoritative_interest_vector = tuple(
+        final_shl_interest.get(idx, 0.0) for idx in handshake_shl_schedule.period_indices
+    )
+    base_tax_interest_vector = tuple(
+        final_base_tax_shl.get(idx, 0.0) for idx in handshake_shl_schedule.period_indices
+    )
+    bank_tax_interest_vector = tuple(
+        final_bank_tax_shl.get(idx, 0.0) for idx in handshake_shl_schedule.period_indices
+    )
+    max_final_shl_interest_handshake_delta = max(
+        _max_vector_delta(authoritative_interest_vector, handshake_shl_schedule.shl_gross_interest_keur),
+        _max_vector_delta(authoritative_interest_vector, base_tax_interest_vector),
+        _max_vector_delta(authoritative_interest_vector, bank_tax_interest_vector),
+    )
+    max_final_shl_closing_handshake_delta = _max_vector_delta(
+        previous_shl.shl_closing_keur,
+        handshake_shl_schedule.shl_closing_keur,
+    )
+    if not _field_converged_local(
+        max_final_shl_interest_handshake_delta,
+        0.0,
+        shl_input.convergence_tolerance_keur,
+        shl_input.convergence_relative_tolerance,
+    ) or not _field_converged_local(
+        max_final_shl_closing_handshake_delta,
+        0.0,
+        shl_input.convergence_tolerance_keur,
+        shl_input.convergence_relative_tolerance,
+    ):
+        raise SeniorDebtNonConvergenceError(
+            "FINAL_FINANCING_STATE_IS_SELF_CONSISTENT failed: "
+            f"MAX_FINAL_SHL_INTEREST_HANDSHAKE_DELTA_KEUR="
+            f"{max_final_shl_interest_handshake_delta:.12f}; "
+            f"MAX_FINAL_SHL_CLOSING_HANDSHAKE_DELTA_KEUR="
+            f"{max_final_shl_closing_handshake_delta:.12f}"
+        )
+    authoritative_diag = ShareholderLoanDiagnostics(
+        converged=True,
+        is_authoritative=True,
+        iteration_count=iteration,
+        max_iterations=shl_input.maximum_iterations,
+        convergence_tolerance_keur=shl_input.convergence_tolerance_keur,
+        convergence_relative_tolerance=shl_input.convergence_relative_tolerance,
+        max_closing_delta_keur=last_max_closing_delta,
+        max_interest_delta_keur=last_max_interest_delta,
+        termination_reason="CONVERGED_FINAL_RECOMPUTE",
+        max_final_shl_interest_handshake_delta_keur=max_final_shl_interest_handshake_delta,
+        max_final_shl_closing_handshake_delta_keur=max_final_shl_closing_handshake_delta,
+    )
+    final_shl_schedule = compute_shareholder_loan_schedules(
+        phase2b_result.periods,
+        shl_input,
+        final_post_senior_cash.cash_available_for_shl_before_reserves_keur,
+        diagnostics=authoritative_diag,
+    )
+    debt_sizing_schedules = _build_debt_sizing_schedules_from_bank(
+        bank_phase2a_result=bank_phase2a_result,
+        final_bank_tax_result=final_bank_tax,
+        final_bank_cfads_results=final_bank_cfads,
+        senior_debt_result=final_senior_result,
+    )
+    result_schedules = _build_result_senior_debt_schedules(
+        senior_debt_result=final_senior_result,
+        final_tax_cfads=final_tax_cfads,
+    )
+
+    fingerprint = compute_senior_debt_fingerprint(inputs)
+    evidence = phase2b_result.provenance.derivation_evidence + (
+        DerivationEvidence(
+            output_path="shareholder_loan.shl_gross_interest_keur",
+            source_module="financial_engine.shl.production",
+            source_function="compute_shareholder_loan_schedules",
+            input_paths=("shareholder_loan", "post_senior_cash"),
+            notes=(
+                "SHL gross interest is included in TaxCalculationInput.period_interest.shl_interest_keur; "
+                "TaxPolicy controls the tax-eligible SHL portion; "
+                "CLEAN_ENGINE_NON_DEDUCTIBLE_SHL_TREATMENT; "
+                "POST_SHL_CASH_IS_PRE_RESERVE",
+            ),
+        ),
+        DerivationEvidence(
+            output_path="senior_debt.debt_size_keur",
+            source_module="financial_engine.orchestrator",
+            source_function="_run_senior_debt_model_with_shl",
+            input_paths=("senior_debt_inputs", "senior_debt_policy", "shareholder_loan"),
+            notes=(
+                "Senior debt is solved inside the SHL/tax fixed point; "
+                "FINAL_FINANCING_STATE_RECOMPUTED_FROM_CONVERGED_SHL_AND_SENIOR_SCHEDULES",
+            ),
+        ),
+    )
+    provenance = EngineProvenance(
+        engine_version=ENGINE_VERSION,
+        run_path_id=SENIOR_DEBT_RUN_PATH_ID,
+        input_fingerprint=fingerprint,
+        derivation_evidence=evidence,
+    )
+    validation_issues = phase2b_result.validation_issues
+    warnings = phase2b_result.warnings + tuple(
+        f"{i.code} {i.path}: {i.message}" for i in validation_issues
+        if i.severity.value == "WARNING"
+    )
+    return ProjectModelResult(
+        provenance=provenance,
+        periods=phase2b_result.periods,
+        operating_schedules=phase2b_result.operating_schedules,
+        tax_and_cfads=final_tax_cfads,
+        senior_debt=result_schedules,
+        debt_sizing=debt_sizing_schedules,
+        post_senior_cash=final_post_senior_cash,
+        shareholder_loan=final_shl_schedule,
+        unavailable_sections=_PHASE_2C_UNAVAILABLE,
+        validation_issues=validation_issues,
+        warnings=warnings,
+    )
+
+
 def run_senior_debt_model(inputs: SeniorDebtModelInput) -> ProjectModelResult:
     """Phase 2C orchestrator: operating core + tax + canonical CFADS + senior debt.
 
@@ -757,6 +1315,9 @@ def run_senior_debt_model(inputs: SeniorDebtModelInput) -> ProjectModelResult:
 
     Non-converged results raise SeniorDebtNonConvergenceError.
     """
+    if inputs.shareholder_loan is not None:
+        return _run_senior_debt_model_with_shl(inputs)
+
     from financial_engine.inputs import TaxCalculationInput, PeriodInterestInput
     from financial_engine.tax.engine import calculate_tax
     from financial_engine.cfads import calculate_canonical_cfads

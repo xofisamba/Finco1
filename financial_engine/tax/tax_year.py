@@ -27,6 +27,7 @@ from collections import defaultdict
 from datetime import date, timedelta
 
 from financial_engine.inputs import PeriodInterestInput
+from financial_engine.policies.tax import TaxPolicy
 from financial_engine.tax.models import TaxYearCalculationBasis, TaxYearPeriodFragment
 
 
@@ -38,6 +39,8 @@ def _split_period(
     tax_depreciation_keur: float = 0.0,
     total_interest_keur: float = 0.0,
     other_fiscal_reintegration_keur: float = 0.0,
+    shl_tax_eligible_interest_keur: float = 0.0,
+    shl_non_deductible_interest_keur: float = 0.0,
 ) -> list[TaxYearPeriodFragment]:
     """Split one period into calendar-year fragments with allocated amounts.
 
@@ -74,6 +77,8 @@ def _split_period(
             tax_depreciation_keur=tax_depreciation_keur,
             total_interest_keur=total_interest_keur,
             other_fiscal_reintegration_keur=other_fiscal_reintegration_keur,
+            shl_tax_eligible_interest_keur=shl_tax_eligible_interest_keur,
+            shl_non_deductible_interest_keur=shl_non_deductible_interest_keur,
         )]
 
     fragments: list[tuple[int, date, date, int]] = []
@@ -101,6 +106,8 @@ def _split_period(
     accumulated_dep = 0.0
     accumulated_int = 0.0
     accumulated_reint = 0.0
+    accumulated_shl_tax_eligible = 0.0
+    accumulated_shl_non_deductible = 0.0
 
     for i, ((yr, fs, fe, fd), frac) in enumerate(zip(fragments, fracs)):
         if i < len(fragments) - 1:
@@ -108,16 +115,26 @@ def _split_period(
             frag_dep = tax_depreciation_keur * frac
             frag_int = total_interest_keur * frac
             frag_reint = other_fiscal_reintegration_keur * frac
+            frag_shl_tax_eligible = shl_tax_eligible_interest_keur * frac
+            frag_shl_non_deductible = shl_non_deductible_interest_keur * frac
             accumulated_ebitda += frag_ebitda
             accumulated_dep += frag_dep
             accumulated_int += frag_int
             accumulated_reint += frag_reint
+            accumulated_shl_tax_eligible += frag_shl_tax_eligible
+            accumulated_shl_non_deductible += frag_shl_non_deductible
         else:
             # Last fragment: use remainder to preserve exact totals.
             frag_ebitda = ebitda_keur - accumulated_ebitda
             frag_dep = tax_depreciation_keur - accumulated_dep
             frag_int = total_interest_keur - accumulated_int
             frag_reint = other_fiscal_reintegration_keur - accumulated_reint
+            frag_shl_tax_eligible = (
+                shl_tax_eligible_interest_keur - accumulated_shl_tax_eligible
+            )
+            frag_shl_non_deductible = (
+                shl_non_deductible_interest_keur - accumulated_shl_non_deductible
+            )
 
         result.append(TaxYearPeriodFragment(
             tax_year=yr,
@@ -131,6 +148,8 @@ def _split_period(
             tax_depreciation_keur=frag_dep,
             total_interest_keur=frag_int,
             other_fiscal_reintegration_keur=frag_reint,
+            shl_tax_eligible_interest_keur=frag_shl_tax_eligible,
+            shl_non_deductible_interest_keur=frag_shl_non_deductible,
         ))
 
     return result
@@ -177,6 +196,7 @@ def build_tax_year_bases(
     periods: tuple,              # tuple[OperatingPeriodResult]
     interest_map: dict[int, PeriodInterestInput],
     adj_map: dict[int, float],
+    policy: TaxPolicy | None = None,
 ) -> tuple[TaxYearCalculationBasis, ...]:
     """Aggregate period amounts into calendar-year TaxYearCalculationBasis records.
 
@@ -211,7 +231,21 @@ def build_tax_year_bases(
         tax_dep: float = p.tax_depreciation_keur  # type: ignore[attr-defined]
 
         pi_obj = interest_map.get(idx)
-        gross_int = pi_obj.total_interest_keur if pi_obj else 0.0
+        if pi_obj:
+            shl_fraction = (
+                policy.shl_tax_deductible_fraction() if policy is not None else 1.0
+            )
+            shl_tax_eligible = pi_obj.shl_interest_keur * shl_fraction
+            shl_non_deductible = pi_obj.shl_interest_keur - shl_tax_eligible
+            gross_int = (
+                pi_obj.senior_interest_keur
+                + pi_obj.other_interest_keur
+                + shl_tax_eligible
+            )
+        else:
+            gross_int = 0.0
+            shl_tax_eligible = 0.0
+            shl_non_deductible = 0.0
         reint = adj_map.get(idx, 0.0)
 
         frags = _split_period(
@@ -220,6 +254,8 @@ def build_tax_year_bases(
             tax_depreciation_keur=tax_dep,
             total_interest_keur=gross_int,
             other_fiscal_reintegration_keur=reint,
+            shl_tax_eligible_interest_keur=shl_tax_eligible,
+            shl_non_deductible_interest_keur=shl_non_deductible,
         )
 
         for frag in frags:
@@ -246,6 +282,12 @@ def build_tax_year_bases(
         year_tax_dep = sum(f.tax_depreciation_keur for f in frags_for_year)
         year_interest = sum(f.total_interest_keur for f in frags_for_year)
         year_reint = sum(f.other_fiscal_reintegration_keur for f in frags_for_year)
+        year_shl_tax_eligible = sum(
+            f.shl_tax_eligible_interest_keur for f in frags_for_year
+        )
+        year_shl_non_deductible = sum(
+            f.shl_non_deductible_interest_keur for f in frags_for_year
+        )
 
         payment_idx = _payment_period_for_year(yr, frags_for_year, periods_by_index)
         bases.append(TaxYearCalculationBasis(
@@ -257,6 +299,8 @@ def build_tax_year_bases(
             tax_depreciation_keur=year_tax_dep,
             total_interest_keur=year_interest,
             other_fiscal_reintegration_keur=year_reint,
+            shl_tax_eligible_interest_keur=year_shl_tax_eligible,
+            shl_non_deductible_interest_keur=year_shl_non_deductible,
         ))
 
     return tuple(bases)

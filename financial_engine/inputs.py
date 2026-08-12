@@ -3,7 +3,7 @@ financial_engine.inputs — Immutable input contracts (Phase 2A + 2B).
 
 All types are frozen dataclasses. No mutable state.
 No imports from app, finco_core, fastapi, jinja2, requests, openpyxl, pandas.
-No file I/O. No project-identity dispatch.
+No file I/O. No project-name dispatch.
 """
 from __future__ import annotations
 
@@ -326,6 +326,28 @@ class SeniorDebtModelInput:
     senior_debt_policy: object   # SeniorDebtPolicy (avoid circular imports)
     senior_debt_inputs: object   # SeniorDebtInputs
     debt_sizing_case: "DebtSizingCaseInput"
+    shareholder_loan: object | None = None
+
+
+@dataclass(frozen=True)
+class ShareholderLoanModelInput:
+    """Generic SHL fixed-point input contract.
+
+    The contract is explicit and project-identity-free. It supplies the SHL
+    principal, rate, day-count convention, cash-sweep window, and convergence
+    settings needed by the B5 fixed-point layer. Tax treatment is owned by
+    TaxPolicy, not by the financing instrument.
+    """
+    initial_principal_keur: float
+    annual_fixed_rate: float
+    day_count_convention: object
+    construction_day_count_fraction: float
+    repayment_start_period_index: int
+    maturity_period_index: int
+    convergence_tolerance_keur: float = 1e-6
+    convergence_relative_tolerance: float = 1e-9
+    maximum_iterations: int = 50
+    source_label: str = ""
 
 
 @dataclass(frozen=True)

@@ -169,12 +169,29 @@ def compute_senior_debt_fingerprint(inputs: "Any") -> str:
             "market_prices_curve_eur_mwh": list(dc.market_prices_curve_eur_mwh),
         }
 
+    shl_payload = None
+    shl = getattr(inputs, "shareholder_loan", None)
+    if shl is not None:
+        convention = getattr(shl.day_count_convention, "value", shl.day_count_convention)
+        shl_payload = {
+            "initial_principal_keur": shl.initial_principal_keur,
+            "annual_fixed_rate": shl.annual_fixed_rate,
+            "day_count_convention": convention,
+            "construction_day_count_fraction": shl.construction_day_count_fraction,
+            "repayment_start_period_index": shl.repayment_start_period_index,
+            "maturity_period_index": shl.maturity_period_index,
+            "convergence_tolerance_keur": shl.convergence_tolerance_keur,
+            "convergence_relative_tolerance": shl.convergence_relative_tolerance,
+            "maximum_iterations": shl.maximum_iterations,
+        }
+
     policy = inputs.senior_debt_policy
     sd = inputs.senior_debt_inputs
 
     payload = {
         "phase2b_fingerprint": phase2b_fp,
         "debt_sizing_case": debt_case_payload,
+        "shareholder_loan": shl_payload,
         "policy": {
             "policy_id": policy.policy_id,
             "policy_version": policy.policy_version,

@@ -35,6 +35,8 @@ class TaxYearPeriodFragment:
     tax_depreciation_keur: float
     total_interest_keur: float
     other_fiscal_reintegration_keur: float
+    shl_tax_eligible_interest_keur: float = 0.0
+    shl_non_deductible_interest_keur: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -59,6 +61,8 @@ class TaxYearCalculationBasis:
     tax_depreciation_keur: float
     total_interest_keur: float
     other_fiscal_reintegration_keur: float
+    shl_tax_eligible_interest_keur: float = 0.0
+    shl_non_deductible_interest_keur: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -172,6 +176,8 @@ class PeriodTaxYearAllocation:
     deductible_interest_keur: float
     disallowed_interest_keur: float
     other_fiscal_reintegration_keur: float
+    shl_tax_eligible_interest_keur: float
+    shl_non_deductible_interest_keur: float
     taxable_income_share_keur: float
     cit_accrual_keur: float
 
@@ -199,6 +205,8 @@ class PeriodCashTaxResult:
     taxable_income_before_lcf_share_keur: float
     cit_accrual_share_keur: float
     cash_tax_keur: float             # actual cash payment in this period
+    shl_tax_eligible_interest_keur: float = 0.0
+    shl_non_deductible_interest_keur: float = 0.0
 
 
 @dataclass(frozen=True)
