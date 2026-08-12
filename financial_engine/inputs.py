@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date
 from enum import Enum
+import math
 from typing import TYPE_CHECKING, Any
 
 from financial_engine.ppa_indexation import PpaIndexationStartPolicy
@@ -90,7 +91,7 @@ class OpexInput:
     hierarchical_model: "OpexModelInput | None" = None
     hierarchical_external_annual_series: "tuple[tuple[str, tuple[float, ...]], ...]" = ()
     # Senior debt tenor in years — required when hierarchical_model is present (OPEX004),
-    # ignored for flat projects.  Explicit field decouples OPEX activation from the
+    # ignored for flat projects. Explicit field decouples OPEX activation from the
     # depreciation contract (financial_cost_useful_life_years is a different concept).
     senior_debt_tenor_years: "int | None" = None
 
@@ -176,6 +177,13 @@ class PeriodTaxAdjustmentInput:
 
     other_fiscal_reintegration_keur : addbacks not already captured by the
         ATAD interest-limitation mechanism. Positive = addback to taxable income.
+
+    Contract note for debt sizing:
+        This is an explicit fiscal-policy/value input, not an operating-model
+        derived output. When supplied to SeniorDebtModelInput it is therefore
+        intentionally shared by Base and Bank cases. A Base-case-derived
+        adjustment must not be encoded here; it requires its own derived
+        bank-case calculation contract.
     """
     period_index: int
     other_fiscal_reintegration_keur: float = 0.0
@@ -189,7 +197,8 @@ class TaxCalculationInput:
     opening_loss_vintages : pre-model loss pool in vintage order (oldest first)
     period_interest : one entry per model period that carries interest; periods
         not listed default to zero interest
-    period_adjustments : optional per-period fiscal adjustments
+    period_adjustments : explicit case-invariant fiscal adjustments only; do not
+        place Base-case-derived economics here when running a separate bank case
     """
     policy: "TaxPolicy"
     opening_loss_vintages: tuple[OpeningTaxLossVintageInput, ...]
@@ -247,7 +256,6 @@ class DebtSizingCaseInput:
     source_label: str = ""
 
     def __post_init__(self) -> None:
-        # Merchant-price mutual exclusivity: calendar-year and curve forms are exclusive.
         has_calendar = (
             self.merchant_price_calendar_start_year is not None
             or bool(self.merchant_prices_by_calendar_year_eur_mwh)
@@ -259,7 +267,6 @@ class DebtSizingCaseInput:
                 "merchant_price_calendar_start_year and market_prices_curve_eur_mwh "
                 "are mutually exclusive. Supply at most one form."
             )
-        # Partial calendar-year pair guard: start_year without values or values without start_year.
         if (
             self.merchant_price_calendar_start_year is not None
             and not self.merchant_prices_by_calendar_year_eur_mwh
@@ -276,6 +283,30 @@ class DebtSizingCaseInput:
                 "DebtSizingCaseInput: merchant_prices_by_calendar_year_eur_mwh is supplied but "
                 "merchant_price_calendar_start_year is None. Both must be supplied together."
             )
+        if self.merchant_price_calendar_start_year is not None:
+            if isinstance(self.merchant_price_calendar_start_year, bool) or not isinstance(
+                self.merchant_price_calendar_start_year, int
+            ):
+                raise ValueError(
+                    "DebtSizingCaseInput: merchant_price_calendar_start_year must be an integer year."
+                )
+            if self.merchant_price_calendar_start_year < 1:
+                raise ValueError(
+                    "DebtSizingCaseInput: merchant_price_calendar_start_year must be >= 1."
+                )
+        for field_name, values in (
+            (
+                "merchant_prices_by_calendar_year_eur_mwh",
+                self.merchant_prices_by_calendar_year_eur_mwh,
+            ),
+            ("market_prices_curve_eur_mwh", self.market_prices_curve_eur_mwh),
+        ):
+            for i, value in enumerate(values):
+                if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+                    raise ValueError(
+                        f"DebtSizingCaseInput: {field_name}[{i}] must be a finite numeric value, "
+                        f"got {value!r}."
+                    )
 
 
 @dataclass(frozen=True)
