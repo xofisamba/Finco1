@@ -334,8 +334,9 @@ class ShareholderLoanModelInput:
     """Generic SHL fixed-point input contract.
 
     The contract is explicit and project-identity-free. It supplies the SHL
-    principal, rate, day-count convention, cash-sweep window, tax reintegration
-    treatment, and convergence settings needed by the B5 fixed-point layer.
+    principal, rate, day-count convention, cash-sweep window, and convergence
+    settings needed by the B5 fixed-point layer. Tax treatment is owned by
+    TaxPolicy, not by the financing instrument.
     """
     initial_principal_keur: float
     annual_fixed_rate: float
@@ -343,7 +344,6 @@ class ShareholderLoanModelInput:
     construction_day_count_fraction: float
     repayment_start_period_index: int
     maturity_period_index: int
-    tax_reintegration_fraction: float
     convergence_tolerance_keur: float = 1e-6
     convergence_relative_tolerance: float = 1e-9
     maximum_iterations: int = 50

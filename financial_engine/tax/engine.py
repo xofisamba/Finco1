@@ -99,7 +99,7 @@ def calculate_tax(
     adj_map = _build_adj_map(tax_input.period_adjustments)
 
     # ── Step 1-2: Build calendar-year bases ───────────────────────────────────
-    bases = build_tax_year_bases(periods, interest_map, adj_map)
+    bases = build_tax_year_bases(periods, interest_map, adj_map, policy)
 
     # ── Step 3: ATAD + taxable income + LCF + CIT per tax year ───────────────
     atad_results = []
@@ -289,6 +289,14 @@ def calculate_tax(
                 f.other_fiscal_reintegration_keur
                 for f in frags_for_year if f.source_period_index == idx
             )
+            yr_shl_tax_eligible = sum(
+                f.shl_tax_eligible_interest_keur
+                for f in frags_for_year if f.source_period_index == idx
+            )
+            yr_shl_non_deductible = sum(
+                f.shl_non_deductible_interest_keur
+                for f in frags_for_year if f.source_period_index == idx
+            )
             yr_ti_share = ar.taxable_income_before_lcf_keur * alloc_frac
             yr_cit = ar.current_tax_liability_keur * alloc_frac
 
@@ -299,6 +307,8 @@ def calculate_tax(
                 deductible_interest_keur=yr_ded,
                 disallowed_interest_keur=yr_dis,
                 other_fiscal_reintegration_keur=yr_reint,
+                shl_tax_eligible_interest_keur=yr_shl_tax_eligible,
+                shl_non_deductible_interest_keur=yr_shl_non_deductible,
                 taxable_income_share_keur=yr_ti_share,
                 cit_accrual_keur=yr_cit,
             ))
@@ -312,6 +322,12 @@ def calculate_tax(
         total_ded = period_ded_lookup.get(idx, 0.0)
         total_dis = period_dis_lookup.get(idx, 0.0)
         total_reint = adj_map.get(idx, 0.0)
+        total_shl_tax_eligible = sum(
+            a.shl_tax_eligible_interest_keur for a in allocations
+        )
+        total_shl_non_deductible = sum(
+            a.shl_non_deductible_interest_keur for a in allocations
+        )
         total_ti_share = sum(a.taxable_income_share_keur for a in allocations)
         total_cit_share = sum(a.cit_accrual_keur for a in allocations)
 
@@ -327,6 +343,8 @@ def calculate_tax(
             taxable_income_before_lcf_share_keur=total_ti_share,
             cit_accrual_share_keur=total_cit_share,
             cash_tax_keur=cash_tax_by_period.get(idx, 0.0),
+            shl_tax_eligible_interest_keur=total_shl_tax_eligible,
+            shl_non_deductible_interest_keur=total_shl_non_deductible,
         ))
 
     return TaxAndCfadsResult(

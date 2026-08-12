@@ -24,10 +24,12 @@ from financial_engine.inputs import (
     OpexLineInput,
     OperatingModelInput,
     RevenueInput,
+    ShareholderLoanModelInput,
     TechnicalInput,
     YieldScenario,
 )
 from financial_engine.ppa_indexation import PpaIndexationStartPolicy
+from financial_engine.shl.contracts import ShlDayCountConvention
 
 
 def from_project_inputs(
@@ -217,7 +219,10 @@ def build_senior_debt_model_input_from_project_inputs(
     op_result = run_operating_model(operating)
     operating_periods = tuple(op_result.periods)
 
-    tax = build_tax_contract_from_project_inputs(project_inputs)
+    tax = build_tax_contract_from_project_inputs(
+        project_inputs,
+        complete_financing_interest_will_be_injected=True,
+    )
 
     policy, inputs = build_senior_debt_contract_from_project_inputs(
         project_inputs, operating_periods
@@ -227,6 +232,10 @@ def build_senior_debt_model_input_from_project_inputs(
         production_yield_scenario=YieldScenario.P90_10Y,
         source_label="generic_bank_case_p90_10y",
     )
+    shareholder_loan = _build_shareholder_loan_model_input_from_project_inputs(
+        project_inputs,
+        operating_periods,
+    )
 
     return SeniorDebtModelInput(
         operating=operating,
@@ -234,4 +243,52 @@ def build_senior_debt_model_input_from_project_inputs(
         senior_debt_policy=policy,
         senior_debt_inputs=inputs,
         debt_sizing_case=resolved_debt_sizing_case,
+        shareholder_loan=shareholder_loan,
+    )
+
+
+def _build_shareholder_loan_model_input_from_project_inputs(
+    project_inputs: "ProjectInputs",
+    periods: tuple,
+) -> ShareholderLoanModelInput | None:
+    """Map canonical ProjectInputs to the clean B5 SHL financing contract.
+
+    The mapping is project-identity-free. A project with no configured SHL
+    principal produces ``None`` so the senior-debt-only path remains unchanged.
+    """
+    financing = project_inputs.financing
+    amount = float(getattr(financing, "shl_amount_keur", 0.0) or 0.0)
+    if amount <= 0.0:
+        return None
+
+    rate = float(getattr(financing, "shl_rate", 0.0) or 0.0)
+    shl_idc = float(getattr(financing, "shl_idc_keur", 0.0) or 0.0)
+    construction_dcf = 1.0
+    if shl_idc > 0.0:
+        if rate <= 0.0:
+            raise ValueError(
+                "ProjectInputs SHL has positive shl_idc_keur but non-positive shl_rate"
+            )
+        construction_dcf = shl_idc / (amount * rate)
+
+    first_operating = next((p.period_index for p in periods if p.is_operation), None)
+    if first_operating is None:
+        raise ValueError("ProjectInputs SHL requires at least one operating period")
+    last_period = max(p.period_index for p in periods)
+    repayment_start = (
+        getattr(financing, "tuho_shl_principal_eligibility_start_period", None)
+        or first_operating
+    )
+
+    return ShareholderLoanModelInput(
+        initial_principal_keur=amount,
+        annual_fixed_rate=rate,
+        day_count_convention=ShlDayCountConvention.ACT_365_FIXED,
+        construction_day_count_fraction=construction_dcf,
+        repayment_start_period_index=int(repayment_start),
+        maturity_period_index=last_period,
+        convergence_tolerance_keur=1e-4,
+        convergence_relative_tolerance=1e-9,
+        maximum_iterations=50,
+        source_label="project_inputs.financing",
     )

@@ -1,0 +1,96 @@
+name: C3B3D2B5 SHL Fixed-Point Integration Check
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - financial_engine/adapters/project_inputs.py
+      - financial_engine/adapters/tax_inputs.py
+      - financial_engine/inputs.py
+      - financial_engine/orchestrator.py
+      - financial_engine/policies/tax.py
+      - financial_engine/provenance.py
+      - financial_engine/results.py
+      - financial_engine/shl/production.py
+      - financial_engine/tax/engine.py
+      - financial_engine/tax/models.py
+      - financial_engine/tax/tax_year.py
+      - tests/test_stage_c3b3d2b5_shl_fixed_point_integration.py
+      - docs/architecture/c3b3d2b5_shl_fixed_point_inventory.md
+      - .github/workflows/c3b3d2b5_shl_fixed_point_integration_check.yml
+  push:
+    branches:
+      - stage-c3b3d2b5-shl-fixed-point-integration
+    paths:
+      - financial_engine/adapters/project_inputs.py
+      - financial_engine/adapters/tax_inputs.py
+      - financial_engine/inputs.py
+      - financial_engine/orchestrator.py
+      - financial_engine/policies/tax.py
+      - financial_engine/provenance.py
+      - financial_engine/results.py
+      - financial_engine/shl/production.py
+      - financial_engine/tax/engine.py
+      - financial_engine/tax/models.py
+      - financial_engine/tax/tax_year.py
+      - tests/test_stage_c3b3d2b5_shl_fixed_point_integration.py
+      - docs/architecture/c3b3d2b5_shl_fixed_point_inventory.md
+      - .github/workflows/c3b3d2b5_shl_fixed_point_integration_check.yml
+
+jobs:
+  c3b3d2b5-check:
+    name: C3B3D2B5 SHL fixed-point integration
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Verify exact head SHA
+        run: |
+          EXPECTED="${{ github.event.pull_request.head.sha || github.sha }}"
+          ACTUAL=$(git rev-parse HEAD)
+          if [ "$EXPECTED" != "$ACTUAL" ]; then
+            echo "ERROR: HEAD mismatch. Expected=$EXPECTED Actual=$ACTUAL"
+            exit 1
+          fi
+          echo "SHA verified: ${ACTUAL}"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install --no-cache-dir -c constraints.txt \
+            pytest openpyxl numpy pandas scipy itsdangerous bcrypt
+
+      - name: git diff --check
+        run: git diff --check ${{ github.event.pull_request.base.sha || 'HEAD~1' }}..HEAD
+
+      - name: C3B3D2B5 fixed-point authority, tax ownership, and production wiring
+        run: |
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest \
+            tests/test_stage_c3b3d2b5_shl_fixed_point_integration.py \
+            -v --tb=short --no-header
+
+      - name: C3B3D1 canonical SHL schedule regression
+        run: |
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest \
+            tests/test_stage_c3b3d1_canonical_shl_schedule.py \
+            -v --tb=short --no-header -q
+
+      - name: C3B3D2B0 clean SHL formula parity regression
+        run: |
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest \
+            tests/test_stage_c3b3d2b0_clean_shl_formula_parity.py \
+            -v --tb=short --no-header -q
+
+      - name: C3B3C tax-policy contract regression
+        run: |
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest \
+            tests/test_stage_c3b3c_tax_policy_shl_deductibility.py \
+            -v --tb=short --no-header -q

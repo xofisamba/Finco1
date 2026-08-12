@@ -213,6 +213,8 @@ class ShareholderLoanDiagnostics:
     max_closing_delta_keur: float
     max_interest_delta_keur: float
     termination_reason: str
+    max_final_shl_interest_handshake_delta_keur: float = 0.0
+    max_final_shl_closing_handshake_delta_keur: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -224,6 +226,7 @@ class ShareholderLoanSchedules:
     """
     period_indices: tuple[int, ...]
     shl_opening_keur: tuple[float, ...]
+    shl_drawdown_keur: tuple[float, ...]
     shl_gross_interest_keur: tuple[float, ...]
     shl_cash_interest_keur: tuple[float, ...]
     shl_pik_interest_keur: tuple[float, ...]

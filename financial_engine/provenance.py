@@ -180,7 +180,6 @@ def compute_senior_debt_fingerprint(inputs: "Any") -> str:
             "construction_day_count_fraction": shl.construction_day_count_fraction,
             "repayment_start_period_index": shl.repayment_start_period_index,
             "maturity_period_index": shl.maturity_period_index,
-            "tax_reintegration_fraction": shl.tax_reintegration_fraction,
             "convergence_tolerance_keur": shl.convergence_tolerance_keur,
             "convergence_relative_tolerance": shl.convergence_relative_tolerance,
             "maximum_iterations": shl.maximum_iterations,
