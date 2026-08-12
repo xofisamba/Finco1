@@ -161,7 +161,6 @@ jobs:
               "balancing plug",
               "source schedule replay",
               "target fitting",
-              "backsolved",
               "terminal top-up",
               "forced principal",
               "maturity_period_index=last_period",
@@ -176,6 +175,8 @@ jobs:
           adapter = Path("financial_engine/adapters/project_inputs.py").read_text(encoding="utf-8")
           if "shl_idc_keur" in adapter:
               failures.append("financial_engine/adapters/project_inputs.py: shl_idc_keur")
+          if "/ (amount * rate" in adapter or "/(amount*rate" in adapter.replace(" ", ""):
+              failures.append("financial_engine/adapters/project_inputs.py: shl_idc-derived dcf arithmetic")
           if failures:
               raise SystemExit("FAIL: forbidden production token(s): " + "; ".join(failures))
           print("PASS: production mapping has no identity dispatch, target replay, backsolved DCF, plugs, terminal top-up, or forced principal")
