@@ -572,7 +572,9 @@ class TestI_Governance:
         import inspect
         from financial_engine import results
         src = inspect.getsource(results)
-        for name in ("bank_sizing_cfads_keur", "bank_sizing_dscr"):
+        # bank_sizing_dscr is intentionally introduced in C3B3D2B4 on DebtSizingSchedules.
+        # Only bank_sizing_cfads_keur remains forbidden (no such field was ever approved).
+        for name in ("bank_sizing_cfads_keur",):
             assert name not in src, f"Forbidden name '{name}' found in financial_engine.results"
 
     def test_i3_no_project_dispatch_in_orchestrator_transformer(self):
@@ -850,7 +852,8 @@ class TestN_ProductionIdentityFree:
 
     def test_n3_results_py_no_forbidden_names(self):
         src = self._read_source("financial_engine/results.py")
-        for pat in ("bank_sizing_cfads_keur", "bank_sizing_dscr",
+        # bank_sizing_dscr is intentionally introduced in C3B3D2B4 on DebtSizingSchedules.
+        for pat in ("bank_sizing_cfads_keur",
                     "DebtSizingScenario", "ProductionScenarioScope"):
             assert pat not in src, (
                 f"financial_engine/results.py contains forbidden pattern {pat!r}"
