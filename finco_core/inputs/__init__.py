@@ -12,8 +12,8 @@ Public API — re-exported from submodules:
         PeriodAxisConvention, SHLRepaymentMethod, YieldScenario, AssetClass,
         ASSET_CLASS_USEFUL_LIFE,
         ProjectInfo, CapexItem, CapexStructure, OpexItem, TechnicalParams,
-        RevenueAdjustmentSchedule, RevenueParams, FinancingParams, TaxParams,
-        ProjectInputs, hash_inputs_for_cache
+        RevenueAdjustmentSchedule, RevenueParams, DebtSizingCaseConfig,
+        FinancingParams, TaxParams, ProjectInputs, hash_inputs_for_cache
 
     From finco_core.inputs.senior_rate_schedule:
         SeniorRateMode, SeniorDayCountConvention, SeniorHedgeConfig,
@@ -50,6 +50,7 @@ from finco_core.inputs._models import (
     TechnicalParams,
     RevenueAdjustmentSchedule,
     RevenueParams,
+    DebtSizingCaseConfig,
     FinancingParams,
     TaxParams,
     TaxDepreciationMode,
@@ -98,6 +99,7 @@ __all__ = [
     "TechnicalParams",
     "RevenueAdjustmentSchedule",
     "RevenueParams",
+    "DebtSizingCaseConfig",
     "FinancingParams",
     "TaxParams",
     "TaxDepreciationMode",

@@ -44,7 +44,7 @@ def _source_value(source: dict[str, Any], line: str, idx: int) -> float | None:
         return dep["dep_total_keur"][idx]
     if line == "Senior Interest":
         return ds["sd_gross_interest_keur"][idx]
-    if line == "SHL Interest":
+    if line in ("SHL Gross Interest", "SHL Interest"):
         return ds["shl_net_interest_keur"][idx]
     if line == "EBT":
         return source["pl"]["earnings_before_tax_keur"][idx]
@@ -75,6 +75,8 @@ def _source_value(source: dict[str, Any], line: str, idx: int) -> float | None:
         return cfads + senior_service
     if line == "Cash Available for SHL":
         return cf["free_cash_flow_for_shl_keur"][idx]
+    if line in ("SHL Cash Interest", "SHL PIK", "SHL Principal", "SHL Closing"):
+        return None
     raise KeyError(line)
 
 
@@ -84,6 +86,22 @@ def _runtime_maps(result: Any) -> dict[str, dict[int, float]]:
     senior_interest = dict(zip(result.senior_debt.period_indices, result.senior_debt.senior_interest_keur))
     shl_interest = (
         dict(zip(result.shareholder_loan.period_indices, result.shareholder_loan.shl_gross_interest_keur))
+        if result.shareholder_loan else {}
+    )
+    shl_cash_interest = (
+        dict(zip(result.shareholder_loan.period_indices, result.shareholder_loan.shl_cash_interest_keur))
+        if result.shareholder_loan else {}
+    )
+    shl_pik = (
+        dict(zip(result.shareholder_loan.period_indices, result.shareholder_loan.shl_pik_interest_keur))
+        if result.shareholder_loan else {}
+    )
+    shl_principal = (
+        dict(zip(result.shareholder_loan.period_indices, result.shareholder_loan.shl_principal_keur))
+        if result.shareholder_loan else {}
+    )
+    shl_closing = (
+        dict(zip(result.shareholder_loan.period_indices, result.shareholder_loan.shl_closing_keur))
         if result.shareholder_loan else {}
     )
     operating = dict(zip(result.operating_schedules.period_indices, result.operating_schedules.production_mwh))
@@ -100,6 +118,7 @@ def _runtime_maps(result: Any) -> dict[str, dict[int, float]]:
         "EBITDA": dict(zip(result.operating_schedules.period_indices, result.operating_schedules.ebitda_keur)),
         "Book Dep": {idx: p.book_depreciation_keur for idx, p in periods.items()},
         "Senior Interest": senior_interest,
+        "SHL Gross Interest": shl_interest,
         "SHL Interest": shl_interest,
         "EBT": {
             idx: ebit.get(idx, 0.0) - senior_interest.get(idx, 0.0) - shl_interest.get(idx, 0.0)
@@ -116,6 +135,10 @@ def _runtime_maps(result: Any) -> dict[str, dict[int, float]]:
         "Senior Closing": dict(zip(result.senior_debt.period_indices, result.senior_debt.senior_debt_closing_keur)),
         "Post-Senior Cash": dict(zip(result.post_senior_cash.period_indices, result.post_senior_cash.cash_after_senior_before_reserves_keur)),
         "Cash Available for SHL": dict(zip(result.post_senior_cash.period_indices, result.post_senior_cash.cash_available_for_shl_before_reserves_keur)),
+        "SHL Cash Interest": shl_cash_interest,
+        "SHL PIK": shl_pik,
+        "SHL Principal": shl_principal,
+        "SHL Closing": shl_closing,
     }
 
 
@@ -127,7 +150,7 @@ LINES: tuple[str, ...] = (
     "EBITDA",
     "Book Dep",
     "Senior Interest",
-    "SHL Interest",
+    "SHL Gross Interest",
     "EBT",
     "Fiscal Reintegration",
     "Taxable Income",
@@ -140,6 +163,10 @@ LINES: tuple[str, ...] = (
     "Senior Closing",
     "Post-Senior Cash",
     "Cash Available for SHL",
+    "SHL Cash Interest",
+    "SHL PIK",
+    "SHL Principal",
+    "SHL Closing",
 )
 
 

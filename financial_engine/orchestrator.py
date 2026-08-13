@@ -741,6 +741,8 @@ def _merge_financing_tax_input(
     base_tax_input: object,
     senior_interest_by_period: dict[int, float] | None = None,
     shl_interest_by_period: dict[int, float] | None = None,
+    *,
+    tax_periodisation_mode_override: str | None = None,
 ) -> object:
     """Merge Senior + SHL interest into tax input without mutating the source.
 
@@ -752,6 +754,12 @@ def _merge_financing_tax_input(
         PeriodInterestInput,
         TaxCalculationInput,
     )
+    from financial_engine.policies.tax import (
+        CashTaxTiming,
+        TaxBasisPeriodisation,
+        TaxLossUtilisationGate,
+    )
+    from dataclasses import replace as _replace
 
     senior_interest_by_period = senior_interest_by_period or {}
     shl_interest_by_period = shl_interest_by_period or {}
@@ -775,8 +783,28 @@ def _merge_financing_tax_input(
             other_interest_keur=existing.other_interest_keur if existing else 0.0,
         )
 
+    policy = base_tax_input.policy
+    if tax_periodisation_mode_override == "workbook_model_year_pairing":
+        policy = _replace(
+            policy,
+            cash_tax_timing=CashTaxTiming.MODEL_YEAR_PAYMENT_PERIOD,
+            tax_basis_periodisation=TaxBasisPeriodisation.MODEL_YEAR_PAIRING,
+            loss_utilisation_gate=TaxLossUtilisationGate.EBT_POSITIVE,
+        )
+    elif tax_periodisation_mode_override == "calendar_tax_year":
+        policy = _replace(
+            policy,
+            cash_tax_timing=CashTaxTiming.TAX_YEAR_LAST_PERIOD,
+            tax_basis_periodisation=TaxBasisPeriodisation.CALENDAR_YEAR,
+            loss_utilisation_gate=TaxLossUtilisationGate.TAXABLE_INCOME_POSITIVE,
+        )
+    elif tax_periodisation_mode_override is not None:
+        raise ValueError(
+            f"UNKNOWN_BANK_TAX_PERIODISATION_MODE: {tax_periodisation_mode_override!r}"
+        )
+
     return TaxCalculationInput(
-        policy=base_tax_input.policy,
+        policy=policy,
         opening_loss_vintages=base_tax_input.opening_loss_vintages,
         period_interest=tuple(merged_interest[idx] for idx in sorted(merged_interest)),
         period_adjustments=base_tax_input.period_adjustments,
@@ -979,6 +1007,7 @@ def _run_senior_debt_model_with_shl(inputs: SeniorDebtModelInput) -> ProjectMode
                 base_tax_input,
                 senior_interest_by_period,
                 shl_interest_guess,
+                tax_periodisation_mode_override=inputs.debt_sizing_case.tax_periodisation_mode_override,
             )
             tax_result = calculate_tax(bank_phase2a_result.periods, tax_input)
             cfads_results = calculate_canonical_cfads(
@@ -1091,6 +1120,7 @@ def _run_senior_debt_model_with_shl(inputs: SeniorDebtModelInput) -> ProjectMode
             base_tax_input,
             senior_interest_by_period,
             final_shl_interest,
+            tax_periodisation_mode_override=inputs.debt_sizing_case.tax_periodisation_mode_override,
         )
         tax_result = calculate_tax(bank_phase2a_result.periods, tax_input)
         cfads_results = calculate_canonical_cfads(
@@ -1160,6 +1190,7 @@ def _run_senior_debt_model_with_shl(inputs: SeniorDebtModelInput) -> ProjectMode
         base_tax_input,
         final_senior_interest,
         final_shl_interest,
+        tax_periodisation_mode_override=inputs.debt_sizing_case.tax_periodisation_mode_override,
     )
     final_bank_tax = calculate_tax(bank_phase2a_result.periods, final_bank_tax_input)
     final_bank_cfads = calculate_canonical_cfads(
@@ -1369,11 +1400,10 @@ def run_senior_debt_model(inputs: SeniorDebtModelInput) -> ProjectModelResult:
                     senior_interest_keur=senior_keur,
                 )
 
-        updated_tax_input = TaxCalculationInput(
-            policy=base_tax_input.policy,
-            opening_loss_vintages=base_tax_input.opening_loss_vintages,
-            period_interest=tuple(merged_interest.values()),
-            period_adjustments=base_tax_input.period_adjustments,
+        updated_tax_input = _merge_financing_tax_input(
+            base_tax_input,
+            senior_interest_by_period,
+            tax_periodisation_mode_override=inputs.debt_sizing_case.tax_periodisation_mode_override,
         )
         # Tax and CFADS computed against bank periods (bank EBITDA drives taxable income).
         tax_result = calculate_tax(bank_phase2a_result.periods, updated_tax_input)
@@ -1452,28 +1482,10 @@ def run_senior_debt_model(inputs: SeniorDebtModelInput) -> ProjectModelResult:
     _sd_service_by_idx: dict[int, float] = dict(
         zip(sd_result.period_indices, sd_result.senior_debt_service_keur)
     )
-    _merged_bank_final: dict[int, "PeriodInterestInput"] = {}
-    for pi in base_tax_input.period_interest:
-        _merged_bank_final[pi.period_index] = pi
-    for _bidx, _bseni in final_senior_interest.items():
-        _bexist = _merged_bank_final.get(_bidx)
-        if _bexist is not None:
-            _merged_bank_final[_bidx] = PeriodInterestInput(
-                period_index=_bidx,
-                senior_interest_keur=_bseni,
-                shl_interest_keur=_bexist.shl_interest_keur,
-                other_interest_keur=_bexist.other_interest_keur,
-            )
-        else:
-            _merged_bank_final[_bidx] = PeriodInterestInput(
-                period_index=_bidx,
-                senior_interest_keur=_bseni,
-            )
-    _bank_final_tax_input = TaxCalculationInput(
-        policy=base_tax_input.policy,
-        opening_loss_vintages=base_tax_input.opening_loss_vintages,
-        period_interest=tuple(_merged_bank_final.values()),
-        period_adjustments=base_tax_input.period_adjustments,
+    _bank_final_tax_input = _merge_financing_tax_input(
+        base_tax_input,
+        final_senior_interest,
+        tax_periodisation_mode_override=inputs.debt_sizing_case.tax_periodisation_mode_override,
     )
     final_bank_tax_result = calculate_tax(bank_phase2a_result.periods, _bank_final_tax_input)
     final_bank_cfads_results = calculate_canonical_cfads(

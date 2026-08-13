@@ -24,6 +24,7 @@ from finco_core.inputs._models import (
     CapexStructure,
     DebtSizingMethod,
     DebtSizingMode,
+    DebtSizingCaseConfig,
     EquityIRRMethod,
     FinancingParams,
     OpexItem,
@@ -179,6 +180,21 @@ def _ser_senior_sculpting_config(c: SeniorSculptingConfig) -> dict:
     }
 
 
+def _ser_debt_sizing_case_config(c: DebtSizingCaseConfig) -> dict:
+    return {
+        "production_yield_scenario": c.production_yield_scenario.value,
+        "merchant_price_calendar_start_year": c.merchant_price_calendar_start_year,
+        "merchant_prices_by_calendar_year_eur_mwh": list(c.merchant_prices_by_calendar_year_eur_mwh),
+        "market_prices_curve_eur_mwh": list(c.market_prices_curve_eur_mwh),
+        "tax_periodisation_mode_override": (
+            c.tax_periodisation_mode_override.value
+            if c.tax_periodisation_mode_override is not None
+            else None
+        ),
+        "source_label": c.source_label,
+    }
+
+
 # ── Public serializer ──────────────────────────────────────────────────────────
 
 def project_inputs_to_dict(inputs: ProjectInputs) -> dict:
@@ -309,6 +325,7 @@ def project_inputs_to_dict(inputs: ProjectInputs) -> dict:
             "dscr_schedule": fin.dscr_schedule,
             "senior_debt_interest_config": _ser_senior_interest_config(fin.senior_debt_interest_config),
             "senior_sculpting_config": _ser_senior_sculpting_config(fin.senior_sculpting_config),
+            "debt_sizing_case": _ser_debt_sizing_case_config(fin.debt_sizing_case),
             "shl_repayment_method": fin.shl_repayment_method,
             "shl_pik_switch_period": fin.shl_pik_switch_period,
             "shl_tenor_years": fin.shl_tenor_years,
@@ -440,6 +457,27 @@ def _deser_senior_sculpting_config(d: dict) -> SeniorSculptingConfig:
         final_repayment_policy=SeniorFinalRepaymentPolicy(d["final_repayment_policy"]),
         principal_cap_policy=SeniorPrincipalCapPolicy(d["principal_cap_policy"]),
         reserve_treatment=SeniorReserveTreatment(d["reserve_treatment"]),
+    )
+
+
+def _deser_debt_sizing_case_config(d: dict | None) -> DebtSizingCaseConfig:
+    if d is None:
+        return DebtSizingCaseConfig()
+    return DebtSizingCaseConfig(
+        production_yield_scenario=YieldScenario(
+            d.get("production_yield_scenario", YieldScenario.P90_10Y.value)
+        ),
+        merchant_price_calendar_start_year=d.get("merchant_price_calendar_start_year"),
+        merchant_prices_by_calendar_year_eur_mwh=tuple(
+            d.get("merchant_prices_by_calendar_year_eur_mwh", ())
+        ),
+        market_prices_curve_eur_mwh=tuple(d.get("market_prices_curve_eur_mwh", ())),
+        tax_periodisation_mode_override=(
+            TaxPeriodisationMode(d["tax_periodisation_mode_override"])
+            if d.get("tax_periodisation_mode_override") is not None
+            else None
+        ),
+        source_label=d.get("source_label", ""),
     )
 
 
@@ -586,6 +624,7 @@ def project_inputs_from_dict(d: dict) -> ProjectInputs:
         senior_sculpting_config=_deser_senior_sculpting_config(
             fin_d["senior_sculpting_config"]
         ),
+        debt_sizing_case=_deser_debt_sizing_case_config(fin_d.get("debt_sizing_case")),
         shl_repayment_method=fin_d.get("shl_repayment_method", "bullet"),
         shl_pik_switch_period=fin_d.get("shl_pik_switch_period", 0),
         shl_tenor_years=fin_d.get("shl_tenor_years", 0),

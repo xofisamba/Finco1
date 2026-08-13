@@ -253,6 +253,11 @@ class DebtSizingCaseInput:
         When empty AND merchant_price_calendar_start_year is None, Base revenue
         merchant price assumptions are inherited unchanged.
 
+    tax_periodisation_mode_override:
+        Optional bank-case-only tax periodisation policy. When None, the Base tax
+        periodisation policy is inherited. This is explicit data-owned source
+        compatibility metadata, not project identity dispatch.
+
     source_label:
         Audit-only label (e.g. "p90_10y_lender_case"). Never used in any
         financial calculation; present solely for human-readable provenance.
@@ -262,6 +267,7 @@ class DebtSizingCaseInput:
     merchant_price_calendar_start_year: int | None = None
     merchant_prices_by_calendar_year_eur_mwh: tuple[float, ...] = ()
     market_prices_curve_eur_mwh: tuple[float, ...] = ()
+    tax_periodisation_mode_override: str | None = None
     source_label: str = ""
 
     def __post_init__(self) -> None:

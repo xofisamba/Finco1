@@ -221,6 +221,14 @@ def build_tax_year_bases(
     -------
     Tuple of TaxYearCalculationBasis, sorted by ascending calendar year.
     """
+    from financial_engine.policies.tax import TaxBasisPeriodisation
+
+    if (
+        policy is not None
+        and policy.tax_basis_periodisation == TaxBasisPeriodisation.MODEL_YEAR_PAIRING
+    ):
+        return _build_model_year_pairing_bases(periods, interest_map, adj_map, policy)
+
     year_fragments: dict[int, list[TaxYearPeriodFragment]] = defaultdict(list)
 
     for p in periods:
@@ -303,4 +311,107 @@ def build_tax_year_bases(
             shl_non_deductible_interest_keur=year_shl_non_deductible,
         ))
 
+    return tuple(bases)
+
+
+def _build_model_year_pairing_bases(
+    periods: tuple,
+    interest_map: dict[int, PeriodInterestInput],
+    adj_map: dict[int, float],
+    policy: TaxPolicy,
+) -> tuple[TaxYearCalculationBasis, ...]:
+    """Aggregate H2(period N) + H1(period N+1) source workbook tax years.
+
+    This source-compatibility mode is selected only by an explicit runtime tax
+    policy. It is not project identity dispatch and it does not consume source
+    output vectors. The resulting tax-year label is the H1 period end year and
+    the cash payment period is the H1 period itself, matching the source model's
+    paired-period CIT convention.
+    """
+    fragments_by_year: dict[int, list[TaxYearPeriodFragment]] = defaultdict(list)
+
+    for p in periods:
+        idx: int = p.period_index  # type: ignore[attr-defined]
+        if not getattr(p, "is_operation", False):
+            continue
+        period_in_year = int(getattr(p, "period_in_year", 0))
+        if period_in_year not in (1, 2):
+            raise ValueError(
+                "MODEL_YEAR_PAIRING_REQUIRES_SEMI_ANNUAL_PERIODS: "
+                f"period_index={idx}; period_in_year={period_in_year!r}"
+            )
+
+        period_end = p.period_end  # type: ignore[attr-defined]
+        if period_end.month == 6:
+            tax_year = period_end.year
+        elif period_end.month == 12:
+            tax_year = period_end.year + 1
+        else:
+            raise ValueError(
+                "MODEL_YEAR_PAIRING_REQUIRES_JUNE_DECEMBER_PERIOD_ENDS: "
+                f"period_index={idx}; period_end={period_end!r}"
+            )
+        pi_obj = interest_map.get(idx)
+        if pi_obj:
+            shl_fraction = policy.shl_tax_deductible_fraction()
+            shl_tax_eligible = pi_obj.shl_interest_keur * shl_fraction
+            shl_non_deductible = pi_obj.shl_interest_keur - shl_tax_eligible
+            gross_int = pi_obj.senior_interest_keur + pi_obj.other_interest_keur + shl_tax_eligible
+        else:
+            gross_int = 0.0
+            shl_tax_eligible = 0.0
+            shl_non_deductible = 0.0
+
+        fragments_by_year[tax_year].append(
+            TaxYearPeriodFragment(
+                tax_year=tax_year,
+                source_period_index=idx,
+                start_date=p.period_start,  # type: ignore[attr-defined]
+                end_date=p.period_end,  # type: ignore[attr-defined]
+                days=p.days_in_period,  # type: ignore[attr-defined]
+                source_period_days=p.days_in_period,  # type: ignore[attr-defined]
+                allocation_fraction=1.0,
+                ebitda_keur=p.ebitda_keur,  # type: ignore[attr-defined]
+                tax_depreciation_keur=p.tax_depreciation_keur,  # type: ignore[attr-defined]
+                total_interest_keur=gross_int,
+                other_fiscal_reintegration_keur=adj_map.get(idx, 0.0),
+                shl_tax_eligible_interest_keur=shl_tax_eligible,
+                shl_non_deductible_interest_keur=shl_non_deductible,
+            )
+        )
+
+    bases: list[TaxYearCalculationBasis] = []
+    for tax_year in sorted(fragments_by_year):
+        frags_for_year = tuple(fragments_by_year[tax_year])
+        period_indices = tuple(f.source_period_index for f in frags_for_year)
+        h1_periods = [
+            p for p in periods
+            if p.period_index in period_indices  # type: ignore[attr-defined]
+            and p.period_end.month == 6  # type: ignore[attr-defined]
+        ]
+        payment_idx = (
+            h1_periods[-1].period_index  # type: ignore[attr-defined]
+            if h1_periods
+            else period_indices[-1]
+        )
+        bases.append(
+            TaxYearCalculationBasis(
+                tax_year=tax_year,
+                fragments=frags_for_year,
+                period_indices=period_indices,
+                payment_period_index=payment_idx,
+                ebitda_keur=sum(f.ebitda_keur for f in frags_for_year),
+                tax_depreciation_keur=sum(f.tax_depreciation_keur for f in frags_for_year),
+                total_interest_keur=sum(f.total_interest_keur for f in frags_for_year),
+                other_fiscal_reintegration_keur=sum(
+                    f.other_fiscal_reintegration_keur for f in frags_for_year
+                ),
+                shl_tax_eligible_interest_keur=sum(
+                    f.shl_tax_eligible_interest_keur for f in frags_for_year
+                ),
+                shl_non_deductible_interest_keur=sum(
+                    f.shl_non_deductible_interest_keur for f in frags_for_year
+                ),
+            )
+        )
     return tuple(bases)

@@ -14,6 +14,8 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from finco_core.inputs import ProjectInputs
 
+from finco_core.inputs import TaxPeriodisationMode
+
 from financial_engine.inputs import (
     CalendarInput,
     CapexItemForDep,
@@ -231,10 +233,10 @@ def build_senior_debt_model_input_from_project_inputs(
     """Assemble a complete SeniorDebtModelInput from canonical ProjectInputs.
 
     The Base operating/tax/debt fundamentals are adapted from ``project_inputs``.
-    ``debt_sizing_case`` is the explicit production-runtime bank-case seam: callers
-    may supply a lender yield scenario and optional lender merchant-price curve
-    without changing the Base/equity performance inputs. When omitted, the generic
-    default is P90-10y production with Base merchant pricing inherited unchanged.
+    ProjectInputs.financing.debt_sizing_case is the canonical project-owned bank
+    case. Callers may still supply ``debt_sizing_case`` as an explicit test or
+    diagnostic override. When both are absent in legacy payloads, the serialized
+    FinancingParams default resolves to P90-10y with Base merchant pricing.
 
     This argument is deliberately project-identity-free. It is the smallest clean
     runtime contract required before persistence/UI surfaces own the same fields.
@@ -261,10 +263,26 @@ def build_senior_debt_model_input_from_project_inputs(
         project_inputs, operating_periods
     )
 
-    resolved_debt_sizing_case = debt_sizing_case or DebtSizingCaseInput(
-        production_yield_scenario=YieldScenario.P90_10Y,
-        source_label="generic_bank_case_p90_10y",
-    )
+    if debt_sizing_case is not None:
+        resolved_debt_sizing_case = debt_sizing_case
+    else:
+        canonical_case = project_inputs.financing.debt_sizing_case
+        resolved_debt_sizing_case = DebtSizingCaseInput(
+            production_yield_scenario=YieldScenario(
+                canonical_case.production_yield_scenario.value
+            ),
+            merchant_price_calendar_start_year=canonical_case.merchant_price_calendar_start_year,
+            merchant_prices_by_calendar_year_eur_mwh=(
+                canonical_case.merchant_prices_by_calendar_year_eur_mwh
+            ),
+            market_prices_curve_eur_mwh=canonical_case.market_prices_curve_eur_mwh,
+            tax_periodisation_mode_override=(
+                canonical_case.tax_periodisation_mode_override.value
+                if canonical_case.tax_periodisation_mode_override is not None
+                else None
+            ),
+            source_label=canonical_case.source_label,
+        )
     shareholder_loan = _build_shareholder_loan_model_input_from_project_inputs(
         project_inputs,
         operating_periods,

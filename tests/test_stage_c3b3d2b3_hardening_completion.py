@@ -129,12 +129,81 @@ class TestProductionAdapterSeam:
         assert sig.parameters["debt_sizing_case"].default is None
 
     def test_default_policy_remains_p90(self):
-        from financial_engine.adapters import project_inputs
-        from financial_engine.inputs import YieldScenario
+        from app.project_factories import (
+            create_default_solar_project,
+            create_default_tuho_wind1,
+            create_default_wind_project,
+        )
+        from finco_core.inputs import YieldScenario
 
-        src = inspect.getsource(project_inputs.build_senior_debt_model_input_from_project_inputs)
-        assert "YieldScenario.P90_10Y" in src
-        assert YieldScenario.P90_10Y.value == "P90-10y"
+        for factory in (
+            create_default_solar_project,
+            create_default_wind_project,
+            create_default_tuho_wind1,
+        ):
+            project = factory()
+            assert project.financing.debt_sizing_case.production_yield_scenario == (
+                YieldScenario.P90_10Y
+            )
+
+    def test_legacy_payload_without_debt_sizing_case_loads_p90_default(self):
+        from app.project_factories import create_default_solar_project
+        from finco_core.inputs import YieldScenario
+        from finco_core.inputs.serialization import (
+            project_inputs_from_dict,
+            project_inputs_to_dict,
+        )
+
+        payload = project_inputs_to_dict(create_default_solar_project())
+        payload["financing"].pop("debt_sizing_case")
+        restored = project_inputs_from_dict(payload)
+        assert restored.financing.debt_sizing_case.production_yield_scenario == (
+            YieldScenario.P90_10Y
+        )
+
+    def test_oborovo_and_renamed_clone_keep_explicit_p50_bank_case(self):
+        from dataclasses import replace
+
+        from app.project_factories import create_default_oborovo
+        from financial_engine.adapters.project_inputs import (
+            build_senior_debt_model_input_from_project_inputs,
+        )
+        from financial_engine.inputs import YieldScenario
+        from financial_engine.orchestrator import run_senior_debt_model
+
+        project = create_default_oborovo()
+        renamed = replace(project, info=replace(project.info, name="Renamed Clone"))
+        model = build_senior_debt_model_input_from_project_inputs(
+            project,
+            source_id="b3-hardening-oborovo",
+        )
+        clone_model = build_senior_debt_model_input_from_project_inputs(
+            renamed,
+            source_id="b3-hardening-oborovo-clone",
+        )
+        assert model.debt_sizing_case.production_yield_scenario == YieldScenario.P50
+        assert clone_model.debt_sizing_case.production_yield_scenario == YieldScenario.P50
+        assert run_senior_debt_model(model).senior_debt.debt_size_keur == pytest.approx(
+            run_senior_debt_model(clone_model).senior_debt.debt_size_keur
+        )
+
+    def test_explicit_adapter_override_remains_diagnostic(self):
+        from app.project_factories import create_default_oborovo
+        from financial_engine.adapters.project_inputs import (
+            build_senior_debt_model_input_from_project_inputs,
+        )
+        from financial_engine.inputs import DebtSizingCaseInput, YieldScenario
+
+        model = build_senior_debt_model_input_from_project_inputs(
+            create_default_oborovo(),
+            source_id="b3-hardening-diagnostic-override",
+            debt_sizing_case=DebtSizingCaseInput(
+                production_yield_scenario=YieldScenario.P90_10Y,
+                source_label="diagnostic override",
+            ),
+        )
+        assert model.debt_sizing_case.production_yield_scenario == YieldScenario.P90_10Y
+        assert model.debt_sizing_case.source_label == "diagnostic override"
 
     def test_explicit_case_supports_calendar_and_relative_price_contracts(self):
         from financial_engine.inputs import DebtSizingCaseInput, YieldScenario

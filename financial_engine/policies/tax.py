@@ -12,6 +12,19 @@ class CashTaxTiming(str, Enum):
     """When does the CIT cash payment crystallise relative to accrual?"""
     SAME_PERIOD = "same_period"
     TAX_YEAR_LAST_PERIOD = "tax_year_last_period"
+    MODEL_YEAR_PAYMENT_PERIOD = "model_year_payment_period"
+
+
+class TaxBasisPeriodisation(str, Enum):
+    """How semi-annual model periods are grouped into tax calculation years."""
+    CALENDAR_YEAR = "calendar_year"
+    MODEL_YEAR_PAIRING = "model_year_pairing"
+
+
+class TaxLossUtilisationGate(str, Enum):
+    """Gate for using carried-forward losses against positive taxable income."""
+    TAXABLE_INCOME_POSITIVE = "taxable_income_positive"
+    EBT_POSITIVE = "ebt_positive"
 
 
 class ShlInterestDeductibilityMode(str, Enum):
@@ -65,6 +78,10 @@ class TaxPolicy:
         ShlInterestDeductibilityMode.FULLY_DEDUCTIBLE
     )
     shl_interest_deductible_pct: float | None = None
+    tax_basis_periodisation: TaxBasisPeriodisation = TaxBasisPeriodisation.CALENDAR_YEAR
+    loss_utilisation_gate: TaxLossUtilisationGate = (
+        TaxLossUtilisationGate.TAXABLE_INCOME_POSITIVE
+    )
 
     def shl_tax_deductible_fraction(self) -> float:
         """Return the fraction of gross SHL interest eligible for tax deduction.

@@ -578,6 +578,78 @@ class RevenueParams:
 
 
 @dataclass(frozen=True)
+class DebtSizingCaseConfig:
+    """Project-owned bank/debt-sizing economic case assumptions.
+
+    This canonical input config mirrors the clean runtime DebtSizingCaseInput
+    without importing the financial_engine package into finco_core. It is
+    intentionally explicit and project-identity-free: factories may set
+    source-compatible values, while the engine consumes only these fields.
+    """
+
+    production_yield_scenario: YieldScenario = YieldScenario.P90_10Y
+    merchant_price_calendar_start_year: int | None = None
+    merchant_prices_by_calendar_year_eur_mwh: tuple[float, ...] = ()
+    market_prices_curve_eur_mwh: tuple[float, ...] = ()
+    tax_periodisation_mode_override: "TaxPeriodisationMode | None" = None
+    source_label: str = ""
+
+    def __post_init__(self) -> None:
+        has_calendar = (
+            self.merchant_price_calendar_start_year is not None
+            or bool(self.merchant_prices_by_calendar_year_eur_mwh)
+        )
+        has_curve = bool(self.market_prices_curve_eur_mwh)
+        if has_calendar and has_curve:
+            raise ValueError(
+                "DebtSizingCaseConfig: calendar-year merchant prices and "
+                "market_prices_curve_eur_mwh are mutually exclusive."
+            )
+        if (
+            self.merchant_price_calendar_start_year is not None
+            and not self.merchant_prices_by_calendar_year_eur_mwh
+        ):
+            raise ValueError(
+                "DebtSizingCaseConfig: merchant_price_calendar_start_year is set but "
+                "merchant_prices_by_calendar_year_eur_mwh is empty."
+            )
+        if (
+            self.merchant_prices_by_calendar_year_eur_mwh
+            and self.merchant_price_calendar_start_year is None
+        ):
+            raise ValueError(
+                "DebtSizingCaseConfig: merchant_prices_by_calendar_year_eur_mwh is "
+                "supplied but merchant_price_calendar_start_year is None."
+            )
+        if self.merchant_price_calendar_start_year is not None:
+            if isinstance(self.merchant_price_calendar_start_year, bool) or not isinstance(
+                self.merchant_price_calendar_start_year, int
+            ):
+                raise ValueError(
+                    "DebtSizingCaseConfig: merchant_price_calendar_start_year must be an integer year."
+                )
+            if self.merchant_price_calendar_start_year < 1:
+                raise ValueError(
+                    "DebtSizingCaseConfig: merchant_price_calendar_start_year must be >= 1."
+                )
+        for field_name, values in (
+            ("merchant_prices_by_calendar_year_eur_mwh", self.merchant_prices_by_calendar_year_eur_mwh),
+            ("market_prices_curve_eur_mwh", self.market_prices_curve_eur_mwh),
+        ):
+            for i, value in enumerate(values):
+                if isinstance(value, bool) or not isinstance(value, (int, float)):
+                    raise ValueError(
+                        f"DebtSizingCaseConfig: {field_name}[{i}] must be a finite numeric value, "
+                        f"got {value!r}."
+                    )
+                if value != value or value in (float("inf"), float("-inf")):
+                    raise ValueError(
+                        f"DebtSizingCaseConfig: {field_name}[{i}] must be a finite numeric value, "
+                        f"got {value!r}."
+                    )
+
+
+@dataclass(frozen=True)
 class FinancingParams:
     """Debt, equity, reserve, and shareholder-loan assumptions."""
     share_capital_keur: float = 500.0
@@ -620,6 +692,7 @@ class FinancingParams:
     dscr_schedule: list[float] | None = None
     senior_debt_interest_config: SeniorDebtInterestConfig = field(default_factory=SeniorDebtInterestConfig)
     senior_sculpting_config: SeniorSculptingConfig = field(default_factory=SeniorSculptingConfig)
+    debt_sizing_case: DebtSizingCaseConfig = field(default_factory=DebtSizingCaseConfig)
 
     shl_repayment_method: str = "bullet"
     shl_pik_switch_period: int = 0

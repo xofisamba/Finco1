@@ -167,6 +167,7 @@ def compute_senior_debt_fingerprint(inputs: "Any") -> str:
             "merchant_price_calendar_start_year": dc.merchant_price_calendar_start_year,
             "merchant_prices_by_calendar_year_eur_mwh": list(dc.merchant_prices_by_calendar_year_eur_mwh),
             "market_prices_curve_eur_mwh": list(dc.market_prices_curve_eur_mwh),
+            "tax_periodisation_mode_override": dc.tax_periodisation_mode_override,
         }
 
     shl_payload = None
