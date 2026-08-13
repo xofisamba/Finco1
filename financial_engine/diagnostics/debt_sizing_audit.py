@@ -66,6 +66,22 @@ def build_debt_sizing_audit(
         if source_debt_truth
         else None
     )
+    source_components = (
+        source_debt_truth.get("workstream_a", {}).get("components", {})
+        if source_debt_truth
+        else {}
+    )
+    source_cf_row79 = (
+        source_debt_truth.get("workstream_a", {})
+        .get("cf_row79_free_cash_flow_for_banks", {})
+        .get("period_values_keur")
+        if source_debt_truth
+        else None
+    )
+    source_cf_revenue = source_components.get("cf_row23_revenues", {}).get("period_values_keur")
+    source_cf_opex = source_components.get("cf_row49_opex", {}).get("period_values_keur")
+    source_cf_interest_income = source_components.get("cf_row76_interest_income", {}).get("period_values_keur")
+    source_cf_cit = source_components.get("cf_row77_cit", {}).get("period_values_keur")
 
     periods_by_idx = {p.period_index: p for p in result.periods}
     debt_sizing_by_idx = {
@@ -100,8 +116,15 @@ def build_debt_sizing_audit(
             else 0.0
         )
         source_cfads = _vector_value(source_ds20, idx)
+        source_base_cfads = _vector_value(source_cf_row79, idx)
         source_dscr = _vector_value(source_target_dscr, idx)
         source_capacity = _vector_value(source_debt_capacity, idx)
+        source_revenue = _vector_value(source_cf_revenue, idx)
+        source_opex_signed = _vector_value(source_cf_opex, idx)
+        source_opex_abs = -source_opex_signed if source_opex_signed is not None else None
+        source_interest_income = _vector_value(source_cf_interest_income, idx)
+        source_cit_signed = _vector_value(source_cf_cit, idx)
+        source_cash_tax_abs = -source_cit_signed if source_cit_signed is not None else None
         rows.append(
             {
                 "period": idx,
@@ -112,18 +135,24 @@ def build_debt_sizing_audit(
                 "excel_bank_price": None,
                 "finco_bank_price": finco_bank_price,
                 "bank_price_delta": None,
+                "excel_cf_row23_base_revenue": source_revenue,
                 "excel_bank_revenue": None,
                 "finco_bank_revenue": finco_bank_revenue,
                 "bank_revenue_delta": None,
+                "excel_cf_row49_base_opex_abs": source_opex_abs,
                 "excel_bank_opex": None,
                 "finco_bank_opex": finco_bank_opex,
                 "bank_opex_delta": None,
                 "excel_bank_ebitda": None,
                 "finco_bank_ebitda": finco_bank_ebitda,
                 "bank_ebitda_delta": None,
+                "excel_cf_row77_base_cash_tax_abs": source_cash_tax_abs,
                 "excel_bank_cit": None,
                 "finco_bank_cit": finco_bank_cit,
                 "bank_cit_delta": None,
+                "excel_cf_row76_interest_income": source_interest_income,
+                "excel_cf_row79_base_cfads": source_base_cfads,
+                "base_vs_bank_source_cfads_delta": _delta(source_base_cfads, source_cfads),
                 "excel_bank_cfads": source_cfads,
                 "finco_bank_cfads": finco_bank_cfads,
                 "bank_cfads_delta": _delta(finco_bank_cfads, source_cfads),
@@ -187,9 +216,21 @@ def build_debt_sizing_audit(
         ),
         None,
     )
+    max_bank_cfads = max(
+        (
+            row for row in rows
+            if row["bank_cfads_delta"] is not None
+        ),
+        key=lambda row: abs(row["bank_cfads_delta"]),
+        default=None,
+    )
     return {
         "classification": "DEBT_SIZING_AUDIT_DIAGNOSTIC_ONLY",
         "rows": rows,
+        "late_horizon_residual_classification": (
+            "BANK_DS_ROW20_REMAINS_SOURCE_CFADS_AUTHORITY; "
+            "CF_ROW79_COMPONENTS_ARE_BASE_CASE_EVIDENCE_NOT_BANK_COMPONENT_REPLAY"
+        ),
         "source_unavailable_components": (
             "Excel Bank Production",
             "Excel Bank Price",
@@ -201,6 +242,8 @@ def build_debt_sizing_audit(
         ),
         "source_available_components": (
             "Excel Bank CFADS / DS row20 / Macro50 authority",
+            "Excel CF row79 Base CFADS",
+            "Excel CF row23/49/76/77 Base components",
             "Excel Target DSCR",
             "Excel Day Fraction",
             "Excel Debt Service Capacity",
@@ -222,6 +265,21 @@ def build_debt_sizing_audit(
                 "delta": first_divergence["bank_cfads_delta"],
             }
             if first_divergence
+            else None
+        ),
+        "max_bank_case_causal_divergence": (
+            {
+                "period": max_bank_cfads["period"],
+                "line": "Bank CFADS / DS row20 late-horizon residual",
+                "cause": (
+                    "SOURCE_BANK_COMPONENTS_BEYOND_DS_ROW20_NOT_EXTRACTED; "
+                    "PRODUCTION_CHANGE_NOT_JUSTIFIED_WITHOUT_UPSTREAM_BANK_COMPONENT_SOURCE_BRIDGE"
+                ),
+                "excel": max_bank_cfads["excel_bank_cfads"],
+                "finco": max_bank_cfads["finco_bank_cfads"],
+                "delta": max_bank_cfads["bank_cfads_delta"],
+            }
+            if max_bank_cfads
             else None
         ),
     }

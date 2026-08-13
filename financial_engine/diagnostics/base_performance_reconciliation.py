@@ -20,7 +20,22 @@ def _safe_price(revenue_keur: float, production_mwh: float) -> float:
     return revenue_keur * 1000.0 / production_mwh
 
 
-def _source_value(source: dict[str, Any], line: str, idx: int) -> float | None:
+def _shl_source_by_period(shl_source: dict[str, Any] | None) -> dict[int, dict[str, Any]]:
+    if not shl_source:
+        return {}
+    return {
+        int(row["ds_index"]): row
+        for row in shl_source.get("periods", ())
+        if "ds_index" in row
+    }
+
+
+def _source_value(
+    source: dict[str, Any],
+    line: str,
+    idx: int,
+    shl_by_idx: dict[int, dict[str, Any]] | None = None,
+) -> float | None:
     cf = source["cf"]
     ds = source["ds"]
     dep = source["dep"]
@@ -42,6 +57,10 @@ def _source_value(source: dict[str, Any], line: str, idx: int) -> float | None:
         return cf["ebitda_keur"][idx]
     if line == "Book Dep":
         return dep["dep_total_keur"][idx]
+    if line == "EBIT":
+        return source["pl"]["ebit_keur"][idx]
+    if line == "Senior Opening":
+        return ds["sd_beginning_keur"][idx]
     if line == "Senior Interest":
         return ds["sd_gross_interest_keur"][idx]
     if line in ("SHL Gross Interest", "SHL Interest"):
@@ -75,8 +94,18 @@ def _source_value(source: dict[str, Any], line: str, idx: int) -> float | None:
         return cfads + senior_service
     if line == "Cash Available for SHL":
         return cf["free_cash_flow_for_shl_keur"][idx]
-    if line in ("SHL Cash Interest", "SHL PIK", "SHL Principal", "SHL Closing"):
-        return None
+    if line == "SHL Opening":
+        return ds["shl_beginning_keur"][idx]
+    if line == "SHL Cash Interest":
+        row = (shl_by_idx or {}).get(idx)
+        return row["cash_interest_keur"] if row else None
+    if line == "SHL PIK":
+        return ds["shl_interest_capitalised_keur"][idx]
+    if line == "SHL Principal":
+        row = (shl_by_idx or {}).get(idx)
+        return row["principal_repaid_keur"] if row else None
+    if line == "SHL Closing":
+        return ds["shl_ending_keur"][idx]
     raise KeyError(line)
 
 
@@ -117,6 +146,8 @@ def _runtime_maps(result: Any) -> dict[str, dict[int, float]]:
         "OPEX": dict(zip(result.operating_schedules.period_indices, result.operating_schedules.opex_keur)),
         "EBITDA": dict(zip(result.operating_schedules.period_indices, result.operating_schedules.ebitda_keur)),
         "Book Dep": {idx: p.book_depreciation_keur for idx, p in periods.items()},
+        "EBIT": ebit,
+        "Senior Opening": dict(zip(result.senior_debt.period_indices, result.senior_debt.senior_debt_opening_keur)),
         "Senior Interest": senior_interest,
         "SHL Gross Interest": shl_interest,
         "SHL Interest": shl_interest,
@@ -135,6 +166,10 @@ def _runtime_maps(result: Any) -> dict[str, dict[int, float]]:
         "Senior Closing": dict(zip(result.senior_debt.period_indices, result.senior_debt.senior_debt_closing_keur)),
         "Post-Senior Cash": dict(zip(result.post_senior_cash.period_indices, result.post_senior_cash.cash_after_senior_before_reserves_keur)),
         "Cash Available for SHL": dict(zip(result.post_senior_cash.period_indices, result.post_senior_cash.cash_available_for_shl_before_reserves_keur)),
+        "SHL Opening": (
+            dict(zip(result.shareholder_loan.period_indices, result.shareholder_loan.shl_opening_keur))
+            if result.shareholder_loan else {}
+        ),
         "SHL Cash Interest": shl_cash_interest,
         "SHL PIK": shl_pik,
         "SHL Principal": shl_principal,
@@ -149,6 +184,8 @@ LINES: tuple[str, ...] = (
     "OPEX",
     "EBITDA",
     "Book Dep",
+    "EBIT",
+    "Senior Opening",
     "Senior Interest",
     "SHL Gross Interest",
     "EBT",
@@ -163,6 +200,7 @@ LINES: tuple[str, ...] = (
     "Senior Closing",
     "Post-Senior Cash",
     "Cash Available for SHL",
+    "SHL Opening",
     "SHL Cash Interest",
     "SHL PIK",
     "SHL Principal",
@@ -170,8 +208,14 @@ LINES: tuple[str, ...] = (
 )
 
 
-def build_base_performance_reconciliation(result: Any, source: dict[str, Any]) -> dict[str, Any]:
+def build_base_performance_reconciliation(
+    result: Any,
+    source: dict[str, Any],
+    *,
+    shl_source_truth: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     runtime = _runtime_maps(result)
+    shl_by_idx = _shl_source_by_period(shl_source_truth)
     period_by_idx = {p.period_index: p for p in result.periods}
     rows: list[dict[str, Any]] = []
     for idx in sorted(period_by_idx):
@@ -179,7 +223,11 @@ def build_base_performance_reconciliation(result: Any, source: dict[str, Any]) -
             continue
         period = period_by_idx[idx]
         for line in LINES:
-            excel = _source_value(source, line, idx) if idx < len(source["cf"]["eop_date"]) else None
+            excel = (
+                _source_value(source, line, idx, shl_by_idx)
+                if idx < len(source["cf"]["eop_date"])
+                else None
+            )
             if excel is None:
                 continue
             finco = runtime[line].get(idx, 0.0)
@@ -208,9 +256,21 @@ def build_base_performance_reconciliation(result: Any, source: dict[str, Any]) -
         ),
         None,
     )
+    first_material_divergence = next(
+        (
+            row for row in rows
+            if row["period"] >= 1 and abs(row["delta"]) > 0.1
+        ),
+        None,
+    )
     return {
         "classification": "BASE_CASE_RECONCILIATION_DIAGNOSTIC_ONLY",
+        "source_usage": (
+            "Excel source fixtures are diagnostics-only review oracles; "
+            "they are never runtime calculation inputs."
+        ),
         "rows": rows,
         "max_by_line": max_by_line,
         "first_divergence": first_divergence,
+        "first_material_divergence": first_material_divergence,
     }
