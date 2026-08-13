@@ -22,6 +22,7 @@ from finco_core.inputs import (  # noqa: F401
     TechnicalParams,
     RevenueAdjustmentSchedule,
     RevenueParams,
+    DebtSizingCaseConfig,
     FinancingParams,
     TaxParams,
     TaxDepreciationMode,

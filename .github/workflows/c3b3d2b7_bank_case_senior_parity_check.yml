@@ -1,0 +1,121 @@
+name: C3B3D2B7 - Bank Case + Senior Debt Source Parity Check
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  c3b3d2b7-bank-case-senior-parity:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact PR head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Verify exact PR head
+        shell: bash
+        run: |
+          test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
+
+      - name: Verify B7 base ancestry
+        shell: bash
+        run: |
+          git merge-base --is-ancestor 8e1087f734a99b51b4733886a8df59f36377f285 HEAD
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pytest python-dateutil numpy scipy openpyxl itsdangerous
+
+      - name: Diff hygiene
+        run: git diff --check
+
+      - name: B7 focused suite
+        env:
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+          PYTHONUTF8: "1"
+        run: python -m pytest -q tests/test_stage_c3b3d2b7_bank_case_senior_parity.py
+
+      - name: B6 regression
+        env:
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+          PYTHONUTF8: "1"
+        run: python -m pytest -q tests/test_stage_c3b3d2b6_base_post_senior_cash_parity.py
+
+      - name: B5 regression
+        env:
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+          PYTHONUTF8: "1"
+        run: python -m pytest -q tests/test_stage_c3b3d2b5_shl_fixed_point_integration.py
+
+      - name: B4 / B4.2 regression
+        env:
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+          PYTHONUTF8: "1"
+        run: python -m pytest -q tests/test_stage_c3b3d2b4_dscr_post_senior_cash_authority.py
+
+      - name: B3 regression
+        env:
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+          PYTHONUTF8: "1"
+        run: python -m pytest -q tests/test_stage_c3b3d2b3_debt_sizing_case_production.py
+
+      - name: C3B3A regression
+        env:
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+          PYTHONUTF8: "1"
+        run: python -m pytest -q tests/test_stage_c3b3a_clean_senior_debt_source_contract.py
+
+      - name: C3B1 / C3A period-axis regression
+        env:
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+          PYTHONUTF8: "1"
+        run: |
+          python -m pytest -q \
+            tests/test_stage_c3b1_oborovo_tax_source_truth.py \
+            tests/test_stage_c3a_clean_pnl_through_ebit.py \
+            tests/test_period_engine.py \
+            tests/test_period_day_fractions.py
+
+      - name: Phase 2C relevant regression
+        env:
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+          PYTHONUTF8: "1"
+        run: |
+          python -m pytest -q \
+            tests/test_phase2c_senior_debt.py::TestO_ThreeRunnableBaselines::test_runnable_baseline_produces_senior_debt \
+            tests/test_phase2c_senior_debt.py::TestO_ThreeRunnableBaselines::test_runnable_baseline_tax_cfads_uses_final_senior_interest \
+            tests/test_phase2c_senior_debt.py::TestFinalTaxCfads::test_final_tax_reflects_senior_interest
+
+      - name: TUHO anti-overfit
+        env:
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+          PYTHONUTF8: "1"
+        run: |
+          python -m pytest -q \
+            tests/integration/test_tuho_wind1_fixture.py \
+            tests/test_stage_c3b3d2b5_shl_fixed_point_integration.py::test_tuho_subject_to_limitations_fails_closed_in_clean_fixed_point_path
+
+      - name: Generic Solar/Wind and serialization regressions
+        env:
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+          PYTHONUTF8: "1"
+        run: |
+          python -m pytest -q \
+            tests/test_stage_c3b3d2b7_bank_case_senior_parity.py::test_generic_and_tuho_bank_case_defaults_remain_p90_anti_overfit_controls \
+            tests/test_stage_c3b3d2b7_bank_case_senior_parity.py::test_canonical_debt_sizing_case_schema_and_serialization_roundtrip
+
+      - name: Governance scan
+        shell: bash
+        run: |
+          ! grep -RInE "approved_delta|expected_delta|target debt fitting|target cfads fitting|source output vector runtime input|magic 42852|magic ds1" \
+            financial_engine finco_core \
+            --exclude-dir='__pycache__'

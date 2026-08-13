@@ -726,9 +726,9 @@ def test_real_oborovo_production_runtime_shl_acceptance_reports_causal_divergenc
     assert max_deltas["MAX_RUNTIME_SHL_CLOSING_DELTA_KEUR"] > 1.0
     assert first_cash_divergence is not None
     period, runtime_cash, source_cash_value = first_cash_divergence
-    assert period == 1
-    assert runtime_cash == pytest.approx(494.76012478908433)
-    assert source_cash_value == pytest.approx(335.8700119281534)
+    assert period == 6
+    assert runtime_cash == pytest.approx(346.6670286903932)
+    assert source_cash_value == pytest.approx(345.51102678698453)
     production_runtime_classification = (
         "SHL_PRODUCTION_RUNTIME_PARITY"
         if max(max_deltas.values()) < 1e-6
@@ -747,7 +747,7 @@ def test_real_oborovo_production_runtime_shl_acceptance_reports_causal_divergenc
         production_runtime_classification
         == "SHL_PRODUCTION_RUNTIME_BLOCKED_BY_UPSTREAM_POST_SENIOR_CASH"
     )
-    assert first_divergence["FIRST_RUNTIME_SHL_CAUSAL_DIVERGENCE_PERIOD"] == 1
+    assert first_divergence["FIRST_RUNTIME_SHL_CAUSAL_DIVERGENCE_PERIOD"] == 6
     assert (
         first_divergence["FIRST_RUNTIME_SHL_CAUSAL_DIVERGENCE_LINE"]
         == "post_senior_cash.cash_available_for_shl_before_reserves_keur"

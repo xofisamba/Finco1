@@ -15,6 +15,7 @@ from domain.inputs import (
     AssetClass,
     CapexItem,
     CapexStructure,
+    DebtSizingCaseConfig,
     DebtSizingMethod,
     EquityIRRMethod,
     FinancingParams,
@@ -34,6 +35,7 @@ from domain.inputs import (
     ShlAccountingTreatment,
     ShlPaymentMethod,
     TechnicalParams,
+    YieldScenario,
 )
 from domain.revenue.bess import BessParams
 from finco_core.inputs._models import DebtSizingMode
@@ -302,6 +304,33 @@ def create_default_oborovo() -> ProjectInputs:
         98.543606,           # CY2060
     )
 
+    # C3B3D2B7 bank/debt-sizing source-compatible merchant case.
+    # Source chain: Scenarios!E325 selects Central Low case Trackers; Inputs!D111
+    # is the raw Central Low curve; Inputs!D116 applies the calendar-year
+    # inflation index. Effective bank price = D111_raw * D116[year].
+    # These are source INPUT curve values, not solver output vectors.
+    _bank_effective_central_low_cy2042_cy2060 = (
+        61.313838249999996,  # CY2042
+        61.3429705,          # CY2043
+        61.0421,             # CY2044
+        58.29127237499999,   # CY2045
+        59.7844596825,       # CY2046
+        61.305710245920004,  # CY2047
+        62.86389704800379,   # CY2048
+        64.45988903807259,   # CY2049
+        66.10343382405546,   # CY2050
+        66.97371006887926,   # CY2051
+        67.8615725555722,    # CY2052
+        68.74875916078739,   # CY2053
+        69.65387751604523,   # CY2054
+        70.55792040869567,   # CY2055
+        71.4203819309633,    # CY2056
+        72.28911874595818,   # CY2057
+        73.16403688078046,   # CY2058
+        74.04503609349726,   # CY2059
+        74.9320096599704,    # CY2060
+    )
+
     revenue = RevenueParams(
         ppa_base_tariff=57.0,
         ppa_term_years=12,
@@ -416,6 +445,15 @@ def create_default_oborovo() -> ProjectInputs:
             enabled=True,
             target_dscr_schedule=_OBR_DSCR_SCHEDULE,
             debt_service_availability_schedule=_OBR_AVAIL_SCHEDULE,
+        ),
+        debt_sizing_case=DebtSizingCaseConfig(
+            production_yield_scenario=YieldScenario.P50,
+            merchant_price_calendar_start_year=2042,
+            merchant_prices_by_calendar_year_eur_mwh=_bank_effective_central_low_cy2042_cy2060,
+            source_label=(
+                "Oborovo source compatibility: CF bank sizing uses P50 production "
+                "plus effective Central Low case Trackers"
+            ),
         ),
     )
 
