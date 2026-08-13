@@ -591,6 +591,7 @@ class DebtSizingCaseConfig:
     merchant_price_calendar_start_year: int | None = None
     merchant_prices_by_calendar_year_eur_mwh: tuple[float, ...] = ()
     market_prices_curve_eur_mwh: tuple[float, ...] = ()
+    tax_periodisation_mode_override: "TaxPeriodisationMode | None" = None
     source_label: str = ""
 
     def __post_init__(self) -> None:

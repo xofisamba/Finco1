@@ -54,6 +54,9 @@ def build_debt_sizing_audit(
     source_target_dscr = source_period_vectors.get("row22_dscr", {}).get("period_values")
     source_day_fraction = source_period_vectors.get("row6_day_frac", {}).get("period_values")
     source_debt_capacity = source_period_vectors.get("row23_avail", {}).get("period_values")
+    source_actual_service = source_period_vectors.get("row46_sd_service", {}).get("period_values")
+    if source_actual_service is None:
+        source_actual_service = source_debt_capacity
     source_opening = source_period_vectors.get("row61_opening", {}).get("period_values")
     source_principal = source_period_vectors.get("row63_principal", {}).get("period_values")
     source_interest = source_period_vectors.get("row64_interest", {}).get("period_values")
@@ -86,6 +89,11 @@ def build_debt_sizing_audit(
         finco_bank_cfads = result.debt_sizing.bank_cfads_keur[ds_pos]
         finco_bank_price = _safe_price(finco_bank_revenue, finco_bank_production)
         finco_target_dscr = result.debt_sizing.bank_sizing_dscr[ds_pos]
+        finco_allowed_capacity = (
+            finco_bank_cfads / finco_target_dscr
+            if finco_target_dscr and finco_target_dscr > 0.0
+            else None
+        )
         finco_debt_service = (
             result.senior_debt.senior_debt_service_keur[sd_pos]
             if sd_pos is not None
@@ -128,9 +136,14 @@ def build_debt_sizing_audit(
                 "excel_annual_senior_rate": None,
                 "finco_annual_senior_rate": None,
                 "annual_senior_rate_delta": None,
-                "excel_debt_service_capacity": source_capacity,
-                "finco_debt_service_capacity": finco_debt_service,
-                "debt_service_capacity_delta": _delta(finco_debt_service, source_capacity),
+                "excel_allowed_debt_service_capacity": source_capacity,
+                "finco_allowed_debt_service_capacity": finco_allowed_capacity,
+                "allowed_debt_service_capacity_delta": _delta(finco_allowed_capacity, source_capacity),
+                "excel_actual_senior_debt_service": _vector_value(source_actual_service, idx),
+                "finco_actual_senior_debt_service": finco_debt_service,
+                "actual_senior_debt_service_delta": _delta(
+                    finco_debt_service, _vector_value(source_actual_service, idx)
+                ),
                 "excel_senior_opening": (
                     _vector_value(source_opening, idx) if has_senior_schedule else None
                 ),
@@ -202,8 +215,8 @@ def build_debt_sizing_audit(
         "first_bank_case_causal_divergence": (
             {
                 "period": first_divergence["period"],
-                "line": "Bank CFADS / DS row20 / Macro50 authority",
-                "cause": "BANK_CFADS_SOURCE_MACRO50_REMAINS_PARTIALLY_UNDECOMPOSED",
+                "line": "Bank CFADS / source-replay tax periodisation boundary",
+                "cause": "BANK_TAX_PERIODISATION_AND_LOSS_GATE_REMAINS_FIRST_PRODUCTIONIZATION_BOUNDARY",
                 "excel": first_divergence["excel_bank_cfads"],
                 "finco": first_divergence["finco_bank_cfads"],
                 "delta": first_divergence["bank_cfads_delta"],

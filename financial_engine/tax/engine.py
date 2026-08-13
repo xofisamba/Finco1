@@ -39,7 +39,7 @@ TAX_YEAR_LAST_PERIOD the full annual CIT lands in a single payment period.
 from __future__ import annotations
 
 from financial_engine.inputs import TaxCalculationInput, PeriodInterestInput
-from financial_engine.policies.tax import CashTaxTiming, TaxPolicy
+from financial_engine.policies.tax import CashTaxTiming, TaxLossUtilisationGate, TaxPolicy
 from financial_engine.tax.atad import calculate_annual_atad, allocate_atad_to_periods
 from financial_engine.tax.loss_ledger import run_annual_fifo_ledger
 from financial_engine.tax.models import (
@@ -132,11 +132,26 @@ def calculate_tax(
 
     # Annual FIFO LCF
     tax_year_indices = tuple(b.tax_year for b in bases)
+    if policy.loss_utilisation_gate == TaxLossUtilisationGate.EBT_POSITIVE:
+        loss_use_allowed = tuple(
+            (
+                basis.ebitda_keur
+                - basis.tax_depreciation_keur
+                - basis.total_interest_keur
+                - basis.shl_non_deductible_interest_keur
+                + basis.other_fiscal_reintegration_keur
+            ) > 0.0
+            for basis in bases
+        )
+    else:
+        loss_use_allowed = None
+
     lcf_entries = run_annual_fifo_ledger(
         taxable_income_before_lcf=tuple(taxable_before_lcf),
         tax_year_indices=tax_year_indices,
         opening_inputs=tax_input.opening_loss_vintages,
         loss_carryforward_years=policy.loss_carryforward_years,
+        loss_use_allowed=loss_use_allowed,
     )
 
     # Annual CIT + build TaxAnnualResult

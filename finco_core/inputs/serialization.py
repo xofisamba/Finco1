@@ -186,6 +186,11 @@ def _ser_debt_sizing_case_config(c: DebtSizingCaseConfig) -> dict:
         "merchant_price_calendar_start_year": c.merchant_price_calendar_start_year,
         "merchant_prices_by_calendar_year_eur_mwh": list(c.merchant_prices_by_calendar_year_eur_mwh),
         "market_prices_curve_eur_mwh": list(c.market_prices_curve_eur_mwh),
+        "tax_periodisation_mode_override": (
+            c.tax_periodisation_mode_override.value
+            if c.tax_periodisation_mode_override is not None
+            else None
+        ),
         "source_label": c.source_label,
     }
 
@@ -467,6 +472,11 @@ def _deser_debt_sizing_case_config(d: dict | None) -> DebtSizingCaseConfig:
             d.get("merchant_prices_by_calendar_year_eur_mwh", ())
         ),
         market_prices_curve_eur_mwh=tuple(d.get("market_prices_curve_eur_mwh", ())),
+        tax_periodisation_mode_override=(
+            TaxPeriodisationMode(d["tax_periodisation_mode_override"])
+            if d.get("tax_periodisation_mode_override") is not None
+            else None
+        ),
         source_label=d.get("source_label", ""),
     )
 

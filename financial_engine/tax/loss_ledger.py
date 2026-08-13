@@ -88,6 +88,7 @@ def run_annual_fifo_ledger(
     tax_year_indices: tuple[int, ...],
     opening_inputs: tuple[OpeningTaxLossVintageInput, ...],
     loss_carryforward_years: int,
+    loss_use_allowed: tuple[bool, ...] | None = None,
 ) -> tuple[TaxAnnualLedgerEntry, ...]:
     """Run the annual FIFO loss ledger over all tax years.
 
@@ -106,10 +107,15 @@ def run_annual_fifo_ledger(
     -------
     Tuple of TaxAnnualLedgerEntry, one per tax year, with full vintage detail.
     """
+    if loss_use_allowed is not None and len(loss_use_allowed) != len(tax_year_indices):
+        raise ValueError("loss_use_allowed must match tax_year_indices length")
+
     pool = _opening_states_from_inputs(opening_inputs, loss_carryforward_years)
     entries: list[TaxAnnualLedgerEntry] = []
 
-    for tax_year, taxable_before in zip(tax_year_indices, taxable_income_before_lcf):
+    for pos, (tax_year, taxable_before) in enumerate(
+        zip(tax_year_indices, taxable_income_before_lcf)
+    ):
         # ── 1. Snapshot of opening vintages (before expiry) ──────────────────
         opening_pre_expiry = sum(s.amount_keur for s in pool)
 
@@ -175,6 +181,38 @@ def run_annual_fifo_ledger(
 
         # ── 3b. Profit year: consume oldest vintages (FIFO) ──────────────────
         else:
+            if loss_use_allowed is not None and not loss_use_allowed[pos]:
+                opening_vints = tuple(
+                    _make_vintage_record(
+                        s, opening=s.amount_keur, generated=0.0, used=0.0, expired=0.0
+                    )
+                    for s in pool
+                )
+                closing_vints = tuple(
+                    _make_vintage_record(
+                        s, opening=s.amount_keur, generated=0.0, used=0.0, expired=0.0
+                    )
+                    for s in pool
+                )
+                entries.append(
+                    TaxAnnualLedgerEntry(
+                        tax_year=tax_year,
+                        opening_vintages=opening_vints,
+                        expired_vintages=tuple(expired_records),
+                        used_vintages=(),
+                        generated_vintages=(),
+                        closing_vintages=closing_vints,
+                        opening_loss_pre_expiry_keur=opening_pre_expiry,
+                        loss_expired_keur=loss_expired,
+                        loss_used_keur=0.0,
+                        loss_generated_keur=0.0,
+                        closing_loss_keur=sum(s.amount_keur for s in pool),
+                        taxable_income_before_lcf_keur=taxable_before,
+                        taxable_income_after_lcf_keur=taxable_before,
+                    )
+                )
+                continue
+
             remaining = taxable_before
             generated_amount = 0.0
             loss_used = 0.0

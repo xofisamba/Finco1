@@ -10,8 +10,8 @@ import pytest
 
 FIXTURES = Path(__file__).parent / "fixtures"
 SOURCE_DEBT_KEUR = 42_852.27876256299
-OBOROVO_B7_DEBT_KEUR = 42_926.72148499545
-OBOROVO_B7_DEBT_RESIDUAL_KEUR = 74.44272243245359
+OBOROVO_B7_DEBT_KEUR = 42_847.031265459125
+OBOROVO_B7_DEBT_RESIDUAL_KEUR = -5.247497103868227
 
 
 def _financial_truth() -> dict:
@@ -100,6 +100,7 @@ def test_canonical_debt_sizing_case_schema_and_serialization_roundtrip():
     )
     assert legacy_restored.financing.debt_sizing_case.merchant_price_calendar_start_year is None
     assert legacy_restored.financing.debt_sizing_case.merchant_prices_by_calendar_year_eur_mwh == ()
+    assert legacy_restored.financing.debt_sizing_case.tax_periodisation_mode_override is None
 
 
 def test_debt_sizing_case_config_validates_like_runtime_contract():
@@ -127,6 +128,19 @@ def test_debt_sizing_case_config_validates_like_runtime_contract():
             production_yield_scenario=YieldScenario.P90_10Y,
             market_prices_curve_eur_mwh=(True,),
         )
+
+
+def test_oborovo_bank_tax_periodisation_override_is_source_owned():
+    from financial_engine.policies.tax import TaxBasisPeriodisation, TaxLossUtilisationGate
+
+    model = _model()
+    assert model.debt_sizing_case.tax_periodisation_mode_override == (
+        "workbook_model_year_pairing"
+    )
+    assert model.tax.policy.tax_basis_periodisation == TaxBasisPeriodisation.CALENDAR_YEAR
+    assert model.tax.policy.loss_utilisation_gate == (
+        TaxLossUtilisationGate.TAXABLE_INCOME_POSITIVE
+    )
 
 
 def test_generic_and_tuho_bank_case_defaults_remain_p90_anti_overfit_controls():
@@ -159,12 +173,14 @@ def test_oborovo_bank_case_is_explicit_source_compatibility_input():
     case = project.financing.debt_sizing_case
     assert case.production_yield_scenario == YieldScenario.P50
     assert case.merchant_price_calendar_start_year == 2042
+    assert case.tax_periodisation_mode_override.value == "workbook_model_year_pairing"
     assert len(case.merchant_prices_by_calendar_year_eur_mwh) == 19
     assert case.merchant_prices_by_calendar_year_eur_mwh[:3] == pytest.approx(
         (61.313838249999996, 61.3429705, 61.0421)
     )
     assert "source compatibility" in case.source_label
     assert "Central Low" in case.source_label
+    assert "paired-period CIT" in case.source_label
 
     model = _model(project)
     assert model.debt_sizing_case.production_yield_scenario == EngineYieldScenario.P50
@@ -172,6 +188,9 @@ def test_oborovo_bank_case_is_explicit_source_compatibility_input():
         case.production_yield_scenario.value
     )
     assert model.debt_sizing_case.merchant_price_calendar_start_year == 2042
+    assert model.debt_sizing_case.tax_periodisation_mode_override == (
+        "workbook_model_year_pairing"
+    )
     assert model.debt_sizing_case.merchant_prices_by_calendar_year_eur_mwh == (
         case.merchant_prices_by_calendar_year_eur_mwh
     )
@@ -338,8 +357,8 @@ def test_oborovo_b7_senior_and_post_senior_source_boundary_is_honest():
     assert result.post_senior_cash.cash_available_for_shl_before_reserves_keur[1] == pytest.approx(
         source["cf"]["free_cash_flow_for_shl_keur"][1]
     )
-    assert result.senior_debt.senior_interest_keur[0] == pytest.approx(1305.747685126595)
-    assert result.senior_debt.senior_principal_keur[0] == pytest.approx(933.3857277277609)
+    assert result.senior_debt.senior_interest_keur[0] == pytest.approx(1303.3236630702365)
+    assert result.senior_debt.senior_principal_keur[0] == pytest.approx(935.8097497841193)
 
     ds20 = debt_truth["workstream_a"]["ds_row20_cfads"]["period_values_keur"]
     first_delta = next(
@@ -355,10 +374,8 @@ def test_oborovo_b7_senior_and_post_senior_source_boundary_is_honest():
         None,
     )
     assert first_delta is not None
-    assert first_delta[0] == 6
-    assert (
-        "C3B3D2B7_STOP_FIRST_BANK_SIZING_CAUSAL_DIVERGENCE_NOT_YET_CLOSED"
-    )
+    assert first_delta[0] == 4
+    assert first_delta[1] - first_delta[2] == pytest.approx(-3.433578339322139)
 
 
 def test_debt_sizing_audit_is_separate_and_reports_source_vectors_without_replay():
@@ -372,9 +389,17 @@ def test_debt_sizing_audit_is_separate_and_reports_source_vectors_without_replay
     assert "Excel Bank Production" in audit["source_unavailable_components"]
     assert "Excel Bank CFADS / DS row20 / Macro50 authority" in audit["source_available_components"]
     first = audit["first_bank_case_causal_divergence"]
-    assert first["period"] == 6
-    assert first["line"] == "Bank CFADS / DS row20 / Macro50 authority"
-    assert first["cause"] == "BANK_CFADS_SOURCE_MACRO50_REMAINS_PARTIALLY_UNDECOMPOSED"
+    assert first["period"] == 4
+    assert first["line"] == "Bank CFADS / source-replay tax periodisation boundary"
+    assert first["cause"] == (
+        "BANK_TAX_PERIODISATION_AND_LOSS_GATE_REMAINS_FIRST_PRODUCTIONIZATION_BOUNDARY"
+    )
+    row = audit["rows"][4]
+    assert "excel_allowed_debt_service_capacity" in row
+    assert "finco_allowed_debt_service_capacity" in row
+    assert "excel_actual_senior_debt_service" in row
+    assert "finco_actual_senior_debt_service" in row
+    assert "debt_service_capacity_delta" not in row
 
 
 def test_base_performance_audit_keeps_bank_lines_out_and_renames_shl_gross_interest():
@@ -424,7 +449,7 @@ def test_b7_classifications_recorded():
         "oborovo_case": "OBOROVO_BANK_PRODUCTION_CASE_P50_IS_EXPLICIT_SOURCE_COMPATIBILITY_INPUT",
         "tuho_case": "TUHO_BANK_PRODUCTION_CASE_REMAINS_P90_SOURCE_SUPPORTED",
         "bank_price": "BANK_MERCHANT_PRICE_CASE_IS_EXPLICIT_AND_SEPARATE_FROM_BASE",
-        "stop": "C3B3D2B7_STOP_FIRST_BANK_SIZING_CAUSAL_DIVERGENCE_NOT_YET_CLOSED",
+        "stop": "C3B3D2B7_STOP_R4_7_2_TO_PRODUCTIONIZATION_GAP_NOT_YET_CLOSED",
     }
     assert classifications["senior_authority"].startswith("BANK_SIZING")
     assert classifications["generic_default"].endswith("P90_10Y")

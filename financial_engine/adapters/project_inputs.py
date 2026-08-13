@@ -14,6 +14,8 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from finco_core.inputs import ProjectInputs
 
+from finco_core.inputs import TaxPeriodisationMode
+
 from financial_engine.inputs import (
     CalendarInput,
     CapexItemForDep,
@@ -274,6 +276,11 @@ def build_senior_debt_model_input_from_project_inputs(
                 canonical_case.merchant_prices_by_calendar_year_eur_mwh
             ),
             market_prices_curve_eur_mwh=canonical_case.market_prices_curve_eur_mwh,
+            tax_periodisation_mode_override=(
+                canonical_case.tax_periodisation_mode_override.value
+                if canonical_case.tax_periodisation_mode_override is not None
+                else None
+            ),
             source_label=canonical_case.source_label,
         )
     shareholder_loan = _build_shareholder_loan_model_input_from_project_inputs(

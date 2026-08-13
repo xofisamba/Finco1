@@ -450,9 +450,10 @@ def create_default_oborovo() -> ProjectInputs:
             production_yield_scenario=YieldScenario.P50,
             merchant_price_calendar_start_year=2042,
             merchant_prices_by_calendar_year_eur_mwh=_bank_effective_central_low_cy2042_cy2060,
+            tax_periodisation_mode_override=TaxPeriodisationMode.WORKBOOK_MODEL_YEAR_PAIRING,
             source_label=(
                 "Oborovo source compatibility: CF bank sizing uses P50 production "
-                "plus effective Central Low case Trackers"
+                "plus effective Central Low case Trackers and workbook paired-period CIT timing"
             ),
         ),
     )
