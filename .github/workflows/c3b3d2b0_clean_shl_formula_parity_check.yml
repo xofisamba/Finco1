@@ -1,21 +1,7 @@
 name: C3B3D2B0 Clean SHL Formula Parity Check
 
 on:
-  pull_request:
-    branches: [main]
-    paths:
-      - financial_engine/shl/waterfall.py
-      - tests/test_stage_c3b3d2b0_clean_shl_formula_parity.py
-      - docs/reconciliation/c3b3d2b0_clean_shl_formula_parity.md
-      - .github/workflows/c3b3d2b0_clean_shl_formula_parity_check.yml
-  push:
-    branches:
-      - stage-c3b3d2b0-clean-shl-formula-parity
-    paths:
-      - financial_engine/shl/waterfall.py
-      - tests/test_stage_c3b3d2b0_clean_shl_formula_parity.py
-      - docs/reconciliation/c3b3d2b0_clean_shl_formula_parity.md
-      - .github/workflows/c3b3d2b0_clean_shl_formula_parity_check.yml
+  workflow_dispatch:
 
 jobs:
   c3b3d2b0-check:

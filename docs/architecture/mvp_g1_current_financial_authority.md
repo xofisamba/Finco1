@@ -77,4 +77,6 @@ on project name, project code, baseline identity, or source workbook identity.
 
 Phase 2A, Phase 2B, C3B3B/C3B3C/C3B3D0/C3B3D1/C3B3D2A/B0-B4,
 Phase 2C, and Phase 2D are manual historical or diagnostic workflows unless a later
-authority explicitly promotes a surviving assertion.
+authority explicitly promotes a surviving assertion. A workflow-authority test
+locks those workflows to `workflow_dispatch` while preserving automatic
+pull-request execution for every member of the current blocking ring.

@@ -1,22 +1,7 @@
 name: C3B3D2B3 — Generic Debt Sizing Case Production Check (hardened)
 
 on:
-  push:
-    branches:
-      - stage-c3b3d2b3-debt-sizing-case-production
-  pull_request:
-    branches:
-      - main
-    paths:
-      - "financial_engine/inputs.py"
-      - "financial_engine/results.py"
-      - "financial_engine/provenance.py"
-      - "financial_engine/orchestrator.py"
-      - "financial_engine/adapters/project_inputs.py"
-      - "tests/test_stage_c3b3d2b3_debt_sizing_case_production.py"
-      - "tests/test_stage_c3b3d2b3_hardening_completion.py"
-      - "docs/architecture/debt_sizing_case_production_contract.md"
-      - ".github/workflows/c3b3d2b3_debt_sizing_case_production_check.yml"
+  workflow_dispatch:
 
 jobs:
   c3b3d2b3-check:

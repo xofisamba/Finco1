@@ -39,6 +39,7 @@ jobs:
         run: |
           python -m pytest -q --tb=short \
             tests/test_mvp_g1_governance_methodology_lock.py \
+            tests/test_mvp_g1_workflow_authority.py \
             tests/test_mvp_g0_generic_clean_engine_enablement.py
 
       - name: Current canonical tax invariants

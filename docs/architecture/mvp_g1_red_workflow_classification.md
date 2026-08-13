@@ -38,8 +38,9 @@ while allowing those benign evidence labels.
 
 ## Workflow trigger decisions
 
-- `Phase 1B`, `Phase 2A`, `Phase 2B`, `C3B3B`, `Phase 2C`, and `Phase 2D`: `workflow_dispatch`
-  only; retained as historical/diagnostic evidence.
+- All historical/diagnostic workflows are `workflow_dispatch` only. The audited
+  set is Phase 1B, Phase 2A, Phase 2B, C3B3B, C3B3C, C3B3D0, C3B3D1,
+  C3B3D2A, B0, B1, B2C, B3, B4, Phase 2C, and Phase 2D.
 - `CI`: remains automatic; its core job runs current semantic revenue/OPEX/SHL/G1
   checks, while route, persistence, records, and quarantine jobs remain unchanged.
 - `Parity Guardrails`: remains automatic with semantic output validity, immutable
@@ -50,3 +51,28 @@ while allowing those benign evidence labels.
 The G0 textual calibration scan is restricted to production code. G1 owns the
 negative-test corpus and AST identity-dispatch proof, so forbidden examples in
 tests cannot masquerade as production violations.
+
+## Trigger audit
+
+| Historical workflow | Before G1 final fix | Final trigger | Authority action |
+|---|---|---|---|
+| Phase 1B | manual | `workflow_dispatch` | retain diagnostic |
+| Phase 2A | manual | `workflow_dispatch` | retain diagnostic |
+| Phase 2B | manual | `workflow_dispatch` | retain diagnostic |
+| C3B3B | malformed dispatch plus stage-branch push | `workflow_dispatch` | remove invalid/stale triggers |
+| C3B3C | PR plus stage-branch push | `workflow_dispatch` | demote superseded authority |
+| C3B3D0 | PR plus stage-branch push | `workflow_dispatch` | demote superseded authority |
+| C3B3D1 | PR plus stage-branch push | `workflow_dispatch` | demote superseded authority |
+| C3B3D2A | PR plus stage-branch push | `workflow_dispatch` | demote superseded authority |
+| B0 | PR plus stage-branch push | `workflow_dispatch` | demote superseded authority |
+| B1 | PR plus stage-branch push | `workflow_dispatch` | demote superseded authority |
+| B2C | PR plus stage-branch push | `workflow_dispatch` | demote superseded authority |
+| B3 | PR plus stage-branch push | `workflow_dispatch` | demote superseded authority |
+| B4 | PR plus stage-branch push | `workflow_dispatch` | demote superseded authority |
+| Phase 2C | manual | `workflow_dispatch` | retain diagnostic |
+| Phase 2D | manual | `workflow_dispatch` | retain diagnostic |
+
+The blocking ring remains MVP G1, MVP G0, B5, B6, B7, B8, C3B1, C3B3A,
+CI, and Parity Guardrails. The workflow-authority regression test prevents a
+historical workflow from regaining an automatic trigger and prevents the current
+ring from silently losing its pull-request trigger.

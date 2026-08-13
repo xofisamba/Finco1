@@ -1,27 +1,7 @@
 name: C3B3D2A Oborovo SHL Source Truth Check
 
 on:
-  pull_request:
-    branches: [main]
-    paths:
-      - tests/fixtures/excel_oborovo_shl_operating_truth.json
-      - tests/test_stage_c3b3d2a_oborovo_shl_source_truth.py
-      - finco_recon/derive_c3b3d2a_oborovo_shl_truth.py
-      - financial_engine/adapters/tax_inputs.py
-      - app/project_factories.py
-      - docs/reconciliation/c3b3d2a_oborovo_shl_source_truth.md
-      - .github/workflows/c3b3d2a_oborovo_shl_source_truth_check.yml
-  push:
-    branches:
-      - stage-c3b3d2a-oborovo-shl-source-truth
-    paths:
-      - tests/fixtures/excel_oborovo_shl_operating_truth.json
-      - tests/test_stage_c3b3d2a_oborovo_shl_source_truth.py
-      - finco_recon/derive_c3b3d2a_oborovo_shl_truth.py
-      - financial_engine/adapters/tax_inputs.py
-      - app/project_factories.py
-      - docs/reconciliation/c3b3d2a_oborovo_shl_source_truth.md
-      - .github/workflows/c3b3d2a_oborovo_shl_source_truth_check.yml
+  workflow_dispatch:
 
 jobs:
   c3b3d2a-check:

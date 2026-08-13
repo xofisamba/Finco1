@@ -1,35 +1,7 @@
 name: C3B3D0 Tax Identity & ATAD Decoupling
 
 on:
-  pull_request:
-    branches: [main]
-    paths:
-      - finco_core/waterfall/tax_engine.py
-      - finco_core/inputs/_models.py
-      - finco_core/inputs/serialization.py
-      - app/project_factories.py
-      - tests/test_stage_c3b3d0_*.py
-      - tests/test_stage_c3b3c_*.py
-      - tests/test_stage_c3b3b_*.py
-      - tests/test_stage_c3b3a_*.py
-      - tests/test_stage_c3b2_*.py
-      - tests/test_stage_c3b1_*.py
-      - .github/workflows/c3b3d0_tax_identity_atad_check.yml
-  push:
-    branches:
-      - stage-c3b3d0-tax-identity-atad-decoupling
-    paths:
-      - finco_core/waterfall/tax_engine.py
-      - finco_core/inputs/_models.py
-      - finco_core/inputs/serialization.py
-      - app/project_factories.py
-      - tests/test_stage_c3b3d0_*.py
-      - tests/test_stage_c3b3c_*.py
-      - tests/test_stage_c3b3b_*.py
-      - tests/test_stage_c3b3a_*.py
-      - tests/test_stage_c3b2_*.py
-      - tests/test_stage_c3b1_*.py
-      - .github/workflows/c3b3d0_tax_identity_atad_check.yml
+  workflow_dispatch:
 
 jobs:
   c3b3d0-check:
