@@ -133,6 +133,41 @@ def test_operating_calendar_source_denominator_and_terminal_horizon_are_wired():
     assert by_idx[60].day_fraction == pytest.approx(182 / 366)
 
 
+def test_period_axis_convention_is_explicit_and_not_global():
+    from app.project_factories import (
+        create_default_oborovo,
+        create_default_solar_project,
+        create_default_tuho_wind1,
+        create_default_wind_project,
+    )
+    from financial_engine.adapters.project_inputs import from_project_inputs
+    from financial_engine.orchestrator import run_operating_model
+    from finco_core.inputs import PeriodAxisConvention, project_inputs_from_dict, project_inputs_to_dict
+
+    oborovo = create_default_oborovo()
+    assert oborovo.info.period_axis_convention == (
+        PeriodAxisConvention.OPERATING_BOUNDARY_SINGLE_CONSTRUCTION_COLUMN
+    )
+    restored = project_inputs_from_dict(project_inputs_to_dict(oborovo))
+    assert restored.info.period_axis_convention == oborovo.info.period_axis_convention
+
+    oborovo_result = run_operating_model(from_project_inputs(oborovo))
+    assert sum(1 for p in oborovo_result.periods if p.is_construction) == 1
+    assert oborovo_result.periods[1].period_start.isoformat() == "2030-06-30"
+
+    for factory in (
+        create_default_solar_project,
+        create_default_wind_project,
+        create_default_tuho_wind1,
+    ):
+        project = factory()
+        assert project.info.period_axis_convention == (
+            PeriodAxisConvention.COD_ANCHOR_TWO_CONSTRUCTION_COLUMNS
+        )
+        result = run_operating_model(from_project_inputs(project))
+        assert sum(1 for p in result.periods if p.is_construction) == 2
+
+
 def test_base_performance_reconciliation_closes_to_tax_boundary():
     rec = _reconciliation()
 

@@ -27,6 +27,7 @@ from finco_core.inputs._models import (
     EquityIRRMethod,
     FinancingParams,
     OpexItem,
+    PeriodAxisConvention,
     PeriodFrequency,
     ProjectInfo,
     ProjectInputs,
@@ -220,6 +221,7 @@ def project_inputs_to_dict(inputs: ProjectInputs) -> dict:
             "use_senior_debt_sizing_engine": info.use_senior_debt_sizing_engine,
             "use_shl_gross_accrued_for_pnl": info.use_shl_gross_accrued_for_pnl,
             "use_book_depreciation_for_pnl": info.use_book_depreciation_for_pnl,
+            "period_axis_convention": info.period_axis_convention.value,
         },
         "technical": {
             "capacity_mw": tech.capacity_mw,
@@ -481,6 +483,12 @@ def project_inputs_from_dict(d: dict) -> ProjectInputs:
         use_senior_debt_sizing_engine=info_d.get("use_senior_debt_sizing_engine", False),
         use_shl_gross_accrued_for_pnl=info_d.get("use_shl_gross_accrued_for_pnl", False),
         use_book_depreciation_for_pnl=info_d.get("use_book_depreciation_for_pnl", False),
+        period_axis_convention=PeriodAxisConvention(
+            info_d.get(
+                "period_axis_convention",
+                PeriodAxisConvention.COD_ANCHOR_TWO_CONSTRUCTION_COLUMNS.value,
+            )
+        ),
     )
 
     technical = TechnicalParams(

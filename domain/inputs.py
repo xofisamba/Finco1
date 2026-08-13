@@ -7,6 +7,7 @@ All names are re-exported unchanged. Existing callers require no modification.
 """
 from finco_core.inputs import (  # noqa: F401
     PeriodFrequency,
+    PeriodAxisConvention,
     EquityIRRMethod,
     DebtSizingMethod,
     DebtSizingMode,

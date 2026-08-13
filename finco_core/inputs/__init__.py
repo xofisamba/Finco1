@@ -9,7 +9,8 @@ compatibility.
 Public API — re-exported from submodules:
     From finco_core.inputs._models:
         PeriodFrequency, EquityIRRMethod, DebtSizingMethod, DebtSizingMode,
-        SHLRepaymentMethod, YieldScenario, AssetClass, ASSET_CLASS_USEFUL_LIFE,
+        PeriodAxisConvention, SHLRepaymentMethod, YieldScenario, AssetClass,
+        ASSET_CLASS_USEFUL_LIFE,
         ProjectInfo, CapexItem, CapexStructure, OpexItem, TechnicalParams,
         RevenueAdjustmentSchedule, RevenueParams, FinancingParams, TaxParams,
         ProjectInputs, hash_inputs_for_cache
@@ -34,6 +35,7 @@ from finco_core.inputs.bess import BessParams
 from finco_core.inputs.serialization import project_inputs_to_dict, project_inputs_from_dict
 from finco_core.inputs._models import (
     PeriodFrequency,
+    PeriodAxisConvention,
     EquityIRRMethod,
     DebtSizingMethod,
     DebtSizingMode,
@@ -80,6 +82,7 @@ from finco_core.inputs.senior_sculpting import (
 __all__ = [
     # Enums and constants
     "PeriodFrequency",
+    "PeriodAxisConvention",
     "EquityIRRMethod",
     "DebtSizingMethod",
     "DebtSizingMode",

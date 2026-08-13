@@ -27,6 +27,7 @@ from financial_engine.inputs import (
     ShareholderLoanModelInput,
     TechnicalInput,
     YieldScenario,
+    PeriodAxisConvention,
 )
 from financial_engine.ppa_indexation import PpaIndexationStartPolicy
 from financial_engine.shl.contracts import ShlDayCountConvention
@@ -82,6 +83,15 @@ def from_project_inputs(
         construction_months=info.construction_months,
         horizon_years=info.horizon_years,
         ppa_years=float(rev.ppa_term_years),
+        period_axis_convention=PeriodAxisConvention(
+            getattr(info, "period_axis_convention").value
+            if hasattr(getattr(info, "period_axis_convention", None), "value")
+            else getattr(
+                info,
+                "period_axis_convention",
+                PeriodAxisConvention.COD_ANCHOR_TWO_CONSTRUCTION_COLUMNS.value,
+            )
+        ),
     )
 
     technical = TechnicalInput(

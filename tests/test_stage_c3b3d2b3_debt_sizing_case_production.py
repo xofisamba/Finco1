@@ -451,7 +451,8 @@ class TestF_TuhoPositiveAcceptance:
         idx_map = dict(zip(ds.period_indices, ds.bank_cfads_keur))
         bank_cfads_p1 = idx_map[2]
         # Generic P90 oracle: 2539.633673 kEUR (source-derived; ≤5 kEUR tolerance for engine conventions)
-        assert bank_cfads_p1 == pytest.approx(2531.6642964511016, abs=1e-6), (
+        # Default COD-anchored period contract; matches the base SHA behavior.
+        assert bank_cfads_p1 == pytest.approx(2539.6520208632946, abs=1e-6), (
             f"bank_cfads_p1={bank_cfads_p1:.6f} kEUR"
         )
 

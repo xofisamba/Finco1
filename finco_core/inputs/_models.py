@@ -32,6 +32,12 @@ class PeriodFrequency(Enum):
     QUARTERLY = "Quarterly"
 
 
+class PeriodAxisConvention(str, Enum):
+    """Project period-axis policy for construction and operating boundaries."""
+    COD_ANCHOR_TWO_CONSTRUCTION_COLUMNS = "cod_anchor_two_construction_columns"
+    OPERATING_BOUNDARY_SINGLE_CONSTRUCTION_COLUMN = "operating_boundary_single_construction_column"
+
+
 class EquityIRRMethod(Enum):
     """Supported equity return cash-flow conventions."""
     EQUITY_ONLY = "equity_only"
@@ -162,6 +168,9 @@ class ProjectInfo:
     use_senior_debt_sizing_engine: bool = False
     use_shl_gross_accrued_for_pnl: bool = False
     use_book_depreciation_for_pnl: bool = False
+    period_axis_convention: PeriodAxisConvention = (
+        PeriodAxisConvention.COD_ANCHOR_TWO_CONSTRUCTION_COLUMNS
+    )
 
 
 @dataclass(frozen=True)

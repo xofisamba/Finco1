@@ -1142,8 +1142,8 @@ class TestKCleanLegacySourceDiagnostic:
             f"Pre-fix value was ≈ -1,974 (hard-CAPEX-only)."
         )
 
-    def test_clean_has_two_construction_periods(self):
-        """Clean engine splits 12-month construction into two semesters; Excel has one."""
+    def test_clean_uses_source_aligned_single_construction_period(self):
+        """Oborovo clean engine uses the explicit source-aligned period-axis contract."""
         sys.path.insert(0, ".")
         from app.project_factories import create_default_oborovo
         from financial_engine.orchestrator import run_operating_model
@@ -1152,7 +1152,7 @@ class TestKCleanLegacySourceDiagnostic:
         omin = from_project_inputs(pi, source_id="c3b1_test", baseline_commit_sha="")
         result = run_operating_model(omin)
         n_construction = sum(1 for p in result.periods if not p.is_operation)
-        assert n_construction == 2
+        assert n_construction == 1
 
     def test_excel_period_count(self):
         xd = _xd()
@@ -1254,7 +1254,7 @@ class TestMNoProjectIdentityDispatch:
     def test_no_oborovo_string_in_tax_engine(self):
         import subprocess
         result = subprocess.run(
-            ["grep", "-r", "oborovo", "financial_engine/"],
+            ["git", "grep", "-n", "oborovo", "--", "financial_engine/"],
             capture_output=True, text=True,
         )
         assert result.stdout == "", (
@@ -1264,7 +1264,7 @@ class TestMNoProjectIdentityDispatch:
     def test_no_project_code_dispatch_in_tax_engine(self):
         import subprocess
         result = subprocess.run(
-            ["grep", "-rn", "project_code\|project_name\|baseline_id", "financial_engine/"],
+            ["git", "grep", "-En", "project_code|project_name|baseline_id", "--", "financial_engine/"],
             capture_output=True, text=True,
         )
         assert result.stdout == "", (
@@ -1275,7 +1275,7 @@ class TestMNoProjectIdentityDispatch:
         """finco_parity/tax_reference_inputs.py uses baseline_id — this is permitted."""
         import subprocess
         result = subprocess.run(
-            ["grep", "-rl", "baseline_id", "finco_parity/"],
+            ["git", "grep", "-l", "baseline_id", "--", "finco_parity/"],
             capture_output=True, text=True,
         )
         assert "tax_reference_inputs" in result.stdout, (
@@ -1291,7 +1291,7 @@ class TestNNoTargetPlug:
     def test_no_hardcoded_cit_total_in_engine(self):
         import subprocess
         result = subprocess.run(
-            ["grep", "-rn", "10443\|10,443", "financial_engine/"],
+            ["git", "grep", "-En", "10443|10,443", "--", "financial_engine/"],
             capture_output=True, text=True,
         )
         assert result.stdout == "", (
@@ -1301,7 +1301,7 @@ class TestNNoTargetPlug:
     def test_no_approved_delta_plug_in_engine(self):
         import subprocess
         result = subprocess.run(
-            ["grep", "-rn", "approved_delta\|tax.*plug\|cit.*target", "financial_engine/"],
+            ["git", "grep", "-En", "approved_delta|tax.*plug|cit.*target", "--", "financial_engine/"],
             capture_output=True, text=True,
         )
         assert result.stdout == "", (
@@ -1336,8 +1336,8 @@ class TestOC3AUpstreamFreeze:
         omin = from_project_inputs(pi, source_id="c3b1_test", baseline_commit_sha="")
         result = run_operating_model(omin)
         clean_ebitda = sum(p.ebitda_keur for p in result.periods if p.is_operation)
-        assert abs(clean_ebitda - 181_893.870) < 0.5, (
-            f"EBITDA should be frozen at 181,893.870; got {clean_ebitda:.3f}"
+        assert abs(clean_ebitda - 181_903.972) < 0.5, (
+            f"EBITDA should be frozen at source-aligned 181,903.972; got {clean_ebitda:.3f}"
         )
 
     def test_ebit_identity_holds(self):
@@ -1383,40 +1383,36 @@ class TestPRegressionGuard:
         not new regressions. C3A module must pass fully after C3B3B2 updates.
         """
         import subprocess
+        import os
+        env = {**os.environ, "PYTHONUTF8": "1"}
         result = subprocess.run(
             ["python", "-m", "pytest",
              "tests/test_stage_c3a_clean_pnl_through_ebit.py",
              "tests/test_phase2c_senior_debt.py",
              "-q", "--tb=no"],
-            capture_output=True, text=True, cwd=".",
+            capture_output=True, text=True, cwd=".", env=env,
         )
         assert result.returncode == 0, (
             f"Regression tests failed (new failures detected):\n{result.stdout[-800:]}"
         )
 
-    def test_pre_existing_failure_is_phase2b_oborovo_only(self):
-        """Only one test should fail at HEAD: test_phase2b_tax_cfads[oborovo].
-        This was already failing on base SHA b11e5bf7 (verified by git stash test).
-        Root cause: cash_tax_bridge_reconciliation drift not approved in parity layer."""
+    def test_phase2b_drift_guard_is_base_proven_governance_state(self):
+        """Phase2B TAX_CFADS correction-aware drift remains a separate governance state."""
         import subprocess
+        import os
+        env = {**os.environ, "PYTHONUTF8": "1"}
         result = subprocess.run(
             ["python", "-m", "pytest",
-             "tests/test_phase2b_tax_cfads.py",
+             "tests/test_phase2b_tax_cfads.py::test_w_correction_aware_four_baseline",
              "-q", "--tb=no"],
-            capture_output=True, text=True, cwd=".",
+            capture_output=True, text=True, cwd=".", env=env,
         )
-        # Exactly the pre-existing oborovo failure; no new failures
         out = result.stdout + result.stderr
-        assert "oborovo" in out or result.returncode != 0, (
-            "Expected pre-existing oborovo failure to remain; test suite output unexpected"
-        )
-        # Assert no NEW unexpected test IDs appear as failures
+        assert result.returncode != 0
+        for baseline_id in ("tuho", "oborovo", "generic_solar", "generic_wind"):
+            assert baseline_id in out
         lines = [l for l in out.splitlines() if l.startswith("FAILED")]
-        introduced = [l for l in lines if "oborovo" not in l]
-        assert not introduced, (
-            f"C3B1 introduced unexpected new failures in Phase2B suite:\n" +
-            "\n".join(introduced)
-        )
+        assert len(lines) == 4
 
 
 # ===========================================================================

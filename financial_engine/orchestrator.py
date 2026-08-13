@@ -67,6 +67,7 @@ _PHASE_2B_UNAVAILABLE = ("financing", "financial_statements", "returns")
 def _build_period_engine(inputs: OperatingModelInput):
     """Build a PeriodEngine from the clean input contract."""
     from finco_core.engine.period_engine import PeriodEngine, PeriodFrequency as _PF
+    from finco_core.engine.period_engine import PeriodAxisConvention as _PAC
 
     cal = inputs.calendar
     return PeriodEngine(
@@ -75,6 +76,7 @@ def _build_period_engine(inputs: OperatingModelInput):
         horizon_years=cal.horizon_years,
         ppa_years=cal.ppa_years,
         frequency=_PF.SEMESTRIAL,
+        period_axis_convention=_PAC(cal.period_axis_convention.value),
     )
 
 
