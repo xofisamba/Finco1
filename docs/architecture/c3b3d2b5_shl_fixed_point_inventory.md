@@ -160,10 +160,22 @@ Oborovo clean SHL production parameters are:
 Classification:
 `OBOROVO_SHL_CONTRACT_SOURCE_PARAMETERS_PRODUCTION_WIRED`.
 
-Unsupported clean SHL repayment modes fail closed. The B5 production mapping
-supports the natural partial-pay/cash-sweep contract only; it does not silently
-convert `bullet`, `PIK`, `accrued`, or unknown modes into sweep behavior.
+Unsupported clean SHL repayment modes fail closed. The production mapping
+supports the natural partial-pay/cash-sweep contract and the generic bullet
+contract. Bullet preserves cash-if-available interest with PIK shortfall, bars
+principal before maturity, and repays the outstanding balance only at the
+contractual maturity. It does not silently convert `PIK`, `accrued`, or unknown
+modes into sweep behavior.
 Classification: `UNSUPPORTED_SHL_REPAYMENT_MODE_FAILS_CLOSED`.
+
+Generic Solar and Generic Wind explicitly opt in their existing product
+contract: canonical `shl_amount_keur` is repeated as clean principal authority,
+`bullet` is the repayment method, construction DCF is zero because their
+configured `shl_idc_keur` is zero, and operating accrual uses the generic period
+axis `day_fraction` (`PERIOD_AXIS_ACTUAL_YEAR`). Their existing
+`shl_tenor_years=0` rule resolves maturity to one year (two semestrial periods)
+after the explicitly configured Senior maturity. This is
+`GENERIC_FINCO_METHODOLOGY`, not source/Excel/Oborovo compatibility.
 
 TUHO remains blocked at the production adapter boundary because the required
 generic clean SHL contract fields are not yet authoritative for that factory.
@@ -179,8 +191,8 @@ shortfall.
 
 Maturity is never inferred from the model horizon. A 30-year model horizon does
 not silently extend a 20-year SHL; clean SHL mapping requires explicit
-`shl_maturity_period_index` authority (or a future independently specified
-tenor-to-period rule).
+`shl_maturity_period_index` authority or the existing generic
+`shl_tenor_years=0` rule tied to the explicit Senior maturity.
 
 Both the ProjectInputs adapter and the clean production schedule require the
 configured repayment start and maturity to exist on the authoritative period

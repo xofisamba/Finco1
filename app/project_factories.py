@@ -854,7 +854,12 @@ def create_default_solar_project(
         senior_debt_interest_config=_generic_clean_senior_interest_config(
             annual_all_in_rate=0.03 + 250 / 10000,
             tenor_years=15,
-        ))
+        ),
+        clean_shl_principal_keur=7_750.0,
+        clean_shl_repayment_method="bullet",
+        shl_day_count_convention="PERIOD_AXIS_ACTUAL_YEAR",
+        shl_construction_day_count_fraction=0.0,
+    )
     tax = TaxParams(corporate_rate=0.25, loss_carryforward_years=5,
         loss_carryforward_cap=1.0, atad_ebitda_limit=0.30, atad_min_interest_keur=3000.0,
         clean_cash_tax_timing_enabled=True)
@@ -935,7 +940,12 @@ def create_default_wind_project(
         senior_debt_interest_config=_generic_clean_senior_interest_config(
             annual_all_in_rate=0.03 + 250 / 10000,
             tenor_years=15,
-        ))
+        ),
+        clean_shl_principal_keur=10_250.0,
+        clean_shl_repayment_method="bullet",
+        shl_day_count_convention="PERIOD_AXIS_ACTUAL_YEAR",
+        shl_construction_day_count_fraction=0.0,
+    )
     tax = TaxParams(corporate_rate=0.25, loss_carryforward_years=5,
         loss_carryforward_cap=1.0, atad_ebitda_limit=0.30, atad_min_interest_keur=3000.0,
         clean_cash_tax_timing_enabled=True)

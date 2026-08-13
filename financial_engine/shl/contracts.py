@@ -34,6 +34,7 @@ class ShlDayCountConvention(str, Enum):
     """
     ACT_365_FIXED = "ACT_365_FIXED"
     ACT_360 = "ACT_360"
+    PERIOD_AXIS_ACTUAL_YEAR = "PERIOD_AXIS_ACTUAL_YEAR"
 
 
 class ShlInterestRateMode(str, Enum):
@@ -52,6 +53,7 @@ class ShlInterestPaymentMode(str, Enum):
 class ShlRepaymentMode(str, Enum):
     """Principal repayment mechanism."""
     BULLET = "BULLET"                     # full principal at maturity_period_index
+    CASH_SWEEP = "CASH_SWEEP"             # surplus after interest sweeps principal
     EXPLICIT_SCHEDULE = "EXPLICIT_SCHEDULE"  # per-period scheduled_principal_keur
     # FCF_WATERFALL, CASH_SWEEP — fail-closed (C3B3D2+ scope)
 

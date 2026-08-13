@@ -40,13 +40,14 @@ def _assert_clean_chain_complete(result) -> None:
     assert result.senior_debt is not None
     assert result.debt_sizing is not None
     assert result.post_senior_cash is not None
-    assert result.shareholder_loan is None
+    assert result.shareholder_loan is not None
 
     n = len(result.periods)
     assert n > 0
     assert len(result.operating_schedules.period_indices) == n
     assert len(result.tax_and_cfads.period_indices) == n
     assert len(result.post_senior_cash.period_indices) == n
+    assert len(result.shareholder_loan.period_indices) == n
 
     for values in (
         result.operating_schedules.production_mwh,
@@ -73,6 +74,26 @@ def _assert_clean_chain_complete(result) -> None:
     assert all(math.isfinite(v) for v in senior.senior_debt_service_keur)
     assert all(math.isfinite(v) for v in _debt_service_dscr(result))
 
+    shl = result.shareholder_loan
+    construction_positions = [i for i, period in enumerate(result.periods) if period.is_construction]
+    first_operating_position = next(i for i, period in enumerate(result.periods) if period.is_operation)
+    assert [i for i, value in enumerate(shl.shl_drawdown_keur) if value > 0.0] == [
+        construction_positions[-1]
+    ]
+    assert shl.shl_closing_keur[construction_positions[-1]] == pytest.approx(
+        shl.shl_drawdown_keur[construction_positions[-1]]
+    )
+    assert shl.shl_opening_keur[first_operating_position] == pytest.approx(
+        shl.shl_drawdown_keur[construction_positions[-1]]
+    )
+    assert all(value >= 0.0 for value in shl.shl_principal_keur)
+    principal_positions = [i for i, value in enumerate(shl.shl_principal_keur) if value > 1e-9]
+    assert principal_positions == [33]
+    assert shl.shl_closing_keur[33] == pytest.approx(0.0, abs=1e-9)
+    assert shl.diagnostics.is_authoritative is True
+    assert shl.diagnostics.max_final_shl_interest_handshake_delta_keur < 1e-6
+    assert shl.diagnostics.max_final_shl_closing_handshake_delta_keur < 1e-6
+
 
 @pytest.mark.parametrize(
     ("label", "factory_name"),
@@ -97,6 +118,11 @@ def test_generic_solar_and_wind_run_clean_chain_end_to_end(label, factory_name):
     assert project.financing.senior_debt_interest_config.rate_schedule.mode == (
         SeniorRateMode.EXPLICIT_ALL_IN_SCHEDULE
     )
+    assert project.financing.clean_shl_principal_keur == project.financing.shl_amount_keur
+    assert project.financing.clean_shl_repayment_method == "bullet"
+    assert project.financing.shl_tenor_years == 0
+    assert project.financing.shl_day_count_convention == "PERIOD_AXIS_ACTUAL_YEAR"
+    assert project.financing.shl_construction_day_count_fraction == 0.0
 
     first = _run(project)
     second = _run(project)
@@ -105,6 +131,9 @@ def test_generic_solar_and_wind_run_clean_chain_end_to_end(label, factory_name):
     assert first.senior_debt.debt_size_keur == pytest.approx(second.senior_debt.debt_size_keur)
     assert first.debt_sizing.bank_cfads_keur == pytest.approx(second.debt_sizing.bank_cfads_keur)
     assert first.tax_and_cfads.cfads_keur == pytest.approx(second.tax_and_cfads.cfads_keur)
+    assert first.shareholder_loan.shl_closing_keur == pytest.approx(
+        second.shareholder_loan.shl_closing_keur
+    )
 
 
 @pytest.mark.parametrize(
@@ -123,6 +152,104 @@ def test_generic_bank_case_uses_p90_while_base_remains_p50(factory_name):
     assert sum(result.debt_sizing.bank_production_mwh) < sum(
         result.operating_schedules.production_mwh
     )
+
+
+@pytest.mark.parametrize(
+    "factory_name",
+    ("create_default_solar_project", "create_default_wind_project"),
+)
+def test_generic_shl_contract_is_causal_and_independent_of_bank_case(factory_name):
+    from app import project_factories
+    from finco_core.inputs import DebtSizingCaseConfig, YieldScenario
+
+    project = getattr(project_factories, factory_name)()
+    base = _run(project)
+    larger_principal = _run(
+        dataclasses.replace(
+            project,
+            financing=dataclasses.replace(
+                project.financing,
+                clean_shl_principal_keur=project.financing.clean_shl_principal_keur * 1.10,
+            ),
+        )
+    )
+    higher_rate = _run(
+        dataclasses.replace(
+            project,
+            financing=dataclasses.replace(
+                project.financing,
+                shl_rate=project.financing.shl_rate + 0.01,
+            ),
+        )
+    )
+    p50_bank = _run(
+        dataclasses.replace(
+            project,
+            financing=dataclasses.replace(
+                project.financing,
+                debt_sizing_case=DebtSizingCaseConfig(
+                    production_yield_scenario=YieldScenario.P50,
+                    source_label="generic-p50-bank-mutation",
+                ),
+            ),
+        )
+    )
+
+    assert max(larger_principal.shareholder_loan.shl_drawdown_keur) == pytest.approx(
+        max(base.shareholder_loan.shl_drawdown_keur) * 1.10
+    )
+    assert sum(larger_principal.shareholder_loan.shl_gross_interest_keur) > sum(
+        base.shareholder_loan.shl_gross_interest_keur
+    )
+    assert sum(higher_rate.shareholder_loan.shl_gross_interest_keur) > sum(
+        base.shareholder_loan.shl_gross_interest_keur
+    )
+    assert p50_bank.senior_debt.debt_size_keur != pytest.approx(base.senior_debt.debt_size_keur)
+    assert max(p50_bank.shareholder_loan.shl_drawdown_keur) == pytest.approx(
+        max(base.shareholder_loan.shl_drawdown_keur)
+    )
+    assert [i for i, value in enumerate(p50_bank.shareholder_loan.shl_principal_keur) if value > 1e-9] == [33]
+
+
+def test_generic_explicit_shl_maturity_mutation_moves_bullet_without_changing_terms():
+    from app.project_factories import create_default_wind_project
+
+    project = create_default_wind_project()
+    later = _run(
+        dataclasses.replace(
+            project,
+            financing=dataclasses.replace(
+                project.financing,
+                shl_maturity_period_index=35,
+            ),
+        )
+    )
+
+    shl = later.shareholder_loan
+    assert [i for i, value in enumerate(shl.shl_principal_keur) if value > 1e-9] == [35]
+    assert max(shl.shl_drawdown_keur) == pytest.approx(project.financing.shl_amount_keur)
+    assert shl.shl_closing_keur[35] == pytest.approx(0.0, abs=1e-9)
+
+
+@pytest.mark.parametrize(
+    "factory_name",
+    ("create_default_solar_project", "create_default_wind_project"),
+)
+def test_generic_senior_rate_schedule_has_no_total_period_count_80_binding(factory_name):
+    from app import project_factories
+    from financial_engine.adapters.project_inputs import (
+        build_senior_debt_model_input_from_project_inputs,
+    )
+
+    project = getattr(project_factories, factory_name)()
+    config = project.financing.senior_debt_interest_config
+    model = build_senior_debt_model_input_from_project_inputs(project)
+
+    assert not hasattr(config, "total_period_count")
+    assert len(config.rate_schedule.explicit_all_in_rates) == 30
+    assert len(model.senior_debt_inputs.period_rates) == 30
+    assert model.senior_debt_policy.maturity_period_index == 31
+    assert max(rate.period_index for rate in model.senior_debt_inputs.period_rates) == 31
 
 
 def test_generic_bank_case_mutation_changes_sizing_without_mutating_base_case():

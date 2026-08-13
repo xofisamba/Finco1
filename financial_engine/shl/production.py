@@ -67,6 +67,7 @@ from financial_engine.shl.contracts import (
     ShlDayCountConvention,
     ShlInterestPaymentMode,
     ShlPeriodResult,
+    ShlRepaymentMode,
     ShlWaterfallPolicy,
 )
 from financial_engine.shl.day_count import compute_shl_dcf
@@ -118,9 +119,9 @@ class ShlConstructionInput:
             raise ValueError(
                 f"annual_rate must be >= 0, got {self.annual_rate!r}"
             )
-        if self.dcf <= 0:
+        if self.dcf < 0:
             raise ValueError(
-                f"dcf must be > 0, got {self.dcf!r}"
+                f"dcf must be >= 0, got {self.dcf!r}"
             )
         if not isinstance(self.period_index, int) or isinstance(self.period_index, bool):
             raise ValueError(
@@ -160,6 +161,9 @@ class ShlOperatingPeriodInput:
     period_end: date
     cash_available_for_shl_keur: float
     drawdown_keur: float = 0.0
+    day_count_fraction: float | None = None
+    repayment_mode: ShlRepaymentMode = ShlRepaymentMode.CASH_SWEEP
+    is_maturity_period: bool = False
 
 
 @dataclass(frozen=True)
@@ -280,7 +284,11 @@ def compute_shl_schedule(
         effective_opening = opening
 
         # Compute day-count fraction from calendar dates via typed convention.
-        dcf = compute_shl_dcf(op.period_start, op.period_end, policy.day_count_convention)
+        dcf = (
+            op.day_count_fraction
+            if op.day_count_fraction is not None
+            else compute_shl_dcf(op.period_start, op.period_end, policy.day_count_convention)
+        )
 
         result = compute_shl_waterfall_period(
             opening_balance_keur=effective_opening,
@@ -288,6 +296,8 @@ def compute_shl_schedule(
             day_count_fraction=dcf,
             cash_available_for_shl_keur=op.cash_available_for_shl_keur,
             period_index=op.period_index,
+            repayment_mode=op.repayment_mode,
+            is_maturity_period=op.is_maturity_period,
         )
         operating_results.append(result)
         opening = result.closing_balance_keur
@@ -370,6 +380,14 @@ def compute_shareholder_loan_schedules(
     cash_remaining_values: list[float] = []
 
     draw_consumed = False
+    construction_period_indices = tuple(
+        p.period_index for p in periods if p.is_construction
+    )
+    if not construction_period_indices:
+        raise ValueError(
+            "compute_shareholder_loan_schedules: at least one construction period is required"
+        )
+    draw_period_index = construction_period_indices[-1]
     construction_result: ShlPeriodResult | None = None
     operating_inputs: list[ShlOperatingPeriodInput] = []
     for p, raw_cash in zip(periods, cash_available_for_shl_before_reserves_keur):
@@ -381,7 +399,17 @@ def compute_shareholder_loan_schedules(
             )
 
         period_indices.append(p.period_index)
-        if p.is_construction and not draw_consumed:
+        if p.is_construction and p.period_index != draw_period_index:
+            opening = 0.0
+            drawdown = 0.0
+            gross = 0.0
+            cash_interest = 0.0
+            pik = 0.0
+            principal = 0.0
+            service = 0.0
+            closing = 0.0
+            cash_eligible_for_current_shl_service = 0.0
+        elif p.is_construction and not draw_consumed:
             construction = ShlConstructionInput(
                 draw_keur=shl_input.initial_principal_keur,
                 annual_rate=shl_input.annual_fixed_rate,
@@ -414,13 +442,16 @@ def compute_shareholder_loan_schedules(
                     "must precede operating periods for current single-draw SHL"
                 )
             cash_eligible_for_current_shl_service = raw_cash
-            if p.period_index < shl_input.repayment_start_period_index:
+            if (
+                shl_input.repayment_mode == ShlRepaymentMode.CASH_SWEEP
+                and p.period_index < shl_input.repayment_start_period_index
+            ):
                 preliminary = compute_shl_schedule(
                     construction=ShlConstructionInput(
                         draw_keur=shl_input.initial_principal_keur,
                         annual_rate=shl_input.annual_fixed_rate,
                         dcf=shl_input.construction_day_count_fraction,
-                        period_index=periods[0].period_index,
+                        period_index=draw_period_index,
                     ),
                     operating_periods=tuple(operating_inputs + [
                         ShlOperatingPeriodInput(
@@ -428,6 +459,16 @@ def compute_shareholder_loan_schedules(
                             period_start=_shl_operating_accrual_start(p),
                             period_end=p.period_end,
                             cash_available_for_shl_keur=cash_eligible_for_current_shl_service,
+                            day_count_fraction=(
+                                p.day_fraction
+                                if shl_input.day_count_convention
+                                == ShlDayCountConvention.PERIOD_AXIS_ACTUAL_YEAR
+                                else None
+                            ),
+                            repayment_mode=shl_input.repayment_mode,
+                            is_maturity_period=(
+                                p.period_index == shl_input.maturity_period_index
+                            ),
                         )
                     ]),
                     policy=ShlWaterfallPolicy(
@@ -445,6 +486,14 @@ def compute_shareholder_loan_schedules(
                 period_start=_shl_operating_accrual_start(p),
                 period_end=p.period_end,
                 cash_available_for_shl_keur=cash_eligible_for_current_shl_service,
+                day_count_fraction=(
+                    p.day_fraction
+                    if shl_input.day_count_convention
+                    == ShlDayCountConvention.PERIOD_AXIS_ACTUAL_YEAR
+                    else None
+                ),
+                repayment_mode=shl_input.repayment_mode,
+                is_maturity_period=(p.period_index == shl_input.maturity_period_index),
             )
             operating_inputs.append(op_input)
             schedule = compute_shl_schedule(
@@ -452,7 +501,7 @@ def compute_shareholder_loan_schedules(
                     draw_keur=shl_input.initial_principal_keur,
                     annual_rate=shl_input.annual_fixed_rate,
                     dcf=shl_input.construction_day_count_fraction,
-                    period_index=periods[0].period_index,
+                    period_index=draw_period_index,
                 ),
                 operating_periods=tuple(operating_inputs),
                 policy=ShlWaterfallPolicy(
@@ -517,8 +566,13 @@ def _validate_shareholder_loan_input(shl_input: "ShareholderLoanModelInput") -> 
         raise ValueError("initial_principal_keur must be > 0.0")
     if shl_input.annual_fixed_rate < 0.0:
         raise ValueError("annual_fixed_rate must be >= 0.0")
-    if shl_input.construction_day_count_fraction <= 0.0:
-        raise ValueError("construction_day_count_fraction must be > 0.0")
+    if shl_input.construction_day_count_fraction < 0.0:
+        raise ValueError("construction_day_count_fraction must be >= 0.0")
+    if shl_input.repayment_mode not in (
+        ShlRepaymentMode.BULLET,
+        ShlRepaymentMode.CASH_SWEEP,
+    ):
+        raise ValueError("repayment_mode must be BULLET or CASH_SWEEP")
     if shl_input.maximum_iterations <= 0:
         raise ValueError("maximum_iterations must be > 0")
     if shl_input.convergence_tolerance_keur < 0.0:

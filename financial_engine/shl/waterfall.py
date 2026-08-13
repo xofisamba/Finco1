@@ -33,6 +33,8 @@ import math
 from dataclasses import dataclass
 from datetime import date
 
+from financial_engine.shl.contracts import ShlRepaymentMode
+
 
 @dataclass(frozen=True)
 class ShlWaterfallPeriodResult:
@@ -113,6 +115,8 @@ def compute_shl_waterfall_period(
     day_count_fraction: float,
     cash_available_for_shl_keur: float,
     period_index: int = 0,
+    repayment_mode: ShlRepaymentMode = ShlRepaymentMode.CASH_SWEEP,
+    is_maturity_period: bool = False,
 ) -> ShlWaterfallPeriodResult:
     """Compute one SHL waterfall period using the natural surplus-over-interest formula.
 
@@ -175,7 +179,15 @@ def compute_shl_waterfall_period(
     capitalised = gross - cash_interest
     remaining_cash = cash_available_for_shl_keur - cash_interest
     outstanding = opening_balance_keur + capitalised
-    principal = max(0.0, min(remaining_cash, outstanding))
+    if repayment_mode == ShlRepaymentMode.BULLET:
+        principal = outstanding if is_maturity_period else 0.0
+    elif repayment_mode == ShlRepaymentMode.CASH_SWEEP:
+        principal = max(0.0, min(remaining_cash, outstanding))
+    else:
+        raise ValueError(
+            "compute_shl_waterfall_period supports BULLET or CASH_SWEEP, "
+            f"got {repayment_mode!r}"
+        )
     closing = max(outstanding - principal, 0.0)  # absorb floating-point dust
 
     return ShlWaterfallPeriodResult(

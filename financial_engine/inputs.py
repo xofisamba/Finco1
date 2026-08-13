@@ -14,6 +14,7 @@ import math
 from typing import TYPE_CHECKING, Any
 
 from financial_engine.ppa_indexation import PpaIndexationStartPolicy
+from financial_engine.shl.contracts import ShlRepaymentMode
 
 if TYPE_CHECKING:
     from financial_engine.policies.tax import TaxPolicy
@@ -359,6 +360,7 @@ class ShareholderLoanModelInput:
     construction_day_count_fraction: float
     repayment_start_period_index: int
     maturity_period_index: int
+    repayment_mode: ShlRepaymentMode = ShlRepaymentMode.CASH_SWEEP
     convergence_tolerance_keur: float = 1e-6
     convergence_relative_tolerance: float = 1e-9
     maximum_iterations: int = 50

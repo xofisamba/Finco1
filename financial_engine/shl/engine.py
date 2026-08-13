@@ -63,7 +63,7 @@ def compute_shl_period(
         - opening_balance_keur < 0
         - drawdown_keur < 0
         - annual_rate < 0 or not finite
-        - day_count_fraction <= 0 or not finite
+        - day_count_fraction < 0 or not finite
         - any input is NaN or Inf (checked individually)
         - scheduled_principal_keur > balance (closing would go negative)
     """
@@ -89,9 +89,9 @@ def compute_shl_period(
             f"annual_rate must be >= 0, got {annual_rate!r} "
             f"(period_index={period_index})"
         )
-    if day_count_fraction <= 0:
+    if day_count_fraction < 0:
         raise ValueError(
-            f"day_count_fraction must be > 0, got {day_count_fraction!r} "
+            f"day_count_fraction must be >= 0, got {day_count_fraction!r} "
             f"(period_index={period_index})"
         )
 

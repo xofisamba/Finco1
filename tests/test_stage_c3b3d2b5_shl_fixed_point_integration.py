@@ -439,7 +439,7 @@ def test_project_inputs_wires_oborovo_shl_without_manual_replace():
     assert clean_contract_classifications["source_params"].endswith("PRODUCTION_WIRED")
 
 
-def test_clean_shl_adapter_fails_closed_on_unsupported_repayment_method():
+def test_clean_shl_adapter_supports_explicit_generic_bullet_method():
     from dataclasses import replace
 
     from app.project_factories import create_default_solar_project
@@ -460,6 +460,35 @@ def test_clean_shl_adapter_fails_closed_on_unsupported_repayment_method():
             shl_day_count_convention="ACT_365_FIXED",
             shl_construction_day_count_fraction=1.0,
             shl_principal_eligibility_start_period=1,
+            shl_maturity_period_index=10,
+        ),
+    )
+
+    clean = _build_shareholder_loan_model_input_from_project_inputs(project, periods)
+    from financial_engine.shl.contracts import ShlRepaymentMode
+
+    assert clean is not None
+    assert clean.repayment_mode == ShlRepaymentMode.BULLET
+    assert clean.initial_principal_keur == pytest.approx(1000.0)
+    assert clean.maturity_period_index == 10
+
+
+def test_clean_shl_adapter_still_fails_closed_on_unknown_repayment_method():
+    from dataclasses import replace
+
+    from app.project_factories import create_default_solar_project
+    from financial_engine.adapters.project_inputs import (
+        _build_shareholder_loan_model_input_from_project_inputs,
+    )
+
+    periods, _, _ = _oborovo_source_periods_and_cash()
+    project = create_default_solar_project()
+    project = replace(
+        project,
+        financing=replace(
+            project.financing,
+            clean_shl_principal_keur=1000.0,
+            clean_shl_repayment_method="unknown_method",
             shl_maturity_period_index=10,
         ),
     )
