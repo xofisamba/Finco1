@@ -1397,7 +1397,13 @@ class TestPRegressionGuard:
         )
 
     def test_phase2b_drift_guard_is_base_proven_governance_state(self):
-        """Phase2B TAX_CFADS correction-aware drift remains a separate governance state."""
+        """Phase2B TAX_CFADS drift must not grow beyond base-proven failures.
+
+        The standard Python 3.11 CI seam currently leaves only the Oborovo
+        correction-aware baseline failing. Other local Python/dependency seams
+        may expose more of the same base-proven Phase2B drift, but B6 must not
+        introduce a new failing test id here.
+        """
         import subprocess
         import os
         env = {**os.environ, "PYTHONUTF8": "1"}
@@ -1409,10 +1415,27 @@ class TestPRegressionGuard:
         )
         out = result.stdout + result.stderr
         assert result.returncode != 0
-        for baseline_id in ("tuho", "oborovo", "generic_solar", "generic_wind"):
-            assert baseline_id in out
-        lines = [l for l in out.splitlines() if l.startswith("FAILED")]
-        assert len(lines) == 4
+        failed_ids = {
+            line.split()[1]
+            for line in out.splitlines()
+            if line.startswith("FAILED ")
+        }
+        base_proven_phase2b_failures = {
+            "tests/test_phase2b_tax_cfads.py::test_w_correction_aware_four_baseline[tuho]",
+            "tests/test_phase2b_tax_cfads.py::test_w_correction_aware_four_baseline[oborovo]",
+            "tests/test_phase2b_tax_cfads.py::test_w_correction_aware_four_baseline[generic_solar]",
+            "tests/test_phase2b_tax_cfads.py::test_w_correction_aware_four_baseline[generic_wind]",
+        }
+        assert failed_ids
+        assert failed_ids <= base_proven_phase2b_failures, (
+            "B6 introduced new Phase2B failure ids:\n"
+            f"{sorted(failed_ids - base_proven_phase2b_failures)}\n"
+            f"Full output tail:\n{out[-1200:]}"
+        )
+        assert (
+            "tests/test_phase2b_tax_cfads.py::test_w_correction_aware_four_baseline[oborovo]"
+            in failed_ids
+        )
 
 
 # ===========================================================================
