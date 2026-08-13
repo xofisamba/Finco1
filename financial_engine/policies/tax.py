@@ -12,6 +12,7 @@ class CashTaxTiming(str, Enum):
     """When does the CIT cash payment crystallise relative to accrual?"""
     SAME_PERIOD = "same_period"
     TAX_YEAR_LAST_PERIOD = "tax_year_last_period"
+    MODEL_YEAR_PAYMENT_PERIOD = "model_year_payment_period"
 
 
 class TaxBasisPeriodisation(str, Enum):

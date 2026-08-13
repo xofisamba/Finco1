@@ -200,7 +200,10 @@ def calculate_tax(
         if not ar.period_indices:
             continue
 
-        if policy.cash_tax_timing == CashTaxTiming.TAX_YEAR_LAST_PERIOD:
+        if policy.cash_tax_timing in (
+            CashTaxTiming.TAX_YEAR_LAST_PERIOD,
+            CashTaxTiming.MODEL_YEAR_PAYMENT_PERIOD,
+        ):
             basis = basis_by_tax_year.get(ar.tax_year)
             base = (
                 basis.payment_period_index  # type: ignore[union-attr]
@@ -258,7 +261,10 @@ def calculate_tax(
     # Build cash_tax_by_period
     cash_tax_by_period: dict[int, float] = {idx: 0.0 for idx in all_period_indices}
 
-    if policy.cash_tax_timing == CashTaxTiming.TAX_YEAR_LAST_PERIOD:
+    if policy.cash_tax_timing in (
+        CashTaxTiming.TAX_YEAR_LAST_PERIOD,
+        CashTaxTiming.MODEL_YEAR_PAYMENT_PERIOD,
+    ):
         for ar in annual_results:
             payment_period = tax_year_cash_period.get(ar.tax_year)
             if payment_period is not None:

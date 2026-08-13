@@ -72,13 +72,13 @@ def test_oborovo_base_ds1_reports_bank_sizing_debt_authority_boundary():
         source["cf"]["fcf_for_banks_keur"][1]
     )
     assert _row(rec, 1, "Senior Interest")["finco"] == pytest.approx(
-        1303.3236630702365
+        1303.484026996744
     )
     assert _row(rec, 1, "Senior Interest")["excel"] == pytest.approx(
         source["ds"]["sd_gross_interest_keur"][1]
     )
     assert _row(rec, 1, "Senior Principal")["finco"] == pytest.approx(
-        935.8097497841193
+        935.6493858576118
     )
     assert _row(rec, 1, "Senior Principal")["excel"] == pytest.approx(
         source["ds"]["sd_principal_keur"][1]
@@ -103,7 +103,7 @@ def test_oborovo_base_ds1_reports_bank_sizing_debt_authority_boundary():
         result.tax_and_cfads.cfads_keur[1]
         - result.senior_debt.senior_debt_service_keur[0]
     )
-    assert result.senior_debt.debt_size_keur == pytest.approx(42_847.031265459125)
+    assert result.senior_debt.debt_size_keur == pytest.approx(42_852.30326225287)
     assert result.senior_debt.binding_constraint == "DSCR"
     assert result.senior_debt.diagnostics["initial_debt_guess_keur"] == pytest.approx(
         42_852.26672602787
@@ -176,16 +176,12 @@ def test_base_performance_reconciliation_closes_to_tax_boundary():
 
     assert _row(rec, 1, "Senior Debt Service")["delta"] == pytest.approx(0.0)
     assert _row(rec, 1, "Cash Available for SHL")["delta"] == pytest.approx(0.0)
-    assert _row(rec, 4, "Senior Debt Service")["delta"] == pytest.approx(
-        -2.9857202950715873
-    )
-    assert _row(rec, 4, "Cash Available for SHL")["delta"] == pytest.approx(
-        2.9857202950711326
-    )
+    assert _row(rec, 4, "Senior Debt Service")["delta"] == pytest.approx(0.0, abs=1e-9)
+    assert _row(rec, 4, "Cash Available for SHL")["delta"] == pytest.approx(0.0, abs=1e-9)
 
     first_material = next(row for row in rec["rows"] if abs(row["delta"]) > 0.1)
     assert first_material["period"] == 1
-    assert first_material["line"] == "Senior Interest"
+    assert first_material["line"] == "Taxable Income"
     assert rec["max_by_line"]["Cash Tax"]["period"] == 59
     assert rec["max_by_line"]["Cash Tax"]["delta"] == pytest.approx(706.5567709778473)
 

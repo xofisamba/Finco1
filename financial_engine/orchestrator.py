@@ -787,7 +787,7 @@ def _merge_financing_tax_input(
     if tax_periodisation_mode_override == "workbook_model_year_pairing":
         policy = _replace(
             policy,
-            cash_tax_timing=CashTaxTiming.SAME_PERIOD,
+            cash_tax_timing=CashTaxTiming.MODEL_YEAR_PAYMENT_PERIOD,
             tax_basis_periodisation=TaxBasisPeriodisation.MODEL_YEAR_PAIRING,
             loss_utilisation_gate=TaxLossUtilisationGate.EBT_POSITIVE,
         )

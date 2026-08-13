@@ -336,14 +336,14 @@ def test_tax_policy_controls_deductible_shl_without_double_counting():
         no_shl.senior_debt.debt_size_keur
     )
     assert full_non_deductible.senior_debt.debt_size_keur == pytest.approx(
-        42847.031265459125
+        42852.30326225287
     )
-    assert no_shl.senior_debt.debt_size_keur == pytest.approx(42885.24637508469)
+    assert no_shl.senior_debt.debt_size_keur == pytest.approx(42892.49702156898)
     assert sum(full_non_deductible.tax_and_cfads.corporate_tax_cash_keur) == pytest.approx(
-        10378.3253604083
+        10379.782761843067
     )
     assert sum(no_shl.tax_and_cfads.corporate_tax_cash_keur) == pytest.approx(
-        10377.345586978878
+        10378.67972730591
     )
     assert deductible.senior_debt.debt_size_keur != pytest.approx(
         full_non_deductible.senior_debt.debt_size_keur
@@ -733,9 +733,9 @@ def test_real_oborovo_production_runtime_shl_acceptance_reports_causal_divergenc
     assert max_deltas["MAX_RUNTIME_SHL_CLOSING_DELTA_KEUR"] > 1.0
     assert first_cash_divergence is not None
     period, runtime_cash, source_cash_value = first_cash_divergence
-    assert period == 4
-    assert runtime_cash == pytest.approx(343.52727633979293)
-    assert source_cash_value == pytest.approx(340.5415560447218)
+    assert period == 6
+    assert runtime_cash == pytest.approx(354.4095323689353)
+    assert source_cash_value == pytest.approx(345.51102678698453)
     production_runtime_classification = (
         "SHL_PRODUCTION_RUNTIME_PARITY"
         if max(max_deltas.values()) < 1e-6
@@ -754,7 +754,7 @@ def test_real_oborovo_production_runtime_shl_acceptance_reports_causal_divergenc
         production_runtime_classification
         == "SHL_PRODUCTION_RUNTIME_BLOCKED_BY_UPSTREAM_POST_SENIOR_CASH"
     )
-    assert first_divergence["FIRST_RUNTIME_SHL_CAUSAL_DIVERGENCE_PERIOD"] == 4
+    assert first_divergence["FIRST_RUNTIME_SHL_CAUSAL_DIVERGENCE_PERIOD"] == 6
     assert (
         first_divergence["FIRST_RUNTIME_SHL_CAUSAL_DIVERGENCE_LINE"]
         == "post_senior_cash.cash_available_for_shl_before_reserves_keur"

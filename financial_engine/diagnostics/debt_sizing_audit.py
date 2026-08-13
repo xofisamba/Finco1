@@ -215,8 +215,8 @@ def build_debt_sizing_audit(
         "first_bank_case_causal_divergence": (
             {
                 "period": first_divergence["period"],
-                "line": "Bank CFADS / source-replay tax periodisation boundary",
-                "cause": "BANK_TAX_PERIODISATION_AND_LOSS_GATE_REMAINS_FIRST_PRODUCTIONIZATION_BOUNDARY",
+                "line": "Bank CFADS / late-horizon source residual boundary",
+                "cause": "BANK_TAX_LOSS_COMPATIBILITY_PROVEN_LATE_HORIZON_CFADS_RESIDUAL_REMAINS",
                 "excel": first_divergence["excel_bank_cfads"],
                 "finco": first_divergence["finco_bank_cfads"],
                 "delta": first_divergence["bank_cfads_delta"],

@@ -10,8 +10,8 @@ import pytest
 
 FIXTURES = Path(__file__).parent / "fixtures"
 SOURCE_DEBT_KEUR = 42_852.27876256299
-OBOROVO_B7_DEBT_KEUR = 42_847.031265459125
-OBOROVO_B7_DEBT_RESIDUAL_KEUR = -5.247497103868227
+OBOROVO_B7_DEBT_KEUR = 42_852.30326225287
+OBOROVO_B7_DEBT_RESIDUAL_KEUR = 0.02449968987639295
 
 
 def _financial_truth() -> dict:
@@ -131,7 +131,11 @@ def test_debt_sizing_case_config_validates_like_runtime_contract():
 
 
 def test_oborovo_bank_tax_periodisation_override_is_source_owned():
-    from financial_engine.policies.tax import TaxBasisPeriodisation, TaxLossUtilisationGate
+    from financial_engine.policies.tax import (
+        CashTaxTiming,
+        TaxBasisPeriodisation,
+        TaxLossUtilisationGate,
+    )
 
     model = _model()
     assert model.debt_sizing_case.tax_periodisation_mode_override == (
@@ -140,6 +144,48 @@ def test_oborovo_bank_tax_periodisation_override_is_source_owned():
     assert model.tax.policy.tax_basis_periodisation == TaxBasisPeriodisation.CALENDAR_YEAR
     assert model.tax.policy.loss_utilisation_gate == (
         TaxLossUtilisationGate.TAXABLE_INCOME_POSITIVE
+    )
+    assert model.tax.policy.cash_tax_timing != CashTaxTiming.MODEL_YEAR_PAYMENT_PERIOD
+
+
+def test_oborovo_bank_tax_compatibility_uses_source_h2_h1_pairing_and_h1_payment():
+    from financial_engine.orchestrator import (
+        _merge_financing_tax_input,
+        derive_debt_sizing_operating_input,
+        run_operating_model,
+    )
+    from financial_engine.policies.tax import CashTaxTiming, TaxBasisPeriodisation
+    from financial_engine.tax.engine import calculate_tax
+
+    result = _run()
+    model = _model()
+    bank_periods = run_operating_model(
+        derive_debt_sizing_operating_input(model.operating, model.debt_sizing_case)
+    ).periods
+    bank_tax_input = _merge_financing_tax_input(
+        model.tax,
+        dict(zip(result.senior_debt.period_indices, result.senior_debt.senior_interest_keur)),
+        dict(
+            zip(
+                result.shareholder_loan.period_indices,
+                result.shareholder_loan.shl_gross_interest_keur,
+            )
+        ),
+        tax_periodisation_mode_override=model.debt_sizing_case.tax_periodisation_mode_override,
+    )
+    tax = calculate_tax(bank_periods, bank_tax_input)
+
+    assert bank_tax_input.policy.tax_basis_periodisation == (
+        TaxBasisPeriodisation.MODEL_YEAR_PAIRING
+    )
+    assert bank_tax_input.policy.cash_tax_timing == CashTaxTiming.MODEL_YEAR_PAYMENT_PERIOD
+
+    annual_2032 = next(ar for ar in tax.annual_results if ar.tax_year == 2032)
+    tax_by_period = {pr.period_index: pr for pr in tax.period_results}
+    assert annual_2032.period_indices == (3, 4)
+    assert tax_by_period[3].cash_tax_keur == pytest.approx(0.0)
+    assert tax_by_period[4].cash_tax_keur == pytest.approx(
+        annual_2032.current_tax_liability_keur
     )
 
 
@@ -344,9 +390,10 @@ def test_oborovo_b7_senior_and_post_senior_source_boundary_is_honest():
     assert result.senior_debt.diagnostics["final_debt_size_keur"] == pytest.approx(
         result.senior_debt.debt_size_keur
     )
-    assert result.senior_debt.debt_size_keur != pytest.approx(
-        result.senior_debt.diagnostics["initial_debt_guess_keur"]
-    )
+    assert abs(
+        result.senior_debt.debt_size_keur
+        - result.senior_debt.diagnostics["initial_debt_guess_keur"]
+    ) > 1e-6
 
     assert result.tax_and_cfads.cfads_keur[1] == pytest.approx(
         source["cf"]["fcf_for_banks_keur"][1]
@@ -357,8 +404,8 @@ def test_oborovo_b7_senior_and_post_senior_source_boundary_is_honest():
     assert result.post_senior_cash.cash_available_for_shl_before_reserves_keur[1] == pytest.approx(
         source["cf"]["free_cash_flow_for_shl_keur"][1]
     )
-    assert result.senior_debt.senior_interest_keur[0] == pytest.approx(1303.3236630702365)
-    assert result.senior_debt.senior_principal_keur[0] == pytest.approx(935.8097497841193)
+    assert result.senior_debt.senior_interest_keur[0] == pytest.approx(1303.484026996744)
+    assert result.senior_debt.senior_principal_keur[0] == pytest.approx(935.6493858576118)
 
     ds20 = debt_truth["workstream_a"]["ds_row20_cfads"]["period_values_keur"]
     first_delta = next(
@@ -374,8 +421,8 @@ def test_oborovo_b7_senior_and_post_senior_source_boundary_is_honest():
         None,
     )
     assert first_delta is not None
-    assert first_delta[0] == 4
-    assert first_delta[1] - first_delta[2] == pytest.approx(-3.433578339322139)
+    assert first_delta[0] == 6
+    assert first_delta[1] - first_delta[2] == pytest.approx(0.006375040592956793)
 
 
 def test_debt_sizing_audit_is_separate_and_reports_source_vectors_without_replay():
@@ -389,10 +436,10 @@ def test_debt_sizing_audit_is_separate_and_reports_source_vectors_without_replay
     assert "Excel Bank Production" in audit["source_unavailable_components"]
     assert "Excel Bank CFADS / DS row20 / Macro50 authority" in audit["source_available_components"]
     first = audit["first_bank_case_causal_divergence"]
-    assert first["period"] == 4
-    assert first["line"] == "Bank CFADS / source-replay tax periodisation boundary"
+    assert first["period"] == 6
+    assert first["line"] == "Bank CFADS / late-horizon source residual boundary"
     assert first["cause"] == (
-        "BANK_TAX_PERIODISATION_AND_LOSS_GATE_REMAINS_FIRST_PRODUCTIONIZATION_BOUNDARY"
+        "BANK_TAX_LOSS_COMPATIBILITY_PROVEN_LATE_HORIZON_CFADS_RESIDUAL_REMAINS"
     )
     row = audit["rows"][4]
     assert "excel_allowed_debt_service_capacity" in row
@@ -474,9 +521,9 @@ def test_b7_classifications_recorded():
         "oborovo_case": "OBOROVO_BANK_PRODUCTION_CASE_P50_IS_EXPLICIT_SOURCE_COMPATIBILITY_INPUT",
         "tuho_case": "TUHO_BANK_PRODUCTION_CASE_REMAINS_P90_SOURCE_SUPPORTED",
         "bank_price": "BANK_MERCHANT_PRICE_CASE_IS_EXPLICIT_AND_SEPARATE_FROM_BASE",
-        "stop": "C3B3D2B7_STOP_R4_7_2_TO_PRODUCTIONIZATION_GAP_NOT_YET_CLOSED",
+        "stop": "C3B3D2B7_STOP_AT_LATE_HORIZON_BANK_CFADS_RESIDUAL_BOUNDARY",
     }
     assert classifications["senior_authority"].startswith("BANK_SIZING")
     assert classifications["generic_default"].endswith("P90_10Y")
     assert "P50" in classifications["oborovo_case"]
-    assert classifications["stop"].endswith("NOT_YET_CLOSED")
+    assert classifications["stop"].endswith("RESIDUAL_BOUNDARY")

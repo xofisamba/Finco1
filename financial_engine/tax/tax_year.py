@@ -341,7 +341,16 @@ def _build_model_year_pairing_bases(
                 f"period_index={idx}; period_in_year={period_in_year!r}"
             )
 
-        tax_year = p.period_end.year if period_in_year == 1 else p.period_end.year + 1  # type: ignore[attr-defined]
+        period_end = p.period_end  # type: ignore[attr-defined]
+        if period_end.month == 6:
+            tax_year = period_end.year
+        elif period_end.month == 12:
+            tax_year = period_end.year + 1
+        else:
+            raise ValueError(
+                "MODEL_YEAR_PAIRING_REQUIRES_JUNE_DECEMBER_PERIOD_ENDS: "
+                f"period_index={idx}; period_end={period_end!r}"
+            )
         pi_obj = interest_map.get(idx)
         if pi_obj:
             shl_fraction = policy.shl_tax_deductible_fraction()
@@ -378,7 +387,7 @@ def _build_model_year_pairing_bases(
         h1_periods = [
             p for p in periods
             if p.period_index in period_indices  # type: ignore[attr-defined]
-            and int(getattr(p, "period_in_year", 0)) == 1
+            and p.period_end.month == 6  # type: ignore[attr-defined]
         ]
         payment_idx = (
             h1_periods[-1].period_index  # type: ignore[attr-defined]
