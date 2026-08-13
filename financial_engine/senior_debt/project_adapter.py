@@ -183,11 +183,20 @@ def build_senior_debt_contract_from_project_inputs(
 
     inputs = SeniorDebtInputs(
         eligible_project_cost_keur=0.0,
-        initial_debt_guess_keur=fin.gearing_ratio * sum(
-            item.amount_keur for item in project_inputs.capex.capex_items()
+        initial_debt_guess_keur=(
+            fin.fixed_debt_keur
+            if fin.fixed_debt_keur is not None and fin.fixed_debt_keur > 0.0
+            else fin.gearing_ratio * sum(
+                item.amount_keur for item in project_inputs.capex.capex_items()
+            )
         ),
         period_rates=period_rates,
         explicit_principal_schedule=None,
+        opening_debt_balance_keur=(
+            fin.fixed_debt_keur
+            if fin.fixed_debt_keur is not None and fin.fixed_debt_keur > 0.0
+            else 0.0
+        ),
         period_dscr_targets=dscr_targets,
         period_debt_service_availability=avail,
     )

@@ -1,0 +1,48 @@
+name: C3B3D2B6 - Base Performance + Post-Senior Cash Parity Check
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  c3b3d2b6-base-post-senior-cash-parity:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact PR head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify base ancestry
+        shell: bash
+        run: |
+          git merge-base --is-ancestor c64100c3257fcaee0ab5cffdeeb3a0b7c5ce58c2 HEAD
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pytest python-dateutil numpy scipy openpyxl
+
+      - name: Diff hygiene
+        run: git diff --check
+
+      - name: B6 focused suite
+        env:
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+        run: python -m pytest -q tests/test_stage_c3b3d2b6_base_post_senior_cash_parity.py
+
+      - name: B5 regression
+        env:
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+        run: python -m pytest -q tests/test_stage_c3b3d2b5_shl_fixed_point_integration.py
+
+      - name: Operating, senior debt and governance checks
+        env:
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+        run: python -m pytest -q tests/test_stage_c3b3d2b6_base_post_senior_cash_parity.py

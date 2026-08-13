@@ -535,6 +535,13 @@ def solve_senior_debt(
         )
 
     if mode == SeniorDebtSizingMode.DSCR_SCULPTED:
+        if inputs.opening_debt_balance_keur > 0.0:
+            return _solve_fixed_opening_dscr(
+                policy=policy, inputs=inputs, period_indices=period_indices,
+                period_start_end=period_start_end, rate_map=rate_map,
+                tax_cfads_fn=tax_cfads_fn, dscr_map=dscr_map,
+                availability_map=availability_map,
+            )
         return _solve_dscr(
             policy=policy, inputs=inputs, period_indices=period_indices,
             period_start_end=period_start_end, rate_map=rate_map, tax_cfads_fn=tax_cfads_fn,
@@ -554,6 +561,42 @@ def solve_senior_debt(
 # ---------------------------------------------------------------------------
 # Issues 1+2: DSCR convergence loop (tracks all schedule fields; finalisation)
 # ---------------------------------------------------------------------------
+
+def _solve_fixed_opening_dscr(
+    *,
+    policy: SeniorDebtPolicy,
+    inputs: "SeniorDebtInputs",
+    period_indices: tuple[int, ...],
+    period_start_end: dict[int, tuple],
+    rate_map: dict[int, float],
+    tax_cfads_fn: TaxCfadsCallable,
+    dscr_map: dict[int, float] | None = None,
+    availability_map: dict[int, float] | None = None,
+) -> SeniorDebtSchedules:
+    """Roll DSCR-sculpted debt service from an explicit opening balance.
+
+    The debt quantum is an authoritative input in this path; the solver does
+    not derive or calibrate it. CFADS, tax, interest, principal and closing
+    balances still pass through the existing finalisation handshake.
+    """
+    D = inputs.opening_debt_balance_keur
+    init_cfads: dict[int, float] = {idx: 0.0 for idx in period_indices}
+    final_rows, final_cfads, final_cash_tax, fin_ok = _finalise_authoritative(
+        D, period_indices, rate_map, period_start_end,
+        init_cfads, policy, "dscr_sculpted", tax_cfads_fn,
+        dscr_map=dscr_map, availability_map=availability_map,
+    )
+    diag = _make_diag(
+        converged=fin_ok,
+        iteration=1,
+        initial_guess=inputs.initial_debt_guess_keur,
+        final_d=D,
+        max_abs_diff=0.0,
+        binding="FIXED_OPENING",
+        termination_reason="CONVERGED" if fin_ok else "FINALISATION_NOT_CONVERGED",
+    )
+    return _to_schedules(final_rows, D, "FIXED_OPENING", diag)
+
 
 def _solve_dscr(
     *,

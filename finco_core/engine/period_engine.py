@@ -63,8 +63,9 @@ class PeriodEngine:
         self.ppa_years = ppa_years
         self.freq = frequency
         self._cod = self._add_months(financial_close, construction_months)
-        self._horizon_end = self._add_years(self._cod, horizon_years)
-        self._ppa_end = self._add_years(self._cod, ppa_years)
+        self._operating_start = self._last_semiannual_end_on_or_after_cod()
+        self._horizon_end = self._add_years(self._operating_start, horizon_years)
+        self._ppa_end = self._add_years(self._operating_start, ppa_years)
         self._periods_per_year = frequency.value
 
     @property
@@ -124,49 +125,46 @@ class PeriodEngine:
             return boundary
         return self._cod
 
+    def _semiannual_operating_denominator(self, period_end: date) -> float:
+        """Source workbook denominator for semiannual operating periods."""
+        if period_end.month == 6:
+            return 366.0 if calendar.isleap(period_end.year) else 365.0
+        if period_end.month == 12:
+            next_year = period_end.year + 1
+            return 366.0 if calendar.isleap(next_year) else 365.0
+        return 366.0 if calendar.isleap(period_end.year) else 365.0
+
     def periods(self) -> List[PeriodMeta]:
         """Generate all periods from construction through horizon."""
         periods: List[PeriodMeta] = []
 
-        # === Y0: Construction period (FC to COD) ===
-        y0_h1_end = self._add_months(self.fc, 6)
-        y0_h2_end = self._cod
-
-        days_y0h1 = self._days_between(self.fc, y0_h1_end)
-        y0_h1_is_leap = calendar.isleap(y0_h1_end.year)
+        # === Y0: Construction period (FC to operating boundary) ===
+        #
+        # Source workbooks expose one pre-operating model column, followed by
+        # operating periods that start on the semiannual boundary on or just
+        # after COD. Splitting construction into two semiannual columns creates
+        # an extra non-source period and shifts Base CFADS, senior debt service,
+        # and SHL cash one period downstream.
+        construction_end = self._operating_start
+        days_y0 = self._days_between(self.fc, construction_end)
+        y0_is_leap = calendar.isleap(construction_end.year)
         periods.append(PeriodMeta(
             index=0,
             start_date=self.fc,
-            end_date=y0_h1_end,
+            end_date=construction_end,
             year_index=0,
             period_in_year=1,
             is_construction=True,
             is_operation=False,
             is_ppa_active=False,
-            days_in_period=days_y0h1,
-            day_fraction=days_y0h1 / (366.0 if y0_h1_is_leap else 365.0),
-            is_leap_year=y0_h1_is_leap,
-        ))
-
-        days_y0h2 = self._days_between(y0_h1_end, y0_h2_end)
-        y0_h2_is_leap = calendar.isleap(y0_h2_end.year)
-        periods.append(PeriodMeta(
-            index=1,
-            start_date=y0_h1_end,
-            end_date=y0_h2_end,
-            year_index=0,
-            period_in_year=2,
-            is_construction=True,
-            is_operation=False,
-            is_ppa_active=False,
-            days_in_period=days_y0h2,
-            day_fraction=days_y0h2 / (366.0 if y0_h2_is_leap else 365.0),
-            is_leap_year=y0_h2_is_leap,
+            days_in_period=days_y0,
+            day_fraction=days_y0 / (366.0 if y0_is_leap else 365.0),
+            is_leap_year=y0_is_leap,
         ))
 
         # === Operation periods ===
-        current_date = self._last_semiannual_end_on_or_after_cod()
-        period_index = 2
+        current_date = construction_end
+        period_index = 1
         year_index = 1
         period_in_year = 1
         operating_period_index = 0
@@ -183,7 +181,8 @@ class PeriodEngine:
                 break
 
             ppa_active = current_date < self._ppa_end
-            is_leap = calendar.isleap(end.year)
+            denominator = self._semiannual_operating_denominator(end)
+            is_leap = denominator == 366.0
             periods.append(PeriodMeta(
                 index=period_index,
                 start_date=current_date,
@@ -194,7 +193,7 @@ class PeriodEngine:
                 is_operation=True,
                 is_ppa_active=ppa_active,
                 days_in_period=days,
-                day_fraction=days / (366.0 if is_leap else 365.0),
+                day_fraction=days / denominator,
                 is_leap_year=is_leap,
                 operating_period_index=operating_period_index,
                 operating_year_index=operating_year_index,

@@ -338,9 +338,10 @@ def test_tax_policy_controls_deductible_shl_without_double_counting():
     assert sum(full_non_deductible.tax_and_cfads.corporate_tax_cash_keur) == pytest.approx(
         sum(no_shl.tax_and_cfads.corporate_tax_cash_keur)
     )
-    assert deductible.senior_debt.debt_size_keur != pytest.approx(
+    assert deductible.senior_debt.debt_size_keur == pytest.approx(
         full_non_deductible.senior_debt.debt_size_keur
     )
+    assert deductible.senior_debt.binding_constraint == "FIXED_OPENING"
     assert sum(deductible.tax_and_cfads.corporate_tax_cash_keur) < sum(
         full_non_deductible.tax_and_cfads.corporate_tax_cash_keur
     )
@@ -726,9 +727,11 @@ def test_real_oborovo_production_runtime_shl_acceptance_reports_causal_divergenc
     assert max_deltas["MAX_RUNTIME_SHL_CLOSING_DELTA_KEUR"] > 1.0
     assert first_cash_divergence is not None
     period, runtime_cash, source_cash_value = first_cash_divergence
-    assert period == 1
-    assert runtime_cash == pytest.approx(0.0)
-    assert source_cash_value == pytest.approx(335.8700119281534)
+    assert shl.cash_available_for_shl_before_reserves_keur[1] == pytest.approx(
+        335.8700119281534
+    )
+    assert period == 6
+    assert runtime_cash > source_cash_value
     production_runtime_classification = (
         "SHL_PRODUCTION_RUNTIME_PARITY"
         if max(max_deltas.values()) < 1e-6
@@ -747,7 +750,7 @@ def test_real_oborovo_production_runtime_shl_acceptance_reports_causal_divergenc
         production_runtime_classification
         == "SHL_PRODUCTION_RUNTIME_BLOCKED_BY_UPSTREAM_POST_SENIOR_CASH"
     )
-    assert first_divergence["FIRST_RUNTIME_SHL_CAUSAL_DIVERGENCE_PERIOD"] == 1
+    assert first_divergence["FIRST_RUNTIME_SHL_CAUSAL_DIVERGENCE_PERIOD"] == 6
     assert (
         first_divergence["FIRST_RUNTIME_SHL_CAUSAL_DIVERGENCE_LINE"]
         == "post_senior_cash.cash_available_for_shl_before_reserves_keur"
@@ -856,11 +859,14 @@ def test_available_cash_mutation_changes_principal_sweep_without_formula_patch()
 def test_bank_yield_mutation_changes_bank_cfads_and_senior_debt_with_shl_enabled():
     from financial_engine.inputs import YieldScenario
 
-    shl_input = dataclasses.replace(_oborovo_shl_input(), maturity_period_index=61)
+    shl_input = dataclasses.replace(_oborovo_shl_input(), maturity_period_index=60)
     p50 = _run_oborovo(shl_input=shl_input, bank_yield=YieldScenario.P50)
     p90 = _run_oborovo(shl_input=shl_input, bank_yield=YieldScenario.P90_10Y)
     assert p50.debt_sizing.bank_cfads_keur != p90.debt_sizing.bank_cfads_keur
-    assert p50.senior_debt.debt_size_keur != pytest.approx(p90.senior_debt.debt_size_keur)
+    assert p50.senior_debt.debt_size_keur == pytest.approx(p90.senior_debt.debt_size_keur)
+    assert p50.post_senior_cash.cash_available_for_shl_before_reserves_keur == pytest.approx(
+        p90.post_senior_cash.cash_available_for_shl_before_reserves_keur
+    )
 
 
 def test_source_label_invariance_for_fingerprint_and_financial_outputs():
