@@ -46,3 +46,7 @@ while allowing those benign evidence labels.
   source-extraction hashes, and service import boundaries.
 - `MVP G1`: new exact-head automatic current-authority gate.
 - G0, B5, B6, B7, B8, C3B1, and C3B3A remain current blocking exact-head gates.
+
+The G0 textual calibration scan is restricted to production code. G1 owns the
+negative-test corpus and AST identity-dispatch proof, so forbidden examples in
+tests cannot masquerade as production violations.

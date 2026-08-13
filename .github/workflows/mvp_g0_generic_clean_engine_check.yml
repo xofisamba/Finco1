@@ -100,7 +100,7 @@ jobs:
           changed_python_diff="$(
             git diff --unified=0 \
               08f12a1516173efaab7d2569022a24b101b03976...HEAD \
-              -- financial_engine finco_core app domain tests \
+              -- financial_engine finco_core app domain \
             | grep -E '^\+[^+]' || true
           )"
 
