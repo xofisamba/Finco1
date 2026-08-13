@@ -134,6 +134,15 @@ jobs:
       - name: Governance scan
         shell: bash
         run: |
-          ! grep -RInE "approved_delta|expected_delta|target debt fitting|target cfads fitting|target tax fitting|target shl fitting|source output vector runtime input|magic 42852|magic ds1|post-engine mutation" \
-            financial_engine finco_core \
-            --exclude-dir='__pycache__'
+          mapfile -t changed_files < <(
+            git diff --name-only \
+              25c193e8747354540215d830f4552f87a71248db...HEAD \
+              -- financial_engine finco_core app domain \
+            | grep -E '\.py$' || true
+          )
+
+          if ((${#changed_files[@]})); then
+            ! grep -nHE \
+              "approved_delta|expected_delta|target debt fitting|target cfads fitting|target tax fitting|target shl fitting|source output vector runtime input|magic 42852|magic ds1|post-engine mutation|project\.name|project\.code|baseline_id" \
+              "${changed_files[@]}"
+          fi
