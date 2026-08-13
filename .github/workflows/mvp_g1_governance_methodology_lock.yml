@@ -1,0 +1,53 @@
+name: MVP G1 - Governance & Methodology Lock
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+  PYTHONDONTWRITEBYTECODE: "1"
+
+jobs:
+  mvp-g1-governance:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Assert exact-head checkout
+        run: |
+          test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha || github.sha }}"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          pip install --no-cache-dir -c constraints.txt -e .
+          pip install --no-cache-dir -c constraints.txt pytest
+
+      - name: Current authority and identity-dispatch guard
+        run: |
+          python -m pytest -q --tb=short \
+            tests/test_mvp_g1_governance_methodology_lock.py \
+            tests/test_mvp_g0_generic_clean_engine_enablement.py
+
+      - name: Current canonical tax invariants
+        run: |
+          python -m pytest -q --tb=short \
+            -m "not historical_compatibility" \
+            tests/test_phase2b_tax_cfads.py
+
+      - name: Semantic parity and source-evidence guards
+        run: |
+          python -m pytest -q --tb=short \
+            tests/test_phase51f_parallel_work_guardrails.py

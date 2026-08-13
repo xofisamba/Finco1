@@ -16,6 +16,10 @@ on:
       - "app/project_factories.py"
       - "tests/test_stage_c3b3a_clean_senior_debt_source_contract.py"
       - "tests/fixtures/excel_oborovo_debt_interest_truth.json"
+      - "finco_recon/governance_identity.py"
+      - "tests/test_mvp_g1_governance_methodology_lock.py"
+      - "docs/architecture/mvp_g1_current_financial_authority.md"
+      - ".github/workflows/mvp_g1_governance_methodology_lock.yml"
 
 jobs:
   c3b3a-clean-senior-debt:

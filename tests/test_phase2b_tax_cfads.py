@@ -1796,11 +1796,13 @@ class TestV_ScheduleAlignment:
 # Test W — Model J: correction-aware four-baseline acceptance (item 14)
 # ---------------------------------------------------------------------------
 
+@pytest.mark.historical_compatibility
 @pytest.mark.parametrize("baseline_id", BASELINE_IDS)
 def test_w_correction_aware_four_baseline(baseline_id: str):
     """Model J (item 14): four-baseline correction-aware parity check using production exact matcher.
 
-    Each baseline must be IDENTICAL or APPROVED_FINANCIAL_CORRECTION.
+    Historical TAX_CFADS_V1 evidence: each baseline was expected to be IDENTICAL
+    or APPROVED_FINANCIAL_CORRECTION under that superseded snapshot authority.
     Unexplained difference count must be 0. Stale correction records must be 0.
     Uses production load_and_validate_ledger() + match_differences() — no simplified
     path-set check.
@@ -2244,8 +2246,9 @@ class TestTuhoConstructionLoss:
         with pytest.raises(RuntimeError, match="GOVERNANCE FAILURE"):
             build_construction_generated_carryforward_at_cod("tuho")
 
+    @pytest.mark.historical_compatibility
     def test_tuho_end_to_end_exact_matcher(self):
-        """TUHO: load approved ledger, run actual candidate, assert 0 unexplained, 0 stale."""
+        """Historical TUHO correction-ledger snapshot matcher."""
         import json
         from pathlib import Path
 

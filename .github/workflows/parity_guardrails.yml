@@ -2,9 +2,9 @@ name: Parity Guardrails
 
 # Phase 51F — Parallel-work and runtime-refactor guardrails.
 #
-# This workflow runs the three guardrails added in Phase 51F:
-#   1. Engine-output golden (model output pinning for TUHO / Oborovo)
-#   2. Parity-core lock (SHA-256 of parity-sensitive files)
+# This workflow runs the current Phase 51F/G1 guardrails:
+#   1. Still-authoritative semantic model-output checks
+#   2. Immutable source-extraction file hashes
 #   3. No-service-imports-main_web/main_api (AST check)
 #
 # It is intentionally minimal and fast — the engine output tests

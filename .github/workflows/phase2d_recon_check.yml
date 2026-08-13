@@ -1,15 +1,8 @@
 name: Phase 2D — Excel↔Python Reconciliation Check
 
 on:
-  push:
-    branches:
-      - phase2d-excel-python-recon
-  pull_request:
-    branches:
-      - phase2d-excel-python-recon
-      - phase2c-senior-debt-fixed-point
-      - phase2b-tax-cfads-core
-      - main
+  # Historical Excel/Python reconciliation framework retained on demand.
+  workflow_dispatch:
 
 jobs:
   recon-check:

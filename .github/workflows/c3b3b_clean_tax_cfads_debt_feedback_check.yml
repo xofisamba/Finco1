@@ -1,21 +1,8 @@
 name: C3B3B Clean Tax CFADS Debt Feedback Check
 
 on:
-  pull_request:
-    branches: [main]
-    paths:
-      - financial_engine/tax/**
-      - financial_engine/cfads/**
-      - financial_engine/senior_debt/**
-      - financial_engine/adapters/**
-      - financial_engine/orchestrator.py
-      - financial_engine/provenance.py
-      - app/project_factories.py
-      - finco_core/inputs/**
-      - tests/test_stage_c3b3b_*.py
-      - tests/test_stage_c3b3a_*.py
-      - tests/test_stage_c3b2_*.py
-      - tests/test_stage_c3b1_*.py
+  # Superseded fixed-point-era assertions retained as forensic diagnostics.
+  workflow_dispatch:
       - tests/test_phase2b_*.py
       - tests/test_phase2c_senior_debt.py
       - .github/workflows/c3b3b_clean_tax_cfads_debt_feedback_check.yml

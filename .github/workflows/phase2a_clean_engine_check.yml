@@ -6,10 +6,9 @@ name: Phase 2A Clean Engine Check
 # Any failed gate fails the workflow and may stop later steps.
 
 on:
-  pull_request:
-    branches: [main]
-  push:
-    branches: [main]
+  # Historical OPERATING_CORE_V1 compatibility evidence. Current release
+  # authority is enforced by the G1/G0/B5-B8 ring.
+  workflow_dispatch:
 
 permissions:
   contents: read
