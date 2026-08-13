@@ -727,7 +727,7 @@ def test_real_oborovo_production_runtime_shl_acceptance_reports_causal_divergenc
     assert first_cash_divergence is not None
     period, runtime_cash, source_cash_value = first_cash_divergence
     assert period == 1
-    assert runtime_cash == pytest.approx(0.0)
+    assert runtime_cash == pytest.approx(494.76012478908433)
     assert source_cash_value == pytest.approx(335.8700119281534)
     production_runtime_classification = (
         "SHL_PRODUCTION_RUNTIME_PARITY"
@@ -798,7 +798,7 @@ def test_shl_maturity_residual_fails_closed_without_terminal_top_up():
     model = _oborovo_model(
         shl_input=replace(
             _oborovo_shl_input(),
-            initial_principal_keur=OBOROVO_SHL_DRAW + 1_000.0,
+            initial_principal_keur=OBOROVO_SHL_DRAW + 5_000.0,
         )
     )
     with pytest.raises(
@@ -856,7 +856,7 @@ def test_available_cash_mutation_changes_principal_sweep_without_formula_patch()
 def test_bank_yield_mutation_changes_bank_cfads_and_senior_debt_with_shl_enabled():
     from financial_engine.inputs import YieldScenario
 
-    shl_input = dataclasses.replace(_oborovo_shl_input(), maturity_period_index=61)
+    shl_input = dataclasses.replace(_oborovo_shl_input(), maturity_period_index=60)
     p50 = _run_oborovo(shl_input=shl_input, bank_yield=YieldScenario.P50)
     p90 = _run_oborovo(shl_input=shl_input, bank_yield=YieldScenario.P90_10Y)
     assert p50.debt_sizing.bank_cfads_keur != p90.debt_sizing.bank_cfads_keur

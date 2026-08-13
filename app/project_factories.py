@@ -19,6 +19,7 @@ from domain.inputs import (
     EquityIRRMethod,
     FinancingParams,
     OpexItem,
+    PeriodAxisConvention,
     PeriodFrequency,
     ProjectInfo,
     ProjectInputs,
@@ -250,6 +251,9 @@ def create_default_oborovo() -> ProjectInputs:
         horizon_years=30,
         period_frequency=PeriodFrequency.SEMESTRIAL,
         use_senior_debt_sizing_engine=True,  # Phase 23R: fixture-backed frozen senior DS opt-in after Phase 23Q parity proof
+        period_axis_convention=(
+            PeriodAxisConvention.OPERATING_BOUNDARY_SINGLE_CONSTRUCTION_COLUMN
+        ),
     )
 
     technical = TechnicalParams(

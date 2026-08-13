@@ -60,7 +60,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 from typing import TYPE_CHECKING, Sequence
 
 from financial_engine.shl.contracts import (
@@ -307,6 +307,16 @@ def _check_finite(name: str, value: object) -> None:
         raise ValueError(f"{name} must be finite, got {value!r}")
 
 
+def _shl_operating_accrual_start(period: object) -> date:
+    """Translate model boundary starts to SHL's inclusive operating date convention."""
+    if (
+        (period.period_start.month == 6 and period.period_start.day == 30)
+        or (period.period_start.month == 12 and period.period_start.day == 31)
+    ):
+        return period.period_start + timedelta(days=1)
+    return period.period_start
+
+
 def compute_shareholder_loan_schedules(
     periods: Sequence["OperatingPeriodResult"],
     shl_input: "ShareholderLoanModelInput",
@@ -415,7 +425,7 @@ def compute_shareholder_loan_schedules(
                     operating_periods=tuple(operating_inputs + [
                         ShlOperatingPeriodInput(
                             period_index=p.period_index,
-                            period_start=p.period_start,
+                            period_start=_shl_operating_accrual_start(p),
                             period_end=p.period_end,
                             cash_available_for_shl_keur=cash_eligible_for_current_shl_service,
                         )
@@ -432,7 +442,7 @@ def compute_shareholder_loan_schedules(
 
             op_input = ShlOperatingPeriodInput(
                 period_index=p.period_index,
-                period_start=p.period_start,
+                period_start=_shl_operating_accrual_start(p),
                 period_end=p.period_end,
                 cash_available_for_shl_keur=cash_eligible_for_current_shl_service,
             )

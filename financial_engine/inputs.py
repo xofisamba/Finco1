@@ -25,12 +25,21 @@ class YieldScenario(str, Enum):
     P90_10Y = "P90-10y"
 
 
+class PeriodAxisConvention(str, Enum):
+    """Clean-engine calendar convention selected by explicit input metadata."""
+    COD_ANCHOR_TWO_CONSTRUCTION_COLUMNS = "cod_anchor_two_construction_columns"
+    OPERATING_BOUNDARY_SINGLE_CONSTRUCTION_COLUMN = "operating_boundary_single_construction_column"
+
+
 @dataclass(frozen=True)
 class CalendarInput:
     financial_close: date
     construction_months: int
     horizon_years: int
     ppa_years: float
+    period_axis_convention: PeriodAxisConvention = (
+        PeriodAxisConvention.COD_ANCHOR_TWO_CONSTRUCTION_COLUMNS
+    )
 
 
 @dataclass(frozen=True)

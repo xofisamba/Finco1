@@ -551,10 +551,6 @@ def solve_senior_debt(
     raise ValueError(f"Unsupported sizing_mode: {mode!r}")
 
 
-# ---------------------------------------------------------------------------
-# Issues 1+2: DSCR convergence loop (tracks all schedule fields; finalisation)
-# ---------------------------------------------------------------------------
-
 def _solve_dscr(
     *,
     policy: SeniorDebtPolicy,

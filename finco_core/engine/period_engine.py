@@ -27,6 +27,12 @@ class PeriodFrequency(Enum):
     QUARTERLY = 4
 
 
+class PeriodAxisConvention(str, Enum):
+    """Explicit policy for construction and operating-period boundary semantics."""
+    COD_ANCHOR_TWO_CONSTRUCTION_COLUMNS = "cod_anchor_two_construction_columns"
+    OPERATING_BOUNDARY_SINGLE_CONSTRUCTION_COLUMN = "operating_boundary_single_construction_column"
+
+
 @dataclass(frozen=True)
 class PeriodMeta:
     """Immutable metadata for a single period."""
@@ -56,15 +62,26 @@ class PeriodEngine:
         horizon_years: int,
         ppa_years: int,
         frequency: PeriodFrequency = PeriodFrequency.SEMESTRIAL,
+        period_axis_convention: PeriodAxisConvention | str = (
+            PeriodAxisConvention.COD_ANCHOR_TWO_CONSTRUCTION_COLUMNS
+        ),
     ) -> None:
         self.fc = financial_close
         self.construction_months = construction_months
         self.horizon_years = horizon_years
         self.ppa_years = ppa_years
         self.freq = frequency
+        self.period_axis_convention = self._coerce_period_axis_convention(
+            period_axis_convention
+        )
         self._cod = self._add_months(financial_close, construction_months)
-        self._horizon_end = self._add_years(self._cod, horizon_years)
-        self._ppa_end = self._add_years(self._cod, ppa_years)
+        self._operating_start = self._last_semiannual_end_on_or_after_cod()
+        if self.period_axis_convention == PeriodAxisConvention.OPERATING_BOUNDARY_SINGLE_CONSTRUCTION_COLUMN:
+            self._horizon_end = self._add_years(self._operating_start, horizon_years)
+            self._ppa_end = self._add_years(self._operating_start, ppa_years)
+        else:
+            self._horizon_end = self._add_years(self._cod, horizon_years)
+            self._ppa_end = self._add_years(self._cod, ppa_years)
         self._periods_per_year = frequency.value
 
     @property
@@ -93,6 +110,21 @@ class PeriodEngine:
             months = int((years - whole) * 12)
             return d + relativedelta(years=whole, months=months)
         return d + relativedelta(years=int(years))
+
+    def _coerce_period_axis_convention(
+        self,
+        value: PeriodAxisConvention | str,
+    ) -> PeriodAxisConvention:
+        """Resolve explicit period-axis policy values."""
+        if isinstance(value, PeriodAxisConvention):
+            return value
+        try:
+            return PeriodAxisConvention(str(value))
+        except ValueError as exc:
+            allowed = ", ".join(v.value for v in PeriodAxisConvention)
+            raise ValueError(
+                f"Unknown period_axis_convention={value!r}; expected one of: {allowed}"
+            ) from exc
 
     def _days_between(self, start: date, end: date) -> int:
         """Days between two period-boundary dates (end - start)."""
@@ -124,8 +156,102 @@ class PeriodEngine:
             return boundary
         return self._cod
 
+    def _semiannual_operating_denominator(self, period_end: date) -> float:
+        """Source workbook denominator for semiannual operating periods."""
+        if period_end.month == 6:
+            return 366.0 if calendar.isleap(period_end.year) else 365.0
+        if period_end.month == 12:
+            next_year = period_end.year + 1
+            return 366.0 if calendar.isleap(next_year) else 365.0
+        return 366.0 if calendar.isleap(period_end.year) else 365.0
+
     def periods(self) -> List[PeriodMeta]:
         """Generate all periods from construction through horizon."""
+        periods: List[PeriodMeta] = []
+
+        if self.period_axis_convention == PeriodAxisConvention.OPERATING_BOUNDARY_SINGLE_CONSTRUCTION_COLUMN:
+            return self._source_aligned_operating_boundary_periods()
+        return self._cod_anchor_two_construction_column_periods()
+
+    def _source_aligned_operating_boundary_periods(self) -> List[PeriodMeta]:
+        """Generate source-aligned periods with one construction column."""
+        periods: List[PeriodMeta] = []
+
+        # === Y0: Construction period (FC to operating boundary) ===
+        #
+        # Source workbooks expose one pre-operating model column, followed by
+        # operating periods that start on the semiannual boundary on or just
+        # after COD. Splitting construction into two semiannual columns creates
+        # an extra non-source period and shifts Base CFADS, senior debt service,
+        # and SHL cash one period downstream.
+        construction_end = self._operating_start
+        days_y0 = self._days_between(self.fc, construction_end)
+        y0_is_leap = calendar.isleap(construction_end.year)
+        periods.append(PeriodMeta(
+            index=0,
+            start_date=self.fc,
+            end_date=construction_end,
+            year_index=0,
+            period_in_year=1,
+            is_construction=True,
+            is_operation=False,
+            is_ppa_active=False,
+            days_in_period=days_y0,
+            day_fraction=days_y0 / (366.0 if y0_is_leap else 365.0),
+            is_leap_year=y0_is_leap,
+        ))
+
+        # === Operation periods ===
+        current_date = construction_end
+        period_index = 1
+        year_index = 1
+        period_in_year = 1
+        operating_period_index = 0
+        operating_year_index = 1
+
+        while current_date < self._horizon_end:
+            end = self._next_semiannual_end_after(current_date)
+            if end > self._horizon_end:
+                end = self._horizon_end
+            days = self._days_between(current_date, end)
+            if current_date == self._cod and current_date.day == 1:
+                days += 1
+            if days <= 0:
+                break
+
+            ppa_active = current_date < self._ppa_end
+            denominator = self._semiannual_operating_denominator(end)
+            is_leap = denominator == 366.0
+            periods.append(PeriodMeta(
+                index=period_index,
+                start_date=current_date,
+                end_date=end,
+                year_index=year_index,
+                period_in_year=period_in_year,
+                is_construction=False,
+                is_operation=True,
+                is_ppa_active=ppa_active,
+                days_in_period=days,
+                day_fraction=days / denominator,
+                is_leap_year=is_leap,
+                operating_period_index=operating_period_index,
+                operating_year_index=operating_year_index,
+            ))
+
+            period_index += 1
+            current_date = end
+            if period_in_year == 1:
+                period_in_year = 2
+            else:
+                period_in_year = 1
+                year_index += 1
+                operating_year_index += 1
+            operating_period_index += 1
+
+        return periods
+
+    def _cod_anchor_two_construction_column_periods(self) -> List[PeriodMeta]:
+        """Generate legacy generic periods with two construction columns."""
         periods: List[PeriodMeta] = []
 
         # === Y0: Construction period (FC to COD) ===
@@ -227,4 +353,11 @@ class PeriodEngine:
 
 def hash_engine_for_cache(e: "PeriodEngine") -> tuple:
     """Deterministic hash for PeriodEngine inputs (for cache key)."""
-    return (e.fc, e.construction_months, e.horizon_years, e.ppa_years, e.freq)
+    return (
+        e.fc,
+        e.construction_months,
+        e.horizon_years,
+        e.ppa_years,
+        e.freq,
+        e.period_axis_convention.value,
+    )

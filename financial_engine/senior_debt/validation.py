@@ -105,6 +105,11 @@ def validate_senior_debt_inputs(
     elif inputs.initial_debt_guess_keur < 0:
         errors.append("initial_debt_guess_keur must be >= 0")
 
+    if not math.isfinite(inputs.opening_debt_balance_keur):
+        errors.append("opening_debt_balance_keur must be finite")
+    elif inputs.opening_debt_balance_keur < 0:
+        errors.append("opening_debt_balance_keur must be >= 0")
+
     # --- Period rates ---
     seen_rate_periods: set[int] = set()
     prev_period_index: int | None = None
@@ -281,10 +286,5 @@ def validate_senior_debt_inputs(
                         f"opening debt {opening:.3f} kEUR; "
                         "use INVALID_INPUT to reject over-repayment"
                     )
-
-        if not math.isfinite(inputs.opening_debt_balance_keur):
-            errors.append("opening_debt_balance_keur must be finite")
-        elif inputs.opening_debt_balance_keur < 0:
-            errors.append("opening_debt_balance_keur must be >= 0")
 
     return errors

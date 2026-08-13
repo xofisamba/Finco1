@@ -35,11 +35,11 @@ _EXPECTED_SOURCE_SHA = (
 
 # ── frozen totals ──────────────────────────────────────────────────────────────
 
-_CLEAN_REVENUE_KEUR    = 237_672.841   # C2B-approved
-_CLEAN_OPEX_KEUR       = 55_778.971
+_CLEAN_REVENUE_KEUR    = 237_686.922   # B6 source-aligned Oborovo period axis
+_CLEAN_OPEX_KEUR       = 55_782.951
 _CLEAN_BOOK_DEP_KEUR   = 57_973.054
-_CLEAN_EBITDA_KEUR     = 181_893.870
-_CLEAN_EBIT_KEUR       = 123_920.816
+_CLEAN_EBITDA_KEUR     = 181_903.972
+_CLEAN_EBIT_KEUR       = 123_930.918
 
 _EXCEL_REVENUE_KEUR    = 237_686.922
 _EXCEL_OPEX_KEUR       = 55_782.951
@@ -74,6 +74,7 @@ def _legacy_engine(pi):
         horizon_years=pi.info.horizon_years,
         ppa_years=float(pi.revenue.ppa_term_years),
         frequency=PeriodFrequency.SEMESTRIAL,
+        period_axis_convention=pi.info.period_axis_convention.value,
     )
 
 
@@ -284,7 +285,8 @@ class TestGPeriodTiming:
 
     def test_total_and_operating_period_count(self):
         result = _run_clean()
-        assert len(result.periods) == 62
+        assert len(result.periods) == 61
+        assert sum(1 for p in result.periods if p.is_construction) == 1
         assert sum(1 for p in result.periods if p.is_operation) == 60
 
     def test_construction_period_zero_dep(self):
@@ -623,20 +625,17 @@ class TestPMPeriodMappingProof:
         excel_dep_per_period = d["dep"]["dep_total_keur"]
         op_periods = {p.period_index: p for p in result.periods if p.is_operation}
 
-        p4 = op_periods.get(4)
-        assert p4 is not None, "Period 4 not found"
-        excel_p4 = excel_dep_per_period[5]  # operating index 4 → fixture index 5
+        p3 = op_periods.get(3)
+        assert p3 is not None, "Period 3 not found"
+        excel_p3 = excel_dep_per_period[3]
 
-        end_year = p4.period_end.year  # 2031
+        end_year = p3.period_end.year
         next_year = end_year + 1       # 2032
         assert not calendar.isleap(end_year), f"end_year {end_year} should be non-leap"
         assert calendar.isleap(next_year), f"next_year {next_year} should be leap"
 
-        # Clean uses 365; Excel uses 366 → clean > excel
-        assert p4.book_depreciation_keur > excel_p4, (
-            f"Expected clean > excel for period 4 "
-            f"(clean={p4.book_depreciation_keur:.4f}, excel={excel_p4:.4f})"
-        )
+        assert p3.day_fraction == pytest.approx(p3.days_in_period / 366.0)
+        assert p3.book_depreciation_keur == pytest.approx(excel_p3, abs=0.01)
 
     def test_net_lifetime_effect_small(self):
         """Signed sum of all C-X dep diffs ≤ 0.01 kEUR (SOURCE_ROUNDING)."""
