@@ -1,0 +1,111 @@
+name: MVP G0 - Generic Clean Engine Enablement Check
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  mvp-g0-generic-clean-engine:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact PR head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Verify exact PR head
+        shell: bash
+        run: |
+          test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
+
+      - name: Verify MVP-G0 base ancestry
+        shell: bash
+        run: |
+          git merge-base --is-ancestor 08f12a1516173efaab7d2569022a24b101b03976 HEAD
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pytest python-dateutil numpy scipy openpyxl itsdangerous
+
+      - name: Diff hygiene
+        run: git diff --check
+
+      - name: Generic Solar/Wind clean E2E and causal tests
+        env:
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+          PYTHONUTF8: "1"
+        run: python -m pytest -q tests/test_mvp_g0_generic_clean_engine_enablement.py
+
+      - name: Generic clean tax ownership serialization
+        env:
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+          PYTHONUTF8: "1"
+        run: |
+          python -m pytest -q \
+            tests/test_stage_c3b3b_clean_tax_cfads_debt_feedback.py::TestGroupJ_SerializationRoundtrip \
+            tests/test_stage_c3b3b_clean_tax_cfads_debt_feedback.py::TestGroupK_CashTaxTimingOwnership
+
+      - name: B8 regression
+        env:
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+          PYTHONUTF8: "1"
+        run: python -m pytest -q tests/test_stage_c3b3d2b8_base_senior_shl_parity_closure.py
+
+      - name: B7 regression
+        env:
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+          PYTHONUTF8: "1"
+        run: python -m pytest -q tests/test_stage_c3b3d2b7_bank_case_senior_parity.py
+
+      - name: B6 regression
+        env:
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+          PYTHONUTF8: "1"
+        run: python -m pytest -q tests/test_stage_c3b3d2b6_base_post_senior_cash_parity.py
+
+      - name: B5 regression
+        env:
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+          PYTHONUTF8: "1"
+        run: python -m pytest -q tests/test_stage_c3b3d2b5_shl_fixed_point_integration.py
+
+      - name: TUHO fail-closed anti-overfit
+        env:
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+          PYTHONUTF8: "1"
+        run: |
+          python -m pytest -q \
+            tests/integration/test_tuho_wind1_fixture.py \
+            tests/test_stage_c3b3d2b5_shl_fixed_point_integration.py::test_tuho_subject_to_limitations_fails_closed_in_clean_fixed_point_path
+
+      - name: Oborovo debt checkpoint
+        env:
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+          PYTHONUTF8: "1"
+        run: |
+          python -m pytest -q \
+            tests/test_stage_c3b3d2b8_base_senior_shl_parity_closure.py::test_senior_schedule_remains_source_close_and_debt_quantum_authoritative
+
+      - name: Governance scan
+        shell: bash
+        run: |
+          changed_python_diff="$(
+            git diff --unified=0 \
+              08f12a1516173efaab7d2569022a24b101b03976...HEAD \
+              -- financial_engine finco_core app domain tests \
+            | grep -E '^\+[^+]' || true
+          )"
+
+          if [[ -n "$changed_python_diff" ]]; then
+            ! grep -nE \
+              "approved_delta|expected_delta|target debt fitting|target cfads fitting|target tax fitting|target shl fitting|source output vector runtime input|magic 42852|magic ds1|post-engine mutation|project\.name|project\.code|baseline_id|balancing plug" \
+              <<< "$changed_python_diff"
+          fi
