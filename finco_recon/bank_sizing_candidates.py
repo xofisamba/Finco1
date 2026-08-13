@@ -4273,6 +4273,21 @@ def run_candidate_h_oborovo_r472(project_factory_fn: Any) -> dict:
     from financial_engine.orchestrator import run_operating_model, run_tax_cfads_model
 
     proj = project_factory_fn()
+    from finco_core.inputs import PeriodAxisConvention
+
+    # R4.7.2 is a frozen diagnostic replay of the PR #925 source-evidence
+    # mechanics. Later production layers made Oborovo's canonical runtime
+    # source-aligned at the ProjectInputs period-axis seam; this replay must
+    # still start from the original COD-anchor axis and then apply its own
+    # source-calendar correction below. This is evidence isolation only and is
+    # never fed back into production runtime calculations.
+    proj = replace(
+        proj,
+        info=replace(
+            proj.info,
+            period_axis_convention=PeriodAxisConvention.COD_ANCHOR_TWO_CONSTRUCTION_COLUMNS,
+        ),
+    )
     sd_input = build_senior_debt_model_input_from_project_inputs(proj)
     base_op = sd_input.operating
 
@@ -4441,6 +4456,13 @@ def run_candidate_h_oborovo_r472(project_factory_fn: Any) -> dict:
         "no_ds20_derived_tax": "ENFORCED",
         "price_locked": "CY2043_UNCHANGED_EFFECTIVE_CENTRAL_LOW_61.34297050_EUR_MWH",
         "parity_layer_separation": ASSET_PERFORMANCE_PARITY_AND_DEBT_SIZING_PARITY_ARE_SEPARATE_ACCEPTANCE_LAYERS,
+        "r4_7_2_authority_lock": (
+            "R4_7_2_DIAGNOSTIC_PERIOD_AXIS_FROZEN_TO_PR925_COD_ANCHOR_INPUT_AND_"
+            "SOURCE_CALENDAR_REPLAY"
+        ),
+        "r4_7_2_diagnostic_drift_classification": (
+            "R4_7_2_DIAGNOSTIC_WAS_NOT_IMMUTABLE_AND_DRIFTED_WITH_PRODUCTION_RUNTIME"
+        ),
 
         # --- TUHO regression ---
         "tuho_p90_delta_keur_cached": 0.018,

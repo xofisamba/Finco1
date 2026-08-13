@@ -402,6 +402,31 @@ def test_debt_sizing_audit_is_separate_and_reports_source_vectors_without_replay
     assert "debt_service_capacity_delta" not in row
 
 
+def test_r4_7_2_source_replay_authority_lock_is_immutable_under_b7_runtime():
+    from app.project_factories import create_default_oborovo
+    from finco_recon.bank_sizing_candidates import run_candidate_h_oborovo_r472
+
+    result = run_candidate_h_oborovo_r472(create_default_oborovo)
+
+    assert result["r4_7_2_authority_lock"] == (
+        "R4_7_2_DIAGNOSTIC_PERIOD_AXIS_FROZEN_TO_PR925_COD_ANCHOR_INPUT_AND_"
+        "SOURCE_CALENDAR_REPLAY"
+    )
+    assert result["r4_7_2_diagnostic_drift_classification"] == (
+        "R4_7_2_DIAGNOSTIC_WAS_NOT_IMMUTABLE_AND_DRIFTED_WITH_PRODUCTION_RUNTIME"
+    )
+    assert result["verdict"] == (
+        "C3B3D2B2C_R4_7_2_SOURCE_CALENDAR_FULL_OPERATING_REPLAY_CFADS_AND_DEBT_PARITY_PROVEN_"
+        "OPEX_CALENDAR_PERIODISATION_HYPOTHESIS_PROVEN_STAGE_DIAGNOSTIC_CLOSED"
+    )
+    assert result["t5c_abs_residual_keur"] == pytest.approx(0.117392)
+    assert result["t5c_max_abs_cfads_delta_keur"] == pytest.approx(0.389)
+    assert result["p28_opex_residual_keur"] == pytest.approx(0.0, abs=1e-9)
+    assert result["opex_hypothesis_proven_all_affected_periods"] is True
+    assert result["t5c_merchant_periods_outside_1keur"] == 0
+    assert result["all_merchant_cfads_within_1keur"] is True
+
+
 def test_base_performance_audit_keeps_bank_lines_out_and_renames_shl_gross_interest():
     from financial_engine.diagnostics.base_performance_reconciliation import (
         LINES,
