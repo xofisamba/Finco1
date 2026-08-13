@@ -204,6 +204,14 @@ def test_generic_shl_contract_is_causal_and_independent_of_bank_case(factory_nam
     assert sum(higher_rate.shareholder_loan.shl_gross_interest_keur) > sum(
         base.shareholder_loan.shl_gross_interest_keur
     )
+    for changed in (larger_principal, higher_rate):
+        assert sum(changed.debt_sizing.bank_cash_tax_keur) < sum(
+            base.debt_sizing.bank_cash_tax_keur
+        )
+        assert sum(changed.debt_sizing.bank_cfads_keur) > sum(
+            base.debt_sizing.bank_cfads_keur
+        )
+        assert changed.senior_debt.debt_size_keur > base.senior_debt.debt_size_keur
     assert p50_bank.senior_debt.debt_size_keur != pytest.approx(base.senior_debt.debt_size_keur)
     assert max(p50_bank.shareholder_loan.shl_drawdown_keur) == pytest.approx(
         max(base.shareholder_loan.shl_drawdown_keur)
@@ -340,6 +348,133 @@ def test_generic_target_dscr_increase_reduces_debt_capacity():
     )
 
     assert stricter.senior_debt.debt_size_keur < base.senior_debt.debt_size_keur
+
+
+@pytest.mark.parametrize(
+    "factory_name",
+    ("create_default_solar_project", "create_default_wind_project"),
+)
+def test_generic_bank_sizing_dscr_is_the_target_authority(factory_name):
+    from app import project_factories
+
+    project = getattr(project_factories, factory_name)()
+    result = _run(project)
+    senior = result.senior_debt
+    sizing = result.debt_sizing
+    assert senior is not None
+    assert sizing is not None
+
+    bank_cfads_by_period = dict(zip(sizing.period_indices, sizing.bank_cfads_keur))
+    solver_bank_dscr_by_period = dict(
+        zip(sizing.period_indices, sizing.solver_bank_dscr)
+    )
+    for period_index, debt_service in zip(
+        senior.period_indices,
+        senior.senior_debt_service_keur,
+    ):
+        if debt_service <= 1e-9:
+            continue
+        bank_cfads = bank_cfads_by_period[period_index]
+        assert debt_service == pytest.approx(
+            bank_cfads / project.financing.target_dscr,
+            abs=1e-8,
+        )
+        assert solver_bank_dscr_by_period[period_index] == pytest.approx(
+            project.financing.target_dscr,
+            abs=1e-10,
+        )
+
+
+@pytest.mark.parametrize(
+    "factory_name",
+    ("create_default_solar_project", "create_default_wind_project"),
+)
+def test_generic_base_dscr_is_independent_of_bank_sizing_case(factory_name):
+    from app import project_factories
+
+    project = getattr(project_factories, factory_name)()
+    result = _run(project)
+    senior = result.senior_debt
+    sizing = result.debt_sizing
+    tax_and_cfads = result.tax_and_cfads
+    assert senior is not None
+    assert sizing is not None
+    assert tax_and_cfads is not None
+
+    base_cfads_by_period = dict(zip(tax_and_cfads.period_indices, tax_and_cfads.cfads_keur))
+    bank_cfads_by_period = dict(zip(sizing.period_indices, sizing.bank_cfads_keur))
+    below_target = []
+    for period_index, debt_service, base_dscr in zip(
+        senior.period_indices,
+        senior.senior_debt_service_keur,
+        senior.base_dscr,
+    ):
+        if debt_service <= 1e-9:
+            continue
+        assert base_dscr == pytest.approx(
+            base_cfads_by_period[period_index] / debt_service,
+            abs=1e-10,
+        )
+        if base_dscr < project.financing.target_dscr:
+            below_target.append(period_index)
+
+    assert below_target
+    first = below_target[0]
+    assert base_cfads_by_period[first] != pytest.approx(bank_cfads_by_period[first])
+
+
+@pytest.mark.parametrize(
+    "factory_name",
+    ("create_default_solar_project", "create_default_wind_project"),
+)
+def test_generic_shl_changes_senior_capacity_only_through_tax_cfads(factory_name):
+    from app import project_factories
+    from financial_engine.adapters.project_inputs import (
+        build_senior_debt_model_input_from_project_inputs,
+    )
+    from financial_engine.orchestrator import run_senior_debt_model
+    from financial_engine.policies.tax import ShlInterestDeductibilityMode
+
+    project = getattr(project_factories, factory_name)()
+    model = build_senior_debt_model_input_from_project_inputs(project)
+    with_shl = run_senior_debt_model(model)
+    without_shl = run_senior_debt_model(dataclasses.replace(model, shareholder_loan=None))
+    non_deductible = run_senior_debt_model(
+        dataclasses.replace(
+            model,
+            tax=dataclasses.replace(
+                model.tax,
+                policy=dataclasses.replace(
+                    model.tax.policy,
+                    shl_interest_deductibility=(
+                        ShlInterestDeductibilityMode.FULLY_NON_DEDUCTIBLE
+                    ),
+                    shl_interest_deductible_pct=None,
+                ),
+            ),
+        )
+    )
+
+    assert with_shl.shareholder_loan is not None
+    assert sum(with_shl.shareholder_loan.shl_gross_interest_keur) > 0.0
+    assert sum(with_shl.debt_sizing.bank_cash_tax_keur) < sum(
+        without_shl.debt_sizing.bank_cash_tax_keur
+    )
+    assert sum(with_shl.debt_sizing.bank_cfads_keur) > sum(
+        without_shl.debt_sizing.bank_cfads_keur
+    )
+    assert with_shl.senior_debt.debt_size_keur > without_shl.senior_debt.debt_size_keur
+
+    # Keeping the SHL schedule but removing its tax deduction removes the entire
+    # Senior-capacity effect: there is no direct SHL-to-debt or terminal top-up path.
+    assert non_deductible.senior_debt.debt_size_keur == pytest.approx(
+        without_shl.senior_debt.debt_size_keur,
+        abs=1e-8,
+    )
+    assert non_deductible.debt_sizing.bank_cfads_keur == pytest.approx(
+        without_shl.debt_sizing.bank_cfads_keur,
+        abs=1e-8,
+    )
 
 
 @pytest.mark.parametrize(
