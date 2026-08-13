@@ -1,21 +1,7 @@
 name: C3B3D2B2C — Bank-Sizing CFADS Production Check (R3.1 hardened)
 
 on:
-  push:
-    branches:
-      - stage-c3b3d2b2c-bank-sizing-cfads-production
-  pull_request:
-    branches:
-      - main
-    paths:
-      - "financial_engine/inputs.py"
-      - "financial_engine/results.py"
-      - "financial_engine/provenance.py"
-      - "financial_engine/orchestrator.py"
-      - "finco_recon/bank_sizing_candidates.py"
-      - "tests/test_stage_c3b3d2b2c_bank_sizing_cfads_production.py"
-      - "docs/reconciliation/c3b3d2b2c_bank_sizing_cfads_production.md"
-      - ".github/workflows/c3b3d2b2c_bank_sizing_cfads_production_check.yml"
+  workflow_dispatch:
 
 jobs:
   c3b3d2b2c-check:

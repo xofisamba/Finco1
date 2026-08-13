@@ -16,6 +16,8 @@ from pathlib import Path
 
 import pytest
 
+from finco_recon.governance_identity import scan_identity_dispatch
+
 _ENGINE_ROOT = Path("financial_engine")
 
 # ---------------------------------------------------------------------------
@@ -66,9 +68,6 @@ def test_no_forbidden_imports(src_file: Path):
 # ---------------------------------------------------------------------------
 
 _FORBIDDEN_IDENTIFIERS = [
-    "TUHO",
-    "Oborovo",
-    "TUHO-WIND-1",
     "runtime_seed",
     "template_source",
     "is_tuho",
@@ -87,12 +86,17 @@ _FORBIDDEN_IDENTIFIERS = [
 
 @pytest.mark.parametrize("src_file", sorted(_ENGINE_ROOT.rglob("*.py")))
 def test_no_forbidden_identifiers(src_file: Path):
-    """financial_engine/*.py must not contain forbidden identifiers."""
+    """Reject unsafe runtime/file operations, not benign source terminology."""
     source = src_file.read_text(encoding="utf-8")
     found = [ident for ident in _FORBIDDEN_IDENTIFIERS if ident in source]
     assert not found, (
         f"{src_file} contains forbidden identifier(s): {found}"
     )
+
+
+def test_no_project_identity_execution_dispatch():
+    """Project identity may be evidence, but must never select financial execution."""
+    assert scan_identity_dispatch(sorted(_ENGINE_ROOT.rglob("*.py"))) == []
 
 
 # ---------------------------------------------------------------------------

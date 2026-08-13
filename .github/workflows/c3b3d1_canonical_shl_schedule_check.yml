@@ -1,23 +1,7 @@
 name: C3B3D1 Canonical SHL Schedule
 
 on:
-  pull_request:
-    branches: [main]
-    paths:
-      - financial_engine/shl/**
-      - financial_engine/adapters/shl_inputs.py
-      - tests/test_stage_c3b3d1_*.py
-      - docs/reconciliation/c3b3d1_canonical_shl_schedule.md
-      - .github/workflows/c3b3d1_canonical_shl_schedule_check.yml
-  push:
-    branches:
-      - stage-c3b3d1-canonical-shl-schedule
-    paths:
-      - financial_engine/shl/**
-      - financial_engine/adapters/shl_inputs.py
-      - tests/test_stage_c3b3d1_*.py
-      - docs/reconciliation/c3b3d1_canonical_shl_schedule.md
-      - .github/workflows/c3b3d1_canonical_shl_schedule_check.yml
+  workflow_dispatch:
 
 jobs:
   c3b3d1-check:

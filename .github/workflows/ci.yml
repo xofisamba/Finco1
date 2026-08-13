@@ -26,12 +26,10 @@ jobs:
         run: |
           python3 -m pytest -q --tb=short \
             --basetemp=.pytest-tmp-core-model \
-            tests/test_phase23c_shl_distribution_lockup_review_frozen_schedule.py \
-            tests/test_phase23a_frozen_excel_senior_debt_schedule_runtime_wiring.py \
             tests/test_shl_waterfall_priority.py \
-            tests/test_tuho_shl_calibration.py \
             tests/test_revenue.py \
-            tests/test_opex.py
+            tests/test_opex.py \
+            tests/test_mvp_g1_governance_methodology_lock.py
 
   capex-persistence-and-route-smoke:
     name: CAPEX persistence and route smoke

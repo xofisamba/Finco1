@@ -1,13 +1,8 @@
 name: Phase 2C Senior Debt Check
 
 on:
-  pull_request:
-    branches:
-      - phase2b-tax-cfads-core
-      - main
-  push:
-    branches:
-      - phase2c-senior-debt-fixed-point
+  # Historical Phase 2C comparison; current Senior authority is C3B3A/B6-B8.
+  workflow_dispatch:
 
 jobs:
   phase2c-senior-debt-check:

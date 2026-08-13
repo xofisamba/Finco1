@@ -18,10 +18,9 @@ name: Phase 2B Tax and CFADS Check
 #   13. TAX_CFADS_V1 --check: zero-unexplained + zero-input-source-blocked (exit 9 while TUHO unresolved)
 
 on:
-  pull_request:
-    branches: [main]
-  push:
-    branches: [main]
+  # Historical TAX_CFADS_V1 correction-aware comparison. It remains runnable
+  # for diagnostics but its Oborovo snapshot is not current release authority.
+  workflow_dispatch:
 
 permissions:
   contents: read

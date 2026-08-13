@@ -9,8 +9,9 @@ name: Phase 1B Baseline Check
 # No paths filter — this is a full drift guardrail.
 
 on:
-  pull_request:
-    branches: [main]
+  # Historical baseline artifact comparison retained for manual diagnostics.
+  # Current canonical release authority is the G1/G0/B5-B8 ring.
+  workflow_dispatch:
 
 permissions:
   contents: read

@@ -21,6 +21,10 @@ on:
       - tests/test_stage_c3b3d2b5_shl_fixed_point_integration.py
       - docs/architecture/c3b3d2b5_shl_fixed_point_inventory.md
       - .github/workflows/c3b3d2b5_shl_fixed_point_integration_check.yml
+      - finco_recon/governance_identity.py
+      - tests/test_mvp_g1_governance_methodology_lock.py
+      - docs/architecture/mvp_g1_current_financial_authority.md
+      - .github/workflows/mvp_g1_governance_methodology_lock.yml
   push:
     branches:
       - stage-c3b3d2b5-shl-fixed-point-integration

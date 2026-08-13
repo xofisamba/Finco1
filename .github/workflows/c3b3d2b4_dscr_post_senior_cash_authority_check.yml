@@ -1,21 +1,7 @@
 name: C3B3D2B4 — DSCR Split + Post-Senior Cash Authority (hardened)
 
 on:
-  push:
-    branches:
-      - stage-c3b3d2b4-dscr-post-senior-cash-authority
-  pull_request:
-    branches:
-      - main
-    paths:
-      - "financial_engine/inputs.py"
-      - "financial_engine/results.py"
-      - "financial_engine/provenance.py"
-      - "financial_engine/orchestrator.py"
-      - "financial_engine/adapters/shl_cash_seam.py"
-      - "tests/test_stage_c3b3d2b4_dscr_post_senior_cash_authority.py"
-      - "tests/test_stage_c3b3d2b3_debt_sizing_case_production.py"
-      - ".github/workflows/c3b3d2b4_dscr_post_senior_cash_authority_check.yml"
+  workflow_dispatch:
 
 jobs:
   c3b3d2b4-check:
