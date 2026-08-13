@@ -6,11 +6,11 @@ and PeriodDebtServiceAvailability, reproduces the Oborovo Excel source debt
 dispatch or forbidden inputs.
 
 Canonical period axis (C3B3A2):
-    Excel debt periods P1..P28 map to clean period indices 2..29.
-    Mapping: clean_period_index = excel_debt_period + 1.
+    B6 normalized Excel debt periods P1..P28 to clean period indices 1..28.
+    Mapping: clean_period_index = excel_debt_period.
     Real operating periods are derived from create_default_oborovo() →
     from_project_inputs() → run_operating_model(). All fixture vectors are
-    re-keyed from excel index (1..28) to clean index (2..29).
+    re-keyed from excel index (1..28) to clean index (1..28).
 
 Availability source ownership decision (C3B3A):
     DS!row9 ops_flag P28 = 179/181 = 0.988950276243094.
@@ -50,9 +50,9 @@ def _load_fixture() -> dict:
 def _oborovo_data() -> dict:
     """Return structured Oborovo raw vectors keyed by EXCEL period index (1..28).
 
-    Canonical period mapping (C3B3A2):
-        clean_period_index = excel_debt_period + 1
-        clean 2..29 ↔ excel P1..P28
+    Canonical period mapping (B6):
+        clean_period_index = excel_debt_period
+        clean 1..28 ↔ excel P1..P28
     """
     d = _load_fixture()
     ws_a = d["workstream_a"]
@@ -76,7 +76,7 @@ def _oborovo_data() -> dict:
 
 @lru_cache(maxsize=1)
 def _oborovo_real_periods() -> tuple[OperatingPeriodResult, ...]:
-    """Return real Oborovo debt periods (clean indices 2..29) from the live factory.
+    """Return real Oborovo debt periods (clean indices 1..28) from the live factory.
 
     Uses: create_default_oborovo() → from_project_inputs() → run_operating_model().
     These 28 semiannual periods start 2030-06-30 and end 2044-06-29 (14-year tenor).
@@ -89,7 +89,7 @@ def _oborovo_real_periods() -> tuple[OperatingPeriodResult, ...]:
     model_in = from_project_inputs(proj, source_id="c3b3a-test", baseline_commit_sha="")
     result = run_operating_model(model_in)
     op_only = [p for p in result.periods if p.is_operation]
-    return tuple(op_only[:28])  # clean indices 2..29
+    return tuple(op_only[:28])  # clean indices 1..28
 
 
 def _no_tax_fn(cfads_map: dict[int, float]):
@@ -103,11 +103,11 @@ def _make_oborovo_inputs(
     override_dscr_targets: bool = True,
     override_ops: bool = True,
 ):
-    """Build SeniorDebtInputs keyed to REAL clean period indices 2..29.
+    """Build SeniorDebtInputs keyed to REAL clean period indices 1..28.
 
     Fixture vectors (excel key 1..28) are re-keyed:
-        clean_idx = p.period_index  (2..29)
-        excel_key = clean_idx - 1   (1..28)
+        clean_idx = p.period_index  (1..28)
+        excel_key = clean_idx   (1..28)
     """
     from financial_engine.senior_debt.inputs import (
         PeriodDebtServiceAvailability,
@@ -120,21 +120,21 @@ def _make_oborovo_inputs(
     periods = _oborovo_real_periods()
 
     period_rates = tuple(
-        PeriodRate(p.period_index, d["annual_rates"][p.period_index - 1])
+        PeriodRate(p.period_index, d["annual_rates"][p.period_index])
         for p in periods
     )
 
     dscr_targets: tuple = ()
     if override_dscr_targets:
         dscr_targets = tuple(
-            PeriodDscrTarget(p.period_index, d["dscr_targets"][p.period_index - 1])
+            PeriodDscrTarget(p.period_index, d["dscr_targets"][p.period_index])
             for p in periods
         )
 
     ops: tuple = ()
     if override_ops:
         ops = tuple(
-            PeriodDebtServiceAvailability(p.period_index, d["ops_flag"][p.period_index - 1])
+            PeriodDebtServiceAvailability(p.period_index, d["ops_flag"][p.period_index])
             for p in periods
         )
 
@@ -149,7 +149,7 @@ def _make_oborovo_inputs(
 
 
 def _oborovo_policy() -> SeniorDebtPolicy:
-    """Build SeniorDebtPolicy for real clean period indices 2..29."""
+    """Build SeniorDebtPolicy for real clean period indices 1..28."""
     periods = _oborovo_real_periods()
     return SeniorDebtPolicy(
         policy_id="c3b3a-oborovo-source",
@@ -160,8 +160,8 @@ def _oborovo_policy() -> SeniorDebtPolicy:
         annual_fixed_rate=None,
         periods_per_year=2,
         day_count_convention=DayCountConvention.ACT_360,
-        repayment_start_period_index=periods[0].period_index,   # 2
-        maturity_period_index=periods[-1].period_index,          # 29
+        repayment_start_period_index=periods[0].period_index,   # 1
+        maturity_period_index=periods[-1].period_index,          # 28
         convergence_tolerance_keur=1e-4,
         convergence_relative_tolerance=1e-9,
         maximum_iterations=100,
@@ -178,7 +178,7 @@ def _run_oborovo(
 
     d = _oborovo_data()
     periods = _oborovo_real_periods()
-    cfads_map = {p.period_index: d["cfads"][p.period_index - 1] for p in periods}
+    cfads_map = {p.period_index: d["cfads"][p.period_index] for p in periods}
     inputs = _make_oborovo_inputs(override_dscr_targets, override_ops)
     policy = _oborovo_policy()
 
@@ -503,7 +503,7 @@ class TestGroupD_PerPeriodDscrMap:
         m = build_dscr_target_map(policy, inputs, tuple(p.period_index for p in periods))
         for p in periods:
             clean_idx = p.period_index
-            excel_key = clean_idx - 1
+            excel_key = clean_idx
             assert m[clean_idx] == pytest.approx(d["dscr_targets"][excel_key], rel=1e-10), (
                 f"Clean {clean_idx} (P{excel_key})"
             )
@@ -538,7 +538,7 @@ class TestGroupE_PerPeriodAvailabilityMap:
         m = build_debt_service_availability_map(inputs, tuple(p.period_index for p in periods))
         for p in periods:
             clean_idx = p.period_index
-            excel_key = clean_idx - 1
+            excel_key = clean_idx
             assert m[clean_idx] == pytest.approx(d["ops_flag"][excel_key], rel=1e-10), (
                 f"Clean {clean_idx} (P{excel_key})"
             )
@@ -564,7 +564,7 @@ class TestGroupF_BackwardCapacityIdentity:
         avail_map = build_debt_service_availability_map(inputs, period_indices)
         for p in periods:
             clean_idx = p.period_index
-            excel_key = clean_idx - 1
+            excel_key = clean_idx
             assert avail_map[clean_idx] == 1.0
             cfads = d["cfads"][excel_key]
             ds_expected = max(0.0, cfads / dscr_map[clean_idx])
@@ -598,7 +598,7 @@ class TestGroupH_SourceRateSchedule:
         periods = _oborovo_real_periods()
         for p in periods:
             clean_idx = p.period_index
-            excel_key = clean_idx - 1
+            excel_key = clean_idx
             assert rate_map[clean_idx] == pytest.approx(d["annual_rates"][excel_key], rel=1e-10), (
                 f"Clean {clean_idx} (P{excel_key})"
             )
@@ -629,8 +629,8 @@ class TestGroupI_Act360DayFractions:
         periods = _oborovo_real_periods()
         assert len(periods) == 28, f"Expected 28 debt periods, got {len(periods)}"
         for p in periods:
-            clean_idx = p.period_index     # 2..29
-            excel_key = clean_idx - 1     # 1..28
+            clean_idx = p.period_index     # 1..28
+            excel_key = clean_idx     # 1..28
             actual_frac = period_day_fraction(p.period_start, p.period_end, DC.ACT_360)
             expected = d["day_frac"][excel_key]
             delta = abs(actual_frac - expected)
@@ -639,16 +639,16 @@ class TestGroupI_Act360DayFractions:
                 f"excel={expected:.6f} delta={delta:.2e}"
             )
 
-    def test_clean_period_2_starts_at_cod(self):
+    def test_clean_period_1_starts_at_cod(self):
         """Clean period 2 (= excel P1) must start at COD = 2030-06-30."""
         periods = _oborovo_real_periods()
-        assert periods[0].period_index == 2
+        assert periods[0].period_index == 1
         assert periods[0].period_start == date(2030, 6, 30)
 
-    def test_clean_period_29_is_last_debt_period(self):
+    def test_clean_period_28_is_last_debt_period(self):
         """Clean period 29 (= excel P28) must be the last debt period."""
         periods = _oborovo_real_periods()
-        assert periods[-1].period_index == 29
+        assert periods[-1].period_index == 28
 
     def test_p1_day_frac_184_days(self):
         """Excel P1 (clean 2): 184 days / 360 = 0.511111..."""
@@ -692,13 +692,13 @@ class TestGroupJ_P28PartialPeriod:
         delta = result_without.debt_size_keur - result_with.debt_size_keur
         assert 5.0 < delta < 15.0, f"Unexpected delta: {delta:.3f} kEUR"
 
-    def test_clean_29_availability_in_real_inputs(self):
+    def test_clean_28_availability_in_real_inputs(self):
         """Real SeniorDebtInputs must have availability_fraction < 1.0 at clean index 29."""
         inputs = _make_oborovo_inputs()
         avail_map = {a.period_index: a.availability_fraction
                      for a in inputs.period_debt_service_availability}
-        assert 29 in avail_map, "Clean period 29 not found in inputs"
-        assert avail_map[29] == pytest.approx(0.988950276243094, rel=1e-10)
+        assert 28 in avail_map, "Clean period 28 not found in inputs"
+        assert avail_map[28] == pytest.approx(0.988950276243094, rel=1e-10)
 
 
 # ===========================================================================
@@ -804,7 +804,7 @@ class TestGroupM_PeriodByPeriodParity:
         sched = self._sched(result)
         for p in periods:
             clean_idx = p.period_index
-            excel_key = clean_idx - 1
+            excel_key = clean_idx
             delta = abs(sched[clean_idx]["opening"] - d["opening"][excel_key])
             assert delta < 0.01, f"Clean {clean_idx} (P{excel_key}) opening delta {delta:.6f} kEUR"
 
@@ -813,7 +813,7 @@ class TestGroupM_PeriodByPeriodParity:
         sched = self._sched(result)
         for p in periods:
             clean_idx = p.period_index
-            excel_key = clean_idx - 1
+            excel_key = clean_idx
             delta = abs(sched[clean_idx]["interest"] - d["interest"][excel_key])
             assert delta < 0.01, f"Clean {clean_idx} (P{excel_key}) interest delta {delta:.6f} kEUR"
 
@@ -822,7 +822,7 @@ class TestGroupM_PeriodByPeriodParity:
         sched = self._sched(result)
         for p in periods:
             clean_idx = p.period_index
-            excel_key = clean_idx - 1
+            excel_key = clean_idx
             delta = abs(sched[clean_idx]["principal"] - d["principal"][excel_key])
             assert delta < 0.01, f"Clean {clean_idx} (P{excel_key}) principal delta {delta:.6f} kEUR"
 
@@ -831,7 +831,7 @@ class TestGroupM_PeriodByPeriodParity:
         sched = self._sched(result)
         for p in periods:
             clean_idx = p.period_index
-            excel_key = clean_idx - 1
+            excel_key = clean_idx
             delta = abs(sched[clean_idx]["closing"] - d["closing"][excel_key])
             assert delta < 0.01, f"Clean {clean_idx} (P{excel_key}) closing delta {delta:.6f} kEUR"
 
@@ -841,7 +841,7 @@ class TestGroupM_PeriodByPeriodParity:
         sched = self._sched(result)
         for p in periods:
             clean_idx = p.period_index
-            excel_key = clean_idx - 1
+            excel_key = clean_idx
             excel_ds = d["interest"][excel_key] + d["principal"][excel_key]
             delta = abs(sched[clean_idx]["ds"] - excel_ds)
             assert delta < 0.01, f"Clean {clean_idx} (P{excel_key}) DS delta {delta:.6f} kEUR"
@@ -852,7 +852,7 @@ class TestGroupM_PeriodByPeriodParity:
         sched = self._sched(result)
         for p in periods:
             clean_idx = p.period_index
-            excel_key = clean_idx - 1
+            excel_key = clean_idx
             ds = sched[clean_idx]["ds"]
             cfads = d["cfads"][excel_key]
             if ds > 0.0:
@@ -900,7 +900,7 @@ class TestGroupN_ActualVsTargetDscr:
         }
         for p in periods:
             clean_idx = p.period_index
-            excel_key = clean_idx - 1
+            excel_key = clean_idx
             ds = sched[clean_idx]["ds"]
             if ds > 0.0:
                 cfads = d["cfads"][excel_key]
@@ -1142,7 +1142,7 @@ class TestGroupO_FingerprintSensitivity:
 
         d = _oborovo_data()
         periods = _oborovo_real_periods()
-        cfads_map = {p.period_index: d["cfads"][p.period_index - 1] for p in periods}
+        cfads_map = {p.period_index: d["cfads"][p.period_index] for p in periods}
 
         # Run without dscr targets (scalar policy = 1.15)
         inputs_no_target = _make_oborovo_inputs(override_dscr_targets=False)
@@ -1296,18 +1296,18 @@ class TestGroupT_IdentityCloneInvariance:
         d = _oborovo_data()
         periods = _oborovo_real_periods()
         period_rates = tuple(
-            PeriodRate(p.period_index, d["annual_rates"][p.period_index - 1])
+            PeriodRate(p.period_index, d["annual_rates"][p.period_index])
             for p in periods
         )
         dscr = tuple(
-            PeriodDscrTarget(p.period_index, d["dscr_targets"][p.period_index - 1])
+            PeriodDscrTarget(p.period_index, d["dscr_targets"][p.period_index])
             for p in periods
         )
         ops = tuple(
-            PeriodDebtServiceAvailability(p.period_index, d["ops_flag"][p.period_index - 1])
+            PeriodDebtServiceAvailability(p.period_index, d["ops_flag"][p.period_index])
             for p in periods
         )
-        cfads_map = {p.period_index: d["cfads"][p.period_index - 1] for p in periods}
+        cfads_map = {p.period_index: d["cfads"][p.period_index] for p in periods}
 
         inputs1 = _make_oborovo_inputs()
         inputs2 = SeniorDebtInputs(
@@ -1333,7 +1333,7 @@ class TestGroupT_IdentityCloneInvariance:
 
         d = _oborovo_data()
         periods = _oborovo_real_periods()
-        cfads_map = {p.period_index: d["cfads"][p.period_index - 1] for p in periods}
+        cfads_map = {p.period_index: d["cfads"][p.period_index] for p in periods}
         policy = _oborovo_policy()
         inputs_base = _make_oborovo_inputs()
 
@@ -1372,7 +1372,7 @@ class TestGroupT_IdentityCloneInvariance:
         # Manual path (fixture-driven)
         d = _oborovo_data()
         periods = _oborovo_real_periods()
-        cfads_map = {p.period_index: d["cfads"][p.period_index - 1] for p in periods}
+        cfads_map = {p.period_index: d["cfads"][p.period_index] for p in periods}
         r_manual = solve_senior_debt(
             inputs=_make_oborovo_inputs(),
             policy=_oborovo_policy(),
@@ -1454,7 +1454,7 @@ class TestGroupT_IdentityCloneInvariance:
         # Run solver on ORIGINAL periods (same CFADS)
         d = _oborovo_data()
         periods = _oborovo_real_periods()
-        cfads_map = {p.period_index: d["cfads"][p.period_index - 1] for p in periods}
+        cfads_map = {p.period_index: d["cfads"][p.period_index] for p in periods}
 
         r_orig = solve_senior_debt(inputs=inputs_orig, policy=policy_orig, periods=periods, tax_cfads_fn=_no_tax_fn(cfads_map))
         r_clone = solve_senior_debt(inputs=inputs_clone, policy=policy_clone, periods=periods, tax_cfads_fn=_no_tax_fn(cfads_map))
@@ -1561,37 +1561,37 @@ class TestGroupX_CanonicalPeriodAxis:
     P28 → clean period 29 is proven explicitly.
     """
 
-    def test_first_debt_period_is_clean_index_2(self):
+    def test_first_debt_period_is_clean_index_1(self):
         """Excel P1 maps to clean period index 2 (first operating period after 2 construction)."""
         periods = _oborovo_real_periods()
-        assert periods[0].period_index == 2
+        assert periods[0].period_index == 1
 
-    def test_last_debt_period_is_clean_index_29(self):
+    def test_last_debt_period_is_clean_index_28(self):
         """Excel P28 maps to clean period index 29."""
         periods = _oborovo_real_periods()
-        assert periods[-1].period_index == 29
+        assert periods[-1].period_index == 28
 
     def test_all_28_mappings_are_sequential(self):
         """All 28 clean period indices 2..29 are present and sequential."""
         periods = _oborovo_real_periods()
         clean_indices = [p.period_index for p in periods]
-        assert clean_indices == list(range(2, 30)), (
-            f"Expected 2..29, got {clean_indices}"
+        assert clean_indices == list(range(1, 29)), (
+            f"Expected 1..28, got {clean_indices}"
         )
 
-    def test_mapping_formula_is_clean_equals_excel_plus_1(self):
-        """For each period: clean_period_index = excel_debt_period + 1."""
+    def test_mapping_formula_is_clean_equals_excel_period(self):
+        """For each period: clean_period_index = excel_debt_period."""
         periods = _oborovo_real_periods()
         for excel_p, p in enumerate(periods, start=1):
-            assert p.period_index == excel_p + 1, (
-                f"Excel P{excel_p} → expected clean {excel_p + 1}, got {p.period_index}"
+            assert p.period_index == excel_p, (
+                f"Excel P{excel_p} maps to clean {excel_p}, got {p.period_index}"
             )
 
-    def test_p28_maps_to_clean_29_explicitly(self):
+    def test_p28_maps_to_clean_28_explicitly(self):
         """P28 → clean period 29: the maturity period. Proven explicitly."""
         periods = _oborovo_real_periods()
         p28 = periods[27]  # 0-indexed: P28 is the 28th element
-        assert p28.period_index == 29
+        assert p28.period_index == 28
         assert p28.period_start == date(2043, 12, 31)  # 2030-06-30 + 13.5 years = 2043-12-31
 
     def test_cod_is_start_of_clean_period_2(self):
@@ -1599,15 +1599,15 @@ class TestGroupX_CanonicalPeriodAxis:
         periods = _oborovo_real_periods()
         assert periods[0].period_start == date(2030, 6, 30)
 
-    def test_clean_period_2_index_in_repayment_start(self):
+    def test_clean_period_1_index_in_repayment_start(self):
         """Policy repayment_start_period_index must equal 2."""
         policy = _oborovo_policy()
-        assert policy.repayment_start_period_index == 2
+        assert policy.repayment_start_period_index == 1
 
-    def test_clean_period_29_index_is_maturity(self):
+    def test_clean_period_28_index_is_maturity(self):
         """Policy maturity_period_index must equal 29."""
         policy = _oborovo_policy()
-        assert policy.maturity_period_index == 29
+        assert policy.maturity_period_index == 28
 
 
 # ===========================================================================
@@ -1644,8 +1644,8 @@ class TestGroupY_GenericBuilder:
         model_in = from_project_inputs(proj, source_id="c3b3a-builder-test", baseline_commit_sha="")
         result = run_operating_model(model_in)
         policy, inputs = build_senior_debt_contract_from_project_inputs(proj, result.periods)
-        assert policy.repayment_start_period_index == 2
-        assert policy.maturity_period_index == 29
+        assert policy.repayment_start_period_index == 1
+        assert policy.maturity_period_index == 28
 
     def test_builder_inputs_have_28_period_rates(self):
         from financial_engine.senior_debt.project_adapter import (
@@ -1682,7 +1682,7 @@ class TestGroupY_GenericBuilder:
 
         d = _oborovo_data()
         periods = _oborovo_real_periods()
-        cfads_map = {p.period_index: d["cfads"][p.period_index - 1] for p in periods}
+        cfads_map = {p.period_index: d["cfads"][p.period_index] for p in periods}
 
         proj = create_default_oborovo()
         model_in = from_project_inputs(proj, source_id="c3b3a-y-test", baseline_commit_sha="")
@@ -1850,8 +1850,8 @@ class TestGroupAA_PeriodFrequencyFailClosed:
         proj = self._make_proj_with_frequency(PeriodFrequency.SEMESTRIAL)
         policy, inputs = self._run_builder(proj)
         assert len(inputs.period_rates) == 28
-        assert policy.repayment_start_period_index == 2
-        assert policy.maturity_period_index == 29
+        assert policy.repayment_start_period_index == 1
+        assert policy.maturity_period_index == 28
 
     def test_semestrial_debt_size_unchanged(self):
         """SEMESTRIAL Oborovo debt remains 42,852.279 kEUR within 0.001 kEUR tolerance."""
@@ -1863,7 +1863,7 @@ class TestGroupAA_PeriodFrequencyFailClosed:
         policy, inputs = self._run_builder(proj)
         periods = _oborovo_real_periods()
         d = _oborovo_data()
-        cfads_map = {p.period_index: d["cfads"][p.period_index - 1] for p in periods}
+        cfads_map = {p.period_index: d["cfads"][p.period_index] for p in periods}
         result = solve_senior_debt(
             inputs=inputs,
             policy=policy,

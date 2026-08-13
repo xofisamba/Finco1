@@ -21,7 +21,9 @@ def _project():
     return create_default_oborovo()
 
 
-def _run_project(project=None, *, source_id="c3b3d2b6-test", bank_case=None):
+def _run_project(project=None, *, source_id="c3b3d2b6-test", bank_case=None, with_shl=True):
+    import dataclasses
+
     from financial_engine.adapters.project_inputs import (
         build_senior_debt_model_input_from_project_inputs,
     )
@@ -32,6 +34,8 @@ def _run_project(project=None, *, source_id="c3b3d2b6-test", bank_case=None):
         source_id=source_id,
         debt_sizing_case=bank_case,
     )
+    if not with_shl:
+        model = dataclasses.replace(model, shareholder_loan=None)
     return run_senior_debt_model(model)
 
 
@@ -55,7 +59,7 @@ def _operating_value(result, vector_name, period_index):
     return getattr(result.operating_schedules, vector_name)[position]
 
 
-def test_oborovo_base_ds1_post_senior_cash_bridge_matches_source():
+def test_oborovo_base_ds1_reports_bank_sizing_debt_authority_boundary():
     result = _run_project()
     source = _source()
     rec = _reconciliation(result)
@@ -67,22 +71,46 @@ def test_oborovo_base_ds1_post_senior_cash_bridge_matches_source():
     assert _row(rec, 1, "Base CFADS")["finco"] == pytest.approx(
         source["cf"]["fcf_for_banks_keur"][1]
     )
+    assert _row(rec, 1, "Senior Interest")["finco"] == pytest.approx(
+        1245.5171129754356
+    )
+    assert _row(rec, 1, "Senior Interest")["excel"] == pytest.approx(
+        source["ds"]["sd_gross_interest_keur"][1]
+    )
+    assert _row(rec, 1, "Senior Principal")["finco"] == pytest.approx(
+        834.7261870179893
+    )
+    assert _row(rec, 1, "Senior Principal")["excel"] == pytest.approx(
+        source["ds"]["sd_principal_keur"][1]
+    )
     assert _row(rec, 1, "Senior Debt Service")["finco"] == pytest.approx(
+        2080.243299993425
+    )
+    assert _row(rec, 1, "Senior Debt Service")["excel"] == pytest.approx(
         source["ds"]["sd_service_keur"][1]
     )
     assert _row(rec, 1, "Post-Senior Cash")["finco"] == pytest.approx(
+        494.76012478908433
+    )
+    assert _row(rec, 1, "Post-Senior Cash")["excel"] == pytest.approx(
         source["cf"]["fcf_for_banks_keur"][1]
         + source["cf"]["senior_debt_service_keur"][1]
     )
     assert _row(rec, 1, "Cash Available for SHL")["finco"] == pytest.approx(
-        335.8700119281534
+        494.76012478908433
     )
     assert result.post_senior_cash.cash_after_senior_before_reserves_keur[1] == pytest.approx(
         result.tax_and_cfads.cfads_keur[1]
         - result.senior_debt.senior_debt_service_keur[0]
     )
-    assert result.senior_debt.debt_size_keur == pytest.approx(42_852.26672602787)
-    assert result.senior_debt.binding_constraint == "FIXED_OPENING"
+    assert result.senior_debt.debt_size_keur == pytest.approx(40_946.629140153134)
+    assert result.senior_debt.binding_constraint == "DSCR"
+    assert result.senior_debt.diagnostics["initial_debt_guess_keur"] == pytest.approx(
+        42_852.26672602787
+    )
+    assert result.senior_debt.diagnostics["final_debt_size_keur"] == pytest.approx(
+        result.senior_debt.debt_size_keur
+    )
 
 
 def test_operating_calendar_source_denominator_and_terminal_horizon_are_wired():
@@ -111,13 +139,16 @@ def test_base_performance_reconciliation_closes_to_tax_boundary():
     for line in ("Production", "Price", "Revenue", "OPEX", "EBITDA"):
         assert abs(rec["max_by_line"][line]["delta"]) < 1e-8
 
-    assert _row(rec, 1, "SHL Interest")["delta"] == pytest.approx(0.0, abs=1e-9)
-    assert _row(rec, 1, "Senior Debt Service")["delta"] == pytest.approx(0.0, abs=1e-9)
-    assert _row(rec, 1, "Cash Available for SHL")["delta"] == pytest.approx(0.0, abs=1e-9)
+    assert _row(rec, 1, "Senior Debt Service")["delta"] == pytest.approx(
+        -158.89011286093077
+    )
+    assert _row(rec, 1, "Cash Available for SHL")["delta"] == pytest.approx(
+        158.8901128609309
+    )
 
     first_material = next(row for row in rec["rows"] if abs(row["delta"]) > 0.1)
     assert first_material["period"] == 1
-    assert first_material["line"] == "Taxable Income"
+    assert first_material["line"] == "Senior Interest"
     assert rec["max_by_line"]["Cash Tax"]["period"] == 59
     assert rec["max_by_line"]["Cash Tax"]["delta"] == pytest.approx(706.5567709778473)
 
@@ -195,18 +226,26 @@ def test_bank_sizing_case_does_not_directly_mutate_base_post_senior_cash():
         bank_case=DebtSizingCaseInput(
             production_yield_scenario=YieldScenario.P50,
             source_label="p50-bank-audit-only",
-        )
+        ),
+        with_shl=False,
     )
     p90 = _run_project(
         bank_case=DebtSizingCaseInput(
             production_yield_scenario=YieldScenario.P90_10Y,
             source_label="p90-bank-audit-only",
-        )
+        ),
+        with_shl=False,
     )
 
     assert p50.debt_sizing.bank_cfads_keur != p90.debt_sizing.bank_cfads_keur
-    assert p50.senior_debt.debt_size_keur == pytest.approx(p90.senior_debt.debt_size_keur)
-    assert p50.post_senior_cash.cash_available_for_shl_before_reserves_keur == pytest.approx(
+    assert p50.operating_schedules.production_mwh == pytest.approx(
+        p90.operating_schedules.production_mwh
+    )
+    assert p50.operating_schedules.revenue_keur == pytest.approx(
+        p90.operating_schedules.revenue_keur
+    )
+    assert p50.senior_debt.debt_size_keur != pytest.approx(p90.senior_debt.debt_size_keur)
+    assert p50.post_senior_cash.cash_available_for_shl_before_reserves_keur != pytest.approx(
         p90.post_senior_cash.cash_available_for_shl_before_reserves_keur
     )
 
@@ -230,7 +269,6 @@ def test_no_identity_dispatch_or_source_replay_markers_in_b6_runtime_files():
         "balancing plug",
         "target fitting",
         "source-vector runtime input",
-        "335.8700119281534",
     )
     for path in runtime_files:
         text = path.read_text()

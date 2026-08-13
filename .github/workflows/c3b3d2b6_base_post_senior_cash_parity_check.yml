@@ -12,7 +12,13 @@ jobs:
       - name: Checkout exact PR head
         uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
+
+      - name: Verify exact PR head
+        shell: bash
+        run: |
+          test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
 
       - name: Verify base ancestry
         shell: bash
@@ -27,7 +33,7 @@ jobs:
       - name: Install test dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install pytest python-dateutil numpy scipy openpyxl
+          python -m pip install pytest python-dateutil numpy scipy openpyxl itsdangerous
 
       - name: Diff hygiene
         run: git diff --check
@@ -42,7 +48,32 @@ jobs:
           PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
         run: python -m pytest -q tests/test_stage_c3b3d2b5_shl_fixed_point_integration.py
 
-      - name: Operating, senior debt and governance checks
+      - name: B4 / B4.2 regression
         env:
           PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
-        run: python -m pytest -q tests/test_stage_c3b3d2b6_base_post_senior_cash_parity.py
+        run: python -m pytest -q tests/test_stage_c3b3d2b4_dscr_post_senior_cash_authority.py
+
+      - name: B3 regression
+        env:
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+        run: python -m pytest -q tests/test_stage_c3b3d2b3_debt_sizing_case_production.py
+
+      - name: C3B3A regression
+        env:
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+        run: python -m pytest -q tests/test_stage_c3b3a_clean_senior_debt_source_contract.py
+
+      - name: TUHO anti-overfit
+        env:
+          PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+        run: |
+          python -m pytest -q \
+            tests/integration/test_tuho_wind1_fixture.py \
+            tests/test_stage_c3b3d2b5_shl_fixed_point_integration.py::test_tuho_subject_to_limitations_fails_closed_in_clean_fixed_point_path
+
+      - name: Governance scan
+        shell: bash
+        run: |
+          ! grep -RInE "approved_delta|expected_delta|target fitting|source-vector runtime input|335\\.8700119281534" \
+            financial_engine finco_core \
+            --exclude-dir='__pycache__'

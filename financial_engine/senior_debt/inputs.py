@@ -53,8 +53,7 @@ class SeniorDebtInputs:
     initial_debt_guess_keur             : solver starting point (DSCR_SCULPTED / COMBINED_MINIMUM)
     period_rates                        : per-period annual rates; empty → use policy.annual_fixed_rate
     explicit_principal_schedule         : required for EXPLICIT_SCHEDULE; ignored otherwise
-    opening_debt_balance_keur           : fixed opening balance for EXPLICIT_SCHEDULE
-                                          and fixed-opening DSCR sculpted actual-service rolls
+    opening_debt_balance_keur           : used for EXPLICIT_SCHEDULE; 0 otherwise
     period_dscr_targets                 : per-period DSCR ratios; empty → scalar policy.target_dscr for all
     period_debt_service_availability    : per-period availability fractions; empty → 1.0 for all
     """

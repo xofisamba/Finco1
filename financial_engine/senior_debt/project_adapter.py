@@ -192,11 +192,7 @@ def build_senior_debt_contract_from_project_inputs(
         ),
         period_rates=period_rates,
         explicit_principal_schedule=None,
-        opening_debt_balance_keur=(
-            fin.fixed_debt_keur
-            if fin.fixed_debt_keur is not None and fin.fixed_debt_keur > 0.0
-            else 0.0
-        ),
+        opening_debt_balance_keur=0.0,
         period_dscr_targets=dscr_targets,
         period_debt_service_availability=avail,
     )

@@ -956,13 +956,11 @@ def _run_senior_debt_model_with_shl(inputs: SeniorDebtModelInput) -> ProjectMode
     phase2b_result = run_tax_cfads_model(TaxCfadsModelInput(operating=inputs.operating, tax=inputs.tax))
     bank_phase2a_result = run_operating_model(bank_op)
     base_tax_input = inputs.tax
-    has_fixed_debt_opening = sd_inputs.opening_debt_balance_keur > 0.0
-    actual_debt_phase2a_result = phase2b_result if has_fixed_debt_opening else bank_phase2a_result
 
     debt_start = policy.repayment_start_period_index
     debt_end = policy.maturity_period_index
     debt_periods = tuple(
-        p for p in actual_debt_phase2a_result.periods
+        p for p in bank_phase2a_result.periods
         if p.is_operation and debt_start <= p.period_index <= debt_end
     )
 
@@ -980,9 +978,9 @@ def _run_senior_debt_model_with_shl(inputs: SeniorDebtModelInput) -> ProjectMode
                 senior_interest_by_period,
                 shl_interest_guess,
             )
-            tax_result = calculate_tax(actual_debt_phase2a_result.periods, tax_input)
+            tax_result = calculate_tax(bank_phase2a_result.periods, tax_input)
             cfads_results = calculate_canonical_cfads(
-                actual_debt_phase2a_result.periods,
+                bank_phase2a_result.periods,
                 tax_result.period_results,
             )
             return (
@@ -1092,9 +1090,9 @@ def _run_senior_debt_model_with_shl(inputs: SeniorDebtModelInput) -> ProjectMode
             senior_interest_by_period,
             final_shl_interest,
         )
-        tax_result = calculate_tax(actual_debt_phase2a_result.periods, tax_input)
+        tax_result = calculate_tax(bank_phase2a_result.periods, tax_input)
         cfads_results = calculate_canonical_cfads(
-            actual_debt_phase2a_result.periods,
+            bank_phase2a_result.periods,
             tax_result.period_results,
         )
         return (
@@ -1341,8 +1339,6 @@ def run_senior_debt_model(inputs: SeniorDebtModelInput) -> ProjectModelResult:
     bank_phase2a_result = run_operating_model(bank_op)
 
     base_tax_input = inputs.tax
-    has_fixed_debt_opening = sd_inputs.opening_debt_balance_keur > 0.0
-    actual_debt_phase2a_result = phase2b_result if has_fixed_debt_opening else bank_phase2a_result
 
     def tax_cfads_fn(
         senior_interest_by_period: dict[int, float],
@@ -1377,24 +1373,20 @@ def run_senior_debt_model(inputs: SeniorDebtModelInput) -> ProjectModelResult:
             period_interest=tuple(merged_interest.values()),
             period_adjustments=base_tax_input.period_adjustments,
         )
-        # Fixed-opening actual-service rolls use Base CFADS; otherwise the
-        # solver sizes debt against the bank/debt-sizing case.
-        tax_result = calculate_tax(actual_debt_phase2a_result.periods, updated_tax_input)
-        cfads_results = calculate_canonical_cfads(
-            actual_debt_phase2a_result.periods,
-            tax_result.period_results,
-        )
+        # Tax and CFADS computed against bank periods (bank EBITDA drives taxable income).
+        tax_result = calculate_tax(bank_phase2a_result.periods, updated_tax_input)
+        cfads_results = calculate_canonical_cfads(bank_phase2a_result.periods, tax_result.period_results)
         cfads_by_period = {cr.period_index: cr.cfads_keur for cr in cfads_results}
         cash_tax_by_period = {
             pr.period_index: pr.cash_tax_keur for pr in tax_result.period_results
         }
         return cfads_by_period, cash_tax_by_period
 
-    # Step 5: Fixed-point solver against the selected debt-service case.
+    # Step 5: Fixed-point solver against bank periods.
     debt_start = policy.repayment_start_period_index
     debt_end = policy.maturity_period_index
     debt_periods = tuple(
-        p for p in actual_debt_phase2a_result.periods
+        p for p in bank_phase2a_result.periods
         if p.is_operation and debt_start <= p.period_index <= debt_end
     )
     sd_result = solve_senior_debt(
