@@ -32,10 +32,11 @@ from financial_engine.inputs import (
     PeriodAxisConvention,
 )
 from financial_engine.ppa_indexation import PpaIndexationStartPolicy
-from financial_engine.shl.contracts import ShlDayCountConvention
+from financial_engine.shl.contracts import ShlDayCountConvention, ShlRepaymentMode
 
 
 _SUPPORTED_CLEAN_SHL_REPAYMENT_METHODS = frozenset({
+    "bullet",
     "cash_sweep",
     "partial_pay_sweep",
 })
@@ -49,6 +50,7 @@ def _coerce_shl_day_count(raw: object) -> ShlDayCountConvention:
         "ACTUAL_365_FIXED": ShlDayCountConvention.ACT_365_FIXED,
         "ACT_360": ShlDayCountConvention.ACT_360,
         "ACTUAL_360": ShlDayCountConvention.ACT_360,
+        "PERIOD_AXIS_ACTUAL_YEAR": ShlDayCountConvention.PERIOD_AXIS_ACTUAL_YEAR,
     }
     if text in aliases:
         return aliases[text]
@@ -286,6 +288,7 @@ def build_senior_debt_model_input_from_project_inputs(
     shareholder_loan = _build_shareholder_loan_model_input_from_project_inputs(
         project_inputs,
         operating_periods,
+        senior_debt_maturity_period_index=policy.maturity_period_index,
     )
 
     return SeniorDebtModelInput(
@@ -301,6 +304,8 @@ def build_senior_debt_model_input_from_project_inputs(
 def _build_shareholder_loan_model_input_from_project_inputs(
     project_inputs: "ProjectInputs",
     periods: tuple,
+    *,
+    senior_debt_maturity_period_index: int | None = None,
 ) -> ShareholderLoanModelInput | None:
     """Map canonical ProjectInputs to the clean B5 SHL financing contract.
 
@@ -350,17 +355,28 @@ def _build_shareholder_loan_model_input_from_project_inputs(
         )
     construction_dcf = float(construction_dcf_raw)
 
-    repayment_start = getattr(financing, "shl_principal_eligibility_start_period", None)
-    if repayment_start is None:
-        raise ValueError(
-            "SHL_PRINCIPAL_ELIGIBILITY_START_PERIOD_EXPLICIT_INPUT_REQUIRED"
-        )
-
     maturity = getattr(financing, "shl_maturity_period_index", None)
+    if (
+        maturity is None
+        and method == "bullet"
+        and int(getattr(financing, "shl_tenor_years", 0) or 0) == 0
+        and senior_debt_maturity_period_index is not None
+    ):
+        # Existing generic financing contract: tenor 0 means bullet one year
+        # after Senior payoff. Generic projects are semestrial, hence +2 periods.
+        maturity = int(senior_debt_maturity_period_index) + 2
     if maturity is None:
         raise ValueError(
             "SHL_MATURITY_PERIOD_EXPLICIT_INPUT_REQUIRED: "
             "do not infer maturity from model horizon"
+        )
+
+    repayment_start = getattr(financing, "shl_principal_eligibility_start_period", None)
+    if repayment_start is None and method == "bullet":
+        repayment_start = maturity
+    if repayment_start is None:
+        raise ValueError(
+            "SHL_PRINCIPAL_ELIGIBILITY_START_PERIOD_EXPLICIT_INPUT_REQUIRED"
         )
 
     first_operating = next((p.period_index for p in periods if p.is_operation), None)
@@ -391,6 +407,12 @@ def _build_shareholder_loan_model_input_from_project_inputs(
     if repayment_start_index > maturity_index:
         raise ValueError("maturity_period_index must be >= repayment_start_period_index")
 
+    repayment_mode = (
+        ShlRepaymentMode.BULLET
+        if method == "bullet"
+        else ShlRepaymentMode.CASH_SWEEP
+    )
+
     return ShareholderLoanModelInput(
         initial_principal_keur=amount,
         annual_fixed_rate=rate,
@@ -398,6 +420,7 @@ def _build_shareholder_loan_model_input_from_project_inputs(
             getattr(financing, "shl_day_count_convention", None)
         ),
         construction_day_count_fraction=construction_dcf,
+        repayment_mode=repayment_mode,
         repayment_start_period_index=repayment_start_index,
         maturity_period_index=maturity_index,
         convergence_tolerance_keur=1e-4,

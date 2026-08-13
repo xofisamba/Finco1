@@ -179,6 +179,7 @@ def compute_senior_debt_fingerprint(inputs: "Any") -> str:
             "annual_fixed_rate": shl.annual_fixed_rate,
             "day_count_convention": convention,
             "construction_day_count_fraction": shl.construction_day_count_fraction,
+            "repayment_mode": getattr(shl.repayment_mode, "value", shl.repayment_mode),
             "repayment_start_period_index": shl.repayment_start_period_index,
             "maturity_period_index": shl.maturity_period_index,
             "convergence_tolerance_keur": shl.convergence_tolerance_keur,

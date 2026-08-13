@@ -765,6 +765,22 @@ def create_default_tuho_wind1() -> ProjectInputs:
 # Generic industry engine factories — simple round numbers for tests/examples
 # =============================================================================
 
+def _generic_clean_senior_interest_config(
+    *,
+    annual_all_in_rate: float,
+    tenor_years: int,
+) -> SeniorDebtInterestConfig:
+    """Explicit clean senior-rate contract for fictional generic projects."""
+    return SeniorDebtInterestConfig(
+        enabled=True,
+        rate_schedule=SeniorRateSchedule(
+            mode=SeniorRateMode.EXPLICIT_ALL_IN_SCHEDULE,
+            explicit_all_in_rates=(annual_all_in_rate,) * (tenor_years * 2),
+        ),
+        day_count=SeniorDayCountConvention.ACT_360,
+    )
+
+
 def create_default_solar_project(
     capacity_mw: float = 50.0,
     horizon_years: int = 20,
@@ -833,9 +849,20 @@ def create_default_solar_project(
         floating_share=0.3, fixed_share=0.7, hedge_coverage=0.8,
         target_dscr=1.20, lockup_dscr=1.10, dsra_months=6,
         equity_irr_method=EquityIRRMethod.EQUITY_ONLY.value,
-        debt_sizing_method=DebtSizingMethod.DSCR_SCULPT.value)
+        debt_sizing_method=DebtSizingMethod.DSCR_SCULPT.value,
+        debt_sizing_mode=DebtSizingMode.FLAT_DSCR_SCULPTED,
+        senior_debt_interest_config=_generic_clean_senior_interest_config(
+            annual_all_in_rate=0.03 + 250 / 10000,
+            tenor_years=15,
+        ),
+        clean_shl_principal_keur=7_750.0,
+        clean_shl_repayment_method="bullet",
+        shl_day_count_convention="PERIOD_AXIS_ACTUAL_YEAR",
+        shl_construction_day_count_fraction=0.0,
+    )
     tax = TaxParams(corporate_rate=0.25, loss_carryforward_years=5,
-        loss_carryforward_cap=1.0, atad_ebitda_limit=0.30, atad_min_interest_keur=3000.0)
+        loss_carryforward_cap=1.0, atad_ebitda_limit=0.30, atad_min_interest_keur=3000.0,
+        clean_cash_tax_timing_enabled=True)
 
     return ProjectInputs(info=info, technical=technical, capex=capex,
         opex=tuple(opex), revenue=revenue, financing=financing, tax=tax)
@@ -908,9 +935,20 @@ def create_default_wind_project(
         floating_share=0.3, fixed_share=0.7, hedge_coverage=0.8,
         target_dscr=1.20, lockup_dscr=1.10, dsra_months=6,
         equity_irr_method=EquityIRRMethod.EQUITY_ONLY.value,
-        debt_sizing_method=DebtSizingMethod.DSCR_SCULPT.value)
+        debt_sizing_method=DebtSizingMethod.DSCR_SCULPT.value,
+        debt_sizing_mode=DebtSizingMode.FLAT_DSCR_SCULPTED,
+        senior_debt_interest_config=_generic_clean_senior_interest_config(
+            annual_all_in_rate=0.03 + 250 / 10000,
+            tenor_years=15,
+        ),
+        clean_shl_principal_keur=10_250.0,
+        clean_shl_repayment_method="bullet",
+        shl_day_count_convention="PERIOD_AXIS_ACTUAL_YEAR",
+        shl_construction_day_count_fraction=0.0,
+    )
     tax = TaxParams(corporate_rate=0.25, loss_carryforward_years=5,
-        loss_carryforward_cap=1.0, atad_ebitda_limit=0.30, atad_min_interest_keur=3000.0)
+        loss_carryforward_cap=1.0, atad_ebitda_limit=0.30, atad_min_interest_keur=3000.0,
+        clean_cash_tax_timing_enabled=True)
 
     return ProjectInputs(info=info, technical=technical, capex=capex,
         opex=tuple(opex), revenue=revenue, financing=financing, tax=tax)

@@ -655,7 +655,7 @@ class TestGroupJ_SerializationRoundtrip:
         assert restored.tax.clean_cash_tax_timing_enabled is True
         assert restored.tax.tax_deductible_book_dep_pct == 1.0
 
-    def test_solar_roundtrip_retains_source_owned_false(self):
+    def test_solar_roundtrip_retains_generic_clean_timing_opt_in(self):
         """Case B: Solar (default) → serialize → deserialize → tax_dep_basis_source_owned=False."""
         from app.project_factories import create_default_solar_project
         from finco_core.inputs.serialization import project_inputs_to_dict, project_inputs_from_dict
@@ -663,7 +663,7 @@ class TestGroupJ_SerializationRoundtrip:
         d = project_inputs_to_dict(solar)
         restored = project_inputs_from_dict(d)
         assert restored.tax.tax_dep_basis_source_owned is False
-        assert restored.tax.clean_cash_tax_timing_enabled is False
+        assert restored.tax.clean_cash_tax_timing_enabled is True
 
     def test_historical_payload_missing_fields_defaults_to_false(self):
         """Case C: Old payload without source-ownership fields → defaults safely to False."""
@@ -723,17 +723,17 @@ class TestGroupJ_SerializationRoundtrip:
         assert restored.tax.tax_dep_basis_source_owned is False
         assert restored.tax.clean_cash_tax_timing_enabled is False
 
-    def test_wind_roundtrip_retains_compatibility_defaults(self):
+    def test_wind_roundtrip_retains_generic_clean_timing_opt_in(self):
         """Case G: Generic Wind → serialize → deserialize → source-ownership defaults False."""
         from app.project_factories import create_default_wind_project
         from finco_core.inputs.serialization import project_inputs_to_dict, project_inputs_from_dict
         wind = create_default_wind_project()
         assert wind.tax.tax_dep_basis_source_owned is False
-        assert wind.tax.clean_cash_tax_timing_enabled is False
+        assert wind.tax.clean_cash_tax_timing_enabled is True
         d = project_inputs_to_dict(wind)
         restored = project_inputs_from_dict(d)
         assert restored.tax.tax_dep_basis_source_owned is False
-        assert restored.tax.clean_cash_tax_timing_enabled is False
+        assert restored.tax.clean_cash_tax_timing_enabled is True
 
 
 # ---------------------------------------------------------------------------
@@ -749,11 +749,11 @@ class TestGroupK_CashTaxTimingOwnership:
         """Oborovo factory explicitly sets clean_cash_tax_timing_enabled=True."""
         assert oborovo_project.tax.clean_cash_tax_timing_enabled is True
 
-    def test_default_project_has_clean_cash_tax_timing_enabled_false(self):
+    def test_generic_solar_has_clean_cash_tax_timing_enabled_true(self):
         """Non-Oborovo projects have clean_cash_tax_timing_enabled=False by default."""
         from app.project_factories import create_default_solar_project
         solar = create_default_solar_project()
-        assert solar.tax.clean_cash_tax_timing_enabled is False
+        assert solar.tax.clean_cash_tax_timing_enabled is True
 
     def test_adapter_fails_closed_for_unsupported_timing(self):
         """Adapter raises NotImplementedError for clean_cash_tax_timing_enabled=False."""
