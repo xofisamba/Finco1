@@ -1,0 +1,53 @@
+name: MVP G2A - Financing Stack and Derived SHL
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+  PYTHONDONTWRITEBYTECODE: "1"
+
+jobs:
+  mvp-g2a-financing-stack:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Assert exact-head checkout
+        run: |
+          test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha || github.sha }}"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          pip install --no-cache-dir -c constraints.txt -e .
+          pip install --no-cache-dir -c constraints.txt pytest
+
+      - name: G2A financing stack and G0 capacity authority
+        run: |
+          python -m pytest -q --tb=short \
+            tests/test_mvp_g2a_financing_stack.py \
+            tests/test_mvp_g0_generic_clean_engine_enablement.py \
+            tests/test_mvp_g1_workflow_authority.py
+
+      - name: Changed-file anti-calibration scan
+        shell: bash
+        run: |
+          git fetch origin main --depth=1
+          ! git diff --unified=0 origin/main...HEAD \
+            -- financial_engine finco_core app domain \
+            | grep -E '^\+[^+]' \
+            | grep -Ei \
+              'approved_delta|expected_delta|target debt fitting|target cfads fitting|target tax fitting|target shl fitting|source output vector runtime input|balancing plug|forced principal|project\.name|project\.code|baseline_id'

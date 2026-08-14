@@ -24,6 +24,8 @@ from finco_core.inputs._models import (
     CapexStructure,
     DebtSizingMethod,
     DebtSizingMode,
+    SponsorFundingMode,
+    GearingBasisMode,
     DebtSizingCaseConfig,
     EquityIRRMethod,
     FinancingParams,
@@ -297,6 +299,10 @@ def project_inputs_to_dict(inputs: ProjectInputs) -> dict:
             "shl_amount_keur": fin.shl_amount_keur,
             "shl_rate": fin.shl_rate,
             "gearing_ratio": fin.gearing_ratio,
+            "sponsor_funding_mode": _ser_enum(fin.sponsor_funding_mode),
+            "gearing_basis_mode": _ser_enum(fin.gearing_basis_mode),
+            "junior_or_other_project_funding_keur": fin.junior_or_other_project_funding_keur,
+            "other_equity_funding_before_shl_keur": fin.other_equity_funding_before_shl_keur,
             "senior_debt_amount_keur": fin.senior_debt_amount_keur,
             "senior_tenor_years": fin.senior_tenor_years,
             "base_rate": fin.base_rate,
@@ -586,12 +592,26 @@ def project_inputs_from_dict(d: dict) -> ProjectInputs:
     )
 
     dsm_raw = fin_d.get("debt_sizing_mode")
+    sponsor_mode_raw = fin_d.get("sponsor_funding_mode")
+    gearing_basis_raw = fin_d.get("gearing_basis_mode")
     financing = FinancingParams(
         share_capital_keur=fin_d.get("share_capital_keur", 500.0),
         share_premium_keur=fin_d.get("share_premium_keur", 0.0),
         shl_amount_keur=fin_d.get("shl_amount_keur", 13547.2),
         shl_rate=fin_d.get("shl_rate", 0.08),
         gearing_ratio=fin_d.get("gearing_ratio", 0.7524),
+        sponsor_funding_mode=(
+            SponsorFundingMode(sponsor_mode_raw) if sponsor_mode_raw is not None else None
+        ),
+        gearing_basis_mode=(
+            GearingBasisMode(gearing_basis_raw) if gearing_basis_raw is not None else None
+        ),
+        junior_or_other_project_funding_keur=fin_d.get(
+            "junior_or_other_project_funding_keur", 0.0
+        ),
+        other_equity_funding_before_shl_keur=fin_d.get(
+            "other_equity_funding_before_shl_keur", 0.0
+        ),
         senior_debt_amount_keur=fin_d.get("senior_debt_amount_keur", 0.0),
         senior_tenor_years=fin_d.get("senior_tenor_years", 14),
         base_rate=fin_d.get("base_rate", 0.03),

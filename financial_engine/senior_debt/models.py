@@ -34,6 +34,8 @@ class SolverDiagnostics:
     termination_reason: str
     is_authoritative: bool = True
     """True only when termination_reason == CONVERGED. Downstream code must reject non-authoritative results."""
+    dscr_debt_capacity_keur: float | None = None
+    gearing_debt_capacity_keur: float | None = None
 
 
 @dataclass(frozen=True)

@@ -426,6 +426,8 @@ def _make_diag(
     max_abs_diff: float,
     binding: str | None,
     termination_reason: str,
+    dscr_capacity: float | None = None,
+    gearing_capacity: float | None = None,
 ) -> SolverDiagnostics:
     return SolverDiagnostics(
         converged=converged,
@@ -437,6 +439,12 @@ def _make_diag(
         binding_constraint=binding,
         termination_reason=termination_reason,
         is_authoritative=(termination_reason == "CONVERGED"),
+        dscr_debt_capacity_keur=(
+            final_d if dscr_capacity is None and binding == "DSCR" else dscr_capacity
+        ),
+        gearing_debt_capacity_keur=(
+            final_d if gearing_capacity is None and binding == "GEARING" else gearing_capacity
+        ),
     )
 
 
@@ -792,6 +800,8 @@ def _solve_combined(
             max_abs_diff=dscr_result.diagnostics.maximum_absolute_difference_keur,
             binding=binding,
             termination_reason="FINALISATION_NOT_CONVERGED",
+            dscr_capacity=dscr_capacity,
+            gearing_capacity=gearing_cap,
         )
         return _to_schedules(final_rows, final_d, binding, diag)
 
@@ -803,6 +813,8 @@ def _solve_combined(
         max_abs_diff=dscr_result.diagnostics.maximum_absolute_difference_keur,
         binding=binding,
         termination_reason="CONVERGED",
+        dscr_capacity=dscr_capacity,
+        gearing_capacity=gearing_cap,
     )
     return _to_schedules(final_rows, final_d, binding, diag)
 

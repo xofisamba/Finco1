@@ -1,0 +1,137 @@
+"""Pure G2A funding-stack and construction draw reconciliation."""
+
+from __future__ import annotations
+
+from finco_core.inputs import SponsorFundingMode
+
+from financial_engine.financing.contracts import (
+    ConstructionFundingPeriod,
+    ConstructionFundingResult,
+)
+
+
+GENERIC_MVP_DRAW_POLICY = "GENERIC_MVP_SPONSOR_FIRST_LINEAR_USES"
+
+
+def reconcile_financing_stack(
+    *,
+    total_project_uses_keur: float,
+    final_senior_commitment_keur: float,
+    junior_or_other_main_project_funding_keur: float,
+    share_capital_keur: float,
+    other_equity_funding_before_shl_keur: float,
+    sponsor_funding_mode: SponsorFundingMode,
+) -> tuple[float, float]:
+    """Return (derived SHL cash principal, total additional equity)."""
+    values = (
+        total_project_uses_keur,
+        final_senior_commitment_keur,
+        junior_or_other_main_project_funding_keur,
+        share_capital_keur,
+        other_equity_funding_before_shl_keur,
+    )
+    if any(value < 0.0 for value in values):
+        raise ValueError("G2A funding-stack inputs must be non-negative")
+
+    residual = (
+        total_project_uses_keur
+        - final_senior_commitment_keur
+        - junior_or_other_main_project_funding_keur
+        - share_capital_keur
+        - other_equity_funding_before_shl_keur
+    )
+    if residual < -1e-8:
+        raise ValueError(
+            "G2A_FIXED_SOURCES_EXCEED_TOTAL_PROJECT_USES: "
+            f"funding excess={-residual:.9f} kEUR"
+        )
+    residual = max(0.0, residual)
+    if sponsor_funding_mode == SponsorFundingMode.SHARE_CAPITAL_THEN_SHL:
+        return residual, other_equity_funding_before_shl_keur
+    if sponsor_funding_mode == SponsorFundingMode.EQUITY_ONLY:
+        return 0.0, other_equity_funding_before_shl_keur + residual
+    raise ValueError(f"Unsupported sponsor_funding_mode={sponsor_funding_mode!r}")
+
+
+def build_construction_funding_schedule(
+    *,
+    construction_period_count: int,
+    total_project_uses_keur: float,
+    senior_keur: float,
+    junior_keur: float,
+    share_capital_keur: float,
+    additional_equity_keur: float,
+    shl_cash_keur: float,
+) -> ConstructionFundingResult:
+    """Allocate linear generic uses through the documented sponsor-first waterfall.
+
+    This is an explicit generic MVP audit policy, not a claim that the source
+    workbook draws each facility linearly. It has no IDC or operating-model effect.
+    """
+    if construction_period_count <= 0:
+        raise ValueError("construction_period_count must be positive")
+    source_caps = {
+        "share": share_capital_keur,
+        "additional_equity": additional_equity_keur,
+        "shl": shl_cash_keur,
+        "junior": junior_keur,
+        "senior": senior_keur,
+    }
+    if abs(sum(source_caps.values()) - total_project_uses_keur) > 1e-7:
+        raise ValueError("G2A_SOURCES_DO_NOT_EQUAL_USES")
+
+    remaining = dict(source_caps)
+    cumulative = {key: 0.0 for key in source_caps}
+    cumulative_uses = 0.0
+    rows: list[ConstructionFundingPeriod] = []
+    for index in range(1, construction_period_count + 1):
+        uses = (
+            total_project_uses_keur / construction_period_count
+            if index < construction_period_count
+            else total_project_uses_keur - cumulative_uses
+        )
+        need = uses
+        draws: dict[str, float] = {}
+        for key in ("share", "additional_equity", "shl", "junior", "senior"):
+            draw = min(need, remaining[key])
+            draws[key] = draw
+            remaining[key] -= draw
+            cumulative[key] += draw
+            need -= draw
+        if abs(need) > 1e-8:
+            raise ValueError(f"G2A_PERIOD_FUNDING_SHORTFALL: period={index}, shortfall={need}")
+
+        sources = sum(draws.values())
+        cumulative_uses += uses
+        cumulative_sources = sum(cumulative.values())
+        rows.append(ConstructionFundingPeriod(
+            period_index=index,
+            project_cash_uses_keur=uses,
+            senior_draw_keur=draws["senior"],
+            junior_or_other_main_funding_draw_keur=draws["junior"],
+            share_capital_draw_keur=draws["share"],
+            additional_equity_draw_keur=draws["additional_equity"],
+            shl_cash_draw_keur=draws["shl"],
+            total_sponsor_cash_draw_keur=(
+                draws["share"] + draws["additional_equity"] + draws["shl"]
+            ),
+            total_sources_keur=sources,
+            sources_uses_difference_keur=sources - uses,
+            cumulative_project_cash_uses_keur=cumulative_uses,
+            cumulative_senior_draw_keur=cumulative["senior"],
+            cumulative_junior_or_other_main_funding_draw_keur=cumulative["junior"],
+            cumulative_share_capital_draw_keur=cumulative["share"],
+            cumulative_additional_equity_draw_keur=cumulative["additional_equity"],
+            cumulative_shl_cash_draw_keur=cumulative["shl"],
+            cumulative_total_sources_keur=cumulative_sources,
+            cumulative_sources_uses_difference_keur=cumulative_sources - cumulative_uses,
+        ))
+
+    return ConstructionFundingResult(
+        policy=GENERIC_MVP_DRAW_POLICY,
+        periods=tuple(rows),
+        maximum_period_difference_keur=max(abs(row.sources_uses_difference_keur) for row in rows),
+        maximum_cumulative_difference_keur=max(
+            abs(row.cumulative_sources_uses_difference_keur) for row in rows
+        ),
+    )

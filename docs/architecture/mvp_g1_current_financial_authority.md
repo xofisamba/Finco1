@@ -64,16 +64,17 @@ on project name, project code, baseline identity, or source workbook identity.
 
 ## Current blocking ring
 
-1. MVP G1 Governance & Methodology Lock
-2. MVP G0 Generic Clean Engine
-3. C3B3D2B5 SHL Fixed-Point Integration
-4. C3B3D2B6 Base/Post-Senior Cash
-5. C3B3D2B7 Bank/Senior Source Parity
-6. C3B3D2B8 Base/Senior/SHL Closure
-7. C3B1 source-truth evidence
-8. C3B3A clean Senior contract
-9. CI product smoke/persistence and current semantic core checks
-10. Parity Guardrails semantic outputs, immutable source hashes, and import boundaries
+1. MVP G2A Financing Stack and Derived SHL
+2. MVP G1 Governance & Methodology Lock
+3. MVP G0 Generic Clean Engine
+4. C3B3D2B5 SHL Fixed-Point Integration
+5. C3B3D2B6 Base/Post-Senior Cash
+6. C3B3D2B7 Bank/Senior Source Parity
+7. C3B3D2B8 Base/Senior/SHL Closure
+8. C3B1 source-truth evidence
+9. C3B3A clean Senior contract
+10. CI product smoke/persistence and current semantic core checks
+11. Parity Guardrails semantic outputs, immutable source hashes, and import boundaries
 
 Phase 2A, Phase 2B, C3B3B/C3B3C/C3B3D0/C3B3D1/C3B3D2A/B0-B4,
 Phase 2C, and Phase 2D are manual historical or diagnostic workflows unless a later
