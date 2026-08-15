@@ -951,6 +951,8 @@ def _build_result_senior_debt_schedules(
         "maximum_relative_difference": senior_debt_result.diagnostics.maximum_relative_difference,
         "binding_constraint": senior_debt_result.diagnostics.binding_constraint,
         "termination_reason": senior_debt_result.diagnostics.termination_reason,
+        "dscr_debt_capacity_keur": senior_debt_result.diagnostics.dscr_debt_capacity_keur,
+        "gearing_debt_capacity_keur": senior_debt_result.diagnostics.gearing_debt_capacity_keur,
     }
     return _SeniorDebtSchedulesResult(
         period_indices=senior_debt_result.period_indices,
@@ -1556,6 +1558,8 @@ def run_senior_debt_model(inputs: SeniorDebtModelInput) -> ProjectModelResult:
         "maximum_relative_difference": sd_result.diagnostics.maximum_relative_difference,
         "binding_constraint": sd_result.diagnostics.binding_constraint,
         "termination_reason": sd_result.diagnostics.termination_reason,
+        "dscr_debt_capacity_keur": sd_result.diagnostics.dscr_debt_capacity_keur,
+        "gearing_debt_capacity_keur": sd_result.diagnostics.gearing_debt_capacity_keur,
     }
     result_schedules = _SeniorDebtSchedulesResult(
         period_indices=sd_result.period_indices,

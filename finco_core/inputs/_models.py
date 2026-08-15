@@ -51,6 +51,19 @@ class DebtSizingMethod(Enum):
     GEARING_CAP = "gearing_cap"
     FIXED = "fixed"
 
+
+class SponsorFundingMode(str, Enum):
+    """Explicit sponsor instrument policy for the clean financing stack."""
+
+    SHARE_CAPITAL_THEN_SHL = "share_capital_then_shl"
+    EQUITY_ONLY = "equity_only"
+
+
+class GearingBasisMode(str, Enum):
+    """Project-owned basis used to calculate the Senior gearing capacity."""
+
+    TOTAL_PROJECT_USES = "total_project_uses"
+
 class DebtSizingMode(Enum):
     """Senior debt sizing calibration modes.
 
@@ -658,6 +671,10 @@ class FinancingParams:
     shl_rate: float = 0.08
 
     gearing_ratio: float = 0.7524
+    sponsor_funding_mode: SponsorFundingMode | None = None
+    gearing_basis_mode: GearingBasisMode | None = None
+    junior_or_other_project_funding_keur: float = 0.0
+    other_equity_funding_before_shl_keur: float = 0.0
     senior_debt_amount_keur: float = 0.0
     senior_tenor_years: int = 14
     base_rate: float = 0.03

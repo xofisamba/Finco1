@@ -38,7 +38,7 @@ from domain.inputs import (
     YieldScenario,
 )
 from domain.revenue.bess import BessParams
-from finco_core.inputs._models import DebtSizingMode
+from finco_core.inputs._models import DebtSizingMode, GearingBasisMode, SponsorFundingMode
 from finco_core.inputs.senior_rate_schedule import (
     SeniorDayCountConvention,
     SeniorDebtInterestConfig,
@@ -839,11 +839,9 @@ def create_default_solar_project(
     revenue = RevenueParams(ppa_base_tariff=50.0, ppa_term_years=10, ppa_index=0.02,
         market_scenario="Central", market_prices_curve=solar_market_curve,
         market_inflation=0.02, co2_enabled=False, balancing_cost_pv=0.0)
-    # G1H: share_capital_keur + shl_amount_keur must fund the full
-    # non-senior-debt share implied by gearing_ratio=0.75, i.e.
-    # 33,000 kEUR total_capex * 0.25 = 8,250 kEUR. Previously only
-    # 500 + 5,000 = 5,500 kEUR was funded, leaving a 2,750 kEUR gap that
-    # degenerated the equity cash-flow stream (equity_irr computed to 0.0).
+    # G1H compatibility fingerprint: 500 share capital + 7,750 SHL reconciles
+    # the 25% sponsor share. G2A derives that SHL from Sources & Uses and does
+    # not use either legacy SHL amount as its runtime funding authority.
     financing = FinancingParams(share_capital_keur=500.0, shl_amount_keur=7_750.0, shl_rate=0.08,
         gearing_ratio=0.75, senior_tenor_years=15, base_rate=0.03, margin_bps=250,
         floating_share=0.3, fixed_share=0.7, hedge_coverage=0.8,
@@ -851,11 +849,13 @@ def create_default_solar_project(
         equity_irr_method=EquityIRRMethod.EQUITY_ONLY.value,
         debt_sizing_method=DebtSizingMethod.DSCR_SCULPT.value,
         debt_sizing_mode=DebtSizingMode.FLAT_DSCR_SCULPTED,
+        sponsor_funding_mode=SponsorFundingMode.SHARE_CAPITAL_THEN_SHL,
+        gearing_basis_mode=GearingBasisMode.TOTAL_PROJECT_USES,
         senior_debt_interest_config=_generic_clean_senior_interest_config(
             annual_all_in_rate=0.03 + 250 / 10000,
             tenor_years=15,
         ),
-        clean_shl_principal_keur=7_750.0,
+        clean_shl_principal_keur=7_750.0,  # compatibility assertion; G2A derives principal
         clean_shl_repayment_method="bullet",
         shl_day_count_convention="PERIOD_AXIS_ACTUAL_YEAR",
         shl_construction_day_count_fraction=0.0,
@@ -926,10 +926,9 @@ def create_default_wind_project(
         market_scenario="Central", market_prices_curve=wind_market_curve,
         market_inflation=0.02, balancing_cost_wind_eur_mwh=8.0,
         co2_enabled=False, co2_price_eur=0.0, balancing_cost_pv=0.0)
-    # G1H: share_capital_keur + shl_amount_keur must fund the full
-    # non-senior-debt share implied by gearing_ratio=0.75, i.e.
-    # 43,000 kEUR total_capex * 0.25 = 10,750 kEUR. Previously only
-    # 500 + 6,000 = 6,500 kEUR was funded, leaving a 4,250 kEUR gap.
+    # G1H compatibility fingerprint: 500 share capital + 10,250 SHL reconciles
+    # the 25% sponsor share. G2A derives that SHL from Sources & Uses and does
+    # not use either legacy SHL amount as its runtime funding authority.
     financing = FinancingParams(share_capital_keur=500.0, shl_amount_keur=10_250.0, shl_rate=0.08,
         gearing_ratio=0.75, senior_tenor_years=15, base_rate=0.03, margin_bps=250,
         floating_share=0.3, fixed_share=0.7, hedge_coverage=0.8,
@@ -937,11 +936,13 @@ def create_default_wind_project(
         equity_irr_method=EquityIRRMethod.EQUITY_ONLY.value,
         debt_sizing_method=DebtSizingMethod.DSCR_SCULPT.value,
         debt_sizing_mode=DebtSizingMode.FLAT_DSCR_SCULPTED,
+        sponsor_funding_mode=SponsorFundingMode.SHARE_CAPITAL_THEN_SHL,
+        gearing_basis_mode=GearingBasisMode.TOTAL_PROJECT_USES,
         senior_debt_interest_config=_generic_clean_senior_interest_config(
             annual_all_in_rate=0.03 + 250 / 10000,
             tenor_years=15,
         ),
-        clean_shl_principal_keur=10_250.0,
+        clean_shl_principal_keur=10_250.0,  # compatibility assertion; G2A derives principal
         clean_shl_repayment_method="bullet",
         shl_day_count_convention="PERIOD_AXIS_ACTUAL_YEAR",
         shl_construction_day_count_fraction=0.0,
