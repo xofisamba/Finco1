@@ -8,9 +8,25 @@ IDC, distributions, sponsor IRR, or MOIC. G0 remains the authority for DSCR
 debt capacity. The existing clean Senior and SHL/tax fixed-point kernels remain
 the authorities for funded Senior and SHL schedules.
 
-The canonical sequence is:
+The canonical G2A capital-class sequence is:
 
-`total project uses -> Bank DSCR capacity -> gearing capacity -> lower-of final Senior -> fixed other funding -> fixed share capital -> residual SHL or additional equity`.
+```
+total project uses
+  → Bank DSCR capacity
+  → gearing capacity
+  → lower-of final Senior
+  → Junior / other main project funding
+  → fixed Share Capital
+  → fixed Share Premium
+  → other explicit committed equity
+  → residual sponsor funding
+      → SHL (under SHARE_CAPITAL_THEN_SHL)
+        OR
+      → derived Additional Equity (under EQUITY_ONLY)
+```
+
+Share Premium is a separate explicit pre-committed sponsor funding source. It is
+deducted before the residual is calculated and is never a derived residual.
 
 ## Committed source evidence
 
@@ -58,8 +74,22 @@ debt is never increased to force DSCR back to target.
 
 `SponsorFundingMode.SHARE_CAPITAL_THEN_SHL` derives residual SHL cash principal.
 `SponsorFundingMode.EQUITY_ONLY` derives zero SHL and classifies the residual as
-additional legal equity/share premium. Instrument availability is explicit and
-is not inferred from project identity, amount, rate, or repayment method.
+derived Additional Equity. Share Premium is a separate explicit pre-committed
+sponsor funding source and is deducted before the residual is calculated.
+Instrument availability is explicit and is not inferred from project identity,
+amount, rate, or repayment method.
+
+The seven explicit G2A capital classes are:
+
+| Capital class | Nature |
+|---|---|
+| Share Capital | Fixed pre-committed input |
+| Share Premium | Fixed pre-committed input (deducted separately from residual) |
+| Other Committed Equity | Fixed pre-committed input |
+| Derived Additional Equity | Residual under EQUITY_ONLY |
+| SHL | Residual cash principal under SHARE_CAPITAL_THEN_SHL |
+| Junior / Other Main Project Funding | Fixed pre-committed input |
+| Senior Debt | Derived from DSCR and gearing capacities |
 
 Generic Solar and Wind retain their old factory SHL amounts temporarily as
 compatibility assertions. `run_project_financing_model` starts its fixed point
@@ -71,13 +101,49 @@ Committed source evidence establishes a sponsor/SHL/Junior-before-Senior source
 waterfall but does not establish a generic monthly CAPEX timing curve for the
 fictional Solar/Wind projects. G2A therefore uses
 `GENERIC_MVP_SPONSOR_FIRST_LINEAR_USES`: linear monthly project uses across the
-explicit construction-month count, funded through fixed share capital,
-additional equity, SHL cash, Junior/other funding, and finally Senior.
+explicit construction-month count, funded through the following seven-class
+waterfall in order:
+
+```
+Share Capital
+  → Share Premium
+  → Other Committed Equity
+  → Derived Additional Equity
+  → SHL
+  → Junior / Other Main Project Funding
+  → Senior Debt
+```
 
 This is a transparent `GENERIC MVP POLICY`, not Excel source truth. It is audit
 timing only and does not calculate IDC or alter operating outputs. Every period
 and cumulative period must satisfy Sources minus Uses equal to zero without a
 balancing account.
+
+## Construction allocator roles
+
+Two construction funding allocators exist in this repository and are classified
+as **separate-role allocators** (Option B). They are not mathematically
+interchangeable in the general case and must not be collapsed.
+
+**A. `domain.construction.allocate_source_waterfall`**
+
+- Role: Stage B2 construction-domain allocator
+- Granularity: monthly construction cash flow
+- Capital classes: four aggregated classes — equity shares, SHL, junior, senior
+- Use: source-oriented monthly construction implementation
+
+**B. `financial_engine.financing.stack.build_construction_funding_schedule`**
+
+- Role: G2A financing audit allocator
+- Granularity: explicit construction-period reconciliation
+- Capital classes: seven explicit classes — Share Capital, Share Premium, Other
+  Committed Equity, Derived Additional Equity, SHL, Junior, Senior
+- Use: capital-class-transparent G2A audit reporting
+
+Do NOT create a third allocator. Do NOT refactor either allocator based on the
+other's interface.
+
+## SHL PIK and opening operating balance
 
 SHL construction PIK is never classified as a cash source. Opening operating
 SHL equals cash principal plus construction PIK from the existing SHL schedule.
