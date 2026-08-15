@@ -63,7 +63,7 @@ def run_project_financing_model(
     authoritative_dscr_capacity = 0.0
     maximum_difference = float("inf")
     derived_shl = candidate_shl
-    additional_equity = fin.other_equity_funding_before_shl_keur
+    additional_equity = 0.0  # derived residual; overwritten each iteration by reconcile_financing_stack
     for iteration in range(1, maximum_iterations + 1):
         capacity_inputs = replace(
             project_inputs,
@@ -126,6 +126,7 @@ def run_project_financing_model(
             final_senior_commitment_keur=senior.debt_size_keur,
             junior_or_other_main_project_funding_keur=fin.junior_or_other_project_funding_keur,
             share_capital_keur=fin.share_capital_keur,
+            share_premium_keur=fin.share_premium_keur,
             other_equity_funding_before_shl_keur=fin.other_equity_funding_before_shl_keur,
             sponsor_funding_mode=fin.sponsor_funding_mode,
         )
@@ -161,6 +162,8 @@ def run_project_financing_model(
         senior_keur=model_result.senior_debt.debt_size_keur,
         junior_keur=fin.junior_or_other_project_funding_keur,
         share_capital_keur=fin.share_capital_keur,
+        share_premium_keur=fin.share_premium_keur,
+        other_committed_equity_keur=fin.other_equity_funding_before_shl_keur,
         additional_equity_keur=additional_equity,
         shl_cash_keur=derived_shl,
     )
@@ -175,6 +178,8 @@ def run_project_financing_model(
         binding_senior_constraint=str(model_result.senior_debt.binding_constraint),
         junior_or_other_main_project_funding_keur=fin.junior_or_other_project_funding_keur,
         share_capital_keur=fin.share_capital_keur,
+        share_premium_keur=fin.share_premium_keur,
+        other_equity_funding_before_shl_keur=fin.other_equity_funding_before_shl_keur,
         additional_equity_keur=additional_equity,
         derived_shl_cash_principal_keur=derived_shl,
         shl_construction_pik_keur=shl_pik,

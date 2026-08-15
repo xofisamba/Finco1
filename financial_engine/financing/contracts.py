@@ -21,6 +21,8 @@ class ConstructionFundingPeriod:
     senior_draw_keur: float
     junior_or_other_main_funding_draw_keur: float
     share_capital_draw_keur: float
+    share_premium_draw_keur: float
+    other_committed_equity_draw_keur: float
     additional_equity_draw_keur: float
     shl_cash_draw_keur: float
     total_sponsor_cash_draw_keur: float
@@ -30,6 +32,8 @@ class ConstructionFundingPeriod:
     cumulative_senior_draw_keur: float
     cumulative_junior_or_other_main_funding_draw_keur: float
     cumulative_share_capital_draw_keur: float
+    cumulative_share_premium_draw_keur: float
+    cumulative_other_committed_equity_draw_keur: float
     cumulative_additional_equity_draw_keur: float
     cumulative_shl_cash_draw_keur: float
     cumulative_total_sources_keur: float
@@ -56,6 +60,8 @@ class ProjectFinancingResult:
     binding_senior_constraint: str
     junior_or_other_main_project_funding_keur: float
     share_capital_keur: float
+    share_premium_keur: float
+    other_equity_funding_before_shl_keur: float
     additional_equity_keur: float
     derived_shl_cash_principal_keur: float
     shl_construction_pik_keur: float

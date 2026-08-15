@@ -19,15 +19,26 @@ def reconcile_financing_stack(
     final_senior_commitment_keur: float,
     junior_or_other_main_project_funding_keur: float,
     share_capital_keur: float,
+    share_premium_keur: float,
     other_equity_funding_before_shl_keur: float,
     sponsor_funding_mode: SponsorFundingMode,
 ) -> tuple[float, float]:
-    """Return (derived SHL cash principal, total additional equity)."""
+    """Return (derived SHL cash principal, derived additional equity).
+
+    Canonical sponsor funding stack (G2A_SHARE_PREMIUM_SOURCE_OMITTED fix):
+      1. Share Capital
+      2. Share Premium  <- explicitly subtracted; not silently aliased
+      3. Other explicit committed equity before residual
+      4. Derived residual: SHL (SHARE_CAPITAL_THEN_SHL) or additional equity (EQUITY_ONLY)
+
+    residual = Uses - Senior - Junior - Share Capital - Share Premium - Other Committed Equity
+    """
     values = (
         total_project_uses_keur,
         final_senior_commitment_keur,
         junior_or_other_main_project_funding_keur,
         share_capital_keur,
+        share_premium_keur,
         other_equity_funding_before_shl_keur,
     )
     if any(value < 0.0 for value in values):
@@ -38,6 +49,7 @@ def reconcile_financing_stack(
         - final_senior_commitment_keur
         - junior_or_other_main_project_funding_keur
         - share_capital_keur
+        - share_premium_keur
         - other_equity_funding_before_shl_keur
     )
     if residual < -1e-8:
@@ -47,9 +59,9 @@ def reconcile_financing_stack(
         )
     residual = max(0.0, residual)
     if sponsor_funding_mode == SponsorFundingMode.SHARE_CAPITAL_THEN_SHL:
-        return residual, other_equity_funding_before_shl_keur
+        return residual, 0.0
     if sponsor_funding_mode == SponsorFundingMode.EQUITY_ONLY:
-        return 0.0, other_equity_funding_before_shl_keur + residual
+        return 0.0, residual
     raise ValueError(f"Unsupported sponsor_funding_mode={sponsor_funding_mode!r}")
 
 
@@ -60,10 +72,16 @@ def build_construction_funding_schedule(
     senior_keur: float,
     junior_keur: float,
     share_capital_keur: float,
+    share_premium_keur: float,
+    other_committed_equity_keur: float,
     additional_equity_keur: float,
     shl_cash_keur: float,
 ) -> ConstructionFundingResult:
     """Allocate linear generic uses through the documented sponsor-first waterfall.
+
+    Waterfall order (capital-class transparency):
+      Share Capital -> Share Premium -> Other Committed Equity -> Additional Equity
+      -> SHL -> Junior -> Senior
 
     This is an explicit generic MVP audit policy, not a claim that the source
     workbook draws each facility linearly. It has no IDC or operating-model effect.
@@ -72,6 +90,8 @@ def build_construction_funding_schedule(
         raise ValueError("construction_period_count must be positive")
     source_caps = {
         "share": share_capital_keur,
+        "share_premium": share_premium_keur,
+        "other_committed": other_committed_equity_keur,
         "additional_equity": additional_equity_keur,
         "shl": shl_cash_keur,
         "junior": junior_keur,
@@ -92,7 +112,8 @@ def build_construction_funding_schedule(
         )
         need = uses
         draws: dict[str, float] = {}
-        for key in ("share", "additional_equity", "shl", "junior", "senior"):
+        for key in ("share", "share_premium", "other_committed", "additional_equity",
+                    "shl", "junior", "senior"):
             draw = min(need, remaining[key])
             draws[key] = draw
             remaining[key] -= draw
@@ -110,10 +131,13 @@ def build_construction_funding_schedule(
             senior_draw_keur=draws["senior"],
             junior_or_other_main_funding_draw_keur=draws["junior"],
             share_capital_draw_keur=draws["share"],
+            share_premium_draw_keur=draws["share_premium"],
+            other_committed_equity_draw_keur=draws["other_committed"],
             additional_equity_draw_keur=draws["additional_equity"],
             shl_cash_draw_keur=draws["shl"],
             total_sponsor_cash_draw_keur=(
-                draws["share"] + draws["additional_equity"] + draws["shl"]
+                draws["share"] + draws["share_premium"] + draws["other_committed"]
+                + draws["additional_equity"] + draws["shl"]
             ),
             total_sources_keur=sources,
             sources_uses_difference_keur=sources - uses,
@@ -121,6 +145,8 @@ def build_construction_funding_schedule(
             cumulative_senior_draw_keur=cumulative["senior"],
             cumulative_junior_or_other_main_funding_draw_keur=cumulative["junior"],
             cumulative_share_capital_draw_keur=cumulative["share"],
+            cumulative_share_premium_draw_keur=cumulative["share_premium"],
+            cumulative_other_committed_equity_draw_keur=cumulative["other_committed"],
             cumulative_additional_equity_draw_keur=cumulative["additional_equity"],
             cumulative_shl_cash_draw_keur=cumulative["shl"],
             cumulative_total_sources_keur=cumulative_sources,
