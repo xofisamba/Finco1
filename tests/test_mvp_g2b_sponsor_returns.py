@@ -565,6 +565,275 @@ def test_no_target_fitting_in_g2b():
             )
 
 
+# ── Signed post-SHL cash helper (deterministic unit) ─────────────────────────
+
+def _signed_post_shl(signed_post_senior: float, shl_debt_service: float) -> float:
+    """Pure function mirroring G2B signed-cash formula for deterministic assertions."""
+    return signed_post_senior - shl_debt_service
+
+
+# ── Deterministic negative-cash test ─────────────────────────────────────────
+
+def test_signed_cash_negative_post_senior_produces_shortfall():
+    """signed_post_senior < 0 → shortfall > 0, distribution = 0."""
+    # Mathematical proof: post_senior = -25, SHL service = 0 (SHL engine received 0 available)
+    signed_post_shl = _signed_post_shl(-25.0, 0.0)
+    assert signed_post_shl == pytest.approx(-25.0)
+    assert max(0.0, signed_post_shl) == pytest.approx(0.0)   # distribution = 0
+    assert max(0.0, -signed_post_shl) == pytest.approx(25.0)  # shortfall = 25
+
+
+def test_signed_cash_positive_post_senior_with_shl_service():
+    """signed_post_senior = 100, SHL service = 30 → signed_post_shl = 70, shortfall = 0."""
+    signed_post_shl = _signed_post_shl(100.0, 30.0)
+    assert signed_post_shl == pytest.approx(70.0)
+    assert max(0.0, signed_post_shl) == pytest.approx(70.0)  # distribution = 70
+    assert max(0.0, -signed_post_shl) == pytest.approx(0.0)  # shortfall = 0
+
+
+def test_signed_cash_shl_service_exceeds_post_senior_produces_shortfall():
+    """SHL balloon > available cash → shortfall, distribution = 0."""
+    # Mirrors period 33 (SHL maturity balloon exceeds post-senior cash)
+    signed_post_shl = _signed_post_shl(1734.38, 8363.84)
+    assert signed_post_shl < 0
+    assert max(0.0, signed_post_shl) == pytest.approx(0.0)
+    assert max(0.0, -signed_post_shl) == pytest.approx(8363.84 - 1734.38, abs=1e-9)
+
+
+def test_negative_post_senior_period_42_is_not_silently_zeroed():
+    """Period 42 (signed_post_senior < 0) must produce shortfall, not zero."""
+    result = run_project_sponsor_returns_model(_solar_project())
+    op_periods = {p.period_index: p for p in result.cashflow_periods if not p.is_construction}
+    # Period 42 is the known negative-post-Senior operating period for default Solar
+    period_42 = op_periods.get(42)
+    assert period_42 is not None, "Period 42 not found in operating cashflows"
+    assert period_42.cash_shortfall_keur > 0.0, (
+        "Signed post-Senior deficit at period 42 must produce a visible shortfall "
+        "(old floored code returned 0 — regression guard)"
+    )
+    assert period_42.legal_equity_distribution_keur == pytest.approx(0.0, abs=1e-9)
+
+
+def test_no_sponsor_contribution_created_from_shortfall():
+    """Shortfall periods must not create implicit sponsor contributions or top-ups."""
+    result = run_project_sponsor_returns_model(_solar_project())
+    for p in result.cashflow_periods:
+        if p.cash_shortfall_keur > 0.0 and not p.is_construction:
+            assert p.share_capital_contribution_keur == pytest.approx(0.0, abs=1e-9)
+            assert p.share_premium_contribution_keur == pytest.approx(0.0, abs=1e-9)
+            assert p.additional_equity_contribution_keur == pytest.approx(0.0, abs=1e-9)
+            assert p.shl_cash_contribution_keur == pytest.approx(0.0, abs=1e-9)
+
+
+# ── SHL signed-cash handshake ─────────────────────────────────────────────────
+
+def test_shl_signed_cash_handshake_non_negative_periods():
+    """When signed_post_senior >= 0, signed_post_shl matches cash_remaining_after_shl."""
+    project = _solar_project()
+    g2a = run_project_financing_model(project)
+    psc = g2a.project_model_result.post_senior_cash
+    shl = g2a.project_model_result.shareholder_loan
+
+    if shl is None:
+        pytest.skip("No SHL schedule")
+
+    post_s = dict(zip(psc.period_indices, psc.cash_after_senior_before_reserves_keur))
+    shl_ds = dict(zip(shl.period_indices, shl.shl_debt_service_keur))
+    remaining = dict(zip(shl.period_indices, shl.cash_remaining_after_shl_before_reserves_keur))
+
+    non_neg_checked = 0
+    for idx, signed_post_senior in post_s.items():
+        if signed_post_senior < 0:
+            continue
+        signed_post_shl = signed_post_senior - shl_ds.get(idx, 0.0)
+        expected_remaining = remaining.get(idx, 0.0)
+        assert signed_post_shl == pytest.approx(expected_remaining, abs=1e-6), (
+            f"SHL handshake failed at period {idx}: "
+            f"signed_post_shl={signed_post_shl:.4f} vs remaining={expected_remaining:.4f}"
+        )
+        non_neg_checked += 1
+    assert non_neg_checked > 0, "No non-negative periods found — handshake vacuous"
+
+
+# ── Non-zero PIK test ─────────────────────────────────────────────────────────
+
+def _solar_with_pik():
+    """Generic Solar with shl_construction_day_count_fraction=1.0 to produce non-zero PIK."""
+    return dataclasses.replace(
+        _solar_project(),
+        financing=dataclasses.replace(
+            _solar_project().financing,
+            shl_construction_day_count_fraction=1.0,
+        ),
+    )
+
+
+def test_pik_non_zero_with_construction_fraction_one():
+    """Verify the PIK test project actually produces non-zero PIK."""
+    project = _solar_with_pik()
+    g2a = run_project_financing_model(project)
+    shl = g2a.project_model_result.shareholder_loan
+    assert shl is not None
+    total_pik = sum(shl.shl_pik_interest_keur)
+    assert total_pik > 0.0, f"Expected positive PIK, got {total_pik}"
+    assert g2a.shl_construction_pik_keur > 0.0, "shl_construction_pik_keur must be positive"
+
+
+def test_pik_accrual_not_in_shl_cash_interest_receipt():
+    """PIK at accrual does NOT appear in shl_cash_interest_receipt_keur per period."""
+    project = _solar_with_pik()
+    g2a = run_project_financing_model(project)
+    result = run_project_sponsor_returns_model(project)
+    shl = g2a.project_model_result.shareholder_loan
+    assert shl is not None
+
+    pik_by_idx = dict(zip(shl.period_indices, shl.shl_pik_interest_keur))
+    cash_int_by_idx = dict(zip(shl.period_indices, shl.shl_cash_interest_keur))
+    cf_map = {p.period_index: p for p in result.cashflow_periods}
+
+    for idx, pik in pik_by_idx.items():
+        if pik <= 0.0:
+            continue
+        cash_int = cash_int_by_idx.get(idx, 0.0)
+        if idx not in cf_map:
+            continue
+        period = cf_map[idx]
+        # Construction periods accrue PIK but have no receipt fields — skip
+        if period.is_construction:
+            continue
+        # Cash interest receipt = cash only (not PIK + cash)
+        assert period.shl_cash_interest_receipt_keur == pytest.approx(cash_int, abs=1e-9), (
+            f"PIK period {idx}: shl_cash_interest_receipt must be cash only, not PIK+cash"
+        )
+        # PIK must not inflate total_sponsor_net_cashflow (operating period identity)
+        expected_ts = (
+            period.pure_equity_net_cashflow_keur
+            + cash_int
+            + period.shl_principal_receipt_keur
+        )
+        assert period.total_sponsor_net_cashflow_keur == pytest.approx(expected_ts, abs=1e-9), (
+            f"PIK period {idx}: PIK must not appear in total_sponsor_net_cashflow"
+        )
+
+
+def test_pik_contribution_is_cash_principal_not_principal_plus_pik():
+    """Sponsor SHL cash contribution = actual cash principal drawn, not principal + PIK."""
+    project = _solar_with_pik()
+    g2a = run_project_financing_model(project)
+    result = run_project_sponsor_returns_model(project)
+    # SHL cash contribution = derived SHL cash principal (from G2A), not including PIK
+    assert result.total_shl_cash_contributed_keur == pytest.approx(
+        g2a.derived_shl_cash_principal_keur, abs=1e-6
+    )
+    # PIK is NOT included in the contribution total
+    shl = g2a.project_model_result.shareholder_loan
+    assert shl is not None
+    total_pik = sum(shl.shl_pik_interest_keur)
+    assert total_pik > 0.0
+    # Contribution total does NOT equal cash_principal + total_PIK
+    assert abs(result.total_shl_cash_contributed_keur - (g2a.derived_shl_cash_principal_keur + total_pik)) > 1.0, (
+        "Sponsor SHL contribution must be cash principal only, not principal + PIK"
+    )
+
+
+def test_capitalised_pik_repayment_enters_sponsor_receipts():
+    """When the capitalised SHL balance (cash + PIK) is repaid, cash receipt enters total sponsor."""
+    project = _solar_with_pik()
+    result = run_project_sponsor_returns_model(project)
+    g2a = run_project_financing_model(project)
+    shl = g2a.project_model_result.shareholder_loan
+    assert shl is not None
+    # Total principal repaid (from G2A SHL schedule) enters sponsor receipts
+    total_principal = sum(abs(v) for v in shl.shl_principal_keur)
+    assert total_principal > 0.0
+    assert result.total_shl_principal_received_keur == pytest.approx(total_principal, abs=1e-6)
+    # The capitalized PIK balance was added to SHL closing; when that closes out,
+    # principal repaid > cash principal drawn (because PIK was capitalized)
+    assert result.total_shl_principal_received_keur > g2a.derived_shl_cash_principal_keur - 1.0
+
+
+# ── Non-zero Share Premium test ───────────────────────────────────────────────
+
+def _solar_with_share_premium(premium_keur: float = 100.0):
+    return dataclasses.replace(
+        _solar_project(),
+        financing=dataclasses.replace(
+            _solar_project().financing,
+            share_premium_keur=premium_keur,
+        ),
+    )
+
+
+def test_nonzero_share_premium_propagates_correctly():
+    """Non-zero share premium appears exactly once in Pure Equity and Total Sponsor contributions."""
+    premium = 100.0
+    project = _solar_with_share_premium(premium)
+    result = run_project_sponsor_returns_model(project)
+
+    # Aggregate equals configured value
+    assert result.total_share_premium_contributed_keur == pytest.approx(premium, abs=1e-6)
+
+    # Per-period sum matches
+    period_sum = sum(p.share_premium_contribution_keur for p in result.cashflow_periods)
+    assert period_sum == pytest.approx(premium, abs=1e-9)
+
+    # Appears in Pure Legal Equity
+    assert result.total_legal_equity_contributed_keur >= result.total_share_capital_contributed_keur + premium - 1.0
+
+    # Appears in Total Sponsor
+    assert result.total_sponsor_contributed_keur == pytest.approx(
+        result.total_legal_equity_contributed_keur + result.total_shl_cash_contributed_keur,
+        abs=1e-9,
+    )
+
+
+def test_nonzero_share_premium_sources_uses_reconcile():
+    """Adding share premium does not break G2A Sources & Uses reconciliation."""
+    project = _solar_with_share_premium(100.0)
+    result = run_project_sponsor_returns_model(project)
+    assert result.financing_result.construction_funding.maximum_period_difference_keur <= 1e-9
+
+
+# ── Non-zero Other Committed Equity test ──────────────────────────────────────
+
+def _solar_with_other_committed_equity(oce_keur: float = 150.0):
+    return dataclasses.replace(
+        _solar_project(),
+        financing=dataclasses.replace(
+            _solar_project().financing,
+            other_equity_funding_before_shl_keur=oce_keur,
+        ),
+    )
+
+
+def test_nonzero_other_committed_equity_propagates_correctly():
+    """Non-zero other committed equity appears exactly once in contributions."""
+    oce = 150.0
+    project = _solar_with_other_committed_equity(oce)
+    result = run_project_sponsor_returns_model(project)
+
+    assert result.total_other_committed_equity_contributed_keur == pytest.approx(oce, abs=1e-6)
+
+    period_sum = sum(p.other_committed_equity_contribution_keur for p in result.cashflow_periods)
+    assert period_sum == pytest.approx(oce, abs=1e-9)
+
+    # Legal equity total includes it once
+    assert result.total_legal_equity_contributed_keur == pytest.approx(
+        result.total_share_capital_contributed_keur
+        + result.total_share_premium_contributed_keur
+        + result.total_other_committed_equity_contributed_keur
+        + result.total_additional_equity_contributed_keur,
+        abs=1e-9,
+    )
+
+
+def test_nonzero_other_committed_equity_sources_uses_reconcile():
+    """Adding other committed equity does not break G2A Sources & Uses reconciliation."""
+    project = _solar_with_other_committed_equity(150.0)
+    result = run_project_sponsor_returns_model(project)
+    assert result.financing_result.construction_funding.maximum_period_difference_keur <= 1e-9
+
+
 # ── Sources & Uses unchanged after G2B ───────────────────────────────────────
 
 def test_sources_and_uses_unchanged_by_g2b():

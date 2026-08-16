@@ -62,19 +62,58 @@ on project name, project code, baseline identity, or source workbook identity.
   production modules are protected by semantic tests, review scope, and current
   exact-head gates. Immutable source-extraction report hashes remain blocking.
 
+## G2B Simple Sponsor Returns canonical authority
+
+### Pure Legal Equity
+
+Outflows: share-capital contributions + share-premium contributions +
+other-committed-equity contributions + additional-equity contributions
+(all from G2A construction funding schedule).
+
+Inflows: legal-equity distributions (operating periods only).
+
+### Total Sponsor
+
+Outflows: all Pure Legal Equity outflows + SHL cash principal contributions.
+
+Inflows: legal-equity distributions + SHL cash interest received + SHL
+principal repayments.
+
+PIK accrual is not a sponsor cash receipt at accrual time.  When the
+capitalised SHL balance (cash principal + accrued PIK) is actually repaid
+in cash, that repayment enters Total Sponsor receipts.
+
+Signed project cash deficits (CFADS < Senior debt service, or post-Senior
+cash < SHL debt service) are exposed as `cash_shortfall_keur` and are not
+automatically funded by sponsor contributions, top-ups, or balancing items.
+
+`DISTRIBUTE_ALL_POST_SHL_CASH` is a Generic MVP distribution policy.
+It is not an institutional waterfall, a lock-up covenant, or an Excel
+parity rule.
+
+### Timing
+
+Construction cashflow dates: `financial_close + (period_index − 1) months`.
+This is the Generic MVP sponsor-return timing projection over the G2A
+monthly funding periods, not an Excel source-truth draw axis.
+
+Operating cashflow dates: `period_end` from the clean engine operating
+period grid.
+
 ## Current blocking ring
 
-1. MVP G2A Financing Stack and Derived SHL
-2. MVP G1 Governance & Methodology Lock
-3. MVP G0 Generic Clean Engine
-4. C3B3D2B5 SHL Fixed-Point Integration
-5. C3B3D2B6 Base/Post-Senior Cash
-6. C3B3D2B7 Bank/Senior Source Parity
-7. C3B3D2B8 Base/Senior/SHL Closure
-8. C3B1 source-truth evidence
-9. C3B3A clean Senior contract
-10. CI product smoke/persistence and current semantic core checks
-11. Parity Guardrails semantic outputs, immutable source hashes, and import boundaries
+1. MVP G2B Simple Sponsor Returns
+2. MVP G2A Financing Stack and Derived SHL
+3. MVP G1 Governance & Methodology Lock
+4. MVP G0 Generic Clean Engine
+5. C3B3D2B5 SHL Fixed-Point Integration
+6. C3B3D2B6 Base/Post-Senior Cash
+7. C3B3D2B7 Bank/Senior Source Parity
+8. C3B3D2B8 Base/Senior/SHL Closure
+9. C3B1 source-truth evidence
+10. C3B3A clean Senior contract
+11. CI product smoke/persistence and current semantic core checks
+12. Parity Guardrails semantic outputs, immutable source hashes, and import boundaries
 
 Phase 2A, Phase 2B, C3B3B/C3B3C/C3B3D0/C3B3D1/C3B3D2A/B0-B4,
 Phase 2C, and Phase 2D are manual historical or diagnostic workflows unless a later

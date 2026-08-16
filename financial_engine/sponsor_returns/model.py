@@ -121,7 +121,7 @@ def run_project_sponsor_returns_model(
 
     shl_cash_interest_by_idx: dict[int, float] = {}
     shl_principal_by_idx: dict[int, float] = {}
-    post_shl_cash_by_idx: dict[int, float] = {}
+    shl_debt_service_by_idx: dict[int, float] = {}
 
     if shl is not None:
         shl_cash_interest_by_idx = dict(
@@ -130,19 +130,21 @@ def run_project_sponsor_returns_model(
         shl_principal_by_idx = dict(
             zip(shl.period_indices, shl.shl_principal_keur)
         )
-        post_shl_cash_by_idx = dict(
-            zip(shl.period_indices, shl.cash_remaining_after_shl_before_reserves_keur)
+        shl_debt_service_by_idx = dict(
+            zip(shl.period_indices, shl.shl_debt_service_keur)
         )
 
-    # Post-Senior cash (for EQUITY_ONLY — no SHL schedule available)
-    post_senior_cash_by_idx: dict[int, float] = {}
-    if model_result.post_senior_cash is not None:
-        post_senior_cash_by_idx = dict(
-            zip(
-                model_result.post_senior_cash.period_indices,
-                model_result.post_senior_cash.cash_available_for_shl_before_reserves_keur,
-            )
+    # Signed post-Senior cash authority (G2B uses the SIGNED field, not the floored one).
+    # Negative = CFADS insufficient to cover Senior debt service.
+    # This preserves cash deficits so shortfall remains visible rather than silently zeroed.
+    if model_result.post_senior_cash is None:
+        raise ValueError("G2B requires post_senior_cash; clean engine did not produce it")
+    signed_post_senior_by_idx: dict[int, float] = dict(
+        zip(
+            model_result.post_senior_cash.period_indices,
+            model_result.post_senior_cash.cash_after_senior_before_reserves_keur,
         )
+    )
 
     # Dates for operating periods
     period_date_by_idx: dict[int, date] = {
@@ -195,15 +197,41 @@ def run_project_sponsor_returns_model(
         shl_cash_int = shl_cash_interest_by_idx.get(idx, 0.0)
         shl_principal = shl_principal_by_idx.get(idx, 0.0)
 
-        # Post-SHL available cash
-        if shl is not None:
-            raw_post_shl = post_shl_cash_by_idx.get(idx, 0.0)
-        else:
-            # EQUITY_ONLY: no SHL; distributable = post-senior available cash
-            raw_post_shl = post_senior_cash_by_idx.get(idx, 0.0)
+        # Signed post-Senior cash — fail closed if the period is missing.
+        # The post_senior_cash schedule must cover all operating periods.
+        if idx not in signed_post_senior_by_idx:
+            raise ValueError(
+                f"G2B: operating period {idx} absent from post_senior_cash schedule; "
+                "clean engine output is incomplete"
+            )
+        signed_post_senior = signed_post_senior_by_idx[idx]
 
-        post_shl_available = max(0.0, raw_post_shl)
-        cash_shortfall = max(0.0, -raw_post_shl)
+        # Signed post-SHL cash:
+        #   signed_post_senior - actual_shl_cash_debt_service
+        #
+        # SHL handshake (non-negative post-Senior case):
+        #   When signed_post_senior >= 0, the SHL engine receives max(0, post_senior)
+        #   = post_senior.  It deducts shl_debt_service, leaving
+        #   cash_remaining_after_shl = post_senior - shl_debt_service.
+        #   Therefore signed_post_shl == cash_remaining_after_shl (within tolerance).
+        #
+        # Negative post-Senior case:
+        #   The SHL engine receives max(0, post_senior) = 0, so shl_debt_service = 0.
+        #   G2B retains the full negative signed_post_senior as the project cash deficit.
+        #   The existing cash_remaining_after_shl field would read 0 here, losing the deficit.
+        if shl is not None:
+            if idx not in shl_debt_service_by_idx:
+                raise ValueError(
+                    f"G2B: SHL schedule exists but operating period {idx} absent "
+                    "from shl_debt_service; SHL engine output is incomplete"
+                )
+            signed_post_shl = signed_post_senior - shl_debt_service_by_idx[idx]
+        else:
+            # EQUITY_ONLY: no SHL debt service
+            signed_post_shl = signed_post_senior
+
+        post_shl_available = max(0.0, signed_post_shl)
+        cash_shortfall = max(0.0, -signed_post_shl)
 
         # DISTRIBUTE_ALL_POST_SHL_CASH: distribute all available non-negative cash
         distribution = post_shl_available
