@@ -30,10 +30,12 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.12"
 
       - name: Install dependencies
-        run: pip install -e ".[dev]" --quiet
+        run: |
+          pip install --no-cache-dir -c constraints.txt -e .
+          pip install --no-cache-dir -c constraints.txt pytest
 
       - name: Governance — G2B contracts contain no sponsor returns in G2A
         run: |
