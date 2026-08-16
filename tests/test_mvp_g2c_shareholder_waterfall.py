@@ -1098,3 +1098,23 @@ def test_da_shl_bullet_result_fields_present(solar_result):
     assert hasattr(solar_result, "total_distribution_account_locked_keur")
     assert isinstance(solar_result.shl_bullet_unpaid_at_maturity, bool)
     assert isinstance(solar_result.total_distribution_account_locked_keur, float)
+
+
+# ── Source evidence fixture ──────────────────────────────────────────────────
+
+def test_da_source_evidence_fixture_exists():
+    """Source evidence for CF108/109/110/112 formulas is committed."""
+    import json
+    path = _REPO_ROOT / "tests" / "fixtures" / "g2c_da_source_evidence.json"
+    assert path.exists(), "Source evidence fixture missing"
+    evidence = json.loads(path.read_text())
+    # Fixture must contain CF formula entries
+    assert "cf_formulas" in evidence, "Fixture missing cf_formulas section"
+    for key in ("CF108", "CF109", "CF110", "CF112"):
+        assert key in evidence["cf_formulas"], f"Fixture missing formula entry for {key}"
+    # Verify B11 correction is documented (NOT B111)
+    cf109 = evidence["cf_formulas"]["CF109"]
+    formula_or_gate = str(cf109)
+    assert "B$11" in formula_or_gate or "$B$11" in formula_or_gate, (
+        "CF109 source evidence must document $B$11 (senior maturity years), not $B$111"
+    )
