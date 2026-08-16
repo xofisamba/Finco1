@@ -1,0 +1,117 @@
+{
+  "provenance": {
+    "workbook": "20260414_BP_Oborovo_Sensitivity_FINAL_for_PPT.xlsm",
+    "sha256": "15a621c4d6b79024980766e00ebc79d7235fd56f00567be7bf345c769ce57920",
+    "extraction_method": "MANUAL_WORKBOOK_SOURCE_EVIDENCE",
+    "notes": "Formulas from CF sheet, first operating column G (period 1). Scalars from named ranges / fixed cells."
+  },
+  "scalars": {
+    "B11": {
+      "cell": "CF!$B$11",
+      "description": "Senior Debt Maturity (years)",
+      "value": 14,
+      "provenance": "MANUAL_WORKBOOK_SOURCE_EVIDENCE"
+    },
+    "B109": {
+      "cell": "CF!$B$109",
+      "description": "Distribution lockup DSCR threshold (sourced from Inputs!D223)",
+      "value": 1.10,
+      "provenance": "MANUAL_WORKBOOK_SOURCE_EVIDENCE"
+    },
+    "B86": {
+      "cell": "CF!$B$86",
+      "description": "Senior DSRA target (Oborovo: 0 — no DSRA required)",
+      "value": 0.0,
+      "provenance": "MANUAL_WORKBOOK_SOURCE_EVIDENCE"
+    },
+    "B100": {
+      "cell": "CF!$B$100",
+      "description": "J-DSRA target (0 for no-junior-debt projects)",
+      "value": 0.0,
+      "provenance": "MANUAL_WORKBOOK_SOURCE_EVIDENCE"
+    }
+  },
+  "cf_formulas": {
+    "CF86": {
+      "cell": "CF!G86",
+      "description": "Senior DSRA target for this period",
+      "formula": "=$B$86",
+      "provenance": "MANUAL_WORKBOOK_SOURCE_EVIDENCE"
+    },
+    "CF91": {
+      "cell": "CF!G91",
+      "description": "Senior DSRA ending balance",
+      "formula": "=G87+G88+G89-G90",
+      "provenance": "MANUAL_WORKBOOK_SOURCE_EVIDENCE",
+      "notes": "opening + funding + top-up - release. Oborovo: all movements = 0, ending = 0."
+    },
+    "CF94": {
+      "cell": "CF!G94",
+      "description": "Free Cash Flow for Junior Debt (= signed_post_senior in G2C for no-junior-debt)",
+      "formula": "source-proven as post-senior FCF",
+      "provenance": "MANUAL_WORKBOOK_SOURCE_EVIDENCE"
+    },
+    "CF95": {
+      "cell": "CF!G95",
+      "description": "Junior debt repayment and interest (= 0 for no-junior-debt projects)",
+      "formula": "=0",
+      "provenance": "MANUAL_WORKBOOK_SOURCE_EVIDENCE"
+    },
+    "CF106": {
+      "cell": "CF!G106",
+      "description": "J-DSRA movement (= 0 for no-junior-debt projects)",
+      "formula": "=0",
+      "provenance": "MANUAL_WORKBOOK_SOURCE_EVIDENCE"
+    },
+    "CF108": {
+      "cell": "CF!G108",
+      "description": "Distribution Account available cash (CF108 = DA inflow + prior DA closing)",
+      "formula": "=SUM(G94,G95,G106)+F110",
+      "provenance": "MANUAL_WORKBOOK_SOURCE_EVIDENCE"
+    },
+    "CF109": {
+      "cell": "CF!G109",
+      "description": "Free Cash Flow for Distribution (gate output — 0 if locked, else DA available)",
+      "formula": "=IF(AND(OR(G$138<$B$109,G$4=0,G108<0,G91<G86,G105<G100),G$4<=$B$11),0,G108)",
+      "provenance": "MANUAL_WORKBOOK_SOURCE_EVIDENCE",
+      "gate_components": {
+        "A": "G$138 < $B$109  — DSCR below lockup threshold",
+        "B": "G$4 = 0         — construction period (CF4 = year index; 0 = construction)",
+        "C": "G108 < 0        — DA available is negative",
+        "D": "G91 < G86       — Senior DSRA ending < target",
+        "E": "G105 < G100     — J-DSRA ending < target",
+        "outer_AND": "G$4 <= $B$11  — within senior debt maturity (year index <= 14)"
+      },
+      "gate_logic": "IF( AND( OR(A,B,C,D,E), within_senior_maturity ), 0, G108 )"
+    },
+    "CF110": {
+      "cell": "CF!G110",
+      "description": "Distribution Account closing balance (carry-forward to next period F110)",
+      "formula": "=G108-G109",
+      "provenance": "MANUAL_WORKBOOK_SOURCE_EVIDENCE"
+    },
+    "CF112": {
+      "cell": "CF!G112",
+      "description": "Free Cash Flow for Shareholder Loan (= gate output, CF112 = CF109)",
+      "formula": "=G109",
+      "provenance": "MANUAL_WORKBOOK_SOURCE_EVIDENCE"
+    },
+    "CF138": {
+      "cell": "CF!G138",
+      "description": "Base DSCR for gate evaluation (referenced in CF109 gate component A)",
+      "formula": "=CFADS/senior_debt_service",
+      "provenance": "MANUAL_WORKBOOK_SOURCE_EVIDENCE"
+    }
+  },
+  "stop_tokens": {
+    "G2C_DISTRIBUTION_ACCOUNT_AUTHORITY_INCOMPLETE": {
+      "status": "REMOVED",
+      "reason": "CF108/CF109/CF110 formulas extracted and implemented causally. DA roll-forward is source-proven.",
+      "replaced_by": "G2C_DISTRIBUTION_ACCOUNT_CAUSAL_CF108_CF109_CF110_SOURCE_PROVEN"
+    },
+    "G2C_RESERVE_GATE_NOT_CAUSALLY_CLOSED": {
+      "status": "RETAINED",
+      "reason": "Reserve gate position in CF waterfall (CF108 gate ordering vs DSRA funding) is informational only. Gate does not causally block fcf_for_distribution in current implementation."
+    }
+  }
+}
