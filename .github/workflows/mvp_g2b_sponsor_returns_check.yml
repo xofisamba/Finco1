@@ -50,6 +50,15 @@ jobs:
           print('G2A contract clean — no sponsor return fields')
           "
 
+      - name: Portability — no agent-local absolute paths in G2B files
+        run: |
+          if grep -rn --include="*.py" "/home/user/Finco1\|/home/runner/work\|/Users/" \
+               financial_engine/sponsor_returns/ tests/test_mvp_g2b_sponsor_returns.py; then
+            echo "G2B_ABSOLUTE_PATH_FOUND: agent-local path detected in G2B files"
+            exit 1
+          fi
+          echo "No agent-local absolute paths found"
+
       - name: Governance — no target-fitting tokens in G2B
         run: |
           grep -rn "approved_delta\|expected_delta\|balancing_plug\|target_irr\|target_moic\|terminal_top_up\|period_correction" \

@@ -8,6 +8,9 @@ from __future__ import annotations
 
 import dataclasses
 from datetime import date
+from pathlib import Path
+
+_REPO_ROOT = Path(__file__).resolve().parents[1]
 
 import pytest
 
@@ -535,8 +538,7 @@ def test_g2a_contract_has_no_sponsor_return_fields():
 def test_no_project_identity_dispatch_in_g2b():
     """G2B model must not contain project-identity string dispatch."""
     import ast
-    import pathlib
-    g2b_model = pathlib.Path("/home/user/Finco1/financial_engine/sponsor_returns/model.py")
+    g2b_model = _REPO_ROOT / "financial_engine" / "sponsor_returns" / "model.py"
     source = g2b_model.read_text()
     tree = ast.parse(source)
     # Scan for Compare nodes that reference project names
@@ -552,8 +554,7 @@ def test_no_project_identity_dispatch_in_g2b():
 
 def test_no_target_fitting_in_g2b():
     """G2B model must not contain approved_delta, balancing_plug, or target-fitting."""
-    import pathlib
-    g2b_files = list(pathlib.Path("/home/user/Finco1/financial_engine/sponsor_returns").rglob("*.py"))
+    g2b_files = list((_REPO_ROOT / "financial_engine" / "sponsor_returns").rglob("*.py"))
     forbidden = ["approved_delta", "expected_delta", "balancing_plug", "target_irr",
                  "target_moic", "target_shl", "terminal_top_up", "period_correction"]
     for fpath in g2b_files:
