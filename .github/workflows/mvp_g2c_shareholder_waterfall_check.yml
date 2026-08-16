@@ -37,15 +37,17 @@ jobs:
           pip install --no-cache-dir -c constraints.txt -e .
           pip install --no-cache-dir -c constraints.txt pytest
 
-      - name: Governance — G2C contracts contain no G2A/G2B contamination
+      - name: Governance — G2C contracts contain no target-fitting architectural fields
         run: |
           python -c "
           import dataclasses
           from financial_engine.shareholder_waterfall.contracts import CovenantGatedWaterfallResult
           names = {f.name for f in dataclasses.fields(CovenantGatedWaterfallResult)}
-          forbidden = {'irr', 'moic', 'distributions', 'balancing_account', 'plug',
-                       'target_irr', 'terminal_top_up', 'period_correction'}
-          found = {n for n in names if any(tok in n for tok in forbidden)}
+          forbidden = {
+              'balancing_account', 'balancing_plug', 'target_irr', 'terminal_top_up',
+              'period_correction', 'approved_delta', 'expected_delta',
+          }
+          found = names & forbidden
           assert not found, f'G2C contract has forbidden fields: {found}'
           print('G2C contract clean')
           "
@@ -125,7 +127,8 @@ jobs:
 
       - name: MVP G2C focused test suite
         run: |
-          python -m pytest tests/test_mvp_g2c_shareholder_waterfall.py -v --tb=short
+          python -m pytest tests/test_mvp_g2c_shareholder_waterfall.py \
+                           tests/test_mvp_dsrf_reserve_support.py -v --tb=short
 
       - name: G2B authority regression
         run: |

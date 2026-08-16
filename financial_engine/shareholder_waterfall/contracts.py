@@ -1,22 +1,29 @@
 """G2C contracts — typed covenant-gated shareholder waterfall results.
 
-Source authority: Oborovo workbook (SHA 15a621c4...), Inputs!D223
+Source authority: extracted fixture (SHA 15a621c4...), Inputs!D223
   senior_lockup_dscr = 1.10 → generic distribution_lockup_dscr parameter.
 
-R-row mapping (Oborovo CF sheet, extracted in excel_oborovo_financial_truth.json):
+R-row mapping (CF sheet, from excel source extraction):
   R84  free_cash_flow_for_junior_keur  → signed_post_senior (pre-DSRA; see note)
-  R102 free_cash_flow_for_shl_keur     → post-SHL available for distributions
-  R99  free_cash_flow_for_dividends    → covenant-gated legal_equity_distribution_keur
+  R109 free_cash_flow_for_distribution → covenant-gated FCF, gate output
+  R112 free_cash_flow_for_shl_keur     → inherits R109 (CF112 = H109)
+  R116 free_cash_flow_for_dividends    → legal_equity_distribution_keur
 
-MVP LIMITATIONS:
-  R98 (distribution account balance / carryforward) is NOT in the Oborovo
-  extraction — covenant_locked_keur is tracked but NOT accumulated into a
-  releasing distribution account. If and when R98 is extracted and source-proven,
-  a G2C+ phase may add the accumulation/release layer.
+Waterfall ordering (source-proven):
+  1. signed_post_senior (R84)
+  2. DSCR covenant gate → fcf_for_distribution (R109)
+  3. SHL service from fcf_for_distribution (R112 = R109)
+  4. legal_equity_distribution = remainder (R116)
 
-  Post-senior cash is pre-DSRA. The clean engine explicitly marks
-  cash_after_senior_before_reserves_keur as pre-reserve (DSRA ordering
-  unresolved). G2C inherits this limitation.
+G2C_DISTRIBUTION_ACCOUNT_AUTHORITY_INCOMPLETE: R98 (distribution account
+balance / carryforward) is NOT in the extracted source fixture. Per-period
+locked cash is tracked but NOT accumulated into a releasing distribution
+account. If R98 is extracted in a future phase, the accumulation/release
+layer may be added.
+
+Post-senior cash is pre-DSRA. The clean engine explicitly marks
+cash_after_senior_before_reserves_keur as pre-reserve (DSRA ordering
+unresolved). G2C inherits this limitation.
 """
 from __future__ import annotations
 
@@ -31,7 +38,7 @@ from financial_engine.sponsor_returns.contracts import ReturnMetricStatus
 class DistributionGateStatus(Enum):
     """Per-period distribution gate evaluation result.
 
-    Source: Oborovo Inputs!D223 → generic lockup_dscr threshold.
+    Source: extracted fixture Inputs!D223 → generic lockup_dscr threshold.
     """
     OPEN = "open"
     LOCKED_DSCR_BELOW_LOCKUP = "locked_dscr_below_lockup"
@@ -54,18 +61,18 @@ class CovenantGatedWaterfallPeriod:
     distribution_lockup_dscr: float
     distribution_gate_status: DistributionGateStatus
 
-    # Cash waterfall (operating) — same logic as G2B
-    signed_post_senior_keur: float
-    signed_post_shl_keur: float
+    # Cash waterfall (operating) — source-proven ordering
+    signed_post_senior_keur: float          # R84: pre-gate junior FCF
+    dsrf_commitment_fee_keur: float         # DSRF fee deducted before gate (0 for CASH_DSRA/NONE)
+    fcf_for_distribution_keur: float        # R109: gate output (0 if locked)
+    covenant_locked_keur: float             # R84 - R109 when gate locks
 
-    # Actual SHL cash receipts (capped at available cash — same as G2B)
+    # Actual SHL cash receipts from fcf_for_distribution (R112 = R109)
     shl_cash_interest_receipt_keur: float
     shl_principal_receipt_keur: float
 
-    # Distribution audit trail
-    pre_gate_distribution_keur: float
+    # Equity distribution: residual after SHL service from fcf_for_distribution (R116)
     legal_equity_distribution_keur: float
-    covenant_locked_keur: float
     cash_shortfall_keur: float
 
     # Sponsor contributions (construction periods)
@@ -100,8 +107,12 @@ class CovenantGatedWaterfallResult:
     total_shl_cash_interest_received_keur: float
     total_shl_principal_received_keur: float
     total_legal_equity_distributions_keur: float
-    total_covenant_locked_keur: float
+    total_covenant_locked_keur: float       # sum of per-period gate-locked cash
     total_sponsor_receipts_keur: float
+    total_dsrf_commitment_fee_keur: float   # total DSRF fee (0 for CASH_DSRA/NONE)
+
+    # G2C_DISTRIBUTION_ACCOUNT_AUTHORITY_INCOMPLETE: R98 not in source extraction
+    distribution_account_status: str
 
     # Return metrics
     pure_equity_xirr: float | None

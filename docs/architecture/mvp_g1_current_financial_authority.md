@@ -142,8 +142,13 @@ else:
 SHL cash receipts (interest and principal) are NOT gated by the DSCR covenant.
 The covenant gate withholds only `legal_equity_distribution_keur`.
 
-Locked cash is tracked as `covenant_locked_keur` (no R98 distribution account
-accumulation in this MVP phase — R98 not in Oborovo source extraction).
+Locked cash is tracked as `covenant_locked_keur` per period (no R98 distribution
+account accumulation in this MVP phase):
+
+`G2C_DISTRIBUTION_ACCOUNT_AUTHORITY_INCOMPLETE`: R98 (distribution account balance /
+carryforward, CF!H108) is NOT in the extracted source fixture. Locked cash is tracked
+per-period but NOT accumulated into a releasing balance. If R98 is extracted in a
+future phase, the accumulation/release layer may be added then.
 
 ### Gate partition invariant
 
@@ -157,8 +162,18 @@ covenant_locked_keur + legal_equity_distribution_keur == pre_gate_distribution_k
 
 ```
 R84  free_cash_flow_for_junior_keur     → signed_post_senior (pre-DSRA; see limitation)
-R102 free_cash_flow_for_shl_keur        → available for SHL service
-R99  free_cash_flow_for_dividends_keur  → legal_equity_distribution_keur (gated)
+R109 free_cash_flow_for_distribution    → fcf_for_distribution (gate output)
+R112 free_cash_flow_for_shl_keur        → SHL service input (= R109, CF112=H109)
+R116 free_cash_flow_for_dividends_keur  → legal_equity_distribution_keur
+```
+
+### Waterfall ordering (source-proven)
+
+```
+1. signed_post_senior (R84) — pre-gate
+2. DSCR covenant gate → fcf_for_distribution (R109)
+3. SHL service drawn from fcf_for_distribution (R112 = R109)
+4. legal_equity_distribution = residual (R116)
 ```
 
 R98 (distribution account balance/carryforward) is NOT extracted from the
@@ -170,6 +185,42 @@ unresolved. G2C inherits this limitation.
 
 `DISTRIBUTE_ALL_POST_SHL_CASH` from G2B remains the default; G2C adds the
 DSCR covenant gate as an additional condition before distributions flow.
+
+## DSRF — Debt Service Reserve Facility canonical authority
+
+### DebtServiceReserveSupportMode
+
+Three typed modes; dispatch is via `FinancingParams.dsra_support_mode`.
+NEVER dispatch on project name, code, or workbook identity.
+
+| Mode | Meaning | Project Use at FC | Operating fee |
+|---|---|---|---|
+| `CASH_DSRA` | Cash-funded DSRA | `reserve_accounts_keur` (Project Use) | None |
+| `DSRF` | Standby facility | None (no cash use) | Commitment fee from COD |
+| `NONE` | Default | None | None |
+
+### DSRF commitment fee
+
+`fee_keur = dsrf_commitment_keur × dsrf_commitment_fee_rate_pa × period_fraction`
+
+Fee classification: FINANCING/DEBT-FACILITY cost. NOT operational OPEX.
+Visible per-period as `dsrf_commitment_fee_keur` on `CovenantGatedWaterfallPeriod`.
+Fee accrues from COD (construction periods: fee = 0).
+
+### Sources & Uses invariant
+
+For the same project inputs (same hard CAPEX, same `reserve_accounts_keur`):
+
+```
+Total Uses_CASH_DSRA - Total Uses_DSRF = funded reserve amount (= reserve_accounts_keur)
+```
+
+Hard CAPEX is identical between modes. The difference is solely the funded reserve use.
+
+### MVP limitations
+
+No DSRF draw or reimbursement mechanics are implemented. The DSRF is modelled as
+a pure commitment fee generator; draw events are out of scope.
 
 ## Current blocking ring
 

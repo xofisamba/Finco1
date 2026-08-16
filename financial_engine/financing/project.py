@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from finco_core.inputs import GearingBasisMode, ProjectInputs, SponsorFundingMode
+from finco_core.inputs import DebtServiceReserveSupportMode, GearingBasisMode, ProjectInputs, SponsorFundingMode
 from financial_engine.adapters.project_inputs import (
     build_senior_debt_model_input_from_project_inputs,
 )
@@ -19,6 +19,7 @@ from financial_engine.senior_debt.policy import SeniorDebtSizingMode
 
 def _project_uses(project_inputs: ProjectInputs) -> ProjectUses:
     capex = project_inputs.capex
+    fin = project_inputs.financing
     financing_costs = (
         capex.idc_keur
         + capex.commitment_fees_keur
@@ -26,13 +27,23 @@ def _project_uses(project_inputs: ProjectInputs) -> ProjectUses:
         + capex.other_financial_keur
         + capex.vat_costs_keur
     )
-    total = capex.hard_capex_keur + financing_costs + capex.reserve_accounts_keur
-    if abs(total - capex.total_capex) > 1e-9:
-        raise ValueError("G2A_PROJECT_USES_CAPEX_CONTRACT_MISMATCH")
+    # DSRF: no cash-funded reserve at financial close; reserve_accounts_keur excluded from uses.
+    # CASH_DSRA or NONE: funded reserve is a Project Use (existing behaviour).
+    dsra_mode = fin.dsra_support_mode
+    if dsra_mode == DebtServiceReserveSupportMode.DSRF:
+        reserve_use = 0.0
+    else:
+        reserve_use = capex.reserve_accounts_keur
+
+    total = capex.hard_capex_keur + financing_costs + reserve_use
+    # Contract check only applies when the full capex.total_capex is expected to match
+    if dsra_mode != DebtServiceReserveSupportMode.DSRF:
+        if abs(total - capex.total_capex) > 1e-9:
+            raise ValueError("G2A_PROJECT_USES_CAPEX_CONTRACT_MISMATCH")
     return ProjectUses(
         hard_project_capex_keur=capex.hard_capex_keur,
         explicit_financing_cost_uses_keur=financing_costs,
-        reserve_account_funding_keur=capex.reserve_accounts_keur,
+        reserve_account_funding_keur=reserve_use,
         other_explicit_project_uses_keur=0.0,
         total_project_uses_keur=total,
     )

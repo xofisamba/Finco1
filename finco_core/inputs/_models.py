@@ -64,6 +64,32 @@ class GearingBasisMode(str, Enum):
 
     TOTAL_PROJECT_USES = "total_project_uses"
 
+
+class DebtServiceReserveSupportMode(str, Enum):
+    """Typed project-level policy for debt-service reserve support.
+
+    CASH_DSRA: A cash-funded Debt Service Reserve Account is established at
+        financial close. The funded amount is a Project Use (increases
+        total_project_uses_keur). The account is funded from the financing
+        stack alongside other uses.
+
+    DSRF: A Debt Service Reserve Facility (standby letter of credit or
+        guarantee) is used instead of a cash-funded DSRA. There is NO initial
+        cash Project Use at financial close. A periodic commitment fee is
+        charged on the undrawn DSRF facility from COD. The commitment fee
+        is a debt-facility cost (financing cost), NOT operational OPEX.
+
+    NONE: No debt service reserve support. Reserve-related project uses and
+        fees are zero. This is the default — all G2A fingerprints are
+        preserved unchanged.
+
+    Dispatch rule: Do NOT dispatch on project name, code, or workbook identity.
+    Policy is set via typed project-owned FinancingParams.dsra_support_mode.
+    """
+    CASH_DSRA = "cash_dsra"
+    DSRF = "dsrf"
+    NONE = "none"
+
 class DebtSizingMode(Enum):
     """Senior debt sizing calibration modes.
 
@@ -695,6 +721,15 @@ class FinancingParams:
     fixed_ds_keur: float = 0.0
 
     dsra_months: int = 6
+
+    # Debt service reserve support policy — typed, not inferred from project identity.
+    # Default NONE preserves all G2A fingerprints unchanged.
+    dsra_support_mode: DebtServiceReserveSupportMode = DebtServiceReserveSupportMode.NONE
+    # DSRF commitment fee parameters (only used when dsra_support_mode = DSRF).
+    # dsrf_commitment_keur: undrawn facility size (kEUR); commitment fee accrues from COD.
+    # dsrf_commitment_fee_rate_pa: annual commitment fee rate (e.g. 0.01 = 1% p.a.).
+    dsrf_commitment_keur: float = 0.0
+    dsrf_commitment_fee_rate_pa: float = 0.0
 
     equity_irr_method: str = "equity_only"
 

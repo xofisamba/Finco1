@@ -1,30 +1,32 @@
 """MVP G2C — Covenant-Gated Shareholder Waterfall model.
 
 Extends G2B with a DSCR distribution lockup gate sourced from
-Oborovo workbook Inputs!D223 (senior_lockup_dscr = 1.10).
+extracted fixture Inputs!D223 (senior_lockup_dscr = 1.10).
 
-Gate logic (per operating period):
-  1. Compute pre_gate_distribution = max(0, signed_post_shl)
-     (identical to G2B DISTRIBUTE_ALL_POST_SHL_CASH)
-  2. Evaluate DSCR gate: base_dscr vs distribution_lockup_dscr
-  3. If gate locked: legal_equity_distribution = 0
-                     covenant_locked = pre_gate_distribution
-  4. If gate open:   legal_equity_distribution = pre_gate_distribution
-                     covenant_locked = 0
+Source-proven waterfall ordering:
+  1. signed_post_senior = R84 (pre-gate junior FCF from clean engine)
+  2. DSCR covenant gate applied → fcf_for_distribution = R109
+       if gate LOCKED: fcf_for_distribution = 0, covenant_locked = R84
+       if gate OPEN:   fcf_for_distribution = R84, covenant_locked = 0
+  3. SHL cash service drawn from fcf_for_distribution (R112 = R109)
+       actual_shl_int, actual_shl_prin = allocate(fcf_for_distribution, ...)
+  4. legal_equity_distribution = max(0, fcf_for_distribution - SHL_service) = R116
 
-SHL cash receipts are NOT gated — actual SHL interest and principal are
-paid regardless of DSCR lockup (gate only blocks equity distributions).
+G2C_DISTRIBUTION_ACCOUNT_AUTHORITY_INCOMPLETE: R98 (distribution account
+balance / carryforward) is NOT in the extracted source fixture. Locked cash
+is tracked per-period but NOT accumulated into a releasing balance.
 
 Source map:
-  R84 → post_senior_cash.cash_after_senior_before_reserves_keur (signed, pre-DSRA)
-  R99 → legal_equity_distribution_keur (0 when gated)
-  R102 → shl receipts (interest + principal, then residual = R99)
+  R84  → signed_post_senior (pre-DSRA, pre-gate)
+  R109 → fcf_for_distribution (gate output)
+  R112 → SHL service input (= R109 per source formula CF112=H109)
+  R116 → legal_equity_distribution_keur
 """
 from __future__ import annotations
 
 from datetime import date
 
-from finco_core.inputs import ProjectInputs, SponsorFundingMode
+from finco_core.inputs import DebtServiceReserveSupportMode, ProjectInputs, SponsorFundingMode
 
 from finco_core.sponsor.xirr import robust_xirr
 from financial_engine.financing.contracts import (
@@ -34,12 +36,15 @@ from financial_engine.financing.contracts import (
 from financial_engine.financing.project import run_project_financing_model
 from financial_engine.results import ProjectModelResult
 from financial_engine.sponsor_returns.contracts import ReturnMetricStatus
+from financial_engine.financing.dsrf import compute_dsrf_fee_schedule
 from financial_engine.sponsor_returns.model import _allocate_actual_shl_cash_receipts
 from financial_engine.shareholder_waterfall.contracts import (
     CovenantGatedWaterfallPeriod,
     CovenantGatedWaterfallResult,
     DistributionGateStatus,
 )
+
+_G2C_DA_STATUS = "G2C_DISTRIBUTION_ACCOUNT_AUTHORITY_INCOMPLETE"
 
 
 def _evaluate_distribution_gate(
@@ -49,7 +54,7 @@ def _evaluate_distribution_gate(
 ) -> DistributionGateStatus:
     """Evaluate the DSCR covenant distribution gate.
 
-    Source: Oborovo Inputs!D223 → generic distribution_lockup_dscr.
+    Source: extracted fixture Inputs!D223 → generic distribution_lockup_dscr.
     Gate: if base_dscr < distribution_lockup_dscr → locked.
     Periods with no Senior DS have no DSCR → gate open (no debt to covenant).
     """
@@ -105,9 +110,13 @@ def run_project_shareholder_waterfall_model(
     """Compute G2C covenant-gated shareholder waterfall from G2A financing results.
 
     Adds DSCR distribution lockup gate (project_inputs.financing.lockup_dscr) on top
-    of the G2B SHL-gated distribution mechanics. SHL cash receipts are NOT covenant-gated.
+    of the G2B SHL-gated distribution mechanics.
 
-    Source authority: Oborovo Inputs!D223 → lockup_dscr = 1.10 (generic parameter).
+    Source-proven ordering: gate is UPSTREAM of SHL service. The gate filters
+    signed_post_senior into fcf_for_distribution; SHL receipts and equity
+    distributions are drawn from fcf_for_distribution, not from raw post-Senior cash.
+
+    Source authority: extracted fixture Inputs!D223 → lockup_dscr = 1.10 (generic parameter).
     """
     financing: ProjectFinancingResult = run_project_financing_model(
         project_inputs,
@@ -161,6 +170,23 @@ def run_project_shareholder_waterfall_model(
     period_date_by_idx: dict[int, date] = {
         p.period_index: p.period_end for p in model_result.periods
     }
+    period_start_by_idx: dict[int, date] = {
+        p.period_index: p.period_start for p in model_result.periods
+    }
+
+    # ── DSRF commitment fee schedule ──────────────────────────────────────────
+    dsra_mode = fin.dsra_support_mode
+    dsrf_fee_by_idx: dict[int, float] = {}
+    if dsra_mode == DebtServiceReserveSupportMode.DSRF and fin.dsrf_commitment_keur > 0:
+        op_indices = [p.period_index for p in model_result.periods if p.is_operation]
+        op_starts = [period_start_by_idx[i] for i in op_indices]
+        op_ends = [period_date_by_idx[i] for i in op_indices]
+        dsrf_schedule = compute_dsrf_fee_schedule(
+            op_indices, op_starts, op_ends,
+            fin.dsrf_commitment_keur,
+            fin.dsrf_commitment_fee_rate_pa,
+        )
+        dsrf_fee_by_idx = dict(zip(dsrf_schedule.period_indices, dsrf_schedule.dsrf_commitment_fee_keur))
 
     # ── Build per-period records ───────────────────────────────────────────────
     waterfall_periods: list[CovenantGatedWaterfallPeriod] = []
@@ -187,12 +213,12 @@ def run_project_shareholder_waterfall_model(
             distribution_lockup_dscr=distribution_lockup_dscr,
             distribution_gate_status=DistributionGateStatus.CONSTRUCTION,
             signed_post_senior_keur=0.0,
-            signed_post_shl_keur=0.0,
+            dsrf_commitment_fee_keur=0.0,
+            fcf_for_distribution_keur=0.0,
+            covenant_locked_keur=0.0,
             shl_cash_interest_receipt_keur=0.0,
             shl_principal_receipt_keur=0.0,
-            pre_gate_distribution_keur=0.0,
             legal_equity_distribution_keur=0.0,
-            covenant_locked_keur=0.0,
             cash_shortfall_keur=0.0,
             share_capital_contribution_keur=share_cap,
             share_premium_contribution_keur=share_prem,
@@ -217,38 +243,52 @@ def run_project_shareholder_waterfall_model(
             )
         signed_post_senior = signed_post_senior_by_idx[idx]
 
+        # ── DSRF commitment fee (financing cost, deducted before gate) ────────
+        dsrf_fee = dsrf_fee_by_idx.get(idx, 0.0)
+        # Net post-senior after DSRF fee (cannot go below 0 for gate input)
+        post_senior_after_dsrf = signed_post_senior - dsrf_fee
+
+        # ── Step 1: DSCR covenant gate (upstream of SHL service) ──────────────
+        dscr_val = base_dscr_by_idx.get(idx)
+        has_senior_ds = senior_ds_nonzero_by_idx.get(idx, False)
+        gate_status = _evaluate_distribution_gate(dscr_val, distribution_lockup_dscr, has_senior_ds)
+
+        gate_locked = gate_status == DistributionGateStatus.LOCKED_DSCR_BELOW_LOCKUP
+
+        # Gate output: fcf_for_distribution (R109) — 0 when locked
+        pre_gate = max(0.0, post_senior_after_dsrf)
+        if gate_locked:
+            fcf_for_distribution = 0.0
+            covenant_locked = pre_gate
+        else:
+            fcf_for_distribution = pre_gate
+            covenant_locked = 0.0
+
+        # ── Step 2: SHL cash service from fcf_for_distribution (R112 = R109) ──
         if shl is not None:
             if idx not in shl_debt_service_by_idx:
                 raise ValueError(
                     f"G2C: SHL schedule exists but operating period {idx} absent "
                     "from shl_debt_service; SHL engine output is incomplete"
                 )
-            scheduled_shl_service_due = shl_debt_service_by_idx[idx]
             scheduled_cash_interest = shl_cash_interest_by_idx.get(idx, 0.0)
             scheduled_principal_due = shl_principal_by_idx.get(idx, 0.0)
+            # SHL draws from fcf_for_distribution (source: R112 = R109)
             actual_shl_cash_int, actual_shl_principal = _allocate_actual_shl_cash_receipts(
-                signed_post_senior,
+                fcf_for_distribution,
                 scheduled_cash_interest,
                 scheduled_principal_due,
             )
         else:
-            scheduled_shl_service_due = 0.0
             actual_shl_cash_int = 0.0
             actual_shl_principal = 0.0
 
-        # Contractual signed_post_shl drives distribution and shortfall
-        signed_post_shl = signed_post_senior - scheduled_shl_service_due
-        pre_gate_distribution = max(0.0, signed_post_shl)
-        cash_shortfall = max(0.0, -signed_post_shl)
+        # ── Step 3: Equity distribution = fcf_for_distribution residual (R116) ─
+        shl_service_actual = actual_shl_cash_int + actual_shl_principal
+        distribution = max(0.0, fcf_for_distribution - shl_service_actual)
 
-        # DSCR covenant gate
-        dscr_val = base_dscr_by_idx.get(idx)
-        has_senior_ds = senior_ds_nonzero_by_idx.get(idx, False)
-        gate_status = _evaluate_distribution_gate(dscr_val, distribution_lockup_dscr, has_senior_ds)
-
-        gate_locked = gate_status == DistributionGateStatus.LOCKED_DSCR_BELOW_LOCKUP
-        distribution = 0.0 if gate_locked else pre_gate_distribution
-        covenant_locked = pre_gate_distribution if gate_locked else 0.0
+        # Cash shortfall: post-senior after DSRF fee negative
+        cash_shortfall = max(0.0, -post_senior_after_dsrf)
 
         pure_equity_net = distribution
         total_sponsor_net = pure_equity_net + actual_shl_cash_int + actual_shl_principal
@@ -261,12 +301,12 @@ def run_project_shareholder_waterfall_model(
             distribution_lockup_dscr=distribution_lockup_dscr,
             distribution_gate_status=gate_status,
             signed_post_senior_keur=signed_post_senior,
-            signed_post_shl_keur=signed_post_shl,
+            dsrf_commitment_fee_keur=dsrf_fee,
+            fcf_for_distribution_keur=fcf_for_distribution,
+            covenant_locked_keur=covenant_locked,
             shl_cash_interest_receipt_keur=actual_shl_cash_int,
             shl_principal_receipt_keur=actual_shl_principal,
-            pre_gate_distribution_keur=pre_gate_distribution,
             legal_equity_distribution_keur=distribution,
-            covenant_locked_keur=covenant_locked,
             cash_shortfall_keur=cash_shortfall,
             share_capital_contribution_keur=0.0,
             share_premium_contribution_keur=0.0,
@@ -291,6 +331,7 @@ def run_project_shareholder_waterfall_model(
     total_distributions = sum(p.legal_equity_distribution_keur for p in waterfall_periods)
     total_covenant_locked = sum(p.covenant_locked_keur for p in waterfall_periods)
     total_sponsor_receipts = total_distributions + total_shl_int_recd + total_shl_prin_recd
+    total_dsrf_fee = sum(p.dsrf_commitment_fee_keur for p in waterfall_periods)
 
     # Gate summary
     operating_with_ds = [
@@ -356,4 +397,6 @@ def run_project_shareholder_waterfall_model(
         total_sponsor_moic_status=ts_moic_status,
         periods_locked_by_dscr=periods_locked,
         total_periods_with_senior_ds=periods_with_ds,
+        total_dsrf_commitment_fee_keur=total_dsrf_fee,
+        distribution_account_status=_G2C_DA_STATUS,
     )
