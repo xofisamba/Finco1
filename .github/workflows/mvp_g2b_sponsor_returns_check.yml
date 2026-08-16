@@ -1,0 +1,101 @@
+name: MVP G2B - Simple Sponsor Returns
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  g2b-sponsor-returns:
+    name: mvp-g2b-sponsor-returns
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout exact PR head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Assert exact-head checkout
+        run: |
+          EXPECTED="${{ github.event.pull_request.head.sha || github.sha }}"
+          ACTUAL="$(git rev-parse HEAD)"
+          if [ "$EXPECTED" != "$ACTUAL" ]; then
+            echo "G2B_HEAD_SHA_MISMATCH: expected=$EXPECTED actual=$ACTUAL"
+            exit 1
+          fi
+          echo "Checked out $ACTUAL"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -e ".[dev]" --quiet
+
+      - name: Governance — G2B contracts contain no sponsor returns in G2A
+        run: |
+          python -c "
+          import dataclasses
+          from financial_engine.financing.contracts import ProjectFinancingResult
+          names = {f.name for f in dataclasses.fields(ProjectFinancingResult)}
+          forbidden = {'irr', 'moic', 'distributions', 'balancing_account', 'plug',
+                       'pure_equity_xirr', 'total_sponsor_xirr'}
+          found = names & forbidden
+          assert not found, f'G2A contract contaminated with sponsor return fields: {found}'
+          print('G2A contract clean — no sponsor return fields')
+          "
+
+      - name: Governance — no target-fitting tokens in G2B
+        run: |
+          grep -rn "approved_delta\|expected_delta\|balancing_plug\|target_irr\|target_moic\|terminal_top_up\|period_correction" \
+            financial_engine/sponsor_returns/ \
+            && echo "FORBIDDEN_TOKEN_FOUND" && exit 1 \
+            || echo "No target-fitting tokens found"
+
+      - name: Governance — no project-identity dispatch in G2B
+        run: |
+          python -c "
+          import ast, pathlib
+          forbidden = {'oborovo', 'solar', 'wind', 'tuho'}
+          for fpath in pathlib.Path('financial_engine/sponsor_returns').rglob('*.py'):
+              tree = ast.parse(fpath.read_text())
+              for node in ast.walk(tree):
+                  if isinstance(node, ast.Constant) and isinstance(node.value, str):
+                      if node.value.lower() in forbidden:
+                          raise AssertionError(f'Project-identity dispatch in {fpath}: {node.value!r}')
+          print('No project-identity dispatch found')
+          "
+
+      - name: G2A upstream invariants preserved
+        run: |
+          python -c "
+          from app.project_factories import create_default_solar_project, create_default_wind_project
+          from financial_engine.sponsor_returns import run_project_sponsor_returns_model
+          solar = run_project_sponsor_returns_model(create_default_solar_project())
+          wind  = run_project_sponsor_returns_model(create_default_wind_project())
+          fin_s = solar.financing_result
+          fin_w = wind.financing_result
+          assert abs(fin_s.project_uses.total_project_uses_keur - 33000.0) < 1e-6
+          assert abs(fin_s.final_senior_commitment_keur - 24750.0) < 1e-6
+          assert abs(fin_s.derived_shl_cash_principal_keur - 7750.0) < 1e-6
+          assert abs(fin_w.project_uses.total_project_uses_keur - 43000.0) < 1e-6
+          assert abs(fin_w.final_senior_commitment_keur - 32250.0) < 1e-6
+          assert abs(fin_w.derived_shl_cash_principal_keur - 10250.0) < 1e-6
+          print('G2A fingerprints preserved')
+          "
+
+      - name: MVP G2B focused test suite
+        run: |
+          python -m pytest tests/test_mvp_g2b_sponsor_returns.py -v --tb=short
+
+      - name: G2A authority regression
+        run: |
+          python -m pytest tests/test_mvp_g2a_financing_stack.py -v --tb=short
+
+      - name: G0 and G1 authority regression
+        run: |
+          python -m pytest tests/test_mvp_g0_generic_clean_engine_enablement.py \
+                           tests/test_mvp_g1_workflow_authority.py -v --tb=short
