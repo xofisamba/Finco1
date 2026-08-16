@@ -68,12 +68,22 @@ class CovenantGatedWaterfallPeriod:
     covenant_locked_keur: float             # R84 - R109 when gate locks
 
     # Causal SHL balance roll-forward (from compute_shl_waterfall_period)
-    shl_opening_balance_keur: float     # opening SHL balance this period
-    shl_gross_interest_keur: float      # gross accrued SHL interest (opening × rate × dcf)
-    shl_cash_interest_receipt_keur: float  # cash interest paid from fcf_for_distribution
-    shl_pik_keur: float                 # unpaid gross interest → PIK capitalised
-    shl_principal_receipt_keur: float   # principal swept from fcf_for_distribution residual
-    shl_closing_balance_keur: float     # closing SHL balance = opening + PIK - principal
+    shl_opening_balance_keur: float          # opening SHL balance this period
+    shl_gross_interest_keur: float           # gross accrued SHL interest (opening × rate × dcf)
+    shl_cash_interest_receipt_keur: float    # cash interest paid from fcf_for_distribution
+    shl_pik_keur: float                      # unpaid gross interest → PIK capitalised
+
+    # Contractual vs actual principal (BULLET: contractual balloon may exceed cash)
+    contractual_shl_principal_due_keur: float   # scheduler balloon or sweep amount due
+    actual_shl_principal_paid_keur: float        # actual cash paid ≤ contractual_due
+    unpaid_shl_principal_keur: float             # contractual - actual (0 unless BULLET shortfall)
+
+    # Actual causal closing balance: opening + PIK - actual_paid (NOT contractual)
+    actual_shl_closing_balance_keur: float
+
+    # Legacy alias kept for backward compat; equals actual_shl_closing_balance_keur
+    shl_principal_receipt_keur: float       # = actual_shl_principal_paid_keur
+    shl_closing_balance_keur: float         # = actual_shl_closing_balance_keur
 
     # Equity distribution: residual after SHL service from fcf_for_distribution (R116)
     legal_equity_distribution_keur: float

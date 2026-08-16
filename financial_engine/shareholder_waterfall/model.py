@@ -61,6 +61,7 @@ from financial_engine.shareholder_waterfall.contracts import (
     CovenantGatedWaterfallResult,
     DistributionGateStatus,
 )
+from financial_engine.sponsor_returns.contracts import ReturnMetricStatus
 from financial_engine.sponsor_returns.model import compute_gated_sponsor_return_metrics
 
 _G2C_DA_STATUS = "G2C_DISTRIBUTION_ACCOUNT_AUTHORITY_INCOMPLETE"
@@ -319,6 +320,10 @@ def run_project_shareholder_waterfall_model(
             shl_gross_interest_keur=0.0,
             shl_cash_interest_receipt_keur=0.0,
             shl_pik_keur=0.0,
+            contractual_shl_principal_due_keur=0.0,
+            actual_shl_principal_paid_keur=0.0,
+            unpaid_shl_principal_keur=0.0,
+            actual_shl_closing_balance_keur=0.0,
             shl_principal_receipt_keur=0.0,
             shl_closing_balance_keur=0.0,
             legal_equity_distribution_keur=0.0,
@@ -333,6 +338,10 @@ def run_project_shareholder_waterfall_model(
         ))
 
     # --- Operating periods ---
+    # Track actual SHL closing balance to carry forward (overrides contractual scheduler
+    # when BULLET leaves unpaid principal at maturity).
+    actual_shl_carry: float | None = None  # None until first operating period with SHL
+
     for period in model_result.periods:
         if not period.is_operation:
             continue
@@ -341,11 +350,13 @@ def run_project_shareholder_waterfall_model(
 
         gate_status, fcf_for_distribution, covenant_locked, dsrf_fee, signed_post_senior, cash_shortfall = gate_info_by_idx[idx]
 
-        # SHL values from project-owned gated schedule.
-        # For BULLET mode at maturity, shl_principal_keur = full outstanding (contractual
-        # balloon), which may exceed a single period's fcf_for_distribution. Cap actual
-        # cash receipts at available cash so sponsor return accounting is correct.
-        shl_opening = shl_opening_by_idx.get(idx, 0.0)
+        # SHL opening: use actual carry-forward if available (causal), else contractual.
+        # For BULLET at maturity where balloon > cash, actual carry-forward will be > 0
+        # while contractual scheduler shows 0 in subsequent periods.
+        if actual_shl_carry is not None:
+            shl_opening = actual_shl_carry
+        else:
+            shl_opening = shl_opening_by_idx.get(idx, 0.0)
         shl_gross = shl_gross_by_idx.get(idx, 0.0)
         actual_shl_cash_int = shl_cash_int_by_idx.get(idx, 0.0)
         shl_pik = shl_pik_by_idx.get(idx, 0.0)
@@ -354,7 +365,13 @@ def run_project_shareholder_waterfall_model(
             contractual_shl_principal,
             max(0.0, fcf_for_distribution - actual_shl_cash_int),
         )
-        shl_closing = shl_closing_by_idx.get(idx, 0.0)
+        unpaid_shl_principal = contractual_shl_principal - actual_shl_principal
+        # Actual causal closing balance — must reflect actual cash paid, not contractual.
+        # For BULLET at maturity where balloon > cash: opening + PIK - actual_paid > 0.
+        actual_shl_closing = max(0.0, shl_opening + shl_pik - actual_shl_principal)
+        # Carry forward actual closing as next period's opening (causal override of scheduler).
+        if has_shl:
+            actual_shl_carry = actual_shl_closing
 
         # Equity distribution = fcf_for_distribution residual (R116)
         shl_service_actual = actual_shl_cash_int + actual_shl_principal
@@ -378,8 +395,12 @@ def run_project_shareholder_waterfall_model(
             shl_gross_interest_keur=shl_gross,
             shl_cash_interest_receipt_keur=actual_shl_cash_int,
             shl_pik_keur=shl_pik,
+            contractual_shl_principal_due_keur=contractual_shl_principal,
+            actual_shl_principal_paid_keur=actual_shl_principal,
+            unpaid_shl_principal_keur=unpaid_shl_principal,
+            actual_shl_closing_balance_keur=actual_shl_closing,
             shl_principal_receipt_keur=actual_shl_principal,
-            shl_closing_balance_keur=shl_closing,
+            shl_closing_balance_keur=actual_shl_closing,
             legal_equity_distribution_keur=distribution,
             cash_shortfall_keur=cash_shortfall,
             share_capital_contribution_keur=0.0,
@@ -437,6 +458,19 @@ def run_project_shareholder_waterfall_model(
         total_legal_equity_contributed_keur=total_le,
         total_sponsor_contributed_keur=total_sponsor_contrib,
     )
+
+    # When deductible SHL feedback is not closed, metrics are unreliable — fail closed.
+    # FULLY_NON_DEDUCTIBLE (Oborovo) sets deductible_feedback_active=False → unaffected.
+    if deductible_feedback_active:
+        _fb = ReturnMetricStatus.UPSTREAM_FINANCIAL_FEEDBACK_NOT_CLOSED
+        pe_xirr = None
+        pe_xirr_status = _fb
+        pe_moic = None
+        pe_moic_status = _fb
+        ts_xirr = None
+        ts_xirr_status = _fb
+        ts_moic = None
+        ts_moic_status = _fb
 
     return CovenantGatedWaterfallResult(
         financing_result=financing,

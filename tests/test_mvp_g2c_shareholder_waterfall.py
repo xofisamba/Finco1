@@ -600,6 +600,103 @@ def test_gate_fail_pik_uses_production_scheduler():
         )
 
 
+# ── BULLET contractual vs actual principal (regression) ──────────────────────
+
+def test_bullet_maturity_contractual_exceeds_actual(solar_result):
+    """BULLET regression: default Solar maturity period has balloon > available cash.
+
+    Proves:
+      contractual_shl_principal_due > actual_shl_principal_paid
+      actual = max(0, fcf_for_distribution - cash_interest)
+      unpaid = contractual - actual > 0
+      actual_shl_closing_balance > 0 (liability not extinguished)
+
+    This test would have FAILED on cc5cc4f where shl_closing_balance_keur was taken
+    from the contractual scheduler (= 0) instead of the actual roll-forward.
+    """
+    op = [p for p in solar_result.waterfall_periods if not p.is_construction]
+    # Solar BULLET maturity is P29 — the only period with contractual principal due.
+    mat = next(p for p in op if p.contractual_shl_principal_due_keur > 0.0)
+
+    expected_actual = max(
+        0.0,
+        mat.fcf_for_distribution_keur - mat.shl_cash_interest_receipt_keur,
+    )
+    assert mat.contractual_shl_principal_due_keur > mat.actual_shl_principal_paid_keur, (
+        "BULLET balloon must exceed available cash in this case"
+    )
+    assert mat.actual_shl_principal_paid_keur == pytest.approx(expected_actual, abs=1e-6), (
+        "actual paid must equal max(0, fcf - cash_interest)"
+    )
+    assert mat.unpaid_shl_principal_keur == pytest.approx(
+        mat.contractual_shl_principal_due_keur - mat.actual_shl_principal_paid_keur, abs=1e-6
+    )
+    assert mat.actual_shl_closing_balance_keur > 0.0, (
+        "unpaid principal must remain as liability — not extinguished"
+    )
+    # Legacy alias must equal causal fields
+    assert mat.shl_principal_receipt_keur == pytest.approx(mat.actual_shl_principal_paid_keur, abs=1e-9)
+    assert mat.shl_closing_balance_keur == pytest.approx(mat.actual_shl_closing_balance_keur, abs=1e-9)
+
+
+def test_bullet_maturity_unpaid_carries_forward(solar_result):
+    """Unpaid BULLET principal at maturity must carry into subsequent period's opening balance."""
+    op = [p for p in solar_result.waterfall_periods if not p.is_construction]
+    sorted_op = sorted(op, key=lambda p: p.period_index)
+    mat_idx = next(i for i, p in enumerate(sorted_op) if p.contractual_shl_principal_due_keur > 0.0)
+    if mat_idx + 1 < len(sorted_op):
+        mat_p = sorted_op[mat_idx]
+        next_p = sorted_op[mat_idx + 1]
+        assert next_p.shl_opening_balance_keur == pytest.approx(
+            mat_p.actual_shl_closing_balance_keur, abs=1e-6
+        ), (
+            f"P{next_p.period_index} opening {next_p.shl_opening_balance_keur} != "
+            f"P{mat_p.period_index} actual closing {mat_p.actual_shl_closing_balance_keur}"
+        )
+
+
+def test_deductible_feedback_fails_closed_return_metrics():
+    """When SHL is deductible and gate locks, return metrics must be None with
+    UPSTREAM_FINANCIAL_FEEDBACK_NOT_CLOSED status — not seemingly valid IRRs."""
+    from financial_engine.sponsor_returns.contracts import ReturnMetricStatus
+    solar = create_default_solar_project()
+    locked = dataclasses.replace(
+        solar,
+        financing=dataclasses.replace(
+            solar.financing,
+            lockup_dscr=9.99,
+            sponsor_funding_mode=SponsorFundingMode.SHARE_CAPITAL_THEN_SHL,
+        ),
+    )
+    result = run_project_shareholder_waterfall_model(locked)
+    assert result.deductible_shl_covenant_feedback_status == (
+        "G2C_DEDUCTIBLE_SHL_COVENANT_FEEDBACK_NOT_YET_CLOSED"
+    )
+    expected_status = ReturnMetricStatus.UPSTREAM_FINANCIAL_FEEDBACK_NOT_CLOSED
+    assert result.pure_equity_xirr is None, "IRR must be None when feedback not closed"
+    assert result.pure_equity_xirr_status == expected_status
+    assert result.pure_equity_moic is None
+    assert result.pure_equity_moic_status == expected_status
+    assert result.total_sponsor_xirr is None
+    assert result.total_sponsor_xirr_status == expected_status
+    assert result.total_sponsor_moic is None
+    assert result.total_sponsor_moic_status == expected_status
+
+
+def test_oborovo_non_deductible_returns_not_blocked(oborovo_g2c_result):
+    """FULLY_NON_DEDUCTIBLE SHL (Oborovo) must produce valid returns even when gate locks."""
+    from financial_engine.sponsor_returns.contracts import ReturnMetricStatus
+    # Oborovo uses lockup_dscr=0.5 so gate likely opens; verify returns are not blocked
+    assert oborovo_g2c_result.deductible_shl_covenant_feedback_status is None
+    # Returns must not be UPSTREAM_FINANCIAL_FEEDBACK_NOT_CLOSED
+    assert oborovo_g2c_result.pure_equity_xirr_status != (
+        ReturnMetricStatus.UPSTREAM_FINANCIAL_FEEDBACK_NOT_CLOSED
+    )
+    assert oborovo_g2c_result.total_sponsor_xirr_status != (
+        ReturnMetricStatus.UPSTREAM_FINANCIAL_FEEDBACK_NOT_CLOSED
+    )
+
+
 # ── Governance: no target-fitting tokens in G2C module ───────────────────────
 
 def test_no_target_fitting_tokens_in_g2c():
