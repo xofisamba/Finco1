@@ -115,20 +115,77 @@ monthly funding periods, not an Excel source-truth draw axis.
 Operating cashflow dates: `period_end` from the clean engine operating
 period grid.
 
+## G2C Covenant-Gated Shareholder Waterfall canonical authority
+
+### Distribution lockup gate
+
+Source: Oborovo workbook (SHA 15a621c4...), Inputs!D223: `senior_lockup_dscr = 1.10`.
+Generic parameter: `distribution_lockup_dscr` from `FinancingParams.lockup_dscr`.
+Distinct from the debt-sizing `target_dscr` (Inputs!D195 ≈ 1.20).
+
+Gate logic (per operating period):
+
+```
+if base_dscr is None or senior_ds == 0:
+    gate = DSCR_UNAVAILABLE_GATE_OPEN   # no debt → no lockup
+elif base_dscr < distribution_lockup_dscr:
+    gate = LOCKED_DSCR_BELOW_LOCKUP     # covenant lockup — distribution = 0
+else:
+    gate = OPEN
+```
+
+`base_dscr` = Base CFADS / Senior debt service, from the clean engine
+(`SeniorDebtSchedules.base_dscr`).
+
+### Distribution gate applies to equity only
+
+SHL cash receipts (interest and principal) are NOT gated by the DSCR covenant.
+The covenant gate withholds only `legal_equity_distribution_keur`.
+
+Locked cash is tracked as `covenant_locked_keur` (no R98 distribution account
+accumulation in this MVP phase — R98 not in Oborovo source extraction).
+
+### Gate partition invariant
+
+Per operating period:
+
+```
+covenant_locked_keur + legal_equity_distribution_keur == pre_gate_distribution_keur
+```
+
+### R-row source map
+
+```
+R84  free_cash_flow_for_junior_keur     → signed_post_senior (pre-DSRA; see limitation)
+R102 free_cash_flow_for_shl_keur        → available for SHL service
+R99  free_cash_flow_for_dividends_keur  → legal_equity_distribution_keur (gated)
+```
+
+R98 (distribution account balance/carryforward) is NOT extracted from the
+Oborovo workbook and is not implemented in this MVP phase.
+
+Post-senior cash is pre-DSRA: the clean engine marks
+`cash_after_senior_before_reserves_keur` as pre-reserve; DSRA ordering is
+unresolved. G2C inherits this limitation.
+
+`DISTRIBUTE_ALL_POST_SHL_CASH` from G2B remains the default; G2C adds the
+DSCR covenant gate as an additional condition before distributions flow.
+
 ## Current blocking ring
 
-1. MVP G2B Simple Sponsor Returns
-2. MVP G2A Financing Stack and Derived SHL
-3. MVP G1 Governance & Methodology Lock
-4. MVP G0 Generic Clean Engine
-5. C3B3D2B5 SHL Fixed-Point Integration
-6. C3B3D2B6 Base/Post-Senior Cash
-7. C3B3D2B7 Bank/Senior Source Parity
-8. C3B3D2B8 Base/Senior/SHL Closure
-9. C3B1 source-truth evidence
-10. C3B3A clean Senior contract
-11. CI product smoke/persistence and current semantic core checks
-12. Parity Guardrails semantic outputs, immutable source hashes, and import boundaries
+1. MVP G2C Covenant-Gated Shareholder Waterfall
+2. MVP G2B Simple Sponsor Returns
+3. MVP G2A Financing Stack and Derived SHL
+4. MVP G1 Governance & Methodology Lock
+5. MVP G0 Generic Clean Engine
+6. C3B3D2B5 SHL Fixed-Point Integration
+7. C3B3D2B6 Base/Post-Senior Cash
+8. C3B3D2B7 Bank/Senior Source Parity
+9. C3B3D2B8 Base/Senior/SHL Closure
+10. C3B1 source-truth evidence
+11. C3B3A clean Senior contract
+12. CI product smoke/persistence and current semantic core checks
+13. Parity Guardrails semantic outputs, immutable source hashes, and import boundaries
 
 Phase 2A, Phase 2B, C3B3B/C3B3C/C3B3D0/C3B3D1/C3B3D2A/B0-B4,
 Phase 2C, and Phase 2D are manual historical or diagnostic workflows unless a later
