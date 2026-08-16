@@ -67,9 +67,13 @@ class CovenantGatedWaterfallPeriod:
     fcf_for_distribution_keur: float        # R109: gate output (0 if locked)
     covenant_locked_keur: float             # R84 - R109 when gate locks
 
-    # Actual SHL cash receipts from fcf_for_distribution (R112 = R109)
-    shl_cash_interest_receipt_keur: float
-    shl_principal_receipt_keur: float
+    # Causal SHL balance roll-forward (from compute_shl_waterfall_period)
+    shl_opening_balance_keur: float     # opening SHL balance this period
+    shl_gross_interest_keur: float      # gross accrued SHL interest (opening × rate × dcf)
+    shl_cash_interest_receipt_keur: float  # cash interest paid from fcf_for_distribution
+    shl_pik_keur: float                 # unpaid gross interest → PIK capitalised
+    shl_principal_receipt_keur: float   # principal swept from fcf_for_distribution residual
+    shl_closing_balance_keur: float     # closing SHL balance = opening + PIK - principal
 
     # Equity distribution: residual after SHL service from fcf_for_distribution (R116)
     legal_equity_distribution_keur: float

@@ -52,14 +52,18 @@ jobs:
           print('G2C contract clean')
           "
 
-      - name: Portability — no agent-local absolute paths in G2C files
+      - name: Portability — no agent-local absolute paths in G2C production files
         run: |
+          # Scan only production source files. Test files contain literal strings
+          # in assertions (e.g. assert "/home/user/Finco1" not in text) which would
+          # self-match — they are not actual hardcoded paths.
           if grep -rn --include="*.py" "/home/user/Finco1\|/home/runner/work\|/Users/" \
-               financial_engine/shareholder_waterfall/ tests/test_mvp_g2c_shareholder_waterfall.py; then
-            echo "G2C_ABSOLUTE_PATH_FOUND: agent-local path detected in G2C files"
+               financial_engine/shareholder_waterfall/ \
+               financial_engine/financing/dsrf.py; then
+            echo "G2C_ABSOLUTE_PATH_FOUND: agent-local path detected in G2C production files"
             exit 1
           fi
-          echo "No agent-local absolute paths found"
+          echo "No agent-local absolute paths found in production files"
 
       - name: Governance — no target-fitting tokens in G2C
         run: |

@@ -27,13 +27,23 @@ def _project_uses(project_inputs: ProjectInputs) -> ProjectUses:
         + capex.other_financial_keur
         + capex.vat_costs_keur
     )
-    # DSRF: no cash-funded reserve at financial close; reserve_accounts_keur excluded from uses.
-    # CASH_DSRA or NONE: funded reserve is a Project Use (existing behaviour).
+    # Reserve funding mode:
+    #   NONE:      no reserve account funded. reserve_accounts_keur must be 0.
+    #   CASH_DSRA: cash-funded reserve is a Project Use.
+    #   DSRF:      commitment-backed; no cash funded at close — excluded from uses.
     dsra_mode = fin.dsra_support_mode
-    if dsra_mode == DebtServiceReserveSupportMode.DSRF:
+    if dsra_mode == DebtServiceReserveSupportMode.NONE:
+        if capex.reserve_accounts_keur > 0.0:
+            raise ValueError(
+                "G2A_RESERVE_ACCOUNTS_SET_BUT_MODE_IS_NONE: "
+                f"reserve_accounts_keur={capex.reserve_accounts_keur} but dsra_support_mode=NONE. "
+                "Set reserve_accounts_keur=0 or change dsra_support_mode to CASH_DSRA."
+            )
         reserve_use = 0.0
-    else:
+    elif dsra_mode == DebtServiceReserveSupportMode.CASH_DSRA:
         reserve_use = capex.reserve_accounts_keur
+    else:  # DSRF
+        reserve_use = 0.0
 
     total = capex.hard_capex_keur + financing_costs + reserve_use
     # Contract check only applies when the full capex.total_capex is expected to match

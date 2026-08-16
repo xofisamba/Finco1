@@ -450,3 +450,58 @@ def test_g2a_contract_clean_no_distribution_gate_fields():
     }
     found = names & forbidden
     assert not found, f"G2A contract contaminated with G2C fields: {found}"
+
+
+# ── Gate-fail → PIK causal regression ────────────────────────────────────────
+
+def test_gate_fail_causes_pik_and_shl_balance_grows():
+    """Gate LOCKED → fcf_for_distribution=0 → PIK accumulates → SHL balance grows.
+
+    Uses a tight lockup_dscr that forces some operating periods into LOCKED status,
+    proving the causal chain: gate → zero FCF → PIK = gross interest → closing > opening.
+    Also verifies that the next period's opening_balance equals previous closing_balance.
+    """
+    solar = create_default_solar_project()
+    # SHARE_CAPITAL_THEN_SHL ensures there is an active SHL to accrue PIK
+    # Tight lockup (well above project DSCR) forces gate to lock in many periods
+    locked_project = dataclasses.replace(
+        solar,
+        financing=dataclasses.replace(
+            solar.financing,
+            lockup_dscr=9.99,  # impossibly high → all periods with senior DS locked
+            sponsor_funding_mode=SponsorFundingMode.SHARE_CAPITAL_THEN_SHL,
+        ),
+    )
+    result = run_project_shareholder_waterfall_model(locked_project)
+
+    op_periods = [p for p in result.waterfall_periods if not p.is_construction]
+    locked_periods = [
+        p for p in op_periods
+        if p.distribution_gate_status == DistributionGateStatus.LOCKED_DSCR_BELOW_LOCKUP
+    ]
+    assert len(locked_periods) > 0, "Expected at least one LOCKED period with lockup_dscr=9.99"
+
+    for p in locked_periods:
+        assert p.fcf_for_distribution_keur == pytest.approx(0.0), (
+            f"Period {p.period_index}: expected fcf_for_distribution=0 when locked"
+        )
+        if p.shl_opening_balance_keur > 0.0:
+            # PIK must equal gross interest (no cash to pay interest)
+            assert p.shl_cash_interest_receipt_keur == pytest.approx(0.0, abs=1e-6), (
+                f"Period {p.period_index}: cash interest must be 0 when locked and fcf=0"
+            )
+            assert p.shl_pik_keur == pytest.approx(p.shl_gross_interest_keur, abs=1e-6), (
+                f"Period {p.period_index}: PIK must equal gross interest when no cash available"
+            )
+            assert p.shl_closing_balance_keur > p.shl_opening_balance_keur - 1e-9, (
+                f"Period {p.period_index}: closing SHL balance must be >= opening when gate locked"
+            )
+
+    # Verify causal carry-forward: each period's opening == prior period's closing
+    for prev, curr in zip(op_periods, op_periods[1:]):
+        assert curr.shl_opening_balance_keur == pytest.approx(
+            prev.shl_closing_balance_keur, abs=1e-6
+        ), (
+            f"Period {curr.period_index}: opening SHL ({curr.shl_opening_balance_keur}) "
+            f"!= prior closing ({prev.shl_closing_balance_keur})"
+        )

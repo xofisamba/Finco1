@@ -90,6 +90,23 @@ class DebtServiceReserveSupportMode(str, Enum):
     DSRF = "dsrf"
     NONE = "none"
 
+
+class DsrfDayCountConvention(Enum):
+    """Day-count convention for DSRF commitment fee accrual."""
+    ACT_365 = "act_365"
+    ACT_360 = "act_360"
+
+
+class DsrfCommitmentFeeTreatment(Enum):
+    """Cashflow treatment for the DSRF commitment fee.
+
+    POST_SENIOR_CASH: fee is deducted from post-senior cash before the
+        distribution gate and SHL waterfall. The fee is a financing cost,
+        not EBITDA. Only this treatment is source-proven for MVP G2C.
+    """
+    POST_SENIOR_CASH = "post_senior_cash"
+
+
 class DebtSizingMode(Enum):
     """Senior debt sizing calibration modes.
 
@@ -726,10 +743,18 @@ class FinancingParams:
     # Default NONE preserves all G2A fingerprints unchanged.
     dsra_support_mode: DebtServiceReserveSupportMode = DebtServiceReserveSupportMode.NONE
     # DSRF commitment fee parameters (only used when dsra_support_mode = DSRF).
-    # dsrf_commitment_keur: undrawn facility size (kEUR); commitment fee accrues from COD.
+    # dsrf_commitment_keur: undrawn facility size (commitment, >= dsrf_required_reserve_keur).
+    # dsrf_required_reserve_keur: minimum required reserve (distinct from commitment).
     # dsrf_commitment_fee_rate_pa: annual commitment fee rate (e.g. 0.01 = 1% p.a.).
+    # dsrf_fee_expires_at_senior_maturity: stop fee after Senior debt fully repaid.
+    # dsrf_day_count: day-count convention for fee accrual.
+    # dsrf_fee_treatment: cashflow treatment policy for the commitment fee.
     dsrf_commitment_keur: float = 0.0
+    dsrf_required_reserve_keur: float = 0.0
     dsrf_commitment_fee_rate_pa: float = 0.0
+    dsrf_fee_expires_at_senior_maturity: bool = True
+    dsrf_day_count: "DsrfDayCountConvention" = DsrfDayCountConvention.ACT_365
+    dsrf_fee_treatment: "DsrfCommitmentFeeTreatment" = DsrfCommitmentFeeTreatment.POST_SENIOR_CASH
 
     equity_irr_method: str = "equity_only"
 

@@ -37,7 +37,11 @@ from financial_engine.financing.project import run_project_financing_model
 from financial_engine.results import ProjectModelResult
 from financial_engine.sponsor_returns.contracts import ReturnMetricStatus
 from financial_engine.financing.dsrf import compute_dsrf_fee_schedule
-from financial_engine.sponsor_returns.model import _allocate_actual_shl_cash_receipts
+from financial_engine.shl.contracts import ShlRepaymentMode
+from financial_engine.shl.waterfall import (
+    compute_shl_dcf_actual_365_inclusive,
+    compute_shl_waterfall_period,
+)
 from financial_engine.shareholder_waterfall.contracts import (
     CovenantGatedWaterfallPeriod,
     CovenantGatedWaterfallResult,
@@ -138,14 +142,6 @@ def run_project_shareholder_waterfall_model(
 
     shl = model_result.shareholder_loan
 
-    shl_cash_interest_by_idx: dict[int, float] = {}
-    shl_principal_by_idx: dict[int, float] = {}
-    shl_debt_service_by_idx: dict[int, float] = {}
-
-    if shl is not None:
-        shl_cash_interest_by_idx = dict(zip(shl.period_indices, shl.shl_cash_interest_keur))
-        shl_principal_by_idx = dict(zip(shl.period_indices, shl.shl_principal_keur))
-        shl_debt_service_by_idx = dict(zip(shl.period_indices, shl.shl_debt_service_keur))
 
     if model_result.post_senior_cash is None:
         raise ValueError("G2C requires post_senior_cash; clean engine did not produce it")
@@ -177,19 +173,41 @@ def run_project_shareholder_waterfall_model(
     # ── DSRF commitment fee schedule ──────────────────────────────────────────
     dsra_mode = fin.dsra_support_mode
     dsrf_fee_by_idx: dict[int, float] = {}
-    if dsra_mode == DebtServiceReserveSupportMode.DSRF and fin.dsrf_commitment_keur > 0:
-        op_indices = [p.period_index for p in model_result.periods if p.is_operation]
-        op_starts = [period_start_by_idx[i] for i in op_indices]
-        op_ends = [period_date_by_idx[i] for i in op_indices]
-        dsrf_schedule = compute_dsrf_fee_schedule(
-            op_indices, op_starts, op_ends,
-            fin.dsrf_commitment_keur,
-            fin.dsrf_commitment_fee_rate_pa,
-        )
-        dsrf_fee_by_idx = dict(zip(dsrf_schedule.period_indices, dsrf_schedule.dsrf_commitment_fee_keur))
+    if dsra_mode == DebtServiceReserveSupportMode.DSRF:
+        # Sufficiency check: commitment must cover required reserve
+        if fin.dsrf_required_reserve_keur > 0.0 and fin.dsrf_commitment_keur < fin.dsrf_required_reserve_keur:
+            raise ValueError(
+                f"G2C_DSRF_COMMITMENT_BELOW_REQUIRED_RESERVE: "
+                f"commitment={fin.dsrf_commitment_keur} < required={fin.dsrf_required_reserve_keur}"
+            )
+        if fin.dsrf_commitment_keur > 0 and fin.dsrf_commitment_fee_rate_pa > 0.0:
+            op_indices = [p.period_index for p in model_result.periods if p.is_operation]
+            op_starts = [period_start_by_idx[i] for i in op_indices]
+            op_ends = [period_date_by_idx[i] for i in op_indices]
+            # Fee expires at Senior debt maturity if configured
+            senior_last_idx: int | None = None
+            if fin.dsrf_fee_expires_at_senior_maturity and model_result.senior_debt is not None:
+                sd = model_result.senior_debt
+                # Last period with non-zero debt service = maturity period
+                ds_by_idx = dict(zip(sd.period_indices, sd.senior_debt_service_keur))
+                op_set = set(op_indices)
+                nonzero_ds_op = [i for i in sd.period_indices if i in op_set and ds_by_idx[i] > 0.0]
+                if nonzero_ds_op:
+                    senior_last_idx = max(nonzero_ds_op)
+            dsrf_schedule = compute_dsrf_fee_schedule(
+                op_indices, op_starts, op_ends,
+                fin.dsrf_commitment_keur,
+                fin.dsrf_commitment_fee_rate_pa,
+                senior_last_period_index=senior_last_idx,
+                day_count_convention=fin.dsrf_day_count,
+            )
+            dsrf_fee_by_idx = dict(zip(dsrf_schedule.period_indices, dsrf_schedule.dsrf_commitment_fee_keur))
 
     # ── Build per-period records ───────────────────────────────────────────────
     waterfall_periods: list[CovenantGatedWaterfallPeriod] = []
+
+    # Causal SHL opening balance — carries forward across operating periods
+    opening_shl_balance: float = financing.opening_operating_shl_balance_keur
 
     # --- Construction periods ---
     for k in sorted(construction_periods_by_index.keys()):
@@ -216,8 +234,12 @@ def run_project_shareholder_waterfall_model(
             dsrf_commitment_fee_keur=0.0,
             fcf_for_distribution_keur=0.0,
             covenant_locked_keur=0.0,
+            shl_opening_balance_keur=0.0,
+            shl_gross_interest_keur=0.0,
             shl_cash_interest_receipt_keur=0.0,
+            shl_pik_keur=0.0,
             shl_principal_receipt_keur=0.0,
+            shl_closing_balance_keur=0.0,
             legal_equity_distribution_keur=0.0,
             cash_shortfall_keur=0.0,
             share_capital_contribution_keur=share_cap,
@@ -264,24 +286,37 @@ def run_project_shareholder_waterfall_model(
             fcf_for_distribution = pre_gate
             covenant_locked = 0.0
 
-        # ── Step 2: SHL cash service from fcf_for_distribution (R112 = R109) ──
-        if shl is not None:
-            if idx not in shl_debt_service_by_idx:
-                raise ValueError(
-                    f"G2C: SHL schedule exists but operating period {idx} absent "
-                    "from shl_debt_service; SHL engine output is incomplete"
-                )
-            scheduled_cash_interest = shl_cash_interest_by_idx.get(idx, 0.0)
-            scheduled_principal_due = shl_principal_by_idx.get(idx, 0.0)
-            # SHL draws from fcf_for_distribution (source: R112 = R109)
-            actual_shl_cash_int, actual_shl_principal = _allocate_actual_shl_cash_receipts(
-                fcf_for_distribution,
-                scheduled_cash_interest,
-                scheduled_principal_due,
+        # ── Step 2: Causal SHL service from fcf_for_distribution (R112 = R109) ─
+        # Uses compute_shl_waterfall_period — the canonical SHL kernel.
+        # Gate output is the ONLY cash eligible to reach SHL; gate failure
+        # causes PIK accumulation which carries forward into future periods.
+        period_start = period_start_by_idx[idx]
+        if opening_shl_balance > 0.0 and fin.shl_rate > 0.0:
+            dcf = compute_shl_dcf_actual_365_inclusive(period_start, cf_date)
+            shl_result = compute_shl_waterfall_period(
+                opening_balance_keur=opening_shl_balance,
+                annual_rate=fin.shl_rate,
+                day_count_fraction=dcf,
+                cash_available_for_shl_keur=fcf_for_distribution,
+                period_index=idx,
+                repayment_mode=ShlRepaymentMode.CASH_SWEEP,
             )
+            shl_opening = shl_result.opening_balance_keur
+            shl_gross_interest = shl_result.gross_accrued_interest_keur
+            actual_shl_cash_int = shl_result.cash_interest_keur
+            shl_pik = shl_result.pik_interest_keur
+            actual_shl_principal = shl_result.principal_repaid_keur
+            shl_closing = shl_result.closing_balance_keur
         else:
+            shl_opening = opening_shl_balance
+            shl_gross_interest = 0.0
             actual_shl_cash_int = 0.0
+            shl_pik = 0.0
             actual_shl_principal = 0.0
+            shl_closing = opening_shl_balance
+
+        # Carry closing SHL balance forward as next period's opening
+        opening_shl_balance = shl_closing
 
         # ── Step 3: Equity distribution = fcf_for_distribution residual (R116) ─
         shl_service_actual = actual_shl_cash_int + actual_shl_principal
@@ -304,8 +339,12 @@ def run_project_shareholder_waterfall_model(
             dsrf_commitment_fee_keur=dsrf_fee,
             fcf_for_distribution_keur=fcf_for_distribution,
             covenant_locked_keur=covenant_locked,
+            shl_opening_balance_keur=shl_opening,
+            shl_gross_interest_keur=shl_gross_interest,
             shl_cash_interest_receipt_keur=actual_shl_cash_int,
+            shl_pik_keur=shl_pik,
             shl_principal_receipt_keur=actual_shl_principal,
+            shl_closing_balance_keur=shl_closing,
             legal_equity_distribution_keur=distribution,
             cash_shortfall_keur=cash_shortfall,
             share_capital_contribution_keur=0.0,

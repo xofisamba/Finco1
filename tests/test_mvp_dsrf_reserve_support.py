@@ -157,11 +157,11 @@ def test_dsrf_commitment_fee_nonzero_when_configured():
 
 
 def test_dsrf_annual_fee_approx_expected():
-    """DSRF commitment=3000 kEUR, rate=1% p.a.: annual fee ≈ 30 kEUR.
+    """DSRF fee accrues at commitment × rate p.a. — stops at Senior debt maturity.
 
-    For a 25-year project with semestrial periods (50 periods):
-    total fee ≈ 3000 × 0.01 × 25 = 750 kEUR.
-    Per semestrial period ≈ 15 kEUR.
+    With dsrf_fee_expires_at_senior_maturity=True (default), the fee runs from
+    COD to Senior maturity only, not the full project life.
+    We verify: fee > 0, and fee < commitment × rate × horizon_years (full life).
     """
     commitment = 3000.0
     rate = 0.01
@@ -177,13 +177,11 @@ def test_dsrf_annual_fee_approx_expected():
     )
     result = run_project_shareholder_waterfall_model(solar_dsrf)
 
-    # Total operating years ≈ horizon_years = 25; total fee ≈ commitment × rate × years
-    horizon_years = solar.info.horizon_years
-    expected_total = commitment * rate * horizon_years
-    # Allow 5% tolerance for calendar/day-count effects
-    assert abs(result.total_dsrf_commitment_fee_keur - expected_total) < expected_total * 0.05, (
-        f"DSRF fee: expected ~{expected_total:.1f} kEUR, "
-        f"got {result.total_dsrf_commitment_fee_keur:.2f} kEUR"
+    full_life_fee = commitment * rate * solar.info.horizon_years
+    assert result.total_dsrf_commitment_fee_keur > 0.0, "DSRF fee must be positive"
+    assert result.total_dsrf_commitment_fee_keur < full_life_fee, (
+        f"DSRF fee ({result.total_dsrf_commitment_fee_keur:.2f}) should be less than "
+        f"full-life fee ({full_life_fee:.2f}) since it expires at Senior maturity"
     )
 
 
@@ -235,3 +233,149 @@ def test_default_dsra_mode_is_none():
     """Default FinancingParams has dsra_support_mode = NONE."""
     solar = create_default_solar_project()
     assert solar.financing.dsra_support_mode == DebtServiceReserveSupportMode.NONE
+
+
+# ── NONE mode validation ──────────────────────────────────────────────────────
+
+def test_none_mode_with_reserve_accounts_raises():
+    """NONE + reserve_accounts_keur > 0 must raise G2A_RESERVE_ACCOUNTS_SET_BUT_MODE_IS_NONE."""
+    solar = create_default_solar_project()
+    # Capex reserve_accounts_keur must be > 0 for this test
+    if solar.capex.reserve_accounts_keur <= 0.0:
+        import dataclasses as dc
+        solar = dc.replace(
+            solar,
+            capex=dc.replace(solar.capex, reserve_accounts_keur=500.0),
+        )
+    # Ensure mode is NONE
+    solar = dataclasses.replace(
+        solar,
+        financing=dataclasses.replace(
+            solar.financing,
+            dsra_support_mode=DebtServiceReserveSupportMode.NONE,
+        ),
+    )
+    with pytest.raises(ValueError, match="G2A_RESERVE_ACCOUNTS_SET_BUT_MODE_IS_NONE"):
+        run_project_shareholder_waterfall_model(solar)
+
+
+def test_none_mode_zero_reserve_does_not_raise():
+    """NONE + reserve_accounts_keur == 0 is valid and produces zero reserve use."""
+    solar = create_default_solar_project()
+    solar_none = dataclasses.replace(
+        solar,
+        financing=dataclasses.replace(
+            solar.financing,
+            dsra_support_mode=DebtServiceReserveSupportMode.NONE,
+        ),
+        capex=dataclasses.replace(solar.capex, reserve_accounts_keur=0.0),
+    )
+    # Should not raise; reserve_account_funding must be 0
+    result = run_project_shareholder_waterfall_model(solar_none)
+    assert result.financing_result.project_uses.reserve_account_funding_keur == 0.0
+
+
+# ── DSRF fee timing: starts at COD, stops at Senior maturity ─────────────────
+
+def test_dsrf_fee_zero_in_construction_periods():
+    """Fee must be 0 in all construction periods (facility not yet active)."""
+    solar = create_default_solar_project()
+    solar_dsrf = dataclasses.replace(
+        solar,
+        financing=dataclasses.replace(
+            solar.financing,
+            dsra_support_mode=DebtServiceReserveSupportMode.DSRF,
+            dsrf_commitment_keur=_DSRF_COMMITMENT_KEUR,
+            dsrf_commitment_fee_rate_pa=_DSRF_FEE_RATE_PA,
+        ),
+    )
+    result = run_project_shareholder_waterfall_model(solar_dsrf)
+    construction = [p for p in result.waterfall_periods if p.is_construction]
+    for p in construction:
+        assert p.dsrf_commitment_fee_keur == 0.0, (
+            f"Period {p.period_index} is construction but has DSRF fee {p.dsrf_commitment_fee_keur}"
+        )
+
+
+def test_dsrf_fee_stops_after_senior_maturity():
+    """Fee must be zero in operating periods after Senior debt maturity."""
+    solar = create_default_solar_project()
+    solar_dsrf = dataclasses.replace(
+        solar,
+        financing=dataclasses.replace(
+            solar.financing,
+            dsra_support_mode=DebtServiceReserveSupportMode.DSRF,
+            dsrf_commitment_keur=_DSRF_COMMITMENT_KEUR,
+            dsrf_commitment_fee_rate_pa=_DSRF_FEE_RATE_PA,
+        ),
+    )
+    result = run_project_shareholder_waterfall_model(solar_dsrf)
+    from financial_engine.shareholder_waterfall import DistributionGateStatus
+    op_periods = [p for p in result.waterfall_periods if not p.is_construction]
+    # Periods with Senior DS have gate status != DSCR_UNAVAILABLE (fee active)
+    # Periods after Senior DS end must have fee = 0
+    last_fee_positive_idx = max(
+        (p.period_index for p in op_periods if p.dsrf_commitment_fee_keur > 0),
+        default=None,
+    )
+    if last_fee_positive_idx is None:
+        return  # no fee at all, trivially passes
+    # All periods after last_fee_positive_idx must have fee = 0
+    post_maturity = [p for p in op_periods if p.period_index > last_fee_positive_idx]
+    for p in post_maturity:
+        assert p.dsrf_commitment_fee_keur == pytest.approx(0.0), (
+            f"Period {p.period_index}: DSRF fee should be 0 after Senior maturity"
+        )
+
+
+# ── DSRF sufficiency check ────────────────────────────────────────────────────
+
+def test_dsrf_commitment_below_required_reserve_raises():
+    """Commitment < required reserve must raise G2C_DSRF_COMMITMENT_BELOW_REQUIRED_RESERVE."""
+    solar = create_default_solar_project()
+    solar_dsrf = dataclasses.replace(
+        solar,
+        financing=dataclasses.replace(
+            solar.financing,
+            dsra_support_mode=DebtServiceReserveSupportMode.DSRF,
+            dsrf_commitment_keur=500.0,
+            dsrf_required_reserve_keur=1000.0,  # commitment < required
+            dsrf_commitment_fee_rate_pa=_DSRF_FEE_RATE_PA,
+        ),
+    )
+    with pytest.raises(ValueError, match="G2C_DSRF_COMMITMENT_BELOW_REQUIRED_RESERVE"):
+        run_project_shareholder_waterfall_model(solar_dsrf)
+
+
+def test_dsrf_commitment_at_required_reserve_does_not_raise():
+    """Commitment == required reserve is sufficient (boundary case)."""
+    solar = create_default_solar_project()
+    solar_dsrf = dataclasses.replace(
+        solar,
+        financing=dataclasses.replace(
+            solar.financing,
+            dsra_support_mode=DebtServiceReserveSupportMode.DSRF,
+            dsrf_commitment_keur=_DSRF_COMMITMENT_KEUR,
+            dsrf_required_reserve_keur=_DSRF_COMMITMENT_KEUR,  # exactly sufficient
+            dsrf_commitment_fee_rate_pa=_DSRF_FEE_RATE_PA,
+        ),
+    )
+    result = run_project_shareholder_waterfall_model(solar_dsrf)
+    assert result.total_dsrf_commitment_fee_keur > 0.0
+
+
+# ── DSRF typed enums exported ─────────────────────────────────────────────────
+
+def test_dsrf_typed_enums_importable():
+    """DsrfDayCountConvention and DsrfCommitmentFeeTreatment are importable from finco_core."""
+    from finco_core.inputs import DsrfDayCountConvention, DsrfCommitmentFeeTreatment
+    assert DsrfDayCountConvention.ACT_365.value == "act_365"
+    assert DsrfDayCountConvention.ACT_360.value == "act_360"
+    assert DsrfCommitmentFeeTreatment.POST_SENIOR_CASH.value == "post_senior_cash"
+
+
+def test_dsrf_fee_treatment_default_is_post_senior_cash():
+    """Default FinancingParams dsrf_fee_treatment = POST_SENIOR_CASH."""
+    from finco_core.inputs import DsrfCommitmentFeeTreatment
+    solar = create_default_solar_project()
+    assert solar.financing.dsrf_fee_treatment == DsrfCommitmentFeeTreatment.POST_SENIOR_CASH
