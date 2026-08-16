@@ -345,15 +345,24 @@ def test_actual_shl_cash_interest_included_in_total_sponsor():
     assert result.total_shl_cash_interest_received_keur == pytest.approx(total_cash_int, abs=1e-6)
 
 
-def test_shl_principal_repayment_in_total_sponsor():
-    """SHL principal repaid is included in total sponsor receipts."""
+def test_shl_principal_actual_receipt_does_not_exceed_scheduled():
+    """Actual SHL principal received <= scheduled/contractual principal due.
+
+    For BULLET repayment, scheduled principal due can exceed available cash.
+    Only the cash-constrained actual amount enters Total Sponsor receipts.
+    """
     result = run_project_sponsor_returns_model(_solar_project())
     g2a = run_project_financing_model(_solar_project())
     if g2a.project_model_result.shareholder_loan is None:
         pytest.skip("No SHL")
     shl = g2a.project_model_result.shareholder_loan
-    total_principal = sum(abs(v) for v in shl.shl_principal_keur)
-    assert result.total_shl_principal_received_keur == pytest.approx(total_principal, abs=1e-6)
+    scheduled_total = sum(max(0.0, v) for v in shl.shl_principal_keur)
+    actual_total = result.total_shl_principal_received_keur
+    assert actual_total <= scheduled_total + 1e-6, (
+        f"Actual principal received ({actual_total:.2f}) exceeds scheduled ({scheduled_total:.2f})"
+    )
+    # For Solar SHL with BULLET, actual < scheduled due to cash shortfall at maturity
+    assert actual_total > 0.0, "Some SHL principal must have been received"
 
 
 # ── Share premium and other committed equity included in contributions ─────────
@@ -625,6 +634,94 @@ def test_no_sponsor_contribution_created_from_shortfall():
             assert p.shl_cash_contribution_keur == pytest.approx(0.0, abs=1e-9)
 
 
+# ── Cash conservation invariant ──────────────────────────────────────────────
+
+def test_cash_conservation_invariant_all_operating_periods():
+    """Per operating period: actual_shl_cash_paid + distribution <= max(0, signed_post_senior).
+
+    No project cash may be created. Under DISTRIBUTE_ALL_POST_SHL_CASH this should
+    be equality when available cash >= scheduled SHL service.
+    """
+    for label, project in [("solar_shl", _solar_project()), ("wind_shl", _wind_project())]:
+        g2a = run_project_financing_model(project)
+        result = run_project_sponsor_returns_model(project)
+        psc = g2a.project_model_result.post_senior_cash
+        post_s = dict(zip(psc.period_indices, psc.cash_after_senior_before_reserves_keur))
+
+        for p in result.cashflow_periods:
+            if p.is_construction:
+                continue
+            available = max(0.0, post_s.get(p.period_index, 0.0))
+            total_out = (
+                p.shl_cash_interest_receipt_keur
+                + p.shl_principal_receipt_keur
+                + p.legal_equity_distribution_keur
+            )
+            assert total_out <= available + 1e-6, (
+                f"{label} period {p.period_index}: "
+                f"total_out={total_out:.4f} > available={available:.4f} — cash created"
+            )
+
+
+# ── Bullet-shortfall regression: actual vs scheduled SHL receipts ─────────────
+
+def test_bullet_shortfall_actual_vs_scheduled_solar():
+    """At Solar SHL maturity: scheduled > available → actual is cash-capped, shortfall visible.
+
+    This proves that unpaid contractual SHL principal does NOT enter sponsor cash receipts.
+    """
+    from financial_engine.sponsor_returns.model import _allocate_actual_shl_cash_receipts
+
+    project = _solar_project()
+    g2a = run_project_financing_model(project)
+    result = run_project_sponsor_returns_model(project)
+    psc = g2a.project_model_result.post_senior_cash
+    shl = g2a.project_model_result.shareholder_loan
+    assert shl is not None
+
+    post_s = dict(zip(psc.period_indices, psc.cash_after_senior_before_reserves_keur))
+    shl_ds = dict(zip(shl.period_indices, shl.shl_debt_service_keur))
+    shl_ci = dict(zip(shl.period_indices, shl.shl_cash_interest_keur))
+    shl_pr = dict(zip(shl.period_indices, shl.shl_principal_keur))
+
+    # Find the bullet period where scheduled_service > cash_available
+    bullet_periods = [
+        idx for idx in shl_ds
+        if shl_ds[idx] > max(0.0, post_s.get(idx, 0.0)) + 1e-6
+    ]
+    assert len(bullet_periods) > 0, "No bullet-shortfall period found in Solar SHL"
+
+    for idx in bullet_periods:
+        signed_ps = post_s[idx]
+        sched_int = shl_ci[idx]
+        sched_prin = shl_pr[idx]
+        sched_svc = shl_ds[idx]
+        cash_avail = max(0.0, signed_ps)
+
+        actual_int, actual_prin = _allocate_actual_shl_cash_receipts(signed_ps, sched_int, sched_prin)
+
+        # Invariants
+        assert sched_svc > cash_avail + 1e-6, f"Period {idx}: not a bullet-shortfall period"
+        assert actual_int + actual_prin <= cash_avail + 1e-6, f"Period {idx}: actual exceeds available"
+        assert actual_prin < sched_prin - 1e-6, (
+            f"Period {idx}: actual_principal ({actual_prin:.2f}) must be < scheduled ({sched_prin:.2f})"
+        )
+
+        # From result cashflow
+        cf = next((p for p in result.cashflow_periods if p.period_index == idx and not p.is_construction), None)
+        assert cf is not None, f"Period {idx} not found in cashflow_periods"
+        assert cf.legal_equity_distribution_keur == pytest.approx(0.0, abs=1e-9), (
+            f"Period {idx}: distribution must be 0 when contractual SHL service exceeds available"
+        )
+        assert cf.cash_shortfall_keur > 0.0, f"Period {idx}: shortfall must be positive"
+        assert cf.shl_principal_receipt_keur == pytest.approx(actual_prin, abs=1e-6), (
+            f"Period {idx}: principal receipt must equal cash-capped actual, not scheduled"
+        )
+        assert cf.total_sponsor_net_cashflow_keur == pytest.approx(
+            cf.pure_equity_net_cashflow_keur + actual_int + actual_prin, abs=1e-9
+        )
+
+
 # ── SHL signed-cash handshake ─────────────────────────────────────────────────
 
 def test_shl_signed_cash_handshake_non_negative_periods():
@@ -736,20 +833,34 @@ def test_pik_contribution_is_cash_principal_not_principal_plus_pik():
     )
 
 
-def test_capitalised_pik_repayment_enters_sponsor_receipts():
-    """When the capitalised SHL balance (cash + PIK) is repaid, cash receipt enters total sponsor."""
+def test_capitalised_pik_actual_repayment_enters_sponsor_receipts():
+    """When available cash repays the capitalised SHL balance, that cash enters Total Sponsor.
+
+    Actual receipt <= scheduled principal due (contractual amounts exceeding available
+    project cash are NOT sponsor receipts). PIK accrual itself is not a cash receipt.
+    """
     project = _solar_with_pik()
     result = run_project_sponsor_returns_model(project)
     g2a = run_project_financing_model(project)
     shl = g2a.project_model_result.shareholder_loan
     assert shl is not None
-    # Total principal repaid (from G2A SHL schedule) enters sponsor receipts
-    total_principal = sum(abs(v) for v in shl.shl_principal_keur)
-    assert total_principal > 0.0
-    assert result.total_shl_principal_received_keur == pytest.approx(total_principal, abs=1e-6)
-    # The capitalized PIK balance was added to SHL closing; when that closes out,
-    # principal repaid > cash principal drawn (because PIK was capitalized)
-    assert result.total_shl_principal_received_keur > g2a.derived_shl_cash_principal_keur - 1.0
+    # Scheduled/contractual principal due (may include capitalised PIK in the balance)
+    scheduled_principal = sum(max(0.0, v) for v in shl.shl_principal_keur)
+    assert scheduled_principal > 0.0
+    # Actual receipts are cash-constrained: actual <= scheduled
+    actual_received = result.total_shl_principal_received_keur
+    assert actual_received <= scheduled_principal + 1e-6, (
+        "Actual principal receipts must not exceed scheduled/contractual due amounts"
+    )
+    assert actual_received > 0.0, "Some actual SHL principal cash must have been received"
+    # SHL cash contribution is cash-principal only (not principal + PIK)
+    assert result.total_shl_cash_contributed_keur == pytest.approx(
+        g2a.derived_shl_cash_principal_keur, abs=1e-6
+    )
+    # PIK is not in contributions
+    total_pik = sum(shl.shl_pik_interest_keur)
+    assert total_pik > 0.0, "PIK test project must have non-zero PIK"
+    assert abs(result.total_shl_cash_contributed_keur - (g2a.derived_shl_cash_principal_keur + total_pik)) > 1.0
 
 
 # ── Non-zero Share Premium test ───────────────────────────────────────────────

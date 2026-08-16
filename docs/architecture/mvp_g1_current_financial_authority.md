@@ -76,16 +76,31 @@ Inflows: legal-equity distributions (operating periods only).
 
 Outflows: all Pure Legal Equity outflows + SHL cash principal contributions.
 
-Inflows: legal-equity distributions + SHL cash interest received + SHL
-principal repayments.
+Inflows: legal-equity distributions + ACTUAL SHL cash interest paid +
+ACTUAL SHL principal paid from available project cash.
 
-PIK accrual is not a sponsor cash receipt at accrual time.  When the
-capitalised SHL balance (cash principal + accrued PIK) is actually repaid
-in cash, that repayment enters Total Sponsor receipts.
+Contractual SHL amounts due but unpaid because of a project cash deficit are
+NOT sponsor cash receipts.  They remain visible through `cash_shortfall_keur`.
 
-Signed project cash deficits (CFADS < Senior debt service, or post-Senior
-cash < SHL debt service) are exposed as `cash_shortfall_keur` and are not
-automatically funded by sponsor contributions, top-ups, or balancing items.
+PIK accrual is not a sponsor cash receipt at accrual time.  When available
+project cash actually repays the capitalised SHL balance (which may include
+accrued PIK), that actual paid amount enters Total Sponsor receipts.  If the
+contractual due amount exceeds available cash, only the portion actually paid
+enters receipts; the remainder is a cash shortfall.
+
+Actual SHL cash receipt derivation (per operating period):
+
+```
+cash_available_for_shl = max(0, signed_post_senior)
+actual_cash_interest   = min(scheduled_cash_interest, cash_available_for_shl)
+cash_after_interest    = max(0, cash_available_for_shl - actual_cash_interest)
+actual_principal       = min(max(0, scheduled_principal_due), cash_after_interest)
+```
+
+Signed project cash deficits (CFADS < Senior debt service, or contractual
+SHL service due > available post-Senior cash) are exposed as
+`cash_shortfall_keur` and are not automatically funded by sponsor
+contributions, top-ups, or balancing items.
 
 `DISTRIBUTE_ALL_POST_SHL_CASH` is a Generic MVP distribution policy.
 It is not an institutional waterfall, a lock-up covenant, or an Excel

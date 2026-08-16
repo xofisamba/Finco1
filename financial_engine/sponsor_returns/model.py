@@ -28,6 +28,26 @@ from financial_engine.sponsor_returns.contracts import (
 )
 
 
+def _allocate_actual_shl_cash_receipts(
+    signed_post_senior: float,
+    scheduled_cash_interest: float,
+    scheduled_principal_due: float,
+) -> tuple[float, float]:
+    """Derive ACTUAL SHL sponsor cash receipts from available post-Senior project cash.
+
+    Interest is paid first, then principal, from cash_available_for_shl only.
+    Scheduled (contractual) amounts due that exceed available cash are NOT receipts.
+
+    Returns:
+        (actual_cash_interest_receipt, actual_principal_receipt)
+    """
+    cash_available = max(0.0, signed_post_senior)
+    actual_interest = min(scheduled_cash_interest, cash_available)
+    cash_after_interest = max(0.0, cash_available - actual_interest)
+    actual_principal = min(max(0.0, scheduled_principal_due), cash_after_interest)
+    return actual_interest, actual_principal
+
+
 def _add_months(d: date, months: int) -> date:
     """Add a whole number of months to a date, clamping to end-of-month."""
     month = d.month + months
@@ -206,41 +226,55 @@ def run_project_sponsor_returns_model(
             )
         signed_post_senior = signed_post_senior_by_idx[idx]
 
-        # Signed post-SHL cash:
-        #   signed_post_senior - actual_shl_cash_debt_service
+        # Signed post-SHL: uses CONTRACTUAL service due for shortfall/distribution.
+        # This determines whether equity receives distributions and exposes unpaid SHL.
         #
-        # SHL handshake (non-negative post-Senior case):
-        #   When signed_post_senior >= 0, the SHL engine receives max(0, post_senior)
-        #   = post_senior.  It deducts shl_debt_service, leaving
-        #   cash_remaining_after_shl = post_senior - shl_debt_service.
-        #   Therefore signed_post_shl == cash_remaining_after_shl (within tolerance).
+        # ACTUAL cash receipts are derived separately via _allocate_actual_shl_cash_receipts,
+        # which caps payments at available cash. Unpaid contractual amounts are not receipts.
+        #
+        # SHL handshake (non-negative post-Senior, non-bullet case):
+        #   When signed_post_senior >= 0 and shl_service_due <= available cash,
+        #   signed_post_shl == cash_remaining_after_shl_before_reserves (within tolerance).
         #
         # Negative post-Senior case:
-        #   The SHL engine receives max(0, post_senior) = 0, so shl_debt_service = 0.
+        #   SHL engine received max(0, post_senior) = 0, so shl_debt_service = 0.
         #   G2B retains the full negative signed_post_senior as the project cash deficit.
-        #   The existing cash_remaining_after_shl field would read 0 here, losing the deficit.
         if shl is not None:
             if idx not in shl_debt_service_by_idx:
                 raise ValueError(
                     f"G2B: SHL schedule exists but operating period {idx} absent "
                     "from shl_debt_service; SHL engine output is incomplete"
                 )
-            signed_post_shl = signed_post_senior - shl_debt_service_by_idx[idx]
-        else:
-            # EQUITY_ONLY: no SHL debt service
-            signed_post_shl = signed_post_senior
+            scheduled_shl_service_due = shl_debt_service_by_idx[idx]
+            scheduled_cash_interest = shl_cash_interest_by_idx.get(idx, 0.0)
+            scheduled_principal_due = shl_principal_by_idx.get(idx, 0.0)
 
+            # Actual sponsor cash receipts — capped at available project cash
+            actual_shl_cash_int, actual_shl_principal = _allocate_actual_shl_cash_receipts(
+                signed_post_senior,
+                scheduled_cash_interest,
+                scheduled_principal_due,
+            )
+        else:
+            # EQUITY_ONLY: no SHL debt service or receipts
+            scheduled_shl_service_due = 0.0
+            actual_shl_cash_int = 0.0
+            actual_shl_principal = 0.0
+
+        # Contractual signed_post_shl drives distribution and shortfall.
+        # No equity distribution while contractual SHL service is unpaid.
+        signed_post_shl = signed_post_senior - scheduled_shl_service_due
         post_shl_available = max(0.0, signed_post_shl)
         cash_shortfall = max(0.0, -signed_post_shl)
 
-        # DISTRIBUTE_ALL_POST_SHL_CASH: distribute all available non-negative cash
+        # DISTRIBUTE_ALL_POST_SHL_CASH
         distribution = post_shl_available
 
         pure_equity_net = distribution
         total_sponsor_net = (
             pure_equity_net
-            + shl_cash_int
-            + shl_principal
+            + actual_shl_cash_int
+            + actual_shl_principal
         )
 
         cashflow_periods.append(SponsorCashFlowPeriod(
@@ -252,8 +286,8 @@ def run_project_sponsor_returns_model(
             other_committed_equity_contribution_keur=0.0,
             additional_equity_contribution_keur=0.0,
             shl_cash_contribution_keur=0.0,
-            shl_cash_interest_receipt_keur=shl_cash_int,
-            shl_principal_receipt_keur=shl_principal,
+            shl_cash_interest_receipt_keur=actual_shl_cash_int,
+            shl_principal_receipt_keur=actual_shl_principal,
             post_shl_cash_available_keur=post_shl_available,
             legal_equity_distribution_keur=distribution,
             cash_shortfall_keur=cash_shortfall,
