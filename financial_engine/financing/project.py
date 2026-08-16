@@ -27,21 +27,37 @@ def _project_uses(project_inputs: ProjectInputs) -> ProjectUses:
         + capex.other_financial_keur
         + capex.vat_costs_keur
     )
-    # Reserve funding mode:
-    #   NONE:      no reserve account funded. reserve_accounts_keur must be 0.
-    #   CASH_DSRA: cash-funded reserve is a Project Use.
-    #   DSRF:      commitment-backed; no cash funded at close — excluded from uses.
+    # Reserve funding mode — unified authority via financing.debt_service_reserve_requirement_keur.
+    #   NONE:      requirement must be 0; capex.reserve_accounts_keur must be 0.
+    #   CASH_DSRA: reserve_use = requirement (financing authority).
+    #              Legacy: if requirement == 0 and capex.reserve_accounts_keur > 0, use legacy.
+    #              Conflict (both > 0 and different) → fail closed.
+    #   DSRF:      no cash reserve at close; requirement used for sufficiency check only.
     dsra_mode = fin.dsra_support_mode
+    req = getattr(fin, "debt_service_reserve_requirement_keur", 0.0) or 0.0
+    legacy_cap = capex.reserve_accounts_keur
     if dsra_mode == DebtServiceReserveSupportMode.NONE:
-        if capex.reserve_accounts_keur > 0.0:
+        if legacy_cap > 0.0:
             raise ValueError(
                 "G2A_RESERVE_ACCOUNTS_SET_BUT_MODE_IS_NONE: "
-                f"reserve_accounts_keur={capex.reserve_accounts_keur} but dsra_support_mode=NONE. "
+                f"reserve_accounts_keur={legacy_cap} but dsra_support_mode=NONE. "
                 "Set reserve_accounts_keur=0 or change dsra_support_mode to CASH_DSRA."
+            )
+        if req > 0.0:
+            raise ValueError(
+                "G2A_RESERVE_REQUIREMENT_SET_BUT_MODE_IS_NONE: "
+                f"debt_service_reserve_requirement_keur={req} but dsra_support_mode=NONE."
             )
         reserve_use = 0.0
     elif dsra_mode == DebtServiceReserveSupportMode.CASH_DSRA:
-        reserve_use = capex.reserve_accounts_keur
+        if req > 0.0 and legacy_cap > 0.0 and abs(req - legacy_cap) > 1e-6:
+            raise ValueError(
+                "G2A_RESERVE_REQUIREMENT_CONFLICT: "
+                f"debt_service_reserve_requirement_keur={req} != "
+                f"capex.reserve_accounts_keur={legacy_cap}. "
+                "Set one to 0 or align them."
+            )
+        reserve_use = req if req > 0.0 else legacy_cap
     else:  # DSRF
         reserve_use = 0.0
 

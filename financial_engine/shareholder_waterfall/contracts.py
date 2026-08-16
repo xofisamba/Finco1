@@ -131,3 +131,8 @@ class CovenantGatedWaterfallResult:
     # Gate summary
     periods_locked_by_dscr: int
     total_periods_with_senior_ds: int
+
+    # G2C_DEDUCTIBLE_SHL_COVENANT_FEEDBACK_NOT_YET_CLOSED when deductible SHL
+    # interest + gate locks any period + PIK accumulates (feedback loop not closed).
+    # None when Oborovo FULLY_NON_DEDUCTIBLE or no gate lock or no SHL.
+    deductible_shl_covenant_feedback_status: str | None

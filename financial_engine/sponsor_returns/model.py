@@ -98,6 +98,41 @@ def _moic_status(
     return ReturnMetricStatus.OK
 
 
+def compute_gated_sponsor_return_metrics(
+    cashflow_dates: list[date],
+    pure_equity_cashflows: list[float],
+    total_sponsor_cashflows: list[float],
+    total_legal_equity_contributed_keur: float,
+    total_sponsor_contributed_keur: float,
+) -> tuple:
+    """Compute XIRR/MOIC metrics for G2C gated cashflow vectors.
+
+    Extracted from G2B so G2C can call it without duplicating XIRR logic.
+    Returns (pe_xirr, pe_xirr_status, pe_moic, pe_moic_status,
+             ts_xirr, ts_xirr_status, ts_moic, ts_moic_status).
+    """
+    pe_xirr = robust_xirr(pure_equity_cashflows, cashflow_dates)
+    pe_xirr_status = _xirr_status(pure_equity_cashflows, pe_xirr)
+    pe_moic: float | None = None
+    if total_legal_equity_contributed_keur > 0.0:
+        pe_moic = sum(cf for cf in pure_equity_cashflows if cf > 0) / total_legal_equity_contributed_keur
+    pe_moic_status = _moic_status(total_legal_equity_contributed_keur, pe_moic)
+
+    ts_xirr = robust_xirr(total_sponsor_cashflows, cashflow_dates)
+    ts_xirr_status = _xirr_status(total_sponsor_cashflows, ts_xirr)
+    ts_moic: float | None = None
+    if total_sponsor_contributed_keur > 0.0:
+        ts_moic = sum(cf for cf in total_sponsor_cashflows if cf > 0) / total_sponsor_contributed_keur
+    ts_moic_status = _moic_status(total_sponsor_contributed_keur, ts_moic)
+
+    return (
+        pe_xirr, pe_xirr_status,
+        pe_moic, pe_moic_status,
+        ts_xirr, ts_xirr_status,
+        ts_moic, ts_moic_status,
+    )
+
+
 def run_project_sponsor_returns_model(
     project_inputs: ProjectInputs,
     *,

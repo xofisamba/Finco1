@@ -742,15 +742,28 @@ class FinancingParams:
     # Debt service reserve support policy — typed, not inferred from project identity.
     # Default NONE preserves all G2A fingerprints unchanged.
     dsra_support_mode: DebtServiceReserveSupportMode = DebtServiceReserveSupportMode.NONE
+
+    # ONE unified reserve requirement (financing-owned authority).
+    # Applies regardless of support instrument (CASH_DSRA / DSRF / NONE).
+    # NONE: must be 0 (raise if > 0).
+    # CASH_DSRA: reserve_account_funding_keur = debt_service_reserve_requirement_keur.
+    # DSRF: dsrf_commitment_keur must be >= this value (sufficiency check).
+    # Legacy capex.reserve_accounts_keur for CASH_DSRA: fails closed if both non-zero
+    # and disagree. Use debt_service_reserve_requirement_keur going forward.
+    debt_service_reserve_requirement_keur: float = 0.0
+
     # DSRF commitment fee parameters (only used when dsra_support_mode = DSRF).
-    # dsrf_commitment_keur: undrawn facility size (commitment, >= dsrf_required_reserve_keur).
-    # dsrf_required_reserve_keur: minimum required reserve (distinct from commitment).
+    # dsrf_commitment_keur: undrawn facility size (commitment,
+    #     >= debt_service_reserve_requirement_keur).
     # dsrf_commitment_fee_rate_pa: annual commitment fee rate (e.g. 0.01 = 1% p.a.).
     # dsrf_fee_expires_at_senior_maturity: stop fee after Senior debt fully repaid.
     # dsrf_day_count: day-count convention for fee accrual.
     # dsrf_fee_treatment: cashflow treatment policy for the commitment fee.
+    #   POST_SENIOR_CASH = EXPLICIT_GENERIC_MVP_POLICY: fee deducted post-Senior DS,
+    #   pre-distribution gate. No EBITDA/CFADS/DSCR impact. Only one treatment
+    #   is currently implemented. Other treatments (PRE_DEBT_SERVICE, IN_DEBT_SERVICE)
+    #   are expressly NOT modelled.
     dsrf_commitment_keur: float = 0.0
-    dsrf_required_reserve_keur: float = 0.0
     dsrf_commitment_fee_rate_pa: float = 0.0
     dsrf_fee_expires_at_senior_maturity: bool = True
     dsrf_day_count: "DsrfDayCountConvention" = DsrfDayCountConvention.ACT_365

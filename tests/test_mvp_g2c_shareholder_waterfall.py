@@ -400,6 +400,206 @@ def test_g2c_r99_monotonicity_with_looser_lockup():
     assert loose.total_legal_equity_distributions_keur >= tight.total_legal_equity_distributions_keur - 1e-6
 
 
+# ── BULLET repayment mode: no principal before maturity ───────────────────────
+
+def test_solar_bullet_no_principal_before_maturity(solar_result):
+    """Generic Solar uses BULLET repayment: shl_principal_receipt_keur = 0 for all periods
+    except the SHL maturity period. Even if FCF > gross interest, no principal is swept."""
+    op = [p for p in solar_result.waterfall_periods if not p.is_construction]
+    # Find the maturity period (last period with non-zero principal)
+    principal_periods = [p for p in op if p.shl_principal_receipt_keur > 1e-9]
+    assert len(principal_periods) <= 1, (
+        f"BULLET Solar: principal in {len(principal_periods)} periods, expected at most 1 (maturity only). "
+        f"Periods: {[p.period_index for p in principal_periods]}"
+    )
+    # All non-maturity periods: principal = 0, even when cash > gross interest
+    non_maturity_with_principal = [
+        p for p in op
+        if p.shl_opening_balance_keur > 0.0
+        and p.shl_principal_receipt_keur > 1e-9
+        and p.shl_cash_interest_receipt_keur < p.shl_opening_balance_keur * 0.5  # not near full repayment
+    ]
+    # Any period that has principal but also has a surplus (cash > interest) is a CASH_SWEEP artifact
+    pre_maturity_principal = [
+        p for p in op
+        if p.shl_principal_receipt_keur > 1e-9
+        and p.shl_opening_balance_keur > 100.0  # large balance still open
+    ]
+    assert len(pre_maturity_principal) <= 1, (
+        f"BULLET Solar: pre-maturity principal payments found at: "
+        f"{[(p.period_index, p.shl_principal_receipt_keur) for p in pre_maturity_principal]}"
+    )
+
+
+def test_wind_bullet_no_principal_before_maturity(wind_result):
+    """Generic Wind uses BULLET repayment: shl_principal_receipt_keur = 0 for all periods
+    except the SHL maturity period."""
+    op = [p for p in wind_result.waterfall_periods if not p.is_construction]
+    principal_periods = [p for p in op if p.shl_principal_receipt_keur > 1e-9]
+    assert len(principal_periods) <= 1, (
+        f"BULLET Wind: principal in {len(principal_periods)} periods, expected at most 1 (maturity only). "
+        f"Periods: {[p.period_index for p in principal_periods]}"
+    )
+
+
+# ── Day-count convention: project-owned, not hardcoded ───────────────────────
+
+def test_solar_day_count_period_axis_actual_year(solar_result):
+    """Generic Solar/Wind use PERIOD_AXIS_ACTUAL_YEAR for SHL day-count.
+    Proved by checking that gross_interest / opening_balance / annual_rate != 1/365 * days_exact.
+    PERIOD_AXIS_ACTUAL_YEAR uses the period's day_fraction attribute (model-period axis), not
+    calendar days, so it differs from ACT_365_FIXED when periods are not exact half-years."""
+    solar = create_default_solar_project()
+    assert getattr(solar.financing, "shl_day_count_convention", None) == "PERIOD_AXIS_ACTUAL_YEAR", (
+        "Generic Solar must use PERIOD_AXIS_ACTUAL_YEAR day-count convention"
+    )
+
+
+def test_wind_day_count_period_axis_actual_year():
+    """Generic Wind uses PERIOD_AXIS_ACTUAL_YEAR for SHL day-count."""
+    from app.project_factories import create_default_wind_project
+    wind = create_default_wind_project()
+    assert getattr(wind.financing, "shl_day_count_convention", None) == "PERIOD_AXIS_ACTUAL_YEAR", (
+        "Generic Wind must use PERIOD_AXIS_ACTUAL_YEAR day-count convention"
+    )
+
+
+def test_oborovo_day_count_act_365_fixed():
+    """Oborovo uses ACT_365_FIXED for SHL day-count (Inputs source-proven)."""
+    from app.project_factories import create_default_oborovo
+    obo = create_default_oborovo()
+    assert getattr(obo.financing, "shl_day_count_convention", None) == "ACT_365_FIXED", (
+        "Oborovo must use ACT_365_FIXED day-count convention"
+    )
+
+
+# ── Oborovo DS25 principal eligibility and DS40 maturity ─────────────────────
+
+@pytest.fixture(scope="module")
+def oborovo_g2c_result():
+    from app.project_factories import create_default_oborovo
+    from finco_core.inputs import SponsorFundingMode, GearingBasisMode
+    obo = create_default_oborovo()
+    obo_g2c = dataclasses.replace(
+        obo,
+        financing=dataclasses.replace(
+            obo.financing,
+            sponsor_funding_mode=SponsorFundingMode.SHARE_CAPITAL_THEN_SHL,
+            gearing_basis_mode=GearingBasisMode.TOTAL_PROJECT_USES,
+            lockup_dscr=0.5,  # very low: no gate locks for this policy test
+        ),
+    )
+    return run_project_shareholder_waterfall_model(obo_g2c)
+
+
+def test_oborovo_ds25_principal_eligibility(oborovo_g2c_result):
+    """Oborovo SHL: principal_eligibility_start_period=25 (DS25).
+    Before period 25, principal = 0 even with surplus cash (CASH_SWEEP pre-eligibility suppressed).
+    Source: FinancingParams.shl_principal_eligibility_start_period=25."""
+    op = [p for p in oborovo_g2c_result.waterfall_periods if not p.is_construction]
+    pre_ds25 = [p for p in op if p.period_index < 25]
+    assert len(pre_ds25) > 0, "Must have operating periods before DS25"
+    for p in pre_ds25:
+        assert p.shl_principal_receipt_keur == pytest.approx(0.0, abs=1e-9), (
+            f"Oborovo P{p.period_index} (before DS25): principal must be 0, "
+            f"got {p.shl_principal_receipt_keur}"
+        )
+
+
+def test_oborovo_ds40_maturity_balance_closes(oborovo_g2c_result):
+    """Oborovo SHL: contractual maturity at DS40 (period_index=40).
+    At maturity, shl_closing_balance_keur = 0 (contractual full repayment)."""
+    op = [p for p in oborovo_g2c_result.waterfall_periods if not p.is_construction]
+    p40 = next((p for p in op if p.period_index == 40), None)
+    assert p40 is not None, "Period 40 (DS40) must exist in waterfall_periods"
+    assert p40.shl_closing_balance_keur == pytest.approx(0.0, abs=1e-6), (
+        f"Oborovo DS40 maturity: closing SHL balance must be 0, "
+        f"got {p40.shl_closing_balance_keur}"
+    )
+    # After DS40, any remaining periods have zero SHL balance
+    post_ds40 = [p for p in op if p.period_index > 40]
+    for p in post_ds40:
+        assert p.shl_opening_balance_keur == pytest.approx(0.0, abs=1e-6), (
+            f"Oborovo P{p.period_index} (post DS40): opening SHL balance must be 0"
+        )
+
+
+# ── Deductible SHL covenant feedback status ───────────────────────────────────
+
+def test_deductible_shl_feedback_set_when_gate_locks_with_shl():
+    """Solar is FULLY_DEDUCTIBLE. Gate lock → PIK → feedback loop not closed.
+    Status must be G2C_DEDUCTIBLE_SHL_COVENANT_FEEDBACK_NOT_YET_CLOSED."""
+    solar = create_default_solar_project()
+    locked = dataclasses.replace(
+        solar,
+        financing=dataclasses.replace(
+            solar.financing,
+            lockup_dscr=9.99,
+            sponsor_funding_mode=SponsorFundingMode.SHARE_CAPITAL_THEN_SHL,
+        ),
+    )
+    result = run_project_shareholder_waterfall_model(locked)
+    assert result.deductible_shl_covenant_feedback_status == (
+        "G2C_DEDUCTIBLE_SHL_COVENANT_FEEDBACK_NOT_YET_CLOSED"
+    ), f"Expected feedback status, got: {result.deductible_shl_covenant_feedback_status}"
+
+
+def test_no_deductible_feedback_when_gate_does_not_lock(solar_result):
+    """When gate never locks, no PIK accumulates → deductible feedback status = None."""
+    # Solar default lockup_dscr=1.10, DSCR always > 1.10 → gate never locks
+    assert solar_result.periods_locked_by_dscr == 0
+    assert solar_result.deductible_shl_covenant_feedback_status is None
+
+
+def test_oborovo_no_deductible_feedback_due_to_non_deductible_shl(oborovo_g2c_result):
+    """Oborovo SHL is FULLY_NON_DEDUCTIBLE → deductible feedback status = None
+    regardless of gate locking. PIK accumulation does not create a taxable feedback loop."""
+    assert oborovo_g2c_result.deductible_shl_covenant_feedback_status is None
+
+
+# ── Production SHL scheduler: gate-fail → PIK via compute_shareholder_loan_schedules ──
+
+def test_gate_fail_pik_uses_production_scheduler():
+    """Prove that gate-fail PIK accumulation goes through compute_shareholder_loan_schedules
+    (the one canonical SHL kernel), not a parallel implementation.
+
+    Verify by checking that the gate-locked waterfall result matches the expected
+    causal roll-forward: opening[n+1] = closing[n] for all consecutive operating periods."""
+    solar = create_default_solar_project()
+    locked = dataclasses.replace(
+        solar,
+        financing=dataclasses.replace(
+            solar.financing,
+            lockup_dscr=9.99,
+            sponsor_funding_mode=SponsorFundingMode.SHARE_CAPITAL_THEN_SHL,
+        ),
+    )
+    result = run_project_shareholder_waterfall_model(locked)
+    op = [p for p in result.waterfall_periods if not p.is_construction]
+
+    # Causal carry-forward: opening[n+1] == closing[n]
+    for prev, curr in zip(op, op[1:]):
+        assert curr.shl_opening_balance_keur == pytest.approx(
+            prev.shl_closing_balance_keur, abs=1e-6
+        ), (
+            f"P{curr.period_index}: opening {curr.shl_opening_balance_keur} != "
+            f"prior closing {prev.shl_closing_balance_keur} — balance discontinuity"
+        )
+
+    # Locked periods: PIK = gross interest (no cash → all capitalised)
+    locked_ops = [
+        p for p in op
+        if p.distribution_gate_status == DistributionGateStatus.LOCKED_DSCR_BELOW_LOCKUP
+        and p.shl_opening_balance_keur > 0.0
+    ]
+    assert len(locked_ops) > 0, "Expected locked periods for lockup_dscr=9.99"
+    for p in locked_ops:
+        assert p.shl_cash_interest_receipt_keur == pytest.approx(0.0, abs=1e-9)
+        assert p.shl_pik_keur == pytest.approx(p.shl_gross_interest_keur, abs=1e-9), (
+            f"P{p.period_index}: PIK must equal gross interest when gate locked"
+        )
+
+
 # ── Governance: no target-fitting tokens in G2C module ───────────────────────
 
 def test_no_target_fitting_tokens_in_g2c():

@@ -339,7 +339,7 @@ def test_dsrf_commitment_below_required_reserve_raises():
             solar.financing,
             dsra_support_mode=DebtServiceReserveSupportMode.DSRF,
             dsrf_commitment_keur=500.0,
-            dsrf_required_reserve_keur=1000.0,  # commitment < required
+            debt_service_reserve_requirement_keur=1000.0,  # commitment < required
             dsrf_commitment_fee_rate_pa=_DSRF_FEE_RATE_PA,
         ),
     )
@@ -356,7 +356,7 @@ def test_dsrf_commitment_at_required_reserve_does_not_raise():
             solar.financing,
             dsra_support_mode=DebtServiceReserveSupportMode.DSRF,
             dsrf_commitment_keur=_DSRF_COMMITMENT_KEUR,
-            dsrf_required_reserve_keur=_DSRF_COMMITMENT_KEUR,  # exactly sufficient
+            debt_service_reserve_requirement_keur=_DSRF_COMMITMENT_KEUR,  # exactly sufficient
             dsrf_commitment_fee_rate_pa=_DSRF_FEE_RATE_PA,
         ),
     )

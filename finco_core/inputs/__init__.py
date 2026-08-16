@@ -66,6 +66,8 @@ from finco_core.inputs._models import (
     ShlPaymentMethod,
     ProjectInputs,
     hash_inputs_for_cache,
+    DsrfDayCountConvention,
+    DsrfCommitmentFeeTreatment,
 )
 from finco_core.inputs.senior_rate_schedule import (
     SeniorRateMode,
@@ -141,4 +143,7 @@ __all__ = [
     "SeniorReserveTreatment",
     "SeniorSculptingConfig",
     "validate_explicit_debt_service_schedule",
+    # DSRF
+    "DsrfDayCountConvention",
+    "DsrfCommitmentFeeTreatment",
 ]
