@@ -189,28 +189,41 @@ def test_gate_locked_period_has_zero_fcf_for_distribution():
             )
 
 
-# ── Gate partition: covenant_locked + fcf_for_distribution = pre_gate ────────
+# ── DA invariant: da_available = da_release + da_closing ────────────────────
 
 def test_gate_partition_holds_all_operating_periods(solar_result):
-    """covenant_locked + fcf_for_distribution = max(0, signed_post_senior) for all operating periods."""
+    """DA invariant: da_available = fcf_for_distribution + da_closing for all operating periods.
+    For solar (no locks, no DA carry): da_opening=0, da_closing=0,
+    so da_available = da_inflow ≈ signed_post_senior and fcf = da_available."""
     for p in solar_result.waterfall_periods:
         if p.is_construction:
             continue
-        pre_gate = max(0.0, p.signed_post_senior_keur)
-        partition = p.covenant_locked_keur + p.fcf_for_distribution_keur
-        assert abs(partition - pre_gate) < 1e-9, (
-            f"P{p.period_index}: gate partition fails: {partition} != {pre_gate}"
+        da_check = p.distribution_account_release_keur + p.distribution_account_closing_keur
+        assert abs(da_check - p.distribution_account_available_keur) < 1e-9, (
+            f"P{p.period_index}: DA invariant fails: release+closing={da_check} "
+            f"!= available={p.distribution_account_available_keur}"
+        )
+        assert abs(p.fcf_for_distribution_keur - p.distribution_account_release_keur) < 1e-9, (
+            f"P{p.period_index}: fcf_for_distribution != da_release"
         )
 
 
 def test_gate_partition_holds_tight_lockup():
+    """DA invariant holds even when gate locks and DA accumulates across periods."""
     result = _solar_equity_only_with_lockup(1.25)
     for p in result.waterfall_periods:
         if p.is_construction:
             continue
-        pre_gate = max(0.0, p.signed_post_senior_keur)
-        partition = p.covenant_locked_keur + p.fcf_for_distribution_keur
-        assert abs(partition - pre_gate) < 1e-9
+        da_check = p.distribution_account_release_keur + p.distribution_account_closing_keur
+        assert abs(da_check - p.distribution_account_available_keur) < 1e-9, (
+            f"P{p.period_index}: DA invariant fails"
+        )
+    # DA carry-forward: opening[t] == closing[t-1]
+    op = [p for p in result.waterfall_periods if not p.is_construction]
+    for prev, curr in zip(op, op[1:]):
+        assert curr.distribution_account_opening_keur == pytest.approx(
+            prev.distribution_account_closing_keur, abs=1e-9
+        ), f"P{curr.period_index}: DA carry-forward breaks"
 
 
 # ── Cash conservation invariant ───────────────────────────────────────────────
@@ -250,19 +263,23 @@ def test_cash_conservation_wind(wind_result):
 
 
 def test_cash_conservation_tight_lockup():
-    """Conservation must hold when gate locks: locked + SHL + div = post_senior."""
+    """With DA model: SHL+div <= fcf_for_distribution per period.
+    DA accumulates locked cash across periods; per-period balance invariant holds."""
     result = _solar_equity_only_with_lockup(1.25)
     for p in result.waterfall_periods:
         if p.is_construction:
             continue
-        total_out = (
-            p.covenant_locked_keur
-            + p.shl_cash_interest_receipt_keur
+        shl_and_div = (
+            p.shl_cash_interest_receipt_keur
             + p.shl_principal_receipt_keur
             + p.legal_equity_distribution_keur
         )
-        available = max(0.0, p.signed_post_senior_keur)
-        assert total_out <= available + 1e-6
+        assert shl_and_div <= p.fcf_for_distribution_keur + 1e-6, (
+            f"P{p.period_index}: SHL+div exceed fcf_for_distribution"
+        )
+        # DA invariant: release + closing = available
+        da_check = p.distribution_account_release_keur + p.distribution_account_closing_keur
+        assert abs(da_check - p.distribution_account_available_keur) < 1e-9
 
 
 # ── DSCR gate: periods with no Senior DS are open ────────────────────────────
@@ -282,45 +299,52 @@ def test_construction_periods_tagged_correctly(solar_result):
             assert p.distribution_gate_status == DistributionGateStatus.CONSTRUCTION
 
 
-# ── G2C_DISTRIBUTION_ACCOUNT_AUTHORITY_INCOMPLETE status ─────────────────────
+# ── Distribution Account causal status ──────────────────────────────────────
 
-def test_distribution_account_status_incomplete(solar_result):
-    """DA (R98) not in source extraction — result carries INCOMPLETE status."""
-    assert solar_result.distribution_account_status == (
-        "G2C_DISTRIBUTION_ACCOUNT_AUTHORITY_INCOMPLETE"
-    )
+def test_distribution_account_status_causal(solar_result):
+    """DA is now causal (CF108/CF109/CF110 source-proven) — result carries CAUSAL status."""
+    assert "CAUSAL" in solar_result.distribution_account_status
 
 
 # ── G2B consistent return metrics at default lockup ──────────────────────────
 
-def test_solar_return_metrics_positive_at_default_lockup(solar_result):
-    """G2C with default lockup_dscr=1.10: gate doesn't bind, metrics are positive."""
-    assert solar_result.pure_equity_xirr is not None
-    assert solar_result.pure_equity_xirr > 0.0
-    assert solar_result.total_sponsor_xirr is not None
-    assert solar_result.total_sponsor_xirr > 0.0
-    assert solar_result.pure_equity_moic is not None
-    assert solar_result.pure_equity_moic > 1.0
-    assert solar_result.total_sponsor_moic is not None
-    assert solar_result.total_sponsor_moic > 1.0
+def test_solar_return_metrics_blocked_by_bullet(solar_result):
+    """Solar has BULLET balloon > single-period FCF at SHL maturity.
+    BULLET fail-closed: return metrics = None with UNPAID_SHL_AT_CONTRACTUAL_MATURITY.
+
+    Note: G2C gate never locks at default lockup_dscr=1.10, but BULLET maturity
+    balloon exceeds available period FCF → shl_bullet_unpaid_at_maturity=True.
+    """
+    from financial_engine.sponsor_returns.contracts import ReturnMetricStatus
+    assert solar_result.shl_bullet_unpaid_at_maturity is True
+    assert solar_result.pure_equity_xirr is None
+    assert solar_result.pure_equity_xirr_status == ReturnMetricStatus.UNPAID_SHL_AT_CONTRACTUAL_MATURITY
+    assert solar_result.total_sponsor_xirr is None
+    assert solar_result.total_sponsor_xirr_status == ReturnMetricStatus.UNPAID_SHL_AT_CONTRACTUAL_MATURITY
 
 
-def test_wind_return_metrics_positive_at_default_lockup(wind_result):
-    assert wind_result.pure_equity_xirr is not None
-    assert wind_result.pure_equity_xirr > 0.0
-    assert wind_result.total_sponsor_xirr is not None
-    assert wind_result.total_sponsor_xirr > 0.0
+def test_wind_return_metrics_blocked_by_bullet(wind_result):
+    """Wind BULLET also underfunded → return metrics blocked."""
+    from financial_engine.sponsor_returns.contracts import ReturnMetricStatus
+    assert wind_result.shl_bullet_unpaid_at_maturity is True
+    assert wind_result.pure_equity_xirr is None
+    assert wind_result.pure_equity_xirr_status == ReturnMetricStatus.UNPAID_SHL_AT_CONTRACTUAL_MATURITY
 
 
 def test_covenant_gate_reduces_equity_returns_when_locking():
-    """When DSCR gate locks distributions, PE XIRR < baseline."""
+    """When DSCR gate locks distributions, DA accumulates and delays cash to sponsor.
+    With DA model: total distributions may be equal (all locked cash eventually releases),
+    but timing shifts later → lower PE XIRR than baseline."""
     baseline = _solar_equity_only_with_lockup(1.10)
     locked = _solar_equity_only_with_lockup(1.25)
-    # With more locking, total distributions decrease → lower PE XIRR
-    assert locked.total_legal_equity_distributions_keur < baseline.total_legal_equity_distributions_keur
-    # Pure equity XIRR degrades (or stays same if locked is non-zero XIRR still)
+    # Locked periods shift cash to later periods — DA eventually releases accumulated cash.
+    # The gate must have locked at least some periods.
+    assert locked.periods_locked_by_dscr > 0, "Test requires some locked periods with 1.25 lockup"
+    # With delayed distributions, XIRR is degraded compared to baseline.
     if baseline.pure_equity_xirr is not None and locked.pure_equity_xirr is not None:
-        assert locked.pure_equity_xirr <= baseline.pure_equity_xirr + 1e-6
+        assert locked.pure_equity_xirr <= baseline.pure_equity_xirr + 1e-6, (
+            f"Locked XIRR {locked.pure_equity_xirr:.4f} should be <= baseline {baseline.pure_equity_xirr:.4f}"
+        )
 
 
 # ── Totals reconcile ─────────────────────────────────────────────────────────
@@ -656,8 +680,14 @@ def test_bullet_maturity_unpaid_carries_forward(solar_result):
 
 
 def test_deductible_feedback_fails_closed_return_metrics():
-    """When SHL is deductible and gate locks, return metrics must be None with
-    UPSTREAM_FINANCIAL_FEEDBACK_NOT_CLOSED status — not seemingly valid IRRs."""
+    """When SHL is deductible and gate locks, return metrics must be None.
+
+    Solar with lockup=9.99 and SHL: gate locks all senior-term periods.
+    deductible_shl_covenant_feedback_status is set.
+    Return metrics are None — either BULLET (UNPAID_SHL_AT_CONTRACTUAL_MATURITY)
+    or feedback (UPSTREAM_FINANCIAL_FEEDBACK_NOT_CLOSED) blocks them.
+    Both are valid blocking reasons; this test verifies metrics ARE blocked.
+    """
     from financial_engine.sponsor_returns.contracts import ReturnMetricStatus
     solar = create_default_solar_project()
     locked = dataclasses.replace(
@@ -669,18 +699,23 @@ def test_deductible_feedback_fails_closed_return_metrics():
         ),
     )
     result = run_project_shareholder_waterfall_model(locked)
+    # Deductible feedback MUST be flagged (gate locks periods with deductible SHL)
     assert result.deductible_shl_covenant_feedback_status == (
         "G2C_DEDUCTIBLE_SHL_COVENANT_FEEDBACK_NOT_YET_CLOSED"
     )
-    expected_status = ReturnMetricStatus.UPSTREAM_FINANCIAL_FEEDBACK_NOT_CLOSED
+    # Return metrics MUST be None (blocked by BULLET and/or deductible feedback)
+    blocking_statuses = {
+        ReturnMetricStatus.UPSTREAM_FINANCIAL_FEEDBACK_NOT_CLOSED,
+        ReturnMetricStatus.UNPAID_SHL_AT_CONTRACTUAL_MATURITY,
+    }
     assert result.pure_equity_xirr is None, "IRR must be None when feedback not closed"
-    assert result.pure_equity_xirr_status == expected_status
+    assert result.pure_equity_xirr_status in blocking_statuses
     assert result.pure_equity_moic is None
-    assert result.pure_equity_moic_status == expected_status
+    assert result.pure_equity_moic_status in blocking_statuses
     assert result.total_sponsor_xirr is None
-    assert result.total_sponsor_xirr_status == expected_status
+    assert result.total_sponsor_xirr_status in blocking_statuses
     assert result.total_sponsor_moic is None
-    assert result.total_sponsor_moic_status == expected_status
+    assert result.total_sponsor_moic_status in blocking_statuses
 
 
 def test_oborovo_non_deductible_returns_not_blocked(oborovo_g2c_result):
@@ -840,3 +875,226 @@ def test_gate_fail_causes_pik_and_shl_balance_grows():
             f"Period {curr.period_index}: opening SHL ({curr.shl_opening_balance_keur}) "
             f"!= prior closing ({prev.shl_closing_balance_keur})"
         )
+
+
+# ── NEW: Distribution Account causal carry-forward ───────────────────────────
+
+def test_da_carry_forward_across_locked_then_open_periods():
+    """Synthetic DA carry-forward test (3-period scenario).
+
+    Uses tight lockup (1.25) on equity-only solar to produce locked periods.
+    Proves:
+      1. da_opening[t] == da_closing[t-1] for all consecutive operating periods
+      2. Locked periods accumulate cash (da_closing > 0)
+      3. First unlock period after locked run: da_available = da_inflow + da_opening (includes carry)
+      4. Total: sum(da_release) + final_da_closing ≈ sum(da_inflow)
+    """
+    result = _solar_equity_only_with_lockup(1.25)
+    op = [p for p in result.waterfall_periods if not p.is_construction]
+    assert len(op) >= 3, "Need at least 3 operating periods"
+
+    locked_periods = [p for p in op if p.distribution_gate_status == DistributionGateStatus.LOCKED_DSCR_BELOW_LOCKUP]
+    assert len(locked_periods) > 0, "Need locked periods for this test"
+
+    # 1. DA carry-forward invariant holds across ALL consecutive operating periods
+    for prev, curr in zip(op, op[1:]):
+        assert curr.distribution_account_opening_keur == pytest.approx(
+            prev.distribution_account_closing_keur, abs=1e-9
+        ), f"P{curr.period_index}: DA carry breaks: opening={curr.distribution_account_opening_keur} != prior closing={prev.distribution_account_closing_keur}"
+
+    # 2. Locked periods: da_closing > 0 (cash accumulates)
+    for p in locked_periods:
+        if p.distribution_account_inflow_keur > 0.0:
+            assert p.distribution_account_closing_keur > 0.0, (
+                f"P{p.period_index}: locked period with positive inflow must accumulate DA"
+            )
+
+    # 3. DA available = inflow + opening for every period
+    for p in op:
+        expected_avail = p.distribution_account_inflow_keur + p.distribution_account_opening_keur
+        assert abs(p.distribution_account_available_keur - expected_avail) < 1e-9, (
+            f"P{p.period_index}: da_available != inflow+opening"
+        )
+
+    # 4. Total conservation: sum(release) + final_closing = sum(inflow)
+    total_release = sum(p.distribution_account_release_keur for p in op)
+    total_inflow = sum(p.distribution_account_inflow_keur for p in op)
+    final_closing = op[-1].distribution_account_closing_keur
+    assert abs(total_release + final_closing - total_inflow) < 1e-6, (
+        f"DA total conservation fails: release={total_release:.2f} + closing={final_closing:.2f} != inflow={total_inflow:.2f}"
+    )
+
+
+def test_da_first_unlock_period_releases_accumulated_cash():
+    """After a locked run, the first unlock period releases ALL accumulated DA."""
+    result = _solar_equity_only_with_lockup(1.25)
+    op = [p for p in result.waterfall_periods if not p.is_construction]
+
+    locked_run_end_idx = None
+    for i, p in enumerate(op):
+        if p.distribution_gate_status == DistributionGateStatus.LOCKED_DSCR_BELOW_LOCKUP:
+            locked_run_end_idx = i
+
+    if locked_run_end_idx is not None and locked_run_end_idx + 1 < len(op):
+        first_unlock = op[locked_run_end_idx + 1]
+        if first_unlock.distribution_gate_status != DistributionGateStatus.LOCKED_DSCR_BELOW_LOCKUP:
+            # First unlock period: da_available = da_inflow + accumulated opening
+            assert first_unlock.distribution_account_opening_keur > 0.0, (
+                "First unlock period after locked run must have positive DA opening"
+            )
+            # fcf_for_distribution = da_release = da_available (when gate open)
+            assert first_unlock.distribution_account_release_keur == pytest.approx(
+                max(0.0, first_unlock.distribution_account_available_keur), abs=1e-9
+            )
+
+
+# ── NEW: BULLET fail-closed test ─────────────────────────────────────────────
+
+def test_bullet_fail_closed_no_equity_after_underfunded_maturity(solar_result):
+    """BULLET fail-closed: after underfunded BULLET maturity, equity = 0 in subsequent periods.
+
+    Solar default has BULLET balloon > single-period FCF at maturity (P29).
+    After P29, shl_bullet_unpaid_at_maturity=True → legal_equity_distribution_keur=0.
+
+    Proves:
+      1. shl_bullet_unpaid_at_maturity=True on result
+      2. Periods after maturity have legal_equity_distribution_keur=0
+      3. Return metrics = None with UNPAID_SHL_AT_CONTRACTUAL_MATURITY
+    """
+    from financial_engine.sponsor_returns.contracts import ReturnMetricStatus
+
+    assert solar_result.shl_bullet_unpaid_at_maturity is True, (
+        "Solar BULLET balloon > period FCF — shl_bullet_unpaid_at_maturity must be True"
+    )
+
+    # Find maturity period (has contractual principal due)
+    op = [p for p in solar_result.waterfall_periods if not p.is_construction]
+    mat_periods = [p for p in op if p.contractual_shl_principal_due_keur > 1e-6]
+    assert len(mat_periods) >= 1
+    mat_p = mat_periods[0]
+    mat_idx = mat_p.period_index
+
+    # Periods after maturity: equity must be 0 (BULLET fail-closed)
+    post_mat = [p for p in op if p.period_index > mat_idx]
+    if post_mat:
+        for p in post_mat:
+            assert p.legal_equity_distribution_keur == pytest.approx(0.0, abs=1e-9), (
+                f"P{p.period_index}: equity must be 0 after underfunded BULLET"
+            )
+            assert p.shl_bullet_unpaid_at_maturity is True
+
+    # Return metrics blocked
+    assert solar_result.pure_equity_xirr is None
+    assert solar_result.pure_equity_xirr_status == ReturnMetricStatus.UNPAID_SHL_AT_CONTRACTUAL_MATURITY
+    assert solar_result.total_sponsor_xirr is None
+    assert solar_result.total_sponsor_xirr_status == ReturnMetricStatus.UNPAID_SHL_AT_CONTRACTUAL_MATURITY
+
+
+def test_bullet_fail_closed_wind_result(wind_result):
+    """Wind BULLET also underfunded — same fail-closed behavior."""
+    from financial_engine.sponsor_returns.contracts import ReturnMetricStatus
+    assert wind_result.shl_bullet_unpaid_at_maturity is True
+    assert wind_result.pure_equity_xirr is None
+    assert wind_result.pure_equity_xirr_status == ReturnMetricStatus.UNPAID_SHL_AT_CONTRACTUAL_MATURITY
+
+
+def test_bullet_unpaid_flag_propagates_to_all_post_maturity_periods(solar_result):
+    """shl_bullet_unpaid_at_maturity flag is True for maturity period and all after."""
+    op = [p for p in solar_result.waterfall_periods if not p.is_construction]
+    mat_periods = [p for p in op if p.contractual_shl_principal_due_keur > 1e-6]
+    if not mat_periods:
+        pytest.skip("No BULLET maturity period found")
+    mat_idx = mat_periods[0].period_index
+    for p in op:
+        if p.period_index >= mat_idx and p.contractual_shl_principal_due_keur > 1e-6:
+            assert p.shl_bullet_unpaid_at_maturity is True, (
+                f"P{p.period_index}: maturity period must have flag=True"
+            )
+        if p.period_index > mat_idx:
+            assert p.shl_bullet_unpaid_at_maturity is True
+
+
+def test_equity_only_no_bullet_issue():
+    """Equity-only projects have no SHL → no BULLET → shl_bullet_unpaid_at_maturity=False."""
+    result = _solar_equity_only_with_lockup(1.10)
+    assert result.shl_bullet_unpaid_at_maturity is False
+    # Return metrics are valid (no BULLET block, no deductible feedback)
+    assert result.pure_equity_xirr is not None
+    assert result.pure_equity_xirr > 0.0
+
+
+# ── NEW: CASH_DSRA gate component test ───────────────────────────────────────
+
+def test_oborovo_dsra_gate_component_d_false_zero_target(oborovo_g2c_result):
+    """Oborovo has CASH_DSRA mode with zero requirement (no DSRA needed).
+
+    Source: CF86 target = 0, CF91 ending = 0.
+    Gate component D = (dsra_ending < dsra_target) = (0 < 0) = False.
+    All operating periods: gate_component_dsra_underfunded = False.
+    """
+    op = [p for p in oborovo_g2c_result.waterfall_periods if not p.is_construction]
+    for p in op:
+        assert p.gate_component_dsra_underfunded is False, (
+            f"P{p.period_index}: Oborovo zero-DSRA must have gate_component_dsra_underfunded=False"
+        )
+        assert p.senior_dsra_target_keur == pytest.approx(0.0, abs=1e-9)
+        assert p.senior_dsra_closing_keur == pytest.approx(0.0, abs=1e-9)
+
+
+def test_solar_dsra_none_mode_not_applicable_gate_component(solar_result):
+    """Solar NONE reserve mode: target=0, component D=False, NOT_APPLICABLE status."""
+    from financial_engine.shareholder_waterfall.contracts import ReserveSupportGateStatus
+    op = [p for p in solar_result.waterfall_periods if not p.is_construction]
+    for p in op:
+        assert p.gate_component_dsra_underfunded is False
+        assert p.senior_dsra_target_keur == pytest.approx(0.0, abs=1e-9)
+        assert p.reserve_support_gate_status == ReserveSupportGateStatus.NOT_APPLICABLE
+
+
+def test_gate_component_j_dsra_always_false(solar_result):
+    """No-junior-debt projects: gate component E (J-DSRA underfunded) = False always."""
+    op = [p for p in solar_result.waterfall_periods if not p.is_construction]
+    for p in op:
+        assert p.gate_component_j_dsra_underfunded is False, (
+            f"P{p.period_index}: J-DSRA component must be False for no-junior-debt project"
+        )
+
+
+def test_gate_component_construction_false_for_operating(solar_result):
+    """Gate component B (construction period) = False for all operating periods."""
+    op = [p for p in solar_result.waterfall_periods if not p.is_construction]
+    for p in op:
+        assert p.gate_component_construction is False
+
+
+def test_gate_component_dscr_true_when_locked():
+    """Gate component A (DSCR < lockup) = True for locked periods."""
+    result = _solar_equity_only_with_lockup(1.25)
+    locked = [
+        p for p in result.waterfall_periods
+        if p.distribution_gate_status == DistributionGateStatus.LOCKED_DSCR_BELOW_LOCKUP
+    ]
+    assert len(locked) > 0
+    for p in locked:
+        assert p.gate_component_dscr_below_lockup is True, (
+            f"P{p.period_index}: locked period must have DSCR component True"
+        )
+
+
+def test_within_senior_maturity_false_post_senior(solar_result):
+    """Periods after senior debt maturity: within_senior_maturity = False."""
+    op = [p for p in solar_result.waterfall_periods if not p.is_construction]
+    in_mat = [p for p in op if p.within_senior_maturity]
+    post_mat = [p for p in op if not p.within_senior_maturity]
+    if post_mat:
+        assert max(p.period_index for p in in_mat) < min(p.period_index for p in post_mat), (
+            "All within-maturity periods must come before post-maturity periods"
+        )
+
+
+def test_da_shl_bullet_result_fields_present(solar_result):
+    """Result-level fields: shl_bullet_unpaid_at_maturity and total_distribution_account_locked_keur."""
+    assert hasattr(solar_result, "shl_bullet_unpaid_at_maturity")
+    assert hasattr(solar_result, "total_distribution_account_locked_keur")
+    assert isinstance(solar_result.shl_bullet_unpaid_at_maturity, bool)
+    assert isinstance(solar_result.total_distribution_account_locked_keur, float)

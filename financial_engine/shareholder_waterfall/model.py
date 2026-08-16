@@ -5,31 +5,47 @@ extracted fixture Inputs!D223 (senior_lockup_dscr = 1.10).
 
 Source-proven waterfall ordering:
   1. signed_post_senior = R84 (pre-gate junior FCF from clean engine)
-  2. DSCR covenant gate applied → fcf_for_distribution = R109
-       if gate LOCKED: fcf_for_distribution = 0, covenant_locked = R84
-       if gate OPEN:   fcf_for_distribution = R84, covenant_locked = 0
-  3. SHL cash service drawn from fcf_for_distribution (R112 = R109)
-       via project-owned compute_shareholder_loan_schedules() — respects
-       project-owned repayment mode, day-count, eligibility start, maturity.
-  4. legal_equity_distribution = max(0, fcf_for_distribution - SHL_service) = R116
+  2. Distribution Account roll-forward (CF108):
+       da_available[t] = signed_post_senior[t] + da_closing[t-1]
+  3. CF109 5-component gate applied → fcf_for_distribution = R109
+       gate active only within senior maturity (G4 <= B11)
+       LOCKED:  fcf_for_distribution = 0, da_closing = da_available (accumulated)
+       OPEN:    fcf_for_distribution = da_available, da_closing = 0
+  4. SHL cash service drawn from fcf_for_distribution (R112 = R109)
+       via project-owned compute_shareholder_loan_schedules()
+  5. legal_equity_distribution = max(0, fcf_for_distribution - SHL_service) = R116
+
+MANUAL_WORKBOOK_SOURCE_EVIDENCE:
+  Workbook: 20260414_BP_Oborovo_Sensitivity_FINAL_for_PPT.xlsm
+  SHA-256: 15a621c4d6b79024980766e00ebc79d7235fd56f00567be7bf345c769ce57920
+  CF!G108 = =SUM(G94,G95,G106)+F110
+  CF!G109 = =IF(AND(OR(G$138<$B$109,G$4=0,G108<0,G91<G86,G105<G100),G$4<=$B$11),0,G108)
+  CF!G110 = G108-G109
+  $B$11 = Senior Debt Maturity years = 14
+  $B$109 = distribution_lockup_dscr = 1.10
+
+Gate components (CF109 source-proven):
+  A: G$138 < $B$109  — DSCR below lockup threshold
+  B: G$4 = 0         — construction period
+  C: G108 < 0        — DA available negative
+  D: G91 < G86       — Senior DSRA ending < target (Oborovo: both=0 → False)
+  E: G105 < G100     — J-DSRA ending < target (NOT_APPLICABLE: both=0 → False)
+  Gate = OR(A,B,C,D,E) AND within_senior_maturity (G4 <= B11)
 
 SHL POLICY AUTHORITY:
   G2C does NOT hardcode a repayment mode or day-count convention.
-  These come from project-owned FinancingParams (clean_shl_repayment_method,
-  shl_day_count_convention, shl_principal_eligibility_start_period,
-  shl_maturity_period_index). The production SHL scheduler
-  (compute_shareholder_loan_schedules) is the only SHL computation kernel.
 
 DEDUCTIBLE SHL COVENANT FEEDBACK:
   If SHL interest is tax-deductible and the gate locks in any period,
   the resulting PIK accumulation would increase future SHL gross interest,
   affecting taxable income → CFADS → DSCR → gate — a feedback loop not
-  yet closed in G2C. For such cases the status
-  G2C_DEDUCTIBLE_SHL_COVENANT_FEEDBACK_NOT_YET_CLOSED is set.
+  yet closed in G2C. Status: G2C_DEDUCTIBLE_SHL_COVENANT_FEEDBACK_NOT_YET_CLOSED.
 
-G2C_DISTRIBUTION_ACCOUNT_AUTHORITY_INCOMPLETE: R98 (distribution account
-balance / carryforward) is NOT in the extracted source fixture. Locked cash
-is tracked per-period but NOT accumulated into a releasing balance.
+BULLET FAIL-CLOSED:
+  If BULLET balloon > available FCF at maturity, unpaid principal remains.
+  Subsequent periods: gross=0, PIK=0, principal=0 (no terms; not invented).
+  Equity distribution = 0 in all periods after unresolved BULLET.
+  Return metrics = None with UNPAID_SHL_AT_CONTRACTUAL_MATURITY status.
 
 Source map:
   R84  → signed_post_senior (pre-DSRA, pre-gate)
@@ -65,28 +81,10 @@ from financial_engine.shareholder_waterfall.contracts import (
 from financial_engine.sponsor_returns.contracts import ReturnMetricStatus
 from financial_engine.sponsor_returns.model import compute_gated_sponsor_return_metrics
 
-_G2C_DA_STATUS = "G2C_DISTRIBUTION_ACCOUNT_AUTHORITY_INCOMPLETE"
+_G2C_DA_STATUS_CAUSAL = "G2C_DISTRIBUTION_ACCOUNT_CAUSAL_CF108_CF109_CF110_SOURCE_PROVEN"
 _G2C_DEDUCTIBLE_FEEDBACK_STATUS = "G2C_DEDUCTIBLE_SHL_COVENANT_FEEDBACK_NOT_YET_CLOSED"
 _DSRF_NO_DRAW_STATUS = "DSRF_AVAILABLE_SUPPORT_ONLY_NO_DRAW_ENGINE"
 _G2C_RESERVE_GATE_STATUS = "G2C_RESERVE_GATE_NOT_CAUSALLY_CLOSED"
-
-
-def _evaluate_distribution_gate(
-    base_dscr: float | None,
-    distribution_lockup_dscr: float,
-    has_senior_ds: bool,
-) -> DistributionGateStatus:
-    """Evaluate the DSCR covenant distribution gate.
-
-    Source: extracted fixture Inputs!D223 → generic distribution_lockup_dscr.
-    Gate: if base_dscr < distribution_lockup_dscr → locked.
-    Periods with no Senior DS have no DSCR → gate open (no debt to covenant).
-    """
-    if base_dscr is None or not has_senior_ds:
-        return DistributionGateStatus.DSCR_UNAVAILABLE_GATE_OPEN
-    if base_dscr < distribution_lockup_dscr:
-        return DistributionGateStatus.LOCKED_DSCR_BELOW_LOCKUP
-    return DistributionGateStatus.OPEN
 
 
 def _evaluate_reserve_support_gate(
@@ -141,17 +139,9 @@ def run_project_shareholder_waterfall_model(
     Adds DSCR distribution lockup gate (project_inputs.financing.lockup_dscr) on top
     of the G2B SHL-gated distribution mechanics.
 
-    Source-proven ordering: gate is UPSTREAM of SHL service. The gate filters
-    signed_post_senior into fcf_for_distribution; SHL receipts and equity
-    distributions are drawn from fcf_for_distribution, not from raw post-Senior cash.
-
-    Source authority: extracted fixture Inputs!D223 → lockup_dscr = 1.10 (generic parameter).
-
-    SHL policy: project-owned (clean_shl_repayment_method, shl_day_count_convention,
-    shl_principal_eligibility_start_period, shl_maturity_period_index). No G2C override.
-
-    Sponsor Returns: return metrics delegated to compute_gated_sponsor_return_metrics().
-    G2C does not compute XIRR/MOIC directly.
+    Source-proven ordering: gate is UPSTREAM of SHL service.
+    DA roll-forward per CF108/CF109/CF110 source formulas.
+    BULLET fail-closed: equity=0, metrics=None after underfunded maturity balloon.
     """
     financing: ProjectFinancingResult = run_project_financing_model(
         project_inputs,
@@ -169,8 +159,7 @@ def run_project_shareholder_waterfall_model(
 
     # Reserve support gate inputs
     from finco_core.inputs import DebtServiceReserveSupportMode
-    dsra_mode = getattr(fin, "debt_service_reserve_support_mode",
-                        DebtServiceReserveSupportMode.NONE)
+    dsra_mode = fin.dsra_support_mode
     reserve_requirement_keur: float = getattr(fin, "debt_service_reserve_requirement_keur", 0.0) or 0.0
     dsrf_commitment_keur: float = getattr(fin, "dsrf_commitment_keur", 0.0) or 0.0
 
@@ -211,7 +200,6 @@ def run_project_shareholder_waterfall_model(
     }
 
     # ── DSRF commitment fee schedule ──────────────────────────────────────────
-    # Guard: only POST_SENIOR_CASH is source-proven; fail closed for unsupported treatment.
     from finco_core.inputs import DsrfCommitmentFeeTreatment
     _fee_treatment = getattr(fin, "dsrf_fee_treatment", DsrfCommitmentFeeTreatment.POST_SENIOR_CASH)
     if _fee_treatment != DsrfCommitmentFeeTreatment.POST_SENIOR_CASH:
@@ -220,7 +208,6 @@ def run_project_shareholder_waterfall_model(
             "Only POST_SENIOR_CASH (EXPLICIT_GENERIC_MVP_POLICY) is source-proven. "
             "No other DSRF fee treatment is implemented."
         )
-    dsra_mode = fin.dsra_support_mode
     dsrf_fee_by_idx: dict[int, float] = {}
     if dsra_mode == DebtServiceReserveSupportMode.DSRF:
         dsrf_req = getattr(fin, "debt_service_reserve_requirement_keur", 0.0) or 0.0
@@ -242,10 +229,50 @@ def run_project_shareholder_waterfall_model(
             )
             dsrf_fee_by_idx = dict(zip(dsrf_schedule.period_indices, dsrf_schedule.dsrf_commitment_fee_keur))
 
-    # ── Phase 1: Gate pass — compute fcf_for_distribution per operating period ─
-    # Accumulate gated cash vector (indexed same as model_result.periods) for SHL.
-    gate_info_by_idx: dict[int, tuple] = {}  # idx → (gate_status, fcf, locked, dsrf_fee, signed_ps, shortfall)
-    gated_cash_all_periods: list[float] = []  # 0 for construction, fcf_for_dist for operating
+    # ── Senior DSRA causal roll-forward ──────────────────────────────────────
+    # MANUAL_WORKBOOK_SOURCE_EVIDENCE:
+    #   CF86: Senior DSRA target (Oborovo: 0 — no DSRA required)
+    #   CF92: Senior DSRA ending balance
+    # For CASH_DSRA: target = reserve_requirement_keur, funded at construction.
+    # Oborovo: NONE mode → target=0, all balances=0.
+    # Gate component D: dsra_ending < dsra_target (False when both=0).
+    dsra_target_keur = reserve_requirement_keur if dsra_mode == DebtServiceReserveSupportMode.CASH_DSRA else 0.0
+    # CASH_DSRA: assume fully funded from construction (no draw engine modeled).
+    # Opening of first operating period = target. Closing = opening (static, no draws).
+    dsra_opening: float = dsra_target_keur  # first period
+    dsra_opening_by_idx: dict[int, float] = {}
+    dsra_closing_by_idx: dict[int, float] = {}
+    prev_dsra_closing: float = dsra_target_keur
+    for period in model_result.periods:
+        if not period.is_operation:
+            continue
+        idx = period.period_index
+        _opening = prev_dsra_closing
+        # No draw engine: DSRA balance stays at target (or 0 for NONE/DSRF)
+        _closing = dsra_target_keur
+        dsra_opening_by_idx[idx] = _opening
+        dsra_closing_by_idx[idx] = _closing
+        prev_dsra_closing = _closing
+
+    # J-DSRA: NOT_APPLICABLE for no-junior-debt projects.
+    # Gate component E = False (both ending and target = 0).
+    j_dsra_target_keur = 0.0
+    j_dsra_closing_keur = 0.0
+
+    # ── Phase 1: DA roll-forward + CF109 5-component gate ────────────────────
+    # CF108: da_available[t] = signed_post_senior[t] + da_closing[t-1]
+    # CF109: IF(AND(OR(A,B,C,D,E), within_senior_maturity), 0, da_available)
+    # CF110: da_closing[t] = da_available[t] - release[t]
+    #
+    # Note: signed_post_senior here corresponds to G94 (FCF for junior debt),
+    # plus G95 (junior DS = 0) plus G106 (J-DSRA movement = 0).
+    # For no-junior-debt projects: G94 = signed_post_senior directly.
+
+    gate_info_by_idx: dict[int, tuple] = {}
+    da_info_by_idx: dict[int, tuple] = {}  # idx → (opening, inflow, available, release, closing, booleans...)
+    gated_cash_all_periods: list[float] = []
+
+    da_closing_prev: float = 0.0  # DA closing of prior period (F110 in first op period = 0)
 
     for period in model_result.periods:
         idx = period.period_index
@@ -259,29 +286,69 @@ def run_project_shareholder_waterfall_model(
             )
         signed_post_senior = signed_post_senior_by_idx[idx]
         dsrf_fee = dsrf_fee_by_idx.get(idx, 0.0)
-        post_senior_after_dsrf = signed_post_senior - dsrf_fee
+        # Inflow to DA = post-senior cash net of DSRF fee
+        da_inflow = signed_post_senior - dsrf_fee
 
+        # CF108: DA available = inflow + prior closing
+        da_available = da_inflow + da_closing_prev
+
+        # Gate components (CF109 source-proven)
         dscr_val = base_dscr_by_idx.get(idx)
         has_senior_ds = senior_ds_nonzero_by_idx.get(idx, False)
-        gate_status = _evaluate_distribution_gate(dscr_val, distribution_lockup_dscr, has_senior_ds)
-        gate_locked = gate_status == DistributionGateStatus.LOCKED_DSCR_BELOW_LOCKUP
+        comp_a = (dscr_val is not None and has_senior_ds and dscr_val < distribution_lockup_dscr)
+        comp_b = False  # operating period, not construction
+        comp_c = da_available < 0.0
+        dsra_ending = dsra_closing_by_idx.get(idx, 0.0)
+        comp_d = dsra_ending < dsra_target_keur  # False when both=0 (Oborovo)
+        comp_e = j_dsra_closing_keur < j_dsra_target_keur  # False always (no J-DSRA)
 
-        pre_gate = max(0.0, post_senior_after_dsrf)
-        if gate_locked:
-            fcf_for_distribution = 0.0
-            covenant_locked = pre_gate
+        # within_senior_maturity: gate active only if we're within senior debt term
+        # Source: G$4 <= $B$11 ($B$11 = Senior Debt Maturity years)
+        # We use period index <= senior_last_period_index as proxy
+        if senior_last_period_index is not None:
+            within_senior_maturity = idx <= senior_last_period_index
         else:
-            fcf_for_distribution = pre_gate
-            covenant_locked = 0.0
+            within_senior_maturity = False
 
-        cash_shortfall = max(0.0, -post_senior_after_dsrf)
+        gate_locked = (comp_a or comp_b or comp_c or comp_d or comp_e) and within_senior_maturity
+
+        # CF109: release
+        if gate_locked:
+            da_release = 0.0
+            gate_status = DistributionGateStatus.LOCKED_DSCR_BELOW_LOCKUP
+        elif dscr_val is None or not has_senior_ds:
+            # No DSCR available: gate open (no debt to covenant)
+            da_release = max(0.0, da_available)
+            gate_status = DistributionGateStatus.DSCR_UNAVAILABLE_GATE_OPEN
+        else:
+            da_release = max(0.0, da_available)
+            gate_status = DistributionGateStatus.OPEN
+
+        # CF110 = CF108 - CF109: DA closing balance
+        # Invariant: da_available = da_release + da_closing always holds.
+        # When gate open and da_available > 0: release = available, closing = 0
+        # When gate open and da_available < 0: release = 0, closing = available (negative shortfall)
+        # When gate locked: release = 0, closing = da_available (accumulated in DA)
+        da_closing = da_available - da_release
+        fcf_for_distribution = da_release  # = max(0, da_available) when open, 0 when locked
+        # covenant_locked: per-period legacy view (positive locked cash this period)
+        covenant_locked = max(0.0, da_available) if gate_locked else 0.0
+        cash_shortfall = max(0.0, -(signed_post_senior - dsrf_fee))
+
         gate_info_by_idx[idx] = (gate_status, fcf_for_distribution, covenant_locked, dsrf_fee, signed_post_senior, cash_shortfall)
+        da_info_by_idx[idx] = (
+            da_closing_prev,   # opening
+            da_inflow,         # inflow (net of DSRF fee)
+            da_available,      # available (CF108)
+            da_release,        # release (CF109)
+            da_closing,        # closing (CF110)
+            comp_a, comp_b, comp_c, comp_d, comp_e,
+            within_senior_maturity,
+        )
         gated_cash_all_periods.append(fcf_for_distribution)
+        da_closing_prev = da_closing
 
     # ── Phase 2: SHL schedule using project-owned policy ─────────────────────
-    # Passes gated FCF vector to the canonical production SHL scheduler.
-    # Respects: repayment mode, day-count, eligibility start, maturity.
-    # No G2C override of any SHL policy parameter.
     shl_opening_by_idx: dict[int, float] = {}
     shl_gross_by_idx: dict[int, float] = {}
     shl_cash_int_by_idx: dict[int, float] = {}
@@ -290,6 +357,7 @@ def run_project_shareholder_waterfall_model(
     shl_closing_by_idx: dict[int, float] = {}
 
     has_shl = financing.derived_shl_cash_principal_keur > 0.0
+    shl_maturity_idx: int | None = None
     if has_shl:
         shl_model_input = _build_shareholder_loan_model_input_from_project_inputs(
             project_inputs,
@@ -297,13 +365,12 @@ def run_project_shareholder_waterfall_model(
             senior_debt_maturity_period_index=senior_last_period_index,
         )
         if shl_model_input is not None:
-            # Use G2A's derived (sized) principal — may differ from clean_shl_principal_keur
-            # if the fixed-point converged to a different value.
             if abs(shl_model_input.initial_principal_keur - financing.derived_shl_cash_principal_keur) > 1e-4:
                 shl_model_input = dataclasses.replace(
                     shl_model_input,
                     initial_principal_keur=financing.derived_shl_cash_principal_keur,
                 )
+            shl_maturity_idx = shl_model_input.maturity_period_index
 
             gated_shl_schedule = compute_shareholder_loan_schedules(
                 model_result.periods,
@@ -319,8 +386,6 @@ def run_project_shareholder_waterfall_model(
             shl_closing_by_idx = dict(zip(gated_shl_schedule.period_indices, gated_shl_schedule.shl_closing_keur))
 
     # ── Phase 3: Deductible SHL feedback check ───────────────────────────────
-    # If SHL interest is tax-deductible AND the gate locks any period,
-    # PIK accumulation changes future gross interest → DSCR feedback not yet closed.
     shl_deductible = (
         getattr(tax, "shl_interest_deductibility", ShlInterestDeductibilityMode.FULLY_DEDUCTIBLE)
         != ShlInterestDeductibilityMode.FULLY_NON_DEDUCTIBLE
@@ -364,6 +429,24 @@ def run_project_shareholder_waterfall_model(
             dsrf_commitment_fee_keur=0.0,
             fcf_for_distribution_keur=0.0,
             covenant_locked_keur=0.0,
+            # DA fields: zero during construction
+            distribution_account_opening_keur=0.0,
+            distribution_account_inflow_keur=0.0,
+            distribution_account_available_keur=0.0,
+            gate_component_dscr_below_lockup=False,
+            gate_component_construction=True,
+            gate_component_da_negative=False,
+            gate_component_dsra_underfunded=False,
+            gate_component_j_dsra_underfunded=False,
+            within_senior_maturity=True,
+            distribution_account_release_keur=0.0,
+            distribution_account_closing_keur=0.0,
+            # DSRA: zero during construction
+            senior_dsra_target_keur=dsra_target_keur,
+            senior_dsra_opening_keur=0.0,
+            senior_dsra_closing_keur=0.0,
+            # BULLET: not applicable during construction
+            shl_bullet_unpaid_at_maturity=False,
             shl_opening_balance_keur=0.0,
             shl_gross_interest_keur=0.0,
             shl_cash_interest_receipt_keur=0.0,
@@ -386,9 +469,10 @@ def run_project_shareholder_waterfall_model(
         ))
 
     # --- Operating periods ---
-    # Track actual SHL closing balance to carry forward (overrides contractual scheduler
-    # when BULLET leaves unpaid principal at maturity).
-    actual_shl_carry: float | None = None  # None until first operating period with SHL
+    # actual_shl_carry: causal closing balance to override contractual scheduler
+    actual_shl_carry: float | None = None
+    # bullet_unpaid_active: once True, equity=0 and post-maturity SHL terms = 0
+    bullet_unpaid_active: bool = False
 
     for period in model_result.periods:
         if not period.is_operation:
@@ -398,35 +482,64 @@ def run_project_shareholder_waterfall_model(
 
         gate_status, fcf_for_distribution, covenant_locked, dsrf_fee, signed_post_senior, cash_shortfall = gate_info_by_idx[idx]
 
+        (
+            da_opening, da_inflow, da_available, da_release, da_closing,
+            comp_a, comp_b, comp_c, comp_d, comp_e, within_sm,
+        ) = da_info_by_idx[idx]
+
+        # BULLET post-maturity: once balloon was underfunded, no SHL terms exist.
+        # Do NOT read from contractual scheduler — it shows 0 post-maturity which is
+        # consistent but we track via actual_shl_carry for causal opening.
+        is_post_maturity = bullet_unpaid_active
+
         # SHL opening: use actual carry-forward if available (causal), else contractual.
-        # For BULLET at maturity where balloon > cash, actual carry-forward will be > 0
-        # while contractual scheduler shows 0 in subsequent periods.
         if actual_shl_carry is not None:
             shl_opening = actual_shl_carry
         else:
             shl_opening = shl_opening_by_idx.get(idx, 0.0)
-        shl_gross = shl_gross_by_idx.get(idx, 0.0)
-        actual_shl_cash_int = shl_cash_int_by_idx.get(idx, 0.0)
-        shl_pik = shl_pik_by_idx.get(idx, 0.0)
-        contractual_shl_principal = shl_principal_by_idx.get(idx, 0.0)
-        actual_shl_principal = min(
-            contractual_shl_principal,
-            max(0.0, fcf_for_distribution - actual_shl_cash_int),
-        )
-        unpaid_shl_principal = contractual_shl_principal - actual_shl_principal
-        # Actual causal closing balance — must reflect actual cash paid, not contractual.
-        # For BULLET at maturity where balloon > cash: opening + PIK - actual_paid > 0.
+
+        if is_post_maturity:
+            # Post-maturity with unpaid BULLET: no terms (do not invent default interest).
+            shl_gross = 0.0
+            actual_shl_cash_int = 0.0
+            shl_pik = 0.0
+            contractual_shl_principal = 0.0
+            actual_shl_principal = 0.0
+        else:
+            shl_gross = shl_gross_by_idx.get(idx, 0.0)
+            actual_shl_cash_int = shl_cash_int_by_idx.get(idx, 0.0)
+            shl_pik = shl_pik_by_idx.get(idx, 0.0)
+            contractual_shl_principal = shl_principal_by_idx.get(idx, 0.0)
+            actual_shl_principal = min(
+                contractual_shl_principal,
+                max(0.0, fcf_for_distribution - actual_shl_cash_int),
+            )
+
+        unpaid_shl_principal = contractual_shl_principal - actual_shl_principal if not is_post_maturity else 0.0
         actual_shl_closing = max(0.0, shl_opening + shl_pik - actual_shl_principal)
-        # Carry forward actual closing as next period's opening (causal override of scheduler).
+
+        # Detect underfunded BULLET at its contractual maturity period
+        at_maturity = (shl_maturity_idx is not None and idx == shl_maturity_idx)
+        if at_maturity and has_shl and unpaid_shl_principal > 1e-6:
+            bullet_unpaid_active = True
+
         if has_shl:
             actual_shl_carry = actual_shl_closing
 
-        # Equity distribution = fcf_for_distribution residual (R116)
-        shl_service_actual = actual_shl_cash_int + actual_shl_principal
-        distribution = max(0.0, fcf_for_distribution - shl_service_actual)
+        shl_bullet_flag = bullet_unpaid_active
+
+        # BULLET fail-closed: block equity distributions after unresolved BULLET
+        if bullet_unpaid_active and not at_maturity:
+            distribution = 0.0
+        else:
+            shl_service_actual = actual_shl_cash_int + actual_shl_principal
+            distribution = max(0.0, fcf_for_distribution - shl_service_actual)
 
         pure_equity_net = distribution
         total_sponsor_net = pure_equity_net + actual_shl_cash_int + actual_shl_principal
+
+        dsra_op = dsra_opening_by_idx.get(idx, 0.0)
+        dsra_cl = dsra_closing_by_idx.get(idx, 0.0)
 
         waterfall_periods.append(CovenantGatedWaterfallPeriod(
             period_index=idx,
@@ -443,6 +556,21 @@ def run_project_shareholder_waterfall_model(
             dsrf_commitment_fee_keur=dsrf_fee,
             fcf_for_distribution_keur=fcf_for_distribution,
             covenant_locked_keur=covenant_locked,
+            distribution_account_opening_keur=da_opening,
+            distribution_account_inflow_keur=da_inflow,
+            distribution_account_available_keur=da_available,
+            gate_component_dscr_below_lockup=comp_a,
+            gate_component_construction=comp_b,
+            gate_component_da_negative=comp_c,
+            gate_component_dsra_underfunded=comp_d,
+            gate_component_j_dsra_underfunded=comp_e,
+            within_senior_maturity=within_sm,
+            distribution_account_release_keur=da_release,
+            distribution_account_closing_keur=da_closing,
+            senior_dsra_target_keur=dsra_target_keur,
+            senior_dsra_opening_keur=dsra_op,
+            senior_dsra_closing_keur=dsra_cl,
+            shl_bullet_unpaid_at_maturity=shl_bullet_flag,
             shl_opening_balance_keur=shl_opening,
             shl_gross_interest_keur=shl_gross,
             shl_cash_interest_receipt_keur=actual_shl_cash_int,
@@ -479,6 +607,11 @@ def run_project_shareholder_waterfall_model(
     total_covenant_locked = sum(p.covenant_locked_keur for p in waterfall_periods)
     total_sponsor_receipts = total_distributions + total_shl_int_recd + total_shl_prin_recd
     total_dsrf_fee = sum(p.dsrf_commitment_fee_keur for p in waterfall_periods)
+    # Sum of positive DA closings = total locked cash in DA (shortfall negatives excluded)
+    total_da_locked = sum(
+        max(0.0, p.distribution_account_closing_keur)
+        for p in waterfall_periods if not p.is_construction
+    )
 
     # Gate summary
     operating_with_ds = [
@@ -492,8 +625,6 @@ def run_project_shareholder_waterfall_model(
     periods_with_ds = len(operating_with_ds)
 
     # ── Return metrics — delegated to G2B authority ───────────────────────────
-    # G2C does not compute XIRR/MOIC directly. Return metrics come from
-    # compute_gated_sponsor_return_metrics() in financial_engine.sponsor_returns.
     pe_cfs = [p.pure_equity_net_cashflow_keur for p in waterfall_periods]
     pe_dates = [p.cashflow_date for p in waterfall_periods]
     ts_cfs = [p.total_sponsor_net_cashflow_keur for p in waterfall_periods]
@@ -511,18 +642,33 @@ def run_project_shareholder_waterfall_model(
         total_sponsor_contributed_keur=total_sponsor_contrib,
     )
 
-    # When deductible SHL feedback is not closed, metrics are unreliable — fail closed.
-    # FULLY_NON_DEDUCTIBLE (Oborovo) sets deductible_feedback_active=False → unaffected.
-    if deductible_feedback_active:
+    # BULLET fail-close: unpaid SHL at contractual maturity → metrics are unreliable.
+    # Subsequent periods have no SHL terms, meaning distributions are understated.
+    if bullet_unpaid_active:
+        _bu = ReturnMetricStatus.UNPAID_SHL_AT_CONTRACTUAL_MATURITY
+        pe_xirr = None; pe_xirr_status = _bu
+        pe_moic = None; pe_moic_status = _bu
+        ts_xirr = None; ts_xirr_status = _bu
+        ts_moic = None; ts_moic_status = _bu
+
+    # Deductible feedback fail-closed (compounded on top of bullet if both active)
+    if deductible_feedback_active and not bullet_unpaid_active:
         _fb = ReturnMetricStatus.UPSTREAM_FINANCIAL_FEEDBACK_NOT_CLOSED
+        pe_xirr = None; pe_xirr_status = _fb
+        pe_moic = None; pe_moic_status = _fb
+        ts_xirr = None; ts_xirr_status = _fb
+        ts_moic = None; ts_moic_status = _fb
+    elif bullet_unpaid_active:
+        # BULLET fail-closed: unpaid SHL at contractual maturity → metrics unreliable
+        _bm = ReturnMetricStatus.UNPAID_SHL_AT_CONTRACTUAL_MATURITY
         pe_xirr = None
-        pe_xirr_status = _fb
+        pe_xirr_status = _bm
         pe_moic = None
-        pe_moic_status = _fb
+        pe_moic_status = _bm
         ts_xirr = None
-        ts_xirr_status = _fb
+        ts_xirr_status = _bm
         ts_moic = None
-        ts_moic_status = _fb
+        ts_moic_status = _bm
 
     return CovenantGatedWaterfallResult(
         financing_result=financing,
@@ -551,7 +697,9 @@ def run_project_shareholder_waterfall_model(
         periods_locked_by_dscr=periods_locked,
         total_periods_with_senior_ds=periods_with_ds,
         total_dsrf_commitment_fee_keur=total_dsrf_fee,
-        distribution_account_status=_G2C_DA_STATUS,
+        total_distribution_account_locked_keur=total_da_locked,
+        distribution_account_status=_G2C_DA_STATUS_CAUSAL,
+        shl_bullet_unpaid_at_maturity=bullet_unpaid_active,
         reserve_support_gate_status_summary=_G2C_RESERVE_GATE_STATUS,
         deductible_shl_covenant_feedback_status=(
             _G2C_DEDUCTIBLE_FEEDBACK_STATUS if deductible_feedback_active else None

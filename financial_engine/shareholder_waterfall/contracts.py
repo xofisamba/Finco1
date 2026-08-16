@@ -11,15 +11,16 @@ R-row mapping (CF sheet, from excel source extraction):
 
 Waterfall ordering (source-proven):
   1. signed_post_senior (R84)
-  2. DSCR covenant gate → fcf_for_distribution (R109)
+  2. Distribution Account roll-forward (CF108/CF109/CF110 — CAUSAL)
   3. SHL service from fcf_for_distribution (R112 = R109)
   4. legal_equity_distribution = remainder (R116)
 
-G2C_DISTRIBUTION_ACCOUNT_AUTHORITY_INCOMPLETE: R98 (distribution account
-balance / carryforward) is NOT in the extracted source fixture. Per-period
-locked cash is tracked but NOT accumulated into a releasing distribution
-account. If R98 is extracted in a future phase, the accumulation/release
-layer may be added.
+MANUAL_WORKBOOK_SOURCE_EVIDENCE:
+  CF!G108 = =SUM(G94,G95,G106)+F110
+  CF!G109 = =IF(AND(OR(G$138<$B$109,G$4=0,G108<0,G91<G86,G105<G100),G$4<=$B$11),0,G108)
+  CF!G110 = G108-G109
+  $B$11 = Senior Debt Maturity years = 14
+  $B$109 = distribution_lockup_dscr = 1.10
 
 Post-senior cash is pre-DSRA. The clean engine explicitly marks
 cash_after_senior_before_reserves_keur as pre-reserve (DSRA ordering
@@ -71,7 +72,7 @@ class DistributionGateStatus(Enum):
 class CovenantGatedWaterfallPeriod:
     """Per-period covenant-gated waterfall result.
 
-    Extends G2B SponsorCashFlowPeriod with the DSCR covenant gate.
+    Extends G2B SponsorCashFlowPeriod with the DA-based DSCR covenant gate.
     """
     period_index: int
     cashflow_date: date
@@ -90,14 +91,14 @@ class CovenantGatedWaterfallPeriod:
     # Cash waterfall (operating) — source-proven ordering
     signed_post_senior_keur: float          # R84: pre-gate junior FCF
     dsrf_commitment_fee_keur: float         # DSRF fee deducted before gate (0 for CASH_DSRA/NONE)
-    fcf_for_distribution_keur: float        # R109: gate output (0 if locked)
-    covenant_locked_keur: float             # R84 - R109 when gate locks
+    fcf_for_distribution_keur: float        # R109: gate output (= DA release)
+    covenant_locked_keur: float             # DA closing (accumulated locked cash per period)
 
     # Causal SHL balance roll-forward (from compute_shl_waterfall_period)
-    shl_opening_balance_keur: float          # opening SHL balance this period
-    shl_gross_interest_keur: float           # gross accrued SHL interest (opening × rate × dcf)
-    shl_cash_interest_receipt_keur: float    # cash interest paid from fcf_for_distribution
-    shl_pik_keur: float                      # unpaid gross interest → PIK capitalised
+    shl_opening_balance_keur: float         # opening SHL balance this period
+    shl_gross_interest_keur: float          # gross accrued SHL interest (opening × rate × dcf)
+    shl_cash_interest_receipt_keur: float   # cash interest paid from fcf_for_distribution
+    shl_pik_keur: float                     # unpaid gross interest → PIK capitalised
 
     # Contractual vs actual principal (BULLET: contractual balloon may exceed cash)
     contractual_shl_principal_due_keur: float   # scheduler balloon or sweep amount due
@@ -107,9 +108,36 @@ class CovenantGatedWaterfallPeriod:
     # Actual causal closing balance: opening + PIK - actual_paid (NOT contractual)
     actual_shl_closing_balance_keur: float
 
-    # Legacy alias kept for backward compat; equals actual_shl_closing_balance_keur
+    # Legacy aliases kept for backward compat
     shl_principal_receipt_keur: float       # = actual_shl_principal_paid_keur
     shl_closing_balance_keur: float         # = actual_shl_closing_balance_keur
+
+    # Distribution Account causal roll-forward (CF108/CF109/CF110)
+    # MANUAL_WORKBOOK_SOURCE_EVIDENCE (SHA 15a621c4...):
+    #   CF!G108 = SUM(G94,G95,G106)+F110
+    #   CF!G109 = IF(AND(OR(G$138<$B$109,G$4=0,G108<0,G91<G86,G105<G100),G$4<=$B$11),0,G108)
+    #   CF!G110 = G108 - G109
+    distribution_account_opening_keur: float       # F110: closing of prior period
+    distribution_account_inflow_keur: float        # G94+G95+G106 (net of DSRF fee)
+    distribution_account_available_keur: float     # CF108 = inflow + opening
+    # CF109 gate components (5 explicit source-proven booleans + outer AND condition):
+    gate_component_dscr_below_lockup: bool         # A: G$138 < $B$109
+    gate_component_construction: bool              # B: G$4 = 0 (always False for operating)
+    gate_component_da_negative: bool               # C: G108 < 0
+    gate_component_dsra_underfunded: bool          # D: G91 < G86
+    gate_component_j_dsra_underfunded: bool        # E: G105 < G100 (False for no-J-DSRA)
+    within_senior_maturity: bool                   # G$4 <= $B$11 (outer AND)
+    distribution_account_release_keur: float       # CF109 = gate output
+    distribution_account_closing_keur: float       # CF110 = available - release
+
+    # Senior DSRA causal roll-forward (CF86-CF92)
+    # MANUAL_WORKBOOK_SOURCE_EVIDENCE: Oborovo target = 0 (no DSRA required)
+    senior_dsra_target_keur: float                 # CF86: target reserve balance
+    senior_dsra_opening_keur: float                # CF87/F92: prior closing
+    senior_dsra_closing_keur: float                # CF92: ending balance
+
+    # BULLET maturity status: True once BULLET balloon was underfunded at contractual maturity
+    shl_bullet_unpaid_at_maturity: bool
 
     # Equity distribution: residual after SHL service from fcf_for_distribution (R116)
     legal_equity_distribution_keur: float
@@ -147,12 +175,16 @@ class CovenantGatedWaterfallResult:
     total_shl_cash_interest_received_keur: float
     total_shl_principal_received_keur: float
     total_legal_equity_distributions_keur: float
-    total_covenant_locked_keur: float       # sum of per-period gate-locked cash
+    total_covenant_locked_keur: float       # sum of per-period da_closing (accumulated locked)
     total_sponsor_receipts_keur: float
     total_dsrf_commitment_fee_keur: float   # total DSRF fee (0 for CASH_DSRA/NONE)
 
-    # G2C_DISTRIBUTION_ACCOUNT_AUTHORITY_INCOMPLETE: R98 not in source extraction
-    distribution_account_status: str
+    # Distribution Account totals (causal — CF108/109/110)
+    total_distribution_account_locked_keur: float  # sum of da_closing across all periods
+    distribution_account_status: str               # causal status string
+
+    # BULLET SHL maturity status
+    shl_bullet_unpaid_at_maturity: bool     # True if any period had underfunded BULLET
 
     # Return metrics
     pure_equity_xirr: float | None
