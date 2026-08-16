@@ -16,6 +16,7 @@ from financial_engine.shareholder_waterfall.contracts import (
     CovenantGatedWaterfallPeriod,
     CovenantGatedWaterfallResult,
     DistributionGateStatus,
+    ReserveSupportGateStatus,
 )
 from financial_engine.shareholder_waterfall.model import (
     run_project_shareholder_waterfall_model,
@@ -25,5 +26,6 @@ __all__ = [
     "CovenantGatedWaterfallPeriod",
     "CovenantGatedWaterfallResult",
     "DistributionGateStatus",
+    "ReserveSupportGateStatus",
     "run_project_shareholder_waterfall_model",
 ]

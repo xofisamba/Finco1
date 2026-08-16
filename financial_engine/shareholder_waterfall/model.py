@@ -211,6 +211,15 @@ def run_project_shareholder_waterfall_model(
     }
 
     # ── DSRF commitment fee schedule ──────────────────────────────────────────
+    # Guard: only POST_SENIOR_CASH is source-proven; fail closed for unsupported treatment.
+    from finco_core.inputs import DsrfCommitmentFeeTreatment
+    _fee_treatment = getattr(fin, "dsrf_fee_treatment", DsrfCommitmentFeeTreatment.POST_SENIOR_CASH)
+    if _fee_treatment != DsrfCommitmentFeeTreatment.POST_SENIOR_CASH:
+        raise ValueError(
+            f"G2C_UNSUPPORTED_DSRF_FEE_TREATMENT: {_fee_treatment!r}. "
+            "Only POST_SENIOR_CASH (EXPLICIT_GENERIC_MVP_POLICY) is source-proven. "
+            "No other DSRF fee treatment is implemented."
+        )
     dsra_mode = fin.dsra_support_mode
     dsrf_fee_by_idx: dict[int, float] = {}
     if dsra_mode == DebtServiceReserveSupportMode.DSRF:
