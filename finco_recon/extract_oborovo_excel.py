@@ -278,6 +278,13 @@ def _read_cf(wb) -> dict:
         "fcf_for_banks_keur": 79,
         "senior_debt_service_keur": 80,
         "free_cash_flow_for_junior_keur": 94,
+        # CF108: distribution account / covenant lock intermediate (R98 in fixture scheme).
+        # Extracted with both data_only=True (cached value) and data_only=False (formula text).
+        # G2C_DISTRIBUTION_ACCOUNT_AUTHORITY_INCOMPLETE: value and formula both captured here
+        # to enable future causal implementation of the distribution account mechanic.
+        "distribution_account_flow_keur": 108,
+        # CF109: DSCR-gated FCF output (R109). Source-proven: CF!H112 = CF!H109.
+        "free_cash_flow_for_distribution_keur": 109,
         "free_cash_flow_for_shl_keur": 112,
         "free_cash_flow_for_dividends_keur": 116,
     }

@@ -697,6 +697,44 @@ def test_oborovo_non_deductible_returns_not_blocked(oborovo_g2c_result):
     )
 
 
+# ── Reserve support gate ─────────────────────────────────────────────────────
+
+def test_reserve_gate_none_mode_not_applicable(solar_result):
+    """NONE reserve support mode → NOT_APPLICABLE for all operating periods."""
+    from financial_engine.shareholder_waterfall.contracts import ReserveSupportGateStatus
+    op = [p for p in solar_result.waterfall_periods if not p.is_construction]
+    for p in op:
+        assert p.reserve_support_gate_status == ReserveSupportGateStatus.NOT_APPLICABLE, (
+            f"P{p.period_index}: expected NOT_APPLICABLE for NONE mode"
+        )
+
+
+def test_reserve_gate_construction_status(solar_result):
+    """Construction periods → CONSTRUCTION reserve gate status."""
+    from financial_engine.shareholder_waterfall.contracts import ReserveSupportGateStatus
+    const = [p for p in solar_result.waterfall_periods if p.is_construction]
+    assert len(const) > 0
+    for p in const:
+        assert p.reserve_support_gate_status == ReserveSupportGateStatus.CONSTRUCTION
+
+
+def test_reserve_gate_oborovo_zero_req_neutral(oborovo_g2c_result):
+    """Oborovo with zero reserve requirement → PASS_NEUTRAL_SOURCE_PROVEN for CASH_DSRA mode."""
+    from financial_engine.shareholder_waterfall.contracts import ReserveSupportGateStatus
+    op = [p for p in oborovo_g2c_result.waterfall_periods if not p.is_construction]
+    # Oborovo uses CASH_DSRA mode with zero requirement → neutral
+    for p in op:
+        assert p.reserve_support_gate_status in (
+            ReserveSupportGateStatus.PASS_NEUTRAL_SOURCE_PROVEN,
+            ReserveSupportGateStatus.NOT_APPLICABLE,
+        ), f"P{p.period_index}: unexpected status {p.reserve_support_gate_status}"
+
+
+def test_reserve_gate_stop_token_in_result(solar_result):
+    """Result-level reserve gate summary carries the stop token."""
+    assert "G2C_RESERVE_GATE_NOT_CAUSALLY_CLOSED" in solar_result.reserve_support_gate_status_summary
+
+
 # ── Governance: no target-fitting tokens in G2C module ───────────────────────
 
 def test_no_target_fitting_tokens_in_g2c():

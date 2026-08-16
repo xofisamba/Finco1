@@ -35,6 +35,27 @@ from financial_engine.financing.contracts import ProjectFinancingResult
 from financial_engine.sponsor_returns.contracts import ReturnMetricStatus
 
 
+class ReserveSupportGateStatus(Enum):
+    """Per-period reserve support gate evaluation result.
+
+    NONE mode  → NOT_APPLICABLE (requirement = 0, no block)
+    CASH_DSRA  → PASS / PASS_NEUTRAL_SOURCE_PROVEN / FAIL_REQUIREMENT_NOT_MET
+    DSRF mode  → DSRF_AVAILABLE_SUPPORT_ONLY_NO_DRAW_ENGINE
+    CONSTRUCTION → CONSTRUCTION (pre-COD, gate not applicable)
+
+    IMPORTANT: G2C exposes this status informatively. The reserve gate's position
+    in the CF waterfall is NOT source-proven (CF108 not yet extracted). The gate
+    status does NOT directly gate fcf_for_distribution in the current implementation.
+    Stop token: G2C_RESERVE_GATE_NOT_CAUSALLY_CLOSED.
+    """
+    NOT_APPLICABLE = "not_applicable"
+    PASS = "pass"
+    PASS_NEUTRAL_SOURCE_PROVEN = "pass_neutral_source_proven"
+    DSRF_AVAILABLE_SUPPORT_ONLY_NO_DRAW_ENGINE = "dsrf_available_support_only_no_draw_engine"
+    FAIL_REQUIREMENT_NOT_MET = "fail_requirement_not_met"
+    CONSTRUCTION = "construction"
+
+
 class DistributionGateStatus(Enum):
     """Per-period distribution gate evaluation result.
 
@@ -60,6 +81,11 @@ class CovenantGatedWaterfallPeriod:
     base_dscr: float | None
     distribution_lockup_dscr: float
     distribution_gate_status: DistributionGateStatus
+
+    # Reserve support gate (informational — CF waterfall position not source-proven)
+    # G2C_RESERVE_GATE_NOT_CAUSALLY_CLOSED: gate status exposed but NOT used to block FCF.
+    debt_service_reserve_requirement_keur: float    # from FinancingParams
+    reserve_support_gate_status: ReserveSupportGateStatus
 
     # Cash waterfall (operating) — source-proven ordering
     signed_post_senior_keur: float          # R84: pre-gate junior FCF
@@ -141,6 +167,10 @@ class CovenantGatedWaterfallResult:
     # Gate summary
     periods_locked_by_dscr: int
     total_periods_with_senior_ds: int
+
+    # Reserve support gate summary
+    # G2C_RESERVE_GATE_NOT_CAUSALLY_CLOSED: CF108 not extracted; gate is informational only.
+    reserve_support_gate_status_summary: str
 
     # G2C_DEDUCTIBLE_SHL_COVENANT_FEEDBACK_NOT_YET_CLOSED when deductible SHL
     # interest + gate locks any period + PIK accumulates (feedback loop not closed).

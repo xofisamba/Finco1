@@ -60,6 +60,7 @@ from financial_engine.shareholder_waterfall.contracts import (
     CovenantGatedWaterfallPeriod,
     CovenantGatedWaterfallResult,
     DistributionGateStatus,
+    ReserveSupportGateStatus,
 )
 from financial_engine.sponsor_returns.contracts import ReturnMetricStatus
 from financial_engine.sponsor_returns.model import compute_gated_sponsor_return_metrics
@@ -67,6 +68,7 @@ from financial_engine.sponsor_returns.model import compute_gated_sponsor_return_
 _G2C_DA_STATUS = "G2C_DISTRIBUTION_ACCOUNT_AUTHORITY_INCOMPLETE"
 _G2C_DEDUCTIBLE_FEEDBACK_STATUS = "G2C_DEDUCTIBLE_SHL_COVENANT_FEEDBACK_NOT_YET_CLOSED"
 _DSRF_NO_DRAW_STATUS = "DSRF_AVAILABLE_SUPPORT_ONLY_NO_DRAW_ENGINE"
+_G2C_RESERVE_GATE_STATUS = "G2C_RESERVE_GATE_NOT_CAUSALLY_CLOSED"
 
 
 def _evaluate_distribution_gate(
@@ -85,6 +87,34 @@ def _evaluate_distribution_gate(
     if base_dscr < distribution_lockup_dscr:
         return DistributionGateStatus.LOCKED_DSCR_BELOW_LOCKUP
     return DistributionGateStatus.OPEN
+
+
+def _evaluate_reserve_support_gate(
+    dsra_mode: "DebtServiceReserveSupportMode",
+    requirement_keur: float,
+    dsrf_commitment_keur: float,
+    is_construction: bool,
+) -> ReserveSupportGateStatus:
+    """Evaluate reserve support gate for one period.
+
+    NONE   → NOT_APPLICABLE (requirement = 0, no block)
+    CASH_DSRA → PASS_NEUTRAL_SOURCE_PROVEN if req=0, else PASS (initial reserve assumed funded)
+    DSRF   → DSRF_AVAILABLE_SUPPORT_ONLY_NO_DRAW_ENGINE (no draw engine modeled)
+
+    G2C_RESERVE_GATE_NOT_CAUSALLY_CLOSED: gate status is informational only.
+    CF108 not extracted; reserve gate does not block fcf_for_distribution in G2C.
+    """
+    from finco_core.inputs import DebtServiceReserveSupportMode
+    if is_construction:
+        return ReserveSupportGateStatus.CONSTRUCTION
+    if dsra_mode == DebtServiceReserveSupportMode.NONE:
+        return ReserveSupportGateStatus.NOT_APPLICABLE
+    if dsra_mode == DebtServiceReserveSupportMode.DSRF:
+        return ReserveSupportGateStatus.DSRF_AVAILABLE_SUPPORT_ONLY_NO_DRAW_ENGINE
+    # CASH_DSRA
+    if requirement_keur <= 0.0:
+        return ReserveSupportGateStatus.PASS_NEUTRAL_SOURCE_PROVEN
+    return ReserveSupportGateStatus.PASS
 
 
 def _add_months(d: date, months: int) -> date:
@@ -136,6 +166,13 @@ def run_project_shareholder_waterfall_model(
 
     distribution_lockup_dscr: float = fin.lockup_dscr
     financial_close: date = info.financial_close
+
+    # Reserve support gate inputs
+    from finco_core.inputs import DebtServiceReserveSupportMode
+    dsra_mode = getattr(fin, "debt_service_reserve_support_mode",
+                        DebtServiceReserveSupportMode.NONE)
+    reserve_requirement_keur: float = getattr(fin, "debt_service_reserve_requirement_keur", 0.0) or 0.0
+    dsrf_commitment_keur: float = getattr(fin, "dsrf_commitment_keur", 0.0) or 0.0
 
     # ── Build lookup maps ─────────────────────────────────────────────────────
     construction_periods_by_index: dict[int, ConstructionFundingPeriod] = {
@@ -312,6 +349,8 @@ def run_project_shareholder_waterfall_model(
             base_dscr=None,
             distribution_lockup_dscr=distribution_lockup_dscr,
             distribution_gate_status=DistributionGateStatus.CONSTRUCTION,
+            debt_service_reserve_requirement_keur=reserve_requirement_keur,
+            reserve_support_gate_status=ReserveSupportGateStatus.CONSTRUCTION,
             signed_post_senior_keur=0.0,
             dsrf_commitment_fee_keur=0.0,
             fcf_for_distribution_keur=0.0,
@@ -387,6 +426,10 @@ def run_project_shareholder_waterfall_model(
             base_dscr=base_dscr_by_idx.get(idx),
             distribution_lockup_dscr=distribution_lockup_dscr,
             distribution_gate_status=gate_status,
+            debt_service_reserve_requirement_keur=reserve_requirement_keur,
+            reserve_support_gate_status=_evaluate_reserve_support_gate(
+                dsra_mode, reserve_requirement_keur, dsrf_commitment_keur, is_construction=False,
+            ),
             signed_post_senior_keur=signed_post_senior,
             dsrf_commitment_fee_keur=dsrf_fee,
             fcf_for_distribution_keur=fcf_for_distribution,
@@ -500,6 +543,7 @@ def run_project_shareholder_waterfall_model(
         total_periods_with_senior_ds=periods_with_ds,
         total_dsrf_commitment_fee_keur=total_dsrf_fee,
         distribution_account_status=_G2C_DA_STATUS,
+        reserve_support_gate_status_summary=_G2C_RESERVE_GATE_STATUS,
         deductible_shl_covenant_feedback_status=(
             _G2C_DEDUCTIBLE_FEEDBACK_STATUS if deductible_feedback_active else None
         ),
