@@ -23,6 +23,8 @@ MANUAL_ONLY = (
 )
 
 CURRENT_BLOCKING = (
+    "mvp_g2c_shareholder_waterfall_check.yml",
+    "mvp_g2b_sponsor_returns_check.yml",
     "mvp_g2a_financing_stack_check.yml",
     "mvp_g1_governance_methodology_lock.yml",
     "mvp_g0_generic_clean_engine_check.yml",

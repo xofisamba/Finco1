@@ -278,6 +278,13 @@ def _read_cf(wb) -> dict:
         "fcf_for_banks_keur": 79,
         "senior_debt_service_keur": 80,
         "free_cash_flow_for_junior_keur": 94,
+        # CF108: distribution account / covenant lock intermediate (R98 in fixture scheme).
+        # Extracted with both data_only=True (cached value) and data_only=False (formula text).
+        # G2C_DISTRIBUTION_ACCOUNT_AUTHORITY_INCOMPLETE: value and formula both captured here
+        # to enable future causal implementation of the distribution account mechanic.
+        "distribution_account_flow_keur": 108,
+        # CF109: DSCR-gated FCF output (R109). Source-proven: CF!H112 = CF!H109.
+        "free_cash_flow_for_distribution_keur": 109,
         "free_cash_flow_for_shl_keur": 112,
         "free_cash_flow_for_dividends_keur": 116,
     }
@@ -1062,6 +1069,168 @@ def _derive_croatian_legal_lcf_proforma(period_diagnostic: list[dict]) -> dict:
     }
 
 
+def _read_cf_da_formulas(wb_formula, wb_data) -> dict:
+    """Extract CF rows 86-92, 99-106, 108-110, 112, 138 and scalars B11, B86, B100, B109.
+
+    Dual-load: wb_formula (data_only=False) for formula text,
+               wb_data (data_only=True) for cached numerical values.
+
+    Analogous to _read_pl_tax_formulas dual-load pattern.
+
+    Rows covered:
+      86-92:  Senior DSRA roll-forward
+      99-106: J-DSRA roll-forward (if applicable; 0 for no-junior-debt)
+      108:    Distribution Account available (CF108)
+      109:    FCF for Distribution / DA release (CF109 gate output)
+      110:    Distribution Account closing (CF110)
+      112:    FCF for SHL (CF112 = CF109)
+      138:    DSCR by period (used in gate component A)
+
+    Scalars:
+      B11:   Senior Debt Maturity years (outer AND condition: G$4 <= B11)
+      B86:   Senior DSRA target ratio
+      B100:  J-DSRA target ratio (if applicable)
+      B109:  Lock-up DSCR = Inputs!D223 = 1.10
+    """
+    _CF_DA_MAX_ROW = 140
+    cf_f_rows = list(wb_formula["CF"].iter_rows(
+        min_row=1, max_row=_CF_DA_MAX_ROW, max_col=_PERIOD_COL_OFFSET + _N_PERIODS + 2,
+        values_only=False,
+    ))
+    cf_d_rows = list(wb_data["CF"].iter_rows(
+        min_row=1, max_row=_CF_DA_MAX_ROW, max_col=_PERIOD_COL_OFFSET + _N_PERIODS + 2,
+        values_only=True,
+    ))
+
+    G = _PERIOD_COL_OFFSET  # col index for period 0
+
+    def formula_at(row1: int, col0: int) -> str | None:
+        r = row1 - 1
+        if r >= len(cf_f_rows):
+            return None
+        row = cf_f_rows[r]
+        if col0 >= len(row):
+            return None
+        v = row[col0].value
+        return str(v) if v is not None else None
+
+    def scalar_cached(row1: int, col0: int):
+        r = row1 - 1
+        if r >= len(cf_d_rows):
+            return None
+        row = cf_d_rows[r]
+        if col0 >= len(row):
+            return None
+        v = row[col0]
+        if isinstance(v, bool):
+            return bool(v)
+        if isinstance(v, (int, float)):
+            return float(v)
+        return None
+
+    def period_vector(row1: int) -> list:
+        r = row1 - 1
+        if r >= len(cf_d_rows):
+            return [None] * _N_PERIODS
+        row = cf_d_rows[r]
+        out = []
+        for p in range(_N_PERIODS):
+            col = _PERIOD_COL_OFFSET + p
+            v = row[col] if col < len(row) else None
+            out.append(float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else None)
+        return out
+
+    B_COL = 1  # 0-based column B
+
+    # Scalars
+    b11 = scalar_cached(11, B_COL)   # Senior Debt Maturity years
+    b86 = scalar_cached(86, B_COL)   # Senior DSRA target ratio
+    b100 = scalar_cached(100, B_COL) # J-DSRA target ratio
+    b109 = scalar_cached(109, B_COL) # Lock-up DSCR
+
+    # CF109 formula text (first operating period = col G+1)
+    cf109_formula_p0 = formula_at(109, G)
+    cf109_formula_p1 = formula_at(109, G + 1)
+    cf108_formula_p1 = formula_at(108, G + 1)
+    cf110_formula_p1 = formula_at(110, G + 1)
+    cf112_formula_p1 = formula_at(112, G + 1)
+
+    # Senior DSRA rows
+    dsra_rows = {
+        "CF86_target": {"row": 86, "formula_p1": formula_at(86, G + 1), "values": period_vector(86)},
+        "CF87_beginning": {"row": 87, "formula_p1": formula_at(87, G + 1), "values": period_vector(87)},
+        "CF88_funding": {"row": 88, "formula_p1": formula_at(88, G + 1), "values": period_vector(88)},
+        "CF89_operation": {"row": 89, "formula_p1": formula_at(89, G + 1), "values": period_vector(89)},
+        "CF90_shortfall": {"row": 90, "formula_p1": formula_at(90, G + 1), "values": period_vector(90)},
+        "CF91_ending": {"row": 91, "formula_p1": formula_at(91, G + 1), "values": period_vector(91)},
+        "CF92_movement": {"row": 92, "formula_p1": formula_at(92, G + 1), "values": period_vector(92)},
+    }
+
+    # J-DSRA rows (rows 99-106)
+    j_dsra_rows = {
+        "CF100_target": {"row": 100, "formula_p1": formula_at(100, G + 1), "values": period_vector(100)},
+        "CF101_beginning": {"row": 101, "formula_p1": formula_at(101, G + 1), "values": period_vector(101)},
+        "CF105_ending": {"row": 105, "formula_p1": formula_at(105, G + 1), "values": period_vector(105)},
+        "CF106_movement": {"row": 106, "formula_p1": formula_at(106, G + 1), "values": period_vector(106)},
+    }
+
+    # DA rows (108-110, 112, 138)
+    da_rows = {
+        "CF108_da_available": {
+            "row": 108,
+            "formula_p0": formula_at(108, G),
+            "formula_p1": cf108_formula_p1,
+            "values": period_vector(108),
+        },
+        "CF109_da_release": {
+            "row": 109,
+            "formula_p0": formula_at(109, G),
+            "formula_p1": cf109_formula_p1,
+            "values": period_vector(109),
+        },
+        "CF110_da_closing": {
+            "row": 110,
+            "formula_p0": formula_at(110, G),
+            "formula_p1": cf110_formula_p1,
+            "values": period_vector(110),
+        },
+        "CF112_fcf_for_shl": {
+            "row": 112,
+            "formula_p1": cf112_formula_p1,
+            "values": period_vector(112),
+        },
+        "CF138_dscr": {
+            "row": 138,
+            "formula_p1": formula_at(138, G + 1),
+            "values": period_vector(138),
+        },
+    }
+
+    return {
+        "_source": {
+            "sheet": "CF",
+            "extractor_note": "dual_load: formula text + cached values. rows 86-92, 99-106, 108-110, 112, 138.",
+            "formula_workbook_data_only": False,
+            "cached_workbook_data_only": True,
+        },
+        "scalars": {
+            "B11_senior_debt_maturity_years": b11,
+            "B86_senior_dsra_target_ratio": b86,
+            "B100_j_dsra_target_ratio": b100,
+            "B109_lockup_dscr": b109,
+        },
+        "cf109_gate_source": {
+            "formula_p0_construction": cf109_formula_p0,
+            "formula_p1_first_operating": cf109_formula_p1,
+            "b11_correction": "Uses $B$11 (Senior Debt Maturity years), NOT $B$111",
+            "b109_source": "Inputs!D223 = lockup_dscr = 1.10",
+        },
+        "senior_dsra_rows": dsra_rows,
+        "j_dsra_rows": j_dsra_rows,
+        "da_rows": da_rows,
+    }
+
+
 def _derive_debt_sizing_from_workbook(wb_formula, wb_data) -> dict:
     """Extract D192 (Inputs!D192 = senior debt amount) in dual-load mode.
 
@@ -1429,6 +1598,7 @@ def extract(workbook_path: pathlib.Path) -> dict:
             "dep": _read_dep(wb_data),
             "tax": _read_pl_tax_formulas(wb_formula, wb_data),
             "debt_sizing_evidence": _derive_debt_sizing_from_workbook(wb_formula, wb_data),
+            "cf_da_source": _read_cf_da_formulas(wb_formula, wb_data),
         }
     finally:
         wb_data.close()

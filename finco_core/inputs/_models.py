@@ -64,6 +64,55 @@ class GearingBasisMode(str, Enum):
 
     TOTAL_PROJECT_USES = "total_project_uses"
 
+
+class DebtServiceReserveSupportMode(str, Enum):
+    """Typed project-level policy for debt-service reserve support.
+
+    CASH_DSRA: A cash-funded Debt Service Reserve Account is established at
+        financial close. The funded amount is a Project Use (increases
+        total_project_uses_keur). The account is funded from the financing
+        stack alongside other uses.
+
+    DSRF: A Debt Service Reserve Facility (standby letter of credit or
+        guarantee) is used instead of a cash-funded DSRA. There is NO initial
+        cash Project Use at financial close. A periodic commitment fee is
+        charged on the undrawn DSRF facility from COD. The commitment fee
+        is a debt-facility cost (financing cost), NOT operational OPEX.
+
+    NONE: No debt service reserve support. Reserve-related project uses and
+        fees are zero. This is the default — all G2A fingerprints are
+        preserved unchanged.
+
+    Dispatch rule: Do NOT dispatch on project name, code, or workbook identity.
+    Policy is set via typed project-owned FinancingParams.dsra_support_mode.
+    """
+    CASH_DSRA = "cash_dsra"
+    DSRF = "dsrf"
+    NONE = "none"
+
+
+class DsrfDayCountConvention(Enum):
+    """Day-count convention for DSRF commitment fee accrual."""
+    ACT_365 = "act_365"
+    ACT_360 = "act_360"
+
+
+class DsrfCommitmentFeeTreatment(Enum):
+    """Cashflow treatment for the DSRF commitment fee.
+
+    POST_SENIOR_CASH: fee is deducted from post-senior cash before the
+        DA roll-forward and CF109 covenant gate.  The fee is a generic
+        financing cash cost — not EBITDA, not OPEX, no DSCR-denominator
+        impact, no tax effect modelled here.
+
+        EXPLICIT_GENERIC_MVP_POLICY_POST_SENIOR_CASH: neither authoritative
+        workbook (Oborovo or TUHO) contains an operational DSRF engine.
+        This treatment is a deliberate Generic Finco MVP product extension,
+        not a workbook-source-proven formula.
+    """
+    POST_SENIOR_CASH = "post_senior_cash"
+
+
 class DebtSizingMode(Enum):
     """Senior debt sizing calibration modes.
 
@@ -695,6 +744,36 @@ class FinancingParams:
     fixed_ds_keur: float = 0.0
 
     dsra_months: int = 6
+
+    # Debt service reserve support policy — typed, not inferred from project identity.
+    # Default NONE preserves all G2A fingerprints unchanged.
+    dsra_support_mode: DebtServiceReserveSupportMode = DebtServiceReserveSupportMode.NONE
+
+    # ONE unified reserve requirement (financing-owned authority).
+    # Applies regardless of support instrument (CASH_DSRA / DSRF / NONE).
+    # NONE: must be 0 (raise if > 0).
+    # CASH_DSRA: reserve_account_funding_keur = debt_service_reserve_requirement_keur.
+    # DSRF: dsrf_commitment_keur must be >= this value (sufficiency check).
+    # Legacy capex.reserve_accounts_keur for CASH_DSRA: fails closed if both non-zero
+    # and disagree. Use debt_service_reserve_requirement_keur going forward.
+    debt_service_reserve_requirement_keur: float = 0.0
+
+    # DSRF commitment fee parameters (only used when dsra_support_mode = DSRF).
+    # dsrf_commitment_keur: undrawn facility size (commitment,
+    #     >= debt_service_reserve_requirement_keur).
+    # dsrf_commitment_fee_rate_pa: annual commitment fee rate (e.g. 0.01 = 1% p.a.).
+    # dsrf_fee_expires_at_senior_maturity: stop fee after Senior debt fully repaid.
+    # dsrf_day_count: day-count convention for fee accrual.
+    # dsrf_fee_treatment: cashflow treatment policy for the commitment fee.
+    #   POST_SENIOR_CASH = EXPLICIT_GENERIC_MVP_POLICY: fee deducted post-Senior DS,
+    #   pre-distribution gate. No EBITDA/CFADS/DSCR impact. Only one treatment
+    #   is currently implemented. Other treatments (PRE_DEBT_SERVICE, IN_DEBT_SERVICE)
+    #   are expressly NOT modelled.
+    dsrf_commitment_keur: float = 0.0
+    dsrf_commitment_fee_rate_pa: float = 0.0
+    dsrf_fee_expires_at_senior_maturity: bool = True
+    dsrf_day_count: "DsrfDayCountConvention" = DsrfDayCountConvention.ACT_365
+    dsrf_fee_treatment: "DsrfCommitmentFeeTreatment" = DsrfCommitmentFeeTreatment.POST_SENIOR_CASH
 
     equity_irr_method: str = "equity_only"
 
