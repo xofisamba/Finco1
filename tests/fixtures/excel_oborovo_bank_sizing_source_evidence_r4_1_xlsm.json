@@ -1,0 +1,254 @@
+{
+  "stage": "C3B3D2B2C",
+  "round": "R4.1",
+  "classification": "C3B3D2B2C_R4_1_XLSM_EXTRACTION_COMPLETE_CONSTANTS_XLSM_VERIFIED",
+  "extraction_method": "openpyxl data_only=True read_only=True",
+  "workbooks": {
+    "oborovo": {
+      "sha256": "15a621c4d6b79024980766e00ebc79d7235fd56f00567be7bf345c769ce57920",
+      "filename": "a56d59db-20260414_BP_Oborovo_Sensitivity_FINAL_for_PPT.xlsm",
+      "sheet": "Inputs"
+    },
+    "tuho": {
+      "sha256": "780779eba4278ccc2b8546a9411ccee24917d388f411ba60c88aa342cb5c727a",
+      "filename": "4b00e23a-20260330_TUHO_BP.xlsm",
+      "sheet": "Inputs"
+    }
+  },
+
+  "oborovo": {
+    "year_header": {
+      "row": 105,
+      "col_D_year": 2030,
+      "col_E_year": 2031,
+      "col_AH_year": 2060
+    },
+    "selectors": {
+      "equity_row": 102,
+      "equity_col": "B",
+      "equity_value": "Central case Trackers",
+      "sizing_row": 103,
+      "sizing_col": "B",
+      "sizing_value": "Central Low case Trackers"
+    },
+    "yield_cases": {
+      "p50_row": 64,
+      "p50_col": "D",
+      "p50_hours": 1494.0,
+      "p90_10y_row": 68,
+      "p90_10y_col": "D",
+      "p90_10y_hours": 1410.0,
+      "p90_p50_ratio": 0.9437751004016064
+    },
+    "bess_selectors": {
+      "equity_row": 118,
+      "equity_col": "B",
+      "equity_value": "EMS revenues - Afry Central case - 4h Degraded",
+      "sizing_row": 119,
+      "sizing_col": "B",
+      "sizing_value": "EMS revenues - Afry MidLow case - 4h Degraded"
+    },
+    "price_curves": {
+      "row_111_central_low_trackers_cy2030_cy2060": [
+        43.660399999999996,
+        46.899125,
+        46.7635,
+        45.44522499999999,
+        45.770725,
+        47.528425,
+        46.313225,
+        45.721900000000005,
+        45.9606,
+        45.84125,
+        44.1378,
+        44.219175,
+        44.110675,
+        43.199275,
+        42.098,
+        39.412625,
+        39.629625,
+        39.8412,
+        40.052775,
+        40.26435,
+        40.48135,
+        40.2101,
+        39.944275,
+        39.673024999999996,
+        39.407199999999996,
+        39.13595,
+        38.837575,
+        38.5392,
+        38.240825,
+        37.94245,
+        37.644075
+      ],
+      "row_111_central_low_trackers_cy2042_cy2060_slice": [
+        44.110675,
+        43.199275,
+        42.098,
+        39.412625,
+        39.629625,
+        39.8412,
+        40.052775,
+        40.26435,
+        40.48135,
+        40.2101,
+        39.944275,
+        39.673024999999996,
+        39.407199999999996,
+        39.13595,
+        38.837575,
+        38.5392,
+        38.240825,
+        37.94245,
+        37.644075
+      ],
+      "row_106_central_trackers_cy2030": null,
+      "calendar_start_cy2030": true,
+      "cy2042_col_index": 12
+    }
+  },
+
+  "tuho": {
+    "year_header": {
+      "row": 105,
+      "col_E_year": 2029,
+      "col_F_year": 2030,
+      "col_AI_year": 2059
+    },
+    "selectors": {
+      "equity_row": 107,
+      "equity_col": "B",
+      "equity_value": "Central",
+      "sizing_row": 108,
+      "sizing_col": "B",
+      "sizing_value": "MidLow"
+    },
+    "yield_cases": {
+      "p50_row": 67,
+      "p50_col": "D",
+      "p50_hours": 4164.0,
+      "p90_10y_row": 71,
+      "p90_10y_col": "D",
+      "p90_10y_hours": 3620.0,
+      "p90_p50_ratio": 0.8693563880883766
+    },
+    "price_curves": {
+      "row_109_midlow_cy2029_cy2059": [
+        74.03999999999999,
+        75.79,
+        76.35499999999999,
+        76.39,
+        75.17500000000001,
+        74.755,
+        75.72,
+        72.735,
+        71.215,
+        70.485,
+        69.36,
+        67.895,
+        67.3,
+        65.895,
+        63.825,
+        61.144999999999996,
+        58.825,
+        58.97,
+        59.12,
+        59.269999999999996,
+        59.42,
+        59.565,
+        59.2,
+        58.84,
+        58.480000000000004,
+        58.120000000000005,
+        57.754999999999995,
+        57.22,
+        56.68000000000001,
+        56.15,
+        55.61
+      ],
+      "row_109_midlow_cy2030_cy2059_slice": [
+        75.79,
+        76.35499999999999,
+        76.39,
+        75.17500000000001,
+        74.755,
+        75.72,
+        72.735,
+        71.215,
+        70.485,
+        69.36,
+        67.895,
+        67.3,
+        65.895,
+        63.825,
+        61.144999999999996,
+        58.825,
+        58.97,
+        59.12,
+        59.269999999999996,
+        59.42,
+        59.565,
+        59.2,
+        58.84,
+        58.480000000000004,
+        58.120000000000005,
+        57.754999999999995,
+        57.22,
+        56.68000000000001,
+        56.15,
+        55.61
+      ],
+      "calendar_start_cy2029": true,
+      "cy2030_col_index": 1
+    }
+  },
+
+  "constants_verification": {
+    "OBOROVO_CENTRAL_LOW_CY2042_2060": {
+      "status": "XLSM_VERIFIED",
+      "tolerance": 1e-6,
+      "source_row": 111,
+      "source_sheet": "Inputs",
+      "source_workbook": "oborovo",
+      "cy2042_committed": 44.110675,
+      "cy2042_xlsm": 44.110675,
+      "cy2060_committed": 37.644075,
+      "cy2060_xlsm": 37.644075,
+      "all_values_match": true
+    },
+    "TUHO_MIDLOW_Y1_Y30": {
+      "status": "XLSM_VERIFIED",
+      "tolerance": 1e-6,
+      "source_row": 109,
+      "source_sheet": "Inputs",
+      "source_workbook": "tuho",
+      "y1_cy2030_committed": 75.79,
+      "y1_cy2030_xlsm": 75.79,
+      "y30_cy2059_committed": 55.61,
+      "y30_cy2059_xlsm": 55.61,
+      "all_values_match": true
+    }
+  },
+
+  "manual_causality_evidence": {
+    "classification": "OBOROVO_DEBT_SIZING_REVENUE_CURVE_MANUAL_CAUSALITY_PROVEN",
+    "method": "BLACK_BOX_WORKBOOK_OBSERVATION",
+    "observation_d111": {
+      "scenarios_e325": "Central Low case Trackers",
+      "inputs_cell": "Inputs!D111",
+      "resulting_debt_keur": 42852.278763,
+      "matches_ds_d51": true
+    },
+    "observation_d106": {
+      "scenarios_e325": "Central case Trackers",
+      "inputs_cell": "Inputs!D106",
+      "resulting_debt_keur": 43813.0,
+      "matches_ds_d51": false
+    },
+    "delta_keur": 961.0,
+    "causal_conclusion": "Revenue curve selector Scenarios!E325 IS causal for debt sizing. D111 (Central Low case Trackers) produces DS!D51 exactly."
+  },
+
+  "verdict": "C3B3D2B2C_R4_1_XLSM_EXTRACTION_COMPLETE_CONSTANTS_XLSM_VERIFIED"
+}

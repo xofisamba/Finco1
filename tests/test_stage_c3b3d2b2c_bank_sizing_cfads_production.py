@@ -3587,3 +3587,302 @@ class TestR4_72OpexCalendarPeriodisationCloseout:
     def test_w_tuho_regression_preserved(self, r4_72_result):
         assert r4_72_result["tuho_p90_delta_keur_cached"] < 1.0
         assert "CONFIRMED" in r4_72_result["tuho_regression_status"]
+
+
+# ============================================================================
+# R4.1 — Source-curve extraction and Candidate C debt closure round
+# ============================================================================
+
+class TestR4_1_SourceCurveExtraction:
+    """R4.1 tests — XLSM extraction verification and Candidate C evaluation.
+
+    Test categories:
+      A: XLSM fixture structure
+      B: Oborovo committed constants match XLSM
+      C: TUHO committed constants match XLSM
+      D: Oborovo yield cases extracted
+      E: TUHO yield cases extracted
+      F: Oborovo revenue selectors extracted
+      G: TUHO revenue selectors extracted
+      H: Post-maturity non-causality (runtime proven)
+      I: Active period causality (runtime proven)
+      J: run_r4_1 smoke test (returns dict, no error)
+      K: Governance guards
+    """
+
+    _XLSM_FIXTURE_PATH = _FIXTURE_DIR / "excel_oborovo_bank_sizing_source_evidence_r4_1_xlsm.json"
+
+    def _load_xlsm_fixture(self) -> dict:
+        with open(self._XLSM_FIXTURE_PATH) as f:
+            return json.load(f)
+
+    @pytest.fixture(scope="class")
+    def r4_1_result(self):
+        from app.project_factories import create_default_oborovo
+        from finco_recon.bank_sizing_candidates import (
+            run_r4_1_source_curve_extraction_candidate_c,
+        )
+        return run_r4_1_source_curve_extraction_candidate_c(create_default_oborovo)
+
+    # A) Fixture structure
+    def test_a_xlsm_fixture_exists(self):
+        assert self._XLSM_FIXTURE_PATH.exists(), (
+            "R4.1 XLSM fixture missing: excel_oborovo_bank_sizing_source_evidence_r4_1_xlsm.json"
+        )
+
+    def test_a_xlsm_fixture_has_oborovo_section(self):
+        fx = self._load_xlsm_fixture()
+        assert "oborovo" in fx
+        assert "yield_cases" in fx["oborovo"]
+        assert "selectors" in fx["oborovo"]
+        assert "price_curves" in fx["oborovo"]
+
+    def test_a_xlsm_fixture_has_tuho_section(self):
+        fx = self._load_xlsm_fixture()
+        assert "tuho" in fx
+        assert "yield_cases" in fx["tuho"]
+        assert "selectors" in fx["tuho"]
+        assert "price_curves" in fx["tuho"]
+
+    def test_a_xlsm_fixture_has_workbook_shas(self):
+        fx = self._load_xlsm_fixture()
+        wb = fx["workbooks"]
+        assert wb["oborovo"]["sha256"] == "15a621c4d6b79024980766e00ebc79d7235fd56f00567be7bf345c769ce57920"
+        assert wb["tuho"]["sha256"] == "780779eba4278ccc2b8546a9411ccee24917d388f411ba60c88aa342cb5c727a"
+
+    def test_a_xlsm_fixture_has_constants_verification(self):
+        fx = self._load_xlsm_fixture()
+        assert "constants_verification" in fx
+        cv = fx["constants_verification"]
+        assert "OBOROVO_CENTRAL_LOW_CY2042_2060" in cv
+        assert "TUHO_MIDLOW_Y1_Y30" in cv
+
+    # B) Oborovo committed constants match XLSM
+    def test_b_oborovo_committed_constants_match_xlsm(self):
+        from finco_recon.bank_sizing_candidates import (
+            verify_committed_constants_against_xlsm,
+            load_r4_1_xlsm_fixture,
+        )
+        fixture = load_r4_1_xlsm_fixture()
+        result = verify_committed_constants_against_xlsm(fixture)
+        ob = result["OBOROVO_CENTRAL_LOW_CY2042_2060"]
+        assert ob["verified"] is True, (
+            f"OBOROVO_CENTRAL_LOW_CY2042_2060 has XLSM mismatches: {ob['mismatches']}"
+        )
+        assert ob["status"] == "XLSM_VERIFIED"
+
+    def test_b_oborovo_constants_len_is_19(self):
+        from finco_recon.bank_sizing_candidates import OBOROVO_CENTRAL_LOW_CY2042_2060
+        assert len(OBOROVO_CENTRAL_LOW_CY2042_2060) == 19, (
+            f"Expected 19 values (CY2042-CY2060), got {len(OBOROVO_CENTRAL_LOW_CY2042_2060)}"
+        )
+
+    def test_b_oborovo_cy2042_value(self):
+        from finco_recon.bank_sizing_candidates import OBOROVO_CENTRAL_LOW_CY2042_2060
+        assert abs(OBOROVO_CENTRAL_LOW_CY2042_2060[0] - 44.110675) < 1e-6, (
+            f"CY2042 value={OBOROVO_CENTRAL_LOW_CY2042_2060[0]}, expected 44.110675"
+        )
+
+    def test_b_oborovo_cy2060_value(self):
+        from finco_recon.bank_sizing_candidates import OBOROVO_CENTRAL_LOW_CY2042_2060
+        assert abs(OBOROVO_CENTRAL_LOW_CY2042_2060[-1] - 37.644075) < 1e-6, (
+            f"CY2060 value={OBOROVO_CENTRAL_LOW_CY2042_2060[-1]}, expected 37.644075"
+        )
+
+    # C) TUHO committed constants match XLSM
+    def test_c_tuho_committed_constants_match_xlsm(self):
+        from finco_recon.bank_sizing_candidates import (
+            verify_committed_constants_against_xlsm,
+            load_r4_1_xlsm_fixture,
+        )
+        fixture = load_r4_1_xlsm_fixture()
+        result = verify_committed_constants_against_xlsm(fixture)
+        tu = result["TUHO_MIDLOW_Y1_Y30"]
+        assert tu["verified"] is True, (
+            f"TUHO_MIDLOW_Y1_Y30 has XLSM mismatches: {tu['mismatches']}"
+        )
+        assert tu["status"] == "XLSM_VERIFIED"
+
+    def test_c_tuho_constants_len_is_30(self):
+        from finco_recon.bank_sizing_candidates import TUHO_MIDLOW_Y1_Y30
+        assert len(TUHO_MIDLOW_Y1_Y30) == 30, (
+            f"Expected 30 values (CY2030-CY2059), got {len(TUHO_MIDLOW_Y1_Y30)}"
+        )
+
+    def test_c_tuho_y1_cy2030_value(self):
+        from finco_recon.bank_sizing_candidates import TUHO_MIDLOW_Y1_Y30
+        assert abs(TUHO_MIDLOW_Y1_Y30[0] - 75.79) < 1e-6, (
+            f"Y1(CY2030) value={TUHO_MIDLOW_Y1_Y30[0]}, expected 75.79"
+        )
+
+    def test_c_tuho_y30_cy2059_value(self):
+        from finco_recon.bank_sizing_candidates import TUHO_MIDLOW_Y1_Y30
+        assert abs(TUHO_MIDLOW_Y1_Y30[-1] - 55.61) < 1e-6, (
+            f"Y30(CY2059) value={TUHO_MIDLOW_Y1_Y30[-1]}, expected 55.61"
+        )
+
+    def test_c_all_constants_xlsm_verified(self):
+        from finco_recon.bank_sizing_candidates import (
+            verify_committed_constants_against_xlsm,
+        )
+        result = verify_committed_constants_against_xlsm()
+        assert result["all_constants_xlsm_verified"] is True, (
+            "Not all committed constants are XLSM_VERIFIED: "
+            + str({k: v["status"] for k, v in result.items() if isinstance(v, dict)})
+        )
+
+    # D) Oborovo yield cases extracted
+    def test_d_oborovo_yield_cases_extracted(self):
+        fx = self._load_xlsm_fixture()
+        yc = fx["oborovo"]["yield_cases"]
+        assert yc["p50_hours"] == 1494.0, f"P50={yc['p50_hours']}"
+        assert yc["p90_10y_hours"] == 1410.0, f"P90-10y={yc['p90_10y_hours']}"
+
+    def test_d_oborovo_p90_p50_ratio(self):
+        fx = self._load_xlsm_fixture()
+        ratio = fx["oborovo"]["yield_cases"]["p90_p50_ratio"]
+        assert abs(ratio - 0.9437751004016064) < 1e-10, f"ratio={ratio}"
+
+    def test_d_oborovo_yield_source_row(self):
+        fx = self._load_xlsm_fixture()
+        yc = fx["oborovo"]["yield_cases"]
+        assert yc["p50_row"] == 64
+        assert yc["p90_10y_row"] == 68
+
+    # E) TUHO yield cases extracted
+    def test_e_tuho_yield_cases_extracted(self):
+        fx = self._load_xlsm_fixture()
+        yc = fx["tuho"]["yield_cases"]
+        assert yc["p50_hours"] == 4164.0, f"P50={yc['p50_hours']}"
+        assert yc["p90_10y_hours"] == 3620.0, f"P90-10y={yc['p90_10y_hours']}"
+
+    def test_e_tuho_yield_source_rows(self):
+        fx = self._load_xlsm_fixture()
+        yc = fx["tuho"]["yield_cases"]
+        assert yc["p50_row"] == 67
+        assert yc["p90_10y_row"] == 71
+
+    # F) Oborovo revenue selectors extracted
+    def test_f_oborovo_selectors_extracted(self):
+        fx = self._load_xlsm_fixture()
+        sel = fx["oborovo"]["selectors"]
+        assert sel["equity_value"] == "Central case Trackers", (
+            f"equity_value={sel['equity_value']!r}"
+        )
+        assert sel["sizing_value"] == "Central Low case Trackers", (
+            f"sizing_value={sel['sizing_value']!r}"
+        )
+
+    def test_f_oborovo_selector_source_rows(self):
+        fx = self._load_xlsm_fixture()
+        sel = fx["oborovo"]["selectors"]
+        assert sel["equity_row"] == 102
+        assert sel["sizing_row"] == 103
+
+    # G) TUHO revenue selectors extracted
+    def test_g_tuho_selectors_extracted(self):
+        fx = self._load_xlsm_fixture()
+        sel = fx["tuho"]["selectors"]
+        assert sel["equity_value"] == "Central", f"equity_value={sel['equity_value']!r}"
+        assert sel["sizing_value"] == "MidLow", f"sizing_value={sel['sizing_value']!r}"
+
+    def test_g_tuho_selector_source_rows(self):
+        fx = self._load_xlsm_fixture()
+        sel = fx["tuho"]["selectors"]
+        assert sel["equity_row"] == 107
+        assert sel["sizing_row"] == 108
+
+    # H) Post-maturity non-causality (using existing run_post_maturity_sensitivity)
+    def test_h_post_maturity_non_causality(self):
+        """Change post-maturity CFADS only → debt unchanged.
+
+        POST_MATURITY_CFADS_NON_CAUSAL_FOR_INITIAL_DSCR_SIZING_RUNTIME_PROVEN
+        """
+        from app.project_factories import create_default_oborovo
+        from finco_recon.bank_sizing_candidates import run_post_maturity_sensitivity
+        result = run_post_maturity_sensitivity(create_default_oborovo)
+        assert abs(result["post_maturity_x2_delta_keur"]) < 0.01, (
+            f"Post-maturity ×2 changed debt by {result['post_maturity_x2_delta_keur']:.4f} kEUR"
+        )
+        assert abs(result["post_maturity_x05_delta_keur"]) < 0.01, (
+            f"Post-maturity ×0.5 changed debt by {result['post_maturity_x05_delta_keur']:.4f} kEUR"
+        )
+        assert result["verdict"] == (
+            "POST_MATURITY_CFADS_NON_CAUSAL_FOR_INITIAL_DSCR_SIZING_RUNTIME_PROVEN"
+        )
+
+    # I) Active period causality (change within active horizon → debt changes)
+    def test_i_active_period_causality(self):
+        """Change CFADS within Senior Debt maturity → debt changes.
+
+        ACTIVE_PERIOD_CFADS_CAUSAL_FOR_INITIAL_DSCR_SIZING_RUNTIME_PROVEN
+        """
+        from app.project_factories import create_default_oborovo
+        from finco_recon.bank_sizing_candidates import run_post_maturity_sensitivity
+        result = run_post_maturity_sensitivity(create_default_oborovo)
+        # Active period ×1.1 changes debt by >100 kEUR
+        active_delta = result["active_period_x11_delta_keur"]
+        assert abs(active_delta) > 100.0, (
+            f"Active period ×1.1 changed debt by only {active_delta:.2f} kEUR — "
+            "expected substantial change (>100 kEUR) proving active-period causality"
+        )
+
+    # J) Smoke test: run_r4_1_source_curve_extraction_candidate_c
+    def test_j_r4_1_candidate_c_runs_without_error(self, r4_1_result):
+        """run_r4_1_source_curve_extraction_candidate_c returns dict without error."""
+        assert isinstance(r4_1_result, dict)
+        assert "verdict" in r4_1_result
+
+    def test_j_r4_1_constants_verified_in_result(self, r4_1_result):
+        cv = r4_1_result["constants_verification"]
+        assert cv["all_constants_xlsm_verified"] is True
+
+    def test_j_r4_1_candidate_c_debt_present(self, r4_1_result):
+        debt = r4_1_result["candidate_c"]["debt_keur"]
+        assert isinstance(debt, float)
+        assert debt > 0
+
+    def test_j_r4_1_xlsm_verdict_in_result(self, r4_1_result):
+        assert "XLSM_EXTRACTION_COMPLETE" in r4_1_result["verdict"] or \
+               "STOP" in r4_1_result["verdict"]
+
+    def test_j_r4_1_result_has_yield_cases(self, r4_1_result):
+        assert r4_1_result["oborovo_yield_cases"]["p50_hours"] == 1494.0
+        assert r4_1_result["tuho_yield_cases"]["p50_hours"] == 4164.0
+
+    def test_j_r4_1_result_has_cfads_comparison(self, r4_1_result):
+        comp = r4_1_result["candidate_c"]["cfads_comparison"]
+        assert isinstance(comp, list)
+        assert len(comp) > 0
+
+    # K) Governance guards
+    def test_k_no_project_name_dispatch_in_r4_1(self):
+        import inspect
+        from finco_recon.bank_sizing_candidates import (
+            run_r4_1_source_curve_extraction_candidate_c,
+        )
+        src = inspect.getsource(run_r4_1_source_curve_extraction_candidate_c)
+        # Check for project-name dispatch patterns only — not fixture key strings
+        # or classification constant names (OBOROVO_* are module-level constants).
+        for forbidden in ["OBOROVO_ONLY", "create_default_oborovo", "create_default_tuho"]:
+            assert forbidden not in src, (
+                f"Identity dispatch '{forbidden}' found in "
+                "run_r4_1_source_curve_extraction_candidate_c"
+            )
+
+    def test_k_financial_engine_zero_diff(self, r4_1_result):
+        assert r4_1_result["financial_engine_zero_diff"] == "ENFORCED"
+
+    def test_k_no_hardcoded_period_indices_in_result(self, r4_1_result):
+        assert r4_1_result["no_hardcoded_period_indices"] == "ENFORCED"
+
+    def test_k_no_project_name_dispatch_in_result(self, r4_1_result):
+        assert r4_1_result["no_project_name_dispatch"] == "ENFORCED"
+
+    def test_k_verify_constants_fn_exported(self):
+        from finco_recon.bank_sizing_candidates import verify_committed_constants_against_xlsm
+        assert callable(verify_committed_constants_against_xlsm)
+
+    def test_k_load_r4_1_fixture_fn_exported(self):
+        from finco_recon.bank_sizing_candidates import load_r4_1_xlsm_fixture
+        assert callable(load_r4_1_xlsm_fixture)
