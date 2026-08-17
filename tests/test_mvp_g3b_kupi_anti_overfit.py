@@ -16,12 +16,14 @@ KUPI: 144 MW Wind, Bosnia & Herzegovina.
 Source workbook SHA-256: 111178fb21109f55df45c0cc1ea108104ac8b6ed60f010ba75b6c498795f5954
 
 Documented gaps (all pre-authorized before testing):
-  KUPI_SHL_CONSTRUCTION_COMPOUNDING_GAP      CURRENT_FINCO_CAPABILITY_GAP
-  KUPI_DSCR_REVENUE_MIX_FORMULA_GAP          CURRENT_FINCO_CAPABILITY_GAP
-  KUPI_SPONSOR_CONTRIBUTION_TIMING_POLICY_GAP DEFINITION_OR_TIMING_DIFFERENCE
-  KUPI_TAX_WORKBOOK_COMPATIBILITY_GAP         CLEAN_POLICY_VS_WORKBOOK_COMPATIBILITY
-  KUPI_BANK_CFADS_BALANCING_DEDUCTION_GAP     CLEAN_POLICY_VS_WORKBOOK_COMPATIBILITY
-  KUPI_VAT_FACILITY                           UNSUPPORTED_INSTITUTIONAL_FEATURE
+  KUPI_SHL_CONSTRUCTION_COMPOUNDING_GAP         CURRENT_FINCO_CAPABILITY_GAP
+  GENERIC_DYNAMIC_REVENUE_RATIO_DSCR_FORMULA_NOT_IMPLEMENTED  CURRENT_FINCO_CAPABILITY_GAP
+  KUPI_PROJECT_DSCR_SCHEDULE_RESULT_REPRODUCED  (via explicit schedule; no KUPI schedule gap)
+  KUPI_SPONSOR_CONTRIBUTION_TIMING_POLICY_GAP   DEFINITION_OR_TIMING_DIFFERENCE
+  KUPI_TAX_WORKBOOK_COMPATIBILITY_GAP           CLEAN_POLICY_VS_WORKBOOK_COMPATIBILITY
+  KUPI_BANK_CFADS_BALANCING_DEDUCTION_GAP       CLEAN_POLICY_VS_WORKBOOK_COMPATIBILITY
+  KUPI_SENIOR_GAP_RESIDUAL                      OPEN_SMALL_RESIDUAL (~0.34% of source Senior)
+  KUPI_VAT_FACILITY                             UNSUPPORTED_INSTITUTIONAL_FEATURE
 
 ENGINE_DERIVED_SHL_ADAPTER_HANDSHAKE_DIAGNOSTIC:
   The fixture uses a two-stage handshake to derive clean_shl_principal_keur
@@ -33,16 +35,35 @@ KUPI_SHL_CONSTRUCTION_COMPOUNDING_GAP (CURRENT_FINCO_CAPABILITY_GAP):
   Engine: simple interest, dcf=2.0 → PIK = engine_SHL × 8% × 2.0 ≈ 12,735 kEUR
   Source: compound interest → source_SHL × ((1.08)^2 − 1) = 11,341 kEUR
   (Different SHL principals: engine 79,596 vs source 68,153.)
-  Source simple-vs-compound delta (source SHL basis): 436.179 kEUR.
-  Finco compound counterfactual (Finco SHL basis): 79,596 × 0.1664 = 13,245 kEUR.
-  Finco simple PIK is 13,245 − 12,735 = 510 kEUR below the compound counterfactual.
-  Do NOT implement compound interest — document the gap and stop.
+
+  CROSS_BASIS_SHL_PIK_DIFFERENCE = 12,735 − 11,341 = +1,394.678 kEUR.
+  This is NOT the pure method delta — it combines different SHL principals
+  (caused by the Senior sizing gap) with the simple-vs-compound methodology.
+
+  Pure methodology delta on SOURCE principal basis:
+    Simple counterfactual:   68,153 × 8% × 2 = 10,904.479 kEUR
+    Source compound PIK:     68,153 × ((1.08)^2 − 1) = 11,340.658 kEUR
+    Delta (compound−simple): +436.179 kEUR   ← the pure capability gap
+
+  Pure methodology delta on FINCO principal basis:
+    Finco simple PIK:        79,596 × 8% × 2 = 12,735.337 kEUR
+    Finco compound cf'fact:  79,596 × ((1.08)^2 − 1) ≈ 13,244.750 kEUR
+    Delta (compound−simple): ≈+509.413 kEUR
+
+  Do NOT use +1,394.678 as the method delta. Do NOT implement compound interest.
 
 KUPI_BANK_CFADS_BALANCING_DEDUCTION_GAP (CLEAN_POLICY_VS_WORKBOOK_COMPATIBILITY):
   Finco applies balancing_cost_wind_eur_mwh=5.0 to bank CFADS revenue.
   Source bank CFADS omits balancing deduction.
-  Balancing bridge: +11,942 kEUR Senior on removing balancing.
-  Residual vs source after bridge: +499 kEUR (DSCR target + minor production).
+  Literal Finco Senior: 135,707.583 kEUR | Source Senior: 147,150.442 kEUR
+  No-balancing Finco Senior: 147,649.261 kEUR | Bridge: +11,941.678 kEUR
+  Residual vs source: +498.819 kEUR  →  KUPI_SENIOR_GAP_RESIDUAL  OPEN_SMALL_RESIDUAL
+  (~0.34% of source Senior — do not tune away).
+
+GENERIC_DYNAMIC_REVENUE_RATIO_DSCR_FORMULA_NOT_IMPLEMENTED (CURRENT_FINCO_CAPABILITY_GAP):
+  Source DS!row13 = merchant_revenue / total_revenue, which can exceed 100%
+  (AF13 ≈ 1.030598, AH13 ≈ 1.031398). KUPI DSCR result is reproduced via
+  explicit schedule; the gap is a generic configurability limitation only.
 """
 from __future__ import annotations
 
@@ -490,13 +511,23 @@ class TestF_SHLCashSweep:
 class TestG_SHLConstructionCompoundingGap:
     """G3B-G: Document KUPI_SHL_CONSTRUCTION_COMPOUNDING_GAP — CURRENT_FINCO_CAPABILITY_GAP.
 
-    Source: compound interest SHL × ((1+8%)^2 − 1) = 11,340.658 kEUR.
-    Finco:  simple interest,  dcf=2.0 → SHL_engine × 8% × 2 ≈ 12,735 kEUR.
+    Source: compound interest on source SHL → 68,153 × ((1.08)^2 − 1) = 11,340.658 kEUR.
+    Finco:  simple interest, dcf=2.0     → 79,596 × 8% × 2             = 12,735.337 kEUR.
 
-    Note: The PIK amounts are not directly comparable because the SHL principals differ:
-      Engine SHL ≈ 79,596 kEUR vs source SHL = 68,153 kEUR.
+    CROSS_BASIS_SHL_PIK_DIFFERENCE = +1,394.678 kEUR.
+    This is NOT the pure compounding capability gap — the two PIK amounts use different
+    SHL principal bases (79,596 engine vs 68,153 source), caused by the Senior sizing gap.
 
-    Source-basis simple-vs-compound delta: 436.179 kEUR (documented capability gap).
+    Pure methodology delta on SOURCE principal basis (same-principal comparison):
+      Source simple counterfactual:   68,153 × 8% × 2 = 10,904.479 kEUR
+      Source compound PIK:            68,153 × ((1.08)^2 − 1) = 11,340.658 kEUR
+      Delta (compound − simple):      +436.179 kEUR   ← pure capability gap, source basis
+
+    Pure methodology delta on FINCO principal basis:
+      Finco simple PIK:               79,596 × 8% × 2 = 12,735.337 kEUR
+      Finco compound counterfactual:  79,596 × ((1.08)^2 − 1) ≈ 13,244.750 kEUR
+      Delta (compound − simple):      ≈+509.413 kEUR  ← pure capability gap, Finco basis
+
     Do NOT implement compound interest in the engine without explicit authorization.
     """
 
@@ -585,11 +616,18 @@ class TestH_CO2Bridge:
 
 
 class TestI_DSCRRevenueMixGap:
-    """G3B-I: KUPI_DSCR_REVENUE_MIX_FORMULA_GAP — CURRENT_FINCO_CAPABILITY_GAP.
+    """G3B-I: DSCR revenue-mix formula — KUPI result reproduced via explicit schedule.
 
-    Source DS!row19: 24 periods at 1.50, 4 periods at ≈1.7576 (merchant formula).
-    Engine uses explicit schedule matching source DS!row19 exactly.
-    KUPI_DSCR_REVENUE_MIX_FORMULA_GAP documented: engine cannot compute dynamically.
+    KUPI_PROJECT_DSCR_SCHEDULE_RESULT_REPRODUCED: the explicit _KUPI_DSCR_SCHEDULE
+    reproduces DS!row19 exactly. There is no KUPI-specific numeric schedule gap.
+
+    GENERIC_DYNAMIC_REVENUE_RATIO_DSCR_FORMULA_NOT_IMPLEMENTED (CURRENT_FINCO_CAPABILITY_GAP):
+    Source DS!row13 = merchant_revenue / total_revenue (can exceed 100%:
+    AF13 ≈ 1.030598, AH13 ≈ 1.031398). Source DSCR formula:
+      target_DSCR = PPA_DSCR + (Merchant_DSCR − PPA_DSCR) × merchant_revenue_ratio
+    yields AF19 ≈ 1.757649, AG19 ≈ 1.757649, AH19 ≈ 1.757849, AI19 ≈ 1.757849.
+    This is a generic configurability limitation — not a KUPI schedule parity gap.
+    Do NOT label DS!row13 as a normalised "merchant_share" — the ratio exceeds 100%.
     """
 
     def test_sculpting_config_matches_source_row19(self):
