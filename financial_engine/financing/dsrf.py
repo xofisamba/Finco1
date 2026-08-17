@@ -1,25 +1,34 @@
-"""DSRF commitment fee engine — MVP G2C addendum.
+"""DSRF commitment fee engine — Generic MVP product extension.
 
 Computes per-period DSRF commitment fee for the DSRF debt-service reserve mode.
 
+CLASSIFICATION: EXPLICIT_GENERIC_MVP_POLICY_POST_SENIOR_CASH
+  Neither authoritative workbook (Oborovo or TUHO) contains an operational DSRF
+  engine. This module is a deliberate Generic Finco MVP product extension; it is
+  NOT workbook-source-proven. Do NOT claim otherwise.
+
 Policy: DebtServiceReserveSupportMode.DSRF — the facility is undrawn standby;
-NO initial cash Project Use. A commitment fee accrues from COD at:
+NO initial cash Project Use at FC. A commitment fee accrues from COD at:
     fee_keur = dsrf_commitment_keur × dsrf_commitment_fee_rate_pa × period_fraction
 
-The commitment fee is a FINANCING/DEBT-FACILITY cost, not operational OPEX.
-It is visible in the waterfall as a pre-SHL deduction from signed_post_senior
-(reducing post-senior cash available for the SHL/equity waterfall).
-Fee treatment policy: DsrfCommitmentFeeTreatment.POST_SENIOR_CASH (only source-proven policy).
+The commitment fee is a GENERIC FINANCING CASH COST:
+  - not EBITDA / OPEX;
+  - no effect on Bank/Base CFADS upstream of Senior debt service;
+  - no DSCR-denominator impact;
+  - no tax deductibility modelled here;
+  - deducted from post-senior cash before the DA roll-forward, so the existing
+    CF109 covenant gate may react secondarily (via component C: da_available < 0).
 
 Construction periods: fee = 0 (facility not yet active before COD).
 Operating periods: fee > 0 when dsrf_commitment_keur > 0 and rate > 0,
     UNTIL the period containing Senior debt maturity (inclusive), then 0.
 
 Day-count: typed via DsrfDayCountConvention (ACT_365 or ACT_360).
+ACT_365 is the Generic MVP default convention — NOT workbook-source-proven.
 
-DSRF draw engine is out of scope for MVP G2C.
-DSRF_AVAILABLE_SUPPORT_ONLY_NO_DRAW_ENGINE: the DSRF provides liquidity support
-in principle but no draw trigger, utilisation, or reimbursement logic is modelled.
+DSRF draw engine, reimbursement, and replenishment are out of scope for MVP.
+DSRF_AVAILABLE_SUPPORT_ONLY_NO_DRAW_ENGINE: the DSRF provides standby liquidity
+support in principle; no draw trigger, utilisation, or reimbursement is modelled.
 """
 from __future__ import annotations
 
@@ -66,7 +75,7 @@ def compute_dsrf_fee_schedule(
         dsrf_commitment_fee_rate_pa: Annual commitment fee rate (e.g. 0.01 = 1% p.a.).
         senior_last_period_index: Period index at which Senior debt matures (inclusive).
             Fee is zero for periods after this index. None means fee runs for all periods.
-        day_count_convention: ACT_365 (default, source-proven) or ACT_360.
+        day_count_convention: ACT_365 (Generic MVP default) or ACT_360.
 
     Returns:
         DsrfFeeSchedule with per-period fees in kEUR.

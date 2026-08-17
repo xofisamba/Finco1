@@ -101,8 +101,14 @@ class DsrfCommitmentFeeTreatment(Enum):
     """Cashflow treatment for the DSRF commitment fee.
 
     POST_SENIOR_CASH: fee is deducted from post-senior cash before the
-        distribution gate and SHL waterfall. The fee is a financing cost,
-        not EBITDA. Only this treatment is source-proven for MVP G2C.
+        DA roll-forward and CF109 covenant gate.  The fee is a generic
+        financing cash cost — not EBITDA, not OPEX, no DSCR-denominator
+        impact, no tax effect modelled here.
+
+        EXPLICIT_GENERIC_MVP_POLICY_POST_SENIOR_CASH: neither authoritative
+        workbook (Oborovo or TUHO) contains an operational DSRF engine.
+        This treatment is a deliberate Generic Finco MVP product extension,
+        not a workbook-source-proven formula.
     """
     POST_SENIOR_CASH = "post_senior_cash"
 

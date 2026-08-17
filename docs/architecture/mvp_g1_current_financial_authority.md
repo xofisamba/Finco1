@@ -239,15 +239,58 @@ CF112 → SHL cash service input (= CF109 per source formula CF112 = H109)
 CF116 → legal_equity_distribution_keur (residual post-SHL)
 ```
 
-### DSRF fee treatment
+### DSRF fee treatment — Generic MVP extension (NOT source-proven)
 
-Only one DSRF fee treatment is implemented:
-`EXPLICIT_GENERIC_MVP_POLICY_POST_SENIOR_CASH`
+**Neither authoritative workbook (Oborovo or TUHO) contains an operational DSRF engine.**
+DSRF is a deliberate Generic Finco MVP product extension.
 
-No source evidence exists for any other treatment. Any other configuration raises
-a fail-closed error.
+The source-proven Excel sequence is:
 
-### Explicit stop boundaries (retained — not implemented in this PR)
+```
+SOURCE-PROVEN CORE:
+  post-Senior cash (R84)
+  → Senior/Junior DSRA / J-DSRA reserve mechanics
+  → CF108 Distribution Account available
+  → CF109 covenant gate
+  → CF112 SHL
+  → CF116 equity
+```
+
+The DSRF commitment fee is inserted by generic product policy before the DA:
+
+```
+GENERIC DSRF INSERTION (EXPLICIT_GENERIC_MVP_POLICY_POST_SENIOR_CASH):
+  post-Senior cash (R84)
+  → [DSRF commitment fee deduction]
+  → da_inflow  (= post_senior - dsrf_fee)
+  → CF108 DA available = da_inflow + da_closing[t-1]
+  → CF109 gate (source-proven, applied to the resulting DA available)
+  → CF112 SHL
+  → CF116 equity
+```
+
+The DSRF fee has **no separate gate**. It reduces `da_inflow`, which reduces
+`da_available`, which may cause the existing source-proven CF109 component C
+(`da_available < 0`) to lock. That lock is from the Excel formula, not from DSRF.
+
+**`ReserveSupportGateStatus.DSRF_AVAILABLE_SUPPORT_ONLY_NO_DRAW_ENGINE` is
+informational only — it does NOT independently block or alter cash.**
+
+DSRF fee is a **financing cash cost** only:
+
+- no EBITDA impact
+- no OPEX impact
+- no Bank/Base CFADS impact (Bank CFADS is computed upstream of Senior DS)
+- no DSCR-denominator effect
+- no Senior sizing impact
+- no tax deductibility modelled (requires separate accounting policy)
+
+ACT_365 day-count for DSRF fee is the Generic MVP default — **not workbook-proven**.
+
+Only `EXPLICIT_GENERIC_MVP_POLICY_POST_SENIOR_CASH` is implemented; any other
+`DsrfCommitmentFeeTreatment` value raises a fail-closed error.
+
+### Explicit stop boundaries (retained)
 
 `G2C_RESERVE_GATE_NOT_CAUSALLY_CLOSED` — three sub-causes retained:
 
@@ -264,6 +307,10 @@ Do NOT remove or weaken these stop boundaries in this phase.
 
 ## DSRF — Debt Service Reserve Facility canonical authority
 
+**Classification: GENERIC FINCO MVP PRODUCT EXTENSION**
+Neither Oborovo nor TUHO workbook contains an operational DSRF engine.
+Do NOT claim any DSRF mechanic is Excel/workbook-source-proven.
+
 ### DebtServiceReserveSupportMode
 
 Three typed modes; dispatch is via `FinancingParams.dsra_support_mode`.
@@ -271,17 +318,29 @@ NEVER dispatch on project name, code, or workbook identity.
 
 | Mode | Meaning | Project Use at FC | Operating fee |
 |---|---|---|---|
-| `CASH_DSRA` | Cash-funded DSRA | `reserve_accounts_keur` (Project Use) | None |
-| `DSRF` | Standby facility | None (no cash use) | Commitment fee from COD |
+| `CASH_DSRA` | Cash-funded DSRA (workbook-proven reserve structure) | `reserve_accounts_keur` (Project Use) | None |
+| `DSRF` | Standby facility — Generic MVP extension | None (no cash use at FC) | Commitment fee from COD |
 | `NONE` | Default | None | None |
 
 ### DSRF commitment fee
 
-`fee_keur = dsrf_commitment_keur × dsrf_commitment_fee_rate_pa × period_fraction`
+```
+fee_keur[t] = dsrf_commitment_keur × dsrf_commitment_fee_rate_pa × period_fraction[t]
+```
 
-Fee classification: FINANCING/DEBT-FACILITY cost. NOT operational OPEX.
+Fee classification: **GENERIC FINANCING CASH COST**. Not OPEX. Not EBITDA.
+No DSCR-denominator effect. No Bank CFADS impact. No tax effect modelled here.
 Visible per-period as `dsrf_commitment_fee_keur` on `CovenantGatedWaterfallPeriod`.
 Fee accrues from COD (construction periods: fee = 0).
+Expires at Senior debt maturity by default (`dsrf_fee_expires_at_senior_maturity`).
+
+Day-count ACT_365 is the Generic MVP default — **not workbook-proven**.
+
+**`da_inflow[t] = signed_post_senior[t] - dsrf_fee[t]`**
+
+The fee reduces `da_inflow`, which is the input to the source-proven CF108 DA
+roll-forward. No separate DSRF gate exists. Any resulting lock (e.g., component C
+of CF109) comes from the source-proven Excel formula reacting to reduced `da_available`.
 
 ### Sources & Uses invariant
 
@@ -295,8 +354,11 @@ Hard CAPEX is identical between modes. The difference is solely the funded reser
 
 ### MVP limitations
 
-No DSRF draw or reimbursement mechanics are implemented. The DSRF is modelled as
-a pure commitment fee generator; draw events are out of scope.
+- No DSRF draw, reimbursement, or replenishment mechanics are implemented.
+- No DSRF-specific gate or `ReserveSupportGateStatus` that independently blocks cash.
+- Tax deductibility, P&L presentation, and DSCR treatment require separate
+  accounting policy with explicit source evidence before implementation.
+- ACT_365 day-count is a convention, not source-proven.
 
 ## Current blocking ring
 

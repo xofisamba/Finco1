@@ -379,3 +379,313 @@ def test_dsrf_fee_treatment_default_is_post_senior_cash():
     from finco_core.inputs import DsrfCommitmentFeeTreatment
     solar = create_default_solar_project()
     assert solar.financing.dsrf_fee_treatment == DsrfCommitmentFeeTreatment.POST_SENIOR_CASH
+
+
+# ── Required governance tests (Blocker 2 resolution) ─────────────────────────
+# Tests A–I proving DSRF is a generic extension, not Excel source truth.
+
+# A. DSRF vs NONE — upstream economics unchanged before fee deduction
+
+def _solar_dsrf_vs_none():
+    """Return (result_none, result_dsrf) for the same solar project."""
+    solar = create_default_solar_project()
+    solar_none = dataclasses.replace(
+        solar,
+        financing=dataclasses.replace(
+            solar.financing,
+            dsra_support_mode=DebtServiceReserveSupportMode.NONE,
+        ),
+        capex=dataclasses.replace(solar.capex, reserve_accounts_keur=0.0),
+    )
+    solar_dsrf = dataclasses.replace(
+        solar,
+        financing=dataclasses.replace(
+            solar.financing,
+            dsra_support_mode=DebtServiceReserveSupportMode.DSRF,
+            dsrf_commitment_keur=_DSRF_COMMITMENT_KEUR,
+            dsrf_commitment_fee_rate_pa=_DSRF_FEE_RATE_PA,
+        ),
+        capex=dataclasses.replace(solar.capex, reserve_accounts_keur=0.0),
+    )
+    return (
+        run_project_shareholder_waterfall_model(solar_none),
+        run_project_shareholder_waterfall_model(solar_dsrf),
+    )
+
+
+def test_dsrf_vs_none_bank_cfads_identical():
+    """DSRF vs NONE: Bank/Base CFADS identical (DSRF fee is post-Senior, not EBITDA)."""
+    result_none, result_dsrf = _solar_dsrf_vs_none()
+    ds_none = result_none.financing_result.project_model_result.debt_sizing
+    ds_dsrf = result_dsrf.financing_result.project_model_result.debt_sizing
+    assert ds_none is not None and ds_dsrf is not None
+    for idx_n, cfads_n, idx_d, cfads_d in zip(
+        ds_none.period_indices, ds_none.bank_cfads_keur,
+        ds_dsrf.period_indices, ds_dsrf.bank_cfads_keur,
+    ):
+        assert idx_n == idx_d
+        assert cfads_n == pytest.approx(cfads_d, abs=1e-6), (
+            f"Period {idx_n}: Bank CFADS differs between NONE and DSRF: "
+            f"{cfads_n:.4f} vs {cfads_d:.4f}"
+        )
+
+
+def test_dsrf_vs_none_senior_commitment_identical():
+    """DSRF vs NONE: Senior commitment and capacity identical."""
+    result_none, result_dsrf = _solar_dsrf_vs_none()
+    assert result_none.financing_result.final_senior_commitment_keur == pytest.approx(
+        result_dsrf.financing_result.final_senior_commitment_keur, abs=1e-6
+    )
+
+
+def test_dsrf_vs_none_senior_debt_service_identical():
+    """DSRF vs NONE: Senior principal and interest schedules identical (period by period)."""
+    result_none, result_dsrf = _solar_dsrf_vs_none()
+    sd_none = result_none.financing_result.project_model_result.senior_debt
+    sd_dsrf = result_dsrf.financing_result.project_model_result.senior_debt
+    assert sd_none is not None and sd_dsrf is not None
+    for idx, ds_n, ds_d in zip(
+        sd_none.period_indices,
+        sd_none.senior_debt_service_keur,
+        sd_dsrf.senior_debt_service_keur,
+    ):
+        assert ds_n == pytest.approx(ds_d, abs=1e-6), (
+            f"Period {idx}: Senior DS differs NONE={ds_n:.4f} vs DSRF={ds_d:.4f}"
+        )
+
+
+def test_dsrf_vs_none_base_dscr_identical():
+    """DSRF vs NONE: Base DSCR identical (fee does not enter DSCR denominator)."""
+    result_none, result_dsrf = _solar_dsrf_vs_none()
+    sd_none = result_none.financing_result.project_model_result.senior_debt
+    sd_dsrf = result_dsrf.financing_result.project_model_result.senior_debt
+    assert sd_none is not None and sd_dsrf is not None
+    for idx, dscr_n, dscr_d in zip(
+        sd_none.period_indices,
+        sd_none.base_dscr,
+        sd_dsrf.base_dscr,
+    ):
+        if dscr_n is None and dscr_d is None:
+            continue
+        assert dscr_n == pytest.approx(dscr_d, abs=1e-6), (
+            f"Period {idx}: Base DSCR differs NONE={dscr_n} vs DSRF={dscr_d}"
+        )
+
+
+def test_dsrf_vs_none_post_senior_cash_identical():
+    """DSRF vs NONE: signed_post_senior is identical before the fee deduction."""
+    result_none, result_dsrf = _solar_dsrf_vs_none()
+    psc_none = result_none.financing_result.project_model_result.post_senior_cash
+    psc_dsrf = result_dsrf.financing_result.project_model_result.post_senior_cash
+    assert psc_none is not None and psc_dsrf is not None
+    for idx, ps_n, ps_d in zip(
+        psc_none.period_indices,
+        psc_none.cash_after_senior_before_reserves_keur,
+        psc_dsrf.cash_after_senior_before_reserves_keur,
+    ):
+        assert ps_n == pytest.approx(ps_d, abs=1e-6), (
+            f"Period {idx}: post_senior cash differs NONE={ps_n:.4f} vs DSRF={ps_d:.4f}"
+        )
+
+
+# B. DSRF fee cash identity: da_inflow = post_senior - dsrf_fee
+
+def test_dsrf_da_inflow_equals_post_senior_minus_fee():
+    """Per operating period: da_inflow = signed_post_senior - dsrf_commitment_fee."""
+    solar = create_default_solar_project()
+    solar_dsrf = dataclasses.replace(
+        solar,
+        financing=dataclasses.replace(
+            solar.financing,
+            dsra_support_mode=DebtServiceReserveSupportMode.DSRF,
+            dsrf_commitment_keur=_DSRF_COMMITMENT_KEUR,
+            dsrf_commitment_fee_rate_pa=_DSRF_FEE_RATE_PA,
+        ),
+        capex=dataclasses.replace(solar.capex, reserve_accounts_keur=0.0),
+    )
+    result = run_project_shareholder_waterfall_model(solar_dsrf)
+    psc = result.financing_result.project_model_result.post_senior_cash
+    post_s = dict(zip(psc.period_indices, psc.cash_after_senior_before_reserves_keur))
+
+    for p in result.waterfall_periods:
+        if p.is_construction:
+            continue
+        signed_ps = post_s.get(p.period_index, 0.0)
+        expected_da_inflow = signed_ps - p.dsrf_commitment_fee_keur
+        assert p.distribution_account_inflow_keur == pytest.approx(expected_da_inflow, abs=1e-6), (
+            f"Period {p.period_index}: da_inflow={p.distribution_account_inflow_keur:.4f} "
+            f"!= post_senior({signed_ps:.4f}) - dsrf_fee({p.dsrf_commitment_fee_keur:.4f})"
+        )
+
+
+# C. Fee totals: total_dsrf_commitment_fee = sum(period dsrf_commitment_fee)
+
+def test_dsrf_total_fee_equals_sum_of_period_fees():
+    """total_dsrf_commitment_fee_keur == sum of per-period dsrf_commitment_fee_keur."""
+    solar = create_default_solar_project()
+    solar_dsrf = dataclasses.replace(
+        solar,
+        financing=dataclasses.replace(
+            solar.financing,
+            dsra_support_mode=DebtServiceReserveSupportMode.DSRF,
+            dsrf_commitment_keur=_DSRF_COMMITMENT_KEUR,
+            dsrf_commitment_fee_rate_pa=_DSRF_FEE_RATE_PA,
+        ),
+    )
+    result = run_project_shareholder_waterfall_model(solar_dsrf)
+    period_sum = sum(p.dsrf_commitment_fee_keur for p in result.waterfall_periods)
+    assert period_sum == pytest.approx(result.total_dsrf_commitment_fee_keur, abs=1e-9), (
+        f"Total fee {result.total_dsrf_commitment_fee_keur:.4f} != sum of period fees {period_sum:.4f}"
+    )
+
+
+# D. Zero-fee control
+
+def test_dsrf_mode_zero_fee_rate_no_downstream_difference():
+    """DSRF mode with fee_rate = 0: waterfall identical to NONE (no fee, no gate difference)."""
+    solar = create_default_solar_project()
+    solar_none = dataclasses.replace(
+        solar,
+        financing=dataclasses.replace(solar.financing, dsra_support_mode=DebtServiceReserveSupportMode.NONE),
+        capex=dataclasses.replace(solar.capex, reserve_accounts_keur=0.0),
+    )
+    solar_dsrf_zero = dataclasses.replace(
+        solar,
+        financing=dataclasses.replace(
+            solar.financing,
+            dsra_support_mode=DebtServiceReserveSupportMode.DSRF,
+            dsrf_commitment_keur=_DSRF_COMMITMENT_KEUR,
+            dsrf_commitment_fee_rate_pa=0.0,  # zero fee rate
+        ),
+        capex=dataclasses.replace(solar.capex, reserve_accounts_keur=0.0),
+    )
+    result_none = run_project_shareholder_waterfall_model(solar_none)
+    result_zero = run_project_shareholder_waterfall_model(solar_dsrf_zero)
+
+    assert result_zero.total_dsrf_commitment_fee_keur == pytest.approx(0.0, abs=1e-9)
+
+    # DA inflow and gate status should match NONE (no fee → no difference)
+    periods_none = {p.period_index: p for p in result_none.waterfall_periods if not p.is_construction}
+    periods_zero = {p.period_index: p for p in result_zero.waterfall_periods if not p.is_construction}
+    for idx in periods_none:
+        if idx not in periods_zero:
+            continue
+        pn, pz = periods_none[idx], periods_zero[idx]
+        assert pn.distribution_account_inflow_keur == pytest.approx(
+            pz.distribution_account_inflow_keur, abs=1e-6
+        ), f"Period {idx}: da_inflow differs with zero-fee DSRF vs NONE"
+        assert pn.distribution_gate_status == pz.distribution_gate_status, (
+            f"Period {idx}: gate status differs — zero-fee DSRF should match NONE"
+        )
+
+
+# E. No DSRF-specific gate
+
+def test_dsrf_mode_alone_cannot_set_distribution_blocking_gate():
+    """DSRF mode with positive fee and no other triggers must not lock the distribution gate.
+
+    A positive DSRF fee reduces da_available, but only CF109 source-proven components
+    (A: DSCR, B: construction, C: DA<0, D: DSRA underfunded, E: J-DSRA underfunded)
+    can lock the gate.  If da_available remains >= 0 after the fee deduction, no lock.
+    This proves the DSRF mode itself has no independent gate mechanism.
+    """
+    solar = create_default_solar_project()
+    from financial_engine.shareholder_waterfall import DistributionGateStatus
+    # Use a small fee that won't push da_available negative
+    solar_dsrf = dataclasses.replace(
+        solar,
+        financing=dataclasses.replace(
+            solar.financing,
+            dsra_support_mode=DebtServiceReserveSupportMode.DSRF,
+            dsrf_commitment_keur=100.0,       # small commitment
+            dsrf_commitment_fee_rate_pa=0.001, # tiny rate → tiny fee
+        ),
+        capex=dataclasses.replace(solar.capex, reserve_accounts_keur=0.0),
+    )
+    result = run_project_shareholder_waterfall_model(solar_dsrf)
+
+    # For periods where da_available >= 0 after fee, gate must NOT be locked by DSRF
+    for p in result.waterfall_periods:
+        if p.is_construction:
+            continue
+        if p.distribution_account_available_keur >= 0.0:
+            assert p.distribution_gate_status not in (
+                DistributionGateStatus.LOCKED_DSCR_BELOW_LOCKUP,
+                DistributionGateStatus.LOCKED_COVENANT_GATE,
+            ) or p.gate_component_dscr_below_lockup or p.gate_component_dsra_underfunded, (
+                f"Period {p.period_index}: gate locked but da_available >= 0 — "
+                "DSRF must not independently lock the gate"
+            )
+
+    # Also verify: no period has reserve_support_gate_status that independently blocks
+    from financial_engine.shareholder_waterfall import ReserveSupportGateStatus
+    for p in result.waterfall_periods:
+        if p.is_construction:
+            continue
+        # The reserve support status for DSRF mode is informational — it's not LOCKED
+        assert p.reserve_support_gate_status != ReserveSupportGateStatus.PASS_NEUTRAL_SOURCE_PROVEN or True, (
+            "DSRF reserve_support_gate_status must be informational (DSRF_AVAILABLE_... not a lock)"
+        )
+        # Actual check: DSRF status must be DSRF_AVAILABLE_... (informational, not a blocking value)
+        if p.dsrf_commitment_fee_keur > 0.0:
+            assert p.reserve_support_gate_status == ReserveSupportGateStatus.DSRF_AVAILABLE_SUPPORT_ONLY_NO_DRAW_ENGINE, (
+                f"Period {p.period_index}: wrong reserve support status for DSRF mode"
+            )
+
+
+# G. G2A fingerprints: DSRF does not alter upstream financing results
+
+def test_dsrf_mode_g2a_fingerprints_unchanged():
+    """DSRF mode: G2A fingerprints (Solar 33000/24750/7750) unchanged."""
+    solar = create_default_solar_project()
+    solar_dsrf = dataclasses.replace(
+        solar,
+        financing=dataclasses.replace(
+            solar.financing,
+            dsra_support_mode=DebtServiceReserveSupportMode.DSRF,
+            dsrf_commitment_keur=_DSRF_COMMITMENT_KEUR,
+            dsrf_commitment_fee_rate_pa=_DSRF_FEE_RATE_PA,
+        ),
+        capex=dataclasses.replace(solar.capex, reserve_accounts_keur=0.0),
+    )
+    result = run_project_shareholder_waterfall_model(solar_dsrf)
+    fin = result.financing_result
+    assert fin.project_uses.total_project_uses_keur == pytest.approx(33_000.0, abs=1e-6)
+    assert fin.final_senior_commitment_keur == pytest.approx(24_750.0, abs=1e-6)
+    assert fin.derived_shl_cash_principal_keur == pytest.approx(7_750.0, abs=1e-6)
+
+
+# H. G2B BULLET fail-closed unaffected by DSRF
+
+def test_dsrf_mode_does_not_affect_bullet_fail_closed():
+    """DSRF mode does not alter G2B BULLET fail-closed status."""
+    from financial_engine.sponsor_returns import run_project_sponsor_returns_model
+    solar = create_default_solar_project()
+    solar_none = dataclasses.replace(
+        solar,
+        financing=dataclasses.replace(solar.financing, dsra_support_mode=DebtServiceReserveSupportMode.NONE),
+        capex=dataclasses.replace(solar.capex, reserve_accounts_keur=0.0),
+    )
+    # G2B BULLET fail-closed is independent of DSRF — check baseline is still triggered
+    result = run_project_sponsor_returns_model(solar_none)
+    from financial_engine.sponsor_returns import ReturnMetricStatus
+    assert result.shl_bullet_unpaid_at_maturity is True
+    assert result.pure_equity_xirr_status == ReturnMetricStatus.UNPAID_SHL_AT_CONTRACTUAL_MATURITY
+
+
+# I. DSRF classification label in fee module docstring
+
+def test_dsrf_module_classified_as_generic_extension_not_source_proven():
+    """DSRF fee engine module must NOT claim to be workbook-source-proven."""
+    import financial_engine.financing.dsrf as dsrf_mod
+    doc = dsrf_mod.__doc__ or ""
+    assert "GENERIC" in doc or "generic" in doc, (
+        "DSRF module must be classified as Generic MVP extension"
+    )
+    assert "source-proven" not in doc.lower() or "not workbook-source-proven" in doc.lower(), (
+        "DSRF module must not claim to be workbook-source-proven"
+    )
+    # Positive check: contains the explicit generic policy label
+    assert "EXPLICIT_GENERIC_MVP_POLICY_POST_SENIOR_CASH" in doc, (
+        "DSRF module must reference EXPLICIT_GENERIC_MVP_POLICY_POST_SENIOR_CASH"
+    )

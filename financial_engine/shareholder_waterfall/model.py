@@ -3,17 +3,18 @@
 Extends G2B with a DSCR distribution lockup gate sourced from
 extracted fixture Inputs!D223 (senior_lockup_dscr = 1.10).
 
-Source-proven waterfall ordering:
-  1. signed_post_senior = R84 (pre-gate junior FCF from clean engine)
-  2. Distribution Account roll-forward (CF108):
-       da_available[t] = signed_post_senior[t] + da_closing[t-1]
-  3. CF109 5-component gate applied → fcf_for_distribution = R109
-       gate active only within senior maturity (G4 <= B11)
-       LOCKED:  fcf_for_distribution = 0, da_closing = da_available (accumulated)
-       OPEN:    fcf_for_distribution = da_available, da_closing = 0
-  4. SHL cash service drawn from fcf_for_distribution (R112 = R109)
-       via project-owned compute_shareholder_loan_schedules()
-  5. legal_equity_distribution = max(0, fcf_for_distribution - SHL_service) = R116
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SOURCE-PROVEN CORE WATERFALL (Oborovo + TUHO workbooks):
+
+  1. signed_post_senior (R84) — pre-reserve, pre-gate
+  2. CF108 Distribution Account roll-forward:
+       da_inflow[t] = signed_post_senior[t]  (plus DSRF fee deduction below)
+       da_available[t] = da_inflow[t] + da_closing[t-1]
+  3. CF109 five-component gate → fcf_for_distribution (da_release)
+       LOCKED: da_release = 0, da_closing accumulates
+       OPEN:   da_release = da_available, da_closing = 0
+  4. CF112 SHL cash service (= CF109 per source: CF112 = H109)
+  5. CF116 legal_equity_distribution = residual post-SHL
 
 MANUAL_WORKBOOK_SOURCE_EVIDENCE:
   Workbook: 20260414_BP_Oborovo_Sensitivity_FINAL_for_PPT.xlsm
@@ -32,6 +33,21 @@ Gate components (CF109 source-proven):
   E: G105 < G100     — J-DSRA ending < target (NOT_APPLICABLE: both=0 → False)
   Gate = OR(A,B,C,D,E) AND within_senior_maturity (G4 <= B11)
 
+THE CF109 COVENANT GATE IS UPSTREAM OF BOTH SHL AND EQUITY.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+GENERIC MVP DSRF EXTENSION (NOT workbook-source-proven):
+
+  EXPLICIT_GENERIC_MVP_POLICY_POST_SENIOR_CASH:
+    da_inflow[t] = signed_post_senior[t] - dsrf_commitment_fee[t]
+
+  The DSRF fee is a generic financing cash cost. It has no separate gate.
+  It may indirectly cause CF109 component C (da_available < 0) to lock,
+  which is acceptable because component C is source-proven Excel logic.
+  The ReserveSupportGateStatus for DSRF is INFORMATIONAL ONLY and does
+  NOT independently alter cash.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 SHL POLICY AUTHORITY:
   G2C does NOT hardcode a repayment mode or day-count convention.
 
@@ -48,10 +64,12 @@ BULLET FAIL-CLOSED:
   Return metrics = None with UNPAID_SHL_AT_CONTRACTUAL_MATURITY status.
 
 Source map:
-  R84  → signed_post_senior (pre-DSRA, pre-gate)
-  R109 → fcf_for_distribution (gate output)
-  R112 → SHL service input (= R109 per source formula CF112=H109)
-  R116 → legal_equity_distribution_keur
+  R84   → signed_post_senior (pre-DSRA, pre-gate)
+  CF108 → da_available (DA balance after eligible inflow + carry)
+  CF109 → fcf_for_distribution / da_release (gate output; signed)
+  CF110 → da_closing (DA closing balance)
+  CF112 → SHL service input (= CF109 per source formula)
+  CF116 → legal_equity_distribution_keur
 """
 from __future__ import annotations
 
@@ -93,14 +111,25 @@ def _evaluate_reserve_support_gate(
     dsrf_commitment_keur: float,
     is_construction: bool,
 ) -> ReserveSupportGateStatus:
-    """Evaluate reserve support gate for one period.
+    """Evaluate reserve support gate for one period — informational only.
 
-    NONE   → NOT_APPLICABLE (requirement = 0, no block)
-    CASH_DSRA → PASS_NEUTRAL_SOURCE_PROVEN if req=0, else PASS (initial reserve assumed funded)
-    DSRF   → DSRF_AVAILABLE_SUPPORT_ONLY_NO_DRAW_ENGINE (no draw engine modeled)
+    NONE      → NOT_APPLICABLE
+    CASH_DSRA → PASS_NEUTRAL_SOURCE_PROVEN if req=0, else PASS
+    DSRF      → DSRF_AVAILABLE_SUPPORT_ONLY_NO_DRAW_ENGINE
 
-    G2C_RESERVE_GATE_NOT_CAUSALLY_CLOSED: gate status is informational only.
-    CF108 not extracted; reserve gate does not block fcf_for_distribution in G2C.
+    IMPORTANT: This status is DESCRIPTIVE / DIAGNOSTIC only.
+    It does NOT independently alter cash flow or block distributions.
+
+    For DSRF: the commitment fee reduces da_inflow before the CF109 gate;
+    if that causes da_available < 0 the existing CF109 component C may lock
+    naturally. That lock comes from the source-proven CF109 formula, not from
+    this reserve support status.
+
+    G2C_RESERVE_GATE_NOT_CAUSALLY_CLOSED sub-causes (retained):
+      1. CASH_DSRA: balance = target (no draw/replenishment engine).
+      2. J-DSRA: component E always False (not modelled).
+      3. period_index <= senior_last_period_index is a proxy for G4 <= B11
+         (formal row-4 mapping evidence not yet committed).
     """
     from finco_core.inputs import DebtServiceReserveSupportMode
     if is_construction:
