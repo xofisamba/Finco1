@@ -1,0 +1,59 @@
+name: MVP G3 — Synthetic Anti-Overfit Check
+
+on:
+  push:
+    branches:
+      - mvp-g3-synthetic-anti-overfit
+      - claude/**
+      - main
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "tests/test_mvp_g3_synthetic_anti_overfit.py"
+      - "tests/helpers/g3_synthetic_project.py"
+      - "financial_engine/**"
+      - "finco_core/**"
+      - "app/project_factories.py"
+
+jobs:
+  g3-synthetic-anti-overfit:
+    name: G3 Synthetic Anti-Overfit (Tests A–O)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run G3 Synthetic Anti-Overfit suite
+        run: |
+          python -m pytest tests/test_mvp_g3_synthetic_anti_overfit.py \
+            -v --tb=short \
+            --no-header \
+            -q
+
+      - name: Run full CURRENT_BLOCKING ring
+        run: |
+          python -m pytest \
+            tests/test_mvp_g0_generic_clean_engine_enablement.py \
+            tests/test_mvp_g1_workflow_authority.py \
+            tests/test_mvp_g1_governance_methodology_lock.py \
+            tests/test_mvp_g2a_financing_stack.py \
+            tests/test_mvp_g2b_sponsor_returns.py \
+            tests/test_mvp_g2c_shareholder_waterfall.py \
+            tests/test_mvp_dsrf_reserve_support.py \
+            tests/test_mvp_g3_synthetic_anti_overfit.py \
+            -v --tb=short \
+            --no-header \
+            -q
