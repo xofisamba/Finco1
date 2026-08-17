@@ -1598,6 +1598,7 @@ def extract(workbook_path: pathlib.Path) -> dict:
             "dep": _read_dep(wb_data),
             "tax": _read_pl_tax_formulas(wb_formula, wb_data),
             "debt_sizing_evidence": _derive_debt_sizing_from_workbook(wb_formula, wb_data),
+            "cf_da_source": _read_cf_da_formulas(wb_formula, wb_data),
         }
     finally:
         wb_data.close()

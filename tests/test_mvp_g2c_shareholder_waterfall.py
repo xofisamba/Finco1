@@ -165,11 +165,14 @@ def test_covenant_gate_upstream_of_shl_limits_shl_receipts():
     for p in result_tight.waterfall_periods:
         if p.is_construction:
             continue
-        # SHL receipts can only come from fcf_for_distribution (R112 = R109)
+        # SHL receipts can only come from max(0, fcf_for_distribution) (R112 = R109).
+        # fcf_for_distribution is the signed CF109 output and can be negative
+        # when gate is open post-senior-maturity with negative DA.
         shl_out = p.shl_cash_interest_receipt_keur + p.shl_principal_receipt_keur
-        assert shl_out <= p.fcf_for_distribution_keur + 1e-9, (
-            f"P{p.period_index}: SHL receipts exceed fcf_for_distribution "
-            f"({shl_out:.4f} > {p.fcf_for_distribution_keur:.4f})"
+        cash_available_for_shl = max(0.0, p.fcf_for_distribution_keur)
+        assert shl_out <= cash_available_for_shl + 1e-9, (
+            f"P{p.period_index}: SHL receipts exceed max(0, fcf_for_distribution) "
+            f"({shl_out:.4f} > {cash_available_for_shl:.4f})"
         )
 
 
@@ -229,8 +232,12 @@ def test_gate_partition_holds_tight_lockup():
 # ── Cash conservation invariant ───────────────────────────────────────────────
 
 def test_cash_conservation_solar(solar_result):
-    """SHL receipts + distribution <= fcf_for_distribution per period.
-    Total waterfall output <= max(0, signed_post_senior) including covenant_locked."""
+    """SHL receipts + distribution <= max(0, fcf_for_distribution) per period.
+
+    fcf_for_distribution is the signed CF109 output and can be negative when gate
+    is open post-senior-maturity with negative DA available. SHL and equity can only
+    come from the non-negative portion.
+    """
     for p in solar_result.waterfall_periods:
         if p.is_construction:
             continue
@@ -239,14 +246,10 @@ def test_cash_conservation_solar(solar_result):
             + p.shl_principal_receipt_keur
             + p.legal_equity_distribution_keur
         )
-        assert shl_and_div <= p.fcf_for_distribution_keur + 1e-6, (
-            f"P{p.period_index}: SHL+div exceed fcf_for_distribution: "
-            f"{shl_and_div:.4f} > {p.fcf_for_distribution_keur:.4f}"
-        )
-        total_out = shl_and_div + p.covenant_locked_keur
-        available = max(0.0, p.signed_post_senior_keur)
-        assert total_out <= available + 1e-6, (
-            f"P{p.period_index}: total waterfall output exceeds post-senior cash"
+        cash_available = max(0.0, p.fcf_for_distribution_keur)
+        assert shl_and_div <= cash_available + 1e-6, (
+            f"P{p.period_index}: SHL+div exceed max(0, fcf_for_distribution): "
+            f"{shl_and_div:.4f} > {cash_available:.4f}"
         )
 
 
@@ -259,11 +262,12 @@ def test_cash_conservation_wind(wind_result):
             + p.shl_principal_receipt_keur
             + p.legal_equity_distribution_keur
         )
-        assert shl_and_div <= p.fcf_for_distribution_keur + 1e-6
+        cash_available = max(0.0, p.fcf_for_distribution_keur)
+        assert shl_and_div <= cash_available + 1e-6
 
 
 def test_cash_conservation_tight_lockup():
-    """With DA model: SHL+div <= fcf_for_distribution per period.
+    """With DA model: SHL+div <= max(0, fcf_for_distribution) per period.
     DA accumulates locked cash across periods; per-period balance invariant holds."""
     result = _solar_equity_only_with_lockup(1.25)
     for p in result.waterfall_periods:
@@ -274,8 +278,9 @@ def test_cash_conservation_tight_lockup():
             + p.shl_principal_receipt_keur
             + p.legal_equity_distribution_keur
         )
-        assert shl_and_div <= p.fcf_for_distribution_keur + 1e-6, (
-            f"P{p.period_index}: SHL+div exceed fcf_for_distribution"
+        cash_available = max(0.0, p.fcf_for_distribution_keur)
+        assert shl_and_div <= cash_available + 1e-6, (
+            f"P{p.period_index}: SHL+div exceed max(0, fcf_for_distribution)"
         )
         # DA invariant: release + closing = available
         da_check = p.distribution_account_release_keur + p.distribution_account_closing_keur
@@ -376,18 +381,21 @@ def test_total_sponsor_contributed_sum_solar(solar_result):
     assert abs(solar_result.total_sponsor_contributed_keur - expected) < 1e-6
 
 
-def test_total_covenant_plus_fcf_for_distribution_equals_sum_pre_gate(solar_result):
-    """covenant_locked + fcf_for_dist = pre_gate (sum across periods)."""
-    per_period_pre_gate = sum(
-        max(0.0, p.signed_post_senior_keur)
-        for p in solar_result.waterfall_periods
-        if not p.is_construction
+def test_da_balance_telescoping_identity(solar_result):
+    """DA balance telescoping: sum(da_inflow) = sum(fcf_for_distribution) + final_da_closing.
+
+    Source: CF108=inflow+opening, CF109=release, CF110=available-release.
+    Telescoping over all operating periods: initial_opening=0, so
+    sum(inflow) + 0 = sum(release) + final_closing.
+    """
+    op = [p for p in solar_result.waterfall_periods if not p.is_construction]
+    sum_inflow = sum(p.distribution_account_inflow_keur for p in op)
+    sum_release = sum(p.distribution_account_release_keur for p in op)
+    final_closing = op[-1].distribution_account_closing_keur if op else 0.0
+    assert abs(sum_inflow - (sum_release + final_closing)) < 1e-6, (
+        f"DA telescoping identity fails: sum_inflow={sum_inflow:.4f}, "
+        f"sum_release={sum_release:.4f}, final_closing={final_closing:.4f}"
     )
-    total_both = (
-        solar_result.total_covenant_locked_keur
-        + sum(p.fcf_for_distribution_keur for p in solar_result.waterfall_periods)
-    )
-    assert abs(total_both - per_period_pre_gate) < 1e-6
 
 
 # ── Oborovo source values: lockup_dscr wired from extracted fixture ───────────
@@ -1102,19 +1110,50 @@ def test_da_shl_bullet_result_fields_present(solar_result):
 
 # ── Source evidence fixture ──────────────────────────────────────────────────
 
-def test_da_source_evidence_fixture_exists():
-    """Source evidence for CF108/109/110/112 formulas is committed."""
+def test_da_source_evidence_fixture_generated_from_workbook():
+    """Source evidence fixture was generated by dual-load extractor from the authoritative workbook.
+
+    Validates:
+    - SHA-256 matches authoritative workbook (15a621c4...)
+    - CF109 formula text extracted verbatim (not handwritten)
+    - $B$11 (NOT $B$111) confirmed in formula text
+    - Scalar B109 lockup_dscr = 1.10, B11 = 14
+    - Generation method confirms dual-load (not manual)
+    """
     import json
     path = _REPO_ROOT / "tests" / "fixtures" / "g2c_da_source_evidence.json"
     assert path.exists(), "Source evidence fixture missing"
     evidence = json.loads(path.read_text())
-    # Fixture must contain CF formula entries
-    assert "cf_formulas" in evidence, "Fixture missing cf_formulas section"
-    for key in ("CF108", "CF109", "CF110", "CF112"):
-        assert key in evidence["cf_formulas"], f"Fixture missing formula entry for {key}"
-    # Verify B11 correction is documented (NOT B111)
-    cf109 = evidence["cf_formulas"]["CF109"]
-    formula_or_gate = str(cf109)
-    assert "B$11" in formula_or_gate or "$B$11" in formula_or_gate, (
-        "CF109 source evidence must document $B$11 (senior maturity years), not $B$111"
+
+    meta = evidence["_meta"]
+    assert meta["generation_method"] == "dual_load_from_authoritative_workbook", (
+        f"Fixture must be generated by dual-load extractor; got: {meta['generation_method']}"
     )
+    assert meta["source_sha256"].startswith("15a621c4"), (
+        f"Fixture SHA mismatch: {meta['source_sha256']}"
+    )
+
+    cf = evidence["cf_formulas"]
+    gate_src = cf["cf109_gate_source"]
+    formula_text = gate_src["formula_p0_construction"]
+    assert "$B$11" in formula_text, (
+        f"CF109 formula must reference $B$11 (not $B$111): {formula_text}"
+    )
+    assert "$B$109" in formula_text, f"CF109 formula must reference $B$109: {formula_text}"
+    assert "G108" in formula_text, f"CF109 result must reference G108: {formula_text}"
+
+    scalars = cf["scalars"]
+    assert abs(scalars["B109_lockup_dscr"] - 1.10) < 1e-9, (
+        f"B109 lockup_dscr != 1.10: {scalars['B109_lockup_dscr']}"
+    )
+    assert abs(scalars["B11_senior_debt_maturity_years"] - 14.0) < 1e-9, (
+        f"B11 senior maturity != 14: {scalars['B11_senior_debt_maturity_years']}"
+    )
+    assert abs(scalars["B86_senior_dsra_target_ratio"] - 0.0) < 1e-9, (
+        f"Oborovo B86 (DSRA target ratio) should be 0: {scalars['B86_senior_dsra_target_ratio']}"
+    )
+
+    da_rows = cf["da_rows"]
+    assert "CF108_da_available" in da_rows, "da_rows must contain CF108_da_available"
+    assert "CF109_da_release" in da_rows, "da_rows must contain CF109_da_release"
+    assert "CF110_da_closing" in da_rows, "da_rows must contain CF110_da_closing"

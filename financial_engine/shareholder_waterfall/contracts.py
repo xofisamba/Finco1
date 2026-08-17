@@ -61,9 +61,14 @@ class DistributionGateStatus(Enum):
     """Per-period distribution gate evaluation result.
 
     Source: extracted fixture Inputs!D223 → generic lockup_dscr threshold.
+
+    LOCKED_DSCR_BELOW_LOCKUP: gate triggered because comp_A (DSCR < lockup) was True.
+    LOCKED_COVENANT_GATE: gate triggered by a non-DSCR component (C=DA<0, D=DSRA<target,
+      E=J-DSRA<target) — DSCR was not the primary trigger.
     """
     OPEN = "open"
     LOCKED_DSCR_BELOW_LOCKUP = "locked_dscr_below_lockup"
+    LOCKED_COVENANT_GATE = "locked_covenant_gate"
     DSCR_UNAVAILABLE_GATE_OPEN = "dscr_unavailable_gate_open"
     CONSTRUCTION = "construction"
 
