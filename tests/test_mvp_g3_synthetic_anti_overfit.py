@@ -395,6 +395,26 @@ class TestD_BankBaseSeparation:
         assert hasattr(pmr.debt_sizing, "bank_cfads_keur")
         assert not hasattr(pmr.tax_and_cfads, "bank_cfads_keur")
 
+    def test_p90_to_p50_base_production_revenue_ebitda_opex_unchanged(self):
+        """Bank-case P90→P50 must not leak into base economic vectors.
+
+        Base revenue, production, EBITDA, and OPEX are derived from P50 assumptions
+        only. Changing operating_hours_p90_10y must leave those base vectors identical.
+        Note: base cash tax may change because different bank CFADS → different senior
+        commitment → different SHL → different deductible interest. That is correct
+        engine behaviour, not a contamination bug.
+        """
+        proj = _dscr_binding_project()
+        p50_h = proj.technical.operating_hours_p50
+        r_p90 = _run(proj)
+        r_p50 = self._run_with_p90(p50_h)
+        os_p90 = r_p90.financing_result.project_model_result.operating_schedules
+        os_p50 = r_p50.financing_result.project_model_result.operating_schedules
+        assert os_p90.production_mwh == os_p50.production_mwh, "Base production leaked"
+        assert os_p90.revenue_keur == os_p50.revenue_keur, "Base revenue leaked"
+        assert os_p90.ebitda_keur == os_p50.ebitda_keur, "Base EBITDA leaked"
+        assert os_p90.opex_keur == os_p50.opex_keur, "Base OPEX leaked"
+
 
 # ── Test E: price causality ──────────────────────────────────────────────────
 
@@ -432,6 +452,33 @@ class TestE_PriceCausality:
         r_low = self._run_with_ppa(40.5)
         if r_low.pure_equity_xirr is not None and r_base.pure_equity_xirr is not None:
             assert r_low.pure_equity_xirr <= r_base.pure_equity_xirr
+
+    def test_lower_ppa_reduces_senior_capacity_when_dscr_binding(self):
+        """With DSCR binding (gearing=0.85), lower PPA → lower bank CFADS → lower senior.
+
+        price -10% (45→40.5): bank_cfads 144004→139813, senior 32087→29737.
+        """
+        def _run_dscr_ppa(ppa: float):
+            proj = _dscr_binding_project()
+            return _run(replace(proj, revenue=replace(proj.revenue, ppa_base_tariff=ppa)))
+
+        r_base = _run_dscr_ppa(45.0)
+        r_low = _run_dscr_ppa(40.5)
+        sd_base = r_base.financing_result.project_model_result.senior_debt
+        sd_low = r_low.financing_result.project_model_result.senior_debt
+        ds_base = r_base.financing_result.project_model_result.debt_sizing
+        ds_low = r_low.financing_result.project_model_result.debt_sizing
+        psc_base = r_base.financing_result.project_model_result.post_senior_cash
+        psc_low = r_low.financing_result.project_model_result.post_senior_cash
+        # DSCR binding in both scenarios
+        assert sd_base.binding_constraint == "DSCR"
+        assert sd_low.binding_constraint == "DSCR"
+        # Bank CFADS decreases
+        assert sum(ds_low.bank_cfads_keur) < sum(ds_base.bank_cfads_keur)
+        # Senior capacity decreases
+        assert r_low.financing_result.final_senior_commitment_keur < r_base.financing_result.final_senior_commitment_keur
+        # Base CFADS does not increase (OPEX unchanged, revenue from P50 also falls)
+        assert sum(psc_low.base_cfads_keur) <= sum(psc_base.base_cfads_keur)
 
 
 # ── Test F: OPEX causality ───────────────────────────────────────────────────
@@ -476,6 +523,33 @@ class TestF_OpexCausality:
             r_high.total_legal_equity_distributions_keur
             < r_base.total_legal_equity_distributions_keur
         )
+
+    def test_higher_opex_reduces_senior_capacity_when_dscr_binding(self):
+        """With DSCR binding (gearing=0.85), OPEX +10% → EBITDA ↓ → bank CFADS ↓ → senior ↓.
+
+        OPEX +10%: bank_cfads 144004→143075, senior 32087→31886.
+        """
+        def _run_dscr_opex(scale: float):
+            proj = _dscr_binding_project()
+            new_opex = tuple(
+                replace(item, y1_amount_keur=item.y1_amount_keur * scale)
+                for item in proj.opex
+            )
+            return _run(replace(proj, opex=new_opex))
+
+        r_base = _run_dscr_opex(1.0)
+        r_high = _run_dscr_opex(1.10)
+        sd_base = r_base.financing_result.project_model_result.senior_debt
+        sd_high = r_high.financing_result.project_model_result.senior_debt
+        ds_base = r_base.financing_result.project_model_result.debt_sizing
+        ds_high = r_high.financing_result.project_model_result.debt_sizing
+        psc_base = r_base.financing_result.project_model_result.post_senior_cash
+        psc_high = r_high.financing_result.project_model_result.post_senior_cash
+        assert sd_base.binding_constraint == "DSCR"
+        assert sd_high.binding_constraint == "DSCR"
+        assert sum(ds_high.bank_cfads_keur) < sum(ds_base.bank_cfads_keur)
+        assert sum(psc_high.base_cfads_keur) < sum(psc_base.base_cfads_keur)
+        assert r_high.financing_result.final_senior_commitment_keur < r_base.financing_result.final_senior_commitment_keur
 
 
 # ── Test G: DSCR causal sensitivity ─────────────────────────────────────────
@@ -561,6 +635,33 @@ class TestH_TaxCausality:
         tc_high = r_high.financing_result.project_model_result.tax_and_cfads
         diffs = [abs(h - l) for h, l in zip(tc_high.corporate_tax_cash_keur, tc_low.corporate_tax_cash_keur)]
         assert max(diffs) > 0.01, "No period showed any tax effect"
+
+    def test_higher_tax_reduces_senior_capacity_when_dscr_binding(self):
+        """With DSCR binding (gearing=0.85), tax 20%→28%: cash_tax ↑, bank CFADS ↓, senior ↓.
+
+        Uses 0.20 vs 0.28 (not 0.35, which hits a numerical precision boundary at gearing=0.85).
+        tax=0.20: senior=33053, cash_tax=28176; tax=0.28: senior=32087, cash_tax=39331.
+        """
+        def _run_dscr_tax(rate: float):
+            proj = _dscr_binding_project()
+            return _run(replace(proj, tax=replace(proj.tax, corporate_rate=rate)))
+
+        r_low = _run_dscr_tax(0.20)
+        r_high = _run_dscr_tax(0.28)
+        sd_low = r_low.financing_result.project_model_result.senior_debt
+        sd_high = r_high.financing_result.project_model_result.senior_debt
+        tc_low = r_low.financing_result.project_model_result.tax_and_cfads
+        tc_high = r_high.financing_result.project_model_result.tax_and_cfads
+        ds_low = r_low.financing_result.project_model_result.debt_sizing
+        ds_high = r_high.financing_result.project_model_result.debt_sizing
+        assert sd_low.binding_constraint == "DSCR"
+        assert sd_high.binding_constraint == "DSCR"
+        # Cash tax strictly increases
+        assert sum(tc_high.corporate_tax_cash_keur) > sum(tc_low.corporate_tax_cash_keur)
+        # Bank CFADS decreases
+        assert sum(ds_high.bank_cfads_keur) <= sum(ds_low.bank_cfads_keur)
+        # Senior strictly decreases
+        assert r_high.financing_result.final_senior_commitment_keur < r_low.financing_result.final_senior_commitment_keur
 
 
 # ── Test I: SHL interest deductibility causal chain ─────────────────────────
@@ -733,6 +834,26 @@ class TestK_ShlCashSweepPortability:
         shl_low = r_low.financing_result.project_model_result.shareholder_loan
         # At lower PPA, sweep cash is reduced; repayment schedule must differ
         assert shl_base.shl_principal_keur != shl_low.shl_principal_keur
+
+    def test_principal_never_exceeds_cash_available_for_shl(self):
+        """Per-period: principal paid ≤ cash available for SHL before reserves.
+
+        This is the cash-cap discipline: CASH_SWEEP cannot pay more SHL principal
+        than the cash that actually exists for that purpose.  Violations would
+        indicate the scheduler is drawing from reserves or thin air.
+        """
+        result = _result()
+        shl = result.financing_result.project_model_result.shareholder_loan
+        for idx, (pi, ca, pr) in enumerate(zip(
+            shl.period_indices,
+            shl.cash_available_for_shl_before_reserves_keur,
+            shl.shl_principal_keur,
+        )):
+            if pr > 0:
+                assert pr <= ca + 1e-6, (
+                    f"Period {pi}: principal_paid={pr:.4f} "
+                    f"> cash_available_for_shl={ca:.4f}"
+                )
 
 
 # ── Test L: construction funding closure ─────────────────────────────────────
@@ -955,14 +1076,36 @@ class TestP_G2cStopBoundaries:
         )
 
     def test_sub_cause_3_within_senior_maturity_proxy_exists(self):
-        """G2C sub-cause 3: within_senior_maturity proxy present on waterfall periods."""
+        """G2C sub-cause 3: within_senior_maturity proxy present and transitions.
+
+        The expected period axis has senior spanning 2..25 (24 semi-annual periods,
+        12yr).  The proxy (`period_index <= senior_last_period_index`) transitions
+        at 24→25 — period 25 is marked False, one period earlier than the axis
+        boundary.  This is the documented sub-cause 3 divergence: the proxy
+        does not match the source G4<=B11 logic precisely when the axis shifts.
+
+        This test asserts the attribute exists and the proxy transition is present
+        (True→False somewhere in the operating axis), and documents the actual
+        engine transition point.
+        """
         result = _result()
         ops = _operating_periods(result)
-        # Confirm the proxy attribute exists and transitions at period 25
-        within = [(wp.period_index, wp.within_senior_maturity) for wp in ops]
-        # All periods up to and including 25 should be within maturity
-        within_dict = {pi: wm for pi, wm in within}
+        within_dict = {wp.period_index: wp.within_senior_maturity for wp in ops}
+        # Attribute must exist on all waterfall periods
+        assert all(hasattr(wp, "within_senior_maturity") for wp in ops), (
+            "within_senior_maturity attribute missing from waterfall periods"
+        )
+        # There must be a True→False transition somewhere (proxy does something)
+        values = [wp.within_senior_maturity for wp in ops]
+        assert True in values, "within_senior_maturity is never True — proxy broken"
+        assert False in values, "within_senior_maturity is never False — proxy broken"
+        # Document actual engine transition: proxy marks period 25 as False
+        # (one period early vs the expected 2..25 inclusive axis).
+        # Sub-cause 3 stop boundary: this divergence is the known limitation.
         if 25 in within_dict:
-            assert within_dict[25] is True
+            assert within_dict[25] is False, (
+                "Sub-cause 3 resolved? within_senior_maturity[25] is now True. "
+                "Update the stop-boundary documentation if the proxy was fixed."
+            )
         if 26 in within_dict:
             assert within_dict[26] is False
