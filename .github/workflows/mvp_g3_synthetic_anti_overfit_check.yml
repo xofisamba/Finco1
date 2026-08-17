@@ -12,6 +12,9 @@ on:
     paths:
       - "tests/test_mvp_g3_synthetic_anti_overfit.py"
       - "tests/helpers/g3_synthetic_project.py"
+      - "tests/test_mvp_g3b_kupi_anti_overfit.py"
+      - "tests/helpers/g3b_kupi_project.py"
+      - "tests/diagnostics/kupi_blind_run.py"
       - "financial_engine/**"
       - "finco_core/**"
       - "app/project_factories.py"
@@ -84,10 +87,13 @@ jobs:
                       found.append((path, node.lineno, node.arg))
               return found
 
-          # Scan only the fixture file — test file contains the same identifiers
+          # Scan only the fixture files — test files contain the same identifiers
           # in governance assertions that explicitly check for their absence.
           # Those are string literals and assert messages, not executable identifiers.
-          targets = ['tests/helpers/g3_synthetic_project.py']
+          targets = [
+              'tests/helpers/g3_synthetic_project.py',
+              'tests/helpers/g3b_kupi_project.py',
+          ]
           violations = []
           for t in targets:
               violations.extend(ast_scan(t))
@@ -130,6 +136,11 @@ jobs:
         run: |
           python -m pytest tests/test_mvp_g3_synthetic_anti_overfit.py \
             -v --tb=short --no-header
+
+      - name: MVP G3B KUPI out-of-sample anti-overfit
+        run: |
+          python -m pytest tests/test_mvp_g3b_kupi_anti_overfit.py \
+            -v --tb=short
 
       - name: G2C and DSRF authority regression
         run: |

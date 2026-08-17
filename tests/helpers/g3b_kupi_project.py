@@ -27,7 +27,8 @@ SQ-02 SOURCE_INPUT_INCONSISTENCY — CO2 toggle unused
   Inputs!D121 = FALSE (CO2 Certificates Sales)
   CF!H35 = 1,075.477 kEUR certificate revenue present in source CF.
   Run A (this fixture): co2_enabled=False (literal input).
-  Run B: diagnostic only, labelled SOURCE_EFFECTIVE_CASHFLOW_OVERRIDE.
+  Run B: SOURCE_EFFECTIVE_UNUSED_TOGGLE_DIAGNOSTIC using exact 30-year CO2 price schedule.
+  Source total CO2 revenue (sum CF!row35): 25,002.043309 kEUR.
 
 SQ-03 SOURCE_INPUT_INCONSISTENCY — turbine label conflict
   Inputs!I53 = NORDEX N175
@@ -38,16 +39,21 @@ SQ-03 SOURCE_INPUT_INCONSISTENCY — turbine label conflict
 PRE-CLASSIFIED CAPABILITY GAPS (do not implement fixes during G3B diagnostic)
 ──────────────────────────────────────────────────────────────────────────────
 KUPI_SHL_CONSTRUCTION_COMPOUNDING_GAP  →  CURRENT_FINCO_CAPABILITY_GAP
-  Source IDC!D51: SHL × ((1+8%)^2 − 1) = 11,340.658 kEUR   [compound]
-  Current simple primitive (dcf=2.0):       10,904.479 kEUR
-  Opening balance delta:                         436.179 kEUR
+  Source IDC!D51: source_SHL × ((1+8%)^2 − 1) = 11,340.658 kEUR   [compound]
+  Source SHL principal (comparison anchor): 68,152.996 kEUR
+  Source compound counterfactual: 68,152.996 × 0.1664 = 11,340.658 kEUR
+  Source simple counterfactual:   68,152.996 × 0.16   = 10,904.479 kEUR
+  Source simple-vs-compound delta (source SHL basis): 436.179 kEUR
+  Finco primitive: simple interest, dcf=2.0 (24 months / 12).
+  Finco simple PIK = engine_derived_SHL × 8% × 2.0 (reported after blind run).
+  Compound PIK (Finco SHL basis) = engine_derived_SHL × ((1.08)^2 − 1).
   Rule: do NOT set dcf≈2.08 to match.  Quantify downstream impact, stop.
 
 KUPI_DSCR_REVENUE_MIX_FORMULA_GAP     →  CURRENT_FINCO_CAPABILITY_GAP
   Source DS!row19: target_dscr[t] = merchant_share[t]×1.75 + (1−merchant_share[t])×1.50
   Engine cannot derive this schedule from revenue mix dynamically.
-  Explicit schedule supplied below: (1.50,)*24 + (1.75,)*4 for the 14yr senior tenor.
-  This is a valid diagnostic approximation; the formula derivation gap remains open.
+  Exact source DS!row19 values supplied below (extracted from workbook).
+  24 periods at 1.50 (PPA), 4 periods at ≈1.7576 (merchant formula result).
 
 KUPI_SPONSOR_CONTRIBUTION_TIMING_POLICY_GAP  →  DEFINITION_OR_TIMING_DIFFERENCE
   Source Eq places full SHL (68,152.996 kEUR) + Share Capital (500 kEUR) at FC.
@@ -58,6 +64,13 @@ KUPI_TAX_WORKBOOK_COMPATIBILITY_GAP   →  CLEAN_POLICY_VS_WORKBOOK_COMPATIBILIT
   Source: 5 model-period LCF + EBT-positive gate + model-year CIT pairing.
   Clean: calendar tax year + taxable-income-positive gate.
   Total source cash CIT anchor: 95,291.964 kEUR (comparison only, not runtime target).
+
+KUPI_BANK_CFADS_BALANCING_DEDUCTION_GAP  →  CLEAN_POLICY_VS_WORKBOOK_COMPATIBILITY
+  Finco applies balancing_cost_wind_eur_mwh=5.0 to bank P90 CFADS revenue.
+  Source bank CFADS formula omits balancing cost deduction.
+  Period-2 gap: ~1,088 kEUR/period from balancing; residual ~−99 kEUR (minor).
+  Senior gap: −10,354 kEUR literal.  Balancing bridge: +12,043 kEUR.
+  No-balancing residual vs source: +1,689 kEUR (DSCR target + minor production).
 
 G2C_RESERVE_GATE_NOT_CAUSALLY_CLOSED  →  (existing known boundary — not KUPI-specific)
   Sub-cause 1: CASH_DSRA draw/replenishment not fully causal.
@@ -72,9 +85,9 @@ SOURCE AUTHORITY ANCHORS (comparison after blind run — NOT runtime inputs)
   Senior total interest    DS!D50                =   78,848.801061344 kEUR
   Avg Base Senior DSCR     CF!D128               =        1.859035714x
   Min Base Senior DSCR     CF!D150               =           1.689000x
-  Initial SHL              Inputs!D308/D311      =   68,152.995666529 kEUR
-  Construction SHL PIK     IDC!D51 / DS!D125     =   11,340.658478910 kEUR
-  First op SHL opening     derived               =   79,493.654145440 kEUR
+  Initial SHL              Inputs!D308/D311      =   68,152.995666529 kEUR  [comparison anchor]
+  Construction SHL PIK     IDC!D51 / DS!D125     =   11,340.658478910 kEUR  [compound; comparison only]
+  First op SHL opening     DS!D124 derived       =   79,493.654145440 kEUR  [source compound; comparison]
   Total SHL principal      DS!D124               =   79,493.654145440 kEUR
   Total SHL interest       DS!D122               =   48,681.151163696 kEUR
   Source total cash CIT    sum P&L!G44:DW44      =   95,291.964024174 kEUR
@@ -83,11 +96,13 @@ SOURCE AUTHORITY ANCHORS (comparison after blind run — NOT runtime inputs)
   Equity IRR               Eq!D28                =       17.136128545%
   Gross Total Sponsor XIRR Eq!row84 recomputed   =       16.987158032%
   Net Total Sponsor XIRR   Eq!D85                =       16.771044135%
+  Source total CO2 revenue sum CF!row35           =   25,002.043309 kEUR
 """
 from __future__ import annotations
 
 from dataclasses import replace
 from datetime import date
+from typing import Optional
 
 from finco_core.inputs._models import (
     AssetClass,
@@ -115,6 +130,7 @@ from finco_core.inputs.senior_rate_schedule import (
     SeniorRateSchedule,
 )
 from finco_core.inputs.senior_sculpting import SeniorSculptingConfig
+from finco_core.inputs._models import RevenueAdjustmentSchedule
 
 # ─── Source-authority design assumptions (inputs, not fitted outputs) ─────────
 
@@ -131,90 +147,103 @@ _KUPI_SENIOR_TENOR_YEARS: int = 14
 _KUPI_ALL_IN_RATE: float = 0.061                    # 3.10% + 280bps + 20bps swap
 _KUPI_SHL_RATE: float = 0.08                        # Inputs!F311
 
-# G2A SHL residual (authority identity; confirmed by blind run adapter handshake):
-#   Total Uses - Senior - Share Capital
-#   = 215,803.437976869 - 147,150.442310339 - 500 = 68,152.995666530
-# This value is supplied here for the adapter handshake.  It is NOT used to
-# target-fit the Senior amount.  After the blind run, fr.derived_shl_cash_principal_keur
-# must equal this value (confirming the engine independently derived the same Senior).
-_KUPI_SHL_PRINCIPAL_KEUR: float = 68_152.995666530
+# ─── Source SHL comparison anchor (NOT used as a model input) ─────────────────
+# DS!D121 / Inputs!D308 = 68,152.995666530 kEUR.
+# This is a SOURCE OUTPUT: Uses_source − Senior_source − Capital.
+# It is provided here for post-run comparison only.
+# The fixture uses the ENGINE_DERIVED_SHL_ADAPTER_HANDSHAKE_DIAGNOSTIC to supply
+# clean_shl_principal_keur derived from run_project_financing_model's G2A fixed-point.
+_KUPI_SOURCE_SHL_PRINCIPAL_KEUR: float = 68_152.995666530  # comparison anchor only
+_KUPI_SHL_PRINCIPAL_KEUR = _KUPI_SOURCE_SHL_PRINCIPAL_KEUR  # alias kept for test imports
 
-# Period axis estimates for 30yr semestrial:
-# SYNTH-C (25yr) operating axis = 2..52 (51 periods).
-# By extension KUPI (30yr) = 2..62 (61 periods) — confirmed / adjusted after blind run.
-_KUPI_SHL_MATURITY_PERIOD_IDX: int = 61   # last operating period (confirmed by period grid check)
+# Period axis for 30yr semestrial:
+_KUPI_SHL_MATURITY_PERIOD_IDX: int = 61   # last operating period (confirmed by period grid)
 _KUPI_SHL_ELIGIBILITY_START: int = 2      # first operating period
 
-# DSCR target schedule — explicitly supplied per lender policy:
-#   PPA target  (Scenarios!E188) = 1.50x  →  14yr senior, first 12yr = 24 semi-annual periods
-#   Merchant target (Scenarios!E189) = 1.75x  →  remaining 2yr = 4 semi-annual periods
-# Formula: target_dscr[t] = merchant_share[t]*1.75 + (1-merchant_share[t])*1.50
-# KUPI_DSCR_REVENUE_MIX_FORMULA_GAP: the engine cannot derive this schedule from
-# the revenue mix dynamically; it is supplied explicitly here.
-_KUPI_DSCR_SCHEDULE: tuple[float, ...] = (1.50,) * 24 + (1.75,) * 4   # 28 periods
+# ─── DSCR target schedule — exact source DS!row19 values ─────────────────────
+# Source DS!row19: 24 periods at 1.50 (PPA), then 4 periods at formula result.
+# Formula: merchant_share × 1.75 + (1 − merchant_share) × 1.50
+# For 100% merchant periods the formula yields ≈1.7576 (not exactly 1.75).
+# Exact values extracted from DS!AF:AI:
+#   AF: 1.757649388048956, AG: 1.757649388048956
+#   AH: 1.7578495048083824, AI: 1.7578495048083824
+# KUPI_DSCR_REVENUE_MIX_FORMULA_GAP: engine cannot derive from revenue mix dynamically.
+# Explicit schedule supplied here matching source DS!row19 exactly.
+_KUPI_DSCR_SCHEDULE: tuple[float, ...] = (
+    1.50, 1.50, 1.50, 1.50, 1.50, 1.50, 1.50, 1.50,   # periods 2..9   (PPA years 1..4)
+    1.50, 1.50, 1.50, 1.50, 1.50, 1.50, 1.50, 1.50,   # periods 10..17 (PPA years 5..8)
+    1.50, 1.50, 1.50, 1.50, 1.50, 1.50, 1.50, 1.50,   # periods 18..25 (PPA years 9..12)
+    1.757649388048956, 1.757649388048956,               # periods 26..27 (merchant yr 1)
+    1.7578495048083824, 1.7578495048083824,             # periods 28..29 (merchant yr 2)
+)  # 28 periods total = 14yr × 2
 
-# Merchant price curves — from source authority:
-#   2030 Central reference: 90.52 × 1.10 inflation = 99.572 EUR/MWh
-#   2030 MidLow reference:  72.03 × 1.10 inflation = 79.233 EUR/MWh
-# Full Scenarios table (raw curves × inflation) not available in authority pack
-# for extraction.  2030 anchor values used; 2.5% annual growth approximation
-# applied for Y2031+.  Merchant price mismatch attributed to approximation
-# and classified MATCH_WITHIN_APPROXIMATION after comparison.
-_MARKET_INFLATION: float = 0.025
-_CENTRAL_2030: float = 99.572
-_MIDLOW_2030: float = 79.233
-_KUPI_CENTRAL_PRICES: tuple[float, ...] = tuple(
-    _CENTRAL_2030 * (1 + _MARKET_INFLATION) ** i for i in range(40)
-)
-_KUPI_MIDLOW_PRICES: tuple[float, ...] = tuple(
-    _MIDLOW_2030 * (1 + _MARKET_INFLATION) ** i for i in range(40)
-)
+# ─── Merchant price curves — exact source values ──────────────────────────────
+# Extracted from workbook Inputs sheet (data_only=True):
+#   Inputs!E106:AI106 = Central inflated prices (row 107 × row 111), 2030-2060 (31 years)
+#   Inputs!E109:AI109 × Inputs!E111:AI111 = MidLow inflated prices, 2030-2060
+# Exact annual values (calendar years 2030-2060, 31 values).
+# Post-2060 not required: 30yr project from COD 2030 ends in 2060.
+_KUPI_CENTRAL_PRICES: tuple[float, ...] = (
+    99.572,    102.265,   107.985,   111.618,   110.789,   110.776,   114.824,
+    114.554,   109.134,   107.448,   107.602,   113.847,   114.520,   114.972,
+    115.340,   114.996,   115.213,   115.962,   117.552,   118.174,   118.736,
+    119.238,   122.265,   124.584,   126.909,   129.958,   133.015,   134.984,
+    137.856,   140.532,   132.645,
+)  # Inputs!E106:AI106, years 2030-2060
 
-# O&M Preventive & Corrective — from Scenarios!E79:E108 (annual, 30yr)
-# Known source data points: Y1-2=1320, Y3-4=1488, Y5-6=1752, Y30≈2616.
-# Steps Y7+ approximated (full table not in authority pack for independent extraction).
-# OPEX delta for Y7-Y30 classified as approximation gap; structure is correct.
+_KUPI_MIDLOW_PRICES: tuple[float, ...] = (
+    79.233,    81.360,    84.928,    87.224,    89.309,    91.805,    95.914,
+    97.663,    95.718,    96.228,    95.542,    97.955,    98.210,    98.384,
+    98.404,    97.828,    97.697,    98.637,   100.172,   101.028,   101.762,
+    102.538,  104.738,   106.401,   107.970,   110.229,   112.388,   113.834,
+    115.968,  117.992,   111.093,
+)  # row109 × row111, years 2030-2060
+
+# ─── CO2 certificate price schedule — exact source Inputs!E123:AH123 ─────────
+# 30 annual values (years 1-30 from COD = 2030-2059 semi-annual pairs).
+# Used for Run B (SOURCE_EFFECTIVE_UNUSED_TOGGLE_DIAGNOSTIC).
+# Source total CO2 revenue (CF!row35): 25,002.043309 kEUR.
+_KUPI_CO2_ANNUAL_PRICES: tuple[float, ...] = (
+    4.191063311878815, 3.7830324552157393, 3.3750015985526645, 2.9669707418895896,
+    2.45, 2.35, 2.2, 2.1, 2.05, 1.95, 1.8, 1.7, 1.6, 1.5, 1.4, 1.3,
+    1.2, 1.15, 1.05, 1.0, 0.95, 0.9, 0.85, 0.8, 0.8, 0.8, 0.75, 0.75,
+    0.7, 0.7,
+)  # Inputs!E123:AH123 (30 years)
+
+# ─── O&M exact step schedule — Scenarios!E79:E108 ────────────────────────────
+# Annual values (30 years, Y1-Y30):
+# Y1-Y2: 1320, Y3-Y4: 1488, Y5-Y9: 1752, Y10-Y14: 1824, Y15-Y19: 2040,
+# Y20-Y22: 2328, Y23-Y30: 2616.
 _OM_STEP_CHANGES: tuple[tuple[int, float], ...] = (
-    (3, 1488.0),
-    (5, 1752.0),
-    (7, 1920.0),   # approximated
-    (9, 2088.0),   # approximated
-    (11, 2256.0),  # approximated
-    (13, 2424.0),  # approximated
-    (15, 2616.0),  # approximated (source Y30 anchor, reached earlier — check vs source)
+    (3, 1488.0),    # Y3: 1320 → 1488
+    (5, 1752.0),    # Y5: 1488 → 1752
+    (10, 1824.0),   # Y10: 1752 → 1824  (Scenarios!E88)
+    (15, 2040.0),   # Y15: 1824 → 2040  (Scenarios!E93)
+    (20, 2328.0),   # Y20: 2040 → 2328  (Scenarios!E98)
+    (23, 2616.0),   # Y23: 2328 → 2616  (Scenarios!E101)
 )
 
 
-def create_kupi_project(
-    name: str = "KUPI",
-    company: str = "KUPI Energy",
-    code: str = "KUP",
+def _build_kupi_project_inputs(
+    name: str,
+    company: str,
+    code: str,
+    clean_shl_principal_keur: float,
 ) -> ProjectInputs:
-    """Return canonical ProjectInputs for KUPI G3B diagnostic.
+    """Build KUPI ProjectInputs with a caller-supplied SHL principal.
 
-    Independent construction — does NOT call any existing project factory.
-    Fixture is READ-ONLY diagnostic evidence.  No production factory registry entry.
-
-    Run A (this function): literal CO2-off (Inputs!D121 = FALSE).
-    Run B (create_kupi_project_source_effective_co2): SOURCE_EFFECTIVE_CASHFLOW_OVERRIDE.
-
-    DSCR policy: explicit two-tier schedule (1.50x PPA / 1.75x merchant, 28 periods).
-    KUPI_DSCR_REVENUE_MIX_FORMULA_GAP documented — engine cannot derive from revenue mix.
+    Called by create_kupi_project() after the ENGINE_DERIVED_SHL_ADAPTER_HANDSHAKE.
+    The clean_shl_principal_keur argument MUST be the engine-derived G2A residual,
+    not the source Senior output.
     """
-    # ── Zero CapexItem placeholder ──────────────────────────────────────────
     _z = CapexItem(name="Zero", amount_keur=0.0, asset_class=AssetClass.CIVIL_GRID)
 
-    # ── CAPEX (source: CapEx!C99 authority = 205,932.22 kEUR) ───────────────
-    # Category mapping follows KUPI_G3B_Authority_Map categories.
-    # Timing: core physical = uniform 24mo; soft/upfront = first construction; A/L = uniform.
-    # NOTE: C08 Bank Due Diligence (420) + C09 Construction Mgmt / lender monitoring (40)
-    #       aggregated into construction_mgmt_a (same timing/treatment).
     capex = CapexStructure(
         production_units=CapexItem(
             "Production Units (Turbines)",
             144_000.0,
             y0_share=0.0,
-            spending_profile=(0.50, 0.50),      # uniform 24mo (2 construction years)
+            spending_profile=(0.50, 0.50),
             asset_class=AssetClass.WIND_TURBINES,
         ),
         epc_contract=CapexItem(
@@ -242,7 +271,7 @@ def create_kupi_project(
             "Operation Investments",
             1_050.0,
             y0_share=1.0,
-            spending_profile=(),                # upfront at FC
+            spending_profile=(),
             asset_class=AssetClass.CIVIL_GRID,
         ),
         insurances=CapexItem(
@@ -261,7 +290,7 @@ def create_kupi_project(
         ),
         construction_mgmt_a=CapexItem(
             "Bank DD + Lender Monitoring",
-            460.0,                              # C08=420 + C09=40
+            460.0,
             y0_share=1.0,
             spending_profile=(),
             asset_class=AssetClass.SOFT_COSTS,
@@ -271,7 +300,7 @@ def create_kupi_project(
             "Audit / Accounting / Legal",
             42.0,
             y0_share=0.0,
-            spending_profile=(0.50, 0.50),      # uniform across construction
+            spending_profile=(0.50, 0.50),
             asset_class=AssetClass.SOFT_COSTS,
         ),
         construction_mgmt_b=CapexItem(
@@ -297,124 +326,96 @@ def create_kupi_project(
             spending_profile=(),
             asset_class=AssetClass.SOFT_COSTS,
         ),
-        # Financing costs: Senior IDC + commitment fee + structuring fees (source-close values).
-        # TOTAL_USES_INPUT_PARITY: source financing costs accepted as design assumptions.
-        # INDEPENDENT_IDC_DERIVATION_PARITY: separate capability question — not claimed here.
         idc_keur=_KUPI_SENIOR_IDC_KEUR + _KUPI_COMMITMENT_FEE_KEUR + _KUPI_VAT_FINANCING_KEUR,
         bank_fees_keur=_KUPI_BANK_STRUCTURING_KEUR,
     )
 
-    # ── Project Info ────────────────────────────────────────────────────────
     info = ProjectInfo(
         name=name,
         company=company,
         code=code,
-        country_iso="BA",                       # Bosnia & Herzegovina ISO 3166-1
-        financial_close=date(2028, 6, 30),      # Inputs!D9
-        construction_months=24,                 # Inputs!D10
-        cod_date=date(2030, 6, 30),             # Inputs!D11
-        horizon_years=30,                       # Inputs!D16
-        period_frequency=PeriodFrequency.SEMESTRIAL,  # Inputs!D18
+        country_iso="BA",
+        financial_close=date(2028, 6, 30),
+        construction_months=24,
+        cod_date=date(2030, 6, 30),
+        horizon_years=30,
+        period_frequency=PeriodFrequency.SEMESTRIAL,
     )
 
-    # ── Technical ───────────────────────────────────────────────────────────
-    # pv_degradation=0.0: no wind degradation in source; do not invent one.
     technical = TechnicalParams(
-        capacity_mw=144.0,                      # Inputs!D51
-        yield_scenario="P_50",                  # base case
-        operating_hours_p50=3_535.0,            # Inputs!D67
-        operating_hours_p90_10y=3_058.0,        # Inputs!D71
-        pv_degradation=0.0,                     # Wind: no PV degradation
+        capacity_mw=144.0,
+        yield_scenario="P_50",
+        operating_hours_p50=3_535.0,
+        operating_hours_p90_10y=3_058.0,
+        pv_degradation=0.0,
         bess_enabled=False,
     )
 
-    # ── OPEX ────────────────────────────────────────────────────────────────
-    # Source categories from OpEx worksheet.  Do NOT feed a frozen output vector.
-    # Infrastructure Maintenance split: O&M explicit step schedule + other fixed.
-    # Contingency: 6% of remaining OPEX lines (percentage_of_opex).
     opex = (
-        # Technical Management — Y1=836 kEUR, 2% inflation
         OpexItem("Technical Management", y1_amount_keur=836.0, annual_inflation=0.02),
 
-        # Infrastructure Maintenance — O&M Preventive & Corrective (explicit step schedule)
-        # Source: Scenarios!E79:E108; biennial steps from 1320 (Y1) to 2616 (Y30).
-        # Steps Y7+ are approximated from Y1-6 data and Y30 anchor (full table not extracted).
+        # O&M Preventive & Corrective — exact Scenarios!E79:E108 step schedule
         OpexItem(
             "O&M Preventive & Corrective",
             y1_amount_keur=1_320.0,
-            annual_inflation=0.0,               # no second inflation layer — explicit steps
+            annual_inflation=0.0,
             step_changes=_OM_STEP_CHANGES,
         ),
 
-        # Infrastructure Maintenance — Other (~350 kEUR Y1, 2% inflation)
+        # Other Infrastructure Maintenance (Minor, HV, Regulatory, HSE, Met, Blade, Vehicle)
+        # Sum: 72+70+36+10+8+144+10 = 350 kEUR; inflation matches parent B.02 = 2%
         OpexItem("Other Infrastructure Maintenance", y1_amount_keur=350.0, annual_inflation=0.02),
 
-        # Maintain Site — Y1=55 kEUR, 2% inflation
         OpexItem("Maintain Site", y1_amount_keur=55.0, annual_inflation=0.02),
-
-        # Clean Material — Y1=5 kEUR, 2% inflation
         OpexItem("Clean Material", y1_amount_keur=5.0, annual_inflation=0.02),
-
-        # Security — Y1=20 kEUR, 2% inflation
         OpexItem("Security", y1_amount_keur=20.0, annual_inflation=0.02),
-
-        # Insurance — Y1=1,500 kEUR
         OpexItem("Insurance", y1_amount_keur=1_500.0, annual_inflation=0.02),
 
-        # Lease / Property Tax — Y1=801.738 kEUR
-        OpexItem("Lease / Property Tax", y1_amount_keur=801.738, annual_inflation=0.02),
+        # Lease & Property Tax — OpEx!B07 inflation=0 (municipality/county % of income)
+        OpexItem("Lease / Property Tax", y1_amount_keur=801.738, annual_inflation=0.0),
 
-        # Power Expenses — Y1=96.943 kEUR
+        # Power Expenses — OpEx!B08 = 96.94296, 2%
         OpexItem("Power Expenses", y1_amount_keur=96.943, annual_inflation=0.02),
 
-        # Audit / Accounting / Legal — Y1=24 kEUR
-        OpexItem("Audit / Accounting / Legal", y1_amount_keur=24.0, annual_inflation=0.02),
+        # Audit & Accounting & Legal — OpEx!B10 = 32 kEUR, 2%
+        OpexItem("Audit / Accounting / Legal", y1_amount_keur=32.0, annual_inflation=0.02),
 
-        # Bank Fees — Y1=20 kEUR
         OpexItem("Bank Fees", y1_amount_keur=20.0, annual_inflation=0.02),
 
-        # Environmental & Social — effective Y1≈100 kEUR (component switches; approximated)
-        OpexItem("Environmental & Social", y1_amount_keur=100.0, annual_inflation=0.02),
+        # Environmental & Social — OpEx!B12 = 200 kEUR (100 mitigation + 100 fauna/flora), 2%
+        OpexItem("Environmental & Social", y1_amount_keur=200.0, annual_inflation=0.02),
 
-        # Contingencies — 6% of total OPEX base (OpEx!D87)
+        # Contingencies — OpEx!B13 = 6% of total OPEX base
         OpexItem("Contingencies", y1_amount_keur=0.0, percentage_of_opex=0.06),
     )
 
-    # ── Revenue (Run A: literal CO2-off per Inputs!D121=FALSE) ──────────────
-    # Balancing cost: 5 EUR/MWh (wind-specific; Inputs!row112)
-    # Merchant curve: Central 2030=99.572 EUR/MWh, 2.5% growth approximation.
-    # Full Scenarios curve × inflation table not independently extracted.
+    # Run A: literal CO2-off (Inputs!D121=FALSE)
     revenue = RevenueParams(
-        ppa_base_tariff=63.0,                   # Inputs!D81
-        ppa_term_years=12.0,                    # Inputs!D84
-        ppa_index=0.02,                         # Inputs!D86
-        ppa_production_share=1.0,               # Inputs!D83 = 100%
-        market_scenario="Central",              # Inputs!B107
+        ppa_base_tariff=63.0,
+        ppa_term_years=12.0,
+        ppa_index=0.02,
+        ppa_production_share=1.0,
+        market_scenario="Central",
         market_prices_curve=_KUPI_CENTRAL_PRICES,
-        market_inflation=_MARKET_INFLATION,
-        balancing_cost_pv=0.0,                  # Wind project; no PV balancing
-        balancing_cost_wind_eur_mwh=5.0,        # Inputs!row112 = 5 EUR/MWh
-        co2_enabled=False,                      # Inputs!D121 = FALSE (Run A — literal)
+        market_inflation=0.0,               # exact annual prices supplied; no compounding
+        balancing_cost_pv=0.0,
+        balancing_cost_wind_eur_mwh=5.0,
+        co2_enabled=False,                  # Inputs!D121=FALSE (Run A literal)
     )
 
-    # ── Financing ───────────────────────────────────────────────────────────
-    # DSCR: two-tier schedule supplied explicitly (KUPI_DSCR_REVENUE_MIX_FORMULA_GAP).
-    # Gearing capacity check: 80% × 215,803.44 = 172,642.75 kEUR > 147,150.44 → DSCR-binding.
-    # SHL: CASH_SWEEP; G2A residual handshake at 68,152.996 kEUR.
-    # Senior IDC and commitment/structuring fees treated as TOTAL_USES_INPUT_PARITY assumption.
     financing = FinancingParams(
         share_capital_keur=_KUPI_SHARE_CAPITAL_KEUR,
-        shl_amount_keur=_KUPI_SHL_PRINCIPAL_KEUR,
+        shl_amount_keur=clean_shl_principal_keur,
         shl_rate=_KUPI_SHL_RATE,
         gearing_ratio=_KUPI_MAX_GEARING,
         senior_tenor_years=_KUPI_SENIOR_TENOR_YEARS,
-        base_rate=0.031,                        # Inputs!D185
-        margin_bps=280,                         # Inputs!D186
-        hedge_coverage=1.0,                     # Inputs!D213 = 100%
-        target_dscr=1.50,                       # PPA floor DSCR (Scenarios!E188)
-        lockup_dscr=1.10,                       # Inputs!D206
-        min_llcr=1.50,                          # Inputs!D207
-        dsra_months=6,                          # Inputs!A331
+        base_rate=0.031,
+        margin_bps=280,
+        hedge_coverage=1.0,
+        target_dscr=1.50,
+        lockup_dscr=1.10,
+        min_llcr=1.50,
+        dsra_months=6,
         dsra_support_mode=DebtServiceReserveSupportMode.NONE,
         equity_irr_method="equity_only",
         debt_sizing_method="dscr_sculpt",
@@ -425,39 +426,39 @@ def create_kupi_project(
             enabled=True,
             rate_schedule=SeniorRateSchedule(
                 mode=SeniorRateMode.EXPLICIT_ALL_IN_SCHEDULE,
-                # 6.10% all-in (3.10% base + 280bps margin + 20bps swap @ 100% hedge)
                 explicit_all_in_rates=(_KUPI_ALL_IN_RATE,) * (_KUPI_SENIOR_TENOR_YEARS * 2),
             ),
             day_count=SeniorDayCountConvention.ACT_360,
         ),
         senior_sculpting_config=SeniorSculptingConfig(
             enabled=True,
-            target_dscr_schedule=_KUPI_DSCR_SCHEDULE,  # (1.50,)*24 + (1.75,)*4
+            target_dscr_schedule=_KUPI_DSCR_SCHEDULE,
         ),
-        # Bank case: P90-10y production + MidLow merchant prices
         debt_sizing_case=DebtSizingCaseConfig(
             production_yield_scenario=YieldScenario.P90_10Y,
             merchant_prices_by_calendar_year_eur_mwh=_KUPI_MIDLOW_PRICES,
             merchant_price_calendar_start_year=2030,
         ),
-        # G2A SHL adapter handshake: configured == engine-derived residual.
-        # Value: 215,803.437976869 - 147,150.442310339 - 500 = 68,152.995666530 kEUR.
-        # NOT target-fitting the Senior; this is the expected residual identity.
-        clean_shl_principal_keur=_KUPI_SHL_PRINCIPAL_KEUR,
+        # ENGINE_DERIVED_SHL_ADAPTER_HANDSHAKE_DIAGNOSTIC:
+        # clean_shl_principal_keur is set by create_kupi_project() after stage-1 run.
+        # The engine's fixed-point in run_project_financing_model() overrides this value
+        # via G2A convergence (candidate_shl starts at 0.0). Setting it to the
+        # engine-derived residual ensures the configured value matches what the engine
+        # independently computes, with no source Senior output as input.
+        clean_shl_principal_keur=clean_shl_principal_keur,
         clean_shl_repayment_method="cash_sweep",
-        shl_maturity_period_index=_KUPI_SHL_MATURITY_PERIOD_IDX,   # estimate; confirm after blind run
+        shl_maturity_period_index=_KUPI_SHL_MATURITY_PERIOD_IDX,
         shl_principal_eligibility_start_period=_KUPI_SHL_ELIGIBILITY_START,
         shl_day_count_convention="PERIOD_AXIS_ACTUAL_YEAR",
-        shl_construction_day_count_fraction=0.0,
+        # Construction accrual: 24 months / 12 = 2.0 (simple interest, source 24-month build).
+        # KUPI_SHL_CONSTRUCTION_COMPOUNDING_GAP: source uses compound ((1.08)^2−1);
+        # engine uses simple (rate × dcf). Capability gap documented; not implemented here.
+        shl_construction_day_count_fraction=2.0,
     )
 
-    # ── Tax (clean generic policy — KUPI_TAX_WORKBOOK_COMPATIBILITY_GAP) ───
-    # Source: 10% CIT, 5 model-period LCF, EBT-positive gate, model-year CIT pairing.
-    # Clean policy: calendar tax year, taxable-income-positive gate, 5yr LCF window.
-    # Difference classified CLEAN_POLICY_VS_WORKBOOK_COMPATIBILITY — not a generic bug.
     tax = TaxParams(
-        corporate_rate=0.10,                    # P&L!B43 / source CIT rate
-        loss_carryforward_years=5,              # source Inputs!D390 = 5 periods
+        corporate_rate=0.10,
+        loss_carryforward_years=5,
         loss_carryforward_cap=1.0,
         clean_cash_tax_timing_enabled=True,
     )
@@ -473,27 +474,69 @@ def create_kupi_project(
     )
 
 
+def create_kupi_project(
+    name: str = "KUPI",
+    company: str = "KUPI Energy",
+    code: str = "KUP",
+) -> ProjectInputs:
+    """Return canonical ProjectInputs for KUPI G3B diagnostic.
+
+    ENGINE_DERIVED_SHL_ADAPTER_HANDSHAKE_DIAGNOSTIC (two-stage):
+      Stage 1: Run run_project_financing_model() with a seed SHL to get the
+               engine's G2A-derived SHL residual.
+      Stage 2: Build the definitive ProjectInputs with clean_shl_principal_keur
+               set to the engine-derived value (not any source Senior output).
+
+    Note: the engine's fixed-point in run_project_financing_model() always overrides
+    clean_shl_principal_keur with the G2A convergence result (candidate_shl starts at
+    0.0 regardless of the input value). The handshake makes the CONFIGURED value match
+    what the engine derives independently, for governance documentation.
+
+    Run A (this function): literal CO2-off (Inputs!D121=FALSE).
+    Run B (create_kupi_project_source_effective_co2): SOURCE_EFFECTIVE_UNUSED_TOGGLE.
+    """
+    from financial_engine.financing import run_project_financing_model
+
+    # Stage 1: seed run (any positive SHL value; engine overrides via fixed-point)
+    seed_proj = _build_kupi_project_inputs(
+        name=name, company=company, code=code,
+        clean_shl_principal_keur=1.0,          # seed; overridden by fixed-point
+    )
+    fr_stage1 = run_project_financing_model(seed_proj)
+    engine_derived_shl = fr_stage1.derived_shl_cash_principal_keur
+
+    # Stage 2: definitive project with engine-derived SHL
+    return _build_kupi_project_inputs(
+        name=name, company=company, code=code,
+        clean_shl_principal_keur=engine_derived_shl,
+    )
+
+
 def create_kupi_project_source_effective_co2() -> ProjectInputs:
-    """Run B: source-effective CO2 diagnostic.
+    """Run B: SOURCE_EFFECTIVE_UNUSED_TOGGLE_DIAGNOSTIC (SQ-02).
 
-    The source CF includes CO2 certificate revenue despite Inputs!D121=FALSE (SQ-02).
-    This variant explicitly enables the source-effective certificate schedule to measure
-    the CO2 bridge between literal-input Run A and source CF.
+    Inputs!D121 = FALSE but source CF includes CO2 certificate revenue.
+    This variant supplies the exact 30-year CO2 price schedule from Inputs!E123:AH123.
 
-    Label: SOURCE_EFFECTIVE_CASHFLOW_OVERRIDE_DUE_TO_UNUSED_TOGGLE
-    This is diagnostic only.  No production KUPI branch.  Not registered in UI.
-
-    Source-effective first-period certificate price: CF!H36 = 4.191063 EUR/MWh.
+    Source total CO2 revenue (sum CF!row35): 25,002.043309 kEUR.
+    The Run B bridge (Rev_B − Rev_A) should reconcile to this amount subject only
+    to already-documented production/calendar differences between Finco and source.
     """
     base = create_kupi_project()
-    # Source-effective CO2 revenue: 4.191 EUR/MWh in first operating period.
-    # Use co2_certificate_price_eur_per_mwh as a flat first-period approximation.
-    # Full schedule not available in authority pack; use first-period value.
+    # Exact 30-year annual CO2 price schedule from Inputs!E123:AH123.
+    # Each annual price applies to both semi-annual periods of that year.
+    co2_semiannual = tuple(
+        price
+        for price in _KUPI_CO2_ANNUAL_PRICES
+        for _ in range(2)           # each annual value applies to 2 semi-annual periods
+    )  # 60 semi-annual values
     return replace(
         base,
         revenue=replace(
             base.revenue,
             co2_enabled=True,
-            co2_certificate_price_eur_per_mwh=4.191063311878815,  # CF!H36
+            co2_sales_schedule=RevenueAdjustmentSchedule(
+                semiannual_values=co2_semiannual,
+            ),
         ),
     )
