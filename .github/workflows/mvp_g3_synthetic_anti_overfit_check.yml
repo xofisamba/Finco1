@@ -18,42 +18,106 @@ on:
 
 jobs:
   g3-synthetic-anti-overfit:
-    name: G3 Synthetic Anti-Overfit (Tests A–O)
+    name: G3 Synthetic Anti-Overfit (Tests A–P)
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
 
     steps:
-      - name: Checkout
+      - name: Checkout exact PR head
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Assert exact-head checkout
+        run: |
+          EXPECTED="${{ github.event.pull_request.head.sha || github.sha }}"
+          ACTUAL="$(git rev-parse HEAD)"
+          if [ "$EXPECTED" != "$ACTUAL" ]; then
+            echo "G3_HEAD_SHA_MISMATCH: expected=$EXPECTED actual=$ACTUAL"
+            exit 1
+          fi
+          echo "Checked out $ACTUAL"
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.12"
 
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          pip install --no-cache-dir -c constraints.txt -e .
+          pip install --no-cache-dir -c constraints.txt pytest
 
-      - name: Run G3 Synthetic Anti-Overfit suite
+      - name: Governance — Synthetic Project C not registered in UI
+        run: |
+          python -c "
+          from app.project_factories import create_default_solar_project, create_default_wind_project
+          # Confirm SYNTH-C factory is not in the application factory registry
+          try:
+              from app.project_factories import create_synthetic_project_c
+              raise AssertionError('create_synthetic_project_c must NOT be in app.project_factories')
+          except ImportError:
+              pass
+          print('Synthetic Project C is not registered in the application UI')
+          "
+
+      - name: Governance — no target-fitting tokens in G3 fixture or tests
+        run: |
+          grep -rn "approved_delta\|expected_delta\|balancing_plug\|target_irr\|target_moic\|terminal_top_up\|period_correction" \
+            tests/helpers/g3_synthetic_project.py \
+            tests/test_mvp_g3_synthetic_anti_overfit.py \
+            && echo "FORBIDDEN_TOKEN_FOUND" && exit 1 \
+            || echo "No target-fitting tokens found"
+
+      - name: Governance — no production financial logic changed
+        run: |
+          git diff origin/main...HEAD -- \
+            financial_engine/ finco_core/ app/project_factories.py \
+            | grep -E "^(\+|-)[^+-]" \
+            | grep -v "^--- " | grep -v "^+++ " \
+            && echo "PRODUCTION_LOGIC_CHANGED: review required" \
+            || echo "No production financial logic changed"
+
+      - name: Governance — G2A upstream invariants preserved
+        run: |
+          python -c "
+          from app.project_factories import create_default_solar_project, create_default_wind_project
+          from financial_engine.shareholder_waterfall import run_project_shareholder_waterfall_model
+          solar = run_project_shareholder_waterfall_model(create_default_solar_project())
+          wind  = run_project_shareholder_waterfall_model(create_default_wind_project())
+          fin_s = solar.financing_result
+          fin_w = wind.financing_result
+          assert abs(fin_s.project_uses.total_project_uses_keur - 33000.0) < 1e-6
+          assert abs(fin_s.final_senior_commitment_keur - 24750.0) < 1e-6
+          assert abs(fin_s.derived_shl_cash_principal_keur - 7750.0) < 1e-6
+          assert abs(fin_w.project_uses.total_project_uses_keur - 43000.0) < 1e-6
+          assert abs(fin_w.final_senior_commitment_keur - 32250.0) < 1e-6
+          assert abs(fin_w.derived_shl_cash_principal_keur - 10250.0) < 1e-6
+          print('G2A fingerprints confirmed stable')
+          "
+
+      - name: MVP G3 focused test suite
         run: |
           python -m pytest tests/test_mvp_g3_synthetic_anti_overfit.py \
-            -v --tb=short \
-            --no-header \
-            -q
+            -v --tb=short --no-header
 
-      - name: Run full CURRENT_BLOCKING ring
+      - name: G2C and DSRF authority regression
         run: |
-          python -m pytest \
-            tests/test_mvp_g0_generic_clean_engine_enablement.py \
-            tests/test_mvp_g1_workflow_authority.py \
-            tests/test_mvp_g1_governance_methodology_lock.py \
-            tests/test_mvp_g2a_financing_stack.py \
-            tests/test_mvp_g2b_sponsor_returns.py \
-            tests/test_mvp_g2c_shareholder_waterfall.py \
-            tests/test_mvp_dsrf_reserve_support.py \
-            tests/test_mvp_g3_synthetic_anti_overfit.py \
-            -v --tb=short \
-            --no-header \
-            -q
+          python -m pytest tests/test_mvp_g2c_shareholder_waterfall.py \
+                           tests/test_mvp_dsrf_reserve_support.py -v --tb=short
+
+      - name: G2B authority regression
+        run: |
+          python -m pytest tests/test_mvp_g2b_sponsor_returns.py -v --tb=short
+
+      - name: G2A authority regression
+        run: |
+          python -m pytest tests/test_mvp_g2a_financing_stack.py -v --tb=short
+
+      - name: G0 and G1 authority regression
+        run: |
+          python -m pytest tests/test_mvp_g0_generic_clean_engine_enablement.py \
+                           tests/test_mvp_g1_workflow_authority.py \
+                           tests/test_mvp_g1_governance_methodology_lock.py \
+                           -v --tb=short

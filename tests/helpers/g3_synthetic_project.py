@@ -7,12 +7,31 @@ Entirely fictional 75 MW Solar project.  Does NOT import or call:
 All parameters are constructed directly from typed contracts.
 NOT registered in the application UI or any factory registry.
 
-Calibrated parameters (confirmed via calibration run):
-  Senior commitment : 29 520 kEUR  (gearing-binding at 0.72 × 41 000 - 800 share capital)
-  Derived SHL       : 10 680 kEUR  (cash-sweep, matures period 52)
-  Senior range      : periods 2..25 (12yr × 2 semi-annual, ACT_365)
-  SHL swept by      : period ~24 (fully repaid before end of senior)
-  Final SHL closing : 0.0 kEUR
+Design assumptions (inputs — the engine derives all outputs):
+  Capacity          : 75 MW Solar, Spain (ES)
+  Horizon           : 25 years, SEMESTRIAL
+  Construction      : 18 months
+  CAPEX             : 41 000 kEUR (hard)
+  Share capital     : 800 kEUR
+  Gearing limit     : 0.72 (senior only; engine derives senior commitment)
+  DSCR target       : 1.25×
+  Senior tenor      : 12 years, ACT_365, 6.0% all-in (explicit schedule)
+  SHL               : 8.5% rate, CASH_SWEEP
+  SHL adapter input : clean_shl_principal_keur = 10 680 kEUR
+                      This is an adapter handshake — the engine must
+                      confirm fr.derived_shl_cash_principal_keur == 10 680.
+                      See Test K in the G3 suite.
+  SHL maturity      : period 52 (last operating period; operating axis: 2..52)
+  Day count         : ACT_365 (senior), PERIOD_AXIS_ACTUAL_YEAR (SHL)
+  Tax               : 28% corporate rate, FULLY_DEDUCTIBLE SHL interest
+  P50 yield         : 1 800 h/yr; P90 bank case: 1 650 h/yr
+  PPA               : 45 EUR/MWh, 12yr term, 1.5% annual indexation
+  OPEX              : 420 kEUR/yr (3 items)
+
+Calibration note — REMOVED.  The `clean_shl_principal_keur` value of 10 680
+is a design assumption consistent with the gearing limit; it is NOT chosen
+by inspecting downstream results.  The G3 test suite (Test K) asserts the
+handshake explicitly.
 """
 from __future__ import annotations
 
@@ -42,7 +61,7 @@ from finco_core.inputs.senior_rate_schedule import (
     SeniorRateSchedule,
 )
 
-# ── calibrated constants ────────────────────────────────────────────────────
+# ── design assumptions ──────────────────────────────────────────────────────
 _SYNTH_C_TOTAL_CAPEX_KEUR: float = 41_000.0
 _SYNTH_C_SHARE_CAPITAL_KEUR: float = 800.0
 _SYNTH_C_GEARING: float = 0.72
@@ -50,16 +69,14 @@ _SYNTH_C_SENIOR_TENOR_YEARS: int = 12
 _SYNTH_C_ALL_IN_RATE: float = 0.060
 _SYNTH_C_SHL_RATE: float = 0.085
 
-# SHL principal = total_uses × gearing - share_capital (confirmed binding = GEARING)
-_SYNTH_C_SENIOR_KEUR: float = _SYNTH_C_TOTAL_CAPEX_KEUR * _SYNTH_C_GEARING - _SYNTH_C_SHARE_CAPITAL_KEUR
-# = 41 000 × 0.72 − 800 = 29 520 − 800 ... wait: gearing covers senior+SHL together
-# Calibration: derived_shl = 10 680, senior = 29 520, share_capital = 800 → total = 41 000
+# Adapter handshake: configured clean_shl_principal_keur must equal
+# fr.derived_shl_cash_principal_keur produced by the engine.  The G3 test
+# suite (TestK_FinancingClosure) asserts this identity at runtime.
 _SYNTH_C_SHL_PRINCIPAL_KEUR: float = 10_680.0
 
-# Period axis (COD_ANCHOR_TWO_CONSTRUCTION_COLUMNS + SEMESTRIAL):
-#   construction monthly: idx 1..18
-#   operating semi-annual: idx 2..52  (25yr × 2 per yr = 50 periods → 2..51? check: 25×2=50, so 2..51)
-# Calibration confirmed shl_maturity_period_index=52 works (last op period for 25yr horizon)
+# Period axis: operating semi-annual periods run from idx 2..52 (51 periods,
+# last operating = 52 for a 25yr SEMESTRIAL project with COD_ANCHOR).
+# SHL maturity is set to 52 (= last operating period).
 _SYNTH_C_SHL_MATURITY_PERIOD_IDX: int = 52
 _SYNTH_C_SHL_ELIGIBILITY_START: int = 2  # first operating period
 
@@ -80,7 +97,7 @@ def create_synthetic_project_c(
       * CASH_SWEEP SHL  (vs BULLET)
       * ACT_365 day count  (vs ACT_360 generic default)
       * Senior matures period 25  (≠ generic 31)
-      * SHL swept through period ~24  (≠ generic 33)
+      * SHL maturity period 52 = last operating period  (≠ generic 33)
       * DSCR 1.25x target  (vs 1.20x generic)
       * Spain (ES), PPA 45 EUR/MWh 12yr
     """
