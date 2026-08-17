@@ -178,6 +178,10 @@ def run_project_sponsor_returns_model(
     shl_principal_by_idx: dict[int, float] = {}
     shl_debt_service_by_idx: dict[int, float] = {}
 
+    # Last operating period with non-zero scheduled principal = contractual maturity.
+    # For BULLET repayment this is the single balloon period.
+    shl_maturity_idx: int | None = None
+
     if shl is not None:
         shl_cash_interest_by_idx = dict(
             zip(shl.period_indices, shl.shl_cash_interest_keur)
@@ -188,6 +192,9 @@ def run_project_sponsor_returns_model(
         shl_debt_service_by_idx = dict(
             zip(shl.period_indices, shl.shl_debt_service_keur)
         )
+        for _idx, _prin in zip(shl.period_indices, shl.shl_principal_keur):
+            if _prin > 1e-6:
+                shl_maturity_idx = _idx  # last non-zero → contractual maturity
 
     # Signed post-Senior cash authority (G2B uses the SIGNED field, not the floored one).
     # Negative = CFADS insufficient to cover Senior debt service.
@@ -209,6 +216,11 @@ def run_project_sponsor_returns_model(
 
     # ── Build per-period cashflow records ─────────────────────────────────────
     cashflow_periods: list[SponsorCashFlowPeriod] = []
+
+    # BULLET fail-closed state: once the contractual balloon is underfunded at
+    # maturity this flag latches True. Subsequent periods: distribution = 0.
+    # No default interest, no sponsor top-up, no post-maturity SHL terms invented.
+    bullet_unpaid_active: bool = False
 
     # --- Construction periods (contributions only) ---
     for k in construction_draw_periods:
@@ -302,8 +314,20 @@ def run_project_sponsor_returns_model(
         post_shl_available = max(0.0, signed_post_shl)
         cash_shortfall = max(0.0, -signed_post_shl)
 
-        # DISTRIBUTE_ALL_POST_SHL_CASH
-        distribution = post_shl_available
+        # BULLET fail-closed: detect underfunded balloon at contractual maturity.
+        is_at_maturity = shl_maturity_idx is not None and idx == shl_maturity_idx
+        if is_at_maturity and shl is not None:
+            scheduled_principal_due = shl_principal_by_idx.get(idx, 0.0)
+            unpaid_principal = scheduled_principal_due - actual_shl_principal
+            if unpaid_principal > 1e-6:
+                bullet_unpaid_active = True
+
+        # Post-maturity legal-equity distributions are zero when balloon was
+        # underfunded. The SHL liability is NOT extinguished; no terms invented.
+        if bullet_unpaid_active and not is_at_maturity:
+            distribution = 0.0
+        else:
+            distribution = post_shl_available  # DISTRIBUTE_ALL_POST_SHL_CASH
 
         pure_equity_net = distribution
         total_sponsor_net = (
@@ -345,36 +369,56 @@ def run_project_sponsor_returns_model(
     total_sponsor_receipts = total_distributions + total_shl_int_recd + total_shl_prin_recd
 
     # ── Pure Equity XIRR / MOIC ───────────────────────────────────────────────
-    pe_cfs = [p.pure_equity_net_cashflow_keur for p in cashflow_periods]
-    pe_dates = [p.cashflow_date for p in cashflow_periods]
-
-    pe_xirr = robust_xirr(pe_cfs, pe_dates)
-    pe_xirr_status = _xirr_status(pe_cfs, pe_xirr)
-
-    pe_moic: float | None = None
+    pe_xirr: float | None
+    pe_xirr_status: ReturnMetricStatus
+    pe_moic: float | None
     pe_moic_status: ReturnMetricStatus
-    if total_le > 0.0:
-        pos_pe = sum(cf for cf in pe_cfs if cf > 0)
-        pe_moic = pos_pe / total_le
-        pe_moic_status = ReturnMetricStatus.OK
-    else:
-        pe_moic_status = ReturnMetricStatus.ZERO_CONTRIBUTION
-
-    # ── Total Sponsor XIRR / MOIC ─────────────────────────────────────────────
-    ts_cfs = [p.total_sponsor_net_cashflow_keur for p in cashflow_periods]
-    ts_dates = pe_dates  # same period dates
-
-    ts_xirr = robust_xirr(ts_cfs, ts_dates)
-    ts_xirr_status = _xirr_status(ts_cfs, ts_xirr)
-
-    ts_moic: float | None = None
+    ts_xirr: float | None
+    ts_xirr_status: ReturnMetricStatus
+    ts_moic: float | None
     ts_moic_status: ReturnMetricStatus
-    if total_sponsor_contrib > 0.0:
-        pos_ts = sum(cf for cf in ts_cfs if cf > 0)
-        ts_moic = pos_ts / total_sponsor_contrib
-        ts_moic_status = ReturnMetricStatus.OK
+
+    if bullet_unpaid_active:
+        # BULLET fail-closed: SHL liability not extinguished at maturity.
+        # Metrics are undefined — unpaid principal means the project cannot be
+        # valued as a going concern under this structure.
+        pe_xirr = None
+        pe_xirr_status = ReturnMetricStatus.UNPAID_SHL_AT_CONTRACTUAL_MATURITY
+        pe_moic = None
+        pe_moic_status = ReturnMetricStatus.UNPAID_SHL_AT_CONTRACTUAL_MATURITY
+        ts_xirr = None
+        ts_xirr_status = ReturnMetricStatus.UNPAID_SHL_AT_CONTRACTUAL_MATURITY
+        ts_moic = None
+        ts_moic_status = ReturnMetricStatus.UNPAID_SHL_AT_CONTRACTUAL_MATURITY
     else:
-        ts_moic_status = ReturnMetricStatus.ZERO_CONTRIBUTION
+        pe_cfs = [p.pure_equity_net_cashflow_keur for p in cashflow_periods]
+        pe_dates = [p.cashflow_date for p in cashflow_periods]
+
+        pe_xirr = robust_xirr(pe_cfs, pe_dates)
+        pe_xirr_status = _xirr_status(pe_cfs, pe_xirr)
+
+        if total_le > 0.0:
+            pos_pe = sum(cf for cf in pe_cfs if cf > 0)
+            pe_moic = pos_pe / total_le
+            pe_moic_status = ReturnMetricStatus.OK
+        else:
+            pe_moic = None
+            pe_moic_status = ReturnMetricStatus.ZERO_CONTRIBUTION
+
+        # ── Total Sponsor XIRR / MOIC ─────────────────────────────────────────
+        ts_cfs = [p.total_sponsor_net_cashflow_keur for p in cashflow_periods]
+        ts_dates = pe_dates  # same period dates
+
+        ts_xirr = robust_xirr(ts_cfs, ts_dates)
+        ts_xirr_status = _xirr_status(ts_cfs, ts_xirr)
+
+        if total_sponsor_contrib > 0.0:
+            pos_ts = sum(cf for cf in ts_cfs if cf > 0)
+            ts_moic = pos_ts / total_sponsor_contrib
+            ts_moic_status = ReturnMetricStatus.OK
+        else:
+            ts_moic = None
+            ts_moic_status = ReturnMetricStatus.ZERO_CONTRIBUTION
 
     return SponsorReturnResult(
         financing_result=financing,
@@ -399,4 +443,5 @@ def run_project_sponsor_returns_model(
         total_sponsor_xirr_status=ts_xirr_status,
         total_sponsor_moic=ts_moic,
         total_sponsor_moic_status=ts_moic_status,
+        shl_bullet_unpaid_at_maturity=bullet_unpaid_active,
     )

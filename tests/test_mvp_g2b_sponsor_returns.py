@@ -103,17 +103,18 @@ def test_solar_shl_mode_contribution_totals():
     )
 
 
-def test_solar_shl_mode_metrics_are_defined():
-    """Solar SHL: both XIRR and MOIC are defined (project has contributions and distributions)."""
+def test_solar_shl_mode_bullet_unpaid_at_maturity():
+    """Default Generic Solar SHL has underfunded BULLET → metrics = UNPAID_SHL_AT_CONTRACTUAL_MATURITY."""
     result = run_project_sponsor_returns_model(_solar_project())
-    assert result.pure_equity_xirr_status == ReturnMetricStatus.OK
-    assert result.pure_equity_moic_status == ReturnMetricStatus.OK
-    assert result.total_sponsor_xirr_status == ReturnMetricStatus.OK
-    assert result.total_sponsor_moic_status == ReturnMetricStatus.OK
-    assert result.pure_equity_xirr is not None
-    assert result.pure_equity_moic is not None
-    assert result.total_sponsor_xirr is not None
-    assert result.total_sponsor_moic is not None
+    assert result.shl_bullet_unpaid_at_maturity is True
+    assert result.pure_equity_xirr_status == ReturnMetricStatus.UNPAID_SHL_AT_CONTRACTUAL_MATURITY
+    assert result.pure_equity_moic_status == ReturnMetricStatus.UNPAID_SHL_AT_CONTRACTUAL_MATURITY
+    assert result.total_sponsor_xirr_status == ReturnMetricStatus.UNPAID_SHL_AT_CONTRACTUAL_MATURITY
+    assert result.total_sponsor_moic_status == ReturnMetricStatus.UNPAID_SHL_AT_CONTRACTUAL_MATURITY
+    assert result.pure_equity_xirr is None
+    assert result.pure_equity_moic is None
+    assert result.total_sponsor_xirr is None
+    assert result.total_sponsor_moic is None
 
 
 def test_solar_shl_mode_distribution_policy():
@@ -147,10 +148,14 @@ def test_wind_shl_mode_contribution_totals():
     )
 
 
-def test_wind_shl_mode_metrics_defined():
+def test_wind_shl_mode_bullet_unpaid_at_maturity():
+    """Default Generic Wind SHL has underfunded BULLET → metrics = UNPAID_SHL_AT_CONTRACTUAL_MATURITY."""
     result = run_project_sponsor_returns_model(_wind_project())
-    assert result.pure_equity_xirr_status == ReturnMetricStatus.OK
-    assert result.total_sponsor_xirr_status == ReturnMetricStatus.OK
+    assert result.shl_bullet_unpaid_at_maturity is True
+    assert result.pure_equity_xirr_status == ReturnMetricStatus.UNPAID_SHL_AT_CONTRACTUAL_MATURITY
+    assert result.total_sponsor_xirr_status == ReturnMetricStatus.UNPAID_SHL_AT_CONTRACTUAL_MATURITY
+    assert result.pure_equity_xirr is None
+    assert result.total_sponsor_xirr is None
 
 
 # ── Wind EQUITY_ONLY ──────────────────────────────────────────────────────────
@@ -957,3 +962,224 @@ def test_sources_and_uses_unchanged_by_g2b():
         g2a.project_uses.total_project_uses_keur
     )
     assert g2a_fin.construction_funding.maximum_period_difference_keur <= 1e-9
+
+
+# ── BULLET fail-closed: required tests (Blocker 1) ───────────────────────────
+
+def _fully_funded_shl_solar():
+    """Synthetic Solar project with small SHL (1000 kEUR) that fits within
+    available post-Senior cash at maturity. Positive control for BULLET.
+
+    The balloon (1000 kEUR) is well within the period-33 post-Senior cash
+    (~1734 kEUR), so the BULLET is fully paid and metrics remain valid.
+    """
+    p = _solar_project()
+    return dataclasses.replace(
+        p,
+        financing=dataclasses.replace(
+            p.financing,
+            clean_shl_principal_keur=1000.0,
+            share_capital_keur=7250.0,  # offset to keep total equity = 8250
+        ),
+    )
+
+
+def test_bullet_solar_underfunded_unpaid_principal_positive():
+    """Default Generic Solar: contractual principal > available cash at maturity."""
+    project = _solar_project()
+    g2a = run_project_financing_model(project)
+    result = run_project_sponsor_returns_model(project)
+    shl = g2a.project_model_result.shareholder_loan
+    psc = g2a.project_model_result.post_senior_cash
+    assert shl is not None
+
+    shl_pr = dict(zip(shl.period_indices, shl.shl_principal_keur))
+    post_s = dict(zip(psc.period_indices, psc.cash_after_senior_before_reserves_keur))
+    maturity_idx = max(i for i, v in zip(shl.period_indices, shl.shl_principal_keur) if v > 1e-6)
+
+    sched_prin = shl_pr[maturity_idx]
+    available = max(0.0, post_s[maturity_idx])
+    assert sched_prin > available + 1e-6, "Solar maturity must be underfunded"
+    assert result.shl_bullet_unpaid_at_maturity is True
+
+
+def test_bullet_solar_post_maturity_equity_distributions_zero():
+    """After underfunded Solar BULLET: legal-equity distributions = 0 in all post-maturity periods."""
+    project = _solar_project()
+    g2a = run_project_financing_model(project)
+    result = run_project_sponsor_returns_model(project)
+    shl = g2a.project_model_result.shareholder_loan
+    assert shl is not None
+
+    maturity_idx = max(i for i, v in zip(shl.period_indices, shl.shl_principal_keur) if v > 1e-6)
+
+    for p in result.cashflow_periods:
+        if p.is_construction or p.period_index <= maturity_idx:
+            continue
+        assert p.legal_equity_distribution_keur == pytest.approx(0.0, abs=1e-9), (
+            f"Solar period {p.period_index}: post-maturity equity distribution must be 0 "
+            f"when BULLET unpaid (got {p.legal_equity_distribution_keur:.4f})"
+        )
+
+
+def test_bullet_solar_all_metrics_none_and_status_unpaid():
+    """Default Generic Solar: all four return metrics = None / UNPAID_SHL_AT_CONTRACTUAL_MATURITY."""
+    result = run_project_sponsor_returns_model(_solar_project())
+    assert result.pure_equity_xirr is None
+    assert result.pure_equity_moic is None
+    assert result.total_sponsor_xirr is None
+    assert result.total_sponsor_moic is None
+    assert result.pure_equity_xirr_status == ReturnMetricStatus.UNPAID_SHL_AT_CONTRACTUAL_MATURITY
+    assert result.pure_equity_moic_status == ReturnMetricStatus.UNPAID_SHL_AT_CONTRACTUAL_MATURITY
+    assert result.total_sponsor_xirr_status == ReturnMetricStatus.UNPAID_SHL_AT_CONTRACTUAL_MATURITY
+    assert result.total_sponsor_moic_status == ReturnMetricStatus.UNPAID_SHL_AT_CONTRACTUAL_MATURITY
+
+
+def test_bullet_wind_underfunded_all_metrics_unpaid():
+    """Default Generic Wind: underfunded BULLET → all four statuses UNPAID_SHL_AT_CONTRACTUAL_MATURITY."""
+    project = _wind_project()
+    g2a = run_project_financing_model(project)
+    result = run_project_sponsor_returns_model(project)
+    shl = g2a.project_model_result.shareholder_loan
+    psc = g2a.project_model_result.post_senior_cash
+    assert shl is not None
+
+    shl_pr = dict(zip(shl.period_indices, shl.shl_principal_keur))
+    post_s = dict(zip(psc.period_indices, psc.cash_after_senior_before_reserves_keur))
+    maturity_idx = max(i for i, v in zip(shl.period_indices, shl.shl_principal_keur) if v > 1e-6)
+
+    assert shl_pr[maturity_idx] > max(0.0, post_s[maturity_idx]) + 1e-6, "Wind must be underfunded"
+    assert result.shl_bullet_unpaid_at_maturity is True
+    assert result.pure_equity_xirr_status == ReturnMetricStatus.UNPAID_SHL_AT_CONTRACTUAL_MATURITY
+    assert result.pure_equity_moic_status == ReturnMetricStatus.UNPAID_SHL_AT_CONTRACTUAL_MATURITY
+    assert result.total_sponsor_xirr_status == ReturnMetricStatus.UNPAID_SHL_AT_CONTRACTUAL_MATURITY
+    assert result.total_sponsor_moic_status == ReturnMetricStatus.UNPAID_SHL_AT_CONTRACTUAL_MATURITY
+    assert result.pure_equity_xirr is None
+    assert result.total_sponsor_xirr is None
+
+
+def test_bullet_wind_post_maturity_equity_distributions_zero():
+    """After underfunded Wind BULLET: legal-equity distributions = 0 in all post-maturity periods."""
+    project = _wind_project()
+    g2a = run_project_financing_model(project)
+    result = run_project_sponsor_returns_model(project)
+    shl = g2a.project_model_result.shareholder_loan
+    assert shl is not None
+
+    maturity_idx = max(i for i, v in zip(shl.period_indices, shl.shl_principal_keur) if v > 1e-6)
+
+    for p in result.cashflow_periods:
+        if p.is_construction or p.period_index <= maturity_idx:
+            continue
+        assert p.legal_equity_distribution_keur == pytest.approx(0.0, abs=1e-9), (
+            f"Wind period {p.period_index}: post-maturity equity distribution must be 0"
+        )
+
+
+def test_bullet_fully_funded_positive_control_metrics_valid():
+    """Positive control: fully-funded BULLET → metrics remain valid (not UNPAID)."""
+    project = _fully_funded_shl_solar()
+    result = run_project_sponsor_returns_model(project)
+    assert result.shl_bullet_unpaid_at_maturity is False
+    assert result.pure_equity_xirr_status == ReturnMetricStatus.OK
+    assert result.pure_equity_moic_status == ReturnMetricStatus.OK
+    assert result.total_sponsor_xirr_status == ReturnMetricStatus.OK
+    assert result.total_sponsor_moic_status == ReturnMetricStatus.OK
+    assert result.pure_equity_xirr is not None
+    assert result.pure_equity_moic is not None
+    assert result.total_sponsor_xirr is not None
+    assert result.total_sponsor_moic is not None
+
+
+def test_bullet_fully_funded_post_maturity_distributions_positive():
+    """Positive control: after fully-funded BULLET, equity distributions resume normally."""
+    project = _fully_funded_shl_solar()
+    g2a = run_project_financing_model(project)
+    result = run_project_sponsor_returns_model(project)
+    shl = g2a.project_model_result.shareholder_loan
+    assert shl is not None
+
+    maturity_idx = max(i for i, v in zip(shl.period_indices, shl.shl_principal_keur) if v > 1e-6)
+
+    post_maturity_dists = [
+        p.legal_equity_distribution_keur
+        for p in result.cashflow_periods
+        if not p.is_construction and p.period_index > maturity_idx
+    ]
+    # At least some post-maturity periods have non-zero distributions
+    assert any(d > 0.0 for d in post_maturity_dists), (
+        "Positive-control project must have distributions after fully-paid BULLET"
+    )
+
+
+def test_equity_only_remains_valid_no_bullet_state():
+    """EQUITY_ONLY: no SHL → shl_bullet_unpaid_at_maturity=False, metrics valid."""
+    for label, factory in [("solar", _solar_project), ("wind", _wind_project)]:
+        project = _equity_only(factory())
+        result = run_project_sponsor_returns_model(project)
+        assert result.shl_bullet_unpaid_at_maturity is False, f"{label}: EQUITY_ONLY must not set bullet flag"
+        assert result.pure_equity_xirr_status == ReturnMetricStatus.OK, f"{label}: EQUITY_ONLY XIRR must be OK"
+        assert result.total_sponsor_xirr_status == ReturnMetricStatus.OK, f"{label}: EQUITY_ONLY total XIRR must be OK"
+
+
+def test_cash_conservation_holds_with_bullet_fail_closed():
+    """Cash conservation: total_out <= max(0, post_senior) even with BULLET fail-closed post-maturity."""
+    for label, project in [("solar_shl", _solar_project()), ("wind_shl", _wind_project())]:
+        g2a = run_project_financing_model(project)
+        result = run_project_sponsor_returns_model(project)
+        psc = g2a.project_model_result.post_senior_cash
+        post_s = dict(zip(psc.period_indices, psc.cash_after_senior_before_reserves_keur))
+
+        for p in result.cashflow_periods:
+            if p.is_construction:
+                continue
+            available = max(0.0, post_s.get(p.period_index, 0.0))
+            total_out = (
+                p.shl_cash_interest_receipt_keur
+                + p.shl_principal_receipt_keur
+                + p.legal_equity_distribution_keur
+            )
+            assert total_out <= available + 1e-6, (
+                f"{label} period {p.period_index}: "
+                f"total_out={total_out:.4f} > available={available:.4f} — cash created"
+            )
+
+
+def test_g2a_fingerprints_unchanged_by_bullet_fail_closed():
+    """G2A financing fingerprints must not change: Solar 33000/24750/7750, Wind 43000/32250/10250."""
+    solar = run_project_sponsor_returns_model(_solar_project())
+    wind = run_project_sponsor_returns_model(_wind_project())
+
+    assert solar.financing_result.project_uses.total_project_uses_keur == pytest.approx(33_000.0)
+    assert solar.financing_result.final_senior_commitment_keur == pytest.approx(24_750.0)
+    assert solar.financing_result.derived_shl_cash_principal_keur == pytest.approx(7_750.0)
+
+    assert wind.financing_result.project_uses.total_project_uses_keur == pytest.approx(43_000.0)
+    assert wind.financing_result.final_senior_commitment_keur == pytest.approx(32_250.0)
+    assert wind.financing_result.derived_shl_cash_principal_keur == pytest.approx(10_250.0)
+
+
+def test_bullet_no_post_maturity_shl_service_invented():
+    """Post-maturity periods must not show invented SHL interest or principal service."""
+    project = _solar_project()
+    g2a = run_project_financing_model(project)
+    result = run_project_sponsor_returns_model(project)
+    shl = g2a.project_model_result.shareholder_loan
+    assert shl is not None
+
+    maturity_idx = max(i for i, v in zip(shl.period_indices, shl.shl_principal_keur) if v > 1e-6)
+
+    for p in result.cashflow_periods:
+        if p.is_construction or p.period_index <= maturity_idx:
+            continue
+        # G2A schedule naturally shows 0 SHL service post-maturity (balance = 0).
+        # G2B must not invent default interest or forced terminal repayment.
+        assert p.shl_cash_interest_receipt_keur == pytest.approx(0.0, abs=1e-9), (
+            f"Period {p.period_index}: no SHL interest should be invented post-maturity"
+        )
+        assert p.shl_principal_receipt_keur == pytest.approx(0.0, abs=1e-9), (
+            f"Period {p.period_index}: no SHL principal should be invented post-maturity"
+        )
+        assert p.shl_cash_contribution_keur == pytest.approx(0.0, abs=1e-9), (
+            f"Period {p.period_index}: no sponsor top-up post-maturity"
+        )

@@ -106,6 +106,24 @@ contributions, top-ups, or balancing items.
 It is not an institutional waterfall, a lock-up covenant, or an Excel
 parity rule.
 
+### BULLET fail-closed semantics
+
+If the contractual BULLET balloon exceeds available project cash at maturity:
+
+1. The SHL liability is NOT extinguished. Unpaid principal remains.
+2. No post-maturity default interest, sponsor top-up, or balancing plug is invented.
+3. Legal-equity distributions in all periods after unresolved maturity = 0.
+4. All four return metrics (Pure Equity XIRR/MOIC, Total Sponsor XIRR/MOIC) = None.
+5. All four metric statuses = `UNPAID_SHL_AT_CONTRACTUAL_MATURITY`.
+6. `shl_bullet_unpaid_at_maturity = True` on `SponsorReturnResult`.
+
+Actual sponsor receipts remain cash-only: actual SHL cash interest, actual SHL
+principal paid at maturity (cash-capped), and legal-equity distributions in periods
+up to and including the maturity period where cash was available.
+
+This applies identically to Default Generic Solar and Wind (both have underfunded
+BULLET balloons under default parameters).
+
 ### Timing
 
 Construction cashflow dates: `financial_close + (period_index − 1) months`.
@@ -117,74 +135,132 @@ period grid.
 
 ## G2C Covenant-Gated Shareholder Waterfall canonical authority
 
-### Distribution lockup gate
+### Source authority
 
-Source: Oborovo workbook (SHA 15a621c4...), Inputs!D223: `senior_lockup_dscr = 1.10`.
-Generic parameter: `distribution_lockup_dscr` from `FinancingParams.lockup_dscr`.
-Distinct from the debt-sizing `target_dscr` (Inputs!D195 ≈ 1.20).
+Authoritative workbook: `20260414_BP_Oborovo_Sensitivity_FINAL_for_PPT.xlsm`
+SHA-256: `15a621c4d6b79024980766e00ebc79d7235fd56f00567be7bf345c769ce57920`
 
-Gate logic (per operating period):
-
-```
-if base_dscr is None or senior_ds == 0:
-    gate = DSCR_UNAVAILABLE_GATE_OPEN   # no debt → no lockup
-elif base_dscr < distribution_lockup_dscr:
-    gate = LOCKED_DSCR_BELOW_LOCKUP     # covenant lockup — distribution = 0
-else:
-    gate = OPEN
-```
-
-`base_dscr` = Base CFADS / Senior debt service, from the clean engine
-(`SeniorDebtSchedules.base_dscr`).
-
-### Distribution gate applies to equity only
-
-SHL cash receipts (interest and principal) are NOT gated by the DSCR covenant.
-The covenant gate withholds only `legal_equity_distribution_keur`.
-
-Locked cash is tracked as `covenant_locked_keur` per period (no R98 distribution
-account accumulation in this MVP phase):
-
-`G2C_DISTRIBUTION_ACCOUNT_AUTHORITY_INCOMPLETE`: R98 (distribution account balance /
-carryforward, CF!H108) is NOT in the extracted source fixture. Locked cash is tracked
-per-period but NOT accumulated into a releasing balance. If R98 is extracted in a
-future phase, the accumulation/release layer may be added then.
-
-### Gate partition invariant
-
-Per operating period:
-
-```
-covenant_locked_keur + legal_equity_distribution_keur == pre_gate_distribution_keur
-```
-
-### R-row source map
-
-```
-R84  free_cash_flow_for_junior_keur     → signed_post_senior (pre-DSRA; see limitation)
-R109 free_cash_flow_for_distribution    → fcf_for_distribution (gate output)
-R112 free_cash_flow_for_shl_keur        → SHL service input (= R109, CF112=H109)
-R116 free_cash_flow_for_dividends_keur  → legal_equity_distribution_keur
-```
+Source fixture (dual-load extracted):
+`tests/fixtures/g2c_da_source_evidence.json`
+Generation method: `dual_load_from_authoritative_workbook`
 
 ### Waterfall ordering (source-proven)
 
 ```
-1. signed_post_senior (R84) — pre-gate
-2. DSCR covenant gate → fcf_for_distribution (R109)
-3. SHL service drawn from fcf_for_distribution (R112 = R109)
-4. legal_equity_distribution = residual (R116)
+1. post-Senior cash (R84, signed) — pre-DSRA, pre-gate
+2. Applicable explicit DSRF fee treatment (EXPLICIT_GENERIC_MVP_POLICY_POST_SENIOR_CASH)
+3. CF108 Distribution Account available — DA causal roll-forward
+4. CF109 five-component covenant gate → da_release / fcf_for_distribution
+5. CF112 SHL cash service drawn from fcf_for_distribution (CF112 = CF109)
+6. CF116 legal-equity distribution = residual post-SHL
 ```
 
-R98 (distribution account balance/carryforward) is NOT extracted from the
-Oborovo workbook and is not implemented in this MVP phase.
+**THE CF109 COVENANT GATE IS UPSTREAM OF SHL.**
 
-Post-senior cash is pre-DSRA: the clean engine marks
-`cash_after_senior_before_reserves_keur` as pre-reserve; DSRA ordering is
-unresolved. G2C inherits this limitation.
+Both SHL service (CF112) and legal-equity distributions (CF116) are downstream
+of the CF109 gate. No layer of the waterfall receives cash before the gate
+is evaluated.
 
-`DISTRIBUTE_ALL_POST_SHL_CASH` from G2B remains the default; G2C adds the
-DSCR covenant gate as an additional condition before distributions flow.
+### CF108 — Distribution Account causal roll-forward
+
+Source: `CF!G108 = =SUM(G94,G95,G106)+F110` (workbook-verified).
+
+```
+da_available[t] = signed_post_senior[t]           (eligible inflow this period)
+                  + da_closing[t-1]               (carry from prior period)
+```
+
+`da_available[t]` is the signed DA balance available before the gate. It can be
+negative (accumulated deficit).
+
+### CF109 — Five-component covenant gate
+
+Source: `CF!G109 = =IF(AND(OR(G$138<$B$109,G$4=0,G108<0,G91<G86,G105<G100),G$4<=$B$11),0,G108)`
+
+Gate components:
+
+```
+A = DSCR < lockup threshold       (G138 < B109;  B109 = 1.10)
+B = construction period           (G4 = 0)
+C = DA available < 0              (G108 < 0)
+D = Senior DSRA ending < target   (G91 < G86;  Oborovo: both = 0 → False)
+E = J-DSRA ending < target        (G105 < G100; NOT modelled → False)
+```
+
+Gate active when:
+```
+gate_locked = OR(A, B, C, D, E)  AND  within_senior_maturity (G4 <= B11)
+```
+
+`B11 = 14` (senior debt maturity years, extracted as scalar in source fixture).
+`within_senior_maturity` is a proxy for `G4 <= B11`; formal row-4 mapping evidence
+is not yet committed — see `G2C_RESERVE_GATE_NOT_CAUSALLY_CLOSED` below.
+
+Gate output (signed — CF109 passes G108 directly when open, does not clip):
+
+```
+gate_locked → da_release = 0;          da_closing = da_available  (accumulates)
+gate_open   → da_release = da_available; da_closing = 0
+```
+
+Gate status attribution:
+
+```
+comp_A triggered → LOCKED_DSCR_BELOW_LOCKUP
+any other trigger → LOCKED_COVENANT_GATE
+gate open → OPEN or DSCR_UNAVAILABLE_GATE_OPEN (no Senior debt service)
+```
+
+### CF110 — Distribution Account closing balance
+
+Source: `CF!G110 = G108 - G109`
+
+```
+da_closing[t] = da_available[t] - da_release[t]
+```
+
+### DA telescoping identity (across-period invariant)
+
+```
+sum(da_inflow)  =  sum(da_release)  +  da_closing[final_period]
+```
+
+This replaces any earlier "gate partition" or "sum_pre_gate conservation" invariant,
+which was not valid under the DA carry-forward model.
+
+### R-row source map
+
+```
+R84  → signed_post_senior (pre-DSRA, pre-gate; see limitation below)
+CF108 → da_available (signed DA balance after eligible inflow + carry)
+CF109 → fcf_for_distribution / da_release (gate output)
+CF110 → da_closing (DA closing balance)
+CF112 → SHL cash service input (= CF109 per source formula CF112 = H109)
+CF116 → legal_equity_distribution_keur (residual post-SHL)
+```
+
+### DSRF fee treatment
+
+Only one DSRF fee treatment is implemented:
+`EXPLICIT_GENERIC_MVP_POLICY_POST_SENIOR_CASH`
+
+No source evidence exists for any other treatment. Any other configuration raises
+a fail-closed error.
+
+### Explicit stop boundaries (retained — not implemented in this PR)
+
+`G2C_RESERVE_GATE_NOT_CAUSALLY_CLOSED` — three sub-causes retained:
+
+1. **CASH_DSRA draw engine not implemented**: `senior_dsra_closing = senior_dsra_target`
+   (static; no draw or replenishment modelled). Gate component D depends on this.
+
+2. **J-DSRA not modelled**: Gate component E is always False (no junior DSRA data).
+
+3. **`period_index <= senior_last_period_index` is a proxy for `G4 <= B11`**:
+   Formal row-4 mapping evidence is not yet committed; the proxy has not been proven
+   equivalent to the source formula condition.
+
+Do NOT remove or weaken these stop boundaries in this phase.
 
 ## DSRF — Debt Service Reserve Facility canonical authority
 

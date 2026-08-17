@@ -126,3 +126,9 @@ class SponsorReturnResult:
     total_sponsor_xirr_status: ReturnMetricStatus
     total_sponsor_moic: float | None
     total_sponsor_moic_status: ReturnMetricStatus
+
+    # BULLET fail-closed state
+    # True if contractual BULLET balloon exceeded available project cash at maturity.
+    # When True: all four return metrics are None / UNPAID_SHL_AT_CONTRACTUAL_MATURITY
+    # and post-maturity legal-equity distributions are zero.
+    shl_bullet_unpaid_at_maturity: bool = False
