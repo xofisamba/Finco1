@@ -41,19 +41,25 @@ PRE-CLASSIFIED CAPABILITY GAPS (do not implement fixes during G3B diagnostic)
 KUPI_SHL_CONSTRUCTION_COMPOUNDING_GAP  →  CURRENT_FINCO_CAPABILITY_GAP
   Source IDC!D51: source_SHL × ((1+8%)^2 − 1) = 11,340.658 kEUR   [compound]
   Source SHL principal (comparison anchor): 68,152.996 kEUR
-  Source compound counterfactual: 68,152.996 × 0.1664 = 11,340.658 kEUR
-  Source simple counterfactual:   68,152.996 × 0.16   = 10,904.479 kEUR
-  Source simple-vs-compound delta (source SHL basis): 436.179 kEUR
+  Source compound PIK:                68,153 × ((1.08)^2 − 1) = 11,340.658 kEUR
+  Source simple counterfactual:       68,153 × 8% × 2          = 10,904.479 kEUR
+  Pure method delta (source-SHL basis):                           +436.179 kEUR  ← capability gap
   Finco primitive: simple interest, dcf=2.0 (24 months / 12).
-  Finco simple PIK = engine_derived_SHL × 8% × 2.0 (reported after blind run).
-  Compound PIK (Finco SHL basis) = engine_derived_SHL × ((1.08)^2 − 1).
+  Finco simple PIK: engine_SHL × 8% × 2.0 ≈ 79,596 × 0.16      = 12,735.337 kEUR
+  Finco compound counterfactual: 79,596 × ((1.08)^2 − 1)        ≈ 13,244.750 kEUR
+  Pure method delta (Finco-SHL basis):                            ≈+509.413 kEUR
+  CROSS_BASIS_SHL_PIK_DIFFERENCE: 12,735.337 − 11,340.658 = +1,394.678 kEUR
+    This is NOT the pure method delta — it mixes different SHL principals.
   Rule: do NOT set dcf≈2.08 to match.  Quantify downstream impact, stop.
 
-KUPI_DSCR_REVENUE_MIX_FORMULA_GAP     →  CURRENT_FINCO_CAPABILITY_GAP
-  Source DS!row19: target_dscr[t] = merchant_share[t]×1.75 + (1−merchant_share[t])×1.50
-  Engine cannot derive this schedule from revenue mix dynamically.
-  Exact source DS!row19 values supplied below (extracted from workbook).
-  24 periods at 1.50 (PPA), 4 periods at ≈1.7576 (merchant formula result).
+GENERIC_DYNAMIC_REVENUE_RATIO_DSCR_FORMULA_NOT_IMPLEMENTED  →  CURRENT_FINCO_CAPABILITY_GAP
+  Source DS!row13 = merchant_revenue / total_revenue (merchant_revenue_ratio).
+  This ratio can EXCEED 100%: AF13≈1.030598, AH13≈1.031398.
+  Do NOT call it "merchant_share" — it is not normalised.
+  Source target_dscr[t] = PPA_DSCR + (Merchant_DSCR - PPA_DSCR) × merchant_revenue_ratio[t]
+  This yields DS!row19: 24×1.50 then AF19≈1.757649, AG19≈1.757649, AH19≈1.757849, AI19≈1.757849.
+  KUPI_PROJECT_DSCR_SCHEDULE_RESULT_REPRODUCED via explicit _KUPI_DSCR_SCHEDULE.
+  This is a generic configurability gap — NOT a KUPI numeric schedule parity failure.
 
 KUPI_SPONSOR_CONTRIBUTION_TIMING_POLICY_GAP  →  DEFINITION_OR_TIMING_DIFFERENCE
   Source Eq places full SHL (68,152.996 kEUR) + Share Capital (500 kEUR) at FC.
@@ -65,12 +71,21 @@ KUPI_TAX_WORKBOOK_COMPATIBILITY_GAP   →  CLEAN_POLICY_VS_WORKBOOK_COMPATIBILIT
   Clean: calendar tax year + taxable-income-positive gate.
   Total source cash CIT anchor: 95,291.964 kEUR (comparison only, not runtime target).
 
-KUPI_BANK_CFADS_BALANCING_DEDUCTION_GAP  →  CLEAN_POLICY_VS_WORKBOOK_COMPATIBILITY
-  Finco applies balancing_cost_wind_eur_mwh=5.0 to bank P90 CFADS revenue.
-  Source bank CFADS formula omits balancing cost deduction.
-  Period-2 gap: ~1,088 kEUR/period from balancing; residual ~−99 kEUR (minor).
-  Senior gap: −10,354 kEUR literal.  Balancing bridge: +12,043 kEUR.
-  No-balancing residual vs source: +1,689 kEUR (DSCR target + minor production).
+KUPI_SOURCE_BANK_REVENUE_BALANCING_OMISSION  →  SOURCE_WORKBOOK_ASYMMETRY_OR_INCONSISTENCY
+  Finco revenue-stack principle: balancing cost is a REVENUE-SIDE PROJECT INPUT.
+  The same revenue definition (gross energy + CO2 − balancing) is used for both
+  Base and Bank cases. The Bank case may differ only in SCENARIO INPUTS (P90, price curve,
+  DSCR target) — not in what constitutes project revenue.
+  Source bank CFADS formula: DS Bank CFADS = P90_revenue − OPEX — balancing NOT deducted.
+  No explicit lender evidence (term sheet, lender note, dedicated Bank balancing input)
+  was found to prove the omission is deliberate policy.
+  Finco is economically consistent. The no-balancing diagnostic variant explains WHY
+  source Senior is higher — it is NOT a candidate production methodology change.
+  Literal Finco Senior:      135,707.583 kEUR
+  Source Senior:             147,150.442 kEUR
+  Literal gap:               −11,442.860 kEUR
+  No-bal diagnostic Senior:  147,649.261 kEUR   (bridge: +11,941.678 kEUR)
+  Residual after bridge:        +498.819 kEUR   →  KUPI_SENIOR_GAP_RESIDUAL  OPEN_SMALL_RESIDUAL
 
 G2C_RESERVE_GATE_NOT_CAUSALLY_CLOSED  →  (existing known boundary — not KUPI-specific)
   Sub-cause 1: CASH_DSRA draw/replenishment not fully causal.

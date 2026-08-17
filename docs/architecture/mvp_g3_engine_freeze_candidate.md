@@ -154,6 +154,30 @@ The G2A fixed-point ignores `clean_shl_principal_keur` (overridden by `candidate
 | O&M step schedule | Scenarios!E79:E108 | 6-step schedule |
 | DSCR target schedule | DS!row19 | 24 × 1.50 + 4 × {1.757649, 1.757849} |
 
+### Revenue-Stack Consistency Principle (Finco Generic Rule)
+
+**Balancing cost is a revenue-side project input — not a debt-sizing assumption.**
+
+The generic Finco economic revenue stack is:
+
+```
+Gross energy revenue
++ CO2 / certificate / other operating revenue
+− balancing cost
+− other applicable revenue deductions
+= Net operating revenue
+```
+
+The **same revenue definition** is used for both the Base case and the Bank/lender sizing case.
+The Bank case may differ only in **scenario inputs** (P90 vs P50 production, lender-approved
+merchant price curve, lender-approved DSCR target) — not in what constitutes project revenue.
+
+Therefore:
+- `bank_balancing_cost_wind_eur_mwh` must NOT be added to reproduce KUPI Excel.
+- A Bank-specific CO2 toggle must NOT be added.
+- The diagnostic no-balancing Senior (`147,649 kEUR`) is evidence of the source workbook
+  asymmetry — it is **not** a candidate production methodology.
+
 ### G3B Test Coverage — Tests A through J
 
 | Test Class | Coverage |
@@ -162,7 +186,7 @@ The G2A fixed-point ignores `clean_shl_principal_keur` (overridden by `candidate
 | B — Period axis | 2 construction + 60 operating; senior 28 periods (14yr × 2) |
 | C — G2A identity | Uses = Senior + SHL + Capital; engine-derived SHL used downstream |
 | D — Identity invariance | Name/company/code changes yield identical financials |
-| E — Bank/base separation | P90 < P50; balancing bridge +11,942 kEUR; residual +499 kEUR |
+| E — Bank/base separation | P90 < P50; balancing bridge diagnostic; source omits balancing in Bank CFADS |
 | F — SHL cash-sweep | Per-period principal ≤ cash_available; closes to zero at P61 |
 | G — SHL compounding gap | Simple PIK documented; pure method delta on same-principal basis |
 | H — CO2 bridge | Run B minus Run A ≈ 24,506 kEUR vs source 25,002 kEUR |
@@ -173,18 +197,36 @@ The G2A fixed-point ignores `clean_shl_principal_keur` (overridden by `candidate
 
 ---
 
-## KUPI Capability-Gap Register
+## KUPI Gap Register
 
-| # | Gap ID | Classification | Magnitude / Evidence |
+### A. Source Workbook Issues
+
+| # | Gap ID | Classification | Evidence |
 |---|---|---|---|
-| 1 | KUPI_BANK_CFADS_BALANCING_DEDUCTION_GAP | CLEAN_POLICY_VS_WORKBOOK_COMPATIBILITY | Removing 5 EUR/MWh balancing raises Senior 135,708 → 147,649 kEUR (+11,942 kEUR bridge). Source = 147,150 kEUR. |
-| 2 | KUPI_SENIOR_GAP_RESIDUAL | OPEN_SMALL_RESIDUAL | +498.819 kEUR residual after balancing bridge; ~0.34% of source Senior. Do not tune. |
-| 3 | KUPI_SHL_CONSTRUCTION_COMPOUNDING_GAP | CURRENT_FINCO_CAPABILITY_GAP | Pure method delta: **+436.179 kEUR** (source-principal basis) or **+509.413 kEUR** (Finco-principal basis). CROSS_BASIS_SHL_PIK_DIFFERENCE = +1,394.678 kEUR (combines different principals + method). Do NOT use +1,395 as method delta. |
-| 4 | GENERIC_DYNAMIC_REVENUE_RATIO_DSCR_FORMULA_NOT_IMPLEMENTED | CURRENT_FINCO_CAPABILITY_GAP | DS!row13 = merchant_rev / total_rev (can exceed 100%: AF13 ≈ 1.031). KUPI DSCR result **reproduced** via explicit schedule → KUPI_PROJECT_DSCR_SCHEDULE_RESULT_REPRODUCED. Generic configurability gap, not KUPI schedule mismatch. |
-| 5 | KUPI_SPONSOR_CONTRIBUTION_TIMING_POLICY_GAP | DEFINITION_OR_TIMING_DIFFERENCE | Source places full SHL+Capital at FC; engine distributes through construction. |
-| 6 | KUPI_TAX_WORKBOOK_COMPATIBILITY_GAP | CLEAN_POLICY_VS_WORKBOOK_COMPATIBILITY | Standard Finco corporate tax vs source workbook treatment. |
-| 7 | KUPI_VAT_FACILITY | UNSUPPORTED_INSTITUTIONAL_FEATURE | VAT financing facility not modelled. |
-| 8 | G2C_RESERVE_GATE_NOT_CAUSALLY_CLOSED | See sub-causes below | Three sub-causes unchanged from G3. |
+| 1 | KUPI_SOURCE_BANK_REVENUE_BALANCING_OMISSION | SOURCE_WORKBOOK_ASYMMETRY_OR_INCONSISTENCY | Source DS Bank CFADS = P90_revenue − OPEX; balancing cost deduction absent. No explicit lender policy evidence (term sheet, note, dedicated Bank input) found. Finco is economically consistent. Diagnostic no-balancing Senior: 147,649 kEUR (+11,942 bridge). |
+| 2 | KUPI_CO2_UNUSED_TOGGLE | SOURCE_INPUT_INCONSISTENCY | Inputs!D121=FALSE but CF!H35 includes CO2 revenue. Run A uses literal input (no CO2). Run B is SOURCE_EFFECTIVE_UNUSED_TOGGLE_DIAGNOSTIC only. |
+
+### B. True Finco Capability Gaps
+
+| # | Gap ID | Classification | Evidence |
+|---|---|---|---|
+| 3 | KUPI_SHL_CONSTRUCTION_COMPOUNDING_GAP | CURRENT_FINCO_CAPABILITY_GAP | Pure method delta: **+436.179 kEUR** (source-SHL basis) or **+509.413 kEUR** (Finco-SHL basis). CROSS_BASIS_SHL_PIK_DIFFERENCE = +1,394.678 kEUR — combines different principals + method; NOT the pure delta. |
+| 4 | GENERIC_DYNAMIC_REVENUE_RATIO_DSCR_FORMULA_NOT_IMPLEMENTED | CURRENT_FINCO_CAPABILITY_GAP | DS!row13 = merchant_rev/total_rev (can exceed 100%). KUPI result **reproduced** via explicit schedule (KUPI_PROJECT_DSCR_SCHEDULE_RESULT_REPRODUCED). Generic configurability gap only. |
+| 5 | KUPI_VAT_FACILITY | UNSUPPORTED_INSTITUTIONAL_FEATURE | VAT financing facility not modelled. |
+| 6 | G2C_RESERVE_GATE_NOT_CAUSALLY_CLOSED | See sub-causes below | Three sub-causes unchanged from G3. |
+
+### C. Definition / Compatibility Differences
+
+| # | Gap ID | Classification | Evidence |
+|---|---|---|---|
+| 7 | KUPI_SPONSOR_CONTRIBUTION_TIMING_POLICY_GAP | DEFINITION_OR_TIMING_DIFFERENCE | Source places full SHL+Capital at FC; engine distributes through construction. |
+| 8 | KUPI_TAX_WORKBOOK_COMPATIBILITY_GAP | CLEAN_POLICY_VS_WORKBOOK_COMPATIBILITY | Standard Finco corporate tax vs source 5-period LCF + EBT-positive gate. |
+| 9 | KUPI_SENIOR_GAP_RESIDUAL | OPEN_SMALL_RESIDUAL | +498.819 kEUR (~0.34% of source Senior) after removing balancing from Bank CFADS. Do not tune. Causal closure deferred to Fable. |
+
+> **The large KUPI Senior gap (−11,443 kEUR) is NOT evidence of a debt-sculpting failure.**
+> Most of the gap is explained by the KUPI Excel Bank revenue formula omitting the 5 EUR/MWh
+> balancing cost that is otherwise part of project revenue economics. Finco keeps the revenue
+> stack economically consistent across Base and Bank cases.
 
 ---
 
@@ -218,10 +260,20 @@ For each G2C stop-boundary sub-cause, the Fable reviewer should classify:
 The G3 team does not pre-decide this classification.  All three sub-causes are currently
 annotated as known limitations, not blockers, pending the review decision.
 
-For the KUPI gap register, Fable should confirm the eight classifications above are
-appropriate for the MVP freeze scope, particularly:
-- Whether KUPI_SENIOR_GAP_RESIDUAL (+499 kEUR, ~0.34%) is acceptable as OPEN_SMALL_RESIDUAL.
-- Whether GENERIC_DYNAMIC_REVENUE_RATIO_DSCR_FORMULA_NOT_IMPLEMENTED should be MUST_CLOSE_BEFORE_G4.
+For the KUPI gap register, Fable should confirm the nine classifications above are
+appropriate for the MVP freeze scope. Key questions for Fable:
+
+1. **KUPI_SOURCE_BANK_REVENUE_BALANCING_OMISSION**: Does the Fable reviewer have access to
+   KUPI lender term-sheet or model documentation that explicitly excludes balancing cost from
+   Bank CFADS sizing? If yes, reclassify to SOURCE_EXPLICIT_LENDER_POLICY. If no, confirm
+   SOURCE_WORKBOOK_ASYMMETRY_OR_INCONSISTENCY is the correct classification.
+
+2. **KUPI_SENIOR_GAP_RESIDUAL** (+499 kEUR, ~0.34%): Acceptable as OPEN_SMALL_RESIDUAL for
+   MVP freeze, or does it require causal closure before G4?
+
+3. **GENERIC_DYNAMIC_REVENUE_RATIO_DSCR_FORMULA_NOT_IMPLEMENTED**: Should this be
+   MUST_CLOSE_BEFORE_G4, or acceptable as ACCEPTED_MVP_LIMITATION given KUPI result is
+   reproduced via explicit schedule?
 
 ---
 

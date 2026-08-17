@@ -16,14 +16,21 @@ KUPI: 144 MW Wind, Bosnia & Herzegovina.
 Source workbook SHA-256: 111178fb21109f55df45c0cc1ea108104ac8b6ed60f010ba75b6c498795f5954
 
 Documented gaps (all pre-authorized before testing):
+
+SOURCE WORKBOOK ISSUES:
+  KUPI_SOURCE_BANK_REVENUE_BALANCING_OMISSION   SOURCE_WORKBOOK_ASYMMETRY_OR_INCONSISTENCY
+  KUPI_CO2_UNUSED_TOGGLE                        SOURCE_INPUT_INCONSISTENCY
+
+TRUE FINCO CAPABILITY GAPS:
   KUPI_SHL_CONSTRUCTION_COMPOUNDING_GAP         CURRENT_FINCO_CAPABILITY_GAP
   GENERIC_DYNAMIC_REVENUE_RATIO_DSCR_FORMULA_NOT_IMPLEMENTED  CURRENT_FINCO_CAPABILITY_GAP
   KUPI_PROJECT_DSCR_SCHEDULE_RESULT_REPRODUCED  (via explicit schedule; no KUPI schedule gap)
+  KUPI_VAT_FACILITY                             UNSUPPORTED_INSTITUTIONAL_FEATURE
+
+DEFINITION / COMPATIBILITY DIFFERENCES:
   KUPI_SPONSOR_CONTRIBUTION_TIMING_POLICY_GAP   DEFINITION_OR_TIMING_DIFFERENCE
   KUPI_TAX_WORKBOOK_COMPATIBILITY_GAP           CLEAN_POLICY_VS_WORKBOOK_COMPATIBILITY
-  KUPI_BANK_CFADS_BALANCING_DEDUCTION_GAP       CLEAN_POLICY_VS_WORKBOOK_COMPATIBILITY
   KUPI_SENIOR_GAP_RESIDUAL                      OPEN_SMALL_RESIDUAL (~0.34% of source Senior)
-  KUPI_VAT_FACILITY                             UNSUPPORTED_INSTITUTIONAL_FEATURE
 
 ENGINE_DERIVED_SHL_ADAPTER_HANDSHAKE_DIAGNOSTIC:
   The fixture uses a two-stage handshake to derive clean_shl_principal_keur
@@ -52,18 +59,24 @@ KUPI_SHL_CONSTRUCTION_COMPOUNDING_GAP (CURRENT_FINCO_CAPABILITY_GAP):
 
   Do NOT use +1,394.678 as the method delta. Do NOT implement compound interest.
 
-KUPI_BANK_CFADS_BALANCING_DEDUCTION_GAP (CLEAN_POLICY_VS_WORKBOOK_COMPATIBILITY):
-  Finco applies balancing_cost_wind_eur_mwh=5.0 to bank CFADS revenue.
-  Source bank CFADS omits balancing deduction.
+KUPI_SOURCE_BANK_REVENUE_BALANCING_OMISSION (SOURCE_WORKBOOK_ASYMMETRY_OR_INCONSISTENCY):
+  GENERIC FINCO PRINCIPLE — balancing cost is a REVENUE-SIDE PROJECT INPUT.
+  The same revenue stack (gross energy + CO2 − balancing) applies to both Base and Bank cases.
+  The Bank case differs only in SCENARIO INPUTS (P90, price curve, DSCR target).
+  Source DS Bank CFADS = P90_revenue − OPEX — balancing NOT deducted.
+  No explicit lender evidence (term sheet, note, dedicated Bank balancing input) was found
+  to prove this omission is deliberate policy. Classification: source workbook asymmetry.
   Literal Finco Senior: 135,707.583 kEUR | Source Senior: 147,150.442 kEUR
-  No-balancing Finco Senior: 147,649.261 kEUR | Bridge: +11,941.678 kEUR
-  Residual vs source: +498.819 kEUR  →  KUPI_SENIOR_GAP_RESIDUAL  OPEN_SMALL_RESIDUAL
-  (~0.34% of source Senior — do not tune away).
+  Literal gap:          −11,442.860 kEUR
+  No-bal diagnostic Senior: 147,649.261 kEUR | Bridge: +11,941.678 kEUR
+  Residual after bridge:        +498.819 kEUR  →  KUPI_SENIOR_GAP_RESIDUAL  OPEN_SMALL_RESIDUAL
+  (~0.34% of source Senior — do not tune away; do not add bank_balancing_cost input).
 
 GENERIC_DYNAMIC_REVENUE_RATIO_DSCR_FORMULA_NOT_IMPLEMENTED (CURRENT_FINCO_CAPABILITY_GAP):
-  Source DS!row13 = merchant_revenue / total_revenue, which can exceed 100%
-  (AF13 ≈ 1.030598, AH13 ≈ 1.031398). KUPI DSCR result is reproduced via
-  explicit schedule; the gap is a generic configurability limitation only.
+  Source DS!row13 = merchant_revenue / total_revenue (merchant_revenue_ratio).
+  This ratio can EXCEED 100%: AF13 ≈ 1.030598, AH13 ≈ 1.031398.
+  Do NOT call it "merchant_share" — it is not normalised.
+  KUPI DSCR result reproduced via explicit schedule. Generic configurability gap only.
 """
 from __future__ import annotations
 
@@ -410,9 +423,11 @@ class TestE_BankBaseSeparation:
                 )
 
     def test_bank_cfads_balancing_gap_documented(self):
-        """Bank CFADS gap at P2: balancing cost explains ~1,088 kEUR.
+        """Bank CFADS gap at P2: source omits balancing cost that is part of project revenue.
 
-        KUPI_BANK_CFADS_BALANCING_DEDUCTION_GAP — CLEAN_POLICY_VS_WORKBOOK_COMPATIBILITY.
+        KUPI_SOURCE_BANK_REVENUE_BALANCING_OMISSION — SOURCE_WORKBOOK_ASYMMETRY_OR_INCONSISTENCY.
+        Finco applies the same revenue stack (gross energy − balancing) in both Base and Bank cases.
+        Source DS Bank CFADS omits the balancing deduction — no explicit lender policy evidence found.
         Source bank CFADS P2 anchor: 11,064.982 kEUR (from DS!H49 area).
         """
         pmr = _result().financing_result.project_model_result
@@ -434,14 +449,18 @@ class TestE_BankBaseSeparation:
         )
 
     def test_balancing_bridge_closes_senior_gap(self):
-        """Removing balancing cost from bank CFADS bridges the senior gap substantially.
+        """Diagnostic: removing balancing from Bank CFADS explains the majority of the Senior gap.
 
-        Literal Senior (bal=5):  ~135,708 kEUR
-        No-bal Senior  (bal=0):  ~147,649 kEUR
-        Source Senior:           147,150 kEUR
-        Bridge:                  +11,942 kEUR
-        Residual vs source:         +499 kEUR (DSCR target + minor production)
-        Classification: CLEAN_POLICY_VS_WORKBOOK_COMPATIBILITY (primary cause confirmed).
+        KUPI_SOURCE_BANK_REVENUE_BALANCING_OMISSION — SOURCE_WORKBOOK_ASYMMETRY_OR_INCONSISTENCY.
+        The no-balancing variant is a DIAGNOSTIC ONLY — not a production methodology candidate.
+        Finco keeps economically consistent revenue stacks across Base and Bank cases.
+        No bank_balancing_cost_wind_eur_mwh input exists or should be added.
+
+        Literal Senior (bal=5):  135,707.583 kEUR
+        No-bal diagnostic (bal=0): 147,649.261 kEUR
+        Source Senior:             147,150.442 kEUR
+        Bridge:                   +11,941.678 kEUR  (source omits balancing in Bank CFADS)
+        Residual: KUPI_SENIOR_GAP_RESIDUAL  +498.819 kEUR  (~0.34%)  OPEN_SMALL_RESIDUAL
         """
         from dataclasses import replace
 
