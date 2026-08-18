@@ -1343,3 +1343,203 @@ def test_gap1_one_period_uses_vector_in_funding_schedule():
 
     print(f"\n--- GAP 1 Uses Vector Handshake ---")
     print(f"Input: (19800, 13200) → Reported: ({uses_0:.3f}, {uses_1:.3f})")
+
+
+# ── BLOCKER 1 Prefunding Bridge Tests (Step 7 A–G) ───────────────────────────
+
+def _make_solar_timing_project(
+    timing_policy: "SponsorFundingTimingPolicy",
+    construction_period_uses_keur: "tuple[float, ...]",
+    shl_dcf: float = 2.0,
+    construction_months: int = 24,
+) -> "ProjectInputs":
+    """Build a Solar project with explicit construction uses for prefunding bridge tests."""
+    from app.project_factories import create_default_solar_project
+    import dataclasses
+    from finco_core.inputs._models import SponsorFundingTimingPolicy as _P
+    base = create_default_solar_project()
+    # Use 24 months → 2 model construction periods
+    info = dataclasses.replace(base.info, construction_months=construction_months)
+    fin = dataclasses.replace(
+        base.financing,
+        shl_construction_day_count_fraction=shl_dcf,
+        sponsor_funding_timing_policy=timing_policy,
+        construction_period_uses_keur=construction_period_uses_keur,
+    )
+    return dataclasses.replace(base, info=info, financing=fin)
+
+
+def test_all_at_fc_prefunding_bridge_vectors():
+    """A: ALL_AT_FC — contribution=[principal,0] ≠ allocation=[alloc0,alloc1]; unutilised rolls correctly."""
+    from financial_engine.financing.project import run_project_financing_model
+    from finco_core.inputs._models import SponsorFundingTimingPolicy
+
+    project = _make_solar_timing_project(
+        SponsorFundingTimingPolicy.ALL_AT_FC,
+        construction_period_uses_keur=(4000.0, 29000.0),
+    )
+    result = run_project_financing_model(project)
+    shl_principal = result.derived_shl_cash_principal_keur
+    periods = result.construction_funding.periods
+    assert len(periods) == 2
+
+    alloc_0 = periods[0].shl_allocation_to_uses_keur
+    alloc_1 = periods[1].shl_allocation_to_uses_keur
+    contrib_0 = periods[0].sponsor_shl_cash_contribution_keur
+    contrib_1 = periods[1].sponsor_shl_cash_contribution_keur
+    opening_0 = periods[0].opening_unutilised_shl_cash_keur
+    closing_0 = periods[0].closing_unutilised_shl_cash_keur
+    opening_1 = periods[1].opening_unutilised_shl_cash_keur
+    closing_1 = periods[1].closing_unutilised_shl_cash_keur
+
+    # ALL_AT_FC: full principal contributed in period 0
+    assert abs(contrib_0 - shl_principal) < 1e-6, (
+        f"ALL_AT_FC contrib[0] must equal SHL principal {shl_principal:.3f}, got {contrib_0:.3f}"
+    )
+    assert abs(contrib_1 - 0.0) < 1e-6, (
+        f"ALL_AT_FC contrib[1] must be 0, got {contrib_1:.3f}"
+    )
+
+    # Allocation ≠ contribution for period 0 (timing differs from economics)
+    assert abs(alloc_0 - contrib_0) > 1.0, (
+        "ALL_AT_FC: alloc[0] must differ from contrib[0] — Layer A ≠ Layer B"
+    )
+
+    # Prefunding bridge roll-forward
+    assert abs(opening_0 - 0.0) < 1e-6, "Opening period 0 must be 0"
+    assert abs(closing_0 - (contrib_0 - alloc_0)) < 1e-6, (
+        f"closing[0] = contrib[0] - alloc[0]: expected {contrib_0 - alloc_0:.3f}, got {closing_0:.3f}"
+    )
+    assert abs(opening_1 - closing_0) < 1e-6, "opening[1] must equal closing[0]"
+    assert abs(closing_1 - 0.0) < 1e-6, (
+        f"Final closing unutilised must be 0, got {closing_1:.3f}"
+    )
+
+
+def test_pro_rata_prefunding_bridge_always_zero():
+    """B: PRO_RATA — allocation == contribution every period → unutilised always 0."""
+    from financial_engine.financing.project import run_project_financing_model
+    from finco_core.inputs._models import SponsorFundingTimingPolicy
+
+    project = _make_solar_timing_project(
+        SponsorFundingTimingPolicy.PRO_RATA_CONSTRUCTION,
+        construction_period_uses_keur=(4000.0, 29000.0),
+    )
+    result = run_project_financing_model(project)
+    for p in result.construction_funding.periods:
+        assert abs(p.shl_allocation_to_uses_keur - p.sponsor_shl_cash_contribution_keur) < 1e-6, (
+            f"PRO_RATA period {p.period_index}: alloc must equal contribution"
+        )
+        assert abs(p.opening_unutilised_shl_cash_keur) < 1e-6, (
+            f"PRO_RATA period {p.period_index}: opening unutilised must be 0"
+        )
+        assert abs(p.closing_unutilised_shl_cash_keur) < 1e-6, (
+            f"PRO_RATA period {p.period_index}: closing unutilised must be 0"
+        )
+
+
+def test_no_negative_source_draws_all_at_fc():
+    """C: No negative source draws in any period for ALL_AT_FC."""
+    from financial_engine.financing.project import run_project_financing_model
+    from finco_core.inputs._models import SponsorFundingTimingPolicy
+
+    project = _make_solar_timing_project(
+        SponsorFundingTimingPolicy.ALL_AT_FC,
+        construction_period_uses_keur=(4000.0, 29000.0),
+    )
+    result = run_project_financing_model(project)
+    for p in result.construction_funding.periods:
+        assert p.senior_draw_keur >= -1e-9, f"Period {p.period_index}: negative senior draw"
+        assert p.junior_or_other_main_funding_draw_keur >= -1e-9, f"Period {p.period_index}: negative junior draw"
+        assert p.share_capital_draw_keur >= -1e-9, f"Period {p.period_index}: negative share draw"
+        assert p.share_premium_draw_keur >= -1e-9, f"Period {p.period_index}: negative share premium draw"
+        assert p.other_committed_equity_draw_keur >= -1e-9, f"Period {p.period_index}: negative other draw"
+        assert p.additional_equity_draw_keur >= -1e-9, f"Period {p.period_index}: negative add equity draw"
+        assert p.shl_cash_draw_keur >= -1e-9, f"Period {p.period_index}: negative shl allocation draw"
+        assert p.sponsor_shl_cash_contribution_keur >= -1e-9, f"Period {p.period_index}: negative shl contribution"
+
+
+def test_allocation_total_equals_shl_principal():
+    """D: sum(shl_allocation_to_uses) == SHL principal for ALL_AT_FC."""
+    from financial_engine.financing.project import run_project_financing_model
+    from finco_core.inputs._models import SponsorFundingTimingPolicy
+
+    project = _make_solar_timing_project(
+        SponsorFundingTimingPolicy.ALL_AT_FC,
+        construction_period_uses_keur=(4000.0, 29000.0),
+    )
+    result = run_project_financing_model(project)
+    shl_principal = result.derived_shl_cash_principal_keur
+    total_alloc = sum(p.shl_allocation_to_uses_keur for p in result.construction_funding.periods)
+    assert abs(total_alloc - shl_principal) < 1e-6, (
+        f"sum(allocation) {total_alloc:.6f} != SHL principal {shl_principal:.6f}"
+    )
+
+
+def test_contribution_total_equals_shl_principal():
+    """E: sum(sponsor_shl_cash_contribution) == SHL principal for ALL_AT_FC."""
+    from financial_engine.financing.project import run_project_financing_model
+    from finco_core.inputs._models import SponsorFundingTimingPolicy
+
+    project = _make_solar_timing_project(
+        SponsorFundingTimingPolicy.ALL_AT_FC,
+        construction_period_uses_keur=(4000.0, 29000.0),
+    )
+    result = run_project_financing_model(project)
+    shl_principal = result.derived_shl_cash_principal_keur
+    total_contrib = sum(p.sponsor_shl_cash_contribution_keur for p in result.construction_funding.periods)
+    assert abs(total_contrib - shl_principal) < 1e-6, (
+        f"sum(contribution) {total_contrib:.6f} != SHL principal {shl_principal:.6f}"
+    )
+
+
+def test_final_unutilised_shl_cash_is_zero():
+    """F: closing_unutilised_shl_cash_keur in final period is 0 for ALL_AT_FC."""
+    from financial_engine.financing.project import run_project_financing_model
+    from finco_core.inputs._models import SponsorFundingTimingPolicy
+
+    project = _make_solar_timing_project(
+        SponsorFundingTimingPolicy.ALL_AT_FC,
+        construction_period_uses_keur=(4000.0, 29000.0),
+    )
+    result = run_project_financing_model(project)
+    final_period = result.construction_funding.periods[-1]
+    assert abs(final_period.closing_unutilised_shl_cash_keur) < 1e-6, (
+        f"Final closing unutilised must be 0, got {final_period.closing_unutilised_shl_cash_keur:.9f}"
+    )
+
+
+def test_g2b_reads_sponsor_shl_cash_contribution_not_allocation():
+    """G: G2B reads sponsor_shl_cash_contribution_keur for Sponsor cashflows (not allocation field).
+
+    ALL_AT_FC: G2B construction cashflows must show [principal, 0], not the waterfall allocation.
+    """
+    from financial_engine.financing.project import run_project_financing_model
+    from financial_engine.sponsor_returns import run_project_sponsor_returns_model
+    from finco_core.inputs._models import SponsorFundingTimingPolicy
+
+    project = _make_solar_timing_project(
+        SponsorFundingTimingPolicy.ALL_AT_FC,
+        construction_period_uses_keur=(4000.0, 29000.0),
+    )
+    result_g2a = run_project_financing_model(project)
+    result_g2b = run_project_sponsor_returns_model(project)
+
+    shl_principal = result_g2a.derived_shl_cash_principal_keur
+    construction_cfs = [p for p in result_g2b.cashflow_periods if p.is_construction]
+    assert len(construction_cfs) == 2
+
+    # Period 0: should reflect full SHL cash contribution (ALL_AT_FC)
+    cf0 = construction_cfs[0].shl_cash_contribution_keur
+    cf1 = construction_cfs[1].shl_cash_contribution_keur
+    assert abs(cf0 - shl_principal) < 1e-6, (
+        f"G2B period 0 SHL contribution must be {shl_principal:.3f} (principal), got {cf0:.3f}"
+    )
+    assert abs(cf1 - 0.0) < 1e-6, (
+        f"G2B period 1 SHL contribution must be 0 (ALL_AT_FC), got {cf1:.3f}"
+    )
+    # Verify it's different from the waterfall allocation (allocation ≠ contribution for ALL_AT_FC)
+    alloc_0 = result_g2a.construction_funding.periods[0].shl_allocation_to_uses_keur
+    assert abs(cf0 - alloc_0) > 1.0, (
+        f"G2B must consume contribution ({cf0:.3f}), not allocation ({alloc_0:.3f})"
+    )

@@ -237,7 +237,12 @@ def run_project_sponsor_returns_model(
         share_prem = cp.share_premium_draw_keur
         other_committed = cp.other_committed_equity_draw_keur
         add_eq = cp.additional_equity_draw_keur
-        shl_draw = cp.shl_cash_draw_keur
+        # Fix 3 / BLOCKER 1: always use Layer B (sponsor_shl_cash_contribution_keur) for G2B
+        # sponsor cashflows. In stack.py this is always populated:
+        #   - Legacy/PRO_RATA: contribution == allocation (shl_cash_draw_keur).
+        #   - ALL_AT_FC explicit: contribution = [principal, 0, 0]; allocation = [alloc0, alloc1, ...].
+        # Using the contribution field directly gives correct sponsor cashflow timing for all paths.
+        shl_draw = cp.sponsor_shl_cash_contribution_keur
 
         pure_equity_net = -(share_cap + share_prem + other_committed + add_eq)
         total_sponsor_net = pure_equity_net - shl_draw

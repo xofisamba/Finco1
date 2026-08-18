@@ -760,12 +760,19 @@ def test_shl_signed_cash_handshake_non_negative_periods():
 # ── Non-zero PIK test ─────────────────────────────────────────────────────────
 
 def _solar_with_pik():
-    """Generic Solar with shl_construction_day_count_fraction=1.0 to produce non-zero PIK."""
+    """Generic Solar with shl_construction_day_count_fraction=1.0 to produce non-zero PIK.
+
+    Solar has 2 construction periods (≈6 months each). Total project uses = 33 000 kEUR.
+    An explicit construction_period_uses_keur vector is required by the fail-closed guard
+    (PRO_RATA_CONSTRUCTION with >1 period requires explicit uses).  Split evenly.
+    """
+    base = _solar_project()
     return dataclasses.replace(
-        _solar_project(),
+        base,
         financing=dataclasses.replace(
-            _solar_project().financing,
+            base.financing,
             shl_construction_day_count_fraction=1.0,
+            construction_period_uses_keur=(16500.0, 16500.0),
         ),
     )
 

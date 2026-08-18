@@ -165,8 +165,29 @@ def build_construction_funding_schedule(
                 else total_project_uses_keur - cumulative_uses
             )
         draws: dict[str, float] = {}
-        if shl_cash_per_period_keur is not None:
-            # BLOCKER C fix: SHL draw fixed per timing-resolved schedule.
+        if shl_allocation_per_period_keur is not None:
+            # BLOCKER 1 fix: Layer A (economic allocation) drives period need; Layer B (cash
+            # contribution) is tracked only in the prefunding bridge, NOT subtracted from Uses.
+            # ALL_AT_FC: shl_cash[0]=100, shl_alloc[0]=30 → need = 30-30 = 0 (not 30-100 = -70).
+            _econ_shl = shl_allocation_per_period_keur[index - 1]
+            draws["shl"] = _econ_shl
+            remaining["shl"] -= _econ_shl
+            cumulative["shl"] += _econ_shl
+            need = uses - _econ_shl
+            for key in ("share", "share_premium", "other_committed", "additional_equity",
+                        "junior", "senior"):
+                draw = min(need, remaining[key])
+                if draw < -1e-9:
+                    raise ValueError(
+                        f"G2A_NEGATIVE_SOURCE_DRAW: period={index}, source={key}, draw={draw:.9f}"
+                    )
+                draw = max(0.0, draw)
+                draws[key] = draw
+                remaining[key] -= draw
+                cumulative[key] += draw
+                need -= draw
+        elif shl_cash_per_period_keur is not None:
+            # Legacy BLOCKER C fix: no explicit allocation vector; cash == allocation (PRO_RATA).
             # Non-SHL sources fill remaining need in waterfall order.
             draws["shl"] = shl_cash_per_period_keur[index - 1]
             remaining["shl"] -= draws["shl"]
@@ -200,14 +221,14 @@ def build_construction_funding_schedule(
         _cf_date: date | None = None
         if period_dates is not None:
             _p_start, _p_end, _cf_date = period_dates[index - 1]
-        # GAP 2: prefunding bridge fields.
-        # shl_allocation_to_uses_keur = waterfall allocation (Layer A).
-        # sponsor_shl_cash_contribution_keur = cash contribution (Layer B, current shl_cash_draw_keur).
-        _shl_contribution = draws["shl"]
-        _shl_allocation = (
-            shl_allocation_per_period_keur[index - 1]
-            if shl_allocation_per_period_keur is not None
-            else _shl_contribution  # PRO_RATA/legacy: allocation == contribution
+        # GAP 2 / BLOCKER 1: prefunding bridge fields.
+        # draws["shl"] now always holds the Layer A economic allocation.
+        # Layer B (Sponsor cash contribution) comes from shl_cash_per_period_keur when provided.
+        _shl_allocation = draws["shl"]   # Layer A: economic allocation
+        _shl_contribution = (
+            shl_cash_per_period_keur[index - 1]   # Layer B: actual Sponsor cash timing
+            if shl_cash_per_period_keur is not None
+            else _shl_allocation               # PRO_RATA/legacy: cash == allocation
         )
         _closing_unutilised = opening_unutilised + _shl_contribution - _shl_allocation
         if _closing_unutilised < -1e-6:
