@@ -21,7 +21,7 @@ if TYPE_CHECKING:
     from finco_core.inputs import ProjectInputs
     from financial_engine.results import OperatingPeriodResult
 
-from finco_core.inputs._models import PeriodFrequency
+from finco_core.inputs._models import GearingBasisMode, PeriodFrequency
 from financial_engine.senior_debt.inputs import (
     PeriodDebtServiceAvailability,
     PeriodDscrTarget,
@@ -62,9 +62,22 @@ def build_senior_debt_contract_from_project_inputs(
     rate_cfg = fin.senior_debt_interest_config
 
     # --- Sizing mode mapping ---
+    # When an explicit gearing basis is configured (TOTAL_PROJECT_USES), the solver
+    # must apply COMBINED_MINIMUM so the gearing cap is enforced.  Without a gearing
+    # basis the solver runs DSCR-only (useful for pure DSCR capacity diagnostics).
     raw_mode = fin.debt_sizing_mode
+    gearing_basis = fin.gearing_basis_mode
     if raw_mode == DebtSizingMode.FLAT_DSCR_SCULPTED:
-        sizing_mode = SeniorDebtSizingMode.DSCR_SCULPTED
+        if gearing_basis == GearingBasisMode.TOTAL_PROJECT_USES:
+            sizing_mode = SeniorDebtSizingMode.COMBINED_MINIMUM
+        elif gearing_basis is None:
+            sizing_mode = SeniorDebtSizingMode.DSCR_SCULPTED
+        else:
+            raise ValueError(
+                f"build_senior_debt_contract_from_project_inputs: unsupported "
+                f"gearing_basis_mode={gearing_basis!r}. "
+                f"Only TOTAL_PROJECT_USES and None are supported."
+            )
     else:
         raise ValueError(
             f"build_senior_debt_contract_from_project_inputs: unsupported "
@@ -163,12 +176,31 @@ def build_senior_debt_contract_from_project_inputs(
             for i, p in enumerate(debt_periods)
         )
 
+    # --- Gearing contract ---
+    # When COMBINED_MINIMUM is active, wire the gearing cap from the canonical
+    # Total Project Uses authority.  Fail closed if gearing_basis_mode is set
+    # but the resulting eligible cost would be zero (contract violation).
+    if sizing_mode == SeniorDebtSizingMode.COMBINED_MINIMUM:
+        from financial_engine.financing.project_uses import compute_project_uses
+        project_uses = compute_project_uses(project_inputs)
+        eligible_cost = project_uses.total_project_uses_keur
+        maximum_gearing = fin.gearing_ratio
+        if eligible_cost <= 0.0:
+            raise ValueError(
+                "GEARING_BASIS_ELIGIBLE_COST_ZERO: "
+                f"gearing_basis_mode={gearing_basis!r} but computed Total Project Uses "
+                f"is {eligible_cost}. Cannot apply gearing cap with zero eligible basis."
+            )
+    else:
+        eligible_cost = 0.0
+        maximum_gearing = None
+
     policy = SeniorDebtPolicy(
         policy_id="clean-project-senior-debt-v1",
         policy_version="1.0.0",
         sizing_mode=sizing_mode,
         target_dscr=fin.target_dscr,
-        maximum_gearing=None,
+        maximum_gearing=maximum_gearing,
         annual_fixed_rate=None,
         periods_per_year=periods_per_year,
         day_count_convention=day_count,
@@ -182,7 +214,7 @@ def build_senior_debt_contract_from_project_inputs(
     )
 
     inputs = SeniorDebtInputs(
-        eligible_project_cost_keur=0.0,
+        eligible_project_cost_keur=eligible_cost,
         initial_debt_guess_keur=(
             fin.fixed_debt_keur
             if fin.fixed_debt_keur is not None and fin.fixed_debt_keur > 0.0

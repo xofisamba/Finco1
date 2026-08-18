@@ -49,8 +49,14 @@ def test_bank_target_dscr_and_base_dscr_remain_separate_authorities():
     from financial_engine.orchestrator import run_senior_debt_model
 
     project = create_default_solar_project()
+    # Strip gearing so DSCR sculpting is unconstrained; when gearing binds the
+    # scaled-down debt profile inflates solver_bank_dscr above target.
+    unconstrained = dataclasses.replace(
+        project,
+        financing=dataclasses.replace(project.financing, gearing_basis_mode=None),
+    )
     result = run_senior_debt_model(
-        build_senior_debt_model_input_from_project_inputs(project)
+        build_senior_debt_model_input_from_project_inputs(unconstrained)
     )
     service = result.senior_debt.senior_debt_service_keur
     bank = dict(zip(result.debt_sizing.period_indices, result.debt_sizing.solver_bank_dscr))
@@ -59,10 +65,10 @@ def test_bank_target_dscr_and_base_dscr_remain_separate_authorities():
     for period, debt_service in zip(result.senior_debt.period_indices, service):
         if debt_service <= 1e-9:
             continue
-        assert bank[period] == pytest.approx(project.financing.target_dscr, abs=1e-10)
+        assert bank[period] == pytest.approx(unconstrained.financing.target_dscr, abs=1e-10)
         observed_base_dscr.append(base[period] / debt_service)
     assert any(
-        value != pytest.approx(project.financing.target_dscr, abs=1e-8)
+        value != pytest.approx(unconstrained.financing.target_dscr, abs=1e-8)
         for value in observed_base_dscr
     )
 

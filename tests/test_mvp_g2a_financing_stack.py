@@ -202,11 +202,16 @@ def test_g0_capacity_result_exposes_dscr_capacity_without_applying_gearing():
     result = run_senior_debt_model(
         build_senior_debt_model_input_from_project_inputs(create_default_solar_project())
     )
-    assert result.senior_debt.debt_size_keur == pytest.approx(28_458.117382991935)
+    # With gearing_basis_mode=TOTAL_PROJECT_USES and gearing_ratio=0.75, the adapter
+    # now correctly applies COMBINED_MINIMUM. Final Senior is gearing-capped at 24,750;
+    # the DSCR capacity (28,458) is preserved as a diagnostic.
+    assert result.senior_debt.debt_size_keur == pytest.approx(24_750.0)
+    # DSCR capacity from the G0 run includes the factory SHL (unlike the G2A capacity
+    # run which uses candidate_shl=0); result is slightly higher than the G2A value.
     assert result.senior_debt.diagnostics["dscr_debt_capacity_keur"] == pytest.approx(
-        result.senior_debt.debt_size_keur
+        28_467.097994078464, rel=1e-6
     )
-    assert result.senior_debt.diagnostics["gearing_debt_capacity_keur"] is None
+    assert result.senior_debt.diagnostics["gearing_debt_capacity_keur"] == pytest.approx(24_750.0)
 
 
 def test_fixed_sources_exceeding_uses_fail_instead_of_hiding_negative_residual():

@@ -211,8 +211,11 @@ def test_generic_shl_contract_is_causal_and_independent_of_bank_case(factory_nam
         assert sum(changed.debt_sizing.bank_cfads_keur) > sum(
             base.debt_sizing.bank_cfads_keur
         )
-        assert changed.senior_debt.debt_size_keur > base.senior_debt.debt_size_keur
-    assert p50_bank.senior_debt.debt_size_keur != pytest.approx(base.senior_debt.debt_size_keur)
+        # SHL causality operates through DSCR capacity; the final Senior may be
+        # gearing-capped at the same level even when DSCR capacity increases.
+        assert changed.senior_debt.diagnostics["dscr_debt_capacity_keur"] > base.senior_debt.diagnostics["dscr_debt_capacity_keur"]
+    # P50 bank case gives higher DSCR capacity; final Senior may remain gearing-capped.
+    assert p50_bank.senior_debt.diagnostics["dscr_debt_capacity_keur"] != pytest.approx(base.senior_debt.diagnostics["dscr_debt_capacity_keur"])
     assert max(p50_bank.shareholder_loan.shl_drawdown_keur) == pytest.approx(
         max(base.shareholder_loan.shl_drawdown_keur)
     )
@@ -279,7 +282,9 @@ def test_generic_bank_case_mutation_changes_sizing_without_mutating_base_case():
         base.debt_sizing.bank_production_mwh
     )
     assert sum(p50_bank.debt_sizing.bank_cfads_keur) > sum(base.debt_sizing.bank_cfads_keur)
-    assert p50_bank.senior_debt.debt_size_keur > base.senior_debt.debt_size_keur
+    # When gearing binds, the final Senior is capped at the gearing level regardless of DSCR.
+    # The DSCR capacity diagnostic captures the increase.
+    assert p50_bank.senior_debt.diagnostics["dscr_debt_capacity_keur"] > base.senior_debt.diagnostics["dscr_debt_capacity_keur"]
     assert p50_bank.operating_schedules.production_mwh == pytest.approx(
         base.operating_schedules.production_mwh
     )
@@ -309,7 +314,8 @@ def test_generic_price_downside_reduces_revenue_ebitda_bank_cfads_and_debt():
     assert sum(downside.operating_schedules.revenue_keur) < sum(base.operating_schedules.revenue_keur)
     assert sum(downside.operating_schedules.ebitda_keur) < sum(base.operating_schedules.ebitda_keur)
     assert sum(downside.debt_sizing.bank_cfads_keur) < sum(base.debt_sizing.bank_cfads_keur)
-    assert downside.senior_debt.debt_size_keur < base.senior_debt.debt_size_keur
+    # When gearing binds, verify the price shock reduces DSCR capacity (not just final Senior).
+    assert downside.senior_debt.diagnostics["dscr_debt_capacity_keur"] < base.senior_debt.diagnostics["dscr_debt_capacity_keur"]
 
 
 def test_generic_opex_downside_reduces_ebitda_cfads_and_debt():
@@ -329,7 +335,8 @@ def test_generic_opex_downside_reduces_ebitda_cfads_and_debt():
     assert sum(downside.operating_schedules.ebitda_keur) < sum(base.operating_schedules.ebitda_keur)
     assert sum(downside.tax_and_cfads.cfads_keur) < sum(base.tax_and_cfads.cfads_keur)
     assert sum(downside.debt_sizing.bank_cfads_keur) < sum(base.debt_sizing.bank_cfads_keur)
-    assert downside.senior_debt.debt_size_keur < base.senior_debt.debt_size_keur
+    # When gearing binds, verify the opex shock reduces DSCR capacity (not just final Senior).
+    assert downside.senior_debt.diagnostics["dscr_debt_capacity_keur"] < base.senior_debt.diagnostics["dscr_debt_capacity_keur"]
 
 
 def test_generic_target_dscr_increase_reduces_debt_capacity():
@@ -347,7 +354,8 @@ def test_generic_target_dscr_increase_reduces_debt_capacity():
         )
     )
 
-    assert stricter.senior_debt.debt_size_keur < base.senior_debt.debt_size_keur
+    # When gearing binds, verify stricter DSCR reduces DSCR capacity (not just final Senior).
+    assert stricter.senior_debt.diagnostics["dscr_debt_capacity_keur"] < base.senior_debt.diagnostics["dscr_debt_capacity_keur"]
 
 
 @pytest.mark.parametrize(
@@ -358,7 +366,13 @@ def test_generic_bank_sizing_dscr_is_the_target_authority(factory_name):
     from app import project_factories
 
     project = getattr(project_factories, factory_name)()
-    result = _run(project)
+    # Strip gearing constraint so DSCR sculpting is unconstrained: this tests the
+    # DSCR authority mechanism in isolation, not the combined-minimum cap.
+    unconstrained = dataclasses.replace(
+        project,
+        financing=dataclasses.replace(project.financing, gearing_basis_mode=None),
+    )
+    result = _run(unconstrained)
     senior = result.senior_debt
     sizing = result.debt_sizing
     assert senior is not None
@@ -376,11 +390,11 @@ def test_generic_bank_sizing_dscr_is_the_target_authority(factory_name):
             continue
         bank_cfads = bank_cfads_by_period[period_index]
         assert debt_service == pytest.approx(
-            bank_cfads / project.financing.target_dscr,
+            bank_cfads / unconstrained.financing.target_dscr,
             abs=1e-8,
         )
         assert solver_bank_dscr_by_period[period_index] == pytest.approx(
-            project.financing.target_dscr,
+            unconstrained.financing.target_dscr,
             abs=1e-10,
         )
 
@@ -393,7 +407,14 @@ def test_generic_base_dscr_is_independent_of_bank_sizing_case(factory_name):
     from app import project_factories
 
     project = getattr(project_factories, factory_name)()
-    result = _run(project)
+    # Strip gearing constraint so DSCR-sculpted debt service is the authority.
+    # When gearing binds, the sculpted profile is scaled down and base DSCR may
+    # never fall below target; this test is about the base/bank CFADS split.
+    unconstrained = dataclasses.replace(
+        project,
+        financing=dataclasses.replace(project.financing, gearing_basis_mode=None),
+    )
+    result = _run(unconstrained)
     senior = result.senior_debt
     sizing = result.debt_sizing
     tax_and_cfads = result.tax_and_cfads
@@ -415,7 +436,7 @@ def test_generic_base_dscr_is_independent_of_bank_sizing_case(factory_name):
             base_cfads_by_period[period_index] / debt_service,
             abs=1e-10,
         )
-        if base_dscr < project.financing.target_dscr:
+        if base_dscr < unconstrained.financing.target_dscr:
             below_target.append(period_index)
 
     assert below_target
@@ -463,12 +484,13 @@ def test_generic_shl_changes_senior_capacity_only_through_tax_cfads(factory_name
     assert sum(with_shl.debt_sizing.bank_cfads_keur) > sum(
         without_shl.debt_sizing.bank_cfads_keur
     )
-    assert with_shl.senior_debt.debt_size_keur > without_shl.senior_debt.debt_size_keur
+    # SHL causality operates via DSCR capacity; final Senior may be gearing-capped.
+    assert with_shl.senior_debt.diagnostics["dscr_debt_capacity_keur"] > without_shl.senior_debt.diagnostics["dscr_debt_capacity_keur"]
 
     # Keeping the SHL schedule but removing its tax deduction removes the entire
     # Senior-capacity effect: there is no direct SHL-to-debt or terminal top-up path.
-    assert non_deductible.senior_debt.debt_size_keur == pytest.approx(
-        without_shl.senior_debt.debt_size_keur,
+    assert non_deductible.senior_debt.diagnostics["dscr_debt_capacity_keur"] == pytest.approx(
+        without_shl.senior_debt.diagnostics["dscr_debt_capacity_keur"],
         abs=1e-8,
     )
     assert non_deductible.debt_sizing.bank_cfads_keur == pytest.approx(
