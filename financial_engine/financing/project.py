@@ -8,6 +8,8 @@ from finco_core.inputs import GearingBasisMode, ProjectInputs, SponsorFundingMod
 from financial_engine.adapters.project_inputs import (
     build_senior_debt_model_input_from_project_inputs,
 )
+from domain.construction.config import FundingSourceCaps
+from domain.construction.funding_allocation import allocate_source_waterfall
 from financial_engine.financing.contracts import ProjectFinancingResult, ProjectUses
 from financial_engine.financing.project_uses import compute_project_uses
 from financial_engine.financing.stack import (
@@ -129,31 +131,42 @@ def run_project_financing_model(
             # BLOCKER A: use actual construction Uses for PRO_RATA when provided.
             _uses = getattr(fin, "construction_period_uses_keur", ())
             if _uses:
-                from financial_engine.shl.construction import build_shl_construction_draw_schedule_from_uses
-                # BLOCKER A fix: true net SHL need = Uses[t] - Senior[t] - Junior[t] - Other[t].
-                # Use linear (equal) per-period split of each non-SHL source.
-                # Senior estimate uses gearing_capacity (known pre-loop, binding constraint).
-                _n = len(_construction_period_template)
-                _linear_senior = tuple(gearing_capacity / _n for _ in range(_n))
-                _linear_junior = tuple(
-                    fin.junior_or_other_project_funding_keur / _n for _ in range(_n)
+                from finco_core.inputs._models import SponsorFundingTimingPolicy as _Policy
+                # Layer A — cumulative SPONSOR_FIRST_RESIDUAL_SENIOR waterfall.
+                # Equity cap = all fixed equity sources + additional_equity from previous iteration
+                # (additional_equity starts at 0.0 and converges each iteration).
+                # Senior cap set to total_project_uses to guarantee waterfall coverage;
+                # the waterfall fills senior last so per-period SHL draws are unaffected by
+                # how much senior is allocated.
+                _equity_cap = (
+                    fin.share_capital_keur
+                    + fin.share_premium_keur
+                    + fin.other_equity_funding_before_shl_keur
+                    + additional_equity
                 )
-                _linear_other = tuple(
-                    (
-                        fin.share_capital_keur
-                        + fin.share_premium_keur
-                        + fin.other_equity_funding_before_shl_keur
-                    ) / _n
-                    for _ in range(_n)
+                _waterfall_caps = FundingSourceCaps(
+                    equity_shares_keur=_equity_cap,
+                    shl_keur=candidate_shl,
+                    junior_keur=fin.junior_or_other_project_funding_keur,
+                    senior_debt_keur=uses.total_project_uses_keur,  # generous cap; senior is residual
                 )
-                _iter_draw_schedule = build_shl_construction_draw_schedule_from_uses(
-                    shl_cash_principal_keur=candidate_shl,
-                    period_uses_keur=_uses,
-                    period_senior_draws_keur=_linear_senior,
-                    period_junior_draws_keur=_linear_junior,
-                    period_other_sources_keur=_linear_other,
-                    period_dcfs=tuple(p.day_count_fraction for p in _construction_period_template),
-                    policy=_timing_policy,
+                _waterfall_entries = allocate_source_waterfall(tuple(_uses), _waterfall_caps)
+                _waterfall_shl_per_period = tuple(e.shl_draw_keur for e in _waterfall_entries)
+
+                # Layer B — SHL cash timing policy (orthogonal to Layer A allocation).
+                if _timing_policy == _Policy.PRO_RATA_CONSTRUCTION:
+                    _shl_cash_per_period = _waterfall_shl_per_period
+                else:  # ALL_AT_FC
+                    _shl_cash_per_period = tuple(
+                        candidate_shl if i == 0 else 0.0 for i in range(len(_uses))
+                    )
+                _iter_draw_schedule = tuple(
+                    ShlConstructionPeriodInput(
+                        draw_keur=d,
+                        day_count_fraction=p.day_count_fraction,
+                        period_index=p.period_index,
+                    )
+                    for d, p in zip(_shl_cash_per_period, _construction_period_template)
                 )
             else:
                 _iter_draw_schedule = build_shl_construction_draw_schedule(
@@ -250,30 +263,35 @@ def run_project_financing_model(
         timing_policy = fin.sponsor_funding_timing_policy
         _uses = getattr(fin, "construction_period_uses_keur", ())
         if _uses:
-            from financial_engine.shl.construction import build_shl_construction_draw_schedule_from_uses
-            # BLOCKER A fix: post-convergence uses final senior commitment (authoritative).
-            _n = len(_construction_period_template)
-            _final_senior_keur = model_result.senior_debt.debt_size_keur
-            _final_linear_senior = tuple(_final_senior_keur / _n for _ in range(_n))
-            _final_linear_junior = tuple(
-                fin.junior_or_other_project_funding_keur / _n for _ in range(_n)
+            from finco_core.inputs._models import SponsorFundingTimingPolicy as _Policy
+            # Post-convergence: Layer A waterfall with authoritative final values.
+            _final_equity_cap = (
+                fin.share_capital_keur
+                + fin.share_premium_keur
+                + fin.other_equity_funding_before_shl_keur
+                + additional_equity
             )
-            _final_linear_other = tuple(
-                (
-                    fin.share_capital_keur
-                    + fin.share_premium_keur
-                    + fin.other_equity_funding_before_shl_keur
-                ) / _n
-                for _ in range(_n)
+            _final_caps = FundingSourceCaps(
+                equity_shares_keur=_final_equity_cap,
+                shl_keur=derived_shl,
+                junior_keur=fin.junior_or_other_project_funding_keur,
+                senior_debt_keur=uses.total_project_uses_keur,
             )
-            _final_draw_schedule = build_shl_construction_draw_schedule_from_uses(
-                shl_cash_principal_keur=derived_shl,
-                period_uses_keur=_uses,
-                period_senior_draws_keur=_final_linear_senior,
-                period_junior_draws_keur=_final_linear_junior,
-                period_other_sources_keur=_final_linear_other,
-                period_dcfs=tuple(p.day_count_fraction for p in _construction_period_template),
-                policy=timing_policy,
+            _final_waterfall = allocate_source_waterfall(tuple(_uses), _final_caps)
+            _final_waterfall_shl = tuple(e.shl_draw_keur for e in _final_waterfall)
+            if timing_policy == _Policy.PRO_RATA_CONSTRUCTION:
+                _final_shl_cash = _final_waterfall_shl
+            else:  # ALL_AT_FC
+                _final_shl_cash = tuple(
+                    derived_shl if i == 0 else 0.0 for i in range(len(_uses))
+                )
+            _final_draw_schedule = tuple(
+                ShlConstructionPeriodInput(
+                    draw_keur=d,
+                    day_count_fraction=p.day_count_fraction,
+                    period_index=p.period_index,
+                )
+                for d, p in zip(_final_shl_cash, _construction_period_template)
             )
         else:
             _final_draw_schedule = build_shl_construction_draw_schedule(

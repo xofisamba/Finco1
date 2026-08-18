@@ -797,14 +797,15 @@ def test_construction_period_dates_differ_between_periods():
 # ---------------------------------------------------------------------------
 
 def test_true_net_pro_rata_uses_net_of_senior():
-    """Blocker A closeout: PRO_RATA net_need = Uses[t] - Senior[t] - Junior[t] - Other[t].
+    """Blocker A closeout: PRO_RATA timing = SPONSOR_FIRST_RESIDUAL_SENIOR waterfall SHL draws.
 
-    Explicit construction_period_uses_keur with 60/40 split (total=33000 kEUR) on solar.
-    Default solar: senior=24750, linear senior/period = 12375, share_capital/period = 250.
-    Net P1: max(0, 19800 - 12375 - 250) = 7175
-    Net P2: max(0, 13200 - 12375 - 0) = 825
-    Total net: 8000. SHL draw ratio = 7175/8000 ≈ 89.7% P1, 10.3% P2.
-    DCF-based PRO_RATA gives 50/50. Verifies SHL is allocated to net-need not gross-uses timing.
+    Waterfall architecture (final): PRO_RATA cash timing == waterfall SHL allocation-to-Uses.
+    For solar (equity_cap=500, shl_cap≈8250, senior_cap=gearing):
+    - Cumulative uses P1=19800 > equity_cap+shl_cap (≈8750) → waterfall draws all SHL in P1
+    - PRO_RATA waterfall = ALL_AT_FC for highly front-loaded uses (same SHL draw in P1)
+    - DCF-based PRO_RATA (50/50 no uses vector) gives lower PIK (draws 50% per period)
+
+    This verifies the waterfall authority for SHL timing, not /n linear splits.
     """
     from financial_engine.financing import run_project_financing_model
     import dataclasses
@@ -825,12 +826,14 @@ def test_true_net_pro_rata_uses_net_of_senior():
     assert result_uses.fixed_point_iteration_count >= 1
     assert result_dcf.fixed_point_iteration_count >= 1
 
-    # Front-loaded uses → more SHL draw in P1 → higher PIK → higher opening SHL
+    # Front-loaded uses (60/40) → waterfall draws all SHL in P1 → higher PIK than DCF 50/50
     assert result_uses.opening_operating_shl_balance_keur > result_dcf.opening_operating_shl_balance_keur, (
         "Front-loaded uses (60/40) must give higher opening SHL than equal DCF (50/50)"
     )
 
-    # Verify ALL_AT_FC still produces higher PIK than PRO_RATA for this project
+    # ALL_AT_FC (no uses vector) vs PRO_RATA-waterfall with 60/40 uses:
+    # With front-loaded uses (P1=19800 > equity+shl=~8750), the waterfall exhausts all SHL in P1.
+    # PRO_RATA-waterfall ≈ ALL_AT_FC for this profile → PIK is equal (>=, not strictly >).
     project_all_at_fc = dataclasses.replace(
         project,
         financing=dataclasses.replace(
@@ -839,8 +842,8 @@ def test_true_net_pro_rata_uses_net_of_senior():
         ),
     )
     result_all_at_fc = run_project_financing_model(project_all_at_fc)
-    assert result_all_at_fc.shl_construction_pik_keur > result_uses.shl_construction_pik_keur, (
-        "ALL_AT_FC must still produce more PIK than any PRO_RATA variant"
+    assert result_all_at_fc.shl_construction_pik_keur >= result_uses.shl_construction_pik_keur, (
+        "ALL_AT_FC PIK must be >= PRO_RATA-waterfall (front-loaded uses saturate waterfall in P1)"
     )
 
 
@@ -1041,3 +1044,60 @@ def test_40_5_explicit_construction_period_uses_keur():
     print(f"ALL_AT_FC shl_0={fc_shl_0:.3f}, total={fc_shl_total:.3f}")
     print(f"Uses: period_0={uses_0:.3f}, period_1={uses_1:.3f}")
     print(f"Item 11 verified: shl_0/total = {shl_0/shl_total:.3f} (not 50%)")
+
+
+# ---------------------------------------------------------------------------
+# Step 8: Controlled generic waterfall example (SPONSOR_FIRST_RESIDUAL_SENIOR)
+# No project identity. Tests the waterfall function directly.
+# ---------------------------------------------------------------------------
+
+def test_controlled_waterfall_example_exact_values():
+    """Step 8: Generic waterfall controlled example — exact period draw assertions.
+
+    Caps: Equity=10, SHL=30, Senior=sufficient (50)
+    Cumulative uses: P1=20, P2=35, P3=60
+    Period uses:     P1=20, P2=15, P3=25
+
+    Expected waterfall draws:
+      P1: Equity=10, SHL=10, Senior=0
+      P2: Equity=0,  SHL=15, Senior=0
+      P3: Equity=0,  SHL=5,  Senior=20
+    """
+    from domain.construction.funding_allocation import allocate_source_waterfall
+    from domain.construction.config import FundingSourceCaps
+
+    caps = FundingSourceCaps(
+        equity_shares_keur=10.0,
+        shl_keur=30.0,
+        junior_keur=0.0,
+        senior_debt_keur=50.0,
+    )
+    # Period uses: cumulative 20, 35, 60 → period 20, 15, 25
+    entries = allocate_source_waterfall((20.0, 15.0, 25.0), caps)
+
+    assert len(entries) == 3
+
+    # P1: cum_uses=20, cum_equity=min(10,20)=10, cum_shl=min(30,10)=10, cum_senior=0
+    assert abs(entries[0].equity_draw_keur - 10.0) < 1e-9, f"P1 equity={entries[0].equity_draw_keur}"
+    assert abs(entries[0].shl_draw_keur - 10.0) < 1e-9, f"P1 shl={entries[0].shl_draw_keur}"
+    assert abs(entries[0].senior_draw_keur - 0.0) < 1e-9, f"P1 senior={entries[0].senior_draw_keur}"
+
+    # P2: cum_uses=35, cum_equity=10, cum_shl=min(30,25)=25, cum_senior=0
+    assert abs(entries[1].equity_draw_keur - 0.0) < 1e-9, f"P2 equity={entries[1].equity_draw_keur}"
+    assert abs(entries[1].shl_draw_keur - 15.0) < 1e-9, f"P2 shl={entries[1].shl_draw_keur}"
+    assert abs(entries[1].senior_draw_keur - 0.0) < 1e-9, f"P2 senior={entries[1].senior_draw_keur}"
+
+    # P3: cum_uses=60, cum_equity=10, cum_shl=min(30,50)=30, cum_senior=min(50,20)=20
+    assert abs(entries[2].equity_draw_keur - 0.0) < 1e-9, f"P3 equity={entries[2].equity_draw_keur}"
+    assert abs(entries[2].shl_draw_keur - 5.0) < 1e-9, f"P3 shl={entries[2].shl_draw_keur}"
+    assert abs(entries[2].senior_draw_keur - 20.0) < 1e-9, f"P3 senior={entries[2].senior_draw_keur}"
+
+    # Cumulative totals
+    assert abs(entries[2].cumulative_equity_keur - 10.0) < 1e-9
+    assert abs(entries[2].cumulative_shl_keur - 30.0) < 1e-9
+    assert abs(entries[2].cumulative_senior_keur - 20.0) < 1e-9
+    assert abs(entries[2].cumulative_uses_keur - 60.0) < 1e-9
+
+    print("\n--- Step 8 Controlled Waterfall Example ---")
+    for e in entries:
+        print(f"  P{e.month_index}: equity={e.equity_draw_keur}, shl={e.shl_draw_keur}, senior={e.senior_draw_keur}")
