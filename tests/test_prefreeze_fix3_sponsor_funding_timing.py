@@ -141,6 +141,163 @@ def test_no_project_identity_dispatch_in_construction():
     assert not dispatch_pattern.search(src_no_comments), "Project identity dispatch found in construction module"
 
 
+def test_timing_policy_affects_construction_shl_pik():
+    """Production effectiveness test: same project, different timing policy → different PIK."""
+    from financial_engine.shl.construction import build_shl_construction_draw_schedule_from_uses
+    period_dcfs = (1.0, 1.0)
+    uses = (150.0, 150.0)
+    senior = (75.0, 75.0)
+    junior = (0.0, 0.0)
+    other = (0.0, 0.0)
+    shl_principal = 100.0
+
+    pro_rata_schedule = build_shl_construction_draw_schedule_from_uses(
+        shl_principal, uses, senior, junior, other, period_dcfs,
+        SponsorFundingTimingPolicy.PRO_RATA_CONSTRUCTION
+    )
+    all_at_fc_schedule = build_shl_construction_draw_schedule_from_uses(
+        shl_principal, uses, senior, junior, other, period_dcfs,
+        SponsorFundingTimingPolicy.ALL_AT_FC
+    )
+
+    pro_rata_result = compute_shl_construction_schedule(0.0, pro_rata_schedule, 0.10, ShlConstructionInterestMethod.COMPOUND_PERIODIC)
+    all_at_fc_result = compute_shl_construction_schedule(0.0, all_at_fc_schedule, 0.10, ShlConstructionInterestMethod.COMPOUND_PERIODIC)
+
+    assert abs(pro_rata_result.opening_operating_shl_balance_keur - 115.5) < 1e-6
+    assert abs(all_at_fc_result.opening_operating_shl_balance_keur - 121.0) < 1e-6
+    assert pro_rata_result.opening_operating_shl_balance_keur != all_at_fc_result.opening_operating_shl_balance_keur
+
+
+def test_unequal_uses_pro_rata_does_not_follow_dcf():
+    """Anti-DCF test: equal DCF but unequal Uses → PRO_RATA follows Uses, not DCF."""
+    from financial_engine.shl.construction import build_shl_construction_draw_schedule_from_uses
+    period_dcfs = (1.0, 1.0)
+    uses = (80.0, 20.0)
+    senior = (0.0, 0.0)
+    junior = (0.0, 0.0)
+    other = (0.0, 0.0)
+
+    schedule = build_shl_construction_draw_schedule_from_uses(
+        100.0, uses, senior, junior, other, period_dcfs,
+        SponsorFundingTimingPolicy.PRO_RATA_CONSTRUCTION
+    )
+    assert abs(schedule[0].draw_keur - 80.0) < 1e-9
+    assert abs(schedule[1].draw_keur - 20.0) < 1e-9
+
+
+def test_equal_uses_unequal_dcf_pro_rata_follows_uses():
+    """DCF alone does not determine Sponsor timing: equal Uses → equal draw regardless of DCF."""
+    from financial_engine.shl.construction import build_shl_construction_draw_schedule_from_uses
+    period_dcfs = (0.5, 1.5)
+    uses = (50.0, 50.0)
+    senior = (0.0, 0.0)
+    junior = (0.0, 0.0)
+    other = (0.0, 0.0)
+
+    schedule = build_shl_construction_draw_schedule_from_uses(
+        100.0, uses, senior, junior, other, period_dcfs,
+        SponsorFundingTimingPolicy.PRO_RATA_CONSTRUCTION
+    )
+    assert abs(schedule[0].draw_keur - 50.0) < 1e-9
+    assert abs(schedule[1].draw_keur - 50.0) < 1e-9
+
+
+def test_pik_is_not_sponsor_cash():
+    """PIK is not a Sponsor cash contribution."""
+    periods = (ShlConstructionPeriodInput(draw_keur=100.0, day_count_fraction=1.0, period_index=0),)
+    result = compute_shl_construction_schedule(0.0, periods, 0.10, ShlConstructionInterestMethod.COMPOUND_PERIODIC)
+    total_cash_draws = sum(p.draw_keur for p in result.periods)
+    assert abs(total_cash_draws - 100.0) < 1e-9
+    assert abs(result.total_pik_keur - 10.0) < 1e-9
+    assert abs(result.opening_operating_shl_balance_keur - 110.0) < 1e-9
+
+
+def test_per_period_sources_equal_uses():
+    """Per-period S&U identity: Uses = Senior + Junior + Sponsor + Other."""
+    from financial_engine.shl.construction import build_shl_construction_draw_schedule_from_uses
+    uses = (100.0, 80.0, 60.0)
+    senior = (50.0, 40.0, 30.0)
+    junior = (10.0, 8.0, 6.0)
+    other = (5.0, 4.0, 3.0)
+    period_dcfs = (1.0, 1.0, 1.0)
+    net_needs = tuple(u - s - j - o for u, s, j, o in zip(uses, senior, junior, other))
+    total_need = sum(net_needs)
+    shl_principal = total_need
+
+    schedule = build_shl_construction_draw_schedule_from_uses(
+        shl_principal, uses, senior, junior, other, period_dcfs,
+        SponsorFundingTimingPolicy.PRO_RATA_CONSTRUCTION
+    )
+    for i, (period, u, s, j, o) in enumerate(zip(schedule, uses, senior, junior, other)):
+        total_sources = s + j + o + period.draw_keur
+        assert abs(total_sources - u) < 1e-9, f"Period {i}: sources {total_sources} != uses {u}"
+
+
+def test_kupi_pro_rata_vs_all_at_fc_diagnostic():
+    """KUPI construction PIK diagnostic: PRO_RATA vs ALL_AT_FC under COMPOUND_PERIODIC.
+
+    Source evidence (comparison only, NOT production targets):
+    - KUPI SHL cash principal: 68,152.995667 kEUR
+    - Source construction PIK: 11,340.658479 kEUR
+    - Source opening operating SHL: 79,493.654145 kEUR
+    """
+    from financial_engine.shl.construction import build_shl_construction_draw_schedule_from_uses
+    KUPI_SHL_PRINCIPAL = 68_152.995667
+    KUPI_ANNUAL_RATE = 0.08
+    period_dcfs = (1.0, 1.0)
+    uses = (KUPI_SHL_PRINCIPAL / 2, KUPI_SHL_PRINCIPAL / 2)
+    senior = (0.0, 0.0)
+    junior = (0.0, 0.0)
+    other = (0.0, 0.0)
+
+    pro_rata_schedule = build_shl_construction_draw_schedule_from_uses(
+        KUPI_SHL_PRINCIPAL, uses, senior, junior, other, period_dcfs,
+        SponsorFundingTimingPolicy.PRO_RATA_CONSTRUCTION
+    )
+    pro_rata_result = compute_shl_construction_schedule(
+        0.0, pro_rata_schedule, KUPI_ANNUAL_RATE, ShlConstructionInterestMethod.COMPOUND_PERIODIC
+    )
+    all_at_fc_schedule = build_shl_construction_draw_schedule_from_uses(
+        KUPI_SHL_PRINCIPAL, uses, senior, junior, other, period_dcfs,
+        SponsorFundingTimingPolicy.ALL_AT_FC
+    )
+    all_at_fc_result = compute_shl_construction_schedule(
+        0.0, all_at_fc_schedule, KUPI_ANNUAL_RATE, ShlConstructionInterestMethod.COMPOUND_PERIODIC
+    )
+
+    timing_delta_pik = all_at_fc_result.total_pik_keur - pro_rata_result.total_pik_keur
+    timing_delta_opening_shl = (
+        all_at_fc_result.opening_operating_shl_balance_keur
+        - pro_rata_result.opening_operating_shl_balance_keur
+    )
+
+    SOURCE_PIK = 11_340.658479
+    SOURCE_OPENING_SHL = 79_493.654145
+
+    assert timing_delta_pik > 0, "ALL_AT_FC should produce more PIK than PRO_RATA"
+    assert timing_delta_opening_shl > 0, "ALL_AT_FC should produce higher opening SHL"
+
+    print(f"\n--- KUPI Diagnostic ---")
+    print(f"SHL principal: {KUPI_SHL_PRINCIPAL:.6f} kEUR")
+    print(f"PRO_RATA PIK: {pro_rata_result.total_pik_keur:.6f} kEUR")
+    print(f"ALL_AT_FC PIK: {all_at_fc_result.total_pik_keur:.6f} kEUR")
+    print(f"Timing delta PIK: {timing_delta_pik:.6f} kEUR")
+    print(f"PRO_RATA opening SHL: {pro_rata_result.opening_operating_shl_balance_keur:.6f} kEUR")
+    print(f"ALL_AT_FC opening SHL: {all_at_fc_result.opening_operating_shl_balance_keur:.6f} kEUR")
+    print(f"Source PIK: {SOURCE_PIK:.6f} kEUR")
+    print(f"Source opening SHL: {SOURCE_OPENING_SHL:.6f} kEUR")
+
+
+def test_default_pro_rata_single_period_backward_compatible():
+    """Single-period construction: PRO_RATA and ALL_AT_FC are identical (backward compat)."""
+    periods = (ShlConstructionPeriodInput(draw_keur=0.0, day_count_fraction=1.0, period_index=0),)
+    pro_rata = build_shl_construction_draw_schedule(100.0, periods, SponsorFundingTimingPolicy.PRO_RATA_CONSTRUCTION)
+    all_at_fc = build_shl_construction_draw_schedule(100.0, periods, SponsorFundingTimingPolicy.ALL_AT_FC)
+    pro_result = compute_shl_construction_schedule(0.0, pro_rata, 0.10, ShlConstructionInterestMethod.SIMPLE)
+    all_result = compute_shl_construction_schedule(0.0, all_at_fc, 0.10, ShlConstructionInterestMethod.SIMPLE)
+    assert abs(pro_result.opening_operating_shl_balance_keur - all_result.opening_operating_shl_balance_keur) < 1e-9
+
+
 # Additional: cash_principal invariant across policies
 def test_cash_principal_balance_excludes_pik():
     periods = (

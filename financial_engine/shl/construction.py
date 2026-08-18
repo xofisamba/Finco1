@@ -221,6 +221,59 @@ def build_shl_construction_draw_schedule(
         )
 
 
+def build_shl_construction_draw_schedule_from_uses(
+    shl_cash_principal_keur: float,
+    period_uses_keur: tuple[float, ...],
+    period_senior_draws_keur: tuple[float, ...],
+    period_junior_draws_keur: tuple[float, ...],
+    period_other_sources_keur: tuple[float, ...],
+    period_dcfs: tuple[float, ...],
+    policy: "SponsorFundingTimingPolicy",
+) -> tuple[ShlConstructionPeriodInput, ...]:
+    """Build SHL draw schedule from actual construction funding needs.
+
+    PRO_RATA_CONSTRUCTION: SHL drawn proportional to net Sponsor funding need per period.
+        net_need[t] = uses[t] - senior[t] - junior[t] - other[t]
+        shl_draw[t] = principal * net_need[t] / total_net_need
+    ALL_AT_FC: Full principal at period 0, zero thereafter.
+
+    Total draws sum to shl_cash_principal_keur under both policies.
+    """
+    from finco_core.inputs._models import SponsorFundingTimingPolicy as Policy
+    if policy == Policy.ALL_AT_FC:
+        return tuple(
+            ShlConstructionPeriodInput(
+                draw_keur=shl_cash_principal_keur if i == 0 else 0.0,
+                day_count_fraction=dcf,
+                period_index=i,
+            )
+            for i, dcf in enumerate(period_dcfs)
+        )
+    elif policy == Policy.PRO_RATA_CONSTRUCTION:
+        net_needs = tuple(
+            max(0.0, uses - senior - junior - other)
+            for uses, senior, junior, other in zip(
+                period_uses_keur, period_senior_draws_keur,
+                period_junior_draws_keur, period_other_sources_keur
+            )
+        )
+        total_need = sum(net_needs)
+        if total_need == 0.0:
+            n = len(period_dcfs)
+            draws = tuple(shl_cash_principal_keur / n for _ in period_dcfs)
+        else:
+            draws = tuple(shl_cash_principal_keur * need / total_need for need in net_needs)
+        return tuple(
+            ShlConstructionPeriodInput(draw_keur=d, day_count_fraction=dcf, period_index=i)
+            for i, (d, dcf) in enumerate(zip(draws, period_dcfs))
+        )
+    else:
+        raise ValueError(
+            f"build_shl_construction_draw_schedule_from_uses: unsupported policy {policy!r}. "
+            f"Supported: PRO_RATA_CONSTRUCTION, ALL_AT_FC."
+        )
+
+
 def compute_shl_construction_pik_keur(
     shl_cash_principal_keur: float,
     annual_rate: float,

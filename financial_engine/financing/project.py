@@ -15,6 +15,12 @@ from financial_engine.financing.stack import (
     reconcile_financing_stack,
 )
 from financial_engine.orchestrator import run_senior_debt_model
+from financial_engine.shl.construction import (
+    build_shl_construction_draw_schedule,
+    compute_shl_construction_schedule,
+    ShlConstructionPeriodInput,
+)
+from finco_core.inputs._models import SponsorFundingTimingPolicy
 
 
 def _project_uses(project_inputs: ProjectInputs) -> ProjectUses:
@@ -113,23 +119,33 @@ def run_project_financing_model(
         raise RuntimeError("G2A_SHL_SENIOR_FIXED_POINT_DID_NOT_CONVERGE")
 
     assert model_result is not None and model_result.senior_debt is not None
-    shl_pik = 0.0
-    opening_operating_shl = 0.0
-    if model_result.shareholder_loan is not None:
-        shl = model_result.shareholder_loan
-        construction_indices = {
-            period.period_index for period in model_result.periods if period.is_construction
-        }
-        shl_pik = sum(
-            value for idx, value in zip(shl.period_indices, shl.shl_pik_interest_keur)
-            if idx in construction_indices
-        )
-        first_operating_index = next(
-            period.period_index for period in model_result.periods if period.is_operation
-        )
-        opening_operating_shl = dict(zip(shl.period_indices, shl.shl_opening_keur)).get(
-            first_operating_index, 0.0
-        )
+
+    # Compute authoritative construction SHL schedule using the timing policy.
+    # This replaces reading from model_result.shareholder_loan for construction PIK.
+    timing_policy = fin.sponsor_funding_timing_policy
+    total_construction_dcf = fin.shl_construction_day_count_fraction or (
+        project_inputs.info.construction_months / 12.0
+    )
+    construction_periods_input = (
+        ShlConstructionPeriodInput(
+            draw_keur=0.0,  # placeholder, overridden by build_shl_construction_draw_schedule
+            day_count_fraction=total_construction_dcf,
+            period_index=0,
+        ),
+    )
+    draw_schedule = build_shl_construction_draw_schedule(
+        shl_cash_principal_keur=derived_shl,
+        construction_periods=construction_periods_input,
+        policy=timing_policy,
+    )
+    construction_shl_schedule = compute_shl_construction_schedule(
+        opening_balance_keur=0.0,
+        periods=draw_schedule,
+        annual_rate=fin.shl_rate,
+        method=fin.shl_construction_interest_method,
+    )
+    shl_pik = construction_shl_schedule.total_pik_keur
+    opening_operating_shl = construction_shl_schedule.opening_operating_shl_balance_keur
 
     funding = build_construction_funding_schedule(
         construction_period_count=project_inputs.info.construction_months,
