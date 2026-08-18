@@ -4,75 +4,22 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from finco_core.inputs import DebtServiceReserveSupportMode, GearingBasisMode, ProjectInputs, SponsorFundingMode
+from finco_core.inputs import GearingBasisMode, ProjectInputs, SponsorFundingMode
 from financial_engine.adapters.project_inputs import (
     build_senior_debt_model_input_from_project_inputs,
 )
 from financial_engine.financing.contracts import ProjectFinancingResult, ProjectUses
+from financial_engine.financing.project_uses import compute_project_uses
 from financial_engine.financing.stack import (
     build_construction_funding_schedule,
     reconcile_financing_stack,
 )
 from financial_engine.orchestrator import run_senior_debt_model
-from financial_engine.senior_debt.policy import SeniorDebtSizingMode
 
 
 def _project_uses(project_inputs: ProjectInputs) -> ProjectUses:
-    capex = project_inputs.capex
-    fin = project_inputs.financing
-    financing_costs = (
-        capex.idc_keur
-        + capex.commitment_fees_keur
-        + capex.bank_fees_keur
-        + capex.other_financial_keur
-        + capex.vat_costs_keur
-    )
-    # Reserve funding mode — unified authority via financing.debt_service_reserve_requirement_keur.
-    #   NONE:      requirement must be 0; capex.reserve_accounts_keur must be 0.
-    #   CASH_DSRA: reserve_use = requirement (financing authority).
-    #              Legacy: if requirement == 0 and capex.reserve_accounts_keur > 0, use legacy.
-    #              Conflict (both > 0 and different) → fail closed.
-    #   DSRF:      no cash reserve at close; requirement used for sufficiency check only.
-    dsra_mode = fin.dsra_support_mode
-    req = getattr(fin, "debt_service_reserve_requirement_keur", 0.0) or 0.0
-    legacy_cap = capex.reserve_accounts_keur
-    if dsra_mode == DebtServiceReserveSupportMode.NONE:
-        if legacy_cap > 0.0:
-            raise ValueError(
-                "G2A_RESERVE_ACCOUNTS_SET_BUT_MODE_IS_NONE: "
-                f"reserve_accounts_keur={legacy_cap} but dsra_support_mode=NONE. "
-                "Set reserve_accounts_keur=0 or change dsra_support_mode to CASH_DSRA."
-            )
-        if req > 0.0:
-            raise ValueError(
-                "G2A_RESERVE_REQUIREMENT_SET_BUT_MODE_IS_NONE: "
-                f"debt_service_reserve_requirement_keur={req} but dsra_support_mode=NONE."
-            )
-        reserve_use = 0.0
-    elif dsra_mode == DebtServiceReserveSupportMode.CASH_DSRA:
-        if req > 0.0 and legacy_cap > 0.0 and abs(req - legacy_cap) > 1e-6:
-            raise ValueError(
-                "G2A_RESERVE_REQUIREMENT_CONFLICT: "
-                f"debt_service_reserve_requirement_keur={req} != "
-                f"capex.reserve_accounts_keur={legacy_cap}. "
-                "Set one to 0 or align them."
-            )
-        reserve_use = req if req > 0.0 else legacy_cap
-    else:  # DSRF
-        reserve_use = 0.0
-
-    total = capex.hard_capex_keur + financing_costs + reserve_use
-    # Contract check only applies when the full capex.total_capex is expected to match
-    if dsra_mode != DebtServiceReserveSupportMode.DSRF:
-        if abs(total - capex.total_capex) > 1e-9:
-            raise ValueError("G2A_PROJECT_USES_CAPEX_CONTRACT_MISMATCH")
-    return ProjectUses(
-        hard_project_capex_keur=capex.hard_capex_keur,
-        explicit_financing_cost_uses_keur=financing_costs,
-        reserve_account_funding_keur=reserve_use,
-        other_explicit_project_uses_keur=0.0,
-        total_project_uses_keur=total,
-    )
+    """Thin wrapper — delegates to the canonical compute_project_uses authority."""
+    return compute_project_uses(project_inputs)
 
 
 def run_project_financing_model(
@@ -131,18 +78,9 @@ def run_project_financing_model(
             source_id=source_id,
             baseline_commit_sha=baseline_commit_sha,
         )
-        funded_model_input = replace(
-            funded_model_input,
-            senior_debt_policy=replace(
-                funded_model_input.senior_debt_policy,
-                sizing_mode=SeniorDebtSizingMode.COMBINED_MINIMUM,
-                maximum_gearing=fin.gearing_ratio,
-            ),
-            senior_debt_inputs=replace(
-                funded_model_input.senior_debt_inputs,
-                eligible_project_cost_keur=uses.total_project_uses_keur,
-            ),
-        )
+        # The adapter now correctly maps gearing_basis_mode=TOTAL_PROJECT_USES to
+        # COMBINED_MINIMUM with the canonical eligible cost and maximum_gearing.
+        # No downstream patch is required here.
         model_result = run_senior_debt_model(funded_model_input)
         senior = model_result.senior_debt
         if senior is None:
