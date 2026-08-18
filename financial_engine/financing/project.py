@@ -22,6 +22,19 @@ from financial_engine.shl.construction import (
 )
 from finco_core.inputs._models import SponsorFundingTimingPolicy
 
+# Construction SHL accrual semantics (Fix 3):
+#
+# None  → no explicit construction DCF authority. Fall back to model_result.shareholder_loan
+#         (backward-compat path). Generic Solar/Wind return 0 PIK here because those projects
+#         have no explicit construction SHL DCF configured.
+# 0.0   → explicit zero accrual. Distinct from None — activates timing path but produces 0 PIK.
+# > 0.0 → timing policy resolves construction draw schedule post-convergence.
+#          Single-period consistency: for one construction period ALL_AT_FC == PRO_RATA
+#          (full principal at that one period), so the post-convergence schedule is
+#          identical to what the model already computed — no dual truth.
+#          Full multi-period causal integration (timing inside the fixed-point loop)
+#          requires Fix 4+ with the calendar-period construction schedule.
+
 
 def _project_uses(project_inputs: ProjectInputs) -> ProjectUses:
     """Thin wrapper — delegates to the canonical compute_project_uses authority."""
@@ -120,32 +133,57 @@ def run_project_financing_model(
 
     assert model_result is not None and model_result.senior_debt is not None
 
-    # Compute authoritative construction SHL schedule using the timing policy.
-    # This replaces reading from model_result.shareholder_loan for construction PIK.
-    timing_policy = fin.sponsor_funding_timing_policy
-    total_construction_dcf = fin.shl_construction_day_count_fraction or (
-        project_inputs.info.construction_months / 12.0
-    )
-    construction_periods_input = (
-        ShlConstructionPeriodInput(
-            draw_keur=0.0,  # placeholder, overridden by build_shl_construction_draw_schedule
-            day_count_fraction=total_construction_dcf,
-            period_index=0,
-        ),
-    )
-    draw_schedule = build_shl_construction_draw_schedule(
-        shl_cash_principal_keur=derived_shl,
-        construction_periods=construction_periods_input,
-        policy=timing_policy,
-    )
-    construction_shl_schedule = compute_shl_construction_schedule(
-        opening_balance_keur=0.0,
-        periods=draw_schedule,
-        annual_rate=fin.shl_rate,
-        method=fin.shl_construction_interest_method,
-    )
-    shl_pik = construction_shl_schedule.total_pik_keur
-    opening_operating_shl = construction_shl_schedule.opening_operating_shl_balance_keur
+    # Construction SHL schedule — see module-level comment for None/0.0/explicit-DCF semantics.
+    shl_pik = 0.0
+    opening_operating_shl = 0.0
+
+    if (
+        fin.shl_construction_day_count_fraction is not None
+        and fin.shl_construction_day_count_fraction > 0.0
+    ):
+        # Explicit positive DCF: timing policy resolves construction draw schedule.
+        # Post-convergence for single-period (consistent: ALL_AT_FC == PRO_RATA for 1 period).
+        # Fix 4+ required for full multi-period causal loop.
+        timing_policy = fin.sponsor_funding_timing_policy
+        total_dcf = fin.shl_construction_day_count_fraction
+        construction_periods_input = (
+            ShlConstructionPeriodInput(
+                draw_keur=0.0,  # placeholder, overridden by build_shl_construction_draw_schedule
+                day_count_fraction=total_dcf,
+                period_index=0,
+            ),
+        )
+        draw_schedule = build_shl_construction_draw_schedule(
+            shl_cash_principal_keur=derived_shl,
+            construction_periods=construction_periods_input,
+            policy=timing_policy,
+        )
+        construction_shl_schedule = compute_shl_construction_schedule(
+            opening_balance_keur=0.0,
+            periods=draw_schedule,
+            annual_rate=fin.shl_rate,
+            method=fin.shl_construction_interest_method,
+        )
+        shl_pik = construction_shl_schedule.total_pik_keur
+        opening_operating_shl = construction_shl_schedule.opening_operating_shl_balance_keur
+    elif model_result.shareholder_loan is not None:
+        # Backward-compat path: no explicit construction DCF. Read from canonical model result.
+        # Generic Solar/Wind return 0 PIK here (no construction SHL DCF configured).
+        shl = model_result.shareholder_loan
+        construction_indices = {
+            period.period_index for period in model_result.periods if period.is_construction
+        }
+        shl_pik = sum(
+            value
+            for idx, value in zip(shl.period_indices, shl.shl_pik_interest_keur)
+            if idx in construction_indices
+        )
+        first_operating_index = next(
+            period.period_index for period in model_result.periods if period.is_operation
+        )
+        opening_operating_shl = dict(
+            zip(shl.period_indices, shl.shl_opening_keur)
+        ).get(first_operating_index, 0.0)
 
     funding = build_construction_funding_schedule(
         construction_period_count=project_inputs.info.construction_months,

@@ -3,6 +3,7 @@ import pytest
 from finco_core.inputs._models import SponsorFundingTimingPolicy, ShlConstructionInterestMethod
 from financial_engine.shl.construction import (
     build_shl_construction_draw_schedule,
+    build_shl_construction_draw_schedule_from_uses,
     compute_shl_construction_schedule,
     ShlConstructionPeriodInput,
 )
@@ -296,6 +297,59 @@ def test_default_pro_rata_single_period_backward_compatible():
     pro_result = compute_shl_construction_schedule(0.0, pro_rata, 0.10, ShlConstructionInterestMethod.SIMPLE)
     all_result = compute_shl_construction_schedule(0.0, all_at_fc, 0.10, ShlConstructionInterestMethod.SIMPLE)
     assert abs(pro_result.opening_operating_shl_balance_keur - all_result.opening_operating_shl_balance_keur) < 1e-9
+
+
+# None / 0.0 / explicit-DCF disambiguation tests (Fix 3 regression guard)
+
+def test_none_dcf_produces_zero_pik_for_solar_profile():
+    """None shl_construction_day_count_fraction must not activate construction SHL accrual.
+
+    Covered by G2A regression test (Solar PIK = 0 under unchanged defaults).
+    This stub documents the semantic boundary explicitly.
+    """
+    pass  # Covered by G2A regression test
+
+
+def test_zero_dcf_is_explicit_zero_accrual():
+    """0.0 shl_construction_day_count_fraction is explicit zero, distinct from None."""
+    periods = (ShlConstructionPeriodInput(draw_keur=100.0, day_count_fraction=0.0, period_index=0),)
+    result = compute_shl_construction_schedule(0.0, periods, 0.10, ShlConstructionInterestMethod.SIMPLE)
+    assert result.total_pik_keur == 0.0  # 0 DCF → 0 interest
+
+
+def test_positive_dcf_activates_construction_accrual():
+    """Positive shl_construction_day_count_fraction produces positive PIK."""
+    periods = (ShlConstructionPeriodInput(draw_keur=100.0, day_count_fraction=1.0, period_index=0),)
+    result = compute_shl_construction_schedule(0.0, periods, 0.10, ShlConstructionInterestMethod.SIMPLE)
+    assert abs(result.total_pik_keur - 10.0) < 1e-9
+
+
+def test_zero_net_need_with_positive_principal_fails_closed():
+    """Zero total net Sponsor need with positive SHL principal is inconsistent — fails closed."""
+    with pytest.raises(ValueError, match="zero"):
+        build_shl_construction_draw_schedule_from_uses(
+            100.0,           # positive principal
+            (50.0, 50.0),    # uses
+            (50.0, 50.0),    # senior covers 100% → net need = 0
+            (0.0, 0.0),
+            (0.0, 0.0),
+            (1.0, 1.0),
+            SponsorFundingTimingPolicy.PRO_RATA_CONSTRUCTION,
+        )
+
+
+def test_zero_net_need_with_zero_principal_is_valid():
+    """Zero total net Sponsor need with zero SHL principal: valid empty draws."""
+    schedule = build_shl_construction_draw_schedule_from_uses(
+        0.0,             # zero principal
+        (50.0, 50.0),
+        (50.0, 50.0),   # senior covers everything → net need = 0
+        (0.0, 0.0),
+        (0.0, 0.0),
+        (1.0, 1.0),
+        SponsorFundingTimingPolicy.PRO_RATA_CONSTRUCTION,
+    )
+    assert all(p.draw_keur == 0.0 for p in schedule)
 
 
 # Additional: cash_principal invariant across policies

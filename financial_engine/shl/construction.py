@@ -258,9 +258,14 @@ def build_shl_construction_draw_schedule_from_uses(
             )
         )
         total_need = sum(net_needs)
+        if total_need == 0.0 and shl_cash_principal_keur > 0.0:
+            raise ValueError(
+                "build_shl_construction_draw_schedule_from_uses: total net Sponsor funding need is zero "
+                "but shl_cash_principal_keur > 0. Schedule is internally inconsistent. "
+                "Only PRO_RATA with zero net need when principal is also zero."
+            )
         if total_need == 0.0:
-            n = len(period_dcfs)
-            draws = tuple(shl_cash_principal_keur / n for _ in period_dcfs)
+            draws = tuple(0.0 for _ in period_dcfs)
         else:
             draws = tuple(shl_cash_principal_keur * need / total_need for need in net_needs)
         return tuple(
