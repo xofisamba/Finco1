@@ -263,3 +263,56 @@ def test_resolve_tax_assumptions_none_when_not_resolved():
     resolved = resolve_tax_assumptions(profile, defaults, overrides)
     assert resolved.corporate_tax_rate is None
     assert resolved.corporate_tax_rate_source == "NOT_RESOLVED"
+
+
+# ---------------------------------------------------------------------------
+# Test M: AST/source — no project identity tokens in production tax module
+# ---------------------------------------------------------------------------
+def test_no_project_identity_in_production_tax_module():
+    """M: Production tax module must contain no project identity tokens."""
+    import ast
+    import pathlib
+    src = pathlib.Path("financial_engine/tax/jurisdiction.py").read_text()
+    for token in ("kupi", "tuho", "oborovo"):
+        assert token not in src.lower(), (
+            f"Project identity token '{token}' found in production tax module"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Test N: Snapshot immutability — ResolvedTaxAssumptions is frozen
+# ---------------------------------------------------------------------------
+def test_resolved_tax_assumptions_is_frozen():
+    """N: ResolvedTaxAssumptions is a frozen dataclass — mutation raises."""
+    profile = HR_GENERIC_MVP_V1
+    defaults = TaxJurisdictionDefaults(corporate_tax_rate=0.18)
+    overrides = ProjectTaxOverrides(corporate_tax_rate_override=0.20)
+    resolved = resolve_tax_assumptions(profile, defaults, overrides)
+    with pytest.raises(Exception):
+        resolved.corporate_tax_rate = 0.99  # type: ignore[misc]
+
+
+# ---------------------------------------------------------------------------
+# Test O: Explicit project override — override wins over jurisdiction default
+# ---------------------------------------------------------------------------
+def test_explicit_project_override_wins():
+    """O: Project override takes precedence; jurisdiction default is secondary."""
+    profile = BA_GENERIC_MVP_V1
+    defaults = TaxJurisdictionDefaults(corporate_tax_rate=0.10)
+    overrides = ProjectTaxOverrides(corporate_tax_rate_override=0.15)
+    resolved = resolve_tax_assumptions(profile, defaults, overrides)
+    assert resolved.corporate_tax_rate == pytest.approx(0.15)
+    assert resolved.corporate_tax_rate_source == "project_override"
+
+
+# ---------------------------------------------------------------------------
+# Test P: TaxJurisdictionDefaults has no WHT or VAT fields (FUTURE_COUNTRY_CATALOG)
+# ---------------------------------------------------------------------------
+def test_tax_jurisdiction_defaults_no_wht_vat_fields():
+    """P: TaxJurisdictionDefaults must not have WHT or VAT fields (removed as FUTURE_COUNTRY_CATALOG)."""
+    import dataclasses
+    field_names = {f.name for f in dataclasses.fields(TaxJurisdictionDefaults)}
+    assert "withholding_tax_rate_dividends" not in field_names
+    assert "withholding_tax_rate_interest" not in field_names
+    assert "vat_standard_rate" not in field_names
+    assert "corporate_tax_rate" in field_names

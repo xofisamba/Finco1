@@ -7,8 +7,8 @@ Design constraints
 ------------------
 - Catalog must NOT contain unsourced legal values.
 - Workbook compatibility tax conventions must NOT become jurisdiction law.
-- KUPI tax jurisdiction status: TAX_JURISDICTION_SOURCE_UNRESOLVED until proven
-  from a primary source (Bosnia and Herzegovina; exact subnational unknown).
+- Source-unresolved jurisdictions carry TAX_JURISDICTION_SOURCE_UNRESOLVED until proven
+  from a primary source (e.g. Bosnia and Herzegovina; exact subnational unknown).
 - Provenance codes: SOURCE_PROVEN, GENERIC_MVP_POLICY,
   TAX_JURISDICTION_SOURCE_UNRESOLVED.
 - No dynamic catalog pull per run. Resolved snapshots are frozen.
@@ -44,8 +44,8 @@ for the modelled computation to be correct."""
 PROVENANCE_TAX_JURISDICTION_SOURCE_UNRESOLVED = "TAX_JURISDICTION_SOURCE_UNRESOLVED"
 """Jurisdiction identified but its subnational classification or specific legal
 values have not been confirmed from a primary source. Values must not be used as
-authoritative legal references. This is the status for KUPI (Bosnia and Herzegovina,
-exact subnational entity law unresolved)."""
+authoritative legal references. This is the status for projects in Bosnia and Herzegovina
+where the exact subnational entity law is unresolved."""
 
 
 @dataclass(frozen=True)
@@ -142,26 +142,11 @@ RS_GENERIC_MVP_V1 = TaxJurisdictionProfile(
     provenance=PROVENANCE_GENERIC_MVP_POLICY,
 )
 
-# KUPI: Bosnia and Herzegovina. Exact subnational entity not yet confirmed from
-# primary source (Republika Srpska vs Federation vs Brčko). Status is
-# TAX_JURISDICTION_SOURCE_UNRESOLVED. Values in TaxParams for KUPI must not be
-# used as authoritative legal references.
-KUPI_BA_SOURCE_UNRESOLVED_V1 = TaxJurisdictionProfile(
-    profile_id="KUPI-BA-source-unresolved-v1",
-    country_iso="BA",
-    subnational_jurisdiction_code=None,
-    profile_version="1.0.0",
-    effective_from=None,
-    effective_to=None,
-    source_references=(),
-    provenance=PROVENANCE_TAX_JURISDICTION_SOURCE_UNRESOLVED,
-)
-
 
 # ---------------------------------------------------------------------------
 # Profile registry — keyed by profile_id.
 # No dynamic catalog pull. Entries are added here and frozen at import time.
-# KUPI is NOT in the production registry: its jurisdiction is source-unresolved.
+# Source-unresolved profiles are NOT in the production registry.
 # ---------------------------------------------------------------------------
 _PROFILE_REGISTRY: dict[str, TaxJurisdictionProfile] = {
     p.profile_id: p
@@ -181,13 +166,30 @@ _PROFILE_REGISTRY: dict[str, TaxJurisdictionProfile] = {
 class TaxJurisdictionDefaults:
     """A-class fields: values from country law or binding treaty.
 
+    Only fields that are consumed by the current runtime tax engine (TaxParams)
+    AND are genuinely jurisdiction-owned (set by jurisdiction law, not project
+    choice) are retained here.
+
     All fields default to None. None means "not provided by this jurisdiction
     profile". None/0/False remain distinct — do not treat None as zero.
+
+    Fields retained
+    ---------------
+    corporate_tax_rate : float | None
+        Maps to TaxParams.corporate_rate. Country CIT rate from statute.
+
+    FUTURE_COUNTRY_CATALOG_CAPABILITY
+    ----------------------------------
+    The following fields were removed because they do not map to current
+    TaxParams fields consumed by the runtime tax engine. They are reserved
+    for a future country catalog capability:
+      - withholding_tax_rate_dividends  (future: maps to wht_sponsor_dividends)
+      - withholding_tax_rate_interest   (future: maps to wht_sponsor_shl_interest)
+      - vat_standard_rate               (future: maps to a VAT engine field)
+    When the catalog capability is built, these fields should be re-introduced
+    here alongside the TaxParams fields that consume them.
     """
     corporate_tax_rate: float | None = None
-    withholding_tax_rate_dividends: float | None = None
-    withholding_tax_rate_interest: float | None = None
-    vat_standard_rate: float | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -267,15 +269,18 @@ def resolve_tax_assumptions(
         "project_override",
         profile.provenance,
     )
+    # WHT fields: TaxJurisdictionDefaults no longer carries WHT jurisdiction defaults
+    # (FUTURE_COUNTRY_CATALOG_CAPABILITY). Resolution falls back to project override
+    # or NOT_RESOLVED.
     wht_div, wht_div_src = _resolve(
         overrides.withholding_tax_rate_dividends_override,
-        defaults.withholding_tax_rate_dividends,
+        None,
         "project_override",
         profile.provenance,
     )
     wht_int, wht_int_src = _resolve(
         overrides.withholding_tax_rate_interest_override,
-        defaults.withholding_tax_rate_interest,
+        None,
         "project_override",
         profile.provenance,
     )

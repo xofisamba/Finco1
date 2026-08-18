@@ -32,6 +32,10 @@ from finco_core.inputs._models import ShlConstructionInterestMethod
 from financial_engine.shl.construction import compute_shl_construction_pik_keur
 from financial_engine.shl.production import ShlConstructionInput, compute_shl_schedule
 from financial_engine.shl.contracts import ShlWaterfallPolicy, ShlDayCountConvention
+from financial_engine.shl.construction import (
+    compute_shl_construction_schedule,
+    ShlConstructionPeriodInput,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -280,3 +284,122 @@ def test_shl_construction_input_default_method_is_simple():
     """K4: ShlConstructionInput default construction_interest_method is SIMPLE (backward compat)."""
     constr = ShlConstructionInput(draw_keur=1000.0, annual_rate=0.08, dcf=1.0)
     assert constr.construction_interest_method == ShlConstructionInterestMethod.SIMPLE
+
+
+# ---------------------------------------------------------------------------
+# Test L: Two-period proof — SIMPLE=120, COMPOUND=121 (distinct methods)
+# ---------------------------------------------------------------------------
+def test_two_period_simple_no_pik_compounding():
+    """L1: SIMPLE two-period (draw 100/0, r=10%, dcf=1.0 each).
+    P1: basis=100, interest=10, closing=110.
+    P2: basis=100 (cash only, NOT 110), interest=10, closing=120.
+    Prior PIK (10) must NOT enter the P2 interest basis.
+    """
+    periods = (
+        ShlConstructionPeriodInput(draw_keur=100.0, day_count_fraction=1.0, period_index=0),
+        ShlConstructionPeriodInput(draw_keur=0.0, day_count_fraction=1.0, period_index=1),
+    )
+    result = compute_shl_construction_schedule(
+        opening_balance_keur=0.0,
+        periods=periods,
+        annual_rate=0.10,
+        method=ShlConstructionInterestMethod.SIMPLE,
+    )
+    p1, p2 = result.periods
+    assert p1.pik_interest_keur == pytest.approx(10.0, rel=1e-10)
+    assert p1.closing_balance_keur == pytest.approx(110.0, rel=1e-10)
+    # P2: interest basis = 100 (cash principal only, not 110)
+    assert p2.pik_interest_keur == pytest.approx(10.0, rel=1e-10), (
+        "SIMPLE P2 interest must be 10 (basis=100), not 11 (which would be compounding on 110)"
+    )
+    assert result.opening_operating_shl_balance_keur == pytest.approx(120.0, rel=1e-10)
+
+
+def test_two_period_compound_pik_enters_basis():
+    """L2: COMPOUND two-period (draw 100/0, r=10%, dcf=1.0 each).
+    P1: basis=100, interest=10, closing=110.
+    P2: basis=110 (prior closing including PIK), interest=11, closing=121.
+    """
+    periods = (
+        ShlConstructionPeriodInput(draw_keur=100.0, day_count_fraction=1.0, period_index=0),
+        ShlConstructionPeriodInput(draw_keur=0.0, day_count_fraction=1.0, period_index=1),
+    )
+    result = compute_shl_construction_schedule(
+        opening_balance_keur=0.0,
+        periods=periods,
+        annual_rate=0.10,
+        method=ShlConstructionInterestMethod.COMPOUND_PERIODIC,
+    )
+    p1, p2 = result.periods
+    assert p1.pik_interest_keur == pytest.approx(10.0, rel=1e-10)
+    assert p1.closing_balance_keur == pytest.approx(110.0, rel=1e-10)
+    assert p2.pik_interest_keur == pytest.approx(11.0, rel=1e-10)
+    assert result.opening_operating_shl_balance_keur == pytest.approx(121.0, rel=1e-10)
+
+
+def test_two_period_simple_ne_compound():
+    """L3: SIMPLE final (120) != COMPOUND final (121) — methods are distinct."""
+    periods = (
+        ShlConstructionPeriodInput(draw_keur=100.0, day_count_fraction=1.0, period_index=0),
+        ShlConstructionPeriodInput(draw_keur=0.0, day_count_fraction=1.0, period_index=1),
+    )
+    simple = compute_shl_construction_schedule(
+        opening_balance_keur=0.0, periods=periods,
+        annual_rate=0.10, method=ShlConstructionInterestMethod.SIMPLE,
+    )
+    compound = compute_shl_construction_schedule(
+        opening_balance_keur=0.0, periods=periods,
+        annual_rate=0.10, method=ShlConstructionInterestMethod.COMPOUND_PERIODIC,
+    )
+    assert simple.opening_operating_shl_balance_keur == pytest.approx(120.0, rel=1e-10)
+    assert compound.opening_operating_shl_balance_keur == pytest.approx(121.0, rel=1e-10)
+    assert simple.opening_operating_shl_balance_keur != compound.opening_operating_shl_balance_keur
+
+
+# ---------------------------------------------------------------------------
+# Test M: Staggered draw 50/50 — both methods
+# ---------------------------------------------------------------------------
+def test_staggered_draw_simple():
+    """M1: Staggered draw SIMPLE: P1 draw=50, P2 draw=50, r=10%, dcf=1.0.
+    P1: cash_basis=50, interest=5, accumulated_pik=5, closing=55.
+    P2: cash_basis=100, interest=10, accumulated_pik=15, closing=115.
+    opening_operating = 115.
+    """
+    periods = (
+        ShlConstructionPeriodInput(draw_keur=50.0, day_count_fraction=1.0, period_index=0),
+        ShlConstructionPeriodInput(draw_keur=50.0, day_count_fraction=1.0, period_index=1),
+    )
+    result = compute_shl_construction_schedule(
+        opening_balance_keur=0.0, periods=periods,
+        annual_rate=0.10, method=ShlConstructionInterestMethod.SIMPLE,
+    )
+    p1, p2 = result.periods
+    assert p1.cash_principal_balance_keur == pytest.approx(50.0, rel=1e-10)
+    assert p1.pik_interest_keur == pytest.approx(5.0, rel=1e-10)
+    assert p1.closing_balance_keur == pytest.approx(55.0, rel=1e-10)
+    assert p2.cash_principal_balance_keur == pytest.approx(100.0, rel=1e-10)
+    assert p2.pik_interest_keur == pytest.approx(10.0, rel=1e-10)
+    assert result.total_pik_keur == pytest.approx(15.0, rel=1e-10)
+    assert result.opening_operating_shl_balance_keur == pytest.approx(115.0, rel=1e-10)
+
+
+def test_staggered_draw_compound():
+    """M2: Staggered draw COMPOUND: P1 draw=50, P2 draw=50, r=10%, dcf=1.0.
+    P1: basis=50, interest=5, closing=55.
+    P2: basis=55+50=105, interest=10.5, closing=115.5.
+    total_pik=15.5.
+    """
+    periods = (
+        ShlConstructionPeriodInput(draw_keur=50.0, day_count_fraction=1.0, period_index=0),
+        ShlConstructionPeriodInput(draw_keur=50.0, day_count_fraction=1.0, period_index=1),
+    )
+    result = compute_shl_construction_schedule(
+        opening_balance_keur=0.0, periods=periods,
+        annual_rate=0.10, method=ShlConstructionInterestMethod.COMPOUND_PERIODIC,
+    )
+    p1, p2 = result.periods
+    assert p1.pik_interest_keur == pytest.approx(5.0, rel=1e-10)
+    assert p1.closing_balance_keur == pytest.approx(55.0, rel=1e-10)
+    assert p2.pik_interest_keur == pytest.approx(10.5, rel=1e-10)
+    assert result.total_pik_keur == pytest.approx(15.5, rel=1e-10)
+    assert result.opening_operating_shl_balance_keur == pytest.approx(115.5, rel=1e-10)

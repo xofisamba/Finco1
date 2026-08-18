@@ -13,7 +13,7 @@
 
 | Field | Class | Notes |
 |---|---|---|
-| `jurisdiction` | A | ISO country identifier; drives factory dispatch |
+| `jurisdiction` | A | ISO country identifier; selects jurisdiction defaults profile at the input resolution layer; must NOT dispatch financial calculation formulas |
 | `corporate_tax_rate` | A | Country CIT rate from statute |
 | `depreciation_method` | C | Engine capability ("straight_line", "declining_balance"); not a legal rule |
 | `useful_life_solar_years` | C | Model convention for solar PV asset life |
@@ -71,6 +71,17 @@ The KUPI profile `KUPI-BA-source-unresolved-v1` carries:
 TaxParams values used for KUPI calculations must not be cited as authoritative
 legal values for Bosnia and Herzegovina. They are placeholders pending primary
 source confirmation.
+
+## Jurisdiction resolution chain
+
+The resolution chain for tax assumptions is:
+
+  **Jurisdiction → defaults resolution → project override → immutable ResolvedTaxAssumptions → generic tax engine (NOT formula dispatch)**
+
+Jurisdiction code selects the `TaxJurisdictionDefaults` profile at the input
+resolution layer only. It must NOT be used to dispatch financial calculation
+formulas inside the engine. The engine receives only the resolved immutable
+`ResolvedTaxAssumptions` snapshot and is project-identity-free.
 
 ## Separation rules
 
