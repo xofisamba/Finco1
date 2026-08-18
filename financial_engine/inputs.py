@@ -365,6 +365,11 @@ class ShareholderLoanModelInput:
     # SHL construction interest method (Fix 2 C3B3FIX2A). Default SIMPLE preserves
     # all existing behaviour. Set COMPOUND_PERIODIC for projects with geometric accrual.
     construction_interest_method: ShlConstructionInterestMethod = ShlConstructionInterestMethod.SIMPLE
+    # Fix 3: timing-resolved opening operating SHL override.
+    # When set, the production SHL model uses this as the effective opening balance for
+    # operating period chains (bypassing the single-draw construction PIK re-computation).
+    # None = no override; production model computes construction PIK internally as before.
+    opening_operating_shl_override_keur: float | None = None
     convergence_tolerance_keur: float = 1e-6
     convergence_relative_tolerance: float = 1e-9
     maximum_iterations: int = 50

@@ -404,6 +404,10 @@ def compute_shareholder_loan_schedules(
     cash_remaining_values: list[float] = []
 
     draw_consumed = False
+    # Fix 3: effective construction draw/dcf for operating period chains.
+    # Initialized to defaults; overridden if opening_operating_shl_override_keur is set.
+    _effective_op_draw: float = shl_input.initial_principal_keur
+    _effective_op_dcf: float = shl_input.construction_day_count_fraction
     construction_period_indices = tuple(
         p.period_index for p in periods if p.is_construction
     )
@@ -460,6 +464,12 @@ def compute_shareholder_loan_schedules(
             service = cash_interest + principal
             closing = construction_result.closing_balance_keur
             cash_eligible_for_current_shl_service = 0.0
+            # Fix 3: timing-resolved opening SHL override.
+            # If set, operating period chains start from this balance instead of
+            # the single-draw construction closing balance.
+            _override = shl_input.opening_operating_shl_override_keur
+            _effective_op_draw = _override if _override is not None else shl_input.initial_principal_keur
+            _effective_op_dcf = 0.0 if _override is not None else shl_input.construction_day_count_fraction
         else:
             if construction_result is None:
                 raise ValueError(
@@ -473,9 +483,9 @@ def compute_shareholder_loan_schedules(
             ):
                 preliminary = compute_shl_schedule(
                     construction=ShlConstructionInput(
-                        draw_keur=shl_input.initial_principal_keur,
+                        draw_keur=_effective_op_draw,
                         annual_rate=shl_input.annual_fixed_rate,
-                        dcf=shl_input.construction_day_count_fraction,
+                        dcf=_effective_op_dcf,
                         period_index=draw_period_index,
                         construction_interest_method=shl_input.construction_interest_method,
                     ),
@@ -524,9 +534,9 @@ def compute_shareholder_loan_schedules(
             operating_inputs.append(op_input)
             schedule = compute_shl_schedule(
                 construction=ShlConstructionInput(
-                    draw_keur=shl_input.initial_principal_keur,
+                    draw_keur=_effective_op_draw,
                     annual_rate=shl_input.annual_fixed_rate,
-                    dcf=shl_input.construction_day_count_fraction,
+                    dcf=_effective_op_dcf,
                     period_index=draw_period_index,
                     construction_interest_method=shl_input.construction_interest_method,
                 ),
