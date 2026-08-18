@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Any
 from financial_engine.ppa_indexation import PpaIndexationStartPolicy
 from financial_engine.shl.contracts import ShlRepaymentMode
 from finco_core.inputs._models import ShlConstructionInterestMethod
+from financial_engine.shl.construction import ShlConstructionPeriodInput
 
 if TYPE_CHECKING:
     from financial_engine.policies.tax import TaxPolicy
@@ -374,8 +375,7 @@ class ShareholderLoanModelInput:
     # Fix 3 canonical: multi-period construction draw schedule for the SHL model.
     # When set, compute_shareholder_loan_schedules uses this to compute construction PIK
     # canonically per-period. model_result construction PIK == ProjectFinancingResult PIK.
-    # tuple[ShlConstructionPeriodInput, ...] | None = None
-    construction_periods_override: object | None = None
+    construction_periods_override: tuple[ShlConstructionPeriodInput, ...] | None = None
     convergence_tolerance_keur: float = 1e-6
     convergence_relative_tolerance: float = 1e-9
     maximum_iterations: int = 50
