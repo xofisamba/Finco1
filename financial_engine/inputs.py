@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any
 
 from financial_engine.ppa_indexation import PpaIndexationStartPolicy
 from financial_engine.shl.contracts import ShlRepaymentMode
+from finco_core.inputs._models import ShlConstructionInterestMethod
 
 if TYPE_CHECKING:
     from financial_engine.policies.tax import TaxPolicy
@@ -361,6 +362,9 @@ class ShareholderLoanModelInput:
     repayment_start_period_index: int
     maturity_period_index: int
     repayment_mode: ShlRepaymentMode = ShlRepaymentMode.CASH_SWEEP
+    # SHL construction interest method (Fix 2 C3B3FIX2A). Default SIMPLE preserves
+    # all existing behaviour. Set COMPOUND_PERIODIC for projects with geometric accrual.
+    construction_interest_method: ShlConstructionInterestMethod = ShlConstructionInterestMethod.SIMPLE
     convergence_tolerance_keur: float = 1e-6
     convergence_relative_tolerance: float = 1e-9
     maximum_iterations: int = 50

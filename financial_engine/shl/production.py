@@ -63,6 +63,7 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import TYPE_CHECKING, Sequence
 
+from finco_core.inputs._models import ShlConstructionInterestMethod
 from financial_engine.shl.contracts import (
     ShlDayCountConvention,
     ShlInterestPaymentMode,
@@ -106,6 +107,7 @@ class ShlConstructionInput:
     annual_rate: float
     dcf: float = 1.0
     period_index: int = 0
+    construction_interest_method: ShlConstructionInterestMethod = ShlConstructionInterestMethod.SIMPLE
 
     def __post_init__(self) -> None:
         _check_finite("draw_keur", self.draw_keur)
@@ -245,17 +247,39 @@ def compute_shl_schedule(
             f"be identical. Correct the caller; do not introduce a patch rate."
         )
 
-    # Step 1: Construction period via C3B3D1 engine.
-    # opening=0, drawdown=draw, DCF=construction.dcf, PIK, principal=0
-    constr_result = compute_shl_period(
-        opening_balance_keur=0.0,
-        drawdown_keur=construction.draw_keur,
-        day_count_fraction=construction.dcf,
-        annual_rate=construction.annual_rate,
-        payment_mode=ShlInterestPaymentMode.PIK,
-        scheduled_principal_keur=0.0,
-        period_index=construction.period_index,
-    )
+    # Step 1: Construction period.
+    if construction.construction_interest_method == ShlConstructionInterestMethod.SIMPLE:
+        constr_result = compute_shl_period(
+            opening_balance_keur=0.0,
+            drawdown_keur=construction.draw_keur,
+            day_count_fraction=construction.dcf,
+            annual_rate=construction.annual_rate,
+            payment_mode=ShlInterestPaymentMode.PIK,
+            scheduled_principal_keur=0.0,
+            period_index=construction.period_index,
+        )
+    elif construction.construction_interest_method == ShlConstructionInterestMethod.COMPOUND_PERIODIC:
+        if construction.dcf == 0.0 or construction.draw_keur == 0.0:
+            compound_interest = 0.0
+        else:
+            compound_interest = construction.draw_keur * (
+                (1.0 + construction.annual_rate) ** construction.dcf - 1.0
+            )
+        constr_result = ShlPeriodResult(
+            period_index=construction.period_index,
+            opening_balance_keur=0.0,
+            gross_accrued_interest_keur=compound_interest,
+            cash_interest_keur=0.0,
+            pik_interest_keur=compound_interest,
+            scheduled_principal_keur=0.0,
+            closing_balance_keur=construction.draw_keur + compound_interest,
+        )
+    else:
+        raise ValueError(
+            f"compute_shl_schedule: unsupported construction_interest_method "
+            f"{construction.construction_interest_method!r}. "
+            f"Supported: SIMPLE, COMPOUND_PERIODIC."
+        )
 
     # Step 2: Operating periods via C3B3D2B0 waterfall (natural formula).
     operating_results: list[ShlWaterfallPeriodResult] = []
@@ -415,6 +439,7 @@ def compute_shareholder_loan_schedules(
                 annual_rate=shl_input.annual_fixed_rate,
                 dcf=shl_input.construction_day_count_fraction,
                 period_index=p.period_index,
+                construction_interest_method=shl_input.construction_interest_method,
             )
             policy = ShlWaterfallPolicy(
                 annual_rate=shl_input.annual_fixed_rate,
@@ -452,6 +477,7 @@ def compute_shareholder_loan_schedules(
                         annual_rate=shl_input.annual_fixed_rate,
                         dcf=shl_input.construction_day_count_fraction,
                         period_index=draw_period_index,
+                        construction_interest_method=shl_input.construction_interest_method,
                     ),
                     operating_periods=tuple(operating_inputs + [
                         ShlOperatingPeriodInput(
@@ -502,6 +528,7 @@ def compute_shareholder_loan_schedules(
                     annual_rate=shl_input.annual_fixed_rate,
                     dcf=shl_input.construction_day_count_fraction,
                     period_index=draw_period_index,
+                    construction_interest_method=shl_input.construction_interest_method,
                 ),
                 operating_periods=tuple(operating_inputs),
                 policy=ShlWaterfallPolicy(
