@@ -276,16 +276,20 @@ def run_project_financing_model(
             zip(shl.period_indices, shl.shl_opening_keur)
         ).get(first_operating_index, 0.0)
 
-    # BLOCKER C: pass per-period SHL draws to build_construction_funding_schedule so that
-    # G2B Sponsor cashflows reflect SponsorFundingTimingPolicy.
-    # Only pass when schedule length matches construction_period_count (monthly periods);
-    # otherwise fall back to single-total allocation (MVPs where lengths differ).
-    _construction_period_count = project_inputs.info.construction_months
+    # BLOCKER C resolved: use model construction periods (same axis as SHL/tax) as the single
+    # source of truth for G2A/G2B. _final_draw_schedule is indexed by model periods.
+    # BLOCKER B resolved: if explicit timing is provided, always use it (no len() fallback).
+    _model_construction_period_count = len(_construction_period_template) if _construction_period_template is not None else project_inputs.info.construction_months
     _shl_draws_per_period: tuple[float, ...] | None = None
-    if _final_draw_schedule is not None and len(_final_draw_schedule) == _construction_period_count:
+    if _final_draw_schedule is not None:
+        if len(_final_draw_schedule) != _model_construction_period_count:
+            raise ValueError(
+                f"G2B_PERIOD_COUNT_MISMATCH: draw schedule length {len(_final_draw_schedule)} "
+                f"!= model construction period count {_model_construction_period_count}"
+            )
         _shl_draws_per_period = tuple(p.draw_keur for p in _final_draw_schedule)
     funding = build_construction_funding_schedule(
-        construction_period_count=_construction_period_count,
+        construction_period_count=_model_construction_period_count,
         total_project_uses_keur=uses.total_project_uses_keur,
         senior_keur=model_result.senior_debt.debt_size_keur,
         junior_keur=fin.junior_or_other_project_funding_keur,

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date
 
 
 @dataclass(frozen=True)
@@ -38,6 +39,11 @@ class ConstructionFundingPeriod:
     cumulative_shl_cash_draw_keur: float
     cumulative_total_sources_keur: float
     cumulative_sources_uses_difference_keur: float
+    # Canonical period axis dates (Fix 3: single source of truth from model periods).
+    # None = legacy path (no explicit model period dates available).
+    period_start: date | None = None
+    period_end: date | None = None
+    cashflow_date: date | None = None
 
 
 @dataclass(frozen=True)
