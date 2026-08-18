@@ -30,6 +30,8 @@ import pytest
 
 from finco_core.inputs._models import ShlConstructionInterestMethod
 from financial_engine.shl.construction import compute_shl_construction_pik_keur
+from financial_engine.shl.production import ShlConstructionInput, compute_shl_schedule
+from financial_engine.shl.contracts import ShlWaterfallPolicy, ShlDayCountConvention
 
 
 # ---------------------------------------------------------------------------
@@ -201,3 +203,80 @@ def test_opening_operating_shl_identity():
     opening_operating_shl = principal + pik
     expected_opening = principal * (1.0 + KUPI_ANNUAL_RATE) ** CONSTRUCTION_FRACTION
     assert opening_operating_shl == pytest.approx(expected_opening, rel=1e-10)
+
+
+# ---------------------------------------------------------------------------
+# Test K: Causal compounding in ShlConstructionInput via compute_shl_schedule
+# ---------------------------------------------------------------------------
+def test_shl_construction_input_compound_periodic_gives_geometric_result():
+    """K1: COMPOUND_PERIODIC in ShlConstructionInput produces geometric interest."""
+    draw = 10_000.0
+    rate = 0.08
+    dcf = 2.0
+    policy = ShlWaterfallPolicy(
+        annual_rate=rate,
+        day_count_convention=ShlDayCountConvention.ACT_365_FIXED,
+    )
+    constr = ShlConstructionInput(
+        draw_keur=draw,
+        annual_rate=rate,
+        dcf=dcf,
+        period_index=0,
+        construction_interest_method=ShlConstructionInterestMethod.COMPOUND_PERIODIC,
+    )
+    result = compute_shl_schedule(constr, (), policy)
+    expected_pik = draw * ((1.0 + rate) ** dcf - 1.0)
+    assert result.construction.pik_interest_keur == pytest.approx(expected_pik, rel=1e-10)
+    assert result.construction.closing_balance_keur == pytest.approx(draw + expected_pik, rel=1e-10)
+
+
+def test_shl_construction_input_simple_gives_linear_result():
+    """K2: SIMPLE (default) in ShlConstructionInput produces linear interest."""
+    draw = 10_000.0
+    rate = 0.08
+    dcf = 2.0
+    policy = ShlWaterfallPolicy(
+        annual_rate=rate,
+        day_count_convention=ShlDayCountConvention.ACT_365_FIXED,
+    )
+    constr = ShlConstructionInput(
+        draw_keur=draw,
+        annual_rate=rate,
+        dcf=dcf,
+        period_index=0,
+        construction_interest_method=ShlConstructionInterestMethod.SIMPLE,
+    )
+    result = compute_shl_schedule(constr, (), policy)
+    expected_pik = draw * rate * dcf
+    assert result.construction.pik_interest_keur == pytest.approx(expected_pik, rel=1e-10)
+
+
+def test_compound_produces_more_pik_than_simple_in_shl_schedule():
+    """K3: COMPOUND_PERIODIC always > SIMPLE for dcf > 1, rate > 0 (geometric > linear)."""
+    draw = 10_000.0
+    rate = 0.08
+    dcf = 2.0
+    policy = ShlWaterfallPolicy(
+        annual_rate=rate,
+        day_count_convention=ShlDayCountConvention.ACT_365_FIXED,
+    )
+    compound = compute_shl_schedule(
+        ShlConstructionInput(draw_keur=draw, annual_rate=rate, dcf=dcf,
+                             construction_interest_method=ShlConstructionInterestMethod.COMPOUND_PERIODIC),
+        (),
+        policy,
+    )
+    simple = compute_shl_schedule(
+        ShlConstructionInput(draw_keur=draw, annual_rate=rate, dcf=dcf,
+                             construction_interest_method=ShlConstructionInterestMethod.SIMPLE),
+        (),
+        policy,
+    )
+    assert compound.construction.pik_interest_keur > simple.construction.pik_interest_keur
+    assert compound.construction.closing_balance_keur > simple.construction.closing_balance_keur
+
+
+def test_shl_construction_input_default_method_is_simple():
+    """K4: ShlConstructionInput default construction_interest_method is SIMPLE (backward compat)."""
+    constr = ShlConstructionInput(draw_keur=1000.0, annual_rate=0.08, dcf=1.0)
+    assert constr.construction_interest_method == ShlConstructionInterestMethod.SIMPLE

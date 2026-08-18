@@ -27,6 +27,7 @@ See docs/architecture/tax_field_inventory_fix2.md for the full table.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 
 # ---------------------------------------------------------------------------
@@ -160,6 +161,7 @@ KUPI_BA_SOURCE_UNRESOLVED_V1 = TaxJurisdictionProfile(
 # ---------------------------------------------------------------------------
 # Profile registry — keyed by profile_id.
 # No dynamic catalog pull. Entries are added here and frozen at import time.
+# KUPI is NOT in the production registry: its jurisdiction is source-unresolved.
 # ---------------------------------------------------------------------------
 _PROFILE_REGISTRY: dict[str, TaxJurisdictionProfile] = {
     p.profile_id: p
@@ -167,9 +169,125 @@ _PROFILE_REGISTRY: dict[str, TaxJurisdictionProfile] = {
         HR_GENERIC_MVP_V1,
         BA_GENERIC_MVP_V1,
         RS_GENERIC_MVP_V1,
-        KUPI_BA_SOURCE_UNRESOLVED_V1,
     )
 }
+
+
+# ---------------------------------------------------------------------------
+# TaxJurisdictionDefaults — A-class fields (jurisdiction law / binding treaty).
+# All fields are float | None = None. No invented values.
+# ---------------------------------------------------------------------------
+@dataclass(frozen=True)
+class TaxJurisdictionDefaults:
+    """A-class fields: values from country law or binding treaty.
+
+    All fields default to None. None means "not provided by this jurisdiction
+    profile". None/0/False remain distinct — do not treat None as zero.
+    """
+    corporate_tax_rate: float | None = None
+    withholding_tax_rate_dividends: float | None = None
+    withholding_tax_rate_interest: float | None = None
+    vat_standard_rate: float | None = None
+
+
+# ---------------------------------------------------------------------------
+# ProjectTaxOverrides — B-class fields (explicitly set per project).
+# None = not overridden (inherit from jurisdiction defaults or engine default).
+# ---------------------------------------------------------------------------
+@dataclass(frozen=True)
+class ProjectTaxOverrides:
+    """B-class fields: explicitly set per project; not derivable from jurisdiction alone.
+
+    None means "not overridden — use the jurisdiction default or engine default".
+    None/0/False remain distinct.
+    """
+    corporate_tax_rate_override: float | None = None
+    withholding_tax_rate_dividends_override: float | None = None
+    withholding_tax_rate_interest_override: float | None = None
+
+
+# ---------------------------------------------------------------------------
+# ResolvedTaxAssumptions — resolved value + provenance for each field.
+# ---------------------------------------------------------------------------
+@dataclass(frozen=True)
+class ResolvedTaxAssumptions:
+    """Resolved tax assumptions with field-level provenance.
+
+    Each field records the resolved value and its source (jurisdiction default,
+    project override, or engine fallback). None/0/False remain distinct.
+    """
+    corporate_tax_rate: float | None
+    corporate_tax_rate_source: str
+    withholding_tax_rate_dividends: float | None
+    withholding_tax_rate_dividends_source: str
+    withholding_tax_rate_interest: float | None
+    withholding_tax_rate_interest_source: str
+    jurisdiction_profile: TaxJurisdictionProfile
+
+
+def resolve_tax_assumptions(
+    profile: TaxJurisdictionProfile,
+    defaults: TaxJurisdictionDefaults,
+    overrides: ProjectTaxOverrides,
+) -> ResolvedTaxAssumptions:
+    """Resolve tax assumptions from jurisdiction defaults and project overrides.
+
+    B-class overrides take precedence over A-class jurisdiction defaults.
+    None/0/False remain distinct — None means "not resolved", not zero.
+
+    Parameters
+    ----------
+    profile : TaxJurisdictionProfile
+        The jurisdiction profile providing identification and provenance.
+    defaults : TaxJurisdictionDefaults
+        A-class field values from country law or binding treaty.
+    overrides : ProjectTaxOverrides
+        B-class project-level overrides. None = not overridden.
+
+    Returns
+    -------
+    ResolvedTaxAssumptions
+        Resolved values with field-level provenance labels.
+    """
+    def _resolve(
+        override: float | None,
+        default: float | None,
+        override_source: str,
+        default_source: str,
+    ) -> tuple[float | None, str]:
+        if override is not None:
+            return override, override_source
+        if default is not None:
+            return default, default_source
+        return None, "NOT_RESOLVED"
+
+    corp_tax, corp_tax_src = _resolve(
+        overrides.corporate_tax_rate_override,
+        defaults.corporate_tax_rate,
+        "project_override",
+        profile.provenance,
+    )
+    wht_div, wht_div_src = _resolve(
+        overrides.withholding_tax_rate_dividends_override,
+        defaults.withholding_tax_rate_dividends,
+        "project_override",
+        profile.provenance,
+    )
+    wht_int, wht_int_src = _resolve(
+        overrides.withholding_tax_rate_interest_override,
+        defaults.withholding_tax_rate_interest,
+        "project_override",
+        profile.provenance,
+    )
+    return ResolvedTaxAssumptions(
+        corporate_tax_rate=corp_tax,
+        corporate_tax_rate_source=corp_tax_src,
+        withholding_tax_rate_dividends=wht_div,
+        withholding_tax_rate_dividends_source=wht_div_src,
+        withholding_tax_rate_interest=wht_int,
+        withholding_tax_rate_interest_source=wht_int_src,
+        jurisdiction_profile=profile,
+    )
 
 
 def get_profile(profile_id: str) -> TaxJurisdictionProfile:

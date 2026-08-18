@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from finco_core.inputs import ProjectInputs
 
 from finco_core.inputs import TaxPeriodisationMode
+from finco_core.inputs._models import ShlConstructionInterestMethod
 
 from financial_engine.inputs import (
     CalendarInput,
@@ -427,4 +428,5 @@ def _build_shareholder_loan_model_input_from_project_inputs(
         convergence_relative_tolerance=1e-9,
         maximum_iterations=50,
         source_label="project_inputs.financing",
+        construction_interest_method=getattr(financing, 'shl_construction_interest_method', ShlConstructionInterestMethod.SIMPLE),
     )
