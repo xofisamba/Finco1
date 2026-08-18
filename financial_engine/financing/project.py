@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import replace
 
 from finco_core.inputs import GearingBasisMode, ProjectInputs, SponsorFundingMode
+from finco_core.inputs._models import ShlConstructionInterestMethod
+from financial_engine.shl.construction import compute_shl_construction_pik_keur
 from financial_engine.adapters.project_inputs import (
     build_senior_debt_model_input_from_project_inputs,
 )
@@ -115,7 +117,25 @@ def run_project_financing_model(
     assert model_result is not None and model_result.senior_debt is not None
     shl_pik = 0.0
     opening_operating_shl = 0.0
-    if model_result.shareholder_loan is not None:
+
+    construction_dcf = fin.shl_construction_day_count_fraction
+    interest_method = fin.shl_construction_interest_method
+
+    if construction_dcf is not None and construction_dcf > 0.0:
+        # Explicit construction day count fraction provided: compute PIK directly
+        # using the project-configured method. This path is authoritative for both
+        # SIMPLE and COMPOUND_PERIODIC. It bypasses the model's SHL schedule for
+        # construction PIK to guarantee method fidelity.
+        shl_pik = compute_shl_construction_pik_keur(
+            shl_cash_principal_keur=derived_shl,
+            annual_rate=fin.shl_rate,
+            construction_day_count_fraction=construction_dcf,
+            method=interest_method,
+        )
+        opening_operating_shl = derived_shl + shl_pik
+    elif model_result.shareholder_loan is not None:
+        # No explicit construction fraction: fall back to reading PIK from the
+        # SHL operating model (SIMPLE convention, backward compatible).
         shl = model_result.shareholder_loan
         construction_indices = {
             period.period_index for period in model_result.periods if period.is_construction

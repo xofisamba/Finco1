@@ -711,6 +711,27 @@ class DebtSizingCaseConfig:
                     )
 
 
+class ShlConstructionInterestMethod(str, Enum):
+    """How SHL construction-period PIK interest is computed (Fix 2 — C3B3FIX2A).
+
+    SIMPLE (default — backward compatible):
+        interest = principal × annual_rate × construction_day_count_fraction
+        Linear accrual; preserves all existing Generic Solar/Wind/Oborovo behaviour.
+
+    COMPOUND_PERIODIC:
+        interest = principal × ((1 + annual_rate) ^ construction_day_count_fraction − 1)
+        Exponential (geometric) accrual over the full construction period.
+        KUPI source workbook uses this convention.
+
+    Source evidence: KUPI source-basis delta = +436.179 kEUR;
+    Finco-basis delta = +509.413 kEUR (both at 8% p.a., 2.0-year construction).
+    CROSS_BASIS_SHL_PIK_DIFFERENCE (+1,394.678 kEUR) is NOT the pure method delta —
+    it also reflects a different SHL principal basis.
+    """
+    SIMPLE = "SIMPLE"
+    COMPOUND_PERIODIC = "COMPOUND_PERIODIC"
+
+
 @dataclass(frozen=True)
 class FinancingParams:
     """Debt, equity, reserve, and shareholder-loan assumptions."""
@@ -798,6 +819,10 @@ class FinancingParams:
     clean_shl_repayment_method: str | None = None
     shl_day_count_convention: str | None = None
     shl_construction_day_count_fraction: float | None = None
+    # SHL construction interest method (Fix 2 — C3B3FIX2A).
+    # Default SIMPLE preserves all existing results. Set COMPOUND_PERIODIC for
+    # projects whose source workbook uses geometric accrual (e.g. KUPI).
+    shl_construction_interest_method: ShlConstructionInterestMethod = ShlConstructionInterestMethod.SIMPLE
     shl_principal_eligibility_start_period: int | None = None
     shl_maturity_period_index: int | None = None
     shl_fcf_waterfall_cash_schedule_keur: tuple[float, ...] = ()
