@@ -225,7 +225,13 @@ def run_project_sponsor_returns_model(
     # --- Construction periods (contributions only) ---
     for k in construction_draw_periods:
         cp = construction_periods_by_index[k]
-        cf_date = _construction_period_date(financial_close, k)
+        # Fix 3 / Step 9: use canonical cashflow_date from ConstructionFundingPeriod when
+        # available (populated in explicit mode from model period dates). Fall back to the
+        # legacy FC + (k-1) months formula only when cashflow_date is None.
+        if cp.cashflow_date is not None:
+            cf_date = cp.cashflow_date
+        else:
+            cf_date = _construction_period_date(financial_close, k)
 
         share_cap = cp.share_capital_draw_keur
         share_prem = cp.share_premium_draw_keur
