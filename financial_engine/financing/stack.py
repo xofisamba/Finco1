@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import date
+
 from finco_core.inputs import SponsorFundingMode
 
 from financial_engine.financing.contracts import (
@@ -77,6 +79,7 @@ def build_construction_funding_schedule(
     additional_equity_keur: float,
     shl_cash_keur: float,
     shl_cash_per_period_keur: "tuple[float, ...] | None" = None,
+    period_dates: "tuple[tuple[date | None, date | None, date | None], ...] | None" = None,
 ) -> ConstructionFundingResult:
     """Allocate linear generic uses through the documented sponsor-first waterfall.
 
@@ -89,6 +92,12 @@ def build_construction_funding_schedule(
     """
     if construction_period_count <= 0:
         raise ValueError("construction_period_count must be positive")
+    # BLOCKER C: validate period_dates length when provided.
+    if period_dates is not None and len(period_dates) != construction_period_count:
+        raise ValueError(
+            f"G2A_PERIOD_DATES_LENGTH_MISMATCH: period_dates length {len(period_dates)} "
+            f"!= construction_period_count {construction_period_count}"
+        )
     # BLOCKER C: validate per-period SHL draws when provided.
     if shl_cash_per_period_keur is not None:
         if len(shl_cash_per_period_keur) != construction_period_count:
@@ -153,6 +162,12 @@ def build_construction_funding_schedule(
         sources = sum(draws.values())
         cumulative_uses += uses
         cumulative_sources = sum(cumulative.values())
+        # BLOCKER C: populate canonical period dates when provided.
+        _p_start: date | None = None
+        _p_end: date | None = None
+        _cf_date: date | None = None
+        if period_dates is not None:
+            _p_start, _p_end, _cf_date = period_dates[index - 1]
         rows.append(ConstructionFundingPeriod(
             period_index=index,
             project_cash_uses_keur=uses,
@@ -179,6 +194,9 @@ def build_construction_funding_schedule(
             cumulative_shl_cash_draw_keur=cumulative["shl"],
             cumulative_total_sources_keur=cumulative_sources,
             cumulative_sources_uses_difference_keur=cumulative_sources - cumulative_uses,
+            period_start=_p_start,
+            period_end=_p_end,
+            cashflow_date=_cf_date,
         ))
 
     return ConstructionFundingResult(

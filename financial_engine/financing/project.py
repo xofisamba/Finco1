@@ -64,6 +64,8 @@ def run_project_financing_model(
     # per-period DCFs for construction periods. Used inside the fixed-point loop to
     # compute timing-resolved opening SHL for each candidate_shl.
     _construction_period_template: tuple[ShlConstructionPeriodInput, ...] | None = None
+    # BLOCKER C: canonical period dates from model periods, populated below when template built.
+    _model_period_dates: "tuple[tuple, ...] | None" = None  # (period_start, period_end, cashflow_date)
     if (
         fin.shl_construction_day_count_fraction is not None
         and fin.shl_construction_day_count_fraction > 0.0
@@ -85,6 +87,12 @@ def run_project_financing_model(
                     period_index=i,
                 )
                 for i, p in enumerate(_construction_periods_raw)
+            )
+            # BLOCKER C: capture canonical dates from model periods.
+            # cashflow_date = period_end (standard project-finance convention).
+            _model_period_dates = tuple(
+                (p.period_start, p.period_end, p.period_end)
+                for p in _construction_periods_raw
             )
 
     # Neutral seed: the factory's legacy clean_shl_principal_keur is deliberately
@@ -122,17 +130,28 @@ def run_project_financing_model(
             _uses = getattr(fin, "construction_period_uses_keur", ())
             if _uses:
                 from financial_engine.shl.construction import build_shl_construction_draw_schedule_from_uses
-                # BLOCKER A: SHL draws proportional to total construction Uses per period.
-                # Other sources (senior/junior/equity) are passed as zeros so that
-                # net_need = uses, giving shl_draw[i] = principal * uses[i] / sum(uses).
+                # BLOCKER A fix: true net SHL need = Uses[t] - Senior[t] - Junior[t] - Other[t].
+                # Use linear (equal) per-period split of each non-SHL source.
+                # Senior estimate uses gearing_capacity (known pre-loop, binding constraint).
                 _n = len(_construction_period_template)
-                _zeros = tuple(0.0 for _ in range(_n))
+                _linear_senior = tuple(gearing_capacity / _n for _ in range(_n))
+                _linear_junior = tuple(
+                    fin.junior_or_other_project_funding_keur / _n for _ in range(_n)
+                )
+                _linear_other = tuple(
+                    (
+                        fin.share_capital_keur
+                        + fin.share_premium_keur
+                        + fin.other_equity_funding_before_shl_keur
+                    ) / _n
+                    for _ in range(_n)
+                )
                 _iter_draw_schedule = build_shl_construction_draw_schedule_from_uses(
                     shl_cash_principal_keur=candidate_shl,
                     period_uses_keur=_uses,
-                    period_senior_draws_keur=_zeros,
-                    period_junior_draws_keur=_zeros,
-                    period_other_sources_keur=_zeros,
+                    period_senior_draws_keur=_linear_senior,
+                    period_junior_draws_keur=_linear_junior,
+                    period_other_sources_keur=_linear_other,
                     period_dcfs=tuple(p.day_count_fraction for p in _construction_period_template),
                     policy=_timing_policy,
                 )
@@ -232,14 +251,27 @@ def run_project_financing_model(
         _uses = getattr(fin, "construction_period_uses_keur", ())
         if _uses:
             from financial_engine.shl.construction import build_shl_construction_draw_schedule_from_uses
+            # BLOCKER A fix: post-convergence uses final senior commitment (authoritative).
             _n = len(_construction_period_template)
-            _zeros = tuple(0.0 for _ in range(_n))
+            _final_senior_keur = model_result.senior_debt.debt_size_keur
+            _final_linear_senior = tuple(_final_senior_keur / _n for _ in range(_n))
+            _final_linear_junior = tuple(
+                fin.junior_or_other_project_funding_keur / _n for _ in range(_n)
+            )
+            _final_linear_other = tuple(
+                (
+                    fin.share_capital_keur
+                    + fin.share_premium_keur
+                    + fin.other_equity_funding_before_shl_keur
+                ) / _n
+                for _ in range(_n)
+            )
             _final_draw_schedule = build_shl_construction_draw_schedule_from_uses(
                 shl_cash_principal_keur=derived_shl,
                 period_uses_keur=_uses,
-                period_senior_draws_keur=_zeros,
-                period_junior_draws_keur=_zeros,
-                period_other_sources_keur=_zeros,
+                period_senior_draws_keur=_final_linear_senior,
+                period_junior_draws_keur=_final_linear_junior,
+                period_other_sources_keur=_final_linear_other,
                 period_dcfs=tuple(p.day_count_fraction for p in _construction_period_template),
                 policy=timing_policy,
             )
@@ -299,6 +331,8 @@ def run_project_financing_model(
         additional_equity_keur=additional_equity,
         shl_cash_keur=derived_shl,
         shl_cash_per_period_keur=_shl_draws_per_period,
+        # BLOCKER C: pass canonical period dates when available from model periods.
+        period_dates=_model_period_dates,
     )
     return ProjectFinancingResult(
         project_model_result=model_result,

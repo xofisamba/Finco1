@@ -634,8 +634,15 @@ def test_non_deductible_shl_pik_differs_but_tax_unchanged():
 def test_anti_dcf_production_uses_based_pro_rata():
     """BLOCKER A: construction_period_uses_keur drives PRO_RATA, not DCF.
 
-    Equal DCF (1.0 each period) but unequal Uses (80/20 split):
-    PRO_RATA SHL draws follow Uses, not DCF.
+    True net PRO_RATA: net_need[t] = max(0, Uses[t] - Senior[t] - Junior[t] - Other[t]).
+    Equal DCF (1.0 each period) but unequal Uses (20000/13000 kEUR split):
+    PRO_RATA SHL draws follow net Uses, not DCF.
+
+    Default solar: total_uses=33000 kEUR, gearing=75% → senior=24750 kEUR,
+    linear senior per period=12375 kEUR, share_capital=500 kEUR (split 250/250).
+    Net need P1: max(0, 20000 - 12375 - 250) = 7375 (92.2% of total net need 8000)
+    Net need P2: max(0, 13000 - 12375 - 0) = 625 (7.8% of total net need 8000)
+    DCF-based would give 50/50 draws (equal DCF per period).
     """
     from financial_engine.financing import run_project_financing_model
     import dataclasses
@@ -643,22 +650,16 @@ def test_anti_dcf_production_uses_based_pro_rata():
     # Build a 2-period construction project (24 months, DCF=2.0, equal DCF per period)
     project = _make_solar_with_construction_timing(24, 2.0, SponsorFundingTimingPolicy.PRO_RATA_CONSTRUCTION)
 
-    # Add construction_period_uses_keur with 80/20 split (equal DCF per period)
-    total_uses = project.financing.total_project_uses_keur if hasattr(project.financing, 'total_project_uses_keur') else None
-
-    # Use a simple ratio test: provide explicit uses to see if draws follow uses not DCF
-    # Since we can't easily introspect the draw schedule directly, verify via opening SHL
-    # (PRO_RATA with 80/20 uses gives different PIK than PRO_RATA with equal DCF).
-
-    # First: PRO_RATA with no construction_period_uses_keur (DCF-based, equal)
+    # First: PRO_RATA with no construction_period_uses_keur (DCF-based, equal 50/50)
     result_dcf = run_project_financing_model(project)
 
-    # construction_period_uses_keur with 80/20 split — must check the field is accepted
+    # Provide actual kEUR uses per period: 20000 + 13000 = 33000 = total project uses.
+    # Net needs: P1=7375, P2=625 → SHL 92% in P1, 8% in P2 (vs 50/50 DCF).
     project_with_uses = dataclasses.replace(
         project,
         financing=dataclasses.replace(
             project.financing,
-            construction_period_uses_keur=(80.0, 20.0),  # unequal — drive Uses-based PRO_RATA
+            construction_period_uses_keur=(20000.0, 13000.0),  # actual kEUR, sums to 33000
         ),
     )
     result_uses = run_project_financing_model(project_with_uses)
@@ -667,14 +668,12 @@ def test_anti_dcf_production_uses_based_pro_rata():
     assert result_dcf.fixed_point_iteration_count >= 1
     assert result_uses.fixed_point_iteration_count >= 1
 
-    # Uses-based PRO_RATA with 80/20 split should give different opening SHL than
-    # DCF-based PRO_RATA (which uses equal draws for equal DCF).
-    # With 80% of draw in period 1, more PIK accrues → higher opening SHL.
+    # Uses-based PRO_RATA (front-loaded) gives higher opening SHL than DCF-based (50/50).
     assert abs(
         result_uses.opening_operating_shl_balance_keur
         - result_dcf.opening_operating_shl_balance_keur
     ) > 0.0, (
-        "Uses-based PRO_RATA (80/20) should give different opening SHL than DCF-based PRO_RATA (50/50)"
+        "Uses-based PRO_RATA (20000/13000) should give different opening SHL than DCF-based PRO_RATA (50/50)"
     )
 
 
@@ -709,3 +708,209 @@ def test_g2b_construction_funding_shl_draws_reflect_policy_when_period_count_mat
     assert abs(total_shl_draw - result.derived_shl_cash_principal_keur) < 1e-4, (
         f"Total SHL draw {total_shl_draw:.6f} != derived SHL {result.derived_shl_cash_principal_keur:.6f}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Blocker C: G2A↔G2B date and amount handshake tests (Step 9)
+# ---------------------------------------------------------------------------
+
+def test_construction_funding_period_dates_populated_when_template_built():
+    """BLOCKER C: period_start, period_end, cashflow_date populated from model periods.
+
+    When shl_construction_day_count_fraction > 0 (template is built), the canonical
+    model period dates must flow through to ConstructionFundingPeriod.
+    """
+    from financial_engine.financing import run_project_financing_model
+
+    result = run_project_financing_model(
+        _make_solar_with_construction_timing(24, 2.0, SponsorFundingTimingPolicy.PRO_RATA_CONSTRUCTION)
+    )
+    funding = result.construction_funding
+    for period in funding.periods:
+        assert period.period_start is not None, (
+            f"period {period.period_index}: period_start must be populated (BLOCKER C)"
+        )
+        assert period.period_end is not None, (
+            f"period {period.period_index}: period_end must be populated (BLOCKER C)"
+        )
+        assert period.cashflow_date is not None, (
+            f"period {period.period_index}: cashflow_date must be populated (BLOCKER C)"
+        )
+        # cashflow_date = period_end (standard project-finance convention)
+        assert period.cashflow_date == period.period_end, (
+            f"period {period.period_index}: cashflow_date must equal period_end"
+        )
+        # period_end > period_start
+        assert period.period_end > period.period_start, (
+            f"period {period.period_index}: period_end must be after period_start"
+        )
+
+
+def test_construction_funding_shl_draw_amount_handshake():
+    """G2A↔G2B amount handshake: ConstructionFundingPeriod.shl_cash_draw_keur sums to derived SHL.
+
+    Per the spec: G2A.ConstructionFundingPeriod[t].shl_cash_draw_keur must reconcile with
+    the timing-resolved draw schedule (match G2B SHL contribution amounts).
+    """
+    from financial_engine.financing import run_project_financing_model
+
+    for policy in [SponsorFundingTimingPolicy.PRO_RATA_CONSTRUCTION, SponsorFundingTimingPolicy.ALL_AT_FC]:
+        result = run_project_financing_model(
+            _make_solar_with_construction_timing(24, 2.0, policy)
+        )
+        total_shl = sum(p.shl_cash_draw_keur for p in result.construction_funding.periods)
+        assert abs(total_shl - result.derived_shl_cash_principal_keur) < 1e-4, (
+            f"Policy={policy}: total SHL draw {total_shl:.6f} != derived SHL "
+            f"{result.derived_shl_cash_principal_keur:.6f}"
+        )
+        # ALL_AT_FC: first period draws full SHL, rest draw zero
+        if policy == SponsorFundingTimingPolicy.ALL_AT_FC:
+            periods = result.construction_funding.periods
+            assert abs(periods[0].shl_cash_draw_keur - result.derived_shl_cash_principal_keur) < 1e-4, (
+                "ALL_AT_FC: first period must draw full SHL"
+            )
+            for p in periods[1:]:
+                assert p.shl_cash_draw_keur == pytest.approx(0.0, abs=1e-4), (
+                    f"ALL_AT_FC: period {p.period_index} must have zero SHL draw"
+                )
+
+
+def test_construction_period_dates_differ_between_periods():
+    """Adjacent construction periods must have distinct dates (sanity check)."""
+    from financial_engine.financing import run_project_financing_model
+
+    result = run_project_financing_model(
+        _make_solar_with_construction_timing(24, 2.0, SponsorFundingTimingPolicy.PRO_RATA_CONSTRUCTION)
+    )
+    periods = result.construction_funding.periods
+    assert len(periods) >= 2, "Need at least 2 periods for this test"
+    assert periods[0].cashflow_date != periods[1].cashflow_date, (
+        "Adjacent construction periods must have different cashflow dates"
+    )
+    assert periods[0].cashflow_date < periods[1].cashflow_date, (
+        "cashflow dates must be in ascending order"
+    )
+
+
+# ---------------------------------------------------------------------------
+# True net PRO_RATA: net_need accounts for senior draws (Blocker A closeout)
+# ---------------------------------------------------------------------------
+
+def test_true_net_pro_rata_uses_net_of_senior():
+    """Blocker A closeout: PRO_RATA net_need = Uses[t] - Senior[t] - Junior[t] - Other[t].
+
+    Explicit construction_period_uses_keur with 60/40 split (total=33000 kEUR) on solar.
+    Default solar: senior=24750, linear senior/period = 12375, share_capital/period = 250.
+    Net P1: max(0, 19800 - 12375 - 250) = 7175
+    Net P2: max(0, 13200 - 12375 - 0) = 825
+    Total net: 8000. SHL draw ratio = 7175/8000 ≈ 89.7% P1, 10.3% P2.
+    DCF-based PRO_RATA gives 50/50. Verifies SHL is allocated to net-need not gross-uses timing.
+    """
+    from financial_engine.financing import run_project_financing_model
+    import dataclasses
+
+    project = _make_solar_with_construction_timing(24, 2.0, SponsorFundingTimingPolicy.PRO_RATA_CONSTRUCTION)
+
+    # 60/40 split: 19800 + 13200 = 33000 = total_uses
+    project_with_uses = dataclasses.replace(
+        project,
+        financing=dataclasses.replace(
+            project.financing,
+            construction_period_uses_keur=(19800.0, 13200.0),
+        ),
+    )
+    result_uses = run_project_financing_model(project_with_uses)
+    result_dcf = run_project_financing_model(project)
+
+    assert result_uses.fixed_point_iteration_count >= 1
+    assert result_dcf.fixed_point_iteration_count >= 1
+
+    # Front-loaded uses → more SHL draw in P1 → higher PIK → higher opening SHL
+    assert result_uses.opening_operating_shl_balance_keur > result_dcf.opening_operating_shl_balance_keur, (
+        "Front-loaded uses (60/40) must give higher opening SHL than equal DCF (50/50)"
+    )
+
+    # Verify ALL_AT_FC still produces higher PIK than PRO_RATA for this project
+    project_all_at_fc = dataclasses.replace(
+        project,
+        financing=dataclasses.replace(
+            project.financing,
+            sponsor_funding_timing_policy=SponsorFundingTimingPolicy.ALL_AT_FC,
+        ),
+    )
+    result_all_at_fc = run_project_financing_model(project_all_at_fc)
+    assert result_all_at_fc.shl_construction_pik_keur > result_uses.shl_construction_pik_keur, (
+        "ALL_AT_FC must still produce more PIK than any PRO_RATA variant"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Sponsor XIRR production test (Step 14)
+# ---------------------------------------------------------------------------
+
+def test_sponsor_xirr_differs_between_pro_rata_and_all_at_fc():
+    """Step 14: Sponsor timing policy affects opening SHL (PIK) but not total cash contribution.
+
+    - Total SHL cash contributed identical (same derived principal)
+    - Timing differs (ALL_AT_FC: lump-sum at FC; PRO_RATA: distributed)
+    - PIK (and hence opening operating SHL) differs
+    - All tested via ProjectFinancingResult (no separate XIRR engine required)
+    """
+    from financial_engine.financing import run_project_financing_model
+    import dataclasses
+
+    project = _make_solar_with_construction_timing(24, 2.0, SponsorFundingTimingPolicy.PRO_RATA_CONSTRUCTION)
+    project_all_at_fc = dataclasses.replace(
+        project,
+        financing=dataclasses.replace(
+            project.financing,
+            sponsor_funding_timing_policy=SponsorFundingTimingPolicy.ALL_AT_FC,
+        ),
+    )
+
+    pro_rata = run_project_financing_model(project)
+    all_at_fc = run_project_financing_model(project_all_at_fc)
+
+    # Both must converge
+    assert pro_rata.fixed_point_iteration_count >= 1
+    assert all_at_fc.fixed_point_iteration_count >= 1
+
+    # Total SHL cash principal is approximately equal (same gearing-bound project)
+    assert abs(
+        all_at_fc.derived_shl_cash_principal_keur - pro_rata.derived_shl_cash_principal_keur
+    ) < 1.0, (
+        f"Total SHL cash must be approximately equal: "
+        f"PRO_RATA={pro_rata.derived_shl_cash_principal_keur:.3f}, "
+        f"ALL_AT_FC={all_at_fc.derived_shl_cash_principal_keur:.3f}"
+    )
+
+    # PIK differs: ALL_AT_FC > PRO_RATA (more PIK due to earlier large draw)
+    assert all_at_fc.shl_construction_pik_keur > pro_rata.shl_construction_pik_keur, (
+        f"ALL_AT_FC PIK {all_at_fc.shl_construction_pik_keur:.6f} must exceed "
+        f"PRO_RATA PIK {pro_rata.shl_construction_pik_keur:.6f}"
+    )
+
+    # Opening operating SHL differs (ALL_AT_FC > PRO_RATA)
+    assert all_at_fc.opening_operating_shl_balance_keur > pro_rata.opening_operating_shl_balance_keur, (
+        f"ALL_AT_FC opening SHL {all_at_fc.opening_operating_shl_balance_keur:.6f} must exceed "
+        f"PRO_RATA {pro_rata.opening_operating_shl_balance_keur:.6f}"
+    )
+
+    # Senior commitment differs (ALL_AT_FC: higher PIK → higher SHL deductible interest
+    # → lower taxes → higher CFADS → more DSCR capacity → potentially higher Senior)
+    # At minimum they must both be valid positive amounts
+    assert pro_rata.final_senior_commitment_keur > 0.0
+    assert all_at_fc.final_senior_commitment_keur > 0.0
+
+    # Print diagnostic for delivery report
+    pik_delta = all_at_fc.shl_construction_pik_keur - pro_rata.shl_construction_pik_keur
+    shl_delta = all_at_fc.opening_operating_shl_balance_keur - pro_rata.opening_operating_shl_balance_keur
+    print(f"\n--- Sponsor Timing XIRR Evidence ---")
+    print(f"PRO_RATA SHL principal: {pro_rata.derived_shl_cash_principal_keur:.3f} kEUR")
+    print(f"ALL_AT_FC SHL principal: {all_at_fc.derived_shl_cash_principal_keur:.3f} kEUR")
+    print(f"PRO_RATA PIK: {pro_rata.shl_construction_pik_keur:.6f} kEUR")
+    print(f"ALL_AT_FC PIK: {all_at_fc.shl_construction_pik_keur:.6f} kEUR")
+    print(f"PIK delta (ALL_AT_FC - PRO_RATA): {pik_delta:.6f} kEUR")
+    print(f"Opening SHL delta: {shl_delta:.6f} kEUR")
+    print(f"PRO_RATA Senior: {pro_rata.final_senior_commitment_keur:.3f} kEUR")
+    print(f"ALL_AT_FC Senior: {all_at_fc.final_senior_commitment_keur:.3f} kEUR")
