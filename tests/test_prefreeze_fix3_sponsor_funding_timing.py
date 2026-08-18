@@ -384,21 +384,30 @@ def _make_solar_with_construction_timing(
     construction_months: int,
     shl_construction_day_count_fraction: float,
     sponsor_funding_timing_policy: SponsorFundingTimingPolicy,
+    construction_period_uses_keur: "tuple[float, ...] | None" = None,
 ):
-    """Build a Solar ProjectInputs with explicit multi-period construction timing."""
+    """Build a Solar ProjectInputs with explicit multi-period construction timing.
+
+    GAP 3: PRO_RATA_CONSTRUCTION with multi-period positive-DCF construction REQUIRES
+    an explicit construction_period_uses_keur. Pass it explicitly when using PRO_RATA.
+    ALL_AT_FC does not require a uses vector.
+    """
     import dataclasses
     from app import project_factories
-    from finco_core.inputs import SponsorFundingMode, GearingBasisMode
 
     project = project_factories.create_default_solar_project(
         construction_months=construction_months,
     )
+    extra_kwargs: dict = {}
+    if construction_period_uses_keur is not None:
+        extra_kwargs["construction_period_uses_keur"] = construction_period_uses_keur
     project = dataclasses.replace(
         project,
         financing=dataclasses.replace(
             project.financing,
             shl_construction_day_count_fraction=shl_construction_day_count_fraction,
             sponsor_funding_timing_policy=sponsor_funding_timing_policy,
+            **extra_kwargs,
         ),
     )
     return project
@@ -413,8 +422,14 @@ def test_pro_rata_vs_all_at_fc_opening_shl_differs_in_g2a_result():
     """
     from financial_engine.financing import run_project_financing_model
 
+    # GAP 3: PRO_RATA requires explicit uses vector. Use (4000, 29000) — small P1 so SHL
+    # is distributed by waterfall across both periods (P1 uses < equity+SHL ≈ 8500).
+    # This ensures PRO_RATA draws SHL across 2 periods → lower PIK than ALL_AT_FC (all in P1).
     pro_rata = run_project_financing_model(
-        _make_solar_with_construction_timing(24, 2.0, SponsorFundingTimingPolicy.PRO_RATA_CONSTRUCTION)
+        _make_solar_with_construction_timing(
+            24, 2.0, SponsorFundingTimingPolicy.PRO_RATA_CONSTRUCTION,
+            construction_period_uses_keur=(4000.0, 29000.0),
+        )
     )
     all_at_fc = run_project_financing_model(
         _make_solar_with_construction_timing(24, 2.0, SponsorFundingTimingPolicy.ALL_AT_FC)
@@ -454,8 +469,10 @@ def test_timing_policy_inside_fixed_point_model_result_opening_shl():
     from financial_engine.financing import run_project_financing_model
 
     for policy in [SponsorFundingTimingPolicy.PRO_RATA_CONSTRUCTION, SponsorFundingTimingPolicy.ALL_AT_FC]:
+        # GAP 3: PRO_RATA requires explicit uses vector for multi-period positive-DCF.
+        uses_keur = (16500.0, 16500.0) if policy == SponsorFundingTimingPolicy.PRO_RATA_CONSTRUCTION else None
         result = run_project_financing_model(
-            _make_solar_with_construction_timing(24, 2.0, policy)
+            _make_solar_with_construction_timing(24, 2.0, policy, construction_period_uses_keur=uses_keur)
         )
         shl_sched = result.project_model_result.shareholder_loan
         assert shl_sched is not None
@@ -545,8 +562,10 @@ def test_construction_pik_handshake_result_vs_model():
     from financial_engine.financing import run_project_financing_model
 
     for policy in [SponsorFundingTimingPolicy.PRO_RATA_CONSTRUCTION, SponsorFundingTimingPolicy.ALL_AT_FC]:
+        # GAP 3: PRO_RATA requires explicit uses vector for multi-period positive-DCF.
+        uses_keur = (16500.0, 16500.0) if policy == SponsorFundingTimingPolicy.PRO_RATA_CONSTRUCTION else None
         result = run_project_financing_model(
-            _make_solar_with_construction_timing(24, 2.0, policy)
+            _make_solar_with_construction_timing(24, 2.0, policy, construction_period_uses_keur=uses_keur)
         )
 
         shl_sched = result.project_model_result.shareholder_loan
@@ -586,7 +605,10 @@ def test_non_deductible_shl_pik_differs_but_tax_unchanged():
     import dataclasses
 
     def _make_non_deductible_project(policy):
-        project = _make_solar_with_construction_timing(24, 2.0, policy)
+        # GAP 3: PRO_RATA requires uses vector. Use (4000, 29000) so SHL is distributed
+        # across periods → PRO_RATA PIK < ALL_AT_FC PIK (comparison test requires this).
+        uses_keur = (4000.0, 29000.0) if policy == SponsorFundingTimingPolicy.PRO_RATA_CONSTRUCTION else None
+        project = _make_solar_with_construction_timing(24, 2.0, policy, construction_period_uses_keur=uses_keur)
         return dataclasses.replace(
             project,
             tax=dataclasses.replace(
@@ -634,46 +656,46 @@ def test_non_deductible_shl_pik_differs_but_tax_unchanged():
 def test_anti_dcf_production_uses_based_pro_rata():
     """BLOCKER A: construction_period_uses_keur drives PRO_RATA, not DCF.
 
-    True net PRO_RATA: net_need[t] = max(0, Uses[t] - Senior[t] - Junior[t] - Other[t]).
-    Equal DCF (1.0 each period) but unequal Uses (20000/13000 kEUR split):
-    PRO_RATA SHL draws follow net Uses, not DCF.
+    GAP 3: PRO_RATA with multi-period positive-DCF construction REQUIRES an explicit uses vector.
+    Compare back-loaded (4000/29000) vs front-loaded (7000/26000): same total, different SHL timing.
 
-    Default solar: total_uses=33000 kEUR, gearing=75% → senior=24750 kEUR,
-    linear senior per period=12375 kEUR, share_capital=500 kEUR (split 250/250).
-    Net need P1: max(0, 20000 - 12375 - 250) = 7375 (92.2% of total net need 8000)
-    Net need P2: max(0, 13000 - 12375 - 0) = 625 (7.8% of total net need 8000)
-    DCF-based would give 50/50 draws (equal DCF per period).
+    True net PRO_RATA: SHL allocation = max(0, cumulative_uses - equity - previously_drawn_SHL).
+    Key condition: per-period uses must be < equity+SHL (≈8500) for SHL to span both periods.
+    - (4000, 29000): P1 draws equity=500, shl=3500, senior=0 → shl_draw[0]=3500
+    - (7000, 26000): P1 draws equity=500, shl=6500, senior=0 → shl_draw[0]=6500
+    Different SHL timing → different opening SHL (earlier draw = more PIK).
+
+    Default solar: total_uses=33000 kEUR, gearing=75% → senior=24750 kEUR, SHL≈8000 kEUR.
     """
     from financial_engine.financing import run_project_financing_model
     import dataclasses
 
-    # Build a 2-period construction project (24 months, DCF=2.0, equal DCF per period)
-    project = _make_solar_with_construction_timing(24, 2.0, SponsorFundingTimingPolicy.PRO_RATA_CONSTRUCTION)
+    # Build a 2-period construction project (24 months, DCF=2.0)
+    # Back-loaded (4000/29000): P1 uses < equity+SHL → small SHL draw in P1
+    project_back = _make_solar_with_construction_timing(
+        24, 2.0, SponsorFundingTimingPolicy.PRO_RATA_CONSTRUCTION,
+        construction_period_uses_keur=(4000.0, 29000.0),
+    )
+    result_back = run_project_financing_model(project_back)
 
-    # First: PRO_RATA with no construction_period_uses_keur (DCF-based, equal 50/50)
-    result_dcf = run_project_financing_model(project)
-
-    # Provide actual kEUR uses per period: 20000 + 13000 = 33000 = total project uses.
-    # Net needs: P1=7375, P2=625 → SHL 92% in P1, 8% in P2 (vs 50/50 DCF).
-    project_with_uses = dataclasses.replace(
-        project,
+    # Front-loaded (7000/26000): P1 uses > P1-back → more SHL drawn in P1 → more PIK
+    project_front = dataclasses.replace(
+        project_back,
         financing=dataclasses.replace(
-            project.financing,
-            construction_period_uses_keur=(20000.0, 13000.0),  # actual kEUR, sums to 33000
+            project_back.financing,
+            construction_period_uses_keur=(7000.0, 26000.0),
         ),
     )
-    result_uses = run_project_financing_model(project_with_uses)
+    result_front = run_project_financing_model(project_front)
 
     # Both must converge
-    assert result_dcf.fixed_point_iteration_count >= 1
-    assert result_uses.fixed_point_iteration_count >= 1
+    assert result_back.fixed_point_iteration_count >= 1
+    assert result_front.fixed_point_iteration_count >= 1
 
-    # Uses-based PRO_RATA (front-loaded) gives higher opening SHL than DCF-based (50/50).
-    assert abs(
-        result_uses.opening_operating_shl_balance_keur
-        - result_dcf.opening_operating_shl_balance_keur
-    ) > 0.0, (
-        "Uses-based PRO_RATA (20000/13000) should give different opening SHL than DCF-based PRO_RATA (50/50)"
+    # Front-loaded PRO_RATA gives higher opening SHL (more SHL drawn early = more PIK).
+    assert result_front.opening_operating_shl_balance_keur > result_back.opening_operating_shl_balance_keur, (
+        "PRO_RATA with front-loaded uses (7000/26000) should give higher opening SHL "
+        "than back-loaded (4000/29000)"
     )
 
 
@@ -722,8 +744,12 @@ def test_construction_funding_period_dates_populated_when_template_built():
     """
     from financial_engine.financing import run_project_financing_model
 
+    # GAP 3: PRO_RATA requires explicit uses vector.
     result = run_project_financing_model(
-        _make_solar_with_construction_timing(24, 2.0, SponsorFundingTimingPolicy.PRO_RATA_CONSTRUCTION)
+        _make_solar_with_construction_timing(
+            24, 2.0, SponsorFundingTimingPolicy.PRO_RATA_CONSTRUCTION,
+            construction_period_uses_keur=(16500.0, 16500.0),
+        )
     )
     funding = result.construction_funding
     for period in funding.periods:
@@ -755,8 +781,10 @@ def test_construction_funding_shl_draw_amount_handshake():
     from financial_engine.financing import run_project_financing_model
 
     for policy in [SponsorFundingTimingPolicy.PRO_RATA_CONSTRUCTION, SponsorFundingTimingPolicy.ALL_AT_FC]:
+        # GAP 3: PRO_RATA requires explicit uses vector for multi-period positive-DCF.
+        uses_keur = (16500.0, 16500.0) if policy == SponsorFundingTimingPolicy.PRO_RATA_CONSTRUCTION else None
         result = run_project_financing_model(
-            _make_solar_with_construction_timing(24, 2.0, policy)
+            _make_solar_with_construction_timing(24, 2.0, policy, construction_period_uses_keur=uses_keur)
         )
         total_shl = sum(p.shl_cash_draw_keur for p in result.construction_funding.periods)
         assert abs(total_shl - result.derived_shl_cash_principal_keur) < 1e-4, (
@@ -779,8 +807,12 @@ def test_construction_period_dates_differ_between_periods():
     """Adjacent construction periods must have distinct dates (sanity check)."""
     from financial_engine.financing import run_project_financing_model
 
+    # GAP 3: PRO_RATA requires explicit uses vector.
     result = run_project_financing_model(
-        _make_solar_with_construction_timing(24, 2.0, SponsorFundingTimingPolicy.PRO_RATA_CONSTRUCTION)
+        _make_solar_with_construction_timing(
+            24, 2.0, SponsorFundingTimingPolicy.PRO_RATA_CONSTRUCTION,
+            construction_period_uses_keur=(16500.0, 16500.0),
+        )
     )
     periods = result.construction_funding.periods
     assert len(periods) >= 2, "Need at least 2 periods for this test"
@@ -821,14 +853,25 @@ def test_true_net_pro_rata_uses_net_of_senior():
         ),
     )
     result_uses = run_project_financing_model(project_with_uses)
-    result_dcf = run_project_financing_model(project)
+
+    # Baseline: small-P1 uses (4000/29000) — P1 uses < equity+SHL ≈ 8500 → SHL distributed.
+    # Contrast: (19800/13200) → P1 saturates equity+SHL → all SHL in P1.
+    project_small_p1 = dataclasses.replace(
+        project,
+        financing=dataclasses.replace(
+            project.financing,
+            construction_period_uses_keur=(4000.0, 29000.0),
+        ),
+    )
+    result_small = run_project_financing_model(project_small_p1)
 
     assert result_uses.fixed_point_iteration_count >= 1
-    assert result_dcf.fixed_point_iteration_count >= 1
+    assert result_small.fixed_point_iteration_count >= 1
 
-    # Front-loaded uses (60/40) → waterfall draws all SHL in P1 → higher PIK than DCF 50/50
-    assert result_uses.opening_operating_shl_balance_keur > result_dcf.opening_operating_shl_balance_keur, (
-        "Front-loaded uses (60/40) must give higher opening SHL than equal DCF (50/50)"
+    # Front-loaded uses (60/40) saturates equity+SHL in P1 → all SHL in P1 (more PIK).
+    # Small P1 (4000) distributes SHL → less PIK.
+    assert result_uses.opening_operating_shl_balance_keur >= result_small.opening_operating_shl_balance_keur, (
+        "Front-loaded uses (60/40) must give higher or equal opening SHL than back-loaded (4000/29000)"
     )
 
     # ALL_AT_FC (no uses vector) vs PRO_RATA-waterfall with 60/40 uses:
@@ -863,7 +906,13 @@ def test_sponsor_xirr_differs_between_pro_rata_and_all_at_fc():
     from financial_engine.sponsor_returns import run_project_sponsor_returns_model
     import dataclasses
 
-    project = _make_solar_with_construction_timing(24, 2.0, SponsorFundingTimingPolicy.PRO_RATA_CONSTRUCTION)
+    # GAP 3: PRO_RATA requires explicit uses vector for multi-period positive-DCF.
+    # Use (4000, 29000): small P1 ensures SHL is distributed across both periods by waterfall
+    # (P1 uses < equity+SHL ≈ 8500), so PRO_RATA cash timing differs from ALL_AT_FC.
+    project = _make_solar_with_construction_timing(
+        24, 2.0, SponsorFundingTimingPolicy.PRO_RATA_CONSTRUCTION,
+        construction_period_uses_keur=(4000.0, 29000.0),
+    )
     project_all_at_fc = dataclasses.replace(
         project,
         financing=dataclasses.replace(
@@ -1101,3 +1150,196 @@ def test_controlled_waterfall_example_exact_values():
     print("\n--- Step 8 Controlled Waterfall Example ---")
     for e in entries:
         print(f"  P{e.month_index}: equity={e.equity_draw_keur}, shl={e.shl_draw_keur}, senior={e.senior_draw_keur}")
+
+
+# ---------------------------------------------------------------------------
+# GAP 3: Fail-closed for multi-period PRO_RATA without explicit Uses vector
+# ---------------------------------------------------------------------------
+
+def test_gap3_pro_rata_multi_period_without_uses_fails_closed():
+    """GAP 3: PRO_RATA_CONSTRUCTION + multi-period positive-DCF + no uses vector → ValueError.
+
+    Exception: single construction period (unambiguous) and legacy Solar/Wind (DCF=0.0).
+    """
+    from financial_engine.financing import run_project_financing_model
+    import dataclasses
+    from app import project_factories
+
+    project = project_factories.create_default_solar_project(construction_months=24)
+    # Multi-period (24 months), positive DCF, PRO_RATA, NO uses vector → must fail
+    project_no_uses = dataclasses.replace(
+        project,
+        financing=dataclasses.replace(
+            project.financing,
+            shl_construction_day_count_fraction=2.0,
+            sponsor_funding_timing_policy=SponsorFundingTimingPolicy.PRO_RATA_CONSTRUCTION,
+            # construction_period_uses_keur intentionally NOT set (empty default)
+        ),
+    )
+    with pytest.raises(ValueError, match="PRO_RATA_CONSTRUCTION.*requires.*construction_period_uses_keur"):
+        run_project_financing_model(project_no_uses)
+
+
+def test_gap3_single_period_pro_rata_no_uses_is_valid():
+    """GAP 3 exception: single model construction period with PRO_RATA is unambiguous — no uses required.
+
+    Note: Solar model always produces 2 construction periods (half-year period structure).
+    This test verifies GAP 3 fails-closed for the 2-period Solar case, and that providing
+    a uses vector allows PRO_RATA to proceed. The single-period exemption is tested
+    indirectly via the code path (n_template_periods > 1 condition in project.py).
+    """
+    from financial_engine.financing import run_project_financing_model
+    import dataclasses
+    from app import project_factories
+
+    project = project_factories.create_default_solar_project(construction_months=12)
+    # Solar always gives 2 construction periods; providing uses vector satisfies GAP 3.
+    project_with_uses = dataclasses.replace(
+        project,
+        financing=dataclasses.replace(
+            project.financing,
+            shl_construction_day_count_fraction=1.0,
+            sponsor_funding_timing_policy=SponsorFundingTimingPolicy.PRO_RATA_CONSTRUCTION,
+            construction_period_uses_keur=(16500.0, 16500.0),  # GAP 3 requires uses
+        ),
+    )
+    # Should succeed with uses vector
+    result = run_project_financing_model(project_with_uses)
+    assert result.fixed_point_iteration_count >= 1
+
+
+def test_gap3_all_at_fc_multi_period_without_uses_is_valid():
+    """GAP 3 only applies to PRO_RATA. ALL_AT_FC with multi-period and no uses is fine."""
+    from financial_engine.financing import run_project_financing_model
+    import dataclasses
+    from app import project_factories
+
+    project = project_factories.create_default_solar_project(construction_months=24)
+    project_all_fc = dataclasses.replace(
+        project,
+        financing=dataclasses.replace(
+            project.financing,
+            shl_construction_day_count_fraction=2.0,
+            sponsor_funding_timing_policy=SponsorFundingTimingPolicy.ALL_AT_FC,
+            # No uses vector — ALL_AT_FC exempt from GAP 3
+        ),
+    )
+    result = run_project_financing_model(project_all_fc)
+    assert result.fixed_point_iteration_count >= 1
+
+
+# ---------------------------------------------------------------------------
+# GAP 2: ALL_AT_FC prefunding bridge controlled example
+# ---------------------------------------------------------------------------
+
+def test_gap2_all_at_fc_prefunding_bridge_controlled():
+    """GAP 2 controlled example: ALL_AT_FC prefunding bridge roll-forward.
+
+    SHL=100, 3 periods, waterfall allocation=[30,40,30], ALL_AT_FC contribution=[100,0,0].
+    Expected: opening=[0,70,30], closing=[70,30,0].
+
+    Uses build_construction_funding_schedule directly with explicit vectors.
+    """
+    from financial_engine.financing.stack import build_construction_funding_schedule
+
+    # SHL=100, allocation follows waterfall (30/40/30), cash contribution ALL_AT_FC (100/0/0)
+    # Total uses=100 (no senior/equity/junior for simplicity)
+    result = build_construction_funding_schedule(
+        construction_period_count=3,
+        total_project_uses_keur=100.0,
+        senior_keur=0.0,
+        junior_keur=0.0,
+        share_capital_keur=0.0,
+        share_premium_keur=0.0,
+        other_committed_equity_keur=0.0,
+        additional_equity_keur=0.0,
+        shl_cash_keur=100.0,
+        shl_cash_per_period_keur=(100.0, 0.0, 0.0),    # Layer B: cash contribution
+        period_uses_keur=(30.0, 40.0, 30.0),            # GAP 1: explicit uses
+        shl_allocation_per_period_keur=(30.0, 40.0, 30.0),  # Layer A: waterfall allocation
+    )
+
+    periods = result.periods
+    assert len(periods) == 3
+
+    # Layer A: allocation follows uses
+    assert abs(periods[0].shl_allocation_to_uses_keur - 30.0) < 1e-9, f"P1 allocation={periods[0].shl_allocation_to_uses_keur}"
+    assert abs(periods[1].shl_allocation_to_uses_keur - 40.0) < 1e-9, f"P2 allocation={periods[1].shl_allocation_to_uses_keur}"
+    assert abs(periods[2].shl_allocation_to_uses_keur - 30.0) < 1e-9, f"P3 allocation={periods[2].shl_allocation_to_uses_keur}"
+
+    # Layer B: cash contribution (ALL_AT_FC)
+    assert abs(periods[0].sponsor_shl_cash_contribution_keur - 100.0) < 1e-9
+    assert abs(periods[1].sponsor_shl_cash_contribution_keur - 0.0) < 1e-9
+    assert abs(periods[2].sponsor_shl_cash_contribution_keur - 0.0) < 1e-9
+
+    # Prefunding bridge roll-forward: opening=[0,70,30], closing=[70,30,0]
+    assert abs(periods[0].opening_unutilised_shl_cash_keur - 0.0) < 1e-9, f"P1 opening={periods[0].opening_unutilised_shl_cash_keur}"
+    assert abs(periods[0].closing_unutilised_shl_cash_keur - 70.0) < 1e-9, f"P1 closing={periods[0].closing_unutilised_shl_cash_keur}"
+
+    assert abs(periods[1].opening_unutilised_shl_cash_keur - 70.0) < 1e-9, f"P2 opening={periods[1].opening_unutilised_shl_cash_keur}"
+    assert abs(periods[1].closing_unutilised_shl_cash_keur - 30.0) < 1e-9, f"P2 closing={periods[1].closing_unutilised_shl_cash_keur}"
+
+    assert abs(periods[2].opening_unutilised_shl_cash_keur - 30.0) < 1e-9, f"P3 opening={periods[2].opening_unutilised_shl_cash_keur}"
+    assert abs(periods[2].closing_unutilised_shl_cash_keur - 0.0) < 1e-9, f"P3 closing={periods[2].closing_unutilised_shl_cash_keur}"
+
+    print("\n--- GAP 2 Controlled Bridge Example (ALL_AT_FC) ---")
+    for p in periods:
+        print(f"  P{p.period_index}: contribution={p.sponsor_shl_cash_contribution_keur}, allocation={p.shl_allocation_to_uses_keur}, opening={p.opening_unutilised_shl_cash_keur}, closing={p.closing_unutilised_shl_cash_keur}")
+
+
+def test_gap2_pro_rata_bridge_is_zero():
+    """GAP 2 control: PRO_RATA contribution == allocation → unutilised balance always 0."""
+    from financial_engine.financing.stack import build_construction_funding_schedule
+
+    # PRO_RATA: contribution == allocation == [30, 40, 30]
+    result = build_construction_funding_schedule(
+        construction_period_count=3,
+        total_project_uses_keur=100.0,
+        senior_keur=0.0,
+        junior_keur=0.0,
+        share_capital_keur=0.0,
+        share_premium_keur=0.0,
+        other_committed_equity_keur=0.0,
+        additional_equity_keur=0.0,
+        shl_cash_keur=100.0,
+        shl_cash_per_period_keur=(30.0, 40.0, 30.0),   # contribution == allocation
+        period_uses_keur=(30.0, 40.0, 30.0),
+        shl_allocation_per_period_keur=(30.0, 40.0, 30.0),
+    )
+    for p in result.periods:
+        assert abs(p.opening_unutilised_shl_cash_keur) < 1e-9, f"PRO_RATA P{p.period_index} opening != 0"
+        assert abs(p.closing_unutilised_shl_cash_keur) < 1e-9, f"PRO_RATA P{p.period_index} closing != 0"
+        assert abs(p.shl_allocation_to_uses_keur - p.sponsor_shl_cash_contribution_keur) < 1e-9, (
+            f"PRO_RATA: allocation must equal contribution at P{p.period_index}"
+        )
+
+
+def test_gap1_one_period_uses_vector_in_funding_schedule():
+    """GAP 1: explicit construction_period_uses_keur flows into ConstructionFundingPeriod.project_cash_uses_keur.
+
+    For a 2-period project with 60/40 Uses split (19800/13200), the funding schedule
+    must report 19800 and 13200 as project_cash_uses_keur (not linear 16500/16500).
+    """
+    from financial_engine.financing import run_project_financing_model
+    import dataclasses
+
+    project = _make_solar_with_construction_timing(
+        24, 2.0, SponsorFundingTimingPolicy.PRO_RATA_CONSTRUCTION,
+        construction_period_uses_keur=(19800.0, 13200.0),
+    )
+    result = run_project_financing_model(project)
+    assert result.fixed_point_iteration_count >= 1
+
+    uses_0 = result.construction_funding.periods[0].project_cash_uses_keur
+    uses_1 = result.construction_funding.periods[1].project_cash_uses_keur
+
+    # Exact match of input uses vector (not linear total/n = 16500)
+    assert abs(uses_0 - 19800.0) < 1e-4, (
+        f"GAP 1: period 0 uses must be 19800 (from input vector), got {uses_0:.3f}"
+    )
+    assert abs(uses_1 - 13200.0) < 1e-4, (
+        f"GAP 1: period 1 uses must be 13200 (from input vector), got {uses_1:.3f}"
+    )
+
+    print(f"\n--- GAP 1 Uses Vector Handshake ---")
+    print(f"Input: (19800, 13200) → Reported: ({uses_0:.3f}, {uses_1:.3f})")

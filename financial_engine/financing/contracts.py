@@ -44,6 +44,15 @@ class ConstructionFundingPeriod:
     period_start: date | None = None
     period_end: date | None = None
     cashflow_date: date | None = None
+    # GAP 2 — ALL_AT_FC prefunding bridge (Fix 3 closeout).
+    # shl_allocation_to_uses_keur: from SPONSOR_FIRST_RESIDUAL_SENIOR waterfall (Layer A).
+    # sponsor_shl_cash_contribution_keur: from SponsorFundingTimingPolicy (Layer B cash in).
+    # For PRO_RATA: allocation == contribution (no prefunding balance).
+    # For ALL_AT_FC: contribution[0] = full principal; allocation follows waterfall; bridge tracks excess.
+    shl_allocation_to_uses_keur: float = 0.0
+    sponsor_shl_cash_contribution_keur: float = 0.0
+    opening_unutilised_shl_cash_keur: float = 0.0
+    closing_unutilised_shl_cash_keur: float = 0.0
 
 
 @dataclass(frozen=True)

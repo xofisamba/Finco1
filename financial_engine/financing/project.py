@@ -96,6 +96,20 @@ def run_project_financing_model(
                 (p.period_start, p.period_end, p.period_end)
                 for p in _construction_periods_raw
             )
+            # GAP 3: fail closed for multi-period PRO_RATA without explicit Uses vector.
+            # PRO_RATA with DCF>0 and >1 construction period REQUIRES construction_period_uses_keur.
+            # Single-period exception: timing is unambiguous (no split needed).
+            # Legacy Solar/Wind paths with None/0.0 DCF are unaffected (gate above prevents reaching here).
+            _n_template_periods = len(_construction_period_template)
+            if (
+                fin.sponsor_funding_timing_policy == SponsorFundingTimingPolicy.PRO_RATA_CONSTRUCTION
+                and _n_template_periods > 1
+                and not fin.construction_period_uses_keur
+            ):
+                raise ValueError(
+                    "PRO_RATA_CONSTRUCTION with multi-period construction requires "
+                    "explicit construction_period_uses_keur"
+                )
 
     # Neutral seed: the factory's legacy clean_shl_principal_keur is deliberately
     # not read. The authoritative principal must emerge from the fixed point.
@@ -257,6 +271,9 @@ def run_project_financing_model(
     shl_pik = 0.0
     opening_operating_shl = 0.0
     _final_draw_schedule: "tuple[ShlConstructionPeriodInput, ...] | None" = None
+    # GAP 1 & 2: initialized here; populated inside the explicit-DCF block below.
+    _post_uses_vector: "tuple[float, ...] | None" = None
+    _post_waterfall_shl: "tuple[float, ...] | None" = None
 
     if _construction_period_template is not None:
         # Explicit positive DCF: compute final post-convergence draw schedule.
@@ -279,6 +296,9 @@ def run_project_financing_model(
             )
             _final_waterfall = allocate_source_waterfall(tuple(_uses), _final_caps)
             _final_waterfall_shl = tuple(e.shl_draw_keur for e in _final_waterfall)
+            # GAP 1 & 2: capture for funding schedule bridge computation below.
+            _post_uses_vector = tuple(_uses)
+            _post_waterfall_shl = _final_waterfall_shl
             if timing_policy == _Policy.PRO_RATA_CONSTRUCTION:
                 _final_shl_cash = _final_waterfall_shl
             else:  # ALL_AT_FC
@@ -338,6 +358,9 @@ def run_project_financing_model(
                 f"!= model construction period count {_model_construction_period_count}"
             )
         _shl_draws_per_period = tuple(p.draw_keur for p in _final_draw_schedule)
+    # GAP 1: pass explicit period Uses vector to funding schedule (single source of truth).
+    # GAP 2: pass waterfall allocation vector for prefunding bridge computation.
+    # Both are None in the legacy path (no explicit uses vector provided).
     funding = build_construction_funding_schedule(
         construction_period_count=_model_construction_period_count,
         total_project_uses_keur=uses.total_project_uses_keur,
@@ -351,6 +374,10 @@ def run_project_financing_model(
         shl_cash_per_period_keur=_shl_draws_per_period,
         # BLOCKER C: pass canonical period dates when available from model periods.
         period_dates=_model_period_dates,
+        # GAP 1: explicit per-period Uses vector (overrides linear total/n).
+        period_uses_keur=_post_uses_vector,
+        # GAP 2: waterfall SHL allocation-to-Uses (Layer A), distinct from cash contribution (Layer B).
+        shl_allocation_per_period_keur=_post_waterfall_shl,
     )
     return ProjectFinancingResult(
         project_model_result=model_result,
