@@ -65,6 +65,7 @@ from finco_core.inputs._models import (
     ShlAccountingTreatment,
     ShlPaymentMethod,
     ShlConstructionInterestMethod,
+    SponsorFundingTimingPolicy,
     ProjectInputs,
     hash_inputs_for_cache,
     DsrfDayCountConvention,
@@ -122,6 +123,7 @@ __all__ = [
     "ShlAccountingTreatment",
     "ShlPaymentMethod",
     "ShlConstructionInterestMethod",
+    "SponsorFundingTimingPolicy",
     "ProjectInputs",
     # BESS input model
     "BessParams",

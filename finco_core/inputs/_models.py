@@ -711,6 +711,21 @@ class DebtSizingCaseConfig:
                     )
 
 
+class SponsorFundingTimingPolicy(str, Enum):
+    """Policy determining WHEN Sponsor/SHL cash is contributed during construction.
+
+    PRO_RATA_CONSTRUCTION: Sponsor cash follows construction Uses timing (default).
+        Each period: sponsor_cash = period_uses - senior_draw - junior_draw - other_committed
+    ALL_AT_FC: Full resolved Sponsor cash contributed at Financial Close (first eligible period).
+        Later periods receive zero additional Sponsor cash.
+
+    Total required Sponsor funding is identical under both policies — only timing differs.
+    DO NOT use this to determine total funding amounts.
+    """
+    PRO_RATA_CONSTRUCTION = "pro_rata_construction"
+    ALL_AT_FC = "all_at_fc"
+
+
 class ShlConstructionInterestMethod(str, Enum):
     """How SHL construction-period PIK interest is computed (Fix 2 — C3B3FIX2A).
 
@@ -823,6 +838,10 @@ class FinancingParams:
     # Default SIMPLE preserves all existing results. Set COMPOUND_PERIODIC for
     # projects whose source workbook uses geometric accrual (e.g. KUPI).
     shl_construction_interest_method: ShlConstructionInterestMethod = ShlConstructionInterestMethod.SIMPLE
+    # Sponsor funding timing policy (Fix 3 — C3B3FIX3).
+    # Default PRO_RATA_CONSTRUCTION preserves all existing results.
+    # ALL_AT_FC: full resolved Sponsor/SHL cash contributed at Financial Close.
+    sponsor_funding_timing_policy: SponsorFundingTimingPolicy = SponsorFundingTimingPolicy.PRO_RATA_CONSTRUCTION
     shl_principal_eligibility_start_period: int | None = None
     shl_maturity_period_index: int | None = None
     shl_fcf_waterfall_cash_schedule_keur: tuple[float, ...] = ()

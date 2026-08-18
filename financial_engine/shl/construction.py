@@ -177,6 +177,50 @@ def compute_shl_construction_schedule(
         )
 
 
+def build_shl_construction_draw_schedule(
+    shl_cash_principal_keur: float,
+    construction_periods: tuple[ShlConstructionPeriodInput, ...],
+    policy: "SponsorFundingTimingPolicy",
+) -> tuple[ShlConstructionPeriodInput, ...]:
+    """Build SHL draw schedule per policy.
+
+    PRO_RATA_CONSTRUCTION: draw proportional to each period's day_count_fraction / total_dcf
+    ALL_AT_FC: full principal in first period, zero thereafter.
+
+    Total draws always sum to shl_cash_principal_keur.
+    """
+    from finco_core.inputs._models import SponsorFundingTimingPolicy as Policy
+    if policy == Policy.ALL_AT_FC:
+        return tuple(
+            ShlConstructionPeriodInput(
+                draw_keur=shl_cash_principal_keur if i == 0 else 0.0,
+                day_count_fraction=p.day_count_fraction,
+                period_index=p.period_index,
+            )
+            for i, p in enumerate(construction_periods)
+        )
+    elif policy == Policy.PRO_RATA_CONSTRUCTION:
+        total_dcf = sum(p.day_count_fraction for p in construction_periods)
+        if total_dcf == 0.0:
+            return tuple(
+                ShlConstructionPeriodInput(draw_keur=0.0, day_count_fraction=p.day_count_fraction, period_index=p.period_index)
+                for p in construction_periods
+            )
+        return tuple(
+            ShlConstructionPeriodInput(
+                draw_keur=shl_cash_principal_keur * p.day_count_fraction / total_dcf,
+                day_count_fraction=p.day_count_fraction,
+                period_index=p.period_index,
+            )
+            for p in construction_periods
+        )
+    else:
+        raise ValueError(
+            f"build_shl_construction_draw_schedule: unsupported SponsorFundingTimingPolicy {policy!r}. "
+            f"Supported: PRO_RATA_CONSTRUCTION, ALL_AT_FC."
+        )
+
+
 def compute_shl_construction_pik_keur(
     shl_cash_principal_keur: float,
     annual_rate: float,
