@@ -248,11 +248,23 @@ def compute_shl_schedule(
         )
 
     # Step 1: Construction period.
-    if construction.construction_interest_method == ShlConstructionInterestMethod.COMPOUND_PERIODIC:
+    if construction.construction_interest_method == ShlConstructionInterestMethod.SIMPLE:
+        constr_result = compute_shl_period(
+            opening_balance_keur=0.0,
+            drawdown_keur=construction.draw_keur,
+            day_count_fraction=construction.dcf,
+            annual_rate=construction.annual_rate,
+            payment_mode=ShlInterestPaymentMode.PIK,
+            scheduled_principal_keur=0.0,
+            period_index=construction.period_index,
+        )
+    elif construction.construction_interest_method == ShlConstructionInterestMethod.COMPOUND_PERIODIC:
         if construction.dcf == 0.0 or construction.draw_keur == 0.0:
             compound_interest = 0.0
         else:
-            compound_interest = construction.draw_keur * ((1.0 + construction.annual_rate) ** construction.dcf - 1.0)
+            compound_interest = construction.draw_keur * (
+                (1.0 + construction.annual_rate) ** construction.dcf - 1.0
+            )
         constr_result = ShlPeriodResult(
             period_index=construction.period_index,
             opening_balance_keur=0.0,
@@ -263,14 +275,10 @@ def compute_shl_schedule(
             closing_balance_keur=construction.draw_keur + compound_interest,
         )
     else:
-        constr_result = compute_shl_period(
-            opening_balance_keur=0.0,
-            drawdown_keur=construction.draw_keur,
-            day_count_fraction=construction.dcf,
-            annual_rate=construction.annual_rate,
-            payment_mode=ShlInterestPaymentMode.PIK,
-            scheduled_principal_keur=0.0,
-            period_index=construction.period_index,
+        raise ValueError(
+            f"compute_shl_schedule: unsupported construction_interest_method "
+            f"{construction.construction_interest_method!r}. "
+            f"Supported: SIMPLE, COMPOUND_PERIODIC."
         )
 
     # Step 2: Operating periods via C3B3D2B0 waterfall (natural formula).

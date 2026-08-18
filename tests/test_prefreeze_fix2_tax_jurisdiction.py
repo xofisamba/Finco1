@@ -316,3 +316,63 @@ def test_tax_jurisdiction_defaults_no_wht_vat_fields():
     assert "withholding_tax_rate_interest" not in field_names
     assert "vat_standard_rate" not in field_names
     assert "corporate_tax_rate" in field_names
+
+
+# ---------------------------------------------------------------------------
+# Test Q: TaxParams field classification drift protection
+# ---------------------------------------------------------------------------
+def test_tax_params_field_classification_is_complete():
+    """Q: Drift protection — every TaxParams field must be classified; no fake fields allowed.
+
+    Update CLASSIFIED_TAX_PARAMS_FIELDS whenever TaxParams changes.
+    This test fails if:
+      - A new TaxParams field is added but not added to CLASSIFIED_TAX_PARAMS_FIELDS (missing)
+      - CLASSIFIED_TAX_PARAMS_FIELDS contains a field name that no longer exists (extra)
+    """
+    import dataclasses
+    from finco_core.inputs._models import TaxParams
+
+    actual_fields = {f.name for f in dataclasses.fields(TaxParams)}
+
+    # Update this set whenever TaxParams changes.
+    # These are ALL real TaxParams field names as of Fix 2 hardening.
+    CLASSIFIED_TAX_PARAMS_FIELDS = {
+        "corporate_rate",
+        "loss_carryforward_years",
+        "loss_carryforward_cap",
+        "prior_tax_loss_keur",
+        "legal_reserve_cap",
+        "construction_pl",
+        "thin_cap_enabled",
+        "thin_cap_de_ratio",
+        "atad_enabled",
+        "atad_ebitda_limit",
+        "atad_min_interest_keur",
+        "wht_sponsor_dividends",
+        "wht_sponsor_shl_interest",
+        "shl_cap_applies",
+        "shl_interest_deductibility",
+        "shl_interest_deductible_pct",
+        "foreign_shl_interest_cap_enabled",
+        "tax_loss_utilisation_gate",
+        "tax_periodisation_mode",
+        "shl_construction_accounting",
+        "shl_construction_payment",
+        "cit_cash_tax_start_operating_index",
+        "tax_depreciation_mode",
+        "tax_deductible_book_dep_pct",
+        "tax_dep_basis_source_owned",
+        "clean_cash_tax_timing_enabled",
+    }
+
+    missing = actual_fields - CLASSIFIED_TAX_PARAMS_FIELDS
+    extra = CLASSIFIED_TAX_PARAMS_FIELDS - actual_fields
+
+    assert not missing, (
+        f"Unclassified TaxParams fields (add to CLASSIFIED_TAX_PARAMS_FIELDS and "
+        f"docs/architecture/tax_field_inventory_fix2.md): {sorted(missing)}"
+    )
+    assert not extra, (
+        f"Classification has non-existent TaxParams fields (remove from CLASSIFIED_TAX_PARAMS_FIELDS): "
+        f"{sorted(extra)}"
+    )

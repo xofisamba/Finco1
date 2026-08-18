@@ -403,3 +403,167 @@ def test_staggered_draw_compound():
     assert p2.pik_interest_keur == pytest.approx(10.5, rel=1e-10)
     assert result.total_pik_keur == pytest.approx(15.5, rel=1e-10)
     assert result.opening_operating_shl_balance_keur == pytest.approx(115.5, rel=1e-10)
+
+
+# ---------------------------------------------------------------------------
+# Test N: Fail-closed dispatch — unsupported method raises ValueError
+# ---------------------------------------------------------------------------
+def test_compute_shl_construction_schedule_fails_on_unknown_method():
+    """N1: compute_shl_construction_schedule raises ValueError for unsupported method — fail closed."""
+    with pytest.raises(ValueError, match="unsupported"):
+        compute_shl_construction_schedule(
+            opening_balance_keur=0.0,
+            periods=(ShlConstructionPeriodInput(draw_keur=100.0, day_count_fraction=1.0),),
+            annual_rate=0.1,
+            method="INVALID_METHOD",  # type: ignore[arg-type]
+        )
+
+
+def test_production_compute_shl_schedule_fail_closed_comment():
+    """N2: SIMPLE and COMPOUND_PERIODIC both succeed; fail-closed else branch guards future enum additions.
+
+    The ShlConstructionInterestMethod enum type system prevents invalid enum values at
+    ShlConstructionInput construction time. The fail-closed else raise in compute_shl_schedule
+    guards against future enum member additions that are not yet implemented. Both supported
+    methods are validated by tests K1 and K2 above.
+    """
+    draw = 1000.0
+    rate = 0.08
+    dcf = 1.0
+    policy = ShlWaterfallPolicy(
+        annual_rate=rate,
+        day_count_convention=ShlDayCountConvention.ACT_365_FIXED,
+    )
+    for method in list(ShlConstructionInterestMethod):
+        constr = ShlConstructionInput(
+            draw_keur=draw,
+            annual_rate=rate,
+            dcf=dcf,
+            construction_interest_method=method,
+        )
+        result = compute_shl_schedule(constr, (), policy)
+        assert result.construction.closing_balance_keur > draw
+
+
+# ---------------------------------------------------------------------------
+# Test O: Balance identity — closing = opening + draw + interest, both methods
+# ---------------------------------------------------------------------------
+def test_simple_balance_identity_holds_per_period():
+    """O1: closing = opening + draw + interest for SIMPLE, every period."""
+    periods = (
+        ShlConstructionPeriodInput(draw_keur=100.0, day_count_fraction=1.0, period_index=0),
+        ShlConstructionPeriodInput(draw_keur=50.0, day_count_fraction=0.5, period_index=1),
+        ShlConstructionPeriodInput(draw_keur=0.0, day_count_fraction=1.0, period_index=2),
+    )
+    result = compute_shl_construction_schedule(
+        opening_balance_keur=0.0,
+        periods=periods,
+        annual_rate=0.10,
+        method=ShlConstructionInterestMethod.SIMPLE,
+    )
+    for p in result.periods:
+        expected_closing = p.opening_balance_keur + p.draw_keur + p.pik_interest_keur
+        assert p.closing_balance_keur == pytest.approx(expected_closing, rel=1e-10), (
+            f"SIMPLE period {p.period_index}: identity violated. "
+            f"closing={p.closing_balance_keur}, opening+draw+interest={expected_closing}"
+        )
+
+
+def test_compound_balance_identity_holds_per_period():
+    """O2: closing = opening + draw + interest for COMPOUND_PERIODIC, every period."""
+    periods = (
+        ShlConstructionPeriodInput(draw_keur=100.0, day_count_fraction=1.0, period_index=0),
+        ShlConstructionPeriodInput(draw_keur=50.0, day_count_fraction=0.5, period_index=1),
+        ShlConstructionPeriodInput(draw_keur=0.0, day_count_fraction=1.0, period_index=2),
+    )
+    result = compute_shl_construction_schedule(
+        opening_balance_keur=0.0,
+        periods=periods,
+        annual_rate=0.10,
+        method=ShlConstructionInterestMethod.COMPOUND_PERIODIC,
+    )
+    for p in result.periods:
+        expected_closing = p.opening_balance_keur + p.draw_keur + p.pik_interest_keur
+        assert p.closing_balance_keur == pytest.approx(expected_closing, rel=1e-10), (
+            f"COMPOUND period {p.period_index}: identity violated. "
+            f"closing={p.closing_balance_keur}, opening+draw+interest={expected_closing}"
+        )
+
+
+def test_simple_interest_basis_is_cash_principal():
+    """O3: SIMPLE interest_basis_keur = cash_principal_balance_keur (post-draw)."""
+    periods = (
+        ShlConstructionPeriodInput(draw_keur=100.0, day_count_fraction=1.0, period_index=0),
+        ShlConstructionPeriodInput(draw_keur=0.0, day_count_fraction=1.0, period_index=1),
+    )
+    result = compute_shl_construction_schedule(
+        opening_balance_keur=0.0,
+        periods=periods,
+        annual_rate=0.10,
+        method=ShlConstructionInterestMethod.SIMPLE,
+    )
+    for p in result.periods:
+        assert p.interest_basis_keur == pytest.approx(p.cash_principal_balance_keur, rel=1e-10), (
+            f"SIMPLE period {p.period_index}: interest_basis_keur should equal cash_principal_balance_keur"
+        )
+
+
+def test_compound_interest_basis_is_opening_plus_draw():
+    """O4: COMPOUND interest_basis_keur = opening_balance_keur + draw_keur."""
+    periods = (
+        ShlConstructionPeriodInput(draw_keur=100.0, day_count_fraction=1.0, period_index=0),
+        ShlConstructionPeriodInput(draw_keur=50.0, day_count_fraction=1.0, period_index=1),
+    )
+    result = compute_shl_construction_schedule(
+        opening_balance_keur=0.0,
+        periods=periods,
+        annual_rate=0.10,
+        method=ShlConstructionInterestMethod.COMPOUND_PERIODIC,
+    )
+    for p in result.periods:
+        expected_basis = p.opening_balance_keur + p.draw_keur
+        assert p.interest_basis_keur == pytest.approx(expected_basis, rel=1e-10), (
+            f"COMPOUND period {p.period_index}: interest_basis_keur should equal opening+draw"
+        )
+
+
+def test_simple_cash_principal_excludes_pik():
+    """O5: SIMPLE cash_principal_balance_keur excludes accumulated PIK."""
+    periods = (
+        ShlConstructionPeriodInput(draw_keur=100.0, day_count_fraction=1.0, period_index=0),
+        ShlConstructionPeriodInput(draw_keur=0.0, day_count_fraction=1.0, period_index=1),
+    )
+    result = compute_shl_construction_schedule(
+        opening_balance_keur=0.0,
+        periods=periods,
+        annual_rate=0.10,
+        method=ShlConstructionInterestMethod.SIMPLE,
+    )
+    p1, p2 = result.periods
+    # P1: cash = 100 (draw=100, no PIK in cash balance)
+    assert p1.cash_principal_balance_keur == pytest.approx(100.0, rel=1e-10)
+    # P2: cash still = 100 (no additional draw, PIK does not enter cash principal)
+    assert p2.cash_principal_balance_keur == pytest.approx(100.0, rel=1e-10)
+    # But closing P2 = 120 (includes accumulated PIK from both periods)
+    assert p2.closing_balance_keur == pytest.approx(120.0, rel=1e-10)
+
+
+def test_compound_cash_principal_excludes_pik():
+    """O6: COMPOUND cash_principal_balance_keur excludes accumulated PIK."""
+    periods = (
+        ShlConstructionPeriodInput(draw_keur=100.0, day_count_fraction=1.0, period_index=0),
+        ShlConstructionPeriodInput(draw_keur=0.0, day_count_fraction=1.0, period_index=1),
+    )
+    result = compute_shl_construction_schedule(
+        opening_balance_keur=0.0,
+        periods=periods,
+        annual_rate=0.10,
+        method=ShlConstructionInterestMethod.COMPOUND_PERIODIC,
+    )
+    p1, p2 = result.periods
+    # P1: cash = 100 (draw=100)
+    assert p1.cash_principal_balance_keur == pytest.approx(100.0, rel=1e-10)
+    # P2: cash still = 100 (no additional draw; PIK does not enter cash principal)
+    assert p2.cash_principal_balance_keur == pytest.approx(100.0, rel=1e-10)
+    # closing P2 = 121 (COMPOUND compounding; NOT cash principal)
+    assert p2.closing_balance_keur == pytest.approx(121.0, rel=1e-10)

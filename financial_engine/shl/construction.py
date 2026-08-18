@@ -47,10 +47,16 @@ class ShlConstructionPeriodInput:
 class ShlConstructionPeriodResult:
     """Result for one construction draw period.
 
-    For SIMPLE: opening_balance_keur reflects cash draws only (no prior PIK).
-    For COMPOUND_PERIODIC: opening_balance_keur includes prior PIK.
-    cash_principal_balance_keur is the cumulative cash draw balance (SIMPLE path only;
-    equals closing_balance_keur for COMPOUND_PERIODIC).
+    Invariants (hold for BOTH SIMPLE and COMPOUND_PERIODIC):
+      opening_balance_keur      = total SHL liability at start of period before current draw
+                                  (includes prior accumulated PIK for COMPOUND; cash-only for SIMPLE
+                                  since PIK from prior periods does not re-enter the SIMPLE basis)
+      cash_principal_balance_keur = cumulative cash principal drawn (excludes PIK, both methods)
+      pik_interest_keur         = interest accrued this period
+      closing_balance_keur      = opening_balance_keur + draw_keur + pik_interest_keur  (identity)
+      interest_basis_keur       = basis used to compute pik_interest_keur:
+                                    SIMPLE:   cash_principal_balance_keur (post-draw)
+                                    COMPOUND: opening_balance_keur + draw_keur
     """
     period_index: int
     opening_balance_keur: float
@@ -58,6 +64,7 @@ class ShlConstructionPeriodResult:
     pik_interest_keur: float
     closing_balance_keur: float
     cash_principal_balance_keur: float = 0.0
+    interest_basis_keur: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -97,25 +104,28 @@ def compute_shl_construction_schedule(
     if method == ShlConstructionInterestMethod.SIMPLE:
         # SIMPLE: track cash principal balance and accumulated PIK separately.
         # Interest basis = cash principal only; PIK never re-enters the basis.
+        # opening_balance is the total liability (cash + prior accumulated PIK).
         cash_principal = opening_balance_keur
         accumulated_pik = 0.0
         for p in periods:
+            # opening_balance = total liability before this draw (cash + prior PIK)
+            opening_total = cash_principal + accumulated_pik
             cash_principal = cash_principal + p.draw_keur
-            if p.day_count_fraction == 0.0 or cash_principal == 0.0:
+            interest_basis = cash_principal  # SIMPLE: basis = post-draw cash principal
+            if p.day_count_fraction == 0.0 or interest_basis == 0.0:
                 interest = 0.0
             else:
-                interest = cash_principal * annual_rate * p.day_count_fraction
+                interest = interest_basis * annual_rate * p.day_count_fraction
             accumulated_pik = accumulated_pik + interest
-            closing_total = cash_principal + accumulated_pik
-            # opening_balance_keur for SIMPLE = cash principal before this draw
-            opening_cash = cash_principal - p.draw_keur
+            closing_total = opening_total + p.draw_keur + interest  # identity
             results.append(ShlConstructionPeriodResult(
                 period_index=p.period_index,
-                opening_balance_keur=opening_cash,
+                opening_balance_keur=opening_total,
                 draw_keur=p.draw_keur,
                 pik_interest_keur=interest,
                 closing_balance_keur=closing_total,
                 cash_principal_balance_keur=cash_principal,
+                interest_basis_keur=interest_basis,
             ))
         total_pik = sum(r.pik_interest_keur for r in results)
         final_closing = results[-1].closing_balance_keur if results else opening_balance_keur
@@ -126,26 +136,30 @@ def compute_shl_construction_schedule(
             method=method,
             interest_rate=annual_rate,
         )
-    else:
+    elif method == ShlConstructionInterestMethod.COMPOUND_PERIODIC:
         # COMPOUND_PERIODIC: prior closing total (including PIK) is the next
         # period's opening balance for interest accrual.
         balance = opening_balance_keur
+        cash_principal = opening_balance_keur
         for p in periods:
-            balance_after_draw = balance + p.draw_keur
-            if p.day_count_fraction == 0.0 or balance_after_draw == 0.0:
+            opening_total = balance
+            cash_principal = cash_principal + p.draw_keur
+            interest_basis = opening_total + p.draw_keur  # COMPOUND: basis = opening + draw
+            if p.day_count_fraction == 0.0 or interest_basis == 0.0:
                 interest = 0.0
             else:
-                interest = balance_after_draw * (
+                interest = interest_basis * (
                     (1.0 + annual_rate) ** p.day_count_fraction - 1.0
                 )
-            closing = balance_after_draw + interest
+            closing = opening_total + p.draw_keur + interest  # identity
             results.append(ShlConstructionPeriodResult(
                 period_index=p.period_index,
-                opening_balance_keur=balance,
+                opening_balance_keur=opening_total,
                 draw_keur=p.draw_keur,
                 pik_interest_keur=interest,
                 closing_balance_keur=closing,
-                cash_principal_balance_keur=closing,
+                cash_principal_balance_keur=cash_principal,
+                interest_basis_keur=interest_basis,
             ))
             balance = closing
         total_pik = sum(r.pik_interest_keur for r in results)
@@ -155,6 +169,11 @@ def compute_shl_construction_schedule(
             opening_operating_shl_balance_keur=balance,
             method=method,
             interest_rate=annual_rate,
+        )
+    else:
+        raise ValueError(
+            f"compute_shl_construction_schedule: unsupported construction_interest_method {method!r}. "
+            f"Supported: SIMPLE, COMPOUND_PERIODIC."
         )
 
 
