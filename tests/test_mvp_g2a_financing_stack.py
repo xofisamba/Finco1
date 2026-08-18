@@ -192,26 +192,45 @@ def test_g2a_modes_roundtrip_and_old_payloads_remain_unpromoted():
         run_project_financing_model(legacy)
 
 
-def test_g0_capacity_result_exposes_dscr_capacity_without_applying_gearing():
+def test_generic_direct_senior_exposes_dscr_capacity_and_applies_gearing_cap():
+    """G0 direct Senior run applies gearing cap AND preserves DSCR capacity as diagnostic.
+
+    After Pre-Freeze Fix 1 the G0 run (gearing_basis_mode=TOTAL_PROJECT_USES) uses
+    COMBINED_MINIMUM: the final Senior is the lower of DSCR capacity and gearing
+    capacity. The DSCR capacity is preserved separately in diagnostics.
+
+    Three values are distinct and separately asserted:
+      DSCR capacity       — what DSCR alone would permit
+      Gearing capacity    — gearing_ratio × eligible_project_cost
+      Final Senior        — min(DSCR, Gearing) = Gearing cap in this case
+    """
     from app.project_factories import create_default_solar_project
     from financial_engine.adapters.project_inputs import (
         build_senior_debt_model_input_from_project_inputs,
     )
+    from financial_engine.financing.project_uses import compute_project_uses
     from financial_engine.orchestrator import run_senior_debt_model
 
+    project = create_default_solar_project()
     result = run_senior_debt_model(
-        build_senior_debt_model_input_from_project_inputs(create_default_solar_project())
+        build_senior_debt_model_input_from_project_inputs(project)
     )
-    # With gearing_basis_mode=TOTAL_PROJECT_USES and gearing_ratio=0.75, the adapter
-    # now correctly applies COMBINED_MINIMUM. Final Senior is gearing-capped at 24,750;
-    # the DSCR capacity (28,458) is preserved as a diagnostic.
-    assert result.senior_debt.debt_size_keur == pytest.approx(24_750.0)
+    canonical_uses = compute_project_uses(project)
+    expected_gearing_cap = canonical_uses.total_project_uses_keur * project.financing.gearing_ratio
+
+    # Final Senior = gearing cap (GEARING binds)
+    assert result.senior_debt.debt_size_keur == pytest.approx(expected_gearing_cap, rel=1e-6)
+    # Gearing capacity diagnostic matches the computed cap exactly
+    assert result.senior_debt.diagnostics["gearing_debt_capacity_keur"] == pytest.approx(
+        expected_gearing_cap, rel=1e-6
+    )
+    # DSCR capacity is strictly above the gearing cap (confirming gearing is the binding constraint)
+    dscr_capacity = result.senior_debt.diagnostics["dscr_debt_capacity_keur"]
+    assert dscr_capacity is not None
+    assert dscr_capacity > expected_gearing_cap
     # DSCR capacity from the G0 run includes the factory SHL (unlike the G2A capacity
-    # run which uses candidate_shl=0); result is slightly higher than the G2A value.
-    assert result.senior_debt.diagnostics["dscr_debt_capacity_keur"] == pytest.approx(
-        28_467.097994078464, rel=1e-6
-    )
-    assert result.senior_debt.diagnostics["gearing_debt_capacity_keur"] == pytest.approx(24_750.0)
+    # run which uses candidate_shl=0); both are in the range expected by the source model.
+    assert dscr_capacity == pytest.approx(28_467.097994078464, rel=1e-6)
 
 
 def test_fixed_sources_exceeding_uses_fail_instead_of_hiding_negative_residual():

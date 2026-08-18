@@ -213,6 +213,11 @@ def build_senior_debt_contract_from_project_inputs(
         damping_alpha=1.0,
     )
 
+    # Solver seed only — has no effect on the converged authoritative result.
+    # For Generic Solar/Wind (zero financing costs) capex_items() == hard_capex ==
+    # eligible_project_cost_keur, so the two formulations are equivalent.
+    # For projects with financing costs the seed underestimates eligible_cost but
+    # convergence to the correct COMBINED_MINIMUM result is unaffected.
     inputs = SeniorDebtInputs(
         eligible_project_cost_keur=eligible_cost,
         initial_debt_guess_keur=(

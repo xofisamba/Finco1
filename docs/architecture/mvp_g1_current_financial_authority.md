@@ -62,6 +62,75 @@ on project name, project code, baseline identity, or source workbook identity.
   production modules are protected by semantic tests, review scope, and current
   exact-head gates. Immutable source-extraction report hashes remain blocking.
 
+## Senior sizing: DSCR capacity, gearing capacity, and final Senior commitment
+
+### Three distinct values (Pre-Freeze Fix 1 — ae60f79)
+
+When `gearing_basis_mode = TOTAL_PROJECT_USES`, the Senior adapter wires
+`SeniorDebtSizingMode.COMBINED_MINIMUM`. Three values are distinct:
+
+```
+DSCR Capacity       = capacity permitted by Bank CFADS / target DSCR
+Gearing Capacity    = eligible gearing basis × gearing_ratio
+Final Senior        = min(DSCR Capacity, Gearing Capacity)
+```
+
+When gearing binds, DSCR Capacity > Gearing Capacity and
+`binding_constraint = "GEARING"`. When DSCR binds, DSCR Capacity ≤ Gearing
+Capacity and `binding_constraint = "DSCR"`.
+
+DSCR Capacity is always preserved in `senior_debt.diagnostics["dscr_debt_capacity_keur"]`.
+Gearing Capacity is always preserved in `senior_debt.diagnostics["gearing_debt_capacity_keur"]`
+when COMBINED_MINIMUM is active; `None` when DSCR-only.
+
+### Eligible gearing basis
+
+The eligible gearing basis is `compute_project_uses(project_inputs).total_project_uses_keur`:
+
+```
+Total Project Uses = hard_capex + explicit_financing_costs + cash_reserve_funding
+```
+
+where:
+  - `explicit_financing_costs = idc + commitment_fees + bank_fees + other_financial + vat`
+  - `cash_reserve_funding` = `debt_service_reserve_requirement_keur` under CASH_DSRA; 0 under DSRF or NONE
+
+`compute_project_uses()` in `financial_engine/financing/project_uses.py` is the
+single canonical authority. It is shared by the Senior adapter and the G2A fixed-point.
+No arithmetic duplication is permitted.
+
+### Currently supported gearing basis
+
+Only `GearingBasisMode.TOTAL_PROJECT_USES` is implemented. Any other non-None value
+**fails closed** with `ValueError` in the adapter.
+
+`gearing_basis_mode = None` is the intentional DSCR-only capacity/diagnostic path.
+It wires `DSCR_SCULPTED` sizing with `maximum_gearing = None` and `eligible_cost = 0`.
+Oborovo uses this path and produces `binding_constraint = "DSCR"`.
+
+### Architecture relationship
+
+```
+compute_project_uses()           single Total Project Uses authority
+ProjectInputs → Senior adapter   owns complete Senior sizing contract
+G2A financing model              consumer/auditor of the complete Senior contract
+```
+
+G2A must NOT be a hidden correction layer. The adapter owns the complete contract;
+G2A audits it (checks gearing capacity diagnostic, DSCR/gearing parity, Sources & Uses
+closure, derived-SHL fixed-point convergence). No downstream `replace()` patch
+is permitted to override `sizing_mode`, `eligible_project_cost_keur`, or
+`maximum_gearing` after the adapter call.
+
+### Initial debt guess
+
+`initial_debt_guess_keur` in `SeniorDebtInputs` is a neutral solver convergence seed.
+It has no effect on the converged authoritative Senior amount. For Generic Solar/Wind
+(zero financing costs) the guess formula (`gearing_ratio × capex_items()`) is equal
+to `gearing_ratio × eligible_project_cost_keur`. For projects with financing costs
+the guess underestimates the gearing cap but convergence to the correct
+`COMBINED_MINIMUM` result is unaffected.
+
 ## G2B Simple Sponsor Returns canonical authority
 
 ### Pure Legal Equity
