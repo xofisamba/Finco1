@@ -106,41 +106,57 @@ def run_project_financing_model(
                 gearing_basis_mode=None,
             ),
         )
-        # Fix 3: compute timing-resolved opening operating SHL for this candidate_shl.
+        # Fix 3: compute timing-resolved construction draw schedule for this candidate_shl.
         # Uses the pre-computed per-period construction DCFs (_construction_period_template).
         # PRO_RATA vs ALL_AT_FC produce different draws per period → different PIK → different
         # opening SHL → different operating interest → different CFADS → different DSCR capacity.
-        _resolved_opening_shl: float | None = None
+        # Fix 3 canonical (BLOCKER B): pass construction_periods_override to SHL model so that
+        # model construction PIK == ProjectFinancingResult.shl_construction_pik_keur.
+        _iter_draw_schedule: "tuple[ShlConstructionPeriodInput, ...] | None" = None
         if (
             _construction_period_template is not None
             and candidate_shl > 0.0
         ):
             _timing_policy = fin.sponsor_funding_timing_policy
-            _draw_schedule = build_shl_construction_draw_schedule(
-                shl_cash_principal_keur=candidate_shl,
-                construction_periods=_construction_period_template,
-                policy=_timing_policy,
-            )
-            _construction_shl_schedule = compute_shl_construction_schedule(
-                opening_balance_keur=0.0,
-                periods=_draw_schedule,
-                annual_rate=fin.shl_rate,
-                method=fin.shl_construction_interest_method,
-            )
-            _resolved_opening_shl = _construction_shl_schedule.opening_operating_shl_balance_keur
+            # BLOCKER A: use actual construction Uses for PRO_RATA when provided.
+            _uses = getattr(fin, "construction_period_uses_keur", ())
+            if _uses:
+                from financial_engine.shl.construction import build_shl_construction_draw_schedule_from_uses
+                # BLOCKER A: SHL draws proportional to total construction Uses per period.
+                # Other sources (senior/junior/equity) are passed as zeros so that
+                # net_need = uses, giving shl_draw[i] = principal * uses[i] / sum(uses).
+                _n = len(_construction_period_template)
+                _zeros = tuple(0.0 for _ in range(_n))
+                _iter_draw_schedule = build_shl_construction_draw_schedule_from_uses(
+                    shl_cash_principal_keur=candidate_shl,
+                    period_uses_keur=_uses,
+                    period_senior_draws_keur=_zeros,
+                    period_junior_draws_keur=_zeros,
+                    period_other_sources_keur=_zeros,
+                    period_dcfs=tuple(p.day_count_fraction for p in _construction_period_template),
+                    policy=_timing_policy,
+                )
+            else:
+                _iter_draw_schedule = build_shl_construction_draw_schedule(
+                    shl_cash_principal_keur=candidate_shl,
+                    construction_periods=_construction_period_template,
+                    policy=_timing_policy,
+                )
 
         capacity_model_input = build_senior_debt_model_input_from_project_inputs(
             capacity_inputs,
             source_id=source_id,
             baseline_commit_sha=baseline_commit_sha,
         )
-        # Inject timing-resolved opening SHL into capacity model input if applicable.
-        if _resolved_opening_shl is not None and capacity_model_input.shareholder_loan is not None:
+        # Fix 3 canonical: inject construction_periods_override into capacity model input.
+        # This causes the SHL model to compute canonical per-period construction PIK,
+        # eliminating the dual truth (model PIK=0 vs result PIK>0).
+        if _iter_draw_schedule is not None and capacity_model_input.shareholder_loan is not None:
             capacity_model_input = replace(
                 capacity_model_input,
                 shareholder_loan=replace(
                     capacity_model_input.shareholder_loan,
-                    opening_operating_shl_override_keur=_resolved_opening_shl,
+                    construction_periods_override=_iter_draw_schedule,
                 ),
             )
         capacity_result = run_senior_debt_model(capacity_model_input)
@@ -161,13 +177,13 @@ def run_project_financing_model(
         # The adapter now correctly maps gearing_basis_mode=TOTAL_PROJECT_USES to
         # COMBINED_MINIMUM with the canonical eligible cost and maximum_gearing.
         # No downstream patch is required here.
-        # Inject timing-resolved opening SHL into funded model input if applicable.
-        if _resolved_opening_shl is not None and funded_model_input.shareholder_loan is not None:
+        # Fix 3 canonical: inject construction_periods_override into funded model input.
+        if _iter_draw_schedule is not None and funded_model_input.shareholder_loan is not None:
             funded_model_input = replace(
                 funded_model_input,
                 shareholder_loan=replace(
                     funded_model_input.shareholder_loan,
-                    opening_operating_shl_override_keur=_resolved_opening_shl,
+                    construction_periods_override=_iter_draw_schedule,
                 ),
             )
         model_result = run_senior_debt_model(funded_model_input)
@@ -204,21 +220,38 @@ def run_project_financing_model(
     assert model_result is not None and model_result.senior_debt is not None
 
     # Construction SHL schedule — see module-level comment for None/0.0/explicit-DCF semantics.
+    # Fix 3 canonical (BLOCKER B): PIK now comes from canonical model result because the model
+    # received construction_periods_override. Direct reading from model result is authoritative.
     shl_pik = 0.0
     opening_operating_shl = 0.0
+    _final_draw_schedule: "tuple[ShlConstructionPeriodInput, ...] | None" = None
 
     if _construction_period_template is not None:
-        # Explicit positive DCF: use per-period construction template (Fix 3).
-        # PRO_RATA vs ALL_AT_FC produce different PIK and opening SHL for multi-period construction.
+        # Explicit positive DCF: compute final post-convergence draw schedule.
         timing_policy = fin.sponsor_funding_timing_policy
-        draw_schedule = build_shl_construction_draw_schedule(
-            shl_cash_principal_keur=derived_shl,
-            construction_periods=_construction_period_template,
-            policy=timing_policy,
-        )
+        _uses = getattr(fin, "construction_period_uses_keur", ())
+        if _uses:
+            from financial_engine.shl.construction import build_shl_construction_draw_schedule_from_uses
+            _n = len(_construction_period_template)
+            _zeros = tuple(0.0 for _ in range(_n))
+            _final_draw_schedule = build_shl_construction_draw_schedule_from_uses(
+                shl_cash_principal_keur=derived_shl,
+                period_uses_keur=_uses,
+                period_senior_draws_keur=_zeros,
+                period_junior_draws_keur=_zeros,
+                period_other_sources_keur=_zeros,
+                period_dcfs=tuple(p.day_count_fraction for p in _construction_period_template),
+                policy=timing_policy,
+            )
+        else:
+            _final_draw_schedule = build_shl_construction_draw_schedule(
+                shl_cash_principal_keur=derived_shl,
+                construction_periods=_construction_period_template,
+                policy=timing_policy,
+            )
         construction_shl_schedule = compute_shl_construction_schedule(
             opening_balance_keur=0.0,
-            periods=draw_schedule,
+            periods=_final_draw_schedule,
             annual_rate=fin.shl_rate,
             method=fin.shl_construction_interest_method,
         )
@@ -243,8 +276,16 @@ def run_project_financing_model(
             zip(shl.period_indices, shl.shl_opening_keur)
         ).get(first_operating_index, 0.0)
 
+    # BLOCKER C: pass per-period SHL draws to build_construction_funding_schedule so that
+    # G2B Sponsor cashflows reflect SponsorFundingTimingPolicy.
+    # Only pass when schedule length matches construction_period_count (monthly periods);
+    # otherwise fall back to single-total allocation (MVPs where lengths differ).
+    _construction_period_count = project_inputs.info.construction_months
+    _shl_draws_per_period: tuple[float, ...] | None = None
+    if _final_draw_schedule is not None and len(_final_draw_schedule) == _construction_period_count:
+        _shl_draws_per_period = tuple(p.draw_keur for p in _final_draw_schedule)
     funding = build_construction_funding_schedule(
-        construction_period_count=project_inputs.info.construction_months,
+        construction_period_count=_construction_period_count,
         total_project_uses_keur=uses.total_project_uses_keur,
         senior_keur=model_result.senior_debt.debt_size_keur,
         junior_keur=fin.junior_or_other_project_funding_keur,
@@ -253,6 +294,7 @@ def run_project_financing_model(
         other_committed_equity_keur=fin.other_equity_funding_before_shl_keur,
         additional_equity_keur=additional_equity,
         shl_cash_keur=derived_shl,
+        shl_cash_per_period_keur=_shl_draws_per_period,
     )
     return ProjectFinancingResult(
         project_model_result=model_result,

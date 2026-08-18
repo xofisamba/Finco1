@@ -842,6 +842,10 @@ class FinancingParams:
     # Default PRO_RATA_CONSTRUCTION preserves all existing results.
     # ALL_AT_FC: full resolved Sponsor/SHL cash contributed at Financial Close.
     sponsor_funding_timing_policy: SponsorFundingTimingPolicy = SponsorFundingTimingPolicy.PRO_RATA_CONSTRUCTION
+    # BLOCKER A (Fix 3): per-period construction Uses for Uses-based PRO_RATA allocation.
+    # When non-empty, PRO_RATA draws SHL proportional to net Sponsor funding need per period.
+    # Empty = DCF-based allocation (existing behavior when only calendar DCF is known).
+    construction_period_uses_keur: tuple[float, ...] = ()
     shl_principal_eligibility_start_period: int | None = None
     shl_maturity_period_index: int | None = None
     shl_fcf_waterfall_cash_schedule_keur: tuple[float, ...] = ()

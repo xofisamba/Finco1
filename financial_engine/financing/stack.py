@@ -76,6 +76,7 @@ def build_construction_funding_schedule(
     other_committed_equity_keur: float,
     additional_equity_keur: float,
     shl_cash_keur: float,
+    shl_cash_per_period_keur: "tuple[float, ...] | None" = None,
 ) -> ConstructionFundingResult:
     """Allocate linear generic uses through the documented sponsor-first waterfall.
 
@@ -88,6 +89,18 @@ def build_construction_funding_schedule(
     """
     if construction_period_count <= 0:
         raise ValueError("construction_period_count must be positive")
+    # BLOCKER C: validate per-period SHL draws when provided.
+    if shl_cash_per_period_keur is not None:
+        if len(shl_cash_per_period_keur) != construction_period_count:
+            raise ValueError(
+                "G2A_SHL_PER_PERIOD_LENGTH_MISMATCH: shl_cash_per_period_keur length "
+                f"{len(shl_cash_per_period_keur)} != construction_period_count {construction_period_count}"
+            )
+        if abs(sum(shl_cash_per_period_keur) - shl_cash_keur) > 1e-6:
+            raise ValueError(
+                "G2A_SHL_PER_PERIOD_SUM_MISMATCH: sum of per-period SHL draws "
+                f"{sum(shl_cash_per_period_keur):.6f} != shl_cash_keur {shl_cash_keur:.6f}"
+            )
     source_caps = {
         "share": share_capital_keur,
         "share_premium": share_premium_keur,
@@ -110,17 +123,32 @@ def build_construction_funding_schedule(
             if index < construction_period_count
             else total_project_uses_keur - cumulative_uses
         )
-        need = uses
         draws: dict[str, float] = {}
-        for key in ("share", "share_premium", "other_committed", "additional_equity",
-                    "shl", "junior", "senior"):
-            draw = min(need, remaining[key])
-            draws[key] = draw
-            remaining[key] -= draw
-            cumulative[key] += draw
-            need -= draw
-        if abs(need) > 1e-8:
-            raise ValueError(f"G2A_PERIOD_FUNDING_SHORTFALL: period={index}, shortfall={need}")
+        if shl_cash_per_period_keur is not None:
+            # BLOCKER C fix: SHL draw fixed per timing-resolved schedule.
+            # Non-SHL sources fill remaining need in waterfall order.
+            draws["shl"] = shl_cash_per_period_keur[index - 1]
+            remaining["shl"] -= draws["shl"]
+            cumulative["shl"] += draws["shl"]
+            need = uses - draws["shl"]
+            for key in ("share", "share_premium", "other_committed", "additional_equity",
+                        "junior", "senior"):
+                draw = min(need, remaining[key])
+                draws[key] = draw
+                remaining[key] -= draw
+                cumulative[key] += draw
+                need -= draw
+        else:
+            need = uses
+            for key in ("share", "share_premium", "other_committed", "additional_equity",
+                        "shl", "junior", "senior"):
+                draw = min(need, remaining[key])
+                draws[key] = draw
+                remaining[key] -= draw
+                cumulative[key] += draw
+                need -= draw
+        if abs(uses - sum(draws.values())) > 1e-8:
+            raise ValueError(f"G2A_PERIOD_FUNDING_SHORTFALL: period={index}, shortfall={uses - sum(draws.values())}")
 
         sources = sum(draws.values())
         cumulative_uses += uses

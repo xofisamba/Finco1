@@ -418,6 +418,26 @@ def compute_shareholder_loan_schedules(
     draw_period_index = construction_period_indices[-1]
     construction_result: ShlPeriodResult | None = None
     operating_inputs: list[ShlOperatingPeriodInput] = []
+
+    # Fix 3 canonical: pre-compute multi-period construction schedule when override provided.
+    # This allows the model to compute construction PIK canonically per-period, eliminating
+    # the dual-truth (model PIK=0 vs result PIK>0) that the opening_operating_shl_override_keur
+    # approach produced.
+    _constr_override_schedule = None
+    if shl_input.construction_periods_override is not None:
+        from financial_engine.shl.construction import (
+            ShlConstructionPeriodInput as _ShlCPI,
+            compute_shl_construction_schedule as _compute_constr,
+        )
+        _constr_override_schedule = _compute_constr(
+            opening_balance_keur=0.0,
+            periods=shl_input.construction_periods_override,
+            annual_rate=shl_input.annual_fixed_rate,
+            method=shl_input.construction_interest_method,
+        )
+        _effective_op_draw = _constr_override_schedule.opening_operating_shl_balance_keur
+        _effective_op_dcf = 0.0
+
     for p, raw_cash in zip(periods, cash_available_for_shl_before_reserves_keur):
         _check_finite("cash_available_for_shl_before_reserves_keur", raw_cash)
         if raw_cash < 0.0:
@@ -427,7 +447,34 @@ def compute_shareholder_loan_schedules(
             )
 
         period_indices.append(p.period_index)
-        if p.is_construction and p.period_index != draw_period_index:
+        if p.is_construction and _constr_override_schedule is not None:
+            # Fix 3 canonical: use pre-computed multi-period construction schedule.
+            # Each construction period gets its own PIK from the timing-resolved schedule.
+            position = list(construction_period_indices).index(p.period_index)
+            cr = _constr_override_schedule.periods[position]
+            opening = cr.opening_balance_keur
+            drawdown = cr.draw_keur
+            gross = cr.pik_interest_keur
+            cash_interest = 0.0
+            pik = cr.pik_interest_keur
+            principal = 0.0
+            service = 0.0
+            closing = cr.closing_balance_keur
+            cash_eligible_for_current_shl_service = 0.0
+            if p.period_index == draw_period_index:
+                draw_consumed = True
+                # Synthetic construction_result for operating waterfall chain check.
+                construction_result = ShlPeriodResult(
+                    period_index=p.period_index,
+                    opening_balance_keur=cr.opening_balance_keur,
+                    gross_accrued_interest_keur=cr.pik_interest_keur,
+                    cash_interest_keur=0.0,
+                    pik_interest_keur=cr.pik_interest_keur,
+                    scheduled_principal_keur=0.0,
+                    closing_balance_keur=cr.closing_balance_keur,
+                )
+                # _effective_op_draw/_effective_op_dcf already set from _constr_override_schedule
+        elif p.is_construction and p.period_index != draw_period_index:
             opening = 0.0
             drawdown = 0.0
             gross = 0.0
@@ -464,9 +511,8 @@ def compute_shareholder_loan_schedules(
             service = cash_interest + principal
             closing = construction_result.closing_balance_keur
             cash_eligible_for_current_shl_service = 0.0
-            # Fix 3: timing-resolved opening SHL override.
-            # If set, operating period chains start from this balance instead of
-            # the single-draw construction closing balance.
+            # Fix 3: timing-resolved opening SHL override (legacy path).
+            # Superseded by construction_periods_override when that is set.
             _override = shl_input.opening_operating_shl_override_keur
             _effective_op_draw = _override if _override is not None else shl_input.initial_principal_keur
             _effective_op_dcf = 0.0 if _override is not None else shl_input.construction_day_count_fraction
