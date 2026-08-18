@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Any
 from financial_engine.ppa_indexation import PpaIndexationStartPolicy
 from financial_engine.shl.contracts import ShlRepaymentMode
 from finco_core.inputs._models import ShlConstructionInterestMethod
+from financial_engine.shl.construction import ShlConstructionPeriodInput
 
 if TYPE_CHECKING:
     from financial_engine.policies.tax import TaxPolicy
@@ -365,6 +366,16 @@ class ShareholderLoanModelInput:
     # SHL construction interest method (Fix 2 C3B3FIX2A). Default SIMPLE preserves
     # all existing behaviour. Set COMPOUND_PERIODIC for projects with geometric accrual.
     construction_interest_method: ShlConstructionInterestMethod = ShlConstructionInterestMethod.SIMPLE
+    # Fix 3: timing-resolved opening operating SHL override (deprecated — use construction_periods_override).
+    # When set, the production SHL model uses this as the effective opening balance for
+    # operating period chains (bypassing the single-draw construction PIK re-computation).
+    # None = no override; production model computes construction PIK internally as before.
+    # Superseded by construction_periods_override when both are set.
+    opening_operating_shl_override_keur: float | None = None
+    # Fix 3 canonical: multi-period construction draw schedule for the SHL model.
+    # When set, compute_shareholder_loan_schedules uses this to compute construction PIK
+    # canonically per-period. model_result construction PIK == ProjectFinancingResult PIK.
+    construction_periods_override: tuple[ShlConstructionPeriodInput, ...] | None = None
     convergence_tolerance_keur: float = 1e-6
     convergence_relative_tolerance: float = 1e-9
     maximum_iterations: int = 50

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import date
+
 from finco_core.inputs import SponsorFundingMode
 
 from financial_engine.financing.contracts import (
@@ -76,6 +78,10 @@ def build_construction_funding_schedule(
     other_committed_equity_keur: float,
     additional_equity_keur: float,
     shl_cash_keur: float,
+    shl_cash_per_period_keur: "tuple[float, ...] | None" = None,
+    period_dates: "tuple[tuple[date | None, date | None, date | None], ...] | None" = None,
+    period_uses_keur: "tuple[float, ...] | None" = None,
+    shl_allocation_per_period_keur: "tuple[float, ...] | None" = None,
 ) -> ConstructionFundingResult:
     """Allocate linear generic uses through the documented sponsor-first waterfall.
 
@@ -88,6 +94,48 @@ def build_construction_funding_schedule(
     """
     if construction_period_count <= 0:
         raise ValueError("construction_period_count must be positive")
+    # BLOCKER C: validate period_dates length when provided.
+    if period_dates is not None and len(period_dates) != construction_period_count:
+        raise ValueError(
+            f"G2A_PERIOD_DATES_LENGTH_MISMATCH: period_dates length {len(period_dates)} "
+            f"!= construction_period_count {construction_period_count}"
+        )
+    # BLOCKER C: validate per-period SHL draws when provided.
+    if shl_cash_per_period_keur is not None:
+        if len(shl_cash_per_period_keur) != construction_period_count:
+            raise ValueError(
+                "G2A_SHL_PER_PERIOD_LENGTH_MISMATCH: shl_cash_per_period_keur length "
+                f"{len(shl_cash_per_period_keur)} != construction_period_count {construction_period_count}"
+            )
+        if abs(sum(shl_cash_per_period_keur) - shl_cash_keur) > 1e-6:
+            raise ValueError(
+                "G2A_SHL_PER_PERIOD_SUM_MISMATCH: sum of per-period SHL draws "
+                f"{sum(shl_cash_per_period_keur):.6f} != shl_cash_keur {shl_cash_keur:.6f}"
+            )
+    # GAP 1: validate explicit period uses vector when provided.
+    if period_uses_keur is not None:
+        if len(period_uses_keur) != construction_period_count:
+            raise ValueError(
+                "G2A_PERIOD_USES_LENGTH_MISMATCH: period_uses_keur length "
+                f"{len(period_uses_keur)} != construction_period_count {construction_period_count}"
+            )
+        if abs(sum(period_uses_keur) - total_project_uses_keur) > 1e-6:
+            raise ValueError(
+                "G2A_PERIOD_USES_SUM_MISMATCH: sum of period uses "
+                f"{sum(period_uses_keur):.6f} != total_project_uses_keur {total_project_uses_keur:.6f}"
+            )
+    # GAP 2: validate SHL allocation vector when provided.
+    if shl_allocation_per_period_keur is not None:
+        if len(shl_allocation_per_period_keur) != construction_period_count:
+            raise ValueError(
+                "G2A_SHL_ALLOCATION_LENGTH_MISMATCH: shl_allocation_per_period_keur length "
+                f"{len(shl_allocation_per_period_keur)} != construction_period_count {construction_period_count}"
+            )
+        if abs(sum(shl_allocation_per_period_keur) - shl_cash_keur) > 1e-6:
+            raise ValueError(
+                "G2A_SHL_ALLOCATION_SUM_MISMATCH: sum of SHL allocation "
+                f"{sum(shl_allocation_per_period_keur):.6f} != shl_cash_keur {shl_cash_keur:.6f}"
+            )
     source_caps = {
         "share": share_capital_keur,
         "share_premium": share_premium_keur,
@@ -103,28 +151,92 @@ def build_construction_funding_schedule(
     remaining = dict(source_caps)
     cumulative = {key: 0.0 for key in source_caps}
     cumulative_uses = 0.0
+    opening_unutilised = 0.0  # GAP 2: prefunding bridge roll-forward
     rows: list[ConstructionFundingPeriod] = []
     for index in range(1, construction_period_count + 1):
-        uses = (
-            total_project_uses_keur / construction_period_count
-            if index < construction_period_count
-            else total_project_uses_keur - cumulative_uses
-        )
-        need = uses
+        # GAP 1: use explicit period uses vector when provided (single source of truth).
+        # Legacy: linear interpolation (total / n) for backward compat.
+        if period_uses_keur is not None:
+            uses = period_uses_keur[index - 1]
+        else:
+            uses = (
+                total_project_uses_keur / construction_period_count
+                if index < construction_period_count
+                else total_project_uses_keur - cumulative_uses
+            )
         draws: dict[str, float] = {}
-        for key in ("share", "share_premium", "other_committed", "additional_equity",
-                    "shl", "junior", "senior"):
-            draw = min(need, remaining[key])
-            draws[key] = draw
-            remaining[key] -= draw
-            cumulative[key] += draw
-            need -= draw
-        if abs(need) > 1e-8:
-            raise ValueError(f"G2A_PERIOD_FUNDING_SHORTFALL: period={index}, shortfall={need}")
+        if shl_allocation_per_period_keur is not None:
+            # BLOCKER 1 fix: Layer A (economic allocation) drives period need; Layer B (cash
+            # contribution) is tracked only in the prefunding bridge, NOT subtracted from Uses.
+            # ALL_AT_FC: shl_cash[0]=100, shl_alloc[0]=30 → need = 30-30 = 0 (not 30-100 = -70).
+            _econ_shl = shl_allocation_per_period_keur[index - 1]
+            draws["shl"] = _econ_shl
+            remaining["shl"] -= _econ_shl
+            cumulative["shl"] += _econ_shl
+            need = uses - _econ_shl
+            for key in ("share", "share_premium", "other_committed", "additional_equity",
+                        "junior", "senior"):
+                draw = min(need, remaining[key])
+                if draw < -1e-9:
+                    raise ValueError(
+                        f"G2A_NEGATIVE_SOURCE_DRAW: period={index}, source={key}, draw={draw:.9f}"
+                    )
+                draw = max(0.0, draw)
+                draws[key] = draw
+                remaining[key] -= draw
+                cumulative[key] += draw
+                need -= draw
+        elif shl_cash_per_period_keur is not None:
+            # Legacy BLOCKER C fix: no explicit allocation vector; cash == allocation (PRO_RATA).
+            # Non-SHL sources fill remaining need in waterfall order.
+            draws["shl"] = shl_cash_per_period_keur[index - 1]
+            remaining["shl"] -= draws["shl"]
+            cumulative["shl"] += draws["shl"]
+            need = uses - draws["shl"]
+            for key in ("share", "share_premium", "other_committed", "additional_equity",
+                        "junior", "senior"):
+                draw = min(need, remaining[key])
+                draws[key] = draw
+                remaining[key] -= draw
+                cumulative[key] += draw
+                need -= draw
+        else:
+            need = uses
+            for key in ("share", "share_premium", "other_committed", "additional_equity",
+                        "shl", "junior", "senior"):
+                draw = min(need, remaining[key])
+                draws[key] = draw
+                remaining[key] -= draw
+                cumulative[key] += draw
+                need -= draw
+        if abs(uses - sum(draws.values())) > 1e-8:
+            raise ValueError(f"G2A_PERIOD_FUNDING_SHORTFALL: period={index}, shortfall={uses - sum(draws.values())}")
 
         sources = sum(draws.values())
         cumulative_uses += uses
         cumulative_sources = sum(cumulative.values())
+        # BLOCKER C: populate canonical period dates when provided.
+        _p_start: date | None = None
+        _p_end: date | None = None
+        _cf_date: date | None = None
+        if period_dates is not None:
+            _p_start, _p_end, _cf_date = period_dates[index - 1]
+        # GAP 2 / BLOCKER 1: prefunding bridge fields.
+        # draws["shl"] now always holds the Layer A economic allocation.
+        # Layer B (Sponsor cash contribution) comes from shl_cash_per_period_keur when provided.
+        _shl_allocation = draws["shl"]   # Layer A: economic allocation
+        _shl_contribution = (
+            shl_cash_per_period_keur[index - 1]   # Layer B: actual Sponsor cash timing
+            if shl_cash_per_period_keur is not None
+            else _shl_allocation               # PRO_RATA/legacy: cash == allocation
+        )
+        _closing_unutilised = opening_unutilised + _shl_contribution - _shl_allocation
+        if _closing_unutilised < -1e-6:
+            raise ValueError(
+                f"G2A_NEGATIVE_UNUTILISED_SHL_CASH: period={index}, "
+                f"closing={_closing_unutilised:.9f}"
+            )
+        _closing_unutilised = max(0.0, _closing_unutilised)
         rows.append(ConstructionFundingPeriod(
             period_index=index,
             project_cash_uses_keur=uses,
@@ -151,7 +263,15 @@ def build_construction_funding_schedule(
             cumulative_shl_cash_draw_keur=cumulative["shl"],
             cumulative_total_sources_keur=cumulative_sources,
             cumulative_sources_uses_difference_keur=cumulative_sources - cumulative_uses,
+            period_start=_p_start,
+            period_end=_p_end,
+            cashflow_date=_cf_date,
+            shl_allocation_to_uses_keur=_shl_allocation,
+            sponsor_shl_cash_contribution_keur=_shl_contribution,
+            opening_unutilised_shl_cash_keur=opening_unutilised,
+            closing_unutilised_shl_cash_keur=_closing_unutilised,
         ))
+        opening_unutilised = _closing_unutilised
 
     return ConstructionFundingResult(
         policy=GENERIC_MVP_DRAW_POLICY,

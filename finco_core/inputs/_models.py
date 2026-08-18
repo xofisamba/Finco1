@@ -711,6 +711,35 @@ class DebtSizingCaseConfig:
                     )
 
 
+class SponsorFundingTimingPolicy(str, Enum):
+    """
+    Governs when Sponsor SHL cash is contributed during construction.
+
+    PRO_RATA_CONSTRUCTION (default):
+        Sponsor SHL cash contribution follows the SHL period draw increments produced by the
+        canonical cumulative Sponsor-first source waterfall (equity → SHL → senior residual).
+        For each period: cash_contribution[t] == shl_allocation_to_uses[t].
+        REQUIRES explicit construction_period_uses_keur when n_construction_periods > 1 and
+        shl_construction_day_count_fraction > 0 (fail-closed; legacy Solar/Wind DCF=0 exempt).
+
+    ALL_AT_FC:
+        Full resolved SHL cash principal contributed at Financial Close (period 0).
+        Allocation to project Uses still follows the canonical waterfall.
+        A prefunding cash balance carries excess contribution until consumed by Uses.
+        For each period: cash_contribution[0] == full_principal; cash_contribution[t>0] == 0.
+        shl_allocation_to_uses[t] follows the waterfall (differs from cash contribution).
+
+    Total SHL cash principal is identical under both policies — only timing differs.
+    Three orthogonal layers:
+      Layer A: SHL allocation-to-Uses per period (SPONSOR_FIRST_RESIDUAL_SENIOR waterfall).
+      Layer B: SHL cash contribution timing (this policy).
+      Layer C: SHL construction interest method (ShlConstructionInterestMethod).
+    DO NOT use this to determine total funding amounts.
+    """
+    PRO_RATA_CONSTRUCTION = "pro_rata_construction"
+    ALL_AT_FC = "all_at_fc"
+
+
 class ShlConstructionInterestMethod(str, Enum):
     """How SHL construction-period PIK interest is computed (Fix 2 — C3B3FIX2A).
 
@@ -823,6 +852,14 @@ class FinancingParams:
     # Default SIMPLE preserves all existing results. Set COMPOUND_PERIODIC for
     # projects whose source workbook uses geometric accrual (e.g. KUPI).
     shl_construction_interest_method: ShlConstructionInterestMethod = ShlConstructionInterestMethod.SIMPLE
+    # Sponsor funding timing policy (Fix 3 — C3B3FIX3).
+    # Default PRO_RATA_CONSTRUCTION preserves all existing results.
+    # ALL_AT_FC: full resolved Sponsor/SHL cash contributed at Financial Close.
+    sponsor_funding_timing_policy: SponsorFundingTimingPolicy = SponsorFundingTimingPolicy.PRO_RATA_CONSTRUCTION
+    # BLOCKER A (Fix 3): per-period construction Uses for Uses-based PRO_RATA allocation.
+    # When non-empty, PRO_RATA draws SHL proportional to net Sponsor funding need per period.
+    # Empty = DCF-based allocation (existing behavior when only calendar DCF is known).
+    construction_period_uses_keur: tuple[float, ...] = ()
     shl_principal_eligibility_start_period: int | None = None
     shl_maturity_period_index: int | None = None
     shl_fcf_waterfall_cash_schedule_keur: tuple[float, ...] = ()
