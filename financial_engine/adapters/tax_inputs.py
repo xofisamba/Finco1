@@ -81,6 +81,7 @@ def build_tax_contract_from_project_inputs(
     from financial_engine.policies.tax import (
         CashTaxTiming,
         ShlInterestDeductibilityMode,
+        TaxLossUtilisationGate,
         TaxPolicy,
     )
 
@@ -159,6 +160,11 @@ def build_tax_contract_from_project_inputs(
             tax.shl_interest_deductibility.value
         ),
         shl_interest_deductible_pct=tax.shl_interest_deductible_pct,
+        # PR-1 / P0-2: forward the typed gate from TaxParams so the clean engine
+        # receives the configured policy rather than the TaxPolicy default.
+        loss_utilisation_gate=TaxLossUtilisationGate(
+            tax.tax_loss_utilisation_gate.value
+        ),
     )
 
     # Opening loss vintages — fail closed for non-zero amounts.
