@@ -1,0 +1,164 @@
+name: KUPI K0-K3 Causal Grid Check
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - prefreeze-kupi-k0-k3-causal-grid
+      - claude/festive-cerf-uaq5hb
+
+jobs:
+  kupi-k0-k3-causal-grid:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout exact head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Assert exact-head checkout
+        run: |
+          ACTUAL=$(git rev-parse HEAD)
+          EXPECTED="${{ github.event.pull_request.head.sha || github.sha }}"
+          if [ "$ACTUAL" != "$EXPECTED" ]; then
+            echo "ERROR: checked-out commit does not match expected head SHA" >&2
+            exit 1
+          fi
+          echo "HEAD OK: $ACTUAL"
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f constraints.txt ]; then
+            pip install -c constraints.txt -e .
+            pip install -c constraints.txt pytest
+          elif [ -f pyproject.toml ]; then
+            pip install -e ".[dev]"
+          elif [ -f requirements.txt ]; then
+            pip install -r requirements.txt
+          fi
+
+      - name: Run KUPI K0-K3 causal grid tests
+        run: |
+          python -m pytest -q tests/test_kupi_k0_k3_causal_grid.py -v
+
+      - name: Report KUPI K0-K3 test count
+        if: always()
+        run: |
+          python -m pytest --collect-only -q tests/test_kupi_k0_k3_causal_grid.py 2>&1 | tail -5
+
+      - name: Governance guard — no source Senior/SHL injected as runtime input
+        run: |
+          python -c "
+          import ast, sys, pathlib, textwrap
+
+          # Structural AST guard: parse build_kupi_project_inputs() and all factory helpers.
+          # SOURCE SENIOR (147,150) and SOURCE SHL (68,153) comparison-anchor constants are
+          # allowed ONLY in:
+          #   - module-level constant assignments (SOURCE_SENIOR_KEUR = ...)
+          #   - print / comparison / assertion / docstring / comment contexts
+          # They are FORBIDDEN as:
+          #   - FinancingParams field values
+          #   - DebtSizingCaseConfig field values
+          #   - Arguments to run_project_financing_model / build_kupi_project_inputs
+          #   - Senior sizing targets / fixed schedule inputs
+
+          src_path = pathlib.Path('tests/diagnostics/kupi_k0_k3_causal_grid.py')
+          src = src_path.read_text()
+          tree = ast.parse(src, filename=str(src_path))
+
+          # Forbidden numeric literals (source Senior and SHL principal)
+          FORBIDDEN_VALUES = {147150.442, 147150.0, 68152.996, 68152.0, 68153.0}
+          FORBIDDEN_INT_APPROX = {147150, 68152, 68153}
+
+          # Names of module-level constants that ARE allowed to hold these values
+          ALLOWED_CONSTANT_NAMES = {
+              'SOURCE_SENIOR_KEUR', 'SOURCE_SHL_PRINCIPAL_KEUR',
+              'SOURCE_SENIOR_KEUR_ANCHOR', 'SOURCE_SHL_ANCHOR_KEUR',
+          }
+
+          # Classes/functions that must NOT receive these values as arguments
+          FORBIDDEN_CALL_TARGETS = {
+              'FinancingParams', 'DebtSizingCaseConfig', 'SeniorDebtInputs',
+              'run_project_financing_model', 'build_kupi_project_inputs',
+              'build_senior_debt_schedule', 'solve_senior_debt',
+          }
+
+          violations = []
+
+          class SourceInjectionChecker(ast.NodeVisitor):
+              def __init__(self):
+                  self._in_module_constant = False
+                  self._current_constant_name = None
+
+              def visit_Assign(self, node):
+                  # Allow module-level constant assignments to hold the values
+                  if (isinstance(node.targets[0], ast.Name) and
+                          node.targets[0].id in ALLOWED_CONSTANT_NAMES):
+                      return  # allowed
+
+                  self.generic_visit(node)
+
+              def visit_Call(self, node):
+                  # Check if call target is a forbidden constructor/function
+                  target_name = None
+                  if isinstance(node.func, ast.Name):
+                      target_name = node.func.id
+                  elif isinstance(node.func, ast.Attribute):
+                      target_name = node.func.attr
+
+                  if target_name in FORBIDDEN_CALL_TARGETS:
+                      for arg in list(node.args) + [kw.value for kw in node.keywords]:
+                          self._check_forbidden_value(arg, target_name, node.lineno)
+
+                  self.generic_visit(node)
+
+              def _check_forbidden_value(self, node, target, lineno):
+                  if isinstance(node, ast.Constant):
+                      val = node.value
+                      if isinstance(val, (int, float)):
+                          if val in FORBIDDEN_VALUES or int(val) in FORBIDDEN_INT_APPROX:
+                              violations.append(
+                                  f'Line {lineno}: forbidden source value {val!r} '
+                                  f'passed as argument to {target}()'
+                              )
+
+          SourceInjectionChecker().visit(tree)
+
+          if violations:
+              print('GOVERNANCE VIOLATION: source Senior/SHL literal used as runtime input:')
+              for v in violations:
+                  print(' ', v)
+              sys.exit(1)
+          print('Governance guard 1 PASSED: source Senior/SHL not injected as runtime inputs.')
+          print('  (comparison-anchor constants and print/assert contexts are allowed)')
+          "
+
+      - name: Governance guard — no project identity dispatch
+        run: |
+          python -c "
+          import re, sys, pathlib
+          pattern = re.compile(r'(if|elif)\s+.*\b(kupi|tuho|oborovo|krnovo)\b', re.IGNORECASE)
+          engine_root = pathlib.Path('financial_engine')
+          violations = []
+          for f in engine_root.rglob('*.py'):
+              if '__pycache__' in str(f):
+                  continue
+              for i, line in enumerate(f.read_text().splitlines(), 1):
+                  if pattern.search(line):
+                      violations.append(f'{f}:{i}: {line.strip()}')
+          if violations:
+              print('GOVERNANCE VIOLATION: project dispatch found:')
+              print('\n'.join(violations))
+              sys.exit(1)
+          print('Governance guard passed: no project identity dispatch.')
+          "
