@@ -19,6 +19,7 @@ from typing import Optional, TYPE_CHECKING
 
 from finco_core.inputs.senior_rate_schedule import SeniorDebtInterestConfig
 from finco_core.inputs.senior_sculpting import SeniorSculptingConfig
+from finco_core.engine.distribution_account.inputs import CovenantGatePolicy
 
 if TYPE_CHECKING:
     from finco_core.inputs.bess import BessParams
@@ -866,6 +867,12 @@ class FinancingParams:
     shl_fcf_waterfall_minimum_cash_retained_keur: float = 0.0
 
     use_senior_sweep_cash_cap_for_shl: bool = False
+
+    # Typed covenant gate policy — replaces is_tuho/is_oborovo identity dispatch in DA engine.
+    # R99_R102_APPLICABLE: TUHO-class projects with active covenant gate evaluation.
+    # R99_R102_NOT_APPLICABLE (default): covenant structure does not apply; gate passes trivially.
+    covenant_gate_policy: CovenantGatePolicy = CovenantGatePolicy.R99_R102_NOT_APPLICABLE
+
     use_tuho_r99_input_engine: bool = False
     use_tuho_shl_repayment_alignment: bool = False
     tuho_shl_principal_eligibility_start_period: int | None = None

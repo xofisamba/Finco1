@@ -38,6 +38,7 @@ from domain.inputs import (
     YieldScenario,
 )
 from domain.revenue.bess import BessParams
+from finco_core.engine.distribution_account.inputs import CovenantGatePolicy
 from finco_core.inputs._models import DebtSizingMode, GearingBasisMode, SponsorFundingMode
 from finco_core.inputs.senior_rate_schedule import (
     SeniorDayCountConvention,
@@ -709,6 +710,8 @@ def create_default_tuho_wind1() -> ProjectInputs:
         shl_repayment_method="pik_then_sweep",  # TUHO: PIK phase Y1-Y14, sweep phase Y15+
         shl_idc_keur=3568.69,  # Construction IDC from Excel — opening SHL balance = 29,135 + 3,569 = 32,704
         use_senior_sweep_cash_cap_for_shl=False,  # TUHO: SHL cap DISABLED — PR B2 uses fcf_waterfall approach
+        # PR-2 / P0-4: typed covenant gate policy — TUHO has R99/R102 applicable.
+        covenant_gate_policy=CovenantGatePolicy.R99_R102_APPLICABLE,
         use_frozen_excel_senior_debt_schedule=True,  # Phase 23F: frozen senior DS schedule from fixture (CSV)
         frozen_senior_ds_fixture_path="reports/phase7_tuho_senior_debt_sizing_extraction.csv",  # Stack AC: capability-driven fixture path
         # Phase 23F: frozen Excel senior debt service schedule opt-in.

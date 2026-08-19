@@ -8,6 +8,7 @@ or Sponsor. R99/R102 remain BLOCKED per G1/G8 governance rules.
 from __future__ import annotations
 
 from finco_core.engine.distribution_account.inputs import (
+    CovenantGatePolicy,
     DistributionAccountInputs,
     DistributionAccountPeriodInput,
     R99R102GateInputs,
@@ -25,6 +26,7 @@ from finco_core.engine.distribution_account.gates import (
     evaluate_dscr_gate,
     evaluate_lockup_gate,
     evaluate_oborovo_guard,
+    evaluate_covenant_gate_policy,
     evaluate_cash_gate,
 )
 
@@ -51,8 +53,11 @@ class DistributionAccountEngine:
         total_shl_sweep = 0.0
         total_retained = 0.0
 
+        # Single canonical authority: run-level covenant gate policy from DistributionAccountInputs.
+        covenant_gate_policy = inputs.covenant_gate_policy
+
         for period_input in inputs.period_inputs:
-            result = DistributionAccountEngine._compute_period(period_input)
+            result = DistributionAccountEngine._compute_period(period_input, covenant_gate_policy)
             period_results.append(result)
 
             total_equity_candidate += result.equity_distribution_candidate_keur
@@ -78,14 +83,18 @@ class DistributionAccountEngine:
         )
 
     @staticmethod
-    def _compute_period(inp: DistributionAccountPeriodInput) -> DistributionAccountPeriodResult:
-        """Compute DistributionAccount result for a single period."""
+    def _compute_period(
+        inp: DistributionAccountPeriodInput,
+        covenant_gate_policy: CovenantGatePolicy,
+    ) -> DistributionAccountPeriodResult:
+        """Compute DistributionAccount result for a single period.
+
+        covenant_gate_policy is the run-level authority from DistributionAccountInputs,
+        not derived from inp.is_tuho / inp.is_oborovo.
+        """
         opening_balance = inp.opening_distribution_account_balance_keur
 
-        # Cash available for distribution = post-SHL cash (or post-senior if no SHL)
-        # + opening balance (for top-up context)
-        # + any other inflows
-        cash_for_dist = inp.post_shl_cash_available_keur  # residual after SHL
+        cash_for_dist = inp.post_shl_cash_available_keur
         if cash_for_dist < 0:
             cash_for_dist = 0.0
 
@@ -102,61 +111,75 @@ class DistributionAccountEngine:
             cash_retained = cash_for_dist
             cash_for_dist = 0.0
 
-        # Evaluate gates (all should fail/pass based on audit status)
-        r99_gate = evaluate_r99_gate(
-            inp.r99_gate_inputs,
-            cash_for_dist,
-            inp.enable_r99_r102_runtime,
-            audit_economic_mode=inp.audit_economic_mode,
-            runtime_economic_mode=inp.runtime_economic_mode,
-        )
-        r102_gate = evaluate_r102_gate(
-            inp.r102_gate_inputs,
-            cash_for_dist,
-            inp.enable_r99_r102_runtime,
-            audit_economic_mode=inp.audit_economic_mode,
-            runtime_economic_mode=inp.runtime_economic_mode,
-        )
+        # R99/R102 gate evaluation — controlled by CovenantGatePolicy (run-level authority).
+        # R99_R102_NOT_APPLICABLE: bypass covenant family; results are non-blocking diagnostics.
+        # R99_R102_APPLICABLE: evaluate normally using period mode flags.
+        if covenant_gate_policy == CovenantGatePolicy.R99_R102_NOT_APPLICABLE:
+            r99_gate = DistributionGateResult(
+                gate_name="r99_gate",
+                passed=True,
+                blocked_reason="",
+                details=("NOT_APPLICABLE_BY_COVENANT_POLICY",),
+            )
+            r102_gate = DistributionGateResult(
+                gate_name="r102_gate",
+                passed=True,
+                blocked_reason="",
+                details=("NOT_APPLICABLE_BY_COVENANT_POLICY",),
+            )
+        else:
+            r99_gate = evaluate_r99_gate(
+                inp.r99_gate_inputs,
+                cash_for_dist,
+                inp.enable_r99_r102_runtime,
+                audit_economic_mode=inp.audit_economic_mode,
+                runtime_economic_mode=inp.runtime_economic_mode,
+            )
+            r102_gate = evaluate_r102_gate(
+                inp.r102_gate_inputs,
+                cash_for_dist,
+                inp.enable_r99_r102_runtime,
+                audit_economic_mode=inp.audit_economic_mode,
+                runtime_economic_mode=inp.runtime_economic_mode,
+            )
+
         dscr_gate = evaluate_dscr_gate(inp.actual_dscr, inp.target_distribution_dscr)
         lockup_gate = evaluate_lockup_gate(
             period_index=inp.period_index,
-            senior_tenor_years=inp.senior_tenor_years,  # from inputs; 0 = no tenor-based lockup
+            senior_tenor_years=inp.senior_tenor_years,
             dsra_balance=inp.dsra_current_balance_keur,
             dsra_target=inp.dsra_required_balance_keur,
             jdsra_balance=inp.jdsra_current_balance_keur,
             jdsra_target=inp.jdsra_required_balance_keur,
             cash=cash_for_dist,
         )
-        oborovo_gate = evaluate_oborovo_guard(inp.is_oborovo)
         cash_gate = evaluate_cash_gate(cash_for_dist)
 
-        # Compute equity distribution candidate and paid amounts
-        # equity_candidate = theoretical max based on cash
-        # equity_paid = what passes all gates (audit output, not runtime)
-        equity_candidate = cash_for_dist  # simplified
+        # DEPRECATED: oborovo_gate is diagnostic-only metadata; NOT a financial gate.
+        # is_oborovo does not affect financial output. Kept for backward-compatible logging.
+        oborovo_gate = evaluate_oborovo_guard(inp.is_oborovo)
 
-        # Phase 9: Gate-driven equity paid computation (audit-only).
-        # When all gates pass: equity_paid = equity_candidate.
-        # When any gate fails: equity_paid = 0.0.
-        # R99/R102 remain BLOCKED for runtime routing.
+        # Covenant gate diagnostic — records the active policy for the period.
+        covenant_gate = evaluate_covenant_gate_policy(covenant_gate_policy)
+
+        equity_candidate = cash_for_dist
+
+        # all_gates_passed: oborovo_gate intentionally excluded — is_oborovo is not
+        # a financial authority. covenant_gate always passes (policy is applied upstream
+        # via R99/R102 bypass). Financial decision depends on R99/R102, DSCR, lockup, cash.
         all_gates_passed = (
             r99_gate.passed and
             r102_gate.passed and
             dscr_gate.passed and
             lockup_gate.passed and
-            oborovo_gate.passed and
             cash_gate.passed
         )
         equity_paid = equity_candidate if all_gates_passed else 0.0
 
-        # SHL sweep remains 0.0 (not wired to ShlEngine in this branch)
         shl_sweep = 0.0
-
-        # Closing balance: opening + dsra_top_up (if funded)
-        # Cash retained goes to distribution account balance
         closing_balance = opening_balance + cash_retained + dsra_top_up
 
-        # Build blocked reason
+        # blocked_reason: oborovo_gate intentionally excluded — not a financial authority.
         blocked = ""
         if not r99_gate.passed and r99_gate.blocked_reason:
             blocked = r99_gate.blocked_reason
@@ -166,18 +189,16 @@ class DistributionAccountEngine:
             blocked = dscr_gate.blocked_reason
         elif not lockup_gate.passed:
             blocked = lockup_gate.blocked_reason
-        elif not oborovo_gate.passed:
-            blocked = oborovo_gate.blocked_reason
         elif not cash_gate.passed:
             blocked = cash_gate.blocked_reason
 
         warnings: list[str] = []
         if inp.enable_r99_r102_runtime:
             warnings.append("enable_r99_r102_runtime=True — audit-only mode warning")
-        if inp.is_oborovo and not oborovo_gate.passed:
-            warnings.append("Oborovo project — TUHO gates not applicable")
         if inp.audit_economic_mode:
             warnings.append("audit_economic_mode=True — economic gate evaluation for audit only")
+        if covenant_gate_policy == CovenantGatePolicy.R99_R102_NOT_APPLICABLE:
+            warnings.append("covenant_gate_policy=NOT_APPLICABLE — R99/R102 bypassed as non-applicable")
 
         return DistributionAccountPeriodResult(
             period_index=inp.period_index,
@@ -194,6 +215,7 @@ class DistributionAccountEngine:
             dscr_gate_result=dscr_gate,
             lockup_gate_result=lockup_gate,
             oborovo_gate_result=oborovo_gate,
+            covenant_gate_result=covenant_gate,
             blocked_reason=blocked,
             warnings=tuple(warnings),
         )

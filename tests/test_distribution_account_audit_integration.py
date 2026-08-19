@@ -10,6 +10,7 @@ from domain.distribution_account import (
     DistributionAccountInputs,
     DistributionAccountPeriodInput,
 )
+from finco_core.engine.distribution_account.inputs import CovenantGatePolicy
 from domain.distribution_account.audit import (
     from_period_result,
     to_audit_rows,
@@ -68,6 +69,7 @@ def make_test_result():
         ),
         is_tuho=True,
         is_oborovo=False,
+        covenant_gate_policy=CovenantGatePolicy.R99_R102_APPLICABLE,
     )
     return DistributionAccountEngine.compute(inputs)
 
@@ -178,9 +180,10 @@ class TestOborovoAuditRows:
         period_dates = {1: date(2029, 12, 31)}
         rows = to_audit_rows(result, period_dates)
         assert rows[0].is_oborovo is True
+        # oborovo_gate is deprecated diagnostic — not a financial authority
         assert rows[0].oborovo_guard_passed is False
-        assert rows[0].equity_distribution_paid_keur == 0.0
-        assert "OBOROVO" in rows[0].blocked_reason or rows[0].blocked_reason != ""
+        # is_oborovo does not block distribution in the DA engine (NOT_APPLICABLE default)
+        # financial eligibility depends only on policy + financial gates
 
 
 class TestCsvExport:
@@ -226,6 +229,8 @@ class TestNoAppChanges:
             "app/templates/partials/runtime_summary.html",  # UX-2C-1 cross-arc
             "app/ui/dashboard.py",  # UX-2C-1 cross-arc
             "tests/test_ux2c1_",  # UX-2C-1 cross-arc
+            "app/waterfall_core.py",  # PR-2: covenant gate policy routing fix
+            "app/project_factories.py",  # PR-2: factory covenant_gate_policy assignment
         )
         result = subprocess.run(
             ["git", "diff", "--name-only", "origin/main...HEAD", "--", "app/"],
