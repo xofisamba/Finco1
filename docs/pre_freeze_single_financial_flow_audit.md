@@ -9,13 +9,22 @@
 
 ## 1. Executive Summary
 
-**Single-engine verdict: MOSTLY — ONE CORE WITH MATERIAL PARALLEL AUTHORITIES**
+**Single-engine verdict: NO — MULTIPLE MATERIAL FINANCIAL FLOWS**
+
+Runtime-instrumented proof (see §3-A) confirms TUHO and Oborovo exclusively execute
+the `LEGACY_APP_PRODUCTION_FLOW` and never enter the clean-engine orchestrator. The
+clean engine (`CLEAN_PRE_PROMOTION_FINANCIAL_FLOW`) is a fully independent financial
+authority — computing EBITDA, tax, CFADS, Senior debt, SHL and sponsor waterfall
+through different owners and different formulas. These two flows are not one core with
+parallel wiring; they are two materially distinct financial engines serving different
+project populations. Promotion of the clean engine to production requires eliminating
+all duplicate financial authority before go-live.
 
 Three findings dominate:
 
 **Finding 1 (P0): Two completely separate financial engines exist in parallel.** The production app (API + Streamlit) runs TUHO and Oborovo exclusively through the **legacy engine** (`app.waterfall_core.run_waterfall_v3_core` → `domain.waterfall.waterfall_engine.run_waterfall`). The **clean engine** (`financial_engine/orchestrator.py::run_operating_model / run_tax_cfads_model / run_senior_debt_model / run_project_financing_model`) is called only by parity scripts (`finco_parity/`), reconciliation scripts (`finco_recon/`), and tests. KUPI does not exist in the production app — it exists only in `tests/diagnostics/kupi_k0_k3_causal_grid.py` and its companion test, where it calls the clean engine exclusively.
 
-**Finding 2 (P0): `tax_loss_utilisation_gate` is NOT forwarded through the clean engine's tax adapter.** `TaxParams.tax_loss_utilisation_gate` exists in `finco_core/inputs/_models.py` (line 1146) and is persisted/serialized. But `financial_engine/adapters/tax_inputs.py::build_tax_contract_from_project_inputs()` does not read this field when constructing `TaxPolicy`. `TaxPolicy.loss_utilisation_gate` always defaults to `TaxLossUtilisationGate.TAXABLE_INCOME_POSITIVE` (line 82 of `financial_engine/policies/tax.py`). Any project configured with `EBT_POSITIVE` gate would silently receive `TAXABLE_INCOME_POSITIVE` instead.
+**Finding 2 (P0 — `MISSING_ADAPTER_PROPAGATION`): `tax_loss_utilisation_gate` is NOT forwarded by the clean engine's tax adapter.** This is NOT a missing tax engine implementation — `calculate_tax()` in `financial_engine/tax/engine.py` already handles `EBT_POSITIVE` correctly. The gap is solely in the adapter layer: `financial_engine/adapters/tax_inputs.py::build_tax_contract_from_project_inputs()` does not read `TaxParams.tax_loss_utilisation_gate` when constructing `TaxPolicy`. `TaxPolicy.loss_utilisation_gate` always defaults to `TaxLossUtilisationGate.TAXABLE_INCOME_POSITIVE` (line 82 of `financial_engine/policies/tax.py`). Any project configured with `EBT_POSITIVE` gate would silently receive `TAXABLE_INCOME_POSITIVE` instead. Fix: one line in the adapter constructor.
 
 **Finding 3 (P0): Project-identity dispatch exists in the legacy engine and in the distribution account.** `app/waterfall_core.py` branches on `inputs.info.code == "TUHO-WIND-1"` (lines 223, 254, 130, 309) and passes TUHO-specific flags (`use_tuho_shl_repayment_alignment`, `tuho_shl_principal_eligibility_start_period`, `use_co2_revenue_bridge`, etc.) that alter financial results. `finco_core/engine/distribution_account/inputs.py` has `is_tuho: bool` and `is_oborovo: bool` flags. `evaluate_oborovo_guard(is_oborovo)` in `gates.py` (line 166) blocks TUHO-specific gates for Oborovo — project-identity dispatch modifying financial logic.
 
@@ -23,9 +32,12 @@ Three findings dominate:
 
 ## 2. Methodology
 
-All findings are derived from static code analysis of `/home/user/Finco1/`. No tests were run. No files were modified. Every claim is cited by file path and line number.
+All findings are derived from static code analysis of `/home/user/Finco1/` combined with
+**runtime monkeypatching instrumentation** (see §3-A). The runtime proof runs via pytest
+and instruments actual execution — it does NOT infer from imports. Production files were
+not modified.
 
-Investigation sequence:
+Static investigation sequence:
 1. Mapped directory structure and located both financial engines
 2. Read the clean engine orchestrator in full (`financial_engine/orchestrator.py`)
 3. Read the legacy engine entry point (`app/waterfall_core.py`)
@@ -36,6 +48,77 @@ Investigation sequence:
 8. Read the distribution account engine and gates
 9. Read the KUPI diagnostic and its test
 10. Read the parity and recon modules
+
+Runtime instrumentation sequence:
+11. Wrote `tests/test_pre_freeze_single_financial_flow_audit.py` (14 tests, all green)
+12. Confirmed TUHO/Oborovo runtime traces via `patch.object` on real module attributes
+13. Confirmed KUPI factory exclusion via `run_demo_project("KUPI")` returning no result
+14. Confirmed KUPI diagnostic calls `run_project_financing_model` by patching on `diag_mod`
+15. Confirmed `kupi_true_bank_only_senior_diagnostic` calls private `_forward_roll` / `_backward_dscr_capacity`
+
+---
+
+## 3-A. Runtime Proof: Instrumented Call-Graph Evidence
+
+**Test module:** `tests/test_pre_freeze_single_financial_flow_audit.py`
+**Test count:** 14 green / 0 failed
+**Execution:** `python -m pytest tests/test_pre_freeze_single_financial_flow_audit.py -q` → `14 passed, 1 warning in 17.88s`
+
+### Normalized Observed Traces
+
+```
+TUHO:
+  APP_ENTRY (app.ui_runner._run_waterfall)
+    → LEGACY_RUNNER (app.waterfall_runner.WaterfallRunner.run)
+      → LEGACY_CORE (app.waterfall_runner.run_waterfall_v3_core)
+        → LEGACY_WATERFALL (domain.waterfall.waterfall_engine.run_waterfall)
+
+Oborovo:
+  APP_ENTRY (app.ui_runner._run_waterfall)
+    → LEGACY_RUNNER (app.waterfall_runner.WaterfallRunner.run)
+      → LEGACY_CORE (app.waterfall_runner.run_waterfall_v3_core)
+        → LEGACY_WATERFALL (domain.waterfall.waterfall_engine.run_waterfall)
+
+KUPI factory: NOT IN FACTORY_MAP
+  run_demo_project("KUPI") → result.result is None, messages contain "Unknown project type"
+
+KUPI diagnostic:
+  DIAGNOSTIC_ENTRY (diag_mod.run_p0_current_generic)
+    → CLEAN_PROJECT_FINANCING (run_project_financing_model)
+      → [financial_engine.financing.project → run_senior_debt_model
+          → run_tax_cfads_model → run_operating_model]
+
+KUPI bank-only diagnostic (DIAGNOSTIC_ONLY_PATH):
+  diag_mod.kupi_true_bank_only_senior_diagnostic(p0, d0)
+    → solver._forward_roll (private)
+    → solver._backward_dscr_capacity (private)
+    — does NOT call run_project_financing_model or WaterfallRunner.run
+```
+
+### Key Observations
+
+| Observation | Test name | Result |
+|---|---|---|
+| TUHO calls `WaterfallRunner.run` | `test_tuho_calls_legacy_waterfall_chain` | CONFIRMED |
+| TUHO calls `run_waterfall_v3_core` | `test_tuho_calls_legacy_waterfall_chain` | CONFIRMED |
+| TUHO calls `domain.waterfall.run_waterfall` | `test_tuho_calls_legacy_waterfall_chain` | CONFIRMED |
+| TUHO does NOT call `run_operating_model` | `test_tuho_does_not_call_clean_engine_orchestrator` | CONFIRMED |
+| TUHO structural trace in order | `test_tuho_structural_trace` | CONFIRMED |
+| Oborovo calls full legacy chain | `test_oborovo_calls_legacy_waterfall_chain` | CONFIRMED |
+| Oborovo does NOT call clean orchestrator | `test_oborovo_does_not_call_clean_engine_orchestrator` | CONFIRMED |
+| Oborovo structural trace in order | `test_oborovo_structural_trace` | CONFIRMED |
+| KUPI absent from `FACTORY_MAP` | `test_kupi_not_in_app_factory_map` | CONFIRMED |
+| KUPI diagnostic calls `run_project_financing_model` | `test_kupi_diagnostic_calls_run_project_financing_model` | CONFIRMED |
+| KUPI bank-only calls private `_forward_roll` / `_backward_dscr_capacity` | `test_kupi_bank_only_diagnostic_calls_private_solvers` | CONFIRMED |
+| KUPI diagnostic does NOT call `_run_waterfall` or `WaterfallRunner.run` | `test_kupi_diagnostic_does_not_route_through_app_entry` | CONFIRMED |
+| TUHO/Oborovo NEVER call `run_project_financing_model` | `test_legacy_app_projects_never_call_run_project_financing_model[TUHO/Oborovo]` | CONFIRMED |
+| TUHO/Oborovo ALWAYS call `run_waterfall_v3_core` | `test_legacy_app_projects_always_call_run_waterfall_v3_core[TUHO/Oborovo]` | CONFIRMED |
+
+### Terminology
+
+- **`LEGACY_APP_PRODUCTION_FLOW`**: `app.ui_runner._run_waterfall` → `WaterfallRunner.run` → `run_waterfall_v3_core` → `domain.waterfall.run_waterfall`. This is the ONLY path used by TUHO and Oborovo in production.
+- **`CLEAN_PRE_PROMOTION_FINANCIAL_FLOW`**: `run_project_financing_model` → `run_operating_model` / `run_tax_cfads_model` / `run_senior_debt_model` / `run_shl_model`. Used exclusively by KUPI diagnostics and parity scripts.
+- **`DIAGNOSTIC_ONLY_PATH`**: `kupi_true_bank_only_senior_diagnostic` via private `_forward_roll` / `_backward_dscr_capacity`. Not callable through any public interface.
 
 ---
 
@@ -275,8 +358,8 @@ Both engines call `finco_core.opex.projections.opex_schedule_period()`. Oborovo 
 TUHO and Oborovo run the legacy `run_waterfall` engine; the clean engine is parity/test only. No single canonical production truth.
 Files: `app/waterfall_core.py`, `financial_engine/orchestrator.py`.
 
-**P0-2: `tax_loss_utilisation_gate` not forwarded in clean engine adapter.**
-`finco_core/inputs/_models.py` line 1146: field exists. `financial_engine/adapters/tax_inputs.py`: not read. `financial_engine/policies/tax.py` line 82: always defaults to `TAXABLE_INCOME_POSITIVE`. KUPI configured with `EBT_POSITIVE` silently receives `TAXABLE_INCOME_POSITIVE` in the clean engine.
+**P0-2 (`MISSING_ADAPTER_PROPAGATION`): `tax_loss_utilisation_gate` not forwarded by the clean engine tax adapter.**
+Classification: `MISSING_ADAPTER_PROPAGATION`. This is NOT `MISSING_TAX_ENGINE_IMPLEMENTATION` — `calculate_tax()` in `financial_engine/tax/engine.py` already handles `EBT_POSITIVE` correctly. The gap is solely in the adapter: `financial_engine/adapters/tax_inputs.py::build_tax_contract_from_project_inputs()` does not read `TaxParams.tax_loss_utilisation_gate` when constructing `TaxPolicy`. `TaxPolicy.loss_utilisation_gate` always defaults to `TaxLossUtilisationGate.TAXABLE_INCOME_POSITIVE` (line 82 of `financial_engine/policies/tax.py`). KUPI configured with `EBT_POSITIVE` silently receives `TAXABLE_INCOME_POSITIVE`.
 File: `financial_engine/adapters/tax_inputs.py`.
 Fix: one line — `loss_utilisation_gate=TaxLossUtilisationGate(tax.tax_loss_utilisation_gate.value)` in the `TaxPolicy` constructor call.
 
@@ -355,22 +438,29 @@ The **KUPI diagnostic** is structured to avoid project-identity dispatch in the 
 
 ### A. Do we currently have one financial engine?
 
-**MOSTLY — ONE CORE WITH MATERIAL PARALLEL AUTHORITIES**
+**NO — MULTIPLE MATERIAL FINANCIAL FLOWS**
 
-A unified clean engine exists and is architecturally sound. However:
-- TUHO and Oborovo run the legacy engine in production. The clean engine is not production-wired for either.
-- KUPI is not a production project.
-- Every financial layer below revenue (tax, CFADS, Senior, SHL, DA, returns) is a duplicate authority.
+Runtime instrumentation (§3-A, 14 tests green) confirms two completely separate financial
+flows exist and execute independently:
 
-### B. Which items must be fixed before touching the next major feature? (minimum ordered list)
+- **`LEGACY_APP_PRODUCTION_FLOW`**: TUHO and Oborovo exclusively. Does NOT call clean engine orchestrator. Computes EBITDA (with zero-floor), tax (inline, scalar LCF), CFADS (inline), Senior (sculpting solver), SHL (legacy engine), DA (with `is_tuho`/`is_oborovo` dispatch) through the legacy waterfall math.
+- **`CLEAN_PRE_PROMOTION_FINANCIAL_FLOW`**: KUPI diagnostics and parity scripts exclusively. Computes EBITDA (no floor), tax (FIFO vintage LCF, typed policy), CFADS (canonical), Senior (fixed-point solver), SHL (typed policy) through the clean engine. DSRA and DA gate are NOT wired in this path.
 
-1. **Fix `loss_utilisation_gate` propagation** in `financial_engine/adapters/tax_inputs.py`. One line. P0-2.
-2. **Remove project-identity dispatch from Distribution Account** — replace `is_tuho`/`is_oborovo` with typed `CovenantGatePolicy`. P0-4.
-3. **Resolve EBITDA floor rule** — align `max(0, rev−opex)` vs uncapped across both engines. P0-3.
-4. **Implement DSRA in the clean engine** — add DSRA balance roll-forward between `post_senior_cash` and the DA gate. P1-1.
-5. **Wire the DA covenant gate into clean engine SHL path** — DA release must interpose before `compute_shareholder_loan_schedules()`. P0-7.
-6. **Implement typed `DebtSizingCaseInput` for TUHO/Oborovo** or promote those projects to the clean engine. P0-5.
-7. **Replace TUHO/Oborovo SHL repayment-alignment flags** with typed `ShlRepaymentPolicy`. P0-6.
+These are not "one core with parallel wiring" — they are two materially distinct financial engines with different formulas, different LCF models, different EBITDA floors, and different SHL/DA gates. Every financial layer below revenue is a `DUPLICATE_FINANCIAL_AUTHORITY`.
+
+Promotion of the clean engine to production requires eliminating all P0 findings before go-live.
+
+### B. Which items must be fixed before touching the next major feature? (dependency order)
+
+See §13 (P0-to-PR Mapping) and §14 (Consolidation PR Sequence) for full detail.
+
+1. **PR-1**: Fix `loss_utilisation_gate` adapter propagation (`MISSING_ADAPTER_PROPAGATION`). One line. P0-2.
+2. **PR-2**: Replace `is_tuho`/`is_oborovo` DA dispatch with typed `CovenantGatePolicy`; remove CO2 identity dispatch. P0-4, P0-8.
+3. **PR-3**: Implement DSRA roll-forward in clean engine. P1-1. (requires PR-2)
+4. **PR-4**: Wire DA covenant gate into clean engine SHL path — closes `PRE_RESERVE_SHL_CASH_AUTHORITY_GAP`. P0-7. (requires PR-2, PR-3)
+5. **PR-5**: Resolve EBITDA floor rule (decision required). P0-3.
+6. **PR-6**: Replace SHL repayment-alignment flags with typed `ShlRepaymentPolicy`. P0-6. (requires PR-4)
+7. **PR-7**: Implement typed `DebtSizingCaseInput` (`MISSING_TYPED_BANK_CASE_POLICY`). P0-5. (requires PRs 1–6)
 
 ### C. Which major implementation should come first after consolidation?
 
@@ -386,21 +476,73 @@ Evidence:
 
 ---
 
-## 12. Minimum Consolidation PR Sequence
+## 12. P0-to-PR Mapping
 
-| # | PR | Scope | Pre-requisites | Risk |
+| P0 finding | Classification | Financial risk | Required before clean-engine promotion? | Proposed PR |
 |---|---|---|---|---|
-| PR-1 | Fix `loss_utilisation_gate` propagation | `financial_engine/adapters/tax_inputs.py` single line | None | Minimal — corrects a silent wrong default |
-| PR-2 | Replace `is_tuho`/`is_oborovo` DA flags with typed `CovenantGatePolicy` | `finco_core/engine/distribution_account/inputs.py`, `gates.py`, `engine.py` | None (structural refactor) | Medium — touches DA inputs across callers |
-| PR-3 | Implement DSRA in clean engine | `financial_engine/orchestrator.py`, new `dsra/` module | PR-2 (DA gate structure needed) | Medium — adds new financial logic |
-| PR-4 | Wire DA covenant gate into clean engine SHL path | `financial_engine/orchestrator.py`, `_run_senior_debt_model_with_shl` | PR-2, PR-3 | Medium — changes SHL-eligible cash routing |
-| PR-5 | Resolve EBITDA floor rule | `app/waterfall_core.py` or `financial_engine/orchestrator.py` | Decision required | Low-medium — cross-engine alignment |
-| PR-6 | Replace TUHO/Oborovo SHL repayment-alignment flags with typed `ShlRepaymentPolicy` | `finco_core/waterfall/waterfall_engine.py`, `finco_core/shl/engine.py`, inputs | PR-4 | Medium |
-| PR-7 | Implement typed `DebtSizingCaseInput` for TUHO/Oborovo in legacy or promote to clean engine | `app/waterfall_core.py` or `financial_engine/orchestrator.py` | PRs 1–6 | High — largest single change |
+| P0-1: Dual engines (legacy vs clean) | `DUPLICATE_FINANCIAL_AUTHORITY` | Every financial layer below revenue produces different truth depending on project path | YES | PRs 1–7 together eliminate this |
+| P0-2: `tax_loss_utilisation_gate` not forwarded | `MISSING_ADAPTER_PROPAGATION` (NOT `MISSING_TAX_ENGINE_IMPLEMENTATION` — engine already handles `EBT_POSITIVE`) | Silent wrong gate applied to any project using `EBT_POSITIVE`; affects LCF use and tax cash timing | YES | PR-1 |
+| P0-3: EBITDA floor divergence | `DUPLICATE_FINANCIAL_AUTHORITY` | Legacy clips EBITDA at zero in loss years → lower tax, different CFADS, different Senior capacity vs clean | YES | PR-5 (decision required: keep floor or remove) |
+| P0-4: `is_tuho`/`is_oborovo` DA dispatch | `DUPLICATE_FINANCIAL_AUTHORITY` | Different gate logic per project name → different Sponsor-eligible cash in legacy DA | YES — blocks typed promotion | PR-2 |
+| P0-5: `MISSING_TYPED_BANK_CASE_POLICY` | `NOT_IMPLEMENTED` | No independent Bank-case yield/price scenario for TUHO/Oborovo; lenders cannot stress-test independently | YES — required before Bank presentation | PR-7 |
+| P0-6: SHL repayment-alignment flags | `DUPLICATE_FINANCIAL_AUTHORITY` | TUHO SHL principal eligibility period differs from generic rule; project-named flag controls financial output | YES | PR-6 |
+| P0-7: DA/covenant gate missing in clean SHL path | `NOT_IMPLEMENTED` | `compute_shareholder_loan_schedules` receives pre-DSRA, pre-DA-gate cash; Sponsor receives too much in clean engine | YES | PR-4 (wires DA gate after PR-3 DSRA) |
+| P0-8: CO2 revenue bridge project-identity dispatch | `DUPLICATE_FINANCIAL_AUTHORITY` | CO2 revenue modelled as project-code branch not typed capability; can't be disabled independently | YES | Part of PR-2 cleanup / separate CO2 capability PR |
 
 ---
 
-## 13. Recommendation: Sponsor Waterfall First or Construction Runtime First
+## 13. Minimum Consolidation PR Sequence (Dependency Order)
+
+Dependency ordering from runtime evidence and static analysis:
+
+```
+PR-1 (tax adapter)  ──────────────────────────────────────────── independent
+PR-2 (typed DA / CO2 dispatch removal) ─── independent ─────────────────────
+   │
+   ├── PR-3 (DSRA in clean engine) ── requires PR-2 DA structure
+   │      │
+   │      └── PR-4 (wire DA covenant gate into SHL path) ── requires PR-2 + PR-3
+   │             │
+   │             └── PR-6 (typed ShlRepaymentPolicy) ─── requires PR-4
+   │
+   └── PR-5 (EBITDA floor alignment decision) ─── independent but cross-engine
+
+PR-7 (typed Bank Case policy for TUHO/Oborovo) ─── requires PRs 1–6 complete
+```
+
+| # | PR | Files | Pre-requisites | Risk |
+|---|---|---|---|---|
+| PR-1 | Fix `loss_utilisation_gate` adapter propagation (`MISSING_ADAPTER_PROPAGATION`) | `financial_engine/adapters/tax_inputs.py` single line | None | Minimal |
+| PR-2 | Replace `is_tuho`/`is_oborovo` DA dispatch with typed `CovenantGatePolicy`; remove CO2 identity-dispatch | `finco_core/engine/distribution_account/inputs.py`, `gates.py`, `engine.py`; `app/waterfall_core.py` CO2 branch | None | Medium — DA inputs touched across callers |
+| PR-3 | Implement DSRA roll-forward in clean engine | `financial_engine/orchestrator.py`, new `financial_engine/dsra/` | PR-2 (DA gate structure) | Medium |
+| PR-4 | Wire DA covenant gate into clean engine SHL path | `financial_engine/orchestrator.py::_run_senior_debt_model_with_shl` | PR-2, PR-3 | Medium — changes SHL-eligible cash routing |
+| PR-5 | Resolve EBITDA floor rule (decision: keep `max(0,·)` or remove) | `app/waterfall_core.py` or `financial_engine/orchestrator.py` | Decision required | Low-medium |
+| PR-6 | Replace TUHO/Oborovo SHL repayment-alignment flags with typed `ShlRepaymentPolicy` | `finco_core/waterfall/waterfall_engine.py`, `finco_core/shl/engine.py` | PR-4 | Medium |
+| PR-7 | Implement typed `DebtSizingCaseInput` (`MISSING_TYPED_BANK_CASE_POLICY`) for TUHO/Oborovo | `finco_core/inputs/_models.py`, adapters, clean engine orchestrator | PRs 1–6 | High |
+
+**Note:** PRs 1 and 2 have no mutual dependency and can be developed in parallel. PR-3 must follow PR-2. PR-4 must follow both PR-2 and PR-3. PR-5 can be developed in parallel with PR-3/4 but must be decided before clean-engine promotion.
+
+---
+
+## 14. Sponsor Cash Waterfall — Boundary Classification
+
+Each post-senior cash boundary in the current clean engine, classified by authority status:
+
+| Boundary | Clean engine status | Classification |
+|---|---|---|
+| Base CFADS = EBITDA − cash_tax | Computed by `calculate_canonical_cfads()` | IMPLEMENTED (with EBITDA floor divergence — see P0-3) |
+| Senior DS = interest + scheduled principal | Computed by `solve_senior_debt()` fixed point | IMPLEMENTED |
+| Post-senior cash = CFADS − Senior DS | Computed in `_run_senior_debt_model_with_shl` as `post_senior_cash` | IMPLEMENTED |
+| DSRA reserve deduction | NOT computed; `DSRA_ORDERING_UNRESOLVED` comment at `financial_engine/shl/production.py` lines 45–46 | NOT_IMPLEMENTED (P1-1) |
+| DA covenant gate | NOT invoked in clean engine SHL path; `cash_available_for_shl_before_reserves_keur` is pre-DSRA and pre-gate | NOT_IMPLEMENTED (P0-7 `PRE_RESERVE_SHL_CASH_AUTHORITY_GAP`) |
+| Sponsor-eligible cash after DA | Incorrectly equals `post_senior_cash` (no DSRA or DA gate applied) | DUPLICATE_FINANCIAL_AUTHORITY — clean engine overstates vs legacy |
+| SHL interest accrual | Computed by `compute_shareholder_loan_schedules()` | IMPLEMENTED |
+| SHL principal sweep | Computed; uses typed `ShlRepaymentPolicy` | IMPLEMENTED — but receives wrong (too large) input cash due to missing DSRA/DA gate |
+| Dividend / residual | Not explicitly computed; implied residual after SHL | NOT_IMPLEMENTED |
+
+---
+
+## 15. Recommendation: Sponsor Waterfall First or Construction Runtime First
 
 **Recommendation: CASH_DSRA + Sponsor Waterfall / Distribution Covenant + SHL repayment promotion FIRST.**
 
