@@ -293,12 +293,14 @@ def build_senior_debt_model_input_from_project_inputs(
     )
 
     # PR-3: map FinancingParams DSRA policy to clean CashDsraInput.
-    from finco_core.inputs import DebtServiceReserveSupportMode
+    # Uses the SHARED resolver so that adapter and project_uses always agree on
+    # the effective requirement — COD_FUNDING_HANDSHAKE invariant.
     from financial_engine.dsra.contracts import CashDsraInput
+    from financial_engine.financing.reserve_policy import resolve_cash_dsra_requirement_keur
     fin = project_inputs.financing
     dsra = CashDsraInput(
         mode=fin.dsra_support_mode,
-        requirement_keur=getattr(fin, "debt_service_reserve_requirement_keur", 0.0) or 0.0,
+        requirement_keur=resolve_cash_dsra_requirement_keur(project_inputs),
     )
 
     return SeniorDebtModelInput(

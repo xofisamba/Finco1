@@ -94,14 +94,9 @@ class TestNoneMode:
 
 class TestNoneModeValidation:
     def test_none_positive_requirement_raises(self):
-        periods = _periods((0, False),)
-        psc = _psc((500.0,))
-        with pytest.raises(ValueError, match="CASH_DSRA_NONE_MODE_WITH_POSITIVE_REQUIREMENT"):
-            run_cash_dsra_model(
-                psc,
-                CashDsraInput(mode=DebtServiceReserveSupportMode.NONE, requirement_keur=100.0),
-                periods,
-            )
+        # Validation is now fail-closed at CashDsraInput construction (typed contract boundary).
+        with pytest.raises(ValueError, match="NONE"):
+            CashDsraInput(mode=DebtServiceReserveSupportMode.NONE, requirement_keur=100.0)
 
     def test_none_zero_requirement_ok(self):
         periods = _periods((0, False),)
@@ -601,3 +596,265 @@ class TestAggregateTotals:
             psc, CashDsraInput(mode=DebtServiceReserveSupportMode.CASH_DSRA, requirement_keur=req), periods
         )
         assert result.final_closing_balance_keur == result.period_results[-1].closing_balance_keur
+
+
+# ---------------------------------------------------------------------------
+# 18. CashDsraInput validation (fail-closed at typed contract boundary)
+# ---------------------------------------------------------------------------
+
+class TestCashDsraInputValidation:
+    """CashDsraInput.__post_init__ rejects invalid requirement values."""
+
+    def test_negative_requirement_raises(self):
+        with pytest.raises(ValueError, match="requirement_keur must be >= 0"):
+            CashDsraInput(mode=DebtServiceReserveSupportMode.CASH_DSRA, requirement_keur=-1.0)
+
+    def test_nan_requirement_raises(self):
+        import math
+        with pytest.raises(ValueError, match="finite"):
+            CashDsraInput(mode=DebtServiceReserveSupportMode.CASH_DSRA, requirement_keur=float("nan"))
+
+    def test_positive_inf_raises(self):
+        with pytest.raises(ValueError, match="finite"):
+            CashDsraInput(mode=DebtServiceReserveSupportMode.CASH_DSRA, requirement_keur=float("inf"))
+
+    def test_negative_inf_raises(self):
+        with pytest.raises(ValueError, match="finite"):
+            CashDsraInput(mode=DebtServiceReserveSupportMode.CASH_DSRA, requirement_keur=float("-inf"))
+
+    def test_none_mode_positive_req_raises(self):
+        with pytest.raises(ValueError, match="NONE"):
+            CashDsraInput(mode=DebtServiceReserveSupportMode.NONE, requirement_keur=1.0)
+
+    def test_none_mode_zero_is_valid(self):
+        obj = CashDsraInput(mode=DebtServiceReserveSupportMode.NONE, requirement_keur=0.0)
+        assert obj.requirement_keur == 0.0
+
+    def test_cash_dsra_zero_is_valid(self):
+        obj = CashDsraInput(mode=DebtServiceReserveSupportMode.CASH_DSRA, requirement_keur=0.0)
+        assert obj.requirement_keur == 0.0
+
+    def test_cash_dsra_positive_finite_is_valid(self):
+        obj = CashDsraInput(mode=DebtServiceReserveSupportMode.CASH_DSRA, requirement_keur=500.0)
+        assert obj.requirement_keur == 500.0
+
+    def test_dsrf_nonnegative_finite_is_valid(self):
+        obj = CashDsraInput(mode=DebtServiceReserveSupportMode.DSRF, requirement_keur=500.0)
+        assert obj.requirement_keur == 500.0
+
+
+# ---------------------------------------------------------------------------
+# 19. Shared resolver (reserve_policy) — unit contract
+# ---------------------------------------------------------------------------
+
+class TestSharedResolverUnit:
+    """resolve_cash_dsra_requirement_keur produces consistent results."""
+
+    def _make_project_inputs(
+        self,
+        mode: DebtServiceReserveSupportMode,
+        explicit_req: float = 0.0,
+        legacy_cap: float = 0.0,
+    ):
+        """Build a minimal ProjectInputs with controlled DSRA fields."""
+        from app.project_factories import create_default_solar_project
+        from finco_core.inputs import ProjectInputs
+        base = create_default_solar_project()
+        # Clone capex with override for reserve_accounts_keur
+        import dataclasses
+        new_capex = dataclasses.replace(base.capex, reserve_accounts_keur=legacy_cap)
+        new_financing = dataclasses.replace(
+            base.financing,
+            dsra_support_mode=mode,
+            debt_service_reserve_requirement_keur=explicit_req,
+        )
+        return dataclasses.replace(base, capex=new_capex, financing=new_financing)
+
+    def test_none_zero_returns_zero(self):
+        from financial_engine.financing.reserve_policy import resolve_cash_dsra_requirement_keur
+        pi = self._make_project_inputs(DebtServiceReserveSupportMode.NONE, 0.0, 0.0)
+        assert resolve_cash_dsra_requirement_keur(pi) == 0.0
+
+    def test_dsrf_returns_zero_regardless_of_requirement(self):
+        from financial_engine.financing.reserve_policy import resolve_cash_dsra_requirement_keur
+        pi = self._make_project_inputs(DebtServiceReserveSupportMode.DSRF, 500.0, 0.0)
+        assert resolve_cash_dsra_requirement_keur(pi) == 0.0
+
+    def test_none_positive_explicit_raises(self):
+        from financial_engine.financing.reserve_policy import resolve_cash_dsra_requirement_keur
+        pi = self._make_project_inputs(DebtServiceReserveSupportMode.NONE, 500.0, 0.0)
+        with pytest.raises(ValueError, match="NONE"):
+            resolve_cash_dsra_requirement_keur(pi)
+
+
+# ---------------------------------------------------------------------------
+# 20. Handshake tests — real ProjectInputs / adapter / project_uses
+# ---------------------------------------------------------------------------
+
+class TestCodFundingHandshake:
+    """COD_FUNDING_HANDSHAKE invariant via real ProjectInputs path.
+
+    ProjectUses.reserve_account_funding_keur
+    == SeniorDebtModelInput.dsra.requirement_keur
+    == first operating CashDsraPeriodResult.opening_balance_keur
+    """
+
+    def _make_project_inputs(
+        self,
+        mode: DebtServiceReserveSupportMode,
+        explicit_req: float = 0.0,
+        legacy_cap: float = 0.0,
+    ):
+        from app.project_factories import create_default_solar_project
+        import dataclasses
+        base = create_default_solar_project()
+        new_capex = dataclasses.replace(base.capex, reserve_accounts_keur=legacy_cap)
+        new_financing = dataclasses.replace(
+            base.financing,
+            dsra_support_mode=mode,
+            debt_service_reserve_requirement_keur=explicit_req,
+        )
+        return dataclasses.replace(base, capex=new_capex, financing=new_financing)
+
+    def _get_project_uses_reserve(self, pi):
+        from financial_engine.financing.project_uses import compute_project_uses
+        return compute_project_uses(pi).reserve_account_funding_keur
+
+    def _get_adapter_requirement(self, pi):
+        from financial_engine.adapters.project_inputs import build_senior_debt_model_input_from_project_inputs
+        from financial_engine.dsra.contracts import CashDsraInput
+        sdi = build_senior_debt_model_input_from_project_inputs(pi)
+        assert isinstance(sdi.dsra, CashDsraInput)
+        return sdi.dsra.requirement_keur
+
+    def test_a_explicit_authority_handshake(self):
+        """A: explicit=500, legacy=500 (aligned) → resolver returns explicit (req>0 path).
+
+        Note: capex.total_capex includes reserve_accounts_keur, so both must be aligned
+        for compute_project_uses to pass its internal capex-total contract check.
+        The resolver returns req (explicit) when req > 0, proving PRIMARY_TYPED_AUTHORITY.
+        """
+        pi = self._make_project_inputs(
+            DebtServiceReserveSupportMode.CASH_DSRA, explicit_req=500.0, legacy_cap=500.0
+        )
+        project_uses_reserve = self._get_project_uses_reserve(pi)
+        adapter_req = self._get_adapter_requirement(pi)
+        assert project_uses_reserve == pytest.approx(500.0, abs=1e-6)
+        assert adapter_req == pytest.approx(500.0, abs=1e-6)
+        # Both layers agree — shared resolver guarantees the invariant
+        assert project_uses_reserve == pytest.approx(adapter_req, abs=1e-9)
+
+    def test_b_legacy_fallback_handshake(self):
+        """B: explicit=0, legacy=500 → both layers resolve 500 via shared resolver."""
+        pi = self._make_project_inputs(
+            DebtServiceReserveSupportMode.CASH_DSRA, explicit_req=0.0, legacy_cap=500.0
+        )
+        project_uses_reserve = self._get_project_uses_reserve(pi)
+        adapter_req = self._get_adapter_requirement(pi)
+        assert project_uses_reserve == pytest.approx(500.0, abs=1e-6)
+        assert adapter_req == pytest.approx(500.0, abs=1e-6)
+        assert project_uses_reserve == pytest.approx(adapter_req, abs=1e-9)
+
+    def test_c_aligned_dual_inputs_handshake(self):
+        """C: explicit=500, legacy=500 → resolved value = 500 from both layers."""
+        pi = self._make_project_inputs(
+            DebtServiceReserveSupportMode.CASH_DSRA, explicit_req=500.0, legacy_cap=500.0
+        )
+        project_uses_reserve = self._get_project_uses_reserve(pi)
+        adapter_req = self._get_adapter_requirement(pi)
+        assert project_uses_reserve == pytest.approx(500.0, abs=1e-6)
+        assert adapter_req == pytest.approx(500.0, abs=1e-6)
+
+    def test_d_conflicting_dual_inputs_fail_closed(self):
+        """D: explicit=500, legacy=600 → shared resolver raises from both layers."""
+        pi = self._make_project_inputs(
+            DebtServiceReserveSupportMode.CASH_DSRA, explicit_req=500.0, legacy_cap=600.0
+        )
+        from financial_engine.financing.reserve_policy import resolve_cash_dsra_requirement_keur
+        with pytest.raises(ValueError, match="CONFLICT"):
+            resolve_cash_dsra_requirement_keur(pi)
+        # project_uses must also fail (it delegates to same resolver)
+        from financial_engine.financing.project_uses import compute_project_uses
+        with pytest.raises(ValueError, match="CONFLICT"):
+            compute_project_uses(pi)
+
+
+# ---------------------------------------------------------------------------
+# 21. Calibration project actual configured reserve classification
+# ---------------------------------------------------------------------------
+
+class TestCalibrationProjectActualInputs:
+    """Prove actual configured DSRA values from real input builders.
+
+    TUHO, Oborovo (solar): create_default_solar_project / create_default_oborovo.
+    KUPI: build_kupi_project_inputs (diagnostic builder).
+    All expect NONE mode with requirement=0 → CASH_DSRA_NEUTRAL_BY_TYPED_INPUT.
+    """
+
+    def _classify(self, pi):
+        from financial_engine.financing.reserve_policy import resolve_cash_dsra_requirement_keur
+        mode = pi.financing.dsra_support_mode
+        explicit_req = getattr(pi.financing, "debt_service_reserve_requirement_keur", 0.0) or 0.0
+        legacy_cap = pi.capex.reserve_accounts_keur
+        effective = resolve_cash_dsra_requirement_keur(pi)
+        return mode, explicit_req, legacy_cap, effective
+
+    def test_tuho_actual_configured_inputs(self):
+        from app.project_factories import create_default_tuho_wind1
+        pi = create_default_tuho_wind1()
+        mode, explicit_req, legacy_cap, effective = self._classify(pi)
+        assert mode == DebtServiceReserveSupportMode.NONE
+        assert explicit_req == 0.0
+        assert legacy_cap == 0.0
+        assert effective == 0.0  # CASH_DSRA_NEUTRAL_BY_TYPED_INPUT
+
+    def test_oborovo_actual_configured_inputs(self):
+        from app.project_factories import create_default_oborovo
+        pi = create_default_oborovo()
+        mode, explicit_req, legacy_cap, effective = self._classify(pi)
+        assert mode == DebtServiceReserveSupportMode.NONE
+        assert explicit_req == 0.0
+        assert legacy_cap == 0.0
+        assert effective == 0.0  # CASH_DSRA_NEUTRAL_BY_TYPED_INPUT
+
+    def test_kupi_actual_configured_inputs(self):
+        from tests.diagnostics.kupi_k0_k3_causal_grid import build_kupi_project_inputs
+        pi = build_kupi_project_inputs()
+        mode, explicit_req, legacy_cap, effective = self._classify(pi)
+        assert mode == DebtServiceReserveSupportMode.NONE
+        assert explicit_req == 0.0
+        assert effective == 0.0  # CASH_DSRA_NEUTRAL_BY_TYPED_INPUT
+
+    def test_solar_default_neutral(self):
+        """Default solar project (TUHO surrogate) is neutral."""
+        from app.project_factories import create_default_solar_project
+        pi = create_default_solar_project()
+        mode, explicit_req, legacy_cap, effective = self._classify(pi)
+        assert mode == DebtServiceReserveSupportMode.NONE
+        assert effective == 0.0
+
+
+# ---------------------------------------------------------------------------
+# 22. DSRF + positive requirement — no cash reserve created
+# ---------------------------------------------------------------------------
+
+class TestDsrfPositiveRequirement:
+    """DSRF with positive requirement: no CASH_DSRA roll-forward, pass-through only."""
+
+    def test_dsrf_positive_requirement_no_cash_reserve(self):
+        """DSRF mode + requirement=500: CashDsraInput valid, but roll-forward is pass-through."""
+        periods = _periods((0, True), (1, False), (2, False))
+        psc = _psc((0.0, 600.0, 400.0))
+        dsra_input = CashDsraInput(
+            mode=DebtServiceReserveSupportMode.DSRF,
+            requirement_keur=500.0,  # valid: DSRF sufficiency; not a CASH balance
+        )
+        result = run_cash_dsra_model(psc, dsra_input, periods)
+        # All balances must be zero — DSRF never creates a cash reserve balance
+        for pr in result.period_results:
+            assert pr.opening_balance_keur == 0.0
+            assert pr.closing_balance_keur == 0.0
+            assert pr.top_up_keur == 0.0
+            assert pr.draw_to_cover_shortfall_keur == 0.0
+            assert pr.cash_after_dsra_keur == pr.cash_before_dsra_keur
+        assert result.final_closing_balance_keur == 0.0

@@ -5,6 +5,7 @@ Excel fixtures, or diagnostic scripts. No project-name dispatch.
 """
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
 from finco_core.inputs import DebtServiceReserveSupportMode
@@ -35,6 +36,34 @@ class CashDsraInput:
     """
     mode: DebtServiceReserveSupportMode
     requirement_keur: float = 0.0
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.mode, DebtServiceReserveSupportMode):
+            raise ValueError(
+                f"CashDsraInput: mode must be DebtServiceReserveSupportMode, got {self.mode!r}."
+            )
+        if not isinstance(self.requirement_keur, (int, float)) or isinstance(self.requirement_keur, bool):
+            raise ValueError(
+                f"CashDsraInput: requirement_keur must be numeric, got {self.requirement_keur!r}."
+            )
+        if not math.isfinite(self.requirement_keur):
+            raise ValueError(
+                f"CashDsraInput: requirement_keur must be finite, got {self.requirement_keur!r}. "
+                "NaN and ±inf are rejected."
+            )
+        if self.requirement_keur < 0.0:
+            raise ValueError(
+                f"CashDsraInput: requirement_keur must be >= 0, got {self.requirement_keur!r}."
+            )
+        if (
+            self.mode == DebtServiceReserveSupportMode.NONE
+            and self.requirement_keur > 0.0
+        ):
+            raise ValueError(
+                "CashDsraInput: mode=NONE but requirement_keur > 0. "
+                "NONE mode implies no reserve — set requirement_keur=0.0 "
+                "or change mode to CASH_DSRA."
+            )
 
 
 @dataclass(frozen=True)
