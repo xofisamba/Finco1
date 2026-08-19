@@ -76,6 +76,7 @@ from finco_core.inputs._models import (
     SponsorFundingMode,
     SponsorFundingTimingPolicy,
     ShlInterestDeductibilityMode,
+    TaxLossUtilisationGate,
     YieldScenario,
 )
 from finco_core.inputs.senior_rate_schedule import (
@@ -167,15 +168,47 @@ _OM_STEP_CHANGES: tuple[tuple[int, float], ...] = (
 )
 
 # ─── Construction period Uses for PRO_RATA control (K0/K1) ────────────────────
-# Engine-computed total = 215,803.437976879 kEUR (from CAPEX structure above).
-# Equal 2-period split: h + h == total exactly in IEEE 754 double.
-# h = 215803.437976879 / 2 = 107901.7189884395 (verified: h + h − total = 0.0)
-_KUPI_ENGINE_TOTAL_USES: float = 215_803.437976879
+# Source-timing approximation (BLOCKER 4 fix; BLOCKER 4 Note below).
+#
+# Source CAPEX timing evidence (from workbook category descriptions):
+#   Upfront items (disbursed at FC = construction period 1, y0_share=1.0):
+#     Operation Investments:   1,050.000
+#     Insurances:              1,500.000  (purchased at build start)
+#     Land Securing:             800.000  (upfront)
+#     Bank DD + Lender Mon.:     460.000  (upfront)
+#     Construction Mgmt B:     4,629.750  (upfront per workbook)
+#     Project Rights:         23,281.650  (typically front-loaded)
+#     Subtotal upfront:       31,721.400 kEUR
+#
+#   Spread items (50/50 over 24-month build, y0_share=0.0):
+#     Production Units:      144,000.000
+#     EPC Contract:           20,010.000
+#     Grid Connection:            30.000
+#     Monitoring & Telecom:      100.000
+#     Audit/Accounting/Legal:     42.000
+#     Contingencies:          10,028.820
+#     Subtotal spread:       174,210.820 → each period 87,105.410 kEUR
+#
+#   Capitalised financing costs (total: 9,871.217976869 kEUR):
+#     Bank Structuring fee:    1,549.590939566 (at FC = period 1)
+#     VAT facility financing:    386.181123400 (front-loaded, period 1)
+#     Commitment fee (50/50):    782.925875313 → each 391.462937657 kEUR
+#     Senior IDC (50/50):      7,152.520038600 → each 3,576.260019300 kEUR
+#     Period 1 finance:        5,903.495019923 kEUR
+#     Period 2 finance:        3,967.722956946 kEUR
+#
+# Period 1 = 31,721.400 + 87,105.410 + 5,903.495019923 = 124,730.305019923 kEUR
+# Period 2 =             87,105.410 + 3,967.722956946 =  91,073.132956946 kEUR
+# Sum      = 215,803.437976869 kEUR ≈ source authority Inputs!G154 ✓
+#
+# Note: This split is a REASONABLE APPROXIMATION based on workbook category
+# evidence only. The exact draw schedule requires source DS!construction columns
+# which were not available for direct read. Assumptions documented above.
 _KUPI_CONSTRUCTION_USES_KEUR: tuple[float, ...] = (
-    _KUPI_ENGINE_TOTAL_USES / 2,
-    _KUPI_ENGINE_TOTAL_USES / 2,
+    124_730.305019923,   # Period 1: FC + upfront items + half spread + front-loaded fees
+    91_073.132956946,    # Period 2: remaining spread + back-end IDC/commitment
 )
-# Sum = _KUPI_ENGINE_TOTAL_USES ✓  (exact in IEEE 754)
+# Sum = 215,803.437976869 kEUR — within 0.001 kEUR of source authority ✓
 
 
 # ---------------------------------------------------------------------------
@@ -183,11 +216,20 @@ _KUPI_CONSTRUCTION_USES_KEUR: tuple[float, ...] = (
 # ---------------------------------------------------------------------------
 
 def _source_tax_params() -> TaxParams:
-    """Source workbook tax (proven KUPI mechanics):
+    """Source workbook tax (proven KUPI mechanics) — K1/K3.
+
+    BLOCKER 2 FIX: this function now differs from _clean_tax_params() via the
+    EBT_POSITIVE loss utilisation gate.  The source workbook gate condition is
+    EBT > 0 (i.e. pre-LCF taxable profit is positive before loss offset), while
+    clean Finco policy gates on TAXABLE_INCOME_POSITIVE (post-LCF earnings).
+    With a deep SHL interest deduction the gate fires differently, producing a
+    non-zero TAX_MAIN_EFFECT (K1 − K0).
+
+    Source workbook tax mechanics (KUPI_TAX_WORKBOOK_COMPATIBILITY_GAP):
     - CIT: 10%
     - SHL interest: fully deductible
     - Loss carry-forward: rolling 5 model-period window
-    - LCF utilisation gate: EBT > 0
+    - LCF utilisation gate: EBT > 0   ← KEY DIFFERENCE from clean Finco
     - Foreign SHL cap: False
     - Senior WHT: 0%, SHL interest WHT: 0%
     """
@@ -197,17 +239,24 @@ def _source_tax_params() -> TaxParams:
         loss_carryforward_cap=1.0,
         clean_cash_tax_timing_enabled=True,
         shl_interest_deductibility=ShlInterestDeductibilityMode.FULLY_DEDUCTIBLE,
+        tax_loss_utilisation_gate=TaxLossUtilisationGate.EBT_POSITIVE,  # source workbook gate
     )
 
 
 def _clean_tax_params() -> TaxParams:
-    """Clean Finco tax params for K0/K2 control (generic BA)."""
+    """Clean Finco tax params for K0/K2 control (generic BA).
+
+    Uses TAXABLE_INCOME_POSITIVE gate (default clean Finco policy):
+    LCF is only applied when taxable income after interest deductions is
+    positive.  This differs from the source workbook EBT_POSITIVE gate.
+    """
     return TaxParams(
         corporate_rate=BA_CORPORATE_RATE,
         loss_carryforward_years=5,
         loss_carryforward_cap=1.0,
         clean_cash_tax_timing_enabled=True,
         shl_interest_deductibility=ShlInterestDeductibilityMode.FULLY_DEDUCTIBLE,
+        tax_loss_utilisation_gate=TaxLossUtilisationGate.TAXABLE_INCOME_POSITIVE,
     )
 
 
@@ -442,6 +491,12 @@ def build_kupi_project_inputs(
             merchant_price_calendar_start_year=2030,
         ),
         clean_shl_principal_keur=0.0,   # engine-derived; seed=0, fixed-point converges
+        # BLOCKER 1 FIX: source G3B fixture (mvp-g3-synthetic-anti-overfit) uses
+        # clean_shl_repayment_method="cash_sweep".  The bullet method is retained
+        # here as the default for K0-K3 comparison consistency (so that R_BULLET vs
+        # R_CASH_SWEEP isolates the repayment method effect cleanly).
+        # All P0/D0/K0-K3 cases use "bullet" for internal factorial consistency.
+        # R_CASH_SWEEP and R_BULLET are the dedicated repayment-method diagnostic cases.
         clean_shl_repayment_method="bullet",
         shl_maturity_period_index=_KUPI_SHL_MATURITY_PERIOD_IDX,
         shl_principal_eligibility_start_period=_KUPI_SHL_ELIGIBILITY_START,
@@ -562,17 +617,70 @@ def run_k3_combined() -> ProjectFinancingResult:
 
 
 # ---------------------------------------------------------------------------
+# BLOCKER 1 — SHL REPAYMENT METHOD DIAGNOSTIC (R_BULLET vs R_CASH_SWEEP)
+# ---------------------------------------------------------------------------
+# Source G3B fixture uses cash_sweep.  These two cases differ ONLY in repayment
+# method; all other inputs are identical to K3 (the most source-comparable case).
+# REPAYMENT_EFFECT = Senior(R_CASH_SWEEP) - Senior(R_BULLET)
+# Source SHL total operating interest anchor: 48,681.151163696 kEUR (comparison only).
+# ---------------------------------------------------------------------------
+
+def _build_kupi_for_repayment_method(repayment_method: str) -> ProjectFinancingResult:
+    """Internal: run K3-equivalent but with explicit SHL repayment method override."""
+    from dataclasses import replace as _replace
+    inputs = build_kupi_project_inputs(
+        shl_construction_interest_method=ShlConstructionInterestMethod.COMPOUND_PERIODIC,
+        sponsor_funding_timing_policy=SponsorFundingTimingPolicy.ALL_AT_FC,
+        bank_balancing_cost_eur_mwh=0.0,
+        use_source_workbook_tax=True,
+    )
+    # Override only the SHL repayment method:
+    financing_override = _replace(inputs.financing, clean_shl_repayment_method=repayment_method)
+    inputs_override = _replace(inputs, financing=financing_override)
+    return run_project_financing_model(
+        inputs_override,
+        source_id=f"KUPI_R_{repayment_method.upper()}_REPAYMENT_DIAGNOSTIC",
+    )
+
+
+def run_r_bullet() -> ProjectFinancingResult:
+    """R_BULLET — K3 base with bullet SHL repayment (current fixture default).
+
+    Used as the repayment-method control case against R_CASH_SWEEP.
+    All other inputs identical to K3.
+    """
+    return _build_kupi_for_repayment_method("bullet")
+
+
+def run_r_cash_sweep() -> ProjectFinancingResult:
+    """R_CASH_SWEEP — K3 base with cash_sweep SHL repayment (source-evidenced).
+
+    Source G3B fixture (mvp-g3-synthetic-anti-overfit:tests/helpers/g3b_kupi_project.py)
+    specifies clean_shl_repayment_method="cash_sweep".
+    REPAYMENT_EFFECT = Senior(R_CASH_SWEEP) - Senior(R_BULLET).
+    All other inputs identical to K3.
+    """
+    return _build_kupi_for_repayment_method("cash_sweep")
+
+
+# ---------------------------------------------------------------------------
 # CAUSAL DECOMPOSITION
 # ---------------------------------------------------------------------------
 
 class KupiCausalGrid(NamedTuple):
-    """Results and causal decompositions for the KUPI K0-K3 factorial."""
+    """Results and causal decompositions for the KUPI K0-K3 factorial.
+
+    Also includes R_BULLET and R_CASH_SWEEP for the SHL repayment method
+    diagnostic (BLOCKER 1).
+    """
     p0: ProjectFinancingResult
     d0: ProjectFinancingResult
     k0: ProjectFinancingResult
     k1: ProjectFinancingResult
     k2: ProjectFinancingResult
     k3: ProjectFinancingResult
+    r_bullet: ProjectFinancingResult
+    r_cash_sweep: ProjectFinancingResult
 
     @property
     def senior_p0(self) -> float:
@@ -624,6 +732,19 @@ class KupiCausalGrid(NamedTuple):
         return self.senior_k3 - self.senior_k1 - self.senior_k2 + self.senior_k0
 
     @property
+    def senior_r_bullet(self) -> float:
+        return self.r_bullet.final_senior_commitment_keur
+
+    @property
+    def senior_r_cash_sweep(self) -> float:
+        return self.r_cash_sweep.final_senior_commitment_keur
+
+    @property
+    def repayment_effect(self) -> float:
+        """REPAYMENT_EFFECT = Senior(R_CASH_SWEEP) - Senior(R_BULLET)."""
+        return self.senior_r_cash_sweep - self.senior_r_bullet
+
+    @property
     def k3_residual_vs_source(self) -> float:
         """Source anchor comparison: 147,150.442 - Senior(K3). NOT a target."""
         return SOURCE_SENIOR_KEUR - self.senior_k3
@@ -637,7 +758,8 @@ class KupiCausalGrid(NamedTuple):
               f"{'PIK (kEUR)':>12} {'Opening SHL (kEUR)':>18}")
         print("-" * 74)
         for label, res in [("P0", self.p0), ("D0", self.d0), ("K0", self.k0),
-                            ("K1", self.k1), ("K2", self.k2), ("K3", self.k3)]:
+                            ("K1", self.k1), ("K2", self.k2), ("K3", self.k3),
+                            ("R_BULLET", self.r_bullet), ("R_SWEEP", self.r_cash_sweep)]:
             print(f"{label:<8} {res.final_senior_commitment_keur:>16.3f} "
                   f"{res.derived_shl_cash_principal_keur:>16.3f} "
                   f"{res.shl_construction_pik_keur:>12.3f} "
@@ -651,20 +773,26 @@ class KupiCausalGrid(NamedTuple):
         print(f"  SHL_MAIN_EFFECT    K2-K0:                 {self.shl_main_effect:+.3f}")
         print(f"  COMBINED_EFFECT    K3-K0:                 {self.combined_effect:+.3f}")
         print(f"  INTERACTION_EFFECT K3-K1-K2+K0:          {self.interaction_effect:+.3f}")
+        print(f"  REPAYMENT_EFFECT   R_SWEEP - R_BULLET:   {self.repayment_effect:+.3f}")
         print(f"  K3_RESIDUAL vs source anchor:             {self.k3_residual_vs_source:+.3f}")
         print("  (source Senior 147,150.442 kEUR — comparison anchor only, NOT a target)")
         print("=" * 75)
 
 
 def run_full_grid() -> KupiCausalGrid:
-    """Run all 6 cases and return the causal grid."""
+    """Run all 8 cases (P0, D0, K0-K3, R_BULLET, R_CASH_SWEEP) and return the causal grid."""
     p0 = run_p0_current_generic()
     d0 = run_d0_bank_balancing_diagnostic()
     k0 = run_k0_control()
     k1 = run_k1_source_tax()
     k2 = run_k2_source_shl()
     k3 = run_k3_combined()
-    return KupiCausalGrid(p0=p0, d0=d0, k0=k0, k1=k1, k2=k2, k3=k3)
+    r_bullet = run_r_bullet()
+    r_cash_sweep = run_r_cash_sweep()
+    return KupiCausalGrid(
+        p0=p0, d0=d0, k0=k0, k1=k1, k2=k2, k3=k3,
+        r_bullet=r_bullet, r_cash_sweep=r_cash_sweep,
+    )
 
 
 if __name__ == "__main__":
