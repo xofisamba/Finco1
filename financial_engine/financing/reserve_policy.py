@@ -13,6 +13,10 @@ Reserve authority hierarchy:
   LEGACY_COMPATIBILITY_FALLBACK: CapexStructure.reserve_accounts_keur
       (allowed only via this resolver; fallback remains for backward compatibility
        until all projects migrate to the primary typed field)
+
+The primary field (debt_service_reserve_requirement_keur) is truly independent of
+the legacy capex field (reserve_accounts_keur). Using the primary alone (with
+legacy = 0) is valid and is the intended migration path.
 """
 from __future__ import annotations
 
@@ -21,12 +25,28 @@ import math
 from finco_core.inputs import DebtServiceReserveSupportMode, ProjectInputs
 
 
+def _validate_reserve_field(name: str, value: float) -> None:
+    """Fail closed on any invalid reserve amount at the financial boundary."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(
+            f"CASH_DSRA_INVALID_FIELD: {name}={value!r} must be numeric."
+        )
+    if not math.isfinite(value):
+        raise ValueError(
+            f"CASH_DSRA_INVALID_FIELD: {name}={value!r} must be finite (NaN and ±inf rejected)."
+        )
+    if value < 0.0:
+        raise ValueError(
+            f"CASH_DSRA_INVALID_FIELD: {name}={value!r} must be >= 0."
+        )
+
+
 def resolve_cash_dsra_requirement_keur(project_inputs: ProjectInputs) -> float:
     """Resolve the effective CASH_DSRA reserve requirement from ProjectInputs.
 
     Returns the single authoritative reserve amount (kEUR) for:
     - CASH_DSRA mode: the operating opening balance and Project Uses reserve use
-    - NONE mode: 0.0 (raises if inputs contain a non-zero requirement)
+    - NONE mode: 0.0 (raises if either reserve field is non-zero)
     - DSRF mode: 0.0 (no cash reserve; DSRF sufficiency is handled separately)
 
     COD_FUNDING_HANDSHAKE invariant:
@@ -35,10 +55,14 @@ def resolve_cash_dsra_requirement_keur(project_inputs: ProjectInputs) -> float:
         == CashDsraInput.requirement_keur
         == first operating CashDsraPeriodResult.opening_balance_keur
 
+    The primary field debt_service_reserve_requirement_keur is truly independent
+    of reserve_accounts_keur — using primary alone (legacy=0) is fully supported
+    and does not require the legacy capex field to be populated.
+
     Raises ValueError for:
-    - NONE mode with positive requirement or legacy reserve
+    - Non-finite or negative values in either reserve field
+    - NONE mode with any positive reserve amount
     - CASH_DSRA mode with conflicting non-zero primary and legacy values
-    - Non-finite requirement values
     """
     fin = project_inputs.financing
     capex = project_inputs.capex
@@ -46,11 +70,9 @@ def resolve_cash_dsra_requirement_keur(project_inputs: ProjectInputs) -> float:
     req = getattr(fin, "debt_service_reserve_requirement_keur", 0.0) or 0.0
     legacy_cap = capex.reserve_accounts_keur
 
-    if not math.isfinite(req):
-        raise ValueError(
-            f"CASH_DSRA_INVALID_REQUIREMENT: debt_service_reserve_requirement_keur={req!r} "
-            "is not finite. Must be a finite non-negative number."
-        )
+    # Validate both fields at the financial boundary before any logic.
+    _validate_reserve_field("debt_service_reserve_requirement_keur", req)
+    _validate_reserve_field("capex.reserve_accounts_keur", legacy_cap)
 
     if mode == DebtServiceReserveSupportMode.NONE:
         if legacy_cap > 0.0:
@@ -74,7 +96,8 @@ def resolve_cash_dsra_requirement_keur(project_inputs: ProjectInputs) -> float:
                 f"capex.reserve_accounts_keur={legacy_cap}. "
                 "Set one to 0 or align them."
             )
+        # Primary authority: if req > 0, it controls. Otherwise fall back to legacy.
         return req if req > 0.0 else legacy_cap
 
-    # DSRF: no cash reserve at close; DSRF sufficiency handled separately
+    # DSRF: no cash reserve at close; DSRF sufficiency handled separately.
     return 0.0
