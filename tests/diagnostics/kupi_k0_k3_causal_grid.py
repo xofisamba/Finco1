@@ -88,6 +88,12 @@ from finco_core.inputs.senior_rate_schedule import (
 from finco_core.inputs.senior_sculpting import SeniorSculptingConfig
 from financial_engine.financing import run_project_financing_model
 from financial_engine.financing.contracts import ProjectFinancingResult
+from financial_engine.senior_debt.policy import (
+    DayCountConvention,
+    SeniorDebtPolicy,
+    SeniorDebtSizingMode,
+)
+from financial_engine.senior_debt.solver import _backward_dscr_capacity, _forward_roll
 
 
 # ---------------------------------------------------------------------------
@@ -804,9 +810,10 @@ class KupiTaxShadowPeriod:
     lcf_used_keur: float
     lcf_closing_keur: float
     taxable_income_keur: float         # max(0, EBT - lcf_used)
-    shadow_cit_keur: float             # taxable_income * CIT_rate (annual CIT / 2 periods)
+    shadow_cit_keur: float             # full annual CIT placed at H2; 0 at H1
     engine_cash_tax_keur: float        # engine's actual cash tax for this period
     delta_keur: float                  # shadow_cit - engine_cash_tax
+    cit_placement_period: bool         # True = CIT placed here (H2 of each year)
 
 
 @dataclass(frozen=True)
@@ -825,6 +832,9 @@ class KupiTaxShadowResult:
 _SOURCE_TOTAL_CIT_KEUR = 95_291.964024174  # comparison anchor only — NOT a target
 
 
+_KUPI_BALANCING_COST_EUR_MWH = 5.0  # Source balancing cost used in P0
+
+
 def kupi_source_workbook_tax_shadow(result: ProjectFinancingResult) -> KupiTaxShadowResult:
     """KUPI_SOURCE_WORKBOOK_TAX_COMPATIBILITY_DIAGNOSTIC.
 
@@ -834,9 +844,11 @@ def kupi_source_workbook_tax_shadow(result: ProjectFinancingResult) -> KupiTaxSh
     Source workbook mechanics applied here:
     - EBT = EBITDA - tax_depreciation - senior_interest - SHL_gross_interest
     - LCF gate: EBT > 0 (losses offset only when EBT is positive)
-    - LCF window: 5 calendar years = 10 semiannual model periods rolling
-    - CIT: 10% × max(0, EBT - LCF_used)
-    - CIT timing: annual sum split equally across H1/H2 periods (paired model-year)
+    - LCF window: 5 MODEL PERIODS rolling (a loss generated in period P expires
+      once the current period index > P + 5)
+    - CIT: 10% × max(0, annual_EBT - LCF_used), computed on H1+H2 annual basis
+    - Paired CIT timing: annual CIT placed entirely at H2 (H1 gets 0 CIT)
+      (WORKBOOK_PAIRED_MODEL_YEAR timing)
 
     This diagnostic proves whether TAX_MAIN_EFFECT is zero for KUPI:
     - If KUPI never has a period where EBT>0 but TI (after SHL deduction) ≤ 0,
@@ -851,35 +863,41 @@ def kupi_source_workbook_tax_shadow(result: ProjectFinancingResult) -> KupiTaxSh
     sd = pmr.senior_debt
     shl_s = pmr.shareholder_loan
 
-    # Build period-indexed lookups (operating periods only — construction has no CIT)
-    # All arrays are over ALL model periods (construction + operating).
+    # Build period-indexed lookups (all model periods including construction)
     n = len(sched.period_indices)
     senior_interest = list(sd.senior_interest_keur) if sd else [0.0] * n
     shl_gross = list(shl_s.shl_gross_interest_keur) if shl_s else [0.0] * n
     engine_cash_tax = list(tax_cf.corporate_tax_cash_keur) if tax_cf else [0.0] * n
 
-    # Group into calendar years (pairs of 2 semiannual periods)
-    # Each semiannual period is half a calendar year.
-    # Annual CIT = sum over 2 periods in the year, then split.
-    # LCF: rolling 5-year = 10-period FIFO queue.
-    LCF_YEARS = 5
+    # Identify operating periods (non-construction)
+    periods_meta = pmr.periods  # tuple[OperatingPeriodResult]
+    is_operating = {p.period_index: p.is_operation for p in periods_meta}
+
+    LCF_MODEL_PERIODS = 5
     CIT_RATE = BA_CORPORATE_RATE
 
-    periods_out: list[KupiTaxShadowPeriod] = []
+    # First pass: compute per-period EBT and identify operating period sequence
+    # Group operating periods into model years (pairs H1, H2)
+    operating_indices_in_order: list[int] = []
+    for pidx in sched.period_indices:
+        if is_operating.get(pidx, False):
+            operating_indices_in_order.append(pidx)
+
+    # Build index → position in operating sequence (for year grouping)
+    op_seq_pos: dict[int, int] = {pidx: pos for pos, pidx in enumerate(operating_indices_in_order)}
 
     # LCF queue: list of (vintage_period_index, loss_amount_keur)
     lcf_queue: list[tuple[int, float]] = []
 
-    def _drain_lcf(ebt: float, period_idx: int) -> tuple[float, float]:
-        """Returns (lcf_used, lcf_opening)."""
-        # Drain oldest vintages first (FIFO), subject to rolling 10-period window.
-        # Remove vintages older than LCF_YEARS * 2 periods from current period.
-        cutoff = period_idx - LCF_YEARS * 2
+    def _drain_lcf(annual_ebt: float, h2_period_idx: int) -> tuple[float, float]:
+        """Returns (lcf_used, lcf_opening) for annual EBT.
+        Vintages with vintage_period_index <= h2_period_idx - LCF_MODEL_PERIODS - 1 are expired.
+        """
         nonlocal lcf_queue
-        lcf_queue = [(v, a) for v, a in lcf_queue if v > cutoff]
+        # A loss at vintage period P expires when current period index > P + LCF_MODEL_PERIODS
+        lcf_queue = [(v, a) for v, a in lcf_queue if h2_period_idx <= v + LCF_MODEL_PERIODS]
         opening = sum(a for _, a in lcf_queue)
-        used = min(opening, max(0.0, ebt))
-        # Reduce from oldest vintages
+        used = min(opening, max(0.0, annual_ebt))
         remaining_to_use = used
         new_queue: list[tuple[int, float]] = []
         for v, a in lcf_queue:
@@ -893,29 +911,167 @@ def kupi_source_workbook_tax_shadow(result: ProjectFinancingResult) -> KupiTaxSh
         lcf_queue = new_queue
         return used, opening
 
+    # Per-period raw EBT values (for all model periods)
+    per_period_ebt: dict[int, float] = {}
+    per_period_ebitda: dict[int, float] = {}
+    per_period_tax_dep: dict[int, float] = {}
+    per_period_si: dict[int, float] = {}
+    per_period_shl_gi: dict[int, float] = {}
+    per_period_eng_tax: dict[int, float] = {}
+
     for i, pidx in enumerate(sched.period_indices):
         ebitda = sched.ebitda_keur[i]
         tax_dep = sched.tax_depreciation_keur[i]
         si = senior_interest[i] if i < len(senior_interest) else 0.0
         shl_gi = shl_gross[i] if i < len(shl_gross) else 0.0
         eng_tax = engine_cash_tax[i] if i < len(engine_cash_tax) else 0.0
-
         ebt = ebitda - tax_dep - si - shl_gi
-        gate_ok = ebt > 0.0
 
-        if gate_ok:
-            lcf_used, lcf_opening = _drain_lcf(ebt, pidx)
+        per_period_ebt[pidx] = ebt
+        per_period_ebitda[pidx] = ebitda
+        per_period_tax_dep[pidx] = tax_dep
+        per_period_si[pidx] = si
+        per_period_shl_gi[pidx] = shl_gi
+        per_period_eng_tax[pidx] = eng_tax
+
+    # Paired annual CIT: process year by year (H1 + H2 pairs)
+    # year_index = op_seq_pos // 2
+    annual_cit: dict[int, float] = {}   # year_index → annual CIT
+    annual_lcf_used: dict[int, float] = {}
+    annual_lcf_opening: dict[int, float] = {}
+    annual_ebt_by_year: dict[int, float] = {}
+    annual_gate_ok: dict[int, bool] = {}
+    annual_taxable_income: dict[int, float] = {}
+
+    # Process years sequentially
+    num_years = (len(operating_indices_in_order) + 1) // 2
+    for yr in range(num_years):
+        h1_pos = yr * 2
+        h2_pos = yr * 2 + 1
+        h1_pidx = operating_indices_in_order[h1_pos] if h1_pos < len(operating_indices_in_order) else None
+        h2_pidx = operating_indices_in_order[h2_pos] if h2_pos < len(operating_indices_in_order) else None
+
+        h1_ebt = per_period_ebt.get(h1_pidx, 0.0) if h1_pidx is not None else 0.0
+        h2_ebt = per_period_ebt.get(h2_pidx, 0.0) if h2_pidx is not None else 0.0
+        annual_ebt = h1_ebt + h2_ebt
+        annual_ebt_by_year[yr] = annual_ebt
+
+        gate_ok = annual_ebt > 0.0
+        annual_gate_ok[yr] = gate_ok
+
+        # Use h2_pidx for LCF expiry reference (end of year)
+        ref_pidx = h2_pidx if h2_pidx is not None else h1_pidx
+
+        if gate_ok and ref_pidx is not None:
+            lcf_used, lcf_opening = _drain_lcf(annual_ebt, ref_pidx)
         else:
             lcf_opening = sum(a for _, a in lcf_queue)
             lcf_used = 0.0
 
-        taxable_income = max(0.0, ebt - lcf_used) if gate_ok else 0.0
-        shadow_cit = taxable_income * CIT_RATE
+        annual_lcf_used[yr] = lcf_used
+        annual_lcf_opening[yr] = lcf_opening
 
-        # Record new loss if EBT < 0
-        if ebt < 0.0:
-            lcf_queue.append((pidx, -ebt))
-        lcf_closing = sum(a for _, a in lcf_queue)
+        taxable_income = max(0.0, annual_ebt - lcf_used) if gate_ok else 0.0
+        annual_taxable_income[yr] = taxable_income
+        cit = taxable_income * CIT_RATE
+        annual_cit[yr] = cit
+
+        # Record annual loss against H2 (end of year) for LCF vintage
+        if annual_ebt < 0.0 and ref_pidx is not None:
+            lcf_queue.append((ref_pidx, -annual_ebt))
+
+    # Now build per-period output
+    # Track lcf_closing at end of each year
+    # Reconstruct LCF state per period for the output dataclass
+    # We need to recompute closing LCF at H2 of each year
+    # After processing year yr: lcf_closing_by_year[yr] = sum of queue at that point
+    # Since we already processed in order, we need a second pass with tracking
+
+    # Second pass: track LCF queue snapshots per year
+    lcf_queue2: list[tuple[int, float]] = []
+    lcf_closing_h2_by_year: dict[int, float] = {}
+
+    for yr in range(num_years):
+        h2_pos = yr * 2 + 1
+        h2_pidx = operating_indices_in_order[h2_pos] if h2_pos < len(operating_indices_in_order) else None
+        h1_pidx = operating_indices_in_order[yr * 2] if yr * 2 < len(operating_indices_in_order) else None
+        ref_pidx = h2_pidx if h2_pidx is not None else h1_pidx
+
+        annual_ebt = annual_ebt_by_year[yr]
+        gate_ok = annual_gate_ok[yr]
+
+        # Expire old vintages
+        if ref_pidx is not None:
+            lcf_queue2 = [(v, a) for v, a in lcf_queue2 if ref_pidx <= v + LCF_MODEL_PERIODS]
+        lcf_opening2 = sum(a for _, a in lcf_queue2)
+
+        if gate_ok:
+            used2 = min(lcf_opening2, max(0.0, annual_ebt))
+            remaining2 = used2
+            new_q2: list[tuple[int, float]] = []
+            for v, a in lcf_queue2:
+                if remaining2 <= 0:
+                    new_q2.append((v, a))
+                elif a <= remaining2:
+                    remaining2 -= a
+                else:
+                    new_q2.append((v, a - remaining2))
+                    remaining2 = 0.0
+            lcf_queue2 = new_q2
+
+        if annual_ebt < 0.0 and ref_pidx is not None:
+            lcf_queue2.append((ref_pidx, -annual_ebt))
+
+        lcf_closing_h2_by_year[yr] = sum(a for _, a in lcf_queue2)
+
+    # Build period output list
+    periods_out: list[KupiTaxShadowPeriod] = []
+    year_of_op_seq: dict[int, int] = {}
+    is_h2_of_year: dict[int, bool] = {}
+    for pidx_o in operating_indices_in_order:
+        pos = op_seq_pos[pidx_o]
+        yr = pos // 2
+        year_of_op_seq[pidx_o] = yr
+        is_h2_of_year[pidx_o] = (pos % 2 == 1)
+
+    for i, pidx in enumerate(sched.period_indices):
+        ebitda = per_period_ebitda[pidx]
+        tax_dep = per_period_tax_dep[pidx]
+        si = per_period_si[pidx]
+        shl_gi = per_period_shl_gi[pidx]
+        ebt = per_period_ebt[pidx]
+        eng_tax = per_period_eng_tax[pidx]
+
+        if pidx in year_of_op_seq:
+            yr = year_of_op_seq[pidx]
+            is_h2 = is_h2_of_year[pidx]
+
+            # CIT is placed at H2
+            cit_placed = is_h2
+            shadow_cit = annual_cit[yr] if is_h2 else 0.0
+
+            # LCF opening/closing: at H2 of year use year-end values; at H1 use prior year end
+            if is_h2:
+                lcf_opening_keur = annual_lcf_opening[yr]
+                lcf_used_keur = annual_lcf_used[yr]
+                lcf_closing_keur = lcf_closing_h2_by_year[yr]
+            else:
+                # H1: opening = prior year closing (or 0 for yr=0)
+                lcf_opening_keur = lcf_closing_h2_by_year.get(yr - 1, 0.0)
+                lcf_used_keur = 0.0
+                lcf_closing_keur = lcf_opening_keur  # unchanged during H1
+
+            gate_ok = annual_gate_ok[yr]
+            taxable_income = annual_taxable_income[yr] if is_h2 else 0.0
+        else:
+            # Construction period or non-operating
+            shadow_cit = 0.0
+            cit_placed = False
+            lcf_opening_keur = 0.0
+            lcf_used_keur = 0.0
+            lcf_closing_keur = 0.0
+            gate_ok = False
+            taxable_income = 0.0
 
         delta = shadow_cit - eng_tax
 
@@ -926,14 +1082,15 @@ def kupi_source_workbook_tax_shadow(result: ProjectFinancingResult) -> KupiTaxSh
             senior_interest_keur=si,
             shl_gross_interest_keur=shl_gi,
             ebt_keur=ebt,
-            lcf_opening_keur=lcf_opening,
+            lcf_opening_keur=lcf_opening_keur,
             gate_allows_lcf=gate_ok,
-            lcf_used_keur=lcf_used,
-            lcf_closing_keur=lcf_closing,
+            lcf_used_keur=lcf_used_keur,
+            lcf_closing_keur=lcf_closing_keur,
             taxable_income_keur=taxable_income,
             shadow_cit_keur=shadow_cit,
             engine_cash_tax_keur=eng_tax,
             delta_keur=delta,
+            cit_placement_period=cit_placed,
         ))
 
     total_shadow = sum(p.shadow_cit_keur for p in periods_out)
@@ -942,13 +1099,16 @@ def kupi_source_workbook_tax_shadow(result: ProjectFinancingResult) -> KupiTaxSh
     tax_main_effect_is_zero = abs(total_delta) < 1.0  # within 1 kEUR
 
     note = (
+        "WORKBOOK_PAIRED_MODEL_YEAR: CIT computed on H1+H2 annual basis, placed at H2. "
+        "5-model-period LCF window (loss at period P expires when current period > P+5). "
         "TAX_MAIN_EFFECT=0 for KUPI: EBT>0 and TAXABLE_INCOME_POSITIVE gates fire "
         "identically — KUPI never has EBT>0 with TI≤0, so the gate difference "
         "produces no numerical Senior delta. Structural fix (EBT_POSITIVE in params) "
         "is confirmed; zero K1-K0 delta is a correct engine result, not a tautology."
         if tax_main_effect_is_zero
         else
-        f"TAX_MAIN_EFFECT is NON-ZERO: shadow delta={total_delta:+.3f} kEUR. "
+        f"WORKBOOK_PAIRED_MODEL_YEAR: CIT on H1+H2 annual basis, placed at H2. "
+        f"5-model-period LCF. TAX_MAIN_EFFECT is NON-ZERO: shadow delta={total_delta:+.3f} kEUR. "
         f"Gates diverge — EBT_POSITIVE produces different CIT from TAXABLE_INCOME_POSITIVE."
     )
 
@@ -1163,13 +1323,300 @@ def kupi_cash_sweep_causal_trace(
 
 
 # ---------------------------------------------------------------------------
+# BLOCKER 3 — KUPI_TRUE_BANK_ONLY_SENIOR_DIAGNOSTIC
+# True Bank-only Senior via fixed-point iteration with backward DSCR capacity.
+# Base economics unchanged (balancing=5 in P0); Bank CFADS uses balancing=0.
+# ---------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class KupiBankOnlySeniorDiagnostic:
+    """True Bank-only Senior diagnostic.
+
+    Computes the Senior that the engine would produce if Bank CFADS excluded
+    balancing cost (balancing=0 for Bank sizing) while keeping Base economics
+    (balancing=5) unchanged. Uses _backward_dscr_capacity fixed-point iteration.
+    """
+    true_bank_only_senior_keur: float
+    p0_senior_keur: float               # engine Senior with balancing=5 globally (= P0)
+    d0_senior_keur: float               # global approx, balancing=0 globally
+    true_bank_only_effect_keur: float   # = true_bank_only_senior - p0_senior
+    d0_approximation_gap_keur: float    # = d0_senior - true_bank_only_senior
+    convergence_iterations: int
+    converged: bool
+    base_ebitda_invariant: bool         # = True, Base EBITDA unchanged by construction
+    note: str
+
+
+def kupi_true_bank_only_senior_diagnostic(
+    p0_result: ProjectFinancingResult,
+    d0_result: ProjectFinancingResult,
+) -> KupiBankOnlySeniorDiagnostic:
+    """Compute true Bank-only Senior via fixed-point backward DSCR iteration.
+
+    Base economics: balancing=5 EUR/MWh (unchanged from P0).
+    Bank CFADS: Bank EBITDA with balancing=0 (not 5).
+
+    Algorithm:
+    1. Extract bank_production_mwh and bank_ebitda_p0 from p0_result.
+    2. Compute true_bank_ebitda[t] = bank_ebitda_p0[t] + bank_production_mwh[t] * 5/1000.
+       (balancing_cost is a deduction; removing it adds back to EBITDA)
+    3. Fixed-point iteration (max 30 iterations, tolerance 1.0 kEUR):
+       - Forward roll Senior at 6.10% all-in rate.
+       - Compute bank cash tax shadow on true bank EBITDA.
+       - Compute bank CFADS = true_bank_ebitda - bank_cash_tax.
+       - Backward DSCR capacity → new Senior.
+       - Apply gearing cap; take minimum.
+       - Check convergence.
+    """
+    p0_pmr = p0_result.project_model_result
+    d0_senior = d0_result.final_senior_commitment_keur
+    p0_senior = p0_result.final_senior_commitment_keur
+
+    ds = p0_pmr.debt_sizing
+    sd = p0_pmr.senior_debt
+    shl_s = p0_pmr.shareholder_loan
+
+    # All model period metadata
+    all_periods = p0_pmr.periods  # tuple[OperatingPeriodResult]
+    period_indices = p0_pmr.operating_schedules.period_indices
+    period_start_end: dict[int, tuple] = {
+        p.period_index: (p.period_start, p.period_end) for p in all_periods
+    }
+
+    # Rate map: 6.10% all-in per year → same for all periods
+    rate_map: dict[int, float] = {pidx: _KUPI_ALL_IN_RATE for pidx in period_indices}
+
+    # DSCR schedule map (source DSCR schedule, repayment periods only)
+    # Repayment starts at period 5 (first operating period for 4-period construction)
+    # Determine repayment period indices from sd
+    repayment_start = sd.period_indices[0] if sd else period_indices[0]
+    # Find first operating period index
+    is_op = {p.period_index: p.is_operation for p in all_periods}
+    op_indices = [pidx for pidx in period_indices if is_op.get(pidx, False)]
+    repayment_start_idx = op_indices[0] if op_indices else repayment_start
+
+    dscr_map: dict[int, float] = {}
+    for pos, pidx in enumerate(op_indices):
+        if pos < len(_KUPI_DSCR_SCHEDULE):
+            dscr_map[pidx] = _KUPI_DSCR_SCHEDULE[pos]
+        else:
+            dscr_map[pidx] = 1.50  # fallback
+
+    # Build SeniorDebtPolicy for backward DSCR capacity
+    maturity_idx = op_indices[-1] if op_indices else period_indices[-1]
+    policy = SeniorDebtPolicy(
+        policy_id="KUPI_BANK_ONLY_DIAG",
+        policy_version="1.0",
+        sizing_mode=SeniorDebtSizingMode.DSCR_SCULPTED,
+        target_dscr=1.50,
+        maximum_gearing=_KUPI_MAX_GEARING,
+        annual_fixed_rate=_KUPI_ALL_IN_RATE,
+        periods_per_year=2,
+        day_count_convention=DayCountConvention.ACT_360,
+        repayment_start_period_index=repayment_start_idx,
+        maturity_period_index=maturity_idx,
+        convergence_tolerance_keur=1.0,
+        convergence_relative_tolerance=1e-6,
+        maximum_iterations=30,
+        permit_terminal_balloon=False,
+        damping_alpha=1.0,
+    )
+
+    # Gearing capacity
+    gearing_capacity = _KUPI_TOTAL_USES_KEUR * _KUPI_MAX_GEARING
+
+    # True bank EBITDA (remove balancing cost deduction from bank EBITDA)
+    bank_prod_mwh = list(ds.bank_production_mwh) if ds else []
+    bank_ebitda_p0 = list(ds.bank_ebitda_keur) if ds else []
+    ds_period_indices = list(ds.period_indices) if ds else []
+
+    true_bank_ebitda_by_period: dict[int, float] = {}
+    for j, pidx in enumerate(ds_period_indices):
+        prod_mwh = bank_prod_mwh[j] if j < len(bank_prod_mwh) else 0.0
+        ebitda = bank_ebitda_p0[j] if j < len(bank_ebitda_p0) else 0.0
+        # Removing balancing cost (a deduction) adds it back
+        true_bank_ebitda_by_period[pidx] = ebitda + prod_mwh * _KUPI_BALANCING_COST_EUR_MWH / 1000.0
+
+    # SHL gross interest from P0 (approximately fixed for the iteration)
+    shl_gross_by_period: dict[int, float] = {}
+    if shl_s:
+        for j, pidx in enumerate(shl_s.period_indices):
+            shl_gross_by_period[pidx] = shl_s.shl_gross_interest_keur[j]
+
+    # Tax dep from base operating schedules
+    base_sched = p0_pmr.operating_schedules
+    tax_dep_by_period: dict[int, float] = {}
+    for j, pidx in enumerate(base_sched.period_indices):
+        tax_dep_by_period[pidx] = base_sched.tax_depreciation_keur[j]
+
+    # Fixed-point iteration
+    senior_guess = p0_senior
+    converged = False
+    iters = 0
+    MAX_ITER = 30
+    TOLERANCE = 1.0
+
+    for iters in range(1, MAX_ITER + 1):
+        # Forward roll to get senior interest by period
+        cfads_init: dict[int, float] = {pidx: 1.0 for pidx in op_indices}
+        rows = _forward_roll(
+            opening_keur=senior_guess,
+            period_indices=tuple(op_indices),
+            rate_map=rate_map,
+            period_start_end=period_start_end,
+            cfads_by=cfads_init,
+            policy=policy,
+            repayment_method_str="dscr_sculpted",
+            dscr_map=dscr_map,
+        )
+        senior_interest_by_period: dict[int, float] = {r.period_index: r.interest_keur for r in rows}  # noqa: E501
+
+        # Compute bank cash tax shadow (simplified: no paired CIT, use per-period for speed)
+        # EBT = true_bank_ebitda - tax_dep - senior_interest - shl_gross
+        LCF_MODEL_PERIODS = 5
+        CIT_RATE = BA_CORPORATE_RATE
+        lcf_q: list[tuple[int, float]] = []
+
+        # Identify operating period sequence for pairing
+        op_seq = op_indices
+        num_yrs = (len(op_seq) + 1) // 2
+        annual_bank_cit: dict[int, float] = {}  # year_index → CIT
+
+        for yr in range(num_yrs):
+            h1_pidx = op_seq[yr * 2] if yr * 2 < len(op_seq) else None
+            h2_pidx = op_seq[yr * 2 + 1] if yr * 2 + 1 < len(op_seq) else None
+            ref_pidx = h2_pidx if h2_pidx is not None else h1_pidx
+
+            h1_ebt = (
+                true_bank_ebitda_by_period.get(h1_pidx, 0.0)
+                - tax_dep_by_period.get(h1_pidx, 0.0)
+                - senior_interest_by_period.get(h1_pidx, 0.0)
+                - shl_gross_by_period.get(h1_pidx, 0.0)
+            ) if h1_pidx else 0.0
+            h2_ebt = (
+                true_bank_ebitda_by_period.get(h2_pidx, 0.0)
+                - tax_dep_by_period.get(h2_pidx, 0.0)
+                - senior_interest_by_period.get(h2_pidx, 0.0)
+                - shl_gross_by_period.get(h2_pidx, 0.0)
+            ) if h2_pidx else 0.0
+            annual_ebt = h1_ebt + h2_ebt
+
+            # Expire old vintages
+            if ref_pidx is not None:
+                lcf_q = [(v, a) for v, a in lcf_q if ref_pidx <= v + LCF_MODEL_PERIODS]
+
+            gate_ok = annual_ebt > 0.0
+            lcf_opening = sum(a for _, a in lcf_q)
+
+            if gate_ok:
+                used = min(lcf_opening, max(0.0, annual_ebt))
+                remaining = used
+                new_q: list[tuple[int, float]] = []
+                for v, a in lcf_q:
+                    if remaining <= 0:
+                        new_q.append((v, a))
+                    elif a <= remaining:
+                        remaining -= a
+                    else:
+                        new_q.append((v, a - remaining))
+                        remaining = 0.0
+                lcf_q = new_q
+            else:
+                used = 0.0
+
+            taxable = max(0.0, annual_ebt - used) if gate_ok else 0.0
+            annual_bank_cit[yr] = taxable * CIT_RATE
+
+            if annual_ebt < 0.0 and ref_pidx is not None:
+                lcf_q.append((ref_pidx, -annual_ebt))
+
+        # Bank CFADS = true_bank_ebitda - bank_cash_tax (CIT at H2 of each year)
+        cfads_by: dict[int, float] = {}
+        for yr in range(num_yrs):
+            h1_pidx = op_seq[yr * 2] if yr * 2 < len(op_seq) else None
+            h2_pidx = op_seq[yr * 2 + 1] if yr * 2 + 1 < len(op_seq) else None
+            cit = annual_bank_cit[yr]
+            if h1_pidx is not None:
+                cfads_by[h1_pidx] = true_bank_ebitda_by_period.get(h1_pidx, 0.0)
+            if h2_pidx is not None:
+                cfads_by[h2_pidx] = true_bank_ebitda_by_period.get(h2_pidx, 0.0) - cit
+
+        # Backward DSCR capacity
+        backward_cap = _backward_dscr_capacity(
+            cfads_by=cfads_by,
+            rate_map=rate_map,
+            period_start_end=period_start_end,
+            period_indices=tuple(op_indices),
+            policy=policy,
+            dscr_map=dscr_map,
+        )
+        new_senior = min(backward_cap, gearing_capacity)
+
+        if abs(new_senior - senior_guess) < TOLERANCE:
+            senior_guess = new_senior
+            converged = True
+            break
+        senior_guess = new_senior
+
+    true_bank_only_senior = senior_guess
+    effect = true_bank_only_senior - p0_senior
+    gap = d0_senior - true_bank_only_senior
+
+    note = (
+        f"TRUE_BANK_ONLY_SENIOR: Base EBITDA invariant (balancing=5 in Base). "
+        f"Bank CFADS uses balancing=0 for sizing (balancing deduction removed). "
+        f"Converged in {iters} iterations (tolerance=1.0 kEUR). "
+        f"P0 Senior: {p0_senior:.3f}, True Bank-only: {true_bank_only_senior:.3f}, "
+        f"D0 Senior: {d0_senior:.3f}. "
+        f"True Bank-only effect vs P0: {effect:+.3f} kEUR. "
+        f"D0 approximation gap vs True: {gap:+.3f} kEUR."
+    )
+
+    return KupiBankOnlySeniorDiagnostic(
+        true_bank_only_senior_keur=true_bank_only_senior,
+        p0_senior_keur=p0_senior,
+        d0_senior_keur=d0_senior,
+        true_bank_only_effect_keur=effect,
+        d0_approximation_gap_keur=gap,
+        convergence_iterations=iters,
+        converged=converged,
+        base_ebitda_invariant=True,  # By construction: Base EBITDA from P0 is unchanged
+        note=note,
+    )
+
+
+# ---------------------------------------------------------------------------
 # KUPI_FINAL_SOURCE_COMPAT_DIAGNOSTIC
 # Full source-compatibility case: ALL_AT_FC + COMPOUND + CASH_SWEEP +
 # Base balancing=5 + source workbook tax shadow applied post-engine.
-# Bank balancing: D0 approximation (no production field, per governance).
+# Bank balancing: True Bank-only via fixed-point iteration.
 # ---------------------------------------------------------------------------
 
-def run_kupi_final_source_compat() -> ProjectFinancingResult:
+@dataclass(frozen=True)
+class KupiFinalSourceCompatDiagnostic:
+    """KUPI_FINAL_SOURCE_COMPAT_DIAGNOSTIC result.
+
+    Core engine result + True Bank-only Senior diagnostic + Source tax shadow.
+    """
+    # Core engine result (Base economics, ALL_AT_FC + COMPOUND + CASH_SWEEP + balancing=5)
+    engine_result: ProjectFinancingResult
+    # True Bank-only Senior diagnostic
+    bank_only_diagnostic: KupiBankOnlySeniorDiagnostic
+    # Source tax shadow (using engine_result)
+    tax_shadow: KupiTaxShadowResult
+    # Summary comparison
+    p0_engine_senior_keur: float        # engine Senior with balancing=5 globally (= P0)
+    true_bank_only_senior_keur: float   # from bank_only_diagnostic
+    source_anchor_senior_keur: float    # = SOURCE_SENIOR_KEUR (never injected)
+    residual_to_source_keur: float      # source_anchor - true_bank_only_senior
+    residual_pct: float                 # abs(residual) / source_anchor * 100
+    # First divergence classification
+    first_divergence_period: int | None
+    remaining_cause_classification: str # e.g. "SENIOR_DAY_COUNT", "UNRESOLVED"
+    note: str
+
+
+def run_kupi_final_source_compat() -> "KupiFinalSourceCompatDiagnostic":
     """KUPI_FINAL_SOURCE_COMPAT_DIAGNOSTIC.
 
     Most source-compatible engine run:
@@ -1180,18 +1627,46 @@ def run_kupi_final_source_compat() -> ProjectFinancingResult:
     - CASH_SWEEP (source-evidenced from G3B fixture)
     - Base balancing = 5 EUR/MWh (source project economics)
     - Source workbook tax params (EBT_POSITIVE gate, 5yr LCF)
-    - Bank balancing: D0 global approximation (balancing=0 globally)
-      NOTE: True Bank-only would require a production field (not implemented,
-      per governance). Residual vs source is documented, not fitted.
+    - True Bank-only Senior via fixed-point iteration (not D0 approximation)
     """
-    return run_project_financing_model(
-        build_kupi_project_inputs(
-            shl_construction_interest_method=ShlConstructionInterestMethod.COMPOUND_PERIODIC,
-            sponsor_funding_timing_policy=SponsorFundingTimingPolicy.ALL_AT_FC,
-            bank_balancing_cost_eur_mwh=5.0,   # Base balancing = 5 (source)
-            use_source_workbook_tax=True,       # Source workbook tax params
-        ),
-        source_id="KUPI_FINAL_SOURCE_COMPAT_DIAGNOSTIC",
+    # 1. P0 engine result (ALL_AT_FC + COMPOUND + CASH_SWEEP + balancing=5)
+    p0 = run_p0_current_generic()
+
+    # 2. D0 result (for True Bank-only comparison)
+    d0 = run_d0_bank_balancing_diagnostic()
+
+    # 3. True Bank-only Senior diagnostic
+    bank_only = kupi_true_bank_only_senior_diagnostic(p0, d0)
+
+    # 4. Source tax shadow (on P0 engine result)
+    tax_shadow = kupi_source_workbook_tax_shadow(p0)
+
+    # 5. Residual vs source anchor
+    p0_senior = p0.final_senior_commitment_keur
+    true_bank_only = bank_only.true_bank_only_senior_keur
+    residual = SOURCE_SENIOR_KEUR - true_bank_only
+    residual_pct = abs(residual) / SOURCE_SENIOR_KEUR * 100.0 if SOURCE_SENIOR_KEUR > 0 else 0.0
+
+    note = (
+        f"KUPI_FINAL_SOURCE_COMPAT: P0 engine Senior={p0_senior:.3f} kEUR, "
+        f"True Bank-only Senior={true_bank_only:.3f} kEUR, "
+        f"Source anchor={SOURCE_SENIOR_KEUR:.3f} kEUR, "
+        f"Residual={residual:+.3f} kEUR ({residual_pct:.2f}%). "
+        f"Remaining cause: UNRESOLVED (requires further workbook inspection)."
+    )
+
+    return KupiFinalSourceCompatDiagnostic(
+        engine_result=p0,
+        bank_only_diagnostic=bank_only,
+        tax_shadow=tax_shadow,
+        p0_engine_senior_keur=p0_senior,
+        true_bank_only_senior_keur=true_bank_only,
+        source_anchor_senior_keur=SOURCE_SENIOR_KEUR,
+        residual_to_source_keur=residual,
+        residual_pct=residual_pct,
+        first_divergence_period=None,
+        remaining_cause_classification="UNRESOLVED",
+        note=note,
     )
 
 

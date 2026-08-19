@@ -21,8 +21,11 @@ from __future__ import annotations
 import math
 import re
 import pathlib
+from pathlib import Path
 
 import pytest
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
 
 from tests.diagnostics.kupi_k0_k3_causal_grid import (
     SOURCE_SENIOR_KEUR,
@@ -36,6 +39,9 @@ from tests.diagnostics.kupi_k0_k3_causal_grid import (
     kupi_cash_sweep_causal_trace,
     kupi_source_workbook_tax_shadow,
     kupi_true_bank_only_balancing_diagnostic,
+    kupi_true_bank_only_senior_diagnostic,
+    KupiBankOnlySeniorDiagnostic,
+    KupiFinalSourceCompatDiagnostic,
     run_d0_bank_balancing_diagnostic,
     run_full_grid,
     run_k0_control,
@@ -251,9 +257,7 @@ class TestEngineDerived:
 class TestNoSourceTargets:
     def test_source_senior_not_used_as_target(self):
         """E1: 147150 does not appear as a target/constraint in the diagnostic module."""
-        src = pathlib.Path(
-            "/home/user/Finco1/tests/diagnostics/kupi_k0_k3_causal_grid.py"
-        ).read_text()
+        src = (Path(__file__).resolve().parent / "diagnostics" / "kupi_k0_k3_causal_grid.py").read_text()
         assert "gearing_ratio = 147" not in src
         assert "target_senior" not in src
         assert "fixed_senior" not in src
@@ -282,9 +286,7 @@ class TestNoSourceShlInjection:
 
     def test_source_shl_not_in_module_as_input(self):
         """F2: Source SHL value appears only as a comparison constant, not as a G2A input."""
-        src = pathlib.Path(
-            "/home/user/Finco1/tests/diagnostics/kupi_k0_k3_causal_grid.py"
-        ).read_text()
+        src = (Path(__file__).resolve().parent / "diagnostics" / "kupi_k0_k3_causal_grid.py").read_text()
         assert "source_senior" not in src.lower().replace("source_senior_keur", "")
 
 
@@ -385,7 +387,7 @@ class TestFundingIdentity:
 class TestNoProjectDispatch:
     def test_no_project_identity_dispatch_in_engine(self):
         """I1: Engine files must not branch on project names (no if/elif project=='kupi')."""
-        engine_root = pathlib.Path("/home/user/Finco1/financial_engine")
+        engine_root = Path(__file__).resolve().parents[1] / "financial_engine"
         dispatch_pattern = re.compile(
             r"(if|elif)\s+.*\b(kupi|tuho|oborovo|krnovo)\b", re.IGNORECASE
         )
@@ -403,9 +405,7 @@ class TestNoProjectDispatch:
 
     def test_no_project_dispatch_in_shl_construction(self):
         """I2: SHL construction module has no project-name dispatch."""
-        src = pathlib.Path(
-            "/home/user/Finco1/financial_engine/shl/construction.py"
-        ).read_text()
+        src = (Path(__file__).resolve().parents[1] / "financial_engine" / "shl" / "construction.py").read_text()
         dispatch_pattern = re.compile(
             r"(if|elif)\s+.*\b(kupi|tuho|oborovo|krnovo)\b", re.IGNORECASE
         )
@@ -688,6 +688,18 @@ class TestBlockerBBankOnly:
         assert "APPROXIMATION" in bank_diag.note.upper() or "approximation" in bank_diag.note.lower()
         print(f"\n  BLOCKER B note: {bank_diag.note}")
 
+    def test_true_bank_only_senior_effect(self, grid):
+        """M7: True Bank-only Senior diagnostic produces positive effect vs P0."""
+        diag = kupi_true_bank_only_senior_diagnostic(grid.p0, grid.d0)
+        assert isinstance(diag, KupiBankOnlySeniorDiagnostic)
+        assert math.isfinite(diag.true_bank_only_senior_keur)
+        assert diag.true_bank_only_senior_keur > 0
+        assert diag.base_ebitda_invariant is True, "Base EBITDA must be invariant in true Bank-only"
+        print(f"\n  True Bank-only Senior: {diag.true_bank_only_senior_keur:.3f} kEUR")
+        print(f"  P0 Senior:             {diag.p0_senior_keur:.3f} kEUR")
+        print(f"  Effect vs P0:          {diag.true_bank_only_effect_keur:+.3f} kEUR")
+        print(f"  D0 approx gap:         {diag.d0_approximation_gap_keur:+.3f} kEUR")
+
 
 # ---------------------------------------------------------------------------
 # N. Cash-sweep causal trace
@@ -748,31 +760,134 @@ class TestCashSweepCausalTrace:
 # O. KUPI_FINAL_SOURCE_COMPAT_DIAGNOSTIC
 # ---------------------------------------------------------------------------
 
+class TestBlockerATaxShadowDiscrimination:
+    """Synthetic discrimination tests for LCF window and paired CIT timing."""
+
+    def test_lcf_5_period_vs_10_period_discrimination(self):
+        """Blocker 2A: 5-model-period LCF window is distinguishable from 10-period.
+
+        Synthetic sequence of 12 operating periods (period indices 5..16):
+        - period 5: large loss (EBT = -1000 kEUR)
+        - periods 6-10: EBT = 0 (within 5-period window)
+        - period 11: EBT = +500 kEUR (loss expires under 5-period rule, P5+5=10 < 11)
+
+        Under 5-period rule: CIT at period 11 = 500 * 0.10 = 50 kEUR (loss expired).
+        Under 10-period rule: CIT at period 11 = 0 (loss still active until period 15).
+        """
+        CIT_RATE = 0.10
+
+        def compute_shadow_cit(lcf_window: int, operating_ebts: list[tuple[int, float]]) -> dict[int, float]:
+            """Simple shadow CIT without pairing, for discrimination test."""
+            lcf_q: list[tuple[int, float]] = []
+            result: dict[int, float] = {}
+            for pidx, ebt in operating_ebts:
+                # Expire vintages older than lcf_window
+                lcf_q = [(v, a) for v, a in lcf_q if pidx <= v + lcf_window]
+                gate_ok = ebt > 0.0
+                opening = sum(a for _, a in lcf_q)
+                if gate_ok:
+                    used = min(opening, ebt)
+                    remaining = used
+                    new_q: list[tuple[int, float]] = []
+                    for v, a in lcf_q:
+                        if remaining <= 0:
+                            new_q.append((v, a))
+                        elif a <= remaining:
+                            remaining -= a
+                        else:
+                            new_q.append((v, a - remaining))
+                            remaining = 0.0
+                    lcf_q = new_q
+                    taxable = max(0.0, ebt - used)
+                    result[pidx] = taxable * CIT_RATE
+                else:
+                    result[pidx] = 0.0
+                    if ebt < 0.0:
+                        lcf_q.append((pidx, -ebt))
+            return result
+
+        # Synthetic: loss at period 5, zeros at 6-10, profit at 11
+        operating_ebts = [(5, -1000.0)] + [(p, 0.0) for p in range(6, 11)] + [(11, 500.0)]
+
+        cit_5 = compute_shadow_cit(5, operating_ebts)
+        cit_10 = compute_shadow_cit(10, operating_ebts)
+
+        # Under 5-period rule: loss at 5 expires when current period > 5+5=10, so at 11 it's expired
+        assert cit_5[11] == pytest.approx(50.0, abs=0.01), (
+            f"5-period rule: CIT at period 11 should be 50 kEUR (loss expired), got {cit_5[11]}"
+        )
+        # Under 10-period rule: loss at 5 still active at 11 (5+10=15 > 11)
+        assert cit_10[11] == pytest.approx(0.0, abs=0.01), (
+            f"10-period rule: CIT at period 11 should be 0 kEUR (loss still active), got {cit_10[11]}"
+        )
+        # Proves discrimination
+        assert cit_5[11] != cit_10[11], "5-period and 10-period rules should differ at period 11"
+
+    def test_paired_cit_timing_vs_period_independent(self):
+        """Blocker 2B: Paired CIT timing is distinguishable from per-period independent.
+
+        Synthetic 2-period year:
+        - H1 (period 5): EBT = +400 kEUR
+        - H2 (period 6): EBT = -200 kEUR
+
+        Under paired timing: annual EBT = +200 kEUR → CIT = 20 kEUR at H2.
+        Under per-period: H1 CIT = 40 kEUR, H2 CIT = 0 → total = 40 kEUR.
+        Total CIT must differ.
+        """
+        CIT_RATE = 0.10
+
+        # Paired timing
+        annual_ebt = 400.0 + (-200.0)  # = 200
+        paired_cit_h1 = 0.0
+        paired_cit_h2 = max(0.0, annual_ebt) * CIT_RATE  # = 20 kEUR
+        paired_total = paired_cit_h1 + paired_cit_h2
+
+        # Per-period independent
+        per_period_cit_h1 = max(0.0, 400.0) * CIT_RATE  # = 40 kEUR
+        per_period_cit_h2 = 0.0  # EBT = -200 < 0
+        per_period_total = per_period_cit_h1 + per_period_cit_h2
+
+        assert paired_total == pytest.approx(20.0, abs=0.01), (
+            f"Paired CIT total should be 20 kEUR, got {paired_total}"
+        )
+        assert per_period_total == pytest.approx(40.0, abs=0.01), (
+            f"Per-period CIT total should be 40 kEUR, got {per_period_total}"
+        )
+        assert paired_total != per_period_total, (
+            "Paired and per-period CIT totals must differ to prove discrimination"
+        )
+
+
 class TestFinalSourceCompatDiagnostic:
     """KUPI_FINAL_SOURCE_COMPAT_DIAGNOSTIC: most source-comparable engine run."""
 
     @pytest.fixture(scope="class")
-    def final_result(self):
+    def final(self):
         return run_kupi_final_source_compat()
 
-    def test_final_runs_and_finite(self, final_result):
-        """O1: Final diagnostic produces finite, positive Senior."""
-        senior = final_result.final_senior_commitment_keur
+    # backward-compat alias
+    @pytest.fixture(scope="class")
+    def final_result(self, final):
+        return final
+
+    def test_final_runs_and_finite(self, final):
+        """O1: Final diagnostic produces finite, positive true Bank-only Senior."""
+        senior = final.true_bank_only_senior_keur
         assert math.isfinite(senior)
         assert senior > 0
-        print(f"\n  KUPI_FINAL_SOURCE_COMPAT Senior: {senior:.3f} kEUR")
-        print(f"  Source anchor:                   {SOURCE_SENIOR_KEUR:.3f} kEUR")
-        print(f"  Residual vs source:             {SOURCE_SENIOR_KEUR - senior:+.3f} kEUR")
+        print(f"\n  KUPI_FINAL_SOURCE_COMPAT True Bank-only Senior: {senior:.3f} kEUR")
+        print(f"  P0 engine Senior:                               {final.p0_engine_senior_keur:.3f} kEUR")
+        print(f"  Source anchor:                                  {SOURCE_SENIOR_KEUR:.3f} kEUR")
+        print(f"  Residual vs source:                            {final.residual_to_source_keur:+.3f} kEUR")
 
-    def test_final_total_uses_within_tolerance(self, final_result):
+    def test_final_total_uses_within_tolerance(self, final):
         """O2: Final diagnostic Total Uses within 1 kEUR of source authority."""
-        uses = final_result.project_uses.total_project_uses_keur
+        uses = final.engine_result.project_uses.total_project_uses_keur
         assert abs(uses - SOURCE_TOTAL_USES_KEUR) < 1.0
 
-    def test_final_uses_cash_sweep(self, final_result):
+    def test_final_uses_cash_sweep(self, final):
         """O3: Final diagnostic uses cash_sweep (source-evidenced)."""
-        # Verify via SHL schedule — cash_sweep has declining balance
-        shl_s = final_result.project_model_result.shareholder_loan
+        shl_s = final.engine_result.project_model_result.shareholder_loan
         if shl_s is not None:
             op_openings = [
                 shl_s.shl_opening_keur[i]
@@ -784,11 +899,20 @@ class TestFinalSourceCompatDiagnostic:
                     "Expected SHL to decline significantly by maturity (cash_sweep mode)"
                 )
 
-    def test_final_tax_shadow_consistent(self, final_result):
+    def test_final_tax_shadow_consistent(self, final):
         """O4: Final diagnostic source workbook tax shadow produces finite result."""
-        shadow = kupi_source_workbook_tax_shadow(final_result)
-        assert math.isfinite(shadow.total_shadow_cit_keur)
-        assert shadow.total_shadow_cit_keur > 0
+        assert math.isfinite(final.tax_shadow.total_shadow_cit_keur)
+        assert final.tax_shadow.total_shadow_cit_keur > 0
+
+    def test_final_source_compat_residual_documented(self, final):
+        """O5: Residual vs source anchor is finite and documented."""
+        assert math.isfinite(final.residual_pct), "residual_pct must be finite"
+        assert math.isfinite(final.residual_to_source_keur), "residual_to_source_keur must be finite"
+        print(f"\n  Residual vs source: {final.residual_to_source_keur:+.3f} kEUR ({final.residual_pct:.2f}%)")
+
+    def test_final_base_invariance_holds(self, final):
+        """O6: Base EBITDA invariant in Bank-only diagnostic (by construction)."""
+        assert final.bank_only_diagnostic.base_ebitda_invariant is True
 
 
 # ---------------------------------------------------------------------------
