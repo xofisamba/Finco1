@@ -292,6 +292,15 @@ def build_senior_debt_model_input_from_project_inputs(
         senior_debt_maturity_period_index=policy.maturity_period_index,
     )
 
+    # PR-3: map FinancingParams DSRA policy to clean CashDsraInput.
+    from finco_core.inputs import DebtServiceReserveSupportMode
+    from financial_engine.dsra.contracts import CashDsraInput
+    fin = project_inputs.financing
+    dsra = CashDsraInput(
+        mode=fin.dsra_support_mode,
+        requirement_keur=getattr(fin, "debt_service_reserve_requirement_keur", 0.0) or 0.0,
+    )
+
     return SeniorDebtModelInput(
         operating=operating,
         tax=tax,
@@ -299,6 +308,7 @@ def build_senior_debt_model_input_from_project_inputs(
         senior_debt_inputs=inputs,
         debt_sizing_case=resolved_debt_sizing_case,
         shareholder_loan=shareholder_loan,
+        dsra=dsra,
     )
 
 
