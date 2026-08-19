@@ -50,69 +50,91 @@ Static investigation sequence:
 10. Read the parity and recon modules
 
 Runtime instrumentation sequence:
-11. Wrote `tests/test_pre_freeze_single_financial_flow_audit.py` (14 tests, all green)
-12. Confirmed TUHO/Oborovo runtime traces via `patch.object` on real module attributes
-13. Confirmed KUPI factory exclusion via `run_demo_project("KUPI")` returning no result
-14. Confirmed KUPI diagnostic calls `run_project_financing_model` by patching on `diag_mod`
-15. Confirmed `kupi_true_bank_only_senior_diagnostic` calls private `_forward_roll` / `_backward_dscr_capacity`
+11. Wrote `tests/test_pre_freeze_single_financial_flow_audit.py` (15 tests, all green)
+12. Confirmed TUHO/Oborovo runtime traces via `patch.object` on real module attributes (RUNTIME_OBSERVED)
+13. Confirmed KUPI factory exclusion via `run_demo_project("KUPI")` returning no result (RUNTIME_OBSERVED)
+14. Confirmed KUPI diagnostic calls `run_project_financing_model` → `run_operating_model` → `run_senior_debt_model` → `run_tax_cfads_model` → `compute_shareholder_loan_schedules` by patching each where-used (RUNTIME_OBSERVED)
+15. Confirmed `kupi_true_bank_only_senior_diagnostic` calls `diag_mod._forward_roll` AND `diag_mod._backward_dscr_capacity` — P0/D0 built BEFORE patch context, proving calls originate from the diagnostic path itself (DIAGNOSTIC_ONLY_RUNTIME_OBSERVED)
 
 ---
 
 ## 3-A. Runtime Proof: Instrumented Call-Graph Evidence
 
 **Test module:** `tests/test_pre_freeze_single_financial_flow_audit.py`
-**Test count:** 14 green / 0 failed
-**Execution:** `python -m pytest tests/test_pre_freeze_single_financial_flow_audit.py -q` → `14 passed, 1 warning in 17.88s`
+**Test count:** 15 green / 0 failed
+**Execution:** `python -m pytest tests/test_pre_freeze_single_financial_flow_audit.py -q` → `15 passed`
+
+Evidence labels:
+- **RUNTIME_OBSERVED** — call recorded by patch.object instrumentation during actual execution
+- **STATIC_CALL_GRAPH_CONFIRMED** — verified by source inspection of import and call sites
+- **DIAGNOSTIC_ONLY_RUNTIME_OBSERVED** — call recorded with P0/D0 built outside patch context, proving origin is the diagnostic path itself
 
 ### Normalized Observed Traces
 
 ```
-TUHO:
-  APP_ENTRY (app.ui_runner._run_waterfall)
-    → LEGACY_RUNNER (app.waterfall_runner.WaterfallRunner.run)
-      → LEGACY_CORE (app.waterfall_runner.run_waterfall_v3_core)
-        → LEGACY_WATERFALL (domain.waterfall.waterfall_engine.run_waterfall)
+TUHO (RUNTIME_OBSERVED):
+  APP_ENTRY   [app.ui_runner._run_waterfall]
+    → LEGACY_RUNNER    [app.waterfall_runner.WaterfallRunner.run]
+      → LEGACY_CORE    [app.waterfall_runner.run_waterfall_v3_core]
+        → LEGACY_WATERFALL  [domain.waterfall.waterfall_engine.run_waterfall]
 
-Oborovo:
-  APP_ENTRY (app.ui_runner._run_waterfall)
-    → LEGACY_RUNNER (app.waterfall_runner.WaterfallRunner.run)
-      → LEGACY_CORE (app.waterfall_runner.run_waterfall_v3_core)
-        → LEGACY_WATERFALL (domain.waterfall.waterfall_engine.run_waterfall)
+Oborovo (RUNTIME_OBSERVED):
+  APP_ENTRY   [app.ui_runner._run_waterfall]
+    → LEGACY_RUNNER    [app.waterfall_runner.WaterfallRunner.run]
+      → LEGACY_CORE    [app.waterfall_runner.run_waterfall_v3_core]
+        → LEGACY_WATERFALL  [domain.waterfall.waterfall_engine.run_waterfall]
 
-KUPI factory: NOT IN FACTORY_MAP
-  run_demo_project("KUPI") → result.result is None, messages contain "Unknown project type"
+KUPI factory: NOT IN FACTORY_MAP (RUNTIME_OBSERVED)
+  run_demo_project("KUPI") → result.result is None,
+                              messages contain "Unknown project type"
 
-KUPI diagnostic:
-  DIAGNOSTIC_ENTRY (diag_mod.run_p0_current_generic)
-    → CLEAN_PROJECT_FINANCING (run_project_financing_model)
-      → [financial_engine.financing.project → run_senior_debt_model
-          → run_tax_cfads_model → run_operating_model]
+KUPI clean-engine (RUNTIME_OBSERVED):
+  DIAGNOSTIC_ENTRY [diag_mod.run_p0_current_generic]
+    → run_project_financing_model           [call_count >= 1, RUNTIME_OBSERVED]
+    → run_operating_model                   [call_count >= 1, RUNTIME_OBSERVED]
+      (patched at financial_engine.financing.project.run_operating_model)
+    → run_senior_debt_model                 [call_count >= 1, RUNTIME_OBSERVED]
+      (patched at financial_engine.financing.project.run_senior_debt_model)
+    → run_tax_cfads_model                   [call_count >= 1, RUNTIME_OBSERVED]
+      (patched at financial_engine.orchestrator.run_tax_cfads_model)
+    → compute_shareholder_loan_schedules    [call_count >= senior_count, RUNTIME_OBSERVED]
+      (patched at financial_engine.shl.production.compute_shareholder_loan_schedules)
 
-KUPI bank-only diagnostic (DIAGNOSTIC_ONLY_PATH):
-  diag_mod.kupi_true_bank_only_senior_diagnostic(p0, d0)
-    → solver._forward_roll (private)
-    → solver._backward_dscr_capacity (private)
-    — does NOT call run_project_financing_model or WaterfallRunner.run
+  Note: the fixed-point convergence loop calls several stages multiple times.
+  run_tax_cfads_model → run_operating_model edges are
+  STATIC_CALL_GRAPH_CONFIRMED (orchestrator.py line 655, 989).
+
+KUPI bank-only diagnostic (DIAGNOSTIC_ONLY_RUNTIME_OBSERVED):
+  [P0 and D0 built BEFORE patch context — no solver interception during preparation]
+  kupi_true_bank_only_senior_diagnostic(p0, d0)
+    → diag_mod._forward_roll            [call_count >= 1, DIAGNOSTIC_ONLY_RUNTIME_OBSERVED]
+    → diag_mod._backward_dscr_capacity  [call_count >= 1, DIAGNOSTIC_ONLY_RUNTIME_OBSERVED]
+    — does NOT route through run_project_financing_model or WaterfallRunner.run
 ```
 
 ### Key Observations
 
-| Observation | Test name | Result |
-|---|---|---|
-| TUHO calls `WaterfallRunner.run` | `test_tuho_calls_legacy_waterfall_chain` | CONFIRMED |
-| TUHO calls `run_waterfall_v3_core` | `test_tuho_calls_legacy_waterfall_chain` | CONFIRMED |
-| TUHO calls `domain.waterfall.run_waterfall` | `test_tuho_calls_legacy_waterfall_chain` | CONFIRMED |
-| TUHO does NOT call `run_operating_model` | `test_tuho_does_not_call_clean_engine_orchestrator` | CONFIRMED |
-| TUHO structural trace in order | `test_tuho_structural_trace` | CONFIRMED |
-| Oborovo calls full legacy chain | `test_oborovo_calls_legacy_waterfall_chain` | CONFIRMED |
-| Oborovo does NOT call clean orchestrator | `test_oborovo_does_not_call_clean_engine_orchestrator` | CONFIRMED |
-| Oborovo structural trace in order | `test_oborovo_structural_trace` | CONFIRMED |
-| KUPI absent from `FACTORY_MAP` | `test_kupi_not_in_app_factory_map` | CONFIRMED |
-| KUPI diagnostic calls `run_project_financing_model` | `test_kupi_diagnostic_calls_run_project_financing_model` | CONFIRMED |
-| KUPI bank-only calls private `_forward_roll` / `_backward_dscr_capacity` | `test_kupi_bank_only_diagnostic_calls_private_solvers` | CONFIRMED |
-| KUPI diagnostic does NOT call `_run_waterfall` or `WaterfallRunner.run` | `test_kupi_diagnostic_does_not_route_through_app_entry` | CONFIRMED |
-| TUHO/Oborovo NEVER call `run_project_financing_model` | `test_legacy_app_projects_never_call_run_project_financing_model[TUHO/Oborovo]` | CONFIRMED |
-| TUHO/Oborovo ALWAYS call `run_waterfall_v3_core` | `test_legacy_app_projects_always_call_run_waterfall_v3_core[TUHO/Oborovo]` | CONFIRMED |
+| Observation | Evidence label | Test name | Result |
+|---|---|---|---|
+| TUHO calls `WaterfallRunner.run` | RUNTIME_OBSERVED | `test_tuho_calls_legacy_waterfall_chain` | CONFIRMED |
+| TUHO calls `run_waterfall_v3_core` | RUNTIME_OBSERVED | `test_tuho_calls_legacy_waterfall_chain` | CONFIRMED |
+| TUHO calls `domain.waterfall.run_waterfall` | RUNTIME_OBSERVED | `test_tuho_calls_legacy_waterfall_chain` | CONFIRMED |
+| TUHO does NOT call `run_operating_model` | RUNTIME_OBSERVED | `test_tuho_does_not_call_clean_engine_orchestrator` | CONFIRMED |
+| TUHO structural trace in order | RUNTIME_OBSERVED | `test_tuho_structural_trace` | CONFIRMED |
+| Oborovo calls full legacy chain | RUNTIME_OBSERVED | `test_oborovo_calls_legacy_waterfall_chain` | CONFIRMED |
+| Oborovo does NOT call clean orchestrator | RUNTIME_OBSERVED | `test_oborovo_does_not_call_clean_engine_orchestrator` | CONFIRMED |
+| Oborovo structural trace in order | RUNTIME_OBSERVED | `test_oborovo_structural_trace` | CONFIRMED |
+| KUPI absent from `FACTORY_MAP` | RUNTIME_OBSERVED | `test_kupi_not_in_app_factory_map` | CONFIRMED |
+| KUPI diagnostic calls `run_project_financing_model` | RUNTIME_OBSERVED | `test_kupi_clean_engine_all_stages_called` | CONFIRMED |
+| KUPI diagnostic calls `run_operating_model` | RUNTIME_OBSERVED | `test_kupi_clean_engine_all_stages_called` | CONFIRMED |
+| KUPI diagnostic calls `run_senior_debt_model` | RUNTIME_OBSERVED | `test_kupi_clean_engine_all_stages_called` | CONFIRMED |
+| KUPI diagnostic calls `run_tax_cfads_model` | RUNTIME_OBSERVED | `test_kupi_clean_engine_all_stages_called` | CONFIRMED |
+| KUPI diagnostic calls `compute_shareholder_loan_schedules` | RUNTIME_OBSERVED | `test_kupi_clean_engine_all_stages_called` | CONFIRMED |
+| KUPI diagnostic does NOT route through app entry | RUNTIME_OBSERVED | `test_kupi_diagnostic_does_not_route_through_app_entry` | CONFIRMED |
+| `kupi_true_bank_only_senior_diagnostic` calls `diag_mod._forward_roll` | DIAGNOSTIC_ONLY_RUNTIME_OBSERVED | `test_private_solvers_called_by_diagnostic` | CONFIRMED |
+| `kupi_true_bank_only_senior_diagnostic` calls `diag_mod._backward_dscr_capacity` | DIAGNOSTIC_ONLY_RUNTIME_OBSERVED | `test_private_solvers_called_by_diagnostic` | CONFIRMED |
+| TUHO/Oborovo NEVER call `run_project_financing_model` | RUNTIME_OBSERVED | `test_legacy_app_projects_never_call_run_project_financing_model[TUHO/Oborovo]` | CONFIRMED |
+| TUHO/Oborovo ALWAYS call `run_waterfall_v3_core` | RUNTIME_OBSERVED | `test_legacy_app_projects_always_call_run_waterfall_v3_core[TUHO/Oborovo]` | CONFIRMED |
 
 ### Terminology
 
@@ -170,37 +192,38 @@ tests/
 
 ## 4. Runtime Call-Graph Comparison
 
-### TUHO (production runtime)
+### TUHO (production runtime — RUNTIME_OBSERVED)
 ```
-API POST /api/v1/run
-  → app/api/router.py line 115: run_project(...)
-  → app/api/project_runner.py: run_demo_project(...)
-  → app/ui_runner.py line 119: create_default_tuho_wind1()
-  → app/ui_runner.py line 222: _run_waterfall(proj, engine)
-  → app/waterfall_runner.py: WaterfallRunConfig.from_inputs() [reads is_* flags]
-  → app/waterfall_core.py: run_waterfall_v3_core()
-    → domain/waterfall/waterfall_engine.py: run_waterfall()
-      [Also: finco_core/revenue/generation.py, domain/opex/projections.py,
-       domain/financing/depreciation_schedule.py, finco_core/shl/engine.py]
+API POST /api/v1/run  [STATIC_CALL_GRAPH_CONFIRMED: app/api/router.py line 115]
+  → app/api/project_runner.py: run_demo_project(...)  [STATIC_CALL_GRAPH_CONFIRMED]
+  → app/ui_runner.py line 222: _run_waterfall(proj, engine)  [RUNTIME_OBSERVED: APP_ENTRY]
+  → app/waterfall_runner.py: WaterfallRunner.run()  [RUNTIME_OBSERVED: LEGACY_RUNNER]
+  → app/waterfall_runner.py: run_waterfall_v3_core()  [RUNTIME_OBSERVED: LEGACY_CORE]
+  → domain/waterfall/waterfall_engine.py: run_waterfall()  [RUNTIME_OBSERVED: LEGACY_WATERFALL]
+    [Also: finco_core/revenue/generation.py, domain/opex/projections.py,
+     domain/financing/depreciation_schedule.py, finco_core/shl/engine.py
+     — STATIC_CALL_GRAPH_CONFIRMED within run_waterfall body]
 ```
 
-### Oborovo (production runtime)
-Identical path: `run_demo_project("Oborovo")` → `create_default_oborovo()` → `_run_waterfall()` → `run_waterfall_v3_core()` → `run_waterfall()`
+### Oborovo (production runtime — RUNTIME_OBSERVED)
+Identical observed trace: `run_demo_project("Oborovo")` → `_run_waterfall()` [APP_ENTRY] → `WaterfallRunner.run()` [LEGACY_RUNNER] → `run_waterfall_v3_core()` [LEGACY_CORE] → `run_waterfall()` [LEGACY_WATERFALL]
 
 ### KUPI (test/diagnostic only — NOT in production app)
-KUPI has no factory in `app/project_factories.py` and is not in the `FACTORY_MAP` in `app/ui_runner.py` (lines 129–137). KUPI exists only in diagnostics:
+KUPI has no factory in `app/project_factories.py` and is not in the `FACTORY_MAP` in `app/ui_runner.py` (lines 129–137) — **RUNTIME_OBSERVED**: `run_demo_project("KUPI")` returns `result.result is None`. KUPI exists only in diagnostics:
 ```
 tests/diagnostics/kupi_k0_k3_causal_grid.py:
-  build_kupi_project_inputs()
-    → run_project_financing_model()
-      → financial_engine/financing/project.py
-        → run_senior_debt_model() [clean engine]
-          → run_tax_cfads_model()
-            → run_operating_model()
+  run_p0_current_generic()                              [RUNTIME_OBSERVED: DIAGNOSTIC_ENTRY]
+    → diag_mod.run_project_financing_model()            [RUNTIME_OBSERVED: call_count >= 1]
+      → financial_engine.financing.project:
+        run_operating_model()                           [RUNTIME_OBSERVED: call_count >= 1]
+        run_senior_debt_model()                         [RUNTIME_OBSERVED: call_count >= 1]
+          → (inside orchestrator, fixed-point loop):
+            run_tax_cfads_model()                       [RUNTIME_OBSERVED: call_count >= 1]
+            compute_shareholder_loan_schedules()        [RUNTIME_OBSERVED: call_count >= senior_count]
 ```
-`kupi_true_bank_only_senior_diagnostic()` (line ~1769) additionally calls `_forward_roll()` and `_backward_dscr_capacity()` from `financial_engine/senior_debt/solver.py` directly — **private solver functions** — for causal decomposition analysis. This is diagnostic-only.
+`kupi_true_bank_only_senior_diagnostic(p0, d0)` (line 1657) calls `diag_mod._forward_roll` and `diag_mod._backward_dscr_capacity` — **DIAGNOSTIC_ONLY_RUNTIME_OBSERVED** with P0/D0 pre-built before patch context. The calls originate from the diagnostic path itself, not from clean-engine preparation.
 
-**Summary: TUHO and Oborovo do NOT flow through the clean engine in production. KUPI is not a production project.**
+**Summary: TUHO and Oborovo do NOT flow through the clean engine in production (RUNTIME_OBSERVED). KUPI is not a production project (RUNTIME_OBSERVED).**
 
 ---
 
