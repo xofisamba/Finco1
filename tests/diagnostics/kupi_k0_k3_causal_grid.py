@@ -847,11 +847,21 @@ class KupiShlConstructionDrawdownDiagnostic:
     drawdown gap is therefore a financing-stack consequence, NOT a construction
     mechanics issue.
 
-    D0/K3 has Senior ≈ source (within 513 kEUR) and cash SHL ≈ source (within 513 kEUR),
-    confirming the funding identity residual is the same for both.
+    D0/K3 is the CLOSEST_CURRENT_FINANCING_STACK_APPROXIMATION to source but is NOT
+    a fully source-compatible operating case: balancing=0 affects both Bank sizing and
+    Base operations, so D0 operating SHL interest (~35,874 kEUR) diverges substantially
+    from source (~48,681 kEUR) due to BANK_CASE_BALANCING_OVERRIDE_GAP.
 
-    COD opening SHL gap in D0/K3 vs source (≈ -598 kEUR) is classified as
-    SOURCE_INFORMED_CONSTRUCTION_TIMING_APPROXIMATION (day-count / PIK precision).
+    D0 COD SHL gap decomposition (D0 - source = -598.140 kEUR):
+      -512.809 kEUR  FINANCING_STACK_RESIDUAL / SENIOR_SHL_FUNDING_IDENTITY
+                     (mirrors D0 vs source Senior residual of +512.809 kEUR)
+    +  -85.331 kEUR  SOURCE_INFORMED_CONSTRUCTION_TIMING_APPROXIMATION
+                     (PIK precision / day-count)
+    = -598.140 kEUR  total D0 COD SHL gap
+
+    Only the PIK/timing component (-85.331 kEUR) receives
+    SOURCE_INFORMED_CONSTRUCTION_TIMING_APPROXIMATION.  The cash-SHL component
+    (-512.809 kEUR) is a FINANCING_STACK_RESIDUAL consequence of the Senior residual.
     """
     # P0 metrics
     p0_cash_shl_keur: float
@@ -877,11 +887,12 @@ class KupiShlConstructionDrawdownDiagnostic:
     source_op_shl_interest_keur: float     # = SOURCE_TOTAL_SHL_OPERATING_INTEREST_KEUR
     source_cod_identity_holds: bool
 
-    # Gap analysis (D0 vs source — the source-compatible comparison)
-    d0_vs_source_cash_shl_gap_keur: float      # D0 - source (≈ -513)
-    d0_vs_source_cod_shl_gap_keur: float       # D0 - source (≈ -598)
-    d0_vs_source_senior_gap_keur: float        # D0 - source (≈ +513)
-    d0_vs_source_op_shl_interest_gap_keur: float  # D0 - source (confounded by BANK_BASE_OVERRIDE)
+    # Gap analysis (D0 vs source — the closest financing-stack approximation)
+    d0_vs_source_cash_shl_gap_keur: float      # D0 - source (≈ -512.809) FINANCING_STACK_RESIDUAL
+    d0_vs_source_pik_gap_keur: float           # D0 - source (≈ -85.331)  SOURCE_INFORMED_CONSTRUCTION_TIMING_APPROXIMATION
+    d0_vs_source_cod_shl_gap_keur: float       # D0 - source (≈ -598.140) = cash_gap + pik_gap
+    d0_vs_source_senior_gap_keur: float        # D0 - source (≈ +512.809) funding identity mirror
+    d0_vs_source_op_shl_interest_gap_keur: float  # D0 - source (confounded by BANK_CASE_BALANCING_OVERRIDE_GAP)
 
     # P0 gap attribution
     p0_vs_source_cash_shl_gap_keur: float     # P0 - source (≈ +11427) — FINANCING_STACK_CONSEQUENCE
@@ -937,25 +948,30 @@ def kupi_shl_construction_drawdown_diagnostic(
     p0_senior_gap = p0["senior"] - SOURCE_SENIOR_KEUR
 
     d0_cash_gap = d0["cash_shl"] - SOURCE_SHL_PRINCIPAL_KEUR
+    d0_pik_gap = d0["pik"] - SOURCE_PIK_KEUR
     d0_cod_gap = d0["cod_open"] - SOURCE_OPENING_SHL_KEUR
     d0_senior_gap = d0["senior"] - SOURCE_SENIOR_KEUR
     d0_op_int_gap = d0["op_shl_int"] - SOURCE_TOTAL_SHL_OPERATING_INTEREST_KEUR
 
     note = (
-        f"CASE-AWARE SHL STACK COMPARISON (source-compatible case = D0/K3): "
+        f"CASE-AWARE SHL STACK COMPARISON "
+        f"(D0/K3 = CLOSEST_CURRENT_FINANCING_STACK_APPROXIMATION, not fully source-compatible): "
         f"D0 cash_SHL={d0['cash_shl']:.3f} vs source={SOURCE_SHL_PRINCIPAL_KEUR:.3f} "
-        f"(gap={d0_cash_gap:+.3f} kEUR = mirror of Senior residual). "
+        f"(gap={d0_cash_gap:+.3f} kEUR: FINANCING_STACK_RESIDUAL / SENIOR_SHL_FUNDING_IDENTITY "
+        f"— mirrors D0 Senior residual {d0_senior_gap:+.3f} kEUR). "
+        f"D0 PIK={d0['pik']:.3f} vs source={SOURCE_PIK_KEUR:.3f} "
+        f"(gap={d0_pik_gap:+.3f} kEUR: SOURCE_INFORMED_CONSTRUCTION_TIMING_APPROXIMATION). "
         f"D0 COD SHL={d0['cod_open']:.3f} vs source={SOURCE_OPENING_SHL_KEUR:.3f} "
-        f"(gap={d0_cod_gap:+.3f} kEUR: SOURCE_INFORMED_CONSTRUCTION_TIMING_APPROXIMATION). "
+        f"(gap={d0_cod_gap:+.3f} kEUR = cash_gap {d0_cash_gap:+.3f} + PIK_gap {d0_pik_gap:+.3f}; "
+        f"only PIK component is construction-timing; cash component is financing-stack residual). "
         f"D0 op SHL interest={d0['op_shl_int']:.3f} vs source={SOURCE_TOTAL_SHL_OPERATING_INTEREST_KEUR:.3f} "
-        f"(gap={d0_op_int_gap:+.3f} kEUR: BANK_CASE_BALANCING_OVERRIDE_GAP deflates Base SHL balance "
-        f"via excess CFADS sweep — cannot isolate without true Bank-only Base replay). "
+        f"(gap={d0_op_int_gap:+.3f} kEUR: BANK_CASE_BALANCING_OVERRIDE_GAP — "
+        f"D0 Base CFADS inflated → faster SHL sweep; cannot isolate without true Bank-only Base replay). "
         f"P0 cash_SHL={p0['cash_shl']:.3f} vs source={SOURCE_SHL_PRINCIPAL_KEUR:.3f} "
         f"(gap={p0_cash_gap:+.3f} kEUR): FINANCING_STACK_CONSEQUENCE — "
         f"P0 Senior={p0['senior']:.3f} < source={SOURCE_SENIOR_KEUR:.3f} "
         f"({p0_senior_gap:+.3f} kEUR) because balancing=5 in P0 Bank case depresses Bank CFADS; "
         f"residual SHL is larger by funding identity. NOT a construction mechanics error. "
-        f"SHL_CONSTRUCTION_DRAWDOWN_GAP is NOT ranked PRIMARY for source-compatible comparison. "
         f"COD identity (cash+PIK=COD_open) holds for all cases: "
         f"P0={p0['cod_identity_holds']}, D0={d0['cod_identity_holds']}, source=True."
     )
@@ -979,6 +995,7 @@ def kupi_shl_construction_drawdown_diagnostic(
         source_op_shl_interest_keur=SOURCE_TOTAL_SHL_OPERATING_INTEREST_KEUR,
         source_cod_identity_holds=True,
         d0_vs_source_cash_shl_gap_keur=d0_cash_gap,
+        d0_vs_source_pik_gap_keur=d0_pik_gap,
         d0_vs_source_cod_shl_gap_keur=d0_cod_gap,
         d0_vs_source_senior_gap_keur=d0_senior_gap,
         d0_vs_source_op_shl_interest_gap_keur=d0_op_int_gap,
@@ -1862,7 +1879,7 @@ def kupi_true_bank_only_senior_diagnostic(
         f"bank tax shadow underestimates SHL deductibility at the higher Senior level. "
         f"If result hits gearing cap ({true_bank_only_senior:.0f} ≈ gearing cap), the "
         f"full G2A loop would converge to a lower DSCR-constrained value. "
-        f"CLOSEST_CURRENT_PRODUCTION_APPROXIMATION: D0/K3 Senior={d0_senior:.3f} kEUR. "
+        f"CLOSEST_CURRENT_FINANCING_STACK_APPROXIMATION: D0/K3 Senior={d0_senior:.3f} kEUR. "
         f"True-bank-only vs P0: {effect:+.3f} kEUR. "
         f"D0 approximation gap vs standalone: {gap:+.3f} kEUR."
     )
@@ -1940,7 +1957,7 @@ def run_kupi_final_source_compat() -> "KupiFinalSourceCompatDiagnostic":
     #    Tax residual cannot be cleanly isolated without true Bank-only Base replay.
     tax_shadow = kupi_source_workbook_tax_shadow(p0)  # retained for existing tests
 
-    # 5. D0/K3 is CLOSEST_CURRENT_PRODUCTION_APPROXIMATION.
+    # 5. D0/K3 is CLOSEST_CURRENT_FINANCING_STACK_APPROXIMATION.
     #    All D0/K3 metrics are used for the source-compatible comparison.
     #    P0 metrics are NOT mixed into this note.
     p0_senior = p0.final_senior_commitment_keur
@@ -1963,7 +1980,7 @@ def run_kupi_final_source_compat() -> "KupiFinalSourceCompatDiagnostic":
 
     note = (
         f"PROVISIONAL_APPROXIMATION_RESIDUAL (D0/K3 basis — all metrics from same case): "
-        f"CLOSEST_CURRENT_PRODUCTION_APPROXIMATION=D0/K3 Senior={d0_senior:.9f} kEUR "
+        f"CLOSEST_CURRENT_FINANCING_STACK_APPROXIMATION=D0/K3 Senior={d0_senior:.9f} kEUR "
         f"(ALL_AT_FC+COMPOUND+CASH_SWEEP+D0 bank-only balancing approx). "
         f"Source anchor Senior={SOURCE_SENIOR_KEUR:.9f} kEUR. "
         f"PROVISIONAL_APPROXIMATION_RESIDUAL: "
@@ -1985,7 +2002,10 @@ def run_kupi_final_source_compat() -> "KupiFinalSourceCompatDiagnostic":
         f"(3) PRE_RESERVE_SHL_CASH_AUTHORITY_GAP: Finco pre-reserve SHL candidate cash "
         f"!= source CF102 (post-covenant-release); first period D0={d0.project_model_result.post_senior_cash.cash_available_for_shl_before_reserves_keur[list(d0.project_model_result.post_senior_cash.period_indices).index(d0_shl_s.period_indices[d0_first_op_idx])]:.3f} vs source=5,842 kEUR; "
         f"delta explained by upstream CFADS and Senior DS differences, NOT by SHL interest. "
-        f"(4) SOURCE_INFORMED_CONSTRUCTION_TIMING_APPROXIMATION: D0 COD SHL gap=-598 kEUR. "
+        f"(4) D0 COD SHL gap=-598.140 kEUR decomposed: "
+        f"-512.809 kEUR FINANCING_STACK_RESIDUAL/SENIOR_SHL_FUNDING_IDENTITY "
+        f"+ -85.331 kEUR SOURCE_INFORMED_CONSTRUCTION_TIMING_APPROXIMATION (PIK/day-count). "
+        f"Only the PIK component is construction-timing; cash-SHL component mirrors Senior residual. "
         f"P0 SHL metrics are NOT used here (P0 Senior=135,724 kEUR differs from source by -11,427 kEUR "
         f"due to BANK_CASE_BALANCING_OVERRIDE_GAP; P0 SHL gap is a financing-stack consequence). "
         f"KUPI status: OOS causal/behavioral validation PASSED. "
@@ -1997,7 +2017,7 @@ def run_kupi_final_source_compat() -> "KupiFinalSourceCompatDiagnostic":
         bank_only_diagnostic=bank_only,
         tax_shadow=tax_shadow,
         p0_engine_senior_keur=p0_senior,
-        true_bank_only_senior_keur=d0_senior,  # D0/K3 = CLOSEST_CURRENT_PRODUCTION_APPROXIMATION
+        true_bank_only_senior_keur=d0_senior,  # D0/K3 = CLOSEST_CURRENT_FINANCING_STACK_APPROXIMATION
         source_anchor_senior_keur=SOURCE_SENIOR_KEUR,
         residual_to_source_keur=provisional_residual,
         residual_pct=provisional_residual_pct,

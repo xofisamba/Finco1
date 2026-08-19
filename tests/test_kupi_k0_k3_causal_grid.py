@@ -1126,8 +1126,13 @@ class TestCausalClassificationRegressionGuards:
             f"If this is ~{p0_gap:.0f} kEUR, the diagnostic is using P0 values for the D0 row."
         )
 
-    def test_q3_cod_identity_holds_all_cases(self, drawdown_diag):
-        """Q3: COD identity (cash_SHL + construction_PIK = COD_opening_SHL) holds for P0, D0, source."""
+    def test_q3_cod_identity_and_gap_decomposition(self, drawdown_diag):
+        """Q3: COD identity holds for all cases; D0 COD gap = cash_SHL_gap + PIK_gap.
+
+        Guards against attributing the entire COD SHL gap to construction timing when
+        the cash-SHL component (FINANCING_STACK_RESIDUAL) is materially non-zero.
+        Only the PIK component is SOURCE_INFORMED_CONSTRUCTION_TIMING_APPROXIMATION.
+        """
         assert drawdown_diag.p0_cod_identity_holds, (
             f"P0 COD identity broken: cash_SHL={drawdown_diag.p0_cash_shl_keur:.3f} + "
             f"PIK={drawdown_diag.p0_construction_pik_keur:.3f} ≠ "
@@ -1143,6 +1148,25 @@ class TestCausalClassificationRegressionGuards:
             f"{SOURCE_SHL_PRINCIPAL_KEUR:.3f} + {drawdown_diag.source_pik_keur:.3f} ≠ "
             f"{SOURCE_OPENING_SHL_KEUR:.3f}"
         )
+        # Decomposition: D0 COD gap = cash_SHL gap + PIK gap
+        cash_gap = drawdown_diag.d0_vs_source_cash_shl_gap_keur
+        pik_gap = drawdown_diag.d0_vs_source_pik_gap_keur
+        cod_gap = drawdown_diag.d0_vs_source_cod_shl_gap_keur
+        decomp_residual = abs(cod_gap - (cash_gap + pik_gap))
+        assert decomp_residual < 1.0, (
+            f"COD_gap ({cod_gap:+.3f}) ≠ cash_gap ({cash_gap:+.3f}) + PIK_gap ({pik_gap:+.3f}); "
+            f"residual={decomp_residual:.3f} kEUR"
+        )
+        # Cash-SHL component must be materially non-zero (guards against mislabeling as timing only)
+        assert abs(cash_gap) > 100.0, (
+            f"D0 cash_SHL gap ({cash_gap:+.3f} kEUR) is near zero — "
+            f"if COD gap is then labeled pure construction timing, the financing-stack "
+            f"residual is hidden. Cash component must be reported as FINANCING_STACK_RESIDUAL."
+        )
+        print(f"\n  D0 COD gap decomposition:")
+        print(f"    cash_SHL gap: {cash_gap:+.3f} kEUR  (FINANCING_STACK_RESIDUAL)")
+        print(f"    PIK gap:      {pik_gap:+.3f} kEUR  (SOURCE_INFORMED_CONSTRUCTION_TIMING_APPROXIMATION)")
+        print(f"    COD SHL gap:  {cod_gap:+.3f} kEUR  (= sum, verified)")
 
     def test_q4_source_funding_identity_closes(self, drawdown_diag):
         """Q4: Source funding identity: Senior + cash_SHL + ShareCap(500) ≈ Total Uses."""
