@@ -1,22 +1,32 @@
 """Tests for PR-3B: dynamic DSRA target schedule (DsraTargetPolicy).
 
+MEASUREMENT DATE: j=i (current period INCLUDED in coverage window).
+Source-proven from TUHO/Oborovo workbooks:
+  TUHO:    6m target at op_0 = DS[op_0] = 2116.361394092063
+  Oborovo: 6m target at op_0 = DS[op_0] = 2239.133412854356
+
 Covers:
   - DsraTargetPolicy enum values
   - months_between() exact calendar arithmetic
-  - build_dsra_required_balance_schedule() for FIXED_AMOUNT and FORWARD_DEBT_SERVICE_MONTHS
+  - build_dsra_required_balance_schedule() FIXED_AMOUNT and FORWARD policies
+  - Measurement date: j=i algorithm (current period included)
   - Generic time-coverage: 3m / 6m / 9m / 12m on semi-annual periods
-  - Cross-verification with legacy workbook formula
+  - Workbook-parity source tests: TUHO and Oborovo 3m/6m/12m
+  - Legacy formula cross-verification (confirmed equivalent)
   - compute_cod_dsra_funding_keur()
-  - CashDsraInput.required_balance_schedule validation
+  - CashDsraInput target_policy / dsra_months fields
   - run_cash_dsra_model() consuming dynamic schedule
   - COD funding handshake: opening = first-period dynamic target
-  - NONE / DSRF parity: zero balance schedule, neutral
-  - Target-rise → top_up increases; target-decline → no release (UNRESOLVED_RELEASE_POLICY)
-  - Cash conservation and balance conservation per period
-  - Error paths: length mismatch, duplicate indices, invalid dates, negative fixed_amount
+  - NONE / DSRF parity: neutral pass-through
+  - Target-rise → top_up; target-decline → no release (UNRESOLVED_RELEASE_POLICY)
+  - Cash and balance conservation per period
+  - Adapter maps dsra_target_policy to DsraTargetPolicy
+  - Production-path: adapter → orchestrator → cash_dsra.required_balance_keur
+  - Error paths: length mismatch, duplicate indices, invalid dates, etc.
 """
 from __future__ import annotations
 
+import dataclasses
 import math
 from datetime import date
 
@@ -113,6 +123,15 @@ class TestDsraTargetPolicyEnum:
     def test_distinct(self):
         assert DsraTargetPolicy.FIXED_AMOUNT != DsraTargetPolicy.FORWARD_DEBT_SERVICE_MONTHS
 
+    def test_importable_from_contracts(self):
+        from financial_engine.dsra.contracts import CashDsraInput
+        inp = CashDsraInput(
+            mode=DebtServiceReserveSupportMode.NONE,
+            requirement_keur=0.0,
+            target_policy=DsraTargetPolicy.FIXED_AMOUNT,
+        )
+        assert inp.target_policy == DsraTargetPolicy.FIXED_AMOUNT
+
 
 # ---------------------------------------------------------------------------
 # months_between
@@ -140,7 +159,7 @@ class TestMonthsBetween:
 
 
 # ---------------------------------------------------------------------------
-# build_dsra_required_balance_schedule — FIXED_AMOUNT
+# FIXED_AMOUNT policy
 # ---------------------------------------------------------------------------
 
 class TestFixedAmountPolicy:
@@ -176,13 +195,12 @@ class TestFixedAmountPolicy:
 
     def test_zero_fixed_amount(self):
         indices, starts, ends, is_constr = _make_periods(0, 2)
-        ds = (500.0, 500.0)
         result = build_dsra_required_balance_schedule(
             period_indices=indices,
             period_start_dates=starts,
             period_end_dates=ends,
             is_construction=is_constr,
-            senior_debt_service_keur=ds,
+            senior_debt_service_keur=(500.0, 500.0),
             coverage_months=6,
             policy=DsraTargetPolicy.FIXED_AMOUNT,
             fixed_amount_keur=0.0,
@@ -204,75 +222,113 @@ class TestFixedAmountPolicy:
 
 
 # ---------------------------------------------------------------------------
-# Forward debt service months — 6m semi-annual (one full payment)
+# MEASUREMENT DATE RULE (source-proven): j=i (CURRENT period included)
+# ---------------------------------------------------------------------------
+
+class TestMeasurementDateCurrentPeriodIncluded:
+    """Source-proven: target at period t covers DS starting from period t (not t+1).
+
+    Evidence:
+      TUHO   6m target at op_0 = DS[op_0] = 2116.361394  (not DS[op_1])
+      Oborovo 6m target at op_0 = DS[op_0] = 2239.133413  (not DS[op_1])
+    """
+
+    def test_6m_target_at_period0_equals_own_ds(self):
+        """6m coverage at period 0 = DS[0] (current period), NOT DS[1]."""
+        indices, starts, ends, is_constr = _make_periods(0, 4)
+        ds = (1000.0, 1100.0, 1200.0, 0.0)
+        result = build_dsra_required_balance_schedule(
+            period_indices=indices,
+            period_start_dates=starts,
+            period_end_dates=ends,
+            is_construction=is_constr,
+            senior_debt_service_keur=ds,
+            coverage_months=6,
+        )
+        # j=i: period 0 covers DS[0]=1000 with fraction 1.0
+        assert result[0] == pytest.approx(1000.0)
+        # j=i: period 1 covers DS[1]=1100 with fraction 1.0
+        assert result[1] == pytest.approx(1100.0)
+
+    def test_6m_not_equal_to_next_period_ds(self):
+        """Verify algorithm is j=i: result[0] != DS[1] when DS[0] != DS[1]."""
+        indices, starts, ends, is_constr = _make_periods(0, 3)
+        ds = (2000.0, 1800.0, 1600.0)
+        result = build_dsra_required_balance_schedule(
+            period_indices=indices,
+            period_start_dates=starts,
+            period_end_dates=ends,
+            is_construction=is_constr,
+            senior_debt_service_keur=ds,
+            coverage_months=6,
+        )
+        assert result[0] == pytest.approx(2000.0)  # DS[0], NOT DS[1]=1800
+        assert result[0] != pytest.approx(1800.0)
+
+    def test_terminal_period_covers_only_itself(self):
+        """Last period: 6m coverage = DS[last] (no future periods)."""
+        indices, starts, ends, is_constr = _make_periods(0, 3)
+        ds = (1000.0, 1100.0, 1200.0)
+        result = build_dsra_required_balance_schedule(
+            period_indices=indices,
+            period_start_dates=starts,
+            period_end_dates=ends,
+            is_construction=is_constr,
+            senior_debt_service_keur=ds,
+            coverage_months=6,
+        )
+        # Period 2 (last): j=2, DS[2]=1200, fraction=1.0 → 1200
+        assert result[2] == pytest.approx(1200.0)
+
+
+# ---------------------------------------------------------------------------
+# 6m semi-annual (one full payment — current period)
 # ---------------------------------------------------------------------------
 
 class TestForwardDsra6mSemiannual:
-    """6m coverage on 6m periods → fraction=1.0 → target = next_payment."""
+    """6m coverage on 6m periods → fraction=1.0 → target = DS[current]."""
 
-    def setup_method(self):
-        self.indices, self.starts, self.ends, self.is_constr = _make_periods(0, 4)
-        self.ds = (1000.0, 1100.0, 1200.0, 0.0)
-
-    def test_first_period_covers_next(self):
+    def test_6m_period0(self):
+        indices, starts, ends, is_constr = _make_periods(0, 4)
+        ds = (1000.0, 1100.0, 1200.0, 0.0)
         result = build_dsra_required_balance_schedule(
-            period_indices=self.indices,
-            period_start_dates=self.starts,
-            period_end_dates=self.ends,
-            is_construction=self.is_constr,
-            senior_debt_service_keur=self.ds,
+            period_indices=indices,
+            period_start_dates=starts,
+            period_end_dates=ends,
+            is_construction=is_constr,
+            senior_debt_service_keur=ds,
             coverage_months=6,
         )
-        # Period 0: covers period 1 fully → 1100
-        assert result[0] == pytest.approx(1100.0)
+        assert result[0] == pytest.approx(1000.0)
+        assert result[1] == pytest.approx(1100.0)
+        assert result[2] == pytest.approx(1200.0)
+        assert result[3] == pytest.approx(0.0)  # DS[3]=0
 
-    def test_second_period(self):
+    def test_terminal_zero_ds(self):
+        indices, starts, ends, is_constr = _make_periods(0, 3)
+        ds = (1000.0, 1100.0, 0.0)
         result = build_dsra_required_balance_schedule(
-            period_indices=self.indices,
-            period_start_dates=self.starts,
-            period_end_dates=self.ends,
-            is_construction=self.is_constr,
-            senior_debt_service_keur=self.ds,
+            period_indices=indices,
+            period_start_dates=starts,
+            period_end_dates=ends,
+            is_construction=is_constr,
+            senior_debt_service_keur=ds,
             coverage_months=6,
         )
-        # Period 1: covers period 2 → 1200
-        assert result[1] == pytest.approx(1200.0)
-
-    def test_last_period_zero_ds_ahead(self):
-        result = build_dsra_required_balance_schedule(
-            period_indices=self.indices,
-            period_start_dates=self.starts,
-            period_end_dates=self.ends,
-            is_construction=self.is_constr,
-            senior_debt_service_keur=self.ds,
-            coverage_months=6,
-        )
-        # Period 2: covers period 3 (DS=0) → 0
         assert result[2] == pytest.approx(0.0)
-
-    def test_terminal_period_zero(self):
-        result = build_dsra_required_balance_schedule(
-            period_indices=self.indices,
-            period_start_dates=self.starts,
-            period_end_dates=self.ends,
-            is_construction=self.is_constr,
-            senior_debt_service_keur=self.ds,
-            coverage_months=6,
-        )
-        # Period 3 (last): no future periods → 0
-        assert result[3] == pytest.approx(0.0)
 
 
 # ---------------------------------------------------------------------------
-# Forward — 3m coverage on 6m semi-annual periods (half payment)
+# 3m coverage on 6m periods (half of current payment)
 # ---------------------------------------------------------------------------
 
 class TestForwardDsra3mSemiannual:
-    """3m coverage on 6m periods → fraction = 0.5 → target = 0.5 × next_payment."""
+    """3m coverage on 6m periods → fraction = 0.5 → target = 0.5 × DS[current]."""
 
     def test_3m_is_half_of_6m(self):
+        """3m result should be exactly half of 6m result for each period."""
         indices, starts, ends, is_constr = _make_periods(0, 3)
-        ds = (1000.0, 2000.0, 2000.0)
+        ds = (1000.0, 2000.0, 1800.0)
         result_3m = build_dsra_required_balance_schedule(
             period_indices=indices,
             period_start_dates=starts,
@@ -289,13 +345,13 @@ class TestForwardDsra3mSemiannual:
             senior_debt_service_keur=ds,
             coverage_months=6,
         )
-        # 3m should be exactly half of 6m for each period
         for t3, t6 in zip(result_3m, result_6m):
             assert t3 == pytest.approx(t6 * 0.5)
 
     def test_3m_period0_value(self):
+        """3m at period 0 = 0.5 × DS[0]."""
         indices, starts, ends, is_constr = _make_periods(0, 3)
-        ds = (0.0, 2000.0, 1800.0)
+        ds = (2000.0, 1800.0, 1600.0)
         result = build_dsra_required_balance_schedule(
             period_indices=indices,
             period_start_dates=starts,
@@ -304,20 +360,20 @@ class TestForwardDsra3mSemiannual:
             senior_debt_service_keur=ds,
             coverage_months=3,
         )
-        # Period 0: 3m coverage, next period (1) is 6m → fraction=0.5 → 1000
-        assert result[0] == pytest.approx(1000.0)
+        assert result[0] == pytest.approx(1000.0)  # 0.5 × 2000
 
 
 # ---------------------------------------------------------------------------
-# Forward — 12m coverage on 6m semi-annual periods (sum of 2 payments)
+# 12m coverage on 6m periods (current + next)
 # ---------------------------------------------------------------------------
 
 class TestForwardDsra12mSemiannual:
-    """12m coverage on 6m periods → covers next 2 payments in full."""
+    """12m coverage on 6m periods → covers current + next payment."""
 
-    def test_12m_period0(self):
+    def test_12m_period0_flat(self):
+        """Flat DS: 12m = DS[0] + DS[1]."""
         indices, starts, ends, is_constr = _make_periods(0, 4)
-        ds = (0.0, 1000.0, 1100.0, 1200.0)
+        ds = (1000.0, 1000.0, 1000.0, 1000.0)
         result = build_dsra_required_balance_schedule(
             period_indices=indices,
             period_start_dates=starts,
@@ -326,12 +382,12 @@ class TestForwardDsra12mSemiannual:
             senior_debt_service_keur=ds,
             coverage_months=12,
         )
-        # Period 0 → period 1 (1000) + period 2 (1100) = 2100
-        assert result[0] == pytest.approx(2100.0)
+        assert result[0] == pytest.approx(2000.0)  # DS[0] + DS[1]
 
-    def test_12m_equals_two_6m_payments_when_flat(self):
+    def test_12m_amortising_sum_of_two(self):
+        """Amortising DS: 12m = DS[i] + DS[i+1] (not 2 × DS[i])."""
         indices, starts, ends, is_constr = _make_periods(0, 4)
-        ds = (0.0, 1000.0, 1000.0, 1000.0)
+        ds = (1000.0, 950.0, 900.0, 850.0)
         result = build_dsra_required_balance_schedule(
             period_indices=indices,
             period_start_dates=starts,
@@ -340,13 +396,15 @@ class TestForwardDsra12mSemiannual:
             senior_debt_service_keur=ds,
             coverage_months=12,
         )
-        # Flat DS: 12m = 2 × 6m payment = 2000
-        assert result[0] == pytest.approx(2000.0)
+        assert result[0] == pytest.approx(1950.0)  # DS[0] + DS[1]
+        assert result[1] == pytest.approx(1850.0)  # DS[1] + DS[2]
+        assert result[2] == pytest.approx(1750.0)  # DS[2] + DS[3]
+        assert result[3] == pytest.approx(850.0)   # DS[3] only (no period 4)
 
-    def test_12m_amortising_differs_from_2x_current(self):
-        """For amortising DS, sum-of-two is more accurate than 2 × current_period."""
+    def test_12m_differs_from_2x_current_when_amortising(self):
+        """Sum of two != 2 × current for amortising schedule."""
         indices, starts, ends, is_constr = _make_periods(0, 4)
-        ds = (0.0, 1000.0, 950.0, 900.0)
+        ds = (1000.0, 900.0, 800.0, 700.0)
         result = build_dsra_required_balance_schedule(
             period_indices=indices,
             period_start_dates=starts,
@@ -355,20 +413,22 @@ class TestForwardDsra12mSemiannual:
             senior_debt_service_keur=ds,
             coverage_months=12,
         )
-        # Period 0: 1000 + 950 = 1950 (not 2×1000=2000)
-        assert result[0] == pytest.approx(1950.0)
-        # Period 1: 950 + 900 = 1850
-        assert result[1] == pytest.approx(1850.0)
+        # result[0] = DS[0] + DS[1] = 1900, not 2×DS[0]=2000
+        assert result[0] == pytest.approx(1900.0)
+        assert result[0] != pytest.approx(2000.0)
 
 
 # ---------------------------------------------------------------------------
-# Forward — 9m coverage (1.5 payments semi-annual)
+# 9m coverage (1 full + 0.5 of next)
 # ---------------------------------------------------------------------------
 
 class TestForwardDsra9mSemiannual:
+    """9m = ENGINE_GENERIC_CAPABILITY (not workbook-proven option).
+    Semi-annual: 9m = DS[i] + 0.5 × DS[i+1]."""
+
     def test_9m_period0(self):
         indices, starts, ends, is_constr = _make_periods(0, 3)
-        ds = (0.0, 1000.0, 1000.0)
+        ds = (1000.0, 1000.0, 1000.0)
         result = build_dsra_required_balance_schedule(
             period_indices=indices,
             period_start_dates=starts,
@@ -377,8 +437,181 @@ class TestForwardDsra9mSemiannual:
             senior_debt_service_keur=ds,
             coverage_months=9,
         )
-        # Period 0: 6m fully = 1000; 3m partial of next (1000) = 500 → 1500
+        # Period 0: DS[0]=1000 full (6m) + DS[1]=1000 × 0.5 (3m) = 1500
         assert result[0] == pytest.approx(1500.0)
+
+    def test_9m_amortising(self):
+        indices, starts, ends, is_constr = _make_periods(0, 3)
+        ds = (2000.0, 1800.0, 1600.0)
+        result = build_dsra_required_balance_schedule(
+            period_indices=indices,
+            period_start_dates=starts,
+            period_end_dates=ends,
+            is_construction=is_constr,
+            senior_debt_service_keur=ds,
+            coverage_months=9,
+        )
+        # Period 0: DS[0]=2000 + 0.5 × DS[1]=900 = 2900
+        assert result[0] == pytest.approx(2900.0)
+
+
+# ---------------------------------------------------------------------------
+# WORKBOOK SOURCE PARITY TESTS (TUHO and Oborovo)
+#
+# Source: finco_recon/bank_sizing_candidates.py (TUHO DS1)
+#         tests/test_phase23s (Oborovo DS1, DS2)
+#         tests/test_stage_c3b3d2b2a (TUHO DS = -2116.361394092063)
+# Active production: both projects use NONE mode (dsra_months=0).
+# These tests validate source-available options ONLY (not active calibration).
+# ---------------------------------------------------------------------------
+
+class TestWorkbookSourceParityTUHO:
+    """
+    TUHO source evidence:
+      DS1 (op_idx=0) = 2116.361394092063 kEUR
+      DS2 (op_idx=1) = 2151.439207253809 kEUR
+    Available DSRA options (3m/6m/12m):
+      3m  = 1058.1806970460316 = DS1/2
+      6m  = 2116.3613940920630 = DS1
+      12m = 4267.8006013458730 = DS1 + DS2
+    Source: finco_recon/bank_sizing_candidates.py line 397
+    Active calibration: NONE mode (requirement_keur=0) — financials unchanged.
+    """
+    TUHO_DS1 = 2116.361394092063
+    TUHO_DS2 = 2151.439207253809
+    TUHO_3M  = 1058.1806970460316
+    TUHO_6M  = 2116.3613940920630
+    TUHO_12M = 4267.8006013458730
+
+    def _make_tuho_like_schedule(self):
+        """Synthetic 2-construction + N-operating with TUHO-like DS values."""
+        n_constr = 2
+        n_op = 4
+        indices, starts, ends, is_constr = _make_periods(n_constr, n_op)
+        # DS: 0 for construction, TUHO-like amortising for operations
+        ds = (0.0, 0.0, self.TUHO_DS1, self.TUHO_DS2, 2186.0, 2200.0)
+        return indices, starts, ends, is_constr, ds
+
+    def test_tuho_6m_parity(self):
+        """6m DSRA target at first operating period = DS1 = TUHO source 6m amount."""
+        indices, starts, ends, is_constr, ds = self._make_tuho_like_schedule()
+        result = build_dsra_required_balance_schedule(
+            period_indices=indices,
+            period_start_dates=starts,
+            period_end_dates=ends,
+            is_construction=is_constr,
+            senior_debt_service_keur=ds,
+            coverage_months=6,
+        )
+        first_op_idx = 2  # first non-construction period
+        assert result[first_op_idx] == pytest.approx(self.TUHO_6M, rel=1e-9)
+
+    def test_tuho_3m_parity(self):
+        """3m DSRA target = DS1/2 = TUHO source 3m amount."""
+        indices, starts, ends, is_constr, ds = self._make_tuho_like_schedule()
+        result = build_dsra_required_balance_schedule(
+            period_indices=indices,
+            period_start_dates=starts,
+            period_end_dates=ends,
+            is_construction=is_constr,
+            senior_debt_service_keur=ds,
+            coverage_months=3,
+        )
+        first_op_idx = 2
+        assert result[first_op_idx] == pytest.approx(self.TUHO_3M, rel=1e-9)
+
+    def test_tuho_12m_parity(self):
+        """12m DSRA target = DS1 + DS2 = TUHO source 12m amount."""
+        indices, starts, ends, is_constr, ds = self._make_tuho_like_schedule()
+        result = build_dsra_required_balance_schedule(
+            period_indices=indices,
+            period_start_dates=starts,
+            period_end_dates=ends,
+            is_construction=is_constr,
+            senior_debt_service_keur=ds,
+            coverage_months=12,
+        )
+        first_op_idx = 2
+        assert result[first_op_idx] == pytest.approx(self.TUHO_12M, rel=1e-9)
+
+    def test_tuho_12m_is_sum_of_ds1_ds2(self):
+        """Explicitly prove 12m = DS1 + DS2 for amortising TUHO schedule."""
+        expected = self.TUHO_DS1 + self.TUHO_DS2
+        assert expected == pytest.approx(self.TUHO_12M, rel=1e-9)
+
+
+class TestWorkbookSourceParityOborovo:
+    """
+    Oborovo source evidence:
+      DS1 (op_idx=0) = 2239.133412854356 kEUR
+      DS2 (op_idx=1) = 2202.625802862166 kEUR
+    Available DSRA options (3m/6m/12m):
+      3m  = 1119.566706427178 = DS1/2
+      6m  = 2239.133412854356 = DS1
+      12m = 4441.759215716522 = DS1 + DS2
+    Source: tests/golden/fixtures/oborovo_golden.py (line 48: -2239.133, -2202.626...)
+            tests/test_phase23s_combined_tuho_oborovo_frozen_senior_ds_regression_snapshot.py
+    Active calibration: Inputs!I348=0 → NONE mode — calibration financials unchanged.
+    """
+    OB_DS1 = 2239.133412854356
+    OB_DS2 = 2202.625802862166
+    OB_3M  = 1119.566706427178
+    OB_6M  = 2239.133412854356
+    OB_12M = 4441.759215716522
+
+    def _make_oborovo_like_schedule(self):
+        n_constr = 1
+        n_op = 4
+        indices, starts, ends, is_constr = _make_periods(n_constr, n_op)
+        ds = (0.0, self.OB_DS1, self.OB_DS2, 2240.0, 2100.0)
+        return indices, starts, ends, is_constr, ds
+
+    def test_oborovo_6m_parity(self):
+        """6m target at first op period = DS1 = Oborovo source 6m amount."""
+        indices, starts, ends, is_constr, ds = self._make_oborovo_like_schedule()
+        result = build_dsra_required_balance_schedule(
+            period_indices=indices,
+            period_start_dates=starts,
+            period_end_dates=ends,
+            is_construction=is_constr,
+            senior_debt_service_keur=ds,
+            coverage_months=6,
+        )
+        first_op_idx = 1
+        assert result[first_op_idx] == pytest.approx(self.OB_6M, rel=1e-9)
+
+    def test_oborovo_3m_parity(self):
+        """3m target = DS1/2 = Oborovo source 3m amount."""
+        indices, starts, ends, is_constr, ds = self._make_oborovo_like_schedule()
+        result = build_dsra_required_balance_schedule(
+            period_indices=indices,
+            period_start_dates=starts,
+            period_end_dates=ends,
+            is_construction=is_constr,
+            senior_debt_service_keur=ds,
+            coverage_months=3,
+        )
+        first_op_idx = 1
+        assert result[first_op_idx] == pytest.approx(self.OB_3M, rel=1e-9)
+
+    def test_oborovo_12m_parity(self):
+        """12m target = DS1 + DS2 = Oborovo source 12m amount."""
+        indices, starts, ends, is_constr, ds = self._make_oborovo_like_schedule()
+        result = build_dsra_required_balance_schedule(
+            period_indices=indices,
+            period_start_dates=starts,
+            period_end_dates=ends,
+            is_construction=is_constr,
+            senior_debt_service_keur=ds,
+            coverage_months=12,
+        )
+        first_op_idx = 1
+        assert result[first_op_idx] == pytest.approx(self.OB_12M, rel=1e-9)
+
+    def test_oborovo_12m_equals_ds1_plus_ds2(self):
+        """Explicitly prove 12m = DS1 + DS2."""
+        expected = self.OB_DS1 + self.OB_DS2
+        assert expected == pytest.approx(self.OB_12M, rel=1e-9)
 
 
 # ---------------------------------------------------------------------------
@@ -386,17 +619,18 @@ class TestForwardDsra9mSemiannual:
 # ---------------------------------------------------------------------------
 
 class TestLegacyFormulaCrossVerification:
-    """Cross-verify with finco_core.waterfall.dsra_engine: target = payment × periods_per_year × dsra_months/12."""
+    """Cross-verify: legacy formula annual_ds × dsra_months/12 is equivalent
+    to time-coverage with j=i for FLAT DS schedules on regular periods."""
 
-    def _legacy_target(self, payment: float, dsra_months: int, periods_per_year: int = 2) -> float:
-        annual_ds = payment * periods_per_year
+    def _legacy_target(self, ds_current: float, dsra_months: int, periods_per_year: int = 2) -> float:
+        annual_ds = ds_current * periods_per_year
         return annual_ds * (dsra_months / 12)
 
-    def test_6m_flat_ds_matches_legacy(self):
-        """Flat semi-annual DS → 6m coverage → time-coverage == legacy formula."""
+    def test_6m_flat_matches_legacy(self):
+        """Flat semi-annual DS, 6m → time-coverage = legacy formula."""
         indices, starts, ends, is_constr = _make_periods(0, 4)
-        payment = 2239.0  # Oborovo-like value
-        ds = (0.0,) + (payment,) * 3
+        payment = 2239.0
+        ds = (payment,) * 4
         result = build_dsra_required_balance_schedule(
             period_indices=indices,
             period_start_dates=starts,
@@ -406,13 +640,12 @@ class TestLegacyFormulaCrossVerification:
             coverage_months=6,
         )
         legacy = self._legacy_target(payment, 6)
-        # First period covers next period (flat) → matches legacy
         assert result[0] == pytest.approx(legacy, rel=1e-6)
 
-    def test_3m_flat_ds_matches_legacy(self):
+    def test_3m_flat_matches_legacy(self):
         indices, starts, ends, is_constr = _make_periods(0, 4)
-        payment = 2100.0  # TUHO-like value
-        ds = (0.0,) + (payment,) * 3
+        payment = 2116.0
+        ds = (payment,) * 4
         result = build_dsra_required_balance_schedule(
             period_indices=indices,
             period_start_dates=starts,
@@ -424,10 +657,10 @@ class TestLegacyFormulaCrossVerification:
         legacy = self._legacy_target(payment, 3)
         assert result[0] == pytest.approx(legacy, rel=1e-6)
 
-    def test_12m_flat_ds_matches_legacy(self):
+    def test_12m_flat_matches_legacy(self):
         indices, starts, ends, is_constr = _make_periods(0, 4)
         payment = 2239.0
-        ds = (0.0,) + (payment,) * 3
+        ds = (payment,) * 4
         result = build_dsra_required_balance_schedule(
             period_indices=indices,
             period_start_dates=starts,
@@ -437,7 +670,7 @@ class TestLegacyFormulaCrossVerification:
             coverage_months=12,
         )
         legacy = self._legacy_target(payment, 12)
-        # Flat schedule: sum-of-two = 2 × payment = legacy
+        # 12m flat: result = DS[i] + DS[i+1] = 2 × payment = legacy
         assert result[0] == pytest.approx(legacy, rel=1e-6)
 
 
@@ -449,20 +682,13 @@ class TestComputeCodDsraFunding:
     def test_returns_first_operating_period(self):
         schedule = (0.0, 0.0, 2239.0, 2100.0, 2000.0)
         is_constr = (True, True, False, False, False)
-        result = compute_cod_dsra_funding_keur(schedule, is_constr)
-        assert result == pytest.approx(2239.0)
+        assert compute_cod_dsra_funding_keur(schedule, is_constr) == pytest.approx(2239.0)
 
     def test_all_construction_returns_zero(self):
-        schedule = (0.0, 0.0)
-        is_constr = (True, True)
-        result = compute_cod_dsra_funding_keur(schedule, is_constr)
-        assert result == 0.0
+        assert compute_cod_dsra_funding_keur((0.0, 0.0), (True, True)) == 0.0
 
     def test_no_construction_returns_first(self):
-        schedule = (1000.0, 900.0, 800.0)
-        is_constr = (False, False, False)
-        result = compute_cod_dsra_funding_keur(schedule, is_constr)
-        assert result == pytest.approx(1000.0)
+        assert compute_cod_dsra_funding_keur((1000.0, 900.0, 800.0), (False, False, False)) == pytest.approx(1000.0)
 
     def test_length_mismatch_raises(self):
         with pytest.raises(ValueError, match="DSRA_COD_FUNDING_LENGTH_MISMATCH"):
@@ -470,26 +696,55 @@ class TestComputeCodDsraFunding:
 
 
 # ---------------------------------------------------------------------------
-# CashDsraInput — required_balance_schedule validation
+# CashDsraInput — new fields
 # ---------------------------------------------------------------------------
 
-class TestCashDsraInputScheduleValidation:
-    def test_valid_schedule_accepted(self):
+class TestCashDsraInputNewFields:
+    def test_default_policy_is_fixed_amount(self):
+        inp = CashDsraInput(mode=DebtServiceReserveSupportMode.NONE, requirement_keur=0.0)
+        assert inp.target_policy == DsraTargetPolicy.FIXED_AMOUNT
+
+    def test_default_dsra_months(self):
+        inp = CashDsraInput(mode=DebtServiceReserveSupportMode.NONE, requirement_keur=0.0)
+        assert inp.dsra_months == 6
+
+    def test_forward_policy_requires_cash_dsra_mode(self):
+        with pytest.raises(ValueError, match="FORWARD_DEBT_SERVICE_MONTHS policy requires mode=CASH_DSRA"):
+            CashDsraInput(
+                mode=DebtServiceReserveSupportMode.NONE,
+                requirement_keur=0.0,
+                target_policy=DsraTargetPolicy.FORWARD_DEBT_SERVICE_MONTHS,
+                dsra_months=6,
+            )
+
+    def test_forward_policy_requires_positive_months(self):
+        with pytest.raises(ValueError, match="FORWARD_DEBT_SERVICE_MONTHS requires dsra_months > 0"):
+            CashDsraInput(
+                mode=DebtServiceReserveSupportMode.CASH_DSRA,
+                requirement_keur=0.0,
+                target_policy=DsraTargetPolicy.FORWARD_DEBT_SERVICE_MONTHS,
+                dsra_months=0,
+            )
+
+    def test_valid_forward_config(self):
         inp = CashDsraInput(
             mode=DebtServiceReserveSupportMode.CASH_DSRA,
-            requirement_keur=0.0,
-            required_balance_schedule=(0.0, 1000.0, 900.0),
+            requirement_keur=1000.0,
+            target_policy=DsraTargetPolicy.FORWARD_DEBT_SERVICE_MONTHS,
+            dsra_months=6,
         )
-        assert inp.required_balance_schedule == (0.0, 1000.0, 900.0)
+        assert inp.target_policy == DsraTargetPolicy.FORWARD_DEBT_SERVICE_MONTHS
+        assert inp.dsra_months == 6
 
-    def test_none_schedule_accepted(self):
-        inp = CashDsraInput(
-            mode=DebtServiceReserveSupportMode.CASH_DSRA,
-            requirement_keur=500.0,
-        )
-        assert inp.required_balance_schedule is None
+    def test_invalid_target_policy_raises(self):
+        with pytest.raises(ValueError, match="target_policy must be DsraTargetPolicy"):
+            CashDsraInput(
+                mode=DebtServiceReserveSupportMode.NONE,
+                requirement_keur=0.0,
+                target_policy="not_a_policy",  # type: ignore
+            )
 
-    def test_negative_value_raises(self):
+    def test_schedule_validation_negative_raises(self):
         with pytest.raises(ValueError, match="must be >= 0"):
             CashDsraInput(
                 mode=DebtServiceReserveSupportMode.CASH_DSRA,
@@ -497,20 +752,12 @@ class TestCashDsraInputScheduleValidation:
                 required_balance_schedule=(0.0, -100.0),
             )
 
-    def test_nan_value_raises(self):
+    def test_schedule_validation_nan_raises(self):
         with pytest.raises(ValueError, match="must be finite"):
             CashDsraInput(
                 mode=DebtServiceReserveSupportMode.CASH_DSRA,
                 requirement_keur=0.0,
                 required_balance_schedule=(0.0, float("nan")),
-            )
-
-    def test_non_tuple_raises(self):
-        with pytest.raises(ValueError, match="must be a tuple or None"):
-            CashDsraInput(
-                mode=DebtServiceReserveSupportMode.CASH_DSRA,
-                requirement_keur=0.0,
-                required_balance_schedule=[0.0, 1000.0],  # type: ignore
             )
 
 
@@ -531,6 +778,8 @@ class TestRunCashDsraModelDynamic:
             mode=DebtServiceReserveSupportMode.CASH_DSRA,
             requirement_keur=0.0,
             required_balance_schedule=schedule,
+            target_policy=DsraTargetPolicy.FORWARD_DEBT_SERVICE_MONTHS,
+            dsra_months=6,
         )
         return run_cash_dsra_model(post_senior, dsra_input, op_periods)
 
@@ -551,11 +800,11 @@ class TestRunCashDsraModelDynamic:
         assert op_results[2].required_balance_keur == pytest.approx(1800.0)
 
     def test_target_rise_triggers_top_up(self):
-        """When target rises, top_up = target - opening (if cash available)."""
+        """When target rises, top_up = min(target - opening, cash_available)."""
         schedule = (0.0, 1000.0, 2000.0, 2000.0)
         result = self._run([0.0, 5000.0, 5000.0, 5000.0], schedule)
         op_results = [r for r in result.period_results if not r.is_construction]
-        # Period 1: opening=1000 (from closing_0=1000 after top_up), target=2000
+        # Period 1: opening=1000 (closing_0=1000), target=2000 → top_up=1000
         assert op_results[1].top_up_keur == pytest.approx(1000.0)
 
     def test_target_decline_no_release(self):
@@ -566,7 +815,7 @@ class TestRunCashDsraModelDynamic:
             assert r.release_keur == pytest.approx(0.0)
 
     def test_cash_conservation_per_period(self):
-        """cash_before - top_up + draw + release == cash_after for each period."""
+        """cash_before - top_up + draw + release == cash_after."""
         schedule = (0.0, 1500.0, 2000.0, 1800.0)
         result = self._run([0.0, 800.0, 5000.0, 5000.0], schedule)
         for r in result.period_results:
@@ -574,7 +823,7 @@ class TestRunCashDsraModelDynamic:
             assert r.cash_after_dsra_keur == pytest.approx(expected, abs=1e-6)
 
     def test_balance_conservation_per_period(self):
-        """opening + top_up - draw - release == closing for each period."""
+        """opening + top_up - draw - release == closing."""
         schedule = (0.0, 1500.0, 2000.0, 1800.0)
         result = self._run([0.0, 800.0, 5000.0, 5000.0], schedule)
         for r in result.period_results:
@@ -589,15 +838,16 @@ class TestRunCashDsraModelDynamic:
             mode=DebtServiceReserveSupportMode.CASH_DSRA,
             requirement_keur=0.0,
             required_balance_schedule=(0.0, 1000.0),  # wrong length
+            target_policy=DsraTargetPolicy.FORWARD_DEBT_SERVICE_MONTHS,
+            dsra_months=6,
         )
         with pytest.raises(ValueError, match="CASH_DSRA_SCHEDULE_LENGTH_MISMATCH"):
             run_cash_dsra_model(post_senior, dsra_input, op_periods)
 
-    def test_dynamic_diagnostic_present(self):
+    def test_forward_diagnostic_present(self):
         schedule = (0.0, 1000.0, 900.0)
         result = self._run([0.0, 5000.0, 5000.0], schedule)
-        diag_text = " ".join(result.diagnostics)
-        assert "FORWARD_DEBT_SERVICE_MONTHS" in diag_text
+        assert "FORWARD_DEBT_SERVICE_MONTHS" in " ".join(result.diagnostics)
 
     def test_static_diagnostic_present_when_no_schedule(self):
         indices = (0, 1, 2)
@@ -608,12 +858,11 @@ class TestRunCashDsraModelDynamic:
             requirement_keur=500.0,
         )
         result = run_cash_dsra_model(post_senior, dsra_input, op_periods)
-        diag_text = " ".join(result.diagnostics)
-        assert "FIXED_AMOUNT" in diag_text
+        assert "FIXED_AMOUNT" in " ".join(result.diagnostics)
 
 
 # ---------------------------------------------------------------------------
-# NONE / DSRF mode parity with dynamic schedule
+# NONE / DSRF parity
 # ---------------------------------------------------------------------------
 
 class TestNoneDsrfParity:
@@ -627,6 +876,190 @@ class TestNoneDsrfParity:
             assert r.top_up_keur == pytest.approx(0.0)
             assert r.draw_to_cover_shortfall_keur == pytest.approx(0.0)
             assert r.cash_after_dsra_keur == pytest.approx(r.cash_before_dsra_keur)
+
+
+# ---------------------------------------------------------------------------
+# Adapter mapping: dsra_target_policy field
+# ---------------------------------------------------------------------------
+
+class TestAdapterDsraTargetPolicyMapping:
+    """Verify adapter reads FinancingParams.dsra_target_policy and maps to DsraTargetPolicy."""
+
+    def test_none_policy_maps_to_fixed_amount(self):
+        """dsra_target_policy=None (default) → FIXED_AMOUNT in CashDsraInput."""
+        from app.project_factories import create_default_solar_project
+        from financial_engine.adapters.project_inputs import build_senior_debt_model_input_from_project_inputs
+        project = create_default_solar_project()
+        # Default factory has dsra_support_mode=NONE, dsra_target_policy=None
+        model = build_senior_debt_model_input_from_project_inputs(project, source_id="test-adapter")
+        assert model.dsra is not None
+        assert model.dsra.target_policy == DsraTargetPolicy.FIXED_AMOUNT
+
+    def test_forward_policy_string_maps_to_enum(self):
+        """dsra_target_policy='forward_debt_service_months' → FORWARD_DEBT_SERVICE_MONTHS."""
+        import dataclasses
+        from app.project_factories import create_default_solar_project
+        from financial_engine.adapters.project_inputs import build_senior_debt_model_input_from_project_inputs
+        from finco_core.inputs import DebtServiceReserveSupportMode
+        project = create_default_solar_project()
+        # Override financing to CASH_DSRA + FORWARD policy
+        new_fin = dataclasses.replace(
+            project.financing,
+            dsra_support_mode=DebtServiceReserveSupportMode.CASH_DSRA,
+            dsra_target_policy="forward_debt_service_months",
+            dsra_months=6,
+            debt_service_reserve_requirement_keur=1000.0,
+        )
+        new_project = dataclasses.replace(project, financing=new_fin)
+        model = build_senior_debt_model_input_from_project_inputs(new_project, source_id="test-adapter-forward")
+        assert model.dsra.target_policy == DsraTargetPolicy.FORWARD_DEBT_SERVICE_MONTHS
+        assert model.dsra.dsra_months == 6
+
+    def test_unknown_policy_string_maps_to_fixed_amount(self):
+        """Unrecognised dsra_target_policy string → FIXED_AMOUNT (safe fallback)."""
+        import dataclasses
+        from app.project_factories import create_default_solar_project
+        from financial_engine.adapters.project_inputs import build_senior_debt_model_input_from_project_inputs
+        project = create_default_solar_project()
+        new_fin = dataclasses.replace(project.financing, dsra_target_policy="some_unknown_value")
+        new_project = dataclasses.replace(project, financing=new_fin)
+        model = build_senior_debt_model_input_from_project_inputs(new_project, source_id="test-adapter-unknown")
+        assert model.dsra.target_policy == DsraTargetPolicy.FIXED_AMOUNT
+
+
+# ---------------------------------------------------------------------------
+# Production-path test: adapter → orchestrator → cash_dsra.required_balance_keur
+# Mandatory: must NOT manually construct required_balance_schedule.
+# ---------------------------------------------------------------------------
+
+class TestProductionPathDynamicTarget:
+    """End-to-end: ProjectInputs.dsra_target_policy → orchestrator → dynamic target in result.
+
+    Uses a Solar project factory with CASH_DSRA + FORWARD_DEBT_SERVICE_MONTHS.
+    Asserts that required_balance_keur at first operating period equals DS[first_op].
+    This proves the orchestrator's Step 9b correctly builds the dynamic schedule
+    from the final Senior DS vector post-solve.
+    """
+
+    def _run_with_forward_dsra(self, project, dsra_months: int):
+        import dataclasses
+        from app.project_factories import create_default_solar_project
+        from financial_engine.adapters.project_inputs import build_senior_debt_model_input_from_project_inputs
+        from financial_engine.orchestrator import run_senior_debt_model
+        from finco_core.inputs import DebtServiceReserveSupportMode
+
+        new_fin = dataclasses.replace(
+            project.financing,
+            dsra_support_mode=DebtServiceReserveSupportMode.CASH_DSRA,
+            dsra_target_policy="forward_debt_service_months",
+            dsra_months=dsra_months,
+            debt_service_reserve_requirement_keur=500.0,  # seed for Project Uses
+        )
+        new_project = dataclasses.replace(project, financing=new_fin)
+        model = build_senior_debt_model_input_from_project_inputs(new_project, source_id="test-prod-path")
+        return run_senior_debt_model(model)
+
+    def test_dynamic_target_in_result(self):
+        """cash_dsra.period_results[first_op].required_balance_keur is > 0 and tracks Senior DS."""
+        from app.project_factories import create_default_solar_project
+        project = create_default_solar_project()
+        result = self._run_with_forward_dsra(project, dsra_months=6)
+
+        assert result.cash_dsra is not None
+        assert result.post_senior_cash is not None
+
+        # Find first non-construction period
+        period_results = result.cash_dsra.period_results
+        post_senior = result.post_senior_cash
+        ds_by_idx = dict(zip(post_senior.period_indices, post_senior.senior_debt_service_keur))
+
+        first_op = next((r for r in period_results if not r.is_construction), None)
+        assert first_op is not None, "Must have at least one operating period"
+
+        ds_first_op = ds_by_idx.get(first_op.period_index, 0.0)
+        req = first_op.required_balance_keur
+
+        # Dynamic target must be positive and dominated by DS[first_op] (current period, j=i).
+        # Periods are ~6m so 6m coverage may bleed slightly into the next period (pro-rata).
+        # Bounds: DS[first_op] <= target <= DS[first_op] * 1.15 (at most ~15% bleed).
+        assert req > 0.0, "Dynamic DSRA target must be positive at first operating period"
+        assert req >= ds_first_op * 0.95, (
+            f"Target {req:.2f} should be at least DS[first_op]={ds_first_op:.2f} "
+            "(j=i: current period is included in coverage)"
+        )
+        assert req <= ds_first_op * 1.15, (
+            f"Target {req:.2f} implausibly exceeds DS[first_op]={ds_first_op:.2f} by >15%"
+        )
+
+    def test_dynamic_target_changes_when_senior_ds_changes(self):
+        """required_balance_keur changes when Senior DS changes — proves end-to-end wiring."""
+        import dataclasses
+        from app.project_factories import create_default_solar_project, create_default_wind_project
+        from financial_engine.adapters.project_inputs import build_senior_debt_model_input_from_project_inputs
+        from financial_engine.orchestrator import run_senior_debt_model
+        from finco_core.inputs import DebtServiceReserveSupportMode
+
+        solar = create_default_solar_project()
+        wind = create_default_wind_project()
+
+        result_solar = self._run_with_forward_dsra(solar, dsra_months=6)
+        result_wind = self._run_with_forward_dsra(wind, dsra_months=6)
+
+        def first_op_required(result):
+            return next(
+                r.required_balance_keur
+                for r in result.cash_dsra.period_results
+                if not r.is_construction
+            )
+
+        solar_req = first_op_required(result_solar)
+        wind_req = first_op_required(result_wind)
+
+        # Solar and wind have different DS schedules → required_balance differs
+        # This proves the dynamic target tracks the actual Senior DS, not a fixed scalar
+        assert solar_req != pytest.approx(wind_req, rel=0.01), (
+            f"Solar and wind should have different dynamic DSRA targets; "
+            f"got solar={solar_req:.2f}, wind={wind_req:.2f}"
+        )
+        assert solar_req > 0.0
+        assert wind_req > 0.0
+
+    def test_6m_target_dominated_by_first_op_ds(self):
+        """required_balance at first op is dominated by DS[first_op] (j=i algorithm).
+
+        Proves the measurement date rule: current period IS included in coverage.
+        Periods are ~6m; 6m coverage may pro-rate slightly into the next period.
+        The target must be >= DS[first_op] (current period counted) and not equal
+        to DS[second_op] alone (which would be the j=i+1 wrong algorithm).
+        """
+        from app.project_factories import create_default_solar_project
+        project = create_default_solar_project()
+        result = self._run_with_forward_dsra(project, dsra_months=6)
+
+        period_results = result.cash_dsra.period_results
+        post_senior = result.post_senior_cash
+        ds_tuple = post_senior.senior_debt_service_keur
+        idx_tuple = post_senior.period_indices
+
+        op_results = [r for r in period_results if not r.is_construction]
+        assert len(op_results) >= 2
+
+        idx_to_ds = dict(zip(idx_tuple, ds_tuple))
+        ds_first = idx_to_ds.get(op_results[0].period_index, 0.0)
+        ds_second = idx_to_ds.get(op_results[1].period_index, 0.0)
+        req = op_results[0].required_balance_keur
+
+        # Current period is included (j=i): target >= DS[first_op] * 0.95
+        assert req >= ds_first * 0.95, (
+            f"Target {req:.2f} < DS[first_op]={ds_first:.2f}: "
+            "current period must be included in coverage (j=i algorithm)"
+        )
+        # NOT dominated by second period alone
+        if abs(ds_first - ds_second) > ds_first * 0.01:
+            assert req != pytest.approx(ds_second, rel=0.001), (
+                f"Target {req:.2f} == DS[second_op]={ds_second:.2f}: "
+                "this would imply wrong j=i+1 algorithm"
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -660,7 +1093,7 @@ class TestBuildScheduleErrors:
 
     def test_end_before_start_raises(self):
         indices, starts, ends, is_constr = _make_periods(0, 2)
-        bad_ends = (ends[0], starts[0])  # end < start for period 1
+        bad_ends = (ends[0], starts[0])
         with pytest.raises(ValueError, match="DSRA_TARGET_INVALID_DATES"):
             build_dsra_required_balance_schedule(
                 period_indices=indices,

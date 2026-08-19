@@ -292,15 +292,28 @@ def build_senior_debt_model_input_from_project_inputs(
         senior_debt_maturity_period_index=policy.maturity_period_index,
     )
 
-    # PR-3: map FinancingParams DSRA policy to clean CashDsraInput.
+    # PR-3B: map FinancingParams DSRA policy to clean CashDsraInput.
     # Uses the SHARED resolver so that adapter and project_uses always agree on
     # the effective requirement — COD_FUNDING_HANDSHAKE invariant.
+    # target_policy and dsra_months carry CONFIGURATION only; the actual dynamic
+    # required_balance_schedule is built in the orchestrator AFTER Senior debt solve,
+    # using the final Senior DS schedule (causal ordering: Senior → target → model).
     from financial_engine.dsra.contracts import CashDsraInput
+    from financial_engine.dsra.target import DsraTargetPolicy
     from financial_engine.financing.reserve_policy import resolve_cash_dsra_requirement_keur
     fin = project_inputs.financing
+    _raw_policy = getattr(fin, "dsra_target_policy", None)
+    if _raw_policy == DsraTargetPolicy.FORWARD_DEBT_SERVICE_MONTHS.value:
+        _target_policy = DsraTargetPolicy.FORWARD_DEBT_SERVICE_MONTHS
+    else:
+        # None or unrecognised → FIXED_AMOUNT (backward-compatible default).
+        _target_policy = DsraTargetPolicy.FIXED_AMOUNT
+    _dsra_months = getattr(fin, "dsra_months", 6) or 6
     dsra = CashDsraInput(
         mode=fin.dsra_support_mode,
         requirement_keur=resolve_cash_dsra_requirement_keur(project_inputs),
+        target_policy=_target_policy,
+        dsra_months=_dsra_months,
     )
 
     return SeniorDebtModelInput(

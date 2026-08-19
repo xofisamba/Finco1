@@ -9,6 +9,7 @@ import math
 from dataclasses import dataclass, field
 
 from finco_core.inputs import DebtServiceReserveSupportMode
+from financial_engine.dsra.target import DsraTargetPolicy
 
 
 @dataclass(frozen=True)
@@ -47,6 +48,18 @@ class CashDsraInput:
     requirement_keur: float = 0.0
     required_balance_schedule: tuple[float, ...] | None = field(default=None)
 
+    # Explicit typed target policy — must not be inferred from nullable required_balance_schedule.
+    # FIXED_AMOUNT (default): static scalar requirement_keur. Backward-compatible.
+    # FORWARD_DEBT_SERVICE_MONTHS: dynamic schedule from Senior DS.
+    #     requires dsra_months > 0 and mode == CASH_DSRA.
+    #     Orchestrator must build required_balance_schedule before calling run_cash_dsra_model.
+    target_policy: DsraTargetPolicy = field(default=DsraTargetPolicy.FIXED_AMOUNT)
+
+    # Number of months of forward Senior DS to cover.
+    # Only consumed when target_policy == FORWARD_DEBT_SERVICE_MONTHS.
+    # Source: FinancingParams.dsra_months (default 6).
+    dsra_months: int = field(default=6)
+
     def __post_init__(self) -> None:
         if not isinstance(self.mode, DebtServiceReserveSupportMode):
             raise ValueError(
@@ -73,6 +86,30 @@ class CashDsraInput:
                 "CashDsraInput: mode=NONE but requirement_keur > 0. "
                 "NONE mode implies no reserve — set requirement_keur=0.0 "
                 "or change mode to CASH_DSRA."
+            )
+        if not isinstance(self.target_policy, DsraTargetPolicy):
+            raise ValueError(
+                f"CashDsraInput: target_policy must be DsraTargetPolicy, got {self.target_policy!r}."
+            )
+        if not isinstance(self.dsra_months, int) or isinstance(self.dsra_months, bool):
+            raise ValueError(
+                f"CashDsraInput: dsra_months must be an integer, got {self.dsra_months!r}."
+            )
+        if (
+            self.target_policy == DsraTargetPolicy.FORWARD_DEBT_SERVICE_MONTHS
+            and self.dsra_months <= 0
+        ):
+            raise ValueError(
+                "CashDsraInput: FORWARD_DEBT_SERVICE_MONTHS requires dsra_months > 0, "
+                f"got {self.dsra_months!r}."
+            )
+        if (
+            self.target_policy == DsraTargetPolicy.FORWARD_DEBT_SERVICE_MONTHS
+            and self.mode != DebtServiceReserveSupportMode.CASH_DSRA
+        ):
+            raise ValueError(
+                "CashDsraInput: FORWARD_DEBT_SERVICE_MONTHS policy requires mode=CASH_DSRA, "
+                f"got mode={self.mode!r}."
             )
         if self.required_balance_schedule is not None:
             if not isinstance(self.required_balance_schedule, tuple):
