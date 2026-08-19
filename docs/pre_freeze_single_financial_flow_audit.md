@@ -380,6 +380,7 @@ Both engines call `finco_core.opex.projections.opex_schedule_period()`. Oborovo 
 **P0-1: Two production financial engines exist simultaneously.**
 TUHO and Oborovo run the legacy `run_waterfall` engine; the clean engine is parity/test only. No single canonical production truth.
 Files: `app/waterfall_core.py`, `financial_engine/orchestrator.py`.
+**P0-1 closure condition:** TUHO and Oborovo production runtime no longer uses `LEGACY_APP_PRODUCTION_FLOW` as financial authority. This requires PRs 1–7 to remove all blocking semantic, policy, and waterfall gaps, PLUS **PR-8** to perform the actual production authority migration. P0-1 is NOT closed until PR-8 is complete and the audit-snapshot regression tests are updated to reflect the promoted call graph.
 
 **P0-2 (`MISSING_ADAPTER_PROPAGATION`): `tax_loss_utilisation_gate` not forwarded by the clean engine tax adapter.**
 Classification: `MISSING_ADAPTER_PROPAGATION`. This is NOT `MISSING_TAX_ENGINE_IMPLEMENTATION` — `calculate_tax()` in `financial_engine/tax/engine.py` already handles `EBT_POSITIVE` correctly. The gap is solely in the adapter: `financial_engine/adapters/tax_inputs.py::build_tax_contract_from_project_inputs()` does not read `TaxParams.tax_loss_utilisation_gate` when constructing `TaxPolicy`. `TaxPolicy.loss_utilisation_gate` always defaults to `TaxLossUtilisationGate.TAXABLE_INCOME_POSITIVE` (line 82 of `financial_engine/policies/tax.py`). KUPI configured with `EBT_POSITIVE` silently receives `TAXABLE_INCOME_POSITIVE`.
@@ -483,7 +484,14 @@ See §13 (P0-to-PR Mapping) and §14 (Consolidation PR Sequence) for full detail
 4. **PR-4**: Wire DA covenant gate into clean engine SHL path — closes `PRE_RESERVE_SHL_CASH_AUTHORITY_GAP`. P0-7. (requires PR-2, PR-3)
 5. **PR-5**: Resolve EBITDA floor rule (decision required). P0-3.
 6. **PR-6**: Replace SHL repayment-alignment flags with typed `ShlRepaymentPolicy`. P0-6. (requires PR-4)
-7. **PR-7**: Implement typed `DebtSizingCaseInput` (`MISSING_TYPED_BANK_CASE_POLICY`). P0-5. (requires PRs 1–6)
+7. **PR-7**: Implement typed `DebtSizingCaseInput` (`MISSING_TYPED_BANK_CASE_POLICY` — Base vs Bank separation). P0-5. (requires PRs 1–6)
+8. **PR-8**: TUHO + Oborovo clean-engine production promotion and `LEGACY_APP_PRODUCTION_FLOW` authority retirement. (requires PRs 1–7)
+   - Route TUHO and Oborovo production app execution through the canonical clean financial engine
+   - Preserve typed project policies only; eliminate project-named financial logic
+   - Update audit-snapshot regression tests (`test_legacy_app_projects_*`) as part of this PR
+   - Prove both projects execute the same canonical production call graph via runtime instrumentation
+   - Retain legacy path only if temporarily required for explicit migration diagnostics, never as competing production financial authority
+   - **P0-1 is closed when this PR merges**
 
 ### C. Which major implementation should come first after consolidation?
 
@@ -495,7 +503,8 @@ Evidence:
 - The `cash_available_for_shl_before_reserves_keur` field already exists in `PostSeniorCashSchedules` — the seam is named and allocated. Wiring the DA gate into this seam is a contained change.
 - The `loss_utilisation_gate` fix (P0-2) is a one-liner pre-requisite that can go in the same PR.
 - Construction Runtime Promotion has a blocking dependency: `construction_period_uses_keur` for multi-period PRO_RATA projects is flagged `GAP 3` in `financial_engine/financing/project.py` lines 99–112. The DSRA/waterfall work has no such blocking dependency.
-- After Sponsor Waterfall consolidation, TUHO and Oborovo can run through the clean engine end-to-end (with Construction Runtime deferred). This is the prerequisite for any meaningful single-engine freeze claim.
+- Sponsor Waterfall (PRs 1–6) is the first major consolidation implementation block. It does NOT by itself produce a single production engine — it removes the blocking semantic/policy/waterfall gaps.
+- Single-engine status is only achieved after **PR-7** (typed Bank Case / Base-vs-Bank separation) + **PR-8** (TUHO/Oborovo production authority migration). Construction Runtime then proceeds on a clean single-engine foundation.
 
 ---
 
@@ -503,7 +512,7 @@ Evidence:
 
 | P0 finding | Classification | Financial risk | Required before clean-engine promotion? | Proposed PR |
 |---|---|---|---|---|
-| P0-1: Dual engines (legacy vs clean) | `DUPLICATE_FINANCIAL_AUTHORITY` | Every financial layer below revenue produces different truth depending on project path | YES | PRs 1–7 together eliminate this |
+| P0-1: Dual engines (legacy vs clean) | `DUPLICATE_FINANCIAL_AUTHORITY` | Every financial layer below revenue produces different truth depending on project path | YES — NOT CLOSED until PR-8 | PRs 1–7 remove blocking gaps; **PR-8 performs production authority migration. P0-1 closure condition: TUHO and Oborovo production runtime no longer uses LEGACY_APP_PRODUCTION_FLOW as financial authority.** |
 | P0-2: `tax_loss_utilisation_gate` not forwarded | `MISSING_ADAPTER_PROPAGATION` (NOT `MISSING_TAX_ENGINE_IMPLEMENTATION` — engine already handles `EBT_POSITIVE`) | Silent wrong gate applied to any project using `EBT_POSITIVE`; affects LCF use and tax cash timing | YES | PR-1 |
 | P0-3: EBITDA floor divergence | `DUPLICATE_FINANCIAL_AUTHORITY` | Legacy clips EBITDA at zero in loss years → lower tax, different CFADS, different Senior capacity vs clean | YES | PR-5 (decision required: keep floor or remove) |
 | P0-4: `is_tuho`/`is_oborovo` DA dispatch | `DUPLICATE_FINANCIAL_AUTHORITY` | Different gate logic per project name → different Sponsor-eligible cash in legacy DA | YES — blocks typed promotion | PR-2 |
@@ -530,7 +539,11 @@ PR-2 (typed DA / CO2 dispatch removal) ─── independent ──────�
    │
    └── PR-5 (EBITDA floor alignment decision) ─── independent but cross-engine
 
-PR-7 (typed Bank Case policy for TUHO/Oborovo) ─── requires PRs 1–6 complete
+PR-7 (typed Bank Case policy) ─── requires PRs 1–6 complete
+   │
+   └── PR-8 (TUHO/Oborovo production promotion + legacy retirement) ─── requires PR-7
+          │
+          └── Construction Runtime Promotion ─── requires PR-8
 ```
 
 | # | PR | Files | Pre-requisites | Risk |
@@ -541,9 +554,10 @@ PR-7 (typed Bank Case policy for TUHO/Oborovo) ─── requires PRs 1–6 comp
 | PR-4 | Wire DA covenant gate into clean engine SHL path | `financial_engine/orchestrator.py::_run_senior_debt_model_with_shl` | PR-2, PR-3 | Medium — changes SHL-eligible cash routing |
 | PR-5 | Resolve EBITDA floor rule (decision: keep `max(0,·)` or remove) | `app/waterfall_core.py` or `financial_engine/orchestrator.py` | Decision required | Low-medium |
 | PR-6 | Replace TUHO/Oborovo SHL repayment-alignment flags with typed `ShlRepaymentPolicy` | `finco_core/waterfall/waterfall_engine.py`, `finco_core/shl/engine.py` | PR-4 | Medium |
-| PR-7 | Implement typed `DebtSizingCaseInput` (`MISSING_TYPED_BANK_CASE_POLICY`) for TUHO/Oborovo | `finco_core/inputs/_models.py`, adapters, clean engine orchestrator | PRs 1–6 | High |
+| PR-7 | Implement typed `DebtSizingCaseInput` (`MISSING_TYPED_BANK_CASE_POLICY` — Base vs Bank separation) | `finco_core/inputs/_models.py`, adapters, clean engine orchestrator | PRs 1–6 | High |
+| PR-8 | TUHO + Oborovo clean-engine production promotion; `LEGACY_APP_PRODUCTION_FLOW` authority retirement | `app/ui_runner.py`, `app/waterfall_runner.py`, `app/waterfall_core.py`, runtime-proof tests | PR-7 | Very High — closes P0-1 |
 
-**Note:** PRs 1 and 2 have no mutual dependency and can be developed in parallel. PR-3 must follow PR-2. PR-4 must follow both PR-2 and PR-3. PR-5 can be developed in parallel with PR-3/4 but must be decided before clean-engine promotion.
+**Note:** PRs 1 and 2 have no mutual dependency and can be developed in parallel. PR-3 must follow PR-2. PR-4 must follow both PR-2 and PR-3. PR-5 can be developed in parallel with PR-3/4 but must be resolved before PR-8. **Single-engine status is only achieved when PR-8 merges.** Construction Runtime Promotion follows after PR-8.
 
 ---
 
@@ -575,10 +589,15 @@ Each post-senior cash boundary in the current clean engine, classified by author
 | G2C model status | Implemented, source-proven, not wired | Partially implemented |
 | Blocking dependency | None beyond PR-1 fix | `construction_period_uses_keur` multi-period gap |
 | Project-identity dispatch eliminated | Yes — removes `is_tuho`/`is_oborovo` DA flags and TUHO SHL flags | No |
-| Single-engine claim enabled | Yes — after PRs 1–6, TUHO and Oborovo can run clean engine E2E | No — legacy still needed for pre-COD periods |
-| `PRE_RESERVE_SHL_CASH_AUTHORITY_GAP` resolved | Yes — DA gate wiring closes this seam (identified in KUPI diagnostic) | No |
+| Single-engine status | Sponsor Waterfall (PRs 1–6) removes blocking gaps. Single-engine status is achieved only after PR-7 (typed Bank Case) + PR-8 (production promotion). | No — legacy still needed for pre-COD periods; blocked until after PR-8 |
+| `PRE_RESERVE_SHL_CASH_AUTHORITY_GAP` resolved | Yes — DA gate wiring (PR-4) closes this seam (identified in KUPI diagnostic) | No |
 
-After Sponsor Waterfall consolidation (PRs 1–6 above), TUHO and Oborovo can be promoted to the clean engine end-to-end. Construction Runtime can then proceed on a clean single-engine foundation.
+**Sponsor Waterfall (PRs 1–6) is the first major consolidation implementation block.** It removes the blocking semantic, policy, and waterfall gaps — but does NOT by itself produce a single production engine. Single-engine status is only achieved after:
+
+1. **PR-7**: typed Bank Case / Base-vs-Bank separation (prerequisite for promotion)
+2. **PR-8**: TUHO + Oborovo production authority migration to the clean engine
+
+Construction Runtime Promotion then follows PR-8 on a clean single-engine foundation.
 
 ---
 
