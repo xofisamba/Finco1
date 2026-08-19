@@ -17,6 +17,7 @@ BLOCKED_REASONS = {
     "DISTRIBUTION_ACCOUNT_NOT_PROMOTED": "DistributionAccount not in runtime — audit-only mode",
     "LOCKUP": "Period locked — DSRA/JDSRA below target or construction period",
     "SENIOR_TENOR": "Within senior debt tenor — distributions blocked",
+    "COVENANT_GATE_NOT_APPLICABLE": "R99/R102 covenant gates not applicable to this project",
 }
 
 
@@ -46,6 +47,7 @@ class DistributionAccountPeriodResult:
     dscr_gate_result: DistributionGateResult = field(default=None)  # type: ignore[assignment]
     lockup_gate_result: DistributionGateResult = field(default=None)  # type: ignore[assignment]
     oborovo_gate_result: DistributionGateResult = field(default=None)  # type: ignore[assignment]
+    covenant_gate_result: DistributionGateResult = field(default=None)  # type: ignore[assignment]
     blocked_reason: str = ""
     warnings: tuple[str, ...] = ()
 

@@ -6,6 +6,7 @@ from finco_core.engine.distribution_account.result import (
     BLOCKED_REASONS,
 )
 from finco_core.engine.distribution_account.inputs import (
+    CovenantGatePolicy,
     DistributionAccountPeriodInput,
     R99R102GateInputs,
 )
@@ -158,6 +159,26 @@ def evaluate_lockup_gate(
         )
     return DistributionGateResult(
         gate_name="lockup_gate",
+        passed=True,
+        blocked_reason="",
+    )
+
+
+def evaluate_covenant_gate_policy(policy: CovenantGatePolicy) -> DistributionGateResult:
+    """Evaluate covenant gate based on typed CovenantGatePolicy.
+
+    R99_R102_APPLICABLE: covenant gates apply; gate passes (proceed with R99/R102 evaluation).
+    R99_R102_NOT_APPLICABLE: covenant gates do not apply; gate passes trivially (not blocking).
+    """
+    if policy == CovenantGatePolicy.R99_R102_APPLICABLE:
+        return DistributionGateResult(
+            gate_name="covenant_gate",
+            passed=True,
+            blocked_reason="",
+        )
+    # R99_R102_NOT_APPLICABLE — covenant structure not applicable to this project
+    return DistributionGateResult(
+        gate_name="covenant_gate",
         passed=True,
         blocked_reason="",
     )

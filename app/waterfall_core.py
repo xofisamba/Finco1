@@ -775,22 +775,24 @@ def _apply_distributionaccount_runtime_wiring(
     from domain.distribution_account.engine import DistributionAccountEngine
     compute_da = DistributionAccountEngine.compute
     from domain.distribution_account.inputs import (
+        CovenantGatePolicy,
         DistributionAccountInputs,
         DistributionAccountPeriodInput,
     )
 
     is_tuho = (getattr(inputs.info, "code", "") == "TUHO-WIND-1")
     is_oborovo = (getattr(inputs.info, "code", "") == "OBOROVO-SOLAR-1")
+    covenant_gate_policy = inputs.financing.covenant_gate_policy
     senior_tenor_years = inputs.financing.senior_tenor_years
 
-    # Oborovo guard: DA engine has TUHO-specific gates; runtime wiring not yet supported
-    if not is_tuho:
-        result.distribution_source = "oborovo_guard_blocked"
+    # Covenant gate policy: DA runtime wiring only applies to R99_R102_APPLICABLE projects.
+    if covenant_gate_policy != CovenantGatePolicy.R99_R102_APPLICABLE:
+        result.distribution_source = "covenant_gate_not_applicable"
         result.da_paid_distribution_keur = 0.0
         result.legacy_distribution_keur = result.total_distribution_keur
         result.distribution_wiring_delta_keur = 0.0
         for wp in result.periods:
-            wp.distribution_source = "oborovo_guard_blocked"
+            wp.distribution_source = "covenant_gate_not_applicable"
             wp.da_paid_distribution_keur = 0.0
             wp.legacy_distribution_keur = wp.distribution_keur
             wp.distribution_wiring_delta_keur = 0.0
@@ -832,6 +834,7 @@ def _apply_distributionaccount_runtime_wiring(
             dsra_required_balance_keur=getattr(wp, "dsra_balance_keur", 0.0),
             is_tuho=is_tuho,
             is_oborovo=is_oborovo,
+            covenant_gate_policy=covenant_gate_policy,
             senior_tenor_years=senior_tenor_years,
             minimum_cash_reserve_keur=0.0,
             runtime_economic_mode=True,  # Runtime staging mode: gates for explicit wiring only
@@ -842,6 +845,7 @@ def _apply_distributionaccount_runtime_wiring(
         period_inputs=tuple(da_period_inputs),
         is_tuho=is_tuho,
         is_oborovo=is_oborovo,
+        covenant_gate_policy=covenant_gate_policy,
     )
 
     da_result = compute_da(da_inputs)
@@ -1239,6 +1243,7 @@ def _attach_dualrun_validation(result, inputs, periods_list) -> None:
     """
     from domain.distribution_account.dualrun_validation import run_dual_validation
     from domain.distribution_account.inputs import (
+        CovenantGatePolicy,
         DistributionAccountInputs,
         DistributionAccountPeriodInput,
         R99R102GateInputs,
@@ -1289,6 +1294,7 @@ def _attach_dualrun_validation(result, inputs, periods_list) -> None:
 
         is_tuho = (getattr(inputs.info, "code", "") == "TUHO-WIND-1")
         is_oborovo = (getattr(inputs.info, "code", "") == "OBOROVO-SOLAR-1")
+        covenant_gate_policy = inputs.financing.covenant_gate_policy
         senior_tenor_years = inputs.financing.senior_tenor_years
 
         # Common fields for both governed and economic inputs
@@ -1306,6 +1312,7 @@ def _attach_dualrun_validation(result, inputs, periods_list) -> None:
             dsra_required_balance_keur=getattr(wp, "dsra_balance_keur", 0.0),
             is_tuho=is_tuho,
             is_oborovo=is_oborovo,
+            covenant_gate_policy=covenant_gate_policy,
             senior_tenor_years=senior_tenor_years,
             minimum_cash_reserve_keur=0.0,
         )
@@ -1327,6 +1334,7 @@ def _attach_dualrun_validation(result, inputs, periods_list) -> None:
         period_inputs=tuple(governed_periods),
         is_tuho=is_tuho,
         is_oborovo=is_oborovo,
+        covenant_gate_policy=covenant_gate_policy,
     )
 
     economic_inputs = DistributionAccountInputs(
@@ -1334,6 +1342,7 @@ def _attach_dualrun_validation(result, inputs, periods_list) -> None:
         period_inputs=tuple(economic_periods),
         is_tuho=is_tuho,
         is_oborovo=is_oborovo,
+        covenant_gate_policy=covenant_gate_policy,
     )
 
     try:

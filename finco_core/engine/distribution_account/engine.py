@@ -25,6 +25,7 @@ from finco_core.engine.distribution_account.gates import (
     evaluate_dscr_gate,
     evaluate_lockup_gate,
     evaluate_oborovo_guard,
+    evaluate_covenant_gate_policy,
     evaluate_cash_gate,
 )
 
@@ -128,6 +129,7 @@ class DistributionAccountEngine:
             cash=cash_for_dist,
         )
         oborovo_gate = evaluate_oborovo_guard(inp.is_oborovo)
+        covenant_gate = evaluate_covenant_gate_policy(inp.covenant_gate_policy)
         cash_gate = evaluate_cash_gate(cash_for_dist)
 
         # Compute equity distribution candidate and paid amounts
@@ -145,6 +147,7 @@ class DistributionAccountEngine:
             dscr_gate.passed and
             lockup_gate.passed and
             oborovo_gate.passed and
+            covenant_gate.passed and
             cash_gate.passed
         )
         equity_paid = equity_candidate if all_gates_passed else 0.0
@@ -168,6 +171,8 @@ class DistributionAccountEngine:
             blocked = lockup_gate.blocked_reason
         elif not oborovo_gate.passed:
             blocked = oborovo_gate.blocked_reason
+        elif not covenant_gate.passed:
+            blocked = covenant_gate.blocked_reason
         elif not cash_gate.passed:
             blocked = cash_gate.blocked_reason
 
@@ -194,6 +199,7 @@ class DistributionAccountEngine:
             dscr_gate_result=dscr_gate,
             lockup_gate_result=lockup_gate,
             oborovo_gate_result=oborovo_gate,
+            covenant_gate_result=covenant_gate,
             blocked_reason=blocked,
             warnings=tuple(warnings),
         )

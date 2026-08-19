@@ -3,7 +3,19 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import date
+from enum import Enum
 from typing import Optional
+
+
+class CovenantGatePolicy(str, Enum):
+    """Typed policy controlling whether R99/R102 covenant gates apply to a project.
+
+    R99_R102_APPLICABLE: R99/R102 covenant gates are evaluated (TUHO-class projects).
+    R99_R102_NOT_APPLICABLE: covenant gates are not applicable; gate passes trivially.
+        Used for projects where the TUHO-specific DA covenant structure does not apply.
+    """
+    R99_R102_APPLICABLE = "R99_R102_APPLICABLE"
+    R99_R102_NOT_APPLICABLE = "R99_R102_NOT_APPLICABLE"
 
 
 @dataclass(frozen=True)
@@ -35,6 +47,7 @@ class DistributionAccountPeriodInput:
     project_name: str = ""
     is_tuho: bool = False
     is_oborovo: bool = False
+    covenant_gate_policy: CovenantGatePolicy = CovenantGatePolicy.R99_R102_NOT_APPLICABLE
     dsra_required_balance_keur: float = 0.0
     dsra_current_balance_keur: float = 0.0
     jdsra_required_balance_keur: float = 0.0
@@ -58,3 +71,4 @@ class DistributionAccountInputs:
     period_inputs: tuple[DistributionAccountPeriodInput, ...]
     is_tuho: bool = False
     is_oborovo: bool = False
+    covenant_gate_policy: CovenantGatePolicy = CovenantGatePolicy.R99_R102_NOT_APPLICABLE
