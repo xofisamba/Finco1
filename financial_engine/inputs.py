@@ -338,6 +338,9 @@ class SeniorDebtModelInput:
     debt_sizing_case: DebtSizingCaseInput (bank-case assumptions differing from Base)
         Required. Use DebtSizingCaseInput(production_yield_scenario=YieldScenario.P90_10Y)
         for the generic bank case (GENERIC_BANK_SIZING_DEFAULT_POLICY_IS_P90_10Y).
+    dsra: PR-3 CASH_DSRA roll-forward input. None = NONE mode (neutral pass-through).
+        Source authority: FinancingParams.dsra_support_mode + debt_service_reserve_requirement_keur.
+        Mapped by financial_engine.adapters.project_inputs.
     """
     operating: "OperatingModelInput"
     tax: "TaxCalculationInput"
@@ -345,6 +348,7 @@ class SeniorDebtModelInput:
     senior_debt_inputs: object   # SeniorDebtInputs
     debt_sizing_case: "DebtSizingCaseInput"
     shareholder_loan: object | None = None
+    dsra: object | None = None  # CashDsraInput | None (avoid circular imports)
 
 
 @dataclass(frozen=True)

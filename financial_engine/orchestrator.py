@@ -1170,6 +1170,12 @@ def _run_senior_debt_model_with_shl(inputs: SeniorDebtModelInput) -> ProjectMode
         final_tax_cfads,
         final_senior_result,
     )
+    # PR-3 CASH_DSRA roll-forward (downstream of Senior DS, upstream of DA/SHL).
+    # Do NOT route cash_dsra output to SHL or DA in this PR — that is PR-4.
+    from financial_engine.dsra.model import run_cash_dsra_model as _run_dsra
+    from financial_engine.dsra.contracts import CashDsraInput as _CashDsraInput
+    _shl_dsra_input = inputs.dsra if isinstance(inputs.dsra, _CashDsraInput) else None
+    _shl_cash_dsra = _run_dsra(final_post_senior_cash, _shl_dsra_input, phase2b_result.periods)
     handshake_probe_diag = ShareholderLoanDiagnostics(
         converged=False,
         is_authoritative=False,
@@ -1318,6 +1324,7 @@ def _run_senior_debt_model_with_shl(inputs: SeniorDebtModelInput) -> ProjectMode
         debt_sizing=debt_sizing_schedules,
         post_senior_cash=final_post_senior_cash,
         shareholder_loan=final_shl_schedule,
+        cash_dsra=_shl_cash_dsra,
         unavailable_sections=_PHASE_2C_UNAVAILABLE,
         validation_issues=validation_issues,
         warnings=warnings,
@@ -1601,7 +1608,14 @@ def run_senior_debt_model(inputs: SeniorDebtModelInput) -> ProjectModelResult:
         cash_available_for_shl_before_reserves_keur=tuple(_cash_avail),
     )
 
-    # Step 9: Phase 2C provenance.
+    # Step 9b: PR-3 CASH_DSRA roll-forward (downstream of Senior DS, upstream of DA/SHL).
+    # Do NOT route cash_dsra output to SHL or DA in this PR — that is PR-4.
+    from financial_engine.dsra.model import run_cash_dsra_model
+    from financial_engine.dsra.contracts import CashDsraInput
+    _dsra_input = inputs.dsra if isinstance(inputs.dsra, CashDsraInput) else None
+    cash_dsra = run_cash_dsra_model(post_senior_cash, _dsra_input, phase2b_result.periods)
+
+    # Step 10: Phase 2C provenance.
     fingerprint = compute_senior_debt_fingerprint(inputs)
     evidence = phase2b_result.provenance.derivation_evidence + (
         DerivationEvidence(
@@ -1681,6 +1695,7 @@ def run_senior_debt_model(inputs: SeniorDebtModelInput) -> ProjectModelResult:
         senior_debt=result_schedules,
         debt_sizing=debt_sizing_schedules,
         post_senior_cash=post_senior_cash,
+        cash_dsra=cash_dsra,
         unavailable_sections=_PHASE_2C_UNAVAILABLE,
         validation_issues=validation_issues,
         warnings=warnings,

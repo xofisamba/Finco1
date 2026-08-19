@@ -258,3 +258,4 @@ class ProjectModelResult:
     debt_sizing: "DebtSizingSchedules | None" = None
     post_senior_cash: "PostSeniorCashSchedules | None" = None
     shareholder_loan: "ShareholderLoanSchedules | None" = None
+    cash_dsra: "object | None" = None  # CashDsraSchedules | None — PR-3 reserve authority
