@@ -10,6 +10,7 @@ from domain.distribution_account import (
     DistributionGateResult,
 )
 from domain.distribution_account.result import BLOCKED_REASONS
+from finco_core.engine.distribution_account.inputs import CovenantGatePolicy
 
 
 class TestDataclassConstruction:
@@ -196,9 +197,11 @@ class TestOborovoGuard:
         )
         result = DistributionAccountEngine.compute(inputs)
         period_result = result.period_results[0]
+        # oborovo_gate is deprecated diagnostic — never a financial authority
         assert period_result.oborovo_gate_result.passed is False
-        # Priority chain: R99 checked first, so blocked_reason reflects first failure
-        assert len(period_result.blocked_reason) > 0
+        # is_oborovo does not affect financial gates; blocked_reason reflects only financial gates
+        # With NOT_APPLICABLE policy + good DSCR + positive cash, all financial gates pass
+        assert period_result.blocked_reason == ""
 
 
 class TestEquityDistributionCandidate:
@@ -218,6 +221,7 @@ class TestEquityDistributionCandidate:
             project_name="TUHO",
             period_inputs=(inp,),
             is_tuho=True,
+            covenant_gate_policy=CovenantGatePolicy.R99_R102_APPLICABLE,
         )
         result = DistributionAccountEngine.compute(inputs)
         period_result = result.period_results[0]
@@ -296,6 +300,7 @@ class TestNoRuntimeOwnershipChanges:
             project_name="TUHO",
             period_inputs=(inp,),
             is_tuho=True,
+            covenant_gate_policy=CovenantGatePolicy.R99_R102_APPLICABLE,
         )
         result = DistributionAccountEngine.compute(inputs)
         # Result is audit-only — equity_distribution_paid must be 0
@@ -323,6 +328,7 @@ class TestEnableRuntimeSafety:
             project_name="TUHO",
             period_inputs=(inp,),
             is_tuho=True,
+            covenant_gate_policy=CovenantGatePolicy.R99_R102_APPLICABLE,
         )
         result = DistributionAccountEngine.compute(inputs)
         period_result = result.period_results[0]
@@ -359,8 +365,13 @@ class TestEnableRuntimeSafety:
 class TestOborovoGuardStrengthened:
     """Strengthened tests proving Oborovo projects are fully isolated from TUHO gates."""
 
-    def test_oborovo_equity_distribution_paid_is_zero(self):
-        """Oborovo audit-only outputs — equity_distribution_paid_keur must be 0."""
+    def test_oborovo_identity_does_not_block_da_engine(self):
+        """is_oborovo is deprecated diagnostic — DA engine does not block on identity.
+
+        The oborovo_gate diagnostic still records passed=False, but it is NOT in
+        all_gates_passed. Financial eligibility depends only on policy + financial gates.
+        With R99_R102_NOT_APPLICABLE (default) + good DSCR + positive cash, equity is paid.
+        """
         inp = DistributionAccountPeriodInput(
             period_index=1, operating_period_index=1,
             period_date=date(2029, 12, 31),
@@ -381,11 +392,13 @@ class TestOborovoGuardStrengthened:
         )
         result = DistributionAccountEngine.compute(inputs)
         period_result = result.period_results[0]
-        assert period_result.equity_distribution_paid_keur == 0.0
+        # Oborovo identity does NOT block distribution in the DA engine
+        assert period_result.oborovo_gate_result.passed is False  # deprecated diagnostic
+        assert period_result.equity_distribution_paid_keur > 0.0   # financial gates pass
         assert period_result.cash_swept_to_shl_keur == 0.0
 
-    def test_oborovo_guard_blocks_and_emits_warning(self):
-        """Oborovo guard blocks and a warning is emitted."""
+    def test_oborovo_guard_diagnostic_and_policy_warning(self):
+        """oborovo_gate diagnostic records passed=False; NOT_APPLICABLE policy emits warning."""
         inp = DistributionAccountPeriodInput(
             period_index=3, operating_period_index=3,
             period_date=date(2031, 12, 31),
@@ -405,9 +418,11 @@ class TestOborovoGuardStrengthened:
         )
         result = DistributionAccountEngine.compute(inputs)
         period_result = result.period_results[0]
+        # oborovo_gate is deprecated diagnostic — still records passed=False
         assert period_result.oborovo_gate_result.passed is False
+        # NOT_APPLICABLE policy emits a warning (is_oborovo gets default NOT_APPLICABLE)
         assert len(period_result.warnings) > 0
-        assert any("Oborovo" in w for w in period_result.warnings)
+        assert any("NOT_APPLICABLE" in w for w in period_result.warnings)
 
 
 class TestBlockedReasonsComplete:

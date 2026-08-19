@@ -66,12 +66,12 @@ def run_waterfall_v3_core(
     # service is taken from the frozen schedule (canonical sizing capacity) and
     # DSCR becomes a backward-computed output. Default False preserves behavior.
     use_frozen_excel_senior_debt_schedule: bool = False,
-    # Phase 9: CO2 revenue bridge — wire CO2 certificate revenue into period.revenue_keur.
-    # TUHO-only; default=False preserves legacy baseline.
+    # CO2 revenue bridge — wire CO2 certificate revenue into period.revenue_keur.
+    # Activated by explicit flag; no project-code dispatch. default=False.
     # R99/R102: BLOCKED — CO2 bridge affects revenue/EBITDA only, no CIT or distribution change.
     use_co2_revenue_bridge: bool = False,
-    # Phase 9: CO2→CIT bridge — add CO2 to taxable income (not EBITDA).
-    # TUHO-only; default=False preserves legacy baseline.
+    # CO2→CIT bridge — add CO2 to taxable income (not EBITDA).
+    # Activated by explicit flag; no project-code dispatch. default=False.
     # R99/R102: BLOCKED — only taxable income affected.
     use_co2_cit_bridge: bool = False,
     # Phase 9B: Dual-run validation — compare DA equity_distribution_paid_keur vs
@@ -127,7 +127,7 @@ def run_waterfall_v3_core(
     # Phase 9 CO2 revenue bridge: extract CO2 certificate revenue by period.
     # When use_co2_revenue_bridge=True, CO2 is added to period.revenue_keur
     # (and therefore EBITDA) before the waterfall run.
-    # TUHO-only guard: bridge is only activated for TUHO-WIND-1 project code.
+    # Activation is controlled by the use_co2_revenue_bridge flag; no project-code dispatch.
     # R99/R102: BLOCKED — CO2 bridge only affects revenue/EBITDA chain.
     co2_revenue_by_period: dict[int, float] = {}
     co2_base_revenue_by_period: dict[int, float] = {}
@@ -140,8 +140,9 @@ def run_waterfall_v3_core(
                 co2_revenue_by_period[period_idx] = co2_keur
                 co2_base_revenue_by_period[period_idx] = base_rev
 
-    # Phase 9 CO2→CIT bridge: extract CO2 for taxable income injection.
+    # CO2→CIT bridge: extract CO2 for taxable income injection.
     # CO2 is added directly to taxable income in TaxEngine (not EBITDA).
+    # Activation is controlled by the use_co2_cit_bridge flag; no project-code dispatch.
     # Must not be used simultaneously with use_co2_revenue_bridge=True.
     # R99/R102: BLOCKED — only taxable income / cash tax affected.
     co2_cit_bridge_by_period: dict[int, float] = {}
@@ -214,10 +215,10 @@ def run_waterfall_v3_core(
 
     for p in periods_list:
         rev = revenue_dict.get(p.index, 0)
-        # Phase 9 CO2 bridge: add CO2 certificate revenue to base revenue.
+        # CO2 bridge: add CO2 certificate revenue to base revenue.
         # When use_co2_revenue_bridge=True: adds to EBITDA via rev→ebitda chain.
         # When use_co2_cit_bridge=True: SKIP here; CO2 added to taxable income only.
-        # TUHO-only. R99/R102 remain unchanged.
+        # R99/R102 remain unchanged.
         if use_co2_revenue_bridge and not use_co2_cit_bridge:
             co2_add = co2_revenue_by_period.get(p.index, 0.0)
             rev = rev + co2_add
@@ -834,7 +835,6 @@ def _apply_distributionaccount_runtime_wiring(
             dsra_required_balance_keur=getattr(wp, "dsra_balance_keur", 0.0),
             is_tuho=is_tuho,
             is_oborovo=is_oborovo,
-            covenant_gate_policy=covenant_gate_policy,
             senior_tenor_years=senior_tenor_years,
             minimum_cash_reserve_keur=0.0,
             runtime_economic_mode=True,  # Runtime staging mode: gates for explicit wiring only
@@ -1312,7 +1312,6 @@ def _attach_dualrun_validation(result, inputs, periods_list) -> None:
             dsra_required_balance_keur=getattr(wp, "dsra_balance_keur", 0.0),
             is_tuho=is_tuho,
             is_oborovo=is_oborovo,
-            covenant_gate_policy=covenant_gate_policy,
             senior_tenor_years=senior_tenor_years,
             minimum_cash_reserve_keur=0.0,
         )

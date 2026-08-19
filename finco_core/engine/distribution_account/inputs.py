@@ -47,7 +47,6 @@ class DistributionAccountPeriodInput:
     project_name: str = ""
     is_tuho: bool = False
     is_oborovo: bool = False
-    covenant_gate_policy: CovenantGatePolicy = CovenantGatePolicy.R99_R102_NOT_APPLICABLE
     dsra_required_balance_keur: float = 0.0
     dsra_current_balance_keur: float = 0.0
     jdsra_required_balance_keur: float = 0.0
