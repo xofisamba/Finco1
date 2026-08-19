@@ -11,9 +11,10 @@ R-row mapping (CF sheet, from excel source extraction):
 
 Waterfall ordering (source-proven):
   1. signed_post_senior (R84)
-  2. Distribution Account roll-forward (CF108/CF109/CF110 — CAUSAL)
-  3. SHL service from fcf_for_distribution (R112 = R109)
-  4. legal_equity_distribution = remainder (R116)
+  2. PR-3 CASH_DSRA roll-forward → reserve_adjusted_cash (PR-4)
+  3. Distribution Account roll-forward (CF108/CF109/CF110 — CAUSAL)
+  4. SHL service from fcf_for_distribution (R112 = R109)
+  5. legal_equity_distribution = remainder (R116)
 
 MANUAL_WORKBOOK_SOURCE_EVIDENCE:
   CF!G108 = =SUM(G94,G95,G106)+F110
@@ -22,9 +23,9 @@ MANUAL_WORKBOOK_SOURCE_EVIDENCE:
   $B$11 = Senior Debt Maturity years = 14
   $B$109 = distribution_lockup_dscr = 1.10
 
-Post-senior cash is pre-DSRA. The clean engine explicitly marks
-cash_after_senior_before_reserves_keur as pre-reserve (DSRA ordering
-unresolved). G2C inherits this limitation.
+PR-4 CHANGE: DA inflow now sourced from PR-3 cash_after_dsra_keur (reserve-adjusted)
+rather than signed_post_senior directly. For NONE/DSRF modes, cash_after_dsra ==
+signed_post_senior (neutral pass-through), so no financial change for those modes.
 """
 from __future__ import annotations
 
@@ -96,6 +97,11 @@ class CovenantGatedWaterfallPeriod:
     # Cash waterfall (operating) — source-proven ordering
     signed_post_senior_keur: float          # R84: pre-gate junior FCF
     dsrf_commitment_fee_keur: float         # DSRF fee deducted before gate (0 for CASH_DSRA/NONE)
+    # PR-4: reserve-adjusted cash inserted between signed_post_senior and DA inflow
+    reserve_adjusted_cash_keur: float       # PR-3 cash_after_dsra; == signed_post_senior for NONE/DSRF
+    dsra_top_up_keur: float                 # PR-3 top_up this period (0 for NONE/DSRF)
+    dsra_draw_keur: float                   # PR-3 draw_to_cover_shortfall this period (0 for NONE/DSRF)
+    dsra_release_keur: float                # PR-3 release this period (0 per UNRESOLVED_RELEASE_POLICY)
     fcf_for_distribution_keur: float        # R109: gate output (= DA release)
     covenant_locked_keur: float             # DA closing (accumulated locked cash per period)
 
