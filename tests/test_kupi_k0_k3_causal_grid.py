@@ -46,6 +46,7 @@ from tests.diagnostics.kupi_k0_k3_causal_grid import (
     kupi_true_bank_only_senior_diagnostic,
     KupiBankOnlySeniorDiagnostic,
     KupiFinalSourceCompatDiagnostic,
+    KupiFirstPeriodCashBridge,
     KupiShlConstructionDrawdownDiagnostic,
     run_d0_bank_balancing_diagnostic,
     run_full_grid,
@@ -290,9 +291,42 @@ class TestNoSourceShlInjection:
         )
 
     def test_source_shl_not_in_module_as_input(self):
-        """F2: Source SHL value appears only as a comparison constant, not as a G2A input."""
+        """F2: Source SHL / Senior literal values appear only as module-level comparison constants.
+
+        The AST governance guard (in CI) enforces this structurally. Here we check
+        the diagnostic module does not hard-code the source numeric values as call arguments.
+        Allowed: module-level constant assignments (SOURCE_SHL_PRINCIPAL_KEUR = 68_152.996).
+        Disallowed: 68152.996 or 147150.442 passed as arguments to financing/input constructors.
+        """
+        import ast, textwrap
+
         src = (Path(__file__).resolve().parent / "diagnostics" / "kupi_k0_k3_causal_grid.py").read_text()
-        assert "source_senior" not in src.lower().replace("source_senior_keur", "")
+        tree = ast.parse(src)
+
+        DISALLOWED_VALUES = {68_152.996, 68_152.995_666_529, 147_150.442, 147_150.442_310_339}
+        ALLOWED_NAMES = {
+            "SOURCE_SHL_PRINCIPAL_KEUR", "SOURCE_SENIOR_KEUR",
+            "SOURCE_PIK_KEUR", "SOURCE_OPENING_SHL_KEUR",
+        }
+
+        # Collect all module-level assignments like CONSTANT = <value>
+        module_constant_linenos: set[int] = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Assign):
+                for target in node.targets:
+                    if isinstance(target, ast.Name) and target.id in ALLOWED_NAMES:
+                        module_constant_linenos.add(node.lineno)
+
+        violations = []
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Constant) and isinstance(node.value, float):
+                if any(abs(node.value - v) < 1.0 for v in DISALLOWED_VALUES):
+                    if node.lineno not in module_constant_linenos:
+                        violations.append((node.lineno, node.value))
+
+        assert not violations, (
+            f"Source numeric literals appear outside allowed constant definitions: {violations}"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -925,17 +959,20 @@ class TestFinalSourceCompatDiagnostic:
 # ---------------------------------------------------------------------------
 
 class TestShlConstructionDrawdownGap:
-    """SHL_CONSTRUCTION_DRAWDOWN_GAP diagnostic tests.
+    """SHL_CONSTRUCTION_DRAWDOWN_GAP diagnostic tests — case-aware (P0 and D0 separately).
 
-    Source evidence (addendum screenshots):
-    - Source SHL cash: 68,152.996 kEUR
+    CAUSAL CORRECTION vs prior version:
+    - P0 SHL >> source because P0 Senior << source (BANK_CASE_BALANCING_OVERRIDE_GAP).
+      This is a financing-stack consequence, NOT a construction mechanics issue.
+    - The source-compatible comparison is D0/K3 (Senior ≈ source within 513 kEUR).
+    - D0 COD SHL gap (≈ -598 kEUR): SOURCE_INFORMED_CONSTRUCTION_TIMING_APPROXIMATION.
+    - D0 op SHL interest gap (≈ -12,807 kEUR): confounded by BANK_CASE_BALANCING_OVERRIDE_GAP
+      (D0 Base CFADS inflated → faster SHL sweep → lower total interest).
+
+    Source anchors (addendum screenshots):
+    - Source cash SHL: 68,152.996 kEUR
     - Source construction PIK: 11,340.658 kEUR
-    - Source COD SHL opening: 79,493.654 kEUR (= SOURCE_OPENING_SHL_KEUR)
-    - Source operating SHL interest period 1: 3,206 kEUR
-
-    Engine (P0 ALL_AT_FC + COMPOUND) draws significantly more SHL during
-    construction, causing higher COD SHL opening and higher operating interest.
-    This is the primary cause of shadow CIT < source CIT.
+    - Source COD SHL opening: 79,493.654 kEUR
     """
 
     @pytest.fixture(scope="class")
@@ -943,57 +980,80 @@ class TestShlConstructionDrawdownGap:
         return run_p0_current_generic()
 
     @pytest.fixture(scope="class")
-    def drawdown_diag(self, p0):
-        return kupi_shl_construction_drawdown_diagnostic(p0)
+    def d0(self, grid):
+        return grid.d0
+
+    @pytest.fixture(scope="class")
+    def drawdown_diag(self, p0, d0):
+        return kupi_shl_construction_drawdown_diagnostic(p0, d0)
+
+    @pytest.fixture(scope="class")
+    def cash_bridge(self, d0):
+        return kupi_shl_first_cash_divergence_period(d0)
 
     def test_returns_dataclass(self, drawdown_diag):
         """P1: Diagnostic returns KupiShlConstructionDrawdownDiagnostic."""
         assert isinstance(drawdown_diag, KupiShlConstructionDrawdownDiagnostic)
 
-    def test_engine_cod_shl_exceeds_source(self, drawdown_diag):
-        """P2: Engine COD SHL opening > source anchor (confirms drawdown gap)."""
-        assert drawdown_diag.engine_cod_shl_opening_keur > drawdown_diag.source_cod_shl_opening_keur, (
-            f"Expected engine COD SHL ({drawdown_diag.engine_cod_shl_opening_keur:.1f}) "
-            f"> source ({drawdown_diag.source_cod_shl_opening_keur:.1f})"
+    def test_d0_cod_shl_near_source(self, drawdown_diag):
+        """P2: D0 COD SHL opening is within 1000 kEUR of source (source-compatible case)."""
+        gap = abs(drawdown_diag.d0_vs_source_cod_shl_gap_keur)
+        assert gap < 1_000.0, (
+            f"D0 COD SHL gap vs source should be < 1000 kEUR, got {gap:.1f} kEUR "
+            f"(D0={drawdown_diag.d0_cod_shl_opening_keur:.1f}, source={drawdown_diag.source_cod_shl_opening_keur:.1f})"
         )
-
-    def test_cod_shl_gap_positive(self, drawdown_diag):
-        """P3: Engine COD SHL gap > 0 (engine draws more SHL than source)."""
-        assert drawdown_diag.cod_shl_gap_keur > 0
-        print(f"\n  Engine COD SHL: {drawdown_diag.engine_cod_shl_opening_keur:.3f} kEUR")
+        print(f"\n  D0 COD SHL:     {drawdown_diag.d0_cod_shl_opening_keur:.3f} kEUR")
         print(f"  Source COD SHL: {drawdown_diag.source_cod_shl_opening_keur:.3f} kEUR")
-        print(f"  Gap:            {drawdown_diag.cod_shl_gap_keur:+.3f} kEUR")
+        print(f"  |Gap|:          {gap:.3f} kEUR (SOURCE_INFORMED_CONSTRUCTION_TIMING_APPROXIMATION)")
 
-    def test_engine_op_shl_interest_exceeds_source_anchor(self, drawdown_diag):
-        """P4: Engine operating SHL interest exceeds source anchor by > 5000 kEUR."""
-        gap = drawdown_diag.op_shl_interest_gap_keur
-        assert gap > 5_000.0, (
-            f"Expected engine op SHL interest > source anchor by >5000 kEUR, got {gap:.1f}"
+    def test_d0_vs_source_cod_shl_gap_classified(self, drawdown_diag):
+        """P3: D0 COD SHL gap is negative (D0 < source) and < 1000 kEUR magnitude — timing approximation."""
+        gap = drawdown_diag.d0_vs_source_cod_shl_gap_keur
+        assert gap < 0.0, (
+            f"D0 COD SHL should be slightly below source (timing approximation), got gap={gap:+.1f} kEUR"
         )
-        print(f"\n  Engine op SHL interest: {drawdown_diag.engine_total_op_shl_interest_keur:.3f} kEUR")
-        print(f"  Source anchor:          {drawdown_diag.source_total_op_shl_interest_keur:.3f} kEUR")
-        print(f"  Gap:                    {gap:+.3f} kEUR")
+        assert abs(gap) < 1_000.0, (
+            f"|D0 COD SHL gap| should be < 1000 kEUR, got {abs(gap):.1f} kEUR"
+        )
+        print(f"\n  D0 vs source COD SHL gap: {gap:+.3f} kEUR (negative = D0 < source)")
 
-    def test_shadow_cit_below_source(self, drawdown_diag):
-        """P5: Shadow CIT < source CIT anchor (excess SHL deduction depresses taxable income)."""
-        assert drawdown_diag.shadow_cit_keur < drawdown_diag.source_cit_anchor_keur, (
-            f"Shadow CIT ({drawdown_diag.shadow_cit_keur:.1f}) should be < "
-            f"source CIT ({drawdown_diag.source_cit_anchor_keur:.1f})"
-        )
-        print(f"\n  Shadow CIT: {drawdown_diag.shadow_cit_keur:.3f} kEUR")
-        print(f"  Source CIT: {drawdown_diag.source_cit_anchor_keur:.3f} kEUR")
-        print(f"  Gap (source - shadow): {drawdown_diag.actual_cit_gap_keur:+.3f} kEUR")
+    def test_d0_op_shl_interest_gap_documented(self, drawdown_diag):
+        """P4: D0 op SHL interest gap is finite and documented (confounded by BANK_BASE_OVERRIDE)."""
+        gap = drawdown_diag.d0_vs_source_op_shl_interest_gap_keur
+        assert math.isfinite(gap), "D0 vs source op SHL interest gap must be finite"
+        print(f"\n  D0 op SHL interest:  {drawdown_diag.d0_op_shl_interest_keur:.3f} kEUR")
+        print(f"  Source anchor:       {drawdown_diag.source_op_shl_interest_keur:.3f} kEUR")
+        print(f"  Gap (D0 - source):   {gap:+.3f} kEUR")
+        print(f"  Classification: BANK_CASE_BALANCING_OVERRIDE_GAP (D0 Base CFADS inflated)")
 
-    def test_first_shl_cash_divergence_at_cod(self, p0):
-        """P6: First SHL-eligible cash divergence occurs at COD (first operating period, pidx=2)."""
-        div = kupi_shl_first_cash_divergence_period(p0)
-        print(f"\n  First op period engine SHL cash: {div['engine_cash_keur']:.3f} kEUR")
-        print(f"  Source CF102 first op period:    {div['source_cash_keur']:.3f} kEUR")
-        print(f"  Delta:                           {div['delta_keur']:+.3f} kEUR")
-        # First divergence must be at the first operating period (pidx=2)
-        assert div["first_divergence_pidx"] == 2, (
-            f"Expected first divergence at pidx=2 (COD), got {div['first_divergence_pidx']!r}"
+    def test_p0_cash_shl_gap_financing_stack_consequence(self, drawdown_diag):
+        """P5: P0 cash SHL gap ≈ -(P0 Senior gap) — funding identity confirms financing-stack cause."""
+        cash_gap = drawdown_diag.p0_vs_source_cash_shl_gap_keur
+        senior_gap = drawdown_diag.p0_vs_source_senior_gap_keur
+        # Under funding identity: cash_SHL_gap ≈ -senior_gap
+        residual = cash_gap + senior_gap  # should be near zero
+        assert abs(residual) < 100.0, (
+            f"Funding identity: P0 cash_SHL_gap + P0_senior_gap should ≈ 0, "
+            f"got {residual:.1f} kEUR (cash_gap={cash_gap:+.1f}, senior_gap={senior_gap:+.1f})"
         )
+        # P0 SHL larger than source (balancing inflates SHL)
+        assert cash_gap > 5_000.0, (
+            f"P0 cash SHL should be >> source (financing stack consequence), got gap={cash_gap:+.1f}"
+        )
+        print(f"\n  P0 cash SHL gap vs source: {cash_gap:+.3f} kEUR (FINANCING_STACK_CONSEQUENCE)")
+        print(f"  P0 Senior gap vs source:   {senior_gap:+.3f} kEUR (BANK_CASE_BALANCING_OVERRIDE_GAP)")
+        print(f"  Funding identity residual: {residual:+.3f} kEUR (should be ≈ 0)")
+
+    def test_first_cash_bridge_returns_dataclass(self, cash_bridge):
+        """P6: kupi_shl_first_cash_divergence_period returns KupiFirstPeriodCashBridge."""
+        assert isinstance(cash_bridge, KupiFirstPeriodCashBridge)
+        assert cash_bridge.pre_reserve_gap_classification == "PRE_RESERVE_SHL_CASH_AUTHORITY_GAP"
+        print(f"\n  D0 CFADS first op:   {cash_bridge.d0_cfads_first_op_keur:.3f} kEUR")
+        print(f"  Source CF69:         {cash_bridge.source_cfads_first_op_keur:.3f} kEUR")
+        print(f"  CFADS delta:         {cash_bridge.cfads_delta_keur:+.3f} kEUR (upstream cause)")
+        print(f"  D0 post-Sr cash:     {cash_bridge.d0_post_sr_cash_first_op_keur:.3f} kEUR")
+        print(f"  Source CF102:        {cash_bridge.source_cf102_first_op_keur:.3f} kEUR")
+        print(f"  Classification: {cash_bridge.pre_reserve_gap_classification}")
 
     def test_source_cod_shl_constant_matches_addendum(self):
         """P7: SOURCE_OPENING_SHL_KEUR = 79,493.654 matches addendum screenshot proof."""
@@ -1002,6 +1062,147 @@ class TestShlConstructionDrawdownGap:
     def test_source_cf102_first_period_constant(self):
         """P8: SOURCE_CF102_FIRST_OP_PERIOD_KEUR = 5,842 kEUR (5.842 M€ from addendum)."""
         assert SOURCE_CF102_FIRST_OP_PERIOD_KEUR == pytest.approx(5_842.0, abs=1.0)
+
+
+# ---------------------------------------------------------------------------
+# Q. Regression guards — causal classification integrity
+# ---------------------------------------------------------------------------
+
+class TestCausalClassificationRegressionGuards:
+    """Regression tests that fail if causal classification errors are reintroduced.
+
+    These guards enforce the corrections made in the final causal pass:
+    1. D0/K3 diagnostic must NOT embed P0 SHL metrics
+    2. Source-comparison must NOT silently switch financing cases
+    3. COD identity (cash_SHL + PIK = COD_open) must hold for all cases
+    4. Funding identity must close for source (Uses = Senior + cash_SHL + ShareCap)
+    5. Pre-reserve SHL candidate cash must NOT be labeled as covenant-released CF102
+    6. Causal note must NOT claim downstream SHL payment caused upstream CF102 diff
+    """
+
+    @pytest.fixture(scope="class")
+    def p0(self):
+        return run_p0_current_generic()
+
+    @pytest.fixture(scope="class")
+    def d0(self, grid):
+        return grid.d0
+
+    @pytest.fixture(scope="class")
+    def drawdown_diag(self, p0, d0):
+        return kupi_shl_construction_drawdown_diagnostic(p0, d0)
+
+    @pytest.fixture(scope="class")
+    def cash_bridge(self, d0):
+        return kupi_shl_first_cash_divergence_period(d0)
+
+    def test_q1_d0_diagnostic_does_not_use_p0_shl(self, drawdown_diag):
+        """Q1: D0 diagnostic uses D0 SHL metrics, not P0 (guard against case-switch regression).
+
+        D0 cash_SHL should be near source (~68,153 kEUR).
+        P0 cash_SHL is inflated (~79,580 kEUR).
+        If the diagnostic silently used P0 metrics for the D0 row, this test fails.
+        """
+        d0_cash = drawdown_diag.d0_cash_shl_keur
+        p0_cash = drawdown_diag.p0_cash_shl_keur
+        # D0 cash SHL must be within 2000 kEUR of source (not near P0 which is 11k+ higher)
+        assert abs(d0_cash - SOURCE_SHL_PRINCIPAL_KEUR) < 2_000.0, (
+            f"D0 cash SHL ({d0_cash:.1f}) should be near source ({SOURCE_SHL_PRINCIPAL_KEUR:.1f}), "
+            f"not near P0 ({p0_cash:.1f}). Possible case-switch regression."
+        )
+        # P0 must be substantially different from D0 (proves they're distinct)
+        assert p0_cash - d0_cash > 5_000.0, (
+            f"P0 cash SHL ({p0_cash:.1f}) should be >> D0 ({d0_cash:.1f}) "
+            f"by >5000 kEUR (BANK_CASE_BALANCING_OVERRIDE_GAP consequence)"
+        )
+
+    def test_q2_source_comparison_uses_d0_not_p0(self, drawdown_diag):
+        """Q2: Source-compatible gap is reported on D0 metrics, not P0 metrics."""
+        # d0_vs_source_cash_shl_gap must be small (D0 ≈ source)
+        d0_gap = abs(drawdown_diag.d0_vs_source_cash_shl_gap_keur)
+        p0_gap = abs(drawdown_diag.p0_vs_source_cash_shl_gap_keur)
+        assert d0_gap < 2_000.0, (
+            f"Source-compatible gap (D0 vs source) should be < 2000 kEUR, got {d0_gap:.1f}. "
+            f"If this is ~{p0_gap:.0f} kEUR, the diagnostic is using P0 values for the D0 row."
+        )
+
+    def test_q3_cod_identity_holds_all_cases(self, drawdown_diag):
+        """Q3: COD identity (cash_SHL + construction_PIK = COD_opening_SHL) holds for P0, D0, source."""
+        assert drawdown_diag.p0_cod_identity_holds, (
+            f"P0 COD identity broken: cash_SHL={drawdown_diag.p0_cash_shl_keur:.3f} + "
+            f"PIK={drawdown_diag.p0_construction_pik_keur:.3f} ≠ "
+            f"COD_open={drawdown_diag.p0_cod_shl_opening_keur:.3f}"
+        )
+        assert drawdown_diag.d0_cod_identity_holds, (
+            f"D0 COD identity broken: cash_SHL={drawdown_diag.d0_cash_shl_keur:.3f} + "
+            f"PIK={drawdown_diag.d0_construction_pik_keur:.3f} ≠ "
+            f"COD_open={drawdown_diag.d0_cod_shl_opening_keur:.3f}"
+        )
+        assert drawdown_diag.source_cod_identity_holds, (
+            f"Source COD identity should hold by construction: "
+            f"{SOURCE_SHL_PRINCIPAL_KEUR:.3f} + {drawdown_diag.source_pik_keur:.3f} ≠ "
+            f"{SOURCE_OPENING_SHL_KEUR:.3f}"
+        )
+
+    def test_q4_source_funding_identity_closes(self, drawdown_diag):
+        """Q4: Source funding identity: Senior + cash_SHL + ShareCap(500) ≈ Total Uses."""
+        _SHARE_CAP_KEUR = 500.0
+        reconstructed = (
+            drawdown_diag.source_senior_keur
+            + drawdown_diag.source_cash_shl_keur
+            + _SHARE_CAP_KEUR
+        )
+        residual = abs(reconstructed - SOURCE_TOTAL_USES_KEUR)
+        assert residual < 10.0, (
+            f"Source funding identity: {drawdown_diag.source_senior_keur:.3f} + "
+            f"{drawdown_diag.source_cash_shl_keur:.3f} + {_SHARE_CAP_KEUR:.0f} = "
+            f"{reconstructed:.3f} ≠ {SOURCE_TOTAL_USES_KEUR:.3f} kEUR (residual {residual:.3f})"
+        )
+
+    def test_q5_pre_reserve_not_labeled_cf102(self, cash_bridge):
+        """Q5: Pre-reserve SHL candidate cash must be classified as PRE_RESERVE_SHL_CASH_AUTHORITY_GAP,
+        not labeled as covenant-released CF102.
+        """
+        classification = cash_bridge.pre_reserve_gap_classification
+        assert classification == "PRE_RESERVE_SHL_CASH_AUTHORITY_GAP", (
+            f"Expected pre_reserve_gap_classification='PRE_RESERVE_SHL_CASH_AUTHORITY_GAP', "
+            f"got {classification!r}. Pre-reserve cash must not be labeled as CF102."
+        )
+        # The bridge must have explicit CFADS and Senior DS fields (upstream bridge, not downstream)
+        assert math.isfinite(cash_bridge.d0_cfads_first_op_keur), "CFADS bridge must be populated"
+        assert math.isfinite(cash_bridge.d0_senior_ds_first_op_keur), "Senior DS bridge must be populated"
+
+    def test_q6_first_period_cause_is_upstream_not_shl_interest(self, cash_bridge):
+        """Q6: First-period CF102 delta cause must be upstream (CFADS/Senior DS), not downstream SHL.
+
+        If the diagnostic claims downstream SHL payment caused the upstream CF102 difference,
+        this test fails. The bridge must show the arithmetic flows CFADS → Senior DS → post-Sr.
+        The CFADS delta must be non-zero and explain the post-Sr delta.
+        """
+        cfads_delta = cash_bridge.cfads_delta_keur
+        senior_ds_delta = cash_bridge.senior_ds_delta_keur
+        post_sr_delta = cash_bridge.post_sr_delta_keur
+
+        # CFADS delta and Senior DS delta must be finite (upstream bridge populated)
+        assert math.isfinite(cfads_delta), "CFADS delta must be finite"
+        assert math.isfinite(senior_ds_delta), "Senior DS delta must be finite"
+        assert math.isfinite(post_sr_delta), "Post-Sr delta must be finite"
+
+        # The upstream cause field must mention CFADS or revenue or balancing, NOT SHL interest
+        cause_lower = cash_bridge.cfads_upstream_cause.lower()
+        assert "shl interest" not in cause_lower and "downstream shl" not in cause_lower, (
+            f"cfads_upstream_cause must not claim downstream SHL interest caused the CF102 gap. "
+            f"Got: {cash_bridge.cfads_upstream_cause!r}"
+        )
+
+        # Arithmetic closure: post_sr_delta ≈ cfads_delta - senior_ds_delta (within 50 kEUR)
+        expected_post_sr = cfads_delta - senior_ds_delta
+        arithmetic_residual = abs(post_sr_delta - expected_post_sr)
+        assert arithmetic_residual < 50.0, (
+            f"Cash bridge arithmetic: post_sr_delta={post_sr_delta:+.3f} should ≈ "
+            f"cfads_delta - senior_ds_delta = {expected_post_sr:+.3f} kEUR "
+            f"(residual {arithmetic_residual:.3f} kEUR)"
+        )
 
 
 # ---------------------------------------------------------------------------

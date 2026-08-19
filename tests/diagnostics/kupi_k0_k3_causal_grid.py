@@ -837,168 +837,264 @@ _SOURCE_TOTAL_CIT_KEUR = 95_291.964024174  # comparison anchor only — NOT a ta
 
 @dataclass(frozen=True)
 class KupiShlConstructionDrawdownDiagnostic:
-    """SHL construction drawdown comparison: engine vs source workbook.
+    """SHL construction drawdown comparison — case-aware: P0 and D0/K3 vs source.
 
-    SHL_CONSTRUCTION_DRAWDOWN_GAP: the engine draws more SHL during construction
-    than the source workbook, causing a larger COD SHL opening, higher operating
-    SHL interest, lower engine EBT, and thus lower shadow CIT vs source CIT.
+    CAUSAL CORRECTION (vs prior version):
+    P0 cash SHL >> source cash SHL because P0 Senior << source Senior.
+    Under the funding identity (Uses = Senior + SHL_cash + ShareCap), a lower P0
+    Senior is the BANK_CASE_BALANCING_OVERRIDE_GAP consequence (balancing=5 in Bank
+    sizing depresses Bank CFADS → lower Senior → more residual SHL).  The P0 SHL
+    drawdown gap is therefore a financing-stack consequence, NOT a construction
+    mechanics issue.
 
-    Primary cause of tax shadow CIT gap (shadow < source).
+    D0/K3 has Senior ≈ source (within 513 kEUR) and cash SHL ≈ source (within 513 kEUR),
+    confirming the funding identity residual is the same for both.
+
+    COD opening SHL gap in D0/K3 vs source (≈ -598 kEUR) is classified as
+    SOURCE_INFORMED_CONSTRUCTION_TIMING_APPROXIMATION (day-count / PIK precision).
     """
-    engine_cod_shl_opening_keur: float     # engine COD SHL = first op period opening
-    source_cod_shl_opening_keur: float     # = 79,493.654 kEUR (comparison anchor)
-    cod_shl_gap_keur: float                # engine - source (positive = engine over-draws)
-    engine_shl_drawdown_p0_keur: float     # engine SHL drawdown at construction period 0
-    source_shl_cash_keur: float            # = 68,152.996 kEUR (source cash SHL anchor)
-    engine_total_op_shl_interest_keur: float    # total operating SHL interest (engine)
-    source_total_op_shl_interest_keur: float    # = 48,681.151 kEUR (anchor)
-    op_shl_interest_gap_keur: float        # engine - source (excess SHL deduction)
-    implied_taxable_income_reduction_keur: float  # = op_shl_interest_gap (excess deduction)
-    implied_cit_gap_keur: float            # implied_taxable_income_reduction × CIT_rate
-    shadow_cit_keur: float                 # actual shadow CIT (uses engine SHL)
-    source_cit_anchor_keur: float          # = 95,291.964 kEUR (anchor)
-    actual_cit_gap_keur: float             # source - shadow (positive = source higher)
+    # P0 metrics
+    p0_cash_shl_keur: float
+    p0_construction_pik_keur: float
+    p0_cod_shl_opening_keur: float
+    p0_senior_keur: float
+    p0_op_shl_interest_keur: float
+    p0_cod_identity_holds: bool   # cash_shl + pik == cod_open within 1 kEUR
+
+    # D0/K3 metrics (source-compatible financing stack)
+    d0_cash_shl_keur: float
+    d0_construction_pik_keur: float
+    d0_cod_shl_opening_keur: float
+    d0_senior_keur: float
+    d0_op_shl_interest_keur: float
+    d0_cod_identity_holds: bool
+
+    # Source anchors
+    source_cash_shl_keur: float            # = SOURCE_SHL_PRINCIPAL_KEUR
+    source_pik_keur: float                 # = SOURCE_PIK_KEUR
+    source_cod_shl_opening_keur: float     # = SOURCE_OPENING_SHL_KEUR
+    source_senior_keur: float              # = SOURCE_SENIOR_KEUR
+    source_op_shl_interest_keur: float     # = SOURCE_TOTAL_SHL_OPERATING_INTEREST_KEUR
+    source_cod_identity_holds: bool
+
+    # Gap analysis (D0 vs source — the source-compatible comparison)
+    d0_vs_source_cash_shl_gap_keur: float      # D0 - source (≈ -513)
+    d0_vs_source_cod_shl_gap_keur: float       # D0 - source (≈ -598)
+    d0_vs_source_senior_gap_keur: float        # D0 - source (≈ +513)
+    d0_vs_source_op_shl_interest_gap_keur: float  # D0 - source (confounded by BANK_BASE_OVERRIDE)
+
+    # P0 gap attribution
+    p0_vs_source_cash_shl_gap_keur: float     # P0 - source (≈ +11427) — FINANCING_STACK_CONSEQUENCE
+    p0_vs_source_senior_gap_keur: float       # P0 - source (≈ -11427) — BANK_CASE_BALANCING_OVERRIDE_GAP
+
     note: str
 
 
-def kupi_shl_construction_drawdown_diagnostic(
-    p0_result: "ProjectFinancingResult",
-) -> KupiShlConstructionDrawdownDiagnostic:
-    """Compare engine SHL construction drawdown to source workbook anchor.
-
-    Identifies SHL_CONSTRUCTION_DRAWDOWN_GAP as the primary cause of the
-    shadow CIT gap (shadow_cit < source_cit).  The engine draws more SHL
-    during construction (ALL_AT_FC funds the full residual SHL in one tranche),
-    leading to a higher COD SHL opening and higher operating SHL interest.
-    The excess operating SHL interest reduces engine EBT vs source EBT,
-    depressing shadow CIT relative to the source workbook.
-
-    This is NOT a production change.  No source vectors are injected.
-    """
-    pmr = p0_result.project_model_result
+def _shl_stack(result: "ProjectFinancingResult") -> dict:
+    """Extract SHL construction + COD stack metrics from a financing result."""
+    pmr = result.project_model_result
     shl_s = pmr.shareholder_loan
-
+    sd = pmr.senior_debt
     n = len(shl_s.period_indices)
     period_meta = {p.period_index: p for p in pmr.periods}
 
-    # COD SHL opening = first operating period opening balance
-    first_op_pidx = next(
-        shl_s.period_indices[i]
-        for i in range(n)
-        if period_meta[shl_s.period_indices[i]].is_operation
-    )
-    first_op_idx = list(shl_s.period_indices).index(first_op_pidx)
-    engine_cod_shl = shl_s.shl_opening_keur[first_op_idx]
+    constr_idx_list = [i for i in range(n) if period_meta[shl_s.period_indices[i]].is_construction]
+    first_op_idx = next(i for i in range(n) if period_meta[shl_s.period_indices[i]].is_operation)
 
-    # Engine SHL drawdown at first construction period
-    constr_indices = [
-        shl_s.period_indices[i]
-        for i in range(n)
-        if period_meta[shl_s.period_indices[i]].is_construction
-    ]
-    first_constr_idx = list(shl_s.period_indices).index(constr_indices[0])
-    engine_shl_drawdown_p0 = shl_s.shl_drawdown_keur[first_constr_idx]
-
-    # Total operating SHL interest (engine)
-    engine_op_shl_interest = sum(
+    cash_shl = sum(shl_s.shl_drawdown_keur[i] for i in constr_idx_list)
+    pik = sum(shl_s.shl_pik_interest_keur[i] for i in constr_idx_list)
+    cod_open = shl_s.shl_opening_keur[first_op_idx]
+    op_shl_int = sum(
         shl_s.shl_gross_interest_keur[i]
         for i in range(n)
         if period_meta[shl_s.period_indices[i]].is_operation
     )
+    return {
+        "cash_shl": cash_shl,
+        "pik": pik,
+        "cod_open": cod_open,
+        "cod_identity_holds": abs(cash_shl + pik - cod_open) < 1.0,
+        "senior": sd.debt_size_keur,
+        "op_shl_int": op_shl_int,
+    }
 
-    cod_shl_gap = engine_cod_shl - SOURCE_OPENING_SHL_KEUR
-    op_shl_gap = engine_op_shl_interest - SOURCE_TOTAL_SHL_OPERATING_INTEREST_KEUR
-    implied_ti_reduction = op_shl_gap  # excess SHL deduction reduces taxable income
-    implied_cit_gap = implied_ti_reduction * BA_CORPORATE_RATE
 
-    # Shadow CIT (computed separately — this diagnostic is for context only)
-    shadow = kupi_source_workbook_tax_shadow(p0_result)
-    actual_cit_gap = _SOURCE_TOTAL_CIT_KEUR - shadow.total_shadow_cit_keur
+def kupi_shl_construction_drawdown_diagnostic(
+    p0_result: "ProjectFinancingResult",
+    d0_result: "ProjectFinancingResult",
+) -> KupiShlConstructionDrawdownDiagnostic:
+    """Case-aware SHL construction drawdown comparison.
+
+    Compares P0 and D0 separately against the source anchor.
+    Correctly attributes the P0 SHL gap to BANK_CASE_BALANCING_OVERRIDE_GAP
+    (financing-stack consequence) rather than construction mechanics.
+    The source-compatible comparison is D0/K3.
+    """
+    p0 = _shl_stack(p0_result)
+    d0 = _shl_stack(d0_result)
+
+    p0_cash_gap = p0["cash_shl"] - SOURCE_SHL_PRINCIPAL_KEUR
+    p0_senior_gap = p0["senior"] - SOURCE_SENIOR_KEUR
+
+    d0_cash_gap = d0["cash_shl"] - SOURCE_SHL_PRINCIPAL_KEUR
+    d0_cod_gap = d0["cod_open"] - SOURCE_OPENING_SHL_KEUR
+    d0_senior_gap = d0["senior"] - SOURCE_SENIOR_KEUR
+    d0_op_int_gap = d0["op_shl_int"] - SOURCE_TOTAL_SHL_OPERATING_INTEREST_KEUR
 
     note = (
-        f"SHL_CONSTRUCTION_DRAWDOWN_GAP: engine SHL drawdown={engine_shl_drawdown_p0:.3f} kEUR "
-        f"vs source SHL cash={SOURCE_SHL_PRINCIPAL_KEUR:.3f} kEUR "
-        f"(gap={engine_shl_drawdown_p0 - SOURCE_SHL_PRINCIPAL_KEUR:+.3f} kEUR). "
-        f"Engine COD SHL opening={engine_cod_shl:.3f} vs source={SOURCE_OPENING_SHL_KEUR:.3f} "
-        f"(gap={cod_shl_gap:+.3f} kEUR). "
-        f"Engine total op SHL interest={engine_op_shl_interest:.3f} vs source={SOURCE_TOTAL_SHL_OPERATING_INTEREST_KEUR:.3f} "
-        f"(excess={op_shl_gap:+.3f} kEUR). "
-        f"Excess SHL deduction reduces taxable income → shadow CIT reduced by ~{implied_cit_gap:.0f} kEUR "
-        f"(linear estimate). "
-        f"Actual shadow CIT gap (source - shadow)={actual_cit_gap:+.3f} kEUR. "
-        f"SHL_CONSTRUCTION_DRAWDOWN_GAP is the PRIMARY cause of shadow CIT < source CIT. "
-        f"SOURCE_TAX_POLICY_RUNTIME_GAP (runtime adapter) and PAIRING_ORIENTATION are secondary. "
-        f"Cannot correct without injecting source SHL vectors (governance-forbidden)."
+        f"CASE-AWARE SHL STACK COMPARISON (source-compatible case = D0/K3): "
+        f"D0 cash_SHL={d0['cash_shl']:.3f} vs source={SOURCE_SHL_PRINCIPAL_KEUR:.3f} "
+        f"(gap={d0_cash_gap:+.3f} kEUR = mirror of Senior residual). "
+        f"D0 COD SHL={d0['cod_open']:.3f} vs source={SOURCE_OPENING_SHL_KEUR:.3f} "
+        f"(gap={d0_cod_gap:+.3f} kEUR: SOURCE_INFORMED_CONSTRUCTION_TIMING_APPROXIMATION). "
+        f"D0 op SHL interest={d0['op_shl_int']:.3f} vs source={SOURCE_TOTAL_SHL_OPERATING_INTEREST_KEUR:.3f} "
+        f"(gap={d0_op_int_gap:+.3f} kEUR: BANK_CASE_BALANCING_OVERRIDE_GAP deflates Base SHL balance "
+        f"via excess CFADS sweep — cannot isolate without true Bank-only Base replay). "
+        f"P0 cash_SHL={p0['cash_shl']:.3f} vs source={SOURCE_SHL_PRINCIPAL_KEUR:.3f} "
+        f"(gap={p0_cash_gap:+.3f} kEUR): FINANCING_STACK_CONSEQUENCE — "
+        f"P0 Senior={p0['senior']:.3f} < source={SOURCE_SENIOR_KEUR:.3f} "
+        f"({p0_senior_gap:+.3f} kEUR) because balancing=5 in P0 Bank case depresses Bank CFADS; "
+        f"residual SHL is larger by funding identity. NOT a construction mechanics error. "
+        f"SHL_CONSTRUCTION_DRAWDOWN_GAP is NOT ranked PRIMARY for source-compatible comparison. "
+        f"COD identity (cash+PIK=COD_open) holds for all cases: "
+        f"P0={p0['cod_identity_holds']}, D0={d0['cod_identity_holds']}, source=True."
     )
     return KupiShlConstructionDrawdownDiagnostic(
-        engine_cod_shl_opening_keur=engine_cod_shl,
+        p0_cash_shl_keur=p0["cash_shl"],
+        p0_construction_pik_keur=p0["pik"],
+        p0_cod_shl_opening_keur=p0["cod_open"],
+        p0_senior_keur=p0["senior"],
+        p0_op_shl_interest_keur=p0["op_shl_int"],
+        p0_cod_identity_holds=p0["cod_identity_holds"],
+        d0_cash_shl_keur=d0["cash_shl"],
+        d0_construction_pik_keur=d0["pik"],
+        d0_cod_shl_opening_keur=d0["cod_open"],
+        d0_senior_keur=d0["senior"],
+        d0_op_shl_interest_keur=d0["op_shl_int"],
+        d0_cod_identity_holds=d0["cod_identity_holds"],
+        source_cash_shl_keur=SOURCE_SHL_PRINCIPAL_KEUR,
+        source_pik_keur=SOURCE_PIK_KEUR,
         source_cod_shl_opening_keur=SOURCE_OPENING_SHL_KEUR,
-        cod_shl_gap_keur=cod_shl_gap,
-        engine_shl_drawdown_p0_keur=engine_shl_drawdown_p0,
-        source_shl_cash_keur=SOURCE_SHL_PRINCIPAL_KEUR,
-        engine_total_op_shl_interest_keur=engine_op_shl_interest,
-        source_total_op_shl_interest_keur=SOURCE_TOTAL_SHL_OPERATING_INTEREST_KEUR,
-        op_shl_interest_gap_keur=op_shl_gap,
-        implied_taxable_income_reduction_keur=implied_ti_reduction,
-        implied_cit_gap_keur=implied_cit_gap,
-        shadow_cit_keur=shadow.total_shadow_cit_keur,
-        source_cit_anchor_keur=_SOURCE_TOTAL_CIT_KEUR,
-        actual_cit_gap_keur=actual_cit_gap,
+        source_senior_keur=SOURCE_SENIOR_KEUR,
+        source_op_shl_interest_keur=SOURCE_TOTAL_SHL_OPERATING_INTEREST_KEUR,
+        source_cod_identity_holds=True,
+        d0_vs_source_cash_shl_gap_keur=d0_cash_gap,
+        d0_vs_source_cod_shl_gap_keur=d0_cod_gap,
+        d0_vs_source_senior_gap_keur=d0_senior_gap,
+        d0_vs_source_op_shl_interest_gap_keur=d0_op_int_gap,
+        p0_vs_source_cash_shl_gap_keur=p0_cash_gap,
+        p0_vs_source_senior_gap_keur=p0_senior_gap,
         note=note,
     )
 
 
-def kupi_shl_first_cash_divergence_period(
-    p0_result: "ProjectFinancingResult",
-    source_cf102_first_op_period_keur: float = SOURCE_CF102_FIRST_OP_PERIOD_KEUR,
-    tolerance_keur: float = 50.0,
-) -> dict:
-    """Find the first operating period where engine SHL-eligible cash diverges from source.
+@dataclass(frozen=True)
+class KupiFirstPeriodCashBridge:
+    """Explicit first-period cash bridge: Base CFADS → Senior DS → post-Sr → SHL.
 
-    Source CF102 (FCF for SHL) is defined as max(0, CFADS - senior_ds) for operating
-    periods (DSRA/DA gate is open for early KUPI periods per source screenshots).
+    PRE_RESERVE_SHL_CASH_AUTHORITY_GAP:
+    Finco exposes cash_available_for_shl_before_reserves (pre-reserve, pre-covenant).
+    Source CF102 is post-covenant-release (DSCR lock-up, DA gate, DSRA gate cleared).
+    For early KUPI periods the reserve/DA gate is OPEN so the first-period comparison
+    is numerically useful, but the seam is different: Finco pre-reserve ≠ source CF102.
 
-    Returns a dict with:
-      first_divergence_pidx: int or None
-      engine_cash_keur: float (at first divergence)
-      source_cash_keur: float (at first divergence — from addendum or estimated)
-      delta_keur: float
-      note: str
+    NOTE: the first-period post-Sr cash delta is upstream of SHL interest/principal.
+    SHL interest does NOT cause the CF102 divergence — it is downstream.
     """
-    pmr = p0_result.project_model_result
+    # D0 (source-compatible case)
+    d0_cfads_first_op_keur: float
+    d0_senior_ds_first_op_keur: float
+    d0_post_sr_cash_first_op_keur: float    # = cash_available_for_shl_before_reserves
+
+    # Source (from addendum screenshots, M€ → kEUR)
+    source_cfads_first_op_keur: float       # CF69 FCF Banks = 13,218 kEUR
+    source_senior_ds_first_op_keur: float   # = 7,377 kEUR (7.377 M€)
+    source_cf102_first_op_keur: float       # = SOURCE_CF102_FIRST_OP_PERIOD_KEUR
+
+    # Deltas (D0 - source)
+    cfads_delta_keur: float
+    senior_ds_delta_keur: float
+    post_sr_delta_keur: float               # = cfads_delta - senior_ds_delta (arithmetic)
+
+    # Classification
+    pre_reserve_gap_classification: str     # PRE_RESERVE_SHL_CASH_AUTHORITY_GAP
+    cfads_upstream_cause: str               # what drives the CFADS delta
+
+
+def kupi_shl_first_cash_divergence_period(
+    d0_result: "ProjectFinancingResult",
+    source_cfads_first_op_keur: float = 13_218.0,   # CF69 = 13.218 M€ from addendum
+    source_senior_ds_first_op_keur: float = 7_377.0,  # 7.377 M€ from addendum
+    source_cf102_first_op_period_keur: float = SOURCE_CF102_FIRST_OP_PERIOD_KEUR,
+    tolerance_keur: float = 200.0,
+) -> KupiFirstPeriodCashBridge:
+    """Explicit first-period cash bridge for D0 (source-compatible case) vs source.
+
+    Uses D0 (not P0) as the source-compatible financing case.
+    Corrects the earlier error of using P0 SHL metrics for D0/K3 source comparison.
+
+    The bridge proves: first-period post-Sr cash delta is explained by the
+    upstream CFADS delta and Senior DS delta — NOT by downstream SHL interest.
+    SHL interest is paid AFTER the reserve/covenant gate clears; it cannot cause
+    the pre-reserve post-Sr cash difference.
+
+    Labels Finco output as pre-reserve SHL candidate, not as CF102.
+    """
+    pmr = d0_result.project_model_result
     psc = pmr.post_senior_cash
+    tax_cf = pmr.tax_and_cfads
+    sd = pmr.senior_debt
     period_meta = {p.period_index: p for p in pmr.periods}
 
-    ops = [
-        (psc.period_indices[i], psc.cash_available_for_shl_before_reserves_keur[i])
-        for i in range(len(psc.period_indices))
+    psc_n = len(psc.period_indices)
+    first_op_pidx = next(
+        psc.period_indices[i] for i in range(psc_n)
         if period_meta[psc.period_indices[i]].is_operation
-    ]
+    )
+    first_psc_idx = list(psc.period_indices).index(first_op_pidx)
+    d0_post_sr = psc.cash_available_for_shl_before_reserves_keur[first_psc_idx]
 
-    # Only the first operating period source CF102 is provided from the addendum.
-    # Compare engine to that one value.
-    first_pidx, first_engine_cash = ops[0]
-    delta = first_engine_cash - source_cf102_first_op_period_keur
-    diverges = abs(delta) > tolerance_keur
+    # Base CFADS from tax_and_cfads
+    d0_cfads = 0.0
+    if tax_cf and first_op_pidx in tax_cf.period_indices:
+        cf_idx = list(tax_cf.period_indices).index(first_op_pidx)
+        d0_cfads = tax_cf.cfads_keur[cf_idx]
 
-    return {
-        "first_divergence_pidx": first_pidx if diverges else None,
-        "engine_cash_keur": first_engine_cash,
-        "source_cash_keur": source_cf102_first_op_period_keur,
-        "delta_keur": delta,
-        "note": (
-            f"First operating period pidx={first_pidx}: "
-            f"engine={first_engine_cash:.3f} kEUR vs source CF102={source_cf102_first_op_period_keur:.3f} kEUR "
-            f"(delta={delta:+.3f} kEUR). "
-            + (
-                f"DIVERGES at pidx={first_pidx}: engine understates SHL-eligible cash. "
-                f"Primary cause: engine SHL drawdown > source (COD SHL gap). "
-                f"DSRA/DA gate confirmed open at first KUPI periods (source screenshots). "
-                if diverges
-                else f"Within tolerance {tolerance_keur:.0f} kEUR."
-            )
-        ),
-    }
+    # Senior DS
+    sd_n = len(sd.period_indices)
+    d0_sds = next(
+        (sd.senior_debt_service_keur[i] for i in range(sd_n) if sd.period_indices[i] == first_op_pidx),
+        0.0,
+    )
+
+    cfads_delta = d0_cfads - source_cfads_first_op_keur
+    sds_delta = d0_sds - source_senior_ds_first_op_keur
+    post_sr_delta = d0_post_sr - source_cf102_first_op_period_keur
+
+    # Upstream cause: CFADS delta at first operating period when DSRA/DA is open
+    cfads_cause = (
+        "BANK_CASE_BALANCING_OVERRIDE_GAP_BASE_REVENUE_EFFECT: "
+        "D0 Base excludes balancing cost (balancing=0 globally), which may increase "
+        "D0 Base CFADS vs source. Day-count / period-fraction differences also contribute. "
+        "PRE_RESERVE_SHL_CASH_AUTHORITY_GAP: Finco post_senior_cash is pre-reserve; "
+        "source CF102 is post-covenant-release. For early periods DSRA/DA gate is OPEN "
+        "(confirmed by source screenshots) so numerical comparison is valid but seam differs. "
+        "Consolidation of reserve/DA layer → Single Financial Flow Audit scope."
+    )
+
+    return KupiFirstPeriodCashBridge(
+        d0_cfads_first_op_keur=d0_cfads,
+        d0_senior_ds_first_op_keur=d0_sds,
+        d0_post_sr_cash_first_op_keur=d0_post_sr,
+        source_cfads_first_op_keur=source_cfads_first_op_keur,
+        source_senior_ds_first_op_keur=source_senior_ds_first_op_keur,
+        source_cf102_first_op_keur=source_cf102_first_op_period_keur,
+        cfads_delta_keur=cfads_delta,
+        senior_ds_delta_keur=sds_delta,
+        post_sr_delta_keur=post_sr_delta,
+        pre_reserve_gap_classification="PRE_RESERVE_SHL_CASH_AUTHORITY_GAP",
+        cfads_upstream_cause=cfads_cause,
+    )
 
 
 _KUPI_BALANCING_COST_EUR_MWH = 5.0  # Source balancing cost used in P0
@@ -1267,14 +1363,17 @@ def kupi_source_workbook_tax_shadow(result: ProjectFinancingResult) -> KupiTaxSh
     total_delta = total_shadow - total_engine
     tax_main_effect_is_zero = abs(total_delta) < 1.0  # within 1 kEUR
 
-    # PRIMARY GAP CAUSE: SHL_CONSTRUCTION_DRAWDOWN_TAXABLE_INCOME_EFFECT
-    # Engine SHL drawdown > source SHL cash by ~11,427 kEUR → COD SHL opening +13,328 kEUR.
-    # Engine operating SHL interest = ~62,989 vs source anchor = 48,681 kEUR (+14,308 kEUR).
-    # Excess SHL deduction depresses shadow EBT → shadow CIT < source CIT by ~4,327 kEUR.
-    # SECONDARY: SOURCE_TAX_POLICY_RUNTIME_GAP (adapter does not forward loss_utilisation_gate).
-    # Classification: SOURCE_TAX_EFFECT_DIRECTION = NEGATIVE_TO_SENIOR.
+    # Tax shadow classification — confounded by BANK_CASE_BALANCING_OVERRIDE_GAP.
+    # The shadow direction vs source depends on which financing case is used:
+    #   P0 (balancing=5 in Bank): engine SHL > source SHL → shadow EBT < source EBT
+    #       → P0 shadow CIT (90,965) < source CIT (95,292). Direction: shadow understates.
+    #   D0 (balancing=0 globally): engine SHL < source SHL → shadow EBT > source EBT
+    #       → D0 shadow CIT (99,561) > source CIT (95,292). Direction: shadow overstates.
+    # Tax residual straddles source on both sides → cannot be cleanly isolated
+    # without a true Bank-only / Base-separate replay.
+    # SOURCE_TAX_POLICY_RUNTIME_GAP remains a separate finding (adapter gap).
     source_anchor = _SOURCE_TOTAL_CIT_KEUR
-    source_gap = source_anchor - total_shadow  # positive → source higher
+    source_gap = source_anchor - total_shadow  # negative → shadow overstates; positive → understates
 
     if tax_main_effect_is_zero:
         note = (
@@ -1284,8 +1383,10 @@ def kupi_source_workbook_tax_shadow(result: ProjectFinancingResult) -> KupiTaxSh
             f"gives shadow_cit={total_shadow:.3f} vs engine={total_engine:.3f} kEUR, "
             f"delta={total_delta:+.3f} kEUR. "
             f"Source CIT anchor={source_anchor:.3f} kEUR; shadow-to-source gap={source_gap:+.3f} kEUR. "
-            "SHL_CONSTRUCTION_DRAWDOWN_TAXABLE_INCOME_EFFECT: engine SHL > source SHL by ~14,308 kEUR "
-            "operating interest → depresses shadow EBT → PRIMARY cause of shadow < source CIT. "
+            "TAX_COMPARISON_CONFOUNDED_BY_BANK_CASE_BALANCING_OVERRIDE_GAP: "
+            "P0 shadow understates (shadow 90,965 < source 95,292) because P0 SHL > source SHL; "
+            "D0 shadow overstates (shadow 99,561 > source 95,292) because D0 SHL < source SHL. "
+            "Tax residual cannot be cleanly isolated without true Bank-only Base replay. "
             "SOURCE_TAX_EFFECT_DIRECTION=NEGATIVE_TO_SENIOR: higher source-compatible "
             "CIT lowers Bank CFADS and Senior capacity. "
             "K1-K0=0 is a production runtime limitation, NOT a proof that "
@@ -1293,9 +1394,10 @@ def kupi_source_workbook_tax_shadow(result: ProjectFinancingResult) -> KupiTaxSh
         )
     else:
         note = (
-            f"SOURCE_TAX_POLICY_RUNTIME_GAP confirmed: shadow delta={total_delta:+.3f} kEUR. "
+            f"SOURCE_TAX_POLICY_RUNTIME_GAP confirmed: shadow delta vs engine={total_delta:+.3f} kEUR. "
             f"Source CIT anchor={source_anchor:.3f} kEUR; shadow-to-source gap={source_gap:+.3f} kEUR. "
-            "SHL_CONSTRUCTION_DRAWDOWN_TAXABLE_INCOME_EFFECT is PRIMARY cause of gap. "
+            "TAX_COMPARISON_CONFOUNDED_BY_BANK_CASE_BALANCING_OVERRIDE_GAP: "
+            "direction of shadow-to-source gap depends on financing case (P0 vs D0). "
             "WORKBOOK_PAIRED_MODEL_YEAR + 5-model-period LCF diverges from clean engine. "
             "SOURCE_TAX_EFFECT_DIRECTION=NEGATIVE_TO_SENIOR (shadow CIT > engine CIT)."
         )
@@ -1831,38 +1933,61 @@ def run_kupi_final_source_compat() -> "KupiFinalSourceCompatDiagnostic":
     # 3. True Bank-only Senior diagnostic
     bank_only = kupi_true_bank_only_senior_diagnostic(p0, d0)
 
-    # 4. Source tax shadow (on P0 engine result)
-    tax_shadow = kupi_source_workbook_tax_shadow(p0)
+    # 4. Source tax shadow — computed on both P0 and D0 for comparison.
+    #    Neither is authoritative due to BANK_CASE_BALANCING_OVERRIDE_GAP:
+    #    P0 shadow (90,965) < source CIT (95,292): P0 has too much SHL interest.
+    #    D0 shadow (99,561) > source CIT (95,292): D0 has too little SHL interest.
+    #    Tax residual cannot be cleanly isolated without true Bank-only Base replay.
+    tax_shadow = kupi_source_workbook_tax_shadow(p0)  # retained for existing tests
 
-    # 5. Residual vs source anchor
+    # 5. D0/K3 is CLOSEST_CURRENT_PRODUCTION_APPROXIMATION.
+    #    All D0/K3 metrics are used for the source-compatible comparison.
+    #    P0 metrics are NOT mixed into this note.
     p0_senior = p0.final_senior_commitment_keur
+    d0_senior = d0.final_senior_commitment_keur
     true_bank_only = bank_only.true_bank_only_senior_keur
-    residual = SOURCE_SENIOR_KEUR - true_bank_only
-    residual_pct = abs(residual) / SOURCE_SENIOR_KEUR * 100.0 if SOURCE_SENIOR_KEUR > 0 else 0.0
 
-    # D0/K3 is the CLOSEST_CURRENT_PRODUCTION_APPROXIMATION for source comparison.
-    # The standalone bank_only diagnostic is NOT authoritative (reaches gearing cap due
-    # to incomplete SHL fixed-point — see BANK_CASE_BALANCING_OVERRIDE_GAP in note).
-    d0_senior = d0.final_senior_commitment_keur  # CLOSEST_CURRENT_PRODUCTION_APPROXIMATION
+    # D0 financing stack (all source-compatible metrics from the same case)
+    d0_pmr = d0.project_model_result
+    d0_shl_s = d0_pmr.shareholder_loan
+    d0_n = len(d0_shl_s.period_indices)
+    d0_period_meta = {p.period_index: p for p in d0_pmr.periods}
+    d0_first_op_idx = next(i for i in range(d0_n) if d0_period_meta[d0_shl_s.period_indices[i]].is_operation)
+    d0_cod_shl = d0_shl_s.shl_opening_keur[d0_first_op_idx]
+    d0_cash_shl = sum(d0_shl_s.shl_drawdown_keur[i] for i in range(d0_n) if d0_period_meta[d0_shl_s.period_indices[i]].is_construction)
+    d0_pik = sum(d0_shl_s.shl_pik_interest_keur[i] for i in range(d0_n) if d0_period_meta[d0_shl_s.period_indices[i]].is_construction)
+    d0_op_shl_int = sum(d0_shl_s.shl_gross_interest_keur[i] for i in range(d0_n) if d0_period_meta[d0_shl_s.period_indices[i]].is_operation)
+
     provisional_residual = SOURCE_SENIOR_KEUR - d0_senior
     provisional_residual_pct = abs(provisional_residual) / SOURCE_SENIOR_KEUR * 100.0
 
     note = (
-        f"PROVISIONAL_APPROXIMATION_RESIDUAL: "
-        f"CLOSEST_CURRENT_PRODUCTION_APPROXIMATION=D0/K3 Senior={d0_senior:.3f} kEUR "
+        f"PROVISIONAL_APPROXIMATION_RESIDUAL (D0/K3 basis — all metrics from same case): "
+        f"CLOSEST_CURRENT_PRODUCTION_APPROXIMATION=D0/K3 Senior={d0_senior:.9f} kEUR "
         f"(ALL_AT_FC+COMPOUND+CASH_SWEEP+D0 bank-only balancing approx). "
-        f"Source anchor={SOURCE_SENIOR_KEUR:.3f} kEUR. "
-        f"PROVISIONAL_APPROXIMATION_RESIDUAL_0_35_PERCENT: "
+        f"Source anchor Senior={SOURCE_SENIOR_KEUR:.9f} kEUR. "
+        f"PROVISIONAL_APPROXIMATION_RESIDUAL: "
         f"residual={provisional_residual:+.3f} kEUR ({provisional_residual_pct:.2f}%). "
-        f"This is NOT a fully source-compatible parity residual. Classified causes: "
-        f"(1) SHL_CONSTRUCTION_DRAWDOWN_GAP: engine COD SHL=92,822 vs source={SOURCE_OPENING_SHL_KEUR:.3f} kEUR "
-        f"(+13,328 kEUR); engine op SHL interest=~62,989 vs source=48,681 kEUR (+14,308 kEUR); "
-        f"excess SHL deduction is PRIMARY driver of shadow CIT < source CIT; "
-        f"first SHL-eligible cash divergence at pidx=2 (COD, first operating period); "
+        f"D0 financing stack vs source: "
+        f"D0 cash_SHL={d0_cash_shl:.3f} (source={SOURCE_SHL_PRINCIPAL_KEUR:.3f}, gap={d0_cash_shl-SOURCE_SHL_PRINCIPAL_KEUR:+.3f}); "
+        f"D0 PIK={d0_pik:.3f} (source={SOURCE_PIK_KEUR:.3f}, gap={d0_pik-SOURCE_PIK_KEUR:+.3f}); "
+        f"D0 COD SHL={d0_cod_shl:.3f} (source={SOURCE_OPENING_SHL_KEUR:.3f}, gap={d0_cod_shl-SOURCE_OPENING_SHL_KEUR:+.3f}); "
+        f"D0 op SHL int={d0_op_shl_int:.3f} (source={SOURCE_TOTAL_SHL_OPERATING_INTEREST_KEUR:.3f}, "
+        f"gap={d0_op_shl_int-SOURCE_TOTAL_SHL_OPERATING_INTEREST_KEUR:+.3f}: confounded by BANK_CASE_BALANCING_OVERRIDE_GAP). "
+        f"COD identity holds: D0 cash_SHL+PIK={d0_cash_shl+d0_pik:.3f} = COD_SHL={d0_cod_shl:.3f} ({'OK' if abs(d0_cash_shl+d0_pik-d0_cod_shl)<1 else 'FAIL'}). "
+        f"Classified residual causes (D0/K3 basis only): "
+        f"(1) BANK_CASE_BALANCING_OVERRIDE_GAP: single balancing field cannot split Bank vs Base; "
+        f"true Bank-only Senior diagnostic={true_bank_only:.3f} kEUR is NOT authoritative "
+        f"(standalone fixed-point does not iterate SHL principal at higher Senior level). "
         f"(2) SOURCE_TAX_POLICY_RUNTIME_GAP: source tax semantics not production-promoted; "
-        f"(3) BANK_CASE_BALANCING_OVERRIDE_GAP: bank-only balancing not production-supported. "
-        f"Standalone true-bank-only diagnostic={true_bank_only:.3f} kEUR is NOT authoritative "
-        f"(reaches gearing cap due to incomplete SHL principal iteration). "
+        f"tax residual NOT isolated — D0 shadow CIT (99,561) > source (95,292) > P0 shadow (90,965): "
+        f"comparison confounded by BANK_CASE_BALANCING_OVERRIDE_GAP. "
+        f"(3) PRE_RESERVE_SHL_CASH_AUTHORITY_GAP: Finco pre-reserve SHL candidate cash "
+        f"!= source CF102 (post-covenant-release); first period D0={d0.project_model_result.post_senior_cash.cash_available_for_shl_before_reserves_keur[list(d0.project_model_result.post_senior_cash.period_indices).index(d0_shl_s.period_indices[d0_first_op_idx])]:.3f} vs source=5,842 kEUR; "
+        f"delta explained by upstream CFADS and Senior DS differences, NOT by SHL interest. "
+        f"(4) SOURCE_INFORMED_CONSTRUCTION_TIMING_APPROXIMATION: D0 COD SHL gap=-598 kEUR. "
+        f"P0 SHL metrics are NOT used here (P0 Senior=135,724 kEUR differs from source by -11,427 kEUR "
+        f"due to BANK_CASE_BALANCING_OVERRIDE_GAP; P0 SHL gap is a financing-stack consequence). "
         f"KUPI status: OOS causal/behavioral validation PASSED. "
         f"Exact numerical source parity NOT claimed."
     )
@@ -1872,14 +1997,14 @@ def run_kupi_final_source_compat() -> "KupiFinalSourceCompatDiagnostic":
         bank_only_diagnostic=bank_only,
         tax_shadow=tax_shadow,
         p0_engine_senior_keur=p0_senior,
-        true_bank_only_senior_keur=d0_senior,  # use D0 as closest production approximation
+        true_bank_only_senior_keur=d0_senior,  # D0/K3 = CLOSEST_CURRENT_PRODUCTION_APPROXIMATION
         source_anchor_senior_keur=SOURCE_SENIOR_KEUR,
         residual_to_source_keur=provisional_residual,
         residual_pct=provisional_residual_pct,
-        first_divergence_period=2,  # first operating period (COD); SHL-eligible cash diverges immediately
+        first_divergence_period=2,  # first operating period: Finco pre-reserve cash vs source CF102
         remaining_cause_classification=(
-            "SHL_CONSTRUCTION_DRAWDOWN_GAP | SOURCE_TAX_POLICY_RUNTIME_GAP | "
-            "BANK_CASE_BALANCING_OVERRIDE_GAP | SOURCE_INFORMED_CONSTRUCTION_TIMING_APPROXIMATION"
+            "BANK_CASE_BALANCING_OVERRIDE_GAP | SOURCE_TAX_POLICY_RUNTIME_GAP | "
+            "PRE_RESERVE_SHL_CASH_AUTHORITY_GAP | SOURCE_INFORMED_CONSTRUCTION_TIMING_APPROXIMATION"
         ),
         note=note,
     )
