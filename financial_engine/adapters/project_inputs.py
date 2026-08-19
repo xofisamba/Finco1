@@ -303,12 +303,24 @@ def build_senior_debt_model_input_from_project_inputs(
     from financial_engine.financing.reserve_policy import resolve_cash_dsra_requirement_keur
     fin = project_inputs.financing
     _raw_policy = getattr(fin, "dsra_target_policy", None)
-    if _raw_policy == DsraTargetPolicy.FORWARD_DEBT_SERVICE_MONTHS.value:
+    # Fail-closed resolution: None → FIXED_AMOUNT; known string → enum; else raise.
+    if _raw_policy is None:
+        _target_policy = DsraTargetPolicy.FIXED_AMOUNT
+    elif _raw_policy == DsraTargetPolicy.FIXED_AMOUNT.value:
+        _target_policy = DsraTargetPolicy.FIXED_AMOUNT
+    elif _raw_policy == DsraTargetPolicy.FORWARD_DEBT_SERVICE_MONTHS.value:
         _target_policy = DsraTargetPolicy.FORWARD_DEBT_SERVICE_MONTHS
     else:
-        # None or unrecognised → FIXED_AMOUNT (backward-compatible default).
-        _target_policy = DsraTargetPolicy.FIXED_AMOUNT
-    _dsra_months = getattr(fin, "dsra_months", 6) or 6
+        raise ValueError(
+            f"DSRA_TARGET_POLICY_INVALID: dsra_target_policy={_raw_policy!r} is not a "
+            "recognised DsraTargetPolicy value. "
+            f"Supported: None (→ FIXED_AMOUNT), {DsraTargetPolicy.FIXED_AMOUNT.value!r}, "
+            f"{DsraTargetPolicy.FORWARD_DEBT_SERVICE_MONTHS.value!r}."
+        )
+    # Preserve the configured dsra_months value exactly — do not substitute defaults.
+    _dsra_months = getattr(fin, "dsra_months", 6)
+    if _dsra_months is None:
+        _dsra_months = 6  # only None (absent) gets a default; explicit 0 is preserved
     dsra = CashDsraInput(
         mode=fin.dsra_support_mode,
         requirement_keur=resolve_cash_dsra_requirement_keur(project_inputs),

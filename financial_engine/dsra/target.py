@@ -1,33 +1,27 @@
 """financial_engine.dsra.target — Dynamic DSRA required-balance schedule builder.
 
 WORKBOOK SOURCE EVIDENCE:
-  Source: finco_recon/extract_oborovo_excel.py extraction from
-  20260414_BP_Oborovo_Sensitivity_FINAL for PPT.xlsm and calibration data
-  from finco_recon/bank_sizing_candidates.py for TUHO.
-  (XLSM files are not stored in this repository; values extracted via
-  finco_recon/extract_oborovo_excel.py and calibration scripts.)
+  XLSM workbooks are not stored in this repository.
+  Values are from in-repo finco_recon fixtures and calibration scripts.
 
-  TUHO (finco_recon/bank_sizing_candidates.py, line 397):
-    senior_debt_service_p1_keur = 2116.361394092063  (first operating period DS)
-    senior_debt_service_p2_keur ≈ 2151.439207253809  (second operating period DS)
-    Available DSRA options from Inputs tab (3m/6m/12m):
+  Source project P1 (senior_ds_p1 = 2116.361394092063 kEUR,
+                      senior_ds_p2 = 2151.439207253809 kEUR):
+    Available DSRA coverage amounts (from Inputs tab 3m/6m/12m selectors):
       3m  = 1,058.1806970460316 kEUR = DS1 × 3/6
       6m  = 2,116.3613940920630 kEUR = DS1 × 6/6 = DS1
-      12m = 4,267.8006013458730 kEUR = DS1 + DS2 = 2116.361394 + 2151.439207
+      12m = 4,267.8006013458730 kEUR = DS1 + DS2
+    Production DSRA setting: 0 months → NONE mode.
 
-  Oborovo (tests/golden/fixtures/oborovo_golden.py, tests/test_phase23s):
-    senior_debt_service[op_idx=0] = 2,239.133412854356 kEUR (= DS1)
-    senior_debt_service[op_idx=1] = 2,202.625802862166 kEUR (= DS2)
-    Available DSRA options from Inputs tab (3m/6m/12m):
+  Source project P2 (senior_ds_p1 = 2239.133412854356 kEUR,
+                      senior_ds_p2 = 2202.625802862166 kEUR):
+    Available DSRA coverage amounts (from Inputs tab 3m/6m/12m selectors):
       3m  = 1,119.566706427178 kEUR = DS1 × 3/6
       6m  = 2,239.133412854356 kEUR = DS1 × 6/6 = DS1
-      12m = 4,441.759215716522 kEUR = DS1 + DS2 = 2239.133413 + 2202.625803
+      12m = 4,441.759215716522 kEUR = DS1 + DS2
+    Production DSRA setting: Inputs!I348 = 0 → NONE mode.
 
-  Active production configuration:
-    Oborovo: Inputs!I348 = 0 (dsra_months=0 → NONE mode, no DSRA)
-    TUHO:    debt_service_reserve_requirement_keur=0 → NONE mode, no DSRA
-    Both are NONE-mode in calibration → calibration financial outputs unchanged.
-    Source-available DSRA options (3m/6m/12m) are validated synthetically only.
+  Both calibration projects: dsra_months = 0 → NONE mode → zero financial delta.
+  Source-available DSRA coverage options (3m/6m/12m) validated synthetically.
 
 LEGACY IMPLEMENTATION CORROBORATION:
   finco_core/waterfall/dsra_engine.py compute_dsra_target():
@@ -201,12 +195,10 @@ def build_dsra_required_balance_schedule(
         - Duplicate period indices
 
     SIGN CONVENTION NOTE:
-        senior_debt_service_keur is expected in UNSIGNED POSITIVE magnitude
-        (positive number = cash outflow to service debt).
-        Negative values represent refinancing receipts or schedule artefacts;
-        they are excluded from the target window (treated as zero coverage).
-        If upstream vectors use signed-negative convention (DS stored as negative),
-        normalise to positive at the adapter boundary before calling this function.
+        senior_debt_service_keur must be in UNSIGNED POSITIVE magnitude
+        (positive = cash outflow to service debt; 0 = no payment due).
+        Negative values are rejected with DSRA_TARGET_NEGATIVE_SENIOR_DS.
+        Refinancing is out of scope. Normalise sign at the adapter boundary.
 
     MEASUREMENT DATE RULE (source-proven from TUHO/Oborovo workbooks):
         For operating period t (index i), coverage STARTS AT period i (inclusive).
@@ -244,12 +236,36 @@ def build_dsra_required_balance_schedule(
     if len(set(period_indices)) != n:
         raise ValueError("DSRA_TARGET_DUPLICATE_PERIOD_INDICES: period_indices contains duplicates.")
 
-    # Validate dates
+    # Validate Senior DS sign: all values must be >= 0 (unsigned positive magnitude).
+    for i, ds in enumerate(senior_debt_service_keur):
+        if not isinstance(ds, (int, float)) or isinstance(ds, bool):
+            raise ValueError(
+                f"DSRA_TARGET_INVALID_SENIOR_DS: senior_debt_service_keur[{i}]={ds!r} must be numeric."
+            )
+        if not math.isfinite(ds):
+            raise ValueError(
+                f"DSRA_TARGET_INVALID_SENIOR_DS: senior_debt_service_keur[{i}]={ds!r} must be finite."
+            )
+        if ds < 0.0:
+            raise ValueError(
+                f"DSRA_TARGET_NEGATIVE_SENIOR_DS: senior_debt_service_keur[{i}]={ds!r} is negative. "
+                "DS must be unsigned positive magnitude (cash outflow). "
+                "Refinancing is out of scope. Normalise sign at the adapter boundary."
+            )
+
+    # Validate dates: each period end > start; start dates strictly ascending.
     for i, (s, e) in enumerate(zip(period_start_dates, period_end_dates)):
         if e <= s:
             raise ValueError(
                 f"DSRA_TARGET_INVALID_DATES: period_end_dates[{i}] ({e}) "
                 f"<= period_start_dates[{i}] ({s}). End must be strictly after start."
+            )
+    for i in range(1, n):
+        if period_start_dates[i] <= period_start_dates[i - 1]:
+            raise ValueError(
+                f"DSRA_TARGET_NON_CHRONOLOGICAL_PERIODS: period_start_dates[{i}] "
+                f"({period_start_dates[i]}) <= period_start_dates[{i-1}] "
+                f"({period_start_dates[i-1]}). Periods must be in strictly ascending order."
             )
 
     if policy == DsraTargetPolicy.FIXED_AMOUNT:
@@ -314,11 +330,6 @@ def build_dsra_required_balance_schedule(
                 # skip gracefully — construction has no DS to cover.
                 continue
             ds_j = senior_debt_service_keur[j]
-            if ds_j < 0.0:
-                # Negative DS (refinancing receipts or artefacts) excluded from target.
-                # SIGN_CONVENTION: caller should pass positive-magnitude DS.
-                # If coverage_remaining is non-zero, continue to next period.
-                continue
             period_len_j = period_month_lengths[j]
             fraction = min(1.0, coverage_remaining / period_len_j)
             target += fraction * ds_j

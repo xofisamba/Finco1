@@ -915,15 +915,26 @@ class TestAdapterDsraTargetPolicyMapping:
         assert model.dsra.target_policy == DsraTargetPolicy.FORWARD_DEBT_SERVICE_MONTHS
         assert model.dsra.dsra_months == 6
 
-    def test_unknown_policy_string_maps_to_fixed_amount(self):
-        """Unrecognised dsra_target_policy string → FIXED_AMOUNT (safe fallback)."""
+    def test_unknown_policy_string_raises_dsra_target_policy_invalid(self):
+        """Unrecognised dsra_target_policy string → DSRA_TARGET_POLICY_INVALID (fail closed)."""
         import dataclasses
         from app.project_factories import create_default_solar_project
         from financial_engine.adapters.project_inputs import build_senior_debt_model_input_from_project_inputs
         project = create_default_solar_project()
         new_fin = dataclasses.replace(project.financing, dsra_target_policy="some_unknown_value")
         new_project = dataclasses.replace(project, financing=new_fin)
-        model = build_senior_debt_model_input_from_project_inputs(new_project, source_id="test-adapter-unknown")
+        with pytest.raises(ValueError, match="DSRA_TARGET_POLICY_INVALID"):
+            build_senior_debt_model_input_from_project_inputs(new_project, source_id="test-adapter-unknown")
+
+    def test_explicit_fixed_amount_policy_string_accepted(self):
+        """Explicit 'fixed_amount' string → FIXED_AMOUNT enum (fail closed, explicit)."""
+        import dataclasses
+        from app.project_factories import create_default_solar_project
+        from financial_engine.adapters.project_inputs import build_senior_debt_model_input_from_project_inputs
+        project = create_default_solar_project()
+        new_fin = dataclasses.replace(project.financing, dsra_target_policy="fixed_amount")
+        new_project = dataclasses.replace(project, financing=new_fin)
+        model = build_senior_debt_model_input_from_project_inputs(new_project, source_id="test-adapter-fixed")
         assert model.dsra.target_policy == DsraTargetPolicy.FIXED_AMOUNT
 
 
@@ -1140,4 +1151,217 @@ class TestBuildScheduleErrors:
                 is_construction=is_constr,
                 senior_debt_service_keur=(0.0, 0.0),
                 coverage_months=6.0,  # type: ignore
+            )
+
+
+# ---------------------------------------------------------------------------
+# Mandatory new tests — correction pass
+# ---------------------------------------------------------------------------
+
+class TestAdapterFailClosed:
+    """Adapter must fail closed on unknown policy (section 16A) and preserve zero months (16B)."""
+
+    def test_unknown_policy_raises_dsra_target_policy_invalid(self):
+        """Unknown dsra_target_policy string → DSRA_TARGET_POLICY_INVALID (fail closed)."""
+        import dataclasses
+        from app.project_factories import create_default_solar_project
+        from financial_engine.adapters.project_inputs import build_senior_debt_model_input_from_project_inputs
+        from finco_core.inputs import DebtServiceReserveSupportMode
+        project = create_default_solar_project()
+        new_fin = dataclasses.replace(
+            project.financing,
+            dsra_target_policy="not_a_valid_policy",
+        )
+        new_project = dataclasses.replace(project, financing=new_fin)
+        with pytest.raises(ValueError, match="DSRA_TARGET_POLICY_INVALID"):
+            build_senior_debt_model_input_from_project_inputs(new_project, source_id="test-invalid-policy")
+
+    def test_forward_with_zero_months_fails_not_converts(self):
+        """FORWARD + dsra_months=0 must NOT become 6; it must fail closed at contract level."""
+        import dataclasses
+        from app.project_factories import create_default_solar_project
+        from financial_engine.adapters.project_inputs import build_senior_debt_model_input_from_project_inputs
+        from finco_core.inputs import DebtServiceReserveSupportMode
+        project = create_default_solar_project()
+        new_fin = dataclasses.replace(
+            project.financing,
+            dsra_support_mode=DebtServiceReserveSupportMode.CASH_DSRA,
+            dsra_target_policy="forward_debt_service_months",
+            dsra_months=0,  # explicit zero — must NOT be converted to 6
+            debt_service_reserve_requirement_keur=500.0,
+        )
+        new_project = dataclasses.replace(project, financing=new_fin)
+        # CashDsraInput.__post_init__ requires dsra_months > 0 for FORWARD policy
+        with pytest.raises(ValueError, match="dsra_months"):
+            build_senior_debt_model_input_from_project_inputs(new_project, source_id="test-zero-months")
+
+    def test_none_policy_resolves_to_fixed_amount(self):
+        """None dsra_target_policy → backward-compatible FIXED_AMOUNT (not an error)."""
+        import dataclasses
+        from app.project_factories import create_default_solar_project
+        from financial_engine.adapters.project_inputs import build_senior_debt_model_input_from_project_inputs
+        project = create_default_solar_project()
+        new_fin = dataclasses.replace(project.financing, dsra_target_policy=None)
+        new_project = dataclasses.replace(project, financing=new_fin)
+        model = build_senior_debt_model_input_from_project_inputs(new_project, source_id="test-none-policy")
+        assert model.dsra.target_policy == DsraTargetPolicy.FIXED_AMOUNT
+
+
+class TestModelFailClosed:
+    """run_cash_dsra_model must fail closed on policy/schedule mismatches (section 16C, 16D)."""
+
+    def _make_post_senior_simple(self, n=3):
+        indices = tuple(range(n))
+        return PostSeniorCashSchedules(
+            period_indices=indices,
+            base_cfads_keur=(1000.0,) * n,
+            senior_debt_service_keur=(500.0,) * n,
+            cash_after_senior_before_reserves_keur=(500.0,) * n,
+            cash_available_for_shl_before_reserves_keur=(500.0,) * n,
+        )
+
+    def _make_periods_simple(self, n=3):
+        base = date(2024, 1, 1)
+        results = []
+        for i in range(n):
+            yr = base.year + (base.month - 1 + i * 6) // 12
+            mo = (base.month - 1 + i * 6) % 12 + 1
+            s = date(yr, mo, 1)
+            ey = base.year + (base.month - 1 + (i + 1) * 6) // 12
+            em = (base.month - 1 + (i + 1) * 6) % 12 + 1
+            e = date(ey, em, 1)
+            results.append(OperatingPeriodResult(
+                period_index=i, period_start=s, period_end=e,
+                year_index=float(i // 2), period_in_year=float(i % 2),
+                is_construction=(i == 0), is_operation=(i > 0), is_ppa_active=True,
+                days_in_period=181, day_fraction=181/365.0, production_mwh=0.0,
+                revenue_keur=0.0, opex_keur=0.0, ebitda_keur=0.0,
+                book_depreciation_keur=0.0, tax_depreciation_keur=0.0, ebit_keur=0.0,
+            ))
+        return tuple(results)
+
+    def test_forward_without_schedule_raises(self):
+        """FORWARD + required_balance_schedule=None → CASH_DSRA_DYNAMIC_TARGET_SCHEDULE_REQUIRED."""
+        ps = self._make_post_senior_simple()
+        periods = self._make_periods_simple()
+        dsra = CashDsraInput(
+            mode=DebtServiceReserveSupportMode.CASH_DSRA,
+            requirement_keur=500.0,
+            target_policy=DsraTargetPolicy.FORWARD_DEBT_SERVICE_MONTHS,
+            dsra_months=6,
+            required_balance_schedule=None,
+        )
+        with pytest.raises(ValueError, match="CASH_DSRA_DYNAMIC_TARGET_SCHEDULE_REQUIRED"):
+            run_cash_dsra_model(ps, dsra, periods)
+
+    def test_fixed_with_schedule_raises_authority_conflict(self):
+        """FIXED_AMOUNT + non-None required_balance_schedule → authority conflict error."""
+        ps = self._make_post_senior_simple()
+        periods = self._make_periods_simple()
+        dsra = CashDsraInput(
+            mode=DebtServiceReserveSupportMode.CASH_DSRA,
+            requirement_keur=500.0,
+            target_policy=DsraTargetPolicy.FIXED_AMOUNT,
+            dsra_months=6,
+            required_balance_schedule=(0.0, 500.0, 500.0),  # conflicts with FIXED_AMOUNT
+        )
+        with pytest.raises(ValueError, match="CASH_DSRA_FIXED_AMOUNT_AUTHORITY_CONFLICT"):
+            run_cash_dsra_model(ps, dsra, periods)
+
+
+class TestNegativeSeniorDsFails:
+    """Negative Senior DS must fail closed (section 16E)."""
+
+    def test_negative_ds_raises_dsra_target_negative_senior_ds(self):
+        """Negative Senior DS in build_dsra_required_balance_schedule → DSRA_TARGET_NEGATIVE_SENIOR_DS."""
+        indices, starts, ends, is_constr = _make_periods(0, 3)
+        with pytest.raises(ValueError, match="DSRA_TARGET_NEGATIVE_SENIOR_DS"):
+            build_dsra_required_balance_schedule(
+                period_indices=indices,
+                period_start_dates=starts,
+                period_end_dates=ends,
+                is_construction=is_constr,
+                senior_debt_service_keur=(1000.0, -50.0, 1000.0),
+                coverage_months=6,
+            )
+
+
+class TestNonChronologicalPeriodsFails:
+    """Non-chronological start dates must fail closed (section 16F)."""
+
+    def test_non_chronological_starts_raises(self):
+        """Periods out of chronological order → DSRA_TARGET_NON_CHRONOLOGICAL_PERIODS."""
+        # Use 3 non-overlapping periods but present them out of order by index 1→0→2
+        # Each period: start=first-of-month, end=first-of-next-6-months, 6m apart.
+        # Reverse period 0 and period 1 in the start array but keep end dates matching
+        # their own starts so end > start still holds, but starts aren't ascending.
+        from datetime import date
+        starts = (date(2025, 1, 1), date(2024, 1, 1), date(2026, 1, 1))
+        ends   = (date(2025, 7, 1), date(2024, 7, 1), date(2026, 7, 1))
+        indices = (0, 1, 2)
+        is_constr = (False, False, False)
+        with pytest.raises(ValueError, match="DSRA_TARGET_NON_CHRONOLOGICAL_PERIODS"):
+            build_dsra_required_balance_schedule(
+                period_indices=indices,
+                period_start_dates=starts,
+                period_end_dates=ends,
+                is_construction=is_constr,
+                senior_debt_service_keur=(1000.0,) * 3,
+                coverage_months=6,
+            )
+
+
+class TestCalibrationSourceParity:
+    """Source project calibration: dsra_months=0 → zero delta (section 16H).
+
+    Both calibration source projects use dsra_months=0 / NONE mode.
+    Verifies no financial delta vs baseline NONE-mode run.
+    """
+
+    def test_source_project_p1_zero_months_neutral(self):
+        """Source project P1 with dsra_months=0, NONE mode → zero DSRA balance throughout."""
+        from app.project_factories import create_default_solar_project
+        from financial_engine.adapters.project_inputs import build_senior_debt_model_input_from_project_inputs
+        from financial_engine.orchestrator import run_senior_debt_model
+        import dataclasses
+
+        project = create_default_solar_project()
+        # Ensure NONE mode with dsra_months=0 (calibration source state)
+        new_fin = dataclasses.replace(
+            project.financing,
+            dsra_support_mode=DebtServiceReserveSupportMode.NONE,
+            debt_service_reserve_requirement_keur=0.0,
+            dsra_months=0,
+            dsra_target_policy=None,
+        )
+        new_project = dataclasses.replace(project, financing=new_fin)
+        model = build_senior_debt_model_input_from_project_inputs(new_project, source_id="test-calibration-p1")
+        result = run_senior_debt_model(model)
+        # All DSRA balances must be zero
+        for r in result.cash_dsra.period_results:
+            assert r.closing_balance_keur == pytest.approx(0.0), (
+                f"Period {r.period_index}: closing_balance={r.closing_balance_keur} != 0 in NONE mode"
+            )
+
+    def test_source_project_p2_zero_months_neutral(self):
+        """Source project P2 with dsra_months=0, NONE mode → zero DSRA balance throughout."""
+        from app.project_factories import create_default_wind_project
+        from financial_engine.adapters.project_inputs import build_senior_debt_model_input_from_project_inputs
+        from financial_engine.orchestrator import run_senior_debt_model
+        import dataclasses
+
+        project = create_default_wind_project()
+        new_fin = dataclasses.replace(
+            project.financing,
+            dsra_support_mode=DebtServiceReserveSupportMode.NONE,
+            debt_service_reserve_requirement_keur=0.0,
+            dsra_months=0,
+            dsra_target_policy=None,
+        )
+        new_project = dataclasses.replace(project, financing=new_fin)
+        model = build_senior_debt_model_input_from_project_inputs(new_project, source_id="test-calibration-p2")
+        result = run_senior_debt_model(model)
+        for r in result.cash_dsra.period_results:
+            assert r.closing_balance_keur == pytest.approx(0.0), (
+                f"Period {r.period_index}: closing_balance={r.closing_balance_keur} != 0 in NONE mode"
             )

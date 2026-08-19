@@ -36,19 +36,20 @@ class CashDsraInput:
         schedule period-by-period instead of the static scalar.
         Must be the same length as the period_indices passed to run_cash_dsra_model().
         Construction periods must have value 0.0 (enforced by build function).
-        None → FIXED_AMOUNT (static scalar) behavior (PR-3 default).
+        For FIXED_AMOUNT: must be None (CASH_DSRA_FIXED_AMOUNT_AUTHORITY_CONFLICT if set).
+        For FORWARD_DEBT_SERVICE_MONTHS: must be provided (CASH_DSRA_DYNAMIC_TARGET_SCHEDULE_REQUIRED if None).
 
     CASH_DSRA_TARGET_AUTHORITY (PR-3B):
         Two explicit policies are supported:
           FIXED_AMOUNT — static scalar requirement_keur every operating period.
           FORWARD_DEBT_SERVICE_MONTHS — pre-built dynamic schedule via required_balance_schedule.
-        Policy is signalled by presence/absence of required_balance_schedule, not by dsra_months.
+        Policy is determined by the EXPLICIT typed target_policy field, not inferred from nullable schedule.
     """
     mode: DebtServiceReserveSupportMode
     requirement_keur: float = 0.0
     required_balance_schedule: tuple[float, ...] | None = field(default=None)
 
-    # Explicit typed target policy — must not be inferred from nullable required_balance_schedule.
+    # Policy is explicit and typed. Never inferred from nullable required_balance_schedule.
     # FIXED_AMOUNT (default): static scalar requirement_keur. Backward-compatible.
     # FORWARD_DEBT_SERVICE_MONTHS: dynamic schedule from Senior DS.
     #     requires dsra_months > 0 and mode == CASH_DSRA.

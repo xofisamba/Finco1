@@ -54,12 +54,30 @@ def run_cash_dsra_model(
     if dsra_input is None:
         dsra_input = CashDsraInput(mode=DebtServiceReserveSupportMode.NONE, requirement_keur=0.0)
 
+    from financial_engine.dsra.target import DsraTargetPolicy
     mode = dsra_input.mode
     req = dsra_input.requirement_keur
     balance_schedule = dsra_input.required_balance_schedule
+    policy = dsra_input.target_policy
 
-    # Validate schedule length when provided
+    # Policy / schedule authority enforcement — fail closed on mismatches.
     n_periods = len(post_senior_cash.period_indices)
+    if policy == DsraTargetPolicy.FORWARD_DEBT_SERVICE_MONTHS:
+        if balance_schedule is None:
+            raise ValueError(
+                "CASH_DSRA_DYNAMIC_TARGET_SCHEDULE_REQUIRED: "
+                "target_policy=FORWARD_DEBT_SERVICE_MONTHS but required_balance_schedule is None. "
+                "The orchestrator must build the dynamic schedule from the final Senior DS "
+                "schedule before calling run_cash_dsra_model()."
+            )
+    elif policy == DsraTargetPolicy.FIXED_AMOUNT:
+        if balance_schedule is not None:
+            raise ValueError(
+                "CASH_DSRA_FIXED_AMOUNT_AUTHORITY_CONFLICT: "
+                "target_policy=FIXED_AMOUNT but required_balance_schedule is also provided. "
+                "Exactly one target authority is allowed. "
+                "Either set target_policy=FORWARD_DEBT_SERVICE_MONTHS or clear the schedule."
+            )
     if balance_schedule is not None and len(balance_schedule) != n_periods:
         raise ValueError(
             f"CASH_DSRA_SCHEDULE_LENGTH_MISMATCH: required_balance_schedule length "
