@@ -6,7 +6,7 @@ Excel fixtures, or diagnostic scripts. No project-name dispatch.
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from finco_core.inputs import DebtServiceReserveSupportMode
 
@@ -23,19 +23,29 @@ class CashDsraInput:
                     No draw engine added here.
 
     requirement_keur:
-        ONE unified reserve requirement (scalar, static).
+        Scalar fallback target used when required_balance_schedule is None.
+        Also the COD funding amount for FIXED_AMOUNT policy.
         Source authority: FinancingParams.debt_service_reserve_requirement_keur.
-        This is the canonical target for the CASH_DSRA roll-forward.
         NONE mode: must be 0.0 — raises if > 0.
 
-    CASH_DSRA_TARGET_AUTHORITY:
-        The static scalar requirement_keur is the canonical PR-3 target.
-        dsra_months (FinancingParams) is NOT consumed here — no source evidence
-        proves a dynamic 6-month forward DS schedule as the clean-engine target.
-        A future typed target policy may be added only if source-required.
+    required_balance_schedule:
+        Optional pre-built per-period required-balance tuple from
+        financial_engine.dsra.target.build_dsra_required_balance_schedule().
+        When provided (FORWARD_DEBT_SERVICE_MONTHS policy), the model uses this
+        schedule period-by-period instead of the static scalar.
+        Must be the same length as the period_indices passed to run_cash_dsra_model().
+        Construction periods must have value 0.0 (enforced by build function).
+        None → FIXED_AMOUNT (static scalar) behavior (PR-3 default).
+
+    CASH_DSRA_TARGET_AUTHORITY (PR-3B):
+        Two explicit policies are supported:
+          FIXED_AMOUNT — static scalar requirement_keur every operating period.
+          FORWARD_DEBT_SERVICE_MONTHS — pre-built dynamic schedule via required_balance_schedule.
+        Policy is signalled by presence/absence of required_balance_schedule, not by dsra_months.
     """
     mode: DebtServiceReserveSupportMode
     requirement_keur: float = 0.0
+    required_balance_schedule: tuple[float, ...] | None = field(default=None)
 
     def __post_init__(self) -> None:
         if not isinstance(self.mode, DebtServiceReserveSupportMode):
@@ -64,6 +74,24 @@ class CashDsraInput:
                 "NONE mode implies no reserve — set requirement_keur=0.0 "
                 "or change mode to CASH_DSRA."
             )
+        if self.required_balance_schedule is not None:
+            if not isinstance(self.required_balance_schedule, tuple):
+                raise ValueError(
+                    "CashDsraInput: required_balance_schedule must be a tuple or None."
+                )
+            for i, v in enumerate(self.required_balance_schedule):
+                if not isinstance(v, (int, float)) or isinstance(v, bool):
+                    raise ValueError(
+                        f"CashDsraInput: required_balance_schedule[{i}]={v!r} must be numeric."
+                    )
+                if not math.isfinite(v):
+                    raise ValueError(
+                        f"CashDsraInput: required_balance_schedule[{i}]={v!r} must be finite."
+                    )
+                if v < 0.0:
+                    raise ValueError(
+                        f"CashDsraInput: required_balance_schedule[{i}]={v!r} must be >= 0."
+                    )
 
 
 @dataclass(frozen=True)

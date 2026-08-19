@@ -56,6 +56,15 @@ def run_cash_dsra_model(
 
     mode = dsra_input.mode
     req = dsra_input.requirement_keur
+    balance_schedule = dsra_input.required_balance_schedule
+
+    # Validate schedule length when provided
+    n_periods = len(post_senior_cash.period_indices)
+    if balance_schedule is not None and len(balance_schedule) != n_periods:
+        raise ValueError(
+            f"CASH_DSRA_SCHEDULE_LENGTH_MISMATCH: required_balance_schedule length "
+            f"{len(balance_schedule)} != period_indices length {n_periods}."
+        )
 
     if mode == DebtServiceReserveSupportMode.NONE and req > _FLOAT_TOLERANCE:
         raise ValueError(
@@ -83,37 +92,38 @@ def run_cash_dsra_model(
         prev_closing = 0.0
         first_op_seen = False
 
-        for idx, cash_before in zip(period_indices, cash_before_all):
+        for period_pos, (idx, cash_before) in enumerate(zip(period_indices, cash_before_all)):
             is_constr = is_constr_by_idx.get(idx, False)
 
             if is_constr:
                 # Construction: reserve not yet funded; all movements zero.
-                # required_balance shown as req (policy is active but funded at COD).
+                # required_balance shown as 0 (construction target is always 0).
                 period_results.append(CashDsraPeriodResult(
                     period_index=idx,
                     is_construction=True,
                     opening_balance_keur=0.0,
-                    required_balance_keur=req,
+                    required_balance_keur=0.0,
                     cash_before_dsra_keur=cash_before,
                     draw_to_cover_shortfall_keur=0.0,
                     top_up_keur=0.0,
                     release_keur=0.0,
                     closing_balance_keur=0.0,
                     cash_after_dsra_keur=cash_before,
-                    shortfall_keur=req,
-                    target_met=req <= _FLOAT_TOLERANCE,
+                    shortfall_keur=0.0,
+                    target_met=True,
                 ))
                 continue
 
             # Operating period
+            # Per-period target: dynamic schedule if provided, else static scalar.
+            target = balance_schedule[period_pos] if balance_schedule is not None else req
+
             if not first_op_seen:
-                # COD funding handshake: opening = requirement (funded at construction close).
-                opening = req
+                # COD funding handshake: opening = first-period target (funded at construction close).
+                opening = target
                 first_op_seen = True
             else:
                 opening = prev_closing
-
-            target = req
 
             if cash_before >= 0.0:
                 top_up = min(max(0.0, target - opening), cash_before)
@@ -148,7 +158,7 @@ def run_cash_dsra_model(
                 target_met=target_met,
             ))
 
-    diagnostics = _build_diagnostics(mode, req)
+    diagnostics = _build_diagnostics(mode, req, has_dynamic_schedule=balance_schedule is not None)
     final_closing = period_results[-1].closing_balance_keur if period_results else 0.0
 
     return CashDsraSchedules(
@@ -189,6 +199,7 @@ def _neutral_period(
 def _build_diagnostics(
     mode: DebtServiceReserveSupportMode,
     req: float,
+    has_dynamic_schedule: bool = False,
 ) -> list[str]:
     diags: list[str] = []
     if mode == DebtServiceReserveSupportMode.NONE:
@@ -205,13 +216,27 @@ def _build_diagnostics(
             "no source evidence for release timing in TUHO/Oborovo/KUPI "
             "(all have requirement_keur=0 → neutral). Retain balance."
         )
-        diags.append(
-            f"COD_FUNDING_HANDSHAKE: opening_balance at first operating period "
-            f"= {req} kEUR = debt_service_reserve_requirement_keur "
-            f"(funded as Project Use at construction close)"
-        )
-        diags.append(
-            "CASH_DSRA_TARGET_AUTHORITY: static scalar requirement_keur. "
-            "dsra_months NOT consumed — no source evidence for dynamic 6-month DS target."
-        )
+        if has_dynamic_schedule:
+            diags.append(
+                "COD_FUNDING_HANDSHAKE: opening_balance at first operating period "
+                "= first-period dynamic target from required_balance_schedule "
+                "(funded as Project Use at construction close)"
+            )
+        else:
+            diags.append(
+                f"COD_FUNDING_HANDSHAKE: opening_balance at first operating period "
+                f"= {req} kEUR = debt_service_reserve_requirement_keur "
+                f"(funded as Project Use at construction close)"
+            )
+        if has_dynamic_schedule:
+            diags.append(
+                "CASH_DSRA_TARGET_AUTHORITY: FORWARD_DEBT_SERVICE_MONTHS dynamic schedule "
+                "(required_balance_schedule provided via DsraTargetPolicy). "
+                "COD opening = first-operating-period dynamic target."
+            )
+        else:
+            diags.append(
+                "CASH_DSRA_TARGET_AUTHORITY: FIXED_AMOUNT static scalar requirement_keur. "
+                "dsra_months NOT consumed — no required_balance_schedule provided."
+            )
     return diags
