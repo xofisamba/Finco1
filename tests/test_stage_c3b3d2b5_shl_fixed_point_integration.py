@@ -339,8 +339,11 @@ def test_tax_policy_controls_deductible_shl_without_double_counting():
         42852.30326225287
     )
     assert no_shl.senior_debt.debt_size_keur == pytest.approx(42892.49702156898)
+    # PR-1 fix: EBT_POSITIVE gate now correctly propagated from Oborovo ProjectInputs.
+    # With EBT_POSITIVE, loss utilisation is blocked in years where EBT_gate ≤ 0
+    # (non-deductible SHL drives EBT negative), increasing total CIT vs pre-PR-1.
     assert sum(full_non_deductible.tax_and_cfads.corporate_tax_cash_keur) == pytest.approx(
-        10379.782761843067
+        10437.903855993205
     )
     assert sum(no_shl.tax_and_cfads.corporate_tax_cash_keur) == pytest.approx(
         10378.67972730591

@@ -142,8 +142,11 @@ def test_oborovo_bank_tax_periodisation_override_is_source_owned():
         "workbook_model_year_pairing"
     )
     assert model.tax.policy.tax_basis_periodisation == TaxBasisPeriodisation.CALENDAR_YEAR
+    # PR-1 fix: adapter now forwards tax.tax_loss_utilisation_gate from ProjectInputs.
+    # Oborovo factory sets EBT_POSITIVE; the TaxPolicy now correctly reflects that.
+    # Pre-PR-1 this always read TAXABLE_INCOME_POSITIVE (adapter default, never forwarded).
     assert model.tax.policy.loss_utilisation_gate == (
-        TaxLossUtilisationGate.TAXABLE_INCOME_POSITIVE
+        TaxLossUtilisationGate.EBT_POSITIVE
     )
     assert model.tax.policy.cash_tax_timing != CashTaxTiming.MODEL_YEAR_PAYMENT_PERIOD
 
