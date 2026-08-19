@@ -32,16 +32,21 @@ from tests.diagnostics.kupi_k0_k3_causal_grid import (
     SOURCE_SHL_PRINCIPAL_KEUR,
     SOURCE_TOTAL_USES_KEUR,
     SOURCE_TOTAL_SHL_OPERATING_INTEREST_KEUR,
+    SOURCE_OPENING_SHL_KEUR,
+    SOURCE_CF102_FIRST_OP_PERIOD_KEUR,
     _KUPI_MAX_GEARING,
     _KUPI_TOTAL_USES_KEUR,
     _KUPI_CONSTRUCTION_USES_KEUR,
     build_kupi_project_inputs,
     kupi_cash_sweep_causal_trace,
+    kupi_shl_construction_drawdown_diagnostic,
+    kupi_shl_first_cash_divergence_period,
     kupi_source_workbook_tax_shadow,
     kupi_true_bank_only_balancing_diagnostic,
     kupi_true_bank_only_senior_diagnostic,
     KupiBankOnlySeniorDiagnostic,
     KupiFinalSourceCompatDiagnostic,
+    KupiShlConstructionDrawdownDiagnostic,
     run_d0_bank_balancing_diagnostic,
     run_full_grid,
     run_k0_control,
@@ -913,6 +918,90 @@ class TestFinalSourceCompatDiagnostic:
     def test_final_base_invariance_holds(self, final):
         """O6: Base EBITDA invariant in Bank-only diagnostic (by construction)."""
         assert final.bank_only_diagnostic.base_ebitda_invariant is True
+
+
+# ---------------------------------------------------------------------------
+# P. SHL construction drawdown gap diagnostic (addendum source evidence)
+# ---------------------------------------------------------------------------
+
+class TestShlConstructionDrawdownGap:
+    """SHL_CONSTRUCTION_DRAWDOWN_GAP diagnostic tests.
+
+    Source evidence (addendum screenshots):
+    - Source SHL cash: 68,152.996 kEUR
+    - Source construction PIK: 11,340.658 kEUR
+    - Source COD SHL opening: 79,493.654 kEUR (= SOURCE_OPENING_SHL_KEUR)
+    - Source operating SHL interest period 1: 3,206 kEUR
+
+    Engine (P0 ALL_AT_FC + COMPOUND) draws significantly more SHL during
+    construction, causing higher COD SHL opening and higher operating interest.
+    This is the primary cause of shadow CIT < source CIT.
+    """
+
+    @pytest.fixture(scope="class")
+    def p0(self):
+        return run_p0_current_generic()
+
+    @pytest.fixture(scope="class")
+    def drawdown_diag(self, p0):
+        return kupi_shl_construction_drawdown_diagnostic(p0)
+
+    def test_returns_dataclass(self, drawdown_diag):
+        """P1: Diagnostic returns KupiShlConstructionDrawdownDiagnostic."""
+        assert isinstance(drawdown_diag, KupiShlConstructionDrawdownDiagnostic)
+
+    def test_engine_cod_shl_exceeds_source(self, drawdown_diag):
+        """P2: Engine COD SHL opening > source anchor (confirms drawdown gap)."""
+        assert drawdown_diag.engine_cod_shl_opening_keur > drawdown_diag.source_cod_shl_opening_keur, (
+            f"Expected engine COD SHL ({drawdown_diag.engine_cod_shl_opening_keur:.1f}) "
+            f"> source ({drawdown_diag.source_cod_shl_opening_keur:.1f})"
+        )
+
+    def test_cod_shl_gap_positive(self, drawdown_diag):
+        """P3: Engine COD SHL gap > 0 (engine draws more SHL than source)."""
+        assert drawdown_diag.cod_shl_gap_keur > 0
+        print(f"\n  Engine COD SHL: {drawdown_diag.engine_cod_shl_opening_keur:.3f} kEUR")
+        print(f"  Source COD SHL: {drawdown_diag.source_cod_shl_opening_keur:.3f} kEUR")
+        print(f"  Gap:            {drawdown_diag.cod_shl_gap_keur:+.3f} kEUR")
+
+    def test_engine_op_shl_interest_exceeds_source_anchor(self, drawdown_diag):
+        """P4: Engine operating SHL interest exceeds source anchor by > 5000 kEUR."""
+        gap = drawdown_diag.op_shl_interest_gap_keur
+        assert gap > 5_000.0, (
+            f"Expected engine op SHL interest > source anchor by >5000 kEUR, got {gap:.1f}"
+        )
+        print(f"\n  Engine op SHL interest: {drawdown_diag.engine_total_op_shl_interest_keur:.3f} kEUR")
+        print(f"  Source anchor:          {drawdown_diag.source_total_op_shl_interest_keur:.3f} kEUR")
+        print(f"  Gap:                    {gap:+.3f} kEUR")
+
+    def test_shadow_cit_below_source(self, drawdown_diag):
+        """P5: Shadow CIT < source CIT anchor (excess SHL deduction depresses taxable income)."""
+        assert drawdown_diag.shadow_cit_keur < drawdown_diag.source_cit_anchor_keur, (
+            f"Shadow CIT ({drawdown_diag.shadow_cit_keur:.1f}) should be < "
+            f"source CIT ({drawdown_diag.source_cit_anchor_keur:.1f})"
+        )
+        print(f"\n  Shadow CIT: {drawdown_diag.shadow_cit_keur:.3f} kEUR")
+        print(f"  Source CIT: {drawdown_diag.source_cit_anchor_keur:.3f} kEUR")
+        print(f"  Gap (source - shadow): {drawdown_diag.actual_cit_gap_keur:+.3f} kEUR")
+
+    def test_first_shl_cash_divergence_at_cod(self, p0):
+        """P6: First SHL-eligible cash divergence occurs at COD (first operating period, pidx=2)."""
+        div = kupi_shl_first_cash_divergence_period(p0)
+        print(f"\n  First op period engine SHL cash: {div['engine_cash_keur']:.3f} kEUR")
+        print(f"  Source CF102 first op period:    {div['source_cash_keur']:.3f} kEUR")
+        print(f"  Delta:                           {div['delta_keur']:+.3f} kEUR")
+        # First divergence must be at the first operating period (pidx=2)
+        assert div["first_divergence_pidx"] == 2, (
+            f"Expected first divergence at pidx=2 (COD), got {div['first_divergence_pidx']!r}"
+        )
+
+    def test_source_cod_shl_constant_matches_addendum(self):
+        """P7: SOURCE_OPENING_SHL_KEUR = 79,493.654 matches addendum screenshot proof."""
+        assert SOURCE_OPENING_SHL_KEUR == pytest.approx(79_493.654, abs=0.01)
+
+    def test_source_cf102_first_period_constant(self):
+        """P8: SOURCE_CF102_FIRST_OP_PERIOD_KEUR = 5,842 kEUR (5.842 M€ from addendum)."""
+        assert SOURCE_CF102_FIRST_OP_PERIOD_KEUR == pytest.approx(5_842.0, abs=1.0)
 
 
 # ---------------------------------------------------------------------------

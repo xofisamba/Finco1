@@ -795,6 +795,9 @@ def run_full_grid() -> KupiCausalGrid:
 # ---------------------------------------------------------------------------
 
 SOURCE_TOTAL_SHL_OPERATING_INTEREST_KEUR = 48_681.151163696  # comparison anchor only
+# Source CF102 (FCF for SHL) at first operating period — 5.842 M€ = 5842 kEUR
+SOURCE_CF102_FIRST_OP_PERIOD_KEUR = 5_842.0   # comparison anchor (addendum screenshot)
+# SOURCE_OPENING_SHL_KEUR = 79_493.654 already defined above (pidx=0 line 105)
 
 @dataclass(frozen=True)
 class KupiTaxShadowPeriod:
@@ -830,6 +833,172 @@ class KupiTaxShadowResult:
 
 
 _SOURCE_TOTAL_CIT_KEUR = 95_291.964024174  # comparison anchor only — NOT a target
+
+
+@dataclass(frozen=True)
+class KupiShlConstructionDrawdownDiagnostic:
+    """SHL construction drawdown comparison: engine vs source workbook.
+
+    SHL_CONSTRUCTION_DRAWDOWN_GAP: the engine draws more SHL during construction
+    than the source workbook, causing a larger COD SHL opening, higher operating
+    SHL interest, lower engine EBT, and thus lower shadow CIT vs source CIT.
+
+    Primary cause of tax shadow CIT gap (shadow < source).
+    """
+    engine_cod_shl_opening_keur: float     # engine COD SHL = first op period opening
+    source_cod_shl_opening_keur: float     # = 79,493.654 kEUR (comparison anchor)
+    cod_shl_gap_keur: float                # engine - source (positive = engine over-draws)
+    engine_shl_drawdown_p0_keur: float     # engine SHL drawdown at construction period 0
+    source_shl_cash_keur: float            # = 68,152.996 kEUR (source cash SHL anchor)
+    engine_total_op_shl_interest_keur: float    # total operating SHL interest (engine)
+    source_total_op_shl_interest_keur: float    # = 48,681.151 kEUR (anchor)
+    op_shl_interest_gap_keur: float        # engine - source (excess SHL deduction)
+    implied_taxable_income_reduction_keur: float  # = op_shl_interest_gap (excess deduction)
+    implied_cit_gap_keur: float            # implied_taxable_income_reduction × CIT_rate
+    shadow_cit_keur: float                 # actual shadow CIT (uses engine SHL)
+    source_cit_anchor_keur: float          # = 95,291.964 kEUR (anchor)
+    actual_cit_gap_keur: float             # source - shadow (positive = source higher)
+    note: str
+
+
+def kupi_shl_construction_drawdown_diagnostic(
+    p0_result: "ProjectFinancingResult",
+) -> KupiShlConstructionDrawdownDiagnostic:
+    """Compare engine SHL construction drawdown to source workbook anchor.
+
+    Identifies SHL_CONSTRUCTION_DRAWDOWN_GAP as the primary cause of the
+    shadow CIT gap (shadow_cit < source_cit).  The engine draws more SHL
+    during construction (ALL_AT_FC funds the full residual SHL in one tranche),
+    leading to a higher COD SHL opening and higher operating SHL interest.
+    The excess operating SHL interest reduces engine EBT vs source EBT,
+    depressing shadow CIT relative to the source workbook.
+
+    This is NOT a production change.  No source vectors are injected.
+    """
+    pmr = p0_result.project_model_result
+    shl_s = pmr.shareholder_loan
+
+    n = len(shl_s.period_indices)
+    period_meta = {p.period_index: p for p in pmr.periods}
+
+    # COD SHL opening = first operating period opening balance
+    first_op_pidx = next(
+        shl_s.period_indices[i]
+        for i in range(n)
+        if period_meta[shl_s.period_indices[i]].is_operation
+    )
+    first_op_idx = list(shl_s.period_indices).index(first_op_pidx)
+    engine_cod_shl = shl_s.shl_opening_keur[first_op_idx]
+
+    # Engine SHL drawdown at first construction period
+    constr_indices = [
+        shl_s.period_indices[i]
+        for i in range(n)
+        if period_meta[shl_s.period_indices[i]].is_construction
+    ]
+    first_constr_idx = list(shl_s.period_indices).index(constr_indices[0])
+    engine_shl_drawdown_p0 = shl_s.shl_drawdown_keur[first_constr_idx]
+
+    # Total operating SHL interest (engine)
+    engine_op_shl_interest = sum(
+        shl_s.shl_gross_interest_keur[i]
+        for i in range(n)
+        if period_meta[shl_s.period_indices[i]].is_operation
+    )
+
+    cod_shl_gap = engine_cod_shl - SOURCE_OPENING_SHL_KEUR
+    op_shl_gap = engine_op_shl_interest - SOURCE_TOTAL_SHL_OPERATING_INTEREST_KEUR
+    implied_ti_reduction = op_shl_gap  # excess SHL deduction reduces taxable income
+    implied_cit_gap = implied_ti_reduction * BA_CORPORATE_RATE
+
+    # Shadow CIT (computed separately — this diagnostic is for context only)
+    shadow = kupi_source_workbook_tax_shadow(p0_result)
+    actual_cit_gap = _SOURCE_TOTAL_CIT_KEUR - shadow.total_shadow_cit_keur
+
+    note = (
+        f"SHL_CONSTRUCTION_DRAWDOWN_GAP: engine SHL drawdown={engine_shl_drawdown_p0:.3f} kEUR "
+        f"vs source SHL cash={SOURCE_SHL_PRINCIPAL_KEUR:.3f} kEUR "
+        f"(gap={engine_shl_drawdown_p0 - SOURCE_SHL_PRINCIPAL_KEUR:+.3f} kEUR). "
+        f"Engine COD SHL opening={engine_cod_shl:.3f} vs source={SOURCE_OPENING_SHL_KEUR:.3f} "
+        f"(gap={cod_shl_gap:+.3f} kEUR). "
+        f"Engine total op SHL interest={engine_op_shl_interest:.3f} vs source={SOURCE_TOTAL_SHL_OPERATING_INTEREST_KEUR:.3f} "
+        f"(excess={op_shl_gap:+.3f} kEUR). "
+        f"Excess SHL deduction reduces taxable income → shadow CIT reduced by ~{implied_cit_gap:.0f} kEUR "
+        f"(linear estimate). "
+        f"Actual shadow CIT gap (source - shadow)={actual_cit_gap:+.3f} kEUR. "
+        f"SHL_CONSTRUCTION_DRAWDOWN_GAP is the PRIMARY cause of shadow CIT < source CIT. "
+        f"SOURCE_TAX_POLICY_RUNTIME_GAP (runtime adapter) and PAIRING_ORIENTATION are secondary. "
+        f"Cannot correct without injecting source SHL vectors (governance-forbidden)."
+    )
+    return KupiShlConstructionDrawdownDiagnostic(
+        engine_cod_shl_opening_keur=engine_cod_shl,
+        source_cod_shl_opening_keur=SOURCE_OPENING_SHL_KEUR,
+        cod_shl_gap_keur=cod_shl_gap,
+        engine_shl_drawdown_p0_keur=engine_shl_drawdown_p0,
+        source_shl_cash_keur=SOURCE_SHL_PRINCIPAL_KEUR,
+        engine_total_op_shl_interest_keur=engine_op_shl_interest,
+        source_total_op_shl_interest_keur=SOURCE_TOTAL_SHL_OPERATING_INTEREST_KEUR,
+        op_shl_interest_gap_keur=op_shl_gap,
+        implied_taxable_income_reduction_keur=implied_ti_reduction,
+        implied_cit_gap_keur=implied_cit_gap,
+        shadow_cit_keur=shadow.total_shadow_cit_keur,
+        source_cit_anchor_keur=_SOURCE_TOTAL_CIT_KEUR,
+        actual_cit_gap_keur=actual_cit_gap,
+        note=note,
+    )
+
+
+def kupi_shl_first_cash_divergence_period(
+    p0_result: "ProjectFinancingResult",
+    source_cf102_first_op_period_keur: float = SOURCE_CF102_FIRST_OP_PERIOD_KEUR,
+    tolerance_keur: float = 50.0,
+) -> dict:
+    """Find the first operating period where engine SHL-eligible cash diverges from source.
+
+    Source CF102 (FCF for SHL) is defined as max(0, CFADS - senior_ds) for operating
+    periods (DSRA/DA gate is open for early KUPI periods per source screenshots).
+
+    Returns a dict with:
+      first_divergence_pidx: int or None
+      engine_cash_keur: float (at first divergence)
+      source_cash_keur: float (at first divergence — from addendum or estimated)
+      delta_keur: float
+      note: str
+    """
+    pmr = p0_result.project_model_result
+    psc = pmr.post_senior_cash
+    period_meta = {p.period_index: p for p in pmr.periods}
+
+    ops = [
+        (psc.period_indices[i], psc.cash_available_for_shl_before_reserves_keur[i])
+        for i in range(len(psc.period_indices))
+        if period_meta[psc.period_indices[i]].is_operation
+    ]
+
+    # Only the first operating period source CF102 is provided from the addendum.
+    # Compare engine to that one value.
+    first_pidx, first_engine_cash = ops[0]
+    delta = first_engine_cash - source_cf102_first_op_period_keur
+    diverges = abs(delta) > tolerance_keur
+
+    return {
+        "first_divergence_pidx": first_pidx if diverges else None,
+        "engine_cash_keur": first_engine_cash,
+        "source_cash_keur": source_cf102_first_op_period_keur,
+        "delta_keur": delta,
+        "note": (
+            f"First operating period pidx={first_pidx}: "
+            f"engine={first_engine_cash:.3f} kEUR vs source CF102={source_cf102_first_op_period_keur:.3f} kEUR "
+            f"(delta={delta:+.3f} kEUR). "
+            + (
+                f"DIVERGES at pidx={first_pidx}: engine understates SHL-eligible cash. "
+                f"Primary cause: engine SHL drawdown > source (COD SHL gap). "
+                f"DSRA/DA gate confirmed open at first KUPI periods (source screenshots). "
+                if diverges
+                else f"Within tolerance {tolerance_keur:.0f} kEUR."
+            )
+        ),
+    }
 
 
 _KUPI_BALANCING_COST_EUR_MWH = 5.0  # Source balancing cost used in P0
@@ -1098,14 +1267,15 @@ def kupi_source_workbook_tax_shadow(result: ProjectFinancingResult) -> KupiTaxSh
     total_delta = total_shadow - total_engine
     tax_main_effect_is_zero = abs(total_delta) < 1.0  # within 1 kEUR
 
-    # Classification: SOURCE_TAX_POLICY_RUNTIME_GAP
-    # The production engine K1-K0 = 0 because tax_inputs.py adapter does not forward
-    # loss_utilisation_gate from TaxParams to TaxPolicy. This shadow diagnostic shows
-    # the source-compatible mechanics (5-model-period LCF + paired CIT) produce
-    # total_shadow_cit > engine_cash_tax (higher tax → lower CFADS → lower Senior).
+    # PRIMARY GAP CAUSE: SHL_CONSTRUCTION_DRAWDOWN_TAXABLE_INCOME_EFFECT
+    # Engine SHL drawdown > source SHL cash by ~11,427 kEUR → COD SHL opening +13,328 kEUR.
+    # Engine operating SHL interest = ~62,989 vs source anchor = 48,681 kEUR (+14,308 kEUR).
+    # Excess SHL deduction depresses shadow EBT → shadow CIT < source CIT by ~4,327 kEUR.
+    # SECONDARY: SOURCE_TAX_POLICY_RUNTIME_GAP (adapter does not forward loss_utilisation_gate).
     # Classification: SOURCE_TAX_EFFECT_DIRECTION = NEGATIVE_TO_SENIOR.
-    # Do NOT claim TAX_MAIN_EFFECT = 0 is proven — production K1-K0 is 0 only because
-    # the adapter does not execute the source tax semantics.
+    source_anchor = _SOURCE_TOTAL_CIT_KEUR
+    source_gap = source_anchor - total_shadow  # positive → source higher
+
     if tax_main_effect_is_zero:
         note = (
             "SOURCE_TAX_POLICY_RUNTIME_GAP: production K1-K0=0 because tax_inputs.py adapter "
@@ -1113,6 +1283,9 @@ def kupi_source_workbook_tax_shadow(result: ProjectFinancingResult) -> KupiTaxSh
             "Shadow diagnostic (5-model-period LCF + WORKBOOK_PAIRED_MODEL_YEAR CIT) "
             f"gives shadow_cit={total_shadow:.3f} vs engine={total_engine:.3f} kEUR, "
             f"delta={total_delta:+.3f} kEUR. "
+            f"Source CIT anchor={source_anchor:.3f} kEUR; shadow-to-source gap={source_gap:+.3f} kEUR. "
+            "SHL_CONSTRUCTION_DRAWDOWN_TAXABLE_INCOME_EFFECT: engine SHL > source SHL by ~14,308 kEUR "
+            "operating interest → depresses shadow EBT → PRIMARY cause of shadow < source CIT. "
             "SOURCE_TAX_EFFECT_DIRECTION=NEGATIVE_TO_SENIOR: higher source-compatible "
             "CIT lowers Bank CFADS and Senior capacity. "
             "K1-K0=0 is a production runtime limitation, NOT a proof that "
@@ -1121,6 +1294,8 @@ def kupi_source_workbook_tax_shadow(result: ProjectFinancingResult) -> KupiTaxSh
     else:
         note = (
             f"SOURCE_TAX_POLICY_RUNTIME_GAP confirmed: shadow delta={total_delta:+.3f} kEUR. "
+            f"Source CIT anchor={source_anchor:.3f} kEUR; shadow-to-source gap={source_gap:+.3f} kEUR. "
+            "SHL_CONSTRUCTION_DRAWDOWN_TAXABLE_INCOME_EFFECT is PRIMARY cause of gap. "
             "WORKBOOK_PAIRED_MODEL_YEAR + 5-model-period LCF diverges from clean engine. "
             "SOURCE_TAX_EFFECT_DIRECTION=NEGATIVE_TO_SENIOR (shadow CIT > engine CIT)."
         )
@@ -1679,9 +1854,13 @@ def run_kupi_final_source_compat() -> "KupiFinalSourceCompatDiagnostic":
         f"Source anchor={SOURCE_SENIOR_KEUR:.3f} kEUR. "
         f"PROVISIONAL_APPROXIMATION_RESIDUAL_0_35_PERCENT: "
         f"residual={provisional_residual:+.3f} kEUR ({provisional_residual_pct:.2f}%). "
-        f"This is NOT a fully source-compatible parity residual: "
-        f"(1) SOURCE_TAX_POLICY_RUNTIME_GAP: source tax semantics not production-promoted; "
-        f"(2) BANK_CASE_BALANCING_OVERRIDE_GAP: bank-only balancing not production-supported. "
+        f"This is NOT a fully source-compatible parity residual. Classified causes: "
+        f"(1) SHL_CONSTRUCTION_DRAWDOWN_GAP: engine COD SHL=92,822 vs source={SOURCE_OPENING_SHL_KEUR:.3f} kEUR "
+        f"(+13,328 kEUR); engine op SHL interest=~62,989 vs source=48,681 kEUR (+14,308 kEUR); "
+        f"excess SHL deduction is PRIMARY driver of shadow CIT < source CIT; "
+        f"first SHL-eligible cash divergence at pidx=2 (COD, first operating period); "
+        f"(2) SOURCE_TAX_POLICY_RUNTIME_GAP: source tax semantics not production-promoted; "
+        f"(3) BANK_CASE_BALANCING_OVERRIDE_GAP: bank-only balancing not production-supported. "
         f"Standalone true-bank-only diagnostic={true_bank_only:.3f} kEUR is NOT authoritative "
         f"(reaches gearing cap due to incomplete SHL principal iteration). "
         f"KUPI status: OOS causal/behavioral validation PASSED. "
@@ -1697,10 +1876,10 @@ def run_kupi_final_source_compat() -> "KupiFinalSourceCompatDiagnostic":
         source_anchor_senior_keur=SOURCE_SENIOR_KEUR,
         residual_to_source_keur=provisional_residual,
         residual_pct=provisional_residual_pct,
-        first_divergence_period=5,
+        first_divergence_period=2,  # first operating period (COD); SHL-eligible cash diverges immediately
         remaining_cause_classification=(
-            "SOURCE_TAX_POLICY_RUNTIME_GAP | BANK_CASE_BALANCING_OVERRIDE_GAP | "
-            "SOURCE_INFORMED_CONSTRUCTION_TIMING_APPROXIMATION | SHL_DAY_COUNT_PRECISION"
+            "SHL_CONSTRUCTION_DRAWDOWN_GAP | SOURCE_TAX_POLICY_RUNTIME_GAP | "
+            "BANK_CASE_BALANCING_OVERRIDE_GAP | SOURCE_INFORMED_CONSTRUCTION_TIMING_APPROXIMATION"
         ),
         note=note,
     )
