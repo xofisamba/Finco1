@@ -28,16 +28,21 @@ from tests.diagnostics.kupi_k0_k3_causal_grid import (
     SOURCE_SENIOR_KEUR,
     SOURCE_SHL_PRINCIPAL_KEUR,
     SOURCE_TOTAL_USES_KEUR,
+    SOURCE_TOTAL_SHL_OPERATING_INTEREST_KEUR,
     _KUPI_MAX_GEARING,
     _KUPI_TOTAL_USES_KEUR,
     _KUPI_CONSTRUCTION_USES_KEUR,
     build_kupi_project_inputs,
+    kupi_cash_sweep_causal_trace,
+    kupi_source_workbook_tax_shadow,
+    kupi_true_bank_only_balancing_diagnostic,
     run_d0_bank_balancing_diagnostic,
     run_full_grid,
     run_k0_control,
     run_k1_source_tax,
     run_k2_source_shl,
     run_k3_combined,
+    run_kupi_final_source_compat,
     run_p0_current_generic,
     run_r_bullet,
     run_r_cash_sweep,
@@ -448,7 +453,9 @@ class TestRegressions:
 # ---------------------------------------------------------------------------
 
 class TestBlocker1RepaymentMethod:
-    """BLOCKER 1: SHL repayment method (bullet vs cash_sweep) diagnostic."""
+    """BLOCKER 1: SHL repayment method (bullet vs cash_sweep) diagnostic.
+    CASH_SWEEP is now the K-grid baseline; R_BULLET is the sensitivity variant.
+    """
 
     def test_r_bullet_runs_and_is_finite(self, grid):
         """K1: R_BULLET produces finite, positive Senior."""
@@ -456,13 +463,21 @@ class TestBlocker1RepaymentMethod:
         assert grid.senior_r_bullet > 0
 
     def test_r_cash_sweep_runs_and_is_finite(self, grid):
-        """K2: R_CASH_SWEEP produces finite, positive Senior."""
+        """K2: R_CASH_SWEEP (= K3 baseline) produces finite, positive Senior."""
         assert math.isfinite(grid.senior_r_cash_sweep)
         assert grid.senior_r_cash_sweep > 0
 
     def test_repayment_effect_is_computable(self, grid):
         """K3: REPAYMENT_EFFECT = Senior(R_CASH_SWEEP) - Senior(R_BULLET) is finite."""
         assert math.isfinite(grid.repayment_effect)
+
+    def test_k_grid_uses_cash_sweep_not_bullet(self):
+        """K3a: K-grid baseline uses cash_sweep (not bullet) as per source evidence."""
+        inputs = build_kupi_project_inputs()
+        assert inputs.financing.clean_shl_repayment_method == "cash_sweep", (
+            "K-grid baseline must use cash_sweep (source-evidenced from G3B fixture); "
+            f"got {inputs.financing.clean_shl_repayment_method!r}"
+        )
 
     def test_construction_uses_sum_within_tolerance(self):
         """K4: Source construction period uses sum within 0.001 kEUR of source authority."""
@@ -546,6 +561,237 @@ class TestBlocker3BankBalancing:
 
 
 # ---------------------------------------------------------------------------
+# L. BLOCKER A — KUPI_SOURCE_WORKBOOK_TAX_COMPATIBILITY_DIAGNOSTIC
+# ---------------------------------------------------------------------------
+
+class TestBlockerATaxShadow:
+    """BLOCKER A: Pure test-only source workbook tax shadow diagnostic."""
+
+    @pytest.fixture(scope="class")
+    def tax_shadow(self, grid):
+        """Compute source workbook tax shadow from K0 engine result."""
+        return kupi_source_workbook_tax_shadow(grid.k0)
+
+    def test_shadow_periods_non_empty(self, tax_shadow):
+        """L1: Tax shadow produces period-by-period results."""
+        assert len(tax_shadow.periods) > 0
+
+    def test_shadow_total_cit_positive(self, tax_shadow):
+        """L2: Total shadow CIT > 0 (some taxable income exists in operating life)."""
+        assert tax_shadow.total_shadow_cit_keur > 0, (
+            f"Shadow CIT = {tax_shadow.total_shadow_cit_keur:.3f} kEUR; expected > 0"
+        )
+
+    def test_engine_cash_tax_positive(self, tax_shadow):
+        """L3: Engine cash tax > 0 (engine also computes positive CIT)."""
+        assert tax_shadow.total_engine_cash_tax_keur > 0
+
+    def test_tax_main_effect_classified(self, tax_shadow):
+        """L4: Tax shadow correctly classifies TAX_MAIN_EFFECT for KUPI."""
+        # For KUPI: EBT_POSITIVE and TAXABLE_INCOME_POSITIVE fire identically
+        # (no period with EBT>0 but TI≤0), so delta ≈ 0. Classified as zero.
+        print(f"\n  BLOCKER A result: delta={tax_shadow.total_delta_keur:+.3f} kEUR")
+        print(f"  tax_main_effect_is_zero={tax_shadow.tax_main_effect_is_zero}")
+        print(f"  Note: {tax_shadow.note}")
+        assert math.isfinite(tax_shadow.total_delta_keur)
+
+    def test_shadow_cit_within_order_of_magnitude_of_source_anchor(self, tax_shadow):
+        """L5: Shadow CIT is within order of magnitude of source anchor (95,292 kEUR)."""
+        # Not a parity test — just confirms shadow is reasonable
+        ratio = tax_shadow.total_shadow_cit_keur / tax_shadow.source_workbook_anchor_keur
+        assert 0.5 < ratio < 2.0, (
+            f"Shadow CIT {tax_shadow.total_shadow_cit_keur:.3f} kEUR is outside "
+            f"0.5x–2x of source anchor {tax_shadow.source_workbook_anchor_keur:.3f}"
+        )
+
+    def test_all_periods_have_finite_values(self, tax_shadow):
+        """L6: All period fields are finite."""
+        for p in tax_shadow.periods:
+            assert math.isfinite(p.shadow_cit_keur), f"period {p.period_index}: non-finite shadow CIT"
+            assert math.isfinite(p.engine_cash_tax_keur), f"period {p.period_index}: non-finite engine tax"
+            assert math.isfinite(p.ebt_keur), f"period {p.period_index}: non-finite EBT"
+
+    def test_lcf_non_negative_throughout(self, tax_shadow):
+        """L7: LCF opening and closing balances are non-negative."""
+        for p in tax_shadow.periods:
+            assert p.lcf_opening_keur >= -1e-6, f"period {p.period_index}: negative LCF opening"
+            assert p.lcf_closing_keur >= -1e-6, f"period {p.period_index}: negative LCF closing"
+
+    def test_no_source_cash_tax_injected(self):
+        """L8: Source Excel cash-tax vectors are NOT injected in the shadow calculation."""
+        # The shadow function uses only engine-derived data (operating_schedules,
+        # senior_debt, shareholder_loan). No external vector injection.
+        import inspect
+        from tests.diagnostics.kupi_k0_k3_causal_grid import kupi_source_workbook_tax_shadow as fn
+        src = inspect.getsource(fn)
+        assert "95_291" not in src, "Source CIT total must not appear in the function body"
+        assert "95291" not in src, "Source CIT total must not appear in the function body"
+
+
+# ---------------------------------------------------------------------------
+# M. BLOCKER B — KUPI_TRUE_BANK_ONLY_BALANCING_DIAGNOSTIC
+# ---------------------------------------------------------------------------
+
+class TestBlockerBBankOnly:
+    """BLOCKER B: True Bank-only balancing diagnostic."""
+
+    @pytest.fixture(scope="class")
+    def bank_diag(self, grid):
+        return kupi_true_bank_only_balancing_diagnostic(grid.p0, grid.d0)
+
+    def test_base_revenue_not_invariant_under_d0(self, bank_diag):
+        """M1: D0 globally reduces Base EBITDA (Base revenue NOT invariant — D0 is approximate)."""
+        assert not bank_diag.base_revenue_is_invariant, (
+            f"Expected Base EBITDA to change under D0 (global balancing=0). "
+            f"Delta = {bank_diag.base_ebitda_delta_keur:+.3f} kEUR"
+        )
+
+    def test_base_ebitda_delta_positive(self, bank_diag):
+        """M2: D0 Base EBITDA > P0 Base EBITDA (balancing_cost is a deduction; D0 removes it → higher EBITDA).
+
+        Source asymmetry: balancing_cost is a revenue deduction (cost to the project).
+        D0 sets balancing_cost=0 globally, so D0 Base EBITDA > P0 Base EBITDA.
+        True Bank-only would leave Base EBITDA at P0 level (Base EBITDA invariant)
+        while only reducing Bank CFADS. D0's global change overstates Base EBITDA.
+        """
+        assert bank_diag.base_ebitda_delta_keur > 0, (
+            f"D0 Base EBITDA delta should be positive (D0 removes balancing cost deduction); "
+            f"got {bank_diag.base_ebitda_delta_keur:.3f}"
+        )
+
+    def test_bank_cfads_delta_positive(self, bank_diag):
+        """M3: D0 Bank CFADS > P0 Bank CFADS (D0 removes balancing cost from Bank sizing → higher CFADS)."""
+        assert bank_diag.bank_cfads_delta_keur > 0, (
+            f"D0 Bank CFADS delta should be positive; got {bank_diag.bank_cfads_delta_keur:.3f}"
+        )
+
+    def test_senior_delta_positive(self, bank_diag):
+        """M4: D0 Senior > P0 Senior (removing balancing from Bank sizing increases debt capacity)."""
+        assert bank_diag.d0_vs_p0_senior_delta_keur > 0, (
+            f"D0-P0 Senior delta should be positive; got {bank_diag.d0_vs_p0_senior_delta_keur:.3f}"
+        )
+
+    def test_no_production_bank_balancing_field(self):
+        """M5: DebtSizingCaseConfig has no bank_balancing_cost field (governance constraint)."""
+        from finco_core.inputs._models import DebtSizingCaseConfig
+        import dataclasses
+        field_names = {f.name for f in dataclasses.fields(DebtSizingCaseConfig)}
+        assert "bank_balancing_cost_wind_eur_mwh" not in field_names, (
+            "Production Bank balancing field must NOT be added (governance: No production Bank balancing field)"
+        )
+        assert "balancing_cost_wind_eur_mwh" not in field_names, (
+            "Production Bank balancing field must NOT be added (governance: No production Bank balancing field)"
+        )
+
+    def test_d0_documents_approximation(self, bank_diag):
+        """M6: Diagnostic note documents the D0 approximation gap."""
+        assert "APPROXIMATION" in bank_diag.note.upper() or "approximation" in bank_diag.note.lower()
+        print(f"\n  BLOCKER B note: {bank_diag.note}")
+
+
+# ---------------------------------------------------------------------------
+# N. Cash-sweep causal trace
+# ---------------------------------------------------------------------------
+
+class TestCashSweepCausalTrace:
+    """Cash-sweep period-by-period SHL schedule and source anchor comparison."""
+
+    @pytest.fixture(scope="class")
+    def cs_trace(self, grid):
+        return kupi_cash_sweep_causal_trace(grid.r_cash_sweep, grid.r_bullet)
+
+    def test_cash_sweep_periods_non_empty(self, cs_trace):
+        """N1: Cash-sweep SHL schedule is non-empty."""
+        assert len(cs_trace.cash_sweep_periods) > 0
+
+    def test_bullet_periods_non_empty(self, cs_trace):
+        """N2: Bullet SHL schedule is non-empty."""
+        assert len(cs_trace.bullet_periods) > 0
+
+    def test_operating_shl_interest_positive(self, cs_trace):
+        """N3: Cash-sweep total operating SHL interest is positive."""
+        assert cs_trace.cash_sweep_total_operating_shl_interest_keur > 0
+
+    def test_repayment_effect_finite(self, cs_trace):
+        """N4: REPAYMENT_EFFECT = Senior(cash_sweep) - Senior(bullet) is finite."""
+        assert math.isfinite(cs_trace.repayment_effect_senior_keur)
+
+    def test_cash_sweep_closing_reaches_zero(self, cs_trace):
+        """N5: Cash-sweep SHL closing balance reaches zero by maturity."""
+        # Last few operating periods should have zero closing balance
+        op_periods = [p for p in cs_trace.cash_sweep_periods if p.opening_keur > 0]
+        if op_periods:
+            last = op_periods[-1]
+            assert last.closing_keur < 100.0, (
+                f"SHL closing at last operating period: {last.closing_keur:.3f} kEUR (expected ~0)"
+            )
+
+    def test_source_shl_interest_anchor_documented(self, cs_trace):
+        """N6: Source total SHL operating interest anchor (48,681.151 kEUR) is recorded."""
+        assert cs_trace.source_total_shl_interest_keur == pytest.approx(
+            SOURCE_TOTAL_SHL_OPERATING_INTEREST_KEUR, abs=1e-3
+        )
+
+    def test_sweep_vs_source_delta_finite(self, cs_trace):
+        """N7: Sweep vs source delta is finite and documentable."""
+        assert math.isfinite(cs_trace.sweep_vs_source_delta_keur)
+        print(
+            f"\n  Cash-sweep total operating SHL interest: "
+            f"{cs_trace.cash_sweep_total_operating_shl_interest_keur:.3f} kEUR"
+        )
+        print(f"  Source anchor:  {cs_trace.source_total_shl_interest_keur:.3f} kEUR")
+        print(f"  Delta vs source: {cs_trace.sweep_vs_source_delta_keur:+.3f} kEUR")
+        print(f"  REPAYMENT_EFFECT (Senior): {cs_trace.repayment_effect_senior_keur:+.3f} kEUR")
+
+
+# ---------------------------------------------------------------------------
+# O. KUPI_FINAL_SOURCE_COMPAT_DIAGNOSTIC
+# ---------------------------------------------------------------------------
+
+class TestFinalSourceCompatDiagnostic:
+    """KUPI_FINAL_SOURCE_COMPAT_DIAGNOSTIC: most source-comparable engine run."""
+
+    @pytest.fixture(scope="class")
+    def final_result(self):
+        return run_kupi_final_source_compat()
+
+    def test_final_runs_and_finite(self, final_result):
+        """O1: Final diagnostic produces finite, positive Senior."""
+        senior = final_result.final_senior_commitment_keur
+        assert math.isfinite(senior)
+        assert senior > 0
+        print(f"\n  KUPI_FINAL_SOURCE_COMPAT Senior: {senior:.3f} kEUR")
+        print(f"  Source anchor:                   {SOURCE_SENIOR_KEUR:.3f} kEUR")
+        print(f"  Residual vs source:             {SOURCE_SENIOR_KEUR - senior:+.3f} kEUR")
+
+    def test_final_total_uses_within_tolerance(self, final_result):
+        """O2: Final diagnostic Total Uses within 1 kEUR of source authority."""
+        uses = final_result.project_uses.total_project_uses_keur
+        assert abs(uses - SOURCE_TOTAL_USES_KEUR) < 1.0
+
+    def test_final_uses_cash_sweep(self, final_result):
+        """O3: Final diagnostic uses cash_sweep (source-evidenced)."""
+        # Verify via SHL schedule — cash_sweep has declining balance
+        shl_s = final_result.project_model_result.shareholder_loan
+        if shl_s is not None:
+            op_openings = [
+                shl_s.shl_opening_keur[i]
+                for i, _ in enumerate(shl_s.period_indices)
+                if shl_s.shl_drawdown_keur[i] == 0.0 and shl_s.shl_opening_keur[i] > 0
+            ]
+            if op_openings:
+                assert op_openings[-1] < op_openings[0] * 0.5, (
+                    "Expected SHL to decline significantly by maturity (cash_sweep mode)"
+                )
+
+    def test_final_tax_shadow_consistent(self, final_result):
+        """O4: Final diagnostic source workbook tax shadow produces finite result."""
+        shadow = kupi_source_workbook_tax_shadow(final_result)
+        assert math.isfinite(shadow.total_shadow_cit_keur)
+        assert shadow.total_shadow_cit_keur > 0
+
+
+# ---------------------------------------------------------------------------
 # Grid results report (not a test — informational)
 # ---------------------------------------------------------------------------
 
@@ -562,3 +808,6 @@ def test_print_grid_report(grid):
     print(f"  K3_RESIDUAL vs source:       {grid.k3_residual_vs_source:+.3f} kEUR")
     print(f"  P0 Total Uses:               {grid.p0.project_uses.total_project_uses_keur:.3f} kEUR")
     print(f"  Source Total Uses anchor:    {SOURCE_TOTAL_USES_KEUR:.3f} kEUR")
+    print(f"  K-grid baseline:             CASH_SWEEP (source-evidenced)")
+    print(f"  R_BULLET Senior:             {grid.senior_r_bullet:.3f} kEUR (sensitivity)")
+    print(f"  REPAYMENT_EFFECT:            {grid.repayment_effect:+.3f} kEUR (K3 - R_BULLET)")

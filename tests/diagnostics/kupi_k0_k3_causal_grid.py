@@ -48,7 +48,7 @@ Causal decompositions (Senior):
 
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from datetime import date
 from typing import NamedTuple
 
@@ -491,13 +491,10 @@ def build_kupi_project_inputs(
             merchant_price_calendar_start_year=2030,
         ),
         clean_shl_principal_keur=0.0,   # engine-derived; seed=0, fixed-point converges
-        # BLOCKER 1 FIX: source G3B fixture (mvp-g3-synthetic-anti-overfit) uses
-        # clean_shl_repayment_method="cash_sweep".  The bullet method is retained
-        # here as the default for K0-K3 comparison consistency (so that R_BULLET vs
-        # R_CASH_SWEEP isolates the repayment method effect cleanly).
-        # All P0/D0/K0-K3 cases use "bullet" for internal factorial consistency.
-        # R_CASH_SWEEP and R_BULLET are the dedicated repayment-method diagnostic cases.
-        clean_shl_repayment_method="bullet",
+        # CASH_SWEEP is source-evidenced (G3B fixture: cash_sweep).
+        # K0-K3 and P0/D0 all hold CASH_SWEEP constant as the baseline.
+        # R_BULLET is the dedicated bullet-method sensitivity diagnostic.
+        clean_shl_repayment_method="cash_sweep",
         shl_maturity_period_index=_KUPI_SHL_MATURITY_PERIOD_IDX,
         shl_principal_eligibility_start_period=_KUPI_SHL_ELIGIBILITY_START,
         shl_day_count_convention="PERIOD_AXIS_ACTUAL_YEAR",
@@ -625,42 +622,32 @@ def run_k3_combined() -> ProjectFinancingResult:
 # Source SHL total operating interest anchor: 48,681.151163696 kEUR (comparison only).
 # ---------------------------------------------------------------------------
 
-def _build_kupi_for_repayment_method(repayment_method: str) -> ProjectFinancingResult:
-    """Internal: run K3-equivalent but with explicit SHL repayment method override."""
-    from dataclasses import replace as _replace
+def run_r_bullet() -> ProjectFinancingResult:
+    """R_BULLET — K3-equivalent with bullet SHL repayment (sensitivity vs CASH_SWEEP baseline).
+
+    All other inputs identical to K3 (ALL_AT_FC + COMPOUND_PERIODIC, source tax, balancing=0).
+    REPAYMENT_EFFECT = Senior(K3) - Senior(R_BULLET)  [K3 uses cash_sweep baseline].
+    """
     inputs = build_kupi_project_inputs(
         shl_construction_interest_method=ShlConstructionInterestMethod.COMPOUND_PERIODIC,
         sponsor_funding_timing_policy=SponsorFundingTimingPolicy.ALL_AT_FC,
         bank_balancing_cost_eur_mwh=0.0,
         use_source_workbook_tax=True,
     )
-    # Override only the SHL repayment method:
-    financing_override = _replace(inputs.financing, clean_shl_repayment_method=repayment_method)
-    inputs_override = _replace(inputs, financing=financing_override)
+    financing_override = replace(inputs.financing, clean_shl_repayment_method="bullet")
     return run_project_financing_model(
-        inputs_override,
-        source_id=f"KUPI_R_{repayment_method.upper()}_REPAYMENT_DIAGNOSTIC",
+        replace(inputs, financing=financing_override),
+        source_id="KUPI_R_BULLET_REPAYMENT_DIAGNOSTIC",
     )
 
 
-def run_r_bullet() -> ProjectFinancingResult:
-    """R_BULLET — K3 base with bullet SHL repayment (current fixture default).
-
-    Used as the repayment-method control case against R_CASH_SWEEP.
-    All other inputs identical to K3.
-    """
-    return _build_kupi_for_repayment_method("bullet")
-
-
 def run_r_cash_sweep() -> ProjectFinancingResult:
-    """R_CASH_SWEEP — K3 base with cash_sweep SHL repayment (source-evidenced).
+    """R_CASH_SWEEP — alias for K3 (now cash_sweep is the baseline for all K-cases).
 
-    Source G3B fixture (mvp-g3-synthetic-anti-overfit:tests/helpers/g3b_kupi_project.py)
-    specifies clean_shl_repayment_method="cash_sweep".
-    REPAYMENT_EFFECT = Senior(R_CASH_SWEEP) - Senior(R_BULLET).
-    All other inputs identical to K3.
+    Source G3B fixture specifies clean_shl_repayment_method="cash_sweep".
+    REPAYMENT_EFFECT = Senior(K3_CASH_SWEEP) - Senior(R_BULLET).
     """
-    return _build_kupi_for_repayment_method("cash_sweep")
+    return run_k3_combined()
 
 
 # ---------------------------------------------------------------------------
@@ -792,6 +779,419 @@ def run_full_grid() -> KupiCausalGrid:
     return KupiCausalGrid(
         p0=p0, d0=d0, k0=k0, k1=k1, k2=k2, k3=k3,
         r_bullet=r_bullet, r_cash_sweep=r_cash_sweep,
+    )
+
+
+# ---------------------------------------------------------------------------
+# BLOCKER A — KUPI_SOURCE_WORKBOOK_TAX_COMPATIBILITY_DIAGNOSTIC
+# Pure test-only shadow tax calculation consuming engine-derived period data.
+# Does NOT inject source Excel cash-tax vectors.
+# ---------------------------------------------------------------------------
+
+SOURCE_TOTAL_SHL_OPERATING_INTEREST_KEUR = 48_681.151163696  # comparison anchor only
+
+@dataclass(frozen=True)
+class KupiTaxShadowPeriod:
+    """Per-period result of the source-workbook tax shadow calculation."""
+    period_index: int
+    ebitda_keur: float
+    tax_depreciation_keur: float
+    senior_interest_keur: float
+    shl_gross_interest_keur: float
+    ebt_keur: float                    # EBITDA - tax_dep - senior_interest - shl_interest
+    lcf_opening_keur: float
+    gate_allows_lcf: bool              # EBT > 0 gate
+    lcf_used_keur: float
+    lcf_closing_keur: float
+    taxable_income_keur: float         # max(0, EBT - lcf_used)
+    shadow_cit_keur: float             # taxable_income * CIT_rate (annual CIT / 2 periods)
+    engine_cash_tax_keur: float        # engine's actual cash tax for this period
+    delta_keur: float                  # shadow_cit - engine_cash_tax
+
+
+@dataclass(frozen=True)
+class KupiTaxShadowResult:
+    """Full source-workbook tax shadow diagnostic result."""
+    periods: tuple[KupiTaxShadowPeriod, ...]
+    total_shadow_cit_keur: float
+    total_engine_cash_tax_keur: float
+    total_delta_keur: float
+    source_workbook_anchor_keur: float  # = 95,291.964 kEUR (comparison, never injected)
+    # Classification: is TAX_MAIN_EFFECT non-zero?
+    tax_main_effect_is_zero: bool
+    note: str
+
+
+_SOURCE_TOTAL_CIT_KEUR = 95_291.964024174  # comparison anchor only — NOT a target
+
+
+def kupi_source_workbook_tax_shadow(result: ProjectFinancingResult) -> KupiTaxShadowResult:
+    """KUPI_SOURCE_WORKBOOK_TAX_COMPATIBILITY_DIAGNOSTIC.
+
+    Recomputes CIT period-by-period using source workbook mechanics applied to
+    engine-derived period data. No source Excel cash vectors are injected.
+
+    Source workbook mechanics applied here:
+    - EBT = EBITDA - tax_depreciation - senior_interest - SHL_gross_interest
+    - LCF gate: EBT > 0 (losses offset only when EBT is positive)
+    - LCF window: 5 calendar years = 10 semiannual model periods rolling
+    - CIT: 10% × max(0, EBT - LCF_used)
+    - CIT timing: annual sum split equally across H1/H2 periods (paired model-year)
+
+    This diagnostic proves whether TAX_MAIN_EFFECT is zero for KUPI:
+    - If KUPI never has a period where EBT>0 but TI (after SHL deduction) ≤ 0,
+      the two gates (EBT_POSITIVE vs TAXABLE_INCOME_POSITIVE) fire identically,
+      and the shadow CIT ≈ engine CIT (delta ≈ 0).
+    - Non-zero delta would indicate KUPI has periods where the gates diverge.
+    """
+    pmr = result.project_model_result
+
+    sched = pmr.operating_schedules
+    tax_cf = pmr.tax_and_cfads
+    sd = pmr.senior_debt
+    shl_s = pmr.shareholder_loan
+
+    # Build period-indexed lookups (operating periods only — construction has no CIT)
+    # All arrays are over ALL model periods (construction + operating).
+    n = len(sched.period_indices)
+    senior_interest = list(sd.senior_interest_keur) if sd else [0.0] * n
+    shl_gross = list(shl_s.shl_gross_interest_keur) if shl_s else [0.0] * n
+    engine_cash_tax = list(tax_cf.corporate_tax_cash_keur) if tax_cf else [0.0] * n
+
+    # Group into calendar years (pairs of 2 semiannual periods)
+    # Each semiannual period is half a calendar year.
+    # Annual CIT = sum over 2 periods in the year, then split.
+    # LCF: rolling 5-year = 10-period FIFO queue.
+    LCF_YEARS = 5
+    CIT_RATE = BA_CORPORATE_RATE
+
+    periods_out: list[KupiTaxShadowPeriod] = []
+
+    # LCF queue: list of (vintage_period_index, loss_amount_keur)
+    lcf_queue: list[tuple[int, float]] = []
+
+    def _drain_lcf(ebt: float, period_idx: int) -> tuple[float, float]:
+        """Returns (lcf_used, lcf_opening)."""
+        # Drain oldest vintages first (FIFO), subject to rolling 10-period window.
+        # Remove vintages older than LCF_YEARS * 2 periods from current period.
+        cutoff = period_idx - LCF_YEARS * 2
+        nonlocal lcf_queue
+        lcf_queue = [(v, a) for v, a in lcf_queue if v > cutoff]
+        opening = sum(a for _, a in lcf_queue)
+        used = min(opening, max(0.0, ebt))
+        # Reduce from oldest vintages
+        remaining_to_use = used
+        new_queue: list[tuple[int, float]] = []
+        for v, a in lcf_queue:
+            if remaining_to_use <= 0:
+                new_queue.append((v, a))
+            elif a <= remaining_to_use:
+                remaining_to_use -= a  # vintage exhausted
+            else:
+                new_queue.append((v, a - remaining_to_use))
+                remaining_to_use = 0.0
+        lcf_queue = new_queue
+        return used, opening
+
+    for i, pidx in enumerate(sched.period_indices):
+        ebitda = sched.ebitda_keur[i]
+        tax_dep = sched.tax_depreciation_keur[i]
+        si = senior_interest[i] if i < len(senior_interest) else 0.0
+        shl_gi = shl_gross[i] if i < len(shl_gross) else 0.0
+        eng_tax = engine_cash_tax[i] if i < len(engine_cash_tax) else 0.0
+
+        ebt = ebitda - tax_dep - si - shl_gi
+        gate_ok = ebt > 0.0
+
+        if gate_ok:
+            lcf_used, lcf_opening = _drain_lcf(ebt, pidx)
+        else:
+            lcf_opening = sum(a for _, a in lcf_queue)
+            lcf_used = 0.0
+
+        taxable_income = max(0.0, ebt - lcf_used) if gate_ok else 0.0
+        shadow_cit = taxable_income * CIT_RATE
+
+        # Record new loss if EBT < 0
+        if ebt < 0.0:
+            lcf_queue.append((pidx, -ebt))
+        lcf_closing = sum(a for _, a in lcf_queue)
+
+        delta = shadow_cit - eng_tax
+
+        periods_out.append(KupiTaxShadowPeriod(
+            period_index=pidx,
+            ebitda_keur=ebitda,
+            tax_depreciation_keur=tax_dep,
+            senior_interest_keur=si,
+            shl_gross_interest_keur=shl_gi,
+            ebt_keur=ebt,
+            lcf_opening_keur=lcf_opening,
+            gate_allows_lcf=gate_ok,
+            lcf_used_keur=lcf_used,
+            lcf_closing_keur=lcf_closing,
+            taxable_income_keur=taxable_income,
+            shadow_cit_keur=shadow_cit,
+            engine_cash_tax_keur=eng_tax,
+            delta_keur=delta,
+        ))
+
+    total_shadow = sum(p.shadow_cit_keur for p in periods_out)
+    total_engine = sum(p.engine_cash_tax_keur for p in periods_out)
+    total_delta = total_shadow - total_engine
+    tax_main_effect_is_zero = abs(total_delta) < 1.0  # within 1 kEUR
+
+    note = (
+        "TAX_MAIN_EFFECT=0 for KUPI: EBT>0 and TAXABLE_INCOME_POSITIVE gates fire "
+        "identically — KUPI never has EBT>0 with TI≤0, so the gate difference "
+        "produces no numerical Senior delta. Structural fix (EBT_POSITIVE in params) "
+        "is confirmed; zero K1-K0 delta is a correct engine result, not a tautology."
+        if tax_main_effect_is_zero
+        else
+        f"TAX_MAIN_EFFECT is NON-ZERO: shadow delta={total_delta:+.3f} kEUR. "
+        f"Gates diverge — EBT_POSITIVE produces different CIT from TAXABLE_INCOME_POSITIVE."
+    )
+
+    return KupiTaxShadowResult(
+        periods=tuple(periods_out),
+        total_shadow_cit_keur=total_shadow,
+        total_engine_cash_tax_keur=total_engine,
+        total_delta_keur=total_delta,
+        source_workbook_anchor_keur=_SOURCE_TOTAL_CIT_KEUR,
+        tax_main_effect_is_zero=tax_main_effect_is_zero,
+        note=note,
+    )
+
+
+# ---------------------------------------------------------------------------
+# BLOCKER B — KUPI_TRUE_BANK_ONLY_BALANCING_DIAGNOSTIC
+# D0 globally sets balancing=0 (affects both Base and Bank).
+# True Bank-only: Base revenue = P0 (balancing=5), Bank CFADS = D0 Bank CFADS.
+# This diagnostic documents the approximation gap without a production field.
+# ---------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class KupiBankOnlyBalancingDiagnostic:
+    """KUPI_TRUE_BANK_ONLY_BALANCING_DIAGNOSTIC.
+
+    Approximation gap: D0 sets balancing=0 globally (changes Base AND Bank).
+    True Bank-only would use Base=5 revenue but Bank=0 for sizing CFADS.
+    This diagnostic proves:
+    1. Base revenue IS NOT invariant under D0 (D0 over-reduces Base EBITDA).
+    2. Bank CFADS in D0 is correct for true Bank-only (Bank uses 0 balancing).
+    3. The Senior uplift (D0 vs P0) partially results from the Base revenue
+       over-reduction, not only the Bank sizing change.
+    """
+    # Base EBITDA comparison (per-period sums, kEUR)
+    p0_base_total_ebitda_keur: float   # P0 Base EBITDA (balancing=5, correct)
+    d0_base_total_ebitda_keur: float   # D0 Base EBITDA (balancing=0, under-stated)
+    base_ebitda_delta_keur: float      # D0 - P0: should be negative (D0 removes balancing)
+
+    # Bank CFADS (D0 bank sizing — correct for Bank-only)
+    d0_total_bank_cfads_keur: float    # D0 Bank CFADS (Bank=0 balancing, correct)
+    p0_total_bank_cfads_keur: float    # P0 Bank CFADS (Bank=5 balancing, over-stated)
+    bank_cfads_delta_keur: float       # D0 - P0: negative (D0 correctly removes balancing)
+
+    # Senior comparison
+    p0_senior_keur: float
+    d0_senior_keur: float
+    d0_vs_p0_senior_delta_keur: float  # D0 - P0 (positive: D0 sizes more debt)
+
+    # Approximation classification
+    base_revenue_is_invariant: bool    # Expected False — proves D0 is a global approximation
+    note: str
+
+
+def kupi_true_bank_only_balancing_diagnostic(
+    p0_result: ProjectFinancingResult,
+    d0_result: ProjectFinancingResult,
+) -> KupiBankOnlyBalancingDiagnostic:
+    """KUPI_TRUE_BANK_ONLY_BALANCING_DIAGNOSTIC.
+
+    Implements the bank-only balancing diagnostic as a pure test function.
+    No production field added. Documents the D0 global-approximation gap.
+
+    Source asymmetry:
+    - Base model: balancing = 5 EUR/MWh (included in Base revenue)
+    - Bank sizing: balancing = 0 (omitted for debt capacity sizing)
+
+    Engine constraint: RevenueParams.balancing_cost_wind_eur_mwh is a single
+    field applied globally (both Base and Bank). A true Bank-only omission
+    requires a separate bank_balancing_cost field in DebtSizingCaseConfig
+    (not implemented — governance: No production Bank balancing field).
+
+    This diagnostic quantifies the approximation error of using D0 globally.
+    """
+    p0_pmr = p0_result.project_model_result
+    d0_pmr = d0_result.project_model_result
+
+    # Base EBITDA (operating_schedules — Base case revenue)
+    p0_base_ebitda = sum(p0_pmr.operating_schedules.ebitda_keur)
+    d0_base_ebitda = sum(d0_pmr.operating_schedules.ebitda_keur)
+    base_delta = d0_base_ebitda - p0_base_ebitda  # expected negative
+
+    # Bank CFADS (debt_sizing — Bank case CFADS used for debt sizing)
+    p0_bank_cfads = sum(p0_pmr.debt_sizing.bank_cfads_keur) if p0_pmr.debt_sizing else 0.0
+    d0_bank_cfads = sum(d0_pmr.debt_sizing.bank_cfads_keur) if d0_pmr.debt_sizing else 0.0
+    bank_delta = d0_bank_cfads - p0_bank_cfads  # expected negative
+
+    p0_senior = p0_result.final_senior_commitment_keur
+    d0_senior = d0_result.final_senior_commitment_keur
+    senior_delta = d0_senior - p0_senior  # expected positive
+
+    base_invariant = abs(base_delta) < 100.0  # True only if Base EBITDA is practically unchanged
+
+    note = (
+        f"D0 GLOBAL APPROXIMATION CONFIRMED: Base EBITDA rises {base_delta:+.3f} kEUR "
+        f"under D0 (balancing_cost deduction removed from Base AND Bank globally). "
+        f"balancing_cost is a revenue deduction: setting it to 0 RAISES EBITDA. "
+        f"True Bank-only would hold Base EBITDA at P0 level ({p0_base_ebitda:.3f} kEUR); "
+        f"D0 overstates Base EBITDA. "
+        f"Bank CFADS rise {bank_delta:+.3f} kEUR under D0 (correct direction for debt sizing). "
+        f"Senior uplift {senior_delta:+.3f} kEUR reflects BOTH Base and Bank EBITDA changes."
+        if not base_invariant
+        else
+        "Base EBITDA is unexpectedly invariant — D0 may not differ from P0 in Base."
+    )
+
+    return KupiBankOnlyBalancingDiagnostic(
+        p0_base_total_ebitda_keur=p0_base_ebitda,
+        d0_base_total_ebitda_keur=d0_base_ebitda,
+        base_ebitda_delta_keur=base_delta,
+        d0_total_bank_cfads_keur=d0_bank_cfads,
+        p0_total_bank_cfads_keur=p0_bank_cfads,
+        bank_cfads_delta_keur=bank_delta,
+        p0_senior_keur=p0_senior,
+        d0_senior_keur=d0_senior,
+        d0_vs_p0_senior_delta_keur=senior_delta,
+        base_revenue_is_invariant=base_invariant,
+        note=note,
+    )
+
+
+# ---------------------------------------------------------------------------
+# CASH-SWEEP CAUSAL TRACE — period-by-period SHL schedule
+# ---------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class ShlPeriodTrace:
+    """Single-period SHL schedule entry."""
+    period_index: int
+    opening_keur: float
+    drawdown_keur: float
+    gross_interest_keur: float
+    cash_interest_keur: float
+    pik_interest_keur: float
+    principal_keur: float
+    closing_keur: float
+    cash_available_for_shl_keur: float
+
+
+@dataclass(frozen=True)
+class KupiCashSweepCausalTrace:
+    """Period-by-period SHL schedule for R_CASH_SWEEP vs R_BULLET."""
+    cash_sweep_periods: tuple[ShlPeriodTrace, ...]
+    bullet_periods: tuple[ShlPeriodTrace, ...]
+    # Operating-period totals (construction excluded from interest comparison)
+    cash_sweep_total_operating_shl_interest_keur: float
+    bullet_total_operating_shl_interest_keur: float
+    source_total_shl_interest_keur: float  # 48,681.151 kEUR — anchor, never injected
+    sweep_vs_source_delta_keur: float
+    repayment_effect_senior_keur: float    # Senior(cash_sweep) - Senior(bullet)
+
+
+def _extract_shl_trace(result: ProjectFinancingResult) -> tuple[ShlPeriodTrace, ...]:
+    """Extract per-period SHL schedule from a ProjectFinancingResult."""
+    shl_s = result.project_model_result.shareholder_loan
+    if shl_s is None:
+        return ()
+    periods: list[ShlPeriodTrace] = []
+    n = len(shl_s.period_indices)
+    cash_avail = shl_s.cash_available_for_shl_before_reserves_keur
+    for i in range(n):
+        periods.append(ShlPeriodTrace(
+            period_index=shl_s.period_indices[i],
+            opening_keur=shl_s.shl_opening_keur[i],
+            drawdown_keur=shl_s.shl_drawdown_keur[i],
+            gross_interest_keur=shl_s.shl_gross_interest_keur[i],
+            cash_interest_keur=shl_s.shl_cash_interest_keur[i],
+            pik_interest_keur=shl_s.shl_pik_interest_keur[i],
+            principal_keur=shl_s.shl_principal_keur[i],
+            closing_keur=shl_s.shl_closing_keur[i],
+            cash_available_for_shl_keur=cash_avail[i] if i < len(cash_avail) else 0.0,
+        ))
+    return tuple(periods)
+
+
+def kupi_cash_sweep_causal_trace(
+    r_cash_sweep_result: ProjectFinancingResult,
+    r_bullet_result: ProjectFinancingResult,
+) -> KupiCashSweepCausalTrace:
+    """Period-by-period SHL schedule comparison: cash_sweep vs bullet.
+
+    Source SHL total operating interest anchor: 48,681.151163696 kEUR (comparison only).
+    """
+    sweep_periods = _extract_shl_trace(r_cash_sweep_result)
+    bullet_periods = _extract_shl_trace(r_bullet_result)
+
+    # Operating periods only: those with opening > 0 (after COD construction PIK capitalises)
+    # Use gross_interest (includes PIK) for comparison to source anchor.
+    # Only operating periods contribute to the source 48,681 anchor.
+    def _operating_interest(periods: tuple[ShlPeriodTrace, ...]) -> float:
+        # Operating = period_index >= 5 for KUPI (construction is indices 1-4)
+        # Safe approximation: drawdown==0 and opening>0 for operating periods.
+        return sum(
+            p.gross_interest_keur for p in periods
+            if p.drawdown_keur == 0.0 and p.opening_keur > 0.0
+        )
+
+    sweep_op_int = _operating_interest(sweep_periods)
+    bullet_op_int = _operating_interest(bullet_periods)
+
+    return KupiCashSweepCausalTrace(
+        cash_sweep_periods=sweep_periods,
+        bullet_periods=bullet_periods,
+        cash_sweep_total_operating_shl_interest_keur=sweep_op_int,
+        bullet_total_operating_shl_interest_keur=bullet_op_int,
+        source_total_shl_interest_keur=SOURCE_TOTAL_SHL_OPERATING_INTEREST_KEUR,
+        sweep_vs_source_delta_keur=sweep_op_int - SOURCE_TOTAL_SHL_OPERATING_INTEREST_KEUR,
+        repayment_effect_senior_keur=(
+            r_cash_sweep_result.final_senior_commitment_keur
+            - r_bullet_result.final_senior_commitment_keur
+        ),
+    )
+
+
+# ---------------------------------------------------------------------------
+# KUPI_FINAL_SOURCE_COMPAT_DIAGNOSTIC
+# Full source-compatibility case: ALL_AT_FC + COMPOUND + CASH_SWEEP +
+# Base balancing=5 + source workbook tax shadow applied post-engine.
+# Bank balancing: D0 approximation (no production field, per governance).
+# ---------------------------------------------------------------------------
+
+def run_kupi_final_source_compat() -> ProjectFinancingResult:
+    """KUPI_FINAL_SOURCE_COMPAT_DIAGNOSTIC.
+
+    Most source-compatible engine run:
+    - Source economic inputs (215,803.438 kEUR Uses, source CAPEX/OPEX)
+    - Source lender terms (14yr, 6.10% all-in, 80% max gearing)
+    - Source DSCR schedule (24×1.50 + 4 merchant)
+    - ALL_AT_FC + COMPOUND_PERIODIC (source-evidenced)
+    - CASH_SWEEP (source-evidenced from G3B fixture)
+    - Base balancing = 5 EUR/MWh (source project economics)
+    - Source workbook tax params (EBT_POSITIVE gate, 5yr LCF)
+    - Bank balancing: D0 global approximation (balancing=0 globally)
+      NOTE: True Bank-only would require a production field (not implemented,
+      per governance). Residual vs source is documented, not fitted.
+    """
+    return run_project_financing_model(
+        build_kupi_project_inputs(
+            shl_construction_interest_method=ShlConstructionInterestMethod.COMPOUND_PERIODIC,
+            sponsor_funding_timing_policy=SponsorFundingTimingPolicy.ALL_AT_FC,
+            bank_balancing_cost_eur_mwh=5.0,   # Base balancing = 5 (source)
+            use_source_workbook_tax=True,       # Source workbook tax params
+        ),
+        source_id="KUPI_FINAL_SOURCE_COMPAT_DIAGNOSTIC",
     )
 
 
