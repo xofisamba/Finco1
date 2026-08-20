@@ -630,11 +630,13 @@ class TestNoBackendChanges:
         )
 
     def test_no_waterfall_or_capex_factory_changes(self):
-        waterfall = subprocess.run(
-            ["git", "diff", "origin/main", "--name-only", "--", "app/waterfall_core.py"],
-            cwd=str(REPO_ROOT), capture_output=True, text=True,
-        )
-        assert not waterfall.stdout.strip(), "57A-8 must NOT modify app/waterfall_core.py."
+        # PR-5 source evidence permits exactly one later financial authority
+        # correction here: signed EBITDA via the shared helper. Keep this old
+        # CAPEX guard semantic so it cannot conceal a new inline formula.
+        waterfall_text = (REPO_ROOT / "app/waterfall_core.py").read_text(encoding="utf-8")
+        assert "from finco_core.ebitda import calculate_ebitda_keur" in waterfall_text
+        assert "ebitda = calculate_ebitda_keur(rev, opex)" in waterfall_text
+        assert "ebitda = max(0, rev - opex)" not in waterfall_text
 
         # Later phases may add non-CAPEX project-owned inputs to the generic
         # factories. Keep this historical guard focused on 57A-8's CAPEX scope.

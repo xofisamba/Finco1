@@ -10,6 +10,8 @@ import warnings
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from finco_core.ebitda import calculate_ebitda_keur
+
 if TYPE_CHECKING:
     from domain.inputs import ProjectInputs
     from domain.period_engine import PeriodEngine
@@ -224,7 +226,7 @@ def run_waterfall_v3_core(
             rev = rev + co2_add
         gen = generation_dict.get(p.index, 0)
         opex = opex_period.get(p.index, 0)
-        ebitda = max(0, rev - opex)
+        ebitda = calculate_ebitda_keur(rev, opex)
         annual_dep = dep_schedule_annual.get(p.year_index, 0.0)
         dep = annual_dep * p.day_fraction
 

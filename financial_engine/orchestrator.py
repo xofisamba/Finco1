@@ -420,9 +420,12 @@ def run_operating_model(inputs: OperatingModelInput) -> ProjectModelResult:
     from finco_core.opex.projections import opex_schedule_period
     opex_by_idx = opex_schedule_period(proxy, engine)
 
-    # Step 6: EBITDA = revenue - OPEX, assembled by orchestrator.
+    # Step 6: signed EBITDA from the canonical shared authority.
+    from finco_core.ebitda import calculate_ebitda_keur
     ebitda_by_idx: dict[int, float] = {
-        idx: revenue_by_idx.get(idx, 0.0) - opex_by_idx.get(idx, 0.0)
+        idx: calculate_ebitda_keur(
+            revenue_by_idx.get(idx, 0.0), opex_by_idx.get(idx, 0.0)
+        )
         for idx in production_by_idx
     }
 
@@ -495,7 +498,7 @@ def run_operating_model(inputs: OperatingModelInput) -> ProjectModelResult:
             source_module="financial_engine.orchestrator",
             source_function="run_operating_model",
             input_paths=("operating_schedules.revenue_keur", "operating_schedules.opex_keur"),
-            notes=("ebitda = revenue - opex, assembled by orchestrator",),
+            notes=("signed ebitda = revenue - opex via finco_core.ebitda",),
         ),
         DerivationEvidence(
             output_path="operating_schedules.book_depreciation_keur",

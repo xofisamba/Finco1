@@ -955,7 +955,6 @@ class TestNoForbiddenChanges:
             if line.strip()
         )
         formula_paths = {
-            "app/waterfall_core.py",
             "app/waterfall_runner.py",
             "app/opex_engine.py",
             "app/depreciation_engine.py",
@@ -973,6 +972,14 @@ class TestNoForbiddenChanges:
             f"57A-9D must not modify formula paths: "
             f"{sorted(formula_hits)}"
         )
+
+        # A later source-proven PR may touch waterfall_core only for the
+        # canonical signed-EBITDA delegation. This remains a fail-closed
+        # semantic check rather than a broad protected-path exception.
+        waterfall_text = (REPO_ROOT / "app/waterfall_core.py").read_text(encoding="utf-8")
+        assert "from finco_core.ebitda import calculate_ebitda_keur" in waterfall_text
+        assert "ebitda = calculate_ebitda_keur(rev, opex)" in waterfall_text
+        assert "ebitda = max(0, rev - opex)" not in waterfall_text
 
 
 # ---------------------------------------------------------------------------

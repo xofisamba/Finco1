@@ -187,12 +187,14 @@ def compute_ebitda_schedule(
     periods: list,
 ) -> list[float]:
     """Build EBITDA schedule from revenue and OPEX."""
+    from finco_core.ebitda import calculate_ebitda_keur
+
     ebitda_by_period = []
 
     for p in periods:
         rev = revenue_schedule.get(p.index, 0)
         opex = opex_schedule.get(p.index, 0)
-        ebitda_by_period.append(max(0, rev - opex))
+        ebitda_by_period.append(calculate_ebitda_keur(rev, opex))
 
     return ebitda_by_period
 
@@ -1474,6 +1476,7 @@ def cached_run_waterfall(
     """
     # V2-7: generation extracted to finco_core.revenue.
     # V2-8: opex extracted to finco_core.opex.
+    from finco_core.ebitda import calculate_ebitda_keur
     from finco_core.revenue.generation import full_revenue_schedule, full_generation_schedule
     from finco_core.opex.projections import opex_schedule_annual
 
@@ -1498,7 +1501,7 @@ def cached_run_waterfall(
         if p.is_operation:
             # Semi-annual: split annual values evenly
             opex = opex_annual.get(p.year_index, 0) / 2
-            ebitda = max(0, rev - opex)
+            ebitda = calculate_ebitda_keur(rev, opex)
             dep = dep_per_year / 2
         else:
             opex = 0
