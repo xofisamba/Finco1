@@ -550,8 +550,8 @@ class TestWorkbookSelectorSemantics:
             ),
             (
                 "Oborovo",
-                "=-H$80*($B$86*$B$3)/monthsinyear*(G$3>0)",
-                "=-I$80*($B$86*$B$3)/monthsinyear*(H$3>0)",
+                "=-H$80*($B$86*$B$4)/monthsinyear*(G$4>0)",
+                "=-I$80*($B$86*$B$4)/monthsinyear*(H$4>0)",
             ),
         ),
     )
