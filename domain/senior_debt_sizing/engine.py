@@ -87,11 +87,12 @@ class SeniorDebtSizingEngine:
         sizing_cfads = sizing_policy.sizing_cfads_keur_by_period
         target_dsrs = dscr_policy.target_dscr_by_period
 
-        # Compute debt service capacity = sizing_cfads / target_dscr
+        # Keep sizing CFADS signed. Only debt-service capacity is bounded at
+        # zero; negative financial flow cannot support negative debt service.
         debt_service_capacity = []
         for cfads, dscr in zip(sizing_cfads, target_dsrs):
             if dscr > 0:
-                capacity = cfads / dscr
+                capacity = max(0.0, cfads / dscr)
             else:
                 capacity = 0.0
             debt_service_capacity.append(capacity)
@@ -133,11 +134,11 @@ class SeniorDebtSizingEngine:
             cfads / minimum_dscr for cfads in actual_cfads
         )
 
-        # Compute debt service capacity = sizing_cfads / target_dscr
+        # Keep derived sizing CFADS signed and bound only the capacity.
         debt_service_capacity = []
         for cfads, dscr in zip(sizing_cfads, target_dsrs):
             if dscr > 0:
-                capacity = cfads / dscr
+                capacity = max(0.0, cfads / dscr)
             else:
                 capacity = 0.0
             debt_service_capacity.append(capacity)

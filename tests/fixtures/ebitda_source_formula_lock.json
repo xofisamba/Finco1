@@ -1,0 +1,63 @@
+{
+  "classification": "SOURCE_SIGNED_EBITDA",
+  "canonical_scope": "Signed-versus-floored EBITDA authority for currently modeled Finco Revenue/OPEX components.",
+  "unpromoted_component_gap": "EBITDA_LOCAL_TAX_COMPONENT_MAPPING_NOT_YET_PROMOTED",
+  "expense_sign_convention": "Workbook OPEX rows are negative; Finco OPEX inputs are positive expenses.",
+  "floor_inventory": {
+    "app/waterfall_core.py:run_waterfall_v3_core": "EBITDA_AUTHORITY",
+    "finco_core/waterfall/waterfall_engine.py:compute_ebitda_schedule": "EBITDA_AUTHORITY",
+    "finco_core/waterfall/waterfall_engine.py:cached_run_waterfall": "EBITDA_AUTHORITY",
+    "financial_engine/orchestrator.py:run_operating_model": "EBITDA_AUTHORITY",
+    "finco_core/waterfall/cash_flow.py:compute_waterfall": "EBITDA_AUTHORITY",
+    "finco_core/waterfall/waterfall_engine.py:run_waterfall:signed_cfads_for_sculpt": "SIGNED_CFADS_AUTHORITY",
+    "domain/senior_debt_sizing/canonical_wiring.py:derive_sizing_cfads_from_ebitda": "SIGNED_CFADS_AUTHORITY",
+    "finco_core/debt/sculpting_iterative.py:closed_form_sculpt": "NON_NEGATIVE_DEBT_CAPACITY_BOUNDARY",
+    "domain/senior_debt_sizing/engine.py:SeniorDebtSizingEngine": "NON_NEGATIVE_DEBT_CAPACITY_BOUNDARY",
+    "financial_engine/senior_debt/solver.py:solve_senior_debt": "NON_NEGATIVE_DEBT_CAPACITY_BOUNDARY",
+    "financial_engine/tax/engine.py:calculate_tax": "TAX_BOUNDARY",
+    "financial_engine/tax/atad.py": "TAX_BOUNDARY",
+    "finco_core/waterfall/waterfall_engine.py:unlevered_tax_proxy": "TAX_BOUNDARY",
+    "finco_core/tax/holdco_calculations.py:interest_limitation": "TAX_BOUNDARY",
+    "app/output_tables.py:_cfads_value": "DIAGNOSTIC_ONLY",
+    "app/reconciliation/project_cashflow.py": "DIAGNOSTIC_ONLY",
+    "domain/reporting/financial_statements.py:taxable_income": "TAX_BOUNDARY"
+  },
+  "workbooks": {
+    "tuho": {
+      "filename": "20260330_TUHO_BP.xlsm",
+      "sha256": "780779eba4278ccc2b8546a9411ccee24917d388f411ba60c88aa342cb5c727a",
+      "revenue": {"cell": "CF!G20", "formula": "=G21+G31+G33+G35+G25"},
+      "opex": {"cell": "CF!G38", "formula": "=SUM(G45:G61)"},
+      "local_tax": {"cell": "CF!G63", "formula": "=Macro!G46"},
+      "active_local_tax_values_keur": [0.0],
+      "ebitda": {"cell": "CF!G40", "formula": "=G20+G38+G63"},
+      "ebit": {"cell": "P&L!G16", "formula": "=G8-G14"},
+      "bank_cfads": {"cell": "CF!G69", "formula": "=SUM(G20,G38,G63,G66,G67)+$B$70*(G$3=0)"},
+      "explicit_ebitda_floor": false
+    },
+    "oborovo": {
+      "filename": "20260414_BP_Oborovo_Sensitivity_FINAL_for_PPT.xlsm",
+      "sha256": "15a621c4d6b79024980766e00ebc79d7235fd56f00567be7bf345c769ce57920",
+      "revenue": {"cell": "CF!G23", "formula": "=G24+G42+G44+G46+G28+G40+G36+G32+G41"},
+      "opex": {"cell": "CF!G49", "formula": "=SUM(G56:G71)"},
+      "local_tax": {"cell": "CF!G73", "formula": "=Macro!G46"},
+      "active_local_tax_values_keur": [0.0],
+      "ebitda": {"cell": "CF!G51", "formula": "=G23+G49+G73"},
+      "ebit": {"cell": "P&L!G16", "formula": "=G8-G14"},
+      "bank_cfads": {"cell": "CF!G79", "formula": "=SUM(G23,G49,G73,G76,G77)+$B$80*(G$4=0)"},
+      "explicit_ebitda_floor": false
+    },
+    "kupi": {
+      "filename": "20260422_KUPI_BP_NEW.xlsm",
+      "sha256": "111178fb21109f55df45c0cc1ea108104ac8b6ed60f010ba75b6c498795f5954",
+      "revenue": {"cell": "CF!G20", "formula": "=G21+G31+G33+G35+G25"},
+      "opex": {"cell": "CF!G38", "formula": "=SUM(G45:G61)"},
+      "local_tax": {"cell": "CF!G63", "formula": "=Macro!G46"},
+      "active_local_tax_values_keur": [0.0],
+      "ebitda": {"cell": "CF!G40", "formula": "=G20+G38+G63"},
+      "ebit": {"cell": "P&L!G16", "formula": "=G8-G14"},
+      "bank_cfads": {"cell": "CF!G69", "formula": "=SUM(G20,G38,G63,G66,G67)+$B$70*(G$3=0)"},
+      "explicit_ebitda_floor": false
+    }
+  }
+}

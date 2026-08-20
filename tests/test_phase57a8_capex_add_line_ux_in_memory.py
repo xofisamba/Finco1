@@ -48,6 +48,13 @@ from pathlib import Path
 
 import pytest
 
+from tests.pr5_ebitda_guard import (
+    assert_approved_pr5_domain_state,
+    assert_approved_pr5_waterfall_state,
+    assert_only_approved_pr5_domain_diff,
+    assert_only_approved_pr5_waterfall_diff,
+)
+
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 APP_TEMPLATES = REPO_ROOT / "app" / "templates"
@@ -618,23 +625,29 @@ class TestNoBackendChanges:
         )
 
     def test_no_domain_changes(self):
+        assert_approved_pr5_domain_state(REPO_ROOT)
         r = subprocess.run(
-            ["git", "diff", "origin/main", "--name-only", "--",
+            ["git", "diff", "--unified=0", "origin/main", "--",
              "app/domain/", "domain/"],
             cwd=str(REPO_ROOT),
             capture_output=True,
             text=True,
         )
-        assert not r.stdout.strip(), (
-            "57A-8 must NOT modify app/domain/ or domain/."
-        )
+        if r.returncode == 0:
+            assert_only_approved_pr5_domain_diff(r.stdout)
+        else:
+            assert "origin/main" in r.stderr
 
     def test_no_waterfall_or_capex_factory_changes(self):
+        assert_approved_pr5_waterfall_state(REPO_ROOT)
         waterfall = subprocess.run(
-            ["git", "diff", "origin/main", "--name-only", "--", "app/waterfall_core.py"],
+            ["git", "diff", "--unified=0", "origin/main", "--", "app/waterfall_core.py"],
             cwd=str(REPO_ROOT), capture_output=True, text=True,
         )
-        assert not waterfall.stdout.strip(), "57A-8 must NOT modify app/waterfall_core.py."
+        if waterfall.returncode == 0:
+            assert_only_approved_pr5_waterfall_diff(waterfall.stdout)
+        else:
+            assert "origin/main" in waterfall.stderr
 
         # Later phases may add non-CAPEX project-owned inputs to the generic
         # factories. Keep this historical guard focused on 57A-8's CAPEX scope.
@@ -671,8 +684,9 @@ class TestNoBackendChanges:
             capture_output=True,
             text=True,
         )
-        assert not r.stdout.strip(), (
-            "57A-8 must NOT modify test fixtures."
+        changed = {line for line in r.stdout.splitlines() if line}
+        assert changed <= {"tests/fixtures/ebitda_source_formula_lock.json"}, (
+            f"57A-8 must NOT modify unrelated test fixtures: {sorted(changed)}"
         )
 
     def test_allowed_files_only(self):

@@ -58,6 +58,13 @@ from pathlib import Path
 
 import pytest
 
+from tests.pr5_ebitda_guard import (
+    assert_approved_pr5_domain_state,
+    assert_approved_pr5_waterfall_state,
+    assert_only_approved_pr5_domain_diff,
+    assert_only_approved_pr5_waterfall_diff,
+)
+
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -942,6 +949,8 @@ class TestNoForbiddenChanges:
         beyond the CAPEX total materialization path.
         """
         import subprocess
+        assert_approved_pr5_waterfall_state(REPO_ROOT)
+        assert_approved_pr5_domain_state(REPO_ROOT)
         r = subprocess.run(
             [
                 "git", "diff", "origin/main", "--name-only",
@@ -950,6 +959,8 @@ class TestNoForbiddenChanges:
             capture_output=True,
             text=True,
         )
+        if r.returncode != 0:
+            assert "origin/main" in r.stderr
         changed = set(
             line.strip() for line in r.stdout.splitlines()
             if line.strip()
@@ -969,11 +980,26 @@ class TestNoForbiddenChanges:
             p for p in formula_paths
             if any(c.startswith(p) for c in changed)
         }
+        if "app/waterfall_core.py" in formula_hits:
+            waterfall = subprocess.run(
+                ["git", "diff", "--unified=0", "origin/main", "--", "app/waterfall_core.py"],
+                cwd=str(REPO_ROOT), capture_output=True, text=True,
+            )
+            assert waterfall.returncode == 0, waterfall.stderr
+            assert_only_approved_pr5_waterfall_diff(waterfall.stdout)
+            formula_hits.remove("app/waterfall_core.py")
+        if "domain/" in formula_hits:
+            domain_diff = subprocess.run(
+                ["git", "diff", "--unified=0", "origin/main", "--", "domain/"],
+                cwd=str(REPO_ROOT), capture_output=True, text=True,
+            )
+            assert domain_diff.returncode == 0, domain_diff.stderr
+            assert_only_approved_pr5_domain_diff(domain_diff.stdout)
+            formula_hits.remove("domain/")
         assert not formula_hits, (
             f"57A-9D must not modify formula paths: "
             f"{sorted(formula_hits)}"
         )
-
 
 # ---------------------------------------------------------------------------
 # 6.5. Persistence helper contract (review fix)

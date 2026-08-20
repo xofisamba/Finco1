@@ -1,0 +1,83 @@
+name: Pre-freeze PR-5 - Canonical EBITDA Authority
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+  PYTHONUTF8: "1"
+
+jobs:
+  canonical-ebitda-authority:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact PR head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Assert exact-head checkout
+        shell: bash
+        run: |
+          EXPECTED="${{ github.event.pull_request.head.sha || github.sha }}"
+          test "$(git rev-parse HEAD)" = "$EXPECTED"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          pip install --no-cache-dir -c constraints.txt -e .
+          pip install --no-cache-dir -c constraints.txt pytest
+
+      - name: Diff hygiene
+        run: git diff --check
+
+      - name: PR-5 focused authority suite
+        run: python -m pytest -q tests/test_prefreeze_pr5_canonical_ebitda_authority.py
+
+      - name: Historical cross-arc guardrails
+        run: |
+          python -m pytest -q \
+            tests/test_phase57a8_capex_add_line_ux_in_memory.py \
+            tests/test_phase57a9d_capex_sub_lines_run_integration.py
+
+      - name: Frozen downstream authority regression
+        run: |
+          python -m pytest -q \
+            tests/test_pr3_cash_dsra_module.py \
+            tests/test_pr3b_dynamic_dsra_target.py \
+            tests/test_pr4_reserve_gated_sponsor_shl.py \
+            tests/test_mvp_g0_generic_clean_engine_enablement.py \
+            tests/test_mvp_g1_governance_methodology_lock.py \
+            tests/test_mvp_g2a_financing_stack.py \
+            tests/test_mvp_g2b_sponsor_returns.py \
+            tests/test_mvp_g2c_shareholder_waterfall.py \
+            tests/test_stage_c3b1_oborovo_tax_source_truth.py \
+            tests/test_stage_c3b3d2b5_shl_fixed_point_integration.py \
+            tests/test_stage_c3b3d2b6_base_post_senior_cash_parity.py \
+            tests/test_stage_c3b3d2b7_bank_case_senior_parity.py \
+            tests/test_stage_c3b3d2b8_base_senior_shl_parity_closure.py \
+            tests/test_kupi_k0_k3_causal_grid.py
+
+      - name: Added-line governance scan
+        shell: bash
+        run: |
+          BASE="${{ github.event.pull_request.base.sha || '84117df4443bcc5a09d0c5db733115f9b34dacd0' }}"
+          git diff --unified=0 "$BASE"...HEAD -- \
+            app domain financial_engine finco_core \
+            | grep '^+' \
+            | grep -v '^+++' \
+            > /tmp/pr5_added_lines.txt || true
+          if grep -Ein \
+            'project\.name|project\.code|baseline_id|approved_delta|expected_delta|balancing[_ ]plug|target fitting|hardcoded EBITDA|source replay' \
+            /tmp/pr5_added_lines.txt; then
+            echo "PR5_GOVERNANCE_VIOLATION"
+            exit 1
+          fi
+          echo "PR5_ADDED_LINES_GOVERNANCE_CLEAN"

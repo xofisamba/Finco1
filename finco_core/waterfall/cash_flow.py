@@ -12,6 +12,8 @@ import math
 from dataclasses import dataclass
 from typing import Optional
 
+from finco_core.ebitda import calculate_ebitda_keur
+
 
 @dataclass
 class WaterfallResult:
@@ -99,7 +101,7 @@ def compute_waterfall(
         WaterfallResult for this period
     """
     # EBITDA
-    ebitda = revenue_keur - opex_keur
+    ebitda = calculate_ebitda_keur(revenue_keur, opex_keur)
     
     # CF after tax = EBITDA - Tax (tax already deducted above interest in real model)
     # Actually: EBIT = EBITDA - D&A, EBT = EBIT - Interest, Tax = EBT × rate

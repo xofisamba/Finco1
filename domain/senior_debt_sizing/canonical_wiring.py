@@ -311,7 +311,7 @@ def derive_sizing_cfads_from_ebitda(
     tuple[float, ...]
         Derived sizing CFADS per period.
     """
-    return tuple(max(0.0, e) * (1.0 - tax_rate) for e in ebitda_schedule)
+    return tuple(e * (1.0 - tax_rate) for e in ebitda_schedule)
 
 
 def build_canonical_senior_debt_sizing_from_inputs(
