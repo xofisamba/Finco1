@@ -396,16 +396,19 @@ def run_waterfall(
             rate_schedule = list(rate_schedule) + [rate_schedule[-1]] * (tenor_periods - len(rate_schedule))
         elif len(rate_schedule) > tenor_periods:
             rate_schedule = rate_schedule[:tenor_periods]
-    # Debt sculpting uses CFADS proxy (EBITDA minus estimated tax), not raw EBITDA,
-    # so target DSCR aligns with after-tax DSCR measurement: DSCR = (EBITDA - tax) / debt_service
-    cfads_for_sculpt = [
-        max(0.0, ebitda * (1.0 - tax_rate))
-        for ebitda in ebitda_schedule[:tenor_periods]
+    # Preserve the signed EBITDA-derived proxy for DSCR and audit. The debt
+    # sculpting kernel applies the zero bound only when it converts this
+    # financial flow into non-negative debt-service capacity.
+    signed_cfads_for_sculpt = [
+        ebitda * (1.0 - tax_rate)
+        if index >= len(periods) or periods[index].is_operation
+        else 0.0
+        for index, ebitda in enumerate(ebitda_schedule[:tenor_periods])
     ]
 
     # Compute DSCR-constrained debt (no gearing cap) as base
     sculpt_result = closed_form_sculpt(
-        cfads_schedule=cfads_for_sculpt,
+        cfads_schedule=signed_cfads_for_sculpt,
         rate_schedule=rate_schedule,
         tenor_periods=tenor_periods,
         target_dscr=target_dscr,
@@ -446,9 +449,15 @@ def run_waterfall(
         balance_schedule = [b * scale for b in sculpt_result.balance_schedule]
         # Use per-period DSCR targets if provided
         if dscr_schedule is not None:
-            allowable_ds = [cfads_for_sculpt[t] / dscr_schedule[t] * scale for t in range(tenor_periods)]
+            allowable_ds = [
+                max(0.0, signed_cfads_for_sculpt[t] / dscr_schedule[t]) * scale
+                for t in range(tenor_periods)
+            ]
         else:
-            allowable_ds = [cfads_for_sculpt[t] / target_dscr * scale for t in range(tenor_periods)]
+            allowable_ds = [
+                max(0.0, signed_cfads_for_sculpt[t] / target_dscr) * scale
+                for t in range(tenor_periods)
+            ]
         interest_schedule = []
         principal_schedule = []
         payment_schedule = []
@@ -458,7 +467,7 @@ def run_waterfall(
             interest = balance * rate_schedule[t]
             principal = max(0.0, min(allowable_ds[t] - interest, balance))
             payment = interest + principal
-            dscr = cfads_for_sculpt[t] / payment if payment > 0 else float('inf')
+            dscr = signed_cfads_for_sculpt[t] / payment if payment > 0 else float('inf')
             interest_schedule.append(interest)
             principal_schedule.append(principal)
             payment_schedule.append(payment)
@@ -491,7 +500,7 @@ def run_waterfall(
         # Recompute DSCR schedule
         dscr_sched_scaled = []
         for t in range(tenor_periods):
-            dscr = cfads_for_sculpt[t] / payments[t] if payments[t] > 0 else float('inf')
+            dscr = signed_cfads_for_sculpt[t] / payments[t] if payments[t] > 0 else float('inf')
             dscr_sched_scaled.append(dscr)
         # DSCR recomputed from scaled payments (interest/principal not needed in replace)
         sculpt_result = replace(
@@ -560,7 +569,7 @@ def run_waterfall(
                 interest = balance * rate_schedule[t]
                 principal = min(balance, max(0.0, explicit_ds[t] - interest))
                 payment = interest + principal
-                dscr = cfads_for_sculpt[t] / payment if payment > 0 else float("inf")
+                dscr = signed_cfads_for_sculpt[t] / payment if payment > 0 else float("inf")
                 interest_schedule.append(interest)
                 principal_schedule.append(principal)
                 payments.append(payment)

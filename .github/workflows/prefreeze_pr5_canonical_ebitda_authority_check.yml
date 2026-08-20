@@ -41,6 +41,12 @@ jobs:
       - name: PR-5 focused authority suite
         run: python -m pytest -q tests/test_prefreeze_pr5_canonical_ebitda_authority.py
 
+      - name: Historical cross-arc guardrails
+        run: |
+          python -m pytest -q \
+            tests/test_phase57a8_capex_add_line_ux_in_memory.py \
+            tests/test_phase57a9d_capex_sub_lines_run_integration.py
+
       - name: Frozen downstream authority regression
         run: |
           python -m pytest -q \
@@ -64,7 +70,7 @@ jobs:
         run: |
           BASE="${{ github.event.pull_request.base.sha || '84117df4443bcc5a09d0c5db733115f9b34dacd0' }}"
           git diff --unified=0 "$BASE"...HEAD -- \
-            app financial_engine finco_core \
+            app domain financial_engine finco_core \
             | grep '^+' \
             | grep -v '^+++' \
             > /tmp/pr5_added_lines.txt || true

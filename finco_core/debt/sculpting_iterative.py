@@ -416,7 +416,7 @@ def closed_form_sculpt(
         debt_bal[N] = 0
         debt_bal[t] = (debt_bal[t+1] + allowable_ds[t]) / (1 + r[t])
 
-    where allowable_ds[t] = CFADS[t] / dscr_target[t]
+    where allowable_ds[t] = max(0, CFADS[t] / dscr_target[t])
 
     FORWARD PASS - split principal/interest:
         interest[t] = debt_bal[t] * r[t]
@@ -425,7 +425,9 @@ def closed_form_sculpt(
     This is O(n) and deterministic - no iterations, no convergence.
 
     Args:
-        cfads_schedule: Cash Flow Available for Debt Service per period
+        cfads_schedule: Signed Cash Flow Available for Debt Service per period.
+            Negative values remain DSCR numerators but provide zero debt-service
+            capacity.
         rate_schedule: Semi-annual interest rate per period (can vary)
         tenor_periods: Number of repayment periods
         target_dscr: Default/fallback target DSCR
@@ -442,11 +444,12 @@ def closed_form_sculpt(
         rate_schedule + [rate_schedule[-1]] * (n - len(rate_schedule))
     )
 
-    # Allowable debt service per period (based on CFADS and per-period DSCR target)
+    # CFADS remains signed for DSCR. Only debt-service capacity is legally and
+    # economically bounded at zero.
     if dscr_schedule is not None:
-        allowable_ds = [cfads[t] / dscr_schedule[t] for t in range(n)]
+        allowable_ds = [max(0.0, cfads[t] / dscr_schedule[t]) for t in range(n)]
     else:
-        allowable_ds = [c / target_dscr for c in cfads]
+        allowable_ds = [max(0.0, c / target_dscr) for c in cfads]
 
     # --- BACKWARD PASS ---
     # debt_bal[t] = opening balance at start of period t

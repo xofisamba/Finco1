@@ -58,6 +58,11 @@ from pathlib import Path
 
 import pytest
 
+from tests.pr5_ebitda_guard import (
+    assert_only_approved_pr5_domain_diff,
+    assert_only_approved_pr5_waterfall_diff,
+)
+
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -955,6 +960,7 @@ class TestNoForbiddenChanges:
             if line.strip()
         )
         formula_paths = {
+            "app/waterfall_core.py",
             "app/waterfall_runner.py",
             "app/opex_engine.py",
             "app/depreciation_engine.py",
@@ -968,19 +974,26 @@ class TestNoForbiddenChanges:
             p for p in formula_paths
             if any(c.startswith(p) for c in changed)
         }
+        if "app/waterfall_core.py" in formula_hits:
+            waterfall = subprocess.run(
+                ["git", "diff", "--unified=0", "origin/main", "--", "app/waterfall_core.py"],
+                cwd=str(REPO_ROOT), capture_output=True, text=True,
+            )
+            assert waterfall.returncode == 0, waterfall.stderr
+            assert_only_approved_pr5_waterfall_diff(waterfall.stdout)
+            formula_hits.remove("app/waterfall_core.py")
+        if "domain/" in formula_hits:
+            domain_diff = subprocess.run(
+                ["git", "diff", "--unified=0", "origin/main", "--", "domain/"],
+                cwd=str(REPO_ROOT), capture_output=True, text=True,
+            )
+            assert domain_diff.returncode == 0, domain_diff.stderr
+            assert_only_approved_pr5_domain_diff(domain_diff.stdout)
+            formula_hits.remove("domain/")
         assert not formula_hits, (
             f"57A-9D must not modify formula paths: "
             f"{sorted(formula_hits)}"
         )
-
-        # A later source-proven PR may touch waterfall_core only for the
-        # canonical signed-EBITDA delegation. This remains a fail-closed
-        # semantic check rather than a broad protected-path exception.
-        waterfall_text = (REPO_ROOT / "app/waterfall_core.py").read_text(encoding="utf-8")
-        assert "from finco_core.ebitda import calculate_ebitda_keur" in waterfall_text
-        assert "ebitda = calculate_ebitda_keur(rev, opex)" in waterfall_text
-        assert "ebitda = max(0, rev - opex)" not in waterfall_text
-
 
 # ---------------------------------------------------------------------------
 # 6.5. Persistence helper contract (review fix)
