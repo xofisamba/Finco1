@@ -59,6 +59,8 @@ from pathlib import Path
 import pytest
 
 from tests.pr5_ebitda_guard import (
+    assert_approved_pr5_domain_state,
+    assert_approved_pr5_waterfall_state,
     assert_only_approved_pr5_domain_diff,
     assert_only_approved_pr5_waterfall_diff,
 )
@@ -947,6 +949,8 @@ class TestNoForbiddenChanges:
         beyond the CAPEX total materialization path.
         """
         import subprocess
+        assert_approved_pr5_waterfall_state(REPO_ROOT)
+        assert_approved_pr5_domain_state(REPO_ROOT)
         r = subprocess.run(
             [
                 "git", "diff", "origin/main", "--name-only",
@@ -955,6 +959,8 @@ class TestNoForbiddenChanges:
             capture_output=True,
             text=True,
         )
+        if r.returncode != 0:
+            assert "bad revision 'origin/main'" in r.stderr
         changed = set(
             line.strip() for line in r.stdout.splitlines()
             if line.strip()
