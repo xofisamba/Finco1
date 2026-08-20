@@ -775,7 +775,11 @@ def test_reserve_gate_oborovo_zero_req_neutral(oborovo_g2c_result):
 
 def test_reserve_gate_stop_token_in_result(solar_result):
     """Result-level reserve gate summary carries the stop token."""
-    assert "G2C_RESERVE_GATE_NOT_CAUSALLY_CLOSED" in solar_result.reserve_support_gate_status_summary
+    assert (
+        "G2C_SENIOR_CASH_DSRA_CAUSALLY_CLOSED_"
+        "J_DSRA_AND_DSRF_DRAW_NOT_IMPLEMENTED"
+        in solar_result.reserve_support_gate_status_summary
+    )
 
 
 # ── Governance: no target-fitting tokens in G2C module ───────────────────────
@@ -787,7 +791,7 @@ def test_no_target_fitting_tokens_in_g2c():
     }
     module_dir = _REPO_ROOT / "financial_engine" / "shareholder_waterfall"
     for fpath in module_dir.rglob("*.py"):
-        tree = ast.parse(fpath.read_text())
+        tree = ast.parse(fpath.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
             if isinstance(node, ast.Constant) and isinstance(node.value, str):
                 assert node.value.lower() not in forbidden, (
@@ -799,7 +803,7 @@ def test_no_project_identity_dispatch_in_g2c():
     forbidden = {"oborovo", "tuho", "solar", "wind"}
     module_dir = _REPO_ROOT / "financial_engine" / "shareholder_waterfall"
     for fpath in module_dir.rglob("*.py"):
-        tree = ast.parse(fpath.read_text())
+        tree = ast.parse(fpath.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
             if isinstance(node, ast.Constant) and isinstance(node.value, str):
                 if node.value.lower() in forbidden:
@@ -811,7 +815,7 @@ def test_no_project_identity_dispatch_in_g2c():
 def test_no_absolute_paths_in_g2c():
     module_dir = _REPO_ROOT / "financial_engine" / "shareholder_waterfall"
     for fpath in module_dir.rglob("*.py"):
-        text = fpath.read_text()
+        text = fpath.read_text(encoding="utf-8")
         assert "/home/user/Finco1" not in text, f"Absolute path in {fpath}"
         assert "/home/runner/work" not in text, f"Absolute path in {fpath}"
 

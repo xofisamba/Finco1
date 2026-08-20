@@ -19,6 +19,7 @@ Tests verify:
 """
 from __future__ import annotations
 
+import dataclasses
 import math
 from datetime import date
 from typing import Any
@@ -715,13 +716,18 @@ class TestAuditFieldsExist:
     """CovenantGatedWaterfallPeriod must have the PR-4 audit fields."""
 
     def test_new_fields_present_in_dataclass(self):
-        """All four new PR-4 audit fields must be defined on the dataclass."""
+        """All canonical reserve/DA/SHL audit fields must be defined."""
         import dataclasses
         field_names = {f.name for f in dataclasses.fields(CovenantGatedWaterfallPeriod)}
         assert "reserve_adjusted_cash_keur" in field_names
         assert "dsra_top_up_keur" in field_names
         assert "dsra_draw_keur" in field_names
         assert "dsra_release_keur" in field_names
+        assert "initial_funded_dsra_keur" in field_names
+        assert "senior_dsra_target_keur" in field_names
+        assert "senior_dsra_opening_keur" in field_names
+        assert "senior_dsra_closing_keur" in field_names
+        assert "shl_cash_input_keur" in field_names
 
     def test_construction_period_has_zero_audit_fields(self):
         """Construction period audit fields must be zero."""
@@ -732,6 +738,7 @@ class TestAuditFieldsExist:
             base_dscr=None, distribution_lockup_dscr=1.10,
             distribution_gate_status=DistributionGateStatus.CONSTRUCTION,
             debt_service_reserve_requirement_keur=0.0,
+            initial_funded_dsra_keur=0.0,
             reserve_support_gate_status=ReserveSupportGateStatus.CONSTRUCTION,
             signed_post_senior_keur=0.0, dsrf_commitment_fee_keur=0.0,
             reserve_adjusted_cash_keur=0.0,
@@ -743,6 +750,7 @@ class TestAuditFieldsExist:
             gate_component_da_negative=False, gate_component_dsra_underfunded=False,
             gate_component_j_dsra_underfunded=False, within_senior_maturity=True,
             distribution_account_release_keur=0.0, distribution_account_closing_keur=0.0,
+            shl_cash_input_keur=0.0,
             senior_dsra_target_keur=0.0, senior_dsra_opening_keur=0.0, senior_dsra_closing_keur=0.0,
             shl_bullet_unpaid_at_maturity=False, shl_opening_balance_keur=0.0,
             shl_gross_interest_keur=0.0, shl_cash_interest_receipt_keur=0.0, shl_pik_keur=0.0,
@@ -813,52 +821,387 @@ class TestReserveSupportGateStatusShortfall:
 
 
 # ===========================================================================
-# Test class 11 — Fail-closed: CASH_DSRA requires model_result.cash_dsra
+# Test class 12 — source-proven excess release
 # ===========================================================================
 
-class TestFailClosedCashDsraRequired:
-    """G2C must raise if dsra_mode=CASH_DSRA and model_result.cash_dsra is None."""
+class TestSourceProvenReleasePolicy:
+    """Canonical PR-3B release must flow into reserve-adjusted cash once."""
 
-    def test_cash_dsra_none_result_raises(self):
-        """G2C_CASH_DSRA_RESULT_REQUIRED raised when mode=CASH_DSRA but no PR-3 result."""
-        # We can't easily construct a full ProjectModelResult and ProjectInputs here
-        # without a calibration runner, so we test the logic directly.
-        from finco_core.inputs import DebtServiceReserveSupportMode
-
-        # Simulate the fail-closed check
-        dsra_mode = DebtServiceReserveSupportMode.CASH_DSRA
-        cash_dsra_result = None
-
-        with pytest.raises(ValueError, match="G2C_CASH_DSRA_RESULT_REQUIRED"):
-            if dsra_mode == DebtServiceReserveSupportMode.CASH_DSRA and cash_dsra_result is None:
-                raise ValueError(
-                    "G2C_CASH_DSRA_RESULT_REQUIRED: dsra_support_mode=CASH_DSRA but "
-                    "model_result.cash_dsra is None. Run PR-3 DSRA engine before G2C."
-                )
-
-
-# ===========================================================================
-# Test class 12 — UNRESOLVED_RELEASE_POLICY preservation
-# ===========================================================================
-
-class TestUnresolvedReleasePolicy:
-    """release_keur must remain 0 per UNRESOLVED_RELEASE_POLICY."""
-
-    def test_dsra_release_is_zero(self):
-        """PR-3 DSRA releases nothing — UNRESOLVED_RELEASE_POLICY preserved."""
+    def test_dsra_release_increases_cash_after_dsra(self):
         pr = _dsra_period(
-            idx=1, is_construction=False,
-            cash_before=200.0, opening=500.0, required=500.0,
+            idx=1, is_construction=False, cash_before=2000.0,
+            opening=1500.0, required=1000.0, release=500.0,
         )
-        # No release even when DSRA is fully funded
-        assert pr.release_keur == 0.0
+        assert pr.release_keur == pytest.approx(500.0)
+        assert pr.closing_balance_keur == pytest.approx(1000.0)
+        assert pr.cash_after_dsra_keur == pytest.approx(2500.0)
 
-    def test_no_automatic_terminal_release(self):
-        """Even at final period, release is 0 (no terminal release without source evidence)."""
-        prs = [
-            _dsra_period(i, False, 100.0, 500.0, 500.0)
-            for i in range(1, 6)
-        ]
-        schedules = _make_dsra_schedules(500.0, prs)
-        assert schedules.total_release_keur == 0.0
-        assert schedules.final_closing_balance_keur == pytest.approx(500.0)
+    def test_da_consumes_release_without_recreating_it(self):
+        pr = _dsra_period(
+            idx=1, is_construction=False, cash_before=2000.0,
+            opening=1500.0, required=1000.0, release=500.0,
+        )
+        result = _run_g2c_synthetic(
+            dsra_mode_str="cash_dsra",
+            requirement_keur=1500.0,
+            signed_post_senior_by_idx={1: 2000.0},
+            dsra_period_results=[pr],
+            senior_last_period_index=5,
+        )[0]
+        assert result["da_inflow"] == pytest.approx(2500.0)
+        assert result["reserve_adjusted_cash"] == pytest.approx(2500.0)
+
+
+# ===========================================================================
+# Production-path acceptance: ProjectInputs -> PR-3B -> DA -> CF109 -> SHL
+# ===========================================================================
+
+def _controlled_production_financing(*, funded: float, target: float, first_cash: float):
+    """Return a real financing result with canonical PR-3B controlled cash."""
+    from app.project_factories import create_default_solar_project
+    from financial_engine.dsra.model import run_cash_dsra_model
+    from financial_engine.dsra.target import DsraTargetPolicy
+    from financial_engine.financing.project import run_project_financing_model
+
+    project = create_default_solar_project()
+    financing_inputs = dataclasses.replace(
+        project.financing,
+        dsra_support_mode=DebtServiceReserveSupportMode.CASH_DSRA,
+        debt_service_reserve_requirement_keur=funded,
+        dsra_target_policy="forward_debt_service_months",
+        dsra_months=6,
+    )
+    project = dataclasses.replace(project, financing=financing_inputs)
+    financing = run_project_financing_model(project, source_id="pr4-controlled-production")
+    model_result = financing.project_model_result
+    post_senior = model_result.post_senior_cash
+    assert post_senior is not None
+
+    first_op_position = next(
+        position for position, period in enumerate(model_result.periods) if period.is_operation
+    )
+    first_op_index = model_result.periods[first_op_position].period_index
+    signed_cash = list(post_senior.cash_after_senior_before_reserves_keur)
+    signed_cash[first_op_position] = first_cash
+    base_cfads = list(post_senior.base_cfads_keur)
+    base_cfads[first_op_position] = (
+        first_cash + post_senior.senior_debt_service_keur[first_op_position]
+    )
+    shl_cash = [
+        0.0 if period.is_construction else max(0.0, value)
+        for period, value in zip(model_result.periods, signed_cash)
+    ]
+    post_senior = dataclasses.replace(
+        post_senior,
+        base_cfads_keur=tuple(base_cfads),
+        cash_after_senior_before_reserves_keur=tuple(signed_cash),
+        cash_available_for_shl_before_reserves_keur=tuple(shl_cash),
+    )
+    target_schedule = tuple(
+        0.0 if period.is_construction else target for period in model_result.periods
+    )
+    dsra_input = CashDsraInput(
+        mode=DebtServiceReserveSupportMode.CASH_DSRA,
+        requirement_keur=funded,
+        required_balance_schedule=target_schedule,
+        target_policy=DsraTargetPolicy.FORWARD_DEBT_SERVICE_MONTHS,
+        dsra_months=6,
+    )
+    cash_dsra = run_cash_dsra_model(post_senior, dsra_input, model_result.periods)
+    model_result = dataclasses.replace(
+        model_result,
+        post_senior_cash=post_senior,
+        cash_dsra=cash_dsra,
+    )
+    return project, dataclasses.replace(financing, project_model_result=model_result), first_op_index
+
+
+def _run_with_financing(monkeypatch, project, financing):
+    import financial_engine.shareholder_waterfall.model as waterfall_model
+
+    monkeypatch.setattr(
+        waterfall_model,
+        "run_project_financing_model",
+        lambda *args, **kwargs: financing,
+    )
+    return waterfall_model.run_project_shareholder_waterfall_model(
+        project, source_id="pr4-production-acceptance"
+    )
+
+
+class TestProductionReserveToDaToShl:
+    def test_active_cash_dsra_real_end_to_end(self):
+        from app.project_factories import create_default_solar_project
+        from financial_engine.shareholder_waterfall.model import run_project_shareholder_waterfall_model
+
+        project = create_default_solar_project()
+        project = dataclasses.replace(
+            project,
+            financing=dataclasses.replace(
+                project.financing,
+                dsra_support_mode=DebtServiceReserveSupportMode.CASH_DSRA,
+                debt_service_reserve_requirement_keur=500.0,
+                dsra_target_policy="fixed_amount",
+                dsra_months=6,
+            ),
+        )
+        result = run_project_shareholder_waterfall_model(
+            project, source_id="pr4-active-production-path"
+        )
+        first_op = next(period for period in result.waterfall_periods if not period.is_construction)
+        assert result.financing_result.project_model_result.cash_dsra is not None
+        assert first_op.initial_funded_dsra_keur == pytest.approx(500.0)
+        assert first_op.debt_service_reserve_requirement_keur == pytest.approx(
+            first_op.senior_dsra_target_keur
+        )
+        assert first_op.dsra_required_balance_keur == pytest.approx(
+            first_op.senior_dsra_target_keur
+        )
+        assert first_op.dsra_opening_balance_keur == pytest.approx(
+            first_op.senior_dsra_opening_keur
+        )
+        assert first_op.dsra_closing_balance_keur == pytest.approx(
+            first_op.senior_dsra_closing_keur
+        )
+        assert first_op.shl_cash_input_keur == pytest.approx(
+            max(0.0, first_op.distribution_account_release_keur)
+        )
+
+    @pytest.mark.parametrize(
+        ("funded", "target", "cash", "top_up", "draw", "release", "cash_after"),
+        (
+            (1000.0, 1000.0, 2000.0, 0.0, 0.0, 0.0, 2000.0),
+            (500.0, 1000.0, 2000.0, 500.0, 0.0, 0.0, 1500.0),
+            (1000.0, 1000.0, -200.0, 0.0, 200.0, 0.0, 0.0),
+            (1500.0, 1000.0, 2000.0, 0.0, 0.0, 500.0, 2500.0),
+            (1500.0, 1000.0, -200.0, 0.0, 200.0, 500.0, 500.0),
+        ),
+    )
+    def test_canonical_reserve_movements_feed_da_once(
+        self, monkeypatch, funded, target, cash, top_up, draw, release, cash_after
+    ):
+        project, financing, first_idx = _controlled_production_financing(
+            funded=funded, target=target, first_cash=cash
+        )
+        result = _run_with_financing(monkeypatch, project, financing)
+        period = next(
+            p
+            for p in result.waterfall_periods
+            if p.period_index == first_idx and not p.is_construction
+        )
+        assert period.dsra_top_up_keur == pytest.approx(top_up)
+        assert period.dsra_draw_keur == pytest.approx(draw)
+        assert period.dsra_release_keur == pytest.approx(release)
+        assert period.reserve_adjusted_cash_keur == pytest.approx(cash_after)
+        assert period.distribution_account_inflow_keur == pytest.approx(cash_after)
+        assert period.initial_funded_dsra_keur == pytest.approx(funded)
+        assert period.senior_dsra_target_keur == pytest.approx(target)
+        assert period.debt_service_reserve_requirement_keur == pytest.approx(target)
+        assert period.shl_cash_input_keur == pytest.approx(
+            max(0.0, period.distribution_account_release_keur)
+        )
+        assert cash - top_up + draw + release == pytest.approx(cash_after)
+        assert funded + top_up - draw - release == pytest.approx(
+            period.senior_dsra_closing_keur
+        )
+
+    def test_draw_and_combined_cases_lock_component_d(self, monkeypatch):
+        for funded in (1000.0, 1500.0):
+            project, financing, first_idx = _controlled_production_financing(
+                funded=funded, target=1000.0, first_cash=-200.0
+            )
+            result = _run_with_financing(monkeypatch, project, financing)
+            period = next(
+                p
+                for p in result.waterfall_periods
+                if p.period_index == first_idx and not p.is_construction
+            )
+            assert period.senior_dsra_closing_keur == pytest.approx(800.0)
+            assert period.gate_component_dsra_underfunded
+            assert period.distribution_account_release_keur == 0.0
+            assert period.shl_cash_input_keur == 0.0
+
+    def test_none_neutral_and_da_conservation(self):
+        from app.project_factories import create_default_solar_project
+        from financial_engine.shareholder_waterfall.model import run_project_shareholder_waterfall_model
+
+        result = run_project_shareholder_waterfall_model(
+            create_default_solar_project(), source_id="pr4-none-production"
+        )
+        operating = [p for p in result.waterfall_periods if not p.is_construction]
+        assert all(
+            p.reserve_adjusted_cash_keur == pytest.approx(p.signed_post_senior_keur)
+            for p in operating
+        )
+        assert sum(p.distribution_account_inflow_keur for p in operating) == pytest.approx(
+            sum(p.distribution_account_release_keur for p in operating)
+            + operating[-1].distribution_account_closing_keur
+        )
+        assert all(
+            p.shl_cash_input_keur == pytest.approx(max(0.0, p.distribution_account_release_keur))
+            for p in operating
+        )
+
+    def test_component_d_does_not_lock_outside_senior_maturity(self, monkeypatch):
+        project, financing, first_idx = _controlled_production_financing(
+            funded=1500.0, target=1000.0, first_cash=-200.0
+        )
+        model_result = financing.project_model_result
+        senior_debt = model_result.senior_debt
+        assert senior_debt is not None
+        senior_debt = dataclasses.replace(
+            senior_debt,
+            senior_debt_service_keur=tuple(0.0 for _ in senior_debt.period_indices),
+            base_dscr=tuple(None for _ in senior_debt.period_indices),
+        )
+        project = dataclasses.replace(
+            project,
+            financing=dataclasses.replace(
+                project.financing,
+                shl_maturity_period_index=max(senior_debt.period_indices),
+            ),
+        )
+        model_result = dataclasses.replace(model_result, senior_debt=senior_debt)
+        financing = dataclasses.replace(financing, project_model_result=model_result)
+
+        result = _run_with_financing(monkeypatch, project, financing)
+        period = next(
+            p
+            for p in result.waterfall_periods
+            if p.period_index == first_idx and not p.is_construction
+        )
+        assert period.gate_component_dsra_underfunded
+        assert not period.within_senior_maturity
+        assert period.distribution_account_release_keur == pytest.approx(500.0)
+        assert period.shl_cash_input_keur == pytest.approx(500.0)
+
+    def test_dsrf_neutral_reserve_and_fee_once(self):
+        from app.project_factories import create_default_solar_project
+        from financial_engine.shareholder_waterfall.model import run_project_shareholder_waterfall_model
+
+        project = create_default_solar_project()
+        project = dataclasses.replace(
+            project,
+            financing=dataclasses.replace(
+                project.financing,
+                dsra_support_mode=DebtServiceReserveSupportMode.DSRF,
+                debt_service_reserve_requirement_keur=1000.0,
+                dsrf_commitment_keur=1000.0,
+                dsrf_commitment_fee_rate_pa=0.01,
+            ),
+        )
+        result = run_project_shareholder_waterfall_model(project, source_id="pr4-dsrf-production")
+        operating = [p for p in result.waterfall_periods if not p.is_construction]
+        assert result.total_dsrf_commitment_fee_keur > 0.0
+        for period in operating:
+            assert period.reserve_adjusted_cash_keur == pytest.approx(
+                period.signed_post_senior_keur
+            )
+            assert period.distribution_account_inflow_keur == pytest.approx(
+                period.signed_post_senior_keur - period.dsrf_commitment_fee_keur
+            )
+
+
+class TestProductionCashDsraAlignmentFailClosed:
+    def _mutated_financing(self, mutation):
+        project, financing, _ = _controlled_production_financing(
+            funded=1000.0, target=1000.0, first_cash=2000.0
+        )
+        model_result = financing.project_model_result
+        schedules = model_result.cash_dsra
+        assert schedules is not None
+        schedules = mutation(model_result, schedules)
+        model_result = dataclasses.replace(model_result, cash_dsra=schedules)
+        return project, dataclasses.replace(financing, project_model_result=model_result)
+
+    def test_missing_whole_result_fails_in_production(self, monkeypatch):
+        project, financing, _ = _controlled_production_financing(
+            funded=1000.0, target=1000.0, first_cash=2000.0
+        )
+        financing = dataclasses.replace(
+            financing,
+            project_model_result=dataclasses.replace(
+                financing.project_model_result, cash_dsra=None
+            ),
+        )
+        with pytest.raises(ValueError, match="G2C_CASH_DSRA_RESULT_REQUIRED"):
+            _run_with_financing(monkeypatch, project, financing)
+
+    def test_missing_active_period_fails_in_production(self, monkeypatch):
+        def remove_period(model_result, schedules):
+            first_op = next(p.period_index for p in model_result.periods if p.is_operation)
+            return dataclasses.replace(
+                schedules,
+                period_results=tuple(
+                    p for p in schedules.period_results if p.period_index != first_op
+                ),
+            )
+
+        project, financing = self._mutated_financing(remove_period)
+        with pytest.raises(ValueError, match="G2C_CASH_DSRA_PERIOD_RESULT_REQUIRED"):
+            _run_with_financing(monkeypatch, project, financing)
+
+    def test_duplicate_period_fails_in_production(self, monkeypatch):
+        def duplicate_period(model_result, schedules):
+            return dataclasses.replace(
+                schedules,
+                period_results=schedules.period_results + (schedules.period_results[0],),
+            )
+
+        project, financing = self._mutated_financing(duplicate_period)
+        with pytest.raises(ValueError, match="G2C_CASH_DSRA_DUPLICATE_PERIOD_INDEX"):
+            _run_with_financing(monkeypatch, project, financing)
+
+    def test_unexpected_period_fails_in_production(self, monkeypatch):
+        def add_extra(model_result, schedules):
+            extra = dataclasses.replace(schedules.period_results[0], period_index=999999)
+            return dataclasses.replace(
+                schedules, period_results=schedules.period_results + (extra,)
+            )
+
+        project, financing = self._mutated_financing(add_extra)
+        with pytest.raises(ValueError, match="G2C_CASH_DSRA_UNEXPECTED_PERIOD_RESULT"):
+            _run_with_financing(monkeypatch, project, financing)
+
+    def test_period_classification_mismatch_fails_in_production(self, monkeypatch):
+        def mismatch(model_result, schedules):
+            periods = list(schedules.period_results)
+            first_op_position = next(
+                i for i, p in enumerate(periods) if not p.is_construction
+            )
+            periods[first_op_position] = dataclasses.replace(
+                periods[first_op_position], is_construction=True
+            )
+            return dataclasses.replace(schedules, period_results=tuple(periods))
+
+        project, financing = self._mutated_financing(mismatch)
+        with pytest.raises(
+            ValueError, match="G2C_CASH_DSRA_PERIOD_CLASSIFICATION_MISMATCH"
+        ):
+            _run_with_financing(monkeypatch, project, financing)
+
+    def test_upstream_unresolved_combined_error_propagates(self, monkeypatch):
+        from app.project_factories import create_default_solar_project
+        import financial_engine.shareholder_waterfall.model as waterfall_model
+
+        project = create_default_solar_project()
+        project = dataclasses.replace(
+            project,
+            financing=dataclasses.replace(
+                project.financing,
+                dsra_support_mode=DebtServiceReserveSupportMode.CASH_DSRA,
+                debt_service_reserve_requirement_keur=1000.0,
+            ),
+        )
+
+        def fail_upstream(*args, **kwargs):
+            raise ValueError(
+                "DSRA_SIMULTANEOUS_EXCESS_RELEASE_AND_SHORTFALL_POLICY_UNRESOLVED"
+            )
+
+        monkeypatch.setattr(waterfall_model, "run_project_financing_model", fail_upstream)
+        with pytest.raises(
+            ValueError,
+            match="DSRA_SIMULTANEOUS_EXCESS_RELEASE_AND_SHORTFALL_POLICY_UNRESOLVED",
+        ):
+            waterfall_model.run_project_shareholder_waterfall_model(project)

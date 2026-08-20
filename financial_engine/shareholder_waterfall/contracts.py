@@ -45,10 +45,8 @@ class ReserveSupportGateStatus(Enum):
     DSRF mode  → DSRF_AVAILABLE_SUPPORT_ONLY_NO_DRAW_ENGINE
     CONSTRUCTION → CONSTRUCTION (pre-COD, gate not applicable)
 
-    IMPORTANT: G2C exposes this status informatively. The reserve gate's position
-    in the CF waterfall is NOT source-proven (CF108 not yet extracted). The gate
-    status does NOT directly gate fcf_for_distribution in the current implementation.
-    Stop token: G2C_RESERVE_GATE_NOT_CAUSALLY_CLOSED.
+    Senior CASH_DSRA is causally wired through CF109 component D. J-DSRA and
+    DSRF draw support remain outside the implemented reserve boundary.
     """
     NOT_APPLICABLE = "not_applicable"
     PASS = "pass"
@@ -89,9 +87,9 @@ class CovenantGatedWaterfallPeriod:
     distribution_lockup_dscr: float
     distribution_gate_status: DistributionGateStatus
 
-    # Reserve support gate (informational — CF waterfall position not source-proven)
-    # G2C_RESERVE_GATE_NOT_CAUSALLY_CLOSED: gate status exposed but NOT used to block FCF.
-    debt_service_reserve_requirement_keur: float    # from FinancingParams
+    # Reserve support audit. Initial funded cash is distinct from the operating target.
+    debt_service_reserve_requirement_keur: float    # legacy alias of period required balance
+    initial_funded_dsra_keur: float                 # Project Uses / COD funded cash
     reserve_support_gate_status: ReserveSupportGateStatus
 
     # Cash waterfall (operating) — source-proven ordering
@@ -101,7 +99,7 @@ class CovenantGatedWaterfallPeriod:
     reserve_adjusted_cash_keur: float       # PR-3 cash_after_dsra; == signed_post_senior for NONE/DSRF
     dsra_top_up_keur: float                 # PR-3 top_up this period (0 for NONE/DSRF)
     dsra_draw_keur: float                   # PR-3 draw_to_cover_shortfall this period (0 for NONE/DSRF)
-    dsra_release_keur: float                # PR-3 release this period (0 per UNRESOLVED_RELEASE_POLICY)
+    dsra_release_keur: float                # canonical PR-3 excess release this period
     fcf_for_distribution_keur: float        # R109: gate output (= DA release)
     covenant_locked_keur: float             # DA closing (accumulated locked cash per period)
 
@@ -140,12 +138,28 @@ class CovenantGatedWaterfallPeriod:
     within_senior_maturity: bool                   # G$4 <= $B$11 (outer AND)
     distribution_account_release_keur: float       # CF109 = gate output
     distribution_account_closing_keur: float       # CF110 = available - release
+    shl_cash_input_keur: float                      # max(0, CF109 release)
 
     # Senior DSRA causal roll-forward (CF86-CF92)
     # MANUAL_WORKBOOK_SOURCE_EVIDENCE: Oborovo target = 0 (no DSRA required)
     senior_dsra_target_keur: float                 # CF86: target reserve balance
     senior_dsra_opening_keur: float                # CF87/F92: prior closing
     senior_dsra_closing_keur: float                # CF92: ending balance
+
+    @property
+    def dsra_required_balance_keur(self) -> float:
+        """Canonical per-period Senior cash-DSRA requirement."""
+        return self.senior_dsra_target_keur
+
+    @property
+    def dsra_opening_balance_keur(self) -> float:
+        """Canonical per-period Senior cash-DSRA opening balance."""
+        return self.senior_dsra_opening_keur
+
+    @property
+    def dsra_closing_balance_keur(self) -> float:
+        """Canonical per-period Senior cash-DSRA closing balance."""
+        return self.senior_dsra_closing_keur
 
     # BULLET maturity status: True once BULLET balloon was underfunded at contractual maturity
     shl_bullet_unpaid_at_maturity: bool
@@ -212,7 +226,7 @@ class CovenantGatedWaterfallResult:
     total_periods_with_senior_ds: int
 
     # Reserve support gate summary
-    # G2C_RESERVE_GATE_NOT_CAUSALLY_CLOSED: CF108 not extracted; gate is informational only.
+    # Senior CASH_DSRA is causal; remaining reserve gaps are named in the status value.
     reserve_support_gate_status_summary: str
 
     # G2C_DEDUCTIBLE_SHL_COVENANT_FEEDBACK_NOT_YET_CLOSED when deductible SHL
