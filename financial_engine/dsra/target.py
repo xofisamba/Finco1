@@ -1,77 +1,28 @@
-"""financial_engine.dsra.target — Dynamic DSRA required-balance schedule builder.
+"""Dynamic DSRA required-balance schedule builder.
 
-WORKBOOK SOURCE EVIDENCE:
-  XLSM workbooks are not stored in this repository. The selector values,
-  formulas and cached targets below were independently inspected from the
-  read-only TUHO, Oborovo and KUPI source workbooks on 2026-08-20.
+CONSTRUCTION SOURCE AUTHORITY
+-----------------------------
+The workbook Inputs 0/3/6/12 D-column amounts belong to the Construction
+selector and feed ``Macro!G24`` through LOOKUP. ``DSRA_in`` points to
+``Macro!H24`` and ``Macro!E24 = ABS(H24-G24)`` checks convergence. Those
+amounts are Construction lookup anchors, not Operation rolling targets.
 
-  TUHO (senior_ds_p1 = 2116.361394092063 kEUR,
-                      senior_ds_p2 = 2151.439207253809 kEUR):
-    Construction selector Inputs!I330 = 0.
-    Operation selector Inputs!I331 = 0.
-    Available DSRA coverage amounts (from Inputs tab 3m/6m/12m selectors):
-      3m  = 1,058.1806970460316 kEUR = DS1 × 3/6
-      6m  = 2,116.3613940920630 kEUR = DS1 × 6/6 = DS1
-      12m = 4,267.8006013458730 kEUR = DS1 + DS2
+OPERATION SOURCE AUTHORITY
+--------------------------
+TUHO/KUPI ``CF!B76`` and Oborovo ``CF!B86`` read the separate Operation
+selector. The CF target row references the following Senior debt-service
+column. For model period ``t``::
 
-  Oborovo (senior_ds_p1 = 2239.133412854356 kEUR,
-                      senior_ds_p2 = 2202.625802862166 kEUR):
-    Construction selector Inputs!I347 = 0.
-    Operation selector Inputs!I348 = 0.
-    Available DSRA coverage amounts (from Inputs tab 3m/6m/12m selectors):
-      3m  = 1,119.566706427178 kEUR = DS1 × 3/6
-      6m  = 2,239.133412854356 kEUR = DS1 × 6/6 = DS1
-      12m = 4,441.759215716522 kEUR = DS1 + DS2
+    target[t] = senior_debt_service[t + 1]
+                * operation_months * periods_per_year / 12
 
-  KUPI:
-    Construction selector Inputs!I330 = 0.
-    Operation selector Inputs!I331 = 0 (Inputs!A331 = 6 is an option label).
-    Available Operation targets: 3m = 3,688.3274356894 kEUR;
-      6m = 7,376.6548713788 kEUR; 12m = 14,633.03819594164 kEUR.
+Thus semiannual 3m/6m/12m targets are 0.5x/1.0x/2.0x the next-period debt
+service. The terminal target is zero because there is no following debt-service
+period. ``periods_per_year`` is explicit model-frequency authority; calendar
+day or month lengths do not affect this workbook-compatible Operation policy.
 
-  All three calibration projects have separate Construction and Operation
-  selectors, both selected at 0 months. Their financial delta remains zero.
-
-LEGACY IMPLEMENTATION CORROBORATION:
-  finco_core/waterfall/dsra_engine.py compute_dsra_target():
-      annual_ds = current_period_payment × periods_per_year
-      dsra_target = annual_ds × (dsra_months / 12)
-      → for 6m semi-annual: target = DS_current × 2 × 0.5 = DS_current ✓
-
-  finco_core/debt/sculpting_iterative.py dsra_rolling_target():
-      periods_needed = max(1, dsra_months × periods_per_year // 12)
-      return sum(future_payments[:periods_needed])
-      Note: integer-ceiling formula; time-coverage formula is the generic refinement
-      that correctly handles 3m = 0.5 × 6m for semiannual periods.
-
-MEASUREMENT DATE RULE (source-proven):
-  The DSRA target at operating period t covers the current period t's DS plus
-  upcoming DS within the coverage window.
-
-  WORKBOOK PROOF: for semi-annual periods (6m each):
-    DSRA_6m_target[op_0] = DS[op_0]  (current period's own DS)
-    DSRA_3m_target[op_0] = 0.5 × DS[op_0]
-    DSRA_12m_target[op_0] = DS[op_0] + DS[op_1]
-
-  This proves j starts at i (INCLUDES current period), NOT at i+1.
-  Interpretation: the target is set at the START of period i, covering DS
-  to be paid DURING period i through the end of the coverage window.
-
-  COVERAGE LOOP: for period i, j ∈ {i, i+1, i+2, ...}
-    fraction_j = min(1.0, coverage_remaining / period_months_j)
-    target += fraction_j × DS_j
-    coverage_remaining -= fraction_j × period_months_j
-
-  Semi-annual (6m period) examples:
-    3m  → fraction at j=i = 3/6 = 0.5 → target = 0.5 × DS[i]
-    6m  → fraction at j=i = 1.0 → target = DS[i]
-    9m  → j=i full (6m→DS[i]) + j=i+1 partial (3m/6m=0.5→0.5×DS[i+1])
-    12m → j=i full (6m→DS[i]) + j=i+1 full (6m→DS[i+1])
-
-GENERIC ENGINE POLICY:
-  Any positive integer coverage_months is supported by the time-coverage algorithm.
-  Only 3m, 6m, 12m are source-proven from TUHO/Oborovo workbooks.
-  9m and other values are ENGINE_GENERIC_CAPABILITY (not workbook-proven options).
+The 9m result (1.5x next-period DS for semiannual models) is an
+``ENGINE_GENERIC_CAPABILITY``, not a workbook dropdown option.
 
 POLICY ENUM:
   DsraTargetPolicy.FIXED_AMOUNT:
@@ -79,7 +30,8 @@ POLICY ENUM:
       Used when requirement_keur is set explicitly and FORWARD policy is not elected.
 
   DsraTargetPolicy.FORWARD_DEBT_SERVICE_MONTHS:
-      required_balance[t] = time-coverage sum of Senior DS from period t onwards.
+      required_balance[t] = next-period Senior DS
+                            * coverage_months * periods_per_year / 12.
       Used when dsra_months > 0, mode == CASH_DSRA, and dsra_target_policy explicitly set.
 
 CONSTRUCTION / OPERATION AUTHORITY:
@@ -112,51 +64,12 @@ class DsraTargetPolicy(Enum):
         Preserves PR-3 behavior. Backward-compatible default.
 
     FORWARD_DEBT_SERVICE_MONTHS:
-        Per-period target = time-coverage sum of Senior DS from the start of
-        period t, covering coverage_months months of debt service.
-        Source-proven from TUHO and Oborovo workbook Inputs tab (3m/6m/12m options).
+        Per-period target = next-period Senior DS multiplied by
+        coverage_months * periods_per_year / 12.
+        Source-proven from the TUHO, Oborovo, and KUPI Operation CF formulas.
     """
     FIXED_AMOUNT = "fixed_amount"
     FORWARD_DEBT_SERVICE_MONTHS = "forward_debt_service_months"
-
-
-def months_between(start: date, end: date) -> float:
-    """Compute fractional months between two dates.
-
-    Uses exact calendar month difference with day-fraction for partial months.
-    For standard model periods (exact month boundaries), returns exact integers.
-    """
-    if end <= start:
-        return 0.0
-    full_months = (end.year - start.year) * 12 + (end.month - start.month)
-    # Day adjustment: if end.day < start.day, the last month is partial
-    if end.day < start.day:
-        full_months -= 1
-        # Fractional part of the remaining partial month
-        import calendar
-        days_in_end_month = calendar.monthrange(end.year, end.month)[1]
-        frac = (end.day - 1) / days_in_end_month  # days since month start
-        # Days in the partial start month
-        days_in_partial = calendar.monthrange(
-            (start.replace(day=1) if start.day > 1 else start).year,
-            start.month,
-        )[1]
-        # Remaining days in start month after start.day
-        remaining_start = days_in_partial - start.day
-        result = full_months + remaining_start / days_in_partial + frac
-        if result <= 0.0:
-            # Edge case: start is last day of month, end is first day of next
-            # (e.g. Dec 31 → Jan 1). Fall back to day-count approximation.
-            days_elapsed = (end - start).days
-            return days_elapsed / days_in_partial
-        return result
-    elif end.day > start.day:
-        import calendar
-        days_in_start_month = calendar.monthrange(start.year, start.month)[1]
-        frac = (end.day - start.day) / days_in_start_month
-        return full_months + frac
-    else:
-        return float(full_months)
 
 
 def build_dsra_required_balance_schedule(
@@ -167,6 +80,7 @@ def build_dsra_required_balance_schedule(
     is_construction: tuple[bool, ...],
     senior_debt_service_keur: tuple[float, ...],
     coverage_months: int,
+    periods_per_year: int,
     policy: DsraTargetPolicy = DsraTargetPolicy.FORWARD_DEBT_SERVICE_MONTHS,
     fixed_amount_keur: float = 0.0,
 ) -> tuple[float, ...]:
@@ -187,11 +101,15 @@ def build_dsra_required_balance_schedule(
         Expected positive-magnitude convention (unsigned cash outflow).
         Negative values are excluded from the coverage window (see sign-convention note).
     coverage_months:
-        Number of months of Senior DS to cover starting from the current period.
+        Number of Operation months of following-period Senior DS to cover.
         Must be > 0 for FORWARD_DEBT_SERVICE_MONTHS policy.
+    periods_per_year:
+        Canonical model frequency. The workbook Operation formula multiplies
+        next-period Senior DS by coverage_months * periods_per_year / 12.
     policy:
         DsraTargetPolicy.FIXED_AMOUNT → fixed_amount_keur every operating period.
-        DsraTargetPolicy.FORWARD_DEBT_SERVICE_MONTHS → dynamic time-coverage sum.
+        DsraTargetPolicy.FORWARD_DEBT_SERVICE_MONTHS → next-period Senior DS
+        multiplied by coverage_months * periods_per_year / 12.
     fixed_amount_keur:
         Required when policy=FIXED_AMOUNT. Must be finite and >= 0.
 
@@ -204,7 +122,7 @@ def build_dsra_required_balance_schedule(
     ------
     ValueError on:
         - Length mismatch
-        - coverage_months <= 0 for FORWARD policy
+        - coverage_months <= 0 or invalid periods_per_year for FORWARD policy
         - Non-finite or negative fixed_amount
         - Non-ascending dates
         - end_date <= start_date for any period
@@ -216,13 +134,9 @@ def build_dsra_required_balance_schedule(
         Negative values are rejected with DSRA_TARGET_NEGATIVE_SENIOR_DS.
         Refinancing is out of scope. Normalise sign at the adapter boundary.
 
-    MEASUREMENT DATE RULE (source-proven from TUHO/Oborovo workbooks):
-        For operating period t (index i), coverage STARTS AT period i (inclusive).
-        The current period's DS (period t) IS included in the window.
-        Target = sum over j ∈ {i, i+1, i+2, ...} of (fraction_j × DS_j)
-        where fraction_j = min(1.0, coverage_remaining / period_months_j).
-        This matches the workbook source evidence:
-            6m target at first operating period = DS[first_op] (not DS[second_op]).
+    OPERATION PERIOD RULE:
+        For operating period i, the target references Senior DS at i+1.
+        The current period's DS is not the Operation target authority.
     """
     n = len(period_indices)
     if n == 0:
@@ -312,19 +226,14 @@ def build_dsra_required_balance_schedule(
             f"DSRA_TARGET_INVALID_COVERAGE_MONTHS: {coverage_months!r} must be > 0 "
             "for FORWARD_DEBT_SERVICE_MONTHS policy."
         )
-
-    # Pre-compute period lengths in months (for pro-rata coverage).
-    # Construction periods are skipped in the inner loop; guard only operating periods.
-    period_month_lengths: list[float] = []
-    for idx_chk, (s, e, is_constr) in enumerate(zip(period_start_dates, period_end_dates, is_construction)):
-        ml = months_between(s, e)
-        if not is_constr and ml <= 0.0:
-            raise ValueError(
-                f"DSRA_TARGET_ZERO_PERIOD_LENGTH: operating period {idx_chk} "
-                f"from {s} to {e} has computed length {ml:.4f} months. "
-                "All operating periods must have positive length."
-            )
-        period_month_lengths.append(ml if ml > 0.0 else 1.0)  # 1.0 placeholder for construction
+    if not isinstance(periods_per_year, int) or isinstance(periods_per_year, bool):
+        raise ValueError(
+            f"DSRA_TARGET_INVALID_PERIODS_PER_YEAR: {periods_per_year!r} must be an integer."
+        )
+    if periods_per_year <= 0:
+        raise ValueError(
+            f"DSRA_TARGET_INVALID_PERIODS_PER_YEAR: {periods_per_year!r} must be > 0."
+        )
 
     targets: list[float] = []
 
@@ -333,26 +242,11 @@ def build_dsra_required_balance_schedule(
             targets.append(0.0)
             continue
 
-        # MEASUREMENT DATE RULE (source-proven):
-        # Coverage window starts at period i (CURRENT period) and extends
-        # forward until coverage_months is exhausted.
-        # This matches TUHO/Oborovo workbook: 6m target[op_0] = DS[op_0].
-        coverage_remaining = float(coverage_months)
-        target = 0.0
-
-        for j in range(i, n):
-            if is_construction[j]:
-                # Construction periods after operating ones are not expected, but
-                # skip gracefully — construction has no DS to cover.
-                continue
-            ds_j = senior_debt_service_keur[j]
-            period_len_j = period_month_lengths[j]
-            fraction = min(1.0, coverage_remaining / period_len_j)
-            target += fraction * ds_j
-            coverage_remaining -= fraction * period_len_j
-            if coverage_remaining <= 1e-9:
-                break
-
-        targets.append(target)
+        next_pos = i + 1
+        if next_pos >= n or is_construction[next_pos]:
+            targets.append(0.0)
+            continue
+        multiplier = coverage_months * periods_per_year / 12.0
+        targets.append(senior_debt_service_keur[next_pos] * multiplier)
 
     return tuple(targets)

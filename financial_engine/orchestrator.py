@@ -1195,6 +1195,7 @@ def _run_senior_debt_model_with_shl(inputs: SeniorDebtModelInput) -> ProjectMode
             is_construction=_shl_all_is_constr,
             senior_debt_service_keur=final_post_senior_cash.senior_debt_service_keur,
             coverage_months=_shl_dsra_input.dsra_months,
+            periods_per_year=inputs.senior_debt_policy.periods_per_year,
         )
         _shl_dsra_input = _CashDsraInput(
             mode=_shl_dsra_input.mode,
@@ -1659,6 +1660,7 @@ def run_senior_debt_model(inputs: SeniorDebtModelInput) -> ProjectModelResult:
             is_construction=_all_is_constr,
             senior_debt_service_keur=post_senior_cash.senior_debt_service_keur,
             coverage_months=_dsra_input.dsra_months,
+            periods_per_year=inputs.senior_debt_policy.periods_per_year,
         )
         _dsra_input = CashDsraInput(
             mode=_dsra_input.mode,

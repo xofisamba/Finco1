@@ -155,6 +155,13 @@ def run_cash_dsra_model(
                 draw = 0.0
             else:
                 # Negative post-Senior cash: draw from reserve to cover shortfall.
+                if release > _FLOAT_TOLERANCE and -cash_before > balance_after_release + _FLOAT_TOLERANCE:
+                    raise ValueError(
+                        "DSRA_SIMULTANEOUS_EXCESS_RELEASE_AND_SHORTFALL_POLICY_UNRESOLVED: "
+                        "workbook Operation release plus Shortfall would produce a negative "
+                        "reserve balance. The clean engine fails closed instead of silently "
+                        "claiming source parity."
+                    )
                 draw = min(balance_after_release, -cash_before)
                 top_up = 0.0
 
