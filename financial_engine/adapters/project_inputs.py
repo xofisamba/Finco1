@@ -295,7 +295,8 @@ def build_senior_debt_model_input_from_project_inputs(
     # PR-3B: map FinancingParams DSRA policy to clean CashDsraInput.
     # Uses the SHARED resolver so that adapter and project_uses always agree on
     # the effective requirement — COD_FUNDING_HANDSHAKE invariant.
-    # target_policy and dsra_months carry CONFIGURATION only; the actual dynamic
+    # target_policy and dsra_months carry Operation CONFIGURATION only; the latter
+    # is the legacy operation-only compatibility alias. The actual dynamic
     # required_balance_schedule is built in the orchestrator AFTER Senior debt solve,
     # using the final Senior DS schedule (causal ordering: Senior → target → model).
     from financial_engine.dsra.contracts import CashDsraInput
@@ -317,7 +318,7 @@ def build_senior_debt_model_input_from_project_inputs(
             f"Supported: None (→ FIXED_AMOUNT), {DsraTargetPolicy.FIXED_AMOUNT.value!r}, "
             f"{DsraTargetPolicy.FORWARD_DEBT_SERVICE_MONTHS.value!r}."
         )
-    # Preserve the configured dsra_months value exactly — do not substitute defaults.
+    # Preserve configured Operation months exactly — do not substitute defaults.
     _dsra_months = getattr(fin, "dsra_months", 6)
     if _dsra_months is None:
         _dsra_months = 6  # only None (absent) gets a default; explicit 0 is preserved

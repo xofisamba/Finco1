@@ -1,27 +1,36 @@
 """financial_engine.dsra.target — Dynamic DSRA required-balance schedule builder.
 
 WORKBOOK SOURCE EVIDENCE:
-  XLSM workbooks are not stored in this repository.
-  Values are from in-repo finco_recon fixtures and calibration scripts.
+  XLSM workbooks are not stored in this repository. The selector values,
+  formulas and cached targets below were independently inspected from the
+  read-only TUHO, Oborovo and KUPI source workbooks on 2026-08-20.
 
-  Source project P1 (senior_ds_p1 = 2116.361394092063 kEUR,
+  TUHO (senior_ds_p1 = 2116.361394092063 kEUR,
                       senior_ds_p2 = 2151.439207253809 kEUR):
+    Construction selector Inputs!I330 = 0.
+    Operation selector Inputs!I331 = 0.
     Available DSRA coverage amounts (from Inputs tab 3m/6m/12m selectors):
       3m  = 1,058.1806970460316 kEUR = DS1 × 3/6
       6m  = 2,116.3613940920630 kEUR = DS1 × 6/6 = DS1
       12m = 4,267.8006013458730 kEUR = DS1 + DS2
-    Production DSRA setting: 0 months → NONE mode.
 
-  Source project P2 (senior_ds_p1 = 2239.133412854356 kEUR,
+  Oborovo (senior_ds_p1 = 2239.133412854356 kEUR,
                       senior_ds_p2 = 2202.625802862166 kEUR):
+    Construction selector Inputs!I347 = 0.
+    Operation selector Inputs!I348 = 0.
     Available DSRA coverage amounts (from Inputs tab 3m/6m/12m selectors):
       3m  = 1,119.566706427178 kEUR = DS1 × 3/6
       6m  = 2,239.133412854356 kEUR = DS1 × 6/6 = DS1
       12m = 4,441.759215716522 kEUR = DS1 + DS2
-    Production DSRA setting: Inputs!I348 = 0 → NONE mode.
 
-  Both calibration projects: dsra_months = 0 → NONE mode → zero financial delta.
-  Source-available DSRA coverage options (3m/6m/12m) validated synthetically.
+  KUPI:
+    Construction selector Inputs!I330 = 0.
+    Operation selector Inputs!I331 = 0 (Inputs!A331 = 6 is an option label).
+    Available Operation targets: 3m = 3,688.3274356894 kEUR;
+      6m = 7,376.6548713788 kEUR; 12m = 14,633.03819594164 kEUR.
+
+  All three calibration projects have separate Construction and Operation
+  selectors, both selected at 0 months. Their financial delta remains zero.
 
 LEGACY IMPLEMENTATION CORROBORATION:
   finco_core/waterfall/dsra_engine.py compute_dsra_target():
@@ -73,13 +82,20 @@ POLICY ENUM:
       required_balance[t] = time-coverage sum of Senior DS from period t onwards.
       Used when dsra_months > 0, mode == CASH_DSRA, and dsra_target_policy explicitly set.
 
-COD FUNDING:
-  The first-operating-period target is the funded amount (Project Use at construction close).
-  For FORWARD_DEBT_SERVICE_MONTHS, COD opening = target at first operating period.
+CONSTRUCTION / OPERATION AUTHORITY:
+  Construction reserve funding is a separate workbook selector and bridge:
+    TUHO/KUPI Macro!G24 = LOOKUP(Inputs!I330,Inputs!A329:A332,Inputs!D329:D332)
+    Oborovo Macro!G24 = LOOKUP(Inputs!I347,Inputs!A346:A349,Inputs!D346:D349)
+    DSRA_in = Macro!H24; Macro!E24 = ABS(H24-G24).
+  CashDsraInput.requirement_keur carries that actual funded reserve cash.
+  Operation selectors feed CF!B76 (TUHO/KUPI) or CF!B86 (Oborovo), and the
+  dynamic schedule supplies operating targets only. Legacy dsra_months is an
+  operation-only compatibility alias; it is not Construction funding authority.
 
-UNRESOLVED_RELEASE_POLICY:
-  This module computes required targets only.
-  Release timing remains unresolved; see financial_engine/dsra/model.py.
+SOURCE-PROVEN EXCESS RELEASE:
+  The workbook CF Operation row includes an excess reduction when Beginning >=
+  Target. This module computes targets only; financial_engine.dsra.model owns
+  the cash/reserve roll-forward and release.
 """
 from __future__ import annotations
 
@@ -340,26 +356,3 @@ def build_dsra_required_balance_schedule(
         targets.append(target)
 
     return tuple(targets)
-
-
-def compute_cod_dsra_funding_keur(
-    required_balance_schedule: tuple[float, ...],
-    is_construction: tuple[bool, ...],
-) -> float:
-    """Compute the COD reserve funding requirement from the dynamic target schedule.
-
-    Returns the required_balance at the first operating period. This is the amount
-    that must be funded at construction close (as a Project Use) to satisfy the
-    COD_FUNDING_HANDSHAKE invariant.
-
-    If all periods are construction (no operating periods), returns 0.0.
-    """
-    if len(required_balance_schedule) != len(is_construction):
-        raise ValueError(
-            f"DSRA_COD_FUNDING_LENGTH_MISMATCH: schedule length "
-            f"{len(required_balance_schedule)} != is_construction length {len(is_construction)}."
-        )
-    for i, is_constr in enumerate(is_construction):
-        if not is_constr:
-            return required_balance_schedule[i]
-    return 0.0

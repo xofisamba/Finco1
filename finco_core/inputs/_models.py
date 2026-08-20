@@ -794,6 +794,8 @@ class FinancingParams:
     amortization_type: str = "sculpted"
     fixed_ds_keur: float = 0.0
 
+    # Operation DSRA coverage months. Compatibility name retained for existing
+    # payloads; this field is not Construction reserve-funding authority.
     dsra_months: int = 6
 
     # Explicit DSRA target policy string. Must not be inferred from dsra_months value.

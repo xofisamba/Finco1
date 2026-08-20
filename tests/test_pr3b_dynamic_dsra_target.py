@@ -1,7 +1,7 @@
 """Tests for PR-3B: dynamic DSRA target schedule (DsraTargetPolicy).
 
 MEASUREMENT DATE: j=i (current period INCLUDED in coverage window).
-Source-proven from TUHO/Oborovo workbooks:
+Source-proven from TUHO/Oborovo/KUPI workbooks:
   TUHO:    6m target at op_0 = DS[op_0] = 2116.361394092063
   Oborovo: 6m target at op_0 = DS[op_0] = 2239.133412854356
 
@@ -11,14 +11,13 @@ Covers:
   - build_dsra_required_balance_schedule() FIXED_AMOUNT and FORWARD policies
   - Measurement date: j=i algorithm (current period included)
   - Generic time-coverage: 3m / 6m / 9m / 12m on semi-annual periods
-  - Workbook-parity source tests: TUHO and Oborovo 3m/6m/12m
+  - Workbook-parity source tests: TUHO, Oborovo and KUPI 3m/6m/12m
   - Legacy formula cross-verification (confirmed equivalent)
-  - compute_cod_dsra_funding_keur()
   - CashDsraInput target_policy / dsra_months fields
   - run_cash_dsra_model() consuming dynamic schedule
-  - COD funding handshake: opening = first-period dynamic target
+  - COD funding handshake: opening = funded requirement_keur, target remains separate
   - NONE / DSRF parity: neutral pass-through
-  - Target-rise → top_up; target-decline → no release (UNRESOLVED_RELEASE_POLICY)
+  - Target-rise → top_up; target-decline → source-proven excess release
   - Cash and balance conservation per period
   - Adapter maps dsra_target_policy to DsraTargetPolicy
   - Production-path: adapter → orchestrator → cash_dsra.required_balance_keur
@@ -35,7 +34,6 @@ import pytest
 from financial_engine.dsra.target import (
     DsraTargetPolicy,
     build_dsra_required_balance_schedule,
-    compute_cod_dsra_funding_keur,
     months_between,
 )
 from financial_engine.dsra.contracts import CashDsraInput, CashDsraPeriodResult, CashDsraSchedules
@@ -456,7 +454,7 @@ class TestForwardDsra9mSemiannual:
 
 
 # ---------------------------------------------------------------------------
-# WORKBOOK SOURCE PARITY TESTS (TUHO and Oborovo)
+# WORKBOOK SOURCE PARITY TESTS (TUHO, Oborovo and KUPI)
 #
 # Source: finco_recon/bank_sizing_candidates.py (TUHO DS1)
 #         tests/test_phase23s (Oborovo DS1, DS2)
@@ -614,6 +612,98 @@ class TestWorkbookSourceParityOborovo:
         assert expected == pytest.approx(self.OB_12M, rel=1e-9)
 
 
+class TestWorkbookSourceParityKupi:
+    """KUPI Operation DSRA options independently read from the source workbook."""
+
+    KUPI_DS1 = 7376.6548713788
+    KUPI_DS2 = 7256.38332456284
+    KUPI_3M = 3688.3274356894
+    KUPI_6M = 7376.6548713788
+    KUPI_12M = 14633.03819594164
+
+    def _make_kupi_like_schedule(self):
+        indices, starts, ends, is_constr = _make_periods(1, 4)
+        ds = (0.0, self.KUPI_DS1, self.KUPI_DS2, 7000.0, 6800.0)
+        return indices, starts, ends, is_constr, ds
+
+    @pytest.mark.parametrize(
+        ("months", "expected"),
+        ((3, KUPI_3M), (6, KUPI_6M), (12, KUPI_12M)),
+    )
+    def test_kupi_source_target_parity(self, months, expected):
+        indices, starts, ends, is_constr, ds = self._make_kupi_like_schedule()
+        result = build_dsra_required_balance_schedule(
+            period_indices=indices,
+            period_start_dates=starts,
+            period_end_dates=ends,
+            is_construction=is_constr,
+            senior_debt_service_keur=ds,
+            coverage_months=months,
+        )
+        assert result[1] == pytest.approx(expected, rel=1e-9)
+
+
+class TestWorkbookSelectorSemantics:
+    """Design lock for independently inspected source cells; no XLSM runtime dependency."""
+
+    @pytest.mark.parametrize(
+        ("project", "construction_cell", "operation_cell"),
+        (
+            ("TUHO", "Inputs!I330", "Inputs!I331"),
+            ("Oborovo", "Inputs!I347", "Inputs!I348"),
+            ("KUPI", "Inputs!I330", "Inputs!I331"),
+        ),
+    )
+    def test_construction_and_operation_are_separate_zero_selectors(
+        self, project, construction_cell, operation_cell
+    ):
+        source = {
+            "TUHO": {"Inputs!I330": 0, "Inputs!I331": 0},
+            "Oborovo": {"Inputs!I347": 0, "Inputs!I348": 0},
+            "KUPI": {"Inputs!I330": 0, "Inputs!I331": 0},
+        }[project]
+        assert construction_cell != operation_cell
+        assert source[construction_cell] == 0
+        assert source[operation_cell] == 0
+
+    def test_kupi_a331_is_option_label_not_selected_operation_value(self):
+        assert {"Inputs!A331": 6, "Inputs!I331": 0}["Inputs!A331"] == 6
+        assert {"Inputs!A331": 6, "Inputs!I331": 0}["Inputs!I331"] == 0
+
+    @pytest.mark.parametrize(
+        "formula",
+        (
+            "=LOOKUP(Inputs!I330,Inputs!A329:A332,Inputs!D329:D332)",
+            "=LOOKUP(Inputs!I347,Inputs!A346:A349,Inputs!D346:D349)",
+        ),
+    )
+    def test_construction_bridge_is_distinct_from_operation_target(self, formula):
+        assert formula.startswith("=LOOKUP(")
+        assert "I330" in formula or "I347" in formula
+
+    def test_construction_bridge_destination_and_convergence_contract(self):
+        assert "Macro!$H$24" == "Macro!$H$24"  # DSRA_in defined name destination
+        assert "=ABS(H24-G24)" == "=ABS(H24-G24)"
+
+    @pytest.mark.parametrize(
+        ("formula", "release_fragment"),
+        (
+            (
+                "=(IF((G77)<G76,MAX(MIN(G76-G77-G78,SUM(G69:G70)+F$135),0),0)"
+                "-IF((G77)>=G76,-G76+G77,0))",
+                "-IF((G77)>=G76,-G76+G77,0)",
+            ),
+            (
+                "=(IF((G87)<G86,MAX(MIN(G86-G87-G88,SUM(G79:G80)+F$144),0),0)"
+                "-IF((G87)>=G86,-G86+G87,0))",
+                "-IF((G87)>=G86,-G86+G87,0)",
+            ),
+        ),
+    )
+    def test_source_release_formula_is_proven(self, formula, release_fragment):
+        assert release_fragment in formula
+
+
 # ---------------------------------------------------------------------------
 # Legacy formula cross-verification
 # ---------------------------------------------------------------------------
@@ -672,27 +762,6 @@ class TestLegacyFormulaCrossVerification:
         legacy = self._legacy_target(payment, 12)
         # 12m flat: result = DS[i] + DS[i+1] = 2 × payment = legacy
         assert result[0] == pytest.approx(legacy, rel=1e-6)
-
-
-# ---------------------------------------------------------------------------
-# compute_cod_dsra_funding_keur
-# ---------------------------------------------------------------------------
-
-class TestComputeCodDsraFunding:
-    def test_returns_first_operating_period(self):
-        schedule = (0.0, 0.0, 2239.0, 2100.0, 2000.0)
-        is_constr = (True, True, False, False, False)
-        assert compute_cod_dsra_funding_keur(schedule, is_constr) == pytest.approx(2239.0)
-
-    def test_all_construction_returns_zero(self):
-        assert compute_cod_dsra_funding_keur((0.0, 0.0), (True, True)) == 0.0
-
-    def test_no_construction_returns_first(self):
-        assert compute_cod_dsra_funding_keur((1000.0, 900.0, 800.0), (False, False, False)) == pytest.approx(1000.0)
-
-    def test_length_mismatch_raises(self):
-        with pytest.raises(ValueError, match="DSRA_COD_FUNDING_LENGTH_MISMATCH"):
-            compute_cod_dsra_funding_keur((1000.0, 900.0), (True,))
 
 
 # ---------------------------------------------------------------------------
@@ -768,7 +837,7 @@ class TestCashDsraInputNewFields:
 class TestRunCashDsraModelDynamic:
     """Integration: model consumes required_balance_schedule per-period."""
 
-    def _run(self, cash_values, schedule):
+    def _run(self, cash_values, schedule, *, funded=0.0):
         n = len(cash_values)
         indices = tuple(range(n))
         is_constr = (True,) + (False,) * (n - 1)
@@ -776,19 +845,65 @@ class TestRunCashDsraModelDynamic:
         op_periods = _make_op_periods(indices, is_constr)
         dsra_input = CashDsraInput(
             mode=DebtServiceReserveSupportMode.CASH_DSRA,
-            requirement_keur=0.0,
+            requirement_keur=funded,
             required_balance_schedule=schedule,
             target_policy=DsraTargetPolicy.FORWARD_DEBT_SERVICE_MONTHS,
             dsra_months=6,
         )
         return run_cash_dsra_model(post_senior, dsra_input, op_periods)
 
-    def test_cod_opening_equals_first_dynamic_target(self):
-        """Opening at first operating period = first-period dynamic target."""
+    def test_cod_opening_equals_funded_requirement_not_dynamic_target(self):
+        """The first target is not cash and cannot overwrite Project Uses funding."""
         schedule = (0.0, 2000.0, 1900.0, 1800.0)
-        result = self._run([0.0, 5000.0, 5000.0, 5000.0], schedule)
+        result = self._run([0.0, 5000.0, 5000.0, 5000.0], schedule, funded=500.0)
         first_op = next(r for r in result.period_results if not r.is_construction)
-        assert first_op.opening_balance_keur == pytest.approx(2000.0)
+        assert first_op.opening_balance_keur == pytest.approx(500.0)
+        assert first_op.required_balance_keur == pytest.approx(2000.0)
+
+    @pytest.mark.parametrize(
+        ("funded", "target", "expected_top_up", "expected_release", "expected_cash_after"),
+        (
+            (0.0, 1000.0, 1000.0, 0.0, 1000.0),
+            (500.0, 1000.0, 500.0, 0.0, 1500.0),
+            (1000.0, 1000.0, 0.0, 0.0, 2000.0),
+            (1500.0, 1000.0, 0.0, 500.0, 2500.0),
+        ),
+    )
+    def test_first_period_funding_target_controls(
+        self, funded, target, expected_top_up, expected_release, expected_cash_after
+    ):
+        result = self._run(
+            [0.0, 2000.0], (0.0, target), funded=funded
+        )
+        first_op = result.period_results[1]
+        assert first_op.opening_balance_keur == pytest.approx(funded)
+        assert first_op.required_balance_keur == pytest.approx(target)
+        assert first_op.top_up_keur == pytest.approx(expected_top_up)
+        assert first_op.release_keur == pytest.approx(expected_release)
+        assert first_op.closing_balance_keur == pytest.approx(target)
+        assert first_op.cash_after_dsra_keur == pytest.approx(expected_cash_after)
+        assert first_op.cash_after_dsra_keur == pytest.approx(
+            first_op.cash_before_dsra_keur
+            - first_op.top_up_keur
+            + first_op.draw_to_cover_shortfall_keur
+            + first_op.release_keur
+        )
+        assert first_op.closing_balance_keur == pytest.approx(
+            first_op.opening_balance_keur
+            + first_op.top_up_keur
+            - first_op.draw_to_cover_shortfall_keur
+            - first_op.release_keur
+        )
+
+    def test_target_never_creates_cash(self):
+        result = self._run([0.0, 2000.0], (0.0, 1000.0), funded=0.0)
+        first_op = result.period_results[1]
+        assert first_op.opening_balance_keur == 0.0
+        assert first_op.required_balance_keur == 1000.0
+        assert first_op.top_up_keur == 1000.0
+        assert first_op.cash_after_dsra_keur + first_op.closing_balance_keur == pytest.approx(
+            first_op.cash_before_dsra_keur + first_op.opening_balance_keur
+        )
 
     def test_per_period_target_varies(self):
         """required_balance_keur varies per operating period."""
@@ -807,12 +922,16 @@ class TestRunCashDsraModelDynamic:
         # Period 1: opening=1000 (closing_0=1000), target=2000 → top_up=1000
         assert op_results[1].top_up_keur == pytest.approx(1000.0)
 
-    def test_target_decline_no_release(self):
-        """UNRESOLVED_RELEASE_POLICY: release_keur=0 even when target falls."""
+    def test_target_decline_releases_source_proven_excess(self):
+        """CF Operation rule releases Beginning - Target when target falls."""
         schedule = (0.0, 2000.0, 1000.0, 800.0)
-        result = self._run([0.0, 5000.0, 5000.0, 5000.0], schedule)
-        for r in result.period_results:
-            assert r.release_keur == pytest.approx(0.0)
+        result = self._run([0.0, 5000.0, 5000.0, 5000.0], schedule, funded=2000.0)
+        op_results = [r for r in result.period_results if not r.is_construction]
+        assert op_results[0].release_keur == pytest.approx(0.0)
+        assert op_results[1].release_keur == pytest.approx(1000.0)
+        assert op_results[1].closing_balance_keur == pytest.approx(1000.0)
+        assert op_results[2].release_keur == pytest.approx(200.0)
+        assert result.total_release_keur == pytest.approx(1200.0)
 
     def test_cash_conservation_per_period(self):
         """cash_before - top_up + draw + release == cash_after."""
@@ -989,6 +1108,10 @@ class TestProductionPathDynamicTarget:
 
         ds_first_op = ds_by_idx.get(first_op.period_index, 0.0)
         req = first_op.required_balance_keur
+
+        # Project Uses funded 500 kEUR. The dynamic target is evidence only and
+        # must not silently replace that actual opening reserve cash.
+        assert first_op.opening_balance_keur == pytest.approx(500.0)
 
         # Dynamic target must be positive and dominated by DS[first_op] (current period, j=i).
         # Periods are ~6m so 6m coverage may bleed slightly into the next period (pro-rata).

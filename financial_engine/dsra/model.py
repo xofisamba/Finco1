@@ -7,8 +7,8 @@ Ordering (CASH_DSRA, per operating period):
     opening  = requirement_keur at first operating period (COD handshake)
                or prior closing_balance for subsequent periods
     top_up   = min(max(0, target - opening), max(0, cash_before))
-    draw     = min(opening, max(0, -cash_before))   [when cash_before < 0]
-    release  = 0  [UNRESOLVED_RELEASE_POLICY]
+    release  = max(0, opening - target)
+    draw     = min(opening - release, max(0, -cash_before)) [when cash_before < 0]
     closing  = opening + top_up - draw - release
     cash_after = cash_before - top_up + draw + release
 
@@ -137,21 +137,27 @@ def run_cash_dsra_model(
             target = balance_schedule[period_pos] if balance_schedule is not None else req
 
             if not first_op_seen:
-                # COD funding handshake: opening = first-period target (funded at construction close).
-                opening = target
+                # COD funding handshake: opening is actual reserve cash funded as
+                # a Project Use. The dynamic schedule is target evidence only.
+                opening = req
                 first_op_seen = True
             else:
                 opening = prev_closing
+
+            # Source CF Operation row releases the amount by which Beginning
+            # exceeds Target. A target change cannot itself create cash: only
+            # previously funded reserve cash can be released.
+            release = max(0.0, opening - target)
+            balance_after_release = opening - release
 
             if cash_before >= 0.0:
                 top_up = min(max(0.0, target - opening), cash_before)
                 draw = 0.0
             else:
                 # Negative post-Senior cash: draw from reserve to cover shortfall.
-                draw = min(opening, -cash_before)
+                draw = min(balance_after_release, -cash_before)
                 top_up = 0.0
 
-            release = 0.0  # UNRESOLVED_RELEASE_POLICY
             closing = opening + top_up - draw - release
             cash_after = cash_before - top_up + draw + release
             shortfall = max(0.0, target - closing)
@@ -159,6 +165,7 @@ def run_cash_dsra_model(
 
             total_top_up += top_up
             total_draw += draw
+            total_release += release
             prev_closing = closing
 
             period_results.append(CashDsraPeriodResult(
@@ -230,15 +237,15 @@ def _build_diagnostics(
         diags.append("CASH_DSRA_ROLL_FORWARD_NOT_APPLICABLE_FOR_DSRF_MODE: pass-through only")
     elif mode == DebtServiceReserveSupportMode.CASH_DSRA:
         diags.append(
-            "UNRESOLVED_RELEASE_POLICY: release_keur=0 in PR-3; "
-            "no source evidence for release timing in TUHO/Oborovo/KUPI "
-            "(all have requirement_keur=0 → neutral). Retain balance."
+            "CASH_DSRA_SOURCE_PROVEN_EXCESS_RELEASE: when opening balance exceeds "
+            "target, release_keur equals "
+            "opening minus target."
         )
         if has_dynamic_schedule:
             diags.append(
                 "COD_FUNDING_HANDSHAKE: opening_balance at first operating period "
-                "= first-period dynamic target from required_balance_schedule "
-                "(funded as Project Use at construction close)"
+                f"= {req} kEUR = requirement_keur funded as a Project Use; "
+                "required_balance_schedule supplies target evidence only"
             )
         else:
             diags.append(
@@ -250,7 +257,7 @@ def _build_diagnostics(
             diags.append(
                 "CASH_DSRA_TARGET_AUTHORITY: FORWARD_DEBT_SERVICE_MONTHS dynamic schedule "
                 "(required_balance_schedule provided via DsraTargetPolicy). "
-                "COD opening = first-operating-period dynamic target."
+                "The schedule does not fund or overwrite COD opening cash."
             )
         else:
             diags.append(

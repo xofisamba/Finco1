@@ -24,8 +24,9 @@ class CashDsraInput:
                     No draw engine added here.
 
     requirement_keur:
-        Scalar fallback target used when required_balance_schedule is None.
-        Also the COD funding amount for FIXED_AMOUNT policy.
+        Actual initial/COD reserve cash funded as a Project Use. For FIXED_AMOUNT
+        it is also the static operating target. For FORWARD_DEBT_SERVICE_MONTHS
+        it remains opening cash while required_balance_schedule supplies targets.
         Source authority: FinancingParams.debt_service_reserve_requirement_keur.
         NONE mode: must be 0.0 — raises if > 0.
 
@@ -56,9 +57,9 @@ class CashDsraInput:
     #     Orchestrator must build required_balance_schedule before calling run_cash_dsra_model.
     target_policy: DsraTargetPolicy = field(default=DsraTargetPolicy.FIXED_AMOUNT)
 
-    # Number of months of forward Senior DS to cover.
+    # Number of Operation months of forward Senior DS to cover.
     # Only consumed when target_policy == FORWARD_DEBT_SERVICE_MONTHS.
-    # Source: FinancingParams.dsra_months (default 6).
+    # Source: FinancingParams.dsra_months (operation-only compatibility alias).
     dsra_months: int = field(default=6)
 
     def __post_init__(self) -> None:
@@ -165,13 +166,14 @@ class CashDsraSchedules:
     PR-3 reserve authority. Exposes cash_after_dsra_keur per period as the
     reserve-adjusted downstream cash signal. DA / SHL routing is PR-4.
 
-    UNRESOLVED_RELEASE_POLICY: release_keur == 0 in PR-3.
-        Release timing is not proven from current source evidence (Oborovo,
-        TUHO, KUPI all have requirement_keur == 0 → neutral). Retain balance
-        until a typed release policy is source-authorised.
+    SOURCE_PROVEN_EXCESS_RELEASE:
+        In an operating period, reserve cash above required_balance_keur is
+        released. This mirrors the workbook CF Operation row and preserves both
+        reserve and cash conservation.
 
     COD_FUNDING_HANDSHAKE:
-        For CASH_DSRA mode: opening_balance at first operating period == requirement_keur.
+        For CASH_DSRA mode: opening_balance at first operating period == requirement_keur,
+        including FORWARD_DEBT_SERVICE_MONTHS. A dynamic target never creates cash.
         This reconciles to the construction reserve use in project_uses.py
         (reserve_account_funding_keur == debt_service_reserve_requirement_keur at close).
     """

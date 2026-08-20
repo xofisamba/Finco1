@@ -7,7 +7,7 @@ Governance:
 - No output fitting.
 - No frozen DSRA schedules.
 - Target authority: FinancingParams.debt_service_reserve_requirement_keur (static scalar).
-- Release: UNRESOLVED_RELEASE_POLICY — release_keur=0, balance retained.
+- Release: source-proven excess above the operating target is returned to cash.
 - COD handshake: opening at first operating period = requirement_keur.
 - SHL input cash: unchanged in PR-3 (cash_available_for_shl_before_reserves_keur preserved).
 - Senior debt: unchanged by DSRA (downstream of Senior DS).
@@ -249,11 +249,11 @@ class TestCashDsraDraw:
 
 
 # ---------------------------------------------------------------------------
-# 7. Release semantics — UNRESOLVED_RELEASE_POLICY
+# 7. Release semantics
 # ---------------------------------------------------------------------------
 
 class TestReleasePolicy:
-    def test_release_always_zero(self):
+    def test_no_release_when_fixed_opening_equals_target(self):
         req = 500.0
         periods = _periods((0, True), (1, False), (2, False), (3, False))
         psc = _psc((0.0, 500.0, 500.0, 500.0))
@@ -264,14 +264,14 @@ class TestReleasePolicy:
         for pr in result.period_results:
             assert pr.release_keur == 0.0
 
-    def test_unresolved_release_diagnostic(self):
+    def test_source_proven_release_diagnostic(self):
         req = 500.0
         periods = _periods((0, False),)
         psc = _psc((200.0,))
         result = run_cash_dsra_model(
             psc, CashDsraInput(mode=DebtServiceReserveSupportMode.CASH_DSRA, requirement_keur=req), periods
         )
-        assert any("UNRESOLVED_RELEASE_POLICY" in d for d in result.diagnostics)
+        assert any("CASH_DSRA_SOURCE_PROVEN_EXCESS_RELEASE" in d for d in result.diagnostics)
 
 
 # ---------------------------------------------------------------------------
