@@ -1170,11 +1170,40 @@ def _run_senior_debt_model_with_shl(inputs: SeniorDebtModelInput) -> ProjectMode
         final_tax_cfads,
         final_senior_result,
     )
-    # PR-3 CASH_DSRA roll-forward (downstream of Senior DS, upstream of DA/SHL).
+    # PR-3B CASH_DSRA roll-forward (downstream of Senior DS, upstream of DA/SHL).
+    # For FORWARD_DEBT_SERVICE_MONTHS policy, build dynamic target from final SHL-path DS.
     # Do NOT route cash_dsra output to SHL or DA in this PR — that is PR-4.
     from financial_engine.dsra.model import run_cash_dsra_model as _run_dsra
     from financial_engine.dsra.contracts import CashDsraInput as _CashDsraInput
+    from financial_engine.dsra.target import (
+        DsraTargetPolicy as _DsraTargetPolicy,
+        build_dsra_required_balance_schedule as _build_dsra_schedule,
+    )
     _shl_dsra_input = inputs.dsra if isinstance(inputs.dsra, _CashDsraInput) else None
+    if (
+        _shl_dsra_input is not None
+        and _shl_dsra_input.target_policy == _DsraTargetPolicy.FORWARD_DEBT_SERVICE_MONTHS
+    ):
+        _shl_all_indices = tuple(p.period_index for p in phase2b_result.periods)
+        _shl_all_starts = tuple(p.period_start for p in phase2b_result.periods)
+        _shl_all_ends = tuple(p.period_end for p in phase2b_result.periods)
+        _shl_all_is_constr = tuple(p.is_construction for p in phase2b_result.periods)
+        _shl_dynamic_schedule = _build_dsra_schedule(
+            period_indices=_shl_all_indices,
+            period_start_dates=_shl_all_starts,
+            period_end_dates=_shl_all_ends,
+            is_construction=_shl_all_is_constr,
+            senior_debt_service_keur=final_post_senior_cash.senior_debt_service_keur,
+            coverage_months=_shl_dsra_input.dsra_months,
+            periods_per_year=inputs.senior_debt_policy.periods_per_year,
+        )
+        _shl_dsra_input = _CashDsraInput(
+            mode=_shl_dsra_input.mode,
+            requirement_keur=_shl_dsra_input.requirement_keur,
+            required_balance_schedule=_shl_dynamic_schedule,
+            target_policy=_shl_dsra_input.target_policy,
+            dsra_months=_shl_dsra_input.dsra_months,
+        )
     _shl_cash_dsra = _run_dsra(final_post_senior_cash, _shl_dsra_input, phase2b_result.periods)
     handshake_probe_diag = ShareholderLoanDiagnostics(
         converged=False,
@@ -1608,11 +1637,38 @@ def run_senior_debt_model(inputs: SeniorDebtModelInput) -> ProjectModelResult:
         cash_available_for_shl_before_reserves_keur=tuple(_cash_avail),
     )
 
-    # Step 9b: PR-3 CASH_DSRA roll-forward (downstream of Senior DS, upstream of DA/SHL).
+    # Step 9b: PR-3B CASH_DSRA roll-forward (downstream of Senior DS, upstream of DA/SHL).
+    # For FORWARD_DEBT_SERVICE_MONTHS policy, build dynamic target schedule from the
+    # FINAL Senior DS schedule (post-solve). This preserves causal ordering:
+    #   Senior solve → final DS → build_dsra_required_balance_schedule → run_cash_dsra_model.
     # Do NOT route cash_dsra output to SHL or DA in this PR — that is PR-4.
     from financial_engine.dsra.model import run_cash_dsra_model
     from financial_engine.dsra.contracts import CashDsraInput
+    from financial_engine.dsra.target import DsraTargetPolicy, build_dsra_required_balance_schedule
     _dsra_input = inputs.dsra if isinstance(inputs.dsra, CashDsraInput) else None
+    if (
+        _dsra_input is not None
+        and _dsra_input.target_policy == DsraTargetPolicy.FORWARD_DEBT_SERVICE_MONTHS
+    ):
+        _all_starts = tuple(p.period_start for p in phase2b_result.periods)
+        _all_ends = tuple(p.period_end for p in phase2b_result.periods)
+        _all_is_constr = tuple(p.is_construction for p in phase2b_result.periods)
+        _dynamic_schedule = build_dsra_required_balance_schedule(
+            period_indices=_all_period_indices,
+            period_start_dates=_all_starts,
+            period_end_dates=_all_ends,
+            is_construction=_all_is_constr,
+            senior_debt_service_keur=post_senior_cash.senior_debt_service_keur,
+            coverage_months=_dsra_input.dsra_months,
+            periods_per_year=inputs.senior_debt_policy.periods_per_year,
+        )
+        _dsra_input = CashDsraInput(
+            mode=_dsra_input.mode,
+            requirement_keur=_dsra_input.requirement_keur,
+            required_balance_schedule=_dynamic_schedule,
+            target_policy=_dsra_input.target_policy,
+            dsra_months=_dsra_input.dsra_months,
+        )
     cash_dsra = run_cash_dsra_model(post_senior_cash, _dsra_input, phase2b_result.periods)
 
     # Step 10: Phase 2C provenance.

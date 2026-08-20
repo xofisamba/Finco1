@@ -794,7 +794,15 @@ class FinancingParams:
     amortization_type: str = "sculpted"
     fixed_ds_keur: float = 0.0
 
+    # Operation DSRA coverage months. Compatibility name retained for existing
+    # payloads; this field is not Construction reserve-funding authority.
     dsra_months: int = 6
+
+    # Explicit DSRA target policy string. Must not be inferred from dsra_months value.
+    # None (default) → FIXED_AMOUNT (static scalar, backward-compatible).
+    # "forward_debt_service_months" → FORWARD_DEBT_SERVICE_MONTHS dynamic schedule.
+    # Mapped to DsraTargetPolicy enum in financial_engine.adapters.project_inputs.
+    dsra_target_policy: str | None = None
 
     # Debt service reserve support policy — typed, not inferred from project identity.
     # Default NONE preserves all G2A fingerprints unchanged.
