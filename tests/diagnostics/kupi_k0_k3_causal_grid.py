@@ -66,6 +66,7 @@ from domain.inputs import (
     TaxParams,
     TechnicalParams,
     DebtSizingMethod,
+    SHLRepaymentMethod,
 )
 from finco_core.inputs._models import (
     DebtSizingCaseConfig,
@@ -500,7 +501,7 @@ def build_kupi_project_inputs(
         # CASH_SWEEP is source-evidenced (G3B fixture: cash_sweep).
         # K0-K3 and P0/D0 all hold CASH_SWEEP constant as the baseline.
         # R_BULLET is the dedicated bullet-method sensitivity diagnostic.
-        clean_shl_repayment_method="cash_sweep",
+        clean_shl_repayment_method=SHLRepaymentMethod.CASH_SWEEP,
         shl_maturity_period_index=_KUPI_SHL_MATURITY_PERIOD_IDX,
         shl_principal_eligibility_start_period=_KUPI_SHL_ELIGIBILITY_START,
         shl_day_count_convention="PERIOD_AXIS_ACTUAL_YEAR",
@@ -640,7 +641,10 @@ def run_r_bullet() -> ProjectFinancingResult:
         bank_balancing_cost_eur_mwh=0.0,
         use_source_workbook_tax=True,
     )
-    financing_override = replace(inputs.financing, clean_shl_repayment_method="bullet")
+    financing_override = replace(
+        inputs.financing,
+        clean_shl_repayment_method=SHLRepaymentMethod.BULLET,
+    )
     return run_project_financing_model(
         replace(inputs, financing=financing_override),
         source_id="KUPI_R_BULLET_REPAYMENT_DIAGNOSTIC",
@@ -650,7 +654,7 @@ def run_r_bullet() -> ProjectFinancingResult:
 def run_r_cash_sweep() -> ProjectFinancingResult:
     """R_CASH_SWEEP — alias for K3 (now cash_sweep is the baseline for all K-cases).
 
-    Source G3B fixture specifies clean_shl_repayment_method="cash_sweep".
+    Source G3B fixture specifies typed CASH_SWEEP repayment.
     REPAYMENT_EFFECT = Senior(K3_CASH_SWEEP) - Senior(R_BULLET).
     """
     return run_k3_combined()

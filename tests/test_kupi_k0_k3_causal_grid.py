@@ -513,7 +513,9 @@ class TestBlocker1RepaymentMethod:
     def test_k_grid_uses_cash_sweep_not_bullet(self):
         """K3a: K-grid baseline uses cash_sweep (not bullet) as per source evidence."""
         inputs = build_kupi_project_inputs()
-        assert inputs.financing.clean_shl_repayment_method == "cash_sweep", (
+        from finco_core.inputs import SHLRepaymentMethod
+
+        assert inputs.financing.clean_shl_repayment_method is SHLRepaymentMethod.CASH_SWEEP, (
             "K-grid baseline must use cash_sweep (source-evidenced from G3B fixture); "
             f"got {inputs.financing.clean_shl_repayment_method!r}"
         )

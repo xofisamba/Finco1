@@ -119,7 +119,9 @@ def test_generic_solar_and_wind_run_clean_chain_end_to_end(label, factory_name):
         SeniorRateMode.EXPLICIT_ALL_IN_SCHEDULE
     )
     assert project.financing.clean_shl_principal_keur == project.financing.shl_amount_keur
-    assert project.financing.clean_shl_repayment_method == "bullet"
+    from finco_core.inputs import SHLRepaymentMethod
+
+    assert project.financing.clean_shl_repayment_method is SHLRepaymentMethod.BULLET
     assert project.financing.shl_tenor_years == 0
     assert project.financing.shl_day_count_convention == "PERIOD_AXIS_ACTUAL_YEAR"
     assert project.financing.shl_construction_day_count_fraction == 0.0

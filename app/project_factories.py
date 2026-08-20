@@ -427,7 +427,7 @@ def create_default_oborovo() -> ProjectInputs:
         shl_idc_keur=1169.0,  # C3B3D2A: Excel construction IDC=1169.66 (14620.77×0.08×1.0); rounded here. factory shl_amount_keur=13547.2 conflicts with Excel Inputs!D325=14620.77 (KNOWN_SOURCE_CONFLICT, C3B3D2A_FACTORY_CALIBRATION_REVERSION_PROVEN)
         shl_tenor_years=20,  # Legacy Python field. Source SHL clears at 2050-06-30 (Excel DS[40]). Source repayment is incremental FCF sweep (DS[25..40]), NOT a contractual bullet. No runtime value change in D2A.
         clean_shl_principal_keur=14620.773894815633,  # C3B3D2B5.2 clean SHL authority: Excel Inputs!D325, separate from legacy baseline-calibrated shl_amount_keur.
-        clean_shl_repayment_method="partial_pay_sweep",  # Source DS rows show partial cash/PIK before DS25 and FCF sweep principal from DS25 through DS40.
+        clean_shl_repayment_method=SHLRepaymentMethod.CASH_SWEEP,  # Partial cash/PIK is the natural waterfall outcome; DS25 separately controls principal eligibility.
         shl_day_count_convention="ACT_365_FIXED",  # Source-proven inclusive ACT/365 Fixed operating SHL convention.
         shl_construction_day_count_fraction=1.0,  # Explicit source input; not backsolved from shl_idc_keur.
         shl_principal_eligibility_start_period=25,  # Source DS25 is the first principal repayment period.
@@ -859,7 +859,7 @@ def create_default_solar_project(
             tenor_years=15,
         ),
         clean_shl_principal_keur=7_750.0,  # compatibility assertion; G2A derives principal
-        clean_shl_repayment_method="bullet",
+        clean_shl_repayment_method=SHLRepaymentMethod.BULLET,
         shl_day_count_convention="PERIOD_AXIS_ACTUAL_YEAR",
         shl_construction_day_count_fraction=0.0,
     )
@@ -946,7 +946,7 @@ def create_default_wind_project(
             tenor_years=15,
         ),
         clean_shl_principal_keur=10_250.0,  # compatibility assertion; G2A derives principal
-        clean_shl_repayment_method="bullet",
+        clean_shl_repayment_method=SHLRepaymentMethod.BULLET,
         shl_day_count_convention="PERIOD_AXIS_ACTUAL_YEAR",
         shl_construction_day_count_fraction=0.0,
     )
