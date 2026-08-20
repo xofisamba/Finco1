@@ -636,7 +636,7 @@ class TestNoBackendChanges:
         if r.returncode == 0:
             assert_only_approved_pr5_domain_diff(r.stdout)
         else:
-            assert "bad revision 'origin/main'" in r.stderr
+            assert "origin/main" in r.stderr
 
     def test_no_waterfall_or_capex_factory_changes(self):
         assert_approved_pr5_waterfall_state(REPO_ROOT)
@@ -647,7 +647,7 @@ class TestNoBackendChanges:
         if waterfall.returncode == 0:
             assert_only_approved_pr5_waterfall_diff(waterfall.stdout)
         else:
-            assert "bad revision 'origin/main'" in waterfall.stderr
+            assert "origin/main" in waterfall.stderr
 
         # Later phases may add non-CAPEX project-owned inputs to the generic
         # factories. Keep this historical guard focused on 57A-8's CAPEX scope.

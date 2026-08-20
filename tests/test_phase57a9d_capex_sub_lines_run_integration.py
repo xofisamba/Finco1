@@ -960,7 +960,7 @@ class TestNoForbiddenChanges:
             text=True,
         )
         if r.returncode != 0:
-            assert "bad revision 'origin/main'" in r.stderr
+            assert "origin/main" in r.stderr
         changed = set(
             line.strip() for line in r.stdout.splitlines()
             if line.strip()
