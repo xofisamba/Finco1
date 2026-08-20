@@ -7,8 +7,8 @@ extracted fixture Inputs!D223 (senior_lockup_dscr = 1.10).
 SOURCE-PROVEN CORE WATERFALL (Oborovo + TUHO workbooks):
 
   1. signed_post_senior (R84) — pre-reserve, pre-gate
-  2. CF108 Distribution Account roll-forward:
-       da_inflow[t] = signed_post_senior[t]  (plus DSRF fee deduction below)
+  2. Canonical PR-3B reserve roll-forward, then CF108 Distribution Account:
+       da_inflow[t] = cash_after_dsra[t]  (plus DSRF fee deduction below)
        da_available[t] = da_inflow[t] + da_closing[t-1]
   3. CF109 five-component gate → fcf_for_distribution (da_release)
        LOCKED: da_release = 0, da_closing accumulates
@@ -88,6 +88,7 @@ from financial_engine.financing.contracts import (
 )
 from financial_engine.financing.project import run_project_financing_model
 from financial_engine.financing.dsrf import compute_dsrf_fee_schedule
+from financial_engine.dsra.contracts import CashDsraPeriodResult
 from financial_engine.results import ProjectModelResult
 from financial_engine.shl.production import compute_shareholder_loan_schedules
 from financial_engine.shareholder_waterfall.contracts import (
@@ -102,7 +103,11 @@ from financial_engine.sponsor_returns.model import compute_gated_sponsor_return_
 _G2C_DA_STATUS_CAUSAL = "G2C_DISTRIBUTION_ACCOUNT_CAUSAL_CF108_CF109_CF110_SOURCE_PROVEN"
 _G2C_DEDUCTIBLE_FEEDBACK_STATUS = "G2C_DEDUCTIBLE_SHL_COVENANT_FEEDBACK_NOT_YET_CLOSED"
 _DSRF_NO_DRAW_STATUS = "DSRF_AVAILABLE_SUPPORT_ONLY_NO_DRAW_ENGINE"
-_G2C_RESERVE_GATE_STATUS = "G2C_RESERVE_GATE_NOT_CAUSALLY_CLOSED"
+_G2C_RESERVE_GATE_STATUS = (
+    "G2C_SENIOR_CASH_DSRA_CAUSALLY_CLOSED_"
+    "J_DSRA_AND_DSRF_DRAW_NOT_IMPLEMENTED"
+)
+_FLOAT_TOLERANCE = 1e-9
 
 
 def _evaluate_reserve_support_gate(
@@ -110,26 +115,23 @@ def _evaluate_reserve_support_gate(
     requirement_keur: float,
     dsrf_commitment_keur: float,
     is_construction: bool,
+    target_met: bool = True,
 ) -> ReserveSupportGateStatus:
     """Evaluate reserve support gate for one period — informational only.
 
     NONE      → NOT_APPLICABLE
-    CASH_DSRA → PASS_NEUTRAL_SOURCE_PROVEN if req=0, else PASS
+    CASH_DSRA → PASS_NEUTRAL_SOURCE_PROVEN if req=0, else PASS/FAIL_REQUIREMENT_NOT_MET
     DSRF      → DSRF_AVAILABLE_SUPPORT_ONLY_NO_DRAW_ENGINE
 
     IMPORTANT: This status is DESCRIPTIVE / DIAGNOSTIC only.
     It does NOT independently alter cash flow or block distributions.
+    The causal gate block comes from comp_d in CF109 (DA inflow calculation).
 
-    For DSRF: the commitment fee reduces da_inflow before the CF109 gate;
-    if that causes da_available < 0 the existing CF109 component C may lock
-    naturally. That lock comes from the source-proven CF109 formula, not from
-    this reserve support status.
-
-    G2C_RESERVE_GATE_NOT_CAUSALLY_CLOSED sub-causes (retained):
-      1. CASH_DSRA: balance = target (no draw/replenishment engine).
-      2. J-DSRA: component E always False (not modelled).
-      3. period_index <= senior_last_period_index is a proxy for G4 <= B11
-         (formal row-4 mapping evidence not yet committed).
+    Remaining limitations:
+      1. J-DSRA: component E always False (not modelled).
+      2. DSRF has fee treatment but no draw engine.
+      3. period_index <= senior_last_period_index remains the documented proxy
+         for the source G4 <= B11 maturity condition.
     """
     from finco_core.inputs import DebtServiceReserveSupportMode
     if is_construction:
@@ -141,7 +143,7 @@ def _evaluate_reserve_support_gate(
     # CASH_DSRA
     if requirement_keur <= 0.0:
         return ReserveSupportGateStatus.PASS_NEUTRAL_SOURCE_PROVEN
-    return ReserveSupportGateStatus.PASS
+    return ReserveSupportGateStatus.PASS if target_met else ReserveSupportGateStatus.FAIL_REQUIREMENT_NOT_MET
 
 
 def _add_months(d: date, months: int) -> date:
@@ -155,6 +157,55 @@ def _add_months(d: date, months: int) -> date:
 
 def _construction_period_date(financial_close: date, period_index: int) -> date:
     return _add_months(financial_close, period_index - 1)
+
+
+def _validated_dsra_periods_by_index(
+    model_result: ProjectModelResult,
+    dsra_mode: DebtServiceReserveSupportMode,
+) -> dict[int, CashDsraPeriodResult]:
+    """Index canonical PR-3B periods and fail closed on ambiguous alignment."""
+    schedules = model_result.cash_dsra
+    if schedules is None:
+        if dsra_mode == DebtServiceReserveSupportMode.CASH_DSRA:
+            raise ValueError(
+                "G2C_CASH_DSRA_RESULT_REQUIRED: dsra_support_mode=CASH_DSRA but "
+                "model_result.cash_dsra is None. Run PR-3B DSRA before G2C."
+            )
+        return {}
+
+    expected = {period.period_index: period.is_construction for period in model_result.periods}
+    indexed: dict[int, CashDsraPeriodResult] = {}
+    for period_result in schedules.period_results:
+        idx = period_result.period_index
+        if idx in indexed:
+            raise ValueError(
+                f"G2C_CASH_DSRA_DUPLICATE_PERIOD_INDEX: period {idx} appears more than once."
+            )
+        indexed[idx] = period_result
+
+    extras = sorted(set(indexed) - set(expected))
+    if extras:
+        raise ValueError(
+            "G2C_CASH_DSRA_UNEXPECTED_PERIOD_RESULT: canonical DSRA contains "
+            f"periods not present in the downstream model: {extras}."
+        )
+
+    if dsra_mode == DebtServiceReserveSupportMode.CASH_DSRA:
+        missing = sorted(set(expected) - set(indexed))
+        if missing:
+            raise ValueError(
+                "G2C_CASH_DSRA_PERIOD_RESULT_REQUIRED: active CASH_DSRA is missing "
+                f"canonical period results: {missing}."
+            )
+
+    for idx, period_result in indexed.items():
+        if period_result.is_construction != expected[idx]:
+            raise ValueError(
+                "G2C_CASH_DSRA_PERIOD_CLASSIFICATION_MISMATCH: "
+                f"period {idx} model is_construction={expected[idx]} but canonical "
+                f"DSRA is_construction={period_result.is_construction}."
+            )
+    return indexed
 
 
 def run_project_shareholder_waterfall_model(
@@ -270,30 +321,46 @@ def run_project_shareholder_waterfall_model(
             )
             dsrf_fee_by_idx = dict(zip(dsrf_schedule.period_indices, dsrf_schedule.dsrf_commitment_fee_keur))
 
-    # ── Senior DSRA causal roll-forward ──────────────────────────────────────
-    # MANUAL_WORKBOOK_SOURCE_EVIDENCE:
-    #   CF86: Senior DSRA target (Oborovo: 0 — no DSRA required)
-    #   CF92: Senior DSRA ending balance
-    # For CASH_DSRA: target = reserve_requirement_keur, funded at construction.
-    # Oborovo: NONE mode → target=0, all balances=0.
-    # Gate component D: dsra_ending < dsra_target (False when both=0).
-    dsra_target_keur = reserve_requirement_keur if dsra_mode == DebtServiceReserveSupportMode.CASH_DSRA else 0.0
-    # CASH_DSRA: assume fully funded from construction (no draw engine modeled).
-    # Opening of first operating period = target. Closing = opening (static, no draws).
-    dsra_opening: float = dsra_target_keur  # first period
+    # ── PR-3 CASH_DSRA roll-forward lookup ───────────────────────────────────
+    # CASH_DSRA: consume model_result.cash_dsra as the one clean reserve authority.
+    # NONE/DSRF: model_result.cash_dsra is a neutral pass-through (cash_after_dsra == signed_post_senior).
+    # Build per-period lookup maps from the canonical PR-3B result. Active
+    # CASH_DSRA alignment is validated before any financial calculation.
+    dsra_periods_by_idx = _validated_dsra_periods_by_index(model_result, dsra_mode)
     dsra_opening_by_idx: dict[int, float] = {}
     dsra_closing_by_idx: dict[int, float] = {}
-    prev_dsra_closing: float = dsra_target_keur
-    for period in model_result.periods:
-        if not period.is_operation:
-            continue
-        idx = period.period_index
-        _opening = prev_dsra_closing
-        # No draw engine: DSRA balance stays at target (or 0 for NONE/DSRF)
-        _closing = dsra_target_keur
-        dsra_opening_by_idx[idx] = _opening
-        dsra_closing_by_idx[idx] = _closing
-        prev_dsra_closing = _closing
+    dsra_required_by_idx: dict[int, float] = {}
+    cash_after_dsra_by_idx: dict[int, float] = {}
+    dsra_top_up_by_idx: dict[int, float] = {}
+    dsra_draw_by_idx: dict[int, float] = {}
+    dsra_release_by_idx: dict[int, float] = {}
+    dsra_target_met_by_idx: dict[int, bool] = {}
+
+    if dsra_periods_by_idx:
+        for pr in dsra_periods_by_idx.values():
+            i = pr.period_index
+            dsra_opening_by_idx[i] = pr.opening_balance_keur
+            dsra_closing_by_idx[i] = pr.closing_balance_keur
+            dsra_required_by_idx[i] = pr.required_balance_keur
+            cash_after_dsra_by_idx[i] = pr.cash_after_dsra_keur
+            dsra_top_up_by_idx[i] = pr.top_up_keur
+            dsra_draw_by_idx[i] = pr.draw_to_cover_shortfall_keur
+            dsra_release_by_idx[i] = pr.release_keur
+            dsra_target_met_by_idx[i] = pr.target_met
+    else:
+        # NONE or DSRF may omit PR-3B because both are neutral reserve modes.
+        for period in model_result.periods:
+            if not period.is_operation:
+                continue
+            i = period.period_index
+            dsra_opening_by_idx[i] = 0.0
+            dsra_closing_by_idx[i] = 0.0
+            dsra_required_by_idx[i] = 0.0
+            dsra_top_up_by_idx[i] = 0.0
+            dsra_draw_by_idx[i] = 0.0
+            dsra_release_by_idx[i] = 0.0
+            dsra_target_met_by_idx[i] = True
+            # cash_after_dsra_by_idx filled during the gate loop below for NONE/DSRF
 
     # J-DSRA: NOT_APPLICABLE for no-junior-debt projects.
     # Gate component E = False (both ending and target = 0).
@@ -301,7 +368,8 @@ def run_project_shareholder_waterfall_model(
     j_dsra_closing_keur = 0.0
 
     # ── Phase 1: DA roll-forward + CF109 5-component gate ────────────────────
-    # CF108: da_available[t] = signed_post_senior[t] + da_closing[t-1]
+    # CF108: da_available[t] = reserve_adjusted_cash[t] - dsrf_fee[t]
+    #                           + da_closing[t-1]
     # CF109: IF(AND(OR(A,B,C,D,E), within_senior_maturity), 0, da_available)
     # CF110: da_closing[t] = da_available[t] - release[t]
     #
@@ -327,8 +395,21 @@ def run_project_shareholder_waterfall_model(
             )
         signed_post_senior = signed_post_senior_by_idx[idx]
         dsrf_fee = dsrf_fee_by_idx.get(idx, 0.0)
-        # Inflow to DA = post-senior cash net of DSRF fee
-        da_inflow = signed_post_senior - dsrf_fee
+
+        # PR-4: DA inflow sourced from canonical PR-3B reserve-adjusted cash.
+        if idx in cash_after_dsra_by_idx:
+            reserve_adjusted_cash = cash_after_dsra_by_idx[idx]
+        elif dsra_mode == DebtServiceReserveSupportMode.CASH_DSRA:
+            # Defensive assertion after whole-schedule validation: never substitute
+            # pre-reserve cash for an active reserve period.
+            raise ValueError(
+                "G2C_CASH_DSRA_PERIOD_RESULT_REQUIRED: active CASH_DSRA has no "
+                f"canonical cash_after_dsra for operating period {idx}."
+            )
+        else:
+            reserve_adjusted_cash = signed_post_senior
+            cash_after_dsra_by_idx[idx] = reserve_adjusted_cash
+        da_inflow = reserve_adjusted_cash - dsrf_fee
 
         # CF108: DA available = inflow + prior closing
         da_available = da_inflow + da_closing_prev
@@ -339,8 +420,14 @@ def run_project_shareholder_waterfall_model(
         comp_a = (dscr_val is not None and has_senior_ds and dscr_val < distribution_lockup_dscr)
         comp_b = False  # operating period, not construction
         comp_c = da_available < 0.0
-        dsra_ending = dsra_closing_by_idx.get(idx, 0.0)
-        comp_d = dsra_ending < dsra_target_keur  # False when both=0 (Oborovo)
+        # PR-4: component D uses actual PR-3 closing vs required (not static target).
+        if dsra_mode == DebtServiceReserveSupportMode.CASH_DSRA:
+            dsra_closing_keur = dsra_closing_by_idx[idx]
+            dsra_required_keur = dsra_required_by_idx[idx]
+        else:
+            dsra_closing_keur = dsra_closing_by_idx.get(idx, 0.0)
+            dsra_required_keur = dsra_required_by_idx.get(idx, 0.0)
+        comp_d = dsra_closing_keur < dsra_required_keur - _FLOAT_TOLERANCE
         comp_e = j_dsra_closing_keur < j_dsra_target_keur  # False always (no J-DSRA)
 
         # within_senior_maturity: gate active only if we're within senior debt term
@@ -378,12 +465,12 @@ def run_project_shareholder_waterfall_model(
         # When gate open and da_available < 0: release = 0, closing = available (negative shortfall)
         # When gate locked: release = 0, closing = da_available (accumulated in DA)
         da_closing = da_available - da_release
-        fcf_for_distribution = da_release  # = max(0, da_available) when open, 0 when locked
+        fcf_for_distribution = da_release  # signed CF109 output when open; 0 when locked
         # covenant_locked: per-period legacy view (positive locked cash this period)
         covenant_locked = max(0.0, da_available) if gate_locked else 0.0
         cash_shortfall = max(0.0, -(signed_post_senior - dsrf_fee))
 
-        gate_info_by_idx[idx] = (gate_status, fcf_for_distribution, covenant_locked, dsrf_fee, signed_post_senior, cash_shortfall)
+        gate_info_by_idx[idx] = (gate_status, fcf_for_distribution, covenant_locked, dsrf_fee, signed_post_senior, cash_shortfall, reserve_adjusted_cash)
         da_info_by_idx[idx] = (
             da_closing_prev,   # opening
             da_inflow,         # inflow (net of DSRF fee)
@@ -475,10 +562,19 @@ def run_project_shareholder_waterfall_model(
             base_dscr=None,
             distribution_lockup_dscr=distribution_lockup_dscr,
             distribution_gate_status=DistributionGateStatus.CONSTRUCTION,
-            debt_service_reserve_requirement_keur=reserve_requirement_keur,
+            debt_service_reserve_requirement_keur=0.0,
+            initial_funded_dsra_keur=(
+                reserve_requirement_keur
+                if dsra_mode == DebtServiceReserveSupportMode.CASH_DSRA
+                else 0.0
+            ),
             reserve_support_gate_status=ReserveSupportGateStatus.CONSTRUCTION,
             signed_post_senior_keur=0.0,
             dsrf_commitment_fee_keur=0.0,
+            reserve_adjusted_cash_keur=0.0,
+            dsra_top_up_keur=0.0,
+            dsra_draw_keur=0.0,
+            dsra_release_keur=0.0,
             fcf_for_distribution_keur=0.0,
             covenant_locked_keur=0.0,
             # DA fields: zero during construction
@@ -493,8 +589,9 @@ def run_project_shareholder_waterfall_model(
             within_senior_maturity=True,
             distribution_account_release_keur=0.0,
             distribution_account_closing_keur=0.0,
+            shl_cash_input_keur=0.0,
             # DSRA: zero during construction
-            senior_dsra_target_keur=dsra_target_keur,
+            senior_dsra_target_keur=0.0,
             senior_dsra_opening_keur=0.0,
             senior_dsra_closing_keur=0.0,
             # BULLET: not applicable during construction
@@ -532,7 +629,7 @@ def run_project_shareholder_waterfall_model(
         idx = period.period_index
         cf_date = period_date_by_idx[idx]
 
-        gate_status, fcf_for_distribution, covenant_locked, dsrf_fee, signed_post_senior, cash_shortfall = gate_info_by_idx[idx]
+        gate_status, fcf_for_distribution, covenant_locked, dsrf_fee, signed_post_senior, cash_shortfall, reserve_adjusted_cash = gate_info_by_idx[idx]
 
         (
             da_opening, da_inflow, da_available, da_release, da_closing,
@@ -590,8 +687,22 @@ def run_project_shareholder_waterfall_model(
         pure_equity_net = distribution
         total_sponsor_net = pure_equity_net + actual_shl_cash_int + actual_shl_principal
 
-        dsra_op = dsra_opening_by_idx.get(idx, 0.0)
-        dsra_cl = dsra_closing_by_idx.get(idx, 0.0)
+        if dsra_mode == DebtServiceReserveSupportMode.CASH_DSRA:
+            dsra_op = dsra_opening_by_idx[idx]
+            dsra_cl = dsra_closing_by_idx[idx]
+            dsra_req = dsra_required_by_idx[idx]
+            dsra_top_up = dsra_top_up_by_idx[idx]
+            dsra_draw = dsra_draw_by_idx[idx]
+            dsra_rel = dsra_release_by_idx[idx]
+            target_met = dsra_target_met_by_idx[idx]
+        else:
+            dsra_op = dsra_opening_by_idx.get(idx, 0.0)
+            dsra_cl = dsra_closing_by_idx.get(idx, 0.0)
+            dsra_req = dsra_required_by_idx.get(idx, 0.0)
+            dsra_top_up = dsra_top_up_by_idx.get(idx, 0.0)
+            dsra_draw = dsra_draw_by_idx.get(idx, 0.0)
+            dsra_rel = dsra_release_by_idx.get(idx, 0.0)
+            target_met = dsra_target_met_by_idx.get(idx, True)
 
         waterfall_periods.append(CovenantGatedWaterfallPeriod(
             period_index=idx,
@@ -600,12 +711,22 @@ def run_project_shareholder_waterfall_model(
             base_dscr=base_dscr_by_idx.get(idx),
             distribution_lockup_dscr=distribution_lockup_dscr,
             distribution_gate_status=gate_status,
-            debt_service_reserve_requirement_keur=reserve_requirement_keur,
+            debt_service_reserve_requirement_keur=dsra_req,
+            initial_funded_dsra_keur=(
+                reserve_requirement_keur
+                if dsra_mode == DebtServiceReserveSupportMode.CASH_DSRA
+                else 0.0
+            ),
             reserve_support_gate_status=_evaluate_reserve_support_gate(
-                dsra_mode, reserve_requirement_keur, dsrf_commitment_keur, is_construction=False,
+                dsra_mode, dsra_req, dsrf_commitment_keur,
+                is_construction=False, target_met=target_met,
             ),
             signed_post_senior_keur=signed_post_senior,
             dsrf_commitment_fee_keur=dsrf_fee,
+            reserve_adjusted_cash_keur=reserve_adjusted_cash,
+            dsra_top_up_keur=dsra_top_up,
+            dsra_draw_keur=dsra_draw,
+            dsra_release_keur=dsra_rel,
             fcf_for_distribution_keur=fcf_for_distribution,
             covenant_locked_keur=covenant_locked,
             distribution_account_opening_keur=da_opening,
@@ -619,7 +740,8 @@ def run_project_shareholder_waterfall_model(
             within_senior_maturity=within_sm,
             distribution_account_release_keur=da_release,
             distribution_account_closing_keur=da_closing,
-            senior_dsra_target_keur=dsra_target_keur,
+            shl_cash_input_keur=max(0.0, da_release),
+            senior_dsra_target_keur=dsra_req,
             senior_dsra_opening_keur=dsra_op,
             senior_dsra_closing_keur=dsra_cl,
             shl_bullet_unpaid_at_maturity=shl_bullet_flag,
