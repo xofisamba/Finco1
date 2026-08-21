@@ -80,11 +80,21 @@ def from_project_inputs(
     tech = inputs.technical
     rev = inputs.revenue
 
-    yield_scenario = (
-        YieldScenario.P90_10Y
-        if tech.yield_scenario == "P90-10y"
-        else YieldScenario.P50
-    )
+    # PR-7: fail-closed yield scenario mapping. Every supported canonical
+    # scenario must map explicitly; unknown strings (including P99-1y, which the
+    # clean engine does not model) raise instead of silently becoming P50.
+    canonical_yield = str(getattr(tech, "yield_scenario", "")).strip()
+    if canonical_yield == "P_50":
+        yield_scenario = YieldScenario.P50
+    elif canonical_yield == "P90-10y":
+        yield_scenario = YieldScenario.P90_10Y
+    else:
+        raise ValueError(
+            "YIELD_SCENARIO_EXPLICIT_MAPPING_REQUIRED: "
+            f"technical.yield_scenario={tech.yield_scenario!r} has no explicit "
+            "clean-engine mapping. Supported values: 'P_50', 'P90-10y'. "
+            "P99-1y is not modelled by the clean engine and must fail closed."
+        )
 
     calendar = CalendarInput(
         financial_close=info.financial_close,

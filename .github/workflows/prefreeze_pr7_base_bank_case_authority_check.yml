@@ -1,0 +1,119 @@
+name: Pre-freeze PR-7 Base vs Bank Case Authority Check
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  base-bank-case-authority:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact PR head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Assert exact-head checkout
+        run: |
+          EXPECTED="${{ github.event.pull_request.head.sha || github.sha }}"
+          ACTUAL="$(git rev-parse HEAD)"
+          test "$ACTUAL" = "$EXPECTED" || {
+            echo "PR7_HEAD_SHA_MISMATCH expected=$EXPECTED actual=$ACTUAL"
+            exit 1
+          }
+
+      - name: Assert ancestry from verified PR-6 main
+        run: |
+          BASE="0a066b3cdda1ce793346cc6f941f2628e8476cbf"
+          git merge-base --is-ancestor "$BASE" HEAD || {
+            echo "PR7_BASE_ANCESTRY_MISSING: $BASE is not an ancestor of HEAD"
+            exit 1
+          }
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          pip install --no-cache-dir -c constraints.txt -e .
+          pip install --no-cache-dir -c constraints.txt pytest
+
+      - name: Whitespace and diff hygiene
+        run: |
+          git diff --check
+          git status --short
+
+      - name: Production-governance scan of changed Python files
+        shell: bash
+        run: |
+          mapfile -t changed_python < <(
+            git diff --name-only origin/main...HEAD -- app domain financial_engine finco_core \
+              | grep -E '\.py$' || true
+          )
+          if ((${#changed_python[@]})); then
+            ! grep -nHEi \
+              'approved_delta|expected_delta|balancing[_ ]plug|terminal[_ -]top[- ]up|forced principal|target fitting|post-engine mutation|bank_balancing_cost' \
+              "${changed_python[@]}"
+          fi
+
+      - name: PR-7 focused authority tests
+        run: |
+          python -m pytest -q \
+            tests/test_prefreeze_pr7_typed_base_bank_case_authority.py
+
+      - name: PR-7 serialization + debt sizing case production contract
+        run: |
+          python -m pytest -q \
+            tests/test_stage_c3b3d2b3_debt_sizing_case_production.py \
+            tests/test_mvp_g0_generic_clean_engine_enablement.py
+
+      - name: Generic Solar/Wind + Oborovo + TUHO + KUPI
+        run: |
+          python -m pytest -q \
+            tests/test_stage_c3b3a_clean_senior_debt_source_contract.py \
+            tests/test_stage_c3b3d2b7_bank_case_senior_parity.py \
+            tests/test_stage_c3b3d2b8_base_senior_shl_parity_closure.py \
+            tests/test_stage_c3b1_oborovo_tax_source_truth.py \
+            tests/test_kupi_k0_k3_causal_grid.py
+
+      - name: B5-B8 senior/SHL integration regressions
+        run: |
+          python -m pytest -q \
+            tests/test_stage_c3b3d2b5_shl_fixed_point_integration.py \
+            tests/test_stage_c3b3d2b6_base_post_senior_cash_parity.py
+
+      - name: PR-3/PR-4 cash authority regressions
+        run: |
+          python -m pytest -q \
+            tests/test_pr3_cash_dsra_module.py \
+            tests/test_pr3b_dynamic_dsra_target.py \
+            tests/test_pr4_reserve_gated_sponsor_shl.py
+
+      - name: PR-5/PR-6 regressions
+        run: |
+          python -m pytest -q \
+            tests/test_prefreeze_pr5_canonical_ebitda_authority.py \
+            tests/test_prefreeze_pr6_typed_shl_repayment_policy.py
+
+      - name: G0-G2C authority regressions
+        run: |
+          python -m pytest -q \
+            tests/test_mvp_g1_workflow_authority.py \
+            tests/test_mvp_g2a_financing_stack.py \
+            tests/test_mvp_g2b_sponsor_returns.py \
+            tests/test_mvp_g2c_shareholder_waterfall.py
+
+      - name: C3B3A clean senior debt contract and Phase 2C orchestrator
+        run: |
+          python -m pytest -q \
+            tests/test_phase2c_senior_debt.py
+
+      - name: PR-7 baseline lock (five calibration projects)
+        run: |
+          python -m tests.diagnostics.pr7_base_bank_case_baseline_lock > /tmp/pr7_baseline_ci.json
+          python -c "import json; data = json.load(open('/tmp/pr7_baseline_ci.json')); expected = {'Generic Solar', 'Generic Wind', 'Oborovo', 'TUHO', 'KUPI P0'}; missing = expected - set(data); assert not missing, f'PR7 baseline lock missing projects: {missing}'; [print(n, blob['senior']['debt_size_keur']) for n, blob in data.items()]; assert all(blob['base']['cfads_keur']['n'] > 0 and blob['bank']['cfads_keur']['n'] > 0 and blob['senior']['debt_size_keur'] > 0 for blob in data.values()); print('PR7_BASELINE_LOCK_STRUCTURE_OK')"

@@ -1518,11 +1518,9 @@ def run_senior_debt_model(inputs: SeniorDebtModelInput) -> ProjectModelResult:
     # Step 7: Assemble DebtSizingSchedules from explicit final bank recomputation.
     # FINAL_BANK_CFADS_RECOMPUTED_FROM_FINAL_SENIOR_INTEREST:
     # Post-solver explicit recompute uses final senior interest from sd_result;
-    # this is the authoritative bank CFADS source.
-    import math as _math
-    _sd_service_by_idx: dict[int, float] = dict(
-        zip(sd_result.period_indices, sd_result.senior_debt_service_keur)
-    )
+    # this is the authoritative bank CFADS source. PR-7: single shared assembly
+    # authority (same helper as the SHL fixed-point path) — one implementation,
+    # no duplicated bank DSCR arithmetic.
     _bank_final_tax_input = _merge_financing_tax_input(
         base_tax_input,
         final_senior_interest,
@@ -1532,49 +1530,20 @@ def run_senior_debt_model(inputs: SeniorDebtModelInput) -> ProjectModelResult:
     final_bank_cfads_results = calculate_canonical_cfads(
         bank_phase2a_result.periods, final_bank_tax_result.period_results
     )
-    _final_bank_cash_tax_by_idx = {
-        pr.period_index: pr.cash_tax_keur for pr in final_bank_tax_result.period_results
-    }
-    _final_bank_cfads_by_idx = {
-        cr.period_index: cr.cfads_keur for cr in final_bank_cfads_results
-    }
-    _ops_indices = bank_phase2a_result.operating_schedules.period_indices
-    _bank_sizing_dscr: tuple[float | None, ...] = tuple(
-        (
-            _final_bank_cfads_by_idx.get(i, 0.0) / _sd_service_by_idx[i]
-            if i in _sd_service_by_idx
-            and _sd_service_by_idx[i] > 0.0
-            and _math.isfinite(_final_bank_cfads_by_idx.get(i, 0.0))
-            else None
-        )
-        for i in _ops_indices
-    )
-    # SOLVER_BANK_DSCR_HANDSHAKE_PROOF (C3B3D2B4.2):
-    # Capture solver-internal Bank DSCR at convergence (sd_result.senior_dscr = bank_cfads/senior_ds
-    # from the solver's fixed-point iterations).  Mapped to _ops_indices; None for periods outside
-    # the solver's period_indices (e.g. construction periods not in the debt schedule).
-    _solver_dscr_by_idx: dict[int, float | None] = dict(
-        zip(sd_result.period_indices, sd_result.senior_dscr)
-    )
-    _solver_bank_dscr: tuple[float | None, ...] = tuple(
-        _solver_dscr_by_idx.get(i, None) for i in _ops_indices
-    )
-    debt_sizing_schedules: DebtSizingSchedules | None = DebtSizingSchedules(
-        period_indices=_ops_indices,
-        bank_production_mwh=bank_phase2a_result.operating_schedules.production_mwh,
-        bank_revenue_keur=bank_phase2a_result.operating_schedules.revenue_keur,
-        bank_opex_keur=bank_phase2a_result.operating_schedules.opex_keur,
-        bank_ebitda_keur=bank_phase2a_result.operating_schedules.ebitda_keur,
-        bank_cash_tax_keur=tuple(_final_bank_cash_tax_by_idx.get(i, 0.0) for i in _ops_indices),
-        bank_cfads_keur=tuple(cr.cfads_keur for cr in final_bank_cfads_results),
-        bank_sizing_dscr=_bank_sizing_dscr,
-        solver_bank_dscr=_solver_bank_dscr,
+    debt_sizing_schedules: DebtSizingSchedules | None = _build_debt_sizing_schedules_from_bank(
+        bank_phase2a_result=bank_phase2a_result,
+        final_bank_tax_result=final_bank_tax_result,
+        final_bank_cfads_results=final_bank_cfads_results,
+        senior_debt_result=sd_result,
     )
 
     # Step 8: Assemble result-layer SeniorDebtSchedules.
     # base_dscr = Base CFADS / senior DS per period (Base actual DSCR, NOT Bank sizing DSCR).
     # final_tax_cfads.cfads_keur is the authoritative Base CFADS (recomputed with final interest).
     import math as _math
+    _sd_service_by_idx: dict[int, float] = dict(
+        zip(sd_result.period_indices, sd_result.senior_debt_service_keur)
+    )
     _base_cfads_by_idx: dict[int, float] = dict(
         zip(final_tax_cfads.period_indices, final_tax_cfads.cfads_keur)
     )

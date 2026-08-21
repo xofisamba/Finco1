@@ -640,6 +640,79 @@ class RevenueParams:
         return self.market_price_at_year(operating_year)
 
 
+def validate_debt_sizing_case_merchant_price_fields(
+    *,
+    merchant_price_calendar_start_year: "int | None",
+    merchant_prices_by_calendar_year_eur_mwh: "tuple[float, ...]",
+    market_prices_curve_eur_mwh: "tuple[float, ...]",
+    context: str,
+) -> None:
+    """Single shared fail-closed validation for bank-case merchant price fields.
+
+    PR-7 authority consolidation: DebtSizingCaseConfig (canonical project input)
+    and DebtSizingCaseInput (clean runtime contract) must validate identically.
+    Both __post_init__ implementations delegate here; no duplicate validator
+    arithmetic may be reintroduced.
+    """
+    import math as _math
+
+    has_calendar = (
+        merchant_price_calendar_start_year is not None
+        or bool(merchant_prices_by_calendar_year_eur_mwh)
+    )
+    has_curve = bool(market_prices_curve_eur_mwh)
+    if has_calendar and has_curve:
+        raise ValueError(
+            f"{context}: merchant_prices_by_calendar_year_eur_mwh / "
+            "merchant_price_calendar_start_year and market_prices_curve_eur_mwh "
+            "are mutually exclusive. Supply at most one form."
+        )
+    if (
+        merchant_price_calendar_start_year is not None
+        and not merchant_prices_by_calendar_year_eur_mwh
+    ):
+        raise ValueError(
+            f"{context}: merchant_price_calendar_start_year is set but "
+            "merchant_prices_by_calendar_year_eur_mwh is empty. Both must be supplied together."
+        )
+    if (
+        merchant_prices_by_calendar_year_eur_mwh
+        and merchant_price_calendar_start_year is None
+    ):
+        raise ValueError(
+            f"{context}: merchant_prices_by_calendar_year_eur_mwh is supplied but "
+            "merchant_price_calendar_start_year is None. Both must be supplied together."
+        )
+    if merchant_price_calendar_start_year is not None:
+        if isinstance(merchant_price_calendar_start_year, bool) or not isinstance(
+            merchant_price_calendar_start_year, int
+        ):
+            raise ValueError(
+                f"{context}: merchant_price_calendar_start_year must be an integer year."
+            )
+        if merchant_price_calendar_start_year < 1:
+            raise ValueError(
+                f"{context}: merchant_price_calendar_start_year must be >= 1."
+            )
+    for field_name, values in (
+        (
+            "merchant_prices_by_calendar_year_eur_mwh",
+            merchant_prices_by_calendar_year_eur_mwh,
+        ),
+        ("market_prices_curve_eur_mwh", market_prices_curve_eur_mwh),
+    ):
+        for i, value in enumerate(values):
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, (int, float))
+                or not _math.isfinite(value)
+            ):
+                raise ValueError(
+                    f"{context}: {field_name}[{i}] must be a finite numeric value, "
+                    f"got {value!r}."
+                )
+
+
 @dataclass(frozen=True)
 class DebtSizingCaseConfig:
     """Project-owned bank/debt-sizing economic case assumptions.
@@ -658,58 +731,16 @@ class DebtSizingCaseConfig:
     source_label: str = ""
 
     def __post_init__(self) -> None:
-        has_calendar = (
-            self.merchant_price_calendar_start_year is not None
-            or bool(self.merchant_prices_by_calendar_year_eur_mwh)
+        # PR-7: single shared validator (see module-level function above) — the
+        # canonical config and the clean DebtSizingCaseInput must never drift.
+        validate_debt_sizing_case_merchant_price_fields(
+            merchant_price_calendar_start_year=self.merchant_price_calendar_start_year,
+            merchant_prices_by_calendar_year_eur_mwh=(
+                self.merchant_prices_by_calendar_year_eur_mwh
+            ),
+            market_prices_curve_eur_mwh=self.market_prices_curve_eur_mwh,
+            context="DebtSizingCaseConfig",
         )
-        has_curve = bool(self.market_prices_curve_eur_mwh)
-        if has_calendar and has_curve:
-            raise ValueError(
-                "DebtSizingCaseConfig: calendar-year merchant prices and "
-                "market_prices_curve_eur_mwh are mutually exclusive."
-            )
-        if (
-            self.merchant_price_calendar_start_year is not None
-            and not self.merchant_prices_by_calendar_year_eur_mwh
-        ):
-            raise ValueError(
-                "DebtSizingCaseConfig: merchant_price_calendar_start_year is set but "
-                "merchant_prices_by_calendar_year_eur_mwh is empty."
-            )
-        if (
-            self.merchant_prices_by_calendar_year_eur_mwh
-            and self.merchant_price_calendar_start_year is None
-        ):
-            raise ValueError(
-                "DebtSizingCaseConfig: merchant_prices_by_calendar_year_eur_mwh is "
-                "supplied but merchant_price_calendar_start_year is None."
-            )
-        if self.merchant_price_calendar_start_year is not None:
-            if isinstance(self.merchant_price_calendar_start_year, bool) or not isinstance(
-                self.merchant_price_calendar_start_year, int
-            ):
-                raise ValueError(
-                    "DebtSizingCaseConfig: merchant_price_calendar_start_year must be an integer year."
-                )
-            if self.merchant_price_calendar_start_year < 1:
-                raise ValueError(
-                    "DebtSizingCaseConfig: merchant_price_calendar_start_year must be >= 1."
-                )
-        for field_name, values in (
-            ("merchant_prices_by_calendar_year_eur_mwh", self.merchant_prices_by_calendar_year_eur_mwh),
-            ("market_prices_curve_eur_mwh", self.market_prices_curve_eur_mwh),
-        ):
-            for i, value in enumerate(values):
-                if isinstance(value, bool) or not isinstance(value, (int, float)):
-                    raise ValueError(
-                        f"DebtSizingCaseConfig: {field_name}[{i}] must be a finite numeric value, "
-                        f"got {value!r}."
-                    )
-                if value != value or value in (float("inf"), float("-inf")):
-                    raise ValueError(
-                        f"DebtSizingCaseConfig: {field_name}[{i}] must be a finite numeric value, "
-                        f"got {value!r}."
-                    )
 
 
 class SponsorFundingTimingPolicy(str, Enum):
@@ -838,6 +869,12 @@ class FinancingParams:
 
     debt_sizing_method: str = "dscr_sculpt"
     debt_sizing_mode: "DebtSizingMode | None" = None
+    # PR-7 authority classification: DEPRECATED — serialized for backward
+    # compatibility with old payloads, never consumed by any sizing engine
+    # (clean solver reads debt_sizing_mode + target_dscr/senior_sculpting_config;
+    # legacy waterfall reads dscr_schedule + frozen fixtures). Do not build new
+    # logic on these fields; target DSCR authority is target_dscr (scalar) plus
+    # SeniorSculptingConfig.target_dscr_schedule (per-period).
     target_min_dscr: float | None = None
     flat_dscr_target: float | None = None
     frozen_schedule_note: str | None = None
