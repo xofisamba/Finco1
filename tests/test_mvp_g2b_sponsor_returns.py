@@ -350,8 +350,34 @@ def test_actual_shl_cash_interest_included_in_total_sponsor():
     assert result.total_shl_cash_interest_received_keur == pytest.approx(total_cash_int, abs=1e-6)
 
 
-def test_shl_principal_actual_receipt_does_not_exceed_scheduled():
-    """Actual SHL principal received <= scheduled/contractual principal due.
+def _bullet_contractual_due(project, g2a):
+    from financial_engine.adapters.project_inputs import (
+        _build_shareholder_loan_model_input_from_project_inputs,
+        build_senior_debt_model_input_from_project_inputs,
+    )
+
+    model_result = g2a.project_model_result
+    shl = model_result.shareholder_loan
+    assert shl is not None
+    senior_last = build_senior_debt_model_input_from_project_inputs(
+        project
+    ).senior_debt_policy.maturity_period_index
+    contract = _build_shareholder_loan_model_input_from_project_inputs(
+        project,
+        model_result.periods,
+        senior_debt_maturity_period_index=senior_last,
+    )
+    assert contract is not None
+    maturity_idx = contract.maturity_period_index
+    position = shl.period_indices.index(maturity_idx)
+    contractual_due = (
+        shl.shl_opening_keur[position] + shl.shl_pik_interest_keur[position]
+    )
+    return maturity_idx, contractual_due
+
+
+def test_shl_principal_actual_receipt_does_not_exceed_contractual_due():
+    """Actual SHL principal received <= separately reported contractual due.
 
     For BULLET repayment, scheduled principal due can exceed available cash.
     Only the cash-constrained actual amount enters Total Sponsor receipts.
@@ -361,10 +387,10 @@ def test_shl_principal_actual_receipt_does_not_exceed_scheduled():
     if g2a.project_model_result.shareholder_loan is None:
         pytest.skip("No SHL")
     shl = g2a.project_model_result.shareholder_loan
-    scheduled_total = sum(max(0.0, v) for v in shl.shl_principal_keur)
+    _, contractual_due = _bullet_contractual_due(_solar_project(), g2a)
     actual_total = result.total_shl_principal_received_keur
-    assert actual_total <= scheduled_total + 1e-6, (
-        f"Actual principal received ({actual_total:.2f}) exceeds scheduled ({scheduled_total:.2f})"
+    assert actual_total <= contractual_due + 1e-6, (
+        f"Actual principal received ({actual_total:.2f}) exceeds due ({contractual_due:.2f})"
     )
     # For Solar SHL with BULLET, actual < scheduled due to cash shortfall at maturity
     assert actual_total > 0.0, "Some SHL principal must have been received"
@@ -675,8 +701,6 @@ def test_bullet_shortfall_actual_vs_scheduled_solar():
 
     This proves that unpaid contractual SHL principal does NOT enter sponsor cash receipts.
     """
-    from financial_engine.sponsor_returns.model import _allocate_actual_shl_cash_receipts
-
     project = _solar_project()
     g2a = run_project_financing_model(project)
     result = run_project_sponsor_returns_model(project)
@@ -685,31 +709,22 @@ def test_bullet_shortfall_actual_vs_scheduled_solar():
     assert shl is not None
 
     post_s = dict(zip(psc.period_indices, psc.cash_after_senior_before_reserves_keur))
-    shl_ds = dict(zip(shl.period_indices, shl.shl_debt_service_keur))
     shl_ci = dict(zip(shl.period_indices, shl.shl_cash_interest_keur))
     shl_pr = dict(zip(shl.period_indices, shl.shl_principal_keur))
+    idx, contractual_due = _bullet_contractual_due(project, g2a)
 
-    # Find the bullet period where scheduled_service > cash_available
-    bullet_periods = [
-        idx for idx in shl_ds
-        if shl_ds[idx] > max(0.0, post_s.get(idx, 0.0)) + 1e-6
-    ]
-    assert len(bullet_periods) > 0, "No bullet-shortfall period found in Solar SHL"
-
-    for idx in bullet_periods:
+    for idx in (idx,):
         signed_ps = post_s[idx]
-        sched_int = shl_ci[idx]
-        sched_prin = shl_pr[idx]
-        sched_svc = shl_ds[idx]
+        actual_int = shl_ci[idx]
+        actual_prin = shl_pr[idx]
+        contractual_service = actual_int + contractual_due
         cash_avail = max(0.0, signed_ps)
 
-        actual_int, actual_prin = _allocate_actual_shl_cash_receipts(signed_ps, sched_int, sched_prin)
-
         # Invariants
-        assert sched_svc > cash_avail + 1e-6, f"Period {idx}: not a bullet-shortfall period"
+        assert contractual_service > cash_avail + 1e-6, f"Period {idx}: not a bullet-shortfall period"
         assert actual_int + actual_prin <= cash_avail + 1e-6, f"Period {idx}: actual exceeds available"
-        assert actual_prin < sched_prin - 1e-6, (
-            f"Period {idx}: actual_principal ({actual_prin:.2f}) must be < scheduled ({sched_prin:.2f})"
+        assert actual_prin < contractual_due - 1e-6, (
+            f"Period {idx}: actual_principal ({actual_prin:.2f}) must be < due ({contractual_due:.2f})"
         )
 
         # From result cashflow
@@ -856,13 +871,13 @@ def test_capitalised_pik_actual_repayment_enters_sponsor_receipts():
     g2a = run_project_financing_model(project)
     shl = g2a.project_model_result.shareholder_loan
     assert shl is not None
-    # Scheduled/contractual principal due (may include capitalised PIK in the balance)
-    scheduled_principal = sum(max(0.0, v) for v in shl.shl_principal_keur)
-    assert scheduled_principal > 0.0
-    # Actual receipts are cash-constrained: actual <= scheduled
+    # Contractual principal due includes capitalised PIK in the balance.
+    _, contractual_due = _bullet_contractual_due(project, g2a)
+    assert contractual_due > 0.0
+    # Actual receipts are cash-constrained: actual <= contractual due.
     actual_received = result.total_shl_principal_received_keur
-    assert actual_received <= scheduled_principal + 1e-6, (
-        "Actual principal receipts must not exceed scheduled/contractual due amounts"
+    assert actual_received <= contractual_due + 1e-6, (
+        "Actual principal receipts must not exceed contractual due amounts"
     )
     assert actual_received > 0.0, "Some actual SHL principal cash must have been received"
     # SHL cash contribution is cash-principal only (not principal + PIK)
@@ -1000,13 +1015,11 @@ def test_bullet_solar_underfunded_unpaid_principal_positive():
     psc = g2a.project_model_result.post_senior_cash
     assert shl is not None
 
-    shl_pr = dict(zip(shl.period_indices, shl.shl_principal_keur))
     post_s = dict(zip(psc.period_indices, psc.cash_after_senior_before_reserves_keur))
-    maturity_idx = max(i for i, v in zip(shl.period_indices, shl.shl_principal_keur) if v > 1e-6)
+    maturity_idx, contractual_due = _bullet_contractual_due(project, g2a)
 
-    sched_prin = shl_pr[maturity_idx]
     available = max(0.0, post_s[maturity_idx])
-    assert sched_prin > available + 1e-6, "Solar maturity must be underfunded"
+    assert contractual_due > available + 1e-6, "Solar maturity must be underfunded"
     assert result.shl_bullet_unpaid_at_maturity is True
 
 
@@ -1018,7 +1031,7 @@ def test_bullet_solar_post_maturity_equity_distributions_zero():
     shl = g2a.project_model_result.shareholder_loan
     assert shl is not None
 
-    maturity_idx = max(i for i, v in zip(shl.period_indices, shl.shl_principal_keur) if v > 1e-6)
+    maturity_idx, _ = _bullet_contractual_due(project, g2a)
 
     for p in result.cashflow_periods:
         if p.is_construction or p.period_index <= maturity_idx:
@@ -1051,11 +1064,10 @@ def test_bullet_wind_underfunded_all_metrics_unpaid():
     psc = g2a.project_model_result.post_senior_cash
     assert shl is not None
 
-    shl_pr = dict(zip(shl.period_indices, shl.shl_principal_keur))
     post_s = dict(zip(psc.period_indices, psc.cash_after_senior_before_reserves_keur))
-    maturity_idx = max(i for i, v in zip(shl.period_indices, shl.shl_principal_keur) if v > 1e-6)
+    maturity_idx, contractual_due = _bullet_contractual_due(project, g2a)
 
-    assert shl_pr[maturity_idx] > max(0.0, post_s[maturity_idx]) + 1e-6, "Wind must be underfunded"
+    assert contractual_due > max(0.0, post_s[maturity_idx]) + 1e-6, "Wind must be underfunded"
     assert result.shl_bullet_unpaid_at_maturity is True
     assert result.pure_equity_xirr_status == ReturnMetricStatus.UNPAID_SHL_AT_CONTRACTUAL_MATURITY
     assert result.pure_equity_moic_status == ReturnMetricStatus.UNPAID_SHL_AT_CONTRACTUAL_MATURITY
@@ -1073,7 +1085,7 @@ def test_bullet_wind_post_maturity_equity_distributions_zero():
     shl = g2a.project_model_result.shareholder_loan
     assert shl is not None
 
-    maturity_idx = max(i for i, v in zip(shl.period_indices, shl.shl_principal_keur) if v > 1e-6)
+    maturity_idx, _ = _bullet_contractual_due(project, g2a)
 
     for p in result.cashflow_periods:
         if p.is_construction or p.period_index <= maturity_idx:
@@ -1106,7 +1118,7 @@ def test_bullet_fully_funded_post_maturity_distributions_positive():
     shl = g2a.project_model_result.shareholder_loan
     assert shl is not None
 
-    maturity_idx = max(i for i, v in zip(shl.period_indices, shl.shl_principal_keur) if v > 1e-6)
+    maturity_idx, _ = _bullet_contractual_due(project, g2a)
 
     post_maturity_dists = [
         p.legal_equity_distribution_keur
@@ -1174,7 +1186,7 @@ def test_bullet_no_post_maturity_shl_service_invented():
     shl = g2a.project_model_result.shareholder_loan
     assert shl is not None
 
-    maturity_idx = max(i for i, v in zip(shl.period_indices, shl.shl_principal_keur) if v > 1e-6)
+    maturity_idx, _ = _bullet_contractual_due(project, g2a)
 
     for p in result.cashflow_periods:
         if p.is_construction or p.period_index <= maturity_idx:

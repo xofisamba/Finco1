@@ -854,7 +854,9 @@ class FinancingParams:
     shl_tenor_years: int = 0
     shl_idc_keur: float = 0.0
     clean_shl_principal_keur: float | None = None
-    clean_shl_repayment_method: str | None = None
+    # Canonical clean-runtime repayment authority. Legacy ``shl_repayment_method``
+    # remains a quarantined string contract for the legacy waterfall only.
+    clean_shl_repayment_method: SHLRepaymentMethod | None = None
     shl_day_count_convention: str | None = None
     shl_construction_day_count_fraction: float | None = None
     # SHL construction interest method (Fix 2 — C3B3FIX2A).

@@ -446,6 +446,7 @@ def test_clean_shl_adapter_supports_explicit_generic_bullet_method():
     from dataclasses import replace
 
     from app.project_factories import create_default_solar_project
+    from finco_core.inputs import SHLRepaymentMethod
     from financial_engine.adapters.project_inputs import (
         _build_shareholder_loan_model_input_from_project_inputs,
     )
@@ -457,7 +458,7 @@ def test_clean_shl_adapter_supports_explicit_generic_bullet_method():
         financing=replace(
             project.financing,
             clean_shl_principal_keur=1000.0,
-            clean_shl_repayment_method=None,
+            clean_shl_repayment_method=SHLRepaymentMethod.BULLET,
             shl_repayment_method="bullet",
             shl_rate=0.08,
             shl_day_count_convention="ACT_365_FIXED",
@@ -480,6 +481,7 @@ def test_clean_shl_adapter_still_fails_closed_on_unknown_repayment_method():
     from dataclasses import replace
 
     from app.project_factories import create_default_solar_project
+    from finco_core.inputs import SHLRepaymentMethod
     from financial_engine.adapters.project_inputs import (
         _build_shareholder_loan_model_input_from_project_inputs,
     )
@@ -491,7 +493,7 @@ def test_clean_shl_adapter_still_fails_closed_on_unknown_repayment_method():
         financing=replace(
             project.financing,
             clean_shl_principal_keur=1000.0,
-            clean_shl_repayment_method="unknown_method",
+            clean_shl_repayment_method="unknown_method",  # type: ignore[arg-type]
             shl_maturity_period_index=10,
         ),
     )
@@ -504,6 +506,7 @@ def test_clean_shl_adapter_requires_explicit_construction_dcf_not_idc_backsolve(
     from dataclasses import replace
 
     from app.project_factories import create_default_solar_project
+    from finco_core.inputs import SHLRepaymentMethod
     from financial_engine.adapters.project_inputs import (
         _build_shareholder_loan_model_input_from_project_inputs,
     )
@@ -515,7 +518,7 @@ def test_clean_shl_adapter_requires_explicit_construction_dcf_not_idc_backsolve(
         financing=replace(
             project.financing,
             clean_shl_principal_keur=1000.0,
-            clean_shl_repayment_method="partial_pay_sweep",
+            clean_shl_repayment_method=SHLRepaymentMethod.CASH_SWEEP,
             shl_rate=0.08,
             shl_idc_keur=80.0,
             shl_day_count_convention="ACT_365_FIXED",
@@ -536,6 +539,7 @@ def test_clean_shl_adapter_fails_closed_when_repayment_start_not_on_period_grid(
     from dataclasses import replace
 
     from app.project_factories import create_default_solar_project
+    from finco_core.inputs import SHLRepaymentMethod
     from financial_engine.adapters.project_inputs import (
         _build_shareholder_loan_model_input_from_project_inputs,
     )
@@ -547,7 +551,7 @@ def test_clean_shl_adapter_fails_closed_when_repayment_start_not_on_period_grid(
         financing=replace(
             project.financing,
             clean_shl_principal_keur=1000.0,
-            clean_shl_repayment_method="partial_pay_sweep",
+            clean_shl_repayment_method=SHLRepaymentMethod.CASH_SWEEP,
             shl_rate=0.08,
             shl_day_count_convention="ACT_365_FIXED",
             shl_construction_day_count_fraction=1.0,
@@ -567,6 +571,7 @@ def test_clean_shl_adapter_fails_closed_when_maturity_not_on_period_grid():
     from dataclasses import replace
 
     from app.project_factories import create_default_solar_project
+    from finco_core.inputs import SHLRepaymentMethod
     from financial_engine.adapters.project_inputs import (
         _build_shareholder_loan_model_input_from_project_inputs,
     )
@@ -578,7 +583,7 @@ def test_clean_shl_adapter_fails_closed_when_maturity_not_on_period_grid():
         financing=replace(
             project.financing,
             clean_shl_principal_keur=1000.0,
-            clean_shl_repayment_method="partial_pay_sweep",
+            clean_shl_repayment_method=SHLRepaymentMethod.CASH_SWEEP,
             shl_rate=0.08,
             shl_day_count_convention="ACT_365_FIXED",
             shl_construction_day_count_fraction=1.0,
@@ -595,6 +600,7 @@ def test_clean_shl_adapter_fails_closed_when_maturity_precedes_repayment_start()
     from dataclasses import replace
 
     from app.project_factories import create_default_solar_project
+    from finco_core.inputs import SHLRepaymentMethod
     from financial_engine.adapters.project_inputs import (
         _build_shareholder_loan_model_input_from_project_inputs,
     )
@@ -606,7 +612,7 @@ def test_clean_shl_adapter_fails_closed_when_maturity_precedes_repayment_start()
         financing=replace(
             project.financing,
             clean_shl_principal_keur=1000.0,
-            clean_shl_repayment_method="partial_pay_sweep",
+            clean_shl_repayment_method=SHLRepaymentMethod.CASH_SWEEP,
             shl_rate=0.08,
             shl_day_count_convention="ACT_365_FIXED",
             shl_construction_day_count_fraction=1.0,

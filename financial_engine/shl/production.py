@@ -418,6 +418,7 @@ def compute_shareholder_loan_schedules(
     draw_period_index = construction_period_indices[-1]
     construction_result: ShlPeriodResult | None = None
     operating_inputs: list[ShlOperatingPeriodInput] = []
+    underfunded_bullet_residual: float | None = None
 
     # Fix 3 canonical: pre-compute multi-period construction schedule when override provided.
     # This allows the model to compute construction PIK canonically per-period, eliminating
@@ -516,6 +517,18 @@ def compute_shareholder_loan_schedules(
             _override = shl_input.opening_operating_shl_override_keur
             _effective_op_draw = _override if _override is not None else shl_input.initial_principal_keur
             _effective_op_dcf = 0.0 if _override is not None else shl_input.construction_day_count_fraction
+        elif underfunded_bullet_residual is not None:
+            # Contractual BULLET maturity has passed with an unpaid balance.
+            # Preserve the obligation without inventing extension/default terms.
+            opening = underfunded_bullet_residual
+            drawdown = 0.0
+            gross = 0.0
+            cash_interest = 0.0
+            pik = 0.0
+            principal = 0.0
+            service = 0.0
+            closing = underfunded_bullet_residual
+            cash_eligible_for_current_shl_service = 0.0
         else:
             if construction_result is None:
                 raise ValueError(
@@ -602,8 +615,19 @@ def compute_shareholder_loan_schedules(
             service = result.shl_service_keur
             closing = result.closing_balance_keur
 
-        if p.period_index == shl_input.maturity_period_index and closing > (
-            shl_input.convergence_tolerance_keur + 1e-9
+            if (
+                shl_input.repayment_mode == ShlRepaymentMode.BULLET
+                and p.period_index == shl_input.maturity_period_index
+                and closing > shl_input.convergence_tolerance_keur + 1e-9
+            ):
+                underfunded_bullet_residual = closing
+
+        if (
+            shl_input.repayment_mode == ShlRepaymentMode.CASH_SWEEP
+            and p.period_index == shl_input.maturity_period_index
+            and closing > (
+                shl_input.convergence_tolerance_keur + 1e-9
+            )
         ):
             raise ValueError(
                 "SHL_MATURITY_RESIDUAL_FAILS_CLOSED: "

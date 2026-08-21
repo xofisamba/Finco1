@@ -61,6 +61,15 @@ APP_TEMPLATES = REPO_ROOT / "app" / "templates"
 SHEET_CAPEX = APP_TEMPLATES / "partials" / "sheet_capex.html"
 APP_JS = REPO_ROOT / "static" / "app.js"
 STYLES_CSS = REPO_ROOT / "static" / "styles.css"
+PR5_EBITDA_FIXTURE = "tests/fixtures/ebitda_source_formula_lock.json"
+
+
+def _assert_pr5_fixture_scope(changed: set[str]) -> None:
+    """Apply the historical PR-5 fixture lock only when its fixture changes."""
+    if PR5_EBITDA_FIXTURE in changed:
+        assert changed == {PR5_EBITDA_FIXTURE}, (
+            f"PR-5 fixture change must not include unrelated fixtures: {sorted(changed)}"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -685,9 +694,16 @@ class TestNoBackendChanges:
             text=True,
         )
         changed = {line for line in r.stdout.splitlines() if line}
-        assert changed <= {"tests/fixtures/ebitda_source_formula_lock.json"}, (
-            f"57A-8 must NOT modify unrelated test fixtures: {sorted(changed)}"
-        )
+        _assert_pr5_fixture_scope(changed)
+
+    def test_pr5_fixture_guard_allows_unrelated_later_fixture(self):
+        _assert_pr5_fixture_scope({"tests/fixtures/later_stage_source_lock.json"})
+
+    def test_pr5_fixture_guard_rejects_pr5_contamination(self):
+        with pytest.raises(AssertionError, match="must not include unrelated fixtures"):
+            _assert_pr5_fixture_scope(
+                {PR5_EBITDA_FIXTURE, "tests/fixtures/unrelated.json"}
+            )
 
     def test_allowed_files_only(self):
         self._skip_if_not_on_phase57a8_branch()

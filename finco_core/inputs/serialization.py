@@ -337,7 +337,7 @@ def project_inputs_to_dict(inputs: ProjectInputs) -> dict:
             "shl_tenor_years": fin.shl_tenor_years,
             "shl_idc_keur": fin.shl_idc_keur,
             "clean_shl_principal_keur": fin.clean_shl_principal_keur,
-            "clean_shl_repayment_method": fin.clean_shl_repayment_method,
+            "clean_shl_repayment_method": _ser_enum(fin.clean_shl_repayment_method),
             "shl_day_count_convention": fin.shl_day_count_convention,
             "shl_construction_day_count_fraction": fin.shl_construction_day_count_fraction,
             "shl_principal_eligibility_start_period": fin.shl_principal_eligibility_start_period,
@@ -650,7 +650,11 @@ def project_inputs_from_dict(d: dict) -> ProjectInputs:
         shl_tenor_years=fin_d.get("shl_tenor_years", 0),
         shl_idc_keur=fin_d.get("shl_idc_keur", 0.0),
         clean_shl_principal_keur=fin_d.get("clean_shl_principal_keur"),
-        clean_shl_repayment_method=fin_d.get("clean_shl_repayment_method"),
+        clean_shl_repayment_method=(
+            SHLRepaymentMethod(fin_d["clean_shl_repayment_method"])
+            if fin_d.get("clean_shl_repayment_method") is not None
+            else None
+        ),
         shl_day_count_convention=fin_d.get("shl_day_count_convention"),
         shl_construction_day_count_fraction=fin_d.get(
             "shl_construction_day_count_fraction"

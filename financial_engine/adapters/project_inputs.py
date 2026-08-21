@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from finco_core.inputs import ProjectInputs
 
-from finco_core.inputs import TaxPeriodisationMode
+from finco_core.inputs import SHLRepaymentMethod, TaxPeriodisationMode
 from finco_core.inputs._models import ShlConstructionInterestMethod
 
 from financial_engine.inputs import (
@@ -36,11 +36,14 @@ from financial_engine.ppa_indexation import PpaIndexationStartPolicy
 from financial_engine.shl.contracts import ShlDayCountConvention, ShlRepaymentMode
 
 
-_SUPPORTED_CLEAN_SHL_REPAYMENT_METHODS = frozenset({
-    "bullet",
-    "cash_sweep",
-    "partial_pay_sweep",
-})
+_CLEAN_SHL_REPAYMENT_MODE_MAP = {
+    SHLRepaymentMethod.BULLET: ShlRepaymentMode.BULLET,
+    SHLRepaymentMethod.CASH_SWEEP: ShlRepaymentMode.CASH_SWEEP,
+    # Persisted pre-PR-6 projects may carry this source-description alias. It
+    # maps explicitly to the same natural CASH_SWEEP arithmetic and is no
+    # longer emitted by canonical factories.
+    SHLRepaymentMethod.PARTIAL_PAY_SWEEP: ShlRepaymentMode.CASH_SWEEP,
+}
 
 
 def _coerce_shl_day_count(raw: object) -> ShlDayCountConvention:
@@ -357,9 +360,9 @@ def _build_shareholder_loan_model_input_from_project_inputs(
     if clean_principal is None:
         legacy_amount = float(getattr(financing, "shl_amount_keur", 0.0) or 0.0)
         legacy_method = str(getattr(financing, "shl_repayment_method", "") or "").strip().lower()
-        if legacy_amount > 0.0 and legacy_method in (
-            _SUPPORTED_CLEAN_SHL_REPAYMENT_METHODS | {"pik_then_sweep", "fcf_waterfall"}
-        ):
+        if legacy_amount > 0.0 and legacy_method in {
+            "cash_sweep", "partial_pay_sweep", "pik_then_sweep", "fcf_waterfall"
+        }:
             raise ValueError(
                 "CLEAN_SHL_CONTRACT_AUTHORITY_REQUIRED: "
                 "positive legacy SHL with cash-sweep mechanics requires explicit "
@@ -374,16 +377,13 @@ def _build_shareholder_loan_model_input_from_project_inputs(
     if rate <= 0.0:
         raise ValueError("ProjectInputs clean SHL requires positive shl_rate")
 
-    method_raw = (
-        getattr(financing, "clean_shl_repayment_method", None)
-        or getattr(financing, "shl_repayment_method", None)
-    )
-    method = str(method_raw or "").strip().lower()
-    if method not in _SUPPORTED_CLEAN_SHL_REPAYMENT_METHODS:
+    method = getattr(financing, "clean_shl_repayment_method", None)
+    if not isinstance(method, SHLRepaymentMethod) or method not in _CLEAN_SHL_REPAYMENT_MODE_MAP:
         raise ValueError(
             "UNSUPPORTED_SHL_REPAYMENT_MODE_FAILS_CLOSED: "
-            f"clean SHL supports {sorted(_SUPPORTED_CLEAN_SHL_REPAYMENT_METHODS)}, "
-            f"got {method_raw!r}"
+            "clean SHL requires typed FinancingParams.clean_shl_repayment_method "
+            "with BULLET or CASH_SWEEP semantics, "
+            f"got {method!r}"
         )
 
     construction_dcf_raw = getattr(financing, "shl_construction_day_count_fraction", None)
@@ -397,7 +397,7 @@ def _build_shareholder_loan_model_input_from_project_inputs(
     maturity = getattr(financing, "shl_maturity_period_index", None)
     if (
         maturity is None
-        and method == "bullet"
+        and method == SHLRepaymentMethod.BULLET
         and int(getattr(financing, "shl_tenor_years", 0) or 0) == 0
         and senior_debt_maturity_period_index is not None
     ):
@@ -411,7 +411,7 @@ def _build_shareholder_loan_model_input_from_project_inputs(
         )
 
     repayment_start = getattr(financing, "shl_principal_eligibility_start_period", None)
-    if repayment_start is None and method == "bullet":
+    if repayment_start is None and method == SHLRepaymentMethod.BULLET:
         repayment_start = maturity
     if repayment_start is None:
         raise ValueError(
@@ -446,11 +446,7 @@ def _build_shareholder_loan_model_input_from_project_inputs(
     if repayment_start_index > maturity_index:
         raise ValueError("maturity_period_index must be >= repayment_start_period_index")
 
-    repayment_mode = (
-        ShlRepaymentMode.BULLET
-        if method == "bullet"
-        else ShlRepaymentMode.CASH_SWEEP
-    )
+    repayment_mode = _CLEAN_SHL_REPAYMENT_MODE_MAP[method]
 
     return ShareholderLoanModelInput(
         initial_principal_keur=amount,

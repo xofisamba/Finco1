@@ -89,7 +89,14 @@ def _assert_clean_chain_complete(result) -> None:
     assert all(value >= 0.0 for value in shl.shl_principal_keur)
     principal_positions = [i for i, value in enumerate(shl.shl_principal_keur) if value > 1e-9]
     assert principal_positions == [33]
-    assert shl.shl_closing_keur[33] == pytest.approx(0.0, abs=1e-9)
+    assert shl.shl_debt_service_keur[33] <= (
+        shl.cash_available_for_shl_before_reserves_keur[33] + 1e-9
+    )
+    assert shl.shl_closing_keur[33] > 0.0
+    assert all(
+        value == pytest.approx(shl.shl_closing_keur[33])
+        for value in shl.shl_closing_keur[33:]
+    )
     assert shl.diagnostics.is_authoritative is True
     assert shl.diagnostics.max_final_shl_interest_handshake_delta_keur < 1e-6
     assert shl.diagnostics.max_final_shl_closing_handshake_delta_keur < 1e-6
@@ -119,7 +126,9 @@ def test_generic_solar_and_wind_run_clean_chain_end_to_end(label, factory_name):
         SeniorRateMode.EXPLICIT_ALL_IN_SCHEDULE
     )
     assert project.financing.clean_shl_principal_keur == project.financing.shl_amount_keur
-    assert project.financing.clean_shl_repayment_method == "bullet"
+    from finco_core.inputs import SHLRepaymentMethod
+
+    assert project.financing.clean_shl_repayment_method is SHLRepaymentMethod.BULLET
     assert project.financing.shl_tenor_years == 0
     assert project.financing.shl_day_count_convention == "PERIOD_AXIS_ACTUAL_YEAR"
     assert project.financing.shl_construction_day_count_fraction == 0.0
@@ -239,7 +248,10 @@ def test_generic_explicit_shl_maturity_mutation_moves_bullet_without_changing_te
     shl = later.shareholder_loan
     assert [i for i, value in enumerate(shl.shl_principal_keur) if value > 1e-9] == [35]
     assert max(shl.shl_drawdown_keur) == pytest.approx(project.financing.shl_amount_keur)
-    assert shl.shl_closing_keur[35] == pytest.approx(0.0, abs=1e-9)
+    assert shl.shl_debt_service_keur[35] <= (
+        shl.cash_available_for_shl_before_reserves_keur[35] + 1e-9
+    )
+    assert shl.shl_closing_keur[35] > 0.0
 
 
 @pytest.mark.parametrize(
