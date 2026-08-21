@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+from datetime import date
 from pathlib import Path
 
 import pytest
@@ -120,19 +121,114 @@ def test_cash_sweep_synthetic_discrimination(
     assert result.closing_balance_keur == pytest.approx(expected_closing)
 
 
-def test_bullet_discrimination_has_no_pre_maturity_sweep():
-    before = compute_shl_waterfall_period(
-        1000.0, 0.08, 1.0, 2000.0,
+@pytest.mark.parametrize(
+    (
+        "cash", "is_maturity", "expected_cash_interest", "expected_pik",
+        "expected_principal", "expected_closing",
+    ),
+    (
+        (2000.0, False, 80.0, 0.0, 0.0, 1000.0),
+        (0.0, True, 0.0, 80.0, 0.0, 1080.0),
+        (40.0, True, 40.0, 40.0, 0.0, 1040.0),
+        (100.0, True, 80.0, 0.0, 20.0, 980.0),
+        (2000.0, True, 80.0, 0.0, 1000.0, 0.0),
+    ),
+)
+def test_bullet_kernel_cash_conservation_and_balance_roll_forward(
+    cash, is_maturity, expected_cash_interest, expected_pik,
+    expected_principal, expected_closing,
+):
+    result = compute_shl_waterfall_period(
+        1000.0,
+        0.08,
+        1.0,
+        cash,
         repayment_mode=ShlRepaymentMode.BULLET,
-        is_maturity_period=False,
+        is_maturity_period=is_maturity,
     )
-    maturity = compute_shl_waterfall_period(
-        1000.0, 0.08, 1.0, 2000.0,
-        repayment_mode=ShlRepaymentMode.BULLET,
-        is_maturity_period=True,
+    assert result.cash_interest_keur == pytest.approx(expected_cash_interest)
+    assert result.pik_interest_keur == pytest.approx(expected_pik)
+    assert result.principal_repaid_keur == pytest.approx(expected_principal)
+    assert result.closing_balance_keur == pytest.approx(expected_closing)
+    assert result.shl_service_keur <= cash + 1e-9
+    assert result.closing_balance_keur == pytest.approx(
+        result.opening_balance_keur
+        + result.pik_interest_keur
+        - result.principal_repaid_keur
     )
-    assert before.principal_repaid_keur == 0.0
-    assert maturity.principal_repaid_keur == pytest.approx(1000.0)
+
+
+def test_production_schedule_preserves_underfunded_bullet_residual():
+    from financial_engine.inputs import ShareholderLoanModelInput
+    from financial_engine.results import (
+        OperatingPeriodResult,
+        ShareholderLoanDiagnostics,
+    )
+    from financial_engine.shl.contracts import ShlDayCountConvention
+    from financial_engine.shl.production import compute_shareholder_loan_schedules
+
+    def period(index: int, *, construction: bool) -> OperatingPeriodResult:
+        return OperatingPeriodResult(
+            period_index=index,
+            period_start=date(2030 + index, 1, 1),
+            period_end=date(2030 + index, 12, 31),
+            year_index=float(index),
+            period_in_year=1.0,
+            is_construction=construction,
+            is_operation=not construction,
+            is_ppa_active=False,
+            days_in_period=365,
+            day_fraction=1.0,
+            production_mwh=0.0,
+            revenue_keur=0.0,
+            opex_keur=0.0,
+            ebitda_keur=0.0,
+            book_depreciation_keur=0.0,
+            tax_depreciation_keur=0.0,
+            ebit_keur=0.0,
+        )
+
+    schedule = compute_shareholder_loan_schedules(
+        (
+            period(0, construction=True),
+            period(1, construction=False),
+            period(2, construction=False),
+        ),
+        ShareholderLoanModelInput(
+            initial_principal_keur=1000.0,
+            annual_fixed_rate=0.08,
+            day_count_convention=ShlDayCountConvention.PERIOD_AXIS_ACTUAL_YEAR,
+            construction_day_count_fraction=0.0,
+            repayment_start_period_index=1,
+            maturity_period_index=1,
+            repayment_mode=ShlRepaymentMode.BULLET,
+        ),
+        (0.0, 100.0, 500.0),
+        diagnostics=ShareholderLoanDiagnostics(
+            converged=True,
+            is_authoritative=True,
+            iteration_count=1,
+            max_iterations=1,
+            convergence_tolerance_keur=1e-9,
+            convergence_relative_tolerance=1e-9,
+            max_closing_delta_keur=0.0,
+            max_interest_delta_keur=0.0,
+            termination_reason="TEST",
+        ),
+    )
+    assert schedule.shl_cash_interest_keur[1] == pytest.approx(80.0)
+    assert schedule.shl_principal_keur[1] == pytest.approx(20.0)
+    assert schedule.shl_debt_service_keur[1] == pytest.approx(100.0)
+    assert schedule.shl_closing_keur[1] == pytest.approx(980.0)
+    assert schedule.cash_remaining_after_shl_before_reserves_keur[1] == pytest.approx(0.0)
+    assert schedule.shl_opening_keur[2] == pytest.approx(980.0)
+    assert schedule.shl_gross_interest_keur[2] == pytest.approx(0.0)
+    assert schedule.shl_cash_interest_keur[2] == pytest.approx(0.0)
+    assert schedule.shl_pik_interest_keur[2] == pytest.approx(0.0)
+    assert schedule.shl_principal_keur[2] == pytest.approx(0.0)
+    assert schedule.shl_closing_keur[2] == pytest.approx(980.0)
+    assert schedule.cash_remaining_after_shl_before_reserves_keur[2] == pytest.approx(500.0)
+    assert min(schedule.cash_remaining_after_shl_before_reserves_keur) >= -1e-9
 
 
 def test_factories_emit_typed_clean_policy_without_source_aliases():
@@ -222,6 +318,53 @@ def test_real_bullet_actual_payment_never_manufactures_cash(solar_bullet_result)
     assert maturity.actual_shl_principal_paid_keur < maturity.contractual_shl_principal_due_keur
     assert maturity.unpaid_shl_principal_keur > 0.0
     assert maturity.actual_shl_closing_balance_keur > 0.0
+
+
+def test_g2c_consumes_canonical_actual_principal_and_closing(monkeypatch):
+    from app.project_factories import create_default_solar_project
+    import financial_engine.shareholder_waterfall.model as g2c_model
+
+    canonical = {}
+    original = g2c_model.compute_shareholder_loan_schedules
+
+    def capture_schedule(*args, **kwargs):
+        schedule = original(*args, **kwargs)
+        canonical["schedule"] = schedule
+        return schedule
+
+    monkeypatch.setattr(g2c_model, "compute_shareholder_loan_schedules", capture_schedule)
+    result = g2c_model.run_project_shareholder_waterfall_model(
+        create_default_solar_project()
+    )
+    schedule = canonical["schedule"]
+    maturity = next(
+        p for p in result.waterfall_periods
+        if p.contractual_shl_principal_due_keur > 0.0
+    )
+    actual_by_period = {
+        p.period_index: p for p in result.waterfall_periods
+        if not p.is_construction and p.period_index <= maturity.period_index
+    }
+    for index, principal, closing in zip(
+        schedule.period_indices,
+        schedule.shl_principal_keur,
+        schedule.shl_closing_keur,
+    ):
+        if index not in actual_by_period:
+            continue
+        period = actual_by_period[index]
+        assert period.actual_shl_principal_paid_keur == pytest.approx(principal)
+        assert period.actual_shl_closing_balance_keur == pytest.approx(closing)
+
+    post_maturity = [
+        p for p in result.waterfall_periods
+        if not p.is_construction and p.period_index > maturity.period_index
+    ]
+    assert post_maturity
+    assert all(p.shl_gross_interest_keur == 0.0 for p in post_maturity)
+    assert all(p.shl_pik_keur == 0.0 for p in post_maturity)
+    assert all(p.actual_shl_principal_paid_keur == 0.0 for p in post_maturity)
+    assert all(p.legal_equity_distribution_keur == 0.0 for p in post_maturity)
 
 
 def test_project_identity_mutation_cannot_change_typed_shl_output():

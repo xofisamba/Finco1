@@ -20,32 +20,17 @@ from financial_engine.financing.contracts import (
 )
 from financial_engine.financing.project import run_project_financing_model
 from financial_engine.results import ProjectModelResult
+from financial_engine.adapters.project_inputs import (
+    _build_shareholder_loan_model_input_from_project_inputs,
+    build_senior_debt_model_input_from_project_inputs,
+)
+from financial_engine.shl.contracts import ShlRepaymentMode
 from financial_engine.sponsor_returns.contracts import (
     ReturnMetricStatus,
     SponsorCashFlowPeriod,
     SponsorDistributionPolicy,
     SponsorReturnResult,
 )
-
-
-def _allocate_actual_shl_cash_receipts(
-    signed_post_senior: float,
-    scheduled_cash_interest: float,
-    scheduled_principal_due: float,
-) -> tuple[float, float]:
-    """Derive ACTUAL SHL sponsor cash receipts from available post-Senior project cash.
-
-    Interest is paid first, then principal, from cash_available_for_shl only.
-    Scheduled (contractual) amounts due that exceed available cash are NOT receipts.
-
-    Returns:
-        (actual_cash_interest_receipt, actual_principal_receipt)
-    """
-    cash_available = max(0.0, signed_post_senior)
-    actual_interest = min(scheduled_cash_interest, cash_available)
-    cash_after_interest = max(0.0, cash_available - actual_interest)
-    actual_principal = min(max(0.0, scheduled_principal_due), cash_after_interest)
-    return actual_interest, actual_principal
 
 
 def _add_months(d: date, months: int) -> date:
@@ -177,12 +162,28 @@ def run_project_sponsor_returns_model(
     shl_cash_interest_by_idx: dict[int, float] = {}
     shl_principal_by_idx: dict[int, float] = {}
     shl_debt_service_by_idx: dict[int, float] = {}
+    shl_opening_by_idx: dict[int, float] = {}
+    shl_pik_by_idx: dict[int, float] = {}
 
-    # Last operating period with non-zero scheduled principal = contractual maturity.
-    # For BULLET repayment this is the single balloon period.
+    is_bullet = False
     shl_maturity_idx: int | None = None
 
     if shl is not None:
+        senior_contract = build_senior_debt_model_input_from_project_inputs(
+            project_inputs
+        )
+        senior_last_period_index = (
+            senior_contract.senior_debt_policy.maturity_period_index
+        )
+        shl_contract = _build_shareholder_loan_model_input_from_project_inputs(
+            project_inputs,
+            model_result.periods,
+            senior_debt_maturity_period_index=senior_last_period_index,
+        )
+        if shl_contract is None:
+            raise ValueError("G2B: canonical SHL schedule exists without typed SHL contract")
+        is_bullet = shl_contract.repayment_mode == ShlRepaymentMode.BULLET
+        shl_maturity_idx = shl_contract.maturity_period_index if is_bullet else None
         shl_cash_interest_by_idx = dict(
             zip(shl.period_indices, shl.shl_cash_interest_keur)
         )
@@ -192,9 +193,8 @@ def run_project_sponsor_returns_model(
         shl_debt_service_by_idx = dict(
             zip(shl.period_indices, shl.shl_debt_service_keur)
         )
-        for _idx, _prin in zip(shl.period_indices, shl.shl_principal_keur):
-            if _prin > 1e-6:
-                shl_maturity_idx = _idx  # last non-zero → contractual maturity
+        shl_opening_by_idx = dict(zip(shl.period_indices, shl.shl_opening_keur))
+        shl_pik_by_idx = dict(zip(shl.period_indices, shl.shl_pik_interest_keur))
 
     # Signed post-Senior cash authority (G2B uses the SIGNED field, not the floored one).
     # Negative = CFADS insufficient to cover Senior debt service.
@@ -272,9 +272,6 @@ def run_project_sponsor_returns_model(
         idx = period.period_index
         cf_date = period_date_by_idx[idx]
 
-        shl_cash_int = shl_cash_interest_by_idx.get(idx, 0.0)
-        shl_principal = shl_principal_by_idx.get(idx, 0.0)
-
         # Signed post-Senior cash — fail closed if the period is missing.
         # The post_senior_cash schedule must cover all operating periods.
         if idx not in signed_post_senior_by_idx:
@@ -284,11 +281,8 @@ def run_project_sponsor_returns_model(
             )
         signed_post_senior = signed_post_senior_by_idx[idx]
 
-        # Signed post-SHL: uses CONTRACTUAL service due for shortfall/distribution.
-        # This determines whether equity receives distributions and exposes unpaid SHL.
-        #
-        # ACTUAL cash receipts are derived separately via _allocate_actual_shl_cash_receipts,
-        # which caps payments at available cash. Unpaid contractual amounts are not receipts.
+        # Canonical SHL vectors are actual cash payments. Contractual BULLET due is
+        # a separate reporting/gating concept derived at the typed maturity only.
         #
         # SHL handshake (non-negative post-Senior, non-bullet case):
         #   When signed_post_senior >= 0 and shl_service_due <= available cash,
@@ -303,33 +297,32 @@ def run_project_sponsor_returns_model(
                     f"G2B: SHL schedule exists but operating period {idx} absent "
                     "from shl_debt_service; SHL engine output is incomplete"
                 )
-            scheduled_shl_service_due = shl_debt_service_by_idx[idx]
-            scheduled_cash_interest = shl_cash_interest_by_idx.get(idx, 0.0)
-            scheduled_principal_due = shl_principal_by_idx.get(idx, 0.0)
-
-            # Actual sponsor cash receipts — capped at available project cash
-            actual_shl_cash_int, actual_shl_principal = _allocate_actual_shl_cash_receipts(
-                signed_post_senior,
-                scheduled_cash_interest,
-                scheduled_principal_due,
+            actual_shl_cash_int = shl_cash_interest_by_idx.get(idx, 0.0)
+            actual_shl_principal = shl_principal_by_idx.get(idx, 0.0)
+            is_at_maturity = shl_maturity_idx is not None and idx == shl_maturity_idx
+            contractual_principal_due = (
+                shl_opening_by_idx.get(idx, 0.0) + shl_pik_by_idx.get(idx, 0.0)
+                if is_bullet and is_at_maturity
+                else actual_shl_principal
             )
+            contractual_shl_service_due = actual_shl_cash_int + contractual_principal_due
         else:
             # EQUITY_ONLY: no SHL debt service or receipts
-            scheduled_shl_service_due = 0.0
+            contractual_shl_service_due = 0.0
+            contractual_principal_due = 0.0
             actual_shl_cash_int = 0.0
             actual_shl_principal = 0.0
+            is_at_maturity = False
 
         # Contractual signed_post_shl drives distribution and shortfall.
         # No equity distribution while contractual SHL service is unpaid.
-        signed_post_shl = signed_post_senior - scheduled_shl_service_due
+        signed_post_shl = signed_post_senior - contractual_shl_service_due
         post_shl_available = max(0.0, signed_post_shl)
         cash_shortfall = max(0.0, -signed_post_shl)
 
         # BULLET fail-closed: detect underfunded balloon at contractual maturity.
-        is_at_maturity = shl_maturity_idx is not None and idx == shl_maturity_idx
         if is_at_maturity and shl is not None:
-            scheduled_principal_due = shl_principal_by_idx.get(idx, 0.0)
-            unpaid_principal = scheduled_principal_due - actual_shl_principal
+            unpaid_principal = contractual_principal_due - actual_shl_principal
             if unpaid_principal > 1e-6:
                 bullet_unpaid_active = True
 

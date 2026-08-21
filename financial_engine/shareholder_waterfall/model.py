@@ -90,6 +90,7 @@ from financial_engine.financing.project import run_project_financing_model
 from financial_engine.financing.dsrf import compute_dsrf_fee_schedule
 from financial_engine.dsra.contracts import CashDsraPeriodResult
 from financial_engine.results import ProjectModelResult
+from financial_engine.shl.contracts import ShlRepaymentMode
 from financial_engine.shl.production import compute_shareholder_loan_schedules
 from financial_engine.shareholder_waterfall.contracts import (
     CovenantGatedWaterfallPeriod,
@@ -494,6 +495,7 @@ def run_project_shareholder_waterfall_model(
 
     has_shl = financing.derived_shl_cash_principal_keur > 0.0
     shl_maturity_idx: int | None = None
+    shl_repayment_mode: ShlRepaymentMode | None = None
     if has_shl:
         shl_model_input = _build_shareholder_loan_model_input_from_project_inputs(
             project_inputs,
@@ -507,6 +509,7 @@ def run_project_shareholder_waterfall_model(
                     initial_principal_keur=financing.derived_shl_cash_principal_keur,
                 )
             shl_maturity_idx = shl_model_input.maturity_period_index
+            shl_repayment_mode = shl_model_input.repayment_mode
 
             gated_shl_schedule = compute_shareholder_loan_schedules(
                 model_result.periods,
@@ -647,6 +650,8 @@ def run_project_shareholder_waterfall_model(
         else:
             shl_opening = shl_opening_by_idx.get(idx, 0.0)
 
+        at_maturity = (shl_maturity_idx is not None and idx == shl_maturity_idx)
+
         if is_post_maturity:
             # Post-maturity with unpaid BULLET: no terms (do not invent default interest).
             shl_gross = 0.0
@@ -658,18 +663,31 @@ def run_project_shareholder_waterfall_model(
             shl_gross = shl_gross_by_idx.get(idx, 0.0)
             actual_shl_cash_int = shl_cash_int_by_idx.get(idx, 0.0)
             shl_pik = shl_pik_by_idx.get(idx, 0.0)
-            contractual_shl_principal = shl_principal_by_idx.get(idx, 0.0)
-            actual_shl_principal = min(
-                contractual_shl_principal,
-                max(0.0, fcf_for_distribution - actual_shl_cash_int),
+            actual_shl_principal = shl_principal_by_idx.get(idx, 0.0)
+            contractual_shl_principal = (
+                shl_opening + shl_pik
+                if shl_repayment_mode == ShlRepaymentMode.BULLET and at_maturity
+                else actual_shl_principal
             )
 
-        unpaid_shl_principal = contractual_shl_principal - actual_shl_principal if not is_post_maturity else 0.0
-        actual_shl_closing = max(0.0, shl_opening + shl_pik - actual_shl_principal)
+        unpaid_shl_principal = (
+            max(0.0, contractual_shl_principal - actual_shl_principal)
+            if not is_post_maturity
+            else 0.0
+        )
+        actual_shl_closing = (
+            shl_closing_by_idx.get(idx, 0.0)
+            if not is_post_maturity
+            else shl_opening
+        )
 
         # Detect underfunded BULLET at its contractual maturity period
-        at_maturity = (shl_maturity_idx is not None and idx == shl_maturity_idx)
-        if at_maturity and has_shl and unpaid_shl_principal > 1e-6:
+        if (
+            at_maturity
+            and has_shl
+            and shl_repayment_mode == ShlRepaymentMode.BULLET
+            and unpaid_shl_principal > 1e-6
+        ):
             bullet_unpaid_active = True
 
         if has_shl:

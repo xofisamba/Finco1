@@ -1,13 +1,13 @@
 """financial_engine.shl.waterfall — Clean SHL waterfall period formula (C3B3D2B0).
 
-Single pure function. No mode enum, no mode dispatch.
+Single pure function with typed BULLET/CASH_SWEEP principal eligibility.
 
 Natural waterfall formula (handles all settlement modes by arithmetic):
     gross          = opening × annual_rate × day_count_fraction
     cash_interest  = min(cash_available, gross)
     capitalised    = gross - cash_interest
     remaining_cash = cash_available - cash_interest
-    principal      = max(0, min(remaining_cash, opening + capitalised))
+    principal      = max(0, min(remaining_cash, opening + capitalised)) when eligible
     closing        = opening + capitalised - principal
 
 When cash_available = 0: full capitalisation.
@@ -180,7 +180,7 @@ def compute_shl_waterfall_period(
     remaining_cash = cash_available_for_shl_keur - cash_interest
     outstanding = opening_balance_keur + capitalised
     if repayment_mode == ShlRepaymentMode.BULLET:
-        principal = outstanding if is_maturity_period else 0.0
+        principal = min(remaining_cash, outstanding) if is_maturity_period else 0.0
     elif repayment_mode == ShlRepaymentMode.CASH_SWEEP:
         principal = max(0.0, min(remaining_cash, outstanding))
     else:

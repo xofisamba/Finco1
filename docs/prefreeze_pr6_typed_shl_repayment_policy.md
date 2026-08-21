@@ -50,9 +50,10 @@ capability, but is not promoted to ProjectInputs by this phase.
 | `FinancingParams.clean_shl_repayment_method` | Explicit clean ProjectInputs repayment authority. | Canonical typed input. |
 | `ShareholderLoanModelInput.repayment_mode` | Engine-facing immutable policy. | Canonical clean runtime contract. |
 | `ShlRepaymentMode` | `BULLET`, `CASH_SWEEP`, `EXPLICIT_SCHEDULE`. | Small clean enum retained. |
-| `compute_shl_waterfall_period` | Natural interest-first cash waterfall. | Arithmetic authority; unchanged. |
-| `compute_shareholder_loan_schedules` | Applies eligibility and maturity over the period grid. | Production schedule authority; unchanged. |
-| G2C shareholder waterfall | Supplies post-Senior/DSRA/DA cash and reports actual payment/unpaid balance. | Final clean cash authority; unchanged. |
+| `compute_shl_waterfall_period` | Natural interest-first cash waterfall. | Sole authority for actual cash interest, principal payment, and closing balance. |
+| `compute_shareholder_loan_schedules` | Applies eligibility and maturity over the period grid. | Preserves the kernel's actual-payment vectors; an underfunded BULLET remains outstanding. |
+| G2B sponsor returns | Simple sponsor-return reporting over canonical financing results. | Consumes actual SHL cash vectors and derives the contractual BULLET due from the typed SHL contract. |
+| G2C shareholder waterfall | Supplies post-Senior/DSRA/DA cash and reports actual payment/unpaid balance. | Consumes canonical actual-payment vectors; derives contractual BULLET due separately for reporting. |
 | `finco_core.waterfall.shl_engine`, `finco_core.shl`, FCF paths | Historical string modes and source-alignment behavior. | Legacy-only; not required by clean runtime. |
 | `WaterfallRunConfig.shl_repayment_method` | Typed wrapper that ultimately feeds the legacy waterfall. | Legacy runtime contract, not clean authority. |
 
@@ -123,10 +124,13 @@ is zero. At and after eligibility, the sweep is bounded by both remaining cash
 and outstanding SHL. There is no forced terminal repayment, top-up, balancing
 plug, source-output replay, or target fitting.
 
-For `BULLET`, contractual principal is due only at maturity. The G2C actual cash
-payment remains bounded by cash available after interest; insufficient cash is
-reported as unpaid principal and a remaining balance rather than manufactured
-cash.
+For `BULLET`, contractual principal is due only at maturity. The canonical
+kernel bounds actual principal by cash remaining after interest. G2C consumes
+that actual principal and closing balance without re-capping them; it separately
+reports full outstanding principal as the contractual maturity obligation.
+Insufficient cash therefore remains visible as unpaid principal and a remaining
+balance rather than manufactured cash. No post-maturity interest, extension,
+refinancing, sponsor top-up, or forced repayment is inferred.
 
 ## Validation and Open Boundaries
 
