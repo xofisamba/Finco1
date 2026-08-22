@@ -12,7 +12,7 @@ os.environ.setdefault("FINCO_SECRET_KEY", "test-secret-for-pytest-only")
 os.environ.setdefault("FINCO_COOKIE_SECURE", "false")
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app.api.project_runner import run_project
+from app.api.project_runner import run_project_legacy as run_project  # PR-8: legacy characterization route
 from app.auth import COOKIE_NAME, create_session_token
 from app.input_adapter import build_projectinputs_from_snapshot
 from app.persistence.repository import (

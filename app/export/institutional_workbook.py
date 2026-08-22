@@ -21,7 +21,12 @@ from app.export.workbook_index import (
     INSTITUTIONAL_SHEET_INVENTORY,
     write_workbook_index_sheet_full,
 )
-from app.export.runtime_summary import _run_project, build_runtime_summary_rows
+from app.export.runtime_summary import (
+    PROJECT_FACTORIES,
+    build_runtime_summary_rows,
+)
+from app.waterfall_runner import WaterfallRunner, WaterfallRunConfig
+from finco_core.engine.period_engine import PeriodEngine
 from app.input_helpers import (
     build_capex_items_table,
     build_capex_summary_table,
@@ -318,10 +323,34 @@ def write_runtime_workbook_binding_status_csv(path: str | Path) -> Path:
     return output_path
 
 
+def _run_project_legacy(project_key: str):
+    """Single legacy calibration run for the institutional workbook.
+
+    PR-8: this export is an explicitly UNPROMOTED legacy route — its P&L /
+    tax-bridge / PF-waterfall sheets are assembled from the legacy waterfall
+    result shape. It therefore runs the legacy engine once (never mixed with
+    a clean result) and reuses that same run for the runtime summary rows.
+    """
+    project_inputs = PROJECT_FACTORIES[project_key]()
+    engine = PeriodEngine(
+        financial_close=project_inputs.info.financial_close,
+        construction_months=project_inputs.info.construction_months,
+        horizon_years=project_inputs.info.horizon_years,
+        ppa_years=project_inputs.revenue.ppa_term_years,
+    )
+    config = WaterfallRunConfig.from_inputs(project_inputs, engine)
+    result = WaterfallRunner(project_inputs, engine).run(config)
+    return project_inputs, result
+
+
 def _build_export_bundle(project: str) -> WorkbookExportBundle:
     project_key = (project or "tuho").strip().lower()
-    runtime_rows = build_runtime_summary_rows(project_key)
-    project_inputs, runtime_result = _run_project(project_key)
+    # PR-8 single-calculation rule: ONE legacy run feeds both the summary rows
+    # and the workbook sheets (previously two independent full runs).
+    project_inputs, runtime_result = _run_project_legacy(project_key)
+    runtime_rows = build_runtime_summary_rows(
+        project_key, _precomputed=(project_inputs, runtime_result)
+    )
     statements = assemble_financial_statements(runtime_result)
     context = get_project_context(project_key)
     return WorkbookExportBundle(

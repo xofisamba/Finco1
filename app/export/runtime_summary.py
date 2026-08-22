@@ -76,6 +76,22 @@ def _project_key(project: str) -> str:
 
 def _run_project(project: str):
     project_inputs = PROJECT_FACTORIES[_project_key(project)]()
+    # PR-8: single production financial authority. Promoted (typed clean-ready)
+    # projects calculate once through the clean G2C entry point and expose a
+    # read-only legacy-shaped view; non-promoted projects stay on the legacy
+    # calibration waterfall with an explicit typed classification.
+    from app.services.production_financial_authority import (
+        classify_production_authority,
+        run_clean_production,
+    )
+
+    decision = classify_production_authority(project_inputs)
+    if decision.promoted:
+        clean_run = run_clean_production(project_inputs, "Base", project_type=project)
+        from app.services.clean_presentation_adapter import (
+            build_clean_waterfall_view,
+        )
+        return clean_run.project_inputs, build_clean_waterfall_view(clean_run)
     engine = PeriodEngine(
         financial_close=project_inputs.info.financial_close,
         construction_months=project_inputs.info.construction_months,
@@ -100,8 +116,15 @@ def build_runtime_summary_rows(
     *,
     generated_at: str | None = None,
     source_branch: str | None = None,
+    _precomputed=None,
 ) -> list[dict[str, str]]:
-    project_inputs, result = _run_project(project)
+    if _precomputed is not None:
+        # PR-8: single-calculation reuse — a caller that already ran the
+        # project passes its (project_inputs, result) through (presentation
+        # only; no second financial calculation).
+        project_inputs, result = _precomputed
+    else:
+        project_inputs, result = _run_project(project)
     project_name = project_inputs.info.name
     runtime_timestamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
     timestamp = generated_at or datetime.now(timezone.utc).isoformat(timespec="seconds")

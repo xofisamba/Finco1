@@ -68,7 +68,7 @@ class TestG1DistributionPayload:
 
     def test_distribution_schedule_in_run_project_output(self):
         """run_project() must include 'distribution_schedule' key in its return dict."""
-        from app.api.project_runner import run_project
+        from app.api.project_runner import run_project_legacy as run_project  # PR-8: legacy characterization route
         result = run_project("TUHO", "Base")
         assert "distribution_schedule" in result, (
             "run_project() must include 'distribution_schedule' key in its return dict. "
@@ -76,44 +76,44 @@ class TestG1DistributionPayload:
         )
 
     def test_distribution_schedule_tuho_is_not_none(self):
-        from app.api.project_runner import run_project
+        from app.api.project_runner import run_project_legacy as run_project  # PR-8: legacy characterization route
         result = run_project("TUHO", "Base")
         ds = result.get("distribution_schedule")
         assert ds is not None, "TUHO distribution_schedule must not be None"
 
     def test_distribution_schedule_oborovo_is_not_none(self):
-        from app.api.project_runner import run_project
+        from app.api.project_runner import run_project_legacy as run_project  # PR-8: legacy characterization route
         result = run_project("Oborovo", "Base")
         ds = result.get("distribution_schedule")
         assert ds is not None, "Oborovo distribution_schedule must not be None"
 
     def test_distribution_schedule_has_periods_key(self):
-        from app.api.project_runner import run_project
+        from app.api.project_runner import run_project_legacy as run_project  # PR-8: legacy characterization route
         result = run_project("TUHO", "Base")
         ds = result["distribution_schedule"]
         assert "periods" in ds, "distribution_schedule must have 'periods' key"
 
     def test_distribution_schedule_has_summary_key(self):
-        from app.api.project_runner import run_project
+        from app.api.project_runner import run_project_legacy as run_project  # PR-8: legacy characterization route
         result = run_project("TUHO", "Base")
         ds = result["distribution_schedule"]
         assert "summary" in ds, "distribution_schedule must have 'summary' key"
 
     def test_distribution_schedule_has_source_key(self):
-        from app.api.project_runner import run_project
+        from app.api.project_runner import run_project_legacy as run_project  # PR-8: legacy characterization route
         result = run_project("TUHO", "Base")
         ds = result["distribution_schedule"]
         assert "source" in ds, "distribution_schedule must have 'source' key"
 
     def test_distribution_schedule_periods_not_empty(self):
-        from app.api.project_runner import run_project
+        from app.api.project_runner import run_project_legacy as run_project  # PR-8: legacy characterization route
         result = run_project("TUHO", "Base")
         ds = result["distribution_schedule"]
         assert len(ds["periods"]) > 0, "distribution_schedule.periods must not be empty"
 
     def test_distribution_schedule_period_fields(self):
         """Each period dict must have required distribution fields."""
-        from app.api.project_runner import run_project
+        from app.api.project_runner import run_project_legacy as run_project  # PR-8: legacy characterization route
         result = run_project("TUHO", "Base")
         ds = result["distribution_schedule"]
         required_fields = [
@@ -134,7 +134,7 @@ class TestG1DistributionPayload:
 
     def test_distribution_schedule_summary_fields(self):
         """Summary dict must have required fields."""
-        from app.api.project_runner import run_project
+        from app.api.project_runner import run_project_legacy as run_project  # PR-8: legacy characterization route
         result = run_project("TUHO", "Base")
         ds = result["distribution_schedule"]
         required_summary_fields = [
@@ -152,7 +152,7 @@ class TestG1DistributionPayload:
 
     def test_distribution_schedule_is_json_safe(self):
         """distribution_schedule must be JSON-serializable (no NaN/Infinity)."""
-        from app.api.project_runner import run_project
+        from app.api.project_runner import run_project_legacy as run_project  # PR-8: legacy characterization route
         result = run_project("TUHO", "Base")
         ds = result["distribution_schedule"]
         # json.dumps must not raise
@@ -163,7 +163,7 @@ class TestG1DistributionPayload:
 
     def test_distribution_schedule_no_nan_infinity(self):
         """No NaN or Infinity values must appear in serialized distribution schedule."""
-        from app.api.project_runner import run_project
+        from app.api.project_runner import run_project_legacy as run_project  # PR-8: legacy characterization route
         result = run_project("TUHO", "Base")
         ds = result["distribution_schedule"]
         serialized = json.dumps(ds)
@@ -172,7 +172,7 @@ class TestG1DistributionPayload:
 
     def test_distribution_schedule_total_positive(self):
         """TUHO total_distribution_keur must be positive (project has distributions)."""
-        from app.api.project_runner import run_project
+        from app.api.project_runner import run_project_legacy as run_project  # PR-8: legacy characterization route
         result = run_project("TUHO", "Base")
         ds = result["distribution_schedule"]
         total = ds["summary"]["total_distribution_keur"]
@@ -338,7 +338,7 @@ class TestG2SponsorGapDocumented:
 
     def test_sponsor_schedule_not_in_run_project_output(self):
         """run_project() must NOT have 'sponsor_schedule' key — per-period sponsor not ready."""
-        from app.api.project_runner import run_project
+        from app.api.project_runner import run_project_legacy as run_project  # PR-8: legacy characterization route
         result = run_project("TUHO", "Base")
         assert "sponsor_schedule" not in result, (
             "run_project() must NOT include 'sponsor_schedule' key. "
@@ -358,7 +358,7 @@ class TestG2SponsorGapDocumented:
 
     def test_sponsor_irr_scalar_available_in_kpis(self):
         """sponsor_irr scalar must still be available in run_project() kpis block."""
-        from app.api.project_runner import run_project
+        from app.api.project_runner import run_project_legacy as run_project  # PR-8: legacy characterization route
         result = run_project("TUHO", "Base")
         # sponsor_irr is in the waterfall result / kpis indirectly via runtime_summary
         # confirm distribution_schedule.summary doesn't have it (different key)
@@ -398,7 +398,7 @@ class TestG1CharacterizationTUHO:
 
     def test_tuho_has_operation_periods_with_distributions(self):
         """TUHO must have at least one operation period with positive distribution."""
-        from app.api.project_runner import run_project
+        from app.api.project_runner import run_project_legacy as run_project  # PR-8: legacy characterization route
         result = run_project("TUHO", "Base")
         ds = result["distribution_schedule"]
         op_periods_with_dist = [
@@ -411,7 +411,7 @@ class TestG1CharacterizationTUHO:
 
     def test_tuho_cum_distribution_non_decreasing(self):
         """TUHO cum_distribution_keur must be non-decreasing across operation periods."""
-        from app.api.project_runner import run_project
+        from app.api.project_runner import run_project_legacy as run_project  # PR-8: legacy characterization route
         result = run_project("TUHO", "Base")
         ds = result["distribution_schedule"]
         op_periods = [p for p in ds["periods"] if p["is_operation"]]
@@ -427,7 +427,7 @@ class TestG1CharacterizationTUHO:
 
     def test_tuho_distribution_schedule_source_field(self):
         """Source field must reference WaterfallResult.periods."""
-        from app.api.project_runner import run_project
+        from app.api.project_runner import run_project_legacy as run_project  # PR-8: legacy characterization route
         result = run_project("TUHO", "Base")
         ds = result["distribution_schedule"]
         assert "WaterfallResult" in ds["source"], (
@@ -436,7 +436,7 @@ class TestG1CharacterizationTUHO:
 
     def test_tuho_distribution_schedule_lockup_active_is_bool(self):
         """lockup_active must be a Python bool in each period dict."""
-        from app.api.project_runner import run_project
+        from app.api.project_runner import run_project_legacy as run_project  # PR-8: legacy characterization route
         result = run_project("TUHO", "Base")
         ds = result["distribution_schedule"]
         for p in ds["periods"][:5]:
@@ -446,7 +446,7 @@ class TestG1CharacterizationTUHO:
 
     def test_oborovo_distribution_schedule_structure(self):
         """Oborovo distribution_schedule must have same structure as TUHO."""
-        from app.api.project_runner import run_project
+        from app.api.project_runner import run_project_legacy as run_project  # PR-8: legacy characterization route
         result = run_project("Oborovo", "Base")
         ds = result["distribution_schedule"]
         assert "periods" in ds
