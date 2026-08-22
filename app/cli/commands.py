@@ -79,8 +79,9 @@ def run(project, scenario, period_view, input_file, output, json_output):
     click.echo(f'Running {project} {scenario} ({period_view})...')
 
     try:
-        demo = run_demo_project(project, scenario,
-                                project_inputs_override=project_inputs_override)
+        from app.services.production_waterfall_seam import execute_production_demo
+        demo, _authority_meta = execute_production_demo(
+            project, scenario, project_inputs_override=project_inputs_override)
         result = demo.result
         proj_inputs = getattr(demo, 'project_inputs', None)
 
@@ -162,7 +163,9 @@ def batch(input_path, output_path, fail_fast):
                 project_inputs_override = build_projectinputs(schema)
 
             # Use same run_demo_project approach as CLI `run` command
-            demo = run_demo_project(pt, sc, project_inputs_override=project_inputs_override)
+            from app.services.production_waterfall_seam import execute_production_demo
+            demo, _authority_meta = execute_production_demo(
+                pt, sc, project_inputs_override=project_inputs_override)
             result = demo.result
             kpis = {
                 'project_irr': result.project_irr,

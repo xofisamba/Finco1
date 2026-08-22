@@ -134,12 +134,16 @@ def build_runtime_summary_csv_export(
     from app.export.runtime_summary import build_runtime_summary_csv, build_runtime_summary_rows
 
     try:
+        # PR-8 single-calculation contract: ONE production execution → rows
+        # once → the SAME rows are serialized to CSV. The serialization layer
+        # is financial-calculation-free.
         runtime_rows = build_runtime_summary_rows(runtime_project_code)
         first_row = runtime_rows[0]
         csv_text = build_runtime_summary_csv(
             runtime_project_code,
             generated_at=first_row["generated_at"],
             source_branch=first_row["source_branch"],
+            rows=runtime_rows,
         )
     except ValueError as exc:
         return ExportResponse(
@@ -187,13 +191,19 @@ def build_institutional_workbook_export(
 
     Behavior matches the original institutional_workbook_export logic in main_web.py.
     """
-    from app.export.institutional_workbook import export_institutional_workbook_skeleton
-    from app.export.runtime_summary import build_runtime_summary_rows
+    from app.export.institutional_workbook import (
+        _build_export_bundle,
+        export_institutional_workbook_from_bundle,
+    )
 
     try:
-        runtime_rows = build_runtime_summary_rows(runtime_project_code)
-        first_row = runtime_rows[0]
-        workbook_bytes = export_institutional_workbook_skeleton(runtime_project_code)
+        # PR-8 single-calculation contract: ONE authority execution → ONE
+        # bundle (which already contains runtime_rows, runtime_result and
+        # authority metadata) → pure serialization to workbook bytes. No
+        # second model run, no separately rebuilt runtime rows.
+        bundle = _build_export_bundle(runtime_project_code)
+        first_row = bundle.runtime_rows[0]
+        workbook_bytes = export_institutional_workbook_from_bundle(bundle)
     except ValueError as exc:
         return ExportResponse(
             status_code=400,

@@ -152,9 +152,136 @@ def _sanitize_df(df):
 
 def run_project(project_type: str, scenario: str, period_view: str = "Semiannual",
                project_inputs_override=None, use_dualrun_validation: bool = False):
-    demo = run_demo_project(project_type, scenario,
-                            project_inputs_override=project_inputs_override,
-                            use_dualrun_validation=use_dualrun_validation)
+    """PR-8 production run: single financial authority routing (see impl)."""
+    return _run_project_impl(
+        project_type, scenario, period_view, project_inputs_override,
+        use_dualrun_validation, force_legacy=False,
+    )
+
+
+def run_project_legacy(project_type: str, scenario: str, period_view: str = "Semiannual",
+                       project_inputs_override=None, use_dualrun_validation: bool = False):
+    """Explicit legacy calibration run (PR-8).
+
+    Identical to the historical run_project behaviour: always the legacy
+    waterfall + legacy sponsor engine, no authority classification. Retained
+    for historical parity/characterization tests (§ PR-8: legacy remains
+    callable OUTSIDE the promoted production route); production routes must
+    use run_project.
+    """
+    return _run_project_impl(
+        project_type, scenario, period_view, project_inputs_override,
+        use_dualrun_validation, force_legacy=True,
+    )
+
+
+def _run_project_impl(project_type: str, scenario: str, period_view: str = "Semiannual",
+                      project_inputs_override=None, use_dualrun_validation: bool = False,
+                      force_legacy: bool = False):
+    # ── PR-8: single production financial authority routing ─────────────────
+    # Resolve the effective canonical inputs exactly as the legacy runtime
+    # does, classify the typed contract, and route:
+    #   CLEAN_PRODUCTION_READY → ONE clean G2C calculation + read-only adapter
+    #                            (no legacy waterfall, no legacy sponsor engine);
+    #   otherwise              → legacy calibration runtime, explicitly
+    #                            classified with a machine-readable reason.
+    # Never a silent fallback; never both engines in one run. A clean-route
+    # failure propagates (fail closed) — it is never swallowed into legacy.
+    clean_run = None
+    authority_decision = None
+    _pr8_inputs = None
+    if not force_legacy and project_type != "Portfolio":
+        # PR-8 correction pass: NO exception-driven fallback. Resolution and
+        # classification plumbing failures raise the typed
+        # ProductionAuthorityResolutionError and execute ZERO engines (clean
+        # or legacy). Validation ERRORS on user overrides are input problems,
+        # not routing problems: they delegate to run_demo_project's no-run
+        # error DemoResult (no engine executes on that path either).
+        from app.services.production_financial_authority import (
+            ProductionAuthorityResolutionError,
+        )
+        from app.services.production_waterfall_seam import classify_or_fail
+
+        if project_inputs_override is not None:
+            from domain.validation import validate_project_inputs
+            issues = list(validate_project_inputs(project_inputs_override))
+            if not [i for i in issues if i.severity == "error"]:
+                _pr8_inputs = project_inputs_override
+        elif project_type in (
+            "TUHO", "Oborovo", "Test 1", "Test 2", "Solar", "Wind",
+        ):
+            from app import project_factories as _pf
+            try:
+                _pr8_inputs = {
+                    "TUHO": _pf.create_default_tuho_wind1,
+                    "Oborovo": _pf.create_default_oborovo,
+                    "Test 1": _pf.create_default_solar_project,
+                    "Test 2": _pf.create_default_wind_project,
+                    "Solar": _pf.create_default_solar_project,
+                    "Wind": _pf.create_default_wind_project,
+                }[project_type]()
+            except ProductionAuthorityResolutionError:
+                raise
+            except Exception as exc:
+                raise ProductionAuthorityResolutionError(
+                    reason_code="PR8_FACTORY_RESOLUTION_FAILURE",
+                    detail=(
+                        f"factory resolution for project_type={project_type!r} "
+                        f"raised {type(exc).__name__}: {exc}. Production "
+                        "routing fails closed — no engine executes."
+                    ),
+                ) from exc
+
+        if _pr8_inputs is not None:
+            authority_decision = classify_or_fail(_pr8_inputs)
+
+        if (
+            authority_decision is not None
+            and authority_decision.promoted
+            and use_dualrun_validation
+        ):
+            # The dual-run flag is a legacy calibration diagnostic; it may
+            # never pull a clean-ready production project back to legacy.
+            raise ProductionAuthorityResolutionError(
+                reason_code="PR8_DUALRUN_DIAGNOSTIC_UNAVAILABLE_ON_CLEAN_ROUTE",
+                detail=(
+                    "use_dualrun_validation is not available on the clean "
+                    "production route. Calibration callers must use "
+                    "run_project_legacy."
+                ),
+            )
+
+    if (
+        clean_run is None
+        and authority_decision is not None
+        and authority_decision.promoted
+        and not use_dualrun_validation
+    ):
+        # Deliberately OUTSIDE the try/except above: a clean production
+        # failure is a fail-closed error (CleanProductionRunUnavailable) and
+        # must surface — never a silent legacy fallback.
+        from app.services.production_financial_authority import run_clean_production
+
+        clean_run = run_clean_production(_pr8_inputs, scenario, project_type=project_type)
+
+    if clean_run is not None:
+        from app.ui_runner import DemoResult
+        from app.services.clean_presentation_adapter import (
+            build_clean_waterfall_view,
+        )
+        demo = DemoResult(
+            project_type=project_type,
+            result=build_clean_waterfall_view(clean_run),
+            project_inputs=clean_run.project_inputs,
+            messages=[],
+            integration_status="full",
+            integration_note="Clean production financial authority (PR-8): "
+                             "single G2C calculation, read-only presentation adapter.",
+        )
+    else:
+        demo = run_demo_project(project_type, scenario,
+                                project_inputs_override=project_inputs_override,
+                                use_dualrun_validation=use_dualrun_validation)
     result = demo.result
 
     # Build tables
@@ -179,14 +306,17 @@ def run_project(project_type: str, scenario: str, period_view: str = "Semiannual
     # calculations are performed here; it reads from WaterfallResult.periods fields that
     # run_waterfall() already computed. waterfall_core.py does NOT import this module
     # (separation of concerns verified by test_excel_parity_characterization.py C8).
+    # PR-8 promoted (clean) runs: FS assembly over the clean runtime is deferred —
+    # explicitly NOT_AVAILABLE rather than assembled from legacy-shaped inputs.
     financial_statements_payload = None
-    try:
-        from domain.financial_statements import assemble_financial_statements
-        fs = assemble_financial_statements(result)
-        financial_statements_payload = _serialize_financial_statements(fs)
-    except Exception:
-        # FS assembly failure must never break the run path; degrade gracefully.
-        financial_statements_payload = None
+    if clean_run is None:
+        try:
+            from domain.financial_statements import assemble_financial_statements
+            fs = assemble_financial_statements(result)
+            financial_statements_payload = _serialize_financial_statements(fs)
+        except Exception:
+            # FS assembly failure must never break the run path; degrade gracefully.
+            financial_statements_payload = None
 
     # Phase E2: assemble senior debt schedule from the already-computed waterfall result.
     # _serialize_debt_schedule() reads per-period fields already computed by the waterfall
@@ -223,16 +353,25 @@ def run_project(project_type: str, scenario: str, period_view: str = "Semiannual
     # direction (runner calls engine). Neither engine is modified. No circular imports.
     # _serialize_sponsor_schedule() reads from SponsorCashflowResult / SponsorIrrResult /
     # SponsorMoicResult — no new sponsor economics are computed here.
+    # PR-8 promoted (clean) runs: the legacy sponsor engine (hardcoded capital
+    # structures) is NOT invoked — the G2C sponsor result is serialized
+    # read-only instead.
     sponsor_schedule_payload = None
-    try:
-        sponsor_result = _run_sponsor_engine(result, demo.project_inputs, project_type)
-        if sponsor_result is not None:
-            sponsor_schedule_payload = _serialize_sponsor_schedule(*sponsor_result)
-    except Exception:
-        # Sponsor engine failure must never break the run path; degrade gracefully.
-        sponsor_schedule_payload = None
+    if clean_run is not None:
+        from app.services.clean_presentation_adapter import (
+            build_clean_sponsor_schedule,
+        )
+        sponsor_schedule_payload = build_clean_sponsor_schedule(clean_run)
+    else:
+        try:
+            sponsor_result = _run_sponsor_engine(result, demo.project_inputs, project_type)
+            if sponsor_result is not None:
+                sponsor_schedule_payload = _serialize_sponsor_schedule(*sponsor_result)
+        except Exception:
+            # Sponsor engine failure must never break the run path; degrade gracefully.
+            sponsor_schedule_payload = None
 
-    return {
+    payload = {
         "project_type": project_type,
         "scenario": scenario,
         "period_view": period_view,
@@ -281,6 +420,33 @@ def run_project(project_type: str, scenario: str, period_view: str = "Semiannual
             "returns": returns.to_dict(orient="records"),
         }
     }
+    if not force_legacy:
+        # PR-8: machine-readable production-authority lineage for this run.
+        # (Explicit legacy characterization runs keep the exact historical
+        # payload shape — no extra keys.)
+        payload["runtime_authority"] = (
+            getattr(demo.result, "_authority_metadata", None)
+            or clean_run.authority_metadata
+            if clean_run is not None
+            else (
+                authority_decision.to_metadata() | {
+                    "runtime_authority": "legacy_waterfall_calibration",
+                    "calculation_count": 1,
+                }
+                if authority_decision is not None
+                else {
+                    "classification": "LEGACY_CALIBRATION_ONLY",
+                    "reason_code": "PR8_ROUTE_NOT_CLASSIFIED",
+                    "detail": (
+                        "portfolio composition or unrecognised project type — "
+                        "legacy runtime, no clean classification applicable"
+                    ),
+                    "runtime_authority": "legacy_waterfall_calibration",
+                    "calculation_count": 1,
+                }
+            )
+        )
+    return payload
 
 
 def _serialize_financial_statements(fs) -> dict:

@@ -381,9 +381,14 @@ async def execute_post_download_route(
                 else "Wind"
             )
 
-    # ── 5. Model execution ────────────────────────────────────────────
+    # ── 5. Model execution — PR-8 production authority seam ──────────
+    # Clean-ready projects export values computed by the clean G2C authority
+    # exactly once; blocked projects keep the explicitly classified legacy
+    # demo funnel. No route-dependent authority.
     try:
-        demo = deps.run_demo_project(
+        from app.services.production_waterfall_seam import execute_production_demo
+
+        demo, _authority_meta = execute_production_demo(
             runtime_project_key, scenario, project_inputs_override=override,
         )
     except Exception as e:  # noqa: BLE001
@@ -525,11 +530,27 @@ async def execute_get_download_route(
         project_type = project_type if project_type else "Solar"
         scenario = scenario if scenario else "Base"
 
-        # ── 1. Model execution (no override) ───────────────────────────
-        demo = deps.run_demo_project(project_type, scenario)
+        # ── 1. Model execution (no override) — PR-8 production authority ──
+        from app.services.production_waterfall_seam import execute_production_demo
 
-        # ── 2. HARDCODED project_code mapping (quirk 2) ────────────────
-        project_code = "oborovo" if project_type.lower() == "solar" else "tuho"
+        demo, _authority_meta = execute_production_demo(project_type, scenario)
+
+        # ── 2. Truthful project lineage (PR-8 final correction) ─────────
+        # ARTIFACT_PROJECT_LINEAGE_MATCHES_EXECUTED_PROJECT: the replay/
+        # project lineage must describe the SAME project snapshot the
+        # authority executed. Generic Solar/Wind exports carry generic
+        # lineage (no persisted record → None is truthful and preferred over
+        # falsely binding the artifact to Oborovo/TUHO). Input-resolution
+        # mapping only — no financial dispatch.
+        _lineage_key = {
+            "solar": "generic_solar",
+            "test 1": "generic_solar",
+            "wind": "generic_wind",
+            "test 2": "generic_wind",
+            "tuho": "tuho",
+            "oborovo": "oborovo",
+        }.get(project_type.lower())
+        project_code = _lineage_key or project_type.lower()
         project_record = deps.get_project_by_code(user.user_id, project_code)
 
         # ── 3. Filename (constructed in orchestration) ────────────────

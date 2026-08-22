@@ -7,7 +7,7 @@ It does not change runtime authority or formulas.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from io import BytesIO
 from pathlib import Path
 import csv
@@ -21,7 +21,10 @@ from app.export.workbook_index import (
     INSTITUTIONAL_SHEET_INVENTORY,
     write_workbook_index_sheet_full,
 )
-from app.export.runtime_summary import _run_project, build_runtime_summary_rows
+from app.export.runtime_summary import (
+    PROJECT_FACTORIES,
+    build_runtime_summary_rows,
+)
 from app.input_helpers import (
     build_capex_items_table,
     build_capex_summary_table,
@@ -74,6 +77,7 @@ class WorkbookExportBundle:
     capex_items: object
     revenue_table: object
     debt_table: object
+    authority_metadata: dict = field(default_factory=dict)
 
 
 def _resolve_export_senior_debt_keur(bundle: WorkbookExportBundle) -> float:
@@ -191,7 +195,17 @@ REVIEWER_COVER_NOTES = (
 
 
 def export_institutional_workbook_skeleton(project: str) -> bytes:
-    bundle = _build_export_bundle(project)
+    """Standalone export: ONE authority execution → bundle → workbook bytes."""
+    return export_institutional_workbook_from_bundle(_build_export_bundle(project))
+
+
+def export_institutional_workbook_from_bundle(bundle: WorkbookExportBundle) -> bytes:
+    """Pure serialization of an ALREADY-BUILT export bundle to workbook bytes.
+
+    PR-8 single-calculation contract: this function performs ZERO financial
+    calculations — callers that already hold a bundle (one authority
+    execution) serialize from it without re-running any engine.
+    """
     workbook = Workbook()
 
     # Export_Metadata sheet — first sheet, trust hygiene, non-claims
@@ -320,9 +334,29 @@ def write_runtime_workbook_binding_status_csv(path: str | Path) -> Path:
 
 def _build_export_bundle(project: str) -> WorkbookExportBundle:
     project_key = (project or "tuho").strip().lower()
-    runtime_rows = build_runtime_summary_rows(project_key)
-    project_inputs, runtime_result = _run_project(project_key)
-    statements = assemble_financial_statements(runtime_result)
+    # PR-8 correction pass: the institutional workbook obeys PROJECT-LEVEL
+    # authority. Clean-ready projects (Generic Solar/Wind) consume the clean
+    # G2C canonical result (ONE calculation); FS-dependent sheets surface
+    # explicit NOT_AVAILABLE rows; blocked projects keep the legacy
+    # calibration run — also exactly one — with legacy authority metadata.
+    # SAME_PROJECT_SAME_SNAPSHOT_SAME_AUTHORITY: a Solar/Wind Run followed
+    # by this export never changes authority.
+    from app.services.production_waterfall_seam import execute_production_waterfall
+
+    project_inputs = PROJECT_FACTORIES[project_key]()
+    execution = execute_production_waterfall(project_inputs)
+    runtime_result = execution.result
+    authority_metadata = execution.authority_metadata or {}
+
+    runtime_rows = build_runtime_summary_rows(
+        project_key, _precomputed=(execution.project_inputs, runtime_result)
+    )
+    if execution.clean_run is not None:
+        # Clean runtime: financial-statements assembly intentionally
+        # unavailable (typed marker); never reconstructed from legacy.
+        statements = None
+    else:
+        statements = assemble_financial_statements(runtime_result)
     context = get_project_context(project_key)
     return WorkbookExportBundle(
         project_key=project_key,
@@ -349,6 +383,7 @@ def _build_export_bundle(project: str) -> WorkbookExportBundle:
         runtime_result=runtime_result,
         runtime_rows=runtime_rows,
         statements=statements,
+        authority_metadata=dict(authority_metadata or {}),
         inputs_summary=build_inputs_summary_table(project_inputs),
         capex_summary=build_capex_summary_table(project_inputs),
         capex_items=build_capex_items_table(project_inputs),
@@ -673,6 +708,10 @@ def _write_shl_sheet(sheet, bundle: WorkbookExportBundle) -> None:
 
 def _write_tax_sheet(sheet, bundle: WorkbookExportBundle) -> None:
     _write_metadata_block(sheet, bundle, "runtime + template assumptions")
+    if getattr(bundle, "statements", None) is None:
+        _write_fs_unavailable_rows(sheet)
+        return
+
     tax = bundle.project_inputs.tax
     periods = list(bundle.statements.tax_bridge.periods)
     rows = [
@@ -707,6 +746,10 @@ def _write_tax_sheet(sheet, bundle: WorkbookExportBundle) -> None:
 
 def _write_pnl_sheet(sheet, bundle: WorkbookExportBundle) -> None:
     _write_metadata_block(sheet, bundle, "runtime")
+    if getattr(bundle, "statements", None) is None:
+        _write_fs_unavailable_rows(sheet)
+        return
+
     periods = list(bundle.statements.pnl.periods)
     _write_horizontal_metric_table(
         sheet,
@@ -732,6 +775,10 @@ def _write_pnl_sheet(sheet, bundle: WorkbookExportBundle) -> None:
 
 def _write_cash_flow_sheet(sheet, bundle: WorkbookExportBundle) -> None:
     _write_metadata_block(sheet, bundle, "runtime")
+    if getattr(bundle, "statements", None) is None:
+        _write_fs_unavailable_rows(sheet)
+        return
+
     periods = list(bundle.statements.pf_cash_waterfall.periods)
     _write_horizontal_metric_table(
         sheet,
@@ -756,6 +803,10 @@ def _write_cash_flow_sheet(sheet, bundle: WorkbookExportBundle) -> None:
 
 def _write_balance_sheet(sheet, bundle: WorkbookExportBundle) -> None:
     _write_metadata_block(sheet, bundle, "runtime")
+    if getattr(bundle, "statements", None) is None:
+        _write_fs_unavailable_rows(sheet)
+        return
+
     periods = list(bundle.statements.balance_sheet.periods)
     _write_horizontal_metric_table(
         sheet,
@@ -780,10 +831,17 @@ def _write_balance_sheet(sheet, bundle: WorkbookExportBundle) -> None:
 
 def _write_audit_sheet(sheet, bundle: WorkbookExportBundle) -> None:
     _write_metadata_block(sheet, bundle, "review")
+    _fs_row = (
+        ("P&L / tax / BS source", "NOT_AVAILABLE on clean G2C runtime", "runtime",
+         "Financial statements are intentionally unavailable for clean-authority "
+         "projects; no legacy fallback populates them.")
+        if getattr(bundle, "statements", None) is None
+        else ("P&L / tax / BS source", "assemble_financial_statements(runtime_result)", "runtime", "Offline assembly from existing runtime result.")
+    )
     rows = [
-        ("Runtime source", "WaterfallRunner(project_inputs, engine).run(config)", "runtime", "Existing runtime authority."),
+        ("Runtime source", "production_waterfall_seam.execute_production_waterfall (PR-8 project-level authority)", "runtime", "Clean G2C for clean-ready projects; explicitly classified legacy calibration for blocked projects."),
         ("Project assumption source", "ProjectContext + template-bound ProjectInputs", "template assumption", "Read-only context layer."),
-        ("P&L / tax / BS source", "assemble_financial_statements(runtime_result)", "runtime", "Offline assembly from existing runtime result."),
+        _fs_row,
         ("Revenue period source", "build_revenue_table(runtime_result)", "runtime", "Existing output table builder."),
         ("Debt period source", "build_debt_table(runtime_result)", "runtime", "Existing output table builder."),
         ("Workbook-only formulas", "none", "review", "Presentation-only export branch."),
@@ -879,6 +937,16 @@ def _write_export_metadata_sheet(sheet, bundle: WorkbookExportBundle) -> None:
     sheet["A1"].fill = TITLE_FILL
     sheet["A1"].font = Font(color="FFFFFF", bold=True, size=16, name="Calibri")
     sheet["A2"] = "Trust hygiene, provenance, and non-claims — Phase 47"
+    _meta = getattr(bundle, "authority_metadata", None) or {}
+    sheet["A3"] = (
+        "Runtime authority: "
+        + str(_meta.get("runtime_authority", "legacy_waterfall_calibration"))
+        + (" | classification " + str(_meta.get("classification", "n/a")) if _meta else "")
+        + (" | reason " + str(_meta.get("reason_code", "n/a")) if _meta else "")
+        + " | calculation_count "
+        + str(_meta.get("calculation_count", 1))
+    )
+    sheet["A3"].font = Font(size=11, bold=True, name="Calibri")
     sheet["A2"].font = Font(size=11, italic=True, name="Calibri")
 
     # Build export metadata from bundle fields
@@ -986,6 +1054,20 @@ def _display_runtime_origin(value: str) -> str:
 
 def _display_template_origin(value: str) -> str:
     return _TEMPLATE_ORIGIN_DISPLAY.get(value, value)
+
+
+def _write_fs_unavailable_rows(sheet) -> None:
+    """PR-8: explicit NOT_AVAILABLE rows for FS-dependent sheets on the clean
+    runtime (no legacy fallback to populate them)."""
+    from openpyxl.styles import Font as _Font
+
+    sheet["A6"] = "NOT_AVAILABLE"
+    sheet["A6"].font = _Font(bold=True)
+    sheet["A7"] = (
+        "PR8_NOT_AVAILABLE: financial-statements assembly is a legacy-runtime "
+        "concept; this project runs the clean G2C production authority and "
+        "unsupported sheets are intentionally unavailable (no legacy fallback)."
+    )
 
 
 def _write_metadata_block(sheet, bundle: WorkbookExportBundle, marker: str) -> None:

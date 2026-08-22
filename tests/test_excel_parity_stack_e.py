@@ -55,7 +55,7 @@ class TestE2DebtSchedulePayload:
 
     def test_debt_schedule_in_run_project_output(self):
         """run_project() must return a 'debt_schedule' key."""
-        from app.api.project_runner import run_project
+        from app.api.project_runner import run_project_legacy as run_project  # PR-8: legacy characterization route
         result = run_project("TUHO", "Base")
         assert "debt_schedule" in result, (
             "run_project() must include 'debt_schedule' key in its return dict. "
@@ -64,7 +64,7 @@ class TestE2DebtSchedulePayload:
 
     def test_debt_schedule_not_none_after_run(self):
         """The 'debt_schedule' payload must not be None after a successful run."""
-        from app.api.project_runner import run_project
+        from app.api.project_runner import run_project_legacy as run_project  # PR-8: legacy characterization route
         result = run_project("TUHO", "Base")
         ds = result.get("debt_schedule")
         assert ds is not None, (
@@ -73,7 +73,7 @@ class TestE2DebtSchedulePayload:
 
     def test_debt_schedule_oborovo_not_none(self):
         """debt_schedule payload must not be None for Oborovo either."""
-        from app.api.project_runner import run_project
+        from app.api.project_runner import run_project_legacy as run_project  # PR-8: legacy characterization route
         result = run_project("Oborovo", "Base")
         ds = result.get("debt_schedule")
         assert ds is not None, (
@@ -82,7 +82,7 @@ class TestE2DebtSchedulePayload:
 
     def test_debt_schedule_has_required_top_level_keys(self):
         """debt_schedule payload must have 'periods', 'summary', 'source' keys."""
-        from app.api.project_runner import run_project
+        from app.api.project_runner import run_project_legacy as run_project  # PR-8: legacy characterization route
         result = run_project("TUHO", "Base")
         ds = result["debt_schedule"]
         for key in ("periods", "summary", "source"):
@@ -90,7 +90,7 @@ class TestE2DebtSchedulePayload:
 
     def test_debt_schedule_source_annotation(self):
         """debt_schedule source field must indicate WaterfallResult.periods origin."""
-        from app.api.project_runner import run_project
+        from app.api.project_runner import run_project_legacy as run_project  # PR-8: legacy characterization route
         result = run_project("TUHO", "Base")
         ds = result["debt_schedule"]
         assert "WaterfallResult" in ds.get("source", ""), (
@@ -100,7 +100,7 @@ class TestE2DebtSchedulePayload:
 
     def test_debt_schedule_periods_nonempty(self):
         """debt_schedule periods list must be non-empty."""
-        from app.api.project_runner import run_project
+        from app.api.project_runner import run_project_legacy as run_project  # PR-8: legacy characterization route
         result = run_project("TUHO", "Base")
         ds = result["debt_schedule"]
         periods = ds["periods"]
@@ -112,7 +112,7 @@ class TestE5DebtScheduleSerializes:
 
     def test_debt_schedule_serializes_cleanly(self):
         """debt_schedule payload must be JSON-serializable with no NaN/Infinity."""
-        from app.api.project_runner import run_project
+        from app.api.project_runner import run_project_legacy as run_project  # PR-8: legacy characterization route
         result = run_project("TUHO", "Base")
         ds = result["debt_schedule"]
         serialized = json.dumps(ds)
@@ -122,7 +122,7 @@ class TestE5DebtScheduleSerializes:
 
     def test_debt_schedule_has_expected_fields(self):
         """Each operation period must have principal, interest, debt_service, dscr, closing_balance."""
-        from app.api.project_runner import run_project
+        from app.api.project_runner import run_project_legacy as run_project  # PR-8: legacy characterization route
         result = run_project("TUHO", "Base")
         ds = result["debt_schedule"]
         op_periods = [p for p in ds["periods"] if p.get("is_operation")]
@@ -143,7 +143,7 @@ class TestE5DebtScheduleSerializes:
 
     def test_debt_schedule_summary_fields(self):
         """debt_schedule summary must have expected aggregate fields."""
-        from app.api.project_runner import run_project
+        from app.api.project_runner import run_project_legacy as run_project  # PR-8: legacy characterization route
         result = run_project("TUHO", "Base")
         ds = result["debt_schedule"]
         summary = ds["summary"]
@@ -152,7 +152,7 @@ class TestE5DebtScheduleSerializes:
 
     def test_debt_schedule_no_inf_nan_in_payload(self):
         """No infinite or NaN float values must appear after JSON serialization."""
-        from app.api.project_runner import run_project
+        from app.api.project_runner import run_project_legacy as run_project  # PR-8: legacy characterization route
         result = run_project("Oborovo", "Base")
         ds = result["debt_schedule"]
         serialized = json.dumps(ds)
@@ -161,7 +161,7 @@ class TestE5DebtScheduleSerializes:
 
     def test_debt_schedule_serialized_size_reasonable(self):
         """Serialized payload must be < 500 KB for TUHO (~60 periods)."""
-        from app.api.project_runner import run_project
+        from app.api.project_runner import run_project_legacy as run_project  # PR-8: legacy characterization route
         result = run_project("TUHO", "Base")
         ds = result["debt_schedule"]
         size = len(json.dumps(ds))

@@ -1,6 +1,6 @@
 """Golden value tests — fail if KPIs drift materially from known good outputs."""
 import pytest
-from app.api.project_runner import run_project
+from app.api.project_runner import run_project_legacy as run_project  # PR-8: legacy characterization route
 
 
 GOLDEN = {

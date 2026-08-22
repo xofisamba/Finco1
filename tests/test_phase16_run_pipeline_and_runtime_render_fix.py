@@ -234,7 +234,7 @@ class TestRuntimeDeltaProof:
         # Only run if we have the actual modules
         try:
             from app.input_adapter import build_projectinputs
-            from app.api.project_runner import run_project
+            from app.api.project_runner import run_project_legacy as run_project  # PR-8: legacy characterization route
             from app.input_schema import ProjectInputsSchema, RevenueInput
         except ImportError as e:
             pytest.skip(f"Cannot import required modules: {e}")

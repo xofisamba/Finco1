@@ -103,14 +103,15 @@ def run_lender_case(
       - periods: list of per-period covenant analytics dicts
       - adjustment_summary: human-readable list of applied adjustments
     """
-    from app.ui_runner import _build_period_engine
-    from app.waterfall_runner import WaterfallRunner, WaterfallRunConfig
+    from app.services.production_waterfall_seam import execute_production_waterfall
 
     shocked_proj = apply_lender_adjustments(proj, adjustments)
-    eng = _build_period_engine(shocked_proj)
-    result = WaterfallRunner(shocked_proj, eng).run(
-        WaterfallRunConfig.from_inputs(shocked_proj, eng)
-    )
+    # PR-8 correction pass: lender-case shocks execute through the ONE
+    # shared production authority seam — clean G2C for clean-ready projects,
+    # explicitly classified legacy for blocked projects. No legacy Base run
+    # alongside clean data.
+    execution = execute_production_waterfall(shocked_proj)
+    result = execution.result
 
     kpis = build_canonical_report_kpis(result)
 

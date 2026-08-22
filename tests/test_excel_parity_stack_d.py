@@ -112,7 +112,7 @@ class TestD1FinancialStatementsPayload:
 
     def test_run_project_returns_financial_statements_key(self):
         """run_project() result dict must contain a 'financial_statements' key."""
-        from app.api.project_runner import run_project
+        from app.api.project_runner import run_project_legacy as run_project  # PR-8: legacy characterization route
         result = run_project("TUHO", "Base")
         assert "financial_statements" in result, (
             "run_project() must include 'financial_statements' key in its return dict. "
@@ -121,7 +121,7 @@ class TestD1FinancialStatementsPayload:
 
     def test_financial_statements_not_none_after_run(self):
         """The 'financial_statements' payload should not be None after a successful run."""
-        from app.api.project_runner import run_project
+        from app.api.project_runner import run_project_legacy as run_project  # PR-8: legacy characterization route
         result = run_project("TUHO", "Base")
         fs = result.get("financial_statements")
         assert fs is not None, (
@@ -130,7 +130,7 @@ class TestD1FinancialStatementsPayload:
 
     def test_financial_statements_oborovo_not_none(self):
         """FS payload should not be None for Oborovo either."""
-        from app.api.project_runner import run_project
+        from app.api.project_runner import run_project_legacy as run_project  # PR-8: legacy characterization route
         result = run_project("Oborovo", "Base")
         fs = result.get("financial_statements")
         assert fs is not None, (
@@ -139,7 +139,7 @@ class TestD1FinancialStatementsPayload:
 
     def test_financial_statements_has_required_keys(self):
         """FS payload must have pnl, balance_sheet, pf_cash_waterfall keys."""
-        from app.api.project_runner import run_project
+        from app.api.project_runner import run_project_legacy as run_project  # PR-8: legacy characterization route
         result = run_project("TUHO", "Base")
         fs = result["financial_statements"]
         for key in ("pnl", "balance_sheet", "pf_cash_waterfall", "source"):
@@ -147,7 +147,7 @@ class TestD1FinancialStatementsPayload:
 
     def test_financial_statements_pnl_periods_nonempty(self):
         """P&L periods list should be non-empty."""
-        from app.api.project_runner import run_project
+        from app.api.project_runner import run_project_legacy as run_project  # PR-8: legacy characterization route
         result = run_project("TUHO", "Base")
         fs = result["financial_statements"]
         periods = fs["pnl"]["periods"]
@@ -155,7 +155,7 @@ class TestD1FinancialStatementsPayload:
 
     def test_financial_statements_balance_sheet_periods_nonempty(self):
         """Balance sheet periods list should be non-empty."""
-        from app.api.project_runner import run_project
+        from app.api.project_runner import run_project_legacy as run_project  # PR-8: legacy characterization route
         result = run_project("TUHO", "Base")
         fs = result["financial_statements"]
         periods = fs["balance_sheet"]["periods"]
@@ -163,7 +163,7 @@ class TestD1FinancialStatementsPayload:
 
     def test_financial_statements_pf_cash_waterfall_periods_nonempty(self):
         """PF Cash Waterfall periods list should be non-empty."""
-        from app.api.project_runner import run_project
+        from app.api.project_runner import run_project_legacy as run_project  # PR-8: legacy characterization route
         result = run_project("TUHO", "Base")
         fs = result["financial_statements"]
         periods = fs["pf_cash_waterfall"]["periods"]
@@ -171,7 +171,7 @@ class TestD1FinancialStatementsPayload:
 
     def test_financial_statements_source_annotation(self):
         """FS payload source field must indicate assemble_financial_statements origin."""
-        from app.api.project_runner import run_project
+        from app.api.project_runner import run_project_legacy as run_project  # PR-8: legacy characterization route
         result = run_project("TUHO", "Base")
         fs = result["financial_statements"]
         assert "assemble_financial_statements" in fs.get("source", ""), (
@@ -181,7 +181,7 @@ class TestD1FinancialStatementsPayload:
 
     def test_financial_statements_is_json_serializable(self):
         """FS payload must be JSON-serializable (required for sessionStorage)."""
-        from app.api.project_runner import run_project
+        from app.api.project_runner import run_project_legacy as run_project  # PR-8: legacy characterization route
         result = run_project("TUHO", "Base")
         fs = result["financial_statements"]
         # Will raise if not serializable
@@ -194,7 +194,7 @@ class TestD1FinancialStatementsPayload:
         This proves: no duplicate calculations, no new formulas introduced —
         the payload is simply a serialization of engine output.
         """
-        from app.api.project_runner import run_project
+        from app.api.project_runner import run_project_legacy as run_project  # PR-8: legacy characterization route
         result = run_project("TUHO", "Base")
         fs_payload = result["financial_statements"]
 
@@ -422,7 +422,7 @@ class TestD2PayloadAudit:
 
     def test_pnl_period_count_matches_engine(self):
         """Serialized P&L period count should match engine period count."""
-        from app.api.project_runner import run_project
+        from app.api.project_runner import run_project_legacy as run_project  # PR-8: legacy characterization route
         result = run_project("TUHO", "Base")
         fs = result["financial_statements"]
         # TUHO: 30-year horizon, semiannual = 60 periods
@@ -433,7 +433,7 @@ class TestD2PayloadAudit:
 
     def test_balance_sheet_period_count_matches_engine(self):
         """Serialized BS period count should match engine period count."""
-        from app.api.project_runner import run_project
+        from app.api.project_runner import run_project_legacy as run_project  # PR-8: legacy characterization route
         result = run_project("TUHO", "Base")
         fs = result["financial_statements"]
         period_count = len(fs["balance_sheet"]["periods"])
@@ -443,7 +443,7 @@ class TestD2PayloadAudit:
 
     def test_serialized_payload_size_reasonable(self):
         """Serialized FS payload should be under 500 KB (reasonable for sessionStorage)."""
-        from app.api.project_runner import run_project
+        from app.api.project_runner import run_project_legacy as run_project  # PR-8: legacy characterization route
         result = run_project("TUHO", "Base")
         fs = result["financial_statements"]
         size_bytes = len(json.dumps(fs).encode("utf-8"))
@@ -454,7 +454,7 @@ class TestD2PayloadAudit:
 
     def test_no_infinite_or_nan_values_in_payload(self):
         """Serialized FS payload must not contain non-finite float values."""
-        from app.api.project_runner import run_project
+        from app.api.project_runner import run_project_legacy as run_project  # PR-8: legacy characterization route
         result = run_project("TUHO", "Base")
         fs = result["financial_statements"]
         serialized = json.dumps(fs)
