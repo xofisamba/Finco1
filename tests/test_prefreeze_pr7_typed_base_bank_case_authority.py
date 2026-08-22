@@ -763,6 +763,241 @@ class TestW_BankCfadsNotBaseCash:
             result.tax_and_cfads.cfads_keur
         )
 
+    def test_w5_full_g2c_downstream_isolation_with_fixed_senior(self):
+        """W5 — FULL downstream Bank-CFADS isolation proof through the production
+        G2C covenant-gated waterfall (post-Senior → CASH_DSRA → DA/CF109 → SHL
+        → legal distributions / Sponsor receipts).
+
+        BANK_CASE_MUTATION_WITH_FIXED_SENIOR
+        CHANGES_BANK_ECONOMICS
+        BUT_CHANGES_ZERO_DOWNSTREAM_BASE_CASH_OUTPUTS
+
+        Vehicle: Generic Wind + ACTIVE CASH_DSRA (FORWARD_DEBT_SERVICE_MONTHS
+        dynamic target funded from final Senior DS) + derived SHL + DSCR
+        lockup-gated distributions. Two otherwise identical runs of the
+        production entry point ``run_project_shareholder_waterfall_model``:
+
+          Run A — Bank case inherits Base merchant prices (default P90-10y);
+          Run B — Bank case carries an explicit calendar-year merchant curve
+                  that is IDENTICAL to Base inside the Senior debt window and
+                  materially higher (×2) in every year AFTER the last Senior
+                  debt-service period.
+
+        The Senior → downstream transmission channel is therefore neutralised
+        causally (bank CFADS inside the sizing window is identical), which is
+        the narrowest existing production-supported seam: the G2A/G2C adapter
+        only supports DSCR-sculpted Senior, so an in-window Bank mutation
+        necessarily moves the sculpted Senior schedule (the legitimate channel
+        W3 already isolates at orchestrator level with EXPLICIT_SCHEDULE).
+        No mocks, no production code changes, no new scenario mechanism.
+
+        The test fails numerically if Bank CFADS/cash is ever routed into
+        post-Senior cash, CASH_DSRA funding, DA inflow, CF109 release, SHL
+        cash, or legal distributions.
+        """
+        import dataclasses as dc
+
+        from app.project_factories import create_default_wind_project
+        from finco_core.inputs import DebtServiceReserveSupportMode
+        from finco_core.inputs._models import DebtSizingCaseConfig, YieldScenario
+        from financial_engine.shareholder_waterfall import (
+            run_project_shareholder_waterfall_model,
+        )
+
+        wind = create_default_wind_project()
+        vehicle = dc.replace(
+            wind,
+            financing=dc.replace(
+                wind.financing,
+                dsra_support_mode=DebtServiceReserveSupportMode.CASH_DSRA,
+                dsra_target_policy="forward_debt_service_months",
+                dsra_months=6,
+                debt_service_reserve_requirement_keur=1_000.0,
+            ),
+        )
+
+        run_a = run_project_shareholder_waterfall_model(vehicle, source_id="pr7_w5_a")
+
+        # ── Determine the Senior debt window end from Run A's production output.
+        model_a = run_a.financing_result.project_model_result
+        senior_a = model_a.senior_debt
+        senior_ds_by_idx = {
+            i: ds for i, ds in zip(senior_a.period_indices, senior_a.senior_debt_service_keur)
+        }
+        last_debt_year = max(
+            p.period_end.year
+            for p in model_a.periods
+            if senior_ds_by_idx.get(p.period_index, 0.0) > 0.0
+        )
+        # First operating period's end year anchors the calendar map to the
+        # project's own operating-year convention (no hardcoded calendar).
+        first_op_year = min(
+            p.period_end.year for p in model_a.periods if p.is_operation
+        )
+        horizon_last_year = max(p.period_end.year for p in model_a.periods)
+
+        # Bank calendar curve: identical to the Base curve inside the Senior
+        # window (calendar year <= last_debt_year), doubled after it.
+        base_prices = {
+            year: vehicle.revenue.market_price_at_year(year - first_op_year + 1)
+            for year in range(first_op_year, horizon_last_year + 1)
+        }
+        bank_calendar = tuple(
+            (value if year <= last_debt_year else value * 2.0)
+            for year, value in base_prices.items()
+        )
+
+        run_b = run_project_shareholder_waterfall_model(
+            dc.replace(
+                vehicle,
+                financing=dc.replace(
+                    vehicle.financing,
+                    debt_sizing_case=DebtSizingCaseConfig(
+                        production_yield_scenario=YieldScenario.P90_10Y,
+                        merchant_price_calendar_start_year=first_op_year,
+                        merchant_prices_by_calendar_year_eur_mwh=bank_calendar,
+                        source_label="pr7_w5_post_maturity_bank_price_mutation",
+                    ),
+                ),
+            ),
+            source_id="pr7_w5_b",
+        )
+        model_b = run_b.financing_result.project_model_result
+
+        # ── 1. The Bank mutation is real ──────────────────────────────────────
+        bank_a = model_a.debt_sizing
+        bank_b = model_b.debt_sizing
+        assert list(bank_a.bank_cfads_keur) != list(bank_b.bank_cfads_keur)
+        assert sum(bank_b.bank_cfads_keur) > sum(bank_a.bank_cfads_keur)
+        assert sum(bank_b.bank_revenue_keur) > sum(bank_a.bank_revenue_keur)
+        # (production identical by design — the mutation is price-only)
+
+        # ── 2. Senior is deliberately constant ────────────────────────────────
+        senior_b = model_b.senior_debt
+        assert run_b.financing_result.final_senior_commitment_keur == (
+            run_a.financing_result.final_senior_commitment_keur
+        )
+        assert senior_b.senior_interest_keur == senior_a.senior_interest_keur
+        assert senior_b.senior_principal_keur == senior_a.senior_principal_keur
+        assert senior_b.senior_debt_service_keur == senior_a.senior_debt_service_keur
+        assert senior_b.senior_debt_closing_keur == senior_a.senior_debt_closing_keur
+        assert run_b.financing_result.binding_senior_constraint == (
+            run_a.financing_result.binding_senior_constraint
+        )
+
+        # ── 3. Base economics remain identical ────────────────────────────────
+        assert model_b.operating_schedules.production_mwh == (
+            model_a.operating_schedules.production_mwh
+        )
+        assert model_b.operating_schedules.revenue_keur == (
+            model_a.operating_schedules.revenue_keur
+        )
+        assert model_b.operating_schedules.opex_keur == model_a.operating_schedules.opex_keur
+        assert model_b.operating_schedules.ebitda_keur == (
+            model_a.operating_schedules.ebitda_keur
+        )
+        assert model_b.tax_and_cfads.corporate_tax_cash_keur == (
+            model_a.tax_and_cfads.corporate_tax_cash_keur
+        )
+        assert model_b.tax_and_cfads.cfads_keur == model_a.tax_and_cfads.cfads_keur
+
+        # ── 4. Post-Senior ────────────────────────────────────────────────────
+        psa = model_a.post_senior_cash
+        psb = model_b.post_senior_cash
+        assert psb.cash_after_senior_before_reserves_keur == (
+            psa.cash_after_senior_before_reserves_keur
+        )
+        assert psb.cash_available_for_shl_before_reserves_keur == (
+            psa.cash_available_for_shl_before_reserves_keur
+        )
+
+        # ── 5. CASH_DSRA — active mechanics, identical vectors ────────────────
+        dsra_a = model_a.cash_dsra
+        dsra_b = model_b.cash_dsra
+        wa = run_a.waterfall_periods
+        wb = run_b.waterfall_periods
+        assert len(wa) == len(wb)
+        assert any(
+            getattr(p, "dsra_top_up_keur", 0.0) > 0.0
+            or getattr(p, "dsra_release_keur", 0.0) > 0.0
+            for p in wa
+        ), "vehicle must exercise ACTIVE CASH_DSRA funding/release mechanics"
+        for pa, pb in zip(wa, wb):
+            assert pa.senior_dsra_target_keur == pb.senior_dsra_target_keur
+            assert pa.senior_dsra_opening_keur == pb.senior_dsra_opening_keur
+            assert pa.dsra_top_up_keur == pb.dsra_top_up_keur
+            assert pa.dsra_draw_keur == pb.dsra_draw_keur
+            assert pa.dsra_release_keur == pb.dsra_release_keur
+            assert pa.senior_dsra_closing_keur == pb.senior_dsra_closing_keur
+            assert pa.reserve_adjusted_cash_keur == pb.reserve_adjusted_cash_keur
+        if dsra_a is not None and dsra_b is not None:
+            assert dsra_b.final_closing_balance_keur == dsra_a.final_closing_balance_keur
+            assert dsra_b.total_top_up_keur == dsra_a.total_top_up_keur
+            assert dsra_b.total_draw_keur == dsra_a.total_draw_keur
+            assert dsra_b.total_release_keur == dsra_a.total_release_keur
+            assert dsra_b.requirement_keur == dsra_a.requirement_keur
+            for ra, rb in zip(dsra_a.period_results, dsra_b.period_results):
+                assert rb.opening_balance_keur == ra.opening_balance_keur
+                assert rb.required_balance_keur == ra.required_balance_keur
+                assert rb.closing_balance_keur == ra.closing_balance_keur
+                assert rb.cash_after_dsra_keur == ra.cash_after_dsra_keur
+
+        # ── 6. Distribution Account / CF109 — non-inert, identical vectors ────
+        assert any(p.distribution_account_release_keur > 0.0 for p in wa), (
+            "vehicle must exercise DA release (CF109) mechanics"
+        )
+        for pa, pb in zip(wa, wb):
+            assert pa.distribution_account_opening_keur == pb.distribution_account_opening_keur
+            assert pa.distribution_account_inflow_keur == pb.distribution_account_inflow_keur
+            assert pa.distribution_account_available_keur == (
+                pb.distribution_account_available_keur
+            )
+            assert pa.distribution_account_release_keur == (
+                pb.distribution_account_release_keur
+            )
+            assert pa.distribution_account_closing_keur == (
+                pb.distribution_account_closing_keur
+            )
+            assert pa.distribution_gate_status == pb.distribution_gate_status
+
+        # ── 7. SHL — non-inert cash mechanics, identical vectors ──────────────
+        assert (
+            run_a.total_shl_cash_interest_received_keur > 0.0
+            or run_a.total_shl_principal_received_keur > 0.0
+        ), "vehicle must exercise actual SHL cash interest/principal"
+        for pa, pb in zip(wa, wb):
+            assert pa.shl_opening_balance_keur == pb.shl_opening_balance_keur
+            assert pa.shl_gross_interest_keur == pb.shl_gross_interest_keur
+            assert pa.shl_cash_interest_receipt_keur == pb.shl_cash_interest_receipt_keur
+            assert pa.shl_pik_keur == pb.shl_pik_keur
+            assert pa.contractual_shl_principal_due_keur == (
+                pb.contractual_shl_principal_due_keur
+            )
+            assert pa.actual_shl_principal_paid_keur == pb.actual_shl_principal_paid_keur
+            assert pa.unpaid_shl_principal_keur == pb.unpaid_shl_principal_keur
+            assert pa.actual_shl_closing_balance_keur == pb.actual_shl_closing_balance_keur
+
+        # ── 8. Sponsor / distributions — non-inert, identical ─────────────────
+        assert run_a.total_legal_equity_distributions_keur > 0.0, (
+            "vehicle must exercise legal equity distributions"
+        )
+        assert run_b.total_legal_equity_distributions_keur == (
+            run_a.total_legal_equity_distributions_keur
+        )
+        assert run_b.total_shl_cash_interest_received_keur == (
+            run_a.total_shl_cash_interest_received_keur
+        )
+        assert run_b.total_shl_principal_received_keur == (
+            run_a.total_shl_principal_received_keur
+        )
+        assert run_b.total_sponsor_receipts_keur == run_a.total_sponsor_receipts_keur
+        assert run_b.total_covenant_locked_keur == run_a.total_covenant_locked_keur
+        assert run_b.pure_equity_xirr == run_a.pure_equity_xirr
+        assert run_b.pure_equity_xirr_status == run_a.pure_equity_xirr_status
+        assert run_b.total_sponsor_xirr == run_a.total_sponsor_xirr
+        assert run_b.total_sponsor_xirr_status == run_a.total_sponsor_xirr_status
+        assert run_b.shl_bullet_unpaid_at_maturity == run_a.shl_bullet_unpaid_at_maturity
+
 
 # ---------------------------------------------------------------------------
 # Group Y — fail-closed yield scenario mapping
