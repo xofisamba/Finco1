@@ -18,7 +18,7 @@ clean→legacy value mix (the two runtimes never both execute for one run).
 
 Governance (PR-8):
   - zero project-name/code dispatch here;
-  - no source vectors, no fixtures, no target fitting;
+  - no source vectors, no fixtures, no output-fitting coefficients;
   - fail closed: the clean runner never catches an engine error and falls
     back — a clean-route failure raises.
 """
