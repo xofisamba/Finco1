@@ -94,6 +94,7 @@ class CleanPeriodView:
     shl_cash_interest_keur: float | None = None
     shl_gross_interest_keur: float | None = None
     shl_principal_keur: float | None = None
+    shl_pik_keur: float | None = None
     # distributions
     distribution_keur: float | None = None
     lockup_active: bool = False
@@ -175,15 +176,24 @@ def build_clean_waterfall_view(clean_run) -> CleanWaterfallView:
     senior_by_idx = dict(
         zip(senior.period_indices, range(len(senior.period_indices)))
     )
-    wp_by_idx = {wp.period_index: wp for wp in g2c.waterfall_periods}
+    # The G2C waterfall grid and the model period grid use DIFFERENT
+    # numbering axes (waterfall period_index is 1-based over its own
+    # construction+operating axis; model schedules are 0-based). The stable
+    # join key is the period END DATE (waterfall cashflow_date == model
+    # period_end). Construction boundary columns that exist only on one axis
+    # carry no waterfall cash event and default to no-SHL/DA activity.
+    wp_by_date: dict = {}
+    for w in g2c.waterfall_periods:
+        wp_by_date.setdefault(getattr(w, "cashflow_date", None), w)
 
     period_views: list[CleanPeriodView] = []
     lockup_count = 0
-    for idx in op.period_indices:
+    for mp in model.periods:
+        idx = mp.period_index
         oi = op_by_idx.get(idx)
         ti = tax_by_idx.get(idx)
         si = senior_by_idx.get(idx)
-        wp = wp_by_idx.get(idx)
+        wp = wp_by_date.get(getattr(mp, "period_end", None))
 
         dscr = _at(senior.base_dscr, si) if si is not None else None
         cash_tax = _at(tax.corporate_tax_cash_keur, ti) if ti is not None else None
@@ -192,10 +202,10 @@ def build_clean_waterfall_view(clean_run) -> CleanWaterfallView:
         senior_interest = _at(senior.senior_interest_keur, si) if si is not None else None
         senior_principal = _at(senior.senior_principal_keur, si) if si is not None else None
 
-        shl_interest = getattr(wp, "shl_gross_interest_keur", None) if wp else None
-        shl_cash_interest = getattr(wp, "shl_cash_interest_receipt_keur", None) if wp else None
-        shl_principal_paid = getattr(wp, "actual_shl_principal_paid_keur", None) if wp else None
-        shl_close = getattr(wp, "actual_shl_closing_balance_keur", None) if wp else None
+        shl_interest = getattr(wp, "shl_gross_interest_keur", None) if wp else 0.0
+        shl_cash_interest = getattr(wp, "shl_cash_interest_receipt_keur", None) if wp else 0.0
+        shl_principal_paid = getattr(wp, "actual_shl_principal_paid_keur", None) if wp else 0.0
+        shl_close = getattr(wp, "actual_shl_closing_balance_keur", None) if wp else 0.0
 
         gate = getattr(wp, "distribution_gate_status", None) if wp else None
         lockup_active = gate in (
@@ -205,7 +215,7 @@ def build_clean_waterfall_view(clean_run) -> CleanWaterfallView:
         if lockup_active:
             lockup_count += 1
 
-        date = getattr(wp, "cashflow_date", None) if wp else None
+        date = getattr(mp, "period_end", None)
         year_index = date.year if date else None
         period_in_year = (date.month + 5) // 6 if date else None
 
@@ -234,8 +244,8 @@ def build_clean_waterfall_view(clean_run) -> CleanWaterfallView:
                 date=date,
                 year_index=year_index,
                 period_in_year=period_in_year,
-                is_operation=not bool(getattr(wp, "is_construction", False)),
-                is_construction=bool(getattr(wp, "is_construction", False)),
+                is_operation=not bool(getattr(mp, "is_construction", False)),
+                is_construction=bool(getattr(mp, "is_construction", False)),
                 generation_mwh=_at(op.production_mwh, oi),
                 revenue_keur=_at(op.revenue_keur, oi),
                 opex_keur=_at(op.opex_keur, oi),
@@ -272,6 +282,9 @@ def build_clean_waterfall_view(clean_run) -> CleanWaterfallView:
                 ),
                 shl_principal_keur=(
                     None if shl_principal_paid is None else float(shl_principal_paid)
+                ),
+                shl_pik_keur=(
+                    (float(getattr(wp, "shl_pik_keur", 0.0) or 0.0) if wp else 0.0)
                 ),
                 distribution_keur=distribution,
                 lockup_active=lockup_active,

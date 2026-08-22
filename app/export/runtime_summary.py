@@ -19,8 +19,6 @@ from app.project_factories import (
     create_default_tuho_wind1,
     create_default_wind_project,
 )
-from app.waterfall_runner import WaterfallRunConfig, WaterfallRunner
-from domain.period_engine import PeriodEngine
 
 
 RUNTIME_SUMMARY_COLUMNS = [
@@ -75,32 +73,16 @@ def _project_key(project: str) -> str:
 
 
 def _run_project(project: str):
+    # PR-8 final correction: the runtime-summary module no longer implements
+    # its own authority router — it resolves the factory input and executes
+    # through the ONE shared production seam (clean G2C for promoted
+    # projects, explicitly classified legacy for blocked projects). No
+    # WaterfallRunner / run_clean_production / classifier references here.
     project_inputs = PROJECT_FACTORIES[_project_key(project)]()
-    # PR-8: single production financial authority. Promoted (typed clean-ready)
-    # projects calculate once through the clean G2C entry point and expose a
-    # read-only legacy-shaped view; non-promoted projects stay on the legacy
-    # calibration waterfall with an explicit typed classification.
-    from app.services.production_financial_authority import (
-        classify_production_authority,
-        run_clean_production,
-    )
+    from app.services.production_waterfall_seam import execute_production_waterfall
 
-    decision = classify_production_authority(project_inputs)
-    if decision.promoted:
-        clean_run = run_clean_production(project_inputs, "Base", project_type=project)
-        from app.services.clean_presentation_adapter import (
-            build_clean_waterfall_view,
-        )
-        return clean_run.project_inputs, build_clean_waterfall_view(clean_run)
-    engine = PeriodEngine(
-        financial_close=project_inputs.info.financial_close,
-        construction_months=project_inputs.info.construction_months,
-        horizon_years=project_inputs.info.horizon_years,
-        ppa_years=project_inputs.revenue.ppa_term_years,
-    )
-    config = WaterfallRunConfig.from_inputs(project_inputs, engine)
-    result = WaterfallRunner(project_inputs, engine).run(config)
-    return project_inputs, result
+    execution = execute_production_waterfall(project_inputs)
+    return execution.project_inputs, execution.result
 
 
 def _sum_period_attr(result, attr: str) -> float:
@@ -221,12 +203,21 @@ def build_runtime_summary_csv(
     *,
     generated_at: str | None = None,
     source_branch: str | None = None,
+    rows: list[dict[str, str]] | None = None,
 ) -> str:
-    rows = build_runtime_summary_rows(
-        project,
-        generated_at=generated_at,
-        source_branch=source_branch,
-    )
+    """Serialize runtime-summary rows to CSV.
+
+    PR-8 single-calculation contract: when ``rows`` are supplied by a caller
+    that already executed the production authority, this serializer performs
+    ZERO financial calculations. Without ``rows`` it performs exactly ONE
+    (build_runtime_summary_rows).
+    """
+    if rows is None:
+        rows = build_runtime_summary_rows(
+            project,
+            generated_at=generated_at,
+            source_branch=source_branch,
+        )
     buffer = StringIO()
     writer = csv.DictWriter(buffer, fieldnames=RUNTIME_SUMMARY_COLUMNS)
     writer.writeheader()

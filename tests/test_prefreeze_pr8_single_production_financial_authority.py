@@ -791,3 +791,193 @@ class TestGovernanceCorrection:
             f"run_project_legacy must not be consumed by production "
             f"services; found in: {files}"
         )
+
+
+# ---------------------------------------------------------------------------
+# PR-8 FINAL CORRECTION — actual export services + lineage coherence
+# ---------------------------------------------------------------------------
+
+class TestActualExportServices:
+    """Engine counters on the ACTUAL public export service functions."""
+
+    @pytest.mark.parametrize("code", ("generic_solar", "generic_wind"))
+    def test_x1_runtime_summary_csv_clean(self, code, monkeypatch):
+        counters = EngineCounters(monkeypatch)
+        from app.services.export_service import build_runtime_summary_csv_export
+
+        export = build_runtime_summary_csv_export(code)
+        assert export.status_code == 200
+        assert counters.clean_calls == 1
+        assert counters.legacy_core_calls == 0
+
+    @pytest.mark.parametrize("code", ("oborovo", "tuho"))
+    def test_x2_runtime_summary_csv_legacy(self, code, monkeypatch):
+        counters = EngineCounters(monkeypatch)
+        from app.services.export_service import build_runtime_summary_csv_export
+
+        export = build_runtime_summary_csv_export(code)
+        assert export.status_code == 200
+        assert counters.clean_calls == 0
+        assert counters.legacy_core_calls == 1
+
+    @pytest.mark.parametrize("code", ("generic_solar", "generic_wind"))
+    def test_x3_institutional_workbook_clean(self, code, monkeypatch):
+        counters = EngineCounters(monkeypatch)
+        from app.services.export_service import build_institutional_workbook_export
+
+        export = build_institutional_workbook_export(code)
+        assert export.status_code == 200
+        assert export.has_bytes()
+        assert counters.clean_calls == 1
+        assert counters.legacy_core_calls == 0
+
+    @pytest.mark.parametrize("code", ("oborovo", "tuho"))
+    def test_x4_institutional_workbook_legacy(self, code, monkeypatch):
+        counters = EngineCounters(monkeypatch)
+        from app.services.export_service import build_institutional_workbook_export
+
+        export = build_institutional_workbook_export(code)
+        assert export.status_code == 200
+        assert counters.clean_calls == 0
+        assert counters.legacy_core_calls == 1
+
+
+class TestPrecomputedSerializationZeroRecalc:
+    def test_x5_precomputed_csv_serialization_zero_calls(self, monkeypatch):
+        counters = EngineCounters(monkeypatch)
+        from app.export.runtime_summary import (
+            _run_project,
+            build_runtime_summary_csv,
+            build_runtime_summary_rows,
+        )
+
+        rows_input, result = _run_project("generic_solar")
+        rows = build_runtime_summary_rows("generic_solar", _precomputed=(rows_input, result))
+        clean_before = counters.clean_calls
+        csv_text = build_runtime_summary_csv(
+            "generic_solar",
+            generated_at=rows[0]["generated_at"],
+            source_branch=rows[0]["source_branch"],
+            rows=rows,
+        )
+        assert counters.clean_calls == clean_before == 1
+        assert counters.legacy_core_calls == 0
+        assert csv_text.lstrip().startswith("project,metric,")
+
+    def test_x6_precomputed_bundle_serialization_zero_calls(self, monkeypatch):
+        counters = EngineCounters(monkeypatch)
+        from app.export.institutional_workbook import (
+            _build_export_bundle,
+            export_institutional_workbook_from_bundle,
+        )
+
+        bundle = _build_export_bundle("generic_solar")
+        clean_before = counters.clean_calls
+        workbook_bytes = export_institutional_workbook_from_bundle(bundle)
+        assert counters.clean_calls == clean_before == 1
+        assert counters.legacy_core_calls == 0
+        assert len(workbook_bytes) > 0
+
+
+class TestGetDownloadLineage:
+    @pytest.mark.parametrize(
+        "ptype,lineage,forbidden",
+        (
+            ("Solar", "generic_solar", ("oborovo", "tuho")),
+            ("Wind", "generic_wind", ("oborovo", "tuho")),
+        ),
+    )
+    def test_x7_lineage_matches_executed_project(
+        self, ptype, lineage, forbidden, monkeypatch
+    ):
+        import asyncio
+        from types import SimpleNamespace
+
+        counters = EngineCounters(monkeypatch)
+        from app.services.download_service import execute_get_download_route
+        from app.services.export_service import (
+            build_values_only_export_for_project,
+        )
+
+        captured: dict = {}
+
+        def _replay_metadata(project_code, **kwargs):
+            captured["project_code"] = project_code
+            captured["kwargs"] = kwargs
+            meta = {"project_code": project_code}
+            meta.update({k: str(v) for k, v in kwargs.items()})
+            return meta
+
+        def _record_download_export(**kwargs):
+            captured["audit"] = kwargs
+
+        deps = SimpleNamespace(
+            collect_form_snapshot=lambda r: {},
+            project_workspace_from_snapshot=lambda a, b: (None, None, None, None),
+            canonical_project_type=lambda t: t,
+            normalize_template_source=lambda *a, **k: "solar",
+            check_runtime_allowed=lambda *a, **k: (True, "factory"),
+            resolve_runtime_snapshot_source=lambda *a, **k: (None, None, None, None),
+            build_schema_from_form=lambda f: None,
+            build_projectinputs=lambda s: None,
+            build_projectinputs_from_snapshot=lambda s: None,
+            scenario_provenance_for_record=lambda *a, **k: None,
+            replay_metadata_for_project=_replay_metadata,
+            governance_snapshot=lambda code: {},
+            run_demo_project=lambda *a, **k: None,
+            get_project_by_code=lambda uid, code: None,
+            build_excel_export_for_post_request=lambda **k: None,
+            build_values_only_export_for_project=(
+                build_values_only_export_for_project
+            ),
+            record_download_export=_record_download_export,
+            utc_now_iso=lambda: "2026-01-01T00:00:00+00:00",
+        )
+        outcome = asyncio.run(execute_get_download_route(
+            request=None,
+            user=SimpleNamespace(user_id="test-user"),
+            project_type=ptype,
+            scenario="Base",
+            deps=deps,
+        ))
+        assert not outcome.is_error, outcome.error_content
+        assert counters.clean_calls == 1
+        assert counters.legacy_core_calls == 0
+        # ARTIFACT_PROJECT_LINEAGE_MATCHES_EXECUTED_PROJECT
+        assert captured["project_code"] == lineage
+        audit_meta = captured["audit"].get("replay_metadata") or {}
+        assert lineage in str(audit_meta)
+        for wrong in forbidden:
+            assert wrong not in str(captured), (
+                f"lineage must not reference {wrong}: {captured}"
+            )
+
+
+class TestAdapterDateJoinCorrectness:
+    def test_x8_waterfall_fields_date_aligned(self):
+        """The adapter joins G2C waterfall periods to model periods by period
+        END DATE (the two grids use different numbering axes). Total legal
+        distributions in the view must equal the G2C total exactly."""
+        from app.project_factories import create_default_solar_project
+        from app.services.production_financial_authority import run_clean_production
+        from app.services.clean_presentation_adapter import build_clean_waterfall_view
+
+        clean_run = run_clean_production(
+            create_default_solar_project(), "Base", project_type="Solar"
+        )
+        view = build_clean_waterfall_view(clean_run)
+        g2c = clean_run.g2c_result
+        view_dist_sum = sum(p.distribution_keur or 0.0 for p in view.periods)
+        assert view_dist_sum == pytest.approx(
+            g2c.total_legal_equity_distributions_keur, abs=1e-9
+        )
+        view_shl_principal_sum = sum(p.shl_principal_keur or 0.0 for p in view.periods)
+        assert view_shl_principal_sum == pytest.approx(
+            g2c.total_shl_principal_received_keur, abs=1e-9
+        )
+        view_shl_cash_interest_sum = sum(
+            p.shl_cash_interest_keur or 0.0 for p in view.periods
+        )
+        assert view_shl_cash_interest_sum == pytest.approx(
+            g2c.total_shl_cash_interest_received_keur, abs=1e-9
+        )

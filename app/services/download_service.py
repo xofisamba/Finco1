@@ -535,8 +535,22 @@ async def execute_get_download_route(
 
         demo, _authority_meta = execute_production_demo(project_type, scenario)
 
-        # ── 2. HARDCODED project_code mapping (quirk 2) ────────────────
-        project_code = "oborovo" if project_type.lower() == "solar" else "tuho"
+        # ── 2. Truthful project lineage (PR-8 final correction) ─────────
+        # ARTIFACT_PROJECT_LINEAGE_MATCHES_EXECUTED_PROJECT: the replay/
+        # project lineage must describe the SAME project snapshot the
+        # authority executed. Generic Solar/Wind exports carry generic
+        # lineage (no persisted record → None is truthful and preferred over
+        # falsely binding the artifact to Oborovo/TUHO). Input-resolution
+        # mapping only — no financial dispatch.
+        _lineage_key = {
+            "solar": "generic_solar",
+            "test 1": "generic_solar",
+            "wind": "generic_wind",
+            "test 2": "generic_wind",
+            "tuho": "tuho",
+            "oborovo": "oborovo",
+        }.get(project_type.lower())
+        project_code = _lineage_key or project_type.lower()
         project_record = deps.get_project_by_code(user.user_id, project_code)
 
         # ── 3. Filename (constructed in orchestration) ────────────────

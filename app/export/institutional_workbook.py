@@ -195,7 +195,17 @@ REVIEWER_COVER_NOTES = (
 
 
 def export_institutional_workbook_skeleton(project: str) -> bytes:
-    bundle = _build_export_bundle(project)
+    """Standalone export: ONE authority execution → bundle → workbook bytes."""
+    return export_institutional_workbook_from_bundle(_build_export_bundle(project))
+
+
+def export_institutional_workbook_from_bundle(bundle: WorkbookExportBundle) -> bytes:
+    """Pure serialization of an ALREADY-BUILT export bundle to workbook bytes.
+
+    PR-8 single-calculation contract: this function performs ZERO financial
+    calculations — callers that already hold a bundle (one authority
+    execution) serialize from it without re-running any engine.
+    """
     workbook = Workbook()
 
     # Export_Metadata sheet — first sheet, trust hygiene, non-claims
@@ -821,10 +831,17 @@ def _write_balance_sheet(sheet, bundle: WorkbookExportBundle) -> None:
 
 def _write_audit_sheet(sheet, bundle: WorkbookExportBundle) -> None:
     _write_metadata_block(sheet, bundle, "review")
+    _fs_row = (
+        ("P&L / tax / BS source", "NOT_AVAILABLE on clean G2C runtime", "runtime",
+         "Financial statements are intentionally unavailable for clean-authority "
+         "projects; no legacy fallback populates them.")
+        if getattr(bundle, "statements", None) is None
+        else ("P&L / tax / BS source", "assemble_financial_statements(runtime_result)", "runtime", "Offline assembly from existing runtime result.")
+    )
     rows = [
         ("Runtime source", "production_waterfall_seam.execute_production_waterfall (PR-8 project-level authority)", "runtime", "Clean G2C for clean-ready projects; explicitly classified legacy calibration for blocked projects."),
         ("Project assumption source", "ProjectContext + template-bound ProjectInputs", "template assumption", "Read-only context layer."),
-        ("P&L / tax / BS source", "assemble_financial_statements(runtime_result)", "runtime", "Offline assembly from existing runtime result."),
+        _fs_row,
         ("Revenue period source", "build_revenue_table(runtime_result)", "runtime", "Existing output table builder."),
         ("Debt period source", "build_debt_table(runtime_result)", "runtime", "Existing output table builder."),
         ("Workbook-only formulas", "none", "review", "Presentation-only export branch."),
