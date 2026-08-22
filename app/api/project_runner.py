@@ -190,17 +190,28 @@ def _run_project_impl(project_type: str, scenario: str, period_view: str = "Semi
     clean_run = None
     authority_decision = None
     _pr8_inputs = None
-    try:
-        if not force_legacy and project_type != "Portfolio":
-            if project_inputs_override is not None:
-                from domain.validation import validate_project_inputs
-                issues = list(validate_project_inputs(project_inputs_override))
-                if not [i for i in issues if i.severity == "error"]:
-                    _pr8_inputs = project_inputs_override
-            elif project_type in (
-                "TUHO", "Oborovo", "Test 1", "Test 2", "Solar", "Wind",
-            ):
-                from app import project_factories as _pf
+    if not force_legacy and project_type != "Portfolio":
+        # PR-8 correction pass: NO exception-driven fallback. Resolution and
+        # classification plumbing failures raise the typed
+        # ProductionAuthorityResolutionError and execute ZERO engines (clean
+        # or legacy). Validation ERRORS on user overrides are input problems,
+        # not routing problems: they delegate to run_demo_project's no-run
+        # error DemoResult (no engine executes on that path either).
+        from app.services.production_financial_authority import (
+            ProductionAuthorityResolutionError,
+        )
+        from app.services.production_waterfall_seam import classify_or_fail
+
+        if project_inputs_override is not None:
+            from domain.validation import validate_project_inputs
+            issues = list(validate_project_inputs(project_inputs_override))
+            if not [i for i in issues if i.severity == "error"]:
+                _pr8_inputs = project_inputs_override
+        elif project_type in (
+            "TUHO", "Oborovo", "Test 1", "Test 2", "Solar", "Wind",
+        ):
+            from app import project_factories as _pf
+            try:
                 _pr8_inputs = {
                     "TUHO": _pf.create_default_tuho_wind1,
                     "Oborovo": _pf.create_default_oborovo,
@@ -209,17 +220,36 @@ def _run_project_impl(project_type: str, scenario: str, period_view: str = "Semi
                     "Solar": _pf.create_default_solar_project,
                     "Wind": _pf.create_default_wind_project,
                 }[project_type]()
+            except ProductionAuthorityResolutionError:
+                raise
+            except Exception as exc:
+                raise ProductionAuthorityResolutionError(
+                    reason_code="PR8_FACTORY_RESOLUTION_FAILURE",
+                    detail=(
+                        f"factory resolution for project_type={project_type!r} "
+                        f"raised {type(exc).__name__}: {exc}. Production "
+                        "routing fails closed — no engine executes."
+                    ),
+                ) from exc
 
         if _pr8_inputs is not None:
-            from app.services.production_financial_authority import (
-                classify_production_authority,
+            authority_decision = classify_or_fail(_pr8_inputs)
+
+        if (
+            authority_decision is not None
+            and authority_decision.promoted
+            and use_dualrun_validation
+        ):
+            # The dual-run flag is a legacy calibration diagnostic; it may
+            # never pull a clean-ready production project back to legacy.
+            raise ProductionAuthorityResolutionError(
+                reason_code="PR8_DUALRUN_DIAGNOSTIC_UNAVAILABLE_ON_CLEAN_ROUTE",
+                detail=(
+                    "use_dualrun_validation is not available on the clean "
+                    "production route. Calibration callers must use "
+                    "run_project_legacy."
+                ),
             )
-            authority_decision = classify_production_authority(_pr8_inputs)
-    except Exception:
-        # Classification/resolution plumbing must never break the run path;
-        # the legacy runtime remains the explicitly-classified default.
-        _pr8_inputs = None
-        authority_decision = None
 
     if (
         clean_run is None

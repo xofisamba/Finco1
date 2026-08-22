@@ -206,12 +206,15 @@ def _apply_shock(proj: Any, shock_type: str, level_pct: float) -> Any:
 
 
 def _run_once(proj: Any) -> dict[str, Optional[float]]:
-    from app.ui_runner import _build_period_engine
-    from app.waterfall_runner import WaterfallRunner, WaterfallRunConfig
+    # PR-8 correction pass: every sensitivity shock executes through the ONE
+    # shared production authority seam — clean G2C for clean-ready projects
+    # (exactly one clean calculation per shocked snapshot), explicitly
+    # classified legacy for blocked projects. Same engine regardless of
+    # which route asked. No route-dependent authority.
+    from app.services.production_waterfall_seam import execute_production_waterfall
 
-    eng = _build_period_engine(proj)
-    result = WaterfallRunner(proj, eng).run(WaterfallRunConfig.from_inputs(proj, eng))
-    return _extract_kpis(result)
+    execution = execute_production_waterfall(proj)
+    return _extract_kpis(execution.result)
 
 
 def run_sensitivity(

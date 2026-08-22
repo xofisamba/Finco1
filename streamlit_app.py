@@ -66,7 +66,42 @@ if run_button or st.session_state.demo_result is not None:
                              if op_mode == "Advanced" and project_type in ("Solar", "Wind") else None)
             advanced_capex = (st.session_state.get("capex_line_items")
                               if project_type in ("Solar", "Wind") else None)
-            st.session_state.demo_result = run_demo_project(project_type, scenario, project_inputs_override=override, advanced_opex_line_items=advanced_opex, advanced_capex_line_items=advanced_capex)
+            # PR-8 production authority: Solar/Wind run the clean G2C engine
+            # exactly once. Advanced OPEX/CAPEX line items are legacy
+            # side-channel inputs that do not exist on the clean route — a
+            # clean-ready project with active advanced items fails closed
+            # with an explicit message instead of silently running legacy.
+            from app.services.production_waterfall_seam import (
+                execute_production_demo,
+                classify_or_fail,
+            )
+            _advanced_active = advanced_opex is not None or advanced_capex is not None
+            _probe = override if override is not None else None
+            if _advanced_active and project_type in ("Solar", "Wind", "Test 1", "Test 2"):
+                from app import project_factories as _pf
+                _probe = _probe or {
+                    "Solar": _pf.create_default_solar_project,
+                    "Wind": _pf.create_default_wind_project,
+                    "Test 1": _pf.create_default_solar_project,
+                    "Test 2": _pf.create_default_wind_project,
+                }[project_type]()
+                _decision = classify_or_fail(_probe)
+                if _decision.promoted:
+                    st.error(
+                        "Advanced OPEX/CAPEX line items are a legacy-calibration "
+                        "input channel and are not available on the clean "
+                        "production authority that now serves this project. "
+                        "Switch to Basic OPEX mode or edit the canonical "
+                        "project inputs. (PR8_ADVANCED_LINE_ITEMS_UNAVAILABLE"
+                        "_ON_CLEAN_RUNTIME)"
+                    )
+                    st.session_state.last_project_type = project_type
+                    st.session_state["last_scenario"] = scenario
+                    st.session_state.demo_result = None
+                    st.stop()
+            st.session_state.demo_result, _authority_meta = execute_production_demo(
+                project_type, scenario, project_inputs_override=override
+            )
             st.session_state.last_project_type = project_type
             st.session_state["last_scenario"] = scenario
 

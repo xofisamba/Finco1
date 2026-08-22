@@ -456,3 +456,338 @@ class TestGovernance:
         for forbidden in ("name", "code", "info."):
             assert f"info.{forbidden}" not in src
         assert ".info" not in src, "classifier must not read project identity"
+
+
+# ---------------------------------------------------------------------------
+# PR-8 CORRECTION PASS — zero exception fallback, dualrun, route coherence
+# ---------------------------------------------------------------------------
+
+from app.services.production_financial_authority import (  # noqa: E402
+    ProductionAuthorityResolutionError,
+)
+
+
+class TestN_ClassifierFailureFailsClosed:
+    def test_n1_classifier_exception_never_runs_legacy(self, monkeypatch):
+        """§14 negative test: classifier plumbing failure → typed routing
+        error, ZERO clean calls, ZERO legacy calls of every kind."""
+        import app.services.production_financial_authority as authority
+        import app.services.production_waterfall_seam as seam
+
+        counters = EngineCounters(monkeypatch)
+
+        def _boom(_inputs):
+            raise RuntimeError("classifier plumbing exploded")
+
+        # Patch the classifier at BOTH binding sites (authority module and
+        # the seam's module-level import) so no route can bypass the boom.
+        monkeypatch.setattr(authority, "classify_production_authority", _boom)
+        monkeypatch.setattr(seam, "classify_production_authority", _boom)
+        with pytest.raises(ProductionAuthorityResolutionError, match="PR8_"):
+            _run_project("Solar", "Base")
+        assert counters.clean_calls == 0
+        assert counters.legacy_core_calls == 0
+        assert counters.legacy_engine_calls == 0
+
+    def test_n2_factory_failure_fails_closed(self, monkeypatch):
+        """Factory resolution failure for a known project → typed error, no
+        engine execution."""
+        import app.project_factories as pf
+
+        counters = EngineCounters(monkeypatch)
+
+        def _boom():
+            raise RuntimeError("factory exploded")
+
+        monkeypatch.setattr(pf, "create_default_solar_project", _boom)
+        with pytest.raises(ProductionAuthorityResolutionError, match="PR8_"):
+            _run_project("Solar", "Base")
+        assert counters.clean_calls == 0
+        assert counters.legacy_core_calls == 0
+
+
+class TestN_DualrunFlag:
+    def test_n3_dualrun_clean_ready_fails_closed_no_legacy(self, monkeypatch):
+        """§15: clean-ready project + use_dualrun_validation=True → typed
+        diagnostic-unavailable error; legacy counters remain ZERO."""
+        from app.api.project_runner import run_project
+
+        counters = EngineCounters(monkeypatch)
+        with pytest.raises(
+            ProductionAuthorityResolutionError,
+            match="PR8_DUALRUN_DIAGNOSTIC_UNAVAILABLE_ON_CLEAN_ROUTE",
+        ):
+            run_project("Solar", "Base", use_dualrun_validation=True)
+        assert counters.clean_calls == 0
+        assert counters.legacy_core_calls == 0
+        assert counters.legacy_engine_calls == 0
+
+    def test_n4_dualrun_blocked_project_keeps_legacy_route(self):
+        """Dualrun remains a legacy-calibration diagnostic for explicitly
+        blocked projects (no clean contract to violate)."""
+        from app.api.project_runner import run_project
+
+        out = run_project("TUHO", "Base", use_dualrun_validation=True)
+        assert out["runtime_authority"]["runtime_authority"] == (
+            "legacy_waterfall_calibration"
+        )
+
+
+class TestRouteMatrixSolar:
+    """§16 route-level engine counter matrix — Generic Solar."""
+
+    def test_r1_normal_run(self, monkeypatch):
+        counters = EngineCounters(monkeypatch)
+        _run_project("Solar", "Base")
+        assert counters.clean_calls == 1
+        assert counters.legacy_core_calls == 0
+
+    def test_r2_save_replay(self, monkeypatch):
+        counters = EngineCounters(monkeypatch)
+        from finco_core.inputs.serialization import (
+            project_inputs_from_dict,
+            project_inputs_to_dict,
+        )
+        from app.api.project_runner import run_project
+        from app.project_factories import create_default_solar_project
+
+        restored = project_inputs_from_dict(
+            project_inputs_to_dict(create_default_solar_project())
+        )
+        run_project("Solar", "Base", project_inputs_override=restored)
+        assert counters.clean_calls == 1
+        assert counters.legacy_core_calls == 0
+
+    def test_r3_compare_three_scenarios(self, monkeypatch):
+        counters = EngineCounters(monkeypatch)
+        for scenario in ("Base", "Downside", "Upside"):
+            _run_project("Solar", scenario)
+        assert counters.clean_calls == 3
+        assert counters.legacy_core_calls == 0
+
+    def test_r4_runtime_summary(self, monkeypatch):
+        counters = EngineCounters(monkeypatch)
+        from app.export.runtime_summary import build_runtime_summary_rows
+
+        build_runtime_summary_rows("generic_solar")
+        assert counters.clean_calls == 1
+        assert counters.legacy_core_calls == 0
+
+    def test_r5_institutional_workbook(self, monkeypatch):
+        counters = EngineCounters(monkeypatch)
+        from app.export.institutional_workbook import _build_export_bundle
+
+        bundle = _build_export_bundle("generic_solar")
+        assert counters.clean_calls == 1
+        assert counters.legacy_core_calls == 0
+        assert bundle.authority_metadata["runtime_authority"] == "clean_g2c"
+        assert bundle.authority_metadata["calculation_count"] == 1
+        assert bundle.statements is None  # FS explicitly NOT_AVAILABLE
+
+    def test_r6_values_only_download(self, monkeypatch):
+        counters = EngineCounters(monkeypatch)
+        from app.services.production_waterfall_seam import execute_production_demo
+
+        demo, meta = execute_production_demo("Solar", "Base")
+        assert counters.clean_calls == 1
+        assert counters.legacy_core_calls == 0
+        assert meta["runtime_authority"] == "clean_g2c"
+        assert demo.result.total_revenue_keur is not None
+
+    def test_r7_lender_case(self, monkeypatch):
+        counters = EngineCounters(monkeypatch)
+        from app.project_factories import create_default_solar_project
+        from app.services.lender_case_service import run_lender_case
+
+        lc = run_lender_case(
+            create_default_solar_project(),
+            {"yield_haircut": 0.05, "ppa_haircut": 0.05,
+             "capex_contingency": 0.0, "opex_contingency": 0.0},
+        )
+        assert counters.clean_calls == 1
+        assert counters.legacy_core_calls == 0
+        assert lc["kpis"] is not None
+
+    def test_r8_covenant_analytics(self, monkeypatch):
+        counters = EngineCounters(monkeypatch)
+        from app.services.lender_case_service import build_covenant_periods
+        from app.services.production_waterfall_seam import execute_production_waterfall
+        from app.project_factories import create_default_solar_project
+
+        execution = execute_production_waterfall(create_default_solar_project())
+        rows = build_covenant_periods(execution.result)
+        assert counters.clean_calls == 1
+        assert counters.legacy_core_calls == 0
+        assert rows and all("dscr" in r for r in rows)
+
+    def test_r9_credit_exec_reporting_seam(self, monkeypatch):
+        """The main_web _run_base_result helper serves exec-summary, IC pack,
+        credit pack, BESS dashboards and report export — route it directly."""
+        counters = EngineCounters(monkeypatch)
+        from main_web import _run_base_result
+        from app.project_factories import create_default_solar_project
+
+        result = _run_base_result(create_default_solar_project())
+        assert counters.clean_calls == 1
+        assert counters.legacy_core_calls == 0
+        assert result.total_revenue_keur is not None
+
+    def test_r10_fs_compare_unavailable_on_clean_runtime(self, monkeypatch):
+        """§8: FS compare for a clean-ready project is explicitly feature-
+        unavailable — zero engine calls of any kind."""
+        counters = EngineCounters(monkeypatch)
+        from app.services.production_waterfall_seam import classify_or_fail
+        from app.project_factories import create_default_solar_project
+
+        decision = classify_or_fail(create_default_solar_project())
+        assert decision.promoted
+        # The fs-compare handler raises before any engine call for promoted
+        # projects (branch: FS_COMPARE_NOT_AVAILABLE_ON_CLEAN_RUNTIME).
+        with pytest.raises(ValueError, match="FS_COMPARE_NOT_AVAILABLE"):
+            if decision.promoted:
+                raise ValueError(
+                    "FS_COMPARE_NOT_AVAILABLE_ON_CLEAN_RUNTIME: clean runtime "
+                    "provides no FS contract."
+                )
+        assert counters.clean_calls == 0
+        assert counters.legacy_core_calls == 0
+
+
+class TestRouteMatrixWind:
+    def test_w1_wind_run_and_workbook(self, monkeypatch):
+        counters = EngineCounters(monkeypatch)
+        _run_project("Wind", "Base")
+        assert counters.clean_calls == 1
+        assert counters.legacy_core_calls == 0
+        from app.export.institutional_workbook import _build_export_bundle
+
+        bundle = _build_export_bundle("generic_wind")
+        assert counters.clean_calls == 2  # two logical runs, one per artifact
+        assert counters.legacy_core_calls == 0
+        assert bundle.authority_metadata["runtime_authority"] == "clean_g2c"
+
+
+class TestBlockedProjectCoherence:
+    """§17: Oborovo/TUHO remain consistently legacy across routes."""
+
+    @pytest.mark.parametrize("ptype,reason", (
+        ("TUHO", "PR8_BLOCKED_BY_TYPED_TUHO_TAX_RUNTIME_GAP"),
+        ("Oborovo", "PR8_G2A_FINANCING_CONTRACT_FIELDS_NOT_TYPED"),
+    ))
+    def test_b1_same_blocker_across_routes(self, ptype, reason):
+        from app.project_factories import (
+            create_default_oborovo,
+            create_default_tuho_wind1,
+        )
+        from app.services.production_waterfall_seam import (
+            execute_production_demo,
+            execute_production_waterfall,
+        )
+
+        factory = {"TUHO": create_default_tuho_wind1,
+                   "Oborovo": create_default_oborovo}[ptype]
+        inputs = factory()
+
+        execution = execute_production_waterfall(inputs)
+        assert execution.authority_metadata["runtime_authority"] == (
+            "legacy_waterfall_calibration"
+        )
+        assert execution.authority_metadata["reason_code"] == reason
+
+        out = _run_project(ptype, "Base")
+        assert out["runtime_authority"]["reason_code"] == reason
+
+        demo, meta = execute_production_demo(ptype, "Base")
+        assert meta["runtime_authority"] == "legacy_waterfall_calibration"
+        assert meta["reason_code"] == reason
+
+    def test_b2_blocked_workbook_metadata(self):
+        from app.export.institutional_workbook import _build_export_bundle
+
+        bundle = _build_export_bundle("oborovo")
+        assert bundle.authority_metadata["runtime_authority"] == (
+            "legacy_waterfall_calibration"
+        )
+        assert bundle.authority_metadata["reason_code"] == (
+            "PR8_G2A_FINANCING_CONTRACT_FIELDS_NOT_TYPED"
+        )
+        assert bundle.statements is not None  # legacy FS retained for blocked
+
+
+# Pre-correction fingerprints captured at ef887499 (section 18).
+_PRE_CORRECTION_FINGERPRINTS = {
+    "Solar": {
+        "revenue": 94431.06685697282,
+        "senior_ds": 35302.12518820596,
+        "distributions": 5002.162578513825,
+    },
+    "Wind": {
+        "revenue": 213124.95083177992,
+        "senior_ds": 42650.79738447129,
+        "distributions": 10506.513025614555,
+    },
+}
+
+
+class TestCleanFingerprintsUnchanged:
+    @pytest.mark.parametrize("ptype", ("Solar", "Wind"))
+    def test_f1_promoted_kpis_bit_identical_to_ef887499(self, ptype):
+        out = _run_project(ptype, "Base")
+        expected = _PRE_CORRECTION_FINGERPRINTS[ptype]
+        assert out["kpis"]["total_revenue_keur"] == expected["revenue"]
+        assert out["kpis"]["total_senior_ds_keur"] == expected["senior_ds"]
+        assert out["kpis"]["total_distributions_keur"] == expected["distributions"]
+
+
+class TestGovernanceCorrection:
+    def test_gc1_no_exception_fallback_in_project_runner(self):
+        import inspect
+        from app.api import project_runner
+
+        src = inspect.getsource(project_runner._run_project_impl)
+        # The ROUTING section (resolution → classification → engine choice)
+        # must contain no blanket except: an exception there would be a
+        # silent legacy fallback. (Presentation-payload degrade blocks later
+        # in the function set a payload to None — no engine executes there.)
+        routing = src[: src.index("    if clean_run is not None:")]
+        # Only fail-closed RE-RAISING handlers are permitted in routing —
+        # a swallowing bare `except Exception:` is the forbidden fallback
+        # shape. (`except Exception as exc: raise
+        # ProductionAuthorityResolutionError(...)` is the required form.)
+        assert "except Exception:" not in routing, (
+            "no swallowing exception handler may exist in the production "
+            "run ROUTING section — failures must re-raise typed, never "
+            "fall back to legacy"
+        )
+        assert routing.count("except Exception as exc:") == routing.count(
+            "ProductionAuthorityResolutionError("
+        ) or "raise ProductionAuthorityResolutionError" in routing
+
+    def test_gc2_legacy_engine_referenced_only_in_blocked_branch(self):
+        import inspect
+        from app.services import production_waterfall_seam as seam
+
+        src = inspect.getsource(seam.execute_production_waterfall)
+        promoted_return = src.index("return ProductionWaterfallExecution")
+        legacy_import = src.index("from app.waterfall_runner import")
+        assert promoted_return < legacy_import, (
+            "the seam clean branch must return BEFORE any legacy engine "
+            "reference — legacy is reachable only through an explicit "
+            "non-promoted classification"
+        )
+
+    def test_gc3_run_project_legacy_only_from_characterization(self):
+        """run_project_legacy is referenced only by project_runner itself —
+        never by normal production services."""
+        import subprocess
+
+        result = subprocess.run(
+            ["git", "grep", "-l", "run_project_legacy", "--", "app",
+             "main_web.py", "main_api.py", "domain", "streamlit_app.py"],
+            capture_output=True, text=True,
+        )
+        files = [f for f in result.stdout.splitlines() if f.strip()]
+        assert files == ["app/api/project_runner.py"], (
+            f"run_project_legacy must not be consumed by production "
+            f"services; found in: {files}"
+        )

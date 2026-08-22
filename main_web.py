@@ -4316,6 +4316,7 @@ async def scenario_fs_compare_endpoint(
             from app.ui_runner import _build_period_engine
             from app.waterfall_runner import WaterfallRunner, WaterfallRunConfig
             from domain.financial_statements import assemble_financial_statements
+            from app.services.production_waterfall_seam import classify_or_fail
 
             records = []
             statements_per_scenario: list[Any] = []
@@ -4326,6 +4327,21 @@ async def scenario_fs_compare_endpoint(
                 records.append(rec)
                 snap = dict(rec.snapshot or {})
                 proj = build_projectinputs_from_snapshot(snap)
+                # PR-8 correction pass: financial-statements assembly is a
+                # legacy-runtime concept. For a CLEAN_PRODUCTION_READY
+                # project FS Compare is explicitly feature-unavailable —
+                # the legacy waterfall is NEVER run merely to preserve this
+                # screen (typed reason returned instead).
+                decision = classify_or_fail(proj)
+                if decision.promoted:
+                    raise ValueError(
+                        "FS_COMPARE_NOT_AVAILABLE_ON_CLEAN_RUNTIME: "
+                        "financial-statements comparison is not yet provided "
+                        "by the clean G2C production authority for this "
+                        "project (classification "
+                        f"{decision.classification.value}). No legacy "
+                        "fallback exists on this route."
+                    )
                 eng = _build_period_engine(proj)
                 result = WaterfallRunner(proj, eng).run(WaterfallRunConfig.from_inputs(proj, eng))
                 fs = assemble_financial_statements(result)
@@ -4648,10 +4664,12 @@ async def scenario_lender_case_endpoint(
     try:
         proj, scenario_name = _resolve_lender_project(user, project, scenario_id)
 
-        # Base run for comparison KPIs
-        eng = _build_period_engine(proj)
-        base_result = WaterfallRunner(proj, eng).run(WaterfallRunConfig.from_inputs(proj, eng))
-        base_kpis = build_canonical_report_kpis(base_result)
+        # Base run for comparison KPIs — PR-8 production authority seam
+        # (clean G2C for clean-ready projects; explicit legacy for blocked).
+        from app.services.production_waterfall_seam import execute_production_waterfall
+
+        base_execution = execute_production_waterfall(proj)
+        base_kpis = build_canonical_report_kpis(base_execution.result)
 
         lc_result = run_lender_case(proj, adjustments)
     except Exception as exc:
@@ -4703,9 +4721,12 @@ async def scenario_covenant_endpoint(
 
     try:
         proj, _ = _resolve_lender_project(user, project, scenario_id)
-        eng = _build_period_engine(proj)
-        result = WaterfallRunner(proj, eng).run(WaterfallRunConfig.from_inputs(proj, eng))
-        cov_periods = build_covenant_periods(result)
+        # PR-8 production authority seam (clean G2C for clean-ready projects;
+        # explicitly-classified legacy calibration for blocked projects).
+        from app.services.production_waterfall_seam import execute_production_waterfall
+
+        execution = execute_production_waterfall(proj)
+        cov_periods = build_covenant_periods(execution.result)
     except Exception as exc:
         cov_error = _friendly_error(exc, "covenant analytics")
 
@@ -4753,9 +4774,11 @@ async def scenario_credit_summary_endpoint(
 
     try:
         proj, _ = _resolve_lender_project(user, project, scenario_id)
-        eng = _build_period_engine(proj)
-        base_result = WaterfallRunner(proj, eng).run(WaterfallRunConfig.from_inputs(proj, eng))
-        base_kpis = build_canonical_report_kpis(base_result)
+        # PR-8 production authority seam (clean G2C for clean-ready projects).
+        from app.services.production_waterfall_seam import execute_production_waterfall
+
+        base_execution = execute_production_waterfall(proj)
+        base_kpis = build_canonical_report_kpis(base_execution.result)
 
         lender_kpis = None
         adjustments = {
@@ -4793,11 +4816,19 @@ def _resolve_report_project(user, project: str, scenario_id: str = ""):
 
 
 def _run_base_result(proj):
-    """Run canonical engine for a ProjectInputs and return WaterfallResult."""
-    from app.ui_runner import _build_period_engine
-    from app.waterfall_runner import WaterfallRunner, WaterfallRunConfig
-    eng = _build_period_engine(proj)
-    return WaterfallRunner(proj, eng).run(WaterfallRunConfig.from_inputs(proj, eng))
+    """Run the production financial authority for a ProjectInputs.
+
+    PR-8 correction pass: this seam serves every reporting route
+    (exec-summary, IC/credit packs, BESS dashboards, report export).
+    Clean-ready projects execute the clean G2C authority exactly once
+    (read-only legacy-shaped view); explicitly blocked projects execute the
+    explicitly-classified legacy calibration waterfall. No route-dependent
+    authority: SAME_PROJECT_SAME_SNAPSHOT_SAME_AUTHORITY.
+    """
+    from app.services.production_waterfall_seam import execute_production_waterfall
+
+    execution = execute_production_waterfall(proj)
+    return execution.result
 
 
 @app.get("/scenarios/exec-summary")

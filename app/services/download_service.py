@@ -381,9 +381,14 @@ async def execute_post_download_route(
                 else "Wind"
             )
 
-    # ── 5. Model execution ────────────────────────────────────────────
+    # ── 5. Model execution — PR-8 production authority seam ──────────
+    # Clean-ready projects export values computed by the clean G2C authority
+    # exactly once; blocked projects keep the explicitly classified legacy
+    # demo funnel. No route-dependent authority.
     try:
-        demo = deps.run_demo_project(
+        from app.services.production_waterfall_seam import execute_production_demo
+
+        demo, _authority_meta = execute_production_demo(
             runtime_project_key, scenario, project_inputs_override=override,
         )
     except Exception as e:  # noqa: BLE001
@@ -525,8 +530,10 @@ async def execute_get_download_route(
         project_type = project_type if project_type else "Solar"
         scenario = scenario if scenario else "Base"
 
-        # ── 1. Model execution (no override) ───────────────────────────
-        demo = deps.run_demo_project(project_type, scenario)
+        # ── 1. Model execution (no override) — PR-8 production authority ──
+        from app.services.production_waterfall_seam import execute_production_demo
+
+        demo, _authority_meta = execute_production_demo(project_type, scenario)
 
         # ── 2. HARDCODED project_code mapping (quirk 2) ────────────────
         project_code = "oborovo" if project_type.lower() == "solar" else "tuho"

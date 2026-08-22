@@ -93,6 +93,22 @@ class CleanProductionRunUnavailable(Exception):
         self.detail = detail
 
 
+class ProductionAuthorityResolutionError(Exception):
+    """Fail-closed routing error (PR-8 correction pass).
+
+    Raised when resolution/classification PLUMBING fails for a recognised
+    production project (factory/validation/classifier exception), or when a
+    diagnostic-only flag is requested on a clean-ready production route.
+    NEVER interpreted as permission to use the legacy engine — zero legacy
+    financial calls may follow this error.
+    """
+
+    def __init__(self, reason_code: str, detail: str):
+        super().__init__(f"{reason_code}: {detail}")
+        self.reason_code = reason_code
+        self.detail = detail
+
+
 def classify_production_authority(project_inputs) -> AuthorityDecision:
     """Classify a canonical ProjectInputs snapshot for production routing.
 
