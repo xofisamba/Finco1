@@ -10,7 +10,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date
 from enum import Enum
-import math
 from typing import TYPE_CHECKING, Any
 
 from financial_engine.ppa_indexation import PpaIndexationStartPolicy
@@ -274,57 +273,20 @@ class DebtSizingCaseInput:
     source_label: str = ""
 
     def __post_init__(self) -> None:
-        has_calendar = (
-            self.merchant_price_calendar_start_year is not None
-            or bool(self.merchant_prices_by_calendar_year_eur_mwh)
+        # PR-7: single shared validator owned by finco_core — the canonical
+        # DebtSizingCaseConfig and this runtime contract must never drift.
+        from finco_core.inputs._models import (
+            validate_debt_sizing_case_merchant_price_fields,
         )
-        has_curve = bool(self.market_prices_curve_eur_mwh)
-        if has_calendar and has_curve:
-            raise ValueError(
-                "DebtSizingCaseInput: merchant_prices_by_calendar_year_eur_mwh / "
-                "merchant_price_calendar_start_year and market_prices_curve_eur_mwh "
-                "are mutually exclusive. Supply at most one form."
-            )
-        if (
-            self.merchant_price_calendar_start_year is not None
-            and not self.merchant_prices_by_calendar_year_eur_mwh
-        ):
-            raise ValueError(
-                "DebtSizingCaseInput: merchant_price_calendar_start_year is set but "
-                "merchant_prices_by_calendar_year_eur_mwh is empty. Both must be supplied together."
-            )
-        if (
-            self.merchant_prices_by_calendar_year_eur_mwh
-            and self.merchant_price_calendar_start_year is None
-        ):
-            raise ValueError(
-                "DebtSizingCaseInput: merchant_prices_by_calendar_year_eur_mwh is supplied but "
-                "merchant_price_calendar_start_year is None. Both must be supplied together."
-            )
-        if self.merchant_price_calendar_start_year is not None:
-            if isinstance(self.merchant_price_calendar_start_year, bool) or not isinstance(
-                self.merchant_price_calendar_start_year, int
-            ):
-                raise ValueError(
-                    "DebtSizingCaseInput: merchant_price_calendar_start_year must be an integer year."
-                )
-            if self.merchant_price_calendar_start_year < 1:
-                raise ValueError(
-                    "DebtSizingCaseInput: merchant_price_calendar_start_year must be >= 1."
-                )
-        for field_name, values in (
-            (
-                "merchant_prices_by_calendar_year_eur_mwh",
-                self.merchant_prices_by_calendar_year_eur_mwh,
+
+        validate_debt_sizing_case_merchant_price_fields(
+            merchant_price_calendar_start_year=self.merchant_price_calendar_start_year,
+            merchant_prices_by_calendar_year_eur_mwh=(
+                self.merchant_prices_by_calendar_year_eur_mwh
             ),
-            ("market_prices_curve_eur_mwh", self.market_prices_curve_eur_mwh),
-        ):
-            for i, value in enumerate(values):
-                if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
-                    raise ValueError(
-                        f"DebtSizingCaseInput: {field_name}[{i}] must be a finite numeric value, "
-                        f"got {value!r}."
-                    )
+            market_prices_curve_eur_mwh=self.market_prices_curve_eur_mwh,
+            context="DebtSizingCaseInput",
+        )
 
 
 @dataclass(frozen=True)

@@ -184,7 +184,7 @@ def wire_canonical_shl_into_waterfall(
 
     # Build canonical engine inputs
     shl_inputs = ShlEngineInputs(
-        project_name="TUHO",
+        project_name="waterfall_project",  # PR-7: neutral audit label (provenance only)
         period_count=len(periods),
         period_inputs=tuple(period_inputs),
         total_shl_funding_keur=tranche_opening_total,
