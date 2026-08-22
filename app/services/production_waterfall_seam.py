@@ -91,8 +91,8 @@ def execute_production_waterfall(
                     "it is not available on the clean production route. The "
                     "clean-ready project fails closed rather than silently "
                     "returning to the legacy waterfall. Calibration callers "
-                    "must use the explicit legacy/calibration interface "
-                    "(run_project_legacy)."
+                    "must use the explicit legacy calibration interface in "
+                    "app.api.project_runner."
                 ),
             )
         clean_run = run_clean_production(
