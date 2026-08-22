@@ -32,6 +32,16 @@ Public API — re-exported from submodules:
         project_inputs_to_dict, project_inputs_from_dict
 """
 from finco_core.inputs.bess import BessParams
+from finco_core.inputs.construction_financing import (
+    ConstructionFinancingInput,
+    ConstructionSeniorPricingInput,
+    ConstructionCommitmentFeeInput,
+    ConstructionStructuringFeeInput,
+    ConstructionPeriodSpec,
+    ConstructionCapexItemInput,
+    ConstructionSeniorRateMode,
+    SENIOR_RATE_MODES,
+)
 from finco_core.inputs.serialization import project_inputs_to_dict, project_inputs_from_dict
 from finco_core.inputs._models import (
     PeriodFrequency,
@@ -127,6 +137,15 @@ __all__ = [
     "ProjectInputs",
     # BESS input model
     "BessParams",
+    # PR-9: construction financing
+    "ConstructionFinancingInput",
+    "ConstructionSeniorPricingInput",
+    "ConstructionCommitmentFeeInput",
+    "ConstructionStructuringFeeInput",
+    "ConstructionPeriodSpec",
+    "ConstructionCapexItemInput",
+    "ConstructionSeniorRateMode",
+    "SENIOR_RATE_MODES",
     # Serialization (V3-6)
     "project_inputs_to_dict",
     "project_inputs_from_dict",

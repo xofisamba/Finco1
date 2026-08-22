@@ -147,23 +147,33 @@ class ConstructionRuntimeResult:
     residual_audit: tuple[VectorResidualAudit, ...]
 
 
-def _monthly_uses(item: CapexPaymentItem) -> tuple[float, ...]:
-    if len(item.payment_weights) != 12:
-        raise ValueError(f"{item.code} must have 12 construction payment weights")
+def _monthly_uses(item: CapexPaymentItem, n_periods: int | None = None) -> tuple[float, ...]:
+    n = n_periods if n_periods is not None else len(item.payment_weights)
+    if len(item.payment_weights) != n:
+        raise ValueError(f"{item.code} must have {n} construction payment weights")
     expected_sum = 1.0 if item.amount_keur else 0.0
     if abs(sum(item.payment_weights) - expected_sum) > 1e-9:
         raise ValueError(f"{item.code} payment weights do not sum to 100%")
     return tuple(item.amount_keur * weight for weight in item.payment_weights)
 
 
+def _n_from_schedule(capex_schedule: CapexScheduleSet) -> int:
+    """Derive n_periods from the first item's payment_weights, or return 0 if no items."""
+    if not capex_schedule.items:
+        return 0
+    return len(capex_schedule.items[0].payment_weights)
+
+
 def monthly_hard_capex(capex_schedule: CapexScheduleSet) -> tuple[float, ...]:
-    return tuple(sum(_monthly_uses(item)[idx] for item in capex_schedule.items) for idx in range(12))
+    n = _n_from_schedule(capex_schedule)
+    return tuple(sum(_monthly_uses(item, n)[idx] for item in capex_schedule.items) for idx in range(n))
 
 
 def vat_monthly_uses(capex_schedule: CapexScheduleSet) -> tuple[float, ...]:
+    n = _n_from_schedule(capex_schedule)
     return tuple(
-        sum(_monthly_uses(item)[idx] * item.vat_rate for item in capex_schedule.items)
-        for idx in range(12)
+        sum(_monthly_uses(item, n)[idx] * item.vat_rate for item in capex_schedule.items)
+        for idx in range(n)
     )
 
 
@@ -177,8 +187,8 @@ def vat_bearing_base(capex_schedule: CapexScheduleSet) -> float:
 
 def allocate_structuring_fee(policy: FinancingCostFundingPolicy, amount_keur: float) -> tuple[float, ...]:
     schedule = policy.structuring_fee_payment_schedule
-    if len(schedule) != 12:
-        raise ValueError("structuring fee payment schedule must have 12 periods")
+    if len(schedule) == 0:
+        raise ValueError("structuring fee payment schedule must not be empty")
     if abs(sum(schedule) - 1.0) > 1e-9:
         raise ValueError("structuring fee payment schedule must sum to 100%")
     return tuple(amount_keur * weight for weight in schedule)
@@ -244,30 +254,40 @@ def compute_vat_schedule(
     return tuple(rows)
 
 
-def _pad_12(values: tuple[float, ...]) -> tuple[float, ...]:
+def _pad_n(values: tuple[float, ...], n: int) -> tuple[float, ...]:
     if not values:
-        return (0.0,) * 12
-    if len(values) != 12:
-        raise ValueError("circular vectors must have 12 periods")
+        return (0.0,) * n
+    if len(values) != n:
+        raise ValueError(f"circular vectors must have {n} periods")
     return values
 
 
-def _profile_12(values: tuple[float, ...], *, default_period: int | None = None) -> tuple[float, ...]:
+def _pad_12(values: tuple[float, ...]) -> tuple[float, ...]:
+    return _pad_n(values, 12)
+
+
+def _profile_n(values: tuple[float, ...], n: int, *, default_period: int | None = None) -> tuple[float, ...]:
     if not values:
         if default_period is None:
-            return (0.0,) * 12
-        return tuple(1.0 if idx == default_period else 0.0 for idx in range(12))
-    if len(values) != 12:
-        raise ValueError("financing-cost spending profiles must have 12 periods")
+            return (0.0,) * n
+        return tuple(1.0 if idx == default_period else 0.0 for idx in range(n))
+    if len(values) != n:
+        raise ValueError(f"financing-cost spending profiles must have {n} periods")
     if abs(sum(values) - 1.0) > 1e-9:
         raise ValueError("financing-cost spending profiles must sum to 100%")
     return values
 
 
-def _period_rates(config: ConstructionRuntimeConfig) -> tuple[float, ...]:
+def _profile_12(values: tuple[float, ...], *, default_period: int | None = None) -> tuple[float, ...]:
+    return _profile_n(values, 12, default_period=default_period)
+
+
+def _period_rates(config: ConstructionRuntimeConfig, n_periods: int | None = None) -> tuple[float, ...]:
+    # n_periods = CAPEX period count (not total timeline length, which may include VAT runoff).
+    n = n_periods if n_periods is not None else len(config.timeline)
     if config.euribor_1m_fixings:
-        if len(config.euribor_1m_fixings) != 12:
-            raise ValueError("Euribor 1m fixing schedule must have 12 periods")
+        if len(config.euribor_1m_fixings) != n:
+            raise ValueError(f"Euribor 1m fixing schedule must have {n} periods")
         hedged_component = (
             config.base_rate * config.hedge_coverage
             + config.swap_margin
@@ -280,10 +300,10 @@ def _period_rates(config: ConstructionRuntimeConfig) -> tuple[float, ...]:
             for fixing in config.euribor_1m_fixings
         )
     if config.senior_interest_rate_schedule:
-        if len(config.senior_interest_rate_schedule) != 12:
-            raise ValueError("Senior interest-rate schedule must have 12 periods")
+        if len(config.senior_interest_rate_schedule) != n:
+            raise ValueError(f"Senior interest-rate schedule must have {n} periods")
         return config.senior_interest_rate_schedule
-    return (config.senior_interest_rate,) * 12
+    return (config.senior_interest_rate,) * n
 
 
 def _senior_financing_accruals(
@@ -324,9 +344,10 @@ def _senior_financing_accruals(
 
 
 def _next_period_capitalized_uses(calculated: tuple[float, ...]) -> tuple[float, ...]:
-    if len(calculated) != 12:
-        raise ValueError("calculated financing vectors must have 12 periods")
-    return (0.0,) + calculated[:11]
+    n = len(calculated)
+    if n == 0:
+        raise ValueError("calculated financing vectors must not be empty")
+    return (0.0,) + calculated[:n - 1]
 
 
 def _capitalized_uses(total: float, profile: tuple[float, ...], calculated: tuple[float, ...], timing: str) -> tuple[float, ...]:
@@ -353,10 +374,13 @@ def _validate_capex_timeline(
     timeline: tuple[TimelinePeriod, ...],
     tolerance_keur: float,
 ) -> None:
-    if len(timeline) < 12:
-        raise ValueError("construction timeline must expose at least 12 construction periods")
-    if len(hard_capex) != 12 or len(vat_payable) != 12:
-        raise ValueError("construction CAPEX and VAT vectors must expose exactly 12 periods")
+    if len(timeline) == 0:
+        raise ValueError("construction timeline must not be empty")
+    n_capex = len(hard_capex)
+    if len(vat_payable) != n_capex:
+        raise ValueError(f"construction hard_capex and vat_payable must have the same length; got {n_capex} vs {len(vat_payable)}")
+    if n_capex > len(timeline):
+        raise ValueError(f"construction CAPEX vector length {n_capex} exceeds timeline length {len(timeline)}")
 
     for idx, (hard, vat) in enumerate(zip(hard_capex, vat_payable)):
         period = timeline[idx]
@@ -436,6 +460,8 @@ def run_stage_b2(config: ConstructionRuntimeConfig) -> ConstructionRuntimeResult
     """
     hard_capex = monthly_hard_capex(config.capex_schedule)
     vat_payable = vat_monthly_uses(config.capex_schedule)
+    # n_periods = CAPEX period count (from schedule). Timeline may be longer (VAT runoff).
+    n_periods = len(hard_capex) if hard_capex else len(config.timeline)
     _validate_capex_timeline(
         hard_capex,
         vat_payable,
@@ -453,16 +479,16 @@ def run_stage_b2(config: ConstructionRuntimeConfig) -> ConstructionRuntimeResult
         config.structuring_fee_rate * config.structuring_fee_basis_keur,
     )
 
-    idc_profile = _profile_12(config.senior_idc_spending_profile)
-    fee_profile = _profile_12(config.senior_commitment_fee_spending_profile)
-    vat_financing_profile = _profile_12(config.vat_financing_cost_spending_profile)
-    senior_rates = _period_rates(config)
-    senior_idc_uses = _pad_12(config.initial_senior_idc_funded_uses_keur)
-    senior_fee_uses = _pad_12(config.initial_senior_commitment_fee_funded_uses_keur)
-    vat_financing_uses = _pad_12(config.initial_vat_financing_funded_uses_keur)
+    idc_profile = _profile_n(config.senior_idc_spending_profile, n_periods)
+    fee_profile = _profile_n(config.senior_commitment_fee_spending_profile, n_periods)
+    vat_financing_profile = _profile_n(config.vat_financing_cost_spending_profile, n_periods)
+    senior_rates = _period_rates(config, n_periods)
+    senior_idc_uses = _pad_n(config.initial_senior_idc_funded_uses_keur, n_periods)
+    senior_fee_uses = _pad_n(config.initial_senior_commitment_fee_funded_uses_keur, n_periods)
+    vat_financing_uses = _pad_n(config.initial_vat_financing_funded_uses_keur, n_periods)
     residual = float("inf")
     audit: tuple[VectorResidualAudit, ...] = ()
-    senior_period_draws = (0.0,) * 12
+    senior_period_draws = (0.0,) * n_periods
     senior_idc_total = 0.0
     senior_fee_total = 0.0
     vat_idc = 0.0
@@ -471,7 +497,7 @@ def run_stage_b2(config: ConstructionRuntimeConfig) -> ConstructionRuntimeResult
     for iteration in range(1, config.max_iterations + 1):
         period_uses = tuple(
             hard_capex[idx] + structuring[idx] + senior_idc_uses[idx] + senior_fee_uses[idx] + vat_financing_uses[idx]
-            for idx in range(12)
+            for idx in range(n_periods)
         )
         senior_period_draws = _waterfall_senior_draws(
             period_uses,
@@ -529,7 +555,7 @@ def run_stage_b2(config: ConstructionRuntimeConfig) -> ConstructionRuntimeResult
 
     period_uses = tuple(
         hard_capex[idx] + structuring[idx] + senior_idc_uses[idx] + senior_fee_uses[idx] + vat_financing_uses[idx]
-        for idx in range(12)
+        for idx in range(n_periods)
     )
     senior_period_draws = _waterfall_senior_draws(
         period_uses,

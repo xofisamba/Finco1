@@ -24,6 +24,8 @@ from financial_engine.shl.construction import (
     ShlConstructionPeriodInput,
 )
 from finco_core.inputs._models import SponsorFundingTimingPolicy
+from financial_engine.construction.adapter import build_construction_runtime_config
+from finco_core.construction.stage_b2 import run_stage_b2, apply_capitalized_financing_costs
 
 # Construction SHL accrual semantics (Fix 3):
 #
@@ -58,8 +60,28 @@ def run_project_financing_model(
     if fin.gearing_basis_mode != GearingBasisMode.TOTAL_PROJECT_USES:
         raise ValueError("G2A_GEARING_BASIS_EXPLICIT_INPUT_REQUIRED")
 
+    # PR-9: check construction financing state
+    _construction = fin.construction_financing
+    _construction_enabled = _construction is not None and _construction.enabled
+
+    if _construction_enabled:
+        capex = project_inputs.capex
+        if (
+            getattr(capex, "idc_keur", 0.0) > 0
+            or getattr(capex, "commitment_fees_keur", 0.0) > 0
+            or getattr(capex, "bank_fees_keur", 0.0) > 0
+        ):
+            raise ValueError(
+                "PR9_MANUAL_DERIVED_CONSTRUCTION_COST_CONFLICT: "
+                "capex.idc_keur / commitment_fees_keur / bank_fees_keur must be zero "
+                "when construction_financing.enabled=True"
+            )
+
     uses = _project_uses(project_inputs)
     gearing_capacity = uses.total_project_uses_keur * fin.gearing_ratio
+    # PR-9: working project inputs that may be updated per iteration with B2 capex
+    _iter_project_inputs = project_inputs
+    _b2_result = None
 
     # Fix 3: pre-compute construction period template for timing-resolved SHL.
     # Run the operating model once (calendar-only, timing-policy-independent) to get
@@ -256,6 +278,29 @@ def run_project_financing_model(
             other_equity_funding_before_shl_keur=fin.other_equity_funding_before_shl_keur,
             sponsor_funding_mode=fin.sponsor_funding_mode,
         )
+
+        # PR-9: construction IDC fixed-point sub-iteration
+        if _construction_enabled:
+            _equity_avail = (
+                fin.share_capital_keur
+                + fin.share_premium_keur
+                + fin.other_equity_funding_before_shl_keur
+                + additional_equity
+            )
+            _b2_config = build_construction_runtime_config(
+                _construction,
+                senior_commitment_keur=senior.debt_size_keur,
+                equity_available_keur=_equity_avail,
+                shl_available_keur=derived_shl,
+            )
+            _b2_result = run_stage_b2(_b2_config)
+            _updated_capex = apply_capitalized_financing_costs(
+                project_inputs.capex, _b2_result.capitalized_financing_costs
+            )
+            _iter_project_inputs = replace(project_inputs, capex=_updated_capex)
+            uses = _project_uses(_iter_project_inputs)
+            gearing_capacity = uses.total_project_uses_keur * fin.gearing_ratio
+
         maximum_difference = abs(derived_shl - candidate_shl)
         if maximum_difference <= convergence_tolerance_keur:
             break
@@ -399,4 +444,7 @@ def run_project_financing_model(
         construction_funding=funding,
         fixed_point_iteration_count=iteration,
         fixed_point_maximum_difference_keur=maximum_difference,
+        construction_b2_result=_b2_result,
+        construction_fixed_point_iterations=_b2_result.iterations if _b2_result is not None else 0,
+        construction_fixed_point_residual_keur=_b2_result.final_residual_keur if _b2_result is not None else 0.0,
     )
