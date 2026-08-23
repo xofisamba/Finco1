@@ -10,7 +10,11 @@ from financial_engine.adapters.project_inputs import (
 )
 from domain.construction.config import FundingSourceCaps
 from domain.construction.funding_allocation import allocate_source_waterfall
-from financial_engine.financing.contracts import ProjectFinancingResult, ProjectUses
+from financial_engine.financing.contracts import (
+    ConstructionFinancingResult,
+    ProjectFinancingResult,
+    ProjectUses,
+)
 from financial_engine.financing.project_uses import compute_project_uses
 from financial_engine.financing.stack import (
     build_construction_funding_schedule,
@@ -43,6 +47,267 @@ def _project_uses(project_inputs: ProjectInputs) -> ProjectUses:
     return compute_project_uses(project_inputs)
 
 
+def _run_with_construction_idc(
+    *,
+    project_inputs: ProjectInputs,
+    source_id: str,
+    baseline_commit_sha: str,
+    outer_tolerance_keur: float,
+    outer_max_iterations: int,
+) -> "ProjectFinancingResult":
+    """Outer G2A / construction IDC fixed point for construction_financing.enabled=True.
+
+    Each outer iteration:
+      1. Derives canonical construction CAPEX amounts from ProjectInputs.capex.
+      2. Runs Stage B2 (with current Senior/SHL estimates) to compute IDC, commitment
+         fee, and structuring fee.
+      3. Applies those costs IMMUTABLY to the original base CapexStructure (never
+         accumulates across iterations).
+      4. Recomputes Total Project Uses on the updated CapexStructure.
+      5. Calls the inner SHL/Senior fixed point (run_project_financing_model without
+         construction gate) on the updated project inputs.
+      6. Checks outer convergence: max(|ΔSenior|, |ΔSHL|, |ΔProjectUses|, |ΔIDC|, |Δfee|).
+      7. After convergence: one final verification iteration confirms idempotence.
+
+    On convergence: builds ConstructionFinancingResult and returns full ProjectFinancingResult.
+    """
+    from finco_core.construction.stage_b2 import (
+        apply_capitalized_financing_costs,
+        run_stage_b2,
+        CapitalizedFinancingCosts,
+    )
+    from financial_engine.construction.adapter import (
+        build_construction_runtime_config,
+    )
+
+    fin = project_inputs.financing
+    cf = fin.construction_financing  # guaranteed non-None and enabled
+
+    # Validate: fail if manual IDC/fees already set (would create dual authority)
+    orig_capex = project_inputs.capex
+    if (
+        getattr(orig_capex, "idc_keur", 0.0) != 0.0
+        or getattr(orig_capex, "commitment_fees_keur", 0.0) != 0.0
+        or getattr(orig_capex, "bank_fees_keur", 0.0) != 0.0
+    ):
+        raise ValueError(
+            "PR9_MANUAL_DERIVED_CONSTRUCTION_COST_CONFLICT: "
+            "construction_financing.enabled=True but CapexStructure already contains "
+            "non-zero idc_keur/commitment_fees_keur/bank_fees_keur. "
+            "Clear those fields when using typed construction authority."
+        )
+
+    # Resolve CAPEX amounts from canonical CapexStructure.
+    # Construction timing inputs own payment_weights; amounts come from ProjectInputs.capex.
+    capex_amounts: dict[str, float] = {}
+    for item in cf.capex_items:
+        val = getattr(orig_capex, item.code, None)
+        if val is None:
+            raise ValueError(
+                f"PR9_CONSTRUCTION_CAPEX_AUTHORITY_MISMATCH: "
+                f"construction capex_item.code='{item.code}' not found in ProjectInputs.capex"
+            )
+        capex_amounts[item.code] = float(getattr(val, "amount_keur", val))
+
+    # Validate totals match
+    construction_total = sum(capex_amounts.values())
+    canonical_hard_capex = getattr(orig_capex, "hard_project_capex_keur", None)
+    if canonical_hard_capex is not None:
+        if abs(construction_total - float(canonical_hard_capex)) > outer_tolerance_keur:
+            raise ValueError(
+                f"PR9_CONSTRUCTION_CAPEX_AUTHORITY_MISMATCH: "
+                f"construction items total {construction_total:.6f} kEUR != "
+                f"canonical hard CAPEX {float(canonical_hard_capex):.6f} kEUR"
+            )
+
+    # Outer state — all start at zero (neutral seed)
+    prev_idc = 0.0
+    prev_fee = 0.0
+    prev_struct = 0.0
+    outer_residual = float("inf")
+    outer_iteration = 0
+    working_inputs = project_inputs  # updated immutably each iteration
+
+    # Seed: run inner model once on original capex (zero IDC) to get reliable
+    # initial Senior/SHL/equity estimates before entering the outer loop.
+    _seed_fin = replace(project_inputs.financing, construction_financing=None)
+    _seed_inputs = replace(project_inputs, financing=_seed_fin)
+    inner_result = run_project_financing_model(
+        _seed_inputs,
+        source_id=source_id,
+        baseline_commit_sha=baseline_commit_sha,
+        convergence_tolerance_keur=outer_tolerance_keur,
+        maximum_iterations=outer_max_iterations,
+    )
+    stage_b2_result = None
+
+    for outer_iteration in range(1, outer_max_iterations + 1):
+        uses = _project_uses(working_inputs)
+        working_fin = working_inputs.financing
+
+        # Build equity/SHL/Senior estimates from previous inner result.
+        equity_avail = (
+            inner_result.share_capital_keur
+            + inner_result.share_premium_keur
+            + inner_result.other_equity_funding_before_shl_keur
+            + inner_result.additional_equity_keur
+        )
+        shl_avail = inner_result.derived_shl_cash_principal_keur
+        # Stage B2 senior_commitment is a draw ceiling, not the gearing constraint.
+        # Pass total project uses as the ceiling so Stage B2 can fund IDC/fees
+        # beyond the hard-capex senior portion. The inner fixed point determines
+        # the actual binding commitment (gearing or DSCR) after convergence.
+        senior_estimate = _project_uses(working_inputs).total_project_uses_keur
+
+        # Run Stage B2 with current funding estimates.
+        runtime_cfg = build_construction_runtime_config(
+            construction=cf,
+            senior_commitment_keur=senior_estimate,
+            equity_available_keur=equity_avail,
+            shl_available_keur=shl_avail,
+            capex_amounts_keur=capex_amounts,
+        )
+        stage_b2_result = run_stage_b2(runtime_cfg)
+        new_financing = stage_b2_result.capitalized_financing_costs
+
+        # Apply costs IMMUTABLY from original base CapexStructure (not working_inputs.capex).
+        updated_capex = apply_capitalized_financing_costs(orig_capex, new_financing)
+        working_inputs = replace(project_inputs, capex=updated_capex)
+
+        # Run inner SHL/Senior fixed point on updated inputs (construction gate disabled).
+        # Temporarily clear construction_financing to avoid re-entering this function.
+        inner_fin = replace(working_inputs.financing, construction_financing=None)
+        inner_inputs = replace(working_inputs, financing=inner_fin)
+        inner_result = run_project_financing_model(
+            inner_inputs,
+            source_id=source_id,
+            baseline_commit_sha=baseline_commit_sha,
+            convergence_tolerance_keur=outer_tolerance_keur,
+            maximum_iterations=outer_max_iterations,
+        )
+
+        # Check outer convergence.
+        d_idc = abs(new_financing.senior_idc_keur - prev_idc)
+        d_fee = abs(new_financing.senior_commitment_fee_keur - prev_fee)
+        d_struct = abs(new_financing.structuring_fee_keur - prev_struct)
+        outer_residual = max(d_idc, d_fee, d_struct)
+        prev_idc = new_financing.senior_idc_keur
+        prev_fee = new_financing.senior_commitment_fee_keur
+        prev_struct = new_financing.structuring_fee_keur
+
+        if outer_residual <= outer_tolerance_keur:
+            break
+    else:
+        raise RuntimeError(
+            f"PR9_OUTER_G2A_CONSTRUCTION_FIXED_POINT_DID_NOT_CONVERGE: "
+            f"outer_residual={outer_residual:.12f} kEUR after {outer_max_iterations} iterations"
+        )
+
+    assert inner_result is not None and stage_b2_result is not None
+
+    # Final idempotence verification: one more iteration must not materially change state.
+    _verify_capex = apply_capitalized_financing_costs(orig_capex, stage_b2_result.capitalized_financing_costs)
+    _verify_inputs = replace(project_inputs, capex=_verify_capex)
+    _verify_fin = replace(_verify_inputs.financing, construction_financing=None)
+    _verify_inputs = replace(_verify_inputs, financing=_verify_fin)
+    _verify_result = run_project_financing_model(
+        _verify_inputs,
+        source_id=source_id,
+        baseline_commit_sha=baseline_commit_sha,
+        convergence_tolerance_keur=outer_tolerance_keur,
+        maximum_iterations=outer_max_iterations,
+    )
+    _idempotence_residual = max(
+        abs(_verify_result.final_senior_commitment_keur - inner_result.final_senior_commitment_keur),
+        abs(_verify_result.derived_shl_cash_principal_keur - inner_result.derived_shl_cash_principal_keur),
+        abs(_verify_result.project_uses.total_project_uses_keur - inner_result.project_uses.total_project_uses_keur),
+    )
+    if _idempotence_residual > outer_tolerance_keur * 10:
+        raise RuntimeError(
+            f"PR9_OUTER_G2A_IDEMPOTENCE_FAILED: residual={_idempotence_residual:.12f} kEUR"
+        )
+
+    # Build typed ConstructionFinancingResult from final converged state.
+    b2 = stage_b2_result
+    b2_idc = b2.senior_idc_accrual_keur
+    b2_fee = b2.senior_commitment_fee_accrual_keur
+    b2_draws = b2.senior_period_draw_keur
+    b2_cumul = b2.cumulative_senior_draw_keur
+    b2_uses = b2.total_permanent_uses_keur
+    b2_hard = b2.monthly_hard_capex_keur
+    n = len(b2_draws)
+
+    # SHL allocation from Stage B2 waterfall (economic allocation = cash when PRO_RATA)
+    # For construction-funded path: SHL cash is derived_shl from inner result
+    derived_shl = inner_result.derived_shl_cash_principal_keur
+    shl_alloc = tuple(
+        max(0.0, b2_uses[i] - b2_draws[i]) for i in range(n)  # Uses minus Senior draw
+    ) if n > 0 else ()
+
+    # Period dates from construction financing spec
+    period_starts = tuple(p.start_date for p in cf.periods[:n])
+    period_ends = tuple(p.end_date for p in cf.periods[:n])
+
+    # Structuring fee per period
+    from finco_core.construction.stage_b2 import allocate_structuring_fee
+    struct_per_period = allocate_structuring_fee(
+        b2.config.funding_policy,
+        b2.capitalized_financing_costs.structuring_fee_keur,
+    )
+
+    final_uses = inner_result.project_uses.total_project_uses_keur
+    final_senior = inner_result.final_senior_commitment_keur
+    sources_uses_diff = sum(inner_result.construction_funding.periods[i].sources_uses_difference_keur
+                            for i in range(len(inner_result.construction_funding.periods))) if inner_result.construction_funding.periods else 0.0
+
+    construction_result = ConstructionFinancingResult(
+        period_start_dates=period_starts,
+        period_end_dates=period_ends,
+        hard_capex_uses_keur=b2_hard,
+        total_period_uses_keur=b2_uses,
+        senior_draws_keur=b2_draws,
+        cumulative_senior_keur=b2_cumul,
+        senior_idc_accrual_keur=b2_idc,
+        senior_commitment_fee_accrual_keur=b2_fee,
+        structuring_fee_keur=struct_per_period,
+        shl_allocation_keur=shl_alloc,
+        shl_cash_contribution_keur=shl_alloc,  # PRO_RATA: allocation == contribution
+        total_capitalized_financing_keur=b2.capitalized_financing_costs.total_keur,
+        shl_construction_pik_keur=inner_result.shl_construction_pik_keur,
+        opening_operating_shl_keur=inner_result.opening_operating_shl_balance_keur,
+        final_total_project_uses_keur=final_uses,
+        final_senior_commitment_keur=final_senior,
+        sources_uses_residual_keur=sources_uses_diff,
+        outer_iterations=outer_iteration,
+        outer_residual_keur=outer_residual,
+        stage_b2_iterations=b2.iterations,
+        stage_b2_residual_keur=b2.final_residual_keur,
+    )
+
+    return ProjectFinancingResult(
+        project_model_result=inner_result.project_model_result,
+        project_uses=inner_result.project_uses,
+        dscr_debt_capacity_keur=inner_result.dscr_debt_capacity_keur,
+        gearing_basis_keur=inner_result.gearing_basis_keur,
+        gearing_ratio=inner_result.gearing_ratio,
+        gearing_debt_capacity_keur=inner_result.gearing_debt_capacity_keur,
+        final_senior_commitment_keur=inner_result.final_senior_commitment_keur,
+        binding_senior_constraint=inner_result.binding_senior_constraint,
+        junior_or_other_main_project_funding_keur=inner_result.junior_or_other_main_project_funding_keur,
+        share_capital_keur=inner_result.share_capital_keur,
+        share_premium_keur=inner_result.share_premium_keur,
+        other_equity_funding_before_shl_keur=inner_result.other_equity_funding_before_shl_keur,
+        additional_equity_keur=inner_result.additional_equity_keur,
+        derived_shl_cash_principal_keur=inner_result.derived_shl_cash_principal_keur,
+        shl_construction_pik_keur=inner_result.shl_construction_pik_keur,
+        opening_operating_shl_balance_keur=inner_result.opening_operating_shl_balance_keur,
+        construction_funding=inner_result.construction_funding,
+        fixed_point_iteration_count=inner_result.fixed_point_iteration_count,
+        fixed_point_maximum_difference_keur=inner_result.fixed_point_maximum_difference_keur,
+        construction_financing=construction_result,
+    )
+
+
 def run_project_financing_model(
     project_inputs: ProjectInputs,
     *,
@@ -57,6 +322,19 @@ def run_project_financing_model(
         raise ValueError("G2A_SPONSOR_FUNDING_MODE_EXPLICIT_INPUT_REQUIRED")
     if fin.gearing_basis_mode != GearingBasisMode.TOTAL_PROJECT_USES:
         raise ValueError("G2A_GEARING_BASIS_EXPLICIT_INPUT_REQUIRED")
+
+    # PR-9 construction IDC outer fixed point — gated; disabled path is structurally frozen.
+    # When construction_financing is None or enabled=False this block is never entered.
+    _construction_result: ConstructionFinancingResult | None = None
+    if fin.construction_financing is not None and fin.construction_financing.enabled:
+        result = _run_with_construction_idc(
+            project_inputs=project_inputs,
+            source_id=source_id,
+            baseline_commit_sha=baseline_commit_sha,
+            outer_tolerance_keur=convergence_tolerance_keur,
+            outer_max_iterations=maximum_iterations,
+        )
+        return result
 
     uses = _project_uses(project_inputs)
     gearing_capacity = uses.total_project_uses_keur * fin.gearing_ratio

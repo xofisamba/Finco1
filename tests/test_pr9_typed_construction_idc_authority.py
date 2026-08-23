@@ -676,3 +676,154 @@ class TestPR8FingerprintsUnchanged:
         assert pi.financing.construction_financing is None, (
             "Generic Wind must not enable construction financing by default"
         )
+
+
+# ---------------------------------------------------------------------------
+# 10. End-to-end tests through run_project_financing_model with construction enabled
+# ---------------------------------------------------------------------------
+
+def _make_solar_construction_input(n_periods: int) -> "ConstructionFinancingInput":
+    """Build ConstructionFinancingInput covering Solar factory hard CAPEX items."""
+    from datetime import date as _date
+    periods = []
+    y, m = 2030, 1
+    for _ in range(n_periods):
+        nm = m + 1 if m < 12 else 1
+        ny = y if m < 12 else y + 1
+        periods.append(ConstructionPeriodSpec(
+            start_date=_date(y, m, 1),
+            end_date=_date(ny, nm, 1),
+        ))
+        y, m = ny, nm
+    w = tuple(1.0 / n_periods for _ in range(n_periods))
+    capex_items = (
+        ConstructionCapexTimingInput(code="epc_contract", name="EPC Contract", payment_weights=w),
+        ConstructionCapexTimingInput(code="production_units", name="Production Units", payment_weights=w),
+        ConstructionCapexTimingInput(code="epc_other", name="EPC Other", payment_weights=w),
+        ConstructionCapexTimingInput(code="grid_connection", name="Grid Connection", payment_weights=w),
+        ConstructionCapexTimingInput(code="audit_legal", name="Audit & Legal", payment_weights=w),
+    )
+    return ConstructionFinancingInput(
+        enabled=True,
+        periods=tuple(periods),
+        capex_items=capex_items,
+        senior_pricing=ConstructionSeniorPricingInput(
+            mode=SeniorRateMode.FLAT_ALL_IN,
+            flat_all_in_rate=0.055,
+            day_count=SeniorDayCountConvention.ACT_360,
+        ),
+        commitment_fee=ConstructionCommitmentFeeInput(rate=0.005),
+        structuring_fee=ConstructionStructuringFeeInput(rate=0.01, basis_keur=24_750.0),
+    )
+
+
+class TestPR9EndToEndConstructionFinancing:
+    """End-to-end tests through run_project_financing_model with construction_financing enabled.
+
+    These tests verify that the outer G2A fixed point:
+    - Converges and returns a ConstructionFinancingResult
+    - Produces positive IDC and commitment fees
+    - Preserves the inner financing result structure
+    - Does not alter PR-8 production fingerprints (construction gate is opt-in)
+    """
+
+    def _solar_with_construction(self, n_periods: int = 12):
+        import dataclasses
+        from app.project_factories import create_default_solar_project
+        from financial_engine.financing import run_project_financing_model
+        pi = create_default_solar_project()
+        cf = _make_solar_construction_input(n_periods)
+        pi = dataclasses.replace(
+            pi,
+            financing=dataclasses.replace(pi.financing, construction_financing=cf),
+        )
+        return run_project_financing_model(pi)
+
+    def test_6_period_flat_converges_and_returns_typed_result(self):
+        """6-period flat-rate construction financing converges and returns ConstructionFinancingResult."""
+        from financial_engine.financing.contracts import ConstructionFinancingResult
+        result = self._solar_with_construction(n_periods=6)
+        assert result.construction_financing is not None
+        assert isinstance(result.construction_financing, ConstructionFinancingResult)
+        assert result.construction_financing.authority == "PR9_TYPED_CONSTRUCTION_FINANCING_IDC_AUTHORITY"
+        assert result.construction_financing.outer_iterations >= 1
+
+    def test_6_period_idc_positive(self):
+        """IDC accruals must be positive when rate > 0 and senior draws > 0."""
+        result = self._solar_with_construction(n_periods=6)
+        cf = result.construction_financing
+        assert sum(cf.senior_idc_accrual_keur) > 0.0, "IDC must be positive with 5.5% rate"
+
+    def test_6_period_commitment_fee_positive(self):
+        """Commitment fee accruals must be positive when rate > 0."""
+        result = self._solar_with_construction(n_periods=6)
+        cf = result.construction_financing
+        assert sum(cf.senior_commitment_fee_accrual_keur) > 0.0
+
+    def test_6_period_total_uses_exceeds_base_hard_capex(self):
+        """Total project uses must exceed base hard CAPEX by at least IDC."""
+        from app.project_factories import create_default_solar_project
+        base_pi = create_default_solar_project()
+        base_hard = base_pi.capex.hard_capex_keur  # 33_000 kEUR
+        result = self._solar_with_construction(n_periods=6)
+        assert result.project_uses.total_project_uses_keur > base_hard
+
+    def test_6_period_capitalized_financing_positive(self):
+        """Total capitalized financing must be positive."""
+        result = self._solar_with_construction(n_periods=6)
+        assert result.construction_financing.total_capitalized_financing_keur > 0.0
+
+    def test_6_period_senior_draws_cover_commitment(self):
+        """Cumulative senior draw at end must equal final senior commitment."""
+        result = self._solar_with_construction(n_periods=6)
+        cf = result.construction_financing
+        cumul_final = cf.cumulative_senior_keur[-1] if cf.cumulative_senior_keur else 0.0
+        # Senior is drawn progressively — cumulative at end should equal final commitment
+        assert cumul_final == pytest.approx(result.final_senior_commitment_keur, rel=0.01)
+
+    def test_12_period_flat_converges(self):
+        """12-period construction (1-year) converges and returns result."""
+        result = self._solar_with_construction(n_periods=12)
+        assert result.construction_financing is not None
+        assert result.construction_financing.outer_iterations >= 1
+        assert result.construction_financing.stage_b2_iterations >= 1
+
+    def test_12_period_period_vectors_length_matches(self):
+        """Period vectors in ConstructionFinancingResult must have length = n_periods."""
+        n = 12
+        result = self._solar_with_construction(n_periods=n)
+        cf = result.construction_financing
+        assert len(cf.period_start_dates) == n
+        assert len(cf.period_end_dates) == n
+        assert len(cf.senior_draws_keur) == n
+        assert len(cf.senior_idc_accrual_keur) == n
+        assert len(cf.hard_capex_uses_keur) == n
+
+    def test_12_period_hard_capex_sums_to_total(self):
+        """Sum of hard_capex_uses_keur must equal construction CAPEX total."""
+        from app.project_factories import create_default_solar_project
+        pi = create_default_solar_project()
+        result = self._solar_with_construction(n_periods=12)
+        cf = result.construction_financing
+        # Hard capex covers epc_contract+production_units+epc_other+grid_connection+audit_legal = 33000
+        assert sum(cf.hard_capex_uses_keur) == pytest.approx(33_000.0, rel=1e-6)
+
+    def test_construction_gate_disabled_when_cf_none(self):
+        """When construction_financing=None, run_project_financing_model must return None construction_financing."""
+        from app.project_factories import create_default_solar_project
+        from financial_engine.financing import run_project_financing_model
+        pi = create_default_solar_project()
+        assert pi.financing.construction_financing is None
+        result = run_project_financing_model(pi)
+        assert result.construction_financing is None
+
+    def test_outer_idempotence_residual_within_tolerance(self):
+        """Outer residual at convergence must be ≤ default tolerance."""
+        result = self._solar_with_construction(n_periods=12)
+        cf = result.construction_financing
+        assert cf.outer_residual_keur <= 1e-7 * 10 or cf.outer_residual_keur == pytest.approx(0.0, abs=1e-6)
+
+    def test_construction_financing_result_authority_token(self):
+        """Authority token must be PR9_TYPED_CONSTRUCTION_FINANCING_IDC_AUTHORITY."""
+        result = self._solar_with_construction(n_periods=12)
+        assert result.construction_financing.authority == "PR9_TYPED_CONSTRUCTION_FINANCING_IDC_AUTHORITY"
