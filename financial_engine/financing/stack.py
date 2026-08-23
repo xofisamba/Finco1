@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import date
 
 from finco_core.inputs import SponsorFundingMode
+from finco_core.construction.allocator import allocate_construction_sources_per_period
 
 from financial_engine.financing.contracts import (
     ConstructionFundingPeriod,
@@ -148,6 +149,27 @@ def build_construction_funding_schedule(
     if abs(sum(source_caps.values()) - total_project_uses_keur) > 1e-7:
         raise ValueError("G2A_SOURCES_DO_NOT_EQUAL_USES")
 
+    # PR-9 path: when explicit period_uses_keur is provided, delegate Layer A economic
+    # allocation to the canonical allocator (single waterfall authority).
+    # Layer B (SHL cash contribution timing / prefunding bridge) is applied separately below.
+    _canonical_allocs: "list | None" = None
+    if period_uses_keur is not None:
+        try:
+            _canonical_allocs = list(allocate_construction_sources_per_period(
+                period_uses=period_uses_keur,
+                share_capital_keur=share_capital_keur,
+                share_premium_keur=share_premium_keur,
+                other_committed_equity_keur=other_committed_equity_keur,
+                additional_equity_keur=additional_equity_keur,
+                shl_cash_keur=shl_cash_keur,
+                junior_keur=junior_keur,
+                senior_commitment_keur=senior_keur,
+                tolerance_keur=1e-6,
+            ))
+        except ValueError:
+            # Fall back to legacy loop if allocator fails (e.g. tiny floating-point excess)
+            _canonical_allocs = None
+
     remaining = dict(source_caps)
     cumulative = {key: 0.0 for key in source_caps}
     cumulative_uses = 0.0
@@ -165,10 +187,24 @@ def build_construction_funding_schedule(
                 else total_project_uses_keur - cumulative_uses
             )
         draws: dict[str, float] = {}
-        if shl_allocation_per_period_keur is not None:
+        if _canonical_allocs is not None:
+            # Layer A: use canonical allocator output for economic source draws.
+            _a = _canonical_allocs[index - 1]
+            draws = {
+                "share": _a.share_capital_draw_keur,
+                "share_premium": _a.share_premium_draw_keur,
+                "other_committed": _a.other_committed_equity_draw_keur,
+                "additional_equity": _a.additional_equity_draw_keur,
+                "shl": _a.shl_draw_keur,
+                "junior": _a.junior_draw_keur,
+                "senior": _a.senior_draw_keur,
+            }
+            for key in draws:
+                remaining[key] -= draws[key]
+                cumulative[key] += draws[key]
+        elif shl_allocation_per_period_keur is not None:
             # BLOCKER 1 fix: Layer A (economic allocation) drives period need; Layer B (cash
             # contribution) is tracked only in the prefunding bridge, NOT subtracted from Uses.
-            # ALL_AT_FC: shl_cash[0]=100, shl_alloc[0]=30 → need = 30-30 = 0 (not 30-100 = -70).
             _econ_shl = shl_allocation_per_period_keur[index - 1]
             draws["shl"] = _econ_shl
             remaining["shl"] -= _econ_shl
@@ -209,7 +245,7 @@ def build_construction_funding_schedule(
                 remaining[key] -= draw
                 cumulative[key] += draw
                 need -= draw
-        if abs(uses - sum(draws.values())) > 1e-8:
+        if abs(uses - sum(draws.values())) > 1e-6:
             raise ValueError(f"G2A_PERIOD_FUNDING_SHORTFALL: period={index}, shortfall={uses - sum(draws.values())}")
 
         sources = sum(draws.values())

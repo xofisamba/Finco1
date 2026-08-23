@@ -597,34 +597,54 @@ class TestOborovoSourceConstructionParity:
         idc_delta = abs(engine_idc_total - source_idc_total)
         fee_delta = abs(engine_fee_total - source_fee_total)
 
-        # Reference accepted values from spec
-        SOURCE_SENIOR_KEUR = 42852.27876256299
-        FINCO_SENIOR_KEUR = 42852.30326225287
-        RESIDUAL_KEUR = +0.02449968987639295
+        # Historical B7 checkpoint — separately labelled, NOT presented as current PR-9 output.
+        HISTORICAL_ACCEPTED_B7_SENIOR_CHECKPOINT = {
+            "source_senior_keur": 42852.27876256299,
+            "finco_b7_senior_keur": 42852.30326225287,
+            "residual_keur": +0.02449968987639295,
+        }
 
-        # Parity report with comparison table (informational — test always passes)
-        print(f"\n{'='*70}")
-        print(f"{'Oborovo Source Construction Parity Report':^70}")
-        print(f"{'='*70}")
-        print(f"{'Metric':<35} {'Source':>14} {'Finco':>14}")
-        print(f"{'-'*70}")
-        hard_capex = getattr(config, 'total_hard_capex_keur', None) or sum(
-            s.amount_keur for s in getattr(config, 'capex_schedule_set', type('', (), {'items': []})()).items
-            if hasattr(s, 'amount_keur')
-        ) or result.final_gfa_keur
-        print(f"{'Hard CAPEX (kEUR)':<35} {'N/A':>14} {result.final_gfa_keur:>14.5f}")
-        print(f"{'Senior commitment (kEUR)':<35} {SOURCE_SENIOR_KEUR:>14.5f} {FINCO_SENIOR_KEUR:>14.5f}")
-        print(f"{'Senior IDC (kEUR)':<35} {source_idc_total:>14.6f} {engine_idc_total:>14.6f}")
-        print(f"{'Commitment fees (kEUR)':<35} {source_fee_total:>14.6f} {engine_fee_total:>14.6f}")
-        print(f"{'Structuring fee (kEUR)':<35} {'N/A':>14} {'N/A':>14}")
-        print(f"{'Residual (kEUR)':<35} {'':>14} {RESIDUAL_KEUR:>+14.8f}")
-        print(f"{'-'*70}")
-        print(f"  Senior IDC delta: {idc_delta:.6f} kEUR")
-        print(f"  Commitment fee delta: {fee_delta:.6f} kEUR")
-        print(f"  Source → Finco Senior delta: {FINCO_SENIOR_KEUR - SOURCE_SENIOR_KEUR:+.8f} kEUR")
-        print(f"  Iterations: {result.iterations}, stage_b2 residual: {result.final_residual_keur:.2e}")
-        print(f"  GFA: {result.final_gfa_keur:.6f}, closing Senior: {result.closing_senior_drawn_keur:.6f}")
-        print(f"{'='*70}")
+        # Calculated values from actual PR-9 Stage B2 result
+        hard_capex_calculated = sum(
+            item.amount_keur for item in config.capex_schedule.items
+        ) if hasattr(config, 'capex_schedule') and hasattr(config.capex_schedule, 'items') else config.senior_commitment_keur
+        senior_commitment_calculated = config.senior_commitment_keur
+        senior_drawn_calculated = result.closing_senior_drawn_keur
+        idc_calculated = engine_idc_total
+        fee_calculated = engine_fee_total
+        gfa_calculated = result.final_gfa_keur
+        iterations_calculated = result.iterations
+        residual_calculated = result.final_residual_keur
+
+        # Causal divergence: Stage B2 Senior drawn vs source Senior
+        b7 = HISTORICAL_ACCEPTED_B7_SENIOR_CHECKPOINT
+        causal_divergence = senior_drawn_calculated - b7["source_senior_keur"]
+
+        # Parity report — calculated from actual PR-9 output (not hardcoded)
+        print(f"\n{'='*75}")
+        print(f"{'Oborovo Source Construction Parity Report':^75}")
+        print(f"{'(Calculated from actual PR-9 Stage B2 result)':^75}")
+        print(f"{'='*75}")
+        print(f"{'Metric':<40} {'Calculated':>14} {'Source':>14}")
+        print(f"{'-'*75}")
+        print(f"{'Hard CAPEX (kEUR)':<40} {hard_capex_calculated:>14.5f} {'N/A':>14}")
+        print(f"{'GFA / Total Uses (kEUR)':<40} {gfa_calculated:>14.5f} {'N/A':>14}")
+        print(f"{'Senior commitment in config (kEUR)':<40} {senior_commitment_calculated:>14.5f} {'N/A':>14}")
+        print(f"{'Senior actually drawn (kEUR)':<40} {senior_drawn_calculated:>14.5f} {b7['source_senior_keur']:>14.5f}")
+        print(f"{'Senior IDC (kEUR)':<40} {idc_calculated:>14.6f} {source_idc_total:>14.6f}")
+        print(f"{'Commitment fees (kEUR)':<40} {fee_calculated:>14.6f} {source_fee_total:>14.6f}")
+        print(f"{'Stage B2 iterations':<40} {iterations_calculated:>14} {'N/A':>14}")
+        print(f"{'Stage B2 residual (kEUR)':<40} {residual_calculated:>14.2e} {'N/A':>14}")
+        print(f"{'First causal divergence Senior (kEUR)':<40} {causal_divergence:>+14.8f} {'':>14}")
+        print(f"{'-'*75}")
+        print(f"{'IDC delta vs source (kEUR)':<40} {idc_delta:>+14.6f} {'':>14}")
+        print(f"{'Commitment fee delta vs source (kEUR)':<40} {fee_delta:>+14.6f} {'':>14}")
+        print(f"{'-'*75}")
+        print(f"  HISTORICAL_ACCEPTED_B7_SENIOR_CHECKPOINT (separate, not current PR-9):")
+        print(f"    Source Senior:   {b7['source_senior_keur']:.8f} kEUR")
+        print(f"    Finco B7 Senior: {b7['finco_b7_senior_keur']:.8f} kEUR")
+        print(f"    B7 Residual:     {b7['residual_keur']:+.8f} kEUR  (NOT TUNED)")
+        print(f"{'='*75}")
 
         # Structural assertions (not tuned, just sanity)
         assert engine_idc_total > 0.0, "engine Senior IDC must be positive"
@@ -1644,10 +1664,121 @@ class TestHedgeBlendCausal:
 # 20. Source-vector identity proof (Section 20)
 # ---------------------------------------------------------------------------
 
-class TestSourceVectorIdentity:
-    """Stage B2 Senior vector must match the final construction result Senior vector."""
+# ---------------------------------------------------------------------------
+# 21. Junior construction funding (Section 6)
+# ---------------------------------------------------------------------------
 
-    def test_stage_b2_senior_equals_result_senior(self):
+class TestJuniorConstructionFunding:
+    """Junior > 0 causes Senior draw to decrease; junior_draws_keur > 0 in result."""
+
+    def _run_with_junior(self, junior_keur: float, n_periods: int = 12):
+        import dataclasses
+        from app.project_factories import create_default_solar_project
+        from financial_engine.financing import run_project_financing_model
+
+        pi = create_default_solar_project()
+        cf = _make_solar_construction_input(n_periods)
+        fin = dataclasses.replace(
+            pi.financing,
+            construction_financing=cf,
+            junior_or_other_project_funding_keur=junior_keur,
+        )
+        pi = dataclasses.replace(pi, financing=fin)
+        return run_project_financing_model(pi)
+
+    def test_junior_draws_positive_when_junior_keur_nonzero(self):
+        """Junior keur > 0 → junior_draws_keur contains positive values."""
+        result = self._run_with_junior(2000.0)
+        c = result.construction_financing
+        assert c is not None
+        assert c.junior_draws_keur is not None
+        assert sum(c.junior_draws_keur) == pytest.approx(2000.0, abs=1.0), (
+            f"Expected ~2000 kEUR junior drawn, got {sum(c.junior_draws_keur):.3f}"
+        )
+
+    def test_junior_reduces_shl_not_senior(self):
+        """Adding junior replaces SHL (not Senior) in a gearing-constrained model."""
+        r0 = self._run_with_junior(0.0)
+        r_j = self._run_with_junior(2000.0)
+        c0 = r0.construction_financing
+        cj = r_j.construction_financing
+        # Junior substitutes for SHL — SHL allocation should decrease
+        shl_0 = sum(c0.shl_allocation_keur)
+        shl_j = sum(cj.shl_allocation_keur)
+        assert shl_j < shl_0, (
+            f"With 2000 kEUR junior, SHL allocation ({shl_j:.1f}) should be < no-junior ({shl_0:.1f})"
+        )
+        # Junior draws ≈ 2000 kEUR (allocated in the period vector)
+        assert sum(cj.junior_draws_keur) == pytest.approx(2000.0, abs=1.0)
+
+    def test_junior_senior_invariant(self):
+        """cumulative Senior draw <= final Senior commitment even with junior."""
+        result = self._run_with_junior(2000.0)
+        c = result.construction_financing
+        assert c is not None
+        assert max(c.cumulative_senior_keur) <= result.final_senior_commitment_keur + 1e-6
+
+
+# ---------------------------------------------------------------------------
+# 22. Share Premium and Other Equity E2E (Section 7)
+# ---------------------------------------------------------------------------
+
+class TestSharePremiumOtherEquityE2E:
+    """share_premium_keur > 0 and other_equity > 0 appear in period vectors."""
+
+    def _run_with_equity(self, share_premium: float = 0.0, other_equity: float = 0.0, n_periods: int = 12):
+        import dataclasses
+        from app.project_factories import create_default_solar_project
+        from financial_engine.financing import run_project_financing_model
+
+        pi = create_default_solar_project()
+        cf = _make_solar_construction_input(n_periods)
+        fin = dataclasses.replace(
+            pi.financing,
+            construction_financing=cf,
+            share_premium_keur=share_premium,
+            other_equity_funding_before_shl_keur=other_equity,
+        )
+        pi = dataclasses.replace(pi, financing=fin)
+        return run_project_financing_model(pi)
+
+    def test_share_premium_draws_present_when_nonzero(self):
+        """share_premium_keur > 0 → share_premium_draws_keur contains positive values."""
+        result = self._run_with_equity(share_premium=3000.0)
+        c = result.construction_financing
+        assert c is not None
+        assert c.share_premium_draws_keur is not None
+        assert sum(c.share_premium_draws_keur) == pytest.approx(3000.0, abs=1.0), (
+            f"Expected ~3000 kEUR share premium drawn, got {sum(c.share_premium_draws_keur):.3f}"
+        )
+
+    def test_other_equity_draws_present_when_nonzero(self):
+        """other_equity_funding_before_shl_keur > 0 → other_committed_equity_draws_keur > 0."""
+        result = self._run_with_equity(other_equity=2500.0)
+        c = result.construction_financing
+        assert c is not None
+        assert c.other_committed_equity_draws_keur is not None
+        assert sum(c.other_committed_equity_draws_keur) == pytest.approx(2500.0, abs=1.0), (
+            f"Expected ~2500 kEUR other equity drawn, got {sum(c.other_committed_equity_draws_keur):.3f}"
+        )
+
+    def test_share_premium_reduces_shl_not_senior(self):
+        """share_premium_keur > 0 replaces SHL (not Senior) in a gearing-constrained model."""
+        r0 = self._run_with_equity(share_premium=0.0)
+        r_sp = self._run_with_equity(share_premium=3000.0)
+        c0 = r0.construction_financing
+        csp = r_sp.construction_financing
+        # In a gearing model, Senior = gearing × total_uses regardless of share premium.
+        # Share Premium substitutes for SHL/additional_equity.
+        shl_0 = sum(c0.shl_allocation_keur)
+        shl_sp = sum(csp.shl_allocation_keur)
+        assert shl_sp < shl_0, (
+            f"With 3000 kEUR share premium, SHL allocation ({shl_sp:.1f}) should be < baseline ({shl_0:.1f})"
+        )
+
+
+# ---------------------------------------------------------------------------
+# 23. Source-vector identity proof (Section 20)
         """Stage B2 senior_period_draw_keur must equal ConstructionFinancingResult.senior_draws_keur."""
         import dataclasses
         from app.project_factories import create_default_solar_project
