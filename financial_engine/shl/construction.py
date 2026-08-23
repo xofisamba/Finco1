@@ -1,7 +1,8 @@
 """SHL construction period engine — multi-period draw schedule (Fix 3 architecture).
 
-This module provides the non-production multi-period construction engine.
-Production single-period construction is in production.py::compute_shl_schedule.
+This module provides the canonical multi-period construction engine. Typed PR-9
+construction financing invokes it through the explicit financing handoff;
+legacy single-period construction remains in production.py::compute_shl_schedule.
 
 FULL_PRINCIPAL_AT_FC_COMPOUND_COUNTERFACTUAL diagnostic functions are
 provided for testing and comparison only — they assume all SHL principal

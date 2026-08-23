@@ -28,10 +28,15 @@ ACT_365_FIXED : SOURCE_PROVEN_FOR_OBOROVO_OPERATING_SHL
 
 ACT_360 : GENERIC_ENGINE_CAPABILITY
     Not source-proven for Oborovo SHL.  A generic calculation capability.
+
+PERIOD_AXIS_ACTUAL_YEAR : GENERIC_ENGINE_CAPABILITY
+    Actual days divided by the actual calendar-year denominator, segmented at
+    year boundaries, with the same inclusive SHL date semantics.
 """
 from __future__ import annotations
 
 from datetime import date
+import calendar
 
 from financial_engine.shl.contracts import ShlDayCountConvention
 from financial_engine.shl.waterfall import compute_shl_dcf_actual_365_inclusive
@@ -54,7 +59,7 @@ def compute_shl_dcf(
     period_end : date
         Last calendar day of the period (inclusive).
     convention : ShlDayCountConvention
-        Typed convention — ACT_365_FIXED or ACT_360.
+        Typed convention — ACT_365_FIXED, ACT_360, or PERIOD_AXIS_ACTUAL_YEAR.
 
     Returns
     -------
@@ -85,6 +90,18 @@ def compute_shl_dcf(
         # No Oborovo SHL source evidence for this convention.
         days_inclusive = (period_end - period_start).days + 1
         return days_inclusive / 360.0
+
+    if convention == ShlDayCountConvention.PERIOD_AXIS_ACTUAL_YEAR:
+        # Actual/actual by calendar-year segment, retaining SHL's inclusive
+        # end-date convention. Typed construction dates remain the sole axis.
+        fraction = 0.0
+        cursor = period_start
+        while cursor <= period_end:
+            segment_end = min(period_end, date(cursor.year, 12, 31))
+            days_inclusive = (segment_end - cursor).days + 1
+            fraction += days_inclusive / (366.0 if calendar.isleap(cursor.year) else 365.0)
+            cursor = segment_end.replace(year=segment_end.year + 1, month=1, day=1)
+        return fraction
 
     raise ValueError(  # pragma: no cover — enum exhaustion guard
         f"Unsupported ShlDayCountConvention: {convention!r}"

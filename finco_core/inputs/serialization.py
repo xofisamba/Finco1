@@ -63,6 +63,14 @@ from finco_core.inputs.senior_sculpting import (
     SeniorSculptingMode,
 )
 from finco_core.tax.construction_pl import ConstructionPLStatement
+from finco_core.inputs.construction_financing import (
+    ConstructionFinancingInput,
+    ConstructionCapexTimingInput,
+    ConstructionPeriodSpec,
+    ConstructionSeniorPricingInput,
+    ConstructionCommitmentFeeInput,
+    ConstructionStructuringFeeInput,
+)
 
 _SCHEMA_VERSION = "v3-6"
 
@@ -100,6 +108,149 @@ def _ser_bess(b: BessParams | None) -> dict | None:
         "capacity_revenue_eur_mw_year": b.capacity_revenue_eur_mw_year,
         "augmentation_capex_keur": b.augmentation_capex_keur,
     }
+
+
+def _ser_construction_financing(cf: ConstructionFinancingInput | None) -> dict | None:
+    if cf is None:
+        return None
+    return {
+        "enabled": cf.enabled,
+        "periods": [
+            {
+                "start_date": _ser_date(p.start_date),
+                "end_date": _ser_date(p.end_date),
+                "active_construction": p.active_construction,
+                "capex_payment_eligible": p.capex_payment_eligible,
+                "senior_idc_active": p.senior_idc_active,
+                "vat_facility_active": p.vat_facility_active,
+            }
+            for p in cf.periods
+        ],
+        "capex_items": [
+            {
+                "code": item.code,
+                "name": item.name,
+                "payment_weights": list(item.payment_weights),
+                "vat_rate": item.vat_rate,
+            }
+            for item in cf.capex_items
+        ],
+        "senior_pricing": (
+            {
+                "mode": cf.senior_pricing.mode.value,
+                "flat_all_in_rate": cf.senior_pricing.flat_all_in_rate,
+                "fixed_base_rate": cf.senior_pricing.fixed_base_rate,
+                "margin_rate": cf.senior_pricing.margin_rate,
+                "hedge_pct": cf.senior_pricing.hedge_pct,
+                "swap_margin": cf.senior_pricing.swap_margin,
+                "forward_swap_adjustment": cf.senior_pricing.forward_swap_adjustment,
+                "cva": cf.senior_pricing.cva,
+                "floating_curve_buffer_pct": cf.senior_pricing.floating_curve_buffer_pct,
+                "floating_base_rate_curve": list(cf.senior_pricing.floating_base_rate_curve),
+                "explicit_all_in_schedule": list(cf.senior_pricing.explicit_all_in_schedule),
+                "day_count": cf.senior_pricing.day_count.value,
+                "explicit_period_fractions": list(cf.senior_pricing.explicit_period_fractions),
+            }
+            if cf.senior_pricing is not None else None
+        ),
+        "commitment_fee": (
+            {
+                "rate": cf.commitment_fee.rate,
+                "balance_basis": cf.commitment_fee.balance_basis,
+                "capitalization_timing": cf.commitment_fee.capitalization_timing,
+            }
+            if cf.commitment_fee is not None else None
+        ),
+        "structuring_fee": (
+            {
+                "rate": cf.structuring_fee.rate,
+                "basis_keur": cf.structuring_fee.basis_keur,
+                "payment_weights": list(cf.structuring_fee.payment_weights),
+            }
+            if cf.structuring_fee is not None else None
+        ),
+        "idc_balance_basis": cf.idc_balance_basis,
+        "idc_capitalization_timing": cf.idc_capitalization_timing,
+        "convergence_tolerance_keur": cf.convergence_tolerance_keur,
+        "max_iterations": cf.max_iterations,
+        "vat_deferred": cf.vat_deferred,
+    }
+
+
+def _deser_construction_financing(d: dict | None) -> ConstructionFinancingInput | None:
+    if d is None:
+        return None
+    from finco_core.inputs.senior_rate_schedule import SeniorRateMode as _SRM, SeniorDayCountConvention as _SDC
+    periods = tuple(
+        ConstructionPeriodSpec(
+            start_date=date.fromisoformat(p["start_date"]),
+            end_date=date.fromisoformat(p["end_date"]),
+            active_construction=p.get("active_construction", True),
+            capex_payment_eligible=p.get("capex_payment_eligible", True),
+            senior_idc_active=p.get("senior_idc_active", True),
+            vat_facility_active=p.get("vat_facility_active", False),
+        )
+        for p in d.get("periods", [])
+    )
+    capex_items = tuple(
+        ConstructionCapexTimingInput(
+            code=item["code"],
+            name=item["name"],
+            payment_weights=tuple(item["payment_weights"]),
+            vat_rate=item.get("vat_rate", 0.0),
+        )
+        for item in d.get("capex_items", [])
+    )
+    sp_d = d.get("senior_pricing")
+    senior_pricing = (
+        ConstructionSeniorPricingInput(
+            mode=_SRM(sp_d["mode"]),
+            flat_all_in_rate=sp_d.get("flat_all_in_rate", 0.0),
+            fixed_base_rate=sp_d.get("fixed_base_rate", 0.0),
+            margin_rate=sp_d.get("margin_rate", 0.0),
+            hedge_pct=sp_d.get("hedge_pct", 0.0),
+            swap_margin=sp_d.get("swap_margin", 0.0),
+            forward_swap_adjustment=sp_d.get("forward_swap_adjustment", 0.0),
+            cva=sp_d.get("cva", 0.0),
+            floating_curve_buffer_pct=sp_d.get("floating_curve_buffer_pct", 0.0),
+            floating_base_rate_curve=tuple(sp_d.get("floating_base_rate_curve", [])),
+            explicit_all_in_schedule=tuple(sp_d.get("explicit_all_in_schedule", [])),
+            day_count=_SDC(sp_d.get("day_count", _SDC.ACT_360.value)),
+            explicit_period_fractions=tuple(sp_d.get("explicit_period_fractions", [])),
+        )
+        if sp_d is not None else None
+    )
+    cf_d = d.get("commitment_fee")
+    commitment_fee = (
+        ConstructionCommitmentFeeInput(
+            rate=cf_d.get("rate", 0.0),
+            balance_basis=cf_d.get("balance_basis", "OPENING_UNDRAWN"),
+            capitalization_timing=cf_d.get("capitalization_timing", "SAME_PERIOD"),
+        )
+        if cf_d is not None else None
+    )
+    sf_d = d.get("structuring_fee")
+    structuring_fee = (
+        ConstructionStructuringFeeInput(
+            rate=sf_d.get("rate", 0.0),
+            basis_keur=sf_d.get("basis_keur", 0.0),
+            payment_weights=tuple(sf_d.get("payment_weights", [])),
+        )
+        if sf_d is not None else None
+    )
+    return ConstructionFinancingInput(
+        enabled=d.get("enabled", False),
+        periods=periods,
+        capex_items=capex_items,
+        senior_pricing=senior_pricing,
+        commitment_fee=commitment_fee,
+        structuring_fee=structuring_fee,
+        idc_balance_basis=d.get("idc_balance_basis", "OPENING_DRAWN"),
+        idc_capitalization_timing=d.get("idc_capitalization_timing", "SAME_PERIOD"),
+        convergence_tolerance_keur=d.get("convergence_tolerance_keur", 1e-9),
+        max_iterations=d.get("max_iterations", 100),
+        vat_deferred=d.get("vat_deferred", True),
+    )
 
 
 def _ser_construction_pl(c: ConstructionPLStatement | None) -> dict | None:
@@ -348,6 +499,7 @@ def project_inputs_to_dict(inputs: ProjectInputs) -> dict:
             "use_tuho_r99_input_engine": fin.use_tuho_r99_input_engine,
             "use_tuho_shl_repayment_alignment": fin.use_tuho_shl_repayment_alignment,
             "tuho_shl_principal_eligibility_start_period": fin.tuho_shl_principal_eligibility_start_period,
+            "construction_financing": _ser_construction_financing(fin.construction_financing),
         },
         "tax": {
             "corporate_rate": tax.corporate_rate,
@@ -674,6 +826,9 @@ def project_inputs_from_dict(d: dict) -> ProjectInputs:
         use_tuho_shl_repayment_alignment=fin_d.get("use_tuho_shl_repayment_alignment", False),
         tuho_shl_principal_eligibility_start_period=fin_d.get(
             "tuho_shl_principal_eligibility_start_period"
+        ),
+        construction_financing=_deser_construction_financing(
+            fin_d.get("construction_financing")
         ),
     )
 

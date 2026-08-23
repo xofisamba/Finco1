@@ -437,6 +437,7 @@ def compute_shareholder_loan_schedules(
             method=shl_input.construction_interest_method,
         )
         _effective_op_draw = _constr_override_schedule.opening_operating_shl_balance_keur
+        _effective_op_draw += shl_input.post_construction_principal_contribution_keur
         _effective_op_dcf = 0.0
 
     for p, raw_cash in zip(periods, cash_available_for_shl_before_reserves_keur):
@@ -675,6 +676,14 @@ def _validate_shareholder_loan_input(shl_input: "ShareholderLoanModelInput") -> 
         raise ValueError("annual_fixed_rate must be >= 0.0")
     if shl_input.construction_day_count_fraction < 0.0:
         raise ValueError("construction_day_count_fraction must be >= 0.0")
+    _check_finite(
+        "post_construction_principal_contribution_keur",
+        shl_input.post_construction_principal_contribution_keur,
+    )
+    if shl_input.post_construction_principal_contribution_keur < 0.0:
+        raise ValueError(
+            "post_construction_principal_contribution_keur must be >= 0.0"
+        )
     if shl_input.repayment_mode not in (
         ShlRepaymentMode.BULLET,
         ShlRepaymentMode.CASH_SWEEP,

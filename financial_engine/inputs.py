@@ -342,6 +342,9 @@ class ShareholderLoanModelInput:
     # When set, compute_shareholder_loan_schedules uses this to compute construction PIK
     # canonically per-period. model_result construction PIK == ProjectFinancingResult PIK.
     construction_periods_override: tuple[ShlConstructionPeriodInput, ...] | None = None
+    # Principal contributed at FC/COD after construction accrual. This is used by
+    # typed construction financing for non-construction FC uses such as CASH_DSRA.
+    post_construction_principal_contribution_keur: float = 0.0
     convergence_tolerance_keur: float = 1e-6
     convergence_relative_tolerance: float = 1e-9
     maximum_iterations: int = 50
