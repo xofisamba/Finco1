@@ -109,21 +109,55 @@ def _run_with_construction_idc(
             )
         capex_amounts[item.code] = float(getattr(val, "amount_keur", val))
 
-    # Validate totals match
-    construction_total = sum(capex_amounts.values())
-    canonical_hard_capex = getattr(orig_capex, "hard_project_capex_keur", None)
-    if canonical_hard_capex is not None:
-        if abs(construction_total - float(canonical_hard_capex)) > outer_tolerance_keur:
+    # Fix 1: validate CAPEX authority using the correct property name.
+    canonical_hard_capex = orig_capex.hard_capex_keur
+
+    # Validate: no duplicate codes
+    codes_seen: list[str] = [item.code for item in cf.capex_items]
+    if len(codes_seen) != len(set(codes_seen)):
+        from collections import Counter
+        dupes = [c for c, n in Counter(codes_seen).items() if n > 1]
+        raise ValueError(
+            f"PR9_CONSTRUCTION_CAPEX_AUTHORITY_MISMATCH: "
+            f"duplicate capex_item codes: {dupes}"
+        )
+
+    # Validate: no omitted non-zero canonical CAPEX fields
+    capex_item_fields = getattr(orig_capex, "_CAPEX_ITEM_FIELDS", ())
+    for field_code in capex_item_fields:
+        field_val = getattr(orig_capex, field_code, None)
+        if field_val is None:
+            continue
+        field_amount = float(getattr(field_val, "amount_keur", 0.0))
+        if field_amount > outer_tolerance_keur and field_code not in capex_amounts:
             raise ValueError(
                 f"PR9_CONSTRUCTION_CAPEX_AUTHORITY_MISMATCH: "
-                f"construction items total {construction_total:.6f} kEUR != "
-                f"canonical hard CAPEX {float(canonical_hard_capex):.6f} kEUR"
+                f"non-zero canonical CAPEX field '{field_code}' (amount={field_amount:.6f} kEUR) "
+                f"not present in construction capex_items"
             )
+
+    # Validate: empty capex_items when canonical hard CAPEX > 0
+    if not cf.capex_items and canonical_hard_capex > outer_tolerance_keur:
+        raise ValueError(
+            f"PR9_CONSTRUCTION_CAPEX_AUTHORITY_MISMATCH: "
+            f"capex_items is empty but canonical hard CAPEX = {canonical_hard_capex:.6f} kEUR"
+        )
+
+    # Validate: totals match canonical hard_capex_keur
+    construction_total = sum(capex_amounts.values())
+    if abs(construction_total - canonical_hard_capex) > outer_tolerance_keur:
+        raise ValueError(
+            f"PR9_CONSTRUCTION_CAPEX_AUTHORITY_MISMATCH: "
+            f"construction items total {construction_total:.6f} kEUR != "
+            f"canonical hard CAPEX {canonical_hard_capex:.6f} kEUR"
+        )
 
     # Outer state — all start at zero (neutral seed)
     prev_idc = 0.0
     prev_fee = 0.0
     prev_struct = 0.0
+    prev_senior = 0.0
+    prev_shl = 0.0
     outer_residual = float("inf")
     outer_iteration = 0
     working_inputs = project_inputs  # updated immutably each iteration
@@ -153,11 +187,15 @@ def _run_with_construction_idc(
             + inner_result.additional_equity_keur
         )
         shl_avail = inner_result.derived_shl_cash_principal_keur
-        # Stage B2 senior_commitment is a draw ceiling, not the gearing constraint.
-        # Pass total project uses as the ceiling so Stage B2 can fund IDC/fees
-        # beyond the hard-capex senior portion. The inner fixed point determines
-        # the actual binding commitment (gearing or DSCR) after convergence.
-        senior_estimate = _project_uses(working_inputs).total_project_uses_keur
+        # Fix 2: Stage B2 senior_commitment should be the actual candidate senior, not
+        # total project uses (which inflates the commitment fee undrawn basis).
+        # Iteration 1 (no prior Stage B2): use total_project_uses as safe upper bound.
+        # Subsequent iterations: use candidate senior + prior IDC/fees as headroom so
+        # Stage B2 can fund all circular financing costs within a correct ceiling.
+        if stage_b2_result is None:
+            senior_estimate = _project_uses(working_inputs).total_project_uses_keur
+        else:
+            senior_estimate = inner_result.final_senior_commitment_keur + prev_idc + prev_fee + prev_struct
 
         # Run Stage B2 with current funding estimates.
         runtime_cfg = build_construction_runtime_config(
@@ -186,14 +224,18 @@ def _run_with_construction_idc(
             maximum_iterations=outer_max_iterations,
         )
 
-        # Check outer convergence.
+        # Fix 4: Check outer convergence across all material state components.
         d_idc = abs(new_financing.senior_idc_keur - prev_idc)
         d_fee = abs(new_financing.senior_commitment_fee_keur - prev_fee)
         d_struct = abs(new_financing.structuring_fee_keur - prev_struct)
-        outer_residual = max(d_idc, d_fee, d_struct)
+        d_senior = abs(inner_result.final_senior_commitment_keur - prev_senior)
+        d_shl = abs(inner_result.derived_shl_cash_principal_keur - prev_shl)
+        outer_residual = max(d_idc, d_fee, d_struct, d_senior, d_shl)
         prev_idc = new_financing.senior_idc_keur
         prev_fee = new_financing.senior_commitment_fee_keur
         prev_struct = new_financing.structuring_fee_keur
+        prev_senior = inner_result.final_senior_commitment_keur
+        prev_shl = inner_result.derived_shl_cash_principal_keur
 
         if outer_residual <= outer_tolerance_keur:
             break
@@ -237,12 +279,23 @@ def _run_with_construction_idc(
     b2_hard = b2.monthly_hard_capex_keur
     n = len(b2_draws)
 
-    # SHL allocation from Stage B2 waterfall (economic allocation = cash when PRO_RATA)
-    # For construction-funded path: SHL cash is derived_shl from inner result
+    # Fix 3: SHL allocation via canonical allocator (not uses-minus-senior, which includes equity).
+    from finco_core.construction.allocator import allocate_construction_sources_per_period
     derived_shl = inner_result.derived_shl_cash_principal_keur
-    shl_alloc = tuple(
-        max(0.0, b2_uses[i] - b2_draws[i]) for i in range(n)  # Uses minus Senior draw
-    ) if n > 0 else ()
+    if n > 0 and b2_uses:
+        _canonical_alloc = allocate_construction_sources_per_period(
+            period_uses=b2_uses,
+            share_capital_keur=inner_result.share_capital_keur,
+            share_premium_keur=inner_result.share_premium_keur,
+            other_committed_equity_keur=inner_result.other_equity_funding_before_shl_keur,
+            additional_equity_keur=inner_result.additional_equity_keur,
+            shl_cash_keur=derived_shl,
+            junior_keur=inner_result.junior_or_other_main_project_funding_keur,
+            senior_commitment_keur=inner_result.final_senior_commitment_keur,
+        )
+        shl_alloc = tuple(a.shl_draw_keur for a in _canonical_alloc)
+    else:
+        shl_alloc = ()
 
     # Period dates from construction financing spec
     period_starts = tuple(p.start_date for p in cf.periods[:n])
