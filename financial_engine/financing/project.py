@@ -222,31 +222,20 @@ def _run_with_construction_idc(
         uses = _project_uses(working_inputs)
         working_fin = working_inputs.financing
 
-        # Build equity/SHL/Senior estimates from previous inner result (full breakdown).
-        shl_avail = inner_result.derived_shl_cash_principal_keur
-        senior_estimate = inner_result.final_senior_commitment_keur
-
-        # Run Stage B2 with full source breakdown from current inner result.
-        # senior_commitment_keur = actual candidate Senior (no virtual headroom).
-        # equity_available_keur = sum of all equity components as Stage B2 share_capital pool.
+        # PR9_OUTER_AND_FINAL_SEVEN_SOURCE_COMPOSITION_IDENTITY:
+        # Pass the full seven-source breakdown from the current inner result — identical
+        # field mapping used here and in the final strict _verify_b2 configuration.
+        # No source may be collapsed, relabelled, or combined into a generic pool.
         # PR9_NEUTRAL_SEED: Senior == inner_result.final_senior_commitment_keur exactly.
-        # We pass total_equity as equity_available_keur so that Stage B2 absorbs ALL equity first.
-        _total_equity_for_b2 = (
-            inner_result.share_capital_keur
-            + inner_result.share_premium_keur
-            + inner_result.other_equity_funding_before_shl_keur
-            + inner_result.additional_equity_keur
-        )
         runtime_cfg = build_construction_runtime_config(
             construction=cf,
-            senior_commitment_keur=senior_estimate,
-            equity_available_keur=_total_equity_for_b2,
-            shl_available_keur=shl_avail,
+            senior_commitment_keur=inner_result.final_senior_commitment_keur,
+            equity_available_keur=inner_result.share_capital_keur,
+            shl_available_keur=inner_result.derived_shl_cash_principal_keur,
             capex_amounts_keur=capex_amounts,
-            # Pass zeros for breakdown fields since equity is aggregated above.
-            share_premium_keur=0.0,
-            other_committed_equity_keur=0.0,
-            additional_equity_keur=0.0,
+            share_premium_keur=inner_result.share_premium_keur,
+            other_committed_equity_keur=inner_result.other_equity_funding_before_shl_keur,
+            additional_equity_keur=inner_result.additional_equity_keur,
             junior_keur=inner_result.junior_or_other_main_project_funding_keur,
         )
         # Provisional Stage B2: Senior may not yet be fully sized for IDC.
