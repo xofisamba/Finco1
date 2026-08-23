@@ -844,6 +844,33 @@ class TestPR9EndToEndConstructionFinancing:
         result = self._solar_with_construction(n_periods=12)
         assert result.construction_financing.authority == "PR9_TYPED_CONSTRUCTION_FINANCING_IDC_AUTHORITY"
 
+    def test_full_outer_idempotence(self):
+        """Full outer idempotence: second call to run_project_financing_model with same inputs
+        must produce identical ConstructionFinancingResult scalars (complete outer iteration,
+        not just inner rerun).
+        """
+        import dataclasses
+        from app.project_factories import create_default_solar_project
+        from financial_engine.financing import run_project_financing_model
+
+        pi = create_default_solar_project()
+        cf = _make_solar_construction_input(12)
+        pi = dataclasses.replace(
+            pi,
+            financing=dataclasses.replace(pi.financing, construction_financing=cf),
+        )
+        r1 = run_project_financing_model(pi)
+        r2 = run_project_financing_model(pi)
+        c1 = r1.construction_financing
+        c2 = r2.construction_financing
+        assert c1 is not None and c2 is not None
+        assert c1.final_senior_commitment_keur == pytest.approx(c2.final_senior_commitment_keur, abs=1e-9)
+        assert c1.total_capitalized_financing_keur == pytest.approx(c2.total_capitalized_financing_keur, abs=1e-9)
+        assert c1.shl_construction_pik_keur == pytest.approx(c2.shl_construction_pik_keur, abs=1e-9)
+        assert c1.final_total_project_uses_keur == pytest.approx(c2.final_total_project_uses_keur, abs=1e-9)
+        assert c1.outer_iterations == c2.outer_iterations
+        assert c1.outer_residual_keur == pytest.approx(c2.outer_residual_keur, abs=1e-12)
+
 
 # ---------------------------------------------------------------------------
 # 11. CAPEX authority negative tests (Fix 1)
