@@ -626,9 +626,6 @@ def _run_stage_b2_inner(
         vat_commitment_fee_keur=vat_fee,
     )
 
-    senior_idc_accruals = tuple(senior_idc_uses)
-    senior_fee_accruals = tuple(senior_fee_uses)
-
     # prov_alloc_out: provisional allocations for caller (None on strict path).
     # Passed through so run_stage_b2_provisional computes funded Sources directly
     # from actual draws — PR9_CANONICAL_LAYER_A_ALLOCATOR_SINGLE_AUTHORITY.
@@ -667,6 +664,13 @@ def _run_stage_b2_inner(
         )
         senior_period_draws = tuple(a.senior_draw_keur for a in _alloc_final_prov)
         prov_alloc_out = _alloc_final_prov
+
+    # Recompute raw accruals from FINAL senior_period_draws — not from capitalization-use vectors.
+    # senior_idc_uses / senior_fee_uses are capitalization timing vectors (may be NEXT_FUNDING_PERIOD
+    # shifted). The accrual vectors in the result must reflect actual balance-basis calculation.
+    senior_idc_accruals, senior_fee_accruals = _senior_financing_accruals(
+        config, senior_period_draws, senior_rates
+    )
 
     cumulative_senior: list[float] = []
     running = 0.0
