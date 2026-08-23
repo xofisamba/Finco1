@@ -1799,4 +1799,3 @@ class TestSharePremiumOtherEquityE2E:
         # Cumulative matches sum
         cumulative_check = sum(c.senior_draws_keur)
         assert abs(cumulative_check - c.cumulative_senior_keur[-1]) < 1e-6
-
