@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
+import math
+from numbers import Real
 
 from finco_core.inputs import GearingBasisMode, ProjectInputs, SponsorFundingMode
 from financial_engine.adapters.project_inputs import (
@@ -34,6 +36,11 @@ from financial_engine.shl.construction import (
 from finco_core.inputs._models import SponsorFundingTimingPolicy
 from financial_engine.shl.day_count import compute_shl_dcf
 
+
+# Dimensionless comparison tolerance for typed-date DCF authority. Financial
+# convergence tolerances are denominated in kEUR and must never participate.
+SHL_DCF_AUTHORITY_TOLERANCE = 1e-9
+
 # Construction SHL accrual semantics (Fix 3):
 #
 # None  → no explicit construction DCF authority. Fall back to model_result.shareholder_loan
@@ -48,6 +55,53 @@ from financial_engine.shl.day_count import compute_shl_dcf
 
 
 @dataclass(frozen=True)
+class _ShlConstructionDcfAuthority:
+    """Validated interpretation of the legacy construction DCF scalar."""
+
+    state: str
+    accrual_enabled: bool
+    validation_scalar: float | None
+
+
+def _resolve_shl_construction_dcf_authority(
+    raw_scalar: object,
+) -> _ShlConstructionDcfAuthority:
+    """Resolve None, zero, or positive dimensionless DCF evidence once."""
+    if raw_scalar is None:
+        return _ShlConstructionDcfAuthority("NONE", False, None)
+    if isinstance(raw_scalar, bool) or not isinstance(raw_scalar, Real):
+        raise ValueError(
+            "PR9_SHL_CONSTRUCTION_DCF_INVALID: "
+            f"expected a real dimensionless scalar, got {raw_scalar!r}"
+        )
+    scalar = float(raw_scalar)
+    if not math.isfinite(scalar) or scalar < 0.0:
+        raise ValueError(
+            "PR9_SHL_CONSTRUCTION_DCF_INVALID: "
+            f"expected None, zero, or a positive finite scalar, got {raw_scalar!r}"
+        )
+    if scalar == 0.0:
+        return _ShlConstructionDcfAuthority("ZERO", False, 0.0)
+    return _ShlConstructionDcfAuthority("POSITIVE", True, scalar)
+
+
+def _validate_typed_construction_shl_rate(raw_rate: object) -> float:
+    """Fail closed before typed construction SHL financial arithmetic."""
+    if isinstance(raw_rate, bool) or not isinstance(raw_rate, Real):
+        raise ValueError(
+            "PR9_SHL_CONSTRUCTION_RATE_INVALID: "
+            f"expected a real annual rate, got {raw_rate!r}"
+        )
+    rate = float(raw_rate)
+    if not math.isfinite(rate) or rate < 0.0:
+        raise ValueError(
+            "PR9_SHL_CONSTRUCTION_RATE_INVALID: "
+            f"expected a finite non-negative annual rate, got {raw_rate!r}"
+        )
+    return rate
+
+
+@dataclass(frozen=True)
 class _TypedConstructionShlContext:
     """Explicit PR-9 handoff from Stage B2 allocation to the SHL kernel."""
 
@@ -56,6 +110,7 @@ class _TypedConstructionShlContext:
     shl_allocation_to_uses_keur: tuple[float, ...]
     canonical_allocations: tuple[ConstructionPeriodAllocation, ...]
     timing_policy: SponsorFundingTimingPolicy
+    accrual_enabled: bool
     provisional: bool
 
 
@@ -64,7 +119,6 @@ def _typed_construction_shl_context(
     construction: object,
     financing: object,
     canonical_allocations: tuple[ConstructionPeriodAllocation, ...],
-    tolerance_keur: float,
     provisional: bool,
 ) -> _TypedConstructionShlContext:
     """Derive SHL periods only from typed PR-9 dates and SHL day count."""
@@ -79,13 +133,20 @@ def _typed_construction_shl_context(
         compute_shl_dcf(period.start_date, period.end_date, convention)
         for period in typed_periods
     )
-    legacy_scalar = financing.shl_construction_day_count_fraction
-    if legacy_scalar is not None and float(legacy_scalar) > 0.0:
-        if abs(sum(derived_dcfs) - float(legacy_scalar)) > max(tolerance_keur, 1e-9):
+    authority = _resolve_shl_construction_dcf_authority(
+        financing.shl_construction_day_count_fraction
+    )
+    if authority.accrual_enabled:
+        assert authority.validation_scalar is not None
+        if (
+            abs(sum(derived_dcfs) - authority.validation_scalar)
+            > SHL_DCF_AUTHORITY_TOLERANCE
+        ):
             raise ValueError(
                 "PR9_DUAL_SHL_CONSTRUCTION_DCF_AUTHORITY_MISMATCH: "
                 f"typed_total={sum(derived_dcfs):.12f}, "
-                f"legacy_scalar={float(legacy_scalar):.12f}"
+                f"legacy_scalar={authority.validation_scalar:.12f}, "
+                f"dimensionless_tolerance={SHL_DCF_AUTHORITY_TOLERANCE:.1e}"
             )
         effective_dcfs = derived_dcfs
     else:
@@ -110,6 +171,7 @@ def _typed_construction_shl_context(
         ),
         canonical_allocations=canonical_allocations,
         timing_policy=financing.sponsor_funding_timing_policy,
+        accrual_enabled=authority.accrual_enabled,
         provisional=provisional,
     )
 
@@ -249,10 +311,7 @@ def _run_with_construction_idc(
 
     fin = project_inputs.financing
     cf = fin.construction_financing  # guaranteed non-None and enabled
-    _typed_shl_accrual_enabled = bool(
-        fin.shl_construction_day_count_fraction is not None
-        and float(fin.shl_construction_day_count_fraction) > 0.0
-    )
+    _validate_typed_construction_shl_rate(fin.shl_rate)
 
     # Validate: fail if manual IDC/fees already set (would create dual authority)
     orig_capex = project_inputs.capex
@@ -392,7 +451,6 @@ def _run_with_construction_idc(
             )
             for index, _ in enumerate(cf.periods)
         ),
-        tolerance_keur=outer_tolerance_keur,
         provisional=True,
     )
     inner_result = run_project_financing_model(
@@ -402,7 +460,7 @@ def _run_with_construction_idc(
         convergence_tolerance_keur=outer_tolerance_keur,
         maximum_iterations=outer_max_iterations,
         _typed_shl_context=(
-            _seed_shl_context if _typed_shl_accrual_enabled else None
+            _seed_shl_context if _seed_shl_context.accrual_enabled else None
         ),
     )
 
@@ -442,7 +500,6 @@ def _run_with_construction_idc(
             construction=cf,
             financing=fin,
             canonical_allocations=stage_b2_prov.canonical_allocations,
-            tolerance_keur=outer_tolerance_keur,
             provisional=True,
         )
 
@@ -461,7 +518,9 @@ def _run_with_construction_idc(
             convergence_tolerance_keur=outer_tolerance_keur,
             maximum_iterations=outer_max_iterations,
             _typed_shl_context=(
-                _iteration_shl_context if _typed_shl_accrual_enabled else None
+                _iteration_shl_context
+                if _iteration_shl_context.accrual_enabled
+                else None
             ),
         )
 
@@ -527,7 +586,6 @@ def _run_with_construction_idc(
         construction=cf,
         financing=fin,
         canonical_allocations=_verify_b2.canonical_allocations,
-        tolerance_keur=outer_tolerance_keur,
         provisional=False,
     )
     _verify_result = run_project_financing_model(
@@ -537,7 +595,7 @@ def _run_with_construction_idc(
         convergence_tolerance_keur=outer_tolerance_keur,
         maximum_iterations=outer_max_iterations,
         _typed_shl_context=(
-            _verify_shl_context if _typed_shl_accrual_enabled else None
+            _verify_shl_context if _verify_shl_context.accrual_enabled else None
         ),
     )
     _idempotence_residual = max(
@@ -596,7 +654,6 @@ def _run_with_construction_idc(
         construction=cf,
         financing=fin,
         canonical_allocations=_canonical_alloc,
-        tolerance_keur=outer_tolerance_keur,
         provisional=False,
     )
     if fin.sponsor_funding_timing_policy == SponsorFundingTimingPolicy.PRO_RATA_CONSTRUCTION:

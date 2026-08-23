@@ -3815,7 +3815,6 @@ class TestCorrectionETypedShlTimelineAuthority:
             construction=construction,
             financing=self._financing(),
             canonical_allocations=self._allocations(),
-            tolerance_keur=1e-9,
             provisional=False,
         )
         assert context.period_dates == (
@@ -3830,6 +3829,7 @@ class TestCorrectionETypedShlTimelineAuthority:
         assert "construction.periods" in source
         assert "construction_period_uses_keur" not in source
         assert "run_operating_model" not in source
+        assert "tolerance_keur" not in source
 
     def test_scalar_dcf_conflict_fails_closed_without_rescaling(self):
         from financial_engine.financing.project import _typed_construction_shl_context
@@ -3841,9 +3841,128 @@ class TestCorrectionETypedShlTimelineAuthority:
                 construction=self._construction(),
                 financing=self._financing(scalar=0.9),
                 canonical_allocations=self._allocations(),
-                tolerance_keur=1e-9,
                 provisional=False,
             )
+
+    @pytest.mark.parametrize(
+        ("scalar", "expected_state", "enabled"),
+        ((None, "NONE", False), (0.0, "ZERO", False), (1.0, "POSITIVE", True)),
+    )
+    def test_scalar_authority_accepted_states(self, scalar, expected_state, enabled):
+        from financial_engine.financing.project import (
+            _resolve_shl_construction_dcf_authority,
+            _typed_construction_shl_context,
+        )
+
+        authority = _resolve_shl_construction_dcf_authority(scalar)
+        assert authority.state == expected_state
+        assert authority.accrual_enabled is enabled
+        context = _typed_construction_shl_context(
+            construction=self._construction(),
+            financing=self._financing(scalar=scalar),
+            canonical_allocations=self._allocations(),
+            provisional=False,
+        )
+        expected_dcfs = (181 / 365, 184 / 365) if enabled else (0.0, 0.0)
+        assert tuple(period.day_count_fraction for period in context.periods) == pytest.approx(
+            expected_dcfs, abs=1e-15
+        )
+        assert context.accrual_enabled is enabled
+
+    @pytest.mark.parametrize("scalar", (-0.1, float("nan"), float("inf"), float("-inf"), True))
+    def test_invalid_scalar_authority_fails_closed(self, scalar):
+        from financial_engine.financing.project import (
+            _resolve_shl_construction_dcf_authority,
+        )
+
+        with pytest.raises(ValueError, match="PR9_SHL_CONSTRUCTION_DCF_INVALID"):
+            _resolve_shl_construction_dcf_authority(scalar)
+
+    @pytest.mark.parametrize("delta", (2e-9, 0.1))
+    def test_dimensionless_dcf_mismatch_tolerance_is_strict(self, delta):
+        from financial_engine.financing.project import (
+            SHL_DCF_AUTHORITY_TOLERANCE,
+            _typed_construction_shl_context,
+        )
+
+        assert SHL_DCF_AUTHORITY_TOLERANCE == 1e-9
+        with pytest.raises(
+            ValueError, match="PR9_DUAL_SHL_CONSTRUCTION_DCF_AUTHORITY_MISMATCH"
+        ):
+            _typed_construction_shl_context(
+                construction=self._construction(),
+                financing=self._financing(scalar=1.0 + delta),
+                canonical_allocations=self._allocations(),
+                provisional=False,
+            )
+
+    @staticmethod
+    def _production_input_with_scalar(scalar):
+        import dataclasses
+        from app.project_factories import create_default_solar_project
+
+        base = create_default_solar_project()
+        construction = _make_solar_construction_input(2)
+        financing = dataclasses.replace(
+            base.financing,
+            construction_financing=construction,
+            shl_day_count_convention="ACT_365_FIXED",
+            shl_construction_day_count_fraction=scalar,
+        )
+        return dataclasses.replace(base, financing=financing), construction
+
+    @pytest.mark.parametrize("financial_tolerance_keur", (1e-9, 1e-3, 0.1, 1.0))
+    def test_e2e_mismatch_cannot_be_weakened_by_financial_tolerance(
+        self, financial_tolerance_keur
+    ):
+        from financial_engine.financing import run_project_financing_model
+
+        project, _ = self._production_input_with_scalar(0.5)
+        with pytest.raises(
+            ValueError, match="PR9_DUAL_SHL_CONSTRUCTION_DCF_AUTHORITY_MISMATCH"
+        ):
+            run_project_financing_model(
+                project, convergence_tolerance_keur=financial_tolerance_keur
+            )
+
+    @pytest.mark.parametrize("financial_tolerance_keur", (1e-9, 1e-3, 0.1, 1.0))
+    def test_e2e_exact_match_is_independent_of_financial_tolerance(
+        self, financial_tolerance_keur
+    ):
+        from financial_engine.financing import run_project_financing_model
+
+        project, construction = self._production_input_with_scalar(None)
+        exact_total = sum(
+            ((period.end_date - period.start_date).days + 1) / 365
+            for period in construction.periods
+        )
+        import dataclasses
+
+        financing = dataclasses.replace(
+            project.financing,
+            shl_construction_day_count_fraction=exact_total,
+        )
+        result = run_project_financing_model(
+            dataclasses.replace(project, financing=financing),
+            convergence_tolerance_keur=financial_tolerance_keur,
+        )
+        assert result.construction_financing.shl_day_count_fraction == pytest.approx(
+            tuple(
+                ((period.end_date - period.start_date).days + 1) / 365
+                for period in construction.periods
+            ),
+            abs=1e-15,
+        )
+
+    @pytest.mark.parametrize("rate", (float("nan"), float("inf"), float("-inf"), -0.01, True))
+    def test_e2e_invalid_typed_construction_shl_rate_fails_before_arithmetic(self, rate):
+        import dataclasses
+        from financial_engine.financing import run_project_financing_model
+
+        project, _ = self._production_input_with_scalar(None)
+        financing = dataclasses.replace(project.financing, shl_rate=rate)
+        with pytest.raises(ValueError, match="PR9_SHL_CONSTRUCTION_RATE_INVALID"):
+            run_project_financing_model(dataclasses.replace(project, financing=financing))
 
     def test_same_dates_preserve_instrument_specific_day_count(self):
         from financial_engine.shl.contracts import ShlDayCountConvention
