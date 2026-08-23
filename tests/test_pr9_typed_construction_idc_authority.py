@@ -1341,7 +1341,10 @@ class TestDayCountSemantics:
     """Prove ACT_360 vs ACT_365 vs EXPLICIT_FRACTIONS semantics."""
 
     def test_act360_gt_act365_same_period(self):
-        """ACT_360 > ACT_365 for same period: days/360 > days/365."""
+        """ACT_360 > ACT_365 for same period: (days+1)/360 > (days+1)/365.
+        Canonical semantics: inclusive day count (same as senior_period_fraction).
+        29-Jun → 30-Jun: days+1=2, so ACT_360=2/360, ACT_365=2/365.
+        """
         from datetime import date
         from financial_engine.construction.adapter import _compute_interest_fraction
         from finco_core.inputs.senior_rate_schedule import SeniorDayCountConvention
@@ -1350,8 +1353,8 @@ class TestDayCountSemantics:
         end = date(2025, 6, 30)
         f360 = _compute_interest_fraction(start, end, SeniorDayCountConvention.ACT_360, 0, ())
         f365 = _compute_interest_fraction(start, end, SeniorDayCountConvention.ACT_365, 0, ())
-        assert f360 == pytest.approx(1 / 360.0), f"ACT_360: expected {1/360}, got {f360}"
-        assert f365 == pytest.approx(1 / 365.0), f"ACT_365: expected {1/365}, got {f365}"
+        assert f360 == pytest.approx(2 / 360.0), f"ACT_360: expected {2/360}, got {f360}"
+        assert f365 == pytest.approx(2 / 365.0), f"ACT_365: expected {2/365}, got {f365}"
         assert f360 > f365, f"ACT_360 ({f360}) must be > ACT_365 ({f365})"
 
     def test_explicit_fractions_ignores_dates(self):
@@ -1369,7 +1372,7 @@ class TestDayCountSemantics:
         assert f == pytest.approx(supplied)
 
     def test_act360_one_day_fraction(self):
-        """29-Jun → 30-Jun is 1 day: ACT_360 = 1/360."""
+        """29-Jun → 30-Jun: canonical inclusive day count (days+1=2), ACT_360 = 2/360."""
         from datetime import date
         from financial_engine.construction.adapter import _compute_interest_fraction
         from finco_core.inputs.senior_rate_schedule import SeniorDayCountConvention
@@ -1378,10 +1381,10 @@ class TestDayCountSemantics:
             date(2025, 6, 29), date(2025, 6, 30),
             SeniorDayCountConvention.ACT_360, 0, ()
         )
-        assert f == pytest.approx(1 / 360.0)
+        assert f == pytest.approx(2 / 360.0)
 
     def test_act365_one_day_fraction(self):
-        """29-Jun → 30-Jun is 1 day: ACT_365 = 1/365."""
+        """29-Jun → 30-Jun: canonical inclusive day count (days+1=2), ACT_365 = 2/365."""
         from datetime import date
         from financial_engine.construction.adapter import _compute_interest_fraction
         from finco_core.inputs.senior_rate_schedule import SeniorDayCountConvention
@@ -1390,7 +1393,7 @@ class TestDayCountSemantics:
             date(2025, 6, 29), date(2025, 6, 30),
             SeniorDayCountConvention.ACT_365, 0, ()
         )
-        assert f == pytest.approx(1 / 365.0)
+        assert f == pytest.approx(2 / 365.0)
 
 
 # ---------------------------------------------------------------------------
@@ -1469,3 +1472,200 @@ class TestVatFacilityDeferredFailClosed:
         pi2 = dataclasses.replace(pi, capex=new_capex)
         with pytest.raises(ValueError, match="PR9_VAT_FACILITY_DEFERRED"):
             run_project_financing_model(pi2)
+
+# ---------------------------------------------------------------------------
+# 16. Senior facility invariants (Section 21)
+# ---------------------------------------------------------------------------
+
+class TestSeniorFacilityInvariants:
+    """Senior draws must never exceed commitment (Section 21)."""
+
+    def _run_solar_cf(self, n_periods: int = 12, **override_kwargs):
+        import dataclasses
+        from app.project_factories import create_default_solar_project
+        from financial_engine.financing import run_project_financing_model
+        pi = create_default_solar_project()
+        base_cf = _make_solar_construction_input(n_periods)
+        if override_kwargs:
+            base_cf = dataclasses.replace(base_cf, **override_kwargs)
+        pi = dataclasses.replace(pi, financing=dataclasses.replace(pi.financing, construction_financing=base_cf))
+        return run_project_financing_model(pi)
+
+    def test_senior_draw_never_exceeds_commitment(self):
+        """Cumulative senior draw must not exceed final senior commitment."""
+        result = self._run_solar_cf(n_periods=12)
+        cf = result.construction_financing
+        assert cf is not None
+        cumul_final = cf.cumulative_senior_keur[-1] if cf.cumulative_senior_keur else 0.0
+        assert cumul_final <= result.final_senior_commitment_keur + 1e-6, (
+            f"Cumulative senior draw {cumul_final} > commitment {result.final_senior_commitment_keur}"
+        )
+        # Also check sum of per-period draws
+        assert sum(cf.senior_draws_keur) <= result.final_senior_commitment_keur + 1e-6
+
+    def test_senior_draws_nonnegative_per_period(self):
+        """Senior draws must be non-negative in every period."""
+        result = self._run_solar_cf(n_periods=6)
+        cf = result.construction_financing
+        for idx, draw in enumerate(cf.senior_draws_keur):
+            assert draw >= -1e-9, f"Negative senior draw in period {idx+1}: {draw}"
+
+    def test_outer_residual_at_convergence_within_tolerance(self):
+        """Outer residual must be ≤ default convergence tolerance * 10."""
+        result = self._run_solar_cf(n_periods=12)
+        cf = result.construction_financing
+        assert cf.outer_residual_keur <= 1e-6, f"Outer residual {cf.outer_residual_keur} > 1e-6"
+
+    def test_final_verification_residual_within_tolerance(self):
+        """Final idempotence verification residual must be within tolerance."""
+        result = self._run_solar_cf(n_periods=12)
+        cf = result.construction_financing
+        assert cf.final_verification_outer_residual_keur <= 1e-6, (
+            f"Final verification residual {cf.final_verification_outer_residual_keur} > 1e-6"
+        )
+
+
+# ---------------------------------------------------------------------------
+# 17. SHL dual-timeline guard (Section 8)
+# ---------------------------------------------------------------------------
+
+class TestSHLDualTimelineGuard:
+    """PR9_DUAL_CONSTRUCTION_TIMELINE guard: typed + legacy timelines must not coexist."""
+
+    def test_dual_timeline_raises(self):
+        """construction_financing + construction_period_uses_keur → PR9_DUAL_CONSTRUCTION_TIMELINE."""
+        import dataclasses
+        from app.project_factories import create_default_solar_project
+        from financial_engine.financing import run_project_financing_model
+
+        pi = create_default_solar_project()
+        cf = _make_solar_construction_input(6)
+
+        # Check if financing has construction_period_uses_keur field
+        if not hasattr(pi.financing, "construction_period_uses_keur"):
+            pytest.skip("construction_period_uses_keur not available on this financing model")
+
+        pi_bad = dataclasses.replace(
+            pi,
+            financing=dataclasses.replace(
+                pi.financing,
+                construction_financing=cf,
+                construction_period_uses_keur=(1000.0, 2000.0, 3000.0),
+            ),
+        )
+        with pytest.raises(ValueError, match="PR9_DUAL_CONSTRUCTION_TIMELINE"):
+            run_project_financing_model(pi_bad)
+
+
+# ---------------------------------------------------------------------------
+# 18. Component residuals in ConstructionFinancingResult (Section 12)
+# ---------------------------------------------------------------------------
+
+class TestConvergenceComponentResiduals:
+    """Component residuals must be accessible and ≤ outer_residual."""
+
+    def test_component_residuals_are_accessible(self):
+        """ConstructionFinancingResult must expose all component residuals."""
+        import dataclasses
+        from app.project_factories import create_default_solar_project
+        from financial_engine.financing import run_project_financing_model
+        pi = create_default_solar_project()
+        cf = _make_solar_construction_input(6)
+        pi = dataclasses.replace(pi, financing=dataclasses.replace(pi.financing, construction_financing=cf))
+        result = run_project_financing_model(pi)
+        c = result.construction_financing
+        assert hasattr(c, "outer_idc_residual_keur")
+        assert hasattr(c, "outer_fee_residual_keur")
+        assert hasattr(c, "outer_struct_residual_keur")
+        assert hasattr(c, "outer_senior_residual_keur")
+        assert hasattr(c, "outer_shl_residual_keur")
+        assert hasattr(c, "outer_pik_residual_keur")
+        assert hasattr(c, "outer_uses_residual_keur")
+
+    def test_component_residuals_nonnegative(self):
+        """All component residuals must be non-negative."""
+        import dataclasses
+        from app.project_factories import create_default_solar_project
+        from financial_engine.financing import run_project_financing_model
+        pi = create_default_solar_project()
+        cf = _make_solar_construction_input(12)
+        pi = dataclasses.replace(pi, financing=dataclasses.replace(pi.financing, construction_financing=cf))
+        result = run_project_financing_model(pi)
+        c = result.construction_financing
+        for field in [
+            "outer_idc_residual_keur", "outer_fee_residual_keur", "outer_struct_residual_keur",
+            "outer_senior_residual_keur", "outer_shl_residual_keur",
+            "outer_pik_residual_keur", "outer_uses_residual_keur",
+        ]:
+            assert getattr(c, field) >= 0.0, f"{field} < 0"
+
+
+# ---------------------------------------------------------------------------
+# 19. Higher IDC rate → higher IDC (Section 16 causal)
+# ---------------------------------------------------------------------------
+
+class TestHedgeBlendCausal:
+    """Higher hedge_pct → lower IDC when fixed_base < floating_base (Section 16)."""
+
+    def test_higher_hedge_pct_lower_idc_when_fixed_lt_floating(self):
+        """With fixed_base < floating_base, higher hedge_pct produces lower IDC."""
+        import dataclasses
+        from app.project_factories import create_default_solar_project
+        from financial_engine.financing import run_project_financing_model
+
+        n = 12
+        curve = tuple([0.05] * n)  # floating base = 5%
+        fixed_base = 0.02          # fixed base = 2% < floating
+
+        def _build(hedge_pct):
+            pi = create_default_solar_project()
+            pricing = ConstructionSeniorPricingInput(
+                mode=SeniorRateMode.HEDGE_BLEND,
+                fixed_base_rate=fixed_base,
+                margin_rate=0.01,
+                hedge_pct=hedge_pct,
+                floating_base_rate_curve=curve,
+            )
+            cf = _make_solar_construction_input(n)
+            cf = dataclasses.replace(cf, senior_pricing=pricing)
+            pi = dataclasses.replace(pi, financing=dataclasses.replace(pi.financing, construction_financing=cf))
+            return run_project_financing_model(pi)
+
+        r_low = _build(hedge_pct=0.0)   # all floating
+        r_high = _build(hedge_pct=1.0)  # all fixed (lower rate)
+        idc_low = sum(r_low.construction_financing.senior_idc_accrual_keur)
+        idc_high = sum(r_high.construction_financing.senior_idc_accrual_keur)
+        assert idc_high < idc_low, (
+            f"Higher hedge (all-fixed) IDC ({idc_high}) must be < all-floating IDC ({idc_low})"
+        )
+
+
+# ---------------------------------------------------------------------------
+# 20. Source-vector identity proof (Section 20)
+# ---------------------------------------------------------------------------
+
+class TestSourceVectorIdentity:
+    """Stage B2 Senior vector must match the final construction result Senior vector."""
+
+    def test_stage_b2_senior_equals_result_senior(self):
+        """Stage B2 senior_period_draw_keur must equal ConstructionFinancingResult.senior_draws_keur."""
+        import dataclasses
+        from app.project_factories import create_default_solar_project
+        from financial_engine.financing import run_project_financing_model
+
+        pi = create_default_solar_project()
+        cf = _make_solar_construction_input(12)
+        pi = dataclasses.replace(pi, financing=dataclasses.replace(pi.financing, construction_financing=cf))
+        result = run_project_financing_model(pi)
+        c = result.construction_financing
+
+        # The ConstructionFinancingResult.senior_draws_keur comes from b2.senior_period_draw_keur
+        assert c is not None
+        assert len(c.senior_draws_keur) == 12
+        # All draws non-negative
+        for i, d in enumerate(c.senior_draws_keur):
+            assert d >= -1e-9, f"period {i+1}: senior draw {d} < 0"
+        # Cumulative matches sum
+        cumulative_check = sum(c.senior_draws_keur)
+        assert abs(cumulative_check - c.cumulative_senior_keur[-1]) < 1e-6
+

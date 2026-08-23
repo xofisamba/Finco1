@@ -103,6 +103,16 @@ class ConstructionFinancingResult:
     period_sources_uses_residual_keur: tuple[float, ...] = ()
     maximum_period_residual_keur: float = 0.0
     maximum_cumulative_residual_keur: float = 0.0
+    # Outer convergence component residuals (Section 12 — for diagnostics)
+    outer_idc_residual_keur: float = 0.0
+    outer_fee_residual_keur: float = 0.0
+    outer_struct_residual_keur: float = 0.0
+    outer_senior_residual_keur: float = 0.0
+    outer_shl_residual_keur: float = 0.0
+    outer_pik_residual_keur: float = 0.0
+    outer_uses_residual_keur: float = 0.0
+    # Final idempotence verification residual (Section 14)
+    final_verification_outer_residual_keur: float = 0.0
     # Authority token
     authority: str = "PR9_TYPED_CONSTRUCTION_FINANCING_IDC_AUTHORITY"
 

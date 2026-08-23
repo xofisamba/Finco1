@@ -33,7 +33,7 @@ def _compute_interest_fraction(
         return explicit_period_fractions[period_index]
     if not isinstance(start_date, _date) or not isinstance(end_date, _date):
         raise ValueError(f"Day count {day_count.value} requires date objects")
-    days = (end_date - start_date).days
+    days = (end_date - start_date).days + 1  # inclusive day count (canonical: same as senior_period_fraction)
     if day_count == SeniorDayCountConvention.ACT_360:
         return days / 360.0
     if day_count == SeniorDayCountConvention.ACT_365:
@@ -49,7 +49,10 @@ def build_construction_runtime_config(
     equity_available_keur: float,
     shl_available_keur: float,
     capex_amounts_keur: dict[str, float] | None = None,
-    senior_draw_ceiling_keur: float | None = None,
+    share_premium_keur: float = 0.0,
+    other_committed_equity_keur: float = 0.0,
+    additional_equity_keur: float = 0.0,
+    junior_keur: float = 0.0,
 ) -> ConstructionRuntimeConfig:
     """Build a ConstructionRuntimeConfig from typed ConstructionFinancingInput + funding amounts.
 
@@ -162,9 +165,12 @@ def build_construction_runtime_config(
         funding_policy=funding_policy,
         source_total_uses_validation_keur=(),
         equity_available_keur=equity_available_keur,
+        share_premium_keur=share_premium_keur,
+        other_committed_equity_keur=other_committed_equity_keur,
+        additional_equity_keur=additional_equity_keur,
+        junior_keur=junior_keur,
         shl_available_keur=shl_available_keur,
         senior_commitment_keur=senior_commitment_keur,
-        senior_draw_ceiling_keur=senior_draw_ceiling_keur,
         senior_interest_rate=senior_interest_rate,
         senior_commitment_fee_rate=commitment_fee_rate,
         senior_interest_rate_schedule=rate_schedule,

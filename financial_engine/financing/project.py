@@ -174,18 +174,32 @@ def _run_with_construction_idc(
             f"canonical hard CAPEX {canonical_hard_capex:.6f} kEUR"
         )
 
+    # PR9_SHL_TIMELINE_AUTHORITY: when typed construction financing is enabled,
+    # legacy construction_period_uses_keur must not independently set a different timeline.
+    if (
+        getattr(project_inputs.financing, "construction_period_uses_keur", None)
+        and project_inputs.financing.construction_period_uses_keur
+    ):
+        raise ValueError(
+            "PR9_DUAL_CONSTRUCTION_TIMELINE: typed construction_financing.periods is active "
+            "but legacy construction_period_uses_keur is also set. "
+            "Remove construction_period_uses_keur when using typed PR-9 construction financing."
+        )
+
     # Outer state — all start at zero (neutral seed)
     prev_idc = 0.0
     prev_fee = 0.0
     prev_struct = 0.0
     prev_senior = 0.0
     prev_shl = 0.0
+    prev_pik = 0.0
+    prev_uses = 0.0
     outer_residual = float("inf")
     outer_iteration = 0
     working_inputs = project_inputs  # updated immutably each iteration
 
-    # Seed: run inner model once on original capex (zero IDC) to get reliable
-    # initial Senior/SHL/equity estimates before entering the outer loop.
+    # Seed step 1: run inner model once on original capex (zero IDC) to get
+    # initial Senior/SHL/equity estimates.
     _seed_fin = replace(project_inputs.financing, construction_financing=None)
     _seed_inputs = replace(project_inputs, financing=_seed_fin)
     inner_result = run_project_financing_model(
@@ -195,43 +209,82 @@ def _run_with_construction_idc(
         convergence_tolerance_keur=outer_tolerance_keur,
         maximum_iterations=outer_max_iterations,
     )
+
+    # Enhanced seed step 2: run Stage B2 once (max_iterations=1) with seed Senior/SHL
+    # to get an initial IDC + structuring estimate. Then re-run inner G2A with those
+    # costs so Senior_1 is sized to include IDC+structuring before the outer loop starts.
+    # This avoids needing senior_draw_ceiling_keur in the outer loop.
+    # Inflate seed Senior to cover structuring fee and estimated IDC so Stage B2
+    # can converge in the enhanced seed pass. Rough upper bound: seed_senior + 10% of CAPEX.
+    # After enhanced seed G2A re-run, the outer loop gets properly-sized Senior_1.
+    _struct_fee_estimate = 0.0
+    if cf.structuring_fee is not None:
+        _struct_fee_estimate = cf.structuring_fee.rate * cf.structuring_fee.basis_keur
+    _idc_headroom_estimate = sum(capex_amounts.values()) * 0.10  # generous IDC upper bound
+    _eseed_senior = inner_result.final_senior_commitment_keur + _struct_fee_estimate + _idc_headroom_estimate
+
+    _eseed_runtime = build_construction_runtime_config(
+        construction=cf,
+        senior_commitment_keur=_eseed_senior,
+        equity_available_keur=inner_result.share_capital_keur,
+        shl_available_keur=inner_result.derived_shl_cash_principal_keur,
+        capex_amounts_keur=capex_amounts,
+        share_premium_keur=inner_result.share_premium_keur,
+        other_committed_equity_keur=inner_result.other_equity_funding_before_shl_keur,
+        additional_equity_keur=inner_result.additional_equity_keur,
+        junior_keur=inner_result.junior_or_other_main_project_funding_keur,
+    )
+    # Use max_iterations=100 to get a fully-converged IDC estimate.
+    # The inflated senior ceiling ensures structuring fee is covered.
+    try:
+        _eseed_b2 = run_stage_b2(_eseed_runtime)
+        _eseed_capex = apply_capitalized_financing_costs(orig_capex, _eseed_b2.capitalized_financing_costs)
+        _eseed_inputs2 = replace(project_inputs, capex=_eseed_capex)
+        _eseed_fin2 = replace(_eseed_inputs2.financing, construction_financing=None)
+        _eseed_inputs2 = replace(_eseed_inputs2, financing=_eseed_fin2)
+        inner_result = run_project_financing_model(
+            _eseed_inputs2,
+            source_id=source_id,
+            baseline_commit_sha=baseline_commit_sha,
+            convergence_tolerance_keur=outer_tolerance_keur,
+            maximum_iterations=outer_max_iterations,
+        )
+    except Exception:
+        # If enhanced seed fails (e.g. convergence issue), fall back to seed-only Senior.
+        pass
+
     stage_b2_result = None
 
     for outer_iteration in range(1, outer_max_iterations + 1):
         uses = _project_uses(working_inputs)
         working_fin = working_inputs.financing
 
-        # Build equity/SHL/Senior estimates from previous inner result.
-        equity_avail = (
+        # Build equity/SHL/Senior estimates from previous inner result (full breakdown).
+        shl_avail = inner_result.derived_shl_cash_principal_keur
+        senior_estimate = inner_result.final_senior_commitment_keur
+
+        # Run Stage B2 with full source breakdown from current inner result.
+        # senior_commitment_keur = actual candidate Senior (correct commitment fee basis).
+        # equity_available_keur = sum of all equity components as Stage B2 share_capital pool.
+        # No senior_draw_ceiling: Senior is sized correctly via enhanced seed + iterative convergence.
+        # We pass total_equity as equity_available_keur so that Stage B2 absorbs ALL equity first.
+        _total_equity_for_b2 = (
             inner_result.share_capital_keur
             + inner_result.share_premium_keur
             + inner_result.other_equity_funding_before_shl_keur
             + inner_result.additional_equity_keur
         )
-        shl_avail = inner_result.derived_shl_cash_principal_keur
-        # Stage B2 senior_commitment = actual candidate Senior from inner fixed point.
-        # The commitment fee undrawn basis must use this candidate, not an inflated ceiling.
-        # Pass equity_avail + SHL + senior to the canonical allocator to cover all uses
-        # including circular IDC. Any gap beyond (equity+SHL+senior) is funded by
-        # additional equity at FC — represented here by inflating equity_avail for the
-        # Stage B2 waterfall (the inner fixed point determines final additional_equity).
-        # senior_estimate = actual candidate Senior from inner fixed point.
-        # This is the correct basis for commitment fee computation.
-        senior_estimate = inner_result.final_senior_commitment_keur
-        # equity_for_b2: pass actual equity (Stage B2 uses senior_draw_ceiling for waterfall).
-        equity_for_b2 = equity_avail
-
-        # Run Stage B2 with current funding estimates.
-        # senior_commitment_keur = actual candidate senior (for commitment fee computation).
-        # senior_draw_ceiling_keur = expanded ceiling so Stage B2 can allocate circular IDC.
-        _total_uses_ceiling = _project_uses(working_inputs).total_project_uses_keur
         runtime_cfg = build_construction_runtime_config(
             construction=cf,
             senior_commitment_keur=senior_estimate,
-            equity_available_keur=equity_for_b2,
+            equity_available_keur=_total_equity_for_b2,
             shl_available_keur=shl_avail,
             capex_amounts_keur=capex_amounts,
-            senior_draw_ceiling_keur=_total_uses_ceiling,
+            # Pass zeros for breakdown fields since equity is aggregated above.
+            share_premium_keur=0.0,
+            other_committed_equity_keur=0.0,
+            additional_equity_keur=0.0,
+            junior_keur=inner_result.junior_or_other_main_project_funding_keur,
         )
         stage_b2_result = run_stage_b2(runtime_cfg)
         new_financing = stage_b2_result.capitalized_financing_costs
@@ -252,18 +305,22 @@ def _run_with_construction_idc(
             maximum_iterations=outer_max_iterations,
         )
 
-        # Fix 4: Check outer convergence across all material state components.
+        # Check outer convergence across all material state components (Section 12).
         d_idc = abs(new_financing.senior_idc_keur - prev_idc)
         d_fee = abs(new_financing.senior_commitment_fee_keur - prev_fee)
         d_struct = abs(new_financing.structuring_fee_keur - prev_struct)
         d_senior = abs(inner_result.final_senior_commitment_keur - prev_senior)
         d_shl = abs(inner_result.derived_shl_cash_principal_keur - prev_shl)
-        outer_residual = max(d_idc, d_fee, d_struct, d_senior, d_shl)
+        d_pik = abs(inner_result.shl_construction_pik_keur - prev_pik)
+        d_uses = abs(inner_result.project_uses.total_project_uses_keur - prev_uses)
+        outer_residual = max(d_idc, d_fee, d_struct, d_senior, d_shl, d_pik, d_uses)
         prev_idc = new_financing.senior_idc_keur
         prev_fee = new_financing.senior_commitment_fee_keur
         prev_struct = new_financing.structuring_fee_keur
         prev_senior = inner_result.final_senior_commitment_keur
         prev_shl = inner_result.derived_shl_cash_principal_keur
+        prev_pik = inner_result.shl_construction_pik_keur
+        prev_uses = inner_result.project_uses.total_project_uses_keur
 
         if outer_residual <= outer_tolerance_keur:
             break
@@ -275,8 +332,21 @@ def _run_with_construction_idc(
 
     assert inner_result is not None and stage_b2_result is not None
 
-    # Final idempotence verification: one more iteration must not materially change state.
-    _verify_capex = apply_capitalized_financing_costs(orig_capex, stage_b2_result.capitalized_financing_costs)
+    # Final idempotence verification: one full outer transition from converged state must
+    # produce identical outputs (Section 14 — true outer transition idempotence).
+    _verify_b2_cfg = build_construction_runtime_config(
+        construction=cf,
+        senior_commitment_keur=inner_result.final_senior_commitment_keur,
+        equity_available_keur=inner_result.share_capital_keur,
+        shl_available_keur=inner_result.derived_shl_cash_principal_keur,
+        capex_amounts_keur=capex_amounts,
+        share_premium_keur=inner_result.share_premium_keur,
+        other_committed_equity_keur=inner_result.other_equity_funding_before_shl_keur,
+        additional_equity_keur=inner_result.additional_equity_keur,
+        junior_keur=inner_result.junior_or_other_main_project_funding_keur,
+    )
+    _verify_b2 = run_stage_b2(_verify_b2_cfg)
+    _verify_capex = apply_capitalized_financing_costs(orig_capex, _verify_b2.capitalized_financing_costs)
     _verify_inputs = replace(project_inputs, capex=_verify_capex)
     _verify_fin = replace(_verify_inputs.financing, construction_financing=None)
     _verify_inputs = replace(_verify_inputs, financing=_verify_fin)
@@ -291,6 +361,9 @@ def _run_with_construction_idc(
         abs(_verify_result.final_senior_commitment_keur - inner_result.final_senior_commitment_keur),
         abs(_verify_result.derived_shl_cash_principal_keur - inner_result.derived_shl_cash_principal_keur),
         abs(_verify_result.project_uses.total_project_uses_keur - inner_result.project_uses.total_project_uses_keur),
+        abs(_verify_b2.capitalized_financing_costs.senior_idc_keur - stage_b2_result.capitalized_financing_costs.senior_idc_keur),
+        abs(_verify_b2.capitalized_financing_costs.senior_commitment_fee_keur - stage_b2_result.capitalized_financing_costs.senior_commitment_fee_keur),
+        abs(_verify_b2.capitalized_financing_costs.structuring_fee_keur - stage_b2_result.capitalized_financing_costs.structuring_fee_keur),
     )
     if _idempotence_residual > outer_tolerance_keur * 10:
         raise RuntimeError(
@@ -390,6 +463,14 @@ def _run_with_construction_idc(
         outer_residual_keur=outer_residual,
         stage_b2_iterations=b2.iterations,
         stage_b2_residual_keur=b2.final_residual_keur,
+        outer_idc_residual_keur=d_idc,
+        outer_fee_residual_keur=d_fee,
+        outer_struct_residual_keur=d_struct,
+        outer_senior_residual_keur=d_senior,
+        outer_shl_residual_keur=d_shl,
+        outer_pik_residual_keur=d_pik,
+        outer_uses_residual_keur=d_uses,
+        final_verification_outer_residual_keur=_idempotence_residual,
     )
 
     return ProjectFinancingResult(

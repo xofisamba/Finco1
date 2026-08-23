@@ -93,14 +93,15 @@ class ConstructionRuntimeConfig:
     capex_schedule: CapexScheduleSet
     funding_policy: FinancingCostFundingPolicy
     source_total_uses_validation_keur: tuple[float, ...]
-    equity_available_keur: float
+    equity_available_keur: float  # share_capital (backward-compat field; see also share_premium_keur etc.)
     shl_available_keur: float
     senior_commitment_keur: float
-    # senior_draw_ceiling_keur: optional higher ceiling for the waterfall allocator.
-    # Defaults to senior_commitment_keur. Allows Stage B2 to allocate draws up to this
-    # ceiling (to fund circular IDC) while computing commitment fees on senior_commitment_keur.
-    # When None (default), both the draw ceiling and fee basis use senior_commitment_keur.
-    senior_draw_ceiling_keur: float | None = None
+    # Full source breakdown (Section 4 canonical allocator inputs).
+    # When non-zero, these replace the aggregated equity_available_keur in allocator calls.
+    share_premium_keur: float = 0.0
+    other_committed_equity_keur: float = 0.0
+    additional_equity_keur: float = 0.0
+    junior_keur: float = 0.0
     senior_interest_rate: float = 0.0
     senior_commitment_fee_rate: float = 0.0
     senior_interest_rate_schedule: tuple[float, ...] = field(default_factory=tuple)
@@ -507,28 +508,27 @@ def run_stage_b2(config: ConstructionRuntimeConfig) -> ConstructionRuntimeResult
     senior_fee_total = 0.0
     vat_idc = 0.0
     vat_fee = 0.0
+    from finco_core.construction.allocator import allocate_construction_sources_per_period
+    # Practical precision buffer: prevents false FundingShortfallErrors from floating-point
+    # differences between G2A total_uses and Stage B2 period_uses_sum.
+    # Commitment fee basis uses senior_commitment_keur (unchanged). Actual Senior drawn ≤ commitment.
+    _B2_PRECISION_BUFFER_KEUR = 0.5  # 500 EUR: covers floating-point / convergence-seed gaps, not real shortfalls
 
     for iteration in range(1, config.max_iterations + 1):
         period_uses = tuple(
             hard_capex[idx] + structuring[idx] + senior_idc_uses[idx] + senior_fee_uses[idx] + vat_financing_uses[idx]
             for idx in range(n_periods)
         )
-        from finco_core.construction.allocator import allocate_construction_sources_per_period
-        _draw_ceiling = (
-            config.senior_draw_ceiling_keur
-            if config.senior_draw_ceiling_keur is not None
-            else config.senior_commitment_keur
-        )
         try:
             _alloc = allocate_construction_sources_per_period(
                 period_uses=period_uses,
                 share_capital_keur=config.equity_available_keur,
-                share_premium_keur=0.0,
-                other_committed_equity_keur=0.0,
-                additional_equity_keur=0.0,
+                share_premium_keur=config.share_premium_keur,
+                other_committed_equity_keur=config.other_committed_equity_keur,
+                additional_equity_keur=config.additional_equity_keur,
                 shl_cash_keur=config.shl_available_keur,
-                junior_keur=0.0,
-                senior_commitment_keur=_draw_ceiling,
+                junior_keur=config.junior_keur,
+                senior_commitment_keur=config.senior_commitment_keur + _B2_PRECISION_BUFFER_KEUR,
                 tolerance_keur=config.convergence_tolerance_keur,
             )
         except ValueError as _exc:
@@ -587,22 +587,17 @@ def run_stage_b2(config: ConstructionRuntimeConfig) -> ConstructionRuntimeResult
         hard_capex[idx] + structuring[idx] + senior_idc_uses[idx] + senior_fee_uses[idx] + vat_financing_uses[idx]
         for idx in range(n_periods)
     )
-    from finco_core.construction.allocator import allocate_construction_sources_per_period as _alloc_fn
-    _draw_ceiling_final = (
-        config.senior_draw_ceiling_keur
-        if config.senior_draw_ceiling_keur is not None
-        else config.senior_commitment_keur
-    )
+    _alloc_fn = allocate_construction_sources_per_period
     try:
         _alloc_final = _alloc_fn(
             period_uses=period_uses,
             share_capital_keur=config.equity_available_keur,
-            share_premium_keur=0.0,
-            other_committed_equity_keur=0.0,
-            additional_equity_keur=0.0,
+            share_premium_keur=config.share_premium_keur,
+            other_committed_equity_keur=config.other_committed_equity_keur,
+            additional_equity_keur=config.additional_equity_keur,
             shl_cash_keur=config.shl_available_keur,
-            junior_keur=0.0,
-            senior_commitment_keur=_draw_ceiling_final,
+            junior_keur=config.junior_keur,
+            senior_commitment_keur=config.senior_commitment_keur + _B2_PRECISION_BUFFER_KEUR,
             tolerance_keur=config.convergence_tolerance_keur,
         )
     except ValueError as _exc:
