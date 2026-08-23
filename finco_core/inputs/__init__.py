@@ -33,6 +33,14 @@ Public API — re-exported from submodules:
 """
 from finco_core.inputs.bess import BessParams
 from finco_core.inputs.serialization import project_inputs_to_dict, project_inputs_from_dict
+from finco_core.inputs.construction_financing import (
+    ConstructionFinancingInput,
+    ConstructionCapexTimingInput,
+    ConstructionPeriodSpec,
+    ConstructionSeniorPricingInput,
+    ConstructionCommitmentFeeInput,
+    ConstructionStructuringFeeInput,
+)
 from finco_core.inputs._models import (
     PeriodFrequency,
     PeriodAxisConvention,
@@ -150,4 +158,11 @@ __all__ = [
     # DSRF
     "DsrfDayCountConvention",
     "DsrfCommitmentFeeTreatment",
+    # PR-9 Construction financing
+    "ConstructionFinancingInput",
+    "ConstructionCapexTimingInput",
+    "ConstructionPeriodSpec",
+    "ConstructionSeniorPricingInput",
+    "ConstructionCommitmentFeeInput",
+    "ConstructionStructuringFeeInput",
 ]

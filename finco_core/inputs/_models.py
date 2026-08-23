@@ -24,6 +24,7 @@ from finco_core.engine.distribution_account.inputs import CovenantGatePolicy
 if TYPE_CHECKING:
     from finco_core.inputs.bess import BessParams
     from finco_core.opex._capability import HierarchicalOpexCapability
+    from finco_core.inputs.construction_financing import ConstructionFinancingInput
 
 
 class PeriodFrequency(Enum):
@@ -923,6 +924,15 @@ class FinancingParams:
     use_tuho_r99_input_engine: bool = False
     use_tuho_shl_repayment_alignment: bool = False
     tuho_shl_principal_eligibility_start_period: int | None = None
+
+    # PR-9 typed construction financing authority.
+    # None (default): disabled → PR-8 G2A path unchanged (bit-identical).
+    # ConstructionFinancingInput(enabled=False): explicit disabled → same PR-8 path.
+    # ConstructionFinancingInput(enabled=True): outer G2A fixed point wired to Stage B2.
+    # Gate in financial_engine/financing/project.py:
+    #   if construction_financing and construction_financing.enabled: [new path]
+    #   else: [PR-8 path unchanged]
+    construction_financing: "ConstructionFinancingInput | None" = None
 
     @property
     def all_in_rate(self) -> float:

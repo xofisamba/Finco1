@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 
 
@@ -64,6 +64,40 @@ class ConstructionFundingResult:
 
 
 @dataclass(frozen=True)
+class ConstructionFinancingResult:
+    """Typed result for the PR-9 outer G2A fixed point with construction IDC.
+
+    Authority: PR9_TYPED_CONSTRUCTION_FINANCING_IDC_AUTHORITY
+    """
+    # Period data
+    period_start_dates: tuple[date, ...]
+    period_end_dates: tuple[date, ...]
+    hard_capex_uses_keur: tuple[float, ...]
+    total_period_uses_keur: tuple[float, ...]
+    senior_draws_keur: tuple[float, ...]
+    cumulative_senior_keur: tuple[float, ...]
+    senior_idc_accrual_keur: tuple[float, ...]
+    senior_commitment_fee_accrual_keur: tuple[float, ...]
+    structuring_fee_keur: tuple[float, ...]
+    shl_allocation_keur: tuple[float, ...]
+    shl_cash_contribution_keur: tuple[float, ...]
+    # Scalar results
+    total_capitalized_financing_keur: float
+    shl_construction_pik_keur: float
+    opening_operating_shl_keur: float
+    final_total_project_uses_keur: float
+    final_senior_commitment_keur: float
+    sources_uses_residual_keur: float
+    # Convergence audit
+    outer_iterations: int
+    outer_residual_keur: float
+    stage_b2_iterations: int
+    stage_b2_residual_keur: float
+    # Authority token
+    authority: str = "PR9_TYPED_CONSTRUCTION_FINANCING_IDC_AUTHORITY"
+
+
+@dataclass(frozen=True)
 class ProjectFinancingResult:
     project_model_result: object
     project_uses: ProjectUses
@@ -84,3 +118,5 @@ class ProjectFinancingResult:
     construction_funding: ConstructionFundingResult
     fixed_point_iteration_count: int
     fixed_point_maximum_difference_keur: float
+    # PR-9 typed construction financing result (None when construction_financing disabled)
+    construction_financing: "ConstructionFinancingResult | None" = None

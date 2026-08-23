@@ -27,11 +27,14 @@ from finco_core.inputs.construction_financing import (
     ConstructionCommitmentFeeInput,
     ConstructionStructuringFeeInput,
     ConstructionPeriodSpec,
-    ConstructionCapexItemInput,
-    SENIOR_RATE_MODES,
+    ConstructionCapexTimingInput,
 )
+from finco_core.inputs.senior_rate_schedule import SeniorRateMode, SeniorDayCountConvention
 from finco_core.construction.stage_b2 import run_stage_b2
 from financial_engine.construction.adapter import build_construction_runtime_config
+
+# Backward-compat alias for tests
+ConstructionCapexItemInput = ConstructionCapexTimingInput
 
 REPO_ROOT = Path(__file__).parent.parent
 
@@ -41,7 +44,10 @@ REPO_ROOT = Path(__file__).parent.parent
 # ---------------------------------------------------------------------------
 
 def _make_periods(n: int, start_year: int = 2025) -> tuple[ConstructionPeriodSpec, ...]:
-    """Build n monthly construction periods starting from Jan of start_year."""
+    """Build n monthly construction periods starting from Jan of start_year.
+
+    interest_fraction is now computed by the adapter from dates + day_count convention.
+    """
     from datetime import date
     periods = []
     y, m = start_year, 1
@@ -50,7 +56,6 @@ def _make_periods(n: int, start_year: int = 2025) -> tuple[ConstructionPeriodSpe
         periods.append(ConstructionPeriodSpec(
             start_date=date(y, m, 1),
             end_date=date(ny, nm, 1),
-            interest_fraction=30 / 360,
         ))
         y, m = ny, nm
     return tuple(periods)
@@ -60,25 +65,53 @@ def _uniform_weights(n: int) -> tuple[float, ...]:
     return tuple(1.0 / n for _ in range(n))
 
 
-def _make_capex(n: int, amount_keur: float = 10_000.0, code: str = "EPC") -> tuple[ConstructionCapexItemInput, ...]:
-    return (ConstructionCapexItemInput(
-        code=code, name="EPC Contract", amount_keur=amount_keur,
+def _make_capex(
+    n: int,
+    amount_keur: float = 10_000.0,
+    code: str = "EPC",
+) -> tuple[ConstructionCapexTimingInput, ...]:
+    """Create construction capex timing items. amount_keur passed separately to _run_b2."""
+    return (ConstructionCapexTimingInput(
+        code=code, name="EPC Contract",
         payment_weights=_uniform_weights(n),
     ),)
 
 
-def _make_flat_input(n: int, total_capex: float = 10_000.0, rate: float = 0.05) -> ConstructionFinancingInput:
-    return ConstructionFinancingInput(
+def _make_flat_input(
+    n: int,
+    total_capex: float = 10_000.0,
+    rate: float = 0.05,
+    code: str = "EPC",
+) -> "tuple[ConstructionFinancingInput, dict[str, float]]":
+    """Returns (ConstructionFinancingInput, capex_amounts_keur dict)."""
+    inp = ConstructionFinancingInput(
         enabled=True,
         periods=_make_periods(n),
-        capex_items=_make_capex(n, total_capex),
-        senior_pricing=ConstructionSeniorPricingInput(mode="FLAT_ALL_IN", flat_all_in_rate=rate),
+        capex_items=_make_capex(n, total_capex, code),
+        senior_pricing=ConstructionSeniorPricingInput(
+            mode=SeniorRateMode.FLAT_ALL_IN, flat_all_in_rate=rate
+        ),
     )
+    return inp, {code: total_capex}
 
 
-def _run_b2(construction: ConstructionFinancingInput, senior_keur: float = 8_000.0,
-            equity_keur: float = 2_000.0, shl_keur: float = 1_000.0):
-    config = build_construction_runtime_config(construction, senior_keur, equity_keur, shl_keur)
+def _run_b2(
+    construction: ConstructionFinancingInput,
+    senior_keur: float = 8_000.0,
+    equity_keur: float = 2_000.0,
+    shl_keur: float = 1_000.0,
+    capex_amounts: dict[str, float] | None = None,
+):
+    """Build runtime config and run Stage B2.
+
+    capex_amounts: code → amount_keur lookup. Defaults to 10_000 per item code.
+    """
+    if capex_amounts is None:
+        capex_amounts = {item.code: 10_000.0 for item in construction.capex_items}
+    config = build_construction_runtime_config(
+        construction, senior_keur, equity_keur, shl_keur,
+        capex_amounts_keur=capex_amounts,
+    )
     return run_stage_b2(config)
 
 
@@ -157,8 +190,8 @@ class TestPR9GovernanceNoProjectDispatch:
 class TestVariableLengthConstruction:
     def test_6_month_construction_converges(self):
         """6-month construction: flat 5% rate, uniform CAPEX → converges."""
-        inp = _make_flat_input(6, total_capex=5_000.0)
-        result = _run_b2(inp, senior_keur=4_000.0, equity_keur=1_000.0, shl_keur=500.0)
+        inp, capex_a = _make_flat_input(6, total_capex=5_000.0)
+        result = _run_b2(inp, senior_keur=4_000.0, equity_keur=1_000.0, shl_keur=500.0, capex_amounts=capex_a)
         assert result.iterations >= 1
         assert result.final_residual_keur <= 1e-9
         assert result.capitalized_financing_costs.senior_idc_keur > 0.0
@@ -167,15 +200,15 @@ class TestVariableLengthConstruction:
 
     def test_12_month_construction_converges(self):
         """12-month construction: backward-compat case, must still converge."""
-        inp = _make_flat_input(12, total_capex=10_000.0)
-        result = _run_b2(inp, senior_keur=8_000.0, equity_keur=2_000.0, shl_keur=1_000.0)
+        inp, capex_a = _make_flat_input(12, total_capex=10_000.0)
+        result = _run_b2(inp, senior_keur=8_000.0, equity_keur=2_000.0, shl_keur=1_000.0, capex_amounts=capex_a)
         assert result.final_residual_keur <= 1e-9
         assert len(result.senior_period_draw_keur) == 12
 
     def test_18_month_construction_converges(self):
         """18-month construction: variable-length, flat 6% rate, must converge."""
-        inp = _make_flat_input(18, total_capex=20_000.0, rate=0.06)
-        result = _run_b2(inp, senior_keur=16_000.0, equity_keur=4_000.0, shl_keur=2_000.0)
+        inp, capex_a = _make_flat_input(18, total_capex=20_000.0, rate=0.06)
+        result = _run_b2(inp, senior_keur=16_000.0, equity_keur=4_000.0, shl_keur=2_000.0, capex_amounts=capex_a)
         assert result.final_residual_keur <= 1e-9
         assert len(result.senior_period_draw_keur) == 18
         assert result.capitalized_financing_costs.senior_idc_keur > 0.0
@@ -183,8 +216,8 @@ class TestVariableLengthConstruction:
     def test_period_count_in_result_equals_input(self):
         """Result vector lengths must equal the input period count exactly."""
         for n in [6, 12, 18]:
-            inp = _make_flat_input(n, total_capex=n * 1000.0)
-            result = _run_b2(inp, senior_keur=n * 750.0, equity_keur=n * 250.0, shl_keur=n * 100.0)
+            inp, capex_a = _make_flat_input(n, total_capex=n * 1000.0)
+            result = _run_b2(inp, senior_keur=n * 750.0, equity_keur=n * 250.0, shl_keur=n * 100.0, capex_amounts=capex_a)
             assert len(result.senior_period_draw_keur) == n
             assert len(result.senior_idc_accrual_keur) == n
             assert len(result.senior_commitment_fee_accrual_keur) == n
@@ -192,8 +225,8 @@ class TestVariableLengthConstruction:
 
     def test_gfa_equals_capex_plus_financing(self):
         """final_gfa_keur = hard_capex + total capitalized financing costs."""
-        inp = _make_flat_input(12, total_capex=10_000.0)
-        result = _run_b2(inp, senior_keur=8_000.0, equity_keur=2_000.0, shl_keur=1_000.0)
+        inp, capex_a = _make_flat_input(12, total_capex=10_000.0)
+        result = _run_b2(inp, senior_keur=8_000.0, equity_keur=2_000.0, shl_keur=1_000.0, capex_amounts=capex_a)
         expected_gfa = sum(result.monthly_hard_capex_keur) + result.capitalized_financing_costs.total_keur
         assert abs(result.final_gfa_keur - expected_gfa) < 1e-6
 
@@ -218,7 +251,7 @@ class TestConstructionFinancingInput:
             ConstructionFinancingInput(
                 enabled=True,
                 periods=(),
-                senior_pricing=ConstructionSeniorPricingInput(mode="FLAT_ALL_IN"),
+                senior_pricing=ConstructionSeniorPricingInput(mode=SeniorRateMode.FLAT_ALL_IN),
             )
 
     def test_enabled_no_pricing_raises(self):
@@ -231,18 +264,19 @@ class TestConstructionFinancingInput:
             )
 
     def test_invalid_rate_mode_raises(self):
-        with pytest.raises(ValueError, match="PR9_INVALID_SENIOR_RATE_MODE"):
+        # mode must be a SeniorRateMode enum; a string raises ValueError
+        with pytest.raises((ValueError, TypeError)):
             ConstructionFinancingInput(
                 enabled=True,
                 periods=_make_periods(6),
                 capex_items=_make_capex(6),
-                senior_pricing=ConstructionSeniorPricingInput(mode="MAGIC_BACKSOLVE"),
+                senior_pricing=ConstructionSeniorPricingInput(mode="MAGIC_BACKSOLVE"),  # type: ignore[arg-type]
             )
 
     def test_capex_weight_length_mismatch_raises(self):
         n = 6
-        bad_item = ConstructionCapexItemInput(
-            code="EPC", name="EPC", amount_keur=1000.0,
+        bad_item = ConstructionCapexTimingInput(
+            code="EPC", name="EPC",
             payment_weights=_uniform_weights(12),  # wrong length
         )
         with pytest.raises(ValueError, match="PR9_CAPEX_WEIGHT_LENGTH_MISMATCH"):
@@ -250,14 +284,14 @@ class TestConstructionFinancingInput:
                 enabled=True,
                 periods=_make_periods(n),
                 capex_items=(bad_item,),
-                senior_pricing=ConstructionSeniorPricingInput(mode="FLAT_ALL_IN"),
+                senior_pricing=ConstructionSeniorPricingInput(mode=SeniorRateMode.FLAT_ALL_IN),
             )
 
     def test_capex_weights_sum_mismatch_raises(self):
         n = 6
         bad_weights = tuple([0.1] * n)  # sum = 0.6, not 1.0
-        bad_item = ConstructionCapexItemInput(
-            code="EPC", name="EPC", amount_keur=1000.0,
+        bad_item = ConstructionCapexTimingInput(
+            code="EPC", name="EPC",
             payment_weights=bad_weights,
         )
         with pytest.raises(ValueError, match="PR9_CAPEX_WEIGHTS_SUM"):
@@ -265,7 +299,7 @@ class TestConstructionFinancingInput:
                 enabled=True,
                 periods=_make_periods(n),
                 capex_items=(bad_item,),
-                senior_pricing=ConstructionSeniorPricingInput(mode="FLAT_ALL_IN"),
+                senior_pricing=ConstructionSeniorPricingInput(mode=SeniorRateMode.FLAT_ALL_IN),
             )
 
     def test_vat_deferred_always_true(self):
@@ -275,12 +309,22 @@ class TestConstructionFinancingInput:
 
     def test_all_rate_modes_accepted(self):
         """All documented rate modes must be accepted by ConstructionFinancingInput."""
-        for mode in SENIOR_RATE_MODES:
+        n = 6
+        curve = tuple([0.035] * n)
+        for mode in SeniorRateMode:
+            extra: dict = {}
+            if mode == SeniorRateMode.FLOATING_PLUS_MARGIN:
+                extra["floating_base_rate_curve"] = curve
+            elif mode == SeniorRateMode.HEDGE_BLEND:
+                extra["floating_base_rate_curve"] = curve
+                extra["hedge_pct"] = 0.5
+            elif mode == SeniorRateMode.EXPLICIT_ALL_IN_SCHEDULE:
+                extra["explicit_all_in_schedule"] = tuple([0.05] * n)
             ConstructionFinancingInput(
                 enabled=True,
-                periods=_make_periods(6),
-                capex_items=_make_capex(6),
-                senior_pricing=ConstructionSeniorPricingInput(mode=mode),
+                periods=_make_periods(n),
+                capex_items=_make_capex(n),
+                senior_pricing=ConstructionSeniorPricingInput(mode=mode, **extra),
             )
 
 
@@ -309,9 +353,9 @@ class TestSyntheticA:
             enabled=True,
             periods=_make_periods(n),
             capex_items=_make_capex(n, capex),
-            senior_pricing=ConstructionSeniorPricingInput(mode="FLAT_ALL_IN", flat_all_in_rate=rate),
+            senior_pricing=ConstructionSeniorPricingInput(mode=SeniorRateMode.FLAT_ALL_IN, flat_all_in_rate=rate),
         )
-        return _run_b2(inp, senior, equity, shl)
+        return _run_b2(inp, senior, equity, shl, capex_amounts={"EPC": capex})
 
     def test_identity_rename_zero_financial_delta(self):
         """Changing CAPEX item code/name only produces zero financial delta."""
@@ -320,16 +364,16 @@ class TestSyntheticA:
         weights = _uniform_weights(n)
         inp_a = ConstructionFinancingInput(
             enabled=True, periods=periods,
-            capex_items=(ConstructionCapexItemInput("EPC_A", "Name A", capex, weights),),
-            senior_pricing=ConstructionSeniorPricingInput(mode="FLAT_ALL_IN", flat_all_in_rate=rate),
+            capex_items=(ConstructionCapexTimingInput("EPC_A", "Name A", weights),),
+            senior_pricing=ConstructionSeniorPricingInput(mode=SeniorRateMode.FLAT_ALL_IN, flat_all_in_rate=rate),
         )
         inp_b = ConstructionFinancingInput(
             enabled=True, periods=periods,
-            capex_items=(ConstructionCapexItemInput("EPC_B", "Name B", capex, weights),),
-            senior_pricing=ConstructionSeniorPricingInput(mode="FLAT_ALL_IN", flat_all_in_rate=rate),
+            capex_items=(ConstructionCapexTimingInput("EPC_B", "Name B", weights),),
+            senior_pricing=ConstructionSeniorPricingInput(mode=SeniorRateMode.FLAT_ALL_IN, flat_all_in_rate=rate),
         )
-        ra = _run_b2(inp_a, self.SENIOR, self.EQUITY, self.SHL)
-        rb = _run_b2(inp_b, self.SENIOR, self.EQUITY, self.SHL)
+        ra = _run_b2(inp_a, self.SENIOR, self.EQUITY, self.SHL, capex_amounts={"EPC_A": capex})
+        rb = _run_b2(inp_b, self.SENIOR, self.EQUITY, self.SHL, capex_amounts={"EPC_B": capex})
         assert ra.capitalized_financing_costs.senior_idc_keur == pytest.approx(
             rb.capitalized_financing_costs.senior_idc_keur
         )
@@ -362,25 +406,25 @@ class TestSyntheticA:
         back_weights = (0.02, 0.03, 0.05, 0.1, 0.3, 0.5)
         inp_front = ConstructionFinancingInput(
             enabled=True, periods=periods,
-            capex_items=(ConstructionCapexItemInput("EPC", "EPC", self.BASE_CAPEX, front_weights),),
-            senior_pricing=ConstructionSeniorPricingInput(mode="FLAT_ALL_IN", flat_all_in_rate=self.RATE),
+            capex_items=(ConstructionCapexTimingInput("EPC", "EPC", front_weights),),
+            senior_pricing=ConstructionSeniorPricingInput(mode=SeniorRateMode.FLAT_ALL_IN, flat_all_in_rate=self.RATE),
         )
         inp_back = ConstructionFinancingInput(
             enabled=True, periods=periods,
-            capex_items=(ConstructionCapexItemInput("EPC", "EPC", self.BASE_CAPEX, back_weights),),
-            senior_pricing=ConstructionSeniorPricingInput(mode="FLAT_ALL_IN", flat_all_in_rate=self.RATE),
+            capex_items=(ConstructionCapexTimingInput("EPC", "EPC", back_weights),),
+            senior_pricing=ConstructionSeniorPricingInput(mode=SeniorRateMode.FLAT_ALL_IN, flat_all_in_rate=self.RATE),
         )
-        r_front = _run_b2(inp_front, self.SENIOR, self.EQUITY, self.SHL)
-        r_back = _run_b2(inp_back, self.SENIOR, self.EQUITY, self.SHL)
+        r_front = _run_b2(inp_front, self.SENIOR, self.EQUITY, self.SHL, capex_amounts={"EPC": self.BASE_CAPEX})
+        r_back = _run_b2(inp_back, self.SENIOR, self.EQUITY, self.SHL, capex_amounts={"EPC": self.BASE_CAPEX})
         # Front-loading draws Senior earlier → more IDC
         assert r_front.capitalized_financing_costs.senior_idc_keur > r_back.capitalized_financing_costs.senior_idc_keur
 
     def test_funding_shortfall_fails_closed(self):
         """Senior commitment too small → FundingShortfallError (fail-closed)."""
         from finco_core.construction.stage_b2 import FundingShortfallError
-        inp = _make_flat_input(self.N, total_capex=self.BASE_CAPEX)
+        inp, capex_a = _make_flat_input(self.N, total_capex=self.BASE_CAPEX)
         with pytest.raises(FundingShortfallError):
-            _run_b2(inp, senior_keur=10.0, equity_keur=0.0, shl_keur=0.0)
+            _run_b2(inp, senior_keur=10.0, equity_keur=0.0, shl_keur=0.0, capex_amounts=capex_a)
 
 
 # ---------------------------------------------------------------------------
@@ -402,7 +446,7 @@ class TestSyntheticB:
         n = self.N
         euribor = tuple([self.BASE_EURIBOR] * n)
         pricing = ConstructionSeniorPricingInput(
-            mode="HEDGE_BLEND",
+            mode=SeniorRateMode.HEDGE_BLEND,
             fixed_base_rate=0.030,   # fixed hedged component
             margin_rate=self.MARGIN,
             hedge_pct=hedge_pct,
@@ -419,13 +463,13 @@ class TestSyntheticB:
 
     def test_18_month_hedge_blend_converges(self):
         inp = self._hedge_inp()
-        result = _run_b2(inp, self.SENIOR, self.EQUITY, self.SHL)
+        result = _run_b2(inp, self.SENIOR, self.EQUITY, self.SHL, capex_amounts={"EPC": self.CAPEX})
         assert result.final_residual_keur <= 1e-9
         assert len(result.senior_period_draw_keur) == self.N
 
     def test_higher_commitment_fee_increases_financing_costs(self):
-        r_zero = _run_b2(self._hedge_inp(commitment_rate=0.0), self.SENIOR, self.EQUITY, self.SHL)
-        r_fee = _run_b2(self._hedge_inp(commitment_rate=0.005), self.SENIOR, self.EQUITY, self.SHL)
+        r_zero = _run_b2(self._hedge_inp(commitment_rate=0.0), self.SENIOR, self.EQUITY, self.SHL, capex_amounts={"EPC": self.CAPEX})
+        r_fee = _run_b2(self._hedge_inp(commitment_rate=0.005), self.SENIOR, self.EQUITY, self.SHL, capex_amounts={"EPC": self.CAPEX})
         assert r_fee.capitalized_financing_costs.senior_commitment_fee_keur > r_zero.capitalized_financing_costs.senior_commitment_fee_keur
         assert r_fee.capitalized_financing_costs.total_keur > r_zero.capitalized_financing_costs.total_keur
 
@@ -435,11 +479,14 @@ class TestSyntheticB:
             enabled=True,
             periods=_make_periods(self.N),
             capex_items=_make_capex(self.N, self.CAPEX),
-            senior_pricing=ConstructionSeniorPricingInput(mode="FLAT_ALL_IN", flat_all_in_rate=0.05),
+            senior_pricing=ConstructionSeniorPricingInput(mode=SeniorRateMode.FLAT_ALL_IN, flat_all_in_rate=0.05),
             max_iterations=1,  # one iteration, IDC non-zero → may not converge
         )
         # Build config with max_iterations=1 explicitly on the ConstructionRuntimeConfig
-        config = build_construction_runtime_config(inp, self.SENIOR, self.EQUITY, self.SHL)
+        config = build_construction_runtime_config(
+            inp, self.SENIOR, self.EQUITY, self.SHL,
+            capex_amounts_keur={"EPC": self.CAPEX},
+        )
         from finco_core.construction.stage_b2 import ConstructionRuntimeConfig
         from dataclasses import replace
         config_no_iter = replace(config, max_iterations=0)
@@ -449,7 +496,7 @@ class TestSyntheticB:
     def test_shl_not_double_counted_in_construction(self):
         """SHL construction economics: SHL draws come from SHL pool, not Senior."""
         inp = self._hedge_inp()
-        result = _run_b2(inp, self.SENIOR, self.EQUITY, self.SHL)
+        result = _run_b2(inp, self.SENIOR, self.EQUITY, self.SHL, capex_amounts={"EPC": self.CAPEX})
         # Total Senior drawn must not exceed commitment
         assert result.closing_senior_drawn_keur <= self.SENIOR + 1e-6
 
@@ -475,7 +522,7 @@ class TestSerialization:
     def test_enabled_round_trip(self):
         """enabled ConstructionFinancingInput round-trips through its fields."""
         import dataclasses
-        inp = _make_flat_input(6)
+        inp, _ = _make_flat_input(6)
         fields = {f.name: getattr(inp, f.name) for f in dataclasses.fields(inp)}
         reconstructed = ConstructionFinancingInput(**fields)
         assert reconstructed == inp
@@ -496,16 +543,16 @@ class TestVatFacilityDeferred:
 
     def test_construction_config_has_zero_vat_rates(self):
         """Adapter must set all VAT rates to 0 (PR9_VAT_FACILITY_DEFERRED)."""
-        inp = _make_flat_input(6)
-        config = build_construction_runtime_config(inp, 4_000.0, 1_000.0, 500.0)
+        inp, capex_a = _make_flat_input(6)
+        config = build_construction_runtime_config(inp, 4_000.0, 1_000.0, 500.0, capex_amounts_keur=capex_a)
         assert config.vat_facility_interest_rate == 0.0
         assert config.vat_facility_commitment_fee_rate == 0.0
         assert config.vat_facility_commitment_keur == 0.0
 
     def test_vat_idc_is_zero_in_result(self):
         """With VAT deferred, vat_idc_keur and vat_commitment_fee_keur must be 0."""
-        inp = _make_flat_input(12)
-        result = _run_b2(inp)
+        inp, capex_a = _make_flat_input(12)
+        result = _run_b2(inp, capex_amounts=capex_a)
         assert result.capitalized_financing_costs.vat_idc_keur == 0.0
         assert result.capitalized_financing_costs.vat_commitment_fee_keur == 0.0
 
