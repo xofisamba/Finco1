@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from datetime import date
 
 from finco_core.inputs import SponsorFundingMode
@@ -113,7 +114,46 @@ def build_construction_funding_schedule(
                 f"canonical_economic_allocations length {len(canonical_economic_allocations)} "
                 f"!= construction_period_count {construction_period_count}"
             )
-        # Source-cap overdraw validation (Section 10): no source may be drawn beyond its cap.
+        # Per-row value validation (Section A2.1-1): finite and non-negative before any state mutation.
+        _DRAW_FIELDS = (
+            "share_capital_draw_keur", "share_premium_draw_keur",
+            "other_committed_equity_draw_keur", "additional_equity_draw_keur",
+            "shl_draw_keur", "junior_draw_keur", "senior_draw_keur",
+        )
+        for _ri, _row in enumerate(canonical_economic_allocations):
+            for _field in ("period_uses_keur",) + _DRAW_FIELDS + ("total_sources_keur", "residual_keur"):
+                _val = getattr(_row, _field)
+                if not math.isfinite(_val):
+                    raise ValueError(
+                        f"PR9_CANONICAL_ALLOCATION_INVALID_VALUE: "
+                        f"row={_ri}, field={_field}, value={_val!r} is not finite"
+                    )
+            if _row.period_uses_keur < 0.0:
+                raise ValueError(
+                    f"PR9_CANONICAL_ALLOCATION_INVALID_VALUE: "
+                    f"row={_ri}, period_uses_keur={_row.period_uses_keur:.9f} < 0"
+                )
+            for _field in _DRAW_FIELDS:
+                _val = getattr(_row, _field)
+                if _val < 0.0:
+                    raise ValueError(
+                        f"PR9_CANONICAL_ALLOCATION_INVALID_VALUE: "
+                        f"row={_ri}, field={_field}, value={_val:.9f} < 0 (negative draws prohibited)"
+                    )
+            # Recompute period sources from primitive draws; do not trust total_sources_keur.
+            _computed_sources = (
+                _row.share_capital_draw_keur + _row.share_premium_draw_keur
+                + _row.other_committed_equity_draw_keur + _row.additional_equity_draw_keur
+                + _row.shl_draw_keur + _row.junior_draw_keur + _row.senior_draw_keur
+            )
+            if abs(_computed_sources - _row.period_uses_keur) > 1e-6:
+                raise ValueError(
+                    f"PR9_CANONICAL_ALLOCATION_INVALID_VALUE: "
+                    f"row={_ri}, computed_sources={_computed_sources:.9f} != "
+                    f"period_uses_keur={_row.period_uses_keur:.9f} "
+                    f"(primitive draws must balance period uses)"
+                )
+        # Aggregate source-cap overdraw validation (Section A2-10): no source drawn beyond cap.
         _cap_checks = (
             ("senior", senior_keur, sum(a.senior_draw_keur for a in canonical_economic_allocations)),
             ("shl", shl_cash_keur, sum(a.shl_draw_keur for a in canonical_economic_allocations)),
@@ -382,6 +422,38 @@ def build_construction_funding_schedule(
                 total_sources_keur=_nc_total,
                 residual_keur=_nc_total - non_construction_fc_uses,
             )
+
+    # Final combined source-cap assertion (Section A2.1-5): construction + NC draws <= declared caps.
+    if canonical_economic_allocations is not None:
+        _combined_cap_checks = (
+            ("share_capital", share_capital_keur,
+             sum(a.share_capital_draw_keur for a in canonical_economic_allocations)
+             + (_nc_fc_use.share_capital_draw_keur if _nc_fc_use else 0.0)),
+            ("share_premium", share_premium_keur,
+             sum(a.share_premium_draw_keur for a in canonical_economic_allocations)
+             + (_nc_fc_use.share_premium_draw_keur if _nc_fc_use else 0.0)),
+            ("other_committed_equity", other_committed_equity_keur,
+             sum(a.other_committed_equity_draw_keur for a in canonical_economic_allocations)
+             + (_nc_fc_use.other_committed_equity_draw_keur if _nc_fc_use else 0.0)),
+            ("additional_equity", additional_equity_keur,
+             sum(a.additional_equity_draw_keur for a in canonical_economic_allocations)
+             + (_nc_fc_use.additional_equity_draw_keur if _nc_fc_use else 0.0)),
+            ("shl", shl_cash_keur,
+             sum(a.shl_draw_keur for a in canonical_economic_allocations)
+             + (_nc_fc_use.shl_draw_keur if _nc_fc_use else 0.0)),
+            ("junior", junior_keur,
+             sum(a.junior_draw_keur for a in canonical_economic_allocations)
+             + (_nc_fc_use.junior_draw_keur if _nc_fc_use else 0.0)),
+            ("senior", senior_keur,
+             sum(a.senior_draw_keur for a in canonical_economic_allocations)
+             + (_nc_fc_use.senior_draw_keur if _nc_fc_use else 0.0)),
+        )
+        for _src_name, _cap, _combined_draw in _combined_cap_checks:
+            if _combined_draw > _cap + 1e-6:
+                raise ValueError(
+                    f"PR9_CANONICAL_ALLOCATION_COMBINED_SOURCE_CAP_OVERDRAW: "
+                    f"source={_src_name}, combined_draw={_combined_draw:.9f} > cap={_cap:.9f} kEUR"
+                )
 
     _total_audit_uses = construction_uses_total + (_nc_fc_use.uses_keur if _nc_fc_use else 0.0)
     _total_audit_sources = (
