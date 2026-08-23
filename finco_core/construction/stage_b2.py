@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import date
+from finco_core._numeric import require_bool, require_finite_real, require_positive_int
 from finco_core.construction.allocator import ConstructionPeriodAllocation
 
 
@@ -185,6 +186,160 @@ class ProvisionalStageB2Result:
     canonical_allocations: tuple[ConstructionPeriodAllocation, ...]
 
 
+def _validate_runtime_config(config: ConstructionRuntimeConfig) -> None:
+    """Fail closed on invalid direct Stage-B2 numerical ingress."""
+    error = "STAGE_B2_INVALID_NUMERIC"
+    require_finite_real(
+        "convergence_tolerance_keur",
+        config.convergence_tolerance_keur,
+        minimum=0.0,
+        strictly_greater=True,
+        error_code=error,
+    )
+    require_positive_int("max_iterations", config.max_iterations, error_code=error)
+
+    non_negative_scalars = {
+        "equity_available_keur": config.equity_available_keur,
+        "share_premium_keur": config.share_premium_keur,
+        "other_committed_equity_keur": config.other_committed_equity_keur,
+        "additional_equity_keur": config.additional_equity_keur,
+        "junior_keur": config.junior_keur,
+        "shl_available_keur": config.shl_available_keur,
+        "senior_commitment_keur": config.senior_commitment_keur,
+        "senior_commitment_fee_rate": config.senior_commitment_fee_rate,
+        "structuring_fee_rate": config.structuring_fee_rate,
+        "structuring_fee_basis_keur": config.structuring_fee_basis_keur,
+        "vat_facility_interest_rate": config.vat_facility_interest_rate,
+        "vat_facility_commitment_fee_rate": config.vat_facility_commitment_fee_rate,
+        "vat_facility_commitment_keur": config.vat_facility_commitment_keur,
+    }
+    for name, value in non_negative_scalars.items():
+        require_finite_real(name, value, minimum=0.0, error_code=error)
+
+    signed_rate_components = {
+        "senior_interest_rate": config.senior_interest_rate,
+        "base_rate": config.base_rate,
+        "swap_margin": config.swap_margin,
+        "forward_swap_margin": config.forward_swap_margin,
+        "cva": config.cva,
+        "external_curve_buffer": config.external_curve_buffer,
+    }
+    for name, value in signed_rate_components.items():
+        require_finite_real(name, value, error_code=error)
+    hedge = require_finite_real(
+        "hedge_coverage", config.hedge_coverage, error_code=error
+    )
+    if not 0.0 <= hedge <= 1.0:
+        raise ValueError(
+            f"{error}: hedge_coverage must be in [0, 1], got {config.hedge_coverage!r}"
+        )
+
+    if (
+        isinstance(config.vat_commitment_fee_active_periods, bool)
+        or not isinstance(config.vat_commitment_fee_active_periods, int)
+        or config.vat_commitment_fee_active_periods < 0
+    ):
+        raise ValueError(
+            f"{error}: vat_commitment_fee_active_periods must be a non-negative int"
+        )
+
+    for index, period in enumerate(config.timeline):
+        if not isinstance(period.index, int) or isinstance(period.index, bool):
+            raise ValueError(f"{error}: timeline[{index}].index must be int")
+        if not isinstance(period.start_date, date) or not isinstance(period.end_date, date):
+            raise ValueError(f"{error}: timeline[{index}] dates must be date")
+        # The canonical Stage B2 timeline may contain zero-length runoff audit
+        # periods after construction. Typed construction inputs remain stricter.
+        if period.end_date < period.start_date:
+            raise ValueError(
+                f"{error}: timeline[{index}] end_date must not precede start_date"
+            )
+        require_finite_real(
+            f"timeline[{index}].interest_fraction",
+            period.interest_fraction,
+            minimum=0.0,
+            error_code=error,
+        )
+        for flag in (
+            "active_construction",
+            "capex_payment_eligible",
+            "senior_idc_active",
+            "vat_facility_active",
+        ):
+            require_bool(
+                f"timeline[{index}].{flag}", getattr(period, flag), error_code=error
+            )
+
+    for item_index, item in enumerate(config.capex_schedule.items):
+        require_finite_real(
+            f"capex_schedule.items[{item_index}].amount_keur",
+            item.amount_keur,
+            minimum=0.0,
+            error_code=error,
+        )
+        require_finite_real(
+            f"capex_schedule.items[{item_index}].vat_rate",
+            item.vat_rate,
+            minimum=0.0,
+            error_code=error,
+        )
+        for weight_index, weight in enumerate(item.payment_weights):
+            require_finite_real(
+                f"capex_schedule.items[{item_index}].payment_weights[{weight_index}]",
+                weight,
+                minimum=0.0,
+                error_code=error,
+            )
+
+    non_negative_vectors = {
+        "source_total_uses_validation_keur": config.source_total_uses_validation_keur,
+        "senior_interest_rate_schedule": config.senior_interest_rate_schedule,
+        "vat_interest_period_fractions": config.vat_interest_period_fractions,
+        "senior_idc_spending_profile": config.senior_idc_spending_profile,
+        "senior_commitment_fee_spending_profile": config.senior_commitment_fee_spending_profile,
+        "vat_financing_cost_spending_profile": config.vat_financing_cost_spending_profile,
+        "initial_senior_idc_funded_uses_keur": config.initial_senior_idc_funded_uses_keur,
+        "initial_senior_commitment_fee_funded_uses_keur": config.initial_senior_commitment_fee_funded_uses_keur,
+        "initial_vat_financing_funded_uses_keur": config.initial_vat_financing_funded_uses_keur,
+        "structuring_fee_payment_schedule": config.funding_policy.structuring_fee_payment_schedule,
+    }
+    for name, values in non_negative_vectors.items():
+        for index, value in enumerate(values):
+            require_finite_real(
+                f"{name}[{index}]", value, minimum=0.0, error_code=error
+            )
+    for index, value in enumerate(config.euribor_1m_fixings):
+        require_finite_real(
+            f"euribor_1m_fixings[{index}]", value, error_code=error
+        )
+
+    if config.senior_idc_balance_basis not in {
+        "OPENING_DRAWN",
+        "CURRENT_CLOSING_DRAWN",
+        "FUNDING_PERIOD_CLOSING_DRAWN",
+    }:
+        raise ValueError(f"STAGE_B2_INVALID_IDC_BALANCE_BASIS: {config.senior_idc_balance_basis!r}")
+    if config.senior_commitment_fee_balance_basis not in {
+        "OPENING_UNDRAWN",
+        "CURRENT_CLOSING_UNDRAWN",
+        "FUNDING_PERIOD_CLOSING_UNDRAWN",
+    }:
+        raise ValueError(
+            "STAGE_B2_INVALID_COMMITMENT_FEE_BALANCE_BASIS: "
+            f"{config.senior_commitment_fee_balance_basis!r}"
+        )
+    allowed_timings = {"SAME_PERIOD", "NEXT_PERIOD", "NEXT_FUNDING_PERIOD", "PROFILE"}
+    if config.senior_idc_capitalization_timing not in allowed_timings:
+        raise ValueError(
+            f"STAGE_B2_INVALID_IDC_CAPITALIZATION_TIMING: {config.senior_idc_capitalization_timing!r}"
+        )
+    if config.senior_commitment_fee_capitalization_timing not in allowed_timings:
+        raise ValueError(
+            "STAGE_B2_INVALID_COMMITMENT_FEE_CAPITALIZATION_TIMING: "
+            f"{config.senior_commitment_fee_capitalization_timing!r}"
+        )
+
+
 def _n_from_schedule(capex_schedule: CapexScheduleSet) -> int:
     """Derive construction period count from the first CAPEX item's payment_weights."""
     if not capex_schedule.items:
@@ -337,15 +492,22 @@ def _period_rates(config: ConstructionRuntimeConfig, n_periods: int = 12) -> tup
             + config.cva
         )
         floating_weight = (1.0 - config.hedge_coverage) * (1.0 + config.external_curve_buffer)
-        return tuple(
+        rates = tuple(
             hedged_component + fixing * floating_weight + config.senior_interest_rate
             for fixing in config.euribor_1m_fixings
         )
-    if config.senior_interest_rate_schedule:
+    elif config.senior_interest_rate_schedule:
         if len(config.senior_interest_rate_schedule) != n_periods:
             raise ValueError(f"Senior interest-rate schedule must have {n_periods} periods")
-        return config.senior_interest_rate_schedule
-    return (config.senior_interest_rate,) * n_periods
+        rates = config.senior_interest_rate_schedule
+    else:
+        rates = (config.senior_interest_rate,) * n_periods
+    for index, rate in enumerate(rates):
+        if rate < 0.0:
+            raise ValueError(
+                f"STAGE_B2_NEGATIVE_ALL_IN_RATE: senior rate[{index}]={rate!r} must be >= 0"
+            )
+    return rates
 
 
 def _senior_financing_accruals(
@@ -517,6 +679,7 @@ def _run_stage_b2_inner(
         allocate_construction_sources_provisional,
     )
 
+    _validate_runtime_config(config)
     hard_capex = monthly_hard_capex(config.capex_schedule)
     vat_payable = vat_monthly_uses(config.capex_schedule)
     n_periods = len(hard_capex) if hard_capex else len(config.timeline)

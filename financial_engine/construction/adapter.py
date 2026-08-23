@@ -6,6 +6,7 @@ No project-name dispatch. No identity-based branches.
 """
 from __future__ import annotations
 
+from finco_core._numeric import require_finite_real
 from finco_core.construction.stage_b2 import (
     ConstructionRuntimeConfig,
     TimelinePeriod,
@@ -81,13 +82,27 @@ def build_construction_runtime_config(
         for i, p in enumerate(construction.periods)
     )
 
-    # Resolve capex amounts from capex_amounts_keur lookup
-    resolved_amounts: dict[str, float] = capex_amounts_keur or {}
+    # Resolve amounts from the canonical CapexStructure-owned lookup. Missing
+    # keys are configuration errors; they must never become zero-cost items.
+    if construction.capex_items and capex_amounts_keur is None:
+        raise ValueError(
+            "PR9_CAPEX_AMOUNTS_REQUIRED: capex_amounts_keur is required when capex_items exist"
+        )
+    resolved_amounts = capex_amounts_keur or {}
+    for item in construction.capex_items:
+        if item.code not in resolved_amounts:
+            raise ValueError(f"PR9_CAPEX_AMOUNT_MISSING: {item.code!r}")
+        require_finite_real(
+            f"capex_amounts_keur[{item.code!r}]",
+            resolved_amounts[item.code],
+            minimum=0.0,
+            error_code="PR9_INVALID_CAPEX_AMOUNT",
+        )
     items = tuple(
         CapexPaymentItem(
             code=item.code,
             name=item.name,
-            amount_keur=resolved_amounts.get(item.code, 0.0),
+            amount_keur=resolved_amounts[item.code],
             payment_weights=item.payment_weights,
             vat_rate=0.0,  # PR9_VAT_FACILITY_DEFERRED
         )
@@ -95,11 +110,13 @@ def build_construction_runtime_config(
     )
     capex_schedule = CapexScheduleSet(items=items)
 
-    # Structuring fee payment schedule — uniform if not provided
+    # Non-zero structuring fees require explicit timing at the typed boundary.
+    # A zero-cost contract uses a first-period neutral schedule because no cash
+    # amount is allocated and therefore no economic timing assumption is made.
     if construction.structuring_fee and construction.structuring_fee.payment_weights:
         struct_weights = construction.structuring_fee.payment_weights
     else:
-        struct_weights = tuple(1.0 / n for _ in range(n)) if n > 0 else ()
+        struct_weights = tuple(1.0 if index == 0 else 0.0 for index in range(n))
     funding_policy = FinancingCostFundingPolicy(structuring_fee_payment_schedule=struct_weights)
 
     # Build rate parameters from ConstructionSeniorPricingInput

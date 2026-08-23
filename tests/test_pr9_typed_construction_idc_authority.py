@@ -512,7 +512,7 @@ class TestSyntheticB:
         from finco_core.construction.stage_b2 import ConstructionRuntimeConfig
         from dataclasses import replace
         config_no_iter = replace(config, max_iterations=0)
-        with pytest.raises(RuntimeError, match="did not converge"):
+        with pytest.raises(ValueError, match="STAGE_B2_INVALID_NUMERIC"):
             run_stage_b2(config_no_iter)
 
     def test_shl_not_double_counted_in_construction(self):
@@ -771,7 +771,11 @@ def _make_solar_construction_input(n_periods: int) -> "ConstructionFinancingInpu
             day_count=SeniorDayCountConvention.ACT_360,
         ),
         commitment_fee=ConstructionCommitmentFeeInput(rate=0.005),
-        structuring_fee=ConstructionStructuringFeeInput(rate=0.01, basis_keur=24_750.0),
+        structuring_fee=ConstructionStructuringFeeInput(
+            rate=0.01,
+            basis_keur=24_750.0,
+            payment_weights=w,
+        ),
     )
 
 
@@ -988,9 +992,8 @@ class TestCAPEXAuthorityNegative:
             ConstructionCapexTimingInput(code="grid_connection", name="GC", payment_weights=w),
             ConstructionCapexTimingInput(code="audit_legal", name="AL", payment_weights=w),
         )
-        pi = self._solar_pi_with_cf(capex_items, n_periods=n)
-        with pytest.raises(ValueError, match="PR9_CONSTRUCTION_CAPEX_AUTHORITY_MISMATCH"):
-            run_project_financing_model(pi)
+        with pytest.raises(ValueError, match="PR9_DUPLICATE_CAPEX_CODE"):
+            self._solar_pi_with_cf(capex_items, n_periods=n)
 
     def test_C_omit_non_zero_field_raises(self):
         """Negative C: omitting a non-zero canonical CAPEX field → PR9_CONSTRUCTION_CAPEX_AUTHORITY_MISMATCH."""
@@ -1269,7 +1272,11 @@ class TestPR9E2EScenarios:
         """Scenario 12: structuring_fee rate=1%, basis=20000 → total fee = 200 kEUR."""
         result = self._run_solar_cf(
             n_periods=12,
-            structuring_fee=ConstructionStructuringFeeInput(rate=0.01, basis_keur=20_000.0),
+            structuring_fee=ConstructionStructuringFeeInput(
+                rate=0.01,
+                basis_keur=20_000.0,
+                payment_weights=(1 / 12,) * 12,
+            ),
         )
         assert result.construction_financing is not None
         assert result.construction_financing.authority == "PR9_TYPED_CONSTRUCTION_FINANCING_IDC_AUTHORITY"
@@ -4171,6 +4178,367 @@ class TestCorrectionETypedShlTimelineAuthority:
         source = inspect.getsource(_run_with_construction_idc)
         assert "construction_period_uses_keur" in source  # fail-closed lock only
         assert "allocate_source_waterfall" not in source
+
+
+class TestPR9FinalFreezeValidation:
+    """Fail-closed typed, adapter, allocator, and direct Stage-B2 boundaries."""
+
+    @staticmethod
+    def _valid_input(n_periods=2):
+        return _make_solar_construction_input(n_periods)
+
+    @pytest.mark.parametrize(
+        ("field_name", "value"),
+        (
+            ("flat_all_in_rate", float("nan")),
+            ("fixed_base_rate", float("inf")),
+            ("margin_rate", float("-inf")),
+            ("hedge_pct", True),
+            ("swap_margin", "0.01"),
+            ("forward_swap_adjustment", float("nan")),
+            ("cva", float("inf")),
+            ("floating_curve_buffer_pct", float("-inf")),
+        ),
+    )
+    def test_senior_pricing_scalar_grid_fails_closed(self, field_name, value):
+        from finco_core.inputs.construction_financing import ConstructionSeniorPricingInput
+
+        with pytest.raises(ValueError, match="PR9_INVALID_TYPED_CONSTRUCTION_NUMERIC"):
+            ConstructionSeniorPricingInput(
+                mode=SeniorRateMode.FLAT_ALL_IN,
+                **{field_name: value},
+            )
+
+    @pytest.mark.parametrize(
+        ("field_name", "values"),
+        (
+            ("floating_base_rate_curve", (0.01, float("nan"))),
+            ("floating_base_rate_curve", (0.01, float("inf"))),
+            ("explicit_all_in_schedule", (0.05, float("nan"))),
+            ("explicit_all_in_schedule", (0.05, float("inf"))),
+            ("explicit_period_fractions", (0.5, float("nan"))),
+            ("explicit_period_fractions", (0.5, float("inf"))),
+            ("explicit_period_fractions", (0.5, -0.1)),
+        ),
+    )
+    def test_senior_pricing_vector_nan_inf_negative_grid(self, field_name, values):
+        from finco_core.inputs.construction_financing import ConstructionSeniorPricingInput
+
+        with pytest.raises(ValueError):
+            ConstructionSeniorPricingInput(
+                mode=SeniorRateMode.FLAT_ALL_IN,
+                **{field_name: values},
+            )
+
+    def test_senior_mode_and_day_count_must_be_enums(self):
+        from finco_core.inputs.construction_financing import ConstructionSeniorPricingInput
+
+        with pytest.raises(ValueError, match="PR9_INVALID_SENIOR_RATE_MODE"):
+            ConstructionSeniorPricingInput(mode="flat_all_in")
+        with pytest.raises(ValueError, match="PR9_INVALID_SENIOR_DAY_COUNT"):
+            ConstructionSeniorPricingInput(
+                mode=SeniorRateMode.FLAT_ALL_IN,
+                day_count="act_360",
+            )
+
+    @pytest.mark.parametrize(
+        ("mode", "kwargs", "expected_rates"),
+        (
+            (SeniorRateMode.FLAT_ALL_IN, {"flat_all_in_rate": 0.05}, (0.05, 0.05)),
+            (
+                SeniorRateMode.FIXED_PLUS_MARGIN,
+                {"fixed_base_rate": 0.01, "margin_rate": 0.02},
+                (0.03, 0.03),
+            ),
+            (
+                SeniorRateMode.FLOATING_PLUS_MARGIN,
+                {
+                    "floating_base_rate_curve": (0.01, 0.015),
+                    "margin_rate": 0.02,
+                    "floating_curve_buffer_pct": 0.1,
+                },
+                (0.031, 0.0365),
+            ),
+            (
+                SeniorRateMode.HEDGE_BLEND,
+                {
+                    "fixed_base_rate": 0.02,
+                    "margin_rate": 0.02,
+                    "hedge_pct": 0.5,
+                    "swap_margin": 0.001,
+                    "floating_base_rate_curve": (0.01, 0.02),
+                },
+                (0.036, 0.041),
+            ),
+            (
+                SeniorRateMode.EXPLICIT_ALL_IN_SCHEDULE,
+                {"explicit_all_in_schedule": (0.04, 0.045)},
+                (0.04, 0.045),
+            ),
+        ),
+    )
+    def test_active_rate_modes_map_only_their_authoritative_fields(
+        self, mode, kwargs, expected_rates
+    ):
+        import dataclasses
+        from financial_engine.construction.adapter import build_construction_runtime_config
+        from finco_core.construction.stage_b2 import _period_rates
+        from finco_core.inputs.construction_financing import ConstructionSeniorPricingInput
+
+        construction = dataclasses.replace(
+            self._valid_input(),
+            senior_pricing=ConstructionSeniorPricingInput(mode=mode, **kwargs),
+        )
+        amounts = {item.code: 100.0 for item in construction.capex_items}
+        config = build_construction_runtime_config(
+            construction,
+            senior_commitment_keur=1000.0,
+            equity_available_keur=0.0,
+            shl_available_keur=0.0,
+            capex_amounts_keur=amounts,
+        )
+        assert _period_rates(config, 2) == pytest.approx(expected_rates, abs=1e-15)
+
+    def test_negative_reference_rate_passes_when_all_in_rate_is_non_negative(self):
+        import dataclasses
+        from financial_engine.construction.adapter import build_construction_runtime_config
+        from finco_core.construction.stage_b2 import _period_rates, run_stage_b2
+        from finco_core.inputs.construction_financing import ConstructionSeniorPricingInput
+
+        pricing = ConstructionSeniorPricingInput(
+            mode=SeniorRateMode.FLOATING_PLUS_MARGIN,
+            floating_base_rate_curve=(-0.005, -0.004),
+            margin_rate=0.02,
+        )
+        construction = dataclasses.replace(self._valid_input(), senior_pricing=pricing)
+        amounts = {item.code: 100.0 for item in construction.capex_items}
+        config = build_construction_runtime_config(
+            construction,
+            senior_commitment_keur=1000.0,
+            equity_available_keur=0.0,
+            shl_available_keur=0.0,
+            capex_amounts_keur=amounts,
+        )
+        assert _period_rates(config, 2) == pytest.approx((0.015, 0.016))
+        assert run_stage_b2(config).closing_senior_drawn_keur > 0.0
+
+    @pytest.mark.parametrize("rate", (float("nan"), float("inf"), -0.01, True))
+    def test_commitment_fee_rate_fails_closed(self, rate):
+        from finco_core.inputs.construction_financing import ConstructionCommitmentFeeInput
+
+        with pytest.raises(ValueError):
+            ConstructionCommitmentFeeInput(rate=rate)
+
+    @pytest.mark.parametrize("basis", ("", "AVERAGE_UNDRAWN", None))
+    def test_commitment_fee_basis_is_fail_closed(self, basis):
+        from finco_core.inputs.construction_financing import ConstructionCommitmentFeeInput
+
+        with pytest.raises(ValueError, match="PR9_INVALID_COMMITMENT_FEE_BALANCE_BASIS"):
+            ConstructionCommitmentFeeInput(balance_basis=basis)
+
+    @pytest.mark.parametrize("timing", ("PROFILE", "LATER", None))
+    def test_commitment_fee_timing_is_fail_closed(self, timing):
+        from finco_core.inputs.construction_financing import ConstructionCommitmentFeeInput
+
+        with pytest.raises(
+            ValueError, match="PR9_INVALID_COMMITMENT_FEE_CAPITALIZATION_TIMING"
+        ):
+            ConstructionCommitmentFeeInput(capitalization_timing=timing)
+
+    @pytest.mark.parametrize(
+        "weights",
+        (
+            (0.5, float("nan")),
+            (0.5, float("inf")),
+            (0.5, -0.1),
+            (0.5, True),
+        ),
+    )
+    def test_structuring_fee_weight_grid_fails_closed(self, weights):
+        from finco_core.inputs.construction_financing import ConstructionStructuringFeeInput
+
+        with pytest.raises(ValueError):
+            ConstructionStructuringFeeInput(
+                rate=0.01,
+                basis_keur=100.0,
+                payment_weights=weights,
+            )
+
+    def test_nonzero_structuring_fee_requires_explicit_timing(self):
+        import dataclasses
+        from finco_core.inputs.construction_financing import ConstructionStructuringFeeInput
+
+        with pytest.raises(ValueError, match="PR9_STRUCTURING_FEE_TIMING_REQUIRED"):
+            dataclasses.replace(
+                self._valid_input(),
+                structuring_fee=ConstructionStructuringFeeInput(
+                    rate=0.01,
+                    basis_keur=100.0,
+                ),
+            )
+
+    @pytest.mark.parametrize("vat_rate", (float("nan"), float("inf"), -0.1, 0.1, True))
+    def test_capex_vat_rate_is_exact_zero_only(self, vat_rate):
+        from finco_core.inputs.construction_financing import ConstructionCapexTimingInput
+
+        with pytest.raises(ValueError):
+            ConstructionCapexTimingInput("EPC", "EPC", (0.5, 0.5), vat_rate)
+
+    @pytest.mark.parametrize(
+        "weights",
+        ((0.5, float("nan")), (0.5, float("inf")), (0.5, -0.1), (0.5, True)),
+    )
+    def test_capex_weight_grid_fails_closed(self, weights):
+        from finco_core.inputs.construction_financing import ConstructionCapexTimingInput
+
+        with pytest.raises(ValueError):
+            ConstructionCapexTimingInput("EPC", "EPC", weights)
+
+    @pytest.mark.parametrize(
+        ("field_name", "value"),
+        (
+            ("convergence_tolerance_keur", float("nan")),
+            ("convergence_tolerance_keur", float("inf")),
+            ("convergence_tolerance_keur", 0.0),
+            ("convergence_tolerance_keur", True),
+            ("max_iterations", 0),
+            ("max_iterations", -1),
+            ("max_iterations", 1.5),
+            ("max_iterations", True),
+        ),
+    )
+    def test_core_solver_controls_fail_closed(self, field_name, value):
+        import dataclasses
+
+        with pytest.raises(ValueError):
+            dataclasses.replace(self._valid_input(), **{field_name: value})
+
+    def test_period_flags_are_bool_and_dates_are_typed(self):
+        from datetime import date
+        from finco_core.inputs.construction_financing import ConstructionPeriodSpec
+
+        with pytest.raises(ValueError, match="PR9_INVALID_PERIOD_FLAG"):
+            ConstructionPeriodSpec(date(2030, 1, 1), date(2030, 2, 1), True, 1)
+        with pytest.raises(ValueError, match="PR9_INVALID_PERIOD_DATES"):
+            ConstructionPeriodSpec("2030-01-01", date(2030, 2, 1))
+
+    def test_adapter_missing_capex_lookup_and_key_fail_closed(self):
+        from financial_engine.construction.adapter import build_construction_runtime_config
+
+        construction = self._valid_input()
+        with pytest.raises(ValueError, match="PR9_CAPEX_AMOUNTS_REQUIRED"):
+            build_construction_runtime_config(construction, 1000.0, 0.0, 0.0)
+        amounts = {item.code: 100.0 for item in construction.capex_items}
+        amounts.pop(construction.capex_items[0].code)
+        with pytest.raises(ValueError, match="PR9_CAPEX_AMOUNT_MISSING"):
+            build_construction_runtime_config(
+                construction, 1000.0, 0.0, 0.0, capex_amounts_keur=amounts
+            )
+
+    @pytest.mark.parametrize("amount", (float("nan"), float("inf"), -1.0, True))
+    def test_adapter_capex_amount_grid_fails_closed(self, amount):
+        from financial_engine.construction.adapter import build_construction_runtime_config
+
+        construction = self._valid_input()
+        amounts = {item.code: 100.0 for item in construction.capex_items}
+        amounts[construction.capex_items[0].code] = amount
+        with pytest.raises(ValueError, match="PR9_INVALID_CAPEX_AMOUNT"):
+            build_construction_runtime_config(
+                construction, 1000.0, 0.0, 0.0, capex_amounts_keur=amounts
+            )
+
+    @pytest.mark.parametrize(
+        ("field_name", "value"),
+        (
+            ("period_uses", (100.0, float("nan"))),
+            ("period_uses", (100.0, float("inf"))),
+            ("period_uses", (100.0, -1.0)),
+            ("senior_commitment_keur", float("nan")),
+            ("shl_cash_keur", float("nan")),
+            ("share_capital_keur", -1.0),
+            ("junior_keur", -1.0),
+            ("tolerance_keur", float("nan")),
+            ("tolerance_keur", 0.0),
+            ("share_premium_keur", True),
+        ),
+    )
+    def test_allocator_adversarial_numeric_grid(self, field_name, value):
+        from finco_core.construction.allocator import (
+            allocate_construction_sources_per_period,
+            allocate_construction_sources_provisional,
+        )
+
+        kwargs = dict(
+            period_uses=(100.0, 100.0),
+            share_capital_keur=50.0,
+            share_premium_keur=0.0,
+            other_committed_equity_keur=0.0,
+            additional_equity_keur=0.0,
+            shl_cash_keur=50.0,
+            junior_keur=0.0,
+            senior_commitment_keur=100.0,
+            tolerance_keur=1e-9,
+        )
+        kwargs[field_name] = value
+        for allocator in (
+            allocate_construction_sources_per_period,
+            allocate_construction_sources_provisional,
+        ):
+            with pytest.raises(
+                ValueError, match="PR9_CONSTRUCTION_ALLOCATOR_INVALID_NUMERIC"
+            ):
+                allocator(**kwargs)
+
+    @pytest.mark.parametrize(
+        ("mutation", "expected"),
+        (
+            ({"senior_interest_rate": float("nan")}, "senior_interest_rate"),
+            ({"senior_commitment_keur": float("inf")}, "senior_commitment_keur"),
+            ({"convergence_tolerance_keur": float("nan")}, "convergence_tolerance_keur"),
+            ({"max_iterations": True}, "max_iterations"),
+        ),
+    )
+    def test_direct_stage_b2_scalar_ingress_fails_closed(self, mutation, expected):
+        import dataclasses
+        from financial_engine.construction.adapter import build_construction_runtime_config
+        from finco_core.construction.stage_b2 import run_stage_b2
+
+        construction = self._valid_input()
+        amounts = {item.code: 100.0 for item in construction.capex_items}
+        config = build_construction_runtime_config(
+            construction, 1000.0, 0.0, 0.0, capex_amounts_keur=amounts
+        )
+        with pytest.raises(ValueError, match=expected):
+            run_stage_b2(dataclasses.replace(config, **mutation))
+
+    def test_direct_stage_b2_vector_nan_attacks_fail_closed(self):
+        import dataclasses
+        from financial_engine.construction.adapter import build_construction_runtime_config
+        from finco_core.construction.stage_b2 import (
+            CapexPaymentItem,
+            CapexScheduleSet,
+            FinancingCostFundingPolicy,
+            run_stage_b2,
+        )
+
+        construction = self._valid_input()
+        amounts = {item.code: 100.0 for item in construction.capex_items}
+        config = build_construction_runtime_config(
+            construction, 1000.0, 0.0, 0.0, capex_amounts_keur=amounts
+        )
+        bad_item = CapexPaymentItem("EPC", "EPC", 100.0, (0.5, float("nan")))
+        attacks = (
+            dataclasses.replace(config, capex_schedule=CapexScheduleSet((bad_item,))),
+            dataclasses.replace(
+                config,
+                funding_policy=FinancingCostFundingPolicy((0.5, float("inf"))),
+            ),
+            dataclasses.replace(config, senior_idc_spending_profile=(0.5, float("nan"))),
+            dataclasses.replace(config, euribor_1m_fixings=(-0.005, float("inf"))),
+        )
+        for attack in attacks:
+            with pytest.raises(ValueError, match="STAGE_B2_INVALID_NUMERIC"):
+                run_stage_b2(attack)
 
     def test_production_cash_dsra_residual_enters_at_cod_only_for_pro_rata(self):
         import dataclasses

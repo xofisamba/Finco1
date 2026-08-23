@@ -464,8 +464,8 @@ def test_same_period_and_next_funding_period_capitalization_differ_generically()
     assert lagged.total_permanent_uses_keur[1] > 100.0
 
 
-def test_non_convergence_fail_fast_for_generic_circular_case():
-    with pytest.raises(RuntimeError, match="did not converge"):
+def test_zero_convergence_tolerance_fails_before_generic_circular_calculation():
+    with pytest.raises(ValueError, match="STAGE_B2_INVALID_NUMERIC"):
         run_stage_b2(_synthetic_config(max_iterations=1, convergence_tolerance_keur=0.0))
 
 

@@ -22,6 +22,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from finco_core._numeric import require_finite_real
+
 
 @dataclass(frozen=True)
 class ConstructionPeriodAllocation:
@@ -45,6 +47,42 @@ _WATERFALL_ORDER = [
 ]
 
 
+def _validate_allocator_inputs(
+    period_uses: tuple[float, ...],
+    share_capital_keur: float,
+    share_premium_keur: float,
+    other_committed_equity_keur: float,
+    additional_equity_keur: float,
+    shl_cash_keur: float,
+    junior_keur: float,
+    senior_commitment_keur: float,
+    tolerance_keur: float,
+) -> None:
+    error = "PR9_CONSTRUCTION_ALLOCATOR_INVALID_NUMERIC"
+    for index, uses in enumerate(period_uses):
+        require_finite_real(
+            f"period_uses[{index}]", uses, minimum=0.0, error_code=error
+        )
+    source_values = {
+        "share_capital_keur": share_capital_keur,
+        "share_premium_keur": share_premium_keur,
+        "other_committed_equity_keur": other_committed_equity_keur,
+        "additional_equity_keur": additional_equity_keur,
+        "shl_cash_keur": shl_cash_keur,
+        "junior_keur": junior_keur,
+        "senior_commitment_keur": senior_commitment_keur,
+    }
+    for name, value in source_values.items():
+        require_finite_real(name, value, minimum=0.0, error_code=error)
+    require_finite_real(
+        "tolerance_keur",
+        tolerance_keur,
+        minimum=0.0,
+        strictly_greater=True,
+        error_code=error,
+    )
+
+
 def _allocate_core(
     period_uses: tuple[float, ...],
     share_capital_keur: float,
@@ -65,6 +103,17 @@ def _allocate_core(
     of the seven-source waterfall. Both allocate_construction_sources_per_period (strict)
     and allocate_construction_sources_provisional call this function.
     """
+    _validate_allocator_inputs(
+        period_uses,
+        share_capital_keur,
+        share_premium_keur,
+        other_committed_equity_keur,
+        additional_equity_keur,
+        shl_cash_keur,
+        junior_keur,
+        senior_commitment_keur,
+        tolerance_keur,
+    )
     if not period_uses:
         return (), 0.0
 
@@ -132,6 +181,17 @@ def allocate_construction_sources_per_period(
     Raises ValueError("PR9_CONSTRUCTION_FUNDING_SHORTFALL: Senior facility commitment
     breached: ...") if total sources < total uses - tolerance.
     """
+    _validate_allocator_inputs(
+        period_uses,
+        share_capital_keur,
+        share_premium_keur,
+        other_committed_equity_keur,
+        additional_equity_keur,
+        shl_cash_keur,
+        junior_keur,
+        senior_commitment_keur,
+        tolerance_keur,
+    )
     n = len(period_uses)
     if n == 0:
         return ()
