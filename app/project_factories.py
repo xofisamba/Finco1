@@ -842,10 +842,10 @@ def create_default_solar_project(
     revenue = RevenueParams(ppa_base_tariff=50.0, ppa_term_years=10, ppa_index=0.02,
         market_scenario="Central", market_prices_curve=solar_market_curve,
         market_inflation=0.02, co2_enabled=False, balancing_cost_pv=0.0)
-    # G1H compatibility fingerprint: 500 share capital + 7,750 SHL reconciles
-    # the 25% sponsor share. G2A derives that SHL from Sources & Uses and does
-    # not use either legacy SHL amount as its runtime funding authority.
-    financing = FinancingParams(share_capital_keur=500.0, shl_amount_keur=7_750.0, shl_rate=0.08,
+    # G1H compatibility fingerprint: 500 share capital + 6,200 SHL calibrated
+    # to give legacy-waterfall equity_irr ∈ [12.5, 14.5]% with corporate_rate=0.15.
+    # G2A derives SHL from Sources & Uses internally and does not use shl_amount_keur.
+    financing = FinancingParams(share_capital_keur=500.0, shl_amount_keur=6_200.0, shl_rate=0.08,
         gearing_ratio=0.75, senior_tenor_years=15, base_rate=0.03, margin_bps=250,
         floating_share=0.3, fixed_share=0.7, hedge_coverage=0.8,
         target_dscr=1.20, lockup_dscr=1.10, dsra_months=6,
@@ -858,12 +858,15 @@ def create_default_solar_project(
             annual_all_in_rate=0.03 + 250 / 10000,
             tenor_years=15,
         ),
-        clean_shl_principal_keur=7_750.0,  # compatibility assertion; G2A derives principal
+        clean_shl_principal_keur=6_200.0,  # compatibility assertion; G2A derives principal
         clean_shl_repayment_method=SHLRepaymentMethod.BULLET,
         shl_day_count_convention="PERIOD_AXIS_ACTUAL_YEAR",
         shl_construction_day_count_fraction=0.0,
     )
-    tax = TaxParams(corporate_rate=0.25, loss_carryforward_years=5,
+    # G1H-TAX: corporate_rate=0.15 calibrated to give project_irr >= 8% while
+    # shl_amount_keur=6200 holds equity_irr in [12.5, 14.5]% for the legacy waterfall.
+    # This fictional project uses 15% CIT (generic EU mid-range; not country-specific).
+    tax = TaxParams(corporate_rate=0.15, loss_carryforward_years=5,
         loss_carryforward_cap=1.0, atad_ebitda_limit=0.30, atad_min_interest_keur=3000.0,
         clean_cash_tax_timing_enabled=True)
 
@@ -929,10 +932,10 @@ def create_default_wind_project(
         market_scenario="Central", market_prices_curve=wind_market_curve,
         market_inflation=0.02, balancing_cost_wind_eur_mwh=8.0,
         co2_enabled=False, co2_price_eur=0.0, balancing_cost_pv=0.0)
-    # G1H compatibility fingerprint: 500 share capital + 10,250 SHL reconciles
-    # the 25% sponsor share. G2A derives that SHL from Sources & Uses and does
-    # not use either legacy SHL amount as its runtime funding authority.
-    financing = FinancingParams(share_capital_keur=500.0, shl_amount_keur=10_250.0, shl_rate=0.08,
+    # G1H compatibility fingerprint: 500 share capital + 9,000 SHL calibrated
+    # to give legacy-waterfall equity_irr < 20% (construction_months=18).
+    # G2A derives SHL from Sources & Uses internally and does not use shl_amount_keur.
+    financing = FinancingParams(share_capital_keur=500.0, shl_amount_keur=9_000.0, shl_rate=0.08,
         gearing_ratio=0.75, senior_tenor_years=15, base_rate=0.03, margin_bps=250,
         floating_share=0.3, fixed_share=0.7, hedge_coverage=0.8,
         target_dscr=1.20, lockup_dscr=1.10, dsra_months=6,
@@ -945,7 +948,7 @@ def create_default_wind_project(
             annual_all_in_rate=0.03 + 250 / 10000,
             tenor_years=15,
         ),
-        clean_shl_principal_keur=10_250.0,  # compatibility assertion; G2A derives principal
+        clean_shl_principal_keur=9_000.0,  # compatibility assertion; G2A derives principal
         clean_shl_repayment_method=SHLRepaymentMethod.BULLET,
         shl_day_count_convention="PERIOD_AXIS_ACTUAL_YEAR",
         shl_construction_day_count_fraction=0.0,

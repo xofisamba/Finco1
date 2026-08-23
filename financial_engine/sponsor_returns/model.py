@@ -223,6 +223,35 @@ def run_project_sponsor_returns_model(
     bullet_unpaid_active: bool = False
 
     # --- Construction periods (contributions only) ---
+    if not construction_draw_periods:
+        # construction_months == 0: no construction-period funding schedule was
+        # built.  All capital is deployed at financial_close (COD = FC).
+        # Synthesise a single period-0 contribution record so that downstream
+        # contribution totals and sponsor cashflows are populated correctly.
+        _sc = financing.share_capital_keur
+        _sp = financing.share_premium_keur
+        _oce = financing.other_equity_funding_before_shl_keur
+        _ae = financing.additional_equity_keur
+        _shl = financing.derived_shl_cash_principal_keur
+        _pe_net = -(_sc + _sp + _oce + _ae)
+        _ts_net = _pe_net - _shl
+        cashflow_periods.append(SponsorCashFlowPeriod(
+            period_index=0,
+            cashflow_date=financial_close,
+            is_construction=True,
+            share_capital_contribution_keur=_sc,
+            share_premium_contribution_keur=_sp,
+            other_committed_equity_contribution_keur=_oce,
+            additional_equity_contribution_keur=_ae,
+            shl_cash_contribution_keur=_shl,
+            shl_cash_interest_receipt_keur=0.0,
+            shl_principal_receipt_keur=0.0,
+            post_shl_cash_available_keur=0.0,
+            legal_equity_distribution_keur=0.0,
+            cash_shortfall_keur=0.0,
+            pure_equity_net_cashflow_keur=_pe_net,
+            total_sponsor_net_cashflow_keur=_ts_net,
+        ))
     for k in construction_draw_periods:
         cp = construction_periods_by_index[k]
         # Fix 3 / Step 9: use canonical cashflow_date from ConstructionFundingPeriod when
