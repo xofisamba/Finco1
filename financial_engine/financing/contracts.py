@@ -84,7 +84,3 @@ class ProjectFinancingResult:
     construction_funding: ConstructionFundingResult
     fixed_point_iteration_count: int
     fixed_point_maximum_difference_keur: float
-    # PR-9: typed construction financing result. None when construction_financing is disabled.
-    construction_b2_result: object = None  # ConstructionRuntimeResult | None
-    construction_fixed_point_iterations: int = 0
-    construction_fixed_point_residual_keur: float = 0.0

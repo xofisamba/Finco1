@@ -92,17 +92,8 @@ def build_construction_funding_schedule(
     This is an explicit generic MVP audit policy, not a claim that the source
     workbook draws each facility linearly. It has no IDC or operating-model effect.
     """
-    if construction_period_count < 0:
-        raise ValueError("construction_period_count must be non-negative")
-    # Zero construction months: no construction-period draws; all capital deployed at COD.
-    # Return a trivial empty result so callers don't need to special-case this.
-    if construction_period_count == 0:
-        return ConstructionFundingResult(
-            policy=GENERIC_MVP_DRAW_POLICY,
-            periods=(),
-            maximum_period_difference_keur=0.0,
-            maximum_cumulative_difference_keur=0.0,
-        )
+    if construction_period_count <= 0:
+        raise ValueError("construction_period_count must be positive")
     # BLOCKER C: validate period_dates length when provided.
     if period_dates is not None and len(period_dates) != construction_period_count:
         raise ValueError(

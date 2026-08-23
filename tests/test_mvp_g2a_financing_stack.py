@@ -12,7 +12,7 @@ from financial_engine.financing.stack import reconcile_financing_stack
 @pytest.mark.parametrize(
     ("factory_name", "uses", "dscr_capacity", "gearing_capacity", "derived_shl"),
     (
-        ("create_default_solar_project", 33_000.0, 28_936.451823137468, 24_750.0, 7_750.0),
+        ("create_default_solar_project", 33_000.0, 28_458.117382991935, 24_750.0, 7_750.0),
         ("create_default_wind_project", 43_000.0, 45_842.05065359109, 32_250.0, 10_250.0),
     ),
 )
@@ -52,7 +52,7 @@ def test_generic_shl_mode_derives_complete_funding_stack(
 @pytest.mark.parametrize(
     ("factory_name", "no_shl_capacity", "final_senior", "additional_equity"),
     (
-        ("create_default_solar_project", 28_323.238998249388, 24_750.0, 7_750.0),
+        ("create_default_solar_project", 27_349.340096443833, 24_750.0, 7_750.0),
         ("create_default_wind_project", 44_095.0171410797, 32_250.0, 10_250.0),
     ),
 )
@@ -95,16 +95,13 @@ def test_construction_sources_and_uses_reconcile_every_period_and_cumulatively(f
         assert row.cumulative_total_sources_keur == pytest.approx(
             row.cumulative_project_cash_uses_keur, abs=1e-8
         )
-    # When construction_months == 0 there are no construction periods; the
-    # cumulative-draw assertions only apply when periods are present.
-    if funding.periods:
-        last = funding.periods[-1]
-        assert last.cumulative_senior_draw_keur == pytest.approx(
-            result.final_senior_commitment_keur
-        )
-        assert last.cumulative_shl_cash_draw_keur == pytest.approx(
-            result.derived_shl_cash_principal_keur
-        )
+    last = funding.periods[-1]
+    assert last.cumulative_senior_draw_keur == pytest.approx(
+        result.final_senior_commitment_keur
+    )
+    assert last.cumulative_shl_cash_draw_keur == pytest.approx(
+        result.derived_shl_cash_principal_keur
+    )
 
 
 def test_financing_stack_exposes_dscr_and_gearing_binding_cases():
@@ -233,7 +230,7 @@ def test_generic_direct_senior_exposes_dscr_capacity_and_applies_gearing_cap():
     assert dscr_capacity > expected_gearing_cap
     # DSCR capacity from the G0 run includes the factory SHL (unlike the G2A capacity
     # run which uses candidate_shl=0); both are in the range expected by the source model.
-    assert dscr_capacity == pytest.approx(28_855.268238896962, rel=1e-6)
+    assert dscr_capacity == pytest.approx(28_467.097994078464, rel=1e-6)
 
 
 def test_fixed_sources_exceeding_uses_fail_instead_of_hiding_negative_residual():

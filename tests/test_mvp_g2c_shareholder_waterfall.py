@@ -137,14 +137,14 @@ def test_solar_gate_status_open_or_no_ds_only(solar_result):
 
 def test_covenant_gate_locks_distributions_above_dscr(
 ):
-    """lockup_dscr=1.30 > target_dscr=1.20: some periods locked for equity-only project."""
-    result = _solar_equity_only_with_lockup(1.30)
+    """lockup_dscr=1.25 > target_dscr=1.20: some periods locked for equity-only project."""
+    result = _solar_equity_only_with_lockup(1.25)
     assert result.periods_locked_by_dscr > 0
     assert result.total_covenant_locked_keur > 0.0
 
 
 def test_covenant_locked_periods_have_zero_distribution():
-    result = _solar_equity_only_with_lockup(1.30)
+    result = _solar_equity_only_with_lockup(1.25)
     for p in result.waterfall_periods:
         if p.distribution_gate_status == DistributionGateStatus.LOCKED_DSCR_BELOW_LOCKUP:
             assert p.legal_equity_distribution_keur == 0.0, (
@@ -158,7 +158,7 @@ def test_covenant_gate_upstream_of_shl_limits_shl_receipts():
 
     Source: CF112 = H109 — FCF for SHL inherits gate-filtered FCF for distribution.
     """
-    result_tight = _solar_equity_only_with_lockup(1.30)
+    result_tight = _solar_equity_only_with_lockup(1.25)
     result_loose = _solar_equity_only_with_lockup(1.10)
     # Tight lockup → some periods have fcf_for_distribution=0 → SHL may receive less
     # At minimum: total locked cash + distributions + SHL receipts conserved from post-Senior
@@ -178,7 +178,7 @@ def test_covenant_gate_upstream_of_shl_limits_shl_receipts():
 
 def test_gate_locked_period_has_zero_fcf_for_distribution():
     """When gate locks, fcf_for_distribution = 0 (source: R109 = 0 when gate fails)."""
-    result = _solar_equity_only_with_lockup(1.30)
+    result = _solar_equity_only_with_lockup(1.25)
     for p in result.waterfall_periods:
         if p.distribution_gate_status == DistributionGateStatus.LOCKED_DSCR_BELOW_LOCKUP:
             assert abs(p.fcf_for_distribution_keur) < 1e-9, (
@@ -213,7 +213,7 @@ def test_gate_partition_holds_all_operating_periods(solar_result):
 
 def test_gate_partition_holds_tight_lockup():
     """DA invariant holds even when gate locks and DA accumulates across periods."""
-    result = _solar_equity_only_with_lockup(1.30)
+    result = _solar_equity_only_with_lockup(1.25)
     for p in result.waterfall_periods:
         if p.is_construction:
             continue
@@ -269,7 +269,7 @@ def test_cash_conservation_wind(wind_result):
 def test_cash_conservation_tight_lockup():
     """With DA model: SHL+div <= max(0, fcf_for_distribution) per period.
     DA accumulates locked cash across periods; per-period balance invariant holds."""
-    result = _solar_equity_only_with_lockup(1.30)
+    result = _solar_equity_only_with_lockup(1.25)
     for p in result.waterfall_periods:
         if p.is_construction:
             continue
@@ -341,10 +341,10 @@ def test_covenant_gate_reduces_equity_returns_when_locking():
     With DA model: total distributions may be equal (all locked cash eventually releases),
     but timing shifts later → lower PE XIRR than baseline."""
     baseline = _solar_equity_only_with_lockup(1.10)
-    locked = _solar_equity_only_with_lockup(1.30)
+    locked = _solar_equity_only_with_lockup(1.25)
     # Locked periods shift cash to later periods — DA eventually releases accumulated cash.
     # The gate must have locked at least some periods.
-    assert locked.periods_locked_by_dscr > 0, "Test requires some locked periods with 1.30 lockup"
+    assert locked.periods_locked_by_dscr > 0, "Test requires some locked periods with 1.25 lockup"
     # With delayed distributions, XIRR is degraded compared to baseline.
     if baseline.pure_equity_xirr is not None and locked.pure_equity_xirr is not None:
         assert locked.pure_equity_xirr <= baseline.pure_equity_xirr + 1e-6, (
@@ -427,7 +427,7 @@ def test_oborovo_target_dscr_and_lockup_dscr_distinct_in_source():
 
 def test_g2c_r99_monotonicity_with_looser_lockup():
     """Looser lockup → more or equal distributions (R99 weakly increases as gate relaxes)."""
-    tight = _solar_equity_only_with_lockup(1.30)
+    tight = _solar_equity_only_with_lockup(1.25)
     loose = _solar_equity_only_with_lockup(1.10)
     assert loose.total_legal_equity_distributions_keur >= tight.total_legal_equity_distributions_keur - 1e-6
 
@@ -894,14 +894,14 @@ def test_gate_fail_causes_pik_and_shl_balance_grows():
 def test_da_carry_forward_across_locked_then_open_periods():
     """Synthetic DA carry-forward test (3-period scenario).
 
-    Uses tight lockup (1.30) on equity-only solar to produce locked periods.
+    Uses tight lockup (1.25) on equity-only solar to produce locked periods.
     Proves:
       1. da_opening[t] == da_closing[t-1] for all consecutive operating periods
       2. Locked periods accumulate cash (da_closing > 0)
       3. First unlock period after locked run: da_available = da_inflow + da_opening (includes carry)
       4. Total: sum(da_release) + final_da_closing ≈ sum(da_inflow)
     """
-    result = _solar_equity_only_with_lockup(1.30)
+    result = _solar_equity_only_with_lockup(1.25)
     op = [p for p in result.waterfall_periods if not p.is_construction]
     assert len(op) >= 3, "Need at least 3 operating periods"
 
@@ -939,7 +939,7 @@ def test_da_carry_forward_across_locked_then_open_periods():
 
 def test_da_first_unlock_period_releases_accumulated_cash():
     """After a locked run, the first unlock period releases ALL accumulated DA."""
-    result = _solar_equity_only_with_lockup(1.30)
+    result = _solar_equity_only_with_lockup(1.25)
     op = [p for p in result.waterfall_periods if not p.is_construction]
 
     locked_run_end_idx = None
@@ -1081,7 +1081,7 @@ def test_gate_component_construction_false_for_operating(solar_result):
 
 def test_gate_component_dscr_true_when_locked():
     """Gate component A (DSCR < lockup) = True for locked periods."""
-    result = _solar_equity_only_with_lockup(1.30)
+    result = _solar_equity_only_with_lockup(1.25)
     locked = [
         p for p in result.waterfall_periods
         if p.distribution_gate_status == DistributionGateStatus.LOCKED_DSCR_BELOW_LOCKUP

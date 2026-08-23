@@ -251,81 +251,48 @@ class PeriodEngine:
         return periods
 
     def _cod_anchor_two_construction_column_periods(self) -> List[PeriodMeta]:
-        """Generate legacy generic periods with two construction columns.
-
-        When construction_months > 6 the normal two-column layout is used:
-          Y0-H1: [FC,  FC+6m]
-          Y0-H2: [FC+6m, COD]
-          Op P1: COD onwards
-
-        When construction_months <= 6 the second column would be zero or
-        backwards (COD <= FC+6m).  In that case only one construction column
-        is generated spanning [FC, COD], which may be zero-length when
-        construction_months == 0.  Operating periods then start from COD.
-        This prevents backwards periods from propagating into the tax-year
-        split engine.
-        """
+        """Generate legacy generic periods with two construction columns."""
         periods: List[PeriodMeta] = []
 
-        # === Y0: Construction period(s) ===
+        # === Y0: Construction period (FC to COD) ===
         y0_h1_end = self._add_months(self.fc, 6)
-        y0_h2_end = self._cod  # COD
+        y0_h2_end = self._cod
 
-        if y0_h2_end > y0_h1_end:
-            # Normal case: construction > 6 months → two construction columns.
-            days_y0h1 = self._days_between(self.fc, y0_h1_end)
-            y0_h1_is_leap = calendar.isleap(y0_h1_end.year)
-            periods.append(PeriodMeta(
-                index=0,
-                start_date=self.fc,
-                end_date=y0_h1_end,
-                year_index=0,
-                period_in_year=1,
-                is_construction=True,
-                is_operation=False,
-                is_ppa_active=False,
-                days_in_period=days_y0h1,
-                day_fraction=days_y0h1 / (366.0 if y0_h1_is_leap else 365.0),
-                is_leap_year=y0_h1_is_leap,
-            ))
-            days_y0h2 = self._days_between(y0_h1_end, y0_h2_end)
-            y0_h2_is_leap = calendar.isleap(y0_h2_end.year)
-            periods.append(PeriodMeta(
-                index=1,
-                start_date=y0_h1_end,
-                end_date=y0_h2_end,
-                year_index=0,
-                period_in_year=2,
-                is_construction=True,
-                is_operation=False,
-                is_ppa_active=False,
-                days_in_period=days_y0h2,
-                day_fraction=days_y0h2 / (366.0 if y0_h2_is_leap else 365.0),
-                is_leap_year=y0_h2_is_leap,
-            ))
-        else:
-            # Short construction (≤ 6 months): single column [FC, COD].
-            # May be zero-length when construction_months == 0.
-            actual_end = y0_h2_end  # = COD
-            days_y0h1 = self._days_between(self.fc, actual_end)
-            y0_h1_is_leap = calendar.isleap(actual_end.year)
-            periods.append(PeriodMeta(
-                index=0,
-                start_date=self.fc,
-                end_date=actual_end,
-                year_index=0,
-                period_in_year=1,
-                is_construction=True,
-                is_operation=False,
-                is_ppa_active=False,
-                days_in_period=days_y0h1,
-                day_fraction=days_y0h1 / (366.0 if y0_h1_is_leap else 365.0),
-                is_leap_year=y0_h1_is_leap,
-            ))
+        days_y0h1 = self._days_between(self.fc, y0_h1_end)
+        y0_h1_is_leap = calendar.isleap(y0_h1_end.year)
+        periods.append(PeriodMeta(
+            index=0,
+            start_date=self.fc,
+            end_date=y0_h1_end,
+            year_index=0,
+            period_in_year=1,
+            is_construction=True,
+            is_operation=False,
+            is_ppa_active=False,
+            days_in_period=days_y0h1,
+            day_fraction=days_y0h1 / (366.0 if y0_h1_is_leap else 365.0),
+            is_leap_year=y0_h1_is_leap,
+        ))
+
+        days_y0h2 = self._days_between(y0_h1_end, y0_h2_end)
+        y0_h2_is_leap = calendar.isleap(y0_h2_end.year)
+        periods.append(PeriodMeta(
+            index=1,
+            start_date=y0_h1_end,
+            end_date=y0_h2_end,
+            year_index=0,
+            period_in_year=2,
+            is_construction=True,
+            is_operation=False,
+            is_ppa_active=False,
+            days_in_period=days_y0h2,
+            day_fraction=days_y0h2 / (366.0 if y0_h2_is_leap else 365.0),
+            is_leap_year=y0_h2_is_leap,
+        ))
 
         # === Operation periods ===
         current_date = self._last_semiannual_end_on_or_after_cod()
-        period_index = len(periods)
+        period_index = 2
         year_index = 1
         period_in_year = 1
         operating_period_index = 0

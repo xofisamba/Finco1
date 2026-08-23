@@ -21,8 +21,6 @@ from finco_core.inputs.senior_rate_schedule import SeniorDebtInterestConfig
 from finco_core.inputs.senior_sculpting import SeniorSculptingConfig
 from finco_core.engine.distribution_account.inputs import CovenantGatePolicy
 
-from finco_core.inputs.construction_financing import ConstructionFinancingInput
-
 if TYPE_CHECKING:
     from finco_core.inputs.bess import BessParams
     from finco_core.opex._capability import HierarchicalOpexCapability
@@ -925,11 +923,6 @@ class FinancingParams:
     use_tuho_r99_input_engine: bool = False
     use_tuho_shl_repayment_alignment: bool = False
     tuho_shl_principal_eligibility_start_period: int | None = None
-
-    # PR-9: typed construction financing and IDC authority.
-    # None (default) → disabled; neutral pass-through. Generic Solar/Wind default to None → bit-identical to PR-8.
-    # When enabled=True: run_stage_b2() wired into G2A fixed point.
-    construction_financing: ConstructionFinancingInput | None = None
 
     @property
     def all_in_rate(self) -> float:
