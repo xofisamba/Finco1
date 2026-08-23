@@ -114,6 +114,11 @@ class ConstructionFinancingInput:
         if not isinstance(self.senior_pricing.mode, SeniorRateMode):
             raise ValueError(f"PR9_INVALID_SENIOR_RATE_MODE: {self.senior_pricing.mode!r}; must be SeniorRateMode enum")
         # HEDGE_BLEND: hedge_pct in [0,1]
+        if self.senior_pricing.mode == SeniorRateMode.FLAT_ALL_IN:
+            if self.senior_pricing.flat_all_in_rate < 0:
+                raise ValueError(
+                    f"PR9_FLAT_ALL_IN_RATE_NEGATIVE: flat_all_in_rate={self.senior_pricing.flat_all_in_rate} must be >= 0"
+                )
         if self.senior_pricing.mode == SeniorRateMode.HEDGE_BLEND:
             hp = self.senior_pricing.hedge_pct
             if not (0.0 <= hp <= 1.0):
@@ -159,6 +164,27 @@ class ConstructionFinancingInput:
             wt_sum = sum(item.payment_weights)
             if len(item.payment_weights) > 0 and abs(wt_sum - 1.0) > 1e-9:
                 raise ValueError(f"PR9_CAPEX_WEIGHTS_SUM: capex_items[{i}].payment_weights sum={wt_sum} != 1.0")
+        if self.commitment_fee is not None:
+            if self.commitment_fee.rate < 0:
+                raise ValueError(
+                    f"PR9_COMMITMENT_FEE_RATE_NEGATIVE: commitment_fee.rate={self.commitment_fee.rate} must be >= 0"
+                )
+        if self.structuring_fee is not None:
+            if self.structuring_fee.rate < 0:
+                raise ValueError(
+                    f"PR9_STRUCTURING_FEE_RATE_NEGATIVE: structuring_fee.rate={self.structuring_fee.rate} must be >= 0"
+                )
+            if self.structuring_fee.basis_keur < 0:
+                raise ValueError(
+                    f"PR9_STRUCTURING_FEE_BASIS_NEGATIVE: structuring_fee.basis_keur={self.structuring_fee.basis_keur} must be >= 0"
+                )
+        # Periods in chronological order (consecutive non-overlapping)
+        for i in range(1, len(self.periods)):
+            if self.periods[i].start_date != self.periods[i - 1].end_date:
+                raise ValueError(
+                    f"PR9_PERIODS_NOT_CONSECUTIVE: periods[{i-1}].end_date={self.periods[i-1].end_date} "
+                    f"!= periods[{i}].start_date={self.periods[i].start_date}"
+                )
         if self.structuring_fee is not None and self.structuring_fee.payment_weights:
             sf_weights = self.structuring_fee.payment_weights
             if len(sf_weights) != n:

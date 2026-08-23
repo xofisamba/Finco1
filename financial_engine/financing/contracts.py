@@ -93,6 +93,16 @@ class ConstructionFinancingResult:
     outer_residual_keur: float
     stage_b2_iterations: int
     stage_b2_residual_keur: float
+    # Source period vectors from canonical allocator (all None-safe tuples)
+    share_capital_draws_keur: tuple[float, ...] = ()
+    share_premium_draws_keur: tuple[float, ...] = ()
+    other_committed_equity_draws_keur: tuple[float, ...] = ()
+    additional_equity_draws_keur: tuple[float, ...] = ()
+    junior_draws_keur: tuple[float, ...] = ()
+    # Per-period sources-uses residuals
+    period_sources_uses_residual_keur: tuple[float, ...] = ()
+    maximum_period_residual_keur: float = 0.0
+    maximum_cumulative_residual_keur: float = 0.0
     # Authority token
     authority: str = "PR9_TYPED_CONSTRUCTION_FINANCING_IDC_AUTHORITY"
 

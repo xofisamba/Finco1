@@ -97,6 +97,28 @@ def _run_with_construction_idc(
             "Clear those fields when using typed construction authority."
         )
 
+    # VAT facility fail-closed: any VAT inputs raise immediately.
+    if any(getattr(p, "vat_facility_active", False) for p in cf.periods):
+        raise ValueError(
+            "PR9_VAT_FACILITY_DEFERRED: one or more ConstructionPeriodSpec has vat_facility_active=True. "
+            "VAT facility is not supported in PR-9."
+        )
+    if getattr(orig_capex, "vat_costs_keur", 0.0) != 0:
+        raise ValueError(
+            f"PR9_VAT_FACILITY_DEFERRED: orig_capex.vat_costs_keur={getattr(orig_capex, 'vat_costs_keur', 0.0)} != 0. "
+            "VAT facility is not supported in PR-9."
+        )
+    if getattr(orig_capex, "vat_facility_idc_keur", 0.0) != 0:
+        raise ValueError(
+            f"PR9_VAT_FACILITY_DEFERRED: orig_capex.vat_facility_idc_keur={getattr(orig_capex, 'vat_facility_idc_keur', 0.0)} != 0. "
+            "VAT facility is not supported in PR-9."
+        )
+    if getattr(orig_capex, "vat_facility_commitment_fee_keur", 0.0) != 0:
+        raise ValueError(
+            f"PR9_VAT_FACILITY_DEFERRED: orig_capex.vat_facility_commitment_fee_keur={getattr(orig_capex, 'vat_facility_commitment_fee_keur', 0.0)} != 0. "
+            "VAT facility is not supported in PR-9."
+        )
+
     # Resolve CAPEX amounts from canonical CapexStructure.
     # Construction timing inputs own payment_weights; amounts come from ProjectInputs.capex.
     capex_amounts: dict[str, float] = {}
@@ -300,8 +322,27 @@ def _run_with_construction_idc(
             senior_commitment_keur=inner_result.final_senior_commitment_keur,
         )
         shl_alloc = tuple(a.shl_draw_keur for a in _canonical_alloc)
+        _share_capital_draws = tuple(a.share_capital_draw_keur for a in _canonical_alloc)
+        _share_premium_draws = tuple(a.share_premium_draw_keur for a in _canonical_alloc)
+        _other_committed_draws = tuple(a.other_committed_equity_draw_keur for a in _canonical_alloc)
+        _additional_equity_draws = tuple(a.additional_equity_draw_keur for a in _canonical_alloc)
+        _junior_draws = tuple(a.junior_draw_keur for a in _canonical_alloc)
+        _period_residuals = tuple(a.residual_keur for a in _canonical_alloc)
+        _cumul_residuals = tuple(
+            sum(_period_residuals[:i+1]) for i in range(len(_period_residuals))
+        )
+        _max_period_residual = max(abs(r) for r in _period_residuals) if _period_residuals else 0.0
+        _max_cumul_residual = max(abs(c) for c in _cumul_residuals) if _cumul_residuals else 0.0
     else:
         shl_alloc = ()
+        _share_capital_draws = ()
+        _share_premium_draws = ()
+        _other_committed_draws = ()
+        _additional_equity_draws = ()
+        _junior_draws = ()
+        _period_residuals = ()
+        _max_period_residual = 0.0
+        _max_cumul_residual = 0.0
 
     # Period dates from construction financing spec
     period_starts = tuple(p.start_date for p in cf.periods[:n])
@@ -331,6 +372,14 @@ def _run_with_construction_idc(
         structuring_fee_keur=struct_per_period,
         shl_allocation_keur=shl_alloc,
         shl_cash_contribution_keur=shl_alloc,  # PRO_RATA: allocation == contribution
+        share_capital_draws_keur=_share_capital_draws,
+        share_premium_draws_keur=_share_premium_draws,
+        other_committed_equity_draws_keur=_other_committed_draws,
+        additional_equity_draws_keur=_additional_equity_draws,
+        junior_draws_keur=_junior_draws,
+        period_sources_uses_residual_keur=_period_residuals,
+        maximum_period_residual_keur=_max_period_residual,
+        maximum_cumulative_residual_keur=_max_cumul_residual,
         total_capitalized_financing_keur=b2.capitalized_financing_costs.total_keur,
         shl_construction_pik_keur=inner_result.shl_construction_pik_keur,
         opening_operating_shl_keur=inner_result.opening_operating_shl_balance_keur,
