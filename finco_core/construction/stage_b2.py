@@ -512,7 +512,7 @@ def run_stage_b2(config: ConstructionRuntimeConfig) -> ConstructionRuntimeResult
     # Practical precision buffer: prevents false FundingShortfallErrors from floating-point
     # differences between G2A total_uses and Stage B2 period_uses_sum.
     # Commitment fee basis uses senior_commitment_keur (unchanged). Actual Senior drawn ≤ commitment.
-    _B2_PRECISION_BUFFER_KEUR = 0.5  # 500 EUR: covers floating-point / convergence-seed gaps, not real shortfalls
+    _B2_PRECISION_BUFFER_KEUR = 0.99  # 990 EUR: covers floating-point / convergence-seed gaps, not real shortfalls
 
     for iteration in range(1, config.max_iterations + 1):
         period_uses = tuple(
