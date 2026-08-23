@@ -221,10 +221,15 @@ def resolve_capex_amounts_from_capex_structure(
     capex_structure: CapexStructure instance with field names matching item.code values.
     """
     amounts: dict[str, float] = {}
+    missing = object()
     for item in capex_items:
-        field_val = getattr(capex_structure, item.code, None)
-        if field_val is not None:
-            amounts[item.code] = float(getattr(field_val, "amount_keur", field_val))
-        else:
-            amounts[item.code] = 0.0
+        field_val = getattr(capex_structure, item.code, missing)
+        if field_val is missing:
+            raise ValueError(f"PR9_CAPEX_AMOUNT_MISSING: {item.code!r}")
+        amounts[item.code] = require_finite_real(
+            f"capex_structure.{item.code}",
+            getattr(field_val, "amount_keur", field_val),
+            minimum=0.0,
+            error_code="PR9_INVALID_CAPEX_AMOUNT",
+        )
     return amounts

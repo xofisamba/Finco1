@@ -925,7 +925,9 @@ class TestPR9EndToEndConstructionFinancing:
 class TestCAPEXAuthorityNegative:
     """Negative tests for PR9 CAPEX authority validation (Fix 1)."""
 
-    def _solar_pi_with_cf(self, capex_items, n_periods=6):
+    def _solar_pi_with_cf(
+        self, capex_items, n_periods=6, convergence_tolerance_keur=1e-6
+    ):
         """Build Solar ProjectInputs with construction_financing overriding capex_items."""
         import dataclasses
         from app.project_factories import create_default_solar_project
@@ -946,6 +948,7 @@ class TestCAPEXAuthorityNegative:
             senior_pricing=ConstructionSeniorPricingInput(
                 mode=SeniorRateMode.FLAT_ALL_IN, flat_all_in_rate=0.055,
             ),
+            convergence_tolerance_keur=convergence_tolerance_keur,
         )
         return dataclasses.replace(pi, financing=dataclasses.replace(pi.financing, construction_financing=cf))
 
@@ -1010,6 +1013,134 @@ class TestCAPEXAuthorityNegative:
         pi = self._solar_pi_with_cf(capex_items, n_periods=n)
         with pytest.raises(ValueError, match="PR9_CONSTRUCTION_CAPEX_AUTHORITY_MISMATCH"):
             run_project_financing_model(pi)
+
+    @pytest.mark.parametrize("solver_tolerance", (1e-9, 1e-3, 0.1, 1.0))
+    def test_omitted_half_keur_capex_fails_independently_of_solver_tolerance(
+        self, solver_tolerance
+    ):
+        import dataclasses
+        from app.project_factories import create_default_solar_project
+        from financial_engine.financing import run_project_financing_model
+
+        base = create_default_solar_project()
+        n = 6
+        weights = (1.0 / n,) * n
+        items = tuple(
+            ConstructionCapexTimingInput(code, code, weights)
+            for code in base.capex._CAPEX_ITEM_FIELDS
+            if code != "ops_prep"
+        )
+        project = self._solar_pi_with_cf(
+            items,
+            n_periods=n,
+            convergence_tolerance_keur=solver_tolerance,
+        )
+        project = dataclasses.replace(
+            project,
+            capex=dataclasses.replace(
+                project.capex,
+                ops_prep=dataclasses.replace(
+                    project.capex.ops_prep, amount_keur=0.5
+                ),
+            ),
+        )
+
+        with pytest.raises(
+            ValueError, match="PR9_CONSTRUCTION_CAPEX_AUTHORITY_MISMATCH"
+        ):
+            run_project_financing_model(project)
+
+    @pytest.mark.parametrize("solver_tolerance", (1e-9, 1e-3, 0.1, 1.0))
+    def test_half_keur_total_mismatch_fails_independently_of_solver_tolerance(
+        self, solver_tolerance
+    ):
+        import dataclasses
+        from app.project_factories import create_default_solar_project
+        from financial_engine.financing import run_project_financing_model
+
+        base = create_default_solar_project()
+        n = 6
+        weights = (1.0 / n,) * n
+        items = tuple(
+            ConstructionCapexTimingInput(code, code, weights)
+            for code in (*base.capex._CAPEX_ITEM_FIELDS, "other_financial_keur")
+        )
+        project = self._solar_pi_with_cf(
+            items,
+            n_periods=n,
+            convergence_tolerance_keur=solver_tolerance,
+        )
+        project = dataclasses.replace(
+            project,
+            capex=dataclasses.replace(project.capex, other_financial_keur=0.5),
+        )
+
+        with pytest.raises(
+            ValueError, match="PR9_CONSTRUCTION_CAPEX_AUTHORITY_MISMATCH"
+        ):
+            run_project_financing_model(project)
+
+    @pytest.mark.parametrize("solver_tolerance", (1e-9, 1e-3, 0.1, 1.0))
+    def test_exact_capex_authority_passes_independently_of_solver_tolerance(
+        self, solver_tolerance
+    ):
+        from app.project_factories import create_default_solar_project
+        from financial_engine.financing import run_project_financing_model
+
+        base = create_default_solar_project()
+        n = 6
+        weights = (1.0 / n,) * n
+        items = tuple(
+            ConstructionCapexTimingInput(code, code, weights)
+            for code in base.capex._CAPEX_ITEM_FIELDS
+            if getattr(base.capex, code).amount_keur != 0.0
+        )
+        project = self._solar_pi_with_cf(
+            items,
+            n_periods=n,
+            convergence_tolerance_keur=solver_tolerance,
+        )
+
+        assert run_project_financing_model(project).construction_financing is not None
+
+    def test_capex_authority_has_fixed_tolerance_not_solver_tolerance(self):
+        import inspect
+        import financial_engine.financing.project as project_module
+
+        assert project_module.PR9_CAPEX_AUTHORITY_TOLERANCE_KEUR == 1e-6
+        source = inspect.getsource(project_module._run_with_construction_idc)
+        authority_block = source.split(
+            "# Validate: no omitted non-zero canonical CAPEX fields", 1
+        )[1].split("# PR9_SHL_TIMELINE_AUTHORITY", 1)[0]
+        assert "PR9_CAPEX_AUTHORITY_TOLERANCE_KEUR" in authority_block
+        assert "outer_tolerance_keur" not in authority_block
+
+    def test_omitted_nonfinite_canonical_capex_cannot_bypass_completeness(self):
+        import dataclasses
+        from app.project_factories import create_default_solar_project
+        from financial_engine.financing import run_project_financing_model
+
+        base = create_default_solar_project()
+        n = 6
+        weights = (1.0 / n,) * n
+        items = tuple(
+            ConstructionCapexTimingInput(code, code, weights)
+            for code in base.capex._CAPEX_ITEM_FIELDS
+            if code != "ops_prep" and getattr(base.capex, code).amount_keur != 0.0
+        )
+        project = self._solar_pi_with_cf(items, n_periods=n)
+        project = dataclasses.replace(
+            project,
+            capex=dataclasses.replace(
+                project.capex,
+                ops_prep=dataclasses.replace(
+                    project.capex.ops_prep, amount_keur=float("nan")
+                ),
+            ),
+        )
+
+        with pytest.raises(ValueError, match="PR9_INVALID_CAPEX_AMOUNT"):
+            run_project_financing_model(project)
 
 
 # ---------------------------------------------------------------------------
@@ -4435,6 +4566,42 @@ class TestPR9FinalFreezeValidation:
                 construction, 1000.0, 0.0, 0.0, capex_amounts_keur=amounts
             )
 
+    @pytest.mark.parametrize(
+        "amount", (True, "0.0", float("nan"), float("inf"), float("-inf"), -1.0)
+    )
+    def test_capex_structure_resolver_fails_closed_on_invalid_amount(self, amount):
+        from types import SimpleNamespace
+        from financial_engine.construction.adapter import (
+            resolve_capex_amounts_from_capex_structure,
+        )
+        from finco_core.inputs.construction_financing import ConstructionCapexTimingInput
+
+        item = ConstructionCapexTimingInput("epc_contract", "EPC", (0.5, 0.5))
+        capex = SimpleNamespace(
+            epc_contract=SimpleNamespace(amount_keur=amount)
+        )
+        with pytest.raises(ValueError, match="PR9_INVALID_CAPEX_AMOUNT"):
+            resolve_capex_amounts_from_capex_structure((item,), capex)
+
+    def test_capex_structure_resolver_distinguishes_zero_from_missing(self):
+        import inspect
+        from types import SimpleNamespace
+        import financial_engine.construction.adapter as adapter_module
+        from finco_core.inputs.construction_financing import ConstructionCapexTimingInput
+
+        item = ConstructionCapexTimingInput("epc_contract", "EPC", (0.5, 0.5))
+        with pytest.raises(ValueError, match="PR9_CAPEX_AMOUNT_MISSING"):
+            adapter_module.resolve_capex_amounts_from_capex_structure(
+                (item,), SimpleNamespace()
+            )
+        assert adapter_module.resolve_capex_amounts_from_capex_structure(
+            (item,), SimpleNamespace(epc_contract=SimpleNamespace(amount_keur=0.0))
+        ) == {"epc_contract": 0.0}
+        source = inspect.getsource(
+            adapter_module.resolve_capex_amounts_from_capex_structure
+        )
+        assert "amounts[item.code] = 0.0" not in source
+
     @pytest.mark.parametrize("amount", (float("nan"), float("inf"), -1.0, True))
     def test_adapter_capex_amount_grid_fails_closed(self, amount):
         from financial_engine.construction.adapter import build_construction_runtime_config
@@ -4539,6 +4706,33 @@ class TestPR9FinalFreezeValidation:
         for attack in attacks:
             with pytest.raises(ValueError, match="STAGE_B2_INVALID_NUMERIC"):
                 run_stage_b2(attack)
+
+    def test_composed_all_in_rate_overflow_fails_closed_at_both_boundaries(self):
+        import dataclasses
+        from financial_engine.construction.adapter import build_construction_runtime_config
+        from finco_core.construction.stage_b2 import run_stage_b2
+        from finco_core.inputs.construction_financing import ConstructionSeniorPricingInput
+
+        with pytest.raises(ValueError, match="PR9_INVALID_SENIOR_ALL_IN_RATE"):
+            ConstructionSeniorPricingInput(
+                mode=SeniorRateMode.FIXED_PLUS_MARGIN,
+                fixed_base_rate=1e308,
+                margin_rate=1e308,
+            )
+
+        construction = self._valid_input()
+        amounts = {item.code: 100.0 for item in construction.capex_items}
+        config = build_construction_runtime_config(
+            construction, 1000.0, 0.0, 0.0, capex_amounts_keur=amounts
+        )
+        overflow = dataclasses.replace(
+            config,
+            senior_interest_rate=0.0,
+            external_curve_buffer=1e308,
+            euribor_1m_fixings=(1e308, 1e308),
+        )
+        with pytest.raises(ValueError, match="STAGE_B2_INVALID_ALL_IN_RATE"):
+            run_stage_b2(overflow)
 
     def test_production_cash_dsra_residual_enters_at_cod_only_for_pro_rata(self):
         import dataclasses

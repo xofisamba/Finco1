@@ -503,7 +503,12 @@ def _period_rates(config: ConstructionRuntimeConfig, n_periods: int = 12) -> tup
     else:
         rates = (config.senior_interest_rate,) * n_periods
     for index, rate in enumerate(rates):
-        if rate < 0.0:
+        resolved_rate = require_finite_real(
+            f"senior all-in rate[{index}]",
+            rate,
+            error_code="STAGE_B2_INVALID_ALL_IN_RATE",
+        )
+        if resolved_rate < 0.0:
             raise ValueError(
                 f"STAGE_B2_NEGATIVE_ALL_IN_RATE: senior rate[{index}]={rate!r} must be >= 0"
             )

@@ -7,6 +7,7 @@ import math
 from numbers import Real
 
 from finco_core.inputs import GearingBasisMode, ProjectInputs, SponsorFundingMode
+from finco_core._numeric import require_finite_real
 from financial_engine.adapters.project_inputs import (
     build_senior_debt_model_input_from_project_inputs,
     _coerce_shl_day_count,
@@ -40,6 +41,10 @@ from financial_engine.shl.day_count import compute_shl_dcf
 # Dimensionless comparison tolerance for typed-date DCF authority. Financial
 # convergence tolerances are denominated in kEUR and must never participate.
 SHL_DCF_AUTHORITY_TOLERANCE = 1e-9
+
+# Fixed kEUR equality tolerance for canonical CAPEX authority. Solver
+# convergence tolerance must never decide whether a CAPEX input exists.
+PR9_CAPEX_AUTHORITY_TOLERANCE_KEUR = 1e-6
 
 # Construction SHL accrual semantics (Fix 3):
 #
@@ -307,6 +312,7 @@ def _run_with_construction_idc(
     )
     from financial_engine.construction.adapter import (
         build_construction_runtime_config,
+        resolve_capex_amounts_from_capex_structure,
     )
 
     fin = project_inputs.financing
@@ -351,15 +357,9 @@ def _run_with_construction_idc(
 
     # Resolve CAPEX amounts from canonical CapexStructure.
     # Construction timing inputs own payment_weights; amounts come from ProjectInputs.capex.
-    capex_amounts: dict[str, float] = {}
-    for item in cf.capex_items:
-        val = getattr(orig_capex, item.code, None)
-        if val is None:
-            raise ValueError(
-                f"PR9_CONSTRUCTION_CAPEX_AUTHORITY_MISMATCH: "
-                f"construction capex_item.code='{item.code}' not found in ProjectInputs.capex"
-            )
-        capex_amounts[item.code] = float(getattr(val, "amount_keur", val))
+    capex_amounts = resolve_capex_amounts_from_capex_structure(
+        cf.capex_items, orig_capex
+    )
 
     # Fix 1: validate CAPEX authority using the correct property name.
     canonical_hard_capex = orig_capex.hard_capex_keur
@@ -380,8 +380,16 @@ def _run_with_construction_idc(
         field_val = getattr(orig_capex, field_code, None)
         if field_val is None:
             continue
-        field_amount = float(getattr(field_val, "amount_keur", 0.0))
-        if field_amount > outer_tolerance_keur and field_code not in capex_amounts:
+        field_amount = require_finite_real(
+            f"ProjectInputs.capex.{field_code}",
+            getattr(field_val, "amount_keur", field_val),
+            minimum=0.0,
+            error_code="PR9_INVALID_CAPEX_AMOUNT",
+        )
+        if (
+            field_amount > PR9_CAPEX_AUTHORITY_TOLERANCE_KEUR
+            and field_code not in capex_amounts
+        ):
             raise ValueError(
                 f"PR9_CONSTRUCTION_CAPEX_AUTHORITY_MISMATCH: "
                 f"non-zero canonical CAPEX field '{field_code}' (amount={field_amount:.6f} kEUR) "
@@ -389,7 +397,10 @@ def _run_with_construction_idc(
             )
 
     # Validate: empty capex_items when canonical hard CAPEX > 0
-    if not cf.capex_items and canonical_hard_capex > outer_tolerance_keur:
+    if (
+        not cf.capex_items
+        and canonical_hard_capex > PR9_CAPEX_AUTHORITY_TOLERANCE_KEUR
+    ):
         raise ValueError(
             f"PR9_CONSTRUCTION_CAPEX_AUTHORITY_MISMATCH: "
             f"capex_items is empty but canonical hard CAPEX = {canonical_hard_capex:.6f} kEUR"
@@ -397,7 +408,10 @@ def _run_with_construction_idc(
 
     # Validate: totals match canonical hard_capex_keur
     construction_total = sum(capex_amounts.values())
-    if abs(construction_total - canonical_hard_capex) > outer_tolerance_keur:
+    if (
+        abs(construction_total - canonical_hard_capex)
+        > PR9_CAPEX_AUTHORITY_TOLERANCE_KEUR
+    ):
         raise ValueError(
             f"PR9_CONSTRUCTION_CAPEX_AUTHORITY_MISMATCH: "
             f"construction items total {construction_total:.6f} kEUR != "

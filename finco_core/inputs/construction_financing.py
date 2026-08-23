@@ -33,7 +33,10 @@ def _validate_weights(name: str, values: tuple[float, ...]) -> None:
 
 
 def _require_non_negative_all_in(name: str, value: float) -> None:
-    if value < 0.0:
+    resolved = require_finite_real(
+        name, value, error_code="PR9_INVALID_SENIOR_ALL_IN_RATE"
+    )
+    if resolved < 0.0:
         raise ValueError(f"PR9_INVALID_SENIOR_ALL_IN_RATE: {name}={value!r} must be >= 0")
 
 
