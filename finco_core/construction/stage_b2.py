@@ -153,6 +153,35 @@ class ConstructionRuntimeResult:
     residual_audit: tuple[VectorResidualAudit, ...]
 
 
+@dataclass(frozen=True)
+class ProvisionalStageB2Result:
+    """Provisional Stage B2 result for outer-loop intermediate iterations.
+
+    NOT FINAL: unfunded_uses_keur may be > 0 when Senior is not yet fully
+    sized (outer-state-lag Classification B). This result MUST NOT be returned
+    to a normal production caller as a ConstructionRuntimeResult.
+
+    unfunded_uses_keur:
+    - is diagnostic state only
+    - does NOT increase Senior, SHL, or any other source
+    - does NOT earn Senior IDC
+    - does NOT affect commitment-fee basis
+    - must be >= 0 and finite
+
+    The outer G2A fixed point must drive unfunded_uses_keur to zero at final
+    convergence, then call strict run_stage_b2() for the ConstructionRuntimeResult.
+    """
+    authority: str  # "PR9_STAGE_B2_PROVISIONAL_OUTER_LOOP_INTERMEDIATE"
+    provisional_senior_period_draw_keur: tuple[float, ...]
+    actual_senior_commitment_keur: float
+    total_provisional_funded_sources_keur: float
+    total_construction_uses_keur: float
+    unfunded_uses_keur: float  # >= 0; diagnostic; NOT a funding source
+    capitalized_financing_costs: CapitalizedFinancingCosts
+    iterations: int
+    final_residual_keur: float
+
+
 def _n_from_schedule(capex_schedule: CapexScheduleSet) -> int:
     """Derive construction period count from the first CAPEX item's payment_weights."""
     if not capex_schedule.items:
@@ -465,24 +494,30 @@ def _waterfall_senior_draws(
     return tuple(senior_draws)
 
 
-def run_stage_b2(config: ConstructionRuntimeConfig) -> ConstructionRuntimeResult:
-    """Run canonical iterative construction Stage B2 from source inputs.
+def _run_stage_b2_inner(
+    config: ConstructionRuntimeConfig,
+    provisional: bool,
+) -> tuple:
+    """Shared inner computation for both strict and provisional Stage B2.
 
-    Circular Senior IDC and commitment fees are seeded, funded as period uses,
-    recalculated from opening drawn/undrawn balances, and iterated until period
-    vectors converge.  Validation/output targets are intentionally absent from
-    ConstructionRuntimeConfig and are not used here.
+    Returns a tuple of all intermediate and final values needed by the
+    two public entry points. The `provisional` flag controls whether
+    the allocator raises on shortfall (False = strict) or returns
+    unfunded residual (True = provisional).
+
+    PR9_CANONICAL_LAYER_A_ALLOCATOR_SINGLE_AUTHORITY: both paths use
+    allocate_construction_sources_provisional (core) for IDC iteration,
+    then the strict path does a final allocate_construction_sources_per_period.
     """
+    from finco_core.construction.allocator import (
+        allocate_construction_sources_per_period,
+        allocate_construction_sources_provisional,
+    )
+
     hard_capex = monthly_hard_capex(config.capex_schedule)
     vat_payable = vat_monthly_uses(config.capex_schedule)
-    # n_periods = CAPEX period count (from schedule). Timeline may be longer (VAT runoff).
     n_periods = len(hard_capex) if hard_capex else len(config.timeline)
-    _validate_capex_timeline(
-        hard_capex,
-        vat_payable,
-        config.timeline,
-        config.convergence_tolerance_keur,
-    )
+    _validate_capex_timeline(hard_capex, vat_payable, config.timeline, config.convergence_tolerance_keur)
     vat_schedule = compute_vat_schedule(
         vat_payable,
         vat_facility_commitment_keur=config.vat_facility_commitment_keur,
@@ -503,52 +538,33 @@ def run_stage_b2(config: ConstructionRuntimeConfig) -> ConstructionRuntimeResult
     vat_financing_uses = _pad_n(config.initial_vat_financing_funded_uses_keur, n_periods)
     residual = float("inf")
     audit: tuple[VectorResidualAudit, ...] = ()
-    senior_period_draws = (0.0,) * n_periods
+    senior_period_draws: tuple[float, ...] = (0.0,) * n_periods
     senior_idc_total = 0.0
     senior_fee_total = 0.0
     vat_idc = 0.0
     vat_fee = 0.0
-    from finco_core.construction.allocator import allocate_construction_sources_per_period
-    # PR9_ACTUAL_SENIOR_FACILITY_CAP: no buffer added to senior_commitment_keur.
-    # During inner iterations, outer-fixed-point state lag may cause total period_uses to
-    # transiently exceed total sources. We handle this by capping Senior at its exact
-    # commitment and tracking _iter_unfunded_keur. Unfunded uses do NOT earn IDC and are NOT
-    # a funding source. The outer loop corrects the sizing; final converged state must have
-    # zero unfunded uses (enforced by the strict canonical allocator call after convergence).
-    _ITER_WATERFALL = [
-        ("share_capital", config.equity_available_keur),
-        ("share_premium", config.share_premium_keur),
-        ("other_committed_equity", config.other_committed_equity_keur),
-        ("additional_equity", config.additional_equity_keur),
-        ("shl", config.shl_available_keur),
-        ("junior", config.junior_keur),
-        ("senior", config.senior_commitment_keur),  # EXACT — no buffer
-    ]
+    iter_unfunded_keur = 0.0
 
     for iteration in range(1, config.max_iterations + 1):
         period_uses = tuple(
             hard_capex[idx] + structuring[idx] + senior_idc_uses[idx] + senior_fee_uses[idx] + vat_financing_uses[idx]
             for idx in range(n_periods)
         )
-        # Per-period waterfall with exact source caps; track unfunded residual.
-        _rem = {k: v for k, v in _ITER_WATERFALL}
-        _iter_senior_draws: list[float] = []
-        _iter_unfunded_keur: float = 0.0
-        for _p_uses in period_uses:
-            _need = _p_uses
-            _p_senior = 0.0
-            for _src, _ in _ITER_WATERFALL:
-                _draw = min(_rem[_src], _need)
-                _rem[_src] -= _draw
-                _need -= _draw
-                if _src == "senior":
-                    _p_senior = _draw
-                if _need <= 0.0:
-                    break
-            _iter_senior_draws.append(_p_senior)
-            if _need > config.convergence_tolerance_keur:
-                _iter_unfunded_keur += _need
-        senior_period_draws = tuple(_iter_senior_draws)
+        # Use provisional allocator for IDC iteration — does not raise on shortfall.
+        # unfunded_uses_keur is diagnostic only and does NOT earn IDC.
+        # PR9_ACTUAL_SENIOR_FACILITY_CAP: senior_commitment_keur is EXACT — no buffer.
+        _alloc_iter, iter_unfunded_keur = allocate_construction_sources_provisional(
+            period_uses=period_uses,
+            share_capital_keur=config.equity_available_keur,
+            share_premium_keur=config.share_premium_keur,
+            other_committed_equity_keur=config.other_committed_equity_keur,
+            additional_equity_keur=config.additional_equity_keur,
+            shl_cash_keur=config.shl_available_keur,
+            junior_keur=config.junior_keur,
+            senior_commitment_keur=config.senior_commitment_keur,
+            tolerance_keur=config.convergence_tolerance_keur,
+        )
+        senior_period_draws = tuple(a.senior_draw_keur for a in _alloc_iter)
 
         idc_calc, fee_calc = _senior_financing_accruals(config, senior_period_draws, senior_rates)
 
@@ -588,9 +604,6 @@ def run_stage_b2(config: ConstructionRuntimeConfig) -> ConstructionRuntimeResult
         senior_idc_uses = new_idc_uses
         senior_fee_uses = new_fee_uses
         vat_financing_uses = new_vat_financing_uses
-        # Convergence on IDC/fees vectors only.
-        # _iter_unfunded_keur tracks outer-state-lag shortfall but is NOT part of inner convergence:
-        # the shortfall is resolved by the outer G2A loop re-sizing Senior across outer iterations.
         if residual <= config.convergence_tolerance_keur:
             break
     else:
@@ -599,40 +612,10 @@ def run_stage_b2(config: ConstructionRuntimeConfig) -> ConstructionRuntimeResult
             f"final residual={residual:.12f} kEUR"
         )
 
-    # Compute converged period_uses for final output and Senior draw recomputation.
+    # Converged period_uses (with final IDC/fee vectors).
     period_uses = tuple(
         hard_capex[idx] + structuring[idx] + senior_idc_uses[idx] + senior_fee_uses[idx] + vat_financing_uses[idx]
         for idx in range(n_periods)
-    )
-    # Recompute Senior draws from converged period_uses with exact Senior commitment.
-    # This is a per-period waterfall — no canonical allocator call here; the strict canonical
-    # allocator lives in the outer G2A fixed point (project.py) after outer convergence.
-    # PR9_ACTUAL_SENIOR_FACILITY_CAP: no capacity check here.
-    # Stage B2 converges IDC/fees; the outer G2A fixed point (project.py) enforces
-    # the strict funding gate via allocate_construction_sources_per_period after convergence.
-    _final_rem = {k: v for k, v in _ITER_WATERFALL}
-    _final_senior_draws: list[float] = []
-    for _p_uses in period_uses:
-        _need = _p_uses
-        _p_senior = 0.0
-        for _src, _ in _ITER_WATERFALL:
-            _draw = min(_final_rem[_src], _need)
-            _final_rem[_src] -= _draw
-            _need -= _draw
-            if _src == "senior":
-                _p_senior = _draw
-            if _need <= 0.0:
-                break
-        _final_senior_draws.append(_p_senior)
-    _alloc_final_draws = tuple(_final_senior_draws)
-    senior_period_draws = _alloc_final_draws
-    cumulative_senior: list[float] = []
-    running = 0.0
-    for draw in senior_period_draws:
-        running += draw
-        cumulative_senior.append(running)
-    senior_idc_accruals, senior_fee_accruals = _senior_financing_accruals(
-        config, senior_period_draws, senior_rates
     )
 
     financing = CapitalizedFinancingCosts(
@@ -642,7 +625,80 @@ def run_stage_b2(config: ConstructionRuntimeConfig) -> ConstructionRuntimeResult
         vat_idc_keur=vat_idc,
         vat_commitment_fee_keur=vat_fee,
     )
-    closing_senior = cumulative_senior[-1]
+
+    if not provisional:
+        # Strict path: final canonical allocation — raises FundingShortfallError on shortfall.
+        # PR9_ACTUAL_SENIOR_FACILITY_CAP: uses exact senior_commitment_keur, no buffer.
+        try:
+            _alloc_final = allocate_construction_sources_per_period(
+                period_uses=period_uses,
+                share_capital_keur=config.equity_available_keur,
+                share_premium_keur=config.share_premium_keur,
+                other_committed_equity_keur=config.other_committed_equity_keur,
+                additional_equity_keur=config.additional_equity_keur,
+                shl_cash_keur=config.shl_available_keur,
+                junior_keur=config.junior_keur,
+                senior_commitment_keur=config.senior_commitment_keur,
+                tolerance_keur=config.convergence_tolerance_keur,
+            )
+        except ValueError as exc:
+            raise FundingShortfallError(str(exc)) from exc
+        senior_period_draws = tuple(a.senior_draw_keur for a in _alloc_final)
+        final_unfunded = 0.0
+    else:
+        # Provisional path: derive final draws without raising.
+        _alloc_final_prov, final_unfunded = allocate_construction_sources_provisional(
+            period_uses=period_uses,
+            share_capital_keur=config.equity_available_keur,
+            share_premium_keur=config.share_premium_keur,
+            other_committed_equity_keur=config.other_committed_equity_keur,
+            additional_equity_keur=config.additional_equity_keur,
+            shl_cash_keur=config.shl_available_keur,
+            junior_keur=config.junior_keur,
+            senior_commitment_keur=config.senior_commitment_keur,
+            tolerance_keur=config.convergence_tolerance_keur,
+        )
+        senior_period_draws = tuple(a.senior_draw_keur for a in _alloc_final_prov)
+
+    cumulative_senior: list[float] = []
+    running = 0.0
+    for draw in senior_period_draws:
+        running += draw
+        cumulative_senior.append(running)
+    senior_idc_accruals, senior_fee_accruals = _senior_financing_accruals(
+        config, senior_period_draws, senior_rates
+    )
+    closing_senior = cumulative_senior[-1] if cumulative_senior else 0.0
+
+    return (
+        hard_capex, vat_payable, vat_schedule,
+        senior_idc_accruals, senior_fee_accruals,
+        tuple(cumulative_senior), senior_period_draws,
+        period_uses, financing, closing_senior,
+        iteration, residual, audit, final_unfunded,
+    )
+
+
+def run_stage_b2(config: ConstructionRuntimeConfig) -> ConstructionRuntimeResult:
+    """Run canonical strict Stage B2.
+
+    IDC/fee circular references converge via provisional inner allocations.
+    Final post-convergence allocation is strict: raises FundingShortfallError
+    if construction Sources < construction Uses after convergence.
+
+    A normal returned ConstructionRuntimeResult guarantees:
+    - IDC/fee fixed point converged
+    - actual Sources fund actual construction Uses
+    - Senior draw <= actual Senior commitment (no buffer)
+    """
+    (
+        hard_capex, vat_payable, vat_schedule,
+        senior_idc_accruals, senior_fee_accruals,
+        cumulative_senior, senior_period_draws,
+        period_uses, financing, closing_senior,
+        iteration, residual, audit, _unfunded,
+    ) = _run_stage_b2_inner(config, provisional=False)
+
     return ConstructionRuntimeResult(
         config=config,
         monthly_hard_capex_keur=hard_capex,
@@ -650,7 +706,7 @@ def run_stage_b2(config: ConstructionRuntimeConfig) -> ConstructionRuntimeResult
         vat_schedule=vat_schedule,
         senior_idc_accrual_keur=senior_idc_accruals,
         senior_commitment_fee_accrual_keur=senior_fee_accruals,
-        cumulative_senior_draw_keur=tuple(cumulative_senior),
+        cumulative_senior_draw_keur=cumulative_senior,
         senior_period_draw_keur=senior_period_draws,
         total_permanent_uses_keur=period_uses,
         capitalized_financing_costs=financing,
@@ -660,6 +716,45 @@ def run_stage_b2(config: ConstructionRuntimeConfig) -> ConstructionRuntimeResult
         iterations=iteration,
         final_residual_keur=residual,
         residual_audit=audit,
+    )
+
+
+def run_stage_b2_provisional(config: ConstructionRuntimeConfig) -> ProvisionalStageB2Result:
+    """Provisional Stage B2 for outer G2A fixed-point intermediate iterations.
+
+    Used ONLY by _run_with_construction_idc (project.py outer loop) where Senior
+    may not yet be fully sized for IDC. Returns ProvisionalStageB2Result with
+    explicit unfunded_uses_keur — NEVER returns ConstructionRuntimeResult.
+
+    unfunded_uses_keur is diagnostic; it does NOT increase Senior or earn IDC.
+    The outer loop must drive unfunded_uses_keur to zero before calling the strict
+    run_stage_b2() for the final ConstructionRuntimeResult.
+    """
+    (
+        _hard_capex, _vat_payable, _vat_schedule,
+        _idc_accruals, _fee_accruals,
+        _cumul_senior, senior_period_draws,
+        period_uses, financing, closing_senior,
+        iteration, residual, _audit, final_unfunded,
+    ) = _run_stage_b2_inner(config, provisional=True)
+
+    total_sources = sum(senior_period_draws) + (
+        config.equity_available_keur + config.share_premium_keur
+        + config.other_committed_equity_keur + config.additional_equity_keur
+        + config.shl_available_keur + config.junior_keur
+    )
+    return ProvisionalStageB2Result(
+        authority="PR9_STAGE_B2_PROVISIONAL_OUTER_LOOP_INTERMEDIATE",
+        provisional_senior_period_draw_keur=senior_period_draws,
+        actual_senior_commitment_keur=config.senior_commitment_keur,
+        total_provisional_funded_sources_keur=sum(a for a in senior_period_draws) + (
+            min(config.equity_available_keur, sum(period_uses))
+        ),
+        total_construction_uses_keur=sum(period_uses),
+        unfunded_uses_keur=final_unfunded,
+        capitalized_financing_costs=financing,
+        iterations=iteration,
+        final_residual_keur=residual,
     )
 
 
@@ -693,6 +788,7 @@ __all__ = [
     "FacilityPeriodState",
     "FundingShortfallError",
     "FinancingCostFundingPolicy",
+    "ProvisionalStageB2Result",
     "TimelinePeriod",
     "VectorResidualAudit",
     "allocate_structuring_fee",
@@ -701,6 +797,7 @@ __all__ = [
     "convergence_audit",
     "monthly_hard_capex",
     "run_stage_b2",
+    "run_stage_b2_provisional",
     "total_hard_capex",
     "vat_bearing_base",
     "vat_monthly_uses",

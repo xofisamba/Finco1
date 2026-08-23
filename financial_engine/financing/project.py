@@ -74,6 +74,7 @@ def _run_with_construction_idc(
     from finco_core.construction.stage_b2 import (
         apply_capitalized_financing_costs,
         run_stage_b2,
+        run_stage_b2_provisional,
         CapitalizedFinancingCosts,
     )
     from financial_engine.construction.adapter import (
@@ -286,8 +287,11 @@ def _run_with_construction_idc(
             additional_equity_keur=0.0,
             junior_keur=inner_result.junior_or_other_main_project_funding_keur,
         )
-        stage_b2_result = run_stage_b2(runtime_cfg)
-        new_financing = stage_b2_result.capitalized_financing_costs
+        # Provisional Stage B2: Senior may not yet be fully sized for IDC.
+        # Returns ProvisionalStageB2Result — NOT a final ConstructionRuntimeResult.
+        # unfunded_uses_keur is diagnostic; outer loop drives it to zero at convergence.
+        stage_b2_prov = run_stage_b2_provisional(runtime_cfg)
+        new_financing = stage_b2_prov.capitalized_financing_costs
 
         # Apply costs IMMUTABLY from original base CapexStructure (not working_inputs.capex).
         updated_capex = apply_capitalized_financing_costs(orig_capex, new_financing)
@@ -330,7 +334,7 @@ def _run_with_construction_idc(
             f"outer_residual={outer_residual:.12f} kEUR after {outer_max_iterations} iterations"
         )
 
-    assert inner_result is not None and stage_b2_result is not None
+    assert inner_result is not None and stage_b2_prov is not None
 
     # Final idempotence verification: one full outer transition from converged state must
     # produce identical outputs (Section 14 — true outer transition idempotence).
@@ -361,17 +365,19 @@ def _run_with_construction_idc(
         abs(_verify_result.final_senior_commitment_keur - inner_result.final_senior_commitment_keur),
         abs(_verify_result.derived_shl_cash_principal_keur - inner_result.derived_shl_cash_principal_keur),
         abs(_verify_result.project_uses.total_project_uses_keur - inner_result.project_uses.total_project_uses_keur),
-        abs(_verify_b2.capitalized_financing_costs.senior_idc_keur - stage_b2_result.capitalized_financing_costs.senior_idc_keur),
-        abs(_verify_b2.capitalized_financing_costs.senior_commitment_fee_keur - stage_b2_result.capitalized_financing_costs.senior_commitment_fee_keur),
-        abs(_verify_b2.capitalized_financing_costs.structuring_fee_keur - stage_b2_result.capitalized_financing_costs.structuring_fee_keur),
+        abs(_verify_b2.capitalized_financing_costs.senior_idc_keur - stage_b2_prov.capitalized_financing_costs.senior_idc_keur),
+        abs(_verify_b2.capitalized_financing_costs.senior_commitment_fee_keur - stage_b2_prov.capitalized_financing_costs.senior_commitment_fee_keur),
+        abs(_verify_b2.capitalized_financing_costs.structuring_fee_keur - stage_b2_prov.capitalized_financing_costs.structuring_fee_keur),
     )
     if _idempotence_residual > outer_tolerance_keur * 10:
         raise RuntimeError(
             f"PR9_OUTER_G2A_IDEMPOTENCE_FAILED: residual={_idempotence_residual:.12f} kEUR"
         )
 
-    # Build typed ConstructionFinancingResult from final converged state.
-    b2 = stage_b2_result
+    # Build typed ConstructionFinancingResult from final strict Stage B2 (_verify_b2).
+    # _verify_b2 is the canonical fully-funded result after outer convergence with
+    # the full source breakdown. stage_b2_prov was provisional; _verify_b2 is strict.
+    b2 = _verify_b2
     b2_idc = b2.senior_idc_accrual_keur
     b2_fee = b2.senior_commitment_fee_accrual_keur
     b2_draws = b2.senior_period_draw_keur
