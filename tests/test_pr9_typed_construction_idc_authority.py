@@ -3228,6 +3228,31 @@ def _solar_with_full_seven_sources(n_periods: int = 6, share_premium: float = 80
     return run_project_financing_model(pi)
 
 
+_CORRECTION_C_REFERENCE_SHA = "4fe9f59357aac3a668ce6d5e0b9e613661a33e43"
+_CORRECTION_C_REFERENCE = {
+    "total_project_uses_keur": 33506.20696885899,
+    "final_senior_commitment_keur": 25129.655226644245,
+    "senior_draws_keur": (
+        0.0,
+        2727.2386601300495,
+        5564.539796367975,
+        5587.770425465838,
+        5614.105619576126,
+        5636.000725104213,
+    ),
+    "senior_idc_keur": 212.7836368542781,
+    "senior_commitment_fee_keur": 45.9233320046707,
+    "structuring_fee_keur": 247.5,
+    "derived_shl_cash_principal_keur": 7876.551742214746,
+    "shl_construction_pik_keur": 0.0,
+    "construction_seven_source_total_keur": 33506.20696885895,
+    "total_legal_equity_distributions_keur": 4230.1151877336615,
+    "total_sponsor_receipts_keur": 14270.97644196749,
+    "total_sponsor_xirr": None,
+    "total_sponsor_moic": None,
+}
+
+
 class TestCorrectionDSevenSourceCompositionIdentity:
     """PR9_CORRECTION_D: Full seven-source composition in every outer iteration.
 
@@ -3287,12 +3312,16 @@ class TestCorrectionDSevenSourceCompositionIdentity:
     # Provisional vs strict seven-vector identity
     # ------------------------------------------------------------------
 
-    def test_provisional_and_strict_produce_identical_senior_draws(self):
-        """At converged source caps, provisional and strict Stage B2 produce identical Senior draws.
-
-        Proves 'provisional' changes only fail-closed behavior, not funding methodology.
-        """
-        from finco_core.construction.stage_b2 import run_stage_b2, run_stage_b2_provisional
+    def test_provisional_and_strict_produce_identical_all_seven_source_draws(self):
+        """PR9_PROVISIONAL_AND_STRICT_ALL_SEVEN_SOURCE_VECTORS_IDENTICAL."""
+        from finco_core.construction.allocator import (
+            allocate_construction_sources_per_period,
+        )
+        from finco_core.construction.stage_b2 import (
+            _run_stage_b2_inner,
+            run_stage_b2,
+            run_stage_b2_provisional,
+        )
         from financial_engine.construction.adapter import build_construction_runtime_config
         from finco_core.inputs.construction_financing import (
             ConstructionFinancingInput, ConstructionSeniorPricingInput, ConstructionCapexTimingInput,
@@ -3309,32 +3338,71 @@ class TestCorrectionDSevenSourceCompositionIdentity:
             senior_pricing=ConstructionSeniorPricingInput(mode=SeniorRateMode.FLAT_ALL_IN, flat_all_in_rate=0.055),
             commitment_fee=ConstructionCommitmentFeeInput(rate=0.005),
         )
-        # Source caps sized so Senior covers all construction Uses (unfunded → 0)
+        # Every source is material and total capacity exceeds final construction Uses.
         cfg = build_construction_runtime_config(
             inp,
-            senior_commitment_keur=8_500.0,
-            equity_available_keur=1_200.0,    # share_capital
-            shl_available_keur=600.0,
+            senior_commitment_keur=7_000.0,
+            equity_available_keur=800.0,
+            shl_available_keur=900.0,
             capex_amounts_keur={"EPC": 10_000.0},
-            share_premium_keur=400.0,
-            other_committed_equity_keur=200.0,
-            additional_equity_keur=0.0,
-            junior_keur=100.0,
+            share_premium_keur=700.0,
+            other_committed_equity_keur=600.0,
+            additional_equity_keur=500.0,
+            junior_keur=400.0,
         )
         r_strict = run_stage_b2(cfg)
         r_prov = run_stage_b2_provisional(cfg)
 
-        # Provisional unfunded must be zero (or negligible) for this well-funded config
-        assert r_prov.unfunded_uses_keur < 1.0, (
-            f"Expected unfunded≈0 for well-funded config, got {r_prov.unfunded_uses_keur:.4f} kEUR"
+        # Access the existing internal canonical provisional allocation output;
+        # no second waterfall and no public-result expansion is needed for proof.
+        provisional_inner = _run_stage_b2_inner(cfg, provisional=True)
+        provisional_period_uses = provisional_inner[7]
+        provisional_allocations = provisional_inner[-1]
+        assert provisional_allocations is not None
+        strict_allocations = allocate_construction_sources_per_period(
+            period_uses=r_strict.total_permanent_uses_keur,
+            share_capital_keur=cfg.equity_available_keur,
+            share_premium_keur=cfg.share_premium_keur,
+            other_committed_equity_keur=cfg.other_committed_equity_keur,
+            additional_equity_keur=cfg.additional_equity_keur,
+            shl_cash_keur=cfg.shl_available_keur,
+            junior_keur=cfg.junior_keur,
+            senior_commitment_keur=cfg.senior_commitment_keur,
+            tolerance_keur=cfg.convergence_tolerance_keur,
         )
-        # Senior draws must be identical within numerical tolerance
-        for i, (s, p) in enumerate(zip(r_strict.senior_period_draw_keur,
-                                        r_prov.provisional_senior_period_draw_keur)):
-            assert abs(s - p) < 1e-9, (
-                f"Senior draw period {i+1}: strict={s:.12f} prov={p:.12f} diff={abs(s-p):.2e}"
+
+        assert provisional_period_uses == pytest.approx(
+            r_strict.total_permanent_uses_keur, abs=1e-9
+        )
+        assert r_prov.unfunded_uses_keur <= 1e-9
+        provisional_funded = sum(a.total_sources_keur for a in provisional_allocations)
+        assert provisional_funded == pytest.approx(
+            r_prov.total_provisional_funded_sources_keur, abs=1e-9
+        )
+        assert provisional_funded + r_prov.unfunded_uses_keur == pytest.approx(
+            r_prov.total_construction_uses_keur, abs=1e-9
+        )
+
+        vector_fields = (
+            "share_capital_draw_keur",
+            "share_premium_draw_keur",
+            "other_committed_equity_draw_keur",
+            "additional_equity_draw_keur",
+            "shl_draw_keur",
+            "junior_draw_keur",
+            "senior_draw_keur",
+        )
+        for field_name in vector_fields:
+            provisional_vector = tuple(
+                getattr(row, field_name) for row in provisional_allocations
             )
-        # IDC identical
+            strict_vector = tuple(getattr(row, field_name) for row in strict_allocations)
+            assert sum(provisional_vector) > 1.0, f"{field_name} was not materially drawn"
+            assert provisional_vector == pytest.approx(strict_vector, abs=1e-9)
+
+        assert r_prov.provisional_senior_period_draw_keur == pytest.approx(
+            r_strict.senior_period_draw_keur, abs=1e-9
+        )
         assert abs(r_strict.capitalized_financing_costs.senior_idc_keur -
                    r_prov.capitalized_financing_costs.senior_idc_keur) < 1e-9
 
@@ -3401,13 +3469,122 @@ class TestCorrectionDSevenSourceCompositionIdentity:
         assert sc_total <= result.share_capital_keur + 1e-6
 
     def test_additional_equity_draw_when_residual_nonzero(self):
-        """Additional equity (inner G2A residual) is present in draw vector when economically needed."""
-        result = _solar_with_full_seven_sources(n_periods=6)
+        """E2E EQUITY_ONLY causally draws both Other and Additional Equity."""
+        import dataclasses
+        from app.project_factories import create_default_solar_project
+        from financial_engine.financing import run_project_financing_model
+        from finco_core.inputs import SponsorFundingMode
+
+        project = create_default_solar_project()
+        project = dataclasses.replace(
+            project,
+            financing=dataclasses.replace(
+                project.financing,
+                construction_financing=_make_solar_construction_input(6),
+                sponsor_funding_mode=SponsorFundingMode.EQUITY_ONLY,
+                share_premium_keur=800.0,
+                other_equity_funding_before_shl_keur=400.0,
+                junior_or_other_project_funding_keur=500.0,
+            ),
+        )
+        result = run_project_financing_model(project)
         cf_r = result.construction_financing
         ae_total = sum(cf_r.additional_equity_draws_keur)
-        # additional_equity_keur >= 0 and draws <= cap
-        assert ae_total >= -1e-9, f"Negative additional equity draws: {ae_total:.6f}"
+        other_total = sum(cf_r.other_committed_equity_draws_keur)
+
+        assert result.additional_equity_keur > 1.0
+        assert ae_total > 1.0
         assert ae_total <= result.additional_equity_keur + 1e-6
+        assert other_total > 1.0
+        assert other_total <= result.other_equity_funding_before_shl_keur + 1e-6
+
+    def test_real_outer_iteration_preserves_seven_individual_source_caps(self, monkeypatch):
+        """Capture the real production outer calls and prove cap lineage end to end."""
+        import dataclasses
+        import financial_engine.construction.adapter as adapter_module
+        import finco_core.construction.stage_b2 as stage_b2_module
+        from app.project_factories import create_default_solar_project
+        from financial_engine.financing import run_project_financing_model
+
+        project = create_default_solar_project()
+        project = dataclasses.replace(
+            project,
+            financing=dataclasses.replace(
+                project.financing,
+                construction_financing=_make_solar_construction_input(6),
+                share_premium_keur=800.0,
+                other_equity_funding_before_shl_keur=400.0,
+                junior_or_other_project_funding_keur=500.0,
+            ),
+        )
+        seed_project = dataclasses.replace(
+            project,
+            financing=dataclasses.replace(project.financing, construction_financing=None),
+        )
+        seed = run_project_financing_model(seed_project)
+
+        original_build = adapter_module.build_construction_runtime_config
+        original_provisional = stage_b2_module.run_stage_b2_provisional
+        original_strict = stage_b2_module.run_stage_b2
+        build_calls = []
+        provisional_configs = []
+        strict_configs = []
+
+        def capture_build(*args, **kwargs):
+            build_calls.append(dict(kwargs))
+            return original_build(*args, **kwargs)
+
+        def capture_provisional(config):
+            provisional_configs.append(config)
+            return original_provisional(config)
+
+        def capture_strict(config):
+            strict_configs.append(config)
+            return original_strict(config)
+
+        monkeypatch.setattr(adapter_module, "build_construction_runtime_config", capture_build)
+        monkeypatch.setattr(stage_b2_module, "run_stage_b2_provisional", capture_provisional)
+        monkeypatch.setattr(stage_b2_module, "run_stage_b2", capture_strict)
+        result = run_project_financing_model(project)
+
+        assert provisional_configs
+        assert len(strict_configs) == 1
+        assert len(build_calls) == len(provisional_configs) + len(strict_configs)
+        required_kwargs = {
+            "equity_available_keur",
+            "share_premium_keur",
+            "other_committed_equity_keur",
+            "additional_equity_keur",
+            "shl_available_keur",
+            "junior_keur",
+            "senior_commitment_keur",
+        }
+        assert all(required_kwargs <= call.keys() for call in build_calls)
+
+        cap_fields = (
+            ("equity_available_keur", "share_capital_keur"),
+            ("share_premium_keur", "share_premium_keur"),
+            ("other_committed_equity_keur", "other_equity_funding_before_shl_keur"),
+            ("additional_equity_keur", "additional_equity_keur"),
+            ("shl_available_keur", "derived_shl_cash_principal_keur"),
+            ("junior_keur", "junior_or_other_main_project_funding_keur"),
+            ("senior_commitment_keur", "final_senior_commitment_keur"),
+        )
+        first = provisional_configs[0]
+        for config_field, result_field in cap_fields:
+            assert getattr(first, config_field) == pytest.approx(
+                getattr(seed, result_field), abs=1e-9
+            )
+
+        converged = provisional_configs[-1]
+        final_strict = strict_configs[0]
+        for config_field, result_field in cap_fields:
+            assert getattr(converged, config_field) == pytest.approx(
+                getattr(final_strict, config_field), abs=1e-7
+            )
+            assert getattr(final_strict, config_field) == pytest.approx(
+                getattr(result, result_field), abs=1e-9
+            )
 
     # ------------------------------------------------------------------
     # Junior causal test
@@ -3543,30 +3720,52 @@ class TestCorrectionDSevenSourceCompositionIdentity:
     # ------------------------------------------------------------------
 
     def test_financial_outputs_unchanged_from_correction_c_baseline(self):
-        """Senior, IDC, fee, SHL outputs are unchanged from Correction C baseline.
-
-        The seven-source fix changes lineage only; economic outputs must be invariant
-        because the four equity classes are contiguous ahead of SHL/Junior/Senior.
-        """
+        """Current output exactly matches the independently executed Correction C SHA."""
         import dataclasses
         from app.project_factories import create_default_solar_project
-        from financial_engine.financing import run_project_financing_model
+        from app.services.production_financial_authority import run_clean_production
 
-        # Standard solar (no share premium, other equity, or junior) — matches baseline
         pi = create_default_solar_project()
         cf = _make_solar_construction_input(n_periods=6)
         pi = dataclasses.replace(pi, financing=dataclasses.replace(pi.financing,
                                                                     construction_financing=cf))
-        result = run_project_financing_model(pi)
+        production = run_clean_production(pi)
+        g2c = production.g2c_result
+        result = g2c.financing_result
         cf_r = result.construction_financing
+        actual = {
+            "total_project_uses_keur": result.project_uses.total_project_uses_keur,
+            "final_senior_commitment_keur": result.final_senior_commitment_keur,
+            "senior_draws_keur": cf_r.senior_draws_keur,
+            "senior_idc_keur": sum(cf_r.senior_idc_accrual_keur),
+            "senior_commitment_fee_keur": sum(cf_r.senior_commitment_fee_accrual_keur),
+            "structuring_fee_keur": sum(cf_r.structuring_fee_keur),
+            "derived_shl_cash_principal_keur": result.derived_shl_cash_principal_keur,
+            "shl_construction_pik_keur": result.shl_construction_pik_keur,
+            "construction_seven_source_total_keur": sum(
+                sum(vector)
+                for vector in (
+                    cf_r.share_capital_draws_keur,
+                    cf_r.share_premium_draws_keur,
+                    cf_r.other_committed_equity_draws_keur,
+                    cf_r.additional_equity_draws_keur,
+                    cf_r.shl_allocation_keur,
+                    cf_r.junior_draws_keur,
+                    cf_r.senior_draws_keur,
+                )
+            ),
+            "total_legal_equity_distributions_keur": g2c.total_legal_equity_distributions_keur,
+            "total_sponsor_receipts_keur": g2c.total_sponsor_receipts_keur,
+            "total_sponsor_xirr": g2c.total_sponsor_xirr,
+            "total_sponsor_moic": g2c.total_sponsor_moic,
+        }
 
-        # These values must not change from Correction C
-        # (exact tolerance: < 1e-4 kEUR = 0.1 EUR)
-        idc = cf_r.total_capitalized_financing_keur - sum(cf_r.senior_commitment_fee_accrual_keur) - sum(
-            cf_r.structuring_fee_keur if cf_r.structuring_fee_keur else ()
-        )
-        # Structural check: IDC positive, fee positive, senior positive
-        assert sum(cf_r.senior_idc_accrual_keur) > 0.0, "IDC must be positive"
-        assert sum(cf_r.senior_commitment_fee_accrual_keur) > 0.0, "Commitment fee must be positive"
-        assert result.final_senior_commitment_keur > 0.0, "Senior must be positive"
-        assert result.derived_shl_cash_principal_keur > 0.0, "SHL must be positive"
+        assert _CORRECTION_C_REFERENCE_SHA == "4fe9f59357aac3a668ce6d5e0b9e613661a33e43"
+        for metric, expected in _CORRECTION_C_REFERENCE.items():
+            observed = actual[metric]
+            if isinstance(expected, tuple):
+                assert observed == pytest.approx(expected, abs=1e-9), metric
+            elif expected is None:
+                assert observed is None, metric
+            else:
+                assert observed == pytest.approx(expected, abs=1e-9), metric
