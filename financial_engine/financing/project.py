@@ -417,6 +417,30 @@ def _run_with_construction_idc(
         _max_period_residual = 0.0
         _max_cumul_residual = 0.0
 
+    # Build the canonical ConstructionFundingResult from the exact converged allocations.
+    # This is the single Layer-A authority: the same canonical_alloc tuple is passed to
+    # build_construction_funding_schedule so ConstructionFundingResult == ConstructionFinancingResult
+    # for every source class (identity holds within 1e-9 kEUR).
+    if n > 0 and b2_uses and _canonical_alloc:
+        _pr9_period_dates: "tuple | None" = tuple(
+            (p.start_date, p.end_date, None) for p in cf.periods[:n]
+        )
+        _pr9_construction_funding = build_construction_funding_schedule(
+            construction_period_count=n,
+            total_project_uses_keur=inner_result.project_uses.total_project_uses_keur,
+            senior_keur=inner_result.final_senior_commitment_keur,
+            junior_keur=inner_result.junior_or_other_main_project_funding_keur,
+            share_capital_keur=inner_result.share_capital_keur,
+            share_premium_keur=inner_result.share_premium_keur,
+            other_committed_equity_keur=inner_result.other_equity_funding_before_shl_keur,
+            additional_equity_keur=inner_result.additional_equity_keur,
+            shl_cash_keur=derived_shl,
+            period_dates=_pr9_period_dates,
+            canonical_economic_allocations=_canonical_alloc,
+        )
+    else:
+        _pr9_construction_funding = inner_result.construction_funding
+
     # Period dates from construction financing spec
     period_starts = tuple(p.start_date for p in cf.periods[:n])
     period_ends = tuple(p.end_date for p in cf.periods[:n])
@@ -430,8 +454,8 @@ def _run_with_construction_idc(
 
     final_uses = inner_result.project_uses.total_project_uses_keur
     final_senior = inner_result.final_senior_commitment_keur
-    sources_uses_diff = sum(inner_result.construction_funding.periods[i].sources_uses_difference_keur
-                            for i in range(len(inner_result.construction_funding.periods))) if inner_result.construction_funding.periods else 0.0
+    sources_uses_diff = sum(_pr9_construction_funding.periods[i].sources_uses_difference_keur
+                            for i in range(len(_pr9_construction_funding.periods))) if _pr9_construction_funding.periods else 0.0
 
     construction_result = ConstructionFinancingResult(
         period_start_dates=period_starts,
@@ -490,7 +514,7 @@ def _run_with_construction_idc(
         derived_shl_cash_principal_keur=inner_result.derived_shl_cash_principal_keur,
         shl_construction_pik_keur=inner_result.shl_construction_pik_keur,
         opening_operating_shl_balance_keur=inner_result.opening_operating_shl_balance_keur,
-        construction_funding=inner_result.construction_funding,
+        construction_funding=_pr9_construction_funding,
         fixed_point_iteration_count=inner_result.fixed_point_iteration_count,
         fixed_point_maximum_difference_keur=inner_result.fixed_point_maximum_difference_keur,
         construction_financing=construction_result,

@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import date
 
 from finco_core.inputs import SponsorFundingMode
-from finco_core.construction.allocator import allocate_construction_sources_per_period
+from finco_core.construction.allocator import ConstructionPeriodAllocation
 
 from financial_engine.financing.contracts import (
     ConstructionFundingPeriod,
@@ -83,6 +83,7 @@ def build_construction_funding_schedule(
     period_dates: "tuple[tuple[date | None, date | None, date | None], ...] | None" = None,
     period_uses_keur: "tuple[float, ...] | None" = None,
     shl_allocation_per_period_keur: "tuple[float, ...] | None" = None,
+    canonical_economic_allocations: "tuple[ConstructionPeriodAllocation, ...] | None" = None,
 ) -> ConstructionFundingResult:
     """Allocate linear generic uses through the documented sponsor-first waterfall.
 
@@ -90,18 +91,28 @@ def build_construction_funding_schedule(
       Share Capital -> Share Premium -> Other Committed Equity -> Additional Equity
       -> SHL -> Junior -> Senior
 
-    This is an explicit generic MVP audit policy, not a claim that the source
-    workbook draws each facility linearly. It has no IDC or operating-model effect.
+    When canonical_economic_allocations is provided (PR-9 path), those allocations
+    are used directly as Layer A — no economic waterfall is recomputed and no fallback
+    is attempted. Legacy callers (period_uses_keur, shl_allocation_per_period_keur,
+    shl_cash_per_period_keur, or none) are unchanged.
     """
     if construction_period_count <= 0:
         raise ValueError("construction_period_count must be positive")
-    # BLOCKER C: validate period_dates length when provided.
+    # Validate period_dates length when provided.
     if period_dates is not None and len(period_dates) != construction_period_count:
         raise ValueError(
             f"G2A_PERIOD_DATES_LENGTH_MISMATCH: period_dates length {len(period_dates)} "
             f"!= construction_period_count {construction_period_count}"
         )
-    # BLOCKER C: validate per-period SHL draws when provided.
+    # PR-9: validate canonical_economic_allocations length when provided.
+    if canonical_economic_allocations is not None:
+        if len(canonical_economic_allocations) != construction_period_count:
+            raise ValueError(
+                "PR9_CANONICAL_ALLOCATION_LENGTH_MISMATCH: "
+                f"canonical_economic_allocations length {len(canonical_economic_allocations)} "
+                f"!= construction_period_count {construction_period_count}"
+            )
+    # Validate per-period SHL draws when provided.
     if shl_cash_per_period_keur is not None:
         if len(shl_cash_per_period_keur) != construction_period_count:
             raise ValueError(
@@ -113,7 +124,7 @@ def build_construction_funding_schedule(
                 "G2A_SHL_PER_PERIOD_SUM_MISMATCH: sum of per-period SHL draws "
                 f"{sum(shl_cash_per_period_keur):.6f} != shl_cash_keur {shl_cash_keur:.6f}"
             )
-    # GAP 1: validate explicit period uses vector when provided.
+    # Validate explicit period uses vector when provided.
     if period_uses_keur is not None:
         if len(period_uses_keur) != construction_period_count:
             raise ValueError(
@@ -125,7 +136,7 @@ def build_construction_funding_schedule(
                 "G2A_PERIOD_USES_SUM_MISMATCH: sum of period uses "
                 f"{sum(period_uses_keur):.6f} != total_project_uses_keur {total_project_uses_keur:.6f}"
             )
-    # GAP 2: validate SHL allocation vector when provided.
+    # Validate SHL allocation vector when provided.
     if shl_allocation_per_period_keur is not None:
         if len(shl_allocation_per_period_keur) != construction_period_count:
             raise ValueError(
@@ -149,47 +160,20 @@ def build_construction_funding_schedule(
     if abs(sum(source_caps.values()) - total_project_uses_keur) > 1e-7:
         raise ValueError("G2A_SOURCES_DO_NOT_EQUAL_USES")
 
-    # PR-9 path: when explicit period_uses_keur is provided, delegate Layer A economic
-    # allocation to the canonical allocator (single waterfall authority).
-    # Layer B (SHL cash contribution timing / prefunding bridge) is applied separately below.
-    _canonical_allocs: "list | None" = None
-    if period_uses_keur is not None:
-        try:
-            _canonical_allocs = list(allocate_construction_sources_per_period(
-                period_uses=period_uses_keur,
-                share_capital_keur=share_capital_keur,
-                share_premium_keur=share_premium_keur,
-                other_committed_equity_keur=other_committed_equity_keur,
-                additional_equity_keur=additional_equity_keur,
-                shl_cash_keur=shl_cash_keur,
-                junior_keur=junior_keur,
-                senior_commitment_keur=senior_keur,
-                tolerance_keur=1e-6,
-            ))
-        except ValueError:
-            # Fall back to legacy loop if allocator fails (e.g. tiny floating-point excess)
-            _canonical_allocs = None
-
     remaining = dict(source_caps)
     cumulative = {key: 0.0 for key in source_caps}
     cumulative_uses = 0.0
-    opening_unutilised = 0.0  # GAP 2: prefunding bridge roll-forward
+    opening_unutilised = 0.0  # prefunding bridge roll-forward
     rows: list[ConstructionFundingPeriod] = []
     for index in range(1, construction_period_count + 1):
-        # GAP 1: use explicit period uses vector when provided (single source of truth).
-        # Legacy: linear interpolation (total / n) for backward compat.
-        if period_uses_keur is not None:
-            uses = period_uses_keur[index - 1]
-        else:
-            uses = (
-                total_project_uses_keur / construction_period_count
-                if index < construction_period_count
-                else total_project_uses_keur - cumulative_uses
-            )
         draws: dict[str, float] = {}
-        if _canonical_allocs is not None:
-            # Layer A: use canonical allocator output for economic source draws.
-            _a = _canonical_allocs[index - 1]
+
+        if canonical_economic_allocations is not None:
+            # PR-9 Layer A: use pre-computed canonical allocations exactly.
+            # No recomputation, no fallback. Fail-closed: if the allocation is wrong,
+            # the shortfall check below will raise.
+            _a = canonical_economic_allocations[index - 1]
+            uses = _a.period_uses_keur
             draws = {
                 "share": _a.share_capital_draw_keur,
                 "share_premium": _a.share_premium_draw_keur,
@@ -202,27 +186,45 @@ def build_construction_funding_schedule(
             for key in draws:
                 remaining[key] -= draws[key]
                 cumulative[key] += draws[key]
-        elif shl_allocation_per_period_keur is not None:
-            # BLOCKER 1 fix: Layer A (economic allocation) drives period need; Layer B (cash
-            # contribution) is tracked only in the prefunding bridge, NOT subtracted from Uses.
-            _econ_shl = shl_allocation_per_period_keur[index - 1]
-            draws["shl"] = _econ_shl
-            remaining["shl"] -= _econ_shl
-            cumulative["shl"] += _econ_shl
-            need = uses - _econ_shl
-            for key in ("share", "share_premium", "other_committed", "additional_equity",
-                        "junior", "senior"):
-                draw = min(need, remaining[key])
-                if draw < -1e-9:
-                    raise ValueError(
-                        f"G2A_NEGATIVE_SOURCE_DRAW: period={index}, source={key}, draw={draw:.9f}"
-                    )
-                draw = max(0.0, draw)
-                draws[key] = draw
-                remaining[key] -= draw
-                cumulative[key] += draw
-                need -= draw
+        elif period_uses_keur is not None:
+            uses = period_uses_keur[index - 1]
+            if shl_allocation_per_period_keur is not None:
+                # BLOCKER 1 fix: Layer A (economic allocation) drives period need; Layer B (cash
+                # contribution) is tracked only in the prefunding bridge, NOT subtracted from Uses.
+                _econ_shl = shl_allocation_per_period_keur[index - 1]
+                draws["shl"] = _econ_shl
+                remaining["shl"] -= _econ_shl
+                cumulative["shl"] += _econ_shl
+                need = uses - _econ_shl
+                for key in ("share", "share_premium", "other_committed", "additional_equity",
+                            "junior", "senior"):
+                    draw = min(need, remaining[key])
+                    if draw < -1e-9:
+                        raise ValueError(
+                            f"G2A_NEGATIVE_SOURCE_DRAW: period={index}, source={key}, draw={draw:.9f}"
+                        )
+                    draw = max(0.0, draw)
+                    draws[key] = draw
+                    remaining[key] -= draw
+                    cumulative[key] += draw
+                    need -= draw
+            else:
+                # period_uses_keur only (no explicit SHL allocation); default waterfall.
+                need = uses
+                for key in ("share", "share_premium", "other_committed", "additional_equity",
+                            "shl", "junior", "senior"):
+                    draw = min(need, remaining[key])
+                    draws[key] = draw
+                    remaining[key] -= draw
+                    cumulative[key] += draw
+                    need -= draw
         elif shl_cash_per_period_keur is not None:
+            # Legacy: no explicit period uses vector; linear interpolation.
+            uses = (
+                total_project_uses_keur / construction_period_count
+                if index < construction_period_count
+                else total_project_uses_keur - cumulative_uses
+            )
             # Legacy BLOCKER C fix: no explicit allocation vector; cash == allocation (PRO_RATA).
             # Non-SHL sources fill remaining need in waterfall order.
             draws["shl"] = shl_cash_per_period_keur[index - 1]
@@ -237,6 +239,11 @@ def build_construction_funding_schedule(
                 cumulative[key] += draw
                 need -= draw
         else:
+            uses = (
+                total_project_uses_keur / construction_period_count
+                if index < construction_period_count
+                else total_project_uses_keur - cumulative_uses
+            )
             need = uses
             for key in ("share", "share_premium", "other_committed", "additional_equity",
                         "shl", "junior", "senior"):
@@ -245,20 +252,26 @@ def build_construction_funding_schedule(
                 remaining[key] -= draw
                 cumulative[key] += draw
                 need -= draw
+
         if abs(uses - sum(draws.values())) > 1e-6:
-            raise ValueError(f"G2A_PERIOD_FUNDING_SHORTFALL: period={index}, shortfall={uses - sum(draws.values())}")
+            raise ValueError(
+                f"PR9_CANONICAL_CONSTRUCTION_ALLOCATION_FAIL_CLOSED: "
+                f"period={index}, shortfall={uses - sum(draws.values()):.9f} kEUR"
+                if canonical_economic_allocations is not None
+                else f"G2A_PERIOD_FUNDING_SHORTFALL: period={index}, shortfall={uses - sum(draws.values())}"
+            )
 
         sources = sum(draws.values())
         cumulative_uses += uses
         cumulative_sources = sum(cumulative.values())
-        # BLOCKER C: populate canonical period dates when provided.
+        # Populate canonical period dates when provided.
         _p_start: date | None = None
         _p_end: date | None = None
         _cf_date: date | None = None
         if period_dates is not None:
             _p_start, _p_end, _cf_date = period_dates[index - 1]
-        # GAP 2 / BLOCKER 1: prefunding bridge fields.
-        # draws["shl"] now always holds the Layer A economic allocation.
+        # Prefunding bridge fields.
+        # draws["shl"] holds the Layer A economic allocation.
         # Layer B (Sponsor cash contribution) comes from shl_cash_per_period_keur when provided.
         _shl_allocation = draws["shl"]   # Layer A: economic allocation
         _shl_contribution = (

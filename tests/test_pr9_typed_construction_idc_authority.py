@@ -1799,3 +1799,257 @@ class TestSharePremiumOtherEquityE2E:
         # Cumulative matches sum
         cumulative_check = sum(c.senior_draws_keur)
         assert abs(cumulative_check - c.cumulative_senior_keur[-1]) < 1e-6
+
+
+# ---------------------------------------------------------------------------
+# Focused Correction A: canonical Layer-A allocator single authority
+# ---------------------------------------------------------------------------
+
+
+class TestCanonicalAllocationFailClosed:
+    """Section 7: build_construction_funding_schedule must fail closed when
+    canonical_economic_allocations is provided and the draws don't balance."""
+
+    def _base_kwargs(self) -> dict:
+        """Minimal 2-period schedule: 100 kEUR total, all-SHL funding."""
+        return dict(
+            construction_period_count=2,
+            total_project_uses_keur=100.0,
+            senior_keur=0.0,
+            junior_keur=0.0,
+            share_capital_keur=0.0,
+            share_premium_keur=0.0,
+            other_committed_equity_keur=0.0,
+            additional_equity_keur=0.0,
+            shl_cash_keur=100.0,
+        )
+
+    def test_wrong_length_raises(self):
+        """Length mismatch must raise, not fall back to legacy waterfall."""
+        from financial_engine.financing.stack import build_construction_funding_schedule
+        from finco_core.construction.allocator import (
+            ConstructionPeriodAllocation,
+            allocate_construction_sources_per_period,
+        )
+        allocs = allocate_construction_sources_per_period(
+            period_uses=(50.0, 50.0),
+            share_capital_keur=0.0,
+            share_premium_keur=0.0,
+            other_committed_equity_keur=0.0,
+            additional_equity_keur=0.0,
+            shl_cash_keur=100.0,
+            junior_keur=0.0,
+            senior_commitment_keur=0.0,
+        )
+        with pytest.raises(ValueError, match="PR9_CANONICAL_ALLOCATION_LENGTH_MISMATCH"):
+            build_construction_funding_schedule(
+                **self._base_kwargs(),
+                canonical_economic_allocations=allocs[:1],  # wrong length
+            )
+
+    def test_underfunded_allocation_raises_not_fallback(self):
+        """An underfunded canonical allocation must raise, not silently use legacy waterfall.
+
+        Classification: PR9_CANONICAL_CONSTRUCTION_ALLOCATION_FAIL_CLOSED
+        """
+        from financial_engine.financing.stack import build_construction_funding_schedule
+        from finco_core.construction.allocator import ConstructionPeriodAllocation
+
+        # Build allocations that under-fund period 1 (shl draws 40 but period needs 60).
+        bad_alloc = (
+            ConstructionPeriodAllocation(
+                period_index=0,
+                period_uses_keur=60.0,
+                share_capital_draw_keur=0.0,
+                share_premium_draw_keur=0.0,
+                other_committed_equity_draw_keur=0.0,
+                additional_equity_draw_keur=0.0,
+                shl_draw_keur=40.0,   # only 40, but period_uses=60 → shortfall of 20
+                junior_draw_keur=0.0,
+                senior_draw_keur=0.0,
+                total_sources_keur=40.0,
+                residual_keur=-20.0,
+            ),
+            ConstructionPeriodAllocation(
+                period_index=1,
+                period_uses_keur=40.0,
+                share_capital_draw_keur=0.0,
+                share_premium_draw_keur=0.0,
+                other_committed_equity_draw_keur=0.0,
+                additional_equity_draw_keur=0.0,
+                shl_draw_keur=40.0,
+                junior_draw_keur=0.0,
+                senior_draw_keur=0.0,
+                total_sources_keur=40.0,
+                residual_keur=0.0,
+            ),
+        )
+        # Must raise, NOT silently fall back to legacy waterfall
+        with pytest.raises(ValueError, match="PR9_CANONICAL_CONSTRUCTION_ALLOCATION_FAIL_CLOSED"):
+            build_construction_funding_schedule(
+                **self._base_kwargs(),
+                canonical_economic_allocations=bad_alloc,
+            )
+
+    def test_legacy_path_unaffected_when_canonical_none(self):
+        """When canonical_economic_allocations is None, legacy path executes unchanged."""
+        from financial_engine.financing.stack import build_construction_funding_schedule
+        result = build_construction_funding_schedule(
+            **self._base_kwargs(),
+            canonical_economic_allocations=None,
+        )
+        # SHL should fill all 2 periods (50 each in default linear split)
+        assert result.periods[0].shl_cash_draw_keur == pytest.approx(50.0, abs=1e-6)
+        assert result.periods[1].shl_cash_draw_keur == pytest.approx(50.0, abs=1e-6)
+
+
+class TestCanonicalAllocationIdentity:
+    """Section 6: canonical Layer-A allocation passed into build_construction_funding_schedule
+    must appear bit-for-bit in every ConstructionFundingResult period row."""
+
+    def _build_canonical_and_schedule(self):
+        from financial_engine.financing.stack import build_construction_funding_schedule
+        from finco_core.construction.allocator import allocate_construction_sources_per_period
+
+        period_uses = (40.0, 60.0, 30.0)
+        share = 20.0
+        share_premium = 10.0
+        other = 5.0
+        additional = 15.0
+        shl = 30.0
+        junior = 20.0
+        senior = 30.0
+        total = sum(period_uses)  # 130
+        assert abs(share + share_premium + other + additional + shl + junior + senior - total) < 1e-9
+
+        canonical = allocate_construction_sources_per_period(
+            period_uses=period_uses,
+            share_capital_keur=share,
+            share_premium_keur=share_premium,
+            other_committed_equity_keur=other,
+            additional_equity_keur=additional,
+            shl_cash_keur=shl,
+            junior_keur=junior,
+            senior_commitment_keur=senior,
+        )
+        result = build_construction_funding_schedule(
+            construction_period_count=3,
+            total_project_uses_keur=total,
+            senior_keur=senior,
+            junior_keur=junior,
+            share_capital_keur=share,
+            share_premium_keur=share_premium,
+            other_committed_equity_keur=other,
+            additional_equity_keur=additional,
+            shl_cash_keur=shl,
+            canonical_economic_allocations=canonical,
+        )
+        return canonical, result
+
+    def test_sources_sum_sanity(self):
+        """Sanity: fixture sources == period uses sum."""
+        canonical, result = self._build_canonical_and_schedule()
+        assert len(canonical) == 3
+        assert len(result.periods) == 3
+
+    def test_share_capital_identity(self):
+        canonical, result = self._build_canonical_and_schedule()
+        for i, (a, p) in enumerate(zip(canonical, result.periods)):
+            assert abs(a.share_capital_draw_keur - p.share_capital_draw_keur) < 1e-9, \
+                f"period {i+1}: share_capital mismatch {a.share_capital_draw_keur} != {p.share_capital_draw_keur}"
+
+    def test_share_premium_identity(self):
+        canonical, result = self._build_canonical_and_schedule()
+        for i, (a, p) in enumerate(zip(canonical, result.periods)):
+            assert abs(a.share_premium_draw_keur - p.share_premium_draw_keur) < 1e-9, \
+                f"period {i+1}: share_premium mismatch"
+
+    def test_other_committed_identity(self):
+        canonical, result = self._build_canonical_and_schedule()
+        for i, (a, p) in enumerate(zip(canonical, result.periods)):
+            assert abs(a.other_committed_equity_draw_keur - p.other_committed_equity_draw_keur) < 1e-9, \
+                f"period {i+1}: other_committed mismatch"
+
+    def test_additional_equity_identity(self):
+        canonical, result = self._build_canonical_and_schedule()
+        for i, (a, p) in enumerate(zip(canonical, result.periods)):
+            assert abs(a.additional_equity_draw_keur - p.additional_equity_draw_keur) < 1e-9, \
+                f"period {i+1}: additional_equity mismatch"
+
+    def test_shl_allocation_identity(self):
+        canonical, result = self._build_canonical_and_schedule()
+        for i, (a, p) in enumerate(zip(canonical, result.periods)):
+            assert abs(a.shl_draw_keur - p.shl_allocation_to_uses_keur) < 1e-9, \
+                f"period {i+1}: shl_allocation mismatch"
+
+    def test_junior_identity(self):
+        canonical, result = self._build_canonical_and_schedule()
+        for i, (a, p) in enumerate(zip(canonical, result.periods)):
+            assert abs(a.junior_draw_keur - p.junior_or_other_main_funding_draw_keur) < 1e-9, \
+                f"period {i+1}: junior mismatch"
+
+    def test_senior_identity(self):
+        canonical, result = self._build_canonical_and_schedule()
+        for i, (a, p) in enumerate(zip(canonical, result.periods)):
+            assert abs(a.senior_draw_keur - p.senior_draw_keur) < 1e-9, \
+                f"period {i+1}: senior mismatch"
+
+
+class TestLegacyStackRegression:
+    """Prove legacy PRO_RATA and ALL_AT_FC semantics are bit-for-bit unchanged
+    after introducing canonical_economic_allocations parameter."""
+
+    def test_pro_rata_shl_bridge_unchanged(self):
+        """PRO_RATA: contribution == allocation → unutilised balance always 0.
+
+        Matches test_gap2_pro_rata_bridge_is_zero in test_prefreeze_fix3_sponsor_funding_timing.py.
+        """
+        from financial_engine.financing.stack import build_construction_funding_schedule
+        result = build_construction_funding_schedule(
+            construction_period_count=3,
+            total_project_uses_keur=100.0,
+            senior_keur=0.0,
+            junior_keur=0.0,
+            share_capital_keur=0.0,
+            share_premium_keur=0.0,
+            other_committed_equity_keur=0.0,
+            additional_equity_keur=0.0,
+            shl_cash_keur=100.0,
+            shl_cash_per_period_keur=(30.0, 40.0, 30.0),
+            period_uses_keur=(30.0, 40.0, 30.0),
+            shl_allocation_per_period_keur=(30.0, 40.0, 30.0),
+        )
+        for p in result.periods:
+            assert abs(p.opening_unutilised_shl_cash_keur) < 1e-9, \
+                f"PRO_RATA period {p.period_index}: opening unutilised != 0"
+            assert abs(p.closing_unutilised_shl_cash_keur) < 1e-9, \
+                f"PRO_RATA period {p.period_index}: closing unutilised != 0"
+
+    def test_all_at_fc_prefunding_bridge_unchanged(self):
+        """ALL_AT_FC: 100 kEUR SHL contributed at FC, drawn 30/40/30.
+        Opening=[0,70,30], closing=[70,30,0].
+
+        Matches test_gap2_shl_prefunding_bridge_all_at_fc.
+        """
+        from financial_engine.financing.stack import build_construction_funding_schedule
+        result = build_construction_funding_schedule(
+            construction_period_count=3,
+            total_project_uses_keur=100.0,
+            senior_keur=0.0,
+            junior_keur=0.0,
+            share_capital_keur=0.0,
+            share_premium_keur=0.0,
+            other_committed_equity_keur=0.0,
+            additional_equity_keur=0.0,
+            shl_cash_keur=100.0,
+            shl_cash_per_period_keur=(100.0, 0.0, 0.0),
+            period_uses_keur=(30.0, 40.0, 30.0),
+            shl_allocation_per_period_keur=(30.0, 40.0, 30.0),
+        )
+        p1, p2, p3 = result.periods
+        assert abs(p1.opening_unutilised_shl_cash_keur - 0.0) < 1e-9
+        assert abs(p1.closing_unutilised_shl_cash_keur - 70.0) < 1e-9
+        assert abs(p2.opening_unutilised_shl_cash_keur - 70.0) < 1e-9
+        assert abs(p2.closing_unutilised_shl_cash_keur - 30.0) < 1e-9
+        assert abs(p3.opening_unutilised_shl_cash_keur - 30.0) < 1e-9
+        assert abs(p3.closing_unutilised_shl_cash_keur - 0.0) < 1e-9
