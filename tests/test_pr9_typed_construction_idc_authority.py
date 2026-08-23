@@ -2842,3 +2842,146 @@ class TestCorrectionBSeniorFacilityCapProofs:
         assert "_B2_PRECISION_BUFFER_KEUR" not in src, (
             "_B2_PRECISION_BUFFER_KEUR buffer found in stage_b2 — must be completely removed"
         )
+
+
+class TestCorrectionB11ProvisionalFundedSourcesAudit:
+    """PR9_CORRECTION_B1.1: total_provisional_funded_sources_keur uses actual drawn sources.
+
+    Proves that ProvisionalStageB2Result.total_provisional_funded_sources_keur equals
+    sum(a.total_sources_keur for a in allocations) — the canonical seven-source waterfall
+    drawn total — NOT a formula based on senior draws + equity cap.
+    """
+
+    def _make_cfg(self, n, capex_keur, equity_keur, shl_keur, senior_keur,
+                  share_premium_keur=0.0, other_committed_equity_keur=0.0,
+                  additional_equity_keur=0.0, junior_keur=0.0, rate=0.04):
+        from financial_engine.construction.adapter import build_construction_runtime_config
+        from finco_core.inputs.construction_financing import (
+            ConstructionFinancingInput, ConstructionSeniorPricingInput, ConstructionCapexTimingInput,
+        )
+        from finco_core.inputs.senior_rate_schedule import SeniorRateMode
+        periods = _make_periods(n)
+        w = tuple(1.0 / n for _ in range(n))
+        inp = ConstructionFinancingInput(
+            enabled=True,
+            periods=periods,
+            capex_items=(ConstructionCapexTimingInput("EPC", "EPC", w),),
+            senior_pricing=ConstructionSeniorPricingInput(mode=SeniorRateMode.FLAT_ALL_IN, flat_all_in_rate=rate),
+        )
+        return build_construction_runtime_config(
+            inp,
+            senior_commitment_keur=senior_keur,
+            equity_available_keur=equity_keur,
+            shl_available_keur=shl_keur,
+            capex_amounts_keur={"EPC": capex_keur},
+            share_premium_keur=share_premium_keur,
+            other_committed_equity_keur=other_committed_equity_keur,
+            additional_equity_keur=additional_equity_keur,
+            junior_keur=junior_keur,
+        )
+
+    def test_all_seven_sources_audit_identity_holds(self):
+        """All seven sources materially non-zero: funded + unfunded == total_uses.
+
+        PR9_CANONICAL_LAYER_A_ALLOCATOR_SINGLE_AUTHORITY: provisional total_sources reflects
+        every layer drawn (Share Capital, Share Premium, Other Committed Equity, Additional
+        Equity, SHL, Junior, Senior). Audit identity verifies funded total is correct
+        regardless of which formula was used internally.
+        """
+        from finco_core.construction.stage_b2 import run_stage_b2_provisional, ProvisionalStageB2Result
+
+        # Total capex = 12_000; sources: 1000+500+400+300+800+600+8000 = 11600 < 12000 → underfunded
+        cfg = self._make_cfg(
+            n=4, capex_keur=12_000.0,
+            equity_keur=1_000.0, shl_keur=800.0, senior_keur=8_000.0,
+            share_premium_keur=500.0, other_committed_equity_keur=400.0,
+            additional_equity_keur=300.0, junior_keur=600.0,
+        )
+        result = run_stage_b2_provisional(cfg)
+        assert isinstance(result, ProvisionalStageB2Result)
+        assert result.unfunded_uses_keur > 0.0
+
+        funded = result.total_provisional_funded_sources_keur
+        unfunded = result.unfunded_uses_keur
+        total_uses = result.total_construction_uses_keur
+        assert abs(funded + unfunded - total_uses) < 1e-6, (
+            f"Audit identity violated with 7 sources: funded={funded:.6f} + "
+            f"unfunded={unfunded:.6f} != total_uses={total_uses:.6f}"
+        )
+        # Funded must be > 0 and <= total (sources were drawn)
+        assert funded > 0.0
+        assert funded <= total_uses + 1e-9
+
+    def test_shl_junior_drawn_included_in_provisional_funded_total(self):
+        """SHL and Junior drawn amounts appear in provisional funded total — not just Senior+equity.
+
+        When equity alone is insufficient and SHL+Junior are drawn, the provisional funded
+        total must reflect the correct drawn amount. Old formula (senior_draws + min(equity, uses))
+        would have excluded SHL/Junior.
+
+        Verification: funded > (senior_draws + equity_cap) proves other sources included.
+        """
+        from finco_core.construction.stage_b2 import run_stage_b2_provisional, ProvisionalStageB2Result
+
+        # equity=200, SHL=500, Junior=400, Senior=2000, capex=3100 → SHL+Junior+Senior all drawn
+        cfg = self._make_cfg(
+            n=3, capex_keur=3_100.0,
+            equity_keur=200.0, shl_keur=500.0, senior_keur=2_000.0,
+            junior_keur=400.0,
+        )
+        result = run_stage_b2_provisional(cfg)
+        assert isinstance(result, ProvisionalStageB2Result)
+
+        senior_drawn = sum(result.provisional_senior_period_draw_keur)
+        funded = result.total_provisional_funded_sources_keur
+
+        # If old wrong formula: funded ≈ senior_drawn + min(equity, uses) ≈ senior + equity
+        # Correct formula: funded = senior + equity + SHL + Junior drawn
+        # Since SHL=500 and Junior=400 are both < capex gap, they must be drawn
+        # → funded must be > senior_drawn + equity_keur
+        old_formula_upper_bound = senior_drawn + cfg.equity_available_keur
+        assert funded > old_formula_upper_bound + 1.0, (
+            f"funded={funded:.6f} not materially above senior+equity={old_formula_upper_bound:.6f}; "
+            f"SHL and Junior draws must be included in funded total"
+        )
+
+        # Audit identity still holds
+        total_uses = result.total_construction_uses_keur
+        unfunded = result.unfunded_uses_keur
+        assert abs(funded + unfunded - total_uses) < 1e-6
+
+    def test_provisional_audit_identity_funded_plus_unfunded_equals_total_uses(self):
+        """Provisional identity: funded + unfunded == total_construction_uses.
+
+        PR9_PROVISIONAL_AUDIT_IDENTITY: for any provisional result, the sum of
+        total_provisional_funded_sources_keur and unfunded_uses_keur must equal
+        total_construction_uses_keur (sum of period uses). No rounding gap.
+        Also verifies strict path raises for the same underfunded config.
+        """
+        from finco_core.construction.stage_b2 import (
+            run_stage_b2_provisional, run_stage_b2, ProvisionalStageB2Result, FundingShortfallError,
+        )
+
+        # Deliberately underfunded: total sources=3500, capex=5000 → unfunded>0
+        cfg = self._make_cfg(
+            n=4, capex_keur=5_000.0,
+            equity_keur=500.0, shl_keur=0.0, senior_keur=3_000.0,
+        )
+
+        # Provisional path: no raise, returns result with unfunded
+        result = run_stage_b2_provisional(cfg)
+        assert isinstance(result, ProvisionalStageB2Result)
+        assert result.unfunded_uses_keur > 0.0, "Expected unfunded > 0 for underfunded config"
+
+        total_uses = result.total_construction_uses_keur
+        funded = result.total_provisional_funded_sources_keur
+        unfunded = result.unfunded_uses_keur
+
+        assert abs(funded + unfunded - total_uses) < 1e-6, (
+            f"Provisional audit identity violated: funded={funded:.6f} + unfunded={unfunded:.6f} "
+            f"= {funded + unfunded:.6f} != total_uses={total_uses:.6f}"
+        )
+
+        # Strict path must raise for same config
+        with pytest.raises((FundingShortfallError, ValueError)):
+            run_stage_b2(cfg)

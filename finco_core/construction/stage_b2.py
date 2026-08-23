@@ -626,6 +626,13 @@ def _run_stage_b2_inner(
         vat_commitment_fee_keur=vat_fee,
     )
 
+    senior_idc_accruals = tuple(senior_idc_uses)
+    senior_fee_accruals = tuple(senior_fee_uses)
+
+    # prov_alloc_out: provisional allocations for caller (None on strict path).
+    # Passed through so run_stage_b2_provisional computes funded Sources directly
+    # from actual draws — PR9_CANONICAL_LAYER_A_ALLOCATOR_SINGLE_AUTHORITY.
+    prov_alloc_out = None
     if not provisional:
         # Strict path: final canonical allocation — raises FundingShortfallError on shortfall.
         # PR9_ACTUAL_SENIOR_FACILITY_CAP: uses exact senior_commitment_keur, no buffer.
@@ -659,15 +666,13 @@ def _run_stage_b2_inner(
             tolerance_keur=config.convergence_tolerance_keur,
         )
         senior_period_draws = tuple(a.senior_draw_keur for a in _alloc_final_prov)
+        prov_alloc_out = _alloc_final_prov
 
     cumulative_senior: list[float] = []
     running = 0.0
     for draw in senior_period_draws:
         running += draw
         cumulative_senior.append(running)
-    senior_idc_accruals, senior_fee_accruals = _senior_financing_accruals(
-        config, senior_period_draws, senior_rates
-    )
     closing_senior = cumulative_senior[-1] if cumulative_senior else 0.0
 
     return (
@@ -676,6 +681,7 @@ def _run_stage_b2_inner(
         tuple(cumulative_senior), senior_period_draws,
         period_uses, financing, closing_senior,
         iteration, residual, audit, final_unfunded,
+        prov_alloc_out,
     )
 
 
@@ -696,7 +702,7 @@ def run_stage_b2(config: ConstructionRuntimeConfig) -> ConstructionRuntimeResult
         senior_idc_accruals, senior_fee_accruals,
         cumulative_senior, senior_period_draws,
         period_uses, financing, closing_senior,
-        iteration, residual, audit, _unfunded,
+        iteration, residual, audit, _unfunded, _prov_alloc,
     ) = _run_stage_b2_inner(config, provisional=False)
 
     return ConstructionRuntimeResult(
@@ -734,23 +740,23 @@ def run_stage_b2_provisional(config: ConstructionRuntimeConfig) -> ProvisionalSt
         _hard_capex, _vat_payable, _vat_schedule,
         _idc_accruals, _fee_accruals,
         _cumul_senior, senior_period_draws,
-        period_uses, financing, closing_senior,
+        period_uses, financing, _closing_senior,
         iteration, residual, _audit, final_unfunded,
+        alloc_final_prov,
     ) = _run_stage_b2_inner(config, provisional=True)
 
-    total_sources = sum(senior_period_draws) + (
-        config.equity_available_keur + config.share_premium_keur
-        + config.other_committed_equity_keur + config.additional_equity_keur
-        + config.shl_available_keur + config.junior_keur
-    )
+    # Derive funded Sources directly from canonical provisional allocations.
+    # total_provisional_funded_sources_keur = actual drawn sources, not configured caps.
+    # PR9_CANONICAL_LAYER_A_ALLOCATOR_SINGLE_AUTHORITY: one authority, no reconstruction.
+    total_funded = sum(a.total_sources_keur for a in alloc_final_prov)
+    total_uses = sum(period_uses)
+
     return ProvisionalStageB2Result(
         authority="PR9_STAGE_B2_PROVISIONAL_OUTER_LOOP_INTERMEDIATE",
         provisional_senior_period_draw_keur=senior_period_draws,
         actual_senior_commitment_keur=config.senior_commitment_keur,
-        total_provisional_funded_sources_keur=sum(a for a in senior_period_draws) + (
-            min(config.equity_available_keur, sum(period_uses))
-        ),
-        total_construction_uses_keur=sum(period_uses),
+        total_provisional_funded_sources_keur=total_funded,
+        total_construction_uses_keur=total_uses,
         unfunded_uses_keur=final_unfunded,
         capitalized_financing_costs=financing,
         iterations=iteration,
