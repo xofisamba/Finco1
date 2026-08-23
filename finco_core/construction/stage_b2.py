@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import date
+from finco_core.construction.allocator import ConstructionPeriodAllocation
 
 
 class FundingShortfallError(ValueError):
@@ -151,6 +152,7 @@ class ConstructionRuntimeResult:
     iterations: int
     final_residual_keur: float
     residual_audit: tuple[VectorResidualAudit, ...]
+    canonical_allocations: tuple[ConstructionPeriodAllocation, ...]
 
 
 @dataclass(frozen=True)
@@ -180,6 +182,7 @@ class ProvisionalStageB2Result:
     capitalized_financing_costs: CapitalizedFinancingCosts
     iterations: int
     final_residual_keur: float
+    canonical_allocations: tuple[ConstructionPeriodAllocation, ...]
 
 
 def _n_from_schedule(capex_schedule: CapexScheduleSet) -> int:
@@ -649,6 +652,7 @@ def _run_stage_b2_inner(
             raise FundingShortfallError(str(exc)) from exc
         senior_period_draws = tuple(a.senior_draw_keur for a in _alloc_final)
         final_unfunded = 0.0
+        prov_alloc_out = _alloc_final
     else:
         # Provisional path: derive final draws without raising.
         _alloc_final_prov, final_unfunded = allocate_construction_sources_provisional(
@@ -706,7 +710,7 @@ def run_stage_b2(config: ConstructionRuntimeConfig) -> ConstructionRuntimeResult
         senior_idc_accruals, senior_fee_accruals,
         cumulative_senior, senior_period_draws,
         period_uses, financing, closing_senior,
-        iteration, residual, audit, _unfunded, _prov_alloc,
+        iteration, residual, audit, _unfunded, _canonical_alloc,
     ) = _run_stage_b2_inner(config, provisional=False)
 
     return ConstructionRuntimeResult(
@@ -726,6 +730,7 @@ def run_stage_b2(config: ConstructionRuntimeConfig) -> ConstructionRuntimeResult
         iterations=iteration,
         final_residual_keur=residual,
         residual_audit=audit,
+        canonical_allocations=_canonical_alloc,
     )
 
 
@@ -765,6 +770,7 @@ def run_stage_b2_provisional(config: ConstructionRuntimeConfig) -> ProvisionalSt
         capitalized_financing_costs=financing,
         iterations=iteration,
         final_residual_keur=residual,
+        canonical_allocations=alloc_final_prov,
     )
 
 

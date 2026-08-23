@@ -82,6 +82,7 @@ def build_construction_funding_schedule(
     additional_equity_keur: float,
     shl_cash_keur: float,
     shl_cash_per_period_keur: "tuple[float, ...] | None" = None,
+    post_construction_shl_cash_contribution_keur: float = 0.0,
     period_dates: "tuple[tuple[date | None, date | None, date | None], ...] | None" = None,
     period_uses_keur: "tuple[float, ...] | None" = None,
     shl_allocation_per_period_keur: "tuple[float, ...] | None" = None,
@@ -176,10 +177,23 @@ def build_construction_funding_schedule(
                 "G2A_SHL_PER_PERIOD_LENGTH_MISMATCH: shl_cash_per_period_keur length "
                 f"{len(shl_cash_per_period_keur)} != construction_period_count {construction_period_count}"
             )
-        if abs(sum(shl_cash_per_period_keur) - shl_cash_keur) > 1e-6:
+        if post_construction_shl_cash_contribution_keur < 0.0 or not math.isfinite(
+            post_construction_shl_cash_contribution_keur
+        ):
+            raise ValueError(
+                "G2A_POST_CONSTRUCTION_SHL_CONTRIBUTION_INVALID: "
+                f"{post_construction_shl_cash_contribution_keur!r}"
+            )
+        if abs(
+            sum(shl_cash_per_period_keur)
+            + post_construction_shl_cash_contribution_keur
+            - shl_cash_keur
+        ) > 1e-6:
             raise ValueError(
                 "G2A_SHL_PER_PERIOD_SUM_MISMATCH: sum of per-period SHL draws "
-                f"{sum(shl_cash_per_period_keur):.6f} != shl_cash_keur {shl_cash_keur:.6f}"
+                f"plus post-construction contribution "
+                f"{post_construction_shl_cash_contribution_keur:.6f} != "
+                f"shl_cash_keur {shl_cash_keur:.6f}"
             )
     # Validate explicit period uses vector when provided.
     if period_uses_keur is not None:
@@ -200,10 +214,11 @@ def build_construction_funding_schedule(
                 "G2A_SHL_ALLOCATION_LENGTH_MISMATCH: shl_allocation_per_period_keur length "
                 f"{len(shl_allocation_per_period_keur)} != construction_period_count {construction_period_count}"
             )
-        if abs(sum(shl_allocation_per_period_keur) - shl_cash_keur) > 1e-6:
+        if sum(shl_allocation_per_period_keur) > shl_cash_keur + 1e-6:
             raise ValueError(
-                "G2A_SHL_ALLOCATION_SUM_MISMATCH: sum of SHL allocation "
-                f"{sum(shl_allocation_per_period_keur):.6f} != shl_cash_keur {shl_cash_keur:.6f}"
+                "G2A_SHL_ALLOCATION_SUM_MISMATCH: construction SHL allocation "
+                f"{sum(shl_allocation_per_period_keur):.6f} exceeds "
+                f"shl_cash_keur {shl_cash_keur:.6f}"
             )
     source_caps = {
         "share": share_capital_keur,

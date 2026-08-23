@@ -3769,3 +3769,351 @@ class TestCorrectionDSevenSourceCompositionIdentity:
                 assert observed is None, metric
             else:
                 assert observed == pytest.approx(expected, abs=1e-9), metric
+
+
+class TestCorrectionETypedShlTimelineAuthority:
+    """Typed PR-9 dates and canonical Layer A drive the existing SHL kernel."""
+
+    @staticmethod
+    def _allocations():
+        from finco_core.construction.allocator import ConstructionPeriodAllocation
+
+        return (
+            ConstructionPeriodAllocation(0, 40.0, 0.0, 0.0, 0.0, 0.0, 30.0, 0.0, 10.0, 40.0, 0.0),
+            ConstructionPeriodAllocation(1, 60.0, 0.0, 0.0, 0.0, 0.0, 50.0, 0.0, 10.0, 60.0, 0.0),
+        )
+
+    @staticmethod
+    def _construction():
+        from datetime import date
+        from types import SimpleNamespace
+
+        return SimpleNamespace(periods=(
+            SimpleNamespace(start_date=date(2030, 1, 1), end_date=date(2030, 6, 30)),
+            SimpleNamespace(start_date=date(2030, 7, 1), end_date=date(2030, 12, 31)),
+        ))
+
+    @staticmethod
+    def _financing(*, scalar=1.0, policy=None):
+        from types import SimpleNamespace
+        from finco_core.inputs._models import SponsorFundingTimingPolicy
+
+        return SimpleNamespace(
+            shl_day_count_convention="ACT_365_FIXED",
+            shl_construction_day_count_fraction=scalar,
+            sponsor_funding_timing_policy=(
+                policy or SponsorFundingTimingPolicy.PRO_RATA_CONSTRUCTION
+            ),
+        )
+
+    def test_typed_dates_are_the_only_period_and_dcf_authority(self):
+        import inspect
+        from financial_engine.financing.project import _typed_construction_shl_context
+
+        construction = self._construction()
+        context = _typed_construction_shl_context(
+            construction=construction,
+            financing=self._financing(),
+            canonical_allocations=self._allocations(),
+            tolerance_keur=1e-9,
+            provisional=False,
+        )
+        assert context.period_dates == (
+            (construction.periods[0].start_date, construction.periods[0].end_date, construction.periods[0].end_date),
+            (construction.periods[1].start_date, construction.periods[1].end_date, construction.periods[1].end_date),
+        )
+        assert tuple(p.day_count_fraction for p in context.periods) == pytest.approx(
+            (181 / 365, 184 / 365), abs=1e-15
+        )
+        assert sum(p.day_count_fraction for p in context.periods) == pytest.approx(1.0)
+        source = inspect.getsource(_typed_construction_shl_context)
+        assert "construction.periods" in source
+        assert "construction_period_uses_keur" not in source
+        assert "run_operating_model" not in source
+
+    def test_scalar_dcf_conflict_fails_closed_without_rescaling(self):
+        from financial_engine.financing.project import _typed_construction_shl_context
+
+        with pytest.raises(
+            ValueError, match="PR9_DUAL_SHL_CONSTRUCTION_DCF_AUTHORITY_MISMATCH"
+        ):
+            _typed_construction_shl_context(
+                construction=self._construction(),
+                financing=self._financing(scalar=0.9),
+                canonical_allocations=self._allocations(),
+                tolerance_keur=1e-9,
+                provisional=False,
+            )
+
+    def test_same_dates_preserve_instrument_specific_day_count(self):
+        from financial_engine.shl.contracts import ShlDayCountConvention
+        from financial_engine.shl.day_count import compute_shl_dcf
+
+        first = self._construction().periods[0]
+        assert compute_shl_dcf(first.start_date, first.end_date, ShlDayCountConvention.ACT_360) == pytest.approx(181 / 360)
+        assert compute_shl_dcf(first.start_date, first.end_date, ShlDayCountConvention.ACT_365_FIXED) == pytest.approx(181 / 365)
+
+    @pytest.mark.parametrize("method_name", ("SIMPLE", "COMPOUND_PERIODIC"))
+    def test_existing_kernel_matches_manual_recurrence(self, method_name):
+        from finco_core.inputs._models import ShlConstructionInterestMethod
+        from financial_engine.shl.construction import (
+            ShlConstructionPeriodInput,
+            compute_shl_construction_schedule,
+        )
+
+        method = getattr(ShlConstructionInterestMethod, method_name)
+        periods = (
+            ShlConstructionPeriodInput(30.0, 181 / 365, 0),
+            ShlConstructionPeriodInput(50.0, 184 / 365, 1),
+        )
+        result = compute_shl_construction_schedule(
+            opening_balance_keur=0.0,
+            periods=periods,
+            annual_rate=0.08,
+            method=method,
+        )
+        if method_name == "SIMPLE":
+            expected = (30.0 * 0.08 * 181 / 365, 80.0 * 0.08 * 184 / 365)
+        else:
+            p0 = 30.0 * ((1.08) ** (181 / 365) - 1.0)
+            p1 = (30.0 + p0 + 50.0) * ((1.08) ** (184 / 365) - 1.0)
+            expected = (p0, p1)
+        assert tuple(p.pik_interest_keur for p in result.periods) == pytest.approx(expected, abs=1e-12)
+
+    def test_timing_policy_and_nonconstruction_residual_are_causal(self):
+        from financial_engine.financing.stack import build_construction_funding_schedule
+        from financial_engine.shl.construction import (
+            ShlConstructionPeriodInput,
+            compute_shl_construction_schedule,
+        )
+        from finco_core.inputs._models import ShlConstructionInterestMethod
+
+        allocations = self._allocations()
+        pro_cash = (30.0, 50.0)
+        fc_cash = (100.0, 0.0)
+        pro = build_construction_funding_schedule(
+            construction_period_count=2,
+            total_project_uses_keur=120.0,
+            senior_keur=20.0,
+            junior_keur=0.0,
+            share_capital_keur=0.0,
+            share_premium_keur=0.0,
+            other_committed_equity_keur=0.0,
+            additional_equity_keur=0.0,
+            shl_cash_keur=100.0,
+            shl_cash_per_period_keur=pro_cash,
+            post_construction_shl_cash_contribution_keur=20.0,
+            canonical_economic_allocations=allocations,
+        )
+        all_fc = build_construction_funding_schedule(
+            construction_period_count=2,
+            total_project_uses_keur=120.0,
+            senior_keur=20.0,
+            junior_keur=0.0,
+            share_capital_keur=0.0,
+            share_premium_keur=0.0,
+            other_committed_equity_keur=0.0,
+            additional_equity_keur=0.0,
+            shl_cash_keur=100.0,
+            shl_cash_per_period_keur=fc_cash,
+            canonical_economic_allocations=allocations,
+        )
+        assert tuple(p.shl_allocation_to_uses_keur for p in pro.periods) == (30.0, 50.0)
+        assert tuple(p.shl_allocation_to_uses_keur for p in all_fc.periods) == (30.0, 50.0)
+        assert tuple(p.sponsor_shl_cash_contribution_keur for p in pro.periods) == pro_cash
+        assert tuple(p.sponsor_shl_cash_contribution_keur for p in all_fc.periods) == fc_cash
+        assert pro.non_construction_fc_use.shl_draw_keur == pytest.approx(20.0)
+        assert all_fc.non_construction_fc_use.shl_draw_keur == pytest.approx(20.0)
+        assert all_fc.periods[-1].closing_unutilised_shl_cash_keur == pytest.approx(20.0)
+
+        def schedule(draws, rate):
+            return compute_shl_construction_schedule(
+                opening_balance_keur=0.0,
+                periods=tuple(
+                    ShlConstructionPeriodInput(draw, dcf, index)
+                    for index, (draw, dcf) in enumerate(zip(draws, (181 / 365, 184 / 365)))
+                ),
+                annual_rate=rate,
+                method=ShlConstructionInterestMethod.COMPOUND_PERIODIC,
+            )
+
+        pro_schedule = schedule(pro_cash, 0.08)
+        fc_schedule = schedule(fc_cash, 0.08)
+        simple_schedule = compute_shl_construction_schedule(
+            opening_balance_keur=0.0,
+            periods=tuple(
+                ShlConstructionPeriodInput(draw, 1.0, index)
+                for index, draw in enumerate(pro_cash)
+            ),
+            annual_rate=0.08,
+            method=ShlConstructionInterestMethod.SIMPLE,
+        )
+        assert fc_schedule.total_pik_keur > pro_schedule.total_pik_keur
+        compound_two_years = compute_shl_construction_schedule(
+            opening_balance_keur=0.0,
+            periods=tuple(
+                ShlConstructionPeriodInput(draw, 1.0, index)
+                for index, draw in enumerate(pro_cash)
+            ),
+            annual_rate=0.08,
+            method=ShlConstructionInterestMethod.COMPOUND_PERIODIC,
+        )
+        assert compound_two_years.total_pik_keur > simple_schedule.total_pik_keur
+        assert schedule(pro_cash, 0.0).total_pik_keur == 0.0
+        assert schedule(pro_cash, 0.12).total_pik_keur > pro_schedule.total_pik_keur
+        assert 100.0 + pro_schedule.total_pik_keur == pytest.approx(
+            pro_schedule.opening_operating_shl_balance_keur + 20.0,
+            abs=1e-12,
+        )
+
+    def test_production_timing_policy_uses_same_layer_a_and_typed_dates(self):
+        import dataclasses
+        import inspect
+        from app.project_factories import create_default_solar_project
+        from financial_engine.financing import run_project_financing_model
+        from financial_engine.financing.project import _run_with_construction_idc
+        from finco_core.inputs._models import (
+            ShlConstructionInterestMethod,
+            SponsorFundingTimingPolicy,
+        )
+
+        base = create_default_solar_project()
+        construction = _make_solar_construction_input(2)
+        construction = dataclasses.replace(
+            construction,
+            capex_items=tuple(
+                dataclasses.replace(item, payment_weights=(0.03, 0.97))
+                for item in construction.capex_items
+            ),
+        )
+        total_dcf = sum(
+            (period.end_date - period.start_date).days / 365
+            + 1 / 365
+            for period in construction.periods
+        )
+
+        def run(policy):
+            financing = dataclasses.replace(
+                base.financing,
+                construction_financing=construction,
+                shl_day_count_convention="ACT_365_FIXED",
+                shl_construction_day_count_fraction=total_dcf,
+                shl_construction_interest_method=ShlConstructionInterestMethod.COMPOUND_PERIODIC,
+                sponsor_funding_timing_policy=policy,
+            )
+            return run_project_financing_model(
+                dataclasses.replace(base, financing=financing)
+            )
+
+        pro = run(SponsorFundingTimingPolicy.PRO_RATA_CONSTRUCTION)
+        all_fc = run(SponsorFundingTimingPolicy.ALL_AT_FC)
+        pro_cf = pro.construction_financing
+        fc_cf = all_fc.construction_financing
+        expected_dates = tuple(period.start_date for period in construction.periods)
+        assert pro_cf.period_start_dates == expected_dates
+        assert pro_cf.shl_day_count_fraction == pytest.approx(
+            tuple(
+                ((period.end_date - period.start_date).days + 1) / 365
+                for period in construction.periods
+            ),
+            abs=1e-15,
+        )
+        assert pro_cf.shl_allocation_keur == pytest.approx(fc_cf.shl_allocation_keur, abs=1e-7)
+        assert pro.derived_shl_cash_principal_keur == pytest.approx(
+            all_fc.derived_shl_cash_principal_keur, abs=1e-7
+        )
+        assert pro_cf.shl_cash_contribution_keur == pytest.approx(pro_cf.shl_allocation_keur)
+        assert fc_cf.shl_cash_contribution_keur[0] == pytest.approx(
+            all_fc.derived_shl_cash_principal_keur
+        )
+        assert fc_cf.shl_cash_contribution_keur[1:] == pytest.approx((0.0,))
+        assert fc_cf.shl_construction_pik_keur > pro_cf.shl_construction_pik_keur
+        assert pro.opening_operating_shl_balance_keur == pytest.approx(
+            pro.derived_shl_cash_principal_keur + pro.shl_construction_pik_keur,
+            abs=1e-9,
+        )
+        assert all_fc.opening_operating_shl_balance_keur == pytest.approx(
+            all_fc.derived_shl_cash_principal_keur + all_fc.shl_construction_pik_keur,
+            abs=1e-9,
+        )
+        for result in (pro, all_fc):
+            first_operating = next(
+                period.period_index
+                for period in result.project_model_result.periods
+                if period.is_operation
+            )
+            model_opening = dict(zip(
+                result.project_model_result.shareholder_loan.period_indices,
+                result.project_model_result.shareholder_loan.shl_opening_keur,
+            ))[first_operating]
+            assert model_opening == pytest.approx(
+                result.opening_operating_shl_balance_keur, abs=1e-9
+            )
+        source = inspect.getsource(_run_with_construction_idc)
+        assert "construction_period_uses_keur" in source  # fail-closed lock only
+        assert "allocate_source_waterfall" not in source
+
+    def test_production_cash_dsra_residual_enters_at_cod_only_for_pro_rata(self):
+        import dataclasses
+        from app.project_factories import create_default_solar_project
+        from financial_engine.financing import run_project_financing_model
+        from finco_core.inputs._models import (
+            DebtServiceReserveSupportMode,
+            ShlConstructionInterestMethod,
+            SponsorFundingTimingPolicy,
+        )
+
+        base = create_default_solar_project()
+        construction = _make_solar_construction_input(2)
+        construction = dataclasses.replace(
+            construction,
+            capex_items=tuple(
+                dataclasses.replace(item, payment_weights=(0.03, 0.97))
+                for item in construction.capex_items
+            ),
+        )
+        total_dcf = sum(
+            ((period.end_date - period.start_date).days + 1) / 365
+            for period in construction.periods
+        )
+
+        def run(policy):
+            financing = dataclasses.replace(
+                base.financing,
+                construction_financing=construction,
+                gearing_ratio=0.01,
+                dsra_support_mode=DebtServiceReserveSupportMode.CASH_DSRA,
+                debt_service_reserve_requirement_keur=500.0,
+                shl_day_count_convention="ACT_365_FIXED",
+                shl_construction_day_count_fraction=total_dcf,
+                shl_construction_interest_method=ShlConstructionInterestMethod.COMPOUND_PERIODIC,
+                sponsor_funding_timing_policy=policy,
+            )
+            return run_project_financing_model(dataclasses.replace(base, financing=financing))
+
+        pro = run(SponsorFundingTimingPolicy.PRO_RATA_CONSTRUCTION)
+        all_fc = run(SponsorFundingTimingPolicy.ALL_AT_FC)
+        pro_nc_shl = pro.construction_funding.non_construction_fc_use.shl_draw_keur
+        fc_nc_shl = all_fc.construction_funding.non_construction_fc_use.shl_draw_keur
+        assert pro_nc_shl > 0.0
+        assert fc_nc_shl > 0.0
+        assert sum(pro.construction_financing.shl_cash_contribution_keur) == pytest.approx(
+            sum(pro.construction_financing.shl_allocation_keur), abs=1e-9
+        )
+        assert pro.derived_shl_cash_principal_keur - sum(
+            pro.construction_financing.shl_cash_contribution_keur
+        ) == pytest.approx(pro_nc_shl, abs=1e-7)
+        assert all_fc.construction_financing.shl_cash_contribution_keur[0] == pytest.approx(
+            all_fc.derived_shl_cash_principal_keur, abs=1e-9
+        )
+        assert all_fc.construction_funding.periods[-1].closing_unutilised_shl_cash_keur == pytest.approx(
+            fc_nc_shl, abs=1e-7
+        )
+        assert pro.opening_operating_shl_balance_keur == pytest.approx(
+            pro.derived_shl_cash_principal_keur + pro.shl_construction_pik_keur,
+            abs=1e-9,
+        )
+        assert all_fc.opening_operating_shl_balance_keur == pytest.approx(
+            all_fc.derived_shl_cash_principal_keur + all_fc.shl_construction_pik_keur,
+            abs=1e-9,
+        )

@@ -109,6 +109,8 @@ class ConstructionFinancingResult:
     structuring_fee_keur: tuple[float, ...]
     shl_allocation_keur: tuple[float, ...]
     shl_cash_contribution_keur: tuple[float, ...]
+    shl_day_count_fraction: tuple[float, ...]
+    shl_pik_accrual_keur: tuple[float, ...]
     # Scalar results
     total_capitalized_financing_keur: float
     shl_construction_pik_keur: float

@@ -2,15 +2,19 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import dataclass, replace
 
 from finco_core.inputs import GearingBasisMode, ProjectInputs, SponsorFundingMode
 from financial_engine.adapters.project_inputs import (
     build_senior_debt_model_input_from_project_inputs,
+    _coerce_shl_day_count,
 )
 from domain.construction.config import FundingSourceCaps
 from domain.construction.funding_allocation import allocate_source_waterfall
+from finco_core.construction.allocator import ConstructionPeriodAllocation
 from financial_engine.financing.contracts import (
+    ConstructionFundingPeriod,
+    ConstructionFundingResult,
     ConstructionFinancingResult,
     ProjectFinancingResult,
     ProjectUses,
@@ -28,6 +32,7 @@ from financial_engine.shl.construction import (
     ShlConstructionPeriodInput,
 )
 from finco_core.inputs._models import SponsorFundingTimingPolicy
+from financial_engine.shl.day_count import compute_shl_dcf
 
 # Construction SHL accrual semantics (Fix 3):
 #
@@ -42,9 +47,170 @@ from finco_core.inputs._models import SponsorFundingTimingPolicy
 #          Backward compat: None/0.0 DCF path unchanged (Solar PIK=0, Wind PIK=0).
 
 
+@dataclass(frozen=True)
+class _TypedConstructionShlContext:
+    """Explicit PR-9 handoff from Stage B2 allocation to the SHL kernel."""
+
+    periods: tuple[ShlConstructionPeriodInput, ...]
+    period_dates: tuple[tuple, ...]
+    shl_allocation_to_uses_keur: tuple[float, ...]
+    canonical_allocations: tuple[ConstructionPeriodAllocation, ...]
+    timing_policy: SponsorFundingTimingPolicy
+    provisional: bool
+
+
+def _typed_construction_shl_context(
+    *,
+    construction: object,
+    financing: object,
+    canonical_allocations: tuple[ConstructionPeriodAllocation, ...],
+    tolerance_keur: float,
+    provisional: bool,
+) -> _TypedConstructionShlContext:
+    """Derive SHL periods only from typed PR-9 dates and SHL day count."""
+    typed_periods = tuple(construction.periods)
+    if len(canonical_allocations) != len(typed_periods):
+        raise ValueError(
+            "PR9_TYPED_SHL_PERIOD_COUNT_MISMATCH: "
+            f"allocations={len(canonical_allocations)}, periods={len(typed_periods)}"
+        )
+    convention = _coerce_shl_day_count(financing.shl_day_count_convention)
+    derived_dcfs = tuple(
+        compute_shl_dcf(period.start_date, period.end_date, convention)
+        for period in typed_periods
+    )
+    legacy_scalar = financing.shl_construction_day_count_fraction
+    if legacy_scalar is not None and float(legacy_scalar) > 0.0:
+        if abs(sum(derived_dcfs) - float(legacy_scalar)) > max(tolerance_keur, 1e-9):
+            raise ValueError(
+                "PR9_DUAL_SHL_CONSTRUCTION_DCF_AUTHORITY_MISMATCH: "
+                f"typed_total={sum(derived_dcfs):.12f}, "
+                f"legacy_scalar={float(legacy_scalar):.12f}"
+            )
+        effective_dcfs = derived_dcfs
+    else:
+        # Existing None/zero contracts explicitly disable construction SHL
+        # accrual. Dates still come only from the typed PR-9 axis.
+        effective_dcfs = tuple(0.0 for _ in typed_periods)
+    return _TypedConstructionShlContext(
+        periods=tuple(
+            ShlConstructionPeriodInput(
+                draw_keur=0.0,
+                day_count_fraction=dcf,
+                period_index=index,
+            )
+            for index, dcf in enumerate(effective_dcfs)
+        ),
+        period_dates=tuple(
+            (period.start_date, period.end_date, period.end_date)
+            for period in typed_periods
+        ),
+        shl_allocation_to_uses_keur=tuple(
+            allocation.shl_draw_keur for allocation in canonical_allocations
+        ),
+        canonical_allocations=canonical_allocations,
+        timing_policy=financing.sponsor_funding_timing_policy,
+        provisional=provisional,
+    )
+
+
 def _project_uses(project_inputs: ProjectInputs) -> ProjectUses:
     """Thin wrapper — delegates to the canonical compute_project_uses authority."""
     return compute_project_uses(project_inputs)
+
+
+def _provisional_typed_construction_funding(
+    context: _TypedConstructionShlContext,
+    cash_contributions_keur: tuple[float, ...],
+) -> ConstructionFundingResult:
+    """Expose outer-state lag without weakening the strict funding validator."""
+    cumulative = {
+        "uses": 0.0,
+        "senior": 0.0,
+        "junior": 0.0,
+        "share": 0.0,
+        "premium": 0.0,
+        "other": 0.0,
+        "additional": 0.0,
+        "shl": 0.0,
+        "sources": 0.0,
+    }
+    unutilised = 0.0
+    rows = []
+    for allocation, contribution, dates in zip(
+        context.canonical_allocations,
+        cash_contributions_keur,
+        context.period_dates,
+    ):
+        cumulative["uses"] += allocation.period_uses_keur
+        cumulative["senior"] += allocation.senior_draw_keur
+        cumulative["junior"] += allocation.junior_draw_keur
+        cumulative["share"] += allocation.share_capital_draw_keur
+        cumulative["premium"] += allocation.share_premium_draw_keur
+        cumulative["other"] += allocation.other_committed_equity_draw_keur
+        cumulative["additional"] += allocation.additional_equity_draw_keur
+        cumulative["shl"] += allocation.shl_draw_keur
+        cumulative["sources"] += allocation.total_sources_keur
+        closing_unutilised = (
+            unutilised + contribution - allocation.shl_draw_keur
+        )
+        rows.append(ConstructionFundingPeriod(
+            period_index=allocation.period_index + 1,
+            project_cash_uses_keur=allocation.period_uses_keur,
+            senior_draw_keur=allocation.senior_draw_keur,
+            junior_or_other_main_funding_draw_keur=allocation.junior_draw_keur,
+            share_capital_draw_keur=allocation.share_capital_draw_keur,
+            share_premium_draw_keur=allocation.share_premium_draw_keur,
+            other_committed_equity_draw_keur=allocation.other_committed_equity_draw_keur,
+            additional_equity_draw_keur=allocation.additional_equity_draw_keur,
+            shl_cash_draw_keur=allocation.shl_draw_keur,
+            total_sponsor_cash_draw_keur=(
+                allocation.share_capital_draw_keur
+                + allocation.share_premium_draw_keur
+                + allocation.other_committed_equity_draw_keur
+                + allocation.additional_equity_draw_keur
+                + allocation.shl_draw_keur
+            ),
+            total_sources_keur=allocation.total_sources_keur,
+            sources_uses_difference_keur=allocation.residual_keur,
+            cumulative_project_cash_uses_keur=cumulative["uses"],
+            cumulative_senior_draw_keur=cumulative["senior"],
+            cumulative_junior_or_other_main_funding_draw_keur=cumulative["junior"],
+            cumulative_share_capital_draw_keur=cumulative["share"],
+            cumulative_share_premium_draw_keur=cumulative["premium"],
+            cumulative_other_committed_equity_draw_keur=cumulative["other"],
+            cumulative_additional_equity_draw_keur=cumulative["additional"],
+            cumulative_shl_cash_draw_keur=cumulative["shl"],
+            cumulative_total_sources_keur=cumulative["sources"],
+            cumulative_sources_uses_difference_keur=(
+                cumulative["sources"] - cumulative["uses"]
+            ),
+            period_start=dates[0],
+            period_end=dates[1],
+            cashflow_date=dates[2],
+            shl_allocation_to_uses_keur=allocation.shl_draw_keur,
+            sponsor_shl_cash_contribution_keur=contribution,
+            opening_unutilised_shl_cash_keur=unutilised,
+            closing_unutilised_shl_cash_keur=closing_unutilised,
+        ))
+        unutilised = closing_unutilised
+    period_residuals = tuple(row.sources_uses_difference_keur for row in rows)
+    cumulative_residuals = tuple(
+        row.cumulative_sources_uses_difference_keur for row in rows
+    )
+    return ConstructionFundingResult(
+        policy="PR9_PROVISIONAL_OUTER_STATE_AUDIT",
+        periods=tuple(rows),
+        maximum_period_difference_keur=max(
+            (abs(value) for value in period_residuals), default=0.0
+        ),
+        maximum_cumulative_difference_keur=max(
+            (abs(value) for value in cumulative_residuals), default=0.0
+        ),
+        total_audit_uses_keur=cumulative["uses"],
+        total_audit_sources_keur=cumulative["sources"],
+        total_audit_residual_keur=cumulative["sources"] - cumulative["uses"],
+    )
 
 
 def _run_with_construction_idc(
@@ -83,6 +249,10 @@ def _run_with_construction_idc(
 
     fin = project_inputs.financing
     cf = fin.construction_financing  # guaranteed non-None and enabled
+    _typed_shl_accrual_enabled = bool(
+        fin.shl_construction_day_count_fraction is not None
+        and float(fin.shl_construction_day_count_fraction) > 0.0
+    )
 
     # Validate: fail if manual IDC/fees already set (would create dual authority)
     orig_capex = project_inputs.capex
@@ -203,12 +373,37 @@ def _run_with_construction_idc(
     # initial Senior/SHL/equity estimates.
     _seed_fin = replace(project_inputs.financing, construction_financing=None)
     _seed_inputs = replace(project_inputs, financing=_seed_fin)
+    _seed_shl_context = _typed_construction_shl_context(
+        construction=cf,
+        financing=fin,
+        canonical_allocations=tuple(
+            ConstructionPeriodAllocation(
+                period_index=index,
+                period_uses_keur=0.0,
+                share_capital_draw_keur=0.0,
+                share_premium_draw_keur=0.0,
+                other_committed_equity_draw_keur=0.0,
+                additional_equity_draw_keur=0.0,
+                shl_draw_keur=0.0,
+                junior_draw_keur=0.0,
+                senior_draw_keur=0.0,
+                total_sources_keur=0.0,
+                residual_keur=0.0,
+            )
+            for index, _ in enumerate(cf.periods)
+        ),
+        tolerance_keur=outer_tolerance_keur,
+        provisional=True,
+    )
     inner_result = run_project_financing_model(
         _seed_inputs,
         source_id=source_id,
         baseline_commit_sha=baseline_commit_sha,
         convergence_tolerance_keur=outer_tolerance_keur,
         maximum_iterations=outer_max_iterations,
+        _typed_shl_context=(
+            _seed_shl_context if _typed_shl_accrual_enabled else None
+        ),
     )
 
     # Neutral seed: inner_result from step 1 is used directly as the starting state.
@@ -243,6 +438,13 @@ def _run_with_construction_idc(
         # unfunded_uses_keur is diagnostic; outer loop drives it to zero at convergence.
         stage_b2_prov = run_stage_b2_provisional(runtime_cfg)
         new_financing = stage_b2_prov.capitalized_financing_costs
+        _iteration_shl_context = _typed_construction_shl_context(
+            construction=cf,
+            financing=fin,
+            canonical_allocations=stage_b2_prov.canonical_allocations,
+            tolerance_keur=outer_tolerance_keur,
+            provisional=True,
+        )
 
         # Apply costs IMMUTABLY from original base CapexStructure (not working_inputs.capex).
         updated_capex = apply_capitalized_financing_costs(orig_capex, new_financing)
@@ -258,6 +460,9 @@ def _run_with_construction_idc(
             baseline_commit_sha=baseline_commit_sha,
             convergence_tolerance_keur=outer_tolerance_keur,
             maximum_iterations=outer_max_iterations,
+            _typed_shl_context=(
+                _iteration_shl_context if _typed_shl_accrual_enabled else None
+            ),
         )
 
         # Check outer convergence across all material state components.
@@ -318,12 +523,22 @@ def _run_with_construction_idc(
     _verify_inputs = replace(project_inputs, capex=_verify_capex)
     _verify_fin = replace(_verify_inputs.financing, construction_financing=None)
     _verify_inputs = replace(_verify_inputs, financing=_verify_fin)
+    _verify_shl_context = _typed_construction_shl_context(
+        construction=cf,
+        financing=fin,
+        canonical_allocations=_verify_b2.canonical_allocations,
+        tolerance_keur=outer_tolerance_keur,
+        provisional=False,
+    )
     _verify_result = run_project_financing_model(
         _verify_inputs,
         source_id=source_id,
         baseline_commit_sha=baseline_commit_sha,
         convergence_tolerance_keur=outer_tolerance_keur,
         maximum_iterations=outer_max_iterations,
+        _typed_shl_context=(
+            _verify_shl_context if _typed_shl_accrual_enabled else None
+        ),
     )
     _idempotence_residual = max(
         abs(_verify_result.final_senior_commitment_keur - inner_result.final_senior_commitment_keur),
@@ -350,20 +565,9 @@ def _run_with_construction_idc(
     b2_hard = b2.monthly_hard_capex_keur
     n = len(b2_draws)
 
-    # Fix 3: SHL allocation via canonical allocator (not uses-minus-senior, which includes equity).
-    from finco_core.construction.allocator import allocate_construction_sources_per_period
     derived_shl = inner_result.derived_shl_cash_principal_keur
     if n > 0 and b2_uses:
-        _canonical_alloc = allocate_construction_sources_per_period(
-            period_uses=b2_uses,
-            share_capital_keur=inner_result.share_capital_keur,
-            share_premium_keur=inner_result.share_premium_keur,
-            other_committed_equity_keur=inner_result.other_equity_funding_before_shl_keur,
-            additional_equity_keur=inner_result.additional_equity_keur,
-            shl_cash_keur=derived_shl,
-            junior_keur=inner_result.junior_or_other_main_project_funding_keur,
-            senior_commitment_keur=inner_result.final_senior_commitment_keur,
-        )
+        _canonical_alloc = b2.canonical_allocations
         shl_alloc = tuple(a.shl_draw_keur for a in _canonical_alloc)
         _share_capital_draws = tuple(a.share_capital_draw_keur for a in _canonical_alloc)
         _share_premium_draws = tuple(a.share_premium_draw_keur for a in _canonical_alloc)
@@ -377,6 +581,7 @@ def _run_with_construction_idc(
         _max_period_residual = max(abs(r) for r in _period_residuals) if _period_residuals else 0.0
         _max_cumul_residual = max(abs(c) for c in _cumul_residuals) if _cumul_residuals else 0.0
     else:
+        _canonical_alloc = ()
         shl_alloc = ()
         _share_capital_draws = ()
         _share_premium_draws = ()
@@ -386,6 +591,45 @@ def _run_with_construction_idc(
         _period_residuals = ()
         _max_period_residual = 0.0
         _max_cumul_residual = 0.0
+
+    _final_typed_context = _typed_construction_shl_context(
+        construction=cf,
+        financing=fin,
+        canonical_allocations=_canonical_alloc,
+        tolerance_keur=outer_tolerance_keur,
+        provisional=False,
+    )
+    if fin.sponsor_funding_timing_policy == SponsorFundingTimingPolicy.PRO_RATA_CONSTRUCTION:
+        _final_shl_cash = shl_alloc
+        _post_construction_shl = max(0.0, derived_shl - sum(shl_alloc))
+    else:
+        _final_shl_cash = tuple(
+            derived_shl if index == 0 else 0.0 for index in range(n)
+        )
+        _post_construction_shl = 0.0
+    _final_shl_periods = tuple(
+        ShlConstructionPeriodInput(
+            draw_keur=draw,
+            day_count_fraction=period.day_count_fraction,
+            period_index=period.period_index,
+        )
+        for draw, period in zip(_final_shl_cash, _final_typed_context.periods)
+    )
+    _final_shl_schedule = compute_shl_construction_schedule(
+        opening_balance_keur=0.0,
+        periods=_final_shl_periods,
+        annual_rate=fin.shl_rate,
+        method=fin.shl_construction_interest_method,
+    )
+    _final_shl_pik_vector = tuple(
+        period.pik_interest_keur for period in _final_shl_schedule.periods
+    )
+    _final_opening_shl = (
+        _final_shl_schedule.opening_operating_shl_balance_keur
+        + _post_construction_shl
+    )
+    if abs(_final_opening_shl - (derived_shl + sum(_final_shl_pik_vector))) > 1e-9:
+        raise RuntimeError("PR9_OPENING_OPERATING_SHL_IDENTITY_FAILED")
 
     # Build the canonical ConstructionFundingResult from the exact converged allocations.
     # This is the single Layer-A authority: the same canonical_alloc tuple is passed to
@@ -405,6 +649,8 @@ def _run_with_construction_idc(
             other_committed_equity_keur=inner_result.other_equity_funding_before_shl_keur,
             additional_equity_keur=inner_result.additional_equity_keur,
             shl_cash_keur=derived_shl,
+            shl_cash_per_period_keur=_final_shl_cash,
+            post_construction_shl_cash_contribution_keur=_post_construction_shl,
             period_dates=_pr9_period_dates,
             canonical_economic_allocations=_canonical_alloc,
         )
@@ -438,7 +684,11 @@ def _run_with_construction_idc(
         senior_commitment_fee_accrual_keur=b2_fee,
         structuring_fee_keur=struct_per_period,
         shl_allocation_keur=shl_alloc,
-        shl_cash_contribution_keur=shl_alloc,  # PRO_RATA: allocation == contribution
+        shl_cash_contribution_keur=_final_shl_cash,
+        shl_day_count_fraction=tuple(
+            period.day_count_fraction for period in _final_typed_context.periods
+        ),
+        shl_pik_accrual_keur=_final_shl_pik_vector,
         share_capital_draws_keur=_share_capital_draws,
         share_premium_draws_keur=_share_premium_draws,
         other_committed_equity_draws_keur=_other_committed_draws,
@@ -448,8 +698,8 @@ def _run_with_construction_idc(
         maximum_period_residual_keur=_max_period_residual,
         maximum_cumulative_residual_keur=_max_cumul_residual,
         total_capitalized_financing_keur=b2.capitalized_financing_costs.total_keur,
-        shl_construction_pik_keur=inner_result.shl_construction_pik_keur,
-        opening_operating_shl_keur=inner_result.opening_operating_shl_balance_keur,
+        shl_construction_pik_keur=sum(_final_shl_pik_vector),
+        opening_operating_shl_keur=_final_opening_shl,
         final_total_project_uses_keur=final_uses,
         final_senior_commitment_keur=final_senior,
         sources_uses_residual_keur=sources_uses_diff,
@@ -482,8 +732,8 @@ def _run_with_construction_idc(
         other_equity_funding_before_shl_keur=inner_result.other_equity_funding_before_shl_keur,
         additional_equity_keur=inner_result.additional_equity_keur,
         derived_shl_cash_principal_keur=inner_result.derived_shl_cash_principal_keur,
-        shl_construction_pik_keur=inner_result.shl_construction_pik_keur,
-        opening_operating_shl_balance_keur=inner_result.opening_operating_shl_balance_keur,
+        shl_construction_pik_keur=sum(_final_shl_pik_vector),
+        opening_operating_shl_balance_keur=_final_opening_shl,
         construction_funding=_pr9_construction_funding,
         fixed_point_iteration_count=inner_result.fixed_point_iteration_count,
         fixed_point_maximum_difference_keur=inner_result.fixed_point_maximum_difference_keur,
@@ -498,6 +748,7 @@ def run_project_financing_model(
     baseline_commit_sha: str = "",
     convergence_tolerance_keur: float = 1e-7,
     maximum_iterations: int = 50,
+    _typed_shl_context: _TypedConstructionShlContext | None = None,
 ) -> ProjectFinancingResult:
     """Run the derived-SHL/Senior fixed point for an explicitly enabled project."""
     fin = project_inputs.financing
@@ -529,7 +780,10 @@ def run_project_financing_model(
     _construction_period_template: tuple[ShlConstructionPeriodInput, ...] | None = None
     # BLOCKER C: canonical period dates from model periods, populated below when template built.
     _model_period_dates: "tuple[tuple, ...] | None" = None  # (period_start, period_end, cashflow_date)
-    if (
+    if _typed_shl_context is not None:
+        _construction_period_template = _typed_shl_context.periods
+        _model_period_dates = _typed_shl_context.period_dates
+    elif (
         fin.shl_construction_day_count_fraction is not None
         and fin.shl_construction_day_count_fraction > 0.0
     ):
@@ -574,7 +828,11 @@ def run_project_financing_model(
 
     # Neutral seed: the factory's legacy clean_shl_principal_keur is deliberately
     # not read. The authoritative principal must emerge from the fixed point.
-    candidate_shl = 0.0
+    candidate_shl = (
+        sum(_typed_shl_context.shl_allocation_to_uses_keur)
+        if _typed_shl_context is not None
+        else 0.0
+    )
 
     model_result = None
     authoritative_dscr_capacity = 0.0
@@ -598,14 +856,55 @@ def run_project_financing_model(
         # Fix 3 canonical (BLOCKER B): pass construction_periods_override to SHL model so that
         # model construction PIK == ProjectFinancingResult.shl_construction_pik_keur.
         _iter_draw_schedule: "tuple[ShlConstructionPeriodInput, ...] | None" = None
+        _iter_post_construction_principal = 0.0
         if (
             _construction_period_template is not None
-            and candidate_shl > 0.0
         ):
-            _timing_policy = fin.sponsor_funding_timing_policy
+            _timing_policy = (
+                _typed_shl_context.timing_policy
+                if _typed_shl_context is not None
+                else fin.sponsor_funding_timing_policy
+            )
+            if _typed_shl_context is not None:
+                _layer_a_shl = _typed_shl_context.shl_allocation_to_uses_keur
+                _construction_shl_total = sum(_layer_a_shl)
+                if (
+                    candidate_shl + convergence_tolerance_keur < _construction_shl_total
+                    and not _typed_shl_context.provisional
+                ):
+                    raise ValueError(
+                        "PR9_TYPED_SHL_PRINCIPAL_BELOW_CONSTRUCTION_ALLOCATION: "
+                        f"principal={candidate_shl:.12f}, "
+                        f"construction_allocation={_construction_shl_total:.12f}"
+                    )
+                if _timing_policy == SponsorFundingTimingPolicy.PRO_RATA_CONSTRUCTION:
+                    _shl_cash_per_period = _layer_a_shl
+                    _iter_post_construction_principal = max(
+                        0.0, candidate_shl - _construction_shl_total
+                    )
+                else:
+                    _cash_principal = (
+                        max(candidate_shl, _construction_shl_total)
+                        if _typed_shl_context.provisional
+                        else candidate_shl
+                    )
+                    _shl_cash_per_period = tuple(
+                        _cash_principal if i == 0 else 0.0
+                        for i in range(len(_construction_period_template))
+                    )
+                _iter_draw_schedule = tuple(
+                    ShlConstructionPeriodInput(
+                        draw_keur=draw,
+                        day_count_fraction=period.day_count_fraction,
+                        period_index=period.period_index,
+                    )
+                    for draw, period in zip(
+                        _shl_cash_per_period, _construction_period_template
+                    )
+                )
             # BLOCKER A: use actual construction Uses for PRO_RATA when provided.
             _uses = getattr(fin, "construction_period_uses_keur", ())
-            if _uses:
+            if _typed_shl_context is None and _uses:
                 from finco_core.inputs._models import SponsorFundingTimingPolicy as _Policy
                 # Layer A — cumulative SPONSOR_FIRST_RESIDUAL_SENIOR waterfall.
                 # Equity cap = all fixed equity sources + additional_equity from previous iteration
@@ -643,7 +942,7 @@ def run_project_financing_model(
                     )
                     for d, p in zip(_shl_cash_per_period, _construction_period_template)
                 )
-            else:
+            elif _typed_shl_context is None:
                 _iter_draw_schedule = build_shl_construction_draw_schedule(
                     shl_cash_principal_keur=candidate_shl,
                     construction_periods=_construction_period_template,
@@ -664,6 +963,9 @@ def run_project_financing_model(
                 shareholder_loan=replace(
                     capacity_model_input.shareholder_loan,
                     construction_periods_override=_iter_draw_schedule,
+                    post_construction_principal_contribution_keur=(
+                        _iter_post_construction_principal
+                    ),
                 ),
             )
         capacity_result = run_senior_debt_model(capacity_model_input)
@@ -691,6 +993,9 @@ def run_project_financing_model(
                 shareholder_loan=replace(
                     funded_model_input.shareholder_loan,
                     construction_periods_override=_iter_draw_schedule,
+                    post_construction_principal_contribution_keur=(
+                        _iter_post_construction_principal
+                    ),
                 ),
             )
         model_result = run_senior_debt_model(funded_model_input)
@@ -735,12 +1040,41 @@ def run_project_financing_model(
     # GAP 1 & 2: initialized here; populated inside the explicit-DCF block below.
     _post_uses_vector: "tuple[float, ...] | None" = None
     _post_waterfall_shl: "tuple[float, ...] | None" = None
+    _final_post_construction_principal = 0.0
 
     if _construction_period_template is not None:
         # Explicit positive DCF: compute final post-convergence draw schedule.
         timing_policy = fin.sponsor_funding_timing_policy
         _uses = getattr(fin, "construction_period_uses_keur", ())
-        if _uses:
+        if _typed_shl_context is not None:
+            _final_waterfall_shl = _typed_shl_context.shl_allocation_to_uses_keur
+            _post_waterfall_shl = _final_waterfall_shl
+            if timing_policy == SponsorFundingTimingPolicy.PRO_RATA_CONSTRUCTION:
+                _final_shl_cash = _final_waterfall_shl
+                _final_post_construction_principal = max(
+                    0.0, derived_shl - sum(_final_waterfall_shl)
+                )
+            else:
+                _final_cash_principal = (
+                    max(derived_shl, sum(_final_waterfall_shl))
+                    if _typed_shl_context.provisional
+                    else derived_shl
+                )
+                _final_shl_cash = tuple(
+                    _final_cash_principal if i == 0 else 0.0
+                    for i in range(len(_construction_period_template))
+                )
+            _final_draw_schedule = tuple(
+                ShlConstructionPeriodInput(
+                    draw_keur=draw,
+                    day_count_fraction=period.day_count_fraction,
+                    period_index=period.period_index,
+                )
+                for draw, period in zip(
+                    _final_shl_cash, _construction_period_template
+                )
+            )
+        elif _uses:
             from finco_core.inputs._models import SponsorFundingTimingPolicy as _Policy
             # Post-convergence: Layer A waterfall with authoritative final values.
             _final_equity_cap = (
@@ -787,7 +1121,10 @@ def run_project_financing_model(
             method=fin.shl_construction_interest_method,
         )
         shl_pik = construction_shl_schedule.total_pik_keur
-        opening_operating_shl = construction_shl_schedule.opening_operating_shl_balance_keur
+        opening_operating_shl = (
+            construction_shl_schedule.opening_operating_shl_balance_keur
+            + _final_post_construction_principal
+        )
     elif model_result.shareholder_loan is not None:
         # Backward-compat path: no explicit construction DCF. Read from canonical model result.
         # Generic Solar/Wind return 0 PIK here (no construction SHL DCF configured).
@@ -822,24 +1159,37 @@ def run_project_financing_model(
     # GAP 1: pass explicit period Uses vector to funding schedule (single source of truth).
     # GAP 2: pass waterfall allocation vector for prefunding bridge computation.
     # Both are None in the legacy path (no explicit uses vector provided).
-    funding = build_construction_funding_schedule(
-        construction_period_count=_model_construction_period_count,
-        total_project_uses_keur=uses.total_project_uses_keur,
-        senior_keur=model_result.senior_debt.debt_size_keur,
-        junior_keur=fin.junior_or_other_project_funding_keur,
-        share_capital_keur=fin.share_capital_keur,
-        share_premium_keur=fin.share_premium_keur,
-        other_committed_equity_keur=fin.other_equity_funding_before_shl_keur,
-        additional_equity_keur=additional_equity,
-        shl_cash_keur=derived_shl,
-        shl_cash_per_period_keur=_shl_draws_per_period,
-        # BLOCKER C: pass canonical period dates when available from model periods.
-        period_dates=_model_period_dates,
-        # GAP 1: explicit per-period Uses vector (overrides linear total/n).
-        period_uses_keur=_post_uses_vector,
-        # GAP 2: waterfall SHL allocation-to-Uses (Layer A), distinct from cash contribution (Layer B).
-        shl_allocation_per_period_keur=_post_waterfall_shl,
-    )
+    if _typed_shl_context is not None and _typed_shl_context.provisional:
+        funding = _provisional_typed_construction_funding(
+            _typed_shl_context,
+            _shl_draws_per_period or tuple(
+                0.0 for _ in _typed_shl_context.periods
+            ),
+        )
+    else:
+        funding = build_construction_funding_schedule(
+            construction_period_count=_model_construction_period_count,
+            total_project_uses_keur=uses.total_project_uses_keur,
+            senior_keur=model_result.senior_debt.debt_size_keur,
+            junior_keur=fin.junior_or_other_project_funding_keur,
+            share_capital_keur=fin.share_capital_keur,
+            share_premium_keur=fin.share_premium_keur,
+            other_committed_equity_keur=fin.other_equity_funding_before_shl_keur,
+            additional_equity_keur=additional_equity,
+            shl_cash_keur=derived_shl,
+            shl_cash_per_period_keur=_shl_draws_per_period,
+            post_construction_shl_cash_contribution_keur=(
+                _final_post_construction_principal
+            ),
+            period_dates=_model_period_dates,
+            period_uses_keur=_post_uses_vector,
+            shl_allocation_per_period_keur=_post_waterfall_shl,
+            canonical_economic_allocations=(
+                _typed_shl_context.canonical_allocations
+                if _typed_shl_context is not None
+                else None
+            ),
+        )
     return ProjectFinancingResult(
         project_model_result=model_result,
         project_uses=uses,
