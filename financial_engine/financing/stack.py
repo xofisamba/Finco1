@@ -10,6 +10,7 @@ from finco_core.construction.allocator import ConstructionPeriodAllocation
 from financial_engine.financing.contracts import (
     ConstructionFundingPeriod,
     ConstructionFundingResult,
+    NonConstructionFcUse,
 )
 
 
@@ -104,7 +105,7 @@ def build_construction_funding_schedule(
             f"G2A_PERIOD_DATES_LENGTH_MISMATCH: period_dates length {len(period_dates)} "
             f"!= construction_period_count {construction_period_count}"
         )
-    # PR-9: validate canonical_economic_allocations length when provided.
+    # PR-9: validate canonical_economic_allocations when provided.
     if canonical_economic_allocations is not None:
         if len(canonical_economic_allocations) != construction_period_count:
             raise ValueError(
@@ -112,6 +113,22 @@ def build_construction_funding_schedule(
                 f"canonical_economic_allocations length {len(canonical_economic_allocations)} "
                 f"!= construction_period_count {construction_period_count}"
             )
+        # Source-cap overdraw validation (Section 10): no source may be drawn beyond its cap.
+        _cap_checks = (
+            ("senior", senior_keur, sum(a.senior_draw_keur for a in canonical_economic_allocations)),
+            ("shl", shl_cash_keur, sum(a.shl_draw_keur for a in canonical_economic_allocations)),
+            ("junior", junior_keur, sum(a.junior_draw_keur for a in canonical_economic_allocations)),
+            ("share_capital", share_capital_keur, sum(a.share_capital_draw_keur for a in canonical_economic_allocations)),
+            ("share_premium", share_premium_keur, sum(a.share_premium_draw_keur for a in canonical_economic_allocations)),
+            ("other_committed_equity", other_committed_equity_keur, sum(a.other_committed_equity_draw_keur for a in canonical_economic_allocations)),
+            ("additional_equity", additional_equity_keur, sum(a.additional_equity_draw_keur for a in canonical_economic_allocations)),
+        )
+        for _src_name, _cap, _total_draw in _cap_checks:
+            if _total_draw > _cap + 1e-6:
+                raise ValueError(
+                    f"PR9_CANONICAL_ALLOCATION_SOURCE_CAP_OVERDRAW: "
+                    f"source={_src_name}, total_draw={_total_draw:.9f} > cap={_cap:.9f} kEUR"
+                )
     # Validate per-period SHL draws when provided.
     if shl_cash_per_period_keur is not None:
         if len(shl_cash_per_period_keur) != construction_period_count:
@@ -322,6 +339,55 @@ def build_construction_funding_schedule(
         ))
         opening_unutilised = _closing_unutilised
 
+    construction_uses_total = cumulative_uses  # sum of all period Uses already accumulated
+    _nc_fc_use: "NonConstructionFcUse | None" = None
+    if canonical_economic_allocations is not None:
+        non_construction_fc_uses = total_project_uses_keur - construction_uses_total
+        if non_construction_fc_uses < -1e-6:
+            raise ValueError(
+                "PR9_CANONICAL_ALLOCATION_USES_SCOPE_MISMATCH: "
+                f"sum(canonical period uses)={construction_uses_total:.9f} > "
+                f"total_project_uses_keur={total_project_uses_keur:.9f}, "
+                f"excess={-non_construction_fc_uses:.9f} kEUR"
+            )
+        if non_construction_fc_uses > 1e-6:
+            # Fund non-construction FC uses (e.g. CASH_DSRA) from remaining sources
+            # in waterfall order. These uses do NOT enter Stage-B2 IDC.
+            _nc_need = non_construction_fc_uses
+            _nc_draws: dict[str, float] = {}
+            for _k in ("share", "share_premium", "other_committed", "additional_equity",
+                       "shl", "junior", "senior"):
+                _d = min(_nc_need, remaining[_k])
+                _d = max(0.0, _d)
+                _nc_draws[_k] = _d
+                remaining[_k] -= _d
+                _nc_need -= _d
+            _nc_total = sum(_nc_draws.values())
+            if abs(_nc_total - non_construction_fc_uses) > 1e-6:
+                raise ValueError(
+                    "PR9_CANONICAL_ALLOCATION_USES_SCOPE_MISMATCH: "
+                    f"non-construction FC uses={non_construction_fc_uses:.9f} kEUR "
+                    f"could not be funded from remaining sources (funded={_nc_total:.9f} kEUR)"
+                )
+            _nc_fc_use = NonConstructionFcUse(
+                policy="NON_CONSTRUCTION_FC_USES",
+                uses_keur=non_construction_fc_uses,
+                senior_draw_keur=_nc_draws["senior"],
+                shl_draw_keur=_nc_draws["shl"],
+                junior_draw_keur=_nc_draws["junior"],
+                share_capital_draw_keur=_nc_draws["share"],
+                share_premium_draw_keur=_nc_draws["share_premium"],
+                other_committed_equity_draw_keur=_nc_draws["other_committed"],
+                additional_equity_draw_keur=_nc_draws["additional_equity"],
+                total_sources_keur=_nc_total,
+                residual_keur=_nc_total - non_construction_fc_uses,
+            )
+
+    _total_audit_uses = construction_uses_total + (_nc_fc_use.uses_keur if _nc_fc_use else 0.0)
+    _total_audit_sources = (
+        sum(row.total_sources_keur for row in rows)
+        + (_nc_fc_use.total_sources_keur if _nc_fc_use else 0.0)
+    )
     return ConstructionFundingResult(
         policy=GENERIC_MVP_DRAW_POLICY,
         periods=tuple(rows),
@@ -329,4 +395,8 @@ def build_construction_funding_schedule(
         maximum_cumulative_difference_keur=max(
             abs(row.cumulative_sources_uses_difference_keur) for row in rows
         ),
+        non_construction_fc_use=_nc_fc_use,
+        total_audit_uses_keur=_total_audit_uses,
+        total_audit_sources_keur=_total_audit_sources,
+        total_audit_residual_keur=_total_audit_sources - _total_audit_uses,
     )

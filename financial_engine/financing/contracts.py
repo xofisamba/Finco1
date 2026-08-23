@@ -56,11 +56,39 @@ class ConstructionFundingPeriod:
 
 
 @dataclass(frozen=True)
+class NonConstructionFcUse:
+    """A typed FC/COD project use that is NOT part of the construction timeline.
+
+    Policy: NON_CONSTRUCTION_FC_USES
+    Typical source: CASH_DSRA reserve account funding, other COD lump-sum uses.
+    These uses do NOT participate in Stage-B2 IDC calculation.
+    """
+    policy: str  # e.g. "NON_CONSTRUCTION_FC_USES"
+    uses_keur: float
+    senior_draw_keur: float
+    shl_draw_keur: float
+    junior_draw_keur: float
+    share_capital_draw_keur: float
+    share_premium_draw_keur: float
+    other_committed_equity_draw_keur: float
+    additional_equity_draw_keur: float
+    total_sources_keur: float
+    residual_keur: float  # total_sources - uses_keur (should be ~0)
+
+
+@dataclass(frozen=True)
 class ConstructionFundingResult:
     policy: str
     periods: tuple[ConstructionFundingPeriod, ...]
     maximum_period_difference_keur: float
     maximum_cumulative_difference_keur: float
+    # PR-9: non-construction FC/COD uses (e.g. CASH_DSRA reserve funding).
+    # None when total_project_uses == sum(construction period uses).
+    non_construction_fc_use: "NonConstructionFcUse | None" = None
+    # Full-audit totals: construction + non-construction == total_project_uses.
+    total_audit_uses_keur: float = 0.0
+    total_audit_sources_keur: float = 0.0
+    total_audit_residual_keur: float = 0.0
 
 
 @dataclass(frozen=True)

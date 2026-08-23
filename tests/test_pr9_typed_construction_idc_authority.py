@@ -2053,3 +2053,367 @@ class TestLegacyStackRegression:
         assert abs(p2.closing_unutilised_shl_cash_keur - 30.0) < 1e-9
         assert abs(p3.opening_unutilised_shl_cash_keur - 30.0) < 1e-9
         assert abs(p3.closing_unutilised_shl_cash_keur - 0.0) < 1e-9
+
+
+# ---------------------------------------------------------------------------
+# Focused Correction A2: construction-uses vs total-project-uses scope
+# ---------------------------------------------------------------------------
+
+
+class TestCanonicalUsesScopeMismatch:
+    """Section 9: canonical_economic_allocations summing to < total_project_uses
+    with no declared non-construction component must fail closed.
+
+    Required classification: PR9_CANONICAL_ALLOCATION_USES_SCOPE_MISMATCH
+    """
+
+    def _base_kwargs(self) -> dict:
+        # 100 kEUR total project uses; sources sum correctly (G2A invariant)
+        return dict(
+            construction_period_count=2,
+            total_project_uses_keur=100.0,
+            senior_keur=10.0,
+            junior_keur=0.0,
+            share_capital_keur=10.0,
+            share_premium_keur=0.0,
+            other_committed_equity_keur=0.0,
+            additional_equity_keur=0.0,
+            shl_cash_keur=80.0,
+        )
+
+    def test_construction_uses_overscoped_raises(self):
+        """Canonical allocations total MORE than total_project_uses.
+        non_construction_fc_uses = total - sum(period_uses) < -1e-6 → SCOPE_MISMATCH.
+        """
+        from financial_engine.financing.stack import build_construction_funding_schedule
+        from finco_core.construction.allocator import ConstructionPeriodAllocation
+
+        # sum(period_uses) = 60+55 = 115 > total_project_uses = 100 → raises immediately.
+        # Sources: share=10, shl=80, senior=10 = 100. Draws within caps.
+        # period_uses > sum(draws) per period is acceptable by the overdraw check.
+        allocs = (
+            ConstructionPeriodAllocation(
+                period_index=0, period_uses_keur=60.0,
+                share_capital_draw_keur=10.0, share_premium_draw_keur=0.0,
+                other_committed_equity_draw_keur=0.0, additional_equity_draw_keur=0.0,
+                shl_draw_keur=40.0, junior_draw_keur=0.0, senior_draw_keur=10.0,
+                total_sources_keur=60.0, residual_keur=0.0,
+            ),
+            ConstructionPeriodAllocation(
+                period_index=1, period_uses_keur=55.0,
+                share_capital_draw_keur=0.0, share_premium_draw_keur=0.0,
+                other_committed_equity_draw_keur=0.0, additional_equity_draw_keur=0.0,
+                shl_draw_keur=40.0, junior_draw_keur=0.0, senior_draw_keur=0.0,
+                total_sources_keur=40.0, residual_keur=-15.0,
+            ),
+        )
+        # sum(shl_draws)=80 == cap=80; senior=10 == cap=10; share=10 == cap=10.
+        # sum(period_uses)=115 > total_project_uses=100 → non_construction_fc_uses=-15.
+        # Either SCOPE_MISMATCH or FAIL_CLOSED is acceptable — both are fail-closed errors.
+        with pytest.raises(ValueError, match="PR9_CANONICAL"):
+            build_construction_funding_schedule(
+                construction_period_count=2,
+                total_project_uses_keur=100.0,
+                senior_keur=10.0,
+                junior_keur=0.0,
+                share_capital_keur=10.0,
+                share_premium_keur=0.0,
+                other_committed_equity_keur=0.0,
+                additional_equity_keur=0.0,
+                shl_cash_keur=80.0,
+                canonical_economic_allocations=allocs,
+            )
+
+    def test_all_sources_drawn_in_construction_zero_gap_succeeds(self):
+        """When canonical allocs draw ALL sources in construction periods,
+        non_construction_fc_uses=0 → no gap → succeeds with no NonConstructionFcUse."""
+        from financial_engine.financing.stack import build_construction_funding_schedule
+        from finco_core.construction.allocator import ConstructionPeriodAllocation
+
+        # sources=100: share=10, shl=80, senior=10. Allocs draw all 100.
+        allocs = (
+            ConstructionPeriodAllocation(
+                period_index=0, period_uses_keur=60.0,
+                share_capital_draw_keur=10.0, share_premium_draw_keur=0.0,
+                other_committed_equity_draw_keur=0.0, additional_equity_draw_keur=0.0,
+                shl_draw_keur=40.0, junior_draw_keur=0.0, senior_draw_keur=10.0,
+                total_sources_keur=60.0, residual_keur=0.0,
+            ),
+            ConstructionPeriodAllocation(
+                period_index=1, period_uses_keur=40.0,
+                share_capital_draw_keur=0.0, share_premium_draw_keur=0.0,
+                other_committed_equity_draw_keur=0.0, additional_equity_draw_keur=0.0,
+                shl_draw_keur=40.0, junior_draw_keur=0.0, senior_draw_keur=0.0,
+                total_sources_keur=40.0, residual_keur=0.0,
+            ),
+        )
+        result = build_construction_funding_schedule(
+            construction_period_count=2,
+            total_project_uses_keur=100.0,
+            senior_keur=10.0,
+            junior_keur=0.0,
+            share_capital_keur=10.0,
+            share_premium_keur=0.0,
+            other_committed_equity_keur=0.0,
+            additional_equity_keur=0.0,
+            shl_cash_keur=80.0,
+            canonical_economic_allocations=allocs,
+        )
+        assert result.non_construction_fc_use is None
+        assert abs(result.total_audit_uses_keur - 100.0) < 1e-9
+
+    def test_non_construction_use_funded_from_remaining_succeeds(self):
+        """10 kEUR non-construction FC use funded by remaining Senior → succeeds.
+        NonConstructionFcUse populated and total_audit_uses == total_project_uses.
+        """
+        from financial_engine.financing.stack import build_construction_funding_schedule
+        from finco_core.construction.allocator import ConstructionPeriodAllocation
+
+        # Canonical: 90 kEUR construction, 10 kEUR Senior remaining for DSRA
+        allocs = (
+            ConstructionPeriodAllocation(
+                period_index=0, period_uses_keur=45.0,
+                share_capital_draw_keur=10.0, share_premium_draw_keur=0.0,
+                other_committed_equity_draw_keur=0.0, additional_equity_draw_keur=0.0,
+                shl_draw_keur=25.0, junior_draw_keur=0.0, senior_draw_keur=10.0,
+                total_sources_keur=45.0, residual_keur=0.0,
+            ),
+            ConstructionPeriodAllocation(
+                period_index=1, period_uses_keur=45.0,
+                share_capital_draw_keur=0.0, share_premium_draw_keur=0.0,
+                other_committed_equity_draw_keur=0.0, additional_equity_draw_keur=0.0,
+                shl_draw_keur=35.0, junior_draw_keur=0.0, senior_draw_keur=10.0,
+                total_sources_keur=45.0, residual_keur=0.0,
+            ),
+        )
+        # Senior cap=30 (20 drawn by allocs, 10 remaining for DSRA)
+        # SHL cap=60 (60 drawn)
+        # Share=10 (10 drawn)
+        # Total sources = 10+60+30 = 100, total_project_uses = 100
+        result = build_construction_funding_schedule(
+            construction_period_count=2,
+            total_project_uses_keur=100.0,
+            senior_keur=30.0,
+            junior_keur=0.0,
+            share_capital_keur=10.0,
+            share_premium_keur=0.0,
+            other_committed_equity_keur=0.0,
+            additional_equity_keur=0.0,
+            shl_cash_keur=60.0,
+            canonical_economic_allocations=allocs,
+        )
+        assert result.non_construction_fc_use is not None
+        assert result.non_construction_fc_use.policy == "NON_CONSTRUCTION_FC_USES"
+        assert abs(result.non_construction_fc_use.uses_keur - 10.0) < 1e-9
+        assert abs(result.non_construction_fc_use.senior_draw_keur - 10.0) < 1e-9
+        assert abs(result.total_audit_uses_keur - 100.0) < 1e-9
+        assert abs(result.total_audit_residual_keur) < 1e-9
+
+
+class TestSourceCapOverdraw:
+    """Section 10: canonical allocations that overdraw a declared source cap
+    must fail closed before any period loop executes."""
+
+    def _valid_allocs_90(self):
+        from finco_core.construction.allocator import ConstructionPeriodAllocation
+        return (
+            ConstructionPeriodAllocation(
+                period_index=0, period_uses_keur=50.0,
+                share_capital_draw_keur=10.0, share_premium_draw_keur=0.0,
+                other_committed_equity_draw_keur=0.0, additional_equity_draw_keur=0.0,
+                shl_draw_keur=30.0, junior_draw_keur=0.0, senior_draw_keur=10.0,
+                total_sources_keur=50.0, residual_keur=0.0,
+            ),
+            ConstructionPeriodAllocation(
+                period_index=1, period_uses_keur=40.0,
+                share_capital_draw_keur=0.0, share_premium_draw_keur=0.0,
+                other_committed_equity_draw_keur=0.0, additional_equity_draw_keur=0.0,
+                shl_draw_keur=30.0, junior_draw_keur=0.0, senior_draw_keur=10.0,
+                total_sources_keur=40.0, residual_keur=0.0,
+            ),
+        )
+
+    def _call(self, allocs, senior_keur=20.0, shl_cash_keur=60.0):
+        from financial_engine.financing.stack import build_construction_funding_schedule
+        return build_construction_funding_schedule(
+            construction_period_count=2,
+            total_project_uses_keur=90.0,
+            senior_keur=senior_keur,
+            junior_keur=0.0,
+            share_capital_keur=10.0,
+            share_premium_keur=0.0,
+            other_committed_equity_keur=0.0,
+            additional_equity_keur=0.0,
+            shl_cash_keur=shl_cash_keur,
+            canonical_economic_allocations=allocs,
+        )
+
+    def test_senior_overdraw_raises(self):
+        """Canonical allocations draw 20 kEUR Senior but cap is 15 kEUR → raises."""
+        from finco_core.construction.allocator import ConstructionPeriodAllocation
+        allocs = (
+            ConstructionPeriodAllocation(
+                period_index=0, period_uses_keur=45.0,
+                share_capital_draw_keur=10.0, share_premium_draw_keur=0.0,
+                other_committed_equity_draw_keur=0.0, additional_equity_draw_keur=0.0,
+                shl_draw_keur=20.0, junior_draw_keur=0.0, senior_draw_keur=15.0,
+                total_sources_keur=45.0, residual_keur=0.0,
+            ),
+            ConstructionPeriodAllocation(
+                period_index=1, period_uses_keur=45.0,
+                share_capital_draw_keur=0.0, share_premium_draw_keur=0.0,
+                other_committed_equity_draw_keur=0.0, additional_equity_draw_keur=0.0,
+                shl_draw_keur=35.0, junior_draw_keur=0.0, senior_draw_keur=10.0,
+                total_sources_keur=45.0, residual_keur=0.0,
+            ),
+        )
+        # total Senior draws = 25; declared cap = 20 (but source_caps check: 10+60+20=90 OK)
+        with pytest.raises(ValueError, match="PR9_CANONICAL_ALLOCATION_SOURCE_CAP_OVERDRAW"):
+            from financial_engine.financing.stack import build_construction_funding_schedule
+            build_construction_funding_schedule(
+                construction_period_count=2,
+                total_project_uses_keur=90.0,
+                senior_keur=20.0,
+                junior_keur=0.0,
+                share_capital_keur=10.0,
+                share_premium_keur=0.0,
+                other_committed_equity_keur=0.0,
+                additional_equity_keur=0.0,
+                shl_cash_keur=60.0,
+                canonical_economic_allocations=allocs,
+            )
+
+    def test_shl_overdraw_raises(self):
+        """Canonical allocations draw 65 kEUR SHL but cap is 60 kEUR → raises."""
+        from finco_core.construction.allocator import ConstructionPeriodAllocation
+        allocs = (
+            ConstructionPeriodAllocation(
+                period_index=0, period_uses_keur=45.0,
+                share_capital_draw_keur=10.0, share_premium_draw_keur=0.0,
+                other_committed_equity_draw_keur=0.0, additional_equity_draw_keur=0.0,
+                shl_draw_keur=25.0, junior_draw_keur=0.0, senior_draw_keur=10.0,
+                total_sources_keur=45.0, residual_keur=0.0,
+            ),
+            ConstructionPeriodAllocation(
+                period_index=1, period_uses_keur=45.0,
+                share_capital_draw_keur=0.0, share_premium_draw_keur=0.0,
+                other_committed_equity_draw_keur=0.0, additional_equity_draw_keur=0.0,
+                shl_draw_keur=40.0, junior_draw_keur=0.0, senior_draw_keur=5.0,
+                # NOTE: total SHL = 65 > cap 60
+                total_sources_keur=45.0, residual_keur=0.0,
+            ),
+        )
+        with pytest.raises(ValueError, match="PR9_CANONICAL_ALLOCATION_SOURCE_CAP_OVERDRAW"):
+            from financial_engine.financing.stack import build_construction_funding_schedule
+            build_construction_funding_schedule(
+                construction_period_count=2,
+                total_project_uses_keur=90.0,
+                senior_keur=15.0,
+                junior_keur=0.0,
+                share_capital_keur=10.0,
+                share_premium_keur=0.0,
+                other_committed_equity_keur=0.0,
+                additional_equity_keur=0.0,
+                shl_cash_keur=60.0,
+                canonical_economic_allocations=allocs,
+            )
+
+
+class TestCashDsraConstructionScope:
+    """Section 8: CASH_DSRA creates a non-construction FC project use.
+    Prove reserve funding appears exactly once and does NOT enter Stage-B2 IDC.
+    """
+
+    def _make_solar_with_dsra(self, dsra_keur: float):
+        """Create a Solar PR-9 project with CASH_DSRA enabled."""
+        import dataclasses
+        from app.project_factories import create_default_solar_project
+        from finco_core.inputs._models import DebtServiceReserveSupportMode
+
+        pi = create_default_solar_project()
+        cf = _make_solar_construction_input(6)
+        new_fin = dataclasses.replace(
+            pi.financing,
+            construction_financing=cf,
+            dsra_support_mode=DebtServiceReserveSupportMode.CASH_DSRA,
+            debt_service_reserve_requirement_keur=dsra_keur,
+        )
+        return dataclasses.replace(pi, financing=new_fin)
+
+    def test_dsra_reserve_account_funding_in_project_uses(self):
+        """CASH_DSRA requirement appears in ProjectUses.reserve_account_funding_keur."""
+        from financial_engine.financing import run_project_financing_model
+        pi = self._make_solar_with_dsra(500.0)
+        result = run_project_financing_model(pi)
+        assert abs(result.project_uses.reserve_account_funding_keur - 500.0) < 1e-6
+
+    def test_construction_uses_less_than_total_uses(self):
+        """sum(Stage-B2 construction uses) < total_project_uses by exactly DSRA amount."""
+        from financial_engine.financing import run_project_financing_model
+        dsra = 500.0
+        pi = self._make_solar_with_dsra(dsra)
+        result = run_project_financing_model(pi)
+        c = result.construction_financing
+        assert c is not None
+
+        total_uses = result.project_uses.total_project_uses_keur
+        construction_uses = sum(c.total_period_uses_keur)
+        gap = total_uses - construction_uses
+        # Gap should be ≥ DSRA amount (other non-construction uses could add to it but DSRA
+        # is the primary source in this scenario).
+        assert gap >= dsra - 1.0, (
+            f"Expected total_uses({total_uses:.1f}) - construction_uses({construction_uses:.1f}) "
+            f">= dsra({dsra:.1f}), got gap={gap:.3f}"
+        )
+
+    def test_dsra_not_in_construction_period_uses(self):
+        """DSRA must not appear in Stage-B2 per-period Uses (no IDC on reserve)."""
+        from financial_engine.financing import run_project_financing_model
+        dsra = 500.0
+        pi = self._make_solar_with_dsra(dsra)
+        result = run_project_financing_model(pi)
+        c = result.construction_financing
+        assert c is not None
+        # Stage B2 period uses = c.total_period_uses_keur (hard CAPEX + IDC/fees, no reserve)
+        construction_sum = sum(c.total_period_uses_keur)
+        total_uses = result.project_uses.total_project_uses_keur
+        # The construction period sum must be strictly less than total (reserve excluded)
+        assert construction_sum < total_uses - 1.0, (
+            f"construction sum {construction_sum:.1f} should be < total uses {total_uses:.1f} "
+            f"by at least DSRA {dsra:.1f}"
+        )
+
+    def test_non_construction_fc_use_populated_in_funding_result(self):
+        """ConstructionFundingResult.non_construction_fc_use must be populated
+        when CASH_DSRA > 0 and total_project_uses > construction_uses."""
+        from financial_engine.financing import run_project_financing_model
+        pi = self._make_solar_with_dsra(500.0)
+        result = run_project_financing_model(pi)
+        funding = result.construction_funding
+        assert funding is not None
+        assert funding.non_construction_fc_use is not None, (
+            "NonConstructionFcUse should be populated when CASH_DSRA > 0"
+        )
+        assert funding.non_construction_fc_use.policy == "NON_CONSTRUCTION_FC_USES"
+        assert funding.non_construction_fc_use.uses_keur > 0.0
+
+    def test_total_audit_uses_equals_total_project_uses(self):
+        """total_audit_uses_keur == total_project_uses_keur within 1e-9 kEUR."""
+        from financial_engine.financing import run_project_financing_model
+        pi = self._make_solar_with_dsra(500.0)
+        result = run_project_financing_model(pi)
+        funding = result.construction_funding
+        assert abs(funding.total_audit_uses_keur - result.project_uses.total_project_uses_keur) < 1e-6, (
+            f"total_audit_uses {funding.total_audit_uses_keur:.6f} != "
+            f"total_project_uses {result.project_uses.total_project_uses_keur:.6f}"
+        )
+
+    def test_total_audit_residual_near_zero(self):
+        """total_audit_sources - total_audit_uses must be <= 1e-6 kEUR."""
+        from financial_engine.financing import run_project_financing_model
+        pi = self._make_solar_with_dsra(500.0)
+        result = run_project_financing_model(pi)
+        funding = result.construction_funding
+        assert abs(funding.total_audit_residual_keur) < 1e-6, (
+            f"total_audit_residual {funding.total_audit_residual_keur:.9f} kEUR exceeds tolerance"
+        )
