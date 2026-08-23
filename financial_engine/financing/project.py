@@ -211,50 +211,12 @@ def _run_with_construction_idc(
         maximum_iterations=outer_max_iterations,
     )
 
-    # Enhanced seed step 2: run Stage B2 once (max_iterations=1) with seed Senior/SHL
-    # to get an initial IDC + structuring estimate. Then re-run inner G2A with those
-    # costs so Senior_1 is sized to include IDC+structuring before the outer loop starts.
-    # This avoids needing senior_draw_ceiling_keur in the outer loop.
-    # Inflate seed Senior to cover structuring fee and estimated IDC so Stage B2
-    # can converge in the enhanced seed pass. Rough upper bound: seed_senior + 10% of CAPEX.
-    # After enhanced seed G2A re-run, the outer loop gets properly-sized Senior_1.
-    _struct_fee_estimate = 0.0
-    if cf.structuring_fee is not None:
-        _struct_fee_estimate = cf.structuring_fee.rate * cf.structuring_fee.basis_keur
-    _idc_headroom_estimate = sum(capex_amounts.values()) * 0.10  # generous IDC upper bound
-    _eseed_senior = inner_result.final_senior_commitment_keur + _struct_fee_estimate + _idc_headroom_estimate
-
-    _eseed_runtime = build_construction_runtime_config(
-        construction=cf,
-        senior_commitment_keur=_eseed_senior,
-        equity_available_keur=inner_result.share_capital_keur,
-        shl_available_keur=inner_result.derived_shl_cash_principal_keur,
-        capex_amounts_keur=capex_amounts,
-        share_premium_keur=inner_result.share_premium_keur,
-        other_committed_equity_keur=inner_result.other_equity_funding_before_shl_keur,
-        additional_equity_keur=inner_result.additional_equity_keur,
-        junior_keur=inner_result.junior_or_other_main_project_funding_keur,
-    )
-    # Use max_iterations=100 to get a fully-converged IDC estimate.
-    # The inflated senior ceiling ensures structuring fee is covered.
-    try:
-        _eseed_b2 = run_stage_b2(_eseed_runtime)
-        _eseed_capex = apply_capitalized_financing_costs(orig_capex, _eseed_b2.capitalized_financing_costs)
-        _eseed_inputs2 = replace(project_inputs, capex=_eseed_capex)
-        _eseed_fin2 = replace(_eseed_inputs2.financing, construction_financing=None)
-        _eseed_inputs2 = replace(_eseed_inputs2, financing=_eseed_fin2)
-        inner_result = run_project_financing_model(
-            _eseed_inputs2,
-            source_id=source_id,
-            baseline_commit_sha=baseline_commit_sha,
-            convergence_tolerance_keur=outer_tolerance_keur,
-            maximum_iterations=outer_max_iterations,
-        )
-    except Exception:
-        # If enhanced seed fails (e.g. convergence issue), fall back to seed-only Senior.
-        pass
+    # Neutral seed: inner_result from step 1 is used directly as the starting state.
+    # No virtual Senior headroom, no IDC estimate, no broad exception fallback.
+    # PR9_NEUTRAL_SEED: Senior_0 == seed inner G2A Senior commitment, exactly.
 
     stage_b2_result = None
+    prev_unfunded = float("inf")
 
     for outer_iteration in range(1, outer_max_iterations + 1):
         uses = _project_uses(working_inputs)
@@ -265,9 +227,9 @@ def _run_with_construction_idc(
         senior_estimate = inner_result.final_senior_commitment_keur
 
         # Run Stage B2 with full source breakdown from current inner result.
-        # senior_commitment_keur = actual candidate Senior (correct commitment fee basis).
+        # senior_commitment_keur = actual candidate Senior (no virtual headroom).
         # equity_available_keur = sum of all equity components as Stage B2 share_capital pool.
-        # No senior_draw_ceiling: Senior is sized correctly via enhanced seed + iterative convergence.
+        # PR9_NEUTRAL_SEED: Senior == inner_result.final_senior_commitment_keur exactly.
         # We pass total_equity as equity_available_keur so that Stage B2 absorbs ALL equity first.
         _total_equity_for_b2 = (
             inner_result.share_capital_keur
@@ -309,7 +271,9 @@ def _run_with_construction_idc(
             maximum_iterations=outer_max_iterations,
         )
 
-        # Check outer convergence across all material state components (Section 12).
+        # Check outer convergence across all material state components.
+        # unfunded_uses_keur is included: convergence requires funded Sources == Uses.
+        # PR9_NEUTRAL_SEED: no artificial headroom; unfunded must converge to zero.
         d_idc = abs(new_financing.senior_idc_keur - prev_idc)
         d_fee = abs(new_financing.senior_commitment_fee_keur - prev_fee)
         d_struct = abs(new_financing.structuring_fee_keur - prev_struct)
@@ -317,7 +281,8 @@ def _run_with_construction_idc(
         d_shl = abs(inner_result.derived_shl_cash_principal_keur - prev_shl)
         d_pik = abs(inner_result.shl_construction_pik_keur - prev_pik)
         d_uses = abs(inner_result.project_uses.total_project_uses_keur - prev_uses)
-        outer_residual = max(d_idc, d_fee, d_struct, d_senior, d_shl, d_pik, d_uses)
+        d_unfunded = abs(stage_b2_prov.unfunded_uses_keur - prev_unfunded)
+        outer_residual = max(d_idc, d_fee, d_struct, d_senior, d_shl, d_pik, d_uses, d_unfunded)
         prev_idc = new_financing.senior_idc_keur
         prev_fee = new_financing.senior_commitment_fee_keur
         prev_struct = new_financing.structuring_fee_keur
@@ -325,6 +290,7 @@ def _run_with_construction_idc(
         prev_shl = inner_result.derived_shl_cash_principal_keur
         prev_pik = inner_result.shl_construction_pik_keur
         prev_uses = inner_result.project_uses.total_project_uses_keur
+        prev_unfunded = stage_b2_prov.unfunded_uses_keur
 
         if outer_residual <= outer_tolerance_keur:
             break
@@ -332,6 +298,15 @@ def _run_with_construction_idc(
         raise RuntimeError(
             f"PR9_OUTER_G2A_CONSTRUCTION_FIXED_POINT_DID_NOT_CONVERGE: "
             f"outer_residual={outer_residual:.12f} kEUR after {outer_max_iterations} iterations"
+        )
+
+    # Final invariant: unfunded must be zero at convergence.
+    if stage_b2_prov.unfunded_uses_keur > outer_tolerance_keur:
+        raise RuntimeError(
+            f"PR9_OUTER_G2A_UNFUNDED_AT_CONVERGENCE: "
+            f"unfunded_uses_keur={stage_b2_prov.unfunded_uses_keur:.6f} kEUR > tolerance "
+            f"{outer_tolerance_keur:.6f} kEUR at outer convergence. "
+            "Senior is insufficient to fund all construction Uses."
         )
 
     assert inner_result is not None and stage_b2_prov is not None
