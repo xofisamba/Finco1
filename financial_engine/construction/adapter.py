@@ -49,6 +49,7 @@ def build_construction_runtime_config(
     equity_available_keur: float,
     shl_available_keur: float,
     capex_amounts_keur: dict[str, float] | None = None,
+    senior_draw_ceiling_keur: float | None = None,
 ) -> ConstructionRuntimeConfig:
     """Build a ConstructionRuntimeConfig from typed ConstructionFinancingInput + funding amounts.
 
@@ -163,6 +164,7 @@ def build_construction_runtime_config(
         equity_available_keur=equity_available_keur,
         shl_available_keur=shl_available_keur,
         senior_commitment_keur=senior_commitment_keur,
+        senior_draw_ceiling_keur=senior_draw_ceiling_keur,
         senior_interest_rate=senior_interest_rate,
         senior_commitment_fee_rate=commitment_fee_rate,
         senior_interest_rate_schedule=rate_schedule,

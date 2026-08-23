@@ -657,22 +657,16 @@ class TestPR8FingerprintsUnchanged:
 
     def test_solar_construction_financing_defaults_disabled(self):
         """Generic Solar production inputs must have construction_financing=None."""
-        try:
-            from app.project_factories import build_generic_solar_project_inputs
-        except ImportError:
-            pytest.skip("Solar factory not available")
-        pi = build_generic_solar_project_inputs()
+        from app.project_factories import create_default_solar_project
+        pi = create_default_solar_project()
         assert pi.financing.construction_financing is None, (
             "Generic Solar must not enable construction financing by default"
         )
 
     def test_wind_construction_financing_defaults_disabled(self):
         """Generic Wind production inputs must have construction_financing=None."""
-        try:
-            from app.project_factories import build_generic_wind_project_inputs
-        except ImportError:
-            pytest.skip("Wind factory not available")
-        pi = build_generic_wind_project_inputs()
+        from app.project_factories import create_default_wind_project
+        pi = create_default_wind_project()
         assert pi.financing.construction_financing is None, (
             "Generic Wind must not enable construction financing by default"
         )

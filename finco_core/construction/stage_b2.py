@@ -96,8 +96,13 @@ class ConstructionRuntimeConfig:
     equity_available_keur: float
     shl_available_keur: float
     senior_commitment_keur: float
-    senior_interest_rate: float
-    senior_commitment_fee_rate: float
+    # senior_draw_ceiling_keur: optional higher ceiling for the waterfall allocator.
+    # Defaults to senior_commitment_keur. Allows Stage B2 to allocate draws up to this
+    # ceiling (to fund circular IDC) while computing commitment fees on senior_commitment_keur.
+    # When None (default), both the draw ceiling and fee basis use senior_commitment_keur.
+    senior_draw_ceiling_keur: float | None = None
+    senior_interest_rate: float = 0.0
+    senior_commitment_fee_rate: float = 0.0
     senior_interest_rate_schedule: tuple[float, ...] = field(default_factory=tuple)
     base_rate: float = 0.0
     hedge_coverage: float = 0.0
@@ -508,13 +513,29 @@ def run_stage_b2(config: ConstructionRuntimeConfig) -> ConstructionRuntimeResult
             hard_capex[idx] + structuring[idx] + senior_idc_uses[idx] + senior_fee_uses[idx] + vat_financing_uses[idx]
             for idx in range(n_periods)
         )
-        senior_period_draws = _waterfall_senior_draws(
-            period_uses,
-            config.equity_available_keur,
-            config.shl_available_keur,
-            config.senior_commitment_keur,
-            config.convergence_tolerance_keur,
+        from finco_core.construction.allocator import allocate_construction_sources_per_period
+        _draw_ceiling = (
+            config.senior_draw_ceiling_keur
+            if config.senior_draw_ceiling_keur is not None
+            else config.senior_commitment_keur
         )
+        try:
+            _alloc = allocate_construction_sources_per_period(
+                period_uses=period_uses,
+                share_capital_keur=config.equity_available_keur,
+                share_premium_keur=0.0,
+                other_committed_equity_keur=0.0,
+                additional_equity_keur=0.0,
+                shl_cash_keur=config.shl_available_keur,
+                junior_keur=0.0,
+                senior_commitment_keur=_draw_ceiling,
+                tolerance_keur=config.convergence_tolerance_keur,
+            )
+        except ValueError as _exc:
+            raise FundingShortfallError(
+                f"Senior facility commitment breached: {_exc}"
+            ) from _exc
+        senior_period_draws = tuple(a.senior_draw_keur for a in _alloc)
 
         idc_calc, fee_calc = _senior_financing_accruals(config, senior_period_draws, senior_rates)
 
@@ -566,13 +587,27 @@ def run_stage_b2(config: ConstructionRuntimeConfig) -> ConstructionRuntimeResult
         hard_capex[idx] + structuring[idx] + senior_idc_uses[idx] + senior_fee_uses[idx] + vat_financing_uses[idx]
         for idx in range(n_periods)
     )
-    senior_period_draws = _waterfall_senior_draws(
-        period_uses,
-        config.equity_available_keur,
-        config.shl_available_keur,
-        config.senior_commitment_keur,
-        config.convergence_tolerance_keur,
+    from finco_core.construction.allocator import allocate_construction_sources_per_period as _alloc_fn
+    _draw_ceiling_final = (
+        config.senior_draw_ceiling_keur
+        if config.senior_draw_ceiling_keur is not None
+        else config.senior_commitment_keur
     )
+    try:
+        _alloc_final = _alloc_fn(
+            period_uses=period_uses,
+            share_capital_keur=config.equity_available_keur,
+            share_premium_keur=0.0,
+            other_committed_equity_keur=0.0,
+            additional_equity_keur=0.0,
+            shl_cash_keur=config.shl_available_keur,
+            junior_keur=0.0,
+            senior_commitment_keur=_draw_ceiling_final,
+            tolerance_keur=config.convergence_tolerance_keur,
+        )
+    except ValueError as _exc:
+        raise FundingShortfallError(f"Senior facility commitment breached: {_exc}") from _exc
+    senior_period_draws = tuple(a.senior_draw_keur for a in _alloc_final)
     cumulative_senior: list[float] = []
     running = 0.0
     for draw in senior_period_draws:

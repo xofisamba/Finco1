@@ -187,23 +187,29 @@ def _run_with_construction_idc(
             + inner_result.additional_equity_keur
         )
         shl_avail = inner_result.derived_shl_cash_principal_keur
-        # Fix 2: Stage B2 senior_commitment should be the actual candidate senior, not
-        # total project uses (which inflates the commitment fee undrawn basis).
-        # Iteration 1 (no prior Stage B2): use total_project_uses as safe upper bound.
-        # Subsequent iterations: use candidate senior + prior IDC/fees as headroom so
-        # Stage B2 can fund all circular financing costs within a correct ceiling.
-        if stage_b2_result is None:
-            senior_estimate = _project_uses(working_inputs).total_project_uses_keur
-        else:
-            senior_estimate = inner_result.final_senior_commitment_keur + prev_idc + prev_fee + prev_struct
+        # Stage B2 senior_commitment = actual candidate Senior from inner fixed point.
+        # The commitment fee undrawn basis must use this candidate, not an inflated ceiling.
+        # Pass equity_avail + SHL + senior to the canonical allocator to cover all uses
+        # including circular IDC. Any gap beyond (equity+SHL+senior) is funded by
+        # additional equity at FC — represented here by inflating equity_avail for the
+        # Stage B2 waterfall (the inner fixed point determines final additional_equity).
+        # senior_estimate = actual candidate Senior from inner fixed point.
+        # This is the correct basis for commitment fee computation.
+        senior_estimate = inner_result.final_senior_commitment_keur
+        # equity_for_b2: pass actual equity (Stage B2 uses senior_draw_ceiling for waterfall).
+        equity_for_b2 = equity_avail
 
         # Run Stage B2 with current funding estimates.
+        # senior_commitment_keur = actual candidate senior (for commitment fee computation).
+        # senior_draw_ceiling_keur = expanded ceiling so Stage B2 can allocate circular IDC.
+        _total_uses_ceiling = _project_uses(working_inputs).total_project_uses_keur
         runtime_cfg = build_construction_runtime_config(
             construction=cf,
             senior_commitment_keur=senior_estimate,
-            equity_available_keur=equity_avail,
+            equity_available_keur=equity_for_b2,
             shl_available_keur=shl_avail,
             capex_amounts_keur=capex_amounts,
+            senior_draw_ceiling_keur=_total_uses_ceiling,
         )
         stage_b2_result = run_stage_b2(runtime_cfg)
         new_financing = stage_b2_result.capitalized_financing_costs
