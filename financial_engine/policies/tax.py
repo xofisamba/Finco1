@@ -99,6 +99,67 @@ class TaxPolicy:
     shl_limitation_enabled: bool = False
     shl_interest_cap_keur_annual: float | None = None
 
+    def __post_init__(self) -> None:
+        """Validate TaxPolicy fields at construction time. Fail-closed."""
+        import numbers as _numbers
+
+        # shl_limitation_enabled: must be exactly bool (reject int/str/etc.)
+        if not isinstance(self.shl_limitation_enabled, bool):
+            raise TypeError(
+                "SHL_LIMITATION_ENABLED_INVALID_TYPE: shl_limitation_enabled must be "
+                f"exactly bool, got {type(self.shl_limitation_enabled).__name__!r}. "
+                "Do not coerce int or any other type to bool."
+            )
+
+        # shl_interest_cap_keur_annual: when not None, reject bool/str/complex/non-Real,
+        # NaN, Inf, and negative values. Raise — do NOT clamp.
+        if self.shl_interest_cap_keur_annual is not None:
+            cap = self.shl_interest_cap_keur_annual
+            if isinstance(cap, bool):
+                raise TypeError(
+                    "SHL_CAP_INVALID_TYPE: shl_interest_cap_keur_annual must be numeric, "
+                    "not bool."
+                )
+            if isinstance(cap, str):
+                raise TypeError(
+                    "SHL_CAP_INVALID_TYPE: shl_interest_cap_keur_annual must be numeric, "
+                    f"not str. Got {cap!r}."
+                )
+            if isinstance(cap, complex) and not isinstance(cap, _numbers.Real):
+                raise TypeError(
+                    "SHL_CAP_INVALID_TYPE: shl_interest_cap_keur_annual must be a real "
+                    f"numeric value, got complex {cap!r}."
+                )
+            if not isinstance(cap, _numbers.Real):
+                raise TypeError(
+                    "SHL_CAP_INVALID_TYPE: shl_interest_cap_keur_annual must be a real "
+                    f"numeric value, got {type(cap).__name__!r}."
+                )
+            try:
+                cap_f = float(cap)
+            except (OverflowError, ValueError):
+                cap_f = float("nan")
+            if math.isnan(cap_f):
+                raise ValueError(
+                    "SHL_CAP_INVALID_VALUE: shl_interest_cap_keur_annual is NaN. "
+                    "NaN cannot behave like None or zero — this is a fail-closed check."
+                )
+            if math.isinf(cap_f):
+                raise ValueError(
+                    "SHL_CAP_INVALID_VALUE: shl_interest_cap_keur_annual is Inf. "
+                    "Infinite cap is not a valid financial policy."
+                )
+            if cap_f < 0.0:
+                raise ValueError(
+                    f"SHL_CAP_NEGATIVE: shl_interest_cap_keur_annual must be >= 0, "
+                    f"got {cap!r}. Negative cap is not a valid financial policy — "
+                    "this is raised, not clamped."
+                )
+            # SUBJECT_TO_LIMITATIONS with a cap but shl_limitation_enabled=False means
+            # the cap is present but the limitation is not activated. That is allowed
+            # (the cap is "stored but inactive"); is_subject_to_limitations_active()
+            # enforces the complete activation condition at computation time.
+
     def shl_tax_deductible_fraction(self) -> float:
         """Return the fraction of gross SHL interest eligible for tax deduction.
 

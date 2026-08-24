@@ -212,6 +212,11 @@ def build_tax_contract_from_project_inputs(
         loss_utilisation_gate=TaxLossUtilisationGate(
             tax.tax_loss_utilisation_gate.value
         ),
+        # PR-11: forward canonical SHL limitation fields from TaxParams → TaxPolicy.
+        # shl_limitation_enabled and shl_interest_cap_keur_annual are the project-level
+        # inputs for SUBJECT_TO_LIMITATIONS; TaxPolicy validates them at construction time.
+        shl_limitation_enabled=tax.shl_limitation_enabled,
+        shl_interest_cap_keur_annual=tax.shl_interest_cap_keur_annual,
     )
 
     # Explicit typed vintages are canonical. The legacy scalar cannot be active
