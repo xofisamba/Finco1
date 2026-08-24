@@ -1167,6 +1167,78 @@ def _build_result_senior_debt_schedules(
     )
 
 
+from dataclasses import dataclass as _dataclass
+from typing import Optional as _Optional
+
+
+@_dataclass(frozen=True)
+class FinancingInterestContract:
+    """Lineage wrapper for the provisional/final SHL interest state in the B5 loop.
+
+    Each B5 iteration creates one of these with its own iteration_id.
+    Only the final converged contract is marked is_final=True.
+
+    The authoritative final calculation must call _require_final_financing_contract()
+    before using the wrapped interest data.
+
+    This contract is:
+      - NOT part of any production user input
+      - NOT included in any cache key or serialization
+      - NOT accessible through run_senior_debt_model()
+
+    It exists solely to provide iteration lineage so that stale provisional
+    contracts can be detected and rejected before they reach final calculations.
+    """
+
+    period_interest: tuple  # tuple of (period_index, shl_gross_interest) pairs
+    iteration_id: int  # which B5 iteration produced this
+    senior_schedule_fingerprint: str  # id of the Senior schedule used
+    shl_schedule_fingerprint: str  # id of the SHL schedule used
+    is_final: bool = False  # True only at convergence
+
+
+def _require_final_financing_contract(
+    contract: FinancingInterestContract,
+    context: str,
+) -> None:
+    """Raise G2C_FINAL_INTEREST_VECTOR_STALE if the contract is not the final converged one.
+
+    Called before committing any interest vector to an authoritative calculation.
+    A stale contract (is_final=False or from a prior iteration) must never reach
+    the final tax calculation.
+    """
+    if not contract.is_final:
+        raise ValueError(
+            f"G2C_FINAL_INTEREST_VECTOR_STALE: {context}: "
+            f"FinancingInterestContract with iteration_id={contract.iteration_id} "
+            f"is not marked as final (is_final=False). "
+            "Only the final converged contract may be used for authoritative calculations. "
+            "This error indicates a stale or provisional interest vector was passed "
+            "where the final contract is required."
+        )
+
+
+def _check_no_duplicate_period_indices(
+    period_indices: tuple[int, ...],
+    label: str,
+    context: str,
+) -> None:
+    """Raise G2C_FINAL_INTEREST_PERIOD_DUPLICATE if the raw tuple has duplicates.
+
+    Called BEFORE dict(zip(...)) to prevent silent deduplication.
+    dict construction silently drops duplicate keys — this catches them first.
+    """
+    idx_list = list(period_indices)
+    if len(idx_list) != len(set(idx_list)):
+        dups = sorted(set(i for i in idx_list if idx_list.count(i) > 1))
+        raise ValueError(
+            f"G2C_FINAL_INTEREST_PERIOD_DUPLICATE: {context}: "
+            f"{label} has duplicate period indices: {dups}. "
+            "Each period must appear exactly once. "
+            "dict(zip(...)) would silently drop duplicate entries — rejected here."
+        )
+
+
 def _validate_interest_period_alignment(
     expected_period_indices: tuple[int, ...],
     interest_by_period: dict[int, float],
@@ -1183,6 +1255,19 @@ def _validate_interest_period_alignment(
       G2C_FINAL_INTEREST_PERIOD_DUPLICATE — duplicate period index detected (internal)
       G2C_FINAL_INTEREST_PERIOD_UNMATCHED — interest dict has period not in expected set
     """
+    # Duplicate detection: expected_period_indices is a tuple — check it FIRST
+    # (before any dict construction can silently deduplicate)
+    if len(expected_period_indices) != len(set(expected_period_indices)):
+        duplicates = [
+            idx for idx in expected_period_indices
+            if expected_period_indices.count(idx) > 1
+        ]
+        raise ValueError(
+            f"G2C_FINAL_INTEREST_PERIOD_DUPLICATE: {context}: "
+            f"expected period tuple contains duplicates: {sorted(set(duplicates))}. "
+            "Each period must appear exactly once."
+        )
+
     expected = set(expected_period_indices)
     provided = set(interest_by_period)
 
@@ -1203,17 +1288,91 @@ def _validate_interest_period_alignment(
             "Stale or shifted period indices are not permitted in the final contract."
         )
 
-    # Duplicate detection: expected_period_indices is a tuple — check it
-    if len(expected_period_indices) != len(expected):
-        duplicates = [
-            idx for idx in expected_period_indices
-            if expected_period_indices.count(idx) > 1
-        ]
+
+def _validate_final_financing_state(
+    *,
+    required_period_indices: tuple[int, ...],
+    final_senior_result: object,
+    final_shl_interest: dict[int, float],
+    final_base_tax_input: object,
+    context: str,
+) -> None:
+    """Validate that the final converged financing state is self-consistent.
+
+    Three independent checks against the canonical required period axis
+    (derived from debt_periods, NOT from SHL or Senior output):
+
+    1. Senior schedule period set == required period set
+    2. SHL interest covers all required (debt) periods
+    3. Merged tax input's Senior and SHL components match the final schedules
+
+    This replaces the previous tautological check that compared SHL data to itself.
+    The canonical axis `required_period_indices` is independently derived from
+    SeniorDebtModelInput / the B5 loop's debt_periods — it does NOT come from
+    any SHL or Senior output vector.
+    """
+    required_set = set(required_period_indices)
+
+    # Check 1: Senior must exactly cover required periods (independent axis)
+    senior_indices = tuple(final_senior_result.period_indices)  # type: ignore[attr-defined]
+    senior_set = set(senior_indices)
+    if senior_set != required_set:
+        missing_s = required_set - senior_set
+        extra_s = senior_set - required_set
         raise ValueError(
-            f"G2C_FINAL_INTEREST_PERIOD_DUPLICATE: {context}: "
-            f"expected period tuple contains duplicates: {sorted(set(duplicates))}. "
-            "Each period must appear exactly once."
+            f"G2C_FINAL_INTEREST_SENIOR_AXIS_MISMATCH: {context}: "
+            f"Senior schedule period set {sorted(senior_set)} != required periods "
+            f"{sorted(required_set)}. missing={sorted(missing_s)}, extra={sorted(extra_s)}"
         )
+
+    # Check 2: SHL interest must be present at all required (debt) periods
+    shl_missing = required_set - set(final_shl_interest)
+    if shl_missing:
+        raise ValueError(
+            f"G2C_FINAL_INTEREST_SHL_MISSING_AT_DEBT_PERIODS: {context}: "
+            f"SHL interest missing at required debt periods: {sorted(shl_missing)}. "
+            "The converged SHL schedule must provide interest for every debt period."
+        )
+
+    # Check 3: Merged tax input consistency at each required period
+    merged_by_idx = {
+        pi.period_index: pi  # type: ignore[attr-defined]
+        for pi in final_base_tax_input.period_interest  # type: ignore[attr-defined]
+    }
+    senior_interest_by_idx = dict(
+        zip(
+            final_senior_result.period_indices,  # type: ignore[attr-defined]
+            final_senior_result.senior_interest_keur,  # type: ignore[attr-defined]
+        )
+    )
+    for idx in required_period_indices:
+        pi = merged_by_idx.get(idx)
+        if pi is None:
+            raise ValueError(
+                f"G2C_FINAL_INTEREST_MERGED_MISSING: {context}: "
+                f"period_index={idx} is missing from merged tax input. "
+                "Every required debt period must appear in the merged interest vector."
+            )
+        sched_senior = senior_interest_by_idx.get(idx, 0.0)
+        sched_shl = final_shl_interest.get(idx, 0.0)
+        merged_senior = pi.senior_interest_keur  # type: ignore[attr-defined]
+        merged_shl = pi.shl_interest_keur  # type: ignore[attr-defined]
+        if abs(merged_senior - sched_senior) > 1e-6:
+            raise ValueError(
+                f"G2C_FINAL_INTEREST_MERGED_SENIOR_MISMATCH: {context}: "
+                f"period_index={idx}: merged.senior_interest={merged_senior:.8f} kEUR "
+                f"!= final_senior_schedule={sched_senior:.8f} kEUR "
+                f"(delta={abs(merged_senior - sched_senior):.2e} kEUR). "
+                "The merged tax input must faithfully carry the final Senior schedule."
+            )
+        if abs(merged_shl - sched_shl) > 1e-6:
+            raise ValueError(
+                f"G2C_FINAL_INTEREST_MERGED_SHL_MISMATCH: {context}: "
+                f"period_index={idx}: merged.shl_interest={merged_shl:.8f} kEUR "
+                f"!= final_shl_schedule={sched_shl:.8f} kEUR "
+                f"(delta={abs(merged_shl - sched_shl):.2e} kEUR). "
+                "The merged tax input must faithfully carry the final SHL schedule."
+            )
 
 
 def _run_senior_debt_model_with_shl(
@@ -1407,6 +1566,18 @@ def _run_senior_debt_model_with_shl(
         expected_indices=full_axis_shl,
     )
 
+    # TASK 3: Create the final FinancingInterestContract marked as authoritative.
+    # is_final=True is set only here — never inside the iteration loop.
+    _final_shl_contract = FinancingInterestContract(
+        period_interest=tuple(final_shl_interest.items()),
+        iteration_id=iteration,
+        senior_schedule_fingerprint=f"pre_final_senior_recompute@iter{iteration}",
+        shl_schedule_fingerprint=id(previous_shl).__str__(),
+        is_final=True,
+    )
+    # Validate the contract is final before using it (stale check).
+    _require_final_financing_contract(_final_shl_contract, context="B5_FINAL_CONVERGENCE_SHL")
+
     def final_tax_cfads_fn(
         senior_interest_by_period: dict[int, float],
     ) -> tuple[dict[int, float], dict[int, float]]:
@@ -1450,6 +1621,19 @@ def _run_senior_debt_model_with_shl(
         final_senior_interest,
         final_shl_interest,
     )
+
+    # TASK 1: Three-way independent validation of final financing state.
+    # Uses _required_period_indices (derived from debt_periods, NOT SHL/Senior output)
+    # as the canonical axis. This replaces the previous tautological check that
+    # compared previous_shl.period_indices against itself.
+    _validate_final_financing_state(
+        required_period_indices=_required_period_indices,
+        final_senior_result=final_senior_result,
+        final_shl_interest=final_shl_interest,
+        final_base_tax_input=final_base_tax_input,
+        context="B5_FINAL_CONVERGENCE_3WAY",
+    )
+
     final_base_tax = calculate_tax(phase2b_result.periods, final_base_tax_input)
     final_base_cfads = calculate_canonical_cfads(
         phase2b_result.periods,
