@@ -172,20 +172,26 @@ def build_clean_waterfall_view(clean_run) -> CleanWaterfallView:
     tax = model.tax_and_cfads
     senior = model.senior_debt
 
+    # Independently-derived canonical axes (Correction C / TASK 1).
+    _full_axis: tuple[int, ...] = tuple(p.period_index for p in model.periods)
+    _senior_axis: tuple[int, ...] = tuple(senior.period_indices)
     op_by_idx = map_period_vector(
         op.period_indices,
         tuple(range(len(op.period_indices))),
         label="clean_presentation.operating",
+        expected_indices=_full_axis,
     )
     tax_by_idx = map_period_vector(
         tax.period_indices,
         tuple(range(len(tax.period_indices))),
         label="clean_presentation.tax",
+        expected_indices=_full_axis,
     )
     senior_by_idx = map_period_vector(
         senior.period_indices,
         tuple(range(len(senior.period_indices))),
         label="clean_presentation.senior_debt",
+        expected_indices=_senior_axis,
     )
     # The G2C waterfall grid and the model period grid use DIFFERENT
     # numbering axes (waterfall period_index is 1-based over its own

@@ -245,3 +245,96 @@ exact-head CI review is required before either classification is applied.
   production-boundary attacks, COD-inclusive pass case).
 - 631 tests across PRF1 + Phase 2C Senior + c3b3d2b3/b4/b6 + SHL + PRF6/PRF7 passed.
 - `git diff --check` clean (no whitespace errors).
+
+## Correction C additions (PR-F1 Correction C)
+
+### TASK 1: Downstream exact-axis enforcement in all consumer files
+
+Five additional consumer files now pass `expected_indices` to every
+`map_period_vector()` call, using independently derived axes:
+
+| File | Axes added |
+|---|---|
+| `financial_engine/shareholder_waterfall/model.py` | full_axis, op_axis, senior_axis, shl_axis (= full_axis) |
+| `financial_engine/sponsor_returns/model.py` | full_axis (SHL + post_senior_cash) |
+| `financial_engine/adapters/shl_cash_seam.py` | full_axis (fast path × 3; legacy path × 1) |
+| `financial_engine/diagnostics/base_performance_reconciliation.py` | full_axis, senior_axis, shl_axis, op_axis, tax_axis |
+| `app/services/clean_presentation_adapter.py` | full_axis, senior_axis |
+
+Rule: every consumer independently derives its axis from `model_result.periods`
+(or the corresponding schedule's own `period_indices`) — it never reuses an axis
+from a sibling call.
+
+### TASK 2: Bank-only axis authority in `_build_debt_sizing_schedules_from_bank()`
+
+`financial_engine/orchestrator.py:_build_debt_sizing_schedules_from_bank()` now:
+
+1. Derives `bank_full_axis` independently from `bank_phase2a_result.periods`
+2. Reconciles Base vs Bank period metadata when `base_periods` is supplied:
+   - Mismatched period count, start/end dates, or is_construction flag → `BASE_BANK_AXIS_MISMATCH`
+3. Validates bank tax results against `bank_full_axis`:
+   - Duplicate tax period index → `BANK_AXIS_PERIOD_DUPLICATE`
+   - Missing tax period → `BANK_AXIS_PERIOD_MISSING`
+   - Extra tax period (not in bank_full_axis) → `BANK_AXIS_PERIOD_EXTRA`
+4. Validates bank CFADS results against `bank_full_axis`:
+   - Duplicate CFADS period index → `BANK_AXIS_PERIOD_DUPLICATE`
+   - Missing CFADS period → `BANK_AXIS_PERIOD_MISSING`
+   - Extra CFADS period → `BANK_AXIS_PERIOD_EXTRA`
+
+Error code precedence: DUPLICATE > MISSING (raised on first missing, even when
+extra also exist) > EXTRA > BASE_BANK_AXIS_MISMATCH.
+
+### TASK 3: COD-inclusive +1 rule is externally authoritative
+
+`validate_canonical_period_axis()` now accepts a `cod_date` parameter.
+When supplied, the COD-inclusive +1 rule is permitted ONLY when:
+  - `period.start_date == cod_date`  (not merely `start_date.day == 1`)
+  - `cod_date.day == 1`
+
+`PeriodEngine.__init__()` now passes `cod_date=self._cod` into the call,
+making the engine's own COD the authoritative gate.  A period that starts on
+the first of a month but does not match the engine's COD cannot claim the
+COD-inclusive +1 exception.
+
+### TASK 4: Correction C attack matrix
+
+Attack class `TestBankAxisAttacks` (unit tests; direct calls to
+`_build_debt_sizing_schedules_from_bank` with crafted mocks):
+
+| ID | Description | Error code |
+|---|---|---|
+| bank1 | Shifted CFADS period_indices (+1) | BANK_AXIS_PERIOD_MISSING |
+| bank2 | Missing tax period | BANK_AXIS_PERIOD_MISSING |
+| bank3 | Extra CFADS period | BANK_AXIS_PERIOD_EXTRA |
+| bank4 | Duplicate bank tax period | BANK_AXIS_PERIOD_DUPLICATE |
+| bank5 | Duplicate bank CFADS period | BANK_AXIS_PERIOD_DUPLICATE |
+| bank6 | Base/Bank period_start date mismatch | BASE_BANK_AXIS_MISMATCH |
+
+Attack class `TestDownstreamConsumerAttacks` (E2E monkeypatch attacks):
+
+| ID | Description | Error code |
+|---|---|---|
+| wf1 | Shifted SHL period_indices at waterfall consumption | AXIS_PERIOD_MISSING |
+| sr1 | Shifted post_senior_cash period_indices at sponsor return | AXIS_PERIOD_MISSING |
+| np | Extra SHL period — no partial waterfall result returned | AXIS_PERIOD_EXTRA |
+
+COD attacks retained from Correction B: cod1, cod2, tuho_cod_inclusive_pass.
+
+### TASK 5: Performative governance stubs removed
+
+`test_correction_b_classification_earned_after_independent_ci_review()` (which
+contained only `assert True`) was replaced by
+`test_correction_c_classification_status()` which asserts the full attack count:
+`assert len(attacks_implemented) == 11`.
+
+### Classification (Correction C)
+
+`EXACT_MEMBERSHIP_CLOSED` and `FREEZE_COMPLETE` are NOT claimed.
+All 88 PRF1 tests pass locally.  Independent CI review is required before
+either classification is applied.
+
+## Local verification (Correction C)
+
+- 88 PRF1 canonical axis tests passed (88 in test_prefreeze_prf1_canonical_period_axis.py).
+- 325 tests passed across PRF1 + shareholder waterfall + sponsor returns + PR6/PR7/DSRF suites.
+- `git diff --check` clean (no whitespace errors).

@@ -138,16 +138,21 @@ def _compute_shl_cash_from_post_senior_cash(
             "post_senior_cash.period_indices"
         )
 
+    # Independently-derived canonical full axis (Correction C / TASK 1).
+    psc_expected_full_axis: tuple[int, ...] = tuple(p.period_index for p in periods)
     psc_cfads = map_period_vector(
-        psc.period_indices, psc.base_cfads_keur, label="shl_cash_seam.base_cfads"
+        psc.period_indices, psc.base_cfads_keur, label="shl_cash_seam.base_cfads",
+        expected_indices=psc_expected_full_axis,
     )
     psc_sds = map_period_vector(
         psc.period_indices, psc.senior_debt_service_keur,
         label="shl_cash_seam.senior_debt_service",
+        expected_indices=psc_expected_full_axis,
     )
     psc_avail = map_period_vector(
         psc.period_indices, psc.cash_available_for_shl_before_reserves_keur,
         label="shl_cash_seam.cash_available",
+        expected_indices=psc_expected_full_axis,
     )
 
     periods_meta = {p.period_index: p for p in periods}
@@ -244,8 +249,11 @@ def compute_shl_cash_from_phase2c(
             "compute_shl_cash_from_phase2c: duplicate period indices in "
             "tax_and_cfads.period_indices"
         )
+    # Independently-derived canonical full axis for CFADS (Correction C / TASK 1).
+    _legacy_full_axis: tuple[int, ...] = tuple(p.period_index for p in periods)
     cfads_by_idx: dict[int, float] = map_period_vector(
-        tac_indices, tac_cfads, label="shl_cash_seam.tax_cfads"
+        tac_indices, tac_cfads, label="shl_cash_seam.tax_cfads",
+        expected_indices=_legacy_full_axis,
     )
 
     sd_indices = list(sd.period_indices)

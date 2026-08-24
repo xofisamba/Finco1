@@ -959,13 +959,100 @@ def _build_debt_sizing_schedules_from_bank(
     final_bank_cfads_results: tuple,
     senior_debt_result: object,
     senior_axis: tuple[int, ...],
+    base_periods: tuple | None = None,
 ) -> DebtSizingSchedules:
     """Assemble bank/debt-sizing schedules.
 
     Correction B: Senior DS and solver DSCR are validated against the
     independently-derived senior_axis (from SeniorDebtPolicy bounds).
+
+    Correction C: Bank tax and CFADS are validated against the independently-
+    derived Bank full axis (from bank_phase2a_result.periods).  Duplicate raw
+    Bank indices are detected before any dict comprehension.  When base_periods
+    is provided, Base-versus-Bank period metadata is reconciled explicitly.
+
+    Error codes:
+      BANK_AXIS_PERIOD_DUPLICATE — duplicate period index in bank tax or CFADS
+      BANK_AXIS_PERIOD_MISSING   — bank axis period absent from tax or CFADS
+      BANK_AXIS_PERIOD_EXTRA     — unexpected period in bank tax or CFADS
+      BANK_AXIS_PERIOD_SHIFTED   — bank tax/CFADS indices out of order
+      BASE_BANK_AXIS_MISMATCH    — Base and Bank period axes diverge
     """
     import math as _math
+
+    # --- Derive Bank canonical full axis independently from bank_phase2a_result ---
+    bank_full_axis: tuple[int, ...] = tuple(p.period_index for p in bank_phase2a_result.periods)
+
+    # --- Reconcile Base vs Bank axes when base_periods is available ---
+    if base_periods is not None:
+        base_full_axis = tuple(p.period_index for p in base_periods)
+        if bank_full_axis != base_full_axis:
+            raise ValueError(
+                f"BASE_BANK_AXIS_MISMATCH: Base axis {base_full_axis} != "
+                f"Bank axis {bank_full_axis}"
+            )
+        # Reconcile per-period metadata (indices, start/end dates, phase flags)
+        for base_p, bank_pm in zip(base_periods, bank_phase2a_result.periods):
+            if (base_p.period_index != bank_pm.period_index
+                    or base_p.period_start != bank_pm.period_start
+                    or base_p.period_end != bank_pm.period_end
+                    or base_p.is_construction != bank_pm.is_construction):
+                raise ValueError(
+                    f"BASE_BANK_AXIS_MISMATCH: period {base_p.period_index} metadata "
+                    f"differs between Base and Bank (start/end dates or phase flags)"
+                )
+
+    # --- Validate Bank tax period results against Bank full axis ---
+    bank_tax_indices = tuple(pr.period_index for pr in final_bank_tax_result.period_results)
+    if len(set(bank_tax_indices)) != len(bank_tax_indices):
+        raise ValueError(
+            f"BANK_AXIS_PERIOD_DUPLICATE: duplicate period indices in bank tax results "
+            f"{[i for i in bank_tax_indices if bank_tax_indices.count(i) > 1]}"
+        )
+    if bank_tax_indices != bank_full_axis:
+        _btax_set = set(bank_tax_indices)
+        _bfull_set = set(bank_full_axis)
+        _missing = _bfull_set - _btax_set
+        _extra = _btax_set - _bfull_set
+        if _missing:
+            raise ValueError(
+                f"BANK_AXIS_PERIOD_MISSING: bank tax missing periods {sorted(_missing)} "
+                f"extra={sorted(_extra)}"
+            )
+        if _extra:
+            raise ValueError(
+                f"BANK_AXIS_PERIOD_EXTRA: bank tax extra periods {sorted(_extra)}"
+            )
+        raise ValueError(
+            f"BANK_AXIS_PERIOD_SHIFTED: bank tax periods out of expected order "
+            f"expected={bank_full_axis} supplied={bank_tax_indices}"
+        )
+
+    # --- Validate Bank CFADS results against Bank full axis ---
+    bank_cfads_indices = tuple(cr.period_index for cr in final_bank_cfads_results)
+    if len(set(bank_cfads_indices)) != len(bank_cfads_indices):
+        raise ValueError(
+            f"BANK_AXIS_PERIOD_DUPLICATE: duplicate period indices in bank CFADS results "
+            f"{[i for i in bank_cfads_indices if bank_cfads_indices.count(i) > 1]}"
+        )
+    if bank_cfads_indices != bank_full_axis:
+        _bcfads_set = set(bank_cfads_indices)
+        _bfull_set = set(bank_full_axis)
+        _missing = _bfull_set - _bcfads_set
+        _extra = _bcfads_set - _bfull_set
+        if _missing:
+            raise ValueError(
+                f"BANK_AXIS_PERIOD_MISSING: bank CFADS missing periods {sorted(_missing)} "
+                f"extra={sorted(_extra)}"
+            )
+        if _extra:
+            raise ValueError(
+                f"BANK_AXIS_PERIOD_EXTRA: bank CFADS extra periods {sorted(_extra)}"
+            )
+        raise ValueError(
+            f"BANK_AXIS_PERIOD_SHIFTED: bank CFADS periods out of expected order "
+            f"expected={bank_full_axis} supplied={bank_cfads_indices}"
+        )
 
     sd_service_by_idx: dict[int, float] = _strict_period_map(
         senior_debt_result.period_indices,
@@ -973,6 +1060,7 @@ def _build_debt_sizing_schedules_from_bank(
         label="debt_sizing.senior_debt_service",
         expected_indices=senior_axis,
     )
+    # Build canonical-axis-ordered dicts from validated bank results
     final_bank_cash_tax_by_idx = {
         pr.period_index: pr.cash_tax_keur for pr in final_bank_tax_result.period_results
     }
@@ -1430,6 +1518,7 @@ def _run_senior_debt_model_with_shl(inputs: SeniorDebtModelInput) -> ProjectMode
         final_bank_cfads_results=final_bank_cfads,
         senior_debt_result=final_senior_result,
         senior_axis=senior_axis_shl,
+        base_periods=phase2b_result.periods,
     )
     result_schedules = _build_result_senior_debt_schedules(
         senior_debt_result=final_senior_result,
@@ -1675,6 +1764,7 @@ def run_senior_debt_model(inputs: SeniorDebtModelInput) -> ProjectModelResult:
         final_bank_cfads_results=final_bank_cfads_results,
         senior_debt_result=sd_result,
         senior_axis=senior_axis,
+        base_periods=phase2b_result.periods,
     )
 
     # Step 8: Assemble result-layer SeniorDebtSchedules.

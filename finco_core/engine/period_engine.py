@@ -106,6 +106,7 @@ class PeriodEngine:
         validate_canonical_period_axis(
             self._periods,
             expected_operating_periods=self._operating_period_count,
+            cod_date=self._cod,
         )
         self._horizon_end = self._periods[-1].end_date
 
@@ -443,15 +444,27 @@ def validate_canonical_period_axis(
             )
         # 3e. days_in_period consistent with date span.
         # COD-inclusive +1 rule: the sole permitted exception is the FIRST operating
-        # period (operating_period_index == 0) when start_date.day == 1, which corresponds
-        # to COD falling on the first of a month.  Construction periods never get +1.
+        # period (operating_period_index == 0) when start_date is the actual COD and
+        # COD falls on the first of a month.  Construction periods never get +1.
         # All other operating periods must be exactly calendar_days.
+        #
+        # When cod_date is provided (authoritative), +1 is allowed ONLY when
+        # start_date == cod_date (actual COD match, not inferred proxy).
+        # When cod_date is None, falls back to the day==1 proxy for backward compat.
         calendar_days = (period.end_date - period.start_date).days
-        _cod_inclusive_allowed = (
-            period.is_operation
-            and period.operating_period_index == 0
-            and period.start_date.day == 1
-        )
+        if cod_date is not None:
+            _cod_inclusive_allowed = (
+                period.is_operation
+                and period.operating_period_index == 0
+                and period.start_date == cod_date
+                and cod_date.day == 1
+            )
+        else:
+            _cod_inclusive_allowed = (
+                period.is_operation
+                and period.operating_period_index == 0
+                and period.start_date.day == 1
+            )
         _allowed_days: tuple[int, ...]
         if _cod_inclusive_allowed:
             _allowed_days = (calendar_days, calendar_days + 1)
