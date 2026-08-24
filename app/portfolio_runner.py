@@ -46,6 +46,13 @@ def run_portfolio_from_inputs(
             construction_months=proj.info.construction_months,
             horizon_years=proj.info.horizon_years,
             ppa_years=proj.revenue.ppa_term_years,
+            frequency=proj.info.period_frequency,
+            cod_date=proj.info.cod_date,
+            period_axis_convention=getattr(
+                proj.info.period_axis_convention,
+                "value",
+                proj.info.period_axis_convention,
+            ),
         )
         all_periods = list(engine.periods())
         op_periods = [p for p in all_periods if p.is_operation]

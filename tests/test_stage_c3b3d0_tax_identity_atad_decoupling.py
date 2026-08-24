@@ -209,22 +209,22 @@ class TestAtadEnabledSerialization:
 # 5. No financial drift
 # ─────────────────────────────────────────────────────────────────────────────
 class TestNoFinancialDrift:
-    """Oborovo and TUHO financial outputs must exactly match C3B3D0 BASE values."""
+    """Oborovo and TUHO outputs remain locked on the canonical PR-F1 axis."""
 
     BASE = {
         "oborovo": dict(
-            tax=8489.215657,
-            dist=63997.380136,
-            senior_ds=63192.172875,
-            proj_irr=0.07973030,
-            eq_irr=0.10348411,
+            tax=8490.320140,
+            dist=64006.489082,
+            senior_ds=63191.174225,
+            proj_irr=0.07972912,
+            eq_irr=0.10348369,
         ),
         "tuho": dict(
-            tax=37004.372718,
-            dist=165479.319576,
+            tax=36994.270322,
+            dist=165423.195150,
             senior_ds=65826.388280,
-            proj_irr=0.09439294,
-            eq_irr=0.11320018,
+            proj_irr=0.09438932,
+            eq_irr=0.11319445,
         ),
     }
 
@@ -336,22 +336,22 @@ class TestGenericProjectAtad:
 # 8. No financial drift — Solar and Wind
 # ─────────────────────────────────────────────────────────────────────────────
 class TestNoFinancialDriftGeneric:
-    """Solar and Wind financial outputs must match C3B3D0 BASE values exactly."""
+    """Solar and Wind outputs remain locked on the canonical PR-F1 axis."""
 
     BASE = {
         "solar": dict(
-            tax=9432.701033,
-            dist=19858.410252,
+            tax=9428.571521,
+            dist=19841.892207,
             senior_ds=36928.460619,
-            proj_irr=0.07188301,
-            eq_irr=0.16286268,
+            proj_irr=0.07187342,
+            eq_irr=0.16305334,
         ),
         "wind": dict(
-            tax=31098.189755,
-            dist=72995.889074,
+            tax=31090.265455,
+            dist=72964.191873,
             senior_ds=49147.882569,
-            proj_irr=0.10503502,
-            eq_irr=0.26204906,
+            proj_irr=0.10503091,
+            eq_irr=0.26210647,
         ),
     }
 

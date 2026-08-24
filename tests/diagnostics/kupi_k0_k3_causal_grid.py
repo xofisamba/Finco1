@@ -125,8 +125,8 @@ _KUPI_ALL_IN_RATE: float = 0.061                       # 3.10% + 280bps + 20bps 
 _KUPI_SHL_RATE: float = 0.08                           # Inputs!F311
 
 # Period axis for 30yr semestrial:
-_KUPI_SHL_MATURITY_PERIOD_IDX: int = 61   # last operating period
-_KUPI_SHL_ELIGIBILITY_START: int = 2      # first operating period
+_KUPI_SHL_MATURITY_PERIOD_IDX: int = 63   # last operating period after four construction segments
+_KUPI_SHL_ELIGIBILITY_START: int = 4      # first operating period after four construction segments
 
 # ─── DSCR target schedule — exact source DS!row19 values ─────────────────────
 # Source DS!row19: 24 periods at 1.50 (PPA), then 4 merchant-period results.
@@ -211,11 +211,21 @@ _OM_STEP_CHANGES: tuple[tuple[int, float], ...] = (
 # Note: This split is a REASONABLE APPROXIMATION based on workbook category
 # evidence only. The exact draw schedule requires source DS!construction columns
 # which were not available for direct read. Assumptions documented above.
-_KUPI_CONSTRUCTION_USES_KEUR: tuple[float, ...] = (
+_KUPI_SOURCE_CONSTRUCTION_COLUMN_USES_KEUR: tuple[float, ...] = (
     124_730.305019923,   # Period 1: FC + upfront items + half spread + front-loaded fees
     91_073.132956946,    # Period 2: remaining spread + back-end IDC/commitment
 )
 # Sum = 215,803.437976869 kEUR — within 0.001 kEUR of source authority ✓
+
+# The source exposes two annual construction columns. The canonical runtime axis
+# is semiannual, so each source-column draw is booked at the start of its source
+# year and the intervening half-year carries no new draw.
+_KUPI_CONSTRUCTION_USES_KEUR: tuple[float, ...] = (
+    _KUPI_SOURCE_CONSTRUCTION_COLUMN_USES_KEUR[0],
+    0.0,
+    _KUPI_SOURCE_CONSTRUCTION_COLUMN_USES_KEUR[1],
+    0.0,
+)
 
 
 # ---------------------------------------------------------------------------

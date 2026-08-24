@@ -56,6 +56,13 @@ def _build_period_engine(project_inputs):
         construction_months=project_inputs.info.construction_months,
         horizon_years=project_inputs.info.horizon_years,
         ppa_years=project_inputs.revenue.ppa_term_years,
+        frequency=project_inputs.info.period_frequency,
+        cod_date=project_inputs.info.cod_date,
+        period_axis_convention=getattr(
+            project_inputs.info.period_axis_convention,
+            "value",
+            project_inputs.info.period_axis_convention,
+        ),
     )
 
 

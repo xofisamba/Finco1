@@ -530,11 +530,26 @@ class TestBlocker1RepaymentMethod:
 
     def test_construction_uses_not_equal_halves(self):
         """K5: Construction uses are NOT equal halves (source timing asymmetry applied)."""
-        p1, p2 = _KUPI_CONSTRUCTION_USES_KEUR
+        p1, _, p2, _ = _KUPI_CONSTRUCTION_USES_KEUR
         assert abs(p1 - p2) > 1000.0, (
             f"Construction uses look like equal halves: P1={p1:.3f}, P2={p2:.3f}, "
             f"diff={abs(p1-p2):.3f} kEUR (expected >1000 kEUR difference)"
         )
+
+    def test_construction_uses_must_cover_the_canonical_axis(self):
+        from dataclasses import replace
+        from financial_engine.financing import run_project_financing_model
+
+        project = build_kupi_project_inputs()
+        bad = replace(
+            project,
+            financing=replace(
+                project.financing,
+                construction_period_uses_keur=(1.0, 2.0),
+            ),
+        )
+        with pytest.raises(ValueError, match="CONSTRUCTION_USES_PERIOD_AXIS_MISMATCH"):
+            run_project_financing_model(bad)
 
 
 class TestBlocker2TaxNonTautological:

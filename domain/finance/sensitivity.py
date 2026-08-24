@@ -43,6 +43,12 @@ def _run_waterfall_for_inputs(inputs: ProjectInputs) -> object:
         horizon_years=inputs.info.horizon_years,
         ppa_years=inputs.revenue.ppa_term_years,
         frequency=inputs.info.period_frequency,  # PeriodFrequency enum
+        cod_date=inputs.info.cod_date,
+        period_axis_convention=getattr(
+            inputs.info.period_axis_convention,
+            "value",
+            inputs.info.period_axis_convention,
+        ),
     )
 
     # Compute semi-annual rate from all-in rate

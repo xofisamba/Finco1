@@ -30,7 +30,7 @@ PPA end-date convention.
 |---|---|
 | `finco_core/engine/period_engine.py` | Sole producer; immutable tuple; COD, count, continuity and phase invariants |
 | `domain/period_engine.py` | Re-export only |
-| `ProjectInfo` / serialization / cache | Explicit COD persisted and cached; mismatch fails closed |
+| `ProjectInfo` / serialization / cache | Explicit COD, frequency and convention persisted and cached; mismatch fails closed |
 | project-input adapter | Carries explicit COD and typed convention into `CalendarInput` |
 | operating / revenue / OPEX | Receive the same `PeriodEngine`; returned keys must exactly equal canonical order |
 | depreciation | Built from the canonical tuple; book and tax schedules must exactly equal its keys |
@@ -42,6 +42,11 @@ PPA end-date convention.
 | sponsor returns | Strict SHL and post-Senior vector maps |
 | diagnostics / audit | Base-performance reconciliation now uses strict maps, not `dict(zip(...))` |
 | presentation / exports / audit | Clean presentation uses strict vector maps and rejects duplicate waterfall dates; exports consume immutable result/audit objects with no independent axis construction |
+
+All production-side direct `PeriodEngine` builders (`app.ui_runner`, portfolio,
+sensitivity and production-waterfall seam) now carry the typed frequency, COD
+and period convention. The UI runner is locked to the same complete tuple as
+clean orchestration for TUHO and Oborovo.
 
 Independent absolute-index assumptions remain prohibited. Contractual Senior
 and SHL indices are resolved from the produced operation subset. Tests that
@@ -108,6 +113,24 @@ phantom period while applying the same formulas to the canonical axis. TUHO's
 factory production clean-tax path remains explicitly gated, so no unsupported
 G2C/returns claim is made.
 
+The legacy waterfall exact-output locks also moved onto this same axis. Their
+base -> head totals are: Oborovo tax 8,489.215657 -> 8,490.320140,
+distribution 63,997.380136 -> 64,006.489082 and Senior service 63,192.172875
+-> 63,191.174225; TUHO tax 37,004.372718 -> 36,994.270322 and distribution
+165,479.319576 -> 165,423.195150; Solar tax 9,432.701033 -> 9,428.571521 and
+distribution 19,858.410252 -> 19,841.892207; Wind tax 31,098.189755 ->
+31,090.265455 and distribution 72,995.889074 -> 72,964.191873. Oborovo's
+count and dates are unchanged; its delta is the removal of the UI runner's
+implicit default convention in favor of the factory's already typed
+single-construction-column source convention. The other three changes follow
+the phantom-period bridge above. The exact locks remain exact and their
+tolerances were not widened.
+
+KUPI's two annual source construction columns are explicitly placed at the
+start of their corresponding years on its four-segment canonical semiannual
+construction axis. A construction Uses vector whose length differs from that
+axis now fails closed instead of truncating through `zip`.
+
 ## Governance
 
 No project name/code dispatch, workbook runtime read, source-vector replay,
@@ -117,6 +140,13 @@ was introduced. `financial_engine/tax/engine.py` is untouched.
 
 ## Local verification
 
+- Dedicated PR-F1 workflow groups at the final worktree: 81 passed canonical
+  axis/adapters, 721 passed clean-financing/downstream, and 379 passed
+  Senior/SHL/cash-authority regressions.
+- KUPI/PR-6 canonical construction-axis ring: 122 passed.
+- PR-10/tax/SHL exact-output ring: 270 passed.
+- Sensitivity and portfolio adapters: 59 passed; one portfolio IRR assertion
+  failed identically on base and head (`0.0 > 0.05`) and was not changed.
 - Final canonical-axis, G0/G2 and PR-6 through PR-10 ring: 772 passed.
 - Modified-boundary, B3/B4, Phase 2C and PR-8 presentation ring: 408 passed.
 - B3/B4 standalone regression: 189 passed.

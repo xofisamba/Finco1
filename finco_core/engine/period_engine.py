@@ -71,7 +71,7 @@ class PeriodEngine:
         self.construction_months = construction_months
         self.horizon_years = horizon_years
         self.ppa_years = ppa_years
-        self.freq = frequency
+        self.freq = self._coerce_frequency(frequency)
         self.period_axis_convention = self._coerce_period_axis_convention(
             period_axis_convention
         )
@@ -84,8 +84,8 @@ class PeriodEngine:
             )
         self._cod = cod_date or derived_cod
         self._operating_start = self._last_semiannual_end_on_or_after_cod()
-        self._periods_per_year = frequency.value
-        if frequency != PeriodFrequency.SEMESTRIAL:
+        self._periods_per_year = self.freq.value
+        if self.freq != PeriodFrequency.SEMESTRIAL:
             raise ValueError(
                 "PERIOD_AXIS_FREQUENCY_UNSUPPORTED: canonical runtime axis currently "
                 "requires SEMESTRIAL frequency"
@@ -150,6 +150,18 @@ class PeriodEngine:
             raise ValueError(
                 f"Unknown period_axis_convention={value!r}; expected one of: {allowed}"
             ) from exc
+
+    def _coerce_frequency(self, value: object) -> PeriodFrequency:
+        """Accept the typed input enum without weakening supported frequencies."""
+        if isinstance(value, PeriodFrequency):
+            return value
+        member_name = getattr(value, "name", None)
+        if isinstance(member_name, str) and member_name in PeriodFrequency.__members__:
+            return PeriodFrequency[member_name]
+        try:
+            return PeriodFrequency(value)  # type: ignore[arg-type]
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"PERIOD_AXIS_FREQUENCY_INVALID: {value!r}") from exc
 
     def _days_between(self, start: date, end: date) -> int:
         """Days between two period-boundary dates (end - start)."""

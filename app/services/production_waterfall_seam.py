@@ -139,6 +139,13 @@ def execute_production_waterfall(
         construction_months=effective_inputs.info.construction_months,
         horizon_years=effective_inputs.info.horizon_years,
         ppa_years=effective_inputs.revenue.ppa_term_years,
+        frequency=effective_inputs.info.period_frequency,
+        cod_date=effective_inputs.info.cod_date,
+        period_axis_convention=getattr(
+            effective_inputs.info.period_axis_convention,
+            "value",
+            effective_inputs.info.period_axis_convention,
+        ),
     )
     config = WaterfallRunConfig.from_inputs(effective_inputs, engine)
     result = WaterfallRunner(effective_inputs, engine).run(config)

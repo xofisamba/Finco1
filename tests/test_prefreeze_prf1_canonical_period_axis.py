@@ -86,6 +86,19 @@ def test_oborovo_full_production_axis_matches_source_evidence():
 
 
 @pytest.mark.parametrize(
+    "factory",
+    (create_default_tuho_wind1, create_default_oborovo),
+)
+def test_ui_runner_uses_the_same_typed_axis_as_clean_orchestration(factory):
+    from app.ui_runner import _build_period_engine as build_ui_period_engine
+
+    project = factory()
+    ui_axis = build_ui_period_engine(project).periods()
+    clean_axis = _build_period_engine(from_project_inputs(project)).periods()
+    assert ui_axis == clean_axis
+
+
+@pytest.mark.parametrize(
     "factory,first_start,first_end,ppa_end",
     (
         (create_default_tuho_wind1, date(2030, 1, 1), date(2030, 6, 30), date(2042, 1, 1)),
