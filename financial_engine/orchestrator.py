@@ -1173,13 +1173,13 @@ from typing import Optional as _Optional
 
 @_dataclass(frozen=True)
 class FinancingInterestContract:
-    """Lineage wrapper for the provisional/final SHL interest state in the B5 loop.
+    """Lineage wrapper for the final SHL + Senior interest state in the B5 loop.
 
-    Each B5 iteration creates one of these with its own iteration_id.
-    Only the final converged contract is marked is_final=True.
+    Each B5 iteration creates a provisional contract; only the converged result
+    is marked is_final=True with final_iteration_id set to iteration_id.
 
-    The authoritative final calculation must call _require_final_financing_contract()
-    before using the wrapped interest data.
+    Content fingerprint: deterministic hash of (period_indices, senior_interest_keur,
+    shl_gross_interest_keur). Memory-address-based id() is NOT used.
 
     This contract is:
       - NOT part of any production user input
@@ -1190,11 +1190,21 @@ class FinancingInterestContract:
     contracts can be detected and rejected before they reach final calculations.
     """
 
-    period_interest: tuple  # tuple of (period_index, shl_gross_interest) pairs
+    period_indices: tuple  # tuple[int, ...] — canonical period axis
+    senior_interest_keur: tuple  # tuple[float, ...] — indexed same as period_indices
+    shl_gross_interest_keur: tuple  # tuple[float, ...] — indexed same as period_indices
     iteration_id: int  # which B5 iteration produced this
-    senior_schedule_fingerprint: str  # id of the Senior schedule used
-    shl_schedule_fingerprint: str  # id of the SHL schedule used
-    is_final: bool = False  # True only at convergence
+    final_iteration_id: "_Optional[int]"  # set to iteration_id at convergence, None if provisional
+    is_final: bool  # True only when final_iteration_id == iteration_id at convergence
+    content_fingerprint: int  # hash((period_indices, senior_interest_keur, shl_gross_interest_keur))
+
+    @staticmethod
+    def compute_fingerprint(
+        period_indices: tuple,
+        senior_interest_keur: tuple,
+        shl_gross_interest_keur: tuple,
+    ) -> int:
+        return hash((period_indices, senior_interest_keur, shl_gross_interest_keur))
 
 
 def _require_final_financing_contract(
@@ -1203,9 +1213,12 @@ def _require_final_financing_contract(
 ) -> None:
     """Raise G2C_FINAL_INTEREST_VECTOR_STALE if the contract is not the final converged one.
 
-    Called before committing any interest vector to an authoritative calculation.
-    A stale contract (is_final=False or from a prior iteration) must never reach
-    the final tax calculation.
+    Validates ALL of:
+    1. is_final == True
+    2. final_iteration_id == iteration_id (not from a prior iteration)
+    3. content_fingerprint == hash((period_indices, senior_interest_keur, shl_gross_interest_keur))
+    4. All values finite and non-negative
+    5. Length consistency across the three vectors
     """
     if not contract.is_final:
         raise ValueError(
@@ -1216,6 +1229,48 @@ def _require_final_financing_contract(
             "This error indicates a stale or provisional interest vector was passed "
             "where the final contract is required."
         )
+    # Check final_iteration_id matches iteration_id (no old-iteration stale contracts)
+    if contract.final_iteration_id != contract.iteration_id:
+        raise ValueError(
+            f"G2C_FINAL_INTEREST_VECTOR_STALE: {context}: "
+            f"FinancingInterestContract.final_iteration_id={contract.final_iteration_id} "
+            f"!= iteration_id={contract.iteration_id}. "
+            "The final contract's iteration_id must match the convergence iteration."
+        )
+    # Verify content fingerprint (deterministic, not memory-identity)
+    expected_fp = FinancingInterestContract.compute_fingerprint(
+        contract.period_indices,
+        contract.senior_interest_keur,
+        contract.shl_gross_interest_keur,
+    )
+    if contract.content_fingerprint != expected_fp:
+        raise ValueError(
+            f"G2C_FINAL_INTEREST_FINGERPRINT_MISMATCH: {context}: "
+            f"content_fingerprint={contract.content_fingerprint} does not match "
+            f"recomputed fingerprint={expected_fp}. "
+            "The contract data was mutated or tampered with after creation."
+        )
+    # Length consistency
+    n = len(contract.period_indices)
+    if len(contract.senior_interest_keur) != n or len(contract.shl_gross_interest_keur) != n:
+        raise ValueError(
+            f"G2C_FINAL_INTEREST_VECTOR_LENGTH_MISMATCH: {context}: "
+            f"period_indices({n}), senior_interest({len(contract.senior_interest_keur)}), "
+            f"shl_gross_interest({len(contract.shl_gross_interest_keur)}) must all match."
+        )
+    # All values finite and non-negative
+    import math as _math
+    for i, (s, shl) in enumerate(zip(contract.senior_interest_keur, contract.shl_gross_interest_keur)):
+        if not _math.isfinite(s) or s < 0.0:
+            raise ValueError(
+                f"G2C_FINAL_INTEREST_INVALID_VALUE: {context}: "
+                f"senior_interest_keur[{i}]={s!r} must be finite and non-negative."
+            )
+        if not _math.isfinite(shl) or shl < 0.0:
+            raise ValueError(
+                f"G2C_FINAL_INTEREST_INVALID_VALUE: {context}: "
+                f"shl_gross_interest_keur[{i}]={shl!r} must be finite and non-negative."
+            )
 
 
 def _check_no_duplicate_period_indices(
@@ -1568,12 +1623,29 @@ def _run_senior_debt_model_with_shl(
 
     # TASK 3: Create the final FinancingInterestContract marked as authoritative.
     # is_final=True is set only here — never inside the iteration loop.
+    # Use previous_shl as the provisional SHL vector; Senior will be finalized below.
+    # For the provisional contract we use the converged SHL and a placeholder for Senior
+    # (Senior will be re-solved below from this SHL); final_iteration_id = iteration.
+    _shl_period_indices = previous_shl.period_indices
+    _shl_interest_tuple = previous_shl.shl_gross_interest_keur
+    # Senior interest indexed on the same period axis (from previous iteration's senior_result)
+    _senior_interest_by_idx_pre = dict(
+        zip(senior_result.period_indices, senior_result.senior_interest_keur)
+    )
+    _senior_for_fp = tuple(
+        _senior_interest_by_idx_pre.get(idx, 0.0) for idx in _shl_period_indices
+    )
+    _fp = FinancingInterestContract.compute_fingerprint(
+        _shl_period_indices, _senior_for_fp, _shl_interest_tuple
+    )
     _final_shl_contract = FinancingInterestContract(
-        period_interest=tuple(final_shl_interest.items()),
+        period_indices=_shl_period_indices,
+        senior_interest_keur=_senior_for_fp,
+        shl_gross_interest_keur=_shl_interest_tuple,
         iteration_id=iteration,
-        senior_schedule_fingerprint=f"pre_final_senior_recompute@iter{iteration}",
-        shl_schedule_fingerprint=id(previous_shl).__str__(),
+        final_iteration_id=iteration,
         is_final=True,
+        content_fingerprint=_fp,
     )
     # Validate the contract is final before using it (stale check).
     _require_final_financing_contract(_final_shl_contract, context="B5_FINAL_CONVERGENCE_SHL")

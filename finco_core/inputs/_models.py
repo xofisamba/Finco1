@@ -1335,18 +1335,10 @@ class TaxParams:
     corporate_rate_override: float | None = None
     opening_tax_loss_vintages: tuple[OpeningTaxLossVintageParams, ...] = ()
 
-    # PR-11: Canonical project-level SHL interest limitation fields.
-    # These are forwarded to TaxPolicy.shl_limitation_enabled and
-    # TaxPolicy.shl_interest_cap_keur_annual by the adapter.
-    #
-    # shl_limitation_enabled: explicit activation toggle for the SUBJECT_TO_LIMITATIONS
-    #   computation in the clean tax engine. False = limitation does NOT activate even
-    #   if shl_interest_deductibility == SUBJECT_TO_LIMITATIONS. Must be exactly bool.
-    # shl_interest_cap_keur_annual: annual cap (kEUR) applied per calendar year to
-    #   gross SHL interest when shl_limitation_enabled=True. Must be finite, >=0 when set.
-    #   None = not parameterised. 0.0 = zero cap (all interest disallowed) — valid policy.
-    shl_limitation_enabled: bool = False
-    shl_interest_cap_keur_annual: float | None = None
+    # NOTE: shl_limitation_enabled and shl_interest_cap_keur_annual have been REMOVED.
+    # SUBJECT_TO_LIMITATIONS is now implemented via the ATAD mechanism.
+    # Set atad_enabled=True + configure atad_ebitda_limit and
+    # atad_min_interest_keur to activate interest limitation for STL mode.
 
     def __post_init__(self) -> None:
         import math as _math
@@ -1449,51 +1441,14 @@ class TaxParams:
                     f"shl_interest_deductible_pct must be absent or 0.0 for "
                     f"FULLY_NON_DEDUCTIBLE, got {pct}"
                 )
-        # ── SUBJECT_TO_LIMITATIONS requires a limitation mechanism ────────────
+        # ── SUBJECT_TO_LIMITATIONS requires ATAD to be enabled ───────────────
         if mode == ShlInterestDeductibilityMode.SUBJECT_TO_LIMITATIONS:
-            if not self.thin_cap_enabled and not self.shl_limitation_enabled:
+            if not self.atad_enabled:
                 raise ValueError(
-                    "shl_interest_deductibility=SUBJECT_TO_LIMITATIONS requires at least "
-                    "one explicit limitation mechanism (thin_cap_enabled=True or "
-                    "shl_limitation_enabled=True)."
-                )
-        # ── shl_limitation_enabled: must be exactly bool ─────────────────────
-        if not isinstance(self.shl_limitation_enabled, bool):
-            raise ValueError(
-                "SHL_LIMITATION_ENABLED_INVALID_TYPE: shl_limitation_enabled must be "
-                f"exactly bool, got {type(self.shl_limitation_enabled).__name__!r}."
-            )
-        # ── shl_interest_cap_keur_annual: when not None, must be valid ────────
-        if self.shl_interest_cap_keur_annual is not None:
-            import numbers as _numbers
-            cap = self.shl_interest_cap_keur_annual
-            if isinstance(cap, bool):
-                raise ValueError(
-                    "SHL_CAP_INVALID_TYPE: shl_interest_cap_keur_annual must be numeric, not bool."
-                )
-            if isinstance(cap, complex) and not isinstance(cap, _numbers.Real):
-                raise ValueError(
-                    "SHL_CAP_INVALID_TYPE: shl_interest_cap_keur_annual must be a real "
-                    f"numeric value, got {type(cap).__name__!r}."
-                )
-            if not isinstance(cap, _numbers.Real):
-                raise ValueError(
-                    "SHL_CAP_INVALID_TYPE: shl_interest_cap_keur_annual must be numeric, "
-                    f"got {type(cap).__name__!r}."
-                )
-            try:
-                cap_f = float(cap)
-            except (OverflowError, ValueError):
-                cap_f = float("nan")
-            if not _math.isfinite(cap_f):
-                raise ValueError(
-                    f"SHL_CAP_INVALID_VALUE: shl_interest_cap_keur_annual must be finite, "
-                    f"got {cap!r}."
-                )
-            if cap_f < 0.0:
-                raise ValueError(
-                    f"SHL_CAP_NEGATIVE: shl_interest_cap_keur_annual must be >= 0, "
-                    f"got {cap!r}. Negative cap is not a valid financial policy."
+                    "shl_interest_deductibility=SUBJECT_TO_LIMITATIONS requires "
+                    "atad_enabled=True. ATAD is the approved limitation mechanism for "
+                    "EU interest limitation rules. Set atad_enabled=True and configure "
+                    "atad_ebitda_limit and atad_min_interest_keur."
                 )
         # ── foreign_shl_interest_cap_enabled consistency ──────────────────────
         if self.foreign_shl_interest_cap_enabled:
@@ -1600,8 +1555,6 @@ def hash_inputs_for_cache(inputs: "ProjectInputs") -> tuple:
         inputs.tax.corporate_rate,
         inputs.tax.loss_carryforward_years,
         inputs.tax.atad_ebitda_limit,
-        inputs.tax.shl_limitation_enabled,
-        inputs.tax.shl_interest_cap_keur_annual,
         tuple(
             (
                 vintage.origin_tax_year,

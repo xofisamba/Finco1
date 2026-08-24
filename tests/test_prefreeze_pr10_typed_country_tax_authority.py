@@ -281,8 +281,15 @@ def test_tuho_source_variant_maps_exact_vintage_then_stops_at_g2c_boundary():
     assert contract.opening_loss_vintages[0].amount_keur == pytest.approx(
         SOURCE_OPENING_LOSS_KEUR
     )
-    with pytest.raises(NotImplementedError, match="TUHO_SHL_TAX_POLICY_BLOCKED"):
-        contract.policy.shl_tax_deductible_fraction()
+    # PR-11 Correction E: SUBJECT_TO_LIMITATIONS now routes through ATAD (fraction=1.0).
+    # The G2C boundary is no longer a hard stop — STL is handled by the ATAD mechanism.
+    # Verify: shl_tax_deductible_fraction() returns 1.0 (SHL fully enters total_interest;
+    # ATAD then applies the annual limitation based on EBITDA and de_minimis threshold).
+    frac = contract.policy.shl_tax_deductible_fraction()
+    assert frac == pytest.approx(1.0), (
+        "PR-11 Correction E: STL fraction must be 1.0 — ATAD handles limitation, "
+        f"not a hard stop. Got: {frac}"
+    )
 
 
 def test_input_validation_rejects_competing_opening_loss_authorities():
@@ -625,15 +632,23 @@ class TestCorrectionAAdversarialMatrix:
             SOURCE_OPENING_LOSS_KEUR
         )
 
-    def test_L_tuho_stops_at_g2c_boundary(self):
-        """TUHO SHL policy raises at G2C deductible-SHL boundary (not silent)."""
+    def test_L_tuho_stl_uses_atad_mechanism(self):
+        """TUHO SHL policy (SUBJECT_TO_LIMITATIONS) routes through ATAD — fraction=1.0.
+
+        PR-11 Correction E: The G2C boundary is no longer a hard stop.
+        STL now returns fraction=1.0 from shl_tax_deductible_fraction();
+        ATAD applies the annual limitation (EBITDA-based cap + de_minimis threshold).
+        """
         source_variant = self._tuho_source_variant()
         contract = build_tax_contract_from_project_inputs(
             source_variant,
             complete_financing_interest_will_be_injected=True,
         )
-        with pytest.raises(NotImplementedError, match="TUHO_SHL_TAX_POLICY_BLOCKED"):
-            contract.policy.shl_tax_deductible_fraction()
+        # Must not raise; must return 1.0
+        frac = contract.policy.shl_tax_deductible_fraction()
+        assert frac == pytest.approx(1.0), (
+            f"STL fraction must be 1.0 (ATAD handles limitation). Got: {frac}"
+        )
 
 
 # ---------------------------------------------------------------------------
