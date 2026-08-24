@@ -1320,9 +1320,14 @@ def _run_senior_debt_model_with_shl(inputs: SeniorDebtModelInput) -> ProjectMode
         shl_interest_guess = new_interest
     else:
         raise SeniorDebtNonConvergenceError(
-            "SHL fixed point terminated without an authoritative result: "
+            "G2C_SHL_TAX_FEEDBACK_NON_CONVERGENCE: "
+            "SHL-interest → tax → CFADS → Senior fixed point terminated without "
+            "an authoritative result: "
             f"iteration_count={shl_input.maximum_iterations}; "
-            "termination_reason='MAX_ITERATIONS_REACHED'"
+            f"last_max_closing_delta_keur={last_max_closing_delta:.12f}; "
+            f"last_max_interest_delta_keur={last_max_interest_delta:.12f}; "
+            "termination_reason='MAX_ITERATIONS_REACHED'. "
+            "No partial result is accepted — the feedback loop must converge."
         )
 
     # FINAL_FINANCING_STATE_RECOMPUTED_FROM_CONVERGED_SHL_AND_SENIOR_SCHEDULES

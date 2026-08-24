@@ -229,7 +229,23 @@ def build_tax_year_bases(
     ):
         return _build_model_year_pairing_bases(periods, interest_map, adj_map, policy)
 
+    # PR-11: detect SUBJECT_TO_LIMITATIONS mode to use the two-pass per-year cap approach.
+    # The static shl_tax_deductible_fraction() cannot express SUBJECT_TO_LIMITATIONS
+    # because the deductible fraction depends on the annual gross SHL total vs the cap —
+    # a per-year quantity only known after grouping all fragments for that year.
+    from financial_engine.policies.tax import ShlInterestDeductibilityMode as _ShlMode
+    _is_stl_active = (
+        policy is not None
+        and policy.is_subject_to_limitations_active()
+    )
+
     year_fragments: dict[int, list[TaxYearPeriodFragment]] = defaultdict(list)
+
+    # For SUBJECT_TO_LIMITATIONS (two-pass): also track gross SHL per fragment
+    # separately from total_interest so we can re-apportion after applying the annual cap.
+    # We store gross SHL directly on the fragments using shl_tax_eligible_interest_keur=gross_shl
+    # in pass 1 (before cap). After grouping, pass 2 applies the cap and corrects them.
+    # For all other modes: single pass using the static fraction approach.
 
     for p in periods:
         idx: int = p.period_index          # type: ignore[attr-defined]
@@ -240,16 +256,37 @@ def build_tax_year_bases(
 
         pi_obj = interest_map.get(idx)
         if pi_obj:
-            shl_fraction = (
-                policy.shl_tax_deductible_fraction() if policy is not None else 1.0
-            )
-            shl_tax_eligible = pi_obj.shl_interest_keur * shl_fraction
-            shl_non_deductible = pi_obj.shl_interest_keur - shl_tax_eligible
-            gross_int = (
-                pi_obj.senior_interest_keur
-                + pi_obj.other_interest_keur
-                + shl_tax_eligible
-            )
+            if _is_stl_active:
+                # Pass 1 for SUBJECT_TO_LIMITATIONS: treat ALL gross SHL as "eligible"
+                # temporarily. Pass 2 (after grouping by year) applies the annual cap
+                # and corrects shl_tax_eligible and total_interest per fragment.
+                gross_shl = pi_obj.shl_interest_keur
+                # NaN/Inf in gross SHL fails closed — do not allow silent mistreatment
+                import math as _math
+                if not _math.isfinite(gross_shl):
+                    raise ValueError(
+                        "G2C_SHL_TAX_FEEDBACK_INVALID_SHL_INTEREST: "
+                        f"period_index={idx}: shl_interest_keur must be finite, "
+                        f"got {gross_shl!r}. NaN/Inf cannot behave like None or zero."
+                    )
+                shl_tax_eligible = gross_shl   # pass-1 placeholder; corrected in pass 2
+                shl_non_deductible = 0.0       # pass-1 placeholder; corrected in pass 2
+                gross_int = (
+                    pi_obj.senior_interest_keur
+                    + pi_obj.other_interest_keur
+                    + gross_shl           # pass-1: include full gross SHL
+                )
+            else:
+                shl_fraction = (
+                    policy.shl_tax_deductible_fraction() if policy is not None else 1.0
+                )
+                shl_tax_eligible = pi_obj.shl_interest_keur * shl_fraction
+                shl_non_deductible = pi_obj.shl_interest_keur - shl_tax_eligible
+                gross_int = (
+                    pi_obj.senior_interest_keur
+                    + pi_obj.other_interest_keur
+                    + shl_tax_eligible
+                )
         else:
             gross_int = 0.0
             shl_tax_eligible = 0.0
@@ -268,6 +305,59 @@ def build_tax_year_bases(
 
         for frag in frags:
             year_fragments[frag.tax_year].append(frag)
+
+    # PR-11 PASS 2: SUBJECT_TO_LIMITATIONS per-year cap correction.
+    # After all fragments are grouped by year, apply the annual cap to gross SHL.
+    # Re-apportion deductible/disallowed SHL per fragment proportionally to gross SHL share.
+    # Also correct total_interest_keur (= senior+other+deductible_shl, not gross_shl).
+    if _is_stl_active:
+        assert policy is not None
+        for yr in list(year_fragments.keys()):
+            frags_for_year = year_fragments[yr]
+            annual_gross_shl = sum(f.shl_tax_eligible_interest_keur for f in frags_for_year)
+            # Apply per-year cap via the validated TaxPolicy method
+            annual_deductible_shl, annual_disallowed_shl = policy.shl_annual_deductible_keur(
+                annual_gross_shl
+            )
+            # Re-apportion deductible/disallowed to fragments proportionally to their gross SHL share.
+            # Proportional rule: frag_deductible = annual_deductible * (frag_gross_shl / annual_gross)
+            # When annual_gross == 0, all frags have 0 SHL → deductible=0, disallowed=0 trivially.
+            corrected_frags: list[TaxYearPeriodFragment] = []
+            accumulated_ded = 0.0
+            accumulated_dis = 0.0
+            for i, frag in enumerate(frags_for_year):
+                frag_gross_shl = frag.shl_tax_eligible_interest_keur  # pass-1 value = gross SHL
+                if annual_gross_shl > 0.0 and i < len(frags_for_year) - 1:
+                    frag_deductible = annual_deductible_shl * (frag_gross_shl / annual_gross_shl)
+                    frag_disallowed = annual_disallowed_shl * (frag_gross_shl / annual_gross_shl)
+                    accumulated_ded += frag_deductible
+                    accumulated_dis += frag_disallowed
+                elif annual_gross_shl > 0.0:
+                    # Last fragment: use remainder to preserve exact sums
+                    frag_deductible = annual_deductible_shl - accumulated_ded
+                    frag_disallowed = annual_disallowed_shl - accumulated_dis
+                else:
+                    frag_deductible = 0.0
+                    frag_disallowed = 0.0
+                # Recompute non-SHL interest for this fragment (unchanged)
+                non_shl_interest = frag.total_interest_keur - frag_gross_shl
+                corrected_total_interest = non_shl_interest + frag_deductible
+                corrected_frags.append(TaxYearPeriodFragment(
+                    tax_year=frag.tax_year,
+                    source_period_index=frag.source_period_index,
+                    start_date=frag.start_date,
+                    end_date=frag.end_date,
+                    days=frag.days,
+                    source_period_days=frag.source_period_days,
+                    allocation_fraction=frag.allocation_fraction,
+                    ebitda_keur=frag.ebitda_keur,
+                    tax_depreciation_keur=frag.tax_depreciation_keur,
+                    total_interest_keur=corrected_total_interest,
+                    other_fiscal_reintegration_keur=frag.other_fiscal_reintegration_keur,
+                    shl_tax_eligible_interest_keur=frag_deductible,
+                    shl_non_deductible_interest_keur=frag_disallowed,
+                ))
+            year_fragments[yr] = corrected_frags
 
     # Build index for payment_period resolution
     periods_by_index: dict[int, object] = {
@@ -353,10 +443,18 @@ def _build_model_year_pairing_bases(
             )
         pi_obj = interest_map.get(idx)
         if pi_obj:
-            shl_fraction = policy.shl_tax_deductible_fraction()
-            shl_tax_eligible = pi_obj.shl_interest_keur * shl_fraction
-            shl_non_deductible = pi_obj.shl_interest_keur - shl_tax_eligible
-            gross_int = pi_obj.senior_interest_keur + pi_obj.other_interest_keur + shl_tax_eligible
+            if policy.is_subject_to_limitations_active():
+                # SUBJECT_TO_LIMITATIONS: store gross SHL as "eligible" temporarily.
+                # Pass 2 below will apply the annual cap and correct the amounts.
+                gross_shl = pi_obj.shl_interest_keur
+                shl_tax_eligible = gross_shl
+                shl_non_deductible = 0.0
+                gross_int = pi_obj.senior_interest_keur + pi_obj.other_interest_keur + gross_shl
+            else:
+                shl_fraction = policy.shl_tax_deductible_fraction()
+                shl_tax_eligible = pi_obj.shl_interest_keur * shl_fraction
+                shl_non_deductible = pi_obj.shl_interest_keur - shl_tax_eligible
+                gross_int = pi_obj.senior_interest_keur + pi_obj.other_interest_keur + shl_tax_eligible
         else:
             gross_int = 0.0
             shl_tax_eligible = 0.0
@@ -379,6 +477,46 @@ def _build_model_year_pairing_bases(
                 shl_non_deductible_interest_keur=shl_non_deductible,
             )
         )
+
+    # PR-11 PASS 2 for model-year-pairing: apply SUBJECT_TO_LIMITATIONS annual cap.
+    if policy.is_subject_to_limitations_active():
+        for yr in list(fragments_by_year.keys()):
+            raw_frags = fragments_by_year[yr]
+            annual_gross_shl = sum(f.shl_tax_eligible_interest_keur for f in raw_frags)
+            annual_ded, annual_dis = policy.shl_annual_deductible_keur(annual_gross_shl)
+            corrected: list[TaxYearPeriodFragment] = []
+            accumulated_ded = 0.0
+            accumulated_dis = 0.0
+            for i, frag in enumerate(raw_frags):
+                frag_gross_shl = frag.shl_tax_eligible_interest_keur
+                if annual_gross_shl > 0.0 and i < len(raw_frags) - 1:
+                    frag_ded = annual_ded * (frag_gross_shl / annual_gross_shl)
+                    frag_dis = annual_dis * (frag_gross_shl / annual_gross_shl)
+                    accumulated_ded += frag_ded
+                    accumulated_dis += frag_dis
+                elif annual_gross_shl > 0.0:
+                    frag_ded = annual_ded - accumulated_ded
+                    frag_dis = annual_dis - accumulated_dis
+                else:
+                    frag_ded = 0.0
+                    frag_dis = 0.0
+                non_shl_int = frag.total_interest_keur - frag_gross_shl
+                corrected.append(TaxYearPeriodFragment(
+                    tax_year=frag.tax_year,
+                    source_period_index=frag.source_period_index,
+                    start_date=frag.start_date,
+                    end_date=frag.end_date,
+                    days=frag.days,
+                    source_period_days=frag.source_period_days,
+                    allocation_fraction=frag.allocation_fraction,
+                    ebitda_keur=frag.ebitda_keur,
+                    tax_depreciation_keur=frag.tax_depreciation_keur,
+                    total_interest_keur=non_shl_int + frag_ded,
+                    other_fiscal_reintegration_keur=frag.other_fiscal_reintegration_keur,
+                    shl_tax_eligible_interest_keur=frag_ded,
+                    shl_non_deductible_interest_keur=frag_dis,
+                ))
+            fragments_by_year[yr] = corrected
 
     bases: list[TaxYearCalculationBasis] = []
     for tax_year in sorted(fragments_by_year):
