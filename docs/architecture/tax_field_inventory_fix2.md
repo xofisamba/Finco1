@@ -54,32 +54,22 @@ These are the ACTUAL fields of `TaxParams` as of the current codebase.
 | `tax_deductible_book_dep_pct` | SUPPORTED_RUNTIME | C | No | Yes | No | No |
 | `tax_dep_basis_source_owned` | METADATA_ONLY | B | No | Yes | No | No |
 | `clean_cash_tax_timing_enabled` | FAIL_CLOSED_UNSUPPORTED | C | No | Yes | No | No |
-| `shl_limitation_enabled` | SUPPORTED_RUNTIME | C | No | Yes | No | No |
-| `shl_interest_cap_keur_annual` | SUPPORTED_RUNTIME | C | No | Yes | No | No |
 
-### PR-11 field classification: shl_limitation_enabled and shl_interest_cap_keur_annual
+### REMOVED ghost fields: shl_limitation_enabled and shl_interest_cap_keur_annual
 
-Both fields were added in PR-11 to support the absolute SHL interest cap path.
+These fields were proposed but NEVER landed in TaxParams or TaxPolicy.
+They do NOT exist in the current codebase and must NOT appear in this inventory.
 
-**shl_limitation_enabled**
-- canonical owner: `TaxParams` (finco_core/inputs/_models.py)
-- project-owned (not policy-owned — it is a project input)
-- dispatch role: forwarded to TaxPolicy.shl_limitation_enabled via build_tax_contract_from_project_inputs
-- default: False
-- None/0/False semantics: False = limitation disabled; only explicit True enables it
-- serialization authority: finco_core/inputs/serialization.py
-- cache relevance: included in hash_inputs_for_cache
-- country/profile activation rule: no auto-activation; explicit opt-in only
+SUBJECT_TO_LIMITATIONS is implemented exclusively via the ATAD mechanism
+(atad_enabled=True, thin_cap_enabled=False). An absolute annual SHL cap separate
+from ATAD has no approved non-workbook authority and is not implemented.
 
-**shl_interest_cap_keur_annual**
-- canonical owner: `TaxParams` (finco_core/inputs/_models.py)
-- project-owned (not policy-owned — it is a project input)
-- dispatch role: forwarded to TaxPolicy.shl_interest_cap_keur_annual via build_tax_contract_from_project_inputs
-- default: None
-- None/0/False semantics: None = no cap; 0.0 = zero cap (all SHL interest disallowed under limitation); positive = annual cap in kEUR
-- serialization authority: finco_core/inputs/serialization.py
-- cache relevance: included in hash_inputs_for_cache
-- country/profile activation rule: no auto-activation; explicit opt-in only
+TUHO runtime status (Correction G):
+- TUHO has thin_cap_enabled=True (source metadata: thin-cap formula recorded)
+- The thin-cap formula is NOT implemented in the production runtime
+- SUBJECT_TO_LIMITATIONS + thin_cap_enabled=True → runtime raises
+  SHL_THIN_CAP_RUNTIME_NOT_IMPLEMENTED (capability-driven, not identity-based)
+- Only the ATAD path (thin_cap_enabled=False, atad_enabled=True) is executable
 
 ## FUTURE / NOT CURRENT — speculative fields NOT in current TaxParams
 

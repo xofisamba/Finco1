@@ -254,6 +254,13 @@ def test_identity_change_with_same_typed_policy_has_zero_financial_effect():
 
 
 def test_tuho_source_variant_maps_exact_vintage_then_stops_at_g2c_boundary():
+    """Correction G: TUHO maps vintage exactly, but MUST fail closed at runtime.
+
+    TUHO has thin_cap_enabled=True + atad_enabled=True + SUBJECT_TO_LIMITATIONS.
+    The runtime capability gate must raise SHL_THIN_CAP_RUNTIME_NOT_IMPLEMENTED
+    before any tax output is produced. This is a capability-driven check — NOT an
+    identity check. The thin-cap formula is not implemented.
+    """
     tuho = create_default_tuho_wind1()
     assert tuho.tax.prior_tax_loss_keur == pytest.approx(25_000.0)
 
@@ -281,14 +288,73 @@ def test_tuho_source_variant_maps_exact_vintage_then_stops_at_g2c_boundary():
     assert contract.opening_loss_vintages[0].amount_keur == pytest.approx(
         SOURCE_OPENING_LOSS_KEUR
     )
-    # PR-11 Correction E: SUBJECT_TO_LIMITATIONS now routes through ATAD (fraction=1.0).
-    # The G2C boundary is no longer a hard stop — STL is handled by the ATAD mechanism.
-    # Verify: shl_tax_deductible_fraction() returns 1.0 (SHL fully enters total_interest;
-    # ATAD then applies the annual limitation based on EBITDA and de_minimis threshold).
-    frac = contract.policy.shl_tax_deductible_fraction()
+    # Correction G: TUHO has thin_cap_enabled=True. The runtime gate must fire.
+    # shl_tax_deductible_fraction() must raise SHL_THIN_CAP_RUNTIME_NOT_IMPLEMENTED
+    # — no fraction, no partial result.
+    assert contract.policy.thin_cap_enabled is True, (
+        "TUHO source variant must carry thin_cap_enabled=True (source metadata)"
+    )
+    with pytest.raises(NotImplementedError, match="SHL_THIN_CAP_RUNTIME_NOT_IMPLEMENTED"):
+        contract.policy.shl_tax_deductible_fraction()
+
+
+def test_tuho_runtime_gate_is_capability_driven_not_identity():
+    """Correction G: TUHO runtime failure is capability-driven, NOT identity-based.
+
+    Renaming the project (different name/code) produces the SAME error because
+    the gate fires on thin_cap_enabled=True, not on project identity.
+    """
+    tuho = create_default_tuho_wind1()
+    renamed = replace(
+        tuho,
+        info=replace(tuho.info, name="Unrelated Wind Farm", code="UNRELATED-CODE"),
+        tax=replace(
+            tuho.tax,
+            clean_cash_tax_timing_enabled=True,
+            prior_tax_loss_keur=0.0,  # clear legacy scalar so adapter accepts
+        ),
+    )
+    contract = build_tax_contract_from_project_inputs(
+        renamed,
+        complete_financing_interest_will_be_injected=True,
+    )
+    # Same error for renamed project — identity does not matter
+    assert contract.policy.thin_cap_enabled is True
+    with pytest.raises(NotImplementedError, match="SHL_THIN_CAP_RUNTIME_NOT_IMPLEMENTED"):
+        contract.policy.shl_tax_deductible_fraction()
+
+
+def test_generic_atad_only_stl_executes_without_error():
+    """Correction G: ATAD-only STL project (thin_cap_enabled=False) executes cleanly.
+
+    A purpose-built project with thin_cap_enabled=False, atad_enabled=True,
+    SUBJECT_TO_LIMITATIONS returns fraction=1.0 from shl_tax_deductible_fraction().
+    """
+    from finco_core.inputs import TaxParams, ShlInterestDeductibilityMode
+    from financial_engine.policies.tax import (
+        CashTaxTiming,
+        ShlInterestDeductibilityMode as PolicyMode,
+        TaxPolicy,
+    )
+
+    policy = TaxPolicy(
+        policy_id="generic-atad-only-stl",
+        policy_version="1.0.0",
+        corporate_rate=0.20,
+        periods_per_tax_year=2,
+        loss_carryforward_years=5,
+        atad_enabled=True,
+        atad_ebitda_limit=0.30,
+        atad_de_minimis_threshold_keur_annual=3000.0,
+        cash_tax_timing=CashTaxTiming.TAX_YEAR_LAST_PERIOD,
+        shl_interest_tax_treatment_enabled=True,
+        shl_interest_deductibility=PolicyMode.SUBJECT_TO_LIMITATIONS,
+        thin_cap_enabled=False,  # ATAD-only: no thin-cap
+    )
+    # Must not raise; thin_cap_enabled=False + atad_enabled=True → ATAD path
+    frac = policy.shl_tax_deductible_fraction()
     assert frac == pytest.approx(1.0), (
-        "PR-11 Correction E: STL fraction must be 1.0 — ATAD handles limitation, "
-        f"not a hard stop. Got: {frac}"
+        f"ATAD-only STL: fraction must be 1.0, got {frac}"
     )
 
 
@@ -632,23 +698,23 @@ class TestCorrectionAAdversarialMatrix:
             SOURCE_OPENING_LOSS_KEUR
         )
 
-    def test_L_tuho_stl_uses_atad_mechanism(self):
-        """TUHO SHL policy (SUBJECT_TO_LIMITATIONS) routes through ATAD — fraction=1.0.
+    def test_L_tuho_stl_runtime_blocked_by_thin_cap(self):
+        """TUHO SHL policy (SUBJECT_TO_LIMITATIONS) is blocked at runtime.
 
-        PR-11 Correction E: The G2C boundary is no longer a hard stop.
-        STL now returns fraction=1.0 from shl_tax_deductible_fraction();
-        ATAD applies the annual limitation (EBITDA-based cap + de_minimis threshold).
+        Correction G: TUHO has thin_cap_enabled=True. The runtime capability gate
+        fires in shl_tax_deductible_fraction() before any tax output is produced.
+        Error code SHL_THIN_CAP_RUNTIME_NOT_IMPLEMENTED — capability-driven, not identity.
         """
         source_variant = self._tuho_source_variant()
         contract = build_tax_contract_from_project_inputs(
             source_variant,
             complete_financing_interest_will_be_injected=True,
         )
-        # Must not raise; must return 1.0
-        frac = contract.policy.shl_tax_deductible_fraction()
-        assert frac == pytest.approx(1.0), (
-            f"STL fraction must be 1.0 (ATAD handles limitation). Got: {frac}"
-        )
+        # thin_cap_enabled must be forwarded from TaxParams
+        assert contract.policy.thin_cap_enabled is True
+        # Runtime gate must fire — no fraction returned
+        with pytest.raises(NotImplementedError, match="SHL_THIN_CAP_RUNTIME_NOT_IMPLEMENTED"):
+            contract.policy.shl_tax_deductible_fraction()
 
 
 # ---------------------------------------------------------------------------
