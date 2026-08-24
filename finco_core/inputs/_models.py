@@ -1441,14 +1441,20 @@ class TaxParams:
                     f"shl_interest_deductible_pct must be absent or 0.0 for "
                     f"FULLY_NON_DEDUCTIBLE, got {pct}"
                 )
-        # ── SUBJECT_TO_LIMITATIONS requires ATAD to be enabled ───────────────
+        # ── SUBJECT_TO_LIMITATIONS requires at least one supported limitation mechanism ──
+        # SUBJECT_TO_LIMITATIONS is an umbrella classification (Part A).
+        # atad_enabled=True → ATAD execution path (supported).
+        # thin_cap_enabled=True → stored as source metadata; runtime raises
+        #   SHL_THIN_CAP_RUNTIME_NOT_IMPLEMENTED at the production execution boundary.
+        # Neither → raise SHL_LIMITATION_MECHANISM_MISSING immediately.
         if mode == ShlInterestDeductibilityMode.SUBJECT_TO_LIMITATIONS:
-            if not self.atad_enabled:
+            if not self.atad_enabled and not self.thin_cap_enabled:
                 raise ValueError(
-                    "shl_interest_deductibility=SUBJECT_TO_LIMITATIONS requires "
-                    "atad_enabled=True. ATAD is the approved limitation mechanism for "
-                    "EU interest limitation rules. Set atad_enabled=True and configure "
-                    "atad_ebitda_limit and atad_min_interest_keur."
+                    "SHL_LIMITATION_MECHANISM_MISSING: "
+                    "shl_interest_deductibility=SUBJECT_TO_LIMITATIONS requires at least "
+                    "one limitation mechanism: set atad_enabled=True (supported ATAD path) "
+                    "or thin_cap_enabled=True (stored source metadata; runtime-blocked "
+                    "until thin-cap formula is promoted to production)."
                 )
         # ── foreign_shl_interest_cap_enabled consistency ──────────────────────
         if self.foreign_shl_interest_cap_enabled:
