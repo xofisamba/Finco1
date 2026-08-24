@@ -55,7 +55,9 @@ an empty mapping. Missing configured schedule keys still fail closed.
 Independent absolute-index assumptions remain prohibited. Contractual Senior
 and SHL indices are resolved from the produced operation subset. Tests that
 formerly assumed two construction positions now derive the expected absolute
-index from the first operating position.
+index from the first operating position. The PR-7 TUHO baseline diagnostic
+likewise derives repayment start and maturity from the first and last canonical
+operating indices rather than the removed `2..61` grid.
 
 ## Exact source anchors
 
