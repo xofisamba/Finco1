@@ -15,7 +15,7 @@ FincoGPT calibration note:
 from dataclasses import dataclass
 from datetime import date
 from enum import Enum
-from typing import List
+from typing import Any, List, Sequence
 from dateutil.relativedelta import relativedelta
 import calendar
 
@@ -62,6 +62,7 @@ class PeriodEngine:
         horizon_years: int,
         ppa_years: int,
         frequency: PeriodFrequency = PeriodFrequency.SEMESTRIAL,
+        cod_date: date | None = None,
         period_axis_convention: PeriodAxisConvention | str = (
             PeriodAxisConvention.COD_ANCHOR_TWO_CONSTRUCTION_COLUMNS
         ),
@@ -74,15 +75,39 @@ class PeriodEngine:
         self.period_axis_convention = self._coerce_period_axis_convention(
             period_axis_convention
         )
-        self._cod = self._add_months(financial_close, construction_months)
+        derived_cod = self._add_months(financial_close, construction_months)
+        if cod_date is not None and cod_date != derived_cod:
+            raise ValueError(
+                "PERIOD_AXIS_COD_MISMATCH: explicit cod_date "
+                f"{cod_date.isoformat()} != financial_close + construction_months "
+                f"{derived_cod.isoformat()}"
+            )
+        self._cod = cod_date or derived_cod
         self._operating_start = self._last_semiannual_end_on_or_after_cod()
-        if self.period_axis_convention == PeriodAxisConvention.OPERATING_BOUNDARY_SINGLE_CONSTRUCTION_COLUMN:
-            self._horizon_end = self._add_years(self._operating_start, horizon_years)
-            self._ppa_end = self._add_years(self._operating_start, ppa_years)
-        else:
-            self._horizon_end = self._add_years(self._cod, horizon_years)
-            self._ppa_end = self._add_years(self._cod, ppa_years)
         self._periods_per_year = frequency.value
+        if frequency != PeriodFrequency.SEMESTRIAL:
+            raise ValueError(
+                "PERIOD_AXIS_FREQUENCY_UNSUPPORTED: canonical runtime axis currently "
+                "requires SEMESTRIAL frequency"
+            )
+        if isinstance(horizon_years, bool) or int(horizon_years) != horizon_years or horizon_years <= 0:
+            raise ValueError("PERIOD_AXIS_HORIZON_INVALID: horizon_years must be a positive integer")
+        if ppa_years < 0:
+            raise ValueError("PERIOD_AXIS_PPA_TERM_INVALID: ppa_years must be >= 0")
+        self._operating_period_count = int(horizon_years) * self._periods_per_year
+        ppa_anchor = (
+            self._operating_start
+            if self.period_axis_convention
+            == PeriodAxisConvention.OPERATING_BOUNDARY_SINGLE_CONSTRUCTION_COLUMN
+            else self._cod
+        )
+        self._ppa_end = self._add_years(ppa_anchor, ppa_years)
+        self._periods = self._build_periods()
+        validate_canonical_period_axis(
+            self._periods,
+            expected_operating_periods=self._operating_period_count,
+        )
+        self._horizon_end = self._periods[-1].end_date
 
     @property
     def cod(self) -> date:
@@ -165,15 +190,16 @@ class PeriodEngine:
             return 366.0 if calendar.isleap(next_year) else 365.0
         return 366.0 if calendar.isleap(period_end.year) else 365.0
 
-    def periods(self) -> List[PeriodMeta]:
-        """Generate all periods from construction through horizon."""
-        periods: List[PeriodMeta] = []
+    def periods(self) -> tuple[PeriodMeta, ...]:
+        """Return the immutable canonical construction and operating axis."""
+        return self._periods
 
+    def _build_periods(self) -> tuple[PeriodMeta, ...]:
         if self.period_axis_convention == PeriodAxisConvention.OPERATING_BOUNDARY_SINGLE_CONSTRUCTION_COLUMN:
             return self._source_aligned_operating_boundary_periods()
         return self._cod_anchor_two_construction_column_periods()
 
-    def _source_aligned_operating_boundary_periods(self) -> List[PeriodMeta]:
+    def _source_aligned_operating_boundary_periods(self) -> tuple[PeriodMeta, ...]:
         """Generate source-aligned periods with one construction column."""
         periods: List[PeriodMeta] = []
 
@@ -209,16 +235,11 @@ class PeriodEngine:
         operating_period_index = 0
         operating_year_index = 1
 
-        while current_date < self._horizon_end:
+        while operating_period_index < self._operating_period_count:
             end = self._next_semiannual_end_after(current_date)
-            if end > self._horizon_end:
-                end = self._horizon_end
             days = self._days_between(current_date, end)
             if current_date == self._cod and current_date.day == 1:
                 days += 1
-            if days <= 0:
-                break
-
             ppa_active = current_date < self._ppa_end
             denominator = self._semiannual_operating_denominator(end)
             is_leap = denominator == 366.0
@@ -248,68 +269,57 @@ class PeriodEngine:
                 operating_year_index += 1
             operating_period_index += 1
 
-        return periods
+        return tuple(periods)
 
-    def _cod_anchor_two_construction_column_periods(self) -> List[PeriodMeta]:
-        """Generate legacy generic periods with two construction columns."""
+    def _cod_anchor_two_construction_column_periods(self) -> tuple[PeriodMeta, ...]:
+        """Generate meaningful six-month construction segments and operation."""
         periods: List[PeriodMeta] = []
 
-        # === Y0: Construction period (FC to COD) ===
-        y0_h1_end = self._add_months(self.fc, 6)
-        y0_h2_end = self._cod
-
-        days_y0h1 = self._days_between(self.fc, y0_h1_end)
-        y0_h1_is_leap = calendar.isleap(y0_h1_end.year)
-        periods.append(PeriodMeta(
-            index=0,
-            start_date=self.fc,
-            end_date=y0_h1_end,
-            year_index=0,
-            period_in_year=1,
-            is_construction=True,
-            is_operation=False,
-            is_ppa_active=False,
-            days_in_period=days_y0h1,
-            day_fraction=days_y0h1 / (366.0 if y0_h1_is_leap else 365.0),
-            is_leap_year=y0_h1_is_leap,
-        ))
-
-        days_y0h2 = self._days_between(y0_h1_end, y0_h2_end)
-        y0_h2_is_leap = calendar.isleap(y0_h2_end.year)
-        periods.append(PeriodMeta(
-            index=1,
-            start_date=y0_h1_end,
-            end_date=y0_h2_end,
-            year_index=0,
-            period_in_year=2,
-            is_construction=True,
-            is_operation=False,
-            is_ppa_active=False,
-            days_in_period=days_y0h2,
-            day_fraction=days_y0h2 / (366.0 if y0_h2_is_leap else 365.0),
-            is_leap_year=y0_h2_is_leap,
-        ))
+        construction_start = self.fc
+        construction_index = 0
+        while construction_start < self._operating_start:
+            candidate = self._add_months(construction_start, 6)
+            # Fold a near-boundary remainder into the current meaningful segment.
+            if candidate >= self._operating_start or (
+                self._operating_start - candidate
+            ).days < 7:
+                construction_end = self._operating_start
+            else:
+                construction_end = candidate
+            days = self._days_between(construction_start, construction_end)
+            is_leap = calendar.isleap(construction_end.year)
+            periods.append(PeriodMeta(
+                index=construction_index,
+                start_date=construction_start,
+                end_date=construction_end,
+                year_index=0,
+                period_in_year=(construction_index % 2) + 1,
+                is_construction=True,
+                is_operation=False,
+                is_ppa_active=False,
+                days_in_period=days,
+                day_fraction=days / (366.0 if is_leap else 365.0),
+                is_leap_year=is_leap,
+            ))
+            construction_index += 1
+            construction_start = construction_end
 
         # === Operation periods ===
         current_date = self._last_semiannual_end_on_or_after_cod()
-        period_index = 2
+        period_index = construction_index
         year_index = 1
         period_in_year = 1
         operating_period_index = 0
         operating_year_index = 1
 
-        while current_date < self._horizon_end:
+        while operating_period_index < self._operating_period_count:
             end = self._next_semiannual_end_after(current_date)
-            if end > self._horizon_end:
-                end = self._horizon_end
             days = self._days_between(current_date, end)
             if current_date == self._cod and current_date.day == 1:
                 days += 1
-            if days <= 0:
-                break
-
             ppa_active = current_date < self._ppa_end
             is_leap = calendar.isleap(end.year)
+            denominator = 366.0 if is_leap else 365.0
             periods.append(PeriodMeta(
                 index=period_index,
                 start_date=current_date,
@@ -320,7 +330,7 @@ class PeriodEngine:
                 is_operation=True,
                 is_ppa_active=ppa_active,
                 days_in_period=days,
-                day_fraction=days / (366.0 if is_leap else 365.0),
+                day_fraction=days / denominator,
                 is_leap_year=is_leap,
                 operating_period_index=operating_period_index,
                 operating_year_index=operating_year_index,
@@ -336,19 +346,76 @@ class PeriodEngine:
                 operating_year_index += 1
             operating_period_index += 1
 
-        return periods
+        return tuple(periods)
 
-    def operation_periods(self) -> List[PeriodMeta]:
+    def operation_periods(self) -> tuple[PeriodMeta, ...]:
         """Returns only operation periods (excludes construction)."""
-        return [p for p in self.periods() if p.is_operation]
+        return tuple(p for p in self.periods() if p.is_operation)
 
-    def ppa_periods(self) -> List[PeriodMeta]:
+    def ppa_periods(self) -> tuple[PeriodMeta, ...]:
         """Returns only PPA-active operation periods."""
-        return [p for p in self.periods() if p.is_ppa_active]
+        return tuple(p for p in self.periods() if p.is_ppa_active)
 
-    def period_dates(self) -> List[date]:
+    def period_dates(self) -> tuple[date, ...]:
         """Returns end_dates for all periods."""
-        return [p.end_date for p in self.periods()]
+        return tuple(p.end_date for p in self.periods())
+
+
+def validate_canonical_period_axis(
+    periods: Sequence[PeriodMeta],
+    *,
+    expected_operating_periods: int | None = None,
+) -> None:
+    """Fail closed when a consumer receives a malformed financial axis."""
+    if not periods:
+        raise ValueError("PERIOD_AXIS_EMPTY")
+    indices = tuple(p.index for p in periods)
+    if len(set(indices)) != len(indices):
+        raise ValueError("PERIOD_AXIS_DUPLICATE_INDICES")
+    if indices != tuple(range(len(periods))):
+        raise ValueError("PERIOD_AXIS_NON_CONTIGUOUS_OR_OUT_OF_ORDER")
+    for position, period in enumerate(periods):
+        if period.days_in_period <= 0 or period.end_date <= period.start_date:
+            raise ValueError(
+                f"PERIOD_AXIS_NON_POSITIVE_DURATION: period_index={period.index}"
+            )
+        if period.is_construction == period.is_operation:
+            raise ValueError(
+                f"PERIOD_AXIS_PHASE_FLAGS_INVALID: period_index={period.index}"
+            )
+        if position and period.start_date != periods[position - 1].end_date:
+            raise ValueError(
+                f"PERIOD_AXIS_GAP_OR_OVERLAP: period_index={period.index}"
+            )
+    operating = tuple(p for p in periods if p.is_operation)
+    if expected_operating_periods is not None and len(operating) != expected_operating_periods:
+        raise ValueError(
+            "PERIOD_AXIS_OPERATING_COUNT_MISMATCH: "
+            f"expected={expected_operating_periods}, actual={len(operating)}"
+        )
+    if tuple(p.operating_period_index for p in operating) != tuple(range(len(operating))):
+        raise ValueError("PERIOD_AXIS_OPERATING_INDICES_INVALID")
+
+
+def map_period_vector(
+    period_indices: Sequence[int],
+    values: Sequence[Any],
+    *,
+    label: str,
+) -> dict[int, Any]:
+    """Map an axis-aligned vector without truncation, overwrite, or reordering."""
+    indices = tuple(period_indices)
+    vector = tuple(values)
+    if len(indices) != len(vector):
+        raise ValueError(
+            f"PERIOD_VECTOR_LENGTH_MISMATCH: {label} indices={len(indices)} "
+            f"values={len(vector)}"
+        )
+    if len(set(indices)) != len(indices):
+        raise ValueError(f"PERIOD_VECTOR_DUPLICATE_INDICES: {label}")
+    if any(curr <= prev for prev, curr in zip(indices, indices[1:])):
+        raise ValueError(f"PERIOD_VECTOR_OUT_OF_ORDER: {label}")
+    return {idx: vector[position] for position, idx in enumerate(indices)}
 
 
 def hash_engine_for_cache(e: "PeriodEngine") -> tuple:
@@ -359,5 +426,6 @@ def hash_engine_for_cache(e: "PeriodEngine") -> tuple:
         e.horizon_years,
         e.ppa_years,
         e.freq,
+        e.cod,
         e.period_axis_convention.value,
     )

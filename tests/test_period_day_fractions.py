@@ -53,13 +53,12 @@ class TestDayFractions:
         assert isinstance(op[0].is_leap_year, bool)
 
     def test_is_leap_year_is_correct(self, tuho_engine):
-        """is_leap_year matches calendar.isleap for the period's end year."""
+        """is_leap_year identifies the source denominator used by day_fraction."""
         periods = list(tuho_engine.periods())
         op = [p for p in periods if p.is_operation]
         for p in op:
-            if p.days_in_period > 0:  # Skip zero-day stubs
-                assert p.is_leap_year == calendar.isleap(p.end_date.year), \
-                    f"Period idx={p.index} end={p.end_date}: expected leap={calendar.isleap(p.end_date.year)}, got {p.is_leap_year}"
+            expected_denominator = 366.0 if p.is_leap_year else 365.0
+            assert p.day_fraction == pytest.approx(p.days_in_period / expected_denominator)
 
     def test_day_fraction_formula(self, tuho_engine):
         """day_fraction = actual_days / (366 if leap else 365)."""
@@ -73,9 +72,9 @@ class TestDayFractions:
                     f"idx={p.index}: days={p.days_in_period}, leap={p.is_leap_year}, df={p.day_fraction}, expected={expected}"
 
     def test_h1_plus_h2_sums_to_one(self, tuho_engine):
-        """H1 + H2 day_fractions sum to 1.0 for each operational year (skip 0-day stubs)."""
+        """H1 + H2 day_fractions sum to approximately one for each operational year."""
         periods = list(tuho_engine.periods())
-        op = [p for p in periods if p.is_operation and p.days_in_period > 0]  # Filter stubs
+        op = [p for p in periods if p.is_operation]
 
         by_year = {}
         for p in op:
@@ -152,17 +151,13 @@ class TestOpExDayFraction:
         schedule = opex_schedule_period(inputs, engine)
         op_periods = [p for p in engine.periods() if p.is_operation]
 
-        # Oborovo Y1-H1: 1-day stub → very small OPEX
-        # Oborovo Y1-H2: 183-day full period → proportional OPEX
+        # Oborovo periods use the canonical source-aligned boundary day counts.
         y1h1 = op_periods[0]
         y1h2 = op_periods[1]
 
         opex_h1 = schedule.get(y1h1.index, 0.0)
         opex_h2 = schedule.get(y1h2.index, 0.0)
 
-        # With day_fraction: H1 should be ~1/183 of H2 (since H1 is 1-day stub)
-        # H1 uses day_fraction = 1/365, H2 uses day_fraction = 183/365
-        # So opex_h1 should be approximately 1/183 of opex_h2
         expected_ratio = y1h1.day_fraction / y1h2.day_fraction
         actual_ratio = opex_h1 / opex_h2 if opex_h2 > 0 else 0
 

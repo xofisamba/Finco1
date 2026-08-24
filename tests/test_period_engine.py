@@ -19,7 +19,7 @@ class TestPeriodEngineBasics:
 
         assert engine.cod == date(2030, 6, 29)
         assert engine.ppa_end == date(2042, 6, 29)
-        assert engine.horizon_end == date(2060, 6, 29)
+        assert engine.horizon_end == date(2060, 6, 30)
 
     def test_cod_calculation(self):
         """COD should be 12 months after financial close."""
@@ -47,8 +47,7 @@ class TestPeriodEnginePeriods:
         periods = engine.periods()
         op_periods = [p for p in periods if p.is_operation]
 
-        assert len(op_periods) >= 59
-        assert len(op_periods) <= 61
+        assert len(op_periods) == 60
 
     def test_first_two_periods_construction(self):
         """First two periods should be construction (Y0-H1, Y0-H2)."""
@@ -102,7 +101,7 @@ class TestPeriodEnginePeriods:
         periods = engine.periods()
         ppa_periods = [p for p in periods if p.is_ppa_active]
 
-        assert 23 <= len(ppa_periods) <= 25
+        assert len(ppa_periods) == 24
 
     def test_period_in_year_sequence(self):
         """Semi-annual periods should alternate 1, 2, 1, 2..."""
@@ -193,7 +192,7 @@ class TestPeriodEngineHelpers:
         ppa = engine.ppa_periods()
 
         assert all(p.is_ppa_active for p in ppa)
-        assert 23 <= len(ppa) <= 25
+        assert len(ppa) == 24
 
     def test_period_dates(self):
         """period_dates() returns all end dates."""
@@ -206,23 +205,19 @@ class TestPeriodEngineHelpers:
 
         dates = engine.period_dates()
 
-        assert len(dates) >= 61
+        assert len(dates) == 62
 
 
 class TestPeriodEngineAnnual:
     """Test annual frequency."""
 
-    def test_annual_frequency(self):
-        """Annual frequency should produce annual periods."""
-        engine = PeriodEngine(
-            financial_close=date(2029, 6, 29),
-            construction_months=12,
-            horizon_years=30,
-            ppa_years=12,
-            frequency=PeriodFrequency.ANNUAL,
-        )
-
-        periods = engine.periods()
-        op_periods = [p for p in periods if p.is_operation]
-
-        assert 29 <= len(op_periods) <= 65
+    def test_non_semiannual_frequency_fails_closed(self):
+        """The canonical runtime must not silently emit semiannual dates for annual input."""
+        with pytest.raises(ValueError, match="PERIOD_AXIS_FREQUENCY_UNSUPPORTED"):
+            PeriodEngine(
+                financial_close=date(2029, 6, 29),
+                construction_months=12,
+                horizon_years=30,
+                ppa_years=12,
+                frequency=PeriodFrequency.ANNUAL,
+            )

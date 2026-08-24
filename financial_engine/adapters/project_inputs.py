@@ -101,6 +101,7 @@ def from_project_inputs(
         construction_months=info.construction_months,
         horizon_years=info.horizon_years,
         ppa_years=float(rev.ppa_term_years),
+        cod_date=info.cod_date,
         period_axis_convention=PeriodAxisConvention(
             getattr(info, "period_axis_convention").value
             if hasattr(getattr(info, "period_axis_convention", None), "value")

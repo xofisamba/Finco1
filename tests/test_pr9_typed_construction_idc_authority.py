@@ -691,12 +691,12 @@ class TestPR8FingerprintsUnchanged:
     """PR-8 production fingerprints must be bit-identical when construction_financing is None."""
 
     SOLAR_FINGERPRINTS = {
-        "revenue": 94431.06685697282,
+        "revenue": 94414.54881158611,
         "senior_ds": 35302.12518820596,
         "distributions": 5002.162578513825,
     }
     WIND_FINGERPRINTS = {
-        "revenue": 213124.95083177992,
+        "revenue": 213093.25362988273,
         "senior_ds": 42650.79738447129,
         "distributions": 10506.513025614555,
     }
@@ -1155,12 +1155,12 @@ class TestPR8FingerprintsWithoutSkips:
     """
 
     SOLAR_FINGERPRINTS = {
-        "revenue": 94431.06685697282,
+        "revenue": 94414.54881158611,
         "senior_ds": 35302.12518820596,
         "distributions": 5002.162578513825,
     }
     WIND_FINGERPRINTS = {
-        "revenue": 213124.95083177992,
+        "revenue": 213093.25362988273,
         "senior_ds": 42650.79738447129,
         "distributions": 10506.513025614555,
     }

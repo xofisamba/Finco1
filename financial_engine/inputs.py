@@ -39,6 +39,7 @@ class CalendarInput:
     construction_months: int
     horizon_years: int
     ppa_years: float
+    cod_date: date | None = None
     period_axis_convention: PeriodAxisConvention = (
         PeriodAxisConvention.COD_ANCHOR_TWO_CONSTRUCTION_COLUMNS
     )

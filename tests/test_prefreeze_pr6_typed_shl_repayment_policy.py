@@ -284,7 +284,7 @@ def solar_sweep_result():
             project.financing,
             clean_shl_repayment_method=SHLRepaymentMethod.CASH_SWEEP,
             shl_principal_eligibility_start_period=2,
-            shl_maturity_period_index=42,
+            shl_maturity_period_index=33,
         ),
     )
     return run_project_shareholder_waterfall_model(project)

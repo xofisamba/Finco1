@@ -78,6 +78,7 @@ from datetime import date
 
 from finco_core.inputs import DebtServiceReserveSupportMode, ProjectInputs, SponsorFundingMode
 from finco_core.inputs._models import ShlInterestDeductibilityMode
+from finco_core.engine.period_engine import map_period_vector
 
 from financial_engine.adapters.project_inputs import (
     _build_shareholder_loan_model_input_from_project_inputs,
@@ -263,11 +264,10 @@ def run_project_shareholder_waterfall_model(
     if model_result.post_senior_cash is None:
         raise ValueError("G2C requires post_senior_cash; clean engine did not produce it")
 
-    signed_post_senior_by_idx: dict[int, float] = dict(
-        zip(
-            model_result.post_senior_cash.period_indices,
-            model_result.post_senior_cash.cash_after_senior_before_reserves_keur,
-        )
+    signed_post_senior_by_idx: dict[int, float] = map_period_vector(
+        model_result.post_senior_cash.period_indices,
+        model_result.post_senior_cash.cash_after_senior_before_reserves_keur,
+        label="shareholder_waterfall.post_senior_cash",
     )
 
     # DSCR lookup — None where no Senior DS
@@ -277,10 +277,14 @@ def run_project_shareholder_waterfall_model(
     if model_result.senior_debt is not None:
         sd = model_result.senior_debt
         ds_arr = sd.senior_debt_service_keur
-        for idx, dscr, ds in zip(sd.period_indices, sd.base_dscr, ds_arr):
-            base_dscr_by_idx[idx] = dscr
-            senior_ds_nonzero_by_idx[idx] = ds > 0.0
-        nonzero_ds = [i for i, ds in zip(sd.period_indices, ds_arr) if ds > 0.0]
+        base_dscr_by_idx = map_period_vector(
+            sd.period_indices, sd.base_dscr, label="shareholder_waterfall.base_dscr"
+        )
+        senior_ds_by_idx = map_period_vector(
+            sd.period_indices, ds_arr, label="shareholder_waterfall.senior_debt_service"
+        )
+        senior_ds_nonzero_by_idx = {idx: ds > 0.0 for idx, ds in senior_ds_by_idx.items()}
+        nonzero_ds = [i for i, ds in senior_ds_by_idx.items() if ds > 0.0]
         if nonzero_ds:
             senior_last_period_index = max(nonzero_ds)
 
@@ -320,7 +324,11 @@ def run_project_shareholder_waterfall_model(
                 senior_last_period_index=senior_last_period_index if fin.dsrf_fee_expires_at_senior_maturity else None,
                 day_count_convention=fin.dsrf_day_count,
             )
-            dsrf_fee_by_idx = dict(zip(dsrf_schedule.period_indices, dsrf_schedule.dsrf_commitment_fee_keur))
+            dsrf_fee_by_idx = map_period_vector(
+                dsrf_schedule.period_indices,
+                dsrf_schedule.dsrf_commitment_fee_keur,
+                label="shareholder_waterfall.dsrf_commitment_fee",
+            )
 
     # ── PR-3 CASH_DSRA roll-forward lookup ───────────────────────────────────
     # CASH_DSRA: consume model_result.cash_dsra as the one clean reserve authority.
@@ -517,12 +525,19 @@ def run_project_shareholder_waterfall_model(
                 gated_cash_all_periods,
                 diagnostics=None,
             )
-            shl_opening_by_idx = dict(zip(gated_shl_schedule.period_indices, gated_shl_schedule.shl_opening_keur))
-            shl_gross_by_idx = dict(zip(gated_shl_schedule.period_indices, gated_shl_schedule.shl_gross_interest_keur))
-            shl_cash_int_by_idx = dict(zip(gated_shl_schedule.period_indices, gated_shl_schedule.shl_cash_interest_keur))
-            shl_pik_by_idx = dict(zip(gated_shl_schedule.period_indices, gated_shl_schedule.shl_pik_interest_keur))
-            shl_principal_by_idx = dict(zip(gated_shl_schedule.period_indices, gated_shl_schedule.shl_principal_keur))
-            shl_closing_by_idx = dict(zip(gated_shl_schedule.period_indices, gated_shl_schedule.shl_closing_keur))
+            for label, values, target in (
+                ("opening", gated_shl_schedule.shl_opening_keur, shl_opening_by_idx),
+                ("gross_interest", gated_shl_schedule.shl_gross_interest_keur, shl_gross_by_idx),
+                ("cash_interest", gated_shl_schedule.shl_cash_interest_keur, shl_cash_int_by_idx),
+                ("pik_interest", gated_shl_schedule.shl_pik_interest_keur, shl_pik_by_idx),
+                ("principal", gated_shl_schedule.shl_principal_keur, shl_principal_by_idx),
+                ("closing", gated_shl_schedule.shl_closing_keur, shl_closing_by_idx),
+            ):
+                target.update(map_period_vector(
+                    gated_shl_schedule.period_indices,
+                    values,
+                    label=f"shareholder_waterfall.shl_{label}",
+                ))
 
     # ── Phase 3: Deductible SHL feedback check ───────────────────────────────
     shl_deductible = (

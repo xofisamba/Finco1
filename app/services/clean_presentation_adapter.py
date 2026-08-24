@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from finco_core.engine.period_engine import map_period_vector
 from financial_engine.shareholder_waterfall.contracts import (
     DistributionGateStatus,
 )
@@ -171,10 +172,20 @@ def build_clean_waterfall_view(clean_run) -> CleanWaterfallView:
     tax = model.tax_and_cfads
     senior = model.senior_debt
 
-    op_by_idx = dict(zip(op.period_indices, range(len(op.period_indices))))
-    tax_by_idx = dict(zip(tax.period_indices, range(len(tax.period_indices))))
-    senior_by_idx = dict(
-        zip(senior.period_indices, range(len(senior.period_indices)))
+    op_by_idx = map_period_vector(
+        op.period_indices,
+        tuple(range(len(op.period_indices))),
+        label="clean_presentation.operating",
+    )
+    tax_by_idx = map_period_vector(
+        tax.period_indices,
+        tuple(range(len(tax.period_indices))),
+        label="clean_presentation.tax",
+    )
+    senior_by_idx = map_period_vector(
+        senior.period_indices,
+        tuple(range(len(senior.period_indices))),
+        label="clean_presentation.senior_debt",
     )
     # The G2C waterfall grid and the model period grid use DIFFERENT
     # numbering axes (waterfall period_index is 1-based over its own
@@ -184,7 +195,12 @@ def build_clean_waterfall_view(clean_run) -> CleanWaterfallView:
     # carry no waterfall cash event and default to no-SHL/DA activity.
     wp_by_date: dict = {}
     for w in g2c.waterfall_periods:
-        wp_by_date.setdefault(getattr(w, "cashflow_date", None), w)
+        cashflow_date = getattr(w, "cashflow_date", None)
+        if cashflow_date in wp_by_date:
+            raise ValueError(
+                "PERIOD_VECTOR_DUPLICATE_DATES: clean_presentation.waterfall_periods"
+            )
+        wp_by_date[cashflow_date] = w
 
     period_views: list[CleanPeriodView] = []
     lockup_count = 0

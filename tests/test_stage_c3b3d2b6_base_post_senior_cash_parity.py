@@ -155,17 +155,27 @@ def test_period_axis_convention_is_explicit_and_not_global():
     assert sum(1 for p in oborovo_result.periods if p.is_construction) == 1
     assert oborovo_result.periods[1].period_start.isoformat() == "2030-06-30"
 
-    for factory in (
-        create_default_solar_project,
-        create_default_wind_project,
-        create_default_tuho_wind1,
+    for factory, expected_construction_periods in (
+        (create_default_solar_project, 2),
+        (create_default_wind_project, 3),
     ):
         project = factory()
         assert project.info.period_axis_convention == (
             PeriodAxisConvention.COD_ANCHOR_TWO_CONSTRUCTION_COLUMNS
         )
         result = run_operating_model(from_project_inputs(project))
-        assert sum(1 for p in result.periods if p.is_construction) == 2
+        construction_periods = [p for p in result.periods if p.is_construction]
+        assert len(construction_periods) == expected_construction_periods
+        assert all(p.period_end > p.period_start for p in construction_periods)
+
+    tuho = create_default_tuho_wind1()
+    assert tuho.info.period_axis_convention == (
+        PeriodAxisConvention.COD_ANCHOR_TWO_CONSTRUCTION_COLUMNS
+    )
+    tuho_result = run_operating_model(from_project_inputs(tuho))
+    assert sum(1 for p in tuho_result.periods if p.is_construction) == 1
+    assert sum(1 for p in tuho_result.periods if p.is_operation) == 60
+    assert tuho_result.periods[-1].period_end.isoformat() == "2059-12-31"
 
 
 def test_base_performance_reconciliation_closes_to_tax_boundary():

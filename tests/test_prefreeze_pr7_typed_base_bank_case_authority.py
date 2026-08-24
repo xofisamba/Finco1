@@ -41,7 +41,7 @@ def _run(project):
     from financial_engine.adapters.project_inputs import (
         build_senior_debt_model_input_from_project_inputs,
     )
-    from financial_engine.orchestrator import run_senior_debt_model
+    from financial_engine.orchestrator import run_operating_model, run_senior_debt_model
 
     model = build_senior_debt_model_input_from_project_inputs(
         project, source_id="pr7-test"
@@ -69,7 +69,7 @@ def _run_tuho_clean_case(*, target_dscr: float = 1.2, bank_case=None):
         TaxCalculationInput,
         YieldScenario,
     )
-    from financial_engine.orchestrator import run_senior_debt_model
+    from financial_engine.orchestrator import run_operating_model, run_senior_debt_model
     from financial_engine.senior_debt.inputs import SeniorDebtInputs
     from financial_engine.senior_debt.policy import (
         DayCountConvention,
@@ -78,6 +78,8 @@ def _run_tuho_clean_case(*, target_dscr: float = 1.2, bank_case=None):
     )
 
     base_op = from_project_inputs(create_default_tuho_wind1())
+    canonical_periods = run_operating_model(base_op).periods
+    operating_indices = tuple(p.period_index for p in canonical_periods if p.is_operation)
     model = SeniorDebtModelInput(
         operating=base_op,
         tax=TaxCalculationInput(
@@ -95,8 +97,8 @@ def _run_tuho_clean_case(*, target_dscr: float = 1.2, bank_case=None):
             annual_fixed_rate=0.05,
             periods_per_year=2,
             day_count_convention=DayCountConvention.ACT_365,
-            repayment_start_period_index=2,
-            maturity_period_index=61,
+            repayment_start_period_index=operating_indices[0],
+            maturity_period_index=operating_indices[-1],
             convergence_tolerance_keur=1.0,
             convergence_relative_tolerance=0.001,
             maximum_iterations=300,
