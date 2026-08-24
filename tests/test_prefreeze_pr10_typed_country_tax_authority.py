@@ -18,6 +18,7 @@ from finco_core.inputs import (
 from financial_engine.adapters.tax_inputs import build_tax_contract_from_project_inputs
 from financial_engine.inputs import PeriodInterestInput, PeriodTaxAdjustmentInput
 from financial_engine.tax.engine import calculate_tax
+from tests.pr5_ebitda_guard import assert_only_approved_pr5_domain_diff
 
 
 SOURCE_OPENING_LOSS_KEUR = 3568.6878026481627
@@ -292,3 +293,27 @@ def test_input_validation_rejects_competing_opening_loss_authorities():
                 OpeningTaxLossVintageParams(2029, 1.0),
             ),
         )
+
+
+def test_pr5_guard_scopes_formula_lock_to_pr5_sizing_files():
+    unrelated_domain_facade = "\n".join(
+        (
+            "diff --git a/domain/inputs.py b/domain/inputs.py",
+            "--- a/domain/inputs.py",
+            "+++ b/domain/inputs.py",
+            "+    OpeningTaxLossVintageParams,",
+        )
+    )
+    assert_only_approved_pr5_domain_diff(unrelated_domain_facade)
+
+    sizing_change = "\n".join(
+        (
+            "diff --git a/domain/senior_debt_sizing/engine.py "
+            "b/domain/senior_debt_sizing/engine.py",
+            "--- a/domain/senior_debt_sizing/engine.py",
+            "+++ b/domain/senior_debt_sizing/engine.py",
+            "+                capacity = cfads / dscr",
+        )
+    )
+    with pytest.raises(AssertionError, match="beyond the source-approved"):
+        assert_only_approved_pr5_domain_diff(sizing_change)

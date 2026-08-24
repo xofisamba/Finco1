@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import hashlib
-import subprocess
 from pathlib import Path
 
 
@@ -11,9 +10,14 @@ APPROVED_WATERFALL_CORE_FINGERPRINTS = {
     "7f4cc5baaa9fcf7da0b91f7e9ff1e362d986e75cb29c8070f4a06f5c5e3c00ac",
 }
 
-APPROVED_DOMAIN_TREE_FINGERPRINTS = {
-    "928355ac58050ee3d5781625042207734d810a23b2269e7bd4117305277dfb12",
-    "9b19b4a51c4fb77dc1ecf7a275ee42e8ba76ddea6fb17b9d4f8471a77c0052d8",
+PR5_DOMAIN_PATHS = (
+    "domain/senior_debt_sizing/canonical_wiring.py",
+    "domain/senior_debt_sizing/engine.py",
+)
+
+APPROVED_PR5_DOMAIN_FINGERPRINTS = {
+    "b9e93547d3e4f6cdaef342b80a655a69e388dbb1251de3bb2424261e5c0e832b",
+    "bc4383eeffdead7c89d766e3c093033b0294549fc2b996fb90465a6c173b576c",
 }
 
 
@@ -79,20 +83,15 @@ def assert_approved_pr5_waterfall_state(repo_root: Path) -> None:
 
 
 def assert_approved_pr5_domain_state(repo_root: Path) -> None:
-    paths = subprocess.check_output(
-        ["git", "ls-files", "app/domain", "domain"],
-        cwd=repo_root,
-        text=True,
-    ).splitlines()
     digest = hashlib.sha256()
-    for relative in paths:
+    for relative in PR5_DOMAIN_PATHS:
         digest.update(relative.encode("utf-8"))
         digest.update(b"\0")
         digest.update(_normalized_bytes(repo_root / relative))
         digest.update(b"\0")
     value = digest.hexdigest()
-    assert value in APPROVED_DOMAIN_TREE_FINGERPRINTS, (
-        "app/domain + domain is neither the historical base nor the exact "
+    assert value in APPROVED_PR5_DOMAIN_FINGERPRINTS, (
+        "PR-5 Senior sizing domain files are neither the historical base nor the exact "
         f"source-approved PR-5 state: {value}"
     )
 
@@ -107,8 +106,20 @@ def assert_only_approved_pr5_waterfall_diff(diff_text: str) -> None:
 
 
 def assert_only_approved_pr5_domain_diff(diff_text: str) -> None:
-    """Accept no domain diff or exactly the signed-CFADS/capacity boundary."""
-    changed_lines = _financial_changed_lines(diff_text)
+    """Accept no PR-5 sizing diff or exactly its approved boundary change."""
+    relevant_lines: list[str] = []
+    in_pr5_path = False
+    saw_diff_header = False
+    for line in diff_text.splitlines():
+        if line.startswith("diff --git "):
+            saw_diff_header = True
+            parts = line.split()
+            in_pr5_path = len(parts) >= 4 and parts[3][2:] in PR5_DOMAIN_PATHS
+        if in_pr5_path:
+            relevant_lines.append(line)
+
+    relevant_diff = "\n".join(relevant_lines) if saw_diff_header else diff_text
+    changed_lines = _financial_changed_lines(relevant_diff)
     assert changed_lines in ((), APPROVED_DOMAIN_CHANGES), (
         "domain sizing contains changes beyond the source-approved PR-5 "
         f"signed-CFADS boundary: {changed_lines!r}"

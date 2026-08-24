@@ -39,7 +39,9 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          # PR-8 exact financial locks are certified on the repository's
+          # canonical Python 3.12 workflow runtime.
+          python-version: "3.12"
 
       - name: Install dependencies
         run: |
