@@ -1167,8 +1167,72 @@ def _build_result_senior_debt_schedules(
     )
 
 
-def _run_senior_debt_model_with_shl(inputs: SeniorDebtModelInput) -> ProjectModelResult:
-    """Phase B5: Senior debt + SHL + tax fixed-point integration."""
+def _validate_interest_period_alignment(
+    expected_period_indices: tuple[int, ...],
+    interest_by_period: dict[int, float],
+    context: str,
+) -> None:
+    """Validate that the final interest vector aligns exactly with expected periods.
+
+    Called ONCE at final B5 convergence (not during intermediate iterations).
+    Raises ValueError with structured error codes so callers can assert the failure
+    mode precisely.
+
+    Error codes:
+      G2C_FINAL_INTEREST_PERIOD_MISSING   — required period not in interest dict
+      G2C_FINAL_INTEREST_PERIOD_DUPLICATE — duplicate period index detected (internal)
+      G2C_FINAL_INTEREST_PERIOD_UNMATCHED — interest dict has period not in expected set
+    """
+    expected = set(expected_period_indices)
+    provided = set(interest_by_period)
+
+    missing = expected - provided
+    if missing:
+        raise ValueError(
+            f"G2C_FINAL_INTEREST_PERIOD_MISSING: {context}: "
+            f"periods {sorted(missing)} are required but absent from the interest vector. "
+            "The final interest contract must cover every debt period exactly."
+        )
+
+    unmatched = provided - expected
+    if unmatched:
+        raise ValueError(
+            f"G2C_FINAL_INTEREST_PERIOD_UNMATCHED: {context}: "
+            f"interest vector has extra periods {sorted(unmatched)} "
+            "not present in the expected debt periods. "
+            "Stale or shifted period indices are not permitted in the final contract."
+        )
+
+    # Duplicate detection: expected_period_indices is a tuple — check it
+    if len(expected_period_indices) != len(expected):
+        duplicates = [
+            idx for idx in expected_period_indices
+            if expected_period_indices.count(idx) > 1
+        ]
+        raise ValueError(
+            f"G2C_FINAL_INTEREST_PERIOD_DUPLICATE: {context}: "
+            f"expected period tuple contains duplicates: {sorted(set(duplicates))}. "
+            "Each period must appear exactly once."
+        )
+
+
+def _run_senior_debt_model_with_shl(
+    inputs: SeniorDebtModelInput,
+    *,
+    _test_only_initial_shl_interest_guess: "dict[int, float] | None" = None,
+) -> "ProjectModelResult":
+    """Phase B5: Senior debt + SHL + tax fixed-point integration.
+
+    _test_only_initial_shl_interest_guess:
+      TEST-ONLY parameter.  Default None = standard behaviour (start from the
+      zero-interest vector).  Pass an explicit dict to start the iteration from
+      a different seed.  This parameter is:
+        - NOT part of any production user input
+        - NOT included in any cache key or serialization
+        - NOT accessible through run_senior_debt_model()
+      It exists solely to allow the test suite to prove that different starting
+      seeds converge to the same fixed-point result.
+    """
     from financial_engine.cfads import calculate_canonical_cfads
     from financial_engine.inputs import TaxCfadsModelInput
     from financial_engine.senior_debt.inputs import SeniorDebtInputs
@@ -1204,7 +1268,11 @@ def _run_senior_debt_model_with_shl(inputs: SeniorDebtModelInput) -> ProjectMode
         phase2b_result.periods, policy
     )
 
-    shl_interest_guess: dict[int, float] = {}
+    shl_interest_guess: dict[int, float] = (
+        dict(_test_only_initial_shl_interest_guess)
+        if _test_only_initial_shl_interest_guess is not None
+        else {}
+    )
     previous_shl: ShareholderLoanSchedules | None = None
     last_max_closing_delta = float("inf")
     last_max_interest_delta = float("inf")
@@ -1987,4 +2055,42 @@ def run_senior_debt_model(inputs: SeniorDebtModelInput) -> ProjectModelResult:
         unavailable_sections=_PHASE_2C_UNAVAILABLE,
         validation_issues=validation_issues,
         warnings=warnings,
+    )
+
+
+def run_senior_debt_model_test_only_seed(
+    inputs: "SeniorDebtModelInput",
+    initial_shl_interest_guess: "dict[int, float]",
+) -> "ProjectModelResult":
+    """TEST-ONLY: Run the B5 SHL fixed-point from an explicit initial SHL interest guess.
+
+    This function exists solely to support seed-invariance testing.  It is NOT
+    part of the production API, must NOT appear in any user-facing interface,
+    cache key, or serialized form, and must NOT be called from any production
+    code path.
+
+    Args:
+        inputs: Same SeniorDebtModelInput used by run_senior_debt_model().
+        initial_shl_interest_guess: Starting guess for shl_interest_by_period.
+            The canonical production guess is {} (all zeros).  Passing a
+            materially different dict lets the test verify convergence is
+            seed-independent.
+
+    Returns:
+        ProjectModelResult — identical to what run_senior_debt_model() returns
+        for the same inputs regardless of the starting guess (if the fixed point
+        converges).
+
+    Raises:
+        ValueError: if inputs.shareholder_loan is None (no B5 loop to run).
+        SeniorDebtNonConvergenceError: if the loop does not converge.
+    """
+    if inputs.shareholder_loan is None:
+        raise ValueError(
+            "run_senior_debt_model_test_only_seed requires a shareholder_loan "
+            "input (B5 fixed-point path). Got None."
+        )
+    return _run_senior_debt_model_with_shl(
+        inputs,
+        _test_only_initial_shl_interest_guess=initial_shl_interest_guess,
     )

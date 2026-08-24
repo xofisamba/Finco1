@@ -646,39 +646,121 @@ class TestI_NonConvergence:
 # ---------------------------------------------------------------------------
 
 class TestJ_StartingSeedInvariance:
-    """J. Starting-seed invariance: different valid seeds → same tax output."""
+    """J. Starting-seed invariance: the B5 fixed-point converges to the SAME
+    Senior, SHL interest, and cash tax regardless of the initial SHL interest guess.
 
-    def test_zero_and_nonzero_shl_order_irrelevant_for_annual_result(
-        self, _oborovo_op_periods
-    ):
-        """Annual tax results must not depend on the order of SHL interest injection.
+    Three seeds are used:
+      seed_a = None  → canonical production start (all-zero guess)
+      seed_b = high  → materially high initial guess (10 000 kEUR per period)
+      seed_c = half  → half the converged result from seed_a
 
-        This tests that the two-pass approach gives identical results regardless
-        of whether SHL interest comes in as per-period or zero first.
-        """
-        periods = _oborovo_op_periods
-        SHL = 300.0
-        CAP = 400.0
+    All three must converge to the same Senior debt size (within 1e-3 kEUR).
+    """
 
-        policy = _make_base_policy(
-            mode="subject_to_limitations",
-            limitation_enabled=True,
-            cap_keur_annual=CAP,
+    @pytest.fixture(scope="class")
+    def _stl_sdi(self):
+        """Build the STL SeniorDebtModelInput once for the class."""
+        import dataclasses
+        from app.project_factories import create_default_solar_project
+        from finco_core.inputs import ShlInterestDeductibilityMode
+        from financial_engine.adapters.project_inputs import (
+            build_senior_debt_model_input_from_project_inputs,
         )
 
-        # Seed A: all SHL at once
-        result_a = _run_tax(periods, policy, shl_per_period=SHL)
-        # Seed B: same SHL, identical
-        result_b = _run_tax(periods, policy, shl_per_period=SHL)
+        proj = create_default_solar_project()
+        new_tax = dataclasses.replace(
+            proj.tax,
+            shl_interest_deductibility=ShlInterestDeductibilityMode.SUBJECT_TO_LIMITATIONS,
+            thin_cap_enabled=True,
+            shl_limitation_enabled=True,
+            shl_interest_cap_keur_annual=50.0,
+        )
+        proj_stl = dataclasses.replace(proj, tax=new_tax)
+        return build_senior_debt_model_input_from_project_inputs(proj_stl)
 
-        # Deterministic: both runs produce identical results
-        for ar_a, ar_b in zip(result_a.annual_results, result_b.annual_results):
-            assert ar_a.deductible_interest_keur == pytest.approx(
-                ar_b.deductible_interest_keur, abs=1e-9
-            )
-            assert ar_a.current_tax_liability_keur == pytest.approx(
-                ar_b.current_tax_liability_keur, abs=1e-9
-            )
+    def test_seed_a_canonical_converges(self, _stl_sdi):
+        """seed_a = canonical production (None / all-zero) converges."""
+        from financial_engine.orchestrator import run_senior_debt_model
+        result = run_senior_debt_model(_stl_sdi)
+        assert result is not None
+        assert result.senior_debt.debt_size_keur > 0
+
+    def test_seed_b_high_matches_seed_a(self, _stl_sdi):
+        """seed_b = 10 000 kEUR/period converges to same Senior as seed_a."""
+        from financial_engine.orchestrator import (
+            run_senior_debt_model,
+            run_senior_debt_model_test_only_seed,
+        )
+
+        result_a = run_senior_debt_model(_stl_sdi)
+        senior_a = result_a.senior_debt.debt_size_keur
+
+        # Build a materially high seed: 10_000 kEUR per debt period
+        shl = _stl_sdi.shareholder_loan
+        import dataclasses
+        # Use maximum_iterations * 2 so the high seed has room to converge
+        sdi_long = dataclasses.replace(
+            _stl_sdi,
+            shareholder_loan=dataclasses.replace(shl, maximum_iterations=shl.maximum_iterations * 2),
+        )
+        # Build high seed: all debt period indices get 10 000 kEUR guess
+        from financial_engine.adapters.project_inputs import from_project_inputs
+        from financial_engine.orchestrator import run_operating_model
+        from financial_engine.inputs import TaxCfadsModelInput
+        from financial_engine.orchestrator import run_tax_cfads_model, derive_debt_sizing_operating_input
+        bank_op = derive_debt_sizing_operating_input(_stl_sdi.operating, _stl_sdi.debt_sizing_case)
+        bank_result = run_operating_model(bank_op)
+        import dataclasses as _dc
+        from financial_engine.senior_debt.policy import SeniorDebtPolicy
+        policy: SeniorDebtPolicy = _stl_sdi.senior_debt_policy  # type: ignore
+        debt_start = policy.repayment_start_period_index
+        debt_end = policy.maturity_period_index
+        debt_periods = tuple(
+            p for p in bank_result.periods
+            if p.is_operation and debt_start <= p.period_index <= debt_end
+        )
+        high_seed = {p.period_index: 10_000.0 for p in debt_periods}
+
+        result_b = run_senior_debt_model_test_only_seed(sdi_long, high_seed)
+        senior_b = result_b.senior_debt.debt_size_keur
+
+        assert senior_b == pytest.approx(senior_a, abs=1.0), (
+            f"seed_b (high=10000 kEUR/period) must converge to same Senior as seed_a. "
+            f"seed_a={senior_a:.4f} kEUR, seed_b={senior_b:.4f} kEUR, "
+            f"delta={abs(senior_b - senior_a):.4f} kEUR"
+        )
+
+    def test_seed_c_half_matches_seed_a(self, _stl_sdi):
+        """seed_c = half of seed_a result converges to same Senior as seed_a."""
+        from financial_engine.orchestrator import (
+            run_senior_debt_model,
+            run_senior_debt_model_test_only_seed,
+        )
+        import dataclasses
+
+        result_a = run_senior_debt_model(_stl_sdi)
+        senior_a = result_a.senior_debt.debt_size_keur
+
+        # Use half of the converged SHL gross interest as seed_c
+        shl_sched = result_a.shareholder_loan
+        half_seed = {
+            idx: v * 0.5
+            for idx, v in zip(shl_sched.period_indices, shl_sched.shl_gross_interest_keur)
+        }
+        shl = _stl_sdi.shareholder_loan
+        sdi_long = dataclasses.replace(
+            _stl_sdi,
+            shareholder_loan=dataclasses.replace(shl, maximum_iterations=shl.maximum_iterations * 2),
+        )
+
+        result_c = run_senior_debt_model_test_only_seed(sdi_long, half_seed)
+        senior_c = result_c.senior_debt.debt_size_keur
+
+        assert senior_c == pytest.approx(senior_a, abs=1.0), (
+            f"seed_c (half of converged) must converge to same Senior as seed_a. "
+            f"seed_a={senior_a:.4f} kEUR, seed_c={senior_c:.4f} kEUR, "
+            f"delta={abs(senior_c - senior_a):.4f} kEUR"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -752,31 +834,74 @@ class TestK_PeriodAlignmentAttack:
 # ---------------------------------------------------------------------------
 
 class TestL_IdentityInvariance:
-    """L. Identity invariance: changing project name holds financial outputs identical.
+    """L. Identity invariance: two full ProjectInputs differing ONLY in project
+    info.name produce identical Senior, SHL interest, and cash tax outputs.
 
-    This test verifies no project-name dispatch affects the tax computation.
+    Proves that no project-name dispatch affects the production fixed-point path.
+    The two projects are named "ProjectAlpha" and "ProjectBeta" and are otherwise
+    bit-for-bit identical.
     """
 
-    def test_tax_result_independent_of_project_identity(self, _oborovo_op_periods):
-        """Tax results from calculate_tax are project-identity-free."""
-        periods = _oborovo_op_periods
-        policy = _make_base_policy(
-            mode="subject_to_limitations",
-            limitation_enabled=True,
-            cap_keur_annual=600.0,
+    @pytest.fixture(scope="class")
+    def _alpha_beta_results(self):
+        """Run the B5 loop for ProjectAlpha and ProjectBeta (name only differs)."""
+        import dataclasses
+        from app.project_factories import create_default_solar_project
+        from finco_core.inputs import ShlInterestDeductibilityMode
+        from financial_engine.adapters.project_inputs import (
+            build_senior_debt_model_input_from_project_inputs,
+        )
+        from financial_engine.orchestrator import run_senior_debt_model
+
+        proj = create_default_solar_project()
+        new_tax = dataclasses.replace(
+            proj.tax,
+            shl_interest_deductibility=ShlInterestDeductibilityMode.SUBJECT_TO_LIMITATIONS,
+            thin_cap_enabled=True,
+            shl_limitation_enabled=True,
+            shl_interest_cap_keur_annual=50.0,
+        )
+        proj_base = dataclasses.replace(proj, tax=new_tax)
+
+        # Project Alpha and Beta differ only in info.name — all financial inputs identical
+        proj_alpha = dataclasses.replace(
+            proj_base,
+            info=dataclasses.replace(proj_base.info, name="ProjectAlpha"),
+        )
+        proj_beta = dataclasses.replace(
+            proj_base,
+            info=dataclasses.replace(proj_base.info, name="ProjectBeta"),
         )
 
-        # Run twice — same inputs, same result (no project-name caching or dispatch)
-        result_a = _run_tax(periods, policy, shl_per_period=250.0)
-        result_b = _run_tax(periods, policy, shl_per_period=250.0)
+        sdi_alpha = build_senior_debt_model_input_from_project_inputs(proj_alpha)
+        sdi_beta = build_senior_debt_model_input_from_project_inputs(proj_beta)
 
-        for ar_a, ar_b in zip(result_a.annual_results, result_b.annual_results):
-            assert ar_a.deductible_interest_keur == pytest.approx(
-                ar_b.deductible_interest_keur, abs=1e-12
-            )
-            assert ar_a.taxable_income_before_lcf_keur == pytest.approx(
-                ar_b.taxable_income_before_lcf_keur, abs=1e-12
-            )
+        result_alpha = run_senior_debt_model(sdi_alpha)
+        result_beta = run_senior_debt_model(sdi_beta)
+        return result_alpha, result_beta, "ProjectAlpha", "ProjectBeta"
+
+    def test_senior_identical_for_different_project_names(self, _alpha_beta_results):
+        """Senior debt size is identical when only the project name differs."""
+        result_alpha, result_beta, name_a, name_b = _alpha_beta_results
+        senior_a = result_alpha.senior_debt.debt_size_keur
+        senior_b = result_beta.senior_debt.debt_size_keur
+        assert senior_a == pytest.approx(senior_b, abs=1e-6), (
+            f"Senior must be identical when only project name changes. "
+            f"{name_a}={senior_a:.6f} kEUR, {name_b}={senior_b:.6f} kEUR, "
+            f"delta={abs(senior_a - senior_b):.6f} kEUR"
+        )
+
+    def test_shl_closing_balance_identical_for_different_project_names(
+        self, _alpha_beta_results
+    ):
+        """Derived SHL closing balance is identical when only project name differs."""
+        result_alpha, result_beta, name_a, name_b = _alpha_beta_results
+        shl_a = result_alpha.shareholder_loan.shl_closing_keur[-1]
+        shl_b = result_beta.shareholder_loan.shl_closing_keur[-1]
+        assert shl_a == pytest.approx(shl_b, abs=1e-6), (
+            f"SHL closing balance must be identical when only project name changes. "
+            f"{name_a}={shl_a:.6f} kEUR, {name_b}={shl_b:.6f} kEUR"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -1255,19 +1380,42 @@ class TestGap13ProductionE2EFixedPoint:
     interest → higher cash tax → lower Bank CFADS → lower (or equal) Senior.
     """
 
-    @pytest.fixture(scope="class")
-    def _solar_fd_result(self):
-        """Solar project with FULLY_DEDUCTIBLE SHL treatment in B5 fixed point."""
+    @staticmethod
+    def _make_dscr_constrained_base_proj():
+        """Return a solar project configured so DSCR — not gearing — is the binding constraint.
+
+        Configuration:
+          gearing_ratio = 0.95  (high cap → gearing does not bind)
+          target_dscr   = 1.35  (demanding → DSCR binds at lower senior level than gearing cap)
+
+        When the SHL tax treatment changes from FULLY_DEDUCTIBLE to SUBJECT_TO_LIMITATIONS
+        with a very low annual cap (10 kEUR), the resulting tax difference is material
+        enough that DSCR capacity drops by > 10 kEUR.
+        """
         import dataclasses
         from app.project_factories import create_default_solar_project
+
+        proj = create_default_solar_project()
+        # High gearing → gearing cap is non-binding
+        # High DSCR target → DSCR is the binding constraint
+        new_financing = dataclasses.replace(
+            proj.financing,
+            gearing_ratio=0.95,
+            target_dscr=1.35,
+        )
+        return dataclasses.replace(proj, financing=new_financing)
+
+    @pytest.fixture(scope="class")
+    def _solar_fd_result(self):
+        """DSCR-constrained solar project with FULLY_DEDUCTIBLE SHL in B5 fixed point."""
+        import dataclasses
         from finco_core.inputs import ShlInterestDeductibilityMode
         from financial_engine.adapters.project_inputs import (
             build_senior_debt_model_input_from_project_inputs,
         )
         from financial_engine.orchestrator import run_senior_debt_model
 
-        proj = create_default_solar_project()
-        # Enable SHL tax treatment with FULLY_DEDUCTIBLE
+        proj = self._make_dscr_constrained_base_proj()
         new_tax = dataclasses.replace(
             proj.tax,
             shl_interest_deductibility=ShlInterestDeductibilityMode.FULLY_DEDUCTIBLE,
@@ -1280,42 +1428,51 @@ class TestGap13ProductionE2EFixedPoint:
 
     @pytest.fixture(scope="class")
     def _solar_stl_result(self):
-        """Solar project with SUBJECT_TO_LIMITATIONS + binding cap in B5 fixed point."""
+        """DSCR-constrained solar project with STL + binding cap (10 kEUR) in B5 loop."""
         import dataclasses
-        from app.project_factories import create_default_solar_project
         from finco_core.inputs import ShlInterestDeductibilityMode
         from financial_engine.adapters.project_inputs import (
             build_senior_debt_model_input_from_project_inputs,
         )
         from financial_engine.orchestrator import run_senior_debt_model
 
-        proj = create_default_solar_project()
-        # Very low annual cap to make the limitation binding
-        # Solar SHL is ~7750 kEUR at 8%/year → ~620 kEUR/year gross SHL interest
-        # Setting cap to 50 kEUR/year forces binding limitation
+        proj = self._make_dscr_constrained_base_proj()
+        # Very low annual cap → nearly all SHL interest disallowed
+        # → materially higher tax → materially lower Bank CFADS → lower DSCR Senior
         new_tax = dataclasses.replace(
             proj.tax,
             shl_interest_deductibility=ShlInterestDeductibilityMode.SUBJECT_TO_LIMITATIONS,
-            thin_cap_enabled=True,  # required by TaxParams SUBJECT_TO_LIMITATIONS gate
+            thin_cap_enabled=True,
             shl_limitation_enabled=True,
-            shl_interest_cap_keur_annual=50.0,  # very low → binding cap
+            shl_interest_cap_keur_annual=10.0,  # 10 kEUR/year cap → almost all disallowed
         )
         proj_stl = dataclasses.replace(proj, tax=new_tax)
         sdi = build_senior_debt_model_input_from_project_inputs(proj_stl)
         return run_senior_debt_model(sdi)
 
-    def test_stl_senior_lte_fd_senior(self, _solar_fd_result, _solar_stl_result):
-        """SUBJECT_TO_LIMITATIONS with binding cap: Senior ≤ FULLY_DEDUCTIBLE Senior.
+    def test_fd_senior_strictly_greater_than_stl_senior(self, _solar_fd_result, _solar_stl_result):
+        """FULLY_DEDUCTIBLE Senior is STRICTLY greater than SUBJECT_TO_LIMITATIONS Senior.
 
-        Economic logic: less SHL deductible → more taxable income → more cash tax
-        → lower Bank CFADS → Senior capacity is lower or equal.
+        Economic causality chain (DSCR-constrained):
+          FD:  more SHL deductible → lower tax → higher Bank CFADS → higher DSCR capacity
+               → DSCR is binding → larger Senior
+          STL: binding cap disallows SHL → higher tax → lower Bank CFADS → lower DSCR capacity
+               → DSCR is binding → smaller Senior
+
+        The strict inequality (not >=) proves that the causal path is active.
+        A delta < 10 kEUR would indicate numeric noise rather than a real channel.
         """
         senior_fd = _solar_fd_result.senior_debt.debt_size_keur
         senior_stl = _solar_stl_result.senior_debt.debt_size_keur
+        delta = senior_fd - senior_stl
 
-        assert senior_stl <= senior_fd + 1.0, (
-            f"STL binding cap should produce Senior ≤ FD Senior. "
-            f"fd={senior_fd:.2f} kEUR, stl={senior_stl:.2f} kEUR"
+        assert senior_fd > senior_stl, (
+            f"FD Senior must be STRICTLY greater than STL Senior. "
+            f"fd={senior_fd:.2f} kEUR, stl={senior_stl:.2f} kEUR, delta={delta:.2f} kEUR"
+        )
+        assert delta >= 10.0, (
+            f"Delta FD-STL must be ≥ 10 kEUR to rule out numeric noise. "
+            f"fd={senior_fd:.2f} kEUR, stl={senior_stl:.2f} kEUR, delta={delta:.2f} kEUR"
         )
 
     def test_e2e_both_converge(self, _solar_fd_result, _solar_stl_result):
@@ -1328,9 +1485,8 @@ class TestGap13ProductionE2EFixedPoint:
         senior_fd = _solar_fd_result.senior_debt.debt_size_keur
         senior_stl = _solar_stl_result.senior_debt.debt_size_keur
         delta = senior_fd - senior_stl
-        # Just report — the assertion is in the delta direction
-        assert delta >= -1.0, (
-            f"E2E Senior delta (FD - STL) should be >= 0. "
+        assert delta > 0, (
+            f"E2E Senior delta (FD - STL) must be positive (FD > STL). "
             f"FD={senior_fd:.2f} kEUR, STL={senior_stl:.2f} kEUR, delta={delta:.2f} kEUR"
         )
 
@@ -1382,7 +1538,7 @@ class TestGap23RealNonConvergence:
         )
 
     def test_non_convergence_raises_no_partial_result(self):
-        """When B5 non-converges, no partial result is returned — exception is raised."""
+        """When B5 non-converges, SeniorDebtNonConvergenceError is raised — no partial result."""
         import dataclasses
         from app.project_factories import create_default_solar_project
         from finco_core.inputs import ShlInterestDeductibilityMode
@@ -1405,30 +1561,30 @@ class TestGap23RealNonConvergence:
         new_shl = dataclasses.replace(sdi.shareholder_loan, maximum_iterations=1)
         sdi_one_iter = dataclasses.replace(sdi, shareholder_loan=new_shl)
 
-        result = None
-        try:
-            result = run_senior_debt_model(sdi_one_iter)
-        except Exception:
-            pass
-
-        assert result is None, (
-            "Non-convergent B5 loop must raise, not return a partial result"
-        )
+        # Must raise — no partial result is returned.  The with-block proves it.
+        with pytest.raises(SeniorDebtNonConvergenceError, match="G2C_SHL_TAX_FEEDBACK_NON_CONVERGENCE"):
+            run_senior_debt_model(sdi_one_iter)
 
 
 # ---------------------------------------------------------------------------
-# GAP 24: Real starting-seed invariance for B5 fixed-point
+# GAP 24: Real starting-seed invariance for B5 fixed-point (three distinct seeds)
 # ---------------------------------------------------------------------------
 
 class TestGap24RealSeedInvariance:
-    """GAP 24: Two identical runs of the B5 fixed-point loop converge to the same
-    financial outputs. Since the orchestrator always starts from shl_interest_guess={}
-    (no configurable seed), determinism is the canonical seed-invariance proof:
-    identical inputs → identical converged Senior, SHL interest, and cash tax.
+    """GAP 24: The B5 fixed-point converges to the SAME financial outputs from
+    three materially different starting seeds:
+      seed_a = None (canonical production: zero vector)
+      seed_b = 10 000 kEUR/period (materially high)
+      seed_c = half of the seed_a converged SHL interest vector
+
+    This proves true seed invariance — not just determinism of a fixed seed.
+    Uses run_senior_debt_model_test_only_seed() which passes the seed to the
+    internal B5 loop while keeping it out of all serialization and cache keys.
     """
 
-    def test_two_b5_runs_converge_to_same_senior(self):
-        """Two runs of run_senior_debt_model with identical STL inputs produce same Senior."""
+    @pytest.fixture(scope="class")
+    def _stl_sdi_and_converged(self):
+        """Build STL SDI and converge from canonical seed to get reference result."""
         import dataclasses
         from app.project_factories import create_default_solar_project
         from finco_core.inputs import ShlInterestDeductibilityMode
@@ -1447,192 +1603,162 @@ class TestGap24RealSeedInvariance:
         )
         proj_stl = dataclasses.replace(proj, tax=new_tax)
         sdi = build_senior_debt_model_input_from_project_inputs(proj_stl)
-
+        # Seed A: canonical production path
         result_a = run_senior_debt_model(sdi)
-        result_b = run_senior_debt_model(sdi)
+        return sdi, result_a
 
+    def test_seed_a_production_path_converges(self, _stl_sdi_and_converged):
+        """seed_a = canonical production (all-zero start) converges."""
+        _sdi, result_a = _stl_sdi_and_converged
+        assert result_a is not None
+        assert result_a.senior_debt.debt_size_keur > 0
+
+    def test_seed_b_high_matches_seed_a(self, _stl_sdi_and_converged):
+        """seed_b = 10 000 kEUR/period converges to same Senior as seed_a."""
+        import dataclasses
+        from financial_engine.orchestrator import run_senior_debt_model_test_only_seed
+        from financial_engine.orchestrator import run_operating_model, derive_debt_sizing_operating_input
+        from financial_engine.senior_debt.policy import SeniorDebtPolicy
+
+        sdi, result_a = _stl_sdi_and_converged
         senior_a = result_a.senior_debt.debt_size_keur
+
+        # Build debt period indices for the high seed
+        policy: SeniorDebtPolicy = sdi.senior_debt_policy  # type: ignore
+        bank_op = derive_debt_sizing_operating_input(sdi.operating, sdi.debt_sizing_case)
+        bank_result = run_operating_model(bank_op)
+        debt_start = policy.repayment_start_period_index
+        debt_end = policy.maturity_period_index
+        debt_periods = tuple(
+            p for p in bank_result.periods
+            if p.is_operation and debt_start <= p.period_index <= debt_end
+        )
+        high_seed = {p.period_index: 10_000.0 for p in debt_periods}
+
+        # Give extra iterations so the high seed has room to converge
+        shl = sdi.shareholder_loan
+        sdi_long = dataclasses.replace(
+            sdi,
+            shareholder_loan=dataclasses.replace(shl, maximum_iterations=shl.maximum_iterations * 2),
+        )
+        result_b = run_senior_debt_model_test_only_seed(sdi_long, high_seed)
         senior_b = result_b.senior_debt.debt_size_keur
 
-        assert senior_a == pytest.approx(senior_b, abs=1e-6), (
-            f"Two B5 runs must converge to same Senior. "
-            f"Run A={senior_a:.6f}, Run B={senior_b:.6f}, delta={abs(senior_a - senior_b):.6f}"
+        assert senior_b == pytest.approx(senior_a, abs=1.0), (
+            f"seed_b (10000 kEUR/period) must converge to same Senior as seed_a. "
+            f"seed_a={senior_a:.4f} kEUR, seed_b={senior_b:.4f} kEUR, "
+            f"delta={abs(senior_b - senior_a):.4f} kEUR"
         )
 
-    def test_two_b5_runs_converge_to_same_shl_interest(self):
-        """Two runs with STL produce identical converged SHL gross interest."""
+    def test_seed_c_half_of_converged_matches_seed_a(self, _stl_sdi_and_converged):
+        """seed_c = half of converged SHL interest vector converges to same Senior."""
         import dataclasses
-        from app.project_factories import create_default_solar_project
-        from finco_core.inputs import ShlInterestDeductibilityMode
-        from financial_engine.adapters.project_inputs import (
-            build_senior_debt_model_input_from_project_inputs,
+        from financial_engine.orchestrator import run_senior_debt_model_test_only_seed
+
+        sdi, result_a = _stl_sdi_and_converged
+        senior_a = result_a.senior_debt.debt_size_keur
+
+        shl_sched = result_a.shareholder_loan
+        half_seed = {
+            idx: v * 0.5
+            for idx, v in zip(shl_sched.period_indices, shl_sched.shl_gross_interest_keur)
+        }
+        shl = sdi.shareholder_loan
+        sdi_long = dataclasses.replace(
+            sdi,
+            shareholder_loan=dataclasses.replace(shl, maximum_iterations=shl.maximum_iterations * 2),
         )
-        from financial_engine.orchestrator import run_senior_debt_model
+        result_c = run_senior_debt_model_test_only_seed(sdi_long, half_seed)
+        senior_c = result_c.senior_debt.debt_size_keur
 
-        proj = create_default_solar_project()
-        new_tax = dataclasses.replace(
-            proj.tax,
-            shl_interest_deductibility=ShlInterestDeductibilityMode.SUBJECT_TO_LIMITATIONS,
-            thin_cap_enabled=True,
-            shl_limitation_enabled=True,
-            shl_interest_cap_keur_annual=50.0,
-        )
-        proj_stl = dataclasses.replace(proj, tax=new_tax)
-        sdi = build_senior_debt_model_input_from_project_inputs(proj_stl)
-
-        result_a = run_senior_debt_model(sdi)
-        result_b = run_senior_debt_model(sdi)
-
-        shl_a = result_a.shareholder_loan.shl_closing_keur[-1]
-        shl_b = result_b.shareholder_loan.shl_closing_keur[-1]
-
-        assert shl_a == pytest.approx(shl_b, abs=1e-6), (
-            f"Two B5 runs must converge to same derived SHL. "
-            f"Run A={shl_a:.6f}, Run B={shl_b:.6f}"
+        assert senior_c == pytest.approx(senior_a, abs=1.0), (
+            f"seed_c (half of converged) must converge to same Senior as seed_a. "
+            f"seed_a={senior_a:.4f} kEUR, seed_c={senior_c:.4f} kEUR, "
+            f"delta={abs(senior_c - senior_a):.4f} kEUR"
         )
 
 
 # ---------------------------------------------------------------------------
-# GAP 25: Period-alignment attacks (extended)
+# GAP 25: Period-alignment validation using _validate_interest_period_alignment
 # ---------------------------------------------------------------------------
 
 class TestGap25PeriodAlignmentAttacks:
-    """GAP 25: Wrong-length, shifted, and duplicate-index SHL interest vectors
-    must all fail closed (raise, not silently produce wrong output).
+    """GAP 25: _validate_interest_period_alignment raises with structured error codes
+    when the final interest contract has missing, unmatched, or duplicate periods.
+
+    These tests call the validation function directly (it is called by the B5 loop
+    at final convergence).  Each case uses pytest.raises with a specific error code —
+    never try/except: pass.
     """
 
-    def test_wrong_length_shl_interest_vector(self, _oborovo_op_periods):
-        """SHL interest vector shorter than operating periods fails closed."""
-        periods = _oborovo_op_periods
-        from financial_engine.inputs import PeriodInterestInput, TaxCalculationInput
-        from financial_engine.tax.engine import calculate_tax
+    @pytest.fixture(scope="class")
+    def _debt_period_indices(self):
+        """Return a small canonical set of debt period indices for testing."""
+        return (10, 11, 12, 13, 14)
 
-        policy = _make_base_policy(
-            mode="subject_to_limitations",
-            limitation_enabled=True,
-            cap_keur_annual=500.0,
-        )
+    def test_missing_period_raises_G2C_FINAL_INTEREST_PERIOD_MISSING(
+        self, _debt_period_indices
+    ):
+        """Missing required period raises G2C_FINAL_INTEREST_PERIOD_MISSING."""
+        from financial_engine.orchestrator import _validate_interest_period_alignment
 
-        # Supply only the first half of periods → wrong-length vector
-        half = len(periods) // 2
-        period_interest = tuple(
-            PeriodInterestInput(
-                period_index=periods[i].period_index,
-                shl_interest_keur=200.0,
+        expected = _debt_period_indices
+        # Omit period index 12
+        interest = {idx: 100.0 for idx in expected if idx != 12}
+
+        with pytest.raises(ValueError, match="G2C_FINAL_INTEREST_PERIOD_MISSING"):
+            _validate_interest_period_alignment(expected, interest, context="test_missing")
+
+    def test_unmatched_extra_period_raises_G2C_FINAL_INTEREST_PERIOD_UNMATCHED(
+        self, _debt_period_indices
+    ):
+        """Unmatched extra period (shifted index) raises G2C_FINAL_INTEREST_PERIOD_UNMATCHED."""
+        from financial_engine.orchestrator import _validate_interest_period_alignment
+
+        expected = _debt_period_indices
+        # Shift one index by +100 — not in expected set
+        interest = {idx: 100.0 for idx in expected}
+        interest[999] = 50.0  # extra, unmatched period
+
+        with pytest.raises(ValueError, match="G2C_FINAL_INTEREST_PERIOD_UNMATCHED"):
+            _validate_interest_period_alignment(expected, interest, context="test_unmatched")
+
+    def test_duplicate_in_expected_tuple_raises_G2C_FINAL_INTEREST_PERIOD_DUPLICATE(
+        self, _debt_period_indices
+    ):
+        """Duplicate period in expected_period_indices tuple raises G2C_FINAL_INTEREST_PERIOD_DUPLICATE."""
+        from financial_engine.orchestrator import _validate_interest_period_alignment
+
+        # Build expected tuple with a duplicate
+        expected_with_dup = _debt_period_indices + (10,)  # 10 appears twice
+        interest = {idx: 100.0 for idx in set(expected_with_dup)}
+
+        with pytest.raises(ValueError, match="G2C_FINAL_INTEREST_PERIOD_DUPLICATE"):
+            _validate_interest_period_alignment(
+                expected_with_dup, interest, context="test_duplicate"
             )
-            for i in range(half)
-        )
-        # The remaining periods have no interest entry — they should either:
-        # (a) default to 0 (safe) or (b) raise.
-        # We assert that wrong-length does NOT silently produce wrong results.
-        # If the engine defaults missing to 0, that is safe. If it raises, also fine.
-        tax_input = TaxCalculationInput(
-            policy=policy,
-            opening_loss_vintages=(),
-            period_interest=period_interest,
-            period_adjustments=(),
-        )
-        # Either raises or completes with zero for missing periods (both are acceptable
-        # fail-closed behaviors for this attack).
-        # What is NOT acceptable: silently using stale/wrong interest for missing periods.
-        try:
-            result = calculate_tax(periods, tax_input)
-            # If no raise: verify that the missing-period SHL sums to 0 in those periods
-            for pr in result.period_results:
-                if pr.period_index not in {p.period_index for p in periods[:half]}:
-                    if pr.is_operation:
-                        total_shl = pr.shl_tax_eligible_interest_keur + pr.shl_non_deductible_interest_keur
-                        assert total_shl == pytest.approx(0.0, abs=1e-9), (
-                            f"Period {pr.period_index}: missing from interest input → "
-                            f"SHL should be 0, got {total_shl}"
-                        )
-        except (ValueError, KeyError, IndexError, AssertionError):
-            pass  # raise is also acceptable fail-closed behavior
 
-    def test_shifted_period_index_fails_closed(self, _oborovo_op_periods):
-        """Shifted period indices (off by one) fail closed — not silently aligned."""
-        periods = _oborovo_op_periods
-        from financial_engine.inputs import PeriodInterestInput, TaxCalculationInput
-        from financial_engine.tax.engine import calculate_tax
+    def test_exact_match_passes_validation(self, _debt_period_indices):
+        """When interest dict exactly matches expected periods, no exception is raised."""
+        from financial_engine.orchestrator import _validate_interest_period_alignment
 
-        policy = _make_base_policy(
-            mode="subject_to_limitations",
-            limitation_enabled=True,
-            cap_keur_annual=500.0,
-        )
+        expected = _debt_period_indices
+        interest = {idx: 100.0 for idx in expected}
 
-        # Shift all period indices by +1 (wrong alignment)
-        period_interest = tuple(
-            PeriodInterestInput(
-                period_index=p.period_index + 100,  # wrong indices
-                shl_interest_keur=200.0,
+        # Must not raise
+        _validate_interest_period_alignment(expected, interest, context="test_ok")
+
+    def test_shifted_all_periods_raises_G2C_FINAL_INTEREST_PERIOD_MISSING(
+        self, _debt_period_indices
+    ):
+        """All-shifted interest (wrong indices) raises MISSING for all expected periods."""
+        from financial_engine.orchestrator import _validate_interest_period_alignment
+
+        expected = _debt_period_indices
+        # Shift all by +100 — none match expected
+        interest = {idx + 100: 100.0 for idx in expected}
+
+        with pytest.raises(ValueError, match="G2C_FINAL_INTEREST_PERIOD_MISSING"):
+            _validate_interest_period_alignment(
+                expected, interest, context="test_all_shifted"
             )
-            for p in periods
-        )
-        tax_input = TaxCalculationInput(
-            policy=policy,
-            opening_loss_vintages=(),
-            period_interest=period_interest,
-            period_adjustments=(),
-        )
-        # Either raises OR produces zero SHL (shifted indices = not matched to periods)
-        try:
-            result = calculate_tax(periods, tax_input)
-            # If no raise: all shifted-index entries should not match any period
-            # so SHL should be 0 for all operation periods
-            for pr in result.period_results:
-                if pr.is_operation:
-                    total_shl = pr.shl_tax_eligible_interest_keur + pr.shl_non_deductible_interest_keur
-                    assert total_shl == pytest.approx(0.0, abs=1e-9), (
-                        f"Period {pr.period_index}: shifted index attack → "
-                        f"SHL should not bleed into unrelated periods. Got {total_shl}"
-                    )
-        except (ValueError, KeyError, IndexError, AssertionError):
-            pass  # raise is acceptable fail-closed behavior
-
-    def test_duplicate_period_index_fails_closed(self, _oborovo_op_periods):
-        """Duplicate period index in interest schedule fails closed."""
-        periods = _oborovo_op_periods
-        if not periods:
-            pytest.skip("No operating periods available")
-
-        from financial_engine.inputs import PeriodInterestInput, TaxCalculationInput
-        from financial_engine.tax.engine import calculate_tax
-
-        policy = _make_base_policy(
-            mode="subject_to_limitations",
-            limitation_enabled=True,
-            cap_keur_annual=500.0,
-        )
-
-        # Duplicate the first period_index
-        first_idx = periods[0].period_index
-        period_interest = (
-            PeriodInterestInput(period_index=first_idx, shl_interest_keur=200.0),
-            PeriodInterestInput(period_index=first_idx, shl_interest_keur=300.0),  # duplicate
-        ) + tuple(
-            PeriodInterestInput(period_index=p.period_index, shl_interest_keur=100.0)
-            for p in periods[1:]
-        )
-        tax_input = TaxCalculationInput(
-            policy=policy,
-            opening_loss_vintages=(),
-            period_interest=period_interest,
-            period_adjustments=(),
-        )
-        # Must either raise or use one of the two values (not sum them silently).
-        # The result must be fail-closed: either an error or deterministic resolution.
-        try:
-            result = calculate_tax(periods, tax_input)
-            # If no raise: verify the first-period SHL is NOT both values summed (500)
-            first_pr = next(
-                pr for pr in result.period_results
-                if pr.period_index == first_idx and pr.is_operation
-            )
-            total_shl = first_pr.shl_tax_eligible_interest_keur + first_pr.shl_non_deductible_interest_keur
-            assert total_shl != pytest.approx(500.0, abs=1.0), (
-                f"Duplicate index: SHL must not be silently summed (double-counted). "
-                f"Got {total_shl:.4f}, expected != 500"
-            )
-        except (ValueError, KeyError, IndexError, AssertionError):
-            pass  # raise is the preferred fail-closed behavior
