@@ -161,6 +161,41 @@ class OpeningTaxLossVintageInput:
     amount_keur: float
     source_label: str = ""
 
+    def __post_init__(self) -> None:
+        import math as _math
+        # origin_tax_year: must be int, not bool
+        if isinstance(self.origin_tax_year, bool) or not isinstance(self.origin_tax_year, int):
+            raise ValueError(
+                "TAX_OPENING_LOSS_VINTAGE_INVALID_YEAR: origin_tax_year must be an integer, "
+                f"got {type(self.origin_tax_year).__name__!r}."
+            )
+        # amount_keur: must be real numeric, not bool, not string, not NaN/Inf, not negative
+        if isinstance(self.amount_keur, bool):
+            raise ValueError(
+                "TAX_OPENING_LOSS_VINTAGE_INVALID_AMOUNT: amount_keur must be numeric, not bool."
+            )
+        if not isinstance(self.amount_keur, (int, float)):
+            raise ValueError(
+                "TAX_OPENING_LOSS_VINTAGE_INVALID_AMOUNT: amount_keur must be a real numeric "
+                f"value, got {type(self.amount_keur).__name__!r}."
+            )
+        if not _math.isfinite(self.amount_keur):
+            raise ValueError(
+                f"TAX_OPENING_LOSS_VINTAGE_INVALID_AMOUNT: amount_keur must be finite, "
+                f"got {self.amount_keur!r}."
+            )
+        if self.amount_keur < 0.0:
+            raise ValueError(
+                f"TAX_OPENING_LOSS_VINTAGE_INVALID_AMOUNT: amount_keur must be non-negative, "
+                f"got {self.amount_keur!r}."
+            )
+        # source_label: must be str
+        if not isinstance(self.source_label, str):
+            raise ValueError(
+                "TAX_OPENING_LOSS_VINTAGE_INVALID_LABEL: source_label must be a string, "
+                f"got {type(self.source_label).__name__!r}."
+            )
+
 
 @dataclass(frozen=True)
 class PeriodInterestInput:

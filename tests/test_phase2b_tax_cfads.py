@@ -696,13 +696,15 @@ class TestI_ValidationCodes:
         assert "TAX006" in self._codes(self._tax_input(policy=policy))
 
     def test_TAX007_opening_vintage_negative_amount(self):
-        vintages = (OpeningTaxLossVintageInput(origin_tax_year=0, amount_keur=-100.0),)
-        assert "TAX007" in self._codes(self._tax_input(opening_loss_vintages=vintages))
+        # PR10_CORRECTION_A: OpeningTaxLossVintageInput now validates at construction.
+        # Negative amount raises immediately before any validation-code collection.
+        with pytest.raises(ValueError, match="must be non-negative"):
+            OpeningTaxLossVintageInput(origin_tax_year=0, amount_keur=-100.0)
 
     def test_TAX008_opening_vintage_bad_origin_type(self):
-        # origin_tax_year must be int
-        vintages = (OpeningTaxLossVintageInput(origin_tax_year=0.5, amount_keur=100.0),)  # type: ignore
-        assert "TAX008" in self._codes(self._tax_input(opening_loss_vintages=vintages))
+        # PR10_CORRECTION_A: non-int origin_tax_year raises immediately at construction.
+        with pytest.raises(ValueError, match="must be an integer"):
+            OpeningTaxLossVintageInput(origin_tax_year=0.5, amount_keur=100.0)  # type: ignore
 
     def test_TAX009_period_interest_negative(self):
         interest = (PeriodInterestInput(period_index=0, senior_interest_keur=-1.0),)

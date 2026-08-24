@@ -317,3 +317,320 @@ def test_pr5_guard_scopes_formula_lock_to_pr5_sizing_files():
     )
     with pytest.raises(AssertionError, match="beyond the source-approved"):
         assert_only_approved_pr5_domain_diff(sizing_change)
+
+
+# ---------------------------------------------------------------------------
+# PR-10 Correction A: Adversarial test matrix (A–L)
+# ---------------------------------------------------------------------------
+
+class TestCorrectionAAdversarialMatrix:
+    """Fail-closed authority tests for PR-10 Correction A.
+
+    Each test corresponds to one lettered item in the adversarial matrix
+    specification.
+    """
+
+    # ── A. Future opening vintage raises immediately ─────────────────────
+    def test_A_future_vintage_raises_tax_opening_loss_future_vintage(self):
+        """A vintage whose origin is beyond the first modelled year must raise."""
+        from financial_engine.inputs import OpeningTaxLossVintageInput
+        from financial_engine.tax.loss_ledger import run_annual_fifo_ledger
+
+        future_vintage = OpeningTaxLossVintageInput(
+            origin_tax_year=2040,
+            amount_keur=1000.0,
+            source_label="future",
+        )
+        with pytest.raises(ValueError, match="TAX_OPENING_LOSS_FUTURE_VINTAGE"):
+            run_annual_fifo_ledger(
+                taxable_income_before_lcf=(5000.0,),
+                tax_year_indices=(2030,),
+                opening_inputs=(future_vintage,),
+                loss_carryforward_years=5,
+            )
+
+    def test_A_same_year_vintage_is_allowed(self):
+        """A vintage with origin_tax_year == first_tax_year is not future: allowed."""
+        from financial_engine.inputs import OpeningTaxLossVintageInput
+        from financial_engine.tax.loss_ledger import run_annual_fifo_ledger
+
+        same_year = OpeningTaxLossVintageInput(
+            origin_tax_year=2030,
+            amount_keur=500.0,
+            source_label="same_year",
+        )
+        entries = run_annual_fifo_ledger(
+            taxable_income_before_lcf=(5000.0,),
+            tax_year_indices=(2030,),
+            opening_inputs=(same_year,),
+            loss_carryforward_years=5,
+        )
+        assert len(entries) == 1
+        assert entries[0].loss_used_keur == pytest.approx(500.0)
+
+    # ── B. FIFO order: oldest consumed first regardless of tuple order ───
+    def test_B_newest_first_tuple_still_consumes_oldest_first(self):
+        """Supplying vintages newest-first must still consume the oldest first."""
+        from financial_engine.inputs import OpeningTaxLossVintageInput
+        from financial_engine.tax.loss_ledger import run_annual_fifo_ledger
+
+        old_vintage = OpeningTaxLossVintageInput(2020, 300.0, "old")
+        new_vintage = OpeningTaxLossVintageInput(2025, 400.0, "new")
+
+        # Supply newest first (anti-FIFO order)
+        entries = run_annual_fifo_ledger(
+            taxable_income_before_lcf=(200.0,),
+            tax_year_indices=(2030,),
+            opening_inputs=(new_vintage, old_vintage),  # reversed
+            loss_carryforward_years=15,
+        )
+        entry = entries[0]
+        # Only 200 kEUR income to shelter → should come from origin=2020 vintage
+        old_used = sum(
+            v.used_keur for v in entry.used_vintages if v.origin_tax_year == 2020
+        )
+        new_used = sum(
+            v.used_keur for v in entry.used_vintages if v.origin_tax_year == 2025
+        )
+        assert old_used == pytest.approx(200.0), "oldest vintage must be consumed first"
+        assert new_used == pytest.approx(0.0), "newer vintage untouched"
+
+    # ── C. Financial result invariant to input tuple order ───────────────
+    def test_C_result_independent_of_tuple_order(self):
+        """Financial outputs must be identical regardless of caller tuple order."""
+        from financial_engine.inputs import OpeningTaxLossVintageInput
+        from financial_engine.tax.loss_ledger import run_annual_fifo_ledger
+
+        v2020 = OpeningTaxLossVintageInput(2020, 300.0, "old")
+        v2023 = OpeningTaxLossVintageInput(2023, 200.0, "mid")
+        v2025 = OpeningTaxLossVintageInput(2025, 100.0, "new")
+
+        incomes = (150.0, 250.0, 500.0)
+        years = (2030, 2031, 2032)
+
+        entries_fwd = run_annual_fifo_ledger(
+            taxable_income_before_lcf=incomes,
+            tax_year_indices=years,
+            opening_inputs=(v2020, v2023, v2025),
+            loss_carryforward_years=15,
+        )
+        entries_rev = run_annual_fifo_ledger(
+            taxable_income_before_lcf=incomes,
+            tax_year_indices=years,
+            opening_inputs=(v2025, v2023, v2020),  # reversed
+            loss_carryforward_years=15,
+        )
+
+        for ef, er in zip(entries_fwd, entries_rev):
+            assert ef.loss_used_keur == pytest.approx(er.loss_used_keur)
+            assert ef.closing_loss_keur == pytest.approx(er.closing_loss_keur)
+            assert ef.taxable_income_after_lcf_keur == pytest.approx(
+                er.taxable_income_after_lcf_keur
+            )
+
+    # ── D. Same-year duplicates: deterministic stable ordering ───────────
+    def test_D_same_year_duplicates_consume_in_input_order(self):
+        """Two vintages from the same origin year retain relative input order (stable sort)."""
+        from financial_engine.inputs import OpeningTaxLossVintageInput
+        from financial_engine.tax.loss_ledger import run_annual_fifo_ledger
+
+        v_a = OpeningTaxLossVintageInput(2020, 100.0, "first")
+        v_b = OpeningTaxLossVintageInput(2020, 400.0, "second")
+
+        entries = run_annual_fifo_ledger(
+            taxable_income_before_lcf=(50.0,),
+            tax_year_indices=(2030,),
+            opening_inputs=(v_a, v_b),
+            loss_carryforward_years=15,
+        )
+        entry = entries[0]
+        # v_a (first, 100) should be consumed before v_b (second, 400)
+        # Only 50 available → entirely from v_a
+        used_labels = [v.source_label for v in entry.used_vintages if v.used_keur > 0]
+        assert "first" in used_labels
+        assert "second" not in used_labels
+
+    # ── E. Exact expiry boundary ─────────────────────────────────────────
+    def test_E_vintage_usable_in_boundary_year_expired_one_year_later(self):
+        """With LCF=5, origin=2029: last_usable=2034 (active), expired at 2035."""
+        from financial_engine.inputs import OpeningTaxLossVintageInput
+        from financial_engine.tax.loss_ledger import run_annual_fifo_ledger
+
+        v = OpeningTaxLossVintageInput(2029, 500.0, "boundary")
+
+        # 2034 = last usable year → still available (not expired)
+        entries_ok = run_annual_fifo_ledger(
+            taxable_income_before_lcf=(200.0,),
+            tax_year_indices=(2034,),
+            opening_inputs=(v,),
+            loss_carryforward_years=5,
+        )
+        assert entries_ok[0].loss_used_keur == pytest.approx(200.0)
+        assert entries_ok[0].loss_expired_keur == pytest.approx(0.0)
+
+        # 2035 = one year beyond → expired before use
+        entries_exp = run_annual_fifo_ledger(
+            taxable_income_before_lcf=(200.0,),
+            tax_year_indices=(2035,),
+            opening_inputs=(v,),
+            loss_carryforward_years=5,
+        )
+        assert entries_exp[0].loss_expired_keur == pytest.approx(500.0)
+        assert entries_exp[0].loss_used_keur == pytest.approx(0.0)
+
+    # ── F. OpeningTaxLossVintageInput amount validation ──────────────────
+    @pytest.mark.parametrize("bad_amount,match", [
+        (True,    "must be numeric, not bool"),
+        ("500",   "must be a real numeric"),
+        (float("nan"),  "must be finite"),
+        (float("inf"),  "must be finite"),
+        (float("-inf"), "must be finite"),
+        (-1.0,    "must be non-negative"),
+        (-0.001,  "must be non-negative"),
+    ])
+    def test_F_opening_vintage_input_rejects_invalid_amount(self, bad_amount, match):
+        from financial_engine.inputs import OpeningTaxLossVintageInput
+
+        with pytest.raises(ValueError, match=match):
+            OpeningTaxLossVintageInput(origin_tax_year=2020, amount_keur=bad_amount)
+
+    def test_F_zero_amount_is_accepted(self):
+        from financial_engine.inputs import OpeningTaxLossVintageInput
+
+        v = OpeningTaxLossVintageInput(origin_tax_year=2020, amount_keur=0.0)
+        assert v.amount_keur == 0.0
+
+    def test_F_bool_origin_year_rejected(self):
+        from financial_engine.inputs import OpeningTaxLossVintageInput
+
+        with pytest.raises(ValueError, match="must be an integer"):
+            OpeningTaxLossVintageInput(origin_tax_year=True, amount_keur=100.0)
+
+    def test_F_non_string_label_rejected(self):
+        from financial_engine.inputs import OpeningTaxLossVintageInput
+
+        with pytest.raises(ValueError, match="source_label must be a string"):
+            OpeningTaxLossVintageInput(origin_tax_year=2020, amount_keur=100.0,
+                                       source_label=42)
+
+    # ── G. OpeningTaxLossVintageParams amount validation ─────────────────
+    @pytest.mark.parametrize("bad_amount,match", [
+        (True,        "must be numeric"),
+        ("100",       "must be a real numeric"),
+        (float("nan"), "must be finite"),
+        (float("inf"), "must be finite"),
+        (-1.0,         "non-negative"),
+    ])
+    def test_G_opening_vintage_params_rejects_invalid_amount(self, bad_amount, match):
+        with pytest.raises((ValueError, TypeError), match=match):
+            OpeningTaxLossVintageParams(origin_tax_year=2020, opening_amount_keur=bad_amount)
+
+    def test_G_valid_params_accepted(self):
+        v = OpeningTaxLossVintageParams(origin_tax_year=2020, opening_amount_keur=1000.0)
+        assert v.opening_amount_keur == pytest.approx(1000.0)
+
+    # ── H. corporate_rate_override invalid types ──────────────────────────
+    @pytest.mark.parametrize("bad_rate,match", [
+        (True,         "corporate_rate_override"),
+        ("0.18",       "corporate_rate_override"),
+        (float("nan"), "must be finite"),
+        (float("inf"), "must be finite"),
+    ])
+    def test_H_corporate_rate_override_rejects_invalid(self, bad_rate, match):
+        with pytest.raises(ValueError, match=match):
+            TaxParams(corporate_rate_override=bad_rate)
+
+    # ── I. corporate_rate_override boundary values accepted ──────────────
+    @pytest.mark.parametrize("valid_rate", [0.0, 1.0, 0.18, 0.25])
+    def test_I_corporate_rate_override_boundary_accepted(self, valid_rate):
+        t = TaxParams(
+            country_tax_policy_id=SOURCE_POLICY_ID,
+            corporate_rate_override=valid_rate,
+        )
+        assert t.corporate_rate_override == pytest.approx(valid_rate)
+
+    def test_I_corporate_rate_override_none_accepted(self):
+        t = TaxParams(corporate_rate_override=None)
+        assert t.corporate_rate_override is None
+
+    # ── J. country_tax_policy_id validation ──────────────────────────────
+    def test_J_none_policy_id_accepted(self):
+        t = TaxParams(country_tax_policy_id=None)
+        assert t.country_tax_policy_id is None
+
+    def test_J_valid_string_accepted(self):
+        t = TaxParams(country_tax_policy_id="HR-approved-source-model-2026-v1")
+        assert t.country_tax_policy_id == "HR-approved-source-model-2026-v1"
+
+    @pytest.mark.parametrize("bad_id,match", [
+        ("",    "must be non-empty"),
+        ("   ", "must be non-empty"),
+        (True,  "must be a string"),
+        (42,    "must be a string"),
+        ([],    "must be a string"),
+    ])
+    def test_J_invalid_policy_id_rejected(self, bad_id, match):
+        with pytest.raises(ValueError, match=match):
+            TaxParams(country_tax_policy_id=bad_id)
+
+    # ── K. Dual loss authority: non-zero legacy + vintage → fail ─────────
+    def test_K_nonzero_legacy_plus_vintage_fails_closed(self):
+        with pytest.raises(ValueError, match="conflicting authorities"):
+            TaxParams(
+                prior_tax_loss_keur=100.0,
+                opening_tax_loss_vintages=(
+                    OpeningTaxLossVintageParams(2025, 500.0),
+                ),
+            )
+
+    def test_K_zero_legacy_with_vintage_is_allowed(self):
+        """Zero legacy scalar is neutral — not a competing authority."""
+        t = TaxParams(
+            prior_tax_loss_keur=0.0,
+            opening_tax_loss_vintages=(
+                OpeningTaxLossVintageParams(2025, 500.0),
+            ),
+        )
+        assert len(t.opening_tax_loss_vintages) == 1
+
+    # ── L. TUHO source: exact vintage maps, stops at G2C boundary ────────
+    def _tuho_source_variant(self):
+        """Return TUHO source variant with vintage-based opening loss."""
+        tuho = create_default_tuho_wind1()
+        return replace(
+            tuho,
+            tax=replace(
+                tuho.tax,
+                country_tax_policy_id=SOURCE_POLICY_ID,
+                prior_tax_loss_keur=0.0,
+                opening_tax_loss_vintages=(
+                    OpeningTaxLossVintageParams(
+                        2029,
+                        SOURCE_OPENING_LOSS_KEUR,
+                        "20260330_TUHO_BP.xlsm P&L!G35 -> H36",
+                    ),
+                ),
+                clean_cash_tax_timing_enabled=True,
+            ),
+        )
+
+    def test_L_tuho_vintage_maps_exact_amount(self):
+        """TUHO opening vintage maps SOURCE_OPENING_LOSS_KEUR exactly via adapter."""
+        source_variant = self._tuho_source_variant()
+        contract = build_tax_contract_from_project_inputs(
+            source_variant,
+            complete_financing_interest_will_be_injected=True,
+        )
+        assert contract.opening_loss_vintages[0].amount_keur == pytest.approx(
+            SOURCE_OPENING_LOSS_KEUR
+        )
+
+    def test_L_tuho_stops_at_g2c_boundary(self):
+        """TUHO SHL policy raises at G2C deductible-SHL boundary (not silent)."""
+        source_variant = self._tuho_source_variant()
+        contract = build_tax_contract_from_project_inputs(
+            source_variant,
+            complete_financing_interest_will_be_injected=True,
+        )
+        with pytest.raises(NotImplementedError, match="TUHO_SHL_TAX_POLICY_BLOCKED"):
+            contract.policy.shl_tax_deductible_fraction()

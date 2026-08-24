@@ -1165,11 +1165,20 @@ class OpeningTaxLossVintageParams:
             )
         if isinstance(self.opening_amount_keur, bool):
             raise ValueError("opening_amount_keur must be numeric, not bool.")
-        amount = float(self.opening_amount_keur)
-        if not _math.isfinite(amount) or amount < 0.0:
+        if not isinstance(self.opening_amount_keur, (int, float)):
+            raise ValueError(
+                "opening_amount_keur must be a real numeric value, "
+                f"got {type(self.opening_amount_keur).__name__!r}."
+            )
+        if not _math.isfinite(self.opening_amount_keur) or self.opening_amount_keur < 0.0:
             raise ValueError(
                 "opening_amount_keur must be finite and non-negative, got "
                 f"{self.opening_amount_keur!r}."
+            )
+        if not isinstance(self.source_label, str):
+            raise ValueError(
+                "source_label must be a string, "
+                f"got {type(self.source_label).__name__!r}."
             )
 
 
@@ -1315,21 +1324,54 @@ class TaxParams:
     opening_tax_loss_vintages: tuple[OpeningTaxLossVintageParams, ...] = ()
 
     def __post_init__(self) -> None:
-        if self.country_tax_policy_id is not None and not self.country_tax_policy_id.strip():
-            raise ValueError("country_tax_policy_id must be non-empty when provided.")
+        import math as _math
+
+        # country_tax_policy_id: must be None or a non-empty str; reject non-str cleanly
+        if self.country_tax_policy_id is not None:
+            if not isinstance(self.country_tax_policy_id, str):
+                raise ValueError(
+                    "TAX_POLICY_ID_INVALID_TYPE: country_tax_policy_id must be a string or None, "
+                    f"got {type(self.country_tax_policy_id).__name__!r}."
+                )
+            if not self.country_tax_policy_id.strip():
+                raise ValueError("country_tax_policy_id must be non-empty when provided.")
+
+        # corporate_rate_override: must be None, or a real numeric (not bool/str), finite, in [0,1]
         if self.corporate_rate_override is not None:
             if isinstance(self.corporate_rate_override, bool):
                 raise ValueError("corporate_rate_override must be numeric, not bool.")
-            override = float(self.corporate_rate_override)
-            if not 0.0 <= override <= 1.0:
+            if not isinstance(self.corporate_rate_override, (int, float)):
                 raise ValueError(
-                    f"corporate_rate_override must be in [0, 1], got {override}."
+                    "corporate_rate_override must be a real numeric value, "
+                    f"got {type(self.corporate_rate_override).__name__!r}."
+                )
+            if not _math.isfinite(self.corporate_rate_override):
+                raise ValueError(
+                    f"corporate_rate_override must be finite, got {self.corporate_rate_override!r}."
+                )
+            if not 0.0 <= self.corporate_rate_override <= 1.0:
+                raise ValueError(
+                    f"corporate_rate_override must be in [0, 1], got {self.corporate_rate_override!r}."
                 )
             if self.country_tax_policy_id is None:
                 raise ValueError(
                     "corporate_rate_override requires country_tax_policy_id; "
                     "without a selected policy, corporate_rate remains authoritative."
                 )
+
+        # opening_tax_loss_vintages: must be a tuple of OpeningTaxLossVintageParams
+        if not isinstance(self.opening_tax_loss_vintages, tuple):
+            raise ValueError(
+                "opening_tax_loss_vintages must be a tuple, "
+                f"got {type(self.opening_tax_loss_vintages).__name__!r}."
+            )
+        for i, v in enumerate(self.opening_tax_loss_vintages):
+            if not isinstance(v, OpeningTaxLossVintageParams):
+                raise ValueError(
+                    f"opening_tax_loss_vintages[{i}] must be OpeningTaxLossVintageParams, "
+                    f"got {type(v).__name__!r}."
+                )
+
         if self.opening_tax_loss_vintages and self.prior_tax_loss_keur > 0.0:
             raise ValueError(
                 "opening_tax_loss_vintages and non-zero prior_tax_loss_keur are "
