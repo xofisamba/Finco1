@@ -48,6 +48,10 @@ sensitivity and production-waterfall seam) now carry the typed frequency, COD
 and period convention. The UI runner is locked to the same complete tuple as
 clean orchestration for TUHO and Oborovo.
 
+When book or tax depreciation is not configured, the depreciation boundary now
+returns an explicit zero-valued schedule on every canonical period rather than
+an empty mapping. Missing configured schedule keys still fail closed.
+
 Independent absolute-index assumptions remain prohibited. Contractual Senior
 and SHL indices are resolved from the produced operation subset. Tests that
 formerly assumed two construction positions now derive the expected absolute

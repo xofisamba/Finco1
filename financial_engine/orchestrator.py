@@ -341,12 +341,13 @@ def _compute_depreciation(inputs: OperatingModelInput, periods_meta: list) -> tu
     )
 
     dep = inputs.depreciation
+    zero_schedule = {p.index: 0.0 for p in periods_meta}
     if not dep.book_capex_items_for_depreciation and not dep.tax_capex_items_for_depreciation:
-        return {}, {}
+        return dict(zero_schedule), dict(zero_schedule)
 
     def _build_schedule(capex_item_defs: tuple) -> dict[int, float]:
         if not capex_item_defs:
-            return {}
+            return dict(zero_schedule)
         items = tuple(
             CapexItem(
                 name=item.name,

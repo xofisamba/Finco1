@@ -227,3 +227,20 @@ def test_adapter_preserves_explicit_cod_and_rejects_payload_disagreement():
     )
     with pytest.raises(ValueError, match="PERIOD_AXIS_COD_MISMATCH"):
         run_operating_model(bad)
+
+
+def test_unconfigured_depreciation_is_an_explicit_zero_full_axis_schedule():
+    clean = from_project_inputs(create_default_solar_project())
+    clean = dataclasses.replace(
+        clean,
+        depreciation=dataclasses.replace(
+            clean.depreciation,
+            book_capex_items_for_depreciation=(),
+            tax_capex_items_for_depreciation=(),
+        ),
+    )
+    result = run_operating_model(clean)
+    expected_indices = tuple(p.period_index for p in result.periods)
+    assert result.operating_schedules.period_indices == expected_indices
+    assert result.operating_schedules.book_depreciation_keur == (0.0,) * len(expected_indices)
+    assert result.operating_schedules.tax_depreciation_keur == (0.0,) * len(expected_indices)
