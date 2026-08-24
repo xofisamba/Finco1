@@ -44,6 +44,7 @@ from finco_core.inputs._models import (
     ShlAccountingTreatment,
     ShlPaymentMethod,
     TaxParams,
+    OpeningTaxLossVintageParams,
     TechnicalParams,
     YieldScenario,
 )
@@ -502,10 +503,20 @@ def project_inputs_to_dict(inputs: ProjectInputs) -> dict:
             "construction_financing": _ser_construction_financing(fin.construction_financing),
         },
         "tax": {
+            "country_tax_policy_id": tax.country_tax_policy_id,
+            "corporate_rate_override": tax.corporate_rate_override,
             "corporate_rate": tax.corporate_rate,
             "loss_carryforward_years": tax.loss_carryforward_years,
             "loss_carryforward_cap": tax.loss_carryforward_cap,
             "prior_tax_loss_keur": tax.prior_tax_loss_keur,
+            "opening_tax_loss_vintages": [
+                {
+                    "origin_tax_year": vintage.origin_tax_year,
+                    "opening_amount_keur": vintage.opening_amount_keur,
+                    "source_label": vintage.source_label,
+                }
+                for vintage in tax.opening_tax_loss_vintages
+            ],
             "legal_reserve_cap": tax.legal_reserve_cap,
             "construction_pl": _ser_construction_pl(tax.construction_pl),
             "thin_cap_enabled": tax.thin_cap_enabled,
@@ -833,10 +844,20 @@ def project_inputs_from_dict(d: dict) -> ProjectInputs:
     )
 
     tax = TaxParams(
+        country_tax_policy_id=tax_d.get("country_tax_policy_id"),
+        corporate_rate_override=tax_d.get("corporate_rate_override"),
         corporate_rate=tax_d.get("corporate_rate", 0.10),
         loss_carryforward_years=tax_d.get("loss_carryforward_years", 5),
         loss_carryforward_cap=tax_d.get("loss_carryforward_cap", 1.0),
         prior_tax_loss_keur=tax_d.get("prior_tax_loss_keur", 0.0),
+        opening_tax_loss_vintages=tuple(
+            OpeningTaxLossVintageParams(
+                origin_tax_year=vintage["origin_tax_year"],
+                opening_amount_keur=vintage["opening_amount_keur"],
+                source_label=vintage.get("source_label", ""),
+            )
+            for vintage in tax_d.get("opening_tax_loss_vintages", ())
+        ),
         legal_reserve_cap=tax_d.get("legal_reserve_cap", 0.10),
         construction_pl=_deser_construction_pl(tax_d.get("construction_pl")),
         thin_cap_enabled=tax_d.get("thin_cap_enabled", False),

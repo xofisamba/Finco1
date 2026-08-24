@@ -142,6 +142,21 @@ RS_GENERIC_MVP_V1 = TaxJurisdictionProfile(
     provenance=PROVENANCE_GENERIC_MVP_POLICY,
 )
 
+# Approved source-model evidence, not a statement of Croatian statute. This
+# profile is activated only by an explicit TaxParams.country_tax_policy_id.
+HR_APPROVED_SOURCE_MODEL_2026_V1 = TaxJurisdictionProfile(
+    profile_id="HR-approved-source-model-2026-v1",
+    country_iso="HR",
+    subnational_jurisdiction_code=None,
+    profile_version="1.0.0",
+    effective_from="2026-03-30",
+    effective_to=None,
+    source_references=(
+        "Approved source workbook 2026-03-30 Inputs!D386 (CIT rate)",
+    ),
+    provenance=PROVENANCE_SOURCE_PROVEN,
+)
+
 
 # ---------------------------------------------------------------------------
 # Profile registry — keyed by profile_id.
@@ -154,6 +169,7 @@ _PROFILE_REGISTRY: dict[str, TaxJurisdictionProfile] = {
         HR_GENERIC_MVP_V1,
         BA_GENERIC_MVP_V1,
         RS_GENERIC_MVP_V1,
+        HR_APPROVED_SOURCE_MODEL_2026_V1,
     )
 }
 
@@ -190,6 +206,15 @@ class TaxJurisdictionDefaults:
     here alongside the TaxParams fields that consume them.
     """
     corporate_tax_rate: float | None = None
+
+
+_DEFAULTS_REGISTRY: dict[str, TaxJurisdictionDefaults] = {
+    # Only the source-proven primitive is present. The workbook's five-period
+    # loss window is not relabelled as a five-calendar-year legal default.
+    HR_APPROVED_SOURCE_MODEL_2026_V1.profile_id: TaxJurisdictionDefaults(
+        corporate_tax_rate=0.18,
+    ),
+}
 
 
 # ---------------------------------------------------------------------------
@@ -318,3 +343,15 @@ def get_profile(profile_id: str) -> TaxJurisdictionProfile:
 def list_profiles() -> tuple[TaxJurisdictionProfile, ...]:
     """Return all registered profiles as an immutable tuple."""
     return tuple(_PROFILE_REGISTRY.values())
+
+
+def get_tax_jurisdiction_defaults(profile_id: str) -> TaxJurisdictionDefaults:
+    """Return approved defaults for an explicitly selected profile.
+
+    Identification-only and illustrative profiles deliberately resolve to an
+    empty defaults object; selecting them cannot introduce legal assumptions.
+    """
+
+    if profile_id not in _PROFILE_REGISTRY:
+        get_profile(profile_id)  # raises the standard fail-closed error
+    return _DEFAULTS_REGISTRY.get(profile_id, TaxJurisdictionDefaults())

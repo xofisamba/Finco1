@@ -28,7 +28,10 @@ These are the ACTUAL fields of `TaxParams` as of the current codebase.
 | `corporate_rate` | SUPPORTED_RUNTIME | A | Yes (corporate_tax_rate in TaxJurisdictionDefaults) | Yes (corporate_tax_rate_override in ProjectTaxOverrides) | No | Yes (corporate_tax_rate) |
 | `loss_carryforward_years` | SUPPORTED_RUNTIME | A | No (not yet in jurisdiction catalog) | Yes | No | No |
 | `loss_carryforward_cap` | SUPPORTED_RUNTIME | A | No | Yes | No | No |
-| `prior_tax_loss_keur` | SUPPORTED_RUNTIME | B | No | Yes | No | No |
+| `country_tax_policy_id` | SUPPORTED_CLEAN_ADAPTER | A/C | No | No | Yes, explicit only | No |
+| `corporate_rate_override` | SUPPORTED_CLEAN_ADAPTER | B | No | No | Yes | No |
+| `prior_tax_loss_keur` | LEGACY_RUNTIME_ONLY | D | No | Yes | Fails closed when non-zero | No |
+| `opening_tax_loss_vintages` | SUPPORTED_CLEAN_ADAPTER | B | No | No | Yes | No |
 | `legal_reserve_cap` | SUPPORTED_RUNTIME | B | No | Yes | No | No |
 | `construction_pl` | METADATA_ONLY | C | No | Optional | No | No |
 | `thin_cap_enabled` | SUPPORTED_RUNTIME | A | No (not yet in jurisdiction catalog) | Yes | No | No |

@@ -151,10 +151,9 @@ class DepreciationInput:
 class OpeningTaxLossVintageInput:
     """One pre-existing loss vintage carried into the model start.
 
-    origin_tax_year : 0-based index of the tax year in which the loss was
-        generated. Must be negative (losses generated before the model) or
-        0 (first model tax year). Use negative integers for pre-model losses
-        (e.g. -3 = three tax years before the model start).
+    origin_tax_year : calendar tax year in which the loss was generated.
+        Synthetic unit tests may use an internally consistent integer axis, but
+        production adapters supply four-digit calendar years.
     amount_keur : outstanding loss (must be non-negative and finite)
     source_label : optional human-readable label for audit trail
     """

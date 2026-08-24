@@ -1139,6 +1139,41 @@ class TaxDepreciationMode(str, Enum):
 
 
 @dataclass(frozen=True)
+class OpeningTaxLossVintageParams:
+    """Canonical project input for one opening tax-loss vintage.
+
+    ``origin_tax_year`` is the calendar tax year in which the loss arose.
+    Expiry remains derived by the clean tax ledger from the resolved
+    ``loss_carryforward_years`` policy. The source label is audit-only.
+    """
+
+    origin_tax_year: int
+    opening_amount_keur: float
+    source_label: str = ""
+
+    def __post_init__(self) -> None:
+        import math as _math
+
+        if isinstance(self.origin_tax_year, bool) or not isinstance(
+            self.origin_tax_year, int
+        ):
+            raise ValueError("origin_tax_year must be an integer calendar year.")
+        if self.origin_tax_year < 1900 or self.origin_tax_year > 9999:
+            raise ValueError(
+                f"origin_tax_year must be a four-digit calendar year, got "
+                f"{self.origin_tax_year!r}."
+            )
+        if isinstance(self.opening_amount_keur, bool):
+            raise ValueError("opening_amount_keur must be numeric, not bool.")
+        amount = float(self.opening_amount_keur)
+        if not _math.isfinite(amount) or amount < 0.0:
+            raise ValueError(
+                "opening_amount_keur must be finite and non-negative, got "
+                f"{self.opening_amount_keur!r}."
+            )
+
+
+@dataclass(frozen=True)
 class TaxParams:
     """Tax, withholding, and interest-deductibility assumptions."""
     corporate_rate: float = 0.10
@@ -1271,7 +1306,36 @@ class TaxParams:
     # All projects without an explicit opt-in must not silently inherit this convention.
     clean_cash_tax_timing_enabled: bool = False
 
+    # PR-10 typed country-policy and opening-loss authority. Appended to retain
+    # the historical positional constructor order of every existing field.
+    # Country metadata alone never activates a policy. An explicit override
+    # wins over an approved profile default.
+    country_tax_policy_id: str | None = None
+    corporate_rate_override: float | None = None
+    opening_tax_loss_vintages: tuple[OpeningTaxLossVintageParams, ...] = ()
+
     def __post_init__(self) -> None:
+        if self.country_tax_policy_id is not None and not self.country_tax_policy_id.strip():
+            raise ValueError("country_tax_policy_id must be non-empty when provided.")
+        if self.corporate_rate_override is not None:
+            if isinstance(self.corporate_rate_override, bool):
+                raise ValueError("corporate_rate_override must be numeric, not bool.")
+            override = float(self.corporate_rate_override)
+            if not 0.0 <= override <= 1.0:
+                raise ValueError(
+                    f"corporate_rate_override must be in [0, 1], got {override}."
+                )
+            if self.country_tax_policy_id is None:
+                raise ValueError(
+                    "corporate_rate_override requires country_tax_policy_id; "
+                    "without a selected policy, corporate_rate remains authoritative."
+                )
+        if self.opening_tax_loss_vintages and self.prior_tax_loss_keur > 0.0:
+            raise ValueError(
+                "opening_tax_loss_vintages and non-zero prior_tax_loss_keur are "
+                "conflicting authorities. Use explicit vintages only."
+            )
+
         mode = self.shl_interest_deductibility
         pct = self.shl_interest_deductible_pct
         # ── numeric validation for shl_interest_deductible_pct ──────────────────
@@ -1412,9 +1476,19 @@ def hash_inputs_for_cache(inputs: "ProjectInputs") -> tuple:
         inputs.capex.idc_keur,
         inputs.capex.bank_fees_keur,
         inputs.capex.commitment_fees_keur,
+        inputs.tax.country_tax_policy_id,
+        inputs.tax.corporate_rate_override,
         inputs.tax.corporate_rate,
         inputs.tax.loss_carryforward_years,
         inputs.tax.atad_ebitda_limit,
+        tuple(
+            (
+                vintage.origin_tax_year,
+                vintage.opening_amount_keur,
+                vintage.source_label,
+            )
+            for vintage in inputs.tax.opening_tax_loss_vintages
+        ),
         # Hierarchical OPEX capability — if present, include full model structure in cache key.
         # Sorted by category code, then subitem code within each category, for determinism.
         # Does NOT include senior_tenor_years — that lives in FinancingParams above.

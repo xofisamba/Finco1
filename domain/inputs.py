@@ -25,6 +25,7 @@ from finco_core.inputs import (  # noqa: F401
     DebtSizingCaseConfig,
     FinancingParams,
     TaxParams,
+    OpeningTaxLossVintageParams,
     TaxDepreciationMode,
     ShlInterestDeductibilityMode,
     TaxLossUtilisationGate,
