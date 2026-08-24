@@ -149,8 +149,10 @@ def _runtime_maps(result: Any) -> dict[str, dict[int, float]]:
         mapped(result.shareholder_loan.period_indices, result.shareholder_loan.shl_closing_keur, "shl_closing", _shl_axis)
         if result.shareholder_loan else {}
     )
-    operating = mapped(result.operating_schedules.period_indices, result.operating_schedules.production_mwh, "production", _op_axis)
-    revenue = mapped(result.operating_schedules.period_indices, result.operating_schedules.revenue_keur, "revenue", _op_axis)
+    # OperatingSchedules spans the FULL model axis (construction periods carry explicit
+    # zero operating values). Validate against _full_axis, NOT _op_axis.
+    operating = mapped(result.operating_schedules.period_indices, result.operating_schedules.production_mwh, "production", _full_axis)
+    revenue = mapped(result.operating_schedules.period_indices, result.operating_schedules.revenue_keur, "revenue", _full_axis)
     price = {
         idx: _safe_price(revenue.get(idx, 0.0), production)
         for idx, production in operating.items()
@@ -159,8 +161,8 @@ def _runtime_maps(result: Any) -> dict[str, dict[int, float]]:
         "Production": operating,
         "Price": price,
         "Revenue": revenue,
-        "OPEX": mapped(result.operating_schedules.period_indices, result.operating_schedules.opex_keur, "opex", _op_axis),
-        "EBITDA": mapped(result.operating_schedules.period_indices, result.operating_schedules.ebitda_keur, "ebitda", _op_axis),
+        "OPEX": mapped(result.operating_schedules.period_indices, result.operating_schedules.opex_keur, "opex", _full_axis),
+        "EBITDA": mapped(result.operating_schedules.period_indices, result.operating_schedules.ebitda_keur, "ebitda", _full_axis),
         "Book Dep": {idx: p.book_depreciation_keur for idx, p in periods.items()},
         "EBIT": ebit,
         "Senior Opening": mapped(result.senior_debt.period_indices, result.senior_debt.senior_debt_opening_keur, "senior_opening", _senior_axis),
@@ -183,7 +185,7 @@ def _runtime_maps(result: Any) -> dict[str, dict[int, float]]:
         "Post-Senior Cash": mapped(result.post_senior_cash.period_indices, result.post_senior_cash.cash_after_senior_before_reserves_keur, "post_senior_cash", _full_axis),
         "Cash Available for SHL": mapped(result.post_senior_cash.period_indices, result.post_senior_cash.cash_available_for_shl_before_reserves_keur, "cash_available_for_shl", _full_axis),
         "SHL Opening": (
-            mapped(result.shareholder_loan.period_indices, result.shareholder_loan.shl_opening_keur, "shl_opening")
+            mapped(result.shareholder_loan.period_indices, result.shareholder_loan.shl_opening_keur, "shl_opening", _shl_axis)
             if result.shareholder_loan else {}
         ),
         "SHL Cash Interest": shl_cash_interest,
