@@ -107,6 +107,7 @@ class PeriodEngine:
             self._periods,
             expected_operating_periods=self._operating_period_count,
             cod_date=self._cod,
+            period_convention=self.period_axis_convention,
         )
         self._horizon_end = self._periods[-1].end_date
 
@@ -379,6 +380,7 @@ def validate_canonical_period_axis(
     *,
     expected_operating_periods: int | None = None,
     cod_date: "date | None" = None,
+    period_convention: "PeriodAxisConvention | None" = None,
 ) -> None:
     """Fail closed when a consumer receives a malformed financial axis.
 
@@ -404,10 +406,30 @@ def validate_canonical_period_axis(
       the first day of a month).  Construction periods and all other operating periods
       must have days_in_period == calendar_days exactly.
 
-    day_fraction reconciliation:
-      For every period, day_fraction must equal days_in_period / approved_denominator
-      where approved_denominator = 366.0 if period.is_leap_year else 365.0.
-      Subtly wrong values (e.g. wrong leap flag, wrong denominator) are rejected.
+    day_fraction reconciliation (Correction D):
+      The approved denominator is derived INDEPENDENTLY from period dates and the
+      typed period_convention — never from period.is_leap_year.
+
+      Denominator convention by axis type:
+        COD_ANCHOR_TWO_CONSTRUCTION_COLUMNS (default/generic):
+          All periods: ref_year = end.year; denom = 366 if leap(ref_year) else 365.
+        OPERATING_BOUNDARY_SINGLE_CONSTRUCTION_COLUMN (source-aligned H2):
+          Operating periods ending in December: ref_year = end.year + 1 (H2/next-year).
+          All other periods: ref_year = end.year.
+
+      When period_convention is None (non-authoritative compatibility mode):
+        Both plain and H2 denominators are computed.  When they agree, strict
+        validation applies.  When they disagree (only possible for December-ending
+        periods where end.year vs end.year+1 differ in leap status), the period
+        is accepted if its day_fraction is consistent with either; is_leap_year is
+        not validated against the convention.  Production code ALWAYS passes
+        period_convention (via PeriodEngine) so this mode is never reached in
+        production paths.
+
+      Validation steps (authoritative mode):
+        (a) is_leap_year == (independently_derived_denom == 366) — PERIOD_AXIS_IS_LEAP_YEAR_MISMATCH
+        (b) day_fraction == days_in_period / independently_derived_denom — PERIOD_AXIS_DAY_FRACTION_RECONCILIATION_FAILED
+      Both checks fire separately and catch coordinated mutations (flip both fields).
     """
     import math as _math
 
@@ -476,16 +498,76 @@ def validate_canonical_period_axis(
                 f"days_in_period={period.days_in_period} calendar_days={calendar_days} "
                 f"cod_inclusive_allowed={_cod_inclusive_allowed}"
             )
-        # 3f. day_fraction reconciliation: must equal days_in_period / approved_denominator.
-        # approved_denominator = 366 if is_leap_year else 365 (the period's own leap flag).
-        _approved_denom = 366.0 if period.is_leap_year else 365.0
-        _expected_fraction = period.days_in_period / _approved_denom
-        if abs(period.day_fraction - _expected_fraction) > 1e-9:
-            raise ValueError(
-                f"PERIOD_AXIS_DAY_FRACTION_RECONCILIATION_FAILED: period_index={period.index} "
-                f"day_fraction={period.day_fraction!r} expected={_expected_fraction!r} "
-                f"(days_in_period={period.days_in_period} / denominator={_approved_denom})"
-            )
+        # 3f. Independent denominator derivation from period dates (Correction D).
+        # The approved denominator is derived from calendar.isleap applied to a
+        # reference year computed from end_date and the typed period_convention.
+        # This is INDEPENDENT of period.is_leap_year, catching coordinated mutations.
+        import calendar as _calendar
+        _end = period.end_date
+
+        # Convention-aware reference-year derivation:
+        #   COD_ANCHOR: always end.year (generic/plain convention).
+        #   OPERATING_BOUNDARY: operating periods in December use end.year+1 (H2/source-aligned).
+        #   None (non-authoritative): try both; strict only when they agree.
+        if period_convention == PeriodAxisConvention.OPERATING_BOUNDARY_SINGLE_CONSTRUCTION_COLUMN:
+            _is_h2_op = period.is_operation and _end.month == 12
+            _ref_year = _end.year + 1 if _is_h2_op else _end.year
+            _independent_denom = 366.0 if _calendar.isleap(_ref_year) else 365.0
+            _authoritative = True
+        elif period_convention == PeriodAxisConvention.COD_ANCHOR_TWO_CONSTRUCTION_COLUMNS:
+            _ref_year = _end.year
+            _independent_denom = 366.0 if _calendar.isleap(_ref_year) else 365.0
+            _authoritative = True
+        else:
+            # Non-authoritative compatibility fallback (period_convention=None).
+            # Production callers always pass period_convention via PeriodEngine.
+            _ref_plain = _end.year
+            _ref_h2 = _end.year + 1 if _end.month == 12 else _end.year
+            _denom_plain = 366.0 if _calendar.isleap(_ref_plain) else 365.0
+            _denom_h2 = 366.0 if _calendar.isleap(_ref_h2) else 365.0
+            if _denom_plain == _denom_h2:
+                # Both conventions agree — derive strictly from dates.
+                _independent_denom = _denom_plain
+                _ref_year = _ref_plain
+                _authoritative = True
+            else:
+                # Conventions disagree (December-ending, different leap status for
+                # end.year vs end.year+1). Non-authoritative: accept if either matches.
+                _exp_plain = period.days_in_period / _denom_plain
+                _exp_h2 = period.days_in_period / _denom_h2
+                if (abs(period.day_fraction - _exp_plain) > 1e-9
+                        and abs(period.day_fraction - _exp_h2) > 1e-9):
+                    raise ValueError(
+                        f"PERIOD_AXIS_DAY_FRACTION_RECONCILIATION_FAILED: period_index={period.index} "
+                        f"day_fraction={period.day_fraction!r} "
+                        f"expected={_exp_plain!r} (plain end.year={_ref_plain}) or "
+                        f"{_exp_h2!r} (H2 ref_year={_ref_h2}) "
+                        f"(days_in_period={period.days_in_period})"
+                    )
+                # Pass — cannot validate is_leap_year without typed convention.
+                _authoritative = False
+                _independent_denom = _denom_plain  # placeholder, not used below
+                _ref_year = _ref_plain
+
+        if _authoritative:
+            # 3f-i. Validate is_leap_year against independently derived denominator.
+            # This catches single-field flip AND coordinated (both-fields) mutations.
+            _expected_is_leap = (_independent_denom == 366.0)
+            if period.is_leap_year != _expected_is_leap:
+                raise ValueError(
+                    f"PERIOD_AXIS_IS_LEAP_YEAR_MISMATCH: period_index={period.index} "
+                    f"is_leap_year={period.is_leap_year} but independently derived "
+                    f"denominator={_independent_denom} from end_date={_end.isoformat()} "
+                    f"(ref_year={_ref_year}) implies is_leap={_expected_is_leap}"
+                )
+            # 3f-ii. Validate day_fraction against independently derived denominator.
+            _expected_fraction = period.days_in_period / _independent_denom
+            if abs(period.day_fraction - _expected_fraction) > 1e-9:
+                raise ValueError(
+                    f"PERIOD_AXIS_DAY_FRACTION_RECONCILIATION_FAILED: period_index={period.index} "
+                    f"day_fraction={period.day_fraction!r} expected={_expected_fraction!r} "
+                    f"(days_in_period={period.days_in_period} / independent_denominator={_independent_denom})"
+                )
         # 4. no construction after operation begins
         if period.is_operation:
             operation_started = True

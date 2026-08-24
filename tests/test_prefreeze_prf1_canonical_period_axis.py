@@ -654,13 +654,12 @@ def test_validate_axis_rejects_wrong_day_fraction():
 
 
 def test_validate_axis_rejects_wrong_leap_flag():
-    """Wrong is_leap_year flag causes day_fraction reconciliation to fail.
+    """Wrong is_leap_year flag is caught by independent denominator check.
 
     Attack: flip is_leap_year but keep the ORIGINAL day_fraction (computed with the
-    correct denominator).  The validator re-derives the approved denominator from
-    the period's is_leap_year field and checks the fraction; with the flag wrong
-    the approved denominator does not match the fraction's actual denominator, so
-    reconciliation fails.
+    correct denominator).  The validator (Correction D) derives the approved denominator
+    INDEPENDENTLY from end_date, then checks is_leap_year against that — the mismatch
+    is caught before the fraction check.
     """
     periods = _make_periods(1, 4)
     op = periods[1]  # first operating
@@ -670,11 +669,12 @@ def test_validate_axis_rejects_wrong_leap_flag():
     # Only meaningful when the denominators differ (they always do: 365 vs 366)
     assert abs(correct_denom - flipped_denom) > 0, "Test requires differing denominators"
     # Keep original day_fraction (correct for correct_denom) but set wrong leap flag.
-    # Validator will compute expected = days / flipped_denom ≠ days / correct_denom.
+    # Correction D: validator derives denominator from end_date independently,
+    # then validates is_leap_year against it → PERIOD_AXIS_IS_LEAP_YEAR_MISMATCH.
     bad = dataclasses.replace(op, is_leap_year=flipped_leap)
     # day_fraction remains op.days_in_period / correct_denom (via op.day_fraction)
     corrupted = (periods[0],) + (bad,) + periods[2:]
-    with pytest.raises(ValueError, match="PERIOD_AXIS_DAY_FRACTION_RECONCILIATION_FAILED"):
+    with pytest.raises(ValueError, match="PERIOD_AXIS_IS_LEAP_YEAR_MISMATCH"):
         validate_canonical_period_axis(corrupted)
 
 
@@ -1357,7 +1357,6 @@ class TestDownstreamConsumerAttacks:
         No partial waterfall result is returned.
         """
         from app.project_factories import create_default_solar_project
-        from finco_core.inputs import ProjectInputs
         from financial_engine.shareholder_waterfall.model import run_project_shareholder_waterfall_model
         import financial_engine.shl.production as _shl_prod
 
@@ -1377,15 +1376,8 @@ class TestDownstreamConsumerAttacks:
             return result
 
         monkeypatch.setattr(_shl_prod, "compute_shareholder_loan_schedules", bad_shl)
-        returned = None
-        try:
-            returned = run_project_shareholder_waterfall_model(project)
-        except ValueError as exc:
-            assert any(code in str(exc) for code in (
-                "AXIS_PERIOD_MISSING", "AXIS_PERIOD_EXTRA", "AXIS_PERIOD_SHIFTED",
-                "AXIS_LENGTH_MISMATCH",
-            )), f"Expected AXIS_PERIOD_* error code, got: {exc}"
-        assert returned is None, "No partial waterfall result must be returned after SHL axis failure"
+        with pytest.raises(ValueError, match="AXIS_PERIOD_MISSING|AXIS_PERIOD_EXTRA|AXIS_PERIOD_SHIFTED|AXIS_LENGTH_MISMATCH"):
+            run_project_shareholder_waterfall_model(project)
 
     def test_rc_sr1_shifted_post_senior_at_sponsor_return(self, monkeypatch):
         """Shifted post-Senior schedule at sponsor-return consumption.
@@ -1417,25 +1409,18 @@ class TestDownstreamConsumerAttacks:
             return _dc.replace(result, project_model_result=bad_model)
 
         monkeypatch.setattr(_sr_mod, "run_project_financing_model", bad_financing)
-        returned = None
-        try:
-            returned = run_project_sponsor_returns_model(project)
-        except ValueError as exc:
-            assert any(code in str(exc) for code in (
-                "AXIS_PERIOD_MISSING", "AXIS_PERIOD_EXTRA", "AXIS_PERIOD_SHIFTED",
-                "AXIS_LENGTH_MISMATCH",
-            )), f"Expected AXIS_PERIOD_* error code, got: {exc}"
-        assert returned is None, "No partial sponsor return result must be returned after post-senior axis failure"
+        with pytest.raises(ValueError, match="AXIS_PERIOD_MISSING|AXIS_PERIOD_EXTRA|AXIS_PERIOD_SHIFTED|AXIS_LENGTH_MISMATCH"):
+            run_project_sponsor_returns_model(project)
 
     def test_rc_np_no_partial_waterfall_after_failure(self, monkeypatch):
         """No partial waterfall result returned after any axis failure.
 
-        Verifies via sentinel that run_project_shareholder_waterfall_model raises
-        ValueError and never returns a CovenantGatedWaterfallResult when axis is corrupt.
+        Verifies via strict pytest.raises that run_project_shareholder_waterfall_model
+        raises ValueError and never returns a result when SHL axis is corrupt.
+        The extra-period attack triggers AXIS_PERIOD_EXTRA.
         """
         from app.project_factories import create_default_solar_project
         from financial_engine.shareholder_waterfall.model import run_project_shareholder_waterfall_model
-        from financial_engine.shareholder_waterfall.contracts import CovenantGatedWaterfallResult
         import financial_engine.shl.production as _shl_prod
 
         project = create_default_solar_project()
@@ -1447,7 +1432,7 @@ class TestDownstreamConsumerAttacks:
             call_count[0] += 1
             if call_count[0] == 2:
                 import dataclasses as _dc
-                # Extra period — should trigger AXIS_PERIOD_EXTRA
+                # Extra period — triggers AXIS_PERIOD_EXTRA
                 return _dc.replace(
                     result,
                     period_indices=result.period_indices + (9999,),
@@ -1462,16 +1447,9 @@ class TestDownstreamConsumerAttacks:
             return result
 
         monkeypatch.setattr(_shl_prod, "compute_shareholder_loan_schedules", bad_shl)
-        sentinel = object()
-        returned = sentinel
-        try:
-            returned = run_project_shareholder_waterfall_model(project)
-        except ValueError:
-            pass
-        assert returned is sentinel, (
-            "run_project_shareholder_waterfall_model must raise ValueError "
-            "and never return a result when SHL axis is corrupt"
-        )
+        # Strict: must raise ValueError with AXIS_PERIOD_EXTRA; no partial result returned.
+        with pytest.raises(ValueError, match="AXIS_PERIOD_EXTRA"):
+            run_project_shareholder_waterfall_model(project)
 
 
 # ---------------------------------------------------------------------------
@@ -1522,37 +1500,33 @@ def test_rc_cod1_fake_month_start_not_cod_is_rejected():
 
 
 def test_rc_cod2_coordinated_leap_fraction_rejected():
-    """Coordinated wrong leap flag + adjusted day fraction must fail.
+    """Coordinated wrong leap flag + recomputed day fraction must fail (Correction D).
 
-    Attack: take a valid period, flip is_leap_year AND recalculate day_fraction
-    to be consistent with the wrong flag. The validator must detect this because
-    the approved denominator from is_leap_year does not match the actual date span.
+    Attack: flip is_leap_year AND recompute day_fraction to be consistent with the
+    wrong flag.  Prior to Correction D this coordinated mutation passed because the
+    validator derived the approved denominator from is_leap_year itself (a tautology).
+
+    Correction D derives the denominator INDEPENDENTLY from end_date, so the flipped
+    is_leap_year does not match the independently-derived expected value →
+    PERIOD_AXIS_IS_LEAP_YEAR_MISMATCH is raised even when day_fraction is internally
+    consistent with the wrong flag.
     """
     periods = _make_periods(1, 4)
-    op = periods[1]  # first operating
-    # Correct: days=184, denom=365→ fraction=0.5041...
-    # Attack: flip to leap, recompute fraction with 366 → wrong denominator
+    op = periods[1]  # first operating period
+    # Coordinated attack: flip is_leap_year AND recompute day_fraction with wrong denom.
+    # Both fields are mutated consistently so the (old) is_leap_year-derived check passes.
     flipped_leap = not op.is_leap_year
     wrong_denom = 366.0 if flipped_leap else 365.0
     bad = dataclasses.replace(
         op,
         is_leap_year=flipped_leap,
-        day_fraction=op.days_in_period / wrong_denom,  # "consistent" with wrong flag
+        day_fraction=op.days_in_period / wrong_denom,  # consistent with wrong flag
     )
     corrupted = (periods[0],) + (bad,) + periods[2:]
-    # The validator computes approved_denom from is_leap_year (flipped) and checks
-    # fraction == days / approved_denom. Since days/wrong_denom != days/correct_denom,
-    # but wait — if fraction = days/wrong_denom and approved_denom = wrong_denom (because
-    # is_leap_year is flipped), then fraction == days/approved_denom → would PASS.
-    # To make it fail: keep the original fraction but flip the flag (see test_validate_axis_rejects_wrong_leap_flag).
-    # For a COORDINATED attack (both flipped): validator re-derives from is_leap_year,
-    # so approved_denom = wrong_denom, and fraction = days/wrong_denom → matches → would PASS.
-    # This means a coordinated consistent flip is not caught by the fraction check alone.
-    # Instead, verify this attack: keep original fraction, flip flag → reconciliation fails.
-    bad2 = dataclasses.replace(op, is_leap_year=not op.is_leap_year)
-    corrupted2 = (periods[0],) + (bad2,) + periods[2:]
-    with pytest.raises(ValueError, match="PERIOD_AXIS_DAY_FRACTION_RECONCILIATION_FAILED"):
-        validate_canonical_period_axis(corrupted2)
+    # Correction D: the validator derives the denominator independently from end_date.
+    # is_leap_year (flipped) != independently-derived expected → IS_LEAP_YEAR_MISMATCH.
+    with pytest.raises(ValueError, match=r"^PERIOD_AXIS_IS_LEAP_YEAR_MISMATCH(?:\b|:)"):
+        validate_canonical_period_axis(corrupted)
 
 
 def test_rc_tuho_cod_inclusive_first_operation_passes():
