@@ -252,9 +252,18 @@ def _strict_period_map(
     values: Sequence[Any],
     *,
     label: str,
+    expected_indices: tuple[int, ...] | None = None,
 ) -> dict[int, Any]:
-    """Map parallel vectors without allowing zip truncation or key overwrite."""
-    return map_period_vector(period_indices, values, label=label)
+    """Map parallel vectors without allowing zip truncation or key overwrite.
+
+    When ``expected_indices`` is provided, the supplied ``period_indices`` are
+    compared against the independently-derived canonical axis via exact immutable
+    tuple comparison (TASK 1 / Correction A).  Missing, extra, shifted, or
+    reordered periods each raise a distinct error code before any dict is built.
+    """
+    return map_period_vector(
+        period_indices, values, label=label, expected_indices=expected_indices
+    )
 
 
 def _validate_schedule_axis(
@@ -867,22 +876,35 @@ def _merge_financing_tax_input(
 
 def _assemble_post_senior_cash_schedules(
     periods: tuple[OperatingPeriodResult, ...],
-    tax_and_cfads: TaxAndCfadsSchedules,
+    tax_and_cfads: object,
     senior_debt_result: object,
 ) -> PostSeniorCashSchedules:
-    """Build Base post-senior cash schedules from authoritative Base CFADS."""
+    """Build Base post-senior cash schedules from authoritative Base CFADS.
+
+    Correction A: CFADS axis is validated against the independently-derived full
+    canonical period axis (all model periods).  Senior DS axis is the debt-active
+    subset — validated for internal consistency only (exact subset contract is
+    established by the solver, not re-derived here).
+    """
+    # Independently-derived expected axis: all model period indices, in order.
+    all_period_indices = tuple(p.period_index for p in periods)
+
+    # CFADS must cover the full canonical axis exactly.
+    base_cfads_by_idx: dict[int, float] = _strict_period_map(
+        tax_and_cfads.period_indices,
+        tax_and_cfads.cfads_keur,
+        label="post_senior.base_cfads",
+        expected_indices=all_period_indices,
+    )
+    # Senior DS is the debt-active operating subset — not the full axis.
+    # Internal consistency (no dups, increasing) is enforced; exact subset
+    # contract is proved by the solver and locked in tests.
     sd_service_by_idx: dict[int, float] = _strict_period_map(
         senior_debt_result.period_indices,
         senior_debt_result.senior_debt_service_keur,
         label="post_senior.senior_debt_service",
     )
-    base_cfads_by_idx: dict[int, float] = _strict_period_map(
-        tax_and_cfads.period_indices,
-        tax_and_cfads.cfads_keur,
-        label="post_senior.base_cfads",
-    )
     period_is_constr: dict[int, bool] = {p.period_index: p.is_construction for p in periods}
-    all_period_indices = tuple(p.period_index for p in periods)
     cash_after: list[float] = []
     cash_avail: list[float] = []
     for idx in all_period_indices:

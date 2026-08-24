@@ -378,7 +378,25 @@ def validate_canonical_period_axis(
     *,
     expected_operating_periods: int | None = None,
 ) -> None:
-    """Fail closed when a consumer receives a malformed financial axis."""
+    """Fail closed when a consumer receives a malformed financial axis.
+
+    Checks (in order):
+      1.  Axis is non-empty.
+      2.  Indices are unique and form 0-based contiguous range.
+      3.  Per-period: positive duration, mutually exclusive phase flags,
+          date continuity, finite+positive day_fraction,
+          days_in_period consistent with date span.
+      4.  Construction periods form one contiguous prefix (no construction
+          after operation begins).
+      5.  Operating periods form one contiguous suffix.
+      6.  Operating period counters are coherent (operating_period_index,
+          operating_year_index, period_in_year).
+      7.  Operating count equals expected_operating_periods when supplied.
+      8.  Operating sequential indices are 0-based and contiguous.
+      9.  Final operating period has more than one day (no terminal one-day stub).
+    """
+    import math as _math
+
     if not periods:
         raise ValueError("PERIOD_AXIS_EMPTY")
     indices = tuple(p.index for p in periods)
@@ -386,27 +404,89 @@ def validate_canonical_period_axis(
         raise ValueError("PERIOD_AXIS_DUPLICATE_INDICES")
     if indices != tuple(range(len(periods))):
         raise ValueError("PERIOD_AXIS_NON_CONTIGUOUS_OR_OUT_OF_ORDER")
+
+    operation_started = False
     for position, period in enumerate(periods):
+        # 3a. positive duration
         if period.days_in_period <= 0 or period.end_date <= period.start_date:
             raise ValueError(
                 f"PERIOD_AXIS_NON_POSITIVE_DURATION: period_index={period.index}"
             )
+        # 3b. mutually exclusive phase flags
         if period.is_construction == period.is_operation:
             raise ValueError(
                 f"PERIOD_AXIS_PHASE_FLAGS_INVALID: period_index={period.index}"
             )
+        # 3c. date continuity
         if position and period.start_date != periods[position - 1].end_date:
             raise ValueError(
                 f"PERIOD_AXIS_GAP_OR_OVERLAP: period_index={period.index}"
             )
+        # 3d. day_fraction finite and positive
+        if not _math.isfinite(period.day_fraction) or period.day_fraction <= 0.0:
+            raise ValueError(
+                f"PERIOD_AXIS_DAY_FRACTION_INVALID: period_index={period.index} "
+                f"day_fraction={period.day_fraction!r}"
+            )
+        # 3e. days_in_period consistent with date span (allow +1 for COD-on-month-start)
+        calendar_days = (period.end_date - period.start_date).days
+        if period.days_in_period not in (calendar_days, calendar_days + 1):
+            raise ValueError(
+                f"PERIOD_AXIS_DAYS_IN_PERIOD_MISMATCH: period_index={period.index} "
+                f"days_in_period={period.days_in_period} calendar_days={calendar_days}"
+            )
+        # 4. no construction after operation begins
+        if period.is_operation:
+            operation_started = True
+        elif operation_started and period.is_construction:
+            raise ValueError(
+                f"PERIOD_AXIS_CONSTRUCTION_AFTER_OPERATION: period_index={period.index}"
+            )
+
+    # 5. operating periods form contiguous suffix (already implied by 4, but verify)
+    construction = tuple(p for p in periods if p.is_construction)
     operating = tuple(p for p in periods if p.is_operation)
+    if construction and operating:
+        if construction[-1].index >= operating[0].index:
+            raise ValueError(
+                "PERIOD_AXIS_PHASE_ORDER_INVALID: construction and operating overlap"
+            )
+
+    # 6. operating period counters coherent
+    for op_pos, op in enumerate(operating):
+        if op.operating_period_index != op_pos:
+            raise ValueError(
+                f"PERIOD_AXIS_OPERATING_INDICES_INVALID: period_index={op.index} "
+                f"expected_op_idx={op_pos} actual={op.operating_period_index}"
+            )
+        expected_year = op_pos // 2 + 1
+        expected_pip = op_pos % 2 + 1
+        if op.operating_year_index != expected_year:
+            raise ValueError(
+                f"PERIOD_AXIS_OPERATING_YEAR_INDEX_INVALID: period_index={op.index} "
+                f"expected={expected_year} actual={op.operating_year_index}"
+            )
+        if op.period_in_year != expected_pip:
+            raise ValueError(
+                f"PERIOD_AXIS_PERIOD_IN_YEAR_INVALID: period_index={op.index} "
+                f"expected={expected_pip} actual={op.period_in_year}"
+            )
+
+    # 7. operating count check
     if expected_operating_periods is not None and len(operating) != expected_operating_periods:
         raise ValueError(
             "PERIOD_AXIS_OPERATING_COUNT_MISMATCH: "
             f"expected={expected_operating_periods}, actual={len(operating)}"
         )
-    if tuple(p.operating_period_index for p in operating) != tuple(range(len(operating))):
-        raise ValueError("PERIOD_AXIS_OPERATING_INDICES_INVALID")
+
+    # 8. operating sequential indices (already validated above via 6)
+
+    # 9. no terminal one-day stub in operating periods
+    if operating and operating[-1].days_in_period <= 1:
+        raise ValueError(
+            f"PERIOD_AXIS_TERMINAL_STUB: final operating period has "
+            f"days_in_period={operating[-1].days_in_period}"
+        )
 
 
 def map_period_vector(
@@ -414,19 +494,84 @@ def map_period_vector(
     values: Sequence[Any],
     *,
     label: str,
+    expected_indices: tuple[int, ...] | None = None,
 ) -> dict[int, Any]:
-    """Map an axis-aligned vector without truncation, overwrite, or reordering."""
+    """Map an axis-aligned vector without truncation, overwrite, or reordering.
+
+    When ``expected_indices`` is provided (the independently-derived canonical
+    axis), this function compares the supplied ``period_indices`` against it
+    using an exact immutable tuple comparison BEFORE any dict construction.
+    This catches missing, extra, shifted, and reordered periods that would
+    otherwise be silently swallowed by the dict.
+
+    Error codes:
+      AXIS_PERIOD_DUPLICATE  — duplicate raw indices in the supplied vector
+      AXIS_LENGTH_MISMATCH   — len(period_indices) != len(expected_indices)
+      AXIS_PERIOD_MISSING    — expected index absent from supplied indices
+      AXIS_PERIOD_EXTRA      — supplied index not in expected_indices
+      AXIS_PERIOD_SHIFTED    — indices match as a set but are offset/reordered
+      PERIOD_VECTOR_LENGTH_MISMATCH — len(period_indices) != len(values)
+      PERIOD_VECTOR_DUPLICATE_INDICES — duplicate raw indices (no expected given)
+      PERIOD_VECTOR_OUT_OF_ORDER     — not strictly increasing (no expected given)
+    """
     indices = tuple(period_indices)
     vector = tuple(values)
+
+    # --- Step 1: duplicate check (must fire before anything else) ---
+    if len(set(indices)) != len(indices):
+        raise ValueError(f"AXIS_PERIOD_DUPLICATE: {label}")
+
+    # --- Step 2: exact-axis membership check (authoritative comparison) ---
+    if expected_indices is not None:
+        expected = tuple(expected_indices)
+        if len(indices) != len(expected):
+            supplied_set = set(indices)
+            expected_set = set(expected)
+            missing = expected_set - supplied_set
+            extra = supplied_set - expected_set
+            if missing and not extra:
+                raise ValueError(
+                    f"AXIS_PERIOD_MISSING: {label} missing={sorted(missing)}"
+                )
+            if extra and not missing:
+                raise ValueError(
+                    f"AXIS_PERIOD_EXTRA: {label} extra={sorted(extra)}"
+                )
+            raise ValueError(
+                f"AXIS_LENGTH_MISMATCH: {label} "
+                f"expected={len(expected)} supplied={len(indices)}"
+            )
+        if indices != expected:
+            supplied_set = set(indices)
+            expected_set = set(expected)
+            missing = expected_set - supplied_set
+            extra = supplied_set - expected_set
+            if missing:
+                raise ValueError(
+                    f"AXIS_PERIOD_MISSING: {label} missing={sorted(missing)}"
+                )
+            if extra:
+                raise ValueError(
+                    f"AXIS_PERIOD_EXTRA: {label} extra={sorted(extra)}"
+                )
+            # same set, wrong order/offset within same length — shifted or reordered
+            raise ValueError(
+                f"AXIS_PERIOD_SHIFTED: {label} "
+                f"expected={expected} supplied={indices}"
+            )
+
+    # --- Step 3: parallel-vector length check ---
     if len(indices) != len(vector):
         raise ValueError(
             f"PERIOD_VECTOR_LENGTH_MISMATCH: {label} indices={len(indices)} "
             f"values={len(vector)}"
         )
-    if len(set(indices)) != len(indices):
-        raise ValueError(f"PERIOD_VECTOR_DUPLICATE_INDICES: {label}")
-    if any(curr <= prev for prev, curr in zip(indices, indices[1:])):
-        raise ValueError(f"PERIOD_VECTOR_OUT_OF_ORDER: {label}")
+
+    # --- Step 4: order check (when no expected_indices provided) ---
+    if expected_indices is None:
+        if any(curr <= prev for prev, curr in zip(indices, indices[1:])):
+            raise ValueError(f"PERIOD_VECTOR_OUT_OF_ORDER: {label}")
+
     return {idx: vector[position] for position, idx in enumerate(indices)}
 
 

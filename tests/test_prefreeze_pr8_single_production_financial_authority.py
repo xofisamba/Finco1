@@ -733,7 +733,7 @@ _PRF1_CANONICAL_AXIS_FINGERPRINTS = {
 
 class TestCleanFingerprintsCanonicalAxis:
     @pytest.mark.parametrize("ptype", ("Solar", "Wind"))
-    def test_f1_promoted_kpis_bit_identical_to_ef887499(self, ptype):
+    def test_f1_promoted_kpis_match_prf1_canonical_axis_fingerprints(self, ptype):
         out = _run_project(ptype, "Base")
         expected = _PRF1_CANONICAL_AXIS_FINGERPRINTS[ptype]
         assert out["kpis"]["total_revenue_keur"] == expected["revenue"]
