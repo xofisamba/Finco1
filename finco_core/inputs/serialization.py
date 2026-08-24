@@ -540,6 +540,9 @@ def project_inputs_to_dict(inputs: ProjectInputs) -> dict:
             "tax_periodisation_mode": tax.tax_periodisation_mode.value,
             "shl_construction_accounting": tax.shl_construction_accounting.value,
             "shl_construction_payment": tax.shl_construction_payment.value,
+            # PR-11: project-owned SHL limitation fields
+            "shl_limitation_enabled": tax.shl_limitation_enabled,
+            "shl_interest_cap_keur_annual": tax.shl_interest_cap_keur_annual,
         },
     }
 
@@ -897,6 +900,9 @@ def project_inputs_from_dict(d: dict) -> ProjectInputs:
         shl_construction_payment=ShlPaymentMethod(
             tax_d.get("shl_construction_payment", ShlPaymentMethod.PIK_TO_SHL_BALANCE.value)
         ),
+        # PR-11: project-owned SHL limitation fields (historical compat: missing → defaults)
+        shl_limitation_enabled=tax_d.get("shl_limitation_enabled", False),
+        shl_interest_cap_keur_annual=tax_d.get("shl_interest_cap_keur_annual", None),
     )
 
     return ProjectInputs(

@@ -1600,6 +1600,8 @@ def hash_inputs_for_cache(inputs: "ProjectInputs") -> tuple:
         inputs.tax.corporate_rate,
         inputs.tax.loss_carryforward_years,
         inputs.tax.atad_ebitda_limit,
+        inputs.tax.shl_limitation_enabled,
+        inputs.tax.shl_interest_cap_keur_annual,
         tuple(
             (
                 vintage.origin_tax_year,
