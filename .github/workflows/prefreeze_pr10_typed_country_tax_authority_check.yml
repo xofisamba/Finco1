@@ -1,0 +1,92 @@
+name: Pre-freeze PR-10 Typed Country Tax Authority Check
+
+on:
+  push:
+    branches:
+      - prefreeze-pr10-typed-country-tax-tuho-authority
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "finco_core/inputs/**"
+      - "domain/inputs.py"
+      - "financial_engine/adapters/tax_inputs.py"
+      - "financial_engine/inputs.py"
+      - "financial_engine/tax/**"
+      - "tests/test_prefreeze_pr10_typed_country_tax_authority.py"
+      - ".github/workflows/prefreeze_pr10_typed_country_tax_authority_check.yml"
+
+jobs:
+  pr10-typed-country-tax-authority:
+    name: PR-10 Typed Country Tax Authority
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Verify exact head SHA
+        run: |
+          EXPECTED="${{ github.event.pull_request.head.sha || github.sha }}"
+          ACTUAL=$(git rev-parse HEAD)
+          test "$EXPECTED" = "$ACTUAL"
+
+      - name: Assert ancestry from PR-9 freeze
+        run: |
+          git merge-base --is-ancestor \
+            7d594cc29d8183e9f8bd4205fcaeec9c14f4a5b6 HEAD
+
+      - uses: actions/setup-python@v5
+        with:
+          # PR-8 exact financial locks are certified on the repository's
+          # canonical Python 3.12 workflow runtime.
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f constraints.txt ]; then
+            pip install -c constraints.txt -e .
+            pip install -c constraints.txt pytest
+          else
+            pip install -e .
+            pip install pytest
+          fi
+
+      - name: Diff hygiene
+        run: git diff --check 7d594cc29d8183e9f8bd4205fcaeec9c14f4a5b6..HEAD
+
+      - name: PR-10 authority and clean tax ring
+        run: |
+          python -m pytest -q --tb=short \
+            tests/test_prefreeze_pr10_typed_country_tax_authority.py \
+            tests/test_prefreeze_fix2_tax_jurisdiction.py \
+            tests/test_pr1_tax_loss_utilisation_gate_propagation.py \
+            tests/test_stage_c3b3c_tax_policy_shl_deductibility.py \
+            tests/test_stage_c3b3d0_tax_identity_atad_decoupling.py
+
+      - name: Source truth and financing regression locks
+        run: |
+          python -m pytest -q --tb=short \
+            tests/test_stage_c3b1_oborovo_tax_source_truth.py \
+            tests/test_mvp_g2a_financing_stack.py \
+            tests/test_mvp_g2b_sponsor_returns.py \
+            tests/test_mvp_g2c_shareholder_waterfall.py \
+            tests/test_prefreeze_pr8_single_production_financial_authority.py \
+            tests/test_pr9_typed_construction_idc_authority.py
+
+      - name: Production identity and calibration scan
+        shell: bash
+        run: |
+          mapfile -t changed_python < <(
+            git diff --name-only \
+              7d594cc29d8183e9f8bd4205fcaeec9c14f4a5b6...HEAD \
+              -- app domain finco_core financial_engine \
+            | grep -E '\.py$' || true
+          )
+          if ((${#changed_python[@]})); then
+            ! grep -nHEi \
+              'project\.name|project\.code|approved_delta|expected_delta|balancing[_ ]plug|target[_ ]tax|source[_ ]tax[_ ](schedule|vector)|terminal[_ ]tax[_ ]top[_ ]up' \
+              "${changed_python[@]}"
+          fi

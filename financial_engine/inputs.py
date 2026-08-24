@@ -151,16 +151,62 @@ class DepreciationInput:
 class OpeningTaxLossVintageInput:
     """One pre-existing loss vintage carried into the model start.
 
-    origin_tax_year : 0-based index of the tax year in which the loss was
-        generated. Must be negative (losses generated before the model) or
-        0 (first model tax year). Use negative integers for pre-model losses
-        (e.g. -3 = three tax years before the model start).
+    origin_tax_year : calendar tax year in which the loss was generated.
+        Synthetic unit tests may use an internally consistent integer axis, but
+        production adapters supply four-digit calendar years.
     amount_keur : outstanding loss (must be non-negative and finite)
     source_label : optional human-readable label for audit trail
     """
     origin_tax_year: int
     amount_keur: float
     source_label: str = ""
+
+    def __post_init__(self) -> None:
+        import math as _math
+        import numbers as _numbers
+        # origin_tax_year: must be int, not bool
+        if isinstance(self.origin_tax_year, bool) or not isinstance(self.origin_tax_year, int):
+            raise ValueError(
+                "TAX_OPENING_LOSS_VINTAGE_INVALID_YEAR: origin_tax_year must be an integer, "
+                f"got {type(self.origin_tax_year).__name__!r}."
+            )
+        # amount_keur: must be numbers.Real, not bool, not complex, not string, not NaN/Inf,
+        # not negative.  fractions.Fraction and other Real implementations are accepted.
+        if isinstance(self.amount_keur, bool):
+            raise ValueError(
+                "TAX_OPENING_LOSS_VINTAGE_INVALID_AMOUNT: amount_keur must be numeric, not bool."
+            )
+        if isinstance(self.amount_keur, complex) and not isinstance(self.amount_keur, _numbers.Real):
+            raise ValueError(
+                "TAX_OPENING_LOSS_VINTAGE_INVALID_AMOUNT: amount_keur must be a real numeric "
+                f"value, got {type(self.amount_keur).__name__!r}."
+            )
+        if not isinstance(self.amount_keur, _numbers.Real):
+            raise ValueError(
+                "TAX_OPENING_LOSS_VINTAGE_INVALID_AMOUNT: amount_keur must be a real numeric "
+                f"value, got {type(self.amount_keur).__name__!r}."
+            )
+        # NaN/Inf: only representable for float-like types
+        try:
+            _finite = _math.isfinite(float(self.amount_keur))
+        except (OverflowError, ValueError):
+            _finite = False
+        if not _finite:
+            raise ValueError(
+                f"TAX_OPENING_LOSS_VINTAGE_INVALID_AMOUNT: amount_keur must be finite, "
+                f"got {self.amount_keur!r}."
+            )
+        if self.amount_keur < 0:
+            raise ValueError(
+                f"TAX_OPENING_LOSS_VINTAGE_INVALID_AMOUNT: amount_keur must be non-negative, "
+                f"got {self.amount_keur!r}."
+            )
+        # source_label: must be str
+        if not isinstance(self.source_label, str):
+            raise ValueError(
+                "TAX_OPENING_LOSS_VINTAGE_INVALID_LABEL: source_label must be a string, "
+                f"got {type(self.source_label).__name__!r}."
+            )
 
 
 @dataclass(frozen=True)

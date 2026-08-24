@@ -3,7 +3,10 @@
 Maps canonical ProjectInputs to a TaxCalculationInput for the clean Phase 2B / 2C engine.
 No project-name dispatch, no snapshot loading, no factory invocations.
 
-Tax policy is derived exclusively from project input fields:
+Tax policy is derived exclusively from explicit project input fields and, when
+selected, an approved versioned country-policy profile:
+  - country_tax_policy_id → explicit profile selection (country alone does nothing)
+  - corporate_rate_override → project override over an approved profile default
   - corporate_rate        → TaxPolicy.corporate_rate
   - atad_enabled          → TaxPolicy.atad_enabled (C3B3D0: independent of thin_cap_enabled)
   - atad_ebitda_limit     → TaxPolicy.atad_ebitda_limit
@@ -18,8 +21,8 @@ C3B1 source evidence (Oborovo):
 C3B3D0: atad_enabled and thin_cap_enabled are independent. This adapter reads
   tax.atad_enabled directly — it no longer derives ATAD from thin_cap_enabled.
 
-Opening loss vintages: derived from project inputs.tax.initial_tax_loss_keur.
-For Oborovo: initial_tax_loss_keur = 0.0 → empty tuple.
+Opening loss vintages are mapped only from explicit typed project vintages.
+The legacy scalar remains accepted only when zero because it carries no origin year.
 """
 from __future__ import annotations
 
@@ -67,8 +70,8 @@ def build_tax_contract_from_project_inputs(
       injection contract: raises NotImplementedError.
       ATAD requires complete financing interest; this adapter only supplies the
       empty stub — callers must merge full interest before computing ATAD.
-    * Nonzero initial_tax_loss_keur: raises NotImplementedError.
-      A vintage origin_tax_year cannot be generically inferred.
+    * Nonzero legacy initial_tax_loss_keur: raises NotImplementedError.
+      Explicit typed vintages are the only non-zero opening-loss authority.
     * Unsupported period_frequency: raises ValueError.
       Only SEMESTRIAL (2 periods/year) is supported.
     * Clean cash-tax timing not enabled: raises NotImplementedError.
@@ -87,6 +90,50 @@ def build_tax_contract_from_project_inputs(
 
     tax = project_inputs.tax
     info = project_inputs.info
+
+    corporate_rate = tax.corporate_rate
+    policy_id = _POLICY_ID
+    policy_version = _POLICY_VERSION
+    if tax.country_tax_policy_id is not None:
+        from financial_engine.tax.jurisdiction import (
+            ProjectTaxOverrides,
+            get_profile,
+            get_tax_jurisdiction_defaults,
+            resolve_tax_assumptions,
+        )
+
+        profile = get_profile(tax.country_tax_policy_id)
+        if profile.country_iso.upper() != info.country_iso.upper():
+            raise ValueError(
+                "COUNTRY_TAX_POLICY_COUNTRY_MISMATCH: selected policy "
+                f"{profile.profile_id!r} is for {profile.country_iso}, but project "
+                f"country_iso is {info.country_iso!r}."
+            )
+        defaults = get_tax_jurisdiction_defaults(profile.profile_id)
+        resolved = resolve_tax_assumptions(
+            profile,
+            defaults,
+            ProjectTaxOverrides(
+                corporate_tax_rate_override=tax.corporate_rate_override,
+            ),
+        )
+        if resolved.corporate_tax_rate is None:
+            # Identification-only/illustrative profiles carry no production
+            # legal default. Existing explicit TaxParams behavior is preserved.
+            corporate_rate = tax.corporate_rate
+        else:
+            corporate_rate = resolved.corporate_tax_rate
+            if (
+                tax.corporate_rate_override is None
+                and abs(tax.corporate_rate - corporate_rate) > 1e-12
+            ):
+                raise ValueError(
+                    "COUNTRY_TAX_LEGACY_FIELD_CONFLICT: corporate_rate differs "
+                    "from the selected approved policy default. Preserve the "
+                    "default value or provide corporate_rate_override explicitly."
+                )
+        policy_id = profile.profile_id
+        policy_version = profile.profile_version
 
     # Periods per tax year from period frequency — fail-closed for unsupported values.
     freq = info.period_frequency
@@ -142,9 +189,9 @@ def build_tax_contract_from_project_inputs(
         )
 
     policy = TaxPolicy(
-        policy_id=_POLICY_ID,
-        policy_version=_POLICY_VERSION,
-        corporate_rate=tax.corporate_rate,
+        policy_id=policy_id,
+        policy_version=policy_version,
+        corporate_rate=corporate_rate,
         periods_per_tax_year=periods_per_tax_year,
         loss_carryforward_years=tax.loss_carryforward_years,
         atad_enabled=atad_enabled,
@@ -167,16 +214,24 @@ def build_tax_contract_from_project_inputs(
         ),
     )
 
-    # Opening loss vintages — fail closed for non-zero amounts.
-    # A vintage origin_tax_year cannot be generically derived from ProjectInputs.
+    # Explicit typed vintages are canonical. The legacy scalar cannot be active
+    # at the same time because it has no origin year and would be a second authority.
     if tax.initial_tax_loss_keur > 0:
         raise NotImplementedError(
-            "build_tax_contract_from_project_inputs: non-zero initial_tax_loss_keur "
+            "build_tax_contract_from_project_inputs: non-zero legacy "
+            "initial_tax_loss_keur "
             f"({tax.initial_tax_loss_keur} kEUR) requires a vintage origin_tax_year "
-            "that cannot be generically determined from ProjectInputs alone. "
-            "Provide opening_loss_vintages explicitly."
+            "and cannot coexist with the canonical typed authority. Set the legacy "
+            "scalar to zero and provide opening_tax_loss_vintages explicitly."
         )
-    opening_loss_vintages: tuple[OpeningTaxLossVintageInput, ...] = ()
+    opening_loss_vintages = tuple(
+        OpeningTaxLossVintageInput(
+            origin_tax_year=vintage.origin_tax_year,
+            amount_keur=vintage.opening_amount_keur,
+            source_label=vintage.source_label,
+        )
+        for vintage in tax.opening_tax_loss_vintages
+    )
 
     return TaxCalculationInput(
         policy=policy,

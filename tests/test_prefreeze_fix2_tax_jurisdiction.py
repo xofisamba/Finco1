@@ -337,10 +337,13 @@ def test_tax_params_field_classification_is_complete():
     # Update this set whenever TaxParams changes.
     # These are ALL real TaxParams field names as of Fix 2 hardening.
     CLASSIFIED_TAX_PARAMS_FIELDS = {
+        "country_tax_policy_id",
+        "corporate_rate_override",
         "corporate_rate",
         "loss_carryforward_years",
         "loss_carryforward_cap",
         "prior_tax_loss_keur",
+        "opening_tax_loss_vintages",
         "legal_reserve_cap",
         "construction_pl",
         "thin_cap_enabled",

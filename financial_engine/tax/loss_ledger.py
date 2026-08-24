@@ -48,9 +48,25 @@ class _VintageState:
 def _opening_states_from_inputs(
     opening_inputs: tuple[OpeningTaxLossVintageInput, ...],
     loss_carryforward_years: int,
+    first_tax_year: int | None = None,
 ) -> list[_VintageState]:
+    """Build internal vintage states from opening inputs.
+
+    Canonicalizes order by (origin_tax_year, stable_input_index) so FIFO
+    consumption is deterministic and independent of caller tuple order.
+
+    If first_tax_year is provided, every opening vintage must have
+    origin_tax_year <= first_tax_year (fail-closed: TAX_OPENING_LOSS_FUTURE_VINTAGE).
+    """
     states = []
     for i, v in enumerate(opening_inputs):
+        if first_tax_year is not None and v.origin_tax_year > first_tax_year:
+            raise ValueError(
+                f"TAX_OPENING_LOSS_FUTURE_VINTAGE: opening vintage with "
+                f"origin_tax_year={v.origin_tax_year} is later than the first modelled "
+                f"tax year {first_tax_year}. A future-origin vintage cannot shelter "
+                f"income in years before it was generated."
+            )
         vid = v.source_label.strip() or f"opening_{v.origin_tax_year}_{i}"
         states.append(_VintageState(
             vintage_id=vid,
@@ -59,7 +75,11 @@ def _opening_states_from_inputs(
             amount_keur=v.amount_keur,
             source_label=v.source_label,
         ))
-    return states
+    # PR10_CORRECTION_A: Canonical FIFO ordering — sort by (origin_tax_year, stable_input_index).
+    # Same-year vintages retain their relative input order.
+    # Caller tuple order must NOT affect which vintage is consumed first.
+    indexed = sorted(enumerate(states), key=lambda iv: (iv[1].origin_tax_year, iv[0]))
+    return [s for _, s in indexed]
 
 
 def _make_vintage_record(
@@ -110,7 +130,9 @@ def run_annual_fifo_ledger(
     if loss_use_allowed is not None and len(loss_use_allowed) != len(tax_year_indices):
         raise ValueError("loss_use_allowed must match tax_year_indices length")
 
-    pool = _opening_states_from_inputs(opening_inputs, loss_carryforward_years)
+    first_tax_year = tax_year_indices[0] if tax_year_indices else None
+    pool = _opening_states_from_inputs(opening_inputs, loss_carryforward_years,
+                                        first_tax_year=first_tax_year)
     entries: list[TaxAnnualLedgerEntry] = []
 
     for pos, (tax_year, taxable_before) in enumerate(

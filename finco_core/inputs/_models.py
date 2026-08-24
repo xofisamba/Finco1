@@ -1139,6 +1139,62 @@ class TaxDepreciationMode(str, Enum):
 
 
 @dataclass(frozen=True)
+class OpeningTaxLossVintageParams:
+    """Canonical project input for one opening tax-loss vintage.
+
+    ``origin_tax_year`` is the calendar tax year in which the loss arose.
+    Expiry remains derived by the clean tax ledger from the resolved
+    ``loss_carryforward_years`` policy. The source label is audit-only.
+    """
+
+    origin_tax_year: int
+    opening_amount_keur: float
+    source_label: str = ""
+
+    def __post_init__(self) -> None:
+        import math as _math
+
+        if isinstance(self.origin_tax_year, bool) or not isinstance(
+            self.origin_tax_year, int
+        ):
+            raise ValueError("origin_tax_year must be an integer calendar year.")
+        if self.origin_tax_year < 1900 or self.origin_tax_year > 9999:
+            raise ValueError(
+                f"origin_tax_year must be a four-digit calendar year, got "
+                f"{self.origin_tax_year!r}."
+            )
+        import numbers as _numbers
+        if isinstance(self.opening_amount_keur, bool):
+            raise ValueError("opening_amount_keur must be numeric, not bool.")
+        if isinstance(self.opening_amount_keur, complex) and not isinstance(
+            self.opening_amount_keur, _numbers.Real
+        ):
+            raise ValueError(
+                "opening_amount_keur must be a real numeric value, "
+                f"got {type(self.opening_amount_keur).__name__!r}."
+            )
+        if not isinstance(self.opening_amount_keur, _numbers.Real):
+            raise ValueError(
+                "opening_amount_keur must be a real numeric value, "
+                f"got {type(self.opening_amount_keur).__name__!r}."
+            )
+        try:
+            _finite = _math.isfinite(float(self.opening_amount_keur))
+        except (OverflowError, ValueError):
+            _finite = False
+        if not _finite or self.opening_amount_keur < 0:
+            raise ValueError(
+                "opening_amount_keur must be finite and non-negative, got "
+                f"{self.opening_amount_keur!r}."
+            )
+        if not isinstance(self.source_label, str):
+            raise ValueError(
+                "source_label must be a string, "
+                f"got {type(self.source_label).__name__!r}."
+            )
+
+
+@dataclass(frozen=True)
 class TaxParams:
     """Tax, withholding, and interest-deductibility assumptions."""
     corporate_rate: float = 0.10
@@ -1271,7 +1327,82 @@ class TaxParams:
     # All projects without an explicit opt-in must not silently inherit this convention.
     clean_cash_tax_timing_enabled: bool = False
 
+    # PR-10 typed country-policy and opening-loss authority. Appended to retain
+    # the historical positional constructor order of every existing field.
+    # Country metadata alone never activates a policy. An explicit override
+    # wins over an approved profile default.
+    country_tax_policy_id: str | None = None
+    corporate_rate_override: float | None = None
+    opening_tax_loss_vintages: tuple[OpeningTaxLossVintageParams, ...] = ()
+
     def __post_init__(self) -> None:
+        import math as _math
+
+        # country_tax_policy_id: must be None or a non-empty str; reject non-str cleanly
+        if self.country_tax_policy_id is not None:
+            if not isinstance(self.country_tax_policy_id, str):
+                raise ValueError(
+                    "TAX_POLICY_ID_INVALID_TYPE: country_tax_policy_id must be a string or None, "
+                    f"got {type(self.country_tax_policy_id).__name__!r}."
+                )
+            if not self.country_tax_policy_id.strip():
+                raise ValueError("country_tax_policy_id must be non-empty when provided.")
+
+        # corporate_rate_override: must be None, or numbers.Real (not bool/complex/str),
+        # finite, in [0, 1].  fractions.Fraction and other Real implementations are accepted.
+        if self.corporate_rate_override is not None:
+            import numbers as _numbers
+            if isinstance(self.corporate_rate_override, bool):
+                raise ValueError("corporate_rate_override must be numeric, not bool.")
+            if isinstance(self.corporate_rate_override, complex) and not isinstance(
+                self.corporate_rate_override, _numbers.Real
+            ):
+                raise ValueError(
+                    "corporate_rate_override must be a real numeric value, "
+                    f"got {type(self.corporate_rate_override).__name__!r}."
+                )
+            if not isinstance(self.corporate_rate_override, _numbers.Real):
+                raise ValueError(
+                    "corporate_rate_override must be a real numeric value, "
+                    f"got {type(self.corporate_rate_override).__name__!r}."
+                )
+            try:
+                _finite = _math.isfinite(float(self.corporate_rate_override))
+            except (OverflowError, ValueError):
+                _finite = False
+            if not _finite:
+                raise ValueError(
+                    f"corporate_rate_override must be finite, got {self.corporate_rate_override!r}."
+                )
+            if not 0.0 <= self.corporate_rate_override <= 1.0:
+                raise ValueError(
+                    f"corporate_rate_override must be in [0, 1], got {self.corporate_rate_override!r}."
+                )
+            if self.country_tax_policy_id is None:
+                raise ValueError(
+                    "corporate_rate_override requires country_tax_policy_id; "
+                    "without a selected policy, corporate_rate remains authoritative."
+                )
+
+        # opening_tax_loss_vintages: must be a tuple of OpeningTaxLossVintageParams
+        if not isinstance(self.opening_tax_loss_vintages, tuple):
+            raise ValueError(
+                "opening_tax_loss_vintages must be a tuple, "
+                f"got {type(self.opening_tax_loss_vintages).__name__!r}."
+            )
+        for i, v in enumerate(self.opening_tax_loss_vintages):
+            if not isinstance(v, OpeningTaxLossVintageParams):
+                raise ValueError(
+                    f"opening_tax_loss_vintages[{i}] must be OpeningTaxLossVintageParams, "
+                    f"got {type(v).__name__!r}."
+                )
+
+        if self.opening_tax_loss_vintages and self.prior_tax_loss_keur > 0.0:
+            raise ValueError(
+                "opening_tax_loss_vintages and non-zero prior_tax_loss_keur are "
+                "conflicting authorities. Use explicit vintages only."
+            )
+
         mode = self.shl_interest_deductibility
         pct = self.shl_interest_deductible_pct
         # ── numeric validation for shl_interest_deductible_pct ──────────────────
@@ -1412,9 +1543,19 @@ def hash_inputs_for_cache(inputs: "ProjectInputs") -> tuple:
         inputs.capex.idc_keur,
         inputs.capex.bank_fees_keur,
         inputs.capex.commitment_fees_keur,
+        inputs.tax.country_tax_policy_id,
+        inputs.tax.corporate_rate_override,
         inputs.tax.corporate_rate,
         inputs.tax.loss_carryforward_years,
         inputs.tax.atad_ebitda_limit,
+        tuple(
+            (
+                vintage.origin_tax_year,
+                vintage.opening_amount_keur,
+                vintage.source_label,
+            )
+            for vintage in inputs.tax.opening_tax_loss_vintages
+        ),
         # Hierarchical OPEX capability — if present, include full model structure in cache key.
         # Sorted by category code, then subitem code within each category, for determinism.
         # Does NOT include senior_tenor_years — that lives in FinancingParams above.
