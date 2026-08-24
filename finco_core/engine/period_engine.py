@@ -377,6 +377,7 @@ def validate_canonical_period_axis(
     periods: Sequence[PeriodMeta],
     *,
     expected_operating_periods: int | None = None,
+    cod_date: "date | None" = None,
 ) -> None:
     """Fail closed when a consumer receives a malformed financial axis.
 
@@ -385,7 +386,8 @@ def validate_canonical_period_axis(
       2.  Indices are unique and form 0-based contiguous range.
       3.  Per-period: positive duration, mutually exclusive phase flags,
           date continuity, finite+positive day_fraction,
-          days_in_period consistent with date span.
+          days_in_period consistent with date span (COD-inclusive +1 rule),
+          day_fraction reconciled numerically to days_in_period / approved_denominator.
       4.  Construction periods form one contiguous prefix (no construction
           after operation begins).
       5.  Operating periods form one contiguous suffix.
@@ -394,6 +396,17 @@ def validate_canonical_period_axis(
       7.  Operating count equals expected_operating_periods when supplied.
       8.  Operating sequential indices are 0-based and contiguous.
       9.  Final operating period has more than one day (no terminal one-day stub).
+
+    COD-inclusive +1 rule (TASK 2):
+      days_in_period = calendar_days + 1 is permitted ONLY for the first operating
+      period (operating_period_index == 0) when its start_date.day == 1 (COD falls on
+      the first day of a month).  Construction periods and all other operating periods
+      must have days_in_period == calendar_days exactly.
+
+    day_fraction reconciliation:
+      For every period, day_fraction must equal days_in_period / approved_denominator
+      where approved_denominator = 366.0 if period.is_leap_year else 365.0.
+      Subtly wrong values (e.g. wrong leap flag, wrong denominator) are rejected.
     """
     import math as _math
 
@@ -428,12 +441,37 @@ def validate_canonical_period_axis(
                 f"PERIOD_AXIS_DAY_FRACTION_INVALID: period_index={period.index} "
                 f"day_fraction={period.day_fraction!r}"
             )
-        # 3e. days_in_period consistent with date span (allow +1 for COD-on-month-start)
+        # 3e. days_in_period consistent with date span.
+        # COD-inclusive +1 rule: the sole permitted exception is the FIRST operating
+        # period (operating_period_index == 0) when start_date.day == 1, which corresponds
+        # to COD falling on the first of a month.  Construction periods never get +1.
+        # All other operating periods must be exactly calendar_days.
         calendar_days = (period.end_date - period.start_date).days
-        if period.days_in_period not in (calendar_days, calendar_days + 1):
+        _cod_inclusive_allowed = (
+            period.is_operation
+            and period.operating_period_index == 0
+            and period.start_date.day == 1
+        )
+        _allowed_days: tuple[int, ...]
+        if _cod_inclusive_allowed:
+            _allowed_days = (calendar_days, calendar_days + 1)
+        else:
+            _allowed_days = (calendar_days,)
+        if period.days_in_period not in _allowed_days:
             raise ValueError(
                 f"PERIOD_AXIS_DAYS_IN_PERIOD_MISMATCH: period_index={period.index} "
-                f"days_in_period={period.days_in_period} calendar_days={calendar_days}"
+                f"days_in_period={period.days_in_period} calendar_days={calendar_days} "
+                f"cod_inclusive_allowed={_cod_inclusive_allowed}"
+            )
+        # 3f. day_fraction reconciliation: must equal days_in_period / approved_denominator.
+        # approved_denominator = 366 if is_leap_year else 365 (the period's own leap flag).
+        _approved_denom = 366.0 if period.is_leap_year else 365.0
+        _expected_fraction = period.days_in_period / _approved_denom
+        if abs(period.day_fraction - _expected_fraction) > 1e-9:
+            raise ValueError(
+                f"PERIOD_AXIS_DAY_FRACTION_RECONCILIATION_FAILED: period_index={period.index} "
+                f"day_fraction={period.day_fraction!r} expected={_expected_fraction!r} "
+                f"(days_in_period={period.days_in_period} / denominator={_approved_denom})"
             )
         # 4. no construction after operation begins
         if period.is_operation:

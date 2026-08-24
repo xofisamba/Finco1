@@ -137,6 +137,95 @@ start of their corresponding years on its four-segment canonical semiannual
 construction axis. A construction Uses vector whose length differs from that
 axis now fails closed instead of truncating through `zip`.
 
+## Correction B additions (PR-F1 Correction B)
+
+### TASK 1: Mandatory expected-axis enforcement at all production boundaries
+
+Three independently-derived axis contracts:
+
+1. **Full model axis** — `tuple(p.period_index for p in canonical_periods)` from
+   `PeriodEngine.periods()`.  Used for CFADS, tax, all full-model vectors.
+   Derived at `financial_engine/orchestrator.py:run_senior_debt_model` as
+   `full_axis = tuple(p.period_index for p in phase2b_result.periods)`.
+
+2. **Operating axis** — `tuple(p.period_index for p in canonical_periods if p.is_operation)`.
+   Used for bank/debt-sizing operating schedules.
+
+3. **Senior debt-active axis** — derived from the operating axis using typed
+   `SeniorDebtPolicy.repayment_start_period_index` and `maturity_period_index`:
+   `senior_axis = tuple(p.period_index for p in debt_periods)` where
+   `debt_periods = tuple(p for p in bank_phase2a_result.periods if p.is_operation
+   and debt_start <= p.period_index <= debt_end)`.
+   This is NOT derived from the solver's returned `period_indices`.
+
+Updated production consumers with `expected_indices` enforcement:
+
+| Consumer | Axis | File:line (approx) |
+|---|---|---|
+| `_assemble_post_senior_cash_schedules` — CFADS | full_axis | orchestrator.py |
+| `_assemble_post_senior_cash_schedules` — Senior DS | senior_axis | orchestrator.py |
+| `_build_debt_sizing_schedules_from_bank` — Senior DS | senior_axis | orchestrator.py |
+| `_build_debt_sizing_schedules_from_bank` — solver DSCR | senior_axis | orchestrator.py |
+| `_build_result_senior_debt_schedules` — Senior DS | senior_axis | orchestrator.py |
+| `_build_result_senior_debt_schedules` — Base CFADS | full_axis | orchestrator.py |
+| `run_senior_debt_model` — final senior interest | senior_axis | orchestrator.py |
+| `run_senior_debt_model` — result service | senior_axis | orchestrator.py |
+| `run_senior_debt_model` — result base CFADS | full_axis | orchestrator.py |
+| `_run_senior_debt_model_with_shl` — Senior interest | senior_axis_shl | orchestrator.py |
+| `_run_senior_debt_model_with_shl` — SHL gross interest (per iteration) | full_axis_shl | orchestrator.py |
+| `_run_senior_debt_model_with_shl` — final SHL interest | full_axis_shl | orchestrator.py |
+| `_run_senior_debt_model_with_shl` — final Senior interest | senior_axis_shl | orchestrator.py |
+
+Rule: `.get(index, 0.0)` for zeros outside the Senior debt tenor is permitted only after
+the exact Senior subset has been accepted by `_strict_period_map(expected_indices=senior_axis)`.
+
+### TASK 2: Day-count validation in `validate_canonical_period_axis()`
+
+COD-inclusive +1 rule: `days_in_period = calendar_days + 1` is permitted ONLY for the
+first operating period (`operating_period_index == 0`) when `start_date.day == 1`.
+Construction periods and all other operating periods must be exactly `calendar_days`.
+
+day_fraction reconciliation: every period must satisfy
+`day_fraction == days_in_period / approved_denominator` where
+`approved_denominator = 366.0 if period.is_leap_year else 365.0`.
+
+Attack matrix:
+- Construction period with +1 day: raises `PERIOD_AXIS_DAYS_IN_PERIOD_MISMATCH`
+- Non-first operating period with +1: raises `PERIOD_AXIS_DAYS_IN_PERIOD_MISMATCH`
+- Wrong day_fraction (e.g. days/360 instead of days/365): raises `PERIOD_AXIS_DAY_FRACTION_RECONCILIATION_FAILED`
+- Wrong leap flag (fraction correct for original denom, flag flipped): raises `PERIOD_AXIS_DAY_FRACTION_RECONCILIATION_FAILED`
+- Valid COD-inclusive +1 (first operating, start.day==1): PASSES
+
+### TASK 3: Real production-boundary attacks
+
+Attack class `TestRealProductionBoundaryAttacks` in
+`tests/test_prefreeze_prf1_canonical_period_axis.py` proves through the real
+`run_senior_debt_model` production consumer using monkeypatch injection:
+
+| Attack | Test | Error code |
+|---|---|---|
+| rb1 — shifted same-shape Senior interest | test_rb1_* | AXIS_PERIOD_MISSING |
+| rb2 — missing Senior DS period | test_rb2_* | AXIS_PERIOD_MISSING |
+| rb3 — extra Senior period | test_rb3_* | AXIS_PERIOD_EXTRA |
+| rb4 — reordered Senior period | test_rb4_* | AXIS_PERIOD_SHIFTED |
+| rb5 — duplicate raw Senior period | test_rb5_* | AXIS_PERIOD_DUPLICATE |
+| rb6 — shifted full-axis CFADS | test_rb6_* | AXIS_PERIOD_MISSING |
+| rb9 — no partial result returned | test_rb9_* | (no partial result) |
+
+### TASK 4: Error-code precedence
+
+Documented stable precedence (implemented in `map_period_vector`):
+
+1. `AXIS_PERIOD_DUPLICATE` — duplicate raw indices, checked before any axis comparison
+2. `AXIS_LENGTH_MISMATCH` — length differs with both missing and extra indices
+3. `AXIS_PERIOD_MISSING` — expected index absent from supplied (includes shifted ranges)
+4. `AXIS_PERIOD_EXTRA` — supplied index not in expected (same-length, superset)
+5. `AXIS_PERIOD_SHIFTED` — same set, same length, different order
+
+"Shifted range" (different offset) raises `AXIS_PERIOD_MISSING` (not `AXIS_PERIOD_SHIFTED`)
+because the index sets differ.  `AXIS_PERIOD_SHIFTED` fires only when `set(supplied) == set(expected)`
+but `tuple(supplied) != tuple(expected)`.
+
 ## Governance
 
 No project name/code dispatch, workbook runtime read, source-vector replay,
@@ -144,28 +233,15 @@ target fitting, approved/expected delta, balancing plug, terminal top-up,
 virtual debt, post-engine stub deletion or tolerance-based economic capacity
 was introduced. `financial_engine/tax/engine.py` is untouched.
 
-## Local verification
+## Classification
 
-- Dedicated PR-F1 workflow groups at the final worktree: 81 passed canonical
-  axis/adapters, 721 passed clean-financing/downstream, and 379 passed
-  Senior/SHL/cash-authority regressions.
-- KUPI/PR-6 canonical construction-axis ring: 122 passed.
-- PR-10/tax/SHL exact-output ring: 270 passed.
-- Sensitivity and portfolio adapters: 59 passed; one portfolio IRR assertion
-  failed identically on base and head (`0.0 > 0.05`) and was not changed.
-- Final canonical-axis, G0/G2 and PR-6 through PR-10 ring: 772 passed.
-- Modified-boundary, B3/B4, Phase 2C and PR-8 presentation ring: 408 passed.
-- B3/B4 standalone regression: 189 passed.
-- G1, PR-5 and B5/B7/B8/source-contract locks: 211 passed.
-- Construction/Revenue/OPEX/depreciation selection: 233 passed before one
-  base-reproduced TUHO depreciation expectation failure; the OPEX engine
-  selection excluding its base-reproduced BESS UI guardrail class passed 54.
+`EXACT_MEMBERSHIP_CLOSED` is NOT claimed.  `FREEZE_COMPLETE` is NOT claimed.
+All production-boundary attacks are implemented and green locally.  Independent
+exact-head CI review is required before either classification is applied.
 
-Three local legacy-suite blockers reproduce unchanged on the exact base and
-were not altered: `test_revenue_formula_units.py` has a pre-existing collection
-syntax error, the BESS scenario UI guardrail receives `Unknown project type:
-BESS`, and one TUHO book-depreciation bridge expects 70,691.5 while both base
-and head produce 72,993.71. C3B1 workbook direct-access also reaches a local
-Windows permission error after its preceding tests pass; the dedicated Linux
-exact-head workflow is the authoritative check for that environment-specific
-surface.
+## Local verification (Correction B)
+
+- 75 PRF1 canonical axis tests passed (including 7 new day-count attacks, 7 new
+  production-boundary attacks, COD-inclusive pass case).
+- 631 tests across PRF1 + Phase 2C Senior + c3b3d2b3/b4/b6 + SHL + PRF6/PRF7 passed.
+- `git diff --check` clean (no whitespace errors).

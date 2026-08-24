@@ -878,13 +878,20 @@ def _assemble_post_senior_cash_schedules(
     periods: tuple[OperatingPeriodResult, ...],
     tax_and_cfads: object,
     senior_debt_result: object,
+    *,
+    senior_axis: tuple[int, ...],
 ) -> PostSeniorCashSchedules:
     """Build Base post-senior cash schedules from authoritative Base CFADS.
 
     Correction A: CFADS axis is validated against the independently-derived full
-    canonical period axis (all model periods).  Senior DS axis is the debt-active
-    subset — validated for internal consistency only (exact subset contract is
-    established by the solver, not re-derived here).
+    canonical period axis (all model periods).
+
+    Correction B: Senior DS axis is validated against the independently-derived
+    senior-debt-active subset axis (derived from SeniorDebtPolicy bounds, not from
+    the solver's returned period_indices).
+
+    After the Senior DS subset is accepted, zeros outside the debt tenor are
+    permitted via .get(idx, 0.0) when building the full-axis PostSeniorCashSchedules.
     """
     # Independently-derived expected axis: all model period indices, in order.
     all_period_indices = tuple(p.period_index for p in periods)
@@ -896,13 +903,13 @@ def _assemble_post_senior_cash_schedules(
         label="post_senior.base_cfads",
         expected_indices=all_period_indices,
     )
-    # Senior DS is the debt-active operating subset — not the full axis.
-    # Internal consistency (no dups, increasing) is enforced; exact subset
-    # contract is proved by the solver and locked in tests.
+    # Senior DS must cover the independently-derived debt-active subset exactly.
+    # After this exact check, zeros outside the tenor are filled via .get(idx, 0.0).
     sd_service_by_idx: dict[int, float] = _strict_period_map(
         senior_debt_result.period_indices,
         senior_debt_result.senior_debt_service_keur,
         label="post_senior.senior_debt_service",
+        expected_indices=senior_axis,
     )
     period_is_constr: dict[int, bool] = {p.period_index: p.is_construction for p in periods}
     cash_after: list[float] = []
@@ -951,13 +958,20 @@ def _build_debt_sizing_schedules_from_bank(
     final_bank_tax_result: object,
     final_bank_cfads_results: tuple,
     senior_debt_result: object,
+    senior_axis: tuple[int, ...],
 ) -> DebtSizingSchedules:
+    """Assemble bank/debt-sizing schedules.
+
+    Correction B: Senior DS and solver DSCR are validated against the
+    independently-derived senior_axis (from SeniorDebtPolicy bounds).
+    """
     import math as _math
 
     sd_service_by_idx: dict[int, float] = _strict_period_map(
         senior_debt_result.period_indices,
         senior_debt_result.senior_debt_service_keur,
         label="debt_sizing.senior_debt_service",
+        expected_indices=senior_axis,
     )
     final_bank_cash_tax_by_idx = {
         pr.period_index: pr.cash_tax_keur for pr in final_bank_tax_result.period_results
@@ -980,6 +994,7 @@ def _build_debt_sizing_schedules_from_bank(
         senior_debt_result.period_indices,
         senior_debt_result.senior_dscr,
         label="debt_sizing.senior_dscr",
+        expected_indices=senior_axis,
     )
     solver_bank_dscr: tuple[float | None, ...] = tuple(
         solver_dscr_by_idx.get(i, None) for i in ops_indices
@@ -1001,18 +1016,27 @@ def _build_result_senior_debt_schedules(
     *,
     senior_debt_result: object,
     final_tax_cfads: TaxAndCfadsSchedules,
+    senior_axis: tuple[int, ...],
+    full_axis: tuple[int, ...],
 ) -> _SeniorDebtSchedulesResult:
+    """Assemble result-layer SeniorDebtSchedules.
+
+    Correction B: Senior DS validated against independently-derived senior_axis;
+    Base CFADS validated against independently-derived full_axis.
+    """
     import math as _math
 
     sd_service_by_idx: dict[int, float] = _strict_period_map(
         senior_debt_result.period_indices,
         senior_debt_result.senior_debt_service_keur,
         label="result_senior_debt.senior_debt_service",
+        expected_indices=senior_axis,
     )
     base_cfads_by_idx: dict[int, float] = _strict_period_map(
         final_tax_cfads.period_indices,
         final_tax_cfads.cfads_keur,
         label="result_senior_debt.base_cfads",
+        expected_indices=full_axis,
     )
     base_dscr: tuple[float | None, ...] = tuple(
         (
@@ -1077,6 +1101,11 @@ def _run_senior_debt_model_with_shl(inputs: SeniorDebtModelInput) -> ProjectMode
         p for p in bank_phase2a_result.periods
         if p.is_operation and debt_start <= p.period_index <= debt_end
     )
+    # Independently-derived axis contracts (Correction B / TASK 1):
+    #   full_axis_shl  — all model period indices from Base run (= SHL schedule axis)
+    #   senior_axis_shl — debt-active operating subset from SeniorDebtPolicy bounds
+    full_axis_shl: tuple[int, ...] = tuple(p.period_index for p in phase2b_result.periods)
+    senior_axis_shl: tuple[int, ...] = tuple(p.period_index for p in debt_periods)
 
     shl_interest_guess: dict[int, float] = {}
     previous_shl: ShareholderLoanSchedules | None = None
@@ -1119,6 +1148,7 @@ def _run_senior_debt_model_with_shl(inputs: SeniorDebtModelInput) -> ProjectMode
             senior_result.period_indices,
             senior_result.senior_interest_keur,
             label="shl_fixed_point.senior_interest",
+            expected_indices=senior_axis_shl,
         )
         base_tax = calculate_tax(
             phase2b_result.periods,
@@ -1139,6 +1169,7 @@ def _run_senior_debt_model_with_shl(inputs: SeniorDebtModelInput) -> ProjectMode
             phase2b_result.periods,
             tax_cfads,
             senior_result,
+            senior_axis=senior_axis_shl,
         )
         provisional_diag = ShareholderLoanDiagnostics(
             converged=False,
@@ -1161,6 +1192,7 @@ def _run_senior_debt_model_with_shl(inputs: SeniorDebtModelInput) -> ProjectMode
             shl_schedule.period_indices,
             shl_schedule.shl_gross_interest_keur,
             label="shl_fixed_point.gross_interest",
+            expected_indices=full_axis_shl,
         )
 
         if previous_shl is not None:
@@ -1197,10 +1229,12 @@ def _run_senior_debt_model_with_shl(inputs: SeniorDebtModelInput) -> ProjectMode
         )
 
     # FINAL_FINANCING_STATE_RECOMPUTED_FROM_CONVERGED_SHL_AND_SENIOR_SCHEDULES
+    # Correction B: validate final SHL interest against independently-derived full_axis_shl.
     final_shl_interest = _strict_period_map(
         previous_shl.period_indices,
         previous_shl.shl_gross_interest_keur,
         label="shl_fixed_point.final_gross_interest",
+        expected_indices=full_axis_shl,
     )
 
     def final_tax_cfads_fn(
@@ -1234,10 +1268,12 @@ def _run_senior_debt_model_with_shl(inputs: SeniorDebtModelInput) -> ProjectMode
             f"termination_reason={final_senior_result.diagnostics.termination_reason!r}"
         )
 
+    # Correction B: validate final senior interest against independently-derived senior_axis_shl.
     final_senior_interest = _strict_period_map(
         final_senior_result.period_indices,
         final_senior_result.senior_interest_keur,
         label="shl_fixed_point.final_senior_interest",
+        expected_indices=senior_axis_shl,
     )
     final_base_tax_input = _merge_financing_tax_input(
         base_tax_input,
@@ -1259,6 +1295,7 @@ def _run_senior_debt_model_with_shl(inputs: SeniorDebtModelInput) -> ProjectMode
         phase2b_result.periods,
         final_tax_cfads,
         final_senior_result,
+        senior_axis=senior_axis_shl,
     )
     # PR-3B CASH_DSRA roll-forward (downstream of Senior DS, upstream of DA/SHL).
     # For FORWARD_DEBT_SERVICE_MONTHS policy, build dynamic target from final SHL-path DS.
@@ -1392,10 +1429,13 @@ def _run_senior_debt_model_with_shl(inputs: SeniorDebtModelInput) -> ProjectMode
         final_bank_tax_result=final_bank_tax,
         final_bank_cfads_results=final_bank_cfads,
         senior_debt_result=final_senior_result,
+        senior_axis=senior_axis_shl,
     )
     result_schedules = _build_result_senior_debt_schedules(
         senior_debt_result=final_senior_result,
         final_tax_cfads=final_tax_cfads,
+        senior_axis=senior_axis_shl,
+        full_axis=full_axis_shl,
     )
 
     fingerprint = compute_senior_debt_fingerprint(inputs)
@@ -1549,6 +1589,12 @@ def run_senior_debt_model(inputs: SeniorDebtModelInput) -> ProjectModelResult:
         p for p in bank_phase2a_result.periods
         if p.is_operation and debt_start <= p.period_index <= debt_end
     )
+    # Independently-derived axis contracts (Correction B / TASK 1):
+    #   full_axis   — all model period indices (construction + operating) from Base run
+    #   senior_axis — debt-active operating subset from SeniorDebtPolicy bounds
+    #                 NOT derived from solver's returned period_indices
+    full_axis: tuple[int, ...] = tuple(p.period_index for p in phase2b_result.periods)
+    senior_axis: tuple[int, ...] = tuple(p.period_index for p in debt_periods)
     sd_result = solve_senior_debt(
         policy=policy,
         inputs=sd_inputs,
@@ -1570,10 +1616,12 @@ def run_senior_debt_model(inputs: SeniorDebtModelInput) -> ProjectModelResult:
     # Step 6: Recompute Base CFADS with final senior interest (authoritative base result).
     # The solver converged on bank CFADS; now update the Base tax/CFADS using the same
     # final senior interest so that result.tax_and_cfads is the correct Base CFADS.
+    # Correction B: validate final senior interest against independently-derived senior_axis.
     final_senior_interest = _strict_period_map(
         sd_result.period_indices,
         sd_result.senior_interest_keur,
         label="senior_debt.final_senior_interest",
+        expected_indices=senior_axis,
     )
     merged_base: dict[int, "PeriodInterestInput"] = {}
     for pi in base_tax_input.period_interest:
@@ -1626,21 +1674,25 @@ def run_senior_debt_model(inputs: SeniorDebtModelInput) -> ProjectModelResult:
         final_bank_tax_result=final_bank_tax_result,
         final_bank_cfads_results=final_bank_cfads_results,
         senior_debt_result=sd_result,
+        senior_axis=senior_axis,
     )
 
     # Step 8: Assemble result-layer SeniorDebtSchedules.
     # base_dscr = Base CFADS / senior DS per period (Base actual DSCR, NOT Bank sizing DSCR).
     # final_tax_cfads.cfads_keur is the authoritative Base CFADS (recomputed with final interest).
+    # Correction B: validate both vectors against independently-derived axes.
     import math as _math
     _sd_service_by_idx: dict[int, float] = _strict_period_map(
         sd_result.period_indices,
         sd_result.senior_debt_service_keur,
         label="senior_debt.result_service",
+        expected_indices=senior_axis,
     )
     _base_cfads_by_idx: dict[int, float] = _strict_period_map(
         final_tax_cfads.period_indices,
         final_tax_cfads.cfads_keur,
         label="senior_debt.result_base_cfads",
+        expected_indices=full_axis,
     )
     _base_dscr: tuple[float | None, ...] = tuple(
         (
@@ -1680,6 +1732,9 @@ def run_senior_debt_model(inputs: SeniorDebtModelInput) -> ProjectModelResult:
     # Build PostSeniorCashSchedules: Base CFADS authority for pre-reserve downstream cash.
     # All model periods (construction + operating). Bank CFADS is NOT read here.
     # CONSTRUCTION_SHL_AVAILABLE_CASH_IS_ZERO_BY_CONTRACT: construction is PIK.
+    # _sd_service_by_idx and _base_cfads_by_idx are already axis-validated above.
+    # Zeros outside the Senior debt tenor are filled via .get(idx, 0.0) — permitted
+    # only after the exact Senior subset has been accepted.
     _period_is_constr: dict[int, bool] = {
         p.period_index: p.is_construction for p in phase2b_result.periods
     }
