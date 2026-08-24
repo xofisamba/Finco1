@@ -163,28 +163,40 @@ class OpeningTaxLossVintageInput:
 
     def __post_init__(self) -> None:
         import math as _math
+        import numbers as _numbers
         # origin_tax_year: must be int, not bool
         if isinstance(self.origin_tax_year, bool) or not isinstance(self.origin_tax_year, int):
             raise ValueError(
                 "TAX_OPENING_LOSS_VINTAGE_INVALID_YEAR: origin_tax_year must be an integer, "
                 f"got {type(self.origin_tax_year).__name__!r}."
             )
-        # amount_keur: must be real numeric, not bool, not string, not NaN/Inf, not negative
+        # amount_keur: must be numbers.Real, not bool, not complex, not string, not NaN/Inf,
+        # not negative.  fractions.Fraction and other Real implementations are accepted.
         if isinstance(self.amount_keur, bool):
             raise ValueError(
                 "TAX_OPENING_LOSS_VINTAGE_INVALID_AMOUNT: amount_keur must be numeric, not bool."
             )
-        if not isinstance(self.amount_keur, (int, float)):
+        if isinstance(self.amount_keur, complex) and not isinstance(self.amount_keur, _numbers.Real):
             raise ValueError(
                 "TAX_OPENING_LOSS_VINTAGE_INVALID_AMOUNT: amount_keur must be a real numeric "
                 f"value, got {type(self.amount_keur).__name__!r}."
             )
-        if not _math.isfinite(self.amount_keur):
+        if not isinstance(self.amount_keur, _numbers.Real):
+            raise ValueError(
+                "TAX_OPENING_LOSS_VINTAGE_INVALID_AMOUNT: amount_keur must be a real numeric "
+                f"value, got {type(self.amount_keur).__name__!r}."
+            )
+        # NaN/Inf: only representable for float-like types
+        try:
+            _finite = _math.isfinite(float(self.amount_keur))
+        except (OverflowError, ValueError):
+            _finite = False
+        if not _finite:
             raise ValueError(
                 f"TAX_OPENING_LOSS_VINTAGE_INVALID_AMOUNT: amount_keur must be finite, "
                 f"got {self.amount_keur!r}."
             )
-        if self.amount_keur < 0.0:
+        if self.amount_keur < 0:
             raise ValueError(
                 f"TAX_OPENING_LOSS_VINTAGE_INVALID_AMOUNT: amount_keur must be non-negative, "
                 f"got {self.amount_keur!r}."

@@ -1163,14 +1163,26 @@ class OpeningTaxLossVintageParams:
                 f"origin_tax_year must be a four-digit calendar year, got "
                 f"{self.origin_tax_year!r}."
             )
+        import numbers as _numbers
         if isinstance(self.opening_amount_keur, bool):
             raise ValueError("opening_amount_keur must be numeric, not bool.")
-        if not isinstance(self.opening_amount_keur, (int, float)):
+        if isinstance(self.opening_amount_keur, complex) and not isinstance(
+            self.opening_amount_keur, _numbers.Real
+        ):
             raise ValueError(
                 "opening_amount_keur must be a real numeric value, "
                 f"got {type(self.opening_amount_keur).__name__!r}."
             )
-        if not _math.isfinite(self.opening_amount_keur) or self.opening_amount_keur < 0.0:
+        if not isinstance(self.opening_amount_keur, _numbers.Real):
+            raise ValueError(
+                "opening_amount_keur must be a real numeric value, "
+                f"got {type(self.opening_amount_keur).__name__!r}."
+            )
+        try:
+            _finite = _math.isfinite(float(self.opening_amount_keur))
+        except (OverflowError, ValueError):
+            _finite = False
+        if not _finite or self.opening_amount_keur < 0:
             raise ValueError(
                 "opening_amount_keur must be finite and non-negative, got "
                 f"{self.opening_amount_keur!r}."
@@ -1336,16 +1348,29 @@ class TaxParams:
             if not self.country_tax_policy_id.strip():
                 raise ValueError("country_tax_policy_id must be non-empty when provided.")
 
-        # corporate_rate_override: must be None, or a real numeric (not bool/str), finite, in [0,1]
+        # corporate_rate_override: must be None, or numbers.Real (not bool/complex/str),
+        # finite, in [0, 1].  fractions.Fraction and other Real implementations are accepted.
         if self.corporate_rate_override is not None:
+            import numbers as _numbers
             if isinstance(self.corporate_rate_override, bool):
                 raise ValueError("corporate_rate_override must be numeric, not bool.")
-            if not isinstance(self.corporate_rate_override, (int, float)):
+            if isinstance(self.corporate_rate_override, complex) and not isinstance(
+                self.corporate_rate_override, _numbers.Real
+            ):
                 raise ValueError(
                     "corporate_rate_override must be a real numeric value, "
                     f"got {type(self.corporate_rate_override).__name__!r}."
                 )
-            if not _math.isfinite(self.corporate_rate_override):
+            if not isinstance(self.corporate_rate_override, _numbers.Real):
+                raise ValueError(
+                    "corporate_rate_override must be a real numeric value, "
+                    f"got {type(self.corporate_rate_override).__name__!r}."
+                )
+            try:
+                _finite = _math.isfinite(float(self.corporate_rate_override))
+            except (OverflowError, ValueError):
+                _finite = False
+            if not _finite:
                 raise ValueError(
                     f"corporate_rate_override must be finite, got {self.corporate_rate_override!r}."
                 )

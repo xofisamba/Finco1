@@ -634,3 +634,435 @@ class TestCorrectionAAdversarialMatrix:
         )
         with pytest.raises(NotImplementedError, match="TUHO_SHL_TAX_POLICY_BLOCKED"):
             contract.policy.shl_tax_deductible_fraction()
+
+
+# ---------------------------------------------------------------------------
+# PR-10 Correction B: numbers.Real contract proof
+# ---------------------------------------------------------------------------
+
+class TestCorrectionBRealNumericContract:
+    """Prove numbers.Real is used — not the narrower (int, float) pair.
+
+    Tests for OpeningTaxLossVintageInput.amount_keur,
+    OpeningTaxLossVintageParams.opening_amount_keur, and
+    TaxParams.corporate_rate_override.
+    """
+
+    # ── fractions.Fraction is a numbers.Real and must be accepted ────────
+    def test_fraction_amount_accepted_in_vintage_input(self):
+        from fractions import Fraction
+        from financial_engine.inputs import OpeningTaxLossVintageInput
+
+        v = OpeningTaxLossVintageInput(origin_tax_year=2020, amount_keur=Fraction(1, 2))
+        assert float(v.amount_keur) == pytest.approx(0.5)
+
+    def test_fraction_zero_accepted_in_vintage_input(self):
+        from fractions import Fraction
+        from financial_engine.inputs import OpeningTaxLossVintageInput
+
+        v = OpeningTaxLossVintageInput(origin_tax_year=2020, amount_keur=Fraction(0))
+        assert v.amount_keur == 0
+
+    def test_fraction_amount_accepted_in_vintage_params(self):
+        from fractions import Fraction
+
+        v = OpeningTaxLossVintageParams(
+            origin_tax_year=2020, opening_amount_keur=Fraction(3, 4)
+        )
+        assert float(v.opening_amount_keur) == pytest.approx(0.75)
+
+    def test_fraction_rate_accepted_in_tax_params(self):
+        from fractions import Fraction
+
+        t = TaxParams(
+            country_tax_policy_id=SOURCE_POLICY_ID,
+            corporate_rate_override=Fraction(18, 100),
+        )
+        assert float(t.corporate_rate_override) == pytest.approx(0.18)
+
+    def test_fraction_rate_zero_accepted(self):
+        from fractions import Fraction
+
+        t = TaxParams(
+            country_tax_policy_id=SOURCE_POLICY_ID,
+            corporate_rate_override=Fraction(0),
+        )
+        assert t.corporate_rate_override == 0
+
+    def test_fraction_rate_one_accepted(self):
+        from fractions import Fraction
+
+        t = TaxParams(
+            country_tax_policy_id=SOURCE_POLICY_ID,
+            corporate_rate_override=Fraction(1),
+        )
+        assert t.corporate_rate_override == 1
+
+    # ── bool still rejected (bool is a subclass of int, which is Real) ───
+    def test_bool_rejected_vintage_input(self):
+        from financial_engine.inputs import OpeningTaxLossVintageInput
+        with pytest.raises(ValueError, match="not bool"):
+            OpeningTaxLossVintageInput(origin_tax_year=2020, amount_keur=True)
+
+    def test_bool_rejected_vintage_params(self):
+        with pytest.raises(ValueError, match="not bool"):
+            OpeningTaxLossVintageParams(origin_tax_year=2020, opening_amount_keur=False)
+
+    def test_bool_rejected_rate_override(self):
+        with pytest.raises(ValueError, match="not bool"):
+            TaxParams(country_tax_policy_id=SOURCE_POLICY_ID, corporate_rate_override=True)
+
+    # ── numeric strings rejected ──────────────────────────────────────────
+    def test_numeric_string_rejected_vintage_input(self):
+        from financial_engine.inputs import OpeningTaxLossVintageInput
+        with pytest.raises(ValueError, match="real numeric"):
+            OpeningTaxLossVintageInput(origin_tax_year=2020, amount_keur="500.0")
+
+    def test_numeric_string_rejected_vintage_params(self):
+        with pytest.raises(ValueError, match="real numeric"):
+            OpeningTaxLossVintageParams(origin_tax_year=2020, opening_amount_keur="500")
+
+    def test_numeric_string_rejected_rate_override(self):
+        with pytest.raises(ValueError, match="real numeric"):
+            TaxParams(country_tax_policy_id=SOURCE_POLICY_ID, corporate_rate_override="0.18")
+
+    # ── complex values rejected ───────────────────────────────────────────
+    def test_complex_rejected_vintage_input(self):
+        from financial_engine.inputs import OpeningTaxLossVintageInput
+        with pytest.raises(ValueError, match="real numeric"):
+            OpeningTaxLossVintageInput(origin_tax_year=2020, amount_keur=complex(1, 0))
+
+    def test_complex_rejected_vintage_params(self):
+        with pytest.raises(ValueError, match="real numeric"):
+            OpeningTaxLossVintageParams(origin_tax_year=2020, opening_amount_keur=complex(1, 0))
+
+    def test_complex_rejected_rate_override(self):
+        with pytest.raises(ValueError, match="real numeric"):
+            TaxParams(country_tax_policy_id=SOURCE_POLICY_ID, corporate_rate_override=complex(0.18, 0))
+
+    # ── NaN / ±Inf rejected ───────────────────────────────────────────────
+    def test_nan_rejected_vintage_input(self):
+        from financial_engine.inputs import OpeningTaxLossVintageInput
+        with pytest.raises(ValueError, match="must be finite"):
+            OpeningTaxLossVintageInput(origin_tax_year=2020, amount_keur=float("nan"))
+
+    def test_inf_rejected_vintage_params(self):
+        with pytest.raises(ValueError, match="non-negative"):
+            OpeningTaxLossVintageParams(origin_tax_year=2020, opening_amount_keur=float("inf"))
+
+    def test_nan_rejected_rate_override(self):
+        with pytest.raises(ValueError, match="must be finite"):
+            TaxParams(country_tax_policy_id=SOURCE_POLICY_ID, corporate_rate_override=float("nan"))
+
+    # ── exact zero preserved ──────────────────────────────────────────────
+    def test_zero_preserved_vintage_input(self):
+        from financial_engine.inputs import OpeningTaxLossVintageInput
+        v = OpeningTaxLossVintageInput(origin_tax_year=2020, amount_keur=0)
+        assert v.amount_keur == 0
+
+    def test_zero_preserved_vintage_params(self):
+        v = OpeningTaxLossVintageParams(origin_tax_year=2020, opening_amount_keur=0.0)
+        assert v.opening_amount_keur == 0.0
+
+    # ── corporate_rate 0 and 1 boundaries ────────────────────────────────
+    def test_rate_zero_accepted(self):
+        t = TaxParams(country_tax_policy_id=SOURCE_POLICY_ID, corporate_rate_override=0.0)
+        assert t.corporate_rate_override == pytest.approx(0.0)
+
+    def test_rate_one_accepted(self):
+        t = TaxParams(country_tax_policy_id=SOURCE_POLICY_ID, corporate_rate_override=1.0)
+        assert t.corporate_rate_override == pytest.approx(1.0)
+
+
+# ---------------------------------------------------------------------------
+# PR-10 Correction B: Production-adapter / E2E future-vintage proof
+# ---------------------------------------------------------------------------
+
+class TestCorrectionBProductionAdapterFutureVintage:
+    """Future-vintage rejection must propagate through the full production path.
+
+    Direct ledger rejection (Correction A) is a unit-level guard.
+    This proves the guard fires through build_tax_contract_from_project_inputs
+    and calculate_tax — the production-facing path.
+    """
+
+    def _project_with_vintage(self, origin_year: int, first_tax_year: int) -> object:
+        """Project with one explicit opening vintage; first operating year set via period."""
+        from dataclasses import replace as _replace
+        project = _replace(
+            _project(),
+            tax=_replace(
+                _project().tax,
+                opening_tax_loss_vintages=(
+                    OpeningTaxLossVintageParams(
+                        origin_tax_year=origin_year,
+                        opening_amount_keur=1000.0,
+                        source_label=f"test_vintage_{origin_year}",
+                    ),
+                ),
+                clean_cash_tax_timing_enabled=True,
+            ),
+        )
+        return project, first_tax_year
+
+    def test_e2e_future_vintage_rejected_via_calculate_tax(self):
+        """Future vintage (origin 2040) must be rejected when first tax year is 2031."""
+        from dataclasses import replace as _replace
+        from financial_engine.tax.engine import calculate_tax
+        from types import SimpleNamespace
+        from datetime import date
+
+        # Build project with vintage origin_year=2040, first represented tax year=2031
+        project = _replace(
+            _project(),
+            tax=_replace(
+                _project().tax,
+                opening_tax_loss_vintages=(
+                    OpeningTaxLossVintageParams(
+                        origin_tax_year=2040,
+                        opening_amount_keur=1000.0,
+                        source_label="future_vintage_e2e",
+                    ),
+                ),
+                clean_cash_tax_timing_enabled=True,
+            ),
+        )
+        contract = build_tax_contract_from_project_inputs(
+            project, complete_financing_interest_will_be_injected=False,
+        )
+        # Period whose tax year is 2031 — before the vintage origin 2040
+        period_2031 = SimpleNamespace(
+            period_index=0,
+            period_start=date(2031, 1, 1),
+            period_end=date(2032, 1, 1),
+            is_operation=True,
+            ebitda_keur=5000.0,
+            tax_depreciation_keur=100.0,
+        )
+        with pytest.raises(ValueError, match="TAX_OPENING_LOSS_FUTURE_VINTAGE"):
+            calculate_tax((period_2031,), contract)
+
+    def test_e2e_future_vintage_does_not_shelter_income(self):
+        """Future vintage must not shelter income — rejection is raised, not silently skipped."""
+        from dataclasses import replace as _replace
+        from financial_engine.tax.engine import calculate_tax
+        from types import SimpleNamespace
+        from datetime import date
+
+        project = _replace(
+            _project(),
+            tax=_replace(
+                _project().tax,
+                opening_tax_loss_vintages=(
+                    OpeningTaxLossVintageParams(
+                        origin_tax_year=2040,
+                        opening_amount_keur=1000.0,
+                        source_label="future_shelter_test",
+                    ),
+                ),
+                clean_cash_tax_timing_enabled=True,
+            ),
+        )
+        contract = build_tax_contract_from_project_inputs(
+            project, complete_financing_interest_will_be_injected=False,
+        )
+        period_2031 = SimpleNamespace(
+            period_index=0,
+            period_start=date(2031, 1, 1),
+            period_end=date(2032, 1, 1),
+            is_operation=True,
+            ebitda_keur=1000.0,
+            tax_depreciation_keur=0.0,
+        )
+        # Must raise — not produce a result with sheltered income
+        raised = False
+        try:
+            calculate_tax((period_2031,), contract)
+        except ValueError as exc:
+            raised = True
+            assert "TAX_OPENING_LOSS_FUTURE_VINTAGE" in str(exc)
+        assert raised, "Future vintage must raise, not silently shelter or ignore"
+
+    def test_e2e_same_year_vintage_accepted(self):
+        """Vintage with origin == first_tax_year must NOT be rejected (same-year E2E)."""
+        from dataclasses import replace as _replace
+        from financial_engine.tax.engine import calculate_tax
+        from types import SimpleNamespace
+        from datetime import date
+
+        project = _replace(
+            _project(),
+            tax=_replace(
+                _project().tax,
+                opening_tax_loss_vintages=(
+                    OpeningTaxLossVintageParams(
+                        origin_tax_year=2031,
+                        opening_amount_keur=500.0,
+                        source_label="same_year_e2e",
+                    ),
+                ),
+                clean_cash_tax_timing_enabled=True,
+            ),
+        )
+        contract = build_tax_contract_from_project_inputs(
+            project, complete_financing_interest_will_be_injected=False,
+        )
+        period_2031 = SimpleNamespace(
+            period_index=0,
+            period_start=date(2031, 1, 1),
+            period_end=date(2032, 1, 1),
+            is_operation=True,
+            ebitda_keur=5000.0,
+            tax_depreciation_keur=100.0,
+        )
+        result = calculate_tax((period_2031,), contract)
+        # Same-year vintage must be used (not rejected)
+        assert result.annual_results[0].loss_used_keur == pytest.approx(500.0)
+
+    def test_e2e_past_vintage_accepted_and_used(self):
+        """Vintage clearly in the past (origin 2025, first_year 2031) must be accepted and used."""
+        from dataclasses import replace as _replace
+        from financial_engine.tax.engine import calculate_tax
+        from types import SimpleNamespace
+        from datetime import date
+
+        project = _replace(
+            _project(loss_years=10),
+            tax=_replace(
+                _project(loss_years=10).tax,
+                opening_tax_loss_vintages=(
+                    OpeningTaxLossVintageParams(
+                        origin_tax_year=2025,
+                        opening_amount_keur=300.0,
+                        source_label="past_vintage_e2e",
+                    ),
+                ),
+                clean_cash_tax_timing_enabled=True,
+            ),
+        )
+        contract = build_tax_contract_from_project_inputs(
+            project, complete_financing_interest_will_be_injected=False,
+        )
+        period_2031 = SimpleNamespace(
+            period_index=0,
+            period_start=date(2031, 1, 1),
+            period_end=date(2032, 1, 1),
+            is_operation=True,
+            ebitda_keur=5000.0,
+            tax_depreciation_keur=100.0,
+        )
+        result = calculate_tax((period_2031,), contract)
+        assert result.annual_results[0].loss_used_keur == pytest.approx(300.0)
+
+
+# ---------------------------------------------------------------------------
+# PR-10 Correction B: Effective dual-authority proof (including construction_pl)
+# ---------------------------------------------------------------------------
+
+class TestCorrectionBEffectiveDualAuthority:
+    """Prove dual-authority guard fires on effective initial_tax_loss_keur.
+
+    The adapter checks tax.initial_tax_loss_keur which may come from
+    construction_pl.initial_tax_loss_keur rather than prior_tax_loss_keur
+    directly. The guard must fire on both paths.
+    """
+
+    def _project_base(self):
+        return _project()
+
+    def test_construction_pl_nonzero_plus_vintages_fails_closed(self):
+        """Non-zero construction_pl initial loss + explicit vintages → fail closed."""
+        from dataclasses import replace as _replace
+        from finco_core.tax.construction_pl import ConstructionPLStatement
+
+        project = self._project_base()
+        construction_pl = ConstructionPLStatement(
+            pre_operational_opex_keur=500.0,  # generates a non-zero initial loss
+        )
+        project = _replace(
+            project,
+            tax=_replace(
+                project.tax,
+                construction_pl=construction_pl,
+                prior_tax_loss_keur=0.0,  # legacy scalar neutral
+                opening_tax_loss_vintages=(
+                    OpeningTaxLossVintageParams(2025, 1000.0, "explicit_vintage"),
+                ),
+                clean_cash_tax_timing_enabled=True,
+            ),
+        )
+        # Adapter must refuse: effective initial_tax_loss_keur > 0 AND vintages present
+        with pytest.raises(NotImplementedError, match="initial_tax_loss_keur"):
+            build_tax_contract_from_project_inputs(
+                project, complete_financing_interest_will_be_injected=False
+            )
+
+    def test_zero_construction_pl_plus_vintages_allowed(self):
+        """Zero construction_pl loss + explicit vintages is allowed (neutral scalar)."""
+        from dataclasses import replace as _replace
+        from finco_core.tax.construction_pl import ConstructionPLStatement
+
+        project = self._project_base()
+        zero_construction_pl = ConstructionPLStatement()  # all defaults are 0.0
+        project = _replace(
+            project,
+            tax=_replace(
+                project.tax,
+                construction_pl=zero_construction_pl,
+                prior_tax_loss_keur=0.0,
+                opening_tax_loss_vintages=(
+                    OpeningTaxLossVintageParams(2025, 1000.0, "explicit_vintage"),
+                ),
+                clean_cash_tax_timing_enabled=True,
+            ),
+        )
+        contract = build_tax_contract_from_project_inputs(
+            project, complete_financing_interest_will_be_injected=False
+        )
+        # Zero construction_pl produces zero initial loss → adapter allows vintages
+        assert len(contract.opening_loss_vintages) == 1
+        assert contract.opening_loss_vintages[0].amount_keur == pytest.approx(1000.0)
+
+    def test_nonzero_construction_pl_without_vintages_fails_closed(self):
+        """Non-zero construction_pl without explicit vintages must also fail closed.
+
+        The non-zero scalar has no origin year and cannot be the clean vintage authority.
+        """
+        from dataclasses import replace as _replace
+        from finco_core.tax.construction_pl import ConstructionPLStatement
+
+        project = self._project_base()
+        construction_pl = ConstructionPLStatement(pre_operational_opex_keur=800.0)
+        project = _replace(
+            project,
+            tax=_replace(
+                project.tax,
+                construction_pl=construction_pl,
+                prior_tax_loss_keur=0.0,
+                opening_tax_loss_vintages=(),  # no explicit vintages
+                clean_cash_tax_timing_enabled=True,
+            ),
+        )
+        with pytest.raises(NotImplementedError, match="initial_tax_loss_keur"):
+            build_tax_contract_from_project_inputs(
+                project, complete_financing_interest_will_be_injected=False
+            )
+
+    def test_prior_tax_loss_keur_plus_vintages_fails_at_construction(self):
+        """prior_tax_loss_keur > 0 + vintages raises at TaxParams construction (conflicting authorities)."""
+        from dataclasses import replace as _replace
+
+        base = self._project_base()
+        # TaxParams.__post_init__ catches this before the adapter is even reached
+        with pytest.raises(ValueError, match="conflicting authorities"):
+            _replace(
+                base,
+                tax=_replace(
+                    base.tax,
+                    prior_tax_loss_keur=2000.0,
+                    opening_tax_loss_vintages=(
+                        OpeningTaxLossVintageParams(2025, 500.0, "conflict"),
+                    ),
+                    clean_cash_tax_timing_enabled=True,
+                ),
+            )
