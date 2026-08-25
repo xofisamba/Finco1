@@ -1595,12 +1595,21 @@ class TestGap24RealSeedInvariance:
 # ---------------------------------------------------------------------------
 
 class TestGap25PeriodAlignmentAttacks:
-    """GAP 25: _validate_interest_period_alignment raises with structured error codes
-    when the final interest contract has missing, unmatched, or duplicate periods.
+    """GAP 25 — HELPER_LEVEL_REGRESSION: _validate_interest_period_alignment helper unit tests.
 
-    These tests call the validation function directly (it is called by the B5 loop
-    at final convergence).  Each case uses pytest.raises with a specific error code —
-    never try/except: pass.
+    Classification: HELPER_LEVEL_REGRESSION
+    Authority level: unit / helper — tests the standalone validation helper directly,
+    NOT through the B5 production runtime.  These tests are retained as regression
+    coverage for the helper function's error-code contract, but they do NOT constitute
+    a real E2E attack matrix.
+
+    The authoritative Correction J E2E Senior attack matrix is in
+    TestCorrectionI_Task4_E2EAttackMatrix (TASK 1) and the Correction J E2E SHL attack
+    matrix is in TestCorrectionJ_SHLAxisAttacks (TASK 2).  Those classes monkeypatch
+    real production seams so the attacks travel through the B5 runtime.
+
+    Do NOT promote these tests to REAL_E2E status — they call _validate_interest_period_alignment
+    directly, bypassing the B5 loop and the CanonicalAxisContract authority check.
     """
 
     @pytest.fixture(scope="class")
@@ -2561,7 +2570,7 @@ class TestCorrectionI_Task4_E2EAttackMatrix:
             )
 
         with patch.object(_solver_mod, "solve_senior_debt", side_effect=_patched):
-            with pytest.raises(ValueError, match="AXIS_PERIOD_EXTRA|AXIS_PERIOD_MISSING"):
+            with pytest.raises(ValueError, match=r"^AXIS_PERIOD_EXTRA\b"):
                 run_senior_debt_model(_stl_sdi)
 
     def test_duplicate_senior_period_raises_AXIS_PERIOD_DUPLICATE(self, _stl_sdi):
@@ -3011,4 +3020,525 @@ class TestCorrectionI_Task6_SeedInvariance1e6:
                 f"TASK7_DELTA: {family}: delta={delta:.2e} kEUR > 1e-6 kEUR. "
                 "All deltas must be ≤ 1e-6 kEUR (NUMERICAL_FIXED_POINT_CLOSURE). "
                 "Classification: NUMERICAL_FIXED_POINT_CLOSURE — no formula/policy/economic assumption changed."
+            )
+
+
+# ---------------------------------------------------------------------------
+# CORRECTION J TASK 1: Complete Senior E2E Axis Attack Matrix
+# ---------------------------------------------------------------------------
+
+# The fixture and MISSING/DUPLICATE attacks live in TestCorrectionI_Task4_E2EAttackMatrix.
+# TASK 1 adds the two SHIFTED attacks and confirms the exact code for the extra attack
+# (already fixed above).  These new tests are added as methods on a sibling class so
+# they share the same _stl_sdi fixture pattern.
+
+class TestCorrectionJ_Task1_SeniorShiftedAttacks:
+    """CORRECTION J TASK 1: Shifted and reordered Senior period index attacks.
+
+    E2E Senior attack matrix — all 5 attacks through the real B5 runtime:
+
+      1. MISSING   — TestCorrectionI_Task4_E2EAttackMatrix.test_missing_senior_period_raises_AXIS_PERIOD_MISSING
+      2. EXTRA     — TestCorrectionI_Task4_E2EAttackMatrix.test_extra_senior_period_raises_AXIS_PERIOD_EXTRA (fixed)
+      3. DUPLICATE — TestCorrectionI_Task4_E2EAttackMatrix.test_duplicate_senior_period_raises_AXIS_PERIOD_DUPLICATE
+      4. SHIFTED   — test_shifted_senior_period_indices_raises_AXIS_PERIOD_SHIFTED (this class)
+      5. REORDERED — test_reordered_senior_period_indices_raises_AXIS_PERIOD_SHIFTED (this class)
+
+    _strict_period_map precedence (PR-F1):
+      AXIS_PERIOD_DUPLICATE → (length branch) AXIS_PERIOD_MISSING/EXTRA/AXIS_LENGTH_MISMATCH →
+      (same-length branch) AXIS_PERIOD_MISSING → AXIS_PERIOD_EXTRA → AXIS_PERIOD_SHIFTED
+
+    For shifted/reordered attacks: same set of indices, different order → same length,
+    same elements → AXIS_PERIOD_SHIFTED fires (missing == empty, extra == empty).
+    """
+
+    @pytest.fixture(scope="class")
+    def _stl_sdi(self):
+        """STL SeniorDebtModelInput for E2E Senior shifted attacks."""
+        import dataclasses
+        from app.project_factories import create_default_solar_project
+        from finco_core.inputs import ShlInterestDeductibilityMode
+        from financial_engine.adapters.project_inputs import (
+            build_senior_debt_model_input_from_project_inputs,
+        )
+        proj = create_default_solar_project()
+        new_tax = dataclasses.replace(
+            proj.tax,
+            shl_interest_deductibility=ShlInterestDeductibilityMode.SUBJECT_TO_LIMITATIONS,
+            atad_enabled=True,
+            atad_min_interest_keur=3000.0,
+        )
+        proj_stl = dataclasses.replace(proj, tax=new_tax)
+        return build_senior_debt_model_input_from_project_inputs(proj_stl)
+
+    def test_shifted_senior_period_indices_raises_AXIS_PERIOD_SHIFTED(self, _stl_sdi):
+        """Attack: solver returns Senior with reversed period_indices → AXIS_PERIOD_SHIFTED.
+
+        Reversed indices: same set, same length, wrong order → _strict_period_map detects
+        missing=empty, extra=empty → raises AXIS_PERIOD_SHIFTED (not MISSING or EXTRA).
+        """
+        from unittest.mock import patch
+        from financial_engine.orchestrator import run_senior_debt_model
+        from financial_engine.senior_debt import solver as _solver_mod
+
+        real_solve = _solver_mod.solve_senior_debt
+
+        def _patched(**kwargs):
+            result = real_solve(**kwargs)
+            n = len(result.period_indices)
+            if n < 2:
+                return result
+            # Reverse the period indices — same set, wrong order → AXIS_PERIOD_SHIFTED
+            from dataclasses import replace as _rep
+            return _rep(
+                result,
+                period_indices=result.period_indices[::-1],
+                senior_interest_keur=result.senior_interest_keur[::-1],
+                senior_principal_keur=result.senior_principal_keur[::-1],
+                senior_debt_service_keur=result.senior_debt_service_keur[::-1],
+                senior_debt_opening_keur=result.senior_debt_opening_keur[::-1],
+                senior_debt_closing_keur=result.senior_debt_closing_keur[::-1],
+                senior_dscr=result.senior_dscr[::-1],
+            )
+
+        with patch.object(_solver_mod, "solve_senior_debt", side_effect=_patched):
+            with pytest.raises(ValueError, match=r"^AXIS_PERIOD_SHIFTED\b"):
+                run_senior_debt_model(_stl_sdi)
+
+    def test_reordered_senior_period_indices_raises_AXIS_PERIOD_SHIFTED(self, _stl_sdi):
+        """Attack: solver returns Senior with first/last indices swapped → AXIS_PERIOD_SHIFTED.
+
+        Swapping first and last keeps the same multiset and same length.
+        _strict_period_map: same set → AXIS_PERIOD_SHIFTED.
+        """
+        from unittest.mock import patch
+        from financial_engine.orchestrator import run_senior_debt_model
+        from financial_engine.senior_debt import solver as _solver_mod
+
+        real_solve = _solver_mod.solve_senior_debt
+
+        def _patched(**kwargs):
+            result = real_solve(**kwargs)
+            n = len(result.period_indices)
+            if n < 2:
+                return result
+            # Swap first and last
+            from dataclasses import replace as _rep
+
+            def _swap(tup):
+                lst = list(tup)
+                lst[0], lst[-1] = lst[-1], lst[0]
+                return tuple(lst)
+
+            return _rep(
+                result,
+                period_indices=_swap(result.period_indices),
+                senior_interest_keur=_swap(result.senior_interest_keur),
+                senior_principal_keur=_swap(result.senior_principal_keur),
+                senior_debt_service_keur=_swap(result.senior_debt_service_keur),
+                senior_debt_opening_keur=_swap(result.senior_debt_opening_keur),
+                senior_debt_closing_keur=_swap(result.senior_debt_closing_keur),
+                senior_dscr=_swap(result.senior_dscr),
+            )
+
+        with patch.object(_solver_mod, "solve_senior_debt", side_effect=_patched):
+            with pytest.raises(ValueError, match=r"^AXIS_PERIOD_SHIFTED\b"):
+                run_senior_debt_model(_stl_sdi)
+
+
+# ---------------------------------------------------------------------------
+# CORRECTION J TASK 2: Real SHL production-path axis attacks
+# ---------------------------------------------------------------------------
+
+class TestCorrectionJ_SHLAxisAttacks:
+    """CORRECTION J TASK 2: Real SHL production-path axis attack matrix.
+
+    Each attack monkeypatches compute_shareholder_loan_schedules in
+    financial_engine.shl.production so that the corrupted SHL output reaches
+    the B5 _strict_period_map validation at:
+        _strict_period_map(
+            shl_schedule.period_indices,
+            shl_schedule.shl_gross_interest_keur,
+            label="shl_fixed_point.gross_interest",
+            expected_indices=full_axis_shl,
+        )
+
+    PR-F1 error precedence in _strict_period_map:
+      AXIS_PERIOD_DUPLICATE → (length mismatch) AXIS_PERIOD_MISSING/EXTRA/AXIS_LENGTH_MISMATCH
+                            → (same-length mismatch) AXIS_PERIOD_MISSING → AXIS_PERIOD_EXTRA
+                            → AXIS_PERIOD_SHIFTED
+
+    All attacks enter the real B5 runtime. No partial result is returned.
+    """
+
+    @pytest.fixture(scope="class")
+    def _stl_sdi(self):
+        """STL SeniorDebtModelInput for E2E SHL axis attacks."""
+        import dataclasses
+        from app.project_factories import create_default_solar_project
+        from finco_core.inputs import ShlInterestDeductibilityMode
+        from financial_engine.adapters.project_inputs import (
+            build_senior_debt_model_input_from_project_inputs,
+        )
+        proj = create_default_solar_project()
+        new_tax = dataclasses.replace(
+            proj.tax,
+            shl_interest_deductibility=ShlInterestDeductibilityMode.SUBJECT_TO_LIMITATIONS,
+            atad_enabled=True,
+            atad_min_interest_keur=3000.0,
+        )
+        proj_stl = dataclasses.replace(proj, tax=new_tax)
+        return build_senior_debt_model_input_from_project_inputs(proj_stl)
+
+    def test_missing_shl_period_raises_AXIS_PERIOD_MISSING(self, _stl_sdi):
+        """SHL missing period: compute_shareholder_loan_schedules returns one period fewer → AXIS_PERIOD_MISSING."""
+        from unittest.mock import patch
+        from financial_engine.orchestrator import run_senior_debt_model
+        import financial_engine.shl.production as _shl_mod
+
+        real_fn = _shl_mod.compute_shareholder_loan_schedules
+
+        call_count = [0]
+
+        def _patched(periods, shl_input, cash_avail, *, diagnostics):
+            result = real_fn(periods, shl_input, cash_avail, diagnostics=diagnostics)
+            call_count[0] += 1
+            if call_count[0] == 1:
+                # Remove the last period from the SHL schedule → MISSING
+                from dataclasses import replace as _rep
+                n = len(result.period_indices)
+                if n < 2:
+                    return result
+                return _rep(
+                    result,
+                    period_indices=result.period_indices[:-1],
+                    shl_opening_keur=result.shl_opening_keur[:-1],
+                    shl_drawdown_keur=result.shl_drawdown_keur[:-1],
+                    shl_gross_interest_keur=result.shl_gross_interest_keur[:-1],
+                    shl_cash_interest_keur=result.shl_cash_interest_keur[:-1],
+                    shl_pik_interest_keur=result.shl_pik_interest_keur[:-1],
+                    shl_principal_keur=result.shl_principal_keur[:-1],
+                    shl_debt_service_keur=result.shl_debt_service_keur[:-1],
+                    shl_closing_keur=result.shl_closing_keur[:-1],
+                    cash_available_for_shl_before_reserves_keur=result.cash_available_for_shl_before_reserves_keur[:-1],
+                    cash_remaining_after_shl_before_reserves_keur=result.cash_remaining_after_shl_before_reserves_keur[:-1],
+                )
+            return result
+
+        with patch.object(_shl_mod, "compute_shareholder_loan_schedules", side_effect=_patched):
+            with pytest.raises(ValueError, match=r"^AXIS_PERIOD_MISSING\b"):
+                run_senior_debt_model(_stl_sdi)
+
+    def test_extra_shl_period_raises_AXIS_PERIOD_EXTRA(self, _stl_sdi):
+        """SHL extra period: compute_shareholder_loan_schedules returns an extra period → AXIS_PERIOD_EXTRA.
+
+        The extra period index (99999) is not in the full canonical axis → AXIS_PERIOD_EXTRA
+        (extra set non-empty, missing set empty → AXIS_PERIOD_EXTRA fires before AXIS_LENGTH_MISMATCH).
+        """
+        from unittest.mock import patch
+        from financial_engine.orchestrator import run_senior_debt_model
+        import financial_engine.shl.production as _shl_mod
+
+        real_fn = _shl_mod.compute_shareholder_loan_schedules
+
+        call_count = [0]
+
+        def _patched(periods, shl_input, cash_avail, *, diagnostics):
+            result = real_fn(periods, shl_input, cash_avail, diagnostics=diagnostics)
+            call_count[0] += 1
+            if call_count[0] == 1:
+                # Add an extra period index not in full_axis_shl
+                from dataclasses import replace as _rep
+                extra = (99999,)
+                extra_f = (0.0,)
+                return _rep(
+                    result,
+                    period_indices=extra + result.period_indices,
+                    shl_opening_keur=extra_f + result.shl_opening_keur,
+                    shl_drawdown_keur=extra_f + result.shl_drawdown_keur,
+                    shl_gross_interest_keur=extra_f + result.shl_gross_interest_keur,
+                    shl_cash_interest_keur=extra_f + result.shl_cash_interest_keur,
+                    shl_pik_interest_keur=extra_f + result.shl_pik_interest_keur,
+                    shl_principal_keur=extra_f + result.shl_principal_keur,
+                    shl_debt_service_keur=extra_f + result.shl_debt_service_keur,
+                    shl_closing_keur=extra_f + result.shl_closing_keur,
+                    cash_available_for_shl_before_reserves_keur=extra_f + result.cash_available_for_shl_before_reserves_keur,
+                    cash_remaining_after_shl_before_reserves_keur=extra_f + result.cash_remaining_after_shl_before_reserves_keur,
+                )
+            return result
+
+        with patch.object(_shl_mod, "compute_shareholder_loan_schedules", side_effect=_patched):
+            with pytest.raises(ValueError, match=r"^AXIS_PERIOD_EXTRA\b"):
+                run_senior_debt_model(_stl_sdi)
+
+    def test_shifted_shl_periods_raises_AXIS_PERIOD_SHIFTED(self, _stl_sdi):
+        """SHL shifted periods: reversed period_indices (same set, wrong order) → AXIS_PERIOD_SHIFTED.
+
+        _strict_period_map: same length, same set → missing=empty, extra=empty → AXIS_PERIOD_SHIFTED.
+        """
+        from unittest.mock import patch
+        from financial_engine.orchestrator import run_senior_debt_model
+        import financial_engine.shl.production as _shl_mod
+
+        real_fn = _shl_mod.compute_shareholder_loan_schedules
+
+        call_count = [0]
+
+        def _patched(periods, shl_input, cash_avail, *, diagnostics):
+            result = real_fn(periods, shl_input, cash_avail, diagnostics=diagnostics)
+            call_count[0] += 1
+            if call_count[0] == 1 and len(result.period_indices) >= 2:
+                from dataclasses import replace as _rep
+                # Reverse period_indices only — values stay in original order
+                # This creates a mismatch between index order and expected canonical order
+                return _rep(result, period_indices=result.period_indices[::-1])
+            return result
+
+        with patch.object(_shl_mod, "compute_shareholder_loan_schedules", side_effect=_patched):
+            with pytest.raises(ValueError, match=r"^AXIS_PERIOD_SHIFTED\b"):
+                run_senior_debt_model(_stl_sdi)
+
+    def test_reordered_shl_periods_raises_AXIS_PERIOD_SHIFTED(self, _stl_sdi):
+        """SHL reordered periods: first/last swap (same set, wrong order) → AXIS_PERIOD_SHIFTED."""
+        from unittest.mock import patch
+        from financial_engine.orchestrator import run_senior_debt_model
+        import financial_engine.shl.production as _shl_mod
+
+        real_fn = _shl_mod.compute_shareholder_loan_schedules
+
+        call_count = [0]
+
+        def _patched(periods, shl_input, cash_avail, *, diagnostics):
+            result = real_fn(periods, shl_input, cash_avail, diagnostics=diagnostics)
+            call_count[0] += 1
+            if call_count[0] == 1 and len(result.period_indices) >= 2:
+                from dataclasses import replace as _rep
+
+                def _swap(tup):
+                    lst = list(tup)
+                    lst[0], lst[-1] = lst[-1], lst[0]
+                    return tuple(lst)
+
+                # Swap first and last period index only — same set, different order
+                return _rep(result, period_indices=_swap(result.period_indices))
+            return result
+
+        with patch.object(_shl_mod, "compute_shareholder_loan_schedules", side_effect=_patched):
+            with pytest.raises(ValueError, match=r"^AXIS_PERIOD_SHIFTED\b"):
+                run_senior_debt_model(_stl_sdi)
+
+    def test_duplicate_shl_period_raises_AXIS_PERIOD_DUPLICATE(self, _stl_sdi):
+        """SHL duplicate period: first index repeated → AXIS_PERIOD_DUPLICATE (fires first).
+
+        _strict_period_map checks len(set(indices)) != len(indices) BEFORE axis comparison.
+        """
+        from unittest.mock import patch
+        from financial_engine.orchestrator import run_senior_debt_model
+        import financial_engine.shl.production as _shl_mod
+
+        real_fn = _shl_mod.compute_shareholder_loan_schedules
+
+        call_count = [0]
+
+        def _patched(periods, shl_input, cash_avail, *, diagnostics):
+            result = real_fn(periods, shl_input, cash_avail, diagnostics=diagnostics)
+            call_count[0] += 1
+            if call_count[0] == 1 and len(result.period_indices) >= 1:
+                from dataclasses import replace as _rep
+                # Duplicate the first index — AXIS_PERIOD_DUPLICATE fires before any axis check
+                dup = (result.period_indices[0],)
+                dup_f = (0.0,)
+                return _rep(
+                    result,
+                    period_indices=dup + result.period_indices,
+                    shl_opening_keur=dup_f + result.shl_opening_keur,
+                    shl_drawdown_keur=dup_f + result.shl_drawdown_keur,
+                    shl_gross_interest_keur=dup_f + result.shl_gross_interest_keur,
+                    shl_cash_interest_keur=dup_f + result.shl_cash_interest_keur,
+                    shl_pik_interest_keur=dup_f + result.shl_pik_interest_keur,
+                    shl_principal_keur=dup_f + result.shl_principal_keur,
+                    shl_debt_service_keur=dup_f + result.shl_debt_service_keur,
+                    shl_closing_keur=dup_f + result.shl_closing_keur,
+                    cash_available_for_shl_before_reserves_keur=dup_f + result.cash_available_for_shl_before_reserves_keur,
+                    cash_remaining_after_shl_before_reserves_keur=dup_f + result.cash_remaining_after_shl_before_reserves_keur,
+                )
+            return result
+
+        with patch.object(_shl_mod, "compute_shareholder_loan_schedules", side_effect=_patched):
+            with pytest.raises(ValueError, match=r"^AXIS_PERIOD_DUPLICATE\b"):
+                run_senior_debt_model(_stl_sdi)
+
+
+# ---------------------------------------------------------------------------
+# CORRECTION J TASK 3: Real contract identity proof — Base and Bank tax inputs
+# ---------------------------------------------------------------------------
+
+class TestCorrectionJ_ContractIdentityProof:
+    """CORRECTION J TASK 3: Prove that the final FinancingInterestContract is the
+    sole authority for both Base and Bank TaxCalculationInput.period_interest.
+
+    Method: spy on financing_interest_maps_from_contract during the actual B5 run
+    to capture the exact maps used to build Base and Bank tax inputs.  Then verify
+    period-by-period that those maps equal the contract's interest vectors.
+
+    This is NOT a reconstructed proof — it captures the ACTUAL production call
+    made inside run_senior_debt_model() during the live B5 execution.
+
+    Identity claims:
+      Base final TaxCalculationInput:
+        senior_interest_keur[period] == contract.senior_interest_keur[period]
+        shl_interest_keur[period]    == contract.shl_gross_interest_keur[period]
+      Bank final TaxCalculationInput:
+        senior_interest_keur[period] == contract.senior_interest_keur[period]  (same contract)
+        shl_interest_keur[period]    == contract.shl_gross_interest_keur[period]  (same contract)
+    """
+
+    @pytest.fixture(scope="class")
+    def _contract_identity_evidence(self):
+        """Run B5 with a spy on financing_interest_maps_from_contract to capture
+        the exact maps used to build Base and Bank tax inputs.
+
+        Returns (base_senior_map, base_shl_map, bank_senior_map, bank_shl_map, contract).
+        """
+        import dataclasses
+        from app.project_factories import create_default_solar_project
+        from finco_core.inputs import ShlInterestDeductibilityMode
+        from financial_engine.adapters.project_inputs import (
+            build_senior_debt_model_input_from_project_inputs,
+        )
+        from financial_engine.orchestrator import (
+            run_senior_debt_model,
+            financing_interest_maps_from_contract as _real_fn,
+        )
+        from unittest.mock import patch
+
+        proj = create_default_solar_project()
+        new_tax = dataclasses.replace(
+            proj.tax,
+            shl_interest_deductibility=ShlInterestDeductibilityMode.SUBJECT_TO_LIMITATIONS,
+            atad_enabled=True,
+            atad_min_interest_keur=3000.0,
+        )
+        proj_stl = dataclasses.replace(proj, tax=new_tax)
+        sdi = build_senior_debt_model_input_from_project_inputs(proj_stl)
+
+        # Spy: capture calls made with the final Base and Bank contexts
+        captured: dict = {}
+
+        def _spy(contract, *, context):
+            result = _real_fn(contract, context=context)
+            if context == "BASE_TAX_FROM_CONTRACT":
+                captured["base_contract"] = contract
+                captured["base_senior_map"] = result[0]
+                captured["base_shl_map"] = result[1]
+            elif context == "BANK_TAX_FROM_CONTRACT":
+                captured["bank_contract"] = contract
+                captured["bank_senior_map"] = result[0]
+                captured["bank_shl_map"] = result[1]
+            return result
+
+        with patch(
+            "financial_engine.orchestrator.financing_interest_maps_from_contract",
+            side_effect=_spy,
+        ):
+            run_senior_debt_model(sdi)
+
+        return captured
+
+    def test_base_and_bank_contexts_captured(self, _contract_identity_evidence):
+        """Verify the spy captured both BASE_TAX_FROM_CONTRACT and BANK_TAX_FROM_CONTRACT calls."""
+        ev = _contract_identity_evidence
+        assert "base_contract" in ev, "BASE_TAX_FROM_CONTRACT call was not captured"
+        assert "bank_contract" in ev, "BANK_TAX_FROM_CONTRACT call was not captured"
+
+    def test_base_and_bank_use_same_contract(self, _contract_identity_evidence):
+        """Base and Bank tax inputs are both derived from the SAME final contract (same object identity)."""
+        ev = _contract_identity_evidence
+        assert ev["base_contract"] is ev["bank_contract"], (
+            "BASE and BANK tax inputs must derive from the SAME final FinancingInterestContract. "
+            "If they differ, the one-authority rule is violated."
+        )
+
+    def test_base_senior_interest_matches_contract_period_by_period(self, _contract_identity_evidence):
+        """Base TaxCalculationInput: senior_interest_keur[period] == contract.senior_interest_keur[period]."""
+        ev = _contract_identity_evidence
+        contract = ev["base_contract"]
+        base_senior_map: dict = ev["base_senior_map"]
+
+        contract_senior = dict(zip(contract.period_indices, contract.senior_interest_keur))
+        for idx, v in contract_senior.items():
+            assert base_senior_map.get(idx, 0.0) == pytest.approx(v, abs=1e-9), (
+                f"Period {idx}: Base senior_interest_from_map={base_senior_map.get(idx, 0.0):.8f} "
+                f"!= contract.senior_interest={v:.8f}. "
+                "The contract must be the sole source of Base senior interest."
+            )
+
+    def test_base_shl_interest_matches_contract_period_by_period(self, _contract_identity_evidence):
+        """Base TaxCalculationInput: shl_interest_keur[period] == contract.shl_gross_interest_keur[period]."""
+        ev = _contract_identity_evidence
+        contract = ev["base_contract"]
+        base_shl_map: dict = ev["base_shl_map"]
+
+        contract_shl = dict(zip(contract.period_indices, contract.shl_gross_interest_keur))
+        for idx, v in contract_shl.items():
+            assert base_shl_map.get(idx, 0.0) == pytest.approx(v, abs=1e-9), (
+                f"Period {idx}: Base shl_interest_from_map={base_shl_map.get(idx, 0.0):.8f} "
+                f"!= contract.shl_gross_interest={v:.8f}. "
+                "The contract must be the sole source of Base SHL interest."
+            )
+
+    def test_bank_senior_interest_matches_contract_period_by_period(self, _contract_identity_evidence):
+        """Bank TaxCalculationInput: senior_interest_keur[period] == contract.senior_interest_keur[period]."""
+        ev = _contract_identity_evidence
+        contract = ev["bank_contract"]
+        bank_senior_map: dict = ev["bank_senior_map"]
+
+        contract_senior = dict(zip(contract.period_indices, contract.senior_interest_keur))
+        for idx, v in contract_senior.items():
+            assert bank_senior_map.get(idx, 0.0) == pytest.approx(v, abs=1e-9), (
+                f"Period {idx}: Bank senior_interest_from_map={bank_senior_map.get(idx, 0.0):.8f} "
+                f"!= contract.senior_interest={v:.8f}. "
+                "The contract must be the sole source of Bank senior interest."
+            )
+
+    def test_bank_shl_interest_matches_contract_period_by_period(self, _contract_identity_evidence):
+        """Bank TaxCalculationInput: shl_interest_keur[period] == contract.shl_gross_interest_keur[period]."""
+        ev = _contract_identity_evidence
+        contract = ev["bank_contract"]
+        bank_shl_map: dict = ev["bank_shl_map"]
+
+        contract_shl = dict(zip(contract.period_indices, contract.shl_gross_interest_keur))
+        for idx, v in contract_shl.items():
+            assert bank_shl_map.get(idx, 0.0) == pytest.approx(v, abs=1e-9), (
+                f"Period {idx}: Bank shl_interest_from_map={bank_shl_map.get(idx, 0.0):.8f} "
+                f"!= contract.shl_gross_interest={v:.8f}. "
+                "The contract must be the sole source of Bank SHL interest."
+            )
+
+    def test_base_and_bank_use_identical_interest_maps(self, _contract_identity_evidence):
+        """Base and Bank use the SAME senior and SHL interest vectors (both from same contract).
+
+        The only permitted difference between Base and Bank tax inputs is
+        tax_periodisation_mode_override (Bank-side only) — not the interest vectors.
+        """
+        ev = _contract_identity_evidence
+        base_senior: dict = ev["base_senior_map"]
+        bank_senior: dict = ev["bank_senior_map"]
+        base_shl: dict = ev["base_shl_map"]
+        bank_shl: dict = ev["bank_shl_map"]
+
+        assert set(base_senior.keys()) == set(bank_senior.keys()), (
+            "Base and Bank senior_map must cover the same period indices"
+        )
+        assert set(base_shl.keys()) == set(bank_shl.keys()), (
+            "Base and Bank shl_map must cover the same period indices"
+        )
+        for idx in base_senior:
+            assert base_senior[idx] == pytest.approx(bank_senior[idx], abs=1e-9), (
+                f"Period {idx}: Base senior ({base_senior[idx]:.8f}) != Bank senior ({bank_senior[idx]:.8f}). "
+                "Both must derive from the same final contract."
+            )
+        for idx in base_shl:
+            assert base_shl[idx] == pytest.approx(bank_shl[idx], abs=1e-9), (
+                f"Period {idx}: Base SHL ({base_shl[idx]:.8f}) != Bank SHL ({bank_shl[idx]:.8f}). "
+                "Both must derive from the same final contract."
             )
