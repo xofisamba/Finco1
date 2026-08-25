@@ -111,7 +111,7 @@ jobs:
       - name: G0 generic clean engine
         run: |
           python -m pytest -q --tb=short \
-            tests/test_mvp_g0_generic_clean_engine.py
+            tests/test_mvp_g0_generic_clean_engine_enablement.py
 
       - name: G1 governance methodology lock
         run: |
@@ -151,7 +151,7 @@ jobs:
       - name: C3B3D2B8 base senior SHL parity
         run: |
           python -m pytest -q --tb=short \
-            tests/test_stage_c3b3d2b8_base_senior_shl_parity.py
+            tests/test_stage_c3b3d2b8_base_senior_shl_parity_closure.py
 
       - name: KUPI K0-K3 causal grid
         run: |

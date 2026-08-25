@@ -1,9 +1,9 @@
 # Pre-freeze Final Financial Authority Manifest
 
-**Classification:** PHASE_A_FINANCIAL_AUTHORITY_FREEZE_CANDIDATE  
-**PR:** PR-12  
-**Base SHA:** `101a50b93ca25a9b2dda93edee8bfc459e0c3b09` (PR-11 squash merge)  
-**Date:** 2026-08-25  
+**Classification:** PHASE_A_FINANCIAL_AUTHORITY_FREEZE_CANDIDATE
+**PR:** PR-12
+**Base SHA:** `101a50b93ca25a9b2dda93edee8bfc459e0c3b09` (PR-11 squash merge)
+**Date:** 2026-08-25
 **Scope:** Tests + Governance + Documentation. Production code unchanged.
 
 ---
@@ -12,7 +12,7 @@
 
 | # | Concept | Canonical Input Authority | Canonical Calculation Authority | Canonical Output Authority | Expected Axis | Permitted Downstream Consumers | Forbidden Alternative Authority | Freeze Status |
 |---|---------|--------------------------|--------------------------------|---------------------------|---------------|-------------------------------|--------------------------------|---------------|
-| 1 | **Project timeline / periods** | `OperatingModelInput.calendar` (→ `CalendarInput`) | `PeriodEngine` in `finco_core.engine.period_engine` | `CanonicalAxisContract` (full_axis, operating_axis, senior_axis) | full_axis | `run_operating_model`, `run_tax_cfads_model`, `run_senior_debt_model`, all downstream orchestrators | Project-level `ProjectInfo.construction_months` used directly as period source; any self-derived axis from solver output | `FROZEN_CLEAN_AUTHORITY` |
+| 1 | **Project timeline / periods** | `OperatingModelInput.calendar` (→ `CalendarInput`) is the runtime axis input authority. `ProjectInfo.construction_months` is a persisted project-level field; it is NOT the axis runtime authority — it must not be consumed directly as a period source by the financial engine. | `PeriodEngine` in `finco_core.engine.period_engine` | `CanonicalAxisContract` (full_axis, operating_axis, senior_axis) | full_axis | `run_operating_model`, `run_tax_cfads_model`, `run_senior_debt_model`, all downstream orchestrators | `ProjectInfo.construction_months` used directly as period source in financial engine; any self-derived axis from solver output | `FROZEN_CLEAN_AUTHORITY` |
 | 2 | **Revenue** | `OperatingModelInput.revenue` (→ `RevenueInput`) | `finco_core.revenue.generation.full_revenue_schedule` | `OperatingSchedules.revenue_keur` | full_axis | EBITDA calculation, CFADS derivation, tax base | Workbook-sourced revenue vectors; project-name-dispatched revenue schedules | `FROZEN_CLEAN_AUTHORITY` |
 | 3 | **OPEX** | `OperatingModelInput.opex` (→ `OpexInput`) | `finco_core.opex.projections.opex_schedule_period` | `OperatingSchedules.opex_keur` | full_axis | EBITDA calculation | Workbook-derived OPEX vectors; project-name dispatch | `FROZEN_CLEAN_AUTHORITY` |
 | 4 | **EBITDA** | `OperatingSchedules.{revenue_keur, opex_keur}` | `finco_core.ebitda.calculate_ebitda_keur` (signed: revenue − opex) | `OperatingSchedules.ebitda_keur` | full_axis | Tax base, canonical CFADS, DSCR sizing | Unsigned EBITDA; workbook EBITDA; any inline formula duplicating this calculation | `FROZEN_CLEAN_AUTHORITY` |
@@ -36,7 +36,7 @@
 | 22 | **DSCR** | Bank CFADS (sizing); Base CFADS (actual) | `solve_senior_debt` computes sizing DSCR internally; Base actual DSCR = Base CFADS / Senior DS at result layer | `SeniorDebtSchedules.base_dscr`; `DebtSizingSchedules.bank_sizing_dscr` | senior_axis | Binding constraint detection, covenant gate | Bank DSCR used as Base actual DSCR; any DSCR recomputed outside these two authorities | `FROZEN_CLEAN_AUTHORITY` |
 | 23 | **Post-senior cash** | `PostSeniorCashSchedules.{base_cfads_keur, senior_debt_service_keur}` | `financial_engine.orchestrator._assemble_post_senior_cash_schedules` (Base CFADS − Senior DS, zero for construction) | `PostSeniorCashSchedules.cash_after_senior_before_reserves_keur` | full_axis | SHL available cash, distribution gate | Workbook post-senior cash; any pre-computed residual | `FROZEN_CLEAN_AUTHORITY` |
 | 24 | **SHL operating interest** | `ShareholderLoanSchedules.shl_gross_interest_keur` (from B5 converged state) | `financial_engine.shl.production.compute_shareholder_loan_schedules` | `ShareholderLoanSchedules.shl_gross_interest_keur` | full_axis (SHL active periods) | FinancingInterestContract (shl_gross_interest_keur component), Bank tax merge | Workbook SHL interest schedule; any frozen historical SHL interest vector | `FROZEN_CLEAN_AUTHORITY` |
-| 25 | **SHL principal repayment** | `ShlRepaymentPolicy` (BULLET / SCULPTED_CFADS / CASH_SWEEP) | `financial_engine.shl.production.compute_shareholder_loan_schedules` | `ShareholderLoanSchedules.shl_principal_keur` | full_axis (SHL active periods) | SHL closing balance, post-SHL cash | Any workbook SHL principal schedule; virtual SHL | `FROZEN_CLEAN_AUTHORITY` |
+| 25 | **SHL principal repayment** | `ShlRepaymentPolicy` (BULLET / CASH_SWEEP / EXPLICIT_SCHEDULE) | `financial_engine.shl.production.compute_shareholder_loan_schedules` | `ShareholderLoanSchedules.shl_principal_keur` | full_axis (SHL active periods) | SHL closing balance, post-SHL cash | Any workbook SHL principal schedule; virtual SHL | `FROZEN_CLEAN_AUTHORITY` |
 | 26 | **Reserve / distribution-gate inputs currently supported** | `CovenantGatePolicy` (lockup_dscr, lockup_llcr); DSRA inputs (dsra_months via `FinancingParams`) | `financial_engine.shareholder_waterfall.model` (covenant gate) | `ShareholderWaterfallResult.{cash_available_for_distribution_keur, locked_up_keur}` | full_axis operating subset | Shareholder waterfall, sponsor cash | DSRA not fully modelled in Phase 2C — pre-reserve label on post-senior cash is mandatory | `PHASE_C_OUTPUT_COMPLETENESS_PENDING` — DSRA ordering unresolved; distributable cash label blocked |
 | 27 | **Shareholder waterfall** | `PostSeniorCashSchedules` + `ShareholderLoanSchedules` + covenant gate | `financial_engine.shareholder_waterfall.model.run_project_shareholder_waterfall_model` | `ShareholderWaterfallResult` | full_axis operating subset | Sponsor cash / returns | Any legacy `run_waterfall_v3_core` or `run_waterfall` invocation for promoted projects | `FROZEN_CLEAN_AUTHORITY` (Generic Solar/Wind promoted); TUHO/Oborovo → `PHASE_B_PRODUCTION_CUTOVER_PENDING` |
 | 28 | **Sponsor cash / returns currently supported** | `ShareholderWaterfallResult.{distributions_keur, sponsor_cash_flows}` | `financial_engine.shareholder_waterfall.model` | `ProjectModelKPIs.{total_distributions_keur}` | full_axis operating subset | UI / export (Phase later) | IRR / NPV / LLCR via clean engine (NOT YET IMPLEMENTED → `PHASE_C_OUTPUT_COMPLETENESS_PENDING`) | `PHASE_C_OUTPUT_COMPLETENESS_PENDING` — IRR, NPV, LLCR not yet computed by clean engine |
@@ -107,7 +107,18 @@ Waterfall      = run_project_shareholder_waterfall_model
 | Item | Status |
 |------|--------|
 | KUPI production clean path | `PHASE_D_PENDING` |
-| Product / UI / browser / export / pilot | Later phases — not in scope |
+
+### Phase E — Product / UI
+
+| Item | Status |
+|------|--------|
+| Product / UI / browser / export layer | `PHASE_E_PENDING` — not in scope for Phase A/B/C/D |
+
+### Phase F — Pilot
+
+| Item | Status |
+|------|--------|
+| Pilot / partner onboarding | `PHASE_F_PENDING` — not in scope for Phase A/B/C/D/E |
 
 ---
 
