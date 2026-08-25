@@ -109,6 +109,51 @@ class ProductionAuthorityResolutionError(Exception):
         self.detail = detail
 
 
+class CleanNotReadyError(Exception):
+    """Phase B1 typed fail-closed: production project is not clean-promoted.
+
+    Raised by the production router (run_project / execute_production_demo)
+    when classify_production_authority() returns a non-promoted decision and
+    the request arrived through a production route.
+
+    This is the ONLY typed signal a production route emits for a non-promoted
+    project — there is no silent legacy fallthrough.  Callers that need legacy
+    output MUST use the explicit legacy calibration entry point in project_runner.
+
+    Attributes:
+        classification: ProductionAuthorityClassification value (str)
+        reason_code:    machine-readable blocker token
+        detail:         human-readable explanation
+        runtime_authority: always "clean_not_ready"
+        calculation_count: always 0
+    """
+
+    def __init__(
+        self,
+        *,
+        classification: str,
+        reason_code: str,
+        detail: str,
+        runtime_authority: str = "clean_not_ready",
+        calculation_count: int = 0,
+    ):
+        super().__init__(f"{reason_code}: {detail}")
+        self.classification = classification
+        self.reason_code = reason_code
+        self.detail = detail
+        self.runtime_authority = runtime_authority
+        self.calculation_count = calculation_count
+
+    def to_metadata(self) -> dict:
+        return {
+            "classification": self.classification,
+            "reason_code": self.reason_code,
+            "detail": self.detail,
+            "runtime_authority": self.runtime_authority,
+            "calculation_count": self.calculation_count,
+        }
+
+
 def classify_production_authority(project_inputs) -> AuthorityDecision:
     """Classify a canonical ProjectInputs snapshot for production routing.
 

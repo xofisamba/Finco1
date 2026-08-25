@@ -1,0 +1,71 @@
+name: Phase B1 — Clean-Only Production Router
+
+on:
+  push:
+    branches:
+      - phaseb1-clean-only-production-router
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  b1-test-suite:
+    name: B1 Test Suite
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt || pip install -r constraints.txt || true
+
+      - name: B1 — Clean-only production router tests
+        run: |
+          python -m pytest -q --tb=short \
+            tests/test_phaseb1_clean_only_production_router.py
+
+      - name: Phase A ring — PR-12 authority causal freeze
+        run: |
+          python -m pytest -q --tb=short \
+            tests/test_prefreeze_pr12_final_authority_causal_freeze.py
+
+      - name: Phase A ring — PR-8 single production financial authority
+        run: |
+          python -m pytest -q --tb=short \
+            tests/test_prefreeze_pr8_single_production_financial_authority.py
+
+      - name: Governance scan — no legacy fallthrough in production router
+        run: |
+          # Verify no exception-driven fallback to legacy in _run_project_impl.
+          python -c "
+          import inspect
+          import sys
+          sys.path.insert(0, '.')
+          from app.api import project_runner
+          src = inspect.getsource(project_runner._run_project_impl)
+          # The CleanNotReadyError raise must be present.
+          assert 'CleanNotReadyError' in src, \
+              'CleanNotReadyError not found in _run_project_impl — B1 routing missing'
+          # Legacy fallthrough must only appear in force_legacy branch.
+          print('PASS: CleanNotReadyError present in _run_project_impl')
+          "
+
+      - name: Governance scan — run_project_legacy only in project_runner
+        run: |
+          # run_project_legacy must not be referenced in production service files.
+          MATCHES=$(git grep -l "run_project_legacy" -- app main_web.py main_api.py domain streamlit_app.py 2>/dev/null || true)
+          if [ "$MATCHES" != "app/api/project_runner.py" ]; then
+            echo "FAIL: run_project_legacy found outside project_runner: $MATCHES"
+            exit 1
+          fi
+          echo "PASS: run_project_legacy only in app/api/project_runner.py"
+
+      - name: git diff --check (no whitespace errors)
+        run: |
+          git diff --check HEAD

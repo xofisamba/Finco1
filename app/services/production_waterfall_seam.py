@@ -223,21 +223,34 @@ def execute_production_demo(project_type: str, scenario: str = "Base",
             )
             return demo, dict(view._authority_metadata)
 
-    # Explicitly blocked / unrecognised type: exact legacy demo funnel.
+    # Phase B1: fail-closed — no legacy production fallthrough.
+    # When we have a typed non-promoted decision, raise CleanNotReadyError.
+    # Only truly unrecognised types (inputs is None after factory lookup) still
+    # fall through; those are not named production projects.
+    if decision is not None and not decision.promoted:
+        from app.services.production_financial_authority import CleanNotReadyError
+
+        raise CleanNotReadyError(
+            classification=decision.classification.value,
+            reason_code=decision.reason_code,
+            detail=(
+                f"{decision.detail}  "
+                "(Phase B1: execute_production_demo is clean-only; no legacy "
+                "fallthrough.  Use the legacy calibration entry point for calibration.)"
+            ),
+            runtime_authority="clean_not_ready",
+            calculation_count=0,
+        )
+
+    # Truly unrecognised / unclassified type — exact legacy demo funnel.
     from app.ui_runner import run_demo_project
 
     demo = run_demo_project(
         project_type, scenario, project_inputs_override=project_inputs_override
     )
     meta = {
-        "classification": (
-            decision.classification.value if decision is not None
-            else "LEGACY_CALIBRATION_ONLY"
-        ),
-        "reason_code": (
-            decision.reason_code if decision is not None
-            else "PR8_ROUTE_NOT_CLASSIFIED"
-        ),
+        "classification": "LEGACY_CALIBRATION_ONLY",
+        "reason_code": "PR8_ROUTE_NOT_CLASSIFIED",
         "runtime_authority": "legacy_waterfall_calibration",
         "calculation_count": 1,
     }

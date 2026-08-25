@@ -1,6 +1,6 @@
 # Pre-freeze Final Financial Authority Manifest
 
-**Classification:** PHASE_A_FINANCIAL_AUTHORITY_FREEZE_CANDIDATE
+**Classification:** PHASE_A_FINANCIAL_AUTHORITY_FREEZE_COMPLETE
 **PR:** PR-12
 **Base SHA:** `101a50b93ca25a9b2dda93edee8bfc459e0c3b09` (PR-11 squash merge)
 **Date:** 2026-08-25
@@ -142,3 +142,38 @@ Waterfall      = run_project_shareholder_waterfall_model
 - **No virtual Senior:** no `terminal_top_up`, `virtual_debt`, or `tolerance_as_capacity` pattern.
 - **FinancingInterestContract fingerprint:** content_fingerprint = `hash((period_indices, senior_interest_keur, shl_gross_interest_keur))` — memory-address-independent.
 - **`financial_engine/tax/engine.py` unchanged** in PR-12 (tests + governance + docs only).
+
+---
+
+## Phase B Progress
+
+### Phase B1 — Clean-Only Production Router (phaseb1-clean-only-production-router)
+
+**Status:** PHASE_B1_CLEAN_ONLY_PRODUCTION_ROUTER_COMPLETE_CANDIDATE
+**Base SHA:** `99cc51a90e98b4869d168e78aeb736861240f8a2` (PR-12 squash merge)
+**Date:** 2026-08-25
+
+**Routing change:**
+- BEFORE: non-promoted production run → legacy waterfall (silent fallthrough)
+- AFTER: non-promoted production run → `CleanNotReadyError` (typed, calculation_count=0)
+
+**Production run outcomes:**
+- `run_project("Solar"/"Wind")` → `CLEAN_SUCCESS` (clean G2C, clean_calls=1, legacy_calls=0)
+- `run_project("Oborovo"/"TUHO")` → `CLEAN_NOT_READY` (CleanNotReadyError, calculation_count=0)
+- `execute_production_demo("Solar"/"Wind")` → clean G2C
+- `execute_production_demo("Oborovo"/"TUHO")` → CleanNotReadyError
+
+**Legacy calibration (unchanged):**
+- `run_project_legacy("Oborovo"/"TUHO")` → legacy waterfall, CALIBRATION_ONLY (force_legacy=True)
+- `execute_production_waterfall(allow_legacy=True)` → legacy waterfall (used by workbook export, runtime-summary)
+
+**Financial delta:** ZERO (Solar/Wind routing unchanged; fingerprints match PR-F1)
+
+**B1 test count:** 26 new tests in `tests/test_phaseb1_clean_only_production_router.py`
+
+**Remaining Phase B work:**
+- B2: Promote Oborovo (Country Tax Template prerequisite)
+- B3: Promote TUHO (typed financing contract fields prerequisite)
+- B3+: Remove `execute_production_waterfall(allow_legacy=True)` legacy branch
+
+**Concept 27 status update:** TUHO/Oborovo routes now `PHASE_B2_B3_PROMOTION_PENDING` (B1 fail-closed enforced; legacy only via explicit calibration entry point).

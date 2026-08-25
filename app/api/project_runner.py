@@ -278,7 +278,32 @@ def _run_project_impl(project_type: str, scenario: str, period_view: str = "Semi
             integration_note="Clean production financial authority (PR-8): "
                              "single G2C calculation, read-only presentation adapter.",
         )
+    elif (
+        not force_legacy
+        and authority_decision is not None
+        and not authority_decision.promoted
+    ):
+        # Phase B1: fail-closed — no legacy production fallthrough.
+        # A classified-but-not-promoted project raises a typed error.
+        # Production callers receive CLEAN_NOT_READY; calculation_count == 0.
+        # The legacy engine is ONLY reachable via run_project_legacy().
+        from app.services.production_financial_authority import CleanNotReadyError
+
+        raise CleanNotReadyError(
+            classification=authority_decision.classification.value,
+            reason_code=authority_decision.reason_code,
+            detail=(
+                f"{authority_decision.detail}  "
+                "(Phase B1: production router is clean-only; no legacy "
+                "fallthrough.  Use run_project_legacy() for calibration.)"
+            ),
+            runtime_authority="clean_not_ready",
+            calculation_count=0,
+        )
     else:
+        # force_legacy=True (explicit calibration via run_project_legacy) OR
+        # unclassified type (Portfolio / unknown project_type / override with
+        # validation errors) — exact legacy demo funnel, unchanged.
         demo = run_demo_project(project_type, scenario,
                                 project_inputs_override=project_inputs_override,
                                 use_dualrun_validation=use_dualrun_validation)
