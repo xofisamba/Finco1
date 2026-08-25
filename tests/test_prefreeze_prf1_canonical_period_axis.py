@@ -2363,3 +2363,201 @@ class TestCanonicalAxisContractMissingFailClosed:
         monkeypatch.setattr(_wf_mod, "run_project_financing_model", bad_financing)
         with pytest.raises(ValueError, match=r"CANONICAL_AXIS_CONTRACT_MISSING"):
             run_project_shareholder_waterfall_model(project)
+
+
+# ---------------------------------------------------------------------------
+# Correction H TASK 1: Real build_clean_waterfall_view() consumer attacks
+# ---------------------------------------------------------------------------
+
+def _import_build_clean_waterfall_view():
+    """Import build_clean_waterfall_view directly from its module file.
+
+    app/services/__init__.py imports fastapi which is not installed in the test
+    environment.  The module file itself only depends on finco_core and
+    financial_engine, both of which are installed.  importlib bypasses the
+    package __init__.py entirely.
+    """
+    import importlib.util
+    import pathlib
+    import sys
+
+    path = pathlib.Path(__file__).parent.parent / "app" / "services" / "clean_presentation_adapter.py"
+    mod_key = "_cpa_direct_correction_h"
+    if mod_key in sys.modules:
+        return sys.modules[mod_key].build_clean_waterfall_view
+    spec = importlib.util.spec_from_file_location(mod_key, str(path))
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[mod_key] = mod
+    spec.loader.exec_module(mod)
+    return mod.build_clean_waterfall_view
+
+
+class TestBuildCleanWaterfallViewDirectH:
+    """Correction H TASK 1: Real build_clean_waterfall_view() consumer attacks.
+
+    Each test calls build_clean_waterfall_view() directly (not map_period_vector
+    as a substitute).  The function is imported via importlib to bypass the
+    app/services/__init__.py fastapi dependency — the module file itself is
+    fully importable in the test environment.
+
+    A minimal duck-typed CleanProductionRun is constructed for each attack:
+      - 4-period model: construction(0), operating(1,2,3)
+      - full_axis = (0,1,2,3)
+      - op.period_indices = (0,1,2,3)   — always valid (Correction E full-axis)
+      - tax.period_indices = (0,1,2,3)  — always valid
+      - axis_contract.senior_axis = (1,2,3)  — policy-derived, immutable
+      - senior.period_indices = attack vector
+    """
+
+    @staticmethod
+    def _make_clean_run(*, senior_period_indices, axis_contract):
+        """Minimal duck-typed CleanProductionRun for build_clean_waterfall_view."""
+        _full = (0, 1, 2, 3)
+        _n = len(_full)
+        _sp = tuple(senior_period_indices)
+        _ns = len(_sp)
+        _ac = axis_contract
+
+        class _Period:
+            def __init__(self, idx):
+                self.period_index = idx
+                self.is_construction = (idx == 0)
+                self.period_end = None  # no waterfall date join needed
+
+        class _OpSched:
+            period_indices = _full
+            production_mwh = (0.0,) * _n
+            revenue_keur = (0.0,) * _n
+            opex_keur = (0.0,) * _n
+            ebitda_keur = (0.0,) * _n
+            book_depreciation_keur = (0.0,) * _n
+
+        class _TaxCfads:
+            period_indices = _full
+            taxable_profit_keur = (0.0,) * _n
+            corporate_tax_cash_keur = (0.0,) * _n
+            cfads_keur = (0.0,) * _n
+
+        class _SeniorDebt:
+            period_indices = _sp
+            senior_interest_keur = (0.0,) * _ns
+            senior_principal_keur = (0.0,) * _ns
+            senior_debt_service_keur = (0.0,) * _ns
+            senior_debt_closing_keur = (0.0,) * _ns
+            base_dscr = (None,) * _ns
+
+        class _Model:
+            periods = tuple(_Period(i) for i in range(4))
+            operating_schedules = _OpSched()
+            tax_and_cfads = _TaxCfads()
+            senior_debt = _SeniorDebt()
+            axis_contract = _ac
+
+        class _FinancingResult:
+            project_model_result = _Model()
+
+        class _IrrStatus:
+            value = "OK"
+
+        class _G2c:
+            financing_result = _FinancingResult()
+            waterfall_periods = ()
+            total_legal_equity_distributions_keur = 0.0
+            pure_equity_xirr = None
+            pure_equity_xirr_status = _IrrStatus()
+            total_sponsor_xirr = None
+            total_sponsor_xirr_status = _IrrStatus()
+
+        class _Financing:
+            target_dscr = 1.2
+
+        class _ProjectInputs:
+            financing = _Financing()
+
+        class _CleanRun:
+            g2c_result = _G2c()
+            project_inputs = _ProjectInputs()
+            authority_metadata = {}
+
+        return _CleanRun()
+
+    @staticmethod
+    def _make_contract(senior_axis):
+        from finco_core.engine.axis_contract import CanonicalAxisContract
+        return CanonicalAxisContract(
+            full_axis=(0, 1, 2, 3),
+            operating_axis=(1, 2, 3),
+            senior_axis=tuple(senior_axis),
+        )
+
+    def test_h1_shifted_senior_raises_axis_period_missing(self):
+        """H1: Shifted Senior period_indices → AXIS_PERIOD_MISSING via build_clean_waterfall_view.
+
+        supply (2,3,4) vs expected (1,2,3): same length, sets differ, missing={1} → AXIS_PERIOD_MISSING.
+        Proves build_clean_waterfall_view() itself raises — not a substitute call.
+        """
+        build_fn = _import_build_clean_waterfall_view()
+        contract = self._make_contract((1, 2, 3))
+        clean_run = self._make_clean_run(
+            senior_period_indices=(2, 3, 4),  # shifted +1
+            axis_contract=contract,
+        )
+        with pytest.raises(ValueError, match=r"^AXIS_PERIOD_MISSING(?:\b|:)"):
+            build_fn(clean_run)
+
+    def test_h2_missing_senior_period_raises_axis_period_missing(self):
+        """H2: Missing Senior period → AXIS_PERIOD_MISSING via build_clean_waterfall_view.
+
+        supply (1,2) vs expected (1,2,3): shorter, missing={3}, no extra → AXIS_PERIOD_MISSING.
+        """
+        build_fn = _import_build_clean_waterfall_view()
+        contract = self._make_contract((1, 2, 3))
+        clean_run = self._make_clean_run(
+            senior_period_indices=(1, 2),  # missing period 3
+            axis_contract=contract,
+        )
+        with pytest.raises(ValueError, match=r"^AXIS_PERIOD_MISSING(?:\b|:)"):
+            build_fn(clean_run)
+
+    def test_h3_reordered_senior_raises_axis_period_shifted(self):
+        """H3: Reordered Senior (same set, different order) → AXIS_PERIOD_SHIFTED via build_clean_waterfall_view.
+
+        supply (2,1,3) vs expected (1,2,3): same length, same set, different order → AXIS_PERIOD_SHIFTED.
+        """
+        build_fn = _import_build_clean_waterfall_view()
+        contract = self._make_contract((1, 2, 3))
+        clean_run = self._make_clean_run(
+            senior_period_indices=(2, 1, 3),  # reordered: 1 and 2 swapped
+            axis_contract=contract,
+        )
+        with pytest.raises(ValueError, match=r"^AXIS_PERIOD_SHIFTED(?:\b|:)"):
+            build_fn(clean_run)
+
+    def test_h4_duplicate_senior_raises_axis_period_duplicate(self):
+        """H4: Duplicate Senior period → AXIS_PERIOD_DUPLICATE via build_clean_waterfall_view.
+
+        supply (1,1,2,3) vs expected (1,2,3): duplicate raw index 1 → AXIS_PERIOD_DUPLICATE.
+        """
+        build_fn = _import_build_clean_waterfall_view()
+        contract = self._make_contract((1, 2, 3))
+        clean_run = self._make_clean_run(
+            senior_period_indices=(1, 1, 2, 3),  # duplicate period 1
+            axis_contract=contract,
+        )
+        with pytest.raises(ValueError, match=r"^AXIS_PERIOD_DUPLICATE(?:\b|:)"):
+            build_fn(clean_run)
+
+    def test_h5_active_senior_without_contract_raises_canonical_axis_contract_missing(self):
+        """H5: Active Senior + axis_contract=None → CANONICAL_AXIS_CONTRACT_MISSING via build_clean_waterfall_view.
+
+        Correction G fail-closed guard: when senior.period_indices is non-empty and
+        model.axis_contract is absent, build_clean_waterfall_view must raise
+        CANONICAL_AXIS_CONTRACT_MISSING before any map_period_vector call.
+        """
+        build_fn = _import_build_clean_waterfall_view()
+        clean_run = self._make_clean_run(
+            senior_period_indices=(1, 2, 3),  # active Senior
+            axis_contract=None,               # contract absent
+        )
+        with pytest.raises(ValueError, match=r"CANONICAL_AXIS_CONTRACT_MISSING"):
+            build_fn(clean_run)
