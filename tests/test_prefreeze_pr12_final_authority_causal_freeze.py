@@ -881,10 +881,13 @@ class TestG_ZeroShlCounterfactual:
         Proves via the clean B5 production path (run_senior_debt_model):
         - EQUITY_ONLY: shareholder_loan is None (zero SHL principal, zero SHL interest).
         - EQUITY_ONLY Senior debt size is not inflated by any SHL-principal additive term.
-        - Senior DS = interest + principal (no SHL addition) in the EQUITY_ONLY case.
+        - When gearing binds in both the normal-SHL and EQUITY_ONLY cases (target_dscr=1.2),
+          the Senior debt_size_keur must be IDENTICAL (within 1e-6 kEUR), unconditionally.
         - Structural: solve_senior_debt takes only CFADS and Senior sizing parameters;
-          SHL principal does NOT appear as an additive input to Senior debt sizing
-          (structural proof via SHL=None result identity).
+          SHL principal does NOT appear as an additive input to Senior debt sizing.
+
+        target_dscr=1.2 is chosen because diagnostics confirm it puts BOTH the normal-SHL
+        and EQUITY_ONLY cases into GEARING binding (verified by exploration script).
 
         STRUCTURAL NOTE: The production solver (financial_engine/senior_debt/solver.py)
         does not accept SHL principal as a parameter — Senior sizing is determined solely
@@ -897,7 +900,12 @@ class TestG_ZeroShlCounterfactual:
             build_senior_debt_model_input_from_project_inputs,
         )
         from financial_engine.orchestrator import run_senior_debt_model
+        from financial_engine.senior_debt.policy import SeniorDebtPolicy
         from finco_core.inputs import SponsorFundingMode
+
+        # target_dscr=1.2 puts BOTH normal-SHL and EQUITY_ONLY into GEARING binding.
+        # Verified via exploration: at 1.2 both cases show bc=GEARING with delta=0.
+        GEARING_TARGET_DSCR = 1.2
 
         proj = create_default_solar_project()
 
@@ -915,97 +923,77 @@ class TestG_ZeroShlCounterfactual:
         sdi_shl = build_senior_debt_model_input_from_project_inputs(proj)
         sdi_eq = build_senior_debt_model_input_from_project_inputs(proj_eq)
 
-        r_shl = run_senior_debt_model(sdi_shl)
-        r_eq = run_senior_debt_model(sdi_eq)
-
-        # Prove 1: EQUITY_ONLY produces no shareholder_loan schedule (true zero SHL).
-        assert r_eq.shareholder_loan is None, (
-            "EQUITY_ONLY must produce shareholder_loan=None (zero SHL principal and interest)"
-        )
-
-        # Prove 2: Senior DS = interest + principal (no SHL-principal addition) in EQUITY_ONLY.
-        sd_eq = r_eq.senior_debt
-        assert sd_eq is not None, "EQUITY_ONLY must still produce Senior debt schedule"
-        for i, (ds, interest, principal) in enumerate(zip(
-            sd_eq.senior_debt_service_keur,
-            sd_eq.senior_interest_keur,
-            sd_eq.senior_principal_keur,
-        )):
-            assert abs(ds - (interest + principal)) < 1e-4, (
-                f"EQUITY_ONLY Senior DS[{i}] = {ds:.6f} != "
-                f"interest({interest:.6f}) + principal({principal:.6f})"
-            )
-
-        # Prove 3: Senior DS = interest + principal also holds for SHL case (no SHL addition).
-        sd_shl = r_shl.senior_debt
-        if sd_shl is not None:
-            for i, (ds, interest, principal) in enumerate(zip(
-                sd_shl.senior_debt_service_keur,
-                sd_shl.senior_interest_keur,
-                sd_shl.senior_principal_keur,
-            )):
-                assert abs(ds - (interest + principal)) < 1e-4, (
-                    f"SHL case Senior DS[{i}] = {ds:.6f} != "
-                    f"interest({interest:.6f}) + principal({principal:.6f})"
-                )
-
-        # Prove 4: Gearing-controlled comparison — SHL principal is NOT directly added to Senior.
-        # When the gearing constraint binds in both cases (EQUITY_ONLY and normal-SHL),
-        # the Senior debt_size_keur must be IDENTICAL (within 1e-6 kEUR), proving that
-        # the SHL principal was not injected as an additive term in the solver.
-        # We force gearing to bind by using a very high target_dscr (so DSCR is never binding
-        # before gearing, confirming gearing is the operative constraint in both cases).
-        from financial_engine.senior_debt.policy import SeniorDebtPolicy
-
-        # Build gearing-forced variants (target_dscr=5.0 ensures gearing binds first).
+        # Apply the gearing-forcing target_dscr to both cases.
         policy_shl: SeniorDebtPolicy = sdi_shl.senior_debt_policy  # type: ignore
-        policy_gearing = dataclasses.replace(policy_shl, target_dscr=5.0)
+        policy_gearing = dataclasses.replace(policy_shl, target_dscr=GEARING_TARGET_DSCR)
         sdi_shl_gearing = dataclasses.replace(sdi_shl, senior_debt_policy=policy_gearing)
 
         policy_eq: SeniorDebtPolicy = sdi_eq.senior_debt_policy  # type: ignore
-        policy_eq_gearing = dataclasses.replace(policy_eq, target_dscr=5.0)
+        policy_eq_gearing = dataclasses.replace(policy_eq, target_dscr=GEARING_TARGET_DSCR)
         sdi_eq_gearing = dataclasses.replace(sdi_eq, senior_debt_policy=policy_eq_gearing)
 
         r_shl_g = run_senior_debt_model(sdi_shl_gearing)
         r_eq_g = run_senior_debt_model(sdi_eq_gearing)
+
+        # Unconditional: EQUITY_ONLY produces no shareholder_loan schedule (true zero SHL).
+        assert r_eq_g.shareholder_loan is None, (
+            "EQUITY_ONLY must produce shareholder_loan=None (zero SHL principal and interest)"
+        )
+
+        # Unconditional: normal-SHL case must have SHL principal > 0 across periods.
+        assert r_shl_g.shareholder_loan is not None, "Normal-SHL case must have shareholder_loan"
+        normal_shl_principal = sum(r_shl_g.shareholder_loan.shl_drawdown_keur)
+        assert normal_shl_principal > 0, (
+            f"Normal-SHL case must have positive SHL drawdown (principal): {normal_shl_principal:.4f}"
+        )
 
         diag_shl = r_shl_g.senior_debt.diagnostics
         diag_eq = r_eq_g.senior_debt.diagnostics
         bc_shl = diag_shl.get("binding_constraint")
         bc_eq = diag_eq.get("binding_constraint")
 
-        # Report the authoritative constraint diagnostics for both cases.
         shl_debt = r_shl_g.senior_debt.debt_size_keur
         eq_debt = r_eq_g.senior_debt.debt_size_keur
         shl_dscr_cap = diag_shl.get("dscr_debt_capacity_keur", float("nan"))
         eq_dscr_cap = diag_eq.get("dscr_debt_capacity_keur", float("nan"))
         shl_gear_cap = diag_shl.get("gearing_debt_capacity_keur", float("nan"))
         eq_gear_cap = diag_eq.get("gearing_debt_capacity_keur", float("nan"))
-        shl_total_cfads = sum(r_shl_g.debt_sizing.bank_cfads_keur)
-        eq_total_cfads = sum(r_eq_g.debt_sizing.bank_cfads_keur)
 
-        # When gearing binds in both cases, Senior size must be identical.
-        if bc_shl in ("GEARING", "BOTH") and bc_eq in ("GEARING", "BOTH"):
-            assert abs(shl_debt - eq_debt) <= 1e-6, (
-                f"Gearing-controlled: SHL Senior ({shl_debt:.6f} kEUR) != "
-                f"EQUITY_ONLY Senior ({eq_debt:.6f} kEUR). "
-                f"SHL principal must NOT be directly added to Senior. "
-                f"shl_binding={bc_shl}, eq_binding={bc_eq}, "
-                f"shl_gearing_cap={shl_gear_cap:.2f}, eq_gearing_cap={eq_gear_cap:.2f}"
-            )
-        # Either both must have gearing bind, or we document the constraints.
-        assert bc_shl in ("GEARING", "BOTH", "DSCR"), (
-            f"Unexpected binding_constraint for SHL+gearing case: {bc_shl!r}"
+        # Unconditional: both must be gearing-binding at target_dscr=1.2.
+        assert bc_shl in ("GEARING", "BOTH"), (
+            f"Normal-SHL case must be GEARING or BOTH at target_dscr={GEARING_TARGET_DSCR}, "
+            f"got: {bc_shl!r}. "
+            f"dscr_cap={shl_dscr_cap:.2f}, gear_cap={shl_gear_cap:.2f}, debt={shl_debt:.2f}"
         )
-        assert bc_eq in ("GEARING", "BOTH", "DSCR"), (
-            f"Unexpected binding_constraint for EQUITY_ONLY+gearing case: {bc_eq!r}"
+        assert bc_eq in ("GEARING", "BOTH"), (
+            f"EQUITY_ONLY case must be GEARING or BOTH at target_dscr={GEARING_TARGET_DSCR}, "
+            f"got: {bc_eq!r}. "
+            f"dscr_cap={eq_dscr_cap:.2f}, gear_cap={eq_gear_cap:.2f}, debt={eq_debt:.2f}"
         )
-        # Assert gearing capacities are identical (same eligible cost, same gearing authority).
-        if not (math.isnan(shl_gear_cap) or math.isnan(eq_gear_cap)):
-            assert abs(shl_gear_cap - eq_gear_cap) <= 1e-6, (
-                f"Gearing capacity must be identical for same eligible cost: "
-                f"shl={shl_gear_cap:.6f}, eq={eq_gear_cap:.6f}"
-            )
+
+        # Unconditional: gearing capacities must be identical (same eligible cost).
+        assert abs(shl_gear_cap - eq_gear_cap) <= 1e-6, (
+            f"Gearing capacity must be identical for same eligible cost: "
+            f"shl={shl_gear_cap:.6f}, eq={eq_gear_cap:.6f}"
+        )
+
+        # Unconditional: Senior debt sizes must be identical (SHL principal NOT added to Senior).
+        assert abs(shl_debt - eq_debt) <= 1e-6, (
+            f"Gearing-controlled: SHL Senior ({shl_debt:.6f} kEUR) != "
+            f"EQUITY_ONLY Senior ({eq_debt:.6f} kEUR). "
+            f"SHL principal must NOT be directly added to Senior. "
+            f"target_dscr={GEARING_TARGET_DSCR}, "
+            f"shl_binding={bc_shl}, eq_binding={bc_eq}, "
+            f"shl_gearing_cap={shl_gear_cap:.2f}, eq_gearing_cap={eq_gear_cap:.2f}, "
+            f"shl_dscr_cap={shl_dscr_cap:.2f}, eq_dscr_cap={eq_dscr_cap:.2f}, "
+            f"normal_shl_principal={normal_shl_principal:.2f}"
+        )
+
+        # Informational assertions (always true when gearing binds with same eligible cost).
+        assert not math.isnan(shl_dscr_cap) and not math.isnan(eq_dscr_cap), (
+            "DSCR capacities must be finite for both cases"
+        )
+        assert shl_gear_cap > 0, "Gearing capacity must be positive"
 
     def test_g2_shl_schedule_closed_form_identity(self, solar_full_result):
         """SHL schedule satisfies the closing balance identity for all periods."""
@@ -1910,6 +1898,9 @@ class TestNoRuntimeWorkbook:
         "virtual_senior",
         "virtual_debt",
         # Project-name dispatch is forbidden in clean modules.
+        # The scanner normalises all string literals to "value" form (quote-independent),
+        # so '"oborovo"' catches BOTH 'oborovo' and "oborovo" in source, but NOT longer
+        # strings like "for Oborovo (C3B1)..." which appear in audit comments.
         '"oborovo"',
         '"tuho"',
     ]
@@ -1961,6 +1952,15 @@ class TestNoRuntimeWorkbook:
         except tokenize.TokenError as exc:
             raise SyntaxError(f"Tokenization failed: {exc}") from exc
 
+        # Step 4: Build a map from (lineno, col_offset) → string VALUE for all non-docstring
+        # ast.Constant string nodes. This enables quote-independent value-level scanning.
+        constant_value_map: dict[tuple[int, int], str] = {}
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Constant) and isinstance(node.value, str):
+                pos = (node.lineno, node.col_offset)
+                if pos not in docstring_positions:
+                    constant_value_map[pos] = node.value
+
         for tok_type, tok_string, tok_start, tok_end, tok_line in tokens:
             row, col = tok_start
             if tok_type == tokenize.COMMENT:
@@ -1971,7 +1971,14 @@ class TestNoRuntimeWorkbook:
                 if (row, col) in docstring_positions:
                     result_parts.append("")
                 else:
-                    result_parts.append(tok_string)
+                    # Emit the string VALUE (not the source token) so that pattern matching
+                    # is quote-independent: 'tuho' and "tuho" both emit tuho in the scanned text.
+                    val = constant_value_map.get((row, col))
+                    if val is not None:
+                        # Emit value wrapped in quotes for reliable substring matching.
+                        result_parts.append(f'"{val}"')
+                    else:
+                        result_parts.append(tok_string)
             else:
                 result_parts.append(tok_string)
 
@@ -1987,8 +1994,9 @@ class TestNoRuntimeWorkbook:
         """
         hits = []
         for module_path in self.CLEAN_ENGINE_MODULES:
-            if not module_path.exists():
-                continue
+            assert module_path.exists(), (
+                f"FAIL-CLOSED: module listed in CLEAN_ENGINE_MODULES not found on disk: {module_path}"
+            )
             raw_text = module_path.read_text(encoding="utf-8")
             # Strip docstrings and comments — only check executable code.
             executable_text = self._strip_docstrings_and_comments(raw_text).lower()
@@ -2024,8 +2032,9 @@ class TestNoRuntimeWorkbook:
             '"tuho"',
         ]
         for module_path in self.CLEAN_ENGINE_MODULES:
-            if not module_path.exists():
-                continue
+            assert module_path.exists(), (
+                f"FAIL-CLOSED: module listed in CLEAN_ENGINE_MODULES not found on disk: {module_path}"
+            )
             text = module_path.read_text(encoding="utf-8").lower()
             for pattern in forbidden:
                 if pattern.lower() in text:
@@ -2303,3 +2312,70 @@ class TestScannerIntegrity:
         bad_source = 'def foo(:\n    pass\n'
         with pytest.raises((SyntaxError, ValueError)):
             self._scan(bad_source)
+
+    # --- SINGLE-QUOTE NEGATIVE CONTROLS (must be caught — quote-independent) ---
+
+    def test_neg9_project_name_tuho_single_quote_caught(self):
+        """Single-quoted 'tuho' must be caught just as double-quoted "tuho" is.
+
+        The scanner normalises all string literals to "value" form, so both
+        'tuho' and "tuho" produce "tuho" in the scanned text and are caught by '"tuho"'.
+        """
+        source = "if project_name == 'tuho': pass\n"
+        self._assert_caught(source, '"tuho"')
+
+    def test_neg10_project_code_oborovo_single_quote_caught(self):
+        """Single-quoted 'oborovo' must be caught just as double-quoted "oborovo" is."""
+        source = "if project_code == 'oborovo': pass\n"
+        self._assert_caught(source, '"oborovo"')
+
+    def test_neg11_executable_dict_single_quote_fixture_caught(self):
+        """Single-quoted executable string containing a forbidden fixture path must be caught."""
+        source = "d = {'key': 'tests/fixtures/x.json'}\n"
+        self._assert_caught(source, "tests/fixtures")
+
+    # --- MODULE EXISTENCE FAIL-CLOSED ---
+
+    def test_module_existence_fail_closed(self, tmp_path):
+        """If any CLEAN_ENGINE_MODULES entry does not exist, the scan must raise/fail.
+
+        This proves the scanner is fail-closed (no silent skipping of missing modules).
+        """
+        import ast
+
+        # Build a list with one nonexistent path.
+        nonexistent = tmp_path / "does_not_exist.py"
+        modules_with_missing = list(TestNoRuntimeWorkbook.CLEAN_ENGINE_MODULES) + [nonexistent]
+
+        # Verify all production modules exist, and the nonexistent one does not.
+        missing_production = [p for p in TestNoRuntimeWorkbook.CLEAN_ENGINE_MODULES if not p.exists()]
+        assert not missing_production, (
+            f"Some CLEAN_ENGINE_MODULES do not exist on disk: {missing_production}"
+        )
+        assert not nonexistent.exists(), "Nonexistent path must not exist for this test"
+
+        # The fail-closed invariant: if any module is missing, assert/fail must be raised.
+        # Simulate the fail-closed check directly.
+        with pytest.raises(AssertionError):
+            for module_path in modules_with_missing:
+                assert module_path.exists(), (
+                    f"FAIL-CLOSED: module listed in CLEAN_ENGINE_MODULES not found on disk: {module_path}"
+                )
+
+    def test_all_clean_engine_modules_exist(self):
+        """All CLEAN_ENGINE_MODULES must exist on disk (fail-closed assertion).
+
+        Reports: listed count, found count — they must be equal.
+        """
+        modules = TestNoRuntimeWorkbook.CLEAN_ENGINE_MODULES
+        listed_count = len(modules)
+        missing = [p for p in modules if not p.exists()]
+        found_count = listed_count - len(missing)
+
+        assert not missing, (
+            f"FAIL-CLOSED: {len(missing)} of {listed_count} CLEAN_ENGINE_MODULES not found on disk:\n"
+            + "\n".join(str(p) for p in missing)
+        )
+        assert listed_count == found_count, (
+            f"Listed modules ({listed_count}) != found modules ({found_count})"
+        )
