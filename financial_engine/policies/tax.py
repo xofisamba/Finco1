@@ -146,14 +146,10 @@ class TaxPolicy:
             raise ValueError(
                 f"TaxPolicy.atad_ebitda_limit must be finite, got {self.atad_ebitda_limit!r}"
             )
-        if _lim < 0.0:
-            raise ValueError(
-                f"TaxPolicy.atad_ebitda_limit must be non-negative, got {self.atad_ebitda_limit!r}"
-            )
-        if _lim > 1.0:
-            raise ValueError(
-                f"TaxPolicy.atad_ebitda_limit must be ≤ 1.0 (approved range), got {self.atad_ebitda_limit!r}"
-            )
+        # Business-range enforcement (atad_ebitda_limit in [0,1]) is handled by the
+        # canonical validation layer (TAX004) so that invalid financial inputs are
+        # classified with a structured code rather than a raw ValueError from the
+        # constructor. Only finiteness (structural invariant) is enforced here.
 
         # ── atad_de_minimis_threshold_keur_annual: numbers.Real, not bool, finite, non-negative ─
         if isinstance(self.atad_de_minimis_threshold_keur_annual, bool):
@@ -171,11 +167,9 @@ class TaxPolicy:
                 "TaxPolicy.atad_de_minimis_threshold_keur_annual must be finite, "
                 f"got {self.atad_de_minimis_threshold_keur_annual!r}"
             )
-        if _dm < 0.0:
-            raise ValueError(
-                "TaxPolicy.atad_de_minimis_threshold_keur_annual must be non-negative, "
-                f"got {self.atad_de_minimis_threshold_keur_annual!r}"
-            )
+        # Business-range enforcement (de_minimis >= 0) is handled by the canonical
+        # validation layer (TAX005) so that invalid financial inputs are classified
+        # with a structured code rather than a raw ValueError from the constructor.
 
         # ── shl_interest_deductible_pct: if supplied, numbers.Real, finite, in [0,1] ──
         pct = self.shl_interest_deductible_pct
