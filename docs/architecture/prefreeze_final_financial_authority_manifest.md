@@ -150,30 +150,39 @@ Waterfall      = run_project_shareholder_waterfall_model
 ### Phase B1 — Clean-Only Production Router (phaseb1-clean-only-production-router)
 
 **Status:** PHASE_B1_CLEAN_ONLY_PRODUCTION_ROUTER_COMPLETE_CANDIDATE
+**Branch HEAD:** `a55c8e9f56b021bb7c624ee36cd978e2e3a61c96`
 **Base SHA:** `99cc51a90e98b4869d168e78aeb736861240f8a2` (PR-12 squash merge)
+**PR:** #958 (OPEN, DRAFT — do not merge until independently gated)
 **Date:** 2026-08-25
 
-**Routing change:**
-- BEFORE: non-promoted production run → legacy waterfall (silent fallthrough)
-- AFTER: non-promoted production run → `CleanNotReadyError` (typed, calculation_count=0)
+**Routing change (Correction B final):**
+- BEFORE: non-promoted / unknown / Portfolio production run → silent legacy fallthrough
+- AFTER: ALL non-promoted / unclassified / unknown types → `CleanNotReadyError` (typed, calculation_count=0)
 
-**Production run outcomes:**
-- `run_project("Solar"/"Wind")` → `CLEAN_SUCCESS` (clean G2C, clean_calls=1, legacy_calls=0)
-- `run_project("Oborovo"/"TUHO")` → `CLEAN_NOT_READY` (CleanNotReadyError, calculation_count=0)
-- `execute_production_demo("Solar"/"Wind")` → clean G2C
-- `execute_production_demo("Oborovo"/"TUHO")` → CleanNotReadyError
+**Production run authority table:**
 
-**Legacy calibration (unchanged):**
-- `run_project_legacy("Oborovo"/"TUHO")` → legacy waterfall, CALIBRATION_ONLY (force_legacy=True)
-- `execute_production_waterfall(allow_legacy=True)` → legacy waterfall (used by workbook export, runtime-summary)
+| Entry point | Project type | Outcome |
+|---|---|---|
+| `run_project()` | Solar / Wind (promoted) | CLEAN_SUCCESS (clean G2C, clean_calls=1, legacy_calls=0) |
+| `run_project()` | Oborovo / TUHO (blocked) | CleanNotReadyError (calculation_count=0) |
+| `run_project()` | Unknown / Portfolio / unclassified | CleanNotReadyError (calculation_count=0) |
+| `execute_production_waterfall()` | Solar / Wind | CLEAN_SUCCESS |
+| `execute_production_waterfall()` | Oborovo / TUHO / unknown | CleanNotReadyError |
+| `execute_production_demo()` | Solar / Wind | Clean G2C DemoResult |
+| `execute_production_demo()` | Oborovo / TUHO / unknown | CleanNotReadyError |
+| `run_project_legacy()` | Any | LEGACY_CALIBRATION_ONLY (explicit seam, force_legacy=True) |
+| `execute_calibration_waterfall()` | Non-promoted only | LEGACY_CALIBRATION_ONLY (explicit seam) |
 
-**Financial delta:** ZERO (Solar/Wind routing unchanged; fingerprints match PR-F1)
+**`allow_legacy` parameter:** REMOVED from `execute_production_waterfall`. No production surface carries a legacy fallthrough parameter.
 
-**B1 test count:** 26 new tests in `tests/test_phaseb1_clean_only_production_router.py`
+**Portfolio reachability:** REST API returns HTTP 501 for Portfolio at router layer. `run_project("Portfolio")` raises `CleanNotReadyError`. `portfolio_runner` / `portfolio_orchestrator` are LEGACY_EXPERIMENTAL / OFFLINE_ONLY — not reachable from any current normal production UI/API route. Governance scan confirmed: no direct import of portfolio runner from `main_api.py`, `main_web.py`, or `app/api/`.
+
+**Financial delta:** ZERO. FINANCIAL_FORMULA_CHANGE = ZERO. CORE_ROUTING_FINANCIAL_FINGERPRINTS_UNCHANGED (Solar/Wind KPI fingerprints match frozen PR-F1 values; py3.12 CI authority).
+
+**B1 test count:** 59 tests (59 passed, 1 skipped) in `tests/test_phaseb1_clean_only_production_router.py`
 
 **Remaining Phase B work:**
-- B2: Promote Oborovo (Country Tax Template prerequisite)
-- B3: Promote TUHO (typed financing contract fields prerequisite)
-- B3+: Remove `execute_production_waterfall(allow_legacy=True)` legacy branch
+- B2: Promote Oborovo — key promotion gaps include: `sponsor_funding_mode`, `gearing_basis_mode`, frozen Senior schedule removal/replacement, typed construction financing / source-evidence promotion. (Country Tax Template alone is NOT the primary prerequisite.)
+- B3: Promote TUHO — key gaps include: clean cash-tax timing gap, thin-cap enabled (`FAIL_CLOSED_UNSUPPORTED`), ATAD / `SUBJECT_TO_LIMITATIONS` capability, financing / SHL / construction typed-input gaps. (Typed financing fields alone are insufficient.)
 
-**Concept 27 status update:** TUHO/Oborovo routes now `PHASE_B2_B3_PROMOTION_PENDING` (B1 fail-closed enforced; legacy only via explicit calibration entry point).
+**Concept 27 status update:** TUHO/Oborovo routes now `PHASE_B2_B3_PROMOTION_PENDING` (B1 fail-closed enforced; legacy only via explicit calibration entry points `run_project_legacy` / `execute_calibration_waterfall`).

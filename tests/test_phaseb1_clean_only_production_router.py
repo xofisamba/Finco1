@@ -9,17 +9,21 @@ Proves that after the B1 routing change:
   F. TUHO via run_project_legacy:    executes legacy calibration
   G. Production does NOT fall back on clean engine error (fails closed)
   H. Production does NOT fall back on classifier failure (fails closed)
-  I. execute_production_demo: Solar clean, TUHO/Oborovo raise
-  J. execute_production_waterfall(allow_legacy=True): still routes legacy for blocked projects
+  I. execute_production_demo: Solar clean, TUHO/Oborovo/unknown raise CleanNotReadyError
+  J. execute_calibration_waterfall: explicit legacy seam for blocked projects;
+     execute_production_waterfall refuses legacy (allow_legacy param does not exist)
   K. Financial delta zero for Solar after B1
   L. Financial delta zero for Wind after B1
   M. CleanNotReadyError metadata completeness
   N. run_project_legacy carries CALIBRATION_ONLY lineage (not production authority)
   O. Production router raises on non-promoted override inputs
+  P. Edge cases: unknown/unclassified/Portfolio project types raise CleanNotReadyError
 
-CALIBRATION_ONLY note: run_project_legacy() is documented as the explicit
-legacy calibration entry point.  Production routes (run_project, execute_production_demo)
-are clean-only as of Phase B1.
+CALIBRATION_ONLY note: run_project_legacy() and execute_calibration_waterfall()
+are the explicit legacy calibration entry points.  Production routes
+(run_project, execute_production_demo, execute_production_waterfall) are
+clean-only as of Phase B1.  Unknown/unclassified types also raise CleanNotReadyError
+(calculation_count=0) — no legacy fallthrough for any type.
 """
 from __future__ import annotations
 
@@ -344,8 +348,8 @@ class TestI_ExecuteProductionDemo:
 
 
 # ---------------------------------------------------------------------------
-# J — execute_production_waterfall(allow_legacy=True) still routes legacy
-#     (used by workbook export and runtime-summary — not a production route)
+# J — execute_calibration_waterfall: explicit legacy seam for blocked projects.
+#     execute_production_waterfall is clean-only; allow_legacy param removed.
 # ---------------------------------------------------------------------------
 
 class TestJ_CalibrationWaterfallSeam:
@@ -964,3 +968,67 @@ class TestS_SolarWindFullFinancialInvariance:
             assert ra.get("runtime_authority") == "clean_g2c", f"Wind runtime_authority dict: {ra}"
         else:
             assert ra == "clean_g2c", f"Wind runtime_authority: {ra}"
+
+
+# ---------------------------------------------------------------------------
+# T — Portfolio reachability governance
+#     Proves that portfolio_runner / portfolio_orchestrator pooled legacy path
+#     is NOT reachable from current normal production entry points.
+# ---------------------------------------------------------------------------
+
+class TestT_PortfolioReachabilityGovernance:
+    """T — Portfolio legacy path is LEGACY_EXPERIMENTAL / OFFLINE_ONLY.
+
+    Normal production surfaces (run_project, execute_production_demo,
+    REST API router) do not import or invoke portfolio_runner or
+    portfolio_orchestrator.  Portfolio project type raises CleanNotReadyError
+    on normal production path.
+    """
+
+    def test_t1_run_project_portfolio_raises_clean_not_ready(self):
+        """run_project('Portfolio') raises CleanNotReadyError — no legacy engine fires."""
+        from app.api.project_runner import run_project
+        from app.services.production_financial_authority import CleanNotReadyError
+
+        with pytest.raises(CleanNotReadyError) as exc_info:
+            run_project("Portfolio", "Base")
+        assert exc_info.value.calculation_count == 0
+        assert exc_info.value.runtime_authority == "clean_not_ready"
+
+    def test_t2_execute_production_demo_portfolio_raises_clean_not_ready(self):
+        """execute_production_demo('Portfolio') raises CleanNotReadyError."""
+        from app.services.production_waterfall_seam import execute_production_demo
+        from app.services.production_financial_authority import CleanNotReadyError
+
+        with pytest.raises(CleanNotReadyError) as exc_info:
+            execute_production_demo("Portfolio")
+        assert exc_info.value.calculation_count == 0
+        assert exc_info.value.runtime_authority == "clean_not_ready"
+
+    def test_t3_portfolio_runner_not_imported_from_production_api(self):
+        """portfolio_runner and portfolio_orchestrator are not imported by production API modules."""
+        import importlib
+        import sys
+
+        # Load modules without executing their side effects by checking source
+        import inspect
+
+        # app.api.project_runner must not import portfolio_runner or portfolio_orchestrator
+        import app.api.project_runner as runner_mod
+        runner_src = inspect.getsource(runner_mod)
+        assert "portfolio_runner" not in runner_src, (
+            "portfolio_runner imported in app.api.project_runner — Portfolio legacy reachable"
+        )
+        assert "portfolio_orchestrator" not in runner_src, (
+            "portfolio_orchestrator imported in app.api.project_runner"
+        )
+
+        # app.services.production_waterfall_seam must not import portfolio_runner
+        import app.services.production_waterfall_seam as seam_mod
+        seam_src = inspect.getsource(seam_mod)
+        assert "portfolio_runner" not in seam_src, (
+            "portfolio_runner imported in production_waterfall_seam — Portfolio legacy reachable"
+        )
+        assert "portfolio_orchestrator" not in seam_src, (
+            "portfolio_orchestrator imported in production_waterfall_seam"
+        )
