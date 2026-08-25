@@ -120,11 +120,13 @@ def _runtime_maps(result: Any) -> dict[str, dict[int, float]]:
     _op_axis: tuple[int, ...] = tuple(p.period_index for p in result.periods if p.is_operation)
     _tax_axis: tuple[int, ...] = _full_axis   # tax/CFADS spans all model periods
     _shl_axis: tuple[int, ...] = _full_axis   # SHL schedule spans all model periods
-    # Senior axis: diagnostics-only module has no access to typed SeniorDebtPolicy bounds.
-    # Without policy, senior tenor cannot be derived independently; pass None to skip
-    # expected-axis enforcement here. The orchestrator already validated the senior
-    # schedule against policy bounds at model construction time.
-    _senior_axis: tuple[int, ...] | None = None
+    # Senior axis: use CanonicalAxisContract when present on the result (populated by
+    # run_senior_debt_model from typed SeniorDebtPolicy bounds — NOT from solver indices).
+    # Fall back to None only when axis_contract is absent (pre-Phase-2C or legacy results).
+    _axis_contract = getattr(result, "axis_contract", None)
+    _senior_axis: tuple[int, ...] | None = (
+        _axis_contract.senior_axis if _axis_contract is not None else None
+    )
     def mapped(indices, values, label, expected=None):
         return map_period_vector(indices, values, label=f"base_reconciliation.{label}", expected_indices=expected)
 

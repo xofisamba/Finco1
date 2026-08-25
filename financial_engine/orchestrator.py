@@ -27,6 +27,7 @@ from __future__ import annotations
 from datetime import date
 from typing import TYPE_CHECKING, Any, Sequence
 from finco_core.engine.period_engine import map_period_vector
+from finco_core.engine.axis_contract import CanonicalAxisContract
 
 from financial_engine.inputs import (
     DebtSizingCaseInput,
@@ -451,9 +452,13 @@ def run_operating_model(inputs: OperatingModelInput) -> ProjectModelResult:
     from finco_core.engine.period_engine import PeriodMeta, validate_canonical_period_axis
     engine = _build_period_engine(inputs)
     periods_meta: tuple[PeriodMeta, ...] = engine.periods()
+    # Authoritative call: pass cod_date and period_convention so the validator
+    # uses typed policy denominators, not the non-authoritative None fallback.
     validate_canonical_period_axis(
         periods_meta,
         expected_operating_periods=inputs.calendar.horizon_years * 2,
+        cod_date=engine.cod,
+        period_convention=engine.period_axis_convention,
     )
     canonical_indices = tuple(p.index for p in periods_meta)
 
@@ -1189,11 +1194,15 @@ def _run_senior_debt_model_with_shl(inputs: SeniorDebtModelInput) -> ProjectMode
         p for p in bank_phase2a_result.periods
         if p.is_operation and debt_start <= p.period_index <= debt_end
     )
-    # Independently-derived axis contracts (Correction B / TASK 1):
+    # Independently-derived axis contracts (Correction B / TASK 1, Correction F):
     #   full_axis_shl  — all model period indices from Base run (= SHL schedule axis)
     #   senior_axis_shl — debt-active operating subset from SeniorDebtPolicy bounds
+    # CanonicalAxisContract is built HERE, before any solver output is accepted.
     full_axis_shl: tuple[int, ...] = tuple(p.period_index for p in phase2b_result.periods)
     senior_axis_shl: tuple[int, ...] = tuple(p.period_index for p in debt_periods)
+    axis_contract_shl = CanonicalAxisContract.from_periods_and_policy(
+        phase2b_result.periods, policy
+    )
 
     shl_interest_guess: dict[int, float] = {}
     previous_shl: ShareholderLoanSchedules | None = None
@@ -1573,6 +1582,7 @@ def _run_senior_debt_model_with_shl(inputs: SeniorDebtModelInput) -> ProjectMode
         post_senior_cash=final_post_senior_cash,
         shareholder_loan=final_shl_schedule,
         cash_dsra=_shl_cash_dsra,
+        axis_contract=axis_contract_shl,
         unavailable_sections=_PHASE_2C_UNAVAILABLE,
         validation_issues=validation_issues,
         warnings=warnings,
@@ -1678,12 +1688,16 @@ def run_senior_debt_model(inputs: SeniorDebtModelInput) -> ProjectModelResult:
         p for p in bank_phase2a_result.periods
         if p.is_operation and debt_start <= p.period_index <= debt_end
     )
-    # Independently-derived axis contracts (Correction B / TASK 1):
+    # Independently-derived axis contracts (Correction B / TASK 1, Correction F):
     #   full_axis   — all model period indices (construction + operating) from Base run
     #   senior_axis — debt-active operating subset from SeniorDebtPolicy bounds
     #                 NOT derived from solver's returned period_indices
+    # CanonicalAxisContract is built HERE, before any solver output is accepted.
     full_axis: tuple[int, ...] = tuple(p.period_index for p in phase2b_result.periods)
     senior_axis: tuple[int, ...] = tuple(p.period_index for p in debt_periods)
+    axis_contract = CanonicalAxisContract.from_periods_and_policy(
+        phase2b_result.periods, policy
+    )
     sd_result = solve_senior_debt(
         policy=policy,
         inputs=sd_inputs,
@@ -1964,6 +1978,7 @@ def run_senior_debt_model(inputs: SeniorDebtModelInput) -> ProjectModelResult:
         debt_sizing=debt_sizing_schedules,
         post_senior_cash=post_senior_cash,
         cash_dsra=cash_dsra,
+        axis_contract=axis_contract,
         unavailable_sections=_PHASE_2C_UNAVAILABLE,
         validation_issues=validation_issues,
         warnings=warnings,

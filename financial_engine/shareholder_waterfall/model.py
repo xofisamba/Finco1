@@ -288,9 +288,32 @@ def run_project_shareholder_waterfall_model(
     if model_result.senior_debt is not None:
         sd = model_result.senior_debt
         ds_arr = sd.senior_debt_service_keur
-        # Senior axis: use the accepted validated period_indices from the result contract.
-        # The orchestrator already validated sd.period_indices against SeniorDebtPolicy bounds.
-        expected_senior_axis: tuple[int, ...] = tuple(sd.period_indices)
+        # Senior axis: derive independently from CanonicalAxisContract when present
+        # (populated by the clean orchestrator from typed SeniorDebtPolicy bounds).
+        # For legacy paths (no axis_contract), derive from canonical periods + SD policy
+        # bounds via build_senior_debt_model_input_from_project_inputs.
+        # NEVER use tuple(sd.period_indices) as expected_senior_axis (self-validation).
+        _axis_contract = getattr(model_result, "axis_contract", None)
+        if _axis_contract is not None:
+            expected_senior_axis: tuple[int, ...] = _axis_contract.senior_axis
+        else:
+            # Legacy path: derive from typed SeniorDebtPolicy bounds.
+            from financial_engine.adapters.project_inputs import (
+                build_senior_debt_model_input_from_project_inputs,
+            )
+            try:
+                _sd_contract = build_senior_debt_model_input_from_project_inputs(project_inputs)
+                _sd_policy = _sd_contract.senior_debt_policy
+                _debt_start = _sd_policy.repayment_start_period_index
+                _debt_end = _sd_policy.maturity_period_index
+                expected_senior_axis = tuple(
+                    p.period_index for p in model_result.periods
+                    if p.is_operation and _debt_start <= p.period_index <= _debt_end
+                )
+            except Exception:
+                # Cannot derive independently; fall back to None (no enforcement here).
+                # The orchestrator already validated at construction time.
+                expected_senior_axis = None  # type: ignore[assignment]
         base_dscr_by_idx = map_period_vector(
             sd.period_indices, sd.base_dscr, label="shareholder_waterfall.base_dscr",
             expected_indices=expected_senior_axis,

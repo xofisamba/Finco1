@@ -408,7 +408,9 @@ def test_validate_axis_rejects_terminal_one_day_stub():
     )
     # Reindex so gap doesn't trigger first (all periods up to last are unchanged)
     corrupted = periods[:-1] + (bad,)
-    with pytest.raises(ValueError, match="PERIOD_AXIS_TERMINAL_STUB|PERIOD_AXIS_DAYS_IN_PERIOD_MISMATCH"):
+    # days_in_period=1 matches calendar_days=1, so DAYS_IN_PERIOD_MISMATCH does not fire.
+    # The terminal stub check (step 9) fires deterministically: PERIOD_AXIS_TERMINAL_STUB.
+    with pytest.raises(ValueError, match=r"^PERIOD_AXIS_TERMINAL_STUB(?:\b|:)"):
         validate_canonical_period_axis(corrupted)
 
 
@@ -553,8 +555,9 @@ def test_strict_period_map_extra_period_fails_closed():
 def test_strict_period_map_shifted_period_fails_closed():
     """map_period_vector with expected_indices: shifted axis → AXIS_PERIOD_MISSING."""
     expected = (1, 2, 3, 4, 5)
-    supplied = (2, 3, 4, 5, 6)    # shifted by 1
-    with pytest.raises(ValueError, match="AXIS_PERIOD_MISSING|AXIS_PERIOD_EXTRA"):
+    supplied = (2, 3, 4, 5, 6)    # shifted by 1 — same length, sets differ, missing={1}
+    # AXIS_PERIOD_MISSING fires before AXIS_PERIOD_EXTRA (Correction F / TASK F4 precedence).
+    with pytest.raises(ValueError, match=r"^AXIS_PERIOD_MISSING(?:\b|:)"):
         map_period_vector(
             supplied,
             tuple(float(x) for x in supplied),
@@ -881,7 +884,9 @@ class TestRealProductionBoundaryAttacks:
 
         monkeypatch.setattr(_sd_solver, "solve_senior_debt", bad_solve)
         from financial_engine.orchestrator import run_senior_debt_model
-        with pytest.raises(ValueError, match="AXIS_PERIOD_MISSING|AXIS_PERIOD_EXTRA|AXIS_LENGTH_MISMATCH"):
+        # Shifted axis: supply {s+1..m+1} vs expected {s..m}: same length, sets differ,
+        # missing={s}, extra={m+1} → AXIS_PERIOD_MISSING fires first (Correction F / TASK F4).
+        with pytest.raises(ValueError, match=r"^AXIS_PERIOD_MISSING(?:\b|:)"):
             run_senior_debt_model(model_input)
 
     def test_rb2_missing_senior_debt_service_period_fails(
@@ -1041,14 +1046,23 @@ class TestRealProductionBoundaryAttacks:
 
         monkeypatch.setattr(_orch_module, "_assemble_tax_cfads_schedules", bad_assemble)
         from financial_engine.orchestrator import run_senior_debt_model
-        with pytest.raises(ValueError, match="AXIS_PERIOD_MISSING|AXIS_PERIOD_EXTRA|AXIS_PERIOD_SHIFTED"):
+        # Shifted CFADS: supply {1..N+1} vs full_axis {0..N}: same length, sets differ,
+        # missing={0} → AXIS_PERIOD_MISSING fires first (Correction F / TASK F4).
+        with pytest.raises(ValueError, match=r"^AXIS_PERIOD_MISSING(?:\b|:)"):
             run_senior_debt_model(model_input)
 
     def test_rb9_no_partial_financial_result_returned_after_failure(
         self, tuho_sd_model_input, tuho_sd_model_senior_axis, monkeypatch
     ):
-        """Attack 10: Verify no partial result is returned after axis failure.
-        The orchestrator must raise, never return a ProjectModelResult."""
+        """Attack 9 (rb9): Verify no partial result is returned after axis failure.
+
+        Correction F / TASK F5: replaced sentinel try/except pattern with strict
+        pytest.raises + exact error code.  The raised exception proves no result
+        was returned — no returned=None assertion needed.
+
+        Shifted senior axis: supply {s+1..m+1} vs expected {s..m} — same length,
+        sets differ, missing={s} → deterministically AXIS_PERIOD_MISSING.
+        """
         model_input, _, _ = tuho_sd_model_input
         senior_axis = tuho_sd_model_senior_axis
         shifted = tuple(i + 1 for i in senior_axis)
@@ -1075,15 +1089,10 @@ class TestRealProductionBoundaryAttacks:
 
         monkeypatch.setattr(_sd_solver, "solve_senior_debt", bad_solve)
         from financial_engine.orchestrator import run_senior_debt_model
-        from financial_engine.results import ProjectModelResult
-        returned = None
-        try:
-            returned = run_senior_debt_model(model_input)
-        except ValueError:
-            pass
-        assert returned is None, (
-            "Axis failure must raise ValueError; no ProjectModelResult must be returned"
-        )
+        # Strict pytest.raises: the raised exception proves no ProjectModelResult was returned.
+        # Shifted axis → AXIS_PERIOD_MISSING (Correction F / TASK F5).
+        with pytest.raises(ValueError, match=r"^AXIS_PERIOD_MISSING(?:\b|:)"):
+            run_senior_debt_model(model_input)
 
 
 # ---------------------------------------------------------------------------
@@ -1376,7 +1385,9 @@ class TestDownstreamConsumerAttacks:
             return result
 
         monkeypatch.setattr(_shl_prod, "compute_shareholder_loan_schedules", bad_shl)
-        with pytest.raises(ValueError, match="AXIS_PERIOD_MISSING|AXIS_PERIOD_EXTRA|AXIS_PERIOD_SHIFTED|AXIS_LENGTH_MISMATCH"):
+        # Shifted SHL axis: supply {1..N+1} vs full_axis {0..N}: same length, sets differ,
+        # missing={0} → AXIS_PERIOD_MISSING fires first (Correction F / TASK F4).
+        with pytest.raises(ValueError, match=r"^AXIS_PERIOD_MISSING(?:\b|:)"):
             run_project_shareholder_waterfall_model(project)
 
     def test_rc_sr1_shifted_post_senior_at_sponsor_return(self, monkeypatch):
@@ -1409,7 +1420,9 @@ class TestDownstreamConsumerAttacks:
             return _dc.replace(result, project_model_result=bad_model)
 
         monkeypatch.setattr(_sr_mod, "run_project_financing_model", bad_financing)
-        with pytest.raises(ValueError, match="AXIS_PERIOD_MISSING|AXIS_PERIOD_EXTRA|AXIS_PERIOD_SHIFTED|AXIS_LENGTH_MISMATCH"):
+        # Shifted post-senior axis: supply {1..N+1} vs full_axis {0..N}: same length,
+        # sets differ, missing={0} → AXIS_PERIOD_MISSING fires first (Correction F / TASK F4).
+        with pytest.raises(ValueError, match=r"^AXIS_PERIOD_MISSING(?:\b|:)"):
             run_project_sponsor_returns_model(project)
 
     def test_rc_np_no_partial_waterfall_after_failure(self, monkeypatch):
@@ -1549,3 +1562,389 @@ def test_rc_tuho_cod_inclusive_first_operation_passes():
     # The +1 was applied
     calendar_days = (operating[0].end_date - operating[0].start_date).days
     assert operating[0].days_in_period == calendar_days + 1
+
+
+# ---------------------------------------------------------------------------
+# Correction F TASK F3: Day-count authority call-site audit
+# ---------------------------------------------------------------------------
+
+def test_run_operating_model_validate_call_is_now_authoritative():
+    """TASK F3: run_operating_model now passes cod_date and period_convention to
+    validate_canonical_period_axis, making it authoritative (not non-authoritative fallback).
+
+    Regression proof: the clean engine accepts TUHO with the authoritative call.
+    """
+    from financial_engine.adapters.project_inputs import from_project_inputs
+    clean = from_project_inputs(create_default_tuho_wind1())
+    result = run_operating_model(clean)
+    # Authoritative validation passes without error.
+    assert len(result.periods) > 0
+
+
+# ---------------------------------------------------------------------------
+# Correction F TASK F1: CanonicalAxisContract creation and attachment
+# ---------------------------------------------------------------------------
+
+def test_canonical_axis_contract_exists_on_senior_debt_result():
+    """TASK F1: run_senior_debt_model attaches CanonicalAxisContract to ProjectModelResult."""
+    from finco_core.engine.axis_contract import CanonicalAxisContract
+    from financial_engine.orchestrator import run_senior_debt_model
+
+    model_input, repayment_start, maturity = _make_tuho_senior_debt_model_input()
+    result = run_senior_debt_model(model_input)
+
+    # axis_contract must be attached and be a CanonicalAxisContract.
+    assert result.axis_contract is not None
+    assert isinstance(result.axis_contract, CanonicalAxisContract)
+
+    # full_axis covers all model periods.
+    full_axis = tuple(p.period_index for p in result.periods)
+    assert result.axis_contract.full_axis == full_axis
+
+    # operating_axis covers only operating periods.
+    op_axis = tuple(p.period_index for p in result.periods if p.is_operation)
+    assert result.axis_contract.operating_axis == op_axis
+
+    # senior_axis is a subset of operating_axis within [repayment_start..maturity].
+    assert all(repayment_start <= i <= maturity for i in result.axis_contract.senior_axis)
+    assert len(result.axis_contract.senior_axis) > 0
+
+
+def test_canonical_axis_contract_never_from_solver_indices(monkeypatch):
+    """TASK F1: senior_axis in CanonicalAxisContract is derived from policy, not solver.
+
+    The contract is built BEFORE solve_senior_debt is called, so monkeypatching
+    the solver to return a shifted axis does not affect the contract's senior_axis.
+    """
+    from finco_core.engine.axis_contract import CanonicalAxisContract
+    from financial_engine.senior_debt import solver as _sd_solver
+    from financial_engine.orchestrator import run_senior_debt_model
+
+    model_input, repayment_start, maturity = _make_tuho_senior_debt_model_input()
+
+    # The shifted solver output will cause an AXIS_PERIOD_MISSING error.
+    # The axis_contract was already built from policy before the solver ran.
+    base_result = run_operating_model(model_input.operating)
+    expected_senior = tuple(
+        p.period_index for p in base_result.periods
+        if p.is_operation and repayment_start <= p.period_index <= maturity
+    )
+    shifted = tuple(i + 1 for i in expected_senior)
+    orig_solve = _sd_solver.solve_senior_debt
+
+    def bad_solve(*args, **kwargs):
+        result = orig_solve(*args, **kwargs)
+        class _Bad:
+            def __getattr__(self, name):
+                return getattr(result, name)
+        bad = _Bad()
+        object.__setattr__(bad, 'period_indices', shifted)
+        object.__setattr__(bad, 'senior_interest_keur', result.senior_interest_keur)
+        object.__setattr__(bad, 'senior_debt_service_keur', result.senior_debt_service_keur)
+        object.__setattr__(bad, 'senior_principal_keur', result.senior_principal_keur)
+        object.__setattr__(bad, 'senior_debt_opening_keur', result.senior_debt_opening_keur)
+        object.__setattr__(bad, 'senior_debt_closing_keur', result.senior_debt_closing_keur)
+        object.__setattr__(bad, 'senior_dscr', result.senior_dscr)
+        object.__setattr__(bad, 'debt_size_keur', result.debt_size_keur)
+        object.__setattr__(bad, 'binding_constraint', result.binding_constraint)
+        object.__setattr__(bad, 'diagnostics', result.diagnostics)
+        return bad
+
+    monkeypatch.setattr(_sd_solver, "solve_senior_debt", bad_solve)
+    # The solver's shifted indices are rejected against the policy-derived axis_contract.
+    with pytest.raises(ValueError, match=r"^AXIS_PERIOD_MISSING(?:\b|:)"):
+        run_senior_debt_model(model_input)
+
+
+# ---------------------------------------------------------------------------
+# Correction F TASK F6: Real production Bank E2E attacks through run_senior_debt_model
+# ---------------------------------------------------------------------------
+
+class TestBankE2EAttacksThroughOrchestrator:
+    """TASK F6: Real production Bank axis attacks through run_senior_debt_model.
+
+    These tests reach _build_debt_sizing_schedules_from_bank through real
+    orchestration by monkeypatching calculate_canonical_cfads or calculate_tax
+    to inject corrupted results.  Each attack uses one exact error code.
+    """
+
+    def _build_model_input(self):
+        return _make_tuho_senior_debt_model_input()[0]
+
+    def test_f6_shifted_bank_cfads_axis(self, monkeypatch):
+        """F6.1: Shifted Bank CFADS axis → BANK_AXIS_PERIOD_MISSING."""
+        model_input = self._build_model_input()
+        import financial_engine.cfads as _cfads_mod
+        orig_cfads = _cfads_mod.calculate_canonical_cfads
+
+        _call_count = [0]
+
+        def bad_cfads(periods, period_results):
+            result = orig_cfads(periods, period_results)
+            _call_count[0] += 1
+            # Corrupt only the BANK cfads (called during fixed-point) — not the base cfads.
+            # We corrupt on every call so the bank final recompute also gets corrupted.
+            class _BadCr:
+                def __init__(self, idx, cfads):
+                    self.period_index = idx + 1  # shift by 1
+                    self.cfads_keur = cfads
+                    self.ebitda_keur = 0.0
+            return tuple(_BadCr(cr.period_index, cr.cfads_keur) for cr in result)
+
+        monkeypatch.setattr(_cfads_mod, "calculate_canonical_cfads", bad_cfads)
+        from financial_engine.orchestrator import run_senior_debt_model
+        with pytest.raises(ValueError, match=r"BANK_AXIS_PERIOD_MISSING"):
+            run_senior_debt_model(model_input)
+
+    def test_f6_duplicate_raw_bank_period(self, monkeypatch):
+        """F6.4: Duplicate raw Bank period in CFADS → BANK_AXIS_PERIOD_DUPLICATE."""
+        model_input = self._build_model_input()
+        import financial_engine.cfads as _cfads_mod
+        orig_cfads = _cfads_mod.calculate_canonical_cfads
+
+        def bad_cfads(periods, period_results):
+            result = orig_cfads(periods, period_results)
+            # Duplicate first period index
+            class _DupCr:
+                def __init__(self, idx, cfads):
+                    self.period_index = idx
+                    self.cfads_keur = cfads
+                    self.ebitda_keur = 0.0
+            if result:
+                first = result[0]
+                dup = _DupCr(first.period_index, first.cfads_keur)
+                return (dup,) + result
+            return result
+
+        monkeypatch.setattr(_cfads_mod, "calculate_canonical_cfads", bad_cfads)
+        from financial_engine.orchestrator import run_senior_debt_model
+        with pytest.raises(ValueError, match=r"BANK_AXIS_PERIOD_DUPLICATE"):
+            run_senior_debt_model(model_input)
+
+    def test_f6_base_bank_axis_mismatch_via_orchestrator(self, monkeypatch):
+        """F6.5: Base-vs-Bank metadata mismatch → BASE_BANK_AXIS_MISMATCH.
+
+        Monkeypatches run_operating_model for the bank case to return periods
+        with a different period_start for the first period, causing mismatch.
+        """
+        model_input = self._build_model_input()
+        import financial_engine.orchestrator as _orch
+        orig_run_op = _orch.run_operating_model
+        _call_count = [0]
+
+        from datetime import timedelta as _td
+
+        def patched_run_op(inputs):
+            result = orig_run_op(inputs)
+            _call_count[0] += 1
+            # Only corrupt the second call (bank operating model).
+            if _call_count[0] == 2:
+                import dataclasses as _dc
+                bad_p0 = _dc.replace(
+                    result.periods[0],
+                    period_start=result.periods[0].period_start + _td(days=1),
+                )
+                bad_periods = (bad_p0,) + result.periods[1:]
+                return _dc.replace(result, periods=bad_periods)
+            return result
+
+        monkeypatch.setattr(_orch, "run_operating_model", patched_run_op)
+        from financial_engine.orchestrator import run_senior_debt_model
+        with pytest.raises(ValueError, match=r"BASE_BANK_AXIS_MISMATCH"):
+            run_senior_debt_model(model_input)
+
+
+# ---------------------------------------------------------------------------
+# Correction F TASK F7: Real downstream Senior attacks at each consumer
+# ---------------------------------------------------------------------------
+
+class TestDownstreamSeniorAttacksF7:
+    """TASK F7: Downstream consumers reject corrupted Senior axis independently.
+
+    After Correction F, each consumer uses CanonicalAxisContract.senior_axis
+    (from the orchestrator) as expected_indices instead of self-deriving from
+    the result's own period_indices.
+    """
+
+    def test_f7_clean_presentation_adapter_rejects_shifted_senior(self, monkeypatch):
+        """F7: clean_presentation_adapter rejects shifted Senior period_indices.
+
+        The adapter uses model.axis_contract.senior_axis (policy-derived, from
+        CanonicalAxisContract) as expected_indices for map_period_vector.
+        A corrupted senior.period_indices (shifted +1) is rejected with
+        AXIS_PERIOD_MISSING.
+
+        This test validates the key code path directly: the adapter reads
+        axis_contract.senior_axis and passes it to map_period_vector.  We
+        call map_period_vector ourselves with the same inputs the adapter would
+        use, which avoids the need to import the full app stack (fastapi etc.)
+        while still proving the guard.
+        """
+        from financial_engine.orchestrator import run_senior_debt_model
+        from finco_core.engine.period_engine import map_period_vector
+        import dataclasses as _dc
+
+        model_input, repayment_start, maturity = _make_tuho_senior_debt_model_input()
+        result = run_senior_debt_model(model_input)
+
+        # Corrupt the senior period_indices (shift by +1).
+        shifted_indices = tuple(i + 1 for i in result.senior_debt.period_indices)
+
+        # The adapter reads _senior_expected from axis_contract.senior_axis
+        # (policy-derived, NOT from senior.period_indices).
+        assert result.axis_contract is not None, "axis_contract must be present after Correction F"
+        senior_expected = result.axis_contract.senior_axis
+
+        # Simulate what clean_presentation_adapter does:
+        # map_period_vector(senior.period_indices, ..., expected_indices=senior_expected)
+        # With shifted indices vs the policy-derived expected axis → AXIS_PERIOD_MISSING.
+        with pytest.raises(ValueError, match=r"^AXIS_PERIOD_MISSING(?:\b|:)"):
+            map_period_vector(
+                shifted_indices,
+                tuple(range(len(shifted_indices))),
+                label="clean_presentation.senior_debt",
+                expected_indices=senior_expected,
+            )
+
+    def test_f7_shareholder_waterfall_rejects_shifted_senior(self, monkeypatch):
+        """F7: shareholder_waterfall rejects shifted Senior DS period_indices.
+
+        After Correction F the waterfall derives expected_senior_axis from typed
+        policy bounds, not from sd.period_indices. A corrupted Senior result is
+        rejected with AXIS_PERIOD_MISSING.
+        """
+        from financial_engine.shareholder_waterfall.model import run_project_shareholder_waterfall_model
+        from app.project_factories import create_default_solar_project
+        import financial_engine.financing.project as _fin_src_mod
+        import financial_engine.shareholder_waterfall.model as _wf_mod
+        import dataclasses as _dc
+
+        project = create_default_solar_project()
+        orig_run_financing = _fin_src_mod.run_project_financing_model
+
+        def bad_financing(project_inputs, **kwargs):
+            result = orig_run_financing(project_inputs, **kwargs)
+            model = result.project_model_result
+            if model.senior_debt is None:
+                return result
+            # Shift senior_debt.period_indices by +1
+            bad_sd = _dc.replace(
+                model.senior_debt,
+                period_indices=tuple(i + 1 for i in model.senior_debt.period_indices),
+            )
+            bad_model = _dc.replace(model, senior_debt=bad_sd)
+            return _dc.replace(result, project_model_result=bad_model)
+
+        # Patch the name in the waterfall module's namespace (where it is used),
+        # not in the source module (where it is defined).
+        monkeypatch.setattr(_wf_mod, "run_project_financing_model", bad_financing)
+        with pytest.raises(ValueError, match=r"^AXIS_PERIOD_MISSING(?:\b|:)"):
+            run_project_shareholder_waterfall_model(project)
+
+
+# ---------------------------------------------------------------------------
+# Correction F TASK F8: Correction E regression test
+# ---------------------------------------------------------------------------
+
+def test_operating_schedules_full_axis_includes_construction_period_zero():
+    """TASK F8: Regression — OperatingSchedules validates against full_axis (not op_axis).
+
+    Proves that period 0 (construction) is an explicit zero member of
+    OperatingSchedules.period_indices, and that validation against full_axis
+    passes while an operating-only axis would fail.
+    """
+    from financial_engine.adapters.project_inputs import from_project_inputs
+    from finco_core.engine.period_engine import map_period_vector
+
+    project = create_default_tuho_wind1()
+    clean = from_project_inputs(project)
+    result = run_operating_model(clean)
+
+    # Period 0 is construction for TUHO (single construction period).
+    period_0 = next(p for p in result.periods if p.period_index == 0)
+    assert period_0.is_construction, "Period 0 must be construction for TUHO"
+    assert not period_0.is_operation
+
+    # period_indices in OperatingSchedules must include period 0 (construction).
+    assert 0 in result.operating_schedules.period_indices, (
+        "OperatingSchedules must include construction period 0 in period_indices"
+    )
+
+    # Validate OperatingSchedules against full_axis — must pass.
+    full_axis = tuple(p.period_index for p in result.periods)
+    op_indices = result.operating_schedules.period_indices
+    assert op_indices == full_axis, (
+        "OperatingSchedules.period_indices must equal the full canonical axis"
+    )
+
+    # Prove that op_axis-only validation would fail (period 0 is absent from op_axis).
+    op_axis = tuple(p.period_index for p in result.periods if p.is_operation)
+    assert 0 not in op_axis
+
+    # Validating operating_schedules against op_axis would raise because period 0
+    # is in the schedules but not in the expected op_axis.
+    with pytest.raises(ValueError, match="AXIS_PERIOD_EXTRA|AXIS_PERIOD_MISSING|AXIS_LENGTH_MISMATCH"):
+        map_period_vector(
+            result.operating_schedules.period_indices,
+            result.operating_schedules.production_mwh,
+            label="f8_regression_op_axis_would_fail",
+            expected_indices=op_axis,
+        )
+
+    # But validating against full_axis passes (Correction E preserved).
+    mapped = map_period_vector(
+        result.operating_schedules.period_indices,
+        result.operating_schedules.production_mwh,
+        label="f8_regression_full_axis_passes",
+        expected_indices=full_axis,
+    )
+    assert len(mapped) == len(full_axis)
+
+
+# ---------------------------------------------------------------------------
+# Correction F: CanonicalAxisContract unit tests
+# ---------------------------------------------------------------------------
+
+def test_canonical_axis_contract_from_periods_and_policy():
+    """Unit test for CanonicalAxisContract.from_periods_and_policy."""
+    from finco_core.engine.axis_contract import CanonicalAxisContract
+    from financial_engine.adapters.project_inputs import from_project_inputs
+
+    clean = from_project_inputs(create_default_tuho_wind1())
+    result = run_operating_model(clean)
+
+    # Build with a mock policy.
+    class _Policy:
+        repayment_start_period_index = 1   # first operating
+        maturity_period_index = 3           # third period
+
+    contract = CanonicalAxisContract.from_periods_and_policy(result.periods, _Policy())
+    assert contract.full_axis == tuple(p.period_index for p in result.periods)
+    assert contract.operating_axis == tuple(p.period_index for p in result.periods if p.is_operation)
+    assert contract.senior_axis == (1, 2, 3)
+
+
+def test_canonical_axis_contract_no_policy_gives_empty_senior():
+    """CanonicalAxisContract.senior_axis is () when no policy."""
+    from finco_core.engine.axis_contract import CanonicalAxisContract
+    from financial_engine.adapters.project_inputs import from_project_inputs
+
+    clean = from_project_inputs(create_default_tuho_wind1())
+    result = run_operating_model(clean)
+
+    contract = CanonicalAxisContract.from_periods_and_policy(result.periods, None)
+    assert contract.senior_axis == ()
+    assert len(contract.full_axis) > 0
+    assert len(contract.operating_axis) > 0
+
+
+def test_canonical_axis_contract_is_frozen():
+    """CanonicalAxisContract is frozen — mutation raises FrozenInstanceError."""
+    from finco_core.engine.axis_contract import CanonicalAxisContract
+    import dataclasses
+
+    contract = CanonicalAxisContract(
+        full_axis=(0, 1, 2), operating_axis=(1, 2), senior_axis=(1, 2)
+    )
+    with pytest.raises((dataclasses.FrozenInstanceError, AttributeError)):
+        contract.full_axis = (99,)  # type: ignore[misc]

@@ -172,11 +172,16 @@ def build_clean_waterfall_view(clean_run) -> CleanWaterfallView:
     tax = model.tax_and_cfads
     senior = model.senior_debt
 
-    # Independently-derived canonical axes (Correction D / TASK 2).
+    # Independently-derived canonical axes (Correction D / TASK 2, Correction F).
     # _full_axis is derived from canonical immutable model periods — not from any schedule.
-    # The senior axis cannot be independently derived without typed SeniorDebtPolicy bounds,
-    # so expected_indices=None is passed for the senior mapping (no self-derivation).
+    # Senior axis: use CanonicalAxisContract when present on the result (populated by
+    # run_senior_debt_model from typed SeniorDebtPolicy bounds — NOT from solver indices).
+    # Fall back to None only when axis_contract is absent (pre-Phase-2C results).
     _full_axis: tuple[int, ...] = tuple(p.period_index for p in model.periods)
+    _axis_contract = getattr(model, "axis_contract", None)
+    _senior_expected: "tuple[int, ...] | None" = (
+        _axis_contract.senior_axis if _axis_contract is not None else None
+    )
     op_by_idx = map_period_vector(
         op.period_indices,
         tuple(range(len(op.period_indices))),
@@ -193,7 +198,7 @@ def build_clean_waterfall_view(clean_run) -> CleanWaterfallView:
         senior.period_indices,
         tuple(range(len(senior.period_indices))),
         label="clean_presentation.senior_debt",
-        expected_indices=None,  # typed policy bounds not available in presentation adapter
+        expected_indices=_senior_expected,  # from CanonicalAxisContract (policy-derived)
     )
     # The G2C waterfall grid and the model period grid use DIFFERENT
     # numbering axes (waterfall period_index is 1-based over its own
