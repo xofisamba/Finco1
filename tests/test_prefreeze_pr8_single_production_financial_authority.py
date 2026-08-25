@@ -754,8 +754,7 @@ class TestBlockedProjectCoherence:
 _PRF1_CANONICAL_AXIS_FINGERPRINTS = {
     "Solar": {
         # Old total included a one-day 2051-01-01 phantom period (16.518045386707 kEUR).
-        # Values verified at B1 routing freeze (clean engine; float comparison now
-        # uses approx to tolerate last-bit rounding across Python versions).
+        # Frozen at PR-F1 canonical axis freeze. B1 routing change has zero financial delta.
         "revenue": 94414.54881158611,
         "senior_ds": 35302.12518820596,
         "distributions": 5002.162578513828,
