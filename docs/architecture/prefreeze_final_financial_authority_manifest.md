@@ -150,7 +150,6 @@ Waterfall      = run_project_shareholder_waterfall_model
 ### Phase B1 — Clean-Only Production Router (phaseb1-clean-only-production-router)
 
 **Status:** PHASE_B1_CLEAN_ONLY_PRODUCTION_ROUTER_COMPLETE_CANDIDATE
-**Branch HEAD:** `a55c8e9f56b021bb7c624ee36cd978e2e3a61c96`
 **Base SHA:** `99cc51a90e98b4869d168e78aeb736861240f8a2` (PR-12 squash merge)
 **PR:** #958 (OPEN, DRAFT — do not merge until independently gated)
 **Date:** 2026-08-25
@@ -175,11 +174,11 @@ Waterfall      = run_project_shareholder_waterfall_model
 
 **`allow_legacy` parameter:** REMOVED from `execute_production_waterfall`. No production surface carries a legacy fallthrough parameter.
 
-**Portfolio reachability:** REST API returns HTTP 501 for Portfolio at router layer. `run_project("Portfolio")` raises `CleanNotReadyError`. `portfolio_runner` / `portfolio_orchestrator` are LEGACY_EXPERIMENTAL / OFFLINE_ONLY — not reachable from any current normal production UI/API route. Governance scan confirmed: no direct import of portfolio runner from `main_api.py`, `main_web.py`, or `app/api/`.
+**Portfolio reachability:** REST API returns HTTP 501 for Portfolio at router layer (`app/api/router.py`). `run_project("Portfolio")` raises `CleanNotReadyError` (B1 test T1 enforces this). `execute_production_demo("Portfolio")` raises `CleanNotReadyError` (B1 test T2 enforces this). `portfolio_runner` / `portfolio_orchestrator` are LEGACY_EXPERIMENTAL / OFFLINE_ONLY. Caller inventory (independently inspected for B1 classification, not enforced by B1 tests): no direct import of `portfolio_runner` or `portfolio_orchestrator` found in `app/api/project_runner.py` or `app/services/production_waterfall_seam.py`; `main_web.py` reaches Portfolio only via `run_project()` which fails closed.
 
 **Financial delta:** ZERO. FINANCIAL_FORMULA_CHANGE = ZERO. CORE_ROUTING_FINANCIAL_FINGERPRINTS_UNCHANGED (Solar/Wind KPI fingerprints match frozen PR-F1 values; py3.12 CI authority).
 
-**B1 test count:** 59 tests (59 passed, 1 skipped) in `tests/test_phaseb1_clean_only_production_router.py`
+**B1 test suite:** 62 passed, 1 skipped on Python 3.12 (in `tests/test_phaseb1_clean_only_production_router.py`)
 
 **Remaining Phase B work:**
 - B2: Promote Oborovo — key promotion gaps include: `sponsor_funding_mode`, `gearing_basis_mode`, frozen Senior schedule removal/replacement, typed construction financing / source-evidence promotion. (Country Tax Template alone is NOT the primary prerequisite.)
