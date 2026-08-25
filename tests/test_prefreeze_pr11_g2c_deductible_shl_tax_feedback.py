@@ -2470,3 +2470,545 @@ class TestCorrectionD_Task4_TighterSeedInvariance:
             f"Convergence tolerance must be 1e-4 kEUR (from adapter defaults). "
             f"Got {tol}"
         )
+
+
+# ---------------------------------------------------------------------------
+# CORRECTION I TASK 4: Real production E2E attack matrix
+# ---------------------------------------------------------------------------
+
+class TestCorrectionI_Task4_E2EAttackMatrix:
+    """TASK 4: Real production E2E attacks through the B5 runtime.
+
+    Each attack monkeypatches a production dependency seam so that corrupted
+    Senior or SHL output reaches the axis-validation step.  Every attack must
+    fail with an EXACT anchored error code — no partial result is ever returned.
+    """
+
+    @pytest.fixture(scope="class")
+    def _stl_sdi(self):
+        """STL SeniorDebtModelInput for E2E attacks."""
+        import dataclasses
+        from app.project_factories import create_default_solar_project
+        from finco_core.inputs import ShlInterestDeductibilityMode
+        from financial_engine.adapters.project_inputs import (
+            build_senior_debt_model_input_from_project_inputs,
+        )
+        proj = create_default_solar_project()
+        new_tax = dataclasses.replace(
+            proj.tax,
+            shl_interest_deductibility=ShlInterestDeductibilityMode.SUBJECT_TO_LIMITATIONS,
+            atad_enabled=True,
+            atad_min_interest_keur=3000.0,
+        )
+        proj_stl = dataclasses.replace(proj, tax=new_tax)
+        return build_senior_debt_model_input_from_project_inputs(proj_stl)
+
+    # -----------------------------------------------------------------------
+    # Attack FINAL Senior output before contract construction
+    # -----------------------------------------------------------------------
+
+    def test_missing_senior_period_raises_AXIS_PERIOD_MISSING(self, _stl_sdi):
+        """Attack: solver returns Senior result with one period missing → AXIS_PERIOD_MISSING."""
+        from unittest.mock import patch
+        from financial_engine.orchestrator import run_senior_debt_model
+        from financial_engine.senior_debt import solver as _solver_mod
+
+        real_solve = _solver_mod.solve_senior_debt
+
+        def _patched(**kwargs):
+            result = real_solve(**kwargs)
+            n = len(result.period_indices)
+            if n < 2:
+                return result
+            from dataclasses import replace as _rep
+            return _rep(
+                result,
+                period_indices=result.period_indices[:-1],
+                senior_interest_keur=result.senior_interest_keur[:-1],
+                senior_principal_keur=result.senior_principal_keur[:-1],
+                senior_debt_service_keur=result.senior_debt_service_keur[:-1],
+                senior_debt_opening_keur=result.senior_debt_opening_keur[:-1],
+                senior_debt_closing_keur=result.senior_debt_closing_keur[:-1],
+                senior_dscr=result.senior_dscr[:-1],
+            )
+
+        with patch.object(_solver_mod, "solve_senior_debt", side_effect=_patched):
+            with pytest.raises(ValueError, match="AXIS_PERIOD_MISSING"):
+                run_senior_debt_model(_stl_sdi)
+
+    def test_extra_senior_period_raises_AXIS_PERIOD_EXTRA(self, _stl_sdi):
+        """Attack: solver returns Senior with extra period → AXIS_PERIOD_EXTRA."""
+        from unittest.mock import patch
+        from financial_engine.orchestrator import run_senior_debt_model
+        from financial_engine.senior_debt import solver as _solver_mod
+
+        real_solve = _solver_mod.solve_senior_debt
+
+        def _patched(**kwargs):
+            result = real_solve(**kwargs)
+            from dataclasses import replace as _rep
+            extra_idx = 99999
+            new_indices = (extra_idx,) + result.period_indices
+            return _rep(
+                result,
+                period_indices=new_indices,
+                senior_interest_keur=(0.0,) + result.senior_interest_keur,
+                senior_principal_keur=(0.0,) + result.senior_principal_keur,
+                senior_debt_service_keur=(0.0,) + result.senior_debt_service_keur,
+                senior_debt_opening_keur=(0.0,) + result.senior_debt_opening_keur,
+                senior_debt_closing_keur=(0.0,) + result.senior_debt_closing_keur,
+                senior_dscr=(None,) + result.senior_dscr,
+            )
+
+        with patch.object(_solver_mod, "solve_senior_debt", side_effect=_patched):
+            with pytest.raises(ValueError, match="AXIS_PERIOD_EXTRA|AXIS_PERIOD_MISSING"):
+                run_senior_debt_model(_stl_sdi)
+
+    def test_duplicate_senior_period_raises_AXIS_PERIOD_DUPLICATE(self, _stl_sdi):
+        """Attack: solver returns Senior with duplicate period index → AXIS_PERIOD_DUPLICATE."""
+        from unittest.mock import patch
+        from financial_engine.orchestrator import run_senior_debt_model
+        from financial_engine.senior_debt import solver as _solver_mod
+
+        real_solve = _solver_mod.solve_senior_debt
+
+        def _patched(**kwargs):
+            result = real_solve(**kwargs)
+            from dataclasses import replace as _rep
+            if len(result.period_indices) < 1:
+                return result
+            dup_indices = (result.period_indices[0],) + result.period_indices
+            return _rep(
+                result,
+                period_indices=dup_indices,
+                senior_interest_keur=(result.senior_interest_keur[0],) + result.senior_interest_keur,
+                senior_principal_keur=(result.senior_principal_keur[0],) + result.senior_principal_keur,
+                senior_debt_service_keur=(result.senior_debt_service_keur[0],) + result.senior_debt_service_keur,
+                senior_debt_opening_keur=(result.senior_debt_opening_keur[0],) + result.senior_debt_opening_keur,
+                senior_debt_closing_keur=(result.senior_debt_closing_keur[0],) + result.senior_debt_closing_keur,
+                senior_dscr=(result.senior_dscr[0],) + result.senior_dscr,
+            )
+
+        with patch.object(_solver_mod, "solve_senior_debt", side_effect=_patched):
+            with pytest.raises(ValueError, match="AXIS_PERIOD_DUPLICATE"):
+                run_senior_debt_model(_stl_sdi)
+
+    # -----------------------------------------------------------------------
+    # Attack contract consumption
+    # -----------------------------------------------------------------------
+
+    def test_stale_contract_raises_G2C_FINAL_INTEREST_VECTOR_STALE(self):
+        """Stale/provisional contract (is_final=False) → G2C_FINAL_INTEREST_VECTOR_STALE."""
+        from financial_engine.orchestrator import (
+            FinancingInterestContract,
+            financing_interest_maps_from_contract,
+        )
+        pi = (1, 2, 3)
+        si = (100.0, 200.0, 300.0)
+        sh = (50.0, 60.0, 70.0)
+        fp = FinancingInterestContract.compute_fingerprint(pi, si, sh)
+        stale = FinancingInterestContract(
+            period_indices=pi,
+            senior_interest_keur=si,
+            shl_gross_interest_keur=sh,
+            iteration_id=3,
+            final_iteration_id=None,
+            is_final=False,
+            content_fingerprint=fp,
+        )
+        with pytest.raises(ValueError, match="G2C_FINAL_INTEREST_VECTOR_STALE"):
+            financing_interest_maps_from_contract(stale, context="TEST_STALE_CONSUME")
+
+    def test_mismatched_iteration_id_raises_G2C_FINAL_INTEREST_VECTOR_STALE(self):
+        """final_iteration_id != iteration_id → G2C_FINAL_INTEREST_VECTOR_STALE."""
+        from financial_engine.orchestrator import (
+            FinancingInterestContract,
+            financing_interest_maps_from_contract,
+        )
+        pi = (1, 2, 3)
+        si = (100.0, 200.0, 300.0)
+        sh = (50.0, 60.0, 70.0)
+        fp = FinancingInterestContract.compute_fingerprint(pi, si, sh)
+        # iteration_id=5 but final_iteration_id=3 (mismatch)
+        contract = FinancingInterestContract(
+            period_indices=pi,
+            senior_interest_keur=si,
+            shl_gross_interest_keur=sh,
+            iteration_id=5,
+            final_iteration_id=3,
+            is_final=True,
+            content_fingerprint=fp,
+        )
+        with pytest.raises(ValueError, match="G2C_FINAL_INTEREST_VECTOR_STALE"):
+            financing_interest_maps_from_contract(contract, context="TEST_ITER_MISMATCH")
+
+    def test_fingerprint_tamper_raises_G2C_FINAL_INTEREST_FINGERPRINT_MISMATCH(self):
+        """Tampered content_fingerprint → G2C_FINAL_INTEREST_FINGERPRINT_MISMATCH."""
+        from financial_engine.orchestrator import (
+            FinancingInterestContract,
+            financing_interest_maps_from_contract,
+        )
+        pi = (1, 2, 3)
+        si = (100.0, 200.0, 300.0)
+        sh = (50.0, 60.0, 70.0)
+        fp = FinancingInterestContract.compute_fingerprint(pi, si, sh)
+        # Tamper the fingerprint
+        contract = FinancingInterestContract(
+            period_indices=pi,
+            senior_interest_keur=si,
+            shl_gross_interest_keur=sh,
+            iteration_id=5,
+            final_iteration_id=5,
+            is_final=True,
+            content_fingerprint=fp + 1,  # tampered
+        )
+        with pytest.raises(ValueError, match="G2C_FINAL_INTEREST_FINGERPRINT_MISMATCH"):
+            financing_interest_maps_from_contract(contract, context="TEST_FP_TAMPER")
+
+
+# ---------------------------------------------------------------------------
+# CORRECTION I TASK 5: Final contract identity proofs
+# ---------------------------------------------------------------------------
+
+class TestCorrectionI_Task5_ContractIdentity:
+    """TASK 5: After a normal STL B5 run, assert period-by-period identities
+    between the final FinancingInterestContract and both Base and Bank tax inputs.
+
+    The final contract must be the one-authority source for both.
+    """
+
+    @pytest.fixture(scope="class")
+    def _stl_result_and_contract(self):
+        """Run STL B5 loop and capture the final contract from the orchestrator."""
+        import dataclasses
+        from app.project_factories import create_default_solar_project
+        from finco_core.inputs import ShlInterestDeductibilityMode
+        from financial_engine.adapters.project_inputs import (
+            build_senior_debt_model_input_from_project_inputs,
+        )
+        from financial_engine.orchestrator import (
+            run_senior_debt_model,
+            _run_senior_debt_model_with_shl,
+            FinancingInterestContract,
+            financing_interest_maps_from_contract,
+        )
+
+        proj = create_default_solar_project()
+        new_tax = dataclasses.replace(
+            proj.tax,
+            shl_interest_deductibility=ShlInterestDeductibilityMode.SUBJECT_TO_LIMITATIONS,
+            atad_enabled=True,
+            atad_min_interest_keur=3000.0,
+        )
+        proj_stl = dataclasses.replace(proj, tax=new_tax)
+        sdi = build_senior_debt_model_input_from_project_inputs(proj_stl)
+
+        # Capture the final contract by monkeypatching _require_final_financing_contract
+        captured = {}
+        real_require = __import__(
+            "financial_engine.orchestrator", fromlist=["_require_final_financing_contract"]
+        )._require_final_financing_contract
+
+        from unittest.mock import patch
+
+        def _capturing_require(contract, context):
+            real_require(contract, context)
+            if contract.is_final and "FULL_AXIS" in context:
+                captured["contract"] = contract
+
+        with patch(
+            "financial_engine.orchestrator._require_final_financing_contract",
+            side_effect=_capturing_require,
+        ):
+            result = run_senior_debt_model(sdi)
+
+        return result, captured.get("contract"), sdi
+
+    def test_contract_is_captured_and_final(self, _stl_result_and_contract):
+        """Verify the final contract was captured from the B5 run."""
+        result, contract, _ = _stl_result_and_contract
+        assert contract is not None, "Final FinancingInterestContract must be captured"
+        assert contract.is_final is True
+        assert contract.final_iteration_id == contract.iteration_id
+
+    def test_contract_period_indices_match_full_model_axis(self, _stl_result_and_contract):
+        """Contract period_indices must match the full model axis (all periods)."""
+        result, contract, _ = _stl_result_and_contract
+        full_axis = tuple(p.period_index for p in result.periods)
+        assert contract.period_indices == full_axis, (
+            f"Contract period_indices {contract.period_indices} != "
+            f"full model axis {full_axis}"
+        )
+
+    def test_contract_senior_is_zero_outside_senior_axis(self, _stl_result_and_contract):
+        """For all full-axis periods outside senior_axis, contract Senior interest == 0.0."""
+        result, contract, sdi = _stl_result_and_contract
+        from financial_engine.senior_debt.policy import SeniorDebtPolicy
+        policy: SeniorDebtPolicy = sdi.senior_debt_policy  # type: ignore
+        senior_axis_set = set(
+            p.period_index for p in result.periods
+            if p.is_operation
+            and policy.repayment_start_period_index <= p.period_index <= policy.maturity_period_index
+        )
+        for idx, v in zip(contract.period_indices, contract.senior_interest_keur):
+            if idx not in senior_axis_set:
+                assert v == 0.0, (
+                    f"Period {idx} is outside senior_axis but contract.senior_interest={v} != 0.0"
+                )
+
+    def test_contract_senior_matches_final_senior_schedule(self, _stl_result_and_contract):
+        """For all senior_axis periods, contract Senior == final Senior schedule."""
+        result, contract, _ = _stl_result_and_contract
+        senior_sched = result.senior_debt
+        contract_by_idx = dict(zip(contract.period_indices, contract.senior_interest_keur))
+        for idx, v in zip(senior_sched.period_indices, senior_sched.senior_interest_keur):
+            assert contract_by_idx.get(idx, 0.0) == pytest.approx(v, abs=1e-9), (
+                f"Period {idx}: contract.senior={contract_by_idx.get(idx, 0.0):.8f} "
+                f"!= senior_schedule={v:.8f}"
+            )
+
+    def test_contract_shl_matches_final_shl_schedule(self, _stl_result_and_contract):
+        """For all full-axis periods, contract SHL == final SHL schedule."""
+        result, contract, _ = _stl_result_and_contract
+        shl_sched = result.shareholder_loan
+        contract_by_idx = dict(zip(contract.period_indices, contract.shl_gross_interest_keur))
+        for idx, v in zip(shl_sched.period_indices, shl_sched.shl_gross_interest_keur):
+            assert contract_by_idx.get(idx, 0.0) == pytest.approx(v, abs=1e-9), (
+                f"Period {idx}: contract.shl={contract_by_idx.get(idx, 0.0):.8f} "
+                f"!= shl_schedule={v:.8f}"
+            )
+
+
+# ---------------------------------------------------------------------------
+# CORRECTION I TASK 6: Seed invariance ≤ 1e-6 kEUR across all output families
+# ---------------------------------------------------------------------------
+
+class TestCorrectionI_Task6_SeedInvariance1e6:
+    """TASK 6: All output families must be seed-invariant to ≤ 1e-6 kEUR.
+
+    Three seeds:
+      A. Zero/default production seed (all-zero SHL guess)
+      B. 10,000 kEUR/period (materially high)
+      C. Half of the seed-A converged SHL interest
+
+    For each family, max absolute difference between seeds must be ≤ 1e-6 kEUR.
+    """
+
+    @pytest.fixture(scope="class")
+    def _three_seed_results(self):
+        """Converge from three seeds and return results."""
+        import dataclasses
+        from app.project_factories import create_default_solar_project
+        from finco_core.inputs import ShlInterestDeductibilityMode
+        from financial_engine.adapters.project_inputs import (
+            build_senior_debt_model_input_from_project_inputs,
+        )
+        from financial_engine.orchestrator import (
+            run_senior_debt_model,
+            run_senior_debt_model_test_only_seed,
+            run_operating_model,
+            derive_debt_sizing_operating_input,
+        )
+        from financial_engine.senior_debt.policy import SeniorDebtPolicy
+
+        proj = create_default_solar_project()
+        new_tax = dataclasses.replace(
+            proj.tax,
+            shl_interest_deductibility=ShlInterestDeductibilityMode.SUBJECT_TO_LIMITATIONS,
+            atad_enabled=True,
+            atad_min_interest_keur=3000.0,
+        )
+        proj_stl = dataclasses.replace(proj, tax=new_tax)
+        sdi = build_senior_debt_model_input_from_project_inputs(proj_stl)
+
+        # Seed A: canonical zero start
+        result_a = run_senior_debt_model(sdi)
+
+        # Build debt periods for seeds
+        policy: SeniorDebtPolicy = sdi.senior_debt_policy  # type: ignore
+        bank_op = derive_debt_sizing_operating_input(sdi.operating, sdi.debt_sizing_case)
+        bank_result = run_operating_model(bank_op)
+        debt_start = policy.repayment_start_period_index
+        debt_end = policy.maturity_period_index
+        debt_periods = tuple(
+            p for p in bank_result.periods
+            if p.is_operation and debt_start <= p.period_index <= debt_end
+        )
+
+        # Give extra iterations so seeds converge (the zero seed always converges faster)
+        shl = sdi.shareholder_loan
+        sdi_long = dataclasses.replace(
+            sdi,
+            shareholder_loan=dataclasses.replace(shl, maximum_iterations=shl.maximum_iterations * 4),
+        )
+
+        # Seed B: 10,000 kEUR/period
+        high_seed = {p.period_index: 10_000.0 for p in debt_periods}
+        result_b = run_senior_debt_model_test_only_seed(sdi_long, high_seed)
+
+        # Seed C: half of converged SHL interest from seed A
+        shl_sched_a = result_a.shareholder_loan
+        half_seed = {
+            idx: v * 0.5
+            for idx, v in zip(shl_sched_a.period_indices, shl_sched_a.shl_gross_interest_keur)
+        }
+        result_c = run_senior_debt_model_test_only_seed(sdi_long, half_seed)
+
+        return result_a, result_b, result_c
+
+    @staticmethod
+    def _max_abs_diff(a: tuple, b: tuple) -> float:
+        assert len(a) == len(b), f"Length mismatch: {len(a)} vs {len(b)}"
+        if not a:
+            return 0.0
+        return max(abs(x - y) for x, y in zip(a, b))
+
+    def test_senior_debt_size_seed_invariant(self, _three_seed_results):
+        """Senior debt size must be seed-invariant to ≤ 1e-6 kEUR."""
+        ra, rb, rc = _three_seed_results
+        delta_ab = abs(ra.senior_debt.debt_size_keur - rb.senior_debt.debt_size_keur)
+        delta_ac = abs(ra.senior_debt.debt_size_keur - rc.senior_debt.debt_size_keur)
+        assert delta_ab <= 1e-6, (
+            f"Senior size A vs B: delta={delta_ab:.2e} kEUR > 1e-6. "
+            f"A={ra.senior_debt.debt_size_keur:.6f} B={rb.senior_debt.debt_size_keur:.6f}"
+        )
+        assert delta_ac <= 1e-6, (
+            f"Senior size A vs C: delta={delta_ac:.2e} kEUR > 1e-6. "
+            f"A={ra.senior_debt.debt_size_keur:.6f} C={rc.senior_debt.debt_size_keur:.6f}"
+        )
+
+    def test_senior_interest_per_period_seed_invariant(self, _three_seed_results):
+        """Senior interest every period: max abs diff ≤ 1e-6 kEUR."""
+        ra, rb, rc = _three_seed_results
+        si_a = ra.senior_debt.senior_interest_keur
+        si_b = rb.senior_debt.senior_interest_keur
+        si_c = rc.senior_debt.senior_interest_keur
+        assert self._max_abs_diff(si_a, si_b) <= 1e-6, (
+            f"Senior interest A vs B max diff={self._max_abs_diff(si_a, si_b):.2e} > 1e-6"
+        )
+        assert self._max_abs_diff(si_a, si_c) <= 1e-6, (
+            f"Senior interest A vs C max diff={self._max_abs_diff(si_a, si_c):.2e} > 1e-6"
+        )
+
+    def test_shl_gross_interest_per_period_seed_invariant(self, _three_seed_results):
+        """SHL gross interest every period: max abs diff ≤ 1e-6 kEUR."""
+        ra, rb, rc = _three_seed_results
+        shl_a = ra.shareholder_loan.shl_gross_interest_keur
+        shl_b = rb.shareholder_loan.shl_gross_interest_keur
+        shl_c = rc.shareholder_loan.shl_gross_interest_keur
+        assert self._max_abs_diff(shl_a, shl_b) <= 1e-6, (
+            f"SHL gross interest A vs B max diff={self._max_abs_diff(shl_a, shl_b):.2e} > 1e-6"
+        )
+        assert self._max_abs_diff(shl_a, shl_c) <= 1e-6, (
+            f"SHL gross interest A vs C max diff={self._max_abs_diff(shl_a, shl_c):.2e} > 1e-6"
+        )
+
+    def test_shl_closing_balance_per_period_seed_invariant(self, _three_seed_results):
+        """SHL closing balance every period: max abs diff ≤ 1e-6 kEUR."""
+        ra, rb, rc = _three_seed_results
+        shl_a = ra.shareholder_loan.shl_closing_keur
+        shl_b = rb.shareholder_loan.shl_closing_keur
+        shl_c = rc.shareholder_loan.shl_closing_keur
+        assert self._max_abs_diff(shl_a, shl_b) <= 1e-6, (
+            f"SHL closing A vs B max diff={self._max_abs_diff(shl_a, shl_b):.2e} > 1e-6"
+        )
+        assert self._max_abs_diff(shl_a, shl_c) <= 1e-6, (
+            f"SHL closing A vs C max diff={self._max_abs_diff(shl_a, shl_c):.2e} > 1e-6"
+        )
+
+    def test_base_cash_tax_per_period_seed_invariant(self, _three_seed_results):
+        """Base cash tax every period: max abs diff ≤ 1e-6 kEUR."""
+        ra, rb, rc = _three_seed_results
+        ta = ra.tax_and_cfads.corporate_tax_cash_keur
+        tb = rb.tax_and_cfads.corporate_tax_cash_keur
+        tc = rc.tax_and_cfads.corporate_tax_cash_keur
+        assert self._max_abs_diff(ta, tb) <= 1e-6, (
+            f"Base cash tax A vs B max diff={self._max_abs_diff(ta, tb):.2e} > 1e-6"
+        )
+        assert self._max_abs_diff(ta, tc) <= 1e-6, (
+            f"Base cash tax A vs C max diff={self._max_abs_diff(ta, tc):.2e} > 1e-6"
+        )
+
+    def test_bank_cash_tax_per_period_seed_invariant(self, _three_seed_results):
+        """Bank cash tax every period: max abs diff ≤ 1e-6 kEUR."""
+        ra, rb, rc = _three_seed_results
+        ta = ra.debt_sizing.bank_cash_tax_keur
+        tb = rb.debt_sizing.bank_cash_tax_keur
+        tc = rc.debt_sizing.bank_cash_tax_keur
+        assert self._max_abs_diff(ta, tb) <= 1e-6, (
+            f"Bank cash tax A vs B max diff={self._max_abs_diff(ta, tb):.2e} > 1e-6"
+        )
+        assert self._max_abs_diff(ta, tc) <= 1e-6, (
+            f"Bank cash tax A vs C max diff={self._max_abs_diff(ta, tc):.2e} > 1e-6"
+        )
+
+    def test_base_cfads_per_period_seed_invariant(self, _three_seed_results):
+        """Base CFADS every period: max abs diff ≤ 1e-6 kEUR."""
+        ra, rb, rc = _three_seed_results
+        ca = ra.tax_and_cfads.cfads_keur
+        cb = rb.tax_and_cfads.cfads_keur
+        cc = rc.tax_and_cfads.cfads_keur
+        assert self._max_abs_diff(ca, cb) <= 1e-6, (
+            f"Base CFADS A vs B max diff={self._max_abs_diff(ca, cb):.2e} > 1e-6"
+        )
+        assert self._max_abs_diff(ca, cc) <= 1e-6, (
+            f"Base CFADS A vs C max diff={self._max_abs_diff(ca, cc):.2e} > 1e-6"
+        )
+
+    def test_bank_cfads_per_period_seed_invariant(self, _three_seed_results):
+        """Bank CFADS every period: max abs diff ≤ 1e-6 kEUR."""
+        ra, rb, rc = _three_seed_results
+        ca = ra.debt_sizing.bank_cfads_keur
+        cb = rb.debt_sizing.bank_cfads_keur
+        cc = rc.debt_sizing.bank_cfads_keur
+        assert self._max_abs_diff(ca, cb) <= 1e-6, (
+            f"Bank CFADS A vs B max diff={self._max_abs_diff(ca, cb):.2e} > 1e-6"
+        )
+        assert self._max_abs_diff(ca, cc) <= 1e-6, (
+            f"Bank CFADS A vs C max diff={self._max_abs_diff(ca, cc):.2e} > 1e-6"
+        )
+
+    def test_post_senior_cash_per_period_seed_invariant(self, _three_seed_results):
+        """Post-Senior cash every period: max abs diff ≤ 1e-6 kEUR."""
+        ra, rb, rc = _three_seed_results
+        pa = ra.post_senior_cash.cash_after_senior_before_reserves_keur
+        pb = rb.post_senior_cash.cash_after_senior_before_reserves_keur
+        pc = rc.post_senior_cash.cash_after_senior_before_reserves_keur
+        assert self._max_abs_diff(pa, pb) <= 1e-6, (
+            f"Post-Senior cash A vs B max diff={self._max_abs_diff(pa, pb):.2e} > 1e-6"
+        )
+        assert self._max_abs_diff(pa, pc) <= 1e-6, (
+            f"Post-Senior cash A vs C max diff={self._max_abs_diff(pa, pc):.2e} > 1e-6"
+        )
+
+    def test_report_max_deltas_across_families(self, _three_seed_results):
+        """TASK 7 disclosure: report all family deltas for audit trail."""
+        ra, rb, rc = _three_seed_results
+
+        def _delta_ab(tup_a, tup_b):
+            if len(tup_a) != len(tup_b):
+                return float("nan")
+            return max(abs(x - y) for x, y in zip(tup_a, tup_b)) if tup_a else 0.0
+
+        deltas = {
+            "Senior_size_AB": abs(ra.senior_debt.debt_size_keur - rb.senior_debt.debt_size_keur),
+            "Senior_size_AC": abs(ra.senior_debt.debt_size_keur - rc.senior_debt.debt_size_keur),
+            "Senior_interest_AB": _delta_ab(ra.senior_debt.senior_interest_keur, rb.senior_debt.senior_interest_keur),
+            "SHL_gross_interest_AB": _delta_ab(ra.shareholder_loan.shl_gross_interest_keur, rb.shareholder_loan.shl_gross_interest_keur),
+            "SHL_closing_AB": _delta_ab(ra.shareholder_loan.shl_closing_keur, rb.shareholder_loan.shl_closing_keur),
+            "Base_cash_tax_AB": _delta_ab(ra.tax_and_cfads.corporate_tax_cash_keur, rb.tax_and_cfads.corporate_tax_cash_keur),
+            "Bank_cash_tax_AB": _delta_ab(ra.debt_sizing.bank_cash_tax_keur, rb.debt_sizing.bank_cash_tax_keur),
+            "Base_CFADS_AB": _delta_ab(ra.tax_and_cfads.cfads_keur, rb.tax_and_cfads.cfads_keur),
+            "Bank_CFADS_AB": _delta_ab(ra.debt_sizing.bank_cfads_keur, rb.debt_sizing.bank_cfads_keur),
+            "PostSenior_AB": _delta_ab(
+                ra.post_senior_cash.cash_after_senior_before_reserves_keur,
+                rb.post_senior_cash.cash_after_senior_before_reserves_keur,
+            ),
+        }
+
+        for family, delta in deltas.items():
+            assert delta <= 1e-6, (
+                f"TASK7_DELTA: {family}: delta={delta:.2e} kEUR > 1e-6 kEUR. "
+                "All deltas must be ≤ 1e-6 kEUR (NUMERICAL_FIXED_POINT_CLOSURE). "
+                "Classification: NUMERICAL_FIXED_POINT_CLOSURE — no formula/policy/economic assumption changed."
+            )

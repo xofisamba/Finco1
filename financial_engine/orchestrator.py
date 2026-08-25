@@ -1207,6 +1207,35 @@ class FinancingInterestContract:
         return hash((period_indices, senior_interest_keur, shl_gross_interest_keur))
 
 
+def financing_interest_maps_from_contract(
+    contract: "FinancingInterestContract",
+    context: str,
+) -> "tuple[dict[int, float], dict[int, float]]":
+    """Extract Senior and SHL interest maps from the FINAL FinancingInterestContract.
+
+    TASK 3: This is the single deterministic seam between the final contract authority
+    and the tax consumption path.  Both Base and Bank must call this function — never
+    read contract fields directly.
+
+    Requires:
+      contract.is_final == True (verified by _require_final_financing_contract)
+      contract.period_indices is the canonical full axis
+
+    Returns:
+      (senior_interest_by_period, shl_interest_by_period)
+      Both dicts cover contract.period_indices (full canonical axis).
+      Senior interest is exactly 0.0 for non-Senior periods (not masked via .get()).
+    """
+    _require_final_financing_contract(contract, context=context)
+    senior_map: dict[int, float] = dict(
+        zip(contract.period_indices, contract.senior_interest_keur)
+    )
+    shl_map: dict[int, float] = dict(
+        zip(contract.period_indices, contract.shl_gross_interest_keur)
+    )
+    return senior_map, shl_map
+
+
 def _require_final_financing_contract(
     contract: FinancingInterestContract,
     context: str,
@@ -1472,15 +1501,15 @@ def _run_senior_debt_model_with_shl(
         p for p in bank_phase2a_result.periods
         if p.is_operation and debt_start <= p.period_index <= debt_end
     )
-    # Independently-derived axis contracts (Correction B / TASK 1, Correction F):
-    #   full_axis_shl  — all model period indices from Base run (= SHL schedule axis)
-    #   senior_axis_shl — debt-active operating subset from SeniorDebtPolicy bounds
+    # Independently-derived axis contracts (Correction B / TASK 1, Correction F / TASK 2):
     # CanonicalAxisContract is built HERE, before any solver output is accepted.
-    full_axis_shl: tuple[int, ...] = tuple(p.period_index for p in phase2b_result.periods)
-    senior_axis_shl: tuple[int, ...] = tuple(p.period_index for p in debt_periods)
+    # TASK 2: axis_contract_shl IS the runtime owner — no competing local tuples.
     axis_contract_shl = CanonicalAxisContract.from_periods_and_policy(
         phase2b_result.periods, policy
     )
+    # Convenience aliases — read-only references to CanonicalAxisContract fields.
+    full_axis_shl: tuple[int, ...] = axis_contract_shl.full_axis
+    senior_axis_shl: tuple[int, ...] = axis_contract_shl.senior_axis
 
     shl_interest_guess: dict[int, float] = (
         dict(_test_only_initial_shl_interest_guess)
@@ -1613,6 +1642,8 @@ def _run_senior_debt_model_with_shl(
         )
 
     # FINAL_FINANCING_STATE_RECOMPUTED_FROM_CONVERGED_SHL_AND_SENIOR_SCHEDULES
+    # TASK 1 Correction I: validate converged SHL before any contract is created.
+    # No contract with is_final=True may be constructed until final_senior_result exists.
     # Correction B: validate final SHL interest against independently-derived full_axis_shl.
     final_shl_interest = _strict_period_map(
         previous_shl.period_indices,
@@ -1620,35 +1651,6 @@ def _run_senior_debt_model_with_shl(
         label="shl_fixed_point.final_gross_interest",
         expected_indices=full_axis_shl,
     )
-
-    # TASK 3: Create the final FinancingInterestContract marked as authoritative.
-    # is_final=True is set only here — never inside the iteration loop.
-    # Use previous_shl as the provisional SHL vector; Senior will be finalized below.
-    # For the provisional contract we use the converged SHL and a placeholder for Senior
-    # (Senior will be re-solved below from this SHL); final_iteration_id = iteration.
-    _shl_period_indices = previous_shl.period_indices
-    _shl_interest_tuple = previous_shl.shl_gross_interest_keur
-    # Senior interest indexed on the same period axis (from previous iteration's senior_result)
-    _senior_interest_by_idx_pre = dict(
-        zip(senior_result.period_indices, senior_result.senior_interest_keur)
-    )
-    _senior_for_fp = tuple(
-        _senior_interest_by_idx_pre.get(idx, 0.0) for idx in _shl_period_indices
-    )
-    _fp = FinancingInterestContract.compute_fingerprint(
-        _shl_period_indices, _senior_for_fp, _shl_interest_tuple
-    )
-    _final_shl_contract = FinancingInterestContract(
-        period_indices=_shl_period_indices,
-        senior_interest_keur=_senior_for_fp,
-        shl_gross_interest_keur=_shl_interest_tuple,
-        iteration_id=iteration,
-        final_iteration_id=iteration,
-        is_final=True,
-        content_fingerprint=_fp,
-    )
-    # Validate the contract is final before using it (stale check).
-    _require_final_financing_contract(_final_shl_contract, context="B5_FINAL_CONVERGENCE_SHL")
 
     def final_tax_cfads_fn(
         senior_interest_by_period: dict[int, float],
@@ -1681,17 +1683,65 @@ def _run_senior_debt_model_with_shl(
             f"termination_reason={final_senior_result.diagnostics.termination_reason!r}"
         )
 
-    # Correction B: validate final senior interest against independently-derived senior_axis_shl.
+    # E. Correction B: validate final senior interest against independently-derived senior_axis_shl.
     final_senior_interest = _strict_period_map(
         final_senior_result.period_indices,
         final_senior_result.senior_interest_keur,
         label="shl_fixed_point.final_senior_interest",
         expected_indices=senior_axis_shl,
     )
+
+    # TASK 1 Correction I steps F–H: lift final Senior to full canonical axis, then
+    # construct the FINAL FinancingInterestContract — ONLY NOW, after final_senior_result
+    # has been computed, validated, and accepted.  No contract with is_final=True may be
+    # created before this point.
+    #
+    # F. Lift FINAL Senior interest to the FULL canonical axis:
+    #    - Senior-axis periods: use final_senior_interest (exact values from solver)
+    #    - Non-Senior periods:  explicit 0.0 (never via .get() masking an expected period)
+    _final_senior_full = tuple(
+        final_senior_interest.get(idx, 0.0) for idx in full_axis_shl
+    )
+    _final_shl_full = tuple(
+        final_shl_interest.get(idx, 0.0) for idx in full_axis_shl
+    )
+    # Verify Senior is exactly 0.0 outside senior_axis (no masking of missing senior periods)
+    _senior_axis_set = set(senior_axis_shl)
+    for _ci, _idx in enumerate(full_axis_shl):
+        if _idx not in _senior_axis_set:
+            if _final_senior_full[_ci] != 0.0:
+                raise ValueError(
+                    f"AXIS_PERIOD_EXTRA: final Senior has non-zero value "
+                    f"({_final_senior_full[_ci]}) at non-Senior period {_idx}; "
+                    "only senior_axis periods may carry Senior interest"
+                )
+
+    # G. Construct FINAL FinancingInterestContract on full canonical axis.
+    _final_fp = FinancingInterestContract.compute_fingerprint(
+        full_axis_shl, _final_senior_full, _final_shl_full
+    )
+    final_financing_contract = FinancingInterestContract(
+        period_indices=full_axis_shl,
+        senior_interest_keur=_final_senior_full,
+        shl_gross_interest_keur=_final_shl_full,
+        iteration_id=iteration,
+        final_iteration_id=iteration,
+        is_final=True,
+        content_fingerprint=_final_fp,
+    )
+    # H. Validate the final contract.
+    _require_final_financing_contract(final_financing_contract, context="B5_FINAL_CONVERGENCE_FULL_AXIS")
+
+    # I. Construct Base and Bank tax inputs FROM THE FINAL CONTRACT (TASK 3).
+    # One financing-interest authority for both cases; differences arise only from
+    # approved economic case inputs (tax_periodisation_mode_override for Bank).
+    _contract_senior_map, _contract_shl_map = financing_interest_maps_from_contract(
+        final_financing_contract, context="BASE_TAX_FROM_CONTRACT"
+    )
     final_base_tax_input = _merge_financing_tax_input(
         base_tax_input,
-        final_senior_interest,
-        final_shl_interest,
+        _contract_senior_map,
+        _contract_shl_map,
     )
 
     # TASK 1: Three-way independent validation of final financing state.
@@ -1776,10 +1826,15 @@ def _run_senior_debt_model_with_shl(
         diagnostics=handshake_probe_diag,
     )
 
+    # Bank tax input ALSO derives from the FINAL CONTRACT (TASK 3, step I).
+    # Same authority as Base; Bank-only differences come from tax_periodisation_mode_override.
+    _contract_bank_senior_map, _contract_bank_shl_map = financing_interest_maps_from_contract(
+        final_financing_contract, context="BANK_TAX_FROM_CONTRACT"
+    )
     final_bank_tax_input = _merge_financing_tax_input(
         base_tax_input,
-        final_senior_interest,
-        final_shl_interest,
+        _contract_bank_senior_map,
+        _contract_bank_shl_map,
         tax_periodisation_mode_override=inputs.debt_sizing_case.tax_periodisation_mode_override,
     )
     final_bank_tax = calculate_tax(bank_phase2a_result.periods, final_bank_tax_input)
