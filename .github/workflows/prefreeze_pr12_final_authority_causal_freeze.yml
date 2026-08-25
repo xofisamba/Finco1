@@ -1,0 +1,181 @@
+name: PR-12 Final Clean-Engine Authority Causal Freeze
+
+on:
+  push:
+    branches:
+      - prefreeze-pr12-final-authority-causal-freeze
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "financial_engine/orchestrator.py"
+      - "financial_engine/cfads.py"
+      - "financial_engine/tax/**"
+      - "financial_engine/senior_debt/**"
+      - "financial_engine/shl/**"
+      - "financial_engine/construction/**"
+      - "financial_engine/financing/**"
+      - "financial_engine/shareholder_waterfall/**"
+      - "financial_engine/adapters/**"
+      - "finco_core/engine/**"
+      - "finco_core/inputs/**"
+      - "finco_core/construction/**"
+      - "tests/test_prefreeze_pr12_final_authority_causal_freeze.py"
+      - "docs/architecture/prefreeze_final_financial_authority_manifest.md"
+      - ".github/workflows/prefreeze_pr12_final_authority_causal_freeze.yml"
+
+jobs:
+  pr12-final-authority-causal-freeze:
+    name: PR-12 Final Authority + Causal Freeze
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Verify exact head SHA
+        run: |
+          EXPECTED="${{ github.event.pull_request.head.sha || github.sha }}"
+          ACTUAL=$(git rev-parse HEAD)
+          test "$EXPECTED" = "$ACTUAL"
+
+      - name: Assert ancestry from PR-11 freeze
+        run: |
+          git merge-base --is-ancestor \
+            101a50b93ca25a9b2dda93edee8bfc459e0c3b09 HEAD
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f constraints.txt ]; then
+            pip install -c constraints.txt -e .
+            pip install -c constraints.txt pytest
+          else
+            pip install -e .
+            pip install pytest
+          fi
+
+      - name: Diff hygiene
+        run: git diff --check 101a50b93ca25a9b2dda93edee8bfc459e0c3b09..HEAD
+
+      - name: PR-12 final authority + causal freeze
+        run: |
+          python -m pytest -q --tb=short \
+            tests/test_prefreeze_pr12_final_authority_causal_freeze.py
+
+      - name: PR-F1 canonical period axis regression
+        run: |
+          python -m pytest -q --tb=short \
+            tests/test_prefreeze_prf1_canonical_period_axis.py
+
+      - name: PR-5 canonical EBITDA authority
+        run: |
+          python -m pytest -q --tb=short \
+            tests/test_prefreeze_pr5_canonical_ebitda_authority.py
+
+      - name: PR-6 typed SHL repayment policy
+        run: |
+          python -m pytest -q --tb=short \
+            tests/test_prefreeze_pr6_typed_shl_repayment_policy.py
+
+      - name: PR-7 typed base/bank case authority
+        run: |
+          python -m pytest -q --tb=short \
+            tests/test_prefreeze_pr7_typed_base_bank_case_authority.py
+
+      - name: PR-8 single production financial authority
+        run: |
+          python -m pytest -q --tb=short \
+            tests/test_prefreeze_pr8_single_production_financial_authority.py
+
+      - name: PR-9 typed construction IDC authority
+        run: |
+          python -m pytest -q --tb=short \
+            tests/test_pr9_typed_construction_idc_authority.py
+
+      - name: PR-10 typed country tax authority
+        run: |
+          python -m pytest -q --tb=short \
+            tests/test_prefreeze_pr10_typed_country_tax_authority.py
+
+      - name: PR-11 G2C deductible SHL tax feedback
+        run: |
+          python -m pytest -q --tb=short \
+            tests/test_prefreeze_pr11_g2c_deductible_shl_tax_feedback.py
+
+      - name: G0 generic clean engine
+        run: |
+          python -m pytest -q --tb=short \
+            tests/test_mvp_g0_generic_clean_engine_enablement.py
+
+      - name: G1 governance methodology lock
+        run: |
+          python -m pytest -q --tb=short \
+            tests/test_mvp_g1_governance_methodology_lock.py
+
+      - name: G2A financing stack
+        run: |
+          python -m pytest -q --tb=short \
+            tests/test_mvp_g2a_financing_stack.py
+
+      - name: G2B sponsor returns
+        run: |
+          python -m pytest -q --tb=short \
+            tests/test_mvp_g2b_sponsor_returns.py
+
+      - name: G2C shareholder waterfall
+        run: |
+          python -m pytest -q --tb=short \
+            tests/test_mvp_g2c_shareholder_waterfall.py
+
+      - name: C3B3D2B5 SHL fixed point integration
+        run: |
+          python -m pytest -q --tb=short \
+            tests/test_stage_c3b3d2b5_shl_fixed_point_integration.py
+
+      - name: C3B3D2B6 base post-senior cash parity
+        run: |
+          python -m pytest -q --tb=short \
+            tests/test_stage_c3b3d2b6_base_post_senior_cash_parity.py
+
+      - name: C3B3D2B7 bank case senior parity
+        run: |
+          python -m pytest -q --tb=short \
+            tests/test_stage_c3b3d2b7_bank_case_senior_parity.py
+
+      - name: C3B3D2B8 base senior SHL parity
+        run: |
+          python -m pytest -q --tb=short \
+            tests/test_stage_c3b3d2b8_base_senior_shl_parity_closure.py
+
+      - name: KUPI K0-K3 causal grid
+        run: |
+          python -m pytest -q --tb=short \
+            tests/test_kupi_k0_k3_causal_grid.py
+
+      - name: Tax and construction identity tests
+        run: |
+          python -m pytest -q --tb=short \
+            tests/test_stage_c3b3c_tax_policy_shl_deductibility.py \
+            tests/test_stage_c3b3d0_tax_identity_atad_decoupling.py \
+            tests/test_prefreeze_fix2_tax_jurisdiction.py
+
+      - name: Production identity and governance scan
+        shell: bash
+        run: |
+          mapfile -t changed_python < <(
+            git diff --name-only \
+              101a50b93ca25a9b2dda93edee8bfc459e0c3b09...HEAD \
+              -- app domain finco_core financial_engine \
+            | grep -E '\.py$' || true
+          )
+          if ((${#changed_python[@]})); then
+            ! grep -nHEi \
+              'project\.name|project\.code|approved_delta|expected_delta|balancing[_ ]plug|target[_ ]tax|source[_ ]tax[_ ](schedule|vector)|terminal[_ ]tax[_ ]top[_ ]up' \
+              "${changed_python[@]}"
+          fi
