@@ -1,6 +1,6 @@
 # Pre-freeze Final Financial Authority Manifest
 
-**Classification:** PHASE_A_FINANCIAL_AUTHORITY_FREEZE_CANDIDATE
+**Classification:** PHASE_A_FINANCIAL_AUTHORITY_FREEZE_COMPLETE
 **PR:** PR-12
 **Base SHA:** `101a50b93ca25a9b2dda93edee8bfc459e0c3b09` (PR-11 squash merge)
 **Date:** 2026-08-25
@@ -142,3 +142,46 @@ Waterfall      = run_project_shareholder_waterfall_model
 - **No virtual Senior:** no `terminal_top_up`, `virtual_debt`, or `tolerance_as_capacity` pattern.
 - **FinancingInterestContract fingerprint:** content_fingerprint = `hash((period_indices, senior_interest_keur, shl_gross_interest_keur))` — memory-address-independent.
 - **`financial_engine/tax/engine.py` unchanged** in PR-12 (tests + governance + docs only).
+
+---
+
+## Phase B Progress
+
+### Phase B1 — Clean-Only Production Router (phaseb1-clean-only-production-router)
+
+**Status:** PHASE_B1_CLEAN_ONLY_PRODUCTION_ROUTER_COMPLETE_CANDIDATE
+**Base SHA:** `99cc51a90e98b4869d168e78aeb736861240f8a2` (PR-12 squash merge)
+**PR:** #958 (OPEN, DRAFT — do not merge until independently gated)
+**Date:** 2026-08-25
+
+**Routing change (Correction B final):**
+- BEFORE: non-promoted / unknown / Portfolio production run → silent legacy fallthrough
+- AFTER: ALL non-promoted / unclassified / unknown types → `CleanNotReadyError` (typed, calculation_count=0)
+
+**Production run authority table:**
+
+| Entry point | Project type | Outcome |
+|---|---|---|
+| `run_project()` | Solar / Wind (promoted) | CLEAN_SUCCESS (clean G2C, clean_calls=1, legacy_calls=0) |
+| `run_project()` | Oborovo / TUHO (blocked) | CleanNotReadyError (calculation_count=0) |
+| `run_project()` | Unknown / Portfolio / unclassified | CleanNotReadyError (calculation_count=0) |
+| `execute_production_waterfall()` | Solar / Wind | CLEAN_SUCCESS |
+| `execute_production_waterfall()` | Oborovo / TUHO / unknown | CleanNotReadyError |
+| `execute_production_demo()` | Solar / Wind | Clean G2C DemoResult |
+| `execute_production_demo()` | Oborovo / TUHO / unknown | CleanNotReadyError |
+| `run_project_legacy()` | Any | LEGACY_CALIBRATION_ONLY (explicit seam, force_legacy=True) |
+| `execute_calibration_waterfall()` | Non-promoted only | LEGACY_CALIBRATION_ONLY (explicit seam) |
+
+**`allow_legacy` parameter:** REMOVED from `execute_production_waterfall`. No production surface carries a legacy fallthrough parameter.
+
+**Portfolio reachability:** REST API returns HTTP 501 for Portfolio at router layer (`app/api/router.py`). `run_project("Portfolio")` raises `CleanNotReadyError` (B1 test T1 enforces this). `execute_production_demo("Portfolio")` raises `CleanNotReadyError` (B1 test T2 enforces this). `portfolio_runner` / `portfolio_orchestrator` are LEGACY_EXPERIMENTAL / OFFLINE_ONLY. Caller inventory (independently inspected for B1 classification, not enforced by B1 tests): no direct import of `portfolio_runner` or `portfolio_orchestrator` found in `app/api/project_runner.py` or `app/services/production_waterfall_seam.py`; `main_web.py` reaches Portfolio only via `run_project()` which fails closed.
+
+**Financial delta:** ZERO. FINANCIAL_FORMULA_CHANGE = ZERO. CORE_ROUTING_FINANCIAL_FINGERPRINTS_UNCHANGED (Solar/Wind KPI fingerprints match frozen PR-F1 values; py3.12 CI authority).
+
+**B1 test suite:** 62 passed, 1 skipped on Python 3.12 (in `tests/test_phaseb1_clean_only_production_router.py`)
+
+**Remaining Phase B work:**
+- B2: Promote Oborovo — key promotion gaps include: `sponsor_funding_mode`, `gearing_basis_mode`, frozen Senior schedule removal/replacement, typed construction financing / source-evidence promotion. (Country Tax Template alone is NOT the primary prerequisite.)
+- B3: Promote TUHO — key gaps include: clean cash-tax timing gap, thin-cap enabled (`FAIL_CLOSED_UNSUPPORTED`), ATAD / `SUBJECT_TO_LIMITATIONS` capability, financing / SHL / construction typed-input gaps. (Typed financing fields alone are insufficient.)
+
+**Concept 27 status update:** TUHO/Oborovo routes now `PHASE_B2_B3_PROMOTION_PENDING` (B1 fail-closed enforced; legacy only via explicit calibration entry points `run_project_legacy` / `execute_calibration_waterfall`).

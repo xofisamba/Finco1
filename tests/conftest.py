@@ -127,6 +127,98 @@ def _install_test_bcrypt_stub() -> None:
 _install_test_bcrypt_stub()
 
 
+def _install_test_fastapi_stub() -> None:
+    """Provide a minimal fastapi stub when the optional dependency is absent.
+
+    app.services.__init__ and app.services.export_service import fastapi at
+    module level.  Without a stub those modules fail to import in test
+    environments where fastapi is not installed (e.g. the engine-only test
+    environment).  The stub provides just enough surface for the import to
+    succeed; tests that actually exercise fastapi routes skip via their own
+    pytest.importorskip guard.
+    """
+    if importlib.util.find_spec("fastapi") is not None:
+        return  # fastapi is installed; nothing to do
+
+    class _FakeResponse:
+        def __init__(self, *a, **kw):
+            pass
+
+    class _FakeHTMLResponse(_FakeResponse):
+        pass
+
+    class _FakeStreamingResponse(_FakeResponse):
+        pass
+
+    class _FakeJSONResponse(_FakeResponse):
+        pass
+
+    class _FakeRedirectResponse(_FakeResponse):
+        pass
+
+    fastapi_responses = types.ModuleType("fastapi.responses")
+    fastapi_responses.HTMLResponse = _FakeHTMLResponse
+    fastapi_responses.StreamingResponse = _FakeStreamingResponse
+    fastapi_responses.JSONResponse = _FakeJSONResponse
+    fastapi_responses.RedirectResponse = _FakeRedirectResponse
+    fastapi_responses.Response = _FakeResponse
+
+    fastapi_templating = types.ModuleType("fastapi.templating")
+    fastapi_templating.Jinja2Templates = type("Jinja2Templates", (), {})
+
+    def _decorator(*a, **kw):
+        return lambda f: f
+
+    fastapi_pkg = types.ModuleType("fastapi")
+    fastapi_pkg.responses = fastapi_responses
+    fastapi_pkg.FastAPI = type("FastAPI", (), {})
+    fastapi_pkg.APIRouter = type("APIRouter", (), {
+        "get": staticmethod(_decorator),
+        "post": staticmethod(_decorator),
+        "put": staticmethod(_decorator),
+        "delete": staticmethod(_decorator),
+        "include_router": lambda *a, **kw: None,
+    })
+    fastapi_pkg.Depends = lambda *a, **kw: None
+    fastapi_pkg.Form = lambda *a, **kw: None
+    fastapi_pkg.HTTPException = type("HTTPException", (Exception,), {
+        "__init__": lambda self, status_code=400, detail="", *a, **kw: None
+    })
+    fastapi_pkg.Request = type("Request", (), {})
+    fastapi_pkg.Response = _FakeResponse
+
+    class _FakeStatus:
+        HTTP_200_OK = 200
+        HTTP_201_CREATED = 201
+        HTTP_400_BAD_REQUEST = 400
+        HTTP_401_UNAUTHORIZED = 401
+        HTTP_403_FORBIDDEN = 403
+        HTTP_404_NOT_FOUND = 404
+        HTTP_422_UNPROCESSABLE_ENTITY = 422
+        HTTP_500_INTERNAL_SERVER_ERROR = 500
+
+    fastapi_pkg.status = _FakeStatus()
+
+    fastapi_staticfiles = types.ModuleType("fastapi.staticfiles")
+    fastapi_staticfiles.StaticFiles = type("StaticFiles", (), {})
+
+    fastapi_security = types.ModuleType("fastapi.security")
+    fastapi_security.OAuth2PasswordBearer = type("OAuth2PasswordBearer", (), {"__init__": lambda self, *a, **kw: None})
+
+    # Mark as package so sub-imports work (fastapi.staticfiles etc.)
+    fastapi_pkg.__path__ = []
+    fastapi_pkg.__package__ = "fastapi"
+
+    sys.modules.setdefault("fastapi", fastapi_pkg)
+    sys.modules.setdefault("fastapi.responses", fastapi_responses)
+    sys.modules.setdefault("fastapi.templating", fastapi_templating)
+    sys.modules.setdefault("fastapi.staticfiles", fastapi_staticfiles)
+    sys.modules.setdefault("fastapi.security", fastapi_security)
+
+
+_install_test_fastapi_stub()
+
+
 # AA3-Group1: Require the 'core' package (pre-refactor engine). Skipped when absent.
 # These 12 files cover the historical waterfall engine. Retained for reference;
 # they will never run until core/ is restored.

@@ -141,17 +141,29 @@ class TestC_NoMixedResult:
         assert counters.legacy_core_calls == 0
         assert counters.legacy_engine_calls == 0
 
-    def test_c2_tuho_legacy_run_is_explicitly_classified_not_silent(self):
-        out = _run_project("TUHO", "Base")
-        ra = out["runtime_authority"]
-        assert ra["runtime_authority"] == "legacy_waterfall_calibration"
-        assert ra["reason_code"] == "PR8_BLOCKED_BY_TYPED_TUHO_TAX_RUNTIME_GAP"
+    def test_c2_tuho_clean_not_ready_production(self):
+        """Phase B1: run_project("TUHO") raises CleanNotReadyError — no legacy fallthrough."""
+        from app.services.production_financial_authority import CleanNotReadyError
+        from app.api.project_runner import run_project
 
-    def test_c3_oborovo_legacy_run_is_explicitly_classified(self):
-        out = _run_project("Oborovo", "Base")
-        ra = out["runtime_authority"]
-        assert ra["runtime_authority"] == "legacy_waterfall_calibration"
-        assert ra["reason_code"] == "PR8_G2A_FINANCING_CONTRACT_FIELDS_NOT_TYPED"
+        with pytest.raises(CleanNotReadyError) as exc_info:
+            run_project("TUHO", "Base")
+        err = exc_info.value
+        assert err.reason_code == "PR8_BLOCKED_BY_TYPED_TUHO_TAX_RUNTIME_GAP"
+        assert err.runtime_authority == "clean_not_ready"
+        assert err.calculation_count == 0
+
+    def test_c3_oborovo_clean_not_ready_production(self):
+        """Phase B1: run_project("Oborovo") raises CleanNotReadyError — no legacy fallthrough."""
+        from app.services.production_financial_authority import CleanNotReadyError
+        from app.api.project_runner import run_project
+
+        with pytest.raises(CleanNotReadyError) as exc_info:
+            run_project("Oborovo", "Base")
+        err = exc_info.value
+        assert err.reason_code == "PR8_G2A_FINANCING_CONTRACT_FIELDS_NOT_TYPED"
+        assert err.runtime_authority == "clean_not_ready"
+        assert err.calculation_count == 0
 
 
 class TestD_IdentityInvariance:
@@ -252,14 +264,20 @@ class TestG_ExportDoesNotRecalculate:
 
 class TestH_SingleCalculationPerArtifact:
     def test_h1_institutional_workbook_one_legacy_run(self, monkeypatch):
+        """Phase B1 Correction A: _build_export_bundle(tuho) raises CleanNotReadyError.
+
+        execute_production_waterfall is now clean-only.  Blocked projects
+        surface CleanNotReadyError — no legacy engine fires.
+        """
         counters = EngineCounters(monkeypatch)
         from app.export.institutional_workbook import _build_export_bundle
+        from app.services.production_financial_authority import CleanNotReadyError
 
-        bundle = _build_export_bundle("tuho")
-        assert bundle.project_key == "tuho"
-        assert counters.legacy_core_calls == 1, (
-            "institutional workbook must run the legacy engine exactly once "
-            "(previously two independent full runs)"
+        with pytest.raises(CleanNotReadyError):
+            _build_export_bundle("tuho")
+        assert counters.legacy_core_calls == 0, (
+            "no legacy engine must fire when execute_production_waterfall "
+            "raises CleanNotReadyError (Phase B1 Correction A)"
         )
         assert counters.clean_calls == 0
 
@@ -522,15 +540,21 @@ class TestN_DualrunFlag:
         assert counters.legacy_core_calls == 0
         assert counters.legacy_engine_calls == 0
 
-    def test_n4_dualrun_blocked_project_keeps_legacy_route(self):
-        """Dualrun remains a legacy-calibration diagnostic for explicitly
-        blocked projects (no clean contract to violate)."""
+    def test_n4_dualrun_blocked_project_raises_clean_not_ready(self):
+        """Phase B1: dualrun on a non-promoted project raises CleanNotReadyError.
+
+        Post-B1 there is no legacy path to send the dualrun flag to.
+        Calibration callers must use run_project_legacy().
+        """
+        from app.services.production_financial_authority import CleanNotReadyError
         from app.api.project_runner import run_project
 
-        out = run_project("TUHO", "Base", use_dualrun_validation=True)
-        assert out["runtime_authority"]["runtime_authority"] == (
-            "legacy_waterfall_calibration"
-        )
+        with pytest.raises(CleanNotReadyError) as exc_info:
+            run_project("TUHO", "Base", use_dualrun_validation=True)
+        err = exc_info.value
+        assert err.reason_code == "PR8_BLOCKED_BY_TYPED_TUHO_TAX_RUNTIME_GAP"
+        assert err.runtime_authority == "clean_not_ready"
+        assert err.calculation_count == 0
 
 
 class TestRouteMatrixSolar:
@@ -623,6 +647,7 @@ class TestRouteMatrixSolar:
     def test_r9_credit_exec_reporting_seam(self, monkeypatch):
         """The main_web _run_base_result helper serves exec-summary, IC pack,
         credit pack, BESS dashboards and report export — route it directly."""
+        pytest.importorskip("pydantic", reason="main_web requires pydantic (not installed in engine-only env)")
         counters = EngineCounters(monkeypatch)
         from main_web import _run_base_result
         from app.project_factories import create_default_solar_project
@@ -675,49 +700,76 @@ class TestBlockedProjectCoherence:
         ("Oborovo", "PR8_G2A_FINANCING_CONTRACT_FIELDS_NOT_TYPED"),
     ))
     def test_b1_same_blocker_across_routes(self, ptype, reason):
+        """Phase B1 Correction A: execute_production_waterfall is clean-only.
+
+        Blocked projects raise CleanNotReadyError on ALL production routes —
+        including execute_production_waterfall (no allow_legacy).  Calibration
+        callers must use execute_calibration_waterfall().
+        """
         from app.project_factories import (
             create_default_oborovo,
             create_default_tuho_wind1,
         )
+        from app.services.production_financial_authority import CleanNotReadyError
         from app.services.production_waterfall_seam import (
             execute_production_demo,
             execute_production_waterfall,
+            execute_calibration_waterfall,
         )
 
         factory = {"TUHO": create_default_tuho_wind1,
                    "Oborovo": create_default_oborovo}[ptype]
         inputs = factory()
 
-        execution = execute_production_waterfall(inputs)
+        # Phase B1 Correction A: execute_production_waterfall is clean-only.
+        # Blocked projects now raise CleanNotReadyError (no legacy fallthrough).
+        with pytest.raises(CleanNotReadyError) as exc_info_prod:
+            execute_production_waterfall(inputs)
+        assert exc_info_prod.value.reason_code == reason
+        assert exc_info_prod.value.calculation_count == 0
+
+        # Calibration seam: execute_calibration_waterfall still runs legacy.
+        execution = execute_calibration_waterfall(inputs)
         assert execution.authority_metadata["runtime_authority"] == (
             "legacy_waterfall_calibration"
         )
         assert execution.authority_metadata["reason_code"] == reason
 
-        out = _run_project(ptype, "Base")
-        assert out["runtime_authority"]["reason_code"] == reason
+        # Phase B1: production router raises CleanNotReadyError.
+        from app.api.project_runner import run_project
+        with pytest.raises(CleanNotReadyError) as exc_info:
+            run_project(ptype, "Base")
+        assert exc_info.value.reason_code == reason
+        assert exc_info.value.runtime_authority == "clean_not_ready"
+        assert exc_info.value.calculation_count == 0
 
-        demo, meta = execute_production_demo(ptype, "Base")
-        assert meta["runtime_authority"] == "legacy_waterfall_calibration"
-        assert meta["reason_code"] == reason
+        # Phase B1: execute_production_demo also raises CleanNotReadyError.
+        with pytest.raises(CleanNotReadyError) as exc_info2:
+            execute_production_demo(ptype, "Base")
+        assert exc_info2.value.reason_code == reason
+        assert exc_info2.value.runtime_authority == "clean_not_ready"
+        assert exc_info2.value.calculation_count == 0
 
-    def test_b2_blocked_workbook_metadata(self):
+    def test_b2_blocked_workbook_raises_clean_not_ready(self):
+        """Phase B1 Correction A: _build_export_bundle raises CleanNotReadyError for blocked.
+
+        The institutional workbook calls execute_production_waterfall which is
+        now clean-only.  Blocked projects (Oborovo/TUHO) raise CleanNotReadyError.
+        """
         from app.export.institutional_workbook import _build_export_bundle
+        from app.services.production_financial_authority import CleanNotReadyError
 
-        bundle = _build_export_bundle("oborovo")
-        assert bundle.authority_metadata["runtime_authority"] == (
-            "legacy_waterfall_calibration"
-        )
-        assert bundle.authority_metadata["reason_code"] == (
-            "PR8_G2A_FINANCING_CONTRACT_FIELDS_NOT_TYPED"
-        )
-        assert bundle.statements is not None  # legacy FS retained for blocked
+        with pytest.raises(CleanNotReadyError) as exc_info:
+            _build_export_bundle("oborovo")
+        assert exc_info.value.reason_code == "PR8_G2A_FINANCING_CONTRACT_FIELDS_NOT_TYPED"
+        assert exc_info.value.calculation_count == 0
 
 
 # Pre-correction fingerprints captured at ef887499 (section 18).
 _PRF1_CANONICAL_AXIS_FINGERPRINTS = {
     "Solar": {
         # Old total included a one-day 2051-01-01 phantom period (16.518045386707 kEUR).
+        # Frozen at PR-F1 canonical axis freeze. B1 routing change has zero financial delta.
         "revenue": 94414.54881158611,
         "senior_ds": 35302.12518820596,
         "distributions": 5002.162578513825,
@@ -765,17 +817,26 @@ class TestGovernanceCorrection:
             "ProductionAuthorityResolutionError("
         ) or "raise ProductionAuthorityResolutionError" in routing
 
-    def test_gc2_legacy_engine_referenced_only_in_blocked_branch(self):
+    def test_gc2_legacy_engine_in_calibration_seam_only(self):
+        """Phase B1 Correction A: legacy engine import is in execute_calibration_waterfall.
+
+        execute_production_waterfall must NOT reference the legacy waterfall
+        runner — it is clean-only.  The legacy reference lives exclusively in
+        execute_calibration_waterfall (the explicit calibration seam).
+        """
         import inspect
         from app.services import production_waterfall_seam as seam
 
-        src = inspect.getsource(seam.execute_production_waterfall)
-        promoted_return = src.index("return ProductionWaterfallExecution")
-        legacy_import = src.index("from app.waterfall_runner import")
-        assert promoted_return < legacy_import, (
-            "the seam clean branch must return BEFORE any legacy engine "
-            "reference — legacy is reachable only through an explicit "
-            "non-promoted classification"
+        prod_src = inspect.getsource(seam.execute_production_waterfall)
+        cal_src = inspect.getsource(seam.execute_calibration_waterfall)
+
+        assert "from app.waterfall_runner import" not in prod_src, (
+            "execute_production_waterfall must not reference the legacy "
+            "waterfall runner — it is clean-only (Phase B1 Correction A)"
+        )
+        assert "from app.waterfall_runner import" in cal_src, (
+            "execute_calibration_waterfall must contain the legacy waterfall "
+            "runner import — it is the explicit calibration seam"
         )
 
     def test_gc3_run_project_legacy_only_from_characterization(self):
@@ -813,14 +874,17 @@ class TestActualExportServices:
         assert counters.legacy_core_calls == 0
 
     @pytest.mark.parametrize("code", ("oborovo", "tuho"))
-    def test_x2_runtime_summary_csv_legacy(self, code, monkeypatch):
-        counters = EngineCounters(monkeypatch)
-        from app.services.export_service import build_runtime_summary_csv_export
+    def test_x2_runtime_summary_csv_blocked_raises_clean_not_ready(self, code, monkeypatch):
+        """Phase B1 Correction A: runtime_summary for blocked projects raises CleanNotReadyError.
 
-        export = build_runtime_summary_csv_export(code)
-        assert export.status_code == 200
-        assert counters.clean_calls == 0
-        assert counters.legacy_core_calls == 1
+        execute_production_waterfall is now clean-only; no legacy fallthrough.
+        """
+        from app.services.export_service import build_runtime_summary_csv_export
+        from app.services.production_financial_authority import CleanNotReadyError
+
+        with pytest.raises(CleanNotReadyError) as exc_info:
+            build_runtime_summary_csv_export(code)
+        assert exc_info.value.calculation_count == 0
 
     @pytest.mark.parametrize("code", ("generic_solar", "generic_wind"))
     def test_x3_institutional_workbook_clean(self, code, monkeypatch):
@@ -834,14 +898,17 @@ class TestActualExportServices:
         assert counters.legacy_core_calls == 0
 
     @pytest.mark.parametrize("code", ("oborovo", "tuho"))
-    def test_x4_institutional_workbook_legacy(self, code, monkeypatch):
-        counters = EngineCounters(monkeypatch)
-        from app.services.export_service import build_institutional_workbook_export
+    def test_x4_institutional_workbook_blocked_raises_clean_not_ready(self, code, monkeypatch):
+        """Phase B1 Correction A: institutional workbook for blocked projects raises CleanNotReadyError.
 
-        export = build_institutional_workbook_export(code)
-        assert export.status_code == 200
-        assert counters.clean_calls == 0
-        assert counters.legacy_core_calls == 1
+        execute_production_waterfall is now clean-only; no legacy fallthrough.
+        """
+        from app.services.export_service import build_institutional_workbook_export
+        from app.services.production_financial_authority import CleanNotReadyError
+
+        with pytest.raises(CleanNotReadyError) as exc_info:
+            build_institutional_workbook_export(code)
+        assert exc_info.value.calculation_count == 0
 
 
 class TestPrecomputedSerializationZeroRecalc:

@@ -1,0 +1,248 @@
+name: Phase B1 — Clean-Only Production Router
+
+on:
+  push:
+    branches:
+      - phaseb1-clean-only-production-router
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "app/api/project_runner.py"
+      - "app/services/production_financial_authority.py"
+      - "app/services/production_waterfall_seam.py"
+      - "tests/test_phaseb1_clean_only_production_router.py"
+      - ".github/workflows/phaseb1_clean_only_production_router.yml"
+
+jobs:
+  b1-test-suite:
+    name: B1 Test Suite
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Verify exact head SHA
+        run: |
+          EXPECTED="${{ github.event.pull_request.head.sha || github.sha }}"
+          ACTUAL=$(git rev-parse HEAD)
+          test "$EXPECTED" = "$ACTUAL"
+
+      - name: Assert ancestry from PR-12 freeze
+        run: |
+          git merge-base --is-ancestor \
+            99cc51a90e98b4869d168e78aeb736861240f8a2 HEAD
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f constraints.txt ]; then
+            pip install -c constraints.txt -e .
+            pip install -c constraints.txt pytest
+          else
+            pip install -e .
+            pip install pytest
+          fi
+
+      - name: Diff hygiene
+        run: git diff --check 99cc51a90e98b4869d168e78aeb736861240f8a2..HEAD
+
+      - name: B1 — Clean-only production router tests
+        run: |
+          python -m pytest -q --tb=short \
+            tests/test_phaseb1_clean_only_production_router.py
+
+      - name: PR-F1 canonical period axis regression
+        run: |
+          python -m pytest -q --tb=short \
+            tests/test_prefreeze_prf1_canonical_period_axis.py
+
+      - name: PR-5 canonical EBITDA authority
+        run: |
+          python -m pytest -q --tb=short \
+            tests/test_prefreeze_pr5_canonical_ebitda_authority.py
+
+      - name: PR-6 typed SHL repayment policy
+        run: |
+          python -m pytest -q --tb=short \
+            tests/test_prefreeze_pr6_typed_shl_repayment_policy.py
+
+      - name: PR-7 typed base/bank case authority
+        run: |
+          python -m pytest -q --tb=short \
+            tests/test_prefreeze_pr7_typed_base_bank_case_authority.py
+
+      - name: PR-8 single production financial authority
+        run: |
+          python -m pytest -q --tb=short \
+            tests/test_prefreeze_pr8_single_production_financial_authority.py
+
+      - name: PR-9 typed construction IDC authority
+        run: |
+          python -m pytest -q --tb=short \
+            tests/test_pr9_typed_construction_idc_authority.py
+
+      - name: PR-10 typed country tax authority
+        run: |
+          python -m pytest -q --tb=short \
+            tests/test_prefreeze_pr10_typed_country_tax_authority.py
+
+      - name: PR-11 G2C deductible SHL tax feedback
+        run: |
+          python -m pytest -q --tb=short \
+            tests/test_prefreeze_pr11_g2c_deductible_shl_tax_feedback.py
+
+      - name: PR-12 final authority + causal freeze
+        run: |
+          python -m pytest -q --tb=short \
+            tests/test_prefreeze_pr12_final_authority_causal_freeze.py
+
+      - name: G0 generic clean engine
+        run: |
+          python -m pytest -q --tb=short \
+            tests/test_mvp_g0_generic_clean_engine_enablement.py
+
+      - name: G1 governance methodology lock
+        run: |
+          python -m pytest -q --tb=short \
+            tests/test_mvp_g1_governance_methodology_lock.py
+
+      - name: G2A financing stack
+        run: |
+          python -m pytest -q --tb=short \
+            tests/test_mvp_g2a_financing_stack.py
+
+      - name: G2B sponsor returns
+        run: |
+          python -m pytest -q --tb=short \
+            tests/test_mvp_g2b_sponsor_returns.py
+
+      - name: G2C shareholder waterfall
+        run: |
+          python -m pytest -q --tb=short \
+            tests/test_mvp_g2c_shareholder_waterfall.py
+
+      - name: C3B3D2B5 SHL fixed point integration
+        run: |
+          python -m pytest -q --tb=short \
+            tests/test_stage_c3b3d2b5_shl_fixed_point_integration.py
+
+      - name: C3B3D2B6 base post-senior cash parity
+        run: |
+          python -m pytest -q --tb=short \
+            tests/test_stage_c3b3d2b6_base_post_senior_cash_parity.py
+
+      - name: C3B3D2B7 bank case senior parity
+        run: |
+          python -m pytest -q --tb=short \
+            tests/test_stage_c3b3d2b7_bank_case_senior_parity.py
+
+      - name: C3B3D2B8 base senior SHL parity
+        run: |
+          python -m pytest -q --tb=short \
+            tests/test_stage_c3b3d2b8_base_senior_shl_parity_closure.py
+
+      - name: KUPI K0-K3 causal grid
+        run: |
+          python -m pytest -q --tb=short \
+            tests/test_kupi_k0_k3_causal_grid.py
+
+      - name: Tax and construction identity tests
+        run: |
+          python -m pytest -q --tb=short \
+            tests/test_stage_c3b3c_tax_policy_shl_deductibility.py \
+            tests/test_stage_c3b3d0_tax_identity_atad_decoupling.py \
+            tests/test_prefreeze_fix2_tax_jurisdiction.py
+
+      - name: Governance scan A — CleanNotReadyError in _run_project_impl
+        run: |
+          python -c "
+          import inspect, sys
+          sys.path.insert(0, '.')
+          from app.api import project_runner
+          src = inspect.getsource(project_runner._run_project_impl)
+          assert 'CleanNotReadyError' in src, \
+              'CleanNotReadyError not found in _run_project_impl'
+          print('PASS: CleanNotReadyError present in _run_project_impl')
+          "
+
+      - name: Governance scan B — execute_production_waterfall has no allow_legacy param
+        run: |
+          python -c "
+          import inspect, sys
+          sys.path.insert(0, '.')
+          from app.services.production_waterfall_seam import execute_production_waterfall
+          sig = inspect.signature(execute_production_waterfall)
+          assert 'allow_legacy' not in sig.parameters, \
+              'allow_legacy param still present in execute_production_waterfall'
+          print('PASS: allow_legacy absent from execute_production_waterfall')
+          "
+
+      - name: Governance scan C — execute_calibration_waterfall present
+        run: |
+          python -c "
+          import sys
+          sys.path.insert(0, '.')
+          from app.services.production_waterfall_seam import execute_calibration_waterfall
+          print('PASS: execute_calibration_waterfall importable')
+          "
+
+      - name: Governance scan D — run_project_legacy not reachable from production surfaces
+        run: |
+          MATCHES=$(git grep -l "run_project_legacy" -- app main_web.py main_api.py domain streamlit_app.py 2>/dev/null || true)
+          if [ -n "$MATCHES" ] && [ "$MATCHES" != "app/api/project_runner.py" ]; then
+            echo "FAIL: run_project_legacy found outside project_runner: $MATCHES"
+            exit 1
+          fi
+          echo "PASS: run_project_legacy only in app/api/project_runner.py"
+
+      - name: Governance scan E — execute_production_demo raises for unknown types
+        run: |
+          python -c "
+          import sys
+          sys.path.insert(0, '.')
+          from app.services.production_waterfall_seam import execute_production_demo
+          from app.services.production_financial_authority import CleanNotReadyError
+          try:
+              execute_production_demo('__governance_scan_unknown_type__')
+              raise AssertionError('execute_production_demo should raise for unknown types')
+          except CleanNotReadyError as e:
+              assert e.calculation_count == 0
+              print('PASS: execute_production_demo raises CleanNotReadyError for unknown types')
+          "
+
+      - name: Governance scan F — run_project raises for unknown types
+        run: |
+          python -c "
+          import sys
+          sys.path.insert(0, '.')
+          from app.api.project_runner import run_project
+          from app.services.production_financial_authority import CleanNotReadyError
+          try:
+              run_project('__governance_scan_unknown_type__', 'Base')
+              raise AssertionError('run_project should raise for unknown types')
+          except CleanNotReadyError as e:
+              assert e.calculation_count == 0
+              print('PASS: run_project raises CleanNotReadyError for unknown types')
+          "
+
+      - name: Production identity and governance scan
+        shell: bash
+        run: |
+          mapfile -t changed_python < <(
+            git diff --name-only \
+              99cc51a90e98b4869d168e78aeb736861240f8a2...HEAD \
+              -- app domain finco_core financial_engine \
+            | grep -E '\.py$' || true
+          )
+          if ((${#changed_python[@]})); then
+            ! grep -nHEi \
+              'project\.name|project\.code|approved_delta|expected_delta|balancing[_ ]plug|target[_ ]tax|source[_ ]tax[_ ](schedule|vector)|terminal[_ ]tax[_ ]top[_ ]up' \
+              "${changed_python[@]}"
+          fi

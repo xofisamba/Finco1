@@ -2125,28 +2125,33 @@ class TestPR12Governance:
             ), f"Unexpected error: {e}"
 
     def test_no_promote_tuho_no_promote_oborovo(self):
-        """TUHO and Oborovo remain on legacy routing (PHASE_B_PRODUCTION_CUTOVER_PENDING).
+        """TUHO and Oborovo are not clean-promoted; Phase B1 makes production fail-closed.
 
-        Verified via the factory runtime_authority field, avoiding fastapi import.
+        Phase B1 update: run_project(TUHO/Oborovo) now raises CleanNotReadyError
+        (typed fail-closed, calculation_count==0) instead of returning a legacy
+        result.  The projects remain un-promoted to clean_g2c.
         """
         try:
             import fastapi  # noqa: F401
         except ImportError:
-            pytest.skip("fastapi not installed; skipping API-layer routing assertion (PHASE_B_REMOVAL_PENDING)")
+            pytest.skip("fastapi not installed; skipping API-layer routing assertion")
         pytest.importorskip("app.api.project_runner", reason="project_runner requires fastapi")
         from app.api.project_runner import run_project
+        from app.services.production_financial_authority import CleanNotReadyError
 
-        tuho_out = run_project("TUHO", "Base")
-        oborovo_out = run_project("Oborovo", "Base")
-
-        tuho_ra = tuho_out["runtime_authority"]["runtime_authority"]
-        oborovo_ra = oborovo_out["runtime_authority"]["runtime_authority"]
-
-        assert tuho_ra != "clean_g2c", (
-            f"TUHO must NOT be promoted to clean_g2c in PR-12. Got: {tuho_ra}"
+        # Phase B1: production router raises CleanNotReadyError for non-promoted projects.
+        with pytest.raises(CleanNotReadyError) as tuho_exc:
+            run_project("TUHO", "Base")
+        assert tuho_exc.value.runtime_authority == "clean_not_ready", (
+            f"TUHO must raise CleanNotReadyError with clean_not_ready authority. "
+            f"Got: {tuho_exc.value.runtime_authority}"
         )
-        assert oborovo_ra != "clean_g2c", (
-            f"Oborovo must NOT be promoted to clean_g2c in PR-12. Got: {oborovo_ra}"
+
+        with pytest.raises(CleanNotReadyError) as oborovo_exc:
+            run_project("Oborovo", "Base")
+        assert oborovo_exc.value.runtime_authority == "clean_not_ready", (
+            f"Oborovo must raise CleanNotReadyError with clean_not_ready authority. "
+            f"Got: {oborovo_exc.value.runtime_authority}"
         )
 
     def test_solar_is_clean_engine(self):

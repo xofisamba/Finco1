@@ -278,10 +278,50 @@ def _run_project_impl(project_type: str, scenario: str, period_view: str = "Semi
             integration_note="Clean production financial authority (PR-8): "
                              "single G2C calculation, read-only presentation adapter.",
         )
-    else:
+    elif (
+        not force_legacy
+        and authority_decision is not None
+        and not authority_decision.promoted
+    ):
+        # Phase B1: fail-closed — no legacy production fallthrough.
+        # A classified-but-not-promoted project raises a typed error.
+        # Production callers receive CLEAN_NOT_READY; calculation_count == 0.
+        # The legacy engine is ONLY reachable via run_project_legacy().
+        from app.services.production_financial_authority import CleanNotReadyError
+
+        raise CleanNotReadyError(
+            classification=authority_decision.classification.value,
+            reason_code=authority_decision.reason_code,
+            detail=(
+                f"{authority_decision.detail}  "
+                "(Phase B1: production router is clean-only; no legacy "
+                "fallthrough.  Use run_project_legacy() for calibration.)"
+            ),
+            runtime_authority="clean_not_ready",
+            calculation_count=0,
+        )
+    elif force_legacy:
+        # Explicit calibration via run_project_legacy — exact legacy demo funnel.
         demo = run_demo_project(project_type, scenario,
                                 project_inputs_override=project_inputs_override,
                                 use_dualrun_validation=use_dualrun_validation)
+    else:
+        # Unclassified type (Portfolio / unknown project_type / override with
+        # validation errors) on the normal production path — Phase B1 fail-closed.
+        from app.services.production_financial_authority import CleanNotReadyError
+
+        raise CleanNotReadyError(
+            classification="UNCLASSIFIED",
+            reason_code="PR8_PROJECT_TYPE_NOT_CLASSIFIED",
+            detail=(
+                f"project_type={project_type!r} was not resolved to a typed "
+                "ProjectInputs and could not be classified. Phase B1: "
+                "run_project() is clean-only; no legacy fallthrough. "
+                "Use run_project_legacy() for explicit calibration."
+            ),
+            runtime_authority="clean_not_ready",
+            calculation_count=0,
+        )
     result = demo.result
 
     # Build tables
