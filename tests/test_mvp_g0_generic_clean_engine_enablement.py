@@ -88,14 +88,15 @@ def _assert_clean_chain_complete(result) -> None:
     )
     assert all(value >= 0.0 for value in shl.shl_principal_keur)
     principal_positions = [i for i, value in enumerate(shl.shl_principal_keur) if value > 1e-9]
-    assert principal_positions == [33]
-    assert shl.shl_debt_service_keur[33] <= (
-        shl.cash_available_for_shl_before_reserves_keur[33] + 1e-9
+    expected_maturity = first_operating_position + 31
+    assert principal_positions == [expected_maturity]
+    assert shl.shl_debt_service_keur[expected_maturity] <= (
+        shl.cash_available_for_shl_before_reserves_keur[expected_maturity] + 1e-9
     )
-    assert shl.shl_closing_keur[33] > 0.0
+    assert shl.shl_closing_keur[expected_maturity] > 0.0
     assert all(
-        value == pytest.approx(shl.shl_closing_keur[33])
-        for value in shl.shl_closing_keur[33:]
+        value == pytest.approx(shl.shl_closing_keur[expected_maturity])
+        for value in shl.shl_closing_keur[expected_maturity:]
     )
     assert shl.diagnostics.is_authoritative is True
     assert shl.diagnostics.max_final_shl_interest_handshake_delta_keur < 1e-6
@@ -228,7 +229,8 @@ def test_generic_shl_contract_is_causal_and_independent_of_bank_case(factory_nam
     assert max(p50_bank.shareholder_loan.shl_drawdown_keur) == pytest.approx(
         max(base.shareholder_loan.shl_drawdown_keur)
     )
-    assert [i for i, value in enumerate(p50_bank.shareholder_loan.shl_principal_keur) if value > 1e-9] == [33]
+    first_op = next(i for i, p in enumerate(p50_bank.periods) if p.is_operation)
+    assert [i for i, value in enumerate(p50_bank.shareholder_loan.shl_principal_keur) if value > 1e-9] == [first_op + 31]
 
 
 def test_generic_explicit_shl_maturity_mutation_moves_bullet_without_changing_terms():
@@ -271,8 +273,9 @@ def test_generic_senior_rate_schedule_has_no_total_period_count_80_binding(facto
     assert not hasattr(config, "total_period_count")
     assert len(config.rate_schedule.explicit_all_in_rates) == 30
     assert len(model.senior_debt_inputs.period_rates) == 30
-    assert model.senior_debt_policy.maturity_period_index == 31
-    assert max(rate.period_index for rate in model.senior_debt_inputs.period_rates) == 31
+    first_rate_index = min(rate.period_index for rate in model.senior_debt_inputs.period_rates)
+    assert model.senior_debt_policy.maturity_period_index == first_rate_index + 29
+    assert max(rate.period_index for rate in model.senior_debt_inputs.period_rates) == first_rate_index + 29
 
 
 def test_generic_bank_case_mutation_changes_sizing_without_mutating_base_case():

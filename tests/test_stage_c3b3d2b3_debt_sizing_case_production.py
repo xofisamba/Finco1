@@ -24,6 +24,15 @@ def _make_tuho_base_op():
     return from_project_inputs(create_default_tuho_wind1())
 
 
+def _tuho_operating_bounds():
+    from financial_engine.orchestrator import run_operating_model
+
+    indices = tuple(
+        p.period_index for p in run_operating_model(_make_tuho_base_op()).periods if p.is_operation
+    )
+    return indices[0], indices[-1]
+
+
 def _make_oborovo_base_op():
     from app.project_factories import create_default_oborovo
     from financial_engine.adapters.project_inputs import from_project_inputs
@@ -91,10 +100,13 @@ def tuho_result():
         production_yield_scenario=YieldScenario.P90_10Y,
         source_label="tuho_p90_10y_bank_case",
     )
+    repayment_start, maturity = _tuho_operating_bounds()
     model = SeniorDebtModelInput(
         operating=base_op,
         tax=tax_input,
-        senior_debt_policy=_make_simple_senior_debt_policy(repayment_start=2, maturity=61),
+        senior_debt_policy=_make_simple_senior_debt_policy(
+            repayment_start=repayment_start, maturity=maturity
+        ),
         senior_debt_inputs=_make_simple_sd_inputs(100_000.0),
         debt_sizing_case=bank_case,
     )
@@ -406,8 +418,11 @@ class TestF_TuhoPositiveAcceptance:
     def test_f2_bank_cfads_is_positive(self, tuho_result):
         ds = tuho_result.debt_sizing
         assert ds is not None
-        op_bank_cfads = [c for c, idx in zip(ds.bank_cfads_keur, ds.period_indices)
-                         if idx >= 2]  # operating periods only
+        operation_indices = {p.period_index for p in tuho_result.periods if p.is_operation}
+        op_bank_cfads = [
+            c for c, idx in zip(ds.bank_cfads_keur, ds.period_indices)
+            if idx in operation_indices
+        ]
         assert all(c >= 0 for c in op_bank_cfads[:5]), (
             "Bank CFADS must be non-negative in first 5 operating periods"
         )
@@ -421,9 +436,9 @@ class TestF_TuhoPositiveAcceptance:
 
         ds = tuho_result.debt_sizing
         assert ds is not None
-        # bank CFADS at first operating period (index 2)
+        first_operation_index = base_op_periods[0].period_index
         idx_map = dict(zip(ds.period_indices, ds.bank_cfads_keur))
-        bank_cfads_p1 = idx_map[2]
+        bank_cfads_p1 = idx_map[first_operation_index]
         assert bank_cfads_p1 < base_ebitda_p1, (
             f"Bank P90 CFADS ({bank_cfads_p1:.3f}) must be less than Base P50 EBITDA ({base_ebitda_p1:.3f})"
         )
@@ -438,7 +453,7 @@ class TestF_TuhoPositiveAcceptance:
         ds = tuho_result.debt_sizing
         assert ds is not None
         idx_map_prod = dict(zip(ds.period_indices, ds.bank_production_mwh))
-        bank_prod_p1 = idx_map_prod[2]
+        bank_prod_p1 = idx_map_prod[base_op_periods[0].period_index]
 
         actual_ratio = bank_prod_p1 / base_prod_p1
         assert 0.0 < actual_ratio < 1.0, (
@@ -449,7 +464,8 @@ class TestF_TuhoPositiveAcceptance:
         ds = tuho_result.debt_sizing
         assert ds is not None
         idx_map = dict(zip(ds.period_indices, ds.bank_cfads_keur))
-        bank_cfads_p1 = idx_map[2]
+        first_operation_index = next(p.period_index for p in tuho_result.periods if p.is_operation)
+        bank_cfads_p1 = idx_map[first_operation_index]
         # Generic P90 oracle: 2539.633673 kEUR (source-derived; ≤5 kEUR tolerance for engine conventions)
         # Default COD-anchored period contract; matches the base SHA behavior.
         assert bank_cfads_p1 == pytest.approx(2539.6520208632946, abs=1e-6), (
@@ -770,9 +786,12 @@ class TestM_PriceOverrideCausality:
             production_yield_scenario=YieldScenario.P90_10Y,
             market_prices_curve_eur_mwh=price_curve,
         )
+        repayment_start, maturity = _tuho_operating_bounds()
         model = SeniorDebtModelInput(
             operating=base_op, tax=tax_input,
-            senior_debt_policy=_make_simple_senior_debt_policy(repayment_start=2, maturity=61),
+            senior_debt_policy=_make_simple_senior_debt_policy(
+                repayment_start=repayment_start, maturity=maturity
+            ),
             senior_debt_inputs=_make_simple_sd_inputs(100_000.0),
             debt_sizing_case=bank_case,
         )

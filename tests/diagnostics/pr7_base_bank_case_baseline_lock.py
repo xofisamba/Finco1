@@ -164,6 +164,11 @@ def _run_tuho_clean_case():
     )
 
     base_op = from_project_inputs(create_default_tuho_wind1())
+    from financial_engine.orchestrator import run_operating_model
+
+    operating_indices = tuple(
+        p.period_index for p in run_operating_model(base_op).periods if p.is_operation
+    )
     tax_input = TaxCalculationInput(
         policy=build_tax_policy("tuho"),
         opening_loss_vintages=build_opening_loss_vintages("tuho"),
@@ -182,8 +187,8 @@ def _run_tuho_clean_case():
             annual_fixed_rate=0.05,
             periods_per_year=2,
             day_count_convention=DayCountConvention.ACT_365,
-            repayment_start_period_index=2,
-            maturity_period_index=61,
+            repayment_start_period_index=operating_indices[0],
+            maturity_period_index=operating_indices[-1],
             convergence_tolerance_keur=1.0,
             convergence_relative_tolerance=0.001,
             maximum_iterations=300,

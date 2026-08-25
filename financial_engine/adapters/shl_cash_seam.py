@@ -68,6 +68,8 @@ the clean engine result types.
 """
 from __future__ import annotations
 
+from finco_core.engine.period_engine import map_period_vector
+
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -136,9 +138,22 @@ def _compute_shl_cash_from_post_senior_cash(
             "post_senior_cash.period_indices"
         )
 
-    psc_cfads = dict(zip(psc.period_indices, psc.base_cfads_keur))
-    psc_sds = dict(zip(psc.period_indices, psc.senior_debt_service_keur))
-    psc_avail = dict(zip(psc.period_indices, psc.cash_available_for_shl_before_reserves_keur))
+    # Independently-derived canonical full axis (Correction C / TASK 1).
+    psc_expected_full_axis: tuple[int, ...] = tuple(p.period_index for p in periods)
+    psc_cfads = map_period_vector(
+        psc.period_indices, psc.base_cfads_keur, label="shl_cash_seam.base_cfads",
+        expected_indices=psc_expected_full_axis,
+    )
+    psc_sds = map_period_vector(
+        psc.period_indices, psc.senior_debt_service_keur,
+        label="shl_cash_seam.senior_debt_service",
+        expected_indices=psc_expected_full_axis,
+    )
+    psc_avail = map_period_vector(
+        psc.period_indices, psc.cash_available_for_shl_before_reserves_keur,
+        label="shl_cash_seam.cash_available",
+        expected_indices=psc_expected_full_axis,
+    )
 
     periods_meta = {p.period_index: p for p in periods}
     results: list[ShlCashAvailableByPeriod] = []
@@ -234,7 +249,12 @@ def compute_shl_cash_from_phase2c(
             "compute_shl_cash_from_phase2c: duplicate period indices in "
             "tax_and_cfads.period_indices"
         )
-    cfads_by_idx: dict[int, float] = dict(zip(tac_indices, tac_cfads))
+    # Independently-derived canonical full axis for CFADS (Correction C / TASK 1).
+    _legacy_full_axis: tuple[int, ...] = tuple(p.period_index for p in periods)
+    cfads_by_idx: dict[int, float] = map_period_vector(
+        tac_indices, tac_cfads, label="shl_cash_seam.tax_cfads",
+        expected_indices=_legacy_full_axis,
+    )
 
     sd_indices = list(sd.period_indices)
     sd_service = list(sd.senior_debt_service_keur)
@@ -249,7 +269,9 @@ def compute_shl_cash_from_phase2c(
             "compute_shl_cash_from_phase2c: duplicate period indices in "
             "senior_debt.period_indices"
         )
-    sd_service_by_idx: dict[int, float] = dict(zip(sd_indices, sd_service))
+    sd_service_by_idx: dict[int, float] = map_period_vector(
+        sd_indices, sd_service, label="shl_cash_seam.senior_debt_service"
+    )
 
     # The senior debt schedule covers only the debt tenor [min..max].
     # Operating periods outside this range (pre-debt or post-maturity) legitimately

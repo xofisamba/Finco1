@@ -640,18 +640,13 @@ def test_signed_cash_shl_service_exceeds_post_senior_produces_shortfall():
     assert max(0.0, -signed_post_shl) == pytest.approx(8363.84 - 1734.38, abs=1e-9)
 
 
-def test_negative_post_senior_period_42_is_not_silently_zeroed():
-    """Period 42 (signed_post_senior < 0) must produce shortfall, not zero."""
+def test_removed_terminal_stub_carries_no_financial_activity_or_hidden_shortfall():
+    """The former one-day period 42 is absent; real maturity shortfall stays visible."""
     result = run_project_sponsor_returns_model(_solar_project())
     op_periods = {p.period_index: p for p in result.cashflow_periods if not p.is_construction}
-    # Period 42 is the known negative-post-Senior operating period for default Solar
-    period_42 = op_periods.get(42)
-    assert period_42 is not None, "Period 42 not found in operating cashflows"
-    assert period_42.cash_shortfall_keur > 0.0, (
-        "Signed post-Senior deficit at period 42 must produce a visible shortfall "
-        "(old floored code returned 0 — regression guard)"
-    )
-    assert period_42.legal_equity_distribution_keur == pytest.approx(0.0, abs=1e-9)
+    assert 42 not in op_periods
+    assert op_periods[33].cash_shortfall_keur > 0.0
+    assert op_periods[33].legal_equity_distribution_keur == pytest.approx(0.0, abs=1e-9)
 
 
 def test_no_sponsor_contribution_created_from_shortfall():

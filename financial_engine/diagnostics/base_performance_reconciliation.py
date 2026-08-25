@@ -6,6 +6,7 @@ oracles and never become runtime calculation inputs.
 from __future__ import annotations
 
 from typing import Any
+from finco_core.engine.period_engine import map_period_vector
 
 
 def _delta_pct(delta: float, excel: float) -> float | None:
@@ -112,29 +113,57 @@ def _source_value(
 def _runtime_maps(result: Any) -> dict[str, dict[int, float]]:
     periods = {p.period_index: p for p in result.periods}
     ebit = {p.period_index: p.ebit_keur for p in result.periods}
-    senior_interest = dict(zip(result.senior_debt.period_indices, result.senior_debt.senior_interest_keur))
+    # Independently-derived canonical axes from model periods (Correction D / TASK 2).
+    # These are derived from the canonical immutable model periods, NOT from the schedule
+    # indices of the same schedule being validated (which would be self-validation).
+    _full_axis: tuple[int, ...] = tuple(p.period_index for p in result.periods)
+    _op_axis: tuple[int, ...] = tuple(p.period_index for p in result.periods if p.is_operation)
+    _tax_axis: tuple[int, ...] = _full_axis   # tax/CFADS spans all model periods
+    _shl_axis: tuple[int, ...] = _full_axis   # SHL schedule spans all model periods
+    # Senior axis: use CanonicalAxisContract when present on the result (populated by
+    # run_senior_debt_model from typed SeniorDebtPolicy bounds — NOT from solver indices).
+    # Correction G: fail closed — an active Senior schedule REQUIRES CanonicalAxisContract.
+    # No fallback to None for an active Senior consumer (CANONICAL_AXIS_CONTRACT_MISSING).
+    _axis_contract = getattr(result, "axis_contract", None)
+    if _axis_contract is not None:
+        _senior_axis: tuple[int, ...] | None = _axis_contract.senior_axis
+    elif result.senior_debt.period_indices:
+        raise ValueError(
+            "CANONICAL_AXIS_CONTRACT_MISSING: Senior debt schedule is active but "
+            "result.axis_contract is absent. Active Senior consumers require a "
+            "CanonicalAxisContract with an independently derived senior_axis. "
+            "Run run_senior_debt_model (Phase 2C) to populate the contract."
+        )
+    else:
+        _senior_axis = None
+    def mapped(indices, values, label, expected=None):
+        return map_period_vector(indices, values, label=f"base_reconciliation.{label}", expected_indices=expected)
+
+    senior_interest = mapped(result.senior_debt.period_indices, result.senior_debt.senior_interest_keur, "senior_interest", _senior_axis)
     shl_interest = (
-        dict(zip(result.shareholder_loan.period_indices, result.shareholder_loan.shl_gross_interest_keur))
+        mapped(result.shareholder_loan.period_indices, result.shareholder_loan.shl_gross_interest_keur, "shl_gross_interest", _shl_axis)
         if result.shareholder_loan else {}
     )
     shl_cash_interest = (
-        dict(zip(result.shareholder_loan.period_indices, result.shareholder_loan.shl_cash_interest_keur))
+        mapped(result.shareholder_loan.period_indices, result.shareholder_loan.shl_cash_interest_keur, "shl_cash_interest", _shl_axis)
         if result.shareholder_loan else {}
     )
     shl_pik = (
-        dict(zip(result.shareholder_loan.period_indices, result.shareholder_loan.shl_pik_interest_keur))
+        mapped(result.shareholder_loan.period_indices, result.shareholder_loan.shl_pik_interest_keur, "shl_pik_interest", _shl_axis)
         if result.shareholder_loan else {}
     )
     shl_principal = (
-        dict(zip(result.shareholder_loan.period_indices, result.shareholder_loan.shl_principal_keur))
+        mapped(result.shareholder_loan.period_indices, result.shareholder_loan.shl_principal_keur, "shl_principal", _shl_axis)
         if result.shareholder_loan else {}
     )
     shl_closing = (
-        dict(zip(result.shareholder_loan.period_indices, result.shareholder_loan.shl_closing_keur))
+        mapped(result.shareholder_loan.period_indices, result.shareholder_loan.shl_closing_keur, "shl_closing", _shl_axis)
         if result.shareholder_loan else {}
     )
-    operating = dict(zip(result.operating_schedules.period_indices, result.operating_schedules.production_mwh))
-    revenue = dict(zip(result.operating_schedules.period_indices, result.operating_schedules.revenue_keur))
+    # OperatingSchedules spans the FULL model axis (construction periods carry explicit
+    # zero operating values). Validate against _full_axis, NOT _op_axis.
+    operating = mapped(result.operating_schedules.period_indices, result.operating_schedules.production_mwh, "production", _full_axis)
+    revenue = mapped(result.operating_schedules.period_indices, result.operating_schedules.revenue_keur, "revenue", _full_axis)
     price = {
         idx: _safe_price(revenue.get(idx, 0.0), production)
         for idx, production in operating.items()
@@ -143,11 +172,11 @@ def _runtime_maps(result: Any) -> dict[str, dict[int, float]]:
         "Production": operating,
         "Price": price,
         "Revenue": revenue,
-        "OPEX": dict(zip(result.operating_schedules.period_indices, result.operating_schedules.opex_keur)),
-        "EBITDA": dict(zip(result.operating_schedules.period_indices, result.operating_schedules.ebitda_keur)),
+        "OPEX": mapped(result.operating_schedules.period_indices, result.operating_schedules.opex_keur, "opex", _full_axis),
+        "EBITDA": mapped(result.operating_schedules.period_indices, result.operating_schedules.ebitda_keur, "ebitda", _full_axis),
         "Book Dep": {idx: p.book_depreciation_keur for idx, p in periods.items()},
         "EBIT": ebit,
-        "Senior Opening": dict(zip(result.senior_debt.period_indices, result.senior_debt.senior_debt_opening_keur)),
+        "Senior Opening": mapped(result.senior_debt.period_indices, result.senior_debt.senior_debt_opening_keur, "senior_opening", _senior_axis),
         "Senior Interest": senior_interest,
         "SHL Gross Interest": shl_interest,
         "SHL Interest": shl_interest,
@@ -155,19 +184,19 @@ def _runtime_maps(result: Any) -> dict[str, dict[int, float]]:
             idx: ebit.get(idx, 0.0) - senior_interest.get(idx, 0.0) - shl_interest.get(idx, 0.0)
             for idx in periods
         },
-        "Fiscal Reintegration": dict(zip(result.tax_and_cfads.period_indices, result.tax_and_cfads.fiscal_reintegration_audit_keur)),
-        "Taxable Income": dict(zip(result.tax_and_cfads.period_indices, result.tax_and_cfads.taxable_income_before_losses_audit_keur)),
-        "Loss Utilisation": dict(zip(result.tax_and_cfads.period_indices, result.tax_and_cfads.tax_loss_used_audit_keur)),
-        "CIT": dict(zip(result.tax_and_cfads.period_indices, result.tax_and_cfads.tax_keur)),
-        "Cash Tax": dict(zip(result.tax_and_cfads.period_indices, result.tax_and_cfads.corporate_tax_cash_keur)),
-        "Base CFADS": dict(zip(result.tax_and_cfads.period_indices, result.tax_and_cfads.cfads_keur)),
-        "Senior Principal": dict(zip(result.senior_debt.period_indices, result.senior_debt.senior_principal_keur)),
-        "Senior Debt Service": dict(zip(result.senior_debt.period_indices, result.senior_debt.senior_debt_service_keur)),
-        "Senior Closing": dict(zip(result.senior_debt.period_indices, result.senior_debt.senior_debt_closing_keur)),
-        "Post-Senior Cash": dict(zip(result.post_senior_cash.period_indices, result.post_senior_cash.cash_after_senior_before_reserves_keur)),
-        "Cash Available for SHL": dict(zip(result.post_senior_cash.period_indices, result.post_senior_cash.cash_available_for_shl_before_reserves_keur)),
+        "Fiscal Reintegration": mapped(result.tax_and_cfads.period_indices, result.tax_and_cfads.fiscal_reintegration_audit_keur, "fiscal_reintegration", _tax_axis),
+        "Taxable Income": mapped(result.tax_and_cfads.period_indices, result.tax_and_cfads.taxable_income_before_losses_audit_keur, "taxable_income", _tax_axis),
+        "Loss Utilisation": mapped(result.tax_and_cfads.period_indices, result.tax_and_cfads.tax_loss_used_audit_keur, "loss_utilisation", _tax_axis),
+        "CIT": mapped(result.tax_and_cfads.period_indices, result.tax_and_cfads.tax_keur, "cit", _tax_axis),
+        "Cash Tax": mapped(result.tax_and_cfads.period_indices, result.tax_and_cfads.corporate_tax_cash_keur, "cash_tax", _tax_axis),
+        "Base CFADS": mapped(result.tax_and_cfads.period_indices, result.tax_and_cfads.cfads_keur, "base_cfads", _tax_axis),
+        "Senior Principal": mapped(result.senior_debt.period_indices, result.senior_debt.senior_principal_keur, "senior_principal", _senior_axis),
+        "Senior Debt Service": mapped(result.senior_debt.period_indices, result.senior_debt.senior_debt_service_keur, "senior_debt_service", _senior_axis),
+        "Senior Closing": mapped(result.senior_debt.period_indices, result.senior_debt.senior_debt_closing_keur, "senior_closing", _senior_axis),
+        "Post-Senior Cash": mapped(result.post_senior_cash.period_indices, result.post_senior_cash.cash_after_senior_before_reserves_keur, "post_senior_cash", _full_axis),
+        "Cash Available for SHL": mapped(result.post_senior_cash.period_indices, result.post_senior_cash.cash_available_for_shl_before_reserves_keur, "cash_available_for_shl", _full_axis),
         "SHL Opening": (
-            dict(zip(result.shareholder_loan.period_indices, result.shareholder_loan.shl_opening_keur))
+            mapped(result.shareholder_loan.period_indices, result.shareholder_loan.shl_opening_keur, "shl_opening", _shl_axis)
             if result.shareholder_loan else {}
         ),
         "SHL Cash Interest": shl_cash_interest,

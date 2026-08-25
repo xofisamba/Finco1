@@ -36,6 +36,15 @@ def _make_tuho_base_op():
     return from_project_inputs(create_default_tuho_wind1())
 
 
+def _tuho_operating_bounds():
+    from financial_engine.orchestrator import run_operating_model
+
+    indices = tuple(
+        p.period_index for p in run_operating_model(_make_tuho_base_op()).periods if p.is_operation
+    )
+    return indices[0], indices[-1]
+
+
 def _make_simple_senior_debt_policy(repayment_start=2, maturity=29):
     from financial_engine.senior_debt.policy import SeniorDebtPolicy, SeniorDebtSizingMode, DayCountConvention
     return SeniorDebtPolicy(
@@ -81,10 +90,13 @@ def tuho_result():
         production_yield_scenario=YieldScenario.P90_10Y,
         source_label="c3b3d2b4_tuho_bank_case",
     )
+    repayment_start, maturity = _tuho_operating_bounds()
     model = SeniorDebtModelInput(
         operating=base_op,
         tax=tax_input,
-        senior_debt_policy=_make_simple_senior_debt_policy(repayment_start=2, maturity=61),
+        senior_debt_policy=_make_simple_senior_debt_policy(
+            repayment_start=repayment_start, maturity=maturity
+        ),
         senior_debt_inputs=_make_simple_sd_inputs(100_000.0),
         debt_sizing_case=bank_case,
     )
@@ -1102,10 +1114,13 @@ class TestT_BankYieldMutationCausality:
             production_yield_scenario=YieldScenario.P50,
             source_label="t_p50_bank_case",
         )
+        repayment_start, maturity = _tuho_operating_bounds()
         model = SeniorDebtModelInput(
             operating=base_op,
             tax=tax_input,
-            senior_debt_policy=_make_simple_senior_debt_policy(repayment_start=2, maturity=61),
+            senior_debt_policy=_make_simple_senior_debt_policy(
+                repayment_start=repayment_start, maturity=maturity
+            ),
             senior_debt_inputs=_make_simple_sd_inputs(100_000.0),
             debt_sizing_case=bank_case,
         )
@@ -1170,10 +1185,13 @@ class TestU_MerchantPriceMutationCausality:
             market_prices_curve_eur_mwh=low_curve,
             source_label="u_low_price_bank_case",
         )
+        repayment_start, maturity = _tuho_operating_bounds()
         model = SeniorDebtModelInput(
             operating=base_op,
             tax=tax_input,
-            senior_debt_policy=_make_simple_senior_debt_policy(repayment_start=2, maturity=61),
+            senior_debt_policy=_make_simple_senior_debt_policy(
+                repayment_start=repayment_start, maturity=maturity
+            ),
             senior_debt_inputs=_make_simple_sd_inputs(100_000.0),
             debt_sizing_case=bank_case,
         )
@@ -1233,10 +1251,13 @@ class TestV_BasePriceMutationCausality:
             production_yield_scenario=YieldScenario.P90_10Y,
             source_label="v_high_base_price",
         )
+        repayment_start, maturity = _tuho_operating_bounds()
         model = SeniorDebtModelInput(
             operating=high_base_op,
             tax=tax_input,
-            senior_debt_policy=_make_simple_senior_debt_policy(repayment_start=2, maturity=61),
+            senior_debt_policy=_make_simple_senior_debt_policy(
+                repayment_start=repayment_start, maturity=maturity
+            ),
             senior_debt_inputs=_make_simple_sd_inputs(100_000.0),
             debt_sizing_case=bank_case,
         )
@@ -1289,10 +1310,13 @@ class TestW_SourceLabelInvariance:
             production_yield_scenario=YieldScenario.P90_10Y,
             source_label="w_relabelled_bank_case_different_label",
         )
+        repayment_start, maturity = _tuho_operating_bounds()
         model = SeniorDebtModelInput(
             operating=base_op,
             tax=tax_input,
-            senior_debt_policy=_make_simple_senior_debt_policy(repayment_start=2, maturity=61),
+            senior_debt_policy=_make_simple_senior_debt_policy(
+                repayment_start=repayment_start, maturity=maturity
+            ),
             senior_debt_inputs=_make_simple_sd_inputs(100_000.0),
             debt_sizing_case=bank_case,
         )

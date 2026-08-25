@@ -9,6 +9,8 @@ GENERIC MVP POLICY: DISTRIBUTE_ALL_POST_SHL_CASH
 
 from __future__ import annotations
 
+from finco_core.engine.period_engine import map_period_vector
+
 from datetime import date, timedelta
 
 from finco_core.inputs import ProjectInputs, SponsorFundingMode
@@ -168,6 +170,12 @@ def run_project_sponsor_returns_model(
     is_bullet = False
     shl_maturity_idx: int | None = None
 
+    # Independently-derived canonical axes (Correction C / TASK 1):
+    #   expected_full_axis — all model period indices from model_result.periods
+    expected_full_axis: tuple[int, ...] = tuple(
+        p.period_index for p in model_result.periods
+    )
+
     if shl is not None:
         senior_contract = build_senior_debt_model_input_from_project_inputs(
             project_inputs
@@ -184,28 +192,44 @@ def run_project_sponsor_returns_model(
             raise ValueError("G2B: canonical SHL schedule exists without typed SHL contract")
         is_bullet = shl_contract.repayment_mode == ShlRepaymentMode.BULLET
         shl_maturity_idx = shl_contract.maturity_period_index if is_bullet else None
-        shl_cash_interest_by_idx = dict(
-            zip(shl.period_indices, shl.shl_cash_interest_keur)
+        # SHL schedule axis must match the full canonical period axis (Rule 4).
+        # shl.period_indices was validated against full_axis by the orchestrator.
+        shl_cash_interest_by_idx = map_period_vector(
+            shl.period_indices, shl.shl_cash_interest_keur,
+            label="sponsor_returns.shl_cash_interest",
+            expected_indices=expected_full_axis,
         )
-        shl_principal_by_idx = dict(
-            zip(shl.period_indices, shl.shl_principal_keur)
+        shl_principal_by_idx = map_period_vector(
+            shl.period_indices, shl.shl_principal_keur,
+            label="sponsor_returns.shl_principal",
+            expected_indices=expected_full_axis,
         )
-        shl_debt_service_by_idx = dict(
-            zip(shl.period_indices, shl.shl_debt_service_keur)
+        shl_debt_service_by_idx = map_period_vector(
+            shl.period_indices, shl.shl_debt_service_keur,
+            label="sponsor_returns.shl_debt_service",
+            expected_indices=expected_full_axis,
         )
-        shl_opening_by_idx = dict(zip(shl.period_indices, shl.shl_opening_keur))
-        shl_pik_by_idx = dict(zip(shl.period_indices, shl.shl_pik_interest_keur))
+        shl_opening_by_idx = map_period_vector(
+            shl.period_indices, shl.shl_opening_keur,
+            label="sponsor_returns.shl_opening",
+            expected_indices=expected_full_axis,
+        )
+        shl_pik_by_idx = map_period_vector(
+            shl.period_indices, shl.shl_pik_interest_keur,
+            label="sponsor_returns.shl_pik",
+            expected_indices=expected_full_axis,
+        )
 
     # Signed post-Senior cash authority (G2B uses the SIGNED field, not the floored one).
     # Negative = CFADS insufficient to cover Senior debt service.
     # This preserves cash deficits so shortfall remains visible rather than silently zeroed.
     if model_result.post_senior_cash is None:
         raise ValueError("G2B requires post_senior_cash; clean engine did not produce it")
-    signed_post_senior_by_idx: dict[int, float] = dict(
-        zip(
-            model_result.post_senior_cash.period_indices,
-            model_result.post_senior_cash.cash_after_senior_before_reserves_keur,
-        )
+    signed_post_senior_by_idx: dict[int, float] = map_period_vector(
+        model_result.post_senior_cash.period_indices,
+        model_result.post_senior_cash.cash_after_senior_before_reserves_keur,
+        label="sponsor_returns.post_senior_cash",
+        expected_indices=expected_full_axis,
     )
 
     # Dates for operating periods

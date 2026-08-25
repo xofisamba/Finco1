@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from finco_core.engine.period_engine import map_period_vector
 from financial_engine.shareholder_waterfall.contracts import (
     DistributionGateStatus,
 )
@@ -171,10 +172,42 @@ def build_clean_waterfall_view(clean_run) -> CleanWaterfallView:
     tax = model.tax_and_cfads
     senior = model.senior_debt
 
-    op_by_idx = dict(zip(op.period_indices, range(len(op.period_indices))))
-    tax_by_idx = dict(zip(tax.period_indices, range(len(tax.period_indices))))
-    senior_by_idx = dict(
-        zip(senior.period_indices, range(len(senior.period_indices)))
+    # Independently-derived canonical axes (Correction D / TASK 2, Correction F/G).
+    # _full_axis is derived from canonical immutable model periods — not from any schedule.
+    # Senior axis: use CanonicalAxisContract when present on the result (populated by
+    # run_senior_debt_model from typed SeniorDebtPolicy bounds — NOT from solver indices).
+    # Correction G: fail closed — an active Senior schedule REQUIRES CanonicalAxisContract.
+    # No fallback to None for an active Senior consumer (CANONICAL_AXIS_CONTRACT_MISSING).
+    _full_axis: tuple[int, ...] = tuple(p.period_index for p in model.periods)
+    _axis_contract = getattr(model, "axis_contract", None)
+    if _axis_contract is not None:
+        _senior_expected: "tuple[int, ...] | None" = _axis_contract.senior_axis
+    elif senior.period_indices:
+        raise ValueError(
+            "CANONICAL_AXIS_CONTRACT_MISSING: Senior debt schedule is active but "
+            "model.axis_contract is absent. Active Senior consumers require a "
+            "CanonicalAxisContract with an independently derived senior_axis. "
+            "Run run_senior_debt_model (Phase 2C) to populate the contract."
+        )
+    else:
+        _senior_expected = None
+    op_by_idx = map_period_vector(
+        op.period_indices,
+        tuple(range(len(op.period_indices))),
+        label="clean_presentation.operating",
+        expected_indices=_full_axis,
+    )
+    tax_by_idx = map_period_vector(
+        tax.period_indices,
+        tuple(range(len(tax.period_indices))),
+        label="clean_presentation.tax",
+        expected_indices=_full_axis,
+    )
+    senior_by_idx = map_period_vector(
+        senior.period_indices,
+        tuple(range(len(senior.period_indices))),
+        label="clean_presentation.senior_debt",
+        expected_indices=_senior_expected,  # from CanonicalAxisContract (policy-derived)
     )
     # The G2C waterfall grid and the model period grid use DIFFERENT
     # numbering axes (waterfall period_index is 1-based over its own
@@ -184,7 +217,12 @@ def build_clean_waterfall_view(clean_run) -> CleanWaterfallView:
     # carry no waterfall cash event and default to no-SHL/DA activity.
     wp_by_date: dict = {}
     for w in g2c.waterfall_periods:
-        wp_by_date.setdefault(getattr(w, "cashflow_date", None), w)
+        cashflow_date = getattr(w, "cashflow_date", None)
+        if cashflow_date in wp_by_date:
+            raise ValueError(
+                "PERIOD_VECTOR_DUPLICATE_DATES: clean_presentation.waterfall_periods"
+            )
+        wp_by_date[cashflow_date] = w
 
     period_views: list[CleanPeriodView] = []
     lockup_count = 0

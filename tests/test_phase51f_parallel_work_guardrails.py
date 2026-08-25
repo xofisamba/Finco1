@@ -105,9 +105,9 @@ GOLDEN_TUHO: dict[str, dict] = {
         ),
     },
     "total_operating_periods": {
-        "value": 61,
+        "value": 60,
         "tolerance_abs": 0,        # exact integer
-        "description": "Total operating periods in TUHO model run.",
+        "description": "Canonical 30-year semiannual TUHO operating period count.",
     },
     "opex_total_keur": {
         "value": 85408.27,

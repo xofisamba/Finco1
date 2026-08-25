@@ -977,6 +977,11 @@ def run_project_financing_model(
             _uses = getattr(fin, "construction_period_uses_keur", ())
             if _typed_shl_context is None and _uses:
                 from finco_core.inputs._models import SponsorFundingTimingPolicy as _Policy
+                if len(_uses) != len(_construction_period_template):
+                    raise ValueError(
+                        "CONSTRUCTION_USES_PERIOD_AXIS_MISMATCH: "
+                        f"expected={len(_construction_period_template)}, actual={len(_uses)}"
+                    )
                 # Layer A — cumulative SPONSOR_FIRST_RESIDUAL_SENIOR waterfall.
                 # Equity cap = all fixed equity sources + additional_equity from previous iteration
                 # (additional_equity starts at 0.0 and converges each iteration).

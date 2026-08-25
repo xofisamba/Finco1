@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from financial_engine.provenance import EngineProvenance
     from financial_engine.validation import ValidationIssue
+    from finco_core.engine.axis_contract import CanonicalAxisContract
 
 
 @dataclass(frozen=True)
@@ -259,3 +260,9 @@ class ProjectModelResult:
     post_senior_cash: "PostSeniorCashSchedules | None" = None
     shareholder_loan: "ShareholderLoanSchedules | None" = None
     cash_dsra: "object | None" = None  # CashDsraSchedules | None — PR-3 reserve authority
+    # PR-F1 Correction F: immutable canonical axis contract (runtime-only, not serialized).
+    # Populated by run_senior_debt_model and _run_senior_debt_model_with_shl after the
+    # contract is constructed from typed periods and SeniorDebtPolicy bounds — BEFORE
+    # any solver output is accepted.  Downstream consumers use this for Senior axis
+    # enforcement instead of self-deriving from result.senior_debt.period_indices.
+    axis_contract: "CanonicalAxisContract | None" = None

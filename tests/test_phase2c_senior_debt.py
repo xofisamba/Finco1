@@ -1140,7 +1140,7 @@ class TestO_ThreeRunnableBaselines:
     The TUHO-blocked tests below have been updated to reflect the accepted parent truth.
     """
 
-    def _make_simple_policy(self) -> SeniorDebtPolicy:
+    def _make_simple_policy(self, *, period_index_shift: int = 0) -> SeniorDebtPolicy:
         return SeniorDebtPolicy(
             policy_id="phase2c_test_policy",
             policy_version="1.0",
@@ -1150,8 +1150,8 @@ class TestO_ThreeRunnableBaselines:
             annual_fixed_rate=0.05,
             periods_per_year=2,
             day_count_convention=DayCountConvention.ACT_365,
-            repayment_start_period_index=2,
-            maturity_period_index=40,
+            repayment_start_period_index=2 + period_index_shift,
+            maturity_period_index=40 + period_index_shift,
             convergence_tolerance_keur=1.0,
             convergence_relative_tolerance=0.001,
             maximum_iterations=200,
@@ -1172,7 +1172,7 @@ class TestO_ThreeRunnableBaselines:
         from financial_engine.adapters.project_inputs import from_project_inputs
         from financial_engine.inputs import TaxCalculationInput, SeniorDebtModelInput, DebtSizingCaseInput
         from financial_engine.senior_debt.inputs import SeniorDebtInputs
-        from financial_engine.orchestrator import run_senior_debt_model
+        from financial_engine.orchestrator import run_operating_model, run_senior_debt_model
 
         try:
             vintages = build_opening_loss_vintages(baseline_id)
@@ -1199,10 +1199,15 @@ class TestO_ThreeRunnableBaselines:
             period_rates=(),
             explicit_principal_schedule=None,
         )
+        first_operation_index = next(
+            p.period_index for p in run_operating_model(op_inputs).periods if p.is_operation
+        )
         model_input = SeniorDebtModelInput(
             operating=op_inputs,
             tax=tax_input,
-            senior_debt_policy=self._make_simple_policy(),
+            senior_debt_policy=self._make_simple_policy(
+                period_index_shift=max(0, first_operation_index - 2)
+            ),
             senior_debt_inputs=sd_inputs,
             debt_sizing_case=DebtSizingCaseInput(
                 production_yield_scenario=op_inputs.technical.yield_scenario,
@@ -1367,7 +1372,7 @@ class TestRollingInterest:
 class TestFinalTaxCfads:
     """Final tax/CFADS in run_senior_debt_model uses the final senior interest."""
 
-    def _build_simple_policy(self) -> SeniorDebtPolicy:
+    def _build_simple_policy(self, *, period_index_shift: int = 0) -> SeniorDebtPolicy:
         return SeniorDebtPolicy(
             policy_id="test_final_tax",
             policy_version="1.0",
@@ -1377,8 +1382,8 @@ class TestFinalTaxCfads:
             annual_fixed_rate=0.05,
             periods_per_year=2,
             day_count_convention=DayCountConvention.ACT_365,
-            repayment_start_period_index=2,
-            maturity_period_index=40,
+            repayment_start_period_index=2 + period_index_shift,
+            maturity_period_index=40 + period_index_shift,
             convergence_tolerance_keur=1.0,
             convergence_relative_tolerance=0.001,
             maximum_iterations=200,
@@ -1402,7 +1407,7 @@ class TestFinalTaxCfads:
         from financial_engine.adapters.project_inputs import from_project_inputs
         from financial_engine.inputs import TaxCalculationInput, SeniorDebtModelInput, DebtSizingCaseInput
         from financial_engine.senior_debt.inputs import SeniorDebtInputs
-        from financial_engine.orchestrator import run_senior_debt_model
+        from financial_engine.orchestrator import run_operating_model, run_senior_debt_model
 
         vintages = build_opening_loss_vintages(baseline_id)
         project_inputs = _load_project_inputs(baseline_id)
@@ -1422,10 +1427,15 @@ class TestFinalTaxCfads:
             period_rates=(),
             explicit_principal_schedule=None,
         )
+        first_operation_index = next(
+            p.period_index for p in run_operating_model(op_inputs).periods if p.is_operation
+        )
         model_input = SeniorDebtModelInput(
             operating=op_inputs,
             tax=tax_input,
-            senior_debt_policy=self._build_simple_policy(),
+            senior_debt_policy=self._build_simple_policy(
+                period_index_shift=max(0, first_operation_index - 2)
+            ),
             senior_debt_inputs=sd_inputs,
             debt_sizing_case=DebtSizingCaseInput(
                 production_yield_scenario=op_inputs.technical.yield_scenario,

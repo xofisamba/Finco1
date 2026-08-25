@@ -33,6 +33,11 @@ def _make_policy():
         SeniorDebtSizingMode,
     )
 
+    from financial_engine.orchestrator import run_operating_model
+
+    operation_indices = tuple(
+        p.period_index for p in run_operating_model(_make_base_op()).periods if p.is_operation
+    )
     return SeniorDebtPolicy(
         policy_id="c3b3d2b3_hardening",
         policy_version="1.0",
@@ -42,8 +47,8 @@ def _make_policy():
         annual_fixed_rate=0.05,
         periods_per_year=2,
         day_count_convention=DayCountConvention.ACT_365,
-        repayment_start_period_index=2,
-        maturity_period_index=61,
+        repayment_start_period_index=operation_indices[0],
+        maturity_period_index=operation_indices[-1],
         convergence_tolerance_keur=1.0,
         convergence_relative_tolerance=0.001,
         maximum_iterations=300,

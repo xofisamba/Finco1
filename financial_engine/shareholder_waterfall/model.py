@@ -78,6 +78,7 @@ from datetime import date
 
 from finco_core.inputs import DebtServiceReserveSupportMode, ProjectInputs, SponsorFundingMode
 from finco_core.inputs._models import ShlInterestDeductibilityMode
+from finco_core.engine.period_engine import map_period_vector
 
 from financial_engine.adapters.project_inputs import (
     _build_shareholder_loan_model_input_from_project_inputs,
@@ -263,11 +264,21 @@ def run_project_shareholder_waterfall_model(
     if model_result.post_senior_cash is None:
         raise ValueError("G2C requires post_senior_cash; clean engine did not produce it")
 
-    signed_post_senior_by_idx: dict[int, float] = dict(
-        zip(
-            model_result.post_senior_cash.period_indices,
-            model_result.post_senior_cash.cash_after_senior_before_reserves_keur,
-        )
+    # Independently-derived canonical axes (Correction C / TASK 1):
+    #   expected_full_axis  — all model period indices from model_result.periods
+    #   expected_op_axis    — operating-only period indices
+    expected_full_axis: tuple[int, ...] = tuple(
+        p.period_index for p in model_result.periods
+    )
+    expected_op_axis: tuple[int, ...] = tuple(
+        p.period_index for p in model_result.periods if p.is_operation
+    )
+
+    signed_post_senior_by_idx: dict[int, float] = map_period_vector(
+        model_result.post_senior_cash.period_indices,
+        model_result.post_senior_cash.cash_after_senior_before_reserves_keur,
+        label="shareholder_waterfall.post_senior_cash",
+        expected_indices=expected_full_axis,
     )
 
     # DSCR lookup — None where no Senior DS
@@ -277,10 +288,33 @@ def run_project_shareholder_waterfall_model(
     if model_result.senior_debt is not None:
         sd = model_result.senior_debt
         ds_arr = sd.senior_debt_service_keur
-        for idx, dscr, ds in zip(sd.period_indices, sd.base_dscr, ds_arr):
-            base_dscr_by_idx[idx] = dscr
-            senior_ds_nonzero_by_idx[idx] = ds > 0.0
-        nonzero_ds = [i for i, ds in zip(sd.period_indices, ds_arr) if ds > 0.0]
+        # Senior axis: derive independently from CanonicalAxisContract when present
+        # (populated by the clean orchestrator from typed SeniorDebtPolicy bounds).
+        # For legacy paths (no axis_contract), derive from canonical periods + SD policy
+        # bounds via build_senior_debt_model_input_from_project_inputs.
+        # NEVER use tuple(sd.period_indices) as expected_senior_axis (self-validation).
+        _axis_contract = getattr(model_result, "axis_contract", None)
+        if _axis_contract is not None:
+            expected_senior_axis: tuple[int, ...] = _axis_contract.senior_axis
+        else:
+            # Correction G: fail closed — no fallback for active Senior consumers.
+            # CanonicalAxisContract must be present when Senior debt is active.
+            raise ValueError(
+                "CANONICAL_AXIS_CONTRACT_MISSING: Senior debt schedule is active but "
+                "model_result.axis_contract is absent. Active Senior consumers require "
+                "a CanonicalAxisContract with an independently derived senior_axis. "
+                "Run run_senior_debt_model (Phase 2C) to populate the contract."
+            )
+        base_dscr_by_idx = map_period_vector(
+            sd.period_indices, sd.base_dscr, label="shareholder_waterfall.base_dscr",
+            expected_indices=expected_senior_axis,
+        )
+        senior_ds_by_idx = map_period_vector(
+            sd.period_indices, ds_arr, label="shareholder_waterfall.senior_debt_service",
+            expected_indices=expected_senior_axis,
+        )
+        senior_ds_nonzero_by_idx = {idx: ds > 0.0 for idx, ds in senior_ds_by_idx.items()}
+        nonzero_ds = [i for i, ds in senior_ds_by_idx.items() if ds > 0.0]
         if nonzero_ds:
             senior_last_period_index = max(nonzero_ds)
 
@@ -320,7 +354,12 @@ def run_project_shareholder_waterfall_model(
                 senior_last_period_index=senior_last_period_index if fin.dsrf_fee_expires_at_senior_maturity else None,
                 day_count_convention=fin.dsrf_day_count,
             )
-            dsrf_fee_by_idx = dict(zip(dsrf_schedule.period_indices, dsrf_schedule.dsrf_commitment_fee_keur))
+            dsrf_fee_by_idx = map_period_vector(
+                dsrf_schedule.period_indices,
+                dsrf_schedule.dsrf_commitment_fee_keur,
+                label="shareholder_waterfall.dsrf_commitment_fee",
+                expected_indices=expected_op_axis,
+            )
 
     # ── PR-3 CASH_DSRA roll-forward lookup ───────────────────────────────────
     # CASH_DSRA: consume model_result.cash_dsra as the one clean reserve authority.
@@ -517,12 +556,22 @@ def run_project_shareholder_waterfall_model(
                 gated_cash_all_periods,
                 diagnostics=None,
             )
-            shl_opening_by_idx = dict(zip(gated_shl_schedule.period_indices, gated_shl_schedule.shl_opening_keur))
-            shl_gross_by_idx = dict(zip(gated_shl_schedule.period_indices, gated_shl_schedule.shl_gross_interest_keur))
-            shl_cash_int_by_idx = dict(zip(gated_shl_schedule.period_indices, gated_shl_schedule.shl_cash_interest_keur))
-            shl_pik_by_idx = dict(zip(gated_shl_schedule.period_indices, gated_shl_schedule.shl_pik_interest_keur))
-            shl_principal_by_idx = dict(zip(gated_shl_schedule.period_indices, gated_shl_schedule.shl_principal_keur))
-            shl_closing_by_idx = dict(zip(gated_shl_schedule.period_indices, gated_shl_schedule.shl_closing_keur))
+            # SHL schedule axis must match the full canonical period axis (Rule 4).
+            expected_shl_axis: tuple[int, ...] = expected_full_axis
+            for label, values, target in (
+                ("opening", gated_shl_schedule.shl_opening_keur, shl_opening_by_idx),
+                ("gross_interest", gated_shl_schedule.shl_gross_interest_keur, shl_gross_by_idx),
+                ("cash_interest", gated_shl_schedule.shl_cash_interest_keur, shl_cash_int_by_idx),
+                ("pik_interest", gated_shl_schedule.shl_pik_interest_keur, shl_pik_by_idx),
+                ("principal", gated_shl_schedule.shl_principal_keur, shl_principal_by_idx),
+                ("closing", gated_shl_schedule.shl_closing_keur, shl_closing_by_idx),
+            ):
+                target.update(map_period_vector(
+                    gated_shl_schedule.period_indices,
+                    values,
+                    label=f"shareholder_waterfall.shl_{label}",
+                    expected_indices=expected_shl_axis,
+                ))
 
     # ── Phase 3: Deductible SHL feedback check ───────────────────────────────
     shl_deductible = (

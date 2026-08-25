@@ -715,25 +715,27 @@ class TestBlockedProjectCoherence:
 
 
 # Pre-correction fingerprints captured at ef887499 (section 18).
-_PRE_CORRECTION_FINGERPRINTS = {
+_PRF1_CANONICAL_AXIS_FINGERPRINTS = {
     "Solar": {
-        "revenue": 94431.06685697282,
+        # Old total included a one-day 2051-01-01 phantom period (16.518045386707 kEUR).
+        "revenue": 94414.54881158611,
         "senior_ds": 35302.12518820596,
         "distributions": 5002.162578513825,
     },
     "Wind": {
-        "revenue": 213124.95083177992,
+        # Old total included a one-day 2056-07-01 phantom period (31.697201897186 kEUR).
+        "revenue": 213093.25362988273,
         "senior_ds": 42650.79738447129,
         "distributions": 10506.513025614555,
     },
 }
 
 
-class TestCleanFingerprintsUnchanged:
+class TestCleanFingerprintsCanonicalAxis:
     @pytest.mark.parametrize("ptype", ("Solar", "Wind"))
-    def test_f1_promoted_kpis_bit_identical_to_ef887499(self, ptype):
+    def test_f1_promoted_kpis_match_prf1_canonical_axis_fingerprints(self, ptype):
         out = _run_project(ptype, "Base")
-        expected = _PRE_CORRECTION_FINGERPRINTS[ptype]
+        expected = _PRF1_CANONICAL_AXIS_FINGERPRINTS[ptype]
         assert out["kpis"]["total_revenue_keur"] == expected["revenue"]
         assert out["kpis"]["total_senior_ds_keur"] == expected["senior_ds"]
         assert out["kpis"]["total_distributions_keur"] == expected["distributions"]

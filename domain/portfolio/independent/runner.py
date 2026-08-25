@@ -113,7 +113,7 @@ def _run_single_spv(
     - warnings: list of warning strings (empty on success)
     - dsrf_result: DSRFResult if DSRF enabled and waterfall succeeded, else None
     """
-    from domain.period_engine import PeriodEngine
+    from domain.period_engine import PeriodEngine, PeriodFrequency
     from app.waterfall_core import run_waterfall_v3_core
 
     _info = getattr(project_inputs, "info", None)
@@ -122,6 +122,13 @@ def _run_single_spv(
         construction_months=getattr(_info, "construction_months", 12),
         horizon_years=getattr(_info, "horizon_years", 25),
         ppa_years=getattr(getattr(project_inputs, "revenue", None), "ppa_term_years", 10),
+        frequency=getattr(_info, "period_frequency", PeriodFrequency.SEMESTRIAL),
+        cod_date=getattr(_info, "cod_date", None),
+        period_axis_convention=getattr(
+            getattr(_info, "period_axis_convention", "cod_anchor_two_construction_columns"),
+            "value",
+            getattr(_info, "period_axis_convention", "cod_anchor_two_construction_columns"),
+        ),
     )
     all_periods = list(engine.periods())
     op_periods = [p for p in all_periods if p.is_operation]
