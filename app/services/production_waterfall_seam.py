@@ -72,13 +72,13 @@ def execute_production_waterfall(
     project_type: str = "",
     scenario: str = "Base",
     use_dualrun_validation: bool = False,
-    allow_legacy: bool = True,
 ) -> ProductionWaterfallExecution:
-    """Execute ONE production financial calculation under the shared authority.
+    """Execute ONE clean production financial calculation under the shared authority.
 
-    allow_legacy=False is used by routes that must not carry legacy results at
-    all: an explicitly blocked project then raises the typed unsupported
-    error instead of executing legacy.
+    Phase B1 clean-only: non-promoted projects raise CleanNotReadyError.
+    There is no allow_legacy parameter — normal production surfaces must not
+    carry legacy results.  Explicit calibration callers must use
+    execute_calibration_waterfall() instead.
     """
     decision = classify_or_fail(project_inputs)
 
@@ -91,8 +91,7 @@ def execute_production_waterfall(
                     "it is not available on the clean production route. The "
                     "clean-ready project fails closed rather than silently "
                     "returning to the legacy waterfall. Calibration callers "
-                    "must use the explicit legacy calibration interface in "
-                    "app.api.project_runner."
+                    "must use execute_calibration_waterfall() from this module."
                 ),
             )
         clean_run = run_clean_production(
@@ -111,14 +110,46 @@ def execute_production_waterfall(
             authority_metadata=dict(view._authority_metadata),
         )
 
-    # ── Explicitly blocked / calibration-only: legacy branch ────────────────
-    if not allow_legacy:
+    # ── Blocked: fail closed — no legacy fallthrough on production surfaces ──
+    from app.services.production_financial_authority import CleanNotReadyError
+
+    raise CleanNotReadyError(
+        classification=decision.classification.value,
+        reason_code=decision.reason_code,
+        detail=(
+            f"{decision.detail}  "
+            "(Phase B1: execute_production_waterfall is clean-only; no legacy "
+            "fallthrough. Use execute_calibration_waterfall() for calibration.)"
+        ),
+        runtime_authority="clean_not_ready",
+        calculation_count=0,
+    )
+
+
+def execute_calibration_waterfall(
+    project_inputs,
+    *,
+    project_type: str = "",
+    scenario: str = "Base",
+) -> ProductionWaterfallExecution:
+    """Execute a legacy calibration waterfall for explicitly blocked projects.
+
+    This is the ONLY sanctioned legacy execution entry point on the seam.
+    It is EXPLICIT_CALIBRATION_ONLY — callers must be aware they are using
+    the legacy calibration engine, not the production clean authority.
+
+    Promoted (clean-ready) projects are refused: callers must use
+    execute_production_waterfall() for those.
+    """
+    decision = classify_or_fail(project_inputs)
+
+    if decision.promoted:
         raise ProductionAuthorityResolutionError(
-            reason_code="PR8_LEGACY_NOT_PERMITTED_ON_THIS_ROUTE",
+            reason_code="PR8_CALIBRATION_SEAM_REFUSED_CLEAN_READY_PROJECT",
             detail=(
-                f"project classification {decision.classification.value} "
-                f"({decision.reason_code}) permits only the legacy calibration "
-                "runtime, which this route does not serve."
+                "execute_calibration_waterfall() is for explicitly blocked "
+                "projects only. This project is CLEAN_PRODUCTION_READY — use "
+                "execute_production_waterfall() instead."
             ),
         )
 
@@ -152,6 +183,7 @@ def execute_production_waterfall(
     metadata = decision.to_metadata() | {
         "runtime_authority": "legacy_waterfall_calibration",
         "calculation_count": 1,
+        "calibration_seam": "execute_calibration_waterfall",
     }
     return ProductionWaterfallExecution(
         decision=decision,

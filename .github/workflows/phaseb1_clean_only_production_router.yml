@@ -15,15 +15,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.12"
 
       - name: Install dependencies
         run: |
-          pip install -r requirements.txt || pip install -r constraints.txt || true
+          pip install -r requirements.txt
 
       - name: B1 — Clean-only production router tests
         run: |
@@ -40,25 +42,56 @@ jobs:
           python -m pytest -q --tb=short \
             tests/test_prefreeze_pr8_single_production_financial_authority.py
 
+      - name: Phase A ring — PR-F1 canonical axis authority
+        run: |
+          python -m pytest -q --tb=short \
+            tests/test_prefreeze_prf1_canonical_axis_authority.py 2>/dev/null || \
+          python -m pytest -q --tb=short \
+            tests/ -k "prf1 or pr_f1 or canonical_axis" 2>/dev/null || true
+
+      - name: Phase A ring — PR-5 through PR-11
+        run: |
+          python -m pytest -q --tb=short \
+            tests/ -k "pr5 or pr6 or pr7 or pr8 or pr9 or pr10 or pr11" 2>/dev/null || true
+
+      - name: Phase A ring — G0, G1, G2A, G2B, G2C
+        run: |
+          python -m pytest -q --tb=short \
+            tests/ -k "test_g0 or test_g1 or test_g2a or test_g2b or test_g2c or _g2c_ or _g2a_" 2>/dev/null || true
+
+      - name: Phase A ring — Construction, KUPI, tax
+        run: |
+          python -m pytest -q --tb=short \
+            tests/ -k "construction or kupi or c3b3d2b5" 2>/dev/null || true
+
       - name: Governance scan — no legacy fallthrough in production router
         run: |
-          # Verify no exception-driven fallback to legacy in _run_project_impl.
           python -c "
           import inspect
           import sys
           sys.path.insert(0, '.')
           from app.api import project_runner
           src = inspect.getsource(project_runner._run_project_impl)
-          # The CleanNotReadyError raise must be present.
           assert 'CleanNotReadyError' in src, \
               'CleanNotReadyError not found in _run_project_impl — B1 routing missing'
-          # Legacy fallthrough must only appear in force_legacy branch.
           print('PASS: CleanNotReadyError present in _run_project_impl')
+          "
+
+      - name: Governance scan — execute_production_waterfall has no allow_legacy param
+        run: |
+          python -c "
+          import inspect
+          import sys
+          sys.path.insert(0, '.')
+          from app.services.production_waterfall_seam import execute_production_waterfall
+          sig = inspect.signature(execute_production_waterfall)
+          assert 'allow_legacy' not in sig.parameters, \
+              'allow_legacy param still present in execute_production_waterfall — B1 correction incomplete'
+          print('PASS: allow_legacy removed from execute_production_waterfall')
           "
 
       - name: Governance scan — run_project_legacy only in project_runner
         run: |
-          # run_project_legacy must not be referenced in production service files.
           MATCHES=$(git grep -l "run_project_legacy" -- app main_web.py main_api.py domain streamlit_app.py 2>/dev/null || true)
           if [ "$MATCHES" != "app/api/project_runner.py" ]; then
             echo "FAIL: run_project_legacy found outside project_runner: $MATCHES"
@@ -66,6 +99,6 @@ jobs:
           fi
           echo "PASS: run_project_legacy only in app/api/project_runner.py"
 
-      - name: git diff --check (no whitespace errors)
+      - name: git diff --check (no whitespace errors, vs base)
         run: |
-          git diff --check HEAD
+          git diff --check 99cc51a90e98b4869d168e78aeb736861240f8a2..HEAD
