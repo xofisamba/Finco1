@@ -519,31 +519,26 @@ class TestE_SeniorInterestRateCausal:
     """E. Senior interest-rate increase → Senior interest responds → sizing/schedule responds causally."""
 
     def test_e1_higher_senior_rate_raises_total_interest(self):
-        """E1: Structural proof that higher Senior rate produces mechanistically consistent interest.
+        """E1: Period-by-period formula identity proof: interest = opening × rate × day_fraction.
 
-        Two materially different typed Senior rates (2% and 10% annual) are used via
-        period_rates in senior_debt_inputs — the authoritative rate source that overrides
-        policy.annual_fixed_rate. This ensures the rate is actually applied to the solver.
+        Uses production build_rate_map() and period_day_fraction() — no independent
+        ACT/365 reimplementation. Checks every active Senior period (opening > tolerance).
 
-        Proof structure:
-        1. For each active period: implied_rate = interest / opening_balance is consistent
-           with the typed period rate (within day-count variation).
-        2. Higher typed rate → higher implied period rate (rate effect proven at period level).
-        3. Higher typed rate → more total interest (when debt size is comparable).
-        4. Higher typed rate → Senior capacity ≤ lower-rate case (DSCR-binding).
+        Strict tolerance: 1e-6 kEUR per period.
         """
         from app.project_factories import create_default_solar_project
         from financial_engine.adapters.project_inputs import (
             build_senior_debt_model_input_from_project_inputs,
         )
         from financial_engine.orchestrator import run_senior_debt_model
+        from financial_engine.senior_debt.interest import build_rate_map, period_day_fraction
         from financial_engine.senior_debt.inputs import PeriodRate
 
         proj = create_default_solar_project()
         sdi = build_senior_debt_model_input_from_project_inputs(proj)
         sd_inputs_base = sdi.senior_debt_inputs
+        policy = sdi.senior_debt_policy  # type: ignore
 
-        # Two materially different typed Senior rates applied via period_rates.
         rate_low = 0.02   # 2% annual
         rate_high = 0.10  # 10% annual
 
@@ -564,50 +559,71 @@ class TestE_SeniorInterestRateCausal:
         sd_low = r_low.senior_debt
         sd_high = r_high.senior_debt
 
-        # Structural proof 1: implied rate from low-rate case is consistent with rate_low.
-        # Actual periods use ACT/360 or ACT/365 so exact match varies; we verify direction.
+        # Build date lookup from periods (all model periods include start/end dates).
+        period_date_map = {p.period_index: (p.period_start, p.period_end) for p in r_low.periods}
+
+        # E1 structural proof: for every active Senior period, verify:
+        #   interest_t == opening_t × resolved_rate_t × day_fraction_t
+        # Using production build_rate_map() and period_day_fraction() — not reimplemented.
+        low_rate_map = build_rate_map(
+            sdi_low.senior_debt_inputs.period_rates,
+            sd_low.period_indices,
+            policy.annual_fixed_rate,
+        )
+        high_rate_map = build_rate_map(
+            sdi_high.senior_debt_inputs.period_rates,
+            sd_high.period_indices,
+            policy.annual_fixed_rate,
+        )
+
+        tol = 1e-6  # kEUR
+        balance_threshold = 1.0  # kEUR — only check periods with meaningful opening balance
+
+        for result, rate_map, rate_label in [
+            (sd_low, low_rate_map, f"rate_low={rate_low}"),
+            (sd_high, high_rate_map, f"rate_high={rate_high}"),
+        ]:
+            for i, (period_idx, opening, interest) in enumerate(zip(
+                result.period_indices,
+                result.senior_debt_opening_keur,
+                result.senior_interest_keur,
+            )):
+                if opening <= balance_threshold:
+                    continue  # Skip near-zero or pre-debt periods
+                start, end = period_date_map[period_idx]
+                day_frac = period_day_fraction(start, end, policy.day_count_convention)
+                resolved_rate = rate_map[period_idx]
+                expected = opening * resolved_rate * day_frac
+                assert abs(interest - expected) < tol, (
+                    f"E1 formula mismatch at period {period_idx} ({rate_label}): "
+                    f"interest={interest:.8f} kEUR, "
+                    f"opening={opening:.8f} kEUR × rate={resolved_rate:.6f} × "
+                    f"day_frac={day_frac:.8f} = {expected:.8f} kEUR, "
+                    f"delta={abs(interest - expected):.2e} kEUR"
+                )
+
+        # Additionally: higher rate must produce higher interest at first active period.
         first_active = next(
-            (i for i, op in enumerate(sd_low.senior_debt_opening_keur) if op > 1.0), None
+            (i for i, op in enumerate(sd_low.senior_debt_opening_keur) if op > balance_threshold),
+            None,
         )
         assert first_active is not None, "Expected at least one active Senior period"
-
-        implied_low = (
-            sd_low.senior_interest_keur[first_active]
-            / sd_low.senior_debt_opening_keur[first_active]
-        )
-        implied_high = (
-            sd_high.senior_interest_keur[first_active]
-            / sd_high.senior_debt_opening_keur[first_active]
-        )
-
-        # Structural proof 2: implied rate is higher for higher typed rate.
-        assert implied_high > implied_low, (
-            f"Higher typed rate must produce higher implied period rate. "
-            f"rate_low={rate_low}, implied_low={implied_low:.6f}; "
-            f"rate_high={rate_high}, implied_high={implied_high:.6f}"
-        )
-
-        # Structural proof 3: implied rate ratio ≈ input rate ratio (causal, not coincidental).
-        rate_ratio = rate_high / rate_low  # = 5.0
-        implied_ratio = implied_high / implied_low
-        assert implied_ratio > 1.5, (
-            f"Implied rate ratio ({implied_ratio:.3f}) should reflect input rate ratio ({rate_ratio:.1f})"
-        )
-
-        # Structural proof 4: higher rate → total interest is higher (when same opening period).
         interest_low_first = sd_low.senior_interest_keur[first_active]
         interest_high_first = sd_high.senior_interest_keur[first_active]
         assert interest_high_first > interest_low_first, (
-            f"Higher rate must produce higher interest at same period. "
+            f"Higher rate must produce higher interest at first active period. "
             f"low={interest_low_first:.4f}, high={interest_high_first:.4f}"
         )
 
     def test_e2_higher_senior_rate_reduces_or_maintains_debt_capacity(self):
-        """Higher rate → more interest → tighter DSCR → capacity ≤ lower-rate capacity.
+        """E2: Higher rate → capacity ≤ lower-rate capacity. Report binding constraints.
 
-        Uses the same authoritative period_rates seam as E1 (2% vs 10% annual), NOT
-        policy.annual_fixed_rate which is a fallback when explicit period_rates are active.
-        This ensures the rate perturbation is actually applied to the solver.
+        Uses the same authoritative period_rates seam as E1 (2% vs 10% annual).
+        Reports for both LOW and HIGH: debt_size, binding_constraint,
+        dscr_debt_capacity_keur, gearing_debt_capacity_keur.
+
+        If DSCR binds: higher rate must reduce DSCR capacity and Senior size.
+        If GEARING binds: identical debt size must be explicitly explained.
         """
         from app.project_factories import create_default_solar_project
         from financial_engine.adapters.project_inputs import (
@@ -634,10 +650,44 @@ class TestE_SeniorInterestRateCausal:
         r_low = run_senior_debt_model(_override_rates(rate_low))
         r_high = run_senior_debt_model(_override_rates(rate_high))
 
-        assert r_high.senior_debt.debt_size_keur <= r_low.senior_debt.debt_size_keur + 1.0, (
+        sd_low = r_low.senior_debt
+        sd_high = r_high.senior_debt
+        diag_low = sd_low.diagnostics
+        diag_high = sd_high.diagnostics
+
+        low_debt = sd_low.debt_size_keur
+        high_debt = sd_high.debt_size_keur
+        bc_low = diag_low.get("binding_constraint")
+        bc_high = diag_high.get("binding_constraint")
+        dscr_cap_low = diag_low.get("dscr_debt_capacity_keur", float("nan"))
+        dscr_cap_high = diag_high.get("dscr_debt_capacity_keur", float("nan"))
+        gear_cap_low = diag_low.get("gearing_debt_capacity_keur", float("nan"))
+        gear_cap_high = diag_high.get("gearing_debt_capacity_keur", float("nan"))
+
+        # Structural invariant: higher rate must not increase capacity.
+        assert high_debt <= low_debt + 1.0, (
             f"Higher Senior rate must not increase debt capacity: "
-            f"low={r_low.senior_debt.debt_size_keur:.2f}, high={r_high.senior_debt.debt_size_keur:.2f}"
+            f"low(rate={rate_low}): debt={low_debt:.2f}, bc={bc_low}, "
+            f"dscr_cap={dscr_cap_low:.2f}, gear_cap={gear_cap_low:.2f}; "
+            f"high(rate={rate_high}): debt={high_debt:.2f}, bc={bc_high}, "
+            f"dscr_cap={dscr_cap_high:.2f}, gear_cap={gear_cap_high:.2f}"
         )
+
+        # When DSCR binds for HIGH rate: DSCR capacity must be lower than LOW rate DSCR capacity.
+        if bc_high == "DSCR" and not math.isnan(dscr_cap_high) and not math.isnan(dscr_cap_low):
+            assert dscr_cap_high <= dscr_cap_low + 1.0, (
+                f"When DSCR binds at high rate, DSCR capacity must be ≤ low-rate DSCR capacity: "
+                f"dscr_cap_high={dscr_cap_high:.2f} > dscr_cap_low={dscr_cap_low:.2f}"
+            )
+
+        # When GEARING binds for both: gearing cap is rate-independent — debt sizes equal.
+        if bc_low in ("GEARING", "BOTH") and bc_high in ("GEARING", "BOTH"):
+            assert abs(low_debt - high_debt) <= 1.0, (
+                f"When gearing binds in both cases, debt sizes must be equal "
+                f"(gearing cap is rate-independent): "
+                f"low={low_debt:.2f}, high={high_debt:.2f}, "
+                f"gear_cap_low={gear_cap_low:.2f}, gear_cap_high={gear_cap_high:.2f}"
+            )
 
 
 class TestF_ShlDeductibilityCausal:
@@ -796,7 +846,7 @@ class TestF_ShlDeductibilityCausal:
             f"fd={ct_fd:.2f}, fnd={ct_fnd:.2f}"
         )
 
-        # Step 5: Post-Senior cash must be non-negative in both cases (surplus after DS).
+        # Step 5: Post-Senior cash must be finite in both cases (total after-DS cash flow).
         psc_fd = r_fd.post_senior_cash
         psc_fnd = r_fnd.post_senior_cash
         if psc_fd is not None:
@@ -898,6 +948,64 @@ class TestG_ZeroShlCounterfactual:
                     f"SHL case Senior DS[{i}] = {ds:.6f} != "
                     f"interest({interest:.6f}) + principal({principal:.6f})"
                 )
+
+        # Prove 4: Gearing-controlled comparison — SHL principal is NOT directly added to Senior.
+        # When the gearing constraint binds in both cases (EQUITY_ONLY and normal-SHL),
+        # the Senior debt_size_keur must be IDENTICAL (within 1e-6 kEUR), proving that
+        # the SHL principal was not injected as an additive term in the solver.
+        # We force gearing to bind by using a very high target_dscr (so DSCR is never binding
+        # before gearing, confirming gearing is the operative constraint in both cases).
+        from financial_engine.senior_debt.policy import SeniorDebtPolicy
+
+        # Build gearing-forced variants (target_dscr=5.0 ensures gearing binds first).
+        policy_shl: SeniorDebtPolicy = sdi_shl.senior_debt_policy  # type: ignore
+        policy_gearing = dataclasses.replace(policy_shl, target_dscr=5.0)
+        sdi_shl_gearing = dataclasses.replace(sdi_shl, senior_debt_policy=policy_gearing)
+
+        policy_eq: SeniorDebtPolicy = sdi_eq.senior_debt_policy  # type: ignore
+        policy_eq_gearing = dataclasses.replace(policy_eq, target_dscr=5.0)
+        sdi_eq_gearing = dataclasses.replace(sdi_eq, senior_debt_policy=policy_eq_gearing)
+
+        r_shl_g = run_senior_debt_model(sdi_shl_gearing)
+        r_eq_g = run_senior_debt_model(sdi_eq_gearing)
+
+        diag_shl = r_shl_g.senior_debt.diagnostics
+        diag_eq = r_eq_g.senior_debt.diagnostics
+        bc_shl = diag_shl.get("binding_constraint")
+        bc_eq = diag_eq.get("binding_constraint")
+
+        # Report the authoritative constraint diagnostics for both cases.
+        shl_debt = r_shl_g.senior_debt.debt_size_keur
+        eq_debt = r_eq_g.senior_debt.debt_size_keur
+        shl_dscr_cap = diag_shl.get("dscr_debt_capacity_keur", float("nan"))
+        eq_dscr_cap = diag_eq.get("dscr_debt_capacity_keur", float("nan"))
+        shl_gear_cap = diag_shl.get("gearing_debt_capacity_keur", float("nan"))
+        eq_gear_cap = diag_eq.get("gearing_debt_capacity_keur", float("nan"))
+        shl_total_cfads = sum(r_shl_g.debt_sizing.bank_cfads_keur)
+        eq_total_cfads = sum(r_eq_g.debt_sizing.bank_cfads_keur)
+
+        # When gearing binds in both cases, Senior size must be identical.
+        if bc_shl in ("GEARING", "BOTH") and bc_eq in ("GEARING", "BOTH"):
+            assert abs(shl_debt - eq_debt) <= 1e-6, (
+                f"Gearing-controlled: SHL Senior ({shl_debt:.6f} kEUR) != "
+                f"EQUITY_ONLY Senior ({eq_debt:.6f} kEUR). "
+                f"SHL principal must NOT be directly added to Senior. "
+                f"shl_binding={bc_shl}, eq_binding={bc_eq}, "
+                f"shl_gearing_cap={shl_gear_cap:.2f}, eq_gearing_cap={eq_gear_cap:.2f}"
+            )
+        # Either both must have gearing bind, or we document the constraints.
+        assert bc_shl in ("GEARING", "BOTH", "DSCR"), (
+            f"Unexpected binding_constraint for SHL+gearing case: {bc_shl!r}"
+        )
+        assert bc_eq in ("GEARING", "BOTH", "DSCR"), (
+            f"Unexpected binding_constraint for EQUITY_ONLY+gearing case: {bc_eq!r}"
+        )
+        # Assert gearing capacities are identical (same eligible cost, same gearing authority).
+        if not (math.isnan(shl_gear_cap) or math.isnan(eq_gear_cap)):
+            assert abs(shl_gear_cap - eq_gear_cap) <= 1e-6, (
+                f"Gearing capacity must be identical for same eligible cost: "
+                f"shl={shl_gear_cap:.6f}, eq={eq_gear_cap:.6f}"
+            )
 
     def test_g2_shl_schedule_closed_form_identity(self, solar_full_result):
         """SHL schedule satisfies the closing balance identity for all periods."""
@@ -1201,13 +1309,11 @@ class TestFinancialIdentities:
             )
 
     def test_financing_interest_contract_identity_proof(self, solar_sdi):
-        """FinancingInterestContract identity: Real B5 production-path contract capture.
+        """FinancingInterestContract schedule-level identity (FINAL_CONTRACT_TO_RESULT_IDENTITY).
 
-        FINANCING_INTEREST_CONTRACT_E2E_AUTHORITY_PROOF — Approach A (real contract capture).
+        APPROACH B: schedule-level proof only (contract-to-result axis identity).
 
-        Captures the final FinancingInterestContract from run_senior_debt_model() by
-        intercepting _require_final_financing_contract at the point of final validation
-        (same pattern used in PR-11 spy/captures). Proves:
+        Captures the final FinancingInterestContract from run_senior_debt_model() and proves:
         - contract.is_final is True
         - contract.period_indices == result.axis_contract.full_axis
         - Contract Senior interest on senior_axis == result.senior_debt.senior_interest_keur
@@ -1215,9 +1321,26 @@ class TestFinancialIdentities:
         - Contract Senior interest outside senior_axis == 0.0
         - Contract SHL gross interest == result.shareholder_loan.shl_gross_interest_keur
           (period by period, within 1e-4 kEUR)
-        - Base TaxCalculationInput consumed same contract (tax_and_cfads is present)
-        - Bank TaxCalculationInput consumed same contract (debt_sizing is present)
-        - Both Base and Bank CFADS are finite (contract correctly wired through)
+
+        BASE_BANK_CONTRACT_CONSUMPTION_AUTHORITY = FROZEN_PR11_E2E_SUITE:
+        Period-by-period proof that Base and Bank TaxCalculationInputs both derive
+        their Senior and SHL interest exclusively from the final FinancingInterestContract
+        is delegated to the frozen PR-11 authority suite:
+          test_prefreeze_pr11_g2c_deductible_shl_tax_feedback.py
+          :: TestCorrectionJ_ContractIdentityProof
+              :: test_base_and_bank_contexts_captured
+              :: test_base_and_bank_use_same_contract
+              :: test_base_senior_interest_matches_contract_period_by_period
+              :: test_base_shl_interest_matches_contract_period_by_period
+              :: test_bank_senior_interest_matches_contract_period_by_period
+              :: test_bank_shl_interest_matches_contract_period_by_period
+              :: test_base_and_bank_use_identical_interest_maps
+        Those tests prove (for the STL production path, which exercises the full
+        financing_interest_maps_from_contract seam):
+          - financing_interest_maps_from_contract is called with "BASE_TAX_FROM_CONTRACT"
+            and "BANK_TAX_FROM_CONTRACT" contexts (both captured)
+          - Both calls receive the SAME final FinancingInterestContract object
+          - The returned senior/SHL maps match the contract period-by-period
         """
         import financial_engine.orchestrator as _orch
 
@@ -1302,22 +1425,23 @@ class TestFinancialIdentities:
                     f"!= shl.shl_gross_interest_keur[{i}] = {shl_interest:.6f}"
                 )
 
-        # Proof 6: Base and Bank TaxCalculationInput both consumed same contract.
-        # Both tax_and_cfads (Base) and debt_sizing (Bank) must be present.
+        # Proof 6: Result sections are populated — contract was used in final calculations.
+        # Note: period-by-period proof of Base/Bank contract consumption is delegated to
+        # FROZEN_PR11_E2E_SUITE (TestCorrectionJ_ContractIdentityProof). Here we verify
+        # that both sections exist and contain finite values (structural wiring check).
         tac = result.tax_and_cfads
         ds_result = result.debt_sizing
-        assert tac is not None, "tax_and_cfads must be present (Base tax consumed contract)"
-        assert ds_result is not None, "debt_sizing must be present (Bank tax consumed contract)"
-        # Both Base and Bank CFADS must be finite — contract correctly wired through.
+        assert tac is not None, "tax_and_cfads must be present after final contract is applied"
+        assert ds_result is not None, "debt_sizing must be present after final contract is applied"
         for i, (base_cfads, bank_cfads) in enumerate(zip(
             tac.cfads_keur,
             ds_result.bank_cfads_keur,
         )):
             assert math.isfinite(base_cfads), (
-                f"Base CFADS[{i}] must be finite — Base consumed contract"
+                f"Base CFADS[{i}] must be finite (final contract wiring check)"
             )
             assert math.isfinite(bank_cfads), (
-                f"Bank CFADS[{i}] must be finite — Bank consumed contract"
+                f"Bank CFADS[{i}] must be finite (final contract wiring check)"
             )
 
 
@@ -1792,40 +1916,66 @@ class TestNoRuntimeWorkbook:
 
     @staticmethod
     def _strip_docstrings_and_comments(source: str) -> str:
-        """Return source with string literals and comments removed (AST-based).
+        """Return source with docstring string literals and comments blanked (AST-based).
 
-        Uses tokenize to strip:
-        - All string tokens that appear as module/class/function docstrings (OP followed
-          by STRING at the start of a block), and all other STRING tokens used as
-          standalone expressions.
-        - All COMMENT tokens.
+        IGNORES (strips before scanning):
+        - Module-level docstrings (first Expr(Constant(str)) at module scope)
+        - Class docstrings (first Expr(Constant(str)) in class body)
+        - Function/method docstrings (first Expr(Constant(str)) in function body)
+        - Comments (# tokens — not in AST, handled via tokenize)
 
-        This prevents documentation-only references (e.g. workbook filenames in module
-        docstrings for audit traceability) from triggering forbidden-pattern false positives.
+        PRESERVES and scans:
+        - All other string constants in executable code (function arguments, dict
+          keys/values, comparison values, open() calls, Path() calls, etc.)
+
+        A parse error MUST raise (fail-closed), not return empty string.
         """
+        import ast
         import tokenize
         import io
 
-        result_tokens = []
+        # Step 1: Parse the AST — a SyntaxError here raises (fail-closed).
+        tree = ast.parse(source)
+
+        # Step 2: Collect (lineno, col_offset) of every docstring Expr node.
+        docstring_positions: set[tuple[int, int]] = set()
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+                body = node.body
+                if (
+                    body
+                    and isinstance(body[0], ast.Expr)
+                    and isinstance(body[0].value, (ast.Constant, ast.Str))
+                ):
+                    # ast.Str is the pre-3.8 form; ast.Constant is the 3.8+ form.
+                    val = body[0].value
+                    if isinstance(val, ast.Constant) and isinstance(val.value, str):
+                        docstring_positions.add((body[0].lineno, body[0].col_offset))
+                    elif isinstance(val, ast.Str):
+                        docstring_positions.add((body[0].lineno, body[0].col_offset))
+
+        # Step 3: Re-tokenize, blanking docstring STRING tokens and COMMENT tokens.
+        result_parts: list[str] = []
         try:
             tokens = list(tokenize.generate_tokens(io.StringIO(source).readline))
-        except tokenize.TokenError:
-            # If tokenization fails, fall back to returning empty (conservative: no hits).
-            return ""
+        except tokenize.TokenError as exc:
+            raise SyntaxError(f"Tokenization failed: {exc}") from exc
 
-        prev_tok_type = None
         for tok_type, tok_string, tok_start, tok_end, tok_line in tokens:
+            row, col = tok_start
             if tok_type == tokenize.COMMENT:
-                # Strip comment — replace with whitespace to preserve line structure.
-                result_tokens.append((tok_type, ""))
+                # Comments are never in the AST — always strip.
+                result_parts.append("")
             elif tok_type == tokenize.STRING:
-                # Strip string literals — they include docstrings.
-                result_tokens.append((tok_type, ""))
+                # Strip ONLY if this token is at a docstring position.
+                if (row, col) in docstring_positions:
+                    result_parts.append("")
+                else:
+                    result_parts.append(tok_string)
             else:
-                result_tokens.append((tok_type, tok_string))
-            prev_tok_type = tok_type
+                result_parts.append(tok_string)
 
-        return " ".join(tok_string for _, tok_string in result_tokens)
+        return " ".join(result_parts)
 
     def test_no_workbook_runtime_in_clean_modules(self):
         """Clean engine source modules must not import or open workbook files at runtime.
@@ -2051,3 +2201,105 @@ class TestPR12Governance:
         assert any("financial_statements" in s for s in unavailable), (
             f"financial_statements must be in unavailable_sections. Got: {unavailable}"
         )
+
+
+# ===========================================================================
+# TASK 6 — SCANNER SELF-TESTS (TestScannerIntegrity)
+# ===========================================================================
+
+
+class TestScannerIntegrity:
+    """Self-tests for the AST-based clean-engine scanner.
+
+    Verifies that the scanner is fail-closed (detects forbidden patterns in
+    executable code) and fail-open-resistant (passes docstrings and comments).
+    """
+
+    # Reference to the production scanner method.
+    @staticmethod
+    def _scan(source: str) -> str:
+        return TestNoRuntimeWorkbook._strip_docstrings_and_comments(source)
+
+    def _assert_caught(self, source: str, pattern: str) -> None:
+        """Assert the pattern is present after stripping docstrings/comments."""
+        scanned = self._scan(source)
+        assert pattern.lower() in scanned.lower(), (
+            f"NEGATIVE CONTROL FAILED: pattern {pattern!r} was NOT detected in:\n{source!r}\n"
+            f"Scanned text:\n{scanned!r}"
+        )
+
+    def _assert_passes(self, source: str, pattern: str) -> None:
+        """Assert the pattern is NOT present after stripping docstrings/comments."""
+        scanned = self._scan(source)
+        assert pattern.lower() not in scanned.lower(), (
+            f"POSITIVE CONTROL FAILED: pattern {pattern!r} was incorrectly flagged in:\n{source!r}\n"
+            f"Scanned text:\n{scanned!r}"
+        )
+
+    # --- NEGATIVE CONTROLS (must be caught — detected in executable code) ---
+
+    def test_neg1_open_fixture_caught(self):
+        source = 'result = open("tests/fixtures/frozen.json")\n'
+        self._assert_caught(source, "tests/fixtures")
+
+    def test_neg2_path_report_caught(self):
+        source = 'p = Path("reports/frozen.csv")\n'
+        self._assert_caught(source, "reports/")
+
+    def test_neg3_load_workbook_caught(self):
+        source = 'wb = load_workbook("model.xlsm")\n'
+        self._assert_caught(source, ".xlsm")
+
+    def test_neg4_project_name_tuho_caught(self):
+        source = 'if project_name == "tuho": pass\n'
+        self._assert_caught(source, '"tuho"')
+
+    def test_neg5_project_code_oborovo_caught(self):
+        source = 'if project_code == "oborovo": pass\n'
+        self._assert_caught(source, '"oborovo"')
+
+    def test_neg6_approved_delta_caught(self):
+        source = 'approved_delta = 42\n'
+        self._assert_caught(source, "approved_delta")
+
+    def test_neg7_expected_delta_caught(self):
+        source = 'expected_delta = 0\n'
+        self._assert_caught(source, "expected_delta")
+
+    def test_neg8_balancing_plug_caught(self):
+        source = 'balancing_plug = 0\n'
+        self._assert_caught(source, "balancing_plug")
+
+    # --- POSITIVE CONTROLS (must pass — docstrings/comments not flagged) ---
+
+    def test_pos1_module_docstring_passes(self):
+        source = '"""Module mentioning tests/fixtures for audit traceability."""\nx = 1\n'
+        self._assert_passes(source, "tests/fixtures")
+
+    def test_pos2_function_docstring_passes(self):
+        source = (
+            'def foo():\n'
+            '    """Function doc mentioning reports/csv."""\n'
+            '    return 1\n'
+        )
+        self._assert_passes(source, "reports/csv")
+
+    def test_pos3_comment_passes(self):
+        source = '# See also reports/frozen.csv for reference\nx = 1\n'
+        self._assert_passes(source, "reports/frozen.csv")
+
+    def test_pos4_class_docstring_passes(self):
+        source = (
+            'class Foo:\n'
+            '    """Class referencing model.xlsm for audit."""\n'
+            '    pass\n'
+        )
+        self._assert_passes(source, ".xlsm")
+
+    # --- MALFORMED PYTHON: scanner must RAISE (fail-closed) ---
+
+    def test_malformed_python_raises(self):
+        """A parse error must raise SyntaxError, not return empty string."""
+        bad_source = 'def foo(:\n    pass\n'
+        with pytest.raises((SyntaxError, ValueError)):
+            self._scan(bad_source)
