@@ -1695,11 +1695,11 @@ def _run_senior_debt_model_with_shl(
     )
 
     # TASK 1: Three-way independent validation of final financing state.
-    # Uses _required_period_indices (derived from debt_periods, NOT SHL/Senior output)
-    # as the canonical axis. This replaces the previous tautological check that
-    # compared previous_shl.period_indices against itself.
+    # Uses senior_axis_shl (independently derived from SeniorDebtPolicy bounds via
+    # CanonicalAxisContract, NOT from SHL or Senior output) as the canonical axis.
+    # This replaces the previous tautological check that compared SHL data to itself.
     _validate_final_financing_state(
-        required_period_indices=_required_period_indices,
+        required_period_indices=senior_axis_shl,
         final_senior_result=final_senior_result,
         final_shl_interest=final_shl_interest,
         final_base_tax_input=final_base_tax_input,
