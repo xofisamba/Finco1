@@ -212,6 +212,14 @@ def build_tax_contract_from_project_inputs(
         loss_utilisation_gate=TaxLossUtilisationGate(
             tax.tax_loss_utilisation_gate.value
         ),
+        # Correction G: forward thin_cap_enabled so the runtime capability gate fires
+        # before tax output is produced. thin_cap_enabled=True means the thin-cap
+        # formula is source metadata; the runtime will raise SHL_THIN_CAP_RUNTIME_NOT_IMPLEMENTED
+        # when SUBJECT_TO_LIMITATIONS is requested with thin_cap_enabled=True.
+        # Do NOT silence this — no partial result, no fallback.
+        thin_cap_enabled=tax.thin_cap_enabled,
+        # NOTE: shl_limitation_enabled and shl_interest_cap_keur_annual have been removed.
+        # SUBJECT_TO_LIMITATIONS is implemented via ATAD (atad_enabled=True).
     )
 
     # Explicit typed vintages are canonical. The legacy scalar cannot be active

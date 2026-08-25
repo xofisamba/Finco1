@@ -366,6 +366,7 @@ def test_tax_params_field_classification_is_complete():
         "tax_deductible_book_dep_pct",
         "tax_dep_basis_source_owned",
         "clean_cash_tax_timing_enabled",
+        # PR-11: project-owned SHL limitation fields forwarded to TaxPolicy via adapter
     }
 
     missing = actual_fields - CLASSIFIED_TAX_PARAMS_FIELDS

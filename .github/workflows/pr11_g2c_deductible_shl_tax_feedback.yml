@@ -1,0 +1,93 @@
+name: PR-11 G2C Deductible SHL Tax Feedback Check
+
+on:
+  push:
+    branches:
+      - prefreeze-pr11-g2c-deductible-shl-tax-feedback
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "finco_core/inputs/**"
+      - "financial_engine/adapters/**"
+      - "financial_engine/tax/**"
+      - "financial_engine/orchestrator.py"
+      - "tests/test_prefreeze_pr11_g2c_deductible_shl_tax_feedback.py"
+      - "tests/test_prefreeze_fix2_tax_jurisdiction.py"
+      - "docs/architecture/tax_field_inventory_fix2.md"
+      - ".github/workflows/pr11_g2c_deductible_shl_tax_feedback.yml"
+
+jobs:
+  pr11-g2c-deductible-shl-tax-feedback:
+    name: PR-11 G2C Deductible SHL Tax Feedback
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Verify exact head SHA
+        run: |
+          EXPECTED="${{ github.event.pull_request.head.sha || github.sha }}"
+          ACTUAL=$(git rev-parse HEAD)
+          test "$EXPECTED" = "$ACTUAL"
+
+      - name: Assert ancestry from PR-10 freeze
+        run: |
+          git merge-base --is-ancestor \
+            a3a495ac418cece94847a7762e4b742787a3f352 HEAD
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f constraints.txt ]; then
+            pip install -c constraints.txt -e .
+            pip install -c constraints.txt pytest
+          else
+            pip install -e .
+            pip install pytest
+          fi
+
+      - name: Diff hygiene
+        run: git diff --check a3a495ac418cece94847a7762e4b742787a3f352..HEAD
+
+      - name: PR-11 G2C deductible SHL tests
+        run: |
+          python -m pytest -q --tb=short \
+            tests/test_prefreeze_pr11_g2c_deductible_shl_tax_feedback.py \
+            tests/test_prefreeze_fix2_tax_jurisdiction.py \
+            tests/test_stage_c3b3c_tax_policy_shl_deductibility.py \
+            tests/test_stage_c3b3d0_tax_identity_atad_decoupling.py
+
+      - name: PR-10 typed country tax authority regression
+        run: |
+          python -m pytest -q --tb=short \
+            tests/test_prefreeze_pr10_typed_country_tax_authority.py
+
+      - name: Full G2C and financing regression locks
+        run: |
+          python -m pytest -q --tb=short \
+            tests/test_mvp_g2a_financing_stack.py \
+            tests/test_mvp_g2b_sponsor_returns.py \
+            tests/test_mvp_g2c_shareholder_waterfall.py \
+            tests/test_prefreeze_pr8_single_production_financial_authority.py
+
+      - name: Production identity and calibration scan
+        shell: bash
+        run: |
+          mapfile -t changed_python < <(
+            git diff --name-only \
+              a3a495ac418cece94847a7762e4b742787a3f352...HEAD \
+              -- app domain finco_core financial_engine \
+            | grep -E '\.py$' || true
+          )
+          if ((${#changed_python[@]})); then
+            ! grep -nHEi \
+              'project\.name|project\.code|approved_delta|expected_delta|balancing[_ ]plug|target[_ ]tax|source[_ ]tax[_ ](schedule|vector)|terminal[_ ]tax[_ ]top[_ ]up' \
+              "${changed_python[@]}"
+          fi

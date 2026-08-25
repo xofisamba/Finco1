@@ -55,6 +55,22 @@ These are the ACTUAL fields of `TaxParams` as of the current codebase.
 | `tax_dep_basis_source_owned` | METADATA_ONLY | B | No | Yes | No | No |
 | `clean_cash_tax_timing_enabled` | FAIL_CLOSED_UNSUPPORTED | C | No | Yes | No | No |
 
+### REMOVED ghost fields: shl_limitation_enabled and shl_interest_cap_keur_annual
+
+These fields were proposed but NEVER landed in TaxParams or TaxPolicy.
+They do NOT exist in the current codebase and must NOT appear in this inventory.
+
+SUBJECT_TO_LIMITATIONS is implemented exclusively via the ATAD mechanism
+(atad_enabled=True, thin_cap_enabled=False). An absolute annual SHL cap separate
+from ATAD has no approved non-workbook authority and is not implemented.
+
+TUHO runtime status (Correction G):
+- TUHO has thin_cap_enabled=True (source metadata: thin-cap formula recorded)
+- The thin-cap formula is NOT implemented in the production runtime
+- SUBJECT_TO_LIMITATIONS + thin_cap_enabled=True → runtime raises
+  SHL_THIN_CAP_RUNTIME_NOT_IMPLEMENTED (capability-driven, not identity-based)
+- Only the ATAD path (thin_cap_enabled=False, atad_enabled=True) is executable
+
 ## FUTURE / NOT CURRENT — speculative fields NOT in current TaxParams
 
 The following fields were present in an earlier version of the tax inventory document

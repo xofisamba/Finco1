@@ -1335,6 +1335,11 @@ class TaxParams:
     corporate_rate_override: float | None = None
     opening_tax_loss_vintages: tuple[OpeningTaxLossVintageParams, ...] = ()
 
+    # NOTE: shl_limitation_enabled and shl_interest_cap_keur_annual have been REMOVED.
+    # SUBJECT_TO_LIMITATIONS is now implemented via the ATAD mechanism.
+    # Set atad_enabled=True + configure atad_ebitda_limit and
+    # atad_min_interest_keur to activate interest limitation for STL mode.
+
     def __post_init__(self) -> None:
         import math as _math
 
@@ -1436,12 +1441,20 @@ class TaxParams:
                     f"shl_interest_deductible_pct must be absent or 0.0 for "
                     f"FULLY_NON_DEDUCTIBLE, got {pct}"
                 )
-        # ── SUBJECT_TO_LIMITATIONS requires a limitation mechanism ────────────
+        # ── SUBJECT_TO_LIMITATIONS requires at least one supported limitation mechanism ──
+        # SUBJECT_TO_LIMITATIONS is an umbrella classification (Part A).
+        # atad_enabled=True → ATAD execution path (supported).
+        # thin_cap_enabled=True → stored as source metadata; runtime raises
+        #   SHL_THIN_CAP_RUNTIME_NOT_IMPLEMENTED at the production execution boundary.
+        # Neither → raise SHL_LIMITATION_MECHANISM_MISSING immediately.
         if mode == ShlInterestDeductibilityMode.SUBJECT_TO_LIMITATIONS:
-            if not self.thin_cap_enabled:
+            if not self.atad_enabled and not self.thin_cap_enabled:
                 raise ValueError(
+                    "SHL_LIMITATION_MECHANISM_MISSING: "
                     "shl_interest_deductibility=SUBJECT_TO_LIMITATIONS requires at least "
-                    "one explicit limitation mechanism (thin_cap_enabled=True)."
+                    "one limitation mechanism: set atad_enabled=True (supported ATAD path) "
+                    "or thin_cap_enabled=True (stored source metadata; runtime-blocked "
+                    "until thin-cap formula is promoted to production)."
                 )
         # ── foreign_shl_interest_cap_enabled consistency ──────────────────────
         if self.foreign_shl_interest_cap_enabled:

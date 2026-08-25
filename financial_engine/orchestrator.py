@@ -1167,8 +1167,315 @@ def _build_result_senior_debt_schedules(
     )
 
 
-def _run_senior_debt_model_with_shl(inputs: SeniorDebtModelInput) -> ProjectModelResult:
-    """Phase B5: Senior debt + SHL + tax fixed-point integration."""
+from dataclasses import dataclass as _dataclass
+from typing import Optional as _Optional
+
+
+@_dataclass(frozen=True)
+class FinancingInterestContract:
+    """Lineage wrapper for the final SHL + Senior interest state in the B5 loop.
+
+    Each B5 iteration creates a provisional contract; only the converged result
+    is marked is_final=True with final_iteration_id set to iteration_id.
+
+    Content fingerprint: deterministic hash of (period_indices, senior_interest_keur,
+    shl_gross_interest_keur). Memory-address-based id() is NOT used.
+
+    This contract is:
+      - NOT part of any production user input
+      - NOT included in any cache key or serialization
+      - NOT accessible through run_senior_debt_model()
+
+    It exists solely to provide iteration lineage so that stale provisional
+    contracts can be detected and rejected before they reach final calculations.
+    """
+
+    period_indices: tuple  # tuple[int, ...] — canonical period axis
+    senior_interest_keur: tuple  # tuple[float, ...] — indexed same as period_indices
+    shl_gross_interest_keur: tuple  # tuple[float, ...] — indexed same as period_indices
+    iteration_id: int  # which B5 iteration produced this
+    final_iteration_id: "_Optional[int]"  # set to iteration_id at convergence, None if provisional
+    is_final: bool  # True only when final_iteration_id == iteration_id at convergence
+    content_fingerprint: int  # hash((period_indices, senior_interest_keur, shl_gross_interest_keur))
+
+    @staticmethod
+    def compute_fingerprint(
+        period_indices: tuple,
+        senior_interest_keur: tuple,
+        shl_gross_interest_keur: tuple,
+    ) -> int:
+        return hash((period_indices, senior_interest_keur, shl_gross_interest_keur))
+
+
+def financing_interest_maps_from_contract(
+    contract: "FinancingInterestContract",
+    context: str,
+) -> "tuple[dict[int, float], dict[int, float]]":
+    """Extract Senior and SHL interest maps from the FINAL FinancingInterestContract.
+
+    TASK 3: This is the single deterministic seam between the final contract authority
+    and the tax consumption path.  Both Base and Bank must call this function — never
+    read contract fields directly.
+
+    Requires:
+      contract.is_final == True (verified by _require_final_financing_contract)
+      contract.period_indices is the canonical full axis
+
+    Returns:
+      (senior_interest_by_period, shl_interest_by_period)
+      Both dicts cover contract.period_indices (full canonical axis).
+      Senior interest is exactly 0.0 for non-Senior periods (not masked via .get()).
+    """
+    _require_final_financing_contract(contract, context=context)
+    senior_map: dict[int, float] = dict(
+        zip(contract.period_indices, contract.senior_interest_keur)
+    )
+    shl_map: dict[int, float] = dict(
+        zip(contract.period_indices, contract.shl_gross_interest_keur)
+    )
+    return senior_map, shl_map
+
+
+def _require_final_financing_contract(
+    contract: FinancingInterestContract,
+    context: str,
+) -> None:
+    """Raise G2C_FINAL_INTEREST_VECTOR_STALE if the contract is not the final converged one.
+
+    Validates ALL of:
+    1. is_final == True
+    2. final_iteration_id == iteration_id (not from a prior iteration)
+    3. content_fingerprint == hash((period_indices, senior_interest_keur, shl_gross_interest_keur))
+    4. All values finite and non-negative
+    5. Length consistency across the three vectors
+    """
+    if not contract.is_final:
+        raise ValueError(
+            f"G2C_FINAL_INTEREST_VECTOR_STALE: {context}: "
+            f"FinancingInterestContract with iteration_id={contract.iteration_id} "
+            f"is not marked as final (is_final=False). "
+            "Only the final converged contract may be used for authoritative calculations. "
+            "This error indicates a stale or provisional interest vector was passed "
+            "where the final contract is required."
+        )
+    # Check final_iteration_id matches iteration_id (no old-iteration stale contracts)
+    if contract.final_iteration_id != contract.iteration_id:
+        raise ValueError(
+            f"G2C_FINAL_INTEREST_VECTOR_STALE: {context}: "
+            f"FinancingInterestContract.final_iteration_id={contract.final_iteration_id} "
+            f"!= iteration_id={contract.iteration_id}. "
+            "The final contract's iteration_id must match the convergence iteration."
+        )
+    # Verify content fingerprint (deterministic, not memory-identity)
+    expected_fp = FinancingInterestContract.compute_fingerprint(
+        contract.period_indices,
+        contract.senior_interest_keur,
+        contract.shl_gross_interest_keur,
+    )
+    if contract.content_fingerprint != expected_fp:
+        raise ValueError(
+            f"G2C_FINAL_INTEREST_FINGERPRINT_MISMATCH: {context}: "
+            f"content_fingerprint={contract.content_fingerprint} does not match "
+            f"recomputed fingerprint={expected_fp}. "
+            "The contract data was mutated or tampered with after creation."
+        )
+    # Length consistency
+    n = len(contract.period_indices)
+    if len(contract.senior_interest_keur) != n or len(contract.shl_gross_interest_keur) != n:
+        raise ValueError(
+            f"G2C_FINAL_INTEREST_VECTOR_LENGTH_MISMATCH: {context}: "
+            f"period_indices({n}), senior_interest({len(contract.senior_interest_keur)}), "
+            f"shl_gross_interest({len(contract.shl_gross_interest_keur)}) must all match."
+        )
+    # All values finite and non-negative
+    import math as _math
+    for i, (s, shl) in enumerate(zip(contract.senior_interest_keur, contract.shl_gross_interest_keur)):
+        if not _math.isfinite(s) or s < 0.0:
+            raise ValueError(
+                f"G2C_FINAL_INTEREST_INVALID_VALUE: {context}: "
+                f"senior_interest_keur[{i}]={s!r} must be finite and non-negative."
+            )
+        if not _math.isfinite(shl) or shl < 0.0:
+            raise ValueError(
+                f"G2C_FINAL_INTEREST_INVALID_VALUE: {context}: "
+                f"shl_gross_interest_keur[{i}]={shl!r} must be finite and non-negative."
+            )
+
+
+def _check_no_duplicate_period_indices(
+    period_indices: tuple[int, ...],
+    label: str,
+    context: str,
+) -> None:
+    """Raise G2C_FINAL_INTEREST_PERIOD_DUPLICATE if the raw tuple has duplicates.
+
+    Called BEFORE dict(zip(...)) to prevent silent deduplication.
+    dict construction silently drops duplicate keys — this catches them first.
+    """
+    idx_list = list(period_indices)
+    if len(idx_list) != len(set(idx_list)):
+        dups = sorted(set(i for i in idx_list if idx_list.count(i) > 1))
+        raise ValueError(
+            f"G2C_FINAL_INTEREST_PERIOD_DUPLICATE: {context}: "
+            f"{label} has duplicate period indices: {dups}. "
+            "Each period must appear exactly once. "
+            "dict(zip(...)) would silently drop duplicate entries — rejected here."
+        )
+
+
+def _validate_interest_period_alignment(
+    expected_period_indices: tuple[int, ...],
+    interest_by_period: dict[int, float],
+    context: str,
+) -> None:
+    """Validate that the final interest vector aligns exactly with expected periods.
+
+    Called ONCE at final B5 convergence (not during intermediate iterations).
+    Raises ValueError with structured error codes so callers can assert the failure
+    mode precisely.
+
+    Error codes:
+      G2C_FINAL_INTEREST_PERIOD_MISSING   — required period not in interest dict
+      G2C_FINAL_INTEREST_PERIOD_DUPLICATE — duplicate period index detected (internal)
+      G2C_FINAL_INTEREST_PERIOD_UNMATCHED — interest dict has period not in expected set
+    """
+    # Duplicate detection: expected_period_indices is a tuple — check it FIRST
+    # (before any dict construction can silently deduplicate)
+    if len(expected_period_indices) != len(set(expected_period_indices)):
+        duplicates = [
+            idx for idx in expected_period_indices
+            if expected_period_indices.count(idx) > 1
+        ]
+        raise ValueError(
+            f"G2C_FINAL_INTEREST_PERIOD_DUPLICATE: {context}: "
+            f"expected period tuple contains duplicates: {sorted(set(duplicates))}. "
+            "Each period must appear exactly once."
+        )
+
+    expected = set(expected_period_indices)
+    provided = set(interest_by_period)
+
+    missing = expected - provided
+    if missing:
+        raise ValueError(
+            f"G2C_FINAL_INTEREST_PERIOD_MISSING: {context}: "
+            f"periods {sorted(missing)} are required but absent from the interest vector. "
+            "The final interest contract must cover every debt period exactly."
+        )
+
+    unmatched = provided - expected
+    if unmatched:
+        raise ValueError(
+            f"G2C_FINAL_INTEREST_PERIOD_UNMATCHED: {context}: "
+            f"interest vector has extra periods {sorted(unmatched)} "
+            "not present in the expected debt periods. "
+            "Stale or shifted period indices are not permitted in the final contract."
+        )
+
+
+def _validate_final_financing_state(
+    *,
+    required_period_indices: tuple[int, ...],
+    final_senior_result: object,
+    final_shl_interest: dict[int, float],
+    final_base_tax_input: object,
+    context: str,
+) -> None:
+    """Validate that the final converged financing state is self-consistent.
+
+    Three independent checks against the canonical required period axis
+    (derived from debt_periods, NOT from SHL or Senior output):
+
+    1. Senior schedule period set == required period set
+    2. SHL interest covers all required (debt) periods
+    3. Merged tax input's Senior and SHL components match the final schedules
+
+    This replaces the previous tautological check that compared SHL data to itself.
+    The canonical axis `required_period_indices` is independently derived from
+    SeniorDebtModelInput / the B5 loop's debt_periods — it does NOT come from
+    any SHL or Senior output vector.
+    """
+    required_set = set(required_period_indices)
+
+    # Check 1: Senior must exactly cover required periods (independent axis)
+    senior_indices = tuple(final_senior_result.period_indices)  # type: ignore[attr-defined]
+    senior_set = set(senior_indices)
+    if senior_set != required_set:
+        missing_s = required_set - senior_set
+        extra_s = senior_set - required_set
+        raise ValueError(
+            f"G2C_FINAL_INTEREST_SENIOR_AXIS_MISMATCH: {context}: "
+            f"Senior schedule period set {sorted(senior_set)} != required periods "
+            f"{sorted(required_set)}. missing={sorted(missing_s)}, extra={sorted(extra_s)}"
+        )
+
+    # Check 2: SHL interest must be present at all required (debt) periods
+    shl_missing = required_set - set(final_shl_interest)
+    if shl_missing:
+        raise ValueError(
+            f"G2C_FINAL_INTEREST_SHL_MISSING_AT_DEBT_PERIODS: {context}: "
+            f"SHL interest missing at required debt periods: {sorted(shl_missing)}. "
+            "The converged SHL schedule must provide interest for every debt period."
+        )
+
+    # Check 3: Merged tax input consistency at each required period
+    merged_by_idx = {
+        pi.period_index: pi  # type: ignore[attr-defined]
+        for pi in final_base_tax_input.period_interest  # type: ignore[attr-defined]
+    }
+    senior_interest_by_idx = dict(
+        zip(
+            final_senior_result.period_indices,  # type: ignore[attr-defined]
+            final_senior_result.senior_interest_keur,  # type: ignore[attr-defined]
+        )
+    )
+    for idx in required_period_indices:
+        pi = merged_by_idx.get(idx)
+        if pi is None:
+            raise ValueError(
+                f"G2C_FINAL_INTEREST_MERGED_MISSING: {context}: "
+                f"period_index={idx} is missing from merged tax input. "
+                "Every required debt period must appear in the merged interest vector."
+            )
+        sched_senior = senior_interest_by_idx.get(idx, 0.0)
+        sched_shl = final_shl_interest.get(idx, 0.0)
+        merged_senior = pi.senior_interest_keur  # type: ignore[attr-defined]
+        merged_shl = pi.shl_interest_keur  # type: ignore[attr-defined]
+        if abs(merged_senior - sched_senior) > 1e-6:
+            raise ValueError(
+                f"G2C_FINAL_INTEREST_MERGED_SENIOR_MISMATCH: {context}: "
+                f"period_index={idx}: merged.senior_interest={merged_senior:.8f} kEUR "
+                f"!= final_senior_schedule={sched_senior:.8f} kEUR "
+                f"(delta={abs(merged_senior - sched_senior):.2e} kEUR). "
+                "The merged tax input must faithfully carry the final Senior schedule."
+            )
+        if abs(merged_shl - sched_shl) > 1e-6:
+            raise ValueError(
+                f"G2C_FINAL_INTEREST_MERGED_SHL_MISMATCH: {context}: "
+                f"period_index={idx}: merged.shl_interest={merged_shl:.8f} kEUR "
+                f"!= final_shl_schedule={sched_shl:.8f} kEUR "
+                f"(delta={abs(merged_shl - sched_shl):.2e} kEUR). "
+                "The merged tax input must faithfully carry the final SHL schedule."
+            )
+
+
+def _run_senior_debt_model_with_shl(
+    inputs: SeniorDebtModelInput,
+    *,
+    _test_only_initial_shl_interest_guess: "dict[int, float] | None" = None,
+) -> "ProjectModelResult":
+    """Phase B5: Senior debt + SHL + tax fixed-point integration.
+
+    _test_only_initial_shl_interest_guess:
+      TEST-ONLY parameter.  Default None = standard behaviour (start from the
+      zero-interest vector).  Pass an explicit dict to start the iteration from
+      a different seed.  This parameter is:
+        - NOT part of any production user input
+        - NOT included in any cache key or serialization
+        - NOT accessible through run_senior_debt_model()
+      It exists solely to allow the test suite to prove that different starting
+      seeds converge to the same fixed-point result.
+    """
     from financial_engine.cfads import calculate_canonical_cfads
     from financial_engine.inputs import TaxCfadsModelInput
     from financial_engine.senior_debt.inputs import SeniorDebtInputs
@@ -1194,17 +1501,21 @@ def _run_senior_debt_model_with_shl(inputs: SeniorDebtModelInput) -> ProjectMode
         p for p in bank_phase2a_result.periods
         if p.is_operation and debt_start <= p.period_index <= debt_end
     )
-    # Independently-derived axis contracts (Correction B / TASK 1, Correction F):
-    #   full_axis_shl  — all model period indices from Base run (= SHL schedule axis)
-    #   senior_axis_shl — debt-active operating subset from SeniorDebtPolicy bounds
+    # Independently-derived axis contracts (Correction B / TASK 1, Correction F / TASK 2):
     # CanonicalAxisContract is built HERE, before any solver output is accepted.
-    full_axis_shl: tuple[int, ...] = tuple(p.period_index for p in phase2b_result.periods)
-    senior_axis_shl: tuple[int, ...] = tuple(p.period_index for p in debt_periods)
+    # TASK 2: axis_contract_shl IS the runtime owner — no competing local tuples.
     axis_contract_shl = CanonicalAxisContract.from_periods_and_policy(
         phase2b_result.periods, policy
     )
+    # Convenience aliases — read-only references to CanonicalAxisContract fields.
+    full_axis_shl: tuple[int, ...] = axis_contract_shl.full_axis
+    senior_axis_shl: tuple[int, ...] = axis_contract_shl.senior_axis
 
-    shl_interest_guess: dict[int, float] = {}
+    shl_interest_guess: dict[int, float] = (
+        dict(_test_only_initial_shl_interest_guess)
+        if _test_only_initial_shl_interest_guess is not None
+        else {}
+    )
     previous_shl: ShareholderLoanSchedules | None = None
     last_max_closing_delta = float("inf")
     last_max_interest_delta = float("inf")
@@ -1320,12 +1631,19 @@ def _run_senior_debt_model_with_shl(inputs: SeniorDebtModelInput) -> ProjectMode
         shl_interest_guess = new_interest
     else:
         raise SeniorDebtNonConvergenceError(
-            "SHL fixed point terminated without an authoritative result: "
+            "G2C_SHL_TAX_FEEDBACK_NON_CONVERGENCE: "
+            "SHL-interest → tax → CFADS → Senior fixed point terminated without "
+            "an authoritative result: "
             f"iteration_count={shl_input.maximum_iterations}; "
-            "termination_reason='MAX_ITERATIONS_REACHED'"
+            f"last_max_closing_delta_keur={last_max_closing_delta:.12f}; "
+            f"last_max_interest_delta_keur={last_max_interest_delta:.12f}; "
+            "termination_reason='MAX_ITERATIONS_REACHED'. "
+            "No partial result is accepted — the feedback loop must converge."
         )
 
     # FINAL_FINANCING_STATE_RECOMPUTED_FROM_CONVERGED_SHL_AND_SENIOR_SCHEDULES
+    # TASK 1 Correction I: validate converged SHL before any contract is created.
+    # No contract with is_final=True may be constructed until final_senior_result exists.
     # Correction B: validate final SHL interest against independently-derived full_axis_shl.
     final_shl_interest = _strict_period_map(
         previous_shl.period_indices,
@@ -1365,18 +1683,79 @@ def _run_senior_debt_model_with_shl(inputs: SeniorDebtModelInput) -> ProjectMode
             f"termination_reason={final_senior_result.diagnostics.termination_reason!r}"
         )
 
-    # Correction B: validate final senior interest against independently-derived senior_axis_shl.
+    # E. Correction B: validate final senior interest against independently-derived senior_axis_shl.
     final_senior_interest = _strict_period_map(
         final_senior_result.period_indices,
         final_senior_result.senior_interest_keur,
         label="shl_fixed_point.final_senior_interest",
         expected_indices=senior_axis_shl,
     )
+
+    # TASK 1 Correction I steps F–H: lift final Senior to full canonical axis, then
+    # construct the FINAL FinancingInterestContract — ONLY NOW, after final_senior_result
+    # has been computed, validated, and accepted.  No contract with is_final=True may be
+    # created before this point.
+    #
+    # F. Lift FINAL Senior interest to the FULL canonical axis:
+    #    - Senior-axis periods: use final_senior_interest (exact values from solver)
+    #    - Non-Senior periods:  explicit 0.0 (never via .get() masking an expected period)
+    _final_senior_full = tuple(
+        final_senior_interest.get(idx, 0.0) for idx in full_axis_shl
+    )
+    _final_shl_full = tuple(
+        final_shl_interest.get(idx, 0.0) for idx in full_axis_shl
+    )
+    # Verify Senior is exactly 0.0 outside senior_axis (no masking of missing senior periods)
+    _senior_axis_set = set(senior_axis_shl)
+    for _ci, _idx in enumerate(full_axis_shl):
+        if _idx not in _senior_axis_set:
+            if _final_senior_full[_ci] != 0.0:
+                raise ValueError(
+                    f"AXIS_PERIOD_EXTRA: final Senior has non-zero value "
+                    f"({_final_senior_full[_ci]}) at non-Senior period {_idx}; "
+                    "only senior_axis periods may carry Senior interest"
+                )
+
+    # G. Construct FINAL FinancingInterestContract on full canonical axis.
+    _final_fp = FinancingInterestContract.compute_fingerprint(
+        full_axis_shl, _final_senior_full, _final_shl_full
+    )
+    final_financing_contract = FinancingInterestContract(
+        period_indices=full_axis_shl,
+        senior_interest_keur=_final_senior_full,
+        shl_gross_interest_keur=_final_shl_full,
+        iteration_id=iteration,
+        final_iteration_id=iteration,
+        is_final=True,
+        content_fingerprint=_final_fp,
+    )
+    # H. Validate the final contract.
+    _require_final_financing_contract(final_financing_contract, context="B5_FINAL_CONVERGENCE_FULL_AXIS")
+
+    # I. Construct Base and Bank tax inputs FROM THE FINAL CONTRACT (TASK 3).
+    # One financing-interest authority for both cases; differences arise only from
+    # approved economic case inputs (tax_periodisation_mode_override for Bank).
+    _contract_senior_map, _contract_shl_map = financing_interest_maps_from_contract(
+        final_financing_contract, context="BASE_TAX_FROM_CONTRACT"
+    )
     final_base_tax_input = _merge_financing_tax_input(
         base_tax_input,
-        final_senior_interest,
-        final_shl_interest,
+        _contract_senior_map,
+        _contract_shl_map,
     )
+
+    # TASK 1: Three-way independent validation of final financing state.
+    # Uses senior_axis_shl (independently derived from SeniorDebtPolicy bounds via
+    # CanonicalAxisContract, NOT from SHL or Senior output) as the canonical axis.
+    # This replaces the previous tautological check that compared SHL data to itself.
+    _validate_final_financing_state(
+        required_period_indices=senior_axis_shl,
+        final_senior_result=final_senior_result,
+        final_shl_interest=final_shl_interest,
+        final_base_tax_input=final_base_tax_input,
+        context="B5_FINAL_CONVERGENCE_3WAY",
+    )
+
     final_base_tax = calculate_tax(phase2b_result.periods, final_base_tax_input)
     final_base_cfads = calculate_canonical_cfads(
         phase2b_result.periods,
@@ -1447,10 +1826,15 @@ def _run_senior_debt_model_with_shl(inputs: SeniorDebtModelInput) -> ProjectMode
         diagnostics=handshake_probe_diag,
     )
 
+    # Bank tax input ALSO derives from the FINAL CONTRACT (TASK 3, step I).
+    # Same authority as Base; Bank-only differences come from tax_periodisation_mode_override.
+    _contract_bank_senior_map, _contract_bank_shl_map = financing_interest_maps_from_contract(
+        final_financing_contract, context="BANK_TAX_FROM_CONTRACT"
+    )
     final_bank_tax_input = _merge_financing_tax_input(
         base_tax_input,
-        final_senior_interest,
-        final_shl_interest,
+        _contract_bank_senior_map,
+        _contract_bank_shl_map,
         tax_periodisation_mode_override=inputs.debt_sizing_case.tax_periodisation_mode_override,
     )
     final_bank_tax = calculate_tax(bank_phase2a_result.periods, final_bank_tax_input)
@@ -1982,4 +2366,42 @@ def run_senior_debt_model(inputs: SeniorDebtModelInput) -> ProjectModelResult:
         unavailable_sections=_PHASE_2C_UNAVAILABLE,
         validation_issues=validation_issues,
         warnings=warnings,
+    )
+
+
+def run_senior_debt_model_test_only_seed(
+    inputs: "SeniorDebtModelInput",
+    initial_shl_interest_guess: "dict[int, float]",
+) -> "ProjectModelResult":
+    """TEST-ONLY: Run the B5 SHL fixed-point from an explicit initial SHL interest guess.
+
+    This function exists solely to support seed-invariance testing.  It is NOT
+    part of the production API, must NOT appear in any user-facing interface,
+    cache key, or serialized form, and must NOT be called from any production
+    code path.
+
+    Args:
+        inputs: Same SeniorDebtModelInput used by run_senior_debt_model().
+        initial_shl_interest_guess: Starting guess for shl_interest_by_period.
+            The canonical production guess is {} (all zeros).  Passing a
+            materially different dict lets the test verify convergence is
+            seed-independent.
+
+    Returns:
+        ProjectModelResult — identical to what run_senior_debt_model() returns
+        for the same inputs regardless of the starting guess (if the fixed point
+        converges).
+
+    Raises:
+        ValueError: if inputs.shareholder_loan is None (no B5 loop to run).
+        SeniorDebtNonConvergenceError: if the loop does not converge.
+    """
+    if inputs.shareholder_loan is None:
+        raise ValueError(
+            "run_senior_debt_model_test_only_seed requires a shareholder_loan "
+            "input (B5 fixed-point path). Got None."
+        )
+    return _run_senior_debt_model_with_shl(
+        inputs,
+        _test_only_initial_shl_interest_guess=initial_shl_interest_guess,
     )

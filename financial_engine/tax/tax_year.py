@@ -229,6 +229,12 @@ def build_tax_year_bases(
     ):
         return _build_model_year_pairing_bases(periods, interest_map, adj_map, policy)
 
+    # Single-pass: use shl_tax_deductible_fraction() for all modes.
+    # For SUBJECT_TO_LIMITATIONS, shl_tax_deductible_fraction() returns 1.0 (SHL fully
+    # included in total_interest). The ATAD mechanism (atad_enabled=True) then applies the
+    # annual EBITDA-based limitation to total interest including SHL.
+    # The unsourced absolute annual SHL cap (two-pass per-year approach) has been removed.
+
     year_fragments: dict[int, list[TaxYearPeriodFragment]] = defaultdict(list)
 
     for p in periods:
@@ -353,6 +359,8 @@ def _build_model_year_pairing_bases(
             )
         pi_obj = interest_map.get(idx)
         if pi_obj:
+            # Use shl_tax_deductible_fraction() for all modes including STL.
+            # For SUBJECT_TO_LIMITATIONS, fraction=1.0; ATAD provides the limitation.
             shl_fraction = policy.shl_tax_deductible_fraction()
             shl_tax_eligible = pi_obj.shl_interest_keur * shl_fraction
             shl_non_deductible = pi_obj.shl_interest_keur - shl_tax_eligible

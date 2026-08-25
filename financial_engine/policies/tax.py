@@ -4,6 +4,8 @@ Phase 2B full contract. No calculation performed here.
 """
 from __future__ import annotations
 
+import math
+import numbers
 from dataclasses import dataclass
 from enum import Enum
 
@@ -62,6 +64,17 @@ class TaxPolicy:
         when the caller has supplied a complete financing-interest contract
     shl_interest_deductibility : tax treatment for gross accounting SHL interest
     shl_interest_deductible_pct : deductible fraction when CUSTOM_DEDUCTIBLE_PERCENTAGE
+    thin_cap_enabled : thin-cap source metadata flag (forwarded from TaxParams).
+        True = thin-cap limitation recorded in source model. The thin-cap formula is
+        NOT yet implemented in the production runtime. When SUBJECT_TO_LIMITATIONS is
+        requested with thin_cap_enabled=True, the runtime gate raises
+        SHL_THIN_CAP_RUNTIME_NOT_IMPLEMENTED. Only the ATAD path (thin_cap_enabled=False,
+        atad_enabled=True) is currently executable.
+
+    NOTE: shl_limitation_enabled and shl_interest_cap_keur_annual have been REMOVED.
+    SUBJECT_TO_LIMITATIONS is now implemented via the ATAD mechanism (atad_enabled=True).
+    The ATAD EBITDA-based limitation is the approved authority for EU interest limitations.
+    An absolute annual SHL cap separate from ATAD has no approved non-workbook authority.
     """
     policy_id: str
     policy_version: str
@@ -82,12 +95,184 @@ class TaxPolicy:
     loss_utilisation_gate: TaxLossUtilisationGate = (
         TaxLossUtilisationGate.TAXABLE_INCOME_POSITIVE
     )
+    thin_cap_enabled: bool = False
+
+    def __post_init__(self) -> None:
+        """Fail-closed typed validation for all TaxPolicy fields."""
+        # ── boolean fields must be exact bool ─────────────────────────────────
+        for name in (
+            "atad_enabled",
+            "shl_interest_tax_treatment_enabled",
+            "thin_cap_enabled",
+        ):
+            val = getattr(self, name)
+            if not isinstance(val, bool):
+                raise TypeError(
+                    f"TaxPolicy.{name} must be exact bool, got {type(val).__name__!r}: {val!r}"
+                )
+
+        # ── enum fields must be correct enum type ──────────────────────────────
+        if not isinstance(self.cash_tax_timing, CashTaxTiming):
+            raise TypeError(
+                f"TaxPolicy.cash_tax_timing must be CashTaxTiming, got {type(self.cash_tax_timing)!r}"
+            )
+        if not isinstance(self.shl_interest_deductibility, ShlInterestDeductibilityMode):
+            raise TypeError(
+                "TaxPolicy.shl_interest_deductibility must be ShlInterestDeductibilityMode, "
+                f"got {type(self.shl_interest_deductibility)!r}"
+            )
+        if not isinstance(self.tax_basis_periodisation, TaxBasisPeriodisation):
+            raise TypeError(
+                "TaxPolicy.tax_basis_periodisation must be TaxBasisPeriodisation, "
+                f"got {type(self.tax_basis_periodisation)!r}"
+            )
+        if not isinstance(self.loss_utilisation_gate, TaxLossUtilisationGate):
+            raise TypeError(
+                "TaxPolicy.loss_utilisation_gate must be TaxLossUtilisationGate, "
+                f"got {type(self.loss_utilisation_gate)!r}"
+            )
+
+        # ── atad_ebitda_limit: numbers.Real, not bool, finite, in approved range ──
+        if isinstance(self.atad_ebitda_limit, bool):
+            raise TypeError(
+                "TaxPolicy.atad_ebitda_limit must not be bool"
+            )
+        if not isinstance(self.atad_ebitda_limit, numbers.Real):
+            raise TypeError(
+                f"TaxPolicy.atad_ebitda_limit must be numbers.Real, got {type(self.atad_ebitda_limit)!r}"
+            )
+        _lim = float(self.atad_ebitda_limit)
+        if math.isnan(_lim) or math.isinf(_lim):
+            raise ValueError(
+                f"TaxPolicy.atad_ebitda_limit must be finite, got {self.atad_ebitda_limit!r}"
+            )
+        # Business-range enforcement (atad_ebitda_limit in [0,1]) is handled by the
+        # canonical validation layer (TAX004) so that invalid financial inputs are
+        # classified with a structured code rather than a raw ValueError from the
+        # constructor. Only finiteness (structural invariant) is enforced here.
+
+        # ── atad_de_minimis_threshold_keur_annual: numbers.Real, not bool, finite, non-negative ─
+        if isinstance(self.atad_de_minimis_threshold_keur_annual, bool):
+            raise TypeError(
+                "TaxPolicy.atad_de_minimis_threshold_keur_annual must not be bool"
+            )
+        if not isinstance(self.atad_de_minimis_threshold_keur_annual, numbers.Real):
+            raise TypeError(
+                "TaxPolicy.atad_de_minimis_threshold_keur_annual must be numbers.Real, "
+                f"got {type(self.atad_de_minimis_threshold_keur_annual)!r}"
+            )
+        _dm = float(self.atad_de_minimis_threshold_keur_annual)
+        if math.isnan(_dm) or math.isinf(_dm):
+            raise ValueError(
+                "TaxPolicy.atad_de_minimis_threshold_keur_annual must be finite, "
+                f"got {self.atad_de_minimis_threshold_keur_annual!r}"
+            )
+        # Business-range enforcement (de_minimis >= 0) is handled by the canonical
+        # validation layer (TAX005) so that invalid financial inputs are classified
+        # with a structured code rather than a raw ValueError from the constructor.
+
+        # ── shl_interest_deductible_pct: if supplied, numbers.Real, finite, in [0,1] ──
+        pct = self.shl_interest_deductible_pct
+        if pct is not None:
+            if isinstance(pct, bool):
+                raise TypeError(
+                    "TaxPolicy.shl_interest_deductible_pct must not be bool"
+                )
+            if not isinstance(pct, numbers.Real):
+                raise TypeError(
+                    "TaxPolicy.shl_interest_deductible_pct must be numbers.Real, "
+                    f"got {type(pct)!r}"
+                )
+            _p = float(pct)
+            if math.isnan(_p) or math.isinf(_p):
+                raise ValueError(
+                    f"TaxPolicy.shl_interest_deductible_pct must be finite, got {pct!r}"
+                )
+            if _p < 0.0:
+                raise ValueError(
+                    f"TaxPolicy.shl_interest_deductible_pct must be ≥ 0, got {pct!r}"
+                )
+            if _p > 1.0:
+                raise ValueError(
+                    f"TaxPolicy.shl_interest_deductible_pct must be ≤ 1, got {pct!r}"
+                )
+
+        # ── corporate_rate: numbers.Real, not bool, finite ──────────────────────
+        if isinstance(self.corporate_rate, bool):
+            raise TypeError("TaxPolicy.corporate_rate must not be bool")
+        if not isinstance(self.corporate_rate, numbers.Real):
+            raise TypeError(
+                f"TaxPolicy.corporate_rate must be numbers.Real, got {type(self.corporate_rate)!r}"
+            )
+        _cr = float(self.corporate_rate)
+        if math.isnan(_cr) or math.isinf(_cr):
+            raise ValueError(
+                f"TaxPolicy.corporate_rate must be finite, got {self.corporate_rate!r}"
+            )
+
+        # ── mode/pct consistency ───────────────────────────────────────────────
+        mode = self.shl_interest_deductibility
+        if mode == ShlInterestDeductibilityMode.CUSTOM_DEDUCTIBLE_PERCENTAGE:
+            if pct is None:
+                raise ValueError(
+                    "TaxPolicy: shl_interest_deductible_pct is required for "
+                    "CUSTOM_DEDUCTIBLE_PERCENTAGE"
+                )
+        elif mode in (
+            ShlInterestDeductibilityMode.FULLY_DEDUCTIBLE,
+            ShlInterestDeductibilityMode.FULLY_NON_DEDUCTIBLE,
+        ):
+            if pct is not None:
+                expected = 1.0 if mode == ShlInterestDeductibilityMode.FULLY_DEDUCTIBLE else 0.0
+                if abs(float(pct) - expected) > 1e-9:
+                    raise ValueError(
+                        f"TaxPolicy: shl_interest_deductible_pct must be absent or {expected} "
+                        f"for {mode.value}, got {pct!r}"
+                    )
+
+    def require_stl_mechanism_ready(self) -> None:
+        """Gate: raise if SUBJECT_TO_LIMITATIONS is configured but not executable.
+
+        Runtime capability matrix:
+          thin_cap_enabled=False, atad_enabled=True  → OK (execute ATAD path)
+          thin_cap_enabled=True,  atad_enabled=False → SHL_THIN_CAP_RUNTIME_NOT_IMPLEMENTED
+          thin_cap_enabled=True,  atad_enabled=True  → SHL_THIN_CAP_RUNTIME_NOT_IMPLEMENTED
+          thin_cap_enabled=False, atad_enabled=False → SHL_LIMITATION_MECHANISM_MISSING
+
+        Must be called before any tax output is produced when
+        shl_interest_deductibility == SUBJECT_TO_LIMITATIONS.
+
+        Gate is capability-driven only — no project name/code/identity check.
+        Does NOT implement thin-cap formula.
+        """
+        if self.thin_cap_enabled:
+            raise NotImplementedError(
+                "SHL_THIN_CAP_RUNTIME_NOT_IMPLEMENTED: "
+                "thin_cap_enabled=True is recorded as source metadata but the thin-cap "
+                "formula is not implemented in the production runtime. "
+                "Only the ATAD path (thin_cap_enabled=False, atad_enabled=True) is "
+                "currently executable for SUBJECT_TO_LIMITATIONS. "
+                "Do not implement the thin-cap formula without a dedicated proof stage."
+            )
+        if not self.atad_enabled:
+            raise NotImplementedError(
+                "SHL_LIMITATION_MECHANISM_MISSING: "
+                "shl_interest_deductibility=SUBJECT_TO_LIMITATIONS requires a supported "
+                "limitation mechanism. Set atad_enabled=True for the ATAD execution path, "
+                "or thin_cap_enabled=True to record source metadata (runtime-blocked)."
+            )
 
     def shl_tax_deductible_fraction(self) -> float:
         """Return the fraction of gross SHL interest eligible for tax deduction.
 
-        SUBJECT_TO_LIMITATIONS remains fail-closed until the relevant thin-cap
-        limitation engine is source-proven and implemented.
+        For SUBJECT_TO_LIMITATIONS, this method enforces the runtime capability gate
+        BEFORE returning any value. If thin_cap_enabled=True or atad_enabled=False,
+        it raises (SHL_THIN_CAP_RUNTIME_NOT_IMPLEMENTED or SHL_LIMITATION_MECHANISM_MISSING).
+        Only when thin_cap_enabled=False and atad_enabled=True does it return 1.0.
+
+        For SUBJECT_TO_LIMITATIONS, SHL interest is treated as fully deductible
+        at the year-builder level (fraction=1.0). The ATAD mechanism (atad_enabled=True)
+        then applies the EBITDA-based annual limitation to total interest including SHL.
         """
         if not self.shl_interest_tax_treatment_enabled:
             return 1.0
@@ -102,13 +287,43 @@ class TaxPolicy:
                 raise ValueError(
                     "shl_interest_deductible_pct is required for CUSTOM_DEDUCTIBLE_PERCENTAGE"
                 )
-            if not 0.0 <= pct <= 1.0:
+            if not 0.0 <= float(pct) <= 1.0:
                 raise ValueError(
                     f"shl_interest_deductible_pct must be in [0, 1], got {pct!r}"
                 )
-            return pct
+            return float(pct)
+        # SUBJECT_TO_LIMITATIONS: enforce capability gate before producing any output.
+        if mode == ShlInterestDeductibilityMode.SUBJECT_TO_LIMITATIONS:
+            self.require_stl_mechanism_ready()
+            # Gate passed: only ATAD path reachable here (thin_cap_enabled=False, atad_enabled=True).
+            # SHL is fully included in total interest; ATAD provides the annual limitation.
+            return 1.0
         raise NotImplementedError(
-            "TUHO_SHL_TAX_POLICY_BLOCKED_BY_UNSUPPORTED_LIMITATION: "
-            "SUBJECT_TO_LIMITATIONS requires a source-proven thin-cap/limitation "
-            "calculation before clean tax fixed-point execution."
+            f"TUHO_SHL_TAX_POLICY_UNHANDLED_MODE: unrecognised ShlInterestDeductibilityMode {mode!r}"
         )
+
+    def is_subject_to_limitations_active(self) -> bool:
+        """Return True if and only if SUBJECT_TO_LIMITATIONS is fully active and executable.
+
+        Active requires ALL of:
+        - shl_interest_tax_treatment_enabled is True (financing interest injected)
+        - shl_interest_deductibility is SUBJECT_TO_LIMITATIONS
+        - atad_enabled is True (ATAD provides the interest limitation for STL)
+        - thin_cap_enabled is False (thin-cap is not implemented; if True, raises at runtime)
+
+        Architecture: the unsourced absolute annual SHL cap (shl_limitation_enabled +
+        shl_interest_cap_keur_annual) has been removed. ATAD is now the sole limitation
+        mechanism for SUBJECT_TO_LIMITATIONS. ATAD must be enabled and thin_cap_enabled
+        must be False for STL to be active.
+        """
+        if not self.shl_interest_tax_treatment_enabled:
+            return False
+        if self.shl_interest_deductibility is not ShlInterestDeductibilityMode.SUBJECT_TO_LIMITATIONS:
+            return False
+        # thin_cap_enabled=True means the runtime gate will raise — not active/executable.
+        if self.thin_cap_enabled:
+            return False
+        # ATAD must be enabled for STL to have any actual limitation effect
+        if not self.atad_enabled:
+            return False
+        return True
