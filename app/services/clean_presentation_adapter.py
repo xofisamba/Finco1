@@ -172,16 +172,25 @@ def build_clean_waterfall_view(clean_run) -> CleanWaterfallView:
     tax = model.tax_and_cfads
     senior = model.senior_debt
 
-    # Independently-derived canonical axes (Correction D / TASK 2, Correction F).
+    # Independently-derived canonical axes (Correction D / TASK 2, Correction F/G).
     # _full_axis is derived from canonical immutable model periods — not from any schedule.
     # Senior axis: use CanonicalAxisContract when present on the result (populated by
     # run_senior_debt_model from typed SeniorDebtPolicy bounds — NOT from solver indices).
-    # Fall back to None only when axis_contract is absent (pre-Phase-2C results).
+    # Correction G: fail closed — an active Senior schedule REQUIRES CanonicalAxisContract.
+    # No fallback to None for an active Senior consumer (CANONICAL_AXIS_CONTRACT_MISSING).
     _full_axis: tuple[int, ...] = tuple(p.period_index for p in model.periods)
     _axis_contract = getattr(model, "axis_contract", None)
-    _senior_expected: "tuple[int, ...] | None" = (
-        _axis_contract.senior_axis if _axis_contract is not None else None
-    )
+    if _axis_contract is not None:
+        _senior_expected: "tuple[int, ...] | None" = _axis_contract.senior_axis
+    elif senior.period_indices:
+        raise ValueError(
+            "CANONICAL_AXIS_CONTRACT_MISSING: Senior debt schedule is active but "
+            "model.axis_contract is absent. Active Senior consumers require a "
+            "CanonicalAxisContract with an independently derived senior_axis. "
+            "Run run_senior_debt_model (Phase 2C) to populate the contract."
+        )
+    else:
+        _senior_expected = None
     op_by_idx = map_period_vector(
         op.period_indices,
         tuple(range(len(op.period_indices))),

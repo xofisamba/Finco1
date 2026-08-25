@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from financial_engine.provenance import EngineProvenance
     from financial_engine.validation import ValidationIssue
+    from finco_core.engine.axis_contract import CanonicalAxisContract
 
 
 @dataclass(frozen=True)
@@ -264,4 +265,4 @@ class ProjectModelResult:
     # contract is constructed from typed periods and SeniorDebtPolicy bounds — BEFORE
     # any solver output is accepted.  Downstream consumers use this for Senior axis
     # enforcement instead of self-deriving from result.senior_debt.period_indices.
-    axis_contract: "object | None" = None
+    axis_contract: "CanonicalAxisContract | None" = None

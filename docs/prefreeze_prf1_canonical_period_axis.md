@@ -262,8 +262,9 @@ Five additional consumer files now pass `expected_indices` to every
 | `app/services/clean_presentation_adapter.py` | full_axis, senior_axis |
 
 Rule: every consumer independently derives its axis from `model_result.periods`
-(or the corresponding schedule's own `period_indices`) — it never reuses an axis
-from a sibling call.
+— it never reuses an axis from a sibling call, and never uses the schedule's
+own `period_indices` to validate that same schedule (self-validation is
+prohibited).
 
 ### TASK 2: Bank-only axis authority in `_build_debt_sizing_schedules_from_bank()`
 
@@ -338,3 +339,95 @@ either classification is applied.
 - 88 PRF1 canonical axis tests passed (88 in test_prefreeze_prf1_canonical_period_axis.py).
 - 325 tests passed across PRF1 + shareholder waterfall + sponsor returns + PR6/PR7/DSRF suites.
 - `git diff --check` clean (no whitespace errors).
+
+## Correction G additions (PR-F1 Correction G)
+
+### TASK 1: Fail-closed Senior axis — removal of all fail-open fallbacks
+
+Three downstream Senior consumers previously used `expected_indices=None` (fail-open)
+when `axis_contract` was absent.  All three now fail closed with the deterministic
+error code `CANONICAL_AXIS_CONTRACT_MISSING`.
+
+| File | Change |
+|---|---|
+| `app/services/clean_presentation_adapter.py` | Removed ternary `None` fallback for `_senior_expected`; raises if Senior is active without contract |
+| `financial_engine/diagnostics/base_performance_reconciliation.py` | Removed `_senior_axis=None` fallback in `_runtime_maps()`; raises if Senior is active without contract |
+| `financial_engine/shareholder_waterfall/model.py` | Removed broad `except Exception: expected_senior_axis = None` swallow; raises unconditionally if contract absent |
+
+`CanonicalAxisContract` is the runtime immutable authority for all axis
+derivation.  Its three fields are:
+
+- `full_axis` — `tuple(p.period_index for p in canonical_periods)` from
+  `PeriodEngine.periods()`.
+- `operating_axis` — `tuple(p.period_index for p in canonical_periods if p.is_operation)`.
+- `senior_axis` — derived from typed `SeniorDebtPolicy` repayment bounds applied
+  to the operating axis.  This is NOT derived from the solver's returned
+  `period_indices`.
+
+Active Senior consumers (where `senior_debt.period_indices` is non-empty) require
+a `CanonicalAxisContract` attached to the result.  The contract is populated by
+`run_senior_debt_model` (Phase 2C).  A missing contract on an active Senior
+schedule is a hard error (`CANONICAL_AXIS_CONTRACT_MISSING`), not a silent
+no-op.  Self-validation (using a schedule's own `period_indices` to validate
+that same schedule) is prohibited.
+
+### TASK 2: Real Bank E2E attack matrix (via `_build_debt_sizing_schedules_from_bank`)
+
+Two new E2E tests in `TestBankE2EAttacksG` exercise the production Bank assembly
+boundary through the real `run_senior_debt_model` orchestration path:
+
+| ID | Description | Error code |
+|---|---|---|
+| g2_missing_bank_tax | Missing tax period injected before Bank assembly | BANK_AXIS_PERIOD_MISSING |
+| g2_extra_bank_cfads | Extra CFADS period injected before Bank assembly | BANK_AXIS_PERIOD_EXTRA |
+
+### TASK 3: Downstream Senior consumer attack matrix
+
+Three new test classes exercise the fail-closed guards in each downstream consumer:
+
+**`TestCleanPresentationAdapterDownstreamAttacksG`** — calls `map_period_vector`
+with `axis_contract.senior_axis` as `expected_indices`:
+
+| Attack | Error code |
+|---|---|
+| Shifted Senior period_indices | AXIS_PERIOD_MISSING |
+| Missing Senior period | AXIS_PERIOD_MISSING |
+| Reordered Senior period_indices | AXIS_PERIOD_SHIFTED |
+| Duplicate Senior period | AXIS_PERIOD_DUPLICATE |
+
+**`TestBaseReconciliationDownstreamAttacksG`** — calls `_runtime_maps()` with
+corrupted `result.senior_debt.period_indices`:
+
+| Attack | Error code |
+|---|---|
+| Shifted Senior period_indices | AXIS_PERIOD_MISSING |
+| Missing Senior period | AXIS_PERIOD_MISSING |
+| Reordered Senior period_indices | AXIS_PERIOD_SHIFTED |
+| Duplicate Senior period | AXIS_PERIOD_DUPLICATE |
+
+**`TestWaterfallDownstreamSeniorAttacksG`** — monkeypatches
+`map_period_vector` inside the waterfall model:
+
+| Attack | Error code |
+|---|---|
+| Missing Senior period | AXIS_PERIOD_MISSING |
+| Reordered Senior period_indices | AXIS_PERIOD_SHIFTED |
+| Duplicate Senior period | AXIS_PERIOD_DUPLICATE |
+
+**`TestCanonicalAxisContractMissingFailClosed`** — verifies the three
+fail-closed guards raise `CANONICAL_AXIS_CONTRACT_MISSING` when `axis_contract`
+is absent on an active Senior schedule.
+
+### Classification (Correction G)
+
+`EXACT_MEMBERSHIP_CLOSED` and `FREEZE_COMPLETE` are NOT claimed.
+All 116 PRF1 tests pass locally.  Independent CI review is required before
+either classification is applied.
+
+## Local verification (Correction G)
+
+- 116 PRF1 canonical axis tests passed (116 in test_prefreeze_prf1_canonical_period_axis.py).
+- All 4 required suites passed: PRF1, c3b3d2b6, c3b3d2b7, c3b3d2b8.
+- `git diff --check` clean (no whitespace errors).
+- `financial_engine/tax/engine.py` is untouched.
+- Expected financial delta: ZERO.

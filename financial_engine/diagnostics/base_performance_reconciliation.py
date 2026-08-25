@@ -122,11 +122,20 @@ def _runtime_maps(result: Any) -> dict[str, dict[int, float]]:
     _shl_axis: tuple[int, ...] = _full_axis   # SHL schedule spans all model periods
     # Senior axis: use CanonicalAxisContract when present on the result (populated by
     # run_senior_debt_model from typed SeniorDebtPolicy bounds — NOT from solver indices).
-    # Fall back to None only when axis_contract is absent (pre-Phase-2C or legacy results).
+    # Correction G: fail closed — an active Senior schedule REQUIRES CanonicalAxisContract.
+    # No fallback to None for an active Senior consumer (CANONICAL_AXIS_CONTRACT_MISSING).
     _axis_contract = getattr(result, "axis_contract", None)
-    _senior_axis: tuple[int, ...] | None = (
-        _axis_contract.senior_axis if _axis_contract is not None else None
-    )
+    if _axis_contract is not None:
+        _senior_axis: tuple[int, ...] | None = _axis_contract.senior_axis
+    elif result.senior_debt.period_indices:
+        raise ValueError(
+            "CANONICAL_AXIS_CONTRACT_MISSING: Senior debt schedule is active but "
+            "result.axis_contract is absent. Active Senior consumers require a "
+            "CanonicalAxisContract with an independently derived senior_axis. "
+            "Run run_senior_debt_model (Phase 2C) to populate the contract."
+        )
+    else:
+        _senior_axis = None
     def mapped(indices, values, label, expected=None):
         return map_period_vector(indices, values, label=f"base_reconciliation.{label}", expected_indices=expected)
 

@@ -297,23 +297,14 @@ def run_project_shareholder_waterfall_model(
         if _axis_contract is not None:
             expected_senior_axis: tuple[int, ...] = _axis_contract.senior_axis
         else:
-            # Legacy path: derive from typed SeniorDebtPolicy bounds.
-            from financial_engine.adapters.project_inputs import (
-                build_senior_debt_model_input_from_project_inputs,
+            # Correction G: fail closed — no fallback for active Senior consumers.
+            # CanonicalAxisContract must be present when Senior debt is active.
+            raise ValueError(
+                "CANONICAL_AXIS_CONTRACT_MISSING: Senior debt schedule is active but "
+                "model_result.axis_contract is absent. Active Senior consumers require "
+                "a CanonicalAxisContract with an independently derived senior_axis. "
+                "Run run_senior_debt_model (Phase 2C) to populate the contract."
             )
-            try:
-                _sd_contract = build_senior_debt_model_input_from_project_inputs(project_inputs)
-                _sd_policy = _sd_contract.senior_debt_policy
-                _debt_start = _sd_policy.repayment_start_period_index
-                _debt_end = _sd_policy.maturity_period_index
-                expected_senior_axis = tuple(
-                    p.period_index for p in model_result.periods
-                    if p.is_operation and _debt_start <= p.period_index <= _debt_end
-                )
-            except Exception:
-                # Cannot derive independently; fall back to None (no enforcement here).
-                # The orchestrator already validated at construction time.
-                expected_senior_axis = None  # type: ignore[assignment]
         base_dscr_by_idx = map_period_vector(
             sd.period_indices, sd.base_dscr, label="shareholder_waterfall.base_dscr",
             expected_indices=expected_senior_axis,
