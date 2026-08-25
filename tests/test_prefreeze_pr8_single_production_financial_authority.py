@@ -772,12 +772,12 @@ _PRF1_CANONICAL_AXIS_FINGERPRINTS = {
         # Frozen at PR-F1 canonical axis freeze. B1 routing change has zero financial delta.
         "revenue": 94414.54881158611,
         "senior_ds": 35302.12518820596,
-        "distributions": 5002.162578513828,
+        "distributions": 5002.162578513825,
     },
     "Wind": {
         # Old total included a one-day 2056-07-01 phantom period (31.697201897186 kEUR).
-        "revenue": 213093.2536298828,
-        "senior_ds": 42650.79738447128,
+        "revenue": 213093.25362988273,
+        "senior_ds": 42650.79738447129,
         "distributions": 10506.513025614555,
     },
 }

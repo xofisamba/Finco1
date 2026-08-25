@@ -274,16 +274,18 @@ def execute_production_demo(project_type: str, scenario: str = "Base",
             calculation_count=0,
         )
 
-    # Truly unrecognised / unclassified type — exact legacy demo funnel.
-    from app.ui_runner import run_demo_project
+    # Truly unrecognised / unclassified type — Phase B1 fail-closed.
+    # Unknown project types are NOT a production composition — raise typed error.
+    from app.services.production_financial_authority import CleanNotReadyError
 
-    demo = run_demo_project(
-        project_type, scenario, project_inputs_override=project_inputs_override
+    raise CleanNotReadyError(
+        classification="UNCLASSIFIED",
+        reason_code="PR8_PROJECT_TYPE_NOT_RECOGNISED",
+        detail=(
+            f"project_type={project_type!r} is not a recognised production "
+            "project type. Phase B1: execute_production_demo raises for "
+            "unrecognised types — no legacy fallthrough."
+        ),
+        runtime_authority="clean_not_ready",
+        calculation_count=0,
     )
-    meta = {
-        "classification": "LEGACY_CALIBRATION_ONLY",
-        "reason_code": "PR8_ROUTE_NOT_CLASSIFIED",
-        "runtime_authority": "legacy_waterfall_calibration",
-        "calculation_count": 1,
-    }
-    return demo, meta

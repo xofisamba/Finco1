@@ -549,22 +549,25 @@ class TestP_EdgeCases:
     """P — Additional edge cases per Correction A spec."""
 
     def test_p1_unknown_project_type_clean_zero_legacy_zero(self):
-        """Unknown project type via execute_production_demo: no clean, no legacy calc."""
+        """Unknown project type: both run_project and execute_production_demo raise CleanNotReadyError.
+
+        Phase B1 invariant: unrecognised/unclassified types NEVER reach a legacy engine.
+        clean_calculations == 0; legacy_calculations == 0.
+        """
         from app.services.production_waterfall_seam import execute_production_demo
         from app.services.production_financial_authority import CleanNotReadyError
+        from app.api.project_runner import run_project
+        import pytest
 
-        # An unregistered project_type has no factory → inputs=None → falls
-        # through to legacy demo funnel (run_demo_project). This is expected
-        # and documented as LEGACY_CALIBRATION_ONLY / PR8_ROUTE_NOT_CLASSIFIED.
-        # The key invariant: no clean engine fires.
-        try:
-            demo, meta = execute_production_demo("__unknown_project_type_xyz__")
-            # If it returns, it used the legacy fallthrough for truly unknown types.
-            assert meta.get("runtime_authority") == "legacy_waterfall_calibration"
-        except Exception:
-            # Any exception (ImportError, etc.) is acceptable — the key invariant
-            # is that no clean engine calculation fires.
-            pass
+        with pytest.raises(CleanNotReadyError) as exc_info:
+            execute_production_demo("__unknown_project_type_xyz__")
+        assert exc_info.value.calculation_count == 0
+        assert exc_info.value.runtime_authority == "clean_not_ready"
+
+        with pytest.raises(CleanNotReadyError) as exc_info2:
+            run_project("__unknown_project_type_xyz__", "Base")
+        assert exc_info2.value.calculation_count == 0
+        assert exc_info2.value.runtime_authority == "clean_not_ready"
 
     def test_p2_invalid_inputs_classifier_raises_resolution_error(self):
         """An object that breaks the classifier raises ProductionAuthorityResolutionError."""

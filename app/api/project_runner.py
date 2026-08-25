@@ -300,13 +300,28 @@ def _run_project_impl(project_type: str, scenario: str, period_view: str = "Semi
             runtime_authority="clean_not_ready",
             calculation_count=0,
         )
-    else:
-        # force_legacy=True (explicit calibration via run_project_legacy) OR
-        # unclassified type (Portfolio / unknown project_type / override with
-        # validation errors) — exact legacy demo funnel, unchanged.
+    elif force_legacy:
+        # Explicit calibration via run_project_legacy — exact legacy demo funnel.
         demo = run_demo_project(project_type, scenario,
                                 project_inputs_override=project_inputs_override,
                                 use_dualrun_validation=use_dualrun_validation)
+    else:
+        # Unclassified type (Portfolio / unknown project_type / override with
+        # validation errors) on the normal production path — Phase B1 fail-closed.
+        from app.services.production_financial_authority import CleanNotReadyError
+
+        raise CleanNotReadyError(
+            classification="UNCLASSIFIED",
+            reason_code="PR8_PROJECT_TYPE_NOT_CLASSIFIED",
+            detail=(
+                f"project_type={project_type!r} was not resolved to a typed "
+                "ProjectInputs and could not be classified. Phase B1: "
+                "run_project() is clean-only; no legacy fallthrough. "
+                "Use run_project_legacy() for explicit calibration."
+            ),
+            runtime_authority="clean_not_ready",
+            calculation_count=0,
+        )
     result = demo.result
 
     # Build tables
