@@ -3,7 +3,6 @@
 ## Decision
 
 `PHASE_B3_BLOCKED_BY_SOURCE_OR_CAPABILITY_GAP`
-
 TUHO must remain fail closed with zero clean calculations. This review found
 source evidence for the workbook's combined interest-limitation result, but not
 for the independent thin-cap and ATAD authorities required by the Phase B3
@@ -252,4 +251,3 @@ or compensating tuning. PR #938 remains untouched.
 Final classification:
 
 `PHASE_B3_BLOCKED_BY_SOURCE_OR_CAPABILITY_GAP`
-

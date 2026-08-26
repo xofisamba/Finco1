@@ -103,4 +103,3 @@ def test_b3_report_records_exact_source_and_capability_blockers():
     )
     for text in required:
         assert text in report
-
