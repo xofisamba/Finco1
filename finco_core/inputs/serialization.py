@@ -133,6 +133,8 @@ def _ser_construction_financing(cf: ConstructionFinancingInput | None) -> dict |
                 "name": item.name,
                 "payment_weights": list(item.payment_weights),
                 "vat_rate": item.vat_rate,
+                "provenance_classification": item.provenance_classification,
+                "vat_classification": item.vat_classification,
             }
             for item in cf.capex_items
         ],
@@ -170,6 +172,44 @@ def _ser_construction_financing(cf: ConstructionFinancingInput | None) -> dict |
             }
             if cf.structuring_fee is not None else None
         ),
+        "vat_facility": (
+            {
+                "enabled": cf.vat_facility.enabled,
+                "commitment_keur": cf.vat_facility.commitment_keur,
+                "interest_rate": cf.vat_facility.interest_rate,
+                "commitment_fee_rate": cf.vat_facility.commitment_fee_rate,
+                "periods": [
+                    {
+                        "start_date": _ser_date(p.start_date),
+                        "end_date": _ser_date(p.end_date),
+                        "active_construction": p.active_construction,
+                        "capex_payment_eligible": p.capex_payment_eligible,
+                        "senior_idc_active": p.senior_idc_active,
+                        "vat_facility_active": p.vat_facility_active,
+                    }
+                    for p in cf.vat_facility.periods
+                ],
+                "day_count": cf.vat_facility.day_count.value,
+                "reimbursement_lag_periods": cf.vat_facility.reimbursement_lag_periods,
+                "commitment_fee_active_periods": cf.vat_facility.commitment_fee_active_periods,
+                "financing_cost_payment_weights": list(
+                    cf.vat_facility.financing_cost_payment_weights
+                ),
+                "authority": cf.vat_facility.authority,
+            }
+            if cf.vat_facility is not None else None
+        ),
+        "shl_accrual_tail_periods": [
+            {
+                "start_date": _ser_date(p.start_date),
+                "end_date": _ser_date(p.end_date),
+                "active_construction": p.active_construction,
+                "capex_payment_eligible": p.capex_payment_eligible,
+                "senior_idc_active": p.senior_idc_active,
+                "vat_facility_active": p.vat_facility_active,
+            }
+            for p in cf.shl_accrual_tail_periods
+        ],
         "idc_balance_basis": cf.idc_balance_basis,
         "idc_capitalization_timing": cf.idc_capitalization_timing,
         "convergence_tolerance_keur": cf.convergence_tolerance_keur,
@@ -199,6 +239,8 @@ def _deser_construction_financing(d: dict | None) -> ConstructionFinancingInput 
             name=item["name"],
             payment_weights=tuple(item["payment_weights"]),
             vat_rate=item.get("vat_rate", 0.0),
+            provenance_classification=item.get("provenance_classification", "DIRECT_SOURCE"),
+            vat_classification=item.get("vat_classification", "DIRECT_SOURCE"),
         )
         for item in d.get("capex_items", [])
     )
@@ -239,6 +281,46 @@ def _deser_construction_financing(d: dict | None) -> ConstructionFinancingInput 
         )
         if sf_d is not None else None
     )
+    from finco_core.inputs.construction_financing import ConstructionVatFacilityInput
+    vf_d = d.get("vat_facility")
+    vat_facility = (
+        ConstructionVatFacilityInput(
+            enabled=vf_d.get("enabled", False),
+            commitment_keur=vf_d.get("commitment_keur", 0.0),
+            interest_rate=vf_d.get("interest_rate", 0.0),
+            commitment_fee_rate=vf_d.get("commitment_fee_rate", 0.0),
+            periods=tuple(
+                ConstructionPeriodSpec(
+                    start_date=date.fromisoformat(p["start_date"]),
+                    end_date=date.fromisoformat(p["end_date"]),
+                    active_construction=p.get("active_construction", False),
+                    capex_payment_eligible=p.get("capex_payment_eligible", False),
+                    senior_idc_active=p.get("senior_idc_active", False),
+                    vat_facility_active=p.get("vat_facility_active", True),
+                )
+                for p in vf_d.get("periods", [])
+            ),
+            day_count=_SDC(vf_d.get("day_count", _SDC.ACT_360.value)),
+            reimbursement_lag_periods=vf_d.get("reimbursement_lag_periods", 6),
+            commitment_fee_active_periods=vf_d.get("commitment_fee_active_periods", 0),
+            financing_cost_payment_weights=tuple(
+                vf_d.get("financing_cost_payment_weights", [])
+            ),
+            authority=vf_d.get("authority", "TYPED_CONSTRUCTION_VAT_FACILITY_INPUT"),
+        )
+        if vf_d is not None else None
+    )
+    shl_tail = tuple(
+        ConstructionPeriodSpec(
+            start_date=date.fromisoformat(p["start_date"]),
+            end_date=date.fromisoformat(p["end_date"]),
+            active_construction=p.get("active_construction", False),
+            capex_payment_eligible=p.get("capex_payment_eligible", False),
+            senior_idc_active=p.get("senior_idc_active", False),
+            vat_facility_active=p.get("vat_facility_active", False),
+        )
+        for p in d.get("shl_accrual_tail_periods", [])
+    )
     return ConstructionFinancingInput(
         enabled=d.get("enabled", False),
         periods=periods,
@@ -246,6 +328,8 @@ def _deser_construction_financing(d: dict | None) -> ConstructionFinancingInput 
         senior_pricing=senior_pricing,
         commitment_fee=commitment_fee,
         structuring_fee=structuring_fee,
+        vat_facility=vat_facility,
+        shl_accrual_tail_periods=shl_tail,
         idc_balance_basis=d.get("idc_balance_basis", "OPENING_DRAWN"),
         idc_capitalization_timing=d.get("idc_capitalization_timing", "SAME_PERIOD"),
         convergence_tolerance_keur=d.get("convergence_tolerance_keur", 1e-9),

@@ -36,6 +36,7 @@ from finco_core.inputs.serialization import project_inputs_to_dict, project_inpu
 from finco_core.inputs.construction_financing import (
     ConstructionFinancingInput,
     ConstructionCapexTimingInput,
+    ConstructionVatFacilityInput,
     ConstructionPeriodSpec,
     ConstructionSeniorPricingInput,
     ConstructionCommitmentFeeInput,

@@ -169,6 +169,13 @@ def run_project_legacy(project_type: str, scenario: str, period_view: str = "Sem
     callable OUTSIDE the promoted production route); production routes must
     use run_project.
     """
+    from app import project_factories as _pf
+
+    calibration_factory = {
+        "Oborovo": _pf.create_default_oborovo_legacy_calibration,
+    }.get(project_type)
+    if project_inputs_override is None and calibration_factory is not None:
+        project_inputs_override = calibration_factory()
     return _run_project_impl(
         project_type, scenario, period_view, project_inputs_override,
         use_dualrun_validation, force_legacy=True,

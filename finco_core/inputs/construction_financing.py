@@ -1,4 +1,4 @@
-"""finco_core.inputs.construction_financing — Typed construction financing authority (PR-9).
+"""Typed construction and VAT-facility financing authority.
 
 ONE_TYPED_CONSTRUCTION_FINANCING_AND_IDC_AUTHORITY
 
@@ -11,11 +11,13 @@ Computed Senior IDC, commitment fee, structuring fee become authoritative.
 If CapexStructure.idc_keur / commitment_fees_keur / bank_fees_keur are non-zero
 while construction_financing.enabled, raise PR9_MANUAL_DERIVED_CONSTRUCTION_COST_CONFLICT.
 
-VAT Facility: PR9_VAT_FACILITY_DEFERRED — not enabled in PR-9. vat_deferred=True always.
+VAT facility economics are optional and identity-free. When enabled, VAT
+requirements and financing costs are derived from CAPEX VAT treatment and the
+typed facility calendar; capitalized VAT costs are outputs, never inputs.
 """
 from __future__ import annotations
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, timedelta
 
 from finco_core._numeric import require_bool, require_finite_real, require_positive_int
 from finco_core.inputs.senior_rate_schedule import SeniorRateMode, SeniorDayCountConvention
@@ -185,7 +187,7 @@ class ConstructionPeriodSpec:
     active_construction: bool = True
     capex_payment_eligible: bool = True
     senior_idc_active: bool = True
-    vat_facility_active: bool = False  # VAT deferred in PR-9
+    vat_facility_active: bool = False
 
     def __post_init__(self) -> None:
         if not isinstance(self.start_date, date) or not isinstance(self.end_date, date):
@@ -207,12 +209,15 @@ class ConstructionCapexTimingInput:
 
     PR9_CAPEX_AUTHORITY: amount_keur lives exclusively in CapexStructure.
     This class owns TIMING only — payment_weights controls when the amount flows.
-    vat_rate must be 0.0 (PR9_VAT_FACILITY_DEFERRED).
+    VAT rate and provenance are causal audit inputs; amounts remain owned by
+    CapexStructure.
     """
     code: str           # matches a field name in CapexStructure (e.g. "epc_contract") or a code
     name: str
     payment_weights: tuple[float, ...]  # len = n_periods, sum = 1.0
-    vat_rate: float = 0.0               # PR9_VAT_FACILITY_DEFERRED: must be 0.0
+    vat_rate: float = 0.0
+    provenance_classification: str = "DIRECT_SOURCE"
+    vat_classification: str = "DIRECT_SOURCE"
 
     def __post_init__(self) -> None:
         if not isinstance(self.code, str) or not self.code.strip():
@@ -225,11 +230,80 @@ class ConstructionCapexTimingInput:
             self.vat_rate,
             error_code=_NUMERIC_ERROR,
         )
-        if vat_rate != 0.0:
+        if not 0.0 <= vat_rate <= 1.0:
             raise ValueError(
-                "PR9_VAT_FACILITY_DEFERRED: "
-                f"capex_items[{self.code}].vat_rate must be exactly 0.0, got {self.vat_rate!r}"
+                f"PR9_VAT_RATE_OUT_OF_RANGE: capex_items[{self.code}].vat_rate "
+                f"must be in [0, 1], got {self.vat_rate!r}"
             )
+        for name in ("provenance_classification", "vat_classification"):
+            if not isinstance(getattr(self, name), str) or not getattr(self, name).strip():
+                raise ValueError(f"PR9_INVALID_PROVENANCE: {name} must be non-empty")
+            if getattr(self, name) not in {
+                "DIRECT_SOURCE",
+                "AGGREGATE_RECONCILIATION_INFERENCE",
+            }:
+                raise ValueError(f"PR9_INVALID_PROVENANCE: unsupported {name}")
+
+
+@dataclass(frozen=True)
+class ConstructionVatFacilityInput:
+    """Optional VAT working-capital facility built only from causal inputs."""
+
+    enabled: bool = False
+    commitment_keur: float = 0.0
+    interest_rate: float = 0.0
+    commitment_fee_rate: float = 0.0
+    periods: tuple[ConstructionPeriodSpec, ...] = field(default_factory=tuple)
+    day_count: SeniorDayCountConvention = SeniorDayCountConvention.ACT_360
+    reimbursement_lag_periods: int = 6
+    commitment_fee_active_periods: int = 0
+    financing_cost_payment_weights: tuple[float, ...] = field(default_factory=tuple)
+    authority: str = "TYPED_CONSTRUCTION_VAT_FACILITY_INPUT"
+
+    def __post_init__(self) -> None:
+        require_bool("vat_facility.enabled", self.enabled, error_code=_NUMERIC_ERROR)
+        for name in ("commitment_keur", "interest_rate", "commitment_fee_rate"):
+            require_finite_real(
+                f"vat_facility.{name}", getattr(self, name), minimum=0.0,
+                error_code=_NUMERIC_ERROR,
+            )
+        for name in ("interest_rate", "commitment_fee_rate"):
+            if getattr(self, name) > 1.0:
+                raise ValueError(f"PR9_VAT_RATE_OUT_OF_RANGE: {name} must be <= 1.0")
+        if not isinstance(self.authority, str) or not self.authority.strip():
+            raise ValueError("PR9_INVALID_VAT_AUTHORITY")
+        if not isinstance(self.day_count, SeniorDayCountConvention):
+            raise ValueError(f"PR9_INVALID_VAT_DAY_COUNT: {self.day_count!r}")
+        for name in ("reimbursement_lag_periods", "commitment_fee_active_periods"):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                raise ValueError(f"PR9_INVALID_VAT_PERIOD_COUNT: {name}={value!r}")
+        _validate_weights(
+            "vat_facility.financing_cost_payment_weights",
+            self.financing_cost_payment_weights,
+        )
+        if not self.enabled:
+            if any((self.commitment_keur, self.interest_rate, self.commitment_fee_rate)) or (
+                self.periods
+                or self.commitment_fee_active_periods
+                or self.financing_cost_payment_weights
+            ):
+                raise ValueError("PR9_DISABLED_VAT_FACILITY_MUST_BE_NEUTRAL")
+            return
+        if not self.periods:
+            raise ValueError("PR9_VAT_FACILITY_ENABLED_NO_PERIODS")
+        if self.commitment_keur <= 0.0:
+            raise ValueError("PR9_VAT_FACILITY_ENABLED_NO_COMMITMENT")
+        if self.commitment_fee_active_periods > len(self.periods):
+            raise ValueError("PR9_VAT_COMMITMENT_FEE_PERIODS_EXCEED_HORIZON")
+        for index, period in enumerate(self.periods):
+            if not isinstance(period, ConstructionPeriodSpec):
+                raise ValueError(f"PR9_INVALID_VAT_PERIOD_TYPE: periods[{index}]")
+        for index in range(1, len(self.periods)):
+            previous = self.periods[index - 1]
+            current = self.periods[index]
+            if current.start_date != previous.end_date + timedelta(days=1):
+                raise ValueError("PR9_VAT_PERIODS_NOT_CONSECUTIVE")
 
 
 @dataclass(frozen=True)
@@ -244,16 +318,20 @@ class ConstructionFinancingInput:
     senior_pricing: ConstructionSeniorPricingInput | None = None
     commitment_fee: ConstructionCommitmentFeeInput | None = None
     structuring_fee: ConstructionStructuringFeeInput | None = None
+    vat_facility: ConstructionVatFacilityInput | None = None
+    shl_accrual_tail_periods: tuple[ConstructionPeriodSpec, ...] = field(default_factory=tuple)
     idc_balance_basis: str = "OPENING_DRAWN"         # OPENING_DRAWN | CLOSING_DRAWN
     idc_capitalization_timing: str = "SAME_PERIOD"   # SAME_PERIOD | NEXT_PERIOD
     convergence_tolerance_keur: float = 1e-9
     max_iterations: int = 100
-    vat_deferred: bool = True  # PR9_VAT_FACILITY_DEFERRED — always True in PR-9
+    vat_deferred: bool = True  # compatibility serialization marker
 
     def __post_init__(self) -> None:
         require_bool("enabled", self.enabled, error_code="PR9_INVALID_ENABLED_FLAG")
-        if self.vat_deferred is not True:
-            raise ValueError("PR9_VAT_FACILITY_DEFERRED: vat_deferred must be True")
+        if self.vat_facility is not None and not isinstance(
+            self.vat_facility, ConstructionVatFacilityInput
+        ):
+            raise ValueError("PR9_INVALID_VAT_FACILITY_TYPE")
         require_finite_real(
             "convergence_tolerance_keur",
             self.convergence_tolerance_keur,
@@ -272,6 +350,10 @@ class ConstructionFinancingInput:
                 "PROFILE mode removed (PR9_PROFILE_DEFERRED). Use SAME_PERIOD or NEXT_PERIOD."
             )
         if not self.enabled:
+            if self.vat_facility is not None and self.vat_facility.enabled:
+                raise ValueError("PR9_VAT_FACILITY_REQUIRES_CONSTRUCTION_AUTHORITY")
+            if self.shl_accrual_tail_periods:
+                raise ValueError("PR9_SHL_TAIL_REQUIRES_CONSTRUCTION_AUTHORITY")
             return
         n = len(self.periods)
         if n == 0:
@@ -327,13 +409,46 @@ class ConstructionFinancingInput:
         if self.structuring_fee is not None:
             if not isinstance(self.structuring_fee, ConstructionStructuringFeeInput):
                 raise ValueError("PR9_INVALID_STRUCTURING_FEE_TYPE")
-        # Periods in chronological order (consecutive non-overlapping)
+        # Canonical periods are adjacent inclusive intervals. The shared-boundary
+        # form remains accepted for pre-B2 serialized compatibility.
         for i in range(1, len(self.periods)):
-            if self.periods[i].start_date != self.periods[i - 1].end_date:
+            prior_end = self.periods[i - 1].end_date
+            if self.periods[i].start_date not in {
+                prior_end,
+                prior_end + timedelta(days=1),
+            }:
                 raise ValueError(
                     f"PR9_PERIODS_NOT_CONSECUTIVE: periods[{i-1}].end_date={self.periods[i-1].end_date} "
                     f"!= periods[{i}].start_date={self.periods[i].start_date}"
                 )
+        tail_cursor = self.periods[-1].end_date
+        for i, period in enumerate(self.shl_accrual_tail_periods):
+            if not isinstance(period, ConstructionPeriodSpec):
+                raise ValueError(f"PR9_INVALID_SHL_TAIL_PERIOD_TYPE: {i}")
+            if period.start_date != tail_cursor + timedelta(days=1):
+                raise ValueError("PR9_SHL_TAIL_PERIODS_NOT_CONSECUTIVE")
+            if period.active_construction or period.capex_payment_eligible or period.senior_idc_active:
+                raise ValueError("PR9_SHL_TAIL_PERIOD_MUST_BE_ACCRUAL_ONLY")
+            tail_cursor = period.end_date
+        vat = self.vat_facility
+        if vat is not None and vat.enabled:
+            minimum_vat_horizon = len(self.periods) + vat.reimbursement_lag_periods
+            if len(vat.periods) < minimum_vat_horizon:
+                raise ValueError("PR9_VAT_HORIZON_TRUNCATES_REIMBURSEMENT_TAIL")
+            for index, period in enumerate(self.periods):
+                if period.vat_facility_active != vat.periods[index].vat_facility_active:
+                    raise ValueError(
+                        "PR9_VAT_PERIOD_AUTHORITY_MISMATCH: construction and VAT "
+                        f"facility activity differ at period {index + 1}"
+                    )
+            weights = vat.financing_cost_payment_weights
+            if len(weights) != n or abs(sum(weights) - 1.0) > _SCHEDULE_TOLERANCE:
+                raise ValueError(
+                    "PR9_VAT_FINANCING_COST_TIMING_MISMATCH: payment weights "
+                    "must match construction periods and sum to 1.0"
+                )
+        elif any(period.vat_facility_active for period in self.periods):
+            raise ValueError("PR9_VAT_ACTIVE_WITHOUT_TYPED_FACILITY")
         if self.structuring_fee is not None and self.structuring_fee.payment_weights:
             sf_weights = self.structuring_fee.payment_weights
             if len(sf_weights) != n:
@@ -358,5 +473,6 @@ __all__ = [
     "ConstructionStructuringFeeInput",
     "ConstructionPeriodSpec",
     "ConstructionCapexTimingInput",
+    "ConstructionVatFacilityInput",
     "ConstructionFinancingInput",
 ]

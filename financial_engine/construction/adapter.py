@@ -66,21 +66,37 @@ def build_construction_runtime_config(
     day_count = pricing.day_count if pricing is not None else SeniorDayCountConvention.ACT_360
     explicit_fracs = pricing.explicit_period_fractions if pricing is not None else ()
 
-    timeline = tuple(
-        TimelinePeriod(
-            index=i,
-            start_date=p.start_date,
-            end_date=p.end_date,
-            interest_fraction=_compute_interest_fraction(
-                p.start_date, p.end_date, day_count, i, explicit_fracs
-            ),
-            active_construction=p.active_construction,
-            capex_payment_eligible=p.capex_payment_eligible,
-            senior_idc_active=p.senior_idc_active,
-            vat_facility_active=False,  # PR9_VAT_FACILITY_DEFERRED
-        )
-        for i, p in enumerate(construction.periods)
-    )
+    vat = construction.vat_facility
+    vat_periods = vat.periods if vat is not None and vat.enabled else ()
+    timeline_rows: list[TimelinePeriod] = []
+    for i in range(max(n, len(vat_periods))):
+        if i < n:
+            p = construction.periods[i]
+            timeline_rows.append(TimelinePeriod(
+                index=i,
+                start_date=p.start_date,
+                end_date=p.end_date,
+                interest_fraction=_compute_interest_fraction(
+                    p.start_date, p.end_date, day_count, i, explicit_fracs
+                ),
+                active_construction=p.active_construction,
+                capex_payment_eligible=p.capex_payment_eligible,
+                senior_idc_active=p.senior_idc_active,
+                vat_facility_active=p.vat_facility_active,
+            ))
+        else:
+            p = vat_periods[i]
+            timeline_rows.append(TimelinePeriod(
+                index=i,
+                start_date=p.start_date,
+                end_date=p.end_date,
+                interest_fraction=0.0,
+                active_construction=False,
+                capex_payment_eligible=False,
+                senior_idc_active=False,
+                vat_facility_active=p.vat_facility_active,
+            ))
+    timeline = tuple(timeline_rows)
 
     # Resolve amounts from the canonical CapexStructure-owned lookup. Missing
     # keys are configuration errors; they must never become zero-cost items.
@@ -104,7 +120,9 @@ def build_construction_runtime_config(
             name=item.name,
             amount_keur=resolved_amounts[item.code],
             payment_weights=item.payment_weights,
-            vat_rate=0.0,  # PR9_VAT_FACILITY_DEFERRED
+            vat_rate=item.vat_rate,
+            provenance_classification=item.provenance_classification,
+            vat_classification=item.vat_classification,
         )
         for item in construction.capex_items
     )
@@ -176,6 +194,29 @@ def build_construction_runtime_config(
     if commitment_fee_basis == "CLOSING_UNDRAWN":
         commitment_fee_basis = "CURRENT_CLOSING_UNDRAWN"
 
+    vat_interest_fractions: tuple[float, ...] = ()
+    vat_financing_weights: tuple[float, ...] = ()
+    vat_interest_rate = 0.0
+    vat_commitment_fee_rate = 0.0
+    vat_commitment = 0.0
+    vat_lag = 6
+    vat_horizon = 0
+    vat_commitment_periods = 0
+    if vat is not None and vat.enabled:
+        vat_interest_fractions = tuple(
+            _compute_interest_fraction(
+                period.start_date, period.end_date, vat.day_count, index, ()
+            )
+            for index, period in enumerate(vat.periods)
+        )
+        vat_financing_weights = vat.financing_cost_payment_weights
+        vat_interest_rate = vat.interest_rate
+        vat_commitment_fee_rate = vat.commitment_fee_rate
+        vat_commitment = vat.commitment_keur
+        vat_lag = vat.reimbursement_lag_periods
+        vat_horizon = len(vat.periods)
+        vat_commitment_periods = vat.commitment_fee_active_periods
+
     return ConstructionRuntimeConfig(
         timeline=timeline,
         capex_schedule=capex_schedule,
@@ -204,9 +245,15 @@ def build_construction_runtime_config(
         senior_commitment_fee_capitalization_timing=commitment_fee_timing,
         structuring_fee_rate=structuring_fee_rate,
         structuring_fee_basis_keur=structuring_fee_basis,
-        vat_facility_interest_rate=0.0,  # PR9_VAT_FACILITY_DEFERRED
-        vat_facility_commitment_fee_rate=0.0,
-        vat_facility_commitment_keur=0.0,
+        vat_facility_interest_rate=vat_interest_rate,
+        vat_facility_commitment_fee_rate=vat_commitment_fee_rate,
+        vat_facility_commitment_keur=vat_commitment,
+        vat_facility_enabled=bool(vat is not None and vat.enabled),
+        vat_interest_period_fractions=vat_interest_fractions,
+        vat_reimbursement_lag_periods=vat_lag,
+        vat_schedule_horizon_periods=vat_horizon,
+        vat_commitment_fee_active_periods=vat_commitment_periods,
+        vat_financing_cost_spending_profile=vat_financing_weights,
         convergence_tolerance_keur=construction.convergence_tolerance_keur,
         max_iterations=construction.max_iterations,
     )

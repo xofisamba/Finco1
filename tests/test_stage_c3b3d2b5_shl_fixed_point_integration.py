@@ -112,14 +112,14 @@ def _oborovo_shl_input(*, source_label: str = ""):
 def _oborovo_model(*, shl_input=_SHL_UNCHANGED, bank_yield=None):
     from dataclasses import replace
 
-    from app.project_factories import create_default_oborovo
+    from app.project_factories import create_default_oborovo_legacy_calibration
     from financial_engine.adapters.project_inputs import (
         build_senior_debt_model_input_from_project_inputs,
     )
     from financial_engine.inputs import DebtSizingCaseInput, YieldScenario
 
     model = build_senior_debt_model_input_from_project_inputs(
-        create_default_oborovo(),
+        create_default_oborovo_legacy_calibration(),
         source_id="c3b3d2b5-oborovo",
     )
     if bank_yield is not None:
@@ -697,11 +697,12 @@ def test_real_oborovo_production_runtime_shl_acceptance_reports_causal_divergenc
     from financial_engine.adapters.project_inputs import (
         build_senior_debt_model_input_from_project_inputs,
     )
-    from financial_engine.orchestrator import run_senior_debt_model
+    from financial_engine.financing.project import run_project_financing_model
 
     project = create_default_oborovo()
     model = build_senior_debt_model_input_from_project_inputs(project)
-    result = run_senior_debt_model(model)
+    financing = run_project_financing_model(project, source_id="c3b3d2b5-production")
+    result = financing.project_model_result
     shl = result.shareholder_loan
     assert shl is not None
     source_truth = json.loads((FIXTURES / "excel_oborovo_shl_operating_truth.json").read_text())
@@ -761,18 +762,26 @@ def test_real_oborovo_production_runtime_shl_acceptance_reports_causal_divergenc
 
     assert model.shareholder_loan.initial_principal_keur == pytest.approx(OBOROVO_SHL_DRAW)
     assert model.shareholder_loan.construction_day_count_fraction == pytest.approx(1.0)
-    assert shl.shl_drawdown_keur[0] == pytest.approx(OBOROVO_SHL_DRAW)
-    assert shl.shl_gross_interest_keur[0] == pytest.approx(1169.6619115852516)
-    assert shl.shl_closing_keur[0] == pytest.approx(15790.435806400885)
+    assert financing.derived_shl_cash_principal_keur == pytest.approx(
+        14620.739556690089, abs=1e-6
+    )
+    assert financing.shl_construction_pik_keur == pytest.approx(
+        1169.659164535207, abs=1e-6
+    )
+    assert financing.opening_operating_shl_balance_keur == pytest.approx(
+        15790.398721225296, abs=1e-6
+    )
     assert shl.diagnostics.max_final_shl_interest_handshake_delta_keur <= 1e-9
     assert shl.diagnostics.max_final_shl_closing_handshake_delta_keur <= 1e-9
-    assert max_deltas["MAX_RUNTIME_SHL_DRAWDOWN_DELTA_KEUR"] == pytest.approx(0.0)
+    assert max_deltas["MAX_RUNTIME_SHL_DRAWDOWN_DELTA_KEUR"] == pytest.approx(
+        OBOROVO_SHL_DRAW - 14620.739556690089, abs=1e-6
+    )
     assert max_deltas["MAX_RUNTIME_SHL_OPENING_DELTA_KEUR"] > 1.0
     assert max_deltas["MAX_RUNTIME_SHL_CLOSING_DELTA_KEUR"] > 1.0
     assert first_cash_divergence is not None
     period, runtime_cash, source_cash_value = first_cash_divergence
     assert period == 6
-    assert runtime_cash == pytest.approx(354.4095323689353)
+    assert runtime_cash == pytest.approx(354.4096155732368)
     assert source_cash_value == pytest.approx(345.51102678698453)
     production_runtime_classification = (
         "SHL_PRODUCTION_RUNTIME_PARITY"

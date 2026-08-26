@@ -10,8 +10,8 @@ import pytest
 
 FIXTURES = Path(__file__).parent / "fixtures"
 SOURCE_DEBT_KEUR = 42_852.27876256299
-FINCO_DEBT_KEUR = 42_852.30326225287
-DEBT_RESIDUAL_KEUR = 0.02449968987639295
+FINCO_DEBT_KEUR = 42_852.302723344226
+DEBT_RESIDUAL_KEUR = FINCO_DEBT_KEUR - SOURCE_DEBT_KEUR
 
 
 def _financial_truth() -> dict:
@@ -33,16 +33,14 @@ def _project():
 
 
 def _run(project=None):
-    from financial_engine.adapters.project_inputs import (
-        build_senior_debt_model_input_from_project_inputs,
-    )
-    from financial_engine.orchestrator import run_senior_debt_model
+    from financial_engine.financing.project import run_project_financing_model
 
-    model = build_senior_debt_model_input_from_project_inputs(
-        project or _project(),
-        source_id="c3b3d2b8-test",
-    )
-    return run_senior_debt_model(model)
+    # Phase B2: canonical ProjectInputs no longer stores manually derived
+    # construction financing costs. The production financing orchestrator is
+    # therefore the only valid way to obtain the source-parity Senior result.
+    return run_project_financing_model(
+        project or _project(), source_id="c3b3d2b8-test"
+    ).project_model_result
 
 
 @pytest.fixture(scope="module")
@@ -82,7 +80,7 @@ def test_late_horizon_bank_residual_is_explained_without_production_replay(debt_
     first = debt_audit["first_bank_case_causal_divergence"]
     assert first["period"] == 6
     assert first["line"] == "Bank CFADS / late-horizon source residual boundary"
-    assert first["delta"] == pytest.approx(0.006375040592956793)
+    assert first["delta"] == pytest.approx(0.006279355645801843)
 
     max_row = debt_audit["max_bank_case_causal_divergence"]
     assert max_row["period"] == 55
@@ -118,10 +116,10 @@ def test_base_performance_closes_operating_lines_and_stops_at_base_tax_boundary(
     first_material = base_rec["first_material_divergence"]
     assert first_material["period"] == 1
     assert first_material["line"] == "Taxable Income"
-    assert first_material["delta"] == pytest.approx(72.09884962767191)
+    assert first_material["delta"] == pytest.approx(72.09917229812874)
     assert base_rec["max_by_line"]["Taxable Income"]["period"] == 40
     assert base_rec["max_by_line"]["Taxable Income"]["delta"] == pytest.approx(
-        706.7075889497728
+        706.707594265556
     )
     assert base_rec["source_usage"].startswith("Excel source fixtures are diagnostics-only")
 
@@ -182,11 +180,11 @@ def test_senior_schedule_remains_source_close_and_debt_quantum_authoritative(deb
             if row.get(excel_field) is not None and row.get(finco_field) is not None
         ]
         maxes[label] = max(abs(row[finco_field] - row[excel_field]) for row in rows)
-    assert maxes["MAX_SENIOR_OPENING_DELTA_KEUR"] == pytest.approx(0.02838219326804392)
-    assert maxes["MAX_SENIOR_INTEREST_DELTA_KEUR"] == pytest.approx(0.0008265990506970411)
-    assert maxes["MAX_SENIOR_PRINCIPAL_DELTA_KEUR"] == pytest.approx(0.004716914508435366)
-    assert maxes["MAX_SENIOR_DEBT_SERVICE_DELTA_KEUR"] == pytest.approx(0.005543513559132407)
-    assert maxes["MAX_SENIOR_CLOSING_DELTA_KEUR"] == pytest.approx(0.02838219326804392)
+    assert maxes["MAX_SENIOR_OPENING_DELTA_KEUR"] == pytest.approx(0.027757869109336752)
+    assert maxes["MAX_SENIOR_INTEREST_DELTA_KEUR"] == pytest.approx(0.0008084121495812724)
+    assert maxes["MAX_SENIOR_PRINCIPAL_DELTA_KEUR"] == pytest.approx(0.004651897108033154)
+    assert maxes["MAX_SENIOR_DEBT_SERVICE_DELTA_KEUR"] == pytest.approx(0.005460309257614426)
+    assert maxes["MAX_SENIOR_CLOSING_DELTA_KEUR"] == pytest.approx(0.027757869109336752)
 
 
 def test_post_senior_cash_is_base_cfads_minus_actual_senior_service(oborovo_result, base_rec):
@@ -210,12 +208,22 @@ def test_post_senior_cash_is_base_cfads_minus_actual_senior_service(oborovo_resu
 
 
 def test_shl_engine_is_formula_close_until_upstream_base_tax_cash_boundary(base_rec, oborovo_result):
-    assert _row(base_rec, 1, "SHL Opening")["delta"] == pytest.approx(0.0, abs=1e-9)
-    assert _row(base_rec, 1, "SHL Gross Interest")["delta"] == pytest.approx(0.0, abs=1e-9)
+    # Phase B2 replaces rounded manual construction costs with typed runtime
+    # outputs, producing this fully bridged 0.037085 kEUR opening difference.
+    assert _row(base_rec, 1, "SHL Opening")["delta"] == pytest.approx(
+        -0.037085182975715725
+    )
+    assert _row(base_rec, 1, "SHL Gross Interest")["delta"] == pytest.approx(
+        -0.0014955997080505767
+    )
     assert _row(base_rec, 1, "SHL Cash Interest")["delta"] == pytest.approx(0.0, abs=1e-9)
-    assert _row(base_rec, 1, "SHL PIK")["delta"] == pytest.approx(0.0, abs=1e-9)
+    assert _row(base_rec, 1, "SHL PIK")["delta"] == pytest.approx(
+        -0.0014955997080505767
+    )
     assert _row(base_rec, 1, "SHL Principal")["delta"] == pytest.approx(0.0, abs=1e-9)
-    assert _row(base_rec, 1, "SHL Closing")["delta"] == pytest.approx(0.0, abs=1e-9)
+    assert _row(base_rec, 1, "SHL Closing")["delta"] == pytest.approx(
+        -0.03858078268422105
+    )
 
     assert _row(base_rec, 24, "SHL Principal")["finco"] == pytest.approx(0.0)
     assert _row(base_rec, 25, "SHL Principal")["finco"] == pytest.approx(0.0)

@@ -38,7 +38,7 @@
 | 24 | **SHL operating interest** | `ShareholderLoanSchedules.shl_gross_interest_keur` (from B5 converged state) | `financial_engine.shl.production.compute_shareholder_loan_schedules` | `ShareholderLoanSchedules.shl_gross_interest_keur` | full_axis (SHL active periods) | FinancingInterestContract (shl_gross_interest_keur component), Bank tax merge | Workbook SHL interest schedule; any frozen historical SHL interest vector | `FROZEN_CLEAN_AUTHORITY` |
 | 25 | **SHL principal repayment** | `ShlRepaymentPolicy` (BULLET / CASH_SWEEP / EXPLICIT_SCHEDULE) | `financial_engine.shl.production.compute_shareholder_loan_schedules` | `ShareholderLoanSchedules.shl_principal_keur` | full_axis (SHL active periods) | SHL closing balance, post-SHL cash | Any workbook SHL principal schedule; virtual SHL | `FROZEN_CLEAN_AUTHORITY` |
 | 26 | **Reserve / distribution-gate inputs currently supported** | `CovenantGatePolicy` (lockup_dscr, lockup_llcr); DSRA inputs (dsra_months via `FinancingParams`) | `financial_engine.shareholder_waterfall.model` (covenant gate) | `ShareholderWaterfallResult.{cash_available_for_distribution_keur, locked_up_keur}` | full_axis operating subset | Shareholder waterfall, sponsor cash | DSRA not fully modelled in Phase 2C — pre-reserve label on post-senior cash is mandatory | `PHASE_C_OUTPUT_COMPLETENESS_PENDING` — DSRA ordering unresolved; distributable cash label blocked |
-| 27 | **Shareholder waterfall** | `PostSeniorCashSchedules` + `ShareholderLoanSchedules` + covenant gate | `financial_engine.shareholder_waterfall.model.run_project_shareholder_waterfall_model` | `ShareholderWaterfallResult` | full_axis operating subset | Sponsor cash / returns | Any legacy `run_waterfall_v3_core` or `run_waterfall` invocation for promoted projects | `FROZEN_CLEAN_AUTHORITY` (Generic Solar/Wind promoted); TUHO/Oborovo → `PHASE_B_PRODUCTION_CUTOVER_PENDING` |
+| 27 | **Shareholder waterfall** | `PostSeniorCashSchedules` + `ShareholderLoanSchedules` + covenant gate | `financial_engine.shareholder_waterfall.model.run_project_shareholder_waterfall_model` | `ShareholderWaterfallResult` | full_axis operating subset | Sponsor cash / returns | Any legacy `run_waterfall_v3_core` or `run_waterfall` invocation for promoted projects | `FROZEN_CLEAN_AUTHORITY` (Generic Solar/Wind/Oborovo promoted); TUHO → `PHASE_B_PRODUCTION_CUTOVER_PENDING` |
 | 28 | **Sponsor cash / returns currently supported** | `ShareholderWaterfallResult.{distributions_keur, sponsor_cash_flows}` | `financial_engine.shareholder_waterfall.model` | `ProjectModelKPIs.{total_distributions_keur}` | full_axis operating subset | UI / export (Phase later) | IRR / NPV / LLCR via clean engine (NOT YET IMPLEMENTED → `PHASE_C_OUTPUT_COMPLETENESS_PENDING`) | `PHASE_C_OUTPUT_COMPLETENESS_PENDING` — IRR, NPV, LLCR not yet computed by clean engine |
 
 ---
@@ -88,9 +88,9 @@ Waterfall      = run_project_shareholder_waterfall_model
 | Item | Reason | Status |
 |------|--------|--------|
 | TUHO production routing | Legacy waterfall still active; reason_code=`PR8_BLOCKED_BY_TYPED_TUHO_TAX_RUNTIME_GAP` | `PHASE_B_PRODUCTION_CUTOVER_PENDING` |
-| Oborovo production routing | Legacy waterfall still active; reason_code=`PR8_G2A_FINANCING_CONTRACT_FIELDS_NOT_TYPED` | `PHASE_B_PRODUCTION_CUTOVER_PENDING` |
+| Oborovo production routing | Phase B2 typed sponsor/gearing/construction/VAT inputs complete; one clean G2C calculation, no frozen Senior read | `OBOROVO_CLEAN_PRODUCTION_PROMOTION_COMPLETE_CANDIDATE` |
 | Thin-cap SHL limitation mechanism | `SHL_THIN_CAP_RUNTIME_NOT_IMPLEMENTED` raised by TaxPolicy when thin_cap_enabled=True | `FAIL_CLOSED_UNSUPPORTED` — NOT to be promoted in PR-12 |
-| Legacy fixture/report runtime authority | workbook-derived vectors in legacy engine paths; removal blocked on TUHO/Oborovo cutover | `PHASE_B_REMOVAL_PENDING` |
+| Legacy fixture/report runtime authority | workbook-derived vectors remain only in explicit calibration paths; removal is still blocked on TUHO cutover | `PHASE_B_REMOVAL_PENDING` |
 
 ### Phase C — Output Completeness Pending
 
@@ -128,7 +128,7 @@ Waterfall      = run_project_shareholder_waterfall_model
 |--------|-------|---------|
 | `FROZEN_CLEAN_AUTHORITY` | 24 | 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13(partial), 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 27(Generic Solar/Wind) |
 | `FAIL_CLOSED_UNSUPPORTED` | 1 | 13 (thin-cap path) |
-| `PHASE_B_PRODUCTION_CUTOVER_PENDING` | 1 | 27 (TUHO/Oborovo routes) |
+| `PHASE_B_PRODUCTION_CUTOVER_PENDING` | 1 | 27 (TUHO route) |
 | `PHASE_C_OUTPUT_COMPLETENESS_PENDING` | 2 | 26, 28 |
 
 ---
@@ -184,4 +184,23 @@ Waterfall      = run_project_shareholder_waterfall_model
 - B2: Promote Oborovo — key promotion gaps include: `sponsor_funding_mode`, `gearing_basis_mode`, frozen Senior schedule removal/replacement, typed construction financing / source-evidence promotion. (Country Tax Template alone is NOT the primary prerequisite.)
 - B3: Promote TUHO — key gaps include: clean cash-tax timing gap, thin-cap enabled (`FAIL_CLOSED_UNSUPPORTED`), ATAD / `SUBJECT_TO_LIMITATIONS` capability, financing / SHL / construction typed-input gaps. (Typed financing fields alone are insufficient.)
 
-**Concept 27 status update:** TUHO/Oborovo routes now `PHASE_B2_B3_PROMOTION_PENDING` (B1 fail-closed enforced; legacy only via explicit calibration entry points `run_project_legacy` / `execute_calibration_waterfall`).
+**Concept 27 status update:** TUHO remains `PHASE_B3_PROMOTION_PENDING` (B1 fail-closed enforced; legacy only via explicit calibration entry points `run_project_legacy` / `execute_calibration_waterfall`). Oborovo is updated below.
+
+### Phase B2 - Oborovo Clean Production Promotion
+
+**Status:** `OBOROVO_CLEAN_PRODUCTION_PROMOTION_COMPLETE_CANDIDATE`
+**Base SHA:** `bd9a6fe59895d9675d67d872217143193a6fdedf`
+**Date:** 2026-08-26
+
+- `run_project("Oborovo", "Base"/"Bank")` executes one clean G2C calculation and zero legacy calculations.
+- Typed `SHARE_CAPITAL_THEN_SHL` and `TOTAL_PROJECT_USES` policies close the sponsor Sources/Uses identity.
+- `ConstructionFinancingInput` owns the typed construction calendar, Senior pricing, commitment fee, structuring fee, and capitalization timing.
+- `ConstructionVatFacilityInput` owns causal VAT commitment/rate/fee/date/lag inputs; runtime derives VAT IDC and commitment fee.
+- Manual derived construction/VAT cost fields are zero on the production snapshot.
+- Frozen Senior schedule and report fixture paths exist only in `create_default_oborovo_legacy_calibration()`.
+- Source evidence remains validation-only; production imports no construction source-parity module and consumes no source output vectors.
+- Generic Solar/Wind remain clean and unchanged; TUHO remains blocked.
+
+This is not a complete single-engine cutover claim. See
+`docs/phaseb2_oborovo_clean_production_promotion.md` for the three-way financial
+review and remaining boundaries.

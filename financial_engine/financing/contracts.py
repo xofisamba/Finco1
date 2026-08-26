@@ -143,6 +143,14 @@ class ConstructionFinancingResult:
     outer_uses_residual_keur: float = 0.0
     # Final idempotence verification residual (Section 14)
     final_verification_outer_residual_keur: float = 0.0
+    # Typed VAT-facility audit vectors and authority.
+    vat_payable_keur: tuple[float, ...] = ()
+    vat_requirement_keur: tuple[float, ...] = ()
+    vat_drawn_keur: tuple[float, ...] = ()
+    vat_undrawn_keur: tuple[float, ...] = ()
+    vat_idc_keur: float = 0.0
+    vat_commitment_fee_keur: float = 0.0
+    vat_authority: str = "TYPED_CONSTRUCTION_VAT_FACILITY_DISABLED"
     # Authority token
     authority: str = "PR9_TYPED_CONSTRUCTION_FINANCING_IDC_AUTHORITY"
 

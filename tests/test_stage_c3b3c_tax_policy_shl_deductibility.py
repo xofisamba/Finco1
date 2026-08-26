@@ -25,7 +25,11 @@ from finco_core.inputs._models import (
 )
 from finco_core.waterfall.tax_engine import compute_period_tax
 from finco_core.inputs.serialization import project_inputs_to_dict, project_inputs_from_dict
-from app.project_factories import create_default_oborovo, create_default_tuho_wind1
+from app.project_factories import (
+    create_default_oborovo,
+    create_default_oborovo_legacy_calibration,
+    create_default_tuho_wind1,
+)
 
 
 class TestTaxParamsValidation:
@@ -340,12 +344,13 @@ class TestOborovoTaxPolicy:
         assert create_default_oborovo().tax.shl_non_deductible_fraction == 1.0
 
     def test_oborovo_shl_idc_factory_contract(self):
-        # SOURCE_EVIDENCE_PARTIAL: this is a factory-configuration contract test,
-        # not an independent source-vector proof. The SHL IDC value originates from
-        # the project factory, not from an independently extracted C3B1/C3B2 fixture.
-        # Genuine source comparison requires the workbook extraction fixture.
-        shl_idc = create_default_oborovo().financing.shl_idc_keur
-        assert abs(shl_idc - 1169.662) < 1.0, f"Oborovo SHL IDC = {shl_idc:.3f} kEUR, expected ~1169.662"
+        # Clean production derives construction PIK from typed dates and rates;
+        # the historical scalar remains isolated in explicit legacy calibration.
+        assert create_default_oborovo().financing.shl_idc_keur == 0.0
+        legacy_shl_idc = (
+            create_default_oborovo_legacy_calibration().financing.shl_idc_keur
+        )
+        assert abs(legacy_shl_idc - 1169.662) < 1.0
 
     def test_oborovo_100pct_non_deductible_applied_in_compute(self):
         inputs = create_default_oborovo()

@@ -153,17 +153,13 @@ class TestC_NoMixedResult:
         assert err.runtime_authority == "clean_not_ready"
         assert err.calculation_count == 0
 
-    def test_c3_oborovo_clean_not_ready_production(self):
-        """Phase B1: run_project("Oborovo") raises CleanNotReadyError — no legacy fallthrough."""
-        from app.services.production_financial_authority import CleanNotReadyError
+    def test_c3_oborovo_clean_production(self):
+        """Phase B2: Oborovo runs once through clean G2C with no fallback."""
         from app.api.project_runner import run_project
 
-        with pytest.raises(CleanNotReadyError) as exc_info:
-            run_project("Oborovo", "Base")
-        err = exc_info.value
-        assert err.reason_code == "PR8_G2A_FINANCING_CONTRACT_FIELDS_NOT_TYPED"
-        assert err.runtime_authority == "clean_not_ready"
-        assert err.calculation_count == 0
+        out = run_project("Oborovo", "Base")
+        assert out["runtime_authority"]["runtime_authority"] == "clean_g2c"
+        assert out["runtime_authority"]["calculation_count"] == 1
 
 
 class TestD_IdentityInvariance:
@@ -350,15 +346,15 @@ class TestK_FailClosedUnsupported:
         with pytest.raises(CleanProductionRunUnavailable, match="PR8_"):
             run_clean_production(create_default_tuho_wind1(), "Base")
 
-    def test_k2_oborovo_first_blocker_is_exact(self):
+    def test_k2_oborovo_is_clean_ready_from_typed_inputs(self):
         from app.project_factories import create_default_oborovo
         from app.services.production_financial_authority import (
             classify_production_authority,
         )
 
         decision = classify_production_authority(create_default_oborovo())
-        assert decision.classification.value == "BLOCKED_BY_TYPED_INPUT_GAP"
-        assert decision.reason_code == "PR8_G2A_FINANCING_CONTRACT_FIELDS_NOT_TYPED"
+        assert decision.classification.value == "CLEAN_PRODUCTION_READY"
+        assert decision.promoted
 
     def test_k3_unavailable_field_never_fabricated(self):
         out = _run_project("Wind", "Base")
@@ -692,12 +688,11 @@ class TestRouteMatrixWind:
         assert bundle.authority_metadata["runtime_authority"] == "clean_g2c"
 
 
-class TestBlockedProjectCoherence:
-    """§17: Oborovo/TUHO remain consistently legacy across routes."""
+class TestProductionRouteCoherence:
+    """§17: TUHO stays blocked while Oborovo is clean across routes."""
 
     @pytest.mark.parametrize("ptype,reason", (
         ("TUHO", "PR8_BLOCKED_BY_TYPED_TUHO_TAX_RUNTIME_GAP"),
-        ("Oborovo", "PR8_G2A_FINANCING_CONTRACT_FIELDS_NOT_TYPED"),
     ))
     def test_b1_same_blocker_across_routes(self, ptype, reason):
         """Phase B1 Correction A: execute_production_waterfall is clean-only.
@@ -750,19 +745,41 @@ class TestBlockedProjectCoherence:
         assert exc_info2.value.runtime_authority == "clean_not_ready"
         assert exc_info2.value.calculation_count == 0
 
-    def test_b2_blocked_workbook_raises_clean_not_ready(self):
-        """Phase B1 Correction A: _build_export_bundle raises CleanNotReadyError for blocked.
+    def test_b2_oborovo_clean_across_routes_and_legacy_explicit(self):
+        from app.api.project_runner import run_project
+        from app.project_factories import (
+            create_default_oborovo,
+            create_default_oborovo_legacy_calibration,
+        )
+        from app.services.production_waterfall_seam import (
+            execute_calibration_waterfall,
+            execute_production_demo,
+            execute_production_waterfall,
+        )
+
+        inputs = create_default_oborovo()
+        assert run_project("Oborovo", "Base")["runtime_authority"]["runtime_authority"] == "clean_g2c"
+        assert execute_production_waterfall(inputs).authority_metadata["runtime_authority"] == "clean_g2c"
+        _, metadata = execute_production_demo("Oborovo", "Base")
+        assert metadata["runtime_authority"] == "clean_g2c"
+        calibration = execute_calibration_waterfall(
+            create_default_oborovo_legacy_calibration()
+        )
+        assert calibration.authority_metadata["runtime_authority"] == (
+            "legacy_waterfall_calibration"
+        )
+
+    def test_b3_oborovo_workbook_uses_clean_authority(self):
+        """Phase B2: the institutional workbook consumes clean Oborovo.
 
         The institutional workbook calls execute_production_waterfall which is
-        now clean-only.  Blocked projects (Oborovo/TUHO) raise CleanNotReadyError.
+        clean-only; no calibration fallback is available.
         """
         from app.export.institutional_workbook import _build_export_bundle
-        from app.services.production_financial_authority import CleanNotReadyError
 
-        with pytest.raises(CleanNotReadyError) as exc_info:
-            _build_export_bundle("oborovo")
-        assert exc_info.value.reason_code == "PR8_G2A_FINANCING_CONTRACT_FIELDS_NOT_TYPED"
-        assert exc_info.value.calculation_count == 0
+        bundle = _build_export_bundle("oborovo")
+        assert bundle.authority_metadata["runtime_authority"] == "clean_g2c"
+        assert bundle.authority_metadata["calculation_count"] == 1
 
 
 # Pre-correction fingerprints captured at ef887499 (section 18).
@@ -863,7 +880,7 @@ class TestGovernanceCorrection:
 class TestActualExportServices:
     """Engine counters on the ACTUAL public export service functions."""
 
-    @pytest.mark.parametrize("code", ("generic_solar", "generic_wind"))
+    @pytest.mark.parametrize("code", ("generic_solar", "generic_wind", "oborovo"))
     def test_x1_runtime_summary_csv_clean(self, code, monkeypatch):
         counters = EngineCounters(monkeypatch)
         from app.services.export_service import build_runtime_summary_csv_export
@@ -873,7 +890,7 @@ class TestActualExportServices:
         assert counters.clean_calls == 1
         assert counters.legacy_core_calls == 0
 
-    @pytest.mark.parametrize("code", ("oborovo", "tuho"))
+    @pytest.mark.parametrize("code", ("tuho",))
     def test_x2_runtime_summary_csv_blocked_raises_clean_not_ready(self, code, monkeypatch):
         """Phase B1 Correction A: runtime_summary for blocked projects raises CleanNotReadyError.
 
@@ -886,7 +903,7 @@ class TestActualExportServices:
             build_runtime_summary_csv_export(code)
         assert exc_info.value.calculation_count == 0
 
-    @pytest.mark.parametrize("code", ("generic_solar", "generic_wind"))
+    @pytest.mark.parametrize("code", ("generic_solar", "generic_wind", "oborovo"))
     def test_x3_institutional_workbook_clean(self, code, monkeypatch):
         counters = EngineCounters(monkeypatch)
         from app.services.export_service import build_institutional_workbook_export
@@ -897,7 +914,7 @@ class TestActualExportServices:
         assert counters.clean_calls == 1
         assert counters.legacy_core_calls == 0
 
-    @pytest.mark.parametrize("code", ("oborovo", "tuho"))
+    @pytest.mark.parametrize("code", ("tuho",))
     def test_x4_institutional_workbook_blocked_raises_clean_not_ready(self, code, monkeypatch):
         """Phase B1 Correction A: institutional workbook for blocked projects raises CleanNotReadyError.
 

@@ -237,8 +237,8 @@ class TestNoFinancialDrift:
         return WaterfallRunner(p, engine).run(config)
 
     def test_oborovo_no_drift(self):
-        from app.project_factories import create_default_oborovo
-        r = self._run(create_default_oborovo)
+        from app.project_factories import create_default_oborovo_legacy_calibration
+        r = self._run(create_default_oborovo_legacy_calibration)
         b = self.BASE["oborovo"]
         assert r.total_tax_keur == pytest.approx(b["tax"], abs=0.001)
         assert r.total_distribution_keur == pytest.approx(b["dist"], abs=0.001)

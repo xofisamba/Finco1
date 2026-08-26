@@ -3,13 +3,13 @@
 Proves that after the B1 routing change:
   A. Solar production: clean_calls == 1, legacy_calls == 0
   B. Wind production:  clean_calls == 1, legacy_calls == 0
-  C. Oborovo production: raises CleanNotReadyError, calculation_count == 0
+  C. Oborovo production: clean_calls == 1, legacy_calls == 0 (Phase B2)
   D. TUHO production:    raises CleanNotReadyError, calculation_count == 0
   E. Oborovo via run_project_legacy: executes legacy calibration
   F. TUHO via run_project_legacy:    executes legacy calibration
   G. Production does NOT fall back on clean engine error (fails closed)
   H. Production does NOT fall back on classifier failure (fails closed)
-  I. execute_production_demo: Solar clean, TUHO/Oborovo/unknown raise CleanNotReadyError
+  I. execute_production_demo: Solar/Oborovo clean, TUHO/unknown fail closed
   J. execute_calibration_waterfall: explicit legacy seam for blocked projects;
      execute_production_waterfall refuses legacy (allow_legacy param does not exist)
   K. Financial delta zero for Solar after B1
@@ -118,39 +118,34 @@ class TestB_WindProduction:
 
 
 # ---------------------------------------------------------------------------
-# C — Oborovo production: raises CleanNotReadyError, calculation_count == 0
+# C — Oborovo production: Phase B2 clean-only promotion
 # ---------------------------------------------------------------------------
 
 class TestC_OborovoProduction:
-    def test_c1_oborovo_raises_clean_not_ready(self):
-        """Oborovo production raises CleanNotReadyError (no legacy fallthrough)."""
-        from app.services.production_financial_authority import CleanNotReadyError
+    def test_c1_oborovo_is_clean_production(self):
+        """Oborovo production is promoted without a legacy fallthrough."""
         from app.api.project_runner import run_project
 
-        with pytest.raises(CleanNotReadyError) as exc_info:
-            run_project("Oborovo", "Base")
-        err = exc_info.value
-        assert err.calculation_count == 0
-        assert err.runtime_authority == "clean_not_ready"
+        out = run_project("Oborovo", "Base")
+        assert out["runtime_authority"]["runtime_authority"] == "clean_g2c"
+        assert out["runtime_authority"]["calculation_count"] == 1
 
-    def test_c2_oborovo_typed_reason(self):
-        """Oborovo CleanNotReadyError carries the typed G2A blocker reason."""
-        from app.services.production_financial_authority import CleanNotReadyError
-        from app.api.project_runner import run_project
+    def test_c2_oborovo_typed_classification(self):
+        """Oborovo reaches clean readiness through typed inputs."""
+        from app.project_factories import create_default_oborovo
+        from app.services.production_financial_authority import classify_production_authority
 
-        with pytest.raises(CleanNotReadyError) as exc_info:
-            run_project("Oborovo", "Base")
-        assert exc_info.value.reason_code == "PR8_G2A_FINANCING_CONTRACT_FIELDS_NOT_TYPED"
+        decision = classify_production_authority(create_default_oborovo())
+        assert decision.promoted
+        assert decision.classification.value == "CLEAN_PRODUCTION_READY"
 
-    def test_c3_oborovo_zero_legacy_calls(self, monkeypatch):
-        """Oborovo: zero engine calls (clean or legacy) when CleanNotReadyError raised."""
+    def test_c3_oborovo_one_clean_zero_legacy_calls(self, monkeypatch):
+        """Oborovo: exactly one clean call and zero legacy calls."""
         counters = EngineCounters(monkeypatch)
-        from app.services.production_financial_authority import CleanNotReadyError
         from app.api.project_runner import run_project
 
-        with pytest.raises(CleanNotReadyError):
-            run_project("Oborovo", "Base")
-        assert counters.clean_calls == 0
+        run_project("Oborovo", "Base")
+        assert counters.clean_calls == 1
         assert counters.legacy_core_calls == 0
         assert counters.legacy_engine_calls == 0
 
@@ -311,7 +306,7 @@ class TestH_ClassifierFailureFailsClosed:
 
 
 # ---------------------------------------------------------------------------
-# I — execute_production_demo: Solar clean, TUHO/Oborovo raise
+# I — execute_production_demo: Solar/Oborovo clean, TUHO raises
 # ---------------------------------------------------------------------------
 
 class TestI_ExecuteProductionDemo:
@@ -336,15 +331,13 @@ class TestI_ExecuteProductionDemo:
         assert exc_info.value.calculation_count == 0
         assert exc_info.value.runtime_authority == "clean_not_ready"
 
-    def test_i3_oborovo_demo_raises_clean_not_ready(self):
-        """execute_production_demo("Oborovo") raises CleanNotReadyError."""
-        from app.services.production_financial_authority import CleanNotReadyError
+    def test_i3_oborovo_demo_is_clean(self):
+        """execute_production_demo("Oborovo") uses clean G2C."""
         from app.services.production_waterfall_seam import execute_production_demo
 
-        with pytest.raises(CleanNotReadyError) as exc_info:
-            execute_production_demo("Oborovo", "Base")
-        assert exc_info.value.calculation_count == 0
-        assert exc_info.value.runtime_authority == "clean_not_ready"
+        _, meta = execute_production_demo("Oborovo", "Base")
+        assert meta["runtime_authority"] == "clean_g2c"
+        assert meta["calculation_count"] == 1
 
 
 # ---------------------------------------------------------------------------
@@ -368,10 +361,10 @@ class TestJ_CalibrationWaterfallSeam:
 
     def test_j2_oborovo_calibration_waterfall_runs_legacy(self):
         """execute_calibration_waterfall() runs legacy for Oborovo (explicitly blocked)."""
-        from app.project_factories import create_default_oborovo
+        from app.project_factories import create_default_oborovo_legacy_calibration
         from app.services.production_waterfall_seam import execute_calibration_waterfall
 
-        inputs = create_default_oborovo()
+        inputs = create_default_oborovo_legacy_calibration()
         execution = execute_calibration_waterfall(inputs)
         assert execution.authority_metadata["runtime_authority"] == "legacy_waterfall_calibration"
         assert execution.authority_metadata["calculation_count"] == 1
@@ -407,15 +400,14 @@ class TestJ_CalibrationWaterfallSeam:
         with pytest.raises(CleanNotReadyError):
             execute_production_waterfall(inputs)
 
-    def test_j6_production_waterfall_oborovo_raises_clean_not_ready(self):
-        """execute_production_waterfall() raises CleanNotReadyError for Oborovo (B1 clean-only)."""
+    def test_j6_production_waterfall_oborovo_is_clean(self):
+        """execute_production_waterfall() uses clean authority for Oborovo."""
         from app.project_factories import create_default_oborovo
         from app.services.production_waterfall_seam import execute_production_waterfall
-        from app.services.production_financial_authority import CleanNotReadyError
 
         inputs = create_default_oborovo()
-        with pytest.raises(CleanNotReadyError):
-            execute_production_waterfall(inputs)
+        execution = execute_production_waterfall(inputs)
+        assert execution.authority_metadata["runtime_authority"] == "clean_g2c"
 
 
 # ---------------------------------------------------------------------------
@@ -533,13 +525,13 @@ class TestN_LegacyCalibrationLineage:
 class TestO_NonPromotedOverrideInput:
     def test_o1_non_promoted_override_raises_clean_not_ready(self):
         """A non-promoted ProjectInputs supplied as override raises CleanNotReadyError."""
-        from app.project_factories import create_default_oborovo
+        from app.project_factories import create_default_oborovo_legacy_calibration
         from app.services.production_financial_authority import CleanNotReadyError
         from app.api.project_runner import run_project
 
         # Oborovo inputs are non-promoted; supplying them as an override
         # to an arbitrary project_type must still raise.
-        oborovo_inputs = create_default_oborovo()
+        oborovo_inputs = create_default_oborovo_legacy_calibration()
         with pytest.raises(CleanNotReadyError):
             run_project("Oborovo", "Base", project_inputs_override=oborovo_inputs)
 
@@ -679,16 +671,15 @@ class TestP_EdgeCases:
         execution = execute_production_waterfall(inputs)
         assert execution.authority_metadata["runtime_authority"] == "clean_g2c"
 
-    def test_p7_institutional_workbook_oborovo_raises_clean_not_ready(self):
-        """Institutional workbook: Oborovo raises CleanNotReadyError (no legacy execution)."""
+    def test_p7_institutional_workbook_oborovo_is_clean(self):
+        """Institutional workbook consumes clean Oborovo authority."""
         from app.project_factories import create_default_oborovo
         from app.services.production_waterfall_seam import execute_production_waterfall
-        from app.services.production_financial_authority import CleanNotReadyError
 
         inputs = create_default_oborovo()
-        with pytest.raises(CleanNotReadyError) as exc_info:
-            execute_production_waterfall(inputs)
-        assert exc_info.value.calculation_count == 0
+        execution = execute_production_waterfall(inputs)
+        assert execution.authority_metadata["runtime_authority"] == "clean_g2c"
+        assert execution.authority_metadata["calculation_count"] == 1
 
     def test_p8_institutional_workbook_tuho_raises_clean_not_ready(self):
         """Institutional workbook: TUHO raises CleanNotReadyError (no legacy execution)."""
@@ -722,7 +713,7 @@ class TestP_EdgeCases:
 
 
 # ---------------------------------------------------------------------------
-# Q — Oborovo blocker matrix (B1 does NOT fix these; inventory only)
+# Q — Oborovo Phase B2 promotion matrix
 # ---------------------------------------------------------------------------
 #
 # COMPLETE INDEPENDENT OBOROVO BLOCKER INVENTORY
@@ -759,43 +750,47 @@ class TestP_EdgeCases:
 # └─────────────────────────────────────────────────────┴──────────────────────────────────────────┘
 
 class TestQ_OborovoBlockerMatrix:
-    def test_q1_oborovo_first_blocker_is_financing_contract(self):
-        """Oborovo: first blocker is G2A financing contract fields not typed."""
+    def test_q1_oborovo_is_promoted_by_typed_contract(self):
+        """Oborovo: typed B2 contract promotes naturally."""
         from app.project_factories import create_default_oborovo
         from app.services.production_financial_authority import classify_production_authority
 
         inputs = create_default_oborovo()
         decision = classify_production_authority(inputs)
-        assert not decision.promoted
-        assert decision.reason_code == "PR8_G2A_FINANCING_CONTRACT_FIELDS_NOT_TYPED"
+        assert decision.promoted
+        assert decision.classification.value == "CLEAN_PRODUCTION_READY"
 
-    def test_q2_oborovo_sponsor_funding_mode_is_none(self):
-        """Oborovo: financing.sponsor_funding_mode is None (MISSING_TYPED_INPUT)."""
+    def test_q2_oborovo_sponsor_funding_mode_is_typed(self):
+        """Oborovo sponsor funding follows share-capital-then-SHL authority."""
+        from app.project_factories import create_default_oborovo
+        from finco_core.inputs import SponsorFundingMode
+
+        inputs = create_default_oborovo()
+        assert inputs.financing.sponsor_funding_mode is SponsorFundingMode.SHARE_CAPITAL_THEN_SHL
+
+    def test_q3_oborovo_gearing_basis_mode_is_typed(self):
+        """Oborovo Senior gearing limit uses total project uses."""
+        from app.project_factories import create_default_oborovo
+        from finco_core.inputs import GearingBasisMode
+
+        inputs = create_default_oborovo()
+        assert inputs.financing.gearing_basis_mode is GearingBasisMode.TOTAL_PROJECT_USES
+
+    def test_q4_oborovo_frozen_schedule_removed_from_production(self):
+        """Oborovo production has no frozen Senior authority."""
         from app.project_factories import create_default_oborovo
 
         inputs = create_default_oborovo()
-        assert inputs.financing.sponsor_funding_mode is None
+        assert not getattr(inputs.financing, "use_frozen_excel_senior_debt_schedule", False)
+        assert inputs.financing.frozen_senior_ds_fixture_path is None
 
-    def test_q3_oborovo_gearing_basis_mode_is_none(self):
-        """Oborovo: financing.gearing_basis_mode is None (MISSING_TYPED_INPUT)."""
+    def test_q5_oborovo_construction_financing_is_typed(self):
+        """Oborovo: construction and VAT facility authority are typed."""
         from app.project_factories import create_default_oborovo
 
         inputs = create_default_oborovo()
-        assert inputs.financing.gearing_basis_mode is None
-
-    def test_q4_oborovo_frozen_schedule_is_legacy_calibration(self):
-        """Oborovo: use_frozen_excel_senior_debt_schedule=True (LEGACY_CALIBRATION_ONLY)."""
-        from app.project_factories import create_default_oborovo
-
-        inputs = create_default_oborovo()
-        assert getattr(inputs.financing, "use_frozen_excel_senior_debt_schedule", False)
-
-    def test_q5_oborovo_construction_financing_not_typed(self):
-        """Oborovo: financing.construction_financing is None (MISSING_TYPED_INPUT)."""
-        from app.project_factories import create_default_oborovo
-
-        inputs = create_default_oborovo()
-        assert inputs.financing.construction_financing is None
+        assert inputs.financing.construction_financing.enabled
+        assert inputs.financing.construction_financing.vat_facility.enabled
 
     def test_q6_oborovo_clean_cash_tax_timing_is_ready(self):
         """Oborovo: tax.clean_cash_tax_timing_enabled=True (passes tax check)."""

@@ -293,6 +293,12 @@ def run_clean_production(
         "scenario": scenario,
         "calculation_count": 1,
     }
+    construction = getattr(g2c.financing_result, "construction_financing", None)
+    if construction is not None:
+        metadata.update(
+            construction_authority=construction.authority,
+            vat_facility_authority=construction.vat_authority,
+        )
     return CleanProductionRun(
         g2c_result=g2c,
         project_inputs=effective_inputs,

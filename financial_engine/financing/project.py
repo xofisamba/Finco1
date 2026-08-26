@@ -127,12 +127,31 @@ def _typed_construction_shl_context(
     provisional: bool,
 ) -> _TypedConstructionShlContext:
     """Derive SHL periods only from typed PR-9 dates and SHL day count."""
-    typed_periods = tuple(construction.periods)
-    if len(canonical_allocations) != len(typed_periods):
+    funding_periods = tuple(construction.periods)
+    if len(canonical_allocations) != len(funding_periods):
         raise ValueError(
             "PR9_TYPED_SHL_PERIOD_COUNT_MISMATCH: "
-            f"allocations={len(canonical_allocations)}, periods={len(typed_periods)}"
+            f"allocations={len(canonical_allocations)}, periods={len(funding_periods)}"
         )
+    tail_periods = tuple(getattr(construction, "shl_accrual_tail_periods", ()))
+    typed_periods = funding_periods + tail_periods
+    zero_tail_allocations = tuple(
+        ConstructionPeriodAllocation(
+            period_index=len(funding_periods) + index,
+            period_uses_keur=0.0,
+            share_capital_draw_keur=0.0,
+            share_premium_draw_keur=0.0,
+            other_committed_equity_draw_keur=0.0,
+            additional_equity_draw_keur=0.0,
+            shl_draw_keur=0.0,
+            junior_draw_keur=0.0,
+            senior_draw_keur=0.0,
+            total_sources_keur=0.0,
+            residual_keur=0.0,
+        )
+        for index, _ in enumerate(tail_periods)
+    )
+    effective_allocations = canonical_allocations + zero_tail_allocations
     convention = _coerce_shl_day_count(financing.shl_day_count_convention)
     derived_dcfs = tuple(
         compute_shl_dcf(period.start_date, period.end_date, convention)
@@ -172,9 +191,9 @@ def _typed_construction_shl_context(
             for period in typed_periods
         ),
         shl_allocation_to_uses_keur=tuple(
-            allocation.shl_draw_keur for allocation in canonical_allocations
+            allocation.shl_draw_keur for allocation in effective_allocations
         ),
-        canonical_allocations=canonical_allocations,
+        canonical_allocations=effective_allocations,
         timing_policy=financing.sponsor_funding_timing_policy,
         accrual_enabled=authority.accrual_enabled,
         provisional=provisional,
@@ -333,26 +352,20 @@ def _run_with_construction_idc(
             "Clear those fields when using typed construction authority."
         )
 
-    # VAT facility fail-closed: any VAT inputs raise immediately.
-    if any(getattr(p, "vat_facility_active", False) for p in cf.periods):
-        raise ValueError(
-            "PR9_VAT_FACILITY_DEFERRED: one or more ConstructionPeriodSpec has vat_facility_active=True. "
-            "VAT facility is not supported in PR-9."
+    # Manual VAT financing costs are the same dual-authority conflict as
+    # manual Senior construction costs. VAT rates/facility inputs are allowed;
+    # derived VAT financing amounts must start at zero.
+    if any(
+        getattr(orig_capex, field_name, 0.0) != 0.0
+        for field_name in (
+            "vat_costs_keur",
+            "vat_facility_idc_keur",
+            "vat_facility_commitment_fee_keur",
         )
-    if getattr(orig_capex, "vat_costs_keur", 0.0) != 0:
+    ):
         raise ValueError(
-            f"PR9_VAT_FACILITY_DEFERRED: orig_capex.vat_costs_keur={getattr(orig_capex, 'vat_costs_keur', 0.0)} != 0. "
-            "VAT facility is not supported in PR-9."
-        )
-    if getattr(orig_capex, "vat_facility_idc_keur", 0.0) != 0:
-        raise ValueError(
-            f"PR9_VAT_FACILITY_DEFERRED: orig_capex.vat_facility_idc_keur={getattr(orig_capex, 'vat_facility_idc_keur', 0.0)} != 0. "
-            "VAT facility is not supported in PR-9."
-        )
-    if getattr(orig_capex, "vat_facility_commitment_fee_keur", 0.0) != 0:
-        raise ValueError(
-            f"PR9_VAT_FACILITY_DEFERRED: orig_capex.vat_facility_commitment_fee_keur={getattr(orig_capex, 'vat_facility_commitment_fee_keur', 0.0)} != 0. "
-            "VAT facility is not supported in PR-9."
+            "PR9_MANUAL_DERIVED_VAT_FINANCING_COST_CONFLICT: typed VAT facility "
+            "authority requires zero manual vat_costs_keur / VAT IDC / commitment fee"
         )
 
     # Resolve CAPEX amounts from canonical CapexStructure.
@@ -678,13 +691,16 @@ def _run_with_construction_idc(
             derived_shl if index == 0 else 0.0 for index in range(n)
         )
         _post_construction_shl = 0.0
+    _final_shl_cash_with_tail = _final_shl_cash + (0.0,) * (
+        len(_final_typed_context.periods) - len(_final_shl_cash)
+    )
     _final_shl_periods = tuple(
         ShlConstructionPeriodInput(
             draw_keur=draw,
             day_count_fraction=period.day_count_fraction,
             period_index=period.period_index,
         )
-        for draw, period in zip(_final_shl_cash, _final_typed_context.periods)
+        for draw, period in zip(_final_shl_cash_with_tail, _final_typed_context.periods)
     )
     _final_shl_schedule = compute_shl_construction_schedule(
         opening_balance_keur=0.0,
@@ -786,6 +802,17 @@ def _run_with_construction_idc(
         outer_pik_residual_keur=d_pik,
         outer_uses_residual_keur=d_uses,
         final_verification_outer_residual_keur=_idempotence_residual,
+        vat_payable_keur=tuple(row.vat_payable_keur for row in b2.vat_schedule),
+        vat_requirement_keur=tuple(row.vat_requirement_keur for row in b2.vat_schedule),
+        vat_drawn_keur=tuple(row.vat_drawn_keur for row in b2.vat_schedule),
+        vat_undrawn_keur=tuple(row.vat_undrawn_keur for row in b2.vat_schedule),
+        vat_idc_keur=b2.capitalized_financing_costs.vat_idc_keur,
+        vat_commitment_fee_keur=b2.capitalized_financing_costs.vat_commitment_fee_keur,
+        vat_authority=(
+            "TYPED_CONSTRUCTION_VAT_FACILITY_AUTHORITY"
+            if cf.vat_facility is not None and cf.vat_facility.enabled
+            else "TYPED_CONSTRUCTION_VAT_FACILITY_DISABLED"
+        ),
     )
 
     return ProjectFinancingResult(

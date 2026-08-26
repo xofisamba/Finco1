@@ -2124,13 +2124,8 @@ class TestPR12Governance:
                 or "SHL_LIMITATION" in msg
             ), f"Unexpected error: {e}"
 
-    def test_no_promote_tuho_no_promote_oborovo(self):
-        """TUHO and Oborovo are not clean-promoted; Phase B1 makes production fail-closed.
-
-        Phase B1 update: run_project(TUHO/Oborovo) now raises CleanNotReadyError
-        (typed fail-closed, calculation_count==0) instead of returning a legacy
-        result.  The projects remain un-promoted to clean_g2c.
-        """
+    def test_tuho_remains_blocked_while_oborovo_is_clean_promoted(self):
+        """Phase B2 promotes Oborovo without weakening TUHO's fail-closed gate."""
         try:
             import fastapi  # noqa: F401
         except ImportError:
@@ -2139,7 +2134,7 @@ class TestPR12Governance:
         from app.api.project_runner import run_project
         from app.services.production_financial_authority import CleanNotReadyError
 
-        # Phase B1: production router raises CleanNotReadyError for non-promoted projects.
+        # TUHO remains outside the clean production authority.
         with pytest.raises(CleanNotReadyError) as tuho_exc:
             run_project("TUHO", "Base")
         assert tuho_exc.value.runtime_authority == "clean_not_ready", (
@@ -2147,12 +2142,9 @@ class TestPR12Governance:
             f"Got: {tuho_exc.value.runtime_authority}"
         )
 
-        with pytest.raises(CleanNotReadyError) as oborovo_exc:
-            run_project("Oborovo", "Base")
-        assert oborovo_exc.value.runtime_authority == "clean_not_ready", (
-            f"Oborovo must raise CleanNotReadyError with clean_not_ready authority. "
-            f"Got: {oborovo_exc.value.runtime_authority}"
-        )
+        oborovo = run_project("Oborovo", "Base")
+        assert oborovo["runtime_authority"]["runtime_authority"] == "clean_g2c"
+        assert oborovo["runtime_authority"]["calculation_count"] == 1
 
     def test_solar_is_clean_engine(self):
         """Generic Solar uses the clean orchestrator (run_senior_debt_model)."""
