@@ -36,6 +36,8 @@ from finco_core.inputs.serialization import project_inputs_to_dict, project_inpu
 from finco_core.inputs.construction_financing import (
     ConstructionFinancingInput,
     ConstructionCapexTimingInput,
+    ConstructionVatFacilityInput,
+    VatFacilityCommitmentMode,
     ConstructionPeriodSpec,
     ConstructionSeniorPricingInput,
     ConstructionCommitmentFeeInput,
@@ -163,6 +165,8 @@ __all__ = [
     # PR-9 Construction financing
     "ConstructionFinancingInput",
     "ConstructionCapexTimingInput",
+    "ConstructionVatFacilityInput",
+    "VatFacilityCommitmentMode",
     "ConstructionPeriodSpec",
     "ConstructionSeniorPricingInput",
     "ConstructionCommitmentFeeInput",

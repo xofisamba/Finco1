@@ -230,13 +230,17 @@ Calibration target (Oborovo): ≈477.303 kEUR.
 Do NOT apply the Senior Debt opening-balance convention to VAT Facility without separate
 workbook evidence.
 
-The VAT facility commitment is an explicit facility input. The VAT schedule uses
-the actual period requirement as `vat_drawn_keur`, calculates `vat_undrawn_keur`
-as `vat_facility_commitment_keur - vat_requirement_keur`, and raises a typed
-funding-shortfall error if the peak requirement exceeds commitment beyond
-tolerance. It must not use total VAT payable as the facility commitment.
+VAT commitment authority is explicit. `DERIVED_PEAK_REQUIREMENT` sizes the
+effective commitment to the maximum independently calculated period
+requirement. `FIXED_COMMITMENT` accepts an independently sourced contractual
+limit and raises a typed funding-shortfall error if calculated peak requirement
+exceeds it. Both modes use actual requirement as `vat_drawn_keur` and calculate
+`vat_undrawn_keur` as effective commitment minus requirement. Total VAT payable
+and a workbook-linked calculated peak are never facility commitment inputs.
 
-For Oborovo, the maximum VAT requirement remains `4,877.989945 kEUR`, terminal
+Oborovo uses `DERIVED_PEAK_REQUIREMENT`; `Inputs!D275 = IDC!D67` is a linked
+calculation output rather than an independent commitment. Maximum VAT
+requirement remains `4,877.989945 kEUR`, terminal
 VAT requirement remains zero, VAT IDC remains approximately
 `208.44761845456716 kEUR`, and VAT commitment fee remains approximately
 `13.6219528108125 kEUR`.

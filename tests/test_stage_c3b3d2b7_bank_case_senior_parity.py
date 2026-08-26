@@ -23,9 +23,11 @@ def _debt_truth() -> dict:
 
 
 def _oborovo_project():
-    from app.project_factories import create_default_oborovo
+    from app.project_factories import create_default_oborovo_legacy_calibration
 
-    return create_default_oborovo()
+    # Preserve the frozen B7 source-characterization basis explicitly; Phase
+    # B2 production is exercised through the canonical financing orchestrator.
+    return create_default_oborovo_legacy_calibration()
 
 
 def _model(project=None, *, debt_sizing_case=None, with_shl=True):
@@ -453,10 +455,10 @@ def test_debt_sizing_audit_is_separate_and_reports_source_vectors_without_replay
 
 
 def test_r4_7_2_source_replay_authority_lock_is_immutable_under_b7_runtime():
-    from app.project_factories import create_default_oborovo
+    from app.project_factories import create_default_oborovo_legacy_calibration
     from finco_recon.bank_sizing_candidates import run_candidate_h_oborovo_r472
 
-    result = run_candidate_h_oborovo_r472(create_default_oborovo)
+    result = run_candidate_h_oborovo_r472(create_default_oborovo_legacy_calibration)
 
     assert result["r4_7_2_authority_lock"] == (
         "R4_7_2_DIAGNOSTIC_PERIOD_AXIS_FROZEN_TO_PR925_COD_ANCHOR_INPUT_AND_"

@@ -16,9 +16,11 @@ def _source():
 
 
 def _project():
-    from app.project_factories import create_default_oborovo
+    from app.project_factories import create_default_oborovo_legacy_calibration
 
-    return create_default_oborovo()
+    # Historical B6 source-characterization uses the explicit calibration
+    # snapshot. Phase B2 production coverage runs the full construction stack.
+    return create_default_oborovo_legacy_calibration()
 
 
 def _run_project(project=None, *, source_id="c3b3d2b6-test", bank_case=None, with_shl=True):

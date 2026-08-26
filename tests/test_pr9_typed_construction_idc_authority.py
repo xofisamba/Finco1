@@ -1580,8 +1580,8 @@ class TestDayCountSemantics:
 # 15. VAT fail-closed for enabled construction financing (Task 4)
 # ---------------------------------------------------------------------------
 
-class TestVatFacilityDeferredFailClosed:
-    """Negative tests for VAT facility fail-closed in _run_with_construction_idc."""
+class TestVatFacilityTypedAuthorityFailClosed:
+    """B2 keeps VAT causal inputs typed and rejects every dual authority."""
 
     def _solar_pi_with_cf_enabled(self, n_periods=6):
         import dataclasses
@@ -1594,7 +1594,7 @@ class TestVatFacilityDeferredFailClosed:
         ), cf
 
     def test_vat_facility_active_period_raises(self):
-        """vat_facility_active=True on any period → ValueError with PR9_VAT_FACILITY_DEFERRED."""
+        """An active timeline flag without a typed facility fails at input construction."""
         import dataclasses
         from financial_engine.financing import run_project_financing_model
         from finco_core.inputs.construction_financing import ConstructionPeriodSpec
@@ -1608,16 +1608,11 @@ class TestVatFacilityDeferredFailClosed:
             end_date=old_p.end_date,
             vat_facility_active=True,
         )
-        bad_cf = dataclasses.replace(cf, periods=tuple(bad_periods))
-        pi = dataclasses.replace(
-            pi,
-            financing=dataclasses.replace(pi.financing, construction_financing=bad_cf),
-        )
-        with pytest.raises(ValueError, match="PR9_VAT_FACILITY_DEFERRED"):
-            run_project_financing_model(pi)
+        with pytest.raises(ValueError, match="PR9_VAT_ACTIVE_WITHOUT_TYPED_FACILITY"):
+            dataclasses.replace(cf, periods=tuple(bad_periods))
 
     def test_vat_costs_keur_nonzero_raises(self):
-        """orig_capex.vat_costs_keur != 0 → ValueError with PR9_VAT_FACILITY_DEFERRED."""
+        """A manual VAT cost conflicts with typed VAT facility authority."""
         import dataclasses
         from financial_engine.financing import run_project_financing_model
         pi, _ = self._solar_pi_with_cf_enabled()
@@ -1626,7 +1621,7 @@ class TestVatFacilityDeferredFailClosed:
             pytest.skip("capex has no vat_costs_keur field")
         new_capex = dataclasses.replace(pi.capex, vat_costs_keur=100.0)
         pi2 = dataclasses.replace(pi, capex=new_capex)
-        with pytest.raises(ValueError, match="PR9_VAT_FACILITY_DEFERRED"):
+        with pytest.raises(ValueError, match="PR9_MANUAL_DERIVED_VAT_FINANCING_COST_CONFLICT"):
             run_project_financing_model(pi2)
 
     def test_vat_facility_idc_keur_nonzero_raises(self):
@@ -1638,7 +1633,7 @@ class TestVatFacilityDeferredFailClosed:
             pytest.skip("capex has no vat_facility_idc_keur field")
         new_capex = dataclasses.replace(pi.capex, vat_facility_idc_keur=50.0)
         pi2 = dataclasses.replace(pi, capex=new_capex)
-        with pytest.raises(ValueError, match="PR9_VAT_FACILITY_DEFERRED"):
+        with pytest.raises(ValueError, match="PR9_MANUAL_DERIVED_VAT_FINANCING_COST_CONFLICT"):
             run_project_financing_model(pi2)
 
     def test_vat_facility_commitment_fee_keur_nonzero_raises(self):
@@ -1650,7 +1645,7 @@ class TestVatFacilityDeferredFailClosed:
             pytest.skip("capex has no vat_facility_commitment_fee_keur field")
         new_capex = dataclasses.replace(pi.capex, vat_facility_commitment_fee_keur=25.0)
         pi2 = dataclasses.replace(pi, capex=new_capex)
-        with pytest.raises(ValueError, match="PR9_VAT_FACILITY_DEFERRED"):
+        with pytest.raises(ValueError, match="PR9_MANUAL_DERIVED_VAT_FINANCING_COST_CONFLICT"):
             run_project_financing_model(pi2)
 
 # ---------------------------------------------------------------------------
@@ -4508,12 +4503,18 @@ class TestPR9FinalFreezeValidation:
                 ),
             )
 
-    @pytest.mark.parametrize("vat_rate", (float("nan"), float("inf"), -0.1, 0.1, True))
-    def test_capex_vat_rate_is_exact_zero_only(self, vat_rate):
+    @pytest.mark.parametrize("vat_rate", (float("nan"), float("inf"), -0.1, 1.1, True))
+    def test_capex_vat_rate_fails_closed_outside_unit_interval(self, vat_rate):
         from finco_core.inputs.construction_financing import ConstructionCapexTimingInput
 
         with pytest.raises(ValueError):
             ConstructionCapexTimingInput("EPC", "EPC", (0.5, 0.5), vat_rate)
+
+    def test_capex_vat_rate_accepts_causal_nonzero_input(self):
+        from finco_core.inputs.construction_financing import ConstructionCapexTimingInput
+
+        item = ConstructionCapexTimingInput("EPC", "EPC", (0.5, 0.5), 0.17)
+        assert item.vat_rate == pytest.approx(0.17)
 
     @pytest.mark.parametrize(
         "weights",

@@ -123,7 +123,11 @@ class ConstructionRuntimeConfig:
     vat_facility_interest_rate: float = 0.0
     vat_facility_commitment_fee_rate: float = 0.0
     vat_facility_commitment_keur: float = 0.0
+    vat_facility_commitment_mode: str = "FIXED_COMMITMENT"
+    vat_facility_enabled: bool = True  # low-level compatibility; typed adapter is explicit
     vat_interest_period_fractions: tuple[float, ...] = field(default_factory=tuple)
+    vat_reimbursement_lag_periods: int = 6
+    vat_schedule_horizon_periods: int = 0
     vat_commitment_fee_active_periods: int = 12
     senior_idc_spending_profile: tuple[float, ...] = field(default_factory=tuple)
     senior_commitment_fee_spending_profile: tuple[float, ...] = field(default_factory=tuple)
@@ -197,6 +201,14 @@ def _validate_runtime_config(config: ConstructionRuntimeConfig) -> None:
         error_code=error,
     )
     require_positive_int("max_iterations", config.max_iterations, error_code=error)
+    require_bool(
+        "vat_facility_enabled", config.vat_facility_enabled, error_code=error
+    )
+    if config.vat_facility_commitment_mode not in {
+        "DERIVED_PEAK_REQUIREMENT",
+        "FIXED_COMMITMENT",
+    }:
+        raise ValueError("STAGE_B2_INVALID_VAT_COMMITMENT_MODE")
 
     non_negative_scalars = {
         "equity_available_keur": config.equity_available_keur,
@@ -234,14 +246,14 @@ def _validate_runtime_config(config: ConstructionRuntimeConfig) -> None:
             f"{error}: hedge_coverage must be in [0, 1], got {config.hedge_coverage!r}"
         )
 
-    if (
-        isinstance(config.vat_commitment_fee_active_periods, bool)
-        or not isinstance(config.vat_commitment_fee_active_periods, int)
-        or config.vat_commitment_fee_active_periods < 0
+    for name in (
+        "vat_reimbursement_lag_periods",
+        "vat_schedule_horizon_periods",
+        "vat_commitment_fee_active_periods",
     ):
-        raise ValueError(
-            f"{error}: vat_commitment_fee_active_periods must be a non-negative int"
-        )
+        value = getattr(config, name)
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            raise ValueError(f"{error}: {name} must be a non-negative int")
 
     for index, period in enumerate(config.timeline):
         if not isinstance(period.index, int) or isinstance(period.index, bool):
@@ -416,9 +428,13 @@ def compute_vat_schedule(
     *,
     vat_facility_commitment_keur: float | None = None,
     tolerance_keur: float = 1e-9,
+    horizon_periods: int | None = None,
 ) -> tuple[FacilityPeriodState, ...]:
     """Compute generic VAT schedule with a post-CAPEX reimbursement/runoff tail."""
-    horizon = len(vat_payable_keur) + reimbursement_lag_periods
+    natural_horizon = len(vat_payable_keur) + reimbursement_lag_periods
+    horizon = natural_horizon if horizon_periods is None else horizon_periods
+    if horizon < len(vat_payable_keur):
+        raise ValueError("VAT schedule horizon cannot be shorter than payable vector")
     requirement = 0.0
     raw_rows: list[tuple[int, float, float, float]] = []
     peak_requirement = 0.0
@@ -689,12 +705,35 @@ def _run_stage_b2_inner(
     vat_payable = vat_monthly_uses(config.capex_schedule)
     n_periods = len(hard_capex) if hard_capex else len(config.timeline)
     _validate_capex_timeline(hard_capex, vat_payable, config.timeline, config.convergence_tolerance_keur)
-    vat_schedule = compute_vat_schedule(
-        vat_payable,
-        vat_facility_commitment_keur=config.vat_facility_commitment_keur,
-        tolerance_keur=config.convergence_tolerance_keur,
+    if config.vat_facility_enabled:
+        fixed_vat_commitment = (
+            config.vat_facility_commitment_keur
+            if config.vat_facility_commitment_mode == "FIXED_COMMITMENT"
+            else None
+        )
+        vat_schedule = compute_vat_schedule(
+            vat_payable,
+            reimbursement_lag_periods=config.vat_reimbursement_lag_periods,
+            vat_facility_commitment_keur=fixed_vat_commitment,
+            tolerance_keur=config.convergence_tolerance_keur,
+            horizon_periods=(config.vat_schedule_horizon_periods or None),
+        )
+        _validate_vat_facility_active(
+            vat_schedule, config.timeline, config.convergence_tolerance_keur
+        )
+    else:
+        if any(period.vat_facility_active for period in config.timeline):
+            raise ValueError(
+                "VAT facility is disabled but timeline contains active facility periods"
+            )
+        vat_schedule = tuple(
+            FacilityPeriodState(period=index + 1, vat_payable_keur=payable)
+            for index, payable in enumerate(vat_payable)
+        )
+    effective_vat_commitment_keur = max(
+        (row.vat_requirement_keur + row.vat_undrawn_keur for row in vat_schedule),
+        default=0.0,
     )
-    _validate_vat_facility_active(vat_schedule, config.timeline, config.convergence_tolerance_keur)
     structuring = allocate_structuring_fee(
         config.funding_policy,
         config.structuring_fee_rate * config.structuring_fee_basis_keur,
@@ -747,7 +786,7 @@ def _run_stage_b2_inner(
             for idx, row in enumerate(vat_schedule)
         )
         vat_fee = sum(
-            max(0.0, config.vat_facility_commitment_keur - row.vat_requirement_keur)
+            max(0.0, effective_vat_commitment_keur - row.vat_requirement_keur)
             * config.vat_facility_commitment_fee_rate
             * vat_fractions[idx]
             for idx, row in enumerate(vat_schedule[: config.vat_commitment_fee_active_periods])

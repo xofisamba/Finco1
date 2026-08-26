@@ -127,6 +127,14 @@ _DEFAULT_SCENARIOS: dict[str, Scenario] = {
         description="Base reference scenario.",
         is_base=True,
     ),
+    "Bank": Scenario(
+        name="Bank",
+        description=(
+            "Read-only bank-case route label; debt sizing remains owned by the "
+            "typed FinancingParams.debt_sizing_case contract."
+        ),
+        is_base=True,
+    ),
 }
 
 

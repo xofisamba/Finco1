@@ -441,11 +441,11 @@ class TestCTaxDepreciationSource:
     def test_clean_book_dep_matches_excel(self):
         """book_dep in clean engine matches Excel to SOURCE_ROUNDING tolerance."""
         sys.path.insert(0, ".")
-        from app.project_factories import create_default_oborovo
+        from app.project_factories import create_default_oborovo_legacy_calibration
         from financial_engine.orchestrator import run_operating_model
         from financial_engine.adapters.project_inputs import from_project_inputs
 
-        pi = create_default_oborovo()
+        pi = create_default_oborovo_legacy_calibration()
         omin = from_project_inputs(pi, source_id="c3b1_test", baseline_commit_sha="")
         result = run_operating_model(omin)
         total_book = sum(p.book_depreciation_keur for p in result.periods)
@@ -462,11 +462,11 @@ class TestCTaxDepreciationSource:
         C3B1 source evidence: excel_tax_dep == excel_book_dep for all 28 debt periods.
         """
         sys.path.insert(0, ".")
-        from app.project_factories import create_default_oborovo
+        from app.project_factories import create_default_oborovo_legacy_calibration
         from financial_engine.orchestrator import run_operating_model
         from financial_engine.adapters.project_inputs import from_project_inputs
 
-        pi = create_default_oborovo()
+        pi = create_default_oborovo_legacy_calibration()
         omin = from_project_inputs(pi, source_id="c3b1_test", baseline_commit_sha="")
         result = run_operating_model(omin)
         total_tax = sum(p.tax_depreciation_keur for p in result.periods)
@@ -494,8 +494,8 @@ class TestCTaxDepreciationSource:
         Adapter ignores it and uses hard-CAPEX-only basis.
         Workbook uses book_dep = tax_dep."""
         from finco_core.inputs._models import TaxDepreciationMode
-        from app.project_factories import create_default_oborovo
-        pi = create_default_oborovo()
+        from app.project_factories import create_default_oborovo_legacy_calibration
+        pi = create_default_oborovo_legacy_calibration()
         mode = getattr(pi.tax, "tax_depreciation_mode", None)
         pct = getattr(pi.tax, "tax_deductible_book_dep_pct", None)
         assert mode == TaxDepreciationMode.BOOK_BASED_PERCENTAGE, (
@@ -867,12 +867,12 @@ class TestGTaxYearFragmentation:
     def test_python_tax_year_uses_calendar_year(self):
         """Python build_tax_year_bases splits on Jan 1, not model-year boundary."""
         sys.path.insert(0, ".")
-        from app.project_factories import create_default_oborovo
+        from app.project_factories import create_default_oborovo_legacy_calibration
         from financial_engine.orchestrator import run_operating_model
         from financial_engine.adapters.project_inputs import from_project_inputs
         from financial_engine.tax.tax_year import build_tax_year_bases
 
-        pi = create_default_oborovo()
+        pi = create_default_oborovo_legacy_calibration()
         omin = from_project_inputs(pi, source_id="c3b1_test", baseline_commit_sha="")
         result = run_operating_model(omin)
         bases = build_tax_year_bases(result.periods, {}, {})
@@ -1115,10 +1115,10 @@ class TestJSignConventions:
 class TestKCleanLegacySourceDiagnostic:
     def test_clean_book_dep_matches_excel(self):
         sys.path.insert(0, ".")
-        from app.project_factories import create_default_oborovo
+        from app.project_factories import create_default_oborovo_legacy_calibration
         from financial_engine.orchestrator import run_operating_model
         from financial_engine.adapters.project_inputs import from_project_inputs
-        pi = create_default_oborovo()
+        pi = create_default_oborovo_legacy_calibration()
         omin = from_project_inputs(pi, source_id="c3b1_test", baseline_commit_sha="")
         result = run_operating_model(omin)
         total_book = sum(p.book_depreciation_keur for p in result.periods)
@@ -1129,10 +1129,10 @@ class TestKCleanLegacySourceDiagnostic:
         # Pre-fix C3B1 diagnostic: delta ≈ -1,974 kEUR (hard-CAPEX-only basis).
         # Post-fix: Oborovo tax_dep_basis_source_owned=True → delta ≈ 0.
         sys.path.insert(0, ".")
-        from app.project_factories import create_default_oborovo
+        from app.project_factories import create_default_oborovo_legacy_calibration
         from financial_engine.orchestrator import run_operating_model
         from financial_engine.adapters.project_inputs import from_project_inputs
-        pi = create_default_oborovo()
+        pi = create_default_oborovo_legacy_calibration()
         omin = from_project_inputs(pi, source_id="c3b1_test", baseline_commit_sha="")
         result = run_operating_model(omin)
         total_tax = sum(p.tax_depreciation_keur for p in result.periods)

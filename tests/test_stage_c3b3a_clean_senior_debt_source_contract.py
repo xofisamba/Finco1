@@ -81,11 +81,11 @@ def _oborovo_real_periods() -> tuple[OperatingPeriodResult, ...]:
     Uses: create_default_oborovo() → from_project_inputs() → run_operating_model().
     These 28 semiannual periods start 2030-06-30 and end 2044-06-29 (14-year tenor).
     """
-    from app.project_factories import create_default_oborovo
+    from app.project_factories import create_default_oborovo_legacy_calibration
     from financial_engine.adapters.project_inputs import from_project_inputs
     from financial_engine.orchestrator import run_operating_model
 
-    proj = create_default_oborovo()
+    proj = create_default_oborovo_legacy_calibration()
     model_in = from_project_inputs(proj, source_id="c3b3a-test", baseline_commit_sha="")
     result = run_operating_model(model_in)
     op_only = [p for p in result.periods if p.is_operation]
@@ -1365,7 +1365,7 @@ class TestGroupT_IdentityCloneInvariance:
             build_senior_debt_contract_from_project_inputs,
         )
         from financial_engine.senior_debt.solver import solve_senior_debt
-        from app.project_factories import create_default_oborovo
+        from app.project_factories import create_default_oborovo_legacy_calibration
         from financial_engine.adapters.project_inputs import from_project_inputs
         from financial_engine.orchestrator import run_operating_model
 
@@ -1381,7 +1381,7 @@ class TestGroupT_IdentityCloneInvariance:
         )
 
         # Generic builder path (factory-driven)
-        proj = create_default_oborovo()
+        proj = create_default_oborovo_legacy_calibration()
         model_in = from_project_inputs(proj, source_id="c3b3a-clone-test", baseline_commit_sha="")
         result = run_operating_model(model_in)
         g_policy, g_inputs = build_senior_debt_contract_from_project_inputs(proj, result.periods)
@@ -1410,7 +1410,7 @@ class TestGroupT_IdentityCloneInvariance:
         Economic inputs: unchanged (same rates, DSCR targets, availability, tenor, dates).
         """
         import dataclasses
-        from app.project_factories import create_default_oborovo
+        from app.project_factories import create_default_oborovo_legacy_calibration
         from financial_engine.adapters.project_inputs import from_project_inputs
         from financial_engine.orchestrator import run_operating_model
         from financial_engine.senior_debt.project_adapter import (
@@ -1424,7 +1424,7 @@ class TestGroupT_IdentityCloneInvariance:
         from financial_engine.policies.tax import TaxPolicy, CashTaxTiming
 
         # Build original project
-        proj_orig = create_default_oborovo()
+        proj_orig = create_default_oborovo_legacy_calibration()
 
         # Build renamed clone — mutate ONLY identity fields
         orig_info = proj_orig.info
@@ -1621,11 +1621,11 @@ class TestGroupY_GenericBuilder:
         from financial_engine.senior_debt.project_adapter import (
             build_senior_debt_contract_from_project_inputs,
         )
-        from app.project_factories import create_default_oborovo
+        from app.project_factories import create_default_oborovo_legacy_calibration
         from financial_engine.adapters.project_inputs import from_project_inputs
         from financial_engine.orchestrator import run_operating_model
 
-        proj = create_default_oborovo()
+        proj = create_default_oborovo_legacy_calibration()
         model_in = from_project_inputs(proj, source_id="c3b3a-builder-test", baseline_commit_sha="")
         result = run_operating_model(model_in)
         policy, inputs = build_senior_debt_contract_from_project_inputs(proj, result.periods)
@@ -1636,11 +1636,11 @@ class TestGroupY_GenericBuilder:
         from financial_engine.senior_debt.project_adapter import (
             build_senior_debt_contract_from_project_inputs,
         )
-        from app.project_factories import create_default_oborovo
+        from app.project_factories import create_default_oborovo_legacy_calibration
         from financial_engine.adapters.project_inputs import from_project_inputs
         from financial_engine.orchestrator import run_operating_model
 
-        proj = create_default_oborovo()
+        proj = create_default_oborovo_legacy_calibration()
         model_in = from_project_inputs(proj, source_id="c3b3a-builder-test", baseline_commit_sha="")
         result = run_operating_model(model_in)
         policy, inputs = build_senior_debt_contract_from_project_inputs(proj, result.periods)
@@ -1676,7 +1676,7 @@ class TestGroupY_GenericBuilder:
             build_senior_debt_contract_from_project_inputs,
         )
         from financial_engine.senior_debt.solver import solve_senior_debt
-        from app.project_factories import create_default_oborovo
+        from app.project_factories import create_default_oborovo_legacy_calibration
         from financial_engine.adapters.project_inputs import from_project_inputs
         from financial_engine.orchestrator import run_operating_model
 
@@ -1684,7 +1684,7 @@ class TestGroupY_GenericBuilder:
         periods = _oborovo_real_periods()
         cfads_map = {p.period_index: d["cfads"][p.period_index] for p in periods}
 
-        proj = create_default_oborovo()
+        proj = create_default_oborovo_legacy_calibration()
         model_in = from_project_inputs(proj, source_id="c3b3a-y-test", baseline_commit_sha="")
         result = run_operating_model(model_in)
         g_policy, g_inputs = build_senior_debt_contract_from_project_inputs(proj, result.periods)
@@ -1819,10 +1819,10 @@ class TestGroupAA_PeriodFrequencyFailClosed:
     def _make_proj_with_frequency(self, frequency):
         """Build a create_default_oborovo()-based project with period_frequency overridden."""
         import dataclasses
-        from app.project_factories import create_default_oborovo
+        from app.project_factories import create_default_oborovo_legacy_calibration
         from finco_core.inputs._models import PeriodFrequency
 
-        proj = create_default_oborovo()
+        proj = create_default_oborovo_legacy_calibration()
         new_info = dataclasses.replace(proj.info, period_frequency=frequency)
         return dataclasses.replace(proj, info=new_info)
 

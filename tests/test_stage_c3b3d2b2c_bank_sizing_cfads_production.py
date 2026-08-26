@@ -3376,9 +3376,11 @@ class TestR4_72OpexCalendarPeriodisationCloseout:
 
     @pytest.fixture(scope="class")
     def r4_72_result(self):
-        from app.project_factories import create_default_oborovo
+        from app.project_factories import create_default_oborovo_legacy_calibration
         from finco_recon.bank_sizing_candidates import run_candidate_h_oborovo_r472
-        return run_candidate_h_oborovo_r472(create_default_oborovo)
+        return run_candidate_h_oborovo_r472(
+            create_default_oborovo_legacy_calibration
+        )
 
     # A) Function returns dict
     def test_a_returns_dict(self, r4_72_result):

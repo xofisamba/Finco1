@@ -716,7 +716,9 @@ def derive(fixture_path: pathlib.Path) -> dict:
     try:
         from app import project_factories as _pf
         from finco_core.inputs.senior_rate_schedule import SeniorRateMode
-        _proj = _pf.create_default_oborovo()
+        # This historical source-contract inventory is intentionally bound to
+        # the explicit calibration overlay after canonical Oborovo promotion.
+        _proj = _pf.create_default_oborovo_legacy_calibration()
         _fp = _proj.financing
         _sc = _fp.senior_sculpting_config
         _rc = _fp.senior_debt_interest_config

@@ -80,14 +80,13 @@ jobs:
       - name: Production identity and calibration scan
         shell: bash
         run: |
-          mapfile -t changed_python < <(
-            git diff --name-only \
-              a3a495ac418cece94847a7762e4b742787a3f352...HEAD \
+          changed_python_diff="$(
+            git diff --unified=0 origin/main...HEAD \
               -- app domain finco_core financial_engine \
-            | grep -E '\.py$' || true
-          )
-          if ((${#changed_python[@]})); then
-            ! grep -nHEi \
+            | grep -E '^\+[^+]' || true
+          )"
+          if [[ -n "$changed_python_diff" ]]; then
+            ! grep -nEi \
               'project\.name|project\.code|approved_delta|expected_delta|balancing[_ ]plug|target[_ ]tax|source[_ ]tax[_ ](schedule|vector)|terminal[_ ]tax[_ ]top[_ ]up' \
-              "${changed_python[@]}"
+              <<< "$changed_python_diff"
           fi

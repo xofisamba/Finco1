@@ -13,9 +13,10 @@ import json
 import pytest
 from pathlib import Path
 
-from domain.inputs import ProjectInputs, CapexItem
+from domain.inputs import CapexItem
 from domain.period_engine import PeriodEngine, PeriodFrequency
 from domain.returns.xirr import xirr, xnpv
+from app.project_factories import create_default_oborovo_legacy_calibration
 
 pytestmark = pytest.mark.legacy_excel
 
@@ -33,18 +34,19 @@ def baseline():
 
 @pytest.fixture(scope="module")
 def inputs():
-    """Create default Oborovo project inputs."""
-    return ProjectInputs.create_default_oborovo()
+    """Create the explicit historical Oborovo calibration inputs."""
+    return create_default_oborovo_legacy_calibration()
 
 
 @pytest.fixture(scope="module")
 def engine():
     """Create Oborovo period engine."""
+    project = create_default_oborovo_legacy_calibration()
     return PeriodEngine(
-        financial_close=ProjectInputs.create_default_oborovo().info.financial_close,
-        construction_months=ProjectInputs.create_default_oborovo().info.construction_months,
-        horizon_years=ProjectInputs.create_default_oborovo().info.horizon_years,
-        ppa_years=ProjectInputs.create_default_oborovo().revenue.ppa_term_years,
+        financial_close=project.info.financial_close,
+        construction_months=project.info.construction_months,
+        horizon_years=project.info.horizon_years,
+        ppa_years=project.revenue.ppa_term_years,
         frequency=PeriodFrequency.SEMESTRIAL,
     )
 

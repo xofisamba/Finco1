@@ -47,6 +47,16 @@ from finco_core.inputs.senior_rate_schedule import (
     SeniorRateSchedule,
 )
 from finco_core.inputs.senior_sculpting import SeniorSculptingConfig
+from finco_core.inputs.construction_financing import (
+    ConstructionCapexTimingInput,
+    ConstructionCommitmentFeeInput,
+    ConstructionFinancingInput,
+    ConstructionPeriodSpec,
+    ConstructionSeniorPricingInput,
+    ConstructionStructuringFeeInput,
+    ConstructionVatFacilityInput,
+    VatFacilityCommitmentMode,
+)
 from finco_core.opex.oborovo_config import build_oborovo_opex_capability
 
 
@@ -207,14 +217,14 @@ def create_default_oborovo() -> ProjectInputs:
         #
         # Future: ConstructionFinancingEngine → capitalized_financing_costs →
         # → BookDepreciableAssetBasis (automatically computed from rates/schedules).
-        idc_keur=1086.032,        # DERIVED: Senior Debt IDC (debt draws × rate × day-fraction)
-        commitment_fees_keur=188.563,  # DERIVED: Senior Debt commitment fee (undrawn × rate)
-        bank_fees_keur=477.303,   # DERIVED: Structuring/arrangement fee (rate × facility basis)
+        idc_keur=0.0,
+        commitment_fees_keur=0.0,
+        bank_fees_keur=0.0,
         # vat_costs_keur = VAT-facility FINANCING COSTS only (not construction VAT 7,665 kEUR)
         # = vat_facility_idc_keur (208.448) + vat_facility_commitment_fee_keur (13.622) = 222.070
-        vat_costs_keur=222.070,       # total VAT-facility capitalised financing cost
-        vat_facility_idc_keur=208.448,      # DERIVED: VAT Facility IDC
-        vat_facility_commitment_fee_keur=13.622,  # DERIVED: VAT Facility commitment fee
+        vat_costs_keur=0.0,
+        vat_facility_idc_keur=0.0,
+        vat_facility_commitment_fee_keur=0.0,
         reserve_accounts_keur=0.0,
     )
 
@@ -401,6 +411,126 @@ def create_default_oborovo() -> ProjectInputs:
     # Source: excel_oborovo_debt_interest_truth.json workstream_b.period_vectors.row9_ops_flag
     _OBR_AVAIL_SCHEDULE = (1.0,) * 27 + (0.988950276243094,)
 
+    # Reviewer-confirmed source input facts; no derived workbook series is consumed.
+    _construction_dates = (
+        (date(2029, 6, 29), date(2029, 6, 30)),
+        (date(2029, 7, 1), date(2029, 7, 31)),
+        (date(2029, 8, 1), date(2029, 8, 31)),
+        (date(2029, 9, 1), date(2029, 9, 30)),
+        (date(2029, 10, 1), date(2029, 10, 31)),
+        (date(2029, 11, 1), date(2029, 11, 30)),
+        (date(2029, 12, 1), date(2029, 12, 31)),
+        (date(2030, 1, 1), date(2030, 1, 31)),
+        (date(2030, 2, 1), date(2030, 2, 28)),
+        (date(2030, 3, 1), date(2030, 3, 31)),
+        (date(2030, 4, 1), date(2030, 4, 30)),
+        (date(2030, 5, 1), date(2030, 5, 31)),
+    )
+    _construction_periods = tuple(
+        ConstructionPeriodSpec(
+            start_date=start,
+            end_date=end,
+            active_construction=True,
+            capex_payment_eligible=True,
+            senior_idc_active=index < 11,
+            vat_facility_active=True,
+        )
+        for index, (start, end) in enumerate(_construction_dates)
+    )
+    _vat_tail_dates = (
+        (date(2030, 6, 1), date(2030, 6, 30)),
+        (date(2030, 7, 1), date(2030, 7, 31)),
+        (date(2030, 8, 1), date(2030, 8, 31)),
+        (date(2030, 9, 1), date(2030, 9, 30)),
+        (date(2030, 10, 1), date(2030, 10, 31)),
+        (date(2030, 11, 1), date(2030, 11, 30)),
+    )
+    _vat_periods = _construction_periods + tuple(
+        ConstructionPeriodSpec(
+            start_date=start,
+            end_date=end,
+            active_construction=False,
+            capex_payment_eligible=False,
+            senior_idc_active=False,
+            vat_facility_active=True,
+        )
+        for start, end in _vat_tail_dates
+    )
+    _equal = (1 / 12,) * 12
+    _m1 = (1.0,) + (0.0,) * 11
+    _p10 = (0.0,) * 9 + (1.0,) + (0.0,) * 2
+    _p12 = (0.0,) * 11 + (1.0,)
+    _capex_timing = (
+        ConstructionCapexTimingInput("production_units", "Production Units", _equal, 0.0,
+                                     vat_classification="AGGREGATE_RECONCILIATION_INFERENCE"),
+        ConstructionCapexTimingInput("epc_contract", "EPC Contract", _equal, 0.17),
+        ConstructionCapexTimingInput("epc_other", "EPC Other Costs", _equal, 0.17),
+        ConstructionCapexTimingInput("grid_connection", "Grid Connection", _equal, 0.17),
+        ConstructionCapexTimingInput("ops_prep", "Investments to Prepare Operation Phase", _equal, 0.17),
+        ConstructionCapexTimingInput("audit_legal", "Audit Accounting and Legal Fees", _equal, 0.17),
+        ConstructionCapexTimingInput("insurances", "Insurances", _m1, 0.17),
+        ConstructionCapexTimingInput("lease_tax", "Project Finance Costs at Closing", _m1, 0.17),
+        ConstructionCapexTimingInput("construction_mgmt_a", "Construction Management", _m1, 0.17),
+        ConstructionCapexTimingInput("contingencies", "Contingencies", _m1, 0.17),
+        ConstructionCapexTimingInput("project_rights", "Project Rights", _m1, 0.17),
+        ConstructionCapexTimingInput("commissioning", "Commissioning", _p10, 0.17),
+        ConstructionCapexTimingInput("project_acquisition", "Project Acquisition and Development", _p12, 0.17),
+    )
+    _construction_financing = ConstructionFinancingInput(
+        enabled=True,
+        periods=_construction_periods,
+        capex_items=_capex_timing,
+        senior_pricing=ConstructionSeniorPricingInput(
+            mode=SeniorRateMode.HEDGE_BLEND,
+            fixed_base_rate=0.03,
+            margin_rate=0.0265,
+            hedge_pct=0.80,
+            swap_margin=0.0020,
+            floating_curve_buffer_pct=0.20,
+            floating_base_rate_curve=(
+                0.02996, 0.02930, 0.02865, 0.02806, 0.02750, 0.02700,
+                0.02654, 0.02612, 0.02575, 0.02542, 0.02512, 0.02512,
+            ),
+            day_count=SeniorDayCountConvention.ACT_360,
+        ),
+        commitment_fee=ConstructionCommitmentFeeInput(
+            rate=0.0105,
+            balance_basis="CLOSING_UNDRAWN",
+            capitalization_timing="NEXT_PERIOD",
+        ),
+        structuring_fee=ConstructionStructuringFeeInput(
+            rate=0.01,
+            basis_keur=47_730.2687,
+            payment_weights=_m1,
+        ),
+        vat_facility=ConstructionVatFacilityInput(
+            enabled=True,
+            commitment_mode=VatFacilityCommitmentMode.DERIVED_PEAK_REQUIREMENT,
+            interest_rate=0.0565,
+            commitment_fee_rate=0.009275,
+            periods=_vat_periods,
+            day_count=SeniorDayCountConvention.ACT_360,
+            reimbursement_lag_periods=6,
+            commitment_fee_active_periods=12,
+            financing_cost_payment_weights=(0.25,) + (0.15,) * 5 + (0.0,) * 6,
+        ),
+        shl_accrual_tail_periods=(
+            ConstructionPeriodSpec(
+                start_date=date(2030, 6, 1),
+                end_date=date(2030, 6, 28),
+                active_construction=False,
+                capex_payment_eligible=False,
+                senior_idc_active=False,
+                vat_facility_active=False,
+            ),
+        ),
+        idc_balance_basis="CLOSING_DRAWN",
+        idc_capitalization_timing="NEXT_PERIOD",
+        convergence_tolerance_keur=1e-9,
+        max_iterations=200,
+        vat_deferred=False,
+    )
+
     financing = FinancingParams(
         share_capital_keur=500.0,
         share_premium_keur=0.0,
@@ -424,7 +554,7 @@ def create_default_oborovo() -> ProjectInputs:
         debt_sizing_method="gearing_cap",  # legacy field; clean solver uses debt_sizing_mode
         debt_sizing_mode=DebtSizingMode.FLAT_DSCR_SCULPTED,  # C3B3A: clean DSCR-sculpted solver path
         fixed_debt_keur=42852.26672602787,  # Excel senior debt anchor, Outputs!H11 (legacy; clean solver derives this as output)
-        shl_idc_keur=1169.0,  # C3B3D2A: Excel construction IDC=1169.66 (14620.77×0.08×1.0); rounded here. factory shl_amount_keur=13547.2 conflicts with Excel Inputs!D325=14620.77 (KNOWN_SOURCE_CONFLICT, C3B3D2A_FACTORY_CALIBRATION_REVERSION_PROVEN)
+        shl_idc_keur=0.0,
         shl_tenor_years=20,  # Legacy Python field. Source SHL clears at 2050-06-30 (Excel DS[40]). Source repayment is incremental FCF sweep (DS[25..40]), NOT a contractual bullet. No runtime value change in D2A.
         clean_shl_principal_keur=14620.773894815633,  # C3B3D2B5.2 clean SHL authority: Excel Inputs!D325, separate from legacy baseline-calibrated shl_amount_keur.
         clean_shl_repayment_method=SHLRepaymentMethod.CASH_SWEEP,  # Partial cash/PIK is the natural waterfall outcome; DS25 separately controls principal eligibility.
@@ -432,8 +562,11 @@ def create_default_oborovo() -> ProjectInputs:
         shl_construction_day_count_fraction=1.0,  # Explicit source input; not backsolved from shl_idc_keur.
         shl_principal_eligibility_start_period=25,  # Source DS25 is the first principal repayment period.
         shl_maturity_period_index=40,  # Source DS40 clears the clean SHL balance.
-        use_frozen_excel_senior_debt_schedule=True,  # Phase 23R: frozen path for legacy engine; clean solver ignores this flag
-        frozen_senior_ds_fixture_path="reports/phase23q_oborovo_senior_debt_sizing_extraction.csv",  # Stack AC: capability-driven fixture path
+        use_frozen_excel_senior_debt_schedule=False,
+        frozen_senior_ds_fixture_path=None,
+        sponsor_funding_mode=SponsorFundingMode.SHARE_CAPITAL_THEN_SHL,
+        gearing_basis_mode=GearingBasisMode.TOTAL_PROJECT_USES,
+        construction_financing=_construction_financing,
         senior_debt_interest_config=SeniorDebtInterestConfig(
             enabled=True,
             rate_schedule=SeniorRateSchedule(
@@ -514,6 +647,36 @@ def create_default_oborovo() -> ProjectInputs:
         tax=tax,
         hierarchical_opex_capability=build_oborovo_opex_capability(),
     )
+
+
+def create_default_oborovo_legacy_calibration() -> ProjectInputs:
+    """Return the explicit historical Oborovo calibration overlay.
+
+    Economic inputs are inherited from the canonical factory. Only the frozen
+    legacy authorities needed by the explicit calibration route are restored here.
+    """
+    clean = create_default_oborovo()
+    legacy_capex = replace(
+        clean.capex,
+        idc_keur=1086.032,
+        commitment_fees_keur=188.563,
+        bank_fees_keur=477.303,
+        vat_costs_keur=222.070,
+        vat_facility_idc_keur=208.448,
+        vat_facility_commitment_fee_keur=13.622,
+    )
+    legacy_financing = replace(
+        clean.financing,
+        sponsor_funding_mode=None,
+        gearing_basis_mode=None,
+        construction_financing=None,
+        shl_idc_keur=1169.0,
+        use_frozen_excel_senior_debt_schedule=True,
+        frozen_senior_ds_fixture_path=(
+            "reports/phase23q_oborovo_senior_debt_sizing_extraction.csv"
+        ),
+    )
+    return replace(clean, capex=legacy_capex, financing=legacy_financing)
 
 
 
@@ -1190,6 +1353,7 @@ def create_default_wind_bess_project(
 __all__ = [
     # Golden Excel parity projects — do not modify
     "create_default_oborovo",
+    "create_default_oborovo_legacy_calibration",
     "create_default_tuho_wind1",
     # Demo/test projects (Test 1 and Test 2)
     "create_default_solar_project",  # Test 1 — Solar
