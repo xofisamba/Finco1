@@ -1293,7 +1293,7 @@ class TestRuntimeInventoryFactory:
 
     def test_legacy_layer_fields_match_live_factory(self):
         from app import project_factories
-        proj = project_factories.create_default_oborovo()
+        proj = project_factories.create_default_oborovo_legacy_calibration()
         fp = proj.financing
 
         data = json.loads(FIXTURE_PATH.read_text())
