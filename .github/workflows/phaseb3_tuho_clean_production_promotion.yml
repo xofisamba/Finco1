@@ -1,0 +1,122 @@
+name: Phase B3 - TUHO Clean Production Promotion
+
+on:
+  push:
+    branches:
+      - phaseb3-tuho-clean-production-promotion
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "docs/phaseb3_tuho_clean_production_promotion.md"
+      - "tests/test_phaseb3_tuho_clean_production_promotion_blocker.py"
+      - ".github/workflows/phaseb3_tuho_clean_production_promotion.yml"
+
+jobs:
+  phase-b3-exact-head:
+    name: Phase B3 Exact-Head Evidence Gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact PR head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Verify exact head and Phase B2 ancestry
+        shell: bash
+        run: |
+          EXPECTED="${{ github.event.pull_request.head.sha || github.sha }}"
+          test "$(git rev-parse HEAD)" = "$EXPECTED"
+          git merge-base --is-ancestor \
+            3dbf3a584d941529aec10f5e95d6fd1b9e356fc6 HEAD
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies fail closed
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f constraints.txt ]; then
+            pip install -c constraints.txt -e .
+            pip install -c constraints.txt pytest
+          else
+            pip install -e .
+            pip install pytest
+          fi
+
+      - name: Diff hygiene
+        run: git diff --check 3dbf3a584d941529aec10f5e95d6fd1b9e356fc6...HEAD
+
+      - name: Phase B3 source and fail-closed evidence
+        run: |
+          python -m pytest -q --tb=short \
+            tests/test_phaseb3_tuho_clean_production_promotion_blocker.py \
+            tests/test_interest_limitation_full_horizon_excel_extract.py
+
+      - name: Typed country tax authority
+        run: |
+          python -m pytest -q --tb=short \
+            tests/test_prefreeze_pr10_typed_country_tax_authority.py \
+            tests/test_stage_c3b3c_tax_policy_shl_deductibility.py \
+            tests/test_stage_c3b3d0_tax_identity_atad_decoupling.py
+
+      - name: Phase B1 and B2 production routing
+        run: |
+          python -m pytest -q --tb=short \
+            tests/test_phaseb1_clean_only_production_router.py \
+            tests/test_phaseb2_oborovo_clean_production_promotion.py
+
+      - name: Phase A authority freeze ring
+        run: |
+          python -m pytest -q --tb=short \
+            tests/test_prefreeze_prf1_canonical_period_axis.py \
+            tests/test_prefreeze_pr5_canonical_ebitda_authority.py \
+            tests/test_prefreeze_pr6_typed_shl_repayment_policy.py \
+            tests/test_prefreeze_pr7_typed_base_bank_case_authority.py \
+            tests/test_prefreeze_pr8_single_production_financial_authority.py \
+            tests/test_prefreeze_pr11_g2c_deductible_shl_tax_feedback.py \
+            tests/test_prefreeze_pr12_final_authority_causal_freeze.py
+
+      - name: Typed construction and VAT facility
+        run: |
+          python -m pytest -q --tb=short \
+            tests/test_pr9_typed_construction_idc_authority.py \
+            tests/test_stage_b2_construction_idc_runtime.py \
+            tests/test_oborovo_stageb2_source_parity.py
+
+      - name: G0-G2C clean financial stack
+        run: |
+          python -m pytest -q --tb=short \
+            tests/test_mvp_g0_generic_clean_engine_enablement.py \
+            tests/test_mvp_g1_governance_methodology_lock.py \
+            tests/test_mvp_g2a_financing_stack.py \
+            tests/test_mvp_g2b_sponsor_returns.py \
+            tests/test_mvp_g2c_shareholder_waterfall.py
+
+      - name: Senior SHL authority regressions
+        run: |
+          python -m pytest -q --tb=short \
+            tests/test_stage_c3b3d2b5_shl_fixed_point_integration.py \
+            tests/test_stage_c3b3d2b6_base_post_senior_cash_parity.py \
+            tests/test_stage_c3b3d2b7_bank_case_senior_parity.py \
+            tests/test_stage_c3b3d2b8_base_senior_shl_parity_closure.py
+
+      - name: KUPI causal grid
+        run: python -m pytest -q --tb=short tests/test_kupi_k0_k3_causal_grid.py
+
+      - name: Governance scan
+        shell: bash
+        run: |
+          mapfile -t changed_python < <(
+            git diff --name-only \
+              3dbf3a584d941529aec10f5e95d6fd1b9e356fc6...HEAD \
+              -- app domain finco_core financial_engine \
+            | grep -E '\.py$' || true
+          )
+          if ((${#changed_python[@]})); then
+            ! grep -nHEi \
+              'project\.name|project\.code|approved_delta|expected_delta|balancing[_ ]plug|target[_ -]?fitting|source[_ -]?output[_ -]?replay|terminal[_ ]top[_ ]up|forced[_ ](tax|senior|shl)' \
+              "${changed_python[@]}"
+          fi
