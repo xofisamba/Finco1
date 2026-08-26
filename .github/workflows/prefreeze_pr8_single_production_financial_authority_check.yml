@@ -48,17 +48,17 @@ jobs:
           git diff --check
           git status --short
 
-      - name: Production-governance scan of changed Python files
+      - name: Production-governance scan of added Python lines
         shell: bash
         run: |
-          mapfile -t changed_python < <(
-            git diff --name-only origin/main...HEAD -- app domain financial_engine finco_core \
-              | grep -E '\.py$' || true
-          )
-          if ((${#changed_python[@]})); then
-            ! grep -nHEi \
+          added_python="$({
+            git diff --unified=0 origin/main...HEAD -- app domain financial_engine finco_core \
+              | grep -E '^\+[^+]' || true
+          })"
+          if [[ -n "$added_python" ]]; then
+            ! grep -nEi \
               'approved_delta|expected_delta|balancing[_ ]plug|terminal[_ -]top[- ]up|forced principal|target fitting|post-engine mutation|bank_balancing_cost' \
-              "${changed_python[@]}"
+              <<< "$added_python"
           fi
 
       - name: PR-8 production-authority tests

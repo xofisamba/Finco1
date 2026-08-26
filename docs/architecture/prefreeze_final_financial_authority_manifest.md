@@ -195,7 +195,7 @@ Waterfall      = run_project_shareholder_waterfall_model
 - `run_project("Oborovo", "Base"/"Bank")` executes one clean G2C calculation and zero legacy calculations.
 - Typed `SHARE_CAPITAL_THEN_SHL` and `TOTAL_PROJECT_USES` policies close the sponsor Sources/Uses identity.
 - `ConstructionFinancingInput` owns the typed construction calendar, Senior pricing, commitment fee, structuring fee, and capitalization timing.
-- `ConstructionVatFacilityInput` owns causal VAT commitment/rate/fee/date/lag inputs; runtime derives VAT IDC and commitment fee.
+- `ConstructionVatFacilityInput` owns explicit commitment mode plus causal VAT rate/fee/date/lag inputs. Oborovo uses `DERIVED_PEAK_REQUIREMENT`; runtime derives the effective commitment, VAT IDC, and commitment fee from item-level CAPEX timing.
 - Manual derived construction/VAT cost fields are zero on the production snapshot.
 - Frozen Senior schedule and report fixture paths exist only in `create_default_oborovo_legacy_calibration()`.
 - Source evidence remains validation-only; production imports no construction source-parity module and consumes no source output vectors.

@@ -55,6 +55,7 @@ from finco_core.inputs.construction_financing import (
     ConstructionSeniorPricingInput,
     ConstructionStructuringFeeInput,
     ConstructionVatFacilityInput,
+    VatFacilityCommitmentMode,
 )
 from finco_core.opex.oborovo_config import build_oborovo_opex_capability
 
@@ -410,7 +411,7 @@ def create_default_oborovo() -> ProjectInputs:
     # Source: excel_oborovo_debt_interest_truth.json workstream_b.period_vectors.row9_ops_flag
     _OBR_AVAIL_SCHEDULE = (1.0,) * 27 + (0.988950276243094,)
 
-    # Reviewer-confirmed source INPUT facts. No source output vector is consumed.
+    # Reviewer-confirmed source input facts; no derived workbook series is consumed.
     _construction_dates = (
         (date(2029, 6, 29), date(2029, 6, 30)),
         (date(2029, 7, 1), date(2029, 7, 31)),
@@ -504,7 +505,7 @@ def create_default_oborovo() -> ProjectInputs:
         ),
         vat_facility=ConstructionVatFacilityInput(
             enabled=True,
-            commitment_keur=4_877.989945,
+            commitment_mode=VatFacilityCommitmentMode.DERIVED_PEAK_REQUIREMENT,
             interest_rate=0.0565,
             commitment_fee_rate=0.009275,
             periods=_vat_periods,

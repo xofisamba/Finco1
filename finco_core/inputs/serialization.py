@@ -175,7 +175,8 @@ def _ser_construction_financing(cf: ConstructionFinancingInput | None) -> dict |
         "vat_facility": (
             {
                 "enabled": cf.vat_facility.enabled,
-                "commitment_keur": cf.vat_facility.commitment_keur,
+                "commitment_mode": cf.vat_facility.commitment_mode.value,
+                "fixed_commitment_keur": cf.vat_facility.fixed_commitment_keur,
                 "interest_rate": cf.vat_facility.interest_rate,
                 "commitment_fee_rate": cf.vat_facility.commitment_fee_rate,
                 "periods": [
@@ -281,12 +282,20 @@ def _deser_construction_financing(d: dict | None) -> ConstructionFinancingInput 
         )
         if sf_d is not None else None
     )
-    from finco_core.inputs.construction_financing import ConstructionVatFacilityInput
+    from finco_core.inputs.construction_financing import (
+        ConstructionVatFacilityInput,
+        VatFacilityCommitmentMode,
+    )
     vf_d = d.get("vat_facility")
+    if vf_d is not None and "commitment_mode" not in vf_d:
+        if "commitment_keur" in vf_d:
+            raise ValueError("PR9_LEGACY_VAT_COMMITMENT_AUTHORITY_AMBIGUOUS")
+        raise ValueError("PR9_VAT_COMMITMENT_MODE_REQUIRED")
     vat_facility = (
         ConstructionVatFacilityInput(
             enabled=vf_d.get("enabled", False),
-            commitment_keur=vf_d.get("commitment_keur", 0.0),
+            commitment_mode=VatFacilityCommitmentMode(vf_d["commitment_mode"]),
+            fixed_commitment_keur=vf_d.get("fixed_commitment_keur"),
             interest_rate=vf_d.get("interest_rate", 0.0),
             commitment_fee_rate=vf_d.get("commitment_fee_rate", 0.0),
             periods=tuple(

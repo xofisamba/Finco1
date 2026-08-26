@@ -150,6 +150,10 @@ class ConstructionFinancingResult:
     vat_undrawn_keur: tuple[float, ...] = ()
     vat_idc_keur: float = 0.0
     vat_commitment_fee_keur: float = 0.0
+    vat_commitment_mode: str = "DISABLED"
+    vat_effective_commitment_keur: float = 0.0
+    vat_peak_requirement_keur: float = 0.0
+    vat_peak_requirement_period: int = 0
     vat_authority: str = "TYPED_CONSTRUCTION_VAT_FACILITY_DISABLED"
     # Authority token
     authority: str = "PR9_TYPED_CONSTRUCTION_FINANCING_IDC_AUTHORITY"

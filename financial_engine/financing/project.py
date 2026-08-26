@@ -808,6 +808,26 @@ def _run_with_construction_idc(
         vat_undrawn_keur=tuple(row.vat_undrawn_keur for row in b2.vat_schedule),
         vat_idc_keur=b2.capitalized_financing_costs.vat_idc_keur,
         vat_commitment_fee_keur=b2.capitalized_financing_costs.vat_commitment_fee_keur,
+        vat_commitment_mode=(
+            cf.vat_facility.commitment_mode.value
+            if cf.vat_facility is not None and cf.vat_facility.enabled
+            else "DISABLED"
+        ),
+        vat_effective_commitment_keur=max(
+            (
+                row.vat_requirement_keur + row.vat_undrawn_keur
+                for row in b2.vat_schedule
+            ),
+            default=0.0,
+        ),
+        vat_peak_requirement_keur=max(
+            (row.vat_requirement_keur for row in b2.vat_schedule), default=0.0
+        ),
+        vat_peak_requirement_period=max(
+            b2.vat_schedule,
+            key=lambda row: row.vat_requirement_keur,
+            default=None,
+        ).period if b2.vat_schedule else 0,
         vat_authority=(
             "TYPED_CONSTRUCTION_VAT_FACILITY_AUTHORITY"
             if cf.vat_facility is not None and cf.vat_facility.enabled

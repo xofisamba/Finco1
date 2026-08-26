@@ -199,6 +199,7 @@ def build_construction_runtime_config(
     vat_interest_rate = 0.0
     vat_commitment_fee_rate = 0.0
     vat_commitment = 0.0
+    vat_commitment_mode = "DERIVED_PEAK_REQUIREMENT"
     vat_lag = 6
     vat_horizon = 0
     vat_commitment_periods = 0
@@ -212,7 +213,8 @@ def build_construction_runtime_config(
         vat_financing_weights = vat.financing_cost_payment_weights
         vat_interest_rate = vat.interest_rate
         vat_commitment_fee_rate = vat.commitment_fee_rate
-        vat_commitment = vat.commitment_keur
+        vat_commitment_mode = vat.commitment_mode.value
+        vat_commitment = vat.fixed_commitment_keur or 0.0
         vat_lag = vat.reimbursement_lag_periods
         vat_horizon = len(vat.periods)
         vat_commitment_periods = vat.commitment_fee_active_periods
@@ -248,6 +250,7 @@ def build_construction_runtime_config(
         vat_facility_interest_rate=vat_interest_rate,
         vat_facility_commitment_fee_rate=vat_commitment_fee_rate,
         vat_facility_commitment_keur=vat_commitment,
+        vat_facility_commitment_mode=vat_commitment_mode,
         vat_facility_enabled=bool(vat is not None and vat.enabled),
         vat_interest_period_fractions=vat_interest_fractions,
         vat_reimbursement_lag_periods=vat_lag,

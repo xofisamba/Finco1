@@ -15,9 +15,17 @@ from app.services.production_financial_authority import (
     ProductionAuthorityClassification,
     classify_production_authority,
 )
-from financial_engine.construction.adapter import build_construction_runtime_config
+from financial_engine.construction.adapter import (
+    build_construction_runtime_config,
+    resolve_capex_amounts_from_capex_structure,
+)
 from financial_engine.financing.project import run_project_financing_model
-from finco_core.construction import run_stage_b2
+from finco_core.construction import (
+    FundingShortfallError,
+    compute_vat_schedule,
+    run_stage_b2,
+    vat_monthly_uses,
+)
 from finco_core.inputs import (
     ConstructionCapexTimingInput,
     ConstructionFinancingInput,
@@ -26,6 +34,7 @@ from finco_core.inputs import (
     ConstructionVatFacilityInput,
     GearingBasisMode,
     SponsorFundingMode,
+    VatFacilityCommitmentMode,
     project_inputs_from_dict,
     project_inputs_to_dict,
 )
@@ -53,6 +62,24 @@ def test_oborovo_promotes_naturally_from_typed_inputs():
     assert project.financing.frozen_senior_ds_fixture_path is None
     assert project.financing.construction_financing.enabled is True
     assert project.financing.construction_financing.vat_facility.enabled is True
+    vat_items = project.financing.construction_financing.capex_items
+    assert {item.code for item in vat_items if item.vat_rate == 0.17} == {
+        "epc_contract",
+        "epc_other",
+        "grid_connection",
+        "ops_prep",
+        "audit_legal",
+        "insurances",
+        "lease_tax",
+        "construction_mgmt_a",
+        "contingencies",
+        "project_rights",
+        "commissioning",
+        "project_acquisition",
+    }
+    assert {item.code for item in vat_items if item.vat_rate == 0.0} == {
+        "production_units"
+    }
 
 
 def test_clean_snapshot_has_no_manual_derived_construction_cost_authority():
@@ -86,6 +113,12 @@ def test_oborovo_typed_construction_and_vat_audit(oborovo_financing):
 
     assert construction.authority == "PR9_TYPED_CONSTRUCTION_FINANCING_IDC_AUTHORITY"
     assert construction.vat_authority == "TYPED_CONSTRUCTION_VAT_FACILITY_AUTHORITY"
+    assert construction.vat_commitment_mode == "DERIVED_PEAK_REQUIREMENT"
+    assert construction.vat_effective_commitment_keur == pytest.approx(
+        construction.vat_peak_requirement_keur, abs=1e-9
+    )
+    assert construction.vat_peak_requirement_period == 6
+    assert sum(construction.vat_payable_keur) == pytest.approx(7664.685535, abs=1e-9)
     assert construction.final_total_project_uses_keur == pytest.approx(57973.042280034315, abs=1e-6)
     assert construction.final_senior_commitment_keur == pytest.approx(42852.302723344226, abs=1e-6)
     assert sum(construction.senior_idc_accrual_keur) == pytest.approx(1086.0191130858313, abs=1e-6)
@@ -132,15 +165,32 @@ def _periods(n: int, *, vat_active: bool) -> tuple[ConstructionPeriodSpec, ...]:
     return tuple(rows)
 
 
-def _synthetic_vat_result(*, n: int, vat_rate: float, facility_rate: float, fee_rate: float = 0.0, enabled: bool = True):
+def _synthetic_vat_result(
+    *,
+    n: int,
+    vat_rate: float,
+    facility_rate: float,
+    fee_rate: float = 0.0,
+    enabled: bool = True,
+    reimbursement_lag: int = 2,
+    taxable_amount: float = 1_000.0,
+    exempt_amount: float = 250.0,
+    exempt_vat_rate: float = 0.0,
+    taxable_weights: tuple[float, ...] | None = None,
+    commitment_mode: VatFacilityCommitmentMode = (
+        VatFacilityCommitmentMode.DERIVED_PEAK_REQUIREMENT
+    ),
+    fixed_commitment_keur: float | None = None,
+):
     construction_periods = _periods(n, vat_active=enabled)
-    facility_periods = _periods(n + 2, vat_active=enabled)
+    facility_periods = _periods(n + reimbursement_lag, vat_active=enabled)
+    taxable_weights = taxable_weights or (1 / n,) * n
     input_contract = ConstructionFinancingInput(
         enabled=True,
         periods=construction_periods,
         capex_items=(
-            ConstructionCapexTimingInput("taxable", "Taxable", (1 / n,) * n, vat_rate),
-            ConstructionCapexTimingInput("exempt", "Exempt", (1 / n,) * n, 0.0),
+            ConstructionCapexTimingInput("taxable", "Taxable", taxable_weights, vat_rate),
+            ConstructionCapexTimingInput("exempt", "Exempt", (1 / n,) * n, exempt_vat_rate),
         ),
         senior_pricing=ConstructionSeniorPricingInput(
             mode=SeniorRateMode.FLAT_ALL_IN,
@@ -149,11 +199,12 @@ def _synthetic_vat_result(*, n: int, vat_rate: float, facility_rate: float, fee_
         ),
         vat_facility=ConstructionVatFacilityInput(
             enabled=enabled,
-            commitment_keur=500.0 if enabled else 0.0,
+            commitment_mode=commitment_mode,
+            fixed_commitment_keur=fixed_commitment_keur if enabled else None,
             interest_rate=facility_rate if enabled else 0.0,
             commitment_fee_rate=fee_rate if enabled else 0.0,
             periods=facility_periods if enabled else (),
-            reimbursement_lag_periods=2,
+            reimbursement_lag_periods=reimbursement_lag,
             commitment_fee_active_periods=n if enabled else 0,
             financing_cost_payment_weights=(
                 (1.0,) + (0.0,) * (n - 1) if enabled else ()
@@ -165,7 +216,7 @@ def _synthetic_vat_result(*, n: int, vat_rate: float, facility_rate: float, fee_
         senior_commitment_keur=2_000.0,
         equity_available_keur=0.0,
         shl_available_keur=0.0,
-        capex_amounts_keur={"taxable": 1_000.0, "exempt": 250.0},
+        capex_amounts_keur={"taxable": taxable_amount, "exempt": exempt_amount},
     )
     return run_stage_b2(config)
 
@@ -231,11 +282,125 @@ def test_typed_vat_contract_rejects_truncated_reimbursement_tail():
             ),
             vat_facility=ConstructionVatFacilityInput(
                 enabled=True,
-                commitment_keur=500.0,
                 periods=_periods(3, vat_active=True),
                 reimbursement_lag_periods=2,
                 financing_cost_payment_weights=(1.0, 0.0),
             ),
+        )
+
+
+def test_oborovo_vat_commitment_is_derived_from_item_payment_timing():
+    project = create_default_oborovo()
+    construction = project.financing.construction_financing
+    facility = construction.vat_facility
+    assert facility.commitment_mode is VatFacilityCommitmentMode.DERIVED_PEAK_REQUIREMENT
+    assert facility.fixed_commitment_keur is None
+
+    capex_amounts = resolve_capex_amounts_from_capex_structure(
+        construction.capex_items, project.capex
+    )
+
+    def vat_schedule(contract):
+        config = build_construction_runtime_config(
+            contract,
+            senior_commitment_keur=100_000.0,
+            equity_available_keur=0.0,
+            shl_available_keur=0.0,
+            capex_amounts_keur=capex_amounts,
+        )
+        payable = vat_monthly_uses(config.capex_schedule)
+        return payable, compute_vat_schedule(
+            payable,
+            reimbursement_lag_periods=facility.reimbursement_lag_periods,
+            horizon_periods=len(facility.periods),
+        )
+
+    base_payable, base_schedule = vat_schedule(construction)
+    items = list(construction.capex_items)
+    epc_index = next(i for i, item in enumerate(items) if item.code == "epc_contract")
+    items[epc_index] = replace(
+        items[epc_index], payment_weights=(1.0,) + (0.0,) * 11
+    )
+    mutated_construction = replace(construction, capex_items=tuple(items))
+    mutated_payable, mutated_schedule = vat_schedule(mutated_construction)
+
+    assert mutated_payable != base_payable
+    assert max(row.vat_requirement_keur for row in mutated_schedule) != pytest.approx(
+        max(row.vat_requirement_keur for row in base_schedule), abs=1e-9
+    )
+
+
+def test_generic_vat_applicability_amount_timing_and_lag_are_causal():
+    base = _synthetic_vat_result(n=4, vat_rate=0.17, facility_rate=0.05)
+    taxable_exempt = _synthetic_vat_result(
+        n=4, vat_rate=0.0, facility_rate=0.05
+    )
+    formerly_exempt_taxable = _synthetic_vat_result(
+        n=4, vat_rate=0.17, exempt_vat_rate=0.17, facility_rate=0.05
+    )
+    larger = _synthetic_vat_result(
+        n=4, vat_rate=0.17, taxable_amount=1_500.0, facility_rate=0.05
+    )
+    front_loaded = _synthetic_vat_result(
+        n=4,
+        vat_rate=0.17,
+        facility_rate=0.05,
+        taxable_weights=(1.0, 0.0, 0.0, 0.0),
+    )
+    back_loaded = _synthetic_vat_result(
+        n=4,
+        vat_rate=0.17,
+        facility_rate=0.05,
+        taxable_weights=(0.0, 0.0, 0.0, 1.0),
+    )
+    longer_lag = _synthetic_vat_result(
+        n=4, vat_rate=0.17, facility_rate=0.05, reimbursement_lag=3
+    )
+
+    peak = lambda result: max(row.vat_requirement_keur for row in result.vat_schedule)
+    assert peak(taxable_exempt) < peak(base)
+    assert peak(formerly_exempt_taxable) > peak(base)
+    assert peak(larger) > peak(base)
+    assert tuple(row.vat_requirement_keur for row in front_loaded.vat_schedule) != (
+        tuple(row.vat_requirement_keur for row in back_loaded.vat_schedule)
+    )
+    assert peak(longer_lag) >= peak(base)
+
+
+def test_generic_fixed_vat_commitment_capacity_and_fee_semantics():
+    derived = _synthetic_vat_result(
+        n=4, vat_rate=0.17, facility_rate=0.04, fee_rate=0.01
+    )
+    peak = max(row.vat_requirement_keur for row in derived.vat_schedule)
+    exact = _synthetic_vat_result(
+        n=4,
+        vat_rate=0.17,
+        facility_rate=0.04,
+        fee_rate=0.01,
+        commitment_mode=VatFacilityCommitmentMode.FIXED_COMMITMENT,
+        fixed_commitment_keur=peak,
+    )
+    above = _synthetic_vat_result(
+        n=4,
+        vat_rate=0.17,
+        facility_rate=0.04,
+        fee_rate=0.01,
+        commitment_mode=VatFacilityCommitmentMode.FIXED_COMMITMENT,
+        fixed_commitment_keur=peak + 100.0,
+    )
+    assert tuple(row.vat_requirement_keur for row in exact.vat_schedule) == pytest.approx(
+        tuple(row.vat_requirement_keur for row in derived.vat_schedule)
+    )
+    assert above.capitalized_financing_costs.vat_commitment_fee_keur > (
+        exact.capitalized_financing_costs.vat_commitment_fee_keur
+    )
+    with pytest.raises(FundingShortfallError, match="VAT facility commitment breached"):
+        _synthetic_vat_result(
+            n=4,
+            vat_rate=0.17,
+            facility_rate=0.04,
+            commitment_mode=VatFacilityCommitmentMode.FIXED_COMMITMENT,
+            fixed_commitment_keur=peak - 1.0,
         )
 
 
@@ -294,6 +459,12 @@ def test_clean_production_does_not_read_frozen_senior_fixture(monkeypatch):
     )
     assert payload["runtime_authority"]["vat_facility_authority"] == (
         "TYPED_CONSTRUCTION_VAT_FACILITY_AUTHORITY"
+    )
+    assert payload["runtime_authority"]["vat_facility_commitment_mode"] == (
+        "DERIVED_PEAK_REQUIREMENT"
+    )
+    assert payload["runtime_authority"]["vat_effective_commitment_keur"] == (
+        pytest.approx(4_877.989945, abs=1e-9)
     )
 
 
@@ -415,6 +586,69 @@ def test_typed_vat_contract_round_trips_without_output_authority():
     assert restored.financing.construction_financing == project.financing.construction_financing
     assert restored.capex.vat_facility_idc_keur == 0.0
     assert restored.capex.vat_facility_commitment_fee_keur == 0.0
+
+
+def test_vat_commitment_modes_round_trip_and_legacy_payload_fails_closed():
+    project = create_default_oborovo()
+    construction = project.financing.construction_financing
+
+    derived_payload = project_inputs_to_dict(project)
+    derived = project_inputs_from_dict(derived_payload)
+    assert (
+        derived.financing.construction_financing.vat_facility.commitment_mode
+        is VatFacilityCommitmentMode.DERIVED_PEAK_REQUIREMENT
+    )
+
+    fixed_facility = replace(
+        construction.vat_facility,
+        commitment_mode=VatFacilityCommitmentMode.FIXED_COMMITMENT,
+        fixed_commitment_keur=6_000.0,
+    )
+    fixed_project = replace(
+        project,
+        financing=replace(
+            project.financing,
+            construction_financing=replace(
+                construction, vat_facility=fixed_facility
+            ),
+        ),
+    )
+    fixed = project_inputs_from_dict(project_inputs_to_dict(fixed_project))
+    assert fixed.financing.construction_financing.vat_facility == fixed_facility
+
+    inactive_periods = tuple(
+        replace(period, vat_facility_active=False)
+        for period in construction.periods
+    )
+    disabled_construction = replace(
+        construction,
+        periods=inactive_periods,
+        vat_facility=ConstructionVatFacilityInput(),
+    )
+    disabled_project = replace(
+        project,
+        financing=replace(
+            project.financing, construction_financing=disabled_construction
+        ),
+    )
+    disabled = project_inputs_from_dict(project_inputs_to_dict(disabled_project))
+    assert disabled.financing.construction_financing.vat_facility.enabled is False
+
+    ambiguous_payload = project_inputs_to_dict(project)
+    vat_payload = ambiguous_payload["financing"]["construction_financing"]["vat_facility"]
+    vat_payload.pop("commitment_mode")
+    vat_payload["commitment_keur"] = 4_877.989945
+    with pytest.raises(
+        ValueError, match="PR9_LEGACY_VAT_COMMITMENT_AUTHORITY_AMBIGUOUS"
+    ):
+        project_inputs_from_dict(ambiguous_payload)
+
+
+def test_clean_oborovo_factory_has_no_derived_peak_commitment_literal():
+    factory_text = (
+        Path(__file__).resolve().parents[1] / "app" / "project_factories.py"
+    ).read_text(encoding="utf-8")
+    assert "4_877.989945" not in factory_text
 
 
 def test_production_modules_do_not_import_source_parity_or_fixture_outputs():

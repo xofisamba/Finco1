@@ -18,6 +18,7 @@ typed facility calendar; capitalized VAT costs are outputs, never inputs.
 from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import date, timedelta
+from enum import Enum
 
 from finco_core._numeric import require_bool, require_finite_real, require_positive_int
 from finco_core.inputs.senior_rate_schedule import SeniorRateMode, SeniorDayCountConvention
@@ -245,12 +246,22 @@ class ConstructionCapexTimingInput:
                 raise ValueError(f"PR9_INVALID_PROVENANCE: unsupported {name}")
 
 
+class VatFacilityCommitmentMode(str, Enum):
+    """Authority for sizing the VAT working-capital facility."""
+
+    DERIVED_PEAK_REQUIREMENT = "DERIVED_PEAK_REQUIREMENT"
+    FIXED_COMMITMENT = "FIXED_COMMITMENT"
+
+
 @dataclass(frozen=True)
 class ConstructionVatFacilityInput:
     """Optional VAT working-capital facility built only from causal inputs."""
 
     enabled: bool = False
-    commitment_keur: float = 0.0
+    commitment_mode: VatFacilityCommitmentMode = (
+        VatFacilityCommitmentMode.DERIVED_PEAK_REQUIREMENT
+    )
+    fixed_commitment_keur: float | None = None
     interest_rate: float = 0.0
     commitment_fee_rate: float = 0.0
     periods: tuple[ConstructionPeriodSpec, ...] = field(default_factory=tuple)
@@ -262,9 +273,18 @@ class ConstructionVatFacilityInput:
 
     def __post_init__(self) -> None:
         require_bool("vat_facility.enabled", self.enabled, error_code=_NUMERIC_ERROR)
-        for name in ("commitment_keur", "interest_rate", "commitment_fee_rate"):
+        if not isinstance(self.commitment_mode, VatFacilityCommitmentMode):
+            raise ValueError("PR9_INVALID_VAT_COMMITMENT_MODE")
+        for name in ("interest_rate", "commitment_fee_rate"):
             require_finite_real(
                 f"vat_facility.{name}", getattr(self, name), minimum=0.0,
+                error_code=_NUMERIC_ERROR,
+            )
+        if self.fixed_commitment_keur is not None:
+            require_finite_real(
+                "vat_facility.fixed_commitment_keur",
+                self.fixed_commitment_keur,
+                minimum=0.0,
                 error_code=_NUMERIC_ERROR,
             )
         for name in ("interest_rate", "commitment_fee_rate"):
@@ -283,7 +303,9 @@ class ConstructionVatFacilityInput:
             self.financing_cost_payment_weights,
         )
         if not self.enabled:
-            if any((self.commitment_keur, self.interest_rate, self.commitment_fee_rate)) or (
+            if self.fixed_commitment_keur is not None or any(
+                (self.interest_rate, self.commitment_fee_rate)
+            ) or (
                 self.periods
                 or self.commitment_fee_active_periods
                 or self.financing_cost_payment_weights
@@ -292,8 +314,11 @@ class ConstructionVatFacilityInput:
             return
         if not self.periods:
             raise ValueError("PR9_VAT_FACILITY_ENABLED_NO_PERIODS")
-        if self.commitment_keur <= 0.0:
-            raise ValueError("PR9_VAT_FACILITY_ENABLED_NO_COMMITMENT")
+        if self.commitment_mode is VatFacilityCommitmentMode.DERIVED_PEAK_REQUIREMENT:
+            if self.fixed_commitment_keur is not None:
+                raise ValueError("PR9_DERIVED_VAT_MODE_FORBIDS_FIXED_COMMITMENT")
+        elif self.fixed_commitment_keur is None or self.fixed_commitment_keur <= 0.0:
+            raise ValueError("PR9_FIXED_VAT_MODE_REQUIRES_POSITIVE_COMMITMENT")
         if self.commitment_fee_active_periods > len(self.periods):
             raise ValueError("PR9_VAT_COMMITMENT_FEE_PERIODS_EXCEED_HORIZON")
         for index, period in enumerate(self.periods):
@@ -474,5 +499,6 @@ __all__ = [
     "ConstructionPeriodSpec",
     "ConstructionCapexTimingInput",
     "ConstructionVatFacilityInput",
+    "VatFacilityCommitmentMode",
     "ConstructionFinancingInput",
 ]

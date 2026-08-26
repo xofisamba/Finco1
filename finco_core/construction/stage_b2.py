@@ -123,6 +123,7 @@ class ConstructionRuntimeConfig:
     vat_facility_interest_rate: float = 0.0
     vat_facility_commitment_fee_rate: float = 0.0
     vat_facility_commitment_keur: float = 0.0
+    vat_facility_commitment_mode: str = "FIXED_COMMITMENT"
     vat_facility_enabled: bool = True  # low-level compatibility; typed adapter is explicit
     vat_interest_period_fractions: tuple[float, ...] = field(default_factory=tuple)
     vat_reimbursement_lag_periods: int = 6
@@ -203,6 +204,11 @@ def _validate_runtime_config(config: ConstructionRuntimeConfig) -> None:
     require_bool(
         "vat_facility_enabled", config.vat_facility_enabled, error_code=error
     )
+    if config.vat_facility_commitment_mode not in {
+        "DERIVED_PEAK_REQUIREMENT",
+        "FIXED_COMMITMENT",
+    }:
+        raise ValueError("STAGE_B2_INVALID_VAT_COMMITMENT_MODE")
 
     non_negative_scalars = {
         "equity_available_keur": config.equity_available_keur,
@@ -700,10 +706,15 @@ def _run_stage_b2_inner(
     n_periods = len(hard_capex) if hard_capex else len(config.timeline)
     _validate_capex_timeline(hard_capex, vat_payable, config.timeline, config.convergence_tolerance_keur)
     if config.vat_facility_enabled:
+        fixed_vat_commitment = (
+            config.vat_facility_commitment_keur
+            if config.vat_facility_commitment_mode == "FIXED_COMMITMENT"
+            else None
+        )
         vat_schedule = compute_vat_schedule(
             vat_payable,
             reimbursement_lag_periods=config.vat_reimbursement_lag_periods,
-            vat_facility_commitment_keur=config.vat_facility_commitment_keur,
+            vat_facility_commitment_keur=fixed_vat_commitment,
             tolerance_keur=config.convergence_tolerance_keur,
             horizon_periods=(config.vat_schedule_horizon_periods or None),
         )
@@ -719,6 +730,10 @@ def _run_stage_b2_inner(
             FacilityPeriodState(period=index + 1, vat_payable_keur=payable)
             for index, payable in enumerate(vat_payable)
         )
+    effective_vat_commitment_keur = max(
+        (row.vat_requirement_keur + row.vat_undrawn_keur for row in vat_schedule),
+        default=0.0,
+    )
     structuring = allocate_structuring_fee(
         config.funding_policy,
         config.structuring_fee_rate * config.structuring_fee_basis_keur,
@@ -771,7 +786,7 @@ def _run_stage_b2_inner(
             for idx, row in enumerate(vat_schedule)
         )
         vat_fee = sum(
-            max(0.0, config.vat_facility_commitment_keur - row.vat_requirement_keur)
+            max(0.0, effective_vat_commitment_keur - row.vat_requirement_keur)
             * config.vat_facility_commitment_fee_rate
             * vat_fractions[idx]
             for idx, row in enumerate(vat_schedule[: config.vat_commitment_fee_active_periods])

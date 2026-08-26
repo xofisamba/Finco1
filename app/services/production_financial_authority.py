@@ -298,6 +298,8 @@ def run_clean_production(
         metadata.update(
             construction_authority=construction.authority,
             vat_facility_authority=construction.vat_authority,
+            vat_facility_commitment_mode=construction.vat_commitment_mode,
+            vat_effective_commitment_keur=construction.vat_effective_commitment_keur,
         )
     return CleanProductionRun(
         g2c_result=g2c,

@@ -72,7 +72,8 @@ facts; no source draw, IDC, fee, or Total Uses output vector is consumed.
 
 | Input | Oborovo value |
 |---|---:|
-| Commitment | 4,877.989945 kEUR |
+| Commitment mode | `DERIVED_PEAK_REQUIREMENT` |
+| Fixed commitment input | none |
 | Interest rate | 5.65% |
 | Commitment fee | 0.9275% |
 | Day count | ACT/360 |
@@ -82,10 +83,21 @@ facts; no source draw, IDC, fee, or Total Uses output vector is consumed.
 
 Relevant CAPEX classes carry a 17% VAT rate. Production Units are exempt under
 `AGGREGATE_RECONCILIATION_INFERENCE`; this is not represented as direct source
-evidence. Other classifications retain `DIRECT_SOURCE`. A disabled typed VAT
+evidence. Other classifications retain `DIRECT_SOURCE`. The VAT-able basis is
+45,086.3855 kEUR and item-level payment profiles derive total VAT of
+7,664.685535 kEUR. P1 payable is 2,560.7482783333335 kEUR. A six-period lag
+derives reimbursements and the period requirement; the period-6 peak becomes
+the effective commitment. `Inputs!D275` is a presentation link (`=IDC!D67`) to
+that calculated result, not an independent lender commitment.
+
+The generic contract also supports explicit `FIXED_COMMITMENT` only when a
+contractual facility limit is independently supplied. Requirement remains
+calculated from CAPEX timing; a limit below peak raises `FundingShortfallError`.
+A disabled typed VAT
 facility produces no VAT requirement or financing cost even if VAT payable is
 audited. Synthetic non-Oborovo tests prove VAT-rate and facility-rate direction,
-zero VAT behavior, multiple classes, alternate period counts, and fee behavior.
+VAT applicability, CAPEX amount and timing, reimbursement lag, zero VAT,
+fixed-capacity sufficiency, serialization, and fee behavior.
 
 ## Derived construction outputs
 
@@ -105,7 +117,8 @@ The runtime derives:
 | Total capitalized financing costs | 1,973.956780034032 |
 | SHL construction PIK | 1,169.659164535207 |
 
-VAT peak requirement is 4,877.989945 kEUR and terminal requirement is below
+VAT peak requirement and effective derived commitment are 4,877.989945 kEUR
+in period 6; terminal requirement is below
 `1e-9` kEUR. Stage B2 converges in 7 iterations with residual
 `2.1367219105172808e-10` kEUR. Maximum period and cumulative Sources/Uses
 residuals are both zero. The outer financing verification residual is below
@@ -177,6 +190,24 @@ The next Phase B stage should address TUHO's typed tax/financing blockers; it
 must not infer that the generic VAT capability alone makes TUHO promotable.
 
 ## Governance classification
+
+Historical workflow failures observed at the pre-correction head were not
+resolved by changing source values, tolerances, fixtures, or goldens:
+
+| Workflow group | Classification | Narrow resolution |
+|---|---|---|
+| B1, PR-7, PR-8, PR-11, PR-12 | `STALE_GOVERNANCE_SCAN` | Scan only Python lines added by the current PR, retaining the same forbidden patterns. |
+| C3B3A, B5, B6 | `LEGACY_CALIBRATION_CONTRACT` | Bind the historical Senior source-contract harness and its inventory derivation to `create_default_oborovo_legacy_calibration()`. |
+| B7, B8 | `LEGACY_CALIBRATION_CONTRACT` | Bind the immutable R4.7.2 source-replay oracle to the explicit legacy factory. |
+| G1, Phase 51F parity | `LEGACY_CALIBRATION_CONTRACT` | The historical Oborovo output golden now runs through the explicit legacy factory; golden values are unchanged. |
+| PR-9 Oborovo parity | `LEGACY_CALIBRATION_CONTRACT` | The `legacy_excel` baseline fixture now uses the explicit legacy factory. |
+| PR-10, PR-F1, PR-6 | `LEGACY_CALIBRATION_CONTRACT` | Their C3A/C3B1 and B8 historical source regressions use the explicit legacy seam. |
+| PR-5 canonical EBITDA | `STALE_GOVERNANCE_SCAN` | The Phase 57A-8 test retains its waterfall guard but no longer applies PR #504's factory-scope prohibition to later approved CAPEX phases. |
+
+The dedicated B2 suite, current canonical authority tests, and generic
+fingerprints remain production-facing. Historical Excel locks remain active
+against the explicit legacy seam; none is deleted, skipped, loosened, or
+recalibrated.
 
 `OBOROVO_CLEAN_G2C_AUTHORITY`
 `OBOROVO_FROZEN_SENIOR_PRODUCTION_AUTHORITY_REMOVED`

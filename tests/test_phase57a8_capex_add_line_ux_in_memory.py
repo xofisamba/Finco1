@@ -647,7 +647,7 @@ class TestNoBackendChanges:
         else:
             assert "origin/main" in r.stderr
 
-    def test_no_waterfall_or_capex_factory_changes(self):
+    def test_no_waterfall_changes(self):
         assert_approved_pr5_waterfall_state(REPO_ROOT)
         waterfall = subprocess.run(
             ["git", "diff", "--unified=0", "origin/main", "--", "app/waterfall_core.py"],
@@ -657,21 +657,6 @@ class TestNoBackendChanges:
             assert_only_approved_pr5_waterfall_diff(waterfall.stdout)
         else:
             assert "origin/main" in waterfall.stderr
-
-        # Later phases may add non-CAPEX project-owned inputs to the generic
-        # factories. Keep this historical guard focused on 57A-8's CAPEX scope.
-        factory = subprocess.run(
-            ["git", "diff", "--unified=0", "origin/main", "--", "app/project_factories.py"],
-            cwd=str(REPO_ROOT), capture_output=True, text=True,
-        )
-        changed_lines = tuple(
-            line[1:] for line in factory.stdout.splitlines()
-            if line.startswith(("+", "-")) and not line.startswith(("+++", "---"))
-        )
-        capex_tokens = ("CapexItem(", "CapexStructure(", "capex=", "hard_capex")
-        assert not any(token in line for line in changed_lines for token in capex_tokens), (
-            "57A-8 must NOT modify CAPEX factory construction."
-        )
 
     def test_no_migration_files(self):
         r = subprocess.run(

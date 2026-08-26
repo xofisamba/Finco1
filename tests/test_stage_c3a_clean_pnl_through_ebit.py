@@ -61,8 +61,10 @@ def _adapt(pi):
 def _run_clean(omin=None, factory=None):
     from financial_engine.orchestrator import run_operating_model
     if omin is None:
-        from app.project_factories import create_default_oborovo
-        omin = _adapt(factory() if factory else create_default_oborovo())
+        from app.project_factories import create_default_oborovo_legacy_calibration
+        omin = _adapt(
+            factory() if factory else create_default_oborovo_legacy_calibration()
+        )
     return run_operating_model(omin)
 
 
@@ -215,19 +217,23 @@ class TestEBookDeprecItemInclusion:
     """Group E — 17 book items (13 hard CAPEX + 4 financing), 13 tax items."""
 
     def test_book_item_count(self):
-        omin = _adapt(__import__('app.project_factories', fromlist=['create_default_oborovo']).create_default_oborovo())
+        factories = __import__(
+            'app.project_factories',
+            fromlist=['create_default_oborovo_legacy_calibration'],
+        )
+        omin = _adapt(factories.create_default_oborovo_legacy_calibration())
         assert len(omin.depreciation.book_capex_items_for_depreciation) == 17
 
     def test_tax_item_count(self):
         # C3B3B2 source-proven correction: Oborovo sets tax_dep_basis_source_owned=True.
         # C3B1 proves excel_tax_dep == excel_book_dep → tax uses book asset list (17 items).
-        from app.project_factories import create_default_oborovo
-        omin = _adapt(create_default_oborovo())
+        from app.project_factories import create_default_oborovo_legacy_calibration
+        omin = _adapt(create_default_oborovo_legacy_calibration())
         assert len(omin.depreciation.tax_capex_items_for_depreciation) == 17
 
     def test_book_has_4_financial_costs_items(self):
-        from app.project_factories import create_default_oborovo
-        omin = _adapt(create_default_oborovo())
+        from app.project_factories import create_default_oborovo_legacy_calibration
+        omin = _adapt(create_default_oborovo_legacy_calibration())
         fc = [it for it in omin.depreciation.book_capex_items_for_depreciation
               if it.asset_class_code == "financial_costs"]
         assert len(fc) == 4
@@ -235,8 +241,8 @@ class TestEBookDeprecItemInclusion:
     def test_tax_includes_financial_costs_source_proven(self):
         # C3B3B2 source-proven correction: C3B1 proves excel_tax_dep == excel_book_dep.
         # Oborovo factory sets tax_dep_basis_source_owned=True → financial costs included.
-        from app.project_factories import create_default_oborovo
-        omin = _adapt(create_default_oborovo())
+        from app.project_factories import create_default_oborovo_legacy_calibration
+        omin = _adapt(create_default_oborovo_legacy_calibration())
         fc = [it for it in omin.depreciation.tax_capex_items_for_depreciation
               if it.asset_class_code == "financial_costs"]
         assert len(fc) == 4, (
