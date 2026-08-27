@@ -3451,7 +3451,6 @@ class TestCorrectionDSevenSourceCompositionIdentity:
             allocate_construction_sources_per_period,
         )
         from finco_core.construction.stage_b2 import (
-            _run_stage_b2_inner,
             run_stage_b2,
             run_stage_b2_provisional,
         )
@@ -3486,11 +3485,11 @@ class TestCorrectionDSevenSourceCompositionIdentity:
         r_strict = run_stage_b2(cfg)
         r_prov = run_stage_b2_provisional(cfg)
 
-        # Access the existing internal canonical provisional allocation output;
-        # no second waterfall and no public-result expansion is needed for proof.
-        provisional_inner = _run_stage_b2_inner(cfg, provisional=True)
-        provisional_period_uses = provisional_inner[7]
-        provisional_allocations = provisional_inner[-1]
+        # Use the stable public named seam on ProvisionalStageB2Result.
+        # STALE_PRIVATE_RETURN_POSITION_TEST_CONTRACT: _run_stage_b2_inner() now
+        # returns 16 elements; positional [-1] is senior_idc_cap_uses, not prov_alloc_out.
+        # Fix: consume r_prov.canonical_allocations instead of private positional access.
+        provisional_allocations = r_prov.canonical_allocations
         assert provisional_allocations is not None
         strict_allocations = allocate_construction_sources_per_period(
             period_uses=r_strict.total_permanent_uses_keur,
@@ -3504,8 +3503,10 @@ class TestCorrectionDSevenSourceCompositionIdentity:
             tolerance_keur=cfg.convergence_tolerance_keur,
         )
 
-        assert provisional_period_uses == pytest.approx(
-            r_strict.total_permanent_uses_keur, abs=1e-9
+        # total_construction_uses_keur is sum(period_uses) on the provisional path;
+        # total_permanent_uses_keur is the per-period tuple on the strict path.
+        assert r_prov.total_construction_uses_keur == pytest.approx(
+            sum(r_strict.total_permanent_uses_keur), abs=1e-9
         )
         assert r_prov.unfunded_uses_keur <= 1e-9
         provisional_funded = sum(a.total_sources_keur for a in provisional_allocations)

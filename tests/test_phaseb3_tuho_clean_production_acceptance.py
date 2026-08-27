@@ -725,14 +725,18 @@ def test_b3_ccd_3_causal_bridge_five_component_arithmetic_identity(clean_run):
     diagnostic helper (tests/helpers/tuho_idc_bridge.py); no hardcoded values.
 
     Bridge order (S0→S5):
-      S0  Source pasted IDC  (calibrated mechanics, source draws, opening balance, monthly DCF)
+      S0  Source pasted IDC  (LEGACY_CALIBRATED_DIAGNOSTIC: calibrated rate,
+          SHL-first draws, OPENING balance, 1/12 monthly DCF)
       S1  Senior quantum → clean quantum (scale source draws proportionally)
       S2  Draw profile → clean CAPEX-weighted draw profile
       S3  Balance basis → CLOSING (includes current-period draw)
-      S4  DCF convention + effective rate → actual/365 + clean all-in rate
+      S4  DCF + rate → ACT_360 + declared rate 5.95% (from typed inputs)
       S5  NEXT_PERIOD capitalization horizon  (cap[t] = raw[t-1])
 
     Classification: CONSTRUCTION_FINANCING_METHOD_TIMING_DIFFERENCE
+
+    Source rate is LEGACY_CALIBRATED_DIAGNOSTIC — not SOURCE_WORKBOOK_EVIDENCE.
+    Clean mechanics are derived from declared typed inputs, not backsolved.
     """
     from tests.helpers.tuho_idc_bridge import compute_tuho_idc_counterfactual_bridge
 
@@ -740,11 +744,31 @@ def test_b3_ccd_3_causal_bridge_five_component_arithmetic_identity(clean_run):
     pu = clean_run.g2c_result.financing_result.project_uses
     bridge = compute_tuho_idc_counterfactual_bridge((pu, cfr))
 
-    # A. Components are computed — residual must close
-    assert bridge.bridge_residual_keur == pytest.approx(0.0, abs=0.001)
+    # A. Source mechanics are recomputed (LEGACY_CALIBRATED_DIAGNOSTIC)
+    assert bridge.source_rate_provenance == "LEGACY_CALIBRATED_DIAGNOSTIC"
+    assert abs(bridge.source_reconstruction_residual_keur) == pytest.approx(
+        bridge.source_circularity_residual_keur, abs=0.001
+    )
 
-    # B. Component sum reconciles clean_capitalized - source_pasted
-    #    (bridge anchor is source_pasted; circularity residual is classified separately)
+    # B. Clean raw IDC is independently reconstructed — non-tautological
+    assert abs(bridge.clean_raw_reconstruction_residual_keur) < 0.001, (
+        f"Clean raw reconstruction residual {bridge.clean_raw_reconstruction_residual_keur:.6f} "
+        "kEUR exceeds 0.001 — declared rate or balance basis is wrong"
+    )
+
+    # C. Clean cap IDC is independently reconstructed via NEXT_PERIOD — non-tautological
+    assert abs(bridge.clean_cap_reconstruction_residual_keur) < 0.001, (
+        f"Clean cap reconstruction residual {bridge.clean_cap_reconstruction_residual_keur:.6f} "
+        "kEUR exceeds 0.001 — NEXT_PERIOD transform is wrong"
+    )
+
+    # D. Bridge unexplained residual is non-tautological and < 0.001 kEUR
+    assert abs(bridge.bridge_unexplained_residual_keur) < 0.001, (
+        f"Bridge unexplained residual {bridge.bridge_unexplained_residual_keur:.6f} kEUR "
+        "exceeds 0.001 — ordered components do not fully explain the delta"
+    )
+
+    # E. Component sum reconciles recomputed_clean_cap - source_pasted
     component_sum = (
         bridge.senior_quantum_effect_keur
         + bridge.draw_profile_effect_keur
@@ -752,21 +776,19 @@ def test_b3_ccd_3_causal_bridge_five_component_arithmetic_identity(clean_run):
         + bridge.dcf_and_rate_effect_keur
         + bridge.next_period_horizon_keur
     )
-    pasted_to_cap_delta = bridge.clean_capitalized_idc_keur - bridge.source_pasted_idc_keur
-    assert component_sum == pytest.approx(pasted_to_cap_delta, abs=0.001)
+    pasted_to_recomp_cap = bridge.s5_keur - bridge.source_pasted_idc_keur
+    assert component_sum == pytest.approx(pasted_to_recomp_cap, abs=0.001)
 
-    # Net delta from source_live to clean_cap reconciles via circularity residual
+    # Net delta from source_live to runtime_clean_cap reconciles via circularity residual
     net_delta_from_live = bridge.clean_capitalized_idc_keur - bridge.source_live_idc_keur
     assert net_delta_from_live == pytest.approx(31.924, abs=0.001)
+    pasted_to_cap_delta = bridge.clean_capitalized_idc_keur - bridge.source_pasted_idc_keur
     assert (
         pasted_to_cap_delta - bridge.source_circularity_residual_keur
         == pytest.approx(net_delta_from_live, abs=0.001)
     )
 
-    # C. Final residual < 0.001 kEUR
-    assert abs(bridge.bridge_residual_keur) < 0.001
-
-    # D. Component fingerprints asserted AFTER derivation
+    # F. Component fingerprints asserted AFTER derivation
     assert bridge.senior_quantum_effect_keur == pytest.approx(+15.092, abs=0.01)
     assert bridge.draw_profile_effect_keur == pytest.approx(+16.841, abs=0.01)
     assert bridge.balance_basis_effect_keur == pytest.approx(+220.608, abs=0.01)
@@ -775,6 +797,12 @@ def test_b3_ccd_3_causal_bridge_five_component_arithmetic_identity(clean_run):
 
     # NEXT_PERIOD horizon equals the excluded terminal raw accrual
     assert abs(bridge.next_period_horizon_keur) == pytest.approx(217.125, abs=0.001)
+
+    # Clean mechanics fingerprints
+    assert bridge.clean_rate_declared == pytest.approx(0.0595, abs=1e-8)
+    assert bridge.clean_balance_basis == "CURRENT_CLOSING_DRAWN"
+    assert bridge.clean_dcf_convention == "ACT_360_INCLUSIVE"
+    assert bridge.clean_cap_timing == "NEXT_PERIOD"
 
 
 def test_b3_ccd_4_causal_bridge_direction_sign_semantics(clean_run):
@@ -837,11 +865,17 @@ def test_b3_ccd_5_causal_bridge_balance_basis_dominance(clean_run):
 def test_b3_ccd_6_first_material_period_divergence(clean_run):
     """CD6: First material period where clean cap IDC diverges from source IDC.
 
-    The construction IDC divergence is classified as
-    CONSTRUCTION_FINANCING_METHOD_TIMING_DIFFERENCE — a chronologically earlier
-    divergence than any tax-policy difference.  Identified via the ordered
-    counterfactual bridge; threshold is 0.5 kEUR.
+    The construction IDC divergence (CONSTRUCTION_FINANCING_METHOD_TIMING_DIFFERENCE)
+    is chronologically earlier than any tax-policy difference.
+
+    First material period: t=3 (September 2028), the first period where the
+    source OPENING balance (prior period Senior draw of 181.235 kEUR) produces
+    a non-zero source IDC, while clean NEXT_PERIOD cap IDC already reflects the
+    larger clean CLOSING balance from t=2 (646.854 kEUR).
+
+    Threshold: 0.5 kEUR.  No period before t=3 exceeds the threshold.
     """
+    from datetime import date
     from tests.helpers.tuho_idc_bridge import (
         compute_tuho_idc_counterfactual_bridge,
         find_first_material_period_divergence,
@@ -856,37 +890,60 @@ def test_b3_ccd_6_first_material_period_divergence(clean_run):
         period_end_dates=cfr.period_end_dates,
     )
 
-    assert div.period_index >= 0
-    assert abs(div.delta_keur) >= 0.5
+    # Assert no earlier period exceeds the 0.5 kEUR threshold
+    src_idc = bridge.source_period_idc_keur
+    cap_idc = bridge.recomputed_clean_cap_idc_keur
+    for t in range(div.period_index):
+        assert abs(cap_idc[t] - src_idc[t]) < 0.5, (
+            f"Unexpected material divergence at t={t}: delta={cap_idc[t]-src_idc[t]:.4f} kEUR"
+        )
+
+    # Exact first period fingerprints (regression evidence)
+    assert div.period_index == 3
+    assert div.period_start == date(2028, 9, 1)
+    assert div.period_end == date(2028, 9, 30)
+    assert div.delta_keur == pytest.approx(2.401, abs=0.01)
+    assert div.source_period_idc_keur == pytest.approx(0.913, abs=0.01)
+    assert div.clean_cap_period_idc_keur == pytest.approx(3.314, abs=0.01)
+
+    # Source uses OPENING balance; clean uses recomputed NEXT_PERIOD cap
+    assert div.source_opening_balance_keur == pytest.approx(181.235, abs=0.01)
+    assert div.clean_closing_balance_keur == pytest.approx(3431.632, abs=0.01)
+
+    # Classification
     assert "CONSTRUCTION_FINANCING_METHOD_TIMING_DIFFERENCE" in div.causal_reason
+    assert "LEGACY_CALIBRATED_DIAGNOSTIC" in div.causal_reason
 
 
 def test_b3_ccd_7_bridge_helper_not_imported_by_production():
     """CD7: Governance — bridge diagnostic helper is test/validation-only.
 
-    The production modules (financial_engine, finco_core, app, domain) must not
-    import tests.helpers.tuho_idc_bridge.
+    Static repository scan of all Python files under app/, domain/,
+    finco_core/, financial_engine/ to assert no production file imports
+    or references tests.helpers.tuho_idc_bridge.
     """
     import importlib
-    import sys
 
-    production_prefixes = ("financial_engine.", "finco_core.", "app.", "domain.")
-    helper_module = "tests.helpers.tuho_idc_bridge"
+    production_dirs = [
+        Path("app"),
+        Path("domain"),
+        Path("finco_core"),
+        Path("financial_engine"),
+    ]
+    FORBIDDEN = "tuho_idc_bridge"
 
-    # Ensure helper itself can be imported
-    importlib.import_module(helper_module)
+    violations: list[str] = []
+    for prod_dir in production_dirs:
+        if not prod_dir.exists():
+            continue
+        for py_file in prod_dir.rglob("*.py"):
+            try:
+                source = py_file.read_text(encoding="utf-8")
+            except OSError:
+                continue
+            if FORBIDDEN in source:
+                violations.append(str(py_file))
 
-    # No production module may reference the helper
-    for mod_name, mod in list(sys.modules.items()):
-        if not any(mod_name.startswith(p) for p in production_prefixes):
-            continue
-        spec = getattr(mod, "__spec__", None)
-        if spec is None or spec.origin is None:
-            continue
-        try:
-            source = Path(spec.origin).read_text(encoding="utf-8")
-        except OSError:
-            continue
-        assert "tuho_idc_bridge" not in source, (
-            f"Production module {mod_name} must not import tuho_idc_bridge"
-        )
+    assert not violations, (
+        f"Production files must not reference {FORBIDDEN!r}: {violations}"
+    )
