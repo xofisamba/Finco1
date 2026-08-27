@@ -718,104 +718,110 @@ def test_b3_ccd_2_stage_b2_kernel_direct_run_tax_independent():
     assert "interest_limitation_policy" not in field_names
 
 
-def test_b3_ccd_3_causal_bridge_five_component_arithmetic_identity():
+def test_b3_ccd_3_causal_bridge_five_component_arithmetic_identity(clean_run):
     """CD3: Causal bridge arithmetic identity — 5-component decomposition.
 
-    The +31.924 kEUR delta between source live IDC and clean capitalized IDC
-    decomposes exactly into five independent effects.  This test encodes the
-    verified decomposition as a permanent arithmetic record.
+    Components are COMPUTED by sequential counterfactual runs via the
+    diagnostic helper (tests/helpers/tuho_idc_bridge.py); no hardcoded values.
 
-    Components (computed from TUHO source workbook and clean model run):
-      (1) Senior quantum:          +15.100 kEUR  (43,359→43,790 kEUR Senior)
-      (2) Draw profile/timing:     +16.824 kEUR  (clean vs source draw profile)
-      (3) Balance basis:          +220.572 kEUR  (OPENING→CLOSING balance convention)
-      (4) DCF convention:          -3.447 kEUR   (PRIOR→CURRENT period DCF)
-      (5) NEXT_PERIOD horizon:   -217.125 kEUR   (terminal accrual excluded from cap)
+    Bridge order (S0→S5):
+      S0  Source pasted IDC  (calibrated mechanics, source draws, opening balance, monthly DCF)
+      S1  Senior quantum → clean quantum (scale source draws proportionally)
+      S2  Draw profile → clean CAPEX-weighted draw profile
+      S3  Balance basis → CLOSING (includes current-period draw)
+      S4  DCF convention + effective rate → actual/365 + clean all-in rate
+      S5  NEXT_PERIOD capitalization horizon  (cap[t] = raw[t-1])
 
-    Bridge closes to within 0.001 kEUR of the live delta.
+    Classification: CONSTRUCTION_FINANCING_METHOD_TIMING_DIFFERENCE
     """
-    # Source anchor
-    SOURCE_LIVE_IDC_KEUR = 1_520.3051321075397
+    from tests.helpers.tuho_idc_bridge import compute_tuho_idc_counterfactual_bridge
 
-    # Verified bridge components (from computational bridge in session notes)
-    SENIOR_QUANTUM_EFFECT = +15.099775
-    DRAW_PROFILE_EFFECT = +16.824307
-    BALANCE_BASIS_EFFECT = +220.571884
-    DCF_CONVENTION_EFFECT = -3.446858
-    NEXT_PERIOD_HORIZON = -217.125025
+    cfr = clean_run.g2c_result.financing_result.construction_financing
+    pu = clean_run.g2c_result.financing_result.project_uses
+    bridge = compute_tuho_idc_counterfactual_bridge((pu, cfr))
 
-    bridged = (
-        SOURCE_LIVE_IDC_KEUR
-        + SENIOR_QUANTUM_EFFECT
-        + DRAW_PROFILE_EFFECT
-        + BALANCE_BASIS_EFFECT
-        + DCF_CONVENTION_EFFECT
-        + NEXT_PERIOD_HORIZON
-    )
-    CLEAN_CAP_ACTUAL = 1_552.229200
-    assert bridged == pytest.approx(CLEAN_CAP_ACTUAL, abs=0.001)
+    # A. Components are computed — residual must close
+    assert bridge.bridge_residual_keur == pytest.approx(0.0, abs=0.001)
 
-    # Total delta (cap - source_live)
-    total_delta = CLEAN_CAP_ACTUAL - SOURCE_LIVE_IDC_KEUR
-    assert total_delta == pytest.approx(31.924, abs=0.001)
-
-    # Component sum closes to total delta
+    # B. Component sum reconciles clean_capitalized - source_pasted
+    #    (bridge anchor is source_pasted; circularity residual is classified separately)
     component_sum = (
-        SENIOR_QUANTUM_EFFECT
-        + DRAW_PROFILE_EFFECT
-        + BALANCE_BASIS_EFFECT
-        + DCF_CONVENTION_EFFECT
-        + NEXT_PERIOD_HORIZON
+        bridge.senior_quantum_effect_keur
+        + bridge.draw_profile_effect_keur
+        + bridge.balance_basis_effect_keur
+        + bridge.dcf_and_rate_effect_keur
+        + bridge.next_period_horizon_keur
     )
-    assert component_sum == pytest.approx(total_delta, abs=0.001)
+    pasted_to_cap_delta = bridge.clean_capitalized_idc_keur - bridge.source_pasted_idc_keur
+    assert component_sum == pytest.approx(pasted_to_cap_delta, abs=0.001)
 
-    # NEXT_PERIOD horizon component matches the terminal exclusion fingerprint
-    assert abs(NEXT_PERIOD_HORIZON) == pytest.approx(217.125, abs=0.001)
+    # Net delta from source_live to clean_cap reconciles via circularity residual
+    net_delta_from_live = bridge.clean_capitalized_idc_keur - bridge.source_live_idc_keur
+    assert net_delta_from_live == pytest.approx(31.924, abs=0.001)
+    assert (
+        pasted_to_cap_delta - bridge.source_circularity_residual_keur
+        == pytest.approx(net_delta_from_live, abs=0.001)
+    )
+
+    # C. Final residual < 0.001 kEUR
+    assert abs(bridge.bridge_residual_keur) < 0.001
+
+    # D. Component fingerprints asserted AFTER derivation
+    assert bridge.senior_quantum_effect_keur == pytest.approx(+15.092, abs=0.01)
+    assert bridge.draw_profile_effect_keur == pytest.approx(+16.841, abs=0.01)
+    assert bridge.balance_basis_effect_keur == pytest.approx(+220.608, abs=0.01)
+    assert bridge.dcf_and_rate_effect_keur == pytest.approx(-2.752, abs=0.01)
+    assert bridge.next_period_horizon_keur == pytest.approx(-217.125, abs=0.01)
+
+    # NEXT_PERIOD horizon equals the excluded terminal raw accrual
+    assert abs(bridge.next_period_horizon_keur) == pytest.approx(217.125, abs=0.001)
 
 
-def test_b3_ccd_4_causal_bridge_direction_sign_semantics():
+def test_b3_ccd_4_causal_bridge_direction_sign_semantics(clean_run):
     """CD4: Causal bridge component signs are economically correct.
 
-    Signs encode causal direction from source-live toward clean-cap:
+    Signs encode causal direction from source-pasted toward clean-capitalized:
     - Senior quantum positive: larger Senior → more balance → more IDC
-    - Draw profile positive: clean draws front-loaded relative to source
+    - Draw profile positive: clean draws (CAPEX-weighted) accumulate faster than SHL-first source
     - Balance basis positive: CLOSING > OPENING (draw included in same period)
-    - DCF convention negative: CURRENT period DCF < PRIOR period DCF for typical schedules
+    - DCF+rate combined: sign depends on combined convention shift
     - NEXT_PERIOD horizon negative: excludes terminal accrual from capitalized uses
     """
-    SENIOR_QUANTUM_EFFECT = +15.099775
-    DRAW_PROFILE_EFFECT = +16.824307
-    BALANCE_BASIS_EFFECT = +220.571884
-    DCF_CONVENTION_EFFECT = -3.446858
-    NEXT_PERIOD_HORIZON = -217.125025
+    from tests.helpers.tuho_idc_bridge import compute_tuho_idc_counterfactual_bridge
 
-    assert SENIOR_QUANTUM_EFFECT > 0
-    assert DRAW_PROFILE_EFFECT > 0
-    assert BALANCE_BASIS_EFFECT > 0
-    assert DCF_CONVENTION_EFFECT < 0
-    assert NEXT_PERIOD_HORIZON < 0
+    cfr = clean_run.g2c_result.financing_result.construction_financing
+    pu = clean_run.g2c_result.financing_result.project_uses
+    bridge = compute_tuho_idc_counterfactual_bridge((pu, cfr))
+
+    assert bridge.senior_quantum_effect_keur > 0
+    assert bridge.draw_profile_effect_keur > 0
+    assert bridge.balance_basis_effect_keur > 0
+    assert bridge.next_period_horizon_keur < 0
 
 
-def test_b3_ccd_5_causal_bridge_balance_basis_dominance():
-    """CD5: Balance basis and NEXT_PERIOD horizon are the two dominant components.
+def test_b3_ccd_5_causal_bridge_balance_basis_dominance(clean_run):
+    """CD5: Balance basis and NEXT_PERIOD horizon are the two dominant bridge components.
 
-    The +220.572 kEUR balance-basis effect and -217.125 kEUR NEXT_PERIOD effect
-    are both ~14× larger than the next largest component.  They nearly cancel
-    (+3.447 kEUR net), exposing the true economic drivers: Senior quantum and
-    draw profile timing.  This test encodes that structural dominance.
+    Under the documented ordered counterfactual bridge, the large balance-basis
+    and NEXT_PERIOD effects nearly offset; the remaining net difference is
+    primarily attributed to Senior quantum and draw timing.  This test encodes
+    that structural dominance as a descriptive fingerprint.
     """
-    SENIOR_QUANTUM_EFFECT = +15.099775
-    DRAW_PROFILE_EFFECT = +16.824307
-    BALANCE_BASIS_EFFECT = +220.571884
-    DCF_CONVENTION_EFFECT = -3.446858
-    NEXT_PERIOD_HORIZON = -217.125025
+    from tests.helpers.tuho_idc_bridge import compute_tuho_idc_counterfactual_bridge
+
+    cfr = clean_run.g2c_result.financing_result.construction_financing
+    pu = clean_run.g2c_result.financing_result.project_uses
+    bridge = compute_tuho_idc_counterfactual_bridge((pu, cfr))
 
     small_components = [
-        abs(SENIOR_QUANTUM_EFFECT),
-        abs(DRAW_PROFILE_EFFECT),
-        abs(DCF_CONVENTION_EFFECT),
+        abs(bridge.senior_quantum_effect_keur),
+        abs(bridge.draw_profile_effect_keur),
+        abs(bridge.dcf_and_rate_effect_keur),
     ]
-    large_components = [abs(BALANCE_BASIS_EFFECT), abs(NEXT_PERIOD_HORIZON)]
+    large_components = [
+        abs(bridge.balance_basis_effect_keur),
+        abs(bridge.next_period_horizon_keur),
+    ]
 
     for large in large_components:
         for small in small_components:
@@ -824,5 +830,63 @@ def test_b3_ccd_5_causal_bridge_balance_basis_dominance():
             )
 
     # Net of large two is small relative to each individually (< 2%)
-    large_net = BALANCE_BASIS_EFFECT + NEXT_PERIOD_HORIZON
-    assert abs(large_net) < 0.02 * abs(BALANCE_BASIS_EFFECT)
+    large_net = bridge.balance_basis_effect_keur + bridge.next_period_horizon_keur
+    assert abs(large_net) < 0.02 * abs(bridge.balance_basis_effect_keur)
+
+
+def test_b3_ccd_6_first_material_period_divergence(clean_run):
+    """CD6: First material period where clean cap IDC diverges from source IDC.
+
+    The construction IDC divergence is classified as
+    CONSTRUCTION_FINANCING_METHOD_TIMING_DIFFERENCE — a chronologically earlier
+    divergence than any tax-policy difference.  Identified via the ordered
+    counterfactual bridge; threshold is 0.5 kEUR.
+    """
+    from tests.helpers.tuho_idc_bridge import (
+        compute_tuho_idc_counterfactual_bridge,
+        find_first_material_period_divergence,
+    )
+
+    cfr = clean_run.g2c_result.financing_result.construction_financing
+    pu = clean_run.g2c_result.financing_result.project_uses
+    bridge = compute_tuho_idc_counterfactual_bridge((pu, cfr))
+    div = find_first_material_period_divergence(
+        bridge,
+        period_start_dates=cfr.period_start_dates,
+        period_end_dates=cfr.period_end_dates,
+    )
+
+    assert div.period_index >= 0
+    assert abs(div.delta_keur) >= 0.5
+    assert "CONSTRUCTION_FINANCING_METHOD_TIMING_DIFFERENCE" in div.causal_reason
+
+
+def test_b3_ccd_7_bridge_helper_not_imported_by_production():
+    """CD7: Governance — bridge diagnostic helper is test/validation-only.
+
+    The production modules (financial_engine, finco_core, app, domain) must not
+    import tests.helpers.tuho_idc_bridge.
+    """
+    import importlib
+    import sys
+
+    production_prefixes = ("financial_engine.", "finco_core.", "app.", "domain.")
+    helper_module = "tests.helpers.tuho_idc_bridge"
+
+    # Ensure helper itself can be imported
+    importlib.import_module(helper_module)
+
+    # No production module may reference the helper
+    for mod_name, mod in list(sys.modules.items()):
+        if not any(mod_name.startswith(p) for p in production_prefixes):
+            continue
+        spec = getattr(mod, "__spec__", None)
+        if spec is None or spec.origin is None:
+            continue
+        try:
+            source = Path(spec.origin).read_text(encoding="utf-8")
+        except OSError:
+            continue
+        assert "tuho_idc_bridge" not in source, (
+            f"Production module {mod_name} must not import tuho_idc_bridge"
+        )

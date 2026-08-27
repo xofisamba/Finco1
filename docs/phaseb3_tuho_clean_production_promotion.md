@@ -333,9 +333,11 @@ carryforward `NONE`, and seed-independent generic convergence.
 | First positive clean cash-tax period | canonical index 20, `28.239318827700245 kEUR` |
 
 The source workbook's first positive cash CIT is around H2 2042. That timing is
-not fitted in clean production. The first material source/clean divergence is
-the workbook's historical fiscal-reintegration identity, which makes the R54
-amount more negative in taxable income. Canonical Finco instead applies the
+not fitted in clean production. The first material source/clean divergence
+during construction is `CONSTRUCTION_FINANCING_METHOD_TIMING_DIFFERENCE`;
+within the tax/operating periods the primary divergence is the workbook's
+historical fiscal-reintegration identity, which makes the R54 amount more
+negative in taxable income. Canonical Finco instead applies the
 required deductible-only identity. This difference naturally affects tax-loss
 utilisation, cash tax, Bank CFADS, Senior sizing, and downstream SHL cash. It is
 reported, not hidden with a timing index, replay vector, or calibration amount.
@@ -366,7 +368,11 @@ construction periods and the source-proven SHL accrual tail.
 | Metric | CLEAN_RUNTIME_RESULT |
 |---|---:|
 | Hard CAPEX | `70,691.53944444444 kEUR` |
-| Senior IDC | `1,769.3542393177283 kEUR` |
+| Senior IDC raw accrual | `1,769.3542393177283 kEUR` |
+| Senior IDC capitalized uses | `1,552.229213870424 kEUR` |
+| Senior IDC terminal raw (NEXT_PERIOD excluded) | `217.125025447304 kEUR` |
+| Senior IDC source pasted (legacy engine) | `1,519.563935502677 kEUR` |
+| Senior IDC source live (Excel circularity) | `1,520.305132107540 kEUR` |
 | Senior commitment fee | `166.96711785568684 kEUR` |
 | Structuring fee | `471.5143013349264 kEUR` |
 | VAT payable | `4,638.2823499999995 kEUR` |
@@ -413,12 +419,30 @@ Clean aggregate results are respectively `423,762.0018183332`,
 `85,403.45100059909`, and `338,358.5508177341 kEUR`. Construction timing,
 funding, VAT, Senior, SHL and tax are calculated from typed inputs.
 
-The first material source/clean divergence is tax policy, not operating
-performance: canonical Finco rejects the source workbook's historical
-double-count fiscal-reintegration identity. Consequently clean cash tax starts
-earlier than the source workbook, and clean Senior (`43,789.92111682598 kEUR`)
-differs from the source validation value (`43,359.273782 kEUR`). This is a
-transparent policy difference, not a target-fit failure.
+The first material source/clean divergence is during the construction phase,
+not tax policy: clean construction IDC is capitalized using CLOSING-balance,
+CAPEX-weighted draws, and NEXT_PERIOD horizons, while the source workbook
+uses OPENING-balance, SHL-first draws, and 1/12 monthly fractions.  This is
+classified `CONSTRUCTION_FINANCING_METHOD_TIMING_DIFFERENCE`.  The ordered
+counterfactual bridge (S0→S5) decomposes the +32.665 kEUR delta from source
+pasted (1,519.564) to clean capitalized (1,552.229) into five components:
+Senior quantum (+15.092), draw profile (+16.841), balance basis (+220.608),
+DCF+rate (−2.752), and NEXT_PERIOD horizon (−217.125).  The net delta from
+source live IDC (1,520.305) to clean capitalized is +31.924 kEUR, with the
+0.741 kEUR difference attributed to the Excel circularity residual in the
+source live row.
+
+The second material divergence is tax policy: canonical Finco rejects the
+source workbook's historical double-count fiscal-reintegration identity.
+Consequently clean cash tax starts earlier than the source workbook, and
+clean Senior (`43,789.92111682598 kEUR`) differs from the source validation
+value (`43,359.273782 kEUR`). This is a transparent policy difference, not a
+target-fit failure.
+
+The 217.125 kEUR difference between raw Senior IDC accrual and capitalized
+Senior IDC uses is the TERMINAL_RAW_IDC_OUTSIDE_NEXT_PERIOD_CAPITALIZATION_HORIZON
+— the final construction period's raw accrual that is not shifted into a
+subsequent capitalized period.  It is not ATAD or STL disallowed interest.
 
 ## Governance conclusion
 
