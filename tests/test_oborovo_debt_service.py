@@ -12,7 +12,7 @@ from dataclasses import replace
 
 from app.project_factories import (
     create_default_oborovo,
-    create_default_tuho_wind1,
+    create_default_tuho_wind1_legacy_calibration,
     create_default_solar_project,
     create_default_wind_project,
 )
@@ -101,7 +101,7 @@ class TestTuhuRegression:
 
     @pytest.fixture
     def tuho_result(self):
-        tuho = create_default_tuho_wind1()
+        tuho = create_default_tuho_wind1_legacy_calibration()
         return run_demo_project("Wind", "Base", project_inputs_override=tuho).result
 
     def test_total_debt_service_realistic(self, tuho_result):
