@@ -43,6 +43,109 @@ class ShlInterestDeductibilityMode(str, Enum):
     CUSTOM_DEDUCTIBLE_PERCENTAGE = "custom_deductible_percentage"
 
 
+class InterestLimitationCombinationMode(str, Enum):
+    """How independently calculated non-deductible components combine."""
+
+    MAX_DISALLOWED = "max_disallowed"
+    SUM_DISALLOWED = "sum_disallowed"
+
+
+class InterestLimitationCarryforwardMode(str, Enum):
+    """Treatment of interest restricted by the source-model policy."""
+
+    NONE = "none"
+    CARRY_FORWARD = "carry_forward"
+
+
+@dataclass(frozen=True)
+class CapitalisationGatePolicy:
+    """Literal balance-sheet gate used by a typed interest-limitation policy.
+
+    ``subtotal_is_reincluded_in_denominator`` preserves source models where the
+    equity/liability subtotal is itself included again in the denominator.  It
+    intentionally does not reinterpret that convention as a standard D/E ratio.
+    """
+
+    enabled: bool
+    threshold: float
+    subtotal_is_reincluded_in_denominator: bool = False
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.enabled, bool):
+            raise TypeError("CapitalisationGatePolicy.enabled must be exact bool")
+        if not isinstance(self.subtotal_is_reincluded_in_denominator, bool):
+            raise TypeError(
+                "CapitalisationGatePolicy.subtotal_is_reincluded_in_denominator "
+                "must be exact bool"
+            )
+        if isinstance(self.threshold, bool) or not isinstance(self.threshold, numbers.Real):
+            raise TypeError("CapitalisationGatePolicy.threshold must be a real number")
+        if not math.isfinite(float(self.threshold)) or float(self.threshold) < 0.0:
+            raise ValueError(
+                "CapitalisationGatePolicy.threshold must be finite and non-negative"
+            )
+
+
+@dataclass(frozen=True)
+class InterestLimitationPolicy:
+    """Generic source-model contract for SHL interest deductibility.
+
+    This contract deliberately uses neutral financial terminology.  It records
+    a model mechanic and does not assert that the mechanic is a complete or
+    current implementation of any jurisdiction's tax law.
+    """
+
+    enabled: bool
+    absolute_interest_limit_keur: float
+    ebitda_interest_limit_pct: float
+    capitalisation_gate_policy: CapitalisationGatePolicy
+    combination_mode: InterestLimitationCombinationMode
+    carryforward_mode: InterestLimitationCarryforwardMode
+    additional_non_deductible_share: float = 0.0
+    source_model_convention: str = ""
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.enabled, bool):
+            raise TypeError("InterestLimitationPolicy.enabled must be exact bool")
+        if not isinstance(self.capitalisation_gate_policy, CapitalisationGatePolicy):
+            raise TypeError(
+                "InterestLimitationPolicy.capitalisation_gate_policy must be "
+                "CapitalisationGatePolicy"
+            )
+        if not isinstance(self.combination_mode, InterestLimitationCombinationMode):
+            raise TypeError(
+                "InterestLimitationPolicy.combination_mode must be "
+                "InterestLimitationCombinationMode"
+            )
+        if not isinstance(self.carryforward_mode, InterestLimitationCarryforwardMode):
+            raise TypeError(
+                "InterestLimitationPolicy.carryforward_mode must be "
+                "InterestLimitationCarryforwardMode"
+            )
+        for name in (
+            "absolute_interest_limit_keur",
+            "ebitda_interest_limit_pct",
+            "additional_non_deductible_share",
+        ):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, numbers.Real):
+                raise TypeError(f"InterestLimitationPolicy.{name} must be a real number")
+            if not math.isfinite(float(value)):
+                raise ValueError(f"InterestLimitationPolicy.{name} must be finite")
+        if self.absolute_interest_limit_keur < 0.0:
+            raise ValueError("absolute_interest_limit_keur must be non-negative")
+        if not 0.0 <= self.ebitda_interest_limit_pct <= 1.0:
+            raise ValueError("ebitda_interest_limit_pct must be in [0, 1]")
+        if not 0.0 <= self.additional_non_deductible_share <= 1.0:
+            raise ValueError("additional_non_deductible_share must be in [0, 1]")
+        if self.carryforward_mode is InterestLimitationCarryforwardMode.CARRY_FORWARD:
+            raise NotImplementedError(
+                "INTEREST_LIMITATION_CARRY_FORWARD_NOT_IMPLEMENTED: the typed mode "
+                "exists so restricted interest is never silently discarded, but the "
+                "carryforward ledger is not implemented."
+            )
+
+
 @dataclass(frozen=True)
 class TaxPolicy:
     """Complete jurisdiction tax policy for Phase 2B.
@@ -96,6 +199,7 @@ class TaxPolicy:
         TaxLossUtilisationGate.TAXABLE_INCOME_POSITIVE
     )
     thin_cap_enabled: bool = False
+    interest_limitation_policy: InterestLimitationPolicy | None = None
 
     def __post_init__(self) -> None:
         """Fail-closed typed validation for all TaxPolicy fields."""
@@ -130,6 +234,13 @@ class TaxPolicy:
             raise TypeError(
                 "TaxPolicy.loss_utilisation_gate must be TaxLossUtilisationGate, "
                 f"got {type(self.loss_utilisation_gate)!r}"
+            )
+        if (
+            self.interest_limitation_policy is not None
+            and not isinstance(self.interest_limitation_policy, InterestLimitationPolicy)
+        ):
+            raise TypeError(
+                "TaxPolicy.interest_limitation_policy must be InterestLimitationPolicy or None"
             )
 
         # ── atad_ebitda_limit: numbers.Real, not bool, finite, in approved range ──
@@ -245,6 +356,11 @@ class TaxPolicy:
         Gate is capability-driven only — no project name/code/identity check.
         Does NOT implement thin-cap formula.
         """
+        if (
+            self.interest_limitation_policy is not None
+            and self.interest_limitation_policy.enabled
+        ):
+            return
         if self.thin_cap_enabled:
             raise NotImplementedError(
                 "SHL_THIN_CAP_RUNTIME_NOT_IMPLEMENTED: "
@@ -295,6 +411,14 @@ class TaxPolicy:
         # SUBJECT_TO_LIMITATIONS: enforce capability gate before producing any output.
         if mode == ShlInterestDeductibilityMode.SUBJECT_TO_LIMITATIONS:
             self.require_stl_mechanism_ready()
+            if (
+                self.interest_limitation_policy is not None
+                and self.interest_limitation_policy.enabled
+            ):
+                raise ValueError(
+                    "DYNAMIC_INTEREST_LIMITATION_PERIOD_INPUT_REQUIRED: a typed dynamic "
+                    "policy cannot be reduced to one constant deductible fraction"
+                )
             # Gate passed: only ATAD path reachable here (thin_cap_enabled=False, atad_enabled=True).
             # SHL is fully included in total interest; ATAD provides the annual limitation.
             return 1.0
@@ -320,6 +444,11 @@ class TaxPolicy:
             return False
         if self.shl_interest_deductibility is not ShlInterestDeductibilityMode.SUBJECT_TO_LIMITATIONS:
             return False
+        if (
+            self.interest_limitation_policy is not None
+            and self.interest_limitation_policy.enabled
+        ):
+            return True
         # thin_cap_enabled=True means the runtime gate will raise — not active/executable.
         if self.thin_cap_enabled:
             return False

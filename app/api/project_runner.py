@@ -311,7 +311,8 @@ def _run_project_impl(project_type: str, scenario: str, period_view: str = "Semi
         # Explicit calibration via run_project_legacy — exact legacy demo funnel.
         demo = run_demo_project(project_type, scenario,
                                 project_inputs_override=project_inputs_override,
-                                use_dualrun_validation=use_dualrun_validation)
+                                use_dualrun_validation=use_dualrun_validation,
+                                legacy_calibration=True)
     else:
         # Unclassified type (Portfolio / unknown project_type / override with
         # validation errors) on the normal production path — Phase B1 fail-closed.

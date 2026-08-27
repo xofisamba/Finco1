@@ -93,6 +93,14 @@ class TaxAndCfadsSchedules:
     cfads_keur: tuple[float, ...]
     # Terminal unpaid tax (annual liabilities not yet paid within the model horizon)
     terminal_unpaid_tax_keur: float
+    capitalisation_ratio_audit: tuple[float | None, ...] = ()
+    capitalisation_gate_audit: tuple[bool | None, ...] = ()
+    shl_gross_interest_audit_keur: tuple[float, ...] = ()
+    shl_deductible_interest_audit_keur: tuple[float, ...] = ()
+    shl_disallowed_interest_audit_keur: tuple[float, ...] = ()
+    shl_absolute_limit_component_audit_keur: tuple[float, ...] = ()
+    shl_ebitda_limit_component_audit_keur: tuple[float, ...] = ()
+    shl_additional_non_deductible_component_audit_keur: tuple[float, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -216,6 +224,9 @@ class ShareholderLoanDiagnostics:
     termination_reason: str
     max_final_shl_interest_handshake_delta_keur: float = 0.0
     max_final_shl_closing_handshake_delta_keur: float = 0.0
+    max_retained_earnings_delta_keur: float = 0.0
+    max_capitalisation_ratio_delta: float = 0.0
+    capitalisation_gate_mismatch_count: int = 0
 
 
 @dataclass(frozen=True)

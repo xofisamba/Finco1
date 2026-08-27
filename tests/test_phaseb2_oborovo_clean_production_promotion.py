@@ -525,11 +525,18 @@ def test_bank_route_uses_same_clean_authority():
 
 
 def test_legacy_overlay_and_tuho_boundary_remain_explicit():
+    from app.project_factories import create_default_tuho_wind1_legacy_calibration
+
     legacy = create_default_oborovo_legacy_calibration()
     assert legacy.financing.use_frozen_excel_senior_debt_schedule is True
     assert legacy.financing.construction_financing is None
     assert classify_production_authority(legacy).classification is ProductionAuthorityClassification.BLOCKED_BY_TYPED_INPUT_GAP
-    assert classify_production_authority(create_default_tuho_wind1()).promoted is False
+    assert classify_production_authority(create_default_tuho_wind1()).promoted is True
+    assert (
+        classify_production_authority(create_default_tuho_wind1_legacy_calibration())
+        .promoted
+        is False
+    )
 
 
 def test_explicit_legacy_oborovo_kpi_fingerprint_is_unchanged():
@@ -557,15 +564,16 @@ def test_explicit_legacy_oborovo_kpi_fingerprint_is_unchanged():
     }
 
 
-def test_tuho_production_remains_fail_closed_with_zero_calculations(monkeypatch):
+def test_tuho_production_is_clean_with_zero_legacy_calculations(monkeypatch):
     from app.api import project_runner
-    from app.services.production_financial_authority import CleanNotReadyError
     from financial_engine import shareholder_waterfall
 
     calls = {"clean": 0, "legacy": 0}
+    real_clean = shareholder_waterfall.run_project_shareholder_waterfall_model
 
     def clean(*args, **kwargs):
         calls["clean"] += 1
+        return real_clean(*args, **kwargs)
 
     def legacy(*args, **kwargs):
         calls["legacy"] += 1
@@ -574,10 +582,10 @@ def test_tuho_production_remains_fail_closed_with_zero_calculations(monkeypatch)
         shareholder_waterfall, "run_project_shareholder_waterfall_model", clean
     )
     monkeypatch.setattr(project_runner, "run_demo_project", legacy)
-    with pytest.raises(CleanNotReadyError) as exc_info:
-        project_runner.run_project("TUHO", "Base")
-    assert exc_info.value.calculation_count == 0
-    assert calls == {"clean": 0, "legacy": 0}
+    payload = project_runner.run_project("TUHO", "Base")
+    assert payload["runtime_authority"]["runtime_authority"] == "clean_g2c"
+    assert payload["runtime_authority"]["calculation_count"] == 1
+    assert calls == {"clean": 1, "legacy": 0}
 
 
 def test_typed_vat_contract_round_trips_without_output_authority():

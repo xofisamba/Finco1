@@ -2124,23 +2124,17 @@ class TestPR12Governance:
                 or "SHL_LIMITATION" in msg
             ), f"Unexpected error: {e}"
 
-    def test_tuho_remains_blocked_while_oborovo_is_clean_promoted(self):
-        """Phase B2 promotes Oborovo without weakening TUHO's fail-closed gate."""
+    def test_tuho_and_oborovo_are_clean_promoted(self):
+        """Phase B3 promotes TUHO while preserving Oborovo clean authority."""
         try:
             import fastapi  # noqa: F401
         except ImportError:
             pytest.skip("fastapi not installed; skipping API-layer routing assertion")
         pytest.importorskip("app.api.project_runner", reason="project_runner requires fastapi")
         from app.api.project_runner import run_project
-        from app.services.production_financial_authority import CleanNotReadyError
-
-        # TUHO remains outside the clean production authority.
-        with pytest.raises(CleanNotReadyError) as tuho_exc:
-            run_project("TUHO", "Base")
-        assert tuho_exc.value.runtime_authority == "clean_not_ready", (
-            f"TUHO must raise CleanNotReadyError with clean_not_ready authority. "
-            f"Got: {tuho_exc.value.runtime_authority}"
-        )
+        tuho = run_project("TUHO", "Base")
+        assert tuho["runtime_authority"]["runtime_authority"] == "clean_g2c"
+        assert tuho["runtime_authority"]["calculation_count"] == 1
 
         oborovo = run_project("Oborovo", "Base")
         assert oborovo["runtime_authority"]["runtime_authority"] == "clean_g2c"

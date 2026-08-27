@@ -19,6 +19,7 @@ from finco_core.inputs._models import ShlConstructionInterestMethod
 
 from financial_engine.inputs import (
     CalendarInput,
+    CapitalisationGateEquityInput,
     CapexItemForDep,
     DebtSizingCaseInput,
     DepreciationInput,
@@ -351,6 +352,14 @@ def build_senior_debt_model_input_from_project_inputs(
         debt_sizing_case=resolved_debt_sizing_case,
         shareholder_loan=shareholder_loan,
         dsra=dsra,
+        capitalisation_gate_equity=(
+            CapitalisationGateEquityInput(
+                share_capital_keur=project_inputs.financing.share_capital_keur,
+                legal_reserve_cap_fraction=project_inputs.tax.legal_reserve_cap,
+            )
+            if project_inputs.tax.interest_limitation_policy is not None
+            else None
+        ),
     )
 
 

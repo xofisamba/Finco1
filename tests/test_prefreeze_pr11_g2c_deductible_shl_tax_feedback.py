@@ -3199,8 +3199,10 @@ class TestCorrectionJ_SHLAxisAttacks:
 
         call_count = [0]
 
-        def _patched(periods, shl_input, cash_avail, *, diagnostics):
-            result = real_fn(periods, shl_input, cash_avail, diagnostics=diagnostics)
+        def _patched(periods, shl_input, cash_avail, *, diagnostics, **kwargs):
+            result = real_fn(
+                periods, shl_input, cash_avail, diagnostics=diagnostics, **kwargs
+            )
             call_count[0] += 1
             if call_count[0] == 1:
                 # Remove the last period from the SHL schedule → MISSING
@@ -3242,8 +3244,10 @@ class TestCorrectionJ_SHLAxisAttacks:
 
         call_count = [0]
 
-        def _patched(periods, shl_input, cash_avail, *, diagnostics):
-            result = real_fn(periods, shl_input, cash_avail, diagnostics=diagnostics)
+        def _patched(periods, shl_input, cash_avail, *, diagnostics, **kwargs):
+            result = real_fn(
+                periods, shl_input, cash_avail, diagnostics=diagnostics, **kwargs
+            )
             call_count[0] += 1
             if call_count[0] == 1:
                 # Add an extra period index not in full_axis_shl
@@ -3283,8 +3287,10 @@ class TestCorrectionJ_SHLAxisAttacks:
 
         call_count = [0]
 
-        def _patched(periods, shl_input, cash_avail, *, diagnostics):
-            result = real_fn(periods, shl_input, cash_avail, diagnostics=diagnostics)
+        def _patched(periods, shl_input, cash_avail, *, diagnostics, **kwargs):
+            result = real_fn(
+                periods, shl_input, cash_avail, diagnostics=diagnostics, **kwargs
+            )
             call_count[0] += 1
             if call_count[0] == 1 and len(result.period_indices) >= 2:
                 from dataclasses import replace as _rep
@@ -3307,8 +3313,10 @@ class TestCorrectionJ_SHLAxisAttacks:
 
         call_count = [0]
 
-        def _patched(periods, shl_input, cash_avail, *, diagnostics):
-            result = real_fn(periods, shl_input, cash_avail, diagnostics=diagnostics)
+        def _patched(periods, shl_input, cash_avail, *, diagnostics, **kwargs):
+            result = real_fn(
+                periods, shl_input, cash_avail, diagnostics=diagnostics, **kwargs
+            )
             call_count[0] += 1
             if call_count[0] == 1 and len(result.period_indices) >= 2:
                 from dataclasses import replace as _rep
@@ -3339,8 +3347,10 @@ class TestCorrectionJ_SHLAxisAttacks:
 
         call_count = [0]
 
-        def _patched(periods, shl_input, cash_avail, *, diagnostics):
-            result = real_fn(periods, shl_input, cash_avail, diagnostics=diagnostics)
+        def _patched(periods, shl_input, cash_avail, *, diagnostics, **kwargs):
+            result = real_fn(
+                periods, shl_input, cash_avail, diagnostics=diagnostics, **kwargs
+            )
             call_count[0] += 1
             if call_count[0] == 1 and len(result.period_indices) >= 1:
                 from dataclasses import replace as _rep

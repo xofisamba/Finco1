@@ -182,3 +182,6 @@ class ProjectFinancingResult:
     fixed_point_maximum_difference_keur: float
     # PR-9 typed construction financing result (None when construction_financing disabled)
     construction_financing: "ConstructionFinancingResult | None" = None
+    # Exact typed SHL contract used by the converged financing model. This is
+    # a downstream handoff, not a second principal authority.
+    shareholder_loan_model_input: object | None = None

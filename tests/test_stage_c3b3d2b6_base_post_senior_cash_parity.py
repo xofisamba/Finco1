@@ -172,8 +172,10 @@ def test_period_axis_convention_is_explicit_and_not_global():
 
     tuho = create_default_tuho_wind1()
     assert tuho.info.period_axis_convention == (
-        PeriodAxisConvention.COD_ANCHOR_TWO_CONSTRUCTION_COLUMNS
+        PeriodAxisConvention.OPERATING_BOUNDARY_SINGLE_CONSTRUCTION_COLUMN
     )
+    assert tuho.financing.construction_financing is not None
+    assert len(tuho.financing.construction_financing.periods) == 18
     tuho_result = run_operating_model(from_project_inputs(tuho))
     assert sum(1 for p in tuho_result.periods if p.is_construction) == 1
     assert sum(1 for p in tuho_result.periods if p.is_operation) == 60

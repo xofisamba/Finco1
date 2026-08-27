@@ -8,7 +8,15 @@ on:
     branches:
       - main
     paths:
+      - "app/api/project_runner.py"
+      - "app/project_factories.py"
+      - "app/ui_runner.py"
       - "docs/phaseb3_tuho_clean_production_promotion.md"
+      - "financial_engine/**"
+      - "finco_core/**"
+      - "tests/fixtures/interest_limitation/**"
+      - "tests/test_phaseb3_typed_interest_limitation.py"
+      - "tests/test_phaseb3_tuho_clean_production_acceptance.py"
       - "tests/test_phaseb3_tuho_clean_production_promotion_blocker.py"
       - ".github/workflows/phaseb3_tuho_clean_production_promotion.yml"
 
@@ -49,9 +57,11 @@ jobs:
       - name: Diff hygiene
         run: git diff --check 3dbf3a584d941529aec10f5e95d6fd1b9e356fc6...HEAD
 
-      - name: Phase B3 source and fail-closed evidence
+      - name: Phase B3 source, typed policy, and clean promotion evidence
         run: |
           python -m pytest -q --tb=short \
+            tests/test_phaseb3_typed_interest_limitation.py \
+            tests/test_phaseb3_tuho_clean_production_acceptance.py \
             tests/test_phaseb3_tuho_clean_production_promotion_blocker.py \
             tests/test_interest_limitation_full_horizon_excel_extract.py
 
@@ -60,7 +70,15 @@ jobs:
           python -m pytest -q --tb=short \
             tests/test_prefreeze_pr10_typed_country_tax_authority.py \
             tests/test_stage_c3b3c_tax_policy_shl_deductibility.py \
+            tests/test_stage_c3b3c_legacy_runtime_safety.py \
             tests/test_stage_c3b3d0_tax_identity_atad_decoupling.py
+
+      - name: Source tax, debt, and clean Senior contracts
+        run: |
+          python -m pytest -q --tb=short \
+            tests/test_stage_c3b1_oborovo_tax_source_truth.py \
+            tests/test_stage_c3b2_oborovo_debt_interest_source_closure.py \
+            tests/test_stage_c3b3a_clean_senior_debt_source_contract.py
 
       - name: Phase B1 and B2 production routing
         run: |
@@ -91,6 +109,7 @@ jobs:
           python -m pytest -q --tb=short \
             tests/test_mvp_g0_generic_clean_engine_enablement.py \
             tests/test_mvp_g1_governance_methodology_lock.py \
+            tests/test_mvp_g1_workflow_authority.py \
             tests/test_mvp_g2a_financing_stack.py \
             tests/test_mvp_g2b_sponsor_returns.py \
             tests/test_mvp_g2c_shareholder_waterfall.py

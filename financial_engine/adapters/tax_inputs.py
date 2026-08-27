@@ -82,7 +82,11 @@ def build_tax_contract_from_project_inputs(
     """
     from financial_engine.inputs import TaxCalculationInput, OpeningTaxLossVintageInput
     from financial_engine.policies.tax import (
+        CapitalisationGatePolicy,
         CashTaxTiming,
+        InterestLimitationCarryforwardMode,
+        InterestLimitationCombinationMode,
+        InterestLimitationPolicy,
         ShlInterestDeductibilityMode,
         TaxLossUtilisationGate,
         TaxPolicy,
@@ -151,6 +155,38 @@ def build_tax_contract_from_project_inputs(
     # atad_enabled fall back to the serialised thin_cap_enabled value via deserialization;
     # after materialisation the two fields are fully independent.
     atad_enabled: bool = tax.atad_enabled
+    typed_interest_limitation = None
+    if tax.interest_limitation_policy is not None:
+        source_policy = tax.interest_limitation_policy
+        if source_policy.enabled and atad_enabled:
+            raise ValueError(
+                "INTEREST_LIMITATION_AUTHORITY_CONFLICT: an enabled typed source-model "
+                "interest limitation cannot be sequenced with ATAD unless an explicit "
+                "combination contract is introduced"
+            )
+        typed_interest_limitation = InterestLimitationPolicy(
+            enabled=source_policy.enabled,
+            absolute_interest_limit_keur=source_policy.absolute_interest_limit_keur,
+            ebitda_interest_limit_pct=source_policy.ebitda_interest_limit_pct,
+            capitalisation_gate_policy=CapitalisationGatePolicy(
+                enabled=source_policy.capitalisation_gate_policy.enabled,
+                threshold=source_policy.capitalisation_gate_policy.threshold,
+                subtotal_is_reincluded_in_denominator=(
+                    source_policy.capitalisation_gate_policy
+                    .subtotal_is_reincluded_in_denominator
+                ),
+            ),
+            combination_mode=InterestLimitationCombinationMode(
+                source_policy.combination_mode.value
+            ),
+            carryforward_mode=InterestLimitationCarryforwardMode(
+                source_policy.carryforward_mode.value
+            ),
+            additional_non_deductible_share=(
+                source_policy.additional_non_deductible_share
+            ),
+            source_model_convention=source_policy.source_model_convention,
+        )
 
     # FAIL-CLOSED: ATAD with empty period_interest is silently wrong.
     # This adapter always returns period_interest=() — the fixed-point solver
@@ -218,6 +254,7 @@ def build_tax_contract_from_project_inputs(
         # when SUBJECT_TO_LIMITATIONS is requested with thin_cap_enabled=True.
         # Do NOT silence this — no partial result, no fallback.
         thin_cap_enabled=tax.thin_cap_enabled,
+        interest_limitation_policy=typed_interest_limitation,
         # NOTE: shl_limitation_enabled and shl_interest_cap_keur_annual have been removed.
         # SUBJECT_TO_LIMITATIONS is implemented via ATAD (atad_enabled=True).
     )

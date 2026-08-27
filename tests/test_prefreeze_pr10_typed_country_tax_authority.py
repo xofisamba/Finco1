@@ -7,7 +7,10 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.project_factories import create_default_solar_project, create_default_tuho_wind1
+from app.project_factories import (
+    create_default_solar_project,
+    create_default_tuho_wind1_legacy_calibration,
+)
 from finco_core.inputs import (
     OpeningTaxLossVintageParams,
     ShlInterestDeductibilityMode,
@@ -261,7 +264,7 @@ def test_tuho_source_variant_maps_exact_vintage_then_stops_at_g2c_boundary():
     before any tax output is produced. This is a capability-driven check — NOT an
     identity check. The thin-cap formula is not implemented.
     """
-    tuho = create_default_tuho_wind1()
+    tuho = create_default_tuho_wind1_legacy_calibration()
     assert tuho.tax.prior_tax_loss_keur == pytest.approx(25_000.0)
 
     source_variant = replace(
@@ -304,7 +307,7 @@ def test_tuho_runtime_gate_is_capability_driven_not_identity():
     Renaming the project (different name/code) produces the SAME error because
     the gate fires on thin_cap_enabled=True, not on project identity.
     """
-    tuho = create_default_tuho_wind1()
+    tuho = create_default_tuho_wind1_legacy_calibration()
     renamed = replace(
         tuho,
         info=replace(tuho.info, name="Unrelated Wind Farm", code="UNRELATED-CODE"),
@@ -669,7 +672,7 @@ class TestCorrectionAAdversarialMatrix:
     # ── L. TUHO source: exact vintage maps, stops at G2C boundary ────────
     def _tuho_source_variant(self):
         """Return TUHO source variant with vintage-based opening loss."""
-        tuho = create_default_tuho_wind1()
+        tuho = create_default_tuho_wind1_legacy_calibration()
         return replace(
             tuho,
             tax=replace(

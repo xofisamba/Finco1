@@ -155,10 +155,20 @@ class ConstructionCommitmentFeeInput:
             )
 
 
+class ConstructionStructuringFeeBasisMode(str, Enum):
+    """Causal basis for construction structuring fees."""
+
+    EXPLICIT_AMOUNT = "EXPLICIT_AMOUNT"
+    SENIOR_PLUS_VAT_COMMITMENTS = "SENIOR_PLUS_VAT_COMMITMENTS"
+
+
 @dataclass(frozen=True)
 class ConstructionStructuringFeeInput:
     rate: float = 0.0
     basis_keur: float = 0.0
+    basis_mode: ConstructionStructuringFeeBasisMode = (
+        ConstructionStructuringFeeBasisMode.EXPLICIT_AMOUNT
+    )
     payment_weights: tuple[float, ...] = field(default_factory=tuple)  # len = n_periods, sum to 1.0
 
     def __post_init__(self) -> None:
@@ -174,6 +184,16 @@ class ConstructionStructuringFeeInput:
             minimum=0.0,
             error_code=_NUMERIC_ERROR,
         )
+        if not isinstance(self.basis_mode, ConstructionStructuringFeeBasisMode):
+            raise ValueError("PR9_INVALID_STRUCTURING_FEE_BASIS_MODE")
+        if (
+            self.basis_mode
+            is ConstructionStructuringFeeBasisMode.SENIOR_PLUS_VAT_COMMITMENTS
+            and self.basis_keur != 0.0
+        ):
+            raise ValueError(
+                "PR9_DERIVED_STRUCTURING_FEE_BASIS_FORBIDS_EXPLICIT_AMOUNT"
+            )
         _validate_weights("structuring_fee.payment_weights", self.payment_weights)
 
 
@@ -193,8 +213,10 @@ class ConstructionPeriodSpec:
     def __post_init__(self) -> None:
         if not isinstance(self.start_date, date) or not isinstance(self.end_date, date):
             raise ValueError("PR9_INVALID_PERIOD_DATES: start_date and end_date must be date")
-        if self.end_date <= self.start_date:
-            raise ValueError("PR9_INVALID_PERIOD_DATES: end_date must be after start_date")
+        if self.end_date < self.start_date:
+            raise ValueError(
+                "PR9_INVALID_PERIOD_DATES: end_date must be on or after start_date"
+            )
         for name in (
             "active_construction",
             "capex_payment_eligible",
@@ -496,6 +518,7 @@ __all__ = [
     "ConstructionSeniorPricingInput",
     "ConstructionCommitmentFeeInput",
     "ConstructionStructuringFeeInput",
+    "ConstructionStructuringFeeBasisMode",
     "ConstructionPeriodSpec",
     "ConstructionCapexTimingInput",
     "ConstructionVatFacilityInput",

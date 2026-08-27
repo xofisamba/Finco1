@@ -39,7 +39,18 @@ from domain.inputs import (
 )
 from domain.revenue.bess import BessParams
 from finco_core.engine.distribution_account.inputs import CovenantGatePolicy
-from finco_core.inputs._models import DebtSizingMode, GearingBasisMode, SponsorFundingMode
+from finco_core.inputs._models import (
+    CapitalisationGatePolicyParams,
+    DebtSizingMode,
+    GearingBasisMode,
+    InterestLimitationCombinationMode,
+    InterestLimitationCarryforwardMode,
+    InterestLimitationPolicyParams,
+    ShlConstructionDayCountConvention,
+    ShlConstructionInterestMethod,
+    SponsorFundingMode,
+    SponsorFundingTimingPolicy,
+)
 from finco_core.inputs.senior_rate_schedule import (
     SeniorDayCountConvention,
     SeniorDebtInterestConfig,
@@ -54,6 +65,7 @@ from finco_core.inputs.construction_financing import (
     ConstructionPeriodSpec,
     ConstructionSeniorPricingInput,
     ConstructionStructuringFeeInput,
+    ConstructionStructuringFeeBasisMode,
     ConstructionVatFacilityInput,
     VatFacilityCommitmentMode,
 )
@@ -684,7 +696,7 @@ def create_default_oborovo_legacy_calibration() -> ProjectInputs:
 # TUHO Wind 1 (35 MW, Croatia, 30-year horizon)
 # =============================================================================
 
-def create_default_tuho_wind1() -> ProjectInputs:
+def _create_default_tuho_wind1_legacy_base() -> ProjectInputs:
     """Create default TUHO Wind 1 project inputs matching Excel.
 
     TUHO Wind 1 — 35 MW wind farm.
@@ -925,6 +937,284 @@ def create_default_tuho_wind1() -> ProjectInputs:
         financing=financing,
         tax=tax,
     )
+
+
+def create_default_tuho_wind1_legacy_calibration() -> ProjectInputs:
+    """Return the historical TUHO fixture/calibration authority explicitly."""
+
+    return _create_default_tuho_wind1_legacy_base()
+
+
+def create_default_tuho_wind1() -> ProjectInputs:
+    """Return TUHO with clean typed construction, financing, and tax authority."""
+
+    legacy = _create_default_tuho_wind1_legacy_base()
+    eq18 = (1.0 / 18.0,) * 18
+    upfront18 = (1.0,) + (0.0,) * 17
+    tuho_bank_mid_low_cy2029_cy2060 = (
+        74.04, 75.79, 76.355, 76.39, 75.175, 74.755, 75.72, 72.735,
+        71.215, 70.485, 69.36, 67.895, 67.3, 65.895, 63.825, 61.145,
+        58.825, 58.97, 59.12, 59.27, 59.42, 59.565, 59.2, 58.84,
+        58.48, 58.12, 57.755, 57.22, 56.68, 56.15, 55.61, 55.075,
+    )
+    tuho_market_inflation_index_cy2029_cy2060 = (
+        1.08, 1.10, 1.12, 1.14, 1.17, 1.19, 1.21, 1.24,
+        1.26, 1.29, 1.31, 1.34, 1.37, 1.39, 1.42, 1.45,
+        1.48, 1.51, 1.54, 1.57, 1.60, 1.63, 1.67, 1.70,
+        1.73, 1.77, 1.80, 1.84, 1.88, 1.91, 1.95, 1.99,
+    )
+    tuho_bank_effective_mid_low_cy2029_cy2060 = tuple(
+        raw_price * inflation_index
+        for raw_price, inflation_index in zip(
+            tuho_bank_mid_low_cy2029_cy2060,
+            tuho_market_inflation_index_cy2029_cy2060,
+        )
+    )
+    def hard_capex(name: str, amount_keur: float) -> CapexItem:
+        return CapexItem(
+            name=name,
+            amount_keur=amount_keur,
+            useful_life_override=20,
+        )
+
+    capex = CapexStructure(
+        production_units=hard_capex("Production Unit", 35_000.0),
+        epc_contract=hard_capex("EPC Contract", 13_560.0),
+        epc_other=hard_capex("Grid Connection", 30.0),
+        grid_connection=hard_capex("Monitoring and Telecom", 100.0),
+        ops_prep=hard_capex("Operation Investments", 1_000.0),
+        insurances=hard_capex("Construction Insurances", 468.75),
+        lease_tax=hard_capex("Taxable Land Securing", 500.0),
+        commissioning=hard_capex("Non-taxable Land Securing", 12.4444444444445),
+        construction_mgmt_a=hard_capex("Bank Due Diligence", 420.0),
+        audit_legal=hard_capex("Construction Management A", 40.0),
+        construction_mgmt_b=hard_capex("Audit Accounting and Legal", 42.0),
+        contingencies=hard_capex("Construction Management B", 1_742.25),
+        taxes=hard_capex("Contingencies", 3_036.945),
+        project_acquisition=hard_capex("Project Rights", 14_739.15),
+        project_rights=hard_capex("Unused", 0.0),
+        idc_keur=0.0,
+        commitment_fees_keur=0.0,
+        bank_fees_keur=0.0,
+        vat_costs_keur=0.0,
+        vat_facility_idc_keur=0.0,
+        vat_facility_commitment_fee_keur=0.0,
+        reserve_accounts_keur=0.0,
+    )
+
+    construction_dates = (
+        (date(2028, 6, 30), date(2028, 6, 30)),
+        (date(2028, 7, 1), date(2028, 7, 31)),
+        (date(2028, 8, 1), date(2028, 8, 31)),
+        (date(2028, 9, 1), date(2028, 9, 30)),
+        (date(2028, 10, 1), date(2028, 10, 31)),
+        (date(2028, 11, 1), date(2028, 11, 30)),
+        (date(2028, 12, 1), date(2028, 12, 31)),
+        (date(2029, 1, 1), date(2029, 1, 31)),
+        (date(2029, 2, 1), date(2029, 2, 28)),
+        (date(2029, 3, 1), date(2029, 3, 31)),
+        (date(2029, 4, 1), date(2029, 4, 30)),
+        (date(2029, 5, 1), date(2029, 5, 31)),
+        (date(2029, 6, 1), date(2029, 6, 30)),
+        (date(2029, 7, 1), date(2029, 7, 31)),
+        (date(2029, 8, 1), date(2029, 8, 31)),
+        (date(2029, 9, 1), date(2029, 9, 30)),
+        (date(2029, 10, 1), date(2029, 10, 31)),
+        (date(2029, 11, 1), date(2029, 11, 30)),
+    )
+    construction_periods = tuple(
+        ConstructionPeriodSpec(
+            start_date=start,
+            end_date=end,
+            active_construction=True,
+            capex_payment_eligible=True,
+            senior_idc_active=True,
+            vat_facility_active=True,
+        )
+        for start, end in construction_dates
+    )
+    vat_tail_dates = (
+        (date(2029, 12, 1), date(2029, 12, 31)),
+        (date(2030, 1, 1), date(2030, 1, 31)),
+        (date(2030, 2, 1), date(2030, 2, 28)),
+        (date(2030, 3, 1), date(2030, 3, 31)),
+        (date(2030, 4, 1), date(2030, 4, 30)),
+        (date(2030, 5, 1), date(2030, 5, 31)),
+        (date(2030, 6, 1), date(2030, 6, 30)),
+        (date(2030, 7, 1), date(2030, 7, 31)),
+        (date(2030, 8, 1), date(2030, 8, 31)),
+        (date(2030, 9, 1), date(2030, 9, 30)),
+        (date(2030, 10, 1), date(2030, 10, 31)),
+        (date(2030, 11, 1), date(2030, 11, 30)),
+    )
+    vat_periods = construction_periods + tuple(
+        ConstructionPeriodSpec(
+            start_date=start,
+            end_date=end,
+            active_construction=False,
+            capex_payment_eligible=False,
+            senior_idc_active=False,
+            vat_facility_active=True,
+        )
+        for start, end in vat_tail_dates
+    )
+    capex_timing = (
+        ConstructionCapexTimingInput("production_units", "Production Unit", eq18, 0.0),
+        ConstructionCapexTimingInput("epc_contract", "EPC Contract", eq18, 0.13),
+        ConstructionCapexTimingInput("epc_other", "Grid Connection", eq18, 0.13),
+        ConstructionCapexTimingInput("grid_connection", "Monitoring and Telecom", eq18, 0.13),
+        ConstructionCapexTimingInput("ops_prep", "Operation Investments", eq18, 0.13),
+        ConstructionCapexTimingInput("insurances", "Construction Insurances", upfront18, 0.13),
+        ConstructionCapexTimingInput("lease_tax", "Taxable Land Securing", upfront18, 0.13),
+        ConstructionCapexTimingInput("commissioning", "Non-taxable Land Securing", upfront18, 0.0),
+        ConstructionCapexTimingInput("construction_mgmt_a", "Bank Due Diligence", upfront18, 0.13),
+        ConstructionCapexTimingInput("audit_legal", "Construction Management A", upfront18, 0.13),
+        ConstructionCapexTimingInput("construction_mgmt_b", "Audit Accounting and Legal", eq18, 0.13),
+        ConstructionCapexTimingInput("contingencies", "Construction Management B", upfront18, 0.13),
+        ConstructionCapexTimingInput("taxes", "Contingencies", upfront18, 0.13),
+        ConstructionCapexTimingInput("project_acquisition", "Project Rights", upfront18, 0.13),
+    )
+    construction = ConstructionFinancingInput(
+        enabled=True,
+        periods=construction_periods,
+        capex_items=capex_timing,
+        senior_pricing=ConstructionSeniorPricingInput(
+            mode=SeniorRateMode.FIXED_PLUS_MARGIN,
+            fixed_base_rate=0.033,
+            margin_rate=0.0265,
+            day_count=SeniorDayCountConvention.ACT_360,
+        ),
+        commitment_fee=ConstructionCommitmentFeeInput(
+            rate=0.005,
+            balance_basis="CLOSING_UNDRAWN",
+            capitalization_timing="NEXT_PERIOD",
+        ),
+        structuring_fee=ConstructionStructuringFeeInput(
+            rate=0.01,
+            basis_mode=(
+                ConstructionStructuringFeeBasisMode.SENIOR_PLUS_VAT_COMMITMENTS
+            ),
+            payment_weights=upfront18,
+        ),
+        vat_facility=ConstructionVatFacilityInput(
+            enabled=True,
+            commitment_mode=VatFacilityCommitmentMode.DERIVED_PEAK_REQUIREMENT,
+            interest_rate=0.0575,
+            commitment_fee_rate=0.009275,
+            periods=vat_periods,
+            day_count=SeniorDayCountConvention.ACT_360,
+            reimbursement_lag_periods=6,
+            commitment_fee_active_periods=18,
+            financing_cost_payment_weights=upfront18,
+        ),
+        shl_accrual_tail_periods=(
+            ConstructionPeriodSpec(
+                start_date=date(2029, 12, 1),
+                end_date=date(2029, 12, 30),
+                active_construction=False,
+                capex_payment_eligible=False,
+                senior_idc_active=False,
+                vat_facility_active=False,
+            ),
+        ),
+        idc_balance_basis="CLOSING_DRAWN",
+        idc_capitalization_timing="NEXT_PERIOD",
+        convergence_tolerance_keur=1e-9,
+        max_iterations=200,
+        vat_deferred=False,
+    )
+
+    info = replace(
+        legacy.info,
+        financial_close=date(2028, 6, 30),
+        construction_months=18,
+        cod_date=date(2029, 12, 30),
+        period_axis_convention=(
+            PeriodAxisConvention.OPERATING_BOUNDARY_SINGLE_CONSTRUCTION_COLUMN
+        ),
+        use_tax_bridge_engine=False,
+    )
+    financing = replace(
+        legacy.financing,
+        shl_amount_keur=29_135.176217946093,
+        shl_rate=0.08,
+        gearing_ratio=0.80,
+        base_rate=0.033,
+        margin_bps=265,
+        commitment_fee=0.005,
+        structuring_fee=0.01,
+        debt_sizing_method=DebtSizingMethod.DSCR_SCULPT.value,
+        debt_sizing_mode=DebtSizingMode.FLAT_DSCR_SCULPTED,
+        fixed_debt_keur=None,
+        clean_shl_principal_keur=None,
+        clean_shl_repayment_method=SHLRepaymentMethod.CASH_SWEEP,
+        shl_day_count_convention="ACT_365_FIXED",
+        shl_construction_day_count_fraction=548.0 / 365.0,
+        shl_construction_day_count_convention=(
+            ShlConstructionDayCountConvention.ELAPSED_ACT_365_FIXED
+        ),
+        shl_construction_interest_method=ShlConstructionInterestMethod.COMPOUND_PERIODIC,
+        sponsor_funding_timing_policy=SponsorFundingTimingPolicy.ALL_AT_FC,
+        shl_principal_eligibility_start_period=25,
+        shl_maturity_period_index=36,
+        use_frozen_excel_senior_debt_schedule=False,
+        frozen_senior_ds_fixture_path=None,
+        frozen_schedule_note=None,
+        sponsor_funding_mode=SponsorFundingMode.SHARE_CAPITAL_THEN_SHL,
+        gearing_basis_mode=GearingBasisMode.TOTAL_PROJECT_USES,
+        construction_financing=construction,
+        senior_debt_interest_config=SeniorDebtInterestConfig(
+            enabled=True,
+            rate_schedule=SeniorRateSchedule(
+                mode=SeniorRateMode.EXPLICIT_ALL_IN_SCHEDULE,
+                explicit_all_in_rates=(0.0595,) * 28,
+            ),
+            day_count=SeniorDayCountConvention.ACT_360,
+        ),
+        senior_sculpting_config=SeniorSculptingConfig(
+            enabled=True,
+            target_dscr_schedule=(1.20,) * 24 + (1.4125,) * 4,
+            debt_service_availability_schedule=(1.0,) * 27 + (0.9890710382513661,),
+        ),
+        debt_sizing_case=DebtSizingCaseConfig(
+            production_yield_scenario=YieldScenario.P90_10Y,
+            merchant_price_calendar_start_year=2029,
+            merchant_prices_by_calendar_year_eur_mwh=(
+                tuho_bank_effective_mid_low_cy2029_cy2060
+            ),
+            source_label=(
+                "TUHO source Bank Case P90-10y + Inputs!D109 MidLow x "
+                "Inputs row 111 inflation index and typed DSCR schedule"
+            ),
+        ),
+    )
+    tax = replace(
+        legacy.tax,
+        country_tax_policy_id="HR-approved-source-model-2026-v1",
+        corporate_rate_override=None,
+        prior_tax_loss_keur=0.0,
+        opening_tax_loss_vintages=(),
+        thin_cap_enabled=False,
+        atad_enabled=False,
+        shl_interest_deductibility=ShlInterestDeductibilityMode.SUBJECT_TO_LIMITATIONS,
+        interest_limitation_policy=InterestLimitationPolicyParams(
+            enabled=True,
+            absolute_interest_limit_keur=3_000.0,
+            ebitda_interest_limit_pct=0.30,
+            capitalisation_gate_policy=CapitalisationGatePolicyParams(
+                enabled=True,
+                threshold=0.80,
+                subtotal_is_reincluded_in_denominator=True,
+            ),
+            combination_mode=InterestLimitationCombinationMode.MAX_DISALLOWED,
+            carryforward_mode=InterestLimitationCarryforwardMode.NONE,
+            additional_non_deductible_share=0.0,
+            source_model_convention="NO_RESTRICTED_INTEREST_CARRYFORWARD_IN_SOURCE_MODEL",
+        ),
+        cit_cash_tax_start_operating_index=None,
+        clean_cash_tax_timing_enabled=True,
+    )
+    return replace(legacy, info=info, capex=capex, financing=financing, tax=tax)
 
 
 # =============================================================================

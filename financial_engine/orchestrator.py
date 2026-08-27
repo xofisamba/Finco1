@@ -24,6 +24,7 @@ The clean engine is unaware that the legacy engine exists.
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import date
 from typing import TYPE_CHECKING, Any, Sequence
 from finco_core.engine.period_engine import map_period_vector
@@ -691,6 +692,31 @@ def _assemble_tax_cfads_schedules(
         cf_after_tax_keur=cfads,
         cfads_keur=cfads,
         terminal_unpaid_tax_keur=tax_result.terminal_unpaid_tax_keur,
+        capitalisation_ratio_audit=tuple(
+            pr.capitalisation_ratio for pr in period_results
+        ),
+        capitalisation_gate_audit=tuple(
+            pr.capitalisation_gate_active for pr in period_results
+        ),
+        shl_gross_interest_audit_keur=tuple(
+            pr.shl_tax_eligible_interest_keur + pr.shl_non_deductible_interest_keur
+            for pr in period_results
+        ),
+        shl_deductible_interest_audit_keur=tuple(
+            pr.shl_tax_eligible_interest_keur for pr in period_results
+        ),
+        shl_disallowed_interest_audit_keur=tuple(
+            pr.shl_non_deductible_interest_keur for pr in period_results
+        ),
+        shl_absolute_limit_component_audit_keur=tuple(
+            pr.shl_absolute_limit_component_keur for pr in period_results
+        ),
+        shl_ebitda_limit_component_audit_keur=tuple(
+            pr.shl_ebitda_limit_component_keur for pr in period_results
+        ),
+        shl_additional_non_deductible_component_audit_keur=tuple(
+            pr.shl_additional_non_deductible_component_keur for pr in period_results
+        ),
     )
 
 
@@ -809,6 +835,7 @@ def _merge_financing_tax_input(
     base_tax_input: object,
     senior_interest_by_period: dict[int, float] | None = None,
     shl_interest_by_period: dict[int, float] | None = None,
+    shl_limitation_by_period: dict[int, object] | None = None,
     *,
     tax_periodisation_mode_override: str | None = None,
 ) -> object:
@@ -831,11 +858,29 @@ def _merge_financing_tax_input(
 
     senior_interest_by_period = senior_interest_by_period or {}
     shl_interest_by_period = shl_interest_by_period or {}
+    shl_limitation_by_period = shl_limitation_by_period or {}
     merged_interest: dict[int, PeriodInterestInput] = {
         pi.period_index: pi for pi in base_tax_input.period_interest
     }
-    for idx in set(senior_interest_by_period) | set(shl_interest_by_period):
+    for idx in (
+        set(senior_interest_by_period)
+        | set(shl_interest_by_period)
+        | set(shl_limitation_by_period)
+    ):
         existing = merged_interest.get(idx)
+        limitation = shl_limitation_by_period.get(idx)
+        gross_shl = (
+            shl_interest_by_period[idx]
+            if idx in shl_interest_by_period
+            else (existing.shl_interest_keur if existing else 0.0)
+        )
+        if limitation is not None:
+            limitation_gross = limitation.gross_shl_interest_keur
+            if abs(limitation_gross - gross_shl) > 1e-8:
+                raise ValueError(
+                    "SHL_LIMITATION_GROSS_INTEREST_MISMATCH: "
+                    f"period_index={idx}; limitation={limitation_gross}; gross={gross_shl}"
+                )
         merged_interest[idx] = PeriodInterestInput(
             period_index=idx,
             senior_interest_keur=(
@@ -843,12 +888,41 @@ def _merge_financing_tax_input(
                 if idx in senior_interest_by_period
                 else (existing.senior_interest_keur if existing else 0.0)
             ),
-            shl_interest_keur=(
-                shl_interest_by_period[idx]
-                if idx in shl_interest_by_period
-                else (existing.shl_interest_keur if existing else 0.0)
-            ),
+            shl_interest_keur=gross_shl,
             other_interest_keur=existing.other_interest_keur if existing else 0.0,
+            shl_deductible_interest_keur=(
+                limitation.deductible_shl_interest_keur
+                if limitation is not None
+                else (existing.shl_deductible_interest_keur if existing else None)
+            ),
+            capitalisation_ratio=(
+                limitation.capitalisation_gate.ratio
+                if limitation is not None
+                else (existing.capitalisation_ratio if existing else None)
+            ),
+            capitalisation_gate_active=(
+                limitation.capitalisation_gate.active
+                if limitation is not None
+                else (existing.capitalisation_gate_active if existing else None)
+            ),
+            absolute_limit_component_keur=(
+                limitation.absolute_limit_component_keur
+                if limitation is not None
+                else (existing.absolute_limit_component_keur if existing else 0.0)
+            ),
+            ebitda_limit_component_keur=(
+                limitation.ebitda_limit_component_keur
+                if limitation is not None
+                else (existing.ebitda_limit_component_keur if existing else 0.0)
+            ),
+            additional_non_deductible_component_keur=(
+                limitation.additional_non_deductible_component_keur
+                if limitation is not None
+                else (
+                    existing.additional_non_deductible_component_keur
+                    if existing else 0.0
+                )
+            ),
         )
 
     policy = base_tax_input.policy
@@ -1459,6 +1533,148 @@ def _validate_final_financing_state(
             )
 
 
+@dataclass(frozen=True)
+class _DynamicInterestLimitationState:
+    limitation_by_period: dict[int, object]
+    retained_earnings_by_period: dict[int, float]
+    legal_reserve_by_period: dict[int, float]
+
+
+def _build_dynamic_interest_limitation_state(
+    *,
+    periods: tuple[OperatingPeriodResult, ...],
+    tax_policy: object,
+    equity_input: object | None,
+    senior_interest_by_period: dict[int, float],
+    shl_gross_interest_by_period: dict[int, float],
+    shl_closing_by_period: dict[int, float],
+    tax_result: object | None,
+) -> _DynamicInterestLimitationState:
+    """Build the minimum causal equity state and literal limitation schedule.
+
+    The state is pre-distribution.  The B5 financing loop has no distribution
+    authority; its SHL covenant prevents sponsor distributions while SHL is
+    outstanding.  No extracted gate, tax, loss, or SHL vector is consumed.
+    """
+
+    limitation_policy = getattr(tax_policy, "interest_limitation_policy", None)
+    if limitation_policy is None or not limitation_policy.enabled:
+        return _DynamicInterestLimitationState({}, {}, {})
+    if equity_input is None:
+        raise ValueError(
+            "CAPITALISATION_GATE_EQUITY_INPUT_REQUIRED: dynamic interest limitation "
+            "requires typed share-capital and legal-reserve inputs"
+        )
+
+    from financial_engine.tax.interest_limitation import (
+        CapitalisationState,
+        EquityStatePeriodInput,
+        InterestLimitationPeriodInput,
+        calculate_interest_limitation_period,
+        roll_forward_equity_state,
+    )
+
+    cit_by_period = (
+        {
+            pr.period_index: pr.cit_accrual_share_keur
+            for pr in tax_result.period_results
+        }
+        if tax_result is not None
+        else {}
+    )
+    equity_periods = tuple(
+        EquityStatePeriodInput(
+            period_index=period.period_index,
+            net_income_keur=(
+                period.ebitda_keur
+                - period.book_depreciation_keur
+                - senior_interest_by_period.get(period.period_index, 0.0)
+                - shl_gross_interest_by_period.get(period.period_index, 0.0)
+                - cit_by_period.get(period.period_index, 0.0)
+            ),
+            gross_dividends_keur=0.0,
+        )
+        for period in periods
+    )
+    equity_results = roll_forward_equity_state(
+        equity_periods,
+        share_capital_keur=equity_input.share_capital_keur,
+        legal_reserve_cap_fraction=equity_input.legal_reserve_cap_fraction,
+        opening_legal_reserve_keur=equity_input.opening_legal_reserve_keur,
+        opening_retained_earnings_keur=equity_input.opening_retained_earnings_keur,
+    )
+    equity_by_period = {result.period_index: result for result in equity_results}
+    limitation_by_period: dict[int, object] = {}
+    for period in periods:
+        equity = equity_by_period[period.period_index]
+        limitation_by_period[period.period_index] = calculate_interest_limitation_period(
+            InterestLimitationPeriodInput(
+                period_index=period.period_index,
+                gross_shl_interest_keur=shl_gross_interest_by_period.get(
+                    period.period_index, 0.0
+                ),
+                ebitda_basis_keur=period.ebitda_keur,
+                capitalisation_state=CapitalisationState(
+                    share_capital_keur=equity_input.share_capital_keur,
+                    legal_reserve_keur=equity.closing_legal_reserve_keur,
+                    retained_earnings_keur=equity.closing_retained_earnings_keur,
+                    shl_closing_keur=shl_closing_by_period.get(period.period_index, 0.0),
+                ),
+            ),
+            limitation_policy,
+        )
+    return _DynamicInterestLimitationState(
+        limitation_by_period=limitation_by_period,
+        retained_earnings_by_period={
+            result.period_index: result.closing_retained_earnings_keur
+            for result in equity_results
+        },
+        legal_reserve_by_period={
+            result.period_index: result.closing_legal_reserve_keur
+            for result in equity_results
+        },
+    )
+
+
+def _dynamic_interest_limitation_delta(
+    left: _DynamicInterestLimitationState,
+    right: _DynamicInterestLimitationState,
+) -> tuple[float, float, int]:
+    """Return max retained delta, max ratio delta, and gate mismatch count."""
+
+    indices = set(left.limitation_by_period) | set(right.limitation_by_period)
+    if not indices:
+        return 0.0, 0.0, 0
+    max_retained = max(
+        abs(
+            left.retained_earnings_by_period.get(idx, 0.0)
+            - right.retained_earnings_by_period.get(idx, 0.0)
+        )
+        for idx in indices
+    )
+    max_ratio = 0.0
+    mismatches = 0
+    for idx in indices:
+        left_result = left.limitation_by_period.get(idx)
+        right_result = right.limitation_by_period.get(idx)
+        if left_result is None or right_result is None:
+            mismatches += 1
+            continue
+        max_ratio = max(
+            max_ratio,
+            abs(
+                left_result.capitalisation_gate.ratio
+                - right_result.capitalisation_gate.ratio
+            ),
+        )
+        if (
+            left_result.capitalisation_gate.active
+            is not right_result.capitalisation_gate.active
+        ):
+            mismatches += 1
+    return max_retained, max_ratio, mismatches
+
+
 def _run_senior_debt_model_with_shl(
     inputs: SeniorDebtModelInput,
     *,
@@ -1519,6 +1735,35 @@ def _run_senior_debt_model_with_shl(
     previous_shl: ShareholderLoanSchedules | None = None
     last_max_closing_delta = float("inf")
     last_max_interest_delta = float("inf")
+    dynamic_policy_enabled = bool(
+        getattr(base_tax_input.policy, "interest_limitation_policy", None) is not None
+        and base_tax_input.policy.interest_limitation_policy.enabled
+    )
+    seed_shl_closing = {
+        period.period_index: shl_input.initial_principal_keur
+        for period in phase2b_result.periods
+    }
+    base_limitation_state = _build_dynamic_interest_limitation_state(
+        periods=phase2b_result.periods,
+        tax_policy=base_tax_input.policy,
+        equity_input=inputs.capitalisation_gate_equity,
+        senior_interest_by_period={},
+        shl_gross_interest_by_period=shl_interest_guess,
+        shl_closing_by_period=seed_shl_closing,
+        tax_result=None,
+    )
+    bank_limitation_state = _build_dynamic_interest_limitation_state(
+        periods=bank_phase2a_result.periods,
+        tax_policy=base_tax_input.policy,
+        equity_input=inputs.capitalisation_gate_equity,
+        senior_interest_by_period={},
+        shl_gross_interest_by_period=shl_interest_guess,
+        shl_closing_by_period=seed_shl_closing,
+        tax_result=None,
+    )
+    last_max_retained_delta = float("inf") if dynamic_policy_enabled else 0.0
+    last_max_ratio_delta = float("inf") if dynamic_policy_enabled else 0.0
+    last_gate_mismatch_count = 0
 
     for iteration in range(1, shl_input.maximum_iterations + 1):
         def tax_cfads_fn(
@@ -1528,6 +1773,7 @@ def _run_senior_debt_model_with_shl(
                 base_tax_input,
                 senior_interest_by_period,
                 shl_interest_guess,
+                bank_limitation_state.limitation_by_period,
                 tax_periodisation_mode_override=inputs.debt_sizing_case.tax_periodisation_mode_override,
             )
             tax_result = calculate_tax(bank_phase2a_result.periods, tax_input)
@@ -1564,6 +1810,7 @@ def _run_senior_debt_model_with_shl(
                 base_tax_input,
                 senior_interest,
                 shl_interest_guess,
+                base_limitation_state.limitation_by_period,
             ),
         )
         base_cfads = calculate_canonical_cfads(phase2b_result.periods, base_tax.period_results)
@@ -1595,6 +1842,7 @@ def _run_senior_debt_model_with_shl(
             shl_input,
             post_senior_cash.cash_available_for_shl_before_reserves_keur,
             diagnostics=provisional_diag,
+            enforce_maturity_residual=False,
         )
         new_interest = _strict_period_map(
             shl_schedule.period_indices,
@@ -1602,6 +1850,51 @@ def _run_senior_debt_model_with_shl(
             label="shl_fixed_point.gross_interest",
             expected_indices=full_axis_shl,
         )
+        new_closing = _strict_period_map(
+            shl_schedule.period_indices,
+            shl_schedule.shl_closing_keur,
+            label="shl_fixed_point.closing_for_interest_limitation",
+            expected_indices=full_axis_shl,
+        )
+        bank_tax_for_state = calculate_tax(
+            bank_phase2a_result.periods,
+            _merge_financing_tax_input(
+                base_tax_input,
+                senior_interest,
+                shl_interest_guess,
+                bank_limitation_state.limitation_by_period,
+                tax_periodisation_mode_override=(
+                    inputs.debt_sizing_case.tax_periodisation_mode_override
+                ),
+            ),
+        )
+        new_base_limitation_state = _build_dynamic_interest_limitation_state(
+            periods=phase2b_result.periods,
+            tax_policy=base_tax_input.policy,
+            equity_input=inputs.capitalisation_gate_equity,
+            senior_interest_by_period=senior_interest,
+            shl_gross_interest_by_period=new_interest,
+            shl_closing_by_period=new_closing,
+            tax_result=base_tax,
+        )
+        new_bank_limitation_state = _build_dynamic_interest_limitation_state(
+            periods=bank_phase2a_result.periods,
+            tax_policy=base_tax_input.policy,
+            equity_input=inputs.capitalisation_gate_equity,
+            senior_interest_by_period=senior_interest,
+            shl_gross_interest_by_period=new_interest,
+            shl_closing_by_period=new_closing,
+            tax_result=bank_tax_for_state,
+        )
+        base_dynamic_delta = _dynamic_interest_limitation_delta(
+            base_limitation_state, new_base_limitation_state
+        )
+        bank_dynamic_delta = _dynamic_interest_limitation_delta(
+            bank_limitation_state, new_bank_limitation_state
+        )
+        last_max_retained_delta = max(base_dynamic_delta[0], bank_dynamic_delta[0])
+        last_max_ratio_delta = max(base_dynamic_delta[1], bank_dynamic_delta[1])
+        last_gate_mismatch_count = base_dynamic_delta[2] + bank_dynamic_delta[2]
 
         if previous_shl is not None:
             last_max_closing_delta = _max_vector_delta(
@@ -1622,13 +1915,24 @@ def _run_senior_debt_model_with_shl(
                 0.0,
                 shl_input.convergence_tolerance_keur,
                 shl_input.convergence_relative_tolerance,
+            ) and _field_converged_local(
+                last_max_retained_delta,
+                0.0,
+                shl_input.convergence_tolerance_keur,
+                shl_input.convergence_relative_tolerance,
+            ) and last_max_ratio_delta <= shl_input.convergence_relative_tolerance and (
+                last_gate_mismatch_count == 0
             ):
                 previous_shl = shl_schedule
                 shl_interest_guess = new_interest
+                base_limitation_state = new_base_limitation_state
+                bank_limitation_state = new_bank_limitation_state
                 break
 
         previous_shl = shl_schedule
         shl_interest_guess = new_interest
+        base_limitation_state = new_base_limitation_state
+        bank_limitation_state = new_bank_limitation_state
     else:
         raise SeniorDebtNonConvergenceError(
             "G2C_SHL_TAX_FEEDBACK_NON_CONVERGENCE: "
@@ -1637,6 +1941,9 @@ def _run_senior_debt_model_with_shl(
             f"iteration_count={shl_input.maximum_iterations}; "
             f"last_max_closing_delta_keur={last_max_closing_delta:.12f}; "
             f"last_max_interest_delta_keur={last_max_interest_delta:.12f}; "
+            f"last_max_retained_earnings_delta_keur={last_max_retained_delta:.12f}; "
+            f"last_max_capitalisation_ratio_delta={last_max_ratio_delta:.12f}; "
+            f"last_capitalisation_gate_mismatch_count={last_gate_mismatch_count}; "
             "termination_reason='MAX_ITERATIONS_REACHED'. "
             "No partial result is accepted — the feedback loop must converge."
         )
@@ -1659,6 +1966,7 @@ def _run_senior_debt_model_with_shl(
             base_tax_input,
             senior_interest_by_period,
             final_shl_interest,
+            bank_limitation_state.limitation_by_period,
             tax_periodisation_mode_override=inputs.debt_sizing_case.tax_periodisation_mode_override,
         )
         tax_result = calculate_tax(bank_phase2a_result.periods, tax_input)
@@ -1742,6 +2050,7 @@ def _run_senior_debt_model_with_shl(
         base_tax_input,
         _contract_senior_map,
         _contract_shl_map,
+        base_limitation_state.limitation_by_period,
     )
 
     # TASK 1: Three-way independent validation of final financing state.
@@ -1835,6 +2144,7 @@ def _run_senior_debt_model_with_shl(
         base_tax_input,
         _contract_bank_senior_map,
         _contract_bank_shl_map,
+        bank_limitation_state.limitation_by_period,
         tax_periodisation_mode_override=inputs.debt_sizing_case.tax_periodisation_mode_override,
     )
     final_bank_tax = calculate_tax(bank_phase2a_result.periods, final_bank_tax_input)
@@ -1842,6 +2152,72 @@ def _run_senior_debt_model_with_shl(
         bank_phase2a_result.periods,
         final_bank_tax.period_results,
     )
+    _handshake_closing_map = _strict_period_map(
+        handshake_shl_schedule.period_indices,
+        handshake_shl_schedule.shl_closing_keur,
+        label="shl_fixed_point.final_limitation_handshake_closing",
+        expected_indices=full_axis_shl,
+    )
+    _final_base_limitation_state = _build_dynamic_interest_limitation_state(
+        periods=phase2b_result.periods,
+        tax_policy=base_tax_input.policy,
+        equity_input=inputs.capitalisation_gate_equity,
+        senior_interest_by_period=_contract_senior_map,
+        shl_gross_interest_by_period=_contract_shl_map,
+        shl_closing_by_period=_handshake_closing_map,
+        tax_result=final_base_tax,
+    )
+    _final_bank_limitation_state = _build_dynamic_interest_limitation_state(
+        periods=bank_phase2a_result.periods,
+        tax_policy=base_tax_input.policy,
+        equity_input=inputs.capitalisation_gate_equity,
+        senior_interest_by_period=_contract_bank_senior_map,
+        shl_gross_interest_by_period=_contract_bank_shl_map,
+        shl_closing_by_period=_handshake_closing_map,
+        tax_result=final_bank_tax,
+    )
+    _base_final_dynamic_delta = _dynamic_interest_limitation_delta(
+        base_limitation_state, _final_base_limitation_state
+    )
+    _bank_final_dynamic_delta = _dynamic_interest_limitation_delta(
+        bank_limitation_state, _final_bank_limitation_state
+    )
+    last_max_retained_delta = max(
+        last_max_retained_delta,
+        _base_final_dynamic_delta[0],
+        _bank_final_dynamic_delta[0],
+    )
+    last_max_ratio_delta = max(
+        last_max_ratio_delta,
+        _base_final_dynamic_delta[1],
+        _bank_final_dynamic_delta[1],
+    )
+    last_gate_mismatch_count = max(
+        last_gate_mismatch_count,
+        _base_final_dynamic_delta[2] + _bank_final_dynamic_delta[2],
+    )
+    if dynamic_policy_enabled and (
+        not _field_converged_local(
+            _base_final_dynamic_delta[0],
+            0.0,
+            shl_input.convergence_tolerance_keur,
+            shl_input.convergence_relative_tolerance,
+        )
+        or not _field_converged_local(
+            _bank_final_dynamic_delta[0],
+            0.0,
+            shl_input.convergence_tolerance_keur,
+            shl_input.convergence_relative_tolerance,
+        )
+        or _base_final_dynamic_delta[1] > shl_input.convergence_relative_tolerance
+        or _bank_final_dynamic_delta[1] > shl_input.convergence_relative_tolerance
+        or _base_final_dynamic_delta[2] != 0
+        or _bank_final_dynamic_delta[2] != 0
+    ):
+        raise SeniorDebtNonConvergenceError(
+            "FINAL_DYNAMIC_INTEREST_LIMITATION_STATE_NOT_IDEMPOTENT: "
+            f"base={_base_final_dynamic_delta}; bank={_bank_final_dynamic_delta}"
+        )
     final_base_tax_shl = {
         pi.period_index: pi.shl_interest_keur
         for pi in final_base_tax_input.period_interest
@@ -1898,6 +2274,9 @@ def _run_senior_debt_model_with_shl(
         termination_reason="CONVERGED_FINAL_RECOMPUTE",
         max_final_shl_interest_handshake_delta_keur=max_final_shl_interest_handshake_delta,
         max_final_shl_closing_handshake_delta_keur=max_final_shl_closing_handshake_delta,
+        max_retained_earnings_delta_keur=last_max_retained_delta,
+        max_capitalisation_ratio_delta=last_max_ratio_delta,
+        capitalisation_gate_mismatch_count=last_gate_mismatch_count,
     )
     final_shl_schedule = compute_shareholder_loan_schedules(
         phase2b_result.periods,

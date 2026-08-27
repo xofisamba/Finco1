@@ -357,6 +357,7 @@ def compute_shareholder_loan_schedules(
     cash_available_for_shl_before_reserves_keur: Sequence[float],
     *,
     diagnostics: "object",
+    enforce_maturity_residual: bool = True,
 ) -> "ShareholderLoanSchedules":
     """Build immutable SHL audit vectors from backend-authoritative cash.
 
@@ -425,6 +426,7 @@ def compute_shareholder_loan_schedules(
     # the dual-truth (model PIK=0 vs result PIK>0) that the opening_operating_shl_override_keur
     # approach produced.
     _constr_override_schedule = None
+    _construction_rows_by_model_period: dict[int, tuple] = {}
     if shl_input.construction_periods_override is not None:
         from financial_engine.shl.construction import (
             ShlConstructionPeriodInput as _ShlCPI,
@@ -439,6 +441,40 @@ def compute_shareholder_loan_schedules(
         _effective_op_draw = _constr_override_schedule.opening_operating_shl_balance_keur
         _effective_op_draw += shl_input.post_construction_principal_contribution_keur
         _effective_op_dcf = 0.0
+        override_dates = shl_input.construction_period_end_dates_override
+        if override_dates is not None:
+            if len(override_dates) != len(_constr_override_schedule.periods):
+                raise ValueError(
+                    "SHL_CONSTRUCTION_OVERRIDE_DATE_COUNT_MISMATCH: "
+                    f"dates={len(override_dates)}, "
+                    f"periods={len(_constr_override_schedule.periods)}"
+                )
+            model_construction_periods = tuple(
+                p for p in periods if p.is_construction
+            )
+            buckets: dict[int, list] = {
+                p.period_index: [] for p in model_construction_periods
+            }
+            for override_date, row in zip(
+                override_dates, _constr_override_schedule.periods
+            ):
+                target = next(
+                    (
+                        p for p in model_construction_periods
+                        if override_date <= p.period_end
+                    ),
+                    None,
+                )
+                if target is None:
+                    raise ValueError(
+                        "SHL_CONSTRUCTION_OVERRIDE_OUTSIDE_MODEL_AXIS: "
+                        f"override_end={override_date!s}"
+                    )
+                buckets[target.period_index].append(row)
+            _construction_rows_by_model_period = {
+                period_index: tuple(rows)
+                for period_index, rows in buckets.items()
+            }
 
     for p, raw_cash in zip(periods, cash_available_for_shl_before_reserves_keur):
         _check_finite("cash_available_for_shl_before_reserves_keur", raw_cash)
@@ -450,30 +486,44 @@ def compute_shareholder_loan_schedules(
 
         period_indices.append(p.period_index)
         if p.is_construction and _constr_override_schedule is not None:
-            # Fix 3 canonical: use pre-computed multi-period construction schedule.
-            # Each construction period gets its own PIK from the timing-resolved schedule.
-            position = list(construction_period_indices).index(p.period_index)
-            cr = _constr_override_schedule.periods[position]
-            opening = cr.opening_balance_keur
-            drawdown = cr.draw_keur
-            gross = cr.pik_interest_keur
+            # Aggregate the timing-resolved construction axis into the model's
+            # canonical reporting/tax periods. Positional mapping is retained
+            # only for legacy callers whose axes are already identical.
+            if _construction_rows_by_model_period:
+                rows = _construction_rows_by_model_period[p.period_index]
+            else:
+                position = list(construction_period_indices).index(p.period_index)
+                rows = (_constr_override_schedule.periods[position],)
+            if rows:
+                opening = rows[0].opening_balance_keur
+                drawdown = sum(row.draw_keur for row in rows)
+                gross = sum(row.pik_interest_keur for row in rows)
+                closing = rows[-1].closing_balance_keur
+            else:
+                prior_position = list(construction_period_indices).index(p.period_index) - 1
+                opening = (
+                    0.0 if prior_position < 0
+                    else closing_values[-1]
+                )
+                drawdown = 0.0
+                gross = 0.0
+                closing = opening
             cash_interest = 0.0
-            pik = cr.pik_interest_keur
+            pik = gross
             principal = 0.0
             service = 0.0
-            closing = cr.closing_balance_keur
             cash_eligible_for_current_shl_service = 0.0
             if p.period_index == draw_period_index:
                 draw_consumed = True
                 # Synthetic construction_result for operating waterfall chain check.
                 construction_result = ShlPeriodResult(
                     period_index=p.period_index,
-                    opening_balance_keur=cr.opening_balance_keur,
-                    gross_accrued_interest_keur=cr.pik_interest_keur,
+                    opening_balance_keur=opening,
+                    gross_accrued_interest_keur=gross,
                     cash_interest_keur=0.0,
-                    pik_interest_keur=cr.pik_interest_keur,
+                    pik_interest_keur=gross,
                     scheduled_principal_keur=0.0,
-                    closing_balance_keur=cr.closing_balance_keur,
+                    closing_balance_keur=closing,
                 )
                 # _effective_op_draw/_effective_op_dcf already set from _constr_override_schedule
         elif p.is_construction and p.period_index != draw_period_index:
@@ -624,6 +674,8 @@ def compute_shareholder_loan_schedules(
                 underfunded_bullet_residual = closing
 
         if (
+            enforce_maturity_residual
+            and
             shl_input.repayment_mode == ShlRepaymentMode.CASH_SWEEP
             and p.period_index == shl_input.maturity_period_index
             and closing > (

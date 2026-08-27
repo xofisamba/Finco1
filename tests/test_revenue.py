@@ -173,10 +173,10 @@ class TestTUHORevenueCalibration:
 
     @staticmethod
     def _tuho_revenue_rows():
-        from app.project_factories import create_default_tuho_wind1
+        from app.project_factories import create_default_tuho_wind1_legacy_calibration
         from app.ui_runner import _build_period_engine
 
-        project = create_default_tuho_wind1()
+        project = create_default_tuho_wind1_legacy_calibration()
         engine = _build_period_engine(project)
         decomposition = revenue_decomposition_schedule(project, engine)
         op_periods = [period for period in engine.periods() if period.is_operation][:60]

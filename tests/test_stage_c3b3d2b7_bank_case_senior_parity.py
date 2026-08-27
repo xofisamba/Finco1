@@ -194,10 +194,9 @@ def test_oborovo_bank_tax_compatibility_uses_source_h2_h1_pairing_and_h1_payment
     )
 
 
-def test_generic_and_tuho_bank_case_defaults_remain_p90_anti_overfit_controls():
+def test_generic_bank_case_defaults_remain_p90_anti_overfit_controls():
     from app.project_factories import (
         create_default_solar_project,
-        create_default_tuho_wind1,
         create_default_wind_project,
     )
     from finco_core.inputs import YieldScenario
@@ -205,7 +204,6 @@ def test_generic_and_tuho_bank_case_defaults_remain_p90_anti_overfit_controls():
     for factory in (
         create_default_solar_project,
         create_default_wind_project,
-        create_default_tuho_wind1,
     ):
         project = factory()
         assert project.financing.debt_sizing_case.production_yield_scenario == (
@@ -214,6 +212,18 @@ def test_generic_and_tuho_bank_case_defaults_remain_p90_anti_overfit_controls():
         assert project.financing.debt_sizing_case.merchant_price_calendar_start_year is None
         assert project.financing.debt_sizing_case.merchant_prices_by_calendar_year_eur_mwh == ()
         assert project.financing.debt_sizing_case.market_prices_curve_eur_mwh == ()
+
+
+def test_tuho_bank_case_uses_source_proven_p90_calendar_curve():
+    from app.project_factories import create_default_tuho_wind1
+    from finco_core.inputs import YieldScenario
+
+    case = create_default_tuho_wind1().financing.debt_sizing_case
+    assert case.production_yield_scenario == YieldScenario.P90_10Y
+    assert case.merchant_price_calendar_start_year == 2029
+    assert len(case.merchant_prices_by_calendar_year_eur_mwh) == 32
+    assert case.market_prices_curve_eur_mwh == ()
+    assert "TUHO source Bank Case" in case.source_label
 
 
 def test_oborovo_bank_case_is_explicit_source_compatibility_input():

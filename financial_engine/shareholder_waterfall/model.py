@@ -536,11 +536,20 @@ def run_project_shareholder_waterfall_model(
     shl_maturity_idx: int | None = None
     shl_repayment_mode: ShlRepaymentMode | None = None
     if has_shl:
-        shl_model_input = _build_shareholder_loan_model_input_from_project_inputs(
-            project_inputs,
-            model_result.periods,
-            senior_debt_maturity_period_index=senior_last_period_index,
+        dynamic_limitation = getattr(
+            project_inputs.tax, "interest_limitation_policy", None
         )
+        shl_model_input = (
+            financing.shareholder_loan_model_input
+            if dynamic_limitation is not None and dynamic_limitation.enabled
+            else None
+        )
+        if shl_model_input is None:
+            shl_model_input = _build_shareholder_loan_model_input_from_project_inputs(
+                project_inputs,
+                model_result.periods,
+                senior_debt_maturity_period_index=senior_last_period_index,
+            )
         if shl_model_input is not None:
             if abs(shl_model_input.initial_principal_keur - financing.derived_shl_cash_principal_keur) > 1e-4:
                 shl_model_input = dataclasses.replace(

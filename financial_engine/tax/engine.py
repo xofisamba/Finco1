@@ -351,6 +351,7 @@ def calculate_tax(
         )
         total_ti_share = sum(a.taxable_income_share_keur for a in allocations)
         total_cit_share = sum(a.cit_accrual_keur for a in allocations)
+        period_interest = interest_map.get(idx)
 
         period_results.append(PeriodCashTaxResult(
             period_index=idx,
@@ -366,6 +367,22 @@ def calculate_tax(
             cash_tax_keur=cash_tax_by_period.get(idx, 0.0),
             shl_tax_eligible_interest_keur=total_shl_tax_eligible,
             shl_non_deductible_interest_keur=total_shl_non_deductible,
+            capitalisation_ratio=(
+                period_interest.capitalisation_ratio if period_interest else None
+            ),
+            capitalisation_gate_active=(
+                period_interest.capitalisation_gate_active if period_interest else None
+            ),
+            shl_absolute_limit_component_keur=(
+                period_interest.absolute_limit_component_keur if period_interest else 0.0
+            ),
+            shl_ebitda_limit_component_keur=(
+                period_interest.ebitda_limit_component_keur if period_interest else 0.0
+            ),
+            shl_additional_non_deductible_component_keur=(
+                period_interest.additional_non_deductible_component_keur
+                if period_interest else 0.0
+            ),
         ))
 
     return TaxAndCfadsResult(
