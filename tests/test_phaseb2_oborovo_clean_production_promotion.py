@@ -511,9 +511,12 @@ def test_explicit_legacy_executes_one_legacy_and_zero_clean(monkeypatch):
     monkeypatch.setattr(
         shareholder_waterfall, "run_project_shareholder_waterfall_model", forbidden_clean
     )
+    # Patch BOTH the funnel module and the offline helper's module-level
+    # binding (import-order independent).
+    import tests.helpers.offline_calibration as _offline_mod
     monkeypatch.setattr(_ui, "run_demo_project", counted_legacy)
-    from tests.helpers.offline_calibration import run_project_legacy as _offline_legacy
-    payload = _offline_legacy("Oborovo", "Base")
+    monkeypatch.setattr(_offline_mod, "run_demo_project", counted_legacy)
+    payload = _offline_mod.run_project_legacy("Oborovo", "Base")
     assert payload["kpis"]["total_capex_keur"] == pytest.approx(57973.0535)
     assert counts == {"clean": 0, "legacy": 1}
 
