@@ -417,3 +417,182 @@ class TestB4G_OfflineEvidenceIsolation:
         graph = TestB4D_NoProductionLegacyImports()._production_import_graph()
         assert "tests.helpers.offline_calibration" not in graph
         assert "tests.helpers.offline_sponsor_engine" not in graph
+
+
+# ---------------------------------------------------------------------------
+# B4 Correction A — production authority metadata closure
+# ---------------------------------------------------------------------------
+
+class TestB4H_AuthorityMetadataContract:
+    """Every classification's production runtime authority is correct and no
+    production metadata ever claims legacy_waterfall_calibration."""
+
+    def _classify_all(self):
+        from app import project_factories as pf
+        from app.services.production_financial_authority import (
+            classify_production_authority,
+        )
+        cases = {
+            "Solar(clean)": pf.create_default_solar_project,
+            "OborovoLegacy": pf.create_default_oborovo_legacy_calibration,
+            "TUHOLegacy": pf.create_default_tuho_wind1_legacy_calibration,
+        }
+        return {name: classify_production_authority(f()) for name, f in cases.items()}
+
+    def test_h1_clean_ready_maps_to_clean_g2c(self):
+        decisions = self._classify_all()
+        clean = decisions["Solar(clean)"]
+        assert clean.promoted is True
+        assert clean.runtime_authority == "clean_g2c"
+
+    def test_h2_non_promoted_map_to_clean_not_ready(self):
+        decisions = self._classify_all()
+        for name, d in decisions.items():
+            if name == "Solar(clean)":
+                continue
+            assert d.promoted is False, name
+            assert d.runtime_authority == "clean_not_ready", (
+                f"{name}: production runtime authority must be clean_not_ready, "
+                f"got {d.runtime_authority}"
+            )
+
+    def test_h3_no_production_metadata_claims_legacy_runtime(self):
+        decisions = self._classify_all()
+        for name, d in decisions.items():
+            meta = d.to_metadata()
+            assert "legacy_waterfall_calibration" not in str(meta), (
+                f"{name}: to_metadata() must never claim a legacy runtime"
+            )
+            assert "legacy" not in meta.get("runtime_authority", ""), name
+
+    def test_h4_classification_runtime_separation(self):
+        """LEGACY_CALIBRATION_ONLY may remain a typed classification, but its
+        production runtime authority is still NOT-EXECUTED (clean_not_ready)."""
+        from app.services.production_financial_authority import (
+            ProductionAuthorityClassification,
+        )
+        from app.services.production_financial_authority import (
+            _RUNTIME_AUTHORITY_BY_CLASSIFICATION,
+        )
+        for cls, authority in _RUNTIME_AUTHORITY_BY_CLASSIFICATION.items():
+            assert authority in ("clean_g2c", "clean_not_ready"), (
+                f"{cls}: production runtime authority must be clean_g2c or "
+                f"clean_not_ready, got {authority}"
+            )
+
+    def test_h5_semantic_source_scan_no_legacy_serving_language(self):
+        """Focused semantic contract scan: production authority/routing code
+        cannot map a non-promoted decision to legacy runtime authority or
+        tell callers that a legacy production runtime will serve them."""
+        import inspect
+        from app.services import production_financial_authority as authority_mod
+        from app.services import production_waterfall_seam as seam_mod
+
+        for mod in (authority_mod, seam_mod):
+            src = inspect.getsource(mod)
+            assert '"legacy_waterfall_calibration"' not in src.replace(
+                "# NEVER claim legacy_waterfall_calibration as a runtime authority.", ""
+            ), (
+                f"{mod.__name__}: must not map or claim legacy_waterfall_calibration"
+            )
+            for phrase in ("legacy calibration runtime serves",
+                           "routed to the explicitly-classified legacy",
+                           "legacy runtime serves"):
+                assert phrase not in src, f"{mod.__name__}: stale phrase {phrase!r}"
+
+
+# ---------------------------------------------------------------------------
+# B4 Correction A — expanded financial non-regression (B4-I)
+# ---------------------------------------------------------------------------
+
+from tests.fixtures.b4a_b3main_baseline import _B3_MAIN_BASELINE  # noqa: E402
+
+_VECTOR_KEYS = (
+    "senior_interest", "senior_principal", "senior_ds", "senior_closing",
+    "shl_interest", "shl_principal", "shl_closing",
+)
+_SCALAR_KEYS = (
+    "revenue", "opex", "ebitda", "cash_tax", "base_cfads", "bank_cfads",
+    "senior_debt_size", "senior_interest", "senior_principal", "senior_ds",
+    "senior_terminal", "shl_first_op_opening", "shl_total_interest",
+    "shl_total_principal", "shl_terminal", "distributions", "sponsor_receipts",
+)
+
+
+def _b4a_run_clean(factory):
+    from financial_engine.shareholder_waterfall import (
+        run_project_shareholder_waterfall_model,
+    )
+    return run_project_shareholder_waterfall_model(factory(), source_id="b4a_check")
+
+
+def _b4a_extract(res):
+    import hashlib
+    def digest(vec):
+        return hashlib.sha256(repr(tuple(float(v) if v is not None else 0.0 for v in vec)).encode()).hexdigest()
+    model = res.financing_result.project_model_result
+    op = model.operating_schedules
+    tax = model.tax_and_cfads
+    bank = model.debt_sizing
+    senior = model.senior_debt
+    shl = model.shareholder_loan
+    out = {
+        "revenue": sum(op.revenue_keur), "opex": sum(op.opex_keur),
+        "ebitda": sum(op.ebitda_keur),
+        "cash_tax": sum(tax.corporate_tax_cash_keur), "base_cfads": sum(tax.cfads_keur),
+        "bank_cfads": sum(bank.bank_cfads_keur),
+        "senior_debt_size": senior.debt_size_keur,
+        "senior_interest": sum(senior.senior_interest_keur),
+        "senior_principal": sum(senior.senior_principal_keur),
+        "senior_ds": sum(senior.senior_debt_service_keur),
+        "senior_terminal": senior.senior_debt_closing_keur[-1] if senior.senior_debt_closing_keur else None,
+        "shl_first_op_opening": next((v for v in (shl.shl_opening_keur or ()) if v and v > 0), None),
+        "shl_total_interest": sum(shl.shl_gross_interest_keur),
+        "shl_total_principal": sum(shl.shl_principal_keur),
+        "shl_terminal": shl.shl_closing_keur[-1] if shl.shl_closing_keur else None,
+        "distributions": res.total_legal_equity_distributions_keur,
+        "sponsor_receipts": res.total_sponsor_receipts_keur,
+        "period_vectors": {
+            "senior_interest": digest(senior.senior_interest_keur),
+            "senior_principal": digest(senior.senior_principal_keur),
+            "senior_ds": digest(senior.senior_debt_service_keur),
+            "senior_closing": digest(senior.senior_debt_closing_keur),
+            "shl_interest": digest(shl.shl_gross_interest_keur),
+            "shl_principal": digest(shl.shl_principal_keur),
+            "shl_closing": digest(shl.shl_closing_keur),
+        },
+    }
+    return out
+
+
+class TestB4I_ExpandedFinancialNonRegression:
+    """Comprehensive pre-B4 vs B4 comparison against the DESCRIPTIVE
+    regression evidence captured at B3 main (bf71b21d)."""
+
+    @pytest.mark.parametrize("ptype", ("Solar", "Wind", "Oborovo", "TUHO"))
+    def test_i1_scalar_matrix_bit_identical(self, ptype):
+        from app import project_factories as pf
+        factory = {"Solar": pf.create_default_solar_project,
+                   "Wind": pf.create_default_wind_project,
+                   "Oborovo": pf.create_default_oborovo,
+                   "TUHO": pf.create_default_tuho_wind1}[ptype]
+        got = _b4a_extract(_b4a_run_clean(factory))
+        expected = _B3_MAIN_BASELINE[ptype]
+        for key in _SCALAR_KEYS:
+            assert got[key] == expected[key], (
+                f"{ptype}.{key}: B4={got[key]} vs B3={expected[key]}"
+            )
+
+    @pytest.mark.parametrize("ptype", ("Oborovo", "TUHO"))
+    def test_i2_period_vector_identity(self, ptype):
+        """High-risk schedules: full period-vector digests must be identical
+        (protects against timing shifts that leave totals unchanged)."""
+        from app import project_factories as pf
+        factory = {"Oborovo": pf.create_default_oborovo,
+                   "TUHO": pf.create_default_tuho_wind1}[ptype]
+        got = _b4a_extract(_b4a_run_clean(factory))
+        expected = _B3_MAIN_BASELINE[ptype]
+        for vec_key in _VECTOR_KEYS:
+            assert got["period_vectors"][vec_key] == expected["period_vectors"][vec_key], (
+                f"{ptype} period vector {vec_key} diverged"
+            )

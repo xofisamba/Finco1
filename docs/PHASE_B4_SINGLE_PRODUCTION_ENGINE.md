@@ -83,3 +83,33 @@ evidence — all unreachable from production entry points:
   reporting/download/CLI seams; fail-closed inputs execute ZERO engines.
 - Financial: B4-A..E KPI fingerprints bit-identical to B3 main
   (`bf71b21d`) for Solar / Wind / Oborovo / TUHO; no recalibration.
+
+
+## Correction A — production authority metadata closure
+
+- `_RUNTIME_AUTHORITY_BY_CLASSIFICATION`: every non-promoted classification
+  now maps to `clean_not_ready` (NOT-EXECUTED). A production
+  `AuthorityDecision` NEVER claims `legacy_waterfall_calibration` —
+  classification and runtime execution are separate concepts; a non-promoted
+  classification means "not registered for production execution; zero
+  calculations", not "a legacy engine will serve this project".
+- Stale routing language ("routed to the explicitly-classified legacy
+  calibration runtime", "the legacy calibration runtime serves this
+  project until then") replaced with truthful fail-closed wording.
+- Runtime authority vocabulary: `clean_g2c` (supported production) ·
+  `clean_not_ready` (non-promoted / blocked / unregistered — zero
+  calculations) · `legacy_waterfall_offline_calibration` (offline
+  historical evidence helper only — never a production runtime).
+
+## Correction A — expanded financial non-regression evidence
+
+`tests/fixtures/b4a_b3main_baseline.py` — DESCRIPTIVE_REGRESSION_EVIDENCE
+snapshot generated from independently verified B3-main (`bf71b21d`) runtime
+outputs via the clean G2C entry point. For Solar / Wind / Oborovo / TUHO it
+freezes: revenue, OPEX, EBITDA, cash tax, Base CFADS, Bank CFADS, Senior
+debt size / interest / principal / DS / terminal, SHL first-opening /
+interest / principal / terminal, distributions, sponsor receipts — plus
+full period-vector digests for Senior interest/principal/DS/closing and
+SHL interest/principal/closing (Oborovo + TUHO). B4-I tests prove scalar
+and period-vector identity. Regression evidence ONLY — never read by
+runtime or financial code; no engine value was fitted to match it.

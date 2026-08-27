@@ -12,15 +12,19 @@ ONE production financial calculation authority:
 
 Classification is typed and project-identity-free: it inspects ONLY typed
 ProjectInputs contract fields. Projects whose typed contract is not yet
-clean-ready are routed to the explicitly-classified legacy calibration
-runtime with a machine-readable reason — never a silent fallback and never a
-clean→legacy value mix (the two runtimes never both execute for one run).
+clean-ready are NOT registered for production execution: production fails
+closed with a typed error, zero calculations, and machine-readable
+reason — never a silent fallback and never a clean→legacy value mix.
+There is NO production legacy engine (Phase B4); historical calibration
+evidence exists OFFLINE only (tests/helpers/offline_calibration.py) with
+its own distinct offline provenance.
 
-Governance (PR-8):
+Governance (PR-8 / Phase B4):
   - zero project-name/code dispatch here;
   - no source vectors, no fixtures, no output-fitting coefficients;
   - fail closed: the clean runner never catches an engine error and falls
-    back — a clean-route failure raises.
+    back — a clean-route failure raises;
+  - a production AuthorityDecision never claims a legacy runtime authority.
 """
 from __future__ import annotations
 
@@ -37,16 +41,22 @@ class ProductionAuthorityClassification(str, Enum):
     LEGACY_CALIBRATION_ONLY = "LEGACY_CALIBRATION_ONLY"
 
 
+# Phase B4: classification and runtime execution are separate concepts.
+# A non-promoted classification is NOT a production runtime — production
+# fails closed with zero calculations. Historical calibration execution
+# exists OFFLINE only (tests/helpers/offline_calibration.py) and carries
+# its own distinct offline provenance; a production AuthorityDecision must
+# NEVER claim legacy_waterfall_calibration as a runtime authority.
 _RUNTIME_AUTHORITY_BY_CLASSIFICATION = {
     ProductionAuthorityClassification.CLEAN_PRODUCTION_READY: "clean_g2c",
     ProductionAuthorityClassification.BLOCKED_BY_DEFERRED_TAX_CAPABILITY: (
-        "legacy_waterfall_calibration"
+        "clean_not_ready"
     ),
     ProductionAuthorityClassification.BLOCKED_BY_TYPED_INPUT_GAP: (
-        "legacy_waterfall_calibration"
+        "clean_not_ready"
     ),
     ProductionAuthorityClassification.LEGACY_CALIBRATION_ONLY: (
-        "legacy_waterfall_calibration"
+        "clean_not_ready"
     ),
 }
 
@@ -176,8 +186,8 @@ def classify_production_authority(project_inputs) -> AuthorityDecision:
                 "tax.clean_cash_tax_timing_enabled is not opted in: the clean "
                 "cash-tax timing contract (TAX_YEAR_LAST_PERIOD, lag=0) is not "
                 "typed-verified for this project. Deferred to the Country Tax "
-                "Template stage; the legacy calibration runtime serves this "
-                "project until then."
+                "Template stage. Until then this contract is not "
+                "registered for production execution."
             ),
         )
 
