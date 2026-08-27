@@ -752,7 +752,7 @@ def test_b3_ccd_3_causal_bridge_arithmetic_identity_with_timing_reclassification
     assert bridge.source_workbook_rate == pytest.approx(0.0595, abs=1e-8)
     assert bridge.source_balance_basis == "CLOSING"
     assert bridge.source_dcf_convention == "ACT_360_INCLUSIVE"
-    assert bridge.source_cap_timing == "EXCL_TERMINAL_PERIOD"
+    assert bridge.source_cap_timing == "CURRENT_PERIOD_EXCL_TERMINAL"
     # Source reconstruction residual < 0.001 kEUR (rounded domain draws vs workbook precision)
     assert abs(bridge.source_reconstruction_residual_keur) < 0.001, (
         f"Source reconstruction residual {bridge.source_reconstruction_residual_keur:.6f} "

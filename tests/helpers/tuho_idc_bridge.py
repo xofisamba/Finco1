@@ -66,7 +66,11 @@ mechanics, the bridge has only two active components:
 
 No balance-basis component (both CLOSING).
 No DCF/rate component (both 5.95% ACT/360 inclusive).
-No NEXT_PERIOD timing component (both exclude terminal raw period from cap).
+CURRENT_PERIOD → NEXT_PERIOD is a non-zero period redistribution with zero aggregate monetary
+effect (IDC_PERIOD_TIMING_RECLASSIFICATION_ZERO_AGGREGATE_EFFECT). Source uses current-period
+recognition (cap[t] = raw[t]); clean uses NEXT_PERIOD (cap[t] = raw[t-1], cap[0] = 0).
+The terminal period is excluded from the capitalized total under both conventions, but the
+recognition timing is DIFFERENT — captured as the S3 bridge step.
 
 Bridge order (S0 → S3)
 -----------------------
@@ -156,7 +160,7 @@ class TuhoIdcBridge:
     source_workbook_rate: float    # 0.0595 (3.30% base + 2.65% margin)
     source_balance_basis: str      # "CLOSING"
     source_dcf_convention: str     # "ACT_360_INCLUSIVE"
-    source_cap_timing: str         # "EXCL_TERMINAL_PERIOD"
+    source_cap_timing: str         # "CURRENT_PERIOD_EXCL_TERMINAL": recognition=CURRENT_PERIOD, terminal=excluded
     clean_rate_declared: float     # 0.0595 from typed inputs (same as source)
     clean_balance_basis: str       # "CURRENT_CLOSING_DRAWN" (same as source)
     clean_dcf_convention: str      # "ACT_360_INCLUSIVE" (same as source)
@@ -242,7 +246,7 @@ def compute_tuho_idc_counterfactual_bridge(
     SOURCE_RATE_PROVENANCE: str = "SOURCE_WORKBOOK_EVIDENCE"
     SOURCE_BALANCE_BASIS: str = "CLOSING"
     SOURCE_DCF_CONVENTION: str = "ACT_360_INCLUSIVE"
-    SOURCE_CAP_TIMING: str = "EXCL_TERMINAL_PERIOD"
+    SOURCE_CAP_TIMING: str = "CURRENT_PERIOD_EXCL_TERMINAL"
     SOURCE_PASTED: float = 1_519.563935502677    # IDC!D57 snapshot
     SOURCE_LIVE: float = 1_520.3051321075397     # IDC row-sum (circularity-inclusive)
     SOURCE_CIRCULARITY: float = SOURCE_LIVE - SOURCE_PASTED
