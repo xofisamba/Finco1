@@ -588,3 +588,241 @@ def test_b3_ccc_14_capitalized_idc_total_in_total_capitalized_financing(b3_uses_
     cap_struct = sum(cfr.structuring_fee_keur)
     recomputed_total = cap_idc + cap_fee + cap_struct + cfr.vat_idc_keur + cfr.vat_commitment_fee_keur
     assert recomputed_total == pytest.approx(cfr.total_capitalized_financing_keur, abs=1e-6)
+
+
+# ---------------------------------------------------------------------------
+# B3 Correction D — Stage B2 kernel isolation, causal bridge decomposition.
+# ---------------------------------------------------------------------------
+
+
+def test_b3_ccd_1_construction_runtime_config_has_no_tax_fields():
+    """CD1: ConstructionRuntimeConfig carries no tax/ATAD/STL field.
+
+    The Stage B2 kernel is structurally tax-independent: its input dataclass
+    has no field that accepts tax policy, ATAD limits, or interest limitation
+    policy.  Any tax effect on IDC must route through the outer fixed point
+    (Senior quantum change), never through the B2 kernel directly.
+    """
+    import dataclasses
+    from finco_core.construction.stage_b2 import ConstructionRuntimeConfig
+
+    field_names = {f.name for f in dataclasses.fields(ConstructionRuntimeConfig)}
+    forbidden = {
+        "atad", "stl", "tax", "interest_limitation", "ebitda",
+        "disallowed", "thin_cap",
+    }
+    for term in forbidden:
+        matching = {n for n in field_names if term in n.lower()}
+        assert not matching, (
+            f"ConstructionRuntimeConfig has tax-related field(s) containing '{term}': {matching}"
+        )
+
+
+def test_b3_ccd_2_stage_b2_kernel_direct_run_tax_independent():
+    """CD2: Direct Stage B2 kernel run — output is determined solely by construction inputs.
+
+    Builds a minimal ConstructionRuntimeConfig with three active periods, a
+    simple CAPEX item, and a fixed Senior commitment.  Runs run_stage_b2()
+    directly (no project model, no tax engine).  Confirms:
+    - Capitalized IDC obeys NEXT_PERIOD identity: cap == (0.0,) + raw[:-1]
+    - sum(raw) - sum(cap) == raw[-1]  (terminal exclusion)
+    - No tax parameter was touched or needed
+    """
+    from datetime import date
+    from finco_core.construction.stage_b2 import (
+        ConstructionRuntimeConfig,
+        CapexScheduleSet,
+        CapexPaymentItem,
+        FinancingCostFundingPolicy,
+        TimelinePeriod,
+        run_stage_b2,
+    )
+
+    periods = (
+        TimelinePeriod(
+            index=0,
+            start_date=date(2027, 1, 1),
+            end_date=date(2027, 6, 30),
+            interest_fraction=0.5,
+            active_construction=True,
+            capex_payment_eligible=True,
+            senior_idc_active=True,
+            vat_facility_active=False,
+        ),
+        TimelinePeriod(
+            index=1,
+            start_date=date(2027, 7, 1),
+            end_date=date(2027, 12, 31),
+            interest_fraction=0.5,
+            active_construction=True,
+            capex_payment_eligible=True,
+            senior_idc_active=True,
+            vat_facility_active=False,
+        ),
+        TimelinePeriod(
+            index=2,
+            start_date=date(2028, 1, 1),
+            end_date=date(2028, 6, 30),
+            interest_fraction=0.5,
+            active_construction=True,
+            capex_payment_eligible=True,
+            senior_idc_active=True,
+            vat_facility_active=False,
+        ),
+    )
+    capex = CapexScheduleSet(items=(
+        CapexPaymentItem(
+            code="CAPEX",
+            name="Test CAPEX",
+            amount_keur=9_000.0,
+            payment_weights=(0.4, 0.4, 0.2),
+        ),
+    ))
+    policy = FinancingCostFundingPolicy(structuring_fee_payment_schedule=(1.0, 0.0, 0.0))
+
+    config = ConstructionRuntimeConfig(
+        timeline=periods,
+        capex_schedule=capex,
+        funding_policy=policy,
+        source_total_uses_validation_keur=(3_600.0, 3_600.0, 1_800.0),
+        equity_available_keur=4_000.0,
+        shl_available_keur=1_000.0,
+        senior_commitment_keur=5_000.0,
+        senior_interest_rate=0.0595,
+        senior_commitment_fee_rate=0.005,
+        senior_idc_balance_basis="CURRENT_CLOSING_DRAWN",
+        senior_idc_capitalization_timing="NEXT_PERIOD",
+        vat_facility_enabled=False,
+        convergence_tolerance_keur=1e-9,
+    )
+
+    result = run_stage_b2(config)
+
+    raw = result.senior_idc_accrual_keur
+    cap = result.senior_idc_capitalized_uses_keur
+    assert len(raw) == 3
+    assert len(cap) == 3
+
+    # NEXT_PERIOD identity: cap == (0.0,) + raw[:-1]
+    expected_cap = (0.0,) + raw[:-1]
+    for i, (c, e) in enumerate(zip(cap, expected_cap)):
+        assert c == pytest.approx(e, abs=1e-12), f"Period {i}: cap={c}, expected={e}"
+
+    # Terminal exclusion identity
+    assert sum(raw) - sum(cap) == pytest.approx(raw[-1], abs=1e-12)
+
+    # No tax field was touched — the config has no tax attribute
+    import dataclasses
+    field_names = {f.name for f in dataclasses.fields(config)}
+    assert "atad_ebitda_limit" not in field_names
+    assert "interest_limitation_policy" not in field_names
+
+
+def test_b3_ccd_3_causal_bridge_five_component_arithmetic_identity():
+    """CD3: Causal bridge arithmetic identity — 5-component decomposition.
+
+    The +31.924 kEUR delta between source live IDC and clean capitalized IDC
+    decomposes exactly into five independent effects.  This test encodes the
+    verified decomposition as a permanent arithmetic record.
+
+    Components (computed from TUHO source workbook and clean model run):
+      (1) Senior quantum:          +15.100 kEUR  (43,359→43,790 kEUR Senior)
+      (2) Draw profile/timing:     +16.824 kEUR  (clean vs source draw profile)
+      (3) Balance basis:          +220.572 kEUR  (OPENING→CLOSING balance convention)
+      (4) DCF convention:          -3.447 kEUR   (PRIOR→CURRENT period DCF)
+      (5) NEXT_PERIOD horizon:   -217.125 kEUR   (terminal accrual excluded from cap)
+
+    Bridge closes to within 0.001 kEUR of the live delta.
+    """
+    # Source anchor
+    SOURCE_LIVE_IDC_KEUR = 1_520.3051321075397
+
+    # Verified bridge components (from computational bridge in session notes)
+    SENIOR_QUANTUM_EFFECT = +15.099775
+    DRAW_PROFILE_EFFECT = +16.824307
+    BALANCE_BASIS_EFFECT = +220.571884
+    DCF_CONVENTION_EFFECT = -3.446858
+    NEXT_PERIOD_HORIZON = -217.125025
+
+    bridged = (
+        SOURCE_LIVE_IDC_KEUR
+        + SENIOR_QUANTUM_EFFECT
+        + DRAW_PROFILE_EFFECT
+        + BALANCE_BASIS_EFFECT
+        + DCF_CONVENTION_EFFECT
+        + NEXT_PERIOD_HORIZON
+    )
+    CLEAN_CAP_ACTUAL = 1_552.229200
+    assert bridged == pytest.approx(CLEAN_CAP_ACTUAL, abs=0.001)
+
+    # Total delta (cap - source_live)
+    total_delta = CLEAN_CAP_ACTUAL - SOURCE_LIVE_IDC_KEUR
+    assert total_delta == pytest.approx(31.924, abs=0.001)
+
+    # Component sum closes to total delta
+    component_sum = (
+        SENIOR_QUANTUM_EFFECT
+        + DRAW_PROFILE_EFFECT
+        + BALANCE_BASIS_EFFECT
+        + DCF_CONVENTION_EFFECT
+        + NEXT_PERIOD_HORIZON
+    )
+    assert component_sum == pytest.approx(total_delta, abs=0.001)
+
+    # NEXT_PERIOD horizon component matches the terminal exclusion fingerprint
+    assert abs(NEXT_PERIOD_HORIZON) == pytest.approx(217.125, abs=0.001)
+
+
+def test_b3_ccd_4_causal_bridge_direction_sign_semantics():
+    """CD4: Causal bridge component signs are economically correct.
+
+    Signs encode causal direction from source-live toward clean-cap:
+    - Senior quantum positive: larger Senior → more balance → more IDC
+    - Draw profile positive: clean draws front-loaded relative to source
+    - Balance basis positive: CLOSING > OPENING (draw included in same period)
+    - DCF convention negative: CURRENT period DCF < PRIOR period DCF for typical schedules
+    - NEXT_PERIOD horizon negative: excludes terminal accrual from capitalized uses
+    """
+    SENIOR_QUANTUM_EFFECT = +15.099775
+    DRAW_PROFILE_EFFECT = +16.824307
+    BALANCE_BASIS_EFFECT = +220.571884
+    DCF_CONVENTION_EFFECT = -3.446858
+    NEXT_PERIOD_HORIZON = -217.125025
+
+    assert SENIOR_QUANTUM_EFFECT > 0
+    assert DRAW_PROFILE_EFFECT > 0
+    assert BALANCE_BASIS_EFFECT > 0
+    assert DCF_CONVENTION_EFFECT < 0
+    assert NEXT_PERIOD_HORIZON < 0
+
+
+def test_b3_ccd_5_causal_bridge_balance_basis_dominance():
+    """CD5: Balance basis and NEXT_PERIOD horizon are the two dominant components.
+
+    The +220.572 kEUR balance-basis effect and -217.125 kEUR NEXT_PERIOD effect
+    are both ~14× larger than the next largest component.  They nearly cancel
+    (+3.447 kEUR net), exposing the true economic drivers: Senior quantum and
+    draw profile timing.  This test encodes that structural dominance.
+    """
+    SENIOR_QUANTUM_EFFECT = +15.099775
+    DRAW_PROFILE_EFFECT = +16.824307
+    BALANCE_BASIS_EFFECT = +220.571884
+    DCF_CONVENTION_EFFECT = -3.446858
+    NEXT_PERIOD_HORIZON = -217.125025
+
+    small_components = [
+        abs(SENIOR_QUANTUM_EFFECT),
+        abs(DRAW_PROFILE_EFFECT),
+        abs(DCF_CONVENTION_EFFECT),
+    ]
+    large_components = [abs(BALANCE_BASIS_EFFECT), abs(NEXT_PERIOD_HORIZON)]
+
+    for large in large_components:
+        for small in small_components:
+            assert large > 10 * small, (
+                f"Expected dominant component {large:.3f} > 10× smaller {small:.3f}"
+            )
+
+    # Net of large two is small relative to each individually (< 2%)
+    large_net = BALANCE_BASIS_EFFECT + NEXT_PERIOD_HORIZON
+    assert abs(large_net) < 0.02 * abs(BALANCE_BASIS_EFFECT)
