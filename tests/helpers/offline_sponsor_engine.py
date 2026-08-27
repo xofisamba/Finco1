@@ -98,5 +98,3 @@ def _run_sponsor_engine(waterfall_result, project_inputs, project_type: str):
     moic_result = run_sponsor_moic(SponsorMoicRunnerInputs(sponsor_result=cashflow_result))
 
     return cashflow_result, irr_result, moic_result
-
-
