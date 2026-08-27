@@ -147,3 +147,159 @@ def test_source_gate_fixture_is_validation_only_not_runtime_input():
     assert first_active == 7
     assert "first_active_period_index" not in project_repr
     assert "source_gate_vector" not in project_repr
+
+
+# ---------------------------------------------------------------------------
+# B3 Correction B — Construction financing / total project uses causal
+# reconciliation identity tests (14 tests required by independent review).
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def b3_uses_data(clean_run):
+    fr = clean_run.g2c_result.financing_result
+    return fr.project_uses, fr.construction_financing
+
+
+def test_b3_cbc_T1_project_uses_total_equals_cfr_final_total(b3_uses_data):
+    """T1: project_uses.total == cfr.final_total_project_uses (no lag)."""
+    pu, cfr = b3_uses_data
+    assert pu.total_project_uses_keur == pytest.approx(
+        cfr.final_total_project_uses_keur, abs=1e-8
+    )
+
+
+def test_b3_cbc_T2_hard_plus_financing_plus_reserve_equals_total(b3_uses_data):
+    """T2: hard + explicit_financing + reserve + other_explicit == total (strict identity)."""
+    pu, cfr = b3_uses_data
+    recomputed = (
+        pu.hard_project_capex_keur
+        + pu.explicit_financing_cost_uses_keur
+        + pu.reserve_account_funding_keur
+        + pu.other_explicit_project_uses_keur
+    )
+    assert recomputed == pytest.approx(pu.total_project_uses_keur, abs=1e-8)
+
+
+def test_b3_cbc_T3_capitalized_financing_consistent_with_project_uses(b3_uses_data):
+    """T3: cfr.total_capitalized_financing ≈ project_uses.explicit_financing (within 1e-6 kEUR)."""
+    pu, cfr = b3_uses_data
+    assert cfr.total_capitalized_financing_keur == pytest.approx(
+        pu.explicit_financing_cost_uses_keur, abs=1e-6
+    )
+
+
+def test_b3_cbc_T4_tuho_has_zero_reserve(b3_uses_data):
+    """T4: TUHO clean run carries no reserve — no hidden capacity in reserve."""
+    pu, cfr = b3_uses_data
+    assert pu.reserve_account_funding_keur == pytest.approx(0.0, abs=1e-9)
+
+
+def test_b3_cbc_T5_tuho_has_zero_other_explicit_uses(b3_uses_data):
+    """T5: No other_explicit_project_uses — uses decomposition is complete."""
+    pu, cfr = b3_uses_data
+    assert pu.other_explicit_project_uses_keur == pytest.approx(0.0, abs=1e-9)
+
+
+def test_b3_cbc_T6_idc_accrual_exceeds_capitalized_senior_idc(b3_uses_data):
+    """T6: Senior IDC accrual > capitalized senior IDC component — gate disallows part.
+
+    capitalized_senior_idc = total_cap - commit_fee - struct_fee - vat_idc - vat_commit_fee
+    """
+    pu, cfr = b3_uses_data
+    accrual_idc = sum(cfr.senior_idc_accrual_keur)
+    cap_senior_idc = (
+        cfr.total_capitalized_financing_keur
+        - sum(cfr.senior_commitment_fee_accrual_keur)
+        - sum(cfr.structuring_fee_keur)
+        - cfr.vat_idc_keur
+        - cfr.vat_commitment_fee_keur
+    )
+    assert accrual_idc > cap_senior_idc
+
+
+def test_b3_cbc_T7_gate_disallowed_idc_magnitude(b3_uses_data):
+    """T7: ATAD gate disallows 217.125 kEUR of accrued IDC from capitalization."""
+    pu, cfr = b3_uses_data
+    accrual_idc = sum(cfr.senior_idc_accrual_keur)
+    accrual_fee = sum(cfr.senior_commitment_fee_accrual_keur)
+    accrual_struct = sum(cfr.structuring_fee_keur)
+    capitalized_senior_idc = (
+        cfr.total_capitalized_financing_keur
+        - accrual_fee
+        - accrual_struct
+        - cfr.vat_idc_keur
+        - cfr.vat_commitment_fee_keur
+    )
+    gate_disallowed = accrual_idc - capitalized_senior_idc
+    assert gate_disallowed == pytest.approx(217.1250255375926, abs=1e-6)
+
+
+def test_b3_cbc_T8_all_idc_accruals_non_negative(b3_uses_data):
+    """T8: No period may carry negative IDC accrual."""
+    pu, cfr = b3_uses_data
+    for i, val in enumerate(cfr.senior_idc_accrual_keur):
+        assert val >= -1e-10, f"Period {i}: negative IDC accrual {val}"
+
+
+def test_b3_cbc_T9_outer_loop_converged(b3_uses_data):
+    """T9: Outer fixed-point loop converged (residual < 1e-6 kEUR)."""
+    pu, cfr = b3_uses_data
+    assert cfr.outer_residual_keur == pytest.approx(0.0, abs=1e-6)
+
+
+def test_b3_cbc_T10_idempotence_residual_tight(b3_uses_data):
+    """T10: Final idempotence check residual < 1e-4 kEUR (no outer-loop state lag)."""
+    pu, cfr = b3_uses_data
+    assert cfr.final_verification_outer_residual_keur == pytest.approx(0.0, abs=1e-4)
+
+
+def test_b3_cbc_T11_vat_facility_components_in_capitalized_total(b3_uses_data):
+    """T11: VAT IDC + VAT commitment fee are included in total_capitalized_financing."""
+    pu, cfr = b3_uses_data
+    vat_total = cfr.vat_idc_keur + cfr.vat_commitment_fee_keur
+    assert vat_total == pytest.approx(122.31400101334872 + 26.465752928759642, abs=1e-9)
+    assert cfr.total_capitalized_financing_keur > vat_total
+
+
+def test_b3_cbc_T12_structuring_fee_allocation_sums_to_capitalized(b3_uses_data):
+    """T12: Sum of per-period structuring fees == scalar allocated from CapitalizedFinancingCosts."""
+    pu, cfr = b3_uses_data
+    struct_sum = sum(cfr.structuring_fee_keur)
+    accrual_fee = sum(cfr.senior_commitment_fee_accrual_keur)
+    capitalized_senior_idc = (
+        cfr.total_capitalized_financing_keur
+        - accrual_fee
+        - struct_sum
+        - cfr.vat_idc_keur
+        - cfr.vat_commitment_fee_keur
+    )
+    assert struct_sum == pytest.approx(471.5143013349264, abs=1e-8)
+    assert capitalized_senior_idc == pytest.approx(1552.229213780136, abs=1e-6)
+
+
+def test_b3_cbc_T13_clean_senior_idc_accrual_exceeds_source(b3_uses_data):
+    """T13: Clean Senior IDC accrual (1769.35) > source (1519.56) by ~249.79 kEUR.
+
+    Causal bridge: clean uses typed dynamic interest limitation gate (ATAD/STL)
+    and full B2 period-level accrual; source uses a frozen Excel schedule.
+    The accrual divergence is the first material source/clean difference.
+    """
+    pu, cfr = b3_uses_data
+    SOURCE_SENIOR_IDC_KEUR = 1_519.563935502677
+    clean_accrual = sum(cfr.senior_idc_accrual_keur)
+    divergence = clean_accrual - SOURCE_SENIOR_IDC_KEUR
+    assert clean_accrual == pytest.approx(1_769.3542393177286, abs=1e-6)
+    assert divergence == pytest.approx(249.79030381505163, abs=1e-4)
+
+
+def test_b3_cbc_T14_construction_financing_produces_no_double_count(b3_uses_data):
+    """T14: Hard CAPEX in project_uses equals hard CAPEX period vector sum.
+
+    Confirms no double-count between hard_capex_uses and explicit_financing_cost_uses.
+    """
+    pu, cfr = b3_uses_data
+    hard_from_vector = sum(cfr.hard_capex_uses_keur)
+    assert hard_from_vector == pytest.approx(pu.hard_project_capex_keur, abs=1e-8)
+    assert pu.hard_project_capex_keur == pytest.approx(70_691.53944444444, abs=1e-8)
+    assert pu.explicit_financing_cost_uses_keur != pytest.approx(0.0, abs=1.0)
