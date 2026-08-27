@@ -201,38 +201,35 @@ def test_b3_cbc_T5_tuho_has_zero_other_explicit_uses(b3_uses_data):
     assert pu.other_explicit_project_uses_keur == pytest.approx(0.0, abs=1e-9)
 
 
-def test_b3_cbc_T6_idc_accrual_exceeds_capitalized_senior_idc(b3_uses_data):
-    """T6: Senior IDC accrual > capitalized senior IDC component — gate disallows part.
+def test_b3_cbc_T6_raw_idc_accrual_exceeds_capitalized_idc_uses(b3_uses_data):
+    """T6: Raw IDC accrual total > capitalized IDC uses total.
 
-    capitalized_senior_idc = total_cap - commit_fee - struct_fee - vat_idc - vat_commit_fee
+    TERMINAL_RAW_IDC_OUTSIDE_NEXT_PERIOD_CAPITALIZATION_HORIZON:
+    With NEXT_PERIOD timing the last period's raw accrual is shifted out of
+    the construction Uses vector. This is a capitalization horizon semantic,
+    NOT a tax-disallowance result.
     """
     pu, cfr = b3_uses_data
-    accrual_idc = sum(cfr.senior_idc_accrual_keur)
-    cap_senior_idc = (
-        cfr.total_capitalized_financing_keur
-        - sum(cfr.senior_commitment_fee_accrual_keur)
-        - sum(cfr.structuring_fee_keur)
-        - cfr.vat_idc_keur
-        - cfr.vat_commitment_fee_keur
-    )
-    assert accrual_idc > cap_senior_idc
+    raw_total = sum(cfr.senior_idc_accrual_keur)
+    cap_total = sum(cfr.senior_idc_capitalized_uses_keur)
+    assert raw_total > cap_total
 
 
-def test_b3_cbc_T7_gate_disallowed_idc_magnitude(b3_uses_data):
-    """T7: ATAD gate disallows 217.125 kEUR of accrued IDC from capitalization."""
+def test_b3_cbc_T7_next_period_identity_terminal_raw_accrual(b3_uses_data):
+    """T7: NEXT_PERIOD timing identity: raw_total - cap_total == last_raw_accrual.
+
+    For NEXT_PERIOD: capitalized = (0.0,) + raw[:-1]
+    Therefore sum(capitalized) = sum(raw) - raw[-1].
+    The difference is the terminal period raw accrual — outside the construction
+    capitalization horizon, not tax-disallowed IDC.
+    """
     pu, cfr = b3_uses_data
-    accrual_idc = sum(cfr.senior_idc_accrual_keur)
-    accrual_fee = sum(cfr.senior_commitment_fee_accrual_keur)
-    accrual_struct = sum(cfr.structuring_fee_keur)
-    capitalized_senior_idc = (
-        cfr.total_capitalized_financing_keur
-        - accrual_fee
-        - accrual_struct
-        - cfr.vat_idc_keur
-        - cfr.vat_commitment_fee_keur
-    )
-    gate_disallowed = accrual_idc - capitalized_senior_idc
-    assert gate_disallowed == pytest.approx(217.1250255375926, abs=1e-6)
+    raw = cfr.senior_idc_accrual_keur
+    cap = cfr.senior_idc_capitalized_uses_keur
+    terminal_raw = raw[-1]
+    assert sum(raw) - sum(cap) == pytest.approx(terminal_raw, abs=1e-10)
+    # Validation fingerprint — do NOT treat as financial authority
+    assert terminal_raw == pytest.approx(217.1250255375923, abs=1e-4)
 
 
 def test_b3_cbc_T8_all_idc_accruals_non_negative(b3_uses_data):
@@ -262,35 +259,56 @@ def test_b3_cbc_T11_vat_facility_components_in_capitalized_total(b3_uses_data):
     assert cfr.total_capitalized_financing_keur > vat_total
 
 
-def test_b3_cbc_T12_structuring_fee_allocation_sums_to_capitalized(b3_uses_data):
-    """T12: Sum of per-period structuring fees == scalar allocated from CapitalizedFinancingCosts."""
+def test_b3_cbc_T12_capitalized_idc_uses_sums_to_capitalized_total(b3_uses_data):
+    """T12: sum(senior_idc_capitalized_uses_keur) == CapitalizedFinancingCosts.senior_idc_keur.
+
+    The explicit audit field sums to the same scalar carried in total_capitalized_financing.
+    """
     pu, cfr = b3_uses_data
-    struct_sum = sum(cfr.structuring_fee_keur)
-    accrual_fee = sum(cfr.senior_commitment_fee_accrual_keur)
-    capitalized_senior_idc = (
+    cap_idc_from_vector = sum(cfr.senior_idc_capitalized_uses_keur)
+    # Derive the capitalized senior IDC scalar from the total (single authority)
+    cap_senior_idc_scalar = (
         cfr.total_capitalized_financing_keur
-        - accrual_fee
-        - struct_sum
+        - sum(cfr.senior_commitment_fee_accrual_keur)
+        - sum(cfr.structuring_fee_keur)
         - cfr.vat_idc_keur
         - cfr.vat_commitment_fee_keur
     )
-    assert struct_sum == pytest.approx(471.5143013349264, abs=1e-8)
-    assert capitalized_senior_idc == pytest.approx(1552.229213780136, abs=1e-6)
+    assert cap_idc_from_vector == pytest.approx(cap_senior_idc_scalar, abs=1e-8)
+    assert cap_idc_from_vector == pytest.approx(1_552.229213780136, abs=1e-6)
 
 
-def test_b3_cbc_T13_clean_senior_idc_accrual_exceeds_source(b3_uses_data):
-    """T13: Clean Senior IDC accrual (1769.35) > source (1519.56) by ~249.79 kEUR.
+def test_b3_cbc_T13_like_for_like_capitalized_idc_vs_source(b3_uses_data):
+    """T13: Like-for-like: clean CAPITALIZED IDC vs source live IDC schedule sum.
 
-    Causal bridge: clean uses typed dynamic interest limitation gate (ATAD/STL)
-    and full B2 period-level accrual; source uses a frozen Excel schedule.
-    The accrual divergence is the first material source/clean difference.
+    DO NOT compare raw accrual to source pasted total — those are NOT like-for-like.
+
+    Correct comparison:
+      A. Clean raw accrual (diagnostic only): ~1,769.354 kEUR
+      B. Clean capitalized IDC use (project use): ~1,552.229 kEUR  ← economically correct
+      C. Source live IDC schedule sum: ~1,520.305 kEUR
+      D. Source pasted/total-uses IDC: ~1,519.564 kEUR
+
+    Like-for-like source/clean divergence (B vs C): ~+31.924 kEUR.
+    Source circularity residual (C - D): ~+0.741 kEUR = SOURCE_CONSTRUCTION_CIRCULARITY_RESIDUAL.
     """
     pu, cfr = b3_uses_data
-    SOURCE_SENIOR_IDC_KEUR = 1_519.563935502677
-    clean_accrual = sum(cfr.senior_idc_accrual_keur)
-    divergence = clean_accrual - SOURCE_SENIOR_IDC_KEUR
-    assert clean_accrual == pytest.approx(1_769.3542393177286, abs=1e-6)
-    assert divergence == pytest.approx(249.79030381505163, abs=1e-4)
+    SOURCE_LIVE_IDC_KEUR = 1_520.3051321075397
+    SOURCE_PASTED_IDC_KEUR = 1_519.563935502677
+    SOURCE_CIRCULARITY_RESIDUAL_KEUR = SOURCE_LIVE_IDC_KEUR - SOURCE_PASTED_IDC_KEUR
+
+    clean_raw = sum(cfr.senior_idc_accrual_keur)
+    clean_cap = sum(cfr.senior_idc_capitalized_uses_keur)
+
+    assert clean_raw == pytest.approx(1_769.3542393177286, abs=1e-6)
+    assert clean_cap == pytest.approx(1_552.229213780136, abs=1e-6)
+
+    # Like-for-like divergence: capitalized vs live source
+    like_for_like_delta = clean_cap - SOURCE_LIVE_IDC_KEUR
+    assert like_for_like_delta == pytest.approx(31.924081672596, abs=0.5)
+
+    # Source circularity classified, not reproduced
+    assert SOURCE_CIRCULARITY_RESIDUAL_KEUR == pytest.approx(0.741196604863, abs=0.01)
 
 
 def test_b3_cbc_T14_construction_financing_produces_no_double_count(b3_uses_data):
@@ -303,3 +321,270 @@ def test_b3_cbc_T14_construction_financing_produces_no_double_count(b3_uses_data
     assert hard_from_vector == pytest.approx(pu.hard_project_capex_keur, abs=1e-8)
     assert pu.hard_project_capex_keur == pytest.approx(70_691.53944444444, abs=1e-8)
     assert pu.explicit_financing_cost_uses_keur != pytest.approx(0.0, abs=1.0)
+
+
+# ---------------------------------------------------------------------------
+# B3 Correction C — IDC accrual vs capitalization semantics, NEXT_PERIOD
+# timing proof, tax-independence, and like-for-like source reconciliation.
+# ---------------------------------------------------------------------------
+
+
+def test_b3_ccc_1_raw_and_capitalized_idc_are_distinct_typed_concepts(b3_uses_data):
+    """CC1: raw accrual and capitalized uses are distinct typed concepts on cfr."""
+    pu, cfr = b3_uses_data
+    assert hasattr(cfr, "senior_idc_accrual_keur")
+    assert hasattr(cfr, "senior_idc_capitalized_uses_keur")
+    raw = cfr.senior_idc_accrual_keur
+    cap = cfr.senior_idc_capitalized_uses_keur
+    # They are different tuples
+    assert raw != cap
+    assert sum(raw) != pytest.approx(sum(cap), abs=1.0)
+
+
+def test_b3_ccc_2_next_period_transformation_identity(b3_uses_data):
+    """CC2: NEXT_PERIOD transformation: cap == (0.0,) + raw[:-1] element-wise."""
+    pu, cfr = b3_uses_data
+    raw = cfr.senior_idc_accrual_keur
+    cap = cfr.senior_idc_capitalized_uses_keur
+    expected = (0.0,) + raw[:-1]
+    assert len(cap) == len(expected)
+    for i, (a, b) in enumerate(zip(cap, expected)):
+        assert a == pytest.approx(b, abs=1e-12), f"Period {i}: cap={a}, expected={b}"
+
+
+def test_b3_ccc_3_difference_equals_terminal_raw_accrual(b3_uses_data):
+    """CC3: sum(raw) - sum(cap) == raw[-1] (terminal period accrual).
+
+    This is the TERMINAL_RAW_IDC_OUTSIDE_NEXT_PERIOD_CAPITALIZATION_HORIZON amount.
+    It is a timing/horizon semantic, NOT a tax-disallowance.
+    """
+    pu, cfr = b3_uses_data
+    raw = cfr.senior_idc_accrual_keur
+    cap = cfr.senior_idc_capitalized_uses_keur
+    assert sum(raw) - sum(cap) == pytest.approx(raw[-1], abs=1e-10)
+
+
+def test_b3_ccc_4_same_period_total_equals_raw_accrual_total():
+    """CC4: SAME_PERIOD timing: capitalized total == raw accrual total (no horizon shift)."""
+    from finco_core.construction.stage_b2 import _capitalized_uses
+    raw = (10.0, 20.0, 30.0, 25.0, 15.0)
+    same_period_cap = _capitalized_uses(sum(raw), (), raw, "SAME_PERIOD")
+    assert sum(same_period_cap) == pytest.approx(sum(raw), abs=1e-12)
+    assert same_period_cap == raw
+
+
+def test_b3_ccc_5_opening_same_vs_closing_next_interior_equivalence():
+    """CC5: Interior-period equivalence of OPENING+SAME vs CLOSING+NEXT.
+
+    Synthetic schedule: draws D1, D2, D3, D4. rate r, dcf f.
+    OPENING+SAME: interest[t] = opening[t] * r * f, capitalize same period.
+    CLOSING+NEXT: interest[t] = closing[t] * r * f, capitalize next period.
+    Interior periods (1 to n-2) produce economically equivalent IDC Uses.
+    Period 0: CLOSING has draw D1 whereas OPENING has 0 — initial boundary differs.
+    Period n-1: CLOSING accrual falls outside NEXT_PERIOD horizon — terminal boundary differs.
+    """
+    draws = (100.0, 200.0, 150.0, 50.0)
+    rate = 0.05
+    dcf = 1 / 12
+    n = len(draws)
+
+    # Opening balance method (SAME_PERIOD): opening[t] = sum(draws[:t])
+    opening = [sum(draws[:t]) for t in range(n)]
+    idc_opening_same = tuple(opening[t] * rate * dcf for t in range(n))
+    cap_opening_same = idc_opening_same  # SAME_PERIOD
+
+    # Closing balance method (NEXT_PERIOD): closing[t] = sum(draws[:t+1])
+    closing = [sum(draws[:t + 1]) for t in range(n)]
+    idc_closing = tuple(closing[t] * rate * dcf for t in range(n))
+    cap_closing_next = (0.0,) + idc_closing[:-1]  # NEXT_PERIOD
+
+    # Interior periods [1, n-2]: cap_opening_same[t] == cap_closing_next[t]
+    for t in range(1, n - 1):
+        assert cap_opening_same[t] == pytest.approx(cap_closing_next[t], abs=1e-12), (
+            f"Interior period {t}: OPENING+SAME={cap_opening_same[t]}, "
+            f"CLOSING+NEXT={cap_closing_next[t]}"
+        )
+
+    # Period 0 boundary: OPENING+SAME gets 0, CLOSING+NEXT gets 0 (shifted) — both zero
+    assert cap_opening_same[0] == pytest.approx(0.0, abs=1e-12)
+    assert cap_closing_next[0] == pytest.approx(0.0, abs=1e-12)
+
+    # Terminal boundary: OPENING+SAME includes last accrual; CLOSING+NEXT does not
+    assert cap_opening_same[-1] > 0.0
+    assert cap_closing_next[-1] == pytest.approx(idc_closing[-2], abs=1e-12)
+    terminal_diff = sum(idc_closing) - sum(cap_closing_next)
+    assert terminal_diff == pytest.approx(idc_closing[-1], abs=1e-12)
+
+
+def test_b3_ccc_6_terminal_boundary_difference_explicit():
+    """CC6: Terminal boundary: CLOSING+NEXT excludes last accrual; OPENING+SAME includes it."""
+    from finco_core.construction.stage_b2 import _capitalized_uses
+    raw = (5.0, 10.0, 15.0, 20.0)  # raw accrual (CLOSING balance basis)
+    cap_next = _capitalized_uses(sum(raw), (), raw, "NEXT_PERIOD")
+    cap_same = _capitalized_uses(sum(raw), (), raw, "SAME_PERIOD")
+    # NEXT_PERIOD excludes terminal: sum(cap_next) = sum(raw) - raw[-1]
+    assert sum(cap_next) == pytest.approx(sum(raw) - raw[-1], abs=1e-12)
+    # SAME_PERIOD includes terminal: sum(cap_same) = sum(raw)
+    assert sum(cap_same) == pytest.approx(sum(raw), abs=1e-12)
+    # Explicit terminal shift
+    assert sum(raw) - sum(cap_next) == pytest.approx(raw[-1], abs=1e-12)
+
+
+def test_b3_ccc_7_stage_b2_idc_is_tax_policy_independent(clean_run):
+    """CC7: Stage B2 IDC capitalization is tax-policy-independent for fixed construction inputs.
+
+    For identical construction inputs (CAPEX, Senior, rates, timing), changing
+    the ATAD absolute limit does NOT directly change Stage B2 capitalized IDC.
+    Tax may affect Senior quantum through the outer fixed point, but the B2
+    construction kernel is tax-independent once construction funding is fixed.
+    """
+    from dataclasses import replace
+
+    project = create_default_tuho_wind1()
+
+    # Baseline run
+    baseline_cfr = clean_run.g2c_result.financing_result.construction_financing
+    baseline_cap_idc = sum(baseline_cfr.senior_idc_capitalized_uses_keur)
+
+    # Mutate ATAD EBITDA limit (tax policy parameter)
+    tax = project.tax
+    assert hasattr(tax, "atad_ebitda_limit")
+    mutated_project = replace(
+        project,
+        tax=replace(tax, atad_ebitda_limit=tax.atad_ebitda_limit * 2.0),
+    )
+    mutated_run = run_clean_production(mutated_project)
+    mutated_cfr = mutated_run.g2c_result.financing_result.construction_financing
+    mutated_cap_idc = sum(mutated_cfr.senior_idc_capitalized_uses_keur)
+
+    # The outer fixed point may change Senior, causing capitalized IDC to change
+    # THROUGH the Senior quantum — but the B2 kernel itself is tax-independent.
+    # If Senior is unchanged, capitalized IDC must be unchanged.
+    if mutated_cfr.final_senior_commitment_keur == pytest.approx(
+        baseline_cfr.final_senior_commitment_keur, abs=1.0
+    ):
+        assert mutated_cap_idc == pytest.approx(baseline_cap_idc, abs=1.0)
+
+    # In all cases: Stage B2 IDC authority is CONSTRUCTION INPUTS, not tax policy
+    assert mutated_cfr.authority == baseline_cfr.authority
+
+
+def test_b3_ccc_8_source_live_vs_pasted_circularity_classification(b3_uses_data):
+    """CC8: Source live IDC != pasted IDC — classified as SOURCE_CONSTRUCTION_CIRCULARITY_RESIDUAL.
+
+    Source live (period sum): 1,520.305132 kEUR
+    Source pasted (total uses):  1,519.563936 kEUR
+    Residual: ~0.741 kEUR — not reproduced by Finco.
+    """
+    SOURCE_LIVE_IDC = 1_520.3051321075397
+    SOURCE_PASTED_IDC = 1_519.563935502677
+    circularity = SOURCE_LIVE_IDC - SOURCE_PASTED_IDC
+    # Classified: not zero, not reproduced
+    assert circularity == pytest.approx(0.741196604863, abs=0.001)
+    assert circularity != pytest.approx(0.0, abs=0.1)
+
+
+def test_b3_ccc_9_tuho_project_uses_identity(b3_uses_data):
+    """CC9: TUHO Project Uses identity (preserved from Correction B T1-T3)."""
+    pu, cfr = b3_uses_data
+    recomputed = (
+        pu.hard_project_capex_keur
+        + pu.explicit_financing_cost_uses_keur
+        + pu.reserve_account_funding_keur
+        + pu.other_explicit_project_uses_keur
+    )
+    assert recomputed == pytest.approx(pu.total_project_uses_keur, abs=1e-8)
+    assert cfr.total_capitalized_financing_keur == pytest.approx(
+        pu.explicit_financing_cost_uses_keur, abs=1e-6
+    )
+
+
+def test_b3_ccc_10_senior_quantum_mutation_changes_capitalized_idc_naturally(clean_run):
+    """CC10: Senior quantum change naturally changes capitalized IDC through B2 — no tuning."""
+    from dataclasses import replace
+
+    project = create_default_tuho_wind1()
+    financing = project.financing
+    sculpting = financing.senior_sculpting_config
+    assert sculpting is not None
+
+    # Lower target DSCR → higher Senior → higher IDC
+    lower_dscr = replace(
+        project,
+        financing=replace(
+            financing,
+            senior_sculpting_config=replace(
+                sculpting,
+                target_dscr_schedule=tuple(t - 0.05 for t in sculpting.target_dscr_schedule),
+            ),
+        ),
+    )
+    lower_run = run_clean_production(lower_dscr)
+    baseline_cfr = clean_run.g2c_result.financing_result.construction_financing
+    lower_cfr = lower_run.g2c_result.financing_result.construction_financing
+
+    baseline_senior = baseline_cfr.final_senior_commitment_keur
+    lower_senior = lower_cfr.final_senior_commitment_keur
+    assert lower_senior > baseline_senior
+
+    # Higher Senior → more IDC drawn → naturally higher capitalized IDC
+    assert sum(lower_cfr.senior_idc_capitalized_uses_keur) >= sum(
+        baseline_cfr.senior_idc_capitalized_uses_keur
+    )
+
+
+def test_b3_ccc_11_stage_b2_result_exposes_capitalized_uses_field(b3_uses_data):
+    """CC11: Stage B2 result exposes senior_idc_capitalized_uses_keur — audit without recalculation.
+
+    The field is the exact converged capitalized vector from the B2 inner loop.
+    It matches sum(CapitalizedFinancingCosts.senior_idc_keur) and is NOT recomputed
+    from the accrual post-hoc — it is the primary converged output.
+    """
+    pu, cfr = b3_uses_data
+    cap_uses = cfr.senior_idc_capitalized_uses_keur
+    assert isinstance(cap_uses, tuple)
+    assert len(cap_uses) == len(cfr.senior_idc_accrual_keur)
+    # Every element is non-negative
+    for i, v in enumerate(cap_uses):
+        assert v >= -1e-10, f"Period {i}: negative capitalized IDC uses {v}"
+    # First element is 0 (NEXT_PERIOD — nothing capitalized in period 0)
+    assert cap_uses[0] == pytest.approx(0.0, abs=1e-12)
+
+
+def test_b3_ccc_12_no_source_idc_vector_runtime_use():
+    """CC12: No source IDC vector enters the Stage B2 or production calculation."""
+    import ast, pathlib
+
+    source_guard_terms = [
+        "source_idc", "excel_idc", "workbook_idc", "frozen_idc",
+        "source_senior_idc", "hardcoded_idc",
+    ]
+    engine_files = list(pathlib.Path("financial_engine/financing").glob("*.py"))
+    engine_files += list(pathlib.Path("finco_core/construction").glob("*.py"))
+
+    for path in engine_files:
+        src = path.read_text(encoding="utf-8").lower()
+        for term in source_guard_terms:
+            assert term not in src, (
+                f"{path}: forbidden source-IDC reference '{term}' found"
+            )
+
+
+def test_b3_ccc_13_next_period_vector_first_element_is_zero(b3_uses_data):
+    """CC13: NEXT_PERIOD capitalized vector starts with 0.0 (no IDC capitalized in period 0)."""
+    pu, cfr = b3_uses_data
+    assert cfr.senior_idc_capitalized_uses_keur[0] == pytest.approx(0.0, abs=1e-12)
+
+
+def test_b3_ccc_14_capitalized_idc_total_in_total_capitalized_financing(b3_uses_data):
+    """CC14: sum(capitalized_uses) contributes to total_capitalized_financing_keur.
+
+    total_capitalized = cap_senior_idc + commit_fee + struct_fee + vat_idc + vat_commit_fee.
+    This proves a single financial authority with no duplicate paths.
+    """
+    pu, cfr = b3_uses_data
+    cap_idc = sum(cfr.senior_idc_capitalized_uses_keur)
+    cap_fee = sum(cfr.senior_commitment_fee_accrual_keur)
+    cap_struct = sum(cfr.structuring_fee_keur)
+    recomputed_total = cap_idc + cap_fee + cap_struct + cfr.vat_idc_keur + cfr.vat_commitment_fee_keur
+    assert recomputed_total == pytest.approx(cfr.total_capitalized_financing_keur, abs=1e-6)

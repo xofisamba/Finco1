@@ -148,6 +148,7 @@ class ConstructionFinancingResult:
     vat_requirement_keur: tuple[float, ...] = ()
     vat_drawn_keur: tuple[float, ...] = ()
     vat_undrawn_keur: tuple[float, ...] = ()
+    senior_idc_capitalized_uses_keur: tuple[float, ...] = ()
     vat_idc_keur: float = 0.0
     vat_commitment_fee_keur: float = 0.0
     vat_commitment_mode: str = "DISABLED"

@@ -147,6 +147,7 @@ class ConstructionRuntimeResult:
     vat_payable_keur: tuple[float, ...]
     vat_schedule: tuple[FacilityPeriodState, ...]
     senior_idc_accrual_keur: tuple[float, ...]
+    senior_idc_capitalized_uses_keur: tuple[float, ...]
     senior_commitment_fee_accrual_keur: tuple[float, ...]
     cumulative_senior_draw_keur: tuple[float, ...]
     senior_period_draw_keur: tuple[float, ...]
@@ -913,6 +914,7 @@ def _run_stage_b2_inner(
         period_uses, financing, closing_senior,
         iteration, residual, audit, final_unfunded,
         prov_alloc_out,
+        senior_idc_uses,
     )
 
 
@@ -934,6 +936,7 @@ def run_stage_b2(config: ConstructionRuntimeConfig) -> ConstructionRuntimeResult
         cumulative_senior, senior_period_draws,
         period_uses, financing, closing_senior,
         iteration, residual, audit, _unfunded, _canonical_alloc,
+        senior_idc_cap_uses,
     ) = _run_stage_b2_inner(config, provisional=False)
 
     return ConstructionRuntimeResult(
@@ -942,6 +945,7 @@ def run_stage_b2(config: ConstructionRuntimeConfig) -> ConstructionRuntimeResult
         vat_payable_keur=vat_payable,
         vat_schedule=vat_schedule,
         senior_idc_accrual_keur=senior_idc_accruals,
+        senior_idc_capitalized_uses_keur=senior_idc_cap_uses,
         senior_commitment_fee_accrual_keur=senior_fee_accruals,
         cumulative_senior_draw_keur=cumulative_senior,
         senior_period_draw_keur=senior_period_draws,
@@ -974,7 +978,7 @@ def run_stage_b2_provisional(config: ConstructionRuntimeConfig) -> ProvisionalSt
         _cumul_senior, senior_period_draws,
         period_uses, financing, _closing_senior,
         iteration, residual, _audit, final_unfunded,
-        alloc_final_prov,
+        alloc_final_prov, _idc_cap_uses,
     ) = _run_stage_b2_inner(config, provisional=True)
 
     # Derive funded Sources directly from canonical provisional allocations.

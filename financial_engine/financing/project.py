@@ -823,6 +823,7 @@ def _run_with_construction_idc(
         vat_requirement_keur=tuple(row.vat_requirement_keur for row in b2.vat_schedule),
         vat_drawn_keur=tuple(row.vat_drawn_keur for row in b2.vat_schedule),
         vat_undrawn_keur=tuple(row.vat_undrawn_keur for row in b2.vat_schedule),
+        senior_idc_capitalized_uses_keur=b2.senior_idc_capitalized_uses_keur,
         vat_idc_keur=b2.capitalized_financing_costs.vat_idc_keur,
         vat_commitment_fee_keur=b2.capitalized_financing_costs.vat_commitment_fee_keur,
         vat_commitment_mode=(
