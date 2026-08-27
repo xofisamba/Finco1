@@ -6,6 +6,7 @@ from app.project_factories import (
     create_default_oborovo,
     create_default_solar_project,
     create_default_tuho_wind1,
+    create_default_tuho_wind1_legacy_calibration,
 )
 from app.ui_runner import _build_period_engine
 from app.waterfall_runner import WaterfallRunConfig, WaterfallRunner
@@ -41,8 +42,15 @@ def test_construction_schedule_engine_flag_defaults_false():
 
 
 def test_tuho_flag_false_matches_legacy_outputs():
-    baseline = _run(create_default_tuho_wind1())
-    flag_false = _run(_with_construction_flag(create_default_tuho_wind1(), False))
+    # STALE_LEGACY_CONSTRUCTION_DIAGNOSTIC_TEST_CONTRACT:
+    # This test validates the construction-flag behavior against the legacy waterfall
+    # runner (WaterfallRunner). After B3 Continuation A, create_default_tuho_wind1()
+    # is a clean-production factory routed through run_clean_production(), which is
+    # incompatible with WaterfallRunner's SHL two-pass assumption. The intended
+    # historical contract uses the legacy calibration factory, which retains the
+    # frozen Senior schedule and is compatible with the legacy waterfall runner.
+    baseline = _run(create_default_tuho_wind1_legacy_calibration())
+    flag_false = _run(_with_construction_flag(create_default_tuho_wind1_legacy_calibration(), False))
 
     assert _key_outputs(flag_false) == pytest.approx(_key_outputs(baseline), abs=0.0001)
     assert not hasattr(flag_false, "construction_schedule_diagnostic")
@@ -57,8 +65,13 @@ def test_oborovo_flag_false_matches_legacy_outputs():
 
 
 def test_tuho_flag_true_attaches_diagnostic_without_changing_financial_outputs():
-    baseline = _run(create_default_tuho_wind1())
-    flag_true = _run(_with_construction_flag(create_default_tuho_wind1(), True))
+    # STALE_LEGACY_CONSTRUCTION_DIAGNOSTIC_TEST_CONTRACT:
+    # Uses the legacy calibration factory for the same reason as
+    # test_tuho_flag_false_matches_legacy_outputs above.
+    # The expected opening_shl_balance (32703.864 kEUR) is the legacy calibration
+    # value; the clean B3 result (32261.528 kEUR) is a different authority.
+    baseline = _run(create_default_tuho_wind1_legacy_calibration())
+    flag_true = _run(_with_construction_flag(create_default_tuho_wind1_legacy_calibration(), True))
 
     assert _key_outputs(flag_true) == pytest.approx(_key_outputs(baseline), abs=0.0001)
     diagnostic = flag_true.construction_schedule_diagnostic

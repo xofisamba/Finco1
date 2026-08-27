@@ -68,11 +68,20 @@ No balance-basis component (both CLOSING).
 No DCF/rate component (both 5.95% ACT/360 inclusive).
 No NEXT_PERIOD timing component (both exclude terminal raw period from cap).
 
-Bridge order (S0 → S2)
+Bridge order (S0 → S3)
 -----------------------
-  S0  Source LIVE IDC (workbook authority: 5.95%, CLOSING, ACT/360 incl, excl last)
+  S0  Source LIVE IDC (workbook authority: 5.95%, CLOSING, ACT/360 incl,
+      source current-period recognition, last period excluded)
   S1  Change: Senior quantum → clean quantum (scale source draws proportionally)
-  S2  Change: Draw profile → clean CAPEX-weighted draws (= clean capitalized IDC)
+  S2  Change: Draw profile → clean CAPEX-weighted draws (source current-period
+      recognition retained — not yet NEXT_PERIOD)
+  S3  TIMING RECLASSIFICATION: transform from source current-period recognition
+      to clean NEXT_PERIOD recognition.
+      Aggregate monetary effect: sum(S3) - sum(S2) = 0.000 kEUR (exactly zero —
+      same raw values shifted one period; IDC_PERIOD_TIMING_RECLASSIFICATION_ZERO_AGGREGATE_EFFECT)
+      Period-level effect: material redistribution between adjacent periods
+      (S3_period_vector != S2_period_vector for periods 0..n-1)
+      S3_period_vector = recomputed_clean_cap_idc (independently verified)
 
 Production modules (financial_engine, finco_core, app, domain) MUST NOT import this.
 """
@@ -110,15 +119,26 @@ class TuhoIdcBridge:
     # clean_cap_reconstruction_residual = sum(recomputed_clean_cap) − sum(runtime_clean_cap)
     #   (must be < 0.001 kEUR)
     clean_cap_reconstruction_residual_keur: float
-    # bridge_unexplained_residual = S2 − sum(runtime_clean_cap)
-    #   (must be < 0.001 kEUR; S2 is reconstructed from source draws × clean rate,
+    # bridge_unexplained_residual = S3 − sum(runtime_clean_cap)
+    #   (must be < 0.001 kEUR; S3 is independently reconstructed via S2_raw → NEXT_PERIOD,
     #    not copied from runtime — non-tautological)
     bridge_unexplained_residual_keur: float
+
+    # Timing reclassification (S2 → S3)
+    # S2 uses source current-period recognition (cap[t]=raw[t], last=0)
+    # S3 applies NEXT_PERIOD transformation (cap[t]=raw[t-1], cap[0]=0)
+    # Proof: sum(S3) - sum(S2) = 0 exactly (same included raw values, shifted one period)
+    # But S3_period_vector != S2_period_vector (material period-by-period redistribution)
+    # S3_period_vector == recomputed_clean_cap_idc (reproduces clean NEXT_PERIOD vector)
+    timing_aggregate_effect_keur: float   # S3 - S2; exactly 0.0
+    s2_period_vector: tuple[float, ...]   # source current-period recognition
+    s3_period_vector: tuple[float, ...]   # NEXT_PERIOD recognition (= recomputed_clean_cap)
 
     # Intermediate state totals
     s0_keur: float   # reconstructed source live (≈ SOURCE_LIVE)
     s1_keur: float   # scaled to clean Senior quantum
-    s2_keur: float   # clean draw profile = clean capitalized IDC
+    s2_keur: float   # clean draw profile, source current-period recognition
+    s3_keur: float   # timing reclassification to NEXT_PERIOD (= S2, zero aggregate delta)
 
     # Period-level data
     source_period_draws_keur: tuple[float, ...]
@@ -293,17 +313,37 @@ def compute_tuho_idc_counterfactual_bridge(
 
     # S2: switch to clean CAPEX-weighted draw profile
     # Same rate (5.95%), same day count (ACT/360 incl), same balance basis (CLOSING)
-    # → S2 = independently reconstructed clean capitalized IDC
+    # S2 retains SOURCE current-period recognition (cap[t]=raw[t], last excluded)
     S2_vec = _compute_idc_vector(list(CLEAN_DRAWS), SOURCE_RATE, period_starts, period_ends)
     S2 = sum(S2_vec)
+
+    # S3: TIMING RECLASSIFICATION — transform S2 from source current-period recognition
+    # to clean NEXT_PERIOD recognition (cap[t] = raw[t-1], cap[0] = 0)
+    # Proof of zero aggregate effect:
+    #   S2 sums raw[0..n-2] (terminal period excluded by source convention)
+    #   S3 sums raw[0..n-2] shifted one period right = same values, different distribution
+    #   Therefore sum(S3) - sum(S2) = 0 exactly (period redistribution, not a monetary delta)
+    # Compute S2 raw (without terminal zeroing) to derive S3:
+    cumul_s2 = 0.0
+    s2_raw: list[float] = []
+    for t in range(n):
+        s, e = period_starts[t], period_ends[t]
+        days_incl = (e - s).days + 1 if (e - s).days > 0 else 0
+        closing = cumul_s2 + list(CLEAN_DRAWS)[t]
+        s2_raw.append(closing * SOURCE_RATE * days_incl / 360.0)
+        cumul_s2 = closing
+    S3_vec = (0.0,) + tuple(s2_raw[:-1])  # NEXT_PERIOD of S2_raw
+    S3 = sum(S3_vec)
+    timing_aggregate_effect = S3 - S2  # must be exactly 0.0
 
     # Components
     delta1 = S1 - S0   # Senior quantum effect
     delta2 = S2 - S1   # draw profile effect
+    # delta3 = S3 - S2 = 0 (timing reclassification — zero aggregate, non-zero period)
 
-    # Non-tautological: S2 is reconstructed from source draws × clean rate,
-    # not copied from runtime output
-    bridge_unexplained_residual = S2 - sum(RUNTIME_CLEAN_CAP)
+    # Non-tautological: S3 independently reproduces clean NEXT_PERIOD capitalized IDC.
+    # S3 is computed from S2_raw (not copied from runtime output).
+    bridge_unexplained_residual = S3 - sum(RUNTIME_CLEAN_CAP)
 
     return TuhoIdcBridge(
         source_pasted_idc_keur=SOURCE_PASTED,
@@ -312,6 +352,9 @@ def compute_tuho_idc_counterfactual_bridge(
         clean_capitalized_idc_keur=sum(RUNTIME_CLEAN_CAP),
         senior_quantum_effect_keur=delta1,
         draw_profile_effect_keur=delta2,
+        timing_aggregate_effect_keur=timing_aggregate_effect,
+        s2_period_vector=S2_vec,
+        s3_period_vector=S3_vec,
         source_reconstruction_residual_keur=source_reconstruction_residual,
         clean_raw_reconstruction_residual_keur=clean_raw_reconstruction_residual,
         clean_cap_reconstruction_residual_keur=clean_cap_reconstruction_residual,
@@ -319,6 +362,7 @@ def compute_tuho_idc_counterfactual_bridge(
         s0_keur=S0,
         s1_keur=S1,
         s2_keur=S2,
+        s3_keur=S3,
         source_period_draws_keur=tuple(SOURCE_DRAWS),
         source_period_idc_keur=SOURCE_PERIOD_IDC,
         clean_period_draws_keur=CLEAN_DRAWS,

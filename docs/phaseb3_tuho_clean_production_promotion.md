@@ -420,47 +420,82 @@ Clean aggregate results are respectively `423,762.0018183332`,
 funding, VAT, Senior, SHL and tax are calculated from typed inputs.
 
 The first material source/clean divergence is during the construction phase,
-not tax policy: clean construction IDC is capitalized using CLOSING-balance,
-CAPEX-weighted draws, and NEXT_PERIOD horizons, while the source workbook
-uses OPENING-balance, SHL-first draws, and 1/12 monthly fractions.  This is
-classified `CONSTRUCTION_FINANCING_METHOD_TIMING_DIFFERENCE`.
+not tax policy: both source and clean use CLOSING-balance and ACT/360 inclusive
+day count at 5.95%.  The differences are (1) draw profiles — source uses
+SHL-first waterfall, clean uses CAPEX-weighted draws; (2) period timing — source
+recognizes IDC in the current period, clean uses NEXT_PERIOD capitalization.
+This is classified `CONSTRUCTION_FINANCING_METHOD_TIMING_DIFFERENCE`.
 
-**Source rate provenance:** The domain construction engine uses a
-`LEGACY_CALIBRATED_DIAGNOSTIC` rate (6.0454%) that was calibrated to
-reproduce the Excel pasted IDC total.  The actual workbook base-rate schedule
-and rate components are not yet source-resolved from the workbook artifact.
-Source draws (SHL-first waterfall) ARE workbook-consistent.
+**Source rate provenance (Correction G — SOURCE_WORKBOOK_EVIDENCE):**
+Rate confirmed from workbook IDC sheet:
+3.30% Fixed/Blended Base Rate + 2.65% IDC Margin = 5.95% all-in.
+Day count: ACT/360 inclusive — `(end − start).days + 1) / 360`.
+Balance basis: CLOSING (current-period closing Senior balance).
+Recognition: current-period (IDC[t] capitalized in period t; terminal period excluded).
+Source draws: SHL-first waterfall (workbook-consistent).
+
+Source reconstruction:
+- Source live IDC (workbook row-sum, circularity-inclusive): 1,520.305132 kEUR
+- Source pasted IDC (IDC!D57 snapshot): 1,519.563936 kEUR
+- Source circularity residual (live − pasted): +0.741197 kEUR — workbook artifact, not reproduced
+- Reconstructed source live: 1,520.305170 kEUR
+- Source reconstruction residual: +0.000038 kEUR (< 0.001 kEUR ✓)
+
+Proof examples (SOURCE_WORKBOOK_EVIDENCE):
+- Period Aug 2028 (t=2, closing=181.234933 kEUR, 31 incl days):
+  IDC = 181.234933 × 5.95% × 31/360 = 0.928577 kEUR ✓
+- Period Sep 2028 (t=3, closing=2,985.959586 kEUR, 30 incl days):
+  IDC = 2,985.959586 × 5.95% × 30/360 = 14.805383 kEUR ✓
 
 **Clean mechanics:** Declared from typed factory inputs:
 rate = 5.95% (0.033 fixed base + 0.0265 margin, FIXED_PLUS_MARGIN mode),
-day count = ACT_360 inclusive, balance basis = CURRENT_CLOSING_DRAWN,
-capitalization timing = NEXT_PERIOD.  Independent reconstruction from
-these declared inputs matches the engine output exactly (residual < 1e-10 kEUR).
+day count = ACT_360 inclusive, balance basis = CLOSING_DRAWN,
+capitalization timing = NEXT_PERIOD (cap[t] = raw[t-1], cap[0] = 0).
+Independent reconstruction from these declared inputs matches the engine
+output exactly (raw residual < 0.001 kEUR; cap residual < 0.001 kEUR).
 
-**Ordered counterfactual bridge (S0→S5):** Decomposes the +32.665 kEUR delta
-from source pasted (1,519.564) to clean reconstructed capitalized (1,552.229):
-Senior quantum (+15.092), draw profile (+16.841), balance basis (+220.608),
-DCF+rate (−2.752), NEXT_PERIOD horizon (−217.125).
-Bridge unexplained residual: < 0.001 kEUR (non-tautological — S5 is
-independently reconstructed, not copied from the runtime output).
-The net delta from source live IDC (1,520.305) to clean capitalized is
-+31.924 kEUR; the 0.741 kEUR difference is the Excel circularity residual.
+**Ordered counterfactual bridge (S0→S3, Correction G/H):**
 
-**First material period divergence (2028-09-01 to 2028-09-30, period index 3):**
+| State | Description | Total (kEUR) | Δ (kEUR) |
+|---|---|---:|---:|
+| S0 | Source live IDC (SOURCE_WORKBOOK_EVIDENCE, reconstructed) | 1,520.305 | — |
+| S1 | Senior quantum: 43,359 → 43,790 kEUR (scale draws proportionally) | 1,535.405 | +15.100 |
+| S2 | Draw profile: SHL-first → CAPEX-weighted (source current-period recognition) | 1,552.229 | +16.824 |
+| S3 | Timing reclassification: current-period → NEXT_PERIOD recognition | 1,552.229 | 0.000 |
+
+S3 note: `IDC_PERIOD_TIMING_RECLASSIFICATION_ZERO_AGGREGATE_EFFECT` — S3 and S2
+totals are identical because both include the same set of raw period IDC amounts
+(shifted one period); the terminal raw period is excluded by both conventions.
+S3 period vector differs materially from S2 (non-zero period redistribution)
+but reproduces the clean NEXT_PERIOD capitalized IDC vector exactly.
+
+Bridge unexplained residual (S3 vs runtime): < 0.001 kEUR (non-tautological —
+S3 is independently reconstructed from S2_raw via NEXT_PERIOD transform, not
+copied from the runtime output).
+
+Net delta source live → clean cap: +31.924 kEUR.
+Source circularity residual (+0.741 kEUR) separately classified.
+
+**First material period divergence (2028-08-01 to 2028-08-31, period index 2):**
 
 | Item | Source | Clean |
 |---|---:|---:|
-| Senior draw kEUR | 2,804.725 | 2,784.779 |
-| Opening balance kEUR | 181.235 | 646.854 |
-| Closing balance kEUR | 2,985.960 | 3,431.632 |
-| IDC convention | OPENING × 1/12 × 6.045% | NEXT_PERIOD cap (= raw[t-2] basis) |
-| Period IDC kEUR | 0.913 (source) | 3.314 (clean cap) |
-| Delta kEUR | | +2.401 |
+| Senior draw kEUR | 181.235 | 646.854 |
+| Opening balance kEUR | 0.000 | 0.000 |
+| Closing balance kEUR | 181.235 | 646.854 |
+| IDC convention | CLOSING × 5.95% × 31/360 (current-period) | NEXT_PERIOD cap = raw[t-1] |
+| Period IDC kEUR | 0.929 (source current-period) | 0.000 (clean NEXT_PERIOD, raw[t=1]=0) |
+| Delta kEUR | | −0.929 |
 
-No period before index 3 exceeds the 0.5 kEUR materiality threshold.
-Causal reason: SHL-first source draws produce a 181.235 kEUR Senior balance
-at t=2 (opening at t=3); CAPEX-weighted clean draws produce a 646.854 kEUR
-closing balance at t=2 which shifts as NEXT_PERIOD cap to t=3.
+No period before index 2 exceeds the 0.5 kEUR materiality threshold.
+Causal reason: August 2028 is the first period where source Senior is drawn
+(SHL-first waterfall delays Senior draw until t=2). Source current-period
+recognition immediately capitalizes the resulting CLOSING-balance IDC (0.929 kEUR).
+Clean NEXT_PERIOD recognition capitalizes period t's raw IDC in period t+1;
+at t=2, cap[2]=raw[1]=0 because no clean Senior draw precedes t=2 in the
+CAPEX-weighted profile. This is the first period where source current-period
+recognition and clean NEXT_PERIOD recognition produce a divergence exceeding
+the 0.5 kEUR materiality threshold.
 
 The second material divergence is tax policy: canonical Finco rejects the
 source workbook's historical double-count fiscal-reintegration identity.

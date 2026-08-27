@@ -718,26 +718,28 @@ def test_b3_ccd_2_stage_b2_kernel_direct_run_tax_independent():
     assert "interest_limitation_policy" not in field_names
 
 
-def test_b3_ccd_3_causal_bridge_two_component_arithmetic_identity(clean_run):
-    """CD3: Causal bridge arithmetic identity — 2-component decomposition.
+def test_b3_ccd_3_causal_bridge_arithmetic_identity_with_timing_reclassification(clean_run):
+    """CD3: Causal bridge arithmetic identity — 2 monetary + 1 timing reclassification.
 
     Components are COMPUTED by sequential counterfactual runs via the
     diagnostic helper (tests/helpers/tuho_idc_bridge.py); no hardcoded values.
 
-    Bridge order (S0→S2):
+    Bridge order (S0→S3):
       S0  Source LIVE IDC (SOURCE_WORKBOOK_EVIDENCE: 5.95%, CLOSING, ACT/360 incl,
-          SHL-first draws, terminal period excluded from cap)
+          SHL-first draws, current-period recognition, terminal period excluded)
       S1  Senior quantum → clean quantum (scale source draws proportionally)
-      S2  Draw profile → clean CAPEX-weighted draws (= clean capitalized IDC)
-
-    No balance-basis component (both CLOSING).
-    No DCF/rate component (both 5.95% ACT/360 inclusive).
-    No NEXT_PERIOD timing component (both exclude terminal raw period from cap).
+      S2  Draw profile → clean CAPEX-weighted draws (source current-period recognition)
+      S3  TIMING RECLASSIFICATION: source current-period → clean NEXT_PERIOD
+          IDC_PERIOD_TIMING_RECLASSIFICATION_ZERO_AGGREGATE_EFFECT:
+          sum(S3) - sum(S2) = 0.000 kEUR (same raw values, shifted one period)
+          but S3_period_vector != S2_period_vector (material period redistribution)
+          S3_period_vector == recomputed_clean_cap_idc_keur (independently verified)
 
     Classification: CONSTRUCTION_FINANCING_METHOD_TIMING_DIFFERENCE
 
     Source rate is SOURCE_WORKBOOK_EVIDENCE — 5.95% (3.30% + 2.65%) confirmed
-    from IDC sheet. Clean mechanics are derived from typed inputs, not backsolved.
+    from IDC sheet. Source uses current-period recognition; clean uses NEXT_PERIOD.
+    Both exclude the same terminal raw period from capitalized uses.
     """
     from tests.helpers.tuho_idc_bridge import compute_tuho_idc_counterfactual_bridge
 
@@ -750,11 +752,14 @@ def test_b3_ccd_3_causal_bridge_two_component_arithmetic_identity(clean_run):
     assert bridge.source_workbook_rate == pytest.approx(0.0595, abs=1e-8)
     assert bridge.source_balance_basis == "CLOSING"
     assert bridge.source_dcf_convention == "ACT_360_INCLUSIVE"
+    assert bridge.source_cap_timing == "EXCL_TERMINAL_PERIOD"
     # Source reconstruction residual < 0.001 kEUR (rounded domain draws vs workbook precision)
     assert abs(bridge.source_reconstruction_residual_keur) < 0.001, (
         f"Source reconstruction residual {bridge.source_reconstruction_residual_keur:.6f} "
         "kEUR exceeds 0.001 — source formula or draws are wrong"
     )
+    # Source circularity residual is separately classified — NOT a reconstruction error
+    assert bridge.source_circularity_residual_keur == pytest.approx(0.741, abs=0.01)
 
     # B. Clean raw IDC is independently reconstructed — non-tautological
     assert abs(bridge.clean_raw_reconstruction_residual_keur) < 0.001, (
@@ -768,19 +773,41 @@ def test_b3_ccd_3_causal_bridge_two_component_arithmetic_identity(clean_run):
         "kEUR exceeds 0.001 — NEXT_PERIOD transform is wrong"
     )
 
-    # D. Bridge unexplained residual is non-tautological and < 0.001 kEUR
+    # D. TIMING RECLASSIFICATION: IDC_PERIOD_TIMING_RECLASSIFICATION_ZERO_AGGREGATE_EFFECT
+    # S3 transforms S2 from source current-period recognition to clean NEXT_PERIOD recognition.
+    # Aggregate monetary effect is exactly zero; period vector differs materially.
+    assert bridge.timing_aggregate_effect_keur == pytest.approx(0.0, abs=1e-10), (
+        f"Timing aggregate effect {bridge.timing_aggregate_effect_keur:.12f} kEUR "
+        "must be exactly 0 — same raw values shifted one period"
+    )
+    assert bridge.s3_keur == pytest.approx(bridge.s2_keur, abs=1e-10)
+    # Period vectors must differ (non-zero redistribution)
+    assert bridge.s3_period_vector != bridge.s2_period_vector, (
+        "S3 and S2 period vectors must differ — timing reclassification must produce "
+        "a non-trivial period redistribution"
+    )
+    # S3 reproduces the clean NEXT_PERIOD capitalized vector independently
+    for t, (s3_t, cap_t) in enumerate(zip(
+        bridge.s3_period_vector, bridge.recomputed_clean_cap_idc_keur
+    )):
+        assert s3_t == pytest.approx(cap_t, abs=1e-10), (
+            f"Period {t}: S3={s3_t:.8f}, recomputed_cap={cap_t:.8f} — "
+            "S3 must reproduce clean NEXT_PERIOD vector exactly"
+        )
+
+    # E. Bridge unexplained residual (S3 vs runtime cap) — non-tautological and < 0.001 kEUR
     assert abs(bridge.bridge_unexplained_residual_keur) < 0.001, (
         f"Bridge unexplained residual {bridge.bridge_unexplained_residual_keur:.6f} kEUR "
-        "exceeds 0.001 — ordered components do not fully explain the delta"
+        "exceeds 0.001 — S3 does not reproduce runtime capitalized IDC"
     )
 
-    # E. Two-component sum reconciles S2 − S0 (source_live to recomputed clean cap)
-    component_sum = (
+    # F. Monetary component sum reconciles S2 − S0
+    monetary_component_sum = (
         bridge.senior_quantum_effect_keur
         + bridge.draw_profile_effect_keur
     )
     s0_to_s2 = bridge.s2_keur - bridge.s0_keur
-    assert component_sum == pytest.approx(s0_to_s2, abs=0.001)
+    assert monetary_component_sum == pytest.approx(s0_to_s2, abs=0.001)
 
     # Net delta from source_live to runtime_clean_cap reconciles via circularity residual
     net_delta_from_live = bridge.clean_capitalized_idc_keur - bridge.source_live_idc_keur
@@ -791,9 +818,10 @@ def test_b3_ccd_3_causal_bridge_two_component_arithmetic_identity(clean_run):
         == pytest.approx(net_delta_from_live, abs=0.001)
     )
 
-    # F. Component fingerprints asserted AFTER derivation
+    # G. Component fingerprints asserted AFTER derivation
     assert bridge.senior_quantum_effect_keur == pytest.approx(+15.100, abs=0.01)
     assert bridge.draw_profile_effect_keur == pytest.approx(+16.824, abs=0.01)
+    assert bridge.timing_aggregate_effect_keur == pytest.approx(0.0, abs=1e-10)
 
     # Clean mechanics fingerprints
     assert bridge.clean_rate_declared == pytest.approx(0.0595, abs=1e-8)
@@ -805,15 +833,17 @@ def test_b3_ccd_3_causal_bridge_two_component_arithmetic_identity(clean_run):
 def test_b3_ccd_4_causal_bridge_direction_sign_semantics(clean_run):
     """CD4: Causal bridge component signs are economically correct.
 
-    Signs encode causal direction from source-live toward clean-capitalized:
+    Monetary components (S0→S2):
     - Senior quantum positive: larger clean Senior → more cumulative balance → more IDC
-    - Draw profile positive: clean draws (CAPEX-weighted) accumulate faster in
-      early periods than SHL-first source draws, producing more closing balance
-      and therefore more IDC over construction
+    - Draw profile positive: clean draws (CAPEX-weighted) accumulate balance faster in
+      early periods than SHL-first source draws, producing more total closing balance
+      and therefore more IDC over the construction horizon
 
-    Source and clean share the same rate (5.95%), day count (ACT/360 inclusive),
-    and balance basis (CLOSING). No balance-basis, DCF/rate, or NEXT_PERIOD
-    timing components exist in this bridge.
+    Timing reclassification (S2→S3):
+    - IDC_PERIOD_TIMING_RECLASSIFICATION_ZERO_AGGREGATE_EFFECT
+    - Timing is NOT a positive or negative aggregate monetary component
+    - It is a period redistribution: source current-period recognition → clean NEXT_PERIOD
+    - sum(S3) == sum(S2) exactly; S3 and S2 period vectors differ materially
     """
     from tests.helpers.tuho_idc_bridge import compute_tuho_idc_counterfactual_bridge
 
@@ -823,19 +853,25 @@ def test_b3_ccd_4_causal_bridge_direction_sign_semantics(clean_run):
 
     assert bridge.senior_quantum_effect_keur > 0
     assert bridge.draw_profile_effect_keur > 0
+    # Timing reclassification has zero aggregate effect (not positive, not negative)
+    assert bridge.timing_aggregate_effect_keur == pytest.approx(0.0, abs=1e-10)
 
 
-def test_b3_ccd_5_causal_bridge_two_components_comparable_magnitude(clean_run):
-    """CD5: Both bridge components are positive and of comparable magnitude.
+def test_b3_ccd_5_causal_bridge_component_regression_fingerprints(clean_run):
+    """CD5: Descriptive regression fingerprints for the two monetary bridge components.
 
-    Source and clean share the same rate/day-count/balance-basis mechanics, so
-    the bridge has only two active components:
+    CLASSIFICATION: DESCRIPTIVE_REGRESSION_EVIDENCE — not a generic financial rule.
+    The magnitude relationship below reflects this specific TUHO configuration and
+    must not be generalized to other projects or construction schedules.
+
+    Source and clean share the same rate/day-count/balance-basis mechanics.
+    Two monetary components:
       ΔS1 — Senior quantum effect (~+15 kEUR): larger clean Senior → more IDC
       ΔS2 — Draw profile effect (~+17 kEUR): CAPEX-weighted profile accumulates
              balance faster than SHL-first, producing more IDC over construction
 
-    Both components are positive and within 2× of each other.  Their sum equals
-    the net delta from source live to clean capitalized IDC (~+31.924 kEUR).
+    Timing reclassification (ΔS3):
+      ΔS3 = 0 exactly — IDC_PERIOD_TIMING_RECLASSIFICATION_ZERO_AGGREGATE_EFFECT
     """
     from tests.helpers.tuho_idc_bridge import compute_tuho_idc_counterfactual_bridge
 
@@ -845,17 +881,24 @@ def test_b3_ccd_5_causal_bridge_two_components_comparable_magnitude(clean_run):
 
     dS1 = bridge.senior_quantum_effect_keur
     dS2 = bridge.draw_profile_effect_keur
+    dS3 = bridge.timing_aggregate_effect_keur
 
     assert dS1 > 0
     assert dS2 > 0
+    assert dS3 == pytest.approx(0.0, abs=1e-10)  # timing is a redistribution, not monetary
 
-    # Components are comparable in magnitude: neither dominates by more than 2×
-    assert abs(dS1) < 2.0 * abs(dS2)
-    assert abs(dS2) < 2.0 * abs(dS1)
+    # DESCRIPTIVE_REGRESSION_EVIDENCE: both components are of comparable magnitude for TUHO.
+    # Neither dominates by more than 2× (regression fingerprint for this configuration only).
+    assert abs(dS1) < 2.0 * abs(dS2), (
+        f"DESCRIPTIVE_REGRESSION_EVIDENCE: ΔS1={dS1:.3f} unexpectedly large vs ΔS2={dS2:.3f}"
+    )
+    assert abs(dS2) < 2.0 * abs(dS1), (
+        f"DESCRIPTIVE_REGRESSION_EVIDENCE: ΔS2={dS2:.3f} unexpectedly large vs ΔS1={dS1:.3f}"
+    )
 
-    # Their sum reconciles the net live-to-cap delta
+    # Monetary component sum reconciles the net live-to-cap delta (timing is zero)
     net = bridge.clean_capitalized_idc_keur - bridge.source_live_idc_keur
-    assert dS1 + dS2 == pytest.approx(net, abs=0.01)
+    assert dS1 + dS2 + dS3 == pytest.approx(net, abs=0.01)
 
 
 def test_b3_ccd_6_first_material_period_divergence(clean_run):
@@ -908,9 +951,11 @@ def test_b3_ccd_6_first_material_period_divergence(clean_run):
     assert div.source_closing_balance_keur == pytest.approx(181.235, abs=0.01)
     assert div.clean_closing_balance_keur == pytest.approx(646.854, abs=0.01)
 
-    # Classification — source provenance is SOURCE_WORKBOOK_EVIDENCE, not calibrated
+    # Classification
     assert "CONSTRUCTION_FINANCING_METHOD_TIMING_DIFFERENCE" in div.causal_reason
     assert "SOURCE_WORKBOOK_EVIDENCE" in div.causal_reason
+    # Causal explanation must explicitly mention NEXT_PERIOD timing recognition difference
+    assert "NEXT_PERIOD" in div.causal_reason or "next" in div.causal_reason.lower()
 
 
 def test_b3_ccd_7_bridge_helper_not_imported_by_production():
