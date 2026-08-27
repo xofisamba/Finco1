@@ -108,18 +108,15 @@ class TestB_NoLegacyProductionCall:
         assert counters.legacy_engine_calls == 0
 
     def test_b2_sponsor_engine_not_invoked_on_promoted_path(self, monkeypatch):
+        """Phase B4: the legacy sponsor engine no longer exists in the
+        production run path at all — the sponsor schedule is serialized
+        read-only from the clean G2C result."""
         import app.api.project_runner as pr
 
-        called = {"n": 0}
-        _orig = pr._run_sponsor_engine
-
-        def _spy(*a, **kw):
-            called["n"] += 1
-            return _orig(*a, **kw)
-
-        monkeypatch.setattr(pr, "_run_sponsor_engine", _spy)
+        assert not hasattr(pr, "_run_sponsor_engine"), (
+            "the legacy sponsor engine bridge must not exist in production"
+        )
         out = _run_project("Solar", "Base")
-        assert called["n"] == 0, "promoted runs must not invoke the legacy sponsor engine"
         assert out["sponsor_schedule"]["source"].startswith("CovenantGatedWaterfallResult")
 
 
@@ -680,20 +677,19 @@ class TestProductionRouteCoherence:
         from app.services.production_waterfall_seam import (
             execute_production_demo,
             execute_production_waterfall,
-            execute_calibration_waterfall,
         )
+        from tests.helpers.offline_calibration import execute_calibration_waterfall
 
         inputs = create_default_tuho_wind1()
         production = execute_production_waterfall(inputs)
         assert production.authority_metadata["runtime_authority"] == "clean_g2c"
         assert production.authority_metadata["calculation_count"] == 1
 
-        calibration = execute_calibration_waterfall(
+        # Phase B4: legacy calibration lives OFFLINE only (tests/helpers).
+        decision, _inputs, _result = execute_calibration_waterfall(
             create_default_tuho_wind1_legacy_calibration()
         )
-        assert calibration.authority_metadata["runtime_authority"] == (
-            "legacy_waterfall_calibration"
-        )
+        assert not decision.promoted  # offline calibration accepts non-promoted only
 
         from app.api.project_runner import run_project
         routed = run_project("TUHO", "Base")
@@ -710,22 +706,20 @@ class TestProductionRouteCoherence:
             create_default_oborovo_legacy_calibration,
         )
         from app.services.production_waterfall_seam import (
-            execute_calibration_waterfall,
             execute_production_demo,
             execute_production_waterfall,
         )
+        from tests.helpers.offline_calibration import execute_calibration_waterfall
 
         inputs = create_default_oborovo()
         assert run_project("Oborovo", "Base")["runtime_authority"]["runtime_authority"] == "clean_g2c"
         assert execute_production_waterfall(inputs).authority_metadata["runtime_authority"] == "clean_g2c"
         _, metadata = execute_production_demo("Oborovo", "Base")
         assert metadata["runtime_authority"] == "clean_g2c"
-        calibration = execute_calibration_waterfall(
+        decision, _inputs, _result = execute_calibration_waterfall(
             create_default_oborovo_legacy_calibration()
         )
-        assert calibration.authority_metadata["runtime_authority"] == (
-            "legacy_waterfall_calibration"
-        )
+        assert not decision.promoted  # offline calibration accepts non-promoted only
 
     def test_b3_oborovo_workbook_uses_clean_authority(self):
         """Phase B2: the institutional workbook consumes clean Oborovo.
@@ -792,31 +786,22 @@ class TestGovernanceCorrection:
             "ProductionAuthorityResolutionError("
         ) or "raise ProductionAuthorityResolutionError" in routing
 
-    def test_gc2_legacy_engine_in_calibration_seam_only(self):
-        """Phase B1 Correction A: legacy engine import is in execute_calibration_waterfall.
-
-        execute_production_waterfall must NOT reference the legacy waterfall
-        runner — it is clean-only.  The legacy reference lives exclusively in
-        execute_calibration_waterfall (the explicit calibration seam).
-        """
+    def test_gc2_seam_contains_no_legacy_engine_reference(self):
+        """Phase B4: the production seam has NO legacy engine reference —
+        legacy execution lives offline in tests/helpers/offline_calibration."""
         import inspect
-        from app.services import production_waterfall_seam as seam
+        import app.services.production_waterfall_seam as seam
 
-        prod_src = inspect.getsource(seam.execute_production_waterfall)
-        cal_src = inspect.getsource(seam.execute_calibration_waterfall)
+        seam_src = inspect.getsource(seam)
+        for forbidden in ("WaterfallRunner", "execute_calibration_waterfall",
+                          "app.ui_runner"):
+            assert forbidden not in seam_src, (
+                f"production seam must not reference {forbidden}"
+            )
 
-        assert "from app.waterfall_runner import" not in prod_src, (
-            "execute_production_waterfall must not reference the legacy "
-            "waterfall runner — it is clean-only (Phase B1 Correction A)"
-        )
-        assert "from app.waterfall_runner import" in cal_src, (
-            "execute_calibration_waterfall must contain the legacy waterfall "
-            "runner import — it is the explicit calibration seam"
-        )
-
-    def test_gc3_run_project_legacy_only_from_characterization(self):
-        """run_project_legacy is referenced only by project_runner itself —
-        never by normal production services."""
+    def test_gc3_run_project_legacy_absent_from_production(self):
+        """Phase B4: run_project_legacy does not exist anywhere in the
+        production app surface (it lives in tests/helpers only)."""
         import subprocess
 
         result = subprocess.run(
@@ -825,15 +810,10 @@ class TestGovernanceCorrection:
             capture_output=True, text=True,
         )
         files = [f for f in result.stdout.splitlines() if f.strip()]
-        assert files == ["app/api/project_runner.py"], (
-            f"run_project_legacy must not be consumed by production "
-            f"services; found in: {files}"
+        assert files == [], (
+            f"run_project_legacy must not exist in production; found: {files}"
         )
 
-
-# ---------------------------------------------------------------------------
-# PR-8 FINAL CORRECTION — actual export services + lineage coherence
-# ---------------------------------------------------------------------------
 
 class TestActualExportServices:
     """Engine counters on the ACTUAL public export service functions."""

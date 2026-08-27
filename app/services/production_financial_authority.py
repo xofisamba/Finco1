@@ -117,8 +117,9 @@ class CleanNotReadyError(Exception):
     the request arrived through a production route.
 
     This is the ONLY typed signal a production route emits for a non-promoted
-    project — there is no silent legacy fallthrough.  Callers that need legacy
-    output MUST use the explicit legacy calibration entry point in project_runner.
+    project — there is no legacy fallthrough (Phase B4: no production legacy
+    engine exists; historical calibration evidence is available offline in
+    tests/helpers/offline_calibration.py only).
 
     Attributes:
         classification: ProductionAuthorityClassification value (str)

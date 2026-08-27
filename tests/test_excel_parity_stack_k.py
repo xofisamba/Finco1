@@ -11,7 +11,7 @@ import pytest
 os.environ.setdefault("FINCO_SECRET_KEY", "test-secret-for-pytest-only")
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app.api.project_runner import run_project_legacy as run_project  # PR-8: legacy characterization route
+from tests.helpers.offline_calibration import run_project_legacy as run_project  # Phase B4: offline characterization route  # PR-8: legacy characterization route
 
 
 def _run(project_key: str) -> dict:

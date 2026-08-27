@@ -190,7 +190,7 @@ class TestE_OborovoLegacyCalibration:
     def test_e1_oborovo_legacy_still_callable(self, monkeypatch):
         """run_project_legacy("Oborovo") executes the legacy waterfall (calibration only)."""
         counters = EngineCounters(monkeypatch)
-        from app.api.project_runner import run_project_legacy
+        from tests.helpers.offline_calibration import run_project_legacy
 
         # Must not raise — legacy is explicitly callable for calibration.
         result = run_project_legacy("Oborovo", "Base")
@@ -207,7 +207,7 @@ class TestE_OborovoLegacyCalibration:
 
     def test_e2_oborovo_legacy_has_kpis(self):
         """run_project_legacy("Oborovo") returns a results dict with KPIs."""
-        from app.api.project_runner import run_project_legacy
+        from tests.helpers.offline_calibration import run_project_legacy
 
         result = run_project_legacy("Oborovo", "Base")
         assert "kpis" in result
@@ -222,7 +222,7 @@ class TestF_TUHOLegacyCalibration:
     def test_f1_tuho_legacy_still_callable(self, monkeypatch):
         """run_project_legacy("TUHO") executes the legacy waterfall (calibration only)."""
         counters = EngineCounters(monkeypatch)
-        from app.api.project_runner import run_project_legacy
+        from tests.helpers.offline_calibration import run_project_legacy
 
         result = run_project_legacy("TUHO", "Base")
         assert result is not None
@@ -236,7 +236,7 @@ class TestF_TUHOLegacyCalibration:
 
     def test_f2_tuho_legacy_has_kpis(self):
         """run_project_legacy("TUHO") returns a results dict with KPIs."""
-        from app.api.project_runner import run_project_legacy
+        from tests.helpers.offline_calibration import run_project_legacy
 
         result = run_project_legacy("TUHO", "Base")
         assert "kpis" in result
@@ -341,26 +341,33 @@ class TestJ_CalibrationWaterfallSeam:
     """J — execute_calibration_waterfall: explicit legacy seam for blocked projects."""
 
     def test_j1_tuho_calibration_waterfall_runs_legacy(self):
-        """execute_calibration_waterfall() runs legacy for TUHO (explicitly blocked)."""
+        """Phase B4: the calibration seam lives OFFLINE in tests/helpers."""
         from app.project_factories import create_default_tuho_wind1_legacy_calibration
-        from app.services.production_waterfall_seam import execute_calibration_waterfall
+        from tests.helpers.offline_calibration import execute_calibration_waterfall
+        from app.services.production_waterfall_seam import execute_production_waterfall
 
         inputs = create_default_tuho_wind1_legacy_calibration()
-        execution = execute_calibration_waterfall(inputs)
-        assert execution.authority_metadata["runtime_authority"] == "legacy_waterfall_calibration"
-        assert execution.authority_metadata["calculation_count"] == 1
-        assert execution.authority_metadata.get("calibration_seam") == "execute_calibration_waterfall"
+        decision, _inputs, result = execute_calibration_waterfall(inputs)
+        assert not decision.promoted
+        assert result is not None
+        # The production seam must refuse this contract (clean-only).
+        from app.services.production_financial_authority import CleanNotReadyError
+        with pytest.raises(CleanNotReadyError):
+            execute_production_waterfall(inputs)
 
     def test_j2_oborovo_calibration_waterfall_runs_legacy(self):
-        """execute_calibration_waterfall() runs legacy for Oborovo (explicitly blocked)."""
+        """Phase B4: the calibration seam lives OFFLINE in tests/helpers."""
         from app.project_factories import create_default_oborovo_legacy_calibration
-        from app.services.production_waterfall_seam import execute_calibration_waterfall
+        from tests.helpers.offline_calibration import execute_calibration_waterfall
+        from app.services.production_waterfall_seam import execute_production_waterfall
 
         inputs = create_default_oborovo_legacy_calibration()
-        execution = execute_calibration_waterfall(inputs)
-        assert execution.authority_metadata["runtime_authority"] == "legacy_waterfall_calibration"
-        assert execution.authority_metadata["calculation_count"] == 1
-        assert execution.authority_metadata.get("calibration_seam") == "execute_calibration_waterfall"
+        decision, _inputs, result = execute_calibration_waterfall(inputs)
+        assert not decision.promoted
+        assert result is not None
+        from app.services.production_financial_authority import CleanNotReadyError
+        with pytest.raises(CleanNotReadyError):
+            execute_production_waterfall(inputs)
 
     def test_j3_execute_production_waterfall_refuses_allow_legacy_param(self):
         """execute_production_waterfall() no longer accepts allow_legacy — TypeError if passed."""
@@ -374,7 +381,7 @@ class TestJ_CalibrationWaterfallSeam:
     def test_j4_calibration_waterfall_refuses_clean_ready_project(self):
         """execute_calibration_waterfall() refuses a clean-ready project (Solar)."""
         from app.project_factories import create_default_solar_project
-        from app.services.production_waterfall_seam import execute_calibration_waterfall
+        from tests.helpers.offline_calibration import execute_calibration_waterfall
         from app.services.production_financial_authority import ProductionAuthorityResolutionError
 
         inputs = create_default_solar_project()
@@ -496,17 +503,15 @@ class TestM_CleanNotReadyErrorMetadata:
 # ---------------------------------------------------------------------------
 
 class TestN_LegacyCalibrationLineage:
-    def test_n1_legacy_run_has_no_runtime_authority_key(self):
-        """run_project_legacy payload does NOT include runtime_authority key
-        (it uses the historical payload shape, no PR-8 keys)."""
-        from app.api.project_runner import run_project_legacy
+    def test_n1_legacy_run_has_offline_calibration_lineage(self):
+        """Phase B4: the OFFLINE helper's payload carries an explicit
+        offline-calibration runtime_authority — never a production one."""
+        from tests.helpers.offline_calibration import run_project_legacy
 
         result = run_project_legacy("Solar", "Base")
-        # force_legacy=True suppresses the runtime_authority key.
-        assert "runtime_authority" not in result, (
-            "run_project_legacy must not include a runtime_authority key "
-            "(that key is reserved for the production router)."
-        )
+        lineage = result.get("runtime_authority") or {}
+        assert lineage.get("runtime_authority") == "legacy_waterfall_offline_calibration"
+        assert lineage.get("reason_code") == "PHASE_B4_OFFLINE_CALIBRATION_HELPER"
 
 
 # ---------------------------------------------------------------------------

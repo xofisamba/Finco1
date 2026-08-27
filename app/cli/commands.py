@@ -5,7 +5,6 @@ from pathlib import Path
 
 import click
 
-from app.ui_runner import run_demo_project
 from app.excel_export import build_excel_export
 from app.input_schema import ProjectInputsSchema
 from app.input_adapter import build_projectinputs
