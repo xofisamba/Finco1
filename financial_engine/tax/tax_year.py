@@ -31,6 +31,30 @@ from financial_engine.policies.tax import TaxPolicy
 from financial_engine.tax.models import TaxYearCalculationBasis, TaxYearPeriodFragment
 
 
+def _resolve_shl_tax_eligible_interest(
+    period_interest: PeriodInterestInput,
+    policy: TaxPolicy | None,
+) -> tuple[float, float]:
+    """Resolve deductible-only SHL interest from one authoritative input path."""
+
+    gross = period_interest.shl_interest_keur
+    override = period_interest.shl_deductible_interest_keur
+    if override is not None:
+        if override < -1e-12 or override > gross + 1e-12:
+            raise ValueError(
+                "SHL_DEDUCTIBLE_INTEREST_OUT_OF_RANGE: deductible SHL interest "
+                f"{override} must be in [0, gross={gross}]"
+            )
+        eligible = min(max(override, 0.0), gross)
+    else:
+        fraction = policy.shl_tax_deductible_fraction() if policy is not None else 1.0
+        eligible = gross * fraction
+    non_deductible = gross - eligible
+    if abs((eligible + non_deductible) - gross) > 1e-10:
+        raise ArithmeticError("SHL_DEDUCTIBLE_DISALLOWED_IDENTITY_BROKEN")
+    return eligible, non_deductible
+
+
 def _split_period(
     period_index: int,
     period_start: date,
@@ -246,11 +270,9 @@ def build_tax_year_bases(
 
         pi_obj = interest_map.get(idx)
         if pi_obj:
-            shl_fraction = (
-                policy.shl_tax_deductible_fraction() if policy is not None else 1.0
+            shl_tax_eligible, shl_non_deductible = _resolve_shl_tax_eligible_interest(
+                pi_obj, policy
             )
-            shl_tax_eligible = pi_obj.shl_interest_keur * shl_fraction
-            shl_non_deductible = pi_obj.shl_interest_keur - shl_tax_eligible
             gross_int = (
                 pi_obj.senior_interest_keur
                 + pi_obj.other_interest_keur
@@ -359,11 +381,9 @@ def _build_model_year_pairing_bases(
             )
         pi_obj = interest_map.get(idx)
         if pi_obj:
-            # Use shl_tax_deductible_fraction() for all modes including STL.
-            # For SUBJECT_TO_LIMITATIONS, fraction=1.0; ATAD provides the limitation.
-            shl_fraction = policy.shl_tax_deductible_fraction()
-            shl_tax_eligible = pi_obj.shl_interest_keur * shl_fraction
-            shl_non_deductible = pi_obj.shl_interest_keur - shl_tax_eligible
+            shl_tax_eligible, shl_non_deductible = _resolve_shl_tax_eligible_interest(
+                pi_obj, policy
+            )
             gross_int = pi_obj.senior_interest_keur + pi_obj.other_interest_keur + shl_tax_eligible
         else:
             gross_int = 0.0

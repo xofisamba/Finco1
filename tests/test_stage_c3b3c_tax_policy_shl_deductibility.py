@@ -378,8 +378,11 @@ class TestTuhoTaxPolicy:
     def test_foreign_shl_cap_disabled(self):
         assert create_default_tuho_wind1().tax.foreign_shl_interest_cap_enabled is False
 
-    def test_thin_cap_enabled(self):
-        assert create_default_tuho_wind1().tax.thin_cap_enabled is True
+    def test_typed_interest_limitation_enabled(self):
+        tax = create_default_tuho_wind1().tax
+        assert tax.thin_cap_enabled is False
+        assert tax.interest_limitation_policy is not None
+        assert tax.interest_limitation_policy.enabled is True
 
     def test_loss_gate_ebt_positive(self):
         assert create_default_tuho_wind1().tax.tax_loss_utilisation_gate == TaxLossUtilisationGate.EBT_POSITIVE

@@ -207,6 +207,11 @@ class PeriodCashTaxResult:
     cash_tax_keur: float             # actual cash payment in this period
     shl_tax_eligible_interest_keur: float = 0.0
     shl_non_deductible_interest_keur: float = 0.0
+    capitalisation_ratio: float | None = None
+    capitalisation_gate_active: bool | None = None
+    shl_absolute_limit_component_keur: float = 0.0
+    shl_ebitda_limit_component_keur: float = 0.0
+    shl_additional_non_deductible_component_keur: float = 0.0
 
 
 @dataclass(frozen=True)

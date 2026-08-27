@@ -151,39 +151,33 @@ class TestC_OborovoProduction:
 
 
 # ---------------------------------------------------------------------------
-# D — TUHO production: raises CleanNotReadyError, calculation_count == 0
+# D — TUHO production: promoted clean authority
 # ---------------------------------------------------------------------------
 
 class TestD_TUHOProduction:
-    def test_d1_tuho_raises_clean_not_ready(self):
-        """TUHO production raises CleanNotReadyError (no legacy fallthrough)."""
-        from app.services.production_financial_authority import CleanNotReadyError
+    def test_d1_tuho_runs_clean(self):
+        """TUHO production executes the promoted clean authority."""
         from app.api.project_runner import run_project
 
-        with pytest.raises(CleanNotReadyError) as exc_info:
-            run_project("TUHO", "Base")
-        err = exc_info.value
-        assert err.calculation_count == 0
-        assert err.runtime_authority == "clean_not_ready"
+        result = run_project("TUHO", "Base")
+        assert result["runtime_authority"]["runtime_authority"] == "clean_g2c"
+        assert result["runtime_authority"]["calculation_count"] == 1
 
     def test_d2_tuho_typed_reason(self):
-        """TUHO CleanNotReadyError carries the typed tax-runtime-gap reason."""
-        from app.services.production_financial_authority import CleanNotReadyError
-        from app.api.project_runner import run_project
+        """TUHO classifier carries the clean typed-contract reason."""
+        from app.project_factories import create_default_tuho_wind1
+        from app.services.production_financial_authority import classify_production_authority
 
-        with pytest.raises(CleanNotReadyError) as exc_info:
-            run_project("TUHO", "Base")
-        assert exc_info.value.reason_code == "PR8_BLOCKED_BY_TYPED_TUHO_TAX_RUNTIME_GAP"
+        decision = classify_production_authority(create_default_tuho_wind1())
+        assert decision.reason_code == "PR8_CLEAN_G2C_TYPED_CONTRACT_READY"
 
     def test_d3_tuho_zero_legacy_calls(self, monkeypatch):
-        """TUHO: zero engine calls (clean or legacy) when CleanNotReadyError raised."""
+        """TUHO: one clean call and zero legacy calls."""
         counters = EngineCounters(monkeypatch)
-        from app.services.production_financial_authority import CleanNotReadyError
         from app.api.project_runner import run_project
 
-        with pytest.raises(CleanNotReadyError):
-            run_project("TUHO", "Base")
-        assert counters.clean_calls == 0
+        run_project("TUHO", "Base")
+        assert counters.clean_calls == 1
         assert counters.legacy_core_calls == 0
         assert counters.legacy_engine_calls == 0
 
@@ -321,15 +315,13 @@ class TestI_ExecuteProductionDemo:
         assert counters.legacy_engine_calls == 0
         assert meta["runtime_authority"] == "clean_g2c"
 
-    def test_i2_tuho_demo_raises_clean_not_ready(self):
-        """execute_production_demo("TUHO") raises CleanNotReadyError."""
-        from app.services.production_financial_authority import CleanNotReadyError
+    def test_i2_tuho_demo_is_clean(self):
+        """execute_production_demo("TUHO") uses clean G2C."""
         from app.services.production_waterfall_seam import execute_production_demo
 
-        with pytest.raises(CleanNotReadyError) as exc_info:
-            execute_production_demo("TUHO", "Base")
-        assert exc_info.value.calculation_count == 0
-        assert exc_info.value.runtime_authority == "clean_not_ready"
+        _, meta = execute_production_demo("TUHO", "Base")
+        assert meta["calculation_count"] == 1
+        assert meta["runtime_authority"] == "clean_g2c"
 
     def test_i3_oborovo_demo_is_clean(self):
         """execute_production_demo("Oborovo") uses clean G2C."""
@@ -350,10 +342,10 @@ class TestJ_CalibrationWaterfallSeam:
 
     def test_j1_tuho_calibration_waterfall_runs_legacy(self):
         """execute_calibration_waterfall() runs legacy for TUHO (explicitly blocked)."""
-        from app.project_factories import create_default_tuho_wind1
+        from app.project_factories import create_default_tuho_wind1_legacy_calibration
         from app.services.production_waterfall_seam import execute_calibration_waterfall
 
-        inputs = create_default_tuho_wind1()
+        inputs = create_default_tuho_wind1_legacy_calibration()
         execution = execute_calibration_waterfall(inputs)
         assert execution.authority_metadata["runtime_authority"] == "legacy_waterfall_calibration"
         assert execution.authority_metadata["calculation_count"] == 1
@@ -390,15 +382,14 @@ class TestJ_CalibrationWaterfallSeam:
             execute_calibration_waterfall(inputs)
         assert "CLEAN_READY" in exc_info.value.reason_code
 
-    def test_j5_production_waterfall_tuho_raises_clean_not_ready(self):
-        """execute_production_waterfall() raises CleanNotReadyError for TUHO (B1 clean-only)."""
+    def test_j5_production_waterfall_tuho_is_clean(self):
+        """execute_production_waterfall() uses clean authority for TUHO."""
         from app.project_factories import create_default_tuho_wind1
         from app.services.production_waterfall_seam import execute_production_waterfall
-        from app.services.production_financial_authority import CleanNotReadyError
 
         inputs = create_default_tuho_wind1()
-        with pytest.raises(CleanNotReadyError):
-            execute_production_waterfall(inputs)
+        execution = execute_production_waterfall(inputs)
+        assert execution.authority_metadata["runtime_authority"] == "clean_g2c"
 
     def test_j6_production_waterfall_oborovo_is_clean(self):
         """execute_production_waterfall() uses clean authority for Oborovo."""
@@ -488,7 +479,7 @@ class TestM_CleanNotReadyErrorMetadata:
         from app.api.project_runner import run_project
 
         try:
-            run_project("TUHO", "Base")
+            run_project("__unknown_project_type_xyz__", "Base")
         except CleanNotReadyError as e:
             meta = e.to_metadata()
             assert meta["runtime_authority"] == "clean_not_ready"
@@ -681,16 +672,15 @@ class TestP_EdgeCases:
         assert execution.authority_metadata["runtime_authority"] == "clean_g2c"
         assert execution.authority_metadata["calculation_count"] == 1
 
-    def test_p8_institutional_workbook_tuho_raises_clean_not_ready(self):
-        """Institutional workbook: TUHO raises CleanNotReadyError (no legacy execution)."""
+    def test_p8_institutional_workbook_tuho_is_clean(self):
+        """Institutional workbook seam: TUHO uses clean authority."""
         from app.project_factories import create_default_tuho_wind1
         from app.services.production_waterfall_seam import execute_production_waterfall
-        from app.services.production_financial_authority import CleanNotReadyError
 
         inputs = create_default_tuho_wind1()
-        with pytest.raises(CleanNotReadyError) as exc_info:
-            execute_production_waterfall(inputs)
-        assert exc_info.value.calculation_count == 0
+        execution = execute_production_waterfall(inputs)
+        assert execution.authority_metadata["calculation_count"] == 1
+        assert execution.authority_metadata["runtime_authority"] == "clean_g2c"
 
     def test_p9_runtime_summary_solar_no_legacy_fallback(self, monkeypatch):
         """Runtime summary Solar: no legacy engine fires."""
@@ -836,37 +826,37 @@ class TestQ_OborovoBlockerMatrix:
 # │ (source-derived idc/commitment/bank/vat not typed)  │ SOURCE_EVIDENCE_REQUIRED                 │
 # └─────────────────────────────────────────────────────┴──────────────────────────────────────────┘
 
-class TestR_TuhoBlockerMatrix:
-    def test_r1_tuho_first_blocker_is_deferred_tax_capability(self):
-        """TUHO: first blocker is deferred tax capability (clean_cash_tax_timing_enabled=False)."""
+class TestR_TuhoPromotionMatrix:
+    def test_r1_tuho_is_clean_promoted(self):
+        """TUHO satisfies the clean typed authority contract."""
         from app.project_factories import create_default_tuho_wind1
         from app.services.production_financial_authority import classify_production_authority
 
         inputs = create_default_tuho_wind1()
         decision = classify_production_authority(inputs)
-        assert not decision.promoted
-        assert decision.reason_code == "PR8_BLOCKED_BY_TYPED_TUHO_TAX_RUNTIME_GAP"
+        assert decision.promoted
+        assert decision.reason_code == "PR8_CLEAN_G2C_TYPED_CONTRACT_READY"
 
-    def test_r2_tuho_clean_cash_tax_timing_disabled(self):
-        """TUHO: tax.clean_cash_tax_timing_enabled=False (LEGACY_CALIBRATION_ONLY)."""
+    def test_r2_tuho_clean_cash_tax_timing_enabled(self):
+        """TUHO uses typed clean cash-tax timing."""
         from app.project_factories import create_default_tuho_wind1
 
         inputs = create_default_tuho_wind1()
-        assert inputs.tax.clean_cash_tax_timing_enabled is False
+        assert inputs.tax.clean_cash_tax_timing_enabled is True
 
-    def test_r3_tuho_thin_cap_enabled(self):
-        """TUHO: tax.thin_cap_enabled=True (UNSUPPORTED_CAPABILITY)."""
+    def test_r3_tuho_legacy_thin_cap_switch_disabled(self):
+        """The legacy thin-cap switch is not a second clean authority."""
         from app.project_factories import create_default_tuho_wind1
 
         inputs = create_default_tuho_wind1()
-        assert inputs.tax.thin_cap_enabled is True
+        assert inputs.tax.thin_cap_enabled is False
 
-    def test_r4_tuho_atad_enabled(self):
-        """TUHO: tax.atad_enabled=True (UNSUPPORTED_CAPABILITY)."""
+    def test_r4_tuho_legacy_atad_switch_disabled(self):
+        """The legacy ATAD switch is not a second clean authority."""
         from app.project_factories import create_default_tuho_wind1
 
         inputs = create_default_tuho_wind1()
-        assert inputs.tax.atad_enabled is True
+        assert inputs.tax.atad_enabled is False
 
     def test_r5_tuho_shl_interest_subject_to_limitations(self):
         """TUHO: tax.shl_interest_deductibility=SUBJECT_TO_LIMITATIONS (UNSUPPORTED_CAPABILITY)."""
@@ -875,12 +865,12 @@ class TestR_TuhoBlockerMatrix:
         inputs = create_default_tuho_wind1()
         assert "subject_to_limitations" in str(inputs.tax.shl_interest_deductibility).lower()
 
-    def test_r6_tuho_sponsor_funding_mode_is_none(self):
-        """TUHO: financing.sponsor_funding_mode is None (MISSING_TYPED_INPUT)."""
+    def test_r6_tuho_sponsor_funding_mode_is_typed(self):
+        """TUHO has an explicit sponsor funding mode."""
         from app.project_factories import create_default_tuho_wind1
 
         inputs = create_default_tuho_wind1()
-        assert inputs.financing.sponsor_funding_mode is None
+        assert inputs.financing.sponsor_funding_mode is not None
 
     def test_r7_tuho_clean_shl_principal_is_none(self):
         """TUHO: financing.clean_shl_principal_keur is None (MISSING_TYPED_INPUT)."""
@@ -889,19 +879,20 @@ class TestR_TuhoBlockerMatrix:
         inputs = create_default_tuho_wind1()
         assert inputs.financing.clean_shl_principal_keur is None
 
-    def test_r8_tuho_frozen_schedule_is_legacy_calibration(self):
-        """TUHO: use_frozen_excel_senior_debt_schedule=True (LEGACY_CALIBRATION_ONLY)."""
+    def test_r8_tuho_frozen_schedule_is_not_clean_authority(self):
+        """Canonical TUHO does not read the frozen Senior schedule."""
         from app.project_factories import create_default_tuho_wind1
 
         inputs = create_default_tuho_wind1()
-        assert getattr(inputs.financing, "use_frozen_excel_senior_debt_schedule", False)
+        assert not getattr(inputs.financing, "use_frozen_excel_senior_debt_schedule", False)
 
-    def test_r9_tuho_construction_financing_not_typed(self):
-        """TUHO: financing.construction_financing is None (MISSING_TYPED_INPUT)."""
+    def test_r9_tuho_construction_financing_is_typed(self):
+        """TUHO has the source-proven 18-month typed construction contract."""
         from app.project_factories import create_default_tuho_wind1
 
         inputs = create_default_tuho_wind1()
-        assert inputs.financing.construction_financing is None
+        assert inputs.financing.construction_financing is not None
+        assert len(inputs.financing.construction_financing.periods) == 18
 
 
 # ---------------------------------------------------------------------------

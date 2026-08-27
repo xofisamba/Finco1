@@ -713,9 +713,9 @@ class TestGroupJ_SerializationRoundtrip:
 
     def test_tuho_roundtrip_retains_compatibility_defaults(self):
         """Case F: TUHO → serialize → deserialize → tax-dep source_owned=False, timing=False."""
-        from app.project_factories import create_default_tuho_wind1
+        from app.project_factories import create_default_tuho_wind1_legacy_calibration
         from finco_core.inputs.serialization import project_inputs_to_dict, project_inputs_from_dict
-        tuho = create_default_tuho_wind1()
+        tuho = create_default_tuho_wind1_legacy_calibration()
         assert tuho.tax.tax_dep_basis_source_owned is False
         assert tuho.tax.clean_cash_tax_timing_enabled is False
         d = project_inputs_to_dict(tuho)

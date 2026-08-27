@@ -37,8 +37,15 @@ from finco_core.inputs._models import (
     RevenueAdjustmentSchedule,
     RevenueParams,
     SHLRepaymentMethod,
+    ShlConstructionDayCountConvention,
+    ShlConstructionInterestMethod,
+    SponsorFundingTimingPolicy,
     TaxDepreciationMode,
     ShlInterestDeductibilityMode,
+    InterestLimitationCombinationMode,
+    InterestLimitationCarryforwardMode,
+    CapitalisationGatePolicyParams,
+    InterestLimitationPolicyParams,
     TaxLossUtilisationGate,
     TaxPeriodisationMode,
     ShlAccountingTreatment,
@@ -71,6 +78,7 @@ from finco_core.inputs.construction_financing import (
     ConstructionSeniorPricingInput,
     ConstructionCommitmentFeeInput,
     ConstructionStructuringFeeInput,
+    ConstructionStructuringFeeBasisMode,
 )
 
 _SCHEMA_VERSION = "v3-6"
@@ -168,6 +176,7 @@ def _ser_construction_financing(cf: ConstructionFinancingInput | None) -> dict |
             {
                 "rate": cf.structuring_fee.rate,
                 "basis_keur": cf.structuring_fee.basis_keur,
+                "basis_mode": cf.structuring_fee.basis_mode.value,
                 "payment_weights": list(cf.structuring_fee.payment_weights),
             }
             if cf.structuring_fee is not None else None
@@ -278,6 +287,9 @@ def _deser_construction_financing(d: dict | None) -> ConstructionFinancingInput 
         ConstructionStructuringFeeInput(
             rate=sf_d.get("rate", 0.0),
             basis_keur=sf_d.get("basis_keur", 0.0),
+            basis_mode=ConstructionStructuringFeeBasisMode(
+                sf_d.get("basis_mode", "EXPLICIT_AMOUNT")
+            ),
             payment_weights=tuple(sf_d.get("payment_weights", [])),
         )
         if sf_d is not None else None
@@ -585,6 +597,15 @@ def project_inputs_to_dict(inputs: ProjectInputs) -> dict:
             "clean_shl_repayment_method": _ser_enum(fin.clean_shl_repayment_method),
             "shl_day_count_convention": fin.shl_day_count_convention,
             "shl_construction_day_count_fraction": fin.shl_construction_day_count_fraction,
+            "shl_construction_day_count_convention": _ser_enum(
+                fin.shl_construction_day_count_convention
+            ),
+            "shl_construction_interest_method": _ser_enum(
+                fin.shl_construction_interest_method
+            ),
+            "sponsor_funding_timing_policy": _ser_enum(
+                fin.sponsor_funding_timing_policy
+            ),
             "shl_principal_eligibility_start_period": fin.shl_principal_eligibility_start_period,
             "shl_maturity_period_index": fin.shl_maturity_period_index,
             "shl_fcf_waterfall_cash_schedule_keur": list(fin.shl_fcf_waterfall_cash_schedule_keur),
@@ -610,6 +631,39 @@ def project_inputs_to_dict(inputs: ProjectInputs) -> dict:
                 }
                 for vintage in tax.opening_tax_loss_vintages
             ],
+            "interest_limitation_policy": (
+                {
+                    "enabled": tax.interest_limitation_policy.enabled,
+                    "absolute_interest_limit_keur": (
+                        tax.interest_limitation_policy.absolute_interest_limit_keur
+                    ),
+                    "ebitda_interest_limit_pct": (
+                        tax.interest_limitation_policy.ebitda_interest_limit_pct
+                    ),
+                    "capitalisation_gate_policy": {
+                        "enabled": (
+                            tax.interest_limitation_policy.capitalisation_gate_policy.enabled
+                        ),
+                        "threshold": (
+                            tax.interest_limitation_policy.capitalisation_gate_policy.threshold
+                        ),
+                        "subtotal_is_reincluded_in_denominator": (
+                            tax.interest_limitation_policy.capitalisation_gate_policy
+                            .subtotal_is_reincluded_in_denominator
+                        ),
+                    },
+                    "combination_mode": tax.interest_limitation_policy.combination_mode.value,
+                    "carryforward_mode": tax.interest_limitation_policy.carryforward_mode.value,
+                    "additional_non_deductible_share": (
+                        tax.interest_limitation_policy.additional_non_deductible_share
+                    ),
+                    "source_model_convention": (
+                        tax.interest_limitation_policy.source_model_convention
+                    ),
+                }
+                if tax.interest_limitation_policy is not None
+                else None
+            ),
             "legal_reserve_cap": tax.legal_reserve_cap,
             "construction_pl": _ser_construction_pl(tax.construction_pl),
             "thin_cap_enabled": tax.thin_cap_enabled,
@@ -917,6 +971,24 @@ def project_inputs_from_dict(d: dict) -> ProjectInputs:
         shl_construction_day_count_fraction=fin_d.get(
             "shl_construction_day_count_fraction"
         ),
+        shl_construction_day_count_convention=ShlConstructionDayCountConvention(
+            fin_d.get(
+                "shl_construction_day_count_convention",
+                ShlConstructionDayCountConvention.OPERATING_SHL_CONVENTION.value,
+            )
+        ),
+        shl_construction_interest_method=ShlConstructionInterestMethod(
+            fin_d.get(
+                "shl_construction_interest_method",
+                ShlConstructionInterestMethod.SIMPLE.value,
+            )
+        ),
+        sponsor_funding_timing_policy=SponsorFundingTimingPolicy(
+            fin_d.get(
+                "sponsor_funding_timing_policy",
+                SponsorFundingTimingPolicy.PRO_RATA_CONSTRUCTION.value,
+            )
+        ),
         shl_principal_eligibility_start_period=fin_d.get(
             "shl_principal_eligibility_start_period"
         ),
@@ -938,6 +1010,39 @@ def project_inputs_from_dict(d: dict) -> ProjectInputs:
         ),
     )
 
+    interest_limitation_d = tax_d.get("interest_limitation_policy")
+    interest_limitation_policy = None
+    if interest_limitation_d is not None:
+        gate_d = interest_limitation_d["capitalisation_gate_policy"]
+        interest_limitation_policy = InterestLimitationPolicyParams(
+            enabled=interest_limitation_d["enabled"],
+            absolute_interest_limit_keur=interest_limitation_d[
+                "absolute_interest_limit_keur"
+            ],
+            ebitda_interest_limit_pct=interest_limitation_d[
+                "ebitda_interest_limit_pct"
+            ],
+            capitalisation_gate_policy=CapitalisationGatePolicyParams(
+                enabled=gate_d["enabled"],
+                threshold=gate_d["threshold"],
+                subtotal_is_reincluded_in_denominator=gate_d.get(
+                    "subtotal_is_reincluded_in_denominator", False
+                ),
+            ),
+            combination_mode=InterestLimitationCombinationMode(
+                interest_limitation_d["combination_mode"]
+            ),
+            carryforward_mode=InterestLimitationCarryforwardMode(
+                interest_limitation_d["carryforward_mode"]
+            ),
+            additional_non_deductible_share=interest_limitation_d.get(
+                "additional_non_deductible_share", 0.0
+            ),
+            source_model_convention=interest_limitation_d.get(
+                "source_model_convention", ""
+            ),
+        )
+
     tax = TaxParams(
         country_tax_policy_id=tax_d.get("country_tax_policy_id"),
         corporate_rate_override=tax_d.get("corporate_rate_override"),
@@ -953,6 +1058,7 @@ def project_inputs_from_dict(d: dict) -> ProjectInputs:
             )
             for vintage in tax_d.get("opening_tax_loss_vintages", ())
         ),
+        interest_limitation_policy=interest_limitation_policy,
         legal_reserve_cap=tax_d.get("legal_reserve_cap", 0.10),
         construction_pl=_deser_construction_pl(tax_d.get("construction_pl")),
         thin_cap_enabled=tax_d.get("thin_cap_enabled", False),

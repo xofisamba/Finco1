@@ -23,7 +23,10 @@ from __future__ import annotations
 
 import pytest
 
-from app.project_factories import create_default_oborovo, create_default_tuho_wind1
+from app.project_factories import (
+    create_default_oborovo_legacy_calibration,
+    create_default_tuho_wind1_legacy_calibration,
+)
 from app.ui_runner import _build_period_engine
 from app.waterfall_runner import WaterfallRunConfig, WaterfallRunner
 from finco_core.inputs._models import ShlInterestDeductibilityMode
@@ -86,25 +89,29 @@ class TestTuhoLegacyProductionPath:
 
     @pytest.fixture(scope="class")
     def tuho_result(self):
-        return _run_via_waterfall_runner(create_default_tuho_wind1())
+        return _run_via_waterfall_runner(
+            create_default_tuho_wind1_legacy_calibration()
+        )
 
     def test_tuho_production_path_does_not_crash(self, tuho_result):
         assert tuho_result is not None
 
     def test_tuho_source_policy_is_subject_to_limitations(self):
         # Source metadata — not a runtime assertion.
-        p = create_default_tuho_wind1()
+        p = create_default_tuho_wind1_legacy_calibration()
         assert p.tax.shl_interest_deductibility == ShlInterestDeductibilityMode.SUBJECT_TO_LIMITATIONS
         assert p.tax.thin_cap_enabled is True
 
     def test_tuho_total_tax_keur(self, tuho_result):
-        assert tuho_result.total_tax_keur == pytest.approx(37004.372718, rel=1e-5)
+        # WaterfallResult.total_tax_keur is the cash-tax total (fixture R44),
+        # not the separate CIT-accrual total (fixture R43).
+        assert tuho_result.total_tax_keur == pytest.approx(36994.270322, rel=1e-5)
 
     def test_tuho_total_senior_ds_keur(self, tuho_result):
         assert tuho_result.total_senior_ds_keur == pytest.approx(65826.38828, rel=1e-5)
 
     def test_tuho_total_distribution_keur(self, tuho_result):
-        assert tuho_result.total_distribution_keur == pytest.approx(165479.319576, rel=1e-5)
+        assert tuho_result.total_distribution_keur == pytest.approx(165423.195150, rel=1e-5)
 
     def test_tuho_total_shl_service_keur(self, tuho_result):
         assert tuho_result.total_shl_service_keur == pytest.approx(75439.179012, rel=1e-5)
@@ -132,24 +139,24 @@ class TestOborovoLegacyProductionPath:
 
     @pytest.fixture(scope="class")
     def oborovo_result(self):
-        return _run_via_waterfall_runner(create_default_oborovo())
+        return _run_via_waterfall_runner(create_default_oborovo_legacy_calibration())
 
     def test_oborovo_production_path_does_not_crash(self, oborovo_result):
         assert oborovo_result is not None
 
     def test_oborovo_source_policy_is_fully_non_deductible(self):
-        p = create_default_oborovo()
+        p = create_default_oborovo_legacy_calibration()
         assert p.tax.shl_interest_deductibility == ShlInterestDeductibilityMode.FULLY_NON_DEDUCTIBLE
         assert p.tax.foreign_shl_interest_cap_enabled is True
 
     def test_oborovo_total_tax_keur(self, oborovo_result):
-        assert oborovo_result.total_tax_keur == pytest.approx(8489.215657, rel=1e-5)
+        assert oborovo_result.total_tax_keur == pytest.approx(8490.320140, rel=1e-5)
 
     def test_oborovo_total_senior_ds_keur(self, oborovo_result):
-        assert oborovo_result.total_senior_ds_keur == pytest.approx(63192.172875, rel=1e-5)
+        assert oborovo_result.total_senior_ds_keur == pytest.approx(63191.174225, rel=1e-5)
 
     def test_oborovo_total_distribution_keur(self, oborovo_result):
-        assert oborovo_result.total_distribution_keur == pytest.approx(63997.380136, rel=1e-5)
+        assert oborovo_result.total_distribution_keur == pytest.approx(64006.489082, rel=1e-5)
 
     def test_oborovo_total_shl_service_keur(self, oborovo_result):
         assert oborovo_result.total_shl_service_keur == pytest.approx(37678.310203, rel=1e-5)

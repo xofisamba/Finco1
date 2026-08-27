@@ -70,11 +70,11 @@ def _expected_semiannual_ends(first_end: date, count: int) -> tuple[date, ...]:
 
 def test_tuho_full_production_axis_matches_source_evidence():
     clean, periods = _axis(create_default_tuho_wind1())
-    assert clean.calendar.cod_date == date(2030, 1, 1)
+    assert clean.calendar.cod_date == date(2029, 12, 30)
     _assert_axis(periods, construction_count=1, final_end=date(2059, 12, 31))
     operating = tuple(p for p in periods if p.is_operation)
     assert (operating[0].period_start, operating[0].period_end) == (
-        date(2030, 1, 1), date(2030, 6, 30)
+        date(2029, 12, 31), date(2030, 6, 30)
     )
     assert operating[0].days_in_period == 181
     engine_operating = _build_period_engine(clean).operation_periods()
@@ -109,7 +109,7 @@ def test_ui_runner_uses_the_same_typed_axis_as_clean_orchestration(factory):
 @pytest.mark.parametrize(
     "factory,first_start,first_end,ppa_end",
     (
-        (create_default_tuho_wind1, date(2030, 1, 1), date(2030, 6, 30), date(2042, 1, 1)),
+        (create_default_tuho_wind1, date(2029, 12, 31), date(2030, 6, 30), date(2041, 12, 31)),
         (create_default_oborovo, date(2030, 6, 30), date(2030, 12, 31), date(2042, 6, 30)),
     ),
 )
@@ -1374,8 +1374,20 @@ class TestDownstreamConsumerAttacks:
 
         call_count = [0]
 
-        def bad_shl(periods, shl_model_input, available_cash, diagnostics=None):
-            result = orig_compute_shl(periods, shl_model_input, available_cash, diagnostics=diagnostics)
+        def bad_shl(
+            periods,
+            shl_model_input,
+            available_cash,
+            diagnostics=None,
+            **kwargs,
+        ):
+            result = orig_compute_shl(
+                periods,
+                shl_model_input,
+                available_cash,
+                diagnostics=diagnostics,
+                **kwargs,
+            )
             call_count[0] += 1
             # Only corrupt the second call (gated SHL in waterfall)
             if call_count[0] == 2:
@@ -1440,8 +1452,20 @@ class TestDownstreamConsumerAttacks:
         orig_compute_shl = _shl_prod.compute_shareholder_loan_schedules
         call_count = [0]
 
-        def bad_shl(periods, shl_model_input, available_cash, diagnostics=None):
-            result = orig_compute_shl(periods, shl_model_input, available_cash, diagnostics=diagnostics)
+        def bad_shl(
+            periods,
+            shl_model_input,
+            available_cash,
+            diagnostics=None,
+            **kwargs,
+        ):
+            result = orig_compute_shl(
+                periods,
+                shl_model_input,
+                available_cash,
+                diagnostics=diagnostics,
+                **kwargs,
+            )
             call_count[0] += 1
             if call_count[0] == 2:
                 import dataclasses as _dc
@@ -1542,11 +1566,11 @@ def test_rc_cod2_coordinated_leap_fraction_rejected():
         validate_canonical_period_axis(corrupted)
 
 
-def test_rc_tuho_cod_inclusive_first_operation_passes():
-    """Valid TUHO COD-inclusive first operation PASSES when cod_date is provided.
+def test_rc_tuho_source_construction_boundary_passes():
+    """Valid TUHO 18-month source boundary passes canonical validation.
 
-    TUHO: COD = 2030-01-01 (month start), first operating period starts 2030-01-01,
-    ends 2030-06-30, days = 181 (calendar: 180 + 1 COD-inclusive).
+    TUHO clean authority has COD on 2029-12-30 and the first operating period
+    starts the following day, ending 2030-06-30 with 181 calendar days.
     """
     from financial_engine.orchestrator import _build_period_engine
     from financial_engine.adapters.project_inputs import from_project_inputs
@@ -1557,11 +1581,10 @@ def test_rc_tuho_cod_inclusive_first_operation_passes():
     # Validation with the engine's COD must pass
     validate_canonical_period_axis(periods, cod_date=engine.cod)
     operating = tuple(p for p in periods if p.is_operation)
-    assert operating[0].start_date == engine.cod
-    assert engine.cod.day == 1
-    # The +1 was applied
+    assert operating[0].start_date == date(2029, 12, 31)
+    assert engine.cod == date(2029, 12, 30)
     calendar_days = (operating[0].end_date - operating[0].start_date).days
-    assert operating[0].days_in_period == calendar_days + 1
+    assert operating[0].days_in_period == calendar_days
 
 
 # ---------------------------------------------------------------------------

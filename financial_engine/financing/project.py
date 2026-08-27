@@ -34,7 +34,10 @@ from financial_engine.shl.construction import (
     compute_shl_construction_schedule,
     ShlConstructionPeriodInput,
 )
-from finco_core.inputs._models import SponsorFundingTimingPolicy
+from finco_core.inputs._models import (
+    ShlConstructionDayCountConvention,
+    SponsorFundingTimingPolicy,
+)
 from financial_engine.shl.day_count import compute_shl_dcf
 
 
@@ -153,10 +156,24 @@ def _typed_construction_shl_context(
     )
     effective_allocations = canonical_allocations + zero_tail_allocations
     convention = _coerce_shl_day_count(financing.shl_day_count_convention)
-    derived_dcfs = tuple(
-        compute_shl_dcf(period.start_date, period.end_date, convention)
-        for period in typed_periods
+    construction_day_count = getattr(
+        financing,
+        "shl_construction_day_count_convention",
+        ShlConstructionDayCountConvention.OPERATING_SHL_CONVENTION,
     )
+    if construction_day_count is ShlConstructionDayCountConvention.ELAPSED_ACT_365_FIXED:
+        axis_start = typed_periods[0].start_date
+        prior_end = axis_start
+        elapsed_dcfs = []
+        for period in typed_periods:
+            elapsed_dcfs.append((period.end_date - prior_end).days / 365.0)
+            prior_end = period.end_date
+        derived_dcfs = tuple(elapsed_dcfs)
+    else:
+        derived_dcfs = tuple(
+            compute_shl_dcf(period.start_date, period.end_date, convention)
+            for period in typed_periods
+        )
     authority = _resolve_shl_construction_dcf_authority(
         financing.shl_construction_day_count_fraction
     )
@@ -806,6 +823,7 @@ def _run_with_construction_idc(
         vat_requirement_keur=tuple(row.vat_requirement_keur for row in b2.vat_schedule),
         vat_drawn_keur=tuple(row.vat_drawn_keur for row in b2.vat_schedule),
         vat_undrawn_keur=tuple(row.vat_undrawn_keur for row in b2.vat_schedule),
+        senior_idc_capitalized_uses_keur=b2.senior_idc_capitalized_uses_keur,
         vat_idc_keur=b2.capitalized_financing_costs.vat_idc_keur,
         vat_commitment_fee_keur=b2.capitalized_financing_costs.vat_commitment_fee_keur,
         vat_commitment_mode=(
@@ -856,6 +874,7 @@ def _run_with_construction_idc(
         fixed_point_iteration_count=inner_result.fixed_point_iteration_count,
         fixed_point_maximum_difference_keur=inner_result.fixed_point_maximum_difference_keur,
         construction_financing=construction_result,
+        shareholder_loan_model_input=inner_result.shareholder_loan_model_input,
     )
 
 
@@ -951,6 +970,19 @@ def run_project_financing_model(
         if _typed_shl_context is not None
         else 0.0
     )
+    if _typed_shl_context is not None and candidate_shl <= 0.0:
+        # A provisional Stage-B2 seed has no allocations yet. Seed the generic
+        # fixed point from the typed gearing cap and fixed funding sources; this
+        # is a causal estimate, not a source output or a final-value target.
+        candidate_shl = max(
+            0.0,
+            uses.total_project_uses_keur
+            - gearing_capacity
+            - fin.junior_or_other_project_funding_keur
+            - fin.share_capital_keur
+            - fin.share_premium_keur
+            - fin.other_equity_funding_before_shl_keur,
+        )
 
     model_result = None
     authoritative_dscr_capacity = 0.0
@@ -1086,6 +1118,11 @@ def run_project_financing_model(
                 shareholder_loan=replace(
                     capacity_model_input.shareholder_loan,
                     construction_periods_override=_iter_draw_schedule,
+                    construction_period_end_dates_override=(
+                        tuple(row[1] for row in _typed_shl_context.period_dates)
+                        if _typed_shl_context is not None
+                        else None
+                    ),
                     post_construction_principal_contribution_keur=(
                         _iter_post_construction_principal
                     ),
@@ -1116,6 +1153,11 @@ def run_project_financing_model(
                 shareholder_loan=replace(
                     funded_model_input.shareholder_loan,
                     construction_periods_override=_iter_draw_schedule,
+                    construction_period_end_dates_override=(
+                        tuple(row[1] for row in _typed_shl_context.period_dates)
+                        if _typed_shl_context is not None
+                        else None
+                    ),
                     post_construction_principal_contribution_keur=(
                         _iter_post_construction_principal
                     ),
@@ -1333,4 +1375,5 @@ def run_project_financing_model(
         construction_funding=funding,
         fixed_point_iteration_count=iteration,
         fixed_point_maximum_difference_keur=maximum_difference,
+        shareholder_loan_model_input=funded_model_input.shareholder_loan,
     )

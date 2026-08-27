@@ -69,8 +69,8 @@ _WATERFALL_UNAVAILABLE: frozenset[str] = frozenset({
 # Maps baseline_id → (factory_module_attr, input_source_id)
 _BASELINE_REGISTRY: dict[str, dict[str, str]] = {
     "tuho": {
-        "factory_attr": "create_default_tuho_wind1",
-        "input_source_id": "project_factories.create_default_tuho_wind1",
+        "factory_attr": "create_default_tuho_wind1_legacy_calibration",
+        "input_source_id": "project_factories.create_default_tuho_wind1_legacy_calibration",
     },
     "oborovo": {
         "factory_attr": "create_default_oborovo",

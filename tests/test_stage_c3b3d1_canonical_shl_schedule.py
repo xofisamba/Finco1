@@ -477,8 +477,8 @@ class TestNoFinancialDrift:
         assert r.equity_irr == pytest.approx(b["eq_irr"], abs=1e-6)
 
     def test_tuho_no_drift(self):
-        from app.project_factories import create_default_tuho_wind1
-        r = self._run(create_default_tuho_wind1)
+        from app.project_factories import create_default_tuho_wind1_legacy_calibration
+        r = self._run(create_default_tuho_wind1_legacy_calibration)
         b = self.BASE["tuho"]
         assert r.total_tax_keur == pytest.approx(b["tax"], abs=0.001)
         assert r.total_distribution_keur == pytest.approx(b["dist"], abs=0.001)
@@ -577,11 +577,11 @@ class TestAdapterShlInputs:
 
     def test_tuho_fcf_returns_none(self):
         """TUHO pik_then_sweep is FCF-adjacent — raises NotImplementedError."""
-        from app.project_factories import create_default_tuho_wind1
+        from app.project_factories import create_default_tuho_wind1_legacy_calibration
         from financial_engine.adapters.shl_inputs import (
             build_shl_schedule_policy_from_project_inputs,
         )
-        p = create_default_tuho_wind1()
+        p = create_default_tuho_wind1_legacy_calibration()
         # TUHO uses pik_then_sweep — must raise NotImplementedError
         with pytest.raises(NotImplementedError, match="C3B3D1_BLOCKED_FCF_REPAYMENT"):
             build_shl_schedule_policy_from_project_inputs(p)

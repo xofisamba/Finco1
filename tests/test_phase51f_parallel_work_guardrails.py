@@ -56,7 +56,7 @@ _HAS_ENGINE = True
 try:
     from app.project_factories import (
         create_default_oborovo_legacy_calibration,
-        create_default_tuho_wind1,
+        create_default_tuho_wind1_legacy_calibration,
     )
     from app.ui_runner import _build_period_engine, _run_waterfall
 except Exception:  # pragma: no cover
@@ -231,7 +231,7 @@ class TestEngineOutputGoldenTUHO:
     def tuho_result(self):
         if not _HAS_ENGINE:
             pytest.skip("Engine not importable in this environment")
-        proj = create_default_tuho_wind1()
+        proj = create_default_tuho_wind1_legacy_calibration()
         engine = _build_period_engine(proj)
         return _run_waterfall(proj, engine)
 

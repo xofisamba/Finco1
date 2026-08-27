@@ -15,6 +15,7 @@ PROJECT_CONFIGS = {
     # BESS/hybrid entries removed from UI catalogue (factories still exist for tests).
     "TUHO": {
         "factory": "create_default_tuho_wind1",
+        "legacy_factory": "create_default_tuho_wind1_legacy_calibration",
         "status": "full",
         "note": None,
     },
@@ -118,12 +119,19 @@ def run_demo_project(project_type: str, scenario: str = "Base",
                    project_inputs_override=None,
                    advanced_opex_line_items=None,
                    advanced_capex_line_items=None,
-                   use_dualrun_validation: bool = False) -> DemoResult:
-    """Create and run a demo project, returning results for UI display."""
+                   use_dualrun_validation: bool = False,
+                   legacy_calibration: bool = True) -> DemoResult:
+    """Create and run a legacy/demo project, returning UI-compatible results.
+
+    Canonical production authority is owned by ``app.api.project_runner``.
+    This compatibility funnel therefore selects an explicit legacy factory
+    whenever one is registered and no caller-owned input override is supplied.
+    """
     from app.project_factories import (
         create_default_solar_project,
         create_default_wind_project,
         create_default_tuho_wind1,
+        create_default_tuho_wind1_legacy_calibration,
         create_default_oborovo,
     )
     from app.portfolio_runner import run_portfolio_from_inputs
@@ -141,6 +149,9 @@ def run_demo_project(project_type: str, scenario: str = "Base",
         # Backward-compat aliases for test code — not shown in UI (not in PROJECT_CONFIGS)
         "Solar": create_default_solar_project,
         "Wind": create_default_wind_project,
+    }
+    LEGACY_FACTORY_MAP = {
+        "TUHO": create_default_tuho_wind1_legacy_calibration,
     }
 
     result = DemoResult(project_type=project_type)
@@ -183,7 +194,11 @@ def run_demo_project(project_type: str, scenario: str = "Base",
             result.integration_status = "experimental"
             result.integration_note = PORTFOLIO_NOTE
         elif project_type in FACTORY_MAP:
-            factory = FACTORY_MAP[project_type]
+            factory = (
+                LEGACY_FACTORY_MAP.get(project_type, FACTORY_MAP[project_type])
+                if legacy_calibration
+                else FACTORY_MAP[project_type]
+            )
             proj = project_inputs_override if project_inputs_override is not None else factory()
 
             # Pre-run validation for all projects (including factory-defaults)

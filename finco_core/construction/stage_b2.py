@@ -120,6 +120,7 @@ class ConstructionRuntimeConfig:
     senior_commitment_fee_capitalization_timing: str = "PROFILE"
     structuring_fee_rate: float = 0.0
     structuring_fee_basis_keur: float = 0.0
+    structuring_fee_basis_mode: str = "EXPLICIT_AMOUNT"
     vat_facility_interest_rate: float = 0.0
     vat_facility_commitment_fee_rate: float = 0.0
     vat_facility_commitment_keur: float = 0.0
@@ -146,6 +147,7 @@ class ConstructionRuntimeResult:
     vat_payable_keur: tuple[float, ...]
     vat_schedule: tuple[FacilityPeriodState, ...]
     senior_idc_accrual_keur: tuple[float, ...]
+    senior_idc_capitalized_uses_keur: tuple[float, ...]
     senior_commitment_fee_accrual_keur: tuple[float, ...]
     cumulative_senior_draw_keur: tuple[float, ...]
     senior_period_draw_keur: tuple[float, ...]
@@ -209,6 +211,11 @@ def _validate_runtime_config(config: ConstructionRuntimeConfig) -> None:
         "FIXED_COMMITMENT",
     }:
         raise ValueError("STAGE_B2_INVALID_VAT_COMMITMENT_MODE")
+    if config.structuring_fee_basis_mode not in {
+        "EXPLICIT_AMOUNT",
+        "SENIOR_PLUS_VAT_COMMITMENTS",
+    }:
+        raise ValueError("STAGE_B2_INVALID_STRUCTURING_FEE_BASIS_MODE")
 
     non_negative_scalars = {
         "equity_available_keur": config.equity_available_keur,
@@ -440,7 +447,12 @@ def compute_vat_schedule(
     peak_requirement = 0.0
     for idx in range(horizon):
         payable = vat_payable_keur[idx] if idx < len(vat_payable_keur) else 0.0
-        reimbursement = vat_payable_keur[idx - reimbursement_lag_periods] if idx >= reimbursement_lag_periods else 0.0
+        reimbursement_index = idx - reimbursement_lag_periods
+        reimbursement = (
+            vat_payable_keur[reimbursement_index]
+            if 0 <= reimbursement_index < len(vat_payable_keur)
+            else 0.0
+        )
         requirement = max(0.0, requirement + payable - reimbursement)
         peak_requirement = max(peak_requirement, requirement)
         raw_rows.append((idx + 1, payable, reimbursement, requirement))
@@ -734,9 +746,14 @@ def _run_stage_b2_inner(
         (row.vat_requirement_keur + row.vat_undrawn_keur for row in vat_schedule),
         default=0.0,
     )
+    effective_structuring_fee_basis_keur = (
+        config.senior_commitment_keur + effective_vat_commitment_keur
+        if config.structuring_fee_basis_mode == "SENIOR_PLUS_VAT_COMMITMENTS"
+        else config.structuring_fee_basis_keur
+    )
     structuring = allocate_structuring_fee(
         config.funding_policy,
-        config.structuring_fee_rate * config.structuring_fee_basis_keur,
+        config.structuring_fee_rate * effective_structuring_fee_basis_keur,
     )
 
     idc_profile = _profile_n(config.senior_idc_spending_profile, n_periods)
@@ -897,6 +914,7 @@ def _run_stage_b2_inner(
         period_uses, financing, closing_senior,
         iteration, residual, audit, final_unfunded,
         prov_alloc_out,
+        senior_idc_uses,
     )
 
 
@@ -918,6 +936,7 @@ def run_stage_b2(config: ConstructionRuntimeConfig) -> ConstructionRuntimeResult
         cumulative_senior, senior_period_draws,
         period_uses, financing, closing_senior,
         iteration, residual, audit, _unfunded, _canonical_alloc,
+        senior_idc_cap_uses,
     ) = _run_stage_b2_inner(config, provisional=False)
 
     return ConstructionRuntimeResult(
@@ -926,6 +945,7 @@ def run_stage_b2(config: ConstructionRuntimeConfig) -> ConstructionRuntimeResult
         vat_payable_keur=vat_payable,
         vat_schedule=vat_schedule,
         senior_idc_accrual_keur=senior_idc_accruals,
+        senior_idc_capitalized_uses_keur=senior_idc_cap_uses,
         senior_commitment_fee_accrual_keur=senior_fee_accruals,
         cumulative_senior_draw_keur=cumulative_senior,
         senior_period_draw_keur=senior_period_draws,
@@ -958,7 +978,7 @@ def run_stage_b2_provisional(config: ConstructionRuntimeConfig) -> ProvisionalSt
         _cumul_senior, senior_period_draws,
         period_uses, financing, _closing_senior,
         iteration, residual, _audit, final_unfunded,
-        alloc_final_prov,
+        alloc_final_prov, _idc_cap_uses,
     ) = _run_stage_b2_inner(config, provisional=True)
 
     # Derive funded Sources directly from canonical provisional allocations.

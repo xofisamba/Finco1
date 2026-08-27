@@ -148,6 +148,7 @@ class ConstructionFinancingResult:
     vat_requirement_keur: tuple[float, ...] = ()
     vat_drawn_keur: tuple[float, ...] = ()
     vat_undrawn_keur: tuple[float, ...] = ()
+    senior_idc_capitalized_uses_keur: tuple[float, ...] = ()
     vat_idc_keur: float = 0.0
     vat_commitment_fee_keur: float = 0.0
     vat_commitment_mode: str = "DISABLED"
@@ -182,3 +183,6 @@ class ProjectFinancingResult:
     fixed_point_maximum_difference_keur: float
     # PR-9 typed construction financing result (None when construction_financing disabled)
     construction_financing: "ConstructionFinancingResult | None" = None
+    # Exact typed SHL contract used by the converged financing model. This is
+    # a downstream handoff, not a second principal authority.
+    shareholder_loan_model_input: object | None = None

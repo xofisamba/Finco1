@@ -794,6 +794,19 @@ class ShlConstructionInterestMethod(str, Enum):
     COMPOUND_PERIODIC = "COMPOUND_PERIODIC"
 
 
+class ShlConstructionDayCountConvention(str, Enum):
+    """Construction-only SHL accrual convention.
+
+    ``OPERATING_SHL_CONVENTION`` preserves the established inclusive operating
+    SHL day-count convention. ``ELAPSED_ACT_365_FIXED`` represents source
+    contracts that compound from an investment date to COD using elapsed days;
+    it must not alter operating-period SHL day counts.
+    """
+
+    OPERATING_SHL_CONVENTION = "OPERATING_SHL_CONVENTION"
+    ELAPSED_ACT_365_FIXED = "ELAPSED_ACT_365_FIXED"
+
+
 @dataclass(frozen=True)
 class FinancingParams:
     """Debt, equity, reserve, and shareholder-loan assumptions."""
@@ -897,6 +910,9 @@ class FinancingParams:
     clean_shl_repayment_method: SHLRepaymentMethod | None = None
     shl_day_count_convention: str | None = None
     shl_construction_day_count_fraction: float | None = None
+    shl_construction_day_count_convention: ShlConstructionDayCountConvention = (
+        ShlConstructionDayCountConvention.OPERATING_SHL_CONVENTION
+    )
     # SHL construction interest method (Fix 2 — C3B3FIX2A).
     # Default SIMPLE preserves all existing results. Set COMPOUND_PERIODIC for
     # projects whose source workbook uses geometric accrual (e.g. KUPI).
@@ -1018,6 +1034,97 @@ class ShlInterestDeductibilityMode(str, Enum):
         SOURCE_POLICY_CAPTURED_RUNTIME_NOT_PROMOTED applies to SUBJECT_TO_LIMITATIONS.
         """
         return self != ShlInterestDeductibilityMode.SUBJECT_TO_LIMITATIONS
+
+
+class InterestLimitationCombinationMode(str, Enum):
+    """Typed combination rule for source-model limitation components."""
+
+    MAX_DISALLOWED = "max_disallowed"
+    SUM_DISALLOWED = "sum_disallowed"
+
+
+class InterestLimitationCarryforwardMode(str, Enum):
+    """Typed treatment of restricted interest after the current period."""
+
+    NONE = "none"
+    CARRY_FORWARD = "carry_forward"
+
+
+@dataclass(frozen=True)
+class CapitalisationGatePolicyParams:
+    """Canonical inputs for a literal balance-sheet capitalisation gate."""
+
+    enabled: bool
+    threshold: float
+    subtotal_is_reincluded_in_denominator: bool = False
+
+    def __post_init__(self) -> None:
+        import math as _math
+
+        if not isinstance(self.enabled, bool):
+            raise ValueError("enabled must be exact bool")
+        if not isinstance(self.subtotal_is_reincluded_in_denominator, bool):
+            raise ValueError("subtotal_is_reincluded_in_denominator must be exact bool")
+        if isinstance(self.threshold, bool):
+            raise ValueError("threshold must be numeric, not bool")
+        try:
+            threshold = float(self.threshold)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("threshold must be a real numeric value") from exc
+        if not _math.isfinite(threshold) or threshold < 0.0:
+            raise ValueError("threshold must be finite and non-negative")
+
+
+@dataclass(frozen=True)
+class InterestLimitationPolicyParams:
+    """Canonical, jurisdiction-neutral source-model interest policy."""
+
+    enabled: bool
+    absolute_interest_limit_keur: float
+    ebitda_interest_limit_pct: float
+    capitalisation_gate_policy: CapitalisationGatePolicyParams
+    combination_mode: InterestLimitationCombinationMode
+    carryforward_mode: InterestLimitationCarryforwardMode
+    additional_non_deductible_share: float = 0.0
+    source_model_convention: str = ""
+
+    def __post_init__(self) -> None:
+        import math as _math
+
+        if not isinstance(self.enabled, bool):
+            raise ValueError("enabled must be exact bool")
+        if not isinstance(self.capitalisation_gate_policy, CapitalisationGatePolicyParams):
+            raise ValueError(
+                "capitalisation_gate_policy must be CapitalisationGatePolicyParams"
+            )
+        if not isinstance(self.combination_mode, InterestLimitationCombinationMode):
+            raise ValueError("combination_mode must be InterestLimitationCombinationMode")
+        if not isinstance(self.carryforward_mode, InterestLimitationCarryforwardMode):
+            raise ValueError("carryforward_mode must be InterestLimitationCarryforwardMode")
+        for name in (
+            "absolute_interest_limit_keur",
+            "ebitda_interest_limit_pct",
+            "additional_non_deductible_share",
+        ):
+            value = getattr(self, name)
+            if isinstance(value, bool):
+                raise ValueError(f"{name} must be numeric, not bool")
+            try:
+                numeric = float(value)
+            except (TypeError, ValueError) as exc:
+                raise ValueError(f"{name} must be a real numeric value") from exc
+            if not _math.isfinite(numeric):
+                raise ValueError(f"{name} must be finite")
+        if self.absolute_interest_limit_keur < 0.0:
+            raise ValueError("absolute_interest_limit_keur must be non-negative")
+        if not 0.0 <= self.ebitda_interest_limit_pct <= 1.0:
+            raise ValueError("ebitda_interest_limit_pct must be in [0, 1]")
+        if not 0.0 <= self.additional_non_deductible_share <= 1.0:
+            raise ValueError("additional_non_deductible_share must be in [0, 1]")
+        if self.carryforward_mode is InterestLimitationCarryforwardMode.CARRY_FORWARD:
+            raise NotImplementedError(
+                "INTEREST_LIMITATION_CARRY_FORWARD_NOT_IMPLEMENTED"
+            )
 
 
 class TaxLossUtilisationGate(str, Enum):
@@ -1334,6 +1441,7 @@ class TaxParams:
     country_tax_policy_id: str | None = None
     corporate_rate_override: float | None = None
     opening_tax_loss_vintages: tuple[OpeningTaxLossVintageParams, ...] = ()
+    interest_limitation_policy: InterestLimitationPolicyParams | None = None
 
     # NOTE: shl_limitation_enabled and shl_interest_cap_keur_annual have been REMOVED.
     # SUBJECT_TO_LIMITATIONS is now implemented via the ATAD mechanism.
@@ -1402,6 +1510,14 @@ class TaxParams:
                     f"got {type(v).__name__!r}."
                 )
 
+        if (
+            self.interest_limitation_policy is not None
+            and not isinstance(self.interest_limitation_policy, InterestLimitationPolicyParams)
+        ):
+            raise ValueError(
+                "interest_limitation_policy must be InterestLimitationPolicyParams or None"
+            )
+
         if self.opening_tax_loss_vintages and self.prior_tax_loss_keur > 0.0:
             raise ValueError(
                 "opening_tax_loss_vintages and non-zero prior_tax_loss_keur are "
@@ -1448,13 +1564,17 @@ class TaxParams:
         #   SHL_THIN_CAP_RUNTIME_NOT_IMPLEMENTED at the production execution boundary.
         # Neither → raise SHL_LIMITATION_MECHANISM_MISSING immediately.
         if mode == ShlInterestDeductibilityMode.SUBJECT_TO_LIMITATIONS:
-            if not self.atad_enabled and not self.thin_cap_enabled:
+            typed_limitation_enabled = bool(
+                self.interest_limitation_policy is not None
+                and self.interest_limitation_policy.enabled
+            )
+            if not self.atad_enabled and not self.thin_cap_enabled and not typed_limitation_enabled:
                 raise ValueError(
                     "SHL_LIMITATION_MECHANISM_MISSING: "
                     "shl_interest_deductibility=SUBJECT_TO_LIMITATIONS requires at least "
                     "one limitation mechanism: set atad_enabled=True (supported ATAD path) "
-                    "or thin_cap_enabled=True (stored source metadata; runtime-blocked "
-                    "until thin-cap formula is promoted to production)."
+                    "or thin_cap_enabled=True (stored source metadata), or provide an "
+                    "enabled typed interest_limitation_policy."
                 )
         # ── foreign_shl_interest_cap_enabled consistency ──────────────────────
         if self.foreign_shl_interest_cap_enabled:

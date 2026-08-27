@@ -54,22 +54,26 @@ These are the ACTUAL fields of `TaxParams` as of the current codebase.
 | `tax_deductible_book_dep_pct` | SUPPORTED_RUNTIME | C | No | Yes | No | No |
 | `tax_dep_basis_source_owned` | METADATA_ONLY | B | No | Yes | No | No |
 | `clean_cash_tax_timing_enabled` | FAIL_CLOSED_UNSUPPORTED | C | No | Yes | No | No |
+| `interest_limitation_policy` | SUPPORTED_RUNTIME | C | No | Yes | Yes (TUHO typed source contract) | No |
 
 ### REMOVED ghost fields: shl_limitation_enabled and shl_interest_cap_keur_annual
 
 These fields were proposed but NEVER landed in TaxParams or TaxPolicy.
 They do NOT exist in the current codebase and must NOT appear in this inventory.
 
-SUBJECT_TO_LIMITATIONS is implemented exclusively via the ATAD mechanism
-(atad_enabled=True, thin_cap_enabled=False). An absolute annual SHL cap separate
-from ATAD has no approved non-workbook authority and is not implemented.
+`SUBJECT_TO_LIMITATIONS` may now be implemented by the typed
+`interest_limitation_policy` contract. TUHO uses the source-proven dynamic
+capitalisation gate and `MAX_DISALLOWED` combination of its absolute and EBITDA
+components. The legacy `thin_cap_enabled` / `atad_enabled` flags remain
+compatibility metadata and do not replace the typed policy.
 
-TUHO runtime status (Correction G):
-- TUHO has thin_cap_enabled=True (source metadata: thin-cap formula recorded)
-- The thin-cap formula is NOT implemented in the production runtime
-- SUBJECT_TO_LIMITATIONS + thin_cap_enabled=True → runtime raises
-  SHL_THIN_CAP_RUNTIME_NOT_IMPLEMENTED (capability-driven, not identity-based)
-- Only the ATAD path (thin_cap_enabled=False, atad_enabled=True) is executable
+TUHO runtime status (Phase B3):
+- canonical TUHO carries an explicit typed `interest_limitation_policy`;
+- the policy derives its gate from current clean balance-sheet state;
+- legacy TUHO retains its historical compatibility flags in the explicit
+  legacy factory;
+- unsupported projects still fail closed when no executable typed policy is
+  available.
 
 ## FUTURE / NOT CURRENT — speculative fields NOT in current TaxParams
 

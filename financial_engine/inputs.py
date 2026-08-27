@@ -223,6 +223,12 @@ class PeriodInterestInput:
     senior_interest_keur: float = 0.0
     shl_interest_keur: float = 0.0
     other_interest_keur: float = 0.0
+    shl_deductible_interest_keur: float | None = None
+    capitalisation_ratio: float | None = None
+    capitalisation_gate_active: bool | None = None
+    absolute_limit_component_keur: float = 0.0
+    ebitda_limit_component_keur: float = 0.0
+    additional_non_deductible_component_keur: float = 0.0
 
     @property
     def total_interest_keur(self) -> float:
@@ -337,6 +343,16 @@ class DebtSizingCaseInput:
 
 
 @dataclass(frozen=True)
+class CapitalisationGateEquityInput:
+    """Minimum project equity inputs for a dynamic tax capitalisation gate."""
+
+    share_capital_keur: float
+    legal_reserve_cap_fraction: float
+    opening_legal_reserve_keur: float = 0.0
+    opening_retained_earnings_keur: float = 0.0
+
+
+@dataclass(frozen=True)
 class SeniorDebtModelInput:
     """Phase 2C input: Phase 2B inputs + senior debt policy + senior debt inputs.
 
@@ -358,6 +374,7 @@ class SeniorDebtModelInput:
     debt_sizing_case: "DebtSizingCaseInput"
     shareholder_loan: object | None = None
     dsra: object | None = None  # CashDsraInput | None (avoid circular imports)
+    capitalisation_gate_equity: CapitalisationGateEquityInput | None = None
 
 
 @dataclass(frozen=True)
@@ -389,6 +406,10 @@ class ShareholderLoanModelInput:
     # When set, compute_shareholder_loan_schedules uses this to compute construction PIK
     # canonically per-period. model_result construction PIK == ProjectFinancingResult PIK.
     construction_periods_override: tuple[ShlConstructionPeriodInput, ...] | None = None
+    # End dates for each timing-resolved construction row. When supplied, the
+    # SHL model aggregates those rows into the canonical model construction
+    # periods by date instead of assuming both axes have identical lengths.
+    construction_period_end_dates_override: tuple[date, ...] | None = None
     # Principal contributed at FC/COD after construction accrual. This is used by
     # typed construction financing for non-construction FC uses such as CASH_DSRA.
     post_construction_principal_contribution_keur: float = 0.0

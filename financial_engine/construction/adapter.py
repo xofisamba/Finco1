@@ -181,9 +181,11 @@ def build_construction_runtime_config(
     # Structuring fee
     structuring_fee_rate = 0.0
     structuring_fee_basis = 0.0
+    structuring_fee_basis_mode = "EXPLICIT_AMOUNT"
     if construction.structuring_fee is not None:
         structuring_fee_rate = construction.structuring_fee.rate
         structuring_fee_basis = construction.structuring_fee.basis_keur
+        structuring_fee_basis_mode = construction.structuring_fee.basis_mode.value
 
     # Map IDC balance basis to stage_b2 constants
     idc_balance_basis = construction.idc_balance_basis
@@ -247,6 +249,7 @@ def build_construction_runtime_config(
         senior_commitment_fee_capitalization_timing=commitment_fee_timing,
         structuring_fee_rate=structuring_fee_rate,
         structuring_fee_basis_keur=structuring_fee_basis,
+        structuring_fee_basis_mode=structuring_fee_basis_mode,
         vat_facility_interest_rate=vat_interest_rate,
         vat_facility_commitment_fee_rate=vat_commitment_fee_rate,
         vat_facility_commitment_keur=vat_commitment,

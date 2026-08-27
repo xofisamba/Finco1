@@ -141,17 +141,13 @@ class TestC_NoMixedResult:
         assert counters.legacy_core_calls == 0
         assert counters.legacy_engine_calls == 0
 
-    def test_c2_tuho_clean_not_ready_production(self):
-        """Phase B1: run_project("TUHO") raises CleanNotReadyError — no legacy fallthrough."""
-        from app.services.production_financial_authority import CleanNotReadyError
+    def test_c2_tuho_clean_production(self):
+        """Phase B3: run_project("TUHO") uses clean G2C with no legacy fallthrough."""
         from app.api.project_runner import run_project
 
-        with pytest.raises(CleanNotReadyError) as exc_info:
-            run_project("TUHO", "Base")
-        err = exc_info.value
-        assert err.reason_code == "PR8_BLOCKED_BY_TYPED_TUHO_TAX_RUNTIME_GAP"
-        assert err.runtime_authority == "clean_not_ready"
-        assert err.calculation_count == 0
+        out = run_project("TUHO", "Base")
+        assert out["runtime_authority"]["runtime_authority"] == "clean_g2c"
+        assert out["runtime_authority"]["calculation_count"] == 1
 
     def test_c3_oborovo_clean_production(self):
         """Phase B2: Oborovo runs once through clean G2C with no fallback."""
@@ -259,23 +255,15 @@ class TestG_ExportDoesNotRecalculate:
 
 
 class TestH_SingleCalculationPerArtifact:
-    def test_h1_institutional_workbook_one_legacy_run(self, monkeypatch):
-        """Phase B1 Correction A: _build_export_bundle(tuho) raises CleanNotReadyError.
-
-        execute_production_waterfall is now clean-only.  Blocked projects
-        surface CleanNotReadyError — no legacy engine fires.
-        """
+    def test_h1_institutional_workbook_one_clean_run(self, monkeypatch):
+        """Promoted TUHO workbook export performs one clean calculation."""
         counters = EngineCounters(monkeypatch)
         from app.export.institutional_workbook import _build_export_bundle
-        from app.services.production_financial_authority import CleanNotReadyError
 
-        with pytest.raises(CleanNotReadyError):
-            _build_export_bundle("tuho")
-        assert counters.legacy_core_calls == 0, (
-            "no legacy engine must fire when execute_production_waterfall "
-            "raises CleanNotReadyError (Phase B1 Correction A)"
-        )
-        assert counters.clean_calls == 0
+        bundle = _build_export_bundle("tuho")
+        assert bundle is not None
+        assert counters.legacy_core_calls == 0
+        assert counters.clean_calls == 1
 
 
 class TestI_AdapterNumericalNeutrality:
@@ -332,19 +320,18 @@ class TestJ_Pr7GuaranteesRetained:
 
 
 class TestK_FailClosedUnsupported:
-    def test_k1_tuho_clean_route_fails_closed_typed(self):
+    def test_k1_tuho_clean_route_is_typed_and_promoted(self):
         from app.project_factories import create_default_tuho_wind1
         from app.services.production_financial_authority import (
-            CleanProductionRunUnavailable,
             classify_production_authority,
             run_clean_production,
         )
 
         decision = classify_production_authority(create_default_tuho_wind1())
-        assert decision.classification.value == "BLOCKED_BY_DEFERRED_TAX_CAPABILITY"
-        assert decision.reason_code == "PR8_BLOCKED_BY_TYPED_TUHO_TAX_RUNTIME_GAP"
-        with pytest.raises(CleanProductionRunUnavailable, match="PR8_"):
-            run_clean_production(create_default_tuho_wind1(), "Base")
+        assert decision.classification.value == "CLEAN_PRODUCTION_READY"
+        assert decision.reason_code == "PR8_CLEAN_G2C_TYPED_CONTRACT_READY"
+        clean = run_clean_production(create_default_tuho_wind1(), "Base")
+        assert clean.authority_metadata["calculation_count"] == 1
 
     def test_k2_oborovo_is_clean_ready_from_typed_inputs(self):
         from app.project_factories import create_default_oborovo
@@ -368,11 +355,11 @@ class TestL_LegacyStillCallable:
     def test_l1_legacy_waterfall_directly_callable_outside_production(self):
         """Historical/calibration paths remain callable (outside the promoted
         production route) — legacy is retained, not deleted."""
-        from app.project_factories import create_default_tuho_wind1
+        from app.project_factories import create_default_tuho_wind1_legacy_calibration
         from app.waterfall_runner import WaterfallRunner, WaterfallRunConfig
         from finco_core.engine.period_engine import PeriodEngine
 
-        project = create_default_tuho_wind1()
+        project = create_default_tuho_wind1_legacy_calibration()
         engine = PeriodEngine(
             financial_close=project.info.financial_close,
             construction_months=project.info.construction_months,
@@ -536,21 +523,15 @@ class TestN_DualrunFlag:
         assert counters.legacy_core_calls == 0
         assert counters.legacy_engine_calls == 0
 
-    def test_n4_dualrun_blocked_project_raises_clean_not_ready(self):
-        """Phase B1: dualrun on a non-promoted project raises CleanNotReadyError.
-
-        Post-B1 there is no legacy path to send the dualrun flag to.
-        Calibration callers must use run_project_legacy().
-        """
-        from app.services.production_financial_authority import CleanNotReadyError
+    def test_n4_dualrun_promoted_tuho_fails_closed(self):
+        """Diagnostic dual-run cannot pull promoted TUHO back to legacy."""
+        from app.services.production_financial_authority import ProductionAuthorityResolutionError
         from app.api.project_runner import run_project
 
-        with pytest.raises(CleanNotReadyError) as exc_info:
+        with pytest.raises(ProductionAuthorityResolutionError) as exc_info:
             run_project("TUHO", "Base", use_dualrun_validation=True)
         err = exc_info.value
-        assert err.reason_code == "PR8_BLOCKED_BY_TYPED_TUHO_TAX_RUNTIME_GAP"
-        assert err.runtime_authority == "clean_not_ready"
-        assert err.calculation_count == 0
+        assert err.reason_code == "PR8_DUALRUN_DIAGNOSTIC_UNAVAILABLE_ON_CLEAN_ROUTE"
 
 
 class TestRouteMatrixSolar:
@@ -689,61 +670,38 @@ class TestRouteMatrixWind:
 
 
 class TestProductionRouteCoherence:
-    """§17: TUHO stays blocked while Oborovo is clean across routes."""
+    """§17: TUHO and Oborovo are clean; legacy calibration stays explicit."""
 
-    @pytest.mark.parametrize("ptype,reason", (
-        ("TUHO", "PR8_BLOCKED_BY_TYPED_TUHO_TAX_RUNTIME_GAP"),
-    ))
-    def test_b1_same_blocker_across_routes(self, ptype, reason):
-        """Phase B1 Correction A: execute_production_waterfall is clean-only.
-
-        Blocked projects raise CleanNotReadyError on ALL production routes —
-        including execute_production_waterfall (no allow_legacy).  Calibration
-        callers must use execute_calibration_waterfall().
-        """
+    def test_b1_tuho_clean_across_routes(self):
         from app.project_factories import (
-            create_default_oborovo,
             create_default_tuho_wind1,
+            create_default_tuho_wind1_legacy_calibration,
         )
-        from app.services.production_financial_authority import CleanNotReadyError
         from app.services.production_waterfall_seam import (
             execute_production_demo,
             execute_production_waterfall,
             execute_calibration_waterfall,
         )
 
-        factory = {"TUHO": create_default_tuho_wind1,
-                   "Oborovo": create_default_oborovo}[ptype]
-        inputs = factory()
+        inputs = create_default_tuho_wind1()
+        production = execute_production_waterfall(inputs)
+        assert production.authority_metadata["runtime_authority"] == "clean_g2c"
+        assert production.authority_metadata["calculation_count"] == 1
 
-        # Phase B1 Correction A: execute_production_waterfall is clean-only.
-        # Blocked projects now raise CleanNotReadyError (no legacy fallthrough).
-        with pytest.raises(CleanNotReadyError) as exc_info_prod:
-            execute_production_waterfall(inputs)
-        assert exc_info_prod.value.reason_code == reason
-        assert exc_info_prod.value.calculation_count == 0
-
-        # Calibration seam: execute_calibration_waterfall still runs legacy.
-        execution = execute_calibration_waterfall(inputs)
-        assert execution.authority_metadata["runtime_authority"] == (
+        calibration = execute_calibration_waterfall(
+            create_default_tuho_wind1_legacy_calibration()
+        )
+        assert calibration.authority_metadata["runtime_authority"] == (
             "legacy_waterfall_calibration"
         )
-        assert execution.authority_metadata["reason_code"] == reason
 
-        # Phase B1: production router raises CleanNotReadyError.
         from app.api.project_runner import run_project
-        with pytest.raises(CleanNotReadyError) as exc_info:
-            run_project(ptype, "Base")
-        assert exc_info.value.reason_code == reason
-        assert exc_info.value.runtime_authority == "clean_not_ready"
-        assert exc_info.value.calculation_count == 0
+        routed = run_project("TUHO", "Base")
+        assert routed["runtime_authority"]["runtime_authority"] == "clean_g2c"
 
-        # Phase B1: execute_production_demo also raises CleanNotReadyError.
-        with pytest.raises(CleanNotReadyError) as exc_info2:
-            execute_production_demo(ptype, "Base")
-        assert exc_info2.value.reason_code == reason
-        assert exc_info2.value.runtime_authority == "clean_not_ready"
-        assert exc_info2.value.calculation_count == 0
+        _, meta = execute_production_demo("TUHO", "Base")
+        assert meta["runtime_authority"] == "clean_g2c"
+        assert meta["calculation_count"] == 1
 
     def test_b2_oborovo_clean_across_routes_and_legacy_explicit(self):
         from app.api.project_runner import run_project
@@ -891,17 +849,14 @@ class TestActualExportServices:
         assert counters.legacy_core_calls == 0
 
     @pytest.mark.parametrize("code", ("tuho",))
-    def test_x2_runtime_summary_csv_blocked_raises_clean_not_ready(self, code, monkeypatch):
-        """Phase B1 Correction A: runtime_summary for blocked projects raises CleanNotReadyError.
-
-        execute_production_waterfall is now clean-only; no legacy fallthrough.
-        """
+    def test_x2_runtime_summary_csv_tuho_clean(self, code, monkeypatch):
         from app.services.export_service import build_runtime_summary_csv_export
-        from app.services.production_financial_authority import CleanNotReadyError
 
-        with pytest.raises(CleanNotReadyError) as exc_info:
-            build_runtime_summary_csv_export(code)
-        assert exc_info.value.calculation_count == 0
+        counters = EngineCounters(monkeypatch)
+        export = build_runtime_summary_csv_export(code)
+        assert export.status_code == 200
+        assert counters.clean_calls == 1
+        assert counters.legacy_core_calls == 0
 
     @pytest.mark.parametrize("code", ("generic_solar", "generic_wind", "oborovo"))
     def test_x3_institutional_workbook_clean(self, code, monkeypatch):
@@ -915,17 +870,15 @@ class TestActualExportServices:
         assert counters.legacy_core_calls == 0
 
     @pytest.mark.parametrize("code", ("tuho",))
-    def test_x4_institutional_workbook_blocked_raises_clean_not_ready(self, code, monkeypatch):
-        """Phase B1 Correction A: institutional workbook for blocked projects raises CleanNotReadyError.
-
-        execute_production_waterfall is now clean-only; no legacy fallthrough.
-        """
+    def test_x4_institutional_workbook_tuho_clean(self, code, monkeypatch):
         from app.services.export_service import build_institutional_workbook_export
-        from app.services.production_financial_authority import CleanNotReadyError
 
-        with pytest.raises(CleanNotReadyError) as exc_info:
-            build_institutional_workbook_export(code)
-        assert exc_info.value.calculation_count == 0
+        counters = EngineCounters(monkeypatch)
+        export = build_institutional_workbook_export(code)
+        assert export.status_code == 200
+        assert export.has_bytes()
+        assert counters.clean_calls == 1
+        assert counters.legacy_core_calls == 0
 
 
 class TestPrecomputedSerializationZeroRecalc:
