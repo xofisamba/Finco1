@@ -184,23 +184,27 @@ jobs:
           print('PASS: allow_legacy absent from execute_production_waterfall')
           "
 
-      - name: Governance scan C — execute_calibration_waterfall present
+      - name: Governance scan C — calibration seam lives offline only (Phase B4)
         run: |
           python -c "
           import sys
           sys.path.insert(0, '.')
-          from app.services.production_waterfall_seam import execute_calibration_waterfall
-          print('PASS: execute_calibration_waterfall importable')
+          import app.services.production_waterfall_seam as seam
+          assert not hasattr(seam, 'execute_calibration_waterfall'), (
+              'Phase B4: the calibration seam must NOT live in the production seam module'
+          )
+          from tests.helpers.offline_calibration import execute_calibration_waterfall
+          print('PASS: execute_calibration_waterfall offline-only (tests/helpers)')
           "
 
-      - name: Governance scan D — run_project_legacy not reachable from production surfaces
+      - name: Governance scan D — run_project_legacy absent from production (Phase B4)
         run: |
           MATCHES=$(git grep -l "run_project_legacy" -- app main_web.py main_api.py domain streamlit_app.py 2>/dev/null || true)
-          if [ -n "$MATCHES" ] && [ "$MATCHES" != "app/api/project_runner.py" ]; then
-            echo "FAIL: run_project_legacy found outside project_runner: $MATCHES"
+          if [ -n "$MATCHES" ]; then
+            echo "FAIL: run_project_legacy found in production: $MATCHES"
             exit 1
           fi
-          echo "PASS: run_project_legacy only in app/api/project_runner.py"
+          echo "PASS: run_project_legacy absent from production (offline helper only)"
 
       - name: Governance scan E — execute_production_demo raises for unknown types
         run: |
