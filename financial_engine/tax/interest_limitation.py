@@ -1,7 +1,7 @@
 """Typed, identity-free SHL interest-limitation mechanics.
 
-The module implements a source-model financial contract.  It does not label
-the contract as tax law and does not consume extracted source output vectors.
+The module implements a source-model financial contract. It does not label
+the contract as tax law and does not consume extracted validation artifacts.
 """
 from __future__ import annotations
 
