@@ -33,6 +33,8 @@ from dataclasses import dataclass
 from datetime import date
 from enum import Enum
 
+from financial_engine.project_returns.contracts import DecisionCompleteReturnSummary
+
 from financial_engine.financing.contracts import ProjectFinancingResult
 from financial_engine.sponsor_returns.contracts import ReturnMetricStatus
 
@@ -233,3 +235,6 @@ class CovenantGatedWaterfallResult:
     # interest + gate locks any period + PIK accumulates (feedback loop not closed).
     # None when Oborovo FULLY_NON_DEDUCTIBLE or no gate lock or no SHL.
     deductible_shl_covenant_feedback_status: str | None
+
+    # Phase C1 canonical downstream return and terminal-state authority.
+    return_summary: DecisionCompleteReturnSummary

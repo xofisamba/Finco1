@@ -10,9 +10,10 @@ PR-8 presentation-adapter contract:
           distributions, repair values, or mix clean and legacy vectors.
 
 Every mapped value is a pass-through of one clean computed vector. Legacy-only
-concepts with no clean counterpart (cash balance roll-forward, LLCR, PLCR,
-NPV metrics, unlevered Project IRR) surface as None plus an explicit
-machine-readable unavailable-fields manifest — never a legacy value.
+concepts with no clean counterpart (cash balance roll-forward, LLCR, PLCR and
+NPV metrics) surface as None plus an explicit machine-readable unavailable-fields
+manifest — never a legacy value. Phase C1 Project XIRR is passed through from
+the canonical G2C return summary.
 """
 from __future__ import annotations
 
@@ -24,10 +25,6 @@ from financial_engine.shareholder_waterfall.contracts import (
 )
 
 _UNAVAILABLE_FIELDS = {
-    "project_irr": (
-        "PR8_NOT_AVAILABLE: unlevered Project IRR is not provided by the clean "
-        "G2C runtime; not reconstructed from the legacy waterfall."
-    ),
     "project_npv_keur": (
         "PR8_NOT_AVAILABLE: Project NPV is not provided by the clean G2C runtime."
     ),
@@ -162,6 +159,86 @@ def _sum_or_none(vector) -> float | None:
         return float(sum(vector))
     except TypeError:
         return None
+
+
+def _return_summary_payload(g2c) -> dict:
+    """Serialize the canonical C1 result without calculating any metric."""
+    summary = g2c.return_summary
+    project = summary.project
+    terminal = summary.terminal
+
+    def _metric(metric) -> dict:
+        return {
+            "xirr": metric.xirr,
+            "xirr_status": metric.xirr_status.value,
+            "moic": metric.moic,
+            "moic_status": metric.moic_status.value,
+            "total_contributions_keur": metric.total_contributions_keur,
+            "total_receipts_keur": metric.total_receipts_keur,
+            "net_cashflow_keur": metric.net_cashflow_keur,
+        }
+
+    return {
+        "project": {
+            "project_xirr": project.project_xirr,
+            "project_xirr_status": project.project_xirr_status.value,
+            "total_hard_capex_investment_keur": project.total_hard_capex_investment_keur,
+            "excluded_financing_cost_uses_keur": project.excluded_financing_cost_uses_keur,
+            "excluded_reserve_funding_keur": project.excluded_reserve_funding_keur,
+            "total_operating_inflow_keur": project.total_operating_inflow_keur,
+            "total_project_tax_outflow_keur": project.total_project_tax_outflow_keur,
+            "terminal_component_keur": project.terminal_component_keur,
+            "methodology_authority": project.methodology_authority,
+            "cashflows": [
+                {
+                    "cashflow_date": row.cashflow_date.isoformat(),
+                    "project_investment_outflow_keur": row.project_investment_outflow_keur,
+                    "project_operating_inflow_keur": row.project_operating_inflow_keur,
+                    "project_tax_outflow_keur": row.project_tax_outflow_keur,
+                    "terminal_component_keur": row.terminal_component_keur,
+                    "net_unlevered_project_cashflow_keur": row.net_unlevered_project_cashflow_keur,
+                }
+                for row in project.cashflows
+            ],
+        },
+        "legal_equity": _metric(summary.legal_equity),
+        "total_sponsor": _metric(summary.total_sponsor),
+        "terminal": {
+            "senior": {
+                "contractual_maturity_period_index": terminal.senior.contractual_maturity_period_index,
+                "contractual_maturity_date": (
+                    terminal.senior.contractual_maturity_date.isoformat()
+                    if terminal.senior.contractual_maturity_date else None
+                ),
+                "terminal_balance_keur": terminal.senior.terminal_balance_keur,
+                "status": terminal.senior.status.value,
+            },
+            "shareholder_loan": {
+                "repayment_mode": terminal.shareholder_loan.repayment_mode,
+                "contractual_maturity_period_index": terminal.shareholder_loan.contractual_maturity_period_index,
+                "contractual_maturity_date": (
+                    terminal.shareholder_loan.contractual_maturity_date.isoformat()
+                    if terminal.shareholder_loan.contractual_maturity_date else None
+                ),
+                "contractual_amount_due_at_maturity_keur": terminal.shareholder_loan.contractual_amount_due_at_maturity_keur,
+                "amount_paid_at_maturity_keur": terminal.shareholder_loan.amount_paid_at_maturity_keur,
+                "unpaid_at_maturity_keur": terminal.shareholder_loan.unpaid_at_maturity_keur,
+                "terminal_balance_keur": terminal.shareholder_loan.terminal_balance_keur,
+                "status": terminal.shareholder_loan.status.value,
+            },
+            "distribution_account": {
+                "terminal_closing_balance_keur": terminal.distribution_account.terminal_closing_balance_keur,
+                "status": terminal.distribution_account.status.value,
+            },
+            "senior_dsra": {
+                "terminal_closing_balance_keur": terminal.senior_dsra.terminal_closing_balance_keur,
+                "status": terminal.senior_dsra.status.value,
+            },
+        },
+        "deductible_shl_covenant_feedback_status": (
+            summary.deductible_shl_covenant_feedback_status
+        ),
+    }
 
 
 def build_clean_waterfall_view(clean_run) -> CleanWaterfallView:
@@ -346,6 +423,7 @@ def build_clean_waterfall_view(clean_run) -> CleanWaterfallView:
     equity_irr_status = g2c.pure_equity_xirr_status
     sponsor_irr = g2c.total_sponsor_xirr
     sponsor_irr_status = g2c.total_sponsor_xirr_status
+    project_return = g2c.return_summary.project
 
     return CleanWaterfallView(
         periods=period_views,
@@ -365,12 +443,18 @@ def build_clean_waterfall_view(clean_run) -> CleanWaterfallView:
         target_dscr=target_dscr,
         equity_irr=None if equity_irr_status.value != "OK" else equity_irr,
         sponsor_irr=None if sponsor_irr_status.value != "OK" else sponsor_irr,
+        project_irr=(
+            project_return.project_xirr
+            if project_return.project_xirr_status.value == "OK"
+            else None
+        ),
         equity_irr_status=str(getattr(equity_irr_status, "value", equity_irr_status)),
         sponsor_irr_status=str(getattr(sponsor_irr_status, "value", sponsor_irr_status)),
         periods_in_lockup=lockup_count,
         _authority_metadata={
             **clean_run.authority_metadata,
             "unavailable_fields": dict(_UNAVAILABLE_FIELDS),
+            "return_summary": _return_summary_payload(g2c),
         },
     )
 
@@ -426,6 +510,11 @@ def build_clean_sponsor_schedule(clean_run) -> dict:
             "total_sponsor_xirr_status": str(getattr(g2c.total_sponsor_xirr_status, "value", None)),
             "total_sponsor_moic": g2c.total_sponsor_moic,
             "shl_bullet_unpaid_at_maturity": g2c.shl_bullet_unpaid_at_maturity,
+            "project_xirr": g2c.return_summary.project.project_xirr,
+            "project_xirr_status": (
+                g2c.return_summary.project.project_xirr_status.value
+            ),
+            "terminal_financial_state": _return_summary_payload(g2c)["terminal"],
         },
         "source": "CovenantGatedWaterfallResult (clean G2C production authority)",
     }

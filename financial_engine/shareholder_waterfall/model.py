@@ -101,6 +101,9 @@ from financial_engine.shareholder_waterfall.contracts import (
 )
 from financial_engine.sponsor_returns.contracts import ReturnMetricStatus
 from financial_engine.sponsor_returns.model import compute_gated_sponsor_return_metrics
+from financial_engine.project_returns.model import (
+    build_decision_complete_return_summary,
+)
 
 _G2C_DA_STATUS_CAUSAL = "G2C_DISTRIBUTION_ACCOUNT_CAUSAL_CF108_CF109_CF110_SOURCE_PROVEN"
 _G2C_DEDUCTIBLE_FEEDBACK_STATUS = "G2C_DEDUCTIBLE_SHL_COVENANT_FEEDBACK_NOT_YET_CLOSED"
@@ -909,6 +912,32 @@ def run_project_shareholder_waterfall_model(
         ts_xirr = None; ts_xirr_status = _fb
         ts_moic = None; ts_moic_status = _fb
 
+    deductible_feedback_status = (
+        _G2C_DEDUCTIBLE_FEEDBACK_STATUS if deductible_feedback_active else None
+    )
+    return_summary = build_decision_complete_return_summary(
+        project_inputs=project_inputs,
+        financing=financing,
+        waterfall_periods=tuple(waterfall_periods),
+        pure_equity_xirr=pe_xirr,
+        pure_equity_xirr_status=pe_xirr_status,
+        pure_equity_moic=pe_moic,
+        pure_equity_moic_status=pe_moic_status,
+        total_sponsor_xirr=ts_xirr,
+        total_sponsor_xirr_status=ts_xirr_status,
+        total_sponsor_moic=ts_moic,
+        total_sponsor_moic_status=ts_moic_status,
+        total_legal_equity_contributed_keur=total_le,
+        total_legal_equity_distributions_keur=total_distributions,
+        total_sponsor_contributed_keur=total_sponsor_contrib,
+        total_sponsor_receipts_keur=total_sponsor_receipts,
+        deductible_shl_covenant_feedback_status=deductible_feedback_status,
+        shl_repayment_mode=(
+            shl_repayment_mode.value if shl_repayment_mode is not None else None
+        ),
+        shl_maturity_period_index=shl_maturity_idx,
+    )
+
     return CovenantGatedWaterfallResult(
         financing_result=financing,
         distribution_lockup_dscr=distribution_lockup_dscr,
@@ -940,7 +969,6 @@ def run_project_shareholder_waterfall_model(
         distribution_account_status=_G2C_DA_STATUS_CAUSAL,
         shl_bullet_unpaid_at_maturity=bullet_unpaid_active,
         reserve_support_gate_status_summary=_G2C_RESERVE_GATE_STATUS,
-        deductible_shl_covenant_feedback_status=(
-            _G2C_DEDUCTIBLE_FEEDBACK_STATUS if deductible_feedback_active else None
-        ),
+        deductible_shl_covenant_feedback_status=deductible_feedback_status,
+        return_summary=return_summary,
     )

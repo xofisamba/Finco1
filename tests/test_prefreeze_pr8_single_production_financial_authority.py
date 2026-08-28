@@ -121,17 +121,19 @@ class TestB_NoLegacyProductionCall:
 
 
 class TestC_NoMixedResult:
-    def test_c1_unavailable_fields_are_none_with_reason_not_legacy(self, monkeypatch):
+    def test_c1_canonical_return_and_remaining_gaps_never_mix_legacy(self, monkeypatch):
         counters = EngineCounters(monkeypatch)
         out = _run_project("Solar", "Base")
         kpis = _kpis(out)
         manifest = out["runtime_authority"]["unavailable_fields"]
-        # Unlevered Project IRR is NOT provided by the clean runtime — it must
-        # surface as None with a machine-readable reason, never a legacy value.
-        assert kpis["project_irr"] is None
+        # Phase C1 provides Project XIRR from the canonical clean return summary.
+        project = out["runtime_authority"]["return_summary"]["project"]
+        assert kpis["project_irr"] == project["project_xirr"]
+        assert project["project_xirr_status"] == "OK"
+        assert "project_irr" not in manifest
+        # Remaining deferred metrics continue to fail closed, never using legacy.
         assert kpis["project_npv_keur"] is None
         assert kpis["min_llcr"] is None
-        assert "project_irr" in manifest and "NOT_AVAILABLE" in manifest["project_irr"]
         assert out["financial_statements"] is None
         assert "financial_statements" in manifest
         # And no legacy engine ran to "fill the gaps".
@@ -340,11 +342,13 @@ class TestK_FailClosedUnsupported:
         assert decision.classification.value == "CLEAN_PRODUCTION_READY"
         assert decision.promoted
 
-    def test_k3_unavailable_field_never_fabricated(self):
+    def test_k3_c1_project_return_is_canonical_pass_through(self):
         out = _run_project("Wind", "Base")
-        assert _kpis(out)["project_irr"] is None
-        assert "PR8_NOT_AVAILABLE" in (
-            out["runtime_authority"]["unavailable_fields"]["project_irr"]
+        project = out["runtime_authority"]["return_summary"]["project"]
+        assert project["project_xirr_status"] == "OK"
+        assert _kpis(out)["project_irr"] == project["project_xirr"]
+        assert "project_irr" not in (
+            out["runtime_authority"]["unavailable_fields"]
         )
 
 
