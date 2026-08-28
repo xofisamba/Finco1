@@ -202,10 +202,11 @@ def classify_production_authority(project_inputs) -> AuthorityDecision:
                 "financing.sponsor_funding_mode / financing.gearing_basis_mode "
                 "are not explicitly configured, so the canonical G2A financing "
                 "stack contract (run_project_financing_model) fails closed "
-                "(G2A_SPONSOR_FUNDING_MODE_EXPLICIT_INPUT_REQUIRED). The legacy "
-                "calibration runtime serves this project until the typed fields "
-                "are configured and the clean-vs-legacy migration disclosure is "
-                "reviewed."
+                "(G2A_SPONSOR_FUNDING_MODE_EXPLICIT_INPUT_REQUIRED). This "
+                "contract is not registered for production execution until "
+                "the required typed financing fields are configured and "
+                "reviewed; production returns zero calculations. Historical "
+                "calibration evidence is available offline only."
             ),
         )
 
@@ -216,10 +217,12 @@ def classify_production_authority(project_inputs) -> AuthorityDecision:
             classification=ProductionAuthorityClassification.LEGACY_CALIBRATION_ONLY,
             reason_code="PR8_FROZEN_FIXTURE_CALIBRATION_CONTRACT_ACTIVE",
             detail=(
-                "the project's accepted runtime contract is the frozen-schedule "
-                "Excel calibration stack (fixture-backed senior debt service / "
-                "SHL FCF waterfall). Clean promotion requires a dedicated "
-                "migration review of that calibration contract."
+                "This ProjectInputs snapshot contains historical "
+                "frozen-calibration markers (fixture-backed senior debt "
+                "service / SHL FCF waterfall flags) and is not registered "
+                "for production execution. Production returns zero "
+                "calculations (clean_not_ready). Historical calibration "
+                "evidence is available offline only."
             ),
         )
 

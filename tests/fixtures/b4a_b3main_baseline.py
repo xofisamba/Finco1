@@ -1,11 +1,14 @@
-"""B4 Correction A — DESCRIPTIVE_REGRESSION_EVIDENCE (B3 main bf71b21d).
+"""B4 baseline — DESCRIPTIVE_REGRESSION_EVIDENCE (B3 main bf71b21d).
 
-Captured at B3 main BEFORE Correction A, from the clean G2C production
-entry point for all four supported projects. Broad metric matrix plus
-period-vector digests. This snapshot is regression evidence ONLY:
-- never read by runtime or financial code;
-- no engine value was fitted to match it;
-- provenance: independently verified B3 runtime outputs.
+Captured at B3 main BEFORE B4 via the clean G2C production entry point
+(python subprocess in a clean git worktree at bf71b21d). Expanded metric
+matrix (Correction B): operating, tax/CFADS, Senior, DSCR, binding
+constraint, G2A capacities, construction/VAT typed-input financing
+(authoritative zeros for the four supported clean factories — these are
+typed INPUT values, not derived), SHL, distributions, sponsor receipts,
+plus period-vector digests. Regression evidence ONLY: never read by
+runtime or financial code; no engine value was fitted to match it.
+Provenance: git worktree @ bf71b21dfe1130a100454bbc5d6faa2c9db4e549.
 """
 
 _B3_MAIN_BASELINE = {
@@ -21,7 +24,18 @@ _B3_MAIN_BASELINE = {
         'senior_principal': 24750.000000000007,
         'senior_ds': 35302.12518820596,
         'senior_terminal': 0.0,
+        'min_dscr': 1.1029022100705497,
+        'avg_dscr': 1.3460458391604466,
         'binding_constraint': 'GEARING',
+        'dscr_debt_capacity': 28458.117382991935,
+        'gearing_debt_capacity': 24750.0,
+        'total_project_uses': 33000.0,
+        'senior_idc': 0.0,
+        'commitment_fee': 0.0,
+        'structuring_fee': 0.0,
+        'vat_costs': 0.0,
+        'vat_facility_idc': 0.0,
+        'vat_facility_fee': 0.0,
         'shl_first_op_opening': 7750.0,
         'shl_total_interest': 10112.114041746758,
         'shl_total_principal': 1410.1566717193427,
@@ -50,7 +64,18 @@ _B3_MAIN_BASELINE = {
         'senior_principal': 32250.0,
         'senior_ds': 42650.79738447129,
         'senior_terminal': 0.0,
+        'min_dscr': 1.2766883984398625,
+        'avg_dscr': 4.291962244065097,
         'binding_constraint': 'GEARING',
+        'dscr_debt_capacity': 45842.05065359109,
+        'gearing_debt_capacity': 32250.0,
+        'total_project_uses': 43000.0,
+        'senior_idc': 0.0,
+        'commitment_fee': 0.0,
+        'structuring_fee': 0.0,
+        'vat_costs': 0.0,
+        'vat_facility_idc': 0.0,
+        'vat_facility_fee': 0.0,
         'shl_first_op_opening': 10250.0,
         'shl_total_interest': 13120.0,
         'shl_total_principal': 3861.8674582381464,
@@ -79,7 +104,18 @@ _B3_MAIN_BASELINE = {
         'senior_principal': 42852.30272334422,
         'senior_ds': 62985.39289808685,
         'senior_terminal': 0.0,
+        'min_dscr': 1.0681918096431542,
+        'avg_dscr': 1.2425786312134315,
         'binding_constraint': 'DSCR',
+        'dscr_debt_capacity': 42852.302723344226,
+        'gearing_debt_capacity': 43618.91701149782,
+        'total_project_uses': 57973.042280034315,
+        'senior_idc': 0.0,
+        'commitment_fee': 0.0,
+        'structuring_fee': 0.0,
+        'vat_costs': 0.0,
+        'vat_facility_idc': 0.0,
+        'vat_facility_fee': 0.0,
         'shl_first_op_opening': 15790.398721217909,
         'shl_total_interest': 32103.921759523444,
         'shl_total_principal': 26713.379909759595,
@@ -108,7 +144,18 @@ _B3_MAIN_BASELINE = {
         'senior_principal': 43789.92111682597,
         'senior_ds': 66835.97663483942,
         'senior_terminal': 0.0,
+        'min_dscr': 1.398269618156276,
+        'avg_dscr': 1.5301592230503733,
         'binding_constraint': 'DSCR',
+        'dscr_debt_capacity': 43789.92111682598,
+        'gearing_debt_capacity': 58424.82386508634,
+        'total_project_uses': 73031.02983135793,
+        'senior_idc': 0.0,
+        'commitment_fee': 0.0,
+        'structuring_fee': 0.0,
+        'vat_costs': 0.0,
+        'vat_facility_idc': 0.0,
+        'vat_facility_fee': 0.0,
         'shl_first_op_opening': 32261.528269800358,
         'shl_total_interest': 52174.950030124644,
         'shl_total_principal': 42662.17052924682,

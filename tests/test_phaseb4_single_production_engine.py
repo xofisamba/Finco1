@@ -480,25 +480,83 @@ class TestB4H_AuthorityMetadataContract:
                 f"clean_not_ready, got {authority}"
             )
 
-    def test_h5_semantic_source_scan_no_legacy_serving_language(self):
-        """Focused semantic contract scan: production authority/routing code
-        cannot map a non-promoted decision to legacy runtime authority or
-        tell callers that a legacy production runtime will serve them."""
+    def test_h5_semantic_scan_ast_evaluated_strings(self):
+        """AST-based semantic scan over EVALUATED string constants (adjacent
+        literals appear as their concatenated value — catches split-string
+        bugs a raw-source substring scan misses). Production authority/
+        routing modules only; offline validation modules exempt."""
         import inspect
         from app.services import production_financial_authority as authority_mod
         from app.services import production_waterfall_seam as seam_mod
 
+        forbidden_phrases = (
+            "legacy calibration runtime serves",
+            "legacy runtime serves",
+            "routed to legacy",
+            "routed to the explicitly-classified legacy",
+            "legacy_waterfall_calibration",
+            "accepted runtime contract",
+        )
         for mod in (authority_mod, seam_mod):
-            src = inspect.getsource(mod)
-            assert '"legacy_waterfall_calibration"' not in src.replace(
-                "# NEVER claim legacy_waterfall_calibration as a runtime authority.", ""
-            ), (
-                f"{mod.__name__}: must not map or claim legacy_waterfall_calibration"
+            src_text = inspect.getsource(mod)
+            tree = ast.parse(src_text)
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Constant) and isinstance(node.value, str):
+                    value = node.value
+                    for phrase in forbidden_phrases:
+                        assert phrase not in value, (
+                            f"{mod.__name__}:{node.lineno}: runtime string "
+                            f"contains forbidden semantic claim {phrase!r} "
+                            f"(evaluated: {value[:120]!r})"
+                        )
+
+    def test_h6_runtime_details_fail_closed_consistent(self):
+        """Instantiate/classify all three non-promoted classifications and
+        inspect decision.detail: every detail must be consistent with
+        NOT-REGISTERED-FOR-PRODUCTION / ZERO-CALCULATIONS / OFFLINE-ONLY."""
+        import dataclasses
+        from app import project_factories as pf
+        from finco_core.inputs import GearingBasisMode, SponsorFundingMode
+        from app.services.production_financial_authority import (
+            ProductionAuthorityClassification,
+            classify_production_authority,
+        )
+
+        cases = {}
+        tuho_legacy = pf.create_default_tuho_wind1_legacy_calibration()
+        cases["BLOCKED_BY_DEFERRED_TAX_CAPABILITY"] = tuho_legacy
+        cases["BLOCKED_BY_TYPED_INPUT_GAP"] = pf.create_default_oborovo_legacy_calibration()
+        legacy_only = dataclasses.replace(
+            tuho_legacy,
+            tax=dataclasses.replace(tuho_legacy.tax, clean_cash_tax_timing_enabled=True),
+            financing=dataclasses.replace(
+                tuho_legacy.financing,
+                sponsor_funding_mode=SponsorFundingMode.SHARE_CAPITAL_THEN_SHL,
+                gearing_basis_mode=GearingBasisMode.TOTAL_PROJECT_USES,
+            ),
+        )
+        cases["LEGACY_CALIBRATION_ONLY"] = legacy_only
+
+        for expected, inputs in cases.items():
+            d = classify_production_authority(inputs)
+            assert d.classification.value == expected, (
+                f"{expected}: got {d.classification.value}"
+            )
+            assert d.promoted is False
+            assert d.runtime_authority == "clean_not_ready"
+            detail = d.detail.lower()
+            assert "not registered for production" in detail, (
+                f"{expected} detail must say NOT REGISTERED: {d.detail}"
             )
             for phrase in ("legacy calibration runtime serves",
-                           "routed to the explicitly-classified legacy",
-                           "legacy runtime serves"):
-                assert phrase not in src, f"{mod.__name__}: stale phrase {phrase!r}"
+                           "legacy runtime serves",
+                           "accepted runtime contract"):
+                assert phrase not in d.detail, (
+                    f"{expected} detail contains stale claim {phrase!r}"
+                )
+        from app.services.production_financial_authority import (
+            classify_production_authority,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -514,7 +572,11 @@ _VECTOR_KEYS = (
 _SCALAR_KEYS = (
     "revenue", "opex", "ebitda", "cash_tax", "base_cfads", "bank_cfads",
     "senior_debt_size", "senior_interest", "senior_principal", "senior_ds",
-    "senior_terminal", "shl_first_op_opening", "shl_total_interest",
+    "senior_terminal", "min_dscr", "avg_dscr", "binding_constraint",
+    "dscr_debt_capacity", "gearing_debt_capacity", "total_project_uses",
+    "senior_idc", "commitment_fee", "structuring_fee",
+    "vat_costs", "vat_facility_idc", "vat_facility_fee",
+    "shl_first_op_opening", "shl_total_interest",
     "shl_total_principal", "shl_terminal", "distributions", "sponsor_receipts",
 )
 
@@ -523,19 +585,23 @@ def _b4a_run_clean(factory):
     from financial_engine.shareholder_waterfall import (
         run_project_shareholder_waterfall_model,
     )
-    return run_project_shareholder_waterfall_model(factory(), source_id="b4a_check")
+    inputs = factory()
+    return inputs, run_project_shareholder_waterfall_model(inputs, source_id="b4a_check")
 
 
-def _b4a_extract(res):
+def _b4a_extract(payload):
+    inputs, res = payload
     import hashlib
     def digest(vec):
         return hashlib.sha256(repr(tuple(float(v) if v is not None else 0.0 for v in vec)).encode()).hexdigest()
-    model = res.financing_result.project_model_result
+    fin = res.financing_result
+    model = fin.project_model_result
     op = model.operating_schedules
     tax = model.tax_and_cfads
     bank = model.debt_sizing
     senior = model.senior_debt
     shl = model.shareholder_loan
+    dscr = [d for d in senior.base_dscr if d is not None]
     out = {
         "revenue": sum(op.revenue_keur), "opex": sum(op.opex_keur),
         "ebitda": sum(op.ebitda_keur),
@@ -546,6 +612,20 @@ def _b4a_extract(res):
         "senior_principal": sum(senior.senior_principal_keur),
         "senior_ds": sum(senior.senior_debt_service_keur),
         "senior_terminal": senior.senior_debt_closing_keur[-1] if senior.senior_debt_closing_keur else None,
+        "min_dscr": min(dscr) if dscr else None,
+        "avg_dscr": (sum(dscr) / len(dscr)) if dscr else None,
+        "binding_constraint": senior.binding_constraint,
+        "dscr_debt_capacity": fin.dscr_debt_capacity_keur,
+        "gearing_debt_capacity": fin.gearing_debt_capacity_keur,
+        "total_project_uses": fin.project_uses.total_project_uses_keur,
+        # Typed construction/VAT financing INPUT values (authoritative zeros
+        # for the supported clean factories — inputs, not derived outputs).
+        "senior_idc": inputs.capex.idc_keur,
+        "commitment_fee": inputs.capex.commitment_fees_keur,
+        "structuring_fee": inputs.capex.bank_fees_keur,
+        "vat_costs": inputs.capex.vat_costs_keur,
+        "vat_facility_idc": inputs.capex.vat_facility_idc_keur,
+        "vat_facility_fee": inputs.capex.vat_facility_commitment_fee_keur,
         "shl_first_op_opening": next((v for v in (shl.shl_opening_keur or ()) if v and v > 0), None),
         "shl_total_interest": sum(shl.shl_gross_interest_keur),
         "shl_total_principal": sum(shl.shl_principal_keur),

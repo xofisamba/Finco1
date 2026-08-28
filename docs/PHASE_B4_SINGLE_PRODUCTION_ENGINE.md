@@ -113,3 +113,27 @@ full period-vector digests for Senior interest/principal/DS/closing and
 SHL interest/principal/closing (Oborovo + TUHO). B4-I tests prove scalar
 and period-vector identity. Regression evidence ONLY — never read by
 runtime or financial code; no engine value was fitted to match it.
+
+
+## Correction B — final semantic cleanup + complete financial freeze
+
+- Remaining split-literal false claims removed from runtime details:
+  BLOCKED_BY_TYPED_INPUT_GAP ("The legacy calibration runtime serves this
+  project until...") → "not registered for production execution until the
+  required typed financing fields are configured and reviewed; production
+  returns zero calculations; historical calibration evidence offline only".
+  LEGACY_CALIBRATION_ONLY ("the project's accepted runtime contract is the
+  frozen-schedule Excel calibration stack") → "snapshot contains historical
+  frozen-calibration markers and is not registered for production
+  execution; clean_not_ready; offline evidence only".
+- H5 strengthened to an AST-based scan over EVALUATED string constants
+  (adjacent literals concatenate — catches split-string claims a raw
+  substring scan misses). New H6 instantiates all three non-promoted
+  classifications and asserts every runtime detail is fail-closed
+  consistent (not-registered / zero-calculations / offline-only).
+- Baseline expanded to the complete freeze matrix (29 scalar metrics per
+  project): operating, tax/CFADS, Senior, min/avg DSCR, binding constraint,
+  DSCR/gearing capacity, total project uses, typed construction/VAT
+  financing inputs (authoritative values incl. zeros), SHL, distributions,
+  sponsor receipts + period-vector digests. Regenerated at B3 main
+  bf71b21d in a clean git worktree; provenance documented in the fixture.
