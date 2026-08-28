@@ -21,11 +21,13 @@ from financial_engine.shareholder_waterfall.contracts import (
 from financial_engine.shareholder_waterfall.model import (
     run_project_shareholder_waterfall_model,
 )
+from financial_engine.project_returns.contracts import DecisionCompleteReturnSummary
 
 __all__ = [
     "CovenantGatedWaterfallPeriod",
     "CovenantGatedWaterfallResult",
     "DistributionGateStatus",
     "ReserveSupportGateStatus",
+    "DecisionCompleteReturnSummary",
     "run_project_shareholder_waterfall_model",
 ]

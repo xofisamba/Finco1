@@ -26,6 +26,7 @@ The legacy scalar remains accepted only when zero because it carries no origin y
 """
 from __future__ import annotations
 
+from enum import Enum
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -38,10 +39,21 @@ _POLICY_ID = "clean-project-tax-v1"
 _POLICY_VERSION = "1.0.0"
 
 
+class FinancingInterestContext(str, Enum):
+    """Authority for the empty financing-interest vector returned by this adapter."""
+
+    STANDARD_RUNTIME = "STANDARD_RUNTIME"
+    COMPLETE_FINANCING_INTEREST_WILL_BE_INJECTED = (
+        "COMPLETE_FINANCING_INTEREST_WILL_BE_INJECTED"
+    )
+    UNLEVERED_ZERO_FINANCING_INTEREST = "UNLEVERED_ZERO_FINANCING_INTEREST"
+
+
 def build_tax_contract_from_project_inputs(
     project_inputs: "ProjectInputs",
     *,
     complete_financing_interest_will_be_injected: bool = False,
+    financing_interest_context: FinancingInterestContext | None = None,
 ) -> object:
     """Map canonical ProjectInputs to a TaxCalculationInput.
 
@@ -49,6 +61,13 @@ def build_tax_contract_from_project_inputs(
     ----------
     project_inputs:
         Canonical project inputs (finco_core.inputs.ProjectInputs).
+    complete_financing_interest_will_be_injected:
+        Backward-compatible selector for callers that merge a complete Senior,
+        SHL and other financing-interest schedule after this adapter returns.
+    financing_interest_context:
+        Typed authority for the empty period-interest vector. C1 Project Return
+        uses UNLEVERED_ZERO_FINANCING_INTEREST because zero financing interest is
+        complete by definition and no later injection is promised.
 
     Returns
     -------
@@ -66,10 +85,9 @@ def build_tax_contract_from_project_inputs(
     * Callers that need SHL in the tax input must merge it after this call.
 
     Fail-closed conditions (raises rather than silently computing wrong results):
-    * ATAD enabled with empty period_interest and no explicit complete-interest
-      injection contract: raises NotImplementedError.
-      ATAD requires complete financing interest; this adapter only supplies the
-      empty stub — callers must merge full interest before computing ATAD.
+    * ATAD enabled with empty period_interest and STANDARD_RUNTIME context:
+      raises NotImplementedError. ATAD requires either a complete financing-
+      interest injection contract or the explicit unlevered-zero context.
     * Nonzero legacy initial_tax_loss_keur: raises NotImplementedError.
       Explicit typed vintages are the only non-zero opening-loss authority.
     * Unsupported period_frequency: raises ValueError.
@@ -90,6 +108,34 @@ def build_tax_contract_from_project_inputs(
         ShlInterestDeductibilityMode,
         TaxLossUtilisationGate,
         TaxPolicy,
+    )
+
+    if not isinstance(complete_financing_interest_will_be_injected, bool):
+        raise TypeError(
+            "complete_financing_interest_will_be_injected must be exact bool"
+        )
+    if financing_interest_context is None:
+        interest_context = (
+            FinancingInterestContext.COMPLETE_FINANCING_INTEREST_WILL_BE_INJECTED
+            if complete_financing_interest_will_be_injected
+            else FinancingInterestContext.STANDARD_RUNTIME
+        )
+    else:
+        if not isinstance(financing_interest_context, FinancingInterestContext):
+            raise TypeError(
+                "financing_interest_context must be FinancingInterestContext or None"
+            )
+        interest_context = financing_interest_context
+        if (
+            complete_financing_interest_will_be_injected
+            and interest_context
+            is not FinancingInterestContext.COMPLETE_FINANCING_INTEREST_WILL_BE_INJECTED
+        ):
+            raise ValueError("FINANCING_INTEREST_CONTEXT_CONFLICT")
+
+    complete_interest_will_be_injected = (
+        interest_context
+        is FinancingInterestContext.COMPLETE_FINANCING_INTEREST_WILL_BE_INJECTED
     )
 
     tax = project_inputs.tax
@@ -188,18 +234,19 @@ def build_tax_contract_from_project_inputs(
             source_model_convention=source_policy.source_model_convention,
         )
 
-    # FAIL-CLOSED: ATAD with empty period_interest is silently wrong.
-    # This adapter always returns period_interest=() — the fixed-point solver
-    # fills in senior_interest_by_period during iteration, but SHL and other
-    # financing interest are NOT supplied by this adapter.
-    # If ATAD is enabled, the computation requires complete interest inputs;
-    # the caller must merge full interest into the TaxCalculationInput before
-    # running the ATAD calculation.
-    if atad_enabled and not complete_financing_interest_will_be_injected:
+    # FAIL-CLOSED: ATAD with an unexplained empty period_interest is silently wrong.
+    # COMPLETE_FINANCING_INTEREST_WILL_BE_INJECTED promises a later complete merge.
+    # UNLEVERED_ZERO_FINANCING_INTEREST is already complete by definition.
+    if (
+        atad_enabled
+        and interest_context is FinancingInterestContext.STANDARD_RUNTIME
+    ):
         raise NotImplementedError(
             "build_tax_contract_from_project_inputs: atad_enabled=True requires complete "
-            "financing interest inputs (senior + SHL + other). This adapter only supplies "
-            "the empty period_interest stub. Merge full interest explicitly before enabling ATAD."
+            "financing-interest authority: either "
+            "COMPLETE_FINANCING_INTEREST_WILL_BE_INJECTED or "
+            "UNLEVERED_ZERO_FINANCING_INTEREST. STANDARD_RUNTIME cannot explain an "
+            "empty period_interest vector."
         )
 
     # Clean cash-tax timing — fail-closed for projects without explicit opt-in.
@@ -238,7 +285,7 @@ def build_tax_contract_from_project_inputs(
         # NOT SOURCE-PROVEN: TAX_YEAR_LAST_PERIOD periodisation (workbook uses H2+H1).
         cash_tax_timing=CashTaxTiming.TAX_YEAR_LAST_PERIOD,
         cash_tax_payment_lag_periods=0,
-        shl_interest_tax_treatment_enabled=complete_financing_interest_will_be_injected,
+        shl_interest_tax_treatment_enabled=complete_interest_will_be_injected,
         shl_interest_deductibility=ShlInterestDeductibilityMode(
             tax.shl_interest_deductibility.value
         ),
