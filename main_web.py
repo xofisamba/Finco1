@@ -18,7 +18,6 @@ from typing import Any, Optional
 # Import existing model logic (no changes to these)
 from app.api.project_runner import run_project
 from app.excel_export import build_excel_export
-from app.ui_runner import run_demo_project
 from app.capex_engine import build_capex_line_items_from_defaults
 from app.project_factories import create_default_oborovo, create_default_tuho_wind1
 from app.project_factories import create_default_solar_project, create_default_wind_project
@@ -3169,7 +3168,6 @@ async def download_post(request: Request):
         scenario_provenance_for_record=_scenario_provenance_for_record,
         replay_metadata_for_project=_replay_metadata_for_project,
         governance_snapshot=_governance_snapshot,
-        run_demo_project=run_demo_project,
         get_project_by_code=get_project_by_code,
         build_excel_export_for_post_request=build_excel_export_for_post_request,
         build_values_only_export_for_project=build_values_only_export_for_project,
@@ -3220,7 +3218,6 @@ async def download_get(request: Request, project_type: str = "Solar", scenario: 
         scenario_provenance_for_record=_scenario_provenance_for_record,
         replay_metadata_for_project=_replay_metadata_for_project,
         governance_snapshot=_governance_snapshot,
-        run_demo_project=run_demo_project,
         get_project_by_code=get_project_by_code,
         build_excel_export_for_post_request=build_excel_export_for_post_request,
         build_values_only_export_for_project=build_values_only_export_for_project,
@@ -4313,9 +4310,6 @@ async def scenario_fs_compare_endpoint(
         try:
             from app.persistence.repository import get_scenario
             from app.input_adapter import build_projectinputs_from_snapshot
-            from app.ui_runner import _build_period_engine
-            from app.waterfall_runner import WaterfallRunner, WaterfallRunConfig
-            from domain.financial_statements import assemble_financial_statements
             from app.services.production_waterfall_seam import classify_or_fail
 
             records = []
@@ -4327,25 +4321,21 @@ async def scenario_fs_compare_endpoint(
                 records.append(rec)
                 snap = dict(rec.snapshot or {})
                 proj = build_projectinputs_from_snapshot(snap)
-                # PR-8 correction pass: financial-statements assembly is a
-                # legacy-runtime concept. For a CLEAN_PRODUCTION_READY
-                # project FS Compare is explicitly feature-unavailable —
-                # the legacy waterfall is NEVER run merely to preserve this
-                # screen (typed reason returned instead).
+                # Phase B4: financial-statements assembly is a historical
+                # legacy-runtime concept and is NOT part of the clean G2C
+                # production authority. FS Compare is explicitly
+                # feature-unavailable on the production surface for every
+                # classification — the legacy waterfall is NEVER run merely
+                # to preserve this screen (typed reason returned instead).
                 decision = classify_or_fail(proj)
-                if decision.promoted:
-                    raise ValueError(
-                        "FS_COMPARE_NOT_AVAILABLE_ON_CLEAN_RUNTIME: "
-                        "financial-statements comparison is not yet provided "
-                        "by the clean G2C production authority for this "
-                        "project (classification "
-                        f"{decision.classification.value}). No legacy "
-                        "fallback exists on this route."
-                    )
-                eng = _build_period_engine(proj)
-                result = WaterfallRunner(proj, eng).run(WaterfallRunConfig.from_inputs(proj, eng))
-                fs = assemble_financial_statements(result)
-                statements_per_scenario.append(fs)
+                raise ValueError(
+                    "FS_COMPARE_NOT_AVAILABLE_ON_PRODUCTION_RUNTIME: "
+                    "financial-statements comparison is not provided by the "
+                    "clean G2C production authority (classification "
+                    f"{decision.classification.value}, reason "
+                    f"{decision.reason_code}). No legacy runtime exists on "
+                    "this route."
+                )
 
             # Build comparison rows for PnL, Balance Sheet, Cash Waterfall
             def _fs_rows_pnl(fs_list):
@@ -4637,8 +4627,6 @@ async def scenario_lender_case_endpoint(
     """
     from app.services.lender_case_service import run_lender_case
     from app.services.reporting_kpi_sources import build_canonical_report_kpis
-    from app.ui_runner import _build_period_engine
-    from app.waterfall_runner import WaterfallRunner, WaterfallRunConfig
 
     user = get_current_user(request)
     if not user:
@@ -4703,8 +4691,6 @@ async def scenario_covenant_endpoint(
         build_covenant_periods,
         DSCR_EVENT_OF_DEFAULT, DSCR_LOCKUP, DSCR_DISTRIBUTION, DSCR_CASH_SWEEP,
     )
-    from app.ui_runner import _build_period_engine
-    from app.waterfall_runner import WaterfallRunner, WaterfallRunConfig
 
     user = get_current_user(request)
     if not user:
@@ -4762,8 +4748,6 @@ async def scenario_credit_summary_endpoint(
         build_credit_summary, run_lender_case,
     )
     from app.services.reporting_kpi_sources import build_canonical_report_kpis
-    from app.ui_runner import _build_period_engine
-    from app.waterfall_runner import WaterfallRunner, WaterfallRunConfig
 
     user = get_current_user(request)
     if not user:

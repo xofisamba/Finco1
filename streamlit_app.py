@@ -2,7 +2,7 @@
 from __future__ import annotations
 import pandas as pd
 import streamlit as st
-from app.ui_runner import run_demo_project, DemoResult
+from app.demo_result import DemoResult
 from app.ui.pages import (
     render_dashboard,
     render_waterfall,

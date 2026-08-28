@@ -1,9 +1,23 @@
-"""UI runner — creates and runs demo projects for the Streamlit shell."""
+"""app.ui_runner — LEGACY DEMO FUNNEL — OFFLINE_VALIDATION_ONLY (Phase B4).
+
+This module still executes the historical legacy waterfall
+(WaterfallRunner via _run_waterfall) for historical parity /
+characterization / calibration evidence. Since Phase B4 it is NOT part of
+the production financial runtime: no production route, service, CLI or
+Streamlit entry point imports or invokes it. Production financial
+execution is exclusively the clean production authority
+(app.services.production_financial_authority.run_clean_production via the
+app.services.production_waterfall_seam seam).
+
+The static Phase B4 governance gate (tests/test_phaseb4_single_production_engine.py)
+proves this module is unreachable from production entry points.
+"""
 from __future__ import annotations
 import logging
 import os
-from dataclasses import dataclass, field
 from typing import TypedDict
+
+from app.demo_result import DemoResult  # presentation container (production-safe)
 
 logger = logging.getLogger(__name__)
 
@@ -35,19 +49,6 @@ PROJECT_CONFIGS = {
         "note": None,
     },
 }
-
-
-@dataclass
-class DemoResult:
-    project_inputs: object | None = None
-    result: object | None = None
-    portfolio_result: object | None = None
-    messages: list[str] = field(default_factory=list)
-    project_type: str = ""
-    is_portfolio: bool = False
-    validation_issues: list = field(default_factory=list)
-    integration_status: str = "full"
-    integration_note: str | None = None
 
 
 def _build_period_engine(project_inputs):

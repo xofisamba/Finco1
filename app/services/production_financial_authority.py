@@ -12,15 +12,19 @@ ONE production financial calculation authority:
 
 Classification is typed and project-identity-free: it inspects ONLY typed
 ProjectInputs contract fields. Projects whose typed contract is not yet
-clean-ready are routed to the explicitly-classified legacy calibration
-runtime with a machine-readable reason — never a silent fallback and never a
-clean→legacy value mix (the two runtimes never both execute for one run).
+clean-ready are NOT registered for production execution: production fails
+closed with a typed error, zero calculations, and machine-readable
+reason — never a silent fallback and never a clean→legacy value mix.
+There is NO production legacy engine (Phase B4); historical calibration
+evidence exists OFFLINE only (tests/helpers/offline_calibration.py) with
+its own distinct offline provenance.
 
-Governance (PR-8):
+Governance (PR-8 / Phase B4):
   - zero project-name/code dispatch here;
   - no source vectors, no fixtures, no output-fitting coefficients;
   - fail closed: the clean runner never catches an engine error and falls
-    back — a clean-route failure raises.
+    back — a clean-route failure raises;
+  - a production AuthorityDecision never claims a legacy runtime authority.
 """
 from __future__ import annotations
 
@@ -37,16 +41,22 @@ class ProductionAuthorityClassification(str, Enum):
     LEGACY_CALIBRATION_ONLY = "LEGACY_CALIBRATION_ONLY"
 
 
+# Phase B4: classification and runtime execution are separate concepts.
+# A non-promoted classification is NOT a production runtime — production
+# fails closed with zero calculations. Historical calibration execution
+# exists OFFLINE only (tests/helpers/offline_calibration.py) and carries
+# its own distinct offline provenance; a production AuthorityDecision must
+# NEVER claim legacy_waterfall_calibration as a runtime authority.
 _RUNTIME_AUTHORITY_BY_CLASSIFICATION = {
     ProductionAuthorityClassification.CLEAN_PRODUCTION_READY: "clean_g2c",
     ProductionAuthorityClassification.BLOCKED_BY_DEFERRED_TAX_CAPABILITY: (
-        "legacy_waterfall_calibration"
+        "clean_not_ready"
     ),
     ProductionAuthorityClassification.BLOCKED_BY_TYPED_INPUT_GAP: (
-        "legacy_waterfall_calibration"
+        "clean_not_ready"
     ),
     ProductionAuthorityClassification.LEGACY_CALIBRATION_ONLY: (
-        "legacy_waterfall_calibration"
+        "clean_not_ready"
     ),
 }
 
@@ -117,8 +127,9 @@ class CleanNotReadyError(Exception):
     the request arrived through a production route.
 
     This is the ONLY typed signal a production route emits for a non-promoted
-    project — there is no silent legacy fallthrough.  Callers that need legacy
-    output MUST use the explicit legacy calibration entry point in project_runner.
+    project — there is no legacy fallthrough (Phase B4: no production legacy
+    engine exists; historical calibration evidence is available offline in
+    tests/helpers/offline_calibration.py only).
 
     Attributes:
         classification: ProductionAuthorityClassification value (str)
@@ -175,8 +186,8 @@ def classify_production_authority(project_inputs) -> AuthorityDecision:
                 "tax.clean_cash_tax_timing_enabled is not opted in: the clean "
                 "cash-tax timing contract (TAX_YEAR_LAST_PERIOD, lag=0) is not "
                 "typed-verified for this project. Deferred to the Country Tax "
-                "Template stage; the legacy calibration runtime serves this "
-                "project until then."
+                "Template stage. Until then this contract is not "
+                "registered for production execution."
             ),
         )
 
@@ -191,10 +202,11 @@ def classify_production_authority(project_inputs) -> AuthorityDecision:
                 "financing.sponsor_funding_mode / financing.gearing_basis_mode "
                 "are not explicitly configured, so the canonical G2A financing "
                 "stack contract (run_project_financing_model) fails closed "
-                "(G2A_SPONSOR_FUNDING_MODE_EXPLICIT_INPUT_REQUIRED). The legacy "
-                "calibration runtime serves this project until the typed fields "
-                "are configured and the clean-vs-legacy migration disclosure is "
-                "reviewed."
+                "(G2A_SPONSOR_FUNDING_MODE_EXPLICIT_INPUT_REQUIRED). This "
+                "contract is not registered for production execution until "
+                "the required typed financing fields are configured and "
+                "reviewed; production returns zero calculations. Historical "
+                "calibration evidence is available offline only."
             ),
         )
 
@@ -205,10 +217,12 @@ def classify_production_authority(project_inputs) -> AuthorityDecision:
             classification=ProductionAuthorityClassification.LEGACY_CALIBRATION_ONLY,
             reason_code="PR8_FROZEN_FIXTURE_CALIBRATION_CONTRACT_ACTIVE",
             detail=(
-                "the project's accepted runtime contract is the frozen-schedule "
-                "Excel calibration stack (fixture-backed senior debt service / "
-                "SHL FCF waterfall). Clean promotion requires a dedicated "
-                "migration review of that calibration contract."
+                "This ProjectInputs snapshot contains historical "
+                "frozen-calibration markers (fixture-backed senior debt "
+                "service / SHL FCF waterfall flags) and is not registered "
+                "for production execution. Production returns zero "
+                "calculations (clean_not_ready). Historical calibration "
+                "evidence is available offline only."
             ),
         )
 

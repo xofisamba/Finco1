@@ -27,7 +27,7 @@ the route in ``main_web.py`` still owns (``_collect_form_snapshot``,
 ``_build_schema_from_form``, ``_scenario_provenance_for_record``,
 ``_replay_metadata_for_project``, ``_governance_snapshot``) are
 passed in as callable dependencies by the route. The model execution
-(``run_demo_project``) and project lookup (``get_project_by_code``)
+(clean production authority seam) and project lookup (``get_project_by_code``)
 are also passed in as deps. The export builders
 (``build_excel_export_for_post_request`` /
 ``build_values_only_export_for_project``) and the audit recorder
@@ -80,7 +80,7 @@ The /download route/service does NOT call any of:
 - ``db.add`` / ``db.commit`` / ``db.flush`` / ``session.add`` /
   ``session.commit``
 
-Model execution (``run_demo_project``) is in-memory only and has
+Model execution (clean production authority seam) is in-memory only and has
 no persistence side effect.
 """
 from __future__ import annotations
@@ -161,8 +161,6 @@ class DownloadRouteDeps:
     governance_snapshot: Callable[..., str, dict]
 
     # Model execution (used by both)
-    run_demo_project: Callable[..., Any]
-
     # Project lookup (used by GET only)
     get_project_by_code: Callable[..., Any]
 
@@ -249,7 +247,7 @@ async def execute_post_download_route(
         "Solar" or "Wind" from canonical; template-seeded uses
         "TUHO" or "Oborovo" from normalized template_source, with
         "Solar"/"Wind" fallback.
-      * Model execution: ``run_demo_project(runtime_project_key, scenario, project_inputs_override=override)``.
+      * Model execution: ``execute_production_demo`` (clean production authority seam).
       * Replay metadata + scenario provenance.
       * Baseline source flag if project_origin == "saved_baseline".
       * Excel generation via ``build_excel_export_for_post_request``.

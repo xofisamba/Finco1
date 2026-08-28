@@ -483,10 +483,11 @@ def test_production_executes_one_clean_g2c_and_zero_legacy(monkeypatch):
         counts["legacy"] += 1
         raise AssertionError("production Oborovo reached the legacy engine")
 
+    import app.ui_runner as ui_runner
     monkeypatch.setattr(
         shareholder_waterfall, "run_project_shareholder_waterfall_model", counted_clean
     )
-    monkeypatch.setattr(project_runner, "run_demo_project", forbidden_legacy)
+    monkeypatch.setattr(ui_runner, "run_demo_project", forbidden_legacy)
     project_runner.run_project("Oborovo", "Base")
     assert counts == {"clean": 1, "legacy": 0}
 
@@ -496,7 +497,8 @@ def test_explicit_legacy_executes_one_legacy_and_zero_clean(monkeypatch):
     from financial_engine import shareholder_waterfall
 
     counts = {"clean": 0, "legacy": 0}
-    real_legacy = project_runner.run_demo_project
+    import app.ui_runner as _ui
+    real_legacy = _ui.run_demo_project
 
     def forbidden_clean(*args, **kwargs):
         counts["clean"] += 1
@@ -509,8 +511,12 @@ def test_explicit_legacy_executes_one_legacy_and_zero_clean(monkeypatch):
     monkeypatch.setattr(
         shareholder_waterfall, "run_project_shareholder_waterfall_model", forbidden_clean
     )
-    monkeypatch.setattr(project_runner, "run_demo_project", counted_legacy)
-    payload = project_runner.run_project_legacy("Oborovo", "Base")
+    # Patch BOTH the funnel module and the offline helper's module-level
+    # binding (import-order independent).
+    import tests.helpers.offline_calibration as _offline_mod
+    monkeypatch.setattr(_ui, "run_demo_project", counted_legacy)
+    monkeypatch.setattr(_offline_mod, "run_demo_project", counted_legacy)
+    payload = _offline_mod.run_project_legacy("Oborovo", "Base")
     assert payload["kpis"]["total_capex_keur"] == pytest.approx(57973.0535)
     assert counts == {"clean": 0, "legacy": 1}
 
@@ -540,7 +546,7 @@ def test_legacy_overlay_and_tuho_boundary_remain_explicit():
 
 
 def test_explicit_legacy_oborovo_kpi_fingerprint_is_unchanged():
-    from app.api.project_runner import run_project_legacy
+    from tests.helpers.offline_calibration import run_project_legacy
 
     assert run_project_legacy("Oborovo", "Base")["kpis"] == {
         "project_irr": 0.07972911653802585,
@@ -581,7 +587,8 @@ def test_tuho_production_is_clean_with_zero_legacy_calculations(monkeypatch):
     monkeypatch.setattr(
         shareholder_waterfall, "run_project_shareholder_waterfall_model", clean
     )
-    monkeypatch.setattr(project_runner, "run_demo_project", legacy)
+    import app.ui_runner as _ui2
+    monkeypatch.setattr(_ui2, "run_demo_project", legacy)
     payload = project_runner.run_project("TUHO", "Base")
     assert payload["runtime_authority"]["runtime_authority"] == "clean_g2c"
     assert payload["runtime_authority"]["calculation_count"] == 1

@@ -1,5 +1,4 @@
-"""Thin wrapper around run_demo_project for API use."""
-from app.ui_runner import run_demo_project
+"""Production financial run API — Phase B4 clean-only single authority."""
 from app.output_tables import build_waterfall_table, build_revenue_table, build_debt_table, build_returns_table, aggregate_period_table_annual
 
 
@@ -152,58 +151,39 @@ def _sanitize_df(df):
 
 def run_project(project_type: str, scenario: str, period_view: str = "Semiannual",
                project_inputs_override=None, use_dualrun_validation: bool = False):
-    """PR-8 production run: single financial authority routing (see impl)."""
-    return _run_project_impl(
-        project_type, scenario, period_view, project_inputs_override,
-        use_dualrun_validation, force_legacy=False,
-    )
+    """Phase B4 production run — ONE clean financial engine, no legacy switch.
 
-
-def run_project_legacy(project_type: str, scenario: str, period_view: str = "Semiannual",
-                       project_inputs_override=None, use_dualrun_validation: bool = False):
-    """Explicit legacy calibration run (PR-8).
-
-    Identical to the historical run_project behaviour: always the legacy
-    waterfall + legacy sponsor engine, no authority classification. Retained
-    for historical parity/characterization tests (§ PR-8: legacy remains
-    callable OUTSIDE the promoted production route); production routes must
-    use run_project.
+    resolve typed inputs → classify clean production authority → one clean
+    G2C calculation → read-only presentation serialization. Blocked or
+    unregistered inputs fail closed with a typed error and
+    calculation_count == 0 — there is no legacy financial execution seam in
+    production (historical calibration lives OFFLINE in
+    tests/helpers/offline_calibration.py).
     """
-    from app import project_factories as _pf
-
-    calibration_factory = {
-        "Oborovo": _pf.create_default_oborovo_legacy_calibration,
-    }.get(project_type)
-    if project_inputs_override is None and calibration_factory is not None:
-        project_inputs_override = calibration_factory()
     return _run_project_impl(
         project_type, scenario, period_view, project_inputs_override,
-        use_dualrun_validation, force_legacy=True,
+        use_dualrun_validation,
     )
 
 
 def _run_project_impl(project_type: str, scenario: str, period_view: str = "Semiannual",
-                      project_inputs_override=None, use_dualrun_validation: bool = False,
-                      force_legacy: bool = False):
-    # ── PR-8: single production financial authority routing ─────────────────
-    # Resolve the effective canonical inputs exactly as the legacy runtime
-    # does, classify the typed contract, and route:
+                      project_inputs_override=None, use_dualrun_validation: bool = False):
+    # ── Phase B4: single production financial authority, clean-only ──────────
     #   CLEAN_PRODUCTION_READY → ONE clean G2C calculation + read-only adapter
     #                            (no legacy waterfall, no legacy sponsor engine);
-    #   otherwise              → legacy calibration runtime, explicitly
-    #                            classified with a machine-readable reason.
-    # Never a silent fallback; never both engines in one run. A clean-route
-    # failure propagates (fail closed) — it is never swallowed into legacy.
+    #   blocked / unclassified  → typed fail-closed error, zero calculations.
+    # Never a silent fallback; never both engines in one run; NO legacy
+    # execution seam exists anywhere in the production app surface.
     clean_run = None
     authority_decision = None
     _pr8_inputs = None
-    if not force_legacy and project_type != "Portfolio":
+    if project_type != "Portfolio":
         # PR-8 correction pass: NO exception-driven fallback. Resolution and
         # classification plumbing failures raise the typed
         # ProductionAuthorityResolutionError and execute ZERO engines (clean
         # or legacy). Validation ERRORS on user overrides are input problems,
-        # not routing problems: they delegate to run_demo_project's no-run
-        # error DemoResult (no engine executes on that path either).
+        # not routing problems: they surface as UNCLASSIFIED fail-closed
+        # errors below (no engine executes on that path).
         from app.services.production_financial_authority import (
             ProductionAuthorityResolutionError,
         )
@@ -253,8 +233,8 @@ def _run_project_impl(project_type: str, scenario: str, period_view: str = "Semi
                 reason_code="PR8_DUALRUN_DIAGNOSTIC_UNAVAILABLE_ON_CLEAN_ROUTE",
                 detail=(
                     "use_dualrun_validation is not available on the clean "
-                    "production route. Calibration callers must use "
-                    "run_project_legacy."
+                    "production route; this diagnostic contract is not "
+                    "registered for production execution."
                 ),
             )
 
@@ -262,7 +242,6 @@ def _run_project_impl(project_type: str, scenario: str, period_view: str = "Semi
         clean_run is None
         and authority_decision is not None
         and authority_decision.promoted
-        and not use_dualrun_validation
     ):
         # Deliberately OUTSIDE the try/except above: a clean production
         # failure is a fail-closed error (CleanProductionRunUnavailable) and
@@ -272,7 +251,7 @@ def _run_project_impl(project_type: str, scenario: str, period_view: str = "Semi
         clean_run = run_clean_production(_pr8_inputs, scenario, project_type=project_type)
 
     if clean_run is not None:
-        from app.ui_runner import DemoResult
+        from app.demo_result import DemoResult
         from app.services.clean_presentation_adapter import (
             build_clean_waterfall_view,
         )
@@ -286,14 +265,13 @@ def _run_project_impl(project_type: str, scenario: str, period_view: str = "Semi
                              "single G2C calculation, read-only presentation adapter.",
         )
     elif (
-        not force_legacy
-        and authority_decision is not None
+        authority_decision is not None
         and not authority_decision.promoted
     ):
-        # Phase B1: fail-closed — no legacy production fallthrough.
+        # Phase B4: fail-closed — no legacy production fallthrough.
         # A classified-but-not-promoted project raises a typed error.
         # Production callers receive CLEAN_NOT_READY; calculation_count == 0.
-        # The legacy engine is ONLY reachable via run_project_legacy().
+        # There is no production legacy engine to fall back to.
         from app.services.production_financial_authority import CleanNotReadyError
 
         raise CleanNotReadyError(
@@ -301,21 +279,16 @@ def _run_project_impl(project_type: str, scenario: str, period_view: str = "Semi
             reason_code=authority_decision.reason_code,
             detail=(
                 f"{authority_decision.detail}  "
-                "(Phase B1: production router is clean-only; no legacy "
-                "fallthrough.  Use run_project_legacy() for calibration.)"
+                "(Phase B4: the production financial authority is clean-only; "
+                "this contract is not registered for production execution. "
+                "Historical calibration evidence is available offline only.)"
             ),
             runtime_authority="clean_not_ready",
             calculation_count=0,
         )
-    elif force_legacy:
-        # Explicit calibration via run_project_legacy — exact legacy demo funnel.
-        demo = run_demo_project(project_type, scenario,
-                                project_inputs_override=project_inputs_override,
-                                use_dualrun_validation=use_dualrun_validation,
-                                legacy_calibration=True)
     else:
         # Unclassified type (Portfolio / unknown project_type / override with
-        # validation errors) on the normal production path — Phase B1 fail-closed.
+        # validation errors) on the production path — Phase B4 fail-closed.
         from app.services.production_financial_authority import CleanNotReadyError
 
         raise CleanNotReadyError(
@@ -323,9 +296,9 @@ def _run_project_impl(project_type: str, scenario: str, period_view: str = "Semi
             reason_code="PR8_PROJECT_TYPE_NOT_CLASSIFIED",
             detail=(
                 f"project_type={project_type!r} was not resolved to a typed "
-                "ProjectInputs and could not be classified. Phase B1: "
-                "run_project() is clean-only; no legacy fallthrough. "
-                "Use run_project_legacy() for explicit calibration."
+                "ProjectInputs and could not be classified. Phase B4: the "
+                "production financial authority is clean-only; this project "
+                "type is not registered for production execution."
             ),
             runtime_authority="clean_not_ready",
             calculation_count=0,
@@ -356,15 +329,9 @@ def _run_project_impl(project_type: str, scenario: str, period_view: str = "Semi
     # (separation of concerns verified by test_excel_parity_characterization.py C8).
     # PR-8 promoted (clean) runs: FS assembly over the clean runtime is deferred —
     # explicitly NOT_AVAILABLE rather than assembled from legacy-shaped inputs.
+    # Phase B4: FS assembly over the clean runtime remains explicitly
+    # NOT_AVAILABLE (no legacy engine to assemble from).
     financial_statements_payload = None
-    if clean_run is None:
-        try:
-            from domain.financial_statements import assemble_financial_statements
-            fs = assemble_financial_statements(result)
-            financial_statements_payload = _serialize_financial_statements(fs)
-        except Exception:
-            # FS assembly failure must never break the run path; degrade gracefully.
-            financial_statements_payload = None
 
     # Phase E2: assemble senior debt schedule from the already-computed waterfall result.
     # _serialize_debt_schedule() reads per-period fields already computed by the waterfall
@@ -404,20 +371,13 @@ def _run_project_impl(project_type: str, scenario: str, period_view: str = "Semi
     # PR-8 promoted (clean) runs: the legacy sponsor engine (hardcoded capital
     # structures) is NOT invoked — the G2C sponsor result is serialized
     # read-only instead.
-    sponsor_schedule_payload = None
-    if clean_run is not None:
-        from app.services.clean_presentation_adapter import (
-            build_clean_sponsor_schedule,
-        )
-        sponsor_schedule_payload = build_clean_sponsor_schedule(clean_run)
-    else:
-        try:
-            sponsor_result = _run_sponsor_engine(result, demo.project_inputs, project_type)
-            if sponsor_result is not None:
-                sponsor_schedule_payload = _serialize_sponsor_schedule(*sponsor_result)
-        except Exception:
-            # Sponsor engine failure must never break the run path; degrade gracefully.
-            sponsor_schedule_payload = None
+    # Phase B4: sponsor schedule is serialized read-only from the clean G2C
+    # result (the legacy sponsor engine with hardcoded capital structures no
+    # longer exists in production).
+    from app.services.clean_presentation_adapter import (
+        build_clean_sponsor_schedule,
+    )
+    sponsor_schedule_payload = build_clean_sponsor_schedule(clean_run)
 
     payload = {
         "project_type": project_type,
@@ -468,32 +428,11 @@ def _run_project_impl(project_type: str, scenario: str, period_view: str = "Semi
             "returns": returns.to_dict(orient="records"),
         }
     }
-    if not force_legacy:
-        # PR-8: machine-readable production-authority lineage for this run.
-        # (Explicit legacy characterization runs keep the exact historical
-        # payload shape — no extra keys.)
-        payload["runtime_authority"] = (
-            getattr(demo.result, "_authority_metadata", None)
-            or clean_run.authority_metadata
-            if clean_run is not None
-            else (
-                authority_decision.to_metadata() | {
-                    "runtime_authority": "legacy_waterfall_calibration",
-                    "calculation_count": 1,
-                }
-                if authority_decision is not None
-                else {
-                    "classification": "LEGACY_CALIBRATION_ONLY",
-                    "reason_code": "PR8_ROUTE_NOT_CLASSIFIED",
-                    "detail": (
-                        "portfolio composition or unrecognised project type — "
-                        "legacy runtime, no clean classification applicable"
-                    ),
-                    "runtime_authority": "legacy_waterfall_calibration",
-                    "calculation_count": 1,
-                }
-            )
-        )
+    # Phase B4: machine-readable clean production-authority lineage.
+    payload["runtime_authority"] = (
+        getattr(demo.result, "_authority_metadata", None)
+        or clean_run.authority_metadata
+    )
     return payload
 
 
@@ -816,102 +755,6 @@ def _serialize_distribution_schedule(result) -> dict:
         },
         "source": "WaterfallResult.periods (per-period engine output)",
     }
-
-
-# ── Phase H2: Sponsor engine bridge ──────────────────────────────────────────
-
-# Capital structure constants per project type.
-# These mirror the constants in app/sponsor_project_adapter.py.
-_SPONSOR_CAPITAL_STRUCTURES = {
-    "TUHO": {
-        "lp_commitment_keur": 400.0,
-        "gp_commitment_keur": 100.0,
-        "ownership": {"LP-1": 0.80, "GP-1": 0.20},
-        "hurdle_rate_pa": 0.08,
-        "gp_promote_share": 0.20,
-        "compounding_convention": "SEMIANNUAL",
-    },
-    "Oborovo": {
-        "lp_commitment_keur": 400.0,
-        "gp_commitment_keur": 100.0,
-        "ownership": {"LP-1": 0.80, "GP-1": 0.20},
-        "hurdle_rate_pa": 0.08,
-        "gp_promote_share": 0.20,
-        "compounding_convention": "SEMIANNUAL",
-    },
-}
-
-
-def _run_sponsor_engine(waterfall_result, project_inputs, project_type: str):
-    """Call the Sponsor engine after the waterfall completes.
-
-    Phase H2: This is a thin bridge that calls the Sponsor engine's public interface
-    from project_runner. No engine internals are modified. No circular imports.
-    Only wired for projects with a known capital structure (TUHO, Oborovo).
-
-    Returns (cashflow_result, irr_result, moic_result) tuple, or None if not wired.
-    """
-    cap_struct = _SPONSOR_CAPITAL_STRUCTURES.get(project_type)
-    if cap_struct is None:
-        return None
-
-    from app.sponsor_runner import SponsorRunConfig, run_sponsor_waterfall
-    from domain.sponsor.sponsor_cashflow_runner import (
-        SponsorCashflowRunnerInputs,
-        run_sponsor_cashflows,
-    )
-    from domain.sponsor.sponsor_irr_runner import (
-        SponsorIrrRunnerInputs,
-        SponsorMoicRunnerInputs,
-        run_sponsor_irr,
-        run_sponsor_moic,
-    )
-    from domain.sponsor.equity_injection import EquityInjection
-
-    # Extract SPV distributions from the completed waterfall result.
-    # WaterfallResult.periods[].distribution_keur is the per-period equity distribution.
-    spv_distributions = tuple(
-        float(getattr(p, "distribution_keur", 0.0) or 0.0)
-        for p in getattr(waterfall_result, "periods", [])
-    )
-    num_periods = len(spv_distributions)
-    if num_periods == 0:
-        return None
-
-    # Build equity injections from capital structure.
-    # Total equity = lp + gp, injected at period 0.
-    total_equity = cap_struct["lp_commitment_keur"] + cap_struct["gp_commitment_keur"]
-    equity_injections = (
-        EquityInjection(
-            period_index=0,
-            amount_keur=total_equity,
-            investor_id="SPONSOR-1",
-            target_entity="SPV",
-            purpose="equityContribution",
-        ),
-    )
-
-    # Build SponsorCashflowRunnerInputs.
-    # holdco_dividend_by_period and holdco_opex_by_period are set to zero
-    # (we are at SPV level, not HoldCo; the cashflow is the SPV distribution).
-    cashflow_inputs = SponsorCashflowRunnerInputs(
-        investor_id="SPONSOR-1",
-        entity_code="SPV",
-        equity_injections=equity_injections,
-        holdco_distribution_by_period=spv_distributions,
-        holdco_dividend_by_period=tuple(0.0 for _ in range(num_periods)),
-        wht_rate=0.0,
-        holdco_opex_by_period=tuple(0.0 for _ in range(num_periods)),
-        period_count=num_periods,
-    )
-
-    cashflow_result = run_sponsor_cashflows(cashflow_inputs)
-
-    # Compute IRR and MOIC from the cashflow result.
-    irr_result = run_sponsor_irr(SponsorIrrRunnerInputs(sponsor_result=cashflow_result))
-    moic_result = run_sponsor_moic(SponsorMoicRunnerInputs(sponsor_result=cashflow_result))
-
-    return cashflow_result, irr_result, moic_result
 
 
 def _serialize_sponsor_schedule(cashflow_result, irr_result, moic_result) -> dict:
