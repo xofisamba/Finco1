@@ -242,7 +242,8 @@ def build_tax_contract_from_project_inputs(
         and interest_context is FinancingInterestContext.STANDARD_RUNTIME
     ):
         raise NotImplementedError(
-            "build_tax_contract_from_project_inputs: atad_enabled=True requires either "
+            "build_tax_contract_from_project_inputs: atad_enabled=True requires complete "
+            "financing-interest authority: either "
             "COMPLETE_FINANCING_INTEREST_WILL_BE_INJECTED or "
             "UNLEVERED_ZERO_FINANCING_INTEREST. STANDARD_RUNTIME cannot explain an "
             "empty period_interest vector."
