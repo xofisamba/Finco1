@@ -569,15 +569,34 @@ _VECTOR_KEYS = (
     "senior_interest", "senior_principal", "senior_ds", "senior_closing",
     "shl_interest", "shl_principal", "shl_closing",
 )
+_CONSTRUCTION_VECTOR_KEYS = (
+    "senior_idc_accrual", "senior_idc_capitalized_uses",
+    "senior_commitment_fee_accrual", "structuring_fee",
+    "vat_payable", "vat_requirement", "vat_drawn", "vat_undrawn",
+)
 _SCALAR_KEYS = (
     "revenue", "opex", "ebitda", "cash_tax", "base_cfads", "bank_cfads",
     "senior_debt_size", "senior_interest", "senior_principal", "senior_ds",
     "senior_terminal", "min_dscr", "avg_dscr", "binding_constraint",
     "dscr_debt_capacity", "gearing_debt_capacity", "total_project_uses",
-    "senior_idc", "commitment_fee", "structuring_fee",
-    "vat_costs", "vat_facility_idc", "vat_facility_fee",
+    "manual_capex_idc_input_keur", "manual_commitment_fee_input_keur",
+    "manual_structuring_fee_input_keur", "manual_vat_costs_input_keur",
+    "manual_vat_idc_input_keur", "manual_vat_fee_input_keur",
     "shl_first_op_opening", "shl_total_interest",
     "shl_total_principal", "shl_terminal", "distributions", "sponsor_receipts",
+)
+_CONSTRUCTION_SCALAR_KEYS = (
+    "authority", "construction_senior_idc_raw",
+    "construction_senior_idc_capitalized",
+    "construction_senior_commitment_fee", "construction_structuring_fee",
+    "construction_total_capitalized_financing", "vat_idc",
+    "vat_commitment_fee", "vat_effective_commitment",
+    "vat_peak_requirement", "vat_commitment_mode", "vat_authority",
+    "final_total_project_uses", "final_senior_commitment",
+    "outer_iterations", "stage_b2_iterations", "outer_residual",
+    "final_verification_outer_residual", "hard_project_capex",
+    "explicit_financing_cost_uses", "reserve_account_funding",
+    "other_explicit_project_uses", "total_project_uses",
 )
 
 
@@ -602,6 +621,63 @@ def _b4a_extract(payload):
     senior = model.senior_debt
     shl = model.shareholder_loan
     dscr = [d for d in senior.base_dscr if d is not None]
+    construction = fin.construction_financing
+    construction_evidence = None
+    if construction is not None:
+        uses = fin.project_uses
+        construction_evidence = {
+            "authority": construction.authority,
+            "construction_senior_idc_raw": sum(
+                construction.senior_idc_accrual_keur
+            ),
+            "construction_senior_idc_capitalized": sum(
+                construction.senior_idc_capitalized_uses_keur
+            ),
+            "construction_senior_commitment_fee": sum(
+                construction.senior_commitment_fee_accrual_keur
+            ),
+            "construction_structuring_fee": sum(
+                construction.structuring_fee_keur
+            ),
+            "construction_total_capitalized_financing": (
+                construction.total_capitalized_financing_keur
+            ),
+            "vat_idc": construction.vat_idc_keur,
+            "vat_commitment_fee": construction.vat_commitment_fee_keur,
+            "vat_effective_commitment": construction.vat_effective_commitment_keur,
+            "vat_peak_requirement": construction.vat_peak_requirement_keur,
+            "vat_commitment_mode": construction.vat_commitment_mode,
+            "vat_authority": construction.vat_authority,
+            "final_total_project_uses": construction.final_total_project_uses_keur,
+            "final_senior_commitment": construction.final_senior_commitment_keur,
+            "outer_iterations": construction.outer_iterations,
+            "stage_b2_iterations": construction.stage_b2_iterations,
+            "outer_residual": construction.outer_residual_keur,
+            "final_verification_outer_residual": (
+                construction.final_verification_outer_residual_keur
+            ),
+            "hard_project_capex": uses.hard_project_capex_keur,
+            "explicit_financing_cost_uses": uses.explicit_financing_cost_uses_keur,
+            "reserve_account_funding": uses.reserve_account_funding_keur,
+            "other_explicit_project_uses": uses.other_explicit_project_uses_keur,
+            "total_project_uses": uses.total_project_uses_keur,
+            "period_vectors": {
+                "senior_idc_accrual": digest(
+                    construction.senior_idc_accrual_keur
+                ),
+                "senior_idc_capitalized_uses": digest(
+                    construction.senior_idc_capitalized_uses_keur
+                ),
+                "senior_commitment_fee_accrual": digest(
+                    construction.senior_commitment_fee_accrual_keur
+                ),
+                "structuring_fee": digest(construction.structuring_fee_keur),
+                "vat_payable": digest(construction.vat_payable_keur),
+                "vat_requirement": digest(construction.vat_requirement_keur),
+                "vat_drawn": digest(construction.vat_drawn_keur),
+                "vat_undrawn": digest(construction.vat_undrawn_keur),
+            },
+        }
     out = {
         "revenue": sum(op.revenue_keur), "opex": sum(op.opex_keur),
         "ebitda": sum(op.ebitda_keur),
@@ -618,14 +694,15 @@ def _b4a_extract(payload):
         "dscr_debt_capacity": fin.dscr_debt_capacity_keur,
         "gearing_debt_capacity": fin.gearing_debt_capacity_keur,
         "total_project_uses": fin.project_uses.total_project_uses_keur,
-        # Typed construction/VAT financing INPUT values (authoritative zeros
-        # for the supported clean factories — inputs, not derived outputs).
-        "senior_idc": inputs.capex.idc_keur,
-        "commitment_fee": inputs.capex.commitment_fees_keur,
-        "structuring_fee": inputs.capex.bank_fees_keur,
-        "vat_costs": inputs.capex.vat_costs_keur,
-        "vat_facility_idc": inputs.capex.vat_facility_idc_keur,
-        "vat_facility_fee": inputs.capex.vat_facility_commitment_fee_keur,
+        # Zero input guards prevent a second authority when the typed engine is
+        # enabled. Economic construction financing is captured separately.
+        "manual_capex_idc_input_keur": inputs.capex.idc_keur,
+        "manual_commitment_fee_input_keur": inputs.capex.commitment_fees_keur,
+        "manual_structuring_fee_input_keur": inputs.capex.bank_fees_keur,
+        "manual_vat_costs_input_keur": inputs.capex.vat_costs_keur,
+        "manual_vat_idc_input_keur": inputs.capex.vat_facility_idc_keur,
+        "manual_vat_fee_input_keur": inputs.capex.vat_facility_commitment_fee_keur,
+        "construction_financing": construction_evidence,
         "shl_first_op_opening": next((v for v in (shl.shl_opening_keur or ()) if v and v > 0), None),
         "shl_total_interest": sum(shl.shl_gross_interest_keur),
         "shl_total_principal": sum(shl.shl_principal_keur),
@@ -676,3 +753,69 @@ class TestB4I_ExpandedFinancialNonRegression:
             assert got["period_vectors"][vec_key] == expected["period_vectors"][vec_key], (
                 f"{ptype} period vector {vec_key} diverged"
             )
+
+    @pytest.mark.parametrize("ptype", ("Solar", "Wind", "Oborovo", "TUHO"))
+    def test_i3_derived_construction_scalar_identity(self, ptype):
+        """B3 remains the authority for applicable derived financing results."""
+        from app import project_factories as pf
+        factory = {"Solar": pf.create_default_solar_project,
+                   "Wind": pf.create_default_wind_project,
+                   "Oborovo": pf.create_default_oborovo,
+                   "TUHO": pf.create_default_tuho_wind1}[ptype]
+        got = _b4a_extract(_b4a_run_clean(factory))["construction_financing"]
+        expected = _B3_MAIN_BASELINE[ptype]["construction_financing"]
+        assert (got is None) == (expected is None), (
+            f"{ptype}: construction applicability changed"
+        )
+        if expected is None:
+            return
+        for key in _CONSTRUCTION_SCALAR_KEYS:
+            assert got[key] == expected[key], (
+                f"{ptype}.construction_financing.{key}: "
+                f"B4={got[key]} vs B3={expected[key]}"
+            )
+
+    @pytest.mark.parametrize("ptype", ("Oborovo", "TUHO"))
+    def test_i4_derived_construction_period_vector_identity(self, ptype):
+        """Timing-sensitive construction and VAT vectors remain bit-identical."""
+        from app import project_factories as pf
+        factory = {"Oborovo": pf.create_default_oborovo,
+                   "TUHO": pf.create_default_tuho_wind1}[ptype]
+        got = _b4a_extract(_b4a_run_clean(factory))["construction_financing"]
+        expected = _B3_MAIN_BASELINE[ptype]["construction_financing"]
+        for key in _CONSTRUCTION_VECTOR_KEYS:
+            assert got["period_vectors"][key] == expected["period_vectors"][key], (
+                f"{ptype} construction period vector {key} diverged"
+            )
+
+    @pytest.mark.parametrize("ptype", ("Oborovo", "TUHO"))
+    def test_i5_manual_guard_and_project_uses_identity(self, ptype):
+        """NO_MANUAL_DERIVED_COST_DUAL_AUTHORITY and no uses double count."""
+        from app import project_factories as pf
+        factory = {"Oborovo": pf.create_default_oborovo,
+                   "TUHO": pf.create_default_tuho_wind1}[ptype]
+        got = _b4a_extract(_b4a_run_clean(factory))
+        manual_keys = (
+            "manual_capex_idc_input_keur", "manual_commitment_fee_input_keur",
+            "manual_structuring_fee_input_keur", "manual_vat_costs_input_keur",
+            "manual_vat_idc_input_keur", "manual_vat_fee_input_keur",
+        )
+        assert {got[key] for key in manual_keys} == {0.0}
+        construction = got["construction_financing"]
+        assert construction is not None
+        assert construction["construction_total_capitalized_financing"] > 0.0
+        assert construction["explicit_financing_cost_uses"] == pytest.approx(
+            construction["construction_total_capitalized_financing"], abs=1e-9
+        )
+        component_total = (
+            construction["hard_project_capex"]
+            + construction["explicit_financing_cost_uses"]
+            + construction["reserve_account_funding"]
+            + construction["other_explicit_project_uses"]
+        )
+        assert construction["total_project_uses"] == pytest.approx(
+            component_total, abs=1e-9
+        )
+        assert construction["final_total_project_uses"] == (
+            construction["total_project_uses"]
+        )

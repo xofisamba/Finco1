@@ -131,9 +131,41 @@ runtime or financial code; no engine value was fitted to match it.
   substring scan misses). New H6 instantiates all three non-promoted
   classifications and asserts every runtime detail is fail-closed
   consistent (not-registered / zero-calculations / offline-only).
-- Baseline expanded to the complete freeze matrix (29 scalar metrics per
-  project): operating, tax/CFADS, Senior, min/avg DSCR, binding constraint,
-  DSCR/gearing capacity, total project uses, typed construction/VAT
-  financing inputs (authoritative values incl. zeros), SHL, distributions,
-  sponsor receipts + period-vector digests. Regenerated at B3 main
-  bf71b21d in a clean git worktree; provenance documented in the fixture.
+- Baseline expanded to the complete operating freeze matrix per project:
+  operating, tax/CFADS, Senior, min/avg DSCR, binding constraint,
+  DSCR/gearing capacity, total project uses, manual construction/VAT input
+  guards, SHL, distributions, sponsor receipts + period-vector digests.
+  Regenerated at B3 main bf71b21d in a clean git worktree; provenance
+  documented in the fixture.
+
+## Correction C — derived construction-financing non-regression
+
+The CAPEX financing fields on `ProjectInputs.capex` are a manual input layer,
+not the clean engine's economic construction-financing result. When typed
+construction financing is enabled, those manual fields remain zero by
+contract: `NO_MANUAL_DERIVED_COST_DUAL_AUTHORITY`. Their zero value must never
+be interpreted as zero financing economics.
+
+The derived engine result layer is
+`ProjectFinancingResult.construction_financing`. B4-I now captures that object
+directly from an independent clean worktree at exact B3 main `bf71b21d`:
+
+- Generic Solar/Wind: `None` / `NOT_APPLICABLE` (not financial zero).
+- Oborovo/TUHO: authority and VAT mode strings; raw and capitalized Senior
+  IDC separately; Senior commitment and structuring fees; total capitalized
+  financing; VAT IDC, fee, effective commitment and peak requirement; final
+  project uses and Senior commitment; convergence diagnostics.
+- Oborovo/TUHO period digests: raw Senior IDC, capitalized Senior IDC uses,
+  Senior commitment fee, structuring fee, VAT payable, requirement, draw and
+  undrawn vectors. These protect timing semantics even when totals match.
+
+The project-uses identity is also explicit and uses authoritative result
+fields only:
+
+`hard project CAPEX + explicit financing costs + reserve funding + other explicit uses = total project uses`
+
+For TUHO, raw IDC and capitalized IDC remain distinct because `NEXT_PERIOD`
+capitalization leaves terminal raw accrual outside the capitalization horizon.
+B4 does not collapse or recalculate either concept. Correction C changes no
+production code, financial formula, factory assumption, tax, Senior or SHL
+economics; the fixture remains test-only descriptive regression evidence.
