@@ -11,7 +11,7 @@ and export adapters may serialize it but may not calculate it.
 
 | Return | Cash-flow boundary | Included | Excluded | Date convention | Status authority |
 |---|---|---|---|---|---|
-| Project / Unlevered | Underlying project before financing | Authoritative hard-CAPEX timing; operating EBITDA; cash tax recalculated by the canonical tax engine with zero financing interest | Senior/SHL funding and service; IDC; commitment, structuring and VAT-facility costs; reserves; distributions; terminal value | Typed construction dates and canonical operating `period_end` dates | `ReturnMetricStatus` |
+| Project / Unlevered | Underlying project before financing | Authoritative hard-CAPEX timing; operating EBITDA; cash tax recalculated by the canonical tax engine with typed zero-financing-interest authority and hard-CAPEX-only depreciation | Senior/SHL funding and service; IDC; commitment, structuring and VAT-facility costs; financing-cost tax shields; reserves; distributions; terminal value | Typed construction dates and canonical operating `period_end` dates | `ProjectReturnStatus` |
 | Legal Equity | Existing G2C legal-equity investor vector | Share capital, share premium, other/additional legal-equity contributions and legal-equity distributions | SHL contributions, interest and principal | Existing G2C `waterfall_periods[].cashflow_date` | Existing G2B/G2C status, including unpaid BULLET and feedback fail-closed states |
 | Total Sponsor | Existing G2C sponsor investor vector | Legal Equity vector plus SHL cash contribution, cash interest and principal receipts | PIK as a cash receipt; unsupported terminal recovery | Existing G2C `waterfall_periods[].cashflow_date` | Existing G2B/G2C status |
 
@@ -43,8 +43,13 @@ authority. It is deliberately not renamed or changed. Project return uses only
 For TUHO and Oborovo, typed construction-financing hard-CAPEX vectors and dates
 are authoritative. Generic Solar/Wind have no separate construction-financing
 result; their construction funding uses reconcile exactly to hard CAPEX and are
-dated from typed financial close. If neither bridge reconciles, the result uses
-one financial-close hard-CAPEX row rather than borrowing financing-use timing.
+dated from typed financial close. This second source is accepted only when all
+project uses are hard CAPEX and no financing, reserve, other, or non-construction
+use is present. If neither bridge reconciles, Project XIRR fails closed with
+`PROJECT_RETURN_HARD_CAPEX_TIMING_UNAVAILABLE`; no financial-close lump is made.
+
+Any non-zero `other_explicit_project_uses_keur` fails closed as
+`UNCLASSIFIED_OTHER_PROJECT_USE` until a typed economic classification exists.
 
 ## Source methodology audit
 
@@ -57,9 +62,22 @@ financing-only tax shields cannot make underlying project economics vary with
 gearing or debt pricing. KUPI remains out-of-sample methodology evidence only.
 
 The Finco authority therefore uses the existing jurisdiction tax policy, loss
-ledger, depreciation basis, and cash-tax timing on the already-computed canonical
-operating periods, with an empty financing-interest vector. It does not rerun the
-operating model and does not mutate Base or Bank cash tax.
+ledger, and cash-tax timing on the already-computed canonical operating periods.
+`FinancingInterestContext.UNLEVERED_ZERO_FINANCING_INTEREST` truthfully declares
+that the empty interest vector is complete by definition; it does not promise a
+later Senior/SHL injection. Tax depreciation is rebuilt only through the existing
+canonical ProjectInputs adapter and depreciation leaf, using hard project CAPEX
+without capitalized financing costs. Revenue, OPEX, EBITDA, Base tax, Bank tax,
+Senior, SHL, and G2C are not rerun or mutated.
+
+Correction A found one genuine prior-C1 bug: Oborovo Project tax had inherited
+depreciation on capitalized financing costs. That created a small SHL-rate
+dependency. Removing that financing tax shield changes Oborovo Project XIRR from
+8.532304% to 8.512247%; the other three supported Project XIRRs are unchanged.
+
+The tax result also exposes `terminal_unpaid_tax_keur`. A non-zero amount fails
+closed as `TERMINAL_PROJECT_TAX_PAYMENT_OUTSIDE_MODEL_HORIZON` until a typed
+settlement date exists; it is never silently omitted or placed on model end.
 
 ## B4 current-state inventory
 
@@ -84,18 +102,24 @@ projects activates it.
 |---|---:|---|
 | Generic Solar | 7.593168% | OK |
 | Generic Wind | 11.366132% | OK |
-| Oborovo | 8.532304% | OK |
+| Oborovo | 8.512247% | OK |
 | TUHO | 9.477998% | OK |
 
 These are canonical Finco unlevered returns, not fitted workbook targets.
 
 ## Terminal-state semantics
 
-`TerminalFinancialState` reports contractual maturity period/date and actual
-terminal balances for Senior and SHL, plus Distribution Account and implemented
-Senior cash-DSRA closing states. It reads the same effective SHL mode and maturity
-used by G2C. An underfunded BULLET reports contractual due, paid, unpaid and
-terminal outstanding amounts. It never adds a top-up or post-maturity terms.
+`TerminalFinancialState` reports contractual maturity period/date, balance at
+contractual maturity, and model-horizon balance separately. Senior status is
+classified from the canonical schedule entry at the last Senior-axis period,
+never from a later model-end value.
+
+For SHL, the maturity audit exposes opening balance, PIK/current accrual,
+contractual outstanding/due, actual principal paid, unpaid amount, maturity
+balance, and horizon balance. The typed SHL contract requires zero residual at
+contractual maturity for BULLET and CASH_SWEEP. An underfunded maturity therefore
+reports `due = paid + unpaid` and `UNPAID_AT_CONTRACTUAL_MATURITY`; the audit does
+not add a top-up, sweep unavailable cash, or invent post-maturity terms.
 
 Unsupported reserves are not invented. Distribution Account and Senior DSRA use
 typed released/remaining/stranded/not-applicable statuses only where their

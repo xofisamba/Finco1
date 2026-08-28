@@ -30,6 +30,20 @@ class CashAccountTerminalStatus(str, Enum):
     NOT_APPLICABLE = "NOT_APPLICABLE"
 
 
+class ProjectReturnStatus(str, Enum):
+    """Mathematical and input-authority status for Project / Unlevered XIRR."""
+
+    OK = "OK"
+    NO_NEGATIVE_CASHFLOW = "NO_NEGATIVE_CASHFLOW"
+    NO_POSITIVE_CASHFLOW = "NO_POSITIVE_CASHFLOW"
+    NON_CONVERGENT = "NON_CONVERGENT"
+    HARD_CAPEX_TIMING_UNAVAILABLE = "PROJECT_RETURN_HARD_CAPEX_TIMING_UNAVAILABLE"
+    TERMINAL_PROJECT_TAX_OUTSIDE_HORIZON = (
+        "TERMINAL_PROJECT_TAX_PAYMENT_OUTSIDE_MODEL_HORIZON"
+    )
+    UNCLASSIFIED_OTHER_PROJECT_USE = "UNCLASSIFIED_OTHER_PROJECT_USE"
+
+
 @dataclass(frozen=True)
 class ProjectReturnCashFlow:
     """One dated, financing-independent project-return cash flow."""
@@ -48,13 +62,16 @@ class ProjectReturnResult:
 
     cashflows: tuple[ProjectReturnCashFlow, ...]
     project_xirr: float | None
-    project_xirr_status: ReturnMetricStatus
+    project_xirr_status: ProjectReturnStatus
     total_hard_capex_investment_keur: float
     excluded_financing_cost_uses_keur: float
     excluded_reserve_funding_keur: float
+    other_explicit_project_uses_keur: float
     total_operating_inflow_keur: float
     total_project_tax_outflow_keur: float
+    terminal_unpaid_project_tax_keur: float
     terminal_component_keur: float
+    hard_capex_timing_authority: str | None
     methodology_authority: str
 
 
@@ -75,8 +92,14 @@ class ReturnMetricSummary:
 class DebtTerminalState:
     contractual_maturity_period_index: int | None
     contractual_maturity_date: date | None
-    terminal_balance_keur: float
+    balance_at_contractual_maturity_keur: float
+    terminal_model_horizon_balance_keur: float
     status: DebtTerminalStatus
+
+    @property
+    def terminal_balance_keur(self) -> float:
+        """Backward-compatible alias for the model-horizon balance."""
+        return self.terminal_model_horizon_balance_keur
 
 
 @dataclass(frozen=True)
@@ -84,11 +107,20 @@ class ShlTerminalState:
     repayment_mode: str | None
     contractual_maturity_period_index: int | None
     contractual_maturity_date: date | None
+    opening_balance_at_maturity_keur: float
+    accrual_at_maturity_keur: float
+    contractual_outstanding_at_maturity_keur: float
     contractual_amount_due_at_maturity_keur: float
     amount_paid_at_maturity_keur: float
     unpaid_at_maturity_keur: float
-    terminal_balance_keur: float
+    balance_at_contractual_maturity_keur: float
+    terminal_model_horizon_balance_keur: float
     status: ShlTerminalStatus
+
+    @property
+    def terminal_balance_keur(self) -> float:
+        """Backward-compatible alias for the model-horizon balance."""
+        return self.terminal_model_horizon_balance_keur
 
 
 @dataclass(frozen=True)

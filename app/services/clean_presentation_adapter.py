@@ -185,9 +185,12 @@ def _return_summary_payload(g2c) -> dict:
             "total_hard_capex_investment_keur": project.total_hard_capex_investment_keur,
             "excluded_financing_cost_uses_keur": project.excluded_financing_cost_uses_keur,
             "excluded_reserve_funding_keur": project.excluded_reserve_funding_keur,
+            "other_explicit_project_uses_keur": project.other_explicit_project_uses_keur,
             "total_operating_inflow_keur": project.total_operating_inflow_keur,
             "total_project_tax_outflow_keur": project.total_project_tax_outflow_keur,
+            "terminal_unpaid_project_tax_keur": project.terminal_unpaid_project_tax_keur,
             "terminal_component_keur": project.terminal_component_keur,
+            "hard_capex_timing_authority": project.hard_capex_timing_authority,
             "methodology_authority": project.methodology_authority,
             "cashflows": [
                 {
@@ -210,6 +213,12 @@ def _return_summary_payload(g2c) -> dict:
                     terminal.senior.contractual_maturity_date.isoformat()
                     if terminal.senior.contractual_maturity_date else None
                 ),
+                "balance_at_contractual_maturity_keur": (
+                    terminal.senior.balance_at_contractual_maturity_keur
+                ),
+                "terminal_model_horizon_balance_keur": (
+                    terminal.senior.terminal_model_horizon_balance_keur
+                ),
                 "terminal_balance_keur": terminal.senior.terminal_balance_keur,
                 "status": terminal.senior.status.value,
             },
@@ -220,9 +229,24 @@ def _return_summary_payload(g2c) -> dict:
                     terminal.shareholder_loan.contractual_maturity_date.isoformat()
                     if terminal.shareholder_loan.contractual_maturity_date else None
                 ),
+                "opening_balance_at_maturity_keur": (
+                    terminal.shareholder_loan.opening_balance_at_maturity_keur
+                ),
+                "accrual_at_maturity_keur": (
+                    terminal.shareholder_loan.accrual_at_maturity_keur
+                ),
+                "contractual_outstanding_at_maturity_keur": (
+                    terminal.shareholder_loan.contractual_outstanding_at_maturity_keur
+                ),
                 "contractual_amount_due_at_maturity_keur": terminal.shareholder_loan.contractual_amount_due_at_maturity_keur,
                 "amount_paid_at_maturity_keur": terminal.shareholder_loan.amount_paid_at_maturity_keur,
                 "unpaid_at_maturity_keur": terminal.shareholder_loan.unpaid_at_maturity_keur,
+                "balance_at_contractual_maturity_keur": (
+                    terminal.shareholder_loan.balance_at_contractual_maturity_keur
+                ),
+                "terminal_model_horizon_balance_keur": (
+                    terminal.shareholder_loan.terminal_model_horizon_balance_keur
+                ),
                 "terminal_balance_keur": terminal.shareholder_loan.terminal_balance_keur,
                 "status": terminal.shareholder_loan.status.value,
             },
