@@ -104,6 +104,9 @@ from financial_engine.sponsor_returns.model import compute_gated_sponsor_return_
 from financial_engine.project_returns.model import (
     build_decision_complete_return_summary,
 )
+from financial_engine.valuation.model import (
+    build_decision_complete_valuation_summary,
+)
 
 _G2C_DA_STATUS_CAUSAL = "G2C_DISTRIBUTION_ACCOUNT_CAUSAL_CF108_CF109_CF110_SOURCE_PROVEN"
 _G2C_DEDUCTIBLE_FEEDBACK_STATUS = "G2C_DEDUCTIBLE_SHL_COVENANT_FEEDBACK_NOT_YET_CLOSED"
@@ -937,6 +940,12 @@ def run_project_shareholder_waterfall_model(
         ),
         shl_maturity_period_index=shl_maturity_idx,
     )
+    valuation_summary = build_decision_complete_valuation_summary(
+        project_inputs=project_inputs,
+        financing=financing,
+        project_return=return_summary.project,
+        senior_terminal=return_summary.terminal.senior,
+    )
 
     return CovenantGatedWaterfallResult(
         financing_result=financing,
@@ -971,4 +980,5 @@ def run_project_shareholder_waterfall_model(
         reserve_support_gate_status_summary=_G2C_RESERVE_GATE_STATUS,
         deductible_shl_covenant_feedback_status=deductible_feedback_status,
         return_summary=return_summary,
+        valuation_summary=valuation_summary,
     )

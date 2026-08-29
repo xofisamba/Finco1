@@ -34,6 +34,7 @@ from datetime import date
 from enum import Enum
 
 from financial_engine.project_returns.contracts import DecisionCompleteReturnSummary
+from financial_engine.valuation.contracts import DecisionCompleteValuationSummary
 
 from financial_engine.financing.contracts import ProjectFinancingResult
 from financial_engine.sponsor_returns.contracts import ReturnMetricStatus
@@ -238,3 +239,5 @@ class CovenantGatedWaterfallResult:
 
     # Phase C1 canonical downstream return and terminal-state authority.
     return_summary: DecisionCompleteReturnSummary
+    # Phase C2 downstream-only Project NPV and lender-coverage authority.
+    valuation_summary: DecisionCompleteValuationSummary

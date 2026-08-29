@@ -33,6 +33,15 @@ Public API — re-exported from submodules:
 """
 from finco_core.inputs.bess import BessParams
 from finco_core.inputs.serialization import project_inputs_to_dict, project_inputs_from_dict
+from finco_core.inputs.valuation import (
+    CoverageCalculationDatePolicy,
+    CoverageCfadsCase,
+    DebtCoverageValuationPolicy,
+    DiscountConvention,
+    ProjectValuationPolicy,
+    ValuationDatePolicy,
+    ValuationPolicies,
+)
 from finco_core.inputs.construction_financing import (
     ConstructionFinancingInput,
     ConstructionCapexTimingInput,
@@ -151,6 +160,13 @@ __all__ = [
     "ShlConstructionInterestMethod",
     "SponsorFundingTimingPolicy",
     "ProjectInputs",
+    "CoverageCalculationDatePolicy",
+    "CoverageCfadsCase",
+    "DebtCoverageValuationPolicy",
+    "DiscountConvention",
+    "ProjectValuationPolicy",
+    "ValuationDatePolicy",
+    "ValuationPolicies",
     # BESS input model
     "BessParams",
     # Serialization (V3-6)

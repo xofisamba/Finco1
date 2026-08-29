@@ -69,6 +69,12 @@ from finco_core.inputs.construction_financing import (
     ConstructionVatFacilityInput,
     VatFacilityCommitmentMode,
 )
+from finco_core.inputs.valuation import (
+    DiscountConvention,
+    ProjectValuationPolicy,
+    ValuationDatePolicy,
+    ValuationPolicies,
+)
 from finco_core.opex.oborovo_config import build_oborovo_opex_capability
 
 
@@ -1214,7 +1220,25 @@ def create_default_tuho_wind1() -> ProjectInputs:
         cit_cash_tax_start_operating_index=None,
         clean_cash_tax_timing_enabled=True,
     )
-    return replace(legacy, info=info, capex=capex, financing=financing, tax=tax)
+    return replace(
+        legacy,
+        info=info,
+        capex=capex,
+        financing=financing,
+        tax=tax,
+        valuation=ValuationPolicies(
+            project=ProjectValuationPolicy(
+                annual_discount_rate=0.066,
+                valuation_date_policy=(
+                    ValuationDatePolicy.FIRST_PROJECT_CASHFLOW_DATE
+                ),
+                discount_convention=DiscountConvention.ACT_365_FIXED,
+                authority_label=(
+                    "TUHO_SOURCE_INPUTS_D452_PROJECT_NPV_RATE_AND_CF_C125_XNPV"
+                ),
+            )
+        ),
+    )
 
 
 # =============================================================================
