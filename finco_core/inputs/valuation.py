@@ -10,6 +10,19 @@ class DiscountConvention(str, Enum):
     """Supported canonical dated discount convention."""
 
     ACT_365_FIXED = "ACT_365_FIXED"
+    PERIODIC_COMPOUNDING = "PERIODIC_COMPOUNDING"
+
+
+class PeriodicRateConversion(str, Enum):
+    """How a quoted coverage rate becomes the per-period NPV rate."""
+
+    AS_QUOTED_PER_MODEL_PERIOD = "AS_QUOTED_PER_MODEL_PERIOD"
+
+
+class PeriodicFirstCashflowTiming(str, Enum):
+    """Timing of the first included cash flow in a periodic PV vector."""
+
+    END_OF_FIRST_PERIOD = "END_OF_FIRST_PERIOD"
 
 
 class ValuationDatePolicy(str, Enum):
@@ -24,6 +37,19 @@ class CoverageCfadsCase(str, Enum):
 
     BASE = "BASE"
     BANK = "BANK"
+
+
+class CoverageCashflowBasis(str, Enum):
+    """Metric-specific transformation applied after economic-case selection."""
+
+    RAW_SELECTED_CFADS = "RAW_SELECTED_CFADS"
+    SENIOR_ELIGIBLE_CFADS = "SENIOR_ELIGIBLE_CFADS"
+
+
+class CoverageDenominatorBasis(str, Enum):
+    """Debt balance authority at the coverage measurement boundary."""
+
+    SENIOR_OPENING_BALANCE = "SENIOR_OPENING_BALANCE"
 
 
 class CoverageCalculationDatePolicy(str, Enum):
@@ -52,6 +78,12 @@ class DebtCoverageValuationPolicy:
     calculation_date_policy: CoverageCalculationDatePolicy
     discount_convention: DiscountConvention
     authority_label: str
+    llcr_cashflow_basis: CoverageCashflowBasis | None = None
+    plcr_cashflow_basis: CoverageCashflowBasis | None = None
+    denominator_basis: CoverageDenominatorBasis | None = None
+    periodic_rate_conversion: PeriodicRateConversion | None = None
+    periods_per_year: int | None = None
+    first_cashflow_timing: PeriodicFirstCashflowTiming | None = None
 
 
 @dataclass(frozen=True)

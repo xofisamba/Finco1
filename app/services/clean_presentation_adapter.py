@@ -268,6 +268,10 @@ def _valuation_summary_payload(g2c) -> dict:
                 "year_fraction": row.year_fraction,
                 "discount_factor": row.discount_factor,
                 "discounted_cashflow_keur": row.discounted_cashflow_keur,
+                "raw_selected_cashflow_keur": row.raw_selected_cashflow_keur,
+                "eligibility_factor": row.eligibility_factor,
+                "eligible_cashflow_keur": row.eligible_cashflow_keur,
+                "discount_exponent": row.discount_exponent,
             }
             for row in rows
         ]
@@ -285,6 +289,24 @@ def _valuation_summary_payload(g2c) -> dict:
                 metric.discount_convention.value if metric.discount_convention else None
             ),
             "discount_authority": metric.discount_authority,
+            "cashflow_basis": (
+                metric.cashflow_basis.value if metric.cashflow_basis else None
+            ),
+            "denominator_basis": (
+                metric.denominator_basis.value if metric.denominator_basis else None
+            ),
+            "periodic_rate_conversion": (
+                metric.periodic_rate_conversion.value
+                if metric.periodic_rate_conversion else None
+            ),
+            "periods_per_year": metric.periods_per_year,
+            "first_cashflow_timing": (
+                metric.first_cashflow_timing.value
+                if metric.first_cashflow_timing else None
+            ),
+            "effective_periodic_discount_rate": (
+                metric.effective_periodic_discount_rate
+            ),
             "debt_balance_denominator_keur": metric.debt_balance_denominator_keur,
             "pv_cfads_numerator_keur": metric.pv_cfads_numerator_keur,
             "ratio": metric.ratio,

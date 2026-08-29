@@ -5,7 +5,14 @@ from dataclasses import dataclass
 from datetime import date
 from enum import Enum
 
-from finco_core.inputs.valuation import CoverageCfadsCase, DiscountConvention
+from finco_core.inputs.valuation import (
+    CoverageCashflowBasis,
+    CoverageCfadsCase,
+    CoverageDenominatorBasis,
+    DiscountConvention,
+    PeriodicFirstCashflowTiming,
+    PeriodicRateConversion,
+)
 
 
 class ProjectNpvStatus(str, Enum):
@@ -35,6 +42,24 @@ class CoverageStatus(str, Enum):
     COVERAGE_DISCOUNT_RATE_NOT_CONFIGURED = (
         "COVERAGE_DISCOUNT_RATE_NOT_CONFIGURED"
     )
+    COVERAGE_CASHFLOW_BASIS_NOT_CONFIGURED = (
+        "COVERAGE_CASHFLOW_BASIS_NOT_CONFIGURED"
+    )
+    COVERAGE_CASHFLOW_BASIS_UNSUPPORTED_FOR_METRIC = (
+        "COVERAGE_CASHFLOW_BASIS_UNSUPPORTED_FOR_METRIC"
+    )
+    COVERAGE_ELIGIBILITY_AUTHORITY_UNAVAILABLE = (
+        "COVERAGE_ELIGIBILITY_AUTHORITY_UNAVAILABLE"
+    )
+    COVERAGE_DISCOUNT_CONVENTION_UNSUPPORTED = (
+        "COVERAGE_DISCOUNT_CONVENTION_UNSUPPORTED"
+    )
+    COVERAGE_CALCULATION_DATE_POLICY_UNSUPPORTED = (
+        "COVERAGE_CALCULATION_DATE_POLICY_UNSUPPORTED"
+    )
+    COVERAGE_DENOMINATOR_AUTHORITY_UNAVAILABLE = (
+        "COVERAGE_DENOMINATOR_AUTHORITY_UNAVAILABLE"
+    )
     INVALID_DISCOUNT_RATE = "INVALID_DISCOUNT_RATE"
     SENIOR_MATURITY_UNAVAILABLE = "SENIOR_MATURITY_UNAVAILABLE"
     PROJECT_LIFE_HORIZON_UNAVAILABLE = "PROJECT_LIFE_HORIZON_UNAVAILABLE"
@@ -59,6 +84,10 @@ class DiscountAuditRow:
     year_fraction: float | None
     discount_factor: float | None
     discounted_cashflow_keur: float | None
+    raw_selected_cashflow_keur: float | None = None
+    eligibility_factor: float | None = None
+    eligible_cashflow_keur: float | None = None
+    discount_exponent: float | None = None
 
 
 @dataclass(frozen=True)
@@ -83,6 +112,12 @@ class CoverageRatioResult:
     annual_discount_rate: float | None
     discount_convention: DiscountConvention | None
     discount_authority: str | None
+    cashflow_basis: CoverageCashflowBasis | None
+    denominator_basis: CoverageDenominatorBasis | None
+    periodic_rate_conversion: PeriodicRateConversion | None
+    periods_per_year: int | None
+    first_cashflow_timing: PeriodicFirstCashflowTiming | None
+    effective_periodic_discount_rate: float | None
     debt_balance_denominator_keur: float | None
     pv_cfads_numerator_keur: float | None
     ratio: float | None

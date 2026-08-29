@@ -22,10 +22,14 @@ from finco_core.inputs import (
     project_inputs_to_dict,
 )
 from finco_core.inputs.valuation import (
+    CoverageCashflowBasis,
     CoverageCalculationDatePolicy,
     CoverageCfadsCase,
+    CoverageDenominatorBasis,
     DebtCoverageValuationPolicy,
     DiscountConvention,
+    PeriodicFirstCashflowTiming,
+    PeriodicRateConversion,
     ProjectValuationPolicy,
     ValuationDatePolicy,
     ValuationPolicies,
@@ -172,15 +176,36 @@ def _coverage_model(base=(100.0, 100.0, 100.0, 100.0), bank=(80.0, 80.0, 80.0, 8
     )
 
 
-def _coverage_policy(case=CoverageCfadsCase.BASE, rate=0.05):
+def _coverage_policy(
+    case=CoverageCfadsCase.BASE,
+    rate=0.05,
+    *,
+    llcr_basis=CoverageCashflowBasis.RAW_SELECTED_CFADS,
+    plcr_basis=CoverageCashflowBasis.RAW_SELECTED_CFADS,
+    convention=DiscountConvention.ACT_365_FIXED,
+):
     return DebtCoverageValuationPolicy(
         annual_discount_rate=rate,
         cfads_case=case,
         calculation_date_policy=(
             CoverageCalculationDatePolicy.FIRST_SENIOR_PERIOD_OPENING
         ),
-        discount_convention=DiscountConvention.ACT_365_FIXED,
+        discount_convention=convention,
         authority_label="TEST_EXPLICIT_COVERAGE_RATE_AND_CASE",
+        llcr_cashflow_basis=llcr_basis,
+        plcr_cashflow_basis=plcr_basis,
+        denominator_basis=CoverageDenominatorBasis.SENIOR_OPENING_BALANCE,
+        periodic_rate_conversion=(
+            PeriodicRateConversion.AS_QUOTED_PER_MODEL_PERIOD
+            if convention is DiscountConvention.PERIODIC_COMPOUNDING else None
+        ),
+        periods_per_year=(
+            2 if convention is DiscountConvention.PERIODIC_COMPOUNDING else None
+        ),
+        first_cashflow_timing=(
+            PeriodicFirstCashflowTiming.END_OF_FIRST_PERIOD
+            if convention is DiscountConvention.PERIODIC_COMPOUNDING else None
+        ),
     )
 
 
@@ -385,16 +410,25 @@ def test_current_project_configuration_is_source_honest(name, factory, npv_statu
     result = run_clean_production(factory(), project_type=name).g2c_result
     valuation = result.valuation_summary
     assert valuation.project_npv.status is npv_status
-    assert valuation.lender_coverage.llcr.status is (
-        CoverageStatus.COVERAGE_CFADS_CASE_NOT_CONFIGURED
-    )
-    assert valuation.lender_coverage.plcr.status is (
-        CoverageStatus.COVERAGE_CFADS_CASE_NOT_CONFIGURED
-    )
     if name == "TUHO":
         assert valuation.project_npv.annual_discount_rate == pytest.approx(0.066)
         assert valuation.project_npv.npv_keur is not None
         assert valuation.project_npv.periods
+        assert valuation.lender_coverage.llcr.status is CoverageStatus.OK
+        assert valuation.lender_coverage.llcr.cfads_case is CoverageCfadsCase.BASE
+        assert valuation.lender_coverage.llcr.cashflow_basis is (
+            CoverageCashflowBasis.SENIOR_ELIGIBLE_CFADS
+        )
+        assert valuation.lender_coverage.plcr.status is (
+            CoverageStatus.COVERAGE_CASHFLOW_BASIS_NOT_CONFIGURED
+        )
+    else:
+        assert valuation.lender_coverage.llcr.status is (
+            CoverageStatus.COVERAGE_CFADS_CASE_NOT_CONFIGURED
+        )
+        assert valuation.lender_coverage.plcr.status is (
+            CoverageStatus.COVERAGE_CFADS_CASE_NOT_CONFIGURED
+        )
 
 
 def test_project_identity_does_not_dispatch_c2_policy_or_results():
@@ -454,3 +488,121 @@ def test_clean_presentation_serializes_c2_as_pass_through_only():
     assert "discount_dated_cashflows(" not in adapter_source
     assert "calculate_project_npv(" not in adapter_source
     assert "calculate_lender_coverage(" not in adapter_source
+
+
+def test_senior_eligible_llcr_preserves_partial_maturity_and_plcr_stays_raw():
+    model = _coverage_model(base=(100.0, 100.0, 100.0, 100.0))
+    policy = _coverage_policy(
+        rate=0.10,
+        llcr_basis=CoverageCashflowBasis.SENIOR_ELIGIBLE_CFADS,
+        plcr_basis=CoverageCashflowBasis.RAW_SELECTED_CFADS,
+        convention=DiscountConvention.PERIODIC_COMPOUNDING,
+    )
+    result = calculate_lender_coverage(
+        model=model,
+        senior_terminal=_terminal(2),
+        policy=policy,
+        minimum_llcr=1.15,
+        senior_eligibility_schedule=(1.0, 0.5),
+    )
+    llcr_rows = [row for row in result.llcr.periods if row.included]
+    assert llcr_rows[-1].raw_selected_cashflow_keur == pytest.approx(100.0)
+    assert llcr_rows[-1].eligibility_factor == pytest.approx(0.5)
+    assert llcr_rows[-1].eligible_cashflow_keur == pytest.approx(50.0)
+    assert llcr_rows[-1].discount_exponent == pytest.approx(2.0)
+    assert result.llcr.pv_cfads_numerator_keur == pytest.approx(
+        100.0 / 1.10 + 50.0 / 1.10**2
+    )
+    plcr_rows = [row for row in result.plcr.periods if row.included]
+    assert [row.eligibility_factor for row in plcr_rows] == [1.0] * 4
+    assert [row.eligible_cashflow_keur for row in plcr_rows] == [100.0] * 4
+    assert len(plcr_rows) == 4
+
+
+def test_tuho_llcr_uses_typed_source_maturity_factor_without_vector_replay():
+    inputs = create_default_tuho_wind1()
+    result = run_clean_production(inputs, project_type="TUHO").g2c_result
+    llcr = result.valuation_summary.lender_coverage.llcr
+    included = [row for row in llcr.periods if row.included]
+    source_factor = 0.9890710382513661
+    assert llcr.status is CoverageStatus.OK
+    assert len(included) == 28
+    assert included[-1].eligibility_factor == pytest.approx(source_factor, abs=1e-15)
+    assert included[-1].eligible_cashflow_keur == pytest.approx(
+        included[-1].raw_selected_cashflow_keur * source_factor, abs=1e-12
+    )
+    assert included[-1].raw_selected_cashflow_keur != pytest.approx(
+        5_240.37453381169, abs=1e-6
+    )
+    assert llcr.discount_convention is DiscountConvention.PERIODIC_COMPOUNDING
+    assert llcr.effective_periodic_discount_rate == pytest.approx(0.0595)
+    assert llcr.debt_balance_denominator_keur == pytest.approx(
+        result.financing_result.project_model_result.senior_debt
+        .senior_debt_opening_keur[0]
+    )
+
+
+def test_coverage_policy_and_denominator_authorities_are_enforced():
+    model = _coverage_model()
+    unsupported_date_policy = replace(
+        _coverage_policy(), calculation_date_policy="IGNORED_POLICY"
+    )
+    assert calculate_lender_coverage(
+        model=model,
+        senior_terminal=_terminal(),
+        policy=unsupported_date_policy,
+        minimum_llcr=1.15,
+    ).llcr.status is CoverageStatus.COVERAGE_CALCULATION_DATE_POLICY_UNSUPPORTED
+
+    missing_denominator = replace(_coverage_policy(), denominator_basis=None)
+    assert calculate_lender_coverage(
+        model=model,
+        senior_terminal=_terminal(),
+        policy=missing_denominator,
+        minimum_llcr=1.15,
+    ).llcr.status is CoverageStatus.COVERAGE_DENOMINATOR_AUTHORITY_UNAVAILABLE
+
+    eligible_without_schedule = _coverage_policy(
+        llcr_basis=CoverageCashflowBasis.SENIOR_ELIGIBLE_CFADS
+    )
+    assert calculate_lender_coverage(
+        model=model,
+        senior_terminal=_terminal(),
+        policy=eligible_without_schedule,
+        minimum_llcr=1.15,
+    ).llcr.status is CoverageStatus.COVERAGE_ELIGIBILITY_AUTHORITY_UNAVAILABLE
+
+    closing_changed = _coverage_model()
+    closing_changed.senior_debt = replace(
+        closing_changed.senior_debt,
+        senior_debt_closing_keur=(1.0, 0.0),
+    )
+    base = calculate_lender_coverage(
+        model=model,
+        senior_terminal=_terminal(),
+        policy=_coverage_policy(),
+        minimum_llcr=1.15,
+    )
+    changed = calculate_lender_coverage(
+        model=closing_changed,
+        senior_terminal=_terminal(),
+        policy=_coverage_policy(),
+        minimum_llcr=1.15,
+    )
+    assert changed.llcr.ratio == pytest.approx(base.llcr.ratio, abs=1e-12)
+
+
+def test_periodic_coverage_convention_fails_closed_when_incomplete():
+    incomplete = replace(
+        _coverage_policy(convention=DiscountConvention.PERIODIC_COMPOUNDING),
+        first_cashflow_timing=None,
+    )
+    result = calculate_lender_coverage(
+        model=_coverage_model(),
+        senior_terminal=_terminal(),
+        policy=incomplete,
+        minimum_llcr=1.15,
+    )
+    assert result.llcr.status is (
+        CoverageStatus.COVERAGE_DISCOUNT_CONVENTION_UNSUPPORTED
+    )

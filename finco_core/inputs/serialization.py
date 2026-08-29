@@ -57,10 +57,14 @@ from finco_core.inputs._models import (
 )
 from finco_core.inputs.bess import BessParams
 from finco_core.inputs.valuation import (
+    CoverageCashflowBasis,
     CoverageCalculationDatePolicy,
     CoverageCfadsCase,
+    CoverageDenominatorBasis,
     DebtCoverageValuationPolicy,
     DiscountConvention,
+    PeriodicFirstCashflowTiming,
+    PeriodicRateConversion,
     ProjectValuationPolicy,
     ValuationDatePolicy,
     ValuationPolicies,
@@ -482,6 +486,27 @@ def _ser_valuation_policies(policies: ValuationPolicies) -> dict:
             "calculation_date_policy": coverage.calculation_date_policy.value,
             "discount_convention": coverage.discount_convention.value,
             "authority_label": coverage.authority_label,
+            "llcr_cashflow_basis": (
+                coverage.llcr_cashflow_basis.value
+                if coverage.llcr_cashflow_basis is not None else None
+            ),
+            "plcr_cashflow_basis": (
+                coverage.plcr_cashflow_basis.value
+                if coverage.plcr_cashflow_basis is not None else None
+            ),
+            "denominator_basis": (
+                coverage.denominator_basis.value
+                if coverage.denominator_basis is not None else None
+            ),
+            "periodic_rate_conversion": (
+                coverage.periodic_rate_conversion.value
+                if coverage.periodic_rate_conversion is not None else None
+            ),
+            "periods_per_year": coverage.periods_per_year,
+            "first_cashflow_timing": (
+                coverage.first_cashflow_timing.value
+                if coverage.first_cashflow_timing is not None else None
+            ),
         },
     }
 
@@ -519,6 +544,27 @@ def _deser_valuation_policies(payload: dict | None) -> ValuationPolicies:
                 coverage_payload["discount_convention"]
             ),
             authority_label=coverage_payload["authority_label"],
+            llcr_cashflow_basis=(
+                CoverageCashflowBasis(coverage_payload["llcr_cashflow_basis"])
+                if coverage_payload.get("llcr_cashflow_basis") else None
+            ),
+            plcr_cashflow_basis=(
+                CoverageCashflowBasis(coverage_payload["plcr_cashflow_basis"])
+                if coverage_payload.get("plcr_cashflow_basis") else None
+            ),
+            denominator_basis=(
+                CoverageDenominatorBasis(coverage_payload["denominator_basis"])
+                if coverage_payload.get("denominator_basis") else None
+            ),
+            periodic_rate_conversion=(
+                PeriodicRateConversion(coverage_payload["periodic_rate_conversion"])
+                if coverage_payload.get("periodic_rate_conversion") else None
+            ),
+            periods_per_year=coverage_payload.get("periods_per_year"),
+            first_cashflow_timing=(
+                PeriodicFirstCashflowTiming(coverage_payload["first_cashflow_timing"])
+                if coverage_payload.get("first_cashflow_timing") else None
+            ),
         )
     return ValuationPolicies(project=project, coverage=coverage)
 

@@ -70,7 +70,14 @@ from finco_core.inputs.construction_financing import (
     VatFacilityCommitmentMode,
 )
 from finco_core.inputs.valuation import (
+    CoverageCalculationDatePolicy,
+    CoverageCashflowBasis,
+    CoverageCfadsCase,
+    CoverageDenominatorBasis,
+    DebtCoverageValuationPolicy,
     DiscountConvention,
+    PeriodicFirstCashflowTiming,
+    PeriodicRateConversion,
     ProjectValuationPolicy,
     ValuationDatePolicy,
     ValuationPolicies,
@@ -1236,7 +1243,33 @@ def create_default_tuho_wind1() -> ProjectInputs:
                 authority_label=(
                     "TUHO_SOURCE_INPUTS_D452_PROJECT_NPV_RATE_AND_CF_C125_XNPV"
                 ),
-            )
+            ),
+            coverage=DebtCoverageValuationPolicy(
+                annual_discount_rate=0.0595,
+                cfads_case=CoverageCfadsCase.BASE,
+                calculation_date_policy=(
+                    CoverageCalculationDatePolicy.FIRST_SENIOR_PERIOD_OPENING
+                ),
+                discount_convention=DiscountConvention.PERIODIC_COMPOUNDING,
+                authority_label=(
+                    "TUHO_SOURCE_CF_G129_PERIODIC_NPV_INPUTS_D184_BASE_FCFB_"
+                    "SENIOR_OPENING_REFINANCING_DISABLED"
+                ),
+                llcr_cashflow_basis=(
+                    CoverageCashflowBasis.SENIOR_ELIGIBLE_CFADS
+                ),
+                plcr_cashflow_basis=None,
+                denominator_basis=(
+                    CoverageDenominatorBasis.SENIOR_OPENING_BALANCE
+                ),
+                periodic_rate_conversion=(
+                    PeriodicRateConversion.AS_QUOTED_PER_MODEL_PERIOD
+                ),
+                periods_per_year=2,
+                first_cashflow_timing=(
+                    PeriodicFirstCashflowTiming.END_OF_FIRST_PERIOD
+                ),
+            ),
         ),
     )
 
