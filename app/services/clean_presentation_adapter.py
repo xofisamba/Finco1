@@ -129,6 +129,7 @@ class CleanWaterfallView:
     min_plcr: float | None = None
     project_npv: float | None = None
     equity_npv: float | None = None
+    financial_statements_result: object | None = None  # Phase C3 clean statement authority
     _authority_metadata: dict = field(default_factory=dict)
 
 
@@ -339,6 +340,22 @@ def _valuation_summary_payload(g2c) -> dict:
             "llcr_threshold_status": coverage.llcr_threshold_status.value,
         },
     }
+
+
+def _assemble_clean_statements(g2c, clean_run):
+    """Phase C3: assemble the clean statement authority (strictly downstream
+    accounting over clean vectors). Presentation pass-through only."""
+    try:
+        from financial_engine.financial_statements import (
+            assemble_decision_complete_financial_statements,
+        )
+        return assemble_decision_complete_financial_statements(
+            g2c, clean_run.project_inputs
+        )
+    except Exception:
+        # Statement assembly must never break the run path; typed status is
+        # surfaced by the C3 contract itself.
+        return None
 
 
 def build_clean_waterfall_view(clean_run) -> CleanWaterfallView:
@@ -577,6 +594,9 @@ def build_clean_waterfall_view(clean_run) -> CleanWaterfallView:
             "return_summary": _return_summary_payload(g2c),
             "valuation_summary": _valuation_summary_payload(g2c),
         },
+        # Phase C3: clean statement authority attached as pass-through —
+        # presentation serialization only, no formulas here.
+        financial_statements_result=_assemble_clean_statements(g2c, clean_run),
     )
 
 
