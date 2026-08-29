@@ -84,7 +84,7 @@ def assemble_decision_complete_financial_statements(
 
     Assembly only: every value is either a direct clean vector element or a
     causal roll-forward/identity of clean vectors. No engine execution, no
-    recomputation of tax/debt/SHL/distributions, no balancing plugs.
+    recomputation of tax/debt/SHL/distributions, no residual-cash plug.
     """
     fin = g2c_result.financing_result
     model = fin.project_model_result
@@ -282,7 +282,7 @@ def assemble_decision_complete_financial_statements(
 
         # Balance sheet presentation: balances are clean closing authority;
         # unrestricted cash / gross FA / equity accounts are truthfully
-        # unavailable → balance_check NOT claimed (no balancing plug).
+        # unavailable → balance_check NOT claimed (no residual-cash plug).
         cumulative_share_capital += float(
             getattr(wp, "share_capital_contribution_keur", 0.0) or 0.0)
         cumulative_share_premium += float(
@@ -328,7 +328,7 @@ def assemble_decision_complete_financial_statements(
         "balance_sheet": (
             "UNRESTRICTED_CASH_AUTHORITY_UNAVAILABLE: closing unrestricted "
             "cash requires a causal unrestricted-cash roll-forward that the "
-            "clean runtime does not yet provide; no balancing plug applied."
+            "clean runtime does not yet provide; no residual-cash plug applied."
         ),
         "gross_fixed_assets": (
             "BOOK_CAPITALIZATION_BASIS_UNAVAILABLE: the book fixed-asset "

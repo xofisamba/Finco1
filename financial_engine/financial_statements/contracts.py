@@ -191,7 +191,7 @@ class BalanceSheetPeriod:
     Senior, SHL, DA and DSRA balances are clean closing-balance authority.
     Unrestricted cash requires a causal unrestricted-cash roll-forward that
     the clean runtime does not yet provide — therefore the Balance Sheet is
-    NOT claimed complete and no balancing plug is applied.
+    NOT claimed complete and no residual-cash plug is applied.
     """
 
     period_index: int
