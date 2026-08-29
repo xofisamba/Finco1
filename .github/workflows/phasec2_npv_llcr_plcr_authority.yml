@@ -1,0 +1,82 @@
+name: Phase C2 - NPV LLCR PLCR Authority
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  npv-llcr-plcr-authority:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact PR head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Assert exact-head checkout
+        run: |
+          EXPECTED="${{ github.event.pull_request.head.sha || github.sha }}"
+          ACTUAL="$(git rev-parse HEAD)"
+          test "$ACTUAL" = "$EXPECTED" || {
+            echo "C2_HEAD_SHA_MISMATCH expected=$EXPECTED actual=$ACTUAL"
+            exit 1
+          }
+
+      - name: Assert C1 ancestry
+        run: |
+          BASE="6e3443545c3748218261b1c083458268a0d56ef6"
+          git merge-base --is-ancestor "$BASE" HEAD || {
+            echo "C2_C1_BASE_ANCESTRY_MISSING: $BASE is not an ancestor of HEAD"
+            exit 1
+          }
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          pip install --no-cache-dir -c constraints.txt -e .
+          pip install --no-cache-dir -c constraints.txt pytest
+
+      - name: Diff hygiene
+        run: git diff --check
+
+      - name: C2 focused acceptance
+        run: python -m pytest -q tests/test_phasec2_npv_llcr_plcr_authority.py
+
+      - name: C1 frozen authority
+        run: python -m pytest -q tests/test_phasec1_returns_maturity_authority.py
+
+      - name: B4 single production authority
+        run: python -m pytest -q tests/test_phaseb4_single_production_engine.py
+
+      - name: Senior and Bank Case authority
+        run: |
+          python -m pytest -q \
+            tests/test_prefreeze_pr7_typed_base_bank_case_authority.py \
+            tests/test_phase2c_senior_debt.py
+
+      - name: Project and sponsor returns
+        run: |
+          python -m pytest -q \
+            tests/test_mvp_g2b_sponsor_returns.py \
+            tests/test_mvp_g2c_shareholder_waterfall.py
+
+      - name: Governance scan on C2 changed production files
+        shell: bash
+        run: |
+          mapfile -t files < <(
+            git diff --name-only 6e3443545c3748218261b1c083458268a0d56ef6...HEAD \
+              -- financial_engine app domain finco_core \
+              | grep -E '\.py$' || true
+          )
+          if ((${#files[@]})); then
+            ! grep -nHE \
+              'approved_delta|expected_delta|target fitting|source output vector runtime input|terminal top-up|project\.name|project\.code|baseline_id' \
+              "${files[@]}"
+          fi

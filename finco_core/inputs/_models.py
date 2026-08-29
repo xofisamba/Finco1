@@ -19,6 +19,7 @@ from typing import Optional, TYPE_CHECKING
 
 from finco_core.inputs.senior_rate_schedule import SeniorDebtInterestConfig
 from finco_core.inputs.senior_sculpting import SeniorSculptingConfig
+from finco_core.inputs.valuation import ValuationPolicies
 from finco_core.engine.distribution_account.inputs import CovenantGatePolicy
 
 if TYPE_CHECKING:
@@ -1637,6 +1638,7 @@ class ProjectInputs:
     # generic hierarchical engine instead of the legacy flat-item path.
     # Presence (non-None) is the sole dispatch signal — never check project name.
     hierarchical_opex_capability: "HierarchicalOpexCapability | None" = None
+    valuation: ValuationPolicies = field(default_factory=ValuationPolicies)
 
 
 def hash_inputs_for_cache(inputs: "ProjectInputs") -> tuple:
@@ -1661,6 +1663,7 @@ def hash_inputs_for_cache(inputs: "ProjectInputs") -> tuple:
         inputs.financing.commitment_fee,
         inputs.financing.arrangement_fee,
         inputs.financing.structuring_fee,
+        inputs.valuation,
         inputs.revenue.ppa_base_tariff,
         inputs.revenue.ppa_term_years,
         inputs.revenue.ppa_index,

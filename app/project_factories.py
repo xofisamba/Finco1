@@ -69,6 +69,19 @@ from finco_core.inputs.construction_financing import (
     ConstructionVatFacilityInput,
     VatFacilityCommitmentMode,
 )
+from finco_core.inputs.valuation import (
+    CoverageCalculationDatePolicy,
+    CoverageCashflowBasis,
+    CoverageCfadsCase,
+    CoverageDenominatorBasis,
+    DebtCoverageValuationPolicy,
+    DiscountConvention,
+    PeriodicFirstCashflowTiming,
+    PeriodicRateConversion,
+    ProjectValuationPolicy,
+    ValuationDatePolicy,
+    ValuationPolicies,
+)
 from finco_core.opex.oborovo_config import build_oborovo_opex_capability
 
 
@@ -560,7 +573,7 @@ def create_default_oborovo() -> ProjectInputs:
         structuring_fee=0.01,
         target_dscr=1.15,
         lockup_dscr=1.10,
-        min_llcr=1.15,
+        min_llcr=1.15,  # Oborovo source: Inputs!D224 = Inputs!C177 = 1.15
         dsra_months=6,
         equity_irr_method="shl_plus_dividends",  # Stack O: Golden Excel equity IRR = SHL interest while SHL outstanding + dividends after; "combined" (capex-debt base, distributions only) gave 6.24% vs golden 10.60%
         debt_sizing_method="gearing_cap",  # legacy field; clean solver uses debt_sizing_mode
@@ -1136,6 +1149,9 @@ def create_default_tuho_wind1() -> ProjectInputs:
     )
     financing = replace(
         legacy.financing,
+        # TUHO source covenant: Inputs!D207 = Inputs!C160 = 1.20.
+        # Threshold-only C2 authority; it does not drive Senior sizing/sculpting.
+        min_llcr=1.20,
         shl_amount_keur=29_135.176217946093,
         shl_rate=0.08,
         gearing_ratio=0.80,
@@ -1214,7 +1230,51 @@ def create_default_tuho_wind1() -> ProjectInputs:
         cit_cash_tax_start_operating_index=None,
         clean_cash_tax_timing_enabled=True,
     )
-    return replace(legacy, info=info, capex=capex, financing=financing, tax=tax)
+    return replace(
+        legacy,
+        info=info,
+        capex=capex,
+        financing=financing,
+        tax=tax,
+        valuation=ValuationPolicies(
+            project=ProjectValuationPolicy(
+                annual_discount_rate=0.066,
+                valuation_date_policy=(
+                    ValuationDatePolicy.FIRST_PROJECT_CASHFLOW_DATE
+                ),
+                discount_convention=DiscountConvention.ACT_365_FIXED,
+                authority_label=(
+                    "TUHO_SOURCE_INPUTS_D452_PROJECT_NPV_RATE_AND_CF_C125_XNPV"
+                ),
+            ),
+            coverage=DebtCoverageValuationPolicy(
+                annual_discount_rate=0.0595,
+                cfads_case=CoverageCfadsCase.BASE,
+                calculation_date_policy=(
+                    CoverageCalculationDatePolicy.FIRST_SENIOR_PERIOD_OPENING
+                ),
+                discount_convention=DiscountConvention.PERIODIC_COMPOUNDING,
+                authority_label=(
+                    "TUHO_SOURCE_CF_G129_PERIODIC_NPV_INPUTS_D184_BASE_FCFB_"
+                    "SENIOR_OPENING_REFINANCING_DISABLED"
+                ),
+                llcr_cashflow_basis=(
+                    CoverageCashflowBasis.SENIOR_ELIGIBLE_CFADS
+                ),
+                plcr_cashflow_basis=None,
+                denominator_basis=(
+                    CoverageDenominatorBasis.SENIOR_OPENING_BALANCE
+                ),
+                periodic_rate_conversion=(
+                    PeriodicRateConversion.AS_QUOTED_PER_MODEL_PERIOD
+                ),
+                periods_per_year=2,
+                first_cashflow_timing=(
+                    PeriodicFirstCashflowTiming.END_OF_FIRST_PERIOD
+                ),
+            ),
+        ),
+    )
 
 
 # =============================================================================

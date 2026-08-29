@@ -56,6 +56,19 @@ from finco_core.inputs._models import (
     YieldScenario,
 )
 from finco_core.inputs.bess import BessParams
+from finco_core.inputs.valuation import (
+    CoverageCashflowBasis,
+    CoverageCalculationDatePolicy,
+    CoverageCfadsCase,
+    CoverageDenominatorBasis,
+    DebtCoverageValuationPolicy,
+    DiscountConvention,
+    PeriodicFirstCashflowTiming,
+    PeriodicRateConversion,
+    ProjectValuationPolicy,
+    ValuationDatePolicy,
+    ValuationPolicies,
+)
 from finco_core.inputs.senior_rate_schedule import (
     SeniorDayCountConvention,
     SeniorDebtInterestConfig,
@@ -454,6 +467,108 @@ def _ser_debt_sizing_case_config(c: DebtSizingCaseConfig) -> dict:
     }
 
 
+def _ser_valuation_policies(policies: ValuationPolicies) -> dict:
+    project = policies.project
+    coverage = policies.coverage
+    return {
+        "project": None if project is None else {
+            "annual_discount_rate": project.annual_discount_rate,
+            "valuation_date_policy": project.valuation_date_policy.value,
+            "discount_convention": project.discount_convention.value,
+            "authority_label": project.authority_label,
+            "explicit_valuation_date": _ser_date(project.explicit_valuation_date),
+        },
+        "coverage": None if coverage is None else {
+            "annual_discount_rate": coverage.annual_discount_rate,
+            "cfads_case": (
+                coverage.cfads_case.value if coverage.cfads_case is not None else None
+            ),
+            "calculation_date_policy": coverage.calculation_date_policy.value,
+            "discount_convention": coverage.discount_convention.value,
+            "authority_label": coverage.authority_label,
+            "llcr_cashflow_basis": (
+                coverage.llcr_cashflow_basis.value
+                if coverage.llcr_cashflow_basis is not None else None
+            ),
+            "plcr_cashflow_basis": (
+                coverage.plcr_cashflow_basis.value
+                if coverage.plcr_cashflow_basis is not None else None
+            ),
+            "denominator_basis": (
+                coverage.denominator_basis.value
+                if coverage.denominator_basis is not None else None
+            ),
+            "periodic_rate_conversion": (
+                coverage.periodic_rate_conversion.value
+                if coverage.periodic_rate_conversion is not None else None
+            ),
+            "periods_per_year": coverage.periods_per_year,
+            "first_cashflow_timing": (
+                coverage.first_cashflow_timing.value
+                if coverage.first_cashflow_timing is not None else None
+            ),
+        },
+    }
+
+
+def _deser_valuation_policies(payload: dict | None) -> ValuationPolicies:
+    payload = payload or {}
+    project_payload = payload.get("project")
+    coverage_payload = payload.get("coverage")
+    project = None
+    if project_payload is not None:
+        explicit_date = project_payload.get("explicit_valuation_date")
+        project = ProjectValuationPolicy(
+            annual_discount_rate=project_payload.get("annual_discount_rate"),
+            valuation_date_policy=ValuationDatePolicy(
+                project_payload["valuation_date_policy"]
+            ),
+            discount_convention=DiscountConvention(
+                project_payload["discount_convention"]
+            ),
+            authority_label=project_payload["authority_label"],
+            explicit_valuation_date=(
+                date.fromisoformat(explicit_date) if explicit_date else None
+            ),
+        )
+    coverage = None
+    if coverage_payload is not None:
+        cfads_case = coverage_payload.get("cfads_case")
+        coverage = DebtCoverageValuationPolicy(
+            annual_discount_rate=coverage_payload.get("annual_discount_rate"),
+            cfads_case=CoverageCfadsCase(cfads_case) if cfads_case else None,
+            calculation_date_policy=CoverageCalculationDatePolicy(
+                coverage_payload["calculation_date_policy"]
+            ),
+            discount_convention=DiscountConvention(
+                coverage_payload["discount_convention"]
+            ),
+            authority_label=coverage_payload["authority_label"],
+            llcr_cashflow_basis=(
+                CoverageCashflowBasis(coverage_payload["llcr_cashflow_basis"])
+                if coverage_payload.get("llcr_cashflow_basis") else None
+            ),
+            plcr_cashflow_basis=(
+                CoverageCashflowBasis(coverage_payload["plcr_cashflow_basis"])
+                if coverage_payload.get("plcr_cashflow_basis") else None
+            ),
+            denominator_basis=(
+                CoverageDenominatorBasis(coverage_payload["denominator_basis"])
+                if coverage_payload.get("denominator_basis") else None
+            ),
+            periodic_rate_conversion=(
+                PeriodicRateConversion(coverage_payload["periodic_rate_conversion"])
+                if coverage_payload.get("periodic_rate_conversion") else None
+            ),
+            periods_per_year=coverage_payload.get("periods_per_year"),
+            first_cashflow_timing=(
+                PeriodicFirstCashflowTiming(coverage_payload["first_cashflow_timing"])
+                if coverage_payload.get("first_cashflow_timing") else None
+            ),
+        )
+    return ValuationPolicies(project=project, coverage=coverage)
+
+
 # ── Public serializer ──────────────────────────────────────────────────────────
 
 def project_inputs_to_dict(inputs: ProjectInputs) -> dict:
@@ -690,6 +805,7 @@ def project_inputs_to_dict(inputs: ProjectInputs) -> dict:
             # NOTE: shl_limitation_enabled and shl_interest_cap_keur_annual removed.
             # STL is now implemented via ATAD (atad_enabled=True).
         },
+        "valuation": _ser_valuation_policies(inputs.valuation),
     }
 
 
@@ -1110,4 +1226,5 @@ def project_inputs_from_dict(d: dict) -> ProjectInputs:
         revenue=revenue,
         financing=financing,
         tax=tax,
+        valuation=_deser_valuation_policies(d.get("valuation")),
     )

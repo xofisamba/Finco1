@@ -10,10 +10,9 @@ PR-8 presentation-adapter contract:
           distributions, repair values, or mix clean and legacy vectors.
 
 Every mapped value is a pass-through of one clean computed vector. Legacy-only
-concepts with no clean counterpart (cash balance roll-forward, LLCR, PLCR and
-NPV metrics) surface as None plus an explicit machine-readable unavailable-fields
-manifest — never a legacy value. Phase C1 Project XIRR is passed through from
-the canonical G2C return summary.
+concepts with no clean counterpart surface as None plus an explicit
+machine-readable unavailable-fields manifest. Phase C1 Project XIRR and Phase
+C2 valuation/coverage results pass through from canonical G2C results.
 """
 from __future__ import annotations
 
@@ -25,20 +24,8 @@ from financial_engine.shareholder_waterfall.contracts import (
 )
 
 _UNAVAILABLE_FIELDS = {
-    "project_npv_keur": (
-        "PR8_NOT_AVAILABLE: Project NPV is not provided by the clean G2C runtime."
-    ),
     "equity_npv_keur": (
         "PR8_NOT_AVAILABLE: Equity NPV is not provided by the clean G2C runtime."
-    ),
-    "min_llcr": (
-        "PR8_NOT_AVAILABLE: LLCR framework is deferred (PR-8 scope exclusion)."
-    ),
-    "llcr": (
-        "PR8_NOT_AVAILABLE: LLCR framework is deferred (PR-8 scope exclusion)."
-    ),
-    "plcr": (
-        "PR8_NOT_AVAILABLE: PLCR framework is deferred (PR-8 scope exclusion)."
     ),
     "cash_balance_keur": (
         "PR8_NOT_AVAILABLE: legacy cash-balance roll-forward has no clean "
@@ -139,6 +126,7 @@ class CleanWaterfallView:
     equity_irr_status: str | None = None
     distribution_source: str = "clean_g2c_cf109_gate"
     min_llcr: float | None = None
+    min_plcr: float | None = None
     project_npv: float | None = None
     equity_npv: float | None = None
     _authority_metadata: dict = field(default_factory=dict)
@@ -262,6 +250,94 @@ def _return_summary_payload(g2c) -> dict:
         "deductible_shl_covenant_feedback_status": (
             summary.deductible_shl_covenant_feedback_status
         ),
+    }
+
+
+def _valuation_summary_payload(g2c) -> dict:
+    """Serialize canonical C2 outputs without recalculating PV or ratios."""
+    valuation = g2c.valuation_summary
+
+    def _rows(rows) -> list[dict]:
+        return [
+            {
+                "period_index": row.period_index,
+                "cashflow_date": row.cashflow_date.isoformat(),
+                "undiscounted_cashflow_keur": row.undiscounted_cashflow_keur,
+                "included": row.included,
+                "exclusion_reason": row.exclusion_reason,
+                "year_fraction": row.year_fraction,
+                "discount_factor": row.discount_factor,
+                "discounted_cashflow_keur": row.discounted_cashflow_keur,
+                "raw_selected_cashflow_keur": row.raw_selected_cashflow_keur,
+                "eligibility_factor": row.eligibility_factor,
+                "eligible_cashflow_keur": row.eligible_cashflow_keur,
+                "discount_exponent": row.discount_exponent,
+            }
+            for row in rows
+        ]
+
+    def _coverage(metric) -> dict:
+        return {
+            "metric": metric.metric.value,
+            "status": metric.status.value,
+            "calculation_date": (
+                metric.calculation_date.isoformat() if metric.calculation_date else None
+            ),
+            "cfads_case": metric.cfads_case.value if metric.cfads_case else None,
+            "annual_discount_rate": metric.annual_discount_rate,
+            "discount_convention": (
+                metric.discount_convention.value if metric.discount_convention else None
+            ),
+            "discount_authority": metric.discount_authority,
+            "cashflow_basis": (
+                metric.cashflow_basis.value if metric.cashflow_basis else None
+            ),
+            "denominator_basis": (
+                metric.denominator_basis.value if metric.denominator_basis else None
+            ),
+            "periodic_rate_conversion": (
+                metric.periodic_rate_conversion.value
+                if metric.periodic_rate_conversion else None
+            ),
+            "periods_per_year": metric.periods_per_year,
+            "first_cashflow_timing": (
+                metric.first_cashflow_timing.value
+                if metric.first_cashflow_timing else None
+            ),
+            "effective_periodic_discount_rate": (
+                metric.effective_periodic_discount_rate
+            ),
+            "debt_balance_denominator_keur": metric.debt_balance_denominator_keur,
+            "pv_cfads_numerator_keur": metric.pv_cfads_numerator_keur,
+            "ratio": metric.ratio,
+            "periods": _rows(metric.periods),
+        }
+
+    project = valuation.project_npv
+    coverage = valuation.lender_coverage
+    return {
+        "project_npv": {
+            "status": project.status.value,
+            "npv_keur": project.npv_keur,
+            "valuation_date": (
+                project.valuation_date.isoformat() if project.valuation_date else None
+            ),
+            "annual_discount_rate": project.annual_discount_rate,
+            "discount_convention": (
+                project.discount_convention.value if project.discount_convention else None
+            ),
+            "discount_authority": project.discount_authority,
+            "cashflow_identity_authority": project.cashflow_identity_authority,
+            "upstream_project_return_status": project.upstream_project_return_status,
+            "periods": _rows(project.periods),
+        },
+        "lender_coverage": {
+            "llcr": _coverage(coverage.llcr),
+            "plcr": _coverage(coverage.plcr),
+            "minimum_llcr": coverage.minimum_llcr,
+            "llcr_headroom": coverage.llcr_headroom,
+            "llcr_threshold_status": coverage.llcr_threshold_status.value,
+        },
     }
 
 
@@ -448,6 +524,23 @@ def build_clean_waterfall_view(clean_run) -> CleanWaterfallView:
     sponsor_irr = g2c.total_sponsor_xirr
     sponsor_irr_status = g2c.total_sponsor_xirr_status
     project_return = g2c.return_summary.project
+    valuation = g2c.valuation_summary
+    project_npv = valuation.project_npv
+    lender_coverage = valuation.lender_coverage
+    unavailable_fields = dict(_UNAVAILABLE_FIELDS)
+    if project_npv.npv_keur is None:
+        unavailable_fields["project_npv_keur"] = (
+            f"C2_{project_npv.status.value}: canonical Project NPV unavailable."
+        )
+    if lender_coverage.llcr.ratio is None:
+        unavailable_fields["min_llcr"] = (
+            f"C2_{lender_coverage.llcr.status.value}: canonical LLCR unavailable."
+        )
+        unavailable_fields["llcr"] = unavailable_fields["min_llcr"]
+    if lender_coverage.plcr.ratio is None:
+        unavailable_fields["plcr"] = (
+            f"C2_{lender_coverage.plcr.status.value}: canonical PLCR unavailable."
+        )
 
     return CleanWaterfallView(
         periods=period_views,
@@ -472,13 +565,17 @@ def build_clean_waterfall_view(clean_run) -> CleanWaterfallView:
             if project_return.project_xirr_status.value == "OK"
             else None
         ),
+        project_npv=project_npv.npv_keur,
+        min_llcr=lender_coverage.llcr.ratio,
+        min_plcr=lender_coverage.plcr.ratio,
         equity_irr_status=str(getattr(equity_irr_status, "value", equity_irr_status)),
         sponsor_irr_status=str(getattr(sponsor_irr_status, "value", sponsor_irr_status)),
         periods_in_lockup=lockup_count,
         _authority_metadata={
             **clean_run.authority_metadata,
-            "unavailable_fields": dict(_UNAVAILABLE_FIELDS),
+            "unavailable_fields": unavailable_fields,
             "return_summary": _return_summary_payload(g2c),
+            "valuation_summary": _valuation_summary_payload(g2c),
         },
     )
 
