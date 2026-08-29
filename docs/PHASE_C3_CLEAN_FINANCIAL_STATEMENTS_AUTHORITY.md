@@ -94,13 +94,13 @@ distributions, equity contributions.
 periods; SHL is debt and never deducted from RE; no legal-reserve
 allocation invented; opening RE requires a construction-equity accounting
 authority not yet typed → surfaced `OPENING_EQUITY_ACCOUNTING_AUTHORITY_
-UNAVAILABLE` (no zero-default, no plug).
+UNAVAILABLE` (no zero-default, no residual insert).
 
-## No-plug principle
+## No-residual insert principle
 
 `balance_check_keur` is only claimable when every component has authority.
 While unrestricted cash is unavailable, no balance check is emitted and no
-cash figure is solved as a residual (test C3-K would fail on any plug).
+cash figure is solved as a residual (test C3-K would fail on any residual insert).
 
 ## Legacy statement modules — new classification
 

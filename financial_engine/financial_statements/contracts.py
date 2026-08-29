@@ -170,7 +170,7 @@ class RetainedEarningsPeriod:
               - legal reserve allocation + explicit equity adjustments
 
     SHL is debt, NOT retained earnings — never deducted here. No balancing
-    plug: opening retained earnings requires a construction-period equity
+    residual insert: opening retained earnings requires a construction-period equity
     accounting authority that clean inputs do not yet provide, so the
     opening is surfaced as unavailable rather than defaulted to zero.
     """
@@ -191,7 +191,7 @@ class BalanceSheetPeriod:
     Senior, SHL, DA and DSRA balances are clean closing-balance authority.
     Unrestricted cash requires a causal unrestricted-cash roll-forward that
     the clean runtime does not yet provide — therefore the Balance Sheet is
-    NOT claimed complete and no residual-cash plug is applied.
+    NOT claimed complete and no residual-cash insert is applied.
     """
 
     period_index: int

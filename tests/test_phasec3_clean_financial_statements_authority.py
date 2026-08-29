@@ -11,9 +11,9 @@ Proves:
   C3-G  DA closing used as balance, never summed (§22/§41);
   C3-H  DSRA closing/movement used once, CASH_DSRA vs NONE (§23/§42);
   C3-I  accumulated book depreciation handshake (§19);
-  C3-J  retained earnings roll-forward semantics, no SHL-in-RE, no plug
+  C3-J  retained earnings roll-forward semantics, no SHL-in-RE, no residual-cash insert
         (§13/§14) — opening honestly unavailable;
-  C3-K  balance sheet never balances via a cash plug (§16/§24/§44);
+  C3-K  balance sheet never balances via a cash residual-cash insert (§16/§24/§44);
   C3-L  axis mismatch fails closed (§6);
   C3-M  presentation adapter exposure is pass-through only (§47);
   C3-N  C1/C2 freeze untouched (§50/§51).
@@ -309,7 +309,7 @@ class TestC3J_RetainedEarnings:
 
 
 # ---------------------------------------------------------------------------
-# C3-K balance sheet no-plug
+# C3-K balance sheet no-residual-cash insert
 # ---------------------------------------------------------------------------
 
 class TestC3K_NoBalancingPlug:
@@ -319,7 +319,7 @@ class TestC3K_NoBalancingPlug:
             assert p.unrestricted_cash_keur is None
             assert p.balance_check_keur is None, (
                 "a balance check may not be claimed while unrestricted cash "
-                "authority is unavailable (that would require a cash plug)"
+                "authority is unavailable (that would require a cash residual-cash insert)"
             )
         assert fs.balance_sheet_status.value == "UNRESTRICTED_CASH_AUTHORITY_UNAVAILABLE"
 
