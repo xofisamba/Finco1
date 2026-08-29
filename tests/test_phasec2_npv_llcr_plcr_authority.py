@@ -542,6 +542,51 @@ def test_tuho_llcr_uses_typed_source_maturity_factor_without_vector_replay():
     )
 
 
+def test_tuho_minimum_llcr_uses_source_covenant_threshold():
+    inputs = create_default_tuho_wind1()
+    result = run_clean_production(inputs, project_type="TUHO").g2c_result
+    coverage = result.valuation_summary.lender_coverage
+
+    assert inputs.financing.min_llcr == pytest.approx(1.20)
+    assert coverage.minimum_llcr == pytest.approx(1.20)
+    assert coverage.llcr.ratio == pytest.approx(1.0578163095049742)
+    assert coverage.llcr_headroom == pytest.approx(coverage.llcr.ratio - 1.20)
+    assert coverage.llcr_threshold_status is LlcrThresholdStatus.FAIL
+
+
+def test_minimum_llcr_is_threshold_only_downstream_comparison():
+    inputs = create_default_tuho_wind1()
+    lower_threshold = replace(
+        inputs,
+        financing=replace(inputs.financing, min_llcr=1.00),
+    )
+    base = run_clean_production(inputs, project_type="TUHO").g2c_result
+    changed = run_clean_production(
+        lower_threshold, project_type="TUHO"
+    ).g2c_result
+    base_coverage = base.valuation_summary.lender_coverage
+    changed_coverage = changed.valuation_summary.lender_coverage
+
+    assert changed_coverage.llcr.ratio == pytest.approx(base_coverage.llcr.ratio)
+    assert changed_coverage.llcr.pv_cfads_numerator_keur == pytest.approx(
+        base_coverage.llcr.pv_cfads_numerator_keur
+    )
+    assert changed_coverage.llcr.debt_balance_denominator_keur == pytest.approx(
+        base_coverage.llcr.debt_balance_denominator_keur
+    )
+    assert changed.valuation_summary.project_npv == base.valuation_summary.project_npv
+    assert (
+        changed.financing_result.project_model_result.senior_debt
+        == base.financing_result.project_model_result.senior_debt
+    )
+    assert changed_coverage.minimum_llcr == pytest.approx(1.00)
+    assert changed_coverage.llcr_headroom == pytest.approx(
+        changed_coverage.llcr.ratio - 1.00
+    )
+    assert base_coverage.llcr_threshold_status is LlcrThresholdStatus.FAIL
+    assert changed_coverage.llcr_threshold_status is LlcrThresholdStatus.PASS
+
+
 def test_coverage_policy_and_denominator_authorities_are_enforced():
     model = _coverage_model()
     unsupported_date_policy = replace(

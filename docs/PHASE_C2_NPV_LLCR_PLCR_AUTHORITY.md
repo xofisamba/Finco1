@@ -50,6 +50,9 @@ evidence. No workbook vector is loaded by production.
   uses the source-proven 6.6% configuration and XNPV timing convention, but
   discounts the exact C1 cash-flow vector.
 - `CF!B129 = Inputs!D184 = 5.95%`; `Inputs!D184` is Senior pricing.
+- `Inputs!D207` ("Min LLCR") equals `Inputs!C160`, whose Bank Case lookup
+  resolves to `1.20`. This is the source covenant threshold, not a calculated
+  LLCR output and not a debt-sizing input in C2.
 - `CF!G129` uses periodic `NPV`, `FCFB Senior` row 132 and
   `SUM(DS!G53, DS!G88)`. This mixes source-specific timing and potentially
   multiple debt balances. It does not prove a generic Base/Bank clean case or
@@ -67,7 +70,8 @@ parity. PLCR is `UNRESOLVED`.
 - The formula chain uses `Inputs!D462` and `CF!C136 = XNPV(...)`, but cached
   rate and output are `#N/A` in the reviewed workbook.
 - The 9.2% label is presentation evidence, not a complete typed input bridge.
-- `Inputs!D224 = 1.15` is the minimum LLCR threshold, not a discount rate.
+- `Inputs!D224 = Inputs!C177 = 1.15` is the source minimum LLCR threshold,
+  explicitly mapped in the Oborovo factory; it is not a discount rate.
 - No complete source-proven clean Base/Bank LLCR or PLCR contract was found.
 
 Classification: Project rate is `SOURCE_PRESENTATION_ONLY`; Project NPV,
@@ -151,9 +155,10 @@ Period-by-period source reconciliation (kEUR):
 Oborovo independently proves the same three cash-flow layers:
 `CF!row79` Base/current, `DS!row20 = Macro!row50` Bank sizing and
 `CF!row141 = CF!row79 * CF!row13`. Its final source factor is
-`0.988950276243094`. It has a typed `min_llcr = 1.15`, but no LLCR formula or
-output was found. Therefore no rate, case, denominator or calculation-boundary
-authority is promoted for Oborovo.
+`0.988950276243094`. Its source `Inputs!D224 = Inputs!C177` proves and maps the
+typed covenant threshold `min_llcr = 1.15`, but no LLCR formula or output was
+found. Therefore no rate, case, denominator or calculation-boundary authority
+is promoted for Oborovo.
 
 | P | Base | Bank | Factor | FCFB Senior | Difference |
 |---:|---:|---:|---:|---:|---:|
@@ -306,7 +311,16 @@ TUHO canonical Correction A output is:
 - PV eligible CFADS: `46,321.692749 kEUR`;
 - Senior opening denominator: `43,789.921117 kEUR`;
 - LLCR: `1.0578163095x`;
-- minimum/headroom/status: `1.15x / -0.0921836905x / FAIL`.
+- source covenant minimum/headroom/status:
+  `1.20x / -0.1421836905x / FAIL`.
+
+The calculated clean LLCR remains `1.0578163095x`; only its comparison against
+the source-backed TUHO covenant threshold changes. `min_llcr` does not drive
+Senior sizing, sculpting, debt service, CFADS, NPV or returns. The source LLCR
+numerator includes a DSRA term, but that reserve is zero at TUHO's configured
+headline measurement boundary. A future configured project with a non-zero
+measurement-date lender reserve requires explicit typed reserve/numerator
+authority and must otherwise fail closed rather than omit the reserve.
 
 The source-vs-clean TUHO eligible-CFADS maximum difference is
 `635.306687 kEUR` because C1 clean Base CFADS is the frozen upstream authority.

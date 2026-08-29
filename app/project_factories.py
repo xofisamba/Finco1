@@ -573,7 +573,7 @@ def create_default_oborovo() -> ProjectInputs:
         structuring_fee=0.01,
         target_dscr=1.15,
         lockup_dscr=1.10,
-        min_llcr=1.15,
+        min_llcr=1.15,  # Oborovo source: Inputs!D224 = Inputs!C177 = 1.15
         dsra_months=6,
         equity_irr_method="shl_plus_dividends",  # Stack O: Golden Excel equity IRR = SHL interest while SHL outstanding + dividends after; "combined" (capex-debt base, distributions only) gave 6.24% vs golden 10.60%
         debt_sizing_method="gearing_cap",  # legacy field; clean solver uses debt_sizing_mode
@@ -1149,6 +1149,9 @@ def create_default_tuho_wind1() -> ProjectInputs:
     )
     financing = replace(
         legacy.financing,
+        # TUHO source covenant: Inputs!D207 = Inputs!C160 = 1.20.
+        # Threshold-only C2 authority; it does not drive Senior sizing/sculpting.
+        min_llcr=1.20,
         shl_amount_keur=29_135.176217946093,
         shl_rate=0.08,
         gearing_ratio=0.80,
