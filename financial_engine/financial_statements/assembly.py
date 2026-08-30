@@ -70,31 +70,44 @@ class _AxisMismatch(ValueError):
         self.detail = detail
 
 
-def _validated_positions(name: str, axis_indices, model_indices) -> dict[int, int]:
-    """Validate a schedule axis against the model axis; return index→position.
+class _TypedUnavailable(ValueError):
+    """Internal fail-closed signal carrying its own statement status."""
 
-    Fail closed on: duplicates, indices outside the model grid,
-    non-ascending order, or gaps on the model grid. An axis may START later
-    than the first model period (the concept begins at COD — e.g. Senior
-    repayment starts at COD) and may END early (the concept terminates —
-    e.g. SHL at payoff): model periods before the axis start carry no value
-    for that concept (nothing exists yet), and periods after the axis end
-    carry the terminal balance forward causally.
-    """
-    axis = list(axis_indices)
-    model = list(model_indices)
-    if len(set(axis)) != len(axis):
-        raise _AxisMismatch(f"{name} axis has duplicate period indices")
-    model_set = set(model)
-    if any(i not in model_set for i in axis):
-        raise _AxisMismatch(f"{name} axis contains indices outside the model grid")
-    if axis != sorted(axis):
-        raise _AxisMismatch(f"{name} axis is not ascending")
-    model_order = {idx: pos for pos, idx in enumerate(model)}
-    for pos in range(1, len(axis)):
-        if model_order[axis[pos]] - model_order[axis[pos - 1]] != 1:
-            raise _AxisMismatch(f"{name} axis has a gap on the model grid")
-    return {idx: pos for pos, idx in enumerate(axis)}
+    def __init__(self, status, detail: str):
+        super().__init__(f"{status.value}: {detail}")
+        self.status = status
+        self.detail = detail
+
+
+def _expected_axis_contract(model_periods, project_inputs):
+    """Build the PR-F1 CanonicalAxisContract from the canonical model periods
+    and the production Senior policy (Correction B §5-§6: reuse the existing
+    axis authority; never self-author a weaker C3 axis definition)."""
+    from finco_core.engine.axis_contract import CanonicalAxisContract
+    from financial_engine.senior_debt.project_adapter import (
+        build_senior_debt_contract_from_project_inputs,
+    )
+    try:
+        senior_policy, _ = build_senior_debt_contract_from_project_inputs(
+            project_inputs, tuple(model_periods)
+        )
+    except Exception as exc:
+        raise _AxisMismatch(
+            f"senior policy reconstruction failed: {type(exc).__name__}: {exc}"
+        ) from exc
+    return CanonicalAxisContract.from_periods_and_policy(
+        tuple(model_periods), senior_policy
+    )
+
+
+def _mapped_axis(name: str, period_indices, values, expected_indices) -> dict[int, float]:
+    """Map an axis-aligned vector through the canonical PR-F1
+    map_period_vector authority (exact expected indices + parallel-vector
+    length enforcement). _AxisMismatch conversion happens at the caller."""
+    from finco_core.engine.period_engine import map_period_vector
+    return map_period_vector(
+        period_indices, values, label=name, expected_indices=expected_indices
+    )
 
 
 def _fail_closed(status: StatementStatus, detail: str) -> FinancialStatementsResult:
@@ -127,19 +140,14 @@ def assemble_decision_complete_financial_statements(
     STATEMENT_PERIOD_AXIS_MISMATCH result (fail closed, nothing zeroed)."""
     try:
         return _assemble_statements_checked(g2c_result, project_inputs)
+    except _TypedUnavailable as exc:
+        return _fail_closed(exc.status, exc.detail)
     except _AxisMismatch as exc:
         return _fail_closed(StatementStatus.STATEMENT_PERIOD_AXIS_MISMATCH, exc.detail)
-    """Assemble decision-complete financial statements from clean results.
-
-    Assembly only: every value is either a direct clean vector element or a
-    causal roll-forward/identity of clean vectors. No engine execution, no
-    recomputation of tax/debt/SHL/distributions, no residual-cash insert.
-    """
-    try:
-        return _assemble_statements_checked(g2c_result, project_inputs)
-    except _AxisMismatch:
-        # Typed fail-closed result for invalid axes — never silently zeroed.
-        raise
+    except ValueError as exc:
+        # Raw AXIS_* errors from the canonical map_period_vector authority
+        # are converted to the same typed fail-closed result.
+        return _fail_closed(StatementStatus.STATEMENT_PERIOD_AXIS_MISMATCH, str(exc))
 
 
 def _assemble_statements_checked(g2c_result, project_inputs):
@@ -152,19 +160,68 @@ def _assemble_statements_checked(g2c_result, project_inputs):
     dsra = getattr(model, "cash_dsra", None)
     wps = g2c_result.waterfall_periods
 
+    # B1 fix: blocker-reasons registry initialized before any branch can
+    # write to it (construction-None previously wrote before init).
+    unavailable: dict[str, str] = {}
+
     model_periods = list(model.periods)
     model_indices = [p.period_index for p in model_periods]
 
-    # Correction A: strict axis validation for every consumed schedule.
-    op_pos = _validated_positions("operating", op.period_indices, model_indices)
-    tax_pos = _validated_positions("tax", tax.period_indices, model_indices)
-    senior_pos = _validated_positions("senior", senior.period_indices, model_indices)
-    shl_pos = _validated_positions("shl", shl.period_indices, model_indices)
+    # Correction B §5-§7: exact canonical axes from the PR-F1 authority plus
+    # parallel-vector length enforcement through map_period_vector. No
+    # weaker independent C3 axis definition, no raw dict(zip(...)).
+    contract = _expected_axis_contract(model_periods, project_inputs)
+    from finco_core.engine.period_engine import map_period_vector
+
+    # Validation pass: each consumed vector must match its canonical axis
+    # exactly (indices AND length) — map_period_vector raises otherwise.
+    map_period_vector(
+        op.period_indices, op.revenue_keur,
+        label="operating", expected_indices=contract.full_axis)
+    map_period_vector(
+        tax.period_indices, tax.taxable_profit_keur,
+        label="tax", expected_indices=contract.full_axis)
+    map_period_vector(
+        shl.period_indices, shl.shl_gross_interest_keur,
+        label="shl", expected_indices=contract.full_axis)
+    senior_expected = contract.senior_axis or tuple(senior.period_indices)
+    map_period_vector(
+        senior.period_indices, senior.senior_interest_keur,
+        label="senior", expected_indices=senior_expected)
+    if dsra is not None:
+        map_period_vector(
+            [pr.period_index for pr in dsra.period_results],
+            [pr.closing_balance_keur for pr in dsra.period_results],
+            label="dsra", expected_indices=contract.full_axis)
+
+    # Position maps for O(1) access (validated above).
+    op_pos = {i: pos for pos, i in enumerate(op.period_indices)}
+    tax_pos = {i: pos for pos, i in enumerate(tax.period_indices)}
+    shl_pos = {i: pos for pos, i in enumerate(shl.period_indices)}
+    senior_pos = {i: pos for pos, i in enumerate(senior.period_indices)}
     dsra_pos: dict[int, int] = {}
     if dsra is not None:
-        dsra_pos = _validated_positions(
-            "dsra", [pr.period_index for pr in dsra.period_results], model_indices
-        )
+        map_period_vector(
+            [pr.period_index for pr in dsra.period_results],
+            [pr.closing_balance_keur for pr in dsra.period_results],
+            label="dsra", expected_indices=contract.full_axis)
+        dsra_pos = {pr.period_index: pos for pos, pr in enumerate(dsra.period_results)}
+
+    for label, vec in (
+        ("senior.principal", senior.senior_principal_keur),
+        ("senior.ds", senior.senior_debt_service_keur),
+        ("senior.closing", senior.senior_debt_closing_keur),
+        ("shl.principal", shl.shl_principal_keur),
+        ("shl.closing", shl.shl_closing_keur),
+        ("tax.cit_accrual", tax.tax_keur),
+        ("tax.cash", tax.corporate_tax_cash_keur),
+    ):
+        map_period_vector(
+            senior.period_indices if label.startswith("senior") else (
+                shl.period_indices if label.startswith("shl") else tax.period_indices),
+            vec, label=label, expected_indices=(
+                contract.senior_axis or tuple(senior.period_indices))
+            if label.startswith("senior") else contract.full_axis)
 
     # G2C waterfall date join with duplicate/missing detection.
     wp_by_date: dict = {}
@@ -200,41 +257,83 @@ def _assemble_statements_checked(g2c_result, project_inputs):
     # authoritative.
     construction_rows: list = []
     construction_grain = "native_construction_axis"
+    non_construction_fc_row = None
+    funding_audit: dict = {}
     cfr = getattr(fin, "construction_funding", None)
     if cfr is None:
-        construction_status = StatementStatus.PF_CASH_CONSTRUCTION_AUTHORITY_UNAVAILABLE
-        unavailable["construction_cash"] = (
-            "PF_CASH_CONSTRUCTION_AUTHORITY_UNAVAILABLE: no construction "
-            "funding authority is attached to this run."
+        # B1: truthful typed fail-closed result — no NameError, no silent
+        # None, no fabricated zero construction cash.
+        raise _TypedUnavailable(
+            StatementStatus.PF_CASH_CONSTRUCTION_AUTHORITY_UNAVAILABLE,
+            "no construction funding authority is attached to this run; "
+            "the PF statement cannot claim a complete sources/uses bridge "
+            "without it.",
         )
-    else:
-        construction_status = StatementStatus.OK
+    from financial_engine.financial_statements.contracts import (
+        ConstructionFundingStatementRow,
+    )
+    for cp in getattr(cfr, "periods", ()) or ():
+        construction_rows.append(ConstructionFundingStatementRow(
+            funding_period_index=cp.period_index,
+            period_start=getattr(cp, "period_start", None),
+            period_end=getattr(cp, "period_end", None),
+            cashflow_date=getattr(cp, "cashflow_date", None),
+            project_cash_uses_keur=float(getattr(cp, "project_cash_uses_keur", 0.0) or 0.0),
+            senior_draw_keur=float(getattr(cp, "senior_draw_keur", 0.0) or 0.0),
+            junior_or_other_funding_draw_keur=float(
+                getattr(cp, "junior_or_other_main_funding_draw_keur", 0.0) or 0.0),
+            share_capital_draw_keur=float(getattr(cp, "share_capital_draw_keur", 0.0) or 0.0),
+            share_premium_draw_keur=float(getattr(cp, "share_premium_draw_keur", 0.0) or 0.0),
+            other_committed_equity_draw_keur=float(
+                getattr(cp, "other_committed_equity_draw_keur", 0.0) or 0.0),
+            additional_equity_draw_keur=float(
+                getattr(cp, "additional_equity_draw_keur", 0.0) or 0.0),
+            shl_cash_draw_keur=float(getattr(cp, "shl_cash_draw_keur", 0.0) or 0.0),
+            total_sponsor_cash_draw_keur=float(
+                getattr(cp, "total_sponsor_cash_draw_keur", 0.0) or 0.0),
+            total_sources_keur=float(getattr(cp, "total_sources_keur", 0.0) or 0.0),
+            sources_uses_difference_keur=float(
+                getattr(cp, "sources_uses_difference_keur", 0.0) or 0.0),
+        ))
+
+    # Correction B §10/§12: non-construction FC/COD funding use exposed
+    # exactly once as a funding movement; funding audit identity proven:
+    #   construction uses + FC/COD uses == total_audit_uses
+    #   construction sources + FC/COD sources == total_audit_sources
+    #   total residual ≈ 0
+    non_construction_fc_row = None
+    total_constr_uses = sum(r.project_cash_uses_keur for r in construction_rows)
+    total_constr_sources = sum(r.total_sources_keur for r in construction_rows)
+    ncu = getattr(cfr, "non_construction_fc_use", None) if cfr is not None else None
+    if ncu is not None:
         from financial_engine.financial_statements.contracts import (
-            ConstructionFundingStatementRow,
+            NonConstructionFcFundingStatementRow,
         )
-        for cp in getattr(cfr, "periods", ()) or ():
-            construction_rows.append(ConstructionFundingStatementRow(
-                funding_period_index=cp.period_index,
-                period_start=getattr(cp, "period_start", None),
-                period_end=getattr(cp, "period_end", None),
-                cashflow_date=getattr(cp, "cashflow_date", None),
-                project_cash_uses_keur=float(getattr(cp, "project_cash_uses_keur", 0.0) or 0.0),
-                senior_draw_keur=float(getattr(cp, "senior_draw_keur", 0.0) or 0.0),
-                junior_or_other_funding_draw_keur=float(
-                    getattr(cp, "junior_or_other_main_funding_draw_keur", 0.0) or 0.0),
-                share_capital_draw_keur=float(getattr(cp, "share_capital_draw_keur", 0.0) or 0.0),
-                share_premium_draw_keur=float(getattr(cp, "share_premium_draw_keur", 0.0) or 0.0),
-                other_committed_equity_draw_keur=float(
-                    getattr(cp, "other_committed_equity_draw_keur", 0.0) or 0.0),
-                additional_equity_draw_keur=float(
-                    getattr(cp, "additional_equity_draw_keur", 0.0) or 0.0),
-                shl_cash_draw_keur=float(getattr(cp, "shl_cash_draw_keur", 0.0) or 0.0),
-                total_sponsor_cash_draw_keur=float(
-                    getattr(cp, "total_sponsor_cash_draw_keur", 0.0) or 0.0),
-                total_sources_keur=float(getattr(cp, "total_sources_keur", 0.0) or 0.0),
-                sources_uses_difference_keur=float(
-                    getattr(cp, "sources_uses_difference_keur", 0.0) or 0.0),
-            ))
+        non_construction_fc_row = NonConstructionFcFundingStatementRow(
+            kind="FC_COD",
+            policy=ncu.policy,
+            uses_keur=ncu.uses_keur,
+            senior_draw_keur=ncu.senior_draw_keur,
+            shl_draw_keur=ncu.shl_draw_keur,
+            junior_draw_keur=ncu.junior_draw_keur,
+            share_capital_draw_keur=ncu.share_capital_draw_keur,
+            share_premium_draw_keur=ncu.share_premium_draw_keur,
+            other_committed_equity_draw_keur=ncu.other_committed_equity_draw_keur,
+            additional_equity_draw_keur=ncu.additional_equity_draw_keur,
+            total_sources_keur=ncu.total_sources_keur,
+        )
+    funding_audit = {
+        "construction_uses_keur": total_constr_uses,
+        "construction_sources_keur": total_constr_sources,
+        "non_construction_fc_uses_keur": getattr(ncu, "uses_keur", 0.0) or 0.0,
+        "non_construction_fc_sources_keur": getattr(ncu, "total_sources_keur", 0.0) or 0.0,
+        "total_audit_uses_keur": getattr(cfr, "total_audit_uses_keur", None)
+        if cfr is not None else None,
+        "total_audit_sources_keur": getattr(cfr, "total_audit_sources_keur", None)
+        if cfr is not None else None,
+        "total_audit_residual_keur": getattr(cfr, "total_audit_residual_keur", None)
+        if cfr is not None else None,
+    }
 
     pnl_periods: list[IncomeStatementPeriod] = []
     tax_periods: list[TaxBridgePeriod] = []
@@ -247,6 +346,36 @@ def _assemble_statements_checked(g2c_result, project_inputs):
     cumulative_share_capital = 0.0
     cumulative_share_premium = 0.0
     non_finite = False
+
+    # Correction B §18: causal opening retained earnings at COD from typed
+    # construction accounting. Construction-period NI is complete when the
+    # typed SHL construction accounting is EXPENSE_TO_PNL (source-proven
+    # for TUHO/Oborovo): NI = -SHL gross interest (EBITDA/book dep zero
+    # rows, CIT accrual 0 on the construction loss).
+    tax_pol = getattr(project_inputs, "tax", None) if project_inputs is not None else None
+    treatment_value = getattr(
+        getattr(tax_pol, "shl_construction_accounting", None), "value", None)
+    if treatment_value == "expense_to_pnl":
+        opening_re_at_cod = -sum(
+            (float(g) if g is not None else 0.0)
+            for g, mp in zip(shl.shl_gross_interest_keur, model.periods)
+            if getattr(mp, "is_construction", False)
+        )
+        opening_re_status = StatementStatus.OK
+    else:
+        opening_re_at_cod = None
+        opening_re_status = (
+            StatementStatus.OPENING_EQUITY_ACCOUNTING_AUTHORITY_UNAVAILABLE
+        )
+    unavailable["opening_retained_earnings"] = (
+        "SOURCE_PROVEN (typed EXPENSE_TO_PNL): construction SHL gross "
+        "interest expensed through P&L creates the pre-COD retained loss."
+        if opening_re_at_cod is not None else
+        "OPENING_EQUITY_ACCOUNTING_AUTHORITY_UNAVAILABLE: the typed SHL "
+        "construction accounting treatment is not EXPENSE_TO_PNL; no causal "
+        "construction-P&L authority to derive opening RE."
+    )
+    opening_re = opening_re_at_cod
     dsra_by_idx = (
         {pr.period_index: pr for pr in dsra.period_results} if dsra is not None else {}
     )
@@ -380,18 +509,26 @@ def _assemble_statements_checked(g2c_result, project_inputs):
             net_fixed_assets_keur=None,
         ))
 
-        # Retained earnings: NI - legal distributions; opening requires a
-        # construction-equity accounting authority (unavailable — no residual-cash insert).
+        # Retained earnings (Correction B §18): opening RE at COD is derived
+        # causally from construction-period NI when the typed SHL
+        # construction accounting is EXPENSE_TO_PNL (construction NI =
+        # -SHL gross interest; EBITDA/book dep are zero rows, CIT accrual 0
+        # on the loss). SHL is debt — never deducted from RE as principal.
+        # Legal reserve stays UNRESOLVED (no generic authority).
         legal_dist = float(getattr(wp, "legal_equity_distribution_keur", 0.0) or 0.0)
         re_periods.append(RetainedEarningsPeriod(
             period_index=int(idx),
             period_end=getattr(mp, "period_end", None),
-            opening_retained_earnings_keur=None,
+            opening_retained_earnings_keur=opening_re,
             net_income_keur=net_income,
             legal_equity_distribution_keur=legal_dist,
             legal_reserve_allocation_keur=None,
-            closing_retained_earnings_keur=None,
+            closing_retained_earnings_keur=(
+                None if opening_re is None
+                else opening_re + net_income - legal_dist),
         ))
+        if opening_re is not None:
+            opening_re = opening_re + net_income - legal_dist
 
         # Balance sheet presentation: balances are clean closing authority;
         # unrestricted cash / gross FA / equity accounts are truthfully
@@ -431,15 +568,13 @@ def _assemble_statements_checked(g2c_result, project_inputs):
 
     if non_finite:
         overall = StatementStatus.NON_FINITE_RESULT
-    elif construction_status is not StatementStatus.OK:
-        overall = construction_status
     else:
-        # Honest partial availability (Correction A): PF cash is OK (the
+        # Honest partial availability (Correction B): PF cash is OK (the
         # construction bridge is mapped); P&L financing income and the
         # balance sheet remain honestly unavailable.
         overall = StatementStatus.UNRESTRICTED_CASH_AUTHORITY_UNAVAILABLE
 
-    unavailable = {
+    unavailable.update({
         "balance_sheet": (
             "UNRESTRICTED_CASH_AUTHORITY_UNAVAILABLE: closing unrestricted "
             "cash requires a causal unrestricted-cash roll-forward that the "
@@ -466,7 +601,7 @@ def _assemble_statements_checked(g2c_result, project_inputs):
             "cash / reserve balances has no clean authority; the P&L exposes "
             "all known lines but is not a complete financing result."
         ),
-    }
+    })
 
     return FinancialStatementsResult(
         status=overall,
@@ -488,9 +623,11 @@ def _assemble_statements_checked(g2c_result, project_inputs):
         pf_cash_waterfall_periods=tuple(pf_periods),
         construction_funding_rows=tuple(construction_rows),
         construction_funding_grain=construction_grain,
+        non_construction_fc_row=non_construction_fc_row,
+        funding_audit=funding_audit,
         fixed_asset_status=StatementStatus.BOOK_CAPITALIZATION_BASIS_UNAVAILABLE,
         fixed_asset_periods=tuple(fa_periods),
-        retained_earnings_status=StatementStatus.OPENING_EQUITY_ACCOUNTING_AUTHORITY_UNAVAILABLE,
+        retained_earnings_status=opening_re_status,
         retained_earnings_periods=tuple(re_periods),
         balance_sheet_status=StatementStatus.UNRESTRICTED_CASH_AUTHORITY_UNAVAILABLE,
         balance_sheet_periods=tuple(bs_periods),

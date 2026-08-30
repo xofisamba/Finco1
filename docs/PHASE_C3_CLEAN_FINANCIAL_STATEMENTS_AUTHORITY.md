@@ -147,3 +147,46 @@ Untouched and re-proven on the C3 head: Project XIRR (Solar
 29,291.16728832153 kEUR; LLCR 1.0578163095049742×; min LLCR 1.20×;
 headroom −0.1421836904950258×; FAIL; PLCR COVERAGE_CASHFLOW_BASIS_NOT_
 CONFIGURED). Tests C3-N.
+
+## Correction B (this revision)
+
+Correction B hardens the statement authority without touching engine
+formulas (C3 remains strictly downstream):
+
+1. **B1 — fail-closed construction-None path.** A `construction_funding
+   = None` financing result now returns a typed
+   `PF_CASH_CONSTRUCTION_AUTHORITY_UNAVAILABLE` result (empty statement
+   tuples, no NameError, no zero-default). The blocker-reasons registry is
+   initialized before any branch writes to it.
+2. **B2 — canonical PR-F1 axis authority.** Statement assembly no longer
+   self-authors axis definitions. Axes come from
+   `CanonicalAxisContract.from_periods_and_policy` (full / operating /
+   senior) built via the production senior adapter, and every consumed
+   vector is validated through `map_period_vector` with exact
+   `expected_indices` (AXIS_PERIOD_MISSING / EXTRA / SHIFTED / DUPLICATE /
+   LENGTH_MISMATCH). Position maps are built by `enumerate` only after
+   validation; any raw AXIS_* `ValueError` is converted to a typed
+   `STATEMENT_PERIOD_AXIS_MISMATCH` fail-closed result.
+3. **B3 — funding bridge completed.** Construction financing stays in its
+   native grain (`construction_funding_rows`); non-construction FC/COD use
+   is exposed exactly once as `non_construction_fc_row`; the funding audit
+   identity `uses − sources ≡ residual ≈ 0` is asserted for all projects.
+4. **Opening RE derivation.** When the typed tax policy is
+   `shl_construction_accounting == EXPENSE_TO_PNL`, opening retained
+   earnings at COD is derived as −Σ SHL construction gross interest
+   (TUHO −3520.42 kEUR, Oborovo −1169.66 kEUR, Solar/Wind 0.0). No plug,
+   no workbook reproduction.
+5. **Legal reserve / unrestricted cash / financing / CIT** re-audited:
+   legal-reserve allocation remains not typed (no invention); unrestricted
+   cash remains the primary blocker; financing identity audit proven
+   (residual ≈ 0 on all projects); CIT uses canonical realization values.
+
+Corruption matrix: 18 axis/vector corruptions (first/last/mid/dup/reord/
+short across tax/SHL/senior, DSRA missing/dup) all fail closed
+`STATEMENT_PERIOD_AXIS_MISMATCH` — never silently zeroed.
+
+Delivery classification (Correction B): still
+`PHASE_C3_BLOCKED_BY_UNRESTRICTED_CASH_AUTHORITY` — opening RE is now
+derived, but closing unrestricted cash and the balance sheet remain
+unresolved pending the unrestricted-cash, book-capitalization and
+opening-equity authorities.

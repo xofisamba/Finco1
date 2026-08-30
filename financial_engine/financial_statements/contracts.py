@@ -257,6 +257,29 @@ class ConstructionFundingStatementRow:
 
 
 @dataclass(frozen=True)
+class NonConstructionFcFundingStatementRow:
+    """Non-construction FC/COD funding use (Phase C3 Correction B §10).
+
+    Pass-through of `ConstructionFundingResult.non_construction_fc_use`
+    (e.g. CASH_DSRA reserve funding at COD that is NOT part of the
+    construction timeline). Exposed exactly once as a funding cash
+    movement; never merged into construction rows or the DSRA asset.
+    """
+
+    kind: str
+    policy: str
+    uses_keur: float
+    senior_draw_keur: float
+    shl_draw_keur: float
+    junior_draw_keur: float
+    share_capital_draw_keur: float
+    share_premium_draw_keur: float
+    other_committed_equity_draw_keur: float
+    additional_equity_draw_keur: float
+    total_sources_keur: float
+
+
+@dataclass(frozen=True)
 class AccountingPolicies:
     """Typed accounting-policy labels for every derived rule."""
 
@@ -303,3 +326,5 @@ class FinancialStatementsResult:
     authority_labels: dict = field(default_factory=dict)
     construction_funding_rows: tuple[ConstructionFundingStatementRow, ...] = ()
     construction_funding_grain: str = ""
+    non_construction_fc_row: object | None = None
+    funding_audit: dict = field(default_factory=dict)

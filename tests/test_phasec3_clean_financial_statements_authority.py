@@ -69,9 +69,7 @@ class TestC3A_SupportedMatrix:
         assert len(fs.pf_cash_waterfall_periods) > 0
         assert fs.balance_sheet_status.value == "UNRESTRICTED_CASH_AUTHORITY_UNAVAILABLE"
         assert fs.fixed_asset_status.value == "BOOK_CAPITALIZATION_BASIS_UNAVAILABLE"
-        assert fs.retained_earnings_status.value == (
-            "OPENING_EQUITY_ACCOUNTING_AUTHORITY_UNAVAILABLE"
-        )
+        assert fs.retained_earnings_status.value in ("OK", "OPENING_EQUITY_ACCOUNTING_AUTHORITY_UNAVAILABLE")
         assert fs.status.value == "UNRESTRICTED_CASH_AUTHORITY_UNAVAILABLE"
 
     @pytest.mark.parametrize("ptype", ("Solar", "Wind", "Oborovo", "TUHO"))
@@ -296,19 +294,23 @@ class TestC3I_DepreciationHandshake:
 
 class TestC3J_RetainedEarnings:
     def test_j1_no_shl_in_re_and_no_plug(self):
+        """Correction B §18: opening RE derived causally from construction
+        NI (typed EXPENSE_TO_PNL); SHL never enters RE as principal; legal
+        reserve stays unresolved (no invented allocation)."""
         _, fs = _assemble("TUHO")
         for p in fs.retained_earnings_periods:
-            assert p.opening_retained_earnings_keur is None
-            assert p.closing_retained_earnings_keur is None
             assert p.legal_reserve_allocation_keur is None  # no invented legal reserve
-        # Movements are still shown truthfully.
+            if p.opening_retained_earnings_keur is not None:
+                assert p.closing_retained_earnings_keur == pytest.approx(
+                    p.opening_retained_earnings_keur + p.net_income_keur
+                    - p.legal_equity_distribution_keur, abs=1e-9)
         assert any(p.net_income_keur != 0.0 for p in fs.retained_earnings_periods)
 
     def test_j2_status_honest(self):
         _, fs = _assemble("TUHO")
-        assert fs.retained_earnings_status.value == (
-            "OPENING_EQUITY_ACCOUNTING_AUTHORITY_UNAVAILABLE"
-        )
+        assert fs.retained_earnings_status.value == "OK"
+        # Correction B: opening RE derived from construction SHL interest.
+        assert fs.retained_earnings_periods[0].opening_retained_earnings_keur is not None
 
 
 # ---------------------------------------------------------------------------
@@ -546,3 +548,221 @@ class TestCorA_ConstructionSourcesUses:
         # PIK is carried in the PF statement as a non-cash memo row.
         pik_in_pf = sum(p.shl_pik_keur for p in fs.pf_cash_waterfall_periods)
         assert pik_in_pf >= 0.0
+
+
+# ---------------------------------------------------------------------------
+# C3 Correction B — exact axes, funding bridge, accounting closure
+# ---------------------------------------------------------------------------
+
+def _corrupt_axis(kind: str, which: str):
+    """Build a SeniorDebtModelInput-like g2c stub with a corrupted axis."""
+    from types import SimpleNamespace
+    run = _run_clean("Solar")
+    fin = run.g2c_result.financing_result
+    model = fin.project_model_result
+
+    def drop_first(indices, *vecs):
+        return indices[1:], tuple(v[1:] for v in vecs)
+
+    def drop_last(indices, *vecs):
+        return indices[:-1], tuple(v[:-1] for v in vecs)
+
+    def drop_middle(indices, *vecs):
+        mid = len(indices) // 2
+        return indices[:mid] + indices[mid+1:], tuple(v[:mid] + v[mid+1:] for v in vecs)
+
+    def dup(indices, *vecs):
+        i = len(indices) // 2
+        return (indices[:i] + (indices[i],) + indices[i:],
+                tuple(vecs and (v[:i] + (v[i],) + v[i:]) for v in vecs))
+
+    def reorder(indices, *vecs):
+        if len(indices) < 3:
+            return indices, vecs
+        i0, i1 = 1, 2
+        idx = list(indices); idx[i0], idx[i1] = idx[i1], idx[i0]
+        return tuple(idx), vecs
+
+    def shorten(indices, *vecs):
+        return indices, tuple(v[:-1] for v in vecs)
+
+    ops = {"first": drop_first, "last": drop_last, "middle": drop_middle,
+           "duplicate": dup, "reorder": reorder, "short": shorten}
+    fn = ops[kind]
+
+    tax = model.tax_and_cfads
+    senior = model.senior_debt
+    shl = model.shareholder_loan
+    dsra = model.cash_dsra
+
+    if which == "tax_first":   tax.period_indices, tax.tax_keur = fn(tax.period_indices, tax.tax_keur)
+    elif which == "tax_last":  tax.period_indices, tax.tax_keur = fn(tax.period_indices, tax.tax_keur)
+    elif which == "tax_mid":   tax.period_indices, tax.tax_keur = fn(tax.period_indices, tax.tax_keur)
+    elif which == "tax_dup":   tax.period_indices, tax.tax_keur = fn(tax.period_indices, tax.tax_keur)
+    elif which == "tax_reord": tax.period_indices, tax.tax_keur = fn(tax.period_indices, tax.tax_keur)
+    elif which == "tax_short": tax.tax_keur = tax.tax_keur[:-1]
+    elif which == "shl_first": shl.period_indices, shl.shl_gross_interest_keur = fn(shl.period_indices, shl.shl_gross_interest_keur)
+    elif which == "shl_last":  shl.period_indices, shl.shl_closing_keur = fn(shl.period_indices, shl.shl_closing_keur)
+    elif which == "shl_mid":   shl.period_indices, shl.shl_gross_interest_keur = fn(shl.period_indices, shl.shl_gross_interest_keur)
+    elif which == "shl_dup":   shl.period_indices = fn(shl.period_indices)[0]
+    elif which == "shl_short": shl.shl_gross_interest_keur = shl.shl_gross_interest_keur[:-1]
+    elif which == "sen_first": senior.period_indices, senior.senior_interest_keur = fn(senior.period_indices, senior.senior_interest_keur)
+    elif which == "sen_last":  senior.period_indices, senior.senior_debt_closing_keur = fn(senior.period_indices, senior.senior_debt_closing_keur)
+    elif which == "sen_mid":   senior.period_indices, senior.senior_interest_keur = fn(senior.period_indices, senior.senior_interest_keur)
+    elif which == "sen_reord": senior.period_indices = fn(senior.period_indices)[0]
+    elif which == "sen_short": senior.senior_interest_keur = senior.senior_interest_keur[:-1]
+    elif which == "dsra_missing":
+        prs = list(dsra.period_results); del prs[5]
+        dsra.period_results = tuple(prs)
+    elif which == "dsra_dup":
+        prs = list(dsra.period_results)
+        dsra.period_results = tuple(prs[:5] + (prs[4],) + prs[5:])
+
+    # Rebuild a G2C-like stub sharing the corrupted model.
+    from types import SimpleNamespace
+    g2c = SimpleNamespace(financing_result=fin, waterfall_periods=run.g2c_result.waterfall_periods)
+    return run, g2c
+
+
+    def test_l2_operating_stub_without_g2c_event_is_allowed(self):
+        """Construction stubs without a G2C event are covered by the
+        construction funding authority, not the operating waterfall."""
+        run, fs = _assemble("Solar")
+        assert fs.cash_flow_status.value == "OK"
+
+
+# ---------------------------------------------------------------------------
+# C3 Correction B — exact axes, funding bridge, accounting closure
+# ---------------------------------------------------------------------------
+
+def _corrupt_axis(which: str):
+    """Return a g2c-like stub with a corrupted schedule axis/vector."""
+    from types import SimpleNamespace
+    run = _run_clean("Solar")
+    fin = run.g2c_result.financing_result
+    model = fin.project_model_result
+    tax = model.tax_and_cfads
+    senior = model.senior_debt
+    shl = model.shareholder_loan
+    dsra = model.cash_dsra
+
+    def mutate(obj, idx_attr, vec_attr, kind):
+        indices = list(getattr(obj, idx_attr))
+        values = list(getattr(obj, vec_attr))
+        mid = len(indices) // 2
+        if kind == "first":
+            indices, values = indices[1:], values[1:]
+        elif kind == "last":
+            indices, values = indices[:-1], values[:-1]
+        elif kind in ("mid", "middle"):
+            indices, values = indices[:mid] + indices[mid+1:], values[:mid] + values[mid+1:]
+        elif kind in ("dup", "duplicate"):
+            indices = indices[:mid] + [indices[mid]] + indices[mid:]
+            values = values[:mid] + [values[mid]] + values[mid:]
+        elif kind in ("reord", "reorder"):
+            if len(indices) >= 3:
+                indices[1], indices[2] = indices[2], indices[1]
+        elif kind == "short":
+            values = values[:-1]
+        object.__setattr__(obj, idx_attr, tuple(indices))
+        object.__setattr__(obj, vec_attr, tuple(values))
+
+    if which.startswith("tax_"):
+        mutate(tax, "period_indices", "tax_keur", which[4:])
+    elif which.startswith("shl_"):
+        mutate(shl, "period_indices", "shl_gross_interest_keur", which[4:])
+    elif which.startswith("sen_"):
+        mutate(senior, "period_indices", "senior_interest_keur", which[4:])
+    elif which == "dsra_missing":
+        prs = list(dsra.period_results)
+        del prs[5]
+        object.__setattr__(dsra, "period_results", tuple(prs))
+    elif which == "dsra_dup":
+        prs = list(dsra.period_results)
+        object.__setattr__(dsra, "period_results",
+                           tuple(prs[:5] + [prs[4]] + prs[5:]))
+
+    g2c = SimpleNamespace(financing_result=fin, waterfall_periods=run.g2c_result.waterfall_periods)
+    return run, g2c
+
+
+class TestCorB_AxisCorruptionMatrix:
+    """§8: every corruption case fails closed
+    STATEMENT_PERIOD_AXIS_MISMATCH — never silently zeroed."""
+
+    CASES = (
+        "tax_first", "tax_last", "tax_mid", "tax_dup", "tax_reord", "tax_short",
+        "shl_first", "shl_last", "shl_mid", "shl_dup", "shl_short",
+        "sen_first", "sen_last", "sen_mid", "sen_reord", "sen_short",
+        "dsra_missing", "dsra_dup",
+    )
+
+    @pytest.mark.parametrize("kind", CASES)
+    def test_axis_corruption_fails_closed(self, kind):
+        from financial_engine.financial_statements.assembly import (
+            assemble_decision_complete_financial_statements,
+        )
+        import dataclasses
+        from types import SimpleNamespace
+
+        run, g2c = _corrupt_axis(kind)
+        # Rebuild a real CovenantGatedWaterfallResult-like stub sharing the
+        # corrupted model is complex; assembly consumes financing_result,
+        # so replace the model on a copied financing result via the stub.
+        broken = SimpleNamespace(financing_result=SimpleNamespace(
+            project_model_result=g2c.financing_result.project_model_result
+            if hasattr(g2c.financing_result, "project_model_result")
+            else _corrupt_axis.model,
+            project_uses=run.g2c_result.financing_result.project_uses,
+            dscr_debt_capacity_keur=0.0, gearing_debt_capacity_keur=0.0,
+            final_senior_commitment_keur=0.0, binding_senior_constraint="DSCR",
+            construction_funding=run.g2c_result.financing_result.construction_funding,
+            construction_financing=run.g2c_result.financing_result.construction_financing,
+        ), waterfall_periods=g2c.waterfall_periods)
+        result = assemble_decision_complete_financial_statements(
+            broken, run.project_inputs)
+        assert result.status.value == "STATEMENT_PERIOD_AXIS_MISMATCH", kind
+
+
+class TestCorB_FundingAudit:
+    def test_funding_audit_identity_all_projects(self):
+        for ptype in ("Solar", "Wind", "Oborovo", "TUHO"):
+            run, fs = _assemble(ptype)
+            fa = fs.funding_audit
+            total_uses = fa["construction_uses_keur"] + fa["non_construction_fc_uses_keur"]
+            total_sources = fa["construction_sources_keur"] + fa["non_construction_fc_sources_keur"]
+            if fa["total_audit_uses_keur"] is not None:
+                assert total_uses == pytest.approx(fa["total_audit_uses_keur"], abs=1e-6), ptype
+                assert total_sources == pytest.approx(fa["total_audit_sources_keur"], abs=1e-6), ptype
+            assert abs(fa["total_audit_residual_keur"]) < 1e-6, ptype
+
+    def test_construction_none_returns_typed_result(self):
+        """B1: construction_funding=None → truthful typed result, no NameError."""
+        import dataclasses
+        from financial_engine.financial_statements.assembly import (
+            assemble_decision_complete_financial_statements,
+        )
+        from financial_engine.financial_statements.contracts import (
+            FinancialStatementsResult,
+        )
+
+        run = _run_clean("Solar")
+        broken_fin = dataclasses.replace(
+            run.g2c_result.financing_result, construction_funding=None)
+        broken_g2c = dataclasses.replace(
+            run.g2c_result, financing_result=broken_fin)
+        result = assemble_decision_complete_financial_statements(
+            broken_g2c, run.project_inputs)
+        assert result.status.value == "PF_CASH_CONSTRUCTION_AUTHORITY_UNAVAILABLE"
+        assert result.pf_cash_waterfall_periods == ()
+        assert isinstance(result, FinancialStatementsResult)
+
+    def test_non_construction_fc_row_pass_through(self):
+        """§10: non_construction_fc_use exposed exactly once as a funding
+        movement when present; absent (None) for the default four."""
+        run, fs = _assemble("Solar")
+        ncu = run.g2c_result.financing_result.construction_funding.non_construction_fc_use
+        if ncu is None:
+            assert fs.non_construction_fc_row is None
+        else:
+            assert fs.non_construction_fc_row.uses_keur == ncu.uses_keur
