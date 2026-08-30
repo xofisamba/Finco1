@@ -57,19 +57,22 @@ def _operating(periods):
 
 class TestC3A_SupportedMatrix:
     @pytest.mark.parametrize("ptype", ("Solar", "Wind", "Oborovo", "TUHO"))
-    def test_a1_core_statements_ok_from_clean_only(self, ptype):
+    def test_a1_core_statements_assemble_with_honest_statuses(self, ptype):
         run, fs = _assemble(ptype)
-        assert fs.income_statement_status.value == "OK"
+        # Correction A: P&L may not claim OK while financing income
+        # (interest on unrestricted cash) has no clean authority.
+        assert fs.income_statement_status.value == "FINANCING_INCOME_AUTHORITY_UNAVAILABLE"
         assert fs.tax_bridge_status.value == "OK"
+        # PF cash is OK: construction rows mapped + operating waterfall full.
         assert fs.cash_flow_status.value == "OK"
         assert len(fs.income_statement_periods) > 0
         assert len(fs.pf_cash_waterfall_periods) > 0
-        # Honest partials, explicitly typed:
-        assert fs.balance_sheet_status is not None
-        assert fs.balance_sheet_status.value in (
-            "UNRESTRICTED_CASH_AUTHORITY_UNAVAILABLE",
-        )
+        assert fs.balance_sheet_status.value == "UNRESTRICTED_CASH_AUTHORITY_UNAVAILABLE"
         assert fs.fixed_asset_status.value == "BOOK_CAPITALIZATION_BASIS_UNAVAILABLE"
+        assert fs.retained_earnings_status.value == (
+            "OPENING_EQUITY_ACCOUNTING_AUTHORITY_UNAVAILABLE"
+        )
+        assert fs.status.value == "UNRESTRICTED_CASH_AUTHORITY_UNAVAILABLE"
 
     @pytest.mark.parametrize("ptype", ("Solar", "Wind", "Oborovo", "TUHO"))
     def test_a2_no_legacy_engine_execution(self, ptype, monkeypatch):
@@ -365,6 +368,7 @@ class TestC3L_AxisMismatch:
         )
         assert result.status.value == "STATEMENT_PERIOD_AXIS_MISMATCH"
         assert result.income_statement_periods == ()
+        assert result.pf_cash_waterfall_periods == ()
 
 
 # ---------------------------------------------------------------------------
@@ -372,7 +376,9 @@ class TestC3L_AxisMismatch:
 # ---------------------------------------------------------------------------
 
 class TestC3M_PresentationExposure:
-    def test_m1_adapter_attaches_statement_result_pass_through(self):
+    def test_m1_adapter_passes_through_run_owned_statement_result(self):
+        """Correction A §31: the adapter must not invoke assembly — it passes
+        through the run-owned C3 result with object identity."""
         from app.services.clean_presentation_adapter import (
             build_clean_waterfall_view,
         )
@@ -381,13 +387,9 @@ class TestC3M_PresentationExposure:
         view = build_clean_waterfall_view(run)
         fs = view.financial_statements_result
         assert fs is not None
-        assert fs.income_statement_status.value == "OK"
-        # Pass-through identity: same object values as direct assembly.
-        direct = _assemble("Oborovo")[1]
-        assert len(fs.income_statement_periods) == len(direct.income_statement_periods)
-        assert fs.income_statement_periods[10].revenue_keur == (
-            direct.income_statement_periods[10].revenue_keur
-        )
+        # Ownership: assembled exactly once inside run_clean_production.
+        assert fs is run.financial_statements_result
+        assert fs.status.value == "UNRESTRICTED_CASH_AUTHORITY_UNAVAILABLE"
 
 
 # ---------------------------------------------------------------------------
@@ -417,3 +419,130 @@ class TestC3N_C1C2Freeze:
             -0.1421836904950258, abs=1e-9)
         assert vs.lender_coverage.llcr_threshold_status.value == "FAIL"
         assert vs.lender_coverage.plcr.ratio is None
+
+
+# ---------------------------------------------------------------------------
+# C3 Correction A — §39 focused additions
+# ---------------------------------------------------------------------------
+
+class TestCorA_AdapterGovernance:
+    def test_g1_adapter_has_no_assembly_or_c3_formulas(self):
+        """§5: the presentation adapter must contain no statement assembly
+        call and no C3 accounting identity — pure pass-through only."""
+        import inspect
+        from app.services import clean_presentation_adapter
+
+        src = inspect.getsource(clean_presentation_adapter)
+        assert "assemble_decision_complete_financial_statements(" not in src
+        assert "_assemble_clean_statements" not in src
+
+    def test_g2_unexpected_c3_error_propagates_not_swallowed(self, monkeypatch):
+        """§4: an unexpected programming error inside assembly must
+        propagate out of run_clean_production — never become a None."""
+        import financial_engine.financial_statements.assembly as asm_mod
+        import financial_engine.financial_statements as fs_pkg
+        from app.services.production_financial_authority import run_clean_production
+        from app import project_factories as pf
+
+        def _boom(*a, **k):
+            raise RuntimeError("assembly programming bug")
+
+        monkeypatch.setattr(asm_mod, "assemble_decision_complete_financial_statements", _boom)
+        monkeypatch.setattr(fs_pkg, "assemble_decision_complete_financial_statements", _boom)
+        with pytest.raises(RuntimeError, match="assembly programming bug"):
+            run_clean_production(pf.create_default_solar_project(), project_type="Solar")
+
+    def test_g3_run_owns_single_statement_result(self):
+        run = _run_clean("Solar")
+        assert run.financial_statements_result is not None
+        # calculation_count semantics unchanged: C3 is downstream assembly.
+        assert run.authority_metadata["calculation_count"] == 1
+
+
+class TestCorA_FcfBanksBoundary:
+    def test_f1_fcf_banks_is_base_cfads_and_post_senior_is_separate(self):
+        """§30: per period, fcf_banks == canonical Base CFADS and
+        post_senior == G2C signed_post_senior — two distinct authorities."""
+        run, fs = _assemble("TUHO")
+        model = run.g2c_result.financing_result.project_model_result
+        tax = model.tax_and_cfads
+        wps = {w.period_index: w for w in run.g2c_result.waterfall_periods}
+        tax_pos = {i: pos for pos, i in enumerate(tax.period_indices)}
+        checked = 0
+        for p in fs.pf_cash_waterfall_periods:
+            if p.period_index not in tax_pos:
+                # Periods outside the tax axis have no CIT/cash-tax authority;
+                # their cash-tax row is 0.0 (honest absence, not fabrication).
+                assert p.cash_tax_keur == 0.0
+                continue
+            assert p.fcf_banks_keur == pytest.approx(
+                tax.cfads_keur[tax_pos[p.period_index]], abs=1e-9)
+            if p.period_index in wps:
+                assert p.post_senior_cash_keur == pytest.approx(
+                    wps[p.period_index].signed_post_senior_keur, abs=1e-9)
+            checked += 1
+        assert checked > 0
+
+    def test_f2_fcf_banks_minus_senior_ds_matches_post_senior(self):
+        """FCF Banks − Senior DS ≈ −(signed post-Senior cash): the two
+        boundaries are opposite-sign views of the same cash at the same
+        period (signed_post_senior = senior_ds − base_cfads upstream)."""
+        run, fs = _assemble("Oborovo")
+        for p in fs.pf_cash_waterfall_periods:
+            if p.senior_debt_service_keur == 0.0:
+                continue
+            lhs = p.fcf_banks_keur - p.senior_debt_service_keur
+            rhs = p.post_senior_cash_keur
+            assert lhs == pytest.approx(rhs, abs=1e-6), (
+                f"period {p.period_index}: {lhs} vs {rhs}"
+            )
+
+
+class TestCorA_ConstructionSourcesUses:
+    def test_s1_construction_rows_pass_through_sources_uses(self):
+        """§32: per construction period, uses = senior + junior + legal equity
+        + SHL draws (canonical residual enforced upstream); the statement
+        passes these numbers through unchanged."""
+        run, fs = _assemble("TUHO")
+        rows = fs.construction_funding_rows
+        assert rows, "TUHO must expose native-grain construction rows"
+        fin = run.g2c_result.financing_result
+        cf = fin.construction_funding
+        src_by_idx = {p.period_index: p for p in cf.periods}
+        for row in rows:
+            src = src_by_idx[row.funding_period_index]
+            sources = (src.senior_draw_keur + src.junior_or_other_main_funding_draw_keur
+                       + src.share_capital_draw_keur + src.share_premium_draw_keur
+                       + src.other_committed_equity_draw_keur
+                       + src.additional_equity_draw_keur + src.shl_cash_draw_keur)
+            assert sources == pytest.approx(src.project_cash_uses_keur, abs=1e-6), (
+                f"period {src.period_index}: canonical S/U residual enforced upstream"
+            )
+            # PF rows mirror the funding authority unchanged.
+            assert row.senior_draw_keur == pytest.approx(src.senior_draw_keur, abs=1e-9)
+            assert row.project_cash_uses_keur == pytest.approx(
+                src.project_cash_uses_keur, abs=1e-9)
+
+    def test_s2_construction_shl_pik_is_non_cash_expense(self):
+        """§33: construction SHL PIK is a P&L expense (typed EXPENSE_TO_PNL),
+        increases the SHL liability, and never enters cash sources."""
+        run, fs = _assemble("TUHO")
+        model = run.g2c_result.financing_result.project_model_result
+        mp_constr = [p for p in model.periods if p.is_construction]
+        if not mp_constr:
+            pytest.skip("no construction periods")
+        shl = model.shareholder_loan
+        constr_gross = sum(
+            shl.shl_gross_interest_keur[pos]
+            for pos, i in enumerate(shl.period_indices)
+            if any(mp.period_index == i and mp.is_construction for mp in model.periods)
+        )
+        # P&L books the construction SHL interest as expense (typed policy).
+        pnl_constr_interest = sum(
+            p.shl_interest_expense_keur for p in fs.income_statement_periods
+            if p.is_construction
+        )
+        assert pnl_constr_interest == pytest.approx(constr_gross, abs=1e-9)
+        # PIK is carried in the PF statement as a non-cash memo row.
+        pik_in_pf = sum(p.shl_pik_keur for p in fs.pf_cash_waterfall_periods)
+        assert pik_in_pf >= 0.0

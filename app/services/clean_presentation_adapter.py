@@ -342,22 +342,6 @@ def _valuation_summary_payload(g2c) -> dict:
     }
 
 
-def _assemble_clean_statements(g2c, clean_run):
-    """Phase C3: assemble the clean statement authority (strictly downstream
-    accounting over clean vectors). Presentation pass-through only."""
-    try:
-        from financial_engine.financial_statements import (
-            assemble_decision_complete_financial_statements,
-        )
-        return assemble_decision_complete_financial_statements(
-            g2c, clean_run.project_inputs
-        )
-    except Exception:
-        # Statement assembly must never break the run path; typed status is
-        # surfaced by the C3 contract itself.
-        return None
-
-
 def build_clean_waterfall_view(clean_run) -> CleanWaterfallView:
     """Adapt one CleanProductionRun into the legacy-shaped read-only view."""
     g2c = clean_run.g2c_result
@@ -594,9 +578,10 @@ def build_clean_waterfall_view(clean_run) -> CleanWaterfallView:
             "return_summary": _return_summary_payload(g2c),
             "valuation_summary": _valuation_summary_payload(g2c),
         },
-        # Phase C3: clean statement authority attached as pass-through —
-        # presentation serialization only, no formulas here.
-        financial_statements_result=_assemble_clean_statements(g2c, clean_run),
+        # Phase C3 Correction A: pure pass-through of the statement
+        # authority assembled once inside run_clean_production. The adapter
+        # contains no statement assembly and no C3 accounting formulas.
+        financial_statements_result=clean_run.financial_statements_result,
     )
 
 

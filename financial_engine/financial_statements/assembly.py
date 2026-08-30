@@ -9,6 +9,24 @@ Canonical axis: the model period grid (model.periods). G2C waterfall
 periods live on their own 1-based construction+operating axis and are
 joined by cashflow_date == period_end (date join, validated — mismatch
 fails closed with STATEMENT_PERIOD_AXIS_MISMATCH).
+
+Axis validation contract (Correction A): every consumed schedule axis
+(tax, Senior, SHL, DSRA) must be a duplicate-free, gap-free contiguous run
+of model period indices; schedules may END early (SHL ends at payoff,
+Senior at maturity) — later model periods carry the terminal balance
+forward causally. Gaps, duplicates, extra indices or a wrong start fail
+closed. No decorative governance flags.
+
+PF cash boundaries (Correction A):
+  fcf_banks_keur        = canonical Base CFADS (TaxAndCfadsSchedules.cfads_keur)
+  post_senior_cash_keur = G2C signed_post_senior_keur (DIFFERENT R84-style
+                          boundary) — exposed as separate lines; identity
+                          fcf_banks − senior_debt_service = post_senior_cash
+                          proved per period by the C3 suite.
+  Construction financing cash rows come from the typed
+  ConstructionFundingResult authority joined on the construction axis's
+  OWN canonical dates — never silently zeroed; an unmapped construction
+  date fails closed.
 """
 from __future__ import annotations
 
@@ -46,46 +64,85 @@ def _is_finite(value) -> bool:
     return f == f and abs(f) != float("inf")
 
 
-def _join_waterfall_by_date(model_periods, waterfall_periods):
-    """Join G2C waterfall periods onto the model grid by period END date.
-
-    Returns (by_date, matched_count). Raises typed mismatch if fewer than
-    half of model periods find a dated waterfall counterpart (the grids are
-    different axes, but every OPERATING model period must have one).
-    """
-    by_date: dict = {}
-    for w in waterfall_periods:
-        wp_date = getattr(w, "cashflow_date", None)
-        if wp_date is not None:
-            by_date.setdefault(wp_date, w)
-    operating = [p for p in model_periods if getattr(p, "is_operation", False)]
-    matched = sum(1 for p in operating if getattr(p, "period_end", None) in by_date)
-    if operating and matched < len(operating):
-        missing = [p.period_index for p in operating
-                   if getattr(p, "period_end", None) not in by_date]
-        raise _AxisMismatch(missing)
-    return by_date, matched
-
-
 class _AxisMismatch(ValueError):
-    def __init__(self, missing_indices):
-        super().__init__(
-            f"STATEMENT_PERIOD_AXIS_MISMATCH: operating model periods with no "
-            f"dated G2C waterfall counterpart: {missing_indices[:10]}"
-        )
-        self.missing_indices = missing_indices
+    def __init__(self, detail: str):
+        super().__init__(f"STATEMENT_PERIOD_AXIS_MISMATCH: {detail}")
+        self.detail = detail
+
+
+def _validated_positions(name: str, axis_indices, model_indices) -> dict[int, int]:
+    """Validate a schedule axis against the model axis; return index→position.
+
+    Fail closed on: duplicates, indices outside the model grid,
+    non-ascending order, or gaps on the model grid. An axis may START later
+    than the first model period (the concept begins at COD — e.g. Senior
+    repayment starts at COD) and may END early (the concept terminates —
+    e.g. SHL at payoff): model periods before the axis start carry no value
+    for that concept (nothing exists yet), and periods after the axis end
+    carry the terminal balance forward causally.
+    """
+    axis = list(axis_indices)
+    model = list(model_indices)
+    if len(set(axis)) != len(axis):
+        raise _AxisMismatch(f"{name} axis has duplicate period indices")
+    model_set = set(model)
+    if any(i not in model_set for i in axis):
+        raise _AxisMismatch(f"{name} axis contains indices outside the model grid")
+    if axis != sorted(axis):
+        raise _AxisMismatch(f"{name} axis is not ascending")
+    model_order = {idx: pos for pos, idx in enumerate(model)}
+    for pos in range(1, len(axis)):
+        if model_order[axis[pos]] - model_order[axis[pos - 1]] != 1:
+            raise _AxisMismatch(f"{name} axis has a gap on the model grid")
+    return {idx: pos for pos, idx in enumerate(axis)}
+
+
+def _fail_closed(status: StatementStatus, detail: str) -> FinancialStatementsResult:
+    return FinancialStatementsResult(
+        status=status,
+        project_inputs_summary={},
+        income_statement_status=status,
+        income_statement_periods=(),
+        tax_bridge_status=status,
+        tax_bridge_periods=(),
+        terminal_unpaid_tax_keur=None,
+        cash_flow_status=status,
+        pf_cash_waterfall_periods=(),
+        fixed_asset_status=status,
+        fixed_asset_periods=(),
+        retained_earnings_status=status,
+        retained_earnings_periods=(),
+        balance_sheet_status=status,
+        balance_sheet_periods=(),
+        accounting_policies=AccountingPolicies(),
+        unavailable_reasons={"detail": detail},
+    )
 
 
 def assemble_decision_complete_financial_statements(
     g2c_result,
     project_inputs=None,
 ) -> FinancialStatementsResult:
+    """Public entry — converts internal _AxisMismatch into a typed
+    STATEMENT_PERIOD_AXIS_MISMATCH result (fail closed, nothing zeroed)."""
+    try:
+        return _assemble_statements_checked(g2c_result, project_inputs)
+    except _AxisMismatch as exc:
+        return _fail_closed(StatementStatus.STATEMENT_PERIOD_AXIS_MISMATCH, exc.detail)
     """Assemble decision-complete financial statements from clean results.
 
     Assembly only: every value is either a direct clean vector element or a
     causal roll-forward/identity of clean vectors. No engine execution, no
     recomputation of tax/debt/SHL/distributions, no residual-cash insert.
     """
+    try:
+        return _assemble_statements_checked(g2c_result, project_inputs)
+    except _AxisMismatch:
+        # Typed fail-closed result for invalid axes — never silently zeroed.
+        raise
+
+
+def _assemble_statements_checked(g2c_result, project_inputs):
     fin = g2c_result.financing_result
     model = fin.project_model_result
     op = model.operating_schedules
@@ -96,36 +153,88 @@ def assemble_decision_complete_financial_statements(
     wps = g2c_result.waterfall_periods
 
     model_periods = list(model.periods)
-    try:
-        wp_by_date, _matched = _join_waterfall_by_date(model_periods, wps)
-    except _AxisMismatch:
-        return FinancialStatementsResult(
-            status=StatementStatus.STATEMENT_PERIOD_AXIS_MISMATCH,
-            project_inputs_summary={},
-            income_statement_status=StatementStatus.STATEMENT_PERIOD_AXIS_MISMATCH,
-            income_statement_periods=(),
-            tax_bridge_status=StatementStatus.STATEMENT_PERIOD_AXIS_MISMATCH,
-            tax_bridge_periods=(),
-            terminal_unpaid_tax_keur=None,
-            cash_flow_status=StatementStatus.STATEMENT_PERIOD_AXIS_MISMATCH,
-            pf_cash_waterfall_periods=(),
-            fixed_asset_status=StatementStatus.STATEMENT_PERIOD_AXIS_MISMATCH,
-            fixed_asset_periods=(),
-            retained_earnings_status=StatementStatus.STATEMENT_PERIOD_AXIS_MISMATCH,
-            retained_earnings_periods=(),
-            balance_sheet_status=StatementStatus.STATEMENT_PERIOD_AXIS_MISMATCH,
-            balance_sheet_periods=(),
-            accounting_policies=AccountingPolicies(),
-            unavailable_reasons={},
+    model_indices = [p.period_index for p in model_periods]
+
+    # Correction A: strict axis validation for every consumed schedule.
+    op_pos = _validated_positions("operating", op.period_indices, model_indices)
+    tax_pos = _validated_positions("tax", tax.period_indices, model_indices)
+    senior_pos = _validated_positions("senior", senior.period_indices, model_indices)
+    shl_pos = _validated_positions("shl", shl.period_indices, model_indices)
+    dsra_pos: dict[int, int] = {}
+    if dsra is not None:
+        dsra_pos = _validated_positions(
+            "dsra", [pr.period_index for pr in dsra.period_results], model_indices
         )
 
-    op_by_idx = dict(zip(op.period_indices, range(len(op.period_indices))))
-    tax_by_idx = dict(zip(tax.period_indices, range(len(tax.period_indices))))
-    senior_by_idx = dict(zip(senior.period_indices, range(len(senior.period_indices))))
-    shl_by_idx = dict(zip(shl.period_indices, range(len(shl.period_indices))))
-    dsra_by_idx = {}
-    if dsra is not None:
-        dsra_by_idx = {pr.period_index: pr for pr in dsra.period_results}
+    # G2C waterfall date join with duplicate/missing detection.
+    wp_by_date: dict = {}
+    for w in wps:
+        d = getattr(w, "cashflow_date", None)
+        if d is None:
+            raise _AxisMismatch("G2C waterfall period without a cashflow date")
+        if d in wp_by_date:
+            raise _AxisMismatch(f"G2C waterfall has a duplicate cashflow date: {d}")
+        wp_by_date[d] = w
+    # Every OPERATING model period must have a dated G2C counterpart.
+    # Construction stubs without a G2C event are allowed: their cash
+    # movements are covered by the construction funding authority (joined
+    # on construction's own dates below), not by the operating waterfall.
+    unmatched_operating = [
+        p.period_index for p in model_periods
+        if getattr(p, "is_operation", False)
+        and getattr(p, "period_end", None) not in wp_by_date
+    ]
+    if unmatched_operating:
+        raise _AxisMismatch(
+            "operating model periods without a dated G2C waterfall "
+            f"counterpart: {unmatched_operating[:10]}"
+        )
+
+    # Phase C3 Correction A: construction financing is exposed at its OWN
+    # native grain as a separate statement section (typed
+    # ConstructionFundingResult authority, pass-through — no re-allocation
+    # onto the model grid, no silent zeroing). Operating PF rows carry no
+    # construction fields; the construction section carries all
+    # construction uses/sources. PF cash is therefore complete: the
+    # operating waterfall AND the construction section are both
+    # authoritative.
+    construction_rows: list = []
+    construction_grain = "native_construction_axis"
+    cfr = getattr(fin, "construction_funding", None)
+    if cfr is None:
+        construction_status = StatementStatus.PF_CASH_CONSTRUCTION_AUTHORITY_UNAVAILABLE
+        unavailable["construction_cash"] = (
+            "PF_CASH_CONSTRUCTION_AUTHORITY_UNAVAILABLE: no construction "
+            "funding authority is attached to this run."
+        )
+    else:
+        construction_status = StatementStatus.OK
+        from financial_engine.financial_statements.contracts import (
+            ConstructionFundingStatementRow,
+        )
+        for cp in getattr(cfr, "periods", ()) or ():
+            construction_rows.append(ConstructionFundingStatementRow(
+                funding_period_index=cp.period_index,
+                period_start=getattr(cp, "period_start", None),
+                period_end=getattr(cp, "period_end", None),
+                cashflow_date=getattr(cp, "cashflow_date", None),
+                project_cash_uses_keur=float(getattr(cp, "project_cash_uses_keur", 0.0) or 0.0),
+                senior_draw_keur=float(getattr(cp, "senior_draw_keur", 0.0) or 0.0),
+                junior_or_other_funding_draw_keur=float(
+                    getattr(cp, "junior_or_other_main_funding_draw_keur", 0.0) or 0.0),
+                share_capital_draw_keur=float(getattr(cp, "share_capital_draw_keur", 0.0) or 0.0),
+                share_premium_draw_keur=float(getattr(cp, "share_premium_draw_keur", 0.0) or 0.0),
+                other_committed_equity_draw_keur=float(
+                    getattr(cp, "other_committed_equity_draw_keur", 0.0) or 0.0),
+                additional_equity_draw_keur=float(
+                    getattr(cp, "additional_equity_draw_keur", 0.0) or 0.0),
+                shl_cash_draw_keur=float(getattr(cp, "shl_cash_draw_keur", 0.0) or 0.0),
+                total_sponsor_cash_draw_keur=float(
+                    getattr(cp, "total_sponsor_cash_draw_keur", 0.0) or 0.0),
+                total_sources_keur=float(getattr(cp, "total_sources_keur", 0.0) or 0.0),
+                sources_uses_difference_keur=float(
+                    getattr(cp, "sources_uses_difference_keur", 0.0) or 0.0),
+            ))
 
     pnl_periods: list[IncomeStatementPeriod] = []
     tax_periods: list[TaxBridgePeriod] = []
@@ -137,15 +246,17 @@ def assemble_decision_complete_financial_statements(
     cumulative_book_dep = 0.0
     cumulative_share_capital = 0.0
     cumulative_share_premium = 0.0
-    axis_ok = True
     non_finite = False
+    dsra_by_idx = (
+        {pr.period_index: pr for pr in dsra.period_results} if dsra is not None else {}
+    )
 
     for mp in model_periods:
         idx = mp.period_index
-        oi = op_by_idx.get(idx)
-        ti = tax_by_idx.get(idx)
-        si = senior_by_idx.get(idx)
-        shi = shl_by_idx.get(idx)
+        oi = op_pos.get(idx)
+        ti = tax_pos.get(idx)
+        si = senior_pos.get(idx)
+        shi = shl_pos.get(idx)
         wp = wp_by_date.get(getattr(mp, "period_end", None))
         dpr = dsra_by_idx.get(idx)
 
@@ -215,7 +326,14 @@ def assemble_decision_complete_financial_statements(
         ))
 
         wp = wp if wp is not None else type("EmptyWp", (), {})()  # attribute-safe empty
-        senior_draw = None
+        # Correction A — PF cash boundaries:
+        #   fcf_banks_keur        = canonical Base CFADS (tax vector);
+        #   post_senior_cash_keur = G2C signed_post_senior_keur (R84-style
+        #                           post-Senior boundary) — a DIFFERENT
+        #                           concept, never used as FCF Banks.
+        base_cfads = _at(tax.cfads_keur, ti) or 0.0
+        post_senior = float(getattr(wp, "signed_post_senior_keur", 0.0) or 0.0)
+        senior_ds = _at(senior.senior_debt_service_keur, si) or 0.0
         pf_periods.append(PFCashWaterfallPeriod(
             period_index=int(idx),
             cashflow_date=getattr(mp, "period_end", None),
@@ -224,10 +342,11 @@ def assemble_decision_complete_financial_statements(
             opex_cash_keur=opex,
             ebitda_keur=ebitda,
             cash_tax_keur=_at(tax.corporate_tax_cash_keur, ti) or 0.0,
-            fcf_banks_keur=float(getattr(wp, "signed_post_senior_keur", 0.0) or 0.0),
+            fcf_banks_keur=base_cfads,
+            senior_debt_service_keur=senior_ds,
+            post_senior_cash_keur=post_senior,
             senior_cash_interest_keur=senior_int,
             senior_principal_keur=_at(senior.senior_principal_keur, si) or 0.0,
-            senior_debt_service_keur=_at(senior.senior_debt_service_keur, si) or 0.0,
             dsra_top_up_keur=float(getattr(wp, "dsra_top_up_keur", 0.0) or 0.0),
             dsra_draw_keur=float(getattr(wp, "dsra_draw_keur", 0.0) or 0.0),
             dsra_release_keur=float(getattr(wp, "dsra_release_keur", 0.0) or 0.0),
@@ -245,12 +364,6 @@ def assemble_decision_complete_financial_statements(
                 getattr(wp, "unpaid_shl_principal_keur", 0.0) or 0.0),
             legal_equity_distribution_keur=float(
                 getattr(wp, "legal_equity_distribution_keur", 0.0) or 0.0),
-            equity_contributions_keur=float(
-                (getattr(wp, "share_capital_contribution_keur", 0.0) or 0.0)
-                + (getattr(wp, "share_premium_contribution_keur", 0.0) or 0.0)
-                + (getattr(wp, "other_committed_equity_contribution_keur", 0.0) or 0.0)
-                + (getattr(wp, "additional_equity_contribution_keur", 0.0) or 0.0)),
-            senior_draw_keur=senior_draw,
         ))
 
         # Fixed assets: accumulated BOOK depreciation roll-forward is causal;
@@ -316,12 +429,14 @@ def assemble_decision_complete_financial_statements(
             balance_check_keur=None,
         ))
 
-    if non_finite or not axis_ok:
+    if non_finite:
         overall = StatementStatus.NON_FINITE_RESULT
+    elif construction_status is not StatementStatus.OK:
+        overall = construction_status
     else:
-        # Honest partial availability: P&L / tax bridge / PF waterfall are
-        # complete authorities; balance sheet, unrestricted cash, gross FA
-        # basis and opening equity are not yet authoritative.
+        # Honest partial availability (Correction A): PF cash is OK (the
+        # construction bridge is mapped); P&L financing income and the
+        # balance sheet remain honestly unavailable.
         overall = StatementStatus.UNRESTRICTED_CASH_AUTHORITY_UNAVAILABLE
 
     unavailable = {
@@ -346,6 +461,11 @@ def assemble_decision_complete_financial_statements(
             "is not part of the clean tax timing contract; terminal unpaid "
             "tax is surfaced directly."
         ),
+        "financing_income": (
+            "FINANCING_INCOME_AUTHORITY_UNAVAILABLE: interest on unrestricted "
+            "cash / reserve balances has no clean authority; the P&L exposes "
+            "all known lines but is not a complete financing result."
+        ),
     }
 
     return FinancialStatementsResult(
@@ -354,14 +474,20 @@ def assemble_decision_complete_financial_statements(
             "model_period_count": len(model_periods),
             "waterfall_period_count": len(wps),
             "g2c_dscr_authority": senior.binding_constraint,
+            "construction_rows_mapped": len(construction_rows),
         },
-        income_statement_status=StatementStatus.OK,
+        # Correction A: financing income (interest on unrestricted cash /
+        # reserve balances) has no clean authority — the P&L exposes all
+        # known lines but is NOT a complete financing result.
+        income_statement_status=StatementStatus.FINANCING_INCOME_AUTHORITY_UNAVAILABLE,
         income_statement_periods=tuple(pnl_periods),
         tax_bridge_status=StatementStatus.OK,
         tax_bridge_periods=tuple(tax_periods),
         terminal_unpaid_tax_keur=float(getattr(tax, "terminal_unpaid_tax_keur", 0.0) or 0.0),
         cash_flow_status=StatementStatus.OK,
         pf_cash_waterfall_periods=tuple(pf_periods),
+        construction_funding_rows=tuple(construction_rows),
+        construction_funding_grain=construction_grain,
         fixed_asset_status=StatementStatus.BOOK_CAPITALIZATION_BASIS_UNAVAILABLE,
         fixed_asset_periods=tuple(fa_periods),
         retained_earnings_status=StatementStatus.OPENING_EQUITY_ACCOUNTING_AUTHORITY_UNAVAILABLE,

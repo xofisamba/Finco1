@@ -36,6 +36,10 @@ class StatementStatus(str, Enum):
     )
     UNRESTRICTED_CASH_AUTHORITY_UNAVAILABLE = "UNRESTRICTED_CASH_AUTHORITY_UNAVAILABLE"
     TAX_PAYABLE_AUTHORITY_UNAVAILABLE = "TAX_PAYABLE_AUTHORITY_UNAVAILABLE"
+    FINANCING_INCOME_AUTHORITY_UNAVAILABLE = "FINANCING_INCOME_AUTHORITY_UNAVAILABLE"
+    PF_CASH_CONSTRUCTION_AUTHORITY_UNAVAILABLE = (
+        "PF_CASH_CONSTRUCTION_AUTHORITY_UNAVAILABLE"
+    )
     ACCOUNTING_TREATMENT_UNRESOLVED = "ACCOUNTING_TREATMENT_UNRESOLVED"
     BALANCE_SHEET_DOES_NOT_BALANCE = "BALANCE_SHEET_DOES_NOT_BALANCE"
     CASH_FLOW_DOES_NOT_RECONCILE = "CASH_FLOW_DOES_NOT_RECONCILE"
@@ -121,10 +125,15 @@ class PFCashWaterfallPeriod:
     ebitda_keur: float
     cash_tax_keur: float
 
-    fcf_banks_keur: float                      # post-tax, pre-DS cash for banks
+    # Base FCF / FCF Banks boundary = canonical Base CFADS (NOT the
+    # post-Senior boundary). senior_debt_service bridges the two:
+    #   post_senior_cash_keur = fcf_banks_keur - senior_debt_service_keur
+    fcf_banks_keur: float
+    senior_debt_service_keur: float
+    post_senior_cash_keur: float
+
     senior_cash_interest_keur: float
     senior_principal_keur: float
-    senior_debt_service_keur: float
 
     dsra_top_up_keur: float
     dsra_draw_keur: float
@@ -140,8 +149,17 @@ class PFCashWaterfallPeriod:
     shl_unpaid_principal_keur: float
 
     legal_equity_distribution_keur: float
-    equity_contributions_keur: float
-    senior_draw_keur: float | None             # construction financing draws
+
+    # Construction financing cash rows (typed ConstructionFundingResult
+    # authority, joined on construction's own canonical dates). None where
+    # the period is not covered by the construction funding axis.
+    project_cash_uses_keur: float | None = None
+    senior_draw_keur: float | None = None
+    junior_or_other_funding_draw_keur: float | None = None
+    share_capital_draw_keur: float | None = None
+    share_premium_draw_keur: float | None = None
+    other_equity_draw_keur: float | None = None
+    shl_cash_draw_keur: float | None = None
 
 
 @dataclass(frozen=True)
@@ -211,6 +229,34 @@ class BalanceSheetPeriod:
 
 
 @dataclass(frozen=True)
+class ConstructionFundingStatementRow:
+    """One ConstructionFundingPeriod at its NATIVE grain (pass-through).
+
+    Phase C3 Correction A: construction financing lives on its own
+    canonical construction axis (which may be monthly and undated for
+    generic factories). These rows are exposed at that native grain — no
+    re-allocation onto the model grid, no silent zeroing. PF operating rows
+    and these rows together form the complete PF cash picture.
+    """
+
+    funding_period_index: int
+    period_start: object | None
+    period_end: object | None
+    cashflow_date: object | None
+    project_cash_uses_keur: float
+    senior_draw_keur: float
+    junior_or_other_funding_draw_keur: float
+    share_capital_draw_keur: float
+    share_premium_draw_keur: float
+    other_committed_equity_draw_keur: float
+    additional_equity_draw_keur: float
+    shl_cash_draw_keur: float
+    total_sponsor_cash_draw_keur: float
+    total_sources_keur: float
+    sources_uses_difference_keur: float
+
+
+@dataclass(frozen=True)
 class AccountingPolicies:
     """Typed accounting-policy labels for every derived rule."""
 
@@ -255,3 +301,5 @@ class FinancialStatementsResult:
     accounting_policies: AccountingPolicies
     unavailable_reasons: dict = field(default_factory=dict)
     authority_labels: dict = field(default_factory=dict)
+    construction_funding_rows: tuple[ConstructionFundingStatementRow, ...] = ()
+    construction_funding_grain: str = ""
