@@ -148,6 +148,24 @@ _TUHO_ACCOUNTING_POLICY = AccountingPolicyConfig(
     **_PRE_CONSTRUCTION_RE_SOURCE_PROVEN,
 )
 
+# Generic clean accounting policy for fictional Solar/Wind SPVs.
+# Only the four approved dimensions are set to GENERIC_FINCO_POLICY.
+# All other dimensions are explicitly UNRESOLVED to prevent dataclass
+# defaults from accidentally upgrading unapproved accounting dimensions.
+_GENERIC_CLEAN_ACCOUNTING_POLICY = AccountingPolicyConfig(
+    # Approved generic dimensions:
+    preconstruction_retained_earnings_keur=0.0,
+    preconstruction_retained_earnings_authority=AccountingPolicyAuthority.GENERIC_FINCO_POLICY,
+    opening_re_authority=AccountingPolicyAuthority.GENERIC_FINCO_POLICY,
+    shl_construction_accounting_authority=AccountingPolicyAuthority.GENERIC_FINCO_POLICY,
+    # All other dimensions explicitly UNRESOLVED:
+    book_capitalization_authority=AccountingPolicyAuthority.UNRESOLVED,
+    book_capitalization_components={},
+    legal_reserve_policy=None,
+    legal_reserve_authority=AccountingPolicyAuthority.UNRESOLVED,
+    cash_interest_authority=AccountingPolicyAuthority.UNRESOLVED,
+)
+
 
 # =============================================================================
 # Oborovo Solar PV (53.63 MWp, Croatia, 30-year horizon)
@@ -1447,7 +1465,8 @@ def create_default_solar_project(
         clean_cash_tax_timing_enabled=True)
 
     return ProjectInputs(info=info, technical=technical, capex=capex,
-        opex=tuple(opex), revenue=revenue, financing=financing, tax=tax)
+        opex=tuple(opex), revenue=revenue, financing=financing, tax=tax,
+        accounting_policy_config=_GENERIC_CLEAN_ACCOUNTING_POLICY)
 
 
 def create_default_wind_project(
@@ -1534,7 +1553,8 @@ def create_default_wind_project(
         clean_cash_tax_timing_enabled=True)
 
     return ProjectInputs(info=info, technical=technical, capex=capex,
-        opex=tuple(opex), revenue=revenue, financing=financing, tax=tax)
+        opex=tuple(opex), revenue=revenue, financing=financing, tax=tax,
+        accounting_policy_config=_GENERIC_CLEAN_ACCOUNTING_POLICY)
 
 
 def create_default_bess_project(

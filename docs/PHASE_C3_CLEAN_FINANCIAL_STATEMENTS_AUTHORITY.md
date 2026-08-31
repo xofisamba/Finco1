@@ -2,8 +2,8 @@
 
 ## CURRENT AUTHORITATIVE STATE — CORRECTION G
 
-**Branch:** `phasec3-clean-financial-statements-authority`  
-**HEAD:** `e8c8cb1b` (Correction G)  
+**Branch:** `phasec3-clean-financial-statements-authority`
+**HEAD:** `e8c8cb1b` (Correction G)
 **Delivery classification:** `PHASE_C3_BLOCKED_BY_UPSTREAM_ENGINE_AUTHORITY`
 
 C3 internal contracts are coherent; all C3 suites (A, D, F, G) agree;
@@ -41,10 +41,10 @@ Canonical module: `finco_core/inputs/accounting.py`
 
 ### Upstream prerequisites (DO NOT implement in PR #964)
 
-1. **`BOOK_DEPRECIABLE_ASSET_BASIS_UPSTREAM_REQUIRED`**  
+1. **`BOOK_DEPRECIABLE_ASSET_BASIS_UPSTREAM_REQUIRED`**
    `ConstructionFinancingResult → Canonical BookDepreciableAssetBasis → Operating book depreciation → C3 GFA/AccDep/NFA`
 
-2. **`CASH_RESERVE_INTEREST_UPSTREAM_REQUIRED`**  
+2. **`CASH_RESERVE_INTEREST_UPSTREAM_REQUIRED`**
    `Eligible cash/reserve balance + interest rate policy + timing/day-count → financing income → EBT → taxable income → CIT → Base CFADS → downstream waterfall`
 
 ### Completeness matrix (Correction G — current)
@@ -99,8 +99,8 @@ mismatch detailed in `gfa_report["dep_basis_comparison"]`.
 ### Legal reserve — source anchors (evidence only, not replayed)
 
 Oborovo source workbook transfers: first partial ≈ 0.7952 kEUR, cap-filling
-≈ 49.2048 kEUR, final reserve ≈ 50.0 kEUR.  
-Clean engine: single 50.0 kEUR transfer (correct cap, wrong per-period timing).  
+≈ 49.2048 kEUR, final reserve ≈ 50.0 kEUR.
+Clean engine: single 50.0 kEUR transfer (correct cap, wrong per-period timing).
 Classification: `legal_reserve_authority = UNRESOLVED`, `LegalReservePolicy(enabled=False)`.
 
 ### C1/C2 economic freeze (unchanged)
