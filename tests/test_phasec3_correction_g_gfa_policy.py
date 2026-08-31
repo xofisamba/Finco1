@@ -39,12 +39,13 @@ def _assemble_oborovo():
 def _assemble_with_policy(apc: AccountingPolicyConfig):
     """Assemble Oborovo financial statements with a synthetic accounting policy."""
     from app.project_factories import create_default_oborovo
-    from financial_engine.orchestrator import run_project_shareholder_waterfall_model
+    from app.services.production_financial_authority import run_clean_production
+    from financial_engine.financial_statements import (
+        assemble_decision_complete_financial_statements,
+    )
     pi = dataclasses.replace(create_default_oborovo(), accounting_policy_config=apc)
-    result = run_project_shareholder_waterfall_model(pi)
-    fin = result.financial_result
-    from financial_engine.financial_statements.assembly import build_financial_statements
-    return build_financial_statements(fin, pi)
+    run = run_clean_production(pi, project_type="Oborovo")
+    return assemble_decision_complete_financial_statements(run.g2c_result, pi)
 
 
 # Base source-proven policy for Oborovo (mutated in tests below).
