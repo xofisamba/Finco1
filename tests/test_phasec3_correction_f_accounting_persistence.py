@@ -38,13 +38,26 @@ class TestAccountingPersistence:
         assert apc_d["legal_reserve_policy"]["enabled"] is False
         assert apc_d["legal_reserve_authority"] == "UNRESOLVED"
 
-    def test_solar_serializes_none_accounting_policy(self):
+    def test_solar_serializes_generic_accounting_policy(self):
+        """Correction H: Solar now has explicit _GENERIC_CLEAN_ACCOUNTING_POLICY."""
         _, d, _ = _round_trip(create_default_solar_project)
-        assert d.get("accounting_policy_config") is None
+        apc_d = d.get("accounting_policy_config")
+        assert apc_d is not None
+        assert apc_d["book_capitalization_authority"] == "UNRESOLVED"
+        assert apc_d["preconstruction_retained_earnings_authority"] == "GENERIC_FINCO_POLICY"
+        assert apc_d["preconstruction_retained_earnings_keur"] == 0.0
+        assert apc_d["opening_re_authority"] == "GENERIC_FINCO_POLICY"
+        assert apc_d["legal_reserve_authority"] == "UNRESOLVED"
 
-    def test_wind_serializes_none_accounting_policy(self):
+    def test_wind_serializes_generic_accounting_policy(self):
+        """Correction H: Wind now has explicit _GENERIC_CLEAN_ACCOUNTING_POLICY."""
         _, d, _ = _round_trip(create_default_wind_project)
-        assert d.get("accounting_policy_config") is None
+        apc_d = d.get("accounting_policy_config")
+        assert apc_d is not None
+        assert apc_d["book_capitalization_authority"] == "UNRESOLVED"
+        assert apc_d["preconstruction_retained_earnings_authority"] == "GENERIC_FINCO_POLICY"
+        assert apc_d["preconstruction_retained_earnings_keur"] == 0.0
+        assert apc_d["legal_reserve_authority"] == "UNRESOLVED"
 
     def test_oborovo_round_trip_preserves_source_proven_book_cap(self):
         pi, _, pi2 = _round_trip(create_default_oborovo)
@@ -61,9 +74,13 @@ class TestAccountingPersistence:
         assert pi2.accounting_policy_config.legal_reserve_policy.enabled is False
         assert pi2.accounting_policy_config.legal_reserve_authority == AccountingPolicyAuthority.UNRESOLVED
 
-    def test_solar_round_trip_stays_none(self):
+    def test_solar_round_trip_preserves_generic_policy(self):
+        """Correction H: Solar round-trip preserves explicit generic policy."""
         _, _, pi2 = _round_trip(create_default_solar_project)
-        assert pi2.accounting_policy_config is None
+        assert pi2.accounting_policy_config is not None
+        assert pi2.accounting_policy_config.book_capitalization_authority == AccountingPolicyAuthority.UNRESOLVED
+        assert pi2.accounting_policy_config.preconstruction_retained_earnings_keur == 0.0
+        assert pi2.accounting_policy_config.preconstruction_retained_earnings_authority == AccountingPolicyAuthority.GENERIC_FINCO_POLICY
 
     def test_backward_compat_old_payload_missing_field(self):
         """Old payloads without accounting_policy_config must deserialize to None."""

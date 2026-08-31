@@ -316,11 +316,15 @@ class TestD10_BookCapitalizationAuthority:
         )
 
     @pytest.mark.parametrize("ptype", ("Solar", "Wind"))
-    def test_generic_for_solar_wind(self, ptype):
+    def test_unresolved_for_solar_wind(self, ptype):
+        """Correction H: generic Solar/Wind have no approved book-cap policy.
+        book_capitalization_authority is explicitly UNRESOLVED in the generic
+        accounting policy — not upgraded to GENERIC_FINCO_POLICY by dataclass
+        defaults."""
         from financial_engine.financial_statements import AccountingPolicyAuthority
         fs = _assemble(ptype)
         assert fs.accounting_policies.book_capitalization_authority == (
-            AccountingPolicyAuthority.GENERIC_FINCO_POLICY
+            AccountingPolicyAuthority.UNRESOLVED
         )
 
 
