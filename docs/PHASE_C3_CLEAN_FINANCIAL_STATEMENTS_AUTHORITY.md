@@ -1,14 +1,14 @@
 # Phase C3 — Clean Financial Statements & Output Completeness Authority
 
-## CURRENT AUTHORITATIVE STATE — CORRECTION G
+## CURRENT AUTHORITATIVE STATE — CORRECTION H + FINAL DOCUMENTATION CLOSURE
 
 **Branch:** `phasec3-clean-financial-statements-authority`
-**HEAD:** `e8c8cb1b` (Correction G)
+**PR:** #964 (DRAFT — NOT MERGED)
 **Delivery classification:** `PHASE_C3_BLOCKED_BY_UPSTREAM_ENGINE_AUTHORITY`
 
 C3 internal contracts are coherent; all C3 suites (A, D, F, G) agree;
-dedicated CI gate covers all C3 suites; only genuine upstream economic
-authorities remain as blockers.
+dedicated CI gate covers all C3 suites; 33/33 CI check-runs green at
+exact HEAD; only genuine upstream economic authorities remain as blockers.
 
 ### What Correction G established
 
@@ -27,6 +27,47 @@ authorities remain as blockers.
 | §22 | C3 workflow runs all four suites: main C3 acceptance, Correction D provenance, Correction F persistence, Correction G GFA policy. |
 | §27/§28 | Two distinct unavailable reasons: `unrestricted_cash_balance_rollforward` (cash balance roll-forward absent) and `cash_reserve_interest` (interest-on-cash rate policy absent). |
 | §29/§30 | Tax payable classified `TAX_PAYABLE_NOT_APPLICABLE` — clean engine handles CIT timing directly; source evidence confirms no separate payable balance sheet row. |
+
+### What Correction H established
+
+| § | Change |
+|---|---|
+| §H1 | `_GENERIC_CLEAN_ACCOUNTING_POLICY` constant added to `app/project_factories.py`. Explicitly sets four GENERIC_FINCO_POLICY dimensions; all other dimensions explicitly UNRESOLVED. No dataclass default promotion. |
+| §H2 | `create_default_solar_project()` and `create_default_wind_project()` wired to `accounting_policy_config=_GENERIC_CLEAN_ACCOUNTING_POLICY`. Solar/Wind now have an explicit, deliberate policy (not an implicit dataclass default). |
+| §H3 | `preconstruction_retained_earnings_keur=0.0` and `preconstruction_retained_earnings_authority=GENERIC_FINCO_POLICY` — generic new-SPV assumption: no pre-project equity history. Finco generic methodology, NOT source-proven. |
+| §H4 | `opening_re_authority=GENERIC_FINCO_POLICY` and `shl_construction_accounting_authority=GENERIC_FINCO_POLICY` — both approved generic dimensions. |
+| §H5 | `book_capitalization_authority=UNRESOLVED`, `book_capitalization_components={}`, `legal_reserve_policy=None`, `legal_reserve_authority=UNRESOLVED`, `cash_interest_authority=UNRESOLVED` — all non-approved dimensions explicitly UNRESOLVED. GFA / legal reserve / cash interest remain unavailable for Solar/Wind. |
+| §H6 | Five stale test expectations corrected: D10 `test_generic_for_solar_wind` → `test_unresolved_for_solar_wind` (asserts `UNRESOLVED`, not `GENERIC_FINCO_POLICY`, for book_capitalization_authority); F `test_solar/wind_serializes_none_accounting_policy` → `test_solar/wind_serializes_generic_accounting_policy`; F `test_solar_round_trip_stays_none` → `test_solar_round_trip_preserves_generic_policy`. |
+| §H7 | `_assemble_with_policy` in G test suite corrected: uses `run_clean_production` + `assemble_decision_complete_financial_statements` (correct import paths). |
+| §H8 | Trailing whitespace removed from this document (`git diff --check` clean). |
+| §H9 | Exact-head CI: 33/33 check-runs SUCCESS, 0 failure, 0 pending, 0 cancelled. |
+
+### Generic Solar/Wind accounting policy (Correction H)
+
+Assembly reads exclusively from `AccountingPolicyConfig`. No project identity
+is used. The policy is provided by the factory/input layer.
+
+```
+_GENERIC_CLEAN_ACCOUNTING_POLICY = AccountingPolicyConfig(
+    # Approved generic dimensions (Finco generic new-SPV methodology):
+    preconstruction_retained_earnings_keur=0.0,
+    preconstruction_retained_earnings_authority=GENERIC_FINCO_POLICY,
+    opening_re_authority=GENERIC_FINCO_POLICY,
+    shl_construction_accounting_authority=GENERIC_FINCO_POLICY,
+    # All other dimensions explicitly UNRESOLVED:
+    book_capitalization_authority=UNRESOLVED,
+    book_capitalization_components={},
+    legal_reserve_policy=None,
+    legal_reserve_authority=UNRESOLVED,
+    cash_interest_authority=UNRESOLVED,
+)
+```
+
+This policy is:
+- A Finco generic new-SPV methodology (fictional Solar/Wind SPVs)
+- NOT source-proven (no project-specific workbook evidence)
+- NOT sourced from project identity — assembly never dispatches on project name/code
+- Provided exclusively by the factory/input layer; assembly consumes typed config only
 
 ### Accounting input architecture
 
@@ -47,7 +88,7 @@ Canonical module: `finco_core/inputs/accounting.py`
 2. **`CASH_RESERVE_INTEREST_UPSTREAM_REQUIRED`**
    `Eligible cash/reserve balance + interest rate policy + timing/day-count → financing income → EBT → taxable income → CIT → Base CFADS → downstream waterfall`
 
-### Completeness matrix (Correction G — current)
+### Completeness matrix (Correction H — current)
 
 | Output | Solar | Wind | Oborovo | TUHO |
 |---|---|---|---|---|
@@ -60,13 +101,13 @@ Canonical module: `finco_core/inputs/accounting.py`
 | PF cash waterfall | OK | OK | OK | OK |
 | Construction funding | OK (no cfin) | OK (no cfin) | OK | OK |
 | FC/COD funding | OK | OK | OK | OK |
-| Candidate GFA | N/A (no cfin) | N/A (no cfin) | audit only | audit only |
+| Candidate GFA | N/A (no cfin, UNRESOLVED policy) | same | audit only | audit only |
 | Canonical BookDepreciableAssetBasis | UPSTREAM_REQUIRED | UPSTREAM_REQUIRED | UPSTREAM_REQUIRED | UPSTREAM_REQUIRED |
 | GFA (fixed) | BOOK_CAPITALIZATION_BASIS_UNAVAILABLE | same | BOOK_DEPRECIABLE_ASSET_BASIS_UPSTREAM_REQUIRED | same |
 | Accumulated book depreciation | OK (PARTIAL — dep schedule only) | same | same | same |
 | NFA | BOOK_CAPITALIZATION_BASIS_UNAVAILABLE | same | BOOK_DEPRECIABLE_ASSET_BASIS_UPSTREAM_REQUIRED | same |
-| Pre-construction retained earnings | None/UNRESOLVED | same | 0.0 / SOURCE_PROVEN | same |
-| COD opening RE | OPENING_EQUITY_UNAVAILABLE | same | OK (= pre_re + construction NI) | same |
+| Pre-construction retained earnings | 0.0 / GENERIC_FINCO_POLICY | same | 0.0 / SOURCE_PROVEN | same |
+| COD opening RE | OK (GENERIC_FINCO_ACCOUNTING_POLICY) | same | OK (SOURCE_PROVEN_CONFIGURATION) | same |
 | Legal reserve | LEGAL_RESERVE_AUTHORITY_UNAVAILABLE | same | same | same |
 | Full RE roll-forward | FINANCING_INCOME_AUTHORITY_UNAVAILABLE | same | same | same |
 | Unrestricted cash (closing) | UNRESTRICTED_CASH_AUTHORITY_UNAVAILABLE | same | same | same |
@@ -194,9 +235,14 @@ Cumulative share capital/premium from typed contribution timing.
 NOT yet authoritative (surfaced, never plugged): unrestricted cash (no
 causal unrestricted-cash roll-forward exists → `balance_check_keur` is NOT
 claimed), gross fixed assets / NFA (book capitalization basis not exposed
-→ accumulated book depreciation roll-forward IS causal), opening retained
-earnings (construction-equity accounting authority not yet typed). Status:
+→ accumulated book depreciation roll-forward IS causal). Status:
 `UNRESTRICTED_CASH_AUTHORITY_UNAVAILABLE`.
+
+Opening retained earnings: now authoritative for all four projects. Oborovo/TUHO:
+`SOURCE_PROVEN_CONFIGURATION` (typed evidence). Solar/Wind: `GENERIC_FINCO_ACCOUNTING_POLICY`
+(explicit `_GENERIC_CLEAN_ACCOUNTING_POLICY`, Finco generic new-SPV methodology,
+not source-proven). Full RE roll-forward remains `FINANCING_INCOME_AUTHORITY_UNAVAILABLE`
+because financing income is not yet in upstream EBITDA/tax/CFADS.
 
 ## Cash / PF statement
 
@@ -212,9 +258,13 @@ distributions, equity contributions.
 
 `closing = opening + NI − legal equity distributions` over operating
 periods; SHL is debt and never deducted from RE; no legal-reserve
-allocation invented; opening RE requires a construction-equity accounting
-authority not yet typed → surfaced `OPENING_EQUITY_ACCOUNTING_AUTHORITY_
-UNAVAILABLE` (no zero-default, no residual insert).
+allocation invented. Opening RE at COD is now authoritative for all four
+projects: Oborovo/TUHO from `SOURCE_PROVEN` typed pre-construction RE +
+authoritative construction NI; Solar/Wind from `GENERIC_FINCO_POLICY`
+typed 0.0 pre-construction RE + authoritative construction NI. Full RE
+roll-forward remains incomplete (`FINANCING_INCOME_AUTHORITY_UNAVAILABLE`)
+because financing income authority is not yet resolved upstream.
+No zero-default, no residual insert for any unavailable component.
 
 ## No-residual insert principle
 
@@ -246,7 +296,7 @@ module imports the legacy statement runtime.
 | Fixed asset roll-forward (accumulated book dep) | PARTIAL | PARTIAL | PARTIAL | PARTIAL |
 | Gross/NFA fixed assets | UNRESOLVED | UNRESOLVED | UNRESOLVED | UNRESOLVED |
 | Retained earnings movements | OK | OK | OK | OK |
-| Opening retained earnings | UNRESOLVED | UNRESOLVED | UNRESOLVED | UNRESOLVED |
+| Opening retained earnings | OK (GENERIC_FINCO_ACCOUNTING_POLICY) | same | OK (SOURCE_PROVEN_CONFIGURATION) | same |
 | Senior | OK | OK | OK | OK |
 | SHL | OK | OK | OK | OK |
 | DA | OK | OK | OK | OK |
