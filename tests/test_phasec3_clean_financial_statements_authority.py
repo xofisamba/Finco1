@@ -304,17 +304,17 @@ class TestC3I_DepreciationHandshake:
 
 class TestC3J_RetainedEarnings:
     def test_j1_no_shl_in_re_and_no_plug(self):
-        """Correction B §18 / Correction E §23: opening RE derived causally from
-        construction NI (typed EXPENSE_TO_PNL); SHL never enters RE as principal.
-        With explicit LegalReservePolicy, TUHO computes legal reserve allocations and
-        closing RE identity includes the allocation."""
+        """Correction B §18 / Correction F §28/§29: opening RE from construction NI;
+        SHL never enters RE as principal; legal reserve UNRESOLVED → no allocation."""
         _, fs = _assemble("TUHO")
         for p in fs.retained_earnings_periods:
+            assert p.legal_reserve_allocation_keur is None, (
+                f"TUHO P{p.period_index}: legal reserve allocation must be None "
+                f"(authority UNRESOLVED), got {p.legal_reserve_allocation_keur}")
             if p.opening_retained_earnings_keur is not None:
-                lr = p.legal_reserve_allocation_keur or 0.0
                 assert p.closing_retained_earnings_keur == pytest.approx(
                     p.opening_retained_earnings_keur + p.net_income_keur
-                    - p.legal_equity_distribution_keur - lr, abs=1e-9)
+                    - p.legal_equity_distribution_keur, abs=1e-9)
         assert any(p.net_income_keur != 0.0 for p in fs.retained_earnings_periods)
 
     def test_j2_status_honest(self):
@@ -912,23 +912,23 @@ class TestCorC_RetainedEarningsBoundary:
             -2.0 * constr_shl, abs=1e-6)
 
     def test_shl_principal_never_affects_re(self):
-        """§33-5 / Correction E §23: identity uses NI − legal distributions − legal reserve.
-        With explicit LegalReservePolicy, Oborovo/TUHO include legal reserve allocation."""
+        """§33-5 / Correction F §28/§29: identity uses only NI − legal distributions.
+        Legal reserve is UNRESOLVED so no allocation in RE roll-forward."""
         for ptype in ("Oborovo", "TUHO"):
             _, fs = _assemble(ptype)
             for r in fs.retained_earnings_periods:
-                lr = r.legal_reserve_allocation_keur or 0.0
                 assert r.closing_retained_earnings_keur == pytest.approx(
                     r.opening_retained_earnings_keur + r.net_income_keur
-                    - r.legal_equity_distribution_keur - lr, abs=1e-9), ptype
+                    - r.legal_equity_distribution_keur, abs=1e-9), ptype
 
     def test_opening_re_status_independent_from_full_re_status(self):
         """§33-7/§9: separate concepts, separately reported.
-        Correction E: TUHO has explicit LegalReservePolicy so legal_reserve_status is OK."""
+        Correction F §28/§29: legal reserve authority is UNRESOLVED for TUHO until
+        per-period timing can be proven against source anchors."""
         _, fs = _assemble("TUHO")
         assert fs.opening_retained_earnings_status.value == "OK"
         assert fs.retained_earnings_status.value != "OK"
-        assert fs.legal_reserve_status.value == "OK"
+        assert fs.legal_reserve_status.value == "LEGAL_RESERVE_AUTHORITY_UNAVAILABLE"
 
     def test_opening_unavailable_when_treatment_not_expense_to_pnl(self):
         import dataclasses
@@ -959,20 +959,19 @@ class TestCorC_RetainedEarningsBoundary:
                 "FINANCING_INCOME_AUTHORITY_UNAVAILABLE"), ptype
 
     def test_full_re_not_ok_while_legal_reserve_unresolved(self):
-        """§33-9/§11: material legal reserve has its own status/reason.
-        Correction E: Solar/Wind have no explicit policy → UNAVAILABLE.
-        Oborovo/TUHO have explicit LegalReservePolicy(enabled=True) → OK with allocations."""
-        for ptype in ("Solar", "Wind"):
+        """§33-9/§11 / Correction F §28/§29: legal reserve source timing not yet proven.
+        All four projects have LEGAL_RESERVE_AUTHORITY_UNAVAILABLE:
+        - Solar/Wind: no explicit AccountingPolicyConfig → no legal reserve.
+        - Oborovo/TUHO: LegalReservePolicy enabled=False (UNRESOLVED authority) because
+          per-period timing of the clean kernel does not match established source anchors.
+          Source proof required before claiming SOURCE_PROVEN."""
+        for ptype in ("Solar", "Wind", "Oborovo", "TUHO"):
             _, fs = _assemble(ptype)
             assert fs.legal_reserve_status.value == (
                 "LEGAL_RESERVE_AUTHORITY_UNAVAILABLE"), ptype
             assert "legal_reserve" in fs.unavailable_reasons, ptype
             for r in fs.retained_earnings_periods:
                 assert r.legal_reserve_allocation_keur is None, ptype
-        for ptype in ("Oborovo", "TUHO"):
-            _, fs = _assemble(ptype)
-            assert fs.legal_reserve_status.value == "OK", ptype
-            assert "legal_reserve" not in fs.unavailable_reasons, ptype
 
     def test_balance_sheet_re_follows_re_authority(self):
         """§33-10/§15: full RE authority unavailable -> BS RE stays None and
@@ -1019,15 +1018,14 @@ class TestCorC_MetadataConsistency:
         assert fs.authority_labels["opening_retained_earnings"] != "UNRESOLVED"
 
     def test_all_blockers_visible_not_hidden_behind_primary(self):
-        """§29: unavailable_reasons retains ALL unresolved components.
-        Correction E: Oborovo has explicit AccountingPolicyConfig with SOURCE_PROVEN
-        authority, so gross_fixed_assets and legal_reserve are resolved (not in reasons)."""
+        """§29 / Correction F: unavailable_reasons retains ALL unresolved components.
+        Oborovo: gross_fixed_assets blocked (dep-basis gap), legal_reserve UNRESOLVED
+        (source timing not proven), unrestricted_cash/balance_sheet/financing_income blocked."""
         _, fs = _assemble("Oborovo")
-        for key in ("unrestricted_cash", "balance_sheet", "financing_income"):
+        for key in ("unrestricted_cash", "balance_sheet",
+                    "gross_fixed_assets", "legal_reserve",
+                    "financing_income"):
             assert key in fs.unavailable_reasons, key
-        # Resolved by explicit policy in Oborovo factory:
-        assert "gross_fixed_assets" not in fs.unavailable_reasons
-        assert "legal_reserve" not in fs.unavailable_reasons
 
 
 class TestCorC_ExceptionContract:

@@ -95,46 +95,46 @@ from financial_engine.financial_statements.contracts import (
 # Accounting policy configs — source-proven per project
 # =============================================================================
 
-_SOURCE_PROVEN_LR = LegalReservePolicy(
-    enabled=True,
+_BOOK_CAP_COMPONENTS_SOURCE_PROVEN = {
+    "hard_capex": BookCapitalizationTreatment.CAPITALIZE_FIXED_ASSET.value,
+    "senior_idc": BookCapitalizationTreatment.CAPITALIZE_FIXED_ASSET.value,
+    "senior_commitment_fees": BookCapitalizationTreatment.CAPITALIZE_FIXED_ASSET.value,
+    "bank_structuring_fees": BookCapitalizationTreatment.CAPITALIZE_FIXED_ASSET.value,
+    "vat_facility_financing_costs": BookCapitalizationTreatment.CAPITALIZE_FIXED_ASSET.value,
+    "shl_construction_interest": BookCapitalizationTreatment.EXPENSE_PNL.value,
+    "dsra_funding": BookCapitalizationTreatment.RESTRICTED_CURRENT_ASSET.value,
+    "working_capital": BookCapitalizationTreatment.UNRESTRICTED_CURRENT_ASSET.value,
+}
+
+# Legal reserve: §28/§29 — the clean kernel produces 50.0 kEUR total reserve
+# for both Oborovo and TUHO (correct cap), but the per-period timing does not
+# match the independently established source anchors (Oborovo first partial
+# ≈0.7952 kEUR, cap-filling ≈49.2048 kEUR; TUHO: similar two-transfer pattern).
+# Until the timing discrepancy is resolved by upstream source-trace audit,
+# legal_reserve_authority is UNRESOLVED and the roll-forward is NOT activated.
+# LegalReservePolicy(enabled=False) ensures the roll-forward kernel is not called.
+_LR_UNRESOLVED = LegalReservePolicy(
+    enabled=False,
     cap_fraction=0.10,
-    authority=AccountingPolicyAuthority.SOURCE_PROVEN,
+    authority=AccountingPolicyAuthority.UNRESOLVED,
 )
 
 _OBOROVO_ACCOUNTING_POLICY = AccountingPolicyConfig(
     book_capitalization_authority=AccountingPolicyAuthority.SOURCE_PROVEN,
-    book_capitalization_components={
-        "hard_capex": BookCapitalizationTreatment.CAPITALIZE_FIXED_ASSET.value,
-        "senior_idc": BookCapitalizationTreatment.CAPITALIZE_FIXED_ASSET.value,
-        "senior_commitment_fees": BookCapitalizationTreatment.CAPITALIZE_FIXED_ASSET.value,
-        "bank_structuring_fees": BookCapitalizationTreatment.CAPITALIZE_FIXED_ASSET.value,
-        "vat_facility_financing_costs": BookCapitalizationTreatment.CAPITALIZE_FIXED_ASSET.value,
-        "shl_construction_interest": BookCapitalizationTreatment.EXPENSE_PNL.value,
-        "dsra_funding": BookCapitalizationTreatment.RESTRICTED_CURRENT_ASSET.value,
-        "working_capital": BookCapitalizationTreatment.UNRESTRICTED_CURRENT_ASSET.value,
-    },
+    book_capitalization_components=_BOOK_CAP_COMPONENTS_SOURCE_PROVEN,
     shl_construction_accounting_authority=AccountingPolicyAuthority.SOURCE_PROVEN,
     opening_re_authority=AccountingPolicyAuthority.SOURCE_PROVEN,
-    legal_reserve_policy=_SOURCE_PROVEN_LR,
-    legal_reserve_authority=AccountingPolicyAuthority.SOURCE_PROVEN,
+    legal_reserve_policy=_LR_UNRESOLVED,
+    legal_reserve_authority=AccountingPolicyAuthority.UNRESOLVED,
 )
 
 _TUHO_ACCOUNTING_POLICY = AccountingPolicyConfig(
     book_capitalization_authority=AccountingPolicyAuthority.SOURCE_PROVEN,
-    book_capitalization_components={
-        "hard_capex": BookCapitalizationTreatment.CAPITALIZE_FIXED_ASSET.value,
-        "senior_idc": BookCapitalizationTreatment.CAPITALIZE_FIXED_ASSET.value,
-        "senior_commitment_fees": BookCapitalizationTreatment.CAPITALIZE_FIXED_ASSET.value,
-        "bank_structuring_fees": BookCapitalizationTreatment.CAPITALIZE_FIXED_ASSET.value,
-        "vat_facility_financing_costs": BookCapitalizationTreatment.CAPITALIZE_FIXED_ASSET.value,
-        "shl_construction_interest": BookCapitalizationTreatment.EXPENSE_PNL.value,
-        "dsra_funding": BookCapitalizationTreatment.RESTRICTED_CURRENT_ASSET.value,
-        "working_capital": BookCapitalizationTreatment.UNRESTRICTED_CURRENT_ASSET.value,
-    },
+    book_capitalization_components=_BOOK_CAP_COMPONENTS_SOURCE_PROVEN,
     shl_construction_accounting_authority=AccountingPolicyAuthority.SOURCE_PROVEN,
     opening_re_authority=AccountingPolicyAuthority.SOURCE_PROVEN,
-    legal_reserve_policy=_SOURCE_PROVEN_LR,
-    legal_reserve_authority=AccountingPolicyAuthority.SOURCE_PROVEN,
+    legal_reserve_policy=_LR_UNRESOLVED,
+    legal_reserve_authority=AccountingPolicyAuthority.UNRESOLVED,
 )
 
 

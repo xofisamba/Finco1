@@ -459,6 +459,7 @@ def _assemble_statements_checked(g2c_result, project_inputs):
     cfin = getattr(fin, "construction_financing", None)
     gfa_keur: float | None = None
     gfa_report: dict = {}
+    _gfa_unavailable_msg: str | None = None
     if cfin is not None:
         _gfa_hard = sum(cfin.hard_capex_uses_keur)
         # Correction E §9-§10: use capitalized IDC (senior_idc_capitalized_uses_keur),
@@ -792,12 +793,12 @@ def _assemble_statements_checked(g2c_result, project_inputs):
         # without corresponding tax/CFADS effects.
         overall = StatementStatus.UNRESTRICTED_CASH_AUTHORITY_UNAVAILABLE
 
-    _gfa_unavailable_msg = (
-        "BOOK_CAPITALIZATION_BASIS_UNAVAILABLE: ConstructionFinancingResult "
-        "not available for this project (Solar/Wind have no senior-debt "
-        "construction financing run); only accumulated book depreciation is "
-        "causal."
-    )
+    if gfa_keur is None and _gfa_unavailable_msg is None:
+        _gfa_unavailable_msg = (
+            "BOOK_CAPITALIZATION_BASIS_UNAVAILABLE: ConstructionFinancingResult "
+            "not available for this project; only accumulated book depreciation is "
+            "causal."
+        )
     unavailable.update({
         "balance_sheet": (
             "UNRESTRICTED_CASH_AUTHORITY_UNAVAILABLE: closing unrestricted "
