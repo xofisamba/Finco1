@@ -103,3 +103,12 @@ class AccountingPolicyConfig:
     cash_interest_authority: AccountingPolicyAuthority = (
         AccountingPolicyAuthority.UNRESOLVED
     )
+    # Pre-construction retained earnings: typed equity starting point at the
+    # first model period.  For a newly incorporated SPV with zero opening RE,
+    # set to 0.0 with SOURCE_PROVEN authority (after source trace) or
+    # GENERIC_FINCO_POLICY (for standard new-SPV assumption).
+    # Default UNRESOLVED means assembly cannot derive authoritative opening RE.
+    preconstruction_retained_earnings_keur: "float | None" = None
+    preconstruction_retained_earnings_authority: AccountingPolicyAuthority = (
+        AccountingPolicyAuthority.UNRESOLVED
+    )

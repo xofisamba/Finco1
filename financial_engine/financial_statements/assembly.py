@@ -123,15 +123,18 @@ def _axis_checked(name: str, period_indices, values, expected_indices):
 
 
 def _map_opening_re_label(apc) -> str:
-    """Map apc.opening_re_authority to the correct LineAuthority string."""
-    auth = getattr(apc, "opening_re_authority", None)
+    """Map apc.preconstruction_retained_earnings_authority to the correct LineAuthority string.
+
+    USER_CONFIGURED is explicitly NOT SOURCE_PROVEN — it is user input, not source evidence.
+    """
+    auth = getattr(apc, "preconstruction_retained_earnings_authority", None)
     if auth is None:
         return LineAuthority.UNRESOLVED.value
     auth_val = getattr(auth, "value", str(auth))
     if auth_val == "SOURCE_PROVEN":
         return LineAuthority.SOURCE_PROVEN_CONFIGURATION.value
     elif auth_val == "USER_CONFIGURED":
-        return LineAuthority.SOURCE_PROVEN_CONFIGURATION.value  # best available
+        return LineAuthority.USER_CONFIGURED_ACCOUNTING_POLICY.value
     elif auth_val == "GENERIC_FINCO_POLICY":
         return LineAuthority.GENERIC_FINCO_ACCOUNTING_POLICY.value
     else:
@@ -427,14 +430,23 @@ def _assemble_statements_checked(g2c_result, project_inputs):
     }
     # Legal reserve: explicit typed activation only (§18 Correction E).
     _lr_policy = _apc.legal_reserve_policy
-    # Correction C §4-§6 (Option B — operating-only RE schedule): the COD
-    # opening RE is derived from the AUTHORITATIVE construction P&L
-    # (pre-construction opening RE = 0 for a newly incorporated SPV whose
-    # complete construction P&L starts at the first model period) and the
-    # RE roll-forward begins ONLY at the first operating period. The same
-    # construction loss is therefore counted exactly once — never seeded
-    # into the opening AND re-applied during construction (Blocker C1).
-    if treatment_value == "expense_to_pnl":
+    # Correction G §13-§17: opening RE authority comes from typed
+    # preconstruction_retained_earnings_authority, NOT from SHL treatment.
+    # SHL treatment being EXPENSE_TO_PNL is a necessary accounting mechanic
+    # (it determines whether construction NI flows through P&L), but does NOT
+    # by itself prove the pre-construction equity starting balance.
+    # Both preconstruction RE value AND authority must be present and resolved.
+    _pre_re_keur = getattr(_apc, "preconstruction_retained_earnings_keur", None)
+    _pre_re_auth = getattr(
+        _apc, "preconstruction_retained_earnings_authority", AccountingPolicyAuthority.UNRESOLVED
+    )
+    _pre_re_auth_val = getattr(_pre_re_auth, "value", str(_pre_re_auth))
+    _pre_re_authoritative = (
+        _pre_re_keur is not None
+        and _pre_re_auth_val in ("SOURCE_PROVEN", "GENERIC_FINCO_POLICY", "USER_CONFIGURED")
+        and treatment_value == "expense_to_pnl"
+    )
+    if _pre_re_authoritative:
         opening_re_authority = True
         opening_re_status = StatementStatus.OK
     else:
@@ -443,11 +455,18 @@ def _assemble_statements_checked(g2c_result, project_inputs):
             StatementStatus.OPENING_EQUITY_ACCOUNTING_AUTHORITY_UNAVAILABLE
         )
     if not opening_re_authority:
-        unavailable["opening_retained_earnings"] = (
-            "OPENING_EQUITY_ACCOUNTING_AUTHORITY_UNAVAILABLE: the typed SHL "
-            "construction accounting treatment is not EXPENSE_TO_PNL; no causal "
-            "construction-P&L authority to derive opening RE."
-        )
+        if _pre_re_auth_val == "UNRESOLVED" or _pre_re_keur is None:
+            unavailable["opening_retained_earnings"] = (
+                "OPENING_EQUITY_ACCOUNTING_AUTHORITY_UNAVAILABLE: "
+                "preconstruction_retained_earnings_keur or its authority is UNRESOLVED; "
+                "typed pre-construction equity starting balance required."
+            )
+        else:
+            unavailable["opening_retained_earnings"] = (
+                "OPENING_EQUITY_ACCOUNTING_AUTHORITY_UNAVAILABLE: the typed SHL "
+                "construction accounting treatment is not EXPENSE_TO_PNL; no causal "
+                "construction-P&L authority to derive opening RE."
+            )
     # Correction D §11-§16: book GFA from causal construction financing
     # components.  ConstructionFinancingResult exposes per-period hard capex
     # and IDC/fee vectors for projects that ran a senior-debt construction
@@ -462,64 +481,115 @@ def _assemble_statements_checked(g2c_result, project_inputs):
     _gfa_unavailable_msg: str | None = None
     if cfin is not None:
         _gfa_hard = sum(cfin.hard_capex_uses_keur)
-        # Correction E §9-§10: use capitalized IDC (senior_idc_capitalized_uses_keur),
-        # NOT raw accrual (senior_idc_accrual_keur).  Terminal raw IDC that is not a
-        # capitalized project use is excluded from GFA.
+        # Correction G §3: use capitalized IDC (senior_idc_capitalized_uses_keur) exclusively.
+        # raw accrual (senior_idc_accrual_keur) is audit information only — it MUST NOT
+        # be used as a fallback when capitalized IDC is unavailable. Fail closed.
         _gfa_idc_raw = sum(cfin.senior_idc_accrual_keur)
         _cap_idc_vec = cfin.senior_idc_capitalized_uses_keur
-        _gfa_idc = sum(_cap_idc_vec) if _cap_idc_vec else _gfa_idc_raw
-        _gfa_idc_terminal = _gfa_idc_raw - _gfa_idc
-        _gfa_commit = sum(cfin.senior_commitment_fee_accrual_keur)
-        _gfa_struct = sum(cfin.structuring_fee_keur)
-        _gfa_vat_idc = float(cfin.vat_idc_keur or 0.0)
-        _gfa_vat_commit = float(cfin.vat_commitment_fee_keur or 0.0)
-        _total_cap_fin = float(getattr(cfin, "total_capitalized_financing_keur", 0.0) or 0.0)
-        gfa_keur = (
-            _gfa_hard + _gfa_idc + _gfa_commit
-            + _gfa_struct + _gfa_vat_idc + _gfa_vat_commit
-        )
-        gfa_report = {
-            "hard_capex_keur": _gfa_hard,
-            "senior_idc_keur": _gfa_idc,
-            "senior_idc_raw_keur": _gfa_idc_raw,
-            "senior_idc_terminal_excluded_keur": _gfa_idc_terminal,
-            "senior_commitment_fees_keur": _gfa_commit,
-            "structuring_fee_keur": _gfa_struct,
-            "vat_idc_keur": _gfa_vat_idc,
-            "vat_commitment_fee_keur": _gfa_vat_commit,
-            "total_capitalized_financing_keur": _total_cap_fin,
-            "shl_construction_pik_excluded_keur": float(
-                cfin.shl_construction_pik_keur or 0.0),
-            "total_book_gfa_keur": gfa_keur,
-        }
-        # Correction F §21-§24: check if depreciation basis (from capex scalars)
-        # is consistent with GFA (from construction_financing engine).
-        # Gap applies only when capex scalars are 0 (not provided/calibrated) but
-        # cfin computes non-zero financing costs — indicating the dep basis is
-        # incomplete (TUHO case). When capex scalars are non-zero they are the
-        # authoritative calibrated source; no gap flag in that case.
-        _cap_inputs = getattr(project_inputs, "capex", None)
-        _cap_financing_in_gfa = _gfa_idc + _gfa_commit + _gfa_struct + _gfa_vat_idc + _gfa_vat_commit
-        _cap_financing_in_dep_basis = (
-            float(getattr(_cap_inputs, "idc_keur", 0) or 0)
-            + float(getattr(_cap_inputs, "commitment_fees_keur", 0) or 0)
-            + float(getattr(_cap_inputs, "bank_fees_keur", 0) or 0)
-            + float(getattr(_cap_inputs, "vat_costs_keur", 0) or 0)
-        ) if _cap_inputs is not None else 0.0
-        # Gap fires only when capex scalars are 0 but cfin has non-zero fin costs.
-        _dep_basis_gap = (
-            _cap_financing_in_dep_basis < 0.01
-            and _cap_financing_in_gfa > 0.01
-        )
-        if _dep_basis_gap:
-            gfa_report["candidate_book_gfa_keur"] = gfa_keur
-            gfa_keur = None
+        if _cap_idc_vec is None:
+            # Capitalized IDC authority structurally absent — fail closed; raw IDC is not a substitute.
             _gfa_unavailable_msg = (
-                "BOOK_DEPRECIABLE_ASSET_BASIS_UPSTREAM_REQUIRED: GFA financing costs "
-                "from construction_financing engine differ from "
-                "capex.book_depreciable_capex_items() depreciation basis; upstream "
-                "canonical BookDepreciableAssetBasis prerequisite required."
+                "BOOK_CAPITALIZATION_BASIS_UNAVAILABLE: senior_idc_capitalized_uses_keur "
+                "not available in ConstructionFinancingResult; raw IDC accrual is audit "
+                "information only and cannot substitute as a book-capitalization authority."
             )
+        else:
+            _gfa_idc = sum(_cap_idc_vec)  # legitimate zero is valid (not all IDC capitalized)
+            _gfa_idc_terminal = _gfa_idc_raw - _gfa_idc
+            _gfa_commit = sum(cfin.senior_commitment_fee_accrual_keur)
+            _gfa_struct = sum(cfin.structuring_fee_keur)
+            _gfa_vat_idc = float(cfin.vat_idc_keur or 0.0)
+            _gfa_vat_commit = float(cfin.vat_commitment_fee_keur or 0.0)
+            _total_cap_fin = float(getattr(cfin, "total_capitalized_financing_keur", 0.0) or 0.0)
+            # Correction G §5-§6: BookCapitalizationTreatment drives GFA component inclusion.
+            # The policy map is an authority, not metadata.  UNRESOLVED or unknown component
+            # with non-zero value fails the entire GFA closed.
+            _CAPITALIZE = BookCapitalizationTreatment.CAPITALIZE_FIXED_ASSET.value
+            _UNRESOLVED_T = BookCapitalizationTreatment.UNRESOLVED.value
+            _gfa_components_raw = {
+                "hard_capex": _gfa_hard,
+                "senior_idc": _gfa_idc,
+                "senior_commitment_fees": _gfa_commit,
+                "bank_structuring_fees": _gfa_struct,
+                "vat_facility_financing_costs": _gfa_vat_idc + _gfa_vat_commit,
+                "shl_construction_interest": float(cfin.shl_construction_pik_keur or 0.0),
+                "dsra_funding": 0.0,       # separate balance-sheet account, never in raw cfin GFA
+                "working_capital": 0.0,    # separate current asset, never in raw cfin GFA
+            }
+            _policy_fail_reason: str | None = None
+            _gfa_policy_sum = 0.0
+            for _comp_name, _comp_amount in _gfa_components_raw.items():
+                _treatment = _book_cap_components.get(_comp_name)
+                if _treatment is None and _comp_amount > 0.01:
+                    _policy_fail_reason = (
+                        f"BOOK_CAPITALIZATION_BASIS_UNAVAILABLE: component '{_comp_name}' "
+                        f"has no treatment in policy map and is non-zero ({_comp_amount:.3f} kEUR)"
+                    )
+                    break
+                if _treatment == _UNRESOLVED_T and _comp_amount > 0.01:
+                    _policy_fail_reason = (
+                        f"BOOK_CAPITALIZATION_BASIS_UNAVAILABLE: component '{_comp_name}' "
+                        f"has UNRESOLVED treatment and is non-zero ({_comp_amount:.3f} kEUR)"
+                    )
+                    break
+                if _treatment == _CAPITALIZE:
+                    _gfa_policy_sum += _comp_amount
+            if _policy_fail_reason:
+                gfa_keur = None
+                _gfa_unavailable_msg = _policy_fail_reason
+            else:
+                gfa_keur = _gfa_policy_sum
+            gfa_report = {
+                "hard_capex_keur": _gfa_hard,
+                "senior_idc_capitalized_keur": _gfa_idc,
+                "senior_idc_raw_keur": _gfa_idc_raw,
+                "senior_idc_terminal_excluded_keur": _gfa_idc_terminal,
+                "senior_commitment_fees_keur": _gfa_commit,
+                "structuring_fee_keur": _gfa_struct,
+                "vat_idc_keur": _gfa_vat_idc,
+                "vat_commitment_fee_keur": _gfa_vat_commit,
+                "total_capitalized_financing_keur": _total_cap_fin,
+                "shl_construction_pik_excluded_keur": float(
+                    cfin.shl_construction_pik_keur or 0.0),
+                "total_book_gfa_keur": gfa_keur,
+                "policy_driven": True,
+            }
+            # Correction G §8-§10: dep-basis mismatch detection compares actual amounts.
+            # A mismatch exists whenever the two basis amounts differ materially,
+            # regardless of whether both are non-zero.
+            # Scalar IDC != cfin capitalized IDC is a mismatch even if both > 0.
+            _cap_inputs = getattr(project_inputs, "capex", None)
+            _cap_financing_in_gfa = _gfa_idc + _gfa_commit + _gfa_struct + _gfa_vat_idc + _gfa_vat_commit
+            _cap_financing_in_dep_basis = (
+                float(getattr(_cap_inputs, "idc_keur", 0) or 0)
+                + float(getattr(_cap_inputs, "commitment_fees_keur", 0) or 0)
+                + float(getattr(_cap_inputs, "bank_fees_keur", 0) or 0)
+                + float(getattr(_cap_inputs, "vat_costs_keur", 0) or 0)
+            ) if _cap_inputs is not None else 0.0
+            # Strict 1 kEUR tolerance — any material discrepancy triggers the gap.
+            _dep_basis_gap = abs(_cap_financing_in_dep_basis - _cap_financing_in_gfa) > 1.0
+            # Per-component comparison report (§9).
+            _dep_basis_comparison = {
+                "financing_costs_clean_gfa_keur": _cap_financing_in_gfa,
+                "financing_costs_dep_basis_keur": _cap_financing_in_dep_basis,
+                "financing_costs_diff_keur": _cap_financing_in_gfa - _cap_financing_in_dep_basis,
+                "authority": (
+                    "BOOK_DEPRECIABLE_ASSET_BASIS_UPSTREAM_REQUIRED"
+                    if _dep_basis_gap else "CONSISTENT"
+                ),
+            }
+            gfa_report["dep_basis_comparison"] = _dep_basis_comparison
+            if _dep_basis_gap and gfa_keur is not None:
+                gfa_report["candidate_book_gfa_keur"] = gfa_keur
+                gfa_keur = None
+                _gfa_unavailable_msg = (
+                    "BOOK_DEPRECIABLE_ASSET_BASIS_UPSTREAM_REQUIRED: GFA financing costs "
+                    f"from construction_financing engine ({_cap_financing_in_gfa:.3f} kEUR) "
+                    f"differ from capex.book_depreciable_capex_items() basis "
+                    f"({_cap_financing_in_dep_basis:.3f} kEUR) by "
+                    f"{abs(_cap_financing_in_gfa - _cap_financing_in_dep_basis):.3f} kEUR; "
+                    "upstream canonical BookDepreciableAssetBasis prerequisite required."
+                )
 
     construction_ni_sum = 0.0
     cod_opening_re: float | None = None
@@ -718,7 +788,13 @@ def _assemble_statements_checked(g2c_result, project_inputs):
     # compatibility default rather than a proven source accounting policy.
     # The kernel: transfer = min(NI, cap − opening_reserve) when NI > 0 and
     # reserve < cap; otherwise 0.  RE closing = opening + NI − dist − transfer.
-    cod_opening_re = construction_ni_sum if opening_re_authority else None
+    # COD opening RE = typed pre-construction RE + authoritative construction NI.
+    # construction_ni_sum is accumulated only during construction periods when
+    # opening_re_authority is True (so NI is counted exactly once).
+    cod_opening_re = (
+        (_pre_re_keur + construction_ni_sum) if opening_re_authority and _pre_re_keur is not None
+        else None
+    )
     _lr_computed = False
     _lr_results_by_idx: dict = {}
     _lr_closing_by_idx: dict = {}
@@ -812,10 +888,29 @@ def _assemble_statements_checked(g2c_result, project_inputs):
                 "set in AccountingPolicyConfig or not enabled."
             )
         }),
+        # §29/§30: CIT is modeled directly as accrued / cash timing in the clean
+        # tax engine; no separate CIT payable roll-forward account is required.
+        # Terminal unpaid tax is surfaced explicitly.  NOT_APPLICABLE for the
+        # separate payable balance sheet line.
         "tax_payable": (
-            "TAX_PAYABLE_AUTHORITY_UNAVAILABLE: a CIT payable roll-forward "
-            "is not part of the clean tax timing contract; terminal unpaid "
-            "tax is surfaced directly."
+            "TAX_PAYABLE_NOT_APPLICABLE: CIT accrual and cash timing are handled "
+            "directly in the clean tax engine; no separate CIT payable roll-forward "
+            "is part of the accounting presentation. Terminal unpaid tax is surfaced "
+            "explicitly. Source evidence does not require a separate payable balance."
+        ),
+        # §27/§28: two distinct missing authorities — cash-balance roll-forward
+        # and interest-on-cash rate policy are related but separate gaps.
+        "unrestricted_cash_balance_rollforward": (
+            "UNRESTRICTED_CASH_AUTHORITY_UNAVAILABLE: no causal unrestricted-cash "
+            "roll-forward exists in the clean engine; typed eligible-cash-balance "
+            "input (period-by-period) is the prerequisite."
+        ),
+        "cash_reserve_interest": (
+            "CASH_RESERVE_INTEREST_UPSTREAM_REQUIRED: no typed eligible-cash-balance "
+            "+ interest-rate-policy + timing contract exists in the clean engine; "
+            "interest on unrestricted cash and reserve balances cannot be computed. "
+            "Causal chain: eligible balance + rate + day-count → financing income "
+            "→ EBT → taxable income → CIT → Base CFADS → downstream waterfall."
         ),
         "financing_income": (
             "FINANCING_INCOME_AUTHORITY_UNAVAILABLE: interest on unrestricted "

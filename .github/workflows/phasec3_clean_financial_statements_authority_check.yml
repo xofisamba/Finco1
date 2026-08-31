@@ -66,6 +66,21 @@ jobs:
           python -m pytest -q \
             tests/test_phasec3_clean_financial_statements_authority.py
 
+      - name: C3 accounting provenance suite (Correction D)
+        run: |
+          python -m pytest -q \
+            tests/test_phasec3_correction_d_accounting_provenance.py
+
+      - name: C3 accounting persistence suite (Correction F)
+        run: |
+          python -m pytest -q \
+            tests/test_phasec3_correction_f_accounting_persistence.py
+
+      - name: C3 GFA policy and opening RE suite (Correction G)
+        run: |
+          python -m pytest -q \
+            tests/test_phasec3_correction_g_gfa_policy.py
+
       - name: B4 legacy-excision governance (statement path inherits clean-only)
         run: |
           python -m pytest -q \

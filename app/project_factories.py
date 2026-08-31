@@ -119,6 +119,15 @@ _LR_UNRESOLVED = LegalReservePolicy(
     authority=AccountingPolicyAuthority.UNRESOLVED,
 )
 
+# Pre-construction retained earnings: both Oborovo and TUHO are newly
+# incorporated project SPVs with no pre-project equity history.
+# Source evidence: SPV incorporation at first model period → zero opening RE.
+# Authority: SOURCE_PROVEN (confirmed newly incorporated SPV structure).
+_PRE_CONSTRUCTION_RE_SOURCE_PROVEN = dict(
+    preconstruction_retained_earnings_keur=0.0,
+    preconstruction_retained_earnings_authority=AccountingPolicyAuthority.SOURCE_PROVEN,
+)
+
 _OBOROVO_ACCOUNTING_POLICY = AccountingPolicyConfig(
     book_capitalization_authority=AccountingPolicyAuthority.SOURCE_PROVEN,
     book_capitalization_components=_BOOK_CAP_COMPONENTS_SOURCE_PROVEN,
@@ -126,6 +135,7 @@ _OBOROVO_ACCOUNTING_POLICY = AccountingPolicyConfig(
     opening_re_authority=AccountingPolicyAuthority.SOURCE_PROVEN,
     legal_reserve_policy=_LR_UNRESOLVED,
     legal_reserve_authority=AccountingPolicyAuthority.UNRESOLVED,
+    **_PRE_CONSTRUCTION_RE_SOURCE_PROVEN,
 )
 
 _TUHO_ACCOUNTING_POLICY = AccountingPolicyConfig(
@@ -135,6 +145,7 @@ _TUHO_ACCOUNTING_POLICY = AccountingPolicyConfig(
     opening_re_authority=AccountingPolicyAuthority.SOURCE_PROVEN,
     legal_reserve_policy=_LR_UNRESOLVED,
     legal_reserve_authority=AccountingPolicyAuthority.UNRESOLVED,
+    **_PRE_CONSTRUCTION_RE_SOURCE_PROVEN,
 )
 
 

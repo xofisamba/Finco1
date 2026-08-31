@@ -590,6 +590,8 @@ def _ser_accounting_policy_config(apc) -> "dict | None":
         } if lr is not None else None,
         "legal_reserve_authority": apc.legal_reserve_authority.value,
         "cash_interest_authority": apc.cash_interest_authority.value,
+        "preconstruction_retained_earnings_keur": apc.preconstruction_retained_earnings_keur,
+        "preconstruction_retained_earnings_authority": apc.preconstruction_retained_earnings_authority.value,
     }
 
 
@@ -621,6 +623,10 @@ def _deser_accounting_policy_config(d: "dict | None") -> "AccountingPolicyConfig
             d.get("legal_reserve_authority", "GENERIC_FINCO_POLICY")),
         cash_interest_authority=AccountingPolicyAuthority(
             d.get("cash_interest_authority", "UNRESOLVED")),
+        preconstruction_retained_earnings_keur=d.get(
+            "preconstruction_retained_earnings_keur", None),
+        preconstruction_retained_earnings_authority=AccountingPolicyAuthority(
+            d.get("preconstruction_retained_earnings_authority", "UNRESOLVED")),
     )
 
 

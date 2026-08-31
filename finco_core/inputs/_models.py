@@ -1659,6 +1659,8 @@ def _hash_accounting_policy(apc) -> tuple:
         (lr.enabled, lr.cap_fraction, lr.authority.value) if lr is not None else None,
         apc.legal_reserve_authority.value,
         apc.cash_interest_authority.value,
+        apc.preconstruction_retained_earnings_keur,
+        apc.preconstruction_retained_earnings_authority.value,
     )
 
 
