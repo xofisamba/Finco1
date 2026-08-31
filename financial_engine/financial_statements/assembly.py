@@ -122,6 +122,22 @@ def _axis_checked(name: str, period_indices, values, expected_indices):
         raise
 
 
+def _map_opening_re_label(apc) -> str:
+    """Map apc.opening_re_authority to the correct LineAuthority string."""
+    auth = getattr(apc, "opening_re_authority", None)
+    if auth is None:
+        return LineAuthority.UNRESOLVED.value
+    auth_val = getattr(auth, "value", str(auth))
+    if auth_val == "SOURCE_PROVEN":
+        return LineAuthority.SOURCE_PROVEN_CONFIGURATION.value
+    elif auth_val == "USER_CONFIGURED":
+        return LineAuthority.SOURCE_PROVEN_CONFIGURATION.value  # best available
+    elif auth_val == "GENERIC_FINCO_POLICY":
+        return LineAuthority.GENERIC_FINCO_ACCOUNTING_POLICY.value
+    else:
+        return LineAuthority.UNRESOLVED.value
+
+
 def _fail_closed(status: StatementStatus, detail: str) -> FinancialStatementsResult:
     return FinancialStatementsResult(
         status=status,
@@ -475,6 +491,34 @@ def _assemble_statements_checked(g2c_result, project_inputs):
                 cfin.shl_construction_pik_keur or 0.0),
             "total_book_gfa_keur": gfa_keur,
         }
+        # Correction F §21-§24: check if depreciation basis (from capex scalars)
+        # is consistent with GFA (from construction_financing engine).
+        # Gap applies only when capex scalars are 0 (not provided/calibrated) but
+        # cfin computes non-zero financing costs — indicating the dep basis is
+        # incomplete (TUHO case). When capex scalars are non-zero they are the
+        # authoritative calibrated source; no gap flag in that case.
+        _cap_inputs = getattr(project_inputs, "capex", None)
+        _cap_financing_in_gfa = _gfa_idc + _gfa_commit + _gfa_struct + _gfa_vat_idc + _gfa_vat_commit
+        _cap_financing_in_dep_basis = (
+            float(getattr(_cap_inputs, "idc_keur", 0) or 0)
+            + float(getattr(_cap_inputs, "commitment_fees_keur", 0) or 0)
+            + float(getattr(_cap_inputs, "bank_fees_keur", 0) or 0)
+            + float(getattr(_cap_inputs, "vat_costs_keur", 0) or 0)
+        ) if _cap_inputs is not None else 0.0
+        # Gap fires only when capex scalars are 0 but cfin has non-zero fin costs.
+        _dep_basis_gap = (
+            _cap_financing_in_dep_basis < 0.01
+            and _cap_financing_in_gfa > 0.01
+        )
+        if _dep_basis_gap:
+            gfa_report["candidate_book_gfa_keur"] = gfa_keur
+            gfa_keur = None
+            _gfa_unavailable_msg = (
+                "BOOK_DEPRECIABLE_ASSET_BASIS_UPSTREAM_REQUIRED: GFA financing costs "
+                "from construction_financing engine differ from "
+                "capex.book_depreciable_capex_items() depreciation basis; upstream "
+                "canonical BookDepreciableAssetBasis prerequisite required."
+            )
 
     construction_ni_sum = 0.0
     cod_opening_re: float | None = None
@@ -862,7 +906,7 @@ def _assemble_statements_checked(g2c_result, project_inputs):
             ),
             "unrestricted_cash": LineAuthority.UNRESOLVED.value,
             "opening_retained_earnings": (
-                LineAuthority.SOURCE_PROVEN_CONFIGURATION.value
+                _map_opening_re_label(_apc)
                 if opening_re_authority else LineAuthority.UNRESOLVED.value
             ),
             "legal_reserve": (

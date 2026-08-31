@@ -68,15 +68,15 @@ class TestC3A_SupportedMatrix:
         assert len(fs.income_statement_periods) > 0
         assert len(fs.pf_cash_waterfall_periods) > 0
         assert fs.balance_sheet_status.value == "UNRESTRICTED_CASH_AUTHORITY_UNAVAILABLE"
-        # Correction E §17: Generic projects (no explicit AccountingPolicyConfig) have no
-        # book-capitalization authority; source-proven projects (Oborovo, TUHO) resolve GFA.
-        if ptype in ("Solar", "Wind"):
-            assert fs.fixed_asset_status.value == "BOOK_CAPITALIZATION_BASIS_UNAVAILABLE"
-        else:
-            assert fs.fixed_asset_status.value == "OK", (
-                f"{ptype}: expected GFA OK with explicit AccountingPolicyConfig, got "
-                f"{fs.fixed_asset_status.value}"
-            )
+        # Correction F §21-§24: projects whose capex depreciation scalars are zeroed
+        # but construction_financing engine produces non-zero financing costs have a
+        # split asset basis (GFA ≠ dep basis) → GFA unavailable until upstream
+        # canonical BookDepreciableAssetBasis is provided. Solar/Wind have no cfin
+        # at all; Oborovo/TUHO clean factories use zeroed scalars → gap detected.
+        assert fs.fixed_asset_status.value == "BOOK_CAPITALIZATION_BASIS_UNAVAILABLE", (
+            f"{ptype}: expected GFA unavailable (dep-basis gap or no cfin), got "
+            f"{fs.fixed_asset_status.value}"
+        )
         assert fs.retained_earnings_status.value in (
             "FINANCING_INCOME_AUTHORITY_UNAVAILABLE",   # Correction C §10
             "OPENING_EQUITY_ACCOUNTING_AUTHORITY_UNAVAILABLE")

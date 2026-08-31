@@ -22,6 +22,8 @@ from finco_core.inputs.senior_sculpting import SeniorSculptingConfig
 from finco_core.inputs.valuation import ValuationPolicies
 from finco_core.engine.distribution_account.inputs import CovenantGatePolicy
 
+from finco_core.inputs.accounting import AccountingPolicyConfig
+
 if TYPE_CHECKING:
     from finco_core.inputs.bess import BessParams
     from finco_core.opex._capability import HierarchicalOpexCapability
@@ -1641,8 +1643,23 @@ class ProjectInputs:
     valuation: ValuationPolicies = field(default_factory=ValuationPolicies)
     # Typed accounting-policy config set by project factories (outside
     # financial_engine/).  Assembly reads this — never project identity.
-    # Type: financial_engine.financial_statements.contracts.AccountingPolicyConfig | None
-    accounting_policy_config: object = None
+    accounting_policy_config: "AccountingPolicyConfig | None" = None
+
+
+def _hash_accounting_policy(apc) -> tuple:
+    """Deterministic immutable representation of accounting policy for cache keying."""
+    if apc is None:
+        return (None,)
+    lr = apc.legal_reserve_policy
+    return (
+        apc.book_capitalization_authority.value,
+        tuple(sorted(apc.book_capitalization_components.items())),
+        apc.shl_construction_accounting_authority.value,
+        apc.opening_re_authority.value,
+        (lr.enabled, lr.cap_fraction, lr.authority.value) if lr is not None else None,
+        apc.legal_reserve_authority.value,
+        apc.cash_interest_authority.value,
+    )
 
 
 def hash_inputs_for_cache(inputs: "ProjectInputs") -> tuple:
@@ -1747,4 +1764,6 @@ def hash_inputs_for_cache(inputs: "ProjectInputs") -> tuple:
             )
             if inputs.hierarchical_opex_capability is not None else None
         ),
+        # Accounting policy config — determines C3 output semantics.
+        _hash_accounting_policy(inputs.accounting_policy_config),
     )

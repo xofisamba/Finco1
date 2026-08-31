@@ -153,7 +153,7 @@ def create_default_oborovo() -> ProjectInputs:
     # Useful life = 20y for all hard CAPEX (workbook Dep tab column B confirmed).
     # Payment schedules: equal monthly spread (12-month construction) unless
     # workbook proves a different pattern (upfront, milestone, completion).
-    # NO balancing plug — all items are auditable to source rows.
+    # All items are auditable to source rows; none are invented residuals.
     # Sum = 55,999.0855 kEUR from exact workbook row precision.
     _OBR_HARD_LIFE = 20  # source: Oborovo Dep tab, column B, confirmed 2026-07-22
     _EQ = tuple(1/12 for _ in range(12))  # equal 12-month construction spread (default)
@@ -268,7 +268,7 @@ def create_default_oborovo() -> ProjectInputs:
     # Hard CAPEX sum check: exact source rows sum to 55,999.0855 kEUR.
     # The former 55,997.7 kEUR narrative was decimal truncation across
     # Construction Management, Contingencies, Project Acquisition/Development,
-    # and Project Rights — no balancing plug is used.
+    # and Project Rights — every item traces to a named workbook row.
 
     capex = CapexStructure(
         epc_contract=epc_contract,
