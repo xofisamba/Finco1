@@ -333,12 +333,17 @@ class TestD11_GFACausalComputation:
     def test_gfa_numeric_computed_for_source_proven(self, ptype):
         from financial_engine.financial_statements import StatementStatus
         fs = _assemble(ptype)
-        assert fs.fixed_asset_status == StatementStatus.OK, (
-            f"{ptype}: expected fixed_asset_status=OK, got {fs.fixed_asset_status}"
+        # Correction F §21-§24: clean factories zero capex dep scalars but
+        # construction_financing produces non-zero financing costs → dep-basis gap
+        # detected → GFA unavailable. candidate_book_gfa_keur preserved for audit.
+        assert fs.fixed_asset_status == StatementStatus.BOOK_CAPITALIZATION_BASIS_UNAVAILABLE, (
+            f"{ptype}: expected BOOK_CAPITALIZATION_BASIS_UNAVAILABLE (dep-basis gap), got {fs.fixed_asset_status}"
         )
-        gfa = fs.accounting_policies.provenance.get("gfa_report", {}).get(
-            "total_book_gfa_keur")
-        assert gfa is not None and gfa > 0, f"{ptype}: GFA must be positive, got {gfa}"
+        candidate_gfa = fs.accounting_policies.provenance.get("gfa_report", {}).get(
+            "candidate_book_gfa_keur")
+        assert candidate_gfa is not None and candidate_gfa > 0, (
+            f"{ptype}: candidate_book_gfa_keur must be positive for audit, got {candidate_gfa}"
+        )
 
     @pytest.mark.parametrize("ptype", ("Oborovo", "TUHO"))
     def test_gfa_equals_causal_component_sum(self, ptype):

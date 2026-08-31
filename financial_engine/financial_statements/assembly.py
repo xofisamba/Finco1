@@ -885,6 +885,9 @@ def _assemble_statements_checked(g2c_result, project_inputs):
                 "baseline": "clean-engine results only (no legacy statement modules)",
                 "axis": "model.periods; G2C joined by cashflow_date == period_end",
                 "provenance_mechanism": "AccountingPolicyConfig (typed input from factory)",
+                "this_project_source_proven": (
+                    _book_cap_authority == AccountingPolicyAuthority.SOURCE_PROVEN
+                ),
                 "gfa_computed": gfa_keur is not None,
                 "gfa_report": gfa_report,
                 "legal_reserve_computed": _lr_computed,
