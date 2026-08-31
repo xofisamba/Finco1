@@ -330,6 +330,53 @@ class NonConstructionFcFundingStatementRow:
 
 
 @dataclass(frozen=True)
+class LegalReservePolicy:
+    """Explicit typed activation of the legal-reserve roll-forward.
+
+    Must be set by a project factory (outside financial_engine/) where workbook
+    or policy evidence exists.  Assembly never activates legal reserve from a
+    scalar default — only an explicit LegalReservePolicy(enabled=True) triggers
+    the roll-forward kernel.
+    """
+
+    enabled: bool
+    cap_fraction: float
+    authority: AccountingPolicyAuthority = AccountingPolicyAuthority.GENERIC_FINCO_POLICY
+
+
+@dataclass(frozen=True)
+class AccountingPolicyConfig:
+    """Typed accounting-policy INPUT provided by project factories.
+
+    Assembly reads this config exclusively — it may NOT read project identity
+    (code, name, country+code combination, or any identity whitelist) to derive
+    accounting behaviour.  Factories in app/ are identity-aware and populate
+    this config with the appropriate authorities.
+
+    Defaults produce the generic/unavailable behaviour (no legal reserve,
+    GENERIC_FINCO_POLICY authority for all dimensions).
+    """
+
+    book_capitalization_authority: AccountingPolicyAuthority = (
+        AccountingPolicyAuthority.GENERIC_FINCO_POLICY
+    )
+    book_capitalization_components: dict = field(default_factory=dict)
+    shl_construction_accounting_authority: AccountingPolicyAuthority = (
+        AccountingPolicyAuthority.GENERIC_FINCO_POLICY
+    )
+    opening_re_authority: AccountingPolicyAuthority = (
+        AccountingPolicyAuthority.GENERIC_FINCO_POLICY
+    )
+    legal_reserve_policy: "LegalReservePolicy | None" = None
+    legal_reserve_authority: AccountingPolicyAuthority = (
+        AccountingPolicyAuthority.GENERIC_FINCO_POLICY
+    )
+    cash_interest_authority: AccountingPolicyAuthority = (
+        AccountingPolicyAuthority.UNRESOLVED
+    )
+
+
+@dataclass(frozen=True)
 class AccountingPolicies:
     """Typed accounting-policy labels for every derived rule.
 

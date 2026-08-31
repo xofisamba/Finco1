@@ -83,6 +83,59 @@ from finco_core.inputs.valuation import (
     ValuationPolicies,
 )
 from finco_core.opex.oborovo_config import build_oborovo_opex_capability
+from financial_engine.financial_statements.contracts import (
+    AccountingPolicyAuthority,
+    AccountingPolicyConfig,
+    BookCapitalizationTreatment,
+    LegalReservePolicy,
+)
+
+
+# =============================================================================
+# Accounting policy configs — source-proven per project
+# =============================================================================
+
+_SOURCE_PROVEN_LR = LegalReservePolicy(
+    enabled=True,
+    cap_fraction=0.10,
+    authority=AccountingPolicyAuthority.SOURCE_PROVEN,
+)
+
+_OBOROVO_ACCOUNTING_POLICY = AccountingPolicyConfig(
+    book_capitalization_authority=AccountingPolicyAuthority.SOURCE_PROVEN,
+    book_capitalization_components={
+        "hard_capex": BookCapitalizationTreatment.CAPITALIZE_FIXED_ASSET.value,
+        "senior_idc": BookCapitalizationTreatment.CAPITALIZE_FIXED_ASSET.value,
+        "senior_commitment_fees": BookCapitalizationTreatment.CAPITALIZE_FIXED_ASSET.value,
+        "bank_structuring_fees": BookCapitalizationTreatment.CAPITALIZE_FIXED_ASSET.value,
+        "vat_facility_financing_costs": BookCapitalizationTreatment.CAPITALIZE_FIXED_ASSET.value,
+        "shl_construction_interest": BookCapitalizationTreatment.EXPENSE_PNL.value,
+        "dsra_funding": BookCapitalizationTreatment.RESTRICTED_CURRENT_ASSET.value,
+        "working_capital": BookCapitalizationTreatment.UNRESTRICTED_CURRENT_ASSET.value,
+    },
+    shl_construction_accounting_authority=AccountingPolicyAuthority.SOURCE_PROVEN,
+    opening_re_authority=AccountingPolicyAuthority.SOURCE_PROVEN,
+    legal_reserve_policy=_SOURCE_PROVEN_LR,
+    legal_reserve_authority=AccountingPolicyAuthority.SOURCE_PROVEN,
+)
+
+_TUHO_ACCOUNTING_POLICY = AccountingPolicyConfig(
+    book_capitalization_authority=AccountingPolicyAuthority.SOURCE_PROVEN,
+    book_capitalization_components={
+        "hard_capex": BookCapitalizationTreatment.CAPITALIZE_FIXED_ASSET.value,
+        "senior_idc": BookCapitalizationTreatment.CAPITALIZE_FIXED_ASSET.value,
+        "senior_commitment_fees": BookCapitalizationTreatment.CAPITALIZE_FIXED_ASSET.value,
+        "bank_structuring_fees": BookCapitalizationTreatment.CAPITALIZE_FIXED_ASSET.value,
+        "vat_facility_financing_costs": BookCapitalizationTreatment.CAPITALIZE_FIXED_ASSET.value,
+        "shl_construction_interest": BookCapitalizationTreatment.EXPENSE_PNL.value,
+        "dsra_funding": BookCapitalizationTreatment.RESTRICTED_CURRENT_ASSET.value,
+        "working_capital": BookCapitalizationTreatment.UNRESTRICTED_CURRENT_ASSET.value,
+    },
+    shl_construction_accounting_authority=AccountingPolicyAuthority.SOURCE_PROVEN,
+    opening_re_authority=AccountingPolicyAuthority.SOURCE_PROVEN,
+    legal_reserve_policy=_SOURCE_PROVEN_LR,
+    legal_reserve_authority=AccountingPolicyAuthority.SOURCE_PROVEN,
+)
 
 
 # =============================================================================
@@ -671,6 +724,7 @@ def create_default_oborovo() -> ProjectInputs:
         financing=financing,
         tax=tax,
         hierarchical_opex_capability=build_oborovo_opex_capability(),
+        accounting_policy_config=_OBOROVO_ACCOUNTING_POLICY,
     )
 
 
@@ -1274,6 +1328,7 @@ def create_default_tuho_wind1() -> ProjectInputs:
                 ),
             ),
         ),
+        accounting_policy_config=_TUHO_ACCOUNTING_POLICY,
     )
 
 

@@ -377,60 +377,40 @@ def _assemble_statements_checked(g2c_result, project_inputs):
     treatment_value = getattr(
         getattr(tax_pol, "shl_construction_accounting", None), "value", None)
 
-    # Correction D: typed provenance per policy dimension.
-    # SOURCE_PROVEN status requires a project-specific workbook trace.  Only
-    # Oborovo (OBR-001, HR) and TUHO (TUHO-WIND-1, HR) have been source-
-    # traced.  Solar / Wind are generic-default projects — they share the
-    # same EXPENSE_TO_PNL value but WITHOUT a source trace, so calling them
-    # SOURCE_PROVEN would be false.  The discriminator is info.country_iso:
-    # HR = Croatian SPV with source evidence on file; others = generic.
-    _info = getattr(project_inputs, "info", None) if project_inputs is not None else None
-    _country_iso = getattr(_info, "country_iso", None) or ""
-    _info_code = getattr(_info, "code", None) or ""
-    _source_proven_codes = {"OBR-001", "TUHO-WIND-1"}
-    _is_source_proven = (
-        _country_iso.upper() == "HR"
-        and _info_code in _source_proven_codes
+    # Correction E: accounting provenance from typed config supplied by the
+    # project factory.  Assembly never reads project identity (code, name,
+    # country+code combination, or any whitelist) to derive accounting
+    # behaviour.  When no config is provided the generic/unavailable defaults
+    # apply — no implicit activation of source-proven policies.
+    from financial_engine.financial_statements.contracts import (
+        AccountingPolicyConfig as _APC,
     )
+    _raw_apc = getattr(project_inputs, "accounting_policy_config", None) if project_inputs is not None else None
+    _apc: _APC = _raw_apc if isinstance(_raw_apc, _APC) else _APC()
 
-    if treatment_value == "expense_to_pnl" and _is_source_proven:
-        _shl_accounting_authority = AccountingPolicyAuthority.SOURCE_PROVEN
-    elif treatment_value == "expense_to_pnl":
-        _shl_accounting_authority = AccountingPolicyAuthority.GENERIC_FINCO_POLICY
+    # SHL construction accounting authority comes from typed config.
+    if treatment_value == "expense_to_pnl":
+        _shl_accounting_authority = _apc.shl_construction_accounting_authority
+        if _shl_accounting_authority == AccountingPolicyAuthority.UNRESOLVED:
+            _shl_accounting_authority = AccountingPolicyAuthority.GENERIC_FINCO_POLICY
     elif treatment_value is None:
         _shl_accounting_authority = AccountingPolicyAuthority.UNRESOLVED
     else:
         _shl_accounting_authority = AccountingPolicyAuthority.GENERIC_FINCO_POLICY
 
-    if _is_source_proven:
-        _legal_reserve_authority = AccountingPolicyAuthority.SOURCE_PROVEN
-        _book_cap_authority = AccountingPolicyAuthority.SOURCE_PROVEN
-        _opening_re_pol_authority = AccountingPolicyAuthority.SOURCE_PROVEN
-    else:
-        _legal_reserve_authority = AccountingPolicyAuthority.GENERIC_FINCO_POLICY
-        _book_cap_authority = AccountingPolicyAuthority.GENERIC_FINCO_POLICY
-        _opening_re_pol_authority = AccountingPolicyAuthority.GENERIC_FINCO_POLICY
-
+    _legal_reserve_authority = _apc.legal_reserve_authority
+    _book_cap_authority = _apc.book_capitalization_authority
+    _opening_re_pol_authority = _apc.opening_re_authority
     # Cash interest income has no clean authority regardless of project.
     _cash_interest_authority = AccountingPolicyAuthority.UNRESOLVED
 
-    # GFA component-level capitalization treatment (Oborovo/TUHO source trace).
-    if _is_source_proven:
-        _book_cap_components = {
-            "hard_capex": BookCapitalizationTreatment.CAPITALIZE_FIXED_ASSET.value,
-            "senior_idc": BookCapitalizationTreatment.CAPITALIZE_FIXED_ASSET.value,
-            "senior_commitment_fees": BookCapitalizationTreatment.CAPITALIZE_FIXED_ASSET.value,
-            "bank_structuring_fees": BookCapitalizationTreatment.CAPITALIZE_FIXED_ASSET.value,
-            "vat_facility_financing_costs": BookCapitalizationTreatment.CAPITALIZE_FIXED_ASSET.value,
-            "shl_construction_interest": BookCapitalizationTreatment.EXPENSE_PNL.value,
-            "dsra_funding": BookCapitalizationTreatment.RESTRICTED_CURRENT_ASSET.value,
-            "working_capital": BookCapitalizationTreatment.UNRESTRICTED_CURRENT_ASSET.value,
-        }
-    else:
-        _book_cap_components = {
-            "hard_capex": BookCapitalizationTreatment.CAPITALIZE_FIXED_ASSET.value,
-            "shl_construction_interest": BookCapitalizationTreatment.EXPENSE_PNL.value,
-        }
+    # GFA component classification: from typed config when present, otherwise generic.
+    _book_cap_components = _apc.book_capitalization_components or {
+        "hard_capex": BookCapitalizationTreatment.CAPITALIZE_FIXED_ASSET.value,
+        "shl_construction_interest": BookCapitalizationTreatment.EXPENSE_PNL.value,
+    }
+    # Legal reserve: explicit typed activation only (§18 Correction E).
+    _lr_policy = _apc.legal_reserve_policy
     # Correction C §4-§6 (Option B — operating-only RE schedule): the COD
     # opening RE is derived from the AUTHORITATIVE construction P&L
     # (pre-construction opening RE = 0 for a newly incorporated SPV whose
@@ -465,11 +445,18 @@ def _assemble_statements_checked(g2c_result, project_inputs):
     gfa_report: dict = {}
     if cfin is not None:
         _gfa_hard = sum(cfin.hard_capex_uses_keur)
-        _gfa_idc = sum(cfin.senior_idc_accrual_keur)
+        # Correction E §9-§10: use capitalized IDC (senior_idc_capitalized_uses_keur),
+        # NOT raw accrual (senior_idc_accrual_keur).  Terminal raw IDC that is not a
+        # capitalized project use is excluded from GFA.
+        _gfa_idc_raw = sum(cfin.senior_idc_accrual_keur)
+        _cap_idc_vec = cfin.senior_idc_capitalized_uses_keur
+        _gfa_idc = sum(_cap_idc_vec) if _cap_idc_vec else _gfa_idc_raw
+        _gfa_idc_terminal = _gfa_idc_raw - _gfa_idc
         _gfa_commit = sum(cfin.senior_commitment_fee_accrual_keur)
         _gfa_struct = sum(cfin.structuring_fee_keur)
         _gfa_vat_idc = float(cfin.vat_idc_keur or 0.0)
         _gfa_vat_commit = float(cfin.vat_commitment_fee_keur or 0.0)
+        _total_cap_fin = float(getattr(cfin, "total_capitalized_financing_keur", 0.0) or 0.0)
         gfa_keur = (
             _gfa_hard + _gfa_idc + _gfa_commit
             + _gfa_struct + _gfa_vat_idc + _gfa_vat_commit
@@ -477,10 +464,13 @@ def _assemble_statements_checked(g2c_result, project_inputs):
         gfa_report = {
             "hard_capex_keur": _gfa_hard,
             "senior_idc_keur": _gfa_idc,
+            "senior_idc_raw_keur": _gfa_idc_raw,
+            "senior_idc_terminal_excluded_keur": _gfa_idc_terminal,
             "senior_commitment_fees_keur": _gfa_commit,
             "structuring_fee_keur": _gfa_struct,
             "vat_idc_keur": _gfa_vat_idc,
             "vat_commitment_fee_keur": _gfa_vat_commit,
+            "total_capitalized_financing_keur": _total_cap_fin,
             "shl_construction_pik_excluded_keur": float(
                 cfin.shl_construction_pik_keur or 0.0),
             "total_book_gfa_keur": gfa_keur,
@@ -677,48 +667,44 @@ def _assemble_statements_checked(g2c_result, project_inputs):
         ))
 
     # Correction D §19-§23: legal-reserve roll-forward using the existing
-    # roll_forward_equity_state kernel.  Applies to all projects with a
-    # configured legal_reserve_cap > 0.  Authority is SOURCE_PROVEN for
-    # Oborovo/TUHO (workbook-proven formula; same EXPENSE_TO_PNL allocation
-    # rule confirmed from source trace) and GENERIC_FINCO_POLICY for Solar/
-    # Wind (same cap is configured but has no source workbook evidence).
+    # Correction E §18: legal reserve requires EXPLICIT typed activation via
+    # LegalReservePolicy(enabled=True) in AccountingPolicyConfig.  A scalar
+    # TaxParams.legal_reserve_cap default is not sufficient — it may reflect a
+    # compatibility default rather than a proven source accounting policy.
     # The kernel: transfer = min(NI, cap − opening_reserve) when NI > 0 and
     # reserve < cap; otherwise 0.  RE closing = opening + NI − dist − transfer.
     cod_opening_re = construction_ni_sum if opening_re_authority else None
     _lr_computed = False
     _lr_results_by_idx: dict = {}
     _lr_closing_by_idx: dict = {}
-    _fin_pol = getattr(project_inputs, "financing", None) if project_inputs is not None else None
-    _sc_keur = float(getattr(_fin_pol, "share_capital_keur", 0.0) or 0.0)
-    _lr_cap = float(getattr(tax_pol, "legal_reserve_cap", 0.0) or 0.0) if tax_pol is not None else 0.0
-    if _op_re_inputs and _lr_cap > 0.0 and _sc_keur > 0.0:
-        try:
-            from financial_engine.tax.interest_limitation import (
-                EquityStatePeriodInput as _EquityInput,
-                roll_forward_equity_state as _roll_equity,
+    if _op_re_inputs and _lr_policy is not None and _lr_policy.enabled:
+        _fin_pol = getattr(project_inputs, "financing", None) if project_inputs is not None else None
+        _sc_keur = float(getattr(_fin_pol, "share_capital_keur", 0.0) or 0.0)
+        _lr_cap = _lr_policy.cap_fraction
+        from financial_engine.tax.interest_limitation import (
+            EquityStatePeriodInput as _EquityInput,
+            roll_forward_equity_state as _roll_equity,
+        )
+        _eq_inputs = tuple(
+            _EquityInput(
+                period_index=pidx,
+                net_income_keur=ni,
+                gross_dividends_keur=ld,
             )
-            _eq_inputs = tuple(
-                _EquityInput(
-                    period_index=pidx,
-                    net_income_keur=ni,
-                    gross_dividends_keur=ld,
-                )
-                for pidx, ni, ld, _pend in _op_re_inputs
-            )
-            _lr_results_all = _roll_equity(
-                _eq_inputs,
-                share_capital_keur=_sc_keur,
-                legal_reserve_cap_fraction=_lr_cap,
-                opening_legal_reserve_keur=0.0,
-                opening_retained_earnings_keur=cod_opening_re or 0.0,
-            )
-            _lr_results_by_idx = {r.period_index: r for r in _lr_results_all}
-            _lr_closing_by_idx = {
-                r.period_index: r.closing_legal_reserve_keur for r in _lr_results_all
-            }
-            _lr_computed = True
-        except Exception:
-            _lr_computed = False
+            for pidx, ni, ld, _pend in _op_re_inputs
+        )
+        _lr_results_all = _roll_equity(
+            _eq_inputs,
+            share_capital_keur=_sc_keur,
+            legal_reserve_cap_fraction=_lr_cap,
+            opening_legal_reserve_keur=0.0,
+            opening_retained_earnings_keur=cod_opening_re or 0.0,
+        )
+        _lr_results_by_idx = {r.period_index: r for r in _lr_results_all}
+        _lr_closing_by_idx = {
+            r.period_index: r.closing_legal_reserve_keur for r in _lr_results_all
+        }
+        _lr_computed = True
 
     # Build retained-earnings periods post-loop so legal-reserve transfers
     # can be included in the sequential opening → closing roll-forward.
@@ -777,8 +763,8 @@ def _assemble_statements_checked(g2c_result, project_inputs):
         **({"gross_fixed_assets": _gfa_unavailable_msg} if gfa_keur is None else {}),
         **({} if _lr_computed else {
             "legal_reserve": (
-                "LEGAL_RESERVE_AUTHORITY_UNAVAILABLE: legal_reserve_cap not "
-                "configured or legal reserve roll-forward did not complete."
+                "LEGAL_RESERVE_AUTHORITY_UNAVAILABLE: LegalReservePolicy not "
+                "set in AccountingPolicyConfig or not enabled."
             )
         }),
         "tax_payable": (
@@ -854,9 +840,7 @@ def _assemble_statements_checked(g2c_result, project_inputs):
             provenance={
                 "baseline": "clean-engine results only (no legacy statement modules)",
                 "axis": "model.periods; G2C joined by cashflow_date == period_end",
-                "source_proven_codes": sorted(_source_proven_codes),
-                "this_info_code": _info_code,
-                "this_project_source_proven": _is_source_proven,
+                "provenance_mechanism": "AccountingPolicyConfig (typed input from factory)",
                 "gfa_computed": gfa_keur is not None,
                 "gfa_report": gfa_report,
                 "legal_reserve_computed": _lr_computed,

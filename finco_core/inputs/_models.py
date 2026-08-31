@@ -1639,6 +1639,10 @@ class ProjectInputs:
     # Presence (non-None) is the sole dispatch signal — never check project name.
     hierarchical_opex_capability: "HierarchicalOpexCapability | None" = None
     valuation: ValuationPolicies = field(default_factory=ValuationPolicies)
+    # Typed accounting-policy config set by project factories (outside
+    # financial_engine/).  Assembly reads this — never project identity.
+    # Type: financial_engine.financial_statements.contracts.AccountingPolicyConfig | None
+    accounting_policy_config: object = None
 
 
 def hash_inputs_for_cache(inputs: "ProjectInputs") -> tuple:
