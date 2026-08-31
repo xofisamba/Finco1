@@ -57,6 +57,55 @@ class LineAuthority(str, Enum):
     UNRESOLVED = "UNRESOLVED"
 
 
+class AccountingPolicyAuthority(str, Enum):
+    """Typed provenance of each accounting policy choice.
+
+    SOURCE_PROVEN      — value or treatment traced to workbook evidence for
+                         THIS project (Oborovo / TUHO only, after explicit
+                         source-trace audit).
+    GENERIC_FINCO_POLICY — standard Finco default applied without a
+                           project-specific source trace (Solar / Wind).
+    USER_CONFIGURED    — value supplied by user configuration that overrides
+                         the generic default (not yet in use; reserved for
+                         future interactive configuration).
+    NOT_APPLICABLE     — the policy dimension does not apply to this project
+                         (e.g. legal reserve where Croatian-law SPV criteria
+                         are not met).
+    UNRESOLVED         — provenance not yet established; output for that
+                         dimension is blocked or surfaced as unavailable.
+    """
+
+    SOURCE_PROVEN = "SOURCE_PROVEN"
+    GENERIC_FINCO_POLICY = "GENERIC_FINCO_POLICY"
+    USER_CONFIGURED = "USER_CONFIGURED"
+    NOT_APPLICABLE = "NOT_APPLICABLE"
+    UNRESOLVED = "UNRESOLVED"
+
+
+class BookCapitalizationTreatment(str, Enum):
+    """Typed classification of how a cost component is capitalized in the
+    book fixed-asset (GFA) ledger.
+
+    CAPITALIZE_FIXED_ASSET       — included in Gross Fixed Assets; subject
+                                   to book depreciation.
+    EXPENSE_PNL                  — expensed directly to P&L; never in GFA.
+    RESTRICTED_CURRENT_ASSET     — funded and ring-fenced (e.g. DSRA);
+                                   separate balance-sheet line, not GFA.
+    UNRESTRICTED_CURRENT_ASSET   — working capital or similar; separate
+                                   current-asset line, not GFA.
+    NOT_APPLICABLE               — component does not arise in this project.
+    UNRESOLVED                   — treatment not yet determined; GFA
+                                   contribution cannot be claimed.
+    """
+
+    CAPITALIZE_FIXED_ASSET = "CAPITALIZE_FIXED_ASSET"
+    EXPENSE_PNL = "EXPENSE_PNL"
+    RESTRICTED_CURRENT_ASSET = "RESTRICTED_CURRENT_ASSET"
+    UNRESTRICTED_CURRENT_ASSET = "UNRESTRICTED_CURRENT_ASSET"
+    NOT_APPLICABLE = "NOT_APPLICABLE"
+    UNRESOLVED = "UNRESOLVED"
+
+
 @dataclass(frozen=True)
 class IncomeStatementPeriod:
     """One period of the clean Income Statement (P&L).
@@ -282,7 +331,12 @@ class NonConstructionFcFundingStatementRow:
 
 @dataclass(frozen=True)
 class AccountingPolicies:
-    """Typed accounting-policy labels for every derived rule."""
+    """Typed accounting-policy labels for every derived rule.
+
+    Provenance fields use AccountingPolicyAuthority to distinguish
+    SOURCE_PROVEN (Oborovo / TUHO workbook trace) from GENERIC_FINCO_POLICY
+    (Solar / Wind default) — never conflating the two.
+    """
 
     pnl_depreciation: str = "BOOK_DEPRECIATION (OperatingSchedules.book_depreciation_keur)"
     pnl_shl_interest: str = "GROSS_ACCRUED (cash + PIK)"
@@ -293,6 +347,28 @@ class AccountingPolicies:
     fixed_asset_basis: str = "BOOK_CAPITALIZATION_BASIS_UNAVAILABLE"
     unrestricted_cash: str = "UNRESTRICTED_CASH_AUTHORITY_UNAVAILABLE"
     opening_retained_earnings: str = "OPENING_EQUITY_ACCOUNTING_AUTHORITY_UNAVAILABLE"
+
+    # Typed provenance per policy dimension (AccountingPolicyAuthority enum).
+    shl_construction_accounting_authority: AccountingPolicyAuthority = (
+        AccountingPolicyAuthority.UNRESOLVED
+    )
+    legal_reserve_authority: AccountingPolicyAuthority = (
+        AccountingPolicyAuthority.UNRESOLVED
+    )
+    book_capitalization_authority: AccountingPolicyAuthority = (
+        AccountingPolicyAuthority.UNRESOLVED
+    )
+    opening_re_authority: AccountingPolicyAuthority = (
+        AccountingPolicyAuthority.UNRESOLVED
+    )
+    cash_interest_income_authority: AccountingPolicyAuthority = (
+        AccountingPolicyAuthority.UNRESOLVED
+    )
+
+    # GFA component-level capitalization treatment map.
+    # Keys: component name (str). Values: BookCapitalizationTreatment.
+    book_capitalization_components: dict = field(default_factory=dict)
+
     provenance: dict = field(default_factory=dict)
 
 

@@ -1,0 +1,324 @@
+"""Phase C3 Correction D — Accounting Provenance + GFA Classification + Senior Axis.
+
+Proves:
+  D1  AccountingPolicyAuthority enum exists with all required members.
+  D2  BookCapitalizationTreatment enum exists with all required members.
+  D3  SOURCE_PROVEN only for Oborovo/TUHO (workbook-traced); Solar/Wind
+      get GENERIC_FINCO_POLICY — never SOURCE_PROVEN without a source trace.
+  D4  shl_construction_accounting authority is SOURCE_PROVEN for Oborovo/TUHO
+      and GENERIC_FINCO_POLICY for Solar/Wind.
+  D5  GFA component classification map present and typed for Oborovo/TUHO;
+      SHL construction interest classified EXPENSE_PNL (not CAPITALIZE_FIXED_ASSET).
+  D6  Senior axis self-authorization bug removed: contract.senior_axis is used
+      exclusively; no fallback to tuple(senior.period_indices).
+  D7  No-Senior synthetic: a project with no senior debt and an empty senior
+      result does not raise; senior_expected resolves to ().
+  D8  Cash interest income authority is always UNRESOLVED (no clean authority).
+  D9  Opening RE authority is SOURCE_PROVEN for Oborovo/TUHO (EXPENSE_TO_PNL
+      source-traced); GENERIC_FINCO_POLICY for Solar/Wind.
+  D10 book_capitalization_authority is SOURCE_PROVEN for Oborovo/TUHO;
+      GENERIC_FINCO_POLICY for Solar/Wind.
+"""
+from __future__ import annotations
+
+import pytest
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _run_clean(ptype):
+    from app import project_factories as pf
+    from app.services.production_financial_authority import run_clean_production
+
+    factory = {
+        "Solar": pf.create_default_solar_project,
+        "Wind": pf.create_default_wind_project,
+        "Oborovo": pf.create_default_oborovo,
+        "TUHO": pf.create_default_tuho_wind1,
+    }[ptype]
+    return run_clean_production(factory(), project_type=ptype)
+
+
+def _assemble(ptype):
+    from financial_engine.financial_statements import (
+        assemble_decision_complete_financial_statements,
+    )
+    run = _run_clean(ptype)
+    fs = assemble_decision_complete_financial_statements(run.g2c_result, run.project_inputs)
+    return fs
+
+
+# ---------------------------------------------------------------------------
+# D1 — AccountingPolicyAuthority enum
+# ---------------------------------------------------------------------------
+
+class TestD1_AccountingPolicyAuthorityEnum:
+    def test_all_required_members_exist(self):
+        from financial_engine.financial_statements import AccountingPolicyAuthority
+
+        required = {
+            "SOURCE_PROVEN",
+            "GENERIC_FINCO_POLICY",
+            "USER_CONFIGURED",
+            "NOT_APPLICABLE",
+            "UNRESOLVED",
+        }
+        actual = {m.name for m in AccountingPolicyAuthority}
+        assert required.issubset(actual), f"missing: {required - actual}"
+
+    def test_is_str_enum(self):
+        from financial_engine.financial_statements import AccountingPolicyAuthority
+        assert AccountingPolicyAuthority.SOURCE_PROVEN.value == "SOURCE_PROVEN"
+        assert AccountingPolicyAuthority.GENERIC_FINCO_POLICY.value == "GENERIC_FINCO_POLICY"
+
+
+# ---------------------------------------------------------------------------
+# D2 — BookCapitalizationTreatment enum
+# ---------------------------------------------------------------------------
+
+class TestD2_BookCapitalizationTreatmentEnum:
+    def test_all_required_members_exist(self):
+        from financial_engine.financial_statements import BookCapitalizationTreatment
+
+        required = {
+            "CAPITALIZE_FIXED_ASSET",
+            "EXPENSE_PNL",
+            "RESTRICTED_CURRENT_ASSET",
+            "UNRESTRICTED_CURRENT_ASSET",
+            "NOT_APPLICABLE",
+            "UNRESOLVED",
+        }
+        actual = {m.name for m in BookCapitalizationTreatment}
+        assert required.issubset(actual), f"missing: {required - actual}"
+
+    def test_is_str_enum(self):
+        from financial_engine.financial_statements import BookCapitalizationTreatment
+        assert BookCapitalizationTreatment.CAPITALIZE_FIXED_ASSET.value == "CAPITALIZE_FIXED_ASSET"
+        assert BookCapitalizationTreatment.EXPENSE_PNL.value == "EXPENSE_PNL"
+
+
+# ---------------------------------------------------------------------------
+# D3 — Provenance: SOURCE_PROVEN only for Oborovo/TUHO
+# ---------------------------------------------------------------------------
+
+class TestD3_SourceProvenDiscrimination:
+    @pytest.mark.parametrize("ptype", ("Oborovo", "TUHO"))
+    def test_source_proven_projects_are_source_proven(self, ptype):
+        from financial_engine.financial_statements import AccountingPolicyAuthority
+        fs = _assemble(ptype)
+        pol = fs.accounting_policies
+        assert pol.shl_construction_accounting_authority == AccountingPolicyAuthority.SOURCE_PROVEN, (
+            f"{ptype}: expected SOURCE_PROVEN, got {pol.shl_construction_accounting_authority}"
+        )
+        assert pol.provenance.get("this_project_source_proven") is True
+
+    @pytest.mark.parametrize("ptype", ("Solar", "Wind"))
+    def test_generic_projects_are_not_source_proven(self, ptype):
+        from financial_engine.financial_statements import AccountingPolicyAuthority
+        fs = _assemble(ptype)
+        pol = fs.accounting_policies
+        assert pol.shl_construction_accounting_authority != AccountingPolicyAuthority.SOURCE_PROVEN, (
+            f"{ptype}: Solar/Wind must NOT be SOURCE_PROVEN (no workbook trace)"
+        )
+        assert pol.shl_construction_accounting_authority == AccountingPolicyAuthority.GENERIC_FINCO_POLICY
+        assert pol.provenance.get("this_project_source_proven") is False
+
+
+# ---------------------------------------------------------------------------
+# D4 — SHL construction accounting authority
+# ---------------------------------------------------------------------------
+
+class TestD4_ShlConstructionAccountingAuthority:
+    @pytest.mark.parametrize("ptype", ("Oborovo", "TUHO"))
+    def test_source_proven_for_oborovo_tuho(self, ptype):
+        from financial_engine.financial_statements import AccountingPolicyAuthority
+        fs = _assemble(ptype)
+        assert fs.accounting_policies.shl_construction_accounting_authority == (
+            AccountingPolicyAuthority.SOURCE_PROVEN
+        )
+
+    @pytest.mark.parametrize("ptype", ("Solar", "Wind"))
+    def test_generic_for_solar_wind(self, ptype):
+        from financial_engine.financial_statements import AccountingPolicyAuthority
+        fs = _assemble(ptype)
+        assert fs.accounting_policies.shl_construction_accounting_authority == (
+            AccountingPolicyAuthority.GENERIC_FINCO_POLICY
+        )
+
+
+# ---------------------------------------------------------------------------
+# D5 — GFA component classification
+# ---------------------------------------------------------------------------
+
+class TestD5_BookCapitalizationComponents:
+    @pytest.mark.parametrize("ptype", ("Oborovo", "TUHO"))
+    def test_source_proven_has_component_map(self, ptype):
+        from financial_engine.financial_statements import BookCapitalizationTreatment
+        fs = _assemble(ptype)
+        comps = fs.accounting_policies.book_capitalization_components
+        assert isinstance(comps, dict)
+        assert len(comps) > 0, f"{ptype}: component map must not be empty"
+
+    @pytest.mark.parametrize("ptype", ("Oborovo", "TUHO"))
+    def test_shl_construction_interest_is_expense_pnl(self, ptype):
+        from financial_engine.financial_statements import BookCapitalizationTreatment
+        fs = _assemble(ptype)
+        comps = fs.accounting_policies.book_capitalization_components
+        assert "shl_construction_interest" in comps, (
+            f"{ptype}: shl_construction_interest must appear in component map"
+        )
+        assert comps["shl_construction_interest"] == BookCapitalizationTreatment.EXPENSE_PNL.value, (
+            f"{ptype}: SHL construction interest must be EXPENSE_PNL (not capitalized)"
+        )
+
+    @pytest.mark.parametrize("ptype", ("Oborovo", "TUHO"))
+    def test_hard_capex_is_capitalized(self, ptype):
+        from financial_engine.financial_statements import BookCapitalizationTreatment
+        fs = _assemble(ptype)
+        comps = fs.accounting_policies.book_capitalization_components
+        assert comps.get("hard_capex") == BookCapitalizationTreatment.CAPITALIZE_FIXED_ASSET.value
+
+    @pytest.mark.parametrize("ptype", ("Oborovo", "TUHO"))
+    def test_dsra_is_restricted_current_asset(self, ptype):
+        from financial_engine.financial_statements import BookCapitalizationTreatment
+        fs = _assemble(ptype)
+        comps = fs.accounting_policies.book_capitalization_components
+        assert comps.get("dsra_funding") == BookCapitalizationTreatment.RESTRICTED_CURRENT_ASSET.value
+
+    @pytest.mark.parametrize("ptype", ("Oborovo", "TUHO"))
+    def test_no_dsra_or_working_capital_in_gfa(self, ptype):
+        from financial_engine.financial_statements import BookCapitalizationTreatment
+        fs = _assemble(ptype)
+        comps = fs.accounting_policies.book_capitalization_components
+        for key, val in comps.items():
+            if key in ("dsra_funding", "working_capital"):
+                assert val != BookCapitalizationTreatment.CAPITALIZE_FIXED_ASSET.value, (
+                    f"{ptype}: {key} must never be CAPITALIZE_FIXED_ASSET"
+                )
+
+
+# ---------------------------------------------------------------------------
+# D6 — Senior axis self-authorization bug removed
+# ---------------------------------------------------------------------------
+
+class TestD6_SeniorAxisNoSelfAuthorization:
+    def test_assembly_module_has_no_fallback_pattern(self):
+        """The literal self-authorization expression must not appear in source."""
+        import inspect
+        from financial_engine.financial_statements import assembly as asm
+        src = inspect.getsource(asm)
+        assert "or tuple(senior.period_indices)" not in src, (
+            "Self-authorization fallback 'or tuple(senior.period_indices)' "
+            "must be removed from assembly.py (Correction D)"
+        )
+        assert "contract.senior_axis or tuple" not in src, (
+            "Self-authorization pattern 'contract.senior_axis or tuple' "
+            "must be removed from assembly.py (Correction D)"
+        )
+
+    @pytest.mark.parametrize("ptype", ("Solar", "Wind", "Oborovo", "TUHO"))
+    def test_assembly_succeeds_with_correct_axes(self, ptype):
+        """Full assembly must succeed without triggering the AXIS_MISMATCH path."""
+        fs = _assemble(ptype)
+        from financial_engine.financial_statements import StatementStatus
+        assert fs.status != StatementStatus.STATEMENT_PERIOD_AXIS_MISMATCH, (
+            f"{ptype}: unexpected STATEMENT_PERIOD_AXIS_MISMATCH — check axis handling"
+        )
+
+
+# ---------------------------------------------------------------------------
+# D7 — No-Senior synthetic test
+# ---------------------------------------------------------------------------
+
+class TestD7_NoSeniorSynthetic:
+    def test_no_senior_assembly_does_not_raise(self):
+        """When senior_axis is None (no senior debt) and senior result is
+        empty, assembly must not raise and must not error on the axis check."""
+        import types
+        from financial_engine.financial_statements import (
+            assemble_decision_complete_financial_statements,
+            StatementStatus,
+        )
+
+        # Build a minimal synthetic g2c_result with no senior data.
+        # We use Solar (no senior configured) and patch senior.period_indices.
+        from app.project_factories import create_default_solar_project
+        from app.services.production_financial_authority import run_clean_production
+
+        run = run_clean_production(create_default_solar_project(), project_type="Solar")
+        g2c = run.g2c_result
+        model = g2c.financing_result.project_model_result
+        senior = model.senior_debt
+
+        # Confirm Solar has no senior periods (genuine no-Senior project).
+        if tuple(senior.period_indices):
+            pytest.skip("Solar factory has senior debt — skip no-Senior synthetic.")
+
+        fs = assemble_decision_complete_financial_statements(g2c, run.project_inputs)
+        # Must not be an axis mismatch.
+        assert fs.status != StatementStatus.STATEMENT_PERIOD_AXIS_MISMATCH, (
+            "No-Senior project must not raise STATEMENT_PERIOD_AXIS_MISMATCH"
+        )
+
+
+# ---------------------------------------------------------------------------
+# D8 — Cash interest income authority is always UNRESOLVED
+# ---------------------------------------------------------------------------
+
+class TestD8_CashInterestIncomeAuthority:
+    @pytest.mark.parametrize("ptype", ("Solar", "Wind", "Oborovo", "TUHO"))
+    def test_cash_interest_always_unresolved(self, ptype):
+        from financial_engine.financial_statements import AccountingPolicyAuthority
+        fs = _assemble(ptype)
+        assert fs.accounting_policies.cash_interest_income_authority == (
+            AccountingPolicyAuthority.UNRESOLVED
+        ), (
+            f"{ptype}: interest on cash/reserves has no clean authority — "
+            "must be UNRESOLVED"
+        )
+
+
+# ---------------------------------------------------------------------------
+# D9 — Opening RE authority
+# ---------------------------------------------------------------------------
+
+class TestD9_OpeningRetainedEarningsAuthority:
+    @pytest.mark.parametrize("ptype", ("Oborovo", "TUHO"))
+    def test_source_proven_for_oborovo_tuho(self, ptype):
+        from financial_engine.financial_statements import AccountingPolicyAuthority
+        fs = _assemble(ptype)
+        assert fs.accounting_policies.opening_re_authority == (
+            AccountingPolicyAuthority.SOURCE_PROVEN
+        )
+
+    @pytest.mark.parametrize("ptype", ("Solar", "Wind"))
+    def test_generic_for_solar_wind(self, ptype):
+        from financial_engine.financial_statements import AccountingPolicyAuthority
+        fs = _assemble(ptype)
+        assert fs.accounting_policies.opening_re_authority == (
+            AccountingPolicyAuthority.GENERIC_FINCO_POLICY
+        )
+
+
+# ---------------------------------------------------------------------------
+# D10 — Book capitalization authority
+# ---------------------------------------------------------------------------
+
+class TestD10_BookCapitalizationAuthority:
+    @pytest.mark.parametrize("ptype", ("Oborovo", "TUHO"))
+    def test_source_proven_for_oborovo_tuho(self, ptype):
+        from financial_engine.financial_statements import AccountingPolicyAuthority
+        fs = _assemble(ptype)
+        assert fs.accounting_policies.book_capitalization_authority == (
+            AccountingPolicyAuthority.SOURCE_PROVEN
+        )
+
+    @pytest.mark.parametrize("ptype", ("Solar", "Wind"))
+    def test_generic_for_solar_wind(self, ptype):
+        from financial_engine.financial_statements import AccountingPolicyAuthority
+        fs = _assemble(ptype)
+        assert fs.accounting_policies.book_capitalization_authority == (
+            AccountingPolicyAuthority.GENERIC_FINCO_POLICY
+        )

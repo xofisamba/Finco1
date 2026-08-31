@@ -5,7 +5,9 @@ results. See docs/PHASE_C3_CLEAN_FINANCIAL_STATEMENTS_AUTHORITY.md.
 """
 from financial_engine.financial_statements.contracts import (
     AccountingPolicies,
+    AccountingPolicyAuthority,
     BalanceSheetPeriod,
+    BookCapitalizationTreatment,
     FinancialStatementsResult,
     FixedAssetRollForwardPeriod,
     IncomeStatementPeriod,
@@ -21,7 +23,9 @@ from financial_engine.financial_statements.assembly import (
 
 __all__ = [
     "AccountingPolicies",
+    "AccountingPolicyAuthority",
     "BalanceSheetPeriod",
+    "BookCapitalizationTreatment",
     "FinancialStatementsResult",
     "FixedAssetRollForwardPeriod",
     "IncomeStatementPeriod",

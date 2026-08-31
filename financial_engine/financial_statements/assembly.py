@@ -34,7 +34,9 @@ from datetime import date
 
 from financial_engine.financial_statements.contracts import (
     AccountingPolicies,
+    AccountingPolicyAuthority,
     BalanceSheetPeriod,
+    BookCapitalizationTreatment,
     FixedAssetRollForwardPeriod,
     FinancialStatementsResult,
     IncomeStatementPeriod,
@@ -190,7 +192,22 @@ def _assemble_statements_checked(g2c_result, project_inputs):
         "tax", tax.period_indices, tax.taxable_profit_keur, contract.full_axis)
     _axis_checked(
         "shl", shl.period_indices, shl.shl_gross_interest_keur, contract.full_axis)
-    senior_expected = contract.senior_axis or tuple(senior.period_indices)
+    # Correction D: remove self-authorization fallback.  The only valid
+    # source for senior_expected is the independently-derived axis contract
+    # (PR-F1 authority).  Falling back to tuple(senior.period_indices) would
+    # validate the senior result against ITSELF — any axis defect in the
+    # solver output would pass silently.  When contract.senior_axis is None
+    # the project has no senior debt; the solver result must also be empty.
+    if contract.senior_axis is None:
+        if tuple(senior.period_indices):
+            raise _AxisMismatch(
+                "senior_axis absent from axis contract but senior result "
+                f"carries {len(senior.period_indices)} period(s); axis "
+                "contract must be rebuilt to include the senior policy."
+            )
+        senior_expected: tuple = ()
+    else:
+        senior_expected = contract.senior_axis
     _axis_checked(
         "senior", senior.period_indices, senior.senior_interest_keur,
         senior_expected)
@@ -224,7 +241,7 @@ def _assemble_statements_checked(g2c_result, project_inputs):
             senior.period_indices if label.startswith("senior") else (
                 shl.period_indices if label.startswith("shl") else tax.period_indices),
             vec,
-            (contract.senior_axis or tuple(senior.period_indices))
+            senior_expected
             if label.startswith("senior") else contract.full_axis)
 
     # G2C waterfall date join with duplicate/missing detection.
@@ -359,6 +376,61 @@ def _assemble_statements_checked(g2c_result, project_inputs):
     tax_pol = getattr(project_inputs, "tax", None) if project_inputs is not None else None
     treatment_value = getattr(
         getattr(tax_pol, "shl_construction_accounting", None), "value", None)
+
+    # Correction D: typed provenance per policy dimension.
+    # SOURCE_PROVEN status requires a project-specific workbook trace.  Only
+    # Oborovo (OBR-001, HR) and TUHO (TUHO-WIND-1, HR) have been source-
+    # traced.  Solar / Wind are generic-default projects — they share the
+    # same EXPENSE_TO_PNL value but WITHOUT a source trace, so calling them
+    # SOURCE_PROVEN would be false.  The discriminator is info.country_iso:
+    # HR = Croatian SPV with source evidence on file; others = generic.
+    _info = getattr(project_inputs, "info", None) if project_inputs is not None else None
+    _country_iso = getattr(_info, "country_iso", None) or ""
+    _project_code = getattr(_info, "code", None) or ""
+    _source_proven_codes = {"OBR-001", "TUHO-WIND-1"}
+    _is_source_proven = (
+        _country_iso.upper() == "HR"
+        and _project_code in _source_proven_codes
+    )
+
+    if treatment_value == "expense_to_pnl" and _is_source_proven:
+        _shl_accounting_authority = AccountingPolicyAuthority.SOURCE_PROVEN
+    elif treatment_value == "expense_to_pnl":
+        _shl_accounting_authority = AccountingPolicyAuthority.GENERIC_FINCO_POLICY
+    elif treatment_value is None:
+        _shl_accounting_authority = AccountingPolicyAuthority.UNRESOLVED
+    else:
+        _shl_accounting_authority = AccountingPolicyAuthority.GENERIC_FINCO_POLICY
+
+    if _is_source_proven:
+        _legal_reserve_authority = AccountingPolicyAuthority.SOURCE_PROVEN
+        _book_cap_authority = AccountingPolicyAuthority.SOURCE_PROVEN
+        _opening_re_pol_authority = AccountingPolicyAuthority.SOURCE_PROVEN
+    else:
+        _legal_reserve_authority = AccountingPolicyAuthority.GENERIC_FINCO_POLICY
+        _book_cap_authority = AccountingPolicyAuthority.GENERIC_FINCO_POLICY
+        _opening_re_pol_authority = AccountingPolicyAuthority.GENERIC_FINCO_POLICY
+
+    # Cash interest income has no clean authority regardless of project.
+    _cash_interest_authority = AccountingPolicyAuthority.UNRESOLVED
+
+    # GFA component-level capitalization treatment (Oborovo/TUHO source trace).
+    if _is_source_proven:
+        _book_cap_components = {
+            "hard_capex": BookCapitalizationTreatment.CAPITALIZE_FIXED_ASSET.value,
+            "senior_idc": BookCapitalizationTreatment.CAPITALIZE_FIXED_ASSET.value,
+            "senior_commitment_fees": BookCapitalizationTreatment.CAPITALIZE_FIXED_ASSET.value,
+            "bank_structuring_fees": BookCapitalizationTreatment.CAPITALIZE_FIXED_ASSET.value,
+            "vat_facility_financing_costs": BookCapitalizationTreatment.CAPITALIZE_FIXED_ASSET.value,
+            "shl_construction_interest": BookCapitalizationTreatment.EXPENSE_PNL.value,
+            "dsra_funding": BookCapitalizationTreatment.RESTRICTED_CURRENT_ASSET.value,
+            "working_capital": BookCapitalizationTreatment.UNRESTRICTED_CURRENT_ASSET.value,
+        }
+    else:
+        _book_cap_components = {
+            "hard_capex": BookCapitalizationTreatment.CAPITALIZE_FIXED_ASSET.value,
+            "shl_construction_interest": BookCapitalizationTreatment.EXPENSE_PNL.value,
+        }
     # Correction C §4-§6 (Option B — operating-only RE schedule): the COD
     # opening RE is derived from the AUTHORITATIVE construction P&L
     # (pre-construction opening RE = 0 for a newly incorporated SPV whose
@@ -671,10 +743,21 @@ def _assemble_statements_checked(g2c_result, project_inputs):
         ),
         balance_sheet_status=StatementStatus.UNRESTRICTED_CASH_AUTHORITY_UNAVAILABLE,
         balance_sheet_periods=tuple(bs_periods),
-        accounting_policies=AccountingPolicies(provenance={
-            "baseline": "clean-engine results only (no legacy statement modules)",
-            "axis": "model.periods; G2C joined by cashflow_date == period_end",
-        }),
+        accounting_policies=AccountingPolicies(
+            shl_construction_accounting_authority=_shl_accounting_authority,
+            legal_reserve_authority=_legal_reserve_authority,
+            book_capitalization_authority=_book_cap_authority,
+            opening_re_authority=_opening_re_pol_authority,
+            cash_interest_income_authority=_cash_interest_authority,
+            book_capitalization_components=_book_cap_components,
+            provenance={
+                "baseline": "clean-engine results only (no legacy statement modules)",
+                "axis": "model.periods; G2C joined by cashflow_date == period_end",
+                "source_proven_codes": sorted(_source_proven_codes),
+                "this_project_code": _project_code,
+                "this_project_source_proven": _is_source_proven,
+            },
+        ),
         unavailable_reasons=unavailable,
         authority_labels={
             "pnl": LineAuthority.EXISTING_CLEAN_AUTHORITY.value,
