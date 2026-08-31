@@ -70,6 +70,7 @@ def from_project_inputs(
     *,
     source_id: str = "",
     baseline_commit_sha: str = "",
+    book_basis: "object | None" = None,
 ) -> OperatingModelInput:
     """Adapt a canonical ProjectInputs to a clean OperatingModelInput.
 
@@ -192,9 +193,23 @@ def from_project_inputs(
             useful_life_override=item.useful_life_override,
         )
 
-    book_capex_items_for_dep = tuple(
-        _to_dep_item(item) for item in inputs.capex.book_depreciable_capex_items()
-    )
+    if book_basis is not None:
+        # Canonical basis: convert BookDepreciableAssetBasis components to CapexItemForDep.
+        # Replaces the implicit CapexStructure.book_depreciable_capex_items() path.
+        book_capex_items_for_dep = tuple(
+            CapexItemForDep(
+                name=c.name,
+                amount_keur=c.amount_keur,
+                asset_class_code=c.asset_class_code,
+                useful_life_override=c.useful_life_override,
+            )
+            for c in book_basis.components
+            if c.amount_keur != 0.0
+        )
+    else:
+        book_capex_items_for_dep = tuple(
+            _to_dep_item(item) for item in inputs.capex.book_depreciable_capex_items()
+        )
 
     from finco_core.inputs._models import TaxDepreciationMode
     if inputs.tax.tax_dep_basis_source_owned:

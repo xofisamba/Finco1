@@ -1,0 +1,78 @@
+name: Upstream — Book Depreciable Asset Basis Authority
+
+on:
+  push:
+    branches:
+      - upstream-book-depreciable-asset-basis
+      - main
+    paths:
+      - finco_core/inputs/book_depreciable_asset_basis.py
+      - financial_engine/book_basis.py
+      - financial_engine/financing/contracts.py
+      - financial_engine/financing/project.py
+      - financial_engine/adapters/project_inputs.py
+      - tests/test_upstream_book_depreciable_asset_basis.py
+  pull_request:
+    paths:
+      - finco_core/inputs/book_depreciable_asset_basis.py
+      - financial_engine/book_basis.py
+      - financial_engine/financing/contracts.py
+      - financial_engine/financing/project.py
+      - financial_engine/adapters/project_inputs.py
+      - tests/test_upstream_book_depreciable_asset_basis.py
+
+jobs:
+  upstream-book-basis:
+    name: Book Depreciable Asset Basis Authority
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: pip install -e ".[dev]" --quiet
+      - name: Run upstream book basis authority tests
+        run: |
+          python -m pytest tests/test_upstream_book_depreciable_asset_basis.py \
+            -v --tb=short
+      - name: Governance — no project-code dispatch in new modules
+        run: |
+          python - <<'EOF'
+          import pathlib, sys
+          repo = pathlib.Path(".")
+          targets = [
+              repo / "financial_engine" / "book_basis.py",
+              repo / "finco_core" / "inputs" / "book_depreciable_asset_basis.py",
+          ]
+          forbidden = ["OBR-001", "TUHO-WIND-1"]
+          errors = []
+          for t in targets:
+              text = t.read_text()
+              for f in forbidden:
+                  if f in text:
+                      errors.append(f"{t}: found '{f}'")
+          if errors:
+              print("GOVERNANCE FAILURES:", errors)
+              sys.exit(1)
+          print("Governance check passed — no project-code dispatch found.")
+          EOF
+      - name: Governance — no financial_statements import in upstream modules
+        run: |
+          python - <<'EOF'
+          import pathlib, sys
+          forbidden_import = "financial_engine.financial_statements"
+          targets = [
+              pathlib.Path("financial_engine/book_basis.py"),
+              pathlib.Path("finco_core/inputs/book_depreciable_asset_basis.py"),
+          ]
+          errors = []
+          for t in targets:
+              if forbidden_import in t.read_text():
+                  errors.append(str(t))
+          if errors:
+              print(f"GOVERNANCE: forbidden import '{forbidden_import}' in:", errors)
+              sys.exit(1)
+          print("Import governance passed.")
+          EOF

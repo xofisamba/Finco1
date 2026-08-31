@@ -853,6 +853,9 @@ def _run_with_construction_idc(
         ),
     )
 
+    from financial_engine.book_basis import build_book_depreciable_asset_basis
+    construction_basis = build_book_depreciable_asset_basis(orig_capex, construction_result)
+
     return ProjectFinancingResult(
         project_model_result=inner_result.project_model_result,
         project_uses=inner_result.project_uses,
@@ -874,6 +877,7 @@ def _run_with_construction_idc(
         fixed_point_iteration_count=inner_result.fixed_point_iteration_count,
         fixed_point_maximum_difference_keur=inner_result.fixed_point_maximum_difference_keur,
         construction_financing=construction_result,
+        book_depreciable_asset_basis=construction_basis,
         shareholder_loan_model_input=inner_result.shareholder_loan_model_input,
     )
 
