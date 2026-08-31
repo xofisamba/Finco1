@@ -37,6 +37,7 @@ class StatementStatus(str, Enum):
     UNRESTRICTED_CASH_AUTHORITY_UNAVAILABLE = "UNRESTRICTED_CASH_AUTHORITY_UNAVAILABLE"
     TAX_PAYABLE_AUTHORITY_UNAVAILABLE = "TAX_PAYABLE_AUTHORITY_UNAVAILABLE"
     FINANCING_INCOME_AUTHORITY_UNAVAILABLE = "FINANCING_INCOME_AUTHORITY_UNAVAILABLE"
+    LEGAL_RESERVE_AUTHORITY_UNAVAILABLE = "LEGAL_RESERVE_AUTHORITY_UNAVAILABLE"
     PF_CASH_CONSTRUCTION_AUTHORITY_UNAVAILABLE = (
         "PF_CASH_CONSTRUCTION_AUTHORITY_UNAVAILABLE"
     )
@@ -318,6 +319,7 @@ class FinancialStatementsResult:
     retained_earnings_status: StatementStatus
     retained_earnings_periods: tuple[RetainedEarningsPeriod, ...]
 
+
     balance_sheet_status: StatementStatus
     balance_sheet_periods: tuple[BalanceSheetPeriod, ...]
 
@@ -328,3 +330,17 @@ class FinancialStatementsResult:
     construction_funding_grain: str = ""
     non_construction_fc_row: object | None = None
     funding_audit: dict = field(default_factory=dict)
+
+    # Correction C §9/§11/§28: opening-RE authority, full-RE roll-forward,
+    # legal reserve and unrestricted cash are SEPARATE status concepts —
+    # never conflated (retained_earnings_status != opening status).
+    opening_retained_earnings_status: StatementStatus = (
+        StatementStatus.OPENING_EQUITY_ACCOUNTING_AUTHORITY_UNAVAILABLE
+    )
+    cod_opening_retained_earnings_keur: float | None = None
+    legal_reserve_status: StatementStatus = (
+        StatementStatus.LEGAL_RESERVE_AUTHORITY_UNAVAILABLE
+    )
+    unrestricted_cash_status: StatementStatus = (
+        StatementStatus.UNRESTRICTED_CASH_AUTHORITY_UNAVAILABLE
+    )

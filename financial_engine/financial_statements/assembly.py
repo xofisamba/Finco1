@@ -100,14 +100,24 @@ def _expected_axis_contract(model_periods, project_inputs):
     )
 
 
-def _mapped_axis(name: str, period_indices, values, expected_indices) -> dict[int, float]:
-    """Map an axis-aligned vector through the canonical PR-F1
-    map_period_vector authority (exact expected indices + parallel-vector
-    length enforcement). _AxisMismatch conversion happens at the caller."""
+def _axis_checked(name: str, period_indices, values, expected_indices):
+    """Correction C §16: single dedicated axis-validation helper.
+
+    Runs the canonical PR-F1 map_period_vector authority (exact expected
+    indices + parallel-vector length enforcement) and converts ONLY the
+    known canonical axis error codes (AXIS_* / PERIOD_VECTOR_*) into the
+    internal _AxisMismatch signal. Any other ValueError is an unexpected
+    defect and propagates unchanged."""
     from finco_core.engine.period_engine import map_period_vector
-    return map_period_vector(
-        period_indices, values, label=name, expected_indices=expected_indices
-    )
+    try:
+        return map_period_vector(
+            period_indices, values, label=name, expected_indices=expected_indices
+        )
+    except ValueError as exc:
+        msg = str(exc)
+        if msg.startswith(("AXIS_PERIOD_", "PERIOD_VECTOR_")):
+            raise _AxisMismatch(msg) from exc
+        raise
 
 
 def _fail_closed(status: StatementStatus, detail: str) -> FinancialStatementsResult:
@@ -144,10 +154,9 @@ def assemble_decision_complete_financial_statements(
         return _fail_closed(exc.status, exc.detail)
     except _AxisMismatch as exc:
         return _fail_closed(StatementStatus.STATEMENT_PERIOD_AXIS_MISMATCH, exc.detail)
-    except ValueError as exc:
-        # Raw AXIS_* errors from the canonical map_period_vector authority
-        # are converted to the same typed fail-closed result.
-        return _fail_closed(StatementStatus.STATEMENT_PERIOD_AXIS_MISMATCH, str(exc))
+    # Correction C §16: the public exception contract is NARROW — only
+    # _TypedUnavailable and _AxisMismatch become typed fail-closed results.
+    # Unexpected generic ValueError must propagate (no broad masking).
 
 
 def _assemble_statements_checked(g2c_result, project_inputs):
@@ -171,28 +180,26 @@ def _assemble_statements_checked(g2c_result, project_inputs):
     # parallel-vector length enforcement through map_period_vector. No
     # weaker independent C3 axis definition, no raw dict(zip(...)).
     contract = _expected_axis_contract(model_periods, project_inputs)
-    from finco_core.engine.period_engine import map_period_vector
 
     # Validation pass: each consumed vector must match its canonical axis
-    # exactly (indices AND length) — map_period_vector raises otherwise.
-    map_period_vector(
-        op.period_indices, op.revenue_keur,
-        label="operating", expected_indices=contract.full_axis)
-    map_period_vector(
-        tax.period_indices, tax.taxable_profit_keur,
-        label="tax", expected_indices=contract.full_axis)
-    map_period_vector(
-        shl.period_indices, shl.shl_gross_interest_keur,
-        label="shl", expected_indices=contract.full_axis)
+    # exactly (indices AND length) — _axis_checked raises _AxisMismatch
+    # otherwise and lets unexpected ValueErrors propagate.
+    _axis_checked(
+        "operating", op.period_indices, op.revenue_keur, contract.full_axis)
+    _axis_checked(
+        "tax", tax.period_indices, tax.taxable_profit_keur, contract.full_axis)
+    _axis_checked(
+        "shl", shl.period_indices, shl.shl_gross_interest_keur, contract.full_axis)
     senior_expected = contract.senior_axis or tuple(senior.period_indices)
-    map_period_vector(
-        senior.period_indices, senior.senior_interest_keur,
-        label="senior", expected_indices=senior_expected)
+    _axis_checked(
+        "senior", senior.period_indices, senior.senior_interest_keur,
+        senior_expected)
     if dsra is not None:
-        map_period_vector(
+        _axis_checked(
+            "dsra",
             [pr.period_index for pr in dsra.period_results],
             [pr.closing_balance_keur for pr in dsra.period_results],
-            label="dsra", expected_indices=contract.full_axis)
+            contract.full_axis)
 
     # Position maps for O(1) access (validated above).
     op_pos = {i: pos for pos, i in enumerate(op.period_indices)}
@@ -201,10 +208,6 @@ def _assemble_statements_checked(g2c_result, project_inputs):
     senior_pos = {i: pos for pos, i in enumerate(senior.period_indices)}
     dsra_pos: dict[int, int] = {}
     if dsra is not None:
-        map_period_vector(
-            [pr.period_index for pr in dsra.period_results],
-            [pr.closing_balance_keur for pr in dsra.period_results],
-            label="dsra", expected_indices=contract.full_axis)
         dsra_pos = {pr.period_index: pos for pos, pr in enumerate(dsra.period_results)}
 
     for label, vec in (
@@ -216,11 +219,12 @@ def _assemble_statements_checked(g2c_result, project_inputs):
         ("tax.cit_accrual", tax.tax_keur),
         ("tax.cash", tax.corporate_tax_cash_keur),
     ):
-        map_period_vector(
+        _axis_checked(
+            label,
             senior.period_indices if label.startswith("senior") else (
                 shl.period_indices if label.startswith("shl") else tax.period_indices),
-            vec, label=label, expected_indices=(
-                contract.senior_axis or tuple(senior.period_indices))
+            vec,
+            (contract.senior_axis or tuple(senior.period_indices))
             if label.startswith("senior") else contract.full_axis)
 
     # G2C waterfall date join with duplicate/missing detection.
@@ -355,27 +359,30 @@ def _assemble_statements_checked(g2c_result, project_inputs):
     tax_pol = getattr(project_inputs, "tax", None) if project_inputs is not None else None
     treatment_value = getattr(
         getattr(tax_pol, "shl_construction_accounting", None), "value", None)
+    # Correction C §4-§6 (Option B — operating-only RE schedule): the COD
+    # opening RE is derived from the AUTHORITATIVE construction P&L
+    # (pre-construction opening RE = 0 for a newly incorporated SPV whose
+    # complete construction P&L starts at the first model period) and the
+    # RE roll-forward begins ONLY at the first operating period. The same
+    # construction loss is therefore counted exactly once — never seeded
+    # into the opening AND re-applied during construction (Blocker C1).
     if treatment_value == "expense_to_pnl":
-        opening_re_at_cod = -sum(
-            (float(g) if g is not None else 0.0)
-            for g, mp in zip(shl.shl_gross_interest_keur, model.periods)
-            if getattr(mp, "is_construction", False)
-        )
+        opening_re_authority = True
         opening_re_status = StatementStatus.OK
     else:
-        opening_re_at_cod = None
+        opening_re_authority = False
         opening_re_status = (
             StatementStatus.OPENING_EQUITY_ACCOUNTING_AUTHORITY_UNAVAILABLE
         )
-    unavailable["opening_retained_earnings"] = (
-        "SOURCE_PROVEN (typed EXPENSE_TO_PNL): construction SHL gross "
-        "interest expensed through P&L creates the pre-COD retained loss."
-        if opening_re_at_cod is not None else
-        "OPENING_EQUITY_ACCOUNTING_AUTHORITY_UNAVAILABLE: the typed SHL "
-        "construction accounting treatment is not EXPENSE_TO_PNL; no causal "
-        "construction-P&L authority to derive opening RE."
-    )
-    opening_re = opening_re_at_cod
+    if not opening_re_authority:
+        unavailable["opening_retained_earnings"] = (
+            "OPENING_EQUITY_ACCOUNTING_AUTHORITY_UNAVAILABLE: the typed SHL "
+            "construction accounting treatment is not EXPENSE_TO_PNL; no causal "
+            "construction-P&L authority to derive opening RE."
+        )
+    construction_ni_sum = 0.0
+    cod_opening_re: float | None = None
+    opening_re: float | None = None
     dsra_by_idx = (
         {pr.period_index: pr for pr in dsra.period_results} if dsra is not None else {}
     )
@@ -509,26 +516,36 @@ def _assemble_statements_checked(g2c_result, project_inputs):
             net_fixed_assets_keur=None,
         ))
 
-        # Retained earnings (Correction B §18): opening RE at COD is derived
-        # causally from construction-period NI when the typed SHL
-        # construction accounting is EXPENSE_TO_PNL (construction NI =
-        # -SHL gross interest; EBITDA/book dep are zero rows, CIT accrual 0
-        # on the loss). SHL is debt — never deducted from RE as principal.
-        # Legal reserve stays UNRESOLVED (no generic authority).
+        # Retained earnings (Correction C §4-§6, Option B): construction
+        # periods accumulate the COD opening balance (NI counted ONCE);
+        # the RE roll-forward schedule is emitted for OPERATING periods
+        # only, starting at the COD opening. SHL is debt — principal never
+        # touches RE; SHL PIK affects RE exactly once, through P&L interest.
+        # Legal reserve allocation remains unresolved (no typed authority).
         legal_dist = float(getattr(wp, "legal_equity_distribution_keur", 0.0) or 0.0)
-        re_periods.append(RetainedEarningsPeriod(
-            period_index=int(idx),
-            period_end=getattr(mp, "period_end", None),
-            opening_retained_earnings_keur=opening_re,
-            net_income_keur=net_income,
-            legal_equity_distribution_keur=legal_dist,
-            legal_reserve_allocation_keur=None,
-            closing_retained_earnings_keur=(
-                None if opening_re is None
-                else opening_re + net_income - legal_dist),
-        ))
-        if opening_re is not None:
-            opening_re = opening_re + net_income - legal_dist
+        is_construction_period = bool(getattr(mp, "is_construction", False))
+        if is_construction_period:
+            if opening_re_authority:
+                construction_ni_sum += net_income
+        else:
+            if opening_re is None and opening_re_authority:
+                cod_opening_re = construction_ni_sum  # + pre-construction RE (0.0)
+                opening_re = cod_opening_re
+            re_periods.append(RetainedEarningsPeriod(
+                period_index=int(idx),
+                period_end=getattr(mp, "period_end", None),
+                opening_retained_earnings_keur=opening_re,
+                net_income_keur=net_income,
+                legal_equity_distribution_keur=legal_dist,
+                legal_reserve_allocation_keur=None,
+                closing_retained_earnings_keur=(
+                    None if opening_re is None
+                    else opening_re + net_income - legal_dist),
+            ))
+            if opening_re is not None:
+                opening_re = opening_re + net_income - legal_dist
+        if cod_opening_re is None and opening_re_authority and not model_periods:
+            cod_opening_re = construction_ni_sum
 
         # Balance sheet presentation: balances are clean closing authority;
         # unrestricted cash / gross FA / equity accounts are truthfully
@@ -585,11 +602,11 @@ def _assemble_statements_checked(g2c_result, project_inputs):
             "capitalization basis is not exposed on clean results; only the "
             "accumulated book depreciation roll-forward is causal."
         ),
-        "opening_retained_earnings": (
-            "OPENING_EQUITY_ACCOUNTING_AUTHORITY_UNAVAILABLE: construction-"
-            "period equity accounting authority is not yet typed; the "
-            "operating-period NI/distribution movements are shown with an "
-            "explicitly unavailable opening."
+        "legal_reserve": (
+            "LEGAL_RESERVE_AUTHORITY_UNAVAILABLE: source TUHO/Oborovo carry "
+            "non-zero legal reserve balances but no typed constitution "
+            "trigger/cap/carry formula exists in the clean contracts; no "
+            "invented allocation (§11-§12)."
         ),
         "tax_payable": (
             "TAX_PAYABLE_AUTHORITY_UNAVAILABLE: a CIT payable roll-forward "
@@ -600,6 +617,16 @@ def _assemble_statements_checked(g2c_result, project_inputs):
             "FINANCING_INCOME_AUTHORITY_UNAVAILABLE: interest on unrestricted "
             "cash / reserve balances has no clean authority; the P&L exposes "
             "all known lines but is not a complete financing result."
+        ),
+        "income_statement": (
+            "FINANCING_INCOME_AUTHORITY_UNAVAILABLE: interest on unrestricted "
+            "cash / reserve balances has no clean authority; the P&L exposes "
+            "all known lines but is not a complete financing result."
+        ),
+        "unrestricted_cash": (
+            "UNRESTRICTED_CASH_AUTHORITY_UNAVAILABLE: no causal "
+            "unrestricted-cash roll-forward (§22-§24 source audit pending); "
+            "closing cash is never solved as a Balance Sheet residual."
         ),
     })
 
@@ -627,8 +654,21 @@ def _assemble_statements_checked(g2c_result, project_inputs):
         funding_audit=funding_audit,
         fixed_asset_status=StatementStatus.BOOK_CAPITALIZATION_BASIS_UNAVAILABLE,
         fixed_asset_periods=tuple(fa_periods),
-        retained_earnings_status=opening_re_status,
+        # Correction C §9-§10: full RE roll-forward consumes Net Income,
+        # whose authority is incomplete (financing income) — the roll-forward
+        # arithmetic is exposed but the status stays truthful, and it is
+        # separate from opening-RE / legal-reserve / unrestricted-cash status.
+        retained_earnings_status=(
+            StatementStatus.FINANCING_INCOME_AUTHORITY_UNAVAILABLE
+            if opening_re_authority else opening_re_status
+        ),
         retained_earnings_periods=tuple(re_periods),
+        opening_retained_earnings_status=opening_re_status,
+        cod_opening_retained_earnings_keur=cod_opening_re,
+        legal_reserve_status=StatementStatus.LEGAL_RESERVE_AUTHORITY_UNAVAILABLE,
+        unrestricted_cash_status=(
+            StatementStatus.UNRESTRICTED_CASH_AUTHORITY_UNAVAILABLE
+        ),
         balance_sheet_status=StatementStatus.UNRESTRICTED_CASH_AUTHORITY_UNAVAILABLE,
         balance_sheet_periods=tuple(bs_periods),
         accounting_policies=AccountingPolicies(provenance={
@@ -646,6 +686,10 @@ def _assemble_statements_checked(g2c_result, project_inputs):
                 LineAuthority.DERIVED_ACCOUNTING_ROLL_FORWARD.value),
             "gross_fixed_assets": LineAuthority.UNRESOLVED.value,
             "unrestricted_cash": LineAuthority.UNRESOLVED.value,
-            "opening_retained_earnings": LineAuthority.UNRESOLVED.value,
+            "opening_retained_earnings": (
+                LineAuthority.SOURCE_PROVEN_CONFIGURATION.value
+                if opening_re_authority else LineAuthority.UNRESOLVED.value
+            ),
+            "legal_reserve": LineAuthority.UNRESOLVED.value,
         },
     )

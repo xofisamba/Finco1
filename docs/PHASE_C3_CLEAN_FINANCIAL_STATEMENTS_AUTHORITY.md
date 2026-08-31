@@ -190,3 +190,83 @@ Delivery classification (Correction B): still
 derived, but closing unrestricted cash and the balance sheet remain
 unresolved pending the unrestricted-cash, book-capitalization and
 opening-equity authorities.
+
+
+## Correction C (this revision)
+
+Retained-earnings boundary repair + accounting-authority closure, still
+strictly downstream (no engine formula changes):
+
+1. **Blocker C1 fixed — construction loss no longer double-counted.**
+   Option B (operating-only RE schedule) was chosen: the COD opening RE is
+   derived from the AUTHORITATIVE construction P&L
+   (pre-construction opening RE = 0.0 for a newly incorporated SPV whose
+   complete construction P&L starts at the first model period; construction
+   NI = -SHL gross interest under typed EXPENSE_TO_PNL) and the RE
+   roll-forward begins ONLY at the first operating period. Construction
+   periods do NOT emit RE rows. Synthetic no-double-count test: P0 -100,
+   P1 -50, op +20 -> COD opening -150, first operating closing -130
+   (never -250/-300).
+2. **§6 COD identity proven on every project**: COD opening RE = 0.0 + sum
+   of construction P&L NI = -sum construction SHL gross interest
+   (TUHO -3520.4195552771707, Oborovo -1169.65916453466, Wind
+   -41.54113227522754, Solar 0.0). SHL PIK affects RE exactly once, through
+   P&L interest; SHL principal never touches RE.
+3. **§9-§11 separated statuses**: opening_retained_earnings_status (OK),
+   retained_earnings_status (FINANCING_INCOME_AUTHORITY_UNAVAILABLE — the
+   roll-forward consumes Net Income whose financing-income authority is
+   incomplete; known arithmetic still exposed), legal_reserve_status
+   (LEGAL_RESERVE_AUTHORITY_UNAVAILABLE — new enum member),
+   unrestricted_cash_status (UNRESTRICTED_CASH_AUTHORITY_UNAVAILABLE).
+4. **§14 metadata contradictions fixed**: resolved components carry no
+   unavailable reason and a non-UNRESOLVED authority label
+   (opening_retained_earnings = SOURCE_PROVEN_CONFIGURATION when typed);
+   every unresolved component keeps an explicit reason. Consistency test
+   over the full result added.
+5. **Blocker C2 fixed — narrow public exception contract.** All
+   map_period_vector calls go through one dedicated _axis_checked helper
+   that converts ONLY known AXIS_* / PERIOD_VECTOR_* codes into the typed
+   STATEMENT_PERIOD_AXIS_MISMATCH result; the public entry catches only
+   _TypedUnavailable and _AxisMismatch. Unexpected generic ValueError
+   propagates (test: synthetic accounting defect).
+6. **§15 Balance Sheet RE follows the same authority**: full RE is not OK,
+   so BS retained_earnings_keur stays None; no duplicate roll-forward.
+7. **§18-§27 source audits (formula-first, no target fitting)**:
+   - Legal reserve: the clean engine already contains a typed generic
+     roll_forward_equity_state (transfer = min(positive NI,
+     share_capital x legal_reserve_cap_fraction - opening reserve)), but it
+     is source-proven only as the interest-limitation gates MINIMUM CAUSAL
+     equity state, not as the accounting legal-reserve rule; promoting it
+     without workbook proof of the accounting rule would be an invented
+     allocation -> LEGAL_RESERVE_AUTHORITY_UNAVAILABLE stands.
+   - Book capitalization: clean authorities carry hard CAPEX, capitalized
+     senior IDC, commitment/structuring fees, VAT financing costs, FC/COD
+     uses and reserve funding separately, but no typed book-capitalization
+     contract maps them to a BOOK gross fixed-asset basis componentwise
+     (and SHL construction interest must stay EXPENSE_TO_PNL, not GFA) ->
+     BOOK_CAPITALIZATION_BASIS_UNAVAILABLE stands (named first missing
+     typed concept: the capitalization mapping contract).
+   - Unrestricted cash: no causal unrestricted-cash roll-forward authority
+     exists (opening cash, minimum-cash/working-capital retention, DA/DSRA
+     transfer timing); cash is never solved as a BS residual ->
+     UNRESTRICTED_CASH_AUTHORITY_UNAVAILABLE stands.
+   - Financing income (cash/reserve interest): not present upstream in
+     EBITDA/tax/CFADS; C3 must NOT add it downstream only -> the P&L keeps
+     FINANCING_INCOME_AUTHORITY_UNAVAILABLE. Changing upstream economics is
+     out of scope for Correction C.
+   - Tax payable: no separate CIT payable liability concept exists in the
+     clean tax timing contract; terminal unpaid tax is surfaced directly ->
+     TAX_PAYABLE_AUTHORITY_UNAVAILABLE (no invented liability).
+8. **§29 overall**: highest-priority unresolved component reported
+   (unrestricted cash) while unavailable_reasons retains ALL blockers
+   (cash, balance sheet, GFA, legal reserve, financing income, tax payable).
+
+Completeness matrix update (Correction C): Opening retained earnings is
+now DERIVED/OK on all four projects; Retained earnings movements remain
+arithmetically exposed with truthful non-OK status; all other cells
+unchanged from Correction B.
+
+Delivery classification (Correction C):
+PHASE_C3_BLOCKED_BY_UNRESTRICTED_CASH_AUTHORITY (first blocker; GFA,
+legal reserve, financing income and tax payable blockers all remain
+visible and named).

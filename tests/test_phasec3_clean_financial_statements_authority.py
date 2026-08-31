@@ -69,7 +69,9 @@ class TestC3A_SupportedMatrix:
         assert len(fs.pf_cash_waterfall_periods) > 0
         assert fs.balance_sheet_status.value == "UNRESTRICTED_CASH_AUTHORITY_UNAVAILABLE"
         assert fs.fixed_asset_status.value == "BOOK_CAPITALIZATION_BASIS_UNAVAILABLE"
-        assert fs.retained_earnings_status.value in ("OK", "OPENING_EQUITY_ACCOUNTING_AUTHORITY_UNAVAILABLE")
+        assert fs.retained_earnings_status.value in (
+            "FINANCING_INCOME_AUTHORITY_UNAVAILABLE",   # Correction C §10
+            "OPENING_EQUITY_ACCOUNTING_AUTHORITY_UNAVAILABLE")
         assert fs.status.value == "UNRESTRICTED_CASH_AUTHORITY_UNAVAILABLE"
 
     @pytest.mark.parametrize("ptype", ("Solar", "Wind", "Oborovo", "TUHO"))
@@ -308,8 +310,12 @@ class TestC3J_RetainedEarnings:
 
     def test_j2_status_honest(self):
         _, fs = _assemble("TUHO")
-        assert fs.retained_earnings_status.value == "OK"
-        # Correction B: opening RE derived from construction SHL interest.
+        # Correction C §10: the RE roll-forward consumes Net Income whose
+        # authority is incomplete (financing income) — full RE is NOT OK.
+        assert fs.retained_earnings_status.value == (
+            "FINANCING_INCOME_AUTHORITY_UNAVAILABLE")
+        # Opening-RE authority is separate and IS resolved (Correction B).
+        assert fs.opening_retained_earnings_status.value == "OK"
         assert fs.retained_earnings_periods[0].opening_retained_earnings_keur is not None
 
 
@@ -766,3 +772,281 @@ class TestCorB_FundingAudit:
             assert fs.non_construction_fc_row is None
         else:
             assert fs.non_construction_fc_row.uses_keur == ncu.uses_keur
+
+
+# ---------------------------------------------------------------------------
+# C3 Correction C — retained-earnings boundary + accounting authority closure
+# ---------------------------------------------------------------------------
+
+def _synthetic_boundary_g2c():
+    """Controlled construction case (§8): 2 construction periods with NI
+    -100 / -50 and one operating period with NI +20. Reuses the real Solar
+    construction-funding authority and project inputs; the axis contract is
+    monkeypatched by the caller to the synthetic 3-period grid."""
+    from types import SimpleNamespace
+    from datetime import date
+
+    real = _run_clean("Solar")
+    zero3 = (0.0, 0.0, 0.0)
+    def mp(i, end, cons, ebit=0.0):
+        return SimpleNamespace(
+            period_index=i, period_start=None, period_end=end,
+            is_construction=cons, revenue_keur=0.0, opex_keur=0.0,
+            ebitda_keur=0.0, book_depreciation_keur=0.0, ebit_keur=ebit)
+    model = SimpleNamespace(
+        periods=(
+            mp(0, date(2020, 6, 30), True),
+            mp(1, date(2020, 12, 31), True),
+            mp(2, date(2021, 6, 30), False, ebit=20.0),
+        ),
+        operating_schedules=SimpleNamespace(
+            period_indices=(0, 1, 2), revenue_keur=zero3),
+        tax_and_cfads=SimpleNamespace(
+            period_indices=(0, 1, 2), taxable_profit_keur=zero3,
+            tax_keur=zero3, corporate_tax_cash_keur=zero3, cfads_keur=zero3,
+            taxable_income_before_losses_audit_keur=zero3,
+            taxable_profit_after_losses_audit_keur=zero3,
+            fiscal_reintegration_audit_keur=zero3,
+            tax_loss_opening_audit_keur=zero3, tax_loss_used_audit_keur=zero3,
+            tax_loss_closing_audit_keur=zero3, tax_depreciation_audit_keur=zero3,
+            cit_accrual_audit_keur=zero3,
+            cash_tax_current_period_audit_keur=zero3,
+            cash_tax_bridge_reconciliation_keur=zero3),
+        senior_debt=SimpleNamespace(
+            period_indices=(2,), senior_interest_keur=(0.0,),
+            senior_principal_keur=(0.0,), senior_debt_service_keur=(0.0,),
+            senior_debt_closing_keur=(0.0,), binding_constraint="DSCR"),
+        shareholder_loan=SimpleNamespace(
+            period_indices=(0, 1, 2), shl_gross_interest_keur=(100.0, 50.0, 0.0),
+            shl_principal_keur=zero3, shl_closing_keur=zero3),
+        cash_dsra=None,
+    )
+    wp = SimpleNamespace(cashflow_date=date(2021, 6, 30))
+    g2c = SimpleNamespace(
+        financing_result=SimpleNamespace(
+            project_model_result=model,
+            project_uses=real.g2c_result.financing_result.project_uses,
+            construction_funding=real.g2c_result.financing_result.construction_funding,
+        ),
+        waterfall_periods=(wp,),
+    )
+    return real, g2c
+
+
+class TestCorC_RetainedEarningsBoundary:
+    def test_no_double_count_synthetic_case(self, monkeypatch):
+        """§8: construction NI counted ONCE. P0 -100, P1 -50, op NI +20 ->
+        COD opening -150, first operating closing -130 (never -250/-300)."""
+        from types import SimpleNamespace
+        import financial_engine.financial_statements.assembly as asm
+        from financial_engine.financial_statements.assembly import (
+            assemble_decision_complete_financial_statements,
+        )
+        real, g2c = _synthetic_boundary_g2c()
+        monkeypatch.setattr(
+            asm, "_expected_axis_contract",
+            lambda mp_, pi: SimpleNamespace(
+                full_axis=(0, 1, 2), senior_axis=(2,)))
+        fs = assemble_decision_complete_financial_statements(
+            g2c, real.project_inputs)
+        assert fs.retained_earnings_status.value == (
+            "FINANCING_INCOME_AUTHORITY_UNAVAILABLE")
+        assert fs.opening_retained_earnings_status.value == "OK"
+        assert fs.cod_opening_retained_earnings_keur == pytest.approx(-150.0)
+        rows = fs.retained_earnings_periods
+        assert [r.period_index for r in rows] == [2]  # operating-only schedule
+        assert rows[0].opening_retained_earnings_keur == pytest.approx(-150.0)
+        assert rows[0].net_income_keur == pytest.approx(20.0)
+        assert rows[0].closing_retained_earnings_keur == pytest.approx(-130.0)
+        assert rows[0].closing_retained_earnings_keur != pytest.approx(-250.0)
+        assert rows[0].closing_retained_earnings_keur != pytest.approx(-300.0)
+
+    def test_cod_opening_equals_construction_ni_sum(self):
+        """§6/§33-2: COD opening RE = sum of construction P&L Net Income
+        (pre-construction opening 0.0) — proven on every project."""
+        for ptype in ("Solar", "Wind", "Oborovo", "TUHO"):
+            _, fs = _assemble(ptype)
+            assert fs.opening_retained_earnings_status.value == "OK", ptype
+            constr_ni = sum(
+                p.net_income_keur for p in fs.income_statement_periods
+                if p.is_construction)
+            assert fs.cod_opening_retained_earnings_keur == pytest.approx(
+                constr_ni, abs=1e-6), ptype
+            # Counted exactly once: first operating opening == sum of
+            # construction NI, never 2x (the old double-count defect).
+            first_op = fs.retained_earnings_periods[0]
+            assert first_op.opening_retained_earnings_keur == pytest.approx(
+                constr_ni, abs=1e-6), ptype
+
+    def test_first_operating_opening_equals_prior_closing(self):
+        """§33-3: roll-forward continuity on every project."""
+        for ptype in ("Solar", "Wind", "Oborovo", "TUHO"):
+            _, fs = _assemble(ptype)
+            rows = fs.retained_earnings_periods
+            assert rows, ptype
+            assert all(r.opening_retained_earnings_keur is not None
+                       for r in rows), ptype
+            for prev, cur in zip(rows, rows[1:]):
+                assert cur.opening_retained_earnings_keur == pytest.approx(
+                    prev.closing_retained_earnings_keur, abs=1e-9), ptype
+
+    def test_shl_pik_affects_re_exactly_once_via_pnl(self):
+        """§33-4: TUHO construction SHL interest (incl. PIK) reaches RE
+        exactly once — through construction Net Income, never again."""
+        _, fs = _assemble("TUHO")
+        constr_shl = sum(
+            p.shl_interest_expense_keur for p in fs.income_statement_periods
+            if p.is_construction)
+        assert fs.cod_opening_retained_earnings_keur == pytest.approx(
+            -constr_shl, abs=1e-6)
+        assert fs.cod_opening_retained_earnings_keur != pytest.approx(
+            -2.0 * constr_shl, abs=1e-6)
+
+    def test_shl_principal_never_affects_re(self):
+        """§33-5: identity uses only NI − legal distributions."""
+        for ptype in ("Oborovo", "TUHO"):
+            _, fs = _assemble(ptype)
+            for r in fs.retained_earnings_periods:
+                assert r.closing_retained_earnings_keur == pytest.approx(
+                    r.opening_retained_earnings_keur + r.net_income_keur
+                    - r.legal_equity_distribution_keur, abs=1e-9), ptype
+
+    def test_opening_re_status_independent_from_full_re_status(self):
+        """§33-7/§9: separate concepts, separately reported."""
+        _, fs = _assemble("TUHO")
+        assert fs.opening_retained_earnings_status.value == "OK"
+        assert fs.retained_earnings_status.value != "OK"
+        assert fs.legal_reserve_status.value == (
+            "LEGAL_RESERVE_AUTHORITY_UNAVAILABLE")
+
+    def test_opening_unavailable_when_treatment_not_expense_to_pnl(self):
+        import dataclasses
+        from financial_engine.financial_statements.assembly import (
+            assemble_decision_complete_financial_statements,
+        )
+        run = _run_clean("TUHO")
+        pi = dataclasses.replace(
+            run.project_inputs,
+            tax=dataclasses.replace(
+                run.project_inputs.tax, shl_construction_accounting=None))
+        fs = assemble_decision_complete_financial_statements(
+            run.g2c_result, pi)
+        assert fs.opening_retained_earnings_status.value == (
+            "OPENING_EQUITY_ACCOUNTING_AUTHORITY_UNAVAILABLE")
+        assert fs.cod_opening_retained_earnings_keur is None
+        assert "opening_retained_earnings" in fs.unavailable_reasons
+        assert fs.authority_labels["opening_retained_earnings"] == "UNRESOLVED"
+        # Full RE inherits the opening blocker as its first missing concept.
+        assert fs.retained_earnings_status.value == (
+            "OPENING_EQUITY_ACCOUNTING_AUTHORITY_UNAVAILABLE")
+
+    def test_full_re_not_ok_while_ni_incomplete(self):
+        """§33-8/§10."""
+        for ptype in ("Solar", "Wind", "Oborovo", "TUHO"):
+            _, fs = _assemble(ptype)
+            assert fs.retained_earnings_status.value == (
+                "FINANCING_INCOME_AUTHORITY_UNAVAILABLE"), ptype
+
+    def test_full_re_not_ok_while_legal_reserve_unresolved(self):
+        """§33-9/§11: material legal reserve has its own status/reason."""
+        for ptype in ("Solar", "Wind", "Oborovo", "TUHO"):
+            _, fs = _assemble(ptype)
+            assert fs.legal_reserve_status.value == (
+                "LEGAL_RESERVE_AUTHORITY_UNAVAILABLE"), ptype
+            assert "legal_reserve" in fs.unavailable_reasons, ptype
+            for r in fs.retained_earnings_periods:
+                assert r.legal_reserve_allocation_keur is None, ptype
+
+    def test_balance_sheet_re_follows_re_authority(self):
+        """§33-10/§15: full RE authority unavailable -> BS RE stays None and
+        the RE statement does not claim full OK (same truth)."""
+        for ptype in ("Solar", "Wind", "Oborovo", "TUHO"):
+            _, fs = _assemble(ptype)
+            assert fs.retained_earnings_status.value != "OK", ptype
+            for b in fs.balance_sheet_periods:
+                assert b.retained_earnings_keur is None, ptype
+
+
+class TestCorC_MetadataConsistency:
+    """§14/§34: status, authority label and unavailable reason must tell
+    the same truth for every component."""
+
+    def test_status_label_reason_consistency(self):
+        for ptype in ("Solar", "Wind", "Oborovo", "TUHO"):
+            _, fs = _assemble(ptype)
+            resolved_map = {
+                "income_statement": fs.income_statement_status.value == "OK",
+                "tax_bridge": fs.tax_bridge_status.value == "OK",
+                "cash_flow": fs.cash_flow_status.value == "OK",
+                "opening_retained_earnings": (
+                    fs.opening_retained_earnings_status.value == "OK"),
+                "legal_reserve": fs.legal_reserve_status.value == "OK",
+                "unrestricted_cash": fs.unrestricted_cash_status.value == "OK",
+                "balance_sheet": fs.balance_sheet_status.value == "OK",
+                "gross_fixed_assets": fs.fixed_asset_status.value == "OK",
+            }
+            for key in resolved_map:
+                if resolved_map[key]:
+                    assert key not in fs.unavailable_reasons, (ptype, key)
+                    label = fs.authority_labels.get(key)
+                    if label is not None:
+                        assert label != "UNRESOLVED", (ptype, key)
+                else:
+                    assert key in fs.unavailable_reasons, (ptype, key)
+
+    def test_no_status_ok_with_unavailable_reason(self):
+        """Direct §14 contradiction check on the Correction-B defect."""
+        _, fs = _assemble("TUHO")
+        assert fs.opening_retained_earnings_status.value == "OK"
+        assert "opening_retained_earnings" not in fs.unavailable_reasons
+        assert fs.authority_labels["opening_retained_earnings"] != "UNRESOLVED"
+
+    def test_all_blockers_visible_not_hidden_behind_primary(self):
+        """§29: unavailable_reasons retains ALL unresolved components."""
+        _, fs = _assemble("Oborovo")
+        for key in ("unrestricted_cash", "balance_sheet",
+                    "gross_fixed_assets", "legal_reserve",
+                    "financing_income"):
+            assert key in fs.unavailable_reasons, key
+
+
+class TestCorC_ExceptionContract:
+    def test_generic_valueerror_propagates(self, monkeypatch):
+        """§17: a non-axis accounting defect must propagate — never be
+        converted to STATEMENT_PERIOD_AXIS_MISMATCH."""
+        import financial_engine.financial_statements.assembly as asm
+        from financial_engine.financial_statements.assembly import (
+            assemble_decision_complete_financial_statements,
+        )
+
+        run = _run_clean("Solar")  # before the patch: this call assembles too
+
+        def _defective(*a, **k):
+            raise ValueError("synthetic accounting defect")
+
+        monkeypatch.setattr(asm, "_at", _defective)
+        with pytest.raises(ValueError, match="synthetic accounting defect"):
+            assemble_decision_complete_financial_statements(
+                run.g2c_result, run.project_inputs)
+
+    def test_axis_corruption_matrix_still_fails_closed(self):
+        """§17: all 18 axis-corruption cases remain typed fail-closed."""
+        from financial_engine.financial_statements.assembly import (
+            assemble_decision_complete_financial_statements,
+        )
+        from types import SimpleNamespace
+        for kind in TestCorB_AxisCorruptionMatrix.CASES:
+            run, g2c = _corrupt_axis(kind)
+            broken = SimpleNamespace(financing_result=SimpleNamespace(
+                project_model_result=g2c.financing_result.project_model_result
+                if hasattr(g2c.financing_result, "project_model_result")
+                else _corrupt_axis.model,
+                project_uses=run.g2c_result.financing_result.project_uses,
+                dscr_debt_capacity_keur=0.0, gearing_debt_capacity_keur=0.0,
+                final_senior_commitment_keur=0.0, binding_senior_constraint="DSCR",
+                construction_funding=run.g2c_result.financing_result.construction_funding,
+                construction_financing=run.g2c_result.financing_result.construction_financing,
+            ), waterfall_periods=g2c.waterfall_periods)
+            result = assemble_decision_complete_financial_statements(
+                broken, run.project_inputs)
+            assert result.status.value == "STATEMENT_PERIOD_AXIS_MISMATCH", kind
