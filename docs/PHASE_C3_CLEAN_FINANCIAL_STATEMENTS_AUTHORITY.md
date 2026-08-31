@@ -1,5 +1,125 @@
 # Phase C3 — Clean Financial Statements & Output Completeness Authority
 
+## CURRENT AUTHORITATIVE STATE — CORRECTION G
+
+**Branch:** `phasec3-clean-financial-statements-authority`  
+**HEAD:** `e8c8cb1b` (Correction G)  
+**Delivery classification:** `PHASE_C3_BLOCKED_BY_UPSTREAM_ENGINE_AUTHORITY`
+
+C3 internal contracts are coherent; all C3 suites (A, D, F, G) agree;
+dedicated CI gate covers all C3 suites; only genuine upstream economic
+authorities remain as blockers.
+
+### What Correction G established
+
+| § | Change |
+|---|---|
+| §3 | Raw IDC fallback (`senior_idc_accrual_keur`) prohibited. Fail closed when `senior_idc_capitalized_uses_keur` absent. |
+| §5/§6 | `BookCapitalizationTreatment` drives GFA component inclusion. Unknown/UNRESOLVED non-zero component fails GFA closed. |
+| §7 | Policy-causal negative tests prove map is authority, not metadata. |
+| §8/§9 | Dep-basis mismatch fires on any material difference (>1 kEUR), not only zero-vs-nonzero. Per-component comparison in `gfa_report["dep_basis_comparison"]`. |
+| §13/§14 | `preconstruction_retained_earnings_keur` and `preconstruction_retained_earnings_authority` added to `AccountingPolicyConfig` (canonical input layer). |
+| §15 | Oborovo/TUHO: `preconstruction_re = 0.0 / SOURCE_PROVEN` (newly incorporated SPV evidence). Solar/Wind: default `None / UNRESOLVED`. |
+| §16 | COD opening RE = typed pre-construction RE + authoritative construction NI. Construction NI counted exactly once. |
+| §17 | Value / status / authority / line-authority are independently consistent. No `OK` with UNRESOLVED authority. |
+| §18 | `USER_CONFIGURED` maps to `USER_CONFIGURED_ACCOUNTING_POLICY` (new `LineAuthority` member), never `SOURCE_PROVEN_CONFIGURATION`. |
+| §19/§20 | Legal reserve UNRESOLVED/disabled preserved. Stale D12 tests corrected to assert UNAVAILABLE/UNRESOLVED/kernel-not-activated. |
+| §22 | C3 workflow runs all four suites: main C3 acceptance, Correction D provenance, Correction F persistence, Correction G GFA policy. |
+| §27/§28 | Two distinct unavailable reasons: `unrestricted_cash_balance_rollforward` (cash balance roll-forward absent) and `cash_reserve_interest` (interest-on-cash rate policy absent). |
+| §29/§30 | Tax payable classified `TAX_PAYABLE_NOT_APPLICABLE` — clean engine handles CIT timing directly; source evidence confirms no separate payable balance sheet row. |
+
+### Accounting input architecture
+
+Canonical module: `finco_core/inputs/accounting.py`
+
+- ONE definition of `AccountingPolicyAuthority`, `BookCapitalizationTreatment`, `LegalReservePolicy`, `AccountingPolicyConfig`
+- Zero imports from `financial_engine.*`
+- `financial_engine/financial_statements/contracts.py` re-exports all four; identity guaranteed (`APC1 is APC2`)
+- `ProjectInputs.accounting_policy_config: AccountingPolicyConfig | None = None`
+- Serialization: full round-trip with backward compatibility (missing key → None, never SOURCE_PROVEN)
+- Cache key: `hash_inputs_for_cache` includes accounting policy
+
+### Upstream prerequisites (DO NOT implement in PR #964)
+
+1. **`BOOK_DEPRECIABLE_ASSET_BASIS_UPSTREAM_REQUIRED`**  
+   `ConstructionFinancingResult → Canonical BookDepreciableAssetBasis → Operating book depreciation → C3 GFA/AccDep/NFA`
+
+2. **`CASH_RESERVE_INTEREST_UPSTREAM_REQUIRED`**  
+   `Eligible cash/reserve balance + interest rate policy + timing/day-count → financing income → EBT → taxable income → CIT → Base CFADS → downstream waterfall`
+
+### Completeness matrix (Correction G — current)
+
+| Output | Solar | Wind | Oborovo | TUHO |
+|---|---|---|---|---|
+| Revenue / OPEX / EBITDA | OK | OK | OK | OK |
+| Book depreciation (P&L) | OK | OK | OK | OK |
+| Financing income (interest on cash) | FINANCING_INCOME_AUTHORITY_UNAVAILABLE | same | same | same |
+| P&L complete | FINANCING_INCOME_AUTHORITY_UNAVAILABLE | same | same | same |
+| Tax accrual / cash / bridge | OK | OK | OK | OK |
+| Tax payable balance sheet row | NOT_APPLICABLE | NOT_APPLICABLE | NOT_APPLICABLE | NOT_APPLICABLE |
+| PF cash waterfall | OK | OK | OK | OK |
+| Construction funding | OK (no cfin) | OK (no cfin) | OK | OK |
+| FC/COD funding | OK | OK | OK | OK |
+| Candidate GFA | N/A (no cfin) | N/A (no cfin) | audit only | audit only |
+| Canonical BookDepreciableAssetBasis | UPSTREAM_REQUIRED | UPSTREAM_REQUIRED | UPSTREAM_REQUIRED | UPSTREAM_REQUIRED |
+| GFA (fixed) | BOOK_CAPITALIZATION_BASIS_UNAVAILABLE | same | BOOK_DEPRECIABLE_ASSET_BASIS_UPSTREAM_REQUIRED | same |
+| Accumulated book depreciation | OK (PARTIAL — dep schedule only) | same | same | same |
+| NFA | BOOK_CAPITALIZATION_BASIS_UNAVAILABLE | same | BOOK_DEPRECIABLE_ASSET_BASIS_UPSTREAM_REQUIRED | same |
+| Pre-construction retained earnings | None/UNRESOLVED | same | 0.0 / SOURCE_PROVEN | same |
+| COD opening RE | OPENING_EQUITY_UNAVAILABLE | same | OK (= pre_re + construction NI) | same |
+| Legal reserve | LEGAL_RESERVE_AUTHORITY_UNAVAILABLE | same | same | same |
+| Full RE roll-forward | FINANCING_INCOME_AUTHORITY_UNAVAILABLE | same | same | same |
+| Unrestricted cash (closing) | UNRESTRICTED_CASH_AUTHORITY_UNAVAILABLE | same | same | same |
+| Senior | OK | OK | OK | OK |
+| SHL | OK | OK | OK | OK |
+| DSRA | OK (NONE mode) | OK (NONE mode) | OK (CASH_DSRA) | OK (CASH_DSRA) |
+| Distribution Account | OK | OK | OK | OK |
+| Balance Sheet complete | UNRESTRICTED_CASH_AUTHORITY_UNAVAILABLE | same | same | same |
+
+### GFA audit report — TUHO (Correction G §34)
+
+Candidate GFA preserved in `gfa_report["candidate_book_gfa_keur"]`; dep-basis
+mismatch detailed in `gfa_report["dep_basis_comparison"]`.
+
+| Component | Amount (kEUR) | Treatment | Basis |
+|---|---|---|---|
+| Hard CAPEX | 70,691.539 | CAPITALIZE_FIXED_ASSET | clean cfin |
+| Raw Senior IDC | 1,769.354 | audit only | clean cfin |
+| Capitalized Senior IDC | 1,552.229 | CAPITALIZE_FIXED_ASSET | `senior_idc_capitalized_uses_keur` |
+| Terminal raw IDC excluded | 217.125 | audit only (not capitalized) | raw − capitalized |
+| Senior commitment fee | 166.967 | CAPITALIZE_FIXED_ASSET | clean cfin |
+| Structuring fee | 471.514 | CAPITALIZE_FIXED_ASSET | clean cfin |
+| VAT IDC | 122.314 | CAPITALIZE_FIXED_ASSET | clean cfin |
+| VAT commitment fee | 26.466 | CAPITALIZE_FIXED_ASSET | clean cfin |
+| Total capitalized financing | 2,339.490 | — | cfin aggregate |
+| Candidate GFA | 73,031.030 | — | hard capex + cap financing |
+| Dep basis financing (capex scalars) | 0.000 | — | capex.idc_keur etc. |
+| Dep basis gap | 2,339.490 kEUR | BOOK_DEPRECIABLE_ASSET_BASIS_UPSTREAM_REQUIRED | — |
+
+### Legal reserve — source anchors (evidence only, not replayed)
+
+Oborovo source workbook transfers: first partial ≈ 0.7952 kEUR, cap-filling
+≈ 49.2048 kEUR, final reserve ≈ 50.0 kEUR.  
+Clean engine: single 50.0 kEUR transfer (correct cap, wrong per-period timing).  
+Classification: `legal_reserve_authority = UNRESOLVED`, `LegalReservePolicy(enabled=False)`.
+
+### C1/C2 economic freeze (unchanged)
+
+| Project | XIRR |
+|---|---|
+| Solar | 7.593168077588568 % |
+| Wind | 11.366132007429408 % |
+| Oborovo | 8.512246818013307 % |
+| TUHO | 9.477998283668464 % |
+
+TUHO C2: NPV 29,291.167 kEUR; LLCR 1.0578163×; min LLCR 1.20×; headroom −0.1421837×; FAIL.
+
+---
+
+*Historical correction notes (A through F) follow below.*
+
+---
+
 ## Architecture
 
 ```
