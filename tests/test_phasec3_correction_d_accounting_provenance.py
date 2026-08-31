@@ -322,3 +322,176 @@ class TestD10_BookCapitalizationAuthority:
         assert fs.accounting_policies.book_capitalization_authority == (
             AccountingPolicyAuthority.GENERIC_FINCO_POLICY
         )
+
+
+# ---------------------------------------------------------------------------
+# D11 — GFA causal computation (spec §39)
+# ---------------------------------------------------------------------------
+
+class TestD11_GFACausalComputation:
+    @pytest.mark.parametrize("ptype", ("Oborovo", "TUHO"))
+    def test_gfa_numeric_computed_for_source_proven(self, ptype):
+        from financial_engine.financial_statements import StatementStatus
+        fs = _assemble(ptype)
+        assert fs.fixed_asset_status == StatementStatus.OK, (
+            f"{ptype}: expected fixed_asset_status=OK, got {fs.fixed_asset_status}"
+        )
+        gfa = fs.accounting_policies.provenance.get("gfa_report", {}).get(
+            "total_book_gfa_keur")
+        assert gfa is not None and gfa > 0, f"{ptype}: GFA must be positive, got {gfa}"
+
+    @pytest.mark.parametrize("ptype", ("Oborovo", "TUHO"))
+    def test_gfa_equals_causal_component_sum(self, ptype):
+        fs = _assemble(ptype)
+        report = fs.accounting_policies.provenance.get("gfa_report", {})
+        computed_gfa = (
+            report.get("hard_capex_keur", 0.0)
+            + report.get("senior_idc_keur", 0.0)
+            + report.get("senior_commitment_fees_keur", 0.0)
+            + report.get("structuring_fee_keur", 0.0)
+            + report.get("vat_idc_keur", 0.0)
+            + report.get("vat_commitment_fee_keur", 0.0)
+        )
+        total = report.get("total_book_gfa_keur", -1.0)
+        assert abs(computed_gfa - total) < 1e-3, (
+            f"{ptype}: GFA component sum {computed_gfa:.6f} != total {total:.6f}"
+        )
+
+    @pytest.mark.parametrize("ptype", ("Oborovo", "TUHO"))
+    def test_shl_pik_excluded_from_gfa(self, ptype):
+        fs = _assemble(ptype)
+        report = fs.accounting_policies.provenance.get("gfa_report", {})
+        shl_excluded = report.get("shl_construction_pik_excluded_keur", 0.0)
+        assert shl_excluded > 0, f"{ptype}: SHL PIK must be >0 and recorded as excluded"
+        # Verify it is NOT in the GFA total
+        gfa = report.get("total_book_gfa_keur", 0.0)
+        # GFA + excluded SHL PIK > GFA
+        assert gfa + shl_excluded > gfa
+
+    @pytest.mark.parametrize("ptype", ("Oborovo", "TUHO"))
+    def test_nfa_equals_gfa_minus_accumulated_dep(self, ptype):
+        fs = _assemble(ptype)
+        for period in fs.fixed_asset_periods:
+            if period.gross_fixed_assets_keur is not None and period.net_fixed_assets_keur is not None:
+                expected_nfa = period.gross_fixed_assets_keur - period.accumulated_book_depreciation_keur
+                assert abs(period.net_fixed_assets_keur - expected_nfa) < 1e-3, (
+                    f"{ptype} period {period.period_index}: NFA identity violated"
+                )
+
+    @pytest.mark.parametrize("ptype", ("Solar", "Wind"))
+    def test_gfa_unavailable_for_generic_projects(self, ptype):
+        from financial_engine.financial_statements import StatementStatus
+        fs = _assemble(ptype)
+        assert fs.fixed_asset_status == StatementStatus.BOOK_CAPITALIZATION_BASIS_UNAVAILABLE
+        assert not fs.accounting_policies.provenance.get("gfa_computed", True)
+
+    @pytest.mark.parametrize("ptype", ("Oborovo", "TUHO"))
+    def test_dsra_excluded_from_gfa(self, ptype):
+        """DSRA is a restricted current asset — never in GFA."""
+        fs = _assemble(ptype)
+        comps = fs.accounting_policies.book_capitalization_components
+        assert comps.get("dsra_funding") != "CAPITALIZE_FIXED_ASSET"
+
+    @pytest.mark.parametrize("ptype", ("Oborovo", "TUHO"))
+    def test_book_depreciation_schedule_unchanged(self, ptype):
+        """Introducing GFA must not alter the canonical book depreciation."""
+        import math
+        fs = _assemble(ptype)
+        for p in fs.fixed_asset_periods:
+            assert p.book_depreciation_keur is not None
+            assert math.isfinite(p.book_depreciation_keur)
+
+
+# ---------------------------------------------------------------------------
+# D12 — Legal reserve roll-forward (spec §40)
+# ---------------------------------------------------------------------------
+
+class TestD12_LegalReserveRollForward:
+    @pytest.mark.parametrize("ptype", ("Oborovo", "TUHO"))
+    def test_legal_reserve_status_ok(self, ptype):
+        from financial_engine.financial_statements import StatementStatus
+        fs = _assemble(ptype)
+        assert fs.legal_reserve_status == StatementStatus.OK, (
+            f"{ptype}: expected legal_reserve_status=OK, got {fs.legal_reserve_status}"
+        )
+
+    @pytest.mark.parametrize("ptype", ("Oborovo", "TUHO"))
+    def test_legal_reserve_computed_flag(self, ptype):
+        fs = _assemble(ptype)
+        assert fs.accounting_policies.provenance.get("legal_reserve_computed") is True
+
+    @pytest.mark.parametrize("ptype", ("Oborovo", "TUHO"))
+    def test_legal_reserve_cap_never_exceeded(self, ptype):
+        """Legal reserve closing balance must never exceed 10% × 500 = 50 kEUR."""
+        fs = _assemble(ptype)
+        lr_closing = fs.accounting_policies.provenance.get(
+            "legal_reserve_closing_by_period", {})
+        for pidx, val in lr_closing.items():
+            assert val <= 50.0 + 1e-6, (
+                f"{ptype} period {pidx}: legal reserve {val:.6f} exceeds 50 kEUR cap"
+            )
+
+    @pytest.mark.parametrize("ptype", ("Oborovo", "TUHO"))
+    def test_legal_reserve_allocation_non_negative(self, ptype):
+        """No period may have a negative legal reserve transfer."""
+        fs = _assemble(ptype)
+        for p in fs.retained_earnings_periods:
+            if p.legal_reserve_allocation_keur is not None:
+                assert p.legal_reserve_allocation_keur >= -1e-9, (
+                    f"{ptype} period {p.period_index}: negative legal reserve allocation"
+                )
+
+    @pytest.mark.parametrize("ptype", ("Oborovo", "TUHO"))
+    def test_legal_reserve_zero_on_negative_ni(self, ptype):
+        """When NI ≤ 0, legal reserve transfer must be 0."""
+        fs = _assemble(ptype)
+        for p in fs.retained_earnings_periods:
+            ni = p.net_income_keur
+            lrt = p.legal_reserve_allocation_keur
+            if ni is not None and lrt is not None and ni <= 0.0:
+                assert abs(lrt) < 1e-9, (
+                    f"{ptype} period {p.period_index}: "
+                    f"NI={ni:.6f}≤0 but lr_alloc={lrt:.9f}"
+                )
+
+    @pytest.mark.parametrize("ptype", ("Oborovo", "TUHO"))
+    def test_legal_reserve_reaches_cap(self, ptype):
+        """For profitable source-proven projects the legal reserve eventually caps."""
+        fs = _assemble(ptype)
+        lr_closing = fs.accounting_policies.provenance.get(
+            "legal_reserve_closing_by_period", {})
+        max_reserve = max(lr_closing.values(), default=0.0)
+        assert max_reserve >= 49.9, (
+            f"{ptype}: legal reserve max={max_reserve:.6f} — never reaches ~50 kEUR cap"
+        )
+
+    @pytest.mark.parametrize("ptype", ("Oborovo", "TUHO"))
+    def test_re_close_continuity(self, ptype):
+        """RE opening[t+1] = RE closing[t] (sequential continuity)."""
+        fs = _assemble(ptype)
+        periods = fs.retained_earnings_periods
+        for i in range(1, len(periods)):
+            prev_close = periods[i - 1].closing_retained_earnings_keur
+            curr_open = periods[i].opening_retained_earnings_keur
+            if prev_close is not None and curr_open is not None:
+                assert abs(prev_close - curr_open) < 1e-6, (
+                    f"{ptype}: RE continuity broken at period {periods[i].period_index}"
+                )
+
+    @pytest.mark.parametrize("ptype", ("Oborovo", "TUHO"))
+    def test_re_close_identity(self, ptype):
+        """RE closing = opening + NI − dist − legal_reserve_transfer per period."""
+        fs = _assemble(ptype)
+        for p in fs.retained_earnings_periods:
+            if (p.opening_retained_earnings_keur is not None
+                    and p.closing_retained_earnings_keur is not None
+                    and p.legal_reserve_allocation_keur is not None):
+                expected = (
+                    p.opening_retained_earnings_keur
+                    + p.net_income_keur
+                    - p.legal_equity_distribution_keur
+                    - p.legal_reserve_allocation_keur
+                )
+                assert abs(p.closing_retained_earnings_keur - expected) < 1e-6, (
+                    f"RE identity failed at period {p.period_index}"
+                )

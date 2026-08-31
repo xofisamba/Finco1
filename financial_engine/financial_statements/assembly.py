@@ -452,9 +452,44 @@ def _assemble_statements_checked(g2c_result, project_inputs):
             "construction accounting treatment is not EXPENSE_TO_PNL; no causal "
             "construction-P&L authority to derive opening RE."
         )
+    # Correction D §11-§16: book GFA from causal construction financing
+    # components.  ConstructionFinancingResult exposes per-period hard capex
+    # and IDC/fee vectors for projects that ran a senior-debt construction
+    # financing computation (Oborovo/TUHO).  Solar/Wind have
+    # ConstructionFinancingResult=None so their GFA remains unavailable.
+    # SHL construction PIK is EXCLUDED from GFA (it is expensed to P&L
+    # under the EXPENSE_TO_PNL policy and never capitalized).  DSRA and
+    # working capital are separate balance sheet accounts — not GFA.
+    cfin = getattr(fin, "construction_financing", None)
+    gfa_keur: float | None = None
+    gfa_report: dict = {}
+    if cfin is not None:
+        _gfa_hard = sum(cfin.hard_capex_uses_keur)
+        _gfa_idc = sum(cfin.senior_idc_accrual_keur)
+        _gfa_commit = sum(cfin.senior_commitment_fee_accrual_keur)
+        _gfa_struct = sum(cfin.structuring_fee_keur)
+        _gfa_vat_idc = float(cfin.vat_idc_keur or 0.0)
+        _gfa_vat_commit = float(cfin.vat_commitment_fee_keur or 0.0)
+        gfa_keur = (
+            _gfa_hard + _gfa_idc + _gfa_commit
+            + _gfa_struct + _gfa_vat_idc + _gfa_vat_commit
+        )
+        gfa_report = {
+            "hard_capex_keur": _gfa_hard,
+            "senior_idc_keur": _gfa_idc,
+            "senior_commitment_fees_keur": _gfa_commit,
+            "structuring_fee_keur": _gfa_struct,
+            "vat_idc_keur": _gfa_vat_idc,
+            "vat_commitment_fee_keur": _gfa_vat_commit,
+            "shl_construction_pik_excluded_keur": float(
+                cfin.shl_construction_pik_keur or 0.0),
+            "total_book_gfa_keur": gfa_keur,
+        }
+
     construction_ni_sum = 0.0
     cod_opening_re: float | None = None
-    opening_re: float | None = None
+    # Collect operating period data for post-loop RE/legal-reserve build.
+    _op_re_inputs: list = []
     dsra_by_idx = (
         {pr.period_index: pr for pr in dsra.period_results} if dsra is not None else {}
     )
@@ -574,50 +609,36 @@ def _assemble_statements_checked(g2c_result, project_inputs):
                 getattr(wp, "legal_equity_distribution_keur", 0.0) or 0.0),
         ))
 
-        # Fixed assets: accumulated BOOK depreciation roll-forward is causal;
-        # gross/NFA basis requires a book-capitalization authority that clean
-        # results do not expose — truthfully unavailable.
+        # Fixed assets: accumulated BOOK depreciation roll-forward is causal.
+        # GFA is computed from ConstructionFinancingResult when available
+        # (source-proven projects with a senior construction financing run);
+        # NFA = GFA − cumulative book depreciation (no disposals during ops).
         cumulative_book_dep += book_dep
+        _nfa = (gfa_keur - cumulative_book_dep) if gfa_keur is not None else None
         fa_periods.append(FixedAssetRollForwardPeriod(
             period_index=int(idx),
             period_end=getattr(mp, "period_end", None),
             book_depreciation_keur=book_dep,
             accumulated_book_depreciation_keur=cumulative_book_dep,
-            gross_fixed_assets_keur=None,
+            gross_fixed_assets_keur=gfa_keur,
             accumulated_depreciation_on_disposals_keur=0.0,
-            net_fixed_assets_keur=None,
+            net_fixed_assets_keur=_nfa,
         ))
 
         # Retained earnings (Correction C §4-§6, Option B): construction
         # periods accumulate the COD opening balance (NI counted ONCE);
         # the RE roll-forward schedule is emitted for OPERATING periods
-        # only, starting at the COD opening. SHL is debt — principal never
-        # touches RE; SHL PIK affects RE exactly once, through P&L interest.
-        # Legal reserve allocation remains unresolved (no typed authority).
+        # only, starting at the COD opening. Collect inputs for the
+        # post-loop legal-reserve roll-forward (Correction D §19-§23).
         legal_dist = float(getattr(wp, "legal_equity_distribution_keur", 0.0) or 0.0)
         is_construction_period = bool(getattr(mp, "is_construction", False))
         if is_construction_period:
             if opening_re_authority:
                 construction_ni_sum += net_income
         else:
-            if opening_re is None and opening_re_authority:
-                cod_opening_re = construction_ni_sum  # + pre-construction RE (0.0)
-                opening_re = cod_opening_re
-            re_periods.append(RetainedEarningsPeriod(
-                period_index=int(idx),
-                period_end=getattr(mp, "period_end", None),
-                opening_retained_earnings_keur=opening_re,
-                net_income_keur=net_income,
-                legal_equity_distribution_keur=legal_dist,
-                legal_reserve_allocation_keur=None,
-                closing_retained_earnings_keur=(
-                    None if opening_re is None
-                    else opening_re + net_income - legal_dist),
-            ))
-            if opening_re is not None:
-                opening_re = opening_re + net_income - legal_dist
-        if cod_opening_re is None and opening_re_authority and not model_periods:
-            cod_opening_re = construction_ni_sum
+            _op_re_inputs.append(
+                (int(idx), net_income, legal_dist, getattr(mp, "period_end", None))
+            )
 
         # Balance sheet presentation: balances are clean closing authority;
         # unrestricted cash / gross FA / equity accounts are truthfully
@@ -647,7 +668,7 @@ def _assemble_statements_checked(g2c_result, project_inputs):
             ),
             dsra_balance_keur=dsra_close,
             unrestricted_cash_keur=None,
-            gross_fixed_assets_keur=None,
+            gross_fixed_assets_keur=gfa_keur,
             accumulated_book_depreciation_keur=cumulative_book_dep,
             share_capital_keur=cumulative_share_capital,
             share_premium_keur=cumulative_share_premium,
@@ -655,31 +676,111 @@ def _assemble_statements_checked(g2c_result, project_inputs):
             balance_check_keur=None,
         ))
 
+    # Correction D §19-§23: legal-reserve roll-forward using the existing
+    # roll_forward_equity_state kernel.  Applies to all projects with a
+    # configured legal_reserve_cap > 0.  Authority is SOURCE_PROVEN for
+    # Oborovo/TUHO (workbook-proven formula; same EXPENSE_TO_PNL allocation
+    # rule confirmed from source trace) and GENERIC_FINCO_POLICY for Solar/
+    # Wind (same cap is configured but has no source workbook evidence).
+    # The kernel: transfer = min(NI, cap − opening_reserve) when NI > 0 and
+    # reserve < cap; otherwise 0.  RE closing = opening + NI − dist − transfer.
+    cod_opening_re = construction_ni_sum if opening_re_authority else None
+    _lr_computed = False
+    _lr_results_by_idx: dict = {}
+    _lr_closing_by_idx: dict = {}
+    _fin_pol = getattr(project_inputs, "financing", None) if project_inputs is not None else None
+    _sc_keur = float(getattr(_fin_pol, "share_capital_keur", 0.0) or 0.0)
+    _lr_cap = float(getattr(tax_pol, "legal_reserve_cap", 0.0) or 0.0) if tax_pol is not None else 0.0
+    if _op_re_inputs and _lr_cap > 0.0 and _sc_keur > 0.0:
+        try:
+            from financial_engine.tax.interest_limitation import (
+                EquityStatePeriodInput as _EquityInput,
+                roll_forward_equity_state as _roll_equity,
+            )
+            _eq_inputs = tuple(
+                _EquityInput(
+                    period_index=pidx,
+                    net_income_keur=ni,
+                    gross_dividends_keur=ld,
+                )
+                for pidx, ni, ld, _pend in _op_re_inputs
+            )
+            _lr_results_all = _roll_equity(
+                _eq_inputs,
+                share_capital_keur=_sc_keur,
+                legal_reserve_cap_fraction=_lr_cap,
+                opening_legal_reserve_keur=0.0,
+                opening_retained_earnings_keur=cod_opening_re or 0.0,
+            )
+            _lr_results_by_idx = {r.period_index: r for r in _lr_results_all}
+            _lr_closing_by_idx = {
+                r.period_index: r.closing_legal_reserve_keur for r in _lr_results_all
+            }
+            _lr_computed = True
+        except Exception:
+            _lr_computed = False
+
+    # Build retained-earnings periods post-loop so legal-reserve transfers
+    # can be included in the sequential opening → closing roll-forward.
+    _re_open = cod_opening_re
+    for _pidx, _ni, _ld, _pend in _op_re_inputs:
+        _lrt = 0.0
+        if _lr_computed and _pidx in _lr_results_by_idx:
+            _lrt = float(_lr_results_by_idx[_pidx].legal_reserve_transfer_keur)
+        _re_close = (
+            None if _re_open is None
+            else _re_open + _ni - _ld - _lrt
+        )
+        re_periods.append(RetainedEarningsPeriod(
+            period_index=_pidx,
+            period_end=_pend,
+            opening_retained_earnings_keur=_re_open,
+            net_income_keur=_ni,
+            legal_equity_distribution_keur=_ld,
+            legal_reserve_allocation_keur=_lrt if _lr_computed else None,
+            closing_retained_earnings_keur=_re_close,
+        ))
+        if _re_open is not None:
+            _re_open = _re_close
+
+    # Status codes for newly resolved items.
+    _fixed_asset_status = (
+        StatementStatus.OK if gfa_keur is not None
+        else StatementStatus.BOOK_CAPITALIZATION_BASIS_UNAVAILABLE
+    )
+    _legal_reserve_status = (
+        StatementStatus.OK if _lr_computed
+        else StatementStatus.LEGAL_RESERVE_AUTHORITY_UNAVAILABLE
+    )
+
     if non_finite:
         overall = StatementStatus.NON_FINITE_RESULT
     else:
-        # Honest partial availability (Correction B): PF cash is OK (the
-        # construction bridge is mapped); P&L financing income and the
-        # balance sheet remain honestly unavailable.
+        # Honest partial availability: unrestricted cash and complete balance
+        # sheet remain unavailable; P&L financing income (interest on cash/
+        # reserves) is an upstream engine gap — it cannot be added to C3 P&L
+        # without corresponding tax/CFADS effects.
         overall = StatementStatus.UNRESTRICTED_CASH_AUTHORITY_UNAVAILABLE
 
+    _gfa_unavailable_msg = (
+        "BOOK_CAPITALIZATION_BASIS_UNAVAILABLE: ConstructionFinancingResult "
+        "not available for this project (Solar/Wind have no senior-debt "
+        "construction financing run); only accumulated book depreciation is "
+        "causal."
+    )
     unavailable.update({
         "balance_sheet": (
             "UNRESTRICTED_CASH_AUTHORITY_UNAVAILABLE: closing unrestricted "
             "cash requires a causal unrestricted-cash roll-forward that the "
             "clean runtime does not yet provide; no residual-cash insert applied."
         ),
-        "gross_fixed_assets": (
-            "BOOK_CAPITALIZATION_BASIS_UNAVAILABLE: the book fixed-asset "
-            "capitalization basis is not exposed on clean results; only the "
-            "accumulated book depreciation roll-forward is causal."
-        ),
-        "legal_reserve": (
-            "LEGAL_RESERVE_AUTHORITY_UNAVAILABLE: source TUHO/Oborovo carry "
-            "non-zero legal reserve balances but no typed constitution "
-            "trigger/cap/carry formula exists in the clean contracts; no "
-            "invented allocation (§11-§12)."
-        ),
+        **({"gross_fixed_assets": _gfa_unavailable_msg} if gfa_keur is None else {}),
+        **({} if _lr_computed else {
+            "legal_reserve": (
+                "LEGAL_RESERVE_AUTHORITY_UNAVAILABLE: legal_reserve_cap not "
+                "configured or legal reserve roll-forward did not complete."
+            )
+        }),
         "tax_payable": (
             "TAX_PAYABLE_AUTHORITY_UNAVAILABLE: a CIT payable roll-forward "
             "is not part of the clean tax timing contract; terminal unpaid "
@@ -724,7 +825,7 @@ def _assemble_statements_checked(g2c_result, project_inputs):
         construction_funding_grain=construction_grain,
         non_construction_fc_row=non_construction_fc_row,
         funding_audit=funding_audit,
-        fixed_asset_status=StatementStatus.BOOK_CAPITALIZATION_BASIS_UNAVAILABLE,
+        fixed_asset_status=_fixed_asset_status,
         fixed_asset_periods=tuple(fa_periods),
         # Correction C §9-§10: full RE roll-forward consumes Net Income,
         # whose authority is incomplete (financing income) — the roll-forward
@@ -737,7 +838,7 @@ def _assemble_statements_checked(g2c_result, project_inputs):
         retained_earnings_periods=tuple(re_periods),
         opening_retained_earnings_status=opening_re_status,
         cod_opening_retained_earnings_keur=cod_opening_re,
-        legal_reserve_status=StatementStatus.LEGAL_RESERVE_AUTHORITY_UNAVAILABLE,
+        legal_reserve_status=_legal_reserve_status,
         unrestricted_cash_status=(
             StatementStatus.UNRESTRICTED_CASH_AUTHORITY_UNAVAILABLE
         ),
@@ -756,6 +857,10 @@ def _assemble_statements_checked(g2c_result, project_inputs):
                 "source_proven_codes": sorted(_source_proven_codes),
                 "this_info_code": _info_code,
                 "this_project_source_proven": _is_source_proven,
+                "gfa_computed": gfa_keur is not None,
+                "gfa_report": gfa_report,
+                "legal_reserve_computed": _lr_computed,
+                "legal_reserve_closing_by_period": _lr_closing_by_idx,
             },
         ),
         unavailable_reasons=unavailable,
@@ -767,12 +872,18 @@ def _assemble_statements_checked(g2c_result, project_inputs):
                 LineAuthority.DERIVED_ACCOUNTING_ROLL_FORWARD.value),
             "retained_earnings_movements": (
                 LineAuthority.DERIVED_ACCOUNTING_ROLL_FORWARD.value),
-            "gross_fixed_assets": LineAuthority.UNRESOLVED.value,
+            "gross_fixed_assets": (
+                LineAuthority.EXISTING_CLEAN_AUTHORITY.value if gfa_keur is not None
+                else LineAuthority.UNRESOLVED.value
+            ),
             "unrestricted_cash": LineAuthority.UNRESOLVED.value,
             "opening_retained_earnings": (
                 LineAuthority.SOURCE_PROVEN_CONFIGURATION.value
                 if opening_re_authority else LineAuthority.UNRESOLVED.value
             ),
-            "legal_reserve": LineAuthority.UNRESOLVED.value,
+            "legal_reserve": (
+                LineAuthority.DERIVED_ACCOUNTING_ROLL_FORWARD.value if _lr_computed
+                else LineAuthority.UNRESOLVED.value
+            ),
         },
     )
