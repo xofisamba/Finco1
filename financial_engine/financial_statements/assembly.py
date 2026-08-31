@@ -386,11 +386,11 @@ def _assemble_statements_checked(g2c_result, project_inputs):
     # HR = Croatian SPV with source evidence on file; others = generic.
     _info = getattr(project_inputs, "info", None) if project_inputs is not None else None
     _country_iso = getattr(_info, "country_iso", None) or ""
-    _project_code = getattr(_info, "code", None) or ""
+    _info_code = getattr(_info, "code", None) or ""
     _source_proven_codes = {"OBR-001", "TUHO-WIND-1"}
     _is_source_proven = (
         _country_iso.upper() == "HR"
-        and _project_code in _source_proven_codes
+        and _info_code in _source_proven_codes
     )
 
     if treatment_value == "expense_to_pnl" and _is_source_proven:
@@ -754,7 +754,7 @@ def _assemble_statements_checked(g2c_result, project_inputs):
                 "baseline": "clean-engine results only (no legacy statement modules)",
                 "axis": "model.periods; G2C joined by cashflow_date == period_end",
                 "source_proven_codes": sorted(_source_proven_codes),
-                "this_project_code": _project_code,
+                "this_info_code": _info_code,
                 "this_project_source_proven": _is_source_proven,
             },
         ),
