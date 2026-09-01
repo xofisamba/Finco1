@@ -1,8 +1,8 @@
 # Upstream: Book Depreciable Asset Basis Authority
 
-**Status**: `BOOK_DEPRECIABLE_ASSET_BASIS_UPSTREAM_DELIVERED`  
-**Branch**: `upstream-book-depreciable-asset-basis`  
-**Base**: `main` @ `c5d91ddf`  
+**Status**: `BOOK_DEPRECIABLE_ASSET_BASIS_UPSTREAM_CORRECTION_A_IN_PROGRESS`
+**Branch**: `upstream-book-depreciable-asset-basis`
+**Base**: `main` @ `c5d91ddf`
 **Downstream blocker resolved for**: Phase C3 `BOOK_DEPRECIABLE_ASSET_BASIS_UPSTREAM_REQUIRED`
 
 ---
@@ -68,13 +68,15 @@ Economically identical to the pre-PR implicit path.
 |---|---|---|
 | Hard CAPEX items | `CapexStructure.capex_items()` filtered by `is_depreciable` | `CAPEX_STRUCTURE_HARD_CAPEX` |
 | Senior IDC | `sum(senior_idc_capitalized_uses_keur)` | `CONSTRUCTION_FINANCING_RESULT_SENIOR_IDC_CAPITALIZED_USES` |
-| Commitment fees | `sum(senior_commitment_fee_accrual_keur)` | `CONSTRUCTION_FINANCING_RESULT_SENIOR_COMMITMENT_FEE_ACCRUAL` |
+| Commitment fees | `senior_commitment_fee_capitalized_keur` | `CONSTRUCTION_FINANCING_RESULT_SENIOR_COMMITMENT_FEE_CAPITALIZED` |
 | Structuring fee | `sum(structuring_fee_keur)` | `CONSTRUCTION_FINANCING_RESULT_STRUCTURING_FEE` |
 | VAT costs (combined) | `vat_idc_keur + vat_commitment_fee_keur` | `CONSTRUCTION_FINANCING_RESULT_VAT_CAPITALIZED` |
 
 ---
 
-## Critical: Capitalized IDC vs Raw IDC
+## Critical: Capitalized Uses vs Raw Accrual
+
+### IDC
 
 ```
 senior_idc_capitalized_uses_keur  ← basis component (capitalized uses)
@@ -87,7 +89,24 @@ senior_idc_accrual_keur           ← audit-only (raw accrual; may include termi
 For TUHO, `senior_idc_accrual_keur` includes terminal IDC (~217 kEUR) that accrues
 after the last funded draw — this IDC is NOT capitalized as a use of funds and MUST
 NOT enter the depreciable basis. `sum(senior_idc_capitalized_uses_keur)` is the
-correct source. The builder enforces this distinction by provenance.
+correct source.
+
+### Commitment Fee
+
+```
+senior_commitment_fee_capitalized_keur  ← basis component (canonical capitalized scalar)
+                                          Source: b2.capitalized_financing_costs.senior_commitment_fee_keur
+                                          USED in BookDepreciableAssetBasis
+
+senior_commitment_fee_accrual_keur      ← audit-only vector (raw period accruals)
+                                          NEVER summed for the basis
+```
+
+`senior_commitment_fee_capitalized_keur` on `ConstructionFinancingResult` carries
+the canonical scalar from `b2.capitalized_financing_costs.senior_commitment_fee_keur`,
+which equals `sum(senior_fee_uses)` from Stage B2.
+
+The builder enforces these distinctions by provenance.
 
 ---
 
@@ -96,15 +115,15 @@ correct source. The builder enforces this distinction by provenance.
 At PR-9 convergence, the following identity holds by the outer fixed-point invariant:
 
 ```
-sum(senior_idc_capitalized_uses_keur) == CapexStructure.idc_keur  (after apply_cap_fin_costs)
-sum(structuring_fee_keur)             == CapexStructure.bank_fees_keur
-vat_idc_keur + vat_commitment_fee_keur == CapexStructure.vat_costs_keur
+sum(senior_idc_capitalized_uses_keur)           == CapexStructure.idc_keur  (after apply_cap_fin_costs)
+senior_commitment_fee_capitalized_keur           == CapexStructure.commitment_fees_keur
+sum(structuring_fee_keur)                        == CapexStructure.bank_fees_keur
+vat_idc_keur + vat_commitment_fee_keur           == CapexStructure.vat_costs_keur
 ```
 
 The typed construction basis therefore produces identical depreciation economics to
 the implicit `CapexStructure.book_depreciable_capex_items()` path. The economic delta
-is zero. Verified by `TestGenericPathEconomicIdentity` and `TestAdapterWiring` in the
-test suite.
+is zero. Verified by `TestGenericPathEconomicIdentity` in the test suite.
 
 ---
 
@@ -113,8 +132,10 @@ test suite.
 The PR-9 outer fixed-point loop (in `financial_engine/financing/project.py`) is
 unchanged. `apply_capitalized_financing_costs` still runs each iteration, correctly
 updating `CapexStructure` fields. The canonical basis is built **only once**, after
-convergence, from the final `ConstructionFinancingResult`. It does not participate in
-the iteration loop and does not affect convergence.
+convergence, from the final `ConstructionFinancingResult`. It is passed into
+`from_project_inputs` as the `book_basis` argument, which feeds
+`DepreciationInput.book_capex_items_for_depreciation`. The basis does not
+participate in the iteration loop and does not affect convergence.
 
 ---
 
@@ -136,7 +157,7 @@ enters the basis.
 | `financial_engine/financing/project.py` | Build basis after convergence; pass to result |
 | `financial_engine/adapters/project_inputs.py` | `from_project_inputs` accepts `book_basis` kwarg |
 | `finco_core/inputs/__init__.py` | Re-export new types |
-| `tests/test_upstream_book_depreciable_asset_basis.py` | NEW — 20 test categories |
+| `tests/test_upstream_book_depreciable_asset_basis.py` | NEW — 23 test categories |
 
 ---
 
@@ -146,6 +167,7 @@ enters the basis.
 - No source workbook vectors in runtime
 - No frozen expected basis, no target-fitting delta, no balancing plug
 - `senior_idc_accrual_keur` is NOT used as the IDC basis component
+- `senior_commitment_fee_accrual_keur` is NOT used as the fee basis component; `senior_commitment_fee_capitalized_keur` is used
 - No import of `financial_engine.financial_statements.*` in new upstream files
 - C1/C2 economics unchanged — `TestGenericPathEconomicIdentity` verifies
 - PR #964 not modified, not merged

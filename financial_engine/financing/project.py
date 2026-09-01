@@ -222,6 +222,12 @@ def _project_uses(project_inputs: ProjectInputs) -> ProjectUses:
     return compute_project_uses(project_inputs)
 
 
+def _build_generic_book_basis(capex_structure):
+    """Build BookDepreciableAssetBasis for the generic (Solar/Wind) path."""
+    from financial_engine.book_basis import build_book_depreciable_asset_basis
+    return build_book_depreciable_asset_basis(capex_structure, construction_financing_result=None)
+
+
 def _provisional_typed_construction_funding(
     context: _TypedConstructionShlContext,
     cash_contributions_keur: tuple[float, ...],
@@ -824,6 +830,7 @@ def _run_with_construction_idc(
         vat_drawn_keur=tuple(row.vat_drawn_keur for row in b2.vat_schedule),
         vat_undrawn_keur=tuple(row.vat_undrawn_keur for row in b2.vat_schedule),
         senior_idc_capitalized_uses_keur=b2.senior_idc_capitalized_uses_keur,
+        senior_commitment_fee_capitalized_keur=b2.capitalized_financing_costs.senior_commitment_fee_keur,
         vat_idc_keur=b2.capitalized_financing_costs.vat_idc_keur,
         vat_commitment_fee_keur=b2.capitalized_financing_costs.vat_commitment_fee_keur,
         vat_commitment_mode=(
@@ -1380,4 +1387,5 @@ def run_project_financing_model(
         fixed_point_iteration_count=iteration,
         fixed_point_maximum_difference_keur=maximum_difference,
         shareholder_loan_model_input=funded_model_input.shareholder_loan,
+        book_depreciable_asset_basis=_build_generic_book_basis(project_inputs.capex),
     )

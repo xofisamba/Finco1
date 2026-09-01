@@ -4,6 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import date
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from finco_core.inputs.book_depreciable_asset_basis import BookDepreciableAssetBasis
 
 
 @dataclass(frozen=True)
@@ -149,6 +153,10 @@ class ConstructionFinancingResult:
     vat_drawn_keur: tuple[float, ...] = ()
     vat_undrawn_keur: tuple[float, ...] = ()
     senior_idc_capitalized_uses_keur: tuple[float, ...] = ()
+    # Canonical capitalized commitment fee scalar (sum of capitalized fee uses).
+    # Source: b2.capitalized_financing_costs.senior_commitment_fee_keur.
+    # NOT sum(senior_commitment_fee_accrual_keur) — use this field for the basis.
+    senior_commitment_fee_capitalized_keur: float = 0.0
     vat_idc_keur: float = 0.0
     vat_commitment_fee_keur: float = 0.0
     vat_commitment_mode: str = "DISABLED"
@@ -184,9 +192,9 @@ class ProjectFinancingResult:
     # PR-9 typed construction financing result (None when construction_financing disabled)
     construction_financing: "ConstructionFinancingResult | None" = None
     # Canonical book depreciable asset basis — exposed for downstream consumers
-    # (C3 financial statements, depreciation schedule audit). None for legacy paths
-    # that do not pass through the typed engine adapter.
-    book_depreciable_asset_basis: "object | None" = None
+    # (C3 financial statements, depreciation schedule audit). Always non-None for
+    # projects processed through run_project_financing_model.
+    book_depreciable_asset_basis: "BookDepreciableAssetBasis | None" = None
     # Exact typed SHL contract used by the converged financing model. This is
     # a downstream handoff, not a second principal authority.
     shareholder_loan_model_input: object | None = None

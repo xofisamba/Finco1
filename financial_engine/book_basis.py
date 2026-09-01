@@ -10,8 +10,8 @@ One function, two paths:
   Typed construction (Oborovo / TUHO, construction_financing_result is not None):
       Hard CAPEX from CapexStructure.capex_items() (filtered by is_depreciable).
       Financing components from ConstructionFinancingResult:
-          IDC    — sum(senior_idc_capitalized_uses_keur)   (NOT senior_idc_accrual_keur)
-          Fee    — sum(senior_commitment_fee_accrual_keur)
+          IDC    — sum(senior_idc_capitalized_uses_keur)      (NOT senior_idc_accrual_keur)
+          Fee    — senior_commitment_fee_capitalized_keur      (NOT senior_commitment_fee_accrual_keur)
           Struct — sum(structuring_fee_keur)
           VAT    — vat_idc_keur + vat_commitment_fee_keur
 
@@ -39,7 +39,7 @@ _TYPED_AUTHORITY = "TYPED_CONSTRUCTION_FINANCING_RESULT_BOOK_BASIS"
 _PROV_GENERIC = "CAPEX_STRUCTURE_GENERIC"
 _PROV_HARD_CAPEX = "CAPEX_STRUCTURE_HARD_CAPEX"
 _PROV_IDC = "CONSTRUCTION_FINANCING_RESULT_SENIOR_IDC_CAPITALIZED_USES"
-_PROV_FEE = "CONSTRUCTION_FINANCING_RESULT_SENIOR_COMMITMENT_FEE_ACCRUAL"
+_PROV_FEE = "CONSTRUCTION_FINANCING_RESULT_SENIOR_COMMITMENT_FEE_CAPITALIZED"
 _PROV_STRUCT = "CONSTRUCTION_FINANCING_RESULT_STRUCTURING_FEE"
 _PROV_VAT = "CONSTRUCTION_FINANCING_RESULT_VAT_CAPITALIZED"
 
@@ -118,8 +118,8 @@ def _build_typed_construction_basis(
             provenance=_PROV_IDC,
         ))
 
-    # Senior commitment fees (accrual == capitalized-use total at convergence)
-    commitment_fee = sum(cfr.senior_commitment_fee_accrual_keur)
+    # Senior commitment fees — use canonical capitalized scalar, NOT raw accrual vector.
+    commitment_fee = cfr.senior_commitment_fee_capitalized_keur
     if commitment_fee > 0.0:
         components.append(BookDepreciableAssetComponent(
             code="senior_commitment_fee",

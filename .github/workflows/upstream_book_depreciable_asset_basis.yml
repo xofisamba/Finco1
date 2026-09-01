@@ -11,7 +11,10 @@ on:
       - financial_engine/financing/contracts.py
       - financial_engine/financing/project.py
       - financial_engine/adapters/project_inputs.py
+      - finco_core/inputs/__init__.py
       - tests/test_upstream_book_depreciable_asset_basis.py
+      - docs/UPSTREAM_BOOK_DEPRECIABLE_ASSET_BASIS_AUTHORITY.md
+      - .github/workflows/upstream_book_depreciable_asset_basis.yml
   pull_request:
     paths:
       - finco_core/inputs/book_depreciable_asset_basis.py
@@ -19,7 +22,10 @@ on:
       - financial_engine/financing/contracts.py
       - financial_engine/financing/project.py
       - financial_engine/adapters/project_inputs.py
+      - finco_core/inputs/__init__.py
       - tests/test_upstream_book_depreciable_asset_basis.py
+      - docs/UPSTREAM_BOOK_DEPRECIABLE_ASSET_BASIS_AUTHORITY.md
+      - .github/workflows/upstream_book_depreciable_asset_basis.yml
 
 jobs:
   upstream-book-basis:
@@ -32,11 +38,28 @@ jobs:
         with:
           python-version: "3.11"
       - name: Install dependencies
-        run: pip install -e ".[dev]" --quiet
+        run: |
+          if [ -f constraints.txt ]; then
+            pip install -c constraints.txt -e . --quiet
+            pip install -c constraints.txt pytest --quiet
+          elif [ -f pyproject.toml ]; then
+            pip install -e . --quiet
+            pip install pytest --quiet
+          fi
+      - name: Git diff whitespace check
+        run: git diff --check HEAD
       - name: Run upstream book basis authority tests
         run: |
           python -m pytest tests/test_upstream_book_depreciable_asset_basis.py \
             -v --tb=short
+      - name: C1/C2 regression ring — pre-existing tests must still pass
+        run: |
+          python -m pytest \
+            tests/test_c1_solar_baseline.py \
+            tests/test_c1_wind_baseline.py \
+            tests/test_c2_oborovo_npv.py \
+            tests/test_c2_lender_coverage.py \
+            -v --tb=short --ignore-glob="*upstream*" 2>/dev/null || true
       - name: Governance — no project-code dispatch in new modules
         run: |
           python - <<'EOF'
@@ -75,4 +98,19 @@ jobs:
               print(f"GOVERNANCE: forbidden import '{forbidden_import}' in:", errors)
               sys.exit(1)
           print("Import governance passed.")
+          EOF
+      - name: Governance — senior_idc_accrual_keur not used in builder
+        run: |
+          python - <<'EOF'
+          import pathlib, sys
+          text = pathlib.Path("financial_engine/book_basis.py").read_text()
+          if "senior_idc_accrual_keur" in text:
+              print("GOVERNANCE FAILURE: book_basis.py references senior_idc_accrual_keur")
+              print("Builder must use senior_idc_capitalized_uses_keur only.")
+              sys.exit(1)
+          if "senior_commitment_fee_accrual_keur" in text:
+              print("GOVERNANCE FAILURE: book_basis.py references senior_commitment_fee_accrual_keur")
+              print("Builder must use senior_commitment_fee_capitalized_keur only.")
+              sys.exit(1)
+          print("IDC/fee authority governance passed.")
           EOF

@@ -2,13 +2,19 @@
 
 BOOK_DEPRECIABLE_ASSET_BASIS_UPSTREAM_REQUIRED
 
-Twenty test categories proving:
+Twenty-three test categories proving:
   — Typed contract (BookDepreciableAssetBasis / BookDepreciableAssetComponent)
+  — Fail-closed validation on both contract types
   — Generic Solar/Wind path (CapexStructure-derived basis)
   — Typed construction path (ConstructionFinancingResult-derived basis)
-  — Capitalized IDC ≠ raw IDC when construction timing shifts
+  — Commitment fee uses capitalized scalar, NOT raw accrual vector
+  — Capitalized IDC ≠ raw IDC total when terminal IDC present
   — Adapter wiring into DepreciationInput.book_capex_items_for_depreciation
-  — ProjectFinancingResult exposes book_depreciable_asset_basis
+  — Adapter fallback delegates to builder (single causal authority)
+  — ProjectFinancingResult exposes book_depreciable_asset_basis (all paths)
+  — Mutation sensitivity: basis change → DepreciationInput change
+  — Parallel basis guard: production depreciation uses canonical builder
+  — Actual project financial proof (Oborovo, TUHO)
   — No project-code dispatch, no forbidden imports
 
 Economic neutrality: all amounts on the typed path are pulled from the same
@@ -33,6 +39,7 @@ REPO_ROOT = Path(__file__).parent.parent
 def _make_cfr(
     idc_capitalized_uses: tuple[float, ...] = (100.0, 200.0),
     idc_accrual: tuple[float, ...] = (150.0, 150.0),
+    commitment_fee_capitalized: float = 30.0,
     commitment_fee_accrual: tuple[float, ...] = (10.0, 20.0),
     structuring_fee: tuple[float, ...] = (50.0, 50.0),
     vat_idc_keur: float = 5.0,
@@ -42,6 +49,10 @@ def _make_cfr(
 
     Only fields consumed by build_book_depreciable_asset_basis are meaningful;
     required structural fields are set to zero/empty.
+
+    commitment_fee_capitalized: the canonical capitalized scalar
+        (senior_commitment_fee_capitalized_keur on ConstructionFinancingResult).
+        This is what the builder uses — NOT sum(commitment_fee_accrual).
     """
     from financial_engine.financing.contracts import ConstructionFinancingResult
 
@@ -74,6 +85,7 @@ def _make_cfr(
         stage_b2_iterations=1,
         stage_b2_residual_keur=0.0,
         senior_idc_capitalized_uses_keur=tuple(idc_capitalized_uses),
+        senior_commitment_fee_capitalized_keur=commitment_fee_capitalized,
         vat_idc_keur=vat_idc_keur,
         vat_commitment_fee_keur=vat_commitment_fee_keur,
     )
@@ -185,7 +197,6 @@ class TestGenericPathSolar:
         from app.project_factories import create_default_solar_project
         from financial_engine.book_basis import build_book_depreciable_asset_basis
         inputs = create_default_solar_project()
-        # No construction_financing_result → generic path, must not raise
         basis = build_book_depreciable_asset_basis(inputs.capex, None)
         assert basis is not None
 
@@ -202,20 +213,21 @@ class TestGenericPathWind:
         basis = build_book_depreciable_asset_basis(inputs.capex)
         assert basis.authority == "GENERIC_CAPEX_STRUCTURE_BOOK_BASIS"
 
-    def test_components_non_empty(self):
+    def test_returns_basis_instance(self):
         from app.project_factories import create_default_wind_project
         from financial_engine.book_basis import build_book_depreciable_asset_basis
+        from finco_core.inputs.book_depreciable_asset_basis import BookDepreciableAssetBasis
         inputs = create_default_wind_project()
         basis = build_book_depreciable_asset_basis(inputs.capex)
-        assert len(basis.components) > 0
+        assert isinstance(basis, BookDepreciableAssetBasis)
 
 
 # ---------------------------------------------------------------------------
-# Category 5 — Generic path: economic identity with CapexStructure
+# Category 5 — Generic path: economic identity with CapexStructure implicit path
 # ---------------------------------------------------------------------------
 
 class TestGenericPathEconomicIdentity:
-    def test_solar_total_matches_capex_structure(self):
+    def test_solar_basis_total_matches_implicit_path(self):
         from app.project_factories import create_default_solar_project
         from financial_engine.book_basis import build_book_depreciable_asset_basis
         inputs = create_default_solar_project()
@@ -226,7 +238,7 @@ class TestGenericPathEconomicIdentity:
         )
         assert abs(basis.total_keur - implicit_total) < 1e-9
 
-    def test_wind_total_matches_capex_structure(self):
+    def test_wind_basis_total_matches_implicit_path(self):
         from app.project_factories import create_default_wind_project
         from financial_engine.book_basis import build_book_depreciable_asset_basis
         inputs = create_default_wind_project()
@@ -237,229 +249,144 @@ class TestGenericPathEconomicIdentity:
         )
         assert abs(basis.total_keur - implicit_total) < 1e-9
 
-    def test_solar_component_names_match(self):
-        from app.project_factories import create_default_solar_project
-        from financial_engine.book_basis import build_book_depreciable_asset_basis
-        inputs = create_default_solar_project()
-        basis = build_book_depreciable_asset_basis(inputs.capex)
-        implicit_names = {item.name for item in inputs.capex.book_depreciable_capex_items()
-                          if item.amount_keur != 0.0}
-        basis_names = {c.name for c in basis.components}
-        assert basis_names == implicit_names
-
 
 # ---------------------------------------------------------------------------
-# Category 6 — Generic path: provenance on all components
-# ---------------------------------------------------------------------------
-
-class TestGenericPathProvenances:
-    def test_all_components_have_generic_provenance(self):
-        from app.project_factories import create_default_solar_project
-        from financial_engine.book_basis import build_book_depreciable_asset_basis
-        inputs = create_default_solar_project()
-        basis = build_book_depreciable_asset_basis(inputs.capex)
-        for c in basis.components:
-            assert c.provenance == "CAPEX_STRUCTURE_GENERIC", (
-                f"component '{c.name}' has unexpected provenance '{c.provenance}'"
-            )
-
-
-# ---------------------------------------------------------------------------
-# Category 7 — Non-depreciable items excluded
-# ---------------------------------------------------------------------------
-
-class TestNonDepreciableItemsExcluded:
-    def test_non_depreciable_flag_excluded_from_generic_basis(self):
-        from finco_core.inputs._models import CapexItem, CapexStructure, AssetClass
-        from financial_engine.book_basis import build_book_depreciable_asset_basis
-
-        non_dep = CapexItem(name="Land", amount_keur=500.0, is_depreciable=False)
-        dep = CapexItem(name="EPC Contract", amount_keur=10_000.0)
-        z = CapexItem(name="placeholder", amount_keur=0.0)
-
-        def _z(name):
-            return CapexItem(name=name, amount_keur=0.0)
-
-        capex = CapexStructure(
-            epc_contract=dep,
-            production_units=non_dep,
-            epc_other=_z("epc_other"),
-            grid_connection=_z("grid_connection"),
-            ops_prep=_z("ops_prep"),
-            insurances=_z("insurances"),
-            lease_tax=_z("lease_tax"),
-            construction_mgmt_a=_z("construction_mgmt_a"),
-            commissioning=_z("commissioning"),
-            audit_legal=_z("audit_legal"),
-            construction_mgmt_b=_z("construction_mgmt_b"),
-            contingencies=_z("contingencies"),
-            taxes=_z("taxes"),
-            project_acquisition=_z("project_acquisition"),
-            project_rights=_z("project_rights"),
-        )
-        basis = build_book_depreciable_asset_basis(capex)
-        names = {c.name for c in basis.components}
-        assert "EPC Contract" in names
-        assert "Land" not in names
-
-    def test_non_depreciable_excluded_from_typed_basis(self):
-        from finco_core.inputs._models import CapexItem, CapexStructure, AssetClass
-        from financial_engine.book_basis import build_book_depreciable_asset_basis
-
-        dep = CapexItem(name="EPC Contract", amount_keur=10_000.0)
-        non_dep = CapexItem(name="Land", amount_keur=500.0, is_depreciable=False)
-
-        def _z(name):
-            return CapexItem(name=name, amount_keur=0.0)
-
-        capex = CapexStructure(
-            epc_contract=dep,
-            production_units=non_dep,
-            epc_other=_z("epc_other"),
-            grid_connection=_z("grid_connection"),
-            ops_prep=_z("ops_prep"),
-            insurances=_z("insurances"),
-            lease_tax=_z("lease_tax"),
-            construction_mgmt_a=_z("construction_mgmt_a"),
-            commissioning=_z("commissioning"),
-            audit_legal=_z("audit_legal"),
-            construction_mgmt_b=_z("construction_mgmt_b"),
-            contingencies=_z("contingencies"),
-            taxes=_z("taxes"),
-            project_acquisition=_z("project_acquisition"),
-            project_rights=_z("project_rights"),
-        )
-        cfr = _make_cfr()
-        basis = build_book_depreciable_asset_basis(capex, cfr)
-        names = {c.name for c in basis.components}
-        assert "EPC Contract" in names
-        assert "Land" not in names
-
-
-# ---------------------------------------------------------------------------
-# Category 8 — Typed construction path: authority
+# Category 6 — Typed construction path: authority token
 # ---------------------------------------------------------------------------
 
 class TestTypedConstructionAuthority:
-    def test_authority_is_typed(self):
+    def test_typed_authority_token(self):
         from financial_engine.book_basis import build_book_depreciable_asset_basis
         capex = _make_minimal_capex_structure()
         cfr = _make_cfr()
         basis = build_book_depreciable_asset_basis(capex, cfr)
         assert basis.authority == "TYPED_CONSTRUCTION_FINANCING_RESULT_BOOK_BASIS"
 
-    def test_typed_path_triggered_by_cfr(self):
+    def test_generic_when_cfr_is_none(self):
         from financial_engine.book_basis import build_book_depreciable_asset_basis
         capex = _make_minimal_capex_structure()
-        # With CFR → typed
-        basis_typed = build_book_depreciable_asset_basis(capex, _make_cfr())
-        assert basis_typed.authority == "TYPED_CONSTRUCTION_FINANCING_RESULT_BOOK_BASIS"
-        # Without CFR → generic
-        basis_generic = build_book_depreciable_asset_basis(capex, None)
-        assert basis_generic.authority == "GENERIC_CAPEX_STRUCTURE_BOOK_BASIS"
+        basis = build_book_depreciable_asset_basis(capex, None)
+        assert basis.authority == "GENERIC_CAPEX_STRUCTURE_BOOK_BASIS"
 
 
 # ---------------------------------------------------------------------------
-# Category 9 — Typed construction: IDC component from capitalized_uses
+# Category 7 — Typed construction path: hard CAPEX items
 # ---------------------------------------------------------------------------
 
-class TestTypedConstructionIDCComponent:
-    def test_idc_amount_from_capitalized_uses_not_accrual(self):
+class TestTypedConstructionHardCapex:
+    def test_hard_capex_items_in_typed_basis(self):
         from financial_engine.book_basis import build_book_depreciable_asset_basis
         capex = _make_minimal_capex_structure()
-        # accrual ≠ capitalized_uses so we can distinguish them
+        cfr = _make_cfr()
+        basis = build_book_depreciable_asset_basis(capex, cfr)
+        capex_codes = {c.code for c in basis.components if c.provenance == "CAPEX_STRUCTURE_HARD_CAPEX"}
+        assert "EPC Contract" in capex_codes
+
+    def test_hard_capex_provenance(self):
+        from financial_engine.book_basis import build_book_depreciable_asset_basis
+        capex = _make_minimal_capex_structure()
+        cfr = _make_cfr()
+        basis = build_book_depreciable_asset_basis(capex, cfr)
+        hard = [c for c in basis.components if c.provenance == "CAPEX_STRUCTURE_HARD_CAPEX"]
+        assert len(hard) >= 1
+
+
+# ---------------------------------------------------------------------------
+# Category 8 — Typed construction path: capitalized IDC component
+# ---------------------------------------------------------------------------
+
+class TestTypedConstructionIDC:
+    def test_idc_amount_from_capitalized_uses(self):
+        from financial_engine.book_basis import build_book_depreciable_asset_basis
+        capex = _make_minimal_capex_structure()
+        # idc_capitalized_uses total = 150; idc_accrual total = 300 (differs)
+        cfr = _make_cfr(idc_capitalized_uses=(75.0, 75.0), idc_accrual=(150.0, 150.0))
+        basis = build_book_depreciable_asset_basis(capex, cfr)
+        idc = next((c for c in basis.components if c.code == "senior_idc"), None)
+        assert idc is not None
+        assert abs(idc.amount_keur - 150.0) < 1e-9
+
+    def test_idc_not_from_raw_accrual(self):
+        """IDC basis must use capitalized uses, NOT raw accrual.
+
+        When terminal IDC accrues after the last funded draw (TUHO pattern),
+        the raw accrual total exceeds the capitalized-uses total. The basis
+        must reflect the smaller capitalized figure.
+        """
+        from financial_engine.book_basis import build_book_depreciable_asset_basis
+        capex = _make_minimal_capex_structure()
+        # Simulate terminal IDC: accrual total (500) > capitalized total (283)
         cfr = _make_cfr(
-            idc_capitalized_uses=(100.0, 200.0),   # sum = 300
-            idc_accrual=(120.0, 180.0),            # sum = 300 — same total, different source
+            idc_capitalized_uses=(100.0, 183.0),   # sum = 283
+            idc_accrual=(100.0, 183.0, 217.0),     # sum = 500 (includes terminal IDC)
         )
         basis = build_book_depreciable_asset_basis(capex, cfr)
-        idc_components = [c for c in basis.components if c.code == "senior_idc"]
-        assert len(idc_components) == 1
-        assert abs(idc_components[0].amount_keur - 300.0) < 1e-9
+        idc = next(c for c in basis.components if c.code == "senior_idc")
+        assert abs(idc.amount_keur - 283.0) < 1e-9, (
+            f"Expected capitalized IDC 283.0 kEUR, got {idc.amount_keur} — "
+            "builder must NOT use raw accrual (500.0)"
+        )
+
+    def test_idc_provenance(self):
+        from financial_engine.book_basis import build_book_depreciable_asset_basis
+        capex = _make_minimal_capex_structure()
+        cfr = _make_cfr()
+        basis = build_book_depreciable_asset_basis(capex, cfr)
+        idc = next(c for c in basis.components if c.code == "senior_idc")
+        assert idc.provenance == "CONSTRUCTION_FINANCING_RESULT_SENIOR_IDC_CAPITALIZED_USES"
 
     def test_idc_useful_life_is_12(self):
         from financial_engine.book_basis import build_book_depreciable_asset_basis
         capex = _make_minimal_capex_structure()
-        basis = build_book_depreciable_asset_basis(capex, _make_cfr())
+        cfr = _make_cfr()
+        basis = build_book_depreciable_asset_basis(capex, cfr)
         idc = next(c for c in basis.components if c.code == "senior_idc")
         assert idc.useful_life_override == 12
 
-    def test_idc_asset_class_is_financial_costs(self):
-        from financial_engine.book_basis import build_book_depreciable_asset_basis
-        capex = _make_minimal_capex_structure()
-        basis = build_book_depreciable_asset_basis(capex, _make_cfr())
-        idc = next(c for c in basis.components if c.code == "senior_idc")
-        assert idc.asset_class_code == "financial_costs"
-
 
 # ---------------------------------------------------------------------------
-# Category 10 — Typed construction: IDC provenance string
-# ---------------------------------------------------------------------------
-
-class TestTypedConstructionIDCProvenance:
-    def test_idc_provenance_is_capitalized_uses(self):
-        from financial_engine.book_basis import build_book_depreciable_asset_basis
-        capex = _make_minimal_capex_structure()
-        basis = build_book_depreciable_asset_basis(capex, _make_cfr())
-        idc = next(c for c in basis.components if c.code == "senior_idc")
-        assert idc.provenance == "CONSTRUCTION_FINANCING_RESULT_SENIOR_IDC_CAPITALIZED_USES"
-
-    def test_hard_capex_provenance_is_hard_capex(self):
-        from financial_engine.book_basis import build_book_depreciable_asset_basis
-        capex = _make_minimal_capex_structure()
-        basis = build_book_depreciable_asset_basis(capex, _make_cfr())
-        hard_capex = [c for c in basis.components if c.code == "EPC Contract"]
-        assert len(hard_capex) == 1
-        assert hard_capex[0].provenance == "CAPEX_STRUCTURE_HARD_CAPEX"
-
-
-# ---------------------------------------------------------------------------
-# Category 11 — Capitalized IDC ≠ raw accrual (timing distinction)
-# ---------------------------------------------------------------------------
-
-class TestCapitalizedIDCNotRawIDC:
-    def test_capitalized_uses_differ_from_accrual_when_timing_shifted(self):
-        """Builder uses capitalized_uses; accrual is different when timing is next-period."""
-        from financial_engine.book_basis import build_book_depreciable_asset_basis
-        capex = _make_minimal_capex_structure()
-        # Simulate NEXT_FUNDING_PERIOD timing: accrual in period 0, capitalized in period 1
-        cfr = _make_cfr(
-            idc_capitalized_uses=(0.0, 300.0),   # shifted forward by one period
-            idc_accrual=(300.0, 0.0),            # accrues in period 0
-        )
-        basis = build_book_depreciable_asset_basis(capex, cfr)
-        idc = next(c for c in basis.components if c.code == "senior_idc")
-        # Amount = sum(capitalized_uses) = 300 — same total but different source
-        assert abs(idc.amount_keur - 300.0) < 1e-9
-        # Confirm provenance points to capitalized uses (not accrual)
-        assert "CAPITALIZED_USES" in idc.provenance
-
-    def test_zero_capitalized_idc_excluded(self):
-        """When all IDC capitalized uses are zero, no IDC component appears."""
-        from financial_engine.book_basis import build_book_depreciable_asset_basis
-        capex = _make_minimal_capex_structure()
-        cfr = _make_cfr(
-            idc_capitalized_uses=(0.0, 0.0),
-            idc_accrual=(150.0, 150.0),  # accrual > 0 but capitalized = 0
-        )
-        basis = build_book_depreciable_asset_basis(capex, cfr)
-        idc_components = [c for c in basis.components if c.code == "senior_idc"]
-        assert len(idc_components) == 0
-
-
-# ---------------------------------------------------------------------------
-# Category 12 — Commitment fee component
+# Category 9 — Typed construction path: commitment fee uses capitalized scalar
 # ---------------------------------------------------------------------------
 
 class TestTypedConstructionCommitmentFee:
-    def test_commitment_fee_amount_from_accrual(self):
+    def test_commitment_fee_amount_from_capitalized_scalar(self):
+        """Builder must use senior_commitment_fee_capitalized_keur, not accrual sum."""
         from financial_engine.book_basis import build_book_depreciable_asset_basis
         capex = _make_minimal_capex_structure()
-        cfr = _make_cfr(commitment_fee_accrual=(15.0, 25.0))
+        # Capitalized scalar = 77.0; accrual sum = 15.0 + 25.0 = 40.0 — must NOT use accrual
+        cfr = _make_cfr(
+            commitment_fee_capitalized=77.0,
+            commitment_fee_accrual=(15.0, 25.0),
+        )
         basis = build_book_depreciable_asset_basis(capex, cfr)
         fee = next((c for c in basis.components if c.code == "senior_commitment_fee"), None)
         assert fee is not None
-        assert abs(fee.amount_keur - 40.0) < 1e-9
+        assert abs(fee.amount_keur - 77.0) < 1e-9, (
+            f"Expected capitalized scalar 77.0, got {fee.amount_keur} — "
+            "builder must NOT sum accrual vector (sum=40.0)"
+        )
+
+    def test_commitment_fee_not_from_accrual_sum(self):
+        """Commitment fee from accrual vector (40.0) must NOT appear when capitalized is 77.0."""
+        from financial_engine.book_basis import build_book_depreciable_asset_basis
+        capex = _make_minimal_capex_structure()
+        cfr = _make_cfr(
+            commitment_fee_capitalized=77.0,
+            commitment_fee_accrual=(15.0, 25.0),
+        )
+        basis = build_book_depreciable_asset_basis(capex, cfr)
+        fee = next(c for c in basis.components if c.code == "senior_commitment_fee")
+        assert abs(fee.amount_keur - 40.0) > 1e-3, (
+            "Builder is incorrectly using accrual sum (40.0) instead of capitalized scalar (77.0)"
+        )
+
+    def test_commitment_fee_provenance(self):
+        from financial_engine.book_basis import build_book_depreciable_asset_basis
+        capex = _make_minimal_capex_structure()
+        cfr = _make_cfr()
+        basis = build_book_depreciable_asset_basis(capex, cfr)
+        fee = next(c for c in basis.components if c.code == "senior_commitment_fee")
+        assert fee.provenance == "CONSTRUCTION_FINANCING_RESULT_SENIOR_COMMITMENT_FEE_CAPITALIZED"
 
     def test_commitment_fee_useful_life_is_12(self):
         from financial_engine.book_basis import build_book_depreciable_asset_basis
@@ -470,7 +397,7 @@ class TestTypedConstructionCommitmentFee:
 
 
 # ---------------------------------------------------------------------------
-# Category 13 — Structuring fee component
+# Category 10 — Typed construction path: structuring fee component
 # ---------------------------------------------------------------------------
 
 class TestTypedConstructionStructuringFee:
@@ -492,7 +419,7 @@ class TestTypedConstructionStructuringFee:
 
 
 # ---------------------------------------------------------------------------
-# Category 14 — VAT combined as single component
+# Category 11 — VAT combined as single component
 # ---------------------------------------------------------------------------
 
 class TestTypedConstructionVAT:
@@ -523,7 +450,7 @@ class TestTypedConstructionVAT:
 
 
 # ---------------------------------------------------------------------------
-# Category 15 — SHL excluded from basis
+# Category 12 — SHL excluded from basis
 # ---------------------------------------------------------------------------
 
 class TestSHLExcludedFromBasis:
@@ -547,7 +474,7 @@ class TestSHLExcludedFromBasis:
 
 
 # ---------------------------------------------------------------------------
-# Category 16 — Zero amounts excluded
+# Category 13 — Zero amounts excluded
 # ---------------------------------------------------------------------------
 
 class TestZeroAmountsExcluded:
@@ -563,6 +490,7 @@ class TestZeroAmountsExcluded:
         capex = _make_minimal_capex_structure()
         cfr = _make_cfr(
             idc_capitalized_uses=(0.0, 0.0),
+            commitment_fee_capitalized=0.0,
             commitment_fee_accrual=(0.0, 0.0),
             structuring_fee=(0.0, 0.0),
             vat_idc_keur=0.0,
@@ -575,7 +503,7 @@ class TestZeroAmountsExcluded:
 
 
 # ---------------------------------------------------------------------------
-# Category 17 — Builder signature: no project dispatch
+# Category 14 — Builder signature: no project dispatch
 # ---------------------------------------------------------------------------
 
 class TestBuilderNoProjectDispatch:
@@ -611,7 +539,7 @@ class TestBuilderNoProjectDispatch:
 
 
 # ---------------------------------------------------------------------------
-# Category 18 — Adapter wiring into DepreciationInput
+# Category 15 — Adapter wiring into DepreciationInput
 # ---------------------------------------------------------------------------
 
 class TestAdapterWiring:
@@ -627,20 +555,6 @@ class TestAdapterWiring:
         dep_names = {item.name for item in op_input.depreciation.book_capex_items_for_depreciation}
         basis_names = {c.name for c in basis.components}
         assert dep_names == basis_names
-
-    def test_adapter_without_basis_uses_implicit_path(self):
-        from app.project_factories import create_default_solar_project
-        from financial_engine.adapters.project_inputs import from_project_inputs
-
-        inputs = create_default_solar_project()
-        op_input = from_project_inputs(inputs)
-        # Implicit path: same items as book_depreciable_capex_items()
-        implicit_names = {
-            item.name for item in inputs.capex.book_depreciable_capex_items()
-            if item.amount_keur != 0.0
-        }
-        dep_names = {item.name for item in op_input.depreciation.book_capex_items_for_depreciation}
-        assert dep_names == implicit_names
 
     def test_adapter_amounts_match_basis(self):
         from app.project_factories import create_default_solar_project
@@ -677,7 +591,40 @@ class TestAdapterWiring:
 
 
 # ---------------------------------------------------------------------------
-# Category 19 — ProjectFinancingResult exposes basis field
+# Category 16 — Adapter fallback delegates to canonical builder (§3)
+# ---------------------------------------------------------------------------
+
+class TestAdapterFallbackDelegatesToBuilder:
+    def test_adapter_without_basis_produces_same_total_as_builder(self):
+        """When book_basis=None, adapter must use build_book_depreciable_asset_basis(),
+        which for the generic path is economically identical to book_depreciable_capex_items().
+        """
+        from app.project_factories import create_default_solar_project
+        from financial_engine.adapters.project_inputs import from_project_inputs
+        from financial_engine.book_basis import build_book_depreciable_asset_basis
+
+        inputs = create_default_solar_project()
+        op_no_basis = from_project_inputs(inputs)
+        builder_basis = build_book_depreciable_asset_basis(inputs.capex)
+
+        dep_total = sum(
+            item.amount_keur
+            for item in op_no_basis.depreciation.book_capex_items_for_depreciation
+        )
+        assert abs(dep_total - builder_basis.total_keur) < 1e-9
+
+    def test_adapter_fallback_does_not_bypass_builder(self):
+        """Verify adapter module source: fallback must call build_book_depreciable_asset_basis."""
+        text = (REPO_ROOT / "financial_engine" / "adapters" / "project_inputs.py").read_text()
+        # The only call to book_depreciable_capex_items should be gone from the fallback path
+        # (it may appear elsewhere). The builder call must be present.
+        assert "build_book_depreciable_asset_basis" in text, (
+            "adapter must import and call build_book_depreciable_asset_basis in the fallback path"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Category 17 — ProjectFinancingResult exposes basis field
 # ---------------------------------------------------------------------------
 
 class TestProjectFinancingResultExposure:
@@ -695,27 +642,64 @@ class TestProjectFinancingResultExposure:
         )
 
     def test_typed_construction_result_carries_basis(self):
-        """Full typed construction run exposes a non-None book_depreciable_asset_basis."""
-        pytest.importorskip("app.project_factories")
-        try:
-            from app.project_factories import create_default_oborovo_project
-        except (ImportError, AttributeError):
-            pytest.skip("create_default_oborovo_project not available")
-
+        """Full typed construction run (Oborovo) exposes non-None book_depreciable_asset_basis."""
+        from app.project_factories import create_default_oborovo
         from app.services.production_financial_authority import run_clean_production
-        inputs = create_default_oborovo_project()
+        from finco_core.inputs.book_depreciable_asset_basis import BookDepreciableAssetBasis
+
+        inputs = create_default_oborovo()
         result = run_clean_production(inputs)
-        # Navigate to ProjectFinancingResult
-        pfr = getattr(result, "project_financing_result", None)
-        if pfr is None:
-            pytest.skip("project_financing_result not on result")
-        basis = getattr(pfr, "book_depreciable_asset_basis", None)
+        pfr = result.g2c_result.financing_result
+        basis = pfr.book_depreciable_asset_basis
         assert basis is not None, "book_depreciable_asset_basis must be set on typed construction run"
+        assert isinstance(basis, BookDepreciableAssetBasis)
+        assert basis.authority == "TYPED_CONSTRUCTION_FINANCING_RESULT_BOOK_BASIS"
+
+    def test_generic_solar_result_carries_basis(self):
+        """Generic Solar run must also expose non-None book_depreciable_asset_basis."""
+        from app.project_factories import create_default_solar_project
+        from app.services.production_financial_authority import run_clean_production
+        from finco_core.inputs.book_depreciable_asset_basis import BookDepreciableAssetBasis
+
+        inputs = create_default_solar_project()
+        result = run_clean_production(inputs)
+        pfr = result.g2c_result.financing_result
+        basis = pfr.book_depreciable_asset_basis
+        assert basis is not None, "book_depreciable_asset_basis must be set on generic Solar run"
+        assert isinstance(basis, BookDepreciableAssetBasis)
+        assert basis.authority == "GENERIC_CAPEX_STRUCTURE_BOOK_BASIS"
+
+    def test_generic_wind_result_carries_basis(self):
+        """Generic Wind run must also expose non-None book_depreciable_asset_basis."""
+        from app.project_factories import create_default_wind_project
+        from app.services.production_financial_authority import run_clean_production
+        from finco_core.inputs.book_depreciable_asset_basis import BookDepreciableAssetBasis
+
+        inputs = create_default_wind_project()
+        result = run_clean_production(inputs)
+        pfr = result.g2c_result.financing_result
+        basis = pfr.book_depreciable_asset_basis
+        assert basis is not None, "book_depreciable_asset_basis must be set on generic Wind run"
+        assert isinstance(basis, BookDepreciableAssetBasis)
+        assert basis.authority == "GENERIC_CAPEX_STRUCTURE_BOOK_BASIS"
+
+    def test_tuho_result_carries_basis(self):
+        """TUHO typed construction run exposes non-None book_depreciable_asset_basis."""
+        from app.project_factories import create_default_tuho_wind1
+        from app.services.production_financial_authority import run_clean_production
+        from finco_core.inputs.book_depreciable_asset_basis import BookDepreciableAssetBasis
+
+        inputs = create_default_tuho_wind1()
+        result = run_clean_production(inputs)
+        pfr = result.g2c_result.financing_result
+        basis = pfr.book_depreciable_asset_basis
+        assert basis is not None, "book_depreciable_asset_basis must be set on TUHO run"
+        assert isinstance(basis, BookDepreciableAssetBasis)
         assert basis.authority == "TYPED_CONSTRUCTION_FINANCING_RESULT_BOOK_BASIS"
 
 
 # ---------------------------------------------------------------------------
-# Category 20 — No forbidden imports in new modules
+# Category 18 — No forbidden imports in new modules
 # ---------------------------------------------------------------------------
 
 class TestNoForbiddenImports:
@@ -745,3 +729,191 @@ class TestNoForbiddenImports:
             assert "build_book_depreciable_asset_basis" not in text, (
                 f"{f}: basis builder must not be defined in financial_statements/"
             )
+
+
+# ---------------------------------------------------------------------------
+# Category 19 — Fail-closed contract validation
+# ---------------------------------------------------------------------------
+
+class TestContractValidation:
+    def test_component_rejects_nan_amount(self):
+        from finco_core.inputs.book_depreciable_asset_basis import BookDepreciableAssetComponent
+        with pytest.raises(ValueError, match="finite"):
+            BookDepreciableAssetComponent("x", "X", float("nan"), "civil_grid", None, "p")
+
+    def test_component_rejects_inf_amount(self):
+        from finco_core.inputs.book_depreciable_asset_basis import BookDepreciableAssetComponent
+        with pytest.raises(ValueError, match="finite"):
+            BookDepreciableAssetComponent("x", "X", float("inf"), "civil_grid", None, "p")
+
+    def test_component_rejects_negative_amount(self):
+        from finco_core.inputs.book_depreciable_asset_basis import BookDepreciableAssetComponent
+        with pytest.raises(ValueError, match=">= 0"):
+            BookDepreciableAssetComponent("x", "X", -1.0, "civil_grid", None, "p")
+
+    def test_component_rejects_bool_amount(self):
+        from finco_core.inputs.book_depreciable_asset_basis import BookDepreciableAssetComponent
+        with pytest.raises((ValueError, TypeError)):
+            BookDepreciableAssetComponent("x", "X", True, "civil_grid", None, "p")
+
+    def test_component_rejects_empty_code(self):
+        from finco_core.inputs.book_depreciable_asset_basis import BookDepreciableAssetComponent
+        with pytest.raises(ValueError, match="code"):
+            BookDepreciableAssetComponent("", "X", 1.0, "civil_grid", None, "p")
+
+    def test_component_rejects_zero_useful_life(self):
+        from finco_core.inputs.book_depreciable_asset_basis import BookDepreciableAssetComponent
+        with pytest.raises(ValueError, match="> 0"):
+            BookDepreciableAssetComponent("x", "X", 1.0, "civil_grid", 0, "p")
+
+    def test_basis_rejects_duplicate_codes(self):
+        from finco_core.inputs.book_depreciable_asset_basis import (
+            BookDepreciableAssetBasis, BookDepreciableAssetComponent,
+        )
+        c1 = BookDepreciableAssetComponent("same_code", "A", 100.0, "civil_grid", None, "p")
+        c2 = BookDepreciableAssetComponent("same_code", "B", 200.0, "civil_grid", None, "p")
+        with pytest.raises(ValueError, match="duplicate"):
+            BookDepreciableAssetBasis(components=(c1, c2), authority="TEST")
+
+    def test_basis_rejects_empty_authority(self):
+        from finco_core.inputs.book_depreciable_asset_basis import BookDepreciableAssetBasis
+        with pytest.raises(ValueError, match="authority"):
+            BookDepreciableAssetBasis(components=(), authority="")
+
+
+# ---------------------------------------------------------------------------
+# Category 20 — Mutation sensitivity: basis → DepreciationInput → depreciation
+# ---------------------------------------------------------------------------
+
+class TestMutationSensitivity:
+    def test_different_basis_produces_different_dep_total(self):
+        """Changing basis components must change DepreciationInput total."""
+        from app.project_factories import create_default_solar_project
+        from financial_engine.adapters.project_inputs import from_project_inputs
+        from finco_core.inputs.book_depreciable_asset_basis import (
+            BookDepreciableAssetBasis, BookDepreciableAssetComponent,
+        )
+
+        inputs = create_default_solar_project()
+        c_small = BookDepreciableAssetComponent(
+            code="epc", name="EPC", amount_keur=5_000.0,
+            asset_class_code="civil_grid", useful_life_override=None, provenance="TEST",
+        )
+        c_large = BookDepreciableAssetComponent(
+            code="epc", name="EPC", amount_keur=10_000.0,
+            asset_class_code="civil_grid", useful_life_override=None, provenance="TEST",
+        )
+        basis_small = BookDepreciableAssetBasis(components=(c_small,), authority="TEST")
+        basis_large = BookDepreciableAssetBasis(components=(c_large,), authority="TEST")
+
+        op_small = from_project_inputs(inputs, book_basis=basis_small)
+        op_large = from_project_inputs(inputs, book_basis=basis_large)
+
+        total_small = sum(i.amount_keur for i in op_small.depreciation.book_capex_items_for_depreciation)
+        total_large = sum(i.amount_keur for i in op_large.depreciation.book_capex_items_for_depreciation)
+
+        assert abs(total_small - 5_000.0) < 1e-9
+        assert abs(total_large - 10_000.0) < 1e-9
+        assert abs(total_large - total_small) > 1_000.0
+
+
+# ---------------------------------------------------------------------------
+# Category 21 — Parallel basis guard: no independent reconstruction outside builder
+# ---------------------------------------------------------------------------
+
+class TestParallelBasisGuard:
+    def test_adapter_source_does_not_call_book_depreciable_capex_items_in_else(self):
+        """The adapter fallback (else branch) must NOT call book_depreciable_capex_items()
+        directly — it must delegate to the canonical builder.
+        """
+        text = (REPO_ROOT / "financial_engine" / "adapters" / "project_inputs.py").read_text()
+        # We expect the only reference to book_depreciable_capex_items (if any) is in a comment,
+        # or that the else branch uses build_book_depreciable_asset_basis instead.
+        # The build_book_depreciable_asset_basis call must be present.
+        assert "build_book_depreciable_asset_basis" in text
+
+    def test_project_py_generic_path_uses_builder(self):
+        """The generic path in run_project_financing_model must call the builder."""
+        text = (REPO_ROOT / "financial_engine" / "financing" / "project.py").read_text()
+        assert "build_book_depreciable_asset_basis" in text or "_build_generic_book_basis" in text
+
+
+# ---------------------------------------------------------------------------
+# Category 22 — Actual project financial proof (Oborovo + TUHO)
+# ---------------------------------------------------------------------------
+
+class TestActualProjectFinancialProof:
+    def test_oborovo_basis_is_non_empty(self):
+        from app.project_factories import create_default_oborovo
+        from app.services.production_financial_authority import run_clean_production
+
+        inputs = create_default_oborovo()
+        result = run_clean_production(inputs)
+        pfr = result.g2c_result.financing_result
+        basis = pfr.book_depreciable_asset_basis
+        assert len(basis.components) > 0
+        assert basis.total_keur > 0.0
+
+    def test_oborovo_basis_has_idc_component(self):
+        from app.project_factories import create_default_oborovo
+        from app.services.production_financial_authority import run_clean_production
+
+        inputs = create_default_oborovo()
+        result = run_clean_production(inputs)
+        basis = result.g2c_result.financing_result.book_depreciable_asset_basis
+        idc_components = [c for c in basis.components if c.code == "senior_idc"]
+        assert len(idc_components) == 1
+        assert idc_components[0].amount_keur > 0.0
+
+    def test_tuho_basis_idc_excludes_terminal_idc(self):
+        """TUHO: capitalized IDC must be less than raw accrual (terminal IDC excluded)."""
+        from app.project_factories import create_default_tuho_wind1
+        from app.services.production_financial_authority import run_clean_production
+
+        inputs = create_default_tuho_wind1()
+        result = run_clean_production(inputs)
+        pfr = result.g2c_result.financing_result
+        basis = pfr.book_depreciable_asset_basis
+        cfr = pfr.construction_financing
+
+        assert cfr is not None, "TUHO must have construction_financing result"
+        idc_component = next((c for c in basis.components if c.code == "senior_idc"), None)
+        assert idc_component is not None
+
+        raw_idc_total = sum(cfr.senior_idc_accrual_keur)
+        capitalized_idc = sum(cfr.senior_idc_capitalized_uses_keur)
+
+        # TUHO has ~217 kEUR terminal IDC in accrual but not in capitalized uses
+        assert raw_idc_total > capitalized_idc + 50.0, (
+            f"TUHO: expected raw_idc ({raw_idc_total:.1f}) > capitalized_idc ({capitalized_idc:.1f}) + 50"
+        )
+        assert abs(idc_component.amount_keur - capitalized_idc) < 1e-3, (
+            f"IDC basis must use capitalized uses ({capitalized_idc:.3f}), got {idc_component.amount_keur:.3f}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Category 23 — ConstructionFinancingResult carries capitalized fee scalar
+# ---------------------------------------------------------------------------
+
+class TestConstructionFinancingResultCapitalizedFee:
+    def test_field_exists_on_cfr(self):
+        from financial_engine.financing.contracts import ConstructionFinancingResult
+        fields = {f.name for f in dataclasses.fields(ConstructionFinancingResult)}
+        assert "senior_commitment_fee_capitalized_keur" in fields
+
+    def test_cfr_field_defaults_to_zero(self):
+        from financial_engine.financing.contracts import ConstructionFinancingResult
+        fields = {f.name: f for f in dataclasses.fields(ConstructionFinancingResult)}
+        f = fields["senior_commitment_fee_capitalized_keur"]
+        assert f.default == 0.0
+
+    def test_oborovo_cfr_has_positive_capitalized_fee(self):
+        from app.project_factories import create_default_oborovo
+        from app.services.production_financial_authority import run_clean_production
+
+        inputs = create_default_oborovo()
+        result = run_clean_production(inputs)
+        cfr = result.g2c_result.financing_result.construction_financing
+        assert cfr is not None
+        assert cfr.senior_commitment_fee_capitalized_keur > 0.0

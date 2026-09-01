@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from finco_core.inputs import ProjectInputs
+    from finco_core.inputs.book_depreciable_asset_basis import BookDepreciableAssetBasis
 
 from finco_core.inputs import SHLRepaymentMethod, TaxPeriodisationMode
 from finco_core.inputs._models import ShlConstructionInterestMethod
@@ -70,7 +71,7 @@ def from_project_inputs(
     *,
     source_id: str = "",
     baseline_commit_sha: str = "",
-    book_basis: "object | None" = None,
+    book_basis: "BookDepreciableAssetBasis | None" = None,
 ) -> OperatingModelInput:
     """Adapt a canonical ProjectInputs to a clean OperatingModelInput.
 
@@ -207,8 +208,18 @@ def from_project_inputs(
             if c.amount_keur != 0.0
         )
     else:
+        # Delegate to the canonical builder — not directly to book_depreciable_capex_items().
+        from financial_engine.book_basis import build_book_depreciable_asset_basis
+        _fallback_basis = build_book_depreciable_asset_basis(inputs.capex)
         book_capex_items_for_dep = tuple(
-            _to_dep_item(item) for item in inputs.capex.book_depreciable_capex_items()
+            CapexItemForDep(
+                name=c.name,
+                amount_keur=c.amount_keur,
+                asset_class_code=c.asset_class_code,
+                useful_life_override=c.useful_life_override,
+            )
+            for c in _fallback_basis.components
+            if c.amount_keur != 0.0
         )
 
     from finco_core.inputs._models import TaxDepreciationMode
