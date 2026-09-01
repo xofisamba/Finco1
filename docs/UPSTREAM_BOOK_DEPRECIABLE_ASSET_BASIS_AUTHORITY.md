@@ -1,6 +1,6 @@
 # Upstream: Book Depreciable Asset Basis Authority
 
-**Status**: `BOOK_DEPRECIABLE_ASSET_BASIS_UPSTREAM_CORRECTION_A_IN_PROGRESS`
+**Status**: `BOOK_DEPRECIABLE_ASSET_BASIS_UPSTREAM_CORRECTION_B_IN_PROGRESS`
 **Branch**: `upstream-book-depreciable-asset-basis`
 **Base**: `main` @ `c5d91ddf`
 **Downstream blocker resolved for**: Phase C3 `BOOK_DEPRECIABLE_ASSET_BASIS_UPSTREAM_REQUIRED`
@@ -157,7 +157,7 @@ enters the basis.
 | `financial_engine/financing/project.py` | Build basis after convergence; pass to result |
 | `financial_engine/adapters/project_inputs.py` | `from_project_inputs` accepts `book_basis` kwarg |
 | `finco_core/inputs/__init__.py` | Re-export new types |
-| `tests/test_upstream_book_depreciable_asset_basis.py` | NEW — 23 test categories |
+| `tests/test_upstream_book_depreciable_asset_basis.py` | NEW — 25 test categories (74 tests) |
 
 ---
 
