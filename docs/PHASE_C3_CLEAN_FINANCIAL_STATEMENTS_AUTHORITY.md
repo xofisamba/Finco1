@@ -80,15 +80,17 @@ Canonical module: `finco_core/inputs/accounting.py`
 - Serialization: full round-trip with backward compatibility (missing key → None, never SOURCE_PROVEN)
 - Cache key: `hash_inputs_for_cache` includes accounting policy
 
-### Upstream prerequisites (DO NOT implement in PR #964)
+### Upstream prerequisites — resolved and remaining
 
-1. **`BOOK_DEPRECIABLE_ASSET_BASIS_UPSTREAM_REQUIRED`**
-   `ConstructionFinancingResult → Canonical BookDepreciableAssetBasis → Operating book depreciation → C3 GFA/AccDep/NFA`
+1. **`BOOK_DEPRECIABLE_ASSET_BASIS_UPSTREAM_REQUIRED`** — **RESOLVED** by merged PR #965
+   `ProjectFinancingResult.book_depreciable_asset_basis` is now the canonical authority.
+   C3 GFA = `basis.total_keur`. All four projects produce non-None basis after U1 merge.
+   Chain: `BookDepreciableAssetBasis` → `C3 GFA` → `cumulative book depreciation` → `C3 NFA`.
 
 2. **`CASH_RESERVE_INTEREST_UPSTREAM_REQUIRED`**
    `Eligible cash/reserve balance + interest rate policy + timing/day-count → financing income → EBT → taxable income → CIT → Base CFADS → downstream waterfall`
 
-### Completeness matrix (Correction H — current)
+### Completeness matrix (U1 Integration — current)
 
 | Output | Solar | Wind | Oborovo | TUHO |
 |---|---|---|---|---|
@@ -101,11 +103,10 @@ Canonical module: `finco_core/inputs/accounting.py`
 | PF cash waterfall | OK | OK | OK | OK |
 | Construction funding | OK (no cfin) | OK (no cfin) | OK | OK |
 | FC/COD funding | OK | OK | OK | OK |
-| Candidate GFA | N/A (no cfin, UNRESOLVED policy) | same | audit only | audit only |
-| Canonical BookDepreciableAssetBasis | UPSTREAM_REQUIRED | UPSTREAM_REQUIRED | UPSTREAM_REQUIRED | UPSTREAM_REQUIRED |
-| GFA (fixed) | BOOK_CAPITALIZATION_BASIS_UNAVAILABLE | same | BOOK_DEPRECIABLE_ASSET_BASIS_UPSTREAM_REQUIRED | same |
-| Accumulated book depreciation | OK (PARTIAL — dep schedule only) | same | same | same |
-| NFA | BOOK_CAPITALIZATION_BASIS_UNAVAILABLE | same | BOOK_DEPRECIABLE_ASSET_BASIS_UPSTREAM_REQUIRED | same |
+| Canonical BookDepreciableAssetBasis | OK (GENERIC_CAPEX_STRUCTURE_BOOK_BASIS) | same | OK (TYPED_CONSTRUCTION_FINANCING_RESULT_BOOK_BASIS) | same |
+| GFA (fixed) | OK | OK | OK | OK |
+| Accumulated book depreciation | OK | OK | OK | OK |
+| NFA | OK | OK | OK | OK |
 | Pre-construction retained earnings | 0.0 / GENERIC_FINCO_POLICY | same | 0.0 / SOURCE_PROVEN | same |
 | COD opening RE | OK (GENERIC_FINCO_ACCOUNTING_POLICY) | same | OK (SOURCE_PROVEN_CONFIGURATION) | same |
 | Legal reserve | LEGAL_RESERVE_AUTHORITY_UNAVAILABLE | same | same | same |
@@ -117,25 +118,21 @@ Canonical module: `finco_core/inputs/accounting.py`
 | Distribution Account | OK | OK | OK | OK |
 | Balance Sheet complete | UNRESTRICTED_CASH_AUTHORITY_UNAVAILABLE | same | same | same |
 
-### GFA audit report — TUHO (Correction G §34)
+### GFA canonical report — TUHO (U1 Integration)
 
-Candidate GFA preserved in `gfa_report["candidate_book_gfa_keur"]`; dep-basis
-mismatch detailed in `gfa_report["dep_basis_comparison"]`.
+GFA is now AVAILABLE from `ProjectFinancingResult.book_depreciable_asset_basis`.
+`gfa_report["canonical_book_basis_components"]` carries the typed component list.
+Raw IDC evidence retained in `gfa_report["audit"]` (non-authoritative).
 
-| Component | Amount (kEUR) | Treatment | Basis |
-|---|---|---|---|
-| Hard CAPEX | 70,691.539 | CAPITALIZE_FIXED_ASSET | clean cfin |
-| Raw Senior IDC | 1,769.354 | audit only | clean cfin |
-| Capitalized Senior IDC | 1,552.229 | CAPITALIZE_FIXED_ASSET | `senior_idc_capitalized_uses_keur` |
-| Terminal raw IDC excluded | 217.125 | audit only (not capitalized) | raw − capitalized |
-| Senior commitment fee | 166.967 | CAPITALIZE_FIXED_ASSET | clean cfin |
-| Structuring fee | 471.514 | CAPITALIZE_FIXED_ASSET | clean cfin |
-| VAT IDC | 122.314 | CAPITALIZE_FIXED_ASSET | clean cfin |
-| VAT commitment fee | 26.466 | CAPITALIZE_FIXED_ASSET | clean cfin |
-| Total capitalized financing | 2,339.490 | — | cfin aggregate |
-| Candidate GFA | 73,031.030 | — | hard capex + cap financing |
-| Dep basis financing (capex scalars) | 0.000 | — | capex.idc_keur etc. |
-| Dep basis gap | 2,339.490 kEUR | BOOK_DEPRECIABLE_ASSET_BASIS_UPSTREAM_REQUIRED | — |
+| Component | Provenance | Authority |
+|---|---|---|
+| Hard CAPEX (all items) | `CAPEX_STRUCTURE_HARD_CAPEX` | `BookDepreciableAssetBasis` |
+| Senior IDC (capitalized uses) | `CONSTRUCTION_FINANCING_RESULT_SENIOR_IDC_CAPITALIZED_USES` | `BookDepreciableAssetBasis` |
+| Commitment fee (capitalized scalar) | `CONSTRUCTION_FINANCING_RESULT_SENIOR_COMMITMENT_FEE_CAPITALIZED` | `BookDepreciableAssetBasis` |
+| Structuring fee | `CONSTRUCTION_FINANCING_RESULT_STRUCTURING_FEE` | `BookDepreciableAssetBasis` |
+| VAT costs (combined) | `CONSTRUCTION_FINANCING_RESULT_VAT_CAPITALIZED` | `BookDepreciableAssetBasis` |
+| Raw Senior IDC (audit) | `senior_idc_accrual_keur` | non-authoritative audit only |
+| Terminal IDC excluded (audit) | raw − capitalized ≈ 217.125 kEUR | non-authoritative audit only |
 
 ### Legal reserve — source anchors (evidence only, not replayed)
 
