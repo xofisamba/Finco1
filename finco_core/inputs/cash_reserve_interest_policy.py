@@ -16,6 +16,7 @@ No project-code dispatch. No workbook-vector replay. No output-calibration.
 from __future__ import annotations
 
 import math
+import numbers
 from dataclasses import dataclass
 from enum import Enum
 
@@ -36,7 +37,14 @@ class CashReserveInterestAuthority(str, Enum):
 
 
 class EligibilityStatus(str, Enum):
-    """Whether a specific account is eligible for reserve interest accrual."""
+    """Whether a specific account is eligible for reserve interest accrual.
+
+    ELIGIBLE: Account is confirmed to earn cash/reserve interest.
+    INELIGIBLE: Account is confirmed not to earn interest (e.g. operating account).
+    UNRESOLVED: Account's eligibility is not yet provable from source.
+                Not accepted for SOURCE_PROVEN or GENERIC_FINCO_POLICY — every
+                account modeled by the policy must be classified explicitly.
+    """
     ELIGIBLE = "ELIGIBLE"
     INELIGIBLE = "INELIGIBLE"
     UNRESOLVED = "UNRESOLVED"
@@ -53,13 +61,39 @@ class BalanceConvention(str, Enum):
     AVERAGE = "average"
 
 
+def _validate_real_finite(value: object, name: str) -> None:
+    """Raise ValueError if value is not a real, finite, non-bool number."""
+    if isinstance(value, bool):
+        raise ValueError(
+            f"CashReserveInterestPolicy: {name} must be numeric, not bool"
+        )
+    if not isinstance(value, numbers.Real):
+        raise ValueError(
+            f"CashReserveInterestPolicy: {name} must be a real number, "
+            f"got {type(value).__name__!r}"
+        )
+    if not math.isfinite(float(value)):
+        raise ValueError(
+            f"CashReserveInterestPolicy: {name} must be finite, got {value!r}"
+        )
+
+
 @dataclass(frozen=True)
 class CashReserveInterestPolicy:
     """Typed upstream input contract for cash and reserve account interest income.
 
     When authority is UNRESOLVED, compute() returns 0.0 regardless of other fields.
-    When authority is GENERIC_FINCO_POLICY or SOURCE_PROVEN, annual_rate must be set
-    and at least one account must be ELIGIBLE.
+    When authority is GENERIC_FINCO_POLICY or SOURCE_PROVEN:
+    - annual_rate must be a real finite float in [0.0, 1.0].
+    - Both eligible_unrestricted_cash and eligible_dsra must be explicitly
+      classified as ELIGIBLE or INELIGIBLE — UNRESOLVED is not accepted.
+    - At least one account must be ELIGIBLE.
+
+    Negative cash/reserve balances passed to compute_period_income_keur are floored
+    to 0.0 for deposit-interest purposes (a negative balance cannot earn interest).
+    Non-finite balances or day_fraction values raise ValueError.
+    Negative day_fraction raises ValueError. Values > 1.0 are accepted (periods
+    longer than one year, e.g. construction stubs that span >365 days).
 
     Fields:
         authority: Provenance level. UNRESOLVED → fails closed.
@@ -83,34 +117,36 @@ class CashReserveInterestPolicy:
             CashReserveInterestAuthority.SOURCE_PROVEN,
             CashReserveInterestAuthority.GENERIC_FINCO_POLICY,
         ):
+            # Rate validation
             if self.annual_rate is None:
                 raise ValueError(
                     f"CashReserveInterestPolicy: annual_rate is required when "
                     f"authority={self.authority.value}"
                 )
-            if isinstance(self.annual_rate, bool):
-                raise ValueError(
-                    f"CashReserveInterestPolicy: annual_rate must be numeric, not bool"
-                )
-            if not math.isfinite(self.annual_rate):
-                raise ValueError(
-                    f"CashReserveInterestPolicy: annual_rate must be finite, "
-                    f"got {self.annual_rate!r}"
-                )
+            _validate_real_finite(self.annual_rate, "annual_rate")
             if self.annual_rate < 0.0 or self.annual_rate > 1.0:
                 raise ValueError(
                     f"CashReserveInterestPolicy: annual_rate economically invalid: "
                     f"{self.annual_rate!r}. Must be in [0.0, 1.0]."
                 )
-            if (
-                self.eligible_unrestricted_cash == EligibilityStatus.UNRESOLVED
-                and self.eligible_dsra == EligibilityStatus.UNRESOLVED
-            ):
+
+            # Eligibility: both accounts must be explicitly classified — UNRESOLVED
+            # is not accepted for non-UNRESOLVED authority. Every modeled account
+            # must be stated as ELIGIBLE or INELIGIBLE.
+            if self.eligible_unrestricted_cash == EligibilityStatus.UNRESOLVED:
                 raise ValueError(
                     f"CashReserveInterestPolicy: authority={self.authority.value} "
-                    f"requires at least one account to be non-UNRESOLVED; "
-                    f"both eligible_unrestricted_cash and eligible_dsra are UNRESOLVED"
+                    f"requires eligible_unrestricted_cash to be ELIGIBLE or INELIGIBLE, "
+                    f"not UNRESOLVED. Classify the account or downgrade authority."
                 )
+            if self.eligible_dsra == EligibilityStatus.UNRESOLVED:
+                raise ValueError(
+                    f"CashReserveInterestPolicy: authority={self.authority.value} "
+                    f"requires eligible_dsra to be ELIGIBLE or INELIGIBLE, "
+                    f"not UNRESOLVED. Classify the account or downgrade authority."
+                )
+
+            # At least one ELIGIBLE account required for enabled income policy.
             if (
                 self.eligible_unrestricted_cash != EligibilityStatus.ELIGIBLE
                 and self.eligible_dsra != EligibilityStatus.ELIGIBLE
@@ -136,6 +172,11 @@ class CashReserveInterestPolicy:
         - authority is UNRESOLVED
         - annual_rate is None
 
+        Non-finite balance or day_fraction values raise ValueError.
+        Negative finite balances floor to 0.0 (documented behavior — a negative
+        balance cannot earn deposit interest). Negative day_fraction raises.
+        day_fraction > 1.0 is accepted (construction period stubs > 1 year).
+
         Args:
             unrestricted_cash_balance_keur: Opening/closing/average unrestricted cash.
             dsra_balance_keur: Opening/closing/average DSRA balance.
@@ -144,6 +185,30 @@ class CashReserveInterestPolicy:
         Returns:
             Interest income in kEUR. Never negative.
         """
+        # Validate inputs — non-finite values must raise, not silently produce 0.0.
+        for val, name in (
+            (unrestricted_cash_balance_keur, "unrestricted_cash_balance_keur"),
+            (dsra_balance_keur, "dsra_balance_keur"),
+            (day_fraction, "day_fraction"),
+        ):
+            if isinstance(val, bool):
+                raise ValueError(
+                    f"compute_period_income_keur: {name} must be numeric, not bool"
+                )
+            if not isinstance(val, numbers.Real):
+                raise ValueError(
+                    f"compute_period_income_keur: {name} must be a real number"
+                )
+            if not math.isfinite(float(val)):
+                raise ValueError(
+                    f"compute_period_income_keur: {name} must be finite, got {val!r}"
+                )
+        if day_fraction < 0.0:
+            raise ValueError(
+                f"compute_period_income_keur: day_fraction must be non-negative, "
+                f"got {day_fraction!r}"
+            )
+
         if not self.enabled:
             return 0.0
         if self.authority == CashReserveInterestAuthority.UNRESOLVED:
@@ -153,6 +218,7 @@ class CashReserveInterestPolicy:
 
         eligible_balance = 0.0
         if self.eligible_unrestricted_cash == EligibilityStatus.ELIGIBLE:
+            # Negative balances floor to 0.0 — deposit accounts cannot earn on overdraft.
             eligible_balance += max(0.0, unrestricted_cash_balance_keur)
         if self.eligible_dsra == EligibilityStatus.ELIGIBLE:
             eligible_balance += max(0.0, dsra_balance_keur)

@@ -903,3 +903,186 @@ def test_policy_validation_bool_rate_raises():
             eligible_dsra=EligibilityStatus.INELIGIBLE,
             annual_rate=True,
         )
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Correction C §3 — partial-UNRESOLVED eligibility rejection
+# ══════════════════════════════════════════════════════════════════════════════
+
+# ── 40. SOURCE_PROVEN + one ELIGIBLE + one UNRESOLVED → reject ────────────────
+
+def test_partial_unresolved_source_proven_eligible_plus_unresolved_raises():
+    """SOURCE_PROVEN with one ELIGIBLE + one UNRESOLVED account must raise."""
+    with pytest.raises(ValueError, match="UNRESOLVED"):
+        CashReserveInterestPolicy(
+            authority=CashReserveInterestAuthority.SOURCE_PROVEN,
+            eligible_unrestricted_cash=EligibilityStatus.ELIGIBLE,
+            eligible_dsra=EligibilityStatus.UNRESOLVED,
+            annual_rate=0.01,
+        )
+
+
+# ── 41. GENERIC_FINCO_POLICY + one ELIGIBLE + one UNRESOLVED → reject ─────────
+
+def test_partial_unresolved_generic_eligible_plus_unresolved_raises():
+    """GENERIC_FINCO_POLICY with one ELIGIBLE + one UNRESOLVED account must raise."""
+    with pytest.raises(ValueError, match="UNRESOLVED"):
+        CashReserveInterestPolicy(
+            authority=CashReserveInterestAuthority.GENERIC_FINCO_POLICY,
+            eligible_unrestricted_cash=EligibilityStatus.UNRESOLVED,
+            eligible_dsra=EligibilityStatus.ELIGIBLE,
+            annual_rate=0.01,
+        )
+
+
+# ── 42. Both accounts resolved + at least one ELIGIBLE → accepted ─────────────
+
+def test_both_accounts_explicitly_resolved_accepted():
+    """Both accounts ELIGIBLE or INELIGIBLE (none UNRESOLVED) must be accepted."""
+    # unrestricted ELIGIBLE, dsra INELIGIBLE — should construct fine
+    policy = CashReserveInterestPolicy(
+        authority=CashReserveInterestAuthority.SOURCE_PROVEN,
+        eligible_unrestricted_cash=EligibilityStatus.ELIGIBLE,
+        eligible_dsra=EligibilityStatus.INELIGIBLE,
+        annual_rate=0.01,
+    )
+    assert policy.authority == CashReserveInterestAuthority.SOURCE_PROVEN
+    # dsra ELIGIBLE, unrestricted INELIGIBLE — should construct fine
+    policy2 = CashReserveInterestPolicy(
+        authority=CashReserveInterestAuthority.GENERIC_FINCO_POLICY,
+        eligible_unrestricted_cash=EligibilityStatus.INELIGIBLE,
+        eligible_dsra=EligibilityStatus.ELIGIBLE,
+        annual_rate=0.02,
+    )
+    assert policy2.authority == CashReserveInterestAuthority.GENERIC_FINCO_POLICY
+
+
+# ── 43. String annual_rate → clean ValueError ─────────────────────────────────
+
+def test_string_rate_raises_clean_value_error():
+    with pytest.raises(ValueError):
+        CashReserveInterestPolicy(
+            authority=CashReserveInterestAuthority.SOURCE_PROVEN,
+            eligible_unrestricted_cash=EligibilityStatus.ELIGIBLE,
+            eligible_dsra=EligibilityStatus.INELIGIBLE,
+            annual_rate="0.01",  # type: ignore[arg-type]
+        )
+
+
+# ── 44. Complex annual_rate → clean ValueError ────────────────────────────────
+
+def test_complex_rate_raises_clean_value_error():
+    with pytest.raises(ValueError):
+        CashReserveInterestPolicy(
+            authority=CashReserveInterestAuthority.SOURCE_PROVEN,
+            eligible_unrestricted_cash=EligibilityStatus.ELIGIBLE,
+            eligible_dsra=EligibilityStatus.INELIGIBLE,
+            annual_rate=complex(0.01, 0.0),  # type: ignore[arg-type]
+        )
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Correction C §4 — compute_period_income_keur input hardening
+# ══════════════════════════════════════════════════════════════════════════════
+
+_VALID_POLICY = CashReserveInterestPolicy(
+    authority=CashReserveInterestAuthority.SOURCE_PROVEN,
+    eligible_unrestricted_cash=EligibilityStatus.ELIGIBLE,
+    eligible_dsra=EligibilityStatus.ELIGIBLE,
+    annual_rate=0.01,
+)
+
+
+# ── 45. NaN unrestricted-cash balance → raises ────────────────────────────────
+
+def test_compute_nan_cash_balance_raises():
+    import math
+    with pytest.raises(ValueError, match="finite"):
+        _VALID_POLICY.compute_period_income_keur(
+            unrestricted_cash_balance_keur=math.nan,
+            dsra_balance_keur=1_000.0,
+            day_fraction=0.5,
+        )
+
+
+# ── 46. Inf unrestricted-cash balance → raises ────────────────────────────────
+
+def test_compute_inf_cash_balance_raises():
+    import math
+    with pytest.raises(ValueError, match="finite"):
+        _VALID_POLICY.compute_period_income_keur(
+            unrestricted_cash_balance_keur=math.inf,
+            dsra_balance_keur=1_000.0,
+            day_fraction=0.5,
+        )
+
+
+# ── 47. NaN DSRA balance → raises ─────────────────────────────────────────────
+
+def test_compute_nan_dsra_balance_raises():
+    import math
+    with pytest.raises(ValueError, match="finite"):
+        _VALID_POLICY.compute_period_income_keur(
+            unrestricted_cash_balance_keur=1_000.0,
+            dsra_balance_keur=math.nan,
+            day_fraction=0.5,
+        )
+
+
+# ── 48. Inf DSRA balance → raises ─────────────────────────────────────────────
+
+def test_compute_inf_dsra_balance_raises():
+    import math
+    with pytest.raises(ValueError, match="finite"):
+        _VALID_POLICY.compute_period_income_keur(
+            unrestricted_cash_balance_keur=1_000.0,
+            dsra_balance_keur=math.inf,
+            day_fraction=0.5,
+        )
+
+
+# ── 49. NaN day_fraction → raises ─────────────────────────────────────────────
+
+def test_compute_nan_day_fraction_raises():
+    import math
+    with pytest.raises(ValueError, match="finite"):
+        _VALID_POLICY.compute_period_income_keur(
+            unrestricted_cash_balance_keur=1_000.0,
+            dsra_balance_keur=1_000.0,
+            day_fraction=math.nan,
+        )
+
+
+# ── 50. Inf day_fraction → raises ─────────────────────────────────────────────
+
+def test_compute_inf_day_fraction_raises():
+    import math
+    with pytest.raises(ValueError, match="finite"):
+        _VALID_POLICY.compute_period_income_keur(
+            unrestricted_cash_balance_keur=1_000.0,
+            dsra_balance_keur=1_000.0,
+            day_fraction=math.inf,
+        )
+
+
+# ── 51. Negative day_fraction → raises ────────────────────────────────────────
+
+def test_compute_negative_day_fraction_raises():
+    with pytest.raises(ValueError, match="non-negative"):
+        _VALID_POLICY.compute_period_income_keur(
+            unrestricted_cash_balance_keur=1_000.0,
+            dsra_balance_keur=1_000.0,
+            day_fraction=-0.1,
+        )
+
+
+# ── 52. Negative finite balance → documented floor to 0.0 ────────────────────
+
+def test_compute_negative_balance_floors_to_zero():
+    """Negative finite balances floor to 0.0 — documented behavior, not silent failure."""
+    result = _VALID_POLICY.compute_period_income_keur(
+        unrestricted_cash_balance_keur=-10_000.0,
+        dsra_balance_keur=-5_000.0,
+        day_fraction=0.5,
+    )
+    assert result == 0.0, f"Negative balances must floor to 0.0, got {result}"

@@ -98,7 +98,7 @@ jobs:
           pip install --no-cache-dir -c constraints.txt -e .
           pip install --no-cache-dir -c constraints.txt pytest
 
-      - name: U2 policy unit tests (29 tests including 15 canonical mutation tests)
+      - name: U2 policy unit tests (full dedicated suite)
         run: |
           python -m pytest tests/test_upstream_cash_reserve_interest_policy.py -v --tb=short
 
@@ -210,8 +210,8 @@ jobs:
               period_interest=(),
               period_adjustments=(),
               period_financing_income=(
-                  PeriodFinancingIncomeInput(period_index=0, financing_income_keur=500.0),
-                  PeriodFinancingIncomeInput(period_index=1, financing_income_keur=500.0),
+                  PeriodFinancingIncomeInput(period_index=0, financing_income_keur=500.0, authority="SOURCE_PROVEN"),
+                  PeriodFinancingIncomeInput(period_index=1, financing_income_keur=500.0, authority="SOURCE_PROVEN"),
               ),
           )
           base_tax = calculate_tax(periods, base_input)
