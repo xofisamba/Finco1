@@ -1,6 +1,6 @@
 # Upstream: Book Depreciable Asset Basis Authority
 
-**Status**: `BOOK_DEPRECIABLE_ASSET_BASIS_UPSTREAM_CORRECTION_C_IN_PROGRESS`
+**Status**: `BOOK_DEPRECIABLE_ASSET_BASIS_UPSTREAM_DELIVERED`
 **Branch**: `upstream-book-depreciable-asset-basis`
 **Base**: `main` @ `c5d91ddf`
 **Downstream blocker resolved for**: Phase C3 `BOOK_DEPRECIABLE_ASSET_BASIS_UPSTREAM_REQUIRED`
@@ -26,27 +26,46 @@ economically correct but lacks:
 
 ## Canonical Causal Chain
 
+There are two distinct basis representations. They are economically identical but serve different roles.
+
+### A. Iterative Economic Production Path (drives PR-9 convergence)
+
 ```
-ProjectInputs.capex (hard CAPEX items)
+each PR-9 outer iteration:
+  Stage B2 provisional capitalized financing costs
+    ↓
+  apply_capitalized_financing_costs(orig_capex, ...)
+    ↓
+  updated CapexStructure (IDC / fee / VAT fields populated)
+    ↓
+  from_project_inputs(inner_inputs)    ← no book_basis kwarg; uses CapexStructure path
+    ↓
+  build_book_depreciable_asset_basis(updated_capex)
+    ↓
+  DepreciationInput.book_capex_items_for_depreciation
+    ↓
+  OperatingSchedules.book_depreciation_keur
+    ↓
+  tax / CFADS / Senior / SHL → next outer iteration
+```
+
+### B. Final Typed Downstream Handoff (after convergence)
+
+```
+orig_capex
   +
-ConstructionFinancingResult (converged; from PR-9 outer fixed-point)
-  |
-  ▼
-build_book_depreciable_asset_basis(capex_structure, construction_financing_result)
-  |
-  ▼
-BookDepreciableAssetBasis (canonical typed contract)
-  |
-  ├─▶ ProjectFinancingResult.book_depreciable_asset_basis  (downstream handoff)
-  |
-  └─▶ from_project_inputs(inputs, book_basis=basis)
-        |
-        ▼
-      DepreciationInput.book_capex_items_for_depreciation
-        |
-        ▼
-      OperatingSchedules.book_depreciation_keur → P&L → C3 financial statements
+final ConstructionFinancingResult  (post-convergence; strict verification run)
+  ↓
+build_book_depreciable_asset_basis(orig_capex, construction_financing_result)
+  ↓
+BookDepreciableAssetBasis  (canonical typed contract)
+  ↓
+ProjectFinancingResult.book_depreciable_asset_basis  → downstream C3 / audit consumers
 ```
+
+The final typed basis does **not** feed back into the PR-9 iteration loop. It is a downstream
+handoff built once after convergence. Its economic equivalence to the iterative basis is proven
+by Correction C (see below).
 
 ---
 
@@ -107,6 +126,46 @@ the canonical scalar from `b2.capitalized_financing_costs.senior_commitment_fee_
 which equals `sum(senior_fee_uses)` from Stage B2.
 
 The builder enforces these distinctions by provenance.
+
+---
+
+## Correction C: Runtime-Truth and Economic-Basis Handshake Proof
+
+Correction C proves that the final typed `BookDepreciableAssetBasis` is economically
+identical to the iterative basis that drove the converged depreciation schedule.
+
+### Behavioral depreciation equality (TUHO)
+
+`test_tuho_final_typed_basis_reproduces_converged_book_depreciation` (Category 24):
+
+```
+final typed BookDepreciableAssetBasis
+  → from_project_inputs(..., book_basis=final_typed_basis)
+  → run_operating_model(...)
+  → book_depreciation_keur  A
+
+CapexStructure path (updated_capex after apply_capitalized_financing_costs)
+  → from_project_inputs(inner_inputs)   # no book_basis
+  → run_operating_model(...)
+  → book_depreciation_keur  B
+
+assert_allclose(A, B, rtol=1e-9, atol=1e-6)   ← passes
+```
+
+### Component handshake (TUHO)
+
+`test_tuho_basis_component_accounting_identity` (Category 24):
+
+| Component | Typed basis source | CFR source field |
+|---|---|---|
+| Hard depreciable CAPEX | components with provenance `CAPEX_STRUCTURE_HARD_CAPEX` | `CapexStructure.capex_items()` filtered `is_depreciable` |
+| Capitalized Senior IDC | provenance `CONSTRUCTION_FINANCING_RESULT_SENIOR_IDC_CAPITALIZED_USES` | `sum(senior_idc_capitalized_uses_keur)` |
+| Capitalized commitment fee | provenance `CONSTRUCTION_FINANCING_RESULT_SENIOR_COMMITMENT_FEE_CAPITALIZED` | `senior_commitment_fee_capitalized_keur` |
+| Structuring fee | provenance `CONSTRUCTION_FINANCING_RESULT_STRUCTURING_FEE` | `sum(structuring_fee_keur)` |
+| VAT financing costs | provenance `CONSTRUCTION_FINANCING_RESULT_VAT_CAPITALIZED` | `vat_idc_keur + vat_commitment_fee_keur` |
+
+Financing components (IDC + fee + structuring + VAT) sum to the CFR total with **no residual
+component and no balancing plug**.
 
 ---
 
@@ -186,7 +245,7 @@ enters the basis.
 | `financial_engine/financing/project.py` | (1) Iterative economic basis via `updated_capex` CapexStructure each outer iteration; (2) final typed CFR-based `BookDepreciableAssetBasis` built once after convergence for downstream/audit use |
 | `financial_engine/adapters/project_inputs.py` | `from_project_inputs` accepts `book_basis` kwarg |
 | `finco_core/inputs/__init__.py` | Re-export new types |
-| `tests/test_upstream_book_depreciable_asset_basis.py` | NEW — 25 test categories (74 tests) |
+| `tests/test_upstream_book_depreciable_asset_basis.py` | NEW — 25 test categories (76 tests) |
 
 ---
 
