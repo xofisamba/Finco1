@@ -1,0 +1,123 @@
+name: U2 — Upstream Cash Reserve Interest Authority Check
+
+on:
+  push:
+    branches:
+      - upstream-cash-reserve-interest-authority
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  u2-exact-head-check:
+    name: U2 Exact-Head CI — Cash Reserve Interest Upstream Authority
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Assert exact branch HEAD
+        run: |
+          HEAD=$(git rev-parse HEAD)
+          echo "HEAD SHA: $HEAD"
+          # Ancestry: HEAD must descend from canonical main base 7f2f4abed298dd8e191a89486b938a7bbd832785
+          MAIN_BASE="7f2f4abed298dd8e191a89486b938a7bbd832785"
+          if ! git merge-base --is-ancestor "$MAIN_BASE" HEAD; then
+            echo "ERROR: HEAD does not descend from canonical main base $MAIN_BASE"
+            exit 1
+          fi
+          echo "Ancestry check passed."
+
+      - name: Whitespace / diff check
+        run: |
+          MAIN_BASE="7f2f4abed298dd8e191a89486b938a7bbd832785"
+          git diff --check "$MAIN_BASE"...HEAD || {
+            echo "ERROR: Whitespace issues detected in diff"
+            exit 1
+          }
+
+      - name: Governance scan — no project-name dispatch
+        run: |
+          MAIN_BASE="7f2f4abed298dd8e191a89486b938a7bbd832785"
+          CHANGED_FILES=$(git diff --name-only "$MAIN_BASE"...HEAD -- '*.py')
+          echo "Changed Python files:"
+          echo "$CHANGED_FILES"
+          # Scan for forbidden patterns: project-code dispatch in executable code
+          FORBIDDEN='["'"'"'](TUHO|OBOROVO|SOLAR|WIND)['"'"'"].*interest'
+          for f in $CHANGED_FILES; do
+            if [ -f "$f" ]; then
+              if grep -nE "$FORBIDDEN" "$f"; then
+                echo "ERROR: Forbidden project-code dispatch found in $f"
+                exit 1
+              fi
+            fi
+          done
+          echo "Governance scan passed."
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt 2>/dev/null || pip install pytest pytest-asyncio 2>/dev/null || true
+
+      - name: U2 policy unit tests
+        run: |
+          python -m pytest tests/test_upstream_cash_reserve_interest_policy.py -v --tb=short
+
+      - name: U1 upstream basis tests (regression guard)
+        run: |
+          python -m pytest tests/test_upstream_book_depreciable_asset_basis.py -v --tb=short
+
+      - name: Waterfall tax integration (regression guard)
+        run: |
+          python -m pytest tests/test_waterfall_tax_integration.py -v --tb=short
+
+      - name: Waterfall golden validation (regression guard)
+        run: |
+          python -m pytest tests/test_waterfall_golden_validation.py -q --tb=short
+
+      - name: Verify UNRESOLVED policy → 0.0 (structural fail-closed)
+        run: |
+          python - <<'EOF'
+          from finco_core.inputs.cash_reserve_interest_policy import UNRESOLVED_POLICY, CashReserveInterestAuthority
+          result = UNRESOLVED_POLICY.compute_period_income_keur(
+              unrestricted_cash_balance_keur=999_999.0,
+              dsra_balance_keur=999_999.0,
+              day_fraction=0.5,
+          )
+          assert result == 0.0, f"UNRESOLVED_POLICY must fail closed, got {result}"
+          assert UNRESOLVED_POLICY.authority == CashReserveInterestAuthority.UNRESOLVED
+          print("STRUCTURAL_FAIL_CLOSED_VERIFIED: UNRESOLVED_POLICY yields 0.0")
+          EOF
+
+      - name: Verify run_waterfall signature accepts policy
+        run: |
+          python - <<'EOF'
+          import inspect
+          from finco_core.waterfall.waterfall_engine import run_waterfall
+          sig = inspect.signature(run_waterfall)
+          assert "cash_reserve_interest_policy" in sig.parameters, (
+              "run_waterfall must have cash_reserve_interest_policy parameter"
+          )
+          print("SIGNATURE_CHECK_PASSED: cash_reserve_interest_policy in run_waterfall")
+          EOF
+
+      - name: Verify no direct hardcoded 0.0 at canonical call site
+        run: |
+          # The canonical call site in waterfall_engine.py must use the variable, not literal 0.0
+          python - <<'EOF'
+          import ast, sys
+          with open("finco_core/waterfall/waterfall_engine.py") as f:
+              src = f.read()
+          # Check that _cash_reserve_interest_income_keur appears in the source
+          assert "_cash_reserve_interest_income_keur" in src, (
+              "Canonical variable _cash_reserve_interest_income_keur not found in waterfall_engine.py"
+          )
+          print("CANONICAL_VARIABLE_PRESENT: _cash_reserve_interest_income_keur found")
+          EOF

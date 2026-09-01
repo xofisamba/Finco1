@@ -1088,7 +1088,7 @@ def _apply_tuho_tax_bridge_runtime_cash_tax(
             revenue_keur=period.revenue_keur,
             opex_keur=period.opex_keur,
             local_tax_keur=0.0,
-            cash_interest_on_reserves_keur=0.0,
+            cash_interest_on_reserves_keur=0.0,  # U2-BRIDGE: TUHO legacy bridge; policy wiring deferred to bridge refactor
             corporate_tax_cash_keur=tax_cash,
             senior_ds_keur=period.senior_ds_keur,
             dsra_release_or_funding_keur=dsra_release_or_funding,

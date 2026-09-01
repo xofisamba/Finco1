@@ -32,6 +32,7 @@ from finco_core.sponsor.sponsor_cashflows import build_sponsor_cashflows
 from finco_core.engine.period_engine import hash_engine_for_cache
 from finco_core.tax.engine import atad_adjustment
 from finco_core.engine.distribution_account import compute_tuho_r99_input_period
+from finco_core.inputs.cash_reserve_interest_policy import UNRESOLVED_POLICY
 from finco_core.shl.fcf_waterfall import compute_shl_fcf_waterfall_period
 from finco_core.inputs.senior_sculpting import (
     SeniorSculptingMode,
@@ -336,6 +337,11 @@ def run_waterfall(
     # enters the ATAD pool. SUBJECT_TO_LIMITATIONS is not implemented; pass None for that mode.
     shl_interest_deductibility: object | None = None,
     shl_interest_deductible_pct: float | None = None,
+    # U2: Canonical cash/reserve interest upstream policy.
+    # UNRESOLVED (default) fails closed — interest income = 0.0 for all periods.
+    # When a project can prove eligible-account identity and deposit rate from source,
+    # set authority to GENERIC_FINCO_POLICY or SOURCE_PROVEN.
+    cash_reserve_interest_policy: "object | None" = None,
 ) -> WaterfallResult:
     """Run full waterfall with iterative debt sculpting.
 
@@ -701,6 +707,20 @@ def run_waterfall(
         rev = revenue_schedule[i] if i < len(revenue_schedule) else 0
         gen = generation_schedule[i] if i < len(generation_schedule) else 0
         ebitda = ebitda_schedule[i]
+
+        # U2: Cash/reserve interest income — computed from upstream policy.
+        # Uses opening balances (prior period's closing) for the eligible base.
+        # UNRESOLVED policy (default) fails closed → interest_income = 0.0.
+        _crip = cash_reserve_interest_policy if cash_reserve_interest_policy is not None else UNRESOLVED_POLICY
+        _day_frac = getattr(period, "day_fraction", 0.5)
+        _cash_reserve_interest_income_keur = _crip.compute_period_income_keur(
+            unrestricted_cash_balance_keur=cash_balance,
+            dsra_balance_keur=dsra_balance,
+            day_fraction=_day_frac,
+        )
+        # Add interest income to EBITDA before tax so CIT reflects it causally.
+        ebitda = ebitda + _cash_reserve_interest_income_keur
+
         dep = depreciation_schedule[i] if i < len(depreciation_schedule) else 0
         # Explicit tax depreciation: use policy-derived schedule if provided (BOOK_BASED_PERCENTAGE
         # or STATUTORY_TAX_SCHEDULE). Falls back to book dep for legacy callers.
@@ -1169,13 +1189,13 @@ def run_waterfall(
         # Cash balance - after sweep
         cash_balance = cash_balance + cf_after_reserves - dist
 
-        opex_val = opex_schedule[i] if opex_schedule is not None and i < len(opex_schedule) else max(0.0, rev - ebitda)
+        opex_val = opex_schedule[i] if opex_schedule is not None and i < len(opex_schedule) else max(0.0, rev - (ebitda - _cash_reserve_interest_income_keur))
         dsra_release_or_funding = dsra_withdrawal - dsra_contrib
         r99_audit = compute_tuho_r99_input_period(
             revenue_keur=rev,
             opex_keur=opex_val,
             local_tax_keur=0.0,
-            cash_interest_on_reserves_keur=0.0,
+            cash_interest_on_reserves_keur=_cash_reserve_interest_income_keur,
             corporate_tax_cash_keur=tax_this_period,
             senior_ds_keur=senior_ds,
             dsra_release_or_funding_keur=dsra_release_or_funding,
