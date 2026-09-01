@@ -25,11 +25,11 @@ jobs:
             exit 1
           }
 
-      - name: Assert ancestry from C2 main
+      - name: Assert ancestry from C3 U1 main
         run: |
-          BASE="c5d91ddf7e83dfa3d6da2e0a68e1b1caa7c98d65"
+          BASE="7f2f4abed298dd8e191a89486b938a7bbd832785"
           git merge-base --is-ancestor "$BASE" HEAD || {
-            echo "C3_BASE_ANCESTRY_MISSING: $BASE is not an ancestor of HEAD"
+            echo "C3_U1_BASE_ANCESTRY_MISSING: $BASE is not an ancestor of HEAD"
             exit 1
           }
 
@@ -45,14 +45,14 @@ jobs:
 
       - name: Whitespace and diff hygiene
         run: |
-          git diff --check
+          git diff --check 7f2f4abed298dd8e191a89486b938a7bbd832785...HEAD
           git status --short
 
       - name: Production-governance scan of changed Python files
         shell: bash
         run: |
           mapfile -t changed_python < <(
-            git diff --name-only c5d91ddf7e83dfa3d6da2e0a68e1b1caa7c98d65...HEAD -- app domain financial_engine finco_core \
+            git diff --name-only 7f2f4abed298dd8e191a89486b938a7bbd832785...HEAD -- app domain financial_engine finco_core \
               | grep -E '\.py$' || true
           )
           if ((${#changed_python[@]})); then
@@ -60,6 +60,16 @@ jobs:
               'approved_delta|expected_delta|balancing[_ ]plug|terminal[_ -]top[- ]up|forced principal|target fitting|post-engine mutation|bank_balancing_cost|WaterfallRunner' \
               "${changed_python[@]}"
           fi
+
+      - name: C3 U1 integration suite (§12 negative tests + §13 four-project matrix)
+        run: |
+          python -m pytest -q \
+            tests/test_phasec3_u1_integration.py
+
+      - name: Canonical upstream U1 authority suite
+        run: |
+          python -m pytest -q \
+            tests/test_upstream_book_depreciable_asset_basis.py
 
       - name: C3 focused acceptance suite
         run: |
