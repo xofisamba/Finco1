@@ -830,9 +830,10 @@ Residual                = < 1e-10 kEUR  ✓ MACHINE PRECISION MATCH
 | G$6 — Day fraction | SOURCE_PROVEN_FORMULA | `=Flags!G13`; col H cached = 0.5041 semi-annual | The actual day count fraction |
 | Balance convention | SOURCE_PROVEN_FORMULA | P&L col G uses CF col F (prior period closing) | = opening balance of current period |
 
-### 18.7 TUHO P&L Rows 19–21 — Directly Extracted
+### 18.7 TUHO P&L Rows 19–21 — Directly Extracted (Correction D, extended in Correction E)
 
-Extracted from TUHO workbook `20260330_TUHO_BP.xlsm`, sheet "P&L" (col H = first operating period):
+Extracted from TUHO workbook `20260330_TUHO_BP.xlsm`, sheet "P&L" (col H = first operating period).
+Full TUHO source evidence resides in `tests/fixtures/excel_tuho_cash_reserve_interest_truth.json`.
 
 | Row | Label | col B formula | col H formula | First non-zero col | First non-zero val |
 |-----|-------|--------------|---------------|-------------------|------------------|
@@ -841,34 +842,134 @@ Extracted from TUHO workbook `20260330_TUHO_BP.xlsm`, sheet "P&L" (col H = first
 | 21 | Withholding Tax | `=Inputs!$D$412` | `=-SUM(H19:H20)*$B21*H$6` | None | None — zero (B21=0) |
 
 **Notes**:
-- TUHO row 19 uses `$B19` = `=Inputs!$D$438` (rate = 0.01). DSRA accounts: CF!G95 (Senior DSRA) + CF!G81 (J-DSRA). ZERO all periods — TUHO earns no reserve interest.
-- TUHO row 20 uses CF!G135 (cash closing balance, TUHO equivalent of Oborovo CF row 144). Same formula structure.
-- TUHO day fraction (H$6) and life flag (H$5) serve the same role as Oborovo G$6 / G$5.
-- Cash interest first appears at TUHO col AV = 2.7274 kEUR (comparable to Oborovo 2.7726 kEUR — different debt repayment timing).
+- TUHO row 19 uses `$B19` = `=Inputs!$D$438` (rate = 0.01). Reserve accounts: CF!G81 (Senior DSRA End) + CF!G95 (J-DSRA End). ZERO all periods — TUHO earns no reserve interest.
+- TUHO row 20 uses CF!G135 ("Cash end of the year"), TUHO equivalent of Oborovo CF row 144.
+- TUHO day fraction (H$6, row 6 "Operation Period") and life flag (H$5, row 5 "Project Life") proved independently — see Correction E §18.10.
 
 ### 18.8 TUHO D438 Metadata Conflict — RESOLVED
 
 **Conflict**: `tuho_inputs_source_v2.json` classifies Inputs!D438 as `HARDCODE`; `editable_input_disposition_v5_1.csv` line 89 classifies it as `DERIVED_FROM_EXISTING_INPUT`.
 
-**Resolution from workbook extraction**:
-- openpyxl data_only=False returns: `D438_formula = 0.01` (a numeric literal, not a string starting with `=`)
-- This confirms D438 stores a hardcoded numeric value, not a formula referencing another cell
+**Resolution**: openpyxl data_only=False returns `0.01` (numeric literal, not a formula string). D438 is a hardcoded value. Source JSON `HARDCODE` is CORRECT. CSV entry is incorrect. No production code change required.
 
-**Verdict**: `tuho_inputs_source_v2.json` classification `HARDCODE` is **CORRECT**. The CSV entry `DERIVED_FROM_EXISTING_INPUT` is **INCORRECT** — likely a data-entry error or stale CSV row. The CSV is a secondary derived artifact; the source JSON is the authoritative record.
+### 18.9 Correction D Stop Token (superseded by Correction E)
 
-**No production code change required.** The CSV error is documented here and should be corrected in a future CSV regeneration pass.
+Correction D issued `CASH_RESERVE_INTEREST_UPSTREAM_SOURCE_LINEAGE_CLOSED` but the committed fixture contained:
+`"TUHO CF row 135 direct extraction not yet performed"` — a contradiction. Correction E resolves this.
 
-### 18.9 Correction D Stop Token
+---
+
+## 19. U2 Correction E — TUHO Source-Evidence Closure
+
+**Correction E revision**: see branch `upstream-cash-reserve-interest-authority`
+
+All TUHO findings are extracted directly from `20260330_TUHO_BP.xlsm` using openpyxl dual-load. No inferences from Oborovo template similarity. Canonical TUHO source evidence resides in `tests/fixtures/excel_tuho_cash_reserve_interest_truth.json` (Oborovo fixture contains Oborovo evidence only).
+
+### 19.1 TUHO Header Row Identities — Independently Proved
+
+| Row | Label | col G formula | col G cached | col H cached | Identity |
+|-----|-------|--------------|--------------|-------------|---------|
+| 3 | Year | `=Flags!G7` | 0 | 1 | Year index — `(H$3>0)` post-construction guard |
+| 5 | Project Life | `=Flags!G12` | FALSE | TRUE | Boolean in-life flag (NOT day fraction) |
+| 6 | Operation Period (incl. Leap) | `=Flags!G13` | 0 | 0.4959 | Actual day fraction |
+
+**H$5 identity confirmed independently**: boolean flag TRUE in operation, FALSE in construction. Same structural role as Oborovo G$5 but proved from TUHO workbook cells, not from template similarity.
+
+### 19.2 TUHO CF Row 135 — Identity PROVED
+
+| Item | Value | Evidence |
+|------|-------|----------|
+| CF row 135 label | "Cash end of the year" | openpyxl data_only=True |
+| CF!G135 formula | `=F135+G122` | openpyxl data_only=False |
+| Context row 136 | "Negative cash check" | openpyxl data_only=True |
+| First non-zero col | AU | openpyxl data_only=True |
+| First non-zero value | 550.000 kEUR | openpyxl data_only=True |
+| Samples AU–AY | 550.000 kEUR (stable) | openpyxl data_only=True |
+
+Identity proved from label ("Cash end of the year"), cumulative formula pattern (`=F135+G122`), and structural context (row 136 = "Negative cash check"). Not inferred from Oborovo row number similarity.
+
+### 19.3 TUHO CF Rows 81 and 95 — Reserve Account Identities PROVED
+
+**CF row 81 — Senior DSRA ending balance:**
+
+Section header at row 75 = "DSRA". Structure: Target(76), Beginning(77)=`=F81`, Funding(78), Operation(79), Shortfall(80), End(81)=`=SUM(G77:G80)`. Row 77 Beginning = `=F81` proves balance convention (prior-period closing = current opening).
+
+**CF row 95 — Junior DSRA (J-DSRA) ending balance:**
+
+Section header at row 89 = "J-DSRA". Structure: Target(90), Beginning(91)=`=F95`, Funding(92), Operation(93), Shortfall(94), End(95)=`=SUM(G91:G94)`. Row 91 Beginning = `=F95` proves balance convention independently.
+
+Both accounts: ZERO for all TUHO periods — no reserve interest earned.
+
+### 19.4 TUHO Balance Convention — PROVED
+
+Three independent proofs:
+1. P&L!AV20 formula = `=(CF!AU135>0)*$B19*CF!AU135*AV$5*AV$6` — col AV references CF col AU (prior period closing).
+2. CF row 77 Beginning = `=F81` — opening = prior period End.
+3. CF row 91 Beginning = `=F95` — opening = prior period End.
+
+Balance convention: **PRIOR_PERIOD_CLOSING = CURRENT_PERIOD_OPENING** — SOURCE_PROVEN_FORMULA.
+
+### 19.5 TUHO Numerical Handshake — MACHINE PRECISION MATCH
+
+```
+CF!AU135 (cash balance)   = 550.000000000006 kEUR
+P&L!B19 (annual rate)     = 0.01  (=Inputs!$D$438, HARDCODE 0.01)
+P&L!AV5 (life flag)       = TRUE = 1
+P&L!AV6 (day fraction)    = 0.4958904109589041  (~181/365 days)
+Expected P&L!AV20         = 550.000 × 0.01 × 1 × 0.4959 = 2.72740 kEUR
+Actual P&L!AV20 cached    = 2.7273972602740044 kEUR
+Residual                  = 0.0 kEUR  ✓ MACHINE PRECISION MATCH
+```
+
+### 19.6 TUHO Source Authority Table — Final
+
+| Component | Authority | Evidence |
+|-----------|-----------|---------|
+| Deposit rate | SOURCE_PROVEN_FORMULA_LINK + HARDCODE | P&L!B19 = `=Inputs!$D$438`; D438 = numeric literal 0.01 |
+| P&L!B19 formula link | SOURCE_PROVEN_FORMULA_LINK | `=Inputs!$D$438` confirmed data_only=False |
+| Row 19 reserve formula | SOURCE_PROVEN_FORMULA | `=(H$3>0)*$B19*(CF!G95+CF!G81)*H$6` — ZERO all periods |
+| Row 20 cash formula | SOURCE_PROVEN_FORMULA | `=(CF!G135>0)*$B19*CF!G135*H$5*H$6` |
+| Row 21 WHT formula | SOURCE_PROVEN_FORMULA | `=-SUM(H19:H20)*$B21*H$6` — ZERO (B21=0) |
+| H$3 — Year index | SOURCE_PROVEN_FORMULA | `=Flags!G7`; post-construction guard |
+| H$5 — Project Life flag | SOURCE_PROVEN_FORMULA | `=Flags!G12`; boolean in-life gate; NOT day fraction |
+| H$6 — Day fraction | SOURCE_PROVEN_FORMULA | `=Flags!G13`; col H = 0.4959 semi-annual |
+| CF row 81 — Senior DSRA End | SOURCE_PROVEN_FORMULA | Label+formula+section structure proved; ZERO all periods |
+| CF row 95 — J-DSRA End | SOURCE_PROVEN_FORMULA | Label+formula+section structure proved; ZERO all periods |
+| CF row 135 — Cash closing | SOURCE_PROVEN_FORMULA | "Cash end of the year"; `=F135+G122`; 550 kEUR from col AU |
+| Balance convention | SOURCE_PROVEN_FORMULA | Three independent proofs (P&L offset + CF77 Beginning + CF91 Beginning) |
+| Numerical reconciliation | MACHINE_PRECISION_MATCH | Residual = 0.0 kEUR |
+
+### 19.7 Fixture Ownership
+
+- `tests/fixtures/excel_tuho_cash_reserve_interest_truth.json` — canonical TUHO evidence (created Correction E)
+- `tests/fixtures/excel_oborovo_financial_truth.json` — Oborovo evidence only (TUHO block removed Correction E)
+- No cross-project source-truth contamination.
+
+### 19.8 Source-Evidence Tests
+
+14 new TUHO source-evidence tests (tests 53–66) in `tests/test_upstream_cash_reserve_interest_policy.py`:
+
+| Test | Subject |
+|------|---------|
+| 53 | D438 = hardcoded 0.01 |
+| 54 | P&L!B19 links to D438 |
+| 55 | H$3 = Year index |
+| 56 | H$5 = boolean life flag (NOT day fraction) |
+| 57 | H$6 = actual day fraction |
+| 58 | Row 19 exact reserve formula |
+| 59 | Row 20 exact cash formula |
+| 60 | Row 21 exact WHT formula |
+| 61 | CF row 81 Senior DSRA identity |
+| 62 | CF row 95 J-DSRA identity |
+| 63 | CF row 135 cash balance identity |
+| 64 | Balance convention: prior-period closing |
+| 65 | Numerical handshake: machine precision |
+| 66 | Fixture ownership: TUHO not in Oborovo fixture |
+
+### 19.9 Correction E Stop Token
 
 ```
 CASH_RESERVE_INTEREST_UPSTREAM_SOURCE_LINEAGE_CLOSED
 ```
 
-All source lineage items for Oborovo and TUHO cash/reserve interest are now directly proved from workbook cell extraction:
-- P&L!B19 formula link to Inputs!D455: PROVED
-- G$3/G$5/G$6 identities: PROVED (G$5 is boolean life flag, NOT day fraction; G$6 is day fraction)
-- CF row 144 "Cash end of the year" identity and formula: PROVED
-- Balance convention (prior-period closing = current opening): PROVED
-- Numerical reconciliation: MACHINE PRECISION VERIFIED
-- TUHO rows 19/20/21 formulas: DIRECTLY EXTRACTED
-- TUHO D438 metadata conflict: RESOLVED (HARDCODE confirmed)
+All source lineage items for both Oborovo and TUHO are now directly proved from workbook cell extraction. No inferences. No template similarity assumptions. No TUHO evidence in Oborovo fixture. Numerical reconciliations machine-precision verified for both projects.

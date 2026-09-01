@@ -1086,3 +1086,216 @@ def test_compute_negative_balance_floors_to_zero():
         day_fraction=0.5,
     )
     assert result == 0.0, f"Negative balances must floor to 0.0, got {result}"
+
+
+# =============================================================================
+# TUHO SOURCE-EVIDENCE TESTS (Correction E)
+# Tests 53–66: verify TUHO cash/reserve interest source truth from fixture.
+# These are audit/source tests only — no production financial inputs consumed.
+# =============================================================================
+
+import json as _json
+import pathlib as _pathlib
+
+_TUHO_FIXTURE = _pathlib.Path(__file__).parent / "fixtures" / "excel_tuho_cash_reserve_interest_truth.json"
+
+
+def _load_tuho():
+    with open(_TUHO_FIXTURE) as f:
+        return _json.load(f)
+
+
+# ── 53. D438 = hardcoded 0.01 ─────────────────────────────────────────────────
+
+def test_tuho_d438_is_hardcode():
+    d = _load_tuho()
+    entry = d["inputs_D438_rate"]
+    assert entry["formula_mode_value"] == 0.01, "D438 formula mode must be numeric 0.01 (hardcode)"
+    assert entry["data_mode_cached"] == 0.01
+    assert entry["conclusion"] == "HARDCODE_numeric_literal_not_formula"
+    assert entry["authority"] == "HARDCODE_CONFIRMED"
+
+
+# ── 54. P&L!B19 links to Inputs!D438 ─────────────────────────────────────────
+
+def test_tuho_pnl_b19_links_to_d438():
+    d = _load_tuho()
+    entry = d["pnl_B19_rate"]
+    assert entry["formula_mode_value"] == "=Inputs!$D$438"
+    assert abs(entry["data_mode_cached"] - 0.01) < 1e-12
+    assert entry["authority"] == "SOURCE_PROVEN_FORMULA_LINK"
+
+
+# ── 55. H$3 identity: Year index ──────────────────────────────────────────────
+
+def test_tuho_h3_is_year_index():
+    d = _load_tuho()
+    row3 = d["pnl_header_rows"]["row_3_year"]
+    assert row3["label_colA"] == "Year"
+    assert "Flags" in row3["colG_formula"]
+    assert row3["colG_cached"] == 0          # construction period = year 0
+    assert row3["colH_cached"] == 1           # first operating period = year 1
+    assert row3["role"] == "year_index_post_construction_guard"
+    assert row3["authority"] == "SOURCE_PROVEN_FORMULA"
+
+
+# ── 56. H$5 identity: boolean Project Life flag (NOT day fraction) ─────────────
+
+def test_tuho_h5_is_boolean_life_flag():
+    d = _load_tuho()
+    row5 = d["pnl_header_rows"]["row_5_project_life"]
+    assert row5["label_colA"] == "Project Life"
+    assert "Flags" in row5["colG_formula"]
+    assert row5["colG_cached"] is False       # construction: not in project life
+    assert row5["colH_cached"] is True        # operation: in project life
+    assert "boolean" in row5["role"]
+    assert "NOT" in row5["note"]              # note must say NOT day fraction
+    assert row5["authority"] == "SOURCE_PROVEN_FORMULA"
+
+
+# ── 57. H$6 identity: day-count fraction ──────────────────────────────────────
+
+def test_tuho_h6_is_day_fraction():
+    d = _load_tuho()
+    row6 = d["pnl_header_rows"]["row_6_day_fraction"]
+    assert row6["label_colA"] == "Operation Period (incl. Leap)"
+    assert "Flags" in row6["colG_formula"]
+    assert row6["colG_cached"] == 0           # construction: zero fraction
+    frac = row6["colH_cached"]
+    assert 0.4 < frac < 0.6, f"Day fraction must be ~0.5 for semi-annual, got {frac}"
+    assert row6["role"] == "actual_day_count_fraction"
+    assert row6["authority"] == "SOURCE_PROVEN_FORMULA"
+
+
+# ── 58. Row 19 exact reserve formula ─────────────────────────────────────────
+
+def test_tuho_pnl_row19_reserve_formula():
+    d = _load_tuho()
+    row19 = d["pnl_row19_reserve"]
+    assert row19["label_colA"] == "Interests from Reserve Accounts"
+    formula = row19["colH_formula"]
+    assert "CF!G95" in formula
+    assert "CF!G81" in formula
+    assert "$B19" in formula
+    assert "H$3" in formula
+    assert "H$6" in formula
+    assert row19["zero_all_periods"] is True
+    assert row19["authority"] == "SOURCE_PROVEN_FORMULA"
+
+
+# ── 59. Row 20 exact cash formula ────────────────────────────────────────────
+
+def test_tuho_pnl_row20_cash_formula():
+    d = _load_tuho()
+    row20 = d["pnl_row20_cash"]
+    assert row20["label_colA"] == "Interests from Cash"
+    formula = row20["colH_formula"]
+    assert "CF!G135" in formula
+    assert "$B19" in formula
+    assert "H$5" in formula
+    assert "H$6" in formula
+    # First non-zero must exist
+    assert row20["first_nonzero_col"] is not None
+    assert row20["first_nonzero_val_keur"] > 0
+    assert row20["authority"] == "SOURCE_PROVEN_FORMULA"
+
+
+# ── 60. Row 21 exact WHT formula ─────────────────────────────────────────────
+
+def test_tuho_pnl_row21_wht_formula():
+    d = _load_tuho()
+    row21 = d["pnl_row21_withholding"]
+    assert row21["label_colA"] == "Withholding Tax"
+    formula = row21["colH_formula"]
+    assert "SUM(H19:H20)" in formula
+    assert "$B21" in formula
+    assert row21["zero_all_periods"] is True
+    assert row21["authority"] == "SOURCE_PROVEN_FORMULA"
+
+
+# ── 61. CF row 81 Senior DSRA identity ───────────────────────────────────────
+
+def test_tuho_cf81_senior_dsra_identity():
+    d = _load_tuho()
+    cf81 = d["cf_row81_senior_dsra"]
+    assert cf81["label_colA"] == "End"
+    assert cf81["account_identity"] == "Senior_DSRA_ending_balance"
+    assert cf81["section_header_label"] == "DSRA"
+    assert "SUM" in cf81["colG_formula"]
+    assert cf81["zero_all_periods"] is True
+    assert cf81["balance_convention"] == "PRIOR_PERIOD_CLOSING"
+    assert "F81" in cf81["balance_convention_proof"]  # row 77 Beginning = =F81
+    assert cf81["authority"] == "SOURCE_PROVEN_FORMULA"
+
+
+# ── 62. CF row 95 J-DSRA identity ────────────────────────────────────────────
+
+def test_tuho_cf95_jdsra_identity():
+    d = _load_tuho()
+    cf95 = d["cf_row95_jdsra"]
+    assert cf95["label_colA"] == "End"
+    assert cf95["account_identity"] == "Junior_DSRA_ending_balance"
+    assert cf95["section_header_label"] == "J-DSRA"
+    assert "SUM" in cf95["colG_formula"]
+    assert cf95["zero_all_periods"] is True
+    assert cf95["balance_convention"] == "PRIOR_PERIOD_CLOSING"
+    assert "F95" in cf95["balance_convention_proof"]  # row 91 Beginning = =F95
+    assert cf95["authority"] == "SOURCE_PROVEN_FORMULA"
+
+
+# ── 63. CF row 135 cash balance identity ─────────────────────────────────────
+
+def test_tuho_cf135_cash_identity():
+    d = _load_tuho()
+    cf135 = d["cf_row135_cash"]
+    assert cf135["label_colA"] == "Cash end of the year"
+    assert "F135" in cf135["colG_formula"]   # cumulative: prior closing + inflow
+    assert cf135["first_nonzero_col"] is not None
+    assert cf135["first_nonzero_val_keur"] > 0
+    assert cf135["account_identity"] == "unrestricted_surplus_cash_closing_balance"
+    assert cf135["authority"] == "SOURCE_PROVEN_FORMULA"
+    # Context: row below is "Negative cash check" (same as Oborovo pattern)
+    assert cf135["context_row136_label"] == "Negative cash check"
+
+
+# ── 64. Balance convention: prior-period closing ──────────────────────────────
+
+def test_tuho_balance_convention_prior_period_closing():
+    d = _load_tuho()
+    bc = d["balance_convention"]
+    assert bc["verdict"] == "PRIOR_PERIOD_CLOSING_EQUALS_CURRENT_OPENING"
+    assert bc["authority"] == "SOURCE_PROVEN_FORMULA"
+    # Three independent proofs
+    assert "CF!G135" in bc["proof_cf135"] or "AU135" in bc["proof_cf135"] or "F135" in bc["proof_cf135"]
+    assert "F81" in bc["proof_cf81"]
+    assert "F95" in bc["proof_cf95"]
+
+
+# ── 65. Numerical handshake: machine precision ────────────────────────────────
+
+def test_tuho_numerical_handshake_machine_precision():
+    d = _load_tuho()
+    hs = d["numerical_handshake"]
+    assert hs["verdict"] == "MACHINE_PRECISION_MATCH"
+    assert hs["residual_keur"] == 0.0
+    # Cross-verify the arithmetic independently
+    balance = hs["cf135_balance_keur"]
+    rate = hs["rate"]
+    life = 1 if hs["H5_life_flag"] else 0
+    frac = hs["H6_day_fraction"]
+    expected = balance * rate * life * frac
+    actual = hs["actual_keur"]
+    assert abs(expected - actual) < 1e-9, (
+        f"Independent arithmetic check failed: {expected} vs {actual}"
+    )
+
+
+# ── 66. Fixture ownership: TUHO evidence not in Oborovo fixture ───────────────
+
+def test_tuho_evidence_not_in_oborovo_fixture():
+    oborovo_fixture = _pathlib.Path(__file__).parent / "fixtures" / "excel_oborovo_financial_truth.json"
+    with open(oborovo_fixture) as f:
+        ob = _json.load(f)
+    assert "tuho_cash_reserve_interest" not in ob, (
+        "TUHO canonical source-truth must not reside in Oborovo fixture"
+    )

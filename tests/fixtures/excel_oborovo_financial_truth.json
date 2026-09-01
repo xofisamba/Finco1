@@ -13754,48 +13754,5 @@
         "status": "OPEN"
       }
     ]
-  },
-  "tuho_cash_reserve_interest": {
-    "source_file": "20260330_TUHO_BP.xlsm",
-    "pnl_sheet": "P&L",
-    "B19": {
-      "formula_mode": "=Inputs!$D$438",
-      "cached": 0.01,
-      "authority": "SOURCE_PROVEN_FORMULA"
-    },
-    "row19_reserve": {
-      "label": "Interests from Reserve Accounts",
-      "colH_formula": "=(H$3>0)*$B19*(CF!G95+CF!G81)*H$6",
-      "zero_all_periods": true,
-      "authority": "SOURCE_PROVEN_FORMULA"
-    },
-    "row20_cash": {
-      "label": "Interests from Cash",
-      "colH_formula": "=(CF!G135>0)*$B19*CF!G135*H$5*H$6",
-      "first_nonzero_col": "AV",
-      "first_nonzero_val_keur": 2.7273972602740044,
-      "cf_row": 135,
-      "cf_label": "Cash end of the year (parallel to Oborovo CF row 144)",
-      "authority": "SOURCE_PROVEN_FORMULA"
-    },
-    "row21_withholding": {
-      "label": "Withholding Tax",
-      "colH_formula": "=-SUM(H19:H20)*$B21*H$6",
-      "zero_all_periods": true,
-      "authority": "SOURCE_PROVEN_FORMULA"
-    },
-    "D438_rate": {
-      "label_colA": "Cash Interest",
-      "D438_formula_mode": 0.01,
-      "D438_cached": 0.01,
-      "verdict": "HARDCODE",
-      "csv_conflict_note": "editable_input_disposition_v5_1.csv line 89 says DERIVED_FROM_EXISTING_INPUT \u2014 INCORRECT. Formula mode returns numeric 0.01 (not formula string). Source JSON HARDCODE is correct.",
-      "authority": "HARDCODE_CONFIRMED"
-    },
-    "numerical_check": {
-      "first_nonzero_period_col_pnl": "AV",
-      "cash_balance_keur": null,
-      "note": "TUHO CF row 135 direct extraction not yet performed; P&L output value extracted only"
-    }
   }
 }
