@@ -65,6 +65,7 @@ def _split_period(
     other_fiscal_reintegration_keur: float = 0.0,
     shl_tax_eligible_interest_keur: float = 0.0,
     shl_non_deductible_interest_keur: float = 0.0,
+    financing_income_keur: float = 0.0,  # U2: cash/reserve interest income (below EBITDA)
 ) -> list[TaxYearPeriodFragment]:
     """Split one period into calendar-year fragments with allocated amounts.
 
@@ -103,6 +104,7 @@ def _split_period(
             other_fiscal_reintegration_keur=other_fiscal_reintegration_keur,
             shl_tax_eligible_interest_keur=shl_tax_eligible_interest_keur,
             shl_non_deductible_interest_keur=shl_non_deductible_interest_keur,
+            financing_income_keur=financing_income_keur,
         )]
 
     fragments: list[tuple[int, date, date, int]] = []
@@ -132,6 +134,7 @@ def _split_period(
     accumulated_reint = 0.0
     accumulated_shl_tax_eligible = 0.0
     accumulated_shl_non_deductible = 0.0
+    accumulated_financing_income = 0.0
 
     for i, ((yr, fs, fe, fd), frac) in enumerate(zip(fragments, fracs)):
         if i < len(fragments) - 1:
@@ -141,12 +144,14 @@ def _split_period(
             frag_reint = other_fiscal_reintegration_keur * frac
             frag_shl_tax_eligible = shl_tax_eligible_interest_keur * frac
             frag_shl_non_deductible = shl_non_deductible_interest_keur * frac
+            frag_financing_income = financing_income_keur * frac
             accumulated_ebitda += frag_ebitda
             accumulated_dep += frag_dep
             accumulated_int += frag_int
             accumulated_reint += frag_reint
             accumulated_shl_tax_eligible += frag_shl_tax_eligible
             accumulated_shl_non_deductible += frag_shl_non_deductible
+            accumulated_financing_income += frag_financing_income
         else:
             # Last fragment: use remainder to preserve exact totals.
             frag_ebitda = ebitda_keur - accumulated_ebitda
@@ -159,6 +164,7 @@ def _split_period(
             frag_shl_non_deductible = (
                 shl_non_deductible_interest_keur - accumulated_shl_non_deductible
             )
+            frag_financing_income = financing_income_keur - accumulated_financing_income
 
         result.append(TaxYearPeriodFragment(
             tax_year=yr,
@@ -174,6 +180,7 @@ def _split_period(
             other_fiscal_reintegration_keur=frag_reint,
             shl_tax_eligible_interest_keur=frag_shl_tax_eligible,
             shl_non_deductible_interest_keur=frag_shl_non_deductible,
+            financing_income_keur=frag_financing_income,
         ))
 
     return result
@@ -221,6 +228,7 @@ def build_tax_year_bases(
     interest_map: dict[int, PeriodInterestInput],
     adj_map: dict[int, float],
     policy: TaxPolicy | None = None,
+    financing_income_map: dict[int, float] | None = None,  # U2: period_index → financing_income_keur
 ) -> tuple[TaxYearCalculationBasis, ...]:
     """Aggregate period amounts into calendar-year TaxYearCalculationBasis records.
 
@@ -283,6 +291,7 @@ def build_tax_year_bases(
             shl_tax_eligible = 0.0
             shl_non_deductible = 0.0
         reint = adj_map.get(idx, 0.0)
+        fin_income = (financing_income_map or {}).get(idx, 0.0)
 
         frags = _split_period(
             idx, p_start, p_end,
@@ -292,6 +301,7 @@ def build_tax_year_bases(
             other_fiscal_reintegration_keur=reint,
             shl_tax_eligible_interest_keur=shl_tax_eligible,
             shl_non_deductible_interest_keur=shl_non_deductible,
+            financing_income_keur=fin_income,
         )
 
         for frag in frags:
@@ -324,6 +334,7 @@ def build_tax_year_bases(
         year_shl_non_deductible = sum(
             f.shl_non_deductible_interest_keur for f in frags_for_year
         )
+        year_financing_income = sum(f.financing_income_keur for f in frags_for_year)
 
         payment_idx = _payment_period_for_year(yr, frags_for_year, periods_by_index)
         bases.append(TaxYearCalculationBasis(
@@ -337,6 +348,7 @@ def build_tax_year_bases(
             other_fiscal_reintegration_keur=year_reint,
             shl_tax_eligible_interest_keur=year_shl_tax_eligible,
             shl_non_deductible_interest_keur=year_shl_non_deductible,
+            financing_income_keur=year_financing_income,
         ))
 
     return tuple(bases)

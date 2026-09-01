@@ -26,6 +26,7 @@ if TYPE_CHECKING:
     from finco_core.inputs.bess import BessParams
     from finco_core.opex._capability import HierarchicalOpexCapability
     from finco_core.inputs.construction_financing import ConstructionFinancingInput
+    from finco_core.inputs.cash_reserve_interest_policy import CashReserveInterestPolicy
 
 
 class PeriodFrequency(Enum):
@@ -1639,6 +1640,7 @@ class ProjectInputs:
     # Presence (non-None) is the sole dispatch signal — never check project name.
     hierarchical_opex_capability: "HierarchicalOpexCapability | None" = None
     valuation: ValuationPolicies = field(default_factory=ValuationPolicies)
+    cash_reserve_interest_policy: "CashReserveInterestPolicy | None" = None
 
 
 def hash_inputs_for_cache(inputs: "ProjectInputs") -> tuple:
@@ -1742,5 +1744,18 @@ def hash_inputs_for_cache(inputs: "ProjectInputs") -> tuple:
                 )
             )
             if inputs.hierarchical_opex_capability is not None else None
+        ),
+        # U2: cash/reserve interest policy — None sentinel for backward compat
+        (
+            (
+                inputs.cash_reserve_interest_policy.authority.value,
+                inputs.cash_reserve_interest_policy.annual_rate,
+                inputs.cash_reserve_interest_policy.day_count_convention.value,
+                inputs.cash_reserve_interest_policy.balance_convention.value,
+                inputs.cash_reserve_interest_policy.eligible_unrestricted_cash.value,
+                inputs.cash_reserve_interest_policy.eligible_dsra.value,
+                inputs.cash_reserve_interest_policy.enabled,
+            )
+            if inputs.cash_reserve_interest_policy is not None else None
         ),
     )

@@ -37,6 +37,9 @@ class TaxYearPeriodFragment:
     other_fiscal_reintegration_keur: float
     shl_tax_eligible_interest_keur: float = 0.0
     shl_non_deductible_interest_keur: float = 0.0
+    # U2: Cash/reserve financing income — separate from EBITDA.
+    # EBITDA = revenue - opex (unchanged). Financing income enters taxable income directly.
+    financing_income_keur: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -63,6 +66,8 @@ class TaxYearCalculationBasis:
     other_fiscal_reintegration_keur: float
     shl_tax_eligible_interest_keur: float = 0.0
     shl_non_deductible_interest_keur: float = 0.0
+    # U2: Cash/reserve financing income per tax year. Separate from EBITDA.
+    financing_income_keur: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -158,6 +163,8 @@ class TaxAnnualResult:
     # Per-period ATAD allocation (same length as period_indices)
     period_atad_deductible: tuple[float, ...]
     period_atad_disallowed: tuple[float, ...]
+    # U2: Cash/reserve financing income for this tax year. Below EBITDA.
+    financing_income_keur: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -212,6 +219,8 @@ class PeriodCashTaxResult:
     shl_absolute_limit_component_keur: float = 0.0
     shl_ebitda_limit_component_keur: float = 0.0
     shl_additional_non_deductible_component_keur: float = 0.0
+    # U2: Cash/reserve financing income for this period. Below EBITDA.
+    financing_income_keur: float = 0.0
 
 
 @dataclass(frozen=True)

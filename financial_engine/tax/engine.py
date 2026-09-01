@@ -98,8 +98,15 @@ def calculate_tax(
     interest_map = _build_interest_map(tax_input.period_interest)
     adj_map = _build_adj_map(tax_input.period_adjustments)
 
+    # U2: Build financing-income map from period_financing_income (below EBITDA).
+    # UNRESOLVED authority periods contribute 0.0. Missing periods default to 0.0.
+    financing_income_map: dict[int, float] = {
+        fi.period_index: fi.financing_income_keur
+        for fi in getattr(tax_input, "period_financing_income", ())
+    }
+
     # ── Step 1-2: Build calendar-year bases ───────────────────────────────────
-    bases = build_tax_year_bases(periods, interest_map, adj_map, policy)
+    bases = build_tax_year_bases(periods, interest_map, adj_map, policy, financing_income_map)
 
     # ── Step 3: ATAD + taxable income + LCF + CIT per tax year ───────────────
     atad_results = []
@@ -119,10 +126,13 @@ def calculate_tax(
         annual_atad = allocate_atad_to_periods(annual_atad, period_interests)
         atad_results.append(annual_atad)
 
-    # Annual taxable income before LCF
+    # Annual taxable income before LCF.
+    # U2: financing_income_keur (cash/reserve interest) enters taxable income here.
+    # EBITDA = revenue - opex is UNCHANGED. Financing income is below EBITDA.
     taxable_before_lcf = [
         (
             basis.ebitda_keur
+            + basis.financing_income_keur        # U2: financing income (below EBITDA)
             - basis.tax_depreciation_keur
             - atad.deductible_interest_keur
             + basis.other_fiscal_reintegration_keur
@@ -170,6 +180,7 @@ def calculate_tax(
             disallowed_interest_keur=atad.disallowed_interest_keur,
             atad_binding_rule=atad.binding_rule,
             ebitda_keur=basis.ebitda_keur,
+            financing_income_keur=basis.financing_income_keur,
             tax_depreciation_keur=basis.tax_depreciation_keur,
             other_fiscal_reintegration_keur=basis.other_fiscal_reintegration_keur,
             taxable_income_before_lcf_keur=ti_before,
@@ -383,6 +394,7 @@ def calculate_tax(
                 period_interest.additional_non_deductible_component_keur
                 if period_interest else 0.0
             ),
+            financing_income_keur=financing_income_map.get(idx, 0.0),
         ))
 
     return TaxAndCfadsResult(

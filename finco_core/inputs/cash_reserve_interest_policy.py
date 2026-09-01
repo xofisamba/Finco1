@@ -5,11 +5,10 @@ can prove eligible-account identity and deposit rate from source.
 
 Causal chain:
     eligible_balance × annual_rate × day_fraction
-        → interest_income_keur
-        → added to EBITDA before compute_period_tax
+        → financing_income_keur (below EBITDA — EBITDA is unmodified)
+        → added to taxable income: TI = EBITDA + financing_income - tax_dep - deductible_interest
         → CIT increases
-        → Base CFADS = ebitda_augmented - tax
-        → passed as cash_interest_on_reserves_keur to r99 audit
+        → CFADS = EBITDA + financing_income - cash_tax
 
 No project-code dispatch. No workbook-vector replay. No target-fitting.
 """
