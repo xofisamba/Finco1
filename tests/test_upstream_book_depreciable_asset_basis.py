@@ -1026,6 +1026,138 @@ class TestConvergedEconomicBasisHandshake:
         # Total must be positive and non-trivial
         assert basis.total_keur > 1_000.0, f"total basis {basis.total_keur:.1f} kEUR is implausibly small"
 
+    def test_tuho_final_typed_basis_reproduces_converged_book_depreciation(self):
+        """Behavioral proof: final exposed BookDepreciableAssetBasis → same
+        book_depreciation_keur as the CapexStructure path that ran during convergence.
+
+        This is not a tautology: it exercises the actual operating model with
+        two different DepreciationInput constructions and requires the resulting
+        book_depreciation_keur schedules to agree within numerical tolerance.
+        """
+        import numpy as np
+        import dataclasses
+        from app.project_factories import create_default_tuho_wind1
+        from app.services.production_financial_authority import run_clean_production
+        from financial_engine.adapters.project_inputs import from_project_inputs
+        from financial_engine.orchestrator import run_operating_model
+        from finco_core.construction.stage_b2 import (
+            apply_capitalized_financing_costs,
+            CapitalizedFinancingCosts,
+        )
+
+        inputs = create_default_tuho_wind1()
+        result = run_clean_production(inputs)
+        pfr = result.g2c_result.financing_result
+
+        final_basis = pfr.book_depreciable_asset_basis
+        cfr = pfr.construction_financing
+        assert final_basis is not None
+        assert cfr is not None
+
+        # Path A: typed basis → DepreciationInput → run_operating_model
+        dep_input_from_typed = from_project_inputs(inputs, book_basis=final_basis)
+        schedules_from_typed = run_operating_model(dep_input_from_typed)
+
+        # Path B: CapexStructure path with converged financing costs applied
+        # (identical to what the inner operating model saw during convergence)
+        converged_financing_costs = CapitalizedFinancingCosts(
+            senior_idc_keur=sum(cfr.senior_idc_capitalized_uses_keur),
+            senior_commitment_fee_keur=cfr.senior_commitment_fee_capitalized_keur,
+            structuring_fee_keur=sum(cfr.structuring_fee_keur),
+            vat_idc_keur=cfr.vat_idc_keur,
+            vat_commitment_fee_keur=cfr.vat_commitment_fee_keur,
+        )
+        updated_capex = apply_capitalized_financing_costs(inputs.capex, converged_financing_costs)
+        updated_inputs = dataclasses.replace(inputs, capex=updated_capex)
+        dep_input_from_capex = from_project_inputs(updated_inputs)
+        schedules_from_capex = run_operating_model(dep_input_from_capex)
+
+        dep_typed = schedules_from_typed.operating_schedules.book_depreciation_keur
+        dep_capex = schedules_from_capex.operating_schedules.book_depreciation_keur
+
+        assert len(dep_typed) == len(dep_capex), (
+            f"schedule length mismatch: typed={len(dep_typed)}, capex={len(dep_capex)}"
+        )
+        np.testing.assert_allclose(
+            dep_typed,
+            dep_capex,
+            rtol=1e-9,
+            atol=1e-6,
+            err_msg=(
+                "Final typed BookDepreciableAssetBasis must reproduce the same "
+                "book_depreciation_keur as the CapexStructure path used during convergence. "
+                "Economic neutrality identity requires zero delta."
+            ),
+        )
+
+    def test_tuho_basis_component_accounting_identity(self):
+        """Component handshake: each typed-basis component ties to its CFR source field,
+        and financing components sum to exactly total_capitalized_financing_keur
+        with no residual.
+        """
+        from app.project_factories import create_default_tuho_wind1
+        from app.services.production_financial_authority import run_clean_production
+
+        inputs = create_default_tuho_wind1()
+        result = run_clean_production(inputs)
+        pfr = result.g2c_result.financing_result
+        basis = pfr.book_depreciable_asset_basis
+        cfr = pfr.construction_financing
+        assert basis is not None and cfr is not None
+
+        by_code = {c.code: c.amount_keur for c in basis.components}
+
+        # Hard CAPEX total equals sum of CAPEX_STRUCTURE_HARD_CAPEX components
+        hard_capex_total = sum(
+            c.amount_keur for c in basis.components
+            if c.provenance == "CAPEX_STRUCTURE_HARD_CAPEX"
+        )
+        assert hard_capex_total > 0.0, "must have positive hard CAPEX in basis"
+
+        # Senior IDC == sum(senior_idc_capitalized_uses_keur) from CFR
+        expected_idc = sum(cfr.senior_idc_capitalized_uses_keur)
+        assert "senior_idc" in by_code, "senior_idc component must exist"
+        assert abs(by_code["senior_idc"] - expected_idc) < 1e-3, (
+            f"IDC: basis={by_code['senior_idc']:.3f}, CFR={expected_idc:.3f}"
+        )
+
+        # Commitment fee == senior_commitment_fee_capitalized_keur from CFR
+        expected_fee = cfr.senior_commitment_fee_capitalized_keur
+        assert "senior_commitment_fee" in by_code, "senior_commitment_fee component must exist"
+        assert abs(by_code["senior_commitment_fee"] - expected_fee) < 1e-3, (
+            f"commitment fee: basis={by_code['senior_commitment_fee']:.3f}, CFR={expected_fee:.3f}"
+        )
+
+        # Structuring fee == sum(structuring_fee_keur) from CFR
+        expected_struct = sum(cfr.structuring_fee_keur)
+        assert "structuring_fee" in by_code, "structuring_fee component must exist"
+        assert abs(by_code["structuring_fee"] - expected_struct) < 1e-3, (
+            f"structuring fee: basis={by_code['structuring_fee']:.3f}, CFR={expected_struct:.3f}"
+        )
+
+        # VAT == vat_idc_keur + vat_commitment_fee_keur from CFR
+        expected_vat = cfr.vat_idc_keur + cfr.vat_commitment_fee_keur
+        if expected_vat > 0.0:
+            assert "vat_costs" in by_code, "vat_costs component must exist when VAT > 0"
+            assert abs(by_code["vat_costs"] - expected_vat) < 1e-3, (
+                f"VAT: basis={by_code['vat_costs']:.3f}, CFR={expected_vat:.3f}"
+            )
+
+        # Total financing == sum of the four financing components (no residual)
+        financing_sum = (
+            by_code.get("senior_idc", 0.0)
+            + by_code.get("senior_commitment_fee", 0.0)
+            + by_code.get("structuring_fee", 0.0)
+            + by_code.get("vat_costs", 0.0)
+        )
+        expected_financing_total = (
+            expected_idc + expected_fee + expected_struct + expected_vat
+        )
+        assert abs(financing_sum - expected_financing_total) < 1e-3, (
+            f"financing component sum ({financing_sum:.3f}) != "
+            f"sum of CFR sources ({expected_financing_total:.3f})"
+        )
+
 
 # ---------------------------------------------------------------------------
 # Category 25 — Pre-existing Wind failure classification

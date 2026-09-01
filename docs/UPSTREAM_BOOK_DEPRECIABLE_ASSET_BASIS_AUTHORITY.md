@@ -1,6 +1,6 @@
 # Upstream: Book Depreciable Asset Basis Authority
 
-**Status**: `BOOK_DEPRECIABLE_ASSET_BASIS_UPSTREAM_CORRECTION_B_IN_PROGRESS`
+**Status**: `BOOK_DEPRECIABLE_ASSET_BASIS_UPSTREAM_CORRECTION_C_IN_PROGRESS`
 **Branch**: `upstream-book-depreciable-asset-basis`
 **Base**: `main` @ `c5d91ddf`
 **Downstream blocker resolved for**: Phase C3 `BOOK_DEPRECIABLE_ASSET_BASIS_UPSTREAM_REQUIRED`
@@ -127,15 +127,44 @@ is zero. Verified by `TestGenericPathEconomicIdentity` in the test suite.
 
 ---
 
-## PR-9 Fixed-Point Causality Preserved
+## PR-9 Fixed-Point Causality
 
-The PR-9 outer fixed-point loop (in `financial_engine/financing/project.py`) is
-unchanged. `apply_capitalized_financing_costs` still runs each iteration, correctly
-updating `CapexStructure` fields. The canonical basis is built **only once**, after
-convergence, from the final `ConstructionFinancingResult`. It is passed into
-`from_project_inputs` as the `book_basis` argument, which feeds
-`DepreciationInput.book_capex_items_for_depreciation`. The basis does not
-participate in the iteration loop and does not affect convergence.
+The PR-9 outer fixed-point loop (in `financial_engine/financing/project.py`) runs
+an iterative economic basis through the `CapexStructure` path on every outer
+iteration:
+
+```
+outer iteration k:
+  run_stage_b2_provisional(runtime_cfg)
+    → CapitalizedFinancingCosts
+  apply_capitalized_financing_costs(orig_capex, financing_costs)
+    → updated_capex (CapexStructure with IDC/fee/VAT fields populated)
+  replace(project_inputs, capex=updated_capex)
+    → inner run_project_financing_model(inner_inputs, ...)
+      → from_project_inputs(inner_inputs)          # no book_basis; uses CapexStructure path
+        → DepreciationInput.book_capex_items_for_depreciation
+          → run_operating_model → book_depreciation_keur
+          → tax / CFADS / Senior / SHL
+      → converged Senior + SHL for iteration k
+  check outer_residual; loop until ≤ tolerance
+```
+
+After outer convergence, a final strict `run_stage_b2` verification run confirms
+idempotence. The final typed `BookDepreciableAssetBasis` is then built **once**
+from `orig_capex + final ConstructionFinancingResult` and exposed on
+`ProjectFinancingResult.book_depreciable_asset_basis` for downstream and audit use.
+
+**Two representations — one economics:**
+
+| Representation | When built | Who uses it |
+|---|---|---|
+| Iterative economic basis (via `updated_capex` CapexStructure) | Each outer iteration | Inner operating model → depreciation → tax/CFADS/Senior/SHL → convergence |
+| Final typed `BookDepreciableAssetBasis` (from `orig_capex + final CFR`) | Once, after convergence | Downstream consumers, audit, C3 financial statements |
+
+These two representations are economically identical — proven by the
+economic-neutrality identity (see below). The final typed basis does not feed
+back into the iteration loop and does not affect convergence; it is a downstream
+handoff, not a causal input to the fixed point.
 
 ---
 
@@ -154,7 +183,7 @@ enters the basis.
 | `finco_core/inputs/book_depreciable_asset_basis.py` | NEW — typed contract |
 | `financial_engine/book_basis.py` | NEW — canonical builder |
 | `financial_engine/financing/contracts.py` | `ProjectFinancingResult.book_depreciable_asset_basis` field added |
-| `financial_engine/financing/project.py` | Build basis after convergence; pass to result |
+| `financial_engine/financing/project.py` | (1) Iterative economic basis via `updated_capex` CapexStructure each outer iteration; (2) final typed CFR-based `BookDepreciableAssetBasis` built once after convergence for downstream/audit use |
 | `financial_engine/adapters/project_inputs.py` | `from_project_inputs` accepts `book_basis` kwarg |
 | `finco_core/inputs/__init__.py` | Re-export new types |
 | `tests/test_upstream_book_depreciable_asset_basis.py` | NEW — 25 test categories (74 tests) |
