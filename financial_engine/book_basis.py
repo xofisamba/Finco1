@@ -15,6 +15,25 @@ One function, two paths:
           Struct — sum(structuring_fee_keur)
           VAT    — vat_idc_keur + vat_commitment_fee_keur
 
+Two caller contexts — one builder:
+
+  A. Iterative economic production path (PR-9 outer loop, each iteration):
+      Called from from_project_inputs(inner_inputs) with NO book_basis kwarg.
+      capex_structure = updated_capex (financing-cost fields populated by
+      apply_capitalized_financing_costs each iteration).
+      construction_financing_result = None (generic) or the provisional CFR
+      for that iteration.  Drives DepreciationInput → book_depreciation_keur
+      → tax/CFADS/Senior/SHL → convergence.
+
+  B. Final typed downstream handoff (once, after strict convergence):
+      Called from project.py after the final strict run_stage_b2 verification.
+      capex_structure = orig_capex (original project inputs, before any
+      financing-cost application).
+      construction_financing_result = final ConstructionFinancingResult.
+      Result is exposed on ProjectFinancingResult.book_depreciable_asset_basis
+      for downstream C3 / audit consumers.
+      Does NOT feed back into the PR-9 iteration loop.
+
 Useful-life evidence (Oborovo Inputs sheet, MANUAL_WORKBOOK_SOURCE_EVIDENCE,
 confirmed 2026-07-22): IDC, commitment fees, bank fees → 12 years; VAT costs → 20 years.
 
@@ -51,11 +70,13 @@ def build_book_depreciable_asset_basis(
     """Build the canonical book depreciable asset basis for one project.
 
     Args:
-        capex_structure: The converged CapexStructure (with financing-cost fields
-            populated by apply_capitalized_financing_costs for the typed path, or
-            directly from project inputs for the generic path).
-        construction_financing_result: The converged ConstructionFinancingResult
-            from the PR-9 outer fixed-point. None for Solar / Wind (generic path).
+        capex_structure: For the iterative production path (path A), this is
+            updated_capex with financing-cost fields populated for that iteration.
+            For the final typed downstream handoff (path B), this is orig_capex
+            (original project inputs, before any financing-cost application).
+        construction_financing_result: The ConstructionFinancingResult for this
+            call. None for Solar / Wind (generic path). For the final typed
+            downstream handoff, this is the final strict post-convergence CFR.
 
     Returns:
         BookDepreciableAssetBasis with one component per depreciable line item.

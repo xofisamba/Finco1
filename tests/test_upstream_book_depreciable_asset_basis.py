@@ -1143,19 +1143,27 @@ class TestConvergedEconomicBasisHandshake:
                 f"VAT: basis={by_code['vat_costs']:.3f}, CFR={expected_vat:.3f}"
             )
 
-        # Total financing == sum of the four financing components (no residual)
-        financing_sum = (
-            by_code.get("senior_idc", 0.0)
-            + by_code.get("senior_commitment_fee", 0.0)
-            + by_code.get("structuring_fee", 0.0)
-            + by_code.get("vat_costs", 0.0)
+        # Exact financing component code set — no fifth/residual/balancing-plug component.
+        # Only codes for non-zero CFR sources should appear.
+        expected_financing_codes = {"senior_idc", "senior_commitment_fee", "structuring_fee"}
+        if expected_vat > 0.0:
+            expected_financing_codes.add("vat_costs")
+        actual_financing_codes = {
+            c.code for c in basis.components if c.asset_class_code == "financial_costs"
+        }
+        assert actual_financing_codes == expected_financing_codes, (
+            f"financing component codes {actual_financing_codes!r} != "
+            f"expected {expected_financing_codes!r}"
         )
-        expected_financing_total = (
-            expected_idc + expected_fee + expected_struct + expected_vat
+
+        # Sum of ALL typed-basis financing components == cfr.total_capitalized_financing_keur
+        # (independent canonical aggregate from b2.capitalized_financing_costs.total_keur).
+        financing_sum = sum(
+            c.amount_keur for c in basis.components if c.asset_class_code == "financial_costs"
         )
-        assert abs(financing_sum - expected_financing_total) < 1e-3, (
-            f"financing component sum ({financing_sum:.3f}) != "
-            f"sum of CFR sources ({expected_financing_total:.3f})"
+        assert abs(financing_sum - cfr.total_capitalized_financing_keur) < 1e-3, (
+            f"sum of typed financing components ({financing_sum:.3f}) != "
+            f"cfr.total_capitalized_financing_keur ({cfr.total_capitalized_financing_keur:.3f})"
         )
 
 
