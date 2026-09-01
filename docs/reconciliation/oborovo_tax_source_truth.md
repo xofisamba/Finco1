@@ -741,3 +741,134 @@ All C3B1 source evidence items are resolved.
 **Debt sizing**: `Inputs!D192 = "=DS!D51"` (FORMULA_DERIVED, LINKED_VALUE). Chain traced: D51=SUM(G51:DW51) → D195=MIN(DS!D47, CAPEX×0.80). Binding: DSCR sculpting — DS!D47=42,852 kEUR < gearing cap=46,378 kEUR. DS!G47 has iterative reference; verdict: `DEBT_SIZING_FORMULA_CHAIN_PARTIALLY_PROVED`. Phase 2C sizes at constant DSCR=1.15 → 45,873 kEUR; step-up (1.15→1.35 at period 25) absent in Phase 2C. Classification: `DEBT_SIZING_POLICY_MISMATCH_IDENTIFIED`. Remaining manual checks: CFADS composition, DSRA, IDC eligibility, hedge rate split.
 
 C3B2 scope: 6 mandatory items pending separate design review with equal-input comparison.
+
+---
+
+## 18. U2 Correction D — Cash/Reserve Interest Source Lineage Truth Closure
+
+**Correction D revision**: `f7ce74fa7294e748a81b5e24e3a377cf3d8af782` (PR #966 DRAFT, branch `upstream-cash-reserve-interest-authority`)
+
+All findings below are extracted directly from workbook cells using openpyxl dual-load (data_only=False for formulas, data_only=True for cached values). No inferences from P&L outputs.
+
+### 18.1 P&L Header Rows 3–6 — Identity Proved
+
+Extracted from Oborovo P&L sheet (col G = construction period; col H = first operating period):
+
+| Row | Label (col A) | col G formula | col G cached | col H cached | Identity |
+|-----|--------------|---------------|--------------|-------------|----------|
+| 3 | Year | `=Flags!G7` | 0 | 1 | **Year index** — `(G$3>0)` = post-construction guard |
+| 4 | Profit & Loss | `=Flags!G8` | 0 | 1 | Period index (parallel to row 3) |
+| 5 | Project Life | `=Flags!G12` | FALSE | TRUE | **Boolean flag** — TRUE when in operational project life |
+| 6 | Operation Period (incl. Leap) | `=Flags!G13` | 0 | 0.5041095890410959 | **Day fraction** — semi-annual (≈184/365 days) |
+
+**Key resolution**: `G$5` in the cash formula is the "Project Life" boolean flag (1 in life, 0 in construction/terminal), NOT a day-count fraction. `G$6` is the actual day fraction (e.g. 0.5041 for a semi-annual period). The formula `=(CF!F144>0)*$B19*CF!F144*G$5*G$6` therefore correctly multiplies: cash balance × annual rate × in-life-flag × day-fraction.
+
+Previous source truth stated G$5 was "inferred as day-count fraction, not proven" — this is now RESOLVED as INCORRECT. G$5 is a boolean in-life gate. G$6 is the day fraction.
+
+### 18.2 P&L!B19 → Inputs!D455 Formula Link — PROVED
+
+| Item | Value | Evidence |
+|------|-------|----------|
+| P&L!B19 formula-mode value | `=Inputs!$D$455` | openpyxl data_only=False |
+| P&L!B19 cached (data_only=True) | 0.01 | openpyxl data_only=True |
+| Inputs!D455 cached | 0.01 | Previously extracted |
+| Inputs!D455 classification | HARDCODE | Source JSON |
+
+**Conclusion**: P&L!B19 is a formula cell `=Inputs!$D$455`, not a hardcoded constant. The deposit rate 0.01 originates from Inputs!D455 (hardcoded), accessed via P&L!B19 formula. Authority: **SOURCE_PROVEN_FORMULA** for the rate link; **HARDCODE** for the rate value itself.
+
+### 18.3 CF Row 144 — Identity and Balance Convention PROVED
+
+| Item | Value | Evidence |
+|------|-------|----------|
+| CF row 144 label (col A) | "Cash end of the year" | openpyxl data_only=True |
+| CF!G144 formula | `=F144+G132` | openpyxl data_only=False |
+| CF!F144 cached | null (construction — no cash yet) | openpyxl data_only=True |
+| First non-zero column | AU | openpyxl data_only=True |
+| First non-zero value (AU) | 550.000 kEUR | openpyxl data_only=True |
+| Samples AU–AY | 550.000 kEUR (stable) | openpyxl data_only=True |
+| Context: row 143 | null label (blank) | — |
+| Context: row 145 | "Negative cash check" | — |
+
+**Balance convention**: CF!F144 = closing balance of period F (prior column). The P&L formula `=(CF!F144>0)*$B19*CF!F144*G$5*G$6` uses CF!F for P&L column G — i.e., the closing balance of the immediately preceding period. In a stock-flow model this is the **opening balance of the current period** (= prior-period closing). Authority: **SOURCE_PROVEN_FORMULA**.
+
+**Timing offset**: P&L column G uses CF column F (one column earlier) — confirmed by formula extraction.
+
+### 18.4 Numerical Reconciliation — VERIFIED
+
+Period at first non-zero cash interest (P&L col AV = CF col AU):
+
+```
+CF!AU144 (cash balance) = 550.000 kEUR
+B19 (annual rate)       = 0.01
+AV$5 (project life flag)= TRUE = 1
+AV$6 (day fraction)     ≈ 0.5041 (H6 = 0.5041095890410959)
+Expected P&L!AV20       = 550.000 × 0.01 × 1 × 0.5041 = 2.7726 kEUR
+Actual P&L!AV20 cached  = 2.7726027397261674 kEUR
+Residual                = < 1e-10 kEUR  ✓ MACHINE PRECISION MATCH
+```
+
+### 18.5 Oborovo P&L Row Summary — Updated Evidence Grades
+
+| Row | Label | Formula | Zero all periods? | Evidence Grade |
+|-----|-------|---------|-------------------|---------------|
+| 19 | Interests from Reserve Accounts | `=(G$3>0)*$B19*(CF!F105+CF!F91)*G$6` | Yes — ZERO all periods | SOURCE_PROVEN_FORMULA |
+| 20 | Interests from Cash | `=(CF!F144>0)*$B19*CF!F144*G$5*G$6` | No — 2.7726 kEUR from col AV | SOURCE_PROVEN_FORMULA |
+| 21 | Withholding Tax | `=-SUM(G19:G20)*$B21*G$6` | Yes — B21=0 | SOURCE_PROVEN_FORMULA |
+
+### 18.6 Oborovo Source Authority Table — Final
+
+| Component | Authority | Evidence | Notes |
+|-----------|-----------|---------|-------|
+| Deposit rate (annual) | SOURCE_PROVEN_FORMULA | P&L!B19 = `=Inputs!$D$455`; D455 = 0.01 HARDCODE | B19 is formula, not hardcode |
+| Reserve formula (row 19) | SOURCE_PROVEN_FORMULA | Direct extraction: `=(G$3>0)*$B19*(CF!F105+CF!F91)*G$6` | ZERO all Oborovo periods |
+| Cash formula (row 20) | SOURCE_PROVEN_FORMULA | Direct extraction: `=(CF!F144>0)*$B19*CF!F144*G$5*G$6` | 2.7726 kEUR from col AV |
+| CF!F91 — Senior DSRA ending | SOURCE_PROVEN_ACCOUNT_IDENTITY | Extracted in v3.4.0 | Senior DSRA closing balance |
+| CF!F105 — J-DSRA ending | SOURCE_PROVEN_ACCOUNT_IDENTITY | Extracted in v3.4.0 | Junior DSRA closing balance |
+| CF!F144 — Unrestricted cash closing | SOURCE_PROVEN_FORMULA | Row 144 = "Cash end of the year"; `=F144+G132` | Prior-period closing = current opening |
+| G$3 — Year index | SOURCE_PROVEN_FORMULA | `=Flags!G7`; `(G$3>0)` = post-construction guard | NOT a day fraction |
+| G$5 — Project Life flag | SOURCE_PROVEN_FORMULA | `=Flags!G12`; boolean TRUE/FALSE | NOT a day fraction — in-life gate |
+| G$6 — Day fraction | SOURCE_PROVEN_FORMULA | `=Flags!G13`; col H cached = 0.5041 semi-annual | The actual day count fraction |
+| Balance convention | SOURCE_PROVEN_FORMULA | P&L col G uses CF col F (prior period closing) | = opening balance of current period |
+
+### 18.7 TUHO P&L Rows 19–21 — Directly Extracted
+
+Extracted from TUHO workbook `20260330_TUHO_BP.xlsm`, sheet "P&L" (col H = first operating period):
+
+| Row | Label | col B formula | col H formula | First non-zero col | First non-zero val |
+|-----|-------|--------------|---------------|-------------------|------------------|
+| 19 | Interests from Reserve Accounts | `=Inputs!$D$438` | `=(H$3>0)*$B19*(CF!G95+CF!G81)*H$6` | None | None — ZERO all periods |
+| 20 | Interests from Cash | null (uses `$B19` ref) | `=(CF!G135>0)*$B19*CF!G135*H$5*H$6` | AV | 2.7274 kEUR |
+| 21 | Withholding Tax | `=Inputs!$D$412` | `=-SUM(H19:H20)*$B21*H$6` | None | None — zero (B21=0) |
+
+**Notes**:
+- TUHO row 19 uses `$B19` = `=Inputs!$D$438` (rate = 0.01). DSRA accounts: CF!G95 (Senior DSRA) + CF!G81 (J-DSRA). ZERO all periods — TUHO earns no reserve interest.
+- TUHO row 20 uses CF!G135 (cash closing balance, TUHO equivalent of Oborovo CF row 144). Same formula structure.
+- TUHO day fraction (H$6) and life flag (H$5) serve the same role as Oborovo G$6 / G$5.
+- Cash interest first appears at TUHO col AV = 2.7274 kEUR (comparable to Oborovo 2.7726 kEUR — different debt repayment timing).
+
+### 18.8 TUHO D438 Metadata Conflict — RESOLVED
+
+**Conflict**: `tuho_inputs_source_v2.json` classifies Inputs!D438 as `HARDCODE`; `editable_input_disposition_v5_1.csv` line 89 classifies it as `DERIVED_FROM_EXISTING_INPUT`.
+
+**Resolution from workbook extraction**:
+- openpyxl data_only=False returns: `D438_formula = 0.01` (a numeric literal, not a string starting with `=`)
+- This confirms D438 stores a hardcoded numeric value, not a formula referencing another cell
+
+**Verdict**: `tuho_inputs_source_v2.json` classification `HARDCODE` is **CORRECT**. The CSV entry `DERIVED_FROM_EXISTING_INPUT` is **INCORRECT** — likely a data-entry error or stale CSV row. The CSV is a secondary derived artifact; the source JSON is the authoritative record.
+
+**No production code change required.** The CSV error is documented here and should be corrected in a future CSV regeneration pass.
+
+### 18.9 Correction D Stop Token
+
+```
+CASH_RESERVE_INTEREST_UPSTREAM_SOURCE_LINEAGE_CLOSED
+```
+
+All source lineage items for Oborovo and TUHO cash/reserve interest are now directly proved from workbook cell extraction:
+- P&L!B19 formula link to Inputs!D455: PROVED
+- G$3/G$5/G$6 identities: PROVED (G$5 is boolean life flag, NOT day fraction; G$6 is day fraction)
+- CF row 144 "Cash end of the year" identity and formula: PROVED
+- Balance convention (prior-period closing = current opening): PROVED
+- Numerical reconciliation: MACHINE PRECISION VERIFIED
+- TUHO rows 19/20/21 formulas: DIRECTLY EXTRACTED
+- TUHO D438 metadata conflict: RESOLVED (HARDCODE confirmed)
