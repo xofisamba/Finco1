@@ -187,6 +187,7 @@ class PeriodTaxYearAllocation:
     shl_non_deductible_interest_keur: float
     taxable_income_share_keur: float
     cit_accrual_keur: float
+    financing_income_keur: float = 0.0
 
 
 @dataclass(frozen=True)

@@ -10,11 +10,12 @@ Causal chain:
         → CIT increases
         → CFADS = EBITDA + financing_income - cash_tax
 
-No project-code dispatch. No workbook-vector replay. No target-fitting.
+No project-code dispatch. No workbook-vector replay. No output-calibration.
 """
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from enum import Enum
 
@@ -76,6 +77,50 @@ class CashReserveInterestPolicy:
     balance_convention: BalanceConvention = BalanceConvention.OPENING
     day_count_convention: DayCountConvention = DayCountConvention.ACTUAL_365
     enabled: bool = True
+
+    def __post_init__(self) -> None:
+        if self.authority in (
+            CashReserveInterestAuthority.SOURCE_PROVEN,
+            CashReserveInterestAuthority.GENERIC_FINCO_POLICY,
+        ):
+            if self.annual_rate is None:
+                raise ValueError(
+                    f"CashReserveInterestPolicy: annual_rate is required when "
+                    f"authority={self.authority.value}"
+                )
+            if isinstance(self.annual_rate, bool):
+                raise ValueError(
+                    f"CashReserveInterestPolicy: annual_rate must be numeric, not bool"
+                )
+            if not math.isfinite(self.annual_rate):
+                raise ValueError(
+                    f"CashReserveInterestPolicy: annual_rate must be finite, "
+                    f"got {self.annual_rate!r}"
+                )
+            if self.annual_rate < 0.0 or self.annual_rate > 1.0:
+                raise ValueError(
+                    f"CashReserveInterestPolicy: annual_rate economically invalid: "
+                    f"{self.annual_rate!r}. Must be in [0.0, 1.0]."
+                )
+            if (
+                self.eligible_unrestricted_cash == EligibilityStatus.UNRESOLVED
+                and self.eligible_dsra == EligibilityStatus.UNRESOLVED
+            ):
+                raise ValueError(
+                    f"CashReserveInterestPolicy: authority={self.authority.value} "
+                    f"requires at least one account to be non-UNRESOLVED; "
+                    f"both eligible_unrestricted_cash and eligible_dsra are UNRESOLVED"
+                )
+            if (
+                self.eligible_unrestricted_cash != EligibilityStatus.ELIGIBLE
+                and self.eligible_dsra != EligibilityStatus.ELIGIBLE
+            ):
+                raise ValueError(
+                    f"CashReserveInterestPolicy: authority={self.authority.value} "
+                    f"requires at least one ELIGIBLE account; "
+                    f"unrestricted_cash={self.eligible_unrestricted_cash.value}, "
+                    f"dsra={self.eligible_dsra.value}"
+                )
 
     def compute_period_income_keur(
         self,

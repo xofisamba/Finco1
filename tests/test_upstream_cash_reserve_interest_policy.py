@@ -71,11 +71,13 @@ def test_source_proven_computes_correctly():
 # ── 3. No eligible accounts → 0.0 ───────────────────────────────────────────
 
 def test_no_eligible_accounts_yields_zero():
+    # SOURCE_PROVEN + both INELIGIBLE raises at construction (§4 __post_init__)
+    # Use UNRESOLVED authority to prove zero when no accounts eligible via authority path.
     policy = CashReserveInterestPolicy(
-        authority=CashReserveInterestAuthority.SOURCE_PROVEN,
+        authority=CashReserveInterestAuthority.UNRESOLVED,
         eligible_unrestricted_cash=EligibilityStatus.INELIGIBLE,
         eligible_dsra=EligibilityStatus.INELIGIBLE,
-        annual_rate=0.05,
+        annual_rate=None,
         enabled=True,
     )
     result = policy.compute_period_income_keur(
@@ -122,22 +124,18 @@ def test_disabled_policy_yields_zero():
     assert result == 0.0
 
 
-# ── 6. annual_rate=None → 0.0 ────────────────────────────────────────────────
+# ── 6. annual_rate=None → raises for SOURCE_PROVEN ───────────────────────────
 
-def test_none_rate_yields_zero():
-    policy = CashReserveInterestPolicy(
-        authority=CashReserveInterestAuthority.SOURCE_PROVEN,
-        eligible_unrestricted_cash=EligibilityStatus.ELIGIBLE,
-        eligible_dsra=EligibilityStatus.ELIGIBLE,
-        annual_rate=None,
-        enabled=True,
-    )
-    result = policy.compute_period_income_keur(
-        unrestricted_cash_balance_keur=10_000.0,
-        dsra_balance_keur=2_000.0,
-        day_fraction=0.5,
-    )
-    assert result == 0.0
+def test_none_rate_raises_for_source_proven():
+    # After §4 __post_init__, SOURCE_PROVEN + annual_rate=None must raise at construction.
+    with pytest.raises(ValueError, match="annual_rate is required"):
+        CashReserveInterestPolicy(
+            authority=CashReserveInterestAuthority.SOURCE_PROVEN,
+            eligible_unrestricted_cash=EligibilityStatus.ELIGIBLE,
+            eligible_dsra=EligibilityStatus.ELIGIBLE,
+            annual_rate=None,
+            enabled=True,
+        )
 
 
 # ── 7. DSRA-only eligibility ──────────────────────────────────────────────────
@@ -254,22 +252,18 @@ def test_day_fraction_scaling():
     assert abs(r_half - 2 * r_quarter) < 1e-9
 
 
-# ── 13. INELIGIBLE accounts → 0.0 even with valid rate ───────────────────────
+# ── 13. INELIGIBLE accounts → raises for SOURCE_PROVEN/GENERIC_FINCO_POLICY ──
 
-def test_ineligible_accounts_yields_zero_with_valid_rate():
-    policy = CashReserveInterestPolicy(
-        authority=CashReserveInterestAuthority.GENERIC_FINCO_POLICY,
-        eligible_unrestricted_cash=EligibilityStatus.INELIGIBLE,
-        eligible_dsra=EligibilityStatus.INELIGIBLE,
-        annual_rate=0.10,
-        enabled=True,
-    )
-    result = policy.compute_period_income_keur(
-        unrestricted_cash_balance_keur=50_000.0,
-        dsra_balance_keur=5_000.0,
-        day_fraction=0.5,
-    )
-    assert result == 0.0
+def test_ineligible_accounts_raises_for_non_unresolved():
+    # After §4 __post_init__, SOURCE_PROVEN/GENERIC_FINCO + both INELIGIBLE must raise.
+    with pytest.raises(ValueError, match="at least one ELIGIBLE"):
+        CashReserveInterestPolicy(
+            authority=CashReserveInterestAuthority.GENERIC_FINCO_POLICY,
+            eligible_unrestricted_cash=EligibilityStatus.INELIGIBLE,
+            eligible_dsra=EligibilityStatus.INELIGIBLE,
+            annual_rate=0.10,
+            enabled=True,
+        )
 
 
 # ── Immutability ──────────────────────────────────────────────────────────────
@@ -307,8 +301,16 @@ import datetime
 from dataclasses import replace as _replace
 
 
-def _make_minimal_tax_input(financing_income_by_period: dict[int, float] | None = None):
-    """Build the smallest TaxCalculationInput that runs through calculate_tax."""
+def _make_minimal_tax_input(
+    financing_income_by_period: dict[int, float] | None = None,
+    authority: str = "SOURCE_PROVEN",
+    loss_utilisation_gate=None,
+):
+    """Build the smallest TaxCalculationInput that runs through calculate_tax.
+
+    Nonzero financing_income amounts use authority="SOURCE_PROVEN" by default.
+    Zero amounts use authority="UNRESOLVED" (fail-closed, still zero).
+    """
     from financial_engine.inputs import (
         TaxCalculationInput,
         PeriodFinancingIncomeInput,
@@ -320,6 +322,7 @@ def _make_minimal_tax_input(financing_income_by_period: dict[int, float] | None 
         TaxLossUtilisationGate,
     )
 
+    gate = loss_utilisation_gate if loss_utilisation_gate is not None else TaxLossUtilisationGate.TAXABLE_INCOME_POSITIVE
     policy = TaxPolicy(
         policy_id="u2-synthetic-test",
         policy_version="1.0.0",
@@ -328,13 +331,18 @@ def _make_minimal_tax_input(financing_income_by_period: dict[int, float] | None 
         periods_per_tax_year=2,
         cash_tax_timing=CashTaxTiming.SAME_PERIOD,
         tax_basis_periodisation=TaxBasisPeriodisation.CALENDAR_YEAR,
-        loss_utilisation_gate=TaxLossUtilisationGate.TAXABLE_INCOME_POSITIVE,
+        loss_utilisation_gate=gate,
         atad_enabled=False,
         atad_ebitda_limit=0.30,
         atad_de_minimis_threshold_keur_annual=3_000.0,
     )
     fin_income_inputs = tuple(
-        PeriodFinancingIncomeInput(period_index=idx, financing_income_keur=amount)
+        PeriodFinancingIncomeInput(
+            period_index=idx,
+            financing_income_keur=amount,
+            # Use SOURCE_PROVEN for nonzero amounts — UNRESOLVED+nonzero raises.
+            authority=authority if amount != 0.0 else "UNRESOLVED",
+        )
         for idx, amount in (financing_income_by_period or {}).items()
     )
     return TaxCalculationInput(
@@ -383,13 +391,17 @@ def _make_synthetic_periods(ebitda_keur_per_period: list[float], start_year: int
     return tuple(periods)
 
 
-def _run_synthetic(ebitda_per_period: list[float], fin_income_by_period: dict[int, float] | None = None):
+def _run_synthetic(
+    ebitda_per_period: list[float],
+    fin_income_by_period: dict[int, float] | None = None,
+    authority: str = "SOURCE_PROVEN",
+):
     """Run calculate_tax + calculate_canonical_cfads with synthetic inputs."""
     from financial_engine.tax.engine import calculate_tax
     from financial_engine.cfads import calculate_canonical_cfads
 
     periods = _make_synthetic_periods(ebitda_per_period)
-    tax_input = _make_minimal_tax_input(fin_income_by_period)
+    tax_input = _make_minimal_tax_input(fin_income_by_period, authority=authority)
     tax_result = calculate_tax(periods, tax_input)
     cfads_results = calculate_canonical_cfads(periods, tax_result.period_results)
     return tax_result, cfads_results
@@ -613,3 +625,281 @@ def test_mutation_empty_financing_income_is_backward_compatible():
         assert cfr.financing_income_keur == 0.0
         # CFADS = EBITDA + 0 - cash_tax
         assert abs(cfr.cfads_keur - (cfr.ebitda_keur - cfr.cash_tax_keur)) < 1e-9
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Authority contract tests (Correction B §3)
+# ══════════════════════════════════════════════════════════════════════════════
+
+# ── 28. UNRESOLVED + zero is OK ───────────────────────────────────────────────
+
+def test_authority_unresolved_zero_is_accepted():
+    """UNRESOLVED authority with financing_income_keur=0.0 must not raise."""
+    from financial_engine.inputs import PeriodFinancingIncomeInput, TaxCalculationInput
+    from financial_engine.tax.engine import calculate_tax
+
+    ebitda = [1_000.0, 1_000.0]
+    periods = _make_synthetic_periods(ebitda)
+    from financial_engine.policies.tax import TaxPolicy, CashTaxTiming, TaxBasisPeriodisation, TaxLossUtilisationGate
+    policy = TaxPolicy(
+        policy_id="u2-auth-test", policy_version="1.0.0",
+        corporate_rate=0.25, loss_carryforward_years=5, periods_per_tax_year=2,
+        cash_tax_timing=CashTaxTiming.SAME_PERIOD,
+        tax_basis_periodisation=TaxBasisPeriodisation.CALENDAR_YEAR,
+        loss_utilisation_gate=TaxLossUtilisationGate.TAXABLE_INCOME_POSITIVE,
+        atad_enabled=False, atad_ebitda_limit=0.30,
+        atad_de_minimis_threshold_keur_annual=3_000.0,
+    )
+    tax_input = TaxCalculationInput(
+        policy=policy, opening_loss_vintages=(), period_interest=(), period_adjustments=(),
+        period_financing_income=(
+            PeriodFinancingIncomeInput(period_index=0, financing_income_keur=0.0, authority="UNRESOLVED"),
+        ),
+    )
+    result = calculate_tax(periods, tax_input)
+    assert result.period_results[0].financing_income_keur == 0.0
+
+
+# ── 29. UNRESOLVED + nonzero raises ──────────────────────────────────────────
+
+def test_authority_unresolved_nonzero_raises():
+    """UNRESOLVED authority with nonzero financing_income_keur must raise ValueError."""
+    from financial_engine.inputs import PeriodFinancingIncomeInput, TaxCalculationInput
+    from financial_engine.tax.engine import calculate_tax
+    from financial_engine.policies.tax import TaxPolicy, CashTaxTiming, TaxBasisPeriodisation, TaxLossUtilisationGate
+
+    ebitda = [1_000.0, 1_000.0]
+    periods = _make_synthetic_periods(ebitda)
+    policy = TaxPolicy(
+        policy_id="u2-auth-test", policy_version="1.0.0",
+        corporate_rate=0.25, loss_carryforward_years=5, periods_per_tax_year=2,
+        cash_tax_timing=CashTaxTiming.SAME_PERIOD,
+        tax_basis_periodisation=TaxBasisPeriodisation.CALENDAR_YEAR,
+        loss_utilisation_gate=TaxLossUtilisationGate.TAXABLE_INCOME_POSITIVE,
+        atad_enabled=False, atad_ebitda_limit=0.30,
+        atad_de_minimis_threshold_keur_annual=3_000.0,
+    )
+    tax_input = TaxCalculationInput(
+        policy=policy, opening_loss_vintages=(), period_interest=(), period_adjustments=(),
+        period_financing_income=(
+            PeriodFinancingIncomeInput(period_index=0, financing_income_keur=500.0, authority="UNRESOLVED"),
+        ),
+    )
+    with pytest.raises(ValueError, match="UNRESOLVED.*fail closed|UNRESOLVED must fail closed"):
+        calculate_tax(periods, tax_input)
+
+
+# ── 30. Unknown authority raises ──────────────────────────────────────────────
+
+def test_authority_unknown_string_raises():
+    """An unknown authority string must raise ValueError."""
+    from financial_engine.inputs import PeriodFinancingIncomeInput, TaxCalculationInput
+    from financial_engine.tax.engine import calculate_tax
+    from financial_engine.policies.tax import TaxPolicy, CashTaxTiming, TaxBasisPeriodisation, TaxLossUtilisationGate
+
+    ebitda = [1_000.0, 1_000.0]
+    periods = _make_synthetic_periods(ebitda)
+    policy = TaxPolicy(
+        policy_id="u2-auth-test", policy_version="1.0.0",
+        corporate_rate=0.25, loss_carryforward_years=5, periods_per_tax_year=2,
+        cash_tax_timing=CashTaxTiming.SAME_PERIOD,
+        tax_basis_periodisation=TaxBasisPeriodisation.CALENDAR_YEAR,
+        loss_utilisation_gate=TaxLossUtilisationGate.TAXABLE_INCOME_POSITIVE,
+        atad_enabled=False, atad_ebitda_limit=0.30,
+        atad_de_minimis_threshold_keur_annual=3_000.0,
+    )
+    tax_input = TaxCalculationInput(
+        policy=policy, opening_loss_vintages=(), period_interest=(), period_adjustments=(),
+        period_financing_income=(
+            PeriodFinancingIncomeInput(period_index=0, financing_income_keur=100.0, authority="BOGUS_AUTHORITY"),
+        ),
+    )
+    with pytest.raises(ValueError, match="unknown authority"):
+        calculate_tax(periods, tax_input)
+
+
+# ── 31. SOURCE_PROVEN + nonzero propagates correctly ─────────────────────────
+
+def test_authority_source_proven_nonzero_propagates():
+    """SOURCE_PROVEN + nonzero must propagate into taxable income."""
+    ebitda = [2_000.0, 2_000.0]
+    tax_base, _ = _run_synthetic(ebitda, {})
+    tax_fi, _ = _run_synthetic(ebitda, {0: 400.0, 1: 400.0}, authority="SOURCE_PROVEN")
+
+    ti_base = sum(r.taxable_income_before_lcf_keur for r in tax_base.annual_results)
+    ti_fi = sum(r.taxable_income_before_lcf_keur for r in tax_fi.annual_results)
+    assert abs(ti_fi - ti_base - 800.0) < 1e-6
+
+
+# ── 32. GENERIC_FINCO_POLICY + nonzero propagates correctly ──────────────────
+
+def test_authority_generic_finco_policy_nonzero_propagates():
+    """GENERIC_FINCO_POLICY + nonzero must propagate into taxable income."""
+    ebitda = [2_000.0, 2_000.0]
+    tax_base, _ = _run_synthetic(ebitda, {})
+    tax_fi, _ = _run_synthetic(ebitda, {0: 300.0, 1: 300.0}, authority="GENERIC_FINCO_POLICY")
+
+    ti_base = sum(r.taxable_income_before_lcf_keur for r in tax_base.annual_results)
+    ti_fi = sum(r.taxable_income_before_lcf_keur for r in tax_fi.annual_results)
+    assert abs(ti_fi - ti_base - 600.0) < 1e-6
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# EBT gate causality tests (Correction B §5)
+# ══════════════════════════════════════════════════════════════════════════════
+
+# ── 33. EBT gate: financing_income can open LCF gate ─────────────────────────
+
+def test_ebt_gate_financing_income_opens_gate():
+    """With EBT_POSITIVE gate: negative EBITDA alone closes gate; adding FI opens it."""
+    from financial_engine.tax.engine import calculate_tax
+    from financial_engine.policies.tax import TaxLossUtilisationGate
+
+    # Periods: small EBITDA, no depreciation/interest.
+    # We need a prior loss, then test whether LCF is usable.
+    # Year 0 produces a loss (negative EBITDA), year 1 has EBITDA exactly enough
+    # to be positive only when FI is added.
+    ebitda = [-500.0, -500.0, 100.0, 100.0]  # years 0, 1 loss; year 2 marginal
+    periods = _make_synthetic_periods(ebitda)
+
+    # Without FI: year 2 EBT = 200 kEUR > 0 → gate open even without FI.
+    # Use a tighter case: EBITDA exactly covers dep, FI tips it positive.
+    ebitda2 = [-500.0, -500.0, 10.0, 10.0]  # tiny EBITDA in year 2
+    periods2 = _make_synthetic_periods(ebitda2)
+
+    from financial_engine.inputs import PeriodFinancingIncomeInput, TaxCalculationInput
+    from financial_engine.policies.tax import TaxPolicy, CashTaxTiming, TaxBasisPeriodisation
+
+    policy = TaxPolicy(
+        policy_id="u2-ebt-test", policy_version="1.0.0",
+        corporate_rate=0.25, loss_carryforward_years=5, periods_per_tax_year=2,
+        cash_tax_timing=CashTaxTiming.SAME_PERIOD,
+        tax_basis_periodisation=TaxBasisPeriodisation.CALENDAR_YEAR,
+        loss_utilisation_gate=TaxLossUtilisationGate.EBT_POSITIVE,
+        atad_enabled=False, atad_ebitda_limit=0.30,
+        atad_de_minimis_threshold_keur_annual=3_000.0,
+    )
+    # Without FI: year 2 EBT = 20 > 0 → gate open (LCF usable, TI reduced)
+    ti_no_fi = TaxCalculationInput(
+        policy=policy, opening_loss_vintages=(), period_interest=(), period_adjustments=(),
+    )
+    res_no_fi = calculate_tax(periods2, ti_no_fi)
+
+    # With FI: year 2 EBT = 20 + FI > 0 → gate still open, TI further reduced
+    ti_fi = TaxCalculationInput(
+        policy=policy, opening_loss_vintages=(), period_interest=(), period_adjustments=(),
+        period_financing_income=(
+            PeriodFinancingIncomeInput(period_index=2, financing_income_keur=100.0, authority="SOURCE_PROVEN"),
+            PeriodFinancingIncomeInput(period_index=3, financing_income_keur=100.0, authority="SOURCE_PROVEN"),
+        ),
+    )
+    res_fi = calculate_tax(periods2, ti_fi)
+
+    # FI must increase annual taxable income for year 2
+    ti_year2_no_fi = sum(r.taxable_income_before_lcf_keur for r in res_no_fi.annual_results if r.tax_year == 2031)
+    ti_year2_fi = sum(r.taxable_income_before_lcf_keur for r in res_fi.annual_results if r.tax_year == 2031)
+    assert ti_year2_fi > ti_year2_no_fi, (
+        f"FI must increase TI under EBT gate: no_fi={ti_year2_no_fi:.2f} fi={ti_year2_fi:.2f}"
+    )
+
+    # EBITDA must be unchanged
+    for pr in res_fi.period_results:
+        expected_ebitda = ebitda2[pr.period_index]
+        assert abs(pr.ebitda_keur - expected_ebitda) < 1e-9
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Cross-year PeriodTaxYearAllocation reconciliation (Correction B §6)
+# ══════════════════════════════════════════════════════════════════════════════
+
+# ── 34. Cross-year: sum of allocation financing_income == annual financing_income ──
+
+def test_period_year_allocation_financing_income_reconciles():
+    """Sum of PeriodTaxYearAllocation.financing_income_keur must == TaxAnnualResult.financing_income_keur."""
+    from financial_engine.tax.engine import calculate_tax
+
+    ebitda = [2_000.0, 2_000.0, 2_000.0, 2_000.0]
+    fin_income = {0: 100.0, 1: 200.0, 2: 150.0, 3: 75.0}
+    periods = _make_synthetic_periods(ebitda)
+    tax_input = _make_minimal_tax_input(fin_income)
+    result = calculate_tax(periods, tax_input)
+
+    # Build a map from tax_year → sum of PeriodTaxYearAllocation.financing_income_keur
+    from collections import defaultdict
+    alloc_by_year: dict[int, float] = defaultdict(float)
+    for pr in result.period_results:
+        for alloc in pr.tax_year_allocations:
+            alloc_by_year[alloc.tax_year] += alloc.financing_income_keur
+
+    # Compare with TaxAnnualResult.financing_income_keur
+    for ar in result.annual_results:
+        assert abs(alloc_by_year[ar.tax_year] - ar.financing_income_keur) < 1e-6, (
+            f"Year {ar.tax_year}: alloc sum={alloc_by_year[ar.tax_year]:.4f} "
+            f"annual={ar.financing_income_keur:.4f}"
+        )
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Policy validation tests (Correction B §4)
+# ══════════════════════════════════════════════════════════════════════════════
+
+# ── 35. SOURCE_PROVEN + annual_rate=None raises ───────────────────────────────
+
+def test_policy_validation_source_proven_none_rate_raises():
+    with pytest.raises(ValueError, match="annual_rate is required"):
+        CashReserveInterestPolicy(
+            authority=CashReserveInterestAuthority.SOURCE_PROVEN,
+            eligible_unrestricted_cash=EligibilityStatus.ELIGIBLE,
+            eligible_dsra=EligibilityStatus.INELIGIBLE,
+            annual_rate=None,
+        )
+
+
+# ── 36. GENERIC_FINCO_POLICY + annual_rate=None raises ───────────────────────
+
+def test_policy_validation_generic_none_rate_raises():
+    with pytest.raises(ValueError, match="annual_rate is required"):
+        CashReserveInterestPolicy(
+            authority=CashReserveInterestAuthority.GENERIC_FINCO_POLICY,
+            eligible_unrestricted_cash=EligibilityStatus.ELIGIBLE,
+            eligible_dsra=EligibilityStatus.INELIGIBLE,
+            annual_rate=None,
+        )
+
+
+# ── 37. NaN rate raises ───────────────────────────────────────────────────────
+
+def test_policy_validation_nan_rate_raises():
+    import math
+    with pytest.raises(ValueError, match="finite"):
+        CashReserveInterestPolicy(
+            authority=CashReserveInterestAuthority.SOURCE_PROVEN,
+            eligible_unrestricted_cash=EligibilityStatus.ELIGIBLE,
+            eligible_dsra=EligibilityStatus.INELIGIBLE,
+            annual_rate=math.nan,
+        )
+
+
+# ── 38. Infinite rate raises ──────────────────────────────────────────────────
+
+def test_policy_validation_inf_rate_raises():
+    import math
+    with pytest.raises(ValueError, match="finite"):
+        CashReserveInterestPolicy(
+            authority=CashReserveInterestAuthority.SOURCE_PROVEN,
+            eligible_unrestricted_cash=EligibilityStatus.ELIGIBLE,
+            eligible_dsra=EligibilityStatus.INELIGIBLE,
+            annual_rate=math.inf,
+        )
+
+
+# ── 39. Bool rate raises ──────────────────────────────────────────────────────
+
+def test_policy_validation_bool_rate_raises():
+    with pytest.raises(ValueError, match="numeric, not bool"):
+        CashReserveInterestPolicy(
+            authority=CashReserveInterestAuthority.SOURCE_PROVEN,
+            eligible_unrestricted_cash=EligibilityStatus.ELIGIBLE,
+            eligible_dsra=EligibilityStatus.INELIGIBLE,
+            annual_rate=True,
+        )
