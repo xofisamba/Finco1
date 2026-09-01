@@ -337,48 +337,43 @@ class TestD11_GFACausalComputation:
     def test_gfa_numeric_computed_for_source_proven(self, ptype):
         from financial_engine.financial_statements import StatementStatus
         fs = _assemble(ptype)
-        # Correction F §21-§24: clean factories zero capex dep scalars but
-        # construction_financing produces non-zero financing costs → dep-basis gap
-        # detected → GFA unavailable. candidate_book_gfa_keur preserved for audit.
-        assert fs.fixed_asset_status == StatementStatus.BOOK_CAPITALIZATION_BASIS_UNAVAILABLE, (
-            f"{ptype}: expected BOOK_CAPITALIZATION_BASIS_UNAVAILABLE (dep-basis gap), got {fs.fixed_asset_status}"
+        # U1 integration: canonical BookDepreciableAssetBasis is now available;
+        # GFA is AVAILABLE for Oborovo/TUHO (dep-basis gap is resolved).
+        assert fs.fixed_asset_status == StatementStatus.OK, (
+            f"{ptype}: expected GFA OK after U1 integration, got {fs.fixed_asset_status}"
         )
-        candidate_gfa = fs.accounting_policies.provenance.get("gfa_report", {}).get(
-            "candidate_book_gfa_keur")
-        assert candidate_gfa is not None and candidate_gfa > 0, (
-            f"{ptype}: candidate_book_gfa_keur must be positive for audit, got {candidate_gfa}"
+        report = fs.accounting_policies.provenance.get("gfa_report", {})
+        canonical_gfa = report.get("canonical_book_gfa_keur")
+        assert canonical_gfa is not None and canonical_gfa > 0, (
+            f"{ptype}: canonical_book_gfa_keur must be positive, got {canonical_gfa}"
         )
 
     @pytest.mark.parametrize("ptype", ("Oborovo", "TUHO"))
     def test_gfa_equals_causal_component_sum(self, ptype):
-        """Candidate GFA component sum matches candidate total (dep-basis gap projects)."""
+        """Canonical GFA component sum matches canonical total."""
         fs = _assemble(ptype)
         report = fs.accounting_policies.provenance.get("gfa_report", {})
-        computed_gfa = (
-            report.get("hard_capex_keur", 0.0)
-            + report.get("senior_idc_capitalized_keur", 0.0)
-            + report.get("senior_commitment_fees_keur", 0.0)
-            + report.get("structuring_fee_keur", 0.0)
-            + report.get("vat_idc_keur", 0.0)
-            + report.get("vat_commitment_fee_keur", 0.0)
-        )
-        # For Oborovo/TUHO the dep-basis gap sets total_book_gfa_keur=None and
-        # preserves candidate_book_gfa_keur.
-        total = report.get("candidate_book_gfa_keur") or report.get("total_book_gfa_keur")
-        if total is not None:
-            assert abs(computed_gfa - total) < 1e-3, (
-                f"{ptype}: GFA component sum {computed_gfa:.6f} != candidate/total {total:.6f}"
+        canonical_gfa = report.get("canonical_book_gfa_keur")
+        components = report.get("canonical_book_basis_components", [])
+        if canonical_gfa is not None and components:
+            computed = sum(c["amount_keur"] for c in components)
+            assert abs(computed - canonical_gfa) < 1e-3, (
+                f"{ptype}: GFA component sum {computed:.6f} != canonical {canonical_gfa:.6f}"
             )
 
     @pytest.mark.parametrize("ptype", ("Oborovo", "TUHO"))
     def test_shl_pik_excluded_from_gfa(self, ptype):
+        """SHL PIK must not appear as a canonical basis component."""
         fs = _assemble(ptype)
         report = fs.accounting_policies.provenance.get("gfa_report", {})
-        shl_excluded = report.get("shl_construction_pik_excluded_keur", 0.0)
-        assert shl_excluded > 0, f"{ptype}: SHL PIK must be >0 and recorded as excluded"
-        # Candidate GFA (before dep-basis gap) must not include SHL PIK
-        candidate = report.get("candidate_book_gfa_keur") or report.get("total_book_gfa_keur") or 0.0
-        assert candidate + shl_excluded > candidate
+        components = report.get("canonical_book_basis_components", [])
+        codes = {c["code"] for c in components}
+        assert "shl_construction_pik" not in codes and "shl_pik" not in codes, (
+            f"{ptype}: SHL PIK must not appear as a canonical basis component; got codes: {codes}"
+        )
+        # Confirm GFA is still positive (hard capex + financing costs present)
+        canonical_gfa = report.get("canonical_book_gfa_keur", 0.0)
+        assert canonical_gfa > 0
 
     @pytest.mark.parametrize("ptype", ("Oborovo", "TUHO"))
     def test_nfa_equals_gfa_minus_accumulated_dep(self, ptype):
@@ -391,11 +386,16 @@ class TestD11_GFACausalComputation:
                 )
 
     @pytest.mark.parametrize("ptype", ("Solar", "Wind"))
-    def test_gfa_unavailable_for_generic_projects(self, ptype):
+    def test_gfa_available_for_generic_projects(self, ptype):
+        """After U1, Solar/Wind GFA is AVAILABLE via GENERIC_CAPEX_STRUCTURE_BOOK_BASIS."""
         from financial_engine.financial_statements import StatementStatus
         fs = _assemble(ptype)
-        assert fs.fixed_asset_status == StatementStatus.BOOK_CAPITALIZATION_BASIS_UNAVAILABLE
-        assert not fs.accounting_policies.provenance.get("gfa_computed", True)
+        assert fs.fixed_asset_status == StatementStatus.OK, (
+            f"{ptype}: GFA must be AVAILABLE after U1 integration via generic basis"
+        )
+        report = fs.accounting_policies.provenance.get("gfa_report", {})
+        assert report.get("canonical_book_basis_authority") == "GENERIC_CAPEX_STRUCTURE_BOOK_BASIS"
+        assert report.get("canonical_book_gfa_keur") is not None
 
     @pytest.mark.parametrize("ptype", ("Oborovo", "TUHO"))
     def test_dsra_excluded_from_gfa(self, ptype):

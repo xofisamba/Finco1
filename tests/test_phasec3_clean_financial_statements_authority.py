@@ -68,13 +68,10 @@ class TestC3A_SupportedMatrix:
         assert len(fs.income_statement_periods) > 0
         assert len(fs.pf_cash_waterfall_periods) > 0
         assert fs.balance_sheet_status.value == "UNRESTRICTED_CASH_AUTHORITY_UNAVAILABLE"
-        # Correction F §21-§24: projects whose capex depreciation scalars are zeroed
-        # but construction_financing engine produces non-zero financing costs have a
-        # split asset basis (GFA ≠ dep basis) → GFA unavailable until upstream
-        # canonical BookDepreciableAssetBasis is provided. Solar/Wind have no cfin
-        # at all; Oborovo/TUHO clean factories use zeroed scalars → gap detected.
-        assert fs.fixed_asset_status.value == "BOOK_CAPITALIZATION_BASIS_UNAVAILABLE", (
-            f"{ptype}: expected GFA unavailable (dep-basis gap or no cfin), got "
+        # U1 Integration: canonical BookDepreciableAssetBasis is now available for all
+        # four projects. GFA is AVAILABLE (not blocked).
+        assert fs.fixed_asset_status.value == "OK", (
+            f"{ptype}: expected GFA OK after U1 integration, got "
             f"{fs.fixed_asset_status.value}"
         )
         assert fs.retained_earnings_status.value in (
@@ -1019,13 +1016,18 @@ class TestCorC_MetadataConsistency:
 
     def test_all_blockers_visible_not_hidden_behind_primary(self):
         """§29 / Correction F: unavailable_reasons retains ALL unresolved components.
-        Oborovo: gross_fixed_assets blocked (dep-basis gap), legal_reserve UNRESOLVED
-        (source timing not proven), unrestricted_cash/balance_sheet/financing_income blocked."""
+        Oborovo: legal_reserve UNRESOLVED (source timing not proven),
+        unrestricted_cash/balance_sheet/financing_income blocked.
+        gross_fixed_assets is now RESOLVED via U1 canonical basis."""
         _, fs = _assemble("Oborovo")
         for key in ("unrestricted_cash", "balance_sheet",
-                    "gross_fixed_assets", "legal_reserve",
+                    "legal_reserve",
                     "financing_income"):
             assert key in fs.unavailable_reasons, key
+        # gross_fixed_assets is now RESOLVED via U1 canonical basis
+        assert "gross_fixed_assets" not in fs.unavailable_reasons, (
+            "gross_fixed_assets must be resolved after U1 integration"
+        )
 
 
 class TestCorC_ExceptionContract:

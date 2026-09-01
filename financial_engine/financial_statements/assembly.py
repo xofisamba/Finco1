@@ -467,129 +467,55 @@ def _assemble_statements_checked(g2c_result, project_inputs):
                 "construction accounting treatment is not EXPENSE_TO_PNL; no causal "
                 "construction-P&L authority to derive opening RE."
             )
-    # Correction D §11-§16: book GFA from causal construction financing
-    # components.  ConstructionFinancingResult exposes per-period hard capex
-    # and IDC/fee vectors for projects that ran a senior-debt construction
-    # financing computation (Oborovo/TUHO).  Solar/Wind have
-    # ConstructionFinancingResult=None so their GFA remains unavailable.
-    # SHL construction PIK is EXCLUDED from GFA (it is expensed to P&L
-    # under the EXPENSE_TO_PNL policy and never capitalized).  DSRA and
-    # working capital are separate balance sheet accounts — not GFA.
-    cfin = getattr(fin, "construction_financing", None)
+    # U1 Integration: canonical book depreciable asset basis drives GFA.
+    # ProjectFinancingResult.book_depreciable_asset_basis is the ONLY financial
+    # authority for C3 Gross Fixed Assets. All four projects (Solar, Wind,
+    # Oborovo, TUHO) expose a non-None basis after U1 merge.
+    # No independent CFR-field reading for GFA. No policy-map-as-GFA-authority.
+    basis = getattr(fin, "book_depreciable_asset_basis", None)
     gfa_keur: float | None = None
     gfa_report: dict = {}
     _gfa_unavailable_msg: str | None = None
-    if cfin is not None:
-        _gfa_hard = sum(cfin.hard_capex_uses_keur)
-        # Correction G §3: use capitalized IDC (senior_idc_capitalized_uses_keur) exclusively.
-        # raw accrual (senior_idc_accrual_keur) is audit information only — it MUST NOT
-        # be used as a fallback when capitalized IDC is unavailable. Fail closed.
-        _gfa_idc_raw = sum(cfin.senior_idc_accrual_keur)
-        _cap_idc_vec = cfin.senior_idc_capitalized_uses_keur
-        if _cap_idc_vec is None:
-            # Capitalized IDC authority structurally absent — fail closed; raw IDC is not a substitute.
-            _gfa_unavailable_msg = (
-                "BOOK_CAPITALIZATION_BASIS_UNAVAILABLE: senior_idc_capitalized_uses_keur "
-                "not available in ConstructionFinancingResult; raw IDC accrual is audit "
-                "information only and cannot substitute as a book-capitalization authority."
-            )
-        else:
-            _gfa_idc = sum(_cap_idc_vec)  # legitimate zero is valid (not all IDC capitalized)
-            _gfa_idc_terminal = _gfa_idc_raw - _gfa_idc
-            _gfa_commit = sum(cfin.senior_commitment_fee_accrual_keur)
-            _gfa_struct = sum(cfin.structuring_fee_keur)
-            _gfa_vat_idc = float(cfin.vat_idc_keur or 0.0)
-            _gfa_vat_commit = float(cfin.vat_commitment_fee_keur or 0.0)
-            _total_cap_fin = float(getattr(cfin, "total_capitalized_financing_keur", 0.0) or 0.0)
-            # Correction G §5-§6: BookCapitalizationTreatment drives GFA component inclusion.
-            # The policy map is an authority, not metadata.  UNRESOLVED or unknown component
-            # with non-zero value fails the entire GFA closed.
-            _CAPITALIZE = BookCapitalizationTreatment.CAPITALIZE_FIXED_ASSET.value
-            _UNRESOLVED_T = BookCapitalizationTreatment.UNRESOLVED.value
-            _gfa_components_raw = {
-                "hard_capex": _gfa_hard,
-                "senior_idc": _gfa_idc,
-                "senior_commitment_fees": _gfa_commit,
-                "bank_structuring_fees": _gfa_struct,
-                "vat_facility_financing_costs": _gfa_vat_idc + _gfa_vat_commit,
-                "shl_construction_interest": float(cfin.shl_construction_pik_keur or 0.0),
-                "dsra_funding": 0.0,       # separate balance-sheet account, never in raw cfin GFA
-                "working_capital": 0.0,    # separate current asset, never in raw cfin GFA
-            }
-            _policy_fail_reason: str | None = None
-            _gfa_policy_sum = 0.0
-            for _comp_name, _comp_amount in _gfa_components_raw.items():
-                _treatment = _book_cap_components.get(_comp_name)
-                if _treatment is None and _comp_amount > 0.01:
-                    _policy_fail_reason = (
-                        f"BOOK_CAPITALIZATION_BASIS_UNAVAILABLE: component '{_comp_name}' "
-                        f"has no treatment in policy map and is non-zero ({_comp_amount:.3f} kEUR)"
-                    )
-                    break
-                if _treatment == _UNRESOLVED_T and _comp_amount > 0.01:
-                    _policy_fail_reason = (
-                        f"BOOK_CAPITALIZATION_BASIS_UNAVAILABLE: component '{_comp_name}' "
-                        f"has UNRESOLVED treatment and is non-zero ({_comp_amount:.3f} kEUR)"
-                    )
-                    break
-                if _treatment == _CAPITALIZE:
-                    _gfa_policy_sum += _comp_amount
-            if _policy_fail_reason:
-                gfa_keur = None
-                _gfa_unavailable_msg = _policy_fail_reason
-            else:
-                gfa_keur = _gfa_policy_sum
-            gfa_report = {
-                "hard_capex_keur": _gfa_hard,
-                "senior_idc_capitalized_keur": _gfa_idc,
-                "senior_idc_raw_keur": _gfa_idc_raw,
-                "senior_idc_terminal_excluded_keur": _gfa_idc_terminal,
-                "senior_commitment_fees_keur": _gfa_commit,
-                "structuring_fee_keur": _gfa_struct,
-                "vat_idc_keur": _gfa_vat_idc,
-                "vat_commitment_fee_keur": _gfa_vat_commit,
-                "total_capitalized_financing_keur": _total_cap_fin,
-                "shl_construction_pik_excluded_keur": float(
-                    cfin.shl_construction_pik_keur or 0.0),
-                "total_book_gfa_keur": gfa_keur,
-                "policy_driven": True,
-            }
-            # Correction G §8-§10: dep-basis mismatch detection compares actual amounts.
-            # A mismatch exists whenever the two basis amounts differ materially,
-            # regardless of whether both are non-zero.
-            # Scalar IDC != cfin capitalized IDC is a mismatch even if both > 0.
-            _cap_inputs = getattr(project_inputs, "capex", None)
-            _cap_financing_in_gfa = _gfa_idc + _gfa_commit + _gfa_struct + _gfa_vat_idc + _gfa_vat_commit
-            _cap_financing_in_dep_basis = (
-                float(getattr(_cap_inputs, "idc_keur", 0) or 0)
-                + float(getattr(_cap_inputs, "commitment_fees_keur", 0) or 0)
-                + float(getattr(_cap_inputs, "bank_fees_keur", 0) or 0)
-                + float(getattr(_cap_inputs, "vat_costs_keur", 0) or 0)
-            ) if _cap_inputs is not None else 0.0
-            # Strict 1 kEUR tolerance — any material discrepancy triggers the gap.
-            _dep_basis_gap = abs(_cap_financing_in_dep_basis - _cap_financing_in_gfa) > 1.0
-            # Per-component comparison report (§9).
-            _dep_basis_comparison = {
-                "financing_costs_clean_gfa_keur": _cap_financing_in_gfa,
-                "financing_costs_dep_basis_keur": _cap_financing_in_dep_basis,
-                "financing_costs_diff_keur": _cap_financing_in_gfa - _cap_financing_in_dep_basis,
-                "authority": (
-                    "BOOK_DEPRECIABLE_ASSET_BASIS_UPSTREAM_REQUIRED"
-                    if _dep_basis_gap else "CONSISTENT"
+    if basis is not None:
+        gfa_keur = basis.total_keur
+        gfa_report = {
+            "canonical_book_gfa_keur": gfa_keur,
+            "canonical_book_basis_authority": basis.authority,
+            "canonical_book_basis_components": [
+                {
+                    "code": c.code,
+                    "name": c.name,
+                    "amount_keur": c.amount_keur,
+                    "asset_class_code": c.asset_class_code,
+                    "useful_life_override": c.useful_life_override,
+                    "provenance": c.provenance,
+                }
+                for c in basis.components
+            ],
+        }
+        # Audit: cfin raw IDC for TUHO terminal IDC evidence (non-authoritative — does NOT drive GFA).
+        _cfin_audit = getattr(fin, "construction_financing", None)
+        if _cfin_audit is not None:
+            _raw_idc = sum(_cfin_audit.senior_idc_accrual_keur)
+            _cap_vec = _cfin_audit.senior_idc_capitalized_uses_keur
+            _cap_idc = sum(_cap_vec) if _cap_vec is not None else None
+            gfa_report["audit"] = {
+                "senior_idc_raw_keur": _raw_idc,
+                "senior_idc_capitalized_keur": _cap_idc,
+                "senior_idc_terminal_excluded_keur": (
+                    _raw_idc - _cap_idc if _cap_idc is not None else None
                 ),
+                "total_capitalized_financing_keur": float(
+                    getattr(_cfin_audit, "total_capitalized_financing_keur", 0.0) or 0.0
+                ),
+                "non_authoritative": True,
             }
-            gfa_report["dep_basis_comparison"] = _dep_basis_comparison
-            if _dep_basis_gap and gfa_keur is not None:
-                gfa_report["candidate_book_gfa_keur"] = gfa_keur
-                gfa_keur = None
-                _gfa_unavailable_msg = (
-                    "BOOK_DEPRECIABLE_ASSET_BASIS_UPSTREAM_REQUIRED: GFA financing costs "
-                    f"from construction_financing engine ({_cap_financing_in_gfa:.3f} kEUR) "
-                    f"differ from capex.book_depreciable_capex_items() basis "
-                    f"({_cap_financing_in_dep_basis:.3f} kEUR) by "
-                    f"{abs(_cap_financing_in_gfa - _cap_financing_in_dep_basis):.3f} kEUR; "
-                    "upstream canonical BookDepreciableAssetBasis prerequisite required."
-                )
+    else:
+        _gfa_unavailable_msg = (
+            "CANONICAL_BOOK_BASIS_UNAVAILABLE: "
+            "ProjectFinancingResult.book_depreciable_asset_basis is None; "
+            "the upstream canonical BookDepreciableAssetBasis was not populated for this run."
+        )
 
     construction_ni_sum = 0.0
     cod_opening_re: float | None = None
@@ -871,9 +797,8 @@ def _assemble_statements_checked(g2c_result, project_inputs):
 
     if gfa_keur is None and _gfa_unavailable_msg is None:
         _gfa_unavailable_msg = (
-            "BOOK_CAPITALIZATION_BASIS_UNAVAILABLE: ConstructionFinancingResult "
-            "not available for this project; only accumulated book depreciation is "
-            "causal."
+            "CANONICAL_BOOK_BASIS_UNAVAILABLE: "
+            "book_depreciable_asset_basis is absent from the financing result."
         )
     unavailable.update({
         "balance_sheet": (

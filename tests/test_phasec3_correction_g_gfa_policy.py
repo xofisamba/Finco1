@@ -169,21 +169,23 @@ class TestG_OpeningReAuthority:
 
 class TestG_NoRawIdcFallback:
     def test_gfa_report_uses_capitalized_not_raw_idc_key(self):
-        """gfa_report must expose senior_idc_capitalized_keur, not raw-only key."""
+        """gfa_report audit must expose senior_idc_capitalized_keur and raw for TUHO evidence."""
         fs = _assemble_oborovo()
         report = fs.accounting_policies.provenance.get("gfa_report", {})
-        assert "senior_idc_capitalized_keur" in report, (
-            "gfa_report must contain 'senior_idc_capitalized_keur' (capitalized authority)"
+        audit = report.get("audit", {})
+        assert "senior_idc_capitalized_keur" in audit, (
+            "gfa_report.audit must contain 'senior_idc_capitalized_keur' (audit evidence)"
         )
-        assert "senior_idc_raw_keur" in report, "raw IDC must still be in report as audit"
+        assert "senior_idc_raw_keur" in audit, "raw IDC must still be in audit as evidence"
 
     def test_raw_idc_greater_than_capitalized_idc(self):
-        """raw IDC >= capitalized IDC (terminal raw IDC excluded)."""
+        """raw IDC >= capitalized IDC (terminal raw IDC excluded for TUHO)."""
         fs = _assemble_oborovo()
         report = fs.accounting_policies.provenance.get("gfa_report", {})
-        raw = report.get("senior_idc_raw_keur", 0.0)
-        cap = report.get("senior_idc_capitalized_keur", 0.0)
-        terminal = report.get("senior_idc_terminal_excluded_keur", 0.0)
+        audit = report.get("audit", {})
+        raw = audit.get("senior_idc_raw_keur", 0.0)
+        cap = audit.get("senior_idc_capitalized_keur", 0.0)
+        terminal = audit.get("senior_idc_terminal_excluded_keur", 0.0)
         assert raw >= cap, f"raw IDC ({raw}) must be >= capitalized IDC ({cap})"
         assert abs(raw - cap - terminal) < 1e-3, (
             f"Identity: raw ({raw}) = cap ({cap}) + terminal ({terminal}) violated"
@@ -194,10 +196,11 @@ class TestG_NoRawIdcFallback:
         from tests.test_phasec3_correction_d_accounting_provenance import _assemble
         fs = _assemble("TUHO")
         report = fs.accounting_policies.provenance.get("gfa_report", {})
-        raw = report.get("senior_idc_raw_keur", 0.0)
-        cap = report.get("senior_idc_capitalized_keur", 0.0)
-        terminal = report.get("senior_idc_terminal_excluded_keur", 0.0)
-        # TUHO has terminal IDC excluded ≈ 217.125 kEUR
+        audit = report.get("audit", {})
+        raw = audit.get("senior_idc_raw_keur", 0.0)
+        cap = audit.get("senior_idc_capitalized_keur", 0.0)
+        terminal = audit.get("senior_idc_terminal_excluded_keur", 0.0)
+        # TUHO has terminal IDC excluded ≈ 217 kEUR
         assert terminal > 0.0, "TUHO must have non-zero terminal IDC excluded"
         assert abs(raw - cap - terminal) < 1e-3
 
@@ -207,53 +210,49 @@ class TestG_NoRawIdcFallback:
 # ---------------------------------------------------------------------------
 
 class TestG_PolicyCausalNegative:
-    def test_senior_idc_expense_pnl_removes_from_candidate_gfa(self):
-        """senior_idc → EXPENSE_PNL must remove IDC from candidate GFA."""
+    def test_canonical_basis_drives_gfa_regardless_of_policy_map(self):
+        """GFA is driven by canonical BookDepreciableAssetBasis — policy map changes do NOT alter GFA."""
+        from financial_engine.financial_statements.contracts import StatementStatus
+        # Change senior_idc treatment to EXPENSE_PNL in policy — GFA must still be AVAILABLE
         new_components = dict(_BASE_APC.book_capitalization_components)
         new_components["senior_idc"] = BookCapitalizationTreatment.EXPENSE_PNL.value
         apc = dataclasses.replace(_BASE_APC, book_capitalization_components=new_components)
         fs = _assemble_with_policy(apc)
-        report = fs.accounting_policies.provenance.get("gfa_report", {})
-        cap_idc = report.get("senior_idc_capitalized_keur", 0.0)
-        # The candidate GFA (if computed) must not include senior IDC
-        candidate = report.get("candidate_book_gfa_keur") or report.get("total_book_gfa_keur")
-        if candidate is not None and cap_idc > 0:
-            # Baseline candidate includes IDC; new candidate should be smaller
-            baseline_report = _assemble_oborovo().accounting_policies.provenance.get("gfa_report", {})
-            baseline_candidate = baseline_report.get("candidate_book_gfa_keur") or baseline_report.get("total_book_gfa_keur") or 0.0
-            assert candidate < baseline_candidate, (
-                f"Expensing IDC to P&L must reduce candidate GFA; "
-                f"got {candidate:.3f} >= baseline {baseline_candidate:.3f}"
-            )
+        # GFA must still be OK — canonical basis is the authority, not the policy map
+        assert fs.fixed_asset_status == StatementStatus.OK, (
+            "GFA must be AVAILABLE regardless of policy map changes; "
+            "canonical BookDepreciableAssetBasis is the sole authority"
+        )
 
-    def test_senior_commitment_fees_unresolved_fails_gfa(self):
-        """senior_commitment_fees → UNRESOLVED with non-zero fee must make GFA unavailable."""
+    def test_unresolved_policy_component_does_not_fail_gfa(self):
+        """UNRESOLVED in policy map must NOT fail GFA; canonical basis is the authority."""
         from financial_engine.financial_statements.contracts import StatementStatus
         new_components = dict(_BASE_APC.book_capitalization_components)
         new_components["senior_commitment_fees"] = BookCapitalizationTreatment.UNRESOLVED.value
         apc = dataclasses.replace(_BASE_APC, book_capitalization_components=new_components)
         fs = _assemble_with_policy(apc)
-        assert fs.fixed_asset_status == StatementStatus.BOOK_CAPITALIZATION_BASIS_UNAVAILABLE, (
-            "UNRESOLVED non-zero component must fail GFA closed"
+        # GFA must still be OK — canonical basis drives GFA, policy map is presentation-only
+        assert fs.fixed_asset_status == StatementStatus.OK, (
+            "UNRESOLVED policy map component must NOT fail GFA; "
+            "canonical BookDepreciableAssetBasis is the sole GFA authority"
         )
-        report = fs.accounting_policies.provenance.get("gfa_report", {})
-        assert report.get("total_book_gfa_keur") is None or fs.fixed_asset_status != StatementStatus.OK
 
-    def test_policy_map_is_authority_not_metadata(self):
-        """Prove the map controls output: change dsra_funding to CAPITALIZE_FIXED_ASSET
-        in a synthetic policy — assembly must respect it (not hardcode exclusion)."""
-        # dsra_funding = 0 in cfin so this doesn't add value to GFA,
-        # but the treatment must be READ from the map (not hardcoded excluded).
+    def test_policy_map_is_presentation_not_gfa_authority(self):
+        """Changing policy map must not change canonical GFA amount."""
+        from financial_engine.financial_statements.contracts import StatementStatus
+        # Baseline canonical GFA
+        baseline_fs = _assemble_oborovo()
+        baseline_gfa = baseline_fs.accounting_policies.provenance.get("gfa_report", {}).get("canonical_book_gfa_keur")
+        # Change dsra_funding to CAPITALIZE_FIXED_ASSET — must not affect canonical GFA
         new_components = dict(_BASE_APC.book_capitalization_components)
         new_components["dsra_funding"] = BookCapitalizationTreatment.CAPITALIZE_FIXED_ASSET.value
         apc = dataclasses.replace(_BASE_APC, book_capitalization_components=new_components)
         fs = _assemble_with_policy(apc)
-        # Assembly ran without error — policy was consulted, not hardcoded to exclude
-        assert fs is not None
-        # The treatment stored in output matches what we supplied
-        stored = fs.accounting_policies.book_capitalization_components.get("dsra_funding")
-        assert stored == BookCapitalizationTreatment.CAPITALIZE_FIXED_ASSET.value, (
-            f"book_capitalization_components output must reflect policy input, got {stored}"
+        changed_gfa = fs.accounting_policies.provenance.get("gfa_report", {}).get("canonical_book_gfa_keur")
+        assert fs.fixed_asset_status == StatementStatus.OK
+        assert abs(baseline_gfa - changed_gfa) < 1e-6, (
+            f"Policy map change must not alter canonical GFA; "
+            f"baseline {baseline_gfa:.3f} != changed {changed_gfa:.3f}"
         )
 
 
@@ -262,38 +261,37 @@ class TestG_PolicyCausalNegative:
 # ---------------------------------------------------------------------------
 
 class TestG_DepBasisComparison:
-    def test_dep_basis_comparison_in_gfa_report(self):
-        """gfa_report must contain dep_basis_comparison with component breakdown."""
+    def test_canonical_gfa_report_structure(self):
+        """gfa_report must contain canonical_book_gfa_keur, authority, and components."""
         fs = _assemble_oborovo()
         report = fs.accounting_policies.provenance.get("gfa_report", {})
-        comp = report.get("dep_basis_comparison")
-        assert comp is not None, "gfa_report must contain dep_basis_comparison"
-        assert "financing_costs_clean_gfa_keur" in comp
-        assert "financing_costs_dep_basis_keur" in comp
-        assert "financing_costs_diff_keur" in comp
-        assert "authority" in comp
+        assert "canonical_book_gfa_keur" in report, "gfa_report must contain canonical_book_gfa_keur"
+        assert "canonical_book_basis_authority" in report
+        assert "canonical_book_basis_components" in report
+        components = report["canonical_book_basis_components"]
+        assert isinstance(components, list) and len(components) > 0
 
-    def test_dep_basis_gap_fires_for_oborovo(self):
-        """Oborovo has non-zero cfin financing costs vs zero capex scalars → gap fires."""
+    def test_oborovo_gfa_now_available(self):
+        """After U1 integration, Oborovo GFA must be AVAILABLE (not BOOK_CAPITALIZATION_BASIS_UNAVAILABLE)."""
         from financial_engine.financial_statements.contracts import StatementStatus
         fs = _assemble_oborovo()
-        assert fs.fixed_asset_status == StatementStatus.BOOK_CAPITALIZATION_BASIS_UNAVAILABLE
-        report = fs.accounting_policies.provenance.get("gfa_report", {})
-        comp = report.get("dep_basis_comparison", {})
-        assert comp.get("authority") == "BOOK_DEPRECIABLE_ASSET_BASIS_UPSTREAM_REQUIRED"
-        assert comp.get("financing_costs_diff_keur", 0) > 1.0, (
-            "Financing cost difference must be > 1 kEUR for Oborovo"
+        assert fs.fixed_asset_status == StatementStatus.OK, (
+            f"After U1 integration, Oborovo GFA must be OK; got {fs.fixed_asset_status}"
         )
+        report = fs.accounting_policies.provenance.get("gfa_report", {})
+        assert report.get("canonical_book_gfa_keur") is not None
+        assert report.get("canonical_book_gfa_keur") > 0
 
-    def test_dep_basis_comparison_identifies_exact_difference(self):
-        """The diff field must equal clean_gfa minus dep_basis."""
+    def test_canonical_gfa_equals_basis_total(self):
+        """canonical_book_gfa_keur == sum of all component amounts."""
         fs = _assemble_oborovo()
         report = fs.accounting_policies.provenance.get("gfa_report", {})
-        comp = report.get("dep_basis_comparison", {})
-        clean = comp.get("financing_costs_clean_gfa_keur", 0.0)
-        dep = comp.get("financing_costs_dep_basis_keur", 0.0)
-        diff = comp.get("financing_costs_diff_keur", 0.0)
-        assert abs(diff - (clean - dep)) < 1e-6
+        gfa = report.get("canonical_book_gfa_keur", 0.0)
+        components = report.get("canonical_book_basis_components", [])
+        component_sum = sum(c["amount_keur"] for c in components)
+        assert abs(gfa - component_sum) < 1e-6, (
+            f"canonical_book_gfa_keur ({gfa:.6f}) != component sum ({component_sum:.6f})"
+        )
 
 
 # ---------------------------------------------------------------------------
