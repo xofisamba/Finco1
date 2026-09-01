@@ -19,11 +19,15 @@ Two caller contexts — one builder:
 
   A. Iterative economic production path (PR-9 outer loop, each iteration):
       Called from from_project_inputs(inner_inputs) with NO book_basis kwarg.
+      The adapter fallback calls build_book_depreciable_asset_basis(inputs.capex)
+      with NO construction_financing_result argument.
       capex_structure = updated_capex (financing-cost fields populated by
-      apply_capitalized_financing_costs each iteration).
-      construction_financing_result = None (generic) or the provisional CFR
-      for that iteration.  Drives DepreciationInput → book_depreciation_keur
-      → tax/CFADS/Senior/SHL → convergence.
+      apply_capitalized_financing_costs for that iteration).
+      construction_financing_result = None (always, on this path).
+      The canonical builder derives the economic depreciation basis from
+      updated_capex via the generic path.  That basis drives
+      DepreciationInput → book_depreciation_keur → tax/CFADS/Senior/SHL
+      → convergence.
 
   B. Final typed downstream handoff (once, after strict convergence):
       Called from project.py after the final strict run_stage_b2 verification.
