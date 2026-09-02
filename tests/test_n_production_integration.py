@@ -140,3 +140,75 @@ def test_n4_oborovo_total_financing_income_positive():
     fi = r.financing_result.cash_reserve_interest_schedules
     assert fi is not None
     assert fi.total_financing_income_keur > 0
+
+
+# ── N.5: Construction NI component proof ─────────────────────────────────────
+
+def test_n5_tuho_construction_ni_components():
+    """N.5: construction_NI = -(SHL_PIK + pre_op_opex) for TUHO."""
+    from app.project_factories import create_default_tuho_wind1
+    proj = create_default_tuho_wind1()
+    r = run_project_shareholder_waterfall_model(proj)
+    cf = r.financing_result.construction_financing
+    shl_pik = cf.shl_construction_pik_keur
+    pre_op = proj.tax.construction_pl.pre_operational_opex_keur
+    # SOURCE_OPENING_LOSS_KEUR = 3568.6878026481627
+    expected_ni = -(shl_pik + pre_op)
+    assert abs(expected_ni - (-3568.6878026481627)) < 1e-6, (
+        f"construction NI={expected_ni} != -3568.688 kEUR"
+    )
+
+
+# ── N.7: Opening UC typed authority ──────────────────────────────────────────
+
+def test_n7_tuho_cash_reserve_interest_authority_source_proven():
+    """N.7: TUHO cash reserve interest schedule carries SOURCE_PROVEN authority."""
+    from app.project_factories import create_default_tuho_wind1
+    from finco_core.inputs.cash_reserve_interest_policy import CashReserveInterestAuthority
+    r = run_project_shareholder_waterfall_model(create_default_tuho_wind1())
+    fi = r.financing_result.cash_reserve_interest_schedules
+    assert fi is not None
+    assert fi.authority == CashReserveInterestAuthority.SOURCE_PROVEN
+
+
+def test_n7_oborovo_cash_reserve_interest_authority_source_proven():
+    """N.7: Oborovo cash reserve interest schedule carries SOURCE_PROVEN authority."""
+    from app.project_factories import create_default_oborovo
+    from finco_core.inputs.cash_reserve_interest_policy import CashReserveInterestAuthority
+    r = run_project_shareholder_waterfall_model(create_default_oborovo())
+    fi = r.financing_result.cash_reserve_interest_schedules
+    assert fi is not None
+    assert fi.authority == CashReserveInterestAuthority.SOURCE_PROVEN
+
+
+# ── N.6: Legal reserve authority ─────────────────────────────────────────────
+
+def test_n6_tuho_share_capital_and_legal_reserve_fraction():
+    """N.6: TUHO share_capital=500 kEUR and legal_reserve_cap=10%."""
+    from app.project_factories import create_default_tuho_wind1
+    r = run_project_shareholder_waterfall_model(create_default_tuho_wind1())
+    assert r.financing_result.share_capital_keur == 500.0
+    proj = create_default_tuho_wind1()
+    assert proj.distribution_accounting_policy.legal_reserve_cap_fraction == 0.10
+
+
+# ── N.9: Full-transition idempotence ─────────────────────────────────────────
+
+def test_n9_tuho_idempotent_run():
+    """N.9: Running TUHO twice produces identical total distributions."""
+    from app.project_factories import create_default_tuho_wind1
+    r1 = run_project_shareholder_waterfall_model(create_default_tuho_wind1())
+    r2 = run_project_shareholder_waterfall_model(create_default_tuho_wind1())
+    dist1 = sum(p.legal_equity_distribution_keur for p in r1.waterfall_periods)
+    dist2 = sum(p.legal_equity_distribution_keur for p in r2.waterfall_periods)
+    assert dist1 == dist2, f"Non-idempotent: {dist1} != {dist2}"
+
+
+def test_n9_oborovo_idempotent_run():
+    """N.9: Running Oborovo twice produces identical total distributions."""
+    from app.project_factories import create_default_oborovo
+    r1 = run_project_shareholder_waterfall_model(create_default_oborovo())
+    r2 = run_project_shareholder_waterfall_model(create_default_oborovo())
+    dist1 = sum(p.legal_equity_distribution_keur for p in r1.waterfall_periods)
+    dist2 = sum(p.legal_equity_distribution_keur for p in r2.waterfall_periods)
+    assert dist1 == dist2, f"Non-idempotent: {dist1} != {dist2}"
