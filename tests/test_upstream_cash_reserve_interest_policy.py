@@ -1355,6 +1355,7 @@ def test_build_unrestricted_cash_schedule_rollforward_identity():
         periods=periods,
         authority="SOURCE_PROVEN",
         authoritative_period_cash_increments=increments,
+        opening_cash_keur=0.0,
     )
     assert schedule.authority == "SOURCE_PROVEN"
     pb = schedule.period_balances
@@ -1393,16 +1394,19 @@ def test_build_cash_reserve_interest_schedules_income_with_authoritative_increme
         periods=periods,
         authority="SOURCE_PROVEN",
         authoritative_period_cash_increments=increments,
+        opening_cash_keur=0.0,
     )
     # Period 1 opening = period 0 closing = 0 + 200 = 200
     assert cash_schedule.period_balances[1].opening_balance_keur == 200.0
+    # DSRA is ELIGIBLE (source-proven); balance zero all periods — provide known-zero authority
     interest_schedule = build_cash_reserve_interest_schedules(
         periods=periods,
         policy=policy,
         unrestricted_cash_schedule=cash_schedule,
+        dsra_balance_by_period={0: 0.0, 1: 0.0},
+        dsra_balance_authority="SOURCE_PROVEN",
     )
-    # Period 0: not is_operation → ineligible → 0.0 (opening balance used but is_eligible=False)
-    # Actually check: opening convention uses opening_balance_keur = 0.0 (prior closing = 0)
+    # Period 0: not is_operation → ineligible (is_eligible=False) → 0.0
     p0 = interest_schedule.period_results[0]
     # Period 1: SOURCE_PROVEN policy, ELIGIBLE, opening=200.0
     p1 = interest_schedule.period_results[1]
@@ -1672,12 +1676,14 @@ def test_eligible_dsra_zero_balance_yields_zero_dsra_income():
         periods=periods,
         authority="SOURCE_PROVEN",
         authoritative_period_cash_increments={0: 550.0},
+        opening_cash_keur=0.0,
     )
     interest = build_cash_reserve_interest_schedules(
         periods=periods,
         policy=policy,
         unrestricted_cash_schedule=cash_schedule,
-        dsra_balance_by_period={0: 0.0},  # ELIGIBLE account, zero balance
+        dsra_balance_by_period={0: 0.0},  # ELIGIBLE account, known-zero balance
+        dsra_balance_authority="SOURCE_PROVEN",
     )
     p0 = interest.period_results[0]
     assert p0.eligible_dsra_keur == 0.0, "Zero-balance ELIGIBLE DSRA contributes 0.0"
@@ -1719,3 +1725,259 @@ def test_unrestricted_cash_schedule_has_no_floor_field():
     assert not hasattr(UnrestrictedCashSchedule, "min_cash_floor_keur"), (
         "min_cash_floor_keur removed — cash balance is a roll-forward output, not a floor."
     )
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Correction I — Source reconciliation, authority hardening, I.4-I.9
+# Tests 83–91
+# ══════════════════════════════════════════════════════════════════════════════
+
+# ── 83. TUHO fixture: P&L row 20 has non-zero cash interest (I.1/I.3) ──────────
+
+def test_tuho_fixture_nonzero_cash_interest_at_av():
+    """I.1: Correction G zero-interest conclusion was wrong. TUHO AV = 2.727 kEUR."""
+    import json as _json2
+    import pathlib as _pl2
+    fixture = _pl2.Path(__file__).parent / "fixtures" / "excel_tuho_cash_reserve_interest_truth.json"
+    with open(fixture) as f:
+        tu = _json2.load(f)
+    row20 = tu["pnl_row20_cash"]
+    assert row20["first_nonzero_col"] == "AV", "First nonzero interest col must be AV"
+    assert abs(row20["first_nonzero_val_keur"] - 2.7273972602740044) < 1e-9
+    # Numerical handshake confirms AV
+    hs = tu["numerical_handshake"]
+    assert hs["period_col_pnl"] == "AV"
+    assert abs(hs["actual_keur"] - 2.7273972602740044) < 1e-9
+    # Correction G false claim must be corrected
+    corr_i = tu.get("correction_i_findings", {})
+    assert corr_i.get("source_reconciliation", {}).get("verdict") == "CORRECTION_G_ZERO_INTEREST_CONCLUSION_INCORRECT"
+    # cf135 has balance from AU onwards (not just AU)
+    samples = tu["cf_row135_cash"]["samples_from_first_nonzero"]
+    assert len(samples) >= 5, "At least AU through AY must have balance 550"
+    for col, bal in samples.items():
+        assert abs(bal - 550.0) < 1e-6, f"CF135 balance at {col} should be ~550"
+
+
+# ── 84. Oborovo fixture: 20 non-zero cash interest periods, total 55.0 kEUR (I.1/I.3) ──
+
+def test_oborovo_fixture_20_nonzero_cash_interest_periods():
+    """I.1: Oborovo has 20 non-zero P&L row 20 periods totaling 55.000 kEUR."""
+    import json as _json3
+    import pathlib as _pl3
+    fixture = _pl3.Path(__file__).parent / "fixtures" / "excel_oborovo_financial_truth.json"
+    with open(fixture) as f:
+        ob = _json3.load(f)
+    pvs = ob["tax"]["rows"]["fin_rev_cash"]["period_values"]
+    nonzero = [(i, v) for i, v in enumerate(pvs) if abs(v) > 1e-9]
+    assert len(nonzero) == 20, f"Expected 20 non-zero periods, got {len(nonzero)}"
+    total = sum(v for _, v in nonzero)
+    assert abs(total - 55.0) < 1e-3, f"Expected total ~55.0 kEUR, got {total}"
+    # First and last confirmed
+    assert nonzero[0][0] == 41
+    assert nonzero[-1][0] == 60
+    # Correction I verdict
+    corr_i = ob.get("correction_i_findings", {})
+    assert corr_i.get("source_reconciliation", {}).get("verdict") == "CORRECTION_G_ZERO_INTEREST_CONCLUSION_INCORRECT"
+
+
+# ── 85. Incomplete increment map → UNRESOLVED (I.5) ──────────────────────────────
+
+def test_incomplete_increment_map_forces_unresolved():
+    """I.5: Missing period in increment map → UNRESOLVED schedule authority."""
+    from finco_core.inputs.cash_reserve_interest_schedule import build_unrestricted_cash_schedule
+
+    periods = (
+        _FakePeriod(0, date(2030, 1, 1), date(2030, 6, 30)),
+        _FakePeriod(1, date(2030, 7, 1), date(2030, 12, 31)),
+        _FakePeriod(2, date(2031, 1, 1), date(2031, 6, 30)),
+    )
+    # Missing period 2 → incomplete coverage
+    incomplete = {0: 100.0, 1: 50.0}  # missing period 2
+    schedule = build_unrestricted_cash_schedule(
+        periods=periods,
+        authority="SOURCE_PROVEN",
+        authoritative_period_cash_increments=incomplete,
+        opening_cash_keur=0.0,
+    )
+    assert schedule.authority == "UNRESOLVED", "Missing period index must force UNRESOLVED"
+    for pb in schedule.period_balances:
+        assert pb.opening_balance_keur == 0.0
+        assert pb.closing_balance_keur == 0.0
+
+
+# ── 86. Explicit opening cash (I.7) ──────────────────────────────────────────────
+
+def test_explicit_opening_cash_required():
+    """I.7: opening_cash_keur=None with authoritative increments → UNRESOLVED."""
+    from finco_core.inputs.cash_reserve_interest_schedule import build_unrestricted_cash_schedule
+
+    periods = (_FakePeriod(0, date(2030, 1, 1), date(2030, 6, 30)),)
+    schedule = build_unrestricted_cash_schedule(
+        periods=periods,
+        authority="SOURCE_PROVEN",
+        authoritative_period_cash_increments={0: 100.0},
+        opening_cash_keur=None,  # unknown → UNRESOLVED
+    )
+    assert schedule.authority == "UNRESOLVED", "Unknown opening cash must force UNRESOLVED"
+
+
+def test_explicit_opening_cash_nonzero():
+    """I.7: Non-zero source-proven opening cash propagates correctly."""
+    from finco_core.inputs.cash_reserve_interest_schedule import build_unrestricted_cash_schedule
+
+    periods = (
+        _FakePeriod(0, date(2030, 1, 1), date(2030, 6, 30)),
+        _FakePeriod(1, date(2030, 7, 1), date(2030, 12, 31)),
+    )
+    schedule = build_unrestricted_cash_schedule(
+        periods=periods,
+        authority="SOURCE_PROVEN",
+        authoritative_period_cash_increments={0: 50.0, 1: 30.0},
+        opening_cash_keur=200.0,  # non-zero proven opening
+    )
+    assert schedule.authority == "SOURCE_PROVEN"
+    # Period 0: opening=200, increment=50, closing=250
+    assert schedule.period_balances[0].opening_balance_keur == 200.0
+    assert schedule.period_balances[0].closing_balance_keur == 250.0
+    # Period 1: opening=250, increment=30, closing=280
+    assert schedule.period_balances[1].opening_balance_keur == 250.0
+    assert schedule.period_balances[1].closing_balance_keur == 280.0
+
+
+# ── 87. Unknown DSRA balance ≠ known zero DSRA balance (I.6) ───────────────────
+
+def test_unknown_dsra_balance_forces_unresolved():
+    """I.6: ELIGIBLE DSRA with None balance → UNRESOLVED (not zero)."""
+    from finco_core.inputs.cash_reserve_interest_schedule import (
+        build_unrestricted_cash_schedule,
+        build_cash_reserve_interest_schedules,
+    )
+
+    policy = _make_source_proven_policy(rate=0.01)  # DSRA ELIGIBLE
+    periods = (_FakePeriod(0, date(2030, 1, 1), date(2030, 6, 30), is_operation=True),)
+    cash_schedule = build_unrestricted_cash_schedule(
+        periods=periods,
+        authority="SOURCE_PROVEN",
+        authoritative_period_cash_increments={0: 100.0},
+        opening_cash_keur=0.0,
+    )
+    # dsra_balance_by_period=None means unknown — not zero
+    result = build_cash_reserve_interest_schedules(
+        periods=periods,
+        policy=policy,
+        unrestricted_cash_schedule=cash_schedule,
+        dsra_balance_by_period=None,  # unknown balance
+    )
+    assert result.authority == "UNRESOLVED", (
+        "Unknown DSRA balance for an ELIGIBLE account must force UNRESOLVED"
+    )
+    assert result.total_financing_income_keur == 0.0
+
+
+def test_known_zero_dsra_balance_produces_zero_income():
+    """I.6: ELIGIBLE DSRA with explicit zero balance → zero DSRA income (not UNRESOLVED)."""
+    from finco_core.inputs.cash_reserve_interest_schedule import (
+        build_unrestricted_cash_schedule,
+        build_cash_reserve_interest_schedules,
+    )
+
+    policy = _make_source_proven_policy(rate=0.01)  # DSRA ELIGIBLE
+    periods = (_FakePeriod(0, date(2030, 1, 1), date(2030, 6, 30), is_operation=True),)
+    cash_schedule = build_unrestricted_cash_schedule(
+        periods=periods,
+        authority="SOURCE_PROVEN",
+        authoritative_period_cash_increments={0: 0.0},  # no cash accumulation
+        opening_cash_keur=0.0,
+    )
+    # dsra_balance_by_period={0: 0.0} means known-zero DSRA
+    result = build_cash_reserve_interest_schedules(
+        periods=periods,
+        policy=policy,
+        unrestricted_cash_schedule=cash_schedule,
+        dsra_balance_by_period={0: 0.0},
+        dsra_balance_authority="SOURCE_PROVEN",
+    )
+    assert result.authority == "SOURCE_PROVEN"
+    assert result.period_results[0].eligible_dsra_keur == 0.0
+    assert result.total_financing_income_keur == 0.0
+
+
+# ── 89. Exact source day fractions from TUHO (I.8) ───────────────────────────────
+
+def test_source_day_fractions_match_actual_365():
+    """I.8: Day fraction is actual/365, matching TUHO AV = 181/365 = 0.49589041..."""
+    from finco_core.inputs.cash_reserve_interest_schedule import (
+        build_unrestricted_cash_schedule,
+        build_cash_reserve_interest_schedules,
+    )
+
+    # AV period: 181 days (from handshake: AV6 = 0.4958904109589041 = 181/365)
+    tuho_av_start = date(2044, 1, 1)  # synthetic 181-day period
+    tuho_av_end = date(2044, 6, 30)
+    assert (tuho_av_end - tuho_av_start).days == 181  # 181 days in this range
+
+    # Use a period with exactly 181 days
+    start_181 = date(2044, 1, 1)
+    end_181 = date(2044, 7, 1)  # 182 days, skip
+    start_181b = date(2044, 7, 1)
+    end_181b = date(2044, 12, 29)  # 181 days
+    assert (end_181b - start_181b).days == 181
+
+    policy = _make_source_proven_policy(rate=0.01)
+    periods = (_FakePeriod(0, start_181b, end_181b, is_operation=True),)
+    cash_schedule = build_unrestricted_cash_schedule(
+        periods=periods,
+        authority="SOURCE_PROVEN",
+        authoritative_period_cash_increments={0: 0.0},
+        opening_cash_keur=550.0,  # non-zero opening to produce income
+    )
+    result = build_cash_reserve_interest_schedules(
+        periods=periods,
+        policy=policy,
+        unrestricted_cash_schedule=cash_schedule,
+        dsra_balance_by_period={0: 0.0},
+        dsra_balance_authority="SOURCE_PROVEN",
+    )
+    expected_day_frac = 181.0 / 365.0
+    expected_income = 550.0 * 0.01 * expected_day_frac
+    p0 = result.period_results[0]
+    assert abs(p0.day_fraction - expected_day_frac) < 1e-12
+    assert abs(p0.calculated_financing_income_keur - expected_income) < 1e-9
+
+
+# ── 90. Unknown authority string raises error (I.9) ──────────────────────────────
+
+def test_unknown_authority_string_raises():
+    """I.9: Unknown authority string must raise ValueError, not produce economics."""
+    from finco_core.inputs.cash_reserve_interest_schedule import build_unrestricted_cash_schedule
+    import pytest
+    periods = (_FakePeriod(0, date(2030, 1, 1), date(2030, 6, 30)),)
+    with pytest.raises(ValueError, match="Unknown authority"):
+        build_unrestricted_cash_schedule(
+            periods=periods,
+            authority="MADE_UP_AUTHORITY",
+        )
+
+
+# ── 91. No debt-state gate: senior outstanding does not affect balance (I.4) ────
+
+def test_no_debt_state_gate_in_schedule_builder():
+    """I.4: build_unrestricted_cash_schedule does not accept senior/SHL outstanding."""
+    import inspect
+    from finco_core.inputs.cash_reserve_interest_schedule import build_unrestricted_cash_schedule
+    sig = inspect.signature(build_unrestricted_cash_schedule)
+    params = set(sig.parameters.keys())
+    assert "senior_debt_outstanding_by_period" not in params, (
+        "Debt-state gate removed: senior_debt_outstanding_by_period must not be a parameter"
+    )
+    assert "shl_outstanding_by_period" not in params, (
+        "Debt-state gate removed: shl_outstanding_by_period must not be a parameter"
+    )
+    # is_eligible reflects in_life only, not debt state
+    periods = (
+        _FakePeriod(0, date(2030, 1, 1), date(2030, 6, 30), is_operation=True),
+        _FakePeriod(1, date(2030, 7, 1), date(2030, 12, 31), is_operation=False),
+    )
+    schedule = build_unrestricted_cash_schedule(periods, "UNRESOLVED")
+    assert schedule.period_balances[0].is_eligible is True   # in_life=True
+    assert schedule.period_balances[1].is_eligible is False  # in_life=False

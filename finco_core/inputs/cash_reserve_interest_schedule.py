@@ -13,10 +13,43 @@ Roll-forward identity (source-proven):
     TUHO:    CF!G135 = CF!F135 + CF!G122  (prior_cash + change_in_cash)
     Oborovo: CF!G144 = CF!F144 + CF!G132
 
-Authority composition rule (H.4):
-    final_authority = weakest(policy.authority, schedule.authority)
+Source interest formula (workbook):
+    TUHO P&L!H20:    =(CF!G135>0)*$B19*CF!G135*H$5*H$6
+    Oborovo P&L!G20: =(CF!F144>0)*$B19*CF!F144*G$5*G$6
+    Components:
+        (balance>0)  — structural guard (not an eligibility criterion)
+        $B19         — deposit rate (1%, source-proven)
+        CF!prior_col — prior-period closing cash (opening convention)
+        H$5 / G$5    — project-life flag (boolean)
+        H$6 / G$6    — period day fraction (actual/365)
+
+Authority composition rule (H.4/I.9):
+    final_authority = weakest(policy, unrestricted_cash_schedule, dsra_component)
     SOURCE_PROVEN policy + UNRESOLVED schedule → UNRESOLVED result → 0.0 income.
-    No authoritative cash increments → schedule is UNRESOLVED.
+
+Debt-state gate (I.4):
+    The source formula does NOT gate interest on senior/SHL outstanding.
+    Account eligibility is a POLICY property.
+    Balance being zero while debt is outstanding is a WATERFALL OUTCOME.
+    build_unrestricted_cash_schedule does not accept senior/SHL parameters.
+
+DSRA authority (I.6):
+    dsra_balance_by_period = None means UNKNOWN balance — not zero.
+    For ELIGIBLE DSRA: unknown balance → DSRA component authority UNRESOLVED.
+    A known authoritative zero explicitly passed as {period: 0.0} is valid.
+
+Opening cash (I.7):
+    opening_cash_keur: float | None — must be explicitly provided.
+    None with authoritative increments → UNRESOLVED schedule authority.
+    Source-proven zero: TUHO CF!F135 = null (construction period 0 cash = 0).
+
+Day fraction (I.8):
+    Uses canonical period.day_fraction when available on the period object.
+    Falls back to (period_end - period_start).days / denominator when absent.
+
+Authority validation (I.9):
+    Only recognised authority strings are accepted.
+    Unknown value → ValueError (caller must pass a valid authority).
 """
 from __future__ import annotations
 
@@ -27,11 +60,22 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from finco_core.inputs.cash_reserve_interest_policy import CashReserveInterestPolicy
 
+_VALID_AUTHORITIES = {"UNRESOLVED", "GENERIC_FINCO_POLICY", "SOURCE_PROVEN"}
 _AUTHORITY_RANK = {"UNRESOLVED": 0, "GENERIC_FINCO_POLICY": 1, "SOURCE_PROVEN": 2}
 
 
-def _weakest_authority(a: str, b: str) -> str:
-    return a if _AUTHORITY_RANK.get(a, 0) <= _AUTHORITY_RANK.get(b, 0) else b
+def _validate_authority(authority: str) -> str:
+    if authority not in _VALID_AUTHORITIES:
+        raise ValueError(
+            f"Unknown authority string {authority!r}. "
+            f"Must be one of {sorted(_VALID_AUTHORITIES)}."
+        )
+    return authority
+
+
+def _weakest_authority(*authorities: str) -> str:
+    """Return the weakest (lowest rank) authority from the provided values."""
+    return min(authorities, key=lambda a: _AUTHORITY_RANK[_validate_authority(a)])
 
 
 @dataclass(frozen=True)
@@ -41,15 +85,20 @@ class UnrestrictedCashPeriodBalance:
     Roll-forward identity:
         closing_balance_keur = opening_balance_keur + period_cash_increment_keur
         opening_balance_keur[p] = closing_balance_keur[p-1]
+
+    is_eligible:
+        True when the period is within project life AND the account is eligible
+        per policy. Does NOT reflect debt-outstanding state — that is a waterfall
+        outcome that determines the BALANCE, not the account eligibility.
     """
     period_index: int
     period_start: date
     period_end: date
-    period_cash_increment_keur: float  # authoritative increment for this period
-    opening_balance_keur: float        # = prior period closing (balance convention)
-    closing_balance_keur: float        # = opening + increment
-    is_eligible: bool                  # True when post-debt and in project life
-    authority: str                     # "SOURCE_PROVEN" | "GENERIC_FINCO_POLICY" | "UNRESOLVED"
+    period_cash_increment_keur: float   # authoritative increment for this period
+    opening_balance_keur: float         # = prior period closing (balance convention)
+    closing_balance_keur: float         # = opening + increment
+    is_eligible: bool                   # in project life AND account eligible per policy
+    authority: str                      # "SOURCE_PROVEN" | "GENERIC_FINCO_POLICY" | "UNRESOLVED"
 
 
 @dataclass(frozen=True)
@@ -61,12 +110,13 @@ class UnrestrictedCashSchedule:
         Oborovo: CF!G144 = F144 + G132
 
     Authority:
-        UNRESOLVED when no authoritative cash increments are provided.
-        Authority is carried into build_cash_reserve_interest_schedules and
-        composed with policy authority via the weakest-upstream rule.
+        UNRESOLVED when no authoritative cash increments are provided, when
+        the increment map has incomplete coverage, or when opening_cash is
+        unknown.
     """
     period_balances: tuple[UnrestrictedCashPeriodBalance, ...]
     authority: str
+    opening_cash_keur: float   # authoritative opening balance (period 0)
 
 
 @dataclass(frozen=True)
@@ -80,7 +130,7 @@ class CashReserveInterestPeriodResult:
     balance_convention: str          # "opening" | "closing" | "average"
     annual_rate: float               # deposit rate, e.g. 0.01 for 1%
     day_count_convention: str        # "actual_365" | "actual_360"
-    day_fraction: float              # (period_end - period_start).days / denominator
+    day_fraction: float              # authoritative period day fraction
     calculated_financing_income_keur: float
     authority: str                   # "UNRESOLVED" | "GENERIC_FINCO_POLICY" | "SOURCE_PROVEN"
 
@@ -97,48 +147,67 @@ def build_unrestricted_cash_schedule(
     periods: tuple,
     authority: str,
     authoritative_period_cash_increments: dict[int, float] | None = None,
-    senior_debt_outstanding_by_period: dict[int, float] | None = None,
-    shl_outstanding_by_period: dict[int, float] | None = None,
+    opening_cash_keur: float | None = None,
 ) -> UnrestrictedCashSchedule:
     """Build per-period unrestricted cash balance from authoritative increments.
 
-    When authoritative_period_cash_increments is None, the schedule authority
-    is forced to UNRESOLVED regardless of the authority parameter — no
-    authoritative balance can be established without increment data.
+    Authority rules (I.5, I.7):
+        - authoritative_period_cash_increments is None → UNRESOLVED
+        - increment map is missing any required period index → UNRESOLVED
+        - increment map has unexpected period indices → UNRESOLVED
+        - any increment value is non-finite or a bool → UNRESOLVED
+        - opening_cash_keur is None → UNRESOLVED
+        - any of the above → schedule authority forced to UNRESOLVED
 
-    Roll-forward identity:
-        closing[p] = opening[p] + increment[p]
-        opening[p] = closing[p-1]
-        opening[0] = 0.0
+    Debt-state gate (I.4):
+        Senior/SHL outstanding are NOT accepted as parameters. They do not
+        determine account eligibility; they are waterfall inputs that determine
+        the cash balance through the normal FCF/distribution chain.
 
-    Eligibility rule:
-        eligible = in_life AND senior_outstanding == 0
-                   AND (shl_outstanding == 0 or shl not modeled)
+    is_eligible:
+        True when the period is within project life (is_operation=True).
+        Account-level eligibility (ELIGIBLE/INELIGIBLE) is stored on the policy,
+        not per-period on the balance schedule.
 
     Parameters
     ----------
     periods:
-        All model periods (OperatingPeriodResult or similar duck-typed).
+        All model periods (must have period_index, period_start, period_end,
+        is_operation attributes). Ordering must match the period axis.
     authority:
-        Authority string from the CashReserveInterestPolicy. Overridden to
-        UNRESOLVED when authoritative_period_cash_increments is None.
+        Claimed authority string. Must be one of VALID_AUTHORITIES.
+        Overridden to UNRESOLVED whenever any validation check fails.
     authoritative_period_cash_increments:
         {period_index: cash_increment_keur} from the solver/waterfall.
-        None → UNRESOLVED schedule authority; all balances = 0.0.
-    senior_debt_outstanding_by_period:
-        {period_index: outstanding_keur} from SeniorDebtSchedules.
-        None means no senior debt schedule available → treat as post-debt.
-    shl_outstanding_by_period:
-        {period_index: outstanding_keur} from SHL schedules.
-        None means no SHL → ignored for eligibility.
+        None → UNRESOLVED. Must cover exactly the set of period indices in
+        `periods`. Missing or extra indices → UNRESOLVED.
+    opening_cash_keur:
+        Authoritative opening cash balance at period 0. Must be explicitly
+        provided. None → UNRESOLVED. Source-proven zero is valid (pass 0.0).
     """
+    _validate_authority(authority)
+
+    required_indices = {p.period_index for p in periods}  # type: ignore[attr-defined]
+    effective_authority = authority
+
+    # --- Validate all inputs; any failure forces UNRESOLVED ---
     if authoritative_period_cash_increments is None:
         effective_authority = "UNRESOLVED"
+    elif opening_cash_keur is None:
+        effective_authority = "UNRESOLVED"
     else:
-        effective_authority = authority
+        provided_indices = set(authoritative_period_cash_increments.keys())
+        if provided_indices != required_indices:
+            effective_authority = "UNRESOLVED"
+        else:
+            import math
+            for idx, v in authoritative_period_cash_increments.items():
+                if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v):
+                    effective_authority = "UNRESOLVED"
+                    break
 
     balances: list[UnrestrictedCashPeriodBalance] = []
-    prior_closing = 0.0
+    prior_closing = opening_cash_keur if effective_authority != "UNRESOLVED" else 0.0
 
     for p in periods:
         idx: int = p.period_index  # type: ignore[attr-defined]
@@ -146,21 +215,12 @@ def build_unrestricted_cash_schedule(
         p_end: date = p.period_end  # type: ignore[attr-defined]
         in_life: bool = getattr(p, "is_operation", False)
 
-        senior_out = (senior_debt_outstanding_by_period or {}).get(idx, 0.0)
-        shl_out = (
-            (shl_outstanding_by_period or {}).get(idx, 0.0)
-            if shl_outstanding_by_period is not None else 0.0
-        )
-
-        post_debt = (senior_out < 1e-6) and (shl_out < 1e-6)
-        eligible = in_life and post_debt
-
-        if effective_authority == "UNRESOLVED" or authoritative_period_cash_increments is None:
+        if effective_authority == "UNRESOLVED":
             increment = 0.0
             opening = 0.0
             closing = 0.0
         else:
-            increment = (authoritative_period_cash_increments or {}).get(idx, 0.0)
+            increment = authoritative_period_cash_increments[idx]  # type: ignore[index]
             opening = prior_closing
             closing = opening + increment
 
@@ -171,7 +231,7 @@ def build_unrestricted_cash_schedule(
             period_cash_increment_keur=increment,
             opening_balance_keur=opening,
             closing_balance_keur=closing,
-            is_eligible=eligible,
+            is_eligible=in_life,
             authority=effective_authority,
         ))
         prior_closing = closing
@@ -179,6 +239,7 @@ def build_unrestricted_cash_schedule(
     return UnrestrictedCashSchedule(
         period_balances=tuple(balances),
         authority=effective_authority,
+        opening_cash_keur=opening_cash_keur if opening_cash_keur is not None else 0.0,
     )
 
 
@@ -187,39 +248,66 @@ def build_cash_reserve_interest_schedules(
     policy: "CashReserveInterestPolicy",
     unrestricted_cash_schedule: UnrestrictedCashSchedule,
     dsra_balance_by_period: dict[int, float] | None = None,
+    dsra_balance_authority: str | None = None,
 ) -> CashReserveInterestSchedules:
     """Build per-period cash/reserve interest income from policy and cash schedule.
 
-    Authority composition (H.4):
-        result_authority = weakest(policy.authority, schedule.authority)
-        SOURCE_PROVEN policy + UNRESOLVED schedule → UNRESOLVED → 0.0 income.
+    Authority composition (H.4, I.9):
+        composed_authority = weakest(policy.authority, schedule.authority,
+                                     dsra_component_authority)
+
+    DSRA balance authority (I.6):
+        dsra_balance_by_period = None means UNKNOWN balance.
+        For ELIGIBLE DSRA: unknown balance → dsra_component_authority = UNRESOLVED.
+        dsra_balance_authority must be explicitly provided when eligible_dsra == ELIGIBLE
+        and dsra_balance_by_period is not None.
+
+    Day fraction (I.8):
+        Uses canonical period.day_fraction when available.
+        Falls back to (period_end - period_start).days / denominator.
 
     Parameters
     ----------
     periods:
-        All model periods (OperatingPeriodResult or similar duck-typed).
+        All model periods.
     policy:
         Source-proven or generic CashReserveInterestPolicy.
     unrestricted_cash_schedule:
         Built by build_unrestricted_cash_schedule().
     dsra_balance_by_period:
         {period_index: balance_keur} — DSRA opening balance per period.
-        Source-proven: DSRA is zero for all periods (TUHO and Oborovo).
-        None → uses 0.0 for all periods.
-
-    Returns
-    -------
-    CashReserveInterestSchedules with financing income per period.
+        None = unknown (not the same as zero).
+    dsra_balance_authority:
+        Authority string for the DSRA balance data. Required when eligible_dsra
+        == ELIGIBLE and dsra_balance_by_period is not None.
+        None → UNRESOLVED for DSRA component when DSRA is ELIGIBLE.
     """
     from finco_core.inputs.cash_reserve_interest_policy import (
         CashReserveInterestAuthority,
         EligibilityStatus,
     )
 
-    # H.4: weakest upstream authority determines result authority.
+    # H.4 / I.9: weakest upstream authority.
+    dsra_eligible = policy.eligible_dsra == EligibilityStatus.ELIGIBLE
+
+    # DSRA component authority
+    if dsra_eligible:
+        if dsra_balance_by_period is None:
+            # Unknown balance for an eligible account → UNRESOLVED
+            dsra_component_authority = "UNRESOLVED"
+        elif dsra_balance_authority is None:
+            # Balance provided but no authority stated → UNRESOLVED
+            dsra_component_authority = "UNRESOLVED"
+        else:
+            dsra_component_authority = _validate_authority(dsra_balance_authority)
+    else:
+        # INELIGIBLE DSRA — balance is ignored, no authority constraint from DSRA
+        dsra_component_authority = policy.authority.value
+
     composed_authority = _weakest_authority(
         policy.authority.value,
         unrestricted_cash_schedule.authority,
+        dsra_component_authority,
     )
 
     cash_by_period = {b.period_index: b for b in unrestricted_cash_schedule.period_balances}
@@ -252,25 +340,29 @@ def build_cash_reserve_interest_schedules(
         cash_eligible = (
             cash_bal_entry.opening_balance_keur
             if (cash_bal_entry is not None
-                and policy.eligible_unrestricted_cash == EligibilityStatus.ELIGIBLE)
+                and policy.eligible_unrestricted_cash == EligibilityStatus.ELIGIBLE
+                and cash_bal_entry.is_eligible)
             else 0.0
         )
 
         dsra_raw = (dsra_balance_by_period or {}).get(idx, 0.0)
-        dsra_eligible = (
+        dsra_eligible_keur = (
             dsra_raw
             if policy.eligible_dsra == EligibilityStatus.ELIGIBLE
             else 0.0
         )
 
-        # Day fraction: actual/365 or actual/360
-        period_days = (p_end - p_start).days
-        denominator = 365.0 if policy.day_count_convention.value == "actual_365" else 360.0
-        day_fraction = period_days / denominator
+        # I.8: Use canonical period day_fraction when available.
+        canonical_day_frac = getattr(p, "day_fraction", None)
+        if canonical_day_frac is not None and isinstance(canonical_day_frac, float):
+            day_fraction = canonical_day_frac
+        else:
+            denominator = 365.0 if policy.day_count_convention.value == "actual_365" else 360.0
+            day_fraction = (p_end - p_start).days / denominator
 
         income = policy.compute_period_income_keur(
             unrestricted_cash_balance_keur=cash_eligible,
-            dsra_balance_keur=dsra_eligible,
+            dsra_balance_keur=dsra_eligible_keur,
             day_fraction=day_fraction,
         )
         total += income
@@ -280,7 +372,7 @@ def build_cash_reserve_interest_schedules(
             period_start=p_start,
             period_end=p_end,
             eligible_unrestricted_cash_keur=cash_eligible,
-            eligible_dsra_keur=dsra_eligible,
+            eligible_dsra_keur=dsra_eligible_keur,
             balance_convention=policy.balance_convention.value,
             annual_rate=policy.annual_rate,
             day_count_convention=policy.day_count_convention.value,

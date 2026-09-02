@@ -158,7 +158,12 @@
       "verdict": "NO_EXPLICIT_MINIMUM_CASH_INPUT_FOUND",
       "search_scope": "All rows in Inputs sheet, all labels containing 'cash', 'retain', 'minimum', 'floor', 'reserve cash', 'liquidity'",
       "found_rows": [
-        {"row": 438, "label": "Cash Interest", "value": 0.01, "role": "interest_rate_only"}
+        {
+          "row": 438,
+          "label": "Cash Interest",
+          "value": 0.01,
+          "role": "interest_rate_only"
+        }
       ],
       "conclusion": "The 550 kEUR cash balance (CF!AU135) is a model OUTPUT (emergent waterfall result), not a source policy input. No minimum retained cash / distribution floor / liquidity reserve input exists in the Inputs sheet.",
       "authority": "DIRECT_WORKBOOK_EXTRACTION"
@@ -204,10 +209,25 @@
         "correct_classification": "DSRA account = ELIGIBLE; observed balance = 0.0 for all periods"
       },
       "cash_balance_observation": {
-        "cf135_nonzero_periods": "Only col AU (last period, yr=20): 550.0 kEUR",
-        "all_other_periods": "0.0 kEUR",
-        "conclusion": "The 550 kEUR appears only in the final period. P&L!G20 cash interest uses CF!F135 (prior period cash), which is zero for all periods except the last. Cash interest income is therefore zero for all periods in this workbook scenario.",
-        "p&l_row20_all_periods_zero": true
+        "CORRECTION_I_SUPERSEDES_THIS_FIELD": true,
+        "verdict": "PREVIOUS_CONCLUSION_WRONG",
+        "prior_false_claim": "Only col AU (last period, yr=20): 550.0 kEUR — INCORRECT",
+        "prior_false_claim_p&l_all_zero": "p&l_row20_all_periods_zero=true — INCORRECT",
+        "correction": "Samples AU-AY (see cf_row135_cash.samples_from_first_nonzero) all show 550.0 kEUR. AU is the first period with nonzero cash, not the only one. P&L row 20 is nonzero from col AV onwards (see pnl_row20_cash and numerical_handshake). Exact total requires re-extraction from source workbook. Minimum confirmed: at least 4 non-zero P&L row20 periods (AV through AY minimum).",
+        "confirmed_first_nonzero_cash_col": "AU",
+        "confirmed_cash_balance_keur": 550.0000000000064,
+        "confirmed_first_nonzero_interest_col": "AV",
+        "confirmed_first_nonzero_interest_keur": 2.7273972602740044,
+        "cf135_samples_confirmed": {
+          "AU": 550.0,
+          "AV": 550.0,
+          "AW": 550.0,
+          "AX": 550.0,
+          "AY": 550.0
+        },
+        "interest_within_project_life": true,
+        "authority": "SOURCE_PROVEN_FORMULA",
+        "note": "Correction G wrongly interpreted samples_from_first_nonzero as a single-point observation. AU is first nonzero, not last period."
       },
       "authority": "DIRECT_WORKBOOK_EXTRACTION"
     }
@@ -230,5 +250,29 @@
     "residual_keur": 0.0,
     "verdict": "MACHINE_PRECISION_MATCH",
     "formula_verification": "550.000 x 0.01 x TRUE x 0.4958904... = 2.72739726... kEUR = P&L!AV20 cached"
+  },
+  "correction_i_findings": {
+    "correction": "U2 Correction I",
+    "source_reconciliation": {
+      "verdict": "CORRECTION_G_ZERO_INTEREST_CONCLUSION_INCORRECT",
+      "evidence": "pnl_row20_cash.first_nonzero_col=AV and numerical_handshake both prove non-zero interest.",
+      "confirmed_nonzero_interest_at_AV": 2.7273972602740044,
+      "confirmed_balance_AU_through_AY": 550.0,
+      "known_nonzero_interest_periods": [
+        "AV",
+        "AW",
+        "AX",
+        "AY"
+      ],
+      "known_nonzero_interest_count_minimum": 4,
+      "total_interest_keur_known_minimum": 10.908,
+      "total_interest_keur_exact": "REQUIRES_FULL_WORKBOOK_RE_EXTRACTION",
+      "authority": "SOURCE_PROVEN_FORMULA"
+    },
+    "opening_cash_authority": {
+      "verdict": "ZERO_ASSUMED_OPENING",
+      "proof": "CF!F135 = colF_cached = null (construction period 0 cash = 0). Project starts with no retained cash.",
+      "authority": "SOURCE_PROVEN_FORMULA"
+    }
   }
 }
