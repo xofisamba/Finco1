@@ -84,6 +84,27 @@ from finco_core.inputs.valuation import (
     ValuationPolicies,
 )
 from finco_core.opex.oborovo_config import build_oborovo_opex_capability
+from finco_core.inputs.cash_reserve_interest_policy import (
+    CashReserveInterestPolicy,
+    CashReserveInterestAuthority,
+    EligibilityStatus,
+    BalanceConvention,
+    DayCountConvention,
+)
+
+# H.3: SOURCE_PROVEN interest policy — rate and eligible-account identity proved
+# from workbook source formulas. Balance schedule remains UNRESOLVED (no
+# authoritative cash roll-forward data). Authority composition in
+# build_cash_reserve_interest_schedules yields UNRESOLVED income (zero).
+_SOURCE_PROVEN_CASH_INTEREST_POLICY = CashReserveInterestPolicy(
+    authority=CashReserveInterestAuthority.SOURCE_PROVEN,
+    annual_rate=0.01,
+    eligible_unrestricted_cash=EligibilityStatus.ELIGIBLE,
+    eligible_dsra=EligibilityStatus.ELIGIBLE,
+    balance_convention=BalanceConvention.OPENING,
+    day_count_convention=DayCountConvention.ACTUAL_365,
+    enabled=True,
+)
 
 
 # =============================================================================
@@ -663,10 +684,10 @@ def create_default_oborovo() -> ProjectInputs:
         shl_construction_payment=ShlPaymentMethod.PIK_TO_SHL_BALANCE,
     )
 
-    # U2 Correction G — cash interest rate (0.01) proved via P&L!B19 = =Inputs!$D$455.
-    # Cash balance (CF row 144) and DSRA (CF rows 91, 105) are MODEL OUTPUTS, not
-    # source policy inputs. No explicit minimum cash floor input exists in Inputs sheet.
-    # UNRESOLVED (fail-closed) until a real balance roll-forward authority is available.
+    # H.3: SOURCE_PROVEN interest policy restored. Rate=0.01 proved via P&L!B19 =
+    # =Inputs!$D$455. DSRA (CF rows 91, 105) ELIGIBLE per P&L!G19 formula.
+    # Balance schedule is UNRESOLVED (no authoritative roll-forward data) — authority
+    # composition in build_cash_reserve_interest_schedules yields UNRESOLVED income.
     return ProjectInputs(
         info=info,
         technical=technical,
@@ -676,6 +697,7 @@ def create_default_oborovo() -> ProjectInputs:
         financing=financing,
         tax=tax,
         hierarchical_opex_capability=build_oborovo_opex_capability(),
+        cash_reserve_interest_policy=_SOURCE_PROVEN_CASH_INTEREST_POLICY,
     )
 
 
@@ -946,6 +968,10 @@ def _create_default_tuho_wind1_legacy_base() -> ProjectInputs:
         shl_construction_payment=ShlPaymentMethod.PIK_TO_SHL_BALANCE,
     )
 
+    # H.3: SOURCE_PROVEN interest policy restored. Rate=0.01 proved via P&L!B19 =
+    # =Inputs!$D$438. DSRA (CF rows 81, 95) ELIGIBLE per P&L!G19 formula.
+    # Balance schedule is UNRESOLVED (no authoritative roll-forward data) — authority
+    # composition in build_cash_reserve_interest_schedules yields UNRESOLVED income.
     return ProjectInputs(
         info=info,
         technical=technical,
@@ -954,6 +980,7 @@ def _create_default_tuho_wind1_legacy_base() -> ProjectInputs:
         revenue=revenue,
         financing=financing,
         tax=tax,
+        cash_reserve_interest_policy=_SOURCE_PROVEN_CASH_INTEREST_POLICY,
     )
 
 
@@ -1235,16 +1262,17 @@ def create_default_tuho_wind1() -> ProjectInputs:
         cit_cash_tax_start_operating_index=None,
         clean_cash_tax_timing_enabled=True,
     )
-    # U2 Correction G — cash interest rate (0.01) proved via P&L!B19 = =Inputs!$D$438.
-    # Cash balance (CF row 135) and DSRA (CF rows 81, 95) are MODEL OUTPUTS, not
-    # source policy inputs. No explicit minimum cash floor input exists in Inputs sheet.
-    # UNRESOLVED (fail-closed) until a real balance roll-forward authority is available.
+    # H.3: SOURCE_PROVEN interest policy restored. Rate=0.01 proved via P&L!B19 =
+    # =Inputs!$D$438. DSRA (CF rows 81, 95) ELIGIBLE per P&L!G19 formula.
+    # Balance schedule is UNRESOLVED (no authoritative roll-forward data) — authority
+    # composition in build_cash_reserve_interest_schedules yields UNRESOLVED income.
     return replace(
         legacy,
         info=info,
         capex=capex,
         financing=financing,
         tax=tax,
+        cash_reserve_interest_policy=_SOURCE_PROVEN_CASH_INTEREST_POLICY,
         valuation=ValuationPolicies(
             project=ProjectValuationPolicy(
                 annual_discount_rate=0.066,

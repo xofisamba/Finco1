@@ -1315,8 +1315,7 @@ from datetime import date
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _make_source_proven_policy(
-    cash_keur: float = 550.0,
-    dsra_eligible: bool = False,
+    dsra_eligible: bool = True,
     rate: float = 0.01,
 ) -> CashReserveInterestPolicy:
     return CashReserveInterestPolicy(
@@ -1325,7 +1324,6 @@ def _make_source_proven_policy(
         eligible_unrestricted_cash=EligibilityStatus.ELIGIBLE,
         eligible_dsra=EligibilityStatus.ELIGIBLE if dsra_eligible else EligibilityStatus.INELIGIBLE,
         enabled=True,
-        min_unrestricted_cash_floor_keur=cash_keur,
     )
 
 
@@ -1341,73 +1339,77 @@ class _FakePeriod:
     period_in_year: int = 1
 
 
-# ── 67. UnrestrictedCashSchedule builder — basic path ─────────────────────────
+# ── 67. UnrestrictedCashSchedule builder — real roll-forward identity (H.6.A) ──
 
-def test_build_unrestricted_cash_schedule_basic():
-    """build_unrestricted_cash_schedule returns eligible periods post-debt."""
+def test_build_unrestricted_cash_schedule_rollforward_identity():
+    """H.6.A: closing[p] = opening[p] + increment[p], opening[p] = closing[p-1]."""
     from finco_core.inputs.cash_reserve_interest_schedule import build_unrestricted_cash_schedule
 
     periods = (
-        _FakePeriod(0, date(2030, 1, 1), date(2030, 6, 30), is_operation=False),  # construction
-        _FakePeriod(1, date(2030, 7, 1), date(2030, 12, 31), is_operation=True),   # debt period
-        _FakePeriod(2, date(2031, 1, 1), date(2031, 6, 30), is_operation=True),    # post-debt
-        _FakePeriod(3, date(2031, 7, 1), date(2031, 12, 31), is_operation=True),   # post-debt
+        _FakePeriod(0, date(2030, 1, 1), date(2030, 6, 30), is_operation=True),
+        _FakePeriod(1, date(2030, 7, 1), date(2030, 12, 31), is_operation=True),
+        _FakePeriod(2, date(2031, 1, 1), date(2031, 6, 30), is_operation=True),
     )
-    senior_outstanding = {0: 0.0, 1: 10000.0, 2: 0.0, 3: 0.0}
+    increments = {0: 100.0, 1: 50.0, 2: -20.0}
     schedule = build_unrestricted_cash_schedule(
         periods=periods,
-        min_cash_floor_keur=550.0,
         authority="SOURCE_PROVEN",
-        senior_debt_outstanding_by_period=senior_outstanding,
+        authoritative_period_cash_increments=increments,
     )
-    # period 0: not in_life → ineligible
-    assert not schedule.period_balances[0].is_eligible
-    assert schedule.period_balances[0].opening_balance_keur == 0.0
-    # period 1: in_life but debt outstanding → ineligible
-    assert not schedule.period_balances[1].is_eligible
-    # period 2 and 3: post-debt, in-life → eligible
-    assert schedule.period_balances[2].is_eligible
-    assert schedule.period_balances[2].opening_balance_keur == 550.0
-    assert schedule.period_balances[3].is_eligible
-    assert schedule.min_cash_floor_keur == 550.0
     assert schedule.authority == "SOURCE_PROVEN"
+    pb = schedule.period_balances
+    # Period 0: opening=0.0, increment=100.0, closing=100.0
+    assert pb[0].opening_balance_keur == 0.0
+    assert pb[0].period_cash_increment_keur == 100.0
+    assert pb[0].closing_balance_keur == 100.0
+    # Period 1: opening=100.0 (prior closing), increment=50.0, closing=150.0
+    assert pb[1].opening_balance_keur == 100.0
+    assert pb[1].period_cash_increment_keur == 50.0
+    assert pb[1].closing_balance_keur == 150.0
+    # Period 2: opening=150.0, increment=-20.0, closing=130.0
+    assert pb[2].opening_balance_keur == 150.0
+    assert pb[2].period_cash_increment_keur == -20.0
+    assert abs(pb[2].closing_balance_keur - 130.0) < 1e-9
 
 
-# ── 68. CashReserveInterestSchedules builder — income computed correctly ───────
+# ── 68. Balance convention with synthetic mid-life accumulation (H.6.B) ─────────
 
-def test_build_cash_reserve_interest_schedules_income():
-    """build_cash_reserve_interest_schedules computes financing income for eligible periods."""
+def test_build_cash_reserve_interest_schedules_income_with_authoritative_increments():
+    """H.6.B: SOURCE_PROVEN policy + authoritative increments → income computed."""
     from finco_core.inputs.cash_reserve_interest_schedule import (
         build_unrestricted_cash_schedule,
         build_cash_reserve_interest_schedules,
     )
 
-    policy = _make_source_proven_policy(cash_keur=550.0, rate=0.01)
+    policy = _make_source_proven_policy(rate=0.01)
     periods = (
         _FakePeriod(0, date(2030, 1, 1), date(2030, 6, 30), is_operation=False),
         _FakePeriod(1, date(2030, 7, 1), date(2030, 12, 31), is_operation=True),
     )
-    senior_outstanding = {0: 0.0, 1: 0.0}
+    # Period 0: construction, increment = 200.0 (cash accumulates in construction)
+    # Period 1: operations, increment = 350.0 (cash grows further)
+    increments = {0: 200.0, 1: 350.0}
     cash_schedule = build_unrestricted_cash_schedule(
         periods=periods,
-        min_cash_floor_keur=550.0,
         authority="SOURCE_PROVEN",
-        senior_debt_outstanding_by_period=senior_outstanding,
+        authoritative_period_cash_increments=increments,
     )
+    # Period 1 opening = period 0 closing = 0 + 200 = 200
+    assert cash_schedule.period_balances[1].opening_balance_keur == 200.0
     interest_schedule = build_cash_reserve_interest_schedules(
         periods=periods,
         policy=policy,
         unrestricted_cash_schedule=cash_schedule,
     )
-    # period 0: construction → no income
-    assert interest_schedule.period_results[0].calculated_financing_income_keur == 0.0
-    # period 1: in-life, post-debt → income = 550 * 0.01 * (184/365)
+    # Period 0: not is_operation → ineligible → 0.0 (opening balance used but is_eligible=False)
+    # Actually check: opening convention uses opening_balance_keur = 0.0 (prior closing = 0)
+    p0 = interest_schedule.period_results[0]
+    # Period 1: SOURCE_PROVEN policy, ELIGIBLE, opening=200.0
     p1 = interest_schedule.period_results[1]
     expected_day_frac = (date(2030, 12, 31) - date(2030, 7, 1)).days / 365.0
-    expected_income = 550.0 * 0.01 * expected_day_frac
+    expected_income = 200.0 * 0.01 * expected_day_frac
     assert abs(p1.calculated_financing_income_keur - expected_income) < 1e-9
     assert p1.authority == "SOURCE_PROVEN"
-    assert abs(interest_schedule.total_financing_income_keur - expected_income) < 1e-9
 
 
 # ── 69. UNRESOLVED policy → zero income from schedule builder ──────────────────
@@ -1423,7 +1425,6 @@ def test_build_cash_reserve_interest_schedules_unresolved_zero():
     periods = (_FakePeriod(0, date(2030, 1, 1), date(2030, 6, 30), is_operation=True),)
     cash_schedule = build_unrestricted_cash_schedule(
         periods=periods,
-        min_cash_floor_keur=550.0,
         authority="UNRESOLVED",
     )
     schedule = build_cash_reserve_interest_schedules(
@@ -1435,45 +1436,67 @@ def test_build_cash_reserve_interest_schedules_unresolved_zero():
     assert schedule.period_results[0].calculated_financing_income_keur == 0.0
 
 
-# ── 70. Policy factory field: min_unrestricted_cash_floor_keur ─────────────────
+# ── 70. Authority composition: SOURCE_PROVEN policy + UNRESOLVED schedule → UNRESOLVED (H.6.D)
 
-def test_policy_min_cash_floor_field():
-    """CashReserveInterestPolicy carries min_unrestricted_cash_floor_keur."""
-    policy = CashReserveInterestPolicy(
-        authority=CashReserveInterestAuthority.SOURCE_PROVEN,
-        annual_rate=0.01,
-        eligible_unrestricted_cash=EligibilityStatus.ELIGIBLE,
-        eligible_dsra=EligibilityStatus.INELIGIBLE,
-        enabled=True,
-        min_unrestricted_cash_floor_keur=550.0,
+def test_authority_composition_unresolved_schedule_blocks_source_proven():
+    """H.6.D: weakest upstream authority wins. SOURCE_PROVEN policy + UNRESOLVED schedule → 0.0."""
+    from finco_core.inputs.cash_reserve_interest_schedule import (
+        build_unrestricted_cash_schedule,
+        build_cash_reserve_interest_schedules,
     )
-    assert policy.min_unrestricted_cash_floor_keur == 550.0
+
+    policy = _make_source_proven_policy(rate=0.01)
+    periods = (_FakePeriod(0, date(2030, 1, 1), date(2030, 6, 30), is_operation=True),)
+    # No authoritative_period_cash_increments → schedule authority is UNRESOLVED
+    cash_schedule = build_unrestricted_cash_schedule(
+        periods=periods,
+        authority="SOURCE_PROVEN",  # overridden to UNRESOLVED because no increments
+    )
+    assert cash_schedule.authority == "UNRESOLVED"
+
+    result = build_cash_reserve_interest_schedules(
+        periods=periods,
+        policy=policy,
+        unrestricted_cash_schedule=cash_schedule,
+    )
+    # Composed authority = UNRESOLVED (weakest)
+    assert result.authority == "UNRESOLVED"
+    assert result.total_financing_income_keur == 0.0
+    assert result.period_results[0].calculated_financing_income_keur == 0.0
 
 
-# ── 71. Oborovo factory: cash_reserve_interest_policy is UNRESOLVED (G.1) ──────
+# ── 71. Oborovo factory: cash policy is SOURCE_PROVEN (H.3) ──────────────────────
 
-def test_oborovo_factory_has_unresolved_cash_policy():
-    """Correction G: no source policy input exists — factory must not set SOURCE_PROVEN."""
+def test_oborovo_factory_has_source_proven_cash_policy():
+    """H.3: rate=0.01 and DSRA eligibility proved from workbook formulas → SOURCE_PROVEN."""
     from app.project_factories import create_default_oborovo
     project = create_default_oborovo()
-    # No explicit minimum cash input exists in Oborovo Inputs sheet.
-    # Cash balance (CF144) is a model output, not a policy input.
-    # UNRESOLVED (fail-closed) until real roll-forward authority is available.
+    # H.3: rate and eligible-account identity both proved from P&L!B19 and CF formulas.
+    # Balance schedule remains UNRESOLVED (no roll-forward data) — authority composition
+    # in build_cash_reserve_interest_schedules yields UNRESOLVED income (zero).
     policy = project.cash_reserve_interest_policy
-    assert policy is None or policy.authority == CashReserveInterestAuthority.UNRESOLVED
+    assert policy is not None
+    assert policy.authority == CashReserveInterestAuthority.SOURCE_PROVEN
+    assert policy.annual_rate == 0.01
+    assert policy.eligible_unrestricted_cash == EligibilityStatus.ELIGIBLE
+    assert policy.eligible_dsra == EligibilityStatus.ELIGIBLE
 
 
-# ── 72. TUHO factory: cash_reserve_interest_policy is UNRESOLVED (G.1) ──────────
+# ── 72. TUHO factory: cash policy is SOURCE_PROVEN (H.3) ──────────────────────────
 
-def test_tuho_factory_has_unresolved_cash_policy():
-    """Correction G: no source policy input exists — factory must not set SOURCE_PROVEN."""
+def test_tuho_factory_has_source_proven_cash_policy():
+    """H.3: rate=0.01 and DSRA eligibility proved from workbook formulas → SOURCE_PROVEN."""
     from app.project_factories import create_default_tuho_wind1
     project = create_default_tuho_wind1()
-    # No explicit minimum cash input exists in TUHO Inputs sheet.
-    # Cash balance (CF135) is a model output, not a policy input.
-    # UNRESOLVED (fail-closed) until real roll-forward authority is available.
+    # H.3: rate and eligible-account identity both proved from P&L!B19 and CF formulas.
+    # Balance schedule remains UNRESOLVED (no roll-forward data) — authority composition
+    # in build_cash_reserve_interest_schedules yields UNRESOLVED income (zero).
     policy = project.cash_reserve_interest_policy
-    assert policy is None or policy.authority == CashReserveInterestAuthority.UNRESOLVED
+    assert policy is not None
+    assert policy.authority == CashReserveInterestAuthority.SOURCE_PROVEN
+    assert policy.annual_rate == 0.01
+    assert policy.eligible_unrestricted_cash == EligibilityStatus.ELIGIBLE
+    assert policy.eligible_dsra == EligibilityStatus.ELIGIBLE
 
 
 # ── 73. SeniorDebtModelInput accepts cash_reserve_interest_policy ──────────────
@@ -1499,7 +1522,7 @@ def test_schedule_builder_unresolved_policy_yields_zero():
         _FakePeriod(0, date(2030, 1, 1), date(2030, 6, 30), is_operation=True),
         _FakePeriod(1, date(2030, 7, 1), date(2030, 12, 31), is_operation=True),
     )
-    cash_schedule = build_unrestricted_cash_schedule(periods, 0.0, "UNRESOLVED")
+    cash_schedule = build_unrestricted_cash_schedule(periods, "UNRESOLVED")
     result = build_cash_reserve_interest_schedules(periods, UNRESOLVED_POLICY, cash_schedule)
     assert result.total_financing_income_keur == 0.0
     for pr in result.period_results:
@@ -1624,39 +1647,44 @@ def test_oborovo_legacy_calibration_unaffected_by_policy():
         assert policy.authority in list(CashReserveInterestAuthority)
 
 
-# ── 79. Reserve schedule builder: DSRA zero all periods matches source ──────────
+# ── 79. Known-zero ELIGIBLE DSRA produces zero income (H.6.C) ─────────────────
 
-def test_dsra_ineligible_policy_yields_zero_dsra_income():
-    """DSRA INELIGIBLE policy: dsra_balance_by_period is ignored."""
+def test_eligible_dsra_zero_balance_yields_zero_dsra_income():
+    """H.6.C: DSRA ELIGIBLE (source-proven) with zero balance → zero DSRA income.
+    Zero balance ≠ INELIGIBLE. Account classification comes from workbook formula,
+    not from observed balance magnitude.
+    """
     from finco_core.inputs.cash_reserve_interest_schedule import (
         build_unrestricted_cash_schedule,
         build_cash_reserve_interest_schedules,
     )
+    # H.5: DSRA is ELIGIBLE (source-proven from P&L!G19 formula), zero balance.
     policy = CashReserveInterestPolicy(
         authority=CashReserveInterestAuthority.SOURCE_PROVEN,
         annual_rate=0.01,
         eligible_unrestricted_cash=EligibilityStatus.ELIGIBLE,
-        eligible_dsra=EligibilityStatus.INELIGIBLE,
+        eligible_dsra=EligibilityStatus.ELIGIBLE,
         enabled=True,
-        min_unrestricted_cash_floor_keur=550.0,
     )
     periods = (_FakePeriod(0, date(2030, 1, 1), date(2030, 6, 30), is_operation=True),)
-    cash_schedule = build_unrestricted_cash_schedule(periods, 550.0, "SOURCE_PROVEN")
+    # Provide authoritative increments → SOURCE_PROVEN schedule
+    cash_schedule = build_unrestricted_cash_schedule(
+        periods=periods,
+        authority="SOURCE_PROVEN",
+        authoritative_period_cash_increments={0: 550.0},
+    )
     interest = build_cash_reserve_interest_schedules(
         periods=periods,
         policy=policy,
         unrestricted_cash_schedule=cash_schedule,
-        dsra_balance_by_period={0: 100_000.0},  # large DSRA balance — but INELIGIBLE
+        dsra_balance_by_period={0: 0.0},  # ELIGIBLE account, zero balance
     )
-    # DSRA balance is ignored; only unrestricted cash income is earned
     p0 = interest.period_results[0]
-    assert p0.eligible_dsra_keur == 0.0, "INELIGIBLE DSRA must contribute 0.0"
-    # unrestricted cash income = 550 * 0.01 * (period_days/365)
-    from datetime import date as _date
-    period_days = (_date(2030, 6, 30) - _date(2030, 1, 1)).days
-    day_frac = period_days / 365.0
-    expected = 550.0 * 0.01 * day_frac
-    assert abs(p0.calculated_financing_income_keur - expected) < 1e-9
+    assert p0.eligible_dsra_keur == 0.0, "Zero-balance ELIGIBLE DSRA contributes 0.0"
+    assert p0.authority == "SOURCE_PROVEN"
+    # Unrestricted cash income: opening_balance=0.0 (prior closing; period 0 is first)
+    # No interest on period 0 because opening balance = 0.0
+    assert p0.calculated_financing_income_keur == 0.0
 
 
 # ── 80. ProjectFinancingResult carries cash_reserve_interest_schedules field ───
@@ -1667,4 +1695,27 @@ def test_project_financing_result_has_cash_reserve_interest_schedules_field():
     fields = {f for f in ProjectFinancingResult.__dataclass_fields__}
     assert "cash_reserve_interest_schedules" in fields, (
         "C3 handoff field missing from ProjectFinancingResult"
+    )
+
+
+# ── 81. No hardcoded 550 kEUR floor in policy contract (H.6.E) ────────────────
+
+def test_no_hardcoded_cash_floor_in_policy():
+    """H.6.E: CashReserveInterestPolicy has no min_unrestricted_cash_floor_keur field."""
+    assert not hasattr(CashReserveInterestPolicy, "min_unrestricted_cash_floor_keur"), (
+        "min_unrestricted_cash_floor_keur must not exist on CashReserveInterestPolicy — "
+        "the 550 kEUR balance is a model output, not a policy input."
+    )
+    # UNRESOLVED_POLICY also must not carry the field
+    from finco_core.inputs.cash_reserve_interest_policy import UNRESOLVED_POLICY
+    assert not hasattr(UNRESOLVED_POLICY, "min_unrestricted_cash_floor_keur")
+
+
+# ── 82. UnrestrictedCashSchedule has no min_cash_floor_keur field (H.6.E) ──────
+
+def test_unrestricted_cash_schedule_has_no_floor_field():
+    """H.6.E: UnrestrictedCashSchedule must not carry min_cash_floor_keur."""
+    from finco_core.inputs.cash_reserve_interest_schedule import UnrestrictedCashSchedule
+    assert not hasattr(UnrestrictedCashSchedule, "min_cash_floor_keur"), (
+        "min_cash_floor_keur removed — cash balance is a roll-forward output, not a floor."
     )

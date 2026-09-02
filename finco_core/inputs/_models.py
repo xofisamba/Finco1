@@ -1755,7 +1755,6 @@ def hash_inputs_for_cache(inputs: "ProjectInputs") -> tuple:
                 inputs.cash_reserve_interest_policy.eligible_unrestricted_cash.value,
                 inputs.cash_reserve_interest_policy.eligible_dsra.value,
                 inputs.cash_reserve_interest_policy.enabled,
-                inputs.cash_reserve_interest_policy.min_unrestricted_cash_floor_keur,
             )
             if inputs.cash_reserve_interest_policy is not None else None
         ),

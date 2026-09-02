@@ -111,10 +111,6 @@ class CashReserveInterestPolicy:
     balance_convention: BalanceConvention = BalanceConvention.OPENING
     day_count_convention: DayCountConvention = DayCountConvention.ACTUAL_365
     enabled: bool = True
-    # U2 Correction F: minimum maintained unrestricted cash floor (kEUR).
-    # Source-proven: 550 kEUR stable for TUHO and Oborovo post-debt.
-    # 0.0 = not configured (no cash balance → no interest accrual).
-    min_unrestricted_cash_floor_keur: float = 0.0
 
     def __post_init__(self) -> None:
         if self.authority in (
