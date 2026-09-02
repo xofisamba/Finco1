@@ -330,9 +330,9 @@ _B3_MAIN_FINGERPRINTS = {
               "distributions": 5002.162578513828},
     "Wind": {"revenue": 213093.2536298828, "senior_ds": 42650.79738447128,
              "distributions": 10506.513025614555},
-    "Oborovo": {"revenue": 237686.92241665168, "senior_ds": 62985.39289808685,
+    "Oborovo": {"revenue": 237686.92241665168, "senior_ds": 62985.39289808684,
                 "distributions": 61203.805522551986},
-    "TUHO": {"revenue": 423762.0018183332, "senior_ds": 66835.97663483946,
+    "TUHO": {"revenue": 423762.00181833334, "senior_ds": 66835.97663483946,
              "distributions": 151198.59207928448},
 }
 
