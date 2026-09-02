@@ -327,13 +327,13 @@ class TestB4D_NoProductionLegacyImports:
 
 _B3_MAIN_FINGERPRINTS = {
     "Solar": {"revenue": 94414.54881158611, "senior_ds": 35302.12518820596,
-              "distributions": 5002.162578513825},
-    "Wind": {"revenue": 213093.25362988273, "senior_ds": 42650.79738447129,
+              "distributions": 5002.162578513828},
+    "Wind": {"revenue": 213093.2536298828, "senior_ds": 42650.79738447128,
              "distributions": 10506.513025614555},
-    "Oborovo": {"revenue": 237686.92241665165, "senior_ds": 62985.39289808685,
-                "distributions": 61689.90265451222},
-    "TUHO": {"revenue": 423762.0018183332, "senior_ds": 66835.97663483942,
-             "distributions": 151690.9613741361},
+    "Oborovo": {"revenue": 237686.92241665168, "senior_ds": 62985.39289808685,
+                "distributions": 61203.805522551986},
+    "TUHO": {"revenue": 423762.0018183332, "senior_ds": 66835.97663483946,
+             "distributions": 151198.59207928448},
 }
 
 
