@@ -949,7 +949,9 @@ def _create_default_tuho_wind1_legacy_base() -> ProjectInputs:
         atad_enabled=True,
         atad_ebitda_limit=0.30,
         atad_min_interest_keur=3000.0,
-        wht_sponsor_dividends=0.05,
+        # L.1B: Source-proven via CF!B118 = 0.00% (TUHO workbook direct extraction).
+        # Previous 0.05 was factory default; CF!B118 overrides — dividend WHT = 0%.
+        wht_sponsor_dividends=0.00,
         wht_sponsor_shl_interest=0.0,  # 0% WHT on SHL interest per Excel R406
         shl_cap_applies=True,
         cit_cash_tax_start_operating_index=25,  # TUHO Excel: first non-zero R67 at P25
