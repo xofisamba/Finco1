@@ -37,11 +37,14 @@ DSRA authority (I.6):
     dsra_balance_by_period = None means UNKNOWN balance — not zero.
     For ELIGIBLE DSRA: unknown balance → DSRA component authority UNRESOLVED.
     A known authoritative zero explicitly passed as {period: 0.0} is valid.
+    When ELIGIBLE + non-UNRESOLVED authority is claimed, exact period-axis
+    coverage is required; missing periods or invalid values → UNRESOLVED.
 
 Opening cash (I.7):
     opening_cash_keur: float | None — must be explicitly provided.
     None with authoritative increments → UNRESOLVED schedule authority.
     Source-proven zero: TUHO CF!F135 = null (construction period 0 cash = 0).
+    Bool, NaN, Inf → UNRESOLVED regardless of claimed authority.
 
 Day fraction (I.8):
     Uses canonical period.day_fraction when available on the period object.
@@ -50,6 +53,13 @@ Day fraction (I.8):
 Authority validation (I.9):
     Only recognised authority strings are accepted.
     Unknown value → ValueError (caller must pass a valid authority).
+
+Period-axis validation (J.7):
+    Duplicate period indices → UNRESOLVED (set() alone loses duplicates).
+    Period axis of unrestricted_cash_schedule must exactly match the
+    periods tuple passed to build_cash_reserve_interest_schedules.
+    A SOURCE_PROVEN schedule with a missing or mismatched cash period
+    must not silently produce zero interest income.
 """
 from __future__ import annotations
 
@@ -185,29 +195,42 @@ def build_unrestricted_cash_schedule(
         Authoritative opening cash balance at period 0. Must be explicitly
         provided. None → UNRESOLVED. Source-proven zero is valid (pass 0.0).
     """
+    import math as _math
+
     _validate_authority(authority)
 
-    required_indices = {p.period_index for p in periods}  # type: ignore[attr-defined]
+    # J.7: detect duplicate period indices (set() alone hides duplicates).
+    all_indices = [p.period_index for p in periods]  # type: ignore[attr-defined]
+    required_indices = set(all_indices)
     effective_authority = authority
 
     # --- Validate all inputs; any failure forces UNRESOLVED ---
-    if authoritative_period_cash_increments is None:
+    if len(all_indices) != len(required_indices):
+        # Duplicate period indices in the periods tuple.
+        effective_authority = "UNRESOLVED"
+    elif authoritative_period_cash_increments is None:
         effective_authority = "UNRESOLVED"
     elif opening_cash_keur is None:
+        effective_authority = "UNRESOLVED"
+    elif (
+        isinstance(opening_cash_keur, bool)
+        or not isinstance(opening_cash_keur, (int, float))
+        or not _math.isfinite(float(opening_cash_keur))
+    ):
+        # J.7: opening cash must be a real finite number, not bool/NaN/Inf.
         effective_authority = "UNRESOLVED"
     else:
         provided_indices = set(authoritative_period_cash_increments.keys())
         if provided_indices != required_indices:
             effective_authority = "UNRESOLVED"
         else:
-            import math
             for idx, v in authoritative_period_cash_increments.items():
-                if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v):
+                if isinstance(v, bool) or not isinstance(v, (int, float)) or not _math.isfinite(v):
                     effective_authority = "UNRESOLVED"
                     break
 
     balances: list[UnrestrictedCashPeriodBalance] = []
-    prior_closing = opening_cash_keur if effective_authority != "UNRESOLVED" else 0.0
+    prior_closing = float(opening_cash_keur) if effective_authority != "UNRESOLVED" else 0.0
 
     for p in periods:
         idx: int = p.period_index  # type: ignore[attr-defined]
@@ -282,15 +305,48 @@ def build_cash_reserve_interest_schedules(
         == ELIGIBLE and dsra_balance_by_period is not None.
         None → UNRESOLVED for DSRA component when DSRA is ELIGIBLE.
     """
+    import math as _math
+
     from finco_core.inputs.cash_reserve_interest_policy import (
         CashReserveInterestAuthority,
         EligibilityStatus,
     )
 
+    # J.7: detect duplicate period indices in the interest-calculation periods tuple.
+    all_interest_indices = [p.period_index for p in periods]  # type: ignore[attr-defined]
+    interest_period_set = set(all_interest_indices)
+    if len(all_interest_indices) != len(interest_period_set):
+        # Duplicate period indices → fail closed.
+        composed_authority = "UNRESOLVED"
+        return CashReserveInterestSchedules(
+            period_results=tuple(
+                CashReserveInterestPeriodResult(
+                    period_index=p.period_index,  # type: ignore[attr-defined]
+                    period_start=p.period_start,  # type: ignore[attr-defined]
+                    period_end=p.period_end,  # type: ignore[attr-defined]
+                    eligible_unrestricted_cash_keur=0.0,
+                    eligible_dsra_keur=0.0,
+                    balance_convention=policy.balance_convention.value,
+                    annual_rate=0.0,
+                    day_count_convention=policy.day_count_convention.value,
+                    day_fraction=0.0,
+                    calculated_financing_income_keur=0.0,
+                    authority="UNRESOLVED",
+                )
+                for p in periods
+            ),
+            authority="UNRESOLVED",
+            total_financing_income_keur=0.0,
+        )
+
+    # J.7: cash schedule period axis must exactly match the interest-calculation axis.
+    schedule_index_set = {b.period_index for b in unrestricted_cash_schedule.period_balances}
+    cash_axis_mismatch = schedule_index_set != interest_period_set
+
     # H.4 / I.9: weakest upstream authority.
     dsra_eligible = policy.eligible_dsra == EligibilityStatus.ELIGIBLE
 
-    # DSRA component authority
+    # DSRA component authority (J.7 hardening: exact-axis validation).
     if dsra_eligible:
         if dsra_balance_by_period is None:
             # Unknown balance for an eligible account → UNRESOLVED
@@ -299,14 +355,30 @@ def build_cash_reserve_interest_schedules(
             # Balance provided but no authority stated → UNRESOLVED
             dsra_component_authority = "UNRESOLVED"
         else:
-            dsra_component_authority = _validate_authority(dsra_balance_authority)
+            _validate_authority(dsra_balance_authority)
+            # Exact period-axis coverage required for authoritative DSRA data.
+            dsra_indices = set(dsra_balance_by_period.keys())
+            dsra_axis_ok = dsra_indices == interest_period_set
+            dsra_values_ok = all(
+                not isinstance(v, bool)
+                and isinstance(v, (int, float))
+                and _math.isfinite(v)
+                for v in dsra_balance_by_period.values()
+            )
+            if dsra_axis_ok and dsra_values_ok:
+                dsra_component_authority = dsra_balance_authority
+            else:
+                dsra_component_authority = "UNRESOLVED"
     else:
         # INELIGIBLE DSRA — balance is ignored, no authority constraint from DSRA
         dsra_component_authority = policy.authority.value
 
+    # Apply cash-axis mismatch to composed authority.
+    schedule_auth = "UNRESOLVED" if cash_axis_mismatch else unrestricted_cash_schedule.authority
+
     composed_authority = _weakest_authority(
         policy.authority.value,
-        unrestricted_cash_schedule.authority,
+        schedule_auth,
         dsra_component_authority,
     )
 
@@ -345,12 +417,15 @@ def build_cash_reserve_interest_schedules(
             else 0.0
         )
 
-        dsra_raw = (dsra_balance_by_period or {}).get(idx, 0.0)
-        dsra_eligible_keur = (
-            dsra_raw
-            if policy.eligible_dsra == EligibilityStatus.ELIGIBLE
-            else 0.0
-        )
+        # J.7: When DSRA is eligible and authority is claimed, the axis was already
+        # validated above. Here dsra_balance_by_period is known to cover all indices.
+        # Missing lookup should not silently produce 0.0 under authoritative execution;
+        # use 0.0 only for INELIGIBLE accounts or when dsra is None (UNRESOLVED path).
+        if policy.eligible_dsra == EligibilityStatus.ELIGIBLE and dsra_balance_by_period is not None:
+            dsra_raw = dsra_balance_by_period[idx]  # KeyError would be a bug (axis validated above)
+        else:
+            dsra_raw = 0.0
+        dsra_eligible_keur = dsra_raw if policy.eligible_dsra == EligibilityStatus.ELIGIBLE else 0.0
 
         # I.8: Use canonical period day_fraction when available.
         canonical_day_frac = getattr(p, "day_fraction", None)

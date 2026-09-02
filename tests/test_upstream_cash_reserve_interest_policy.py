@@ -1981,3 +1981,416 @@ def test_no_debt_state_gate_in_schedule_builder():
     schedule = build_unrestricted_cash_schedule(periods, "UNRESOLVED")
     assert schedule.period_balances[0].is_eligible is True   # in_life=True
     assert schedule.period_balances[1].is_eligible is False  # in_life=False
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# U2 Correction J tests — dividend-cap algebra, J.7 axis/value hardening
+# ════════════════════════════════════════════════════════════════════════════
+
+# ── J-A. TUHO AU dividend-cap algebra → 550 kEUR retained cash handshake ──
+
+def test_tuho_au_dividend_cap_accounting_algebra():
+    """J.1/J.12: AT145+AU107-AU144 = 4605.09 kEUR; change_in_cash = 550 kEUR.
+
+    Source: tests/fixtures/interest_limitation/tuho_capitalisation_gate_fixture.json
+    Period AU (period_index=39, column=AU, 2049-07-01 to 2049-12-31).
+    """
+    import json, pathlib
+    fixture = pathlib.Path("tests/fixtures/interest_limitation/tuho_capitalisation_gate_fixture.json")
+    d = json.loads(fixture.read_text())
+    periods = d["periods"]
+
+    p_at = periods[38]  # AT period (prior period)
+    p_au = periods[39]  # AU period (first retained-cash period)
+
+    re_opening = p_at["retained_earnings_keur"]  # AT145
+    net_income  = p_au["net_income_keur"]          # AU107
+    lr_transfer = p_au["legal_reserve_transfer_keur"]  # AU144
+
+    accounting_cap = re_opening + net_income - lr_transfer
+    gross_dividends = p_au["gross_dividends_keur"]
+
+    # Accounting cap = Distributable = Gross Dividends (algebraically)
+    assert abs(accounting_cap - gross_dividends) < 1e-6, (
+        f"Accounting cap {accounting_cap:.6f} ≠ gross_dividends {gross_dividends:.6f}"
+    )
+
+    # Source-proven values from user's manual workbook inspection
+    assert abs(p_at["retained_earnings_keur"] - 1235.564210) < 0.01, "AT145 mismatch"
+    assert abs(p_au["net_income_keur"]         - 3369.521268) < 0.01, "AU107 mismatch"
+    assert p_au["legal_reserve_transfer_keur"] == 0.0, "AU144 should be 0"
+    assert abs(gross_dividends                 - 4605.085478) < 0.01, "Gross dividends mismatch"
+
+    # FCF for dividends (CF106 ≈ 5155 kEUR) minus distributable ≈ 550 kEUR retained cash
+    # The fixture records net_income of the AT period as CF106 proxy (see J.1 notes)
+    cf106_proxy = p_at["net_income_keur"]  # ≈ 5155 kEUR
+    change_in_cash = cf106_proxy - gross_dividends
+    assert abs(change_in_cash - 550.0) < 1.0, (
+        f"change_in_cash = {change_in_cash:.2f} kEUR, expected ≈ 550 kEUR"
+    )
+
+
+def test_tuho_au_gross_dividends_equals_distributable():
+    """J.5/J.6: Gross dividends = distributable (WHT cancels algebraically).
+
+    Net_dividends = distributable - WHT; Gross = Net + WHT = distributable.
+    Source: tuho_capitalisation_gate_fixture period AU.
+    """
+    import json, pathlib
+    d = json.loads(
+        pathlib.Path("tests/fixtures/interest_limitation/tuho_capitalisation_gate_fixture.json")
+        .read_text()
+    )
+    p_at = d["periods"][38]
+    p_au = d["periods"][39]
+    re_opening = p_at["retained_earnings_keur"]
+    net_income  = p_au["net_income_keur"]
+    lr_transfer = p_au["legal_reserve_transfer_keur"]
+    distributable = re_opening + net_income - lr_transfer  # = MAX formula value
+    gross_dividends = p_au["gross_dividends_keur"]
+    # Gross dividends = distributable (WHT cancels)
+    assert abs(gross_dividends - distributable) < 1e-6
+
+
+# ── J-B. TUHO AV interest handshake (J.12) ───────────────────────────────
+
+def test_tuho_av_interest_handshake():
+    """J.12: Prior closing 550 kEUR × 1% × 181/365 = 2.7274 kEUR.
+
+    Source: numerical_handshake in excel_tuho_cash_reserve_interest_truth.json.
+    """
+    import json, pathlib
+    d = json.loads(
+        pathlib.Path("tests/fixtures/excel_tuho_cash_reserve_interest_truth.json").read_text()
+    )
+    nh = d["numerical_handshake"]
+    balance = nh["cf135_balance_keur"]         # 550 kEUR prior closing
+    rate    = nh["rate"]                         # 0.01
+    day_frac = nh["H6_day_fraction"]             # 181/365
+    expected = balance * rate * day_frac
+    actual   = nh["actual_keur"]
+
+    assert abs(actual - 2.7273972602740044) < 1e-9
+    assert abs(expected - actual) < 1e-6
+    assert nh["verdict"] == "MACHINE_PRECISION_MATCH"
+
+
+# ── J-C. Oborovo accounting cap → 550 kEUR retained cash (J.2/J.12) ─────
+
+def test_oborovo_period40_accounting_cap_to_retained_cash():
+    """J.2/J.12: Oborovo period 40 accounting cap = 39.65 kEUR; change_in_cash = 550 kEUR.
+
+    Accounting cap = prior_RE + net_income - legal_reserve_transfer.
+    FCF_for_dividends - gross_dividends = 550 kEUR retained cash.
+    Source: excel_oborovo_financial_truth.json.
+    """
+    import json, pathlib
+    d = json.loads(
+        pathlib.Path("tests/fixtures/excel_oborovo_financial_truth.json").read_text()
+    )
+    ci = d["correction_i_findings"]
+    cf = d["cf"]
+    pl = d["pl"]
+
+    # Period 40 is the first retained-cash period (FCF first nonzero)
+    fcf_div = cf["free_cash_flow_for_dividends_keur"]
+    net_div = pl["net_dividends_keur"]
+    ni = pl["net_income_keur"]
+
+    fcf_p40 = fcf_div[40]
+    net_div_p40 = net_div[40]
+    ni_p40 = ni[40]
+
+    # gross_dividends = net_dividends (WHT = 0 for Oborovo per source data)
+    gross_div_p40 = net_div_p40
+
+    change_in_cash = fcf_p40 - gross_div_p40
+    assert abs(change_in_cash - 550.0) < 1.0, (
+        f"Oborovo period 40 change_in_cash = {change_in_cash:.4f}, expected ≈ 550"
+    )
+
+    # First nonzero closing cash
+    first_nonzero = ci["cf144_cash_balance_observation"]["confirmed_balance_keur"]
+    assert abs(first_nonzero - 550.0) < 1e-6
+
+
+def test_oborovo_full_20_period_cash_interest_55keur():
+    """J.4/J.12: Oborovo periods 41-60 → 20 nonzero periods, total 55.000 kEUR.
+
+    Source: correction_i_findings.source_reconciliation in oborovo fixture.
+    """
+    import json, pathlib
+    d = json.loads(
+        pathlib.Path("tests/fixtures/excel_oborovo_financial_truth.json").read_text()
+    )
+    src = d["correction_i_findings"]["source_reconciliation"]
+    assert src["nonzero_interest_periods"] == 20
+    assert src["first_nonzero_period_index"] == 41
+    assert src["last_nonzero_period_index"] == 60
+    total = src["total_cash_interest_keur"]
+    assert abs(total - 55.0) < 1e-6
+
+    vector = src["cash_interest_source_vector"]["period_index_to_keur"]
+    computed_total = sum(vector.values())
+    assert abs(computed_total - 55.0) < 1e-6
+
+
+# ── J-D. J.7 hardening tests ─────────────────────────────────────────────
+
+def test_opening_cash_bool_forces_unresolved():
+    """J.7: bool opening_cash_keur is rejected even though bool is a subtype of int."""
+    from finco_core.inputs.cash_reserve_interest_schedule import build_unrestricted_cash_schedule
+    periods = (_FakePeriod(0, date(2030, 1, 1), date(2030, 6, 30)),)
+    s = build_unrestricted_cash_schedule(
+        periods=periods,
+        authority="SOURCE_PROVEN",
+        authoritative_period_cash_increments={0: 100.0},
+        opening_cash_keur=True,  # bool — must be rejected
+    )
+    assert s.authority == "UNRESOLVED"
+
+
+def test_opening_cash_nan_forces_unresolved():
+    """J.7: NaN opening_cash_keur forces UNRESOLVED."""
+    from finco_core.inputs.cash_reserve_interest_schedule import build_unrestricted_cash_schedule
+    import math
+    periods = (_FakePeriod(0, date(2030, 1, 1), date(2030, 6, 30)),)
+    s = build_unrestricted_cash_schedule(
+        periods=periods,
+        authority="SOURCE_PROVEN",
+        authoritative_period_cash_increments={0: 100.0},
+        opening_cash_keur=float("nan"),
+    )
+    assert s.authority == "UNRESOLVED"
+
+
+def test_opening_cash_inf_forces_unresolved():
+    """J.7: Inf opening_cash_keur forces UNRESOLVED."""
+    from finco_core.inputs.cash_reserve_interest_schedule import build_unrestricted_cash_schedule
+    periods = (_FakePeriod(0, date(2030, 1, 1), date(2030, 6, 30)),)
+    s = build_unrestricted_cash_schedule(
+        periods=periods,
+        authority="SOURCE_PROVEN",
+        authoritative_period_cash_increments={0: 100.0},
+        opening_cash_keur=float("inf"),
+    )
+    assert s.authority == "UNRESOLVED"
+
+
+def test_duplicate_period_index_in_schedule_builder_forces_unresolved():
+    """J.7: Duplicate period indices in periods tuple → UNRESOLVED."""
+    from finco_core.inputs.cash_reserve_interest_schedule import build_unrestricted_cash_schedule
+    # Both periods have period_index=0 — duplicates
+    periods = (
+        _FakePeriod(0, date(2030, 1, 1), date(2030, 6, 30)),
+        _FakePeriod(0, date(2030, 7, 1), date(2030, 12, 31)),
+    )
+    s = build_unrestricted_cash_schedule(
+        periods=periods,
+        authority="SOURCE_PROVEN",
+        authoritative_period_cash_increments={0: 100.0},
+        opening_cash_keur=0.0,
+    )
+    assert s.authority == "UNRESOLVED"
+
+
+def test_duplicate_period_index_in_interest_scheduler_forces_unresolved():
+    """J.7: Duplicate period indices in periods tuple for interest schedules → UNRESOLVED."""
+    from finco_core.inputs.cash_reserve_interest_schedule import (
+        build_unrestricted_cash_schedule,
+        build_cash_reserve_interest_schedules,
+    )
+    good_periods = (_FakePeriod(0, date(2030, 1, 1), date(2030, 6, 30), is_operation=True),)
+    cash_schedule = build_unrestricted_cash_schedule(
+        periods=good_periods,
+        authority="SOURCE_PROVEN",
+        authoritative_period_cash_increments={0: 0.0},
+        opening_cash_keur=550.0,
+    )
+    dup_periods = (
+        _FakePeriod(0, date(2030, 1, 1), date(2030, 6, 30), is_operation=True),
+        _FakePeriod(0, date(2030, 7, 1), date(2030, 12, 31), is_operation=True),
+    )
+    policy = _make_source_proven_policy(dsra_eligible=False, rate=0.01)
+    result = build_cash_reserve_interest_schedules(
+        periods=dup_periods,
+        policy=policy,
+        unrestricted_cash_schedule=cash_schedule,
+    )
+    assert result.authority == "UNRESOLVED"
+    assert result.total_financing_income_keur == 0.0
+
+
+def test_cash_schedule_axis_mismatch_forces_unresolved():
+    """J.7: cash_schedule period axis ≠ interest periods → UNRESOLVED."""
+    from finco_core.inputs.cash_reserve_interest_schedule import (
+        build_unrestricted_cash_schedule,
+        build_cash_reserve_interest_schedules,
+    )
+    # Schedule built for period 0 only
+    schedule_periods = (_FakePeriod(0, date(2030, 1, 1), date(2030, 6, 30), is_operation=True),)
+    cash_schedule = build_unrestricted_cash_schedule(
+        periods=schedule_periods,
+        authority="SOURCE_PROVEN",
+        authoritative_period_cash_increments={0: 0.0},
+        opening_cash_keur=550.0,
+    )
+    # Interest periods include period 1 which is not in the schedule
+    interest_periods = (
+        _FakePeriod(0, date(2030, 1, 1), date(2030, 6, 30), is_operation=True),
+        _FakePeriod(1, date(2030, 7, 1), date(2030, 12, 31), is_operation=True),
+    )
+    policy = _make_source_proven_policy(dsra_eligible=False, rate=0.01)
+    result = build_cash_reserve_interest_schedules(
+        periods=interest_periods,
+        policy=policy,
+        unrestricted_cash_schedule=cash_schedule,
+    )
+    assert result.authority == "UNRESOLVED"
+    assert result.total_financing_income_keur == 0.0
+
+
+def test_dsra_incomplete_axis_forces_unresolved():
+    """J.7: DSRA map missing a period → UNRESOLVED even if authority is stated."""
+    from finco_core.inputs.cash_reserve_interest_schedule import (
+        build_unrestricted_cash_schedule,
+        build_cash_reserve_interest_schedules,
+    )
+    periods = (
+        _FakePeriod(0, date(2030, 1, 1), date(2030, 6, 30), is_operation=True),
+        _FakePeriod(1, date(2030, 7, 1), date(2030, 12, 31), is_operation=True),
+    )
+    cash_schedule = build_unrestricted_cash_schedule(
+        periods=periods,
+        authority="SOURCE_PROVEN",
+        authoritative_period_cash_increments={0: 0.0, 1: 0.0},
+        opening_cash_keur=0.0,
+    )
+    policy = _make_source_proven_policy(rate=0.01)  # DSRA ELIGIBLE
+    # Only period 0 in DSRA map — missing period 1
+    result = build_cash_reserve_interest_schedules(
+        periods=periods,
+        policy=policy,
+        unrestricted_cash_schedule=cash_schedule,
+        dsra_balance_by_period={0: 100.0},  # missing period 1
+        dsra_balance_authority="SOURCE_PROVEN",
+    )
+    assert result.authority == "UNRESOLVED"
+    assert result.total_financing_income_keur == 0.0
+
+
+def test_dsra_invalid_value_forces_unresolved():
+    """J.7: NaN or bool DSRA balance value → UNRESOLVED."""
+    from finco_core.inputs.cash_reserve_interest_schedule import (
+        build_unrestricted_cash_schedule,
+        build_cash_reserve_interest_schedules,
+    )
+    periods = (_FakePeriod(0, date(2030, 1, 1), date(2030, 6, 30), is_operation=True),)
+    cash_schedule = build_unrestricted_cash_schedule(
+        periods=periods,
+        authority="SOURCE_PROVEN",
+        authoritative_period_cash_increments={0: 0.0},
+        opening_cash_keur=0.0,
+    )
+    policy = _make_source_proven_policy(rate=0.01)  # DSRA ELIGIBLE
+    result = build_cash_reserve_interest_schedules(
+        periods=periods,
+        policy=policy,
+        unrestricted_cash_schedule=cash_schedule,
+        dsra_balance_by_period={0: float("nan")},
+        dsra_balance_authority="SOURCE_PROVEN",
+    )
+    assert result.authority == "UNRESOLVED"
+
+
+# ── J-E. Production hygiene (J.13 #17-21) ────────────────────────────────
+
+def test_no_hardcoded_550_in_production_schedule_code():
+    """J.13 #17: No literal 550 in cash_reserve_interest_schedule.py."""
+    import pathlib, re
+    src = pathlib.Path("finco_core/inputs/cash_reserve_interest_schedule.py").read_text()
+    # Allow 550 only in comments/strings — forbid it as a bare numeric literal in expressions
+    matches = re.findall(r'(?<!["\'\w])550\.?0?(?![\w"])', src)
+    assert not matches, f"Hardcoded 550 found in production schedule: {matches}"
+
+
+def test_no_project_name_dispatch_in_schedule_builder():
+    """J.13 #19: No project-name dispatch (conditional branching) in schedule builder.
+
+    Project names may appear in docstrings/comments for source references.
+    They must NOT appear as runtime dispatch conditions (if/elif/match on name).
+    """
+    import pathlib, ast, textwrap
+    src = pathlib.Path("finco_core/inputs/cash_reserve_interest_schedule.py").read_text()
+    # Strip comment lines and docstrings — only check code tokens
+    code_lines = [
+        line for line in src.splitlines()
+        if not line.strip().startswith("#") and not line.strip().startswith('"""')
+        and not line.strip().startswith("'''")
+    ]
+    code_only = "\n".join(code_lines)
+    for forbidden in ["project_key", "project_name", "== 'TUHO'", '== "TUHO"',
+                       "== 'Oborovo'", '== "Oborovo"', "== 'oborovo'", '== "oborovo"']:
+        assert forbidden not in code_only, f"Project-name dispatch found: {forbidden!r}"
+
+
+def test_no_hardcoded_550_in_production_policy_code():
+    """J.13 #17: No literal 550 in cash_reserve_interest_policy.py."""
+    import pathlib, re
+    src = pathlib.Path("finco_core/inputs/cash_reserve_interest_policy.py").read_text()
+    matches = re.findall(r'(?<!["\'\w])550\.?0?(?![\w"])', src)
+    assert not matches, f"Hardcoded 550 found in production policy: {matches}"
+
+
+# ── J-F. WHT cancellation algebra (J.3/J.5) ─────────────────────────────
+
+def test_dividend_wht_cancels_from_gross_dividend():
+    """J.3/J.5: gross_dividend = distributable regardless of WHT rate.
+
+    Net = distributable - WHT; Gross = Net + WHT = distributable.
+    Source formula: CF120 = CF119 + CF118 = (CF115-CF118) + CF118 = CF115.
+    """
+    distributable = 4605.085478
+    for wht_rate in [0.0, 0.05, 0.10, 0.15]:
+        wht = distributable * wht_rate
+        net_div = distributable - wht
+        gross_div = net_div + wht
+        assert abs(gross_div - distributable) < 1e-9, (
+            f"WHT={wht_rate}: gross {gross_div} ≠ distributable {distributable}"
+        )
+
+
+def test_change_in_cash_independent_of_wht_rate():
+    """J.3: change_in_cash = FCF - gross_dividend is invariant to WHT rate."""
+    fcf_for_dividends = 5155.396022
+    distributable = 4605.085478
+    expected_change = fcf_for_dividends - distributable  # ≈ 550
+
+    for wht_rate in [0.0, 0.05, 0.10]:
+        wht = distributable * wht_rate
+        net_div = distributable - wht
+        gross_div = net_div + wht  # = distributable
+        change = fcf_for_dividends - gross_div
+        assert abs(change - expected_change) < 1e-9
+
+
+# ── J-G. Factory WHT reconciliation (J.3) ───────────────────────────────
+
+def test_factory_wht_authority_reconciliation():
+    """J.3: Factory wht_sponsor_dividends = 0.05; source appears to show 0.00%.
+
+    This test documents the discrepancy. WHT does not affect change_in_cash
+    (it cancels algebraically). The rate only matters for net sponsor receipts.
+    Authority: FACTORY_UNRECONCILED — factory rate not directly proven from source.
+    """
+    import pathlib
+    src = pathlib.Path("app/project_factories.py").read_text()
+    # Factory currently contains wht_sponsor_dividends=0.05
+    assert "wht_sponsor_dividends=0.05" in src, (
+        "Factory WHT rate changed — update this test and J.3 reconciliation note."
+    )
+    # Verify it does NOT change to a source-proven value without a fixture update.
+    # Source: user manual inspection shows 0.00% at TUHO CF118 B-column rate.
+    # The factory value of 0.05 is UNRECONCILED with workbook source.
+    # WHT cancels from gross_dividend so the production error is: net_dividends ≠ gross_dividends,
+    # but cash change_in_cash is unaffected.
